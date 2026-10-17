@@ -1,3 +1,7 @@
+# Историческая проверка v5 на рабочем ПК
+
+Этот документ описывает предыдущую версию. Актуальная проверка v6 находится в docs/QA.md.
+
 # Work PC review
 
 Use the single CopiMine_Prototype_v5.html: all images, scripts and CSS are inline. No remote PC, API key, Node, Python or Figma required. Ordinary offline viewing makes no external asset requests. Explicit Discord/outbound links need internet and may be blocked at work; that does not break local pages.

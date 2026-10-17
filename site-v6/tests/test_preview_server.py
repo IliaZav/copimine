@@ -57,5 +57,13 @@ class AdapterTests(unittest.TestCase):
             with self.assertRaises(HTTPError) as e:urlopen(Request(base+'/api/local-materials',headers={'Sec-Fetch-Site':'cross-site'}))
             self.assertEqual(e.exception.code,403)
             with self.assertRaises(HTTPError):urlopen(base+'/local-map/../../mods/CopiMineClient-test.jar')
+            (self.root/'server').mkdir()
+            (self.root/'server'/'private.json').write_text('{"secret":"private"}')
+            for method in ('GET','HEAD'):
+                with self.assertRaises(HTTPError) as blocked:
+                    urlopen(Request(base+'/server/private.json',method=method))
+                self.assertEqual(blocked.exception.code,404)
+            (self.root/'index.html').write_text('<h1>CopiMine v6</h1>')
+            with urlopen(base+'/') as response:self.assertIn(b'CopiMine v6',response.read())
         finally:server.shutdown();server.server_close()
 if __name__=='__main__':unittest.main()

@@ -1,0 +1,53 @@
+{
+  "verifiedAt": "2026-10-17T09:20:22.238804+00:00",
+  "checkpointCommit": "742ccb10f8ae52cc2a4fa663bcc0e749f9ac52c0",
+  "checkpointFilesVerified": [
+    "dist/CopiMineUltimateAdminPlus.jar",
+    "dist/CopiMineArtifacts.jar",
+    "dist/CopiMineEconomyCore.jar",
+    "build-report.json",
+    "protocol-verification.json"
+  ],
+  "checkpointComparison": "Byte-for-byte using raw.githubusercontent.com immutable commit files",
+  "jars": [
+    {
+      "name": "CopiMineUltimateAdminPlus.jar",
+      "bytes": 291662,
+      "sha256": "d345f234120285846ada34ffe7aaddbda550db8f8cfdc8a820dd834da9048f26",
+      "crcVerified": true,
+      "entries": 41
+    },
+    {
+      "name": "CopiMineArtifacts.jar",
+      "bytes": 279304,
+      "sha256": "568a141ef79390812009a26cda4facd7b2570cbfe09296031275dfedcb9f0a35",
+      "crcVerified": true,
+      "entries": 58
+    },
+    {
+      "name": "CopiMineEconomyCore.jar",
+      "bytes": 150343,
+      "sha256": "3c136a7b608f12b826dead8885812766e5db2ad7bf219032460a18d18a10b9c4",
+      "crcVerified": true,
+      "entries": 46
+    }
+  ],
+  "extensionHashesVerified": 5,
+  "pythonTests": {
+    "count": 11,
+    "passed": true,
+    "realGameCommands": false
+  },
+  "protocol": {
+    "checks": 13,
+    "gameServerStarted": false,
+    "passed": true,
+    "crossLanguageHmac": true,
+    "unicodeRoundTrip": true,
+    "pythonToJava": true,
+    "javaToPython": true,
+    "javaVersion": "javac 25.0.2"
+  },
+  "gameServerStarted": false,
+  "deployed": false
+}

@@ -1,0 +1,22 @@
+[Unit]
+Description=CopiMine v6 map rendering and publication
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=copimine-site
+Group=copimine-site
+WorkingDirectory=/opt/copimine/site-v6
+UMask=0077
+ExecStart=/opt/copimine/site-v6/.venv/bin/python server.py --data-dir /var/lib/copimine-site --config /etc/copimine-site/site.json --origin https://copimine.ru map-worker
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/copimine-site
+
+[Install]
+WantedBy=multi-user.target

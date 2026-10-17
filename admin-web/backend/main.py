@@ -4342,10 +4342,10 @@ def request_refresh_token(request: Request) -> str:
 
 
 def normalize_admin_role(value: Any) -> str:
-    role = str(value or "admin").strip().lower()
+    role = str(value or "").strip().lower()
     if role in {"owner", "admin", "junior_admin", "player"}:
         return role
-    return "admin"
+    return ""
 
 
 def is_panel_admin_role(role: str) -> bool:

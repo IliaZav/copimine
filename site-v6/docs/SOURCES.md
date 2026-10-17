@@ -1,27 +1,51 @@
-# Source inventory / v5
+# Проверенные источники v6
 
-## Catalogue, not a live database
-Repository IliaZav/copimine; branch codex/site-launcher-audit; file copimine-artifacts/items.yml; blob 8d564579d1b10dd44edce6b409e8951abf93bd28. Reviewed 2026-10-16 through the connected repository.
-41 source records: 20 public AR, 11 public CM, 8 private notes and 2 administrator-only records. Removed compass is absent. Public visibility is an explicit website policy. Display names with profanity/slang are normalized short editorial aliases; IDs, selected prices and effects remain traceable. Full source effect descriptions must be checked again against the deployed plugin before launch.
-Other branch end-rift-26-3-integrated-final has a different night_cloak record and still contains the old compass. Do not merge these catalogues implicitly. This preview selects the catalogue branch matching the requested new items and compass removal, not an assertion that this is the live server state.
+## Каталог CopiMine
 
-JSON: data/catalog-current.json. Manifest: sources/catalog-source.json. SQLite: data/prototype.sqlite, public_products view. SQL and seed are review fixtures, not a production backup.
+Основной реестр: **server/private/catalog.json**. Публичная проекция: **data/catalog-v6-public.json**. В карточках остаются согласованные переименования; игровые ID сохраняются.
 
-## Images and game assets
-- Logo/wordmark and world.webp: original user materials from the supplied CopiMine launcher archive. The wordmark and mobile C are separate. No synthetic scenery.
-- Official client/resource-pack assets came via the repository Actions artifact minecraft-26.3-event-test-inputs, run 38771187407, artifact 11992575996. The JAR and server executables are NOT redistributed here.
-- Five current branch item sprites fetched separately from admin-web/frontend/assets/item-textures: gravedigger_contract, signal_bell, berserker_heart, zhilorez_pickaxe, night_cloak. These avoid outdated event-reward art.
-- assets/materials contains 1617 item representations. 833 block icons are projections of the original cuboid model elements and texture UVs, rendered by scripts/render_block_icons.py. Other applicable items use original flat sprites/first animation frames. Special non-cuboid meshes without a reliable icon are enumerated in sources/materials-without-flat-sprite.json; they are not silently fabricated.
-- assets/gui/inventory.png: original Minecraft player inventory GUI, displayed with actual 41 equipment/storage/offhand coordinates. No screenshot of another player's inventory is passed off as data.
-- assets/skins: default Minecraft skin textures. Default skin != resolved skin of a real account. PNG upload creates matching head/front/back. Head coordinates and all skin imports stay offline.
-- No font files are included. UI uses system fonts and local SVG icons; see licenses/.
+Источник: репозиторий IliaZav/copimine, copimine-artifacts/items.yml, commit **a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5**, blob **8d564579d1b10dd44edce6b409e8951abf93bd28**. Фиксация выбора источника: **3e1dcc5543890568045389539dd1fe60ebf91163**.
 
-Minecraft assets remain the property of their rightsholders. This is a project-specific local review bundle, not a standalone texture-pack licence grant. Review public redistribution requirements before production.
+Всего 41 запись: 31 товар в публичном магазине, 8 закрытых записей рецептов и 2 административных предмета. Удалённый компас не возвращён. Отдельная ветка end-rift-26-3-integrated-final содержит отличающиеся записи, включая night_cloak; они не смешаны с выбранной базой автоматически.
 
-## World
-User archive copimine-map-preview.tar(1).gz, SHA256 d2a955c51ee1938249045a05968a4344c9f426c4417e5e46d0188acb842261e2. Exactly four Anvil regions / 4096 chunks, X/Z -512..511, 1024 square blocks. DataVersion 3955 is recorded from source data, not changed to the current client version.
-The image is built from surface blocks and original block textures. No fake JourneyMap zoom, no cave/ore scan and no online-player positions. It is a saved snapshot, not the entire server world and not proof of current server state. Original region files are excluded from the distributable archive.
+sources/catalog-v6-authority.json содержит хеши, конфликт веток, сопоставление названий и точное происхождение каждой текстуры. Изображение Змея Горыныча взято из соответствующей модели и текстуры resource pack, а не из картинки другого предмета.
 
-## Localization and private data
-608 Russian material labels are bundled; the rest retain official English and namespaced IDs. The picker accepts a complete official ru_ru.json import. No machine-invented translation of unverified identifiers. Unknown log actions retain their source text rather than receiving a false translation.
-Demo accounts, inventory snapshots, programmes, payments and log examples are artificial. Imported user data is explicitly marked as imported. Nothing here reads real account passwords, live inventories or private database records.
+## Полная база Minecraft 26.3
+
+**data/materials-v6.json** содержит 1658 определений предметов из assets/minecraft/items/*.json выбранного официального стабильного клиента. Все 1658 названий сопоставлены с официальной русской локализацией. Air исключён из выдачи: доступно 1657 идентификаторов.
+
+- Клиент SHA-1: e877b6a07acd633fb3bb475002175cec036e7b87.
+- Клиент SHA-256: 4508d006323f24fa02876310c192d739af56516eb259000ac50f0909a68c9a2d.
+- ru_ru SHA-1: 8a57cfb9eba6a0030253e1065e74f7c63da43a8b.
+- Источники URL, хеши и счётчики: sources/materials-v6-authority.json.
+
+1617 записей имеют проверенные изображения. У 41 специальной модели нет подходящего плоского спрайта в использованном наборе: интерфейс показывает нейтральный знак и точное название/ID. Эти записи не исчезают из поиска и выдачи. Полный перечень указан в authority-файле. Клиент Minecraft целиком не распространяется в архиве сайта.
+
+## Действия администрации
+
+Источник: copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java, тот же commit a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5; blob **20957d89a87b9ea4873e389c563c5acbb4531631**.
+
+data/admin-actions.json сопоставляет все переносимые обработчики, параметры, разрешения и исключения. Расширения Artifacts и EconomyCore имеют собственные source-lock файлы рядом со сборщиком. Сборщик проверяет точные исходники перед внесением расширений.
+
+## Предоставленные миры
+
+Исходный файл на ПК: C:\Users\zavod\Downloads\copimine-map-20261016-222730.tar.gz.
+
+Размер: **781 340 456 байт**. SHA-256: **fee5838c92bc34e3821c1f618501544a6e286cca98489666896b533c7c7b9ad2**.
+
+| Мир | Регионов | Сохранённых чанков | Чанков с поверхностью | Размер области с поверхностью |
+|---|---:|---:|---:|---|
+| Обычный мир | 173 | 118 501 | 88 136 | 14 576 × 14 800 блоков |
+| Незер | 32 | 18 317 | 11 723 | 3 376 × 1 424 блока |
+| Энд | 4 | 841 | 81 | 144 × 144 блока |
+
+209 регионов проверены, ошибок рендера — 0. В сайте 304 WebP: 301 плитка и 3 обзорных изображения. Границы maxX/maxZ в manifest исключающие. Маленькая область поверхности Энда отражает данные архива; пустота вокруг острова не дорисована.
+
+В имени архива указано 2026-10-16 22:27:30 без часового пояса. Эта строка сохраняется как исходная, а не объявляется временем UTC. В manifest отдельно записаны UTC-времена начала и окончания чтения/рендера. В публикации задержка может отсчитываться консервативно от окончания снимка.
+
+Оригинальные Anvil-регионы, playerdata, сущности, содержимое контейнеров и закрытая серверная конфигурация в публичную карту и ZIP сайта не добавлены. Изображения уже подготовлены; для будущих обновлений нужен доступ map-worker к актуальным мирам.
+
+## Остальные изображения
+
+Логотип, фотография игрового мира и исходные фирменные материалы принадлежат проекту CopiMine. Favicon приведён к полному квадрату, чтобы знак оставался читаемым в маленькой вкладке. Иллюстрация печенья создана для этой версии. Minecraft-текстуры и игровые изображения сохраняют права их правообладателей; сведения об источниках находятся также в licenses/.
+

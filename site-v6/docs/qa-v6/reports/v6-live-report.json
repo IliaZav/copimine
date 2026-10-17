@@ -1,0 +1,131 @@
+{
+  "at": "2026-10-17T06:04:23.308Z",
+  "origin": "http://127.0.0.1:8787",
+  "fixtureOnly": true,
+  "tests": [
+    {
+      "name": "Guest forged localStorage does not grant account or administration",
+      "pass": true,
+      "detail": {
+        "canAdmin": false,
+        "guestPlayers": 0,
+        "guestOrders": 0
+      }
+    },
+    {
+      "name": "Consent sends public event to real API and revocation clears visitor",
+      "pass": true,
+      "detail": {
+        "posted": true,
+        "revoked": true
+      }
+    },
+    {
+      "name": "Player password login receives only own profile and denied admin API",
+      "pass": true,
+      "detail": {
+        "role": "player",
+        "ownProfile": true,
+        "adminAPI": 403
+      }
+    },
+    {
+      "name": "Player logout clears the server identity",
+      "pass": true,
+      "detail": {
+        "signedOut": true
+      }
+    },
+    {
+      "name": "Registration creates an ordinary account in the isolated database",
+      "pass": true,
+      "detail": {
+        "registered": true,
+        "role": "player",
+        "loggedOut": true
+      }
+    },
+    {
+      "name": "Owner requires password and current TOTP and receives live administration",
+      "pass": true,
+      "detail": {
+        "owner": true,
+        "fixturePlayers": 3
+      }
+    },
+    {
+      "name": "Analytics report uses API aggregates and contains no demo orders",
+      "pass": true,
+      "detail": {
+        "orders": 0,
+        "visits": 1,
+        "visitors": 1
+      }
+    },
+    {
+      "name": "Balance action writes to QA server state and survives refresh",
+      "pass": true,
+      "retest": {
+        "previousError": "page.reload: Timeout 6500ms exceeded.\nCall log:\n\u001b[2m  - waiting for navigation until \"networkidle\"\u001b[22m\n\u001b[2m    - navigated to \"http://127.0.0.1:8787/#admin/players?player=beb484a2-9a8b-4bff-ad3f-aa0feeec4b55&sub=finance\"\u001b[22m\n",
+        "at": "2026-10-17T06:06:04.045Z",
+        "wait": "DOMContentLoaded + CM6.ready"
+      },
+      "detail": {
+        "before": 17,
+        "after": 34,
+        "currency": "AR",
+        "persisted": true
+      }
+    },
+    {
+      "name": "Live published map loads three dimensions from protected map publication",
+      "pass": true,
+      "detail": [
+        {
+          "id": "overworld",
+          "empty": false,
+          "caption": "2026-10-16 22:27:30 (время архива)\nПозиции игроков скрыты"
+        },
+        {
+          "id": "nether",
+          "empty": false,
+          "caption": "2026-10-16 22:27:30 (время архива)\nПозиции игроков скрыты"
+        },
+        {
+          "id": "end",
+          "empty": false,
+          "caption": "2026-10-16 22:27:30 (время архива)\nПозиции игроков скрыты"
+        }
+      ]
+    },
+    {
+      "name": "Live analytics and player profile fit mobile without page overflow",
+      "pass": true,
+      "detail": [
+        {
+          "page": "analytics",
+          "width": 390
+        },
+        {
+          "page": "profile",
+          "width": 390
+        }
+      ]
+    },
+    {
+      "name": "Owner logout removes administration and cached private rows",
+      "pass": true,
+      "detail": {
+        "canAdmin": false,
+        "privateRows": 0
+      }
+    }
+  ],
+  "errors": [],
+  "serverFailures": [],
+  "followup": {
+    "materialNamespacedSearch": true,
+    "serverActionSearch": "db.optimize",
+    "errors": []
+  }
+}

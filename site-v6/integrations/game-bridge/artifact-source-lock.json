@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "repository": "IliaZav/copimine",
+  "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+  "path": "copimine-artifacts/src/me/copimine/artifacts/CopiMineArtifacts.java",
+  "gitBlobSha1": "2b302b71c991194877127b5fcb361fcce7ad5308",
+  "sourceSha256": "18279475b15b9c166a1f9f298922bf0125c75f764e441f4134f85cbba0e41014",
+  "fragment": "ArtifactSiteBridge.java.inc",
+  "fragmentSha256": "6e95b482f42dcd2f4580ef4f8f1143bab8b88d89085e39af119295afcb070cca",
+  "insertBefore": "   private static record CatalogItem(",
+  "expectedAnchorCount": 1,
+  "requiredAbsent": "public CompletableFuture<Map<String, Object>> siteBridgeGive(",
+  "compileOnly": true,
+  "stockDeliveryMethods": [
+    "persistAdminGiftDelivery",
+    "DonationPurchaseService.createAdminGiftAsync",
+    "deliverPendingRowV2",
+    "deliverDonationClaimRowV2",
+    "playerHasOfficialInstance"
+  ],
+  "dependencies": [
+    "Paper API matching26.3",
+    "CopiMineEconomyCore",
+    "CopiMineUltimateAdminPlus",
+    "JDK25"
+  ],
+  "noLiveDeployment": true
+}

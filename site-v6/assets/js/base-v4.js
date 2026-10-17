@@ -83,5 +83,5 @@ V.attachLocalTiles=()=>{
  if(!group.childNodes.length)for(const t of V.localMaterials.map.tiles){const im=document.createElementNS('http://www.w3.org/2000/svg','image');for(const [k,v]of Object.entries({x:t.x,y:t.z,width:t.width,height:t.height,href:t.url}))im.setAttribute(k,v);group.append(im);}
 };
 V.after.push(()=>V.attachLocalTiles());
-if(!window.CM_OFFLINE&&location.protocol!=='file:')fetch('/api/local-materials').then(r=>r.ok?r.json():null).then(a=>{if(a){V.localMaterials=a;V.attachLocalTiles();}}).catch(()=>{});
+if(!window.CM_SERVER_MODE&&!window.CM_OFFLINE&&location.protocol!=='file:')fetch('/api/local-materials').then(r=>r.ok?r.json():null).then(a=>{if(a){V.localMaterials=a;V.attachLocalTiles();}}).catch(()=>{});
 })();

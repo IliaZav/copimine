@@ -1,0 +1,183 @@
+{
+  "at": "2026-10-17T06:30:04.944Z",
+  "mode": "Actual v6 UI with browser-intercepted API fixtures; no providers contacted",
+  "tests": [
+    {
+      "name": "Offline login/register/code/VK/connections are honest and send no API calls",
+      "pass": true,
+      "apiRequests": 0
+    },
+    {
+      "name": "Provider availability resolves without replacing login fields or checkbox",
+      "pass": true,
+      "fieldsPreserved": true
+    },
+    {
+      "name": "Email code validates, keeps challenge on error, preserves remember and submits optional TOTP",
+      "pass": true,
+      "wrongCodeRejected": true,
+      "remember": true,
+      "totpForwarded": true
+    },
+    {
+      "name": "SMS recovery submits the channel, confirmation code and new password",
+      "pass": true,
+      "smsRequested": true,
+      "recoveryPassword": true
+    },
+    {
+      "name": "Code cooldown and expiration update in place and allow a new challenge",
+      "pass": true,
+      "cooldownSeconds": 60,
+      "expirySeconds": 600,
+      "codeInputPreserved": true
+    },
+    {
+      "name": "Contact binding, incorrect code, password re-entry on resend and removal",
+      "pass": true,
+      "verifiedAfterAPI": true,
+      "resendPasswordRetained": false,
+      "removed": true
+    },
+    {
+      "name": "Contact and VK removal require 2FA for the protected owner",
+      "pass": true,
+      "smsTotp": true,
+      "vkUnlinkTotp": true
+    },
+    {
+      "name": "VK new-account callback requires CopiMine fields and rules",
+      "pass": true,
+      "termsRequired": true,
+      "newFields": true
+    },
+    {
+      "name": "VK existing account preserves mandatory 2FA and retries invalid code",
+      "pass": true,
+      "invalidRejected": true,
+      "totpRequired": true
+    },
+    {
+      "name": "VK callbacks cover automatic login, linked account, explicit and unknown errors",
+      "pass": true,
+      "autoLogin": true,
+      "linkedRoute": true,
+      "errorEscaped": true,
+      "unknownStatusHandled": true
+    },
+    {
+      "name": "Fresh verification asks password for players, password and TOTP for staff",
+      "pass": true,
+      "playerPasswordOnly": true,
+      "staffTotpRequired": true,
+      "cancelDoesNotSubmit": true,
+      "untrustedRedirectBlocked": true
+    },
+    {
+      "name": "Unavailable providers remain disabled on live screens",
+      "pass": true,
+      "providerRequestsOnly": true
+    },
+    {
+      "name": "Mobile login, recovery, VK callback and connections fit 390px",
+      "pass": true,
+      "viewports": [
+        390
+      ]
+    },
+    {
+      "name": "VK start preserves remember and navigates only to the intercepted canonical provider",
+      "pass": true,
+      "canonicalHost": "id.vk.ru",
+      "navigationIntercepted": true,
+      "noProviderContact": true
+    }
+  ],
+  "screens": [
+    {
+      "name": "desktop-offline",
+      "viewport": 1440,
+      "width": 1440,
+      "broken": [],
+      "screenshotCaptured": "v6-auth-desktop-offline.png"
+    },
+    {
+      "name": "desktop-login",
+      "viewport": 1440,
+      "width": 1440,
+      "broken": [],
+      "screenshotCaptured": "v6-auth-desktop-login.png"
+    },
+    {
+      "name": "desktop-code-error",
+      "viewport": 1440,
+      "width": 1440,
+      "broken": [],
+      "screenshotCaptured": "v6-auth-desktop-code-error.png"
+    },
+    {
+      "name": "desktop-recovery",
+      "viewport": 1440,
+      "width": 1440,
+      "broken": [],
+      "screenshotCaptured": "v6-auth-desktop-recovery.png"
+    },
+    {
+      "name": "desktop-connections",
+      "viewport": 1440,
+      "width": 1440,
+      "broken": [],
+      "screenshotCaptured": "v6-auth-desktop-connections.png"
+    },
+    {
+      "name": "desktop-vk-new",
+      "viewport": 1440,
+      "width": 1440,
+      "broken": [],
+      "screenshotCaptured": "v6-auth-desktop-vk-new.png"
+    },
+    {
+      "name": "desktop-vk-totp",
+      "viewport": 1440,
+      "width": 1440,
+      "broken": [],
+      "screenshotCaptured": "v6-auth-desktop-vk-totp.png"
+    },
+    {
+      "name": "mobile-login",
+      "viewport": 390,
+      "width": 390,
+      "broken": [],
+      "screenshot": "../screenshots/v6-auth-mobile-login.png"
+    },
+    {
+      "name": "mobile-recovery",
+      "viewport": 390,
+      "width": 390,
+      "broken": [],
+      "screenshotCaptured": "v6-auth-mobile-recovery.png"
+    },
+    {
+      "name": "mobile-vk-new",
+      "viewport": 390,
+      "width": 390,
+      "broken": [],
+      "screenshotCaptured": "v6-auth-mobile-vk-new.png"
+    },
+    {
+      "name": "mobile-connections",
+      "viewport": 390,
+      "width": 390,
+      "broken": [],
+      "screenshotCaptured": "v6-auth-mobile-connections.png"
+    }
+  ],
+  "errors": [],
+  "unexpectedAPI": [],
+  "externalRequests": [
+    {
+      "url": "https://id.vk.ru/authorize?state=qa-state",
+      "intercepted": true
+    }
+  ]
+}

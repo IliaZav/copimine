@@ -1,0 +1,299 @@
+{
+  "at": "2026-10-17T06:12:35.929Z",
+  "mode": "live isolated QA database",
+  "viewports": [
+    {
+      "device": "desktop",
+      "name": "catalog",
+      "route": "admin/shop",
+      "viewport": 1440,
+      "width": 1440,
+      "height": 3812,
+      "brokenImages": [],
+      "heading": "Магазин"
+    },
+    {
+      "device": "desktop",
+      "name": "finance",
+      "route": "admin/finance?sub=payments",
+      "viewport": 1440,
+      "width": 1440,
+      "height": 1066,
+      "brokenImages": [],
+      "heading": "Финансы"
+    },
+    {
+      "device": "desktop",
+      "name": "access",
+      "route": "admin/access?sub=roles",
+      "viewport": 1440,
+      "width": 1440,
+      "height": 1066,
+      "brokenImages": [],
+      "heading": "Команда и доступ"
+    },
+    {
+      "device": "desktop",
+      "name": "logs",
+      "route": "admin/logs",
+      "viewport": 1440,
+      "width": 1440,
+      "height": 1407,
+      "brokenImages": [],
+      "heading": "Журналы"
+    },
+    {
+      "device": "desktop",
+      "name": "recipes",
+      "route": "admin/recipes",
+      "viewport": 1440,
+      "width": 1440,
+      "height": 1123,
+      "brokenImages": [],
+      "heading": "Рецепты"
+    },
+    {
+      "device": "desktop",
+      "name": "content",
+      "route": "admin/content?sub=pages",
+      "viewport": 1440,
+      "width": 1440,
+      "height": 2223,
+      "brokenImages": [],
+      "heading": "Контент"
+    },
+    {
+      "device": "desktop",
+      "name": "materials",
+      "route": "admin/shop?sub=materials",
+      "viewport": 1440,
+      "width": 1440,
+      "height": 1988,
+      "brokenImages": [],
+      "heading": "Магазин"
+    },
+    {
+      "device": "desktop",
+      "name": "content-settings",
+      "route": "admin/content?sub=settings",
+      "viewport": 1440,
+      "width": 1440,
+      "height": 1734,
+      "brokenImages": [],
+      "heading": "Контент"
+    },
+    {
+      "device": "desktop",
+      "name": "content-faq",
+      "route": "admin/content?sub=faq",
+      "viewport": 1440,
+      "width": 1440,
+      "height": 1066,
+      "brokenImages": [],
+      "heading": "Контент"
+    },
+    {
+      "device": "desktop",
+      "name": "content-gallery",
+      "route": "admin/content?sub=gallery",
+      "viewport": 1440,
+      "width": 1440,
+      "height": 1066,
+      "brokenImages": [],
+      "heading": "Контент"
+    },
+    {
+      "device": "mobile",
+      "name": "catalog",
+      "route": "admin/shop",
+      "viewport": 390,
+      "width": 390,
+      "height": 3722,
+      "brokenImages": [],
+      "heading": "Магазин"
+    },
+    {
+      "device": "mobile",
+      "name": "finance",
+      "route": "admin/finance?sub=payments",
+      "viewport": 390,
+      "width": 390,
+      "height": 910,
+      "brokenImages": [],
+      "heading": "Финансы"
+    },
+    {
+      "device": "mobile",
+      "name": "access",
+      "route": "admin/access?sub=roles",
+      "viewport": 390,
+      "width": 390,
+      "height": 931,
+      "brokenImages": [],
+      "heading": "Команда и доступ"
+    },
+    {
+      "device": "mobile",
+      "name": "logs",
+      "route": "admin/logs",
+      "viewport": 390,
+      "width": 390,
+      "height": 1317,
+      "brokenImages": [],
+      "heading": "Журналы"
+    },
+    {
+      "device": "mobile",
+      "name": "recipes",
+      "route": "admin/recipes",
+      "viewport": 390,
+      "width": 390,
+      "height": 1069,
+      "brokenImages": [],
+      "heading": "Рецепты"
+    },
+    {
+      "device": "mobile",
+      "name": "content",
+      "route": "admin/content?sub=pages",
+      "viewport": 390,
+      "width": 390,
+      "height": 2963,
+      "brokenImages": [],
+      "heading": "Контент"
+    },
+    {
+      "device": "mobile",
+      "name": "materials",
+      "route": "admin/shop?sub=materials",
+      "viewport": 390,
+      "width": 390,
+      "height": 4576,
+      "brokenImages": [],
+      "heading": "Магазин"
+    },
+    {
+      "device": "mobile",
+      "name": "content-settings",
+      "route": "admin/content?sub=settings",
+      "viewport": 390,
+      "width": 390,
+      "height": 1815,
+      "brokenImages": [],
+      "heading": "Контент"
+    },
+    {
+      "device": "mobile",
+      "name": "content-faq",
+      "route": "admin/content?sub=faq",
+      "viewport": 390,
+      "width": 390,
+      "height": 910,
+      "brokenImages": [],
+      "heading": "Контент"
+    },
+    {
+      "device": "mobile",
+      "name": "content-gallery",
+      "route": "admin/content?sub=gallery",
+      "viewport": 390,
+      "width": 390,
+      "height": 910,
+      "brokenImages": [],
+      "heading": "Контент"
+    }
+  ],
+  "tests": [
+    {
+      "name": "Material library: 1658 entries, namespaced search, detail and pagination",
+      "pass": true,
+      "detail": {
+        "entries": 1658,
+        "pageSize": 48,
+        "pages": 35
+      }
+    },
+    {
+      "name": "Catalog UI save, optimistic version conflict and original price restore",
+      "pass": true,
+      "detail": {
+        "id": "angel_wings",
+        "versionBefore": 1,
+        "versionAfter": 3,
+        "staleStatus": 409,
+        "privateReasonHidden": true
+      }
+    },
+    {
+      "name": "CMS create, save private draft, publish, keep later draft private, hide",
+      "pass": true,
+      "detail": {
+        "id": "06eefd64-ada9-4e64-8ad0-ee59a08e27b9",
+        "slug": "qa-review-mvc02d9h",
+        "privateDraft": true,
+        "privateReason": true,
+        "publishedBodyCorrect": true,
+        "staleStatus": 409,
+        "hiddenAgain": true
+      }
+    },
+    {
+      "name": "Site settings UI save increments version and keeps reason private",
+      "pass": true,
+      "detail": {
+        "versionBefore": 1,
+        "versionAfter": 3,
+        "restored": true
+      }
+    },
+    {
+      "name": "FAQ two UI saves: unpublished question stays private then publishes, versions refresh",
+      "pass": true,
+      "detail": {
+        "versionBefore": 1,
+        "versionAfter": 3,
+        "draftPrivate": true,
+        "published": true
+      }
+    },
+    {
+      "name": "Gallery metadata saves, image preserved and optimistic versions refresh",
+      "pass": true,
+      "detail": {
+        "versionBefore": 1,
+        "versionAfter": 3,
+        "imagePreserved": true,
+        "captionRestored": true
+      }
+    },
+    {
+      "name": "Donation rendering: completed becomes paid, test payment excluded from support total",
+      "pass": true,
+      "detail": {
+        "fixtureOnly": true,
+        "noPaymentCreated": true,
+        "statuses": [
+          "paid",
+          "test_completed"
+        ],
+        "supportRubles": 137
+      }
+    },
+    {
+      "name": "Audit search loads real private reasons, logout clears cached entries",
+      "pass": true,
+      "detail": {
+        "beforeCount": 29,
+        "after": {
+          "session": null,
+          "privateState": 0,
+          "auditCache": 0
+        },
+        "lateResponseDiscarded": true
+      }
+    }
+  ],
+  "errors": [],
+  "serverErrors": [],
+  "missingScripts": []
+}

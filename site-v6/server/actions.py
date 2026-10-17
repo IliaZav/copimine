@@ -9,6 +9,7 @@ from .storage import encoded, identifier, now_ms
 
 BUILTINS = {
  "ban":("players.moderate",{"durationMs":"integer","expiresAt":"integer"}),
+ "ban.ip":("players.moderate",{"durationMs":"integer","expiresAt":"integer"}),
  "mute":("players.moderate",{"durationMs":"integer","expiresAt":"integer","channel":"string"}),
  "kick":("players.moderate",{}), "warn":("players.moderate",{"durationMs":"integer","expiresAt":"integer"}),
  "freeze":("players.moderate",{"durationMs":"integer","expiresAt":"integer"}), "unfreeze":("players.moderate",{}),
@@ -43,6 +44,35 @@ PHYSICAL = {"tpto","tphere","swap","check-start","arsync","givebook","giveballot
 DATABASE_ACTIONS = {"money.adjust","purchase.limit","sessions.revoke"}
 
 class Actions:
+    def refresh_inventory(self,target_id,body,user,session):
+        """Request a signed snapshot without mutating the player's inventory."""
+        self.require(user,session)
+        if set(body)-{"idempotencyKey","reason"}:
+            raise APIError(400,"Unsupported inventory refresh field.")
+        if target_id!=user["id"]:
+            self.require(user,session,"players.read")
+        if not self.store.rate("inventory.refresh:"+user["id"],20,60000):
+            raise APIError(429,"Too many inventory refresh requests.","rate_limited")
+        key=idem(body) if "idempotencyKey" in body else identifier()
+        why=reason(body) if "reason" in body else "Authoritative inventory snapshot requested"
+        request_hash=hashlib.sha256(encoded({"target":target_id,"action":"inventory.refresh"}).encode()).hexdigest()
+        with self.store.transaction() as conn:
+            actor=self.actor_current(conn,user,session,"players.read" if target_id!=user["id"] else None)
+            target=self.target(conn,actor,target_id,mutation=False)
+            if not target["game_link_verified"]:
+                raise APIError(409,"The account has no verified Minecraft identity.","game_link_required")
+            previous=conn.execute("SELECT * FROM actions WHERE actor_id=? AND idempotency_key=?",(actor["id"],key)).fetchone()
+            if previous:
+                if previous["request_hash"]!=request_hash:
+                    raise APIError(409,"Idempotency key was used for another request.")
+                return {"action":self.action_row(previous),"replayed":True}
+            pending=conn.execute("SELECT * FROM actions WHERE actor_id=? AND target_id=? AND action='inventory.refresh' AND status IN ('queued','dispatched') ORDER BY created_at DESC LIMIT 1",(actor["id"],target_id)).fetchone()
+            if pending:
+                return {"action":self.action_row(pending),"replayed":True}
+            operation=self.queue(conn,actor["id"],target_id,"inventory.refresh",{},why,key,request_hash)
+            self.store.audit(conn,actor["id"],"inventory.refresh",target_id,why,{"operationId":operation})
+            return {"action":self.action_row(conn.execute("SELECT * FROM actions WHERE id=?",(operation,)).fetchone())}
+
     def target(self, conn, actor, target_id, mutation=True):
         row = conn.execute("SELECT * FROM users WHERE id=?", (target_id,)).fetchone()
         if not row or canonical_role(row["role"]) is None:
@@ -66,6 +96,9 @@ class Actions:
             schema = schema["properties"]
         if not isinstance(schema,dict):
             schema = {}
+        schema_required={key for key,value in schema.items() if isinstance(value,dict) and value.get("required") is True}
+        if schema_required-set(params):
+            raise APIError(400,"Required operation parameter is missing.")
         if any(not isinstance(key,str) or key.startswith("_") for key in params) or set(params)-set(schema):
             raise APIError(400,"Unsupported operation parameter.")
         if REQUIRED.get(action,set())-set(params):
@@ -95,7 +128,7 @@ class Actions:
                 if isinstance(value,(int,float)) and not isinstance(value,bool):
                     if value<definition.get("minimum",-10**15) or value>definition.get("maximum",10**15):
                         raise APIError(400,"Parameter is outside its allowed range.")
-        if "itemId" in params and params["itemId"] is not None and not re.fullmatch(r"[a-z0-9_:. -]{1,100}",params["itemId"]):
+        if "itemId" in params and params["itemId"] is not None and not re.fullmatch(r"[a-z0-9_.:-]{1,100}",params["itemId"]):
             raise APIError(400,"Invalid item identifier.")
         if "world" in params and params["world"] not in self.config.worlds:
             raise APIError(400,"Unknown world.")
@@ -113,6 +146,8 @@ class Actions:
                 params["mode"]="add"
             if params["mode"]=="debit":
                 params["mode"],params["amount"]="add",-params["amount"]
+        if action=="game.money.adjust" and params.get("mode") in ("credit","debit"):
+            integer(params.get("amount"),1,10**9,"amount")
         if action=="purchase.limit" and not params.get("remove"):
             integer(params.get("maximum"),0,10**9,"maximum")
             if params.get("period") not in ("day","week","month","lifetime"):
@@ -203,7 +238,7 @@ class Actions:
         permission = self.registry[action]["permission"]
         self.require(user,session,permission,True)
         params = self.validate_params(action,body.get("params",{}))
-        request_hash = hashlib.sha256(encoded({"target":target_id,"action":action,"params":params,"reason":why}).encode()).hexdigest()
+        request_hash = hashlib.sha256(encoded({"target":target_id,"action":action,"params":body.get("params",{}),"reason":why}).encode()).hexdigest()
         with self.store.transaction() as conn:
             actor = self.actor_current(conn,user,session,permission,True)
             target = self.target(conn,actor,target_id)
@@ -215,19 +250,21 @@ class Actions:
             if action not in DATABASE_ACTIONS and not target["game_link_verified"]:
                 raise APIError(409,"The account has no verified Minecraft identity.","game_link_required")
             if action=="give":
-                self.known_item(conn,params["itemId"])
-            if action in ("inventory.remove","ender.remove","inventory.restore"):
+                item=self.known_item(conn,params["itemId"])
+                if params["quantity"]>self.maximum_quantity(item):
+                    raise APIError(400,"This native item can be issued only one at a time.","item_quantity_limit")
+            if action in ("inventory.remove","ender.remove","inventory.restore","inventory.clear","inventory.armor-off","inventory.shuffle-hotbar"):
                 snapshot = conn.execute("SELECT * FROM inventory_snapshots WHERE user_id=? ORDER BY captured_at DESC LIMIT 1",(target_id,)).fetchone()
                 if not snapshot or snapshot["id"]!=params.get("expectedSnapshotId"):
                     raise APIError(409,"Inventory changed. Refresh the authoritative snapshot.","stale_snapshot")
-                if action!="inventory.restore":
+                if action in ("inventory.remove","ender.remove"):
                     slot = integer(params["slot"],0,26 if action=="ender.remove" else 40,"slot")
                     items = json.loads(snapshot["ender" if action=="ender.remove" else "inventory"])
                     item = next((i for i in items if i["slot"]==slot),None)
                     quantity = integer(params["quantity"],1,64,"quantity")
                     if not item or item["id"]!=params["expectedItemId"] or quantity>item["quantity"]:
                         raise APIError(409,"The slot contents differ from this request.","stale_snapshot")
-                else:
+                elif action=="inventory.restore":
                     restore = conn.execute("SELECT * FROM inventory_snapshots WHERE id=? AND user_id=?", (params["snapshotId"],target_id)).fetchone()
                     if not restore:
                         raise APIError(404,"Snapshot not found.")
@@ -245,7 +282,7 @@ class Actions:
             if result is not None:
                 conn.execute("UPDATE actions SET status='executed',ack_id=?,ack=?,updated_at=? WHERE id=?",
                     ("db:"+operation,encoded({"authority":"site-v6-database","result":result}),now_ms(),operation))
-            elif action in ("ban","mute","warn","freeze","jail"):
+            elif action in ("ban","ban.ip","mute","warn","freeze","jail"):
                 conn.execute("INSERT INTO sanctions(id,user_id,kind,channel,reason,actor_id,created_at,expires_at,status,action_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
                     (identifier(),target_id,action,params.get("channel"),why,actor["id"],now_ms(),params.get("expiresAt"),"pending",operation))
             self.store.audit(conn,actor["id"],"player.action",target_id,why,{"actionId":operation,"action":action,"params":{k:v for k,v in params.items() if not k.startswith("_")}})
@@ -259,7 +296,7 @@ class Actions:
         permission = self.registry[action]["permission"]
         self.require(user,session,permission,True)
         params = self.validate_params(action,body.get("params",{}))
-        request_hash = hashlib.sha256(encoded({"action":action,"params":params,"reason":why}).encode()).hexdigest()
+        request_hash = hashlib.sha256(encoded({"action":action,"params":body.get("params",{}),"reason":why}).encode()).hexdigest()
         with self.store.transaction() as conn:
             actor = self.actor_current(conn,user,session,permission,True)
             old = conn.execute("SELECT * FROM actions WHERE actor_id=? AND idempotency_key=?", (actor["id"],key)).fetchone()
@@ -309,3 +346,4 @@ class Actions:
         permissions=PERMISSIONS[user["role"]]
         return {"actions":[dict(value,connected=(key in DATABASE_ACTIONS or bool(self.config.adapter_url and key in self.config.adapter_capabilities)),queueSupported=True) for key,value in self.registry.items() if value["permission"] in permissions],
             "excluded":self.excluded,"adapterConfigured":bool(self.config.adapter_url)}
+

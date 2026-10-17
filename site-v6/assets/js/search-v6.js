@@ -53,7 +53,7 @@
   }
   function currentPlayer() {
     const params = new URLSearchParams(location.hash.split("?")[1] || "");
-    return M.state.players.find(p => p.id === params.get("player")) || M.state.players[0];
+    return M.state.players.find(p => p.id === params.get("player")) || X.player?.() || M.state.players[0];
   }
   function entries() {
     const st = M.state, player = currentPlayer();
@@ -72,22 +72,46 @@
       ["Команда и доступ", "Роли и права администрации", "команда администратор модератор roles permissions доступ", "#admin/access", "users"],
       ["Система", "Подключения и состояние сервисов", "system интеграции настройка сервер статус система", "#admin/system", "server"]
     ].map(([title, detail, aliases, href, icon], index) => ({ key: "f" + index, group: "functions", title, detail, aliases, href, icon, defaultOrder: index }));
+    const destinations = [
+      ["Все игроки", "Найти аккаунт и открыть карточку", "список players list ник аккаунт", "#admin/players?sub=list", "users"],
+      ["Предметы Minecraft", "Библиотека названий, ID и спрайтов", "materials материалы vanilla minecraft библиотека справочник", "#admin/shop?sub=materials", "package"],
+      ["Выдача заказов", "Очередь и состояние доставки предметов", "delivery выдача очередь доставка заказов", "#admin/shop?sub=delivery", "bag"],
+      ["Все покупки", "История заказов игроков", "orders покупки заказы история магазин", "#admin/finance?sub=orders", "bag"],
+      ["Донаты игроков", "Суммы и статусы платежей", "payments donate донаты платежи рубли поддержка", "#admin/finance?sub=payments", "wallet"],
+      ["Журнал баланса", "AR, CM и основания изменений", "ledger транзакции операции баланс csv", "#admin/finance?sub=ledger", "wallet"],
+      ["Закрытые рецепты", "Предметы закрытого каталога", "recipes рецепты закрытые приватные", "#admin/recipes", "package"],
+      ["Страницы сайта", "Черновики, публикация и история", "cms pages страница черновик публикация редактор", "#admin/content?sub=pages", "file"],
+      ["Главная и ссылки", "Заголовок, Discord, моды и лаунчер", "homepage settings сайт заголовок discord дискорд моды лаунчер скачивание загрузки ссылки", "#admin/content?sub=settings", "settings"],
+      ["Вопросы на главной", "Вопросы и ответы для новых игроков", "faq вопросы ответы помощь", "#admin/content?sub=faq", "chat"],
+      ["Галерея", "Подписи и порядок изображений", "gallery галерея фото изображения подписи", "#admin/content?sub=gallery", "image"],
+      ["Права команды", "Роли и защита административных действий", "roles permissions роли права 2fa защита", "#admin/access?sub=roles", "lock"]
+    ].map(([title, detail, aliases, href, icon], index) => ({ key: "d" + index, group: "functions", title, detail, aliases, href, icon }));
+    const actions = (X.actions || []).filter(a => !a.requiresPhysicalAdmin).map(a => ({ key: "a" + a.id, group: "functions", kind: a.scope === "server" ? "server-action" : "action", id: a.id, title: a.label || a.name || a.id, detail: [a.group || "Действие", a.scope === "server" ? "Весь сервер" : player?.name].filter(Boolean).join(" · "), aliases: [a.id, a.description, a.group, ...(Array.isArray(a.aliases) ? a.aliases : [a.aliases])].filter(Boolean).join(" "), icon: a.icon || "settings" }));
     const players = (st.players || []).map(p => ({ key: "p" + p.id, group: "players", title: p.name, detail: [p.role || "Игрок", p.uuid || p.id].join(" · "), aliases: ["player игрок", p.name, p.uuid, p.id].join(" "), href: "#admin/players?player=" + encodeURIComponent(p.id) + "&sub=profile", icon: "user", image: p.skin?.head }));
     const catalog = (st.catalog || []).map(p => ({ key: "c" + p.id, group: "items", title: p.name, detail: p.id + " · " + M.money(p.price, p.currency), aliases: [p.material, p.category, p.description].join(" "), kind: "catalog", id: p.id, icon: "package", image: p.image }));
     const catalogMaterials = new Set((st.catalog || []).map(p => p.material));
     const registry = window.CM6_REGISTRY || window.CM5_REGISTRY;
-    const materials = (registry?.materials || []).filter(p => !catalogMaterials.has(p.id)).map(p => ({ key: "m" + p.id, group: "items", title: st.materialRu?.[p.id] || p.ru || p.en || p.id, detail: p.id, aliases: [p.en, p.ru].join(" "), kind: "material", id: p.id, image: p.image, icon: "package" }));
+    const materials = (registry?.materials || []).filter(p => !catalogMaterials.has(p.key || p.id)).map(p => ({ key: "m" + p.id, group: "items", title: st.materialRu?.[p.key || p.id] || st.materialRu?.[p.id] || p.ru || p.en || p.id, detail: p.key || p.id, aliases: [p.en, p.ru, p.key, p.id].join(" "), kind: "material", id: p.key || p.id, image: p.image, icon: "package" }));
     const orders = (st.orders || []).slice(0, 600).map(o => {
       const owner = (st.players || []).find(p => p.id === o.playerId || p.name === o.player);
-      return { key: "o" + o.id, group: "orders", title: o.id, detail: [o.player, o.name, o.qty ? "× " + o.qty : ""].filter(Boolean).join(" · "), aliases: ["заказ order", o.checkout, o.item, o.status].join(" "), href: owner ? "#admin/players?player=" + encodeURIComponent(owner.id) + "&sub=finance" : "#admin/shop?sub=orders", icon: "bag" };
+      return { key: "o" + o.id, group: "orders", title: o.id, detail: [o.player, o.name, o.qty ? "× " + o.qty : ""].filter(Boolean).join(" · "), aliases: ["заказ order", o.checkout, o.item, o.status].join(" "), href: owner ? "#admin/players?player=" + encodeURIComponent(owner.id) + "&sub=finance" : "#admin/finance?sub=orders", icon: "bag" };
     });
-    return [...functions, ...players, ...catalog, ...materials, ...orders];
+    return [...functions, ...destinations, ...actions, ...players, ...catalog, ...materials, ...orders];
   }
-  function isOpen() { return !!document.getElementById("v6-search-input"); }
+  function isOpen() { return document.getElementById("modal")?.open === true && !!document.getElementById("v6-search-input"); }
   function choose(index) {
     if (!X.canAdmin() || !Number.isInteger(index) || !matches[index]) return;
     const row = matches[index];
     M.closeModal();
+    if (row.kind === "server-action") {
+      if (H["v6-server-action"]) return H["v6-server-action"]({ dataset: { id: row.id } });
+      return M.navTo("admin/system");
+    }
+    if (row.kind === "action" && H["v6-player-action"]) {
+      const player = currentPlayer();
+      if (player) return H["v6-player-action"]({ dataset: { id: row.id, player: player.id } });
+      return M.navTo("admin/players?sub=list");
+    }
     if (row.kind === "catalog" && H["admin-product"]) return H["admin-product"]({ dataset: { id: row.id } });
     if (row.kind === "material") {
       const player = currentPlayer();
@@ -119,7 +143,7 @@
       scope = /^(player|игрок)$/.test(prefix[1]) ? "players" : /^(item|предмет)$/.test(prefix[1]) ? "items" : /^(order|заказ)$/.test(prefix[1]) ? "orders" : "functions";
       terms.splice(0, terms.length, normalize(prefix[2]), normalize(keyboard(prefix[2])));
     }
-    matches = entries().filter(row => (scope === "all" || row.group === scope) && (query.trim() || row.group === "functions")).map(row => ({ ...row, score: Math.min(...terms.map(term => score(row, term))) })).filter(row => Number.isFinite(row.score)).sort((a, b) => a.score - b.score || a.title.localeCompare(b.title, "ru")).slice(0, 36);
+    matches = entries().filter(row => (scope === "all" || row.group === scope) && (query.trim() || row.defaultOrder != null)).map(row => ({ ...row, score: Math.min(...terms.map(term => score(row, term))) })).filter(row => Number.isFinite(row.score)).sort((a, b) => a.score - b.score || a.title.localeCompare(b.title, "ru")).slice(0, 36);
     root.innerHTML = matches.length ? matches.map((row, index) => `<a href="${E(row.href || "#")}" class="v6-search-result" role="option" aria-selected="${index === 0}" id="v6-search-option-${index}" tabindex="-1" data-action="v6-search-open" data-index="${index}"><span class="v6-search-symbol">${row.image ? `<img src="${E(M.asset(row.image))}" width="30" height="30" alt="" loading="lazy">` : window.icon(row.icon || "search")}</span><span class="v6-search-copy"><strong>${E(row.title)}</strong><small>${E(row.detail)}</small></span><span class="v6-search-kind">${E(labels[row.group])}</span></a>`).join("") : `<div class="v6-search-empty"><strong>Ничего не найдено</strong><p>Попробуй часть ника, название предмета или действие.</p></div>`;
     document.getElementById("v6-search-count").textContent = matches.length ? "Найдено: " + matches.length + (matches.length === 36 ? " · показаны первые" : "") : "Нет результатов";
     document.querySelectorAll("[data-action=v6-search-group]").forEach(button => {
@@ -144,6 +168,15 @@
     paint(); input.focus();
   }
   H["admin-search"] = open;
+  V.after?.push(page => {
+    if (page !== "admin") return;
+    const trigger = document.querySelector(".admin-top .command-search");
+    if (!trigger) return;
+    trigger.classList.add("v6-search-trigger");
+    trigger.setAttribute("aria-label", "Поиск по функциям, игрокам, предметам и заказам");
+    trigger.setAttribute("title", "Найти игрока, товар или действие · Ctrl/⌘+K");
+    trigger.innerHTML = window.icon("search") + '<span class="v6-trigger-full">Найти игрока, товар, действие</span><span class="v6-trigger-short">Поиск</span><kbd>Ctrl K</kbd>';
+  });
   H["v6-search-group"] = button => { if (!groups.some(([id]) => id === button.dataset.group)) return; group = button.dataset.group; paint(); document.getElementById("v6-search-input")?.focus(); };
   H["v6-search-open"] = button => choose(Number(button.dataset.index));
   document.addEventListener("keydown", event => {
@@ -151,3 +184,4 @@
   });
   X.search = { open, normalize, keyboard, distance, score };
 })();
+

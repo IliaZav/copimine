@@ -1,0 +1,39 @@
+{
+  "server": "Waitress 3.0.2",
+  "mode": "loopback with a simulated trusted TLS proxy",
+  "checks": [
+    {
+      "name": "Production Waitress starts and issues a protected anonymous session",
+      "pass": true
+    },
+    {
+      "name": "HTTPS is mandatory without trusted TLS forwarding",
+      "pass": true
+    },
+    {
+      "name": "Private seed catalogue is not served",
+      "pass": true
+    },
+    {
+      "name": "New authentication module is in the production static allowlist",
+      "pass": true
+    },
+    {
+      "name": "Anonymous admin access is denied",
+      "pass": true
+    },
+    {
+      "name": "Production public catalogue has 31 items and no edit reasons",
+      "pass": true
+    },
+    {
+      "name": "Unconfigured VK returns an explicit error without provider access",
+      "pass": true
+    },
+    {
+      "name": "Invalid client address from the configured proxy is rejected",
+      "pass": true
+    }
+  ],
+  "externalProvidersContacted": false
+}

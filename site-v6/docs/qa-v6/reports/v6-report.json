@@ -1,0 +1,357 @@
+{
+  "capturedAt": "2026-10-17T06:01:25.283Z",
+  "runs": [
+    {
+      "device": "desktop",
+      "route": "admin/players?player=demo-001&sub=profile",
+      "screenshotCaptured": "v6-desktop-profile.png",
+      "title": "Управление · CopiMine",
+      "heading": [
+        "Игроки",
+        "DemoBuilder",
+        "Инвентарь",
+        "Эндер-сундук",
+        "Последние покупки"
+      ],
+      "viewportWidth": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "brokenImages": [],
+      "inventorySlots": 41,
+      "enderSlots": 27,
+      "mainText": "Игроки\nВсе игроки\nИгрок\nDemoBuilder\nDemoTrader\nDemoExplorer\nDemoAdmin\nОбновить\nПрофиль и инвентари\nДействия\nНаказания\nПокупки и донаты\nИстория\nДоступ\nКАРТОЧКА ИГРОКА\nDemoBuilder\nDemoBuilder\nСтатус неизвестен\nИгрок\nВыдать предмет\nИзменить баланс\nБаланс AR\n1 800 AR\nБаланс CM\n1 200 CM\nПокупок\n1\nПоддержка проекта\n0 ₽\nСостояние сохраняется игровым сервером.\nОбновить инвентари\nИнвентарь\n\nПример для проверки · 16 окт., 02:00\n\nИмпорт JSON\nJSON\n64\n32\n16\n32\n14\n6\n3\n12\n64\n8\n34\nСоздание\nПолучено 16 окт., 02:",
+      "errors": []
+    },
+    {
+      "device": "desktop",
+      "route": "admin/players?player=demo-001&sub=actions",
+      "screenshotCaptured": "v6-desktop-actions.png",
+      "title": "Управление · CopiMine",
+      "heading": [
+        "Игроки",
+        "Инвентари",
+        "Экономика",
+        "Наказания",
+        "Перемещение",
+        "Состояние игрока",
+        "Розыгрыши и эффекты",
+        "Доступ"
+      ],
+      "viewportWidth": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "brokenImages": [],
+      "inventorySlots": 0,
+      "enderSlots": 0,
+      "mainText": "Игроки\nВсе игроки\nИгрок\nDemoBuilder\nDemoTrader\nDemoExplorer\nDemoAdmin\nОбновить\nПрофиль и инвентари\nДействия\nНаказания\nПокупки и донаты\nИстория\nДоступ\nРежим просмотра. Изменения ниже относятся к тестовым данным.\nИнвентари\nВыдать предмет\nУбрать предмет из инвентаря\nУбрать предмет из эндер-сундука\nОбновить снимки инвентарей\nВосстановить снимок\nСнять броню\nОчистить инвентарь\nВременно закрыть инвентарь\nПочинить предмет в руке\nПеремешать панель быстрого доступа\nЭкономика\nИзменить баланс\nНастроить лими",
+      "errors": []
+    },
+    {
+      "device": "desktop",
+      "route": "admin/players?player=demo-001&sub=sanctions",
+      "screenshotCaptured": "v6-desktop-sanctions.png",
+      "title": "Управление · CopiMine",
+      "heading": [
+        "Игроки",
+        "Наказания и ограничения"
+      ],
+      "viewportWidth": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "brokenImages": [],
+      "inventorySlots": 0,
+      "enderSlots": 0,
+      "mainText": "Игроки\nВсе игроки\nИгрок\nDemoBuilder\nDemoTrader\nDemoExplorer\nDemoAdmin\nОбновить\nПрофиль и инвентари\nДействия\nНаказания\nПокупки и донаты\nИстория\nДоступ\nЗаблокировать\nОграничить чат\nОтключить от сервера\nВыдать предупреждение\nЗаморозить\nНаказания и ограничения\n0 активных\nНаказаний нет\n\nЗдесь отображаются причины, сроки и история отмен.",
+      "errors": []
+    },
+    {
+      "device": "desktop",
+      "route": "admin/players?player=demo-001&sub=finance",
+      "screenshotCaptured": "v6-desktop-finance.png",
+      "title": "Управление · CopiMine",
+      "heading": [
+        "Игроки",
+        "Лимиты покупок",
+        "Донаты",
+        "Покупки и выдача",
+        "Изменения баланса"
+      ],
+      "viewportWidth": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "brokenImages": [],
+      "inventorySlots": 0,
+      "enderSlots": 0,
+      "mainText": "Игроки\nВсе игроки\nИгрок\nDemoBuilder\nDemoTrader\nDemoExplorer\nDemoAdmin\nОбновить\nПрофиль и инвентари\nДействия\nНаказания\nПокупки и донаты\nИстория\nДоступ\nИзменить баланс\nНастроить лимит покупок\nЛимиты покупок\nЛимиты не назначены\n\nМожно задать общий лимит или ограничить отдельный товар.\n\nДонаты\nДонатов пока нет\n\nПодтверждённые платежи появятся здесь.\n\nПокупки и выдача\nКамень возвращения\nDEMO-1042 · 14 окт. · 300 AR\nПолучен\nИзменения баланса\nОпераций нет\n\nНачисления и списания записываются автоматичес",
+      "errors": []
+    },
+    {
+      "device": "desktop",
+      "route": "admin/statistics",
+      "screenshotCaptured": "v6-desktop-analytics.png",
+      "title": "Управление · CopiMine",
+      "heading": [
+        "Статистика"
+      ],
+      "viewportWidth": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "brokenImages": [],
+      "inventorySlots": 0,
+      "enderSlots": 0,
+      "mainText": "Статистика\nСегодня\n7 дней\n30 дней\nВсё время\nОбновить\nCSV\nОбзор\nСтраницы\nСобытия\nЭкономика\nПРОСМОТРЫ\n0\nОткрытия публичных страниц\nПОСЕТИТЕЛИ ПО ДНЯМ\n0\nСумма дневных уникальных\nЗАКАЗЫ\n2\nБез отмен и возвратов\nКУПЛЕНО ПРЕДМЕТОВ\n2\nШтук за выбранный период\nОБОРОТ CM\n150 CM\nПокупки в магазине\nПОПОЛНЕНИЯ\n0 ₽\nПодтверждённые платежи\nПосещения\nПока нет данных\n\nЗа выбранный период нет событий для этого графика.\n\nПопулярные страницы\nПосещений ещё нет\n\nЗдесь появятся публичные страницы, открытые с согласием н",
+      "errors": []
+    },
+    {
+      "device": "desktop",
+      "route": "map",
+      "screenshotCaptured": "v6-desktop-map.png",
+      "title": "Карта · CopiMine",
+      "heading": [
+        "Исследуй дальше.",
+        "Обычный мир"
+      ],
+      "viewportWidth": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "brokenImages": [],
+      "inventorySlots": 0,
+      "enderSlots": 0,
+      "mainText": "МИР COPIMINE\nИсследуй дальше.\n\nОсновной мир, Незер и Энд — из сохранения игрового сервера.\n\nОбновление раз в 12 ч\nОсновной мир\nНезер\nЭнд\n5 000 блоков\nX -2760 · Z -2680\nСевер ↑\n2026-10-16 22:27:30 (время архива)\nПозиции игроков скрыты\nИЗМЕРЕНИЕ\nОбычный мир\n\nМасштабируй колесом или двумя пальцами, перетаскивай карту для перемещения.\n\nОхват по X / Z\n14 576 × 14 800\nЧанков с поверхностью\n88 136\nОбновление\nОбновление раз в 12 ч\nПерейти к координатам\nX\nZ\nПоказать точку\n\nТёмные участки — пустота или те",
+      "errors": []
+    },
+    {
+      "device": "desktop",
+      "route": "donate",
+      "screenshot": "../screenshots/v6-desktop-donate.png",
+      "title": "Донат · CopiMine",
+      "heading": [
+        "Донат",
+        "Сколько CM добавить?"
+      ],
+      "viewportWidth": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "brokenImages": [],
+      "inventorySlots": 0,
+      "enderSlots": 0,
+      "mainText": "Донат\n\nПополнение CM для покупок в магазине.\n\nИстория донатов\nСколько CM добавить?\n\nПроверь сумму и получателя перед оплатой.\n\n50\nCM\n50 ₽\n100\nCM\n100 ₽\n250\nCM\n250 ₽\n500\nCM\n500 ₽\n1000\nCM\n1 000 ₽\nДругая сумма, CM\nСпособ оплаты\nСБП\nЧерез приложение банка\nБанковская карта\nНа странице платёжного сервиса\nПосле оплаты\n\nПодтверждённый платёж появится в кабинете. CM поступят на счёт после подтверждения платёжного сервиса.\n\nAR и CM — отдельные балансы. Пополнение CM не изменяет AR.\n\nПОЛУЧАТЕЛЬ\nDemoAdmin\nБу",
+      "errors": []
+    },
+    {
+      "device": "desktop",
+      "route": "shop",
+      "screenshot": "../screenshots/v6-desktop-shop.png",
+      "title": "Магазин · CopiMine",
+      "heading": [
+        "Магазин"
+      ],
+      "viewportWidth": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "brokenImages": [],
+      "inventorySlots": 0,
+      "enderSlots": 0,
+      "mainText": "Магазин\n\nИгровые предметы с понятными свойствами. Все покупки — в твоём кабинете.\n\nКорзина\n0\nКАТАЛОГ\nВсе предметы\n31\nИнструменты\n15\nСнаряжение\n8\nПутешествия\n0\nОружие\n8\nНа твоём счёте\n\n0 AR\n0 CM\n\nОткрыть кабинет\nAR и CM не смешиваются\n\nAR — игровая валюта. CM — донатные монеты. Корзина считает их отдельно.\n\nВсе\nЗа AR\nЗа CM\nПо умолчанию\nСначала дешевле\nПо названию\nПоказано 31 из 31 предметов\nКак получить покупку\nОружие\nЗмей Горыныч\n\nУдар может нанести критический урон с ослаблением цели.\n\n150 AR\nВ",
+      "errors": []
+    },
+    {
+      "device": "desktop",
+      "route": "account",
+      "screenshotCaptured": "v6-desktop-account.png",
+      "title": "Личный кабинет · CopiMine",
+      "heading": [
+        "Личный кабинет",
+        "DemoBuilder",
+        "Инвентарь",
+        "Эндер-сундук",
+        "Последние покупки"
+      ],
+      "viewportWidth": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "brokenImages": [],
+      "inventorySlots": 41,
+      "enderSlots": 27,
+      "mainText": "Личный кабинет\n\nТвой профиль, предметы и история на сервере.\n\nПрофиль и инвентари\nПокупки\nДонаты\nОбращения\nНастройки\nМОЙ АККАУНТ\nDemoBuilder\nDemoBuilder\nСтатус неизвестен\nИгрок\nБаланс AR\n1 800 AR\nБаланс CM\n1 200 CM\nПокупок\n1\nПоддержка проекта\n0 ₽\nСостояние сохраняется игровым сервером.\nОбновить инвентари\nИнвентарь\n\nПример для проверки · 16 окт., 02:00\n\nИмпорт JSON\nJSON\n64\n32\n16\n32\n14\n6\n3\n12\n64\n8\n34\nСоздание\nПолучено 16 окт., 02:00\nТолько просмотр\nЭндер-сундук\n\nСнимок с сервера ещё не получен\n\nЛи",
+      "errors": []
+    },
+    {
+      "device": "mobile",
+      "route": "admin/players?player=demo-001&sub=profile",
+      "screenshotCaptured": "v6-mobile-profile.png",
+      "title": "Управление · CopiMine",
+      "heading": [
+        "Игроки",
+        "DemoBuilder",
+        "Инвентарь",
+        "Эндер-сундук",
+        "Последние покупки"
+      ],
+      "viewportWidth": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "brokenImages": [],
+      "inventorySlots": 41,
+      "enderSlots": 27,
+      "mainText": "Игроки\nВсе игроки\nИгрок\nDemoBuilder\nDemoTrader\nDemoExplorer\nDemoAdmin\nОбновить\nПрофиль и инвентари\nДействия\nНаказания\nПокупки и донаты\nИстория\nДоступ\nКАРТОЧКА ИГРОКА\nDemoBuilder\nDemoBuilder\nСтатус неизвестен\nИгрок\nВыдать предмет\nИзменить баланс\nБаланс AR\n1 800 AR\nБаланс CM\n1 200 CM\nПокупок\n1\nПоддержка проекта\n0 ₽\nСостояние сохраняется игровым сервером.\nОбновить инвентари\nИнвентарь\n\nПример для проверки · 16 окт., 02:00\n\nИмпорт JSON\nJSON\n64\n32\n16\n32\n14\n6\n3\n12\n64\n8\n34\nСоздание\nПолучено 16 окт., 02:",
+      "errors": []
+    },
+    {
+      "device": "mobile",
+      "route": "admin/players?player=demo-001&sub=actions",
+      "screenshotCaptured": "v6-mobile-actions.png",
+      "title": "Управление · CopiMine",
+      "heading": [
+        "Игроки",
+        "Инвентари",
+        "Экономика",
+        "Наказания",
+        "Перемещение",
+        "Состояние игрока",
+        "Розыгрыши и эффекты",
+        "Доступ"
+      ],
+      "viewportWidth": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "brokenImages": [],
+      "inventorySlots": 0,
+      "enderSlots": 0,
+      "mainText": "Игроки\nВсе игроки\nИгрок\nDemoBuilder\nDemoTrader\nDemoExplorer\nDemoAdmin\nОбновить\nПрофиль и инвентари\nДействия\nНаказания\nПокупки и донаты\nИстория\nДоступ\nРежим просмотра. Изменения ниже относятся к тестовым данным.\nИнвентари\nВыдать предмет\nУбрать предмет из инвентаря\nУбрать предмет из эндер-сундука\nОбновить снимки инвентарей\nВосстановить снимок\nСнять броню\nОчистить инвентарь\nВременно закрыть инвентарь\nПочинить предмет в руке\nПеремешать панель быстрого доступа\nЭкономика\nИзменить баланс\nНастроить лими",
+      "errors": []
+    },
+    {
+      "device": "mobile",
+      "route": "admin/players?player=demo-001&sub=sanctions",
+      "screenshotCaptured": "v6-mobile-sanctions.png",
+      "title": "Управление · CopiMine",
+      "heading": [
+        "Игроки",
+        "Наказания и ограничения"
+      ],
+      "viewportWidth": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "brokenImages": [],
+      "inventorySlots": 0,
+      "enderSlots": 0,
+      "mainText": "Игроки\nВсе игроки\nИгрок\nDemoBuilder\nDemoTrader\nDemoExplorer\nDemoAdmin\nОбновить\nПрофиль и инвентари\nДействия\nНаказания\nПокупки и донаты\nИстория\nДоступ\nЗаблокировать\nОграничить чат\nОтключить от сервера\nВыдать предупреждение\nЗаморозить\nНаказания и ограничения\n0 активных\nНаказаний нет\n\nЗдесь отображаются причины, сроки и история отмен.",
+      "errors": []
+    },
+    {
+      "device": "mobile",
+      "route": "admin/players?player=demo-001&sub=finance",
+      "screenshotCaptured": "v6-mobile-finance.png",
+      "title": "Управление · CopiMine",
+      "heading": [
+        "Игроки",
+        "Лимиты покупок",
+        "Донаты",
+        "Покупки и выдача",
+        "Изменения баланса"
+      ],
+      "viewportWidth": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "brokenImages": [],
+      "inventorySlots": 0,
+      "enderSlots": 0,
+      "mainText": "Игроки\nВсе игроки\nИгрок\nDemoBuilder\nDemoTrader\nDemoExplorer\nDemoAdmin\nОбновить\nПрофиль и инвентари\nДействия\nНаказания\nПокупки и донаты\nИстория\nДоступ\nИзменить баланс\nНастроить лимит покупок\nЛимиты покупок\nЛимиты не назначены\n\nМожно задать общий лимит или ограничить отдельный товар.\n\nДонаты\nДонатов пока нет\n\nПодтверждённые платежи появятся здесь.\n\nПокупки и выдача\nКамень возвращения\nDEMO-1042 · 14 окт. · 300 AR\nПолучен\nИзменения баланса\nОпераций нет\n\nНачисления и списания записываются автоматичес",
+      "errors": []
+    },
+    {
+      "device": "mobile",
+      "route": "admin/statistics",
+      "screenshotCaptured": "v6-mobile-analytics.png",
+      "title": "Управление · CopiMine",
+      "heading": [
+        "Статистика"
+      ],
+      "viewportWidth": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "brokenImages": [],
+      "inventorySlots": 0,
+      "enderSlots": 0,
+      "mainText": "Статистика\nСегодня\n7 дней\n30 дней\nВсё время\nОбновить\nCSV\nОбзор\nСтраницы\nСобытия\nЭкономика\nПРОСМОТРЫ\n0\nОткрытия публичных страниц\nПОСЕТИТЕЛИ ПО ДНЯМ\n0\nСумма дневных уникальных\nЗАКАЗЫ\n2\nБез отмен и возвратов\nКУПЛЕНО ПРЕДМЕТОВ\n2\nШтук за выбранный период\nОБОРОТ CM\n150 CM\nПокупки в магазине\nПОПОЛНЕНИЯ\n0 ₽\nПодтверждённые платежи\nПосещения\nПока нет данных\n\nЗа выбранный период нет событий для этого графика.\n\nПопулярные страницы\nПосещений ещё нет\n\nЗдесь появятся публичные страницы, открытые с согласием н",
+      "errors": []
+    },
+    {
+      "device": "mobile",
+      "route": "map",
+      "screenshotCaptured": "v6-mobile-map.png",
+      "title": "Карта · CopiMine",
+      "heading": [
+        "Исследуй дальше.",
+        "Обычный мир"
+      ],
+      "viewportWidth": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "brokenImages": [],
+      "inventorySlots": 0,
+      "enderSlots": 0,
+      "mainText": "МИР COPIMINE\nИсследуй дальше.\n\nОсновной мир, Незер и Энд — из сохранения игрового сервера.\n\nОбновление раз в 12 ч\nОсновной мир\nНезер\nЭнд\n5 000 блоков\nX -2760 · Z -2680\nСевер ↑\n2026-10-16 22:27:30 (время архива)\nПозиции игроков скрыты\nИЗМЕРЕНИЕ\nОбычный мир\n\nМасштабируй колесом или двумя пальцами, перетаскивай карту для перемещения.\n\nОхват по X / Z\n14 576 × 14 800\nЧанков с поверхностью\n88 136\nОбновление\nОбновление раз в 12 ч\nПерейти к координатам\nX\nZ\nПоказать точку\n\nТёмные участки — пустота или те",
+      "errors": []
+    },
+    {
+      "device": "mobile",
+      "route": "donate",
+      "screenshotCaptured": "v6-mobile-donate.png",
+      "title": "Донат · CopiMine",
+      "heading": [
+        "Донат",
+        "Сколько CM добавить?"
+      ],
+      "viewportWidth": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "brokenImages": [],
+      "inventorySlots": 0,
+      "enderSlots": 0,
+      "mainText": "Донат\n\nПополнение CM для покупок в магазине.\n\nИстория донатов\nСколько CM добавить?\n\nПроверь сумму и получателя перед оплатой.\n\n50\nCM\n50 ₽\n100\nCM\n100 ₽\n250\nCM\n250 ₽\n500\nCM\n500 ₽\n1000\nCM\n1 000 ₽\nДругая сумма, CM\nСпособ оплаты\nСБП\nЧерез приложение банка\nБанковская карта\nНа странице платёжного сервиса\nПосле оплаты\n\nПодтверждённый платёж появится в кабинете. CM поступят на счёт после подтверждения платёжного сервиса.\n\nAR и CM — отдельные балансы. Пополнение CM не изменяет AR.\n\nПОЛУЧАТЕЛЬ\nDemoAdmin\nБу",
+      "errors": []
+    },
+    {
+      "device": "mobile",
+      "route": "shop",
+      "screenshotCaptured": "v6-mobile-shop.png",
+      "title": "Магазин · CopiMine",
+      "heading": [
+        "Магазин"
+      ],
+      "viewportWidth": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "brokenImages": [],
+      "inventorySlots": 0,
+      "enderSlots": 0,
+      "mainText": "Магазин\n\nИгровые предметы с понятными свойствами. Все покупки — в твоём кабинете.\n\nКорзина\n0\nВсе предметы\n31\nИнструменты\n15\nСнаряжение\n8\nПутешествия\n0\nОружие\n8\nВсе\nЗа AR\nЗа CM\nПо умолчанию\nСначала дешевле\nПо названию\nПоказано 31 из 31 предметов\nКак получить покупку\nОружие\nЗмей Горыныч\n\nУдар может нанести критический урон с ослаблением цели.\n\n150 AR\nВ корзину\nИнструменты\nРемкомплект\n\nЧинит обычный предмет в другой руке.\n\n10 AR\nВ корзину\nИнструменты\nКамень возвращения\n\nВозвращает к точке возрожден",
+      "errors": []
+    },
+    {
+      "device": "mobile",
+      "route": "account",
+      "screenshotCaptured": "v6-mobile-account.png",
+      "title": "Личный кабинет · CopiMine",
+      "heading": [
+        "Личный кабинет",
+        "DemoBuilder",
+        "Инвентарь",
+        "Эндер-сундук",
+        "Последние покупки"
+      ],
+      "viewportWidth": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "brokenImages": [],
+      "inventorySlots": 41,
+      "enderSlots": 27,
+      "mainText": "Личный кабинет\n\nТвой профиль, предметы и история на сервере.\n\nПрофиль и инвентари\nПокупки\nДонаты\nОбращения\nНастройки\nМОЙ АККАУНТ\nDemoBuilder\nDemoBuilder\nСтатус неизвестен\nИгрок\nБаланс AR\n1 800 AR\nБаланс CM\n1 200 CM\nПокупок\n1\nПоддержка проекта\n0 ₽\nСостояние сохраняется игровым сервером.\nОбновить инвентари\nИнвентарь\n\nПример для проверки · 16 окт., 02:00\n\nИмпорт JSON\nJSON\n64\n32\n16\n32\n14\n6\n3\n12\n64\n8\n34\nСоздание\nПолучено 16 окт., 02:00\nТолько просмотр\nЭндер-сундук\n\nСнимок с сервера ещё не получен\n\nЛи",
+      "errors": []
+    }
+  ],
+  "errors": [],
+  "serverFailures": []
+}

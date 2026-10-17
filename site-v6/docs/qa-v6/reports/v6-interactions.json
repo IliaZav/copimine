@@ -1,0 +1,125 @@
+{
+  "at": "2026-10-17T06:00:36.524Z",
+  "tests": [
+    {
+      "name": "Inventory and ender use independent snapshots",
+      "pass": true,
+      "detail": {
+        "inventory": "example-inventory",
+        "ender": null,
+        "placeholderIcons": 0,
+        "materialImages": 19
+      }
+    },
+    {
+      "name": "Global search handles typo and wrong keyboard layout",
+      "pass": true,
+      "detail": "typo/layout result and action form"
+    },
+    {
+      "name": "Give picker returns items with a stable chosen ID",
+      "pass": true,
+      "detail": {
+        "id": "diamond_sword",
+        "results": 1
+      }
+    },
+    {
+      "name": "Timed ban counts down and can be revoked with a reason",
+      "pass": true,
+      "detail": {
+        "before": "1 мин 0 с",
+        "after": "59 с",
+        "status": "revoked"
+      }
+    },
+    {
+      "name": "Personal purchase limit creates and removes in finance",
+      "pass": true,
+      "detail": {
+        "id": "limit-c572308d-2337-4680-a370-e34e75e293ca",
+        "itemId": null,
+        "maximum": 4,
+        "period": "day",
+        "expiresAt": null
+      }
+    },
+    {
+      "name": "Shop cart changes count without replacing main and keeps focus",
+      "pass": true,
+      "detail": {
+        "id": "zmei_gorynych",
+        "mainPreserved": true
+      }
+    },
+    {
+      "name": "Product dialog cart keeps the dialog and keyboard focus",
+      "pass": true,
+      "detail": {
+        "id": "zmei_gorynych",
+        "focused": {
+          "inModal": true,
+          "action": "v6-cart-plus"
+        }
+      }
+    },
+    {
+      "name": "Donation preserves consent checkbox and custom input state",
+      "pass": true,
+      "detail": {
+        "amount": "357 CM",
+        "method": "Банковская карта",
+        "checkbox": true
+      }
+    },
+    {
+      "name": "Map renders all three real dimensions and coordinate navigation",
+      "pass": true,
+      "detail": [
+        {
+          "world": "overworld",
+          "width": 1611,
+          "height": 1103,
+          "colors": 102,
+          "nonempty": 101,
+          "position": "X -2760 · Z -2680\nСевер ↑"
+        },
+        {
+          "world": "nether",
+          "width": 1611,
+          "height": 1103,
+          "colors": 542,
+          "nonempty": 546,
+          "position": "X 280 · Z -328\nСевер ↑"
+        },
+        {
+          "world": "end",
+          "width": 1611,
+          "height": 1103,
+          "colors": 119,
+          "nonempty": 969,
+          "position": "X 8 · Z 8\nСевер ↑"
+        }
+      ]
+    },
+    {
+      "name": "Mobile dialog and map controls fit viewport",
+      "pass": true,
+      "detail": {
+        "canvas": {
+          "x": 14,
+          "y": 322.84375,
+          "width": 362,
+          "height": 555.03125
+        },
+        "dialog": {
+          "x": 10,
+          "y": 144.5625,
+          "width": 370,
+          "height": 554.859375
+        }
+      }
+    }
+  ],
+  "errors": []
+}

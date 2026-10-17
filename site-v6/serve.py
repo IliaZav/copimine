@@ -5,7 +5,7 @@ No Minecraft launch, settings changes, credentials, waypoints or live player pos
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, unquote
 import argparse
 import hashlib
 import io
@@ -89,6 +89,32 @@ class PreviewHandler(SimpleHTTPRequestHandler):
     materials = {}
     material_blobs = {}
 
+    def permitted_request(self):
+        host = self.headers.get('Host', '').split(':')[0]
+        return host in {'127.0.0.1', 'localhost'} and self.headers.get('Sec-Fetch-Site') != 'cross-site'
+
+    def send_head(self):
+        if not self.permitted_request():
+            self.send_error(403)
+            return None
+        path = unquote(urlsplit(self.path).path)
+        if path == '/':
+            path = '/index.html'
+        relative = Path(path.lstrip('/'))
+        root = Path(self.directory).resolve()
+        target = (root / relative).resolve()
+        top = path in {'/index.html', '/CopiMine_v6.html'}
+        asset = path.startswith('/assets/') and target.suffix.lower() in {'.css', '.js', '.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico', '.woff', '.woff2'}
+        data = path in {'/data/map-manifest.json', '/data/catalog-v6-public.json', '/data/content-v6-public.json', '/data/materials-v6.json'}
+        if '\\' in path or '..' in relative.parts or any(part.startswith('.') for part in relative.parts) or not target.is_relative_to(root) or not (top or asset or data) or not target.is_file():
+            self.send_error(404)
+            return None
+        return super().send_head()
+
+    def list_directory(self, path):
+        self.send_error(404)
+        return None
+
     def end_headers(self):
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.send_header('X-Frame-Options', 'DENY')
@@ -96,8 +122,7 @@ class PreviewHandler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def do_GET(self):
-        host = self.headers.get('Host', '').split(':')[0]
-        if host not in {'127.0.0.1', 'localhost'} or self.headers.get('Sec-Fetch-Site') == 'cross-site':
+        if not self.permitted_request():
             self.send_error(403)
             return
         path = urlsplit(self.path).path
@@ -124,7 +149,7 @@ class PreviewHandler(SimpleHTTPRequestHandler):
                 z.writestr('README.txt', 'CopiMine local mod archive\nMinecraft ' + info['version'] + '\n' + info['loader'] + '\nJava ' + info['java'] + '\nCopy mods into a matching Fabric profile. Server: copimine.ru\nThese are your existing local files, not a newly verified public release.\n')
             return self.reply(output.getvalue(), 'application/zip', 'CopiMineMods-local.zip')
         if path.startswith('/api/'):
-            self.send_error(404, 'No production backend in this prototype')
+            self.send_error(404, 'Use server.py for authenticated server mode')
             return
         super().do_GET()
 
@@ -150,7 +175,7 @@ def main():
     if args.profile:
         profile = args.profile
     else:
-        # WORK-PC DEFAULT: no device scanning. The compact map is packaged.
+        # Default: the three complete, rendered world maps are packaged.
         # Optional home-only import: python serve.py --profile PATH_TO_PROFILE
         profile = None
     PreviewHandler.materials, PreviewHandler.material_blobs = inspect_materials(profile)
@@ -160,8 +185,8 @@ def main():
     except OSError:
         server = ThreadingHTTPServer(('127.0.0.1', 0), handler)
     url = f'http://127.0.0.1:{server.server_port}/index.html'
-    print('CopiMine offline v5: ' + url, flush=True)
-    print('Local design sandbox. No production accounts, money or game commands.', flush=True)
+    print('CopiMine v6 preview: ' + url, flush=True)
+    print('For authenticated accounts and integrations, run server.py; see README.md.', flush=True)
     print('Local map found: ' + str(PreviewHandler.materials['map']['available']), flush=True)
     print('Compatible personal mods found: ' + str(PreviewHandler.materials['modpack']['available']), flush=True)
     if not args.no_browser:

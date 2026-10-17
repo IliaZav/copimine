@@ -1,0 +1,15 @@
+✔ search handles Russian typo, swapped keyboard and adjacent transposition (6.022475ms)
+✔ analytics requires consent and rejects private pages even with forged page payload (2.283551ms)
+✔ analytics sends only allowed fields in a bounded batch (8.996398ms)
+✔ withdrawing consent removes queued events and session token (1.166047ms)
+✔ financial summary counts delivered lines, distinct orders and confirmed payments (1.759201ms)
+✔ analytics year range and old all alias fit the server date limit (2.478395ms)
+✔ removing analytics permission hides cached reports, blocks CSV and discards late responses (20.566044ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 54.051456

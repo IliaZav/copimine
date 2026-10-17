@@ -1,29 +1,126 @@
-# v5 verification
+# Проверка CopiMine v6
 
-## Environment and evidence
-Chromium via Playwright. Browser plugin not available. Loaded the actual complete standalone HTML with page.set_content; no generated design image. Direct file:// and localhost browser navigation are restricted by this environment and were not represented as passed. The optional Python HTTP adapter is separately covered by its unit tests.
-Viewports: 1440, 768 and 390 pixels; desktop target 1440x1100 and mobile 390x844 in final captures. Offline page identity/nonblank content, JavaScript errors, image decoding and overflow were checked. Final native inventory, material picker, map and log captures are rendered HTML, not mock images.
+Дата: **17 октября 2026**. Проверена восстановленная и собранная v6. Исторический отчёт v5 перенесён в `docs/history/` и не используется как подтверждение этой версии.
 
-## Results
-- JavaScript unit tests: 30 passed.
-- Python tests: 11 passed (5 local-preview adapter, 6 notification transport/preview validation).
-- Browser flow/layout assertions: 61 passed, no relevant runtime errors.
-- Function routes and shell/audit checks: 56 passed; 41 indexed destinations, 675 alias strings.
-- Additional checks: mobile C 40x40 contain; imported log metadata cannot create injected HTML; logout confirmation/cancel and registration remember option.
+## Среда и границы
 
-## Interaction loops
-Catalogue -> search/filter -> product/basket; stable header -> players -> head dropdown -> snapshot import -> skin PNG -> inventory detail; live function search (RU/EN/wrong keyboard) -> open result -> sidebar clears search; logs -> player/action filters -> readable/technical -> multiline import/redaction -> pause/resume; recipe -> native material picker -> quantity -> save/publish/history -> private plugin log; recovery -> verified contact -> local outbox -> one-use code -> reject replay; nomination/programme -> admin review; map four-region bounds.
-Old lexical audit callers and new module callers now write to the same redacted event stream exactly once. Same-route actions preserve scroll/focus, list filters preserve search fields. No location.reload is used.
+Интерфейс открывался в Chromium 153 через Playwright: **1440 × 1000** и **390 × 844**, плотность снимков **1,5**. Прогоны использовали один браузер с отдельным тестовым контекстом. Снимки сделаны с работающего HTML.
 
-## Visual comparison to approved v3/v4 direction
-1. Retained dark forest/graphite surfaces and green primary controls; no new light/SaaS theme.
-2. Global wordmark/header persists in cabinet and admin, per user request; mobile C is not squashed.
-3. Retained typography, subtle outlines, spacing and single-family SVG controls; no emoji.
-4. Player detail replaces letter avatar/table-only inventory with real GUI positions, equipment and texture images. Inventory width reduced to 440px to fit a laptop viewport.
-5. Search and log filters update content in place, not the whole shell; readable/raw tabs share one stream.
-6. Gallery contains genuine supplied materials only; previous duplicated crops and incorrectly attributed reference map removed. Map is a real region-snapshot render.
-Approved admin reference and final browser player/material captures were visually inspected. Changes above are explicit user-requested extensions, not unexplained design drift.
+Проверены три способа открытия:
 
-## Known scope limits
-No real server inventory/event connection, VK flow, SMTP delivery, SMS delivery, payment, ban, PIN reset or item grant was exercised. SMTP/SMS tests use fakes and default local-preview output. Real personal skins require the server's authoritative assignment; default/demo skins are labelled. 608/1617 material labels are Russian; remaining EN/ID names and dictionary import are intentional, documented coverage gaps. Private recipe drafts are not a complete cauldron schema adapter.
-file:// storage persistence and native showOpenFilePicker follow-mode are browser-dependent; import fallback is available. WebCrypto is unavailable in the test's about:blank context, so site-password crypto fails visibly there rather than being replaced with weak hashing; the local bank-PIN recovery state loop was tested. A future real-site security audit and live integration tests remain mandatory.
+1. `index.html` через локальный сервер предварительного просмотра — демонстрационные данные и автономные изменения.
+2. Серверная страница через настоящий локальный API — отдельная временная база, вымышленные TestOwner с 2FA и TestPlayer. База, сеансы, пароли и ключи 2FA находятся вне проекта и не входят в выдачу.
+3. Финальный **CopiMine_v6.html**, открытый напрямую по **file://** в новом контексте. Размер проверенного файла — **20 944 037 байт**. Во время этого прогона не было HTTP(S)-запросов.
+
+Почта, SMS, VK и платёжный провайдер в тестовой серверной конфигурации отключены. Положительные сценарии новых способов входа проверены с перехватом API в браузере; ответы и переход к `id.vk.ru` подменялись локальными тестовыми данными. Реальные сообщения и запросы к VK не отправлялись. Частичные возвраты проверялись временной подстановкой ответа `/state`, без создания платежа или изменения заказов в базе.
+
+## Результаты
+
+Каждая строка — отдельная группа. Количество экранов не равно количеству уникальных функций; повторные проверки после исправлений не суммируются в рекламный итог.
+
+| Группа | Фактический результат | Доказательство |
+| --- | --- | --- |
+| Основные экраны v6 | 18 экранов; без JS, 5xx, переполнения документа и битых видимых изображений | `qa-v6/reports/v6-report.json` |
+| Действия предварительного просмотра | 10 из 10 сценариев | `qa-v6/reports/v6-interactions.json` |
+| Серверная авторизация, права и данные | 11 из 11 сценариев | `qa-v6/reports/v6-live-report.json` |
+| Новая серверная админка и CMS | 20 экранов, 8 из 8 сценариев; без JS/5xx/отсутствующих скриптов | `qa-v6/reports/v6-admin-report.json` |
+| Админка предварительного просмотра | 20 экранов, 5 из 5 сценариев после исправления CMS | `qa-v6/reports/v6-preview-admin-report.json` |
+| VK, почта, SMS, восстановление, контакты | 14 из 14 сценариев, 11 снимков; без JS и неожиданных API | `qa-v6/reports/v6-auth-report.json` |
+| Последний серверный прогон | 6 из 6 сценариев; без JS, 5xx и отправок провайдерам | `qa-v6/reports/v6-final-live-report.json` |
+| Финальный автономный HTML | 6 групп; без внешних запросов, сбоев запросов и JS | `qa-v6/reports/v6-standalone-report.json` |
+| Поиск и аналитика, JavaScript | 7 из 7 тестов | `tests/ui-search-analytics.test.cjs`, `qa-v6/reports/ui-unit-final.txt` |
+| Production HTTP | Waitress 3.0.2, 8 из 8 проверок запуска, TLS-прокси, cookie и границы файлов; только loopback | `qa-v6/reports/waitress-smoke.json` |
+| Мастер подключения сервисов | 3 из 3 тестов: сохранение disabled, точного пароля и защита файла | `tests/test_auth_setup.py` |
+| Рендер, SMTP/SMS, упаковка и локальный просмотр | 18 из 18 Python-тестов, OK | `qa-v6/reports/python-tools-final.txt` |
+| Сервер, Python | Полный unittest discover: 87 тестов, 38,576 с, OK | `qa-v6/reports/backend-final.txt` |
+
+## Профиль и управление
+
+Профиль объединён с основным инвентарём и эндер-сундуком: **41 и 27 ячеек**. Снимки хранилищ независимы. В конечном автономном примере у DemoBuilder шесть предметов в сундуке; набор относится к предварительному просмотру. Отсутствующий серверный снимок не заменяется демонстрационным.
+
+Проверены поиск и выбор алмазного меча, выбранный игрок, обязательная причина, блокировка на минуту, уменьшение таймера и снятие с причиной. Проверено создание персонального лимита четыре предмета без срока и его снятие. Игровые команды в браузерных проверках не отправлялись.
+
+В серверном режиме TestPlayer получает собственный профиль. Подделанный localStorage не создаёт серверную личность или административные права. Административный API от игрока возвращает 403. TestOwner входит с паролем и текущим 2FA. Изменение баланса в отдельной тестовой базе сохраняется после полной перезагрузки.
+
+## Магазин, донат и история
+
+На карточке товара проверено **0 → 1 → 2 → 1 → 0**. Основной DOM не заменяется, фокус остаётся на управляющей кнопке. В окне товара изменение количества сохраняет окно и фокус внутри него. Выбор пакета, оплаты и ручной суммы не сбрасывает согласие. 357 CM отражается в итогах; ноль запрещает продолжение.
+
+Ожидающий платёж не предлагает имитацию успешной оплаты. Неподходящий `javascript:` в проверочном checkoutUrl не превращается в ссылку.
+
+После объединения строк заказа отдельно проверены:
+
+- Одна запись истории для заказа с двумя предметами.
+- Частичный результат: стоимость 110 AR, выданная строка 10 AR, возврат 100 AR. Видны обе строки, итог и возврат.
+- Полный возврат 110 AR с соответствующим текстом, без сообщения об успешной выдаче.
+- Поддержка игрока 137 ₽ учитывает подтверждённый платёж и исключает 991 ₽ со статусом test_completed.
+- История различает оплаченный, ожидающий и тестовый платёж.
+
+## Поиск и аналитика
+
+Проверены «инвинтарь», `bydtynfhm`, перестановка букв, префикс имени и `minecraft:diamond_sword`. Ctrl/⌘+K открывает диалог, стрелки и Enter выбирают результат, Escape закрывает. Повторное открытие учитывает свойство open у native dialog. На 390 px диалог имеет ширину 370 px; мобильная кнопка поиска не растягивает заголовок.
+
+Пустой запрос показывает 12 основных назначений. Ещё 12 доступны по запросу: CMS, FAQ, галерея, доставка, донаты, журнал баланса, библиотека Minecraft и другие. Актуальные **24 назначения** извлечены из search-v6.js в FEATURES.json. Динамические игроки, товары, заказы и действия не выданы за статические маршруты.
+
+События записываются только для разрешённых публичных страниц после согласия. Административные и личные маршруты отбрасываются даже при подставленном публичном page. Поиск, имена, IP и формы не включаются в события. Очередь ограничена 40 записями; отзыв согласия очищает её и локальный идентификатор.
+
+Проверены шесть показателей, вкладки, валюта графика, пустой период и шкала с пропущенными днями. AR, CM и рубли не складываются. Оборот и предметы считают выданные строки; частичный возврат сохраняет выданную часть. Заказы считаются по уникальному ID.
+
+«За год» составляет 365 дней и фактически возвращает ответ API. Старый range=all направляется на тот же диапазон. График большого периода показывает последние 90 дней с явной подписью, показатели сохраняют весь период.
+
+## CMS, каталог, журнал и роли
+
+При 1440 и 390 px проверены каталог, библиотека Minecraft, платежи, роли, журнал, закрытый каталог, страницы, настройки, FAQ и галерея. Справочник содержит 1658 материалов; проверены 48 карточек на странице, 35 страниц и namespaced поиск.
+
+Изменение товара с версией сохраняется; устаревшая версия возвращает 409. Цена после теста восстановлена. CMS-страница проходит создание, черновик, публикацию, новый частный черновик и скрытие. Публичный ответ не содержит непубликованный текст и причины редакторских действий. Проверены два последовательных сохранения настроек, FAQ и галереи с обновлением версий.
+
+Журнал показывает причины из тестовой базы. Выход очищает частный кеш; отложенный ответ старого аккаунта не возвращает записи после выхода. Аналитика и CSV дополнительно проверяют analytics.read: понижение прав того же аккаунта скрывает и очищает ранее полученный отчёт; поздний ответ также не возвращает доступ.
+
+Предварительный просмотр нормализует страницы только с published: добавляет независимый draft, историю и версии. Проверены сохранение черновика без изменения публикации и запись истории при публикации.
+
+## VK, почта и SMS
+
+Состояние провайдеров берётся из API. В действующей тестовой конфигурации все три выключены, кнопки недоступны и отправки не происходит. Прогон с перехваченным API подтвердил:
+
+- Загрузка доступности сохраняет ник, пароль, checkbox и DOM формы.
+- Шестизначный код, неверный код, срок 10 минут и пауза 60 секунд работают без сброса поля при тике таймера.
+- Восстановление по SMS передаёт код, новый пароль и 2FA. Новый пароль требует 12 символов.
+- Привязка контакта требует пароль, а для защищённого аккаунта — также 2FA. Повторная отправка заново просит пароль и не хранит его в потоке подтверждения.
+- Контакт становится подтверждённым после ответа API. Неверный код сохраняет форму. Удаление контакта и отключение VK требуют подтверждения.
+- VK callback обрабатывает новый аккаунт, вход, обязательную 2FA, привязку, ошибку и неизвестный/устаревший статус.
+- Новый аккаунт VK требует ник, почту, пароль CopiMine и принятие правил. Пароль VK не запрашивается.
+- Повторная проверка входа требует пароль у обычного игрока без 2FA и пароль с кодом у защищённого или служебного аккаунта. Отмена не повторяет исходное действие.
+- Неподходящий адрес провайдера блокируется. Переход к https://id.vk.ru/authorize был перехвачен браузером и не обращался к VK.
+
+## Карта, изображения и автономный файл
+
+Основной мир, Незер и Энд отображаются разными изображениями фактического архива. Проверены смена измерения, масштаб, координаты X 100 / Z 200 и мобильная карта 362 × 555 px. Публикация и исходный снимок имеют отдельные подписи времени.
+
+В file:// прогоне анализ canvas обнаружил 235, 276 и 71 различимый цвет в трёх картах; хеши различаются. Это проверка сохранённого мира, не подтверждение обновления действующего Minecraft-сервера.
+
+SVG favicon осмотрен при 16, 32 и 180 px. PNG 32, ICO, мобильная иконка 180 и SVG декодируются из встроенных данных конечного HTML. Рисованное печенье загружается из PNG. В финальном HTML работают новые разделы, поиск, инвентари и мобильные экраны, а серверная авторизация явно отключена.
+
+## Исправления, проверенные повторно
+
+| Дефект | Проверенное исправление |
+| --- | --- |
+| Namespaced ID показывал placeholder | Ключ и ID сопоставляются, спрайты отображаются |
+| Количество в модалке уводило фокус на фон | Фокус сохраняется внутри текущего окна |
+| admin-v6.js отсутствовал в серверном списке | После подключения повторно проверена новая админка; fallback-снимки исключены |
+| CMS preview не имела draft/history/revision | Данные нормализуются без перезаписи существующего черновика |
+| Частный кеш журнала переживал выход | Кеш привязан к личности, поздний ответ отбрасывается |
+| Общий административный доступ был достаточен для кеша аналитики | Analytics.read требуется для просмотра и CSV; проверено понижение роли того же аккаунта |
+| «Всё время» выходило за предел API | Поддерживаемый годовой диапазон проходит без 400 |
+| Повторный вход всегда требовал TOTP | Проверены обычный игрок без кода и owner с кодом |
+| Неизвестный VK status оставлял ожидание | Понятная ошибка и возможность начать заново |
+| Общий статус заказа брался из первой строки | Сгруппированы строки, верны общий статус и возвраты |
+
+## Что не подтверждено этим прогоном
+
+Доставка письма или SMS, настоящий VK ID, живой платёж и выполнение команды в Minecraft не проверялись. Положительные провайдерские ответы были тестовыми. Компиляция JAR и тесты протокола описаны в integrations/game-bridge; они не означают запуск на рабочем сервере.
+
+Проверка касается Chromium и двух указанных размеров. Safari, Firefox, экранные дикторы и реальное мобильное устройство не использовались. Автономное демонстрационное состояние не является серверной авторизацией.
+
+## Доказательства
+
+verification.json содержит машинный свод. В qa-v6/reports сохранены отчёты без секретов. Внутренние снимки браузера не включены в выдаваемый архив; отчёты сохраняют сведения о проверенных экранах. В qa-v6/harnesses сохранены браузерные сценарии и описание среды. Backend-лог и JavaScript-вывод позволяют проверить число пройденных тестов.

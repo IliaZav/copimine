@@ -1,0 +1,12 @@
+diff --git a/admin-web/backend/main.py b/admin-web/backend/main.py
+--- a/admin-web/backend/main.py
++++ b/admin-web/backend/main.py
+@@ -4344,5 +4344,5 @@
+ def normalize_admin_role(value: Any) -> str:
+-    role = str(value or "admin").strip().lower()
++    role = str(value or "").strip().lower()
+     if role in {"owner", "admin", "junior_admin", "player"}:
+         return role
+-    return "admin"
++    return ""
+

@@ -1,0 +1,8 @@
+# Production WSGI server (tested: 3.0.2):
+waitress>=3.0.2,<4
+# Required only by scripts/render_world_tiles.py for PNG/WebP encoding:
+Pillow>=11,<13
+
+
+# Encrypt pending contact-code deliveries outside the database:
+cryptography>=50.0.2,<51

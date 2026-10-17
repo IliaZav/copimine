@@ -1,0 +1,12 @@
+{
+  "listenHost": "127.0.0.1",
+  "listenPort": 8791,
+  "siteBaseURL": "https://copimine.ru",
+  "spoolPath": "/opt/copimine/minecraft/server/plugins/CopiMineUltimateAdminPlus/site-bridge",
+  "statePath": "/var/lib/copimine-game/bridge/state",
+  "siteSecretFile": "/var/lib/copimine-game/bridge/site-signing.key",
+  "spoolSecretFile": "/var/lib/copimine-game/bridge/spool-signing.key",
+  "rconHost": "127.0.0.1",
+  "rconPort": 25575,
+  "rconPasswordFile": "/var/lib/copimine-game/rcon-password.txt"
+}

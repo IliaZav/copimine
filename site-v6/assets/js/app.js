@@ -1,18 +1,18 @@
 /* Local design sandbox. No production requests, payments, permissions or game actions. */
 'use strict';
-const C=window.CMCore, Auth=window.CMAuthSession, esc=C.escape, KEY='copimine.studio.v5';
+const C=window.CMCore, Auth=window.CMAuthSession, esc=C.escape, KEY='copimine.studio.v6';
 const clone=o=>JSON.parse(JSON.stringify(o));
 let state;
-try{state=JSON.parse(localStorage.getItem(KEY));if(state?.version!==4)state=null;}catch{state=null;}
+try{state=window.CM_SERVER_MODE?null:JSON.parse(localStorage.getItem(KEY));if(state?.version!==4)state=null;}catch{state=null;}
 if(!state)state=clone(CM_SEED);
 // Rehydrate only from the chosen session store; ignore old v4 embedded sessions.
-try{state.session=Auth.restore(localStorage,sessionStorage,state.players);}catch{state.session=null;}
+try{state.session=window.CM_SERVER_MODE?null:Auth.restore(localStorage,sessionStorage,state.players);}catch{state.session=null;}
 if(!state.mapPublished)state.mapPublished={id:'reference-01',markers:clone(state.markers),zones:clone(state.zones),image:null,capturedAt:null,publishedAt:null};
 const UI={page:'home',tab:'',category:'Все предметы',currency:'ALL',sort:'default',search:'',adminSearch:'',accountTab:'overview',backFocus:null};
 const handlers={},forms={},renderers={};
 const el=id=>document.getElementById(id);
-const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(Auth.stripSession(state)));Auth.persist(localStorage,sessionStorage,state.session);}catch{if(!UI.storageWarned){UI.storageWarned=true;toast('В этом режиме изменения хранятся только до закрытия страницы. Сохрани их через экспорт.',true);}}return state;};
-const startSession=(id,remember=false)=>{state.session=Auth.begin(id,remember);save();return state.session;};
+const save=()=>{if(window.CM_SERVER_MODE)return state;try{localStorage.setItem(KEY,JSON.stringify(Auth.stripSession(state)));Auth.persist(localStorage,sessionStorage,state.session);}catch{if(!UI.storageWarned){UI.storageWarned=true;toast('В этом режиме изменения хранятся только до закрытия страницы. Сохрани их через экспорт.',true);}}return state;};
+const startSession=(id,remember=false)=>{if(window.CM_SERVER_MODE)throw Error("Вход подтверждается сервером.");state.session=Auth.begin(id,remember);save();return state.session;};
 const endSession=()=>{state.session=null;Auth.clear(localStorage,sessionStorage);save();};
 const me=()=>state.players.find(p=>p.id===state.session?.id)||null;
 const money=(n,c)=>`${Number(n||0).toLocaleString('ru-RU')} ${c==='CM'?'CM':c}`;
@@ -23,7 +23,7 @@ const btn=(label,action,iconName='',cls='',extra='')=>`<button type="button" cla
 const link=(label,href,ic='',cls='')=>`<a class="btn ${cls}" href="${href}">${ic?icon(ic):''}${label}</a>`;
 const iconBtn=(name,label,action,extra='')=>`<button type="button" class="icon-btn" aria-label="${label}" title="${label}" data-action="${action}" ${extra}>${icon(name)}</button>`;
 const pill=(s,t='')=>`<span class="tag ${t}">${esc(s)}</span>`;
-const STATUS={queued:['Ожидает выдачи','amber'],delivered:['Получен','green'],cancelled:['Отменён',''],open:['Новое','amber'],review:['На проверке',''],closed:['Закрыто','green'],active:['Активен','green'],banned:['Заблокирован','danger']};
+const STATUS={awaiting_delivery:['Ожидает выдачи','amber'],processing:['Выполняется','amber'],pending:['Ожидает подтверждения','amber'],completed:['Подтверждено','green'],paid:['Оплачен','green'],test_completed:['Тестовый платёж',''],failed:['Ошибка','danger'],partially_failed:['Частичный возврат','amber'],refunded:['Возвращено',''],queued:['Ожидает выдачи','amber'],delivered:['Получен','green'],cancelled:['Отменён',''],open:['Новое','amber'],review:['На проверке',''],closed:['Закрыто','green'],active:['Активен','green'],banned:['Заблокирован','danger']};
 const status=(s)=>pill((STATUS[s]||[s])[0],(STATUS[s]||['',''])[1]);
 const empty=(title,text,ic='package')=>`<div class="empty-state">${icon(ic)}<h3>${title}</h3><p>${text}</p></div>`;
 const audit=(action,target,detail='')=>{const redact=window.CM5Domain?.redact||String;const row={id:'local-'+Date.now()+'-'+Math.random().toString(36).slice(2,7),actor:UI.page==='admin'?'DemoAdmin':me()?.name||'Гость',action:redact(action),target:redact(target),detail:redact(detail),at:Date.now(),provenance:'local-demo'};state.audit.unshift(row);state.audit=state.audit.slice(0,200);save();window.CM5?.record?.({source:'Панель',action:'ADMIN_ACTION',player:row.actor,message:row.action+': '+row.target,raw:'[Panel/INFO] '+row.action+' target='+row.target+' '+row.detail});};

@@ -1,0 +1,21 @@
+{
+  "unavailable": [
+    {
+      "label": "Файл пока недоступен",
+      "disabled": true
+    },
+    {
+      "label": "Файл пока недоступен",
+      "disabled": true
+    }
+  ],
+  "configuredDownloadEnabled": true,
+  "paymentFixtureNoFakeControls": true,
+  "mobileDialog": {
+    "x": 16,
+    "y": 12,
+    "width": 358,
+    "height": 820
+  },
+  "errors": []
+}

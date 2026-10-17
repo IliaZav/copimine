@@ -1,8 +1,8 @@
-"""Render saved Anvil terrain from a private archive to a sparse web tile pyramid.
+"""Render saved Anvil terrain from a private archive or live world directory.
 
 Only block surface colors and elevation are exported. Entity, player, inventory,
 structure, POI and block-entity data are never included in the output. The input
-archive remains local. Requires Python 3.10+ and Pillow for this build step.
+world remains local. Requires Python 3.11+ and Pillow for this build step.
 """
 import os
 os.environ.setdefault('OPENBLAS_NUM_THREADS', '1')
@@ -298,13 +298,18 @@ def external_chunk_indices(raw):
 
 class RegionSource:
     def __init__(self,args):
+        if args.world_name and (Path(args.world_name).name != args.world_name
+                or args.world_name in ('.', '..') or '/' in args.world_name or '\\' in args.world_name):
+            raise ValueError('--world-name must name a direct world subdirectory')
         self.args=args;self.path=Path(args.input).resolve();self.spawns={};self.fingerprints=[]
         self.started=utc_now();self.retries=0;self.region_bytes=0;self.external_files=0
         self.archive=self.path.is_file();self.seen=set();self.files_read=0
         self.meta={'kind':'archive' if self.archive else 'directory','label':self.path.name,
                    'snapshotStartedAt':self.started,'capturedAt':args.captured_at}
         if self.archive:
+            self.archive_stat=self.path.stat()
             with self.path.open('rb') as stream:digest=hashlib.file_digest(stream,'sha256').hexdigest()
+            self.check_archive_unchanged()
             self.meta.update({'archive':self.path.name,'sha256':digest,'bytes':self.path.stat().st_size,
                 'archiveModifiedAt':datetime.fromtimestamp(self.path.stat().st_mtime,timezone.utc).isoformat()})
             if not self.meta['capturedAt']:
@@ -321,6 +326,12 @@ class RegionSource:
             self.meta['consistency']='Each region read is checked for stable size, timestamp and location header; capture across regions is not atomic.'
             self.directory_worlds=self.discover_directory_worlds()
 
+    def check_archive_unchanged(self):
+        current=self.path.stat()
+        if (current.st_size,current.st_mtime_ns,current.st_ino) != (
+                self.archive_stat.st_size,self.archive_stat.st_mtime_ns,self.archive_stat.st_ino):
+            raise RuntimeError('Source archive changed during capture; publication cancelled')
+
     def discover_directory_worlds(self):
         root=self.path;world=root
         direct=any((root/p).is_dir() for p in ('region','DIM-1/region','DIM1/region'))
@@ -329,6 +340,7 @@ class RegionSource:
             props=root/'server.properties'
             if not wanted and props.is_file():
                 # Read only the public level-name setting; never export this file.
+                if props.stat().st_size>1024*1024:raise ValueError('server.properties is unexpectedly large')
                 for line in props.read_text(encoding='utf-8',errors='replace').splitlines():
                     if line.startswith('level-name='):wanted=line.partition('=')[2].strip();break
                 if wanted and (Path(wanted).name!=wanted or wanted in ('.','..')):
@@ -368,7 +380,7 @@ class RegionSource:
             if self.args.world_name:
                 prefix=self.args.world_name
                 mapping.update({prefix:('overworld','Обычный мир'),prefix+'_nether':('nether','Нижний мир'),prefix+'_the_end':('end','Край')})
-            pattern=re.compile(r'^([^/]+)/(?:DIM-1/|DIM1/)?region/r\.(-?\d+)\.(-?\d+)\.mca$')
+            pattern=re.compile(r'^([^/]+)/(DIM-1/|DIM1/)?region/r\.(-?\d+)\.(-?\d+)\.mca$')
             with tarfile.open(self.path,'r|gz') as archive:
                 for member in archive:
                     components=member.name.split('/')
@@ -379,7 +391,8 @@ class RegionSource:
                     match=pattern.match(member.name)
                     if not match or match[1] not in mapping:continue
                     if not member.isfile() or not 8192<=member.size<=64*1024*1024:raise ValueError('Invalid region member')
-                    dim=mapping[match[1]][0];rx,rz=int(match[2]),int(match[3])
+                    dim={'DIM-1/':'nether','DIM1/':'end'}.get(match[2],mapping[match[1]][0])
+                    rx,rz=int(match[3]),int(match[4])
                     with archive.extractfile(member) as stream:raw=stream.read()
                     external={}
                     for index in external_chunk_indices(raw):
@@ -414,6 +427,7 @@ class RegionSource:
         return dim,rx,rz,raw,external
 
     def finish(self):
+        if self.archive:self.check_archive_unchanged()
         self.meta.update({'snapshotCompletedAt':utc_now(),'regionBytes':self.region_bytes,
                           'stableReadRetries':self.retries,'externalChunkFiles':self.external_files})
         if not self.archive:
@@ -429,7 +443,7 @@ def render_region_job(job):
     root=Path(root);checkpoints=Path(checkpoints)
     token=hashlib.sha256(raw)
     for index,data in sorted(external.items()):token.update(str(index).encode('ascii'));token.update(data)
-    token.update(json.dumps(palette,sort_keys=True).encode('utf-8'));token.update(b'renderer-1.1')
+    token.update(json.dumps(palette,sort_keys=True).encode('utf-8'));token.update(b'renderer-1.2')
     token=token.hexdigest();cached_path=checkpoints/dim/(str(rx)+'_'+str(rz)+'.json')
     target=root/'assets/map'/dim/str(MAX_ZOOM)/str(rx)/(str(rz)+'.webp')
     if cached_path.is_file():
@@ -530,7 +544,7 @@ def render(args):
             dim['renderDescription']=('Roof hidden; first saved floor below 4 consecutive air blocks, scanned from Y=120 down.' if dim['id']=='nether'
                 else 'Highest non-air block from WORLD_SURFACE heightmap; no underground scan.')
         manifest={'schemaVersion':1,'source':source_metadata,'generatedAt':utc_now(),'tileSize':512,'dimensions':list(dimensions.values()),
-            'renderSeconds':round(time.time()-start,2),'renderer':'CopiMine sparse Anvil surface renderer 1.1','errors':0,
+            'renderSeconds':round(time.time()-start,2),'renderer':'CopiMine sparse Anvil surface renderer 1.2','errors':0,
             'coverage':'All selected saved region files. Transparent pixels are absent, empty or unfinished terrain; no generated estimates.',
             'privacy':'No player identities, locations, entities, inventory, block entities, POI, seed or raw region data exported.',
             'colorNotes':'Average block texture colors, generic foliage/water colors, directional elevation shading; biome tints are approximate.',

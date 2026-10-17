@@ -37,6 +37,10 @@ CREATE TABLE IF NOT EXISTS sessions(
  created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, mfa_at INTEGER, auth_epoch INTEGER,
  revoked_at INTEGER);
 CREATE TABLE IF NOT EXISTS pending_totp(user_id TEXT PRIMARY KEY REFERENCES users(id), secret TEXT NOT NULL, expires_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS transfers(id TEXT PRIMARY KEY,sender_id TEXT NOT NULL,recipient_id TEXT NOT NULL,amount INTEGER NOT NULL,
+ created_at INTEGER NOT NULL,idempotency_key TEXT NOT NULL,request_hash TEXT NOT NULL,UNIQUE(sender_id,idempotency_key));
+CREATE TABLE IF NOT EXISTS tickets(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,title TEXT NOT NULL,body TEXT NOT NULL,type TEXT NOT NULL,
+ status TEXT NOT NULL,replies TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS rate_events(key TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS rate_index ON rate_events(key,at);
 CREATE TABLE IF NOT EXISTS catalog(
@@ -63,6 +67,9 @@ CREATE TABLE IF NOT EXISTS orders(
  id TEXT PRIMARY KEY,user_id TEXT NOT NULL,currency TEXT NOT NULL,total INTEGER NOT NULL,
  status TEXT NOT NULL,created_at INTEGER NOT NULL,sequence INTEGER NOT NULL UNIQUE,
  idempotency_key TEXT NOT NULL,request_hash TEXT NOT NULL,UNIQUE(user_id,idempotency_key));
+CREATE TABLE IF NOT EXISTS checkout_batches(
+ id TEXT PRIMARY KEY,user_id TEXT NOT NULL,idempotency_key TEXT NOT NULL,request_hash TEXT NOT NULL,
+ created_at INTEGER NOT NULL,order_ids TEXT NOT NULL,UNIQUE(user_id,idempotency_key));
 CREATE TABLE IF NOT EXISTS order_items(
  order_id TEXT NOT NULL REFERENCES orders(id),item_id TEXT NOT NULL,quantity INTEGER NOT NULL,price INTEGER NOT NULL,name TEXT NOT NULL,
  PRIMARY KEY(order_id,item_id));
@@ -95,6 +102,14 @@ class Store:
         self.path = self.directory / "copimine.sqlite3"
         with self.connect() as conn:
             conn.executescript(SCHEMA)
+            columns={row[1] for row in conn.execute("PRAGMA table_info(users)")}
+            if "display_name" not in columns:
+                conn.execute("ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''")
+            job_columns={row[1] for row in conn.execute("PRAGMA table_info(jobs)")}
+            if "lease_until" not in job_columns:
+                conn.execute("ALTER TABLE jobs ADD COLUMN lease_until INTEGER")
+            if "lease_owner" not in job_columns:
+                conn.execute("ALTER TABLE jobs ADD COLUMN lease_owner TEXT")
         try:
             os.chmod(self.directory, 0o700)
             os.chmod(self.path, 0o600)
@@ -150,3 +165,4 @@ class Store:
                 return False
             conn.execute("INSERT INTO rate_events VALUES(?,?)", (key,at))
         return True
+

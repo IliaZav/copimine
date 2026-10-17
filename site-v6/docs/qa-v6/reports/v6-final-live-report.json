@@ -1,0 +1,103 @@
+{
+  "at": "2026-10-17T06:31:59.570Z",
+  "mode": "Restarted live local API with separate QA database; order/payment fixtures intercepted in browser only",
+  "tests": [
+    {
+      "name": "Actual provider status disables unconfigured VK/email/SMS without sending",
+      "pass": true,
+      "detail": {
+        "vk": {
+          "enabled": false
+        },
+        "email": {
+          "enabled": false
+        },
+        "sms": {
+          "enabled": false
+        }
+      }
+    },
+    {
+      "name": "Live own contacts render unverified primary email and disabled provider actions",
+      "pass": true,
+      "detail": {
+        "contacts": [
+          {
+            "channel": "email",
+            "verified": false
+          }
+        ],
+        "disabledProviders": 3
+      }
+    },
+    {
+      "name": "Grouped order history and partial refund detail show every line and actual refund",
+      "pass": true,
+      "detail": {
+        "groupedOrders": 1,
+        "lines": 2,
+        "totalAR": 110,
+        "refundAR": 100
+      }
+    },
+    {
+      "name": "Fully refunded detail uses the order status and returned total",
+      "pass": true,
+      "detail": {
+        "fullRefundAR": 110
+      }
+    },
+    {
+      "name": "Donations exclude test payments, retain state labels and reject unsafe checkout URL",
+      "pass": true,
+      "detail": {
+        "confirmedRubles": 137,
+        "testRublesExcluded": 991,
+        "unsafeCheckoutLinkBlocked": true
+      }
+    },
+    {
+      "name": "Year analytics range reaches the actual backend and respects date limits",
+      "pass": true,
+      "detail": {
+        "days": 365,
+        "apiSuccess": true
+      }
+    }
+  ],
+  "screens": [
+    {
+      "name": "live-connections",
+      "viewport": 1440,
+      "width": 1440,
+      "screenshotCaptured": "v6-final-live-connections.png"
+    },
+    {
+      "name": "desktop-order-partial",
+      "viewport": 1440,
+      "width": 1440,
+      "screenshotCaptured": "v6-final-desktop-order-partial.png"
+    },
+    {
+      "name": "mobile-order-partial",
+      "viewport": 390,
+      "width": 390,
+      "screenshotCaptured": "v6-final-mobile-order-partial.png"
+    },
+    {
+      "name": "mobile-payment-pending",
+      "viewport": 390,
+      "width": 390,
+      "screenshotCaptured": "v6-final-mobile-payment-pending.png"
+    },
+    {
+      "name": "desktop-analytics-year",
+      "viewport": 1440,
+      "width": 1440,
+      "screenshot": "../screenshots/v6-final-desktop-analytics-year.png"
+    }
+  ],
+  "errors": [],
+  "serverFailures": [],
+  "providerMutations": []
+}

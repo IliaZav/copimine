@@ -1,0 +1,105 @@
+{
+  "at": "2026-10-17T06:38:33.741Z",
+  "file": "CopiMine_v6.html",
+  "bytes": 20944037,
+  "mode": "direct file URL, fresh browser context",
+  "externalRequests": [],
+  "failedRequests": [],
+  "errors": [],
+  "tests": [
+    {
+      "name": "Hand-drawn cookie and favicon variants decode from embedded data",
+      "pass": true,
+      "cookie": {
+        "loaded": true,
+        "embedded": true
+      },
+      "favicons": [
+        {
+          "rel": "icon",
+          "type": "image/png",
+          "sizes": "32x32",
+          "width": 32,
+          "height": 32,
+          "embedded": true
+        },
+        {
+          "rel": "shortcut icon",
+          "type": "",
+          "sizes": "",
+          "width": 32,
+          "height": 32,
+          "embedded": true
+        },
+        {
+          "rel": "apple-touch-icon",
+          "type": "",
+          "sizes": "180x180",
+          "width": 180,
+          "height": 180,
+          "embedded": true
+        },
+        {
+          "rel": "icon",
+          "type": "image/svg+xml",
+          "sizes": "",
+          "width": 150,
+          "height": 150,
+          "embedded": true
+        }
+      ]
+    },
+    {
+      "name": "Offline VK/email/SMS controls are disabled and callbacks explain availability",
+      "pass": true
+    },
+    {
+      "name": "Three actual world rasters render and differ without network",
+      "pass": true
+    },
+    {
+      "name": "New admin sections, 41+27 inventory slots, six sample ender items and typo search work",
+      "pass": true
+    },
+    {
+      "name": "Mobile CMS and map fit 390 pixels",
+      "pass": true
+    },
+    {
+      "name": "No HTTP(S) requests, request failures or JavaScript exceptions",
+      "pass": true
+    }
+  ],
+  "maps": [
+    {
+      "world": "overworld",
+      "hash": "82330d24244fb77f2df31351dab68d4bc15253c3ab3b2bc80fc1ccf00d328f68",
+      "width": 1611,
+      "height": 1103,
+      "colors": 235,
+      "empty": false,
+      "documentWidth": 1440,
+      "captured": "2026-10-16 22:27:30 (время архива)"
+    },
+    {
+      "world": "nether",
+      "hash": "c1154a1255069337e3eb1f4fbbafcda243c0b9dac6f675fffc9f3c6e2b072dc9",
+      "width": 1611,
+      "height": 1103,
+      "colors": 276,
+      "empty": false,
+      "documentWidth": 1440,
+      "captured": "2026-10-16 22:27:30 (время архива)"
+    },
+    {
+      "world": "end",
+      "hash": "fdb027cfd1020c4a44a9b964e9093acec8191c32d8865e41459a57741fc2f905",
+      "width": 1611,
+      "height": 1103,
+      "colors": 71,
+      "empty": false,
+      "documentWidth": 1440,
+      "captured": "2026-10-16 22:27:30 (время архива)"
+    }
+  ]
+}

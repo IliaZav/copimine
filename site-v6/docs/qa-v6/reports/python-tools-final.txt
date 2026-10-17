@@ -1,0 +1,23 @@
+test_live_directory_reads_three_dimensions_and_external_chunk (test_map_renderer.RendererTests.test_live_directory_reads_three_dimensions_and_external_chunk) ... ok
+test_padded_longs_keep_entry_boundaries (test_map_renderer.RendererTests.test_padded_longs_keep_entry_boundaries) ... ok
+test_unstable_live_file_is_rejected_after_bounded_attempts (test_map_renderer.RendererTests.test_unstable_live_file_is_rejected_after_bounded_attempts) ... ok
+test_vanilla_archive_dimensions_and_source_change_guard (test_map_renderer.RendererTests.test_vanilla_archive_dimensions_and_source_change_guard) ... ok
+test_world_name_cannot_escape_selected_server_root (test_map_renderer.RendererTests.test_world_name_cannot_escape_selected_server_root) ... ok
+test_bad_code_and_header_injection (test_notifications.GatewayTests.test_bad_code_and_header_injection) ... ok
+test_contact_verification_requires_explicit_challenge_purpose (test_notifications.GatewayTests.test_contact_verification_requires_explicit_challenge_purpose) ... ok
+test_dry_run_never_calls_network (test_notifications.GatewayTests.test_dry_run_never_calls_network) ... ok
+test_live_needs_configuration (test_notifications.GatewayTests.test_live_needs_configuration) ... ok
+test_sms_accepted_is_not_delivered (test_notifications.GatewayTests.test_sms_accepted_is_not_delivered) ... ok
+test_sms_top_level_success_is_not_enough (test_notifications.GatewayTests.test_sms_top_level_success_is_not_enough) ... ok
+test_unverified_refused (test_notifications.GatewayTests.test_unverified_refused) ... ok
+test_different_minecraft_versions_rejected (test_preview_server.AdapterTests.test_different_minecraft_versions_rejected) ... ok
+test_fresh_map_hidden_old_tile_frozen (test_preview_server.AdapterTests.test_fresh_map_hidden_old_tile_frozen) ... ok
+test_http_zip_and_cross_site_protection (test_preview_server.AdapterTests.test_http_zip_and_cross_site_protection) ... ok
+test_missing_profile_unavailable (test_preview_server.AdapterTests.test_missing_profile_unavailable) ... ok
+test_two_matching_personal_jars_nested_dependency (test_preview_server.AdapterTests.test_two_matching_personal_jars_nested_dependency) ... ok
+test_archive_keeps_seed_catalogs_and_excludes_runtime (test_release_package.ReleasePackageTests.test_archive_keeps_seed_catalogs_and_excludes_runtime) ... ok
+
+----------------------------------------------------------------------
+Ran 18 tests in 1.308s
+
+OK

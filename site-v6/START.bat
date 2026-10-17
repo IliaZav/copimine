@@ -10,7 +10,7 @@ if not errorlevel 1 (
   python serve.py
   goto :done
 )
-echo Python not found. Starting the complete offline HTML instead.
+echo Python not found. Starting the CopiMine v6 offline HTML instead.
 call "%~dp0OPEN_DEMO.bat"
 :done
 pause

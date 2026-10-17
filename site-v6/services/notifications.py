@@ -26,8 +26,12 @@ class NotificationGateway:
     def __init__(self,env:Mapping[str,str]|None=None,outbox:Path|None=None):
         self.env=dict(os.environ if env is None else env)
         self.outbox=outbox or Path(__file__).resolve().parent/'local-outbox'
-    def send_code(self,channel:str,target:str,code:str,*,verified:bool)->dict[str,str]:
-        if not verified:raise DeliveryError('A verified account contact is required')
+    def send_code(self,channel:str,target:str,code:str,*,verified:bool,purpose:str='recovery',contact_challenge:bool=False)->dict[str,str]:
+        if purpose not in {'login','recovery','verify_contact'}:raise DeliveryError('Unknown code purpose')
+        # Only the trusted, authenticated contact-verification queue can use an
+        # unverified destination. Login and recovery still require ownership.
+        if not verified and not (purpose=='verify_contact' and contact_challenge is True):
+            raise DeliveryError('A verified account contact is required')
         if not re.fullmatch(r'[0-9]{6}',code):raise DeliveryError('Six digit one-time code required')
         if any(c in target for c in '\r\n') or len(target)>254:raise DeliveryError('Invalid recipient')
         if channel=='email':
@@ -37,8 +41,9 @@ class NotificationGateway:
         else:raise DeliveryError('Unknown channel')
         mode=self.env.get('CM_NOTIFY_MODE','preview')
         if mode not in {'preview','live'}:raise DeliveryError('Invalid delivery mode')
-        text=f'CopiMine: {code}. This one-time recovery code expires in 10 minutes. Do not share it.'
-        message=EmailMessage();message['To']=target;message['Subject']='CopiMine: recovery code'
+        purpose_text={'login':'sign-in','recovery':'password recovery','verify_contact':'contact verification'}[purpose]
+        text=f'CopiMine: {code}. Your {purpose_text} code expires in 10 minutes. Do not share it.'
+        message=EmailMessage();message['To']=target;message['Subject']='CopiMine: '+purpose_text+' code'
         message['From']=self.env.get('CM_SMTP_FROM','no-reply@copimine.example');message.set_content(text)
         ref=secrets.token_hex(12)
         if mode=='preview':
@@ -70,6 +75,46 @@ class NotificationGateway:
         except (OSError,smtplib.SMTPException,ValueError) as exc:
             raise DeliveryError('SMTP failed or delivery outcome unknown; reconcile before retry') from None
         return {'status':'accepted','reference':ref,'channel':'email'}
+    def send_notice(self,target:str,subject:str,text:str,*,verified:bool)->dict[str,str]:
+        if verified is not True:raise DeliveryError('A verified account email is required')
+        if not isinstance(target,str) or len(target)>254 or any(c in target for c in '\r\n') or parseaddr(target)[1]!=target or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',target):
+            raise DeliveryError('Invalid email')
+        if not isinstance(subject,str) or not 1<=len(subject)<=160 or any(c in subject for c in '\r\n'):
+            raise DeliveryError('Invalid notice subject')
+        if not isinstance(text,str) or not 1<=len(text)<=8000 or '\x00' in text:
+            raise DeliveryError('Invalid notice text')
+        mode=self.env.get('CM_NOTIFY_MODE','preview')
+        if mode not in {'preview','live'}:raise DeliveryError('Invalid delivery mode')
+        message=EmailMessage();message['To']=target;message['Subject']=subject
+        message['From']=self.env.get('CM_SMTP_FROM','no-reply@copimine.example');message.set_content(text)
+        ref=secrets.token_hex(12)
+        if mode=='preview':
+            self.outbox.mkdir(parents=True,exist_ok=True,mode=0o700)
+            path=self.outbox/(ref+'.eml');path.write_bytes(message.as_bytes())
+            try:path.chmod(0o600)
+            except OSError:pass
+            return {'status':'local-preview','reference':ref,'channel':'email'}
+        return self._smtp(message,ref)
+    def send_notice(self,target:str,subject:str,text:str,*,verified:bool)->dict[str,str]:
+        if verified is not True:raise DeliveryError('A verified account email is required')
+        if not isinstance(target,str) or len(target)>254 or any(c in target for c in '\r\n') or parseaddr(target)[1]!=target or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',target):
+            raise DeliveryError('Invalid email')
+        if not isinstance(subject,str) or not 1<=len(subject)<=160 or any(c in subject for c in '\r\n'):
+            raise DeliveryError('Invalid notice subject')
+        if not isinstance(text,str) or not 1<=len(text)<=8000 or '\x00' in text:
+            raise DeliveryError('Invalid notice text')
+        mode=self.env.get('CM_NOTIFY_MODE','preview')
+        if mode not in {'preview','live'}:raise DeliveryError('Invalid delivery mode')
+        message=EmailMessage();message['To']=target;message['Subject']=subject
+        message['From']=self.env.get('CM_SMTP_FROM','no-reply@copimine.example');message.set_content(text)
+        ref=secrets.token_hex(12)
+        if mode=='preview':
+            self.outbox.mkdir(parents=True,exist_ok=True,mode=0o700)
+            path=self.outbox/(ref+'.eml');path.write_bytes(message.as_bytes())
+            try:path.chmod(0o600)
+            except OSError:pass
+            return {'status':'local-preview','reference':ref,'channel':'email'}
+        return self._smtp(message,ref)
     def _sms(self,target:str,text:str)->dict[str,str]:
         key=self.env.get('CM_SMSRU_API_ID')
         if not key:raise DeliveryError('SMS provider is not configured')

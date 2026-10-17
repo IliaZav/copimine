@@ -69,3 +69,4 @@ def verify_totp(secret, value, last_step=-1, now=None):
 def adapter_signature(secret, timestamp, nonce, body):
     return hmac.new(secret.encode(), str(timestamp).encode() + b"\n" + nonce.encode() + b"\n" + body,
                     hashlib.sha256).hexdigest()
+

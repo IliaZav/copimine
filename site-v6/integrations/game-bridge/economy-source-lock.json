@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "repository": "IliaZav/copimine",
+  "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+  "path": "copimine-economy-core/src/me/copimine/economycore/CopiMineEconomyCore.java",
+  "gitBlobSha1": "aa0e72995de4ec8e44e21d5d7eee8de36477e00f",
+  "sourceSha256": "aa33d166821876f59004d596c44e8a9ed6827d96ebf6498df27f186b2412e233",
+  "fragment": "EconomySiteBridge.java.inc",
+  "fragmentSha256": "cff38f897733cded2d574e89fc30cb95e1f7d44cc7a1de20eaefd96689d3e223",
+  "insertBefore": "    public interface EconomyService {",
+  "expectedAnchorCount": 1,
+  "requiredAbsent": "public CompletableFuture<Map<String, Object>> siteBridgeAdjust(",
+  "compileOnly": true,
+  "noLiveDeployment": true
+}

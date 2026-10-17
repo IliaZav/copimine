@@ -1,0 +1,8 @@
+# Replace the domain only if your site uses another one; match server.py --origin.
+# Route all paths through the authenticated application. Do not add file_server.
+copimine.ru {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8787 {
+        header_up X-CM-Client-IP {http.request.remote.host}
+    }
+}

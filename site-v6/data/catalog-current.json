@@ -16,7 +16,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "repair_kit",
@@ -35,7 +36,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "return_stone",
@@ -54,7 +56,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "gravedigger_contract",
@@ -73,7 +76,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "signal_bell",
@@ -92,7 +96,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "angel_wings",
@@ -111,7 +116,8 @@
     "imageSource": "minecraft-base-material",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "infinite_torch",
@@ -130,7 +136,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "combat_crossbow",
@@ -149,7 +156,8 @@
     "imageSource": "minecraft-base-material",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "cobblestone_trail_bow",
@@ -168,7 +176,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "explosive_crossbow",
@@ -187,7 +196,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "smena_bez_perekura_pickaxe",
@@ -206,7 +216,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "lesnoy_bespredel_axe",
@@ -225,7 +236,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "kopatel_transhey_shovel",
@@ -244,7 +256,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "fermer_bez_sna_hoe",
@@ -263,7 +276,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "dezhurniy_argument_sword",
@@ -282,7 +296,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "vechniy_razgon_firework",
@@ -301,7 +316,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "eternal_totem",
@@ -320,7 +336,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "treasurer_chestplate",
@@ -339,7 +356,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "copimine_miner_pickaxe",
@@ -358,7 +376,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "craftsman_hammer",
@@ -377,7 +396,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "batin_remen_sudnogo_dnya",
@@ -396,7 +416,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "DONATION_SHOP"
+    "sourceType": "DONATION_SHOP",
+    "maxQuantity": 1
   },
   {
     "id": "nu_ty_i_nakopal_blyat_pickaxe",
@@ -415,7 +436,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "DONATION_SHOP"
+    "sourceType": "DONATION_SHOP",
+    "maxQuantity": 1
   },
   {
     "id": "kosa_nalogovoy_inspekcii",
@@ -434,7 +456,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "DONATION_SHOP"
+    "sourceType": "DONATION_SHOP",
+    "maxQuantity": 1
   },
   {
     "id": "kaska_prorab_huev",
@@ -453,7 +476,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "DONATION_SHOP"
+    "sourceType": "DONATION_SHOP",
+    "maxQuantity": 1
   },
   {
     "id": "mne_pohuy_ya_v_tanke_vest",
@@ -472,7 +496,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "DONATION_SHOP"
+    "sourceType": "DONATION_SHOP",
+    "maxQuantity": 1
   },
   {
     "id": "ne_segodnya_suka_shield",
@@ -491,7 +516,8 @@
     "imageSource": "minecraft-base-material",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "DONATION_SHOP"
+    "sourceType": "DONATION_SHOP",
+    "maxQuantity": 1
   },
   {
     "id": "pohuy_na_debaffy_amulet",
@@ -510,7 +536,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "DONATION_SHOP"
+    "sourceType": "DONATION_SHOP",
+    "maxQuantity": 1
   },
   {
     "id": "vremya_platit_nalogi_clock",
@@ -529,7 +556,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "DONATION_SHOP"
+    "sourceType": "DONATION_SHOP",
+    "maxQuantity": 1
   },
   {
     "id": "berserker_heart",
@@ -548,7 +576,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "DONATION_SHOP"
+    "sourceType": "DONATION_SHOP",
+    "maxQuantity": 1
   },
   {
     "id": "zhilorez_pickaxe",
@@ -567,7 +596,8 @@
     "imageSource": "site-launcher-audit/current-sprite",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "DONATION_SHOP"
+    "sourceType": "DONATION_SHOP",
+    "maxQuantity": 1
   },
   {
     "id": "night_cloak",
@@ -586,7 +616,8 @@
     "imageSource": "site-launcher-audit/current-sprite",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "DONATION_SHOP"
+    "sourceType": "DONATION_SHOP",
+    "maxQuantity": 1
   },
   {
     "id": "narcotic_recipe_feta",
@@ -605,7 +636,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "narcotic_recipe_kola",
@@ -624,7 +656,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "narcotic_recipe_girion",
@@ -643,7 +676,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "narcotic_recipe_sbp",
@@ -662,7 +696,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "narcotic_recipe_sos",
@@ -681,7 +716,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "narcotic_recipe_drun",
@@ -700,7 +736,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "narcotic_recipe_chups",
@@ -719,7 +756,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "narcotic_recipe_borshevik",
@@ -738,7 +776,8 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "AR_SHOP"
+    "sourceType": "AR_SHOP",
+    "maxQuantity": 64
   },
   {
     "id": "streamer_stick",
@@ -757,7 +796,8 @@
     "imageSource": "minecraft-base-material",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "ADMIN_ONLY"
+    "sourceType": "ADMIN_ONLY",
+    "maxQuantity": 64
   },
   {
     "id": "kozyrny_tuz_pozdnyakova",
@@ -776,6 +816,7 @@
     "imageSource": "custom-pack",
     "source": "copimine-artifacts/items.yml",
     "sourceKind": "reviewed-branch-snapshot",
-    "sourceType": "ADMIN_ONLY"
+    "sourceType": "ADMIN_ONLY",
+    "maxQuantity": 64
   }
 ]

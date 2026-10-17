@@ -9,8 +9,8 @@ from .security import digest, token
 from .storage import encoded, identifier, now_ms
 
 PAGES={"home","shop","donate","map","rules","support"}
-EVENTS={"page_view","item_view","cart_add","cart_remove","checkout_start","checkout_complete","search"}
-DEFAULT_MAP={"enabled":True,"intervalMinutes":60,"minAgeMinutes":60,"playerDelayMinutes":60,"showPlayers":False,"version":1}
+EVENTS={"page_view","item_view","cart_add","cart_remove","checkout_start","checkout_complete","donation_start","search"}
+DEFAULT_MAP={"enabled":True,"autoRefresh":True,"intervalMinutes":60,"minAgeMinutes":60,"playerDelayMinutes":60,"showPlayers":False,"version":1}
 
 class Operations:
     def analytics_events(self,body,ip):
@@ -30,7 +30,7 @@ class Operations:
             for event in events:
                 if not isinstance(event,dict):
                     raise APIError(400,"Invalid analytics event.")
-                typ={"visit":"page_view","view_item":"item_view","add_to_cart":"cart_add"}.get(event.get("type"),event.get("type"))
+                typ={"visit":"page_view","view_item":"item_view","product_view":"item_view","add_to_cart":"cart_add","checkout_completed":"checkout_complete"}.get(event.get("type"),event.get("type"))
                 page=str(event.get("page","")).split("?")[0].split("#")[0].strip("/").removesuffix(".html")
                 page={"":"home","index":"home"}.get(page,page)
                 if typ not in EVENTS or page not in PAGES:
@@ -60,35 +60,43 @@ class Operations:
         first_s,last_s=first.date().isoformat(),last.date().isoformat()
         with self.store.connect() as conn:
             orders=conn.execute("SELECT * FROM orders WHERE created_at>=? AND created_at<?",(first_ms,last_ms)).fetchall()
-            paid=[row for row in orders if row["status"]=="delivered"]
-            revenue={c:sum(row["total"] for row in paid if row["currency"]==c) for c in ("AR","CM")}
+            sales=conn.execute("""SELECT oi.*,o.user_id,o.currency,o.created_at FROM order_items oi JOIN orders o ON o.id=oi.order_id
+                WHERE o.created_at>=? AND o.created_at<? AND o.status NOT IN ('cancelled','refunded')
+                AND (o.status='delivered' OR EXISTS(SELECT 1 FROM actions a WHERE a.order_id=o.id
+                    AND a.action='purchase.deliver' AND a.idempotency_key=o.id||':'||oi.item_id AND a.status='executed'))""",(first_ms,last_ms)).fetchall()
+            paid_ids={row["order_id"] for row in sales}
+            revenue={c:sum(row["quantity"]*row["price"] for row in sales if row["currency"]==c) for c in ("AR","CM")}
             rubles=conn.execute("SELECT COALESCE(SUM(amount),0) FROM payments WHERE status='completed' AND currency='RUB' AND created_at>=? AND created_at<?",(first_ms,last_ms)).fetchone()[0]
             events=[{"day":row["day"],"type":row["event"],"page":row["path"],"count":row["count"]} for row in conn.execute("SELECT * FROM analytics WHERE day>=? AND day<=?",(first_s,last_s))]
             visitors=conn.execute("SELECT count(*) FROM analytics_visitors WHERE day>=? AND day<=?",(first_s,last_s)).fetchone()[0]
-            top=[{"id":row["item_id"],"name":row["name"],"qty":row["qty"],"revenue":row["revenue"],"currency":row["currency"],"orders":row["orders"]} for row in conn.execute(
-                "SELECT oi.item_id,MAX(oi.name) name,SUM(oi.quantity) qty,SUM(oi.quantity*oi.price) revenue,o.currency,COUNT(DISTINCT o.id) orders FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE o.status='delivered' AND o.created_at>=? AND o.created_at<? GROUP BY oi.item_id,o.currency ORDER BY revenue DESC LIMIT 100",(first_ms,last_ms))]
+            grouped={}
+            for row in sales:
+                item=grouped.setdefault((row["item_id"],row["currency"]),{"id":row["item_id"],"name":row["name"],"qty":0,"revenue":0,"currency":row["currency"],"orders":0})
+                item["qty"]+=row["quantity"];item["revenue"]+=row["quantity"]*row["price"];item["orders"]+=1
+            top=sorted(grouped.values(),key=lambda item:item["revenue"],reverse=True)[:100]
             days={}
-            for row in paid:
+            for row in sales:
                 day=datetime.fromtimestamp(row["created_at"]/1000,timezone.utc).date().isoformat()
-                days.setdefault(day,{"at":day,"AR":0,"CM":0,"rubles":0})[row["currency"]]+=row["total"]
+                days.setdefault(day,{"at":day,"AR":0,"CM":0,"rubles":0})[row["currency"]]+=row["quantity"]*row["price"]
             for row in conn.execute("SELECT * FROM payments WHERE status='completed' AND currency='RUB' AND created_at>=? AND created_at<?",(first_ms,last_ms)):
                 day=datetime.fromtimestamp(row["created_at"]/1000,timezone.utc).date().isoformat()
                 days.setdefault(day,{"at":day,"AR":0,"CM":0,"rubles":0})["rubles"]+=row["amount"]
-        buyers=len({row["user_id"] for row in paid})
+        buyers=len({row["user_id"] for row in sales})
         pages={}
         for event in events:
             if event["type"]=="page_view":
                 pages[event["page"]]=pages.get(event["page"],0)+event["count"]
-        return {"from":first_s,"to":last_s,"revenue":revenue,"rubles":rubles,"orders":len(paid),"buyers":buyers,
-            "items":sum(row["qty"] for row in top),"visits":sum(pages.values()),"visitors":visitors,
-            "conversion":buyers/visitors*100 if visitors else 0,"conversionDefinition":"delivered-order buyers / consenting daily anonymous visitors; not a linked-user funnel",
+        return {"from":first_s,"to":last_s,"revenue":revenue,"rubles":rubles,"orders":len(paid_ids),"buyers":buyers,
+            "items":sum(row["quantity"] for row in sales),"visits":sum(pages.values()),"visitors":visitors,
+            "conversion":buyers/visitors*100 if visitors else 0,"conversionDefinition":"buyers with at least one delivered order line / consenting daily anonymous visitors; not a linked-user funnel",
             "top":top,"pending":sum(row["status"] in ("awaiting_delivery","partially_delivered") for row in orders),
-            "failed":sum(row["status"] in ("failed","partially_failed") for row in orders),
+            "failed":sum(row["status"] in ("failed","partially_failed","refunded") for row in orders),
+            "refunded":sum(row["status"]=="refunded" for row in orders),
             "days":[days[day] for day in sorted(days)],"pages":[{"page":p,"count":n} for p,n in sorted(pages.items(),key=lambda x:-x[1])],
             "events":events}
 
     def map_settings(self):
-        return self.store.setting("map_settings",dict(DEFAULT_MAP))
+        return {**DEFAULT_MAP,**self.store.setting("map_settings",dict(DEFAULT_MAP))}
 
     def map_settings_update(self,body,user,session):
         self.require(user,session,"map.manage",True)
@@ -99,18 +107,18 @@ class Operations:
             raise APIError(400,"Unsupported map setting.")
         with self.store.transaction() as conn:
             actor=self.actor_current(conn,user,session,"map.manage",True)
-            current=self.store.setting("map_settings",dict(DEFAULT_MAP),conn)
+            current={**DEFAULT_MAP,**self.store.setting("map_settings",dict(DEFAULT_MAP),conn)}
             if "version" in body and body["version"]!=current["version"]:
                 raise APIError(409,"Map settings changed.","version_conflict")
-            for field in ("enabled","showPlayers"):
+            for field in ("enabled","autoRefresh","showPlayers"):
                 if field in body:
                     if not isinstance(body[field],bool):
                         raise APIError(400,"Expected a boolean map setting.")
                     current[field]=body[field]
             for field in ("intervalMinutes","minAgeMinutes","playerDelayMinutes"):
                 if field in body:
-                    current[field]=integer(body[field],1 if field!="minAgeMinutes" else 0,43200,field)
-            current["playerDelayMinutes"]=max(current["playerDelayMinutes"],current["minAgeMinutes"],1)
+                    current[field]=integer(body[field],1 if field=="intervalMinutes" else 0,43200 if field=="intervalMinutes" else 10080,field)
+            current["playerDelayMinutes"]=max(current["playerDelayMinutes"],current["minAgeMinutes"])
             current["version"]+=1
             self.store.set_setting(conn,"map_settings",current)
             self.store.audit(conn,actor["id"],"map.settings","map",why,current)
@@ -124,13 +132,21 @@ class Operations:
             settings=self.store.setting("map_settings",dict(DEFAULT_MAP),conn)
             if not settings["enabled"]:
                 raise APIError(409,"Map publishing is disabled.")
-            pending=conn.execute("SELECT * FROM jobs WHERE kind='map' AND status IN ('queued','running','awaiting_age') ORDER BY created_at DESC LIMIT 1").fetchone()
+            self.recover_map_leases(conn,now_ms())
+            pending=conn.execute("SELECT * FROM jobs WHERE kind='map' AND status IN ('queued','running') ORDER BY created_at DESC LIMIT 1").fetchone()
             if pending:
                 return {"job":self.job_row(pending)}
             job=identifier()
-            conn.execute("INSERT INTO jobs VALUES(?,?,?,?,?,?,NULL)",(job,"map","queued",now_ms(),now_ms(),encoded({"policyVersion":settings["version"]})))
+            conn.execute("INSERT INTO jobs(id,kind,status,created_at,updated_at,payload) VALUES(?,?,?,?,?,?)",(job,"map","queued",now_ms(),now_ms(),encoded({"policyVersion":settings["version"]})))
             self.store.audit(conn,actor["id"],"map.refresh","map",why,{"jobId":job})
             return {"job":self.job_row(conn.execute("SELECT * FROM jobs WHERE id=?",(job,)).fetchone())}
+
+    def recover_map_leases(self,conn,at):
+        stale=conn.execute("SELECT id FROM jobs WHERE kind='map' AND status='running' AND (lease_until IS NULL OR lease_until<=?)",(at,)).fetchall()
+        for row in stale:
+            conn.execute("UPDATE jobs SET status='failed',updated_at=?,error=?,lease_until=NULL,lease_owner=NULL WHERE id=?",(at,"The map worker lease expired. A new render may now be queued.",row["id"]))
+            self.store.audit(conn,"map-worker","map.lease_expired","map","A stopped worker cannot publish an orphaned render",{"jobId":row["id"]})
+        return len(stale)
 
     @staticmethod
     def job_row(row):
@@ -145,7 +161,7 @@ class Operations:
             args=[now_ms()-settings["minAgeMinutes"]*60000]
             if publication_id:
                 query+=" AND id=?";args.append(publication_id)
-            query+=" ORDER BY published_at DESC LIMIT 1"
+            query+=" ORDER BY captured_at DESC,published_at DESC LIMIT 1"
             row=conn.execute(query,args).fetchone()
             return dict(row) if row else None
 
@@ -168,3 +184,4 @@ class Operations:
         self.require(user,session,"audit.read")
         with self.store.connect() as conn:
             return {"entries":[dict(row,payload=json.loads(row["payload"])) for row in conn.execute("SELECT * FROM audit ORDER BY sequence DESC LIMIT 1000")]}
+

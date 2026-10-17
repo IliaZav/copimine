@@ -1,30 +1,64 @@
-# Backend integration boundaries
+# Рабочие интеграции v6
 
-All review interactions are local unless the user explicitly imports a file. Do not wire the public HTML directly to Minecraft, a database, RCON, SMTP, SMS or a secret-bearing skin provider. The prototype has no production authorization boundary.
+## Граница между просмотром и рабочим сайтом
 
-## Player identity and assigned skin
-Use the server's authoritative player UUID/profile mapping, including its offline UUID rules. Read the assigned skin texture from the actual configured skin store/provider used by that server and client. Do not assume the Mojang profile for a matching nickname is the skin of an offline player. A vanilla/default fallback must say it is a fallback.
-Current project uses CustomSkinLoader; inspect the first-party configured endpoint/store before choosing a new provider. SkinsRestorer can be an alternative adapter, not an automatically installed replacement. API documentation: https://skinsrestorer.net/docs/troubleshooting/common-issues and /docs/troubleshooting/proxy-mode. Licensing/online mode alone must not determine which skin is displayed.
-Proposed authenticated response: playerId, minecraftUuid, nickname, skin.textureUrl, skin.source, skin.updatedAt. Proxy only allowlisted texture hosts, enforce size and image dimensions, cache by content hash; protect against SSRF. Head and full preview derive from the SAME texture. Support classic/slim and 64x32 legacy skins explicitly in the production renderer. Local imported flat renderer approximates the classic front/back view, not an interactive 3D skin engine.
+index.html и CopiMine_v6.html содержат автономный режим просмотра. server.py отдаёт отдельный server-index.html: без демонстрационной роли, тестовых аккаунтов и доверия к localStorage. Данные игрока поступают через /api/v6/session и /api/v6/state. Переключатель просмотра существует только в автономном файле.
 
-## Inventories and structured events
-Capture snapshots safely on the game thread, serialize bounded DTOs, then send asynchronously. Include player UUID, capturedAt, source version, 0..35 slots, armor 100..103, offhand -106, stable material ID, count, enchantments, custom ID/model/components and durability. Never call the supplied demo inventory 'live'. Mark stale snapshots and disconnected agents.
-GET /admin/players/:id/inventory; GET /admin/players/:id/events?cursor=...; GET /admin/events/stream (SSE) are proposed contracts, not implemented routes. Gate per-role access and audit searches/exports. Use a bounded event buffer, backpressure, replay cursor and separate heartbeat. The browser retains the same header/search shell.
-Translate actions from an explicit per-plugin adapter. Keep timestamp, source, actor, action ID, target/material, location and correlation ID. Raw log mode groups stack traces under a timestamp/severity/source header and escapes HTML. Redact passwords, PINs, tokens, /login and related commands BEFORE storage or streaming; the front-end redactor is only a second barrier. Unknown log formats are retained honestly. No claim that generic parsing recognizes every plugin message.
-Private role-play plugin events: started/completed/failed recipes, used item, status applied/cleared, transferred/confiscated item, configuration changed. Do not expose the plugin or these events in public endpoints, search indices, shop data or event teasers.
+## Аккаунты и права
 
-## Recovery: site / login plugin / bank PIN
-Different scopes and permissions; one cannot reset the other accidentally. Read existing verified contacts from the account; never let a support operator type an arbitrary destination and seize an account. Require recent privileged reauthentication/MFA, a reason and immutable audit. Do not reveal existing passwords/hashes/PINs and do not email permanent passwords.
-Backend creates cryptographically random, single-use, hashed reset tokens tied to user+scope+expiry; rate-limit issuance and verification, maximum attempts, CAPTCHA/abuse controls as appropriate. Notify the existing contact, require confirmation, invalidate relevant sessions. New secret chosen by the owner; plugin reset must use the supported plugin API on the correct thread, not SQL edits or shell concatenation. Reference: https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html.
-Local UI has six-digit codes visible ONLY in demo outbox, 10-minute expiry, 5 attempts, 60-second issuance interval. It is NOT a production reset service. Site password demo uses WebCrypto; if unavailable it fails visibly instead of weakening hashing. Plugin/PIN completion remains not-connected and sends no command.
+Сеансы хранятся на сервере; cookie HttpOnly, Secure в HTTPS, SameSite. Изменяющие запросы требуют CSRF-токен и проверку Origin. Пароли хешируются scrypt. Для команды обязательно TOTP; повторный код не принимается. Чувствительные операции требуют недавнего подтверждения входа, причины и аудита. Неизвестная роль не получает доступ. Права проверяются внутри транзакции по текущей записи пользователя.
 
-## Mail and SMS adapter
-services/notifications.py provides default preview output, an SMTP transport (SSL or STARTTLS), and SMS.RU HTTPS POST integration. Credentials come only from environment; template services/notifications.env.example is blank. No network calls on import and no automatic real-send CLI. It is not connected to the browser and not a running mail/SMS server.
-To activate in a future backend: configure a verified sender/relay, TLS credentials, sender-domain DNS with your provider, SMS account/sender and explicit administrator test recipient. Handle idempotency in the queue. Distinguish accepted from delivered; provider status/webhook must be validated before recording delivery. SMS API response must be checked per number, not only top-level status. No redirect following for bearer credentials and no automatic retry that could duplicate charges. Docs: https://sms.ru/docs/api/api_group_sms/send ; https://sms.ru/docs/api/api_group_sms/status . Actual delivery was NOT tested, no account/credentials supplied.
+Назначение игровых UUID выполняет оператор после проверки; регистрация не захватывает чужой UUID по нику. У администратора остаются обычный кабинет и настройки. Дополнительная кнопка управления отражает права текущего серверного сеанса.
 
-## Commerce, elections, treasury, map and CMS
-Checkout price/visibility/recipient/stock/limits are server-authoritative. Atomic AR/CM ledgers; verified payment webhook; idempotent delivery with plugin acknowledgement; no grant based on browser state. Retain the already chosen UI, not its trust model.
-Election programmes, review, phases and eligibility must use the existing election-core state machine; actual votes/results must not be invented by the website. Treasury is an auditable ledger, with controlled corrections rather than deleting money history. The prototype's phase progression is review scaffolding, not a replacement for detailed RP law workflows.
-The private recipe designer stores local drafts, versions and ingredients, not a faithful translation of every cauldron rule. Existing source config uses ordered material/potion descriptors and effect metadata. Preserve those on import/export; 3x3 ingredient presentation must NOT silently become a vanilla crafting recipe. Integrate real plugin schema validation before enabling apply/reload.
-Publish map snapshots at fixed 12-hour intervals only after a minimum 12-hour age; effective staleness 12..24 hours, server-enforced. Atomic immutable snapshot pointer for terrain + approved markers, no direct public access to current renderer output. No coordinates of online players. Site map zones are annotations, not protection regions unless explicitly integrated.
-CMS: draft vs published versions, escaped text/allowlisted formatting, image size checks, revision conflicts and audit. Never publish raw admin config, provider secrets or private event information.
+## Почта, SMS и VK ID
+
+Notifications связывает одноразовые коды с подтверждённым контактом, текущим браузером и версией безопасности аккаунта. Код живёт 10 минут, имеет 5 попыток и интервал повторного запроса 60 секунд. Очередь получателей и кодов зашифрована; отправка через SMTP/TLS и SMS.RU выполняется notification-worker. Доставка с неизвестным результатом не повторяется автоматически.
+
+VK использует серверный Authorization Code + PKCE S256, state, device_id, узкую HttpOnly-cookie потока и подтверждённый user_info. Токены VK не сохраняются. Связывание по совпавшему имени или email запрещено. Существующий профиль привязывается владельцем после недавнего подтверждения входа. Все способы сохраняют обязательный TOTP служебных ролей. Восстановление пароля отзывает прежние сеансы.
+
+Настройки SMTP, SMS.RU и VK находятся вне сайта. Мастер scripts/configure_auth.py записывает их без изменения исходников. Конкретные параметры, callback и проверка — в AUTH_PROVIDERS.md.
+
+## Инвентари и игровой профиль
+
+Кнопка обновления создаёт типизированную задачу inventory.refresh для связанного UUID. Плагин снимает инвентарь, броню, вторую руку, эндер-сундук и разрешённые поля профиля на игровом потоке. Адаптер передаёт подписанный снимок. Отсутствие снимка отображается как отсутствие данных.
+
+Изменения слотов сверяют expectedSnapshotId и предмет в ячейке. Изменившийся инвентарь требует нового снимка. При отсутствии подтверждённой текстуры используется явно обозначенный стандартный скин; совпадение ника с чужой текстурой не считается подтверждением личности.
+
+## Действия и таймеры
+
+Источник списка — текущий обработчик CopiMineUltimateAdminPlus и действующие консольные обработчики. Полное сопоставление находится в data/admin-actions.json и docs/ADMIN_COVERAGE.md. Параметры имеют ограниченные типы и диапазоны. Произвольного ввода команд на сайте нет.
+
+Переходы состояния: queued → dispatched → executed / failed. Принятие команды транспортом не означает исполнение. Подписанная квитанция включает UUID операции, её результат и время. Потерянное подтверждение оставляет задачу для сверки. Отмена и истечение наказания создают соответствующее обратное действие; счётчик интерфейса сам по себе не отменяет наказание на сервере.
+
+Часы API и игрового хоста должны быть синхронизированы. Для небольшого расхождения времени поле executedAt принимается от created_at операции минус 60 секунд до текущего времени API плюс 60 секунд. Подпись, существующий UUID, состояние dispatched, уникальность квитанции и защита от повторного исполнения всё равно обязательны. Этот допуск не продлевает срок наказания и не разрешает выполнять ещё не отправленную задачу.
+
+Расширения родных плагинов находятся в integrations/game-bridge. Они исполняют доступные действия без присутствия администратора в игре. Действия, требующие его положения, выбранного блока или предмета в руке, перечислены как исключения.
+
+## Покупки и балансы
+
+Цена, валюта, доступность, получатель, количество, тираж и лимиты определяются сервером. Корзина AR + CM оформляется одной транзакцией: недостаток любой валюты или ошибка очереди откатывает весь заказ. Повторный idempotencyKey возвращает ранее созданный результат.
+
+DONATION_SHOP ограничен одним активным экземпляром на UUID / предмет согласно родной фабрике. Другие предметы сохраняют собственные ограничения. Суточные, недельные и месячные лимиты используют последние 24 часа, 7 и 30 дней; общий лимит учитывает все строки корзины вместе.
+
+Сайт использует собственный журнал AR/CM. Изменение баланса EconomyCore — отдельная подтверждаемая игровая операция через атомарный метод плагина. Выдача Artifacts использует его фабрику и фиксацию каждой единицы, а не замену на предмет с похожим названием.
+
+## Платежи
+
+server/payments.py создаёт оплату, сохраняет ссылку продолжения, проверяет уведомления повторным серверным запросом и обеспечивает однократное начисление. Платёж с неизвестным результатом создания не заменяется бесконечно новым платежом. Подробная настройка находится в DEPLOYMENT.md.
+
+## Карты
+
+Карта отображает предоставленный мир, а не условную схему. Рендерер читает архив или папку сервера, проверяет стабильность чтения региона, строит пирамиду изображений и сохраняет происхождение снимка. Незавершённая генерация не публикуется как поверхность. Снимок между регионами не является атомарной резервной копией игрового сервера.
+
+Публикация копирует проверенные изображения в отдельную версию, проверяет ссылки на каждую плитку и атомарно меняет указатель. Незавершённый рендер не подменяет опубликованную карту. Отдельный map-worker отвечает за расписание, задержку и повтор задач. Публичные маркеры учитывают настройку показа и задержку; сырые снимки профилей не выдаются посетителям.
+
+## Контент и аналитика
+
+Каталог, настройки, страницы, FAQ и галерея сохраняют версии. Несовпадение версии возвращает 409 и защищает чужое изменение. Причина сохраняется в журнале администрации. Черновик страницы не заменяет опубликованную версию до отдельной публикации.
+
+События аналитики отправляются только после согласия. Передаётся ограниченный набор типов событий и идентификаторов товаров; текст поискового запроса, пароль и содержимое обращения не являются параметрами события. Продажи и платежи берутся из серверных записей. CSV экранирует формулы таблиц.
+
+## Развёртывание
+
+Этот архив содержит код интеграций и проверенную сборку. Для действующего сайта оператор устанавливает плагины и службы, связывает UUID, задаёт собственные ключи, пути и реквизиты. Архив не изменяет работающий сервер автоматически. В QA.md перечислены выполненные проверки; тест провайдера с заглушкой не обозначается реальным списанием.
+

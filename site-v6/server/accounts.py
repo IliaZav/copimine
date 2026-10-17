@@ -65,6 +65,7 @@ class Accounts:
         if not user:
             return None
         result = {"id":user["id"],"name":user["name"],"role":user["role"],"enabled":bool(user["enabled"]),
+            "displayName":user.get("display_name") or user["name"],
             "AR":user["ar"],"CM":user["cm"],"balanceAR":user["ar"],"balanceCM":user["cm"],
             "permissions":sorted(PERMISSIONS.get(user["role"],set())), "gameUUID":user["game_uuid"],
             "gameName":user["game_name"],"gameLinkVerified":bool(user["game_link_verified"])}
@@ -225,3 +226,4 @@ class Accounts:
             conn.execute("UPDATE actions SET status='cancelled',updated_at=? WHERE target_id=? AND status='queued'",(now_ms(),row["id"]))
             self.store.audit(conn,"local-owner-cli","account.game-link",row["id"],"Operator verified Minecraft identity",{"uuid":game_uuid,"name":game_name})
         return {"id":row["id"],"gameUUID":game_uuid,"gameName":game_name}
+

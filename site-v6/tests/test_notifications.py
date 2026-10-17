@@ -12,6 +12,16 @@ class GatewayTests(unittest.TestCase):
  def test_unverified_refused(self):
   with tempfile.TemporaryDirectory() as d:
    with self.assertRaises(DeliveryError):NotificationGateway({},Path(d)).send_code('email','a@b.test','123456',verified=False)
+ def test_contact_verification_requires_explicit_challenge_purpose(self):
+  with tempfile.TemporaryDirectory() as d:
+   gateway=NotificationGateway({},Path(d))
+   try:
+    result=gateway.send_code('email','a@b.test','123456',verified=False,purpose='verify_contact',contact_challenge=True)
+   except TypeError:
+    self.fail('The trusted contact challenge must be a distinct supported delivery purpose')
+   self.assertEqual(result['status'],'local-preview')
+   for purpose,challenge in [('login',True),('recovery',True),('verify_contact',False)]:
+    with self.assertRaises(DeliveryError):gateway.send_code('email','a@b.test','123456',verified=False,purpose=purpose,contact_challenge=challenge)
  def test_live_needs_configuration(self):
   with tempfile.TemporaryDirectory() as d:
    with self.assertRaises(DeliveryError):NotificationGateway({'CM_NOTIFY_MODE':'live'},Path(d)).send_code('sms','+79990000000','123456',verified=True)

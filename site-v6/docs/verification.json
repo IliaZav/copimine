@@ -1,362 +1,471 @@
 {
+  "version": 6,
+  "verifiedAt": "2026-10-17T06:38:33.741Z",
   "browser": {
-    "passed": [
-      "31 public catalogue items / private items excluded",
-      "Persistent header and admin top",
-      "Live function results / wrong keyboard / opening result",
-      "Player dropdown with heads / empty snapshot not fabricated",
-      "Native inventory armor offhand quantity details",
-      "Import actual snapshot JSON / selected player validation",
-      "Offline skin PNG import / head and body from same texture",
-      "Action preserves scroll; no reload",
-      "Formatted Russian actions and grouped technical stack traces",
-      "Log import multiline redaction",
-      "Live local event updates / pause / resume without refresh",
-      "Recipe material picker RU EN ID / quantities / save / publish",
-      "Private plugin actions remain in administration",
-      "One-time recovery / local outbox / cannot replay",
-      "Player nomination / programme / administrative review page",
-      "Surface map from archive covers four regions",
-      "1440px home: no horizontal overflow",
-      "1440px home: no broken images",
-      "1440px player: no horizontal overflow",
-      "1440px player: no broken images",
-      "1440px logs: no horizontal overflow",
-      "1440px logs: no broken images",
-      "1440px recipes: no horizontal overflow",
-      "1440px recipes: no broken images",
-      "1440px shop: no horizontal overflow",
-      "1440px shop: no broken images",
-      "1440px elections: no horizontal overflow",
-      "1440px elections: no broken images",
-      "1440px register: no horizontal overflow",
-      "1440px register: no broken images",
-      "1440px material picker: no broken images",
-      "768px home: no horizontal overflow",
-      "768px home: no broken images",
-      "768px player: no horizontal overflow",
-      "768px player: no broken images",
-      "768px logs: no horizontal overflow",
-      "768px logs: no broken images",
-      "768px recipes: no horizontal overflow",
-      "768px recipes: no broken images",
-      "768px shop: no horizontal overflow",
-      "768px shop: no broken images",
-      "768px elections: no horizontal overflow",
-      "768px elections: no broken images",
-      "768px register: no horizontal overflow",
-      "768px register: no broken images",
-      "768px material picker: no broken images",
-      "390px home: no horizontal overflow",
-      "390px home: no broken images",
-      "390px player: no horizontal overflow",
-      "390px player: no broken images",
-      "390px logs: no horizontal overflow",
-      "390px logs: no broken images",
-      "390px recipes: no horizontal overflow",
-      "390px recipes: no broken images",
-      "390px shop: no horizontal overflow",
-      "390px shop: no broken images",
-      "390px elections: no horizontal overflow",
-      "390px elections: no broken images",
-      "390px register: no horizontal overflow",
-      "390px register: no broken images",
-      "390px material picker: no broken images"
-    ],
-    "failed": [],
-    "runtimeErrors": []
-  },
-  "routeCoverage": {
-    "features": 41,
-    "aliases": 675,
-    "checks": [
+    "name": "Chromium",
+    "majorVersion": 153,
+    "automation": "Playwright",
+    "viewports": [
       {
-        "route": "admin/players?sub=profile",
-        "pass": true,
-        "heading": "Игроки\nDemoBuilder\nПрофиль\nИнвентарь\nДействия\nПомощь со входом\nЗаявки на доступ\nDemoBuilder\n\nСтандар"
+        "width": 1440,
+        "height": 1000
       },
       {
-        "route": "admin/players?sub=inventory",
-        "pass": true,
-        "heading": "Игроки\nDemoBuilder\nПрофиль\nИнвентарь\nДействия\nПомощь со входом\nЗаявки на доступ\nDemoBuilder\n\nСтандар"
-      },
-      {
-        "route": "admin/players?sub=activity",
-        "pass": true,
-        "heading": "Игроки\nDemoBuilder\nПрофиль\nИнвентарь\nДействия\nПомощь со входом\nЗаявки на доступ\nDemoBuilder\n\nСтандар"
-      },
-      {
-        "route": "admin/players?sub=access",
-        "pass": true,
-        "heading": "Игроки\nDemoBuilder\nПрофиль\nИнвентарь\nДействия\nПомощь со входом\nЗаявки на доступ\nDemoBuilder\n\nСтандар"
-      },
-      {
-        "route": "admin/players?sub=whitelist",
-        "pass": true,
-        "heading": "Игроки\nПрофили\nИнвентари\nДоступ на сервер\n\nЗаявка → решение → очередь синхронизации с сервером.\n\nСоз"
-      },
-      {
-        "route": "admin/shop?sub=catalog",
-        "pass": true,
-        "heading": "Магазин\nВ магазин\nКаталог\nВсе заказы\nВыдача\nЦены\n41 предметов\nНовый товар\nПредмет\tКатегория\tЦена\tПуб"
-      },
-      {
-        "route": "admin/shop?sub=orders",
-        "pass": true,
-        "heading": "Магазин\nВ магазин\nКаталог\nВсе заказы\nВыдача\nЦены\n2 записей\nЗаказ / получатель\tПредмет\tСумма\tСтатус\t\n"
-      },
-      {
-        "route": "admin/shop?sub=delivery",
-        "pass": true,
-        "heading": "Магазин\nВ магазин\nКаталог\nВсе заказы\nВыдача\nЦены\n1 записей\nЗаказ / получатель\tПредмет\tСумма\tСтатус\t\n"
-      },
-      {
-        "route": "admin/shop?sub=history",
-        "pass": true,
-        "heading": "Магазин\nВ магазин\nКаталог\nВсе заказы\nВыдача\nЦены\nДата\tТовар\tБыло\tСтало\tПричина\nЗаписей пока нет."
-      },
-      {
-        "route": "admin/finance?sub=accounts",
-        "pass": true,
-        "heading": "Финансы\nСчета\nПлатежи\nЖурнал\nКазна\nИгрок\tAR\tCM\t\nDemoBuilder\t1 800 AR\t1 200 CM\t\nОперация\nDemoTrader\t6"
-      },
-      {
-        "route": "admin/finance?sub=payments",
-        "pass": true,
-        "heading": "Финансы\nСчета\nПлатежи\nЖурнал\nКазна\n\nПовторное подтверждение не зачисляет деньги второй раз.\n\nСтраниц"
-      },
-      {
-        "route": "admin/finance?sub=ledger",
-        "pass": true,
-        "heading": "Финансы\nСчета\nПлатежи\nЖурнал\nКазна\nВремя\tИгрок\tИзменение\tОснование\nЗаписей пока нет."
-      },
-      {
-        "route": "admin/finance?sub=treasury",
-        "pass": true,
-        "heading": "Финансы\nСчета\nПлатежи\nЖурнал\nКазна\nКазна\nБАЛАНС AR\n0\nДобавить операцию\n\nКаждая правка — отдельная за"
-      },
-      {
-        "route": "admin/world?sub=map",
-        "pass": true,
-        "heading": "Мир и карта\nПубличная карта\nКарта и зоны\nСобытия\nВыборы\nЗаконы\nИгровые точки\nКарта и зоны\n\nРедактиро"
-      },
-      {
-        "route": "admin/world?sub=elections",
-        "pass": true,
-        "heading": "Мир и карта\nПубличная карта\nКарта\nСобытия\nВыборы\nЗаконы\nТочки\nВыборы\n\nНовая кампания: заявки, провер"
-      },
-      {
-        "route": "admin/world?sub=laws",
-        "pass": true,
-        "heading": "Мир и карта\nПубличная карта\nКарта и зоны\nСобытия\nВыборы\nЗаконы\nИгровые точки\n\nСогласованные тексты и"
-      },
-      {
-        "route": "admin/world?sub=events",
-        "pass": true,
-        "heading": "Мир и карта\nПубличная карта\nКарта и зоны\nСобытия\nВыборы\nЗаконы\nИгровые точки\n\nАнонсы отдельно от вну"
-      },
-      {
-        "route": "admin/world?sub=points",
-        "pass": true,
-        "heading": "Мир и карта\nПубличная карта\nКарта и зоны\nСобытия\nВыборы\nЗаконы\nИгровые точки\n\nБанкоматы, лавки и точ"
-      },
-      {
-        "route": "admin/moderation?sub=tickets",
-        "pass": true,
-        "heading": "Модерация\nОбращения\nРасследования\nБлокировки\nАнтичит\nВсе\nНовые\nВ работе\nЗакрытые\n2 обращений\nОбращен"
-      },
-      {
-        "route": "admin/moderation?sub=cases",
-        "pass": true,
-        "heading": "Модерация\nОбращения\nРасследования\nБлокировки\nАнтичит\n\nФакты, область проверки и решение в одном деле"
-      },
-      {
-        "route": "admin/moderation?sub=anticheat",
-        "pass": true,
-        "heading": "Модерация\nОбращения\nРасследования\nБлокировки\nАнтичит\n\nСигнал не равен доказанному нарушению.\n\nИмпорт"
-      },
-      {
-        "route": "admin/logs",
-        "pass": true,
-        "heading": "Журналы\nДействия\nТехнические\nИмпорт\nЭкспорт\nВсе игроки\nDemoTrader\nDemoBuilder\nВсе источники\nCopiMine"
-      },
-      {
-        "route": "admin/recipes",
-        "pass": true,
-        "heading": "Рецепты\nРецепты\nДействия плагина\nРецепты\n\nПока пусто.\n\nИмпорт JSON\nНовый рецепт\n\nВыбери ингредиенты,"
-      },
-      {
-        "route": "admin/recipes?sub=events",
-        "pass": true,
-        "heading": "Рецепты\nРецепты\nДействия плагина\nДействия\nТехнические\nИмпорт\nЭкспорт\nВсе игроки\nDemoTrader\nDemoBuild"
-      },
-      {
-        "route": "admin/content?sub=pages&id=rules",
-        "pass": true,
-        "heading": "Контент\nОткрыть сайт\nСтраницы\nГлавная\nГалерея\nВопросы\nНавигация\nЗагрузки\nDiscord\nСтраницы\nПравила се"
-      },
-      {
-        "route": "admin/content?sub=gallery",
-        "pass": true,
-        "heading": "Контент\nОткрыть сайт\nСтраницы\nГлавная\nГалерея\nВопросы\nНавигация\nЗагрузки\nDiscord\n\nНастоящие скриншот"
-      },
-      {
-        "route": "admin/content?sub=faq",
-        "pass": true,
-        "heading": "Контент\nОткрыть сайт\nСтраницы\nГлавная\nГалерея\nВопросы\nНавигация\nЗагрузки\nDiscord\n\nОпубликованные воп"
-      },
-      {
-        "route": "admin/content?sub=home",
-        "pass": true,
-        "heading": "Контент\nОткрыть сайт\nСтраницы\nГлавная\nГалерея\nВопросы\nНавигация\nЗагрузки\nDiscord\nПервый экран\nЗаголо"
-      },
-      {
-        "route": "admin/content?sub=downloads",
-        "pass": true,
-        "heading": "Контент\nОткрыть сайт\nСтраницы\nГлавная\nГалерея\nВопросы\nНавигация\nЗагрузки\nDiscord\nАрхив модов\n\nCopiMi"
-      },
-      {
-        "route": "admin/content?sub=links",
-        "pass": true,
-        "heading": "Контент\nОткрыть сайт\nСтраницы\nГлавная\nГалерея\nВопросы\nНавигация\nЗагрузки\nDiscord\nСообщество\nID серве"
-      },
-      {
-        "route": "admin/statistics",
-        "pass": true,
-        "heading": "Статистика\nМагазин\nПоддержка\nСервер\n7 дней\n30 дней\n90 дней\nCSV\nИсточник: записи локальной базы прото"
-      },
-      {
-        "route": "admin/access",
-        "pass": true,
-        "heading": "Команда и доступ\nУчастники\nПрава ролей\nСессии и политика\nАудит\nУчастник\tРоль\tДоступ\t\nDemoAdmin\tВладе"
-      },
-      {
-        "route": "admin/access?sub=audit",
-        "pass": true,
-        "heading": "Команда и доступ\nУчастники\nПрава ролей\nСессии и политика\nАудит\nЭкспорт журнала\nВремя\tАвтор\tДействие\t"
-      },
-      {
-        "route": "admin/access?sub=messages",
-        "pass": true,
-        "heading": "Команда и доступ\nКоманда\nПочта и SMS\nПисьма и SMS\n\nЛокальный просмотр. Ни одно сообщение не отправле"
-      },
-      {
-        "route": "admin/system?sub=notifications",
-        "pass": true,
-        "heading": "Система\nПочта и SMS\n\nОтправка выключена. Ключи и пароли задаются на сервере, не в HTML.\n\nSMTP\nНе под"
-      },
-      {
-        "route": "admin/system?sub=plugins",
-        "pass": true,
-        "heading": "Система\nПодключения\nПлагины\nЗадания\nЖурнал\nРезервные копии\nЭкономика\n\nОсновные ограничения операций "
-      },
-      {
-        "route": "admin/system?sub=jobs",
-        "pass": true,
-        "heading": "Система\nПодключения\nПлагины\nЗадания\nЖурнал\nРезервные копии\n\nПовторная попытка создаёт запись. Действ"
-      },
-      {
-        "route": "admin/system?sub=backups",
-        "pass": true,
-        "heading": "Система\nПодключения\nПлагины\nЗадания\nЖурнал\nРезервные копии\nРезервная копия прототипа\n\nКаталог, стран"
-      },
-      {
-        "route": "admin/system?sub=integrations",
-        "pass": true,
-        "heading": "Система\nПодключения\nПлагины\nЗадания\nЖурнал\nРезервные копии\nИнтеграции\nMinecraft\n\nСобытия, выдача, мо"
-      },
-      {
-        "route": "admin/world?sub=elections",
-        "pass": true,
-        "heading": "Мир и карта\nПубличная карта\nКарта\nСобытия\nВыборы\nЗаконы\nТочки\nВыборы\n\nНовая кампания: заявки, провер"
-      },
-      {
-        "route": "admin/finance?sub=treasury",
-        "pass": true,
-        "heading": "Финансы\nСчета\nПлатежи\nЖурнал\nКазна\nКазна\nБАЛАНС AR\n0\nДобавить операцию\n\nКаждая правка — отдельная за"
-      },
-      {
-        "route": "admin/content?sub=gallery",
-        "pass": true,
-        "heading": "Контент\nОткрыть сайт\nСтраницы\nГлавная\nГалерея\nВопросы\nНавигация\nЗагрузки\nDiscord\n\nНастоящие скриншот"
-      },
-      {
-        "route": "admin/content?sub=downloads",
-        "pass": true,
-        "heading": "Контент\nОткрыть сайт\nСтраницы\nГлавная\nГалерея\nВопросы\nНавигация\nЗагрузки\nDiscord\nАрхив модов\n\nCopiMi"
-      },
-      {
-        "route": "settings/contacts",
-        "pass": true,
-        "heading": "Настройки\n\nПрофиль, способы входа и устройства.\n\nВ кабинет\nПрофиль\nСпособы входа\nУстройства\nИнтерфей"
-      },
-      {
-        "route": "settings/devices",
-        "pass": true,
-        "heading": "Настройки\n\nПрофиль, способы входа и устройства.\n\nВ кабинет\nПрофиль\nСпособы входа\nУстройства\nИнтерфей"
-      },
-      {
-        "route": "account",
-        "pass": true,
-        "heading": "Привет, DemoBuilder.\n\nПокупки, баланс и ответы команды — здесь.\n\nВыйти\nОбзор\nПокупки\nПлатежи\nОбращен"
-      },
-      {
-        "route": "account/elections",
-        "pass": true,
-        "heading": "Выборы\nОбзор\nПокупки\nПлатежи\nОбращения\nВыборы\nКазна\nНастройки\nВыборы пока не объявлены\n\nЗдесь появят"
-      },
-      {
-        "route": "account/treasury",
-        "pass": true,
-        "heading": "Казна\nОбзор\nПокупки\nПлатежи\nОбращения\nВыборы\nКазна\nНастройки\nНА СЧЁТЕ\n0 AR\n\nДанные локального протот"
-      },
-      {
-        "route": "account/support",
-        "pass": true,
-        "heading": "Привет, DemoBuilder.\n\nПокупки, баланс и ответы команды — здесь.\n\nВыйти\nОбзор\nПокупки\nПлатежи\nОбращен"
-      },
-      {
-        "route": "cart",
-        "pass": true,
-        "heading": "Корзина\n\nЗдесь будут выбранные предметы.\n\nПродолжить выбор\nКорзина пуста\n\nДобавь предметы из магазин"
-      },
-      {
-        "route": "donate",
-        "pass": true,
-        "heading": "Донат\n\nПополнение CM для покупок в магазине.\n\nИстория платежей\nСколько CM добавить?\n\nСумма и получат"
-      },
-      {
-        "route": "map",
-        "pass": true,
-        "heading": "Карта мира\n\nОриентиры, города и общие территории.\n\nСнимок, не прямой эфир\n\nПубликация каждые 12 часо"
-      },
-      {
-        "route": "auth/register",
-        "pass": true,
-        "heading": "Один аккаунт\nдля CopiMine\n\nПокупки, обращения и вход в игру.\n\nИстория заказов\nПодключённые устройств"
-      },
-      {
-        "route": "home",
-        "pass": true,
-        "heading": "Строй. Торгуй.\nИграй с друзьями.\n\nMinecraft-сервер с экономикой, выборами и событиями.\n\nНачать играт"
-      },
-      {
-        "route": "legacy-transfer-audit-bridge",
-        "pass": true
-      },
-      {
-        "route": "sidebar-exits-live-search",
-        "pass": true
+        "width": 390,
+        "height": 844
       }
     ],
-    "runtimeErrors": []
+    "deviceScaleFactor": 1.5,
+    "oneBrowserAtATime": true
   },
-  "additional": {
-    "checks": [
-      "Mobile C: 40x40 contain, native proportions preserved",
-      "Imported log action and event modal escape hostile metadata",
-      "Confirmed logout, cancel logout, registration remember option"
-    ],
-    "errors": []
+  "modes": [
+    "static-preview-localhost",
+    "server-localhost-isolated-fixtures",
+    "enabled-auth-browser-interception",
+    "standalone-file-url"
+  ],
+  "suites": [
+    {
+      "report": "qa-v6/reports/v6-report.json",
+      "mode": "preview",
+      "tests": [],
+      "testCount": 0,
+      "passed": 0,
+      "layoutSamples": 18,
+      "javascriptErrors": [],
+      "serverFailures": []
+    },
+    {
+      "report": "qa-v6/reports/v6-interactions.json",
+      "mode": "preview",
+      "tests": [
+        {
+          "name": "Inventory and ender use independent snapshots",
+          "pass": true
+        },
+        {
+          "name": "Global search handles typo and wrong keyboard layout",
+          "pass": true
+        },
+        {
+          "name": "Give picker returns items with a stable chosen ID",
+          "pass": true
+        },
+        {
+          "name": "Timed ban counts down and can be revoked with a reason",
+          "pass": true
+        },
+        {
+          "name": "Personal purchase limit creates and removes in finance",
+          "pass": true
+        },
+        {
+          "name": "Shop cart changes count without replacing main and keeps focus",
+          "pass": true
+        },
+        {
+          "name": "Product dialog cart keeps the dialog and keyboard focus",
+          "pass": true
+        },
+        {
+          "name": "Donation preserves consent checkbox and custom input state",
+          "pass": true
+        },
+        {
+          "name": "Map renders all three real dimensions and coordinate navigation",
+          "pass": true
+        },
+        {
+          "name": "Mobile dialog and map controls fit viewport",
+          "pass": true
+        }
+      ],
+      "testCount": 10,
+      "passed": 10,
+      "layoutSamples": 0,
+      "javascriptErrors": [],
+      "serverFailures": []
+    },
+    {
+      "report": "qa-v6/reports/v6-live-report.json",
+      "mode": "http://127.0.0.1:8787",
+      "tests": [
+        {
+          "name": "Guest forged localStorage does not grant account or administration",
+          "pass": true
+        },
+        {
+          "name": "Consent sends public event to real API and revocation clears visitor",
+          "pass": true
+        },
+        {
+          "name": "Player password login receives only own profile and denied admin API",
+          "pass": true
+        },
+        {
+          "name": "Player logout clears the server identity",
+          "pass": true
+        },
+        {
+          "name": "Registration creates an ordinary account in the isolated database",
+          "pass": true
+        },
+        {
+          "name": "Owner requires password and current TOTP and receives live administration",
+          "pass": true
+        },
+        {
+          "name": "Analytics report uses API aggregates and contains no demo orders",
+          "pass": true
+        },
+        {
+          "name": "Balance action writes to QA server state and survives refresh",
+          "pass": true
+        },
+        {
+          "name": "Live published map loads three dimensions from protected map publication",
+          "pass": true
+        },
+        {
+          "name": "Live analytics and player profile fit mobile without page overflow",
+          "pass": true
+        },
+        {
+          "name": "Owner logout removes administration and cached private rows",
+          "pass": true
+        }
+      ],
+      "testCount": 11,
+      "passed": 11,
+      "layoutSamples": 0,
+      "javascriptErrors": [],
+      "serverFailures": []
+    },
+    {
+      "report": "qa-v6/reports/v6-admin-report.json",
+      "mode": "live isolated QA database",
+      "tests": [
+        {
+          "name": "Material library: 1658 entries, namespaced search, detail and pagination",
+          "pass": true
+        },
+        {
+          "name": "Catalog UI save, optimistic version conflict and original price restore",
+          "pass": true
+        },
+        {
+          "name": "CMS create, save private draft, publish, keep later draft private, hide",
+          "pass": true
+        },
+        {
+          "name": "Site settings UI save increments version and keeps reason private",
+          "pass": true
+        },
+        {
+          "name": "FAQ two UI saves: unpublished question stays private then publishes, versions refresh",
+          "pass": true
+        },
+        {
+          "name": "Gallery metadata saves, image preserved and optimistic versions refresh",
+          "pass": true
+        },
+        {
+          "name": "Donation rendering: completed becomes paid, test payment excluded from support total",
+          "pass": true
+        },
+        {
+          "name": "Audit search loads real private reasons, logout clears cached entries",
+          "pass": true
+        }
+      ],
+      "testCount": 8,
+      "passed": 8,
+      "layoutSamples": 20,
+      "javascriptErrors": [],
+      "serverFailures": []
+    },
+    {
+      "report": "qa-v6/reports/v6-preview-admin-report.json",
+      "mode": "offline preview with clearly marked sample accounts",
+      "tests": [
+        {
+          "name": "Compact mobile search trigger opens working wrong-layout search",
+          "pass": true
+        },
+        {
+          "name": "New catalogue editor saves within isolated preview state",
+          "pass": true
+        },
+        {
+          "name": "New site settings form saves in preview",
+          "pass": true
+        },
+        {
+          "name": "Preview CMS metadata recovery, draft save and publication history",
+          "pass": true
+        },
+        {
+          "name": "12 default search destinations and direct gallery result",
+          "pass": true
+        }
+      ],
+      "testCount": 5,
+      "passed": 5,
+      "layoutSamples": 20,
+      "javascriptErrors": [],
+      "serverFailures": []
+    },
+    {
+      "report": "qa-v6/reports/v6-public-report.json",
+      "mode": "preview",
+      "tests": [],
+      "testCount": 0,
+      "passed": 0,
+      "layoutSamples": 0,
+      "javascriptErrors": [],
+      "serverFailures": []
+    },
+    {
+      "report": "qa-v6/reports/v6-auth-report.json",
+      "mode": "Actual v6 UI with browser-intercepted API fixtures; no providers contacted",
+      "tests": [
+        {
+          "name": "Offline login/register/code/VK/connections are honest and send no API calls",
+          "pass": true
+        },
+        {
+          "name": "Provider availability resolves without replacing login fields or checkbox",
+          "pass": true
+        },
+        {
+          "name": "Email code validates, keeps challenge on error, preserves remember and submits optional TOTP",
+          "pass": true
+        },
+        {
+          "name": "SMS recovery submits the channel, confirmation code and new password",
+          "pass": true
+        },
+        {
+          "name": "Code cooldown and expiration update in place and allow a new challenge",
+          "pass": true
+        },
+        {
+          "name": "Contact binding, incorrect code, password re-entry on resend and removal",
+          "pass": true
+        },
+        {
+          "name": "Contact and VK removal require 2FA for the protected owner",
+          "pass": true
+        },
+        {
+          "name": "VK new-account callback requires CopiMine fields and rules",
+          "pass": true
+        },
+        {
+          "name": "VK existing account preserves mandatory 2FA and retries invalid code",
+          "pass": true
+        },
+        {
+          "name": "VK callbacks cover automatic login, linked account, explicit and unknown errors",
+          "pass": true
+        },
+        {
+          "name": "Fresh verification asks password for players, password and TOTP for staff",
+          "pass": true
+        },
+        {
+          "name": "Unavailable providers remain disabled on live screens",
+          "pass": true
+        },
+        {
+          "name": "Mobile login, recovery, VK callback and connections fit 390px",
+          "pass": true
+        },
+        {
+          "name": "VK start preserves remember and navigates only to the intercepted canonical provider",
+          "pass": true
+        }
+      ],
+      "testCount": 14,
+      "passed": 14,
+      "layoutSamples": 11,
+      "javascriptErrors": [],
+      "serverFailures": []
+    },
+    {
+      "report": "qa-v6/reports/v6-final-live-report.json",
+      "mode": "Restarted live local API with separate QA database; order/payment fixtures intercepted in browser only",
+      "tests": [
+        {
+          "name": "Actual provider status disables unconfigured VK/email/SMS without sending",
+          "pass": true
+        },
+        {
+          "name": "Live own contacts render unverified primary email and disabled provider actions",
+          "pass": true
+        },
+        {
+          "name": "Grouped order history and partial refund detail show every line and actual refund",
+          "pass": true
+        },
+        {
+          "name": "Fully refunded detail uses the order status and returned total",
+          "pass": true
+        },
+        {
+          "name": "Donations exclude test payments, retain state labels and reject unsafe checkout URL",
+          "pass": true
+        },
+        {
+          "name": "Year analytics range reaches the actual backend and respects date limits",
+          "pass": true
+        }
+      ],
+      "testCount": 6,
+      "passed": 6,
+      "layoutSamples": 5,
+      "javascriptErrors": [],
+      "serverFailures": []
+    },
+    {
+      "report": "qa-v6/reports/v6-standalone-report.json",
+      "mode": "direct file URL, fresh browser context",
+      "tests": [
+        {
+          "name": "Hand-drawn cookie and favicon variants decode from embedded data",
+          "pass": true
+        },
+        {
+          "name": "Offline VK/email/SMS controls are disabled and callbacks explain availability",
+          "pass": true
+        },
+        {
+          "name": "Three actual world rasters render and differ without network",
+          "pass": true
+        },
+        {
+          "name": "New admin sections, 41+27 inventory slots, six sample ender items and typo search work",
+          "pass": true
+        },
+        {
+          "name": "Mobile CMS and map fit 390 pixels",
+          "pass": true
+        },
+        {
+          "name": "No HTTP(S) requests, request failures or JavaScript exceptions",
+          "pass": true
+        }
+      ],
+      "testCount": 6,
+      "passed": 6,
+      "layoutSamples": 0,
+      "javascriptErrors": [],
+      "serverFailures": []
+    }
+  ],
+  "unitTests": {
+    "command": "node tests/ui-search-analytics.test.cjs",
+    "passed": 7,
+    "failed": 0,
+    "report": "qa-v6/reports/ui-unit-final.txt"
+  },
+  "backendTests": {
+    "command": "python -m unittest discover -s server/tests -v",
+    "passed": 87,
+    "failed": 0,
+    "seconds": 38.576,
+    "report": "qa-v6/reports/backend-final.txt",
+    "provenance": "Full team run; complete output included"
+  },
+  "standalone": {
+    "name": "CopiMine_v6.html",
+    "bytes": 20944037,
+    "sha256": "6774a3ae7663aa9f69c1d9b2f5390bfa78c9d58cb4b694fe66ba63acb94f3537",
+    "directFileURL": true,
+    "httpRequests": 0,
+    "requestFailures": 0,
+    "javascriptErrors": 0,
+    "worlds": [
+      {
+        "id": "overworld",
+        "canvasSha256": "82330d24244fb77f2df31351dab68d4bc15253c3ab3b2bc80fc1ccf00d328f68",
+        "quantizedColors": 235
+      },
+      {
+        "id": "nether",
+        "canvasSha256": "c1154a1255069337e3eb1f4fbbafcda243c0b9dac6f675fffc9f3c6e2b072dc9",
+        "quantizedColors": 276
+      },
+      {
+        "id": "end",
+        "canvasSha256": "fdb027cfd1020c4a44a9b964e9093acec8191c32d8865e41459a57741fc2f905",
+        "quantizedColors": 71
+      }
+    ]
+  },
+  "search": {
+    "staticDestinations": 24,
+    "initialDestinations": 12,
+    "source": "assets/js/search-v6.js",
+    "index": "FEATURES.json",
+    "dynamicTypes": [
+      "players",
+      "catalogue items",
+      "Minecraft materials",
+      "orders",
+      "permitted actions"
+    ]
+  },
+  "screenshots": [
+    "qa-v6/screenshots/v6-standalone-desktop-profile.png",
+    "qa-v6/screenshots/v6-standalone-desktop-map-overworld.png",
+    "qa-v6/screenshots/v6-standalone-mobile-map.png",
+    "qa-v6/screenshots/v6-desktop-shop.png",
+    "qa-v6/screenshots/v6-desktop-donate.png",
+    "qa-v6/screenshots/v6-admin-desktop-cms-draft.png",
+    "qa-v6/screenshots/v6-final-desktop-analytics-year.png",
+    "qa-v6/screenshots/v6-auth-mobile-login.png"
+  ],
+  "notExercised": [
+    "Real email or SMS delivery",
+    "Actual VK identity provider",
+    "Real monetary payment",
+    "Minecraft runtime command execution",
+    "Safari or Firefox",
+    "Screen reader or physical mobile device"
+  ],
+  "privacy": {
+    "productionCredentialsUsed": false,
+    "testDatabaseInsideSite": false,
+    "realProviderMessagesSent": false,
+    "enabledAuthUsesInterceptedResponses": true,
+    "financialDisplayFixturesPersistedToDatabase": false
+  },
+  "permissionRegression": {
+    "test": "Same account loses analytics.read: cached report and CSV inaccessible, late response discarded",
+    "passed": true
+  },
+  "sourceHashes": {
+    "assets/js/auth-v6.js": "7abe4f4e121a6b28431e66e8caf0428eaf55d400b1f25016aef8c6e85f14d729",
+    "assets/js/analytics-v6.js": "f71cffeaa6e539cb104660659fceb9f205c08c776efbcb55dc21d3b696dc2584",
+    "assets/js/search-v6.js": "7cbe50a0771b1a20947facd847a9b17396beefe6512d74158ca43d6d0de17da8",
+    "assets/css/polish-v6.css": "c06c3a1e38790f50e22531b08b0c844f74b002097bd88d1ee22fb74940a714ce",
+    "assets/js/bridge-v6.js": "a60f58483f7e52fde61a5aa95c8f52dc9fdf755c16e911a6f23bdcbe1f46812b",
+    "assets/js/admin-v6.js": "6540d6f1f4a74b6eddb4bada6092ddb42c75a09724572f85863859fea954e8b9",
+    "tests/ui-search-analytics.test.cjs": "33b54b67c33c5423c1a28a873fd286f700f35122a19f4fa99dff781c2520a3a5"
+  },
+  "productionHttp": {
+    "server": "Waitress 3.0.2",
+    "passed": 8,
+    "scope": "Loopback and simulated trusted TLS proxy; no external provider requests",
+    "report": "qa-v6/reports/waitress-smoke.json"
+  },
+  "operatorSetup": {
+    "passed": 3,
+    "test": "tests/test_auth_setup.py"
+  },
+  "pythonTools": {
+    "passed": 18,
+    "report": "qa-v6/reports/python-tools-final.txt"
   }
 }

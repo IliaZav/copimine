@@ -1,0 +1,740 @@
+{
+  "repository": "IliaZav/copimine",
+  "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+  "sourceLockCommit": "3e1dcc5543890568045389539dd1fe60ebf91163",
+  "path": "copimine-artifacts/items.yml",
+  "gitBlob": "8d564579d1b10dd44edce6b409e8951abf93bd28",
+  "sha256": "c528a1d1c7ec8e186b0d362a5eaafd16e16099ba04edfdc202696741b7c85ce8",
+  "total": 41,
+  "public": 31,
+  "restricted": 8,
+  "admin": 2,
+  "branchConflict": {
+    "commit": "3bfbed91e2b363be10af228f84704eec03c30cf8",
+    "reason": "New gameplay branch changes the reviewed catalog; source-lock kept for this site."
+  },
+  "nameOverrides": [
+    {
+      "id": "smena_bez_perekura_pickaxe",
+      "sourceName": "Кирка «Смена без перекура»",
+      "displayName": "Кирка спешки"
+    },
+    {
+      "id": "lesnoy_bespredel_axe",
+      "sourceName": "Топор «Лесной беспредел»",
+      "displayName": "Топор лесоруба"
+    },
+    {
+      "id": "kopatel_transhey_shovel",
+      "sourceName": "Лопата «Копатель траншей»",
+      "displayName": "Лопата кладоискателя"
+    },
+    {
+      "id": "fermer_bez_sna_hoe",
+      "sourceName": "Мотыга «Фермер без сна»",
+      "displayName": "Мотыга фермера"
+    },
+    {
+      "id": "dezhurniy_argument_sword",
+      "sourceName": "Меч «Дежурный аргумент»",
+      "displayName": "Меч ослабления"
+    },
+    {
+      "id": "vechniy_razgon_firework",
+      "sourceName": "Фейерверк «Вечный разгон II»",
+      "displayName": "Бесконечный фейерверк"
+    },
+    {
+      "id": "eternal_totem",
+      "sourceName": "Тотем бессмертия — бесконечный",
+      "displayName": "Бесконечный тотем"
+    },
+    {
+      "id": "treasurer_chestplate",
+      "sourceName": "Нагрудник Казначея",
+      "displayName": "Нагрудник казначея"
+    },
+    {
+      "id": "copimine_miner_pickaxe",
+      "sourceName": "Кирка CopiMine Miner",
+      "displayName": "Кирка шахтёра"
+    },
+    {
+      "id": "kozyrny_tuz_pozdnyakova",
+      "sourceName": "Козырный туз Позднякова",
+      "displayName": "Наградные поножи"
+    },
+    {
+      "id": "batin_remen_sudnogo_dnya",
+      "sourceName": "Батин Ремень Судного Дня",
+      "displayName": "Громовой топор"
+    },
+    {
+      "id": "nu_ty_i_nakopal_blyat_pickaxe",
+      "sourceName": "Кирка \"Ну ты и накопал, блять\"",
+      "displayName": "Кирка ловчего"
+    },
+    {
+      "id": "kosa_nalogovoy_inspekcii",
+      "sourceName": "Коса Налоговой Инспекции",
+      "displayName": "Коса казначея"
+    },
+    {
+      "id": "kaska_prorab_huev",
+      "sourceName": "Каска \"Прораб хуев\"",
+      "displayName": "Каска строителя"
+    },
+    {
+      "id": "mne_pohuy_ya_v_tanke_vest",
+      "sourceName": "Жилет \"Мне похуй, я в танке\"",
+      "displayName": "Боевой жилет"
+    },
+    {
+      "id": "ne_segodnya_suka_shield",
+      "sourceName": "Щит \"Не сегодня, сука\"",
+      "displayName": "Щит"
+    },
+    {
+      "id": "pohuy_na_debaffy_amulet",
+      "sourceName": "Амулет \"Похуй на дебаффы\"",
+      "displayName": "Амулет очищения"
+    },
+    {
+      "id": "vremya_platit_nalogi_clock",
+      "sourceName": "Часы \"Время платить налоги\"",
+      "displayName": "Часы казначея"
+    }
+  ],
+  "icons": [
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/zmei_gorynych.png",
+      "gitBlob": "2c4d98c8a6d1465b97dc598a82a132d8325e1a6a",
+      "sha256": "7bcd5f42fde2b1e95f54e48b8b2c151efdbdb2985aa5995a131b7c8a84b8e697",
+      "bytes": 363,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "zmei_gorynych",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/zmei_gorynych.json",
+      "sourceDimensions": [
+        16,
+        16
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "7bcd5f42fde2b1e95f54e48b8b2c151efdbdb2985aa5995a131b7c8a84b8e697"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/repair_kit.png",
+      "gitBlob": "9af32e4ad962bdb0e9b209229698b40aaf3ed199",
+      "sha256": "0216444bd1dabd5c67b750f3b866d2c4f3ae78954200a85478aac898f53333ae",
+      "bytes": 346,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "repair_kit",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/repair_kit.json",
+      "sourceDimensions": [
+        32,
+        32
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "0216444bd1dabd5c67b750f3b866d2c4f3ae78954200a85478aac898f53333ae"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/return_stone.png",
+      "gitBlob": "4da02580e2cc717a8acbe6f45a4e842d2e7963c8",
+      "sha256": "f544d2dd5574537623fe55c1a493b82dd15bedc31895f113fad812ddea8efc6c",
+      "bytes": 342,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "return_stone",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/return_stone.json",
+      "sourceDimensions": [
+        32,
+        32
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "f544d2dd5574537623fe55c1a493b82dd15bedc31895f113fad812ddea8efc6c"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/gravedigger_contract.png",
+      "gitBlob": "c490a1769c1bad6e5ca99b6818212ea0b270c3f7",
+      "sha256": "7587abb17b4a7201baf36d97ae8ea058eeba330f4538d0c1faba86d6f623d60c",
+      "bytes": 337,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "gravedigger_contract",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/gravedigger_contract.json",
+      "sourceDimensions": [
+        32,
+        32
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "7587abb17b4a7201baf36d97ae8ea058eeba330f4538d0c1faba86d6f623d60c"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/signal_bell.png",
+      "gitBlob": "82eee8c76c6d43ac3c9f2a91b59c91cf457d2026",
+      "sha256": "9787f9bb40596f77ad54f68690d20ed842fadbbd523c97617220f277236ee495",
+      "bytes": 284,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "signal_bell",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/signal_bell.json",
+      "sourceDimensions": [
+        32,
+        32
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "9787f9bb40596f77ad54f68690d20ed842fadbbd523c97617220f277236ee495"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/angel_seal.png",
+      "gitBlob": "571854171b305cb40fedc5abaae3c2d8f119db92",
+      "sha256": "8689279446251c2f5f9e841afba0d7c2442c9d46988dbe30e139e8733061fe47",
+      "bytes": 2044,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "angel_wings",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/angel_wings.json",
+      "sourceDimensions": [
+        32,
+        32
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "8689279446251c2f5f9e841afba0d7c2442c9d46988dbe30e139e8733061fe47"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/infinite_torch.png",
+      "gitBlob": "362e944652d90a1edf3bb9c7ca1f7fd14fdb0fc3",
+      "sha256": "3d3fbc8ad5c22462d7d3b3dd8f77ca65fcb8206e5312912f30ee41a9979bbf5a",
+      "bytes": 248,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "infinite_torch",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/infinite_torch.json",
+      "sourceDimensions": [
+        32,
+        32
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "3d3fbc8ad5c22462d7d3b3dd8f77ca65fcb8206e5312912f30ee41a9979bbf5a"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/teleport_bow.png",
+      "gitBlob": "a6b718714678fbab27e515f86afc38a4ec3eb01b",
+      "sha256": "3df4dca9bb034ba9d56a333f97d454b6d82d643be1113bb34ec2b5f6f44bd87e",
+      "bytes": 426,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "combat_crossbow",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/teleport_bow.json",
+      "sourceDimensions": [
+        32,
+        32
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "3df4dca9bb034ba9d56a333f97d454b6d82d643be1113bb34ec2b5f6f44bd87e"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/cobblestone_trail_bow.png",
+      "gitBlob": "8c13183f6999c13fd63f4bf496f1621bbfdfd4c5",
+      "sha256": "d146e2f6dce2fe9857218fa24e0c9db19194140f8ad2152fd046d1d779001bde",
+      "bytes": 293,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "cobblestone_trail_bow",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/cobblestone_trail_bow.json",
+      "sourceDimensions": [
+        32,
+        32
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "d146e2f6dce2fe9857218fa24e0c9db19194140f8ad2152fd046d1d779001bde"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/explosive_crossbow.png",
+      "gitBlob": "e4b3ef19e72bceb16d3524acc2cd4658276ae315",
+      "sha256": "2dab6f053e8d614203945d4d2e3ea5c66011e8fed1fc69a3fe440c89e5f3fd14",
+      "bytes": 429,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "explosive_crossbow",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/explosive_crossbow.json",
+      "sourceDimensions": [
+        32,
+        32
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "2dab6f053e8d614203945d4d2e3ea5c66011e8fed1fc69a3fe440c89e5f3fd14"
+    },
+    {
+      "path": "admin-web/frontend/assets/mc-icons/item/stick.png",
+      "gitBlob": "a6971ed3381a2271901550ff7778b5830f1b5510",
+      "sha256": "2b5a6b7202fcd3a45663ccf249fe87de076e8c735e0b6ab8a3bf2a812332b4ff",
+      "bytes": 136,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "streamer_stick",
+      "model": null,
+      "sourceDimensions": [
+        16,
+        16
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "2b5a6b7202fcd3a45663ccf249fe87de076e8c735e0b6ab8a3bf2a812332b4ff"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/recipe_note.png",
+      "gitBlob": "d83e245357102d43344b3958befed548accd3f79",
+      "sha256": "50e2b13ddac9c044ffc832714d154138210c4d464f2b4ec949f6070b915c7a52",
+      "bytes": 341,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "narcotic_recipe_feta",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/recipe_note.json",
+      "sourceDimensions": [
+        32,
+        32
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "50e2b13ddac9c044ffc832714d154138210c4d464f2b4ec949f6070b915c7a52"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/recipe_note.png",
+      "gitBlob": "d83e245357102d43344b3958befed548accd3f79",
+      "sha256": "50e2b13ddac9c044ffc832714d154138210c4d464f2b4ec949f6070b915c7a52",
+      "bytes": 341,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "narcotic_recipe_kola",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/recipe_note.json",
+      "sourceDimensions": [
+        32,
+        32
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "50e2b13ddac9c044ffc832714d154138210c4d464f2b4ec949f6070b915c7a52"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/recipe_note.png",
+      "gitBlob": "d83e245357102d43344b3958befed548accd3f79",
+      "sha256": "50e2b13ddac9c044ffc832714d154138210c4d464f2b4ec949f6070b915c7a52",
+      "bytes": 341,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "narcotic_recipe_girion",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/recipe_note.json",
+      "sourceDimensions": [
+        32,
+        32
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "50e2b13ddac9c044ffc832714d154138210c4d464f2b4ec949f6070b915c7a52"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/recipe_note.png",
+      "gitBlob": "d83e245357102d43344b3958befed548accd3f79",
+      "sha256": "50e2b13ddac9c044ffc832714d154138210c4d464f2b4ec949f6070b915c7a52",
+      "bytes": 341,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "narcotic_recipe_sbp",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/recipe_note.json",
+      "sourceDimensions": [
+        32,
+        32
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "50e2b13ddac9c044ffc832714d154138210c4d464f2b4ec949f6070b915c7a52"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/recipe_note.png",
+      "gitBlob": "d83e245357102d43344b3958befed548accd3f79",
+      "sha256": "50e2b13ddac9c044ffc832714d154138210c4d464f2b4ec949f6070b915c7a52",
+      "bytes": 341,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "narcotic_recipe_sos",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/recipe_note.json",
+      "sourceDimensions": [
+        32,
+        32
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "50e2b13ddac9c044ffc832714d154138210c4d464f2b4ec949f6070b915c7a52"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/recipe_note.png",
+      "gitBlob": "d83e245357102d43344b3958befed548accd3f79",
+      "sha256": "50e2b13ddac9c044ffc832714d154138210c4d464f2b4ec949f6070b915c7a52",
+      "bytes": 341,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "narcotic_recipe_drun",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/recipe_note.json",
+      "sourceDimensions": [
+        32,
+        32
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "50e2b13ddac9c044ffc832714d154138210c4d464f2b4ec949f6070b915c7a52"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/recipe_note.png",
+      "gitBlob": "d83e245357102d43344b3958befed548accd3f79",
+      "sha256": "50e2b13ddac9c044ffc832714d154138210c4d464f2b4ec949f6070b915c7a52",
+      "bytes": 341,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "narcotic_recipe_chups",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/recipe_note.json",
+      "sourceDimensions": [
+        32,
+        32
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "50e2b13ddac9c044ffc832714d154138210c4d464f2b4ec949f6070b915c7a52"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/recipe_note.png",
+      "gitBlob": "d83e245357102d43344b3958befed548accd3f79",
+      "sha256": "50e2b13ddac9c044ffc832714d154138210c4d464f2b4ec949f6070b915c7a52",
+      "bytes": 341,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "narcotic_recipe_borshevik",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/recipe_note.json",
+      "sourceDimensions": [
+        32,
+        32
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "50e2b13ddac9c044ffc832714d154138210c4d464f2b4ec949f6070b915c7a52"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/smena_bez_perekura_pickaxe.png",
+      "gitBlob": "ab5b1bcc89de7e4e0a8438d2ee63c82d226b9550",
+      "sha256": "52d89fc8d3ebd6073392ca86ebe01d5313b03a91a4e80bfd24dfad2f79b6b596",
+      "bytes": 313,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "smena_bez_perekura_pickaxe",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/smena_bez_perekura_pickaxe.json",
+      "sourceDimensions": [
+        16,
+        16
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "52d89fc8d3ebd6073392ca86ebe01d5313b03a91a4e80bfd24dfad2f79b6b596"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/lesnoy_bespredel_axe.png",
+      "gitBlob": "36919fda862b508430c920a61c0d31e7975c312d",
+      "sha256": "98e424cfe41bcabebf1afcd8bb00c744f6bfda8e10510aee546e7486e3dea999",
+      "bytes": 318,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "lesnoy_bespredel_axe",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/lesnoy_bespredel_axe.json",
+      "sourceDimensions": [
+        16,
+        16
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "98e424cfe41bcabebf1afcd8bb00c744f6bfda8e10510aee546e7486e3dea999"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/kopatel_transhey_shovel.png",
+      "gitBlob": "4b0b10d10e7aa39e458bd5a6881d4acaf973a25f",
+      "sha256": "eb4db0157311f6f231e40d6b7dd43d61ecce20d5e8767e3a8554f54fe7e6cd1b",
+      "bytes": 298,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "kopatel_transhey_shovel",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/kopatel_transhey_shovel.json",
+      "sourceDimensions": [
+        16,
+        16
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "eb4db0157311f6f231e40d6b7dd43d61ecce20d5e8767e3a8554f54fe7e6cd1b"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/fermer_bez_sna_hoe.png",
+      "gitBlob": "4adfd1e136e84aff06cbe5a47ef29628dc655129",
+      "sha256": "23a1de3e0a6b65797775953f2b693209c64d2566cfdf26885cdb5da6d936e3d3",
+      "bytes": 289,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "fermer_bez_sna_hoe",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/fermer_bez_sna_hoe.json",
+      "sourceDimensions": [
+        16,
+        16
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "23a1de3e0a6b65797775953f2b693209c64d2566cfdf26885cdb5da6d936e3d3"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/dezhurniy_argument_sword.png",
+      "gitBlob": "d586d84c0c90069230f8f7320e8e2f180d8993f0",
+      "sha256": "72e7d7b9411b08cd4aef3e8c3460726218cfa4c0830cdda0554db7fe37e784b8",
+      "bytes": 345,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "dezhurniy_argument_sword",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/dezhurniy_argument_sword.json",
+      "sourceDimensions": [
+        16,
+        16
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "72e7d7b9411b08cd4aef3e8c3460726218cfa4c0830cdda0554db7fe37e784b8"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/vechniy_razgon_firework.png",
+      "gitBlob": "3208565c96be7306e17ed53c76230a019c83ef11",
+      "sha256": "72c529b5e266c2ebde2494e284b34ec34dfdb4c2d46f93a99d83b8fc40b89491",
+      "bytes": 261,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "vechniy_razgon_firework",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/vechniy_razgon_firework.json",
+      "sourceDimensions": [
+        16,
+        16
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "72c529b5e266c2ebde2494e284b34ec34dfdb4c2d46f93a99d83b8fc40b89491"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/eternal_totem.png",
+      "gitBlob": "1067413b7aa963b6ab0b9ed80f53e94f4944dd2c",
+      "sha256": "fb6c97fdcc6cd1a1cea20c09b8f2e0d02053252945a026feb783800d31b9e997",
+      "bytes": 412,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "eternal_totem",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/eternal_totem.json",
+      "sourceDimensions": [
+        16,
+        16
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "fb6c97fdcc6cd1a1cea20c09b8f2e0d02053252945a026feb783800d31b9e997"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/treasurer_chestplate.png",
+      "gitBlob": "fcbe64bc906910517ce0f7093508e6935bb99789",
+      "sha256": "546cdf79dff30c1d0d40a39ad7c6a615474a746bf9ff1935b19c952d262eab1c",
+      "bytes": 555,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "treasurer_chestplate",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/treasurer_chestplate.json",
+      "sourceDimensions": [
+        16,
+        16
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "546cdf79dff30c1d0d40a39ad7c6a615474a746bf9ff1935b19c952d262eab1c"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/copimine_miner_pickaxe.png",
+      "gitBlob": "96890d640db3660eb22e5e37a7c38f533a522565",
+      "sha256": "c7531de797add4c05938fdd98b0a56997eadd72f4c877d86a8d1331f6e8edced",
+      "bytes": 304,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "copimine_miner_pickaxe",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/copimine_miner_pickaxe.json",
+      "sourceDimensions": [
+        16,
+        16
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "c7531de797add4c05938fdd98b0a56997eadd72f4c877d86a8d1331f6e8edced"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/craftsman_hammer.png",
+      "gitBlob": "628f94ef13eaf373b70e996224cb76337bad3f2c",
+      "sha256": "06a8fb487bf59375df59e2fd4c1f9b208e6204f3335b572b1221fb1e68c3a678",
+      "bytes": 379,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "craftsman_hammer",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/craftsman_hammer.json",
+      "sourceDimensions": [
+        16,
+        16
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "06a8fb487bf59375df59e2fd4c1f9b208e6204f3335b572b1221fb1e68c3a678"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/kozyrny_tuz_pozdnyakova.png",
+      "gitBlob": "64d578b2d38938818175450f533e19a0aecbcee8",
+      "sha256": "84ddf1eed73b48122a4f6723b1b15f32ebb0d555a8d8cd21ca1e06de515729af",
+      "bytes": 785,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "kozyrny_tuz_pozdnyakova",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/kozyrny_tuz_pozdnyakova.json",
+      "sourceDimensions": [
+        16,
+        16
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "84ddf1eed73b48122a4f6723b1b15f32ebb0d555a8d8cd21ca1e06de515729af"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/batin_remen_sudnogo_dnya.png",
+      "gitBlob": "3d82d3d3ebc85d7416a76af0768cc369e776fd61",
+      "sha256": "fb040de22554c62a0c69fe155c38b069e04f582db9db4b57fc0c9d0f55debc1e",
+      "bytes": 664,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "batin_remen_sudnogo_dnya",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/batin_remen_sudnogo_dnya.json",
+      "sourceDimensions": [
+        16,
+        16
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "fb040de22554c62a0c69fe155c38b069e04f582db9db4b57fc0c9d0f55debc1e"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/nu_ty_i_nakopal_blyat_pickaxe.png",
+      "gitBlob": "6bcc33e1cdb8cc3ef49d3e33313471d92af369f7",
+      "sha256": "dcae140954b4de36d1118c98a9bb4501dc6f32d10e9791a46923c6cadbd26722",
+      "bytes": 755,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "nu_ty_i_nakopal_blyat_pickaxe",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/nu_ty_i_nakopal_blyat_pickaxe.json",
+      "sourceDimensions": [
+        16,
+        16
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "dcae140954b4de36d1118c98a9bb4501dc6f32d10e9791a46923c6cadbd26722"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/kosa_nalogovoy_inspekcii.png",
+      "gitBlob": "6d358b0ef7241ddf882a97834b09b1bedcc208c4",
+      "sha256": "93657229e473d13527be255f0520af1b7621999e1855431b239754b9f72f540f",
+      "bytes": 676,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "kosa_nalogovoy_inspekcii",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/kosa_nalogovoy_inspekcii.json",
+      "sourceDimensions": [
+        16,
+        16
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "93657229e473d13527be255f0520af1b7621999e1855431b239754b9f72f540f"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/kaska_prorab_huev.png",
+      "gitBlob": "126b5a921a3a9760382851eccc554b8669002192",
+      "sha256": "cbeb3a3d240103402a40749311932f4ae294990eeb509cc544559c2f1acbe9f7",
+      "bytes": 742,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "kaska_prorab_huev",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/kaska_prorab_huev.json",
+      "sourceDimensions": [
+        16,
+        16
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "cbeb3a3d240103402a40749311932f4ae294990eeb509cc544559c2f1acbe9f7"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/mne_pohuy_ya_v_tanke_vest.png",
+      "gitBlob": "2e9acf3b5111fc1dc254990dce0eaa9c3458e161",
+      "sha256": "ef21b6803502c7a7f3b55fecd4deb71e5561090ed3b136a1011ba43846dfab85",
+      "bytes": 306,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "mne_pohuy_ya_v_tanke_vest",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/mne_pohuy_ya_v_tanke_vest.json",
+      "sourceDimensions": [
+        16,
+        16
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "ef21b6803502c7a7f3b55fecd4deb71e5561090ed3b136a1011ba43846dfab85"
+    },
+    {
+      "path": "admin-web/frontend/assets/mc-icons/item/empty_armor_slot_shield.png",
+      "gitBlob": "35e73102152a16c9c6e8ba32e4d496b8c1f60ae5",
+      "sha256": "ea0a9a662bbd54cdc0c56014e64012f3c024a2476a23f898da379515bd045d56",
+      "bytes": 169,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "ne_segodnya_suka_shield",
+      "model": null,
+      "sourceDimensions": [
+        16,
+        16
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "ea0a9a662bbd54cdc0c56014e64012f3c024a2476a23f898da379515bd045d56"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/pohuy_na_debaffy_amulet.png",
+      "gitBlob": "4409caa92f12144cc75a47a85f1e14064ad224b9",
+      "sha256": "b183b2591fa83f2a08a265afd6b8b97366b92f2400d5193e88bdb758c0706443",
+      "bytes": 681,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "pohuy_na_debaffy_amulet",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/pohuy_na_debaffy_amulet.json",
+      "sourceDimensions": [
+        16,
+        16
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "b183b2591fa83f2a08a265afd6b8b97366b92f2400d5193e88bdb758c0706443"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/vremya_platit_nalogi_clock.png",
+      "gitBlob": "da2c6de76afcf83514a7d52edb5534d90c1ccbb0",
+      "sha256": "f79ed3088cbdb626267e916227ef0bd988dfc13340fe0f9b0cc87ec2c19090e2",
+      "bytes": 4070,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "vremya_platit_nalogi_clock",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/vremya_platit_nalogi_clock.json",
+      "sourceDimensions": [
+        16,
+        1024
+      ],
+      "transform": "first-animation-frame",
+      "outputSHA256": "c9be90feaf784fd662bf1c4d7be20fd2540d9272f27f9b45d5f07448eb9034ed"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/berserker_heart.png",
+      "gitBlob": "d2d62759c22a44a70deb6d67206228a264af969e",
+      "sha256": "98bcf458b3d89fcd72d2e9be9e6edde7229189278e3729f2744601ed58c51357",
+      "bytes": 308,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "berserker_heart",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/berserker_heart.json",
+      "sourceDimensions": [
+        32,
+        32
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "98bcf458b3d89fcd72d2e9be9e6edde7229189278e3729f2744601ed58c51357"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/zhilorez_pickaxe.png",
+      "gitBlob": "73a9063124c163fb1e1cd043b63a12a992371fbe",
+      "sha256": "ad2c2d7cca7aad11dc8923af6207334705e2b135f2f4662a18f77e70442bc63f",
+      "bytes": 305,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "zhilorez_pickaxe",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/zhilorez_pickaxe.json",
+      "sourceDimensions": [
+        32,
+        32
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "ad2c2d7cca7aad11dc8923af6207334705e2b135f2f4662a18f77e70442bc63f"
+    },
+    {
+      "path": "resourcepacks/src/assets/copimine/textures/item/artifacts/night_cloak.png",
+      "gitBlob": "a2c7dcac135b97f7f9d855b7d03dcda1e2ce21ef",
+      "sha256": "ade4cadbedbcbe80935772dacd4958bd9c76731979b7632ee7c1b28665db036b",
+      "bytes": 316,
+      "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+      "id": "night_cloak",
+      "model": "resourcepacks/src/assets/copimine/models/item/artifacts/night_cloak.json",
+      "sourceDimensions": [
+        32,
+        32
+      ],
+      "transform": "exact-bytes",
+      "outputSHA256": "ade4cadbedbcbe80935772dacd4958bd9c76731979b7632ee7c1b28665db036b"
+    }
+  ],
+  "deliveryQuantityPolicy": {
+    "publicField": "maxQuantity",
+    "DONATION_SHOP": 1,
+    "other": 64,
+    "ownerBound": 1,
+    "reason": "Native createAdminGiftAsync forbids a second active or pending donation entitlement for the same UUID/itemId.",
+    "commit": "a16dc50002f3cde94a4f0e350a18fccd4e1c8bf5",
+    "path": "copimine-economy-core/src/me/copimine/economycore/CopiMineEconomyCore.java",
+    "gitBlobSha1": "aa0e72995de4ec8e44e21d5d7eee8de36477e00f",
+    "methods": [
+      "createAdminGiftAsync",
+      "hasOpenDonationEntitlement",
+      "lockDonationEntitlement"
+    ]
+  }
+}

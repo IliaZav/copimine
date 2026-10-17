@@ -1,0 +1,83 @@
+{
+  "verifiedAt": "2026-10-17T05:46:12.774944+00:00",
+  "result": "passed",
+  "manifestSHA256": "206ad920d5c834ccffc977ac354935d8935e3eceaddefb4cff473e291d2b4279",
+  "sourceSHA256": "fee5838c92bc34e3821c1f618501544a6e286cca98489666896b533c7c7b9ad2",
+  "sourceKind": "archive",
+  "images": 304,
+  "imageBytes": 9004046,
+  "regionFiles": 209,
+  "savedChunks": 137659,
+  "surfaceChunks": 99940,
+  "errors": 0,
+  "dimensions": [
+    {
+      "id": "overworld",
+      "regionFiles": 173,
+      "savedChunks": 118501,
+      "surfaceChunks": 88136,
+      "surfacePixels": 22562816,
+      "tiles": 230,
+      "overviewSize": [
+        1458,
+        1480
+      ],
+      "bounds": {
+        "minX": -10048,
+        "minZ": -10080,
+        "maxX": 4528,
+        "maxZ": 4720,
+        "width": 14576,
+        "height": 14800
+      }
+    },
+    {
+      "id": "nether",
+      "regionFiles": 32,
+      "savedChunks": 18317,
+      "surfaceChunks": 11723,
+      "surfacePixels": 2837158,
+      "tiles": 47,
+      "overviewSize": [
+        1126,
+        475
+      ],
+      "bounds": {
+        "minX": -1408,
+        "minZ": -1040,
+        "maxX": 1968,
+        "maxZ": 384,
+        "width": 3376,
+        "height": 1424
+      }
+    },
+    {
+      "id": "end",
+      "regionFiles": 4,
+      "savedChunks": 841,
+      "surfaceChunks": 81,
+      "surfacePixels": 20689,
+      "tiles": 24,
+      "overviewSize": [
+        144,
+        144
+      ],
+      "bounds": {
+        "minX": -64,
+        "minZ": -64,
+        "maxX": 80,
+        "maxZ": 80,
+        "width": 144,
+        "height": 144
+      }
+    }
+  ],
+  "checks": [
+    "All WebP files fully decoded",
+    "Exact manifest inventory",
+    "Every tile is 512 by 512 pixels",
+    "Finest-level alpha coverage equals source surface counts",
+    "Saved/visible/unfinished/empty chunk counts reconcile",
+    "Exclusive bounds and rectangular overview dimensions agree"
+  ]
+}

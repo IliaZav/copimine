@@ -1,0 +1,309 @@
+{
+  "at": "2026-10-17T06:14:34.425Z",
+  "mode": "offline preview with clearly marked sample accounts",
+  "screens": [
+    {
+      "device": "desktop",
+      "name": "catalog",
+      "route": "admin/shop",
+      "screenshotCaptured": "v6-preview-admin-desktop-catalog.png",
+      "width": 1440,
+      "viewport": 1440,
+      "broken": [],
+      "headerHeight": 65,
+      "searchHeight": 38,
+      "h2Size": "26px",
+      "enderItems": 0
+    },
+    {
+      "device": "desktop",
+      "name": "finance",
+      "route": "admin/finance?sub=payments",
+      "screenshotCaptured": "v6-preview-admin-desktop-finance.png",
+      "width": 1440,
+      "viewport": 1440,
+      "broken": [],
+      "headerHeight": 65,
+      "searchHeight": 38,
+      "h2Size": "26px",
+      "enderItems": 0
+    },
+    {
+      "device": "desktop",
+      "name": "access",
+      "route": "admin/access?sub=roles",
+      "screenshotCaptured": "v6-preview-admin-desktop-access.png",
+      "width": 1440,
+      "viewport": 1440,
+      "broken": [],
+      "headerHeight": 65,
+      "searchHeight": 38,
+      "h2Size": "26px",
+      "enderItems": 0
+    },
+    {
+      "device": "desktop",
+      "name": "logs",
+      "route": "admin/logs",
+      "screenshotCaptured": "v6-preview-admin-desktop-logs.png",
+      "width": 1440,
+      "viewport": 1440,
+      "broken": [],
+      "headerHeight": 65,
+      "searchHeight": 38,
+      "h2Size": "26px",
+      "enderItems": 0
+    },
+    {
+      "device": "desktop",
+      "name": "recipes",
+      "route": "admin/recipes",
+      "screenshotCaptured": "v6-preview-admin-desktop-recipes.png",
+      "width": 1440,
+      "viewport": 1440,
+      "broken": [],
+      "headerHeight": 65,
+      "searchHeight": 38,
+      "h2Size": "26px",
+      "enderItems": 0
+    },
+    {
+      "device": "desktop",
+      "name": "content",
+      "route": "admin/content?sub=pages",
+      "screenshotCaptured": "v6-preview-admin-desktop-content.png",
+      "width": 1440,
+      "viewport": 1440,
+      "broken": [],
+      "headerHeight": 65,
+      "searchHeight": 38,
+      "h2Size": "26px",
+      "enderItems": 0,
+      "correctedAfterNormalization": true
+    },
+    {
+      "device": "desktop",
+      "name": "materials",
+      "route": "admin/shop?sub=materials",
+      "screenshotCaptured": "v6-preview-admin-desktop-materials.png",
+      "width": 1440,
+      "viewport": 1440,
+      "broken": [],
+      "headerHeight": 65,
+      "searchHeight": 38,
+      "h2Size": "26px",
+      "enderItems": 0
+    },
+    {
+      "device": "desktop",
+      "name": "content-settings",
+      "route": "admin/content?sub=settings",
+      "screenshotCaptured": "v6-preview-admin-desktop-content-settings.png",
+      "width": 1440,
+      "viewport": 1440,
+      "broken": [],
+      "headerHeight": 65,
+      "searchHeight": 38,
+      "h2Size": "26px",
+      "enderItems": 0
+    },
+    {
+      "device": "desktop",
+      "name": "profile",
+      "route": "admin/players?player=demo-001&sub=profile",
+      "screenshotCaptured": "v6-desktop-profile.png",
+      "width": 1440,
+      "viewport": 1440,
+      "broken": [],
+      "headerHeight": 65,
+      "searchHeight": 38,
+      "h2Size": "26px",
+      "enderItems": 6
+    },
+    {
+      "device": "desktop",
+      "name": "account",
+      "width": 1440,
+      "enderItems": 6,
+      "enderSlots": 27
+    },
+    {
+      "device": "mobile",
+      "name": "catalog",
+      "route": "admin/shop",
+      "screenshotCaptured": "v6-preview-admin-mobile-catalog.png",
+      "width": 390,
+      "viewport": 390,
+      "broken": [],
+      "headerHeight": 48,
+      "searchHeight": 34,
+      "h2Size": "22px",
+      "enderItems": 0
+    },
+    {
+      "device": "mobile",
+      "name": "finance",
+      "route": "admin/finance?sub=payments",
+      "screenshotCaptured": "v6-preview-admin-mobile-finance.png",
+      "width": 390,
+      "viewport": 390,
+      "broken": [],
+      "headerHeight": 48,
+      "searchHeight": 34,
+      "h2Size": "22px",
+      "enderItems": 0
+    },
+    {
+      "device": "mobile",
+      "name": "access",
+      "route": "admin/access?sub=roles",
+      "screenshotCaptured": "v6-preview-admin-mobile-access.png",
+      "width": 390,
+      "viewport": 390,
+      "broken": [],
+      "headerHeight": 48,
+      "searchHeight": 34,
+      "h2Size": "22px",
+      "enderItems": 0
+    },
+    {
+      "device": "mobile",
+      "name": "logs",
+      "route": "admin/logs",
+      "screenshotCaptured": "v6-preview-admin-mobile-logs.png",
+      "width": 390,
+      "viewport": 390,
+      "broken": [],
+      "headerHeight": 48,
+      "searchHeight": 34,
+      "h2Size": "22px",
+      "enderItems": 0
+    },
+    {
+      "device": "mobile",
+      "name": "recipes",
+      "route": "admin/recipes",
+      "screenshotCaptured": "v6-preview-admin-mobile-recipes.png",
+      "width": 390,
+      "viewport": 390,
+      "broken": [],
+      "headerHeight": 48,
+      "searchHeight": 34,
+      "h2Size": "22px",
+      "enderItems": 0
+    },
+    {
+      "device": "mobile",
+      "name": "content",
+      "route": "admin/content?sub=pages",
+      "screenshotCaptured": "v6-preview-admin-mobile-content.png",
+      "width": 390,
+      "viewport": 390,
+      "broken": [],
+      "headerHeight": 48,
+      "searchHeight": 34,
+      "h2Size": "22px",
+      "enderItems": 0,
+      "correctedAfterNormalization": true
+    },
+    {
+      "device": "mobile",
+      "name": "materials",
+      "route": "admin/shop?sub=materials",
+      "screenshotCaptured": "v6-preview-admin-mobile-materials.png",
+      "width": 390,
+      "viewport": 390,
+      "broken": [],
+      "headerHeight": 48,
+      "searchHeight": 34,
+      "h2Size": "22px",
+      "enderItems": 0
+    },
+    {
+      "device": "mobile",
+      "name": "content-settings",
+      "route": "admin/content?sub=settings",
+      "screenshotCaptured": "v6-preview-admin-mobile-content-settings.png",
+      "width": 390,
+      "viewport": 390,
+      "broken": [],
+      "headerHeight": 48,
+      "searchHeight": 34,
+      "h2Size": "22px",
+      "enderItems": 0
+    },
+    {
+      "device": "mobile",
+      "name": "profile",
+      "route": "admin/players?player=demo-001&sub=profile",
+      "screenshotCaptured": "v6-mobile-profile.png",
+      "width": 390,
+      "viewport": 390,
+      "broken": [],
+      "headerHeight": 48,
+      "searchHeight": 34,
+      "h2Size": "22px",
+      "enderItems": 6
+    },
+    {
+      "device": "mobile",
+      "name": "account",
+      "width": 390,
+      "enderItems": 6,
+      "enderSlots": 27
+    }
+  ],
+  "tests": [
+    {
+      "name": "Compact mobile search trigger opens working wrong-layout search",
+      "pass": true
+    },
+    {
+      "name": "New catalogue editor saves within isolated preview state",
+      "pass": true,
+      "id": "zmei_gorynych"
+    },
+    {
+      "name": "New site settings form saves in preview",
+      "pass": true
+    },
+    {
+      "name": "Preview CMS metadata recovery, draft save and publication history",
+      "pass": true
+    },
+    {
+      "name": "12 default search destinations and direct gallery result",
+      "pass": true
+    }
+  ],
+  "errors": [],
+  "missingScripts": [],
+  "retest": {
+    "at": "2026-10-17T06:19:58.454Z",
+    "previousErrors": [
+      "Cannot read properties of undefined (reading 'title')",
+      "Cannot read properties of undefined (reading 'title')"
+    ],
+    "cause": "New published-only source pages lacked preview draft/history/version metadata",
+    "corrected": [
+      {
+        "device": "desktop",
+        "width": 1440,
+        "viewport": 1440,
+        "headerHeight": 65,
+        "searchHeight": 38
+      },
+      {
+        "device": "mobile",
+        "width": 390,
+        "viewport": 390,
+        "headerHeight": 48,
+        "searchHeight": 34
+      }
+    ],
+    "previewDraftAndPublish": true,
+    "searchDefaultCount": 12,
+    "searchGalleryDestination": true,
+    "errors": []
+  }
+}

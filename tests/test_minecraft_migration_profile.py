@@ -214,7 +214,7 @@ def test_new_setup_java_action_reference_is_immutable():
     github=(ROOT/'.github/workflows/ci.yml').read_text(encoding='utf-8')
 
     assert github.count('actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961') == 3
-    assert github.count('actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6') == 1
+    assert github.count('actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6') == 2
     assert 'actions/setup-java@v4' not in github
 
 

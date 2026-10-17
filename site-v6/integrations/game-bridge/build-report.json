@@ -22,7 +22,7 @@
     {
       "path": "copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java",
       "sourceSha256": "a3eb258941603ebc787973d662101e8b8dbb68fe8420d8428c75dd44003034fc",
-      "patchedSha256": "ddf3459b04865494ffd8383fe8451764e10a871f0161d669e33a8c083564be93"
+      "patchedSha256": "ae53a3dfbdbcad8ceb160b249484a9608dcfb18b50ca2f732d36257106ba747e"
     },
     {
       "path": "copimine-artifacts/config.yml",
@@ -1080,18 +1080,18 @@
   "jars": [
     {
       "name": "CopiMineUltimateAdminPlus.jar",
-      "bytes": 291441,
-      "sha256": "c841ab6de90ed5f311854a5095d418d5ea8c7f6727dbd35101a326ae08096c29"
+      "bytes": 291662,
+      "sha256": "d345f234120285846ada34ffe7aaddbda550db8f8cfdc8a820dd834da9048f26"
     },
     {
       "name": "CopiMineArtifacts.jar",
       "bytes": 279304,
-      "sha256": "eb9b0e74560503796512cb2c27ecfe6e81637cc307fdb55a72eadc46ad7ab54d"
+      "sha256": "568a141ef79390812009a26cda4facd7b2570cbfe09296031275dfedcb9f0a35"
     },
     {
       "name": "CopiMineEconomyCore.jar",
       "bytes": 150343,
-      "sha256": "f0036504dfdf59dfa8fde4b94ecc5d5b47618359bb10e611fcec3808a0192219"
+      "sha256": "3c136a7b608f12b826dead8885812766e5db2ad7bf219032460a18d18a10b9c4"
     }
   ],
   "warnings": [
@@ -1128,7 +1128,7 @@
     "Note: Recompile with -Xlint:unchecked for details.",
     "9 warnings"
   ],
-  "builtAt": "2026-10-17T06:26:49.601274+00:00",
+  "builtAt": "2026-10-17T06:35:54.310359+00:00",
   "protocolChecks": {
     "checks": 13,
     "gameServerStarted": false,
@@ -1143,7 +1143,7 @@
   "gameServerStarted": false,
   "liveGameCommandsExecuted": false,
   "extensions": {
-    "SiteBridge.java.inc": "536a48dc512a35a9f9156637f575051be0de5e6e45a40c57d5a6c9b26c3f59f1",
+    "SiteBridge.java.inc": "1eb4c5b99e1cce913bf3ceefb0b7e1dcaea280ab56d5e518ab0fcb84e1bdad9e",
     "ArtifactSiteBridge.java.inc": "6e95b482f42dcd2f4580ef4f8f1143bab8b88d89085e39af119295afcb070cca",
     "EconomySiteBridge.java.inc": "cff38f897733cded2d574e89fc30cb95e1f7d44cc7a1de20eaefd96689d3e223",
     "actions.json": "8b92c434e0858d43dbb7c38243802a664fc09de77ff191afc99fd22cef81723b",

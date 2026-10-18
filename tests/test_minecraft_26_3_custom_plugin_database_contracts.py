@@ -490,7 +490,7 @@ def test_migration_plugin_build_order_follows_shared_bridge_dependencies():
 
     for source in (plugin_ci, event_gate):
         if "foreach ($relativeDirectory in @(" in source:
-            builds = source.split("foreach ($relativeDirectory in @(", 1)[1].split("\n))", 1)[0]
+            builds = source.rsplit("foreach ($relativeDirectory in @(", 1)[1].split("\n))", 1)[0]
         else:
             builds = source.split("$firstPartyBuilds = @(", 1)[1].split("\n)", 1)[0]
         order = [

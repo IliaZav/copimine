@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import importlib.util
 from pathlib import Path
 
 import pytest
@@ -9,18 +10,22 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 ITEMS = ROOT / "copimine-artifacts" / "items.yml"
 JAVA = ROOT / "copimine-artifacts" / "src" / "me" / "copimine" / "artifacts" / "CopiMineArtifacts.java"
+COMMERCE_CATALOG = ROOT / "admin-web" / "backend" / "commerce_catalog.py"
 
 
 EXPECTED = {
-    "batin_remen_sudnogo_dnya": (500, "BATIN_REMEN", "NETHERITE_AXE"),
-    "nu_ty_i_nakopal_blyat_pickaxe": (400, "NAKOPAL_PICKAXE", "NETHERITE_PICKAXE"),
-    "kosa_nalogovoy_inspekcii": (200, "NALOGOVAYA_KOSA", "NETHERITE_HOE"),
-    "kaska_prorab_huev": (50, "PRORAB_HELMET", "NETHERITE_HELMET"),
-    "mne_pohuy_ya_v_tanke_vest": (150, "TANK_VEST", "NETHERITE_CHESTPLATE"),
-    "ne_segodnya_suka_shield": (50, "NOT_TODAY_SHIELD", "SHIELD"),
-    "pohuy_na_debaffy_amulet": (150, "DEBUFF_AMULET", "HEART_OF_THE_SEA"),
-    "vremya_platit_nalogi_clock": (300, "TAX_CLOCK", "CLOCK"),
-    "gde_moy_lut_blyat_compass": (100, "LOOT_COMPASS", "COMPASS"),
+    "batin_remen_sudnogo_dnya": (500, "BATIN_REMEN", "NETHERITE_AXE", True),
+    "nu_ty_i_nakopal_blyat_pickaxe": (400, "NAKOPAL_PICKAXE", "NETHERITE_PICKAXE", True),
+    "kosa_nalogovoy_inspekcii": (200, "NALOGOVAYA_KOSA", "NETHERITE_HOE", True),
+    "kaska_prorab_huev": (50, "PRORAB_HELMET", "NETHERITE_HELMET", True),
+    "mne_pohuy_ya_v_tanke_vest": (150, "TANK_VEST", "NETHERITE_CHESTPLATE", True),
+    "ne_segodnya_suka_shield": (50, "NOT_TODAY_SHIELD", "SHIELD", True),
+    "pohuy_na_debaffy_amulet": (150, "DEBUFF_AMULET", "HEART_OF_THE_SEA", True),
+    "vremya_platit_nalogi_clock": (300, "TAX_CLOCK", "CLOCK", True),
+    "gde_moy_lut_blyat_compass": (100, "LOOT_COMPASS", "COMPASS", True),
+    "berserker_heart": (200, "BERSERKER_HEART", "NETHER_STAR", True),
+    "zhilorez_pickaxe": (250, "VEIN_MINER", "NETHERITE_PICKAXE", True),
+    "donation_night_cloak": (150, "NIGHT_CLOAK", "PHANTOM_MEMBRANE", False),
 }
 
 
@@ -58,15 +63,16 @@ def test_donation_catalog_has_one_backend_and_runtime_contract_per_item() -> Non
     blocks = _donation_blocks(ITEMS.read_text(encoding="utf-8"))
     assert set(blocks) == set(EXPECTED)
 
-    for item_id, (price, effect, material) in EXPECTED.items():
+    for item_id, (price, effect, material, owner_bound) in EXPECTED.items():
         block = blocks[item_id]
         assert int(_field(block, "price-donation")) == price
         assert _field(block, "effect-profile-id") == effect
         assert _field(block, "base-material") == material
         assert _field(block, "source") == "DONATION_SHOP"
-        assert _field(block, "enabled").lower() == "true"
+        expected_enabled = item_id != "gde_moy_lut_blyat_compass"
+        assert _field(block, "enabled").lower() == str(expected_enabled).lower()
         assert int(_field(block, "max-stack")) == 1
-        assert _field(block, "owner-bound").lower() == "true"
+        assert _field(block, "owner-bound").lower() == str(owner_bound).lower()
         assert _field(block, "effect-description")
 
     java = JAVA.read_text(encoding="utf-8")
@@ -119,9 +125,10 @@ def test_shield_debuffs_are_applied_to_direct_or_projectile_attacker() -> None:
     attacker = re.search(r"(?ms)if \(attacker != null && attacker != var2\) \{(.*?)\n\s*\}", block)
     assert attacker, "shield must guard the resolved attacker before applying effects"
     attacker_body = attacker.group(1)
-    assert "PotionEffectType.NAUSEA" in attacker_body
-    assert "PotionEffectType.WEAKNESS" in attacker_body
-    assert "strikeLightningEffect(attacker.getLocation())" in attacker_body
+    assert "this.applyCombatEffect(attacker, PotionEffectType.NAUSEA" in block
+    assert "this.applyCombatEffect(attacker, PotionEffectType.WEAKNESS" in block
+    assert "attacker.getWorld().strikeLightning(attacker.getLocation())" in block
+    assert "this.shieldLightningCooldowns" in block
     assert "var2.addPotionEffect" not in attacker_body
     resolver = re.search(
         r"(?ms)private LivingEntity resolveDamageAttacker\(EntityDamageByEntityEvent event\)\s*\{(.*?)(?=\n\s*public void onDeath)",
@@ -217,16 +224,55 @@ def test_donation_combat_and_defense_cooldowns_message_only_the_owner() -> None:
     )
     assert defense, "defense artifact handler is missing"
     defense_body = defense.group(0)
-    assert defense_body.count("sendCooldownMessage(var2,") >= 3
+    # The shield now owns a separate 20-second lightning gate; only helmet
+    # and vest retain the generic cooldown-message path.
+    assert defense_body.count("sendCooldownMessage(var2,") >= 2
     assert "player.sendMessage" in re.search(
-        r"(?ms)private void sendCooldownMessage\(.*?\n\s*\}", java
+        r"(?ms)private void sendCooldownMessage\(.*?(?=\n\s*private boolean suppressCooldownMessage)", java
     ).group(0)
 
 
 def test_cooldown_messages_are_not_broadcast() -> None:
     java = JAVA.read_text(encoding="utf-8")
-    helper = re.search(r"(?ms)private void sendCooldownMessage\(.*?\n\s*\}", java)
+    helper = re.search(
+        r"(?ms)private void sendCooldownMessage\(.*?(?=\n\s*private boolean suppressCooldownMessage)", java
+    )
     assert helper, "cooldown message helper is missing"
     body = helper.group(0)
     assert "player.sendMessage" in body
     assert "Bukkit.broadcastMessage" not in body
+
+
+def test_retired_compass_is_disabled_in_player_catalog_and_retained_for_admin_gifts() -> None:
+    import yaml
+
+    document = yaml.safe_load(ITEMS.read_text(encoding="utf-8"))
+    compass = next(
+        item for item in document["donation-catalog"]["items"]
+        if item["item-id"] == "gde_moy_lut_blyat_compass"
+    )
+    assert compass["enabled"] is False
+    assert compass["base-material"] == "COMPASS"
+    assert compass["price-donation"] == 100
+    assert compass["effect-profile-id"] == "LOOT_COMPASS"
+    assert compass["owner-bound"] is True
+
+    spec = importlib.util.spec_from_file_location("commerce_catalog_for_artifact_test", COMMERCE_CATALOG)
+    assert spec and spec.loader
+    commerce = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(commerce)
+
+    player_catalog = commerce.donation_catalog_snapshot(ITEMS)
+    assert "gde_moy_lut_blyat_compass" not in player_catalog["byId"]
+    assert all(row["item_id"] != "gde_moy_lut_blyat_compass" for row in player_catalog["items"])
+
+    admin_catalog = commerce.admin_gift_catalog_snapshot(ITEMS)
+    admin_compass = next(
+        item for item in admin_catalog["categories"]["DONATION"]
+        if item["item_id"] == "gde_moy_lut_blyat_compass"
+    )
+    assert admin_compass["enabled"] is False
+
+    java = JAVA.read_text(encoding="utf-8")
+    assert "if (item.enabled() || adminGift)" in java
+    assert "liveItem == null || !liveItem.enabled()" in java

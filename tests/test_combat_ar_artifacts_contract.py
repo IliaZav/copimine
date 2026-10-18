@@ -239,14 +239,15 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
         shot_handler = source[source.index("public void onCrossbowArtifactShot"):source.index("private void markCombatProjectile")]
         require_all(shot_handler, "actionCooldownUntil(var2, weapon)", "this.storeActionCooldown(")
 
-    def test_ar_shop_items_are_transferable_but_donation_items_remain_owner_bound(self) -> None:
+    def test_ar_and_donation_items_follow_configured_owner_binding(self) -> None:
         source = SOURCE.read_text(encoding="utf-8")
         require_all(
             source,
             "private boolean isOwnerBoundGameplayItem",
-            "isDonationCatalogItem(itemId)",
+            "DonationItemIdentityPolicy.isOwnerBound(",
+            "donation != null && donation.ownerBound()",
             "isAdminOnlyCatalogItem(itemId)",
-            "boolean ownerBound = this.isOwnerBoundGameplayItem(var6, var16, var17)",
+            "boolean ownerBound = this.isOwnerBoundGameplayItem(canonicalItemId, var16, var17)",
             "&& ownerBound && (",
             "ownerBound && !var13.ownerUuid().equalsIgnoreCase(var12)",
         )

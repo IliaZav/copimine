@@ -35,12 +35,69 @@ def test_grim_creative_path_does_not_skip_pending_inventory_resync():
     assert 'checkThatBukkitIsSynced(slotToCheck, !creative);' in method
 
     reconciliation = source.split('private void checkThatBukkitIsSynced(int slot, boolean resyncClient)', 1)[1]
-    assert 'if (!existing.equals(serverside))' in reconciliation
+    assert 'if (existing.getType() != serverside.getType() || existing.getAmount() != serverside.getAmount())' in reconciliation
     assert reconciliation.index('if (resyncClient)') < reconciliation.index('player.platformPlayer.updateInventory()')
     assert reconciliation.index('player.platformPlayer.updateInventory()') < reconciliation.index('setItem(slot, serverside);')
     queued_resync = reconciliation.split('if (resyncClient)', 1)[1].split('setItem(slot, serverside);', 1)[0]
     assert 'player.platformPlayer.getGameMode() != GameMode.CREATIVE' in queued_resync
     assert queued_resync.index('GameMode.CREATIVE') < queued_resync.index('player.platformPlayer.updateInventory();')
+
+def test_grim263_lock_pins_latest_official_bukkit_artifact_without_claiming_native_support():
+    lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
+    record=next(module for module in lock['modules'] if module.get('pluginName')=='GrimAC')
+
+    assert record['version']=='2.3.74-43850df'
+    assert record['channel']=='alpha'
+    assert record['versionId']=='ZgpTyoHe'
+    assert record['filename']=='GrimAC-2.3.74-43850df-creative-fix.jar'
+    assert record['url']=='https://cdn.modrinth.com/data/LJNGWSvH/versions/ZgpTyoHe/grimac-bukkit-2.3.74-43850df.jar'
+    assert record['upstreamFilename']=='grimac-bukkit-2.3.74-43850df.jar'
+    assert record['upstreamSize']==13139470
+    assert record['upstreamSha1']=='a1b4958238a78978ceaf7e0f97c1a704902af8a3'
+    assert record['upstreamSha256']=='505a77aaaae255d51603b459d1f1af382c1f998204802086de7a8d70fc8ee211'
+    assert record['upstreamSha512']=='d82b3de095f94bf1d697ef85e72162855540f5ceef00ef4dafd9fa0c6f7575cd5ab4545df8273b9734941201853424b465d6d2f402e6ab17a55995dee6771f21'
+    assert record['sourceCommit']=='43850df737be7dde18e390205afc895fd1af6c0c'
+    assert record['upstreamPublishedAt']=='2026-10-17T18:59:14.561114Z'
+    assert record['upstreamDeclares263'] is False
+    assert '26.3' not in record['gameVersions']
+    assert record['compatibilityStatus']=='requires-runtime-validation'
+    assert record['nativeVerified'] is False
+
+
+def test_coreprotect_lock_does_not_claim_upstream_declares_minecraft_26_3():
+    lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
+    record=next(module for module in lock['modules'] if module.get('pluginName')=='CoreProtect')
+
+    assert record['upstreamDeclares263'] is False
+    assert record['compatibilityStatus']=='requires-runtime-validation'
+    assert record['nativeVerified'] is False
+
+def test_coreprotect_build_pins_latest_verified_upstream_master_commit():
+    build_lock=json.loads((ROOT/'tools/minecraft-26.3/coreprotect-build.lock.json').read_text(encoding='utf-8'))
+    plugin_lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
+    record=next(module for module in plugin_lock['modules'] if module.get('pluginName')=='CoreProtect')
+    latest_verified_commit='bc46794bbae17e506dcb41ea7a80b099ca7fecb0'
+
+    assert build_lock['commit']==latest_verified_commit
+    assert build_lock['source']=='https://github.com/PlayPro/CoreProtect/tree/'+latest_verified_commit
+    assert record['sourceCommit']==latest_verified_commit
+    assert record['source']==build_lock['source']
+
+def test_coreprotect_lock_separates_official_upstream_and_custom_build_integrity():
+    lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
+    record=next(module for module in lock['modules'] if module.get('pluginName')=='CoreProtect')
+
+    assert record['url'].endswith('/CoreProtect-CE-24.1.jar')
+    assert record['upstreamFilename']=='CoreProtect-CE-24.1.jar'
+    assert record['size']==record['upstreamSize']==1_113_283
+    assert record['sha1']==record['upstreamSha1']=='3e6ef12c6d4bd2c72f8dc32a35491fd414dc4d80'
+    assert record['sha256']==record['upstreamSha256']=='a2acef7c06ef201355cef07d591a6055dfed358ad768faaaaaf4e276865ecc97'
+    assert record['sha512']==record['upstreamSha512']=='76aad727528ddb990bbee5069f8ef3fcd018ae0bcdea89b965be2485e828633eb068672e841be64e550c8474f901a24d8c15c7bd44c2bd6c96244e1e58de0c95'
+    assert record['filename']=='CoreProtect-CE-24.1-26.3-upstream.jar'
+    assert record['buildArtifact'].endswith('/'+record['filename'])
+    assert record['buildSize']==14_133_020
+    assert record['buildSha256']=='48b9db1a9784190c7b5c295d5ebf1433cc4c8bbbd2c3a991aa54c975dde9a7d0'
+    assert record['buildSha512']=='9e2604c9bf6f805d9958d856372a1134c8bda3c3632bf8f429b7acb03d8eb8256abf1e13e4725a49131a1468e2bdce600b22fbd6ad8cd4b289a2745b120cf271'
 
 def load():
     spec=importlib.util.spec_from_file_location('migration_plugins', ROOT/'scripts/minecraft/install_migration_server_plugins.py')
@@ -197,11 +254,49 @@ def test_artifacts_catalog_merge_completes_locked_source_and_is_idempotent():
 
     import yaml
     document=yaml.safe_load(merged)
-    assert len(document['items'])==30
-    assert len(document['donation-catalog']['items'])==9
+    assert len(document['items'])==32
+    assert len(document['donation-catalog']['items'])==12
     zmei=next(item for item in document['items'] if item['id']=='zmei_gorynych')
     assert zmei['price_ar']==500
     assert zmei['admin-note']=='preserve this value'
+    assert mod.merge_artifacts_catalog_bytes(merged,canonical)==merged
+
+def test_artifacts_catalog_merge_disables_retired_item_but_preserves_live_catalog_values():
+    mod=load()
+    canonical='''items: []
+donation-catalog:
+  catalog-version: 2
+  items:
+    - item-id: gde_moy_lut_blyat_compass
+      display-name: "Retired compass"
+      enabled: false
+      price-donation: 100
+      effect-profile-id: LOOT_COMPASS
+'''.encode('utf-8')
+    existing='''items: []
+donation-catalog:
+  catalog-version: 7
+  website-base-url: https://runtime.example
+  items:
+    - item-id: gde_moy_lut_blyat_compass
+      display-name: "Runtime compass name"
+      enabled: true
+      price-donation: 175
+      effect-profile-id: LOOT_COMPASS
+      operator-note: preserve-me
+'''.encode('utf-8')
+
+    merged=mod.merge_artifacts_catalog_bytes(existing,canonical)
+
+    import yaml
+    document=yaml.safe_load(merged)
+    tombstone=document['donation-catalog']['items'][0]
+    assert tombstone['enabled'] is False
+    assert tombstone['display-name']=='Runtime compass name'
+    assert tombstone['price-donation']==175
+    assert tombstone['operator-note']=='preserve-me'
+    assert document['donation-catalog']['catalog-version']==7
+    assert document['donation-catalog']['website-base-url']=='https://runtime.example'
     assert mod.merge_artifacts_catalog_bytes(merged,canonical)==merged
 
 def test_artifacts_install_recovers_stale_catalog_even_when_plugin_jar_is_current(tmp_path):
@@ -414,6 +509,60 @@ def test_corrupt_downloaded_plugin_cache_is_replaced_only_after_verification(tmp
     assert destination.read_bytes()==new
     assert not list(stage.glob('*.candidate'))
 
+def test_stage_records_prunes_unlocked_jars_but_keeps_pinned_upstream_source(tmp_path,monkeypatch):
+    mod=load();stage=tmp_path/'build/minecraft-26.3/server-plugins';stage.mkdir(parents=True)
+    candidate=jar('Example','2');upstream=jar('Example','1')
+    record={'pluginName':'Example','version':'2','filename':'Example-2.jar',
+            'url':'https://cdn.modrinth.com/data/test/versions/test/Example-2.jar',
+            'sha512':hashlib.sha512(candidate).hexdigest(),'size':len(candidate),
+            'upstreamFilename':'Example-1.jar','replaceSha256':[]}
+    (stage/'Example-1.jar').write_bytes(upstream)
+    stale=stage/'Example-1.9.jar';stale.write_bytes(jar('Example','1.9'))
+    receipt=stage/'Example-2.jar.receipt.json';receipt.write_text('{"nativeVerified":false}',encoding='utf-8')
+    monkeypatch.setattr(mod.urllib.request,'urlopen',lambda request,timeout:io.BytesIO(candidate))
+
+    mod.stage_records([record],stage,tmp_path)
+
+    assert (stage/'Example-2.jar').read_bytes()==candidate
+    assert (stage/'Example-1.jar').read_bytes()==upstream
+    assert receipt.read_text(encoding='utf-8')=='{"nativeVerified":false}'
+    assert not stale.exists()
+
+def test_stage_records_rejects_unexpected_reparse_jar_before_pruning_or_download(tmp_path,monkeypatch):
+    mod=load();stage=tmp_path/'build/minecraft-26.3/server-plugins';stage.mkdir(parents=True)
+    outside=tmp_path/'outside.jar';outside.write_bytes(b'outside bytes')
+    unexpected=stage/'unexpected.jar';unexpected.write_bytes(jar('Unexpected','1'))
+    record={'pluginName':'Example','version':'2','filename':'Example-2.jar',
+            'url':'https://cdn.modrinth.com/data/test/versions/test/Example-2.jar',
+            'sha512':hashlib.sha512(jar('Example','2')).hexdigest(),'size':len(jar('Example','2')),
+            'replaceSha256':[]}
+    original_lstat=Path.lstat
+    def lstat_with_reparse_jar(path):
+        if path==unexpected:
+            return SimpleNamespace(st_mode=stat.S_IFREG|0o600,st_file_attributes=0x400)
+        return original_lstat(path)
+    monkeypatch.setattr(Path,'lstat',lstat_with_reparse_jar)
+    monkeypatch.setattr(mod,'download_candidate',lambda *args:pytest.fail('unsafe stage must fail before downloading'))
+
+    with pytest.raises(ValueError,match='Symlink or reparse point refused'):
+        mod.stage_records([record],stage,tmp_path)
+
+    assert outside.read_bytes()==b'outside bytes'
+    assert unexpected.exists()
+    assert not (stage/'Example-2.jar').exists()
+
+def test_stage_records_refuses_unexpected_directory_outside_build_without_touching_it(tmp_path,monkeypatch):
+    mod=load();stage=tmp_path/'protected-stage';stage.mkdir()
+    stale=stage/'stale.jar';stale.write_bytes(b'keep outside generated stage')
+    record={'pluginName':'Example','version':'2','filename':'Example-2.jar',
+            'url':'https://cdn.modrinth.com/data/test/versions/test/Example-2.jar',
+            'sha512':'0'*128,'size':10,'replaceSha256':[]}
+
+    with pytest.raises(ValueError,match='must stay below the repository build directory'):
+        mod.stage_records([record],stage,tmp_path)
+
+    assert stale.read_bytes()==b'keep outside generated stage'
+
 def test_failed_plugin_cache_repair_preserves_previous_bytes(tmp_path,monkeypatch):
     mod=load();stage=tmp_path/'build/server-plugins';stage.mkdir(parents=True)
     new=jar('Example','2');bad=bytearray(new);bad[-1]^=1
@@ -532,6 +681,7 @@ def test_first_party_build_candidate_is_staged_and_installed_with_external_candi
         'candidate':{
             'filename':'CopiMineEndEvent-26.3.jar','runtimeFilename':'CopiMineEndEvent.jar',
             'sha256':hashlib.sha256(candidate).hexdigest(),
+            'runtimeEligible':True,'apiVersion':'26.3',
             'buildArtifact':'build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar',
         },
     }
@@ -548,11 +698,13 @@ def test_first_party_build_candidate_is_staged_and_installed_with_external_candi
     assert list((server/'migration-backups').rglob('CopiMineEndEvent.jar'))[0].read_bytes()==old
     assert receipt['installed'][0]['pluginName']=='CopiMineEndEvent'
 
-def test_remote_unchanged_baseline_candidates_are_staged_once_with_module_overrides(tmp_path,monkeypatch):
+def test_remote_baseline_candidates_require_runtime_eligibility_and_module_overrides(tmp_path,monkeypatch):
     mod=load()
     example_old=jar('Example','1')
     example_new=jar('Example','2')
     farmcontrol=jar('FarmControl','1.3.0')
+    eligible_old=jar('ExampleAddon','1')
+    eligible_new=jar('ExampleAddon','1.26.3')
     module={
         'pluginName':'Example','version':'2','filename':'Example-2.jar',
         'url':'https://cdn.modrinth.com/data/test/versions/test/Example-2.jar',
@@ -568,6 +720,7 @@ def test_remote_unchanged_baseline_candidates_are_staged_once_with_module_overri
                 'url':'https://cdn.modrinth.com/data/test/versions/test/Example-1.jar',
                 'sha256':hashlib.sha256(example_old).hexdigest(),
                 'sha512':hashlib.sha512(example_old).hexdigest(),'size':len(example_old),
+                'runtimeEligible':True,'gameVersions':['26.3'],
             },
         },
         {
@@ -578,21 +731,69 @@ def test_remote_unchanged_baseline_candidates_are_staged_once_with_module_overri
                 'url':'https://cdn.modrinth.com/data/test/versions/test/FarmControl-1.3.0.jar',
                 'sha256':hashlib.sha256(farmcontrol).hexdigest(),
                 'sha512':hashlib.sha512(farmcontrol).hexdigest(),'size':len(farmcontrol),
+                'runtimeEligible':False,'gameVersions':['1.21'],
+            },
+        },
+        {
+            'pluginName':'ExampleAddon','version':'1','filename':'ExampleAddon-1.jar',
+            'sha256':hashlib.sha256(eligible_old).hexdigest(),
+            'candidate':{
+                'filename':'ExampleAddon-1.26.3.jar','runtimeFilename':'ExampleAddon.jar','version':'1.26.3',
+                'url':'https://cdn.modrinth.com/data/test/versions/test/ExampleAddon-1.26.3.jar',
+                'sha256':hashlib.sha256(eligible_new).hexdigest(),
+                'sha512':hashlib.sha512(eligible_new).hexdigest(),'size':len(eligible_new),
+                'runtimeEligible':True,'gameVersions':['26.3'],
             },
         },
     ]
     records=mod.load_install_records(tmp_path,{'modules':[module],'unchangedBaseline':baselines})
-    assert [record['pluginName'] for record in records]==['Example','FarmControl']
-    assert records[1]['replaceSha256']==[hashlib.sha256(farmcontrol).hexdigest()]
+    assert [record['pluginName'] for record in records]==['Example','ExampleAddon']
+    assert records[1]['replaceSha256']==[hashlib.sha256(eligible_old).hexdigest()]
 
-    staged_bytes={'Example-2.jar':example_new,'FarmControl-1.3.0.jar':farmcontrol}
+    staged_bytes={'Example-2.jar':example_new,'ExampleAddon-1.26.3.jar':eligible_new}
     def download(record,destination):
         destination.write_bytes(staged_bytes[record['filename']])
     monkeypatch.setattr(mod,'download_candidate',download)
     stage=tmp_path/'build/minecraft-26.3/server-plugins'
     mod.stage_records(records,stage,tmp_path)
     assert (stage/'Example-2.jar').read_bytes()==example_new
-    assert (stage/'FarmControl-1.3.0.jar').read_bytes()==farmcontrol
+    assert (stage/'ExampleAddon-1.26.3.jar').read_bytes()==eligible_new
+    assert not (stage/'FarmControl-1.3.0.jar').exists()
+
+
+def test_baseline_candidate_without_explicit_runtime_eligibility_is_not_selected(tmp_path):
+    mod=load();old=jar('ImplicitPlugin','1')
+    baseline={
+        'pluginName':'ImplicitPlugin','version':'1','filename':'ImplicitPlugin.jar',
+        'sha256':hashlib.sha256(old).hexdigest(),
+        'candidate':{
+            'filename':'ImplicitPlugin-1.jar','url':'https://cdn.modrinth.com/data/test/versions/test/ImplicitPlugin-1.jar',
+            'sha256':hashlib.sha256(old).hexdigest(),'sha512':hashlib.sha512(old).hexdigest(),
+            'size':len(old),'gameVersions':['26.3'],
+        },
+    }
+
+    records=mod.load_install_records(tmp_path,{'minecraftVersion':'26.3','modules':[],'unchangedBaseline':[baseline]})
+
+    assert records==[]
+
+
+def test_runtime_eligible_external_baseline_requires_26_3_compatibility_evidence(tmp_path):
+    mod=load();old=jar('SeeMore','1.0.2')
+    candidate={
+        'pluginName':'SeeMore','version':'1.0.2','filename':'SeeMore-1.0.2.jar',
+        'sha256':hashlib.sha256(old).hexdigest(),
+        'candidate':{
+            'filename':'SeeMore-1.0.2.jar','runtimeFilename':'SeeMore-1.0.2.jar','version':'1.0.2',
+            'url':'https://cdn.modrinth.com/data/test/versions/test/SeeMore-1.0.2.jar',
+            'sha256':hashlib.sha256(old).hexdigest(),
+            'sha512':hashlib.sha512(old).hexdigest(),'size':len(old),
+            'runtimeEligible':True,'gameVersions':['1.21.8'],
+        },
+    }
+
+    with pytest.raises(ValueError,match='does not declare support for Minecraft 26.3'):
+        mod.load_install_records(tmp_path,{'minecraftVersion':'26.3','modules':[],'unchangedBaseline':[candidate]})
 
 def test_coreprotect_source_build_uses_lock_and_build_receipt_provenance(tmp_path):
     mod=load();built=jar('CoreProtect','24.1')
@@ -664,6 +865,7 @@ def test_first_party_candidate_lock_rejects_escape_paths_and_unpinned_artifacts(
         'candidate':{
             'filename':'escape.jar','runtimeFilename':'OwnedPlugin.jar',
             'sha256':hashlib.sha256(candidate).hexdigest(),
+            'runtimeEligible':True,'apiVersion':'26.3',
             'buildArtifact':'../escape.jar',
         },
     }
@@ -684,6 +886,7 @@ def test_local_candidate_defaults_missing_or_null_runtime_filename_to_build_file
         'sha256':hashlib.sha256(jar('LocalPlugin','1')).hexdigest(),
         'candidate':{
             'filename':path.name,'sha256':hashlib.sha256(artifact).hexdigest(),
+            'runtimeEligible':True,'apiVersion':'26.3',
             'buildArtifact':relative,**runtime_field,
         },
     }
@@ -710,6 +913,7 @@ def test_local_baseline_candidate_keeps_an_explicit_prior_candidate_replacement_
         'candidate':{
             'filename':artifact.name,'runtimeFilename':'LocalPlugin.jar',
             'sha256':hashlib.sha256(current_candidate).hexdigest(),
+            'runtimeEligible':True,'apiVersion':'26.3',
             'buildArtifact':relative,
         },
     }
@@ -724,20 +928,24 @@ def test_migration_lock_loader_includes_each_built_first_party_plugin():
     baseline_candidates=[
         item for item in lock['unchangedBaseline']
         if item['pluginName'] not in module_names and
+        item.get('candidate',{}).get('runtimeEligible') is True and
         (item.get('candidate',{}).get('buildArtifact') or item.get('candidate',{}).get('url'))
     ]
     build_candidates=[item for item in baseline_candidates if item.get('candidate',{}).get('buildArtifact')]
     remote_candidates=[item for item in baseline_candidates if item.get('candidate',{}).get('url')]
     assert len(build_candidates)==8
-    assert len(remote_candidates)==4
+    assert len(remote_candidates)==2
     missing=[item['candidate']['buildArtifact'] for item in build_candidates
              if not (ROOT/item['candidate']['buildArtifact']).is_file()]
     if missing:pytest.skip('the pinned 26.3 first-party plugin builds are required: '+', '.join(missing))
 
     records=load().load_install_records(ROOT,lock)
 
-    assert len(records)==len(lock['modules'])+len(build_candidates)+len(remote_candidates)==31
-    assert len({record['pluginName'] for record in records})==31
+    assert len(records)==len(lock['modules'])+len(build_candidates)+len(remote_candidates)==29
+    assert len({record['pluginName'] for record in records})==29
+    assert {'FarmControl','SeeMore'}.isdisjoint({record['pluginName'] for record in records})
+    assert next(row for row in lock['unchangedBaseline'] if row['pluginName']=='FarmControl')['candidate']['runtimeEligible'] is False
+    assert next(row for row in lock['unchangedBaseline'] if row['pluginName']=='SeeMore')['candidate']['runtimeEligible'] is False
     expected_local={item['pluginName'] for item in build_candidates}
     expected_local.update(item['pluginName'] for item in lock['modules'] if item.get('buildArtifact'))
     assert {record['pluginName'] for record in records if record['sourceType']=='local'}==expected_local
@@ -752,9 +960,9 @@ def test_migration_lock_loader_includes_each_built_first_party_plugin():
     assert '983fd1954eb85d8be8a5e18e0095200278933e930422854b4b19c19995fad116' in narcotics['replaceSha256']
     narcotics_candidate=next(item['candidate'] for item in lock['unchangedBaseline']
                              if item['pluginName']=='CopiMineNarcotics')
-    assert narcotics_candidate['size'] == 360109
-    assert narcotics_candidate['sha256'] == 'db734b15b5d6b52293e10056df1d3414aa10ff85f1563551b59eedf4413aeced'
-    assert narcotics_candidate['sha512'] == '6dd69f6c56270c43ac0abe0afa3b022541bcfe2462fba33e39138e9d06a6cf9d40238902c1f20becb84f721ab4b1c66995f54672c411f27cc86dce699f6c70b3'
+    assert narcotics_candidate['size'] == 363263
+    assert narcotics_candidate['sha256'] == '29d4894f4bde94ce950bf05f3f1a61fbafc3369851c8cb15ec330878ec5641c6'
+    assert narcotics_candidate['sha512'] == '2de76b3edce9140092f483e2610696cf33f94c2804a0353c20d6ab72fc1f3ceb0057874c188e364fab8e4c17729b23fa6843c6df7d1a8d2be099ae342aa7b90f'
 
 def test_production_or_symlink_target_is_refused(tmp_path):
     mod=load();server,stage,r,old,new=fixture(tmp_path)
@@ -766,6 +974,22 @@ def test_unsafe_filename_and_wrong_plugin_identity_are_refused(tmp_path):
     different=jar('Different','2');(stage/'new.jar').write_bytes(different)
     altered={**r,'sha512':hashlib.sha512(different).hexdigest(),'size':len(different)}
     with pytest.raises(ValueError,match='identity'):mod.install_records(tmp_path,server,[altered],stage,lambda port,host:False)
+
+def test_luckperms_download_allows_only_its_official_release_url():
+    mod=load()
+    record={
+        'pluginName':'LuckPerms',
+        'filename':'LuckPerms-Bukkit-5.5.87.jar',
+        'runtimeFilename':'LuckPerms-Bukkit-5.5.87.jar',
+        'url':'https://download.luckperms.net/1674/bukkit/loader/LuckPerms-Bukkit-5.5.87.jar',
+        'sha512':'0'*128,
+        'sha256':'0'*64,
+        'size':1024,
+        'sourceType':'remote',
+    }
+    mod.validate_record(record)
+    with pytest.raises(ValueError,match='source'):
+        mod.validate_record({**record,'url':record['url'].replace('download.luckperms.net','download.luckperms.net.evil.example')})
 
 def test_existing_plugin_identity_accepts_valid_bukkit_names_and_comments(tmp_path):
     mod=load()
@@ -880,21 +1104,27 @@ def test_validate_only_cli_does_not_claim_installed_plugin_inventory(capsys, tmp
     assert 'Validated 1 plugins' not in output
 
 def test_grim263_patch_changes_only_inventory_class_when_built():
-    original=ROOT/'build/minecraft-26.3/server-plugins/grimac-bukkit-2.3.74-f5bbe9c.jar'
-    patched=original.with_name('GrimAC-2.3.74-f5bbe9c-creative-fix.jar')
+    record=next(x for x in json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text())['modules']
+                if x['pluginName']=='GrimAC')
+    output_dir=Path(os.environ.get('COPIMINE_GRIM263_OUTPUT_DIR',str(ROOT/'build/minecraft-26.3/server-plugins')))
+    original=Path(os.environ.get('COPIMINE_GRIM263_UPSTREAM_JAR',str(output_dir/record['upstreamFilename'])))
+    patched=output_dir/record['filename']
     if not original.exists() or not patched.exists():pytest.skip('26.3 upstream plugin candidate and compatibility build required')
     with zipfile.ZipFile(original) as a,zipfile.ZipFile(patched) as b:
         assert set(a.namelist())==set(b.namelist())
         assert sorted(n for n in a.namelist() if a.read(n)!=b.read(n))==['ac/grim/grimac/utils/lists/CorrectingPlayerInventoryStorage.class']
 
 def test_grim263_patch_build_is_reproducible():
-    original=ROOT/'build/minecraft-26.3/server-plugins/grimac-bukkit-2.3.74-f5bbe9c.jar'
-    patched=original.with_name('GrimAC-2.3.74-f5bbe9c-creative-fix.jar')
+    record=next(x for x in json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text())['modules']
+                if x['pluginName']=='GrimAC')
+    output_dir=Path(os.environ.get('COPIMINE_GRIM263_OUTPUT_DIR',str(ROOT/'build/minecraft-26.3/server-plugins')))
+    original=Path(os.environ.get('COPIMINE_GRIM263_UPSTREAM_JAR',str(output_dir/record['upstreamFilename'])))
+    patched=output_dir/record['filename']
     powershell=shutil.which('pwsh') or shutil.which('powershell')
     major=json.loads((ROOT/'tools/minecraft-26.3/profile.lock.json').read_text())['grimPatchJavaMajor']
     java_home=os.environ.get(f'JAVA_HOME_{major}_X64') or os.environ.get('JAVA_HOME')
     compiler=Path(java_home)/'bin/javac.exe' if java_home else None
-    if not original.is_file() or not patched.is_file() or not compiler or not compiler.is_file() or not powershell:
+    if not original.is_file() or not compiler or not compiler.is_file() or not powershell:
         pytest.skip('the pinned Grim patch JDK and inputs are required for reproducibility verification')
     java_home=Path(java_home)
     version=subprocess.run([str(java_home/'bin/java.exe'),'--version'],capture_output=True,text=True,timeout=15)
@@ -906,12 +1136,11 @@ def test_grim263_patch_build_is_reproducible():
     for _ in range(2):
         result=subprocess.run([
             powershell,'-NoProfile','-ExecutionPolicy','Bypass','-File',str(script),'-JavaHome',str(java_home),
+            '-InputJarPath',str(original),'-OutputDirectory',str(output_dir),
         ],capture_output=True,text=True,timeout=60)
         assert result.returncode==0, result.stdout+result.stderr
         hashes.append(hashlib.sha256(patched.read_bytes()).hexdigest())
     assert hashes[0]==hashes[1]
-    record=next(x for x in json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text())['modules']
-                if x['pluginName']=='GrimAC')
     assert hashes[0]==record['sha256']
     patched_bytes=patched.read_bytes()
     assert len(patched_bytes)==record['size']
@@ -1001,9 +1230,9 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     candidate=baseline['candidate']
     assert candidate['filename']=='CopiMineEndEvent-26.3.jar'
     assert candidate['runtimeFilename']=='CopiMineEndEvent.jar'
-    assert candidate['size']==1580201
-    assert candidate['sha256']=='40660d699c0a1fd4c8732f11d59d7797806ce877514b8141748fe589978177de'
-    assert candidate['sha512']=='a971c34af07846de705cb2fb0fc34d9bf0fb12bf6c90e51e14a58469c3c8d592b5032743d0594e10b98c7aaa236badfcb3e739c7df971f631d8d029c0132fb54'
+    assert candidate['size']==1712610
+    assert candidate['sha256']=='10dd52eff90c85217caff45bfd08053eae8ee32d8349120d2f436b2f80ce6305'
+    assert candidate['sha512']=='da7c184ad8a35f265d86f253cade33a27599305738a82063990221ec32f29aa558cc06232da1b04198f3de62379bffb471d934326746d3155e212fd239c3bbda'
     assert candidate['apiVersion']=='26.3'
     assert candidate['buildArtifact']=='build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar'
     assert candidate['nativeVerified'] is lock['nativeVerified']
@@ -1041,18 +1270,18 @@ def test_active_26_3_plugin_directory_matches_the_unique_locked_inventory():
     }
     module_names=set(expected)
     for baseline in lock['unchangedBaseline']:
-        if baseline['pluginName'] in module_names:
+        if baseline['pluginName'] in module_names or baseline.get('candidate',{}).get('runtimeEligible') is not True:
             continue
         candidate=baseline.get('candidate')
         expected[baseline['pluginName']]={
-            'filename':candidate['runtimeFilename'] if candidate else baseline['filename'],
-            'sha256':candidate['sha256'] if candidate else baseline['sha256'],
+            'filename':candidate['runtimeFilename'],
+            'sha256':candidate['sha256'],
         }
 
     assert len({entry['filename'] for entry in expected.values()})==len(expected), 'plugin lock must not assign one runtime filename to multiple plugins'
     runtime=MIGRATION_RUNTIME/'plugins'
     if not runtime.is_dir():pytest.skip('isolated 26.3 runtime is not installed in this checkout')
-    assert len(expected)==31, 'replacement candidates must collapse to one entry per installed plugin'
+    assert len(expected)==29, 'runtime-eligible candidates must collapse to one entry per installed plugin'
     server=runtime.parent
     receipt=json.loads((server/'migration-plugin-receipt.json').read_text(encoding='utf-8'))
     if receipt.get('authenticationMode')=='disabled-for-local-testing':
@@ -1126,7 +1355,7 @@ def test_authme_replacement_preserves_auth_database_and_config(tmp_path):
 
 
 def test_clearlag_replacement_keeps_custom_settings_and_backs_up_old_jar(tmp_path):
-    mod=load();old=jar('ClearLag','1.12.1');new=jar('ClearLag','1.14.1')
+    mod=load();old=jar('ClearLag','1.12.1');new=jar('ClearLag','1.14.4')
     server=tmp_path/'local-runtime/end-rift-server-26.3';plugins=server/'plugins';config_dir=plugins/'ClearLag'
     config_dir.mkdir(parents=True)
     (server/'server.properties').write_text('server-ip=127.0.0.1\nserver-port=25566\nonline-mode=false\nrcon.port=25576\nenable-rcon=false\n')
@@ -1136,7 +1365,7 @@ def test_clearlag_replacement_keeps_custom_settings_and_backs_up_old_jar(tmp_pat
     (config_dir/'config.yml').write_bytes(config)
     candidate=next(p for p in json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))['modules'] if p['pluginName']=='ClearLag')
     stage=tmp_path/'build/server-plugins';stage.mkdir(parents=True);(stage/candidate['filename']).write_bytes(new)
-    record={'pluginName':'ClearLag','version':'1.14.1','filename':candidate['filename'],
+    record={'pluginName':'ClearLag','version':'1.14.4','filename':candidate['filename'],
             'url':candidate['url'],'sha512':hashlib.sha512(new).hexdigest(),'size':len(new),
             'replaceSha256':[hashlib.sha256(old).hexdigest()]}
     mod.install_records(tmp_path,server,[record],stage,lambda port,host:False)
@@ -1174,17 +1403,28 @@ def test_clearlag_26_3_candidate_is_pinned_and_replaces_known_baseline():
     candidate=next(p for p in lock['modules'] if p['pluginName']=='ClearLag')
     assert baseline['version']=='1.12.1'
     assert baseline['sha256']=='aea791f8859f18e62f6b5b2d61e49a7b866c8a8a5878345f445b264e7853f44c'
-    assert candidate['version']=='1.14.1'
-    assert candidate['versionId']=='raHM5t3P'
+    assert candidate['version']=='1.14.4'
+    assert candidate['versionId']=='SqHwEbXk'
     assert candidate['projectId']=='7bhTp28M'
     assert candidate['channel']=='beta'
-    assert candidate['filename']=='ClearLag 1.14.1 VER 1.18-26.3.jar'
-    assert candidate['url']=='https://cdn.modrinth.com/data/7bhTp28M/versions/raHM5t3P/ClearLag%201.14.1%20VER%201.18-26.3.jar'
-    assert candidate['sha512']=='b6111de4e5b1d201cae890eead341e53272edc24cc205dfad92c7558169a7730447a7c10cac123b8f1696937658a3849216f8e278ffa566832a47015fd002c3e'
-    assert candidate['sha256']=='3b73f36478f7ccebb2c1fc482a2724c1b5e75dd0835c0ec35a765249639991ba'
-    assert candidate['size']==303_709
+    assert candidate['filename']=='ClearLag 1.14.4 VER 1.18-26.3.jar'
+    assert candidate['url']=='https://cdn.modrinth.com/data/7bhTp28M/versions/SqHwEbXk/ClearLag%201.14.4%20VER%201.18-26.3.jar'
+    assert candidate['sha1']=='a73f88646f9e8edb8ab509deaa695c84aad5206d'
+    assert candidate['sha512']=='ad43b046c7c0ee3f7adf61c2ec080cb20e71d68b803e9222bfb5861a8b061b65975601190387fda7a4aeeaf3985e8b69e6519c4fe8894cbfbe2694dbf16b8187'
+    assert candidate['sha256']=='1f1e36e2328914254836c82f7e63194db7dcbfeacc1382f128936605ac350654'
+    assert candidate['size']==304_296
     assert candidate['license']['id']=='LicenseRef-All-Rights-Reserved'
-    assert candidate['replaceSha256']==[baseline['sha256']]
+    assert candidate['replaceSha256']==[
+        baseline['sha256'],
+        '3b73f36478f7ccebb2c1fc482a2724c1b5e75dd0835c0ec35a765249639991ba',
+    ]
+    assert baseline['candidate']['version']=='1.14.4'
+    assert baseline['candidate']['versionId']=='SqHwEbXk'
+    assert baseline['candidate']['filename']==candidate['filename']
+    assert baseline['candidate']['sha256']==candidate['sha256']
+    assert baseline['candidate']['sha512']==candidate['sha512']
+    assert baseline['candidate']['sha1']==candidate['sha1']
+    assert baseline['candidate']['size']==candidate['size']
     assert '26.3' in candidate['gameVersions']
     assert candidate['compatibilityStatus']=='requires-runtime-validation'
     assert candidate['nativeVerified'] is lock['nativeVerified']
@@ -1195,6 +1435,44 @@ def test_clearlag_26_3_candidate_is_pinned_and_replaces_known_baseline():
     assert hashlib.sha512(staged.read_bytes()).hexdigest()==candidate['sha512']
     assert hashlib.sha256(staged.read_bytes()).hexdigest()==candidate['sha256']
     assert load().identity(staged)=='ClearLag'
+
+
+def test_worldedit_26_3_candidate_uses_latest_stable_and_keeps_worldguard_pair():
+    lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
+    candidate=next(p for p in lock['modules'] if p['pluginName']=='WorldEdit')
+    worldguard=next(p for p in lock['modules'] if p['pluginName']=='WorldGuard')
+
+    assert candidate['version']=='7.4.6'
+    assert candidate['channel']=='release'
+    assert candidate['versionId']=='YFnqiUlL'
+    assert candidate['projectId']=='1u6JkXh5'
+    assert candidate['filename']=='worldedit-bukkit-7.4.6.jar'
+    assert candidate['url']=='https://cdn.modrinth.com/data/1u6JkXh5/versions/YFnqiUlL/worldedit-bukkit-7.4.6.jar'
+    assert candidate['sha1']=='4de34cb32f338a7727f0c1cc4a0f7ebff3fcc3a3'
+    assert candidate['sha256']=='e0ce67d870ad1fef8a40dd9d7926360caf3bb44722438545d6b20b55f82a0c91'
+    assert candidate['sha512']=='1fe3975132857093f971fed9efc601299bfa76fa7885f52a542fee41e7a0165ca9cb3cbcf5ae244474887d774d650b0db6f8f79aa80f98b245dea44f1c1b4152'
+    assert candidate['size']==7_870_216
+    assert candidate['artifactVersion']=='7.4.6'
+    assert candidate['platform']=='paper' and '26.3' in candidate['gameVersions']
+    assert candidate['replaceSha256']==[
+        '75df26f120ff424e62cba3a6e41b3b4e496251d5613b3c55c5f35b96bd8fd57c',
+        '166365c44bad4cd916200b288cf391d3770e3197d1eca84ff74f3914d933e289',
+    ]
+    assert candidate['compatibilityStatus']=='requires-runtime-validation'
+    assert candidate['nativeVerified'] is lock['nativeVerified']
+
+    # WorldGuard requires Bukkit WorldEdit; keep its supported 26.3 pin paired.
+    assert worldguard['version']=='7.0.20'
+    assert worldguard['versionId']=='9YdeGXiK'
+    assert worldguard['filename']=='worldguard-bukkit-7.0.20.jar'
+    assert worldguard['sha1']=='dd5fa9be6f5faf8a053a597491d194f2de8963ec'
+    assert worldguard['sha256']=='8768a49bcbecbb7a413ad134ee72d9871cdf967b7d938e6b96bb0ca72bb1467b'
+    assert worldguard['sha512']=='d7ad3f8b14c57deceb409dc8997fe3d7f0a98dd4158c52648111bfbe6934ca9be53fa42ece4d60d9c2d9da33f7d6ecf597117991bd3b8e7afbf308cd925e409c'
+    assert worldguard['size']==1_200_197
+    assert worldguard['platform']=='paper' and worldguard['gameVersions']==['26.3']
+    assert worldguard['compatibilityStatus']=='requires-runtime-validation'
+    assert worldguard['nativeVerified'] is False
+    assert worldguard['platform']=='paper' and '26.3' in worldguard['gameVersions']
 
 def test_protocollib_26_3_packet_mapping_evidence_is_distinct_from_tested_maximum():
     lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
@@ -1231,11 +1509,11 @@ def test_remaining_official_server_plugins_have_verified_26_3_release_candidates
             'sha256':'530d2c7430a96a39957391b7088be144daa3108f7665896d1c23aa8dd4af32f3','size':304_616,
         },
         'LuckPerms':{
-            'version':'v5.5.71-bukkit','versionId':'b0mk8uS6','projectId':'Vebnzrzj',
-            'filename':'LuckPerms-Bukkit-5.5.71.jar',
-            'url':'https://cdn.modrinth.com/data/Vebnzrzj/versions/b0mk8uS6/LuckPerms-Bukkit-5.5.71.jar',
-            'sha512':'188a91f0a543d23bfda32385fca6db63d61e49c8a422bd452a260bd9cbc6a7d7fe45071199e9fca8f3ce43c2b41ee84fd315bd15464577028ff3951a7d4fab27',
-            'sha256':'49cecb66fa1fd22a133039a490e9c1e5095a238e7cd66eb9d2a16fe6c897550d','size':1_501_521,
+            'version':'5.5.87',
+            'filename':'LuckPerms-Bukkit-5.5.87.jar',
+            'url':'https://download.luckperms.net/1674/bukkit/loader/LuckPerms-Bukkit-5.5.87.jar',
+            'sha512':'e4b277a5c80e78c96a0e7530bd3c9839e2d2bf294f339e5ae094d3da9b2e84f201bfe1b9751276519c3d057104065055bd1fec7e2be803524407267e7153d57d',
+            'sha256':'09d07b68965717976d2bab2f8d10436676f7c68d90bf6d24628cc0e5228bf406','size':1_509_479,
         },
         'GSit':{
             'version':'3.7.0',
@@ -1260,6 +1538,9 @@ def test_remaining_official_server_plugins_have_verified_26_3_release_candidates
             assert candidate['source']=='https://hangar.papermc.io/Gecolay/GSit/versions/3.7.0'
             assert 'versionId' not in candidate and 'projectId' not in candidate
             assert '143d38509f49c40b214887ad3c682c8db7fdd81c610787d0186d65f51256f4d2' in candidate['replaceSha256']
+        elif plugin_name == 'LuckPerms':
+            assert candidate['source']=='https://metadata.luckperms.net/data/all'
+            assert 'versionId' not in candidate and 'projectId' not in candidate
         else:
             assert candidate['versionId']==metadata['versionId']
             assert candidate['projectId']==metadata['projectId']
@@ -1316,6 +1597,7 @@ def test_remaining_official_server_plugins_have_verified_26_3_release_candidates
         assert '26.3' not in candidate['gameVersions']
         assert candidate['compatibilityStatus']=='requires-runtime-validation'
         assert candidate['nativeVerified'] is lock['nativeVerified']
+        assert candidate['runtimeEligible'] is False
 
 
 def write_bootstrap_fixture(root):
@@ -1357,6 +1639,7 @@ def test_prepare_runtime_stages_locked_paper_loopback_config_and_unaccepted_eula
     assert 'server-port=25566' in properties
     assert 'online-mode=false' in properties
     assert 'enable-rcon=false' in properties
+    assert 'max-players=20' in properties
     assert (runtime/'eula.txt').read_text(encoding='utf-8').strip()=='eula=false'
     assert (runtime/'plugins').is_dir()
 
@@ -2277,7 +2560,7 @@ def test_upstream_baseline_plugins_have_locked_candidates_that_declare_minecraft
     expected={
         'Chunky':('1.5.3','Chunky-Bukkit-1.5.3.jar','https://cdn.modrinth.com/data/fALzjamp/versions/MdY6JATr/Chunky-Bukkit-1.5.3.jar'),
         'GSit':('3.7.0','GSit-3.7.0.jar','https://hangarcdn.papermc.io/plugins/Gecolay/GSit/versions/3.7.0/PAPER/GSit-3.7.0.jar'),
-        'LuckPerms':('v5.5.71-bukkit','LuckPerms-Bukkit-5.5.71.jar','https://cdn.modrinth.com/data/Vebnzrzj/versions/b0mk8uS6/LuckPerms-Bukkit-5.5.71.jar'),
+        'LuckPerms':('5.5.87','LuckPerms-Bukkit-5.5.87.jar','https://download.luckperms.net/1674/bukkit/loader/LuckPerms-Bukkit-5.5.87.jar'),
         'Vault':('2.20.3','VaultUnlocked-2.20.3.jar','https://cdn.modrinth.com/data/ayRaM8J7/versions/qZgRzoYs/VaultUnlocked-2.20.3.jar'),
     }
     for plugin_name,(version,filename,url) in expected.items():
@@ -2295,3 +2578,40 @@ def test_upstream_baseline_plugins_have_locked_candidates_that_declare_minecraft
 
     assert candidates['GSit']['sha256']=='57e119ca79d60fae98bffbb84961a78d70c2403698c4ebe208cae09d69302cea'
     assert candidates['GSit']['sha512']=='5a3941efcf28204c6f60fb90482ddfddfb14aa4d08dff03d5ba53258ba417b78942002b7fbb578ee15c562fcd7442a197629ab004ed78d64a6c432e4ca49bfad'
+    assert candidates['GSit']['sha1']=='4bba0e96d9011864aa642c7901e489dd843f357b'
+
+
+def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_candidates():
+    lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
+    modules={row['pluginName']:row for row in lock['modules']}
+    baseline={row['pluginName']:row for row in lock['unchangedBaseline']}
+
+    luckperms=modules['LuckPerms']
+    assert luckperms['version']=='5.5.87'
+    assert luckperms['artifactVersion']=='5.5.87'
+    assert luckperms['source']=='https://metadata.luckperms.net/data/all'
+    assert luckperms['filename']=='LuckPerms-Bukkit-5.5.87.jar'
+    assert luckperms['url']=='https://download.luckperms.net/1674/bukkit/loader/LuckPerms-Bukkit-5.5.87.jar'
+    assert luckperms['sha1']=='072fbb8d2c70007c3170b12563af4911cee286da'
+    assert luckperms['sha256']=='09d07b68965717976d2bab2f8d10436676f7c68d90bf6d24628cc0e5228bf406'
+    assert luckperms['sha512']=='e4b277a5c80e78c96a0e7530bd3c9839e2d2bf294f339e5ae094d3da9b2e84f201bfe1b9751276519c3d057104065055bd1fec7e2be803524407267e7153d57d'
+    assert luckperms['size']==1509479
+    assert 'versionId' not in luckperms and 'projectId' not in luckperms
+    assert luckperms['compatibilityStatus']=='requires-runtime-validation'
+    assert luckperms['nativeVerified'] is False
+
+    expected_candidates={
+        'CopiMineArtifacts':('3202c55fb6b94423468f2eccf35b82d3e7a0cff39198aef2bf3777f0d2128ed8',
+                             '72afa2254dee57ebf172882ad7ab0b452bef024b331c82a739fab267d815e18a8b79258fb67bbc6c9ff43047a755a8dfe68766d6e50dd4b663cb25934912de42',353920),
+        'CopiMineEndEvent':('10dd52eff90c85217caff45bfd08053eae8ee32d8349120d2f436b2f80ce6305',
+                            'da7c184ad8a35f265d86f253cade33a27599305738a82063990221ec32f29aa558cc06232da1b04198f3de62379bffb471d934326746d3155e212fd239c3bbda',1712610),
+        'CopiMineNarcotics':('29d4894f4bde94ce950bf05f3f1a61fbafc3369851c8cb15ec330878ec5641c6',
+                             '2de76b3edce9140092f483e2610696cf33f94c2804a0353c20d6ab72fc1f3ceb0057874c188e364fab8e4c17729b23fa6843c6df7d1a8d2be099ae342aa7b90f',363263),
+    }
+    for plugin_name,(sha256,sha512,size) in expected_candidates.items():
+        candidate=baseline[plugin_name]['candidate']
+        assert candidate['sha256']==sha256
+        assert candidate['sha512']==sha512
+        assert candidate['size']==size
+        assert candidate['compatibilityStatus']=='requires-runtime-validation'
+        assert candidate['nativeVerified'] is False

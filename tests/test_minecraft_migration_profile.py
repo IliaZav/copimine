@@ -1218,6 +1218,10 @@ def test_existing_copimineclient_mod_is_rejected_before_profile_mutation(tmp_pat
             'version': '0.1.1+26.3',
             'depends': {'minecraft': '26.3'},
         }))
+    profile_before_locked_install = {
+        path.relative_to(profile).as_posix(): path.read_bytes() if path.is_file() else None
+        for path in profile.rglob('*')
+    }
     held_path = str(previous_client).replace("'", "''")
     installer_path = str(script).replace("'", "''")
     profile_path = str(profile).replace("'", "''")
@@ -1234,8 +1238,10 @@ try {{
     ], capture_output=True, text=True, timeout=30)
 
     assert locked_result.returncode != 0, locked_result.stdout + locked_result.stderr
-    assert 'used by another process' in (locked_result.stdout + locked_result.stderr).lower()
-    assert 'rollback is incomplete' not in (locked_result.stdout + locked_result.stderr).lower()
+    assert {
+        path.relative_to(profile).as_posix(): path.read_bytes() if path.is_file() else None
+        for path in profile.rglob('*')
+    } == profile_before_locked_install
     assert previous_client.is_file()
     assert not (mods / client_jar.name).exists()
     assert not list(profile.glob('.copimine-migration-transaction-*'))

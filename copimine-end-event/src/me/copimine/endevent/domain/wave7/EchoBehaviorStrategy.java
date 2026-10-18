@@ -28,9 +28,11 @@ public record EchoBehaviorStrategy(int meleePermille, int rangedPermille,
     public static EchoBehaviorStrategy from(ProfileCounts counts) {
         if (counts == null) throw new IllegalArgumentException("owner combat profile is required");
         long attackCount = counts.meleeHits() + counts.rangedHits();
+        int meleeShare = share(counts.meleeHits(), attackCount);
+        int rangedShare = attackCount <= 0L ? 500 : 1_000 - meleeShare;
         long sustainEvidence = attackCount + counts.healUses();
         return new EchoBehaviorStrategy(
-                share(counts.meleeHits(), attackCount), share(counts.rangedHits(), attackCount),
+                meleeShare, rangedShare,
                 share(counts.sprintSamples(), counts.movementSamples()),
                 share(counts.shieldSamples(), counts.movementSamples()),
                 share(counts.healUses(), sustainEvidence),

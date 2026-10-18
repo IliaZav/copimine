@@ -3,9 +3,19 @@ import me.copimine.endevent.domain.wave7.EchoBehaviorStrategy;
 public final class EchoBehaviorStrategyTest {
     public static void main(String[] args) {
         derivesOnlyBoundedWeights();
+        complementaryAttackSharesAlwaysSumToOneThousand();
         emptyEvidenceUsesNeutralPerFeatureWeights();
         codecIsCanonicalAndRejectsInvalidProfiles();
         System.out.println("EchoBehaviorStrategyTest OK");
+    }
+
+    private static void complementaryAttackSharesAlwaysSumToOneThousand() {
+        var strategy = EchoBehaviorStrategy.from(new EchoBehaviorStrategy.ProfileCounts(
+                1, 1999, 0, 0, 0, 0, 0, true, 0.5D));
+        check(strategy.meleePermille() == 1 && strategy.rangedPermille() == 999,
+                "complementary attack evidence rounds once and preserves the total weight");
+        check(strategy.meleePermille() + strategy.rangedPermille() == 1_000,
+                "melee and ranged weights always sum to 1000");
     }
 
     private static void derivesOnlyBoundedWeights() {

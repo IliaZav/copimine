@@ -143,6 +143,12 @@ public final class WaveProbeAdapterHarness {
     void spawnWaveForObjective(int wave, World world, Location core) {
         spawnWaveForObjectiveInternal(wave, world, core);
     }
+        boolean preflightWave7StartBeforeWorldMutation(World world, Location core,
+                Set<UUID> roster, boolean sandbox) {
+            // This detached routing harness stops before Wave 7 world mutation;
+            // the dedicated Wave 7 preflight tests exercise the production adapter.
+            return world != null && core != null && roster != null && !roster.isEmpty();
+        }
     int eligibleWaveTargets() {
         return (int) Bukkit.players.stream().filter(this::isPhysicallyEligibleWaveParticipant)
                 .filter(player -> sandboxWaveRoster.contains(player.getUniqueId())).count();

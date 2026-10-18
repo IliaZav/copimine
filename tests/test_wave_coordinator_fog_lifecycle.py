@@ -27,6 +27,7 @@ def probe(tmp_path_factory):
         "void quiesceInactiveOfficialWaveMob(Mob mob)",
         "void resolveEliteProjectileImpact(UUID projectileId, UUID shooterId, UUID targetId,",
         "boolean isWaveAiCombatEntity(Entity entity)",
+        "boolean isCurrentRitualGuard(Entity entity)",
     ])
     if "private void clearWaveProjectilesForFog()" in source:
         methods += extract(source, "void clearWaveProjectilesForFog()")
@@ -108,8 +109,9 @@ public class WaveFogLifecycleProbe {
  boolean ownedBySession(Entity e,String id,long gen){return e.gen==gen&&e.session.equals(id);}
  boolean ownedByEvent(Entity e,String id){return e!=null&&e.session.equals(id);}long readEntityGeneration(Entity e){return e.gen;}
  boolean isWaveCombatKind(String kind){return true;}boolean isOfficialEntity(Entity e){return e.official;}
- boolean testBossMovementFrozen;Object bossPhase;static final String EVENT_KIND_REALITY_SPLIT_TRIAL="trial",EVENT_KIND_RITUAL_CASTER="caster";
+ boolean testBossMovementFrozen,officialAttempt=true;Object bossPhase;static final String EVENT_KIND_REALITY_SPLIT_TRIAL="trial",EVENT_KIND_RITUAL_CASTER="caster",EVENT_KIND_RITUAL_GUARD="guard";
  Map<UUID,Set<UUID>> ritualGuardsByCaster=new HashMap<>();
+ Set<UUID> ritualGuardUuids=new HashSet<>();boolean testWaveFrontVisualMode;
  static class BossFinalSealAnchorPolicy {static boolean shouldPin(Object p){return false;}}
  static class RitualCasterTacticsPolicy {static class State {}static State state(boolean a,boolean b){return new State();}static boolean nativeAiEnabled(State s){return true;}}
  boolean readRitualCasterAwakened(Entity e){return true;}boolean isOfficialBoss(Entity e){return false;}
@@ -124,7 +126,7 @@ public class WaveFogLifecycleProbe {
  void rememberWaveTarget(UUID a,UUID b){}Logger getLogger(){return Logger.getAnonymousLogger();}
  void maintainSkeletonCombatPosture(Skeleton s,Player p,String k,long n){}void maintainWaveMobPath(Mob m,Player p,String k,long n){}
  void watchWaveMobProgress(Mob m,Player p,String k,long n){}int realitySplitChamberId(Entity e){return 0;}
- boolean isCurrentRitualGuard(Entity e){return false;}boolean isCurrentRitualCaster(Entity e){return false;}boolean isCurrentCollapseGuard(Entity e){return false;}
+ boolean isOfficialCurrentAttempt(){return officialAttempt;}boolean isCurrentRitualCaster(Entity e){return false;}boolean isCurrentCollapseGuard(Entity e){return false;}
  void forcePhase(EventPhase p,String why){phase=p;}
  void reconcileWave3GateSquadIntents(List<WaveCombatCoordinator.Squad> squads,long now){plannerReconciles++;}
  boolean isRitualProjectile(Arrow a){return false;}boolean ritualSphereProjectileProvenanceAllowed(Arrow a,Object p){return true;}
@@ -200,6 +202,19 @@ public class WaveFogLifecycleProbe {
     if(args[0].equals("arrow-stale"))h.generation++;
     check(h.isEventArrowPhaseAllowed(a)==args[0].equals("arrow-resume"),"already launched arrow phase/generation admission leaked");
    }
+    case "ritual-guard-arrow", "ritual-guard-stale", "ritual-guard-session", "ritual-guard-unregistered", "ritual-guard-intermission", "ritual-prisoner-arrow" -> {
+     h.activeWave=6;h.phase=EventPhase.WAVE_6;
+     var shooter=new Skeleton();shooter.wave=6;shooter.kind=EVENT_KIND_RITUAL_GUARD;
+     h.ownedEntities.put(shooter.id,shooter);h.ritualGuardUuids.add(shooter.id);
+     if(args[0].equals("ritual-guard-stale"))shooter.gen--;
+     if(args[0].equals("ritual-guard-session"))shooter.session="another-event";
+     if(args[0].equals("ritual-guard-unregistered"))h.ritualGuardUuids.remove(shooter.id);
+     if(args[0].equals("ritual-guard-intermission"))h.phase=EventPhase.INTERMISSION_6;
+     if(args[0].equals("ritual-prisoner-arrow"))shooter.kind=EVENT_KIND_RITUAL_CASTER;
+     var arrow=new Arrow();arrow.shooter=shooter;
+     boolean expected=args[0].equals("ritual-guard-arrow");
+     check(h.isEventArrowPhaseAllowed(arrow)==expected,"Wave 6 ritual-guard arrow current attempt/session/phase admission mismatch: "+args[0]);
+    }
    case "elite-fog", "elite-stale", "elite-resume" -> {
     var m=new Enderman();h.ownedEntities.put(m.id,m);var p=new Projectile();p.shooter=m;h.activeEliteProjectileExpiresAtTick.put(p.id,100L);
     if(args[0].equals("elite-fog"))h.blackFogPhase=BlackFogPhase.FOG;
@@ -275,7 +290,7 @@ public class WaveFogLifecycleProbe {
     return out
 
 
-@pytest.mark.parametrize("scenario", ["fog", "fog-three-cycles", "intermission", "intermission-wave1", "intermission-wave3", "all-intermissions", "core", "empty-resume", "generation-stale", "arrow-fog", "arrow-intermission", "arrow-stale", "arrow-resume", "elite-fog", "elite-stale", "elite-resume", "side-fog", "side-stale", "side-resume", "fog-cleanup", "cloud-fog", "cloud-stale", "cloud-resume", "cloud-cleaned-resume", "impact-fog", "impact-stale", "impact-resume", "impact-cleaned-resume", "local-arrow-ready", "local-side-ready", "local-arrow-fog", "local-side-fog", "local-arrow-stale", "local-side-stale", "local-arrow-session", "local-side-session"])
+@pytest.mark.parametrize("scenario", ["fog", "fog-three-cycles", "intermission", "intermission-wave1", "intermission-wave3", "all-intermissions", "core", "empty-resume", "generation-stale", "arrow-fog", "arrow-intermission", "arrow-stale", "arrow-resume", "ritual-guard-arrow", "ritual-guard-stale", "ritual-guard-session", "ritual-guard-unregistered", "ritual-guard-intermission", "ritual-prisoner-arrow", "elite-fog", "elite-stale", "elite-resume", "side-fog", "side-stale", "side-resume", "fog-cleanup", "cloud-fog", "cloud-stale", "cloud-resume", "cloud-cleaned-resume", "impact-fog", "impact-stale", "impact-resume", "impact-cleaned-resume", "local-arrow-ready", "local-side-ready", "local-arrow-fog", "local-side-fog", "local-arrow-stale", "local-side-stale", "local-arrow-session", "local-side-session"])
 def test_heartbeat_and_projectile_admission(probe, scenario):
     run = subprocess.run(["java", "-cp", str(probe), "WaveFogLifecycleProbe", scenario], capture_output=True, text=True)
     assert run.returncode == 0, run.stdout + run.stderr

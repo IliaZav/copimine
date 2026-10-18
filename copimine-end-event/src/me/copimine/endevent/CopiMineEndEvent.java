@@ -15303,13 +15303,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && isWaveProjectileShooterAllowed(shooter);
     }
 
-    /** Apply the same current-owner admission to live and delayed wave shots. */
+    /** Apply current-owner admission while respecting the ritual guard's dedicated AI lifecycle. */
     private boolean isWaveProjectileShooterAllowed(Entity shooter) {
         if (shooter == null || readInt(shooter, keyWave, 0) == 5
                 && blackFogPhase == BlackFogPhase.FOG) return false;
-        return isLiveOwnedEntity(shooter.getUniqueId())
-                && ownedBySession(shooter, eventId, generation)
-                && isWaveAiCombatEntity(shooter);
+        if (!isLiveOwnedEntity(shooter.getUniqueId())
+                || !ownedBySession(shooter, eventId, generation)) return false;
+        if (EVENT_KIND_RITUAL_GUARD.equals(readString(shooter, keyKind))) {
+            return isCurrentRitualGuard(shooter)
+                    && isWaveAiCombatPhase(readInt(shooter, keyWave, 0));
+        }
+        return isWaveAiCombatEntity(shooter);
     }
 
     private void spawnEventArrowTrail(Arrow arrow, String spell, int age) {

@@ -16,7 +16,7 @@ $mavenRepo = if ($env:COPIMINE_MAVEN_REPOSITORY) {
 }
 $profile = Get-Content -LiteralPath (Join-Path $releaseRoot 'tools/minecraft-26.3/profile.lock.json') -Raw | ConvertFrom-Json
 $compileLock = Get-Content -LiteralPath (Join-Path $releaseRoot 'tools/minecraft-26.3/java-plugin-compile-dependencies.lock.json') -Raw | ConvertFrom-Json
-if ($profile.schemaVersion -ne 1 -or $profile.paper.api -notmatch '^[A-Za-z0-9._+-]+$' -or
+if ($profile.schemaVersion -ne 1 -or $profile.paper.api -notmatch '^[A-Za-z0-9._+-]+$' -or [long]$profile.paper.apiSize -le 0 -or
     $profile.paper.apiSha256 -notmatch '^[0-9a-f]{64}$' -or $compileLock.schemaVersion -ne 1 -or -not $compileLock.dependencies) {
   throw 'Invalid Paper API or Java compile dependency lock.'
 }
@@ -37,8 +37,8 @@ if (-not $paperApi) {
   $paperApi = Join-Path $mavenRepo "io/papermc/paper/paper-api/$($profile.paper.api)/paper-api-$($profile.paper.api).jar"
 }
 $paperApiSha256 = $profile.paper.apiSha256
-# Paper build 169's API JAR is pinned by the migration profile at 2,934,206 bytes.
-$paperApiSize = 2934206
+# Keep the API artifact size in sync with the same lock that pins its URL and digest.
+$paperApiSize = [long]$profile.paper.apiSize
 # RunJavaPluginCi may explicitly request this exact legacy Paper API for compatibility checks.
 $legacyPaperApiSha256 = 'b8df3e7f2739e21072a5263e41b307bd30cfa8d8f72258ce27973167f8ad07c0'
 if ($env:PAPER_API_JAR -and (Test-Path -LiteralPath $paperApi -PathType Leaf) -and
@@ -103,6 +103,12 @@ Write-Host "Built $jar"
 Copy-Item -LiteralPath $jar -Destination $serverJar -Force
 New-Item -ItemType Directory -Path $serverDataDir -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $pluginDir 'config.yml') -Destination (Join-Path $serverDataDir 'config.yml') -Force
-Copy-Item -LiteralPath (Join-Path $pluginDir 'items.yml') -Destination (Join-Path $serverDataDir 'items.yml') -Force
+$serverCatalog = Join-Path $serverDataDir 'items.yml'
+if (-not (Test-Path -LiteralPath $serverCatalog -PathType Leaf)) {
+  Copy-Item -LiteralPath (Join-Path $pluginDir 'items.yml') -Destination $serverCatalog
+  Write-Host "Seeded default catalog at $serverCatalog"
+} else {
+  Write-Host "Preserved existing runtime catalog at $serverCatalog"
+}
 Write-Host "Copied $serverJar"
-Write-Host "Copied default config and items to $serverDataDir"
+Write-Host "Copied default config to $serverDataDir"

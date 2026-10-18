@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.sql.Array;
@@ -38,6 +39,7 @@ import java.util.Objects;
 import java.util.Queue;
 import java.util.Random;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.Map.Entry;
 import java.util.concurrent.CompletableFuture;
@@ -79,6 +81,7 @@ import org.bukkit.Sound;
 import org.bukkit.Tag;
 import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -89,6 +92,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Item;
@@ -126,6 +130,7 @@ import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.entity.ItemMergeEvent;
 import org.bukkit.event.entity.ItemDespawnEvent;
+import org.bukkit.event.entity.ItemSpawnEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
@@ -155,6 +160,7 @@ import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import io.papermc.paper.event.player.PlayerShieldDisableEvent;
 import io.papermc.paper.event.entity.EntityInsideBlockEvent;
@@ -192,7 +198,9 @@ import org.joml.AxisAngle4f;
 import org.joml.Vector3f;
 
 public final class CopiMineArtifacts extends JavaPlugin implements Listener, CommandExecutor, TabCompleter {
-   private static final double AR_THEFT_PROC_CHANCE = 0.001D;
+   private static final int ARTIFACT_CATALOG_MIGRATION_VERSION = 1;
+   private static final String ARTIFACT_CATALOG_MIGRATION_VERSION_KEY = "artifact-catalog-migration-version";
+   private static final double AR_THEFT_PROC_CHANCE = 0.025D;
    private static final String PRESIDENT_BUDGET_ACCOUNT_ID = "PRESIDENT_BUDGET";
    private static final String TREASURY_LABEL = "Казна CopiMine";
    private static final UUID EMPTY_UUID = new UUID(0L, 0L);
@@ -203,6 +211,15 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private static final String ARTIFACT_LIMIT_PLAYER = "ARTIFACT_LIMIT_PLAYER";
    private static final String GUI_BACK_LABEL = "&aНазад";
    private static final int VISUAL_REPAIR_BATCH_SIZE = 8;
+   private static final double KOSA_HEALTH_PROC_CHANCE = 0.30D;
+   private static final double KOSA_HUNGER_PROC_CHANCE = 0.20D;
+   private static final double KOSA_WITHER_PROC_CHANCE = 0.20D;
+   private static final double KOSA_BLINDNESS_PROC_CHANCE = 0.10D;
+   private static final double SHIELD_NAUSEA_PROC_CHANCE = 0.10D;
+   private static final double SHIELD_WEAKNESS_PROC_CHANCE = 0.10D;
+   private static final double SHIELD_OWNER_BUFF_PROC_CHANCE = 0.01D;
+   private static final long SHIELD_LIGHTNING_COOLDOWN_SECONDS = 20L;
+   private static final int SHIELD_EFFECT_DURATION_TICKS = 200;
    private static final int COMPASS_COOLDOWN_SECONDS = 200;
    private static final int TELEPORT_BOW_DEBUFF_TICKS = 100;
    private static final long COBBLESTONE_TRAIL_LIFETIME_TICKS = 15 * 20;
@@ -214,7 +231,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private static final double COBBLESTONE_TRAIL_MAX_STEP = 0.75D;
    private static final int MAX_TRAIL_BLOCKS_PER_TICK = 8;
    /** One chunk is sixteen blocks; the actual limit is the world's view distance. */
-   private static final double MAX_COMPASS_TELEPORT_DISTANCE = 16.0D;
+   private static final double MAX_COMPASS_TELEPORT_DISTANCE = 50.0D;
    private static final Map<String, Integer> ARTIFACT_MODEL_DATA = Map.of("zmei_gorynych", 10001);
    // The catalog YAML is the single source of truth for effect probability.
    // This fallback is only used when a deployment has no items.yml yet.
@@ -230,6 +247,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private final Set<UUID> claimAllInFlight = ConcurrentHashMap.newKeySet();
    private final Map<String, Long> actionCooldowns = new ConcurrentHashMap<>();
    private final Map<UUID, Long> pozdnyakovNauseaCooldowns = new ConcurrentHashMap<>();
+   private final Map<UUID, Long> shieldLightningCooldowns = new ConcurrentHashMap<>();
+   private final Map<String, Long> signalBellNotificationTicks = new ConcurrentHashMap<>();
+   private final Set<String> consumedGravediggerUniqueItemIds = ConcurrentHashMap.newKeySet();
+   private volatile boolean gravediggerConsumptionJournalAvailable = true;
+   private long signalBellNotificationTick = Long.MIN_VALUE;
+   private final Set<UUID> activeVeinMiningPlayers = ConcurrentHashMap.newKeySet();
+   private final Set<UUID> pendingVeinMiningPlayers = ConcurrentHashMap.newKeySet();
    private final Map<String, PozdnyakovMagmaRestore> pozdnyakovMagmaRestores = new ConcurrentHashMap<>();
    private final Map<String, TemporaryBlockRestore> temporaryTrapRestores = new ConcurrentHashMap<>();
    /**
@@ -317,6 +341,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private NamespacedKey keyAngelWingsCooldownUntil;
    private NamespacedKey keyTeleportBowCooldownUntil;
    private NamespacedKey keyCompassCooldownUntil;
+   private NamespacedKey keySignalBellWorld;
+   private NamespacedKey keySignalBellX;
+   private NamespacedKey keySignalBellY;
+   private NamespacedKey keySignalBellZ;
+   private NamespacedKey keyBerserkerCooldownUntil;
+   private NamespacedKey keyGravePendingWorld;
+   private NamespacedKey keyGravePendingX;
+   private NamespacedKey keyGravePendingY;
+   private NamespacedKey keyGravePendingZ;
+   private NamespacedKey keyGravePendingNonce;
+   private NamespacedKey keyGraveConsumedUniqueItemId;
    private NamespacedKey attackDamageKey;
    private NamespacedKey visualEntityTypeKey;
    private NamespacedKey visualKindKey;
@@ -325,6 +360,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private BukkitTask deliveryTask;
    private BukkitTask sessionCleanupTask;
    private BukkitTask artifactEffectTask;
+   private BukkitTask nightCloakTask;
    private BukkitTask armorEffectTask;
    private BukkitTask donationOwnershipSweepTask;
    private BukkitTask shopAnchorGuardTask;
@@ -338,6 +374,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.loadPendingInfiniteTotemRestores();
       this.debugGui = this.getConfig().getBoolean("debug_gui", false);
       this.ensureItemsConfig();
+      this.migrateArtifactCatalog();
       this.keyItemId = new NamespacedKey(this, "artifact_item_id");
       this.keyUniqueItemId = new NamespacedKey(this, "artifact_unique_item_id");
       this.keyCategory = new NamespacedKey(this, "artifact_category");
@@ -361,6 +398,18 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.keyAngelWingsCooldownUntil = new NamespacedKey(this, "angel_wings_cooldown_until");
       this.keyTeleportBowCooldownUntil = new NamespacedKey(this, "teleport_bow_cooldown_until");
       this.keyCompassCooldownUntil = new NamespacedKey(this, "compass_cooldown_until");
+      this.keySignalBellWorld = new NamespacedKey(this, "signal_bell_world");
+      this.keySignalBellX = new NamespacedKey(this, "signal_bell_x");
+      this.keySignalBellY = new NamespacedKey(this, "signal_bell_y");
+      this.keySignalBellZ = new NamespacedKey(this, "signal_bell_z");
+      this.keyBerserkerCooldownUntil = new NamespacedKey(this, "berserker_cooldown_until");
+      this.keyGravePendingWorld = new NamespacedKey(this, "grave_pending_world");
+      this.keyGravePendingX = new NamespacedKey(this, "grave_pending_x");
+      this.keyGravePendingY = new NamespacedKey(this, "grave_pending_y");
+      this.keyGravePendingZ = new NamespacedKey(this, "grave_pending_z");
+      this.keyGravePendingNonce = new NamespacedKey(this, "grave_pending_nonce");
+      this.keyGraveConsumedUniqueItemId = new NamespacedKey(this, "grave_consumed_unique_item_id");
+      this.loadConsumedGravediggerContractIds();
       this.loadPendingInfiniteTorchRestores();
       this.attackDamageKey = new NamespacedKey(this, "artifact_attack_damage");
       this.visualEntityTypeKey = new NamespacedKey("copimine", "visual_entity_type");
@@ -469,6 +518,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             this,
             ServicePriority.Normal);
       this.reconcilePendingEventWorldDrops();
+      this.purgeGravediggerContractEntities();
       // The catalog and official-instance cache are loaded asynchronously
       // before listeners are registered. Re-check players that were already
       // online during a plugin reload, and give join-time inventory restores
@@ -479,6 +529,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.deliveryTask = Bukkit.getScheduler().runTaskTimer(this, this::tickPendingHints, 20L * 60L, 20L * 60L);
       this.sessionCleanupTask = Bukkit.getScheduler().runTaskTimer(this, this::cleanupExpiredSessions, 20L * 60L, 20L * 60L);
       this.artifactEffectTask = Bukkit.getScheduler().runTaskTimer(this, this::tickPozdnyakovAce, 10L, 10L);
+      this.nightCloakTask = Bukkit.getScheduler().runTaskTimer(this, this::tickNightCloak, 200L, 200L);
       this.armorEffectTask = Bukkit.getScheduler().runTaskTimer(this, this::tickEquippedArmor, 1L, 20L);
       this.combatProjectileTask = Bukkit.getScheduler().runTaskTimer(this, this::tickCombatProjectiles, 2L, 2L);
       // Existing AR swords may already be in an online player's inventory
@@ -609,6 +660,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
       if (this.artifactEffectTask != null) {
          this.artifactEffectTask.cancel();
+      }
+
+      if (this.nightCloakTask != null) {
+         this.nightCloakTask.cancel();
       }
 
       if (this.armorEffectTask != null) {
@@ -811,6 +866,119 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
    }
 
+   /**
+    * Applies the catalog migration before the runtime catalog is parsed.
+    * Only the five approved item IDs are considered; existing values and
+    * unknown rows remain operator-owned, while missing canonical fields are
+    * filled so partial rows keep working after upgrade.
+    */
+   private void migrateArtifactCatalog() {
+      File catalogFile = new File(this.getDataFolder(), "items.yml");
+      YamlConfiguration runtime = new YamlConfiguration();
+      runtime.options().parseComments(true);
+      try {
+         runtime.load(catalogFile);
+      } catch (IOException | InvalidConfigurationException error) {
+         throw new IllegalStateException("Cannot load runtime artifact catalog for migration", error);
+      }
+
+      int appliedVersion = runtime.getInt(ARTIFACT_CATALOG_MIGRATION_VERSION_KEY, 0);
+      if (!ArtifactCatalogMigrationPolicy.shouldRunMigration(
+            appliedVersion, ARTIFACT_CATALOG_MIGRATION_VERSION)) {
+         return;
+      }
+
+      int changedRows;
+      try (java.io.InputStream canonicalResource = this.getResource("items.yml")) {
+         if (canonicalResource == null) {
+            throw new IllegalStateException("Bundled canonical items.yml is required for catalog migration");
+         }
+         YamlConfiguration canonical = new YamlConfiguration();
+         canonical.load(new java.io.InputStreamReader(canonicalResource, StandardCharsets.UTF_8));
+
+         List<Map<String, Object>> runtimeArRows = this.mutableCatalogRows(runtime.getMapList("items"));
+         List<Map<String, Object>> canonicalArRows = this.mutableCatalogRows(canonical.getMapList("items"));
+         int arChangedRows = ArtifactCatalogMigrationPolicy.mergeApprovedRows(
+               runtimeArRows,
+               canonicalArRows,
+               ArtifactCatalogMigrationPolicy.APPROVED_AR_ITEM_IDS,
+               "id"
+         );
+
+         List<Map<String, Object>> runtimeDonationRows = this.mutableCatalogRows(
+               runtime.getMapList("donation-catalog.items")
+         );
+         List<Map<String, Object>> canonicalDonationRows = this.mutableCatalogRows(
+               canonical.getMapList("donation-catalog.items")
+         );
+         int donationChangedRows = ArtifactCatalogMigrationPolicy.mergeApprovedRows(
+               runtimeDonationRows,
+               canonicalDonationRows,
+               ArtifactCatalogMigrationPolicy.APPROVED_DONATION_ITEM_IDS,
+               "item-id"
+         );
+
+         runtime.set("items", runtimeArRows);
+         runtime.set("donation-catalog.items", runtimeDonationRows);
+         runtime.set(ARTIFACT_CATALOG_MIGRATION_VERSION_KEY, ARTIFACT_CATALOG_MIGRATION_VERSION);
+         changedRows = arChangedRows + donationChangedRows;
+         this.saveArtifactCatalogAtomically(catalogFile.toPath(), runtime.saveToString());
+      } catch (IOException | InvalidConfigurationException error) {
+         throw new IllegalStateException("Cannot apply runtime artifact catalog migration", error);
+      }
+
+      this.getLogger().info(
+            "Applied artifact catalog migration v" + ARTIFACT_CATALOG_MIGRATION_VERSION
+                  + "; added or completed " + changedRows + " approved item rows."
+      );
+   }
+
+   private List<Map<String, Object>> mutableCatalogRows(List<Map<?, ?>> sourceRows) {
+      List<Map<String, Object>> rows = new ArrayList<>();
+      if (sourceRows == null) {
+         return rows;
+      }
+      for (Map<?, ?> sourceRow : sourceRows) {
+         if (sourceRow == null) {
+            continue;
+         }
+         Map<String, Object> row = new LinkedHashMap<>();
+         for (Entry<?, ?> entry : sourceRow.entrySet()) {
+            if (entry.getKey() != null) {
+               row.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+         }
+         rows.add(row);
+      }
+      return rows;
+   }
+
+   private void saveArtifactCatalogAtomically(Path catalogPath, String serializedCatalog) throws IOException {
+      Path temporaryPath = catalogPath.resolveSibling(catalogPath.getFileName() + ".migration.tmp");
+      try {
+         Files.writeString(
+               temporaryPath,
+               serializedCatalog,
+               StandardCharsets.UTF_8,
+               StandardOpenOption.CREATE,
+               StandardOpenOption.TRUNCATE_EXISTING,
+               StandardOpenOption.WRITE
+         );
+         try {
+            Files.move(
+                  temporaryPath,
+                  catalogPath,
+                  StandardCopyOption.ATOMIC_MOVE,
+                  StandardCopyOption.REPLACE_EXISTING
+            );
+         } catch (AtomicMoveNotSupportedException unsupported) {
+            Files.move(temporaryPath, catalogPath, StandardCopyOption.REPLACE_EXISTING);
+         }
+      } finally {
+         Files.deleteIfExists(temporaryPath);
+      }
+   }
+
    private String defaultItemsYaml() {
       return "items:\n  - id: zmei_gorynych\n    category: WEAPON\n    material: NETHERITE_SWORD\n    custom_model_data: 10001\n    name: \"&6Змей Горыныч\"\n    rarity: LEGENDARY\n    price_ar: 500\n    supply_limit: 0\n    per_player_limit: 3\n    cooldown_seconds: 12\n    effect: ZMEI_GORYNYCH_POOP\n    effect_chance_percent: 100\n    visual_effect_id: INVERTED_SCREEN\n    lore:\n      - \"&7Официальное оружие CopiMineArtifacts\"\n      - \"&7При ударе может вызвать электрический импульс.\"\n";
    }
@@ -982,8 +1150,55 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                this.getLogger().warning("Moved " + recovered + " interrupted artifact repairs to REVIEW after restart.");
             }
          }
+         this.migrateDonationNightCloakIdentity(var1);
       } finally {
          this.pgPool.release(var1);
+      }
+   }
+
+   /**
+    * The donation catalog previously shared the End Rift reward ID
+    * {@code night_cloak}.  Re-key only rows whose purchase record proves that
+    * they came from the donation system.  The payment row is deliberately
+    * read-only so its item ID and transaction history remain immutable.
+    */
+   private void migrateDonationNightCloakIdentity(Connection connection) throws SQLException {
+      if (connection == null) {
+         return;
+      }
+      boolean originalAutoCommit = connection.getAutoCommit();
+      connection.setAutoCommit(false);
+      try (Statement migration = connection.createStatement()) {
+         migration.executeUpdate("""
+               UPDATE donation_item_claims AS claim
+               SET item_id='donation_night_cloak'
+               FROM donation_purchases AS purchase
+               WHERE claim.purchase_id=purchase.id
+                 AND claim.item_id='night_cloak'
+                 AND purchase.item_id='night_cloak'
+               """);
+         migration.executeUpdate("""
+               UPDATE artifact_item_instances AS instance
+               SET item_id='donation_night_cloak'
+               FROM donation_purchases AS purchase
+               WHERE instance.purchase_id=purchase.id
+                 AND instance.item_id='night_cloak'
+                 AND purchase.item_id='night_cloak'
+               """);
+         migration.executeUpdate("""
+               UPDATE artifact_pending_deliveries AS delivery
+               SET item_id='donation_night_cloak'
+               FROM donation_purchases AS purchase
+               WHERE delivery.purchase_id=purchase.id
+                 AND delivery.item_id='night_cloak'
+                 AND purchase.item_id='night_cloak'
+               """);
+         connection.commit();
+      } catch (SQLException failure) {
+         connection.rollback();
+         throw failure;
+      } finally {
+         connection.setAutoCommit(originalAutoCommit);
       }
    }
 
@@ -1565,6 +1780,47 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             CopiMineArtifacts.CatalogItem var4 = this.authenticCatalogItem(var3.getInventory().getItemInMainHand(), var3, "tool_use");
             if (var4 != null) {
                String var5 = var4.effect().toUpperCase(Locale.ROOT);
+               if ("VEIN_MINER".equals(var5)) {
+                  if (!VeinMinerPolicy.shouldActivate(var1.getBlock().getType().name(), var1.isCancelled(), var3.isSneaking())) {
+                     return;
+                  }
+                  UUID playerId = var3.getUniqueId();
+                  if (this.activeVeinMiningPlayers.contains(playerId) || !this.pendingVeinMiningPlayers.add(playerId)) {
+                     return;
+                  }
+                  ItemStack initiatingTool = var3.getInventory().getItemInMainHand();
+                  String initiatingToolId = this.uniqueItemIdOf(initiatingTool);
+                  Block origin = var1.getBlock();
+                  String family = VeinMinerPolicy.family(origin.getType().name());
+                  Bukkit.getScheduler().runTask(this, () -> {
+                     try {
+                        Player currentPlayer = Bukkit.getPlayer(playerId);
+                        ItemStack currentTool = currentPlayer == null
+                              ? null
+                              : currentPlayer.getInventory().getItemInMainHand();
+                        boolean playerInOriginWorld = currentPlayer != null
+                              && currentPlayer.isOnline()
+                              && currentPlayer.getWorld().equals(origin.getWorld());
+                        boolean sameTool = currentPlayer != null
+                              && !initiatingToolId.isBlank()
+                              && initiatingToolId.equals(this.uniqueItemIdOf(currentTool));
+                        if (!VeinMinerPolicy.shouldRunDeferred(
+                              var1.isCancelled(), origin.getType() != Material.AIR, playerInOriginWorld, sameTool)) {
+                           return;
+                        }
+                        CatalogItem deferredTool = this.authenticCatalogItem(
+                              currentTool, currentPlayer, "vein_miner_deferred");
+                        if (deferredTool == null || !"VEIN_MINER".equalsIgnoreCase(deferredTool.effect())
+                              || family == null) {
+                           return;
+                        }
+                        this.tryVeinMine(currentPlayer, origin, family);
+                     } finally {
+                        this.pendingVeinMiningPlayers.remove(playerId);
+                     }
+                  });
+                  return;
+               }
                if (this.artifactToolEffects().contains(var5)) {
                    long var6 = this.actionCooldowns.getOrDefault(this.actionCooldownKey(var3, var4), 0L);
                    long var8 = this.now();
@@ -2025,6 +2281,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (this.quarantineForeignDonation(event.getPlayer(), ref, "foreign-block-place")) {
          event.getPlayer().sendMessage(this.color("&eЧужой донат-предмет нельзя размещать в мире; он возвращён владельцу через меню возврата."));
       }
+   }
+
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+   public void onSignalBellBlockPlace(BlockPlaceEvent event) {
+      if (event == null || event.getPlayer() == null
+            || !"signal_bell".equalsIgnoreCase(this.itemIdOf(event.getItemInHand()))) {
+         return;
+      }
+      event.setCancelled(true);
+      event.getPlayer().updateInventory();
    }
 
    /**
@@ -2783,6 +3049,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
           Bukkit.getScheduler().runTaskLater(this, () -> this.restorePendingInfiniteTorch(var1.getPlayer()), 5L);
        }
        this.recoverStrandedDeliveries(var1.getPlayer());
+       this.purgeConsumedGravediggerContract(var1.getPlayer(), false);
+       this.purgeGravediggerContractEntities();
        // A paid AR row that is still pending after a restart should not
        // require the player to discover a recovery command when space is
        // already available. The physical-identity recovery runs first and
@@ -2828,10 +3096,436 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          pdc.set(this.keyLastDeathX, PersistentDataType.INTEGER, deathLocation.getBlockX());
          pdc.set(this.keyLastDeathY, PersistentDataType.INTEGER, deathLocation.getBlockY());
          pdc.set(this.keyLastDeathZ, PersistentDataType.INTEGER, deathLocation.getBlockZ());
+         if (!this.isEndRiftDeathProtected(var1)) {
+            this.captureGravediggerContract(player, var1);
+         }
       }
    }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+       /**
+    * Some protection/keep-inventory plugins append their protected contents
+    * after the normal death listeners have run. Consumed unique instances
+    * must be removed from the final drop/keep lists after every other listener
+    * has had a chance to modify them.
+    */
+   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+   public void onGravediggerDeathFinalizer(PlayerDeathEvent event) {
+      if (event == null || event.getEntity() == null) {
+         return;
+      }
+      event.getDrops().removeIf(this::isConsumedGravediggerContractAnywhere);
+      event.getItemsToKeep().removeIf(this::isConsumedGravediggerContractAnywhere);
+      this.purgeConsumedGravediggerContract(event.getEntity(), false);
+   }
+
+   /**
+    * The death list is not the last boundary: Paper creates item entities
+    * after PlayerDeathEvent, and another listener can append a contract while
+    * that event is being processed. The exact consumed identity must never
+    * enter the world, so cancel its spawn as the final physical guard.
+    */
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+   public void onGravediggerContractItemSpawn(ItemSpawnEvent event) {
+      if (event == null || event.getEntity() == null
+            || !this.isConsumedGravediggerContractAnywhere(event.getEntity().getItemStack())) {
+         return;
+      }
+      event.setCancelled(true);
+      event.getEntity().remove();
+   }
+
+   /** Remove a pre-existing entity only when its exact identity was consumed. */
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+   public void onGravediggerContractItemPickup(EntityPickupItemEvent event) {
+      if (event == null || event.getItem() == null) {
+         return;
+      }
+      ItemStack stack = event.getItem().getItemStack();
+      // If the durable tombstone journal cannot be trusted, do not allow a
+      // potentially consumed contract to leave the ground. Keep the entity
+      // intact so repairing the journal does not destroy a legitimate item.
+      if (!this.gravediggerConsumptionJournalAvailable
+            && "gravedigger_contract".equalsIgnoreCase(this.itemIdOf(stack))) {
+         event.setCancelled(true);
+         return;
+      }
+      if (!this.isConsumedGravediggerContractAnywhere(stack)) {
+         return;
+      }
+      event.setCancelled(true);
+      event.getItem().remove();
+   }
+
+   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+   public void onPlayerRespawn(PlayerRespawnEvent event) {
+      if (event == null || event.getPlayer() == null) {
+         return;
+      }
+      // keepInventory and compatibility death handlers can repopulate the
+      // inventory after PlayerDeathEvent.  Run the exact-instance purge both
+      // immediately and after delayed recovery handlers have run.
+      this.scheduleGravediggerContractPurge(event.getPlayer());
+   }
+
+   private void scheduleGravediggerContractPurge(Player player) {
+      if (player == null) {
+         return;
+      }
+      Bukkit.getScheduler().runTaskLater(this, () -> this.purgeConsumedGravediggerContract(player, false), 1L);
+      // CopiMineUltimateAdminPlus restores its protected death queue after
+      // 20 ticks.  Purging only at respawn+1 allowed that later restore to
+      // resurrect a spent contract.
+      Bukkit.getScheduler().runTaskLater(this, () -> this.purgeConsumedGravediggerContract(player, false), 25L);
+      Bukkit.getScheduler().runTaskLater(this, () -> this.purgeConsumedGravediggerContract(player, false), 40L);
+   }
+
+   private void loadConsumedGravediggerContractIds() {
+      File journalFile = new File(this.getDataFolder(), "gravedigger-consumed.yml");
+      if (!journalFile.isFile()) {
+         return;
+      }
+      YamlConfiguration journal = new YamlConfiguration();
+      try {
+         journal.load(journalFile);
+         if (journal.getInt("version", -1) != 1) {
+            throw new IOException("Unsupported consumed-instance journal version");
+         }
+         Object rawIds = journal.get("consumed-unique-item-ids");
+         if (!(rawIds instanceof List<?> ids)) {
+            throw new IOException("Consumed-instance journal is missing its ID list");
+         }
+         Set<String> loadedIds = new HashSet<>();
+         for (Object rawId : ids) {
+            if (!(rawId instanceof String uniqueItemId)) {
+               throw new IOException("Consumed-instance journal contains a non-string ID");
+            }
+            String normalized = uniqueItemId.trim();
+            if (normalized.isBlank()) {
+               throw new IOException("Consumed-instance journal contains a blank ID");
+            }
+            loadedIds.add(normalized);
+         }
+         this.consumedGravediggerUniqueItemIds.addAll(loadedIds);
+      } catch (IOException | InvalidConfigurationException error) {
+         this.gravediggerConsumptionJournalAvailable = false;
+         this.consumedGravediggerUniqueItemIds.clear();
+         this.getLogger().log(
+               Level.SEVERE,
+               "Gravedigger contracts are disabled because the consumed-instance journal could not be read.",
+               error);
+      }
+   }
+
+   private boolean recordConsumedGravediggerContract(String uniqueItemId) {
+      String normalized = this.firstNonBlank(uniqueItemId, "").trim();
+      if (normalized.isBlank() || !this.gravediggerConsumptionJournalAvailable) {
+         return false;
+      }
+      synchronized (this.consumedGravediggerUniqueItemIds) {
+         if (!this.consumedGravediggerUniqueItemIds.add(normalized)) {
+            return false;
+         }
+         try {
+            this.saveGravediggerConsumptionJournalAtomically();
+            return true;
+         } catch (IOException error) {
+            this.consumedGravediggerUniqueItemIds.remove(normalized);
+            this.getLogger().log(
+                  Level.SEVERE,
+                  "Gravedigger contract was not consumed because its unique ID could not be persisted.",
+                  error);
+            return false;
+         }
+      }
+   }
+
+   private void saveGravediggerConsumptionJournalAtomically() throws IOException {
+      Path journalPath = new File(this.getDataFolder(), "gravedigger-consumed.yml").toPath();
+      Files.createDirectories(journalPath.getParent());
+      YamlConfiguration journal = new YamlConfiguration();
+      journal.set("version", 1);
+      journal.set(
+            "consumed-unique-item-ids",
+            new ArrayList<>(new TreeSet<>(this.consumedGravediggerUniqueItemIds)));
+      Path temporaryPath = journalPath.resolveSibling(journalPath.getFileName() + ".tmp");
+      try {
+         Files.writeString(
+               temporaryPath,
+               journal.saveToString(),
+               StandardCharsets.UTF_8,
+               StandardOpenOption.CREATE,
+               StandardOpenOption.TRUNCATE_EXISTING,
+               StandardOpenOption.WRITE);
+         Files.move(
+               temporaryPath,
+               journalPath,
+               StandardCopyOption.ATOMIC_MOVE,
+               StandardCopyOption.REPLACE_EXISTING);
+      } finally {
+         Files.deleteIfExists(temporaryPath);
+      }
+   }
+
+   private CatalogItem gravediggerContractItem(ItemStack stack) {
+      if (!this.isOfficialArtifactItem(stack)) {
+         return null;
+      }
+      String itemId = this.itemIdOf(stack);
+      String uniqueItemId = this.uniqueItemIdOf(stack);
+      OfficialInstanceBinding binding = this.instanceBindings.get(uniqueItemId);
+      if (binding == null || !this.instanceToItem.containsKey(uniqueItemId)
+            || !"gravedigger_contract".equalsIgnoreCase(binding.itemId())
+            || !"gravedigger_contract".equalsIgnoreCase(itemId)) {
+         return null;
+      }
+      CatalogItem item = this.runtimeCatalogItem(itemId);
+      return item != null && "GRAVEDIGGER_CONTRACT".equalsIgnoreCase(item.effect()) ? item : null;
+   }
+
+   private String itemIdOf(ItemStack stack) {
+      if (stack == null || stack.getType().isAir() || !stack.hasItemMeta()) {
+         return "";
+      }
+      ItemMeta meta = stack.getItemMeta();
+      return meta == null ? "" : this.firstNonBlank(
+            meta.getPersistentDataContainer().get(this.keyItemId, PersistentDataType.STRING), "")
+            .toLowerCase(Locale.ROOT);
+   }
+
+   private boolean isConsumedGravediggerContract(ItemStack stack, String consumedUniqueItemId) {
+      return stack != null
+            && "gravedigger_contract".equalsIgnoreCase(this.itemIdOf(stack))
+            && consumedUniqueItemId != null && !consumedUniqueItemId.isBlank()
+            && consumedUniqueItemId.equals(this.uniqueItemIdOf(stack));
+   }
+
+   private boolean isConsumedGravediggerContractAnywhere(ItemStack stack) {
+      if (stack == null || !"gravedigger_contract".equalsIgnoreCase(this.itemIdOf(stack))) {
+         return false;
+      }
+      String uniqueItemId = this.uniqueItemIdOf(stack);
+      if (uniqueItemId.isBlank()) {
+         return false;
+      }
+      if (this.consumedGravediggerUniqueItemIds.contains(uniqueItemId)) {
+         return true;
+      }
+      for (Player player : Bukkit.getOnlinePlayers()) {
+         if (this.isConsumedGravediggerContract(stack, this.consumedGravediggerUniqueItemId(player))) {
+            return true;
+         }
+      }
+      return false;
+   }
+
+   private String consumedGravediggerUniqueItemId(Player player) {
+      if (player == null) {
+         return "";
+      }
+      return this.firstNonBlank(
+            player.getPersistentDataContainer().get(this.keyGraveConsumedUniqueItemId, PersistentDataType.STRING), ""
+      );
+   }
+
+   private void clearConsumedGravediggerMarker(Player player) {
+      if (player != null) {
+         player.getPersistentDataContainer().remove(this.keyGraveConsumedUniqueItemId);
+      }
+   }
+
+   private void purgeGravediggerContractEntities() {
+      int removed = 0;
+      for (World world : Bukkit.getWorlds()) {
+         for (Item item : world.getEntitiesByClass(Item.class)) {
+            if (item != null && this.isConsumedGravediggerContractAnywhere(item.getItemStack())) {
+               item.remove();
+               removed++;
+            }
+         }
+      }
+      if (removed > 0) {
+         this.getLogger().info("Removed " + removed + " stale gravedigger contract item entities.");
+      }
+   }
+
+   private void captureGravediggerContract(Player player, PlayerDeathEvent event) {
+      if (player == null || event == null || player.getWorld() == null) {
+         return;
+      }
+      // A new death starts a new one-shot cycle. A previous unused return
+      // right is never carried through a later death without a contract.
+      this.purgeConsumedGravediggerContract(player, false);
+      this.purgeGravediggerContractEntities();
+      this.clearPendingGrave(player);
+      if (!this.gravediggerConsumptionJournalAvailable) {
+         player.sendMessage(this.color("&cКонтракт могильщика временно недоступен: не удалось проверить журнал использования."));
+         return;
+      }
+      PlayerInventory inventory = player.getInventory();
+      int slot = -1;
+      ItemStack captured = null;
+      for (int index = 0; index < inventory.getStorageContents().length; index++) {
+         ItemStack stack = inventory.getItem(index);
+         CatalogItem item = this.gravediggerContractItem(stack);
+         if (item != null && !this.isConsumedGravediggerContractAnywhere(stack)) {
+            slot = index;
+            captured = stack.clone();
+            break;
+         }
+      }
+      if (slot < 0) {
+         ItemStack offhand = inventory.getItemInOffHand();
+         CatalogItem item = this.gravediggerContractItem(offhand);
+         if (item != null && !this.isConsumedGravediggerContractAnywhere(offhand)) {
+            slot = 40;
+            captured = offhand.clone();
+         }
+      }
+      if (slot < 0) {
+         // No authenticated contract was consumed. Do not destroy other
+         // contract instances merely because one death had no valid token.
+         return;
+      }
+      String capturedUniqueItemId = this.uniqueItemIdOf(captured);
+      if (capturedUniqueItemId.isBlank()) {
+         return;
+      }
+      if (this.consumedGravediggerUniqueItemIds.contains(capturedUniqueItemId)) {
+         this.purgeConsumedGravediggerContract(player, false);
+         return;
+      }
+      if (!this.recordConsumedGravediggerContract(capturedUniqueItemId)) {
+         player.sendMessage(this.color("&cКонтракт могильщика не был использован: не удалось сохранить его уникальный ID."));
+         return;
+      }
+      if (slot == 40) {
+         inventory.setItemInOffHand(new ItemStack(Material.AIR));
+      } else {
+         inventory.setItem(slot, new ItemStack(Material.AIR));
+      }
+      PersistentDataContainer data = player.getPersistentDataContainer();
+      data.set(this.keyGraveConsumedUniqueItemId, PersistentDataType.STRING, capturedUniqueItemId);
+      // Only the exact authenticated instance that created this grave is
+      // consumed. Other independently issued contracts remain valid.
+      event.getDrops().removeIf(stack -> this.isConsumedGravediggerContract(stack, capturedUniqueItemId));
+      event.getItemsToKeep().removeIf(stack -> this.isConsumedGravediggerContract(stack, capturedUniqueItemId));
+      Location death = player.getLocation().clone();
+      data.set(this.keyGravePendingWorld, PersistentDataType.STRING, death.getWorld().getName());
+      data.set(this.keyGravePendingX, PersistentDataType.INTEGER, death.getBlockX());
+      data.set(this.keyGravePendingY, PersistentDataType.INTEGER, death.getBlockY());
+      data.set(this.keyGravePendingZ, PersistentDataType.INTEGER, death.getBlockZ());
+      data.set(this.keyGravePendingNonce, PersistentDataType.STRING, UUID.randomUUID().toString());
+      player.sendMessage(this.color(
+            "&eКонтракт могильщика сработал. После возрождения используй &f/cmartifacts grave&e, чтобы вернуться."
+      ));
+      // Do not rely on the death event's inventory snapshot: another plugin
+      // may restore keepInventory contents after this handler returns.
+      this.scheduleGravediggerContractPurge(player);
+   }
+
+   private void purgeConsumedGravediggerContract(Player player, boolean clearMarker) {
+      if (player == null) {
+         return;
+      }
+      PersistentDataContainer data = player.getPersistentDataContainer();
+      PlayerInventory inventory = player.getInventory();
+      boolean removed = false;
+      for (int index = 0; index < inventory.getStorageContents().length; index++) {
+         ItemStack stack = inventory.getItem(index);
+         if (this.isConsumedGravediggerContractAnywhere(stack)) {
+            inventory.setItem(index, new ItemStack(Material.AIR));
+            removed = true;
+         }
+      }
+      ItemStack offhand = inventory.getItemInOffHand();
+      if (this.isConsumedGravediggerContractAnywhere(offhand)) {
+         inventory.setItemInOffHand(new ItemStack(Material.AIR));
+         removed = true;
+      }
+      ItemStack cursor = player.getItemOnCursor();
+      if (this.isConsumedGravediggerContractAnywhere(cursor)) {
+         player.setItemOnCursor(new ItemStack(Material.AIR));
+         removed = true;
+      }
+      ItemStack[] armor = inventory.getArmorContents();
+      for (int index = 0; index < armor.length; index++) {
+         if (this.isConsumedGravediggerContractAnywhere(armor[index])) {
+            armor[index] = new ItemStack(Material.AIR);
+            removed = true;
+         }
+      }
+      if (removed) {
+         inventory.setArmorContents(armor);
+      }
+      if (removed) {
+         player.updateInventory();
+      }
+      if (clearMarker) {
+         this.clearConsumedGravediggerMarker(player);
+      }
+   }
+
+   private boolean hasPendingGrave(Player player) {
+      if (player == null) {
+         return false;
+      }
+      PersistentDataContainer data = player.getPersistentDataContainer();
+      return data.has(this.keyGravePendingWorld, PersistentDataType.STRING)
+            && data.has(this.keyGravePendingX, PersistentDataType.INTEGER)
+            && data.has(this.keyGravePendingY, PersistentDataType.INTEGER)
+            && data.has(this.keyGravePendingZ, PersistentDataType.INTEGER)
+            && data.has(this.keyGravePendingNonce, PersistentDataType.STRING)
+            && !this.firstNonBlank(
+                  data.get(this.keyGravePendingNonce, PersistentDataType.STRING), ""
+            ).isBlank();
+   }
+
+   private Location pendingGraveLocation(Player player) {
+      if (!this.hasPendingGrave(player)) {
+         return null;
+      }
+      PersistentDataContainer data = player.getPersistentDataContainer();
+      String worldName = data.get(this.keyGravePendingWorld, PersistentDataType.STRING);
+      Integer x = data.get(this.keyGravePendingX, PersistentDataType.INTEGER);
+      Integer y = data.get(this.keyGravePendingY, PersistentDataType.INTEGER);
+      Integer z = data.get(this.keyGravePendingZ, PersistentDataType.INTEGER);
+      World world = worldName == null ? null : Bukkit.getWorld(worldName);
+      return world == null || x == null || y == null || z == null
+            ? null
+            : new Location(world, x + 0.5D, y, z + 0.5D, player.getLocation().getYaw(), player.getLocation().getPitch());
+   }
+
+   private void clearPendingGrave(Player player) {
+      if (player == null) {
+         return;
+      }
+      PersistentDataContainer data = player.getPersistentDataContainer();
+      data.remove(this.keyGravePendingWorld);
+      data.remove(this.keyGravePendingX);
+      data.remove(this.keyGravePendingY);
+      data.remove(this.keyGravePendingZ);
+      data.remove(this.keyGravePendingNonce);
+   }
+
+   private void handleGraveCommand(Player player) {
+      String consumedUniqueItemId = this.consumedGravediggerUniqueItemId(player);
+      Location pending = this.pendingGraveLocation(player);
+      if (pending == null || consumedUniqueItemId.isBlank()) {
+         player.sendMessage(this.color("&eУ вас нет сохранённой точки контракта могильщика."));
+         return;
+      }
+      Location safe = this.findSafeReturnStoneLocation(pending);
+      if (safe == null || !player.teleport(safe)) {
+         player.sendMessage(this.color("&cНе удалось найти безопасное место для возвращения."));
+         return;
+      }
+      this.clearPendingGrave(player);
+      player.setFallDistance(0.0F);
+      player.sendMessage(this.color("&aКонтракт могильщика вернул вас к месту смерти."));
+   }
+
+
+@EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onRepairKitInteract(PlayerInteractEvent event) {
        if (event == null || event.isCancelled()
              || (event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK)
@@ -3730,6 +4424,22 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                return;
             }
 
+            if ("SIGNAL_BELL".equals(var4)) {
+               // The bell is a binding tool, never a placeable vanilla bell.
+               // Deny item use before validating the target so every invalid
+               // right-click is blocked without consuming or placing it.
+               var1.setUseItemInHand(Event.Result.DENY);
+               if (var5 != Action.RIGHT_CLICK_BLOCK || var1.getClickedBlock() == null
+                     || !SignalBellPolicy.isChestContainer(var1.getClickedBlock().getType().name())) {
+                  return;
+               }
+               var1.setUseInteractedBlock(Event.Result.DENY);
+               var1.setCancelled(true);
+               this.bindSignalBell(var1.getItem(), var1.getClickedBlock());
+               var2.sendMessage(this.color("&aКолокол привязан к сундуку. Держатель получит уведомление об открытии."));
+               return;
+            }
+
             // The ability owns the interaction.  Deny the vanilla use as well,
             // otherwise a FIREWORK_ROCKET can be consumed by the client/server
             // before the eternal boost finishes.
@@ -4214,6 +4924,238 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
    }
 
+   private void bindSignalBell(ItemStack signalBell, Block container) {
+      if (signalBell == null || container == null || !signalBell.hasItemMeta()) {
+         return;
+      }
+      ItemMeta meta = signalBell.getItemMeta();
+      if (meta == null) {
+         return;
+      }
+      PersistentDataContainer data = meta.getPersistentDataContainer();
+      data.set(this.keySignalBellWorld, PersistentDataType.STRING, container.getWorld().getName());
+      data.set(this.keySignalBellX, PersistentDataType.INTEGER, container.getX());
+      data.set(this.keySignalBellY, PersistentDataType.INTEGER, container.getY());
+      data.set(this.keySignalBellZ, PersistentDataType.INTEGER, container.getZ());
+      signalBell.setItemMeta(meta);
+   }
+
+   private boolean signalBellMatches(ItemStack signalBell, Location opened) {
+      if (signalBell == null || opened == null || opened.getWorld() == null || !signalBell.hasItemMeta()) {
+         return false;
+      }
+      PersistentDataContainer data = signalBell.getItemMeta().getPersistentDataContainer();
+      String worldName = data.get(this.keySignalBellWorld, PersistentDataType.STRING);
+      Integer x = data.get(this.keySignalBellX, PersistentDataType.INTEGER);
+      Integer y = data.get(this.keySignalBellY, PersistentDataType.INTEGER);
+      Integer z = data.get(this.keySignalBellZ, PersistentDataType.INTEGER);
+      return x != null && y != null && z != null
+            && SignalBellPolicy.matches(
+                  worldName, x, y, z,
+                  opened.getWorld().getName(), opened.getBlockX(), opened.getBlockY(), opened.getBlockZ(),
+                  SignalBellPolicy.isChestContainer(opened.getBlock().getType().name()));
+   }
+
+   /** The current physical holder, not the purchaser, receives the open notice. */
+   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+   public void onSignalBellInventoryOpen(InventoryOpenEvent event) {
+      if (event == null || !(event.getPlayer() instanceof Player opener)
+            || event.getInventory() == null || event.getInventory().getLocation() == null
+            || event.getInventory().getHolder() instanceof MenuHolder) {
+         return;
+      }
+      Location opened = event.getInventory().getLocation();
+      for (Player holder : Bukkit.getOnlinePlayers()) {
+         CatalogItem bell = this.findDirectPlayerInventoryArtifact(holder, "signal_bell", "signal_bell_open");
+         if (bell == null || !"SIGNAL_BELL".equalsIgnoreCase(bell.effect())) {
+            continue;
+         }
+         ItemStack matchingBell = null;
+         for (ItemStack stack : holder.getInventory().getStorageContents()) {
+            if (this.signalBellMatches(stack, opened)) {
+               matchingBell = stack;
+               break;
+            }
+         }
+         if (matchingBell == null && this.signalBellMatches(holder.getInventory().getItemInOffHand(), opened)) {
+            matchingBell = holder.getInventory().getItemInOffHand();
+         }
+         if (matchingBell == null) {
+            continue;
+         }
+         String notificationKey = this.uniqueItemIdOf(matchingBell) + ":" + this.blockKey(opened);
+         long tick = Bukkit.getCurrentTick();
+          this.signalBellNotificationTick = SignalBellPolicy.beginNotificationTick(
+                this.signalBellNotificationTicks, this.signalBellNotificationTick, tick);
+         Long previous = this.signalBellNotificationTicks.put(notificationKey, tick);
+         if (!SignalBellPolicy.shouldNotify(previous, tick)) {
+            continue;
+         }
+         holder.sendMessage(this.color("&eСигнальный колокол: &f" + opener.getName()
+               + "&e открыл привязанный сундук в &f" + Instant.now() + "&e."));
+      }
+   }
+
+   private void tryVeinMine(Player player, Block origin, String family) {
+      if (player == null || origin == null
+            || family == null
+            || !this.activeVeinMiningPlayers.add(player.getUniqueId())) {
+         return;
+      }
+      try {
+         Set<String> visited = new HashSet<>();
+         ArrayDeque<Block> queue = new ArrayDeque<>();
+         queue.add(origin);
+         visited.add(this.veinBlockKey(origin));
+         int broken = 0;
+         while (!queue.isEmpty() && VeinMinerPolicy.canVisitMore(visited.size())) {
+            Block current = queue.removeFirst();
+            if (current != origin) {
+               CatalogItem authenticated = this.authenticCatalogItem(
+                     player.getInventory().getItemInMainHand(), player, "vein_miner"
+               );
+               if (authenticated == null || !"VEIN_MINER".equalsIgnoreCase(authenticated.effect())
+                     || !VeinMinerPolicy.sameFamily(family, current.getType().name())) {
+                  break;
+               }
+                if (!VeinMinerPolicy.shouldExploreNeighbors(player.breakBlock(current))) {
+                   continue;
+                }
+                broken++;
+                CatalogItem remainingTool = this.authenticCatalogItem(
+                      player.getInventory().getItemInMainHand(), player, "vein_miner_after_break"
+                );
+                if (remainingTool == null || !"VEIN_MINER".equalsIgnoreCase(remainingTool.effect())) {
+                   break;
+               }
+            }
+            for (int dx = -1; dx <= 1 && VeinMinerPolicy.canVisitMore(visited.size()); dx++) {
+               for (int dy = -1; dy <= 1 && VeinMinerPolicy.canVisitMore(visited.size()); dy++) {
+                  for (int dz = -1; dz <= 1 && VeinMinerPolicy.canVisitMore(visited.size()); dz++) {
+                     if (dx == 0 && dy == 0 && dz == 0) {
+                        continue;
+                     }
+                     Block next = current.getRelative(dx, dy, dz);
+                     if (!next.getWorld().isChunkLoaded(next.getX() >> 4, next.getZ() >> 4)
+                           || !VeinMinerPolicy.sameFamily(family, next.getType().name())) {
+                        continue;
+                     }
+                     if (visited.add(this.veinBlockKey(next))) {
+                        queue.addLast(next);
+                     }
+                  }
+               }
+            }
+         }
+         if (broken > 0) {
+            player.getWorld().playSound(origin.getLocation(), Sound.BLOCK_STONE_BREAK, 0.35F, 1.15F);
+         }
+      } finally {
+         this.activeVeinMiningPlayers.remove(player.getUniqueId());
+      }
+   }
+
+   private String veinBlockKey(Block block) {
+      if (block == null || block.getWorld() == null) {
+         return "";
+      }
+      return block.getWorld().getUID() + ":" + block.getX() + ":" + block.getY() + ":" + block.getZ();
+   }
+
+   private CatalogItem findDirectPlayerInventoryArtifact(Player player, String itemId, String context) {
+      if (player == null || itemId == null || itemId.isBlank()) {
+         return null;
+      }
+      PlayerInventory inventory = player.getInventory();
+      for (ItemStack stack : inventory.getStorageContents()) {
+         String physicalId = this.itemIdOf(stack);
+         boolean legacyDonationCloak = "donation_night_cloak".equalsIgnoreCase(itemId)
+               && "night_cloak".equalsIgnoreCase(physicalId);
+         if (!itemId.equalsIgnoreCase(physicalId) && !legacyDonationCloak) {
+            continue;
+         }
+         CatalogItem item = this.authenticCatalogItem(stack, player, context);
+         if (item != null && itemId.equalsIgnoreCase(item.itemId())) {
+            return item;
+         }
+      }
+      ItemStack offhand = inventory.getItemInOffHand();
+      String physicalId = this.itemIdOf(offhand);
+      boolean legacyDonationCloak = "donation_night_cloak".equalsIgnoreCase(itemId)
+            && "night_cloak".equalsIgnoreCase(physicalId);
+      if (itemId.equalsIgnoreCase(physicalId) || legacyDonationCloak) {
+         CatalogItem item = this.authenticCatalogItem(offhand, player, context);
+         if (item != null && itemId.equalsIgnoreCase(item.itemId())) {
+            return item;
+         }
+      }
+      return null;
+   }
+
+   private ItemStack findAuthenticDirectPlayerArtifactStack(Player player, String itemId, String context) {
+      if (player == null || itemId == null || itemId.isBlank()) {
+         return null;
+      }
+      PlayerInventory inventory = player.getInventory();
+      for (ItemStack stack : inventory.getStorageContents()) {
+         if (!itemId.equalsIgnoreCase(this.itemIdOf(stack))) {
+            continue;
+         }
+         CatalogItem authenticated = this.authenticCatalogItem(stack, player, context);
+         if (authenticated != null && itemId.equalsIgnoreCase(authenticated.itemId())) {
+            return stack;
+         }
+      }
+      ItemStack offhand = inventory.getItemInOffHand();
+      if (itemId.equalsIgnoreCase(this.itemIdOf(offhand))) {
+         CatalogItem authenticated = this.authenticCatalogItem(offhand, player, context);
+         if (authenticated != null && itemId.equalsIgnoreCase(authenticated.itemId())) {
+            return offhand;
+         }
+      }
+      return null;
+   }
+
+   private void tickNightCloak() {
+      for (Player player : Bukkit.getOnlinePlayers()) {
+         World world = player.getWorld();
+         CatalogItem cloak = this.findDirectPlayerInventoryArtifact(
+               player, "donation_night_cloak", "night_cloak_tick");
+         if (cloak == null || !NightCloakPolicy.shouldApplyNightEffects(
+               cloak.itemId(), cloak.effect(), world.getTime(), world.getEnvironment().name())) {
+            continue;
+         }
+         this.ensureAtLeastEffect(player, PotionEffectType.SPEED, 0, 600);
+         this.ensureAtLeastEffect(player, PotionEffectType.NIGHT_VISION, 0, 600);
+         this.ensureAtLeastEffect(player, PotionEffectType.INVISIBILITY, 0, 600);
+      }
+   }
+
+   private void ensureAtLeastEffect(Player player, PotionEffectType type, int amplifier, int duration) {
+      if (player == null || type == null) {
+         return;
+      }
+      PotionEffect current = player.getPotionEffect(type);
+      if (current == null || current.getAmplifier() < amplifier
+            || current.getAmplifier() == amplifier && current.getDuration() < duration) {
+         player.addPotionEffect(new PotionEffect(type, duration, amplifier, false, false, true));
+      }
+   }
+
+   private Attribute maxHealthAttributeKey() {
+      // Bukkit renamed GENERIC_MAX_HEALTH to MAX_HEALTH between supported
+      // server API lines. Resolve the available public constant without
+      // binding this source to only one of those API generations.
+      for (String fieldName : List.of("MAX_HEALTH", "GENERIC_MAX_HEALTH")) {
+         try {
+            return (Attribute)Attribute.class.getField(fieldName).get(null);
+         } catch (ReflectiveOperationException | ClassCastException ignored) {
+            // Try the other public API spelling.
+         }
+      }
+      return null;
+   }
+
    private boolean triggerWindHammer(Player player, Block ground) {
       if (player == null || ground == null || !ground.getType().isSolid()) {
          return false;
@@ -4243,6 +5185,23 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    )
    public void onArtifactDefend(EntityDamageEvent var1) {
       if (var1.getEntity() instanceof Player var2) {
+         if (!var1.isCancelled()) {
+            CatalogItem berserker = this.findDirectPlayerInventoryArtifact(var2, "berserker_heart", "berserker_heart");
+            if (berserker != null && "BERSERKER_HEART".equalsIgnoreCase(berserker.effect())) {
+               Attribute maxHealthKey = this.maxHealthAttributeKey();
+               AttributeInstance maxHealthAttribute = maxHealthKey == null ? null : var2.getAttribute(maxHealthKey);
+               double maxHealth = maxHealthAttribute == null ? 20.0D : maxHealthAttribute.getValue();
+               double projectedHealth = var2.getHealth() - var1.getFinalDamage();
+               long current = this.now();
+               if (BerserkerHeartPolicy.shouldTrigger(
+                     projectedHealth, maxHealth, this.actionCooldownUntil(var2, berserker), current, false)) {
+                  var2.addPotionEffect(new PotionEffect(PotionEffectType.STRENGTH, 200, 1, false, false, true));
+                  var2.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 200, 1, false, false, true));
+                  var2.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 200, 1, false, false, true));
+                  this.storeActionCooldown(var2, berserker, BerserkerHeartPolicy.nextCooldownUntil(current));
+               }
+            }
+         }
          CopiMineArtifacts.CatalogItem var13 = this.authenticCatalogItem(var2.getInventory().getHelmet(), var2, "defend_helmet");
          CopiMineArtifacts.CatalogItem var4 = this.authenticCatalogItem(var2.getInventory().getChestplate(), var2, "defend_chest");
          CopiMineArtifacts.CatalogItem var5 = this.authenticCatalogItem(var2.getInventory().getItemInOffHand(), var2, "defend_offhand");
@@ -4256,7 +5215,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             long cooldownUntil = this.pozdnyakovNauseaCooldowns.getOrDefault(var2.getUniqueId(), 0L);
             if (attacker != null && attacker != var2 && cooldownUntil <= current) {
                attacker.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, 100, 2, false, false, true));
-               attacker.getWorld().strikeLightning(attacker.getLocation());
+               attacker.getWorld().strikeLightningEffect(attacker.getLocation());
                this.pozdnyakovNauseaCooldowns.put(var2.getUniqueId(), current + 30L);
             }
          }
@@ -4289,23 +5248,24 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          }
 
          if (var5 != null && "NOT_TODAY_SHIELD".equalsIgnoreCase(var5.effect()) && var2.isBlocking() && var1 instanceof EntityDamageByEntityEvent var14) {
-            long var7 = this.now();
-            long var9 = this.actionCooldowns.getOrDefault(this.actionCooldownKey(var2, var5), 0L);
-            if (var9 > var7) {
-               this.sendCooldownMessage(var2, var5, var9, var7);
-            } else if (this.rollEffectChance(var5)) {
-               LivingEntity attacker = this.resolveDamageAttacker(var14);
-               if (attacker != null && attacker != var2) {
-                  attacker.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, 80, 0, false, false, true));
-                  attacker.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 60, 0, false, false, true));
-                  // Keep the configured lightning cue visible without adding
-                  // a second damage event on top of the blocked hit.
-                  attacker.getWorld().strikeLightningEffect(attacker.getLocation());
+            long current = this.now();
+            LivingEntity attacker = this.resolveDamageAttacker(var14);
+            if (attacker != null && attacker != var2) {
+               if (random.nextDouble() < SHIELD_NAUSEA_PROC_CHANCE) {
+                  this.applyCombatEffect(attacker, PotionEffectType.NAUSEA, SHIELD_EFFECT_DURATION_TICKS, 2);
                }
-
-               var2.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 40, 0, false, false, true));
-               var2.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, var2.getLocation().add(0.0, 1.0, 0.0), 16, 0.45, 0.55, 0.45, 0.03);
-               this.actionCooldowns.put(this.actionCooldownKey(var2, var5), var7 + (long)Math.max(6, var5.cooldownSeconds()));
+               if (random.nextDouble() < SHIELD_WEAKNESS_PROC_CHANCE) {
+                  this.applyCombatEffect(attacker, PotionEffectType.WEAKNESS, SHIELD_EFFECT_DURATION_TICKS, 2);
+               }
+               long lightningReadyAt = this.shieldLightningCooldowns.getOrDefault(var2.getUniqueId(), 0L);
+               if (lightningReadyAt <= current) {
+                  attacker.getWorld().strikeLightning(attacker.getLocation());
+                  this.shieldLightningCooldowns.put(var2.getUniqueId(), current + SHIELD_LIGHTNING_COOLDOWN_SECONDS);
+               }
+            }
+            if (random.nextDouble() < SHIELD_OWNER_BUFF_PROC_CHANCE) {
+               var2.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, SHIELD_EFFECT_DURATION_TICKS, 1, false, false, true));
+               var2.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, SHIELD_EFFECT_DURATION_TICKS, 0, false, false, true));
             }
          }
       }
@@ -4360,7 +5320,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          return;
       }
       OfficialDonationRef ref = this.officialDonationRef(event.getItem());
-      if (ref == null || !event.getPlayer().getUniqueId().equals(ref.ownerUuid())) {
+       if (ref == null || (this.isOwnerBoundGameplayItem(ref.itemId(), "DONATION_SHOP_ITEM", "DONATION_SHOP")
+             && !event.getPlayer().getUniqueId().equals(ref.ownerUuid()))) {
          return;
       }
       ItemMeta meta = event.getItem().getItemMeta();
@@ -4931,6 +5892,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             }
             if ("NALOGOVAYA_KOSA".equals(var16)) {
                this.tryRareArTheft(var2, var10);
+               this.applyKosaCombatEffects(var1, var2, var10);
+               return;
             }
             if (this.artifactCombatEffects().contains(var16)) {
                long var19 = this.actionCooldowns.getOrDefault(this.actionCooldownKey(var2, var15), 0L);
@@ -5118,6 +6081,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             return true;
          } else if ("claim".equalsIgnoreCase(var4[0])) {
             this.claimPending(var5);
+            return true;
+         } else if ("grave".equalsIgnoreCase(var4[0])) {
+            this.handleGraveCommand(var5);
             return true;
          } else if ("repair".equalsIgnoreCase(var4[0])) {
             this.openRepair(var5);
@@ -6256,7 +7222,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
 
       if (var4.length == 1) {
-         return this.prefix(List.of("admin", "claim", "repair", "reload", "shop"), var4[0]);
+         return this.prefix(List.of("admin", "claim", "grave", "repair", "reload", "shop"), var4[0]);
       } else {
          if (var4.length == 2 && "admin".equalsIgnoreCase(var4[0])) {
             return this.prefix(List.of("give"), var4[1]);
@@ -11543,19 +12509,22 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             || itemId.isBlank() || uniqueId.isBlank() || ownerText.isBlank()) {
          return null;
       }
-      // The PDC source/type pair is only a hint.  The item id must still be a
-      // catalog entry owned by the donation shop; AR catalog entries and
-      // arbitrary NBT-tagged stacks can never enter the reclaim path.
-      if (!this.isDonationCatalogItem(itemId)) {
-         return null;
-      }
+       // The PDC source/type pair is only a hint. Resolve against the durable
+       // item binding before allowing the narrowly defined legacy cloak alias.
       UUID owner;
       try {
          owner = UUID.fromString(ownerText);
       } catch (IllegalArgumentException invalidOwner) {
          return null;
       }
-      OfficialInstanceBinding binding = this.instanceBindings.get(uniqueId);
+       OfficialInstanceBinding binding = this.instanceBindings.get(uniqueId);
+       String boundItemId = binding == null ? itemId : binding.itemId();
+       Integer customModelData = meta.hasCustomModelData() ? meta.getCustomModelData() : null;
+       String canonicalItemId = DonationItemIdentityPolicy.canonicalItemId(
+             itemId, boundItemId, stack.getType().name(), customModelData);
+       if (canonicalItemId == null || !this.isDonationCatalogItem(canonicalItemId)) {
+          return null;
+       }
       if (binding == null) {
          // A stale physical copy can outlive the loaded ACTIVE cache while a
          // chunk is unloaded.  Keep its identity authenticated for terminal
@@ -11563,7 +12532,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          if (!this.terminalDonationInstanceIds.contains(uniqueId)) {
             return null;
          }
-      } else if (!itemId.equalsIgnoreCase(binding.itemId())
+       } else if (!canonicalItemId.equalsIgnoreCase(binding.itemId())
             || !owner.toString().equalsIgnoreCase(binding.ownerUuid())) {
          return null;
       }
@@ -11580,7 +12549,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       // config row turn an old physical donation copy into an unguarded item.
       return new OfficialDonationRef(
             uniqueId,
-            itemId,
+             canonicalItemId,
             owner,
             this.firstNonBlank(pdc.get(this.keyPurchaseId, PersistentDataType.STRING), "")
       );
@@ -11588,7 +12557,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
    private OfficialDonationRef foreignDonationRef(ItemStack stack, UUID actorUuid) {
       OfficialDonationRef ref = this.rawDonationIdentity(stack);
-      return ref != null && actorUuid != null && !actorUuid.equals(ref.ownerUuid()) ? ref : null;
+      return ref != null
+            && actorUuid != null
+            && !actorUuid.equals(ref.ownerUuid())
+            && this.isOwnerBoundGameplayItem(ref.itemId(), "DONATION_SHOP_ITEM", "DONATION_SHOP")
+            ? ref
+            : null;
    }
 
    /**
@@ -12507,15 +13481,19 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    /**
-    * AR shop items are ordinary transferable physical items. Donation and
-    * admin-only instances retain their owner binding; the database unique id,
-    * catalog material/model, and AR source/type still authenticate AR items.
+    * Verified AR and donation instances are usable by their current physical
+    * holder. Donation owner UUIDs remain durable entitlement metadata for
+    * reclaim and audit flows; admin-only instances remain holder-bound.
     */
    private boolean isOwnerBoundGameplayItem(String itemId, String itemType, String source) {
-      return this.isDonationCatalogItem(itemId)
-            || this.isAdminOnlyCatalogItem(itemId)
-            || "DONATION_SHOP_ITEM".equalsIgnoreCase(this.firstNonBlank(itemType, ""))
-            || "DONATION_SHOP".equalsIgnoreCase(this.firstNonBlank(source, ""));
+      DonationCatalogItem donation = this.donationCatalogItem(itemId);
+      return DonationItemIdentityPolicy.isOwnerBound(
+            itemId,
+            donation != null,
+            donation != null && donation.ownerBound(),
+            this.firstNonBlank(itemType, ""),
+            this.firstNonBlank(source, ""),
+            this.isAdminOnlyCatalogItem(itemId));
    }
 
    private boolean isAdminOnlyCatalogItem(String itemId) {
@@ -12655,8 +13633,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          String var6 = (String)var5.get(this.keyItemId, PersistentDataType.STRING);
          String var7 = (String)var5.get(this.keyUniqueItemId, PersistentDataType.STRING);
          if (var6 != null && var7 != null) {
-            CopiMineArtifacts.CatalogItem var8 = this.runtimeCatalogItem(var6);
             Integer var9 = var4.hasCustomModelData() ? var4.getCustomModelData() : null;
+             CopiMineArtifacts.OfficialInstanceBinding var13 = this.instanceBindings.get(var7);
+             if (var13 == null || !this.instanceToItem.containsKey(var7)) {
+                this.ensureOfficialBindingAvailable(var1, var2, var3);
+             }
+             String canonicalItemId = var13 == null
+                   ? var6
+                   : DonationItemIdentityPolicy.canonicalItemId(
+                         var6, var13.itemId(), var1.getType().name(), var9);
+             CopiMineArtifacts.CatalogItem var8 = this.runtimeCatalogItem(canonicalItemId);
             // Return Stone was originally issued as a vanilla ECHO_SHARD with
             // CMD 0. A bound item from that release is still authentic; once
             // the durable binding is confirmed it is normalized to the
@@ -12674,20 +13660,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             String var12 = this.firstNonBlank(var11, "");
             String var16 = (String)var5.get(this.keyItemType, PersistentDataType.STRING);
             String var17 = (String)var5.get(this.keySource, PersistentDataType.STRING);
-            boolean ownerBound = this.isOwnerBoundGameplayItem(var6, var16, var17);
-            CopiMineArtifacts.OfficialInstanceBinding var13 = this.instanceBindings.get(var7);
-            if (var13 == null || !this.instanceToItem.containsKey(var7)) {
-               this.ensureOfficialBindingAvailable(var1, var2, var3);
-            }
+             boolean ownerBound = this.isOwnerBoundGameplayItem(canonicalItemId, var16, var17);
             boolean var14 = var2 != null
                && ownerBound && (
                   !var12.equalsIgnoreCase(var2.getUniqueId().toString()) || var13 == null || !var13.ownerUuid().equalsIgnoreCase(var2.getUniqueId().toString())
                );
-            boolean var15 = var13 == null || !var13.itemId().equalsIgnoreCase(var6)
+             boolean var15 = var13 == null || canonicalItemId == null || !var13.itemId().equalsIgnoreCase(canonicalItemId)
                || ownerBound && !var13.ownerUuid().equalsIgnoreCase(var12);
-            boolean var18 = this.isDonationCatalogItem(var6)
+             boolean var18 = this.isDonationCatalogItem(canonicalItemId)
                && (!"DONATION_SHOP_ITEM".equalsIgnoreCase(this.firstNonBlank(var16, "")) || !"DONATION_SHOP".equalsIgnoreCase(this.firstNonBlank(var17, "")));
-            boolean var19 = this.isArCatalogItem(var6)
+             boolean var19 = this.isArCatalogItem(canonicalItemId)
                && (!this.firstNonBlank(var16, "").isBlank() || !this.firstNonBlank(var17, "").isBlank())
                && (!"AR_SHOP_ITEM".equalsIgnoreCase(this.firstNonBlank(var16, "")) || !"AR_SHOP".equalsIgnoreCase(this.firstNonBlank(var17, "")));
             if (this.provisionalDonationInstanceIds.contains(var7)) {
@@ -12703,6 +13685,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             }
             // instanceToItem.containsKey(uniqueItemId)
             if (var8 != null && this.instanceToItem.containsKey(var7) && !var15 && !var10 && !varStackOrMaterialMismatch && !var14 && !var18 && !var19) {
+                if (!canonicalItemId.equalsIgnoreCase(var6)) {
+                   var5.set(this.keyItemId, PersistentDataType.STRING, canonicalItemId);
+                   var1.setItemMeta(var4);
+                }
                if (legacyReturnStoneModel) {
                   this.normalizeLegacyReturnStoneModel(var1, var8);
                }
@@ -12826,7 +13812,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          if (this.isDonationCatalogItem(var1.itemId())) {
             var6.getPersistentDataContainer().set(this.keyItemType, PersistentDataType.STRING, "DONATION_SHOP_ITEM");
             var6.getPersistentDataContainer().set(this.keySource, PersistentDataType.STRING, "DONATION_SHOP");
-            var6.getPersistentDataContainer().set(this.keyBound, PersistentDataType.BYTE, (byte)1);
+            DonationCatalogItem donation = this.donationCatalogItem(var1.itemId());
+            var6.getPersistentDataContainer().set(
+                  this.keyBound, PersistentDataType.BYTE, (byte)(donation != null && donation.ownerBound() ? 1 : 0));
             var6.getPersistentDataContainer().set(this.keyReclaimable, PersistentDataType.BYTE, (byte)1);
          } else if (this.isArCatalogItem(var1.itemId()) && !this.isAdminOnlyCatalogItem(var1.itemId())) {
             var6.getPersistentDataContainer().set(this.keyItemType, PersistentDataType.STRING, "AR_SHOP_ITEM");
@@ -12939,6 +13927,20 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private boolean normalizeCustomPickaxeMeta(ItemMeta meta, CopiMineArtifacts.CatalogItem item) {
       if (meta == null || item == null || item.material() != Material.NETHERITE_PICKAXE) {
          return false;
+      }
+      if ("VEIN_MINER".equalsIgnoreCase(item.effect())) {
+         boolean changed = false;
+         if (meta.getEnchantLevel(Enchantment.FORTUNE) != 2) {
+            meta.removeEnchant(Enchantment.FORTUNE);
+            meta.addEnchant(Enchantment.FORTUNE, 2, true);
+            changed = true;
+         }
+         if (meta.getEnchantLevel(Enchantment.EFFICIENCY) != 2) {
+            meta.removeEnchant(Enchantment.EFFICIENCY);
+            meta.addEnchant(Enchantment.EFFICIENCY, 2, true);
+            changed = true;
+         }
+         return changed;
       }
       if (meta.getEnchantLevel(Enchantment.EFFICIENCY) == PICKAXE_EFFICIENCY_LEVEL) {
          return false;
@@ -15459,15 +16461,15 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          player.sendMessage(this.color("&eВ направлении взгляда есть ещё не загруженные чанки; подойдите ближе и повторите."));
          return false;
       }
-      RayTraceResult hit = player.getWorld().rayTraceBlocks(eye, direction, maxDistance, FluidCollisionMode.NEVER, true);
+      RayTraceResult hit = player.getWorld().rayTraceBlocks(eye, direction, maxDistance, FluidCollisionMode.ALWAYS, true);
       Location requested = hit == null
          ? eye.clone().add(direction.clone().multiply(maxDistance))
-         : hit.getHitPosition().toLocation(player.getWorld()).subtract(direction.clone().multiply(1.75D));
+         : hit.getHitPosition().toLocation(player.getWorld()).subtract(direction.clone().multiply(0.75D));
       if (!this.isLoadedCompassChunk(player.getWorld(), requested.getBlockX(), requested.getBlockZ())) {
          player.sendMessage(this.color("&eТочка вне загруженной дальности прорисовки; подойдите ближе и повторите."));
          return false;
       }
-      Location safe = this.findSafeCompassLocation(origin, requested, maxDistance);
+      Location safe = this.findSafeCompassLocation(origin, requested, maxDistance, hit != null);
       if (safe == null) {
          player.sendMessage(this.color("&eНе удалось найти безопасную точку в направлении взгляда."));
          return false;
@@ -15483,16 +16485,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (player == null || player.getWorld() == null) {
          return MAX_COMPASS_TELEPORT_DISTANCE;
       }
-       int viewDistanceChunks = player.getViewDistance();
-       if (viewDistanceChunks <= 0) {
-          viewDistanceChunks = player.getClientViewDistance();
-       }
-       if (viewDistanceChunks <= 0) {
-          viewDistanceChunks = player.getWorld().getViewDistance();
-       }
-       // Leave a small margin so the destination is inside the server's sent
-       // chunk ring rather than on its unloaded edge.
-       return Math.max(MAX_COMPASS_TELEPORT_DISTANCE, viewDistanceChunks * 16.0D - 2.0D);
+      return MAX_COMPASS_TELEPORT_DISTANCE;
    }
 
    private boolean isLoadedCompassChunk(World world, int blockX, int blockZ) {
@@ -15515,7 +16508,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       return true;
    }
 
-   private Location findSafeCompassLocation(Location origin, Location requested, double maxDistance) {
+   private Location findSafeCompassLocation(Location origin, Location requested, double maxDistance, boolean blockedByRay) {
       if (origin == null || requested == null || origin.getWorld() == null || requested.getWorld() != origin.getWorld()) return null;
       Vector offset = requested.toVector().subtract(origin.toVector());
       if (offset.lengthSquared() > maxDistance * maxDistance) requested = origin.clone().add(offset.normalize().multiply(maxDistance));
@@ -15540,7 +16533,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             && surfaceY >= world.getMaxHeight() - 3) {
          return null;
       }
-      int baseY = Math.max(world.getMinHeight() + 1, surfaceY + 1);
+      int baseY = blockedByRay
+            ? Math.max(world.getMinHeight() + 1, requested.getBlockY())
+            : Math.max(world.getMinHeight() + 1, surfaceY + 1);
       for (int radius = 0; radius <= 2; radius++) {
          for (int dy = -4; dy <= 4; dy++) {
             for (int dx = -radius; dx <= radius; dx++) {
@@ -15549,12 +16544,29 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                    if (candidate.distanceSquared(origin) <= maxDistance * maxDistance
                          && world.getWorldBorder().isInside(candidate)
                          && this.isLoadedCompassChunk(world, candidate.getBlockX(), candidate.getBlockZ())
-                         && this.isSafeCompassLocation(candidate)) return candidate;
+                         && this.isSafeCompassLocation(candidate)
+                         && this.hasClearCompassLine(origin, candidate)) return candidate;
                }
             }
          }
       }
       return null;
+   }
+
+   private boolean hasClearCompassLine(Location origin, Location candidate) {
+      if (origin == null || candidate == null || origin.getWorld() == null || candidate.getWorld() != origin.getWorld()) {
+         return false;
+      }
+      Location start = origin.clone().add(0.0D, 1.62D, 0.0D);
+      Location end = candidate.clone().add(0.0D, 0.9D, 0.0D);
+      Vector line = end.toVector().subtract(start.toVector());
+      double distance = line.length();
+      if (distance <= 0.001D) {
+         return true;
+      }
+      RayTraceResult hit = origin.getWorld().rayTraceBlocks(
+            start, line.normalize(), distance, FluidCollisionMode.ALWAYS, true);
+      return hit == null;
    }
 
    private boolean isSafeCompassLocation(Location location) {
@@ -15740,20 +16752,36 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       return attribute;
    }
 
+   /** Refreshes a combat debuff even when the target already has that effect. */
+   private void applyCombatEffect(LivingEntity target, PotionEffectType type, int durationTicks, int amplifier) {
+      if (target == null || type == null || durationTicks <= 0 || amplifier < 0) {
+         return;
+      }
+      target.addPotionEffect(new PotionEffect(type, durationTicks, amplifier, false, false, true), true);
+   }
+
    private void tryRareArTheft(Player attacker, LivingEntity target) {
       if (!(target instanceof Player victim) || attacker == null || this.bridge == null || random.nextDouble() >= AR_THEFT_PROC_CHANCE) return;
+      int stolenAmount = 1 + random.nextInt(3);
       String idempotencyKey = "kosa-ar-steal-" + UUID.randomUUID();
       this.runAsync(() -> {
          CopiMineArtifacts.BridgeTxnResult account = this.bridge.stealFromPlayerAccount(
-            victim.getUniqueId(), victim.getName(), attacker.getUniqueId(), attacker.getName(), 1L,
-            idempotencyKey, "AR_STEAL", "Kosa rare 0.1% proc"
+            victim.getUniqueId(), victim.getName(), attacker.getUniqueId(), attacker.getName(), stolenAmount,
+            idempotencyKey, "AR_STEAL", "Kosa 2.5% proc"
          );
          if (account.ok()) {
-            this.runSync(() -> this.sendArTheftMessages(attacker, victim, false));
+            this.runSync(() -> this.sendArTheftMessages(attacker, victim, false, stolenAmount));
             return;
          }
-         String accountCode = account.code() == null ? "" : account.code().trim().toUpperCase(Locale.ROOT);
-         if (!(accountCode.isBlank() || Set.of("NO_BANK_ACCOUNT", "ACCOUNT_NOT_FOUND", "ACCOUNT_MISSING", "NO_ACCOUNT", "INSUFFICIENT_AR").contains(accountCode))) return;
+         String rawAccountCode = account.code() == null ? "" : account.code().trim().toUpperCase(Locale.ROOT);
+         String accountCode = this.safeBridgeCode(rawAccountCode);
+         if (!(rawAccountCode.isBlank() || Set.of("NO_BANK_ACCOUNT", "ACCOUNT_NOT_FOUND", "ACCOUNT_MISSING", "NO_ACCOUNT", "INSUFFICIENT_AR").contains(accountCode))) {
+            this.getLogger().warning(
+               "Kosa AR theft failed: code=" + accountCode + " message=" + this.firstNonBlank(account.message(), "no message")
+            );
+            this.runSync(() -> this.sendArTheftUnavailableMessages(attacker));
+            return;
+         }
          // Physical AR is deliberately not a fallback.  Inventory removal,
          // bank credit and compensation cannot be made one atomic operation
          // across the EconomyCore bridge.  Refusing the steal is safer than
@@ -15762,13 +16790,32 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       });
    }
 
-   private void sendArTheftMessages(Player attacker, Player victim, boolean fromInventory) {
+   private void applyKosaCombatEffects(EntityDamageByEntityEvent event, Player attacker, LivingEntity target) {
+      if (event == null || attacker == null || target == null || target == attacker) {
+         return;
+      }
+      if (random.nextDouble() < KOSA_HEALTH_PROC_CHANCE) {
+         event.setDamage(event.getDamage() + 3.0);
+         this.healPlayerCapped(attacker, 3.0);
+      }
+      if (random.nextDouble() < KOSA_HUNGER_PROC_CHANCE) {
+         this.applyCombatEffect(target, PotionEffectType.HUNGER, 40, 0);
+      }
+      if (random.nextDouble() < KOSA_WITHER_PROC_CHANCE) {
+         this.applyCombatEffect(target, PotionEffectType.WITHER, 40, 0);
+      }
+      if (random.nextDouble() < KOSA_BLINDNESS_PROC_CHANCE) {
+         this.applyCombatEffect(target, PotionEffectType.BLINDNESS, 140, 2);
+      }
+   }
+
+   private void sendArTheftMessages(Player attacker, Player victim, boolean fromInventory, int amount) {
       String source = fromInventory ? "из инвентаря" : "со счёта";
       if (attacker.isOnline()) {
-         attacker.sendMessage(this.color("&aВы украли 1 AR у &f" + victim.getName() + " &a" + source + "."));
+         attacker.sendMessage(this.color("&aВы украли " + amount + " AR у &f" + victim.getName() + " &a" + source + "."));
       }
       if (victim.isOnline()) {
-         victim.sendMessage(this.color("&cУ вас украли 1 AR. Нападающий: &f" + attacker.getName() + "&c."));
+         victim.sendMessage(this.color("&cУ вас украли " + amount + " AR. Нападающий: &f" + attacker.getName() + "&c."));
       }
    }
 
@@ -15778,6 +16825,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
       if (victim != null && victim.isOnline()) {
          victim.sendMessage(this.color("&eВы слишком бедны: с вас нечего брать."));
+      }
+   }
+
+   private void sendArTheftUnavailableMessages(Player attacker) {
+      if (attacker != null && attacker.isOnline()) {
+         attacker.sendMessage(this.color("&eКража AR временно недоступна: операция не подтверждена банковским сервисом."));
       }
    }
 
@@ -15803,15 +16856,15 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private Set<String> artifactToolEffects() {
-      return Set.of("HASTE_BURST", "MINER_PULSE", "MINER_3X3", "FORESTER_FOCUS", "SURVEYOR_TOUCH", "CRAFTSMAN_CHECK", "FORESTER_CHAIN", "TRENCH_BONUS");
+      return Set.of("HASTE_BURST", "MINER_PULSE", "MINER_3X3", "FORESTER_FOCUS", "SURVEYOR_TOUCH", "CRAFTSMAN_CHECK", "FORESTER_CHAIN", "TRENCH_BONUS", "VEIN_MINER");
    }
 
    private Set<String> artifactInteractEffects() {
-      return Set.of("HASTE_BURST_LONG", "WIND_HAMMER", "FARMER_SWEEP", "DEBUFF_AMULET", "TAX_CLOCK", "LOOT_COMPASS", "ETERNAL_BOOST", "RETURN_STONE", "ANGEL_WINGS");
+      return Set.of("HASTE_BURST_LONG", "WIND_HAMMER", "FARMER_SWEEP", "DEBUFF_AMULET", "TAX_CLOCK", "LOOT_COMPASS", "ETERNAL_BOOST", "RETURN_STONE", "ANGEL_WINGS", "SIGNAL_BELL");
    }
 
    private Set<String> artifactDefenseEffects() {
-      return Set.of("PRORAB_HELMET", "TANK_VEST", "NOT_TODAY_SHIELD", "POZDNYAKOV_ACE");
+      return Set.of("PRORAB_HELMET", "TANK_VEST", "NOT_TODAY_SHIELD", "POZDNYAKOV_ACE", "BERSERKER_HEART");
    }
 
    private String categoryTitle(CopiMineArtifacts.Category var1) {
@@ -16631,7 +17684,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (player == null || item == null || item.itemId().isBlank()) {
          return "";
       }
-      return player.getUniqueId() + ":" + item.itemId();
+      String key = player.getUniqueId() + ":" + item.itemId();
+      if ("BERSERKER_HEART".equalsIgnoreCase(item.effect())) {
+         ItemStack stack = this.findAuthenticDirectPlayerArtifactStack(
+               player, item.itemId(), "berserker_cooldown_key");
+         String uniqueItemId = this.uniqueItemIdOf(stack);
+         if (!uniqueItemId.isBlank()) {
+            key += ":" + uniqueItemId;
+         }
+      }
+      return key;
    }
 
    /**
@@ -16655,6 +17717,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                cooldownUntil,
                data.getOrDefault(this.keyCompassCooldownUntil, PersistentDataType.LONG, 0L)
          );
+      } else if ("BERSERKER_HEART".equalsIgnoreCase(item.effect())) {
+         ItemStack stack = this.findAuthenticDirectPlayerArtifactStack(
+               player, item.itemId(), "berserker_cooldown_read");
+         ItemMeta meta = stack == null ? null : stack.getItemMeta();
+         if (meta != null) {
+            cooldownUntil = Math.max(
+                  cooldownUntil,
+                  meta.getPersistentDataContainer().getOrDefault(
+                        this.keyBerserkerCooldownUntil, PersistentDataType.LONG, 0L)
+            );
+         }
       }
       return cooldownUntil;
    }
@@ -16670,13 +17743,37 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          data.set(this.keyTeleportBowCooldownUntil, PersistentDataType.LONG, cooldownUntil);
       } else if ("LOOT_COMPASS".equalsIgnoreCase(item.effect())) {
          data.set(this.keyCompassCooldownUntil, PersistentDataType.LONG, cooldownUntil);
+      } else if ("BERSERKER_HEART".equalsIgnoreCase(item.effect())) {
+         ItemStack stack = this.findAuthenticDirectPlayerArtifactStack(
+               player, item.itemId(), "berserker_cooldown_write");
+         ItemMeta meta = stack == null ? null : stack.getItemMeta();
+         if (meta != null) {
+            meta.getPersistentDataContainer().set(
+                  this.keyBerserkerCooldownUntil, PersistentDataType.LONG, cooldownUntil);
+            stack.setItemMeta(meta);
+         }
       }
    }
 
    private void sendCooldownMessage(Player player, CopiMineArtifacts.CatalogItem item, long cooldownUntil, long current) {
+      if (this.suppressCooldownMessage(item)) {
+         return;
+      }
       long remaining = Math.max(1L, cooldownUntil - current);
       String itemName = this.firstNonBlank(item == null ? "" : item.name(), "Предмет");
       player.sendMessage(this.color("&e" + itemName + " ещё на перезарядке (&f" + remaining + " сек.&e)."));
+   }
+
+   private boolean suppressCooldownMessage(CopiMineArtifacts.CatalogItem item) {
+      if (item == null || item.material() == null) {
+         return false;
+      }
+      String material = item.material().name();
+      return material.endsWith("_SWORD")
+            || material.endsWith("_HELMET")
+            || material.endsWith("_CHESTPLATE")
+            || material.endsWith("_LEGGINGS")
+            || material.endsWith("_BOOTS");
    }
 
    private long now() {

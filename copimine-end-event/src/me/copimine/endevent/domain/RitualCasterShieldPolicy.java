@@ -5,20 +5,22 @@ public final class RitualCasterShieldPolicy {
     private RitualCasterShieldPolicy() {
     }
 
-    public static State state(boolean casterAlive, int livingGuards) {
+    public static State state(boolean casterAlive, int livingGuards, int expectedGuards) {
         if (!casterAlive) {
             return State.DEAD;
         }
-        return switch (Math.max(0, Math.min(3, livingGuards))) {
-            case 3 -> State.FULL;
-            case 2 -> State.WEAKENED;
-            case 1 -> State.CRITICAL;
-            default -> State.BROKEN;
-        };
+        int maximum = Math.max(1, Math.min(3, expectedGuards));
+        int living = Math.max(0, Math.min(maximum, livingGuards));
+        if (living == 0) return State.BROKEN;
+        if (living == maximum || (long) living * 3L > (long) maximum * 2L) {
+            return State.FULL;
+        }
+        if ((long) living * 3L > maximum) return State.WEAKENED;
+        return State.CRITICAL;
     }
 
-    public static boolean blocksDamage(boolean casterAlive, int livingGuards) {
-        State state = state(casterAlive, livingGuards);
+    public static boolean blocksDamage(boolean casterAlive, int livingGuards, int expectedGuards) {
+        State state = state(casterAlive, livingGuards, expectedGuards);
         return state == State.FULL || state == State.WEAKENED || state == State.CRITICAL;
     }
 

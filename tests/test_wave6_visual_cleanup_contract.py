@@ -33,6 +33,29 @@ def test_wave6_start_removes_stale_walls_and_wave3_portals() -> None:
     assert "clearLegacyWave3PortalArtifacts" in body
 
 
+def test_wave6_start_stops_if_owned_barrier_journal_cannot_be_restored() -> None:
+    source = read(SERVER)
+    start = source.index("private boolean startRitualSphereObjective")
+    end = source.index("/** Place one ritual entity", start)
+    body = source[start:end]
+    checked_cleanup = 'if (!clearRealitySplitBarriers("wave6-start"))'
+    assert checked_cleanup in body, "a failed journal restore must block the Wave 6 transition"
+    failure_end = body.index('clearLegacyWave7BarrierArtifacts("wave6-start")')
+    failure_path = body[body.index(checked_cleanup):failure_end]
+    assert 'recoveryReason = "WAVE6_STALE_BARRIER_RESTORE_FAILED"' in failure_path
+    assert "forcePhase(EventPhase.RECOVERY_REQUIRED" in failure_path
+    assert "saveStateSync();" in failure_path
+    assert "return false;" in failure_path
+    assert body.index(checked_cleanup) < body.index('clearLegacyWave7BarrierArtifacts("wave6-start")')
+    assert body.index(checked_cleanup) < body.index('clearLegacyWave3PortalArtifacts("wave6-start")')
+
+
+def test_wave6_live_probe_allows_the_integrated_end_rift_branch() -> None:
+    probe = read(ROOT / "tests/RunEndRiftWave6RitualLive.ps1")
+    assert "codex/end-rift-26-3-integrated-final" in probe
+    assert "codex/end-rift-event" in probe
+
+
 def test_bootstrap_clears_stale_wave7_walls_and_wave3_portals_outside_wave7() -> None:
     source = read(SERVER)
     start = source.index("private void restorePersistedCombatRuntime")

@@ -84,6 +84,12 @@ public final class EndEventTextureCatalog {
         textures.put("END_RIFT_WAVE_GUARDIAN_SKELETON_V1", entityTexture("end_rift_user_skeleton.png"));
         textures.put("END_RIFT_RITUAL_GUARD_SKELETON_V1", entityTexture("end_rift_user_skeleton.png"));
         textures.put("END_RIFT_RITUAL_CASTER_V1", entityTexture("end_rift_user_enderman.png"));
+        textures.put(Wave7NamedTrialVisualPolicy.WARDEN_VISUAL,
+                entityTexture("end_rift_wave7_warden.png"));
+        textures.put(Wave7NamedTrialVisualPolicy.ARCHMAGE_VISUAL,
+                entityTexture("end_rift_wave7_archmage.png"));
+        textures.put(Wave7NamedTrialVisualPolicy.MARKSMAN_VISUAL,
+                entityTexture("end_rift_wave7_marksman.png"));
         textures.put("END_RIFT_OBELISK_FULL_V1", entityTexture("end_event_rift_obelisk_full_hd.png"));
         textures.put("END_RIFT_OBELISK_DAMAGED_V1", entityTexture("end_event_rift_obelisk_damaged_hd.png"));
         textures.put("END_RIFT_OBELISK_CRITICAL_V1", entityTexture("end_event_rift_obelisk_critical_hd.png"));

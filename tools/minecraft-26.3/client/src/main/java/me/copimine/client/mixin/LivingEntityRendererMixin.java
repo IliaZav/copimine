@@ -8,6 +8,8 @@ import me.copimine.client.EndRiftBossWorldScalePolicy;
 import me.copimine.client.EndRiftRenderStateAccess;
 import me.copimine.client.EndermanRendererSelection;
 import me.copimine.client.EchoPlayerView;
+import me.copimine.client.Wave7NamedTrialModelRenderer;
+import me.copimine.client.Wave7NamedTrialVisualPolicy;
 import me.copimine.client.RiftEventEndermanModelRenderer;
 import me.copimine.client.RiftEventSkeletonModelRenderer;
 import me.copimine.client.RiftGuardianModel;
@@ -22,8 +24,12 @@ import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.client.renderer.entity.state.EndermanRenderState;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
+import net.minecraft.client.renderer.entity.state.EvokerRenderState;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 import net.minecraft.client.renderer.entity.state.SkeletonRenderState;
+import net.minecraft.client.renderer.entity.state.WardenRenderState;
+import net.minecraft.client.model.monster.illager.IllagerModel;
+import net.minecraft.client.model.monster.warden.WardenModel;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.texture.UvMapping;
@@ -52,6 +58,7 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity,
     @Unique private final RiftGuardianModelRenderer copimine$guardianRenderer = new RiftGuardianModelRenderer();
     @Unique private final RiftEventEndermanModelRenderer copimine$eventRenderer = new RiftEventEndermanModelRenderer();
     @Unique private final RiftEventSkeletonModelRenderer copimine$skeletonRenderer = new RiftEventSkeletonModelRenderer();
+    @Unique private final Wave7NamedTrialModelRenderer copimine$wave7Renderer = new Wave7NamedTrialModelRenderer();
     @Unique private EntityModel<?> copimine$activeModel;
 
     @Inject(method = "extractRenderState(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;F)V",
@@ -155,7 +162,17 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity,
         String uuid = bound.copimine$uuid();
         String visual = bound.copimine$visual();
         EntityModel<?> selected = null;
-        if (state instanceof EndermanRenderState && getModel() instanceof EndermanModel<?>) {
+        Wave7NamedTrialVisualPolicy.ActorModel namedActor = Wave7NamedTrialVisualPolicy.modelFor(visual);
+        if (namedActor != null && !copimine$wave7Renderer.supportsState(visual, state.getClass())) {
+            return;
+        }
+        if (namedActor == Wave7NamedTrialVisualPolicy.ActorModel.WARDEN
+                && state instanceof WardenRenderState && getModel() instanceof WardenModel) {
+            selected = copimine$wave7Renderer.modelFor(namedActor);
+        } else if (namedActor == Wave7NamedTrialVisualPolicy.ActorModel.ARCHMAGE
+                && state instanceof EvokerRenderState && getModel() instanceof IllagerModel<?>) {
+            selected = copimine$wave7Renderer.modelFor(namedActor);
+        } else if (state instanceof EndermanRenderState && getModel() instanceof EndermanModel<?>) {
             EndermanRendererSelection.Decision decision;
             if (bound.copimine$endBoss()) {
                 Identifier texture = copimine$guardianRenderer.textureForState(

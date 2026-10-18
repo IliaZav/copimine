@@ -37,6 +37,7 @@ public class Wave7CheckpointProbe {
     EventPhase phase = EventPhase.WAVE_7;
     int activeWave = 7;
     boolean testWaveFrontVisualMode, finalSealBarrierHold = true;
+    boolean namedWave7RuntimeRestorePending;
     Set<UUID> sandboxWaveRoster = Set.of();
     Map<String,String> wave7RecoveryCheckpoint = Map.of();
     RealitySplitChamberController realitySplitChamberController = new RealitySplitChamberController();
@@ -193,8 +194,11 @@ public class Wave7CheckpointProbe {
     inputs = [SOURCE / item for item in (
         "domain/ChamberIsolationPolicy.java", "domain/RealitySplitBarrierPolicy.java",
         "domain/RealitySplitChamberSnapshot.java",
+        "domain/Wave7EchoDuelCellPolicy.java", "domain/wave7/EchoBehaviorStrategy.java",
+        "domain/wave7/EchoLoadoutState.java",
         "runtime/RealitySplitChamberController.java",
-        "runtime/RealitySplitTrialController.java", "runtime/RealitySplitTrialSnapshot.java",
+        "runtime/RealitySplitEchoDuelState.java", "runtime/RealitySplitTrialController.java",
+        "runtime/RealitySplitTrialSnapshot.java",
     )]
     subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path), *map(str, inputs), str(probe)],
                    check=True, capture_output=True, text=True)

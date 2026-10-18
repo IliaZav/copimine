@@ -57,6 +57,7 @@ public final class BlackFogAdapterProbe {
         Material getType() { return type; }
         BlockData getBlockData() { return data; }
         void setBlockData(BlockData value, boolean physics) {
+            Bukkit.restoreBlockAttempts++;
             if (Bukkit.restoreThrows) throw new IllegalStateException("injected block restore failure");
             data = value;
             type = switch (value.value) {
@@ -72,6 +73,7 @@ public final class BlackFogAdapterProbe {
     static final class Bukkit {
         static World world;
         static boolean restoreThrows;
+        static int restoreBlockAttempts;
         static World getWorld(String name) { return world; }
         static BlockData createBlockData(String value) {
             if ("invalid:data".equals(value)) throw new IllegalArgumentException("invalid block data");
@@ -235,11 +237,18 @@ public final class BlackFogAdapterProbe {
                 p.currentSafeZoneCenters.put(0, new HazardPlanner.Point(1, 1));
                 p.currentTemporaryBlockOriginals.put(new HazardPlanner.Point(1, 1), "minecraft:stone");
                 Bukkit.world = new World();
+                p.hazardJournal.snapshot = new HazardMutationJournal.Snapshot(true, p.eventId, p.generation,
+                        HazardMutationJournal.Status.APPLIED, "world", List.of(
+                        new HazardMutationJournal.Entry(1, 0, 1, "minecraft:stone", "", true, false)));
                 p.restoreThrows = true;
                 Bukkit.restoreThrows = true;
                 p.tickBlackFogObjective(1L);
+                check(Bukkit.restoreBlockAttempts == 1,
+                        "injected failure must reach the actual block restoration boundary");
                 check(p.currentFogCycle == 0 && p.phase == EventPhase.RECOVERY_REQUIRED,
                         "failed safe-zone restoration must not count a fog cycle as complete");
+                check(p.currentTemporaryBlockOriginals.containsKey(new HazardPlanner.Point(1, 1)),
+                        "failed block restoration must retain rollback evidence");
                 check(p.hazardJournal.markRestoredCalls == 0,
                         "failed block restoration must leave the durable journal recoverable");
             }

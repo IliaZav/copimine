@@ -113,6 +113,14 @@ public final class EchoLoadoutState {
     public int remaining(int slot) { return slot>=0 && slot<42 ? remaining[slot] : 0; }
     public int selectedSlot() { return selected; }
     public long revision() { return revision; }
+    /** Preserve the current finite supplies while advancing the receipt revision after a rejected native action. */
+    public EchoLoadoutState copyAtRevision(long newRevision) {
+        if (newRevision <= revision || newRevision >= Long.MAX_VALUE) {
+            throw new IllegalArgumentException("Replica receipt revision must advance");
+        }
+        return new EchoLoadoutState(event, attempt, duel, owner, selected,
+                frozen, remaining, wear, newRevision);
+    }
     public int find(Kind kind) {
         if (kind==Kind.GOLDEN_APPLE && remaining[41]>0) return 41;
         for (int slot=0;slot<41;slot++) if (remaining[slot]>0 && frozen.get(slot).kind()==kind) return slot;

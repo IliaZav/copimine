@@ -35,6 +35,10 @@ def probe_harness(tmp_path_factory):
         _declaration(source, "private boolean isPhysicallyEligibleWaveParticipant(Player player, boolean captureTestRoster)"),
         _declaration(source, "private void cancelCreativeTestTask()"),
         _declaration(source, "private Map<String, String> waveObjectiveProgressSnapshot()"),
+        _declaration(source, "private Map<String, String> captureWave1CarrierCheckpoint()"),
+        _declaration(source, "private Map<String, String> captureBlackFogRecoveryCheckpoint()"),
+        _declaration(source, "private void captureBlackFogShutdownCheckpoint()"),
+        _declaration(source, "private void restoreBlackFogRecoveryCheckpoint(EventPhase persistedPhase,"),
     ]
     if "private boolean spawnInspectionWave(" in source:
         methods.append(_declaration(source, "private boolean spawnInspectionWave("))
@@ -50,17 +54,21 @@ def probe_harness(tmp_path_factory):
     }
     """)
     disable = _declaration(source, "public void onDisable()")
-    restart_policy = disable[disable.index("        boolean preserveWave2ForRestart ="):
+    restart_policy = disable[disable.index("        boolean preserveWave1ForRestart ="):
                              disable.index("        if (diagnosticsWatchdogTask != null)")]
     methods.append("private boolean preserveWaveForRestart() {\n" + restart_policy
-                   + "return preserveWave2ForRestart || preserveWave6ForRestart || preserveWave7ForRestart;\n}")
+                   + "return preserveWave1ForRestart || preserveWave2ForRestart "
+                     + "|| preserveWave6ForRestart || preserveWave7ForRestart;\n}")
     harness = r"""
 import java.util.*;
 import java.util.logging.*;
 import java.util.stream.Collectors;
 import me.copimine.endevent.domain.EventPhase;
+import me.copimine.endevent.domain.BlackFogRecoverySnapshot;
 import me.copimine.endevent.domain.SandboxWaveSessionSnapshot;
 import me.copimine.endevent.domain.WaveTwoEntityRecoveryPolicy;
+import me.copimine.endevent.domain.RiftCarrierPolicy;
+import me.copimine.endevent.domain.RiftCarrierRecoverySnapshot;
 import me.copimine.endevent.runtime.AttemptLifecycleController;
 import me.copimine.endevent.runtime.WaveTwoAttemptLifecycleSnapshot;
 
@@ -74,12 +82,13 @@ public final class WaveProbeAdapterHarness {
     static final String WAVE_TWO_ATTEMPT_LIFECYCLE_PREFIX = "wave2-attempt-lifecycle.";
     static final long OFFLINE_RECONNECT_GRACE_MILLIS = 25_000L;
     Map<String, String> wave7RecoveryCheckpoint = Map.of();
-    long generation = 4L, creativeTestGeneration = 4L, phaseDeadlineMillis;
+    String recoveryReason = "";
+    long generation = 4L, creativeTestGeneration = 4L, phaseDeadlineMillis, eventTickCounter;
     UUID creativeTestPlayerUuid;
     int creativeTestStage = 3, creativeTestStageTicks, activeWave, waveSpawnGroupIndex,
             waveSpawnEntityOffset, sharedInitializations, initializedWave, saveCalls,
             registryGeneration, sessionCancellations, scopeCloses, currentHuntCycles,
-            waveTwoGroupsSpawned;
+            waveTwoGroupsSpawned, currentCarrierCharges, ritualCasterDeathCount;
         boolean waveTwoGroupCleared;
     Set<UUID> waveTwoOutstandingEntityUuids = Set.of();
         Set<UUID> waveTwoCleanupEntityUuids = Set.of();
@@ -87,6 +96,14 @@ public final class WaveProbeAdapterHarness {
             testCombatAiMode, testWaveFrontVisualMode, testPortalVisualMode,
             testWave4ObeliskMode, testRitualCombatMode, testWaveInspectionMode, preserveRequested,
             officialAttempt;
+    int currentFogCycle, currentFogZoneCount, currentFogZoneSide, currentFogZoneSetupAttempts;
+    long blackFogPhaseDeadlineMillis, currentFogZoneSetupRetryAtMillis;
+    BlackFogPhase blackFogPhase = BlackFogPhase.COMBAT;
+    Map<String, String> blackFogRecoveryCheckpoint = Map.of();
+    Map<String, String> wave1RecoveryCheckpoint = Map.of(), ritualSphereRecoveryCheckpoint = Map.of();
+    RiftCarrierPolicy.State currentCarrierState;
+    UUID currentCarrierInventoryToken;
+    boolean wave1CarrierCheckpointRestored;
     Set<UUID> sandboxWaveRoster = Set.of(), officialRoster = Set.of(), initializedRoster = Set.of();
     Set<UUID> officialRewardRoster = new LinkedHashSet<>();
     Map<UUID, Long> offlineRosterGraceUntilMillis = new HashMap<>();
@@ -154,6 +171,7 @@ public final class WaveProbeAdapterHarness {
                 .filter(player -> sandboxWaveRoster.contains(player.getUniqueId())).count();
     }
     enum GameMode { SURVIVAL, CREATIVE, SPECTATOR }
+    enum BlackFogPhase { COMBAT, SAFE, FOG }
     static final class Chambers {
         boolean owns(long generation) { return true; }
         Assignment assignment() { return new Assignment(); }
@@ -170,6 +188,9 @@ public final class WaveProbeAdapterHarness {
     }
     static final class RitualSphereEncounterSnapshot {
         static Map<String, String> encode(Object state) { return Map.of("ritual-wave", "6"); }
+            static Map<String, String> encode(Object state, int casterDeaths) {
+                return Map.of("ritual-wave", "6", "caster-deaths", Integer.toString(casterDeaths));
+            }
     }
     static final class RealitySplitChamberSnapshot {
         static Map<String, String> encodeDisposable(Object... args) { return Map.of("chambers", "1"); }
@@ -216,6 +237,7 @@ public final class WaveProbeAdapterHarness {
     }
     static final class Controller { void restore(Object... args) { } }
     static final class EndRiftObjective {
+        static final int REQUIRED_FOG_CYCLES = 3;
         static boolean isNumberedWave(int wave) { return wave >= 1 && wave <= 7; }
     }
 
@@ -294,6 +316,68 @@ public final class WaveProbeAdapterHarness {
                                 && "true".equals(saved.get(ownerPrefix + "alive"))
                                 && "0".equals(saved.get(ownerPrefix + "offline-deadline-millis")),
                         "active Wave 2 checkpoint must include the controller's registered participant state");
+            }
+            case "wave5-snapshot" -> {
+                probe.phase = EventPhase.WAVE_5;
+                probe.activeWave = 5;
+                probe.currentFogCycle = 1;
+                probe.blackFogPhase = args[2].equals("TELEGRAPH")
+                        ? BlackFogPhase.COMBAT : BlackFogPhase.valueOf(args[2]);
+                probe.blackFogPhaseDeadlineMillis = 123_456L;
+                probe.currentFogZoneCount = 2;
+                probe.currentFogZoneSide = 2;
+                probe.currentFogZoneSetupAttempts = 1;
+                probe.currentFogZoneSetupRetryAtMillis = 124_000L;
+                Map<String, String> saved = probe.waveObjectiveProgressSnapshot();
+                check("1".equals(saved.get("wave5-fog.version"))
+                                && "event".equals(saved.get("wave5-fog.event"))
+                                && Long.toString(probe.generation).equals(saved.get("wave5-fog.generation"))
+                                && "1".equals(saved.get("wave5-fog.cycle"))
+                                && args[2].equals(saved.get("wave5-fog.stage"))
+                                && "123456".equals(saved.get("wave5-fog.deadline-millis"))
+                                && "2".equals(saved.get("wave5-fog.zone-count"))
+                                && "2".equals(saved.get("wave5-fog.zone-side"))
+                                && "1".equals(saved.get("wave5-fog.setup-attempts"))
+                                && "124000".equals(saved.get("wave5-fog.retry-at-millis")),
+                        "Wave 5 must checkpoint its exact cycle, stage, deadline and zone retry state");
+            }
+            case "wave5-shutdown-capture" -> {
+                probe.phase = EventPhase.WAVE_5;
+                probe.activeWave = 5;
+                probe.currentFogCycle = 1;
+                probe.blackFogPhase = args[2].equals("TELEGRAPH")
+                        ? BlackFogPhase.COMBAT : BlackFogPhase.valueOf(args[2]);
+                probe.blackFogPhaseDeadlineMillis = 123_456L;
+                probe.currentFogZoneCount = 2;
+                probe.currentFogZoneSide = 2;
+                probe.currentFogZoneSetupAttempts = 1;
+                probe.currentFogZoneSetupRetryAtMillis = 124_000L;
+                probe.captureBlackFogShutdownCheckpoint();
+                check(args[2].equals(probe.blackFogRecoveryCheckpoint.get("wave5-fog.stage")),
+                        "shutdown must capture the current Wave 5 stage before cleanup resets it");
+                check("1".equals(probe.blackFogRecoveryCheckpoint.get("wave5-fog.cycle"))
+                                && "123456".equals(probe.blackFogRecoveryCheckpoint.get("wave5-fog.deadline-millis")),
+                        "shutdown checkpoint must preserve the active cycle and absolute deadline");
+            }
+            case "wave5-restart" -> {
+                BlackFogRecoverySnapshot.Stage stage = BlackFogRecoverySnapshot.Stage.valueOf(args[2]);
+                Map<String, String> saved = new BlackFogRecoverySnapshot.Data(
+                        "event", probe.generation, 1, stage, 123_456L, 2, 2, 1, 124_000L).encode();
+                probe.restoreBlackFogRecoveryCheckpoint(EventPhase.WAVE_5, saved);
+                check(probe.phase == EventPhase.RECOVERY_REQUIRED
+                                && "WAVE5_RESTART_REQUIRES_ADMIN_RECOVERY".equals(probe.recoveryReason),
+                        "restart must retain evidence but fence transient Wave 5 combat for admin recovery");
+                check(saved.equals(probe.blackFogRecoveryCheckpoint),
+                        "restart must preserve the exact saved Wave 5 phase checkpoint");
+            }
+            case "wave5-invalid-restart" -> {
+                Map<String, String> saved = Map.of("wave5-fog.stage", "FOG");
+                probe.restoreBlackFogRecoveryCheckpoint(EventPhase.WAVE_5, saved);
+                check(probe.phase == EventPhase.RECOVERY_REQUIRED
+                                && "INVALID_OR_MISSING_WAVE5_RESTART_CHECKPOINT".equals(probe.recoveryReason),
+                        "missing Wave 5 checkpoint fields must be fenced in recovery");
+                check(saved.equals(probe.blackFogRecoveryCheckpoint),
+                        "invalid Wave 5 snapshot bytes must remain available for diagnosis");
             }
             case "playable-snapshot" -> {
                 probe.activeWave = 6;
@@ -416,6 +500,11 @@ public final class WaveProbeAdapterHarness {
     runtime = ROOT / "copimine-end-event/src/me/copimine/endevent/runtime"
     compiled = subprocess.run(["javac", "-proc:none", "-encoding", "UTF-8", "-d", str(output),
                                str(java_file), str(domain / "EventPhase.java"),
+                               str(domain / "BlackFogTimingPolicy.java"),
+                               str(domain / "EndRiftObjective.java"),
+                               str(domain / "BlackFogRecoverySnapshot.java"),
+                               str(domain / "RiftCarrierPolicy.java"),
+                               str(domain / "RiftCarrierRecoverySnapshot.java"),
                                str(domain / "SandboxWaveSessionSnapshot.java"),
                                str(domain / "PressureBudgetController.java"),
                                str(domain / "WaveMechanicsPolicy.java"),
@@ -446,4 +535,31 @@ public final class WaveProbeAdapterHarness {
 def test_wave_probe_session_boundaries(probe_harness, scenario, wave):
     result = subprocess.run(["java", "-cp", str(probe_harness), "WaveProbeAdapterHarness",
                              scenario, str(wave)], capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("stage", ["TELEGRAPH", "SAFE", "FOG"])
+def test_wave5_checkpoint_keeps_the_exact_stage_across_shutdown(probe_harness, stage):
+    result = subprocess.run(["java", "-cp", str(probe_harness), "WaveProbeAdapterHarness",
+                             "wave5-snapshot", "5", stage], capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("stage", ["TELEGRAPH", "SAFE", "FOG"])
+def test_wave5_shutdown_captures_current_stage_before_cleanup(probe_harness, stage):
+    result = subprocess.run(["java", "-cp", str(probe_harness), "WaveProbeAdapterHarness",
+                             "wave5-shutdown-capture", "5", stage], capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("stage", ["TELEGRAPH", "SAFE", "FOG"])
+def test_wave5_restart_restores_checkpoint_as_admin_recovery(probe_harness, stage):
+    result = subprocess.run(["java", "-cp", str(probe_harness), "WaveProbeAdapterHarness",
+                             "wave5-restart", "5", stage], capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_wave5_restart_preserves_invalid_checkpoint_and_requires_recovery(probe_harness):
+    result = subprocess.run(["java", "-cp", str(probe_harness), "WaveProbeAdapterHarness",
+                             "wave5-invalid-restart", "5"], capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stdout + result.stderr

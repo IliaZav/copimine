@@ -22,16 +22,19 @@ def method_body(source: str, name: str) -> str:
     raise AssertionError(f"unterminated method {name}")
 
 
-def test_carrier_slow_uses_only_its_keyed_transient_modifier():
+def test_carrier_uses_actual_slowness_lease_and_retires_legacy_speed_modifier():
     source = SOURCE.read_text(encoding="utf-8")
-    assert "keyCarrierSlownessModifier" in source
-    assert "getModifier(keyCarrierSlownessModifier)" in source
-    assert "movementSpeed.removeModifier(ownedModifier)" in source
-    assert re.search(r"addTransientModifier\(\s*new AttributeModifier\(\s*keyCarrierSlownessModifier", source)
-
-    carrier_tick = method_body(source, "tickCurrentCarrierObjective")
-    assert "updateCurrentCarrierSlowness(holder, true)" in carrier_tick
-    assert "addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS" not in carrier_tick
+    body = method_body(source, "updateCurrentCarrierSlowness")
+    assert "PotionEffectType.SLOWNESS" in body
+    assert "new PotionEffect(PotionEffectType.SLOWNESS, 30, 1" in body
+    assert "currentCarrierPotionLeases" in body
+    assert "current.getAmplifier() >= 1" in body
+    assert "addTransientModifier" not in body
+    assert "speed.removeModifier(legacy)" in body
+    assert "updateCurrentCarrierSlowness(holder, true)" in method_body(source, "tickCurrentCarrierObjective")
+    boundary = method_body(source, "onCarrierSlownessPotionChange")
+    assert "currentCarrierPotionMutations" in boundary
+    assert "!event.isOverride()" in boundary
 
 
 def test_carrier_slow_is_released_for_charge_and_holder_lifecycle():

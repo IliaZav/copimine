@@ -21,7 +21,7 @@ def admission_probe(tmp_path_factory):
  public void setPersistent(boolean value){persistent=value;}
  public void remove(){if(failRemove){failRemove=false;throw new IllegalStateException("remove retry");}removals++;valid=false;}
 } """,
-        "org/bukkit/entity/LivingEntity.java": "package org.bukkit.entity;public class LivingEntity extends Entity implements org.bukkit.projectiles.ProjectileSource {public LivingEntity(java.util.UUID id,org.bukkit.World w){super(id,w);}}",
+        "org/bukkit/entity/LivingEntity.java": "package org.bukkit.entity;public class LivingEntity extends Entity implements org.bukkit.projectiles.ProjectileSource {public double health=20;public LivingEntity(java.util.UUID id,org.bukkit.World w){super(id,w);}public double getHealth(){return health;}}",
         "org/bukkit/entity/Projectile.java": "package org.bukkit.entity;public class Projectile extends Entity {public org.bukkit.projectiles.ProjectileSource shooter;public Projectile(java.util.UUID id,org.bukkit.World w,org.bukkit.projectiles.ProjectileSource s){super(id,w);shooter=s;}public org.bukkit.projectiles.ProjectileSource getShooter(){return shooter;}}",
         "org/bukkit/entity/AbstractArrow.java": "package org.bukkit.entity;public class AbstractArrow extends Projectile {public enum PickupStatus {ALLOWED,DISALLOWED};public PickupStatus pickup=PickupStatus.ALLOWED;public AbstractArrow(java.util.UUID id,org.bukkit.World w,org.bukkit.projectiles.ProjectileSource s){super(id,w,s);}public void setPickupStatus(PickupStatus p){pickup=p;}}",
         "org/bukkit/entity/ThrownPotion.java": "package org.bukkit.entity;public class ThrownPotion extends Projectile {public ThrownPotion(java.util.UUID id,org.bukkit.World w,org.bukkit.projectiles.ProjectileSource s){super(id,w,s);}}",
@@ -30,8 +30,8 @@ def admission_probe(tmp_path_factory):
         "org/bukkit/event/Listener.java": "package org.bukkit.event;public interface Listener {}",
         "org/bukkit/event/EventPriority.java": "package org.bukkit.event;public enum EventPriority {LOWEST,LOW,NORMAL,HIGH,HIGHEST,MONITOR}",
         "org/bukkit/event/EventHandler.java": "package org.bukkit.event;@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME) public @interface EventHandler {EventPriority priority();boolean ignoreCancelled();}",
-        "org/bukkit/event/entity/EntityDamageEvent.java": "package org.bukkit.event.entity;public class EntityDamageEvent {public boolean cancelled;org.bukkit.entity.Entity entity;org.bukkit.damage.DamageSource source;public EntityDamageEvent(org.bukkit.entity.Entity e,org.bukkit.damage.DamageSource s){entity=e;source=s;}public org.bukkit.entity.Entity getEntity(){return entity;}public org.bukkit.damage.DamageSource getDamageSource(){return source;}public boolean isCancelled(){return cancelled;}public void setCancelled(boolean c){cancelled=c;}}",
-        "org/bukkit/event/entity/EntityDamageByEntityEvent.java": "package org.bukkit.event.entity;public class EntityDamageByEntityEvent extends EntityDamageEvent {org.bukkit.entity.Entity damager;public EntityDamageByEntityEvent(org.bukkit.entity.Entity d,org.bukkit.entity.Entity e,org.bukkit.damage.DamageSource s){super(e,s);damager=d;}public org.bukkit.entity.Entity getDamager(){return damager;}}",
+        "org/bukkit/event/entity/EntityDamageEvent.java": "package org.bukkit.event.entity;public class EntityDamageEvent {public boolean cancelled;org.bukkit.entity.Entity entity;org.bukkit.damage.DamageSource source;double finalDamage;public EntityDamageEvent(org.bukkit.entity.Entity e,org.bukkit.damage.DamageSource s){this(e,s,0);}public EntityDamageEvent(org.bukkit.entity.Entity e,org.bukkit.damage.DamageSource s,double d){entity=e;source=s;finalDamage=d;}public org.bukkit.entity.Entity getEntity(){return entity;}public org.bukkit.damage.DamageSource getDamageSource(){return source;}public double getFinalDamage(){return finalDamage;}public boolean isCancelled(){return cancelled;}public void setCancelled(boolean c){cancelled=c;}}",
+        "org/bukkit/event/entity/EntityDamageByEntityEvent.java": "package org.bukkit.event.entity;public class EntityDamageByEntityEvent extends EntityDamageEvent {org.bukkit.entity.Entity damager;public EntityDamageByEntityEvent(org.bukkit.entity.Entity d,org.bukkit.entity.Entity e,org.bukkit.damage.DamageSource s){this(d,e,s,0);}public EntityDamageByEntityEvent(org.bukkit.entity.Entity d,org.bukkit.entity.Entity e,org.bukkit.damage.DamageSource s,double damage){super(e,s,damage);damager=d;}public org.bukkit.entity.Entity getDamager(){return damager;}}",
         "org/bukkit/event/entity/ProjectileLaunchEvent.java": "package org.bukkit.event.entity;public class ProjectileLaunchEvent {public boolean cancelled;org.bukkit.entity.Projectile entity;public ProjectileLaunchEvent(org.bukkit.entity.Projectile e){entity=e;}public org.bukkit.entity.Projectile getEntity(){return entity;}public boolean isCancelled(){return cancelled;}public void setCancelled(boolean c){cancelled=c;}}",
         "org/bukkit/event/entity/ProjectileHitEvent.java": "package org.bukkit.event.entity;public class ProjectileHitEvent extends ProjectileLaunchEvent {org.bukkit.entity.Entity target;public ProjectileHitEvent(org.bukkit.entity.Projectile e,org.bukkit.entity.Entity t){super(e);target=t;}public org.bukkit.entity.Entity getHitEntity(){return target;}}",
         "org/bukkit/event/entity/PotionSplashEvent.java": "package org.bukkit.event.entity;public class PotionSplashEvent extends ProjectileHitEvent {public java.util.Map<org.bukkit.entity.LivingEntity,Double> affected=new java.util.LinkedHashMap<>();public PotionSplashEvent(org.bukkit.entity.ThrownPotion p,org.bukkit.entity.LivingEntity...targets){super(p,null);for(var t:targets)affected.put(t,1.0);}public org.bukkit.entity.ThrownPotion getEntity(){return (org.bukkit.entity.ThrownPotion)super.getEntity();}public java.util.Collection<org.bukkit.entity.LivingEntity> getAffectedEntities(){return new java.util.ArrayList<>(affected.keySet());}public void setIntensity(org.bukkit.entity.LivingEntity t,double v){affected.put(t,v);}}",
@@ -85,6 +85,12 @@ public class EchoAdmissionChecks {
  static Projectile arrow(LivingEntity shooter){return new AbstractArrow(id(serial++),world,shooter);}
  static ProjectileLaunchEvent launch(Projectile p){var e=new ProjectileLaunchEvent(p);listener.onLaunch(e);return e;}
  static EntityDamageEvent damage(Entity direct,Entity causing,Entity target){var e=new EntityDamageEvent(target,new DamageSource(direct,causing));listener.onDamage(e);return e;}
+ static EntityDamageByEntityEvent lethal(Entity direct,Entity causing,Entity target,double damage){return new EntityDamageByEntityEvent(direct,target,new DamageSource(direct,causing),damage);}
+ static void observeLethal(EntityDamageEvent e){try{EchoCombatAdmissionListener.class.getMethod("onLethalOwnerDamage",EntityDamageEvent.class).invoke(listener,e);}catch(NoSuchMethodException absent){}catch(ReflectiveOperationException error){throw new AssertionError(error);}}
+ static boolean consumeLethal(Pair pair,EntityDamageEvent e){try{return (boolean)EchoCombatAdmissionListener.class.getMethod("consumeOwnerLethalDeath",Pair.class,EntityDamageEvent.class).invoke(listener,pair,e);}catch(NoSuchMethodException absent){return false;}catch(ReflectiveOperationException error){throw new AssertionError(error);}}
+ static boolean beginAction(Pair pair,Entity target){try{return (boolean)EchoCombatAdmissionListener.class.getMethod("beginOwnerCombatAction",Pair.class,java.util.UUID.class).invoke(listener,pair,target.id);}catch(ReflectiveOperationException error){throw new AssertionError(error);}}
+ static void observeAction(EntityDamageByEntityEvent e){try{EchoCombatAdmissionListener.class.getMethod("onAcceptedOwnerCombatAction",EntityDamageByEntityEvent.class).invoke(listener,e);}catch(NoSuchMethodException absent){}catch(ReflectiveOperationException error){throw new AssertionError(error);}}
+ static boolean consumeAction(Pair pair,Entity target,EntityDamageEvent e){try{return (boolean)EchoCombatAdmissionListener.class.getMethod("consumeAcceptedOwnerCombatAction",Pair.class,java.util.UUID.class,EntityDamageEvent.class).invoke(listener,pair,target.id,e);}catch(NoSuchMethodException absent){return false;}catch(ReflectiveOperationException error){throw new AssertionError(error);}}
  static ThrownPotion potion(LivingEntity shooter){return new ThrownPotion(id(serial++),world,shooter);}
  static void change(long generation,long epoch,boolean active,long tick){var p=context[0].pair();context[0]=new Context(new Pair(p.event(),generation,epoch,p.duel(),p.owner(),p.actor(),p.world()),tick,active);}
  public static void main(String[] args){String s=args[0];
@@ -99,7 +105,43 @@ public class EchoAdmissionChecks {
   case "forged-causing":require(damage(owner,other,actor).cancelled,"contradictory causing source admitted");break;
   case "unrelated":require(!damage(other,other,pet).cancelled,"ordinary foreign damage changed");break;
   case "environment":require(!damage(null,null,actor).cancelled,"native environmental physics changed");break;
+  case "owner-lethal-melee":{actor.health=5;var e=lethal(owner,owner,actor,5);observeLethal(e);require(consumeLethal(context[0].pair(),e),"exact owner's lethal melee hit must mint one receipt");require(!consumeLethal(context[0].pair(),e),"owner lethal receipt is one use");break;}
+  case "owner-lethal-projectile":{actor.health=4;var p=arrow(owner);launch(p);var e=lethal(p,owner,actor,4);observeLethal(e);require(consumeLethal(context[0].pair(),e),"tracked owner's lethal projectile hit must mint a receipt");break;}
+  case "environmental-lethal":{actor.health=1;var e=new EntityDamageEvent(actor,new DamageSource(null,null),10);observeLethal(e);require(!consumeLethal(context[0].pair(),e),"environmental death cannot complete a personal Echo");break;}
+  case "foreign-lethal":{actor.health=1;var e=lethal(other,other,actor,10);observeLethal(e);require(!consumeLethal(context[0].pair(),e),"third-party lethal hit cannot complete a personal Echo");break;}
+  case "nonlethal-owner-hit":{actor.health=10;var e=lethal(owner,owner,actor,2);observeLethal(e);require(!consumeLethal(context[0].pair(),e),"nonlethal owner hit cannot authorize a later environmental death");break;}
+  case "stale-lethal-receipt":{actor.health=1;var e=lethal(owner,owner,actor,2);observeLethal(e);change(9,11,true,101);require(!consumeLethal(context[0].pair(),e),"old generation/runtime cannot consume a stale lethal receipt");break;}
+  case "stale-lethal-tick":{actor.health=1;var e=lethal(owner,owner,actor,2);observeLethal(e);change(9,10,true,101);require(!consumeLethal(context[0].pair(),e),"lethal receipt cannot outlive its observed server tick");break;}
+  case "wrong-lethal-owner":case "wrong-lethal-actor":case "wrong-lethal-duel":case "wrong-lethal-cause":{
+   actor.health=1;var e=lethal(owner,owner,actor,2);observeLethal(e);var p=context[0].pair();
+   Pair expected=s.equals("wrong-lethal-owner")?new Pair(p.event(),p.generation(),p.epoch(),p.duel(),id(98),p.actor(),p.world()):
+    s.equals("wrong-lethal-actor")?new Pair(p.event(),p.generation(),p.epoch(),p.duel(),p.owner(),id(97),p.world()):
+    s.equals("wrong-lethal-duel")?new Pair(p.event(),p.generation(),p.epoch(),id(96),p.owner(),p.actor(),p.world()):p;
+   EntityDamageEvent cause=s.equals("wrong-lethal-cause")?lethal(owner,owner,actor,2):e;
+   require(!consumeLethal(expected,cause),"lethal receipt requires exact owner/duel/actor/native cause identity: "+s);break;}
+  case "cancelled-lethal":{actor.health=1;var e=lethal(owner,owner,actor,2);e.cancelled=true;observeLethal(e);require(!consumeLethal(context[0].pair(),e),"cancelled lethal damage cannot authorize completion");break;}
   case "no-scene":context[0]=null;require(!damage(other,other,owner).cancelled,"protection escaped its local lifetime");break;
+  case "server-launch-echo":{var p=arrow(actor);require(listener.registerServerLaunchedEchoArrow(p,actor.id),"server Echo shot must receive an exact source receipt");
+   require(listener.trackedProjectiles()==1&&!p.persistent&&((AbstractArrow)p).pickup==AbstractArrow.PickupStatus.DISALLOWED,"registered server shot must be bounded and non-pickup");
+   require(!damage(p,actor,owner).cancelled,"registered server Echo arrow must hit only its owner");break;}
+  case "server-launch-owner-denied":{var p=arrow(owner);require(!listener.registerServerLaunchedEchoArrow(p,owner.id)&&listener.trackedProjectiles()==0,"server Echo registration must not mint owner projectile receipts");break;}
+  case "server-launch-foreign-denied":{var p=arrow(other);require(!listener.registerServerLaunchedEchoArrow(p,other.id)&&listener.trackedProjectiles()==0,"server Echo registration must reject an unrelated shooter");break;}
+  case "server-launch-wrong-actor":{var p=arrow(other);require(!listener.registerServerLaunchedEchoArrow(p,actor.id)&&listener.trackedProjectiles()==0,"server Echo registration must match the actual shooter");break;}
+  case "server-launch-wrong-world":{var p=arrow(actor);p.world=new World(id(55));require(!listener.registerServerLaunchedEchoArrow(p,actor.id)&&listener.trackedProjectiles()==0,"server Echo receipt must be world scoped");break;}
+  case "server-launch-stale":{var p=arrow(actor);change(10,10,false,101);require(!listener.registerServerLaunchedEchoArrow(p,actor.id)&&listener.trackedProjectiles()==0,"paused Echo context cannot register a server shot");break;}
+  case "server-launch-duplicate":{var p=arrow(actor);require(listener.registerServerLaunchedEchoArrow(p,actor.id),"first server shot receipt");change(9,10,true,101);require(!listener.registerServerLaunchedEchoArrow(p,actor.id)&&listener.trackedProjectiles()==1,"duplicate server shot registration cannot renew its receipt");break;}
+  case "accepted-owner-action":{var pair=context[0].pair();require(beginAction(pair,owner),"exact owner action can be armed");var e=lethal(actor,actor,owner,4);observeAction(e);
+   require(consumeAction(pair,owner,e),"positive uncancelled actor hit produces one action receipt");require(!consumeAction(pair,owner,e),"accepted action receipt is one-use");break;}
+  case "cancelled-owner-action":{var pair=context[0].pair();require(beginAction(pair,owner),"owner action arm");var e=lethal(actor,actor,owner,4);e.cancelled=true;observeAction(e);
+   require(!consumeAction(pair,owner,e),"cancelled native damage cannot consume a persisted action cost");break;}
+  case "zero-owner-action":{var pair=context[0].pair();require(beginAction(pair,owner),"owner action arm");var e=lethal(actor,actor,owner,0);observeAction(e);
+   require(!consumeAction(pair,owner,e),"zero final damage cannot consume a persisted action cost");break;}
+  case "wrong-owner-action-target":{var pair=context[0].pair();require(beginAction(pair,owner),"owner action arm");var e=lethal(actor,actor,other,4);observeAction(e);
+   require(!consumeAction(pair,owner,e),"a positive hit on a different target cannot satisfy the owner action");break;}
+  case "stale-owner-action-tick":{var pair=context[0].pair();require(beginAction(pair,owner),"owner action arm");var e=lethal(actor,actor,owner,4);change(9,10,true,101);observeAction(e);
+   require(!consumeAction(pair,owner,e),"an action receipt cannot cross the server tick boundary");break;}
+  case "lethal-clear-owner-action":{var pair=context[0].pair();require(beginAction(pair,owner),"owner action arm");var e=lethal(actor,actor,owner,20);observeAction(e);listener.clear();
+   require(consumeAction(pair,owner,e),"a lethal accepted event survives synchronous actor cleanup for its waiting caller");break;}
   case "legacy-foreign-source":case "legacy-owner-source":{
    var e=new EntityDamageByEntityEvent(s.equals("legacy-owner-source")?owner:other,actor,new DamageSource(null,null));listener.onDamage(e);
    require(e.cancelled==s.equals("legacy-foreign-source"),"entity event without DamageSource bypassed admission or lost native owner hit");break;}
@@ -159,7 +201,9 @@ public class EchoAdmissionChecks {
   case "own-fire":case "foreign-fire":{var e=new EntityCombustByEntityEvent(s.equals("own-fire")?owner:other,actor);listener.onCombust(e);require(e.cancelled==s.equals("foreign-fire"),"foreign ignition bypassed pair");break;}
   case "own-target":case "foreign-target":case "pet-target":{var e=new EntityTargetLivingEntityEvent(s.equals("pet-target")?pet:actor,s.equals("foreign-target")?other:s.equals("pet-target")?actor:owner);listener.onTarget(e);require(e.cancelled!=s.equals("own-target"),"target selection uses a different pair rule");break;}
   case "handler-priority":{for(var m:EchoCombatAdmissionListener.class.getDeclaredMethods())if(m.getName().startsWith("on")){
-   var a=m.getAnnotation(org.bukkit.event.EventHandler.class);require(a!=null&&a.priority()==org.bukkit.event.EventPriority.HIGHEST&&a.ignoreCancelled(),"admission mutates a MONITOR event or reopens cancellation");}break;}
+   var a=m.getAnnotation(org.bukkit.event.EventHandler.class);var action=m.getName().equals("onAcceptedOwnerCombatAction");
+   var expected=m.getName().equals("onLethalOwnerDamage")||action?org.bukkit.event.EventPriority.MONITOR:org.bukkit.event.EventPriority.HIGHEST;
+   require(a!=null&&a.priority()==expected&&(action?!a.ignoreCancelled():a.ignoreCancelled()),"damage admission or exact action receipt uses an unsafe event phase");}break;}
   default:throw new AssertionError("unknown "+s);
  }
  }
@@ -173,6 +217,9 @@ public class EchoAdmissionChecks {
 @pytest.mark.parametrize("scenario", [
     "owner-melee", "echo-melee", "foreign-melee", "foreign-owner-hit", "cross-sweep", "echo-foreign",
     "owner-thorns", "foreign-thorns", "owner-pet", "forged-causing", "unrelated", "environment", "no-scene",
+    "owner-lethal-melee", "owner-lethal-projectile", "environmental-lethal", "foreign-lethal",
+    "nonlethal-owner-hit", "stale-lethal-receipt", "stale-lethal-tick", "wrong-lethal-owner",
+    "wrong-lethal-actor", "wrong-lethal-duel", "wrong-lethal-cause", "cancelled-lethal",
     "owner-arrow", "echo-arrow", "untracked-arrow", "foreign-arrow", "changed-shooter", "stale-generation",
     "stale-epoch", "paused", "expired", "backward-time", "duplicate-launch", "arrow-cross-hit", "wrong-world",
     "launch-cap", "cancelled-launch", "foreign-hit", "own-hit", "owned-splash", "foreign-splash", "stale-splash",
@@ -182,6 +229,10 @@ public class EchoAdmissionChecks {
     "legacy-foreign-source", "legacy-owner-source", "disagrees-with-damager", "self-potion-damage",
     "cancelled-damage", "invalid-handle-cleanup",
     "source-world-cleanup", "no-persistent-source",
+    "server-launch-echo", "server-launch-owner-denied", "server-launch-foreign-denied",
+    "server-launch-wrong-actor", "server-launch-wrong-world", "server-launch-stale", "server-launch-duplicate",
+    "accepted-owner-action", "cancelled-owner-action", "zero-owner-action", "wrong-owner-action-target",
+    "stale-owner-action-tick", "lethal-clear-owner-action",
 ])
 def test_exact_pair_and_source_lifetime(admission_probe, scenario):
     result = subprocess.run(["java", "-cp", str(admission_probe), "EchoAdmissionChecks", scenario], capture_output=True, text=True)

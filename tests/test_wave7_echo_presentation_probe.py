@@ -72,6 +72,13 @@ public class EchoProbeChecks {
             check(frame.fields().split("\\|",-1).length==12,"shared envelope field count");
             try{new EchoPresentationProbeState(EVENT,7,10,EVENT,OWNER,OWNER,"minecraft:overworld",100);throw new AssertionError("owner reused");}
             catch(IllegalArgumentException expected){}break;
+        case "persisted-lease":
+            var duel=new EchoPresentationProbeState(EVENT,7,11,new UUID(0,12),ACTOR,OWNER,
+                "minecraft:overworld",100,1_000_000_000L);
+            check(duel.active(EVENT,7,600_100,true,true,true,true),"official duel view survives beyond probe lease");
+            try{new EchoPresentationProbeState(EVENT,7,12,new UUID(0,13),ACTOR,OWNER,
+                "minecraft:overworld",100,1_000_000_001L);throw new AssertionError("oversized lease accepted");}
+            catch(IllegalArgumentException expected){}break;
         case "drops":
             var adapter=new EchoProbeChecks();var death=new EntityDeathEvent(ECHO_PROBE_KIND);
             check(adapter.suppressEchoProbeDrops(death),"probe exit");
@@ -89,7 +96,7 @@ public class EchoProbeChecks {
     return directory
 
 
-@pytest.mark.parametrize("scenario", ["use", "death", "lifecycle", "serials", "identity", "drops"])
+@pytest.mark.parametrize("scenario", ["use", "death", "lifecycle", "serials", "identity", "persisted-lease", "drops"])
 def test_presentation_probe_authority(echo_probe, scenario):
     result = subprocess.run(["java", "-cp", str(echo_probe), "EchoProbeChecks", scenario],
                             capture_output=True, text=True)

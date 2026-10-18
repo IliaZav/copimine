@@ -3,6 +3,7 @@ package me.copimine.client.mixin;
 import me.copimine.client.ClientBridgeProtocol;
 import me.copimine.client.EchoVanillaRenderer;
 import me.copimine.client.CopiMineClientLogger;
+import me.copimine.client.EchoPlayerView;
 import me.copimine.client.EndRiftBossWorldScalePolicy;
 import me.copimine.client.EndEventTextureCatalog;
 import me.copimine.client.EndermanRendererSelection;
@@ -64,6 +65,12 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, M extend
         if (active != null) {
             cir.setReturnValue((M) active);
         }
+    }
+
+    @Inject(method = "hasLabel(Lnet/minecraft/entity/LivingEntity;)Z",
+            at = @At("HEAD"), cancellable = true)
+    private void copimine$hideDetachedEchoName(LivingEntity entity, CallbackInfoReturnable<Boolean> cir) {
+        if (entity instanceof EchoPlayerView) cir.setReturnValue(false);
     }
 
     @Unique

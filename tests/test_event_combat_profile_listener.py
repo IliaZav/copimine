@@ -125,7 +125,8 @@ public class ProfileListenerProbe {
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(source, encoding="utf-8")
     production = observer.with_name("EventCombatProfileService.java")
-    result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path), str(production), str(observer), *map(str, tmp_path.rglob("*.java"))], capture_output=True, text=True)
+    strategy = ROOT / "copimine-end-event/src/me/copimine/endevent/domain/wave7/EchoBehaviorStrategy.java"
+    result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path), str(strategy), str(production), str(observer), *map(str, tmp_path.rglob("*.java"))], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     result = subprocess.run(["java", "-cp", str(tmp_path), "ProfileListenerProbe"], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr

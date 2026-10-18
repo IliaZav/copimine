@@ -37,6 +37,73 @@ def test_partial_wave6_progress_enters_the_restart_continuation_path():
     assert "startRitualSphereObjective(Bukkit.getWorld(worldName), core);" in restore
 
     start = method_body("startRitualSphereObjective")
-    assert "recoveredCasters <= recoveredProfile.casterCount()" in start
+    assert "recoveredCasters == expectedLivingCasters" in start
     assert "recoveredGuards <= recoveredProfile.guardCount()" in start
-    assert "recoveredProfile.casterCount() - recoveredCasters" in start
+    assert "ritualCasterDeathCount = recoveredProfile.casterCount() - recoveredCasters" not in start
+    assert "ritualCasterDeathCount" in start
+
+
+def test_unloaded_living_caster_is_not_counted_as_a_restart_death():
+    start = method_body("startRitualSphereObjective")
+    recovery_start = start.index("if (ritualSphereStateRehydrated")
+    recovered_counts = start.index("int recoveredCasters = liveRitualCasterCount()")
+
+    # A world.getEntities() count cannot distinguish a dead Caster from a
+    # living one in an unloaded chunk. Recovery must first load/verify the
+    # persisted roster, and progression must come from a durable death receipt.
+    roster_gate = "ensureRitualCasterRosterAvailableForRecovery(recoveredProfile)"
+    assert roster_gate in start[recovery_start:recovered_counts], (
+        "Wave 6 restart checks caster counts before loading/verifying the complete "
+        "arena roster; an unloaded living Caster could look dead"
+    )
+    assert "if (!ensureRitualCasterRosterAvailableForRecovery(recoveredProfile))" in start
+    roster_gate_start = start.index(roster_gate, recovery_start)
+    assert "return false;" in start[roster_gate_start:recovered_counts], (
+        "an incomplete Caster roster must stop restart before it can alter progression"
+    )
+    assert "ritualCasterDeathCount = recoveredProfile.casterCount() - recoveredCasters" not in start
+    assert "RitualSphereEncounterSnapshot.encode(ritualSphereState, ritualCasterDeathCount)" in EVENT
+
+
+def test_wave6_restart_loads_bounded_arena_and_rebuilds_unique_caster_and_guard_slots():
+    helper_start = EVENT.index("private boolean ensureRitualCasterRosterAvailableForRecovery(")
+    helper_body_start = EVENT.index("{", helper_start)
+    depth = 0
+    for index in range(helper_body_start, len(EVENT)):
+        if EVENT[index] == "{":
+            depth += 1
+        elif EVENT[index] == "}":
+            depth -= 1
+            if depth == 0:
+                helper = EVENT[helper_body_start + 1:index]
+                break
+    else:
+        raise AssertionError("Unclosed Wave 6 recovery roster helper")
+
+    assert "chunkCount > 256L" in helper
+    assert "world.getChunkAt(chunkX, chunkZ).isLoaded()" in helper
+    assert "castersBySlot.putIfAbsent(slot, entity) != null" in helper
+    assert "castersBySlot.size() != expectedLivingCasters" in helper
+    assert "guardSlotsByCaster" in helper
+    assert "ritualCasterUuids.clear()" in helper
+    assert "ritualGuardUuids.clear()" in helper
+
+
+def test_wave6_roster_mismatch_persists_a_fail_closed_recovery_checkpoint():
+    helper_start = EVENT.index("private void markWave6RecoveryRequired(")
+    helper_body_start = EVENT.index("{", helper_start)
+    depth = 0
+    for index in range(helper_body_start, len(EVENT)):
+        if EVENT[index] == "{":
+            depth += 1
+        elif EVENT[index] == "}":
+            depth -= 1
+            if depth == 0:
+                helper = EVENT[helper_body_start + 1:index]
+                break
+    else:
+        raise AssertionError("Unclosed Wave 6 recovery transition")
+
+    assert "ritualSphereRecoveryCheckpoint" in helper
+    assert "forcePhase(EventPhase.RECOVERY_REQUIRED, safeReason)" in helper
+    assert "saveStateSync()" in helper

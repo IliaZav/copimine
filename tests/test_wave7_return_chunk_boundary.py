@@ -127,6 +127,7 @@ public class ReturnChunkProbe {
     Location realitySplitChamberCenter(Location anchor,int claim,int count){return anchor.clone().add(8,0,4);}
     Location coreCombatAnchorLocation(){throw new AssertionError("staging commit invoked inherited Core floor scan");}
     boolean teleportWave7Return(Player player,Location destination){moves++;player.location=destination.clone();return true;}
+    boolean recoverLateWave7Owner(Player player){return true;}
     void saveStateAsync(){}boolean saveStateSync(){saves++;return true;}
     void message(Player player,String message){}void refreshClientBindingsForPlayer(Player player){}
     boolean cancelSessionTasks(){return true;}void cleanupOwnedEntities(String event,long generation){}void clearClientEffects(){}

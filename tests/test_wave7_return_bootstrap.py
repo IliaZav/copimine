@@ -18,6 +18,9 @@ def test_bootstrap_preserves_validated_return_generation_and_original_deadline(t
     wave2_signature = "boolean canResumeWave2AfterRestart()"
     if "    private " + wave2_signature in source:
         adapters += extract(source, wave2_signature)
+    wave1_signature = "boolean canResumeWave1AfterRestart()"
+    if "    private " + wave1_signature in source:
+        adapters += extract(source, wave1_signature)
     probe = tmp_path / "Wave7ReturnBootstrapProbe.java"
     probe.write_text(r'''
 import java.util.*;
@@ -40,6 +43,8 @@ public class Wave7ReturnBootstrapProbe {
     Config config=new Config();
     EventLayoutState layoutState=new EventLayoutState(null,null,null,null,Map.of(),"UNSET",null);
     AttemptLifecycleController attemptLifecycle=new AttemptLifecycleController();
+    boolean wave1CarrierCheckpointRestored;
+    RiftCarrierPolicy.State currentCarrierState;
     RealitySplitChamberController realitySplitChamberController=new RealitySplitChamberController();
     RealitySplitTrialController realitySplitTrialController=new RealitySplitTrialController();
     static class Config {String bridgeChannel(){return "synthetic:bridge";}}
@@ -157,16 +162,21 @@ public class Wave7ReturnBootstrapProbe {
         var disposable=new Wave7ReturnBootstrapProbe();disposable.testWaveFrontVisualMode=true;
         disposable.tryBootstrap();require(disposable.recoveries==0,"existing disposable Wave 7 continuation must be preserved");
         var boss=new Wave7ReturnBootstrapProbe();boss.prepareRestoredReturns();boss.phase=EventPhase.BOSS_ACTIVE;
-        boss.tryBootstrap();require(boss.recoveries==1,"the Wave 7 return exception must not redesign boss restart behavior");
+        boss.tryBootstrap();require(boss.recoveries==0&&boss.generation==43
+                &&boss.attemptLifecycle.hasWave7Returns(43)&&boss.attemptLifecycle.isReturnPending(OWNER,43),
+                "the original Wave 7 return claim and deadline must survive a restart after the boss handoff");
     }
 }
 ''', encoding="utf-8")
     paths = (
         "domain/EventPhase.java", "domain/EndEventStateMachine.java",
         "domain/EndRiftObjective.java", "domain/ChamberIsolationPolicy.java",
-        "domain/RealitySplitBarrierPolicy.java",
+        "domain/RiftCarrierPolicy.java",
+        "domain/RealitySplitBarrierPolicy.java", "domain/Wave7EchoDuelCellPolicy.java",
+        "domain/wave7/EchoBehaviorStrategy.java", "domain/wave7/EchoLoadoutState.java",
         "runtime/RealitySplitChamberController.java",
-        "runtime/RealitySplitTrialController.java", "runtime/AttemptLifecycleController.java",
+        "runtime/RealitySplitTrialController.java", "runtime/RealitySplitEchoDuelState.java",
+        "runtime/AttemptLifecycleController.java",
     )
     compile_result = subprocess.run(
         ["javac", "-encoding", "UTF-8", "-d", str(tmp_path), *(str(SOURCE / path) for path in paths), str(probe)],

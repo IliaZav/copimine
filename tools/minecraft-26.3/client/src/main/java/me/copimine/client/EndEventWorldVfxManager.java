@@ -252,6 +252,7 @@ public final class EndEventWorldVfxManager {
             RitualSpellPresentationPolicy.WorldPass pass = entry.getKey();
             List<BeamSnapshot> batch = List.copyOf(entry.getValue());
             RenderType layer = switch (pass.kind()) {
+                case CORE_OUTLINE -> RenderTypes.lines();
                 case RIBBON -> RenderTypes.lines();
                 case CHANNEL -> RenderTypes.entityTranslucentEmissive(
                         Identifier.withDefaultNamespace("textures/entity/end_crystal/end_crystal_beam.png"));
@@ -264,6 +265,7 @@ public final class EndEventWorldVfxManager {
                 PoseStack.Pose entryPose = matrices.last();
                 for (BeamSnapshot beam : batch) {
                     switch (pass.kind()) {
+                        case CORE_OUTLINE -> drawCoreOutline(buffer, entryPose, beam, nowMillis);
                         case RIBBON -> drawRibbon(buffer, entryPose, beam, nowMillis);
                         case CHANNEL -> drawRitualBeam(buffer, entryPose, beam, nowMillis, true);
                         case RITUAL -> drawRitualBeam(buffer, entryPose, beam, nowMillis);
@@ -533,6 +535,37 @@ public final class EndEventWorldVfxManager {
             drawLine(buffer, entry, flowFrom, flowTo, 225, 255, 255,
                     scaleAlpha(245, alphaScale));
         }
+    }
+
+    /** Draws a compact owner-only outline around the Wave 1 core anchor. */
+    private static void drawCoreOutline(VertexConsumer buffer, PoseStack.Pose entry,
+                                        BeamSnapshot beam, long nowMillis) {
+        long age = Math.max(0L, nowMillis - beam.startedAtMillis());
+        long remaining = Math.max(0L, beam.expiresAtMillis() - nowMillis);
+        float fade = Math.min(1.0F, age / 120.0F) * Math.min(1.0F, remaining / 180.0F);
+        int alpha = scaleAlpha(205, fade);
+        if (alpha == 0) return;
+
+        Vec3 center = beam.start();
+        double half = 0.56D;
+        double minX = center.x - half, maxX = center.x + half;
+        double minY = center.y - half, maxY = center.y + half;
+        double minZ = center.z - half, maxZ = center.z + half;
+        int red = (beam.color() >> 16) & 0xFF;
+        int green = (beam.color() >> 8) & 0xFF;
+        int blue = beam.color() & 0xFF;
+        drawLine(buffer, entry, new Vec3(minX, minY, minZ), new Vec3(maxX, minY, minZ), red, green, blue, alpha);
+        drawLine(buffer, entry, new Vec3(maxX, minY, minZ), new Vec3(maxX, minY, maxZ), red, green, blue, alpha);
+        drawLine(buffer, entry, new Vec3(maxX, minY, maxZ), new Vec3(minX, minY, maxZ), red, green, blue, alpha);
+        drawLine(buffer, entry, new Vec3(minX, minY, maxZ), new Vec3(minX, minY, minZ), red, green, blue, alpha);
+        drawLine(buffer, entry, new Vec3(minX, maxY, minZ), new Vec3(maxX, maxY, minZ), red, green, blue, alpha);
+        drawLine(buffer, entry, new Vec3(maxX, maxY, minZ), new Vec3(maxX, maxY, maxZ), red, green, blue, alpha);
+        drawLine(buffer, entry, new Vec3(maxX, maxY, maxZ), new Vec3(minX, maxY, maxZ), red, green, blue, alpha);
+        drawLine(buffer, entry, new Vec3(minX, maxY, maxZ), new Vec3(minX, maxY, minZ), red, green, blue, alpha);
+        drawLine(buffer, entry, new Vec3(minX, minY, minZ), new Vec3(minX, maxY, minZ), red, green, blue, alpha);
+        drawLine(buffer, entry, new Vec3(maxX, minY, minZ), new Vec3(maxX, maxY, minZ), red, green, blue, alpha);
+        drawLine(buffer, entry, new Vec3(maxX, minY, maxZ), new Vec3(maxX, maxY, maxZ), red, green, blue, alpha);
+        drawLine(buffer, entry, new Vec3(minX, minY, maxZ), new Vec3(minX, maxY, maxZ), red, green, blue, alpha);
     }
 
     private static void drawRitualBeam(VertexConsumer buffer, PoseStack.Pose entry, BeamSnapshot beam, long nowMillis) {

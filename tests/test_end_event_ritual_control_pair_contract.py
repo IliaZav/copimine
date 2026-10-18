@@ -75,3 +75,36 @@ def test_client_does_not_request_or_apply_movement_control_swaps() -> None:
     assert "isReady(BridgeRequestCodec.Sender.END_EVENT)" in source
     assert "RitualControl" not in source
     assert "ReverseMovement" not in source
+
+
+def test_prisoner_capture_restore_and_server_control_require_v4_readiness() -> None:
+    source = SOURCE.read_text(encoding="utf-8")
+
+    capture = source[source.index("private void attemptRitualPrisonerCapture"):
+                     source.index("private void synchronizePersistedRitualPrisonerCapture")]
+    restore = source[source.index("private void restorePersistedRitualSphereObjective"):
+                     source.index("private void cleanupLegacyWave6Entities")]
+    ensure = source[source.index("private void ensureRitualPrisoner"):
+                    source.index("private void tickRitualGuardGroups")]
+    session = source[source.index("private void startRitualPrisonerAbilitySession"):
+                     source.index("private void endRitualPrisonerAbilitySessionForPlayer")]
+    movement_guard = source[source.index("private boolean isCurrentRitualPrisoner"):
+                            source.index("private void restorePersistedRitualSphereObjective")]
+    tag = source[source.index("private void tagRitualPrisoner"):
+                 source.index("private void clearRitualPrisonerTag")]
+    teleport = source[source.index("private void teleportRitualPrisoner"):
+                       source.index("private void retagRitualEntity")]
+    join = source[source.index("public void onPlayerJoin"):
+                   source.index("public void onPlayerQuit")]
+
+    assert "filter(this::isRitualPrisonerBridgeReady)" in capture
+    assert "isRitualPrisonerBridgeReady(prisoner)" in capture
+    assert "isRitualPrisonerBridgeReady(prisoner)" in restore
+    assert "isRitualPrisonerBridgeReady(prisoner)" in ensure
+    assert "releaseRitualPrisonerControl(prisoner)" in ensure
+    assert "isRitualPrisonerBridgeReady(player)" in session
+    assert "isRitualPrisonerBridgeReady(player)" in movement_guard
+    assert "isRitualPrisonerBridgeReady(player)" in tag
+    assert "isRitualPrisonerBridgeReady(player)" in teleport
+    assert "endEventBridgeV4.registerPlayer(player)" in join
+    assert "endEventBridgeV4.requestFreshChallenges(java.util.List.of(playerUuid))" in join

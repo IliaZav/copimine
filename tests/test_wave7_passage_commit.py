@@ -27,6 +27,7 @@ def test_passage_intent_precedes_air_and_restart_reconciles_opening(tmp_path):
         "boolean recloseUncommittedRealitySplitBoundary(int boundary)",
         "void clearRealitySplitBoundaryRollback(int boundary)",
         "void scheduleRealitySplitBoundaryRollbackRetry()",
+        "boolean recloseUncommittedRealitySplitEchoBoundary(",
         "void tickUncommittedRealitySplitBoundaryRollbacks()",
         "boolean reconcileOpeningRealitySplitPassages()",
     ))
@@ -36,6 +37,7 @@ import java.util.*;
 import java.util.logging.Logger;
 import me.copimine.endevent.domain.ChamberIsolationPolicy;
 import me.copimine.endevent.domain.RealitySplitBarrierPolicy;
+import me.copimine.endevent.domain.Wave7EchoDuelCellBarrierPolicy;
 import me.copimine.endevent.domain.RealitySplitChamberSnapshot;
 import me.copimine.endevent.runtime.RealitySplitChamberController;
 public class PassageCommitProbe {
@@ -46,8 +48,11 @@ public class PassageCommitProbe {
   RealitySplitChamberController realitySplitChamberController = new RealitySplitChamberController();
   final Set<RealitySplitBarrierPolicy.Cell> realitySplitBarrierCells = new LinkedHashSet<>();
   final Map<Integer,Set<RealitySplitBarrierPolicy.Cell>> realitySplitBarrierByBoundary = new LinkedHashMap<>();
+  final Map<Wave7EchoDuelCellBarrierPolicy.SharedBarrier,Set<RealitySplitBarrierPolicy.Cell>> realitySplitEchoBarrierByPair = new LinkedHashMap<>();
   final Map<Integer,Set<RealitySplitBarrierPolicy.Cell>> realitySplitBoundaryCellsPendingCommit = new LinkedHashMap<>();
   final Map<Integer,List<RealitySplitBarrierPolicy.Cell>> realitySplitOpenedCellsPendingCommit = new LinkedHashMap<>();
+  final Map<Wave7EchoDuelCellBarrierPolicy.SharedBarrier,Set<RealitySplitBarrierPolicy.Cell>> realitySplitEchoBoundaryCellsPendingRollback = new LinkedHashMap<>();
+  final Map<Wave7EchoDuelCellBarrierPolicy.SharedBarrier,List<RealitySplitBarrierPolicy.Cell>> realitySplitEchoOpenedCellsPendingRollback = new LinkedHashMap<>();
   long realitySplitBoundaryRollbackRetryAtTick;
   long eventTickCounter;
   TrialStub realitySplitTrialController = new TrialStub();
@@ -237,6 +242,7 @@ public class PassageCommitProbe {
 ''' + adapter + "\n}\n", encoding="utf-8")
     inputs = [SOURCE / item for item in (
         "domain/ChamberIsolationPolicy.java", "domain/RealitySplitBarrierPolicy.java",
+        "domain/Wave7EchoDuelCellPolicy.java", "domain/Wave7EchoDuelCellBarrierPolicy.java",
         "domain/RealitySplitChamberSnapshot.java", "runtime/RealitySplitChamberController.java",
     )]
     compiled = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path),

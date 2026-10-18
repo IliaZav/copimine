@@ -30,6 +30,11 @@ public class CombatProfileProbe {
         var frozen=p.snapshot(OWNER);
         require(frozen.count(Stat.MOVEMENT_SAMPLES)==before+1 && frozen.observedWaves()==33,"W1 and W6 survive runtime rotation without inventing W2-W5");
         require(frozen.count(Stat.SHIELD_SAMPLES)==1 && frozen.count(Stat.DISTANCE_FAR)==1,"defense and actual distance aggregates recorded");
+        var movementStrategy=p.echoBehaviorStrategy(OWNER);
+        require(movementStrategy!=null && movementStrategy.mobilityPermille()>500
+                && movementStrategy.observedWaveMask()==33 && movementStrategy.confidencePermille()>0,
+                "Echo receives only bounded strategy weights from the current owner's profile");
+        require(p.echoBehaviorStrategy(OTHER)==null,"a missing owner profile cannot start an Echo duel");
         require(!p.sample(context(400,1),new Movement(3,true,0,false,0,.8)),"stale generation rejected");
         for(int excluded=0;excluded<5;excluded++) {
             var c=new Context("attempt",72,OWNER,400,6,excluded!=0,excluded==1,excluded==2,excluded==3,excluded==4);
@@ -62,11 +67,17 @@ public class CombatProfileProbe {
         require(p.snapshot(OWNER).count(Stat.MOVEMENT_SAMPLES)==0,"new attempt starts separate observations even with same event UUID");
         p.beginAttempt("attempt",81,81,Set.of(OWNER),false);
         require(!p.snapshot(OWNER).fromEventStart() && p.snapshot(OWNER).observedWaves()==0 && p.snapshot(OWNER).confidence()==0,"mid-event instrumentation declares missing coverage and neutral confidence");
+        var neutral=p.echoBehaviorStrategy(OWNER);
+        require(neutral!=null && neutral.meleePermille()==500 && neutral.rangedPermille()==500
+                && neutral.mobilityPermille()==500 && neutral.defensePermille()==500
+                && neutral.sustainPermille()==500 && neutral.confidencePermille()==0,
+                "unobserved individual features use bounded neutral values while profile provenance remains present");
         p.clear();require(p.encode().isEmpty() && p.snapshot(OWNER)==null,"terminal cleanup removes profile ownership");
     }
 }
 ''', encoding="utf-8")
-    result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path), str(service), str(probe)], capture_output=True, text=True)
+    strategy = ROOT / "copimine-end-event/src/me/copimine/endevent/domain/wave7/EchoBehaviorStrategy.java"
+    result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path), str(strategy), str(service), str(probe)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     result = subprocess.run(["java", "-cp", str(tmp_path), "CombatProfileProbe"], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr

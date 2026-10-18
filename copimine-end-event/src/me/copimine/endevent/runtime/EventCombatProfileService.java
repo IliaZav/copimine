@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import me.copimine.endevent.domain.wave7.EchoBehaviorStrategy;
 
 /** Plain server-thread observations; no world, player, skin or item objects. */
 public final class EventCombatProfileService {
@@ -190,6 +191,16 @@ public final class EventCombatProfileService {
     public Snapshot snapshot(UUID owner) {
         Profile p = profiles.get(owner);
         return p == null ? null : new Snapshot(p.stats, p.waves, fromEventStart, new ArrayList<>(p.recent));
+    }
+    /** Freeze only bounded tactics for the owner's Echo; raw observations remain private to the profile service. */
+    public EchoBehaviorStrategy echoBehaviorStrategy(UUID owner) {
+        Snapshot profile = snapshot(owner);
+        if (profile == null) return null;
+        return EchoBehaviorStrategy.from(new EchoBehaviorStrategy.ProfileCounts(
+                profile.count(Stat.MELEE_HITS), profile.count(Stat.RANGED_HITS),
+                profile.count(Stat.MOVEMENT_SAMPLES), profile.count(Stat.SPRINT_SAMPLES),
+                profile.count(Stat.SHIELD_SAMPLES), profile.count(Stat.HEAL_USES),
+                profile.observedWaves(), profile.fromEventStart(), profile.confidence()));
     }
     public Map<String, String> encode() {
         if (profiles.isEmpty()) return Map.of();

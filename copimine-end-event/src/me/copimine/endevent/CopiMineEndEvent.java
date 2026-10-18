@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.ArrayDeque;
 import java.util.Collection;
 import java.util.Comparator;
@@ -29,6 +30,7 @@ import java.util.UUID;
 import me.copimine.endevent.domain.wave7.EchoPresentationProbeState;
 import me.copimine.endevent.runtime.wave7.EchoPresentationProbe;
 import me.copimine.endevent.runtime.wave7.EchoCombatAdmissionListener;
+import me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter;
 import me.copimine.endevent.domain.wave7.EchoCombatAdmission;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
@@ -98,7 +100,7 @@ import me.copimine.endevent.domain.RiftFireballReflectionPolicy;
 import me.copimine.endevent.domain.RiftFracturePolicy;
 import me.copimine.endevent.domain.RiftObeliskTimingPolicy;
 import me.copimine.endevent.domain.RiftCarrierPolicy;
-import me.copimine.endevent.domain.CarrierSlownessLeasePolicy;
+import me.copimine.endevent.domain.RiftCarrierRecoverySnapshot;
 import me.copimine.endevent.domain.Wave3PortalPolicy;
 import me.copimine.endevent.domain.NightCloakRollPolicy;
 import me.copimine.endevent.domain.AbyssAnchorPolicy;
@@ -108,6 +110,7 @@ import me.copimine.endevent.domain.SkeletonArrowPolicy;
 import me.copimine.endevent.domain.EliteAbilityPolicy;
 import me.copimine.endevent.domain.DragonBreathCloudPolicy;
 import me.copimine.endevent.domain.BlackFogEffectLeasePolicy;
+import me.copimine.endevent.domain.BlackFogRecoverySnapshot;
 import me.copimine.endevent.domain.EliteProjectileImpactPolicy;
 import me.copimine.endevent.domain.ExplosiveVolleyPolicy;
 import me.copimine.endevent.domain.SpellVisualPolicy;
@@ -128,6 +131,10 @@ import me.copimine.endevent.domain.WaveProjectileAdmissionController;
 import me.copimine.endevent.domain.WaveProjectileTargetPolicy;
 import me.copimine.endevent.domain.Wave4PressurePackPolicy;
 import me.copimine.endevent.domain.Wave7WardenCombatPolicy;
+import me.copimine.endevent.domain.Wave7NamedTrialActorPolicy;
+import me.copimine.endevent.domain.Wave7EchoDuelCellPolicy;
+import me.copimine.endevent.domain.Wave7EchoDuelCellBarrierPolicy;
+import me.copimine.endevent.domain.Wave7BarrierPreflightPolicy;
 import me.copimine.endevent.domain.IntermissionWatchdogPolicy;
 import me.copimine.endevent.domain.Wave3SquadIntentPolicy;
 import me.copimine.endevent.domain.SpiderEffectLeasePolicy;
@@ -312,6 +319,7 @@ import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.event.inventory.InventoryPickupItemEvent;
@@ -346,6 +354,28 @@ import org.joml.Quaternionf;
 public final class CopiMineEndEvent extends JavaPlugin implements Listener, CommandExecutor, TabCompleter,
         PluginMessageListener {
     private record RealitySplitBarrierRestoreTarget(int x, int y, int z, String originalBlockData) { }
+    private record Wave7EchoDuelBarrierPlan(boolean valid,
+                                            Set<RealitySplitBarrierPolicy.Cell> closedCells,
+                                            Set<RealitySplitBarrierPolicy.Cell> geometryCells,
+                                            Map<Wave7EchoDuelCellBarrierPolicy.SharedBarrier,
+                                                    Set<RealitySplitBarrierPolicy.Cell>> closedByPair) {
+        private Wave7EchoDuelBarrierPlan {
+            closedCells = Set.copyOf(closedCells);
+            geometryCells = Set.copyOf(geometryCells);
+            Map<Wave7EchoDuelCellBarrierPolicy.SharedBarrier,
+                    Set<RealitySplitBarrierPolicy.Cell>> copy = new LinkedHashMap<>();
+            closedByPair.forEach((barrier, cells) -> copy.put(barrier, Set.copyOf(cells)));
+            closedByPair = Map.copyOf(copy);
+        }
+
+        private static Wave7EchoDuelBarrierPlan empty() {
+            return new Wave7EchoDuelBarrierPlan(true, Set.of(), Set.of(), Map.of());
+        }
+
+        private static Wave7EchoDuelBarrierPlan invalid() {
+            return new Wave7EchoDuelBarrierPlan(false, Set.of(), Set.of(), Map.of());
+        }
+    }
 
     private static final int CLIENT_BRIDGE_PROTOCOL_VERSION = 3;
     private static final String EVENT_KIND_CORE = "CORE";
@@ -381,6 +411,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final String CLIENT_VISUAL_WAVE_GUARDIAN_SKELETON = "END_RIFT_WAVE_GUARDIAN_SKELETON_V1";
     private static final String CLIENT_VISUAL_RITUAL_GUARD_SKELETON = "END_RIFT_RITUAL_GUARD_SKELETON_V1";
     private static final String CLIENT_VISUAL_RITUAL_CASTER = "END_RIFT_RITUAL_CASTER_V1";
+    private static final String CLIENT_VISUAL_WAVE7_WARDEN = "END_RIFT_WAVE7_WARDEN_V1";
+    private static final String CLIENT_VISUAL_WAVE7_ARCHMAGE = "END_RIFT_WAVE7_ARCHMAGE_V1";
+    private static final String CLIENT_VISUAL_WAVE7_MARKSMAN = "END_RIFT_WAVE7_MARKSMAN_V1";
     private static final String CLIENT_VISUAL_OBELISK_FULL = "END_RIFT_OBELISK_FULL_V1";
     private static final String CLIENT_VISUAL_OBELISK_DAMAGED = "END_RIFT_OBELISK_DAMAGED_V1";
     private static final String CLIENT_VISUAL_OBELISK_CRITICAL = "END_RIFT_OBELISK_CRITICAL_V1";
@@ -719,6 +752,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     // first wave while preserving the charged Core/resources.
     private int currentCarrierCharges;
     private UUID currentCarrierUuid;
+    private Map<String, String> wave1RecoveryCheckpoint = Map.of();
+    private boolean wave1CarrierCheckpointRestored;
+    private boolean currentCarrierRestartReconciliationPending;
     private record CarrierRetreat(long generation, UUID carrier, Location destination, long untilMillis) { }
     private CarrierRetreat currentCarrierRetreat;
     private long currentCarrierNextRetreatMillis;
@@ -755,14 +791,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<HazardPlanner.Point, String> currentTemporaryBlockOriginals = new LinkedHashMap<>();
     private final Set<HazardPlanner.Point> currentSafeZoneCells = new LinkedHashSet<>();
     private final Map<Integer, HazardPlanner.Point> currentSafeZoneCenters = new LinkedHashMap<>();
+    /** Immutable stage evidence survives Wave 5 shutdown cleanup and restart refusal. */
+    private Map<String, String> blackFogRecoveryCheckpoint = Map.of();
     private final Set<HazardPlanner.Point> currentBarrierCells = new LinkedHashSet<>();
     /** Temporary Wave 7 collision walls, kept separate from Wave 5 fog cells. */
     private final Set<RealitySplitBarrierPolicy.Cell> realitySplitBarrierCells = new LinkedHashSet<>();
     private final Map<RealitySplitBarrierPolicy.Cell, String> realitySplitBarrierOriginals = new LinkedHashMap<>();
     private final Map<Integer, Set<RealitySplitBarrierPolicy.Cell>> realitySplitBarrierByBoundary = new LinkedHashMap<>();
+    /** Active owner-to-owner Echo separators share the same journaled physical cell set. */
+    private final Map<Wave7EchoDuelCellBarrierPolicy.SharedBarrier,
+            Set<RealitySplitBarrierPolicy.Cell>> realitySplitEchoBarrierByPair = new LinkedHashMap<>();
     /** In-memory rollback tickets until each OPEN passage checkpoint is durable. */
     private final Map<Integer, Set<RealitySplitBarrierPolicy.Cell>> realitySplitBoundaryCellsPendingCommit = new LinkedHashMap<>();
     private final Map<Integer, List<RealitySplitBarrierPolicy.Cell>> realitySplitOpenedCellsPendingCommit = new LinkedHashMap<>();
+    /** Echo OPEN intent is the already-durable completion of both adjacent owner duels. */
+    private final Map<Wave7EchoDuelCellBarrierPolicy.SharedBarrier,
+            Set<RealitySplitBarrierPolicy.Cell>> realitySplitEchoBoundaryCellsPendingRollback = new LinkedHashMap<>();
+    private final Map<Wave7EchoDuelCellBarrierPolicy.SharedBarrier,
+            List<RealitySplitBarrierPolicy.Cell>> realitySplitEchoOpenedCellsPendingRollback = new LinkedHashMap<>();
     private long realitySplitBoundaryRollbackRetryAtTick;
     private final Map<RealitySplitBarrierPolicy.Cell, UUID> realitySplitBarrierVisuals = new LinkedHashMap<>();
     private final Map<UUID, Long> currentFogLastImpactAt = new HashMap<>();
@@ -782,6 +828,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private long currentRingNextCollapseAtMillis;
     /** Live Wave 6 state; legacy Collapse Ring fields above remain read-only recovery compatibility. */
     private RitualSphereEncounterPolicy.State ritualSphereState;
+    private Map<String, String> ritualSphereRecoveryCheckpoint = Map.of();
     private final Set<UUID> ritualCasterUuids = new LinkedHashSet<>();
     private final Set<UUID> ritualGuardUuids = new LinkedHashSet<>();
     private final Map<UUID, Long> ritualGuardAbilityCooldownUntilTick = new HashMap<>();
@@ -998,6 +1045,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final RealitySplitTrialController realitySplitTrialController = new RealitySplitTrialController();
     private Map<String, String> wave7RecoveryCheckpoint = Map.of();
     private boolean namedWave7InitialActorCreation;
+    private boolean namedWave7RuntimeRestorePending;
+    private List<RealitySplitTrialController.NamedTrial> namedWave7PreflightSelectedLayout = List.of();
     private final Map<UUID, Location> wave7ReturnStagingLocations = new LinkedHashMap<>();
     private final Map<UUID, Long> wave7ReturnActionNextTicks = new LinkedHashMap<>();
     private final Map<UUID, Long> wave7ReturnEnterNextTicks = new LinkedHashMap<>();
@@ -1005,6 +1054,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private long lastWave7ParticipationSaveTick = Long.MIN_VALUE;
     private final Set<UUID> realitySplitTrialEntityUuids = new LinkedHashSet<>();
     private final Map<UUID, RealitySplitTrialRuntimeState> realitySplitTrialRuntimeStates = new LinkedHashMap<>();
+    private final Map<UUID, EchoPresentationProbeState> namedEchoPresentationStates = new LinkedHashMap<>();
+    private final Map<UUID, me.copimine.endevent.runtime.wave7.EchoReplicaInventory> namedEchoReplicas = new LinkedHashMap<>();
+    private final Map<UUID, EchoCombatAdmission.Pair> namedEchoCombatPairs = new LinkedHashMap<>();
+    private final Map<UUID, EchoCombatAdmissionListener> namedEchoCombatListeners = new LinkedHashMap<>();
+    private final Map<UUID, me.copimine.endevent.domain.Wave7EchoDuelCellPolicy.Cell> namedEchoCells = new LinkedHashMap<>();
+    private final Map<UUID, String> namedEchoBridgeSessions = new LinkedHashMap<>();
     private final Map<Integer, Long> realitySplitTrialNextFireballTick = new LinkedHashMap<>();
     private final Map<Integer, Long> realitySplitOrphanedSinceMillis = new LinkedHashMap<>();
     /** Scoped destinations for the event's own deterministic Wave 7 placement. */
@@ -1239,6 +1294,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private NamespacedKey keyObeliskState;
     private NamespacedKey keyObeliskId;
     private NamespacedKey keyCurrentCarrierCharge;
+    private UUID currentCarrierInventoryToken;
+    private final Set<Inventory> currentCarrierObservedInventories = new LinkedHashSet<>();
+    private record CarrierPotionLease(PotionEffect original, long capturedAtTick, long refreshedAtTick) { }
+    private final Map<UUID, CarrierPotionLease> currentCarrierPotionLeases = new HashMap<>();
+    private final Set<UUID> currentCarrierPotionMutations = new HashSet<>();
+    private NamespacedKey keyCarrierChargeToken;
     private NamespacedKey keyCarrierChargeOwner;
     private NamespacedKey keyCarrierSlownessModifier;
     private NamespacedKey keyPortalPusher;
@@ -1358,6 +1419,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             keyObeliskId = new NamespacedKey(this, "end_event_obelisk_id");
             keyCurrentCarrierCharge = new NamespacedKey(this, "end_event_current_carrier_charge");
             keyCarrierChargeOwner = new NamespacedKey(this, "end_event_carrier_charge_owner");
+            keyCarrierChargeToken = new NamespacedKey(this, "end_event_carrier_charge_token");
             keyCarrierSlownessModifier = new NamespacedKey(this, "wave1_carrier_slowness");
             for (Player player : Bukkit.getOnlinePlayers()) {
                 updateCurrentCarrierSlowness(player, false);
@@ -1618,6 +1680,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && EndEventStateMachine.recoveryPhase(phase) != phase
                 && !(testWaveFrontVisualMode && activeWave == 7)
                 && !canResumeWave7ParticipationAfterRestart()
+                && !canResumeWave1AfterRestart()
                 && !canResumeWave2AfterRestart()) {
             recoverTransientSession();
         } else if (phase == EventPhase.RECOVERY_REQUIRED) {
@@ -1703,7 +1766,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && (activeWave == 6 || activeWave == 7)) {
             persistedWave = activeWave;
         }
-        if (persistedWave == 6) {
+        if (persistedWave == 1) {
+            restorePersistedWave1Objective();
+        } else if (persistedWave == 6) {
             restorePersistedRitualSphereObjective();
         } else if (persistedWave > 0) {
             restorePersistedCollapseRingEncounter();
@@ -2811,6 +2876,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         HazardMutationJournal.Snapshot journal = hazardJournal.load();
+        boolean blackFogJournal = journal.valid() && !journal.entries().isEmpty()
+                && journal.entries().stream().allMatch(HazardMutationJournal.Entry::isEmeraldBarrierMutation);
         boolean restoredRealitySplitJournal = journal.valid()
                 && journal.status() == HazardMutationJournal.Status.RESTORED
                 && !journal.entries().isEmpty()
@@ -2826,6 +2893,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (world == null) {
             getLogger().severe("WAVE_HAZARD_RECOVERY_BLOCKED event=" + journal.eventId()
                     + " reason=world-not-loaded journal=" + hazardJournal.path());
+            if (blackFogJournal) markBlackFogRecoveryRequired("WAVE5_RESTART_WORLD_UNAVAILABLE");
             return;
         }
         String loadedWorldId = world.getUID().toString();
@@ -2896,7 +2964,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (entry.isEmeraldBarrierMutation()) {
                 Block floor = world.getBlockAt(entry.x(), entry.floorY(), entry.z());
                 if (floor.getType() == Material.EMERALD_BLOCK) {
-                    restoreBlock(floor, entry.floorOriginal());
+                    if (blackFogJournal) {
+                        try {
+                            restoreBlackFogBlock(floor, entry.floorOriginal());
+                        } catch (RuntimeException error) {
+                            getLogger().log(Level.SEVERE,
+                                    "WAVE_HAZARD_RECOVERY_BLOCKED event=" + journal.eventId()
+                                            + " reason=wave5-original-restore-failed", error);
+                            markBlackFogRecoveryRequired("WAVE5_RESTART_BLOCK_RESTORE_FAILED");
+                            return;
+                        }
+                    } else {
+                        restoreBlock(floor, entry.floorOriginal());
+                    }
                     restored++;
                 } else {
                     skipped++;
@@ -2980,6 +3060,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         } else {
             getLogger().severe("WAVE_HAZARD_RECOVERY_UNCOMMITTED event=" + journal.eventId()
                     + " restored=" + restored + " skipped=" + skipped);
+            if (blackFogJournal) markBlackFogRecoveryRequired("WAVE5_RESTART_JOURNAL_COMMIT_FAILED");
         }
     }
 
@@ -3068,6 +3149,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             phase = EventPhase.RECOVERY_REQUIRED;
             recoveryReason = snapshot.recoveryReason();
         }
+        restoreBlackFogRecoveryCheckpoint(snapshot.eventPhase(), snapshot.objectiveProgress());
+        restoreWave1CarrierCheckpoint(snapshot.eventPhase(), snapshot.objectiveProgress());
         encounterController.restore(eventId, generation, phase, null);
         boolean persistedDisposableWave6 = generation > 0L
                 && "6".equals(snapshot.objectiveProgress().get("test-wave"))
@@ -3111,6 +3194,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         collapseRingReconstructionGuardUuids.clear();
         collapseRingGuardSlots.clear();
         ritualSphereState = null;
+        ritualSphereRecoveryCheckpoint = Map.of();
         ritualCasterUuids.clear();
         ritualGuardUuids.clear();
         ritualCasterSlots.clear();
@@ -3127,15 +3211,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ritualSphereVisualUuid = null;
         wave6Complete = false;
         ritualSphereStateRehydrated = false;
-        wave7RecoveryCheckpoint = phase == EventPhase.RECOVERY_REQUIRED
+        wave7RecoveryCheckpoint = phase == EventPhase.RECOVERY_REQUIRED && persistedWave7Recovery
                 ? Map.copyOf(snapshot.objectiveProgress()) : Map.of();
-        if (phase == EventPhase.WAVE_6 || persistedDisposableWave6) {
-            if (snapshot.objectiveProgress().keySet().stream()
-                    .anyMatch(key -> key.startsWith("ritual-sphere."))) {
+        boolean hasRitualSphereCheckpoint = snapshot.objectiveProgress().keySet().stream()
+                .anyMatch(key -> key.startsWith("ritual-sphere."));
+        if (phase == EventPhase.WAVE_6 || persistedDisposableWave6
+                || phase == EventPhase.RECOVERY_REQUIRED && hasRitualSphereCheckpoint) {
+            if (hasRitualSphereCheckpoint) {
                 RitualSphereEncounterSnapshot.Data wave6 = RitualSphereEncounterSnapshot.decode(
                         snapshot.objectiveProgress(), generation);
                 ritualSphereState = wave6.state();
-            } else {
+                ritualCasterDeathCount = wave6.casterDeaths();
+                if (phase == EventPhase.RECOVERY_REQUIRED) {
+                    ritualSphereRecoveryCheckpoint = Map.copyOf(snapshot.objectiveProgress());
+                }
+            } else if (phase != EventPhase.RECOVERY_REQUIRED) {
                 getLogger().warning("WAVE6_RITUAL_SNAPSHOT_MISSING event=" + eventId
                         + " generation=" + generation
                         + " action=wait-for-runtime-rebuild");
@@ -3213,6 +3303,116 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         restoreCombatProfiles(snapshot.objectiveProgress());
         restoreWave7ReturnParticipation(snapshot);
+    }
+
+    /** Restore the one durable Wave 1 charge before deciding whether a restart may resume combat. */
+    private void restoreWave1CarrierCheckpoint(EventPhase persistedPhase, Map<String, String> progress) {
+        boolean savedWaveOne = persistedPhase == EventPhase.WAVE_1;
+        boolean hasWaveOneCheckpoint = progress != null && progress.keySet().stream()
+                .anyMatch(key -> key.startsWith(RiftCarrierRecoverySnapshot.PREFIX));
+        if (!savedWaveOne && !hasWaveOneCheckpoint) return;
+        wave1RecoveryCheckpoint = progress == null ? Map.of() : Map.copyOf(progress);
+        try {
+            RiftCarrierRecoverySnapshot.Data decoded = RiftCarrierRecoverySnapshot.decode(
+                    progress, eventId, generation, System.currentTimeMillis());
+            if (decoded == null) {
+                if (!savedWaveOne) return;
+                throw new IllegalArgumentException("WAVE1_CARRIER_CHECKPOINT_MISSING");
+            }
+            RiftCarrierPolicy.State saved = decoded.state();
+            long deadline = saved.deadlineTick() == 0L ? 0L
+                    : Math.addExact(eventTickCounter, saved.deadlineTick());
+            currentCarrierState = new RiftCarrierPolicy.State(generation, saved.delivered(),
+                    saved.carrier(), saved.charge(), saved.holder(), deadline, saved.phase());
+            currentCarrierCharges = saved.delivered();
+            currentCarrierInventoryToken = decoded.inventoryToken();
+            currentCarrierRestartReconciliationPending = saved.phase()
+                    == RiftCarrierPolicy.Phase.CHARGE_CARRIED;
+            wave1CarrierCheckpointRestored = true;
+            wave1RecoveryCheckpoint = Map.of();
+        } catch (IllegalArgumentException | ArithmeticException invalid) {
+            phase = EventPhase.RECOVERY_REQUIRED;
+            recoveryReason = "INVALID_OR_MISSING_WAVE1_CARRIER_CHECKPOINT";
+            Map<String, String> retained = new LinkedHashMap<>(wave1RecoveryCheckpoint);
+            retained.putIfAbsent(RiftCarrierRecoverySnapshot.PREFIX + "recovery-reason", recoveryReason);
+            wave1RecoveryCheckpoint = Map.copyOf(retained);
+            getLogger().log(Level.SEVERE, "End Rift Wave 1 recovery checkpoint refused", invalid);
+        }
+    }
+
+    private boolean canResumeWave1AfterRestart() {
+        return phase == EventPhase.WAVE_1 && wave1CarrierCheckpointRestored
+                && currentCarrierState != null && currentCarrierState.generation() == generation
+                && isOfficialCurrentAttempt() && attemptLifecycle.owns(generation)
+                && attemptLifecycle.registeredRoster().equals(officialRewardRoster);
+    }
+
+    /** Rebind one validated Wave 1 inventory token or stop in recovery without deleting it. */
+    private void restorePersistedWave1Objective() {
+        if (!wave1CarrierCheckpointRestored || currentCarrierState == null
+                || currentCarrierState.generation() != generation) {
+            markWave1RecoveryRequired("WAVE1_CARRIER_CHECKPOINT_UNAVAILABLE");
+            return;
+        }
+        if (currentCarrierState.phase() == RiftCarrierPolicy.Phase.CARRIER_ACTIVE
+                && !isLiveOwnedEntity(currentCarrierState.carrier())) {
+            markWave1RecoveryRequired("WAVE1_PERSISTED_CARRIER_NOT_LOADED");
+        } else if (currentCarrierState.phase() == RiftCarrierPolicy.Phase.CHARGE_DROPPED
+                && !isLiveOwnedEntity(currentCarrierState.charge())) {
+            markWave1RecoveryRequired("WAVE1_PERSISTED_DROPPED_CHARGE_NOT_LOADED");
+        }
+    }
+
+    private void markWave1RecoveryRequired(String reason) {
+        if (wave1RecoveryCheckpoint.isEmpty() && currentCarrierState != null) {
+            try {
+                wave1RecoveryCheckpoint = captureWave1CarrierCheckpoint();
+            } catch (RuntimeException invalid) {
+                getLogger().log(Level.SEVERE, "Wave 1 recovery checkpoint could not be captured", invalid);
+            }
+        }
+        recoveryReason = reason;
+        if (phase != EventPhase.RECOVERY_REQUIRED) {
+            forcePhase(EventPhase.RECOVERY_REQUIRED, "Wave 1 charge recovery blocked: " + reason);
+        } else {
+            saveStateAsync();
+        }
+    }
+
+    private Map<String, String> captureWave1CarrierCheckpoint() {
+        RiftCarrierPolicy.State state = currentCarrierState;
+        if (state == null || state.generation() != generation) state = RiftCarrierPolicy.initial(generation);
+        return RiftCarrierRecoverySnapshot.encode(eventId, generation, state,
+                currentCarrierInventoryToken, eventTickCounter, System.currentTimeMillis());
+    }
+
+    /** Wave 5 mobs and active zone effects are transient; retain evidence and refuse a blind resume. */
+    private void restoreBlackFogRecoveryCheckpoint(EventPhase persistedPhase,
+                                                   Map<String, String> progress) {
+        boolean savedWave5 = persistedPhase == EventPhase.WAVE_5;
+        if (!savedWave5 && !BlackFogRecoverySnapshot.hasCheckpoint(progress)) return;
+        blackFogRecoveryCheckpoint = BlackFogRecoverySnapshot.extract(progress);
+        try {
+            BlackFogRecoverySnapshot.Data decoded = BlackFogRecoverySnapshot.decode(
+                    progress, eventId, generation);
+            blackFogRecoveryCheckpoint = decoded.encode();
+            if (savedWave5) {
+                recoveryReason = "WAVE5_RESTART_REQUIRES_ADMIN_RECOVERY";
+            } else if (recoveryReason.isBlank()) {
+                recoveryReason = "WAVE5_CHECKPOINT_RECOVERY_REQUIRED";
+            }
+        } catch (IllegalArgumentException invalid) {
+            recoveryReason = "INVALID_OR_MISSING_WAVE5_RESTART_CHECKPOINT";
+            if (blackFogRecoveryCheckpoint.isEmpty()) {
+                blackFogRecoveryCheckpoint = Map.of(
+                        BlackFogRecoverySnapshot.PREFIX + "recovery-reason", recoveryReason);
+            }
+            getLogger().log(Level.SEVERE, "End Rift Wave 5 recovery checkpoint refused", invalid);
+        }
+        phase = EventPhase.RECOVERY_REQUIRED;
+        getLogger().severe("WAVE5_RESTART_RECOVERY_REQUIRED event=" + eventId
+                + " generation=" + generation + " reason=" + recoveryReason
+                + " checkpoint=" + blackFogRecoveryCheckpoint.keySet());
     }
 
     /** Refuse incompatible Wave 7 state without disabling the recovery commands. */
@@ -3306,6 +3506,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
                 realitySplitTrialController.restoreNamed(UUID.fromString(eventId), generation,
                         wave7.assignment(), trialSnapshot);
+                namedWave7RuntimeRestorePending = true;
                 getLogger().info("END_RIFT_WAVE7_SNAPSHOT_RESTORED event=" + eventId
                         + " generation=" + generation + " test=" + persistedDisposableWave7
                         + " players=" + wave7.assignment().chamberByPlayer().size()
@@ -3388,8 +3589,31 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (phase == EventPhase.RECOVERY_REQUIRED && !wave7RecoveryCheckpoint.isEmpty()) {
             return wave7RecoveryCheckpoint;
         }
+        if (phase == EventPhase.RECOVERY_REQUIRED && !wave1RecoveryCheckpoint.isEmpty()) {
+            return wave1RecoveryCheckpoint;
+        }
+        if (phase == EventPhase.RECOVERY_REQUIRED && !ritualSphereRecoveryCheckpoint.isEmpty()) {
+            return ritualSphereRecoveryCheckpoint;
+        }
         // Inspection scenes are transient and never resume as playable attempts.
         if (testWaveInspectionMode) return Map.of();
+        if (phase == EventPhase.RECOVERY_REQUIRED && !blackFogRecoveryCheckpoint.isEmpty()) {
+            return blackFogRecoveryCheckpoint;
+        }
+        if (phase == EventPhase.WAVE_5) {
+            return blackFogRecoveryCheckpoint.isEmpty()
+                    ? captureBlackFogRecoveryCheckpoint() : blackFogRecoveryCheckpoint;
+        }
+        if (phase == EventPhase.WAVE_1) {
+            try {
+                return captureWave1CarrierCheckpoint();
+            } catch (RuntimeException invalid) {
+                getLogger().log(Level.SEVERE,
+                        "Wave 1 carrier checkpoint could not be captured; restart will fail closed", invalid);
+                return Map.of(RiftCarrierRecoverySnapshot.PREFIX + "recovery-reason",
+                        "INVALID_WAVE1_CARRIER_CHECKPOINT");
+            }
+        }
         if (phase == EventPhase.WAVE_2) {
             Map<String, String> encoded = new LinkedHashMap<>();
             encoded.put(WAVE_TWO_CYCLES_PROGRESS_KEY, Integer.toString(currentHuntCycles));
@@ -3407,7 +3631,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (phase == EventPhase.WAVE_6
                 || testWaveFrontVisualMode && activeWave == 6) {
             Map<String, String> encoded = new LinkedHashMap<>(
-                    RitualSphereEncounterSnapshot.encode(ritualSphereState));
+                    RitualSphereEncounterSnapshot.encode(ritualSphereState, ritualCasterDeathCount));
             if (testWaveFrontVisualMode && activeWave == 6) {
                 encoded.put("test-wave", "6");
                 encoded.put("test-wave-generation", Long.toString(generation));
@@ -3456,6 +3680,53 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             encoded.put("final-seal-wave", "7");
         }
         return Map.copyOf(encoded);
+    }
+
+    private Map<String, String> captureBlackFogRecoveryCheckpoint() {
+        BlackFogRecoverySnapshot.Stage stage = currentFogCycle >= EndRiftObjective.REQUIRED_FOG_CYCLES
+                ? BlackFogRecoverySnapshot.Stage.COMPLETE
+                : switch (blackFogPhase) {
+                    case COMBAT -> BlackFogRecoverySnapshot.Stage.TELEGRAPH;
+                    case SAFE -> BlackFogRecoverySnapshot.Stage.SAFE;
+                    case FOG -> BlackFogRecoverySnapshot.Stage.FOG;
+                };
+        return new BlackFogRecoverySnapshot.Data(eventId, generation, currentFogCycle, stage,
+                blackFogPhaseDeadlineMillis, currentFogZoneCount, currentFogZoneSide,
+                currentFogZoneSetupAttempts, currentFogZoneSetupRetryAtMillis).encode();
+    }
+
+    private void markBlackFogRecoveryRequired(String reason) {
+        if (blackFogRecoveryCheckpoint.isEmpty()) {
+            try {
+                blackFogRecoveryCheckpoint = captureBlackFogRecoveryCheckpoint();
+            } catch (IllegalArgumentException invalidCheckpoint) {
+                blackFogRecoveryCheckpoint = Map.of(
+                        BlackFogRecoverySnapshot.PREFIX + "recovery-reason", reason);
+                getLogger().log(Level.SEVERE,
+                        "Wave 5 recovery checkpoint could not be captured", invalidCheckpoint);
+            }
+        }
+        recoveryReason = reason;
+        if (phase == EventPhase.RECOVERY_REQUIRED) {
+            saveStateAsync();
+        } else {
+            forcePhase(EventPhase.RECOVERY_REQUIRED, "Wave 5 safe-zone recovery blocked: " + reason);
+        }
+    }
+
+    private void captureBlackFogShutdownCheckpoint() {
+        if (activeWave != 5 || phase != EventPhase.WAVE_5) return;
+        try {
+            blackFogRecoveryCheckpoint = captureBlackFogRecoveryCheckpoint();
+        } catch (IllegalArgumentException invalidCheckpoint) {
+            blackFogRecoveryCheckpoint = Map.of(
+                    BlackFogRecoverySnapshot.PREFIX + "recovery-reason",
+                    "INVALID_WAVE5_SHUTDOWN_CHECKPOINT");
+            recoveryReason = "INVALID_WAVE5_SHUTDOWN_CHECKPOINT";
+            getLogger().log(Level.SEVERE,
+                    "Wave 5 shutdown checkpoint is invalid; restart will require admin recovery",
+                    invalidCheckpoint);
+        }
     }
 
     private boolean saveStateSync() {
@@ -3739,14 +4010,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clearArenaInferno();
         if (preserveCombatForRestart) {
             // A plugin/server stop is not a gameplay reset. Keep active
-            // Wave 2/6/7 entities and their durable objective markers so the
+            // Wave 1/2/6/7 entities and their durable objective markers so the
             // next bootstrap can recover or rehydrate before cleanup runs.
             // Transient packet and animation state is rebuilt from the snapshot.
             clearWorldVfx();
             cancelWaveFrontAnimation();
             cancelPortalVisualAnimation();
             cancelWaveSpawnTask();
-            clearCurrentSafeZoneVisuals();
+            if (!clearCurrentSafeZoneVisuals()) return false;
             clearRealitySplitBarrierVisuals("server-stop");
         } else {
             if (!clearWaveObjectiveState()) return false;
@@ -3821,12 +4092,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         EncounterResourceScope scope = encounterResourceScope;
         if (scope == null) return Set.of();
         Set<UUID> preserved = new LinkedHashSet<>();
+        boolean preserveWaveOne = activeWave == 1 && phase == EventPhase.WAVE_1
+                && isOfficialAttempt() && (currentCarrierState == null
+                || currentCarrierState.generation() == generation);
         boolean preserveWaveTwo = activeWave == 2 && phase == EventPhase.WAVE_2 && isOfficialAttempt();
         boolean preserveWaveSix = activeWave == 6 && !testWaveInspectionMode
                 && (phase == EventPhase.WAVE_6 || testWaveFrontVisualMode);
         boolean preserveWaveSeven = activeWave == 7 && !testWaveInspectionMode
                 && (phase == EventPhase.WAVE_7 || testWaveFrontVisualMode);
-        if (preserveWaveTwo) {
+        if (preserveWaveOne) {
+            for (UUID entityId : scope.entityIds()) {
+                Entity entity = ownedEntities.get(entityId);
+                if (entity == null) entity = Bukkit.getEntity(entityId);
+                if (entity != null && ownedBySession(entity, eventId, generation)
+                        && readInt(entity, keyWave, 0) == 1) preserved.add(entityId);
+            }
+            if (currentCarrierState != null) {
+                if (currentCarrierState.carrier() != null) preserved.add(currentCarrierState.carrier());
+                if (currentCarrierState.charge() != null) preserved.add(currentCarrierState.charge());
+            }
+        } else if (preserveWaveTwo) {
             preserved.addAll(waveTwoOutstandingEntityUuids);
             preserved.addAll(waveTwoCleanupEntityUuids);
             for (UUID entityId : scope.entityIds()) {
@@ -4196,13 +4481,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         pendingCombatTraces.clear();
         authoritativeCombatTraceEvents.clear();
         authoritativeEventMobDamage.clear();
+        boolean preserveWave1ForRestart = activeWave == 1 && phase == EventPhase.WAVE_1
+                && isOfficialAttempt() && (currentCarrierState == null
+                || currentCarrierState.generation() == generation);
         boolean preserveWave2ForRestart = activeWave == 2 && phase == EventPhase.WAVE_2
                 && isOfficialAttempt();
         boolean preserveWave6ForRestart = activeWave == 6 && !testWaveInspectionMode
                 && (phase == EventPhase.WAVE_6 || testWaveFrontVisualMode);
         boolean preserveWave7ForRestart = activeWave == 7 && !testWaveInspectionMode
                 && (phase == EventPhase.WAVE_7 || testWaveFrontVisualMode);
-        cancelSessionTasks(preserveWave2ForRestart || preserveWave6ForRestart || preserveWave7ForRestart);
+        captureBlackFogShutdownCheckpoint();
+        cancelSessionTasks(preserveWave1ForRestart || preserveWave2ForRestart
+                || preserveWave6ForRestart || preserveWave7ForRestart);
+        if (preserveWave1ForRestart) {
+            getLogger().info("END_RIFT_WAVE1_RESTART_PRESERVED event=" + eventId
+                    + " generation=" + generation + " delivered=" + currentCarrierCharges
+                    + " phase=" + (currentCarrierState == null ? "MISSING" : currentCarrierState.phase()));
+        }
         if (preserveWave2ForRestart) {
             getLogger().info("END_RIFT_WAVE2_RESTART_PRESERVED event=" + eventId
                     + " generation=" + generation
@@ -9810,6 +10105,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!(event.getEntity() instanceof Mob mob)
                 || !isWaveCombatKind(readString(mob, keyKind))
                 || !isLiveOwnedEntity(mob.getUniqueId()) || event.getTarget() == null) return;
+        if (EVENT_KIND_REALITY_SPLIT_TRIAL.equals(readString(mob, keyKind))
+                && RealitySplitTrialController.NamedTrial.PERSONAL_ECHO.name().equals(readString(mob, keyTrialRole))) {
+            UUID echoOwner = parseUuidOrNull(readString(mob,
+                    new NamespacedKey(this, "end_event_named_echo_owner")));
+            if (event.getTarget() instanceof Player target && echoOwner != null
+                    && echoOwner.equals(target.getUniqueId())
+                    && isCurrentRealitySplitTrialTarget(mob, target)) {
+                return;
+            }
+            event.setCancelled(true);
+            Player owner = echoOwner == null ? null : Bukkit.getPlayer(echoOwner);
+            if (owner == null || !isCurrentRealitySplitTrialTarget(mob, owner)) mob.setTarget(null);
+            else mob.setTarget(owner);
+            return;
+        }
         if (waveLeashReturns.containsKey(mob.getUniqueId())) {
             event.setCancelled(true);
             return;
@@ -9931,7 +10241,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         int guards = (int) ritualGuardsByCaster.getOrDefault(caster.getUniqueId(), Set.of()).stream()
                 .filter(guardId -> caster.getUniqueId().equals(ritualGuardCasters.get(guardId)))
                 .filter(guardId -> isLiveOwnedEntity(guardId)).count();
-        if (!RitualCasterShieldPolicy.blocksDamage(true, guards)) return false;
+        if (!RitualCasterShieldPolicy.blocksDamage(
+                true, guards, ritualExpectedGuardsPerCaster())) return false;
         event.setCancelled(true);
         if (event instanceof EntityDamageByEntityEvent byEntity) {
             renderRitualShieldHit(caster, guards, byEntity.getDamager());
@@ -9986,7 +10297,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         int guards = (int) ritualGuardsByCaster.getOrDefault(caster.getUniqueId(), Set.of()).stream()
                 .filter(guardId -> caster.getUniqueId().equals(ritualGuardCasters.get(guardId)))
                 .filter(this::isLiveOwnedEntity).count();
-        if (!RitualCasterShieldPolicy.blocksDamage(true, guards)) return;
+        if (!RitualCasterShieldPolicy.blocksDamage(
+                true, guards, ritualExpectedGuardsPerCaster())) return;
         event.setCancelled(true);
         renderRitualShieldHit(caster, guards, event.getEntity());
         // Consume ordinary arrows; preserve recoverable weapons such as tridents.
@@ -13024,6 +13336,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (next == before) {
             return false;
         }
+        UUID inventoryToken = UUID.randomUUID();
         ItemStack inventoryCharge = overlayItem(MODEL_CARRIER_CHARGE, "end_event_carrier_charge");
         ItemMeta inventoryChargeMeta = inventoryCharge.getItemMeta();
         if (inventoryChargeMeta == null) {
@@ -13031,16 +13344,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         PersistentDataContainer inventoryChargeData = inventoryChargeMeta.getPersistentDataContainer();
         inventoryChargeData.set(keyCurrentCarrierCharge, PersistentDataType.BYTE, (byte) 1);
+        inventoryChargeData.set(keyCarrierChargeToken, PersistentDataType.STRING, inventoryToken.toString());
         inventoryChargeData.set(keyEventId, PersistentDataType.STRING, eventId);
         inventoryChargeData.set(keyGeneration, PersistentDataType.LONG, generation);
         inventoryChargeData.set(keyCarrierChargeOwner, PersistentDataType.STRING,
                 player.getUniqueId().toString());
-        inventoryCharge.setItemMeta(inventoryChargeMeta);
+        if (!inventoryCharge.setItemMeta(inventoryChargeMeta)) return false;
         if (!player.getInventory().addItem(inventoryCharge).isEmpty()) {
             return false;
         }
+        currentCarrierInventoryToken = inventoryToken;
+        currentCarrierObservedInventories.clear();
         currentCarrierState = next;
         syncCurrentCarrierFields();
+        updateCurrentCarrierSlowness(player, true);
         if (charge instanceof Item item) {
             item.setPickupDelay(Integer.MAX_VALUE);
             item.setGravity(false);
@@ -13058,6 +13375,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean deliverCurrentCarrierCharge(Player holder) {
+        if (!reconcileCurrentCarrierInventoryOwner()) return false;
         if (holder == null || !holder.isOnline() || currentCarrierState == null
                 || currentCarrierState.phase() != RiftCarrierPolicy.Phase.CHARGE_CARRIED
                 || !holder.getUniqueId().equals(currentCarrierState.holder())) {
@@ -13124,32 +13442,173 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         PersistentDataContainer data = stack.getItemMeta().getPersistentDataContainer();
-        return data.getOrDefault(keyCurrentCarrierCharge, PersistentDataType.BYTE, (byte) 0) == 1
-                && eventId.equals(data.get(keyEventId, PersistentDataType.STRING))
-                && data.getOrDefault(keyGeneration, PersistentDataType.LONG, Long.MIN_VALUE) == generation
+        return isCurrentCarrierTokenItem(stack)
                 && holder.getUniqueId().toString().equals(
                 data.get(keyCarrierChargeOwner, PersistentDataType.STRING));
     }
 
     private void removeCurrentCarrierInventoryCharge(Player holder) {
-        if (holder == null) {
-            return;
+        if (holder != null) updateCurrentCarrierSlowness(holder, false);
+        purgeCurrentCarrierToken();
+    }
+
+    private boolean isCurrentCarrierTokenItem(ItemStack stack) {
+        if (currentCarrierInventoryToken == null || stack == null || stack.getType().isAir() || !stack.hasItemMeta()) return false;
+        PersistentDataContainer data = stack.getItemMeta().getPersistentDataContainer();
+        return data.getOrDefault(keyCurrentCarrierCharge, PersistentDataType.BYTE, (byte) 0) == 1
+                && eventId.equals(data.get(keyEventId, PersistentDataType.STRING))
+                && data.getOrDefault(keyGeneration, PersistentDataType.LONG, Long.MIN_VALUE) == generation
+                && currentCarrierInventoryToken.toString().equals(data.get(keyCarrierChargeToken, PersistentDataType.STRING));
+    }
+
+    private boolean reconcileCurrentCarrierInventoryOwner() {
+        if (currentCarrierState == null || currentCarrierState.phase() != RiftCarrierPolicy.Phase.CHARGE_CARRIED) return false;
+        Player candidate = null;
+        ItemStack candidateStack = null;
+        int copies = 0;
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            List<ItemStack> stacks = new ArrayList<>(Arrays.asList(player.getInventory().getStorageContents()));
+            stacks.add(player.getInventory().getItemInOffHand());
+            for (ItemStack stack : stacks) {
+                if (!isCurrentCarrierTokenItem(stack)) continue;
+                copies += Math.max(1, stack.getAmount());
+                candidate = player;
+                candidateStack = stack;
+            }
+            if (isCurrentCarrierTokenItem(player.getItemOnCursor()))
+                copies += Math.max(1, player.getItemOnCursor().getAmount());
         }
-        updateCurrentCarrierSlowness(holder, false);
-        ItemStack[] storage = holder.getInventory().getStorageContents();
-        boolean changed = false;
-        for (int slot = 0; slot < storage.length; slot++) {
-            if (isCurrentCarrierInventoryChargeItem(holder, storage[slot])) {
-                storage[slot] = null;
-                changed = true;
+        for (Inventory inventory : currentCarrierObservedInventories) {
+            for (int slot = 0; slot < inventory.getSize(); slot++) {
+                if (isCurrentCarrierTokenItem(inventory.getItem(slot))) copies += Math.max(1, inventory.getItem(slot).getAmount());
             }
         }
-        if (changed) {
-            holder.getInventory().setStorageContents(storage);
+        for (World world : Bukkit.getWorlds()) {
+            for (Entity entity : world.getEntities()) {
+                if (entity instanceof Item item && isCurrentCarrierTokenItem(item.getItemStack()))
+                    copies += Math.max(1, item.getItemStack().getAmount());
+            }
         }
-        if (isCurrentCarrierInventoryChargeItem(holder, holder.getInventory().getItemInOffHand())) {
-            holder.getInventory().setItemInOffHand(null);
+        if (copies != 1 || candidate == null || !isActiveArenaParticipant(candidate)) {
+            releaseCurrentCarrierHolder(currentCarrierState.holder(), "inventory-custody-invalid");
+            return false;
         }
+        UUID previous = currentCarrierState.holder();
+        if (!candidate.getUniqueId().equals(previous)) {
+            RiftCarrierPolicy.State transferred = RiftCarrierPolicy.transferHolder(currentCarrierState,
+                    generation, previous, candidate.getUniqueId(), eventTickCounter);
+            if (transferred == currentCarrierState) {
+                releaseCurrentCarrierHolder(previous, "inventory-custody-expired");
+                return false;
+            }
+            ItemMeta meta = candidateStack.getItemMeta();
+            meta.getPersistentDataContainer().set(keyCarrierChargeOwner, PersistentDataType.STRING, candidate.getUniqueId().toString());
+            if (!candidateStack.setItemMeta(meta)) {
+                releaseCurrentCarrierHolder(previous, "inventory-custody-pdc-rejected");
+                return false;
+            }
+            updateCurrentCarrierSlowness(Bukkit.getPlayer(previous), false);
+            currentCarrierState = transferred;
+            syncCurrentCarrierFields();
+            updateCurrentCarrierSlowness(candidate, true);
+            saveStateAsync();
+        }
+        return true;
+    }
+
+    private void purgeCurrentCarrierToken() {
+        if (currentCarrierInventoryToken == null) return;
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            ItemStack[] storage = player.getInventory().getStorageContents();
+            boolean changed = false;
+            for (int slot = 0; slot < storage.length; slot++) {
+                if (isCurrentCarrierTokenItem(storage[slot])) { storage[slot] = null; changed = true; }
+            }
+            if (changed) player.getInventory().setStorageContents(storage);
+            if (isCurrentCarrierTokenItem(player.getInventory().getItemInOffHand())) player.getInventory().setItemInOffHand(null);
+            if (isCurrentCarrierTokenItem(player.getItemOnCursor())) player.setItemOnCursor(null);
+        }
+        for (Inventory inventory : currentCarrierObservedInventories) {
+            for (int slot = 0; slot < inventory.getSize(); slot++) {
+                if (isCurrentCarrierTokenItem(inventory.getItem(slot))) inventory.setItem(slot, null);
+            }
+        }
+        for (World world : Bukkit.getWorlds()) {
+            for (Entity entity : world.getEntities()) {
+                if (entity instanceof Item item && isCurrentCarrierTokenItem(item.getItemStack())) item.remove();
+            }
+        }
+        currentCarrierInventoryToken = null;
+        currentCarrierObservedInventories.clear();
+    }
+
+    private boolean isCurrentCarrierResetChargeItem(ItemStack stack) {
+        if (stack == null || stack.getType().isAir() || !stack.hasItemMeta()
+                || keyCurrentCarrierCharge == null || keyEventId == null || keyGeneration == null) return false;
+        PersistentDataContainer data = stack.getItemMeta().getPersistentDataContainer();
+        return data.getOrDefault(keyCurrentCarrierCharge, PersistentDataType.BYTE, (byte) 0) == 1
+                && eventId.equals(data.get(keyEventId, PersistentDataType.STRING))
+                && data.getOrDefault(keyGeneration, PersistentDataType.LONG, Long.MIN_VALUE) == generation;
+    }
+
+    /** A deliberate objective reset consumes only this event generation's Wave 1 charge tokens. */
+    private void clearCurrentCarrierInventoryChargeForReset() {
+        for (Player player : Bukkit.getOnlinePlayers()) updateCurrentCarrierSlowness(player, false);
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            ItemStack[] storage = player.getInventory().getStorageContents();
+            boolean changed = false;
+            for (int slot = 0; slot < storage.length; slot++) {
+                if (isCurrentCarrierResetChargeItem(storage[slot])) {
+                    storage[slot] = null;
+                    changed = true;
+                }
+            }
+            if (changed) player.getInventory().setStorageContents(storage);
+            if (isCurrentCarrierResetChargeItem(player.getInventory().getItemInOffHand())) {
+                player.getInventory().setItemInOffHand(null);
+            }
+            if (isCurrentCarrierResetChargeItem(player.getItemOnCursor())) player.setItemOnCursor(null);
+        }
+        for (Inventory inventory : currentCarrierObservedInventories) {
+            for (int slot = 0; slot < inventory.getSize(); slot++) {
+                if (isCurrentCarrierResetChargeItem(inventory.getItem(slot))) inventory.setItem(slot, null);
+            }
+        }
+        for (World world : Bukkit.getWorlds()) {
+            for (Entity entity : world.getEntities()) {
+                if (entity instanceof Item item && isCurrentCarrierResetChargeItem(item.getItemStack())) item.remove();
+            }
+        }
+        currentCarrierInventoryToken = null;
+        currentCarrierObservedInventories.clear();
+        currentCarrierRestartReconciliationPending = false;
+        currentCarrierPotionLeases.clear();
+    }
+
+    private void observeCurrentCarrierInventory(Inventory inventory) {
+        if (currentCarrierInventoryToken == null || inventory == null
+                || inventory instanceof org.bukkit.inventory.PlayerInventory) return;
+        currentCarrierObservedInventories.add(inventory);
+        if (currentCarrierObservedInventories.size() > 64 && currentCarrierState != null)
+            releaseCurrentCarrierHolder(currentCarrierState.holder(), "inventory-observation-limit");
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onCarrierChargeInventoryOpen(InventoryOpenEvent event) {
+        if (event.getPlayer() instanceof Player player && isActiveArenaParticipant(player))
+            observeCurrentCarrierInventory(event.getInventory());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onCarrierChargeInventoryClick(InventoryClickEvent event) {
+        if (event.getWhoClicked() instanceof Player player && isActiveArenaParticipant(player))
+            observeCurrentCarrierInventory(event.getView().getTopInventory());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onCarrierChargeInventoryDrag(InventoryDragEvent event) {
+        if (event.getWhoClicked() instanceof Player player && isActiveArenaParticipant(player))
+            observeCurrentCarrierInventory(event.getView().getTopInventory());
     }
 
     private ItemStack heldWithAmount(ItemStack held, int amount) {
@@ -18257,7 +18716,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         spawnOfficialBoss(null);
-        attemptLifecycle.endWave7Returns(generation);
         if (liveBoss() == null) {
             forcePhase(EventPhase.RECOVERY_REQUIRED, "pre-boss gateway could not create the boss");
             return;
@@ -18927,6 +19385,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " reason=invalid-wave-context");
             return false;
         }
+        Location wave7Core = null;
+        if (wave == 7) {
+            wave7Core = coreCombatAnchorLocation();
+            if (wave7Core == null || wave7Core.getWorld() == null
+                    || !wave7Core.getWorld().equals(world)) {
+                getLogger().severe("END_RIFT_WAVE7_PREFLIGHT_REFUSED event=" + eventId
+                        + " generation=" + generation + " reason=core-anchor-unavailable");
+                return false;
+            }
+            core = wave7Core;
+            if (!preflightWave7StartBeforeWorldMutation(world, core, roster, sandbox)) return false;
+        }
         if (!clearWaveEntities(sandbox)) return false;
         sandboxWaveRoster = sandbox ? Set.copyOf(roster) : Set.of();
         testWaveFrontVisualMode = sandbox;
@@ -18934,7 +19404,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         testPortalVisualMode = sandbox && wave == 3;
         testWave4ObeliskMode = sandbox && wave == 4;
         testRitualCombatMode = sandbox && wave == 6 && combatMode;
-        Location floorCore = coreCombatAnchorLocation();
+        Location floorCore = wave == 7 ? wave7Core : coreCombatAnchorLocation();
         if (floorCore == null || floorCore.getWorld() == null) return false;
         core = floorCore;
         EventConfig.WaveDefinition definition = switch (wave) {
@@ -18968,18 +19438,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         waveNextSpawnAtMillis = 0L;
         clearWave3GateAssignments();
         if (wave == 7) {
+            namedWave7RuntimeRestorePending = false;
             realitySplitChamberController.begin(generation,
                     new ArrayList<>(roster));
-            realitySplitTrialController.beginNamed(UUID.fromString(eventId), generation,
-                    realitySplitChamberController.assignment(), java.util.concurrent.ThreadLocalRandom.current());
-            wave7RecoveryCheckpoint = Map.of();
-            if (!sandbox && (!attemptLifecycle.enableWave7Returns(generation) || !saveStateSync())) {
-                getLogger().severe("WAVE7_RETURN_RIGHTS_START_REFUSED event=" + eventId
-                        + " generation=" + generation + " reason=missing-participation-or-durable-claims");
-                return false;
+            List<RealitySplitTrialController.NamedTrial> selectedLayout = namedWave7PreflightSelectedLayout;
+            if (selectedLayout.isEmpty()) {
+                realitySplitTrialController.beginNamed(UUID.fromString(eventId), generation,
+                        realitySplitChamberController.assignment(),
+                        java.util.concurrent.ThreadLocalRandom.current());
+            } else {
+                realitySplitTrialController.beginNamed(UUID.fromString(eventId), generation,
+                        realitySplitChamberController.assignment(), selectedLayout);
             }
-            // The sampled layout must be durable before a participant moves or an actor spawns.
-            if (sandbox && !saveStateSync()) return false;
+            namedWave7PreflightSelectedLayout = List.of();
+            wave7RecoveryCheckpoint = Map.of();
             for (RealitySplitTrialController.NamedTrialState selected
                     : realitySplitTrialController.namedSnapshot().trials().values()) {
                 if (selected.stage() != RealitySplitTrialController.Stage.COMPLETE
@@ -19049,9 +19521,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " elite_skeletons=2 total=8 profile=6 hard_cap="
                     + PressureBudgetController.HARD_CAP);
         }
-        if (wave == 7) {
-            teleportCurrentParticipantsToChambers(world, core);
-        }
         playEventMusic(config.phaseMusic("wave-" + wave));
         spawnWaveArrivalEffect(world, core, wave, false);
         WaveObjectiveStartResult objectiveStart = startWaveObjective(wave, world, core);
@@ -19068,6 +19537,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         } else if (wave == 4) {
             startWave4ObeliskAssault(world, core, players);
         } else if (wave == 7) {
+            teleportCurrentParticipantsToChambers(world, core);
             if (!startRealitySplitTrials(world, core)) {
                 // Named failure retains the sampled layout and owner receipts for explicit recovery.
                 if (!realitySplitTrialController.ownsNamed(parseUuidOrNull(eventId), generation)) {
@@ -19148,8 +19618,183 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean namedRealitySplitTrialImplemented(RealitySplitTrialController.NamedTrial trial) {
-        // Echo's local presentation probe is not an official combat/persistence implementation.
-        return trial == RealitySplitTrialController.NamedTrial.WARDEN;
+        return trial == RealitySplitTrialController.NamedTrial.WARDEN
+                || trial == RealitySplitTrialController.NamedTrial.PERSONAL_ECHO
+                || Wave7NamedTrialActorPolicy.hasActorAdapter(trial);
+    }
+
+    private boolean preflightWave7StartBeforeWorldMutation(World world, Location core,
+            Set<UUID> roster, boolean sandbox) {
+        UUID eventUuid = parseUuidOrNull(eventId);
+        if (world == null || core == null || core.getWorld() == null || !core.getWorld().equals(world)
+                || eventUuid == null
+                || generation <= 0L || roster == null || roster.isEmpty()) {
+            return false;
+        }
+
+        activeWave = 7;
+        namedWave7InitialActorCreation = false;
+        namedWave7RuntimeRestorePending = false;
+        realitySplitChamberController.begin(generation, new ArrayList<>(roster));
+        realitySplitTrialController.beginNamed(eventUuid, generation,
+                realitySplitChamberController.assignment(), java.util.concurrent.ThreadLocalRandom.current());
+        wave7RecoveryCheckpoint = Map.of();
+
+        if (!preflightNamedTrialActorAdapters()) {
+            enterNamedRealitySplitRecovery("WAVE7_NAMED_ACTOR_ADAPTER_PREFLIGHT_FAILED");
+            return false;
+        }
+        if (!sandbox && !preflightNamedEchoDuelRooms()) {
+            enterNamedRealitySplitRecovery("WAVE7_NAMED_ECHO_PREFLIGHT_FAILED");
+            return false;
+        }
+        if (!preflightNamedEchoDuelBarrierPlan() || !preflightWave7BarrierJournal(world)
+                || !preflightWave7BarrierCells(world, core)) {
+            enterNamedRealitySplitRecovery("WAVE7_BARRIER_PREFLIGHT_FAILED");
+            return false;
+        }
+        if (!sandbox && !attemptLifecycle.enableWave7Returns(generation)) {
+            getLogger().severe("WAVE7_RETURN_RIGHTS_START_REFUSED event=" + eventId
+                    + " generation=" + generation + " reason=missing-participation-claims");
+            enterNamedRealitySplitRecovery("WAVE7_RETURN_RIGHTS_START_REFUSED");
+            return false;
+        }
+
+        namedWave7PreflightSelectedLayout = List.copyOf(
+                realitySplitTrialController.namedSnapshot().selectedLayout());
+        if (!saveStateSync()) {
+            namedWave7PreflightSelectedLayout = List.of();
+            enterNamedRealitySplitRecovery("WAVE7_NAMED_LAYOUT_CHECKPOINT_FAILED");
+            return false;
+        }
+        namedWave7InitialActorCreation = true;
+        return true;
+    }
+
+    private boolean preflightNamedTrialActorAdapters() {
+        for (RealitySplitTrialController.NamedTrialState trial
+                : realitySplitTrialController.namedSnapshot().trials().values()) {
+            if (trial.stage() == RealitySplitTrialController.Stage.COMPLETE) continue;
+            if (!namedRealitySplitTrialImplemented(trial.trial())) return false;
+            String entityType;
+            if (trial.trial() == RealitySplitTrialController.NamedTrial.WARDEN) {
+                entityType = "WARDEN";
+            } else if (trial.trial() == RealitySplitTrialController.NamedTrial.PERSONAL_ECHO) {
+                entityType = "PILLAGER";
+            } else {
+                Wave7NamedTrialActorPolicy.Profile profile = Wave7NamedTrialActorPolicy.profile(trial.trial());
+                if (profile == null || profile.trial() != trial.trial()
+                        || !Double.isFinite(profile.maxHealth()) || profile.maxHealth() <= 0.0D) return false;
+                entityType = profile.entityType();
+            }
+            try {
+                EntityType.valueOf(entityType);
+            } catch (IllegalArgumentException unsupportedEntityType) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean preflightNamedEchoDuelBarrierPlan() {
+        try {
+            return namedEchoDuelBarrierPlan().valid();
+        } catch (RuntimeException invalidPlan) {
+            return false;
+        }
+    }
+
+    /** Validate recovery ownership before cleanup can restore or replace any room block. */
+    private boolean preflightWave7BarrierJournal(World world) {
+        if (world == null || hazardJournal == null || eventId == null || eventId.isBlank()
+                || generation <= 0L) return false;
+        HazardMutationJournal.Snapshot journal = hazardJournal.load();
+        if (!journal.valid()) return false;
+        if (journal.entries().isEmpty()) {
+            return journal.status() == HazardMutationJournal.Status.EMPTY
+                    || journal.status() == HazardMutationJournal.Status.RESTORED;
+        }
+        if (journal.entries().stream().anyMatch(entry -> !entry.isRealitySplitBarrierMutation())) return false;
+        if (journal.status() == HazardMutationJournal.Status.RESTORED) return true;
+        if (journal.status() != HazardMutationJournal.Status.APPLIED
+                || !journal.eventId().equals(eventId) || journal.generation() != generation
+                || !journal.world().equals(world.getName())) return false;
+        String worldId = world.getUID().toString();
+        return journal.entries().stream().allMatch(entry -> entry.webOriginal() != null
+                && !entry.webOriginal().isBlank() && entry.eventId().equals(eventId)
+                && entry.generation() == generation && entry.worldId().equalsIgnoreCase(worldId));
+    }
+
+    /** Inspect every cell needed by the upcoming walls before cleanup can change the arena. */
+    private boolean preflightWave7BarrierCells(World world, Location core) {
+        if (world == null || core == null || core.getWorld() == null || !core.getWorld().equals(world)
+                || !realitySplitChamberController.owns(generation)) return false;
+        Wave7EchoDuelBarrierPlan echoPlan;
+        try {
+            echoPlan = namedEchoDuelBarrierPlan();
+        } catch (RuntimeException invalidPlan) {
+            return false;
+        }
+        if (echoPlan == null || !echoPlan.valid()) return false;
+        int chamberCount = realitySplitChamberController.assignment().chamberCount();
+        if (chamberCount < 1) return false;
+        boolean finalSeal = finalSealBarrierContext();
+        boolean soloRoomWithoutOuterDivider = chamberCount == 1 && !finalSeal;
+        int barrierChamberCount = Math.max(2, chamberCount);
+        Set<Integer> openBoundaryIndexes = finalSeal
+                ? Set.of()
+                : realitySplitChamberController.openPassages().stream()
+                .map(passage -> RealitySplitBarrierPolicy.boundaryForPair(
+                        passage.firstChamber(), passage.secondChamber(), chamberCount))
+                .filter(boundary -> boundary >= 0)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        List<RealitySplitBarrierPolicy.Cell> plannedCells = new ArrayList<>(soloRoomWithoutOuterDivider
+                ? List.of() : finalSeal
+                ? RealitySplitBarrierPolicy.finalSealCells(barrierChamberCount)
+                : RealitySplitBarrierPolicy.cellsExcludingBoundaries(
+                        barrierChamberCount, openBoundaryIndexes));
+        plannedCells.addAll(echoPlan.closedCells());
+        Set<RealitySplitBarrierPolicy.Cell> echoClosedCells = echoPlan.closedCells();
+        int floorY = combatFloorY();
+        try {
+            // Echo separators are mandatory for owner isolation; unlike clipped
+            // outer geometry, any unsafe cell invalidates the whole start.
+            for (RealitySplitBarrierPolicy.Cell cell : echoClosedCells) {
+                if (!Wave7BarrierPreflightPolicy.accepts(
+                        inspectWave7BarrierCell(world, core, floorY, cell))) return false;
+            }
+            for (RealitySplitBarrierPolicy.Cell cell : plannedCells) {
+                if (echoClosedCells.contains(cell)) continue;
+                boolean coreClearance = finalSeal
+                        && core.getBlockX() + cell.xOffset() == coreX
+                        && core.getBlockZ() + cell.zOffset() == coreZ
+                        && cell.level() <= RealitySplitBarrierPolicy.FINAL_SEAL_CORE_CLEARANCE_LEVELS;
+                if (coreClearance) continue;
+                Wave7BarrierPreflightPolicy.Candidate candidate =
+                        inspectWave7BarrierCell(world, core, floorY, cell);
+                // Ordinary radial geometry is intentionally clipped to the
+                // configured arena; every cell inside it must be safe to own.
+                if (candidate.allowedLocation()
+                        && !Wave7BarrierPreflightPolicy.accepts(candidate)) return false;
+            }
+        } catch (RuntimeException unavailableCell) {
+            return false;
+        }
+        return true;
+    }
+
+    private Wave7BarrierPreflightPolicy.Candidate inspectWave7BarrierCell(World world, Location core,
+            int floorY, RealitySplitBarrierPolicy.Cell cell) {
+        int x = core.getBlockX() + cell.xOffset();
+        int z = core.getBlockZ() + cell.zOffset();
+        Location location = new Location(world, x, floorY + cell.level(), z);
+        Block floor = world.getBlockAt(x, floorY, z);
+        Block barrier = world.getBlockAt(location);
+        return new Wave7BarrierPreflightPolicy.Candidate(
+                isRealitySplitBarrierPlacementLocation(location), isGateLocation(location),
+                floor.getType().isSolid(), floor.isLiquid(), barrier.isLiquid(),
+                barrier.getState() instanceof org.bukkit.block.TileState,
+                barrier.isPassable(), isRealitySplitExistingWallCoverage(barrier));
     }
 
     private boolean startNamedRealitySplitTrials(World world, Location core) {
@@ -19171,6 +19816,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         namedWave7InitialActorCreation = false;
+        namedWave7RuntimeRestorePending = false;
         getLogger().info("END_RIFT_NAMED_WAVE7_TRIALS_READY event=" + eventId
                 + " generation=" + generation + " layout="
                 + realitySplitTrialController.namedSnapshot().selectedLayout());
@@ -19193,24 +19839,588 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (world == null || core == null || trial == null
                 || !realitySplitTrialController.ownsNamed(parseUuidOrNull(eventId), generation)
                 || !namedRealitySplitTrialImplemented(trial.trial())) return false;
+        if (trial.trial() == RealitySplitTrialController.NamedTrial.PERSONAL_ECHO) {
+            Map<UUID, me.copimine.endevent.runtime.RealitySplitEchoDuelState.DuelRecord> duels =
+                    realitySplitTrialController.namedSnapshot().personalEchoDuels().get(trial.chamber());
+            List<me.copimine.endevent.domain.Wave7EchoDuelCellPolicy.Cell> cells =
+                    realitySplitTrialController.echoDuelCells(trial.chamber());
+            if (duels == null || cells.size() != trial.owners().size()) return false;
+            for (var cell : cells) {
+                var duel = duels.get(cell.owner());
+                if (duel == null || !ensureNamedEchoDuelActor(world, core, trial, cell, duel)) return false;
+            }
+            return true;
+        }
+        Wave7NamedTrialActorPolicy.Profile profile =
+                Wave7NamedTrialActorPolicy.profile(trial.trial());
+        if (profile == null) {
+            Entity actor = findRealitySplitTrialEntity(trial.chamber(), trial.trial().name(), -1);
+            if (actor != null && !isNamedRealitySplitActor(actor)) return false;
+            boolean createdActor = false;
+            if (actor == null) {
+                // Entity disappearance or unloaded chunks are not a defeat, nor permission to refill HP.
+                if (!namedWave7InitialActorCreation) return false;
+                Location spawn = safeSpawnLocationForWave(core, trial.chamber(), 2.5D, 7);
+                if (spawn == null) return false;
+                actor = spawnRealitySplitTrialEntity(world, spawn, EntityType.WARDEN,
+                        trial.chamber(), trial.trial().name(), -1, true);
+                if (actor == null) return false;
+                createdActor = true;
+                actor.getPersistentDataContainer().set(new NamespacedKey(this, "end_event_named_trial_schema"),
+                        PersistentDataType.STRING, "2");
+            }
+            if (!(actor instanceof LivingEntity living) || actor.getType() != EntityType.WARDEN) return false;
+            living.setInvulnerable(false);
+            realitySplitTrialRuntimeStates.putIfAbsent(actor.getUniqueId(),
+                    new RealitySplitTrialRuntimeState(trial.chamber(), RealitySplitTrialController.Trial.WARDEN));
+            if (createdActor) bindEventEntityClientForOnlinePlayers(actor);
+            return true;
+        }
+
         Entity actor = findRealitySplitTrialEntity(trial.chamber(), trial.trial().name(), -1);
         if (actor != null && !isNamedRealitySplitActor(actor)) return false;
+        boolean createdActor = false;
         if (actor == null) {
             // Entity disappearance or unloaded chunks are not a defeat, nor permission to refill HP.
             if (!namedWave7InitialActorCreation) return false;
             Location spawn = safeSpawnLocationForWave(core, trial.chamber(), 2.5D, 7);
             if (spawn == null) return false;
-            actor = spawnRealitySplitTrialEntity(world, spawn, EntityType.WARDEN,
+            EntityType type;
+            try {
+                type = EntityType.valueOf(profile.entityType());
+            } catch (IllegalArgumentException invalidProfile) {
+                return false;
+            }
+            actor = spawnRealitySplitTrialEntity(world, spawn, type,
                     trial.chamber(), trial.trial().name(), -1, true);
             if (actor == null) return false;
+            createdActor = true;
             actor.getPersistentDataContainer().set(new NamespacedKey(this, "end_event_named_trial_schema"),
                     PersistentDataType.STRING, "2");
+            if (!(actor instanceof LivingEntity created)) return false;
+            AttributeInstance createdMaximum = created.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+            if (createdMaximum == null) return false;
+            createdMaximum.setBaseValue(profile.maxHealth());
+            created.setHealth(profile.maxHealth());
+            Wave7NamedTrialActorPolicy.Checkpoint initial = new Wave7NamedTrialActorPolicy.Checkpoint(
+                    parseUuidOrNull(eventId), generation, trial.chamber(), trial.trial(), actor.getUniqueId(),
+                    0L, Wave7NamedTrialActorPolicy.Attack.NONE, 0L, 0L, null, false);
+            if (!writeNamedTrialActorCheckpoint(actor, initial)) {
+                removeRealitySplitTrialEntity(actor.getUniqueId(), "named-trial-checkpoint-init-failed");
+                return false;
+            }
         }
-        if (!(actor instanceof LivingEntity living) || actor.getType() != EntityType.WARDEN) return false;
+        if (!(actor instanceof LivingEntity living) || !profile.entityType().equals(actor.getType().name())) return false;
+        Wave7NamedTrialActorPolicy.Checkpoint checkpoint = readNamedTrialActorCheckpoint(actor, trial);
+        if (checkpoint == null) return false;
         living.setInvulnerable(false);
-        realitySplitTrialRuntimeStates.putIfAbsent(actor.getUniqueId(),
-                new RealitySplitTrialRuntimeState(trial.chamber(), RealitySplitTrialController.Trial.WARDEN));
+        AttributeInstance maximum = living.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+        if (maximum == null) return false;
+        maximum.setBaseValue(profile.maxHealth());
+        if (living.getHealth() > profile.maxHealth()) living.setHealth(profile.maxHealth());
+        if (living instanceof Mob mob) {
+            mob.setAI(false);
+            mob.setAware(false);
+            mob.setCanPickupItems(false);
+            mob.setRemoveWhenFarAway(false);
+            mob.setTarget(null);
+        }
+        living.setPersistent(true);
+        living.setCustomName(ChatColor.DARK_PURPLE + profile.displayName());
+        living.setCustomNameVisible(true);
+        living.setGlowing(false);
+        if (living instanceof org.bukkit.entity.Skeleton skeleton) {
+            skeleton.getEquipment().setItemInMainHand(new org.bukkit.inventory.ItemStack(Material.BOW));
+        }
+        if (living instanceof org.bukkit.entity.Evoker evoker) evoker.setCanJoinRaid(false);
+        if (createdActor) bindEventEntityClientForOnlinePlayers(actor);
         return true;
+    }
+
+    private NamespacedKey namedTrialActorCheckpointKey() {
+        return new NamespacedKey(this, "end_event_named_trial_checkpoint");
+    }
+
+    private boolean writeNamedTrialActorCheckpoint(Entity actor,
+            Wave7NamedTrialActorPolicy.Checkpoint checkpoint) {
+        if (actor == null || checkpoint == null || !isNamedRealitySplitActor(actor)) return false;
+        try {
+            String encoded = Wave7NamedTrialActorPolicy.encode(checkpoint);
+            actor.getPersistentDataContainer().set(namedTrialActorCheckpointKey(),
+                    PersistentDataType.STRING, encoded);
+            return encoded.equals(readString(actor, namedTrialActorCheckpointKey()));
+        } catch (RuntimeException invalidCheckpoint) {
+            return false;
+        }
+    }
+
+    private Wave7NamedTrialActorPolicy.Checkpoint readNamedTrialActorCheckpoint(Entity actor,
+            RealitySplitTrialController.NamedTrialState trial) {
+        if (actor == null || trial == null || !isNamedRealitySplitActor(actor)) return null;
+        try {
+            return Wave7NamedTrialActorPolicy.decode(
+                    readString(actor, namedTrialActorCheckpointKey()), parseUuidOrNull(eventId), generation,
+                    trial.chamber(), trial.trial(), actor.getUniqueId());
+        } catch (RuntimeException invalidCheckpoint) {
+            return null;
+        }
+    }
+
+    private NamespacedKey namedTrialProjectileMarkerKey() {
+        return new NamespacedKey(this, "end_event_named_trial_projectile");
+    }
+
+    private NamespacedKey namedTrialProjectileSourceKey() {
+        return new NamespacedKey(this, "end_event_named_trial_projectile_source");
+    }
+
+    private NamespacedKey namedTrialProjectileAttackKey() {
+        return new NamespacedKey(this, "end_event_named_trial_projectile_attack");
+    }
+
+    private NamespacedKey namedTrialProjectileExpiryKey() {
+        return new NamespacedKey(this, "end_event_named_trial_projectile_expiry");
+    }
+
+    private boolean tagNamedTrialProjectile(Entity projectile, LivingEntity actor,
+                                             Wave7NamedTrialActorPolicy.Attack attack) {
+        if (projectile == null || actor == null || attack == null
+                || !isNamedRealitySplitActor(actor)) return false;
+        int chamber = readInt(actor, keyChamberId, -1);
+        if (chamber < 0 || !realitySplitChamberController.owns(generation)) return false;
+        // Mark hazards as owned event objects but not official player projectiles;
+        // their player damage is admitted below against the actor's current room.
+        tag(projectile, EVENT_KIND_REALITY_SPLIT_OBJECTIVE, 7, false);
+        projectile.getPersistentDataContainer().set(keyTrialRole,
+                PersistentDataType.STRING, readString(actor, keyTrialRole) + "_PROJECTILE");
+        projectile.getPersistentDataContainer().set(keyTrialIndex,
+                PersistentDataType.INTEGER, Math.floorMod(projectile.getUniqueId().hashCode(), Integer.MAX_VALUE));
+        projectile.getPersistentDataContainer().set(keyChamberId, PersistentDataType.INTEGER, chamber);
+        projectile.getPersistentDataContainer().set(namedTrialProjectileMarkerKey(),
+                PersistentDataType.BYTE, (byte) 1);
+        projectile.getPersistentDataContainer().set(namedTrialProjectileSourceKey(),
+                PersistentDataType.STRING, actor.getUniqueId().toString());
+        projectile.getPersistentDataContainer().set(namedTrialProjectileAttackKey(),
+                PersistentDataType.STRING, attack.name());
+        projectile.getPersistentDataContainer().set(namedTrialProjectileExpiryKey(),
+                PersistentDataType.LONG, System.currentTimeMillis() + 5_000L);
+        realitySplitTrialEntityUuids.add(projectile.getUniqueId());
+        if (!realitySplitChamberController.assignEntity(generation, projectile.getUniqueId(), chamber)) {
+            removeRealitySplitTrialEntity(projectile.getUniqueId(), "named-trial-projectile-assignment-refused");
+            return false;
+        }
+        UUID projectileId = projectile.getUniqueId();
+        Bukkit.getScheduler().runTaskLater(this,
+                () -> removeRealitySplitTrialEntity(projectileId, "named-trial-projectile-expired"), 100L);
+        return true;
+    }
+
+    private boolean isNamedTrialProjectile(Entity entity) {
+        return entity != null && entity.getPersistentDataContainer().getOrDefault(
+                namedTrialProjectileMarkerKey(), PersistentDataType.BYTE, (byte) 0) == (byte) 1;
+    }
+
+    private boolean namedTrialProjectileMayHit(Entity projectile, Player target) {
+        if (!isNamedTrialProjectile(projectile) || target == null
+                || !ownedBySession(projectile, eventId, generation)
+                || readInt(projectile, keyWave, 0) != 7
+                || projectile.getPersistentDataContainer().getOrDefault(
+                namedTrialProjectileExpiryKey(), PersistentDataType.LONG, 0L) < System.currentTimeMillis()) return false;
+        UUID sourceId = parseUuidOrNull(readString(projectile, namedTrialProjectileSourceKey()));
+        Entity source = sourceId == null ? null : Bukkit.getEntity(sourceId);
+        if (!(source instanceof LivingEntity actor) || !isNamedRealitySplitActor(actor)) return false;
+        int chamber = readInt(actor, keyChamberId, -1);
+        RealitySplitTrialController.NamedTrialState trial = realitySplitTrialController.namedTrial(chamber);
+        if (trial == null || trial.stage() != RealitySplitTrialController.Stage.ACTIVE
+                || !trial.trial().name().equals(readString(actor, keyTrialRole))
+                || readInt(projectile, keyChamberId, -1) != chamber
+                || !realitySplitChamberController.allowsMobTarget(generation,
+                actor.getUniqueId(), target.getUniqueId())) return false;
+        if (Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_FANGS.name().equals(
+                readString(projectile, namedTrialProjectileAttackKey()))
+                && !hasNamedTrialLineOfSight(actor.getEyeLocation(), target.getEyeLocation())) return false;
+        int targetChamber = realitySplitChamberController.owns(generation)
+                ? realitySplitChamberController.assignment().chamberByPlayer()
+                .getOrDefault(target.getUniqueId(), -1) : -1;
+        return Wave7NamedTrialActorPolicy.admitsTarget(parseUuidOrNull(eventId), generation,
+                chamber, trial.trial(), true, target.getUniqueId(), targetChamber,
+                isRealitySplitTrialParticipant(target, chamber))
+                && isCurrentRealitySplitTrialTarget(actor, target);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onNamedTrialProjectileDamage(EntityDamageByEntityEvent event) {
+        Entity projectile = event.getDamager();
+        if (!isNamedTrialProjectile(projectile)) return;
+        if (!(event.getEntity() instanceof Player target) || !namedTrialProjectileMayHit(projectile, target)) {
+            event.setCancelled(true);
+            return;
+        }
+        Wave7NamedTrialActorPolicy.Attack attack;
+        try {
+            attack = Wave7NamedTrialActorPolicy.Attack.valueOf(
+                    readString(projectile, namedTrialProjectileAttackKey()));
+        } catch (IllegalArgumentException invalidAttack) {
+            event.setCancelled(true);
+            return;
+        }
+        event.setDamage(switch (attack) {
+            case MARKSMAN_QUICK_SHOT -> 4.5D;
+            case MARKSMAN_HEAVY_SHOT, ARCHMAGE_SPEAR -> 8.0D;
+            case MARKSMAN_SPREAD_SHOT -> 3.25D;
+            case ARCHMAGE_FANGS -> 5.0D;
+            default -> {
+                event.setCancelled(true);
+                yield 0.0D;
+            }
+        });
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+    public void onNamedTrialProjectileHit(ProjectileHitEvent event) {
+        if (isNamedTrialProjectile(event.getEntity())) {
+            removeRealitySplitTrialEntity(event.getEntity().getUniqueId(), "named-trial-projectile-hit");
+        }
+    }
+
+    private boolean preflightNamedEchoDuelRooms() {
+        if (!realitySplitTrialController.ownsNamed(parseUuidOrNull(eventId), generation)) return false;
+        for (var trial : realitySplitTrialController.namedSnapshot().trials().values()) {
+            if (trial.trial() != RealitySplitTrialController.NamedTrial.PERSONAL_ECHO
+                    || trial.stage() == RealitySplitTrialController.Stage.COMPLETE) continue;
+            Map<UUID, me.copimine.endevent.runtime.RealitySplitEchoDuelState.DuelRecord> duels =
+                    realitySplitTrialController.namedSnapshot().personalEchoDuels().get(trial.chamber());
+            if (duels == null) return false;
+            for (UUID ownerId : trial.owners()) {
+                var duel = duels.get(ownerId);
+                if (duel == null) return false;
+                if (duel.lifecycle() != me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.PLANNED) {
+                    try {
+                        me.copimine.endevent.runtime.wave7.EchoReplicaInventory.restore(
+                                duel.replicaState(), duel.eventId(), duel.attemptGeneration(), duel.duelId(),
+                                duel.ownerUuid(), duel.replicaRevision());
+                    } catch (RuntimeException invalidSnapshot) {
+                        return false;
+                    }
+                    continue;
+                }
+                Player owner = Bukkit.getPlayer(ownerId);
+                if (owner == null || !owner.isOnline() || owner.isDead()
+                        || !owner.getWorld().equals(worldFor(coreCombatAnchorLocation()))
+                        || !isNamedEchoClientReady(owner)
+                        || combatProfiles.echoBehaviorStrategy(ownerId) == null) return false;
+                try {
+                    var replica = me.copimine.endevent.runtime.wave7.EchoReplicaInventory.capture(
+                            owner.getInventory(), parseUuidOrNull(eventId), generation,
+                            duel.duelId(), ownerId);
+                    for (int slot = 0; slot < 42; slot++) {
+                        if (replica.state().item(slot).custom()) return false;
+                    }
+                    AttributeInstance maxHealth = owner.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+                    if (maxHealth == null || !Double.isFinite(owner.getHealth())
+                            || !Double.isFinite(maxHealth.getValue()) || owner.getHealth() <= 0.0D
+                            || maxHealth.getValue() <= 0.0D
+                            || maxHealth.getValue() > me.copimine.endevent.runtime.RealitySplitEchoDuelState.MAX_HEALTH) {
+                        return false;
+                    }
+                } catch (RuntimeException invalidLoadout) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private World worldFor(Location location) {
+        return location == null ? null : location.getWorld();
+    }
+
+    private boolean isNamedEchoClientReady(Player owner) {
+        return owner != null && echoPresentationCapablePlayers.contains(owner.getUniqueId())
+                && endEventBridgeV4 != null && endEventBridgeV4.isReady(owner.getUniqueId());
+    }
+
+    private boolean ensureNamedEchoDuelActor(World world, Location core,
+                                              RealitySplitTrialController.NamedTrialState trial,
+                                              me.copimine.endevent.domain.Wave7EchoDuelCellPolicy.Cell cell,
+                                              me.copimine.endevent.runtime.RealitySplitEchoDuelState.DuelRecord duel) {
+        if (duel == null || !duel.eventId().equals(parseUuidOrNull(eventId))
+                || duel.attemptGeneration() != generation || duel.room() != trial.chamber()
+                || !duel.ownerUuid().equals(cell.owner()) || !trial.owners().contains(cell.owner())) return false;
+        if (duel.lifecycle() == me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.COMPLETE) {
+            return true;
+        }
+        int index = cell.ordinal();
+        Entity found = findRealitySplitTrialEntity(trial.chamber(),
+                RealitySplitTrialController.NamedTrial.PERSONAL_ECHO.name(), index);
+        if (found != null && (!(found instanceof Pillager)
+                || !isNamedRealitySplitActor(found)
+                || !found.getUniqueId().equals(duel.actor() == null ? null : duel.actor().actorUuid())
+                || !cell.owner().toString().equals(readString(found,
+                new NamespacedKey(this, "end_event_named_echo_owner")))
+                || !duel.duelId().toString().equals(readString(found,
+                new NamespacedKey(this, "end_event_named_echo_duel")))
+                || (found.getPersistentDataContainer().getOrDefault(
+                new NamespacedKey(this, "end_event_named_echo_runtime"), PersistentDataType.LONG, -1L)
+                != duel.runtimeGeneration() && !namedWave7RuntimeRestorePending))) return false;
+
+        boolean planned = duel.lifecycle() == me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.PLANNED;
+        boolean mayCreate = namedWave7InitialActorCreation || namedWave7RuntimeRestorePending;
+        if (found == null && !planned && !namedWave7RuntimeRestorePending) return false;
+        if (found == null && !mayCreate) return false;
+
+        Player owner = Bukkit.getPlayer(cell.owner());
+        if (planned && (owner == null || !owner.isOnline() || owner.isDead()
+                || owner.getWorld() != world || !isNamedEchoClientReady(owner)
+                || combatProfiles.echoBehaviorStrategy(cell.owner()) == null)) return false;
+
+        me.copimine.endevent.runtime.wave7.EchoReplicaInventory replica;
+        me.copimine.endevent.domain.wave7.EchoBehaviorStrategy strategy;
+        double ownerHealth;
+        double ownerMaximumHealth;
+        if (planned) {
+            AttributeInstance maxHealth = owner.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+            if (maxHealth == null) return false;
+            ownerHealth = owner.getHealth();
+            ownerMaximumHealth = maxHealth.getValue();
+            strategy = combatProfiles.echoBehaviorStrategy(cell.owner());
+            try {
+                replica = me.copimine.endevent.runtime.wave7.EchoReplicaInventory.capture(
+                        owner.getInventory(), duel.eventId(), generation, duel.duelId(), cell.owner());
+                for (int slot = 0; slot < 42; slot++) if (replica.state().item(slot).custom()) return false;
+            } catch (RuntimeException invalidLoadout) {
+                return false;
+            }
+        } else {
+            ownerHealth = duel.ownerStartingHealth();
+            ownerMaximumHealth = duel.ownerMaximumHealth();
+            strategy = duel.behaviorStrategy();
+            try {
+                replica = me.copimine.endevent.runtime.wave7.EchoReplicaInventory.restore(
+                        duel.replicaState(), duel.eventId(), duel.attemptGeneration(), duel.duelId(),
+                        duel.ownerUuid(), duel.replicaRevision());
+            } catch (RuntimeException invalidLoadout) {
+                return false;
+            }
+        }
+
+        Location ownerPoint = echoDuelCellPoint(core, cell, ChamberIsolationPolicy.INNER_RADIUS + 2.0D);
+        Location actorPoint = echoDuelCellPoint(core, cell, ChamberIsolationPolicy.INNER_RADIUS + 5.0D);
+        if (ownerPoint == null || actorPoint == null) return false;
+        if (planned && !moveNamedEchoOwnerToCell(owner, ownerPoint, cell, core)) return false;
+
+        Pillager carrier;
+        if (found == null) {
+            Location spawn = findSafeCombatLocation(core, actorPoint,
+                    boundedCombatRadius(config.arenaRadius()) - 1.0D,
+                    MIN_WAVE_CORE_DISTANCE_BLOCKS, trial.chamber(), owner);
+            if (spawn == null || !cell.contains(spawn.getX() - core.getX(), spawn.getZ() - core.getZ())) return false;
+            Entity created = spawnRealitySplitTrialEntity(world, spawn, EntityType.PILLAGER,
+                    trial.chamber(), RealitySplitTrialController.NamedTrial.PERSONAL_ECHO.name(), index, true);
+            if (!(created instanceof Pillager pillager)) return false;
+            carrier = pillager;
+            carrier.getPersistentDataContainer().set(new NamespacedKey(this, "end_event_named_trial_schema"),
+                    PersistentDataType.STRING, "2");
+            carrier.getPersistentDataContainer().set(new NamespacedKey(this, "end_event_named_echo_owner"),
+                    PersistentDataType.STRING, cell.owner().toString());
+            carrier.getPersistentDataContainer().set(new NamespacedKey(this, "end_event_named_echo_duel"),
+                    PersistentDataType.STRING, duel.duelId().toString());
+            carrier.getPersistentDataContainer().set(new NamespacedKey(this, "end_event_named_echo_runtime"),
+                    PersistentDataType.LONG, duel.runtimeGeneration());
+        } else {
+            carrier = (Pillager) found;
+        }
+
+        AttributeInstance carrierMax = carrier.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+        if (carrierMax == null || ownerMaximumHealth <= 0.0D || ownerHealth <= 0.0D) return false;
+        me.copimine.endevent.runtime.RealitySplitEchoDuelState.DuelRecord checkpoint = duel;
+        long runtimeGeneration = duel.runtimeGeneration();
+        me.copimine.endevent.runtime.RealitySplitEchoDuelState.ActorState actorState;
+        if (planned) {
+            carrierMax.setBaseValue(ownerMaximumHealth);
+            carrier.setHealth(ownerHealth);
+            actorState = new me.copimine.endevent.runtime.RealitySplitEchoDuelState.ActorState(
+                    carrier.getUniqueId(), ownerHealth, ownerMaximumHealth,
+                    me.copimine.endevent.runtime.RealitySplitEchoDuelState.ActorLifecycle.ALIVE,
+                    0L, eventTickCounter, 0L, 0L, 0L, 0L);
+            checkpoint = duel.withActor(runtimeGeneration, ownerHealth, ownerMaximumHealth, 0L,
+                    actorState, duel.revision() + 1L, replica.state().revision(), replica.state().encode(), strategy);
+        } else {
+            if (runtimeGeneration >= me.copimine.endevent.runtime.RealitySplitEchoDuelState.MAX_COUNTER
+                    || duel.revision() >= me.copimine.endevent.runtime.RealitySplitEchoDuelState.MAX_COUNTER
+                    || duel.actor().revision() >= me.copimine.endevent.runtime.RealitySplitEchoDuelState.MAX_COUNTER) return false;
+            boolean restartRebind = found == null || namedWave7RuntimeRestorePending;
+            if (found == null) {
+                carrierMax.setBaseValue(ownerMaximumHealth);
+                carrier.setHealth(duel.actor().currentHealth());
+            } else if (carrierMax.getBaseValue() != ownerMaximumHealth
+                    || carrier.getHealth() > duel.actor().currentHealth()) return false;
+            double actorHealth = carrier.getHealth();
+            if (restartRebind) runtimeGeneration++;
+            actorState = new me.copimine.endevent.runtime.RealitySplitEchoDuelState.ActorState(
+                    carrier.getUniqueId(), actorHealth, ownerMaximumHealth,
+                    me.copimine.endevent.runtime.RealitySplitEchoDuelState.ActorLifecycle.ALIVE,
+                    duel.actor().revision() + 1L, duel.actor().nextActionTick(),
+                    duel.actor().meleeCooldownUntilTick(), duel.actor().rangedCooldownUntilTick(),
+                    duel.actor().pendingUseUntilTick(), 0L);
+            checkpoint = duel.withActor(runtimeGeneration, ownerHealth, ownerMaximumHealth,
+                    duel.returnDeadlineMillis(), actorState, duel.revision() + 1L,
+                    duel.replicaRevision(), duel.replicaState(), strategy);
+        }
+        carrierMax.setBaseValue(ownerMaximumHealth);
+        if (carrier.getHealth() > actorState.currentHealth()) return false;
+        if (carrier.getHealth() < actorState.currentHealth()) carrier.setHealth(actorState.currentHealth());
+        carrier.setPersistent(true);
+        carrier.setCanJoinRaid(false);
+        carrier.setCanPickupItems(false);
+        carrier.setAI(false);
+        carrier.setAware(false);
+        carrier.setTarget(null);
+        carrier.setInvulnerable(false);
+        var replicaState = replica.state();
+        int main = replicaState.find(strategy.rangedPermille() >= strategy.meleePermille()
+                ? me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.CROSSBOW
+                : me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.MELEE);
+        if (main < 0) main = replicaState.selectedSlot();
+        replica.equip(carrier.getEquipment(), main, 40);
+        carrier.setCustomName(ChatColor.DARK_PURPLE + "Echo " + ownerName(cell.owner()));
+        carrier.setCustomNameVisible(true);
+        if (!realitySplitTrialController.registerPersonalEchoDuel(checkpoint)) return false;
+        carrier.getPersistentDataContainer().set(new NamespacedKey(this, "end_event_named_echo_runtime"),
+                PersistentDataType.LONG, checkpoint.runtimeGeneration());
+        namedEchoReplicas.put(carrier.getUniqueId(), replica);
+        namedEchoCells.put(carrier.getUniqueId(), cell);
+        if (!configureNamedEchoRuntime(carrier, cell, checkpoint, owner)) return false;
+        if (checkpoint != duel && !saveStateSync()) return false;
+        return true;
+    }
+
+    private String ownerName(UUID owner) {
+        Player player = Bukkit.getPlayer(owner);
+        return player == null ? owner.toString().substring(0, 8) : player.getName();
+    }
+
+    private Location echoDuelCellPoint(Location core,
+            me.copimine.endevent.domain.Wave7EchoDuelCellPolicy.Cell cell, double radius) {
+        if (core == null || core.getWorld() == null || cell == null
+                || radius <= cell.innerRadius() || radius >= cell.outerRadius()) return null;
+        Location point = core.clone().add(Math.cos(cell.centerAngleRadians()) * radius, 0.0D,
+                Math.sin(cell.centerAngleRadians()) * radius);
+        point.setYaw((float) Math.toDegrees(cell.centerAngleRadians()));
+        point.setPitch(0.0F);
+        return point;
+    }
+
+    private boolean moveNamedEchoOwnerToCell(Player owner, Location destination,
+            me.copimine.endevent.domain.Wave7EchoDuelCellPolicy.Cell cell, Location core) {
+        if (owner == null || destination == null || cell == null || core == null) return false;
+        if (cell.contains(owner.getLocation().getX() - core.getX(), owner.getLocation().getZ() - core.getZ())) return true;
+        Location safe = findSafeCombatLocation(core, destination,
+                boundedCombatRadius(config.arenaRadius()) - 1.0D,
+                MIN_WAVE_CORE_DISTANCE_BLOCKS, cell.chamber(), owner);
+        if (safe == null || !cell.contains(safe.getX() - core.getX(), safe.getZ() - core.getZ())) return false;
+        UUID ownerId = owner.getUniqueId();
+        issueRealitySplitPlayerTeleportPermit(ownerId, safe);
+        try { return owner.teleport(safe); }
+        finally { clearRealitySplitPlayerTeleportPermit(ownerId, safe); }
+    }
+
+    private boolean configureNamedEchoRuntime(Pillager carrier,
+            me.copimine.endevent.domain.Wave7EchoDuelCellPolicy.Cell cell,
+            me.copimine.endevent.runtime.RealitySplitEchoDuelState.DuelRecord duel, Player owner) {
+        if (carrier == null || cell == null || duel == null || carrier.getWorld() == null) return false;
+        UUID actorId = carrier.getUniqueId();
+        EchoCombatAdmission.Pair replacement = new EchoCombatAdmission.Pair(duel.eventId(), generation,
+                duel.runtimeGeneration(), duel.duelId(), duel.ownerUuid(), actorId, carrier.getWorld().getUID());
+        EchoCombatAdmission.Pair previous = namedEchoCombatPairs.get(actorId);
+        if (replacement.equals(previous) && namedEchoPresentationStates.containsKey(actorId)) {
+            namedEchoCells.put(actorId, cell);
+            return true;
+        }
+        removeNamedEchoRuntime(actorId, true);
+        // Keep carrier navigation, but remove its vanilla attack goals. The official tick
+        // commits bounded actions before applying their native combat side effects.
+        Bukkit.getMobGoals().removeAllGoals(carrier);
+        carrier.setTarget(null);
+        carrier.setAI(true);
+        carrier.setAware(true);
+        EchoPresentationProbeState view = new EchoPresentationProbeState(duel.eventId(), generation,
+                duel.runtimeGeneration(), duel.duelId(), actorId, duel.ownerUuid(),
+                carrier.getWorld().getKey().toString(), eventTickCounter,
+                me.copimine.endevent.runtime.RealitySplitEchoDuelState.MAX_COUNTER);
+        EchoCombatAdmissionListener listener = new EchoCombatAdmissionListener(
+                () -> currentNamedEchoCombatContext(actorId));
+        namedEchoPresentationStates.put(actorId, view);
+        namedEchoCombatPairs.put(actorId, replacement);
+        namedEchoCombatListeners.put(actorId, listener);
+        namedEchoBridgeSessions.put(actorId, clientBridgeSessions.get(duel.ownerUuid()));
+        namedEchoCells.put(actorId, cell);
+        Bukkit.getPluginManager().registerEvents(listener, this);
+        if (owner != null && isNamedEchoClientReady(owner)) sendNamedEchoView(actorId, "END_ECHO_BIND");
+        return true;
+    }
+
+    private EchoCombatAdmission.Context currentNamedEchoCombatContext(UUID actorId) {
+        EchoCombatAdmission.Pair pair = namedEchoCombatPairs.get(actorId);
+        if (pair == null) return null;
+        Entity rawActor = Bukkit.getEntity(actorId);
+        Player owner = Bukkit.getPlayer(pair.owner());
+        me.copimine.endevent.runtime.RealitySplitEchoDuelState.DuelRecord duel =
+                namedEchoDuel(pair.owner(), pair.duel());
+        var cell = namedEchoCells.get(actorId);
+        Location core = coreCombatAnchorLocation();
+        boolean active = pair.event().equals(parseUuidOrNull(eventId)) && pair.generation() == generation
+                && activeWave == 7 && isRealitySplitTrialRuntimeActive()
+                && realitySplitTrialController.ownsNamed(pair.event(), pair.generation())
+                && duel != null && duel.lifecycle() == me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.ACTIVE
+                && duel.runtimeGeneration() == pair.epoch()
+                && rawActor instanceof Pillager carrier && carrier.isValid() && !carrier.isDead()
+                && owner != null && me.copimine.endevent.runtime.RealitySplitEchoDuelState.ownerMayResume(
+                        owner.isOnline(), !owner.isDead(), owner.getWorld().equals(carrier.getWorld()),
+                        isNamedEchoClientReady(owner),
+                        attemptLifecycle.isCombatAdmitted(pair.owner(), pair.generation()))
+                && cell != null && core != null && core.getWorld() != null
+                && cell.contains(owner.getLocation().getX() - core.getX(), owner.getLocation().getZ() - core.getZ())
+                && cell.contains(carrier.getLocation().getX() - core.getX(), carrier.getLocation().getZ() - core.getZ());
+        return new EchoCombatAdmission.Context(pair, eventTickCounter, active);
+    }
+
+    private me.copimine.endevent.runtime.RealitySplitEchoDuelState.DuelRecord namedEchoDuel(UUID owner, UUID duelId) {
+        if (!realitySplitTrialController.ownsNamed(parseUuidOrNull(eventId), generation)) return null;
+        for (Map<UUID, me.copimine.endevent.runtime.RealitySplitEchoDuelState.DuelRecord> room
+                : realitySplitTrialController.namedSnapshot().personalEchoDuels().values()) {
+            var record = room.get(owner);
+            if (record != null && record.duelId().equals(duelId)) return record;
+        }
+        return null;
+    }
+
+    private void sendNamedEchoView(UUID actorId, String type) {
+        EchoPresentationProbeState view = namedEchoPresentationStates.get(actorId);
+        EchoCombatAdmission.Pair pair = namedEchoCombatPairs.get(actorId);
+        if (view == null || pair == null) return;
+        Player owner = Bukkit.getPlayer(pair.owner());
+        if (!isNamedEchoClientReady(owner)) return;
+        EchoPresentationProbeState.Frame frame = view.nextFrame(eventTickCounter);
+        sendClientPacket(owner, type, pair.duel().toString(), 2_000L, pair.actor().toString(),
+                "END_RIFT_ECHO_V1", 0, 0, 0.0F, frame.fields(), frame.dimension());
+    }
+
+    private void removeNamedEchoRuntime(UUID actorId, boolean sendRemove) {
+        EchoCombatAdmission.Pair pair = namedEchoCombatPairs.get(actorId);
+        EchoPresentationProbeState view = namedEchoPresentationStates.get(actorId);
+        if (sendRemove && pair != null && view != null) sendNamedEchoView(actorId, "END_ECHO_REMOVE");
+        if (view != null) view.close();
+        EchoCombatAdmissionListener listener = namedEchoCombatListeners.remove(actorId);
+        if (listener != null) {
+            listener.clear();
+            org.bukkit.event.HandlerList.unregisterAll(listener);
+        }
+        namedEchoPresentationStates.remove(actorId);
+        namedEchoCombatPairs.remove(actorId);
+        namedEchoReplicas.remove(actorId);
+        namedEchoCells.remove(actorId);
+        namedEchoBridgeSessions.remove(actorId);
     }
 
     private boolean isNamedRealitySplitActor(Entity entity) {
@@ -19434,9 +20644,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
             }
             bindEventEntityClientForOnlinePlayers(entity);
-            realitySplitTrialRuntimeStates.put(entity.getUniqueId(),
-                    new RealitySplitTrialRuntimeState(chamber,
-                            RealitySplitTrialController.Trial.valueOf(role)));
+            if (!RealitySplitTrialController.NamedTrial.PERSONAL_ECHO.name().equals(role)) {
+                realitySplitTrialRuntimeStates.put(entity.getUniqueId(),
+                        new RealitySplitTrialRuntimeState(chamber,
+                                RealitySplitTrialController.Trial.valueOf(role)));
+            }
         } else {
             entity.setInvulnerable(true);
             if (entity instanceof LivingEntity living) {
@@ -19516,6 +20728,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void clearRealitySplitTrialEntities(String reason) {
+        for (UUID actorId : new ArrayList<>(namedEchoCombatPairs.keySet())) {
+            removeNamedEchoRuntime(actorId, false);
+        }
         Set<UUID> toRemove = new LinkedHashSet<>(realitySplitTrialEntityUuids);
         for (World world : Bukkit.getWorlds()) {
             for (Entity entity : world.getEntities()) {
@@ -20435,6 +21650,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 currentPrepareSequentialPortals(world, core);
             }
             case BLACK_FOG -> {
+                blackFogRecoveryCheckpoint = Map.of();
                 currentFogCycle = 0;
                 blackFogPhase = BlackFogPhase.COMBAT;
                 blackFogPhaseDeadlineMillis = waveObjectiveStartedMillis
@@ -20597,6 +21813,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             carrierBeamRefresh.reset();
             carrierChargeRefresh.reset();
             syncCurrentCarrierFields();
+            saveStateAsync();
         }
         if (RiftCarrierPolicy.isComplete(currentCarrierState)) {
             return;
@@ -20626,6 +21843,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         if (currentCarrierState.phase() == RiftCarrierPolicy.Phase.CHARGE_CARRIED) {
+            if (currentCarrierRestartReconciliationPending) {
+                Player savedHolder = Bukkit.getPlayer(currentCarrierState.holder());
+                if (savedHolder == null || !savedHolder.isOnline()) return;
+                if (!hasCurrentCarrierInventoryCharge(savedHolder)) {
+                    markWave1RecoveryRequired("WAVE1_RESTART_CARRIED_CHARGE_NOT_FOUND");
+                    return;
+                }
+                currentCarrierRestartReconciliationPending = false;
+            }
+            if (!reconcileCurrentCarrierInventoryOwner()) return;
             Entity charge = currentCarrierChargeEntity();
             Player holder = Bukkit.getPlayer(currentCarrierState.holder());
             if (charge == null && holder != null && isActiveArenaParticipant(holder)) {
@@ -20666,6 +21893,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 currentCarrierState = RiftCarrierPolicy.timeoutTransfer(currentCarrierState,
                         generation, next.getUniqueId(), eventTickCounter);
                 syncCurrentCarrierFields();
+                saveStateAsync();
                 getLogger().info("END_RIFT_CARRIER_TIMEOUT_TRANSFER event=" + eventId
                         + " entity=" + next.getUniqueId()
                         + " delivered=" + currentCarrierCharges);
@@ -20677,6 +21905,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     removeCurrentCarrierChargeVisual();
                     currentCarrierState = replacementState;
                     syncCurrentCarrierFields();
+                    saveStateAsync();
                     World world = Bukkit.getWorld(worldName);
                     Location core = coreCombatAnchorLocation();
                     if (spawnCurrentCarrierReplacement(world, core)) {
@@ -20693,6 +21922,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 currentCarrierState = RiftCarrierPolicy.selectCarrier(currentCarrierState,
                         generation, next.getUniqueId());
                 syncCurrentCarrierFields();
+                saveStateAsync();
                 getLogger().info("END_RIFT_CARRIER_SELECTED event=" + eventId
                         + " entity=" + next.getUniqueId()
                         + " charge=" + (currentCarrierCharges + 1)
@@ -20726,6 +21956,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         sendWorldBeamPacket(holder, "wave1-carrier-objective",
                                 core.clone().add(0.0D, 1.0D, 0.0D), holderLocation,
                                 0x4EE6FF, 0.10F);
+                        Location outline = new Location(core.getWorld(), core.getBlockX() + 0.5D,
+                                core.getBlockY() + 0.5D, core.getBlockZ() + 0.5D);
+                        sendWorldBeamPacket(holder, "wave1-carrier-core-outline", outline,
+                                outline.clone().add(0.0D, 0.1D, 0.0D), 0x4EE6FF, 0.10F);
                         holder.spawnParticle(Particle.END_ROD, holderLocation,
                                 2, 0.16D, 0.28D, 0.16D, 0.02D);
                         holder.spawnParticle(Particle.DUST, holderLocation,
@@ -20860,6 +22094,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void clearCurrentCarrierPlayerVisual() {
         if (currentCarrierVisualHolder != null) {
             updateCurrentCarrierSlowness(Bukkit.getPlayer(currentCarrierVisualHolder), false);
+            clearWorldVfxBeamsByPrefix("wave1-carrier-");
             sendCurrentCarrierPlayerVisual(Bukkit.getPlayer(currentCarrierVisualHolder), false, currentCarrierVisualCycle);
         }
         currentCarrierVisualHolder = null;
@@ -20867,22 +22102,57 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void updateCurrentCarrierSlowness(Player player, boolean carryingCharge) {
-        if (player == null || keyCarrierSlownessModifier == null) {
+        if (player == null) return;
+        // Retire the previous keyed speed implementation without touching anyone else's modifiers.
+        AttributeInstance speed = player.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED);
+        if (speed != null && keyCarrierSlownessModifier != null) {
+            AttributeModifier legacy = speed.getModifier(keyCarrierSlownessModifier);
+            if (legacy != null) speed.removeModifier(legacy);
+        }
+        UUID owner = player.getUniqueId();
+        long now = Integer.toUnsignedLong(Bukkit.getCurrentTick());
+        CarrierPotionLease lease = currentCarrierPotionLeases.get(owner);
+        PotionEffect current = player.getPotionEffect(PotionEffectType.SLOWNESS);
+        boolean ours = isOwnedCarrierSlowness(current, lease, now);
+        if (lease != null && !ours) { currentCarrierPotionLeases.remove(owner); lease = null; }
+        if (!carryingCharge) {
+            currentCarrierPotionLeases.remove(owner);
+            if (!ours) return;
+            currentCarrierPotionMutations.add(owner);
+            try {
+                player.removePotionEffect(PotionEffectType.SLOWNESS);
+                PotionEffect original = lease.original();
+                if (original != null && !player.isDead()) {
+                    int remaining = original.getDuration() == -1 ? -1
+                            : (int) Math.max(0L, original.getDuration() - Math.max(0L, now - lease.capturedAtTick()));
+                    if (remaining != 0) player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, remaining,
+                            original.getAmplifier(), original.isAmbient(), original.hasParticles(), original.hasIcon()));
+                }
+            } finally { currentCarrierPotionMutations.remove(owner); }
             return;
         }
-        AttributeInstance movementSpeed = player.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED);
-        if (movementSpeed == null) {
-            return;
-        }
-        AttributeModifier ownedModifier = movementSpeed.getModifier(keyCarrierSlownessModifier);
-        switch (CarrierSlownessLeasePolicy.reconcile(carryingCharge, ownedModifier != null)) {
-            case ADD -> movementSpeed.addTransientModifier(new AttributeModifier(
-                    keyCarrierSlownessModifier,
-                    CarrierSlownessLeasePolicy.MOVEMENT_SPEED_MULTIPLIER,
-                    AttributeModifier.Operation.MULTIPLY_SCALAR_1));
-            case REMOVE -> movementSpeed.removeModifier(ownedModifier);
-            case KEEP, NONE -> { }
-        }
+        if (lease == null && current != null && current.getAmplifier() >= 1) return;
+        CarrierPotionLease next = new CarrierPotionLease(lease == null ? current : lease.original(),
+                lease == null ? now : lease.capturedAtTick(), now);
+        currentCarrierPotionMutations.add(owner);
+        try {
+            if (player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 30, 1, false, false, true)))
+                currentCarrierPotionLeases.put(owner, next);
+        } finally { currentCarrierPotionMutations.remove(owner); }
+    }
+
+    private boolean isOwnedCarrierSlowness(PotionEffect effect, CarrierPotionLease lease, long now) {
+        return effect != null && lease != null && effect.getAmplifier() == 1
+                && !effect.isAmbient() && !effect.hasParticles() && effect.hasIcon()
+                && effect.getDuration() >= 0 && effect.getDuration() <= 30
+                && Math.abs(effect.getDuration() - Math.max(0L, 30L - Math.max(0L, now - lease.refreshedAtTick()))) <= 2L;
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onCarrierSlownessPotionChange(EntityPotionEffectEvent event) {
+        if (!(event.getEntity() instanceof Player player) || event.getModifiedType() != PotionEffectType.SLOWNESS) return;
+        if (event.getAction() == EntityPotionEffectEvent.Action.CHANGED && !event.isOverride()) return;
+        if (!currentCarrierPotionMutations.contains(player.getUniqueId())) currentCarrierPotionLeases.remove(player.getUniqueId());
     }
 
     private void clearCarrierHighlight(UUID carrierId) {
@@ -20920,6 +22190,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         getLogger().info("END_RIFT_CARRIER_HOLDER_RELEASED event=" + eventId
                 + " holder=" + holder + " reason=" + reason
                 + " delivered=" + currentCarrierCharges);
+        saveStateAsync();
     }
 
     /**
@@ -21116,7 +22387,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 blackFogPhaseDeadlineMillis = 0L;
                 freezeWaveMobs(false);
                 clearCurrentBlackFogPackets();
-                clearCurrentSafeZoneVisuals();
+                if (!clearCurrentSafeZoneVisuals()) return;
             }
             return;
         }
@@ -21137,6 +22408,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 currentFogZoneSide = EndRiftObjective.fogZoneSide(currentFogCycle);
                 currentFogZoneSetupAttempts++;
                 if (!spawnCurrentSafeZoneVisuals(core.getWorld(), core)) {
+                    if (phase == EventPhase.RECOVERY_REQUIRED) return;
                     currentFogZoneSetupRetryAtMillis = now + 2_000L;
                     getLogger().warning("END_RIFT_FOG_SAFE_SETUP_RETRY event=" + eventId
                             + " cycle=" + (currentFogCycle + 1)
@@ -21145,10 +22417,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     if (currentFogZoneSetupAttempts >= 3) {
                         freezeWaveMobs(false);
                         clearCurrentBlackFogPackets();
-                        recoveryReason = "WAVE5_SAFE_ZONE_SETUP_FAILED";
                         if (isOfficialCurrentAttempt()) {
-                            forcePhase(EventPhase.RECOVERY_REQUIRED,
-                                    "Wave 5 safe zones could not be prepared");
+                            markBlackFogRecoveryRequired("WAVE5_SAFE_ZONE_SETUP_FAILED");
                         } else {
                             if (!clearWaveEntities()) return;
                             activeWave = 0;
@@ -21157,6 +22427,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                     + " wave=5 reason=safe-zone-setup-failed");
                         }
                     }
+                    saveStateAsync();
                     return;
                 }
                 currentFogZoneSetupAttempts = 0;
@@ -21168,6 +22439,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 getLogger().info("END_RIFT_FOG_SAFE_START event=" + eventId + " cycle="
                         + (currentFogCycle + 1) + "/3" + " zones=" + currentSafeZoneCenters.size()
                         + " side=" + currentFogZoneSide);
+                saveStateAsync();
             } else if (blackFogPhase == BlackFogPhase.SAFE) {
                 if (currentSafeZoneCells.isEmpty() || currentSafeZoneCenters.isEmpty()) {
                     blackFogPhase = BlackFogPhase.COMBAT;
@@ -21182,10 +22454,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 freezeWaveMobs(true);
                 getLogger().info("END_RIFT_FOG_START event=" + eventId + " cycle="
                         + (currentFogCycle + 1) + "/3" + " height=3 client_fog=true");
+                saveStateAsync();
             } else {
                 freezeWaveMobs(false);
                 clearCurrentBlackFogPackets();
-                clearCurrentSafeZoneVisuals();
+                if (!clearCurrentSafeZoneVisuals()) return;
                 currentFogCycle++;
                 if (currentFogCycle >= EndRiftObjective.REQUIRED_FOG_CYCLES) {
                     blackFogPhaseDeadlineMillis = 0L;
@@ -21200,6 +22473,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                 ? "Все три цикла тумана завершены"
                                 : "Туман рассеялся: " + currentFogCycle + "/3. Продолжайте бой",
                         Sound.BLOCK_AMETHYST_BLOCK_CHIME);
+                saveStateAsync();
             }
         }
         if (blackFogPhase == BlackFogPhase.FOG) {
@@ -21244,7 +22518,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // separator or Wave 3 portal display survive into the ritual scene,
         // including entities left by an older generation that was interrupted
         // before its in-memory visual index was rebuilt.
-        clearRealitySplitBarriers("wave6-start");
+        if (!clearRealitySplitBarriers("wave6-start")) {
+            recoveryReason = "WAVE6_STALE_BARRIER_RESTORE_FAILED";
+            if (isOfficialCurrentAttempt()) {
+                forcePhase(EventPhase.RECOVERY_REQUIRED,
+                        "Wave 7 barrier journal could not be restored before Wave 6");
+                saveStateSync();
+            }
+            getLogger().severe("WAVE6_RITUAL_START_REFUSED event=" + eventId
+                    + " generation=" + generation + " reason=barrier-journal-restore-failed");
+            return false;
+        }
         clearLegacyWave7BarrierArtifacts("wave6-start");
         clearLegacyWave3PortalArtifacts("wave6-start");
         if (ritualSphereStateRehydrated
@@ -21253,11 +22537,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && ritualSphereVisualUuid != null
                 && isLiveOwnedEntity(ritualSphereVisualUuid)) {
             RitualSphereScalingPolicy.Profile recoveredProfile = ritualSphereState.profile();
+            if (!ensureRitualCasterRosterAvailableForRecovery(recoveredProfile)) {
+                markWave6RecoveryRequired("WAVE6_CASTER_ROSTER_UNAVAILABLE");
+                return false;
+            }
             int recoveredCasters = liveRitualCasterCount();
             int recoveredGuards = liveRitualGuardCount();
-            if (recoveredCasters <= recoveredProfile.casterCount()
+            int expectedLivingCasters = recoveredProfile.casterCount() - ritualCasterDeathCount;
+            if (recoveredCasters == expectedLivingCasters
                     && recoveredGuards <= recoveredProfile.guardCount()) {
-                ritualCasterDeathCount = recoveredProfile.casterCount() - recoveredCasters;
                 wave6PrisonBroken = false;
                 ritualSpellController = new RitualSpellController(generation);
                 ritualSpellActiveUntilTick = 0L;
@@ -21286,7 +22574,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
                 return true;
             }
-            ritualSphereStateRehydrated = false;
+            markWave6RecoveryRequired("WAVE6_CASTER_ROSTER_COUNT_MISMATCH");
+            return false;
         }
         clearRitualSphereObjective("new-start");
         cleanupLegacyWave6Entities();
@@ -21659,7 +22948,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void tagRitualPrisoner(Player player) {
-        if (player != null && keyRitualPrisoner != null) {
+        if (isRitualPrisonerBridgeReady(player)
+                && player.getUniqueId().equals(ritualPrisonerId())
+                && keyRitualPrisoner != null) {
             if (!player.getPersistentDataContainer().has(keyRitualPrisonerGravity, PersistentDataType.BYTE)) {
                 player.getPersistentDataContainer().set(keyRitualPrisonerGravity,
                         PersistentDataType.BYTE, (byte) (player.hasGravity() ? 1 : 0));
@@ -21693,8 +22984,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    private void releaseRitualPrisonerControl(Player player) {
+        if (player == null) return;
+        if (keyRitualPrisoner != null) {
+            player.getPersistentDataContainer().remove(keyRitualPrisoner);
+        }
+        restoreRitualPrisonerGravity(player);
+    }
+
     private void teleportRitualPrisoner(Player player, Location destination) {
-        if (player == null || destination == null || !player.isOnline()) {
+        if (!isRitualPrisonerBridgeReady(player)
+                || !player.getUniqueId().equals(ritualPrisonerId())
+                || destination == null) {
             return;
         }
         ritualPrisonerTeleportPermits.add(player.getUniqueId());
@@ -21913,7 +23214,162 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean isCurrentRitualPrisoner(Player player) {
         UUID prisonerId = ritualPrisonerId();
         return player != null && ritualObjectiveActive()
-                && prisonerId != null && prisonerId.equals(player.getUniqueId());
+                && prisonerId != null && prisonerId.equals(player.getUniqueId())
+                && isRitualPrisonerBridgeReady(player);
+    }
+
+    /** The bridge reports ready only after the current authenticated V4 receipt. */
+    private boolean isRitualPrisonerBridgeReady(Player player) {
+        return player != null && player.isOnline() && endEventBridgeV4 != null
+                && endEventBridgeV4.isReady(player.getUniqueId());
+    }
+
+    /** Load the bounded event arena and rebuild the durable Wave 6 roster before resuming. */
+    private boolean ensureRitualCasterRosterAvailableForRecovery(
+            RitualSphereScalingPolicy.Profile profile) {
+        if (profile == null || !isConfigured() || worldName.isBlank()
+                || arenaMaxX < arenaMinX || arenaMaxY < arenaMinY || arenaMaxZ < arenaMinZ) {
+            return false;
+        }
+        long width = (long) arenaMaxX - arenaMinX + 1L;
+        long height = (long) arenaMaxY - arenaMinY + 1L;
+        long depth = (long) arenaMaxZ - arenaMinZ + 1L;
+        if (width <= 0L || height <= 0L || depth <= 0L
+                || width > 262_144L || height > 262_144L || depth > 262_144L
+                || width * height > 262_144L || width * height * depth > 262_144L) {
+            return false;
+        }
+        World world = Bukkit.getWorld(worldName);
+        if (world == null || !world.getName().equalsIgnoreCase(worldName)) {
+            return false;
+        }
+
+        int minChunkX = arenaMinX >> 4;
+        int maxChunkX = arenaMaxX >> 4;
+        int minChunkZ = arenaMinZ >> 4;
+        int maxChunkZ = arenaMaxZ >> 4;
+        long chunkCount = ((long) maxChunkX - minChunkX + 1L)
+                * ((long) maxChunkZ - minChunkZ + 1L);
+        if (chunkCount <= 0L || chunkCount > 256L) {
+            return false;
+        }
+        try {
+            for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+                for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+                    if (!world.getChunkAt(chunkX, chunkZ).isLoaded()) {
+                        return false;
+                    }
+                }
+            }
+        } catch (RuntimeException chunkLoadFailure) {
+            getLogger().log(Level.WARNING,
+                    "WAVE6_ROSTER_CHUNK_LOAD_FAILED event=" + eventId
+                            + " generation=" + generation,
+                    chunkLoadFailure);
+            return false;
+        }
+
+        Map<Integer, Entity> castersBySlot = new LinkedHashMap<>();
+        List<Entity> guards = new ArrayList<>();
+        for (Entity entity : new ArrayList<>(world.getEntities())) {
+            if (!ownedBySession(entity, eventId, generation)
+                    || readInt(entity, keyWave, 0) != 6) {
+                continue;
+            }
+            String kind = readString(entity, keyKind);
+            if (!EVENT_KIND_RITUAL_CASTER.equals(kind)
+                    && !EVENT_KIND_RITUAL_GUARD.equals(kind)) {
+                continue;
+            }
+            Location location = entity.getLocation();
+            if (location.getWorld() == null || !location.getWorld().equals(world)
+                    || location.getBlockX() < arenaMinX || location.getBlockX() > arenaMaxX
+                    || location.getBlockY() < arenaMinY || location.getBlockY() > arenaMaxY
+                    || location.getBlockZ() < arenaMinZ || location.getBlockZ() > arenaMaxZ) {
+                return false;
+            }
+            if (EVENT_KIND_RITUAL_CASTER.equals(kind)) {
+                int slot = readInt(entity, keyRitualSlot, -1);
+                if (!(entity instanceof Enderman) || slot < 0 || slot >= profile.casterCount()
+                        || castersBySlot.putIfAbsent(slot, entity) != null) {
+                    return false;
+                }
+            } else {
+                int casterSlot = readInt(entity, keyRitualSlot, -1);
+                int guardSlot = readInt(entity, keyRitualGuardSlot, -1);
+                if (!(entity instanceof LivingEntity) || casterSlot < 0
+                        || casterSlot >= profile.casterCount() || guardSlot < 0
+                        || guardSlot >= profile.guardsPerCaster()) {
+                    return false;
+                }
+                guards.add(entity);
+            }
+        }
+
+        int expectedLivingCasters = profile.casterCount() - ritualCasterDeathCount;
+        if (ritualCasterDeathCount < 0 || expectedLivingCasters < 0
+                || castersBySlot.size() != expectedLivingCasters) {
+            return false;
+        }
+        Map<UUID, Set<Integer>> guardSlotsByCaster = new HashMap<>();
+        Map<UUID, Set<UUID>> guardsByCaster = new HashMap<>();
+        Map<UUID, UUID> casterByGuard = new HashMap<>();
+        for (Entity guard : guards) {
+            int casterSlot = readInt(guard, keyRitualSlot, -1);
+            int guardSlot = readInt(guard, keyRitualGuardSlot, -1);
+            Entity caster = castersBySlot.get(casterSlot);
+            UUID casterId = parseUuidOrNull(readString(guard, keyRitualCaster));
+            if (caster == null || casterId == null || !caster.getUniqueId().equals(casterId)
+                    || !guardSlotsByCaster.computeIfAbsent(casterId, ignored -> new HashSet<>())
+                    .add(guardSlot)) {
+                return false;
+            }
+            guardsByCaster.computeIfAbsent(casterId, ignored -> new LinkedHashSet<>())
+                    .add(guard.getUniqueId());
+            casterByGuard.put(guard.getUniqueId(), casterId);
+        }
+
+        ritualCasterUuids.clear();
+        ritualCasterSlots.clear();
+        ritualGuardUuids.clear();
+        ritualGuardCasters.clear();
+        ritualGuardsByCaster.clear();
+        for (Map.Entry<Integer, Entity> entry : castersBySlot.entrySet()) {
+            Entity caster = entry.getValue();
+            registerOwnedEntity(caster);
+            ritualCasterUuids.add(caster.getUniqueId());
+            ritualCasterSlots.put(caster.getUniqueId(), entry.getKey());
+            ritualGuardsByCaster.put(caster.getUniqueId(),
+                    new LinkedHashSet<>(guardsByCaster.getOrDefault(caster.getUniqueId(), Set.of())));
+        }
+        for (Entity guard : guards) {
+            UUID guardId = guard.getUniqueId();
+            registerOwnedEntity(guard);
+            ritualGuardUuids.add(guardId);
+            ritualGuardCasters.put(guardId, casterByGuard.get(guardId));
+        }
+        return true;
+    }
+
+    private void markWave6RecoveryRequired(String reason) {
+        String safeReason = reason == null || reason.isBlank()
+                ? "WAVE6_ROSTER_RECOVERY_REQUIRED" : reason;
+        wave6Complete = false;
+        recoveryReason = safeReason;
+        if (ritualSphereState != null && ritualSphereState.generation() == generation) {
+            try {
+                ritualSphereRecoveryCheckpoint = Map.copyOf(
+                        RitualSphereEncounterSnapshot.encode(ritualSphereState, ritualCasterDeathCount));
+            } catch (IllegalArgumentException invalidCheckpoint) {
+                getLogger().log(Level.SEVERE,
+                        "Wave 6 could not preserve its recovery checkpoint", invalidCheckpoint);
+            }
+        }
+        forcePhase(EventPhase.RECOVERY_REQUIRED, safeReason);
+        if (!saveStateSync()) {
+            getLogger().severe("Wave 6 recovery checkpoint was not durably saved event=" + eventId
+                    + " generation=" + generation + " reason=" + safeReason);
+        }
     }
 
     private void restorePersistedRitualSphereObjective() {
@@ -21955,8 +23411,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         UUID prisonerId = ritualPrisonerId();
         Player prisoner = prisonerId == null ? null : Bukkit.getPlayer(prisonerId);
         if (prisoner != null && prisoner.isOnline() && ritualPrisonerAnchor != null) {
-            tagRitualPrisoner(prisoner);
-            teleportRitualPrisoner(prisoner, ritualPrisonerAnchor);
+            if (isRitualPrisonerBridgeReady(prisoner)) {
+                tagRitualPrisoner(prisoner);
+                teleportRitualPrisoner(prisoner, ritualPrisonerAnchor);
+            } else {
+                releaseRitualPrisonerControl(prisoner);
+            }
         }
         wave6Complete = false;
         ritualSphereStateRehydrated = true;
@@ -22314,7 +23774,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (core == null || core.getWorld() == null) {
             return;
         }
-        List<Player> participants = activeWaveParticipants();
+        List<Player> participants = activeWaveParticipants().stream()
+                .filter(this::isRitualPrisonerBridgeReady)
+                .toList();
+        if (participants.isEmpty()) {
+            return;
+        }
         if (ritualSandboxCaptureCandidateUuid != null) {
             participants = participants.stream().sorted(Comparator.comparingInt(player ->
                     ritualSandboxCaptureCandidateUuid.equals(player.getUniqueId()) ? 0 : 1)).toList();
@@ -22342,6 +23807,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 .findFirst()
                 .orElse(null);
         if (prisoner == null) {
+            return;
+        }
+        if (!isRitualPrisonerBridgeReady(prisoner)) {
             return;
         }
         if (isOfficialCurrentAttempt()) {
@@ -22408,10 +23876,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void ensureRitualPrisoner(long now) {
         UUID prisonerId = ritualPrisonerId();
         Player prisoner = prisonerId == null ? null : Bukkit.getPlayer(prisonerId);
+        if (prisoner != null && prisoner.isOnline()
+                && !isRitualPrisonerBridgeReady(prisoner)) {
+            releaseRitualPrisonerControl(prisoner);
+            endRitualPrisonerAbilitySessionForPlayer(prisonerId, "v4-bridge-not-ready");
+            return;
+        }
         if (prisoner == null || !prisoner.isOnline() || prisoner.isDead()
                 || prisoner.getHealth() <= 0.0D) {
             Player replacement = activeWaveParticipants().stream()
                     .filter(this::isCombatTarget)
+                    .filter(this::isRitualPrisonerBridgeReady)
                     .filter(candidate -> prisonerId == null
                             || !candidate.getUniqueId().equals(prisonerId))
                     .sorted(Comparator.comparing(player -> player.getUniqueId().toString()))
@@ -22474,10 +23949,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             Set<UUID> guards = ritualGuardsByCaster.getOrDefault(casterId, Set.of());
             int livingGuards = (int) guards.stream().filter(this::isLiveOwnedEntity).count();
             RitualCasterShieldPolicy.State shield = RitualCasterShieldPolicy.state(
-                    isLiveOwnedEntity(casterId), livingGuards);
+                    isLiveOwnedEntity(casterId), livingGuards,
+                    ritualExpectedGuardsPerCaster());
             RitualCasterTacticsPolicy.State tactics = RitualCasterTacticsPolicy.state(
                     livingGuards > 0, readRitualCasterAwakened(caster));
-            caster.setCustomName(ChatColor.LIGHT_PURPLE + "Заклинатель");
+            caster.setCustomName(ChatColor.LIGHT_PURPLE + "Заклинатель "
+                    + ChatColor.GRAY + "(" + ritualShieldName(shield) + ")");
             caster.setCustomNameVisible(true);
             boolean selectedCaster = spellSnapshot != null
                     && casterId.equals(spellSnapshot.caster());
@@ -22913,6 +24390,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location facing = from.clone().setDirection(direction);
         caster.setRotation(facing.getYaw(), Math.max(-35.0F,
                 Math.min(35.0F, facing.getPitch())));
+    }
+
+    private int ritualExpectedGuardsPerCaster() {
+        return ritualSphereState == null ? RitualSphereScalingPolicy.GUARDS_PER_CASTER
+                : ritualSphereState.profile().guardsPerCaster();
     }
 
     private String ritualShieldName(RitualCasterShieldPolicy.State state) {
@@ -23860,7 +25342,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void startRitualPrisonerAbilitySession(Player player) {
         if (player == null || !player.isOnline() || player.isDead()
                 || wave6PrisonBroken || ritualPrisonerId() == null
-                || !ritualPrisonerId().equals(player.getUniqueId())) {
+                || !ritualPrisonerId().equals(player.getUniqueId())
+                || !isRitualPrisonerBridgeReady(player)) {
             return;
         }
         PrisonerAbilityController.Snapshot current =
@@ -24270,6 +25753,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ritualCasterAlertUntil.clear();
         ritualCasterAwakened.clear();
         ritualSphereState = null;
+        ritualSphereRecoveryCheckpoint = Map.of();
         ritualPrisonerAnchor = null;
         ritualNextBeamRefreshMillis = 0L;
         ritualSphereRepairAttempts = 0;
@@ -25017,6 +26501,95 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " trial=" + trial.trial() + " source=" + source);
     }
 
+    private me.copimine.endevent.domain.Wave7EchoDuelCellPolicy.Cell activeNamedEchoCell(UUID owner) {
+        if (owner == null || !realitySplitTrialController.ownsNamed(parseUuidOrNull(eventId), generation)) return null;
+        for (var trial : realitySplitTrialController.namedSnapshot().trials().values()) {
+            if (trial.trial() != RealitySplitTrialController.NamedTrial.PERSONAL_ECHO
+                    || trial.stage() == RealitySplitTrialController.Stage.COMPLETE
+                    || !trial.owners().contains(owner)) continue;
+            var roomDuels = realitySplitTrialController.namedSnapshot().personalEchoDuels().get(trial.chamber());
+            var duel = roomDuels == null ? null : roomDuels.get(owner);
+            if (duel == null) return null;
+            // Completed owners retain their own cell; the passage policy
+            // admits only adjacent cells whose two owners have completed.
+            return realitySplitTrialController.echoDuelCells(trial.chamber()).stream()
+                    .filter(cell -> cell.owner().equals(owner)).findFirst().orElse(null);
+        }
+        return null;
+    }
+
+    private boolean isNamedEchoCellLocationAllowed(UUID owner, Location target, Location anchor) {
+        var cell = activeNamedEchoCell(owner);
+        if (cell == null) return true;
+        if (target == null || anchor == null || target.getWorld() == null || anchor.getWorld() == null
+                || !target.getWorld().equals(anchor.getWorld())
+                || !isRealitySplitDestinationAllowed(owner, target,
+                realitySplitChamberController.assignment(), anchor)) return false;
+        RealitySplitTrialController.NamedTrialState trial =
+                realitySplitTrialController.namedTrial(cell.chamber());
+        Set<UUID> completedOwners = completedNamedEchoOwners(trial);
+        if (trial == null || completedOwners == null) return false;
+        List<Wave7EchoDuelCellPolicy.Cell> cells =
+                realitySplitTrialController.echoDuelCells(cell.chamber());
+        try {
+            List<Wave7EchoDuelCellBarrierPolicy.SharedBarrier> barriers =
+                    Wave7EchoDuelCellBarrierPolicy.plan(cell.chamber(),
+                            realitySplitChamberController.assignment().chamberCount(), trial.owners());
+            return Wave7EchoDuelCellBarrierPolicy.allowsOwnerLocation(cells, barriers,
+                    completedOwners, owner, target.getX() - anchor.getX(), target.getZ() - anchor.getZ());
+        } catch (RuntimeException invalidCellState) {
+            return false;
+        }
+    }
+
+    private boolean isNamedEchoCellTransitionAllowed(UUID owner, Location from, Location to,
+                                                      Location anchor) {
+        var cell = activeNamedEchoCell(owner);
+        if (cell == null) return true;
+        if (from == null || to == null || anchor == null || from.getWorld() == null
+                || to.getWorld() == null || anchor.getWorld() == null
+                || !from.getWorld().equals(anchor.getWorld()) || !to.getWorld().equals(anchor.getWorld())
+                || !isRealitySplitDestinationAllowed(owner, from,
+                realitySplitChamberController.assignment(), anchor)
+                || !isRealitySplitDestinationAllowed(owner, to,
+                realitySplitChamberController.assignment(), anchor)) return false;
+        RealitySplitTrialController.NamedTrialState trial =
+                realitySplitTrialController.namedTrial(cell.chamber());
+        Set<UUID> completedOwners = completedNamedEchoOwners(trial);
+        if (trial == null || completedOwners == null) return false;
+        List<Wave7EchoDuelCellPolicy.Cell> cells =
+                realitySplitTrialController.echoDuelCells(cell.chamber());
+        try {
+            List<Wave7EchoDuelCellBarrierPolicy.SharedBarrier> barriers =
+                    Wave7EchoDuelCellBarrierPolicy.plan(cell.chamber(),
+                            realitySplitChamberController.assignment().chamberCount(), trial.owners());
+            return Wave7EchoDuelCellBarrierPolicy.allowsOwnerTransition(cells, barriers,
+                    completedOwners, owner,
+                    from.getX() - anchor.getX(), from.getZ() - anchor.getZ(),
+                    to.getX() - anchor.getX(), to.getZ() - anchor.getZ());
+        } catch (RuntimeException invalidCellState) {
+            return false;
+        }
+    }
+
+    private Set<UUID> completedNamedEchoOwners(RealitySplitTrialController.NamedTrialState trial) {
+        if (trial == null || trial.trial() != RealitySplitTrialController.NamedTrial.PERSONAL_ECHO) return null;
+        Map<UUID, me.copimine.endevent.runtime.RealitySplitEchoDuelState.DuelRecord> duels =
+                realitySplitTrialController.namedSnapshot().personalEchoDuels().get(trial.chamber());
+        if (duels == null) return null;
+        Set<UUID> completed = new LinkedHashSet<>();
+        for (UUID owner : trial.owners()) {
+            var duel = duels.get(owner);
+            if (duel == null || !owner.equals(duel.ownerUuid())
+                    || !duel.eventId().equals(parseUuidOrNull(eventId))
+                    || duel.attemptGeneration() != generation || duel.room() != trial.chamber()) return null;
+            if (duel.lifecycle() == me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.COMPLETE) {
+                completed.add(owner);
+            }
+        }
+        return Set.copyOf(completed);
+    }
+
     private void handleRealitySplitTrialBossDeath(Entity entity) {
         if (entity == null || !realitySplitTrialController.owns(generation)
                 || !ownedBySession(entity, eventId, generation)) return;
@@ -25047,10 +26620,32 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!isNamedRealitySplitActor(entity)) return;
         RealitySplitTrialController.NamedTrialState trial = realitySplitTrialController.namedTrial(chamber);
         if (trial == null || !trial.trial().name().equals(role)) return;
+        if (Wave7NamedTrialActorPolicy.hasActorAdapter(trial.trial())
+                && (readNamedTrialActorCheckpoint(entity, trial) == null
+                || !entity.getUniqueId().equals(readNamedTrialActorCheckpoint(entity, trial).actorId()))) {
+            getLogger().severe("END_RIFT_NAMED_TRIAL_DEATH_REJECTED event=" + eventId
+                    + " generation=" + generation + " chamber=" + chamber
+                    + " role=" + role + " reason=invalid-actor-checkpoint");
+            enterNamedRealitySplitRecovery("WAVE7_NAMED_ACTOR_DEATH_CHECKPOINT_INVALID:" + role);
+            return;
+        }
+        if (trial.trial() == RealitySplitTrialController.NamedTrial.PERSONAL_ECHO) {
+            boolean ownerLethalDeath = consumeNamedEchoLethalDeath(entity);
+            removeNamedEchoRuntime(entity.getUniqueId(), true);
+            if (!ownerLethalDeath) {
+                getLogger().warning("END_RIFT_WAVE7_ECHO_DEATH_REJECTED event=" + eventId
+                        + " generation=" + generation + " chamber=" + chamber
+                        + " actor=" + entity.getUniqueId() + " reason=no-owner-lethal-receipt");
+                return;
+            }
+        }
         boolean accepted;
         if (trial.trial() == RealitySplitTrialController.NamedTrial.PERSONAL_ECHO) {
             UUID owner = parseUuidOrNull(readString(entity, new NamespacedKey(this, "end_event_named_echo_owner")));
-            accepted = realitySplitTrialController.completePersonalEcho(parseUuidOrNull(eventId), generation, chamber, owner);
+            RealitySplitTrialController.EchoCompletionReceipt receipt =
+                    realitySplitTrialController.receiptForConfirmedActorDeath(
+                            parseUuidOrNull(eventId), generation, chamber, owner, entity.getUniqueId());
+            accepted = receipt != null && realitySplitTrialController.completePersonalEcho(receipt);
         } else {
             accepted = realitySplitTrialController.completeNamedActor(parseUuidOrNull(eventId), generation,
                     chamber, trial.trial());
@@ -25058,11 +26653,190 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         realitySplitTrialRuntimeStates.remove(entity.getUniqueId());
         realitySplitTrialEntityUuids.remove(entity.getUniqueId());
         if (!accepted) return;
+        boolean personalEcho = trial.trial() == RealitySplitTrialController.NamedTrial.PERSONAL_ECHO;
+        if (personalEcho) {
+            // A persisted duel completion is the durable OPEN intent for its
+            // owner-cell separator. The world may be changed only after this
+            // checkpoint succeeds; bootstrap re-derives the same geometry.
+            if (!saveStateSync()) {
+                enterNamedRealitySplitRecovery("WAVE7_NAMED_ECHO_RECEIPT_SAVE_FAILED:" + chamber);
+                return;
+            }
+            if (!openCompletedNamedEchoCellBarriers(chamber)) {
+                if (phase != EventPhase.RECOVERY_REQUIRED) {
+                    enterNamedRealitySplitRecovery("WAVE7_ECHO_CELL_OPEN_FAILED:" + chamber);
+                }
+                return;
+            }
+        }
         if (realitySplitTrialController.namedTrial(chamber).stage() == RealitySplitTrialController.Stage.COMPLETE) {
             finishNamedRealitySplitTrial(chamber, "validated-named-actor-death");
-        } else if (!saveStateSync()) {
+        } else if (!personalEcho && !saveStateSync()) {
             enterNamedRealitySplitRecovery("WAVE7_NAMED_ECHO_RECEIPT_SAVE_FAILED:" + chamber);
         }
+    }
+
+    private boolean consumeNamedEchoLethalDeath(Entity entity) {
+        if (!(entity instanceof LivingEntity living)) return false;
+        UUID actorId = entity.getUniqueId();
+        EchoCombatAdmission.Pair pair = namedEchoCombatPairs.get(actorId);
+        EchoCombatAdmissionListener listener = namedEchoCombatListeners.get(actorId);
+        return pair != null && listener != null
+                && listener.consumeOwnerLethalDeath(pair, living.getLastDamageCause());
+    }
+
+    private boolean openCompletedNamedEchoCellBarriers(int chamber) {
+        if (!realitySplitTrialController.ownsNamed(parseUuidOrNull(eventId), generation)) return false;
+        RealitySplitTrialController.NamedTrialState trial = realitySplitTrialController.namedTrial(chamber);
+        if (trial == null || trial.trial() != RealitySplitTrialController.NamedTrial.PERSONAL_ECHO) {
+            return true;
+        }
+        var snapshot = realitySplitTrialController.namedSnapshot();
+        Map<UUID, me.copimine.endevent.runtime.RealitySplitEchoDuelState.DuelRecord> duels =
+                snapshot.personalEchoDuels().get(chamber);
+        if (duels == null) return false;
+        Set<UUID> completedOwners = new LinkedHashSet<>();
+        for (UUID owner : trial.owners()) {
+            var duel = duels.get(owner);
+            if (duel == null || !duel.ownerUuid().equals(owner)
+                    || !duel.eventId().equals(parseUuidOrNull(eventId))
+                    || duel.attemptGeneration() != generation || duel.room() != chamber) return false;
+            if (duel.lifecycle()
+                    == me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.COMPLETE) {
+                completedOwners.add(owner);
+            }
+        }
+        List<Wave7EchoDuelCellBarrierPolicy.SharedBarrier> barriers =
+                Wave7EchoDuelCellBarrierPolicy.plan(chamber,
+                        realitySplitChamberController.assignment().chamberCount(), trial.owners());
+        for (Wave7EchoDuelCellBarrierPolicy.SharedBarrier barrier : barriers) {
+            if (completedOwners.contains(barrier.lowerOwner())
+                    && completedOwners.contains(barrier.upperOwner())
+                    && realitySplitEchoBarrierByPair.containsKey(barrier)
+                    && !openRealitySplitEchoCellBoundary(barrier)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Open one owner separator after the two adjacent duel completions are durable. */
+    private boolean openRealitySplitEchoCellBoundary(
+            Wave7EchoDuelCellBarrierPolicy.SharedBarrier boundary) {
+        Set<RealitySplitBarrierPolicy.Cell> ownedCells = realitySplitEchoBarrierByPair.get(boundary);
+        if (ownedCells == null) return true;
+        if (ownedCells.isEmpty()) return false;
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) return false;
+        HazardMutationJournal.Snapshot journal = hazardJournal == null
+                ? HazardMutationJournal.Snapshot.empty() : hazardJournal.load();
+        boolean journalOwnsCells = journal.valid()
+                && journal.status() == HazardMutationJournal.Status.APPLIED
+                && journal.eventId().equals(eventId) && journal.generation() == generation
+                && journal.world().equals(world.getName())
+                && journal.entries().stream().allMatch(
+                HazardMutationJournal.Entry::isRealitySplitBarrierMutation)
+                && journal.entries().stream().allMatch(entry -> entry.eventId().equals(eventId)
+                && entry.generation() == generation
+                && entry.worldId().equalsIgnoreCase(world.getUID().toString()));
+        if (!journalOwnsCells) {
+            enterNamedRealitySplitRecovery("WAVE7_ECHO_CELL_JOURNAL_SCOPE_INVALID");
+            return false;
+        }
+
+        List<RealitySplitBarrierPolicy.Cell> toOpen = ownedCells.stream()
+                .filter(cell -> !realitySplitEchoBarrierStillNeeded(cell, boundary))
+                .toList();
+        for (RealitySplitBarrierPolicy.Cell cell : toOpen) {
+            String original = realitySplitBarrierOriginals.get(cell);
+            int x = coreX + cell.xOffset();
+            int y = combatFloorY() + cell.level();
+            int z = coreZ + cell.zOffset();
+            Block barrier = world.getBlockAt(x, y, z);
+            if (original == null || original.isBlank() || !isRealitySplitBarrierBlock(barrier)
+                    || journal.entries().stream().noneMatch(entry -> entry.x() == x
+                    && entry.floorY() + 1 == y && entry.z() == z
+                    && original.equals(entry.webOriginal()))) {
+                enterNamedRealitySplitRecovery("WAVE7_ECHO_CELL_OWNERSHIP_MISMATCH");
+                return false;
+            }
+        }
+
+        RuntimeException[] visualRemovalError = new RuntimeException[1];
+        RealitySplitBarrierMutationPolicy.Result<RealitySplitBarrierPolicy.Cell> result =
+                RealitySplitBarrierMutationPolicy.applyAtomically(toOpen,
+                        cell -> world.getBlockAt(coreX + cell.xOffset(),
+                                        combatFloorY() + cell.level(), coreZ + cell.zOffset())
+                                .getBlockData().getAsString(),
+                        cell -> {
+                            Block barrier = world.getBlockAt(coreX + cell.xOffset(),
+                                    combatFloorY() + cell.level(), coreZ + cell.zOffset());
+                            barrier.setType(Material.AIR, false);
+                            return barrier.getType() == Material.AIR;
+                        },
+                        (cell, before) -> restoreRealitySplitBlock(world.getBlockAt(
+                                coreX + cell.xOffset(), combatFloorY() + cell.level(),
+                                coreZ + cell.zOffset()), before),
+                        () -> {
+                            try {
+                                for (RealitySplitBarrierPolicy.Cell cell : toOpen) {
+                                    removeRealitySplitBarrierVisual(cell);
+                                }
+                                return true;
+                            } catch (RuntimeException error) {
+                                visualRemovalError[0] = error;
+                                return false;
+                            }
+                        });
+        if (!result.committed()) {
+            boolean closed = result.rollbackComplete()
+                    && restoreRealitySplitBoundaryClosed(world, toOpen);
+            if (!closed) {
+                rememberUncommittedRealitySplitEchoBoundaryRollback(boundary, ownedCells, toOpen);
+                enterNamedRealitySplitRecovery("WAVE7_ECHO_CELL_OPEN_ROLLBACK_FAILED");
+            } else if (visualRemovalError[0] != null) {
+                getLogger().log(Level.WARNING, "END_RIFT_WAVE7_ECHO_CELL_VISUAL_OPEN_FAILED event="
+                        + eventId + " pair=" + boundary, visualRemovalError[0]);
+            }
+            return false;
+        }
+        for (RealitySplitBarrierPolicy.Cell cell : toOpen) {
+            Block barrier = world.getBlockAt(coreX + cell.xOffset(),
+                    combatFloorY() + cell.level(), coreZ + cell.zOffset());
+            if (barrier.getType() != Material.AIR) {
+                if (!restoreRealitySplitBoundaryClosed(world, toOpen)) {
+                    rememberUncommittedRealitySplitEchoBoundaryRollback(boundary, ownedCells, toOpen);
+                    enterNamedRealitySplitRecovery("WAVE7_ECHO_CELL_OPEN_POSTCONDITION_ROLLBACK_FAILED");
+                }
+                return false;
+            }
+        }
+        realitySplitEchoBarrierByPair.remove(boundary);
+        for (RealitySplitBarrierPolicy.Cell cell : toOpen) {
+            realitySplitBarrierCells.remove(cell);
+        }
+        getLogger().info("END_RIFT_WAVE7_ECHO_CELL_BOUNDARY_OPENED event=" + eventId
+                + " generation=" + generation + " lower_owner=" + boundary.lowerOwner()
+                + " upper_owner=" + boundary.upperOwner() + " opened=" + toOpen.size());
+        return true;
+    }
+
+    private boolean realitySplitEchoBarrierStillNeeded(
+            RealitySplitBarrierPolicy.Cell cell,
+            Wave7EchoDuelCellBarrierPolicy.SharedBarrier boundaryBeingOpened) {
+        return realitySplitBarrierByBoundary.values().stream().anyMatch(cells -> cells.contains(cell))
+                || realitySplitEchoBarrierByPair.entrySet().stream()
+                .anyMatch(entry -> !entry.getKey().equals(boundaryBeingOpened)
+                        && entry.getValue().contains(cell));
+    }
+
+    private void rememberUncommittedRealitySplitEchoBoundaryRollback(
+            Wave7EchoDuelCellBarrierPolicy.SharedBarrier boundary,
+            Set<RealitySplitBarrierPolicy.Cell> ownedCells,
+            List<RealitySplitBarrierPolicy.Cell> openedCells) {
+        realitySplitEchoBoundaryCellsPendingRollback.put(boundary, Set.copyOf(ownedCells));
+        realitySplitEchoOpenedCellsPendingRollback.put(boundary, List.copyOf(openedCells));
+        scheduleRealitySplitBoundaryRollbackRetry();
     }
 
     private void clearCompletedRealitySplitTrialObjectives(int chamber) {
@@ -25140,8 +26914,31 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     enterNamedRealitySplitRecovery("WAVE7_NAMED_ACTOR_MISSING_DURING_TICK:" + trial.trial());
                     return;
                 }
+                if (trial.trial() == RealitySplitTrialController.NamedTrial.PERSONAL_ECHO) {
+                    Map<UUID, me.copimine.endevent.runtime.RealitySplitEchoDuelState.DuelRecord> duels =
+                            realitySplitTrialController.namedSnapshot().personalEchoDuels().get(trial.chamber());
+                    if (duels == null) {
+                        enterNamedRealitySplitRecovery("WAVE7_NAMED_ECHO_STATE_MISSING:" + trial.chamber());
+                        return;
+                    }
+                    for (var cell : realitySplitTrialController.echoDuelCells(trial.chamber())) {
+                        var duel = duels.get(cell.owner());
+                        if (duel == null || !tickNamedEchoDuel(namedWorld, namedCore, trial, cell, duel)) {
+                            enterNamedRealitySplitRecovery("WAVE7_NAMED_ECHO_RUNTIME_FAILED:" + cell.owner());
+                            return;
+                        }
+                    }
+                    continue;
+                }
                 Entity actor = findRealitySplitTrialEntity(trial.chamber(), trial.trial().name(), -1);
-                if (actor instanceof LivingEntity living && trial.trial() == RealitySplitTrialController.NamedTrial.WARDEN) {
+                if (Wave7NamedTrialActorPolicy.hasActorAdapter(trial.trial())) {
+                    if (!(actor instanceof LivingEntity living)
+                            || !tickNamedTrialActor(living, trial)) {
+                        enterNamedRealitySplitRecovery("WAVE7_NAMED_ACTOR_RUNTIME_FAILED:" + trial.trial());
+                        return;
+                    }
+                } else if (actor instanceof LivingEntity living
+                        && trial.trial() == RealitySplitTrialController.NamedTrial.WARDEN) {
                     tickRealitySplitWarden(living, realitySplitTrialRuntimeStates.get(actor.getUniqueId()));
                 }
             }
@@ -25170,6 +26967,680 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 case RIFT_HUNTER -> tickRealitySplitHunter(living, state);
             }
         }
+    }
+
+    private boolean tickNamedEchoDuel(World world, Location core,
+            RealitySplitTrialController.NamedTrialState trial,
+            me.copimine.endevent.domain.Wave7EchoDuelCellPolicy.Cell cell,
+            me.copimine.endevent.runtime.RealitySplitEchoDuelState.DuelRecord duel) {
+        if (duel.lifecycle() == me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.COMPLETE) return true;
+        Entity rawActor = findRealitySplitTrialEntity(trial.chamber(),
+                RealitySplitTrialController.NamedTrial.PERSONAL_ECHO.name(), cell.ordinal());
+        if (!(rawActor instanceof Pillager carrier) || !duel.actor().actorUuid().equals(carrier.getUniqueId())
+                || !isNamedRealitySplitActor(carrier)) return false;
+        Player owner = Bukkit.getPlayer(cell.owner());
+        boolean ownerReady = owner != null && me.copimine.endevent.runtime.RealitySplitEchoDuelState.ownerMayResume(
+                owner.isOnline(), !owner.isDead(), owner.getWorld().equals(world), isNamedEchoClientReady(owner),
+                attemptLifecycle.isCombatAdmitted(cell.owner(), generation));
+        if (!ownerReady) {
+            carrier.setTarget(null);
+            carrier.setAI(false);
+            carrier.setAware(false);
+            if (owner == null || !owner.isOnline() || owner.isDead()) {
+                if (duel.lifecycle() == me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.ACTIVE) {
+                    long nowMillis = System.currentTimeMillis();
+                    if (duel.revision() >= me.copimine.endevent.runtime.RealitySplitEchoDuelState.MAX_COUNTER) return false;
+                    java.util.OptionalLong offlineDeadline =
+                            me.copimine.endevent.runtime.RealitySplitEchoDuelState.ownerOfflineDeadlineMillis(
+                                    duel.returnDeadlineMillis(), nowMillis, 120_000L);
+                    if (offlineDeadline.isEmpty()) return false;
+                    var offline = duel.ownerOffline(offlineDeadline.getAsLong(), duel.revision() + 1L);
+                    if (!realitySplitTrialController.registerPersonalEchoDuel(offline) || !saveStateSync()) return false;
+                } else if (duel.lifecycle() == me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.OWNER_OFFLINE
+                        && System.currentTimeMillis() >= duel.returnDeadlineMillis()) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if (duel.lifecycle() == me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.OWNER_OFFLINE
+                && System.currentTimeMillis() >= duel.returnDeadlineMillis()) return false;
+        if (core == null || !cell.contains(owner.getLocation().getX() - core.getX(),
+                owner.getLocation().getZ() - core.getZ())) {
+            Location ownerPoint = echoDuelCellPoint(core, cell, ChamberIsolationPolicy.INNER_RADIUS + 2.0D);
+            if (!moveNamedEchoOwnerToCell(owner, ownerPoint, cell, core)) return false;
+        }
+        if (!cell.contains(carrier.getLocation().getX() - core.getX(),
+                carrier.getLocation().getZ() - core.getZ())) return false;
+
+        me.copimine.endevent.runtime.RealitySplitEchoDuelState.DuelRecord current = duel;
+        if (duel.lifecycle() == me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.OWNER_OFFLINE
+                || !Objects.equals(namedEchoBridgeSessions.get(carrier.getUniqueId()),
+                clientBridgeSessions.get(cell.owner()))) {
+            if (duel.runtimeGeneration() >= me.copimine.endevent.runtime.RealitySplitEchoDuelState.MAX_COUNTER
+                    || duel.revision() >= me.copimine.endevent.runtime.RealitySplitEchoDuelState.MAX_COUNTER
+                    || duel.actor().revision() >= me.copimine.endevent.runtime.RealitySplitEchoDuelState.MAX_COUNTER) return false;
+            long runtime = duel.runtimeGeneration() + 1L;
+            var actor = new me.copimine.endevent.runtime.RealitySplitEchoDuelState.ActorState(
+                    carrier.getUniqueId(), carrier.getHealth(), carrier.getMaxHealth(),
+                    me.copimine.endevent.runtime.RealitySplitEchoDuelState.ActorLifecycle.ALIVE,
+                    duel.actor().revision() + 1L, duel.actor().nextActionTick(),
+                    duel.actor().meleeCooldownUntilTick(), duel.actor().rangedCooldownUntilTick(),
+                    duel.actor().pendingUseUntilTick(), 0L);
+            current = duel.withActor(runtime, duel.ownerStartingHealth(), duel.ownerMaximumHealth(),
+                    duel.returnDeadlineMillis(), actor, duel.revision() + 1L,
+                    duel.replicaRevision(), duel.replicaState(), duel.behaviorStrategy());
+            if (!realitySplitTrialController.registerPersonalEchoDuel(current)) return false;
+            carrier.getPersistentDataContainer().set(new NamespacedKey(this, "end_event_named_echo_runtime"),
+                    PersistentDataType.LONG, runtime);
+            if (!saveStateSync()) return false;
+        } else if (duel.lifecycle() == me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.ACTIVE
+                && carrier.getHealth() != duel.actor().currentHealth()) {
+            if (duel.revision() >= me.copimine.endevent.runtime.RealitySplitEchoDuelState.MAX_COUNTER
+                    || duel.actor().revision() >= me.copimine.endevent.runtime.RealitySplitEchoDuelState.MAX_COUNTER) return false;
+            var actor = new me.copimine.endevent.runtime.RealitySplitEchoDuelState.ActorState(
+                    carrier.getUniqueId(), carrier.getHealth(), carrier.getMaxHealth(),
+                    me.copimine.endevent.runtime.RealitySplitEchoDuelState.ActorLifecycle.ALIVE,
+                    duel.actor().revision() + 1L, duel.actor().nextActionTick(),
+                    duel.actor().meleeCooldownUntilTick(), duel.actor().rangedCooldownUntilTick(),
+                    duel.actor().pendingUseUntilTick(), 0L);
+            current = duel.withActor(duel.runtimeGeneration(), duel.ownerStartingHealth(),
+                    duel.ownerMaximumHealth(), duel.returnDeadlineMillis(), actor,
+                    duel.revision() + 1L, duel.replicaRevision(), duel.replicaState(), duel.behaviorStrategy());
+            if (!realitySplitTrialController.registerPersonalEchoDuel(current) || !saveStateSync()) return false;
+        }
+        carrier.setPersistent(true);
+        carrier.setCanJoinRaid(false);
+        carrier.setCanPickupItems(false);
+        carrier.setAware(true);
+        carrier.setAI(true);
+        carrier.setTarget(null);
+        if (!configureNamedEchoRuntime(carrier, cell, current, owner)) return false;
+        double distanceSquared = carrier.getLocation().distanceSquared(owner.getLocation());
+        if (eventTickCounter % 20L == 0L) {
+            if (distanceSquared > 16.0D) carrier.getPathfinder().moveTo(owner, 0.9D);
+            else carrier.getPathfinder().stopPathfinding();
+        }
+        EchoCombatAdmissionListener listener = namedEchoCombatListeners.get(carrier.getUniqueId());
+        if (listener != null) listener.tick();
+        EchoCombatAdmission.Pair pair = namedEchoCombatPairs.get(carrier.getUniqueId());
+        EchoCombatAdmission.Pair expectedPair = new EchoCombatAdmission.Pair(current.eventId(), generation,
+                current.runtimeGeneration(), current.duelId(), cell.owner(), carrier.getUniqueId(), world.getUID());
+        if (pair == null || !pair.equals(expectedPair) || listener == null
+                || !Objects.equals(namedEchoBridgeSessions.get(carrier.getUniqueId()),
+                clientBridgeSessions.get(cell.owner()))) return false;
+        me.copimine.endevent.runtime.wave7.EchoReplicaInventory replica;
+        try {
+            replica = me.copimine.endevent.runtime.wave7.EchoReplicaInventory.restore(
+                    current.replicaState(), current.eventId(), current.attemptGeneration(),
+                    current.duelId(), current.ownerUuid(), current.replicaRevision());
+        } catch (RuntimeException invalidReplica) {
+            return false;
+        }
+        namedEchoReplicas.put(carrier.getUniqueId(), replica);
+        boolean sameWorld = owner.getWorld().equals(world) && carrier.getWorld().equals(world);
+        boolean ownerInCell = sameWorld && cell.contains(owner.getLocation().getX() - core.getX(),
+                owner.getLocation().getZ() - core.getZ());
+        boolean actorInCell = sameWorld && cell.contains(carrier.getLocation().getX() - core.getX(),
+                carrier.getLocation().getZ() - core.getZ());
+        EchoDuelCombatRuntimeAdapter.Scope scope;
+        try {
+            scope = new EchoDuelCombatRuntimeAdapter.Scope(current.eventId(), current.attemptGeneration(),
+                    current.runtimeGeneration(), trial.chamber(), current.duelId(), current.ownerUuid(),
+                    carrier.getUniqueId(), world.getUID(), ownerReady, sameWorld, ownerInCell, actorInCell);
+        } catch (RuntimeException invalidScope) {
+            return false;
+        }
+        java.util.Optional<EchoDuelCombatRuntimeAdapter.Decision> decision;
+        try {
+            decision = EchoDuelCombatRuntimeAdapter.tick(current, replica.state(), scope,
+                    new EchoDuelCombatRuntimeAdapter.Observation(eventTickCounter, distanceSquared,
+                            carrier.hasLineOfSight(owner)));
+        } catch (RuntimeException invalidObservation) {
+            return false;
+        }
+        if (decision.isEmpty()) {
+            // Adapter failures can occur after a pure policy mutates its local replica.
+            // Restore the controller receipt so no uncommitted quantity leaks through the cache.
+            try {
+                namedEchoReplicas.put(carrier.getUniqueId(),
+                        me.copimine.endevent.runtime.wave7.EchoReplicaInventory.restore(
+                                current.replicaState(), current.eventId(), current.attemptGeneration(),
+                                current.duelId(), current.ownerUuid(), current.replicaRevision()));
+            } catch (RuntimeException invalidReplica) {
+                return false;
+            }
+            return false;
+        }
+        if (!commitNamedEchoCombatAction(world, core, trial, cell, owner, carrier, replica, decision.get())) {
+            return false;
+        }
+        sendNamedEchoView(carrier.getUniqueId(), "END_ECHO_STATE");
+        return true;
+    }
+
+    /** Persist each accepted Echo action and its exact costs before touching native combat state. */
+    private boolean commitNamedEchoCombatAction(World world, Location core,
+            RealitySplitTrialController.NamedTrialState trial,
+            me.copimine.endevent.domain.Wave7EchoDuelCellPolicy.Cell cell,
+            Player owner, Pillager carrier,
+            me.copimine.endevent.runtime.wave7.EchoReplicaInventory replica,
+            EchoDuelCombatRuntimeAdapter.Decision decision) {
+        if (world == null || core == null || trial == null || cell == null || owner == null
+                || carrier == null || replica == null || decision == null
+                || decision.action() == EchoDuelCombatRuntimeAdapter.Action.NONE) {
+            return decision != null && decision.action() == EchoDuelCombatRuntimeAdapter.Action.NONE;
+        }
+        EchoDuelCombatRuntimeAdapter.Scope scope = decision.scope();
+        var prior = namedEchoDuel(cell.owner(), scope.duelId());
+        var next = decision.nextDuel();
+        EchoCombatAdmission.Pair pair = namedEchoCombatPairs.get(carrier.getUniqueId());
+        if (prior == null || !prior.equals(decision.previousDuel())
+                || !prior.equals(namedEchoDuel(cell.owner(), prior.duelId()))
+                || !prior.eventId().equals(parseUuidOrNull(eventId))
+                || prior.attemptGeneration() != generation || prior.room() != trial.chamber()
+                || !prior.duelId().equals(scope.duelId()) || !prior.ownerUuid().equals(cell.owner())
+                || !prior.actor().actorUuid().equals(carrier.getUniqueId())
+                || !next.eventId().equals(prior.eventId()) || next.attemptGeneration() != prior.attemptGeneration()
+                || next.runtimeGeneration() != prior.runtimeGeneration() || next.revision() != prior.revision() + 1L
+                || !next.replicaState().equals(replica.state().encode())
+                || next.replicaRevision() != replica.state().revision()
+                || !scope.combatAdmitted() || !scope.sameWorld() || !scope.ownerInCell() || !scope.actorInCell()
+                || !world.equals(owner.getWorld()) || !world.equals(carrier.getWorld())
+                || !cell.contains(owner.getLocation().getX() - core.getX(), owner.getLocation().getZ() - core.getZ())
+                || !cell.contains(carrier.getLocation().getX() - core.getX(), carrier.getLocation().getZ() - core.getZ())
+                || pair == null || !pair.event().equals(next.eventId()) || pair.generation() != next.attemptGeneration()
+                || pair.epoch() != next.runtimeGeneration() || !pair.duel().equals(next.duelId())
+                || !pair.owner().equals(next.ownerUuid()) || !pair.actor().equals(next.actor().actorUuid())
+                || !pair.world().equals(world.getUID())
+                || !attemptLifecycle.isCombatAdmitted(cell.owner(), generation)
+                || !isNamedEchoClientReady(owner)) return false;
+        if (!realitySplitTrialController.registerPersonalEchoDuel(next)) return false;
+        if (!saveStateSync()) {
+            return compensateRejectedNamedEchoCombatAction(cell.owner(), carrier, decision,
+                    "WAVE7_ECHO_ACTION_CHECKPOINT_FAILED");
+        }
+        namedEchoReplicas.put(carrier.getUniqueId(), replica);
+        boolean accepted;
+        try {
+            accepted = executeNamedEchoCombatAction(world, owner, carrier, replica, decision);
+        } catch (RuntimeException nativeActionFailure) {
+            getLogger().log(Level.WARNING, "Echo native action failed before acceptance", nativeActionFailure);
+            accepted = false;
+        }
+        if (!accepted) {
+            return compensateRejectedNamedEchoCombatAction(cell.owner(), carrier, decision,
+                    "WAVE7_ECHO_NATIVE_ACTION_REJECTED");
+        }
+        return true;
+    }
+
+    /** Restore unspent resources with a newer revision when Bukkit rejects the native effect. */
+    private boolean compensateRejectedNamedEchoCombatAction(UUID owner, Pillager carrier,
+            EchoDuelCombatRuntimeAdapter.Decision decision, String reason) {
+        if (owner == null || carrier == null || decision == null) return false;
+        var charged = decision.nextDuel();
+        var current = namedEchoDuel(owner, charged.duelId());
+        var refunded = EchoDuelCombatRuntimeAdapter.rejectedActionCheckpoint(decision).orElse(null);
+        if (refunded == null || !charged.equals(current)
+                || !realitySplitTrialController.registerPersonalEchoDuel(refunded)
+                || !saveStateSync()) {
+            enterNamedRealitySplitRecovery(reason + "_COMPENSATION_FAILED");
+            return false;
+        }
+        try {
+            var replica = me.copimine.endevent.runtime.wave7.EchoReplicaInventory.restore(
+                    refunded.replicaState(), refunded.eventId(), refunded.attemptGeneration(),
+                    refunded.duelId(), refunded.ownerUuid(), refunded.replicaRevision());
+            namedEchoReplicas.put(carrier.getUniqueId(), replica);
+            if (carrier.isValid() && !carrier.isDead()
+                    && Double.compare(carrier.getHealth(), refunded.actor().currentHealth()) != 0) {
+                carrier.setHealth(refunded.actor().currentHealth());
+            }
+            if (carrier.isValid() && !carrier.isDead()) {
+                replica.equip(carrier.getEquipment(), replica.state().selectedSlot(), 40);
+            }
+        } catch (RuntimeException compensationProjectionFailure) {
+            enterNamedRealitySplitRecovery(reason + "_PROJECTION_FAILED");
+            return false;
+        }
+        getLogger().warning(reason + " event=" + refunded.eventId()
+                + " generation=" + refunded.attemptGeneration() + " duel=" + refunded.duelId()
+                + " action=refunded-with-monotonic-receipt");
+        return true;
+    }
+
+    /** Execute only the persisted owner-bound action with its pre-cost item projection. */
+    private boolean executeNamedEchoCombatAction(World world, Player owner, Pillager carrier,
+            me.copimine.endevent.runtime.wave7.EchoReplicaInventory replica,
+            EchoDuelCombatRuntimeAdapter.Decision decision) {
+        if (world == null || owner == null || carrier == null || replica == null || decision == null
+                || !world.equals(owner.getWorld()) || !world.equals(carrier.getWorld())
+                || !decision.scope().ownerUuid().equals(owner.getUniqueId())
+                || !decision.scope().actorUuid().equals(carrier.getUniqueId())
+                || !decision.scope().worldId().equals(world.getUID())) return false;
+        ItemStack actionItem = materializeNamedEchoItem(decision.actionItem());
+        if (actionItem == null) return false;
+        carrier.getEquipment().setItemInMainHand(actionItem);
+        switch (decision.action()) {
+            case MELEE -> {
+                if (decision.actionItem().kind() != me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.MELEE
+                        || owner.isDead() || !owner.isValid() || carrier.isDead() || !carrier.isValid()
+                        || !carrier.hasLineOfSight(owner)
+                        || carrier.getLocation().distanceSquared(owner.getLocation()) > 16.0D) return false;
+                AttributeInstance attack = carrier.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
+                if (attack == null || !Double.isFinite(attack.getValue()) || attack.getValue() <= 0.0D
+                        || attack.getValue() > 100.0D) return false;
+                EchoCombatAdmission.Pair pair = namedEchoCombatPairs.get(carrier.getUniqueId());
+                EchoCombatAdmissionListener listener = namedEchoCombatListeners.get(carrier.getUniqueId());
+                if (pair == null || listener == null
+                        || !listener.beginOwnerCombatAction(pair, owner.getUniqueId())) return false;
+                try {
+                    owner.damage(attack.getValue(), carrier);
+                } catch (RuntimeException rejectedDamage) {
+                    // A monitor receipt distinguishes a partially delivered native hit from a failure.
+                }
+                if (!listener.consumeAcceptedOwnerCombatAction(pair, owner.getUniqueId(),
+                        owner.getLastDamageCause())) return false;
+            }
+            case RANGED -> {
+                if (decision.actionItem().kind() != me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.BOW
+                        && decision.actionItem().kind() != me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.CROSSBOW) {
+                    return false;
+                }
+                if (decision.ammoSlot() < 0 || !carrier.hasLineOfSight(owner)
+                        || carrier.getLocation().distanceSquared(owner.getLocation()) > 900.0D) return false;
+                Location origin = carrier.getEyeLocation();
+                Vector direction = owner.getEyeLocation().toVector().subtract(origin.toVector());
+                if (direction.lengthSquared() < 0.01D || !Double.isFinite(direction.lengthSquared())) return false;
+                Arrow arrow = null;
+                EchoCombatAdmissionListener listener = namedEchoCombatListeners.get(carrier.getUniqueId());
+                if (listener == null) return false;
+                try {
+                    arrow = world.spawn(origin, Arrow.class);
+                    if (arrow == null) return false;
+                    if (!arrow.isValid() || !world.equals(arrow.getWorld())) {
+                        listener.discardServerLaunchedEchoArrow(arrow, carrier.getUniqueId());
+                        return false;
+                    }
+                    arrow.setShooter(carrier);
+                    arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
+                    int power = decision.actionItem().enchantments().getOrDefault("minecraft:power", 0);
+                    arrow.setDamage(Math.min(20.0D, 2.0D + (power > 0 ? 0.5D * power + 0.5D : 0.0D)));
+                    if (!listener.registerServerLaunchedEchoArrow(
+                            arrow, carrier.getUniqueId())) {
+                        listener.discardServerLaunchedEchoArrow(arrow, carrier.getUniqueId());
+                        return false;
+                    }
+                    float speed = decision.actionItem().kind()
+                            == me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.CROSSBOW ? 3.0F : 2.0F;
+                    arrow.setVelocity(direction.normalize().multiply(speed));
+                    Vector velocity = arrow.getVelocity();
+                    if (!arrow.isValid() || !world.equals(arrow.getWorld())
+                            || !carrier.getUniqueId().equals(
+                            arrow.getShooter() instanceof Entity shooter ? shooter.getUniqueId() : null)
+                            || !Double.isFinite(velocity.lengthSquared()) || velocity.lengthSquared() < 0.01D) {
+                        listener.discardServerLaunchedEchoArrow(arrow, carrier.getUniqueId());
+                        return false;
+                    }
+                } catch (RuntimeException launchFailure) {
+                    if (arrow != null) listener.discardServerLaunchedEchoArrow(arrow, carrier.getUniqueId());
+                    return false;
+                }
+            }
+            case CONSUMABLE -> {
+                double expectedHealth = decision.nextDuel().actor().currentHealth();
+                if (!Double.isFinite(expectedHealth) || expectedHealth <= carrier.getHealth()
+                        || expectedHealth > carrier.getMaxHealth()) return false;
+                try {
+                    carrier.setHealth(expectedHealth);
+                } catch (RuntimeException rejectedHeal) {
+                    if (Double.compare(carrier.getHealth(), expectedHealth) != 0) return false;
+                }
+                if (Double.compare(carrier.getHealth(), expectedHealth) != 0) return false;
+                try {
+                    carrier.getWorld().playSound(carrier.getLocation(), Sound.ENTITY_GENERIC_EAT, 0.55F, 1.0F);
+                } catch (RuntimeException ignoredSoundFailure) {
+                    // The server health update is the accepted effect; sound is cosmetic.
+                }
+            }
+            case NONE -> { return true; }
+        }
+        int mainSlot = decision.action() == EchoDuelCombatRuntimeAdapter.Action.CONSUMABLE
+                ? replica.state().selectedSlot() : decision.itemSlot();
+        try {
+            replica.equip(carrier.getEquipment(), mainSlot, 40);
+        } catch (RuntimeException equipmentProjectionFailure) {
+            getLogger().log(Level.WARNING, "Echo accepted action but equipment projection needs tick repair",
+                    equipmentProjectionFailure);
+        }
+        return true;
+    }
+
+    private ItemStack materializeNamedEchoItem(
+            me.copimine.endevent.domain.wave7.EchoLoadoutState.Item item) {
+        if (item == null || !item.usable() || item.amount() < 1) return null;
+        try {
+            Material material = Material.valueOf(item.material());
+            ItemStack stack = new ItemStack(material, item.amount());
+            ItemMeta meta = stack.getItemMeta();
+            if (meta == null) return null;
+            if (!item.name().isEmpty()) meta.setDisplayName(item.name());
+            if (meta instanceof org.bukkit.inventory.meta.Damageable damageable) {
+                damageable.setDamage(item.damage());
+            } else if (item.damage() != 0) return null;
+            for (var enchantment : item.enchantments().entrySet()) {
+                NamespacedKey key = NamespacedKey.fromString(enchantment.getKey());
+                var nativeEnchantment = key == null ? null : org.bukkit.Registry.ENCHANTMENT.get(key);
+                if (nativeEnchantment == null || !nativeEnchantment.canEnchantItem(stack)
+                        || !meta.addEnchant(nativeEnchantment, enchantment.getValue(), false)) return null;
+            }
+            return stack.setItemMeta(meta) ? stack : null;
+        } catch (RuntimeException unsupportedItem) {
+            return null;
+        }
+    }
+
+    private boolean tickNamedTrialActor(LivingEntity actor,
+            RealitySplitTrialController.NamedTrialState trial) {
+        if (actor == null || !actor.isValid() || actor.isDead() || trial == null
+                || !isNamedRealitySplitActor(actor)) return false;
+        Wave7NamedTrialActorPolicy.Checkpoint checkpoint = readNamedTrialActorCheckpoint(actor, trial);
+        if (checkpoint == null) return false;
+        Wave7NamedTrialActorPolicy.Profile profile = Wave7NamedTrialActorPolicy.profile(trial.trial());
+        if (profile == null || !profile.entityType().equals(actor.getType().name())) return false;
+        if (trial.trial() == RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN
+                && eventTickCounter % 12L == 0L) moveNamedTrialMarksman(actor, trial.chamber());
+        long now = System.currentTimeMillis();
+        Player target = checkpoint.targetId() == null ? null : Bukkit.getPlayer(checkpoint.targetId());
+
+        if (checkpoint.attack() != Wave7NamedTrialActorPolicy.Attack.NONE) {
+            if (checkpoint.phaseDeadlineMillis() > now) {
+                renderNamedTrialTelegraph(actor, target, checkpoint.attack());
+                return true;
+            }
+            if (checkpoint.attack() != Wave7NamedTrialActorPolicy.Attack.MARKSMAN_SUPPORT
+                    && (target == null || !isCurrentRealitySplitTrialTarget(actor, target))) {
+                return finishNamedTrialAttack(actor, checkpoint, now);
+            }
+            if (!resolveNamedTrialAttack(actor, target, checkpoint.attack(), trial.chamber())) return false;
+            long cooldown = now + Wave7NamedTrialActorPolicy.cooldownTicks(checkpoint.attack()) * 50L;
+            return writeNamedTrialActorCheckpoint(actor, new Wave7NamedTrialActorPolicy.Checkpoint(
+                    checkpoint.eventId(), checkpoint.generation(), checkpoint.chamber(), checkpoint.trial(),
+                    checkpoint.actorId(), checkpoint.attackIndex(), Wave7NamedTrialActorPolicy.Attack.NONE,
+                    0L, cooldown, null,
+                    checkpoint.supportUsed()
+                            || checkpoint.attack() == Wave7NamedTrialActorPolicy.Attack.MARKSMAN_SUPPORT));
+        }
+        if (now < checkpoint.cooldownUntilMillis()) return true;
+        target = closestRealitySplitTrialTarget(actor, trial.chamber());
+        if (target == null) return true;
+
+        Wave7NamedTrialActorPolicy.Attack attack;
+        boolean supportUsed = checkpoint.supportUsed();
+        if (trial.trial() == RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN
+                && !supportUsed && actor.getHealth() <= actor.getMaxHealth() * 0.50D) {
+            attack = Wave7NamedTrialActorPolicy.Attack.MARKSMAN_SUPPORT;
+        } else {
+            attack = Wave7NamedTrialActorPolicy.attackFor(trial.trial(), checkpoint.attackIndex());
+        }
+        if (attack == Wave7NamedTrialActorPolicy.Attack.NONE
+                || checkpoint.attackIndex() >= 1_000_000L) return false;
+        long deadline = now + Wave7NamedTrialActorPolicy.telegraphTicks(attack) * 50L;
+        Wave7NamedTrialActorPolicy.Checkpoint started = new Wave7NamedTrialActorPolicy.Checkpoint(
+                checkpoint.eventId(), checkpoint.generation(), checkpoint.chamber(), checkpoint.trial(),
+                checkpoint.actorId(), checkpoint.attackIndex() + 1L, attack, deadline,
+                checkpoint.cooldownUntilMillis(), target.getUniqueId(), supportUsed);
+        if (!writeNamedTrialActorCheckpoint(actor, started)) return false;
+        renderNamedTrialTelegraph(actor, target, attack);
+        return true;
+    }
+
+    private void moveNamedTrialMarksman(LivingEntity actor, int chamber) {
+        if (actor == null || !(actor instanceof Mob mob)) return;
+        Player target = closestRealitySplitTrialParticipant(actor);
+        if (target == null) return;
+        Vector toward = horizontalDirection(actor.getLocation(), target.getLocation());
+        Vector away = toward.clone().multiply(-1.0D);
+        Vector side = new Vector(-toward.getZ(), 0.0D, toward.getX());
+        List<Vector> movements = List.of(
+                side.clone().multiply(0.36D), side.clone().multiply(-0.36D),
+                away.clone().multiply(0.42D), toward.clone().multiply(0.30D),
+                away.clone().add(side.clone().multiply(0.25D)),
+                away.clone().subtract(side.clone().multiply(0.25D)));
+        boolean currentlyVisible = hasNamedTrialLineOfSight(actor.getEyeLocation(), target.getEyeLocation());
+        boolean seekCover = currentlyVisible && mob.getHealth() <= mob.getMaxHealth() * 0.55D;
+        Vector selected = null;
+        Vector safeFallback = null;
+        for (Vector movement : movements) {
+            Location next = actor.getLocation().clone().add(movement);
+            if (!isRealitySplitDestinationAllowed(target.getUniqueId(), next,
+                    realitySplitChamberController.assignment())
+                    || !isSafeCombatEntityLocation(next, actor)) continue;
+            if (safeFallback == null) safeFallback = movement;
+            Location projectedEye = actor.getEyeLocation().clone().add(movement);
+            boolean projectedVisible = hasNamedTrialLineOfSight(projectedEye, target.getEyeLocation());
+            if (seekCover ? !projectedVisible : projectedVisible) {
+                selected = movement;
+                break;
+            }
+        }
+        if (selected == null) selected = safeFallback;
+        if (selected == null) return;
+        mob.setVelocity(selected.clone().normalize().multiply(seekCover ? 0.22D : 0.26D).setY(0.12D));
+    }
+
+    private boolean finishNamedTrialAttack(Entity actor,
+            Wave7NamedTrialActorPolicy.Checkpoint checkpoint, long now) {
+        if (actor == null || checkpoint == null) return false;
+        return writeNamedTrialActorCheckpoint(actor, new Wave7NamedTrialActorPolicy.Checkpoint(
+                checkpoint.eventId(), checkpoint.generation(), checkpoint.chamber(), checkpoint.trial(),
+                checkpoint.actorId(), checkpoint.attackIndex(), Wave7NamedTrialActorPolicy.Attack.NONE,
+                0L, now + 20L * 50L, null, checkpoint.supportUsed()));
+    }
+
+    private void renderNamedTrialTelegraph(LivingEntity actor, Player target,
+            Wave7NamedTrialActorPolicy.Attack attack) {
+        if (actor == null || target == null || attack == null
+                || !isCurrentRealitySplitTrialTarget(actor, target)) return;
+        Vector direction = horizontalDirection(actor.getLocation(), target.getLocation());
+        faceRealitySplitTrialMob(actor, direction);
+        switch (attack) {
+            case MARKSMAN_QUICK_SHOT -> {
+                renderRealitySplitTrialTelegraph(actor.getEyeLocation(), direction, 9.0D, 0.45D,
+                        Particle.CRIT);
+                spawnEventParticle(target.getLocation().add(0.0D, 1.0D, 0.0D), Particle.CRIT, 3,
+                        0.12D, 0.2D, 0.12D, 0.0D);
+            }
+            case MARKSMAN_HEAVY_SHOT -> {
+                renderRealitySplitTrialTelegraph(actor.getEyeLocation(), direction, 13.0D, 0.8D,
+                        Particle.ELECTRIC_SPARK);
+                actor.getWorld().playSound(actor.getLocation(), Sound.BLOCK_AMETHYST_BLOCK_CHIME,
+                        0.55F, 0.7F);
+            }
+            case MARKSMAN_SPREAD_SHOT -> renderRealitySplitTrialTelegraph(
+                    actor.getEyeLocation(), direction, 8.0D, 1.35D, Particle.CRIT);
+            case MARKSMAN_SUPPORT -> {
+                spawnEventParticle(actor.getLocation().add(0.0D, 1.0D, 0.0D), Particle.HAPPY_VILLAGER,
+                        14, 0.35D, 0.45D, 0.35D, 0.01D);
+                actor.getWorld().playSound(actor.getLocation(), Sound.BLOCK_BEACON_POWER_SELECT,
+                        0.6F, 1.35F);
+            }
+            case ARCHMAGE_FANGS -> {
+                Location center = target.getLocation();
+                Vector side = new Vector(-direction.getZ(), 0.0D, direction.getX());
+                for (double offset : new double[]{-1.25D, 0.0D, 1.25D}) {
+                    spawnEventParticle(center.clone().add(side.clone().multiply(offset)).add(0.0D, 0.15D, 0.0D),
+                            Particle.SOUL_FIRE_FLAME, 5, 0.2D, 0.02D, 0.2D, 0.0D);
+                }
+                actor.getWorld().playSound(center, Sound.ENTITY_EVOKER_PREPARE_ATTACK, 0.7F, 0.8F);
+            }
+            case ARCHMAGE_SPEAR -> {
+                renderRealitySplitTrialTelegraph(actor.getEyeLocation(), direction, 12.0D, 0.4D,
+                        Particle.END_ROD);
+                spawnEventParticle(target.getLocation().add(0.0D, 1.0D, 0.0D), Particle.END_ROD,
+                        4, 0.16D, 0.2D, 0.16D, 0.0D);
+            }
+            case ARCHMAGE_STEP -> {
+                spawnEventParticle(actor.getLocation().add(0.0D, 0.8D, 0.0D), Particle.PORTAL,
+                        14, 0.3D, 0.45D, 0.3D, 0.04D);
+                spawnEventParticle(target.getLocation().add(0.0D, 0.8D, 0.0D), Particle.PORTAL,
+                        5, 0.2D, 0.4D, 0.2D, 0.0D);
+            }
+            case ARCHMAGE_BEAM -> {
+                renderRealitySplitTrialTelegraph(actor.getEyeLocation(), direction, 14.0D, 0.65D,
+                        Particle.DRAGON_BREATH);
+                actor.getWorld().playSound(actor.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL,
+                        0.35F, 1.65F);
+            }
+            case NONE -> { }
+        }
+    }
+
+    private boolean resolveNamedTrialAttack(LivingEntity actor, Player target,
+            Wave7NamedTrialActorPolicy.Attack attack, int chamber) {
+        if (actor == null || attack == null) return false;
+        if (attack == Wave7NamedTrialActorPolicy.Attack.MARKSMAN_SUPPORT) {
+            double restored = Math.min(actor.getMaxHealth(), actor.getHealth() + 24.0D);
+            actor.setHealth(restored);
+            spawnEventParticle(actor.getLocation().add(0.0D, 1.0D, 0.0D), Particle.HAPPY_VILLAGER,
+                    18, 0.35D, 0.5D, 0.35D, 0.02D);
+            return true;
+        }
+        if (target == null || !isCurrentRealitySplitTrialTarget(actor, target)) return true;
+        if (attack != Wave7NamedTrialActorPolicy.Attack.MARKSMAN_SUPPORT
+                && !hasNamedTrialLineOfSight(actor.getEyeLocation(), target.getEyeLocation())) return true;
+        return switch (attack) {
+            case MARKSMAN_QUICK_SHOT -> launchNamedTrialArrow(actor, target, attack,
+                    1.65F, 0.0F, false, false);
+            case MARKSMAN_HEAVY_SHOT -> launchNamedTrialArrow(actor, target, attack,
+                    1.10F, 0.0F, true, false);
+            case MARKSMAN_SPREAD_SHOT -> {
+                boolean first = launchNamedTrialArrow(actor, target, attack, 1.45F, -0.12F, false, false);
+                boolean middle = launchNamedTrialArrow(actor, target, attack, 1.45F, 0.0F, false, false);
+                boolean last = launchNamedTrialArrow(actor, target, attack, 1.45F, 0.12F, false, false);
+                yield first && middle && last;
+            }
+            case ARCHMAGE_FANGS -> spawnNamedTrialFangs(actor, target, attack);
+            case ARCHMAGE_SPEAR -> launchNamedTrialArrow(actor, target, attack,
+                    1.25F, 0.0F, true, true);
+            case ARCHMAGE_STEP -> stepNamedTrialArchmage(actor, target, chamber);
+            case ARCHMAGE_BEAM -> {
+                resolveNamedTrialBeam(actor, target, chamber);
+                yield true;
+            }
+            case MARKSMAN_SUPPORT, NONE -> false;
+        };
+    }
+
+    private boolean launchNamedTrialArrow(LivingEntity actor, Player target,
+            Wave7NamedTrialActorPolicy.Attack attack, float speed, float spread,
+            boolean glowing, boolean spear) {
+        if (actor == null || target == null || !isCurrentRealitySplitTrialTarget(actor, target)) return false;
+        Location origin = actor.getEyeLocation();
+        Vector direction = target.getEyeLocation().toVector().subtract(origin.toVector()).normalize();
+        if (direction.lengthSquared() < 0.01D) return false;
+        if (spread != 0.0F) direction.rotateAroundY(spread);
+        if (spear) {
+            Entity raw = actor.getWorld().spawnEntity(origin, EntityType.SNOWBALL);
+            if (!(raw instanceof org.bukkit.entity.Snowball projectile)) return false;
+            projectile.setShooter(actor);
+            projectile.setItem(new ItemStack(Material.TRIDENT));
+            projectile.setVelocity(direction.multiply(speed));
+            projectile.setGlowing(glowing);
+            if (!tagNamedTrialProjectile(projectile, actor, attack)) {
+                projectile.remove();
+                return false;
+            }
+            return true;
+        }
+        org.bukkit.entity.Arrow arrow = actor.getWorld().spawnArrow(origin, direction, speed, 0.0F);
+        arrow.setShooter(actor);
+        arrow.setPickupStatus(org.bukkit.entity.AbstractArrow.PickupStatus.DISALLOWED);
+        arrow.setGlowing(glowing);
+        arrow.setCritical(attack == Wave7NamedTrialActorPolicy.Attack.MARKSMAN_HEAVY_SHOT);
+        if (!tagNamedTrialProjectile(arrow, actor, attack)) {
+            arrow.remove();
+            return false;
+        }
+        return true;
+    }
+
+    private boolean spawnNamedTrialFangs(LivingEntity actor, Player target,
+            Wave7NamedTrialActorPolicy.Attack attack) {
+        if (actor == null || target == null || !isCurrentRealitySplitTrialTarget(actor, target)
+                || !hasNamedTrialLineOfSight(actor.getEyeLocation(), target.getEyeLocation())) return false;
+        Vector direction = horizontalDirection(actor.getLocation(), target.getLocation());
+        Vector side = new Vector(-direction.getZ(), 0.0D, direction.getX());
+        Location base = target.getLocation().clone();
+        base.setY(Math.floor(base.getY()));
+        List<UUID> createdFangs = new ArrayList<>();
+        for (double offset : new double[]{-1.25D, 0.0D, 1.25D}) {
+            Location location = base.clone().add(side.clone().multiply(offset));
+            if (!isSafeCombatEntityLocation(location, actor)) {
+                createdFangs.forEach(id -> removeRealitySplitTrialEntity(id, "named-trial-fangs-rollback"));
+                return false;
+            }
+            Entity raw = actor.getWorld().spawnEntity(location, EntityType.EVOKER_FANGS);
+            if (!(raw instanceof org.bukkit.entity.EvokerFangs fangs)) {
+                createdFangs.forEach(id -> removeRealitySplitTrialEntity(id, "named-trial-fangs-rollback"));
+                return false;
+            }
+            fangs.setOwner(actor);
+            if (!tagNamedTrialProjectile(fangs, actor, attack)) {
+                fangs.remove();
+                createdFangs.forEach(id -> removeRealitySplitTrialEntity(id, "named-trial-fangs-rollback"));
+                return false;
+            }
+            createdFangs.add(fangs.getUniqueId());
+        }
+        return createdFangs.size() == 3;
+    }
+
+    private boolean stepNamedTrialArchmage(LivingEntity actor, Player target, int chamber) {
+        if (actor == null || target == null || !isCurrentRealitySplitTrialTarget(actor, target)) return false;
+        Vector direction = horizontalDirection(actor.getLocation(), target.getLocation());
+        Vector side = new Vector(-direction.getZ(), 0.0D, direction.getX());
+        for (double offset : new double[]{3.0D, -3.0D, 2.0D, -2.0D}) {
+            Location destination = target.getLocation().clone().add(side.clone().multiply(offset));
+            destination.setY(actor.getLocation().getY());
+            if (!isRealitySplitDestinationAllowed(target.getUniqueId(), destination,
+                    realitySplitChamberController.assignment())
+                    || !isSafeCombatEntityLocation(destination, actor)
+                    || !hasNamedTrialLineOfSight(actor.getEyeLocation(),
+                    destination.clone().add(0.0D, actor.getEyeHeight(), 0.0D))) continue;
+            if (!teleportCombatEntity(actor, destination)) continue;
+            actor.getWorld().playSound(destination, Sound.ENTITY_ENDERMAN_TELEPORT, 0.65F, 1.4F);
+            spawnEventParticle(destination.add(0.0D, 0.8D, 0.0D), Particle.PORTAL,
+                    20, 0.35D, 0.55D, 0.35D, 0.05D);
+            return true;
+        }
+        return true;
+    }
+
+    private void resolveNamedTrialBeam(LivingEntity actor, Player markedTarget, int chamber) {
+        if (actor == null || markedTarget == null || !isCurrentRealitySplitTrialTarget(actor, markedTarget)) return;
+        Location start = actor.getEyeLocation();
+        Location marked = markedTarget.getEyeLocation();
+        Vector direction = marked.toVector().subtract(start.toVector());
+        double length = Math.min(14.0D, direction.length());
+        if (length < 0.1D) return;
+        direction.normalize();
+        World world = actor.getWorld();
+        for (Player target : realitySplitTrialTargets(actor)) {
+            if (!isCurrentRealitySplitTrialTarget(actor, target)) continue;
+            Vector point = target.getEyeLocation().toVector();
+            if (distanceSquaredToSegment(point, start.toVector(),
+                    start.toVector().add(direction.clone().multiply(length))) > 0.72D * 0.72D) continue;
+            double distance = start.distance(target.getEyeLocation());
+            if (world.rayTraceBlocks(start, direction, Math.max(0.0D, distance - 0.5D),
+                    org.bukkit.FluidCollisionMode.NEVER, true) != null) continue;
+            target.damage(9.0D, actor);
+            target.addPotionEffect(new org.bukkit.potion.PotionEffect(
+                    org.bukkit.potion.PotionEffectType.BLINDNESS, 36, 0, true, true, true));
+        }
+        spawnEventParticle(start.add(direction.clone().multiply(length)), Particle.DRAGON_BREATH,
+                18, 0.4D, 0.4D, 0.4D, 0.02D);
     }
 
     private void tickRealitySplitWarden(LivingEntity warden, RealitySplitTrialRuntimeState state) {
@@ -25486,9 +27957,29 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    private Player closestRealitySplitTrialTarget(Entity source, int chamber) {
+    private boolean hasNamedTrialLineOfSight(Location from, Location to) {
+        if (from == null || to == null || from.getWorld() == null
+                || !from.getWorld().equals(to.getWorld())) return false;
+        Vector direction = to.toVector().subtract(from.toVector());
+        double distance = direction.length();
+        if (!Double.isFinite(distance)) return false;
+        if (distance < 0.1D) return true;
+        return from.getWorld().rayTraceBlocks(from, direction.normalize(), Math.max(0.0D, distance - 0.5D),
+                org.bukkit.FluidCollisionMode.NEVER, true) == null;
+    }
+
+    private Player closestRealitySplitTrialParticipant(Entity source) {
         if (source == null) return null;
         return realitySplitTrialTargets(source).stream()
+                .min(Comparator.comparingDouble(player ->
+                        player.getLocation().distanceSquared(source.getLocation())))
+                .orElse(null);
+    }
+
+    private Player closestRealitySplitTrialTarget(Entity source, int chamber) {
+        if (!(source instanceof LivingEntity living)) return null;
+        return realitySplitTrialTargets(source).stream()
+                .filter(player -> hasNamedTrialLineOfSight(living.getEyeLocation(), player.getEyeLocation()))
                 .min(Comparator.comparingDouble(player ->
                         player.getLocation().distanceSquared(source.getLocation())))
                 .orElse(null);
@@ -25752,7 +28243,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean spawnCurrentSafeZoneVisuals(World world, Location core) {
-        clearCurrentSafeZoneVisuals();
+        if (!clearCurrentSafeZoneVisuals()) return false;
         if (world == null || core == null || currentFogZoneCount <= 0 || currentFogZoneSide <= 0
                 || !currentTemporaryBlockOriginals.isEmpty()) {
             return false;
@@ -25867,8 +28358,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return !currentSafeZoneVisuals.isEmpty();
     }
 
-    private void clearCurrentSafeZoneVisuals() {
-        restoreCurrentSafeZoneBlocks();
+    private boolean clearCurrentSafeZoneVisuals() {
+        boolean restored = restoreCurrentSafeZoneBlocks();
         for (UUID id : new HashSet<>(currentSafeZoneVisuals)) {
             Entity entity = unregisterOwnedEntity(id, "safe-zone-visual-clear");
             if (entity == null) {
@@ -25883,56 +28374,99 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         currentSafeZoneCells.clear();
         currentSafeZoneCenters.clear();
         currentBarrierCells.clear();
+        return restored;
     }
 
     /** Restore Wave 5 cells only through the durable generation journal. */
-    private void restoreCurrentSafeZoneBlocks() {
-        if (currentTemporaryBlockOriginals.isEmpty() || hazardJournal == null) {
-            currentTemporaryBlockOriginals.clear();
-            return;
+    private boolean restoreCurrentSafeZoneBlocks() {
+        if (currentTemporaryBlockOriginals.isEmpty()) return true;
+        if (hazardJournal == null) {
+            markBlackFogRecoveryRequired("WAVE5_SAFE_ZONE_JOURNAL_MISSING");
+            return false;
         }
-        HazardMutationJournal.Snapshot journal = hazardJournal.load();
+        HazardMutationJournal.Snapshot journal;
+        try {
+            journal = hazardJournal.load();
+        } catch (RuntimeException error) {
+            getLogger().log(Level.SEVERE, "END_RIFT_FOG_SAFE_BLOCKS_RESTORE_BLOCKED event=" + eventId
+                    + " reason=journal-load-failed", error);
+            markBlackFogRecoveryRequired("WAVE5_SAFE_ZONE_JOURNAL_LOAD_FAILED");
+            return false;
+        }
         if (!journal.valid() || !journal.eventId().equals(eventId)
                 || journal.generation() != generation
                 || (journal.status() != HazardMutationJournal.Status.PREPARED
-                && journal.status() != HazardMutationJournal.Status.APPLIED)) {
-            currentTemporaryBlockOriginals.clear();
-            return;
+                && journal.status() != HazardMutationJournal.Status.APPLIED)
+                || journal.entries().isEmpty()) {
+            markBlackFogRecoveryRequired("WAVE5_SAFE_ZONE_JOURNAL_INVALID_OR_FOREIGN");
+            return false;
+        }
+        Map<HazardPlanner.Point, String> journalOriginals = new LinkedHashMap<>();
+        for (HazardMutationJournal.Entry entry : journal.entries()) {
+            if (entry.isEmeraldBarrierMutation()) {
+                journalOriginals.put(new HazardPlanner.Point(entry.x(), entry.z()), entry.floorOriginal());
+            }
+        }
+        if (!journalOriginals.entrySet().containsAll(currentTemporaryBlockOriginals.entrySet())) {
+            markBlackFogRecoveryRequired("WAVE5_SAFE_ZONE_JOURNAL_ORIGINALS_MISMATCH");
+            return false;
         }
         World world = Bukkit.getWorld(journal.world());
         if (world == null) {
             getLogger().severe("END_RIFT_FOG_SAFE_BLOCKS_RESTORE_BLOCKED event=" + eventId
                     + " reason=world-not-loaded journal=" + hazardJournal.path());
-            return;
+            markBlackFogRecoveryRequired("WAVE5_SAFE_ZONE_WORLD_UNAVAILABLE");
+            return false;
         }
         int restored = 0;
         int skipped = 0;
-        for (HazardMutationJournal.Entry entry : journal.entries()) {
-            if (entry.isEmeraldBarrierMutation()) {
-                Block floor = world.getBlockAt(entry.x(), entry.floorY(), entry.z());
-                if (floor.getType() == Material.EMERALD_BLOCK) {
-                    restoreBlock(floor, entry.floorOriginal());
-                    restored++;
-                } else {
-                    skipped++;
-                }
-            } else if (entry.isBarrierMutation()) {
-                Block barrier = world.getBlockAt(entry.x(), entry.floorY() + 1, entry.z());
-                if (barrier.getType() == Material.BARRIER) {
-                    restoreBlock(barrier, entry.webOriginal());
-                    restored++;
-                } else {
-                    skipped++;
+        try {
+            for (HazardMutationJournal.Entry entry : journal.entries()) {
+                if (entry.isEmeraldBarrierMutation()) {
+                    Block floor = world.getBlockAt(entry.x(), entry.floorY(), entry.z());
+                    if (floor.getType() == Material.EMERALD_BLOCK) {
+                        restoreBlackFogBlock(floor, entry.floorOriginal());
+                        restored++;
+                    } else {
+                        skipped++;
+                    }
+                } else if (entry.isBarrierMutation()) {
+                    Block barrier = world.getBlockAt(entry.x(), entry.floorY() + 1, entry.z());
+                    if (barrier.getType() == Material.BARRIER) {
+                        restoreBlackFogBlock(barrier, entry.webOriginal());
+                        restored++;
+                    } else {
+                        skipped++;
+                    }
                 }
             }
-        }
-        if (!hazardJournal.markRestored()) {
-            getLogger().severe("END_RIFT_FOG_SAFE_BLOCKS_RESTORE_JOURNAL_FAILED event=" + eventId
-                    + " journal=" + hazardJournal.path());
+            if (!hazardJournal.markRestored()) {
+                getLogger().severe("END_RIFT_FOG_SAFE_BLOCKS_RESTORE_JOURNAL_FAILED event=" + eventId
+                        + " journal=" + hazardJournal.path());
+                markBlackFogRecoveryRequired("WAVE5_SAFE_ZONE_JOURNAL_COMMIT_FAILED");
+                return false;
+            }
+        } catch (RuntimeException error) {
+            getLogger().log(Level.SEVERE, "END_RIFT_FOG_SAFE_BLOCKS_RESTORE_FAILED event=" + eventId
+                    + " journal=" + hazardJournal.path(), error);
+            markBlackFogRecoveryRequired("WAVE5_SAFE_ZONE_RESTORE_FAILED");
+            return false;
         }
         getLogger().info("END_RIFT_FOG_SAFE_BLOCKS_RESTORED event=" + eventId
                 + " restored=" + restored + " skipped=" + skipped);
         currentTemporaryBlockOriginals.clear();
+        return true;
+    }
+
+    private void restoreBlackFogBlock(Block block, String originalBlockData) {
+        if (block == null || originalBlockData == null || originalBlockData.isBlank()) {
+            throw new IllegalArgumentException("Wave 5 journal is missing the original block data");
+        }
+        BlockData original = Bukkit.createBlockData(originalBlockData);
+        block.setBlockData(original, false);
+        if (!original.getAsString().equals(block.getBlockData().getAsString())) {
+            throw new IllegalStateException("Wave 5 block restore did not match its journal original");
+        }
     }
 
     private boolean isCurrentSafeZonePlayer(Player player) {
@@ -26388,6 +28922,57 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /**
+     * Recompute owner-cell walls from the persisted duel lifecycle. A shared
+     * separator is physically open only after both adjacent duel completions
+     * are durable, so restart can derive the same world without a second
+     * independent OPEN flag.
+     */
+    private Wave7EchoDuelBarrierPlan namedEchoDuelBarrierPlan() {
+        if (!realitySplitTrialController.ownsNamed(parseUuidOrNull(eventId), generation)) {
+            return Wave7EchoDuelBarrierPlan.empty();
+        }
+        var snapshot = realitySplitTrialController.namedSnapshot();
+        Set<RealitySplitBarrierPolicy.Cell> closedCells = new LinkedHashSet<>();
+        Set<RealitySplitBarrierPolicy.Cell> geometryCells = new LinkedHashSet<>();
+        Map<Wave7EchoDuelCellBarrierPolicy.SharedBarrier,
+                Set<RealitySplitBarrierPolicy.Cell>> closedByPair = new LinkedHashMap<>();
+        for (RealitySplitTrialController.NamedTrialState trial : snapshot.trials().values().stream()
+                .sorted(Comparator.comparingInt(RealitySplitTrialController.NamedTrialState::chamber))
+                .toList()) {
+            if (trial.trial() != RealitySplitTrialController.NamedTrial.PERSONAL_ECHO) continue;
+            Map<UUID, me.copimine.endevent.runtime.RealitySplitEchoDuelState.DuelRecord> duels =
+                    snapshot.personalEchoDuels().get(trial.chamber());
+            if (duels == null || trial.owners().isEmpty()) return Wave7EchoDuelBarrierPlan.invalid();
+            List<Wave7EchoDuelCellBarrierPolicy.SharedBarrier> barriers =
+                    Wave7EchoDuelCellBarrierPolicy.plan(trial.chamber(),
+                            realitySplitChamberController.assignment().chamberCount(),
+                            trial.owners());
+            Set<UUID> completedOwners = new LinkedHashSet<>();
+            for (UUID owner : trial.owners()) {
+                var duel = duels.get(owner);
+                if (duel == null || !duel.ownerUuid().equals(owner)
+                        || !duel.eventId().equals(parseUuidOrNull(eventId))
+                        || duel.attemptGeneration() != generation || duel.room() != trial.chamber()) {
+                    return Wave7EchoDuelBarrierPlan.invalid();
+                }
+                if (duel.lifecycle() == me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.COMPLETE) {
+                    completedOwners.add(owner);
+                }
+            }
+            geometryCells.addAll(Wave7EchoDuelCellBarrierPolicy.cells(
+                    barriers, Set.of(), RealitySplitBarrierPolicy.HEIGHT));
+            for (Wave7EchoDuelCellBarrierPolicy.SharedBarrier barrier
+                    : Wave7EchoDuelCellBarrierPolicy.remaining(barriers, completedOwners)) {
+                Set<RealitySplitBarrierPolicy.Cell> cells = new LinkedHashSet<>(
+                        Wave7EchoDuelCellBarrierPolicy.cells(barrier, RealitySplitBarrierPolicy.HEIGHT));
+                closedByPair.put(barrier, Set.copyOf(cells));
+                closedCells.addAll(cells);
+            }
+        }
+        return new Wave7EchoDuelBarrierPlan(true, closedCells, geometryCells, closedByPair);
+    }
+
+    /**
      * Build the visible and collidable Wave 7 room separators from the
      * deterministic policy. Every owned cell is journaled before mutation.
      */
@@ -26401,6 +28986,29 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     Map.of("reasonCode", "INSUFFICIENT_CHAMBERS"));
             return false;
         }
+        if (world == null || core == null || !realitySplitChamberController.owns(generation)) {
+            emitDiagnostic("WAVE7_BARRIER", "PLAN_REJECT", "WARN", 7,
+                    "invalid-runtime-context", null, null,
+                    "wave7:" + eventId + ":" + generation,
+                    Map.of("worldPresent", world != null, "corePresent", core != null,
+                            "controllerOwnsGeneration", realitySplitChamberController.owns(generation)));
+            return false;
+        }
+        Wave7EchoDuelBarrierPlan echoBarrierPlan;
+        try {
+            echoBarrierPlan = namedEchoDuelBarrierPlan();
+        } catch (RuntimeException invalidPlan) {
+            getLogger().log(Level.SEVERE, "END_RIFT_WAVE7_ECHO_BARRIER_PLAN_FAILED event=" + eventId,
+                    invalidPlan);
+            echoBarrierPlan = Wave7EchoDuelBarrierPlan.invalid();
+        }
+        if (!echoBarrierPlan.valid()) {
+            recoveryReason = "END_RIFT_WAVE7_ECHO_BARRIER_PLAN_INVALID";
+            getLogger().severe("END_RIFT_WAVE7_ECHO_BARRIERS_REFUSED event=" + eventId
+                    + " generation=" + generation + " reason=persisted-duel-plan-invalid");
+            forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
+            return false;
+        }
         // The final seal is one contained boss room. Passages that were
         // opened while solving Wave 7 are closed again before the boss is
         // pinned to the Core; ordinary Wave 7 keeps its persisted passages.
@@ -26412,32 +29020,41 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                        realitySplitChamberController.assignment().chamberCount()))
                 .filter(boundary -> boundary >= 0)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
-        if (!clearRealitySplitBarriers("wave7-rebuild")) {
-            getLogger().severe("END_RIFT_WAVE7_BARRIERS_REBUILD_BLOCKED event=" + eventId
-                    + " generation=" + generation + " reason=previous-journal-not-restored");
-            return false;
-        }
-        if (world == null || core == null || !realitySplitChamberController.owns(generation)) {
-            emitDiagnostic("WAVE7_BARRIER", "PLAN_REJECT", "WARN", 7,
-                    "invalid-runtime-context", null, null,
-                    "wave7:" + eventId + ":" + generation,
-                    Map.of("worldPresent", world != null, "corePresent", core != null,
-                            "controllerOwnsGeneration", realitySplitChamberController.owns(generation)));
-            return false;
-        }
         int chamberCount = realitySplitChamberController.assignment().chamberCount();
         if (chamberCount < 1) {
             getLogger().warning("END_RIFT_WAVE7_BARRIERS_REFUSED event=" + eventId
                     + " reason=no-assigned-trial-room");
             return false;
         }
-        if (chamberCount == 1 && !finalSealBarrierContext()) {
+        boolean soloRoomWithoutOuterDivider = chamberCount == 1 && !finalSealBarrierContext();
+        if (soloRoomWithoutOuterDivider && echoBarrierPlan.closedCells().isEmpty()) {
             getLogger().info("END_RIFT_WAVE7_SOLO_TRIAL_NO_DIVIDER event=" + eventId
                     + " generation=" + generation + " one_room=true");
             return true;
         }
         int barrierChamberCount = Math.max(2, chamberCount);
         int floorY = combatFloorY();
+        for (RealitySplitBarrierPolicy.Cell cell : echoBarrierPlan.closedCells()) {
+            Location location = new Location(world, core.getBlockX() + cell.xOffset(),
+                    floorY + cell.level(), core.getBlockZ() + cell.zOffset());
+            Block floor = world.getBlockAt(core.getBlockX() + cell.xOffset(), floorY,
+                    core.getBlockZ() + cell.zOffset());
+            Block barrier = world.getBlockAt(location);
+            boolean fullExistingWall = isRealitySplitExistingWallCoverage(barrier);
+            if (!isRealitySplitBarrierPlacementLocation(location) || isGateLocation(location)
+                    || !floor.getType().isSolid() || floor.isLiquid()
+                    || barrier.isLiquid() || barrier.getState() instanceof org.bukkit.block.TileState
+                    || !barrier.isPassable() && !fullExistingWall) {
+                getLogger().severe("END_RIFT_WAVE7_ECHO_BARRIERS_REFUSED event=" + eventId
+                        + " generation=" + generation + " reason=unsafe-cell-wall-location cell=" + cell);
+                return false;
+            }
+        }
+        if (!clearRealitySplitBarriers("wave7-rebuild")) {
+            getLogger().severe("END_RIFT_WAVE7_BARRIERS_REBUILD_BLOCKED event=" + eventId
+                    + " generation=" + generation + " reason=previous-journal-not-restored");
+            return false;
+        }
         List<HazardMutationJournal.Entry> journalEntries = new ArrayList<>();
         Map<RealitySplitBarrierPolicy.Cell, String> plannedOriginals = new LinkedHashMap<>();
         Set<RealitySplitBarrierPolicy.Cell> plannedBarrierCells = new LinkedHashSet<>();
@@ -26465,15 +29082,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " journal_world=" + journal.world());
             return false;
         }
-        List<RealitySplitBarrierPolicy.Cell> plannedCells = finalSealBarrierContext()
+        List<RealitySplitBarrierPolicy.Cell> plannedCells = new ArrayList<>(soloRoomWithoutOuterDivider
+                ? List.of() : finalSealBarrierContext()
                 ? RealitySplitBarrierPolicy.finalSealCells(barrierChamberCount)
                 : RealitySplitBarrierPolicy.cellsExcludingBoundaries(
-                        barrierChamberCount, openBoundaryIndexes);
+                        barrierChamberCount, openBoundaryIndexes));
+        plannedCells.addAll(echoBarrierPlan.closedCells());
         Set<RealitySplitBarrierPolicy.Cell> plannedCellSet = new LinkedHashSet<>(plannedCells);
-        Set<RealitySplitBarrierPolicy.Cell> geometryCells = new LinkedHashSet<>(
-                finalSealBarrierContext()
-                        ? RealitySplitBarrierPolicy.finalSealCells(barrierChamberCount)
-                        : RealitySplitBarrierPolicy.cells(barrierChamberCount));
+        Set<RealitySplitBarrierPolicy.Cell> geometryCells = new LinkedHashSet<>(soloRoomWithoutOuterDivider
+                ? Set.of() : finalSealBarrierContext()
+                ? RealitySplitBarrierPolicy.finalSealCells(barrierChamberCount)
+                : RealitySplitBarrierPolicy.cells(barrierChamberCount));
+        geometryCells.addAll(echoBarrierPlan.geometryCells());
+        for (RealitySplitBarrierPolicy.Cell cell : echoBarrierPlan.closedCells()) {
+            Location location = new Location(world, core.getBlockX() + cell.xOffset(),
+                    floorY + cell.level(), core.getBlockZ() + cell.zOffset());
+            if (!isRealitySplitBarrierPlacementLocation(location) || isGateLocation(location)) {
+                getLogger().severe("END_RIFT_WAVE7_ECHO_BARRIERS_REFUSED event=" + eventId
+                        + " generation=" + generation + " reason=cell-wall-outside-safe-arena cell=" + cell);
+                return false;
+            }
+        }
         Map<RealitySplitBarrierPolicy.Cell, HazardMutationJournal.Entry> retainedOpenEntries =
                 new LinkedHashMap<>();
         for (HazardMutationJournal.Entry entry : journal.entries()) {
@@ -26659,23 +29288,40 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         realitySplitBarrierOriginals.putAll(plannedOriginals);
         realitySplitBarrierCells.addAll(plannedOriginals.keySet());
         realitySplitBarrierCells.removeAll(retainedOpenEntries.keySet());
-        for (int boundary = 0; boundary < (chamberCount == 2 ? 1 : chamberCount); boundary++) {
-            if (openBoundaryIndexes.contains(boundary)) {
-                continue;
-            }
-            Set<RealitySplitBarrierPolicy.Cell> cells = new LinkedHashSet<>();
-            List<RealitySplitBarrierPolicy.Cell> boundaryCells = finalSealBarrierContext()
-                    ? RealitySplitBarrierPolicy.cellsForBoundary(boundary, chamberCount)
-                    : RealitySplitBarrierPolicy.cellsForClosedBoundary(
-                            boundary, chamberCount, openBoundaryIndexes);
-            for (RealitySplitBarrierPolicy.Cell cell : boundaryCells) {
-                if (realitySplitBarrierCells.contains(cell)) {
-                    cells.add(cell);
+        if (!soloRoomWithoutOuterDivider) {
+            for (int boundary = 0; boundary < (chamberCount == 2 ? 1 : chamberCount); boundary++) {
+                if (openBoundaryIndexes.contains(boundary)) {
+                    continue;
+                }
+                Set<RealitySplitBarrierPolicy.Cell> cells = new LinkedHashSet<>();
+                List<RealitySplitBarrierPolicy.Cell> boundaryCells = finalSealBarrierContext()
+                        ? RealitySplitBarrierPolicy.cellsForBoundary(boundary, chamberCount)
+                        : RealitySplitBarrierPolicy.cellsForClosedBoundary(
+                                boundary, chamberCount, openBoundaryIndexes);
+                for (RealitySplitBarrierPolicy.Cell cell : boundaryCells) {
+                    if (realitySplitBarrierCells.contains(cell)) {
+                        cells.add(cell);
+                    }
+                }
+                if (!cells.isEmpty()) {
+                    realitySplitBarrierByBoundary.put(boundary, cells);
                 }
             }
-            if (!cells.isEmpty()) {
-                realitySplitBarrierByBoundary.put(boundary, cells);
+        }
+        realitySplitEchoBarrierByPair.clear();
+        for (Map.Entry<Wave7EchoDuelCellBarrierPolicy.SharedBarrier,
+                Set<RealitySplitBarrierPolicy.Cell>> entry : echoBarrierPlan.closedByPair().entrySet()) {
+            Set<RealitySplitBarrierPolicy.Cell> owned = new LinkedHashSet<>(entry.getValue());
+            owned.retainAll(realitySplitBarrierCells);
+            if (!owned.containsAll(entry.getValue())) {
+                getLogger().severe("END_RIFT_WAVE7_ECHO_BARRIERS_REFUSED event=" + eventId
+                        + " generation=" + generation + " reason=owner-wall-not-fully-owned pair="
+                        + entry.getKey());
+                recoveryReason = "END_RIFT_WAVE7_ECHO_BARRIER_OWNERSHIP_INCOMPLETE";
+                forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
+                return false;
             }
+            realitySplitEchoBarrierByPair.put(entry.getKey(), Set.copyOf(owned));
         }
         Set<RealitySplitBarrierPolicy.Cell> visualCells = new LinkedHashSet<>(realitySplitBarrierCells);
         Set<RealitySplitBarrierPolicy.Cell> visualColumns = visualCells.stream()
@@ -26737,6 +29383,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 realitySplitBarrierCells.clear();
                 realitySplitBarrierOriginals.clear();
                 realitySplitBarrierByBoundary.clear();
+                realitySplitEchoBarrierByPair.clear();
                 realitySplitBarrierVisuals.clear();
             } else {
                 recoveryReason = "END_RIFT_WAVE7_BARRIER_VISUAL_ROLLBACK_FAILED";
@@ -26971,7 +29618,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean realitySplitBarrierStillNeeded(
             RealitySplitBarrierPolicy.Cell cell, int boundaryBeingOpened) {
         return RealitySplitBarrierOwnershipPolicy.isNeededByOtherBoundary(
-                realitySplitBarrierByBoundary, boundaryBeingOpened, cell);
+                realitySplitBarrierByBoundary, boundaryBeingOpened, cell)
+                || realitySplitEchoBarrierByPair.values().stream().anyMatch(cells -> cells.contains(cell));
     }
 
     private void rememberRealitySplitBoundaryRollback(int boundary,
@@ -27014,9 +29662,42 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void clearRealitySplitBoundaryRollback(int boundary) {
         realitySplitBoundaryCellsPendingCommit.remove(boundary);
         realitySplitOpenedCellsPendingCommit.remove(boundary);
-        if (realitySplitBoundaryCellsPendingCommit.isEmpty()) {
+        if (realitySplitBoundaryCellsPendingCommit.isEmpty()
+                && realitySplitEchoBoundaryCellsPendingRollback.isEmpty()) {
             realitySplitBoundaryRollbackRetryAtTick = 0L;
         }
+    }
+
+    /** Retry closing Echo collision cells after an interrupted OPEN rollback. */
+    private boolean recloseUncommittedRealitySplitEchoBoundary(
+            Wave7EchoDuelCellBarrierPolicy.SharedBarrier boundary) {
+        Set<RealitySplitBarrierPolicy.Cell> ownedCells =
+                realitySplitEchoBoundaryCellsPendingRollback.get(boundary);
+        List<RealitySplitBarrierPolicy.Cell> openedCells =
+                realitySplitEchoOpenedCellsPendingRollback.get(boundary);
+        if (ownedCells == null || openedCells == null) return false;
+        World world = Bukkit.getWorld(worldName);
+        if (world == null || !openedCells.isEmpty()
+                && !restoreRealitySplitBoundaryCollisionClosed(world, openedCells)) {
+            scheduleRealitySplitBoundaryRollbackRetry();
+            return false;
+        }
+        realitySplitBarrierCells.addAll(ownedCells);
+        realitySplitEchoBarrierByPair.put(boundary, Set.copyOf(ownedCells));
+        if (!openedCells.isEmpty() && !restoreRealitySplitBoundaryVisuals(world, openedCells)) {
+            scheduleRealitySplitBoundaryRollbackRetry();
+            return false;
+        }
+        realitySplitEchoBoundaryCellsPendingRollback.remove(boundary);
+        realitySplitEchoOpenedCellsPendingRollback.remove(boundary);
+        if (realitySplitBoundaryCellsPendingCommit.isEmpty()
+                && realitySplitEchoBoundaryCellsPendingRollback.isEmpty()) {
+            realitySplitBoundaryRollbackRetryAtTick = 0L;
+        }
+        getLogger().warning("END_RIFT_WAVE7_ECHO_CELL_OPEN_ROLLED_BACK event=" + eventId
+                + " lower_owner=" + boundary.lowerOwner() + " upper_owner=" + boundary.upperOwner()
+                + " cells=" + openedCells.size());
+        return true;
     }
 
     private void scheduleRealitySplitBoundaryRollbackRetry() {
@@ -27024,7 +29705,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void tickUncommittedRealitySplitBoundaryRollbacks() {
-        if (realitySplitBoundaryCellsPendingCommit.isEmpty()) {
+        if (realitySplitBoundaryCellsPendingCommit.isEmpty()
+                && realitySplitEchoBoundaryCellsPendingRollback.isEmpty()) {
             realitySplitBoundaryRollbackRetryAtTick = 0L;
             return;
         }
@@ -27034,6 +29716,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         scheduleRealitySplitBoundaryRollbackRetry();
         for (int boundary : List.copyOf(realitySplitBoundaryCellsPendingCommit.keySet())) {
             recloseUncommittedRealitySplitBoundary(boundary);
+        }
+        for (Wave7EchoDuelCellBarrierPolicy.SharedBarrier boundary
+                : List.copyOf(realitySplitEchoBoundaryCellsPendingRollback.keySet())) {
+            recloseUncommittedRealitySplitEchoBoundary(boundary);
         }
     }
 
@@ -27267,11 +29953,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (journal.status() == HazardMutationJournal.Status.RESTORED
                 && realitySplitBarrierCells.isEmpty()
                 && realitySplitBarrierOriginals.isEmpty()
-                && realitySplitBarrierVisuals.isEmpty()) {
+                && realitySplitBarrierVisuals.isEmpty()
+                && realitySplitEchoBarrierByPair.isEmpty()
+                && realitySplitEchoBoundaryCellsPendingRollback.isEmpty()
+                && realitySplitEchoOpenedCellsPendingRollback.isEmpty()) {
             return true;
         }
         if (realitySplitBarrierCells.isEmpty() && realitySplitBarrierOriginals.isEmpty()
-                && realitySplitBarrierVisuals.isEmpty() && !hasPersistedRealitySplitEntries) {
+                && realitySplitBarrierVisuals.isEmpty()
+                && realitySplitEchoBarrierByPair.isEmpty()
+                && realitySplitEchoBoundaryCellsPendingRollback.isEmpty()
+                && realitySplitEchoOpenedCellsPendingRollback.isEmpty()
+                && !hasPersistedRealitySplitEntries) {
             // Do not mark an unrelated active hazard journal RESTORED merely
             // because this Wave 7 map is already empty.
             return true;
@@ -27383,8 +30076,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         realitySplitBarrierCells.clear();
         realitySplitBarrierOriginals.clear();
         realitySplitBarrierByBoundary.clear();
+        realitySplitEchoBarrierByPair.clear();
         realitySplitBoundaryCellsPendingCommit.clear();
         realitySplitOpenedCellsPendingCommit.clear();
+        realitySplitEchoBoundaryCellsPendingRollback.clear();
+        realitySplitEchoOpenedCellsPendingRollback.clear();
         realitySplitBoundaryRollbackRetryAtTick = 0L;
         realitySplitBarrierVisuals.clear();
         getLogger().info("END_RIFT_WAVE7_BARRIERS_CLEANUP event=" + eventId
@@ -27398,6 +30094,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         endRiftDiagnosticsInvariant("WAVE7_BARRIER_STATE_EMPTY", realitySplitBarrierCells.isEmpty()
                         && realitySplitBarrierOriginals.isEmpty()
                         && realitySplitBarrierByBoundary.isEmpty()
+                        && realitySplitEchoBarrierByPair.isEmpty()
+                        && realitySplitEchoBoundaryCellsPendingRollback.isEmpty()
+                        && realitySplitEchoOpenedCellsPendingRollback.isEmpty()
                         && realitySplitBarrierVisuals.isEmpty(),
                 "wave7:" + eventId + ":" + generation,
                 Map.of("restored", restored));
@@ -27806,15 +30505,48 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!isRealitySplitPlayerCandidate(player, assignment)) {
             return;
         }
+        var echoCell = activeNamedEchoCell(player.getUniqueId());
         boolean fromAllowed = isRealitySplitDestinationAllowed(
                 player.getUniqueId(), from, assignment);
         if (!fromAllowed) {
+            if (echoCell != null) {
+                Location anchor = coreCombatAnchorLocation();
+                Location echoPoint = echoDuelCellPoint(anchor, echoCell,
+                        ChamberIsolationPolicy.INNER_RADIUS + 2.0D);
+                if (anchor != null && echoPoint != null) {
+                    moveNamedEchoOwnerToCell(player, echoPoint, echoCell, anchor);
+                }
+                event.setTo(player.getLocation());
+                return;
+            }
             // Knockback or a rejected packet can make both ends of the event
             // invalid.  Replaying `from` in that state only confirms the
             // client's stale outer-room position and leaves its next attack
             // packets outside the server's closed-room combat geometry.
             containRealitySplitParticipant(player, generation, "move-recovery");
             event.setTo(player.getLocation());
+            return;
+        }
+        if (echoCell != null) {
+            Location echoAnchor = coreCombatAnchorLocation();
+            boolean fromInCell = isNamedEchoCellLocationAllowed(player.getUniqueId(), from, echoAnchor);
+            if (!fromInCell) {
+                Location echoPoint = echoDuelCellPoint(echoAnchor, echoCell,
+                        ChamberIsolationPolicy.INNER_RADIUS + 2.0D);
+                if (echoPoint != null) moveNamedEchoOwnerToCell(player, echoPoint, echoCell, echoAnchor);
+                event.setTo(player.getLocation());
+                return;
+            }
+            boolean allowedTransition = echoAnchor != null
+                    && isNamedEchoCellTransitionAllowed(player.getUniqueId(), from, to, echoAnchor);
+            if (!allowedTransition) {
+                event.setTo(from);
+                player.setVelocity(new Vector());
+                issueRealitySplitPlayerTeleportPermit(player.getUniqueId(), from);
+                try { player.teleport(from); }
+                finally { clearRealitySplitPlayerTeleportPermit(player.getUniqueId(), from); }
+                return;
+            }
             return;
         }
         Location anchor = coreCombatAnchorLocation();
@@ -27949,6 +30681,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         Location anchor = coreCombatAnchorLocation();
         Location target = event.getTo();
+        var echoCell = activeNamedEchoCell(playerId);
+        if (echoCell != null && !isNamedEchoCellLocationAllowed(playerId, target, anchor)) {
+            event.setCancelled(true);
+            getLogger().info("WAVE7_ECHO_CELL_TELEPORT_BLOCKED event=" + eventId
+                    + " generation=" + generation + " owner=" + playerId
+                    + " chamber=" + echoCell.chamber());
+            return;
+        }
         boolean sameWorld = anchor != null && target.getWorld() != null
                 && anchor.getWorld().equals(target.getWorld());
         boolean allowed = sameWorld && isArenaLocation(target) && anchor != null
@@ -28894,6 +31634,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!archiveWaveTwoRosterForCleanup("wave-objective-state-clear")) return false;
         releaseAllSpiderEffects();
         clearCurrentCarrierPlayerVisual();
+        clearCurrentCarrierInventoryChargeForReset();
         waveCombatCoordinator.clear();
         clearWave3GateAssignments();
         for (UUID owner : new HashSet<>(waveCombatCueKeys.keySet())) clearWaveCombatCue(owner);
@@ -28931,7 +31672,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         cancelWaveSpawnTask();
         clearLegacyWave7BarrierArtifacts("wave-objective-reset");
         clearLegacyWave3PortalArtifacts("wave-objective-reset");
-        clearCurrentSafeZoneVisuals();
+        if (!clearCurrentSafeZoneVisuals()) return false;
         for (UUID visualId : new HashSet<>(currentRingVisuals)) {
             Entity visual = unregisterOwnedEntity(visualId, "wave-objective-ring-clear");
             if (visual == null) {
@@ -28983,6 +31724,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         waveTwoGroupClearedAtMillis = 0L;
         waveTwoControlInstanceId = "";
         currentCarrierCharges = 0;
+        wave1RecoveryCheckpoint = Map.of();
+        wave1CarrierCheckpointRestored = false;
+        currentCarrierRestartReconciliationPending = false;
         clearCurrentCarrierHighlight();
         currentCarrierUuid = null;
         currentCarrierRetreat = null;
@@ -37237,6 +39981,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if (suppressEchoProbeDrops(event)) return;
+        boolean namedEcho = RealitySplitTrialController.NamedTrial.PERSONAL_ECHO.name()
+                .equals(readString(entity, keyTrialRole)) && isNamedRealitySplitActor(entity);
+        if (namedEcho) event.setDroppedExp(0);
         if (isWaveTwoOrdinaryMob(entity)) {
             retireWaveTwoRosterAfterConfirmedDeath(entity);
         }
@@ -37837,15 +40584,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
         updateCurrentCarrierSlowness(player, false);
-        if (!Objects.equals(ritualPrisonerId(), player.getUniqueId())) {
-            restoreRitualPrisonerGravity(player);
-        } else {
-            tagRitualPrisoner(player);
-        }
         UUID playerUuid = player.getUniqueId();
         if (endEventBridgeV4 != null) {
             endEventBridgeV4.registerPlayer(player);
             endEventBridgeV4.requestFreshChallenges(java.util.List.of(playerUuid));
+        }
+        if (Objects.equals(ritualPrisonerId(), playerUuid)
+                && isRitualPrisonerBridgeReady(player)) {
+            tagRitualPrisoner(player);
+        } else {
+            releaseRitualPrisonerControl(player);
         }
         if (isOfficialAttemptActive() && attemptLifecycle.owns(generation)
                 && officialRewardRoster.contains(playerUuid)) {
@@ -38083,7 +40831,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean isOfficialWave7ReturnContext() {
-        return (phase == EventPhase.WAVE_7 || phase == EventPhase.PRE_BOSS_COOLDOWN && activeWave == 7)
+        return (phase == EventPhase.WAVE_7
+                || activeWave == 7 && (phase == EventPhase.PRE_BOSS_COOLDOWN || phase == EventPhase.BOSS_ACTIVE))
                 && isOfficialAttemptActive() && !testWaveFrontVisualMode && !testCombatAiMode;
     }
 
@@ -38171,6 +40920,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** Rebuild the transient official roster owner before a durable Wave 2 resume. */
     private void restoreOfficialWave2AttemptLifecycle(EventSnapshot snapshot) {
+        if (phase == EventPhase.WAVE_1 && wave1CarrierCheckpointRestored
+                && isOfficialAttempt() && generation > 0L && !officialRewardRoster.isEmpty()) {
+            attemptLifecycle.begin(generation, new LinkedHashSet<>(officialRewardRoster));
+            offlineRosterGraceUntilMillis.clear();
+            long reconnectDeadline = System.currentTimeMillis() + OFFLINE_RECONNECT_GRACE_MILLIS;
+            for (UUID owner : officialRewardRoster) {
+                Player player = Bukkit.getPlayer(owner);
+                if (player == null || !player.isOnline()) {
+                    attemptLifecycle.markOffline(owner, generation);
+                    offlineRosterGraceUntilMillis.put(owner, reconnectDeadline);
+                } else {
+                    attemptLifecycle.markOnline(owner, generation);
+                }
+            }
+            return;
+        }
         if (phase != EventPhase.WAVE_2 || !isOfficialCurrentAttempt()
                 || generation <= 0L || officialRewardRoster.isEmpty() || snapshot == null) {
             return;
@@ -38428,6 +41193,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 message(player, "&cВозврат не подтверждён. Право на бой не выдано."); saveStateAsync(); continue;
             }
             player.setVelocity(new Vector()); player.setFallDistance(0F);
+            if (!recoverLateWave7Owner(player)) return;
             if (!saveStateSync()) {
                 if (!cancelSessionTasks()) {
                     recoveryReason = "WAVE7_RETURN_COMMIT_SAVE_FAILED_CLEANUP_FAILED";
@@ -38444,6 +41210,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             message(player, "&aВы вернулись в своё испытание. Защита снята; бой продолжается.");
             getLogger().info("WAVE7_OWNER_RETURN_ADMITTED event=" + eventId + " generation=" + generation
                     + " owner=" + owner + " incarnation=" + token.incarnation() + " claim=" + claim);
+        }
+    }
+
+    /** Give a Wave 7 owner missed post-wave recovery after a late, admitted return. */
+    private boolean recoverLateWave7Owner(Player player) {
+        if (player == null || activeWave != 7
+                || phase != EventPhase.PRE_BOSS_COOLDOWN && phase != EventPhase.BOSS_ACTIVE) return true;
+        try {
+            PostWaveRecoveryService.Result recovery =
+                    postWaveRecoveryService.recover(eventId, generation, java.util.List.of(player));
+            getLogger().info("END_RIFT_POST_WAVE_RECOVERY_LATE_OWNER event=" + eventId
+                    + " generation=" + generation + " player=" + player.getUniqueId()
+                    + " healed_players=" + recovery.healedPlayers()
+                    + " repaired_items=" + recovery.repairedItems());
+            return true;
+        } catch (RuntimeException error) {
+            getLogger().log(Level.SEVERE, "Late Wave 7 player recovery checkpoint failed", error);
+            forcePhase(EventPhase.RECOVERY_REQUIRED, "Late Wave 7 player recovery checkpoint failed");
+            return false;
         }
     }
 
@@ -39673,10 +42458,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    private String clientVisualId(Entity entity) {
-        if (entity == null || !isVisualEventMob(entity)) {
+    private String namedWave7ClientVisualId(Entity entity) {
+        if (entity == null || !EVENT_KIND_REALITY_SPLIT_TRIAL.equals(readString(entity, keyKind))
+                || !isNamedRealitySplitActor(entity)) {
             return "";
         }
+        return switch (readString(entity, keyTrialRole)) {
+            case "WARDEN" -> entity.getType() == EntityType.WARDEN ? CLIENT_VISUAL_WAVE7_WARDEN : "";
+            case "MOBILE_MARKSMAN" -> entity.getType() == EntityType.SKELETON
+                    ? CLIENT_VISUAL_WAVE7_MARKSMAN : "";
+            case "RIFT_ARCHMAGE" -> entity.getType() == EntityType.EVOKER
+                    ? CLIENT_VISUAL_WAVE7_ARCHMAGE : "";
+            default -> "";
+        };
+    }
+
+    private String clientVisualId(Entity entity) {
+        if (entity == null) {
+            return "";
+        }
+        String namedTrialVisual = namedWave7ClientVisualId(entity);
+        if (!namedTrialVisual.isBlank()) return namedTrialVisual;
+        if (!isVisualEventMob(entity)) return "";
         String kind = readString(entity, keyKind);
         if (EVENT_KIND_TENTACLE.equals(kind)) {
             if (entity instanceof ItemDisplay) {
@@ -39739,6 +42542,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || EVENT_KIND_WAVE_GUARDIAN.equals(kind)
                 || EVENT_KIND_RITUAL_CASTER.equals(kind)
                 || EVENT_KIND_RITUAL_GUARD.equals(kind)
+                || EVENT_KIND_REALITY_SPLIT_TRIAL.equals(kind)
+                && !namedWave7ClientVisualId(entity).isBlank()
                 || EVENT_KIND_TENTACLE.equals(kind)
                 && (entity instanceof ItemDisplay || entity instanceof Giant
                 && !readString(entity, keyTentacleDisplay).isBlank())
@@ -40294,11 +43099,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private String readBridgeUtf(java.io.DataInputStream input, int maximum) throws java.io.IOException {
-        String value = input.readUTF();
-        if (value.length() > maximum) {
-            throw new java.io.IOException("Bridge field exceeds bound: " + maximum);
-        }
-        return value;
+        return BoundedBridgeUtfReader.read(input, maximum);
     }
 
     private void handleRitualPrisonerAbilityRequest(Player sender, long packetGeneration,

@@ -2,6 +2,8 @@ package me.copimine.client;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -11,6 +13,25 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EndEventWorldVfxManagerTest {
+    @Test
+    void routesTheCarrierOnlyCoreMarkerToItsDedicatedOutlinePass() {
+        String outline = "event-1:2:world:wave1-carrier-core-outline";
+        var marker = new EndEventWorldVfxManager.BeamSnapshot(outline, "overworld",
+                new net.minecraft.world.phys.Vec3(4.5, 65.0, -2.5),
+                new net.minecraft.world.phys.Vec3(4.5, 66.0, -2.5),
+                0x4EE6FF, 0.10F, 100L, 1_000L);
+        List<String> passes = new ArrayList<>();
+        List<EndEventWorldVfxManager.BeamSnapshot> drawn = new ArrayList<>();
+
+        RitualSpellPresentationPolicy.drawWorldPasses(List.of(marker), "overworld", 500L, pass -> {
+            passes.add(pass.kind().name());
+            return drawn::add;
+        });
+
+        assertEquals(List.of("CORE_OUTLINE"), passes);
+        assertEquals(List.of(marker), drawn);
+    }
+
     @Test
     void rejectsThePreviousBridgeProtocolForBeamAndClearPackets() {
         EndEventWorldVfxManager manager = new EndEventWorldVfxManager();

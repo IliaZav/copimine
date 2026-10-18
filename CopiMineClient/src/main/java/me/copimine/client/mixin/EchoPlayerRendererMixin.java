@@ -11,7 +11,6 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(PlayerEntityRenderer.class)
 public abstract class EchoPlayerRendererMixin extends LivingEntityRenderer<AbstractClientPlayerEntity,
@@ -23,10 +22,5 @@ public abstract class EchoPlayerRendererMixin extends LivingEntityRenderer<Abstr
     @Inject(method = "<init>", at = @At("RETURN"))
     private void copimine$echoEyes(EntityRendererFactory.Context context, boolean slim, CallbackInfo ci) {
         addFeature(new EchoEyesFeature(this));
-    }
-    @Inject(method = "hasLabel(Lnet/minecraft/client/network/AbstractClientPlayerEntity;)Z",
-            at = @At("HEAD"), cancellable = true)
-    private void copimine$hideDetachedName(AbstractClientPlayerEntity player, CallbackInfoReturnable<Boolean> cir) {
-        if (player instanceof EchoPlayerView) cir.setReturnValue(false);
     }
 }

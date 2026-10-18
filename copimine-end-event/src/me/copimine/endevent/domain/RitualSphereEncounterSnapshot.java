@@ -11,7 +11,8 @@ public final class RitualSphereEncounterSnapshot {
     private static final String GENERATION = PREFIX + "generation";
     private static final String PRISONER = PREFIX + "prisoner";
     private static final String PARTICIPANTS = PREFIX + "participants";
-    private static final Set<String> CURRENT_KEYS = Set.of(GENERATION, PRISONER, PARTICIPANTS);
+    private static final String CASTER_DEATHS = PREFIX + "caster-deaths";
+    private static final Set<String> CURRENT_KEYS = Set.of(GENERATION, PRISONER, PARTICIPANTS, CASTER_DEATHS);
     /** Previous releases wrote these values. They are accepted and discarded during migration. */
     private static final Set<String> LEGACY_KEYS = Set.of(
             PREFIX + "successful-drains", PREFIX + "intensity", PREFIX + "last-drain-millis");
@@ -20,13 +21,21 @@ public final class RitualSphereEncounterSnapshot {
     }
 
     public static Map<String, String> encode(RitualSphereEncounterPolicy.State state) {
+        return encode(state, 0);
+    }
+
+    public static Map<String, String> encode(RitualSphereEncounterPolicy.State state, int casterDeaths) {
         if (state == null) {
             return Map.of();
+        }
+        if (casterDeaths < 0 || casterDeaths > state.profile().casterCount()) {
+            throw new IllegalArgumentException("Ritual Sphere caster deaths are outside the live roster");
         }
         Map<String, String> encoded = new LinkedHashMap<>();
         encoded.put(GENERATION, Long.toString(state.generation()));
         encoded.put(PRISONER, state.prisoner() == null ? "" : state.prisoner().toString());
         encoded.put(PARTICIPANTS, Integer.toString(state.profile().participants()));
+        encoded.put(CASTER_DEATHS, Integer.toString(casterDeaths));
         return Map.copyOf(encoded);
     }
 
@@ -60,9 +69,17 @@ public final class RitualSphereEncounterSnapshot {
             throw new IllegalArgumentException("Ritual Sphere snapshot participant count is outside 2-20");
         }
         RitualSphereScalingPolicy.Profile profile = RitualSphereScalingPolicy.forPlayers(participants);
+        // Snapshots written before caster deaths were durable are accepted as
+        // zero progress only. The runtime roster gate then refuses to resume if
+        // fewer than the full living roster is actually present.
+        int casterDeaths = encoded.containsKey(CASTER_DEATHS)
+                ? parseInt(encoded.get(CASTER_DEATHS), CASTER_DEATHS) : 0;
+        if (casterDeaths < 0 || casterDeaths > profile.casterCount()) {
+            throw new IllegalArgumentException("Ritual Sphere caster deaths exceed the authored roster");
+        }
         RitualSphereEncounterPolicy.State state = new RitualSphereEncounterPolicy.State(
                 generation, prisoner, profile);
-        return new Data(state, migratedLegacyState);
+        return new Data(state, migratedLegacyState, casterDeaths);
     }
 
     private static String required(Map<String, String> encoded, String key) {
@@ -100,9 +117,14 @@ public final class RitualSphereEncounterSnapshot {
         }
     }
 
-    public record Data(RitualSphereEncounterPolicy.State state, boolean migratedLegacyState) {
+    public record Data(RitualSphereEncounterPolicy.State state, boolean migratedLegacyState,
+                       int casterDeaths) {
+        public Data(RitualSphereEncounterPolicy.State state, boolean migratedLegacyState) {
+            this(state, migratedLegacyState, 0);
+        }
+
         public Data(RitualSphereEncounterPolicy.State state) {
-            this(state, false);
+            this(state, false, 0);
         }
     }
 }

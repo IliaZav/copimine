@@ -25,6 +25,19 @@ public final class RiftCarrierPolicyTest {
         check(RiftCarrierPolicy.pickUp(state, generation, player, charge, 299L).holder() != null,
                 "a participant may pick up the charge before timeout");
         state = RiftCarrierPolicy.pickUp(state, generation, player, charge, 120L);
+        UUID recipient = UUID.randomUUID();
+        RiftCarrierPolicy.State transferred = RiftCarrierPolicy.transferHolder(state, generation, player, recipient, 121L);
+        check(recipient.equals(transferred.holder()) && transferred.deadlineTick() == state.deadlineTick()
+                        && transferred.delivered() == state.delivered() && transferred.charge().equals(state.charge()),
+                "inventory transfer must preserve charge identity, progress and the original deadline");
+        check(RiftCarrierPolicy.transferHolder(state, generation + 1, player, recipient, 121L) == state,
+                "stale generation cannot transfer an inventory token");
+        check(RiftCarrierPolicy.transferHolder(state, generation, recipient, player, 121L) == state,
+                "a non-holder cannot transfer custody");
+        check(RiftCarrierPolicy.transferHolder(state, generation, player, recipient, state.deadlineTick()) == state,
+                "transfer at the deadline cannot renew an expired charge");
+        check(RiftCarrierPolicy.deliver(transferred, generation, player, true, 122L) == transferred,
+                "the former holder cannot deliver after custody transfer");
         check(RiftCarrierPolicy.deliver(state, generation, player, false, 121L).delivered() == 0,
                 "charge outside the Core must not be delivered");
         state = RiftCarrierPolicy.deliver(state, generation, player, true, 122L);

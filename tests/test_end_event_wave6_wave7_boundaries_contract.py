@@ -608,7 +608,8 @@ def test_disposable_wave7_restart_state_is_explicitly_generation_bound() -> None
     assert "testWaveFrontVisualMode && activeWave == 7" in root
     assert "END_RIFT_WAVE7_BARRIERS_REHYDRATED" in root
     assert "preserveWave7ForRestart" in root
-    assert "cancelSessionTasks(preserveWave2ForRestart || preserveWave6ForRestart || preserveWave7ForRestart)" in root
+    assert "cancelSessionTasks(preserveWave1ForRestart || preserveWave2ForRestart" in root
+    assert "preserveWave6ForRestart || preserveWave7ForRestart)" in root
     assert "cancelSessionTasks(boolean preserveCombatForRestart)" in root
     sandbox_start = root.index("private boolean spawnTestWave(")
     sandbox_end = root.index("private void spawnWaveForObjective(", sandbox_start)
@@ -631,7 +632,7 @@ def test_disposable_wave6_restart_state_preserves_the_ritual_snapshot() -> None:
     assert '"6".equals(snapshot.objectiveProgress().get("test-wave"))' in root
     assert "persistedDisposableWave6" in root
     assert "testWaveFrontVisualMode && activeWave == 6" in root
-    assert "RitualSphereEncounterSnapshot.encode(ritualSphereState)" in root
+    assert "RitualSphereEncounterSnapshot.encode(ritualSphereState, ritualCasterDeathCount)" in root
     assert "restorePersistedRitualSphereObjective();" in root
     assert "END_RIFT_WAVE6_RESTART_PRESERVED" in root
     restore_start = root.index("private void restorePersistedRitualSphereObjective()")

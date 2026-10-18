@@ -18,6 +18,7 @@ public final class EchoPresentationProbeState {
     }
     private final UUID event, duel, actor, owner;
     private final long generation, epoch, startedTick;
+    private final long lifetimeTicks;
     private final String dimension;
     private Action action = Action.IDLE;
     private long actionTick, sequence, swingSerial, hurtSerial, deathTick = -1;
@@ -27,13 +28,21 @@ public final class EchoPresentationProbeState {
 
     public EchoPresentationProbeState(UUID event, long generation, long epoch, UUID duel, UUID actor,
                                       UUID owner, String dimension, long tick) {
+        this(event, generation, epoch, duel, actor, owner, dimension, tick, 6_000L);
+    }
+
+    /** Official persisted duels use a bounded long lifetime; local probes retain their short timeout. */
+    public EchoPresentationProbeState(UUID event, long generation, long epoch, UUID duel, UUID actor,
+                                      UUID owner, String dimension, long tick, long lifetimeTicks) {
         this.event = Objects.requireNonNull(event); this.duel = Objects.requireNonNull(duel);
         this.actor = Objects.requireNonNull(actor); this.owner = Objects.requireNonNull(owner);
         if (generation <= 0 || epoch <= 0 || actor.equals(owner) || tick < 0
+                || lifetimeTicks <= 0 || lifetimeTicks > 1_000_000_000L
                 || dimension == null || dimension.length() > 64
                 || !dimension.matches("[a-z0-9_.-]+:[a-z0-9_/.-]+"))
             throw new IllegalArgumentException("Invalid local Echo presentation identity");
         this.generation = generation; this.epoch = epoch; this.dimension = dimension;
+        this.lifetimeTicks = lifetimeTicks;
         startedTick = actionTick = tick;
     }
 
@@ -58,7 +67,7 @@ public final class EchoPresentationProbeState {
     public boolean active(UUID currentEvent, long currentGeneration, long tick,
                           boolean online, boolean alive, boolean sameWorld, boolean capable) {
         return !closed && event.equals(currentEvent) && generation == currentGeneration
-                && tick >= startedTick && tick - startedTick < 6_000 && online && alive && sameWorld && capable
+                && tick >= startedTick && tick - startedTick < lifetimeTicks && online && alive && sameWorld && capable
                 && (deathTick < 0 || tick - deathTick < 20);
     }
 

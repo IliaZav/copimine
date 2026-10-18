@@ -7,8 +7,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.nio.charset.StandardCharsets;
 import java.util.random.RandomGenerator;
 import me.copimine.endevent.domain.ChamberIsolationPolicy;
+import me.copimine.endevent.domain.Wave7EchoDuelCellPolicy;
 
 /**
  * Generation-scoped state for the four independent Wave 7 trials. Bukkit
@@ -31,6 +33,21 @@ public final class RealitySplitTrialController {
 
     /** New identities have their own schema; these never alias the legacy Trial enum. */
     public enum NamedTrial { WARDEN, PERSONAL_ECHO, MOBILE_MARKSMAN, RIFT_ARCHMAGE }
+
+    /**
+     * Server-side proof that a concrete actor entity reached its death event.
+     * The Paper adapter constructs this only after validating the owned entity
+     * and its persisted actor identity checkpoint.
+     */
+    public record NamedActorDeathReceipt(UUID eventId, long generation, int chamber,
+                                         NamedTrial trial, UUID actorUuid) {
+        public NamedActorDeathReceipt {
+            if (eventId == null || generation <= 0L || chamber < 0 || chamber >= 4
+                    || trial == null || trial == NamedTrial.PERSONAL_ECHO || actorUuid == null) {
+                throw new IllegalArgumentException("invalid named actor death receipt");
+            }
+        }
+    }
 
     // Stable legacy identities. Enum ordering must never migrate saved rooms.
     private static final Trial[] ROOM_TRIALS = {
@@ -79,12 +96,23 @@ public final class RealitySplitTrialController {
             return;
         }
         Map<Integer, NamedTrialState> initial = new LinkedHashMap<>();
+        Map<Integer, Map<UUID, RealitySplitEchoDuelState.DuelRecord>> echoDuels = new LinkedHashMap<>();
         for (int room = 0; room < selectedLayout.size(); room++) {
+            Set<UUID> owners = assignment.playersIn(room);
             initial.put(room, new NamedTrialState(room, selectedLayout.get(room), Stage.ACTIVE,
-                    assignment.playersIn(room), Map.of()));
+                    owners, Map.of()));
+            if (selectedLayout.get(room) == NamedTrial.PERSONAL_ECHO) {
+                Map<UUID, RealitySplitEchoDuelState.DuelRecord> roomDuels = new LinkedHashMap<>();
+                for (UUID owner : owners) {
+                    UUID duelId = stableDuelId(eventId, generation, room, owner);
+                    roomDuels.put(owner, RealitySplitEchoDuelState.DuelRecord.planned(
+                            eventId, generation, generation, room, duelId, owner));
+                }
+                echoDuels.put(room, roomDuels);
+            }
         }
         restoreNamed(eventId, generation, assignment,
-                new NamedData(eventId, generation, selectedLayout, initial));
+                new NamedData(eventId, generation, selectedLayout, initial, echoDuels));
     }
 
     /** Validate every owner, room and receipt before replacing a live generation. */
@@ -111,6 +139,17 @@ public final class RealitySplitTrialController {
                     throw new IllegalArgumentException("restoration cannot erase durable named completion receipts");
                 }
             }
+            for (var roomEntry : named.personalEchoDuels().entrySet()) {
+                Map<UUID, RealitySplitEchoDuelState.DuelRecord> replacement =
+                        restored.personalEchoDuels().get(roomEntry.getKey());
+                for (var duelEntry : roomEntry.getValue().entrySet()) {
+                    var current = duelEntry.getValue();
+                    var next = replacement == null ? null : replacement.get(duelEntry.getKey());
+                    if (next == null || !canRestoreDuel(current, next)) {
+                        throw new IllegalArgumentException("restoration cannot erase or rewind durable Echo duel state");
+                    }
+                }
+            }
         }
         // NamedData has already validated its entire immutable layout and all receipts.
         generation = expectedGeneration;
@@ -120,6 +159,14 @@ public final class RealitySplitTrialController {
 
     public synchronized NamedTrialState namedTrial(int chamber) {
         return named == null ? null : named.trials().get(chamber);
+    }
+
+    /** Deterministic logical cells for an Echo room; world adapters still own physical barriers. */
+    public synchronized List<Wave7EchoDuelCellPolicy.Cell> echoDuelCells(int chamber) {
+        if (named == null) return List.of();
+        NamedTrialState state = named.trials().get(chamber);
+        if (state == null || state.trial() != NamedTrial.PERSONAL_ECHO) return List.of();
+        return Wave7EchoDuelCellPolicy.plan(chamber, named.selectedLayout().size(), state.owners());
     }
 
     public synchronized NamedData namedSnapshot() {
@@ -143,27 +190,210 @@ public final class RealitySplitTrialController {
         return true;
     }
 
-    /** Each owner's own Echo supplies one receipt; a multi-owner room needs every receipt. */
-    public synchronized boolean completePersonalEcho(UUID eventId, long expectedGeneration,
-                                                      int chamber, UUID owner) {
-        if (!ownsNamed(eventId, expectedGeneration) || owner == null) return false;
+    /** Apply a completion only from a concrete, already validated Paper entity death. */
+    public synchronized boolean completeNamedActor(NamedActorDeathReceipt receipt) {
+        if (receipt == null || !ownsNamed(receipt.eventId(), receipt.generation())) return false;
+        NamedTrialState state = named.trials().get(receipt.chamber());
+        if (state == null || state.trial() != receipt.trial() || state.stage() != Stage.ACTIVE) return false;
+        replaceNamedTrial(new NamedTrialState(receipt.chamber(), state.trial(), Stage.COMPLETE,
+                state.owners(), Map.of()));
+        return true;
+    }
+
+    /**
+     * Record a persisted owner duel checkpoint. Caller must have validated the actor and
+     * allowlisted replica state before entering the controller.
+     */
+    public synchronized boolean registerPersonalEchoDuel(RealitySplitEchoDuelState.DuelRecord update) {
+        if (named == null || update == null || !update.eventId().equals(named.eventId())
+                || update.attemptGeneration() != generation) return false;
+        NamedTrialState state = named.trials().get(update.room());
+        Map<UUID, RealitySplitEchoDuelState.DuelRecord> roomDuels = named.personalEchoDuels().get(update.room());
+        if (state == null || state.trial() != NamedTrial.PERSONAL_ECHO || roomDuels == null
+                || !state.owners().contains(update.ownerUuid())) return false;
+        RealitySplitEchoDuelState.DuelRecord current = roomDuels.get(update.ownerUuid());
+        if (current == null || !current.duelId().equals(update.duelId())
+                || current.lifecycle() == RealitySplitEchoDuelState.Lifecycle.COMPLETE
+                || update.lifecycle() == RealitySplitEchoDuelState.Lifecycle.COMPLETE
+                || update.revision() <= current.revision()
+                || !isAllowedDuelTransition(current.lifecycle(), update.lifecycle())
+                || update.runtimeGeneration() < current.runtimeGeneration()
+                || update.replicaRevision() < current.replicaRevision()
+                || current.lifecycle() == RealitySplitEchoDuelState.Lifecycle.PLANNED
+                && (update.actor() == null
+                || update.behaviorStrategy() == null
+                || update.actor().currentHealth() != update.ownerStartingHealth()
+                || update.actor().maximumHealth() != update.ownerMaximumHealth())) return false;
+        if (current.lifecycle() != RealitySplitEchoDuelState.Lifecycle.PLANNED
+                && (update.ownerStartingHealth() != current.ownerStartingHealth()
+                || update.ownerMaximumHealth() != current.ownerMaximumHealth()
+                || !update.behaviorStrategy().equals(current.behaviorStrategy())
+                || current.actor() == null || update.actor() == null
+                || update.actor().revision() < current.actor().revision()
+                || update.actor().deathSerial() != current.actor().deathSerial()
+                || update.actor().revision() == current.actor().revision()
+                && !sameActorPayload(current.actor(), update.actor())
+                || update.lifecycle() == RealitySplitEchoDuelState.Lifecycle.OWNER_OFFLINE
+                && current.returnDeadlineMillis() > 0L
+                && update.returnDeadlineMillis() != current.returnDeadlineMillis()
+                || update.lifecycle() != RealitySplitEchoDuelState.Lifecycle.OWNER_OFFLINE
+                && update.returnDeadlineMillis() != current.returnDeadlineMillis()
+                || update.replicaRevision() == current.replicaRevision()
+                && !update.replicaState().equals(current.replicaState())
+                || update.runtimeGeneration() == current.runtimeGeneration()
+                && !update.actor().actorUuid().equals(current.actor().actorUuid()))) return false;
+        if (current.lifecycle() == RealitySplitEchoDuelState.Lifecycle.PLANNED
+                && update.lifecycle() != RealitySplitEchoDuelState.Lifecycle.ACTIVE) return false;
+        Set<UUID> rosterOwners = new HashSet<>();
+        named.trials().values().forEach(room -> rosterOwners.addAll(room.owners()));
+        if (rosterOwners.contains(update.duelId())
+                || update.actor() != null && rosterOwners.contains(update.actor().actorUuid())) return false;
+        for (var existingRoom : named.personalEchoDuels().values()) {
+            for (var existing : existingRoom.values()) {
+                if (existing == current) continue;
+                if (existing.duelId().equals(update.duelId())
+                        || existing.actor() != null && update.actor() != null
+                        && existing.actor().actorUuid().equals(update.actor().actorUuid())) return false;
+            }
+        }
+        Map<Integer, Map<UUID, RealitySplitEchoDuelState.DuelRecord>> allDuels =
+                new LinkedHashMap<>(named.personalEchoDuels());
+        Map<UUID, RealitySplitEchoDuelState.DuelRecord> replacement = new LinkedHashMap<>(roomDuels);
+        replacement.put(update.ownerUuid(), update);
+        allDuels.put(update.room(), replacement);
+        named = new NamedData(named.eventId(), generation, named.selectedLayout(), named.trials(), allDuels);
+        return true;
+    }
+
+    /**
+     * Build an idempotent receipt only for the exact live actor named by the current owner duel.
+     * Callers must invoke this from a server-confirmed actor death callback.
+     */
+    public synchronized EchoCompletionReceipt receiptForConfirmedActorDeath(
+            UUID eventId, long expectedGeneration, int chamber, UUID owner, UUID deadActor) {
+        if (!ownsNamed(eventId, expectedGeneration) || owner == null || deadActor == null) return null;
+        NamedTrialState trial = named.trials().get(chamber);
+        Map<UUID, RealitySplitEchoDuelState.DuelRecord> roomDuels = named.personalEchoDuels().get(chamber);
+        RealitySplitEchoDuelState.DuelRecord duel = roomDuels == null ? null : roomDuels.get(owner);
+        if (trial == null || trial.trial() != NamedTrial.PERSONAL_ECHO || trial.stage() != Stage.ACTIVE
+                || !trial.owners().contains(owner) || trial.echoReceipts().containsKey(owner)
+                || duel == null || duel.lifecycle() != RealitySplitEchoDuelState.Lifecycle.ACTIVE
+                || !duel.eventId().equals(eventId) || duel.attemptGeneration() != expectedGeneration
+                || duel.room() != chamber || !duel.ownerUuid().equals(owner) || duel.actor() == null
+                || duel.actor().lifecycle() != RealitySplitEchoDuelState.ActorLifecycle.ALIVE
+                || !duel.actor().actorUuid().equals(deadActor)
+                || duel.actor().deathSerial() >= RealitySplitEchoDuelState.MAX_COUNTER) return null;
+        return new EchoCompletionReceipt(eventId, expectedGeneration, duel.runtimeGeneration(),
+                chamber, duel.duelId(), owner, deadActor, duel.actor().deathSerial() + 1L);
+    }
+
+    /** A personal receipt must identify the current persisted actor and its next death serial. */
+    public synchronized boolean completePersonalEcho(EchoCompletionReceipt receipt) {
+        if (named == null || receipt == null || !ownsNamed(receipt.eventId(), receipt.generation())) return false;
+        int chamber = receipt.chamber();
+        UUID owner = receipt.owner();
         NamedTrialState state = named.trials().get(chamber);
+        Map<UUID, RealitySplitEchoDuelState.DuelRecord> roomDuels = named.personalEchoDuels().get(chamber);
+        RealitySplitEchoDuelState.DuelRecord duel = roomDuels == null ? null : roomDuels.get(owner);
         if (state == null || state.trial() != NamedTrial.PERSONAL_ECHO
                 || state.stage() != Stage.ACTIVE || !state.owners().contains(owner)
-                || state.echoReceipts().containsKey(owner)) return false;
+                || state.echoReceipts().containsKey(owner) || duel == null
+                || duel.lifecycle() != RealitySplitEchoDuelState.Lifecycle.ACTIVE
+                || !duel.eventId().equals(receipt.eventId())
+                || duel.attemptGeneration() != receipt.generation()
+                || duel.runtimeGeneration() != receipt.runtimeGeneration()
+                || duel.room() != chamber || !duel.duelId().equals(receipt.duelId())
+                || !duel.ownerUuid().equals(owner) || duel.actor() == null
+                || !duel.actor().actorUuid().equals(receipt.actorUuid())
+                || duel.revision() >= RealitySplitEchoDuelState.MAX_COUNTER
+                || duel.actor().revision() >= RealitySplitEchoDuelState.MAX_COUNTER
+                || receipt.deathSerial() != duel.actor().deathSerial() + 1L) return false;
+        RealitySplitEchoDuelState.DuelRecord completed = duel.died(receipt.deathSerial());
+        Map<Integer, Map<UUID, RealitySplitEchoDuelState.DuelRecord>> allDuels =
+                new LinkedHashMap<>(named.personalEchoDuels());
+        Map<UUID, RealitySplitEchoDuelState.DuelRecord> replacement = new LinkedHashMap<>(roomDuels);
+        replacement.put(owner, completed);
+        allDuels.put(chamber, replacement);
         Map<UUID, EchoCompletionReceipt> receipts = new LinkedHashMap<>(state.echoReceipts());
-        receipts.put(owner, new EchoCompletionReceipt(eventId, expectedGeneration, chamber, owner));
-        replaceNamedTrial(new NamedTrialState(chamber, state.trial(),
+        receipts.put(owner, receipt);
+        Map<Integer, NamedTrialState> updatedTrials = new LinkedHashMap<>(named.trials());
+        updatedTrials.put(chamber, new NamedTrialState(chamber, state.trial(),
                 receipts.size() == state.owners().size() ? Stage.COMPLETE : Stage.ACTIVE,
                 state.owners(), receipts));
+        named = new NamedData(named.eventId(), generation, named.selectedLayout(), updatedTrials, allDuels);
         return true;
+    }
+
+    /** Owner-only completions lack an actor identity and are intentionally rejected. */
+    public synchronized boolean completePersonalEcho(UUID eventId, long expectedGeneration,
+                                                      int chamber, UUID owner) {
+        return false;
     }
 
     private void replaceNamedTrial(NamedTrialState replacement) {
         Map<Integer, NamedTrialState> updated = new LinkedHashMap<>(named.trials());
         updated.put(replacement.chamber(), replacement);
         named = new NamedData(named.eventId(), generation,
-                named.selectedLayout(), updated);
+                named.selectedLayout(), updated, named.personalEchoDuels());
+    }
+
+    private static UUID stableDuelId(UUID eventId, long generation, int room, UUID owner) {
+        String identity = eventId + ":" + generation + ":" + room + ":" + owner;
+        return UUID.nameUUIDFromBytes(identity.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static boolean isAllowedDuelTransition(RealitySplitEchoDuelState.Lifecycle current,
+                                                    RealitySplitEchoDuelState.Lifecycle replacement) {
+        return switch (current) {
+            case PLANNED -> replacement == RealitySplitEchoDuelState.Lifecycle.ACTIVE;
+            case ACTIVE -> replacement == RealitySplitEchoDuelState.Lifecycle.ACTIVE
+                    || replacement == RealitySplitEchoDuelState.Lifecycle.OWNER_OFFLINE;
+            case OWNER_OFFLINE -> replacement == RealitySplitEchoDuelState.Lifecycle.ACTIVE
+                    || replacement == RealitySplitEchoDuelState.Lifecycle.OWNER_OFFLINE;
+            case COMPLETE -> false;
+        };
+    }
+
+    private static boolean canRestoreDuel(RealitySplitEchoDuelState.DuelRecord current,
+                                           RealitySplitEchoDuelState.DuelRecord replacement) {
+        if (!current.duelId().equals(replacement.duelId())
+                || replacement.revision() < current.revision()
+                || replacement.runtimeGeneration() < current.runtimeGeneration()
+                || replacement.replicaRevision() < current.replicaRevision()) return false;
+        if (current.lifecycle() == RealitySplitEchoDuelState.Lifecycle.COMPLETE) return current.equals(replacement);
+        if (current.lifecycle() != RealitySplitEchoDuelState.Lifecycle.PLANNED
+                && (replacement.ownerStartingHealth() != current.ownerStartingHealth()
+                || replacement.ownerMaximumHealth() != current.ownerMaximumHealth()
+                || !replacement.behaviorStrategy().equals(current.behaviorStrategy())
+                || current.actor() == null || replacement.actor() == null
+                || replacement.actor().revision() < current.actor().revision()
+                || replacement.actor().deathSerial() < current.actor().deathSerial()
+                || replacement.actor().revision() == current.actor().revision()
+                && !sameActorPayload(current.actor(), replacement.actor())
+                || replacement.replicaRevision() == current.replicaRevision()
+                && !replacement.replicaState().equals(current.replicaState())
+                || replacement.lifecycle() == RealitySplitEchoDuelState.Lifecycle.OWNER_OFFLINE
+                && current.returnDeadlineMillis() > 0L
+                && replacement.returnDeadlineMillis() != current.returnDeadlineMillis()
+                || replacement.lifecycle() != RealitySplitEchoDuelState.Lifecycle.OWNER_OFFLINE
+                && current.lifecycle() != RealitySplitEchoDuelState.Lifecycle.PLANNED
+                && replacement.returnDeadlineMillis() != current.returnDeadlineMillis()
+                || replacement.runtimeGeneration() == current.runtimeGeneration()
+                && !replacement.actor().actorUuid().equals(current.actor().actorUuid()))) return false;
+        return replacement.revision() != current.revision() || replacement.equals(current);
+    }
+
+    private static boolean sameActorPayload(RealitySplitEchoDuelState.ActorState left,
+                                            RealitySplitEchoDuelState.ActorState right) {
+        return left.currentHealth() == right.currentHealth()
+                && left.maximumHealth() == right.maximumHealth()
+                && left.lifecycle() == right.lifecycle()
+                && left.revision() == right.revision()
+                && left.nextActionTick() == right.nextActionTick()
+                && left.meleeCooldownUntilTick() == right.meleeCooldownUntilTick()
+                && left.rangedCooldownUntilTick() == right.rangedCooldownUntilTick()
+                && left.pendingUseUntilTick() == right.pendingUseUntilTick()
+                && left.deathSerial() == right.deathSerial();
     }
 
     private static void validateNamedAssignment(ChamberIsolationPolicy.Assignment assignment) {
@@ -404,9 +634,15 @@ public final class RealitySplitTrialController {
         }
     }
 
-    public record EchoCompletionReceipt(UUID eventId, long generation, int chamber, UUID owner) {
+    public record EchoCompletionReceipt(UUID eventId, long generation, long runtimeGeneration,
+                                        int chamber, UUID duelId, UUID owner, UUID actorUuid,
+                                        long deathSerial) {
         public EchoCompletionReceipt {
-            if (eventId == null || generation <= 0L || chamber < 0 || chamber >= 4 || owner == null) {
+            if (eventId == null || generation <= 0L || generation > RealitySplitEchoDuelState.MAX_COUNTER
+                    || runtimeGeneration < generation || runtimeGeneration > RealitySplitEchoDuelState.MAX_COUNTER
+                    || chamber < 0 || chamber >= 4 || duelId == null || owner == null
+                    || actorUuid == null || actorUuid.equals(owner) || deathSerial <= 0L
+                    || deathSerial > RealitySplitEchoDuelState.MAX_COUNTER) {
                 throw new IllegalArgumentException("invalid personal Echo completion receipt");
             }
         }
@@ -449,10 +685,18 @@ public final class RealitySplitTrialController {
     /** Trial order and original owners are durable; they are never reselected during restore. */
     public record NamedData(UUID eventId, long generation,
                              List<RealitySplitTrialController.NamedTrial> selectedLayout,
-                             Map<Integer, RealitySplitTrialController.NamedTrialState> trials) {
+                             Map<Integer, RealitySplitTrialController.NamedTrialState> trials,
+                             Map<Integer, Map<UUID, RealitySplitEchoDuelState.DuelRecord>> personalEchoDuels) {
+        public NamedData(UUID eventId, long generation, List<NamedTrial> selectedLayout,
+                         Map<Integer, NamedTrialState> trials) {
+            this(eventId, generation, selectedLayout, trials, Map.of());
+        }
+
         public NamedData {
-            if (eventId == null || generation <= 0L || selectedLayout == null
+            if (eventId == null || generation <= 0L || generation > RealitySplitEchoDuelState.MAX_COUNTER
+                    || selectedLayout == null
                     || selectedLayout.isEmpty() || selectedLayout.size() > 4 || trials == null
+                    || personalEchoDuels == null
                     || selectedLayout.stream().anyMatch(value -> value == null)
                     || new HashSet<>(selectedLayout).size() != selectedLayout.size()
                     || trials.size() != selectedLayout.size()) {
@@ -460,6 +704,9 @@ public final class RealitySplitTrialController {
             }
             selectedLayout = List.copyOf(selectedLayout);
             Map<Integer, RealitySplitTrialController.NamedTrialState> validated = new LinkedHashMap<>();
+            Map<Integer, Map<UUID, RealitySplitEchoDuelState.DuelRecord>> validatedDuels = new LinkedHashMap<>();
+            Set<UUID> allDuels = new HashSet<>();
+            Set<UUID> allActors = new HashSet<>();
             Set<UUID> allOwners = new HashSet<>();
             for (int room = 0; room < selectedLayout.size(); room++) {
                 var state = trials.get(room);
@@ -474,12 +721,59 @@ public final class RealitySplitTrialController {
                         throw new IllegalArgumentException("personal Echo receipt belongs to a stale attempt");
                     }
                 }
+                Map<UUID, RealitySplitEchoDuelState.DuelRecord> roomDuels = personalEchoDuels.get(room);
+                if (state.trial() == NamedTrial.PERSONAL_ECHO) {
+                    // Keep the derived physical layout representable during snapshot restore.
+                    Wave7EchoDuelCellPolicy.plan(room, selectedLayout.size(), state.owners());
+                    if (roomDuels == null || roomDuels.size() != state.owners().size()
+                            || !roomDuels.keySet().equals(state.owners())) {
+                        throw new IllegalArgumentException("every Echo owner requires exactly one duel record");
+                    }
+                    Map<UUID, RealitySplitEchoDuelState.DuelRecord> roomCopy = new LinkedHashMap<>();
+                    for (UUID owner : state.owners()) {
+                        var duel = roomDuels.get(owner);
+                        if (duel == null || !duel.eventId().equals(eventId)
+                                || duel.attemptGeneration() != generation || duel.room() != room
+                                || !duel.ownerUuid().equals(owner) || !allDuels.add(duel.duelId())
+                                || duel.actor() != null && !allActors.add(duel.actor().actorUuid())) {
+                            throw new IllegalArgumentException("personal Echo duel identity is missing, duplicated or foreign");
+                        }
+                        EchoCompletionReceipt receipt = state.echoReceipts().get(owner);
+                        if ((duel.lifecycle() == RealitySplitEchoDuelState.Lifecycle.COMPLETE) != (receipt != null)) {
+                            throw new IllegalArgumentException("Echo completion requires its matching completed actor");
+                        }
+                        if (receipt != null && (!receipt.eventId().equals(eventId)
+                                || receipt.generation() != generation || receipt.runtimeGeneration() != duel.runtimeGeneration()
+                                || receipt.chamber() != room || !receipt.duelId().equals(duel.duelId())
+                                || !receipt.owner().equals(owner) || duel.actor() == null
+                                || !receipt.actorUuid().equals(duel.actor().actorUuid())
+                                || duel.actor().lifecycle() != RealitySplitEchoDuelState.ActorLifecycle.DEAD
+                                || receipt.deathSerial() != duel.actor().deathSerial())) {
+                            throw new IllegalArgumentException("personal Echo receipt is not bound to its completed actor");
+                        }
+                        roomCopy.put(owner, duel);
+                    }
+                    validatedDuels.put(room, Map.copyOf(roomCopy));
+                } else if (roomDuels != null || !state.echoReceipts().isEmpty()) {
+                    throw new IllegalArgumentException("non-Echo room cannot contain personal duel state");
+                }
                 validated.put(room, state);
+            }
+            for (Integer room : personalEchoDuels.keySet()) {
+                if (room == null || room < 0 || room >= selectedLayout.size()
+                        || selectedLayout.get(room) != NamedTrial.PERSONAL_ECHO) {
+                    throw new IllegalArgumentException("Echo duel state is attached to a non-Echo or unknown room");
+                }
             }
             if (allOwners.size() > 20 || selectedLayout.size() != Math.min(4, allOwners.size())) {
                 throw new IllegalArgumentException("named Wave 7 room count does not match roster");
             }
+            if (allDuels.stream().anyMatch(allOwners::contains)
+                    || allActors.stream().anyMatch(allOwners::contains)) {
+                throw new IllegalArgumentException("private Echo identities cannot alias roster owners");
+            }
             trials = Map.copyOf(validated);
+            personalEchoDuels = Map.copyOf(validatedDuels);
         }
     }
 }

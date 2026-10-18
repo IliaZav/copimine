@@ -28,7 +28,8 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
         ORDINARY,
         ELITE,
         WAVE_GUARDIAN,
-        RITUAL_GUARD
+        RITUAL_GUARD,
+        WAVE7_MARKSMAN
     }
 
     private final ModelPart root;
@@ -47,6 +48,8 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
     private final ModelPart guardianSpine;
     private final ModelPart eliteMantle;
     private final ModelPart eliteHornCrown;
+    private final ModelPart marksmanSight;
+    private final ModelPart marksmanQuiver;
     private final Variant variant;
 
     public RiftEventSkeletonModel(ModelPart root, boolean elite) {
@@ -72,10 +75,13 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
         this.guardianSpine = body.getChild("guardian_spine");
         this.eliteMantle = body.getChild("elite_mantle");
         this.eliteHornCrown = head.getChild("elite_horn_crown");
+        this.marksmanSight = head.getChild("marksman_sight");
+        this.marksmanQuiver = body.getChild("marksman_quiver");
         this.variant = variant;
         boolean elite = isEliteVariant(variant);
         boolean guardian = variant == Variant.WAVE_GUARDIAN;
         boolean ritual = variant == Variant.RITUAL_GUARD;
+        boolean marksman = variant == Variant.WAVE7_MARKSMAN;
         boolean userSkin = usesSharedSkeletonAtlas(variant);
         this.eliteHornLeft.visible = elite;
         this.eliteHornRight.visible = elite;
@@ -87,6 +93,8 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
         this.chestRift.visible = !userSkin;
         this.eliteMantle.visible = elite && !userSkin;
         this.eliteHornCrown.visible = elite && !userSkin;
+        this.marksmanSight.visible = marksman;
+        this.marksmanQuiver.visible = marksman;
         // Unused atlas islands are opaque; the vanilla hat layer would cover
         // the skull with an unrelated patch.
         this.hat.visible = false;
@@ -158,6 +166,12 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
                         new ModelUvBounds.Box(56, 16, 2.0F, -10.0F, -1.0F,
                                 1.0F, 3.0F, 1.0F)),
                 PartPose.ZERO);
+        head.addOrReplaceChild("marksman_sight", cube(48, 16,
+                        -2.0F, -10.0F, -4.25F, 4.0F, 2.0F, 0.75F),
+                PartPose.ZERO);
+        body.addOrReplaceChild("marksman_quiver", cube(40, 20,
+                        1.8F, 1.0F, 1.9F, 2.4F, 8.0F, 2.0F),
+                PartPose.ZERO);
         return LayerDefinition.create(data, TEXTURE_WIDTH, TEXTURE_HEIGHT);
     }
 
@@ -203,7 +217,7 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
 
     private static boolean usesSharedSkeletonAtlas(Variant variant) {
         return switch (variant) {
-            case ORDINARY, ELITE, WAVE_GUARDIAN, RITUAL_GUARD -> true;
+            case ORDINARY, ELITE, WAVE_GUARDIAN, RITUAL_GUARD, WAVE7_MARKSMAN -> true;
         };
     }
 
@@ -248,6 +262,15 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
             leftArm.xRot=-1.45F; rightArm.xRot=-1.45F;
         } else if ("WAVE_RECOVER".equals(wavePose)) {
             leftArm.xRot=.2F; rightArm.xRot=.2F; head.xRot+=.15F;
+        }
+        if (variant == Variant.WAVE7_MARKSMAN) {
+            // Keep the named marksman in an unmistakable drawn-bow pose.
+            leftArm.xRot = -1.24F;
+            rightArm.xRot = -0.94F;
+            leftArm.yRot = -0.16F;
+            rightArm.yRot = 0.22F;
+            head.xRot += 0.06F;
+            marksmanSight.yRot = Mth.sin(animationProgress * 0.07F) * 0.025F;
         }
     }
 

@@ -16,6 +16,11 @@ public final class RitualSphereEncounterSnapshotTest {
         check(restored.generation() == 9L, "generation must round-trip");
         check(restored.prisoner().equals(prisoner), "prisoner must round-trip");
         check(restored.profile().participants() == 13, "participant count must round-trip");
+        check(RitualSphereEncounterSnapshot.decode(encoded, 9L).casterDeaths() == 0,
+                "new snapshots must persist the caster death count");
+        Map<String, String> withProgress = RitualSphereEncounterSnapshot.encode(original, 2);
+        check(RitualSphereEncounterSnapshot.decode(withProgress, 9L).casterDeaths() == 2,
+                "caster death progression must round-trip without inference from loaded entities");
         check(!RitualSphereEncounterSnapshot.decode(encoded, 9L).migratedLegacyState(),
                 "current state must not report legacy migration");
 
@@ -39,6 +44,10 @@ public final class RitualSphereEncounterSnapshotTest {
                 "waiting state must round-trip without a prisoner");
         check(waitingRestored.profile().participants() == 13,
                 "waiting snapshot must preserve encounter scaling");
+        Map<String, String> preProgressSnapshot = new java.util.LinkedHashMap<>(encoded);
+        preProgressSnapshot.remove("ritual-sphere.caster-deaths");
+        check(RitualSphereEncounterSnapshot.decode(preProgressSnapshot, 9L).casterDeaths() == 0,
+                "old checkpoints default to zero and must rely on the live-roster gate");
         check(RitualSphereEncounterSnapshot.decode(Map.of(), 9L).state() == null,
                 "missing state must decode as absent");
         expectFailure(() -> RitualSphereEncounterSnapshot.decode(encoded, 8L),
@@ -51,6 +60,10 @@ public final class RitualSphereEncounterSnapshotTest {
         invalidParticipants.put("ritual-sphere.participants", "1");
         expectFailure(() -> RitualSphereEncounterSnapshot.decode(invalidParticipants, 9L),
                 "participant count outside the live range must fail closed");
+        Map<String, String> tooManyDeaths = new java.util.LinkedHashMap<>(encoded);
+        tooManyDeaths.put("ritual-sphere.caster-deaths", "99");
+        expectFailure(() -> RitualSphereEncounterSnapshot.decode(tooManyDeaths, 9L),
+                "caster deaths beyond the authored roster must fail closed");
         Map<String, String> missingParticipantCount = new java.util.LinkedHashMap<>(encoded);
         missingParticipantCount.remove("ritual-sphere.participants");
         expectFailure(() -> RitualSphereEncounterSnapshot.decode(missingParticipantCount, 9L),

@@ -32,6 +32,15 @@ public final class EchoCombatAdmissionListener implements Listener {
     private final Supplier<Context> current;
     private final Map<Projectile, Scope> projectiles = new IdentityHashMap<>();
     private final Map<AreaEffectCloud, Scope> clouds = new IdentityHashMap<>();
+    private OwnerLethalReceipt ownerLethalReceipt;
+    private OwnerActionIntent ownerActionIntent;
+    private OwnerActionReceipt ownerActionReceipt;
+
+    private record OwnerLethalReceipt(EchoCombatAdmission.Pair pair, long tick,
+                                     EntityDamageEvent damageEvent) { }
+    private record OwnerActionIntent(EchoCombatAdmission.Pair pair, long tick, UUID target) { }
+    private record OwnerActionReceipt(EchoCombatAdmission.Pair pair, long tick, UUID target,
+                                     EntityDamageByEntityEvent damageEvent) { }
 
     public EchoCombatAdmissionListener(Supplier<Context> current) {
         this.current = Objects.requireNonNull(current);
@@ -57,6 +66,130 @@ public final class EchoCombatAdmissionListener implements Listener {
         if (direct == null && causing == null) return;
         boolean potionEffect = direct instanceof ThrownPotion || direct instanceof AreaEffectCloud;
         if (!allowed(context, direct, causing, event.getEntity(), potionEffect)) event.setCancelled(true);
+    }
+
+    /** Observe the final uncancelled hit; only its synchronous death callback can consume it. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onLethalOwnerDamage(EntityDamageEvent event) {
+        Context context = current.get();
+        if (context == null || event == null || event.getEntity() == null) return;
+        UUID target = id(event.getEntity());
+        if (ownerLethalReceipt != null && ownerLethalReceipt.pair().actor().equals(target)) {
+            ownerLethalReceipt = null;
+        }
+        if (event.isCancelled() || !context.active() || !context.pair().actor().equals(target)
+                || !(event.getEntity() instanceof org.bukkit.entity.LivingEntity living)
+                || event.getFinalDamage() <= 0.0D || living.getHealth() > event.getFinalDamage()) return;
+
+        Entity direct = event.getDamageSource() == null ? null : event.getDamageSource().getDirectEntity();
+        Entity causing = event.getDamageSource() == null ? null : event.getDamageSource().getCausingEntity();
+        if (event instanceof EntityDamageByEntityEvent byEntity) {
+            Entity damager = byEntity.getDamager();
+            if (direct == null) direct = damager;
+            else if (!Objects.equals(id(direct), id(damager))) return;
+        }
+        if (!context.pair().owner().equals(origin(direct))
+                || !allowed(context, direct, causing, event.getEntity(), false)) return;
+        ownerLethalReceipt = new OwnerLethalReceipt(context.pair(), context.tick(), event);
+    }
+
+    /** Arm one exact server-requested actor-to-owner attack before the synchronous Bukkit call. */
+    public boolean beginOwnerCombatAction(EchoCombatAdmission.Pair expected, UUID target) {
+        Context context = current.get();
+        if (expected == null || target == null || context == null || !context.active()
+                || !expected.equals(context.pair()) || !expected.owner().equals(target)
+                || ownerActionIntent != null || ownerActionReceipt != null) return false;
+        ownerActionIntent = new OwnerActionIntent(expected, context.tick(), target);
+        return true;
+    }
+
+    /** Record only a real, final, uncancelled positive native hit for the armed duel action. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+    public void onAcceptedOwnerCombatAction(EntityDamageByEntityEvent event) {
+        OwnerActionIntent intent = ownerActionIntent;
+        if (intent == null || event == null || event.isCancelled() || event.getFinalDamage() <= 0.0D
+                || !intent.target().equals(id(event.getEntity()))) return;
+        Context context = current.get();
+        Entity damager = event.getDamager();
+        Entity direct = event.getDamageSource() == null ? null : event.getDamageSource().getDirectEntity();
+        Entity causing = event.getDamageSource() == null ? null : event.getDamageSource().getCausingEntity();
+        if (context == null || !context.active() || !intent.pair().equals(context.pair())
+                || intent.tick() != context.tick() || !intent.pair().actor().equals(id(damager))
+                || direct != null && !intent.pair().actor().equals(id(direct))
+                || causing != null && !intent.pair().actor().equals(id(causing))
+                || !sameWorld(context, damager) || !sameWorld(context, event.getEntity())
+                || !EchoCombatAdmission.mayApply(context, intent.pair().actor(), intent.target(), false)) return;
+        ownerActionReceipt = new OwnerActionReceipt(intent.pair(), intent.tick(), intent.target(), event);
+    }
+
+    /** Consume the exact one-use positive damage outcome; cancelled/zero hits cannot spend supplies. */
+    public boolean consumeAcceptedOwnerCombatAction(EchoCombatAdmission.Pair expected, UUID target,
+                                                    EntityDamageEvent lastDamageCause) {
+        OwnerActionIntent intent = ownerActionIntent;
+        OwnerActionReceipt receipt = ownerActionReceipt;
+        ownerActionIntent = null;
+        ownerActionReceipt = null;
+        Context context = current.get();
+        return intent != null && receipt != null && expected != null && target != null
+                && expected.equals(intent.pair()) && expected.equals(receipt.pair())
+                && target.equals(intent.target()) && target.equals(receipt.target())
+                && intent.tick() == receipt.tick()
+                && (context != null && context.active() && expected.equals(context.pair())
+                && context.tick() == receipt.tick() || lastDamageCause == receipt.damageEvent())
+                && lastDamageCause == receipt.damageEvent()
+                && receipt.damageEvent().getFinalDamage() > 0.0D && !receipt.damageEvent().isCancelled();
+    }
+
+    /** Clear an armed action after an exception or rejected native event. */
+    public void cancelOwnerCombatAction(EchoCombatAdmission.Pair expected) {
+        if (ownerActionIntent != null && (expected == null || expected.equals(ownerActionIntent.pair()))) {
+            ownerActionIntent = null;
+            ownerActionReceipt = null;
+        }
+    }
+
+    /** Register a server-fired Echo arrow after its owner was assigned and before velocity is applied. */
+    public boolean registerServerLaunchedEchoArrow(Projectile projectile, UUID expectedActor) {
+        Context context = current.get();
+        if (projectile == null || expectedActor == null || context == null || !context.active()
+                || !context.pair().actor().equals(expectedActor)
+                || !expectedActor.equals(origin(projectile)) || !projectile.isValid()
+                || !sameWorld(context, projectile) || projectiles.containsKey(projectile)
+                || projectiles.size() >= MAX_PROJECTILES
+                || context.tick() > Long.MAX_VALUE - EchoCombatAdmission.MAX_SOURCE_TICKS) {
+            return false;
+        }
+        projectiles.put(projectile, new Scope(context.pair(), expectedActor, context.tick(),
+                context.tick() + EchoCombatAdmission.MAX_SOURCE_TICKS));
+        projectile.setPersistent(false);
+        if (projectile instanceof AbstractArrow arrow) {
+            arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
+        }
+        return true;
+    }
+
+    /** Remove only the exact projectile receipt just registered by this actor. */
+    public void discardServerLaunchedEchoArrow(Projectile projectile, UUID expectedActor) {
+        if (projectile == null || expectedActor == null) return;
+        Context context = current.get();
+        Scope scope = projectiles.get(projectile);
+        if (scope != null && context != null && context.pair().actor().equals(expectedActor)
+                && scope.pair().equals(context.pair()) && scope.origin().equals(expectedActor)) {
+            projectiles.remove(projectile);
+        }
+        if (projectile.isValid()) projectile.remove();
+    }
+
+    /** Consume a one-use owner lethal-hit receipt for the exact duel and native death cause. */
+    public boolean consumeOwnerLethalDeath(EchoCombatAdmission.Pair expected,
+                                            EntityDamageEvent lastDamageCause) {
+        OwnerLethalReceipt receipt = ownerLethalReceipt;
+        if (receipt == null) return false;
+        ownerLethalReceipt = null;
+        Context context = current.get();
+        return expected != null && context != null && expected.equals(receipt.pair())
+                && expected.equals(context.pair()) && context.tick() == receipt.tick()
+                && lastDamageCause == receipt.damageEvent();
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -167,6 +300,17 @@ public final class EchoCombatAdmissionListener implements Listener {
     /** Five-tick cleanup visits only these bounded handles, never world entities. */
     public void tick() {
         Context context = current.get();
+        if (ownerLethalReceipt != null && (context == null || !context.active()
+                || !ownerLethalReceipt.pair().equals(context.pair())
+                || ownerLethalReceipt.tick() != context.tick())) {
+            ownerLethalReceipt = null;
+        }
+        if (ownerActionIntent != null && (context == null || !context.active()
+                || !ownerActionIntent.pair().equals(context.pair())
+                || ownerActionIntent.tick() != context.tick())) {
+            ownerActionIntent = null;
+            ownerActionReceipt = null;
+        }
         expire(projectiles, context); expire(clouds, context);
     }
     private static <T extends Entity> void expire(Map<T, Scope> tracked, Context context) {
@@ -178,7 +322,13 @@ public final class EchoCombatAdmissionListener implements Listener {
             iterator.remove(); // Retain the handle if native removal throws.
         }
     }
-    public void clear() { expire(projectiles, null); expire(clouds, null); }
+    public void clear() {
+        ownerLethalReceipt = null;
+        // A lethal accepted hit may synchronously unregister its actor before
+        // owner.damage(...) returns. Keep its one-use outcome for that caller.
+        if (ownerActionReceipt == null) ownerActionIntent = null;
+        expire(projectiles, null); expire(clouds, null);
+    }
     public int trackedProjectiles() { return projectiles.size(); }
     public int trackedClouds() { return clouds.size(); }
 }

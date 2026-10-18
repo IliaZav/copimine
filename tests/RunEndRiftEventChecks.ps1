@@ -8,6 +8,21 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Give every pytest invocation in this gate a private temp root. Windows can
+# deny cleanup of the shared pytest-of-user\pytest-current junction when
+# another local test process is active.
+$pytestTempRoot = Join-Path 'C:\Temp' ('CopiMine-EndRiftEventChecks-' + [Guid]::NewGuid().ToString('N'))
+if (-not (Test-Path -LiteralPath 'C:\Temp' -PathType Container)) {
+  throw 'The isolated C:\Temp directory required by the End Rift test gate is unavailable.'
+}
+$existingPytestAddopts = [string][Environment]::GetEnvironmentVariable('PYTEST_ADDOPTS', [EnvironmentVariableTarget]::Process)
+$isolatedPytestOption = "--basetemp=$pytestTempRoot"
+$env:PYTEST_ADDOPTS = if ([string]::IsNullOrWhiteSpace($existingPytestAddopts)) {
+  $isolatedPytestOption
+} else {
+  "$existingPytestAddopts $isolatedPytestOption"
+}
+
 function Get-FileSha256 {
   param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -161,7 +176,7 @@ Invoke-GateStep 'Local probe AuthMe mode behavior' {
 Invoke-GateStep 'Wave 7 Echo presentation and no-loot probe' {
   Push-Location $root
   try {
-    & python -m pytest 'tests/test_wave7_echo_presentation_probe.py' 'tests/test_wave7_echo_carrier_adapter.py' 'tests/test_wave7_echo_player_equipment_adapter.py' 'tests/test_wave7_echo_loadout.py' 'tests/test_wave7_echo_replica_inventory.py' 'tests/test_wave7_echo_native_effect_carrier.py' 'tests/test_wave7_echo_shield_damage_hook.py' 'tests/test_wave7_echo_native_armor.py' 'tests/test_wave7_echo_armor_damage_hook.py' 'tests/test_wave7_echo_combat_admission.py' 'tests/test_wave7_echo_admission_lifecycle.py' -q
+    & python -m pytest 'tests/test_wave7_echo_presentation_probe.py' 'tests/test_wave7_echo_carrier_adapter.py' 'tests/test_wave7_echo_player_equipment_adapter.py' 'tests/test_wave7_echo_loadout.py' 'tests/test_wave7_echo_replica_inventory.py' 'tests/test_wave7_echo_native_effect_carrier.py' 'tests/test_wave7_echo_shield_damage_hook.py' 'tests/test_wave7_echo_native_armor.py' 'tests/test_wave7_echo_armor_damage_hook.py' 'tests/test_wave7_echo_combat_admission.py' 'tests/test_wave7_echo_admission_lifecycle.py' 'tests/test_wave7_echo_official_combat_runtime.py' -q
     if ($LASTEXITCODE -ne 0) { throw 'Wave 7 Echo regression failed.' }
   } finally {
     Pop-Location
@@ -171,11 +186,11 @@ Invoke-GateStep 'Wave 7 Echo presentation and no-loot probe' {
 Invoke-GateStep 'Wave navigation and physical passage regression' {
   Push-Location $root
   try {
-    & python -m pytest -q '.\tests\test_wave_navigation_adapter.py' '.\tests\test_wave7_passage_commit.py' '.\tests\test_wave7_checkpoint_recovery.py' '.\tests\test_end_rift_cancelled_death_adapter.py' '.\tests\test_wave_carrier_marker_adapter.py' '.\tests\test_wave_dash_runtime.py'
+    & python -m pytest -q '.\tests\test_wave_navigation_adapter.py' '.\tests\test_wave7_passage_commit.py' '.\tests\test_wave7_checkpoint_recovery.py' '.\tests\test_wave7_named_runtime.py' '.\tests\test_wave7_archmage_step_permit.py' '.\tests\test_wave7_line_of_sight.py' '.\tests\test_end_rift_cancelled_death_adapter.py' '.\tests\test_wave_carrier_marker_adapter.py' '.\tests\test_wave_dash_runtime.py'
     if ($LASTEXITCODE -ne 0) { throw "Wave navigation and passage regressions failed with exit code $LASTEXITCODE" }
     & python -m pytest -q '.\tests\test_wave4_special_attack_fairness.py'
     if ($LASTEXITCODE -ne 0) { throw 'Wave 4 special attack fairness regression failed.' }
-    & python -m pytest -q '.\tests\test_wave1_carrier_retreat.py' '.\tests\test_wave1_carrier_slowness_lease.py' '.\tests\test_wave3_capture_clock.py' '.\tests\test_wave3_active_sequence.py' '.\tests\test_wave4_warning_geometry.py' '.\tests\test_wave4_obelisk_collapse.py' '.\tests\test_wave5_ai_freeze_ownership.py' '.\tests\test_wave5_black_fog_adapter.py' '.\tests\test_minecraft_attribute_compat.py' '.\tests\test_minecraft_26_3_pack.py'
+    & python -m pytest -q '.\tests\test_wave1_carrier_retreat.py' '.\tests\test_wave1_carrier_slowness_lease.py' '.\tests\test_wave3_capture_clock.py' '.\tests\test_wave3_active_sequence.py' '.\tests\test_end_rift_portal_layer_runtime.py' '.\tests\test_end_rift_wave4_pack_runtime.py' '.\tests\test_end_rift_intermission_watchdog.py' '.\tests\test_wave4_warning_geometry.py' '.\tests\test_wave4_obelisk_collapse.py' '.\tests\test_wave5_ai_freeze_ownership.py' '.\tests\test_wave5_black_fog_adapter.py' '.\tests\test_minecraft_attribute_compat.py' '.\tests\test_minecraft_26_3_pack.py'
     if ($LASTEXITCODE -ne 0) { throw 'Waves 1-5 timing, objective and AI ownership regressions failed.' }
   } finally {
     Pop-Location
@@ -227,7 +242,7 @@ Invoke-GateStep 'Official combat profiles and authoritative damage observations'
 Invoke-GateStep 'Current Python contract' {
   Push-Location $root
   try {
-  & python -m pytest -q '.\tests\test_end_event_current_contract.py' '.\tests\test_end_event_boss_hitbox_contract.py' '.\tests\test_end_event_boss_oriented_hitbox_contract.py' '.\tests\test_end_event_boss_animation_pose_contract.py' '.\tests\test_end_event_boss_hitbox_reconciliation_contract.py' '.\tests\test_end_event_boss_projectile_segment_contract.py' '.\tests\test_end_event_model_uv_contract.py' '.\tests\test_end_event_skeleton_look_contract.py' '.\tests\test_end_event_wave6_ritual_live_contract.py' '.\tests\test_end_event_core_visual_contract.py' '.\tests\test_end_event_resource_visual_contract.py' '.\tests\test_end_event_wave3_knockback_contract.py' '.\tests\test_end_event_wave6_wave7_boundaries_contract.py' '.\tests\test_end_event_wave_mob_visual_contract.py' '.\tests\test_end_rift_model_evidence_portability.py' '.\tests\test_end_rift_evidence_portability.py' '.\tests\test_end_rift_test_quality_contract.py' '.\tests\test_wave6_ritual_caster_behavior_contract.py' '.\tests\test_end_rift_ai_phase_probe_contract.py' '.\tests\test_end_rift_multiplayer_probe_contract.py' '.\tests\test_end_rift_recovery_contract.py' '.\tests\test_end_event_ritual_projectile_provenance_contract.py' '.\tests\test_end_event_ritual_sphere_projectile_origin_contract.py' '.\tests\test_end_event_ritual_prisoner_health_contract.py' '.\tests\test_end_event_ritual_control_pair_contract.py' '.\tests\test_end_event_ritual_zone_effect_contract.py' '.\tests\test_end_event_ritual_sphere_authoritative_state_contract.py' '.\tests\test_end_event_ritual_chains_target_contract.py' '.\tests\test_end_rift_diagnostic_report.py' '.\tests\test_end_rift_stage1_lifecycle_contract.py' '.\tests\test_end_rift_reality_split_trials_contract.py' '.\tests\test_end_rift_event_gate_contract.py'
+  & python -m pytest -q '.\tests\test_end_event_current_contract.py' '.\tests\test_end_event_boss_hitbox_contract.py' '.\tests\test_end_event_boss_oriented_hitbox_contract.py' '.\tests\test_end_event_boss_animation_pose_contract.py' '.\tests\test_end_event_boss_hitbox_reconciliation_contract.py' '.\tests\test_end_event_boss_projectile_segment_contract.py' '.\tests\test_end_event_model_uv_contract.py' '.\tests\test_end_event_skeleton_look_contract.py' '.\tests\test_end_event_wave6_ritual_live_contract.py' '.\tests\test_end_event_core_visual_contract.py' '.\tests\test_end_event_resource_visual_contract.py' '.\tests\test_end_event_wave3_knockback_contract.py' '.\tests\test_end_event_wave6_wave7_boundaries_contract.py' '.\tests\test_end_event_wave_mob_visual_contract.py' '.\tests\test_end_rift_model_evidence_portability.py' '.\tests\test_end_rift_evidence_portability.py' '.\tests\test_end_rift_test_quality_contract.py' '.\tests\test_wave6_ritual_caster_behavior_contract.py' '.\tests\test_end_rift_ai_phase_probe_contract.py' '.\tests\test_end_rift_multiplayer_probe_contract.py' '.\tests\test_end_rift_recovery_contract.py' '.\tests\test_end_event_ritual_projectile_provenance_contract.py' '.\tests\test_end_event_ritual_sphere_projectile_origin_contract.py' '.\tests\test_end_event_ritual_prisoner_health_contract.py' '.\tests\test_end_event_ritual_control_pair_contract.py' '.\tests\test_end_event_ritual_zone_effect_contract.py' '.\tests\test_end_event_ritual_sphere_authoritative_state_contract.py' '.\tests\test_end_event_ritual_chains_target_contract.py' '.\tests\test_end_rift_diagnostic_report.py' '.\tests\test_end_rift_stage1_lifecycle_contract.py' '.\tests\test_end_rift_reality_split_trials_contract.py' '.\tests\test_end_rift_event_gate_contract.py' '.\tests\test_wave7_named_trial_client_bindings.py'
   if ($LASTEXITCODE -ne 0) { throw "Current Python contract failed with exit code $LASTEXITCODE" }
   & python -m pytest -q '.\tests\test_end_rift_wave_adapter_contract.py' '.\tests\test_end_rift_wave_probe_adapters.py'
   if ($LASTEXITCODE -ne 0) { throw "Wave adapter regression tests failed with exit code $LASTEXITCODE" }
@@ -278,6 +293,9 @@ $testBuildCreated = $true
 try {
 $domainSources = @(Get-ChildItem (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain') -Filter '*.java' |
   ForEach-Object FullName)
+$domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain\wave7\EchoBehaviorStrategy.java')
+$domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain\wave7\EchoLoadoutState.java')
+$domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain\wave7\EchoDuelCombatPolicy.java')
 $runtimeSources = @(
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\WaveCombatCoordinator.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\AttemptLifecycleController.java'),
@@ -288,6 +306,8 @@ $runtimeSources = @(
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\EndRiftSession.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\EndRiftEncounterCoordinator.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\RealitySplitChamberController.java'),
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\RealitySplitEchoDuelState.java'),
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\wave7\EchoDuelCombatRuntimeAdapter.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\RealitySplitTrialController.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\RealitySplitTrialSnapshot.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\TentacleController.java'),
@@ -345,6 +365,13 @@ $pureTests = @(
   'RealitySplitBarrierOwnershipPolicyTest',
   'RealitySplitChamberControllerTest',
   'Wave7RoomLayoutPolicyTest',
+  'Wave7NamedTrialActorPolicyTest',
+  'Wave7EchoDuelCellPolicyTest',
+  'Wave7EchoDuelLifecyclePolicyTest',
+  'EchoBehaviorStrategyTest',
+  'EchoDuelCombatPolicyTest',
+  'EchoDuelCombatRuntimeAdapterTest',
+  'RealitySplitEchoDuelSnapshotTest',
   'RealitySplitTrialControllerTest',
   'Wave7WardenCombatPolicyTest',
   'RealitySplitRuntimePolicyTest',

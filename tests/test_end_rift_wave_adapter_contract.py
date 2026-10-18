@@ -252,7 +252,8 @@ def test_official_wave2_shutdown_detaches_saved_mobs_for_bootstrap_recovery():
 
     assert "activeWave == 2 && phase == EventPhase.WAVE_2" in disable
     assert "&& isOfficialAttempt()" in disable
-    assert "cancelSessionTasks(preserveWave2ForRestart || preserveWave6ForRestart || preserveWave7ForRestart)" in disable
+    disable_compact = " ".join(disable.split())
+    assert "cancelSessionTasks(preserveWave1ForRestart || preserveWave2ForRestart || preserveWave6ForRestart || preserveWave7ForRestart)" in disable_compact
     assert "preserveCombatForRestart ? restartPreservedEntityIds() : Set.of()" in " ".join(cancel.split())
     assert "closeEncounterResourceScope(\"session cancellation\", preservedEntityIds)" in cancel
     assert "scope.closeResourcesPreservingEntities(preservedEntityIds)" in close_scope

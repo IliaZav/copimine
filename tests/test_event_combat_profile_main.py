@@ -107,6 +107,7 @@ public class CombatProfileMainProbe {
     listener_stub.write_text("package me.copimine.endevent.runtime; public class EventCombatProfileListener {public void clear(){}}", encoding="utf-8")
     production = ROOT / "copimine-end-event/src/me/copimine/endevent"
     sources = [production / "runtime/EventCombatProfileService.java", production / "runtime/AttemptLifecycleController.java",
+               production / "domain/wave7/EchoBehaviorStrategy.java",
                production / "domain/EventPhase.java", production / "domain/PreBossTickSnapshotPolicy.java",
                production / "domain/PressureBudgetController.java", production / "domain/WaveMechanicsPolicy.java",
                production / "domain/WaveTwoStagePolicy.java", production / "domain/WaveTwoEntityRecoveryPolicy.java",

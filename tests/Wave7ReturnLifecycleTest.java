@@ -70,6 +70,23 @@ public final class Wave7ReturnLifecycleTest {
         check(personalDeadline.observeWave7OwnerReturnWindow(A, GEN, 120_000_000_000L, WALL + 120_000L, GRACE)
                         == ReturnWindowStatus.EXPIRED,
                 "owner deadline expires 120 seconds after first death even after an admitted return");
+
+        var preBossHandoff = new AttemptLifecycleController();
+        preBossHandoff.begin(GEN, Set.of(A, B)); preBossHandoff.enableWave7Returns(GEN);
+        check(preBossHandoff.markDead(A, GEN, 0L, WALL, GRACE), "pending room owner records the original return deadline");
+        check(preBossHandoff.markAlive(A, GEN) && preBossHandoff.isCombatAdmitted(B, GEN)
+                        && !preBossHandoff.isCombatAdmitted(A, GEN),
+                "bed respawn keeps one owner pending while the other owner remains admitted");
+        check(preBossHandoff.observeWave7OwnerReturnWindow(A, GEN, 40_000_000_000L, WALL + 40_000L, GRACE)
+                        == ReturnWindowStatus.WAITING,
+                "the pending owner's full original window remains live at the 40-second boss handoff");
+        check(preBossHandoff.observeWave7ReturnWindow(GEN, 40_000_000_000L, WALL + 40_000L, GRACE)
+                        == ReturnWindowStatus.NONE,
+                "one admitted owner does not erase another room owner's personal deadline");
+        var lateReturn = preBossHandoff.beginReturn(A, GEN, 800L, 40L, 40_000_000_000L);
+        check(lateReturn != null && preBossHandoff.completeReturn(lateReturn, 840L, 42_000_000_000L),
+                "pending owner can still complete explicit admission after the 40-second handoff");
+
         var expiredSnapshot = personalDeadline.encodeWave7Returns(
                 "event", CLAIMS, 130_000_000_000L, WALL + 130_000L, GRACE);
         var expiredRestore = new AttemptLifecycleController();
@@ -132,7 +149,7 @@ public final class Wave7ReturnLifecycleTest {
         check(retiredRestore.restoreWave7Returns(retiredSnapshot, "event", GEN, activeOnly, Set.of(A, B), 0, WALL, GRACE)
                 && !retiredRestore.isRegistered(B, GEN), "retired prior-wave reward membership cannot acquire a new Wave 7 claim or death protection");
         life.markDead(A, GEN); life.markAlive(A, GEN); life.endWave7Returns(GEN);
-        check(life.isCombatAdmitted(A, GEN) && !life.hasWave7Returns(GEN), "existing boss handoff leaves ordinary later-wave respawn rules usable");
+        check(life.isCombatAdmitted(A, GEN) && !life.hasWave7Returns(GEN), "explicit lifecycle closure leaves ordinary later-wave respawn rules usable");
         System.out.println("Wave7ReturnLifecycleTest OK");
     }
 

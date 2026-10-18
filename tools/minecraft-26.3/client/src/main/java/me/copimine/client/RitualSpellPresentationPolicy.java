@@ -10,7 +10,7 @@ public final class RitualSpellPresentationPolicy {
     public enum Channel { GLYPH, SCREEN }
     public enum Stage { WARNING, ACTIVE }
     public enum Orientation { HORIZONTAL, BILLBOARD }
-    public enum PassKind { RIBBON, CHANNEL, RITUAL, GLYPH, WAVE }
+    public enum PassKind { CORE_OUTLINE, RIBBON, CHANNEL, RITUAL, GLYPH, WAVE }
 
     public enum Spell {
         RIFT_BARRAGE(4.7F, Orientation.HORIZONTAL, "barrage", "Разломный обстрел"),
@@ -89,6 +89,7 @@ public final class RitualSpellPresentationPolicy {
                                       String dimension, long now,
                                       Function<WorldPass, Consumer<EndEventWorldVfxManager.BeamSnapshot>> acquire) {
         List<WorldPass> passes = new ArrayList<>();
+        passes.add(new WorldPass(PassKind.CORE_OUTLINE, null));
         passes.add(new WorldPass(PassKind.RIBBON, null));
         passes.add(new WorldPass(PassKind.CHANNEL, null));
         passes.add(new WorldPass(PassKind.RITUAL, null));
@@ -110,6 +111,12 @@ public final class RitualSpellPresentationPolicy {
         if (cue != null) return cue.channel() == Channel.GLYPH ? new WorldPass(PassKind.GLYPH, cue.spell()) : null;
         String key = worldKey(instance);
         if (key != null && key.startsWith("wave-ai-")) return null;
+        // This marker is sent only to the current Wave 1 charge holder.
+        // Reject malformed variants rather than exposing them as general beams.
+        if (key != null && key.startsWith("wave1-carrier-core-outline")) {
+            return key.equals("wave1-carrier-core-outline")
+                    ? new WorldPass(PassKind.CORE_OUTLINE, null) : null;
+        }
         // Malformed reserved presentation keys must not become beams or screen effects.
         if (key != null && (key.startsWith("wave6-spell-glyph-") || key.startsWith("wave6-spell-screen-"))) return null;
         if (key != null && (key.startsWith("wave6-ritual-") || key.equals("wave1-carrier-objective"))) {

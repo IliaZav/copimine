@@ -617,7 +617,7 @@ public final class AttemptLifecycleController {
         returnWindowStartedNanos = 0L; returnWindowDurationNanos = 0L; returnWindowDeadlineMillis = 0L;
     }
 
-    /** Compatibility boundary once the existing post-Wave-7 handoff starts the boss. */
+    /** Close Wave 7 return rights when the caller ends this admission lifecycle. */
     public synchronized void endWave7Returns(long expectedGeneration) {
         if (acceptsCallback(expectedGeneration)) clearWave7Returns();
     }

@@ -205,6 +205,22 @@ def test_wave6_guards_have_tuned_once_health_and_one_shared_cancellable_ability(
     assert "target.isDead()" in cast_validity
 
 
+def test_wave6_shield_stage_uses_the_selected_profiles_guard_total() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    shield = read(DOMAIN / "RitualCasterShieldPolicy.java")
+    guard_tick = root[root.index("private void tickRitualGuardGroups"):
+                      root.index("private void faceRitualCaster")]
+    expected_count = root[root.index("private int ritualExpectedGuardsPerCaster"):
+                          root.index("private String ritualShieldName")]
+
+    assert "state(boolean casterAlive, int livingGuards, int expectedGuards)" in shield
+    assert "blocksDamage(boolean casterAlive, int livingGuards, int expectedGuards)" in shield
+    assert "RitualCasterShieldPolicy.state(" in guard_tick
+    assert "ritualExpectedGuardsPerCaster()" in guard_tick
+    assert "ritualSphereState.profile().guardsPerCaster()" in expected_count
+    assert "ritualShieldName(shield)" in guard_tick
+
+
 def test_wave6_live_ai_probe_allows_server_controlled_passive_casters() -> None:
     probe = read(ROOT / "tests/RunEndRiftAiPhasesLive.ps1")
     root = read(SRC / "CopiMineEndEvent.java")

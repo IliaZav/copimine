@@ -48,6 +48,9 @@ public class ReturnTeleportProbe {
     AttemptLifecycleController attemptLifecycle=new AttemptLifecycleController();
     Map<UUID,Location> realitySplitPlayerTeleportPermits=new HashMap<>();
     Chambers realitySplitChamberController=new Chambers();
+    static class EchoCell { int chamber(){return 0;} }
+    EchoCell activeNamedEchoCell(UUID owner){return null;}
+    boolean isNamedEchoCellLocationAllowed(UUID owner,Location target,Location anchor){return true;}
     boolean isRealitySplitPlayerRuntimeActive(){return true;}
     boolean isOfficialWave7ReturnContext(){return official;}
     Location coreCombatAnchorLocation(){return new Location(WORLD,0,68,0);}

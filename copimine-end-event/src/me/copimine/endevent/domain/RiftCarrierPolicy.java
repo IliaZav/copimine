@@ -61,6 +61,14 @@ public final class RiftCarrierPolicy {
                 safeNow(nowTick) + CHARGE_TIMEOUT_TICKS, Phase.CHARGE_CARRIED);
     }
 
+    /** Transfer the single live inventory token without restarting its delivery deadline. */
+    public static State transferHolder(State state, long generation, UUID previous, UUID next, long nowTick) {
+        if (!valid(state, generation) || state.phase() != Phase.CHARGE_CARRIED
+                || previous == null || next == null || !previous.equals(state.holder()) || expired(state, nowTick)) return state;
+        return new State(state.generation(), state.delivered(), state.carrier(), state.charge(), next,
+                state.deadlineTick(), state.phase());
+    }
+
     public static State deliver(State state, long generation, UUID player,
                                 boolean atCore, long nowTick) {
         if (!valid(state, generation) || player == null || !player.equals(state.holder())

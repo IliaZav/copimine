@@ -12,6 +12,7 @@ def test_bootstrap_resumes_only_a_valid_official_wave2_checkpoint(tmp_path):
     source = (SOURCE / "CopiMineEndEvent.java").read_text(encoding="utf-8")
     adapters = extract(source, "void tryBootstrap()")
     for signature in (
+        "boolean canResumeWave1AfterRestart()",
         "boolean canResumeWave2AfterRestart()",
         "boolean isOfficialAttempt()",
         "boolean isOfficialCurrentAttempt()",
@@ -29,6 +30,7 @@ public class Wave2ReturnBootstrapProbe {
     static final String VICTORY_COMPLETE="complete";
     boolean bootstrapped,testWaveFrontVisualMode,testCombatAiMode,configured=true,endUnlocked;
     boolean stateSave=true;
+    boolean wave1CarrierCheckpointRestored;
     long generation=18;
     int activeWave,currentHuntCycles,waveTwoGroupsSpawned;
     boolean waveTwoGroupCleared;
@@ -49,6 +51,7 @@ public class Wave2ReturnBootstrapProbe {
     WorldAccessService worldAccessService;
     EventArtifactRewardService rewardService;
     EventLayoutState layoutState=new EventLayoutState(null,null,null,null,Map.of(),"UNSET",null);
+    RiftCarrierPolicy.State currentCarrierState;
     static class EventConfig {
         boolean currentFlow=true;
         boolean isCurrentFlow(){return currentFlow;}
@@ -148,6 +151,7 @@ public class Wave2ReturnBootstrapProbe {
         "domain/EventPhase.java", "domain/EndRiftObjective.java",
         "domain/EndEventStateMachine.java", "domain/WaveTwoStagePolicy.java",
         "domain/WaveMechanicsPolicy.java", "domain/PressureBudgetController.java",
+        "domain/RiftCarrierPolicy.java",
     )
     compile_result = subprocess.run(
         ["javac", "-encoding", "UTF-8", "-d", str(tmp_path),

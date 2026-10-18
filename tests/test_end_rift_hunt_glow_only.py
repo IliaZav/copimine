@@ -10,6 +10,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 EVENT = ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java"
 LAYOUT = ROOT / "tools/minecraft-26.3/client/src/main/java/me/copimine/client/EndEventPlayerVisualLayout.java"
+SPEC = ROOT / "docs/end-rift/final-26.3/WAVE_02.md"
 
 
 def _declaration(source: str, signature: str) -> str:
@@ -33,6 +34,14 @@ def test_hunt_target_does_not_emit_world_particles() -> None:
     assert "waveTwoNextVisualMillis" not in update
     assert "PotionEffectType.SPEED" not in update
     assert "PotionEffectType.RESISTANCE" not in update
+
+
+def test_wave_two_spec_matches_latest_glow_only_decision() -> None:
+    spec = SPEC.read_text(encoding="utf-8").casefold()
+    assert "approved_presentation: glow_only" in spec
+    assert "no_shader" in spec
+    assert "no_extra_particles" in spec
+    assert "controls_inverted_while_marked" in spec
 
 
 def test_hunt_screen_layout_is_empty_but_carrier_layout_is_kept(tmp_path: Path) -> None:

@@ -37,7 +37,7 @@ function Write-Evidence {
 
 function Assert-LocalOnly {
   $branch = (& git -C $root branch --show-current 2>$null).Trim()
-  if ($LASTEXITCODE -ne 0 -or $branch -ne 'codex/end-rift-event') { throw "Gate points runner refuses Git branch '$branch'." }
+  if ($LASTEXITCODE -ne 0 -or $branch -notin @('codex/end-rift-event', 'codex/end-rift-26-3-integrated-final')) { throw "Gate points runner refuses Git branch '$branch'." }
   $config = Get-Content -LiteralPath (Join-Path $root 'copimine-end-event\config.yml') -Raw
   if ($config -notmatch '(?m)^environment:\s*local\s*$') { throw 'Gate points runner refuses a non-local End Rift configuration.' }
   $properties = Get-Content -LiteralPath (Join-Path $serverDir 'server.properties') -Raw

@@ -475,6 +475,104 @@ exit 11
     assert "refused git branch" in (result.stdout + result.stderr).lower()
 
 
+RUNNERS_TESTED_FOR_BRANCH_POLICY = (
+    "RunEndRiftBossHitboxLive.ps1",
+    "RunEndRiftBossRealHealthLive.ps1",
+    "RunEndRiftBossVisualLive.ps1",
+    "RunEndRiftCoreRemovalGuiLive.ps1",
+    "RunEndRiftDiagnosticsFailureLive.ps1",
+    "RunEndRiftGatePointsLive.ps1",
+    "RunEndRiftObeliskLoadLive.ps1",
+    "RunEndRiftPerformanceLive.ps1",
+    "RunEndRiftPerformanceFivePlayerLive.ps1",
+)
+
+
+def _branch_guard_source(runner_name: str) -> str:
+    source = (ROOT / "tests" / runner_name).read_text(encoding="utf-8")
+    branch_assignment = re.search(
+        r"(?m)^\s*\$branch\s*=\s*\(&\s*git\s+-C\s+\$root\s+branch\s+--show-current\s+2>\$null\)\.Trim\(\)\s*$",
+        source,
+        re.IGNORECASE,
+    )
+    assert branch_assignment is not None, f"{runner_name} must read the current Git branch"
+
+    guard_start = source.find("if (", branch_assignment.end())
+    assert guard_start >= 0, f"{runner_name} must guard the current Git branch"
+    guard_end = source.find("}", guard_start)
+    assert guard_end >= 0, f"{runner_name} must close its branch guard"
+    return source[branch_assignment.start() : guard_end + 1]
+
+
+def _run_branch_guard_fixtures(guard_source: str, fixture_root: Path) -> subprocess.CompletedProcess[str]:
+    branch_fixtures = (
+        ("integration", CURRENT_END_RIFT_BRANCH),
+        ("legacy", "codex/end-rift-event"),
+        ("unapproved", "feature/unapproved"),
+    )
+    cases: list[str] = []
+    for label, branch in branch_fixtures:
+        repository = fixture_root / label
+        subprocess.run(
+            ["git", "init", "--quiet", f"--initial-branch={branch}", str(repository)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        cases.append(
+            "@{ Label = "
+            + _ps_quote(label)
+            + "; Root = "
+            + _ps_quote(repository)
+            + " }"
+        )
+
+    case_list = ",\n  ".join(cases)
+    script = f"""
+$ErrorActionPreference = 'Stop'
+$cases = @(
+  {case_list}
+)
+foreach ($case in $cases) {{
+  $root = $case.Root
+  try {{
+{guard_source}
+    [Console]::Out.WriteLine("BRANCH_GUARD_ACCEPTED:$($case.Label)")
+  }} catch {{
+    [Console]::Out.WriteLine("BRANCH_GUARD_REFUSED:$($case.Label):$($_.Exception.Message)")
+  }}
+}}
+"""
+    return subprocess.run(
+        [
+            _powershell_executable(),
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+
+@pytest.mark.parametrize("runner_name", RUNNERS_TESTED_FOR_BRANCH_POLICY)
+def test_live_runner_branch_guard_allows_integration_and_legacy_but_refuses_other_branches(
+    runner_name: str, tmp_path: Path
+) -> None:
+    result = _run_branch_guard_fixtures(_branch_guard_source(runner_name), tmp_path)
+    output = result.stdout + result.stderr
+
+    assert result.returncode == 0, output
+    assert "BRANCH_GUARD_ACCEPTED:integration" in output, output
+    assert "BRANCH_GUARD_ACCEPTED:legacy" in output, output
+    assert "BRANCH_GUARD_REFUSED:unapproved:" in output, output
+
+
 def test_boss_multiplayer_runner_accepts_the_runtime_root_before_validating_children() -> None:
     source_tests = ROOT / "tests"
     runner_source = source_tests / "RunEndRiftBossMultiPlayerDamageLive.ps1"

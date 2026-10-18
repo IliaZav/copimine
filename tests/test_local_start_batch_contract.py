@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import sys
 import json
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -461,3 +462,82 @@ def test_local_runner_discovers_minecraft_launcher_and_does_not_report_false_suc
     assert "D:\\.minecraft\\TLauncher.exe" in text
     assert "TLauncher.exe" in text
     assert "throw 'Minecraft launcher was requested but no supported launcher was found.'" in text
+
+
+def test_local_session_branch_guard_allows_integration_and_legacy_only(tmp_path: Path) -> None:
+    source = RUNNER.read_text(encoding="utf-8")
+    branch_assignment = re.search(
+        r"(?m)^\s*\$branch\s*=\s*\(&\s*git\s+-C\s+\$worktreeRoot\s+branch\s+--show-current\s+2>\$null\)\.Trim\(\)\s*$",
+        source,
+        re.IGNORECASE,
+    )
+    assert branch_assignment is not None
+    guard_start = source.find("if (", branch_assignment.end())
+    assert guard_start >= 0
+    guard_end = source.find("}", guard_start)
+    assert guard_end >= 0
+    guard_source = source[branch_assignment.start() : guard_end + 1]
+
+    powershell = shutil.which("powershell") or shutil.which("pwsh")
+    if powershell is None:
+        pytest.skip("PowerShell is required to exercise the local session branch guard")
+
+    cases: list[str] = []
+    for label, branch in (
+        ("integration", "codex/end-rift-26-3-integrated-final"),
+        ("legacy", "codex/end-rift-event"),
+        ("unapproved", "feature/unapproved"),
+    ):
+        repository = tmp_path / label
+        subprocess.run(
+            ["git", "init", "--quiet", f"--initial-branch={branch}", str(repository)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        cases.append(
+            "@{ Label = "
+            + "'"
+            + label
+            + "'; Root = '"
+            + str(repository).replace("'", "''")
+            + "' }"
+        )
+
+    case_list = ",\n  ".join(cases)
+    script = f"""
+$ErrorActionPreference = 'Stop'
+$cases = @(
+  {case_list}
+)
+foreach ($case in $cases) {{
+  $worktreeRoot = $case.Root
+  try {{
+{guard_source}
+    [Console]::Out.WriteLine("SESSION_BRANCH_ACCEPTED:$($case.Label)")
+  }} catch {{
+    [Console]::Out.WriteLine("SESSION_BRANCH_REFUSED:$($case.Label):$($_.Exception.Message)")
+  }}
+}}
+"""
+    result = subprocess.run(
+        [
+            powershell,
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    output = result.stdout + result.stderr
+
+    assert result.returncode == 0, output
+    assert "SESSION_BRANCH_ACCEPTED:integration" in output, output
+    assert "SESSION_BRANCH_ACCEPTED:legacy" in output, output
+    assert "SESSION_BRANCH_REFUSED:unapproved:" in output, output

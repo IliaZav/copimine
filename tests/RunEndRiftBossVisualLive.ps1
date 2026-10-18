@@ -58,7 +58,7 @@ if ($properties -notmatch '(?m)^server-port=25566\s*$' -or
   throw 'Current visual acceptance requires isolated local Paper ports.'
 }
 $branch = (& git -C $root branch --show-current 2>$null).Trim()
-if ($LASTEXITCODE -ne 0 -or $branch -ne 'codex/end-rift-event') {
+if ($LASTEXITCODE -ne 0 -or $branch -notin @('codex/end-rift-event', 'codex/end-rift-26-3-integrated-final')) {
   throw "Current visual acceptance refused Git branch '$branch'."
 }
 if (@(Get-NetTCPConnection -LocalPort 25566 -State Listen -ErrorAction SilentlyContinue).Count -eq 0) {

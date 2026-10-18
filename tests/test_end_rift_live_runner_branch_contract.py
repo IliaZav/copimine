@@ -35,6 +35,147 @@ def test_wave_and_tentacle_live_runners_allow_the_integration_branch() -> None:
         )
 
 
+def _run_official_scaled_wrapper(
+    wrapper_name: str, branch: str | None, environment: str = "local"
+) -> subprocess.CompletedProcess[str]:
+    source_tests = ROOT / "tests"
+    wrapper_source = source_tests / wrapper_name
+    with tempfile.TemporaryDirectory(prefix="end-rift-scaled-runner-") as temporary:
+        fixture_root = Path(temporary) / "fixture-repo"
+        fixture_tests = fixture_root / "tests"
+        event_dir = fixture_root / "copimine-end-event"
+        fixture_tests.mkdir(parents=True)
+        event_dir.mkdir(parents=True)
+        initial_branch = branch or "codex/detached-probe"
+        subprocess.run(
+            ["git", "init", "--quiet", f"--initial-branch={initial_branch}", str(fixture_root)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        if branch is None:
+            subprocess.run(
+                ["git", "-C", str(fixture_root), "config", "user.email", "probe@example.invalid"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(fixture_root), "config", "user.name", "End Rift Probe"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(fixture_root), "commit", "--quiet", "--allow-empty", "-m", "fixture"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(fixture_root), "checkout", "--quiet", "--detach", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        wrapper = fixture_tests / wrapper_name
+        wrapper.write_bytes(wrapper_source.read_bytes())
+        (event_dir / "config.yml").write_text(f"environment: {environment}\n", encoding="utf-8")
+        (fixture_tests / "RunEndRiftOfficialTwoPlayerLive.ps1").write_text(
+            "Write-Output 'OFFICIAL_SHARED_DRIVER_REACHED'\n", encoding="utf-8"
+        )
+
+        script = f"""
+$ErrorActionPreference = 'Stop'
+try {{
+  & {_ps_quote(wrapper)}
+  [Console]::Out.WriteLine('WRAPPER_RETURNED')
+  exit 0
+}} catch {{
+  [Console]::Out.WriteLine("RUNNER_ERROR:$($_.Exception.Message)")
+  exit 10
+}}
+"""
+        return subprocess.run(
+            [
+                _powershell_executable(),
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                script,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+
+
+@pytest.mark.parametrize(
+    "wrapper_name",
+    ("RunEndRiftOfficialFivePlayerLive.ps1", "RunEndRiftOfficialTenPlayerLive.ps1"),
+)
+@pytest.mark.parametrize("branch", ("codex/end-rift-event", CURRENT_END_RIFT_BRANCH))
+def test_official_scaled_wrappers_run_the_shared_driver_on_each_allowed_branch(
+    wrapper_name: str, branch: str
+) -> None:
+    result = _run_official_scaled_wrapper(wrapper_name, branch)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "OFFICIAL_SHARED_DRIVER_REACHED" in result.stdout
+    assert "refused Git branch" not in (result.stdout + result.stderr)
+
+
+@pytest.mark.parametrize(
+    "wrapper_name",
+    ("RunEndRiftOfficialFivePlayerLive.ps1", "RunEndRiftOfficialTenPlayerLive.ps1"),
+)
+def test_official_scaled_wrappers_refuse_unapproved_branches_before_the_driver(
+    wrapper_name: str,
+) -> None:
+    result = _run_official_scaled_wrapper(wrapper_name, "feature/unapproved")
+
+    assert result.returncode == 10, result.stdout + result.stderr
+    assert "refused Git branch 'feature/unapproved'" in (result.stdout + result.stderr)
+    assert "OFFICIAL_SHARED_DRIVER_REACHED" not in result.stdout
+
+
+@pytest.mark.parametrize(
+    "wrapper_name",
+    ("RunEndRiftOfficialFivePlayerLive.ps1", "RunEndRiftOfficialTenPlayerLive.ps1"),
+)
+def test_official_scaled_wrappers_refuse_detached_head_without_null_trim_error(
+    wrapper_name: str,
+) -> None:
+    result = _run_official_scaled_wrapper(wrapper_name, None)
+
+    assert result.returncode == 10, result.stdout + result.stderr
+    output = result.stdout + result.stderr
+    assert "refused Git branch ''" in output
+    assert "null-valued expression" not in output.lower()
+    assert "OFFICIAL_SHARED_DRIVER_REACHED" not in result.stdout
+
+
+@pytest.mark.parametrize(
+    "wrapper_name",
+    ("RunEndRiftOfficialFivePlayerLive.ps1", "RunEndRiftOfficialTenPlayerLive.ps1"),
+)
+def test_official_scaled_wrappers_keep_the_local_environment_gate(
+    wrapper_name: str,
+) -> None:
+    result = _run_official_scaled_wrapper(
+        wrapper_name, CURRENT_END_RIFT_BRANCH, environment="production"
+    )
+
+    assert result.returncode == 10, result.stdout + result.stderr
+    assert "refused a non-local end rift configuration" in (
+        result.stdout + result.stderr
+    ).lower()
+    assert "OFFICIAL_SHARED_DRIVER_REACHED" not in result.stdout
+
+
 def test_end_rift_live_runner_branch_checks_accept_an_explicit_expected_branch() -> None:
     runner_paths = sorted((ROOT / "tests").glob("RunEndRift*Live.ps1"))
     branch_reader = re.compile(

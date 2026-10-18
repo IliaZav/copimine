@@ -17,6 +17,38 @@ def method_body(source: str, signature: str) -> str:
     return source[opening + 1 : end - 1]
 
 
+def call_arguments(source: str, signature: str) -> list[str]:
+    opening = source.index("(", source.index(signature))
+    arguments = []
+    start = opening + 1
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(source)):
+        char = source[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            if depth == 0:
+                arguments.append(source[start:index].strip())
+                return arguments
+            depth -= 1
+        elif char == "," and depth == 0:
+            arguments.append(source[start:index].strip())
+            start = index + 1
+    raise AssertionError(f"unterminated invocation: {signature}")
+
+
 def test_event_startup_registers_signed_v4_and_freshens_existing_connections():
     source = EVENT_SOURCE.read_text(encoding="utf-8")
     startup = method_body(source, "private void tryBootstrap()")
@@ -64,3 +96,28 @@ def test_v4_ability_adapter_rechecks_current_event_and_generation():
     assert "request.eventUuid()" in ability
     assert "request.generation() != generation" in ability
     assert "handleRitualPrisonerAbilityRequest(" in ability
+
+
+def test_wave_two_control_lease_matches_signed_v4_body_contract():
+    event = EVENT_SOURCE.read_text(encoding="utf-8")
+    sender = (ROOT / "copimine-end-event/src/me/copimine/endevent/bridge/EndEventBridgeV4Sender.java").read_text(encoding="utf-8")
+    codec = (ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/EndEventBridgeBodyCodec.java").read_text(encoding="utf-8")
+
+    start = call_arguments(event, 'sendClientPacket(marked, "END_CONTROL_START"')
+    stop = call_arguments(event, 'sendClientPacket(marked, "END_CONTROL_STOP"')
+    assert start[2] == "waveTwoControlInstanceId"
+    assert start[4:6] == ['""', '""'], "REVERSE belongs in the signed controlId field, not visualId"
+    assert start[11] == '"REVERSE"'
+    assert stop[2] == "waveTwoControlInstanceId"
+    assert stop[4:6] == ['""', '""'] and stop[6:9] == ["0", "0", "0.0F"]
+    assert stop[9:] == ['""'] * 3, "STOP carries only its canonical lease UUID"
+    assert "UUID.nameUUIDFromBytes(" in event[event.index("waveTwoControlInstanceId =", event.index('"END_CONTROL_START"') - 800):event.index('"END_CONTROL_START"')]
+
+    # The generic production adapter maps the final `source` argument to
+    # Body.controlId, while the protocol validator requires a canonical UUID
+    # and an empty visualId for these control leases.
+    assert "context.eventUuid(), nullToEmpty(instanceId), nullToEmpty(source)," in sender
+    assert "nullToEmpty(visualId), duration" in sender
+    assert 'body.controlId().equals("REVERSE")' in codec
+    assert 'body.visualId().isEmpty()' in codec
+    assert 'requireCanonicalUuid(body.instanceId(), "control lease UUID")' in codec

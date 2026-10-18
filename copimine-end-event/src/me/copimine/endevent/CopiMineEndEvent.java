@@ -28661,11 +28661,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 marked.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING,
                         markDurationTicks, waveTwoGlowingAmplifier, false, false, true));
             }
-            waveTwoControlInstanceId = eventId + ":" + generation + ":wave2-control:"
-                    + marked.getUniqueId() + ":" + waveTwoMarkStartedMillis;
+            waveTwoControlInstanceId = UUID.nameUUIDFromBytes((eventId + ":" + generation
+                    + ":wave2-control:" + marked.getUniqueId() + ":" + waveTwoMarkStartedMillis)
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
             sendClientPacket(marked, "END_CONTROL_START", waveTwoControlInstanceId,
-                    Math.max(1L, waveTwoMarkDeadlineMillis - now), "", "REVERSE",
-                    0, 0, 0.0F, "", "", "wave2-hunt-mark");
+                    Math.max(1L, waveTwoMarkDeadlineMillis - now), "", "",
+                    0, 0, 0.0F, "", "", "REVERSE");
             marked.playSound(marked.getLocation(), Sound.ENTITY_ENDERMAN_STARE, 0.8F, 1.35F);
             getLogger().info("WAVE_OBJECTIVE_MARK event=" + eventId + " wave=2 player="
                     + marked.getUniqueId() + " deadline=" + waveTwoMarkDeadlineMillis);
@@ -28695,7 +28696,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (marked != null) {
             if (!waveTwoControlInstanceId.isBlank()) {
                 sendClientPacket(marked, "END_CONTROL_STOP", waveTwoControlInstanceId,
-                        0L, "", "", 0, 0, 0.0F, "", "", "wave2-hunt-mark");
+                        0L, "", "", 0, 0, 0.0F, "", "", "");
             }
             sendCurrentHuntMarkPacket(marked, false, now);
             PotionEffect current = marked.getPotionEffect(PotionEffectType.GLOWING);

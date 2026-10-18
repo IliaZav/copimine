@@ -103,6 +103,34 @@ final class EndEventBridgeV4SenderTest {
     }
 
     @Test
+    void signedWaveTwoReverseLeaseAndClearUseExactV4ControlBodies() throws Exception {
+        Fixture fixture = readyFixture();
+        long markedAt = 1_700_000_000_000L;
+        String leaseId = UUID.nameUUIDFromBytes(("event:1:wave2-control:" + fixture.playerUuid + ":" + markedAt)
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
+        assertEquals(leaseId, UUID.fromString(leaseId).toString());
+
+        assertTrue(fixture.sender.send(fixture.playerUuid, "END_CONTROL_START", leaseId, 20_000L,
+                "", "", 0, 0, 0.0F, "", "", "REVERSE"));
+        BridgeEnvelope startEnvelope = fixture.verify(fixture.outbound.getLast(), 5L);
+        EndEventBridgeBodyCodec.Body start = EndEventBridgeBodyCodec.decode(startEnvelope.bodyBytes());
+        assertEquals(EndEventBridgeBodyCodec.Type.END_CONTROL_START, start.type());
+        assertEquals(leaseId, start.instanceId());
+        assertEquals("REVERSE", start.controlId());
+        assertEquals("", start.visualId());
+        assertEquals(20_000L, start.durationMillis());
+
+        assertTrue(fixture.sender.send(fixture.playerUuid, "END_CONTROL_STOP", leaseId, 0L,
+                "", "", 0, 0, 0.0F, "", "", ""));
+        BridgeEnvelope stopEnvelope = fixture.verify(fixture.outbound.getLast(), 6L);
+        EndEventBridgeBodyCodec.Body stop = EndEventBridgeBodyCodec.decode(stopEnvelope.bodyBytes());
+        assertEquals(EndEventBridgeBodyCodec.Type.END_CONTROL_STOP, stop.type());
+        assertEquals(leaseId, stop.instanceId());
+        assertEquals("", stop.controlId());
+        assertEquals("", stop.visualId());
+    }
+
+    @Test
     void unavailableSignerAndWrongRegistryBindingFailClosed() throws Exception {
         Fixture unavailable = new Fixture(false, true);
         unavailable.request(new BridgeRequestCodec.ControlHello(NONCE, unavailable.playerUuid,

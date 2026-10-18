@@ -28,6 +28,8 @@ py -3.13 .\scripts\minecraft\sign_native_acceptance.py keygen
 
 ## Порядок проверки и фиксации evidence
 
+Ожидаемый inventory, receipt и snapshot используют общий фильтр `scripts/minecraft/plugin_lock_policy.py`: строка `unchangedBaseline` является исторической записью и попадает в 26.3 runtime только при `candidate.runtimeEligible: true` и проверенном декларативном подтверждении версии. Внешний кандидат обязан перечислять `26.3` в `gameVersions` или иметь явное `approvedMinecraftVersion: "26.3"`; локальная сборка обязана иметь `apiVersion: "26.3"` или такое явное одобрение. Строки FarmControl 1.3.0 и SeeMore 1.0.2 сохраняются для rollback/audit, но исключены из runtime. Модули из `modules` остаются авторитетными для совпадающих имён.
+
 Не меняйте статус кандидата на `migration-accepted` до настоящих проверок. Сначала установите полный plugin lock без `--unauthenticated-test-runtime`, проверьте активную инвентаризацию и запустите Paper в отдельном loopback-режиме с полным набором плагинов:
 
 ```powershell

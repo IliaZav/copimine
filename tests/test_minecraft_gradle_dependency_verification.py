@@ -104,45 +104,45 @@ def test_client_gradle_metadata_covers_fabric_loom_plugin_marker_and_implementat
     assert (
         "net.fabricmc.fabric-loom",
         "net.fabricmc.fabric-loom.gradle.plugin",
-        "1.17.21",
+        "1.19.1",
     ) in coordinates
-    assert ("net.fabricmc", "fabric-loom", "1.17.21") in coordinates
+    assert ("net.fabricmc", "fabric-loom", "1.19.1") in coordinates
 
     loom_component = next(
         component
         for component in document.findall("g:components/g:component", NS)
         if (component.get("group"), component.get("name"), component.get("version"))
-        == ("net.fabricmc", "fabric-loom", "1.17.21")
+        == ("net.fabricmc", "fabric-loom", "1.19.1")
     )
     loom_artifact = next(
         artifact
         for artifact in loom_component.findall("g:artifact", NS)
-        if artifact.get("name") == "fabric-loom-1.17.21.jar"
+        if artifact.get("name") == "fabric-loom-1.19.1.jar"
     )
     loom_jar = loom_artifact.find("g:sha256", NS)
     assert loom_jar is not None
-    assert loom_jar.get("value") == "89c08938d865621172e3fb31036081399b2731a4971f599b42724b2509ff5b64"
+    assert loom_jar.get("value") == "c6c14e9b12ed9fd851c56025e2bbe2ec2721201173bc6d2f8805dd2963512d9d"
     assert loom_jar.get("origin") == (
         "publisher_sha256_sidecar: "
-        "https://maven.fabricmc.net/net/fabricmc/fabric-loom/1.17.21/"
-        "fabric-loom-1.17.21.jar.sha256"
+        "https://maven.fabricmc.net/net/fabricmc/fabric-loom/1.19.1/"
+        "fabric-loom-1.19.1.jar.sha256"
     )
 
     verified_sources = {
-        ("net.fabricmc", "fabric-loom", "fabric-loom-1.17.21.module"): (
-            "b4b57c34129fe2b113c9db754d7deca89c527eeffbb08612af3c64760e9006b3",
-            "https://maven.fabricmc.net/net/fabricmc/fabric-loom/1.17.21/"
-            "fabric-loom-1.17.21.module.sha256",
+        ("net.fabricmc", "fabric-loom", "fabric-loom-1.19.1.module"): (
+            "e3885e15e07a3c3fa49c9a82c948ba51626018557377e22e26149cc4b2d93ce6",
+            "https://maven.fabricmc.net/net/fabricmc/fabric-loom/1.19.1/"
+            "fabric-loom-1.19.1.module.sha256",
         ),
         (
             "net.fabricmc.fabric-loom",
             "net.fabricmc.fabric-loom.gradle.plugin",
-            "net.fabricmc.fabric-loom.gradle.plugin-1.17.21.pom",
+            "net.fabricmc.fabric-loom.gradle.plugin-1.19.1.pom",
         ): (
-            "15cc54da3a3afd9b4d683fd28707a3bcd3aa9668f4a7576468c05a56675cd0e4",
+            "9938a5d18e4a8d4ef69a4b5c7e5c3856c43b066420ff5aab6bf515c595b21ba2",
             "https://maven.fabricmc.net/net/fabricmc/fabric-loom/"
-            "net.fabricmc.fabric-loom.gradle.plugin/1.17.21/"
-            "net.fabricmc.fabric-loom.gradle.plugin-1.17.21.pom.sha256",
+            "net.fabricmc.fabric-loom.gradle.plugin/1.19.1/"
+            "net.fabricmc.fabric-loom.gradle.plugin-1.19.1.pom.sha256",
         ),
     }
     components = document.findall("g:components/g:component", NS)
@@ -152,7 +152,7 @@ def test_client_gradle_metadata_covers_fabric_loom_plugin_marker_and_implementat
             for component in components
             if component.get("group") == group
             and component.get("name") == name
-            and component.get("version") == "1.17.21"
+            and component.get("version") == "1.19.1"
         )
         artifact = next(
             artifact
@@ -186,34 +186,63 @@ def test_server_paper_api_checksums_match_the_profile_pin_and_official_sidecar()
         component
         for component in document.findall("g:components/g:component", NS)
         if (component.get("group"), component.get("name"), component.get("version"))
-        == ("io.papermc.paper", "paper-api", "26.3.build.169-beta")
+        == ("io.papermc.paper", "paper-api", "26.3.build.205-stable")
     )
+    assert profile["paper"]["api"] == "26.3.build.205-stable"
+    assert profile["paper"]["apiSize"] == 2_943_078
 
     paper_jar = next(
         artifact
         for artifact in paper_api.findall("g:artifact", NS)
-        if artifact.get("name") == "paper-api-26.3.build.169-beta.jar"
+        if artifact.get("name") == "paper-api-26.3.build.205-stable.jar"
     ).find("g:sha256", NS)
     assert paper_jar is not None
-    assert paper_jar.get("value") == profile["paper"]["apiSha256"]
+    assert paper_jar.get("value") == "2c4ced387dd3786a7f811923eedce574349e036446f91d10669578a3827aa252"
     assert paper_jar.get("origin") == (
         "publisher_sha256_sidecar: "
         "https://repo.papermc.io/repository/maven-public/io/papermc/paper/"
-        "paper-api/26.3.build.169-beta/paper-api-26.3.build.169-beta.jar.sha256"
+        "paper-api/26.3.build.205-stable/paper-api-26.3.build.205-stable.jar.sha256"
     )
 
     paper_module = next(
         artifact
         for artifact in paper_api.findall("g:artifact", NS)
-        if artifact.get("name") == "paper-api-26.3.build.169-beta.module"
+        if artifact.get("name") == "paper-api-26.3.build.205-stable.module"
     ).find("g:sha256", NS)
     assert paper_module is not None
-    assert paper_module.get("value") == "b84b128c981389eb46a82c3341283c6f5766f2409d882521399d9e9444538b13"
+    assert paper_module.get("value") == "c00a4a22611eafb898b4d41e70e5d3c9c7439bddcafb29d790c8778b8b38f5d9"
     assert paper_module.get("origin") == (
         "publisher_sha256_sidecar: "
         "https://repo.papermc.io/repository/maven-public/io/papermc/paper/"
-        "paper-api/26.3.build.169-beta/paper-api-26.3.build.169-beta.module.sha256"
+        "paper-api/26.3.build.205-stable/paper-api-26.3.build.205-stable.module.sha256"
     )
+
+    paper_pom = next(
+        artifact
+        for artifact in paper_api.findall("g:artifact", NS)
+        if artifact.get("name") == "paper-api-26.3.build.205-stable.pom"
+    ).find("g:sha256", NS)
+    assert paper_pom is not None
+    assert paper_pom.get("value") == "8e8257e42428004357212fa878afbb1c2d32fe87fc4a70bfc76ec909ea3f81a1"
+    assert paper_pom.get("origin") == (
+        "publisher_sha256_sidecar: "
+        "https://repo.papermc.io/repository/maven-public/io/papermc/paper/"
+        "paper-api/26.3.build.205-stable/paper-api-26.3.build.205-stable.pom.sha256"
+    )
+
+
+def test_paper_api_size_is_pinned_and_used_by_compile_pipeline() -> None:
+    profile = json.loads((ROOT / "tools/minecraft-26.3/profile.lock.json").read_text(encoding="utf-8"))
+    runner = (ROOT / "scripts/minecraft/RunJavaPluginCi.ps1").read_text(encoding="utf-8")
+    gradle = (ROOT / "tools/minecraft-26.3/build.gradle").read_text(encoding="utf-8")
+    validator = (ROOT / "tests/ValidateCopiMinePaper263CompileDependencies.ps1").read_text(encoding="utf-8")
+
+    assert profile["paper"]["apiSize"] == 2_943_078
+    assert "$paper263ApiSize = [long]$profileLock.paper.apiSize" in runner
+    assert "-ExpectedSize $paper263ApiSize" in runner
+    assert "-Method Head" not in runner
+    assert "artifact.file.length() != profile.paper.apiSize" in gradle
+    assert "(Get-Item -LiteralPath $PaperApiJar).Length -ne [long]$profile.paper.apiSize" in validator
 
 
 def test_gradle_dependency_provenance_covers_every_external_checksum() -> None:
@@ -268,8 +297,8 @@ def test_gradle_dependency_provenance_covers_every_external_checksum() -> None:
 
     assert report["counts"] == {
         "totalExternalArtifacts": len(expected_checksums),
-        "publisherSidecarMatches": 459,
-        "directArtifactMatches": 91,
+        "publisherSidecarMatches": 531,
+        "directArtifactMatches": 93,
         "alternateMirrorSidecarMismatches": 6,
     }
     mirror_mismatches = [

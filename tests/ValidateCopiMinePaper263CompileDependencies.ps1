@@ -13,8 +13,9 @@ $version = (& (Join-Path $JavaHome 'bin/java.exe') --version | Out-String)
 if ($LASTEXITCODE -ne 0 -or $version -notmatch ('(?m)^openjdk ' + [regex]::Escape($profile.buildJavaVersion) + ' ')) {
   throw "Paper 26.3 compile regression requires exact Java $($profile.buildJavaVersion)."
 }
-if ((Get-FileHash -LiteralPath $PaperApiJar -Algorithm SHA256).Hash.ToLowerInvariant() -ne $profile.paper.apiSha256) {
-  throw 'Paper 26.3 compile regression requires the exact profile API artifact.'
+if ((Get-Item -LiteralPath $PaperApiJar).Length -ne [long]$profile.paper.apiSize -or
+    (Get-FileHash -LiteralPath $PaperApiJar -Algorithm SHA256).Hash.ToLowerInvariant() -ne $profile.paper.apiSha256) {
+  throw 'Paper 26.3 compile regression requires the exact profile API size and hash.'
 }
 # Fall back before the repair exists, so RED reproduces the real compiler error.
 $selected = if ($lock.paper26_3Dependencies) { @($lock.paper26_3Dependencies) } else { @($lock.dependencies) }

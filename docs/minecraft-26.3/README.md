@@ -13,11 +13,11 @@
 | Компонент | Закреплённая версия или источник |
 | --- | --- |
 | Minecraft | 26.3, Mojang manifest и client JAR по SHA-1 в `profile.lock.json` |
-| Paper | build 169 beta, JAR по SHA-256 и размеру в `profile.lock.json` |
+| Paper | build 205 stable; server JAR 55 242 379 bytes with SHA-256 pinned in `profile.lock.json`; Paper API 26.3.build.205-stable is pinned there by exact URL, size, and SHA-256 |
 | Java сборки | Temurin 25; Grim compatibility patch собирается Java 21 |
 | Gradle | 9.8.1, distribution SHA-256 закреплён в lock |
-| Fabric | Loader 0.19.5, Loom 1.17.21, Fabric API 0.162.0+26.3 (вложен в CopiMineClient) |
-| CopiMineClient | `CopiMineClient-0.1.3+26.3.jar`, 14 957 376 байта; SHA-512 совпадает с `profile.lock.json` и двумя чистыми сборками на Temurin 25.0.4.1 / Gradle 9.8.1 |
+| Fabric | Loader 0.19.5, Loom 1.19.1, Fabric API 0.163.0+26.3 (вложен в CopiMineClient) |
+| CopiMineClient | `CopiMineClient-0.1.3+26.3.jar`, 14 960 295 байт; SHA-512 совпал в двух сборках с `--rerun-tasks` на Temurin 25.0.4.1+1 / Gradle 9.8.1 |
 | Gradle зависимости | SHA-256 manifest и описание происхождения в `GRADLE_DEPENDENCY_VERIFICATION.md` |
 | Серверные плагины | Lock с URL, версией, размером, SHA-256 и SHA-512 в `server-plugins.lock.json` |
 
@@ -40,13 +40,15 @@
 - `CI_ACCEPTANCE.md` — доказательства exact-SHA локальных и удалённых проверок, review и оставшиеся migration gates.
 - `DATABASES.md` — карта изолированной PostgreSQL БД и миграционной схемы.
 
+`unchangedBaseline` сохраняет исходные версии и хэши для аудита и отката. В runtime попадают только кандидаты с `candidate.runtimeEligible: true`; внешние файлы должны включать `26.3` в `gameVersions` (или иметь явное `approvedMinecraftVersion: "26.3"`), а локальные сборки — указывать `apiVersion: "26.3"` либо такое же явное одобрение. Текущий набор содержит 29 плагинов: 19 модулей и 10 допущенных кандидатов из baseline. `AuthMe` и другие записи, которые заменяются модулем, остаются под управлением `modules`. `FarmControl 1.3.0` и `SeeMore 1.0.2` сохранены как исторические данные, но не допускаются в кандидатный runtime, поскольку их release metadata не объявляет Minecraft 26.3.
+
 ## Клиентские моды
 
-Lock фиксирует 13 client mod artifacts: Fabric API `0.162.0+26.3` вложен в отдельный CopiMineClient JAR, а остальные 12 закреплённых JAR устанавливаются отдельно и остаются необязательными. При обычной установке отдельный Fabric API не добавляется в `mods`; `DependenciesOnly` может установить его отдельно для подготовки профиля до CopiMineClient. Этот режим теперь отклоняется, если CopiMineClient уже установлен, чтобы не пометить готовый профиль неполным. Версии, source release IDs, URL и хэши закреплены в `client-mods.lock.json`; версия страницы релиза может отличаться от `fabric.mod.json`.
+Lock фиксирует 13 client mod artifacts: Fabric API `0.163.0+26.3` вложен в отдельный CopiMineClient JAR, а остальные 12 закреплённых JAR устанавливаются отдельно и остаются необязательными. При обычной установке отдельный Fabric API не добавляется в `mods`; `DependenciesOnly` может установить его отдельно для подготовки профиля до CopiMineClient. Этот режим теперь отклоняется, если CopiMineClient уже установлен, чтобы не пометить готовый профиль неполным. Версии, source release IDs, URL и хэши закреплены в `client-mods.lock.json`; версия страницы релиза может отличаться от `fabric.mod.json`.
 
 | Мод | Версия Minecraft 26.3 |
 | --- | --- |
-| Fabric API | 0.162.0+26.3 |
+| Fabric API | 0.163.0+26.3 |
 | AppleSkin | 3.0.10+mc26.3 |
 | BetterF3 | 20.0.0 |
 | Cloth Config | 26.3.159+fabric |
@@ -59,6 +61,8 @@ Lock фиксирует 13 client mod artifacts: Fabric API `0.162.0+26.3` вл�
 | Sodium | 0.9.2+mc26.3 |
 | Simple Voice Chat | 2.6.24+26.3 |
 | CustomSkinLoader | 15.1 |
+
+Sodium `0.9.3-beta.1` уже опубликован для 26.3, но текущий Iris `1.11.7` объявляет обязательную точную зависимость от Sodium `0.9.2`. Поэтому lock держит последний совместимый release; обновление Sodium возможно после публикации Iris, который принимает новую версию.
 
 ## Подготовка кандидата
 

@@ -99,6 +99,68 @@ def test_client_mod_lock_ids_are_explicit_and_candidate_artifacts_are_checked():
     assert "Where-Object { $_.bundled -ne $true }" in profile_installer
 
 
+def test_fabric_api_lock_matches_the_current_pinned_26_3_release():
+    profile = json.loads((ROOT / 'tools/minecraft-26.3/profile.lock.json').read_text(encoding='utf-8'))
+    lock = json.loads((ROOT / 'tools/minecraft-26.3/client-mods.lock.json').read_text(encoding='utf-8'))
+    readme = (ROOT / 'docs/minecraft-26.3/README.md').read_text(encoding='utf-8')
+    fabric_api = next(module for module in lock['modules'] if module['project'] == 'fabric-api')
+
+    assert profile['fabric']['api'] == '0.163.0+26.3'
+    assert profile['fabric']['loom'] == '1.19.1'
+    assert lock['verifiedAt'] == '2026-10-18'
+    assert fabric_api['version'] == profile['fabric']['api']
+    assert f"| Fabric API | {profile['fabric']['api']} |" in readme
+    assert fabric_api['versionId'] == 'bq3SsNGk'
+    assert fabric_api['projectId'] == 'P7dR8mSH'
+    assert fabric_api['filename'] == 'fabric-api-0.163.0+26.3.jar'
+    assert fabric_api['fabricMetadataVersion'] == profile['fabric']['api']
+    assert fabric_api['url'] == (
+        'https://cdn.modrinth.com/data/P7dR8mSH/versions/bq3SsNGk/'
+        'fabric-api-0.163.0%2B26.3.jar'
+    )
+    assert fabric_api['sha1'] == '65ada8c72b61ffb256e956baf53df28155daa479'
+    assert fabric_api['sha512'] == (
+        '44fd8de10fa71ea39cf984d44d2ec4c8e9314f8af88ad95788d9a09ac7b02b5c'
+        '2f796ae88f40e314bd27df677e66fed59d1a1b6784350b0cc1fd62efac9e08a3'
+    )
+    assert fabric_api['size'] == 1_774_707
+
+
+def test_sodium_lock_respects_iris_exact_26_3_dependency():
+    lock = json.loads((ROOT / 'tools/minecraft-26.3/client-mods.lock.json').read_text(encoding='utf-8'))
+    sodium = next(module for module in lock['modules'] if module['modId'] == 'sodium')
+    iris = next(module for module in lock['modules'] if module['modId'] == 'iris')
+    iris_sodium = next(dependency for dependency in iris['dependencies'] if dependency['project_id'] == sodium['projectId'])
+
+    assert sodium['version'] == 'mc26.3-0.9.2-fabric'
+    assert sodium['channel'] == 'release'
+    assert sodium['versionId'] == 'bAZQdGpg'
+    assert sodium['filename'] == 'sodium-fabric-0.9.2+mc26.3.jar'
+    assert sodium['url'] == (
+        'https://cdn.modrinth.com/data/AANobbMI/versions/bAZQdGpg/'
+        'sodium-fabric-0.9.2%2Bmc26.3.jar'
+    )
+    assert sodium['sha1'] == '9acfe851e36f4fb27d7c5baa224e8bd4e0334283'
+    assert sodium['sha512'] == (
+        'f3f260f204b8ce5e8777c2c73f537956755ec61f3817b0b78b5e5568e8aa40f'
+        '14891f146475075109747665c7c88a45ca0ca9a8df3c68d79c58ecdaa8d8c4b93'
+    )
+    assert sodium['size'] == 1_908_068
+    assert iris_sodium['version_id'] == sodium['versionId']
+
+
+def test_profile_lock_matches_the_repeatable_current_client_build():
+    profile = json.loads((ROOT / 'tools/minecraft-26.3/profile.lock.json').read_text(encoding='utf-8'))
+    artifact = profile['clientArtifact']
+
+    assert artifact['filename'] == 'CopiMineClient-0.1.3+26.3.jar'
+    assert artifact['size'] == 14_960_295
+    assert artifact['sha512'] == (
+        '48e835d88e1a85a21b0219360307286477e4af004fb34f7b93b694e0a6f707f6'
+        '2f1bb1c0092c52a269e5cd847c9337a306a65fc7201fcc02ac698a83ba424c1b'
+    )
+
+
 def test_profile_validator_hashes_nested_dependencies_on_windows_powershell_51():
     profile_installer = SCRIPT.read_text(encoding='utf-8')
 
@@ -157,6 +219,10 @@ def test_paper_26_3_compile_lock_uses_one_verified_version_per_artifact():
 
     lock = json.loads((ROOT/'tools/minecraft-26.3/java-plugin-compile-dependencies.lock.json').read_text(encoding='utf-8'))
     profile = json.loads((ROOT/'tools/minecraft-26.3/profile.lock.json').read_text(encoding='utf-8'))
+    assert profile['paper']['build'] == 205
+    assert profile['paper']['channel'] == 'STABLE'
+    assert profile['paper']['api'] == '26.3.build.205-stable'
+    assert profile['paper']['apiSize'] == 2_943_078
     assert lock['paper26_3Api'] == profile['paper']['api']
     dependencies = lock['paper26_3Dependencies']
     assert len(dependencies) == 17

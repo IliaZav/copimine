@@ -21,7 +21,7 @@
     { "path": "com/google/guava/guava/21.0/guava-21.0.jar", "size": 2521113, "sha256": "972139718abc8a4893fa78cba8cf7b2c903f35c97aaf44fa3031b0669948b480" },
     { "path": "org/joml/joml/1.10.5/joml-1.10.5.jar", "size": 712082, "sha256": "cac9f22f83a7aa33eebda73c16ff5261e3cb4911b6bafcf4c79ea486099d0c9a" }
   ],
-  "paper26_3Api": "26.3.build.169-beta",
+  "paper26_3Api": "26.3.build.205-stable",
   "paper26_3Dependencies": [
     { "path": "net/kyori/adventure-api/5.2.0/adventure-api-5.2.0.jar", "size": 428448, "sha256": "7e52fe7190be3e87b3b3f71712cfa12315fcd27109f302a7b440c12f01fae827" },
     { "path": "net/kyori/adventure-key/5.2.0/adventure-key-5.2.0.jar", "size": 11211, "sha256": "0184d173200e2eef8fbc791f622d1d58fd459f8930c616b5a4fe79e83eda6c55" },

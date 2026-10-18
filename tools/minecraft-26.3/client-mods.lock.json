@@ -2,14 +2,14 @@
   "schemaVersion": 1,
   "minecraftVersion": "26.3",
   "loader": "fabric",
-  "verifiedAt": "2026-10-07",
+  "verifiedAt": "2026-10-18",
   "nativeVerified": false,
   "modules": [
     {
       "project": "fabric-api",
-      "version": "0.162.0+26.3",
+      "version": "0.163.0+26.3",
       "channel": "release",
-      "versionId": "v2j28coa",
+      "versionId": "bq3SsNGk",
       "projectId": "P7dR8mSH",
       "source": "https://modrinth.com/mod/fabric-api",
       "license": {
@@ -17,15 +17,15 @@
         "name": "Apache License 2.0",
         "url": null
       },
-      "filename": "fabric-api-0.162.0+26.3.jar",
+      "filename": "fabric-api-0.163.0+26.3.jar",
       "modId": "fabric-api",
       "bundled": true,
-      "url": "https://cdn.modrinth.com/data/P7dR8mSH/versions/v2j28coa/fabric-api-0.162.0%2B26.3.jar",
-      "sha512": "5ab70908952f1d2346d16b122ca31327f4055db59c279a1bc3c3c581ce359bb541cba15730f55b0727be7c7c4debc4a4412a183c228e0d4dea81c734f7b412ce",
-      "sha1": "273cd2dcbd92d1559edcc91c9f23fee47f6ff93f",
-      "size": 1772377,
+      "url": "https://cdn.modrinth.com/data/P7dR8mSH/versions/bq3SsNGk/fabric-api-0.163.0%2B26.3.jar",
+      "sha512": "44fd8de10fa71ea39cf984d44d2ec4c8e9314f8af88ad95788d9a09ac7b02b5c2f796ae88f40e314bd27df677e66fed59d1a1b6784350b0cc1fd62efac9e08a3",
+      "sha1": "65ada8c72b61ffb256e956baf53df28155daa479",
+      "size": 1774707,
       "dependencies": [],
-      "fabricMetadataVersion": "0.162.0+26.3"
+      "fabricMetadataVersion": "0.163.0+26.3"
     },
     {
       "project": "AppleSkin",

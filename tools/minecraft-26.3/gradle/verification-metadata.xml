@@ -664,5 +664,16 @@
             <sha256 value="e982eadc788c69cf2e4de50a9f632b182c31dba50612830d348fc4b4ba8dd7d6" origin="publisher_sha256_sidecar: https://repo.papermc.io/repository/maven-public/org/yaml/snakeyaml/2.2/snakeyaml-2.2.pom.sha256"/>
          </artifact>
       </component>
+      <component group="io.papermc.paper" name="paper-api" version="26.3.build.205-stable">
+         <artifact name="paper-api-26.3.build.205-stable.jar">
+            <sha256 value="2c4ced387dd3786a7f811923eedce574349e036446f91d10669578a3827aa252" origin="publisher_sha256_sidecar: https://repo.papermc.io/repository/maven-public/io/papermc/paper/paper-api/26.3.build.205-stable/paper-api-26.3.build.205-stable.jar.sha256"/>
+         </artifact>
+         <artifact name="paper-api-26.3.build.205-stable.module">
+            <sha256 value="c00a4a22611eafb898b4d41e70e5d3c9c7439bddcafb29d790c8778b8b38f5d9" origin="publisher_sha256_sidecar: https://repo.papermc.io/repository/maven-public/io/papermc/paper/paper-api/26.3.build.205-stable/paper-api-26.3.build.205-stable.module.sha256"/>
+         </artifact>
+         <artifact name="paper-api-26.3.build.205-stable.pom">
+            <sha256 value="8e8257e42428004357212fa878afbb1c2d32fe87fc4a70bfc76ec909ea3f81a1" origin="publisher_sha256_sidecar: https://repo.papermc.io/repository/maven-public/io/papermc/paper/paper-api/26.3.build.205-stable/paper-api-26.3.build.205-stable.pom.sha256"/>
+         </artifact>
+      </component>
    </components>
 </verification-metadata>

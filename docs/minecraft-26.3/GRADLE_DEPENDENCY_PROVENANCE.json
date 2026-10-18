@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "verifiedAtUtc": "2026-10-16T04:48:05Z",
+  "verifiedAtUtc": "2026-10-18T00:09:50Z",
   "purpose": "Record independent HTTPS retrieval checks for every external artifact checksum in both Minecraft 26.3 Gradle verification manifests.",
   "method": {
     "sidecarMatches": "Fetched the official artifact .sha256 sidecar over HTTPS and compared it with the checksum in Gradle verification metadata.",
@@ -9,9 +9,9 @@
     "trustBoundary": "Sidecars and artifact bytes are served by their respective official repository. This is a separate retrieval from Gradle's isolated caches, but it is not a third-party signature or cross-operator attestation."
   },
   "counts": {
-    "totalExternalArtifacts": 550,
-    "publisherSidecarMatches": 459,
-    "directArtifactMatches": 91,
+    "totalExternalArtifacts": 624,
+    "publisherSidecarMatches": 531,
+    "directArtifactMatches": 93,
     "alternateMirrorSidecarMismatches": 6
   },
   "artifacts": [
@@ -1195,6 +1195,30 @@
       "root": "client",
       "group": "net.fabricmc",
       "module": "class-tweaker",
+      "version": "0.3.0",
+      "artifact": "class-tweaker-0.3.0.jar",
+      "sha256": "83bf284909d13c7b4ae953c3fe141628dfedbe56120217f61891c341f0be2f1f",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/class-tweaker/0.3.0/class-tweaker-0.3.0.jar.sha256",
+      "observedSha256": "83bf284909d13c7b4ae953c3fe141628dfedbe56120217f61891c341f0be2f1f",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc",
+      "module": "class-tweaker",
+      "version": "0.3.0",
+      "artifact": "class-tweaker-0.3.0.module",
+      "sha256": "d942cc999a8876e808df3bd1252adfab0b0a028ca8aac2de487f2e2f5a43934e",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/class-tweaker/0.3.0/class-tweaker-0.3.0.module.sha256",
+      "observedSha256": "d942cc999a8876e808df3bd1252adfab0b0a028ca8aac2de487f2e2f5a43934e",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc",
+      "module": "class-tweaker",
       "version": "0.3.0-beta.2",
       "artifact": "class-tweaker-0.3.0-beta.2.jar",
       "sha256": "47c5101083aa8d735eb88b5ff8d760ca69555460a7cf7c1142583b7aa664bc49",
@@ -1291,24 +1315,24 @@
       "root": "client",
       "group": "net.fabricmc",
       "module": "fabric-loom",
-      "version": "1.17.21",
-      "artifact": "fabric-loom-1.17.21.jar",
-      "sha256": "89c08938d865621172e3fb31036081399b2731a4971f599b42724b2509ff5b64",
+      "version": "1.19.1",
+      "artifact": "fabric-loom-1.19.1.jar",
+      "sha256": "c6c14e9b12ed9fd851c56025e2bbe2ec2721201173bc6d2f8805dd2963512d9d",
       "verification": "publisher_sha256_sidecar",
-      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-loom/1.17.21/fabric-loom-1.17.21.jar.sha256",
-      "observedSha256": "89c08938d865621172e3fb31036081399b2731a4971f599b42724b2509ff5b64",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-loom/1.19.1/fabric-loom-1.19.1.jar.sha256",
+      "observedSha256": "c6c14e9b12ed9fd851c56025e2bbe2ec2721201173bc6d2f8805dd2963512d9d",
       "sourceHost": "maven.fabricmc.net"
     },
     {
       "root": "client",
       "group": "net.fabricmc",
       "module": "fabric-loom",
-      "version": "1.17.21",
-      "artifact": "fabric-loom-1.17.21.module",
-      "sha256": "b4b57c34129fe2b113c9db754d7deca89c527eeffbb08612af3c64760e9006b3",
+      "version": "1.19.1",
+      "artifact": "fabric-loom-1.19.1.module",
+      "sha256": "e3885e15e07a3c3fa49c9a82c948ba51626018557377e22e26149cc4b2d93ce6",
       "verification": "publisher_sha256_sidecar",
-      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-loom/1.17.21/fabric-loom-1.17.21.module.sha256",
-      "observedSha256": "b4b57c34129fe2b113c9db754d7deca89c527eeffbb08612af3c64760e9006b3",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-loom/1.19.1/fabric-loom-1.19.1.module.sha256",
+      "observedSha256": "e3885e15e07a3c3fa49c9a82c948ba51626018557377e22e26149cc4b2d93ce6",
       "sourceHost": "maven.fabricmc.net"
     },
     {
@@ -1529,6 +1553,30 @@
     },
     {
       "root": "client",
+      "group": "net.fabricmc",
+      "module": "tiny-remapper",
+      "version": "0.15.0",
+      "artifact": "tiny-remapper-0.15.0.jar",
+      "sha256": "a70b6c0bf045286ab33855d2ca0c284877e09b2e6eb3655db487abac73fae6f6",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/tiny-remapper/0.15.0/tiny-remapper-0.15.0.jar.sha256",
+      "observedSha256": "a70b6c0bf045286ab33855d2ca0c284877e09b2e6eb3655db487abac73fae6f6",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc",
+      "module": "tiny-remapper",
+      "version": "0.15.0",
+      "artifact": "tiny-remapper-0.15.0.module",
+      "sha256": "10c43572ccc56c40d53524676045b0316874c3a4de06255b1e12458aef654fa2",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/tiny-remapper/0.15.0/tiny-remapper-0.15.0.module.sha256",
+      "observedSha256": "10c43572ccc56c40d53524676045b0316874c3a4de06255b1e12458aef654fa2",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
       "group": "net.fabricmc.fabric-api",
       "module": "fabric-advancement-api-v1",
       "version": "1.0.0+38c7a2d55d",
@@ -1554,6 +1602,30 @@
     {
       "root": "client",
       "group": "net.fabricmc.fabric-api",
+      "module": "fabric-advancement-api-v1",
+      "version": "1.0.1+38c7a2d55d",
+      "artifact": "fabric-advancement-api-v1-1.0.1+38c7a2d55d.jar",
+      "sha256": "096f771e643e006bb93a348e0cfdea1652d9e7a83c2a088951d8bde323982b36",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-advancement-api-v1/1.0.1+38c7a2d55d/fabric-advancement-api-v1-1.0.1+38c7a2d55d.jar.sha256",
+      "observedSha256": "096f771e643e006bb93a348e0cfdea1652d9e7a83c2a088951d8bde323982b36",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-advancement-api-v1",
+      "version": "1.0.1+38c7a2d55d",
+      "artifact": "fabric-advancement-api-v1-1.0.1+38c7a2d55d.pom",
+      "sha256": "66242d7f95ad410108d2019403d672de04575af2630f360b0cc2cf6105d59ebc",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-advancement-api-v1/1.0.1+38c7a2d55d/fabric-advancement-api-v1-1.0.1+38c7a2d55d.pom.sha256",
+      "observedSha256": "66242d7f95ad410108d2019403d672de04575af2630f360b0cc2cf6105d59ebc",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
       "module": "fabric-api",
       "version": "0.162.0+26.3",
       "artifact": "fabric-api-0.162.0+26.3.jar",
@@ -1573,6 +1645,30 @@
       "verification": "publisher_sha256_sidecar",
       "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.162.0+26.3/fabric-api-0.162.0+26.3.pom.sha256",
       "observedSha256": "5a1ce5e8b815a41bb7621e14c0a5494bb91a2c5b0aff0e0625c95184cff8854b",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-api",
+      "version": "0.163.0+26.3",
+      "artifact": "fabric-api-0.163.0+26.3.jar",
+      "sha256": "4969f5197ebedaf681cc913e4258c8bd17ccb98029db52a29e9b48e998267a2d",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.163.0+26.3/fabric-api-0.163.0+26.3.jar.sha256",
+      "observedSha256": "4969f5197ebedaf681cc913e4258c8bd17ccb98029db52a29e9b48e998267a2d",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-api",
+      "version": "0.163.0+26.3",
+      "artifact": "fabric-api-0.163.0+26.3.pom",
+      "sha256": "3598e3a9fcef79bfcd6fc550b716970df5b6cea7e3079270c75e8222ca5a1789",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.163.0+26.3/fabric-api-0.163.0+26.3.pom.sha256",
+      "observedSha256": "3598e3a9fcef79bfcd6fc550b716970df5b6cea7e3079270c75e8222ca5a1789",
       "sourceHost": "maven.fabricmc.net"
     },
     {
@@ -1609,6 +1705,18 @@
       "verification": "publisher_sha256_sidecar",
       "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api-deprecated/0.162.0+26.3/fabric-api-deprecated-0.162.0+26.3.pom.sha256",
       "observedSha256": "e0558e9200b29ee4bb0df502e08546c7c9ba1d7291c268afc27fae63cd07fd46",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-api-deprecated",
+      "version": "0.163.0+26.3",
+      "artifact": "fabric-api-deprecated-0.163.0+26.3.pom",
+      "sha256": "94cc1ecaab1162a2216260272d9a55b15182a21bf59bf2aa1cd7ab9660c98be8",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api-deprecated/0.163.0+26.3/fabric-api-deprecated-0.163.0+26.3.pom.sha256",
+      "observedSha256": "94cc1ecaab1162a2216260272d9a55b15182a21bf59bf2aa1cd7ab9660c98be8",
       "sourceHost": "maven.fabricmc.net"
     },
     {
@@ -1734,6 +1842,30 @@
     {
       "root": "client",
       "group": "net.fabricmc.fabric-api",
+      "module": "fabric-client-gametest-api-v1",
+      "version": "6.0.9+4be74c3f5d",
+      "artifact": "fabric-client-gametest-api-v1-6.0.9+4be74c3f5d.jar",
+      "sha256": "b43c755b865d530f2700a173adb5707eeedec03de8261d71d7e62fc78943a7c4",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-client-gametest-api-v1/6.0.9+4be74c3f5d/fabric-client-gametest-api-v1-6.0.9+4be74c3f5d.jar.sha256",
+      "observedSha256": "b43c755b865d530f2700a173adb5707eeedec03de8261d71d7e62fc78943a7c4",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-client-gametest-api-v1",
+      "version": "6.0.9+4be74c3f5d",
+      "artifact": "fabric-client-gametest-api-v1-6.0.9+4be74c3f5d.pom",
+      "sha256": "ff1ffcd439bfda4732c13fab4b62d2b8265c96ce31eefda030545c4ef7888352",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-client-gametest-api-v1/6.0.9+4be74c3f5d/fabric-client-gametest-api-v1-6.0.9+4be74c3f5d.pom.sha256",
+      "observedSha256": "ff1ffcd439bfda4732c13fab4b62d2b8265c96ce31eefda030545c4ef7888352",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
       "module": "fabric-command-api-v2",
       "version": "3.1.2+fcdff87f5d",
       "artifact": "fabric-command-api-v2-3.1.2+fcdff87f5d.jar",
@@ -1777,6 +1909,30 @@
       "verification": "publisher_sha256_sidecar",
       "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-content-registries-v0/15.0.4+74ed1ea55d/fabric-content-registries-v0-15.0.4+74ed1ea55d.pom.sha256",
       "observedSha256": "e61625127909c1bd20205aa26547308ef358827ed77110c80e2772d6b3f294a5",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-content-registries-v0",
+      "version": "15.0.5+74ed1ea55d",
+      "artifact": "fabric-content-registries-v0-15.0.5+74ed1ea55d.jar",
+      "sha256": "0c33e2d60c09974db6344c479ee1bf5b7fe8a495c4dc5110126d6dbe261f02dd",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-content-registries-v0/15.0.5+74ed1ea55d/fabric-content-registries-v0-15.0.5+74ed1ea55d.jar.sha256",
+      "observedSha256": "0c33e2d60c09974db6344c479ee1bf5b7fe8a495c4dc5110126d6dbe261f02dd",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-content-registries-v0",
+      "version": "15.0.5+74ed1ea55d",
+      "artifact": "fabric-content-registries-v0-15.0.5+74ed1ea55d.pom",
+      "sha256": "6a97eacf3aa99897a0ad5d48c4ffc1018437165b47e6d1dfb114a6b2d3c10d7a",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-content-registries-v0/15.0.5+74ed1ea55d/fabric-content-registries-v0-15.0.5+74ed1ea55d.pom.sha256",
+      "observedSha256": "6a97eacf3aa99897a0ad5d48c4ffc1018437165b47e6d1dfb114a6b2d3c10d7a",
       "sourceHost": "maven.fabricmc.net"
     },
     {
@@ -1854,6 +2010,30 @@
     {
       "root": "client",
       "group": "net.fabricmc.fabric-api",
+      "module": "fabric-creative-tab-api-v1",
+      "version": "5.0.22+fcdff87f5d",
+      "artifact": "fabric-creative-tab-api-v1-5.0.22+fcdff87f5d.jar",
+      "sha256": "de5ecc896f57aa2655aac45d7de798f9341b5bd75b4ac72aaf00e3b7e5c0afdd",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-creative-tab-api-v1/5.0.22+fcdff87f5d/fabric-creative-tab-api-v1-5.0.22+fcdff87f5d.jar.sha256",
+      "observedSha256": "de5ecc896f57aa2655aac45d7de798f9341b5bd75b4ac72aaf00e3b7e5c0afdd",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-creative-tab-api-v1",
+      "version": "5.0.22+fcdff87f5d",
+      "artifact": "fabric-creative-tab-api-v1-5.0.22+fcdff87f5d.pom",
+      "sha256": "a053a7d96b91c08fc6a5ec602c5f5f140d58ce8e2251ae484d780d7da8468a05",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-creative-tab-api-v1/5.0.22+fcdff87f5d/fabric-creative-tab-api-v1-5.0.22+fcdff87f5d.pom.sha256",
+      "observedSha256": "a053a7d96b91c08fc6a5ec602c5f5f140d58ce8e2251ae484d780d7da8468a05",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
       "module": "fabric-data-attachment-api-v1",
       "version": "2.2.31+b9b88df45d",
       "artifact": "fabric-data-attachment-api-v1-2.2.31+b9b88df45d.jar",
@@ -1873,6 +2053,30 @@
       "verification": "publisher_sha256_sidecar",
       "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-data-attachment-api-v1/2.2.31+b9b88df45d/fabric-data-attachment-api-v1-2.2.31+b9b88df45d.pom.sha256",
       "observedSha256": "1d4c048bd0841aaa19db0ed8251d87f4b7e7a8474610a1c64e1a3818fc407c4a",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-data-attachment-api-v1",
+      "version": "2.2.32+b9b88df45d",
+      "artifact": "fabric-data-attachment-api-v1-2.2.32+b9b88df45d.jar",
+      "sha256": "73b3ce0d74b3760382856b17ea3f397842eb4c23759c13b0770dbbd38c609c7d",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-data-attachment-api-v1/2.2.32+b9b88df45d/fabric-data-attachment-api-v1-2.2.32+b9b88df45d.jar.sha256",
+      "observedSha256": "73b3ce0d74b3760382856b17ea3f397842eb4c23759c13b0770dbbd38c609c7d",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-data-attachment-api-v1",
+      "version": "2.2.32+b9b88df45d",
+      "artifact": "fabric-data-attachment-api-v1-2.2.32+b9b88df45d.pom",
+      "sha256": "003c8118f78db72787f69c9c651100d350e90f85e94134d002d97da7c3ffe80d",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-data-attachment-api-v1/2.2.32+b9b88df45d/fabric-data-attachment-api-v1-2.2.32+b9b88df45d.pom.sha256",
+      "observedSha256": "003c8118f78db72787f69c9c651100d350e90f85e94134d002d97da7c3ffe80d",
       "sourceHost": "maven.fabricmc.net"
     },
     {
@@ -1902,6 +2106,30 @@
     {
       "root": "client",
       "group": "net.fabricmc.fabric-api",
+      "module": "fabric-data-generation-api-v1",
+      "version": "27.4.0+e985c3605d",
+      "artifact": "fabric-data-generation-api-v1-27.4.0+e985c3605d.jar",
+      "sha256": "709e59f2aea347c58339f4f6d22c2c0cfa059d3f28372d9b5beb2015cc5b6983",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-data-generation-api-v1/27.4.0+e985c3605d/fabric-data-generation-api-v1-27.4.0+e985c3605d.jar.sha256",
+      "observedSha256": "709e59f2aea347c58339f4f6d22c2c0cfa059d3f28372d9b5beb2015cc5b6983",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-data-generation-api-v1",
+      "version": "27.4.0+e985c3605d",
+      "artifact": "fabric-data-generation-api-v1-27.4.0+e985c3605d.pom",
+      "sha256": "d964d43d5bce281a741f9d001198ec30fa3e30e118fe03aeede66e251907eb4e",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-data-generation-api-v1/27.4.0+e985c3605d/fabric-data-generation-api-v1-27.4.0+e985c3605d.pom.sha256",
+      "observedSha256": "d964d43d5bce281a741f9d001198ec30fa3e30e118fe03aeede66e251907eb4e",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
       "module": "fabric-debug-api-v1",
       "version": "1.0.4+3434d6d95d",
       "artifact": "fabric-debug-api-v1-1.0.4+3434d6d95d.jar",
@@ -1926,6 +2154,30 @@
     {
       "root": "client",
       "group": "net.fabricmc.fabric-api",
+      "module": "fabric-debug-api-v1",
+      "version": "1.0.5+5af7744b5d",
+      "artifact": "fabric-debug-api-v1-1.0.5+5af7744b5d.jar",
+      "sha256": "ddde75a663260a778fc3cba17cc8d515dd72eaeeb58e4e324fd6f3e55d6bc967",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-debug-api-v1/1.0.5+5af7744b5d/fabric-debug-api-v1-1.0.5+5af7744b5d.jar.sha256",
+      "observedSha256": "ddde75a663260a778fc3cba17cc8d515dd72eaeeb58e4e324fd6f3e55d6bc967",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-debug-api-v1",
+      "version": "1.0.5+5af7744b5d",
+      "artifact": "fabric-debug-api-v1-1.0.5+5af7744b5d.pom",
+      "sha256": "b1d485b5120198e2b10891c19d722ffab39585019477ec7b45673bd0a1cc7dd4",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-debug-api-v1/1.0.5+5af7744b5d/fabric-debug-api-v1-1.0.5+5af7744b5d.pom.sha256",
+      "observedSha256": "b1d485b5120198e2b10891c19d722ffab39585019477ec7b45673bd0a1cc7dd4",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
       "module": "fabric-dimensions-v1",
       "version": "5.1.19+47f74c985d",
       "artifact": "fabric-dimensions-v1-5.1.19+47f74c985d.jar",
@@ -1945,6 +2197,30 @@
       "verification": "publisher_sha256_sidecar",
       "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-dimensions-v1/5.1.19+47f74c985d/fabric-dimensions-v1-5.1.19+47f74c985d.pom.sha256",
       "observedSha256": "bc6b213f06b990c8fe59ccd4d112f2b851adebd8b012061f09c44f2aa06379ed",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-dimensions-v1",
+      "version": "5.1.20+5af7744b5d",
+      "artifact": "fabric-dimensions-v1-5.1.20+5af7744b5d.jar",
+      "sha256": "bcb886da94f0d675e0269b47bf8669611abc3a00e745f853efe3d83cde85f1ff",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-dimensions-v1/5.1.20+5af7744b5d/fabric-dimensions-v1-5.1.20+5af7744b5d.jar.sha256",
+      "observedSha256": "bcb886da94f0d675e0269b47bf8669611abc3a00e745f853efe3d83cde85f1ff",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-dimensions-v1",
+      "version": "5.1.20+5af7744b5d",
+      "artifact": "fabric-dimensions-v1-5.1.20+5af7744b5d.pom",
+      "sha256": "9138dce7b604d629c4ac0be044c0d326a844f1e7047417bca8fc7a430b3fc7b6",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-dimensions-v1/5.1.20+5af7744b5d/fabric-dimensions-v1-5.1.20+5af7744b5d.pom.sha256",
+      "observedSha256": "9138dce7b604d629c4ac0be044c0d326a844f1e7047417bca8fc7a430b3fc7b6",
       "sourceHost": "maven.fabricmc.net"
     },
     {
@@ -1998,6 +2274,30 @@
     {
       "root": "client",
       "group": "net.fabricmc.fabric-api",
+      "module": "fabric-events-interaction-v0",
+      "version": "5.3.8+b9b88df45d",
+      "artifact": "fabric-events-interaction-v0-5.3.8+b9b88df45d.jar",
+      "sha256": "217fd93b776c42d6fa688e39a37021060dbc6f042764686f95e0c07e568d401c",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-events-interaction-v0/5.3.8+b9b88df45d/fabric-events-interaction-v0-5.3.8+b9b88df45d.jar.sha256",
+      "observedSha256": "217fd93b776c42d6fa688e39a37021060dbc6f042764686f95e0c07e568d401c",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-events-interaction-v0",
+      "version": "5.3.8+b9b88df45d",
+      "artifact": "fabric-events-interaction-v0-5.3.8+b9b88df45d.pom",
+      "sha256": "b32175a4a2f33cd20814b3a1f226d8c1948477c5eef9b32fbd8b525d7828c196",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-events-interaction-v0/5.3.8+b9b88df45d/fabric-events-interaction-v0-5.3.8+b9b88df45d.pom.sha256",
+      "observedSha256": "b32175a4a2f33cd20814b3a1f226d8c1948477c5eef9b32fbd8b525d7828c196",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
       "module": "fabric-game-rule-api-v1",
       "version": "4.0.10+3434d6d95d",
       "artifact": "fabric-game-rule-api-v1-4.0.10+3434d6d95d.jar",
@@ -2046,6 +2346,30 @@
     {
       "root": "client",
       "group": "net.fabricmc.fabric-api",
+      "module": "fabric-gametest-api-v1",
+      "version": "4.0.34+3434d6d95d",
+      "artifact": "fabric-gametest-api-v1-4.0.34+3434d6d95d.jar",
+      "sha256": "4866d68dd97a49752e39817155a4031b9e335748f3f09bf633a36d4b152bac88",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-gametest-api-v1/4.0.34+3434d6d95d/fabric-gametest-api-v1-4.0.34+3434d6d95d.jar.sha256",
+      "observedSha256": "4866d68dd97a49752e39817155a4031b9e335748f3f09bf633a36d4b152bac88",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-gametest-api-v1",
+      "version": "4.0.34+3434d6d95d",
+      "artifact": "fabric-gametest-api-v1-4.0.34+3434d6d95d.pom",
+      "sha256": "44315d3122a058e51af0183fcb3357becb066dae591fd436939d0f8c77e09b44",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-gametest-api-v1/4.0.34+3434d6d95d/fabric-gametest-api-v1-4.0.34+3434d6d95d.pom.sha256",
+      "observedSha256": "44315d3122a058e51af0183fcb3357becb066dae591fd436939d0f8c77e09b44",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
       "module": "fabric-item-api-v1",
       "version": "14.7.0+cf6bc2db5d",
       "artifact": "fabric-item-api-v1-14.7.0+cf6bc2db5d.jar",
@@ -2065,6 +2389,30 @@
       "verification": "publisher_sha256_sidecar",
       "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-item-api-v1/14.7.0+cf6bc2db5d/fabric-item-api-v1-14.7.0+cf6bc2db5d.pom.sha256",
       "observedSha256": "f3980014c71b921e06165db63053d5109cbbcd4b62e4274ca7fd6f35e46e77fc",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-item-api-v1",
+      "version": "14.7.1+5af7744b5d",
+      "artifact": "fabric-item-api-v1-14.7.1+5af7744b5d.jar",
+      "sha256": "1ed3edd81d6c81dcdff334a776e06b3606abd35b37271c46f7bc62e0a4900047",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-item-api-v1/14.7.1+5af7744b5d/fabric-item-api-v1-14.7.1+5af7744b5d.jar.sha256",
+      "observedSha256": "1ed3edd81d6c81dcdff334a776e06b3606abd35b37271c46f7bc62e0a4900047",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-item-api-v1",
+      "version": "14.7.1+5af7744b5d",
+      "artifact": "fabric-item-api-v1-14.7.1+5af7744b5d.pom",
+      "sha256": "5af74361c91f091980a0fc6602f730da186642c90807612bf17255cfb49db1d3",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-item-api-v1/14.7.1+5af7744b5d/fabric-item-api-v1-14.7.1+5af7744b5d.pom.sha256",
+      "observedSha256": "5af74361c91f091980a0fc6602f730da186642c90807612bf17255cfb49db1d3",
       "sourceHost": "maven.fabricmc.net"
     },
     {
@@ -2142,6 +2490,30 @@
     {
       "root": "client",
       "group": "net.fabricmc.fabric-api",
+      "module": "fabric-loot-api-v3",
+      "version": "4.0.9+4068fd645d",
+      "artifact": "fabric-loot-api-v3-4.0.9+4068fd645d.jar",
+      "sha256": "fe10e38a468216616facf16dc109a85259c34c70f26d1e5e4f81e9e26c0e6272",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-loot-api-v3/4.0.9+4068fd645d/fabric-loot-api-v3-4.0.9+4068fd645d.jar.sha256",
+      "observedSha256": "fe10e38a468216616facf16dc109a85259c34c70f26d1e5e4f81e9e26c0e6272",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-loot-api-v3",
+      "version": "4.0.9+4068fd645d",
+      "artifact": "fabric-loot-api-v3-4.0.9+4068fd645d.pom",
+      "sha256": "5b842f364f2f59b0e3adef5857fcef13d3d38f24c7d486817770e512aa7adb5f",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-loot-api-v3/4.0.9+4068fd645d/fabric-loot-api-v3-4.0.9+4068fd645d.pom.sha256",
+      "observedSha256": "5b842f364f2f59b0e3adef5857fcef13d3d38f24c7d486817770e512aa7adb5f",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
       "module": "fabric-menu-api-v1",
       "version": "2.0.28+ed66f0a35d",
       "artifact": "fabric-menu-api-v1-2.0.28+ed66f0a35d.jar",
@@ -2161,6 +2533,30 @@
       "verification": "publisher_sha256_sidecar",
       "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-menu-api-v1/2.0.28+ed66f0a35d/fabric-menu-api-v1-2.0.28+ed66f0a35d.pom.sha256",
       "observedSha256": "158e4ddc80c69d149b74b33a95f3f8ef2e1cc966c549539df48d3169f54c6878",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-menu-api-v1",
+      "version": "2.0.29+ed66f0a35d",
+      "artifact": "fabric-menu-api-v1-2.0.29+ed66f0a35d.jar",
+      "sha256": "b3f70b9b8bf55d400a800feb6ab09fd66a84006a5b44da0aa24e26b65e6ded2c",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-menu-api-v1/2.0.29+ed66f0a35d/fabric-menu-api-v1-2.0.29+ed66f0a35d.jar.sha256",
+      "observedSha256": "b3f70b9b8bf55d400a800feb6ab09fd66a84006a5b44da0aa24e26b65e6ded2c",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-menu-api-v1",
+      "version": "2.0.29+ed66f0a35d",
+      "artifact": "fabric-menu-api-v1-2.0.29+ed66f0a35d.pom",
+      "sha256": "2aa790eed3a5b572d005bc0d9a116a7380aac8beee1a32ad4039511ffa015ad2",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-menu-api-v1/2.0.29+ed66f0a35d/fabric-menu-api-v1-2.0.29+ed66f0a35d.pom.sha256",
+      "observedSha256": "2aa790eed3a5b572d005bc0d9a116a7380aac8beee1a32ad4039511ffa015ad2",
       "sourceHost": "maven.fabricmc.net"
     },
     {
@@ -2214,6 +2610,54 @@
     {
       "root": "client",
       "group": "net.fabricmc.fabric-api",
+      "module": "fabric-model-loading-api-v1",
+      "version": "8.0.36+fcdff87f5d",
+      "artifact": "fabric-model-loading-api-v1-8.0.36+fcdff87f5d.jar",
+      "sha256": "140a31b756509ca15182c23a87c2ace71dcff566f56cf15c3806aab306bb1fd9",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-model-loading-api-v1/8.0.36+fcdff87f5d/fabric-model-loading-api-v1-8.0.36+fcdff87f5d.jar.sha256",
+      "observedSha256": "140a31b756509ca15182c23a87c2ace71dcff566f56cf15c3806aab306bb1fd9",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-model-loading-api-v1",
+      "version": "8.0.36+fcdff87f5d",
+      "artifact": "fabric-model-loading-api-v1-8.0.36+fcdff87f5d.pom",
+      "sha256": "59a6de3b4a3eda40ec93700b86e52a441d34be723397ddea841ba909a0a846a9",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-model-loading-api-v1/8.0.36+fcdff87f5d/fabric-model-loading-api-v1-8.0.36+fcdff87f5d.pom.sha256",
+      "observedSha256": "59a6de3b4a3eda40ec93700b86e52a441d34be723397ddea841ba909a0a846a9",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-networking-api-v1",
+      "version": "6.3.10+5c1fee4d5d",
+      "artifact": "fabric-networking-api-v1-6.3.10+5c1fee4d5d.jar",
+      "sha256": "203a7f59f2c81c97cd4969fcb1725ac5bcaed8cd9b05cdd1e2cae76987917617",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-networking-api-v1/6.3.10+5c1fee4d5d/fabric-networking-api-v1-6.3.10+5c1fee4d5d.jar.sha256",
+      "observedSha256": "203a7f59f2c81c97cd4969fcb1725ac5bcaed8cd9b05cdd1e2cae76987917617",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-networking-api-v1",
+      "version": "6.3.10+5c1fee4d5d",
+      "artifact": "fabric-networking-api-v1-6.3.10+5c1fee4d5d.pom",
+      "sha256": "70ce8620a960f287f1668fcf6d2e8d91ef65f0880d8a08407fe4b2524896951f",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-networking-api-v1/6.3.10+5c1fee4d5d/fabric-networking-api-v1-6.3.10+5c1fee4d5d.pom.sha256",
+      "observedSha256": "70ce8620a960f287f1668fcf6d2e8d91ef65f0880d8a08407fe4b2524896951f",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
       "module": "fabric-networking-api-v1",
       "version": "6.3.9+b9b88df45d",
       "artifact": "fabric-networking-api-v1-6.3.9+b9b88df45d.jar",
@@ -2262,6 +2706,30 @@
     {
       "root": "client",
       "group": "net.fabricmc.fabric-api",
+      "module": "fabric-object-builder-api-v1",
+      "version": "24.1.11+e2f63d3e5d",
+      "artifact": "fabric-object-builder-api-v1-24.1.11+e2f63d3e5d.jar",
+      "sha256": "aceb83f7a8d43ebb7c3a37b3219955e8574ee8e4db7278a530e047f75a39850c",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-object-builder-api-v1/24.1.11+e2f63d3e5d/fabric-object-builder-api-v1-24.1.11+e2f63d3e5d.jar.sha256",
+      "observedSha256": "aceb83f7a8d43ebb7c3a37b3219955e8574ee8e4db7278a530e047f75a39850c",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-object-builder-api-v1",
+      "version": "24.1.11+e2f63d3e5d",
+      "artifact": "fabric-object-builder-api-v1-24.1.11+e2f63d3e5d.pom",
+      "sha256": "6bfcac22e427ecec15c3c7b047f164769e3c5c161212e7ff2d435d0b3c437818",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-object-builder-api-v1/24.1.11+e2f63d3e5d/fabric-object-builder-api-v1-24.1.11+e2f63d3e5d.pom.sha256",
+      "observedSha256": "6bfcac22e427ecec15c3c7b047f164769e3c5c161212e7ff2d435d0b3c437818",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
       "module": "fabric-particles-v1",
       "version": "5.0.25+3434d6d95d",
       "artifact": "fabric-particles-v1-5.0.25+3434d6d95d.jar",
@@ -2286,6 +2754,30 @@
     {
       "root": "client",
       "group": "net.fabricmc.fabric-api",
+      "module": "fabric-particles-v1",
+      "version": "5.0.26+3434d6d95d",
+      "artifact": "fabric-particles-v1-5.0.26+3434d6d95d.jar",
+      "sha256": "caab77671a4ae978b4cb3b59a956c29fce8aba73493a3697cc0c254edaaeca92",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-particles-v1/5.0.26+3434d6d95d/fabric-particles-v1-5.0.26+3434d6d95d.jar.sha256",
+      "observedSha256": "caab77671a4ae978b4cb3b59a956c29fce8aba73493a3697cc0c254edaaeca92",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-particles-v1",
+      "version": "5.0.26+3434d6d95d",
+      "artifact": "fabric-particles-v1-5.0.26+3434d6d95d.pom",
+      "sha256": "c9fe8dd0563b6735e2fd40fe0daef857ae7bd46a3878432cde0092e352efa5d1",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-particles-v1/5.0.26+3434d6d95d/fabric-particles-v1-5.0.26+3434d6d95d.pom.sha256",
+      "observedSha256": "c9fe8dd0563b6735e2fd40fe0daef857ae7bd46a3878432cde0092e352efa5d1",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
       "module": "fabric-permission-api-v1",
       "version": "1.0.8+fcdff87f5d",
       "artifact": "fabric-permission-api-v1-1.0.8+fcdff87f5d.jar",
@@ -2305,6 +2797,30 @@
       "verification": "publisher_sha256_sidecar",
       "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-permission-api-v1/1.0.8+fcdff87f5d/fabric-permission-api-v1-1.0.8+fcdff87f5d.pom.sha256",
       "observedSha256": "56fec0c216f871c188e75ffef994fee691bfa444a67c8a205afa866685c0f4cd",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-recipe-api-v1",
+      "version": "10.0.10+b9b88df45d",
+      "artifact": "fabric-recipe-api-v1-10.0.10+b9b88df45d.jar",
+      "sha256": "efdaead73ec1f9d6702b441f2a4e7268f53a1398793a4b56983cb2262b72e987",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-recipe-api-v1/10.0.10+b9b88df45d/fabric-recipe-api-v1-10.0.10+b9b88df45d.jar.sha256",
+      "observedSha256": "efdaead73ec1f9d6702b441f2a4e7268f53a1398793a4b56983cb2262b72e987",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-recipe-api-v1",
+      "version": "10.0.10+b9b88df45d",
+      "artifact": "fabric-recipe-api-v1-10.0.10+b9b88df45d.pom",
+      "sha256": "95ae2d1d55de762481507ed6698184eaefc81ffcfbe002f100b37647d7204195",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-recipe-api-v1/10.0.10+b9b88df45d/fabric-recipe-api-v1-10.0.10+b9b88df45d.pom.sha256",
+      "observedSha256": "95ae2d1d55de762481507ed6698184eaefc81ffcfbe002f100b37647d7204195",
       "sourceHost": "maven.fabricmc.net"
     },
     {
@@ -2358,6 +2874,30 @@
     {
       "root": "client",
       "group": "net.fabricmc.fabric-api",
+      "module": "fabric-registry-sync-v0",
+      "version": "8.0.3+1ca9f6365d",
+      "artifact": "fabric-registry-sync-v0-8.0.3+1ca9f6365d.jar",
+      "sha256": "1b050cdb82395c8533cc2120592406c5e5541bc49547631d5930da113942d106",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-registry-sync-v0/8.0.3+1ca9f6365d/fabric-registry-sync-v0-8.0.3+1ca9f6365d.jar.sha256",
+      "observedSha256": "1b050cdb82395c8533cc2120592406c5e5541bc49547631d5930da113942d106",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-registry-sync-v0",
+      "version": "8.0.3+1ca9f6365d",
+      "artifact": "fabric-registry-sync-v0-8.0.3+1ca9f6365d.pom",
+      "sha256": "c6cd31b70b41fa04813dfe1813067a99f1678b4032a029083b5058271c62033e",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-registry-sync-v0/8.0.3+1ca9f6365d/fabric-registry-sync-v0-8.0.3+1ca9f6365d.pom.sha256",
+      "observedSha256": "c6cd31b70b41fa04813dfe1813067a99f1678b4032a029083b5058271c62033e",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
       "module": "fabric-renderer-api-v1",
       "version": "17.0.15+79385d0b5d",
       "artifact": "fabric-renderer-api-v1-17.0.15+79385d0b5d.jar",
@@ -2382,6 +2922,30 @@
     {
       "root": "client",
       "group": "net.fabricmc.fabric-api",
+      "module": "fabric-renderer-api-v1",
+      "version": "17.0.16+79385d0b5d",
+      "artifact": "fabric-renderer-api-v1-17.0.16+79385d0b5d.jar",
+      "sha256": "424ed34187cdcdf58c705dcf8ed670fa7125f722395d089f11e2c80645f198cd",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-renderer-api-v1/17.0.16+79385d0b5d/fabric-renderer-api-v1-17.0.16+79385d0b5d.jar.sha256",
+      "observedSha256": "424ed34187cdcdf58c705dcf8ed670fa7125f722395d089f11e2c80645f198cd",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-renderer-api-v1",
+      "version": "17.0.16+79385d0b5d",
+      "artifact": "fabric-renderer-api-v1-17.0.16+79385d0b5d.pom",
+      "sha256": "eadfe9f0b4f14efbae95641c7ced1476b3149452fe46e18cc369b99e1c52e2b9",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-renderer-api-v1/17.0.16+79385d0b5d/fabric-renderer-api-v1-17.0.16+79385d0b5d.pom.sha256",
+      "observedSha256": "eadfe9f0b4f14efbae95641c7ced1476b3149452fe46e18cc369b99e1c52e2b9",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
       "module": "fabric-renderer-indigo",
       "version": "9.1.23+b9d63e335d",
       "artifact": "fabric-renderer-indigo-9.1.23+b9d63e335d.jar",
@@ -2401,6 +2965,30 @@
       "verification": "publisher_sha256_sidecar",
       "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-renderer-indigo/9.1.23+b9d63e335d/fabric-renderer-indigo-9.1.23+b9d63e335d.pom.sha256",
       "observedSha256": "ab1d0dad32f6ad5e012d7dc9ab3daeae05eed1bbdabbdbd23cb1bf988a152484",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-renderer-indigo",
+      "version": "9.1.24+b9d63e335d",
+      "artifact": "fabric-renderer-indigo-9.1.24+b9d63e335d.jar",
+      "sha256": "2d30f6cb575f1be40038ccfc159cdfc2e4490a26f52c2bde99d10bcd387c26b5",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-renderer-indigo/9.1.24+b9d63e335d/fabric-renderer-indigo-9.1.24+b9d63e335d.jar.sha256",
+      "observedSha256": "2d30f6cb575f1be40038ccfc159cdfc2e4490a26f52c2bde99d10bcd387c26b5",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-renderer-indigo",
+      "version": "9.1.24+b9d63e335d",
+      "artifact": "fabric-renderer-indigo-9.1.24+b9d63e335d.pom",
+      "sha256": "1a2c15bbf602dfdc42f270527e9212446e8daf0de0770fcdb6422c09d1b92d95",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-renderer-indigo/9.1.24+b9d63e335d/fabric-renderer-indigo-9.1.24+b9d63e335d.pom.sha256",
+      "observedSha256": "1a2c15bbf602dfdc42f270527e9212446e8daf0de0770fcdb6422c09d1b92d95",
       "sourceHost": "maven.fabricmc.net"
     },
     {
@@ -2454,6 +3042,30 @@
     {
       "root": "client",
       "group": "net.fabricmc.fabric-api",
+      "module": "fabric-rendering-v1",
+      "version": "27.1.0+5af7744b5d",
+      "artifact": "fabric-rendering-v1-27.1.0+5af7744b5d.jar",
+      "sha256": "a638a65f7a8d4f26e1764b6db5e84328d647b8e93c74b240fff3a07c149868ef",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-rendering-v1/27.1.0+5af7744b5d/fabric-rendering-v1-27.1.0+5af7744b5d.jar.sha256",
+      "observedSha256": "a638a65f7a8d4f26e1764b6db5e84328d647b8e93c74b240fff3a07c149868ef",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-rendering-v1",
+      "version": "27.1.0+5af7744b5d",
+      "artifact": "fabric-rendering-v1-27.1.0+5af7744b5d.pom",
+      "sha256": "535123fa593da7b6876db9036c620a84d64ae131b0470c9bd6ef279f98e717f9",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-rendering-v1/27.1.0+5af7744b5d/fabric-rendering-v1-27.1.0+5af7744b5d.pom.sha256",
+      "observedSha256": "535123fa593da7b6876db9036c620a84d64ae131b0470c9bd6ef279f98e717f9",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
       "module": "fabric-resource-conditions-api-v1",
       "version": "6.2.0+0d124ae85d",
       "artifact": "fabric-resource-conditions-api-v1-6.2.0+0d124ae85d.jar",
@@ -2502,6 +3114,30 @@
     {
       "root": "client",
       "group": "net.fabricmc.fabric-api",
+      "module": "fabric-resource-loader-v0",
+      "version": "3.3.27+4fc5413f5d",
+      "artifact": "fabric-resource-loader-v0-3.3.27+4fc5413f5d.jar",
+      "sha256": "78b83393ea9a20baddf9b6cc834b4dcb66339a75d4d90656dc18cf935d04fd5a",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-resource-loader-v0/3.3.27+4fc5413f5d/fabric-resource-loader-v0-3.3.27+4fc5413f5d.jar.sha256",
+      "observedSha256": "78b83393ea9a20baddf9b6cc834b4dcb66339a75d4d90656dc18cf935d04fd5a",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-resource-loader-v0",
+      "version": "3.3.27+4fc5413f5d",
+      "artifact": "fabric-resource-loader-v0-3.3.27+4fc5413f5d.pom",
+      "sha256": "aecd86c725d7c847e62a11284fcb57ef0e3b90cd309aff60bc2a6a17667583a7",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-resource-loader-v0/3.3.27+4fc5413f5d/fabric-resource-loader-v0-3.3.27+4fc5413f5d.pom.sha256",
+      "observedSha256": "aecd86c725d7c847e62a11284fcb57ef0e3b90cd309aff60bc2a6a17667583a7",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
       "module": "fabric-resource-loader-v1",
       "version": "3.0.4+ba0d6c0d5d",
       "artifact": "fabric-resource-loader-v1-3.0.4+ba0d6c0d5d.pom",
@@ -2533,6 +3169,30 @@
       "verification": "publisher_sha256_sidecar",
       "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-resource-loader-v1/3.0.4+fcdff87f5d/fabric-resource-loader-v1-3.0.4+fcdff87f5d.pom.sha256",
       "observedSha256": "5fcfd6c622716e0477becbf3a7b8f666093eb02d72dfd7fdf570b10d3c4c415c",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-resource-loader-v1",
+      "version": "3.1.0+5af7744b5d",
+      "artifact": "fabric-resource-loader-v1-3.1.0+5af7744b5d.jar",
+      "sha256": "1585c8597def2fb59d864b1946a4c9d17a8cc3d0b6e2f4c3e73addf7b014b9f1",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-resource-loader-v1/3.1.0+5af7744b5d/fabric-resource-loader-v1-3.1.0+5af7744b5d.jar.sha256",
+      "observedSha256": "1585c8597def2fb59d864b1946a4c9d17a8cc3d0b6e2f4c3e73addf7b014b9f1",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-resource-loader-v1",
+      "version": "3.1.0+5af7744b5d",
+      "artifact": "fabric-resource-loader-v1-3.1.0+5af7744b5d.pom",
+      "sha256": "bda8da72d5073519c4403b5c3823aaa98abc858958953d55d16216725e27361b",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-resource-loader-v1/3.1.0+5af7744b5d/fabric-resource-loader-v1-3.1.0+5af7744b5d.pom.sha256",
+      "observedSha256": "bda8da72d5073519c4403b5c3823aaa98abc858958953d55d16216725e27361b",
       "sourceHost": "maven.fabricmc.net"
     },
     {
@@ -2634,6 +3294,30 @@
     {
       "root": "client",
       "group": "net.fabricmc.fabric-api",
+      "module": "fabric-tag-api-v1",
+      "version": "2.1.11+fcdff87f5d",
+      "artifact": "fabric-tag-api-v1-2.1.11+fcdff87f5d.jar",
+      "sha256": "13416c8bf0b387cd40c5bed3f612ce29c42631d5002e36b95996a31da1ebfbde",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-tag-api-v1/2.1.11+fcdff87f5d/fabric-tag-api-v1-2.1.11+fcdff87f5d.jar.sha256",
+      "observedSha256": "13416c8bf0b387cd40c5bed3f612ce29c42631d5002e36b95996a31da1ebfbde",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-tag-api-v1",
+      "version": "2.1.11+fcdff87f5d",
+      "artifact": "fabric-tag-api-v1-2.1.11+fcdff87f5d.pom",
+      "sha256": "3230a138f80559cad078fba9ea3a4b60da16cf6bcb43f775f88e00a153a80c5f",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-tag-api-v1/2.1.11+fcdff87f5d/fabric-tag-api-v1-2.1.11+fcdff87f5d.pom.sha256",
+      "observedSha256": "3230a138f80559cad078fba9ea3a4b60da16cf6bcb43f775f88e00a153a80c5f",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
       "module": "fabric-transfer-api-v1",
       "version": "8.0.25+fcdff87f5d",
       "artifact": "fabric-transfer-api-v1-8.0.25+fcdff87f5d.jar",
@@ -2681,14 +3365,38 @@
     },
     {
       "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-transitive-access-wideners-v1",
+      "version": "8.1.17+e2f63d3e5d",
+      "artifact": "fabric-transitive-access-wideners-v1-8.1.17+e2f63d3e5d.jar",
+      "sha256": "cf60bde121ed1879dead7da9e1455a7c1a383c4430a09b37d1c985df8b5de4b3",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-transitive-access-wideners-v1/8.1.17+e2f63d3e5d/fabric-transitive-access-wideners-v1-8.1.17+e2f63d3e5d.jar.sha256",
+      "observedSha256": "cf60bde121ed1879dead7da9e1455a7c1a383c4430a09b37d1c985df8b5de4b3",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "net.fabricmc.fabric-api",
+      "module": "fabric-transitive-access-wideners-v1",
+      "version": "8.1.17+e2f63d3e5d",
+      "artifact": "fabric-transitive-access-wideners-v1-8.1.17+e2f63d3e5d.pom",
+      "sha256": "760a3d802206f8aed9db842216dc9ac48e37763089d5a404fae530d41519e49e",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-transitive-access-wideners-v1/8.1.17+e2f63d3e5d/fabric-transitive-access-wideners-v1-8.1.17+e2f63d3e5d.pom.sha256",
+      "observedSha256": "760a3d802206f8aed9db842216dc9ac48e37763089d5a404fae530d41519e49e",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
       "group": "net.fabricmc.fabric-loom",
       "module": "net.fabricmc.fabric-loom.gradle.plugin",
-      "version": "1.17.21",
-      "artifact": "net.fabricmc.fabric-loom.gradle.plugin-1.17.21.pom",
-      "sha256": "15cc54da3a3afd9b4d683fd28707a3bcd3aa9668f4a7576468c05a56675cd0e4",
+      "version": "1.19.1",
+      "artifact": "net.fabricmc.fabric-loom.gradle.plugin-1.19.1.pom",
+      "sha256": "9938a5d18e4a8d4ef69a4b5c7e5c3856c43b066420ff5aab6bf515c595b21ba2",
       "verification": "publisher_sha256_sidecar",
-      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-loom/net.fabricmc.fabric-loom.gradle.plugin/1.17.21/net.fabricmc.fabric-loom.gradle.plugin-1.17.21.pom.sha256",
-      "observedSha256": "15cc54da3a3afd9b4d683fd28707a3bcd3aa9668f4a7576468c05a56675cd0e4",
+      "sourceUrl": "https://maven.fabricmc.net/net/fabricmc/fabric-loom/net.fabricmc.fabric-loom.gradle.plugin/1.19.1/net.fabricmc.fabric-loom.gradle.plugin-1.19.1.pom.sha256",
+      "observedSha256": "9938a5d18e4a8d4ef69a4b5c7e5c3856c43b066420ff5aab6bf515c595b21ba2",
       "sourceHost": "maven.fabricmc.net"
     },
     {
@@ -3241,6 +3949,30 @@
       "verification": "direct_https_artifact_download",
       "sourceUrl": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-metadata-jvm/2.3.20/kotlin-metadata-jvm-2.3.20.pom",
       "observedSha256": "0c5ffbff9746d426b9e866ac056be28928b318a25cdc56839081ec449b29cd97",
+      "sourceHost": "repo.maven.apache.org"
+    },
+    {
+      "root": "client",
+      "group": "org.jetbrains.kotlin",
+      "module": "kotlin-metadata-jvm",
+      "version": "2.4.10",
+      "artifact": "kotlin-metadata-jvm-2.4.10.jar",
+      "sha256": "233aaa84ca268e26d6d3a99ce30401e6dc111a7ae10e0a0b4794ce6351d7adc4",
+      "verification": "direct_https_artifact_download",
+      "sourceUrl": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-metadata-jvm/2.4.10/kotlin-metadata-jvm-2.4.10.jar",
+      "observedSha256": "233aaa84ca268e26d6d3a99ce30401e6dc111a7ae10e0a0b4794ce6351d7adc4",
+      "sourceHost": "repo.maven.apache.org"
+    },
+    {
+      "root": "client",
+      "group": "org.jetbrains.kotlin",
+      "module": "kotlin-metadata-jvm",
+      "version": "2.4.10",
+      "artifact": "kotlin-metadata-jvm-2.4.10.pom",
+      "sha256": "694915b86862dbd6060c69239690594f1f52df2543bb110a011666242a41060b",
+      "verification": "direct_https_artifact_download",
+      "sourceUrl": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-metadata-jvm/2.4.10/kotlin-metadata-jvm-2.4.10.pom",
+      "observedSha256": "694915b86862dbd6060c69239690594f1f52df2543bb110a011666242a41060b",
       "sourceHost": "repo.maven.apache.org"
     },
     {
@@ -4518,6 +5250,30 @@
     {
       "root": "client",
       "group": "org.ow2.asm",
+      "module": "asm",
+      "version": "9.11",
+      "artifact": "asm-9.11.jar",
+      "sha256": "5fe3b469b8646e5bc53a897840952d63b712d4923d2a7a26aebc585f1fec7676",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/org/ow2/asm/asm/9.11/asm-9.11.jar.sha256",
+      "observedSha256": "5fe3b469b8646e5bc53a897840952d63b712d4923d2a7a26aebc585f1fec7676",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "org.ow2.asm",
+      "module": "asm",
+      "version": "9.11",
+      "artifact": "asm-9.11.pom",
+      "sha256": "c6a55c99df554e3a69496de184a507e1d3b0cfae1a5f4154280a600f04252d1f",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/org/ow2/asm/asm/9.11/asm-9.11.pom.sha256",
+      "observedSha256": "c6a55c99df554e3a69496de184a507e1d3b0cfae1a5f4154280a600f04252d1f",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "org.ow2.asm",
       "module": "asm-analysis",
       "version": "9.10.1",
       "artifact": "asm-analysis-9.10.1.jar",
@@ -4538,6 +5294,30 @@
       "sourceUrl": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm-analysis/9.10.1/asm-analysis-9.10.1.pom.sha256",
       "observedSha256": "534fbb85f643c2330691e92652ec40dd497b4f279ef13d829d85858905d33ba3",
       "sourceHost": "repo.maven.apache.org"
+    },
+    {
+      "root": "client",
+      "group": "org.ow2.asm",
+      "module": "asm-analysis",
+      "version": "9.11",
+      "artifact": "asm-analysis-9.11.jar",
+      "sha256": "a1421c20978ca0a330f241b17923a751a23fb1c9423fda1aba7591bb086b01d8",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/org/ow2/asm/asm-analysis/9.11/asm-analysis-9.11.jar.sha256",
+      "observedSha256": "a1421c20978ca0a330f241b17923a751a23fb1c9423fda1aba7591bb086b01d8",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "org.ow2.asm",
+      "module": "asm-analysis",
+      "version": "9.11",
+      "artifact": "asm-analysis-9.11.pom",
+      "sha256": "14be2ed8117e2e97370ef9186d08cf9ac76cc10f5bc58bb6c6e6a2406cdce6aa",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/org/ow2/asm/asm-analysis/9.11/asm-analysis-9.11.pom.sha256",
+      "observedSha256": "14be2ed8117e2e97370ef9186d08cf9ac76cc10f5bc58bb6c6e6a2406cdce6aa",
+      "sourceHost": "maven.fabricmc.net"
     },
     {
       "root": "client",
@@ -4566,6 +5346,30 @@
     {
       "root": "client",
       "group": "org.ow2.asm",
+      "module": "asm-commons",
+      "version": "9.11",
+      "artifact": "asm-commons-9.11.jar",
+      "sha256": "fcff37e6a0227a9f5ee81a7c07f51249307fa15889b56a359ae6f773c164c22b",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/org/ow2/asm/asm-commons/9.11/asm-commons-9.11.jar.sha256",
+      "observedSha256": "fcff37e6a0227a9f5ee81a7c07f51249307fa15889b56a359ae6f773c164c22b",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "org.ow2.asm",
+      "module": "asm-commons",
+      "version": "9.11",
+      "artifact": "asm-commons-9.11.pom",
+      "sha256": "cb98883b1451bf4982f6c9e7cbfb4a96c39e915d21abb49fce5d9ce8f7635e4b",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/org/ow2/asm/asm-commons/9.11/asm-commons-9.11.pom.sha256",
+      "observedSha256": "cb98883b1451bf4982f6c9e7cbfb4a96c39e915d21abb49fce5d9ce8f7635e4b",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "org.ow2.asm",
       "module": "asm-tree",
       "version": "9.10.1",
       "artifact": "asm-tree-9.10.1.jar",
@@ -4590,6 +5394,30 @@
     {
       "root": "client",
       "group": "org.ow2.asm",
+      "module": "asm-tree",
+      "version": "9.11",
+      "artifact": "asm-tree-9.11.jar",
+      "sha256": "da8ad24d0bf7efb0674a906f59a7d441692b641718371f3bce6762b191a169fd",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/org/ow2/asm/asm-tree/9.11/asm-tree-9.11.jar.sha256",
+      "observedSha256": "da8ad24d0bf7efb0674a906f59a7d441692b641718371f3bce6762b191a169fd",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "org.ow2.asm",
+      "module": "asm-tree",
+      "version": "9.11",
+      "artifact": "asm-tree-9.11.pom",
+      "sha256": "7a37d97e93dd05500d270a24074adb34df50b7484c741d39e984b5b2aa97877d",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/org/ow2/asm/asm-tree/9.11/asm-tree-9.11.pom.sha256",
+      "observedSha256": "7a37d97e93dd05500d270a24074adb34df50b7484c741d39e984b5b2aa97877d",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "org.ow2.asm",
       "module": "asm-util",
       "version": "9.10.1",
       "artifact": "asm-util-9.10.1.jar",
@@ -4610,6 +5438,30 @@
       "sourceUrl": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm-util/9.10.1/asm-util-9.10.1.pom.sha256",
       "observedSha256": "fcea2bad7868ed18949a2e71c40cf26de1516d16440e63f585c3e05d285c0d2b",
       "sourceHost": "repo.maven.apache.org"
+    },
+    {
+      "root": "client",
+      "group": "org.ow2.asm",
+      "module": "asm-util",
+      "version": "9.11",
+      "artifact": "asm-util-9.11.jar",
+      "sha256": "d5a23a677f31b8a7d2419895906e1fcbd9ac995beffb20944c8610c1bc377609",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/org/ow2/asm/asm-util/9.11/asm-util-9.11.jar.sha256",
+      "observedSha256": "d5a23a677f31b8a7d2419895906e1fcbd9ac995beffb20944c8610c1bc377609",
+      "sourceHost": "maven.fabricmc.net"
+    },
+    {
+      "root": "client",
+      "group": "org.ow2.asm",
+      "module": "asm-util",
+      "version": "9.11",
+      "artifact": "asm-util-9.11.pom",
+      "sha256": "1b5c442c10c4c00b0764ef8963e80152fdf72760d643fa56f47cd73ac714dc49",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://maven.fabricmc.net/org/ow2/asm/asm-util/9.11/asm-util-9.11.pom.sha256",
+      "observedSha256": "1b5c442c10c4c00b0764ef8963e80152fdf72760d643fa56f47cd73ac714dc49",
+      "sourceHost": "maven.fabricmc.net"
     },
     {
       "root": "client",
@@ -5101,6 +5953,42 @@
       "verification": "publisher_sha256_sidecar",
       "sourceUrl": "https://repo.papermc.io/repository/maven-public/io/papermc/paper/paper-api/26.3.build.169-beta/paper-api-26.3.build.169-beta.module.sha256",
       "observedSha256": "b84b128c981389eb46a82c3341283c6f5766f2409d882521399d9e9444538b13",
+      "sourceHost": "repo.papermc.io"
+    },
+    {
+      "root": "server",
+      "group": "io.papermc.paper",
+      "module": "paper-api",
+      "version": "26.3.build.205-stable",
+      "artifact": "paper-api-26.3.build.205-stable.jar",
+      "sha256": "2c4ced387dd3786a7f811923eedce574349e036446f91d10669578a3827aa252",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://repo.papermc.io/repository/maven-public/io/papermc/paper/paper-api/26.3.build.205-stable/paper-api-26.3.build.205-stable.jar.sha256",
+      "observedSha256": "2c4ced387dd3786a7f811923eedce574349e036446f91d10669578a3827aa252",
+      "sourceHost": "repo.papermc.io"
+    },
+    {
+      "root": "server",
+      "group": "io.papermc.paper",
+      "module": "paper-api",
+      "version": "26.3.build.205-stable",
+      "artifact": "paper-api-26.3.build.205-stable.module",
+      "sha256": "c00a4a22611eafb898b4d41e70e5d3c9c7439bddcafb29d790c8778b8b38f5d9",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://repo.papermc.io/repository/maven-public/io/papermc/paper/paper-api/26.3.build.205-stable/paper-api-26.3.build.205-stable.module.sha256",
+      "observedSha256": "c00a4a22611eafb898b4d41e70e5d3c9c7439bddcafb29d790c8778b8b38f5d9",
+      "sourceHost": "repo.papermc.io"
+    },
+    {
+      "root": "server",
+      "group": "io.papermc.paper",
+      "module": "paper-api",
+      "version": "26.3.build.205-stable",
+      "artifact": "paper-api-26.3.build.205-stable.pom",
+      "sha256": "8e8257e42428004357212fa878afbb1c2d32fe87fc4a70bfc76ec909ea3f81a1",
+      "verification": "publisher_sha256_sidecar",
+      "sourceUrl": "https://repo.papermc.io/repository/maven-public/io/papermc/paper/paper-api/26.3.build.205-stable/paper-api-26.3.build.205-stable.pom.sha256",
+      "observedSha256": "8e8257e42428004357212fa878afbb1c2d32fe87fc4a70bfc76ec909ea3f81a1",
       "sourceHost": "repo.papermc.io"
     },
     {

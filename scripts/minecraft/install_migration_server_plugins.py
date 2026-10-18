@@ -21,6 +21,11 @@ import tempfile
 import urllib.request
 import zipfile
 
+try:
+    from scripts.minecraft.plugin_lock_policy import baseline_candidate_is_runtime_eligible
+except ModuleNotFoundError:
+    from plugin_lock_policy import baseline_candidate_is_runtime_eligible
+
 
 def validate_record(record):
     name=record['filename']
@@ -47,6 +52,9 @@ def validate_record(record):
         'https://ci.ender.zone/job/EssentialsX/',
     )) and not re.fullmatch(
         r'https://hangarcdn\.papermc\.io/plugins/Gecolay/GSit/versions/\d+(?:\.\d+){2}/PAPER/GSit-\d+(?:\.\d+){2}\.jar',
+        record.get('url','')
+    ) and not re.fullmatch(
+        r'https://download\.luckperms\.net/\d+/bukkit/loader/LuckPerms-Bukkit-\d+(?:\.\d+){2}\.jar',
         record.get('url','')
     ):
         raise ValueError('Unrecognized plugin source')
@@ -286,8 +294,69 @@ def _yaml_append_list_rows(text,header_index,key,indent,rows,newline,existing_co
     return text[:insert_at]+prefix+_yaml_render_rows(rows,indent,newline)+text[insert_at:]
 
 
+def _disable_retired_donation_rows(text,existing_rows,disabled_ids):
+    disabled_ids=set(disabled_ids)
+    if not disabled_ids:
+        return text,False
+    lines=text.splitlines(keepends=True)
+    donation_header=_yaml_find_header(lines,'donation-catalog',0)
+    if donation_header is None:
+        return text,False
+    donation_end=_yaml_mapping_end(lines,donation_header,0)
+    items_header=_yaml_find_header(lines,'items',2,donation_header+1,donation_end)
+    if items_header is None:
+        return text,False
+    items_end=_yaml_mapping_end(lines,items_header,2)
+    row_starts=[
+        index for index in range(items_header+1,items_end)
+        if re.match(r'^ {4}-\s',lines[index])
+    ]
+    if len(row_starts)!=len(existing_rows):
+        raise ValueError('Existing donation item rows do not match the parsed catalog')
+
+    changed=False
+    enabled_line=re.compile(
+        r'^(?P<prefix> {6}enabled:[ \t]*)(?P<value>[^#\r\n]*?)'
+        r'(?P<comment>[ \t]*(?:#.*)?)(?P<newline>\r?\n)?$'
+    )
+    newline='\r\n' if '\r\n' in text else '\n'
+    for row_index in reversed(range(len(row_starts))):
+        row=existing_rows[row_index]
+        item_id=row.get('item-id') if isinstance(row,dict) else None
+        if item_id not in disabled_ids:
+            continue
+        start=row_starts[row_index]
+        end=row_starts[row_index+1] if row_index+1<len(row_starts) else items_end
+        block=lines[start:end]
+        enabled_positions=[
+            index for index,line in enumerate(block)
+            if re.match(r'^ {6}enabled:',line)
+        ]
+        if len(enabled_positions)>1:
+            raise ValueError('Existing donation item has ambiguous enabled fields: '+str(item_id))
+        if enabled_positions:
+            position=enabled_positions[0]
+            match=enabled_line.fullmatch(block[position])
+            if match is None:
+                raise ValueError('Existing donation item has an invalid enabled field: '+str(item_id))
+            if match.group('value').strip().lower()!='false':
+                block[position]=(match.group('prefix')+'false'+match.group('comment')
+                                 +(match.group('newline') or ''))
+                lines[start:end]=block
+                changed=True
+        else:
+            first_line=block[0]
+            if not first_line.endswith(('\n','\r')):
+                first_line+=newline
+            block[0]=first_line
+            block.insert(1,'      enabled: false'+newline)
+            lines[start:end]=block
+            changed=True
+    return ''.join(lines),changed
+
+
 def merge_artifacts_catalog_bytes(existing_bytes,canonical_bytes):
-    """Add missing official IDs while keeping every existing item field unchanged."""
+    """Merge official additions and disabled tombstones without losing runtime values."""
     maximum=4_000_000
     if not isinstance(existing_bytes,bytes) or not isinstance(canonical_bytes,bytes):
         raise TypeError('Artifacts catalog merge requires byte inputs')
@@ -325,7 +394,13 @@ def merge_artifacts_catalog_bytes(existing_bytes,canonical_bytes):
     missing_items=[row for row,item_id in zip(canonical_items,canonical_item_ids) if item_id not in existing_item_set]
     missing_donations=[row for row,item_id in zip(canonical_donations,canonical_donation_ids)
                        if item_id not in existing_donation_set]
-    if not missing_items and not missing_donations:return existing_bytes
+    retired_ids={row['item-id'] for row in canonical_donations
+                 if row.get('enabled',True) is False}
+    existing_text,tombstones_changed=_disable_retired_donation_rows(
+        existing_text,existing_donations,retired_ids)
+    if not missing_items and not missing_donations and not tombstones_changed:return existing_bytes
+    if not missing_items and not missing_donations:
+        return (b'\xef\xbb\xbf' if bom else b'')+existing_text.encode('utf-8')
     newline='\r\n' if '\r\n' in existing_text else '\n'
 
     lines=existing_text.splitlines(keepends=True)
@@ -344,8 +419,11 @@ def merge_artifacts_catalog_bytes(existing_bytes,canonical_bytes):
     current=_artifacts_yaml_load(existing_text,'merged Artifacts catalog')
     if 'donation-catalog' not in current:
         import yaml
-        addition=yaml.safe_dump({'donation-catalog':canonical_donation},sort_keys=False,
+        donation_metadata={key:value for key,value in canonical_donation.items() if key!='items'}
+        addition=yaml.safe_dump({'donation-catalog':donation_metadata},sort_keys=False,
                                 allow_unicode=True,default_flow_style=False,width=1000).replace('\n',newline)
+        addition+=('  items:'+newline+_yaml_render_rows(canonical_donations,4,newline)
+                   if canonical_donations else '  items: []'+newline)
         prefix='' if not existing_text or existing_text.endswith(('\n','\r')) else newline
         existing_text+=prefix+addition
     elif missing_donations:
@@ -1093,7 +1171,7 @@ def prepare_runtime(root=None):
                 'server-port=25566\n'
                 'online-mode=false\n'
                 'white-list=false\n'
-                'max-players=1\n'
+                'max-players=20\n'
                 'level-name=world\n'
                 'view-distance=4\n'
                 'simulation-distance=4\n'
@@ -1409,12 +1487,15 @@ def load_install_records(root, lock=None):
                            'sha256':build_sha256,'sha512':build_sha512,'size':build_size})
         records.append(record)
     module_names={record['pluginName'] for record in records}
+    minecraft_version=lock.get('minecraftVersion','26.3')
     for baseline in lock.get('unchangedBaseline',[]):
         candidate=baseline.get('candidate') or {}
         plugin_name=baseline['pluginName']
         # A migration module candidate is authoritative when it replaces the
         # same plugin as an unchanged-baseline candidate.
         if plugin_name in module_names:
+            continue
+        if not baseline_candidate_is_runtime_eligible(baseline,minecraft_version):
             continue
         old_sha256=baseline.get('sha256')
         if not re.fullmatch(r'[0-9a-f]{64}',old_sha256 or ''):
@@ -1456,6 +1537,9 @@ def load_install_records(root, lock=None):
             }
         else:
             continue
+        upstream_filename=candidate.get('upstreamFilename') or baseline.get('upstreamFilename')
+        if upstream_filename is not None:
+            record['upstreamFilename']=upstream_filename
         records.append(record)
     names=[record['pluginName'] for record in records]
     if len(names)!=len(set(names)):
@@ -1479,11 +1563,27 @@ def _stage_local_candidate(record,destination):
 
 def stage_records(records,stage,root):
     stage=_ensure_build_directory(root,stage,create=True)
+    expected_names=set()
     for record in records:
         validate_record(record)
+        expected_names.add(record['filename'])
+        upstream_name=record.get('upstreamFilename')
+        if upstream_name is not None:
+            if (not isinstance(upstream_name,str) or not upstream_name.endswith('.jar') or
+                Path(upstream_name).name!=upstream_name or any(c in upstream_name for c in '/\\:')):
+                raise ValueError('Unsafe upstream plugin filename')
+            expected_names.add(upstream_name)
+
+    # Inspect every staged JAR before doing work. This makes stale-file cleanup
+    # fail closed on links and reparse points and limits it to this generated
+    # build directory. Receipts and other non-JAR files are left untouched.
+    for path in stage.iterdir():
+        if path.suffix.casefold()!='.jar':
+            continue
+        _ensure_regular_file(path,'staged plugin candidate')
+
+    for record in records:
         destination=stage/record['filename']
-        if _path_exists(destination):
-            _ensure_regular_file(destination,'staged plugin candidate')
         try:
             verify_staged(record,destination)
             continue
@@ -1494,6 +1594,11 @@ def stage_records(records,stage,root):
             _stage_local_candidate(record,destination)
         else:
             download_candidate(record,destination)
+
+    for path in stage.iterdir():
+        if path.suffix.casefold()=='.jar' and path.name not in expected_names:
+            _ensure_regular_file(path,'unexpected staged plugin candidate')
+            path.unlink()
 
 
 def port_open(port, bind_address=''):

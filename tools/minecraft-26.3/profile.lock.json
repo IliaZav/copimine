@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "minecraftVersion": "26.3",
   "status": "migration-candidate",
-  "verifiedAt": "2026-10-16",
+  "verifiedAt": "2026-10-18",
   "minimumJava": 25,
   "buildJavaMajor": 25,
   "buildJavaVersion": "25.0.4.1",
@@ -19,17 +19,19 @@
   "clientArtifact": {
     "filename": "CopiMineClient-0.1.3+26.3.jar",
     "version": "0.1.3+26.3",
-    "size": 14957376,
-    "sha512": "d6c0d9f86725ab499099f4b933fc705b3ee1d8aa667daf6073b55ebc4c0e8962cd1f5041d6cc278465eb1079ce489680f700f275f0863b95bd40262605535147"
+    "size": 14960295,
+    "sha512": "48e835d88e1a85a21b0219360307286477e4af004fb34f7b93b694e0a6f707f62f1bb1c0092c52a269e5cd847c9337a306a65fc7201fcc02ac698a83ba424c1b"
   },
   "paper": {
-    "build": 169,
-    "channel": "BETA",
-    "api": "26.3.build.169-beta",
-    "apiSha256": "94ab589248e2fac75a2e83fe1feb9af22bbe99bd9baaa1c801328e54538b4213",
-    "url": "https://fill-data.papermc.io/v1/objects/185d9f4267afca48959d6a56150cf8803b6645aee10de3ed147df7ab1ff781fb/paper-26.3-169.jar",
-    "size": 55138949,
-    "sha256": "185d9f4267afca48959d6a56150cf8803b6645aee10de3ed147df7ab1ff781fb"
+    "build": 205,
+    "channel": "STABLE",
+    "api": "26.3.build.205-stable",
+    "apiUrl": "https://repo.papermc.io/repository/maven-public/io/papermc/paper/paper-api/26.3.build.205-stable/paper-api-26.3.build.205-stable.jar",
+    "apiSize": 2943078,
+    "apiSha256": "2c4ced387dd3786a7f811923eedce574349e036446f91d10669578a3827aa252",
+    "url": "https://fill-data.papermc.io/v1/objects/a0a58f532f08054ea92eb916d3edb6ed3c86429d77175317304f6e995cce9968/paper-26.3-205.jar",
+    "size": 55242379,
+    "sha256": "a0a58f532f08054ea92eb916d3edb6ed3c86429d77175317304f6e995cce9968"
   },
   "gradle": {
     "version": "9.8.1",
@@ -39,8 +41,8 @@
   },
   "fabric": {
     "loader": "0.19.5",
-    "loom": "1.17.21",
-    "api": "0.162.0+26.3",
+    "loom": "1.19.1",
+    "api": "0.163.0+26.3",
     "namespace": "official",
     "clientPortComplete": true
   },

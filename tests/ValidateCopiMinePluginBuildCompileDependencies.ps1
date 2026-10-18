@@ -107,11 +107,12 @@ try {
   $lockDirectory = Join-Path $fixtureRoot 'tools/minecraft-26.3'
   New-Item -ItemType Directory -Path $lockDirectory -Force | Out-Null
   $paperPath = Join-Path $fixtureMaven 'io/papermc/paper/paper-api/26.3.build.169-beta/paper-api-26.3.build.169-beta.jar'
-  $paperContent = 'locked-paper'.PadRight(2934206, '_')
-  $tamperedPaperContent = 'tamper-paper'.PadRight(2934206, '_')
+  $paperFixtureSize = 4096
+  $paperContent = 'locked-paper'.PadRight($paperFixtureSize, '_')
+  $tamperedPaperContent = 'tamper-paper'.PadRight($paperFixtureSize, '_')
   Write-FixtureArtifact $paperPath $paperContent
   $paperHash = (Get-FileHash -LiteralPath $paperPath -Algorithm SHA256).Hash.ToLowerInvariant()
-  @{ schemaVersion = 1; paper = @{ api = '26.3.build.169-beta'; apiSha256 = $paperHash } } |
+  @{ schemaVersion = 1; paper = @{ api = '26.3.build.169-beta'; apiSize = $paperFixtureSize; apiSha256 = $paperHash } } |
     ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $lockDirectory 'profile.lock.json') -Encoding UTF8
   $dependencyPaths = @(
     'net/kyori/adventure-api/5.2.0/adventure-api-5.2.0.jar',

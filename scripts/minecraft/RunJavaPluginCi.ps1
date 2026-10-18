@@ -425,14 +425,13 @@ $paper263ApiJar = [IO.Path]::GetFullPath((Join-Path $mavenRepository $paper263Ap
 if (-not $paper263ApiJar.StartsWith($mavenRepositoryFullPath, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'Paper 26.3 API path escapes its isolated Maven repository.'
 }
-$paper263ApiUri = $compileLock.artifactRepository.TrimEnd('/') + '/' + (($paper263ApiRelativePath.Split('/') | ForEach-Object { [Uri]::EscapeDataString($_) }) -join '/')
-$paper263ApiHead = Invoke-WebRequest -Uri $paper263ApiUri -Method Head -UseBasicParsing -MaximumRedirection 5 -TimeoutSec 30
-$paper263ApiSize = 0L
-if (-not [long]::TryParse([string]$paper263ApiHead.Headers['Content-Length'], [ref]$paper263ApiSize) -or
-    $paper263ApiSize -le 0 -or $paper263ApiSize -gt 100000000) {
-    throw 'Paper 26.3 API response did not provide a safe, positive content length.'
+$repositoryPaper263ApiUri = $compileLock.artifactRepository.TrimEnd('/') + '/' + (($paper263ApiRelativePath.Split('/') | ForEach-Object { [Uri]::EscapeDataString($_) }) -join '/')
+$paper263ApiUri = [string]$profileLock.paper.apiUrl
+$paper263ApiSize = [long]$profileLock.paper.apiSize
+if ($paper263ApiUri -cne $repositoryPaper263ApiUri -or $paper263ApiSize -le 0 -or $paper263ApiSize -gt 100000000) {
+    throw 'Paper 26.3 API URL and size must match the exact profile lock.'
 }
-Save-PinnedArtifact -Uri $paper263ApiUri -Destination $paper263ApiJar -Algorithm SHA256 -ExpectedHash ([string]$profileLock.paper.apiSha256) -ExpectedSize $paper263ApiSize -MaximumBytes 100000000 -StopAt $tempRoot
+Save-PinnedArtifact -Uri $paper263ApiUri -Destination $paper263ApiJar -Algorithm SHA256 -ExpectedHash ([string]$profileLock.paper.apiSha256) -ExpectedSize $paper263ApiSize -MaximumBytes $paper263ApiSize -StopAt $tempRoot
 
 foreach ($locked in $lockedDependencies) {
     if ($locked.path -notmatch '^[A-Za-z0-9._+/-]+\.jar$' -or $locked.path.Split('/') -contains '..' -or

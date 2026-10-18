@@ -1,5 +1,5 @@
-// Upstream: GrimAnticheat/Grim f5bbe9cf55a631f40b3d28d722d0f82b514e3403
-// https://github.com/GrimAnticheat/Grim/blob/f5bbe9cf55a631f40b3d28d722d0f82b514e3403/common/src/main/java/ac/grim/grimac/utils/lists/CorrectingPlayerInventoryStorage.java
+// Upstream: GrimAnticheat/Grim 43850df737be7dde18e390205afc895fd1af6c0c
+// https://github.com/GrimAnticheat/Grim/blob/43850df737be7dde18e390205afc895fd1af6c0c/common/src/main/java/ac/grim/grimac/utils/lists/CorrectingPlayerInventoryStorage.java
 // License: GPL-3.0-or-later. Changes: shaded imports and Creative-only resync guard.
 package ac.grim.grimac.utils.lists;
 
@@ -105,6 +105,7 @@ public class CorrectingPlayerInventoryStorage extends InventoryStorage {
     /**
      * Checks that the specified slot is in sync with the server's and resyncs if needed.
      * @param slot the slot to check
+     * @param resyncClient whether the client should receive a full inventory resync
      */
     private void checkThatBukkitIsSynced(int slot, boolean resyncClient) {
         // The player isn't fully logged in yet, don't bother checking
@@ -119,7 +120,7 @@ public class CorrectingPlayerInventoryStorage extends InventoryStorage {
             ItemStack existing = getItem(slot);
             ItemStack serverside = player.platformPlayer.getInventory().getStack(bukkitSlot, slot);
 
-            if (!existing.equals(serverside)) {
+            if (existing.getType() != serverside.getType() || existing.getAmount() != serverside.getAmount()) {
                 if (resyncClient) {
                     GrimAPI.INSTANCE.getScheduler().getEntityScheduler().execute(player.platformPlayer, GrimAPI.INSTANCE.getGrimPlugin(),
                             () -> {

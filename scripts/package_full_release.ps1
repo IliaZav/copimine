@@ -588,6 +588,23 @@ foreach ($relative in ($generatedReleaseFiles + $serverReleaseJars)) {
     Copy-Item -LiteralPath $source -Destination $destination -Force
 }
 
+# The plugin's source catalog is the default for a fresh install. Stage it at
+# Paper's runtime data path without reading or mutating an existing local
+# plugin data directory; the full-replace installer preserves that directory
+# when it already exists on the production server.
+$artifactCatalogSource = Join-Path $ProjectRoot 'copimine-artifacts\items.yml'
+$artifactCatalogDestination = Join-Path $payloadRoot 'minecraft\server\plugins\CopiMineArtifacts\items.yml'
+if (-not (Test-Path -LiteralPath $artifactCatalogSource -PathType Leaf)) {
+    throw 'Canonical CopiMineArtifacts catalog is missing.'
+}
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $artifactCatalogDestination) | Out-Null
+Copy-Item -LiteralPath $artifactCatalogSource -Destination $artifactCatalogDestination -Force
+$artifactCatalogSourceSha256 = Get-Sha256Lower -LiteralPath $artifactCatalogSource
+$artifactCatalogStagedSha256 = Get-Sha256Lower -LiteralPath $artifactCatalogDestination
+if ($artifactCatalogStagedSha256 -ne $artifactCatalogSourceSha256) {
+    throw 'Canonical Artifacts catalog differs from the staged runtime catalog.'
+}
+
 # The Windows tar implementation may materialize text blobs as CRLF while
 # staging. Ubuntu executes these files directly, so normalize every shell
 # script in the payload to LF before creating the archive.

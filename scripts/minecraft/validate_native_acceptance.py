@@ -19,6 +19,11 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 import rfc8785
 
+try:
+    from .plugin_lock_policy import baseline_candidate_is_runtime_eligible
+except ImportError:
+    from plugin_lock_policy import baseline_candidate_is_runtime_eligible
+
 
 class AcceptanceError(ValueError):
     """Raised when the native acceptance record is incomplete or inconsistent."""
@@ -501,6 +506,7 @@ def _expected_plugins(lock: dict, *, require_native_verified: bool = True) -> di
     }
     expected: dict[str, dict[str, str]] = {}
     baseline_names: set[str] = set()
+    minecraft_version = lock.get("minecraftVersion", "26.3")
     for item in baseline:
         if not isinstance(item, dict):
             raise AcceptanceError("every unchangedBaseline entry must be an object")
@@ -513,12 +519,13 @@ def _expected_plugins(lock: dict, *, require_native_verified: bool = True) -> di
         if name in module_identity_candidates:
             # A module replaces this older identity; only the module's runtime candidate is authoritative.
             continue
-        candidate = item.get("candidate")
-        is_replacement_candidate = (
-            isinstance(candidate, dict)
-            and (candidate.get("buildArtifact") or candidate.get("url"))
-        )
-        selected = candidate if is_replacement_candidate else item
+        try:
+            selected_for_runtime = baseline_candidate_is_runtime_eligible(item, minecraft_version)
+        except ValueError as error:
+            raise AcceptanceError(str(error)) from error
+        if not selected_for_runtime:
+            continue
+        selected = item["candidate"]
         if require_native_verified and selected.get("nativeVerified") is not True:
             raise AcceptanceError(f"installed baseline plugin is not marked nativeVerified=true: {name}")
         filename = selected.get("runtimeFilename") or selected.get("filename") or item.get("filename")
@@ -567,16 +574,18 @@ def _expected_plugins(lock: dict, *, require_native_verified: bool = True) -> di
 def _replacement_plugin_names(lock: dict) -> set[str]:
     module_names = {module["pluginName"] for module in lock["modules"]}
     names = set(module_names)
+    minecraft_version = lock.get("minecraftVersion", "26.3")
     for baseline in lock.get("unchangedBaseline", []):
         name = baseline.get("pluginName")
         if name in module_names:
             # The installer treats the migration module as authoritative for
             # an identity it replaces; the older baseline candidate is unused.
             continue
-        candidate = baseline.get("candidate")
-        if not isinstance(candidate, dict):
-            continue
-        if not candidate.get("buildArtifact") and not candidate.get("url"):
+        try:
+            selected_for_runtime = baseline_candidate_is_runtime_eligible(baseline, minecraft_version)
+        except ValueError as error:
+            raise AcceptanceError(str(error)) from error
+        if not selected_for_runtime:
             continue
         if not isinstance(name, str) or not name:
             raise AcceptanceError("every replacement baseline candidate must have a pluginName")
@@ -615,10 +624,17 @@ def _verify_plugin_candidates(root: Path, lock: dict) -> None:
                 raise AcceptanceError(f"staged server plugin build receipt differs from lock: {module['pluginName']}")
 
     module_names = {module["pluginName"] for module in modules}
+    minecraft_version = lock.get("minecraftVersion", "26.3")
     for item in lock.get("unchangedBaseline", []):
         if item.get("pluginName") in module_names:
             continue
         candidate = item.get("candidate") or {}
+        try:
+            selected_for_runtime = baseline_candidate_is_runtime_eligible(item, minecraft_version)
+        except ValueError as error:
+            raise AcceptanceError(str(error)) from error
+        if not selected_for_runtime:
+            continue
         artifact = candidate.get("buildArtifact")
         if artifact:
             relative = artifact

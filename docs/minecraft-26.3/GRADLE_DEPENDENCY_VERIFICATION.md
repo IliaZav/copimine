@@ -4,12 +4,12 @@ This record covers the migration's Paper plugin and Fabric client Gradle roots. 
 
 ## Checksum provenance
 
-[`GRADLE_DEPENDENCY_PROVENANCE.json`](GRADLE_DEPENDENCY_PROVENANCE.json) records the source URL, method, and SHA-256 for every external artifact entry in both manifests. The report contains 550 artifacts: 157 server artifacts and 393 client artifacts.
+[`GRADLE_DEPENDENCY_PROVENANCE.json`](GRADLE_DEPENDENCY_PROVENANCE.json) records the source URL, method, and SHA-256 for every external artifact entry in both manifests. The report contains 624 artifacts: 160 server artifacts and 464 client artifacts.
 
-- 459 recorded hashes match the publisher's `.sha256` sidecar fetched over HTTPS.
-- 91 recorded hashes match a direct HTTPS download of the exact artifact, hashed locally.
+- 531 recorded hashes match the publisher's `.sha256` sidecar fetched over HTTPS.
+- 93 recorded hashes match a direct HTTPS download of the exact artifact, hashed locally.
 - Six common parent POM sidecars from the Paper Maven mirror differed from the locked bytes. Direct Maven Central downloads matched the lock for all six. Maven Central is the first repository in the server build; strict verification will reject the Paper mirror's different POM bytes if repository fallback selects them.
-- The Paper API JAR hash also matches `profile.lock.json`. The Fabric Loom 1.17.21 JAR, module metadata, and plugin marker POM match the SHA-256 sidecars published by Fabric Maven.
+- The Paper API 26.3.build.205-stable JAR size and hash match `profile.lock.json`; its JAR, module metadata, and POM hashes match Paper Maven sidecars. Fabric Loom 1.19.1 and Fabric API 0.163.0+26.3 JAR/POM hashes, as well as the updated Fabric API module artifacts, match the SHA-256 sidecars published by Fabric Maven.
 
 The sidecars and artifacts are served by the publishers' repositories. A separate HTTPS retrieval confirms the lock contents and catches stale or altered cached bytes, but it is not a third-party signature or cross-operator attestation. Gradle documents that bootstrapping verification metadata trusts the repositories used at bootstrap. This residual trust boundary is recorded rather than described as cryptographic provenance.
 
@@ -17,6 +17,7 @@ The Minecraft merged JAR and POM are generated locally by Fabric Loom. Their che
 
 ## Validation evidence
 
+- Current client lock validation: `py -3.13 -m pytest -q tests/test_minecraft_migration_profile.py tests/test_minecraft_gradle_dependency_verification.py` — 56 passed, 1 skipped. The Wave 1 owner-only core-outline renderer was built with Temurin JDK 25.0.4.1+1, Gradle 9.8.1, and Fabric Loom 1.19.1. `test jar` and a second `--rerun-tasks jar` both succeeded; both JAR outputs were 14,960,295 bytes with SHA-512 `48e835d88e1a85a21b0219360307286477e4af004fb34f7b93b694e0a6f707f62f1bb1c0092c52a269e5cd847c9337a306a65fc7201fcc02ac698a83ba424c1b`. `profile.lock.json` records the repeatable updated artifact. Before the updated Fabric API module sidecars were recorded, dependency verification correctly rejected 53 unpinned JAR/POM artifacts. All 53 were then independently re-fetched from Fabric Maven and matched the Gradle-cached bytes.
 - `python -m pytest -q tests/test_minecraft_gradle_dependency_verification.py`: 6 passed. The contract checks strict mode, strong checksums, Loom marker and implementation coverage, the narrow local-artifact rule, per-artifact provenance coverage, Paper's independent profile pin, and known official sidecar digests.
 - Full CI-aligned Python regression on Python 3.13.16: `py -3.13 -m pytest -q tests` — 1,347 passed, 4 skipped, 88 warnings in 147.98 seconds. The default Python 3.14 interpreter lacks FastAPI and could not collect two unrelated admin-backend modules; that attempt was superseded by the successful CI-pinned interpreter run.
 - Server: Gradle 9.8.1 with Temurin 25.0.2, a fresh Gradle user home and project cache, `--rerun-tasks migrationPlugins --continue`: build successful, 25 tasks executed in 38 seconds. Log: `D:\Temp\minecraft-26-3-gradle-verification-20261009\server-final-clean-build.log`.

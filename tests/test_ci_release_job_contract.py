@@ -273,7 +273,8 @@ def test_plugin_build_scripts_find_paper_api_in_the_selected_maven_repository() 
         assert "Assert-LockedCompileFile -Path $paperApi -Sha256 $paperApiSha256 -Size $paperApiSize" in source, relative
         assert "b8df3e7f2739e21072a5263e41b307bd30cfa8d8f72258ce27973167f8ad07c0" in source, relative
         assert "$paperApiSize = 2344886" in source, relative
-        assert "$paperApiSize = 2934206" in source, relative
+        assert "$paperApiSize = [long]$profile.paper.apiSize" in source, relative
+        assert "2934206" not in source, relative
         for ambient_marker in (
             "paper-api-*-R0.1-SNAPSHOT.jar",
             "Get-ChildItem -Path $groupPath",

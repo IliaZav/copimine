@@ -27,6 +27,7 @@ from scripts.minecraft.validate_native_acceptance import (
     MAX_JSON_BYTES,
     MAX_PNG_BYTES,
     _expected_plugins,
+    _replacement_plugin_names,
     _read_signed_acceptance,
     _validate_png,
     validate,
@@ -189,6 +190,8 @@ def make_fixture(root: Path) -> tuple[Path, dict]:
                 "runtimeFilename": "BaselinePlugin.jar",
                 "buildArtifact": baseline_candidate.relative_to(root).as_posix(),
                 "sha256": digest(baseline_candidate),
+                "runtimeEligible": True,
+                "apiVersion": "26.3",
                 "nativeVerified": True,
             },
         }],
@@ -326,6 +329,7 @@ def make_url_baseline_fixture(root: Path) -> tuple[Path, dict, Path]:
     staged_candidate.write_bytes(source.read_bytes())
     candidate["filename"] = staged_candidate.name
     candidate["url"] = "https://example.invalid/BaselinePlugin-26.3.jar"
+    candidate["gameVersions"] = ["26.3"]
     candidate["size"] = staged_candidate.stat().st_size
     candidate["sha512"] = digest(staged_candidate, "sha512")
     del candidate["buildArtifact"]
@@ -1558,6 +1562,8 @@ def test_expected_plugin_inventory_uses_build_candidate_without_candidate_filena
     candidate = {
         "buildArtifact": "build/minecraft-26.3/plugins/jars/BuiltPlugin-26.3.jar",
         "sha256": "c" * 64,
+        "runtimeEligible": True,
+        "apiVersion": "26.3",
         "nativeVerified": True,
     }
     lock = {
@@ -1590,12 +1596,64 @@ def test_expected_plugin_inventory_rejects_incomplete_selected_build_candidate()
             "sha256": "b" * 64, "nativeVerified": True,
             "candidate": {
                 "buildArtifact": "build/minecraft-26.3/plugins/jars/BuiltPlugin-26.3.jar",
+                "runtimeEligible": True,
+                "apiVersion": "26.3",
                 "nativeVerified": True,
             },
         }],
     }
 
     with pytest.raises(AcceptanceError, match="installed baseline plugin lock is incomplete"):
+        _expected_plugins(lock)
+
+
+def test_acceptance_inventory_ignores_historical_unsupported_baseline_candidate():
+    lock = {
+        "minecraftVersion": "26.3",
+        "modules": [{
+            "pluginName": "ModulePlugin", "filename": "ModulePlugin.jar",
+            "sha256": "a" * 64, "nativeVerified": True,
+        }],
+        "unchangedBaseline": [{
+            "pluginName": "FarmControl", "filename": "FarmControl-1.3.0.jar",
+            "sha256": "b" * 64, "nativeVerified": False,
+            "candidate": {
+                "filename": "FarmControl-1.3.0.jar", "url": "https://example.invalid/farm.jar",
+                "sha256": "b" * 64, "runtimeEligible": False, "gameVersions": ["1.21"],
+            },
+        }, {
+            "pluginName": "ImplicitPlugin", "filename": "ImplicitPlugin.jar",
+            "sha256": "c" * 64, "nativeVerified": False,
+            "candidate": {
+                "filename": "ImplicitPlugin.jar", "url": "https://example.invalid/implicit.jar",
+                "sha256": "c" * 64, "gameVersions": ["26.3"],
+            },
+        }],
+    }
+
+    assert set(_expected_plugins(lock)) == {"ModulePlugin"}
+    assert _replacement_plugin_names(lock) == {"ModulePlugin"}
+
+
+def test_acceptance_rejects_runtime_eligible_external_candidate_without_26_3_support():
+    lock = {
+        "minecraftVersion": "26.3",
+        "modules": [{
+            "pluginName": "ModulePlugin", "filename": "ModulePlugin.jar",
+            "sha256": "a" * 64, "nativeVerified": True,
+        }],
+        "unchangedBaseline": [{
+            "pluginName": "SeeMore", "filename": "SeeMore-1.0.2.jar",
+            "sha256": "b" * 64, "nativeVerified": True,
+            "candidate": {
+                "filename": "SeeMore-1.0.2.jar", "url": "https://example.invalid/seemore.jar",
+                "sha256": "b" * 64, "runtimeEligible": True, "gameVersions": ["1.21.8"],
+                "nativeVerified": True,
+            },
+        }],
+    }
+
+    with pytest.raises(AcceptanceError, match="does not declare support for Minecraft 26.3"):
         _expected_plugins(lock)
 
 

@@ -172,6 +172,7 @@ tasks.register('verifyPaperApi') {
             it.moduleVersion.id.group == 'io.papermc.paper' && it.name == 'paper-api'
         }
         if (artifact == null) throw new GradleException('Pinned Paper API was not resolved')
+        if (artifact.file.length() != profile.paper.apiSize) throw new GradleException('Paper API size mismatch')
         def actual = java.security.MessageDigest.getInstance('SHA-256').digest(artifact.file.bytes).encodeHex().toString()
         if (actual != profile.paper.apiSha256) throw new GradleException('Paper API SHA-256 mismatch')
         logger.lifecycle("Verified Paper API ${profile.paper.api}: ${actual}")

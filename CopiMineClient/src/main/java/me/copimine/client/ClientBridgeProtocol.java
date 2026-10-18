@@ -83,8 +83,9 @@ public final class ClientBridgeProtocol {
                 CopiMineClientLogger.warn("Rejected bridge payload because of protocol mismatch: " + payload.protocol());
                 return;
             }
-            if (payload.type().startsWith(TYPE_END_EVENT_PREFIX)) {
-                context.client().execute(() -> applyEndEventPayload(payload));
+            if (isLegacyProtectedMutationRejected(payload.type())) {
+                lastError = "legacy-mutation-auth-required";
+                CopiMineClientLogger.warn("Rejected unsigned legacy bridge mutation: " + payload.type());
                 return;
             }
             CopiMineClientLogger.info("Received bridge payload: type=" + payload.type() + ", seq=" + payload.seq() + ", effect=" + payload.effectId() + ", shaderpack=" + payload.shaderpack());
@@ -94,46 +95,18 @@ public final class ClientBridgeProtocol {
                     helloAcknowledged = true;
                     CopiMineClientLogger.info("Bridge ping acknowledged");
                 }
-                case TYPE_VISUAL_START -> context.client().execute(() -> {
-                    if (!managerStatusAllowsServerVisuals(manager)) {
-                        CopiMineClientLogger.warn("Rejected visual start because server visuals are disabled");
-                        sendVisualError(payload.seq(), payload.effectId(), "server-visuals-disabled");
-                        return;
-                    }
-                    if (manager.start(
-                            payload.effectId(),
-                            payload.shaderpack(),
-                            payload.seq(),
-                            payload.durationMillis(),
-                            payload.intensity(),
-                            payload.clearPolicy(),
-                            payload.fadeInMillis(),
-                            payload.fadeOutMillis(),
-                            payload.source()
-                    )) {
-                        String route = manager.activeRuntimeRouteName();
-                        CopiMineClientLogger.info("Visual started: seq=" + payload.seq() + ", effect=" + payload.effectId() + ", route=" + route);
-                        sendVisualAck(payload.seq(), payload.effectId(), "STARTED_" + route);
-                    } else {
-                        CopiMineClientLogger.warn("Visual start failed: seq=" + payload.seq() + ", effect=" + payload.effectId() + ", reason=" + manager.lastFailureReason());
-                        sendVisualError(payload.seq(), payload.effectId(), manager.lastFailureReason());
-                    }
-                });
-                case TYPE_VISUAL_STOP -> context.client().execute(() -> {
-                    manager.stop(payload.effectId());
-                    CopiMineClientLogger.info("Visual stop received: seq=" + payload.seq() + ", effect=" + payload.effectId());
-                    sendVisualAck(payload.seq(), payload.effectId(), "STOPPED");
-                });
-                case TYPE_VISUAL_CLEAR_ALL -> context.client().execute(() -> {
-                    manager.clearAll("server_clear");
-                    END_EVENT_PLAYER_VISUALS.clear();
-                    CopiMineClientLogger.info("Visual clear-all received");
-                    sendVisualAck(payload.seq(), "", "CLEARED");
-                });
                 default -> {
                 }
             }
         });
+    }
+
+    static boolean isLegacyProtectedMutationRejected(String payloadType) {
+        return payloadType != null && (payloadType.startsWith(TYPE_END_EVENT_PREFIX)
+                || TYPE_VISUAL_START.equals(payloadType)
+                || TYPE_VISUAL_STOP.equals(payloadType)
+                || TYPE_VISUAL_CLEAR_ALL.equals(payloadType)
+                || TYPE_PRISONER_ABILITY_REQUEST.equals(payloadType));
     }
 
     private static void applyEndEventPayload(BridgePayload payload) {

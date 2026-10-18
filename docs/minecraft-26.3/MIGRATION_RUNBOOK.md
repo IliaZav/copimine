@@ -5,9 +5,9 @@
 ## Зафиксированные компоненты
 
 - Minecraft Java 26.3; Mojang manifest и client JAR сверяются с SHA-1 из `tools/minecraft-26.3/profile.lock.json`.
-- Paper 26.3 build 169 beta сверяется с размером и SHA-256 из того же lock.
+- Paper 26.3 build 205 stable сверяется с размером и SHA-256 из того же lock; `paper-api` 26.3.build.205-stable имеет отдельные точные URL, размер и SHA-256.
 - Сборка Paper-плагинов и клиента требует Java 25; независимый Grim compatibility patch собирается Java 21.
-- Fabric Loader 0.19.5, Loom 1.17.21 и Fabric API 0.162.0+26.3.
+- Fabric Loader 0.19.5, Loom 1.19.1 и Fabric API 0.163.0+26.3.
 - Client mod lock содержит 13 артефактов, включая Fabric API, который вложен в CopiMineClient; отдельно в профиль устанавливаются 12 внешних JAR плюс CopiMineClient 0.1.3+26.3. Все артефакты закреплены SHA-512, размером, URL и Fabric metadata в `client-mods.lock.json`.
 - Мигрированный ресурс-пак имеет format 97.1 и закреплён SHA-256. Текстуры, копируемые из item atlas в block atlas, приводятся к нижней границе размера, кратной 16, Lanczos-фильтром. Это сохраняет mipmap-уровни; исходные item-текстуры не меняются.
 

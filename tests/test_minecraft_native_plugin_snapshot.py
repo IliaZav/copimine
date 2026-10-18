@@ -41,6 +41,9 @@ def make_runtime(root: Path, *, accepted: bool = True):
     module_bytes = plugin_jar("CandidatePlugin", "1.0")
     baseline_bytes = plugin_jar("BaselinePlugin", "2.0")
     authme_bytes = plugin_jar("AuthMe", "6.0.1")
+    baseline_candidate = root / "build/minecraft-26.3/server-plugins/BaselinePlugin-26.3.jar"
+    baseline_candidate.parent.mkdir(parents=True, exist_ok=True)
+    baseline_candidate.write_bytes(baseline_bytes)
     (plugins_dir / "CandidatePlugin.jar").write_bytes(module_bytes)
     (plugins_dir / "BaselinePlugin.jar").write_bytes(baseline_bytes)
     (plugins_dir / "AuthMe.jar").write_bytes(authme_bytes)
@@ -72,6 +75,39 @@ def make_runtime(root: Path, *, accepted: bool = True):
             "filename": "BaselinePlugin.jar",
             "sha256": digest(baseline_bytes),
             "nativeVerified": native_verified,
+            "candidate": {
+                "filename": baseline_candidate.name,
+                "runtimeFilename": "BaselinePlugin.jar",
+                "buildArtifact": baseline_candidate.relative_to(root).as_posix(),
+                "apiVersion": "26.3",
+                "runtimeEligible": True,
+                "sha256": digest(baseline_candidate.read_bytes()),
+                "nativeVerified": native_verified,
+            },
+        }, {
+            "pluginName": "FarmControl",
+            "filename": "FarmControl-1.3.0.jar",
+            "sha256": "f" * 64,
+            "nativeVerified": False,
+            "candidate": {
+                "filename": "FarmControl-1.3.0.jar",
+                "url": "https://example.invalid/FarmControl-1.3.0.jar",
+                "sha256": "f" * 64,
+                "runtimeEligible": False,
+                "gameVersions": ["1.21"],
+            },
+        }, {
+            "pluginName": "SeeMore",
+            "filename": "SeeMore-1.0.2.jar",
+            "sha256": "e" * 64,
+            "nativeVerified": False,
+            "candidate": {
+                "filename": "SeeMore-1.0.2.jar",
+                "url": "https://example.invalid/SeeMore-1.0.2.jar",
+                "sha256": "e" * 64,
+                "runtimeEligible": False,
+                "gameVersions": ["1.21.8"],
+            },
         }],
     }
     lock_path = root / "tools/minecraft-26.3/server-plugins.lock.json"
@@ -84,6 +120,8 @@ def make_runtime(root: Path, *, accepted: bool = True):
         "installed": [
             {**candidate, "version": "1.0"},
             {**authme, "version": "6.0.1"},
+            {"pluginName": "BaselinePlugin", "filename": "BaselinePlugin.jar",
+             "sha256": digest(baseline_bytes), "version": "2.0"},
         ],
         "pluginInventory": inventory,
     }

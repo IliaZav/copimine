@@ -48,13 +48,18 @@ def test_paper_server_candidate_matches_locked_build_and_download_object():
     assert lock["minimumJava"] == 25
     assert lock["buildJavaMajor"] == 25
     assert lock["buildJavaVersion"] == "25.0.4.1"
-    assert paper["build"] == 169
-    assert paper["channel"] == "BETA"
-    assert paper["api"] == "26.3.build.169-beta"
-    assert paper["size"] == 55_138_949
-    assert paper["sha256"] == "185d9f4267afca48959d6a56150cf8803b6645aee10de3ed147df7ab1ff781fb"
-    assert paper["url"].startswith("https://fill-data.papermc.io/v1/objects/")
-    assert paper["url"].endswith(f"/{paper['sha256']}/paper-26.3-{paper['build']}.jar")
+    assert paper["build"] == 205
+    assert paper["channel"] == "STABLE"
+    assert paper["api"] == "26.3.build.205-stable"
+    assert paper["apiSize"] == 2_943_078
+    assert paper["apiSha256"] == "2c4ced387dd3786a7f811923eedce574349e036446f91d10669578a3827aa252"
+    assert paper["size"] == 55_242_379
+    assert paper["sha256"] == "a0a58f532f08054ea92eb916d3edb6ed3c86429d77175317304f6e995cce9968"
+    assert paper["url"] == (
+        "https://fill-data.papermc.io/v1/objects/"
+        "a0a58f532f08054ea92eb916d3edb6ed3c86429d77175317304f6e995cce9968/"
+        "paper-26.3-205.jar"
+    )
 
     candidate = ROOT / "build/minecraft-26.3/server" / f"paper-26.3-{paper['build']}.jar"
     assert candidate.is_file(), "PrepareMigrationCandidates.ps1 must stage the pinned Paper server JAR"

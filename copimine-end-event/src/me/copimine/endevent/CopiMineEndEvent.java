@@ -29027,11 +29027,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         boolean soloRoomWithoutOuterDivider = chamberCount == 1 && !finalSealBarrierContext();
-        if (soloRoomWithoutOuterDivider && echoBarrierPlan.closedCells().isEmpty()) {
-            getLogger().info("END_RIFT_WAVE7_SOLO_TRIAL_NO_DIVIDER event=" + eventId
-                    + " generation=" + generation + " one_room=true");
-            return true;
-        }
         int barrierChamberCount = Math.max(2, chamberCount);
         int floorY = combatFloorY();
         for (RealitySplitBarrierPolicy.Cell cell : echoBarrierPlan.closedCells()) {
@@ -29063,6 +29058,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         HazardMutationJournal.Snapshot journal = existing;
         boolean existingOnlyRealitySplit = journal.entries().stream().allMatch(
                 HazardMutationJournal.Entry::isRealitySplitBarrierMutation);
+        if (soloRoomWithoutOuterDivider && !journal.valid()) {
+            recoveryReason = "END_RIFT_WAVE7_HAZARD_JOURNAL_INVALID";
+            getLogger().severe("END_RIFT_WAVE7_SOLO_TRIAL_REFUSED event=" + eventId
+                    + " generation=" + generation + " reason=invalid-hazard-journal");
+            forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
+            return false;
+        }
         if (!journal.valid() || !journal.entries().isEmpty() && !existingOnlyRealitySplit
                 || existing.status() != HazardMutationJournal.Status.EMPTY
                 && existing.status() != HazardMutationJournal.Status.RESTORED) {
@@ -29081,6 +29083,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " journal_generation=" + journal.generation()
                     + " journal_world=" + journal.world());
             return false;
+        }
+        if (soloRoomWithoutOuterDivider && echoBarrierPlan.closedCells().isEmpty()) {
+            getLogger().info("END_RIFT_WAVE7_SOLO_TRIAL_NO_DIVIDER event=" + eventId
+                    + " generation=" + generation + " one_room=true");
+            return true;
         }
         List<RealitySplitBarrierPolicy.Cell> plannedCells = new ArrayList<>(soloRoomWithoutOuterDivider
                 ? List.of() : finalSealBarrierContext()

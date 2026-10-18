@@ -46,7 +46,7 @@ public class Wave2AttemptLifecycleRestoreProbe {
         static Map<UUID,Player> players=new HashMap<>();
         static Player getPlayer(UUID id){return players.get(id);}
     }
-    enum EventPhase { WAVE_2, WAVE_7, RECOVERY_REQUIRED }
+    enum EventPhase { WAVE_1, WAVE_2, WAVE_7, RECOVERY_REQUIRED }
     static class WaveTwoStagePolicy {static boolean hasConsistentProgress(int cycles,int groups,boolean cleared){return true;}}
     static class EventSnapshot {
         final Map<String,String> objectiveProgress;
@@ -54,6 +54,8 @@ public class Wave2AttemptLifecycleRestoreProbe {
         Map<String,String> objectiveProgress(){return objectiveProgress;}
     }
     boolean official=true;
+    boolean wave1CarrierCheckpointRestored;
+    boolean isOfficialAttempt(){return official;}
     boolean isOfficialCurrentAttempt(){return official;}
     Logger getLogger(){return Logger.getAnonymousLogger();}
 ''' + adapter + '''

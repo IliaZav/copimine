@@ -255,6 +255,97 @@ def _ps_quote(value: str | Path) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
+def _run_obelisk_live_runner(
+    branch: str, environment: str = "local"
+) -> subprocess.CompletedProcess[str]:
+    source_tests = ROOT / "tests"
+    runner_source = source_tests / "RunEndRiftObeliskLive.ps1"
+
+    with tempfile.TemporaryDirectory(prefix="end-rift-obelisk-runner-") as temporary:
+        fixture_root = Path(temporary) / "fixture-repo"
+        fixture_tests = fixture_root / "tests"
+        server_dir = fixture_root / "local-runtime" / "end-rift-server"
+        event_dir = fixture_root / "copimine-end-event"
+        (server_dir / "logs").mkdir(parents=True)
+        fixture_tests.mkdir(parents=True)
+        event_dir.mkdir(parents=True)
+        runner = fixture_tests / runner_source.name
+        runner.write_bytes(runner_source.read_bytes())
+        (fixture_tests / "InvokeEndRiftLocalRcon.ps1").write_text("", encoding="utf-8")
+        (fixture_tests / "LocalEndRiftObeliskBot.js").write_text("", encoding="utf-8")
+        (event_dir / "config.yml").write_text(
+            f"schema-version: 4\nenvironment: {environment}\n", encoding="utf-8"
+        )
+        (server_dir / "logs" / "latest.log").write_text("", encoding="utf-8")
+
+        script = f"""
+function git {{ $global:LASTEXITCODE = 0; Write-Output '{branch}' }}
+function powershell {{ throw 'RCON_SENTINEL' }}
+try {{
+  & {_ps_quote(runner)}
+}} catch {{
+  $message = [string]$_.Exception.Message
+  [Console]::Out.WriteLine("RUNNER_ERROR:$message")
+  if ($message -like '*Refused to run outside*') {{ exit 20 }}
+  if ($message -like '*environment: local*') {{ exit 21 }}
+  if ($message -like '*RCON_SENTINEL*') {{ exit 22 }}
+  exit 23
+}}
+exit 24
+"""
+        return subprocess.run(
+            [
+                _powershell_executable(),
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                script,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+
+
+def test_obelisk_live_runner_allows_only_the_authorized_integration_branch() -> None:
+    allowed = _run_obelisk_live_runner(CURRENT_END_RIFT_BRANCH)
+    assert allowed.returncode == 22, allowed.stdout + allowed.stderr
+    assert "RCON_SENTINEL" in allowed.stdout
+    assert "Refused to run outside" not in allowed.stdout
+
+    for branch in (
+        "codex/end-rift-event",
+        "feature/unapproved",
+        CURRENT_END_RIFT_BRANCH.upper(),
+        "",
+    ):
+        refused = _run_obelisk_live_runner(branch)
+        assert refused.returncode == 20, refused.stdout + refused.stderr
+        assert "Refused to run outside" in refused.stdout
+        assert "RCON_SENTINEL" not in refused.stdout
+
+
+def test_obelisk_live_runner_keeps_local_environment_and_isolated_rcon_guards() -> None:
+    production_environment = _run_obelisk_live_runner(
+        CURRENT_END_RIFT_BRANCH, environment="production"
+    )
+    assert production_environment.returncode == 21, (
+        production_environment.stdout + production_environment.stderr
+    )
+    assert "environment: local" in production_environment.stdout
+    assert "RCON_SENTINEL" not in production_environment.stdout
+
+    runner = (ROOT / "tests" / "RunEndRiftObeliskLive.ps1").read_text(encoding="utf-8")
+    rcon_helper = (ROOT / "tests" / "InvokeEndRiftLocalRcon.ps1").read_text(encoding="utf-8")
+    assert "-ServerDir $serverDir -RconPort 25576" in runner
+    assert "Test-EndRiftLocalRuntimePath" in rcon_helper
+    assert "Test-EndRiftLocalServerBind" in rcon_helper
+    assert "Assert-EndRiftLocalServerBind" in rcon_helper
+
+
 def test_boss_multiplayer_runner_reports_detached_head_without_null_trim() -> None:
     runner = ROOT / "tests" / "RunEndRiftBossMultiPlayerDamageLive.ps1"
     script = f"""

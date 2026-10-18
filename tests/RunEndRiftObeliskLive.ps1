@@ -29,8 +29,9 @@ if (@($names | Select-Object -Unique).Count -ne $names.Count) {
   throw 'The Wave 4 obelisk probe requires unique player names.'
 }
 $branch = (& git -C $root branch --show-current 2>$null).Trim()
-if ($LASTEXITCODE -ne 0 -or $branch -ne 'codex/end-rift-event') {
-  throw "Refused to run outside codex/end-rift-event: $branch"
+$expectedBranch = 'codex/end-rift-26-3-integrated-final'
+if ($LASTEXITCODE -ne 0 -or $branch -cne $expectedBranch) {
+  throw "Refused to run outside ${expectedBranch}: $branch"
 }
 $config = Get-Content -LiteralPath (Join-Path $root 'copimine-end-event\config.yml') -Raw
 if ($config -notmatch '(?m)^environment:\s*local\s*$') {

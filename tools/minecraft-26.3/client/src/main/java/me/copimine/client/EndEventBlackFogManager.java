@@ -179,6 +179,6 @@ public final class EndEventBlackFogManager {
     }
 
     private static boolean validCycle(String value) {
-        return "0".equals(value) || "1".equals(value) || "2".equals(value);
+        return "1".equals(value) || "2".equals(value) || "3".equals(value);
     }
 }

@@ -28634,7 +28634,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void sendCurrentBlackFogPacket(Player player, boolean active, Location core) {
         String dimension = core == null ? "the_end" : worldVfxDimension(core);
         String state = active
-                ? dimension + "|wave5|" + currentFogCycle
+                ? dimension + "|wave5|" + (currentFogCycle + 1)
                 : "";
         sendClientPacket(player, "END_FOG_STATE", "wave5-black-fog",
                 active ? 8_000L : 0L, state, "WAVE5_FOG_V1",

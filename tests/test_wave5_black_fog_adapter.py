@@ -18,6 +18,7 @@ def probe(tmp_path_factory):
     source = SOURCE.read_text("utf-8")
     methods = "\n".join(extract(source, signature) for signature in [
         "void tickBlackFogObjective(long now)",
+        "void sendCurrentBlackFogPacket(Player player, boolean active, Location core)",
         "boolean restoreCurrentSafeZoneBlocks()",
         "void restoreBlackFogBlock(Block block, String originalBlockData)",
     ])
@@ -105,6 +106,9 @@ public final class BlackFogAdapterProbe {
     int activeWave = 5, currentFogCycle, currentFogZoneCount, currentFogZoneSide, currentFogZoneSetupAttempts;
     boolean zoneSetupSucceeds = true, frozen, restoreThrows;
     int setupCalls, fogEffects, packetRefreshes, cleanupCalls;
+    String sentPacketSubject = "", sentPacketStatus = "", sentPacketVisual = "";
+    long sentPacketDuration;
+    float sentPacketIntensity;
     Location core = new Location();
     HazardMutationJournal hazardJournal = new HazardMutationJournal();
     Map<UUID, Long> currentFogLastPacketAt = new HashMap<>();
@@ -114,6 +118,7 @@ public final class BlackFogAdapterProbe {
     Set<UUID> currentSafeZoneVisuals = new LinkedHashSet<>();
 
     Location coreCombatAnchorLocation() { return core; }
+    String worldVfxDimension(Location location) { return "the_end"; }
     int waveScalePlayers() { return 4; }
     boolean spawnCurrentSafeZoneVisuals(World world, Location location) {
         setupCalls++;
@@ -140,6 +145,15 @@ public final class BlackFogAdapterProbe {
     void renderWaveMilestone(int wave, Location location, String text, Sound sound) { }
     void applyBlackFogEffects(long now, Location location) { fogEffects++; }
     void refreshCurrentBlackFogPackets(long now, Location location) { packetRefreshes++; }
+    void sendClientPacket(Player player, String type, String instanceId, long durationMillis,
+                          String subjectId, String visualId, int health, int maxHealth,
+                          float progress, String clearPolicy, String status) {
+        sentPacketSubject = subjectId;
+        sentPacketStatus = status;
+        sentPacketVisual = visualId;
+        sentPacketDuration = durationMillis;
+        sentPacketIntensity = progress;
+    }
     List<Player> activeWaveParticipants() { return List.of(); }
     boolean isCurrentSafeZonePlayer(Player player) { return false; }
     void restoreBlock(Block block, String original) {
@@ -165,6 +179,22 @@ public final class BlackFogAdapterProbe {
     public static void main(String[] args) {
         var p = new BlackFogAdapterProbe();
         switch (args[0]) {
+            case "wire-cycle" -> {
+                p.sendCurrentBlackFogPacket(new Player(), true, null);
+                check("the_end|wave5|1".equals(p.sentPacketSubject),
+                        "first internal zero-based fog cycle must be sent as protocol cycle 1");
+                check("ACTIVE".equals(p.sentPacketStatus) && "WAVE5_FOG_V1".equals(p.sentPacketVisual)
+                                && p.sentPacketDuration == 8_000L && p.sentPacketIntensity == .88F,
+                        "active fog packet must preserve its approved visual fields");
+                p.currentFogCycle = 2;
+                p.sendCurrentBlackFogPacket(new Player(), true, null);
+                check("the_end|wave5|3".equals(p.sentPacketSubject),
+                        "last internal zero-based fog cycle must be sent as protocol cycle 3");
+                p.sendCurrentBlackFogPacket(new Player(), false, null);
+                check(p.sentPacketSubject.isEmpty() && "CLEAR".equals(p.sentPacketStatus)
+                                && p.sentPacketDuration == 0L && p.sentPacketIntensity == 0.0F,
+                        "clear fog packet must not carry an active cycle");
+            }
             case "three-cycles" -> {
                 long now = 40_000L;
                 p.blackFogPhaseDeadlineMillis = now;
@@ -286,6 +316,12 @@ public final class BlackFogAdapterProbe {
 ])
 def test_wave5_black_fog_adapter(probe, scenario):
     result = subprocess.run(["java", "-cp", str(probe), "BlackFogAdapterProbe", scenario],
+                            capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_wave5_fog_packet_uses_one_based_protocol_cycles(probe):
+    result = subprocess.run(["java", "-cp", str(probe), "BlackFogAdapterProbe", "wire-cycle"],
                             capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stdout + result.stderr
 

@@ -89,6 +89,23 @@ class BridgeBodyCodecTest {
     }
 
     @Test
+    void endFogCycleIsOneBasedAndLimitedToTheThreeProtocolCycles() {
+        EndEventBridgeBodyCodec.Body fog = endEventFixtures().stream()
+                .filter(body -> body.type() == EndEventBridgeBodyCodec.Type.END_FOG_STATE)
+                .findFirst().orElseThrow();
+        EndEventBridgeBodyCodec.Body thirdCycle = copy(fog, fog.instanceId(), fog.controlId(), fog.visualId(),
+                fog.durationMillis(), fog.progressOrIntensity(), fog.health(), fog.maxHealth(),
+                "the_end|wave5|3", fog.clearPolicy(), fog.status());
+
+        assertEquals("the_end|wave5|3",
+                EndEventBridgeBodyCodec.decode(EndEventBridgeBodyCodec.encode(thirdCycle)).subjectOrMode());
+        assertThrows(IllegalArgumentException.class,
+                () -> EndEventBridgeBodyCodec.encode(copy(fog, fog.instanceId(), fog.controlId(), fog.visualId(),
+                        fog.durationMillis(), fog.progressOrIntensity(), fog.health(), fog.maxHealth(),
+                        "the_end|wave5|0", fog.clearPolicy(), fog.status())));
+    }
+
+    @Test
     void everyNarcoticsTypeHasAnExactBinaryFixtureAndStrictUnusedDefaults() throws Exception {
         List<NarcoticsBridgeBodyCodec.Body> fixtures = narcoticsFixtures();
         assertEquals(3, fixtures.size());

@@ -16,16 +16,16 @@ public final class PressureBudgetControllerTest {
         checkProfile(20, 30, 12, 3, 3);
         checkProfile(99, 30, 12, 3, 3);
 
-        expect(PressureBudgetController.effectiveProjectileCap(2) == 5,
-                "two-player profile narrowly accommodates the named five-arrow rain");
+        expect(PressureBudgetController.effectiveProjectileCap(2) == 9,
+                "two-player profile includes its ordinary allowance and one reserved five-arrow rain");
         expect(PressureBudgetController.configuredProjectileCap(2) == 4,
                 "two-player ordinary projectile admission retains its configured four-child cap");
-        expect(PressureBudgetController.effectiveProjectileCap(3) == 5,
-                "three-player profile uses the same bounded five-child exception");
-        expect(PressureBudgetController.effectiveProjectileCap(4) == 5,
-                "four-player profile preserves its configured cap when it already equals five");
-        expect(PressureBudgetController.effectiveProjectileCap(6) == 6,
-                "larger profiles retain their existing projectile cap");
+        expect(PressureBudgetController.effectiveProjectileCap(3) == 9,
+                "three-player profile includes its ordinary allowance and one reserved rain");
+        expect(PressureBudgetController.effectiveProjectileCap(4) == 11,
+                "four-player profile adds one named rain lane to its ordinary cap");
+        expect(PressureBudgetController.effectiveProjectileCap(6) == 15,
+                "larger profiles add only the one named rain lane");
         expect(PressureBudgetController.effectiveProjectileCap(1) == 0,
                 "players below the official minimum receive no projectile allowance");
 
@@ -42,11 +42,11 @@ public final class PressureBudgetControllerTest {
         expect(PressureBudgetController.clampTotal(1000, 20) == 30,
                 "requested spawn count must be bounded by the active pressure");
         var projectileDiagnostics = PressureBudgetController.diagnostics(2,
-                0, 0, 0, 5, 0, null, 0, "wave5", 1L);
+                0, 0, 0, 9, 0, null, 0, "wave5", 1L);
         expect(!projectileDiagnostics.hardCapExceeded(),
-                "diagnostics use the same narrow effective limit as projectile admission");
+                "diagnostics include the isolated named arrow-rain reservation");
         expect(PressureBudgetController.diagnostics(2,
-                0, 0, 0, 6, 0, null, 0, "wave5", 1L).hardCapExceeded(),
+                0, 0, 0, 10, 0, null, 0, "wave5", 1L).hardCapExceeded(),
                 "diagnostics flag physical projectile counts above the effective limit");
         System.out.println("PressureBudgetControllerTest OK");
     }

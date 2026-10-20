@@ -205,8 +205,8 @@ def test_wave_one_and_wave_two_default_rosters_are_increased_for_small_parties()
     wave_one = counts(1)
     wave_two = counts(2)
     assert sum(wave_one.values()) == 22
-    assert sum(wave_two.values()) == 30
+    assert sum(wave_two.values()) == 36
     pressure = (ROOT / "copimine-end-event/src/me/copimine/endevent/domain/WavePressurePolicy.java").read_text(
         encoding="utf-8"
     )
-    assert "SMALL_PARTY_WAVE_ONE_PRESSURE = 10" in pressure
+    assert "SMALL_PARTY_WAVE_ONE_PRESSURE = 12" in pressure

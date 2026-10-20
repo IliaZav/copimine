@@ -16,6 +16,8 @@ public final class WaveProjectileAdmissionController {
     private final Map<UUID, GroupLease> groups = new LinkedHashMap<>();
     private final Map<UUID, UUID> groupByProjectile = new LinkedHashMap<>();
     private int occupiedProjectileSlots;
+    private int occupiedOrdinaryProjectileSlots;
+    private UUID activeNamedArrowRainGroup;
 
     public boolean reserveGroup(UUID groupId, int livingPlayers, int projectileCount) {
         return reserveGroup(groupId, livingPlayers, projectileCount, false);
@@ -32,19 +34,25 @@ public final class WaveProjectileAdmissionController {
         if (groupId == null || projectileCount <= 0 || groups.containsKey(groupId)) {
             return false;
         }
-        int cap = PressureBudgetController.configuredProjectileCap(livingPlayers);
-        boolean useNamedException = namedFiveArrowRain
-                && projectileCount == PressureBudgetController.MIN_NAMED_VOLLEY_PROJECTILE_COUNT
-                && cap > 0 && cap < projectileCount && occupiedProjectileSlots == 0;
-        if (useNamedException) {
-            cap = PressureBudgetController.MIN_NAMED_VOLLEY_PROJECTILE_COUNT;
-        }
-        if (cap <= 0 || projectileCount > cap
-                || occupiedProjectileSlots > cap - projectileCount) {
+        int ordinaryCap = PressureBudgetController.configuredProjectileCap(livingPlayers);
+        boolean isNamedRain = namedFiveArrowRain
+                && projectileCount == PressureBudgetController.MIN_NAMED_VOLLEY_PROJECTILE_COUNT;
+        if (ordinaryCap <= 0) {
             return false;
         }
-        groups.put(groupId, new GroupLease(projectileCount));
+        if (isNamedRain) {
+            if (activeNamedArrowRainGroup != null
+                    || occupiedProjectileSlots > effectiveProjectileCap(livingPlayers) - projectileCount) {
+                return false;
+            }
+            activeNamedArrowRainGroup = groupId;
+        } else if (projectileCount > ordinaryCap
+                || occupiedOrdinaryProjectileSlots > ordinaryCap - projectileCount) {
+            return false;
+        }
+        groups.put(groupId, new GroupLease(projectileCount, isNamedRain));
         occupiedProjectileSlots += projectileCount;
+        if (!isNamedRain) occupiedOrdinaryProjectileSlots += projectileCount;
         return true;
     }
 
@@ -94,6 +102,9 @@ public final class WaveProjectileAdmissionController {
             return false;
         }
         occupiedProjectileSlots = Math.max(0, occupiedProjectileSlots - 1);
+        if (!group.namedArrowRain) {
+            occupiedOrdinaryProjectileSlots = Math.max(0, occupiedOrdinaryProjectileSlots - 1);
+        }
         discardEmptyGroup(groupId, group);
         return true;
     }
@@ -110,6 +121,9 @@ public final class WaveProjectileAdmissionController {
         int released = group.unmaterializedChildren;
         group.unmaterializedChildren = 0;
         occupiedProjectileSlots = Math.max(0, occupiedProjectileSlots - released);
+        if (!group.namedArrowRain) {
+            occupiedOrdinaryProjectileSlots = Math.max(0, occupiedOrdinaryProjectileSlots - released);
+        }
         discardEmptyGroup(groupId, group);
         return released;
     }
@@ -122,6 +136,11 @@ public final class WaveProjectileAdmissionController {
         }
         occupiedProjectileSlots = Math.max(0, occupiedProjectileSlots
                 - group.projectileIds.size() - group.unmaterializedChildren);
+        if (!group.namedArrowRain) {
+            occupiedOrdinaryProjectileSlots = Math.max(0, occupiedOrdinaryProjectileSlots
+                    - group.projectileIds.size() - group.unmaterializedChildren);
+        }
+        if (group.namedArrowRain) activeNamedArrowRainGroup = null;
         Set<UUID> children = Set.copyOf(group.projectileIds);
         for (UUID projectileId : children) {
             groupByProjectile.remove(projectileId, groupId);
@@ -159,20 +178,25 @@ public final class WaveProjectileAdmissionController {
         groups.clear();
         groupByProjectile.clear();
         occupiedProjectileSlots = 0;
+        occupiedOrdinaryProjectileSlots = 0;
+        activeNamedArrowRainGroup = null;
     }
 
     private void discardEmptyGroup(UUID groupId, GroupLease group) {
         if (group.projectileIds.isEmpty() && group.unmaterializedChildren == 0) {
             groups.remove(groupId, group);
+            if (group.namedArrowRain) activeNamedArrowRainGroup = null;
         }
     }
 
     private static final class GroupLease {
         private final Set<UUID> projectileIds = new LinkedHashSet<>();
+        private final boolean namedArrowRain;
         private int unmaterializedChildren;
 
-        private GroupLease(int projectileCount) {
+        private GroupLease(int projectileCount, boolean namedArrowRain) {
             this.unmaterializedChildren = projectileCount;
+            this.namedArrowRain = namedArrowRain;
         }
     }
 }

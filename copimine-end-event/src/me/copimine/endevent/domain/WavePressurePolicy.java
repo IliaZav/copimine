@@ -4,7 +4,7 @@ package me.copimine.endevent.domain;
 public final class WavePressurePolicy {
     private static final int WAVE_ONE = 1;
     private static final int WAVE_FIVE = 5;
-    private static final int SMALL_PARTY_WAVE_ONE_PRESSURE = 10;
+    private static final int SMALL_PARTY_WAVE_ONE_PRESSURE = 12;
     private static final int APPROVED_WAVE_FIVE_ELITE_ENDERMEN = 6;
     private static final int APPROVED_WAVE_FIVE_ELITE_SKELETONS = 2;
 
@@ -45,7 +45,7 @@ public final class WavePressurePolicy {
     }
 
     /**
-     * Wave 1 uses the full ten simultaneous slots for two- and three-player
+     * Wave 1 uses the full twelve simultaneous slots for two- and three-player
      * parties. This narrow cap stays below the absolute event hard cap and
      * does not alter the shared pressure profile for later waves.
      */

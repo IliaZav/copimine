@@ -17,7 +17,7 @@ public final class PressureBudgetController {
     public static final int MIN_PLAYERS = 2;
     public static final int MAX_PLAYERS = 20;
     public static final int HARD_CAP = 56;
-    /** The named five-arrow rain is the only child-count exception below this bound. */
+    /** Physical children reserved by the one concurrent named five-arrow rain. */
     public static final int MIN_NAMED_VOLLEY_PROJECTILE_COUNT = 5;
 
     private PressureBudgetController() {
@@ -84,15 +84,15 @@ public final class PressureBudgetController {
 
     /**
      * Return the simultaneous physical-child limit used by wave projectile admission.
-     * The two- and three-player profiles keep their configured cap of four, while this
-     * narrow floor permits the explicitly named five-arrow rain to be admitted whole.
+     * Ordinary attacks retain the configured cap; one complete named five-arrow rain
+     * has a separate reserved lane and may coexist with ordinary projectiles.
      */
     public static int effectiveProjectileCap(int livingPlayers) {
         Profile profile = profileForPlayers(livingPlayers);
         if (profile.players() < MIN_PLAYERS) {
             return 0;
         }
-        return Math.max(profile.projectileCap(), MIN_NAMED_VOLLEY_PROJECTILE_COUNT);
+        return profile.projectileCap() + MIN_NAMED_VOLLEY_PROJECTILE_COUNT;
     }
 
     /** Return the ordinary projectile cap, excluding the named five-arrow exception. */

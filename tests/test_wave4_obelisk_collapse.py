@@ -28,13 +28,23 @@ public class CollapseProbe {
   void setInterpolationDelay(int value){} void setInterpolationDuration(int value){}
  }
  static class Bukkit {static ItemDisplay display=new ItemDisplay();static Entity getEntity(UUID id){return display;}}
- static class Location {public Location clone(){return this;}Location add(double a,double b,double c){return this;}}
+ enum Sound {BLOCK_AMETHYST_BLOCK_BREAK}
+ enum SoundCategory {BLOCKS}
+ static class World {int fractureSounds;void playSound(Location point,Sound sound,SoundCategory category,float volume,float pitch){fractureSounds++;}}
+ static class Color {static Color fromRGB(int r,int g,int b){return new Color();}}
+ static class Particle {static final Particle REVERSE_PORTAL=new Particle(),END_ROD=new Particle(),CRIT=new Particle(),DUST=new Particle();
+  static class DustOptions {DustOptions(Color color,float size){}}
+ }
+ static class Location {World world=new World();public Location clone(){return this;}Location add(double a,double b,double c){return this;}World getWorld(){return world;}}
  static class Wave4ObeliskRuntimeState {
-  UUID id=UUID.randomUUID();UUID id(){return id;}Location base(){return new Location();}
+  final Location location=new Location();
+  boolean fractureCuePlayed;
+  UUID id=UUID.randomUUID();UUID id(){return id;}Location base(){return location;}
   long destroyAtTick(){return 8;}Map<Integer,UUID> visualIds(){return Map.of(0,id);}}
  static class ObeliskGeometryPolicy {static final int VISUAL_DISPLAY_KEY=0;static final float VISUAL_WIDTH_BLOCKS=3.25F;}
- enum Particle {REVERSE_PORTAL,END_ROD}
- void spawnEventParticle(Location p,Particle type,int count,double a,double b,double c,double d){}
+ int fractureParticleCalls;
+ void spawnEventParticle(Location p,Particle type,int count,double a,double b,double c,double d){if(type==Particle.CRIT||type==Particle.DUST)fractureParticleCalls++;}
+ void spawnEventParticle(Location p,Particle type,int count,double a,double b,double c,double d,Particle.DustOptions options){if(type==Particle.CRIT||type==Particle.DUST)fractureParticleCalls++;}
  public static void main(String[] args){
   var probe=new CollapseProbe();var state=new Wave4ObeliskRuntimeState();
   probe.renderObeliskCollapse(state);
@@ -45,6 +55,11 @@ public class CollapseProbe {
     throw new AssertionError("collapse compounded its own transform on repeated ticks");
   probe.eventTickCounter=8;probe.renderObeliskCollapse(state);
   if(Bukkit.display.t.getScale().y> .021F)throw new AssertionError("collapse did not finish");
+  if(probe.fractureParticleCalls!=3||state.base().getWorld().fractureSounds!=1)
+    throw new AssertionError("collapse must emit one distinct colored fracture burst and impact sound");
+  probe.renderObeliskCollapse(state);
+  if(probe.fractureParticleCalls!=3||state.base().getWorld().fractureSounds!=1)
+    throw new AssertionError("fracture cue must be one-shot while the obelisk collapses");
  }
 ''' + adapter + "\n}", encoding="utf-8")
     result = subprocess.run(["javac", "-d", str(tmp_path), str(java)], capture_output=True, text=True)

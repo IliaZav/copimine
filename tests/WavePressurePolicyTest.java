@@ -42,12 +42,12 @@ public final class WavePressurePolicyTest {
         var waveOneRequest = new WaveMechanicsPolicy.WaveCounts(12, 8, 0, 0, 0);
         var twoPlayerWaveOne = WavePressurePolicy.clamp(1, waveOneRequest, 2);
         var threePlayerWaveOne = WavePressurePolicy.clamp(1, waveOneRequest, 3);
-        check(twoPlayerWaveOne.total() == 10 && threePlayerWaveOne.total() == 10,
-                "Wave 1 uses ten simultaneous mobs for two or three players");
+        check(twoPlayerWaveOne.total() == 12 && threePlayerWaveOne.total() == 12,
+                "Wave 1 uses twelve simultaneous mobs for two or three players");
         var extremeWaveOne = WavePressurePolicy.clamp(1,
                 new WaveMechanicsPolicy.WaveCounts(Integer.MAX_VALUE, Integer.MAX_VALUE,
                         Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE), 2);
-        check(extremeWaveOne.total() == 10
+        check(extremeWaveOne.total() == 12
                         && extremeWaveOne.total() <= PressureBudgetController.HARD_CAP,
                 "Wave 1's scoped cap remains safe for extreme input and below the hard cap");
 

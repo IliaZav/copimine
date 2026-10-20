@@ -65,6 +65,7 @@ RUNTIME_PATHS=(
   "minecraft/server/usercache.json"
   "minecraft/server/plugins/LuckPerms"
   "minecraft/server/plugins/AuthMe"
+  "minecraft/server/plugins/CopiMineArtifacts"
   "minecraft/server/plugins/nLogin"
   "minecraft/server/plugins/FastLogin"
   "minecraft/server/logs"

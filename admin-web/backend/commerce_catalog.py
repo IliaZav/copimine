@@ -132,6 +132,8 @@ def load_commerce_catalog(items_file: Path | None = None, fallback_base_url: str
             "visual_effect_id": str(entry.get("visual-effect-id") or "").strip().upper(),
             "lore": lore,
         }
+        if not row["enabled"]:
+            continue
         donation_items.append(row)
         donation_by_id[item_id] = row
     donation_items.sort(key=lambda row: (not bool(row.get("enabled")), int(row.get("price_donation") or 0), str(row.get("display_name") or row.get("item_id") or "")))

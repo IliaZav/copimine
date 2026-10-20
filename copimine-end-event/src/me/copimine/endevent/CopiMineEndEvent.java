@@ -166,6 +166,7 @@ import me.copimine.endevent.domain.ObeliskIntegrityPolicy;
 import me.copimine.endevent.domain.ObeliskProjectilePolicy;
 import me.copimine.endevent.domain.EndRiftObjective;
 import me.copimine.endevent.domain.BlackFogDamagePolicy;
+import me.copimine.endevent.domain.BlackFogCurtainPolicy;
 import me.copimine.endevent.domain.BlackFogSafeZonePolicy;
 import me.copimine.endevent.domain.BlackFogTimingPolicy;
 import me.copimine.endevent.domain.BossHitboxProfile;
@@ -19909,23 +19910,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         namedWave7InitialActorCreation = false;
         namedWave7RuntimeRestorePending = false;
         realitySplitChamberController.begin(generation, new ArrayList<>(roster));
-        if (sandbox) {
-            List<RealitySplitTrialController.NamedTrial> testLayout =
-                    namedWave7TestLayout((int) playerCount);
-            if (testLayout.size() != playerCount) return false;
-            realitySplitTrialController.beginNamed(eventUuid, generation,
-                    realitySplitChamberController.assignment(), testLayout);
-        } else {
-            realitySplitTrialController.beginNamed(eventUuid, generation,
-                    realitySplitChamberController.assignment(), java.util.concurrent.ThreadLocalRandom.current());
-        }
+        realitySplitTrialController.beginNamed(eventUuid, generation,
+                realitySplitChamberController.assignment(), java.util.concurrent.ThreadLocalRandom.current());
         wave7RecoveryCheckpoint = Map.of();
 
         if (!preflightNamedTrialActorAdapters()) {
             enterNamedRealitySplitRecovery("WAVE7_NAMED_ACTOR_ADAPTER_PREFLIGHT_FAILED");
             return false;
         }
-        if (!sandbox && !preflightNamedEchoDuelRooms()) {
+        if (!preflightNamedEchoDuelRooms()) {
             enterNamedRealitySplitRecovery("WAVE7_NAMED_ECHO_PREFLIGHT_FAILED");
             return false;
         }
@@ -19950,19 +19943,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         namedWave7InitialActorCreation = true;
         return true;
-    }
-
-    private List<RealitySplitTrialController.NamedTrial> namedWave7TestLayout(int playerCount) {
-        if (playerCount < 2 || playerCount > me.copimine.endevent.domain.Wave7RoomLayoutPolicy.MAX_PLAYERS) {
-            return List.of();
-        }
-        if (playerCount >= 4) {
-            return List.of(RealitySplitTrialController.NamedTrial.values());
-        }
-        return List.copyOf(List.of(
-                RealitySplitTrialController.NamedTrial.WARDEN,
-                RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN,
-                RealitySplitTrialController.NamedTrial.RIFT_ARCHMAGE).subList(0, playerCount));
     }
 
     private boolean preflightNamedTrialActorAdapters() {
@@ -28757,11 +28737,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (!isEventParticleViewer(viewer, core)) {
                     continue;
                 }
-                for (int level = 0; level < 3; level++) {
-                    spawnPatternRing(viewer, core.clone().add(0.0D, level + 0.5D, 0.0D),
-                            new Vector(1.0D, 0.0D, 0.0D), new Vector(0.0D, 0.0D, 1.0D),
-                            18.0D - level * 1.3D, 18, now * 0.001D + level,
-                            Particle.DRAGON_BREATH);
+                for (BlackFogCurtainPolicy.Point point
+                        : BlackFogCurtainPolicy.perimeter(18.0D, 5.0D)) {
+                    spawnTypedParticle(viewer, Particle.SQUID_INK,
+                            core.clone().add(point.x(), point.y(), point.z()),
+                            1, 0.2D, 0.25D, 0.2D, 0.01D);
                 }
             }
         } else if (objectiveWave == 6) {
@@ -39214,6 +39194,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         long remaining = Math.max(0L, state.destroyAtTick() - eventTickCounter);
         float collapse = Math.max(.01F, Math.min(1F, remaining / 8F));
+        if (!state.fractureCuePlayed) {
+            state.fractureCuePlayed = true;
+            Location fracturePoint = state.base().clone().add(0.0D, 1.0D, 0.0D);
+            spawnEventParticle(fracturePoint, Particle.CRIT, 32,
+                    0.8D, 0.9D, 0.8D, 0.12D);
+            spawnEventParticle(fracturePoint, Particle.DUST, 24,
+                    0.75D, 0.7D, 0.75D, 0.05D,
+                    new Particle.DustOptions(Color.fromRGB(151, 61, 255), 1.35F));
+            spawnEventParticle(fracturePoint, Particle.DUST, 24,
+                    0.75D, 0.7D, 0.75D, 0.05D,
+                    new Particle.DustOptions(Color.fromRGB(67, 230, 255), 1.2F));
+            state.base().getWorld().playSound(state.base(), Sound.BLOCK_AMETHYST_BLOCK_BREAK,
+                    SoundCategory.BLOCKS, 1.0F, 0.72F);
+        }
         UUID collapseVisualId = state.visualIds().get(ObeliskGeometryPolicy.VISUAL_DISPLAY_KEY);
         Entity visual = collapseVisualId == null ? null : Bukkit.getEntity(collapseVisualId);
         if (visual instanceof ItemDisplay display && display.isValid()) {
@@ -40327,6 +40321,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         private long pulseReleaseTick;
         private long destroyAtTick = -1L;
         private int health;
+        private boolean fractureCuePlayed;
 
         private Wave4ObeliskRuntimeState(UUID id, Location base, int health,
                                            List<BlockCellKey> cells,

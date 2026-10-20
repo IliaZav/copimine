@@ -149,9 +149,9 @@ waves:
     elite-skeletons: 0
   wave-2:
     type: RIFT_HUNT
-    endermen: 12
-    spiders: 12
-    skeletons: 6
+    endermen: 14
+    spiders: 14
+    skeletons: 8
     elite-endermen: 0
     elite-skeletons: 0
   wave-3:

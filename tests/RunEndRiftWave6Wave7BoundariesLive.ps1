@@ -765,7 +765,15 @@ try {
   $wave7Offset = Log-Length
   $null = Invoke-LocalRcon 'cmend test wave 7'
   Wait-Log -AfterOffset $wave7Offset -Pattern 'WAVE_OBJECTIVE_STARTED.*wave=7\b' | Out-Null
-  Wait-Log -AfterOffset $wave7Offset -Pattern 'END_RIFT_NAMED_WAVE7_TRIALS_READY.*layout=\[WARDEN, MOBILE_MARKSMAN\]' | Out-Null
+  $wave7TrialReady = Wait-Log -AfterOffset $wave7Offset `
+    -Pattern 'END_RIFT_NAMED_WAVE7_TRIALS_READY.*layout=\[([A-Z_, ]+)\]'
+  $wave7LayoutMatch = [Regex]::Match($wave7TrialReady, 'END_RIFT_NAMED_WAVE7_TRIALS_READY.*layout=\[([A-Z_, ]+)\]')
+  $wave7Layout = if ($wave7LayoutMatch.Success) { @($wave7LayoutMatch.Groups[1].Value -split ', ') } else { @() }
+  $validWave7Trials = @('WARDEN', 'PERSONAL_ECHO', 'MOBILE_MARKSMAN', 'RIFT_ARCHMAGE')
+  if ($wave7Layout.Count -ne 2 -or @($wave7Layout | Select-Object -Unique).Count -ne 2 -or
+      @($wave7Layout | Where-Object { $_ -notin $validWave7Trials }).Count -gt 0) {
+    throw "Two-player Wave 7 must select two distinct trials from the full pool: $($wave7TrialReady -join ' ')"
+  }
   $barrierLog = Wait-Log -AfterOffset $wave7Offset `
     -Pattern 'END_RIFT_WAVE7_BARRIERS_READY.*cells=(\d+).*height=6.*material=barrier.*collision=true.*visible=true.*journaled=true'
   $barrierMatch = [Regex]::Match($barrierLog, 'END_RIFT_WAVE7_BARRIERS_READY.*cells=(\d+)')

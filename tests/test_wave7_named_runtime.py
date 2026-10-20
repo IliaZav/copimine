@@ -251,19 +251,18 @@ def test_wave7_live_boundary_runner_waits_for_actual_objective_start_marker():
     assert "Wait-Log -AfterOffset $wave7Offset -Pattern 'WAVE_OBJECTIVE_STARTED.*wave=7\\b'" in runner
 
 
-def test_wave7_two_player_disposable_test_uses_non_echo_layout_for_bot_clients():
+def test_wave7_sandbox_uses_the_same_distinct_random_trial_pool_as_official_runs():
     source = (SOURCE / "CopiMineEndEvent.java").read_text(encoding="utf-8")
     preflight = extract(source, "boolean preflightWave7StartBeforeWorldMutation(World world, Location core,")
-    test_layout = extract(source, "List<RealitySplitTrialController.NamedTrial> namedWave7TestLayout(int playerCount)")
-    assert "if (sandbox)" in preflight and "namedWave7TestLayout((int) playerCount)" in preflight
-    assert "RealitySplitTrialController.NamedTrial.WARDEN" in test_layout
-    assert "RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN" in test_layout
-    assert "RealitySplitTrialController.NamedTrial.RIFT_ARCHMAGE" in test_layout
-    assert ".subList(0, playerCount)" in test_layout
-    assert "if (playerCount >= 4)" in test_layout
-    assert "return List.of(RealitySplitTrialController.NamedTrial.values());" in test_layout
+    assert "if (sandbox)" not in preflight
+    assert "namedWave7TestLayout" not in source
+    assert "realitySplitTrialController.beginNamed(eventUuid, generation,\n                realitySplitChamberController.assignment(), java.util.concurrent.ThreadLocalRandom.current())" in preflight
+    assert "preflightNamedEchoDuelRooms()" in preflight
     runner = (ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1").read_text(encoding="utf-8")
-    assert "END_RIFT_NAMED_WAVE7_TRIALS_READY.*layout=\\[WARDEN, MOBILE_MARKSMAN\\]" in runner
+    assert "layout=\\[([A-Z_, ]+)\\]" in runner
+    assert "Groups[1].Value -split ', '" in runner
+    assert "$wave7Layout.Count -ne 2" in runner
+    assert "layout=\\[WARDEN, MOBILE_MARKSMAN\\]" not in runner
 
 
 def test_named_death_requires_new_actor_identity_and_selected_role(tmp_path):
@@ -408,7 +407,6 @@ def test_official_wave7_preflight_runs_before_cleanup_teleport_and_actor_spawn(t
     assert "startRealitySplitTrials(world, core)" in initializer
 
     preflight = extract(source, "boolean preflightWave7StartBeforeWorldMutation(")
-    test_layout = extract(source, "List<RealitySplitTrialController.NamedTrial> namedWave7TestLayout(int playerCount)")
     assert preflight.index("preflightNamedTrialActorAdapters()") < preflight.index(
         "preflightNamedEchoDuelRooms()")
     assert preflight.index("preflightNamedEchoDuelRooms()") < preflight.index(

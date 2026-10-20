@@ -376,3 +376,16 @@ def test_wave5_recovery_checkpoint_codec_is_executable(probe):
     result = subprocess.run(["java", "-cp", str(probe), "BlackFogRecoverySnapshotTest"],
                             capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_wave5_fog_renders_a_bounded_arena_perimeter_curtain():
+    source = SOURCE.read_text("utf-8")
+    body = extract(source, "void renderWaveObjective(long now)")
+
+    assert "BlackFogCurtainPolicy.perimeter(18.0D, 5.0D)" in body
+    policy = (SOURCE.parent / "domain/BlackFogCurtainPolicy.java").read_text(encoding="utf-8")
+    assert "POINTS_PER_RING = 96" in policy
+    assert "VERTICAL_LAYERS = 8" in policy
+    assert "MAX_PARTICLE_POINTS = POINTS_PER_RING * VERTICAL_LAYERS" in policy
+    assert "spawnTypedParticle(viewer, Particle.SQUID_INK" in body
+    assert "eventTickCounter % 20L == 0L" in body

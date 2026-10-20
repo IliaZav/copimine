@@ -107,7 +107,21 @@ public final class WaveProjectileAdmissionControllerTest {
         check(admission.reserveGroup(ordinaryProjectileOverflow, 2, 4),
                 "ordinary two-player projectiles may fill the configured four-child profile");
         check(!admission.reserveGroup(UUID.randomUUID(), 2, 1),
-                "ordinary projectiles cannot borrow the named five-arrow rain exception");
+                "ordinary projectiles cannot exceed their independent four-child profile");
+        UUID concurrentRain = UUID.randomUUID();
+        check(admission.reserveNamedFiveArrowRain(concurrentRain, 2),
+                "the named elite rain has a reserved lane even when common arrows occupy all ordinary slots");
+        check(admission.activeProjectileCount() == 9
+                        && admission.activeProjectileCount() <= admission.effectiveProjectileCap(2),
+                "ordinary arrows plus one complete rain stay within the combined physical cap");
+        check(!admission.reserveNamedFiveArrowRain(UUID.randomUUID(), 2),
+                "only one named rain may occupy the reserved lane at a time");
+        check(!admission.reserveGroup(UUID.randomUUID(), 2, 1),
+                "ordinary projectiles cannot consume slots from the named rain lane");
+        admission.releaseGroup(concurrentRain);
+        admission.releaseGroup(ordinaryProjectileOverflow);
+        check(admission.activeProjectileCount() == 0,
+                "both isolated lanes release all slots during generation cleanup");
 
         admission.clear();
         UUID failedAfterFirstChild = UUID.randomUUID();

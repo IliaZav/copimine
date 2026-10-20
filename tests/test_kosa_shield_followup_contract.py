@@ -63,6 +63,13 @@ class KosaShieldFollowupContractTest(unittest.TestCase):
         self.assertIn("this.applyKosaCombatEffects(var1, var2, var10)", combat)
         self.assertNotIn("tryKosaRareDebuffs", combat)
 
+        catalog = donation_item_block("kosa_nalogovoy_inspekcii")
+        self.assertIn("proc-chance: 0.30", catalog)
+        description = re.search(r'^\s+effect-description: "([^"]+)"$', catalog, re.M)
+        self.assertIsNotNone(description)
+        self.assertIn("20% шанс наложить голод, 20% шанс наложить иссушение", description.group(1))
+        self.assertIn("независимо", description.group(1))
+
     def test_kosa_applies_three_hp_hunger_wither_and_blindness(self) -> None:
         helper = self.source[
             self.source.index("private void applyKosaCombatEffects") : self.source.index(

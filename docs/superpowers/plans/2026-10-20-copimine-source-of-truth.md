@@ -4,7 +4,7 @@
 
 **Goal:** Establish one reviewable CopiMine source checkout and one GitHub integration branch, preserve current game/server functionality, exclude the standalone public site and launcher, and reclaim only verified generated launcher/site output.
 
-**Architecture:** Use `codex/end-rift-26-3-integrated-final` as the integration base and build the canonical line in `codex/copimine-source-of-truth-20261020`. First preserve reviewable source changes from dirty worktrees on remote recovery refs, then integrate newer applicable plugin/core source and tests. Keep generated binaries out unless they are intentional release output. The clean local checkout is `D:\Desktop\Copimine\copimine-source-of-truth`.
+**Architecture:** Use `codex/end-rift-26-3-integrated-final` as the integration base and build the canonical line in `codex/copimine-source-of-truth-20261020`. Publish reviewable source changes directly on the canonical branch in small, reviewed commits before deleting any local output. Preserve every existing worktree and branch as a separate rollback source. Keep generated binaries out unless they are intentional release output. The clean local checkout is `D:\Desktop\Copimine\copimine-source-of-truth`.
 
 **Tech Stack:** Git worktrees and GitHub; Java/Paper plugins; Python admin backend and contract tests; PowerShell build and validation scripts; Minecraft 26.3 pinned toolchain.
 
@@ -35,11 +35,11 @@
 
 **Files:**
 - Dirty in-scope worktrees identified by `git status`.
-- GitHub recovery refs under `codex/precleanup-20261020-*`.
+- GitHub canonical ref `codex/copimine-source-of-truth-20261020`.
 
 - [ ] Inventory tracked and untracked changes by worktree, distinguishing source/config/docs from generated output, runtime, secrets, and worlds.
 - [ ] Create small backup commits only for reviewable source/config/docs and tests that are not secrets or runtime/world data.
-- [ ] Push each recovery checkpoint to GitHub and verify its remote SHA before any cleanup.
+- [ ] Push each reviewed source checkpoint to the canonical branch and verify its remote SHA before any cleanup.
 
 ### Task 2: Establish the clean integration checkout
 

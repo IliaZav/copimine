@@ -5,10 +5,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[1].joinpath("admin-web")))
 
-from backend.main import public_pin_status
-
 
 def test_public_pin_status_drops_reversible_or_plaintext_values() -> None:
+    from backend.main import public_pin_status
+
     payload = public_pin_status(
         {
             "set": True,
@@ -39,5 +39,5 @@ def test_authoritative_pin_tables_do_not_declare_reversible_columns() -> None:
     assert "seal_persistent_pin" not in source
     assert "reveal_persistent_pin" not in source
     assert "ALTER TABLE {table} DROP COLUMN pin_sealed" in source
-    assert "ALTER TABLE bank_pin_hashes DROP COLUMN IF EXISTS pin_sealed" in migration
-    assert "ALTER TABLE bank_account_pins DROP COLUMN IF EXISTS pin_sealed" in migration
+    assert "ALTER TABLE IF EXISTS bank_pin_hashes DROP COLUMN IF EXISTS pin_sealed" in migration
+    assert "ALTER TABLE IF EXISTS bank_account_pins DROP COLUMN IF EXISTS pin_sealed" in migration

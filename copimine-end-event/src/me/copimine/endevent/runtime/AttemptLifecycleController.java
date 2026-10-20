@@ -6,6 +6,7 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import me.copimine.protocol.EncounterGenerationPolicy;
 
 /**
  * Generation fence and living-roster state for one encounter attempt.
@@ -22,7 +23,8 @@ public final class AttemptLifecycleController {
         ALREADY_IN_PROGRESS,
         STALE_GENERATION,
         NO_LIVING_PLAYERS,
-        INVALID_GENERATION
+        INVALID_GENERATION,
+        GENERATION_EXHAUSTED
     }
 
     private long generation = Long.MIN_VALUE;
@@ -38,7 +40,7 @@ public final class AttemptLifecycleController {
     private long wipeCount;
 
     public synchronized void begin(long generation, Set<UUID> roster) {
-        if (generation <= 0L) throw new IllegalArgumentException("generation must be positive");
+        EncounterGenerationPolicy.requireActiveGeneration(generation);
         this.generation = generation;
         this.pendingNextGeneration = Long.MIN_VALUE;
         this.participants.clear();
@@ -227,7 +229,10 @@ public final class AttemptLifecycleController {
         if (!living().isEmpty()) {
             return new WipeResult(WipeStatus.NO_LIVING_PLAYERS, generation, wipeCount, safeReason(reason));
         }
-        pendingNextGeneration = nextGeneration(generation);
+        if (!EncounterGenerationPolicy.canAdvance(generation)) {
+            return new WipeResult(WipeStatus.GENERATION_EXHAUSTED, generation, wipeCount, safeReason(reason));
+        }
+        pendingNextGeneration = EncounterGenerationPolicy.next(generation);
         wiping = true;
         return new WipeResult(WipeStatus.ACCEPTED, pendingNextGeneration, wipeCount + 1L,
                 safeReason(reason));
@@ -235,7 +240,8 @@ public final class AttemptLifecycleController {
 
     /** Commit the pending generation after external cleanup and persistence. */
     public synchronized boolean commitWipe(long expectedGeneration) {
-        if (!wiping || !owns(expectedGeneration) || pendingNextGeneration <= 0L) return false;
+        if (!wiping || !owns(expectedGeneration)
+                || !EncounterGenerationPolicy.isActiveGeneration(pendingNextGeneration)) return false;
         generation = pendingNextGeneration;
         pendingNextGeneration = Long.MIN_VALUE;
         clearWave7Returns();
@@ -482,7 +488,8 @@ public final class AttemptLifecycleController {
             requireGrace(graceMillis);
             String prefix = "wave7-return.";
             String version = encoded == null ? null : encoded.get(prefix + "version");
-            if (encoded == null || event == null || event.isBlank() || expectedGeneration <= 0L
+            if (encoded == null || event == null || event.isBlank()
+                    || !EncounterGenerationPolicy.isActiveGeneration(expectedGeneration)
                     || claims == null || claims.isEmpty() || claims.size() > 20 || officialRoster == null
                     || officialRoster.size() > 20 || !officialRoster.containsAll(claims.keySet())
                     || !("1".equals(version) || "2".equals(version))
@@ -631,14 +638,6 @@ public final class AttemptLifecycleController {
     private record ReturnStatus(long incarnation, ReturnStage stage, long readyTick, long deadlineStartedNanos,
                                 long deadlineDurationNanos, long deadlineMillis) { }
     public record ReturnToken(UUID owner, long generation, long incarnation) { }
-
-    private static long nextGeneration(long current) {
-        if (current <= 0L) throw new IllegalArgumentException("generation must be positive");
-        if (current == Long.MAX_VALUE) {
-            throw new IllegalStateException("generation exhausted; administrative recovery required");
-        }
-        return current + 1L;
-    }
 
     private static String safeReason(String reason) { return reason == null ? "" : reason.trim(); }
 

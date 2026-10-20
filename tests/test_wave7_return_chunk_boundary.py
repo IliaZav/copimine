@@ -177,7 +177,7 @@ public class ReturnChunkProbe {
     production = [BASE / name for name in (
         "domain/BossMovementPolicy.java", "domain/ChamberIsolationPolicy.java", "domain/RealitySplitPlayerTeleportPolicy.java",
         "runtime/AttemptLifecycleController.java")]
-    result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(directory),
+    result = subprocess.run(["javac", str(ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/EncounterGenerationPolicy.java"), "-encoding", "UTF-8", "-d", str(directory),
                              *map(str, production), *map(str, directory.rglob("*.java"))],
                             capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr

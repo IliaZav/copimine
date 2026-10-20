@@ -28,6 +28,7 @@ def _declaration(source: str, signature: str) -> str:
 def probe_harness(tmp_path_factory):
     source = EVENT.read_text(encoding="utf-8")
     methods = [
+        _declaration(source, "private Long preflightNextGeneration("),
         _declaration(source, "private void spawnWave(int wave, boolean test)"),
         _declaration(source, "private boolean spawnTestWave("),
         _declaration(source, "private boolean spawnWaveForObjectiveInternal("),
@@ -63,6 +64,7 @@ def probe_harness(tmp_path_factory):
 import java.util.*;
 import java.util.logging.*;
 import java.util.stream.Collectors;
+import me.copimine.protocol.EncounterGenerationPolicy;
 import me.copimine.endevent.domain.EventPhase;
 import me.copimine.endevent.domain.BlackFogRecoverySnapshot;
 import me.copimine.endevent.domain.SandboxWaveSessionSnapshot;
@@ -498,7 +500,7 @@ public final class WaveProbeAdapterHarness {
     java_file.write_text(harness, encoding="utf-8")
     domain = ROOT / "copimine-end-event/src/me/copimine/endevent/domain"
     runtime = ROOT / "copimine-end-event/src/me/copimine/endevent/runtime"
-    compiled = subprocess.run(["javac", "-proc:none", "-encoding", "UTF-8", "-d", str(output),
+    compiled = subprocess.run(["javac", str(ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/EncounterGenerationPolicy.java"), "-proc:none", "-encoding", "UTF-8", "-d", str(output),
                                str(java_file), str(domain / "EventPhase.java"),
                                str(domain / "BlackFogTimingPolicy.java"),
                                str(domain / "EndRiftObjective.java"),

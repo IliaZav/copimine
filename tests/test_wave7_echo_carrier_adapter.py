@@ -106,7 +106,7 @@ import com.destroystokyo.paper.entity.ai.MobGoals;
 import me.copimine.endevent.domain.wave7.EchoPresentationProbeState;
 import me.copimine.endevent.runtime.wave7.EchoPresentationProbe;
 public class EchoCarrierChecks {
-    static boolean aware,goals=true,removed,online=true,ownerAlive=true;static int moves,effects;static double health=20;
+    static boolean aware,goals=true,removed,online=true,ownerAlive=true;static int moves,effects,swings;static double health=20;
     static ItemStack mainItem,offItem;static org.bukkit.inventory.EquipmentSlot activeHand;static int wearCalls,raiseCalls;
     static UUID OWNER=new UUID(0,2),ACTOR=new UUID(0,3),EVENT=new UUID(0,1);
     static Object value(Class<?> type){
@@ -146,6 +146,7 @@ public class EchoCarrierChecks {
             case "setAware"->{aware=(Boolean)a[0];yield null;}
             case "setHealth"->{health=(Double)a[0];yield null;}
             case "startUsingItem"->{activeHand=(org.bukkit.inventory.EquipmentSlot)a[0];raiseCalls++;yield null;}
+            case "swingMainHand"->{swings++;yield null;}
             case "clearActiveItem"->{activeHand=null;yield null;}
             case "hasActiveItem"->activeHand!=null;case "getActiveItemHand"->activeHand;
             case "damageItemStack"->{
@@ -200,6 +201,29 @@ public class EchoCarrierChecks {
             if(accepted!=args[0].equals("admission-live"))throw new AssertionError("actual carrier liveness admitted stale/closed context: "+args[0]);
             if(!probe.duel().equals(frames.get(0).duel())||probe.epoch()!=frames.get(0).epoch())
                 throw new AssertionError("combat pair diverged from actual presentation identity");
+        }else if(args[0].equals("sequence-exhausted-action")){
+            var stateField=EchoPresentationProbe.class.getDeclaredField("state");stateField.setAccessible(true);
+            var probeState=(EchoPresentationProbeState)stateField.get(probe);
+            var sequenceField=EchoPresentationProbeState.class.getDeclaredField("sequence");sequenceField.setAccessible(true);
+            var equipmentField=EchoPresentationProbeState.class.getDeclaredField("equipmentVersion");equipmentField.setAccessible(true);
+            int equipmentBefore=equipmentField.getInt(probeState);sequenceField.setLong(probeState,Long.MAX_VALUE);
+            if(probe.action(EchoPresentationProbeState.Action.SWING,105))throw new AssertionError("exhausted stream accepted action");
+            if(swings!=0)throw new AssertionError("exhausted sequence performed native swing");
+            if(equipmentField.getInt(probeState)!=equipmentBefore)throw new AssertionError("exhausted sequence mutated action state");
+            if(sequenceField.getLong(probeState)!=Long.MAX_VALUE)throw new AssertionError("sequence wrapped");
+            if(!removed||packets.size()!=1||!packets.get(0).equals("END_ECHO_BIND"))
+                throw new AssertionError("exhausted stream must retire locally without a wrapped frame");
+        }else if(args[0].equals("copy-sequence-exhausted-tick")){
+            if(!probe.action(EchoPresentationProbeState.Action.EAT,105))throw new AssertionError("food use did not start");
+            var stateField=EchoPresentationProbe.class.getDeclaredField("state");stateField.setAccessible(true);
+            var probeState=(EchoPresentationProbeState)stateField.get(probe);
+            var sequenceField=EchoPresentationProbeState.class.getDeclaredField("sequence");sequenceField.setAccessible(true);
+            var replicaField=EchoPresentationProbe.class.getDeclaredField("replica");replicaField.setAccessible(true);
+            var replica=(me.copimine.endevent.runtime.wave7.EchoReplicaInventory)replicaField.get(probe);
+            sequenceField.setLong(probeState,Long.MAX_VALUE);
+            if(probe.tick(owner,EVENT,7,137,true))throw new AssertionError("exhausted stream kept ticking");
+            if(effects!=0||replica.state().remaining(41)!=2)throw new AssertionError("exhausted stream completed a local food action");
+            if(!removed||packets.size()!=2)throw new AssertionError("exhausted tick published a wrapped frame instead of retiring locally");
         }else if(args[0].equals("walk")){
             probe.action(EchoPresentationProbeState.Action.WALK,105);
             probe.tick(owner,EVENT,7,105,true);probe.tick(owner,EVENT,7,110,true);
@@ -354,7 +378,7 @@ public class EchoCarrierChecks {
     return classpath
 
 
-@pytest.mark.parametrize("scenario", ["walk", "death", "generation", "copy-gear", "copy-eat", "copy-eat-other-wear", "copy-eat-supply-changed", "copy-cancel", "copy-stale", "copy-quit", "copy-main-shield", "copy-native-shield", "copy-native-main-shield", "copy-native-stale", "copy-shield-hit", "copy-shield-main-hit", "copy-shield-unbreaking", "copy-shield-break", "copy-shield-axe", "copy-shield-overflow", "copy-armor-hit", "copy-armor-break", "copy-armor-unbreaking", "copy-armor-food", "copy-armor-overflow", "admission-live", "admission-owner-dead", "admission-owner-quit", "admission-capability", "admission-generation", "admission-expiry", "admission-actor-dead", "admission-null-owner", "admission-closed"])
+@pytest.mark.parametrize("scenario", ["walk", "death", "generation", "copy-gear", "copy-eat", "copy-eat-other-wear", "copy-eat-supply-changed", "copy-cancel", "copy-stale", "copy-quit", "copy-main-shield", "copy-native-shield", "copy-native-main-shield", "copy-native-stale", "copy-shield-hit", "copy-shield-main-hit", "copy-shield-unbreaking", "copy-shield-break", "copy-shield-axe", "copy-shield-overflow", "copy-armor-hit", "copy-armor-break", "copy-armor-unbreaking", "copy-armor-food", "copy-armor-overflow", "admission-live", "admission-owner-dead", "admission-owner-quit", "admission-capability", "admission-generation", "admission-expiry", "admission-actor-dead", "admission-null-owner", "admission-closed", "sequence-exhausted-action", "copy-sequence-exhausted-tick"])
 def test_native_carrier_adapter(carrier_probe, scenario):
     result = subprocess.run(["java", "-cp", carrier_probe, "EchoCarrierChecks", scenario],
                             capture_output=True, text=True)

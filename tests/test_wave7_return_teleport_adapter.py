@@ -70,7 +70,7 @@ def run_probe(tmp_path, signatures, body):
     files = [ROOT / "copimine-end-event/src/me/copimine/endevent" / path for path in (
         "runtime/AttemptLifecycleController.java", "domain/ChamberIsolationPolicy.java",
         "domain/RealitySplitPlayerTeleportPolicy.java")]
-    result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path),
+    result = subprocess.run(["javac", str(ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/EncounterGenerationPolicy.java"), "-encoding", "UTF-8", "-d", str(tmp_path),
                              *map(str, files), str(probe)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     result = subprocess.run(["java", "-cp", str(tmp_path), "ReturnTeleportProbe"], capture_output=True, text=True)

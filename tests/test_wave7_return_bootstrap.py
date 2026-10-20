@@ -180,7 +180,7 @@ public class Wave7ReturnBootstrapProbe {
         "runtime/AttemptLifecycleController.java",
     )
     compile_result = subprocess.run(
-        ["javac", "-encoding", "UTF-8", "-d", str(tmp_path), *(str(SOURCE / path) for path in paths), str(probe)],
+        ["javac", str(ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/EncounterGenerationPolicy.java"), "-encoding", "UTF-8", "-d", str(tmp_path), *(str(SOURCE / path) for path in paths), str(probe)],
         capture_output=True, text=True,
     )
     assert compile_result.returncode == 0, compile_result.stdout + compile_result.stderr

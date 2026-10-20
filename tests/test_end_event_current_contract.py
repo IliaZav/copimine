@@ -303,7 +303,8 @@ def test_cleanup_and_generation_ownership() -> None:
     journal = PLUGIN_SRC / "HazardMutationJournal.java"
     deposit = PLUGIN_SRC / "DepositJournal.java"
     assert_contains(scope, "registerTask", "registerEntity", "registerCloser", "close()")
-    assert_contains(lifecycle, "pendingNextGeneration", "commitWipe", "abortWipe", "generation must be positive")
+    assert_contains(lifecycle, "pendingNextGeneration", "commitWipe", "abortWipe",
+                    "EncounterGenerationPolicy.requireActiveGeneration", "GENERATION_EXHAUSTED")
     assert_contains(tasks, "pruneCompleted", "cancelAll", "activeCount")
     assert_contains(journal, "unresolved hazard journal must be restored", "floor-original", "markRestored")
     assert_contains(deposit, "JournalCorruptionException", "torn final", "fields.length != 6")

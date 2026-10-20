@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_wave7_return_admission_grace_and_restart(tmp_path):
     lifecycle = ROOT / "copimine-end-event/src/me/copimine/endevent/runtime/AttemptLifecycleController.java"
     probe = ROOT / "tests/Wave7ReturnLifecycleTest.java"
-    compiled = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path), str(lifecycle), str(probe)], capture_output=True, text=True)
+    compiled = subprocess.run(["javac", str(ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/EncounterGenerationPolicy.java"), "-encoding", "UTF-8", "-d", str(tmp_path), str(lifecycle), str(probe)], capture_output=True, text=True)
     assert compiled.returncode == 0, compiled.stdout + compiled.stderr
     executed = subprocess.run(["java", "-cp", str(tmp_path), "Wave7ReturnLifecycleTest"], capture_output=True, text=True)
     assert executed.returncode == 0, executed.stdout + executed.stderr
@@ -72,7 +72,7 @@ public class Wave7PersonalDeadlineAdapterProbe {
 }
 ''', encoding="utf-8")
     lifecycle = ROOT / "copimine-end-event/src/me/copimine/endevent/runtime/AttemptLifecycleController.java"
-    compiled = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path), str(lifecycle), str(probe)],
+    compiled = subprocess.run(["javac", str(ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/EncounterGenerationPolicy.java"), "-encoding", "UTF-8", "-d", str(tmp_path), str(lifecycle), str(probe)],
                               capture_output=True, text=True)
     assert compiled.returncode == 0, compiled.stdout + compiled.stderr
     executed = subprocess.run(["java", "-cp", str(tmp_path), "Wave7PersonalDeadlineAdapterProbe"],

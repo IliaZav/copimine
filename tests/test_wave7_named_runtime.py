@@ -453,7 +453,7 @@ public class Wave7PreflightProbe {
     boolean namedRealitySplitTrialImplemented(RealitySplitTrialController.NamedTrial trial){return true;}
     void enterNamedRealitySplitRecovery(String reason){recoveryReason=reason;recovery=true;}
     boolean saveStateSync(){saves++;return true;}
-''' + test_layout + preflight + r'''
+''' + preflight + r'''
     boolean initializeAfterPreflight(World world,Location core,List<UUID> owners){
         if(!preflightWave7StartBeforeWorldMutation(world,core,new LinkedHashSet<>(owners),false))return false;
         cleanups++;teleports++;spawns++;return true;

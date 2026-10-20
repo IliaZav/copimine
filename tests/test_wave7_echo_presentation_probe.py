@@ -17,6 +17,7 @@ def echo_probe(tmp_path_factory):
     directory = tmp_path_factory.mktemp("echo-presentation-probe")
     state = BASE / "domain/wave7/EchoPresentationProbeState.java"
     assert state.exists(), "The server has no authoritative presentation probe state yet"
+    epoch_policy = BASE / "domain/wave7/EchoPresentationEpochPolicy.java"
     main = (BASE / "CopiMineEndEvent.java").read_text(encoding="utf-8")
     drop_adapter = extract(main, "boolean suppressEchoProbeDrops(EntityDeathEvent event)")
     probe = directory / "EchoProbeChecks.java"
@@ -26,6 +27,15 @@ import me.copimine.endevent.domain.wave7.EchoPresentationProbeState;
 public class EchoProbeChecks {
     static UUID EVENT=new UUID(0,1),OWNER=new UUID(0,2),ACTOR=new UUID(0,3);
     static void check(boolean value,String reason){if(!value)throw new AssertionError(reason);}
+    static long longField(Object target,String name)throws Exception{
+        var field=target.getClass().getDeclaredField(name);field.setAccessible(true);return field.getLong(target);
+    }
+    static int intField(Object target,String name)throws Exception{
+        var field=target.getClass().getDeclaredField(name);field.setAccessible(true);return field.getInt(target);
+    }
+    static boolean boolField(Object target,String name)throws Exception{
+        var field=target.getClass().getDeclaredField(name);field.setAccessible(true);return field.getBoolean(target);
+    }
     static EchoPresentationProbeState state(){return new EchoPresentationProbeState(
         EVENT,7,10,new UUID(0,4),ACTOR,OWNER,"minecraft:overworld",100);}
     static class Entity {String kind; Entity(String value){kind=value;}}
@@ -39,7 +49,7 @@ public class EchoProbeChecks {
     Object keyKind=new Object();
     String readString(Entity entity,Object key){return entity.kind;}
 ''' + drop_adapter + r'''
-    public static void main(String[] args){
+    public static void main(String[] args)throws Exception{
         var state=state();
         switch(args[0]){
         case "use":
@@ -79,6 +89,37 @@ public class EchoProbeChecks {
             try{new EchoPresentationProbeState(EVENT,7,12,new UUID(0,13),ACTOR,OWNER,
                 "minecraft:overworld",100,1_000_000_001L);throw new AssertionError("oversized lease accepted");}
             catch(IllegalArgumentException expected){}break;
+        case "counter-overflow":
+            var sequence=state();var sequenceField=EchoPresentationProbeState.class.getDeclaredField("sequence");
+            sequenceField.setAccessible(true);sequenceField.setLong(sequence,Long.MAX_VALUE);
+            check(sequence.nextFrame(101)==null,"exhausted sequence must not publish a wrapped frame");
+            check(longField(sequence,"sequence")==Long.MAX_VALUE&&boolField(sequence,"closed"),"sequence exhaustion must close without wrap");
+            var swing=state();var swingField=EchoPresentationProbeState.class.getDeclaredField("swingSerial");
+            swingField.setAccessible(true);swingField.setLong(swing,Long.MAX_VALUE);
+            check(!swing.begin(EchoPresentationProbeState.Action.SWING,101),"exhausted swing serial accepted");
+            check(longField(swing,"swingSerial")==Long.MAX_VALUE&&boolField(swing,"closed"),"swing serial wrapped");
+            var hurt=state();var hurtField=EchoPresentationProbeState.class.getDeclaredField("hurtSerial");
+            hurtField.setAccessible(true);hurtField.setLong(hurt,Long.MAX_VALUE);hurt.acceptedHurt();
+            check(longField(hurt,"hurtSerial")==Long.MAX_VALUE&&boolField(hurt,"closed"),"hurt serial wrapped");
+            var equipment=state();var equipmentField=EchoPresentationProbeState.class.getDeclaredField("equipmentVersion");
+            equipmentField.setAccessible(true);equipmentField.setInt(equipment,Integer.MAX_VALUE);
+            check(!equipment.begin(EchoPresentationProbeState.Action.IDLE,101),"exhausted equipment version accepted");
+            check(intField(equipment,"equipmentVersion")==Integer.MAX_VALUE&&boolField(equipment,"closed"),"equipment version wrapped");
+            break;
+        case "epoch-overflow":
+            try{
+                var policy=Class.forName("me.copimine.endevent.domain.wave7.EchoPresentationEpochPolicy");
+                var next=policy.getMethod("next",long.class,long.class);
+                check((long)next.invoke(null,10L,5L)==11L,"epoch must advance beyond prior epoch");
+                check((long)next.invoke(null,10L,20L)==20L,"epoch must follow later wall clock");
+                try{next.invoke(null,Long.MAX_VALUE,20L);throw new AssertionError("exhausted epoch accepted");}
+                catch(java.lang.reflect.InvocationTargetException expected){check(expected.getCause() instanceof IllegalStateException,"wrong exhausted epoch failure");}
+                try{next.invoke(null,-1L,20L);throw new AssertionError("negative epoch accepted");}
+                catch(java.lang.reflect.InvocationTargetException expected){check(expected.getCause() instanceof IllegalArgumentException,"wrong invalid epoch failure");}
+                try{next.invoke(null,10L,0L);throw new AssertionError("zero clock accepted");}
+                catch(java.lang.reflect.InvocationTargetException expected){check(expected.getCause() instanceof IllegalArgumentException,"wrong invalid clock failure");}
+            }catch(ClassNotFoundException missing){throw new AssertionError("overflow-safe Echo epoch policy is missing",missing);}
+            break;
         case "drops":
             var adapter=new EchoProbeChecks();var death=new EntityDeathEvent(ECHO_PROBE_KIND);
             check(adapter.suppressEchoProbeDrops(death),"probe exit");
@@ -90,13 +131,16 @@ public class EchoProbeChecks {
     }
 }
 ''', encoding="utf-8")
-    result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(directory), str(state), str(probe)],
+    sources = [str(state), str(probe)]
+    if epoch_policy.exists():
+        sources.append(str(epoch_policy))
+    result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(directory), *sources],
                             capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     return directory
 
 
-@pytest.mark.parametrize("scenario", ["use", "death", "lifecycle", "serials", "identity", "persisted-lease", "drops"])
+@pytest.mark.parametrize("scenario", ["use", "death", "lifecycle", "serials", "identity", "persisted-lease", "counter-overflow", "epoch-overflow", "drops"])
 def test_presentation_probe_authority(echo_probe, scenario):
     result = subprocess.run(["java", "-cp", str(echo_probe), "EchoProbeChecks", scenario],
                             capture_output=True, text=True)

@@ -55,7 +55,7 @@ public class ReturnPreBossProbe {
     files = [base / path for path in ("runtime/AttemptLifecycleController.java", "runtime/EncounterContext.java",
              "runtime/PreBossTransitionController.java", "runtime/BossStartGateway.java", "domain/ServerTickClock.java",
              "domain/EventPhase.java", "domain/EndRiftObjective.java")]
-    result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path), *map(str, files), str(probe)], capture_output=True, text=True)
+    result = subprocess.run(["javac", str(ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/EncounterGenerationPolicy.java"), "-encoding", "UTF-8", "-d", str(tmp_path), *map(str, files), str(probe)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     result = subprocess.run(["java", "-cp", str(tmp_path), "ReturnPreBossProbe"], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
@@ -120,7 +120,7 @@ public class PendingOwnerHandoffProbe {
     files = [base / path for path in ("runtime/AttemptLifecycleController.java", "runtime/EncounterContext.java",
              "runtime/PreBossTransitionController.java", "runtime/BossStartGateway.java", "domain/ServerTickClock.java",
              "domain/EventPhase.java", "domain/EndRiftObjective.java")]
-    result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path), *map(str, files), str(probe)], capture_output=True, text=True)
+    result = subprocess.run(["javac", str(ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/EncounterGenerationPolicy.java"), "-encoding", "UTF-8", "-d", str(tmp_path), *map(str, files), str(probe)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     result = subprocess.run(["java", "-cp", str(tmp_path), "PendingOwnerHandoffProbe"], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr

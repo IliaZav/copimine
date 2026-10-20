@@ -50,7 +50,13 @@ public final class EchoPresentationProbeState {
         return begin(requested, tick, "OFF");
     }
     public boolean begin(Action requested, long tick, String requestedShieldHand) {
-        if (closed || deathTick >= 0 || requested == null || tick < actionTick
+        if (closed) return false;
+        if (!canProduceFrame() || equipmentVersion == Integer.MAX_VALUE
+                || requested == Action.SWING && swingSerial == Long.MAX_VALUE) {
+            closed = true;
+            return false;
+        }
+        if (deathTick >= 0 || requested == null || tick < actionTick
                 || !"MAIN".equals(requestedShieldHand) && !"OFF".equals(requestedShieldHand)) return false;
         action = requested; actionTick = tick; equipmentVersion++;
         shieldHand = requestedShieldHand;
@@ -60,7 +66,19 @@ public final class EchoPresentationProbeState {
     public Action action() { return action; }
     public UUID duel() { return duel; }
     public long epoch() { return epoch; }
-    public void acceptedHurt() { if (!closed && deathTick < 0) hurtSerial++; }
+    public boolean closed() { return closed; }
+    public boolean canProduceFrame() { return !closed && sequence < Long.MAX_VALUE; }
+    public boolean hasEquipmentCounterCapacity() { return equipmentVersion < Integer.MAX_VALUE; }
+    public boolean hasHurtCounterCapacity() { return hurtSerial < Long.MAX_VALUE; }
+    public boolean acceptedHurt() {
+        if (closed || deathTick >= 0) return false;
+        if (hurtSerial == Long.MAX_VALUE) {
+            closed = true;
+            return false;
+        }
+        hurtSerial++;
+        return true;
+    }
     public void died(long tick) { if (deathTick < 0) { deathTick = tick; action = Action.DEATH; } }
     public void close() { closed = true; }
 
@@ -72,6 +90,10 @@ public final class EchoPresentationProbeState {
     }
 
     public Frame nextFrame(long tick) {
+        if (closed || sequence == Long.MAX_VALUE) {
+            closed = true;
+            return null;
+        }
         int duration = deathTick >= 0 ? 0 : switch (action) {
             case BOW, EAT -> 32;
             case CROSSBOW -> 25;

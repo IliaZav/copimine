@@ -1,9 +1,13 @@
 import java.util.Set;
 import java.util.UUID;
+import java.util.HashMap;
+import java.util.Map;
 import me.copimine.endevent.runtime.AttemptLifecycleController;
 
 public final class AttemptLifecycleControllerTest {
     public static void main(String[] args) {
+        restoredGenerationMustBeSupported();
+        generationExhaustionNeverOpensAWipe();
         UUID a = UUID.randomUUID();
         UUID b = UUID.randomUUID();
         var controller = new AttemptLifecycleController();
@@ -106,5 +110,59 @@ public final class AttemptLifecycleControllerTest {
 
     private static void check(boolean condition, String message) {
         if (!condition) throw new AssertionError(message);
+    }
+
+    private static void generationExhaustionNeverOpensAWipe() {
+        UUID owner = new UUID(0L, 1L);
+        var controller = new AttemptLifecycleController();
+        for (long invalid : new long[]{Long.MIN_VALUE, -1L, 0L, Long.MAX_VALUE}) {
+            try {
+                controller.begin(invalid, Set.of(owner));
+                throw new AssertionError("invalid or reserved generation began an attempt: " + invalid);
+            } catch (IllegalArgumentException expected) { }
+        }
+        long last = Long.MAX_VALUE - 1L;
+        controller.begin(last - 1L, Set.of(owner));
+        controller.markDead(owner, last - 1L);
+        check(controller.performAttemptWipe(last - 1L, "last advance").nextGeneration() == last,
+                "the final supported generation is allocated without wrapping");
+        check(controller.commitWipe(last - 1L), "the final safe wipe commits once");
+        check(!controller.commitWipe(last - 1L), "a committed generation cannot be reused");
+        controller.markDead(owner, last);
+        for (int retry = 0; retry < 2; retry++) {
+            var result = controller.performAttemptWipe(last, "exhaustion");
+            check(result.status().name().equals("GENERATION_EXHAUSTED"),
+                    "exhaustion must refuse before a cleanup transaction opens");
+            check(result.nextGeneration() == last && controller.generation() == last
+                            && !controller.wiping() && controller.pendingNextGeneration() == Long.MIN_VALUE,
+                    "exhaustion cannot publish, reserve, or wrap a generation");
+            check(controller.acceptsCallback(last) && !controller.commitWipe(last),
+                    "refusal preserves the current callback fence and cannot commit");
+        }
+    }
+
+    private static void restoredGenerationMustBeSupported() {
+        UUID owner = new UUID(0L, 1L);
+        UUID previousOwner = new UUID(0L, 2L);
+        var source = new AttemptLifecycleController();
+        source.begin(7L, Set.of(owner));
+        source.enableWave7Returns(7L);
+        Map<String, String> encoded = new HashMap<>(source.encodeWave7Returns(
+                "event", Map.of(owner, 0), 1L, 1000L, 120_000L));
+        var restored = new AttemptLifecycleController();
+        restored.begin(9L, Set.of(previousOwner));
+        for (long invalid : new long[]{Long.MIN_VALUE, -1L, 0L, Long.MAX_VALUE}) {
+            encoded.put("wave7-return.generation", Long.toString(invalid));
+            check(!restored.restoreWave7Returns(encoded, "event", invalid, Map.of(owner, 0),
+                            Set.of(owner), 1L, 1000L, 120_000L),
+                    "invalid or reserved persisted generation must be refused: " + invalid);
+            check(restored.generation() == 9L && restored.roster().equals(Set.of(previousOwner)),
+                    "invalid checkpoint cannot replace the live lifecycle fence or roster");
+        }
+        encoded.put("wave7-return.generation", Long.toString(Long.MAX_VALUE - 1L));
+        check(restored.restoreWave7Returns(encoded, "event", Long.MAX_VALUE - 1L, Map.of(owner, 0),
+                        Set.of(owner), 1L, 1000L, 120_000L)
+                        && restored.generation() == Long.MAX_VALUE - 1L,
+                "the final supported checkpoint generation restores without wrapping");
     }
 }

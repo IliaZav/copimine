@@ -114,7 +114,7 @@ int effectsReleased,wipes,overlayChanges,carrierSlownessReleases;
 ''', encoding="utf-8")
     lifecycle = ROOT / "copimine-end-event/src/me/copimine/endevent/runtime/AttemptLifecycleController.java"
     source = ROOT / "copimine-end-event/src/me/copimine/endevent/domain"
-    subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path),
+    subprocess.run(["javac", str(ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/EncounterGenerationPolicy.java"), "-encoding", "UTF-8", "-d", str(tmp_path),
                     str(source / "BlackFogEffectLeasePolicy.java"),
                     str(source / "SpiderEffectLeasePolicy.java"),
                     str(source / "SpiderRootControlPolicy.java"), str(lifecycle), str(probe)],

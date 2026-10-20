@@ -103,7 +103,7 @@ public class ReturnCommandProbe {
 ''', encoding="utf-8")
     files = [ROOT / "copimine-end-event/src/me/copimine/endevent" / p for p in (
         "runtime/AttemptLifecycleController.java", "domain/ArenaEntranceLocator.java")]
-    result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path), *map(str, files),
+    result = subprocess.run(["javac", str(ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/EncounterGenerationPolicy.java"), "-encoding", "UTF-8", "-d", str(tmp_path), *map(str, files),
                              *map(str, tmp_path.rglob("*.java"))], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     result = subprocess.run(["java", "-cp", str(tmp_path), "ReturnCommandProbe"], capture_output=True, text=True)

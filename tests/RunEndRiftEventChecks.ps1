@@ -324,6 +324,8 @@ $domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\
 $domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain\wave7\EchoLoadoutState.java')
 $domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain\wave7\EchoDuelCombatPolicy.java')
 $runtimeSources = @(
+  (Join-Path $root 'tools\minecraft-26.3\protocol\src\main\java\me\copimine\protocol\EncounterGenerationPolicy.java'),
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\EventSnapshot.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\WaveCombatCoordinator.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\AttemptLifecycleController.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\WaveTwoAttemptLifecycleSnapshot.java'),
@@ -355,6 +357,8 @@ $pureTests = @(
   'WaveStructurePlacementTest',
   'AbyssAnchorPolicyTest',
   'AttemptLifecycleControllerTest',
+  'EventSnapshotGenerationBoundaryTest',
+  'EncounterGenerationPreflightTest',
   'BossDamagePolicyTest',
   'BossAnimationIdTest',
   'BossAnimationPosePolicyTest',

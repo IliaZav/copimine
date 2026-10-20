@@ -79,7 +79,7 @@ public class WaveDaylightProbe {
     }
 ''' + methods + "\n}\n", encoding="utf-8")
     lifecycle = ROOT / "copimine-end-event/src/me/copimine/endevent/runtime/AttemptLifecycleController.java"
-    result = subprocess.run(["javac", "-d", str(directory), str(lifecycle), str(fixture)], capture_output=True, text=True)
+    result = subprocess.run(["javac", str(ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/EncounterGenerationPolicy.java"), "-d", str(directory), str(lifecycle), str(fixture)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     return directory
 

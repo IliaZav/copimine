@@ -27,6 +27,8 @@ import java.util.Random;
 import java.util.Set;
 import java.util.SplittableRandom;
 import java.util.UUID;
+import me.copimine.protocol.EncounterGenerationPolicy;
+import me.copimine.endevent.domain.wave7.EchoPresentationEpochPolicy;
 import me.copimine.endevent.domain.wave7.EchoPresentationProbeState;
 import me.copimine.endevent.runtime.wave7.EchoPresentationProbe;
 import me.copimine.endevent.runtime.wave7.EchoCombatAdmissionListener;
@@ -3959,7 +3961,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         saveStateAsync();
     }
 
+    private Long preflightNextGeneration(String operation) {
+        try {
+            return EncounterGenerationPolicy.next(generation);
+        } catch (IllegalArgumentException | IllegalStateException invalid) {
+            getLogger().log(Level.SEVERE, "GENERATION_ADVANCE_REFUSED event=" + eventId
+                    + " generation=" + generation + " operation=" + operation
+                    + " reason=" + invalid.getMessage(), invalid);
+            return null;
+        }
+    }
+
+    private void enterGenerationAdvanceRecovery(String operation) {
+        recoveryReason = "END_RIFT_GENERATION_ADVANCE_REFUSED";
+        forcePhase(EventPhase.RECOVERY_REQUIRED,
+                "Encounter generation cannot advance safely during " + operation);
+        clearClientEffects();
+    }
+
     private void recoverTransientSession() {
+        Long nextGeneration = preflightNextGeneration("transient recovery");
+        if (nextGeneration == null) {
+            enterGenerationAdvanceRecovery("transient recovery");
+            return;
+        }
         getLogger().info("RECOVERY_STARTED event=" + eventId + " generation=" + generation);
         emitDiagnostic("RECOVERY", "START", "INFO", activeWave, "transient-session-recovery",
                 null, null, "recovery:" + eventId + ":" + generation,
@@ -3977,7 +4002,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         cleanupOwnedEntities(eventId, staleGeneration);
         clearClientEffects();
         realitySplitPlayerTeleportPermits.clear();
-        generation = Math.max(1L, staleGeneration + 1L);
+        generation = nextGeneration;
         encounterController.restore(eventId, generation, phase, null);
         resetEncounterTaskRegistry(generation);
         attemptLifecycle.clear();
@@ -7590,7 +7615,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             });
             tag(carrier, ECHO_PROBE_KIND, 7, false);
             try {
-                echoPresentationEpoch = Math.max(echoPresentationEpoch + 1, System.currentTimeMillis());
+                echoPresentationEpoch = EchoPresentationEpochPolicy.next(
+                        echoPresentationEpoch, System.currentTimeMillis());
                 echoPresentationProbe = new EchoPresentationProbe(carrier, owner, UUID.fromString(eventId),
                         generation, echoPresentationEpoch, eventTickCounter, (type, frame) -> {
                     if (frame.generation() != generation || !frame.event().toString().equals(eventId)) return;
@@ -9004,6 +9030,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void configureCore(CommandSender feedback, Block block, int players) {
+        Long nextGeneration = preflightNextGeneration("core configuration");
+        if (nextGeneration == null) {
+            message(feedback, "&cCore configuration refused: event generation is exhausted or invalid.");
+            return;
+        }
         World targetWorld = block.getWorld();
         String originalBlockData = block.getBlockData().getAsString();
         boolean endWasAlreadyUnlocked = endUnlocked;
@@ -9014,7 +9045,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         EventSnapshot previousSnapshot = snapshot();
         eventId = UUID.randomUUID().toString();
-        generation = Math.max(1L, generation + 1L);
+        generation = nextGeneration;
         encounterController.restore(eventId, generation, phase, null);
         worldName = targetWorld.getName();
         coreX = block.getX();
@@ -14143,6 +14174,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             cancelRitual("roster uniqueness failed");
             return;
         }
+        Long nextGeneration = preflightNextGeneration("start ritual commit");
+        if (nextGeneration == null) {
+            enterGenerationAdvanceRecovery("start ritual commit");
+            return;
+        }
         if (!cancelSessionTasks()) {
             recoveryReason = "END_RIFT_RITUAL_CLEANUP_FAILED";
             forcePhase(EventPhase.RECOVERY_REQUIRED,
@@ -14155,7 +14191,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             officialRewardRoster.addAll(roster.players());
         }
         participantUuids.addAll(roster.players());
-        generation = Math.max(1L, generation + 1L);
+        generation = nextGeneration;
         encounterController.restore(eventId, generation, phase, null);
         if (!resetEncounterTaskRegistry(generation)) {
             recoveryReason = "END_RIFT_RITUAL_SCOPE_ROTATION_FAILED";
@@ -19449,11 +19485,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         boolean creativeRun = creativeTestTask != null;
+        Long nextGeneration = creativeRun ? null : preflightNextGeneration("wave inspection");
+        if (!creativeRun && nextGeneration == null) return false;
         if (creativeRun) {
             if (!closeEncounterResourceScope("creative wave inspection")) return false;
         } else {
             if (!cancelSessionTasks()) return false;
-            generation = Math.max(1L, generation + 1L);
+            generation = nextGeneration;
             encounterController.restore(eventId, generation, phase, null);
         }
         if (!resetEncounterTaskRegistry(generation)) return false;
@@ -19500,6 +19538,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " reason=" + (roster.isEmpty() ? "empty-sandbox-roster" : "injected-failure"));
             return false;
         }
+        Long nextGeneration = preflightNextGeneration("sandbox wave start");
+        if (nextGeneration == null) return false;
         if (!cancelSessionTasks()) {
             getLogger().severe("WAVE_TEST_START_REFUSED event=" + eventId
                     + " wave=" + wave + " reason=previous-session-cleanup-failed");
@@ -19512,7 +19552,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         // Each disposable run gets a packet fence, even when it repeats the
         // same wave. Old clear/state packets cannot revive or close its HUD.
-        generation = Math.max(1L, generation + 1L);
+        generation = nextGeneration;
         encounterController.restore(eventId, generation, phase, null);
         if (!resetEncounterTaskRegistry(generation)) return false;
         sandboxWaveRoster = Set.copyOf(roster);

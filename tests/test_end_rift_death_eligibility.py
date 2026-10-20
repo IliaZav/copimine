@@ -81,7 +81,7 @@ public class DeathEligibilityProbe {
 ''', encoding="utf-8")
     sources = [ROOT / "copimine-end-event/src/me/copimine/endevent/runtime/AttemptLifecycleController.java",
                ROOT / "copimine-end-event/src/me/copimine/endevent/domain/EventPhase.java", probe]
-    result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path), *map(str, sources)], capture_output=True, text=True)
+    result = subprocess.run(["javac", str(ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/EncounterGenerationPolicy.java"), "-encoding", "UTF-8", "-d", str(tmp_path), *map(str, sources)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     result = subprocess.run(["java", "-cp", str(tmp_path), "DeathEligibilityProbe"], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr

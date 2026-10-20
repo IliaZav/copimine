@@ -87,10 +87,19 @@ public final class EchoPresentationProbe {
     }
 
     public boolean action(EchoPresentationProbeState.Action action, long tick) {
+        if (closed || !carrier.isValid() || carrier.isDead()) return false;
+        if (!ensureFrameCapacity()) return false;
+        if (action == EchoPresentationProbeState.Action.HURT && !state.hasHurtCounterCapacity()) {
+            retireWithoutFrame();
+            return false;
+        }
         String shieldHand = replica != null && replica.state().item(40).kind() != Kind.SHIELD ? "MAIN" : "OFF";
-        if (closed || !carrier.isValid() || carrier.isDead() || action == null || !available(action)
-                || action == EchoPresentationProbeState.Action.SHIELD && tick < shieldDisabledUntil
-                || !state.begin(action, tick, shieldHand)) return false;
+        if (action == null || !available(action)
+                || action == EchoPresentationProbeState.Action.SHIELD && tick < shieldDisabledUntil) return false;
+        if (!state.begin(action, tick, shieldHand)) {
+            if (state.closed()) retireWithoutFrame();
+            return false;
+        }
         pendingFoodSlot = -1;
         carrier.clearActiveItem();
         activeShieldSlot = -1; activeShieldHand = null;
@@ -115,16 +124,19 @@ public final class EchoPresentationProbe {
             case SWING -> carrier.swingMainHand();
             case HURT -> {
                 double before = carrier.getHealth(); carrier.damage(2.0);
-                if (carrier.getHealth() < before) state.acceptedHurt();
+                if (carrier.getHealth() < before && !state.acceptedHurt() && state.closed()) {
+                    retireWithoutFrame();
+                    return false;
+                }
             }
             case DEATH -> { carrier.setHealth(0); state.died(tick); }
             default -> { }
         }
-        send.accept("END_ECHO_STATE", state.nextFrame(tick));
-        return true;
+        return emit("END_ECHO_STATE", tick);
     }
 
     public boolean tick(Player player, UUID event, long generation, long tick, boolean capable) {
+        if (closed || !ensureFrameCapacity()) return false;
         boolean sameWorld = player != null && player.getWorld().equals(carrier.getWorld());
         if (!owner.equals(player == null ? null : player.getUniqueId())
                 || !state.active(event, generation, tick, player != null && player.isOnline(),
@@ -137,6 +149,14 @@ public final class EchoPresentationProbe {
             if (carrier.getLocation().distanceSquared(anchor) > 36.0) { close(tick); return false; }
             if (pendingFoodSlot >= 0 && state.action() == EchoPresentationProbeState.Action.EAT
                     && tick - pendingFoodTick >= 32) {
+                if (!state.hasEquipmentCounterCapacity()) {
+                    retireWithoutFrame();
+                    return false;
+                }
+                if (!state.begin(EchoPresentationProbeState.Action.IDLE, tick)) {
+                    if (state.closed()) retireWithoutFrame();
+                    return false;
+                }
                 int slot = pendingFoodSlot; pendingFoodSlot = -1;
                 // Unrelated native armor/shield wear must not cancel eating.
                 // Quantities only decrease, so a changed food slot invalidates
@@ -148,7 +168,7 @@ public final class EchoPresentationProbe {
                     carrier.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, 2400, 0));
                     carrier.getWorld().playSound(carrier.getLocation(), Sound.ENTITY_PLAYER_BURP, 0.55f, 1.0f);
                 }
-                state.begin(EchoPresentationProbeState.Action.IDLE, tick); equip(EchoPresentationProbeState.Action.IDLE);
+                equip(EchoPresentationProbeState.Action.IDLE);
             }
             if (state.action() == EchoPresentationProbeState.Action.WALK
                     || state.action() == EchoPresentationProbeState.Action.SPRINT) {
@@ -166,13 +186,13 @@ public final class EchoPresentationProbe {
                 }
             }
         }
-        send.accept("END_ECHO_STATE", state.nextFrame(tick));
-        return true;
+        return emit("END_ECHO_STATE", tick);
     }
 
     /** Observe one accepted native block. Minecraft alone decides direction and HP mitigation. */
     public boolean acceptedShieldBlock(Object receipt, Player player, UUID event, long generation,
                                         long tick, boolean capable, double blockedAmount, boolean axe) {
+        if (closed || !ensureFrameCapacity()) return false;
         if (closed || replica == null || receipt == null || !Double.isFinite(blockedAmount)
                 || blockedAmount <= 0 || blockedAmount > 1_000_000 || tick < shieldReceiptTick || tick < shieldRaisedTick
                 || player == null || !owner.equals(player.getUniqueId()) || carrier.isDead() || !carrier.isValid()
@@ -180,6 +200,10 @@ public final class EchoPresentationProbe {
                         player.getWorld().equals(carrier.getWorld()), capable)
                 || state.action() != EchoPresentationProbeState.Action.SHIELD || activeShieldSlot < 0
                 || !carrier.hasActiveItem() || carrier.getActiveItemHand() != activeShieldHand) return false;
+        if ((blockedAmount >= 3.0 || axe) && !state.hasEquipmentCounterCapacity()) {
+            retireWithoutFrame();
+            return false;
+        }
         if (tick != shieldReceiptTick) { shieldReceipts.clear(); shieldReceiptTick = tick; }
         if (shieldReceipts.containsKey(receipt)) return false;
         if (shieldReceipts.size() >= 32) { close(tick); return false; }
@@ -200,9 +224,13 @@ public final class EchoPresentationProbe {
         carrier.getWorld().playSound(carrier.getLocation(), broken ? Sound.ITEM_SHIELD_BREAK : Sound.ITEM_SHIELD_BLOCK, 0.65f, 1.0f);
         if (axe) shieldDisabledUntil = tick + 100;
         if (broken || axe) {
+            if (!state.begin(EchoPresentationProbeState.Action.IDLE, tick)) {
+                if (state.closed()) retireWithoutFrame();
+                return false;
+            }
             carrier.clearActiveItem(); activeShieldSlot = -1; activeShieldHand = null;
-            state.begin(EchoPresentationProbeState.Action.IDLE, tick); equip(EchoPresentationProbeState.Action.IDLE);
-            send.accept("END_ECHO_STATE", state.nextFrame(tick));
+            equip(EchoPresentationProbeState.Action.IDLE);
+            if (!emit("END_ECHO_STATE", tick)) return false;
         }
         return true;
     }
@@ -211,6 +239,7 @@ public final class EchoPresentationProbe {
     public boolean acceptedArmorDamage(Object receipt, Player player, UUID event, long generation,
                                        long tick, boolean capable, DamageSource source,
                                        double originalAmount, double armorAmount) {
+        if (closed || !ensureFrameCapacity()) return false;
         if (closed || replica == null || receipt == null || source == null || tick < armorReceiptTick
                 || !Double.isFinite(originalAmount) || originalAmount < 0 || originalAmount > 1_000_000
                 || !Double.isFinite(armorAmount) || armorAmount < 0 || armorAmount > 1_000_000
@@ -241,8 +270,37 @@ public final class EchoPresentationProbe {
         pendingFoodSlot = -1;
         carrier.clearActiveItem();
         activeShieldSlot = -1; activeShieldHand = null; shieldReceipts.clear(); armorReceipts.clear();
-        send.accept("END_ECHO_REMOVE", state.nextFrame(tick));
-        carrier.remove(); state.close(); closed = true;
+        emit("END_ECHO_REMOVE", tick);
+        if (!closed) {
+            carrier.remove(); state.close(); closed = true;
+        }
+    }
+
+    private boolean emit(String type, long tick) {
+        EchoPresentationProbeState.Frame frame = state.nextFrame(tick);
+        if (frame == null) {
+            retireWithoutFrame();
+            return false;
+        }
+        send.accept(type, frame);
+        return true;
+    }
+
+    private boolean ensureFrameCapacity() {
+        if (state.canProduceFrame()) return true;
+        retireWithoutFrame();
+        return false;
+    }
+
+    private void retireWithoutFrame() {
+        if (closed) return;
+        pendingFoodSlot = -1;
+        carrier.clearActiveItem();
+        activeShieldSlot = -1; activeShieldHand = null;
+        shieldReceipts.clear(); armorReceipts.clear();
+        carrier.remove();
+        state.close();
+        closed = true;
     }
 
     private void equip(EchoPresentationProbeState.Action action) {

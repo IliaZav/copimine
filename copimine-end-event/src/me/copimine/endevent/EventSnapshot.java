@@ -6,6 +6,7 @@ import java.util.Set;
 import java.util.UUID;
 import me.copimine.endevent.domain.BossPhase;
 import me.copimine.endevent.domain.EventPhase;
+import me.copimine.protocol.EncounterGenerationPolicy;
 
 /**
  * Schema-4 persistence boundary for one End Rift attempt.
@@ -69,6 +70,14 @@ public record EventSnapshot(
         eventId = eventId == null ? "" : eventId.trim();
         phase = phase == null ? EventPhase.RECOVERY_REQUIRED.name() : phase.trim();
         worldName = worldName == null ? "" : worldName.trim();
+        if (!EncounterGenerationPolicy.isSnapshotGeneration(generation)) {
+            throw new IllegalArgumentException("snapshot generation is invalid or reserved");
+        }
+        if (generation == EncounterGenerationPolicy.EMPTY_GENERATION
+                && (!eventId.isEmpty() || !EventPhase.UNCONFIGURED.name().equals(phase)
+                || !worldName.isEmpty() || requiredPlayers != 0)) {
+            throw new IllegalArgumentException("generation zero is reserved for an empty unconfigured snapshot");
+        }
         coreBlockData = coreBlockData == null ? "" : coreBlockData.trim();
         resourceRequirements = Map.copyOf(resourceRequirements == null ? Map.of() : resourceRequirements);
         depositedResources = Map.copyOf(depositedResources == null ? Map.of() : depositedResources);
@@ -140,7 +149,11 @@ public record EventSnapshot(
 
     public EventSnapshot withSchemaAndPhase(int updatedSchemaVersion, EventPhase updatedPhase) {
         EventPhase safe = updatedPhase == null ? EventPhase.RECOVERY_REQUIRED : updatedPhase;
-        return new EventSnapshot(Math.max(1, updatedSchemaVersion), eventId, generation,
+        long updatedGeneration = generation == EncounterGenerationPolicy.EMPTY_GENERATION
+                && safe != EventPhase.UNCONFIGURED
+                ? EncounterGenerationPolicy.next(EncounterGenerationPolicy.EMPTY_GENERATION)
+                : generation;
+        return new EventSnapshot(Math.max(1, updatedSchemaVersion), eventId, updatedGeneration,
                 safe.name(), worldName, coreX, coreY, coreZ, coreBlockData, requiredPlayers,
                 arenaMinX, arenaMinY, arenaMinZ, arenaMaxX, arenaMaxY, arenaMaxZ,
                 resourceRequirements, depositedResources, pads, resourceContributors,

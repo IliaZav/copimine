@@ -159,7 +159,7 @@ public class Wave2AttemptLifecycleRestoreProbe {
 }
 ''', encoding="utf-8")
     result = subprocess.run(
-        ["javac", "-encoding", "UTF-8", "-d", str(tmp_path),
+        ["javac", str(ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/EncounterGenerationPolicy.java"), "-encoding", "UTF-8", "-d", str(tmp_path),
          str(SOURCE / "runtime/AttemptLifecycleController.java"),
          str(SOURCE / "runtime/WaveTwoAttemptLifecycleSnapshot.java"), str(probe)],
         capture_output=True, text=True,

@@ -77,7 +77,7 @@
 - Existing repository verification scripts and project CI configuration.
 
 - [ ] Run focused tests for every merged feature group.
-- [ ] Run the full project build and required repository gates on the final candidate commit.
+- [ ] Run the relevant project builds and repository gates on the final candidate commit; gameplay and wave balance tests are out of scope for this consolidation.\r\n- [ ] Start the assembled local server, confirm required plugins load without startup errors, confirm the configured port is listening, and verify a Minecraft status response / connection availability without running wave gameplay.
 - [ ] Verify exact Java/profile pins, generated artifact hashes, and the integration branch's complete source tree.
 - [ ] Review the final diff for unrelated changes, secrets, runtime data, and generated-output drift.
 
@@ -97,5 +97,5 @@
 - Preserve `admin-web`, launcher source/branch metadata until separately retired, all Minecraft `instance*` and runtime roots, recovered arena data, release-stage worlds, and test snapshots that contain plugin/runtime evidence.
 
 - [ ] Recheck the candidate path is ignored/untracked and contains no Minecraft world markers immediately before deletion.
-- [ ] Delete only the exact reviewed generated launcher/site artifact tree; report its measured reclaimed size.
+- [ ] Delete only individually verified generated launcher/site/cache outputs that are ignored or untracked and contain no runtime, world, secret, or unique evidence data; report measured reclaimed size.\r\n- [ ] Do not promise a 300 GB reduction unless the verified candidates total that much; report what remains and why.
 - [ ] Re-inventory the root and list remaining cleanup candidates without deleting any registered worktree or world-bearing archive.

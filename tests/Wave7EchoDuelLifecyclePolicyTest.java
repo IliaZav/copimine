@@ -6,6 +6,7 @@ public final class Wave7EchoDuelLifecyclePolicyTest {
         bedRespawnRequiresExplicitCombatAdmission();
         reconnectAndRepeatedDisconnectKeepOriginalDeadline();
         expiredDeadlineCannotBeExtended();
+        onlineButUnadmittedOwnerStillExpires();
         System.out.println("Wave7EchoDuelLifecyclePolicyTest OK");
     }
 
@@ -42,6 +43,19 @@ public final class Wave7EchoDuelLifecyclePolicyTest {
         OptionalLong overflow = RealitySplitEchoDuelState.ownerOfflineDeadlineMillis(
                 0L, 253_402_300_799_999L, 120_000L);
         check(overflow.isEmpty(), "deadline arithmetic cannot overflow the supported epoch range");
+    }
+
+    private static void onlineButUnadmittedOwnerStillExpires() {
+        long deadline = 1_800_000_120_000L;
+        check(RealitySplitEchoDuelState.ownerReturnDeadlineExpired(
+                        RealitySplitEchoDuelState.Lifecycle.OWNER_OFFLINE, deadline, deadline),
+                "an online but unadmitted owner cannot keep an expired Echo duel frozen");
+        check(!RealitySplitEchoDuelState.ownerReturnDeadlineExpired(
+                        RealitySplitEchoDuelState.Lifecycle.OWNER_OFFLINE, deadline, deadline - 1L),
+                "the original return window remains usable until its deadline");
+        check(!RealitySplitEchoDuelState.ownerReturnDeadlineExpired(
+                        RealitySplitEchoDuelState.Lifecycle.ACTIVE, deadline, deadline + 1L),
+                "an admitted active owner is not expired by the offline return deadline");
     }
 
     private static void check(boolean condition, String message) {

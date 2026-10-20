@@ -132,7 +132,26 @@ function Assert-AiDiagnostics {
     [int]$ExpectedCasterCount = 0,
     [string]$ExpectedCasterState = ''
   )
-  $snapshot = Get-AiJson
+  $snapshot = Wait-Until -Description "$Label stable bounded AI diagnostics" -Seconds 20 -Condition {
+    try {
+      $candidate = Get-AiJson
+      $candidateCasters = if ($null -eq $candidate.casters) { @() } else { @($candidate.casters) }
+      $candidatePassiveCasters = @($candidateCasters | Where-Object { -not [bool]$_.nativeAiEnabled }).Count
+      $candidateExpectedEnabled = [int]$candidate.mobile
+      if ($ExpectedCasterCount -gt 0) {
+        $candidateExpectedEnabled -= $candidatePassiveCasters
+      }
+      $candidateIsStable = [int]$candidate.mobile -ge $MinimumMobile -and
+        [int]$candidate.aiEnabled -eq $candidateExpectedEnabled -and
+        [int]$candidate.outside -eq 0 -and [int]$candidate.onCore -eq 0
+      if ($candidateIsStable) {
+        return $candidate
+      }
+      return $false
+    } catch {
+      return $false
+    }
+  }
   $casters = if ($null -eq $snapshot.casters) { @() } else { @($snapshot.casters) }
   $mobile = [int]$snapshot.mobile
   $enabled = [int]$snapshot.aiEnabled
@@ -177,6 +196,8 @@ function Start-ProbeBot([int[]]$Core) {
     $env:END_RIFT_BOT_CONTROL_DIRECTORY = $controlDirectory
     $env:END_RIFT_BOT_SKIP_REGISTER = '1'
     $env:END_RIFT_BOT_SKIP_AUTH = '1'
+    $env:END_RIFT_TEST_CLIENT_MOD_HANDSHAKE = '1'
+    $env:END_RIFT_TEST_CLIENT_MOD_VERSION = '0.1.3+26.3'
     $env:END_RIFT_REFLECT_ENABLED = '0'
     $env:END_RIFT_REFLECT_START_MS = '0'
     $env:END_RIFT_REFLECT_DIAGNOSTICS = '0'
@@ -218,7 +239,7 @@ try {
   $process = Start-ProbeBot $core
   Wait-Online
   $null = Invoke-LocalRcon ("gamemode survival $BotName")
-  $null = Invoke-LocalRcon ("attribute $BotName minecraft:generic.max_health base set 1000")
+  $null = Invoke-LocalRcon ("attribute $BotName minecraft:max_health base set 1000")
   $null = Invoke-LocalRcon ("effect give $BotName minecraft:resistance 1000 4 true")
   $null = Invoke-LocalRcon ("effect give $BotName minecraft:regeneration 1000 4 true")
   $null = Invoke-LocalRcon ("tp $BotName $($core[0] + 6) $($core[1]) $($core[2]) 180 0")
@@ -237,16 +258,16 @@ try {
         try {
           $snapshot = Get-AiJson
           $casters = if ($null -eq $snapshot.casters) { @() } else { @($snapshot.casters) }
-          return $casters.Count -eq 4 -and [int]$snapshot.ritualGuards -eq 12 `
+          return $casters.Count -eq 5 -and [int]$snapshot.ritualGuards -eq 5 `
             -and [bool]$snapshot.ritualGuardOwnershipValid `
             -and @($casters | Where-Object { $_.state -ne 'GUARDED_CASTING' }).Count -eq 0
         } catch {
           return $false
         }
       } | Out-Null
-      Assert-AiDiagnostics -Label ("wave-$wave") -ExpectedCasterCount 4 `
+      Assert-AiDiagnostics -Label ("wave-$wave") -ExpectedCasterCount 5 `
         -ExpectedCasterState 'GUARDED_CASTING' | Out-Null
-      Write-Output 'LIVE_W6_CASTER_GUARDED_PASS casters=4 guards=12 passive=true target=none ownership=true'
+      Write-Output 'LIVE_W6_CASTER_GUARDED_PASS casters=5 guards=5 passive=true target=none ownership=true'
     } else {
       Wait-Until -Description ("Wave $wave AI diagnostics") -Condition {
         try { return [int](Get-AiJson).mobile -ge 1 } catch { return $false }
@@ -285,7 +306,7 @@ try {
   Wait-Until -Description 'Wave 6 lifecycle fixture' -Condition {
     try {
       $snapshot = Get-AiJson
-      return [int]$snapshot.ritualCasters -eq 4 -and [int]$snapshot.ritualGuards -eq 12
+      return [int]$snapshot.ritualCasters -eq 5 -and [int]$snapshot.ritualGuards -eq 5
     } catch { return $false }
   } | Out-Null
   $guardedResponse = Invoke-LocalRcon 'cmend test ritual caster guarded'
@@ -293,9 +314,9 @@ try {
     throw "Guarded caster test hook was not acknowledged: $guardedResponse"
   }
   Wait-Until -Description 'guarded caster state' -Condition {
-    try { return @((Get-AiJson).casters | Where-Object { $_.state -eq 'GUARDED_CASTING' }).Count -eq 4 } catch { return $false }
+    try { return @((Get-AiJson).casters | Where-Object { $_.state -eq 'GUARDED_CASTING' }).Count -eq 5 } catch { return $false }
   } | Out-Null
-  Write-Output 'LIVE_W6_CASTER_GUARDED_PASS casters=4 guards=12 passive=true target=none ownership=true'
+  Write-Output 'LIVE_W6_CASTER_GUARDED_PASS casters=5 guards=5 passive=true target=none ownership=true'
 
   $exposedResponse = Invoke-LocalRcon 'cmend test ritual caster exposed'
   if ($exposedResponse -notmatch '(?i)state=exposed') {
@@ -322,7 +343,7 @@ try {
           -and [bool]$_.nativeAiEnabled -and [bool]$_.canTargetPlayers }).Count -eq 1
     } catch { return $false }
   } | Out-Null
-  $mixedSnapshot = Assert-AiDiagnostics -Label 'wave-6-mixed-caster-state' -MinimumMobile 1 -ExpectedCasterCount 4
+  $mixedSnapshot = Assert-AiDiagnostics -Label 'wave-6-mixed-caster-state' -MinimumMobile 1 -ExpectedCasterCount 5
   if (@($mixedSnapshot.casters | Where-Object { $_.state -eq 'AWAKENED_ATTACKING' }).Count -ne 1) {
     throw "Mixed Wave 6 diagnostics did not retain exactly one awakened caster."
   }

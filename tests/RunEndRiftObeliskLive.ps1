@@ -227,8 +227,8 @@ try {
     # 1024 is the legal vanilla attribute ceiling.  The former 100000 probe
     # value can be clamped/rejected by Paper, leaving a real client at 20 HP
     # and turning the reflection test into a false timeout after a few hits.
-    $null = Invoke-LocalRcon ("attribute $name minecraft:generic.max_health base set 1024")
-    $null = Invoke-LocalRcon ("attribute $name minecraft:generic.knockback_resistance base set 1")
+    $null = Invoke-LocalRcon ("attribute $name minecraft:max_health base set 1024")
+    $null = Invoke-LocalRcon ("attribute $name minecraft:knockback_resistance base set 1")
     $null = Invoke-LocalRcon ("effect clear $name")
     # The reflection probe is measuring projectile ownership/HP transitions,
     # not player survivability.  Protect the disposable client while checking
@@ -236,7 +236,7 @@ try {
     # direct NBT health writes for players, so do not use data merge here.
     $null = Invoke-LocalRcon ("effect give $name minecraft:resistance 120 4 true")
     $null = Invoke-LocalRcon ("effect give $name minecraft:regeneration 120 4 true")
-    $maxHealthResult = Invoke-LocalRcon ("attribute $name minecraft:generic.max_health base get")
+    $maxHealthResult = Invoke-LocalRcon ("attribute $name minecraft:max_health base get")
     # The player name is part of the command response and may contain digits;
     # anchor the parse to the value after the response's "is" marker.
     $maxHealthMatch = [Regex]::Match($maxHealthResult, 'is\s+(\d+(?:\.\d+)?)')
@@ -272,7 +272,7 @@ try {
   Wait-LogCount -Pattern 'END_RIFT_OBELISK_ACTIVE ' -Minimum 4 -AfterOffset $waveOffset | Out-Null
   Wait-Log -Pattern 'END_RIFT_OBELISK_PULSE .*radius=5\.0 .*effects_ticks=60' `
     -AfterOffset $waveOffset | Out-Null
-  Wait-Log -Pattern 'RIFT_FIREBALL_LAUNCH .*reflected=false .*cap=1' `
+  Wait-Log -Pattern 'RIFT_FIREBALL_LAUNCH .*reflected=false .*profile_cap=20' `
     -AfterOffset $waveOffset -WaitSeconds 30 | Out-Null
   Wait-LogCount -Pattern 'RIFT_FIREBALL_REFLECTED ' -Minimum 3 `
     -AfterOffset $waveOffset -WaitSeconds $BotDurationSeconds | Out-Null
@@ -290,7 +290,7 @@ try {
   if ($plain -notmatch 'rift-obelisks=3/6') {
     throw "Expected one of four obelisks to be destroyed by reflected fireballs:`n$after"
   }
-  Write-Output 'LIVE_RIFT_WAVE4_OBELISK_PASS players=2 obelisks=4 active_before=4 reflected_hits=3 first_target_hp=2 second_target_hp=1 destroyed=true pulse_radius=5 fireball_cap=1 real_blocks=true'
+  Write-Output 'LIVE_RIFT_WAVE4_OBELISK_PASS players=2 obelisks=4 active_before=4 reflected_hits=3 first_target_hp=2 second_target_hp=1 destroyed=true pulse_radius=5 fireball_cap=20 real_blocks=true'
 }
 finally {
   foreach ($probe in $probes) {

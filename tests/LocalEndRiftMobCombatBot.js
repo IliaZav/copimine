@@ -7,7 +7,13 @@ const path = require('path')
 const fs = require('fs')
 const mineflayer = require(path.resolve(__dirname, '..', 'local-runtime', 'mc-bot', 'node_modules', 'mineflayer'))
 const { Vec3 } = require(path.resolve(__dirname, '..', 'local-runtime', 'mc-bot', 'node_modules', 'vec3'))
-const { selectReflectionAimTarget } = require('./EndRiftReflectionTarget')
+const {
+  createReflectionActionQueue,
+  isAimWithinReflectionCone,
+  preserveProjectileSourceAnchor,
+  selectReflectionAimTarget,
+} = require('./EndRiftReflectionTarget')
+const { attachLocalClientModHandshake } = require('./EndRiftBotClientModHandshake')
 const { resolveLocalEndRiftEndpoint } = require('./LocalEndRiftEndpoint')
 
 const { host, port } = resolveLocalEndRiftEndpoint()
@@ -49,6 +55,10 @@ const wave7AutopilotDefault = process.env.END_RIFT_BOT_WAVE7_AUTOPILOT === '1'
 const controlFile = controlDirectory
   ? path.join(controlDirectory, `${username}.mode`)
   : ''
+const heldItemSyncFile = controlDirectory
+  ? path.join(controlDirectory, `${username}.held-item-sync`)
+  : ''
+const modeAckFile = controlFile ? `${controlFile}.ack` : ''
 const guardianProbeNames = new Set(
   String(process.env.END_RIFT_GUARDIAN_PROBE_NAMES || '')
     .split(',')
@@ -94,7 +104,16 @@ try {
 const attackIntervalMs = Number.isFinite(configuredAttackIntervalMs)
   ? Math.max(200, Math.min(5000, Math.floor(configuredAttackIntervalMs)))
   : 400
+// Mineflayer's 26.1 schema currently sends an incomplete teleport confirmation
+// to Paper 26.3. Use the verified ViaVersion-compatible 1.21.1 schema here.
 const bot = mineflayer.createBot({ host, port, username, version: '1.21.1', auth: 'offline' })
+if (process.env.END_RIFT_TEST_CLIENT_MOD_HANDSHAKE === '1') {
+  attachLocalClientModHandshake(bot, {
+    host,
+    port,
+    version: process.env.END_RIFT_TEST_CLIENT_MOD_VERSION || '',
+  })
+}
 
 let joined = false
 let sampleTimer = null
@@ -103,6 +122,8 @@ let healthTimer = null
 let controlTimer = null
 let reflectionScanTimer = null
 let lastControlMode = ''
+let lastControlRequestId = ''
+let lastHeldItemSyncRequest = ''
 let wave7Autopilot = false
 let navigationTimer = null
 let objectiveInteractionTimer = null
@@ -167,6 +188,7 @@ function syncHeldItem () {
 const reflectedProjectiles = new Set()
 const reflectionTimers = new Set()
 const reflectionInFlight = new Set()
+const runReflectionAction = createReflectionActionQueue()
 const projectileOrigins = new Map()
 const reflectionFailures = new Map()
 const loggedReflectionFailures = new Set()
@@ -220,11 +242,16 @@ function enterPassiveMode () {
   // between the server-side recovery teleports.
   stopNavigation()
   if (typeof bot.clearControlStates === 'function') bot.clearControlStates()
+  // Clearing controls alone does not stop Mineflayer from integrating stale
+  // velocity or knockback. Keep a passive probe on its assigned rune while
+  // the server validates the continuous hold; active modes restore physics.
+  bot.physicsEnabled = false
   wave7Autopilot = false
   console.log(`BOT_PASSIVE ${username}`)
 }
 
 function enterActiveMode (roomLocal = false) {
+  bot.physicsEnabled = true
   stopObjectiveInteraction()
   wave7Autopilot = roomLocal
   if (attackTimer === null) {
@@ -281,6 +308,7 @@ function enterWaveOneInteractionMode (mode) {
   }
   stopNavigation()
   if (typeof bot.clearControlStates === 'function') bot.clearControlStates()
+  bot.physicsEnabled = false
   stopObjectiveInteraction()
   wave7Autopilot = false
   objectiveInteractionMode = mode
@@ -290,20 +318,54 @@ function enterWaveOneInteractionMode (mode) {
 }
 
 function pollControlMode () {
+  pollHeldItemSyncRequest()
   if (!controlFile) return
-  let requestedMode
+  let controlRequest
   try {
-    requestedMode = fs.readFileSync(controlFile, 'utf8').trim().toUpperCase()
+    controlRequest = fs.readFileSync(controlFile, 'utf8').trim()
   } catch (_) {
     return
   }
+  const [modeValue, requestIdValue = ''] = controlRequest.split('|', 2)
+  const requestedMode = modeValue.trim().toUpperCase()
+  const requestedRequestId = requestIdValue.trim()
   if (!['PASSIVE', 'ACTIVE', 'ACTIVE_WAVE7', 'CARRIER_PICKUP', 'CORE_DELIVER'].includes(requestedMode)
-      || requestedMode === lastControlMode) return
+      || (requestedMode === lastControlMode && requestedRequestId === lastControlRequestId)) return
   lastControlMode = requestedMode
+  lastControlRequestId = requestedRequestId
   if (requestedMode === 'PASSIVE') enterPassiveMode()
   else if (requestedMode === 'CARRIER_PICKUP' || requestedMode === 'CORE_DELIVER') {
     enterWaveOneInteractionMode(requestedMode)
   } else enterActiveMode(requestedMode === 'ACTIVE_WAVE7')
+  if (modeAckFile) {
+    const acknowledgement = requestedRequestId
+      ? `${requestedMode}|${requestedRequestId}`
+      : requestedMode
+    try {
+      fs.appendFileSync(modeAckFile, `${acknowledgement}\n`, 'utf8')
+    } catch (error) {
+      console.error(`BOT_MODE_ACK_WRITE_ERROR ${username} ${error.stack || error}`)
+    }
+  }
+}
+
+function pollHeldItemSyncRequest () {
+  if (!heldItemSyncFile) return
+  let requestId
+  try {
+    requestId = fs.readFileSync(heldItemSyncFile, 'utf8').trim()
+  } catch (_) {
+    return
+  }
+  if (!requestId || requestId === lastHeldItemSyncRequest) return
+  lastHeldItemSyncRequest = requestId
+  try {
+    fs.unlinkSync(heldItemSyncFile)
+  } catch (error) {
+    console.error(`HELD_ITEM_SYNC_REQUEST_CONSUME_ERROR ${username} ${error.stack || error}`)
+    return
+  }
+  syncHeldItem()
 }
 
 function distance(a, b) {
@@ -602,6 +664,12 @@ function tickWave7Navigation() {
     stopNavigation()
     return
   }
+  if (reflectEnabled && reflectionInFlight.size > 0) {
+    // The shared fireball reflection must keep its aim and lane stable until
+    // the use_entity packet reaches Paper.
+    stopNavigation()
+    return
+  }
   if (meleeActionInFlight) {
     stopNavigation()
     return
@@ -737,6 +805,10 @@ function sampleMobs() {
 function attackNearest() {
   if (!bot.entity) return
   if (meleeActionInFlight) return
+  // Do not replace the view direction while this client is trying to reflect
+  // a shared event fireball. The server uses the player's current look vector
+  // as the reflected projectile trajectory.
+  if (reflectEnabled && reflectionInFlight.size > 0) return
   if (tentacleProbeEnabled && tentacleProbeAttackAttempts >= tentacleProbeMaxAttacks) return
   const target = eventMobs()
     .filter(sameWave7Chamber)
@@ -899,7 +971,10 @@ function isWave4ObeliskDisplay(entity) {
   const dx = entity.position.x - arenaX
   const dz = entity.position.z - arenaZ
   const horizontalSquared = dx * dx + dz * dz
-  return horizontalSquared >= 7.5 * 7.5 && horizontalSquared <= 11.5 * 11.5
+  // Real-block placement can move a tower through the bounded fallback rings
+  // when one of the four canonical sites is unsafe. Include the outer radius
+  // so the probe keeps observing the actual objective instead of missing it.
+  return horizontalSquared >= 7.5 * 7.5 && horizontalSquared <= 13.5 * 13.5
 }
 
 function nearestWave4ObeliskDisplay(point) {
@@ -910,8 +985,19 @@ function nearestWave4ObeliskDisplay(point) {
 }
 
 function reflectionTarget() {
+  const observedTargets = nearbyObelisks()
+    .filter(isWave4ObeliskDisplay)
+    .sort((first, second) => {
+      const firstAngle = Math.atan2(first.position.z - arenaZ, first.position.x - arenaX)
+      const secondAngle = Math.atan2(second.position.z - arenaZ, second.position.x - arenaX)
+      return firstAngle - secondAngle
+    })
+  if (observedTargets.length > 0) {
+    return observedTargets[reflectionCount % observedTargets.length].position
+  }
   if (obeliskTargets.length > 0) {
-    return obeliskTargets[reflectionCount % obeliskTargets.length]
+    const target = obeliskTargets[reflectionCount % obeliskTargets.length]
+    return new Vec3(target.x, target.y, target.z)
   }
   return null
 }
@@ -923,6 +1009,8 @@ function lookAtServer(point) {
   const groundDistance = Math.sqrt(delta.x * delta.x + delta.z * delta.z)
   const yaw = Math.atan2(-delta.x, -delta.z)
   const pitch = Math.atan2(delta.y, groundDistance)
+  const packetYaw = Math.fround((Math.PI - yaw) * 180 / Math.PI)
+  const packetPitch = Math.fround(-pitch * 180 / Math.PI)
   // Mineflayer's force=true path updates its local rotation and the private
   // lastSentYaw/lastSentPitch, but deliberately waits for the physics loop to
   // emit a packet. An attack packet sent immediately afterwards would then be
@@ -931,14 +1019,25 @@ function lookAtServer(point) {
   // use_entity is tested against the aim that selected the target.
   bot.look(yaw, pitch, true)
   bot._client.write('look', {
-    yaw: Math.fround((Math.PI - yaw) * 180 / Math.PI),
-    pitch: Math.fround(-pitch * 180 / Math.PI),
+    yaw: packetYaw,
+    pitch: packetPitch,
     onGround: bot.entity.onGround,
   })
+  return {
+    yaw,
+    pitch,
+    packetYaw,
+    packetPitch,
+    localYaw: bot.entity.yaw,
+    localPitch: bot.entity.pitch,
+  }
 }
 
 async function reflectFireball(entity) {
   if (!reflectEnabled || !bot.entity || !isRiftFireball(entity)) return false
+  // Let an already-started melee/ranged sequence finish before changing the
+  // player's view. The scheduler retries the fireball while it remains live.
+  if (meleeActionInFlight) return false
   const uuid = String(entity?.uuid || '').trim()
   if (!uuid) return false
   const projectileKey = projectileIdentity(entity)
@@ -988,6 +1087,7 @@ async function reflectFireball(entity) {
       wave7Autopilot,
       activeSeal,
       sourceAnchor,
+      wave4Target: reflectionTarget(),
     })
     if (!aimTarget?.position) {
       recordReflectionFailure(projectileKey,
@@ -995,7 +1095,17 @@ async function reflectFireball(entity) {
         refreshed)
       return false
     }
-    lookAtServer(aimTarget.position)
+    const eyePosition = bot.entity.position.offset(0, bot.entity.eyeHeight, 0)
+    if (!isAimWithinReflectionCone({
+      eyePosition,
+      aimPosition: aimTarget.position,
+      projectilePosition: refreshed.position,
+      maxDegrees: 120,
+    })) {
+      recordReflectionFailure(projectileKey, 'aim-outside-reflection-cone', refreshed)
+      return false
+    }
+    const aimRotation = lookAtServer(aimTarget.position)
     // Send the same serverbound attack interaction a vanilla player uses.
     // Do not call bot.attack here: Mineflayer's entity type filter can reject
     // LargeFireball before the packet is emitted.
@@ -1016,7 +1126,12 @@ async function reflectFireball(entity) {
     bot._client.write('arm_animation', { hand: 0 })
     reflectedProjectiles.add(projectileKey)
     reflectionCount += 1
-    console.log(`PLAYER_REFLECT ${username} count=${reflectionCount} entity=${target.id} uuid=${target.uuid || 'unknown'} seal=${activeSeal?.id || 'none'} seal_pos=${formatPosition(activeSeal?.position)} aim=${aimTarget.kind} target=projectile origin=${sourceAnchor ? 'known' : 'nearest'} distance=${distance(target.position, bot.entity.position).toFixed(2)} projectile_pos=${formatPosition(target.position)} player_pos=${formatPosition(bot.entity.position)}`)
+    const rotationLog = aimRotation
+      ? ` desired_rotation=${aimRotation.yaw.toFixed(4)},${aimRotation.pitch.toFixed(4)}`
+        + ` wire_rotation=${aimRotation.packetYaw.toFixed(2)},${aimRotation.packetPitch.toFixed(2)}`
+        + ` local_rotation=${aimRotation.localYaw.toFixed(4)},${aimRotation.localPitch.toFixed(4)}`
+      : ' rotation=unknown'
+    console.log(`PLAYER_REFLECT ${username} count=${reflectionCount} entity=${target.id} uuid=${target.uuid || 'unknown'} seal=${activeSeal?.id || 'none'} seal_pos=${formatPosition(activeSeal?.position)} aim=${aimTarget.kind} aim_pos=${formatPosition(aimTarget.position)} source_pos=${formatPosition(sourceAnchor)} target=projectile origin=${sourceAnchor ? 'known' : 'nearest'} distance=${distance(target.position, bot.entity.position).toFixed(2)} projectile_pos=${formatPosition(target.position)} player_pos=${formatPosition(bot.entity.position)}${rotationLog}`)
     reflectionFailures.delete(projectileKey)
     return true
   } catch (error) {
@@ -1040,7 +1155,10 @@ function scheduleFireballReflection(entity) {
         if (reflectedProjectiles.has(projectileKey)) return
         const current = bot.entities[entity.id]
         if (!isCurrentProjectile(current, projectileKey)) return
-        if (await reflectFireball(current)) return
+        // Every reflection changes the player's view rotation. Serialize
+        // concurrent fireball callbacks so the look packet and use_entity
+        // packet for one target cannot be interleaved with another target.
+        if (await runReflectionAction(() => reflectFireball(current))) return
         if (!isCurrentProjectile(bot.entities[entity.id], projectileKey)) return
         await new Promise(resolve => setTimeout(resolve, 100))
       }
@@ -1059,7 +1177,10 @@ function scanRiftFireballs() {
     const projectileKey = projectileIdentity(entity)
     if (entity.position) {
       const sourceObelisk = nearestWave4ObeliskDisplay(entity.position)
-      if (sourceObelisk?.position) projectileOrigins.set(projectileKey, sourceObelisk.position)
+      if (sourceObelisk?.position) {
+        projectileOrigins.set(projectileKey,
+          preserveProjectileSourceAnchor(projectileOrigins.get(projectileKey), sourceObelisk.position))
+      }
     }
     scheduleFireballReflection(entity)
   }
@@ -1115,7 +1236,9 @@ bot.on('entitySpawn', entity => {
   if (isRiftFireball(entity) && entity.position) {
     const sourceObelisk = nearestWave4ObeliskDisplay(entity.position)
     if (sourceObelisk?.position) {
-      projectileOrigins.set(projectileIdentity(entity), sourceObelisk.position)
+      const projectileKey = projectileIdentity(entity)
+      projectileOrigins.set(projectileKey,
+        preserveProjectileSourceAnchor(projectileOrigins.get(projectileKey), sourceObelisk.position))
     }
   }
   if (entity?.name === 'item' && entity.position) {
@@ -1143,8 +1266,12 @@ bot._client.on('spawn_entity', packet => {
     || String(entity?.name).toLowerCase().includes('fireball')) {
     const spawnPoint = new Vec3(packet.x, packet.y, packet.z)
     if (entity) {
-      projectileOrigins.set(projectileIdentity(entity),
-        nearestWave4ObeliskDisplay(spawnPoint)?.position || spawnPoint)
+      const projectileKey = projectileIdentity(entity)
+      const source = nearestWave4ObeliskDisplay(spawnPoint)?.position
+      if (source) {
+        projectileOrigins.set(projectileKey,
+          preserveProjectileSourceAnchor(projectileOrigins.get(projectileKey), source))
+      }
     }
     console.log(`ENTITY_PROJECTILE_PACKET ${username} id=${packet.entityId} packet_type=${packet.type} registry=${registryName} name=${entity?.name} pos=${packet.x},${packet.y},${packet.z}`)
   }

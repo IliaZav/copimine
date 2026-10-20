@@ -241,6 +241,17 @@ def test_wave_two_roster_archive_failure_stops_cancel_reset_and_initialization()
     )
 
 
+def test_admin_reset_clears_disposable_wave7_runtime_before_returning_to_collection():
+    reset = _method(_source(), "private void resetEventSafely(")
+
+    assert "if (!clearWaveEntities())" in reset
+    assert reset.index("if (!clearWaveEntities())") < reset.index("depositedResources.replaceAll")
+    assert "realitySplitChamberController.clear();" in reset
+    assert "wave7RecoveryCheckpoint = Map.of();" in reset
+    assert "activeWave = 0;" in reset
+    assert "phaseDeadlineMillis = 0L;" in reset
+
+
 def test_official_wave2_shutdown_detaches_saved_mobs_for_bootstrap_recovery():
     source = _source()
     disable = _method(source, "public void onDisable()")

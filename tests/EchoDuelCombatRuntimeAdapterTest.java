@@ -29,6 +29,10 @@ public final class EchoDuelCombatRuntimeAdapterTest {
     public static void main(String[] args) {
         acceptedRangedActionsAreScopedAndDurablySpendSupplies();
         meleeWearAndConsumableHealingAreCheckpoints();
+        profileDrivenMobilitySchedulesBoundedJumpActions();
+        profileDrivenDefenseSchedulesOwnerBoundShieldActions();
+        criticalStrikeRequiresARealFallingWindow();
+        schemaFourEchoStateUpgradesWithoutInventingActionCooldowns();
         rejectedNativeEffectsRestoreSuppliesAndCooldowns();
         rejectForeignOrIncompleteRuntimeContexts();
         System.out.println("EchoDuelCombatRuntimeAdapterTest OK assertions=" + assertions);
@@ -100,6 +104,119 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         check(restoredFood.actor().currentHealth() == 12.0D && restore(restoredFood).remaining(41) == 1
                         && restoredFood.actor().pendingUseUntilTick() == 332,
                 "snapshot restore keeps the staged consumable, projected healing and pending-use state together");
+    }
+
+    private static void profileDrivenMobilitySchedulesBoundedJumpActions() {
+        var mobility = new me.copimine.endevent.domain.wave7.EchoBehaviorStrategy(
+                500, 500, 1_000, 0, 0, 1_000, 0, true);
+        Fixture fixture = activeFixture(18.0D, mobility);
+        Decision jump = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(), restore(fixture.duel()),
+                scope(fixture.duel(), true, true, true, true), new Observation(100, 10_000.0D, false))
+                .orElseThrow();
+        check("JUMP".equals(jump.action().name()),
+                "high observed mobility selects a real bounded jump when no attack is available");
+        check(jump.nextDuel().actor().nextActionTick() > 100,
+                "jump action consumes the shared persisted action cooldown");
+
+        DuelRecord saved = RealitySplitTrialSnapshot.decodeNamed(
+                RealitySplitTrialSnapshot.encodeNamed(withDuel(fixture.data(), fixture.room(),
+                        fixture.owner(), jump.nextDuel())), EVENT, ATTEMPT, RUNTIME)
+                .personalEchoDuels().get(fixture.room()).get(fixture.owner());
+        Decision cooldown = EchoDuelCombatRuntimeAdapter.tick(saved, restore(saved),
+                scope(saved, true, true, true, true), new Observation(105, 10_000.0D, false))
+                .orElseThrow();
+        check(!"JUMP".equals(cooldown.action().name()),
+                "restart snapshot and action cooldown prevent an immediate jump replay");
+    }
+
+    private static void profileDrivenDefenseSchedulesOwnerBoundShieldActions() {
+        var defense = new me.copimine.endevent.domain.wave7.EchoBehaviorStrategy(
+                500, 500, 0, 1_000, 0, 1_000, 0, true);
+        Fixture fixture = activeFixture(18.0D, defense);
+        Decision shield = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(), restore(fixture.duel()),
+                scope(fixture.duel(), true, true, true, true), new Observation(100, 100.0D, true))
+                .orElseThrow();
+        check("SHIELD".equals(shield.action().name()),
+                "high observed defense selects a real shield raise inside the assigned duel cell");
+        check(shield.itemSlot() == 2 && shield.nextDuel().actor().nextActionTick() > 100,
+                "shield action binds the owner's copied shield and persists its shared action gate");
+        check(shield.nextDuel().actor().shieldActiveUntilTick() == 120
+                        && shield.nextDuel().actor().shieldCooldownUntilTick() == 200,
+                "shield window and cooldown are checkpointed for reconnect and restart");
+
+        DuelRecord saved = RealitySplitTrialSnapshot.decodeNamed(
+                RealitySplitTrialSnapshot.encodeNamed(withDuel(fixture.data(), fixture.room(),
+                        fixture.owner(), shield.nextDuel())), EVENT, ATTEMPT, RUNTIME)
+                .personalEchoDuels().get(fixture.room()).get(fixture.owner());
+        check(saved.actor().shieldActiveUntilTick() == 120
+                        && saved.actor().shieldCooldownUntilTick() == 200,
+                "snapshot restore retains the active shield window and its cooldown");
+        Decision hold = EchoDuelCombatRuntimeAdapter.tick(saved, restore(saved),
+                scope(saved, true, true, true, true), new Observation(105, 100.0D, true))
+                .orElseThrow();
+        check(hold.action() == Action.NONE,
+                "an active persisted shield window cannot be replaced by another action");
+
+        EchoLoadoutState blockedReplica = restore(saved);
+        check(me.copimine.endevent.domain.wave7.EchoDuelCombatPolicy.tryBlockWithShield(
+                        saved.actor(), blockedReplica, 2, blockedReplica.revision(), 105, true, true, 5.0D),
+                "an admitted owner hit from the front is stopped by the active personal shield");
+        check(blockedReplica.item(2).damage() == 6,
+                "a real shield block consumes finite copied durability based on incoming damage");
+        check(!me.copimine.endevent.domain.wave7.EchoDuelCombatPolicy.tryBlockWithShield(
+                        saved.actor(), blockedReplica, 2, blockedReplica.revision(), 106, true, false, 3.0D)
+                        && blockedReplica.item(2).damage() == 6,
+                "rear attacks bypass the shield without consuming its durability");
+        check(!me.copimine.endevent.domain.wave7.EchoDuelCombatPolicy.tryBlockWithShield(
+                        saved.actor(), blockedReplica, 2, blockedReplica.revision(), 106, false, true, 3.0D)
+                        && blockedReplica.item(2).damage() == 6,
+                "a foreign or unadmitted attack cannot use the owner-bound shield receipt");
+    }
+
+    private static void criticalStrikeRequiresARealFallingWindow() {
+        Fixture fixture = activeFixture(18.0D);
+        Decision critical = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(), restore(fixture.duel()),
+                scope(fixture.duel(), true, true, true, true),
+                new Observation(800, 4.0D, true, false, true)).orElseThrow();
+        check(critical.action() == Action.CRITICAL,
+                "the falling-only melee window selects a separately receipted critical strike");
+        check(critical.nextDuel().actor().meleeCooldownUntilTick() == 820
+                        && critical.replica().item(0).damage() == 1,
+                "critical strike spends the same finite melee durability and cooldown");
+
+        Decision grounded = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(), restore(fixture.duel()),
+                scope(fixture.duel(), true, true, true, true),
+                new Observation(900, 4.0D, true, true, false)).orElseThrow();
+        check(grounded.action() == Action.MELEE,
+                "a grounded Echo cannot claim the critical damage multiplier");
+        Decision forgedWindow = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(), restore(fixture.duel()),
+                scope(fixture.duel(), true, true, true, true),
+                new Observation(901, 4.0D, true, true, true)).orElseThrow();
+        check(forgedWindow.action() == Action.MELEE,
+                "a caller cannot claim a critical multiplier while the Echo is grounded");
+    }
+
+    private static void schemaFourEchoStateUpgradesWithoutInventingActionCooldowns() {
+        Fixture fixture = activeFixture(18.0D);
+        Map<String, String> schemaFour = new LinkedHashMap<>(
+                RealitySplitTrialSnapshot.encodeNamed(fixture.data()));
+        schemaFour.put("reality-split-trial.schema", "4");
+        String duelKey = "reality-split-trial.echo.duel." + fixture.room() + "." + fixture.owner();
+        String[] duel = schemaFour.get(duelKey).split("\\|", -1);
+        String[] actor = duel[11].split(":", -1);
+        check(actor.length == 13, "current Echo checkpoints encode all bounded action deadlines");
+        duel[11] = String.join(":", java.util.Arrays.copyOf(actor, 10));
+        schemaFour.put(duelKey, String.join("|", duel));
+
+        DuelRecord upgraded = RealitySplitTrialSnapshot.decodeNamed(schemaFour, EVENT, ATTEMPT, RUNTIME)
+                .personalEchoDuels().get(fixture.room()).get(fixture.owner());
+        check(upgraded.actor().shieldActiveUntilTick() == 0L
+                        && upgraded.actor().shieldCooldownUntilTick() == 0L
+                        && upgraded.actor().jumpCooldownUntilTick() == 0L,
+                "known schema-four duels gain zeroed, canonical action deadlines without rerolling state");
+        check(upgraded.duelId().equals(fixture.duel().duelId())
+                        && upgraded.replicaState().equals(fixture.duel().replicaState()),
+                "schema upgrade preserves duel identity and all prior finite supplies");
     }
 
     private static void rejectedNativeEffectsRestoreSuppliesAndCooldowns() {
@@ -191,6 +308,12 @@ public final class EchoDuelCombatRuntimeAdapterTest {
     }
 
     private static Fixture activeFixture(double health) {
+        return activeFixture(health, new me.copimine.endevent.domain.wave7.EchoBehaviorStrategy(
+                500, 500, 0, 0, 500, 0, 0, true));
+    }
+
+    private static Fixture activeFixture(double health,
+            me.copimine.endevent.domain.wave7.EchoBehaviorStrategy strategy) {
         var controller = new RealitySplitTrialController();
         var assignment = ChamberIsolationPolicy.assign(List.of(id(1), id(2), id(3), id(4)));
         controller.beginNamed(EVENT, ATTEMPT, assignment, List.of(NamedTrial.WARDEN,
@@ -202,6 +325,7 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         var items = new ArrayList<EchoLoadoutState.Item>();
         for (int slot = 0; slot < 41; slot++) items.add(EchoLoadoutState.Item.empty());
         items.set(0, new EchoLoadoutState.Item("IRON_SWORD", 1, 250, 0, Map.of(), "", false));
+        items.set(2, new EchoLoadoutState.Item("SHIELD", 1, 336, 0, Map.of(), "", false));
         items.set(3, new EchoLoadoutState.Item("BOW", 1, 384, 0, Map.of(), "", false));
         items.set(4, new EchoLoadoutState.Item("ARROW", 2, 0, 0, Map.of(), "", false));
         items.set(5, new EchoLoadoutState.Item("BREAD", 1, 0, 0, Map.of(), "", false));
@@ -210,10 +334,7 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         ActorState actor = new ActorState(id(701), health, 20.0D, ActorLifecycle.ALIVE,
                 0, 0, 0, 0, 0, 0);
         DuelRecord duel = planned.withActor(RUNTIME, health, 20.0D, 0L, actor,
-                1L, supplies.revision(), supplies.encode(),
-                me.copimine.endevent.domain.wave7.EchoBehaviorStrategy.from(
-                        new me.copimine.endevent.domain.wave7.EchoBehaviorStrategy.ProfileCounts(
-                                0, 0, 0, 0, 0, 0, 0, true, 0.0D)));
+                1L, supplies.revision(), supplies.encode(), strategy);
         if (!controller.registerPersonalEchoDuel(duel)) {
             throw new AssertionError("fixture Echo duel must pass official controller admission");
         }

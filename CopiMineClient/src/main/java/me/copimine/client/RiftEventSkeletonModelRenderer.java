@@ -31,6 +31,7 @@ public final class RiftEventSkeletonModelRenderer {
             case "END_RIFT_ELITE_SKELETON_V1" -> elite;
             case "END_RIFT_WAVE_GUARDIAN_SKELETON_V1" -> waveGuardian;
             case "END_RIFT_RITUAL_GUARD_SKELETON_V1" -> ritualGuard;
+            case "END_RIFT_WAVE7_MARKSMAN_V1" -> ordinary;
             default -> null;
         };
     }

@@ -3,6 +3,7 @@ param(
   [string]$ServerDir = '',
   [string]$LogPath = '',
   [string]$ErrPath = '',
+  [string]$ResourcePackSourcePath = '',
   # A cold local Paper boot with all pinned plugins can legitimately take
   # several minutes while ImageFrame, TAB and the database-backed plugins
   # initialize. Keep the fail-closed cleanup, but do not kill a healthy
@@ -15,6 +16,31 @@ $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $worktreeRoot = (Resolve-Path (Join-Path $scriptRoot '..')).Path
 $localRuntimeRoot = (Resolve-Path (Join-Path $worktreeRoot 'local-runtime')).Path
 . (Join-Path $scriptRoot 'EndRiftLocalAuthMode.ps1')
+$profileLockPath = Join-Path $worktreeRoot 'tools\minecraft-26.3\profile.lock.json'
+if (-not (Test-Path -LiteralPath $profileLockPath -PathType Leaf)) {
+  throw "Pinned Minecraft 26.3 profile lock is missing: $profileLockPath"
+}
+$profileLock = Get-Content -LiteralPath $profileLockPath -Raw | ConvertFrom-Json
+if ($profileLock.minecraftVersion -ne '26.3' -or
+    $null -eq $profileLock.resourcePackMigration) {
+  throw 'Pinned profile lock does not describe the Minecraft 26.3 resource-pack migration.'
+}
+$expectedLegacyPackSha256 = ([string]$profileLock.resourcePackMigration.legacyPackSha256).ToLowerInvariant()
+$expectedMigrationPackSha256 = ([string]$profileLock.resourcePackMigration.candidateSha256).ToLowerInvariant()
+if ($expectedLegacyPackSha256 -notmatch '^[0-9a-f]{64}$' -or
+    $expectedMigrationPackSha256 -notmatch '^[0-9a-f]{64}$') {
+  throw 'Pinned resource-pack SHA-256 values are invalid.'
+}
+$defaultResourcePackSourcePath = Join-Path $worktreeRoot 'build\minecraft-26.3\CopiMineResourcePack-26.3.zip'
+$selectedResourcePackSourcePath = if ([string]::IsNullOrWhiteSpace($ResourcePackSourcePath)) {
+  $defaultResourcePackSourcePath
+} else {
+  $ResourcePackSourcePath
+}
+if (-not (Test-Path -LiteralPath $selectedResourcePackSourcePath -PathType Leaf)) {
+  throw "Selected local resource-pack source is missing: $selectedResourcePackSourcePath"
+}
+$sourcePackPath = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $selectedResourcePackSourcePath).ProviderPath)
 if ([string]::IsNullOrWhiteSpace($ServerDir)) {
   $ServerDir = Join-Path $localRuntimeRoot 'end-rift-server'
 }
@@ -45,10 +71,17 @@ function Get-LocalSha256 {
 }
 
 function Sync-LocalResourcePack {
-  $sourcePackDir = Join-Path $worktreeRoot 'resourcepacks\build'
-  $sourcePack = Join-Path $sourcePackDir 'CopiMineResourcePack.zip'
-  if (-not (Test-Path -LiteralPath $sourcePack -PathType Leaf)) {
-    throw "Current local resource pack is missing: $sourcePack"
+  if (-not (Test-Path -LiteralPath $sourcePackPath -PathType Leaf)) {
+    throw "Selected local resource pack is missing: $sourcePackPath"
+  }
+  $legacyPackPath = Join-Path $worktreeRoot 'resourcepacks\build\CopiMineResourcePack.zip'
+  if (-not (Test-Path -LiteralPath $legacyPackPath -PathType Leaf) -or
+      (Get-LocalSha256 -LiteralPath $legacyPackPath) -ne $expectedLegacyPackSha256) {
+    throw 'Built legacy resource pack SHA-256 differs from the pinned source.'
+  }
+  $sourceSha256 = Get-LocalSha256 -LiteralPath $sourcePackPath
+  if ($sourceSha256 -notin @($expectedLegacyPackSha256, $expectedMigrationPackSha256)) {
+    throw 'Selected resource pack source SHA-256 is not pinned.'
   }
   $propertiesText = [IO.File]::ReadAllText($propertiesPath)
   if ($propertiesText -notmatch '(?m)^resource-pack-sha1=.*$') {
@@ -61,8 +94,8 @@ function Sync-LocalResourcePack {
   $targetPack = Assert-EndRiftLocalRuntimePath -Path $targetPack -LocalRuntimeRoot $localRuntimeRoot
   $nextPack = $targetPack + '.next'
   $nextPack = Assert-EndRiftLocalRuntimePath -Path $nextPack -LocalRuntimeRoot $localRuntimeRoot
-  Copy-Item -LiteralPath $sourcePack -Destination $nextPack -Force
-  $sha256 = Get-LocalSha256 -LiteralPath $sourcePack
+  Copy-Item -LiteralPath $sourcePackPath -Destination $nextPack -Force
+  $sha256 = $sourceSha256
   if ((Get-LocalSha256 -LiteralPath $nextPack) -ne $sha256) {
     throw 'Local HTTP resource-pack copy failed SHA-256 verification.'
   }
@@ -168,12 +201,28 @@ foreach ($logCandidatePath in @($LogPath, $ErrPath)) {
 }
 $LogPath = Assert-EndRiftLocalOutputPath -Path $LogPath -LocalRuntimeRoot $localRuntimeRoot
 $ErrPath = Assert-EndRiftLocalOutputPath -Path $ErrPath -LocalRuntimeRoot $localRuntimeRoot
-$java = (Get-Command java -ErrorAction Stop).Source
-# Leave headroom for Fabric's native buffers on this desktop. With a 1G
-# initial heap the 3G server also exhausted Windows commit during client
-# connection; the local probe does not need that much committed idle heap.
+$java = Assert-EndRiftLocalRuntimePath `
+  -Path (Join-Path $localRuntimeRoot 'toolchains\temurin-25.0.4.1\jdk-25.0.4.1+1\bin\java.exe') `
+  -LocalRuntimeRoot $localRuntimeRoot -MustExist
+$previousErrorActionPreference = $ErrorActionPreference
+try {
+  # Java prints its version on stderr; Windows PowerShell treats that as an
+  # error record under Stop unless this one probe temporarily allows it.
+  $ErrorActionPreference = 'Continue'
+  $javaVersion = (& $java -version 2>&1 | Out-String)
+  $javaVersionExitCode = $LASTEXITCODE
+} finally {
+  $ErrorActionPreference = $previousErrorActionPreference
+}
+if ($javaVersionExitCode -ne 0 -or $javaVersion -notmatch 'openjdk version "25\.0\.4\.1') {
+  throw "Local End Rift requires the pinned Temurin 25.0.4.1 runtime: $java"
+}
+# Keep the bounded local probe heap above HotSpot's zero-based compressed-oops
+# range and leave room for the desktop and the user's separate server. The
+# machine ran out of commit even with a 1 GiB heap, so this local-only probe
+# uses a 512 MiB heap and stops tiered compilation at C1 to avoid C2 arenas.
 $paper = Start-Process -FilePath $java `
-  -ArgumentList @('-Xms256M', '-Xmx2G', '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-Dfile.encoding=UTF-8', '-jar', ('"' + (Assert-EndRiftLocalRuntimePath -Path (Join-Path $ServerDir 'purpur.jar') -LocalRuntimeRoot $localRuntimeRoot -MustExist) + '"'), 'nogui') `
+  -ArgumentList @('-Xms128M', '-Xmx512M', '-Xss512k', '-XX:CICompilerCount=2', '-XX:TieredStopAtLevel=1', '-XX:HeapBaseMinAddress=34g', '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-Dfile.encoding=UTF-8', '-jar', ('"' + (Assert-EndRiftLocalRuntimePath -Path (Join-Path $ServerDir 'purpur.jar') -LocalRuntimeRoot $localRuntimeRoot -MustExist) + '"'), 'nogui') `
   -WorkingDirectory $ServerDir `
   -RedirectStandardOutput $LogPath `
   -RedirectStandardError $ErrPath `
@@ -182,6 +231,16 @@ $paper = Start-Process -FilePath $java `
 
 $ready = $false
 for ($second = 0; $second -lt $ReadyTimeoutSeconds; $second++) {
+  $paper.Refresh()
+  if ($paper.HasExited) {
+    if (Test-Path -LiteralPath $LogPath -PathType Leaf) {
+      Get-Content -LiteralPath $LogPath -Tail 120
+    }
+    if (Test-Path -LiteralPath $ErrPath -PathType Leaf) {
+      Get-Content -LiteralPath $ErrPath -Tail 60
+    }
+    throw "Local Paper PID $($paper.Id) exited during startup with code $($paper.ExitCode)."
+  }
   if (Test-Path -LiteralPath $LogPath -PathType Leaf) {
     $ready = (Get-Content -LiteralPath $LogPath -Raw) -match 'Done \([^\r\n]*\)!'
     if ($ready) { break }

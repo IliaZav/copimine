@@ -108,7 +108,7 @@ function Assert-SceneCondition {
     [Parameter(Mandatory = $true)][string]$CommandText
   )
   $result = Invoke-SceneCommand $CommandText
-  if (($result -join [Environment]::NewLine) -notmatch 'The time is') {
+  if (($result -join [Environment]::NewLine) -notmatch 'The (?:game )?time is') {
     throw "Local scene condition failed: $Label. Actual response: $result"
   }
   Write-Host "PASS $Label"
@@ -151,6 +151,16 @@ $roomClearTopY = $roomTopY + 1
 $spawnStationX1 = 0; $spawnStationX2 = 3; $spawnStationY = 64; $spawnStationZ = -16
 $spawnButtonZ = $spawnStationZ - 1
 
+# Modern Paper may start a fresh world with no spawn chunks loaded. Explicitly
+# load only the bounded arena, portal-room, and spawn-station footprint before
+# issuing vanilla fill and setblock commands. Fail before editing the world if
+# the force-load command was rejected.
+$forceLoadResponse = Invoke-SceneCommand `
+  "execute in $world run forceload add $arenaMinX $arenaMinZ $roomMaxX $spawnStationZ"
+if ($forceLoadResponse -notmatch '(?:Marked \d+ chunks in minecraft:overworld.*to be force loaded|No chunks were marked for force loading)') {
+  throw "Local scene force-load failed before world edits. Actual response: $forceLoadResponse"
+}
+
 $datapackSource = Join-Path $scriptRoot 'assets\copimine-local-spawn'
 $datapackTarget = Join-Path $ServerDir 'CopiMine\datapacks\copimine-local-spawn'
 if (Test-Path -LiteralPath $datapackTarget) {
@@ -176,6 +186,8 @@ if ($datapacks -notmatch 'copimine-local-spawn') {
 Invoke-SceneCommand 'cmend core remove confirm' | Out-Null
 Start-Sleep -Milliseconds 500
 
+# This local portal geometry is arena scenery. The configured portal-room is
+# the post-victory Rift Shard destination; do not set or validate it here.
 # Clear only the authorized local arena/room footprint, then build the stone
 # floor, low stone arena boundary, portal room, active End portal, and the
 # snapshot-owned obsidian gate.
@@ -268,15 +280,13 @@ Invoke-SceneCommand "execute in $world run data merge block $spawnStationX2 $($s
 
 $status = Invoke-SceneCommand 'cmend status'
 $gateInfo = Invoke-SceneCommand 'cmend gate info'
-$portalInfo = Invoke-SceneCommand 'cmend portalroom info'
 if ($status -notmatch 'core=.*CopiMine 8,68,-39' -or
     $status -notmatch 'arena=.*CopiMine \[-12,65,-59\].*\[28,71,-19\]' -or
     $status -notmatch 'coreOverlay=true' -or
     $status -notmatch 'runes=2/2' -or
     $gateInfo -notmatch 'gate\.pos1=.*CopiMine 29,68,-40.*pos2=.*CopiMine 29,71,-38' -or
-    $gateInfo -notmatch 'gate\.status=.*UNSET' -or
-    $portalInfo -notmatch 'portalroom=.*CopiMine 31\.5,68\.0,-42\.5') {
-  throw "Local scene metadata does not match the rebuilt scene. Status: $status Gate: $gateInfo Portal: $portalInfo"
+    $gateInfo -notmatch 'gate\.status=.*UNSET') {
+  throw "Local scene metadata does not match the rebuilt scene. Status: $status Gate: $gateInfo"
 }
 Assert-SceneCondition 'closed gate is obsidian' "execute in $world run execute if block $gateX $gateMinY $gateMinZ minecraft:obsidian run minecraft:time query gametime"
 Assert-SceneCondition 'portal plane is active' "execute in $world run execute if block 33 68 -39 minecraft:end_portal run minecraft:time query gametime"

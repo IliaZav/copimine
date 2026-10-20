@@ -1,6 +1,7 @@
 package me.copimine.endevent.domain;
 
 import java.util.Collection;
+import java.util.Optional;
 
 /** Read-only acceptance rules for the cells a Wave 7 barrier would claim. */
 public final class Wave7BarrierPreflightPolicy {
@@ -24,5 +25,23 @@ public final class Wave7BarrierPreflightPolicy {
             if (!accepts(candidate)) return false;
         }
         return true;
+    }
+
+    /**
+     * Resolve a retained journal entry against canonical wall geometry using
+     * its absolute floor-block Y. The geometry supplies the expected level;
+     * the journal Y must match that level rather than defining it.
+     */
+    public static Optional<RealitySplitBarrierPolicy.Cell> matchJournalCell(
+            int xOffset, int zOffset, int journalFloorY, int combatFloorY,
+            Collection<RealitySplitBarrierPolicy.Cell> geometryCells) {
+        if (geometryCells == null) return Optional.empty();
+        for (RealitySplitBarrierPolicy.Cell cell : geometryCells) {
+            if (cell == null || cell.level() < 1
+                    || cell.xOffset() != xOffset || cell.zOffset() != zOffset) continue;
+            long expectedFloorY = (long) combatFloorY + cell.level() - 1L;
+            if (expectedFloorY == journalFloorY) return Optional.of(cell);
+        }
+        return Optional.empty();
     }
 }

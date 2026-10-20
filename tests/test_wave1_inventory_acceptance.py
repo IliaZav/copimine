@@ -261,6 +261,16 @@ public class CarrierInventoryAcceptanceProbe {
                                 &&p.beams.stream().filter(b->b.key().equals("wave1-carrier-objective")).allMatch(b->b.from().x==0&&b.to().x==10),
                         "charge beam must start at core and end at current holder");
             }
+            case "dropped-charge-no-beam" -> {
+                p.tickBeam(1000);
+                check(p.beams.isEmpty(),"a dropped charge has no inventory owner and must not broadcast a tracking beam");
+            }
+            case "active-carrier-no-beam" -> {
+                p.currentCarrierState=new RiftCarrierPolicy.State(p.generation,0,p.charge.id,null,null,200,
+                        RiftCarrierPolicy.Phase.CARRIER_ACTIVE);
+                p.tickBeam(1000);
+                check(p.beams.isEmpty(),"a public carrier-to-core beam is not part of Wave 1 owner presentation");
+            }
             case "owner-core-outline" -> {
                 p.pickUpCurrentCarrierCharge(p.holder);p.tickBeam(1000);
                 var outlines=p.beams.stream().filter(b->b.key().equals("wave1-carrier-core-outline")).toList();
@@ -375,7 +385,8 @@ public class CarrierInventoryAcceptanceProbe {
 
 
 @pytest.mark.parametrize("scenario", ["inventory-pickup", "full-inventory", "owner-only-beam",
-                                      "core-to-holder-beam", "owner-core-outline", "offhand-carrier-charge", "slowness-storage", "slowness-offhand",
+                                      "core-to-holder-beam", "dropped-charge-no-beam", "active-carrier-no-beam",
+                                      "owner-core-outline", "offhand-carrier-charge", "slowness-storage", "slowness-offhand",
                                       "stronger-unrelated", "rebind-pdc-rejected", "stronger-replaces-ours", "weaker-restored", "transfer-once", "transfer-offhand",
                                       "duplicate-ground", "duplicate-container", "duplicate-rejected", "stacked-rejected",
                                       "drop-loss", "container-loss", "cursor-loss", "release-token"])
@@ -433,3 +444,17 @@ def test_official_wave1_restart_preserves_and_rehydrates_the_same_charge_checkpo
     assert "preserveWaveOne" in restart_ids
     assert "currentCarrierRestartReconciliationPending" in tick
     assert "markWave1RecoveryRequired(\"WAVE1_RESTART_CARRIED_CHARGE_NOT_FOUND\")" in tick
+
+
+def test_hoppers_cannot_move_or_collect_wave1_charge_tokens_into_unobserved_storage():
+    source = EVENT.read_text("utf-8")
+    move = declaration(source, "public void onArenaInventoryMove(InventoryMoveItemEvent event)")
+    pickup = declaration(source, "public void onArenaInventoryPickup(InventoryPickupItemEvent event)")
+
+    for method in (move, pickup):
+        assert "isCurrentCarrierTokenItem" in method
+        assert "isCurrentCarrierResetChargeItem" in method
+        assert method.index("isCurrentCarrierTokenItem") < method.index("isProtectedInventory"), (
+            "charge custody must be enforced even when both inventories are outside observed arena storage"
+        )
+        assert "event.setCancelled(true)" in method

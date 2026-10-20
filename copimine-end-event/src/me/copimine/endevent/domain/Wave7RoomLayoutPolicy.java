@@ -9,9 +9,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.random.RandomGenerator;
 
 /**
  * Immutable Wave 7 room selection snapshot. Two or three players receive the
@@ -111,7 +111,7 @@ public final class Wave7RoomLayoutPolicy {
     private Wave7RoomLayoutPolicy() { }
 
     /** Select roles once and return the immutable value to persist for this attempt. */
-    public static Snapshot select(long generation, List<UUID> participants, Random random) {
+    public static Snapshot select(long generation, List<UUID> participants, RandomGenerator random) {
         if (generation <= 0L || participants == null || random == null
                 || participants.size() < 2 || participants.size() > MAX_PLAYERS
                 || participants.stream().anyMatch(Objects::isNull)
@@ -141,15 +141,13 @@ public final class Wave7RoomLayoutPolicy {
         return new Snapshot(generation, persistedRooms);
     }
 
-    private static List<Trial> selectTrials(int roomCount, Random random) {
+    private static List<Trial> selectTrials(int roomCount, RandomGenerator random) {
         List<Trial> pool = new ArrayList<>(List.of(Trial.values()));
-        if (roomCount < Trial.values().length) {
-            for (int index = pool.size() - 1; index > 0; index--) {
-                int other = random.nextInt(index + 1);
-                Trial swap = pool.get(index);
-                pool.set(index, pool.get(other));
-                pool.set(other, swap);
-            }
+        for (int index = pool.size() - 1; index > 0; index--) {
+            int other = random.nextInt(index + 1);
+            Trial swap = pool.get(index);
+            pool.set(index, pool.get(other));
+            pool.set(other, swap);
         }
         return List.copyOf(pool.subList(0, roomCount));
     }

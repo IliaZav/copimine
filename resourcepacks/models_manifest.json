@@ -402,6 +402,20 @@
       "texture": "copimine:item/end_event_pad_occupied"
     },
     {
+      "id": "end_event_pad_charging",
+      "custom_model_data": 830015,
+      "base_material": "paper",
+      "model": "copimine:item/end_event_pad",
+      "texture": "copimine:item/end_event_pad"
+    },
+    {
+      "id": "end_event_pad_complete",
+      "custom_model_data": 830016,
+      "base_material": "paper",
+      "model": "copimine:item/end_event_pad_occupied",
+      "texture": "copimine:item/end_event_pad_occupied"
+    },
+    {
       "id": "rift_core_shard",
       "custom_model_data": 830004,
       "base_material": "echo_shard",

@@ -624,9 +624,9 @@ donation-catalog:
       reclaim-policy: LOSS_ONLY
       consume-policy: BREAKABLE
       effect-profile-id: NALOGOVAYA_KOSA
-      effect-description: "Вампиризм; шанс 30% украсть 3 HP, шанс 20% наложить голод или иссушение, шанс 10% наложить слепоту III на 7 секунд; шанс 2.5% украсть 1–3 AR"
+      effect-description: "Вампиризм: независимо 30% шанс украсть 3 HP, 20% шанс наложить голод, 20% шанс наложить иссушение и 10% шанс наложить слепоту III на 7 секунд; отдельно 2.5% шанс украсть 1–3 AR"
       cooldown-seconds: 0
-      proc-chance: 0.20
+      proc-chance: 0.30
       max-stack: 1
       repairable: true
       custom-texture-mode-allowed: true

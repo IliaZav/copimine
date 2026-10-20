@@ -70,6 +70,13 @@ def test_dead_ritual_shooter_keeps_prisoner_out_of_all_arrow_recipients() -> Non
     assert "priority = EventPriority.HIGHEST" in source[shoot_handler:shoot_start]
     assert "prepareEventSkeletonArrow(arrow, skeleton" in skeleton_shoot_body
     assert "configureEventSkeletonArrow(" not in skeleton_shoot_body
+    shot_admission = skeleton_shoot_body.index("if (!isWaveProjectileShooterAllowed(skeleton))")
+    assert shot_admission < skeleton_shoot_body.index("reserveWaveProjectileGroup(")
+    assert shot_admission < skeleton_shoot_body.index("tagEventArrowVolley(")
+    assert shot_admission < skeleton_shoot_body.index("prepareEventSkeletonArrow(")
+    denied_shot = skeleton_shoot_body[shot_admission:skeleton_shoot_body.index("boolean miniBoss", shot_admission)]
+    assert "event.setCancelled(true)" in denied_shot
+    assert "arrow.remove()" in denied_shot
     outcome_body = method_body(source, "public void onEventSkeletonShootBowOutcome")
     assert "runTaskLater(this, () ->" in outcome_body
     assert "event.isCancelled()" in outcome_body

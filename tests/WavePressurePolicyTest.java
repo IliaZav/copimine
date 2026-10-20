@@ -38,6 +38,31 @@ public final class WavePressurePolicyTest {
                 "three-player Wave 5 cannot inherit the two-player eight-elite exception");
         check(!WavePressurePolicy.isApprovedTwoPlayerException(5, 3, threePlayerWaveFive),
                 "the Wave 5 exception remains exclusive to exactly two players");
+
+        var waveOneRequest = new WaveMechanicsPolicy.WaveCounts(12, 8, 0, 0, 0);
+        var twoPlayerWaveOne = WavePressurePolicy.clamp(1, waveOneRequest, 2);
+        var threePlayerWaveOne = WavePressurePolicy.clamp(1, waveOneRequest, 3);
+        check(twoPlayerWaveOne.total() == 10 && threePlayerWaveOne.total() == 10,
+                "Wave 1 uses ten simultaneous mobs for two or three players");
+        var extremeWaveOne = WavePressurePolicy.clamp(1,
+                new WaveMechanicsPolicy.WaveCounts(Integer.MAX_VALUE, Integer.MAX_VALUE,
+                        Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE), 2);
+        check(extremeWaveOne.total() == 10
+                        && extremeWaveOne.total() <= PressureBudgetController.HARD_CAP,
+                "Wave 1's scoped cap remains safe for extreme input and below the hard cap");
+
+        var onePlayerWaveOne = WavePressurePolicy.clamp(1, waveOneRequest, 1);
+        check(onePlayerWaveOne.total() == 0,
+                "wave-scoped pressure cannot bypass the minimum-player pressure profile");
+
+        var fourPlayerWaveOne = WavePressurePolicy.clamp(1, waveOneRequest, 4);
+        check(fourPlayerWaveOne.total()
+                        <= PressureBudgetController.profileForPlayers(4).activePressure(),
+                "the extra two slots apply only to two- and three-player parties");
+
+        var waveSix = WavePressurePolicy.clamp(6, waveOneRequest, 2);
+        check(waveSix.total() <= PressureBudgetController.profileForPlayers(2).activePressure(),
+                "the Waves 1 and 2 capacity does not broaden pressure for later waves");
         System.out.println("WavePressurePolicyTest OK");
     }
 

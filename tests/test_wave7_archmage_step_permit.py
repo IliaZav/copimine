@@ -25,10 +25,15 @@ public class ArchmageStepPermitProbe {
     static final UUID ACTOR_ID=UUID.fromString("00000000-0000-0000-0000-000000000071");
     final String eventId="00000000-0000-0000-0000-000000000072";
     final long generation=72L;
+    final int activeWave=7;
     final Map<UUID,Object> ownedEntities=new HashMap<>();
     final Map<UUID,BossTeleportPermitPolicy.Permit> combatTeleportPermits=new HashMap<>();
+    final Map<UUID,String> combatTeleportRejectionReasons=new HashMap<>();
     final RealitySplitChamberController realitySplitChamberController=new RealitySplitChamberController();
     int acceptedTeleports;
+    static final class ProbeLogger { void warning(String ignored){} }
+    ProbeLogger getLogger(){return new ProbeLogger();}
+    String locationText(Location ignored){return "probe";}
     static final class ChamberIsolationPolicy { static final class Assignment {} }
     static final class RealitySplitChamberController {
         ChamberIsolationPolicy.Assignment assignment(){return new ChamberIsolationPolicy.Assignment();}

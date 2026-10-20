@@ -20,7 +20,7 @@ import me.copimine.endevent.runtime.RealitySplitTrialController.NamedTrialState;
 import me.copimine.endevent.runtime.RealitySplitTrialController.Stage;
 import me.copimine.endevent.runtime.RealitySplitTrialSnapshot;
 
-/** Schema-4 personal Echo records are strictly owner-, actor- and generation-bound. */
+/** Schema-5 personal Echo records are strictly owner-, actor- and generation-bound. */
 public final class RealitySplitEchoDuelSnapshotTest {
     private static final UUID EVENT = id(100);
     private static final long ATTEMPT = 81;
@@ -47,8 +47,8 @@ public final class RealitySplitEchoDuelSnapshotTest {
         source = withDuel(source, room, owner, active);
 
         Map<String, String> activeEncoded = RealitySplitTrialSnapshot.encodeNamed(source);
-        check("4".equals(activeEncoded.get("reality-split-trial.schema")),
-                "named checkpoint uses strategy-bound actor schema 4");
+        check("5".equals(activeEncoded.get("reality-split-trial.schema")),
+                "named checkpoint persists Echo shield and jump cooldown schema 5");
         NamedData activeDecoded = RealitySplitTrialSnapshot.decodeNamed(
                 activeEncoded, EVENT, ATTEMPT, RUNTIME);
         check(activeDecoded.equals(source), "active Echo actor and allowlisted supplies round trip exactly");

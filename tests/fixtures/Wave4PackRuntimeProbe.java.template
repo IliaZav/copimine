@@ -45,12 +45,13 @@ public class Wave4PackRuntimeProbe {
     static class EventConfig {
         static class RiftObeliskTuning {
             int maxActiveFireballs() { return 1; }
-            int fireIntervalTicks() { return 80; }
+            int fireIntervalTicks() { return 26; }
         }
         RiftObeliskTuning riftObeliskTuning() { return new RiftObeliskTuning(); }
     }
     static class Wave4ObeliskRuntimeState {
-        UUID id = UUID.randomUUID(); Object fireLease, pulseLease, fireAim;
+        UUID id = UUID.randomUUID(); ObeliskFireDirectorPolicy.FireSequence fireLease;
+        Object pulseLease, fireAim;
         ObeliskStage stage = ObeliskStage.ACTIVE;
         UUID id() { return id; }
         ObeliskStage stage() { return stage; }
@@ -79,7 +80,7 @@ public class Wave4PackRuntimeProbe {
     EventPhase phase = EventPhase.WAVE_4;
     int currentWaveScalePlayers = 2, currentWave4PressurePackAttempts, waveSpawnGroupIndex, activeWave = 4;
     long generation = 5, eventTickCounter = 5, currentWave4PressureRetryAtMillis, phaseDeadlineMillis;
-    UUID eventId = UUID.randomUUID(); String worldName = "fixture", recoveryReason;
+    String eventId = UUID.randomUUID().toString(), worldName = "fixture", recoveryReason;
     boolean testWave4ObeliskMode, testWaveFrontVisualMode, currentWave4MobsStarted,
             currentWave4StartupFailed, currentWave4ObeliskAssaultComplete, waveObjectiveComplete;
     WaveMechanicsPolicy.WaveCounts composition = new WaveMechanicsPolicy.WaveCounts(1, 1, 1, 0, 0);
@@ -97,7 +98,7 @@ public class Wave4PackRuntimeProbe {
     int readInt(Entity e, Object key, int fallback) {
         String value = readString(e, key); return value.isEmpty() ? fallback : Integer.parseInt(value);
     }
-    boolean ownedBySession(Entity e, UUID event, long gen) { return e.generation == gen; }
+    boolean ownedBySession(Entity e, String event, long gen) { return e.generation == gen; }
     void unregisterOwnedEntity(UUID id, String reason) { ownedEntities.remove(id); }
     Entity spawn(EntityType type, int index) {
         spawnCalls.add(index); if (failing.contains(index)) return null;
@@ -132,7 +133,7 @@ public class Wave4PackRuntimeProbe {
     void cancelWaveSpawnTask() { canceled++; }
     void removeWave4Obelisk(UUID id, String reason) { activeWave4Obelisks.remove(id); }
     void cleanupRiftFireball(UUID id, String reason) { activeRiftFireballs.remove(id); }
-    ObeliskFireDirectorPolicy.SpecialCandidate selectWave4Special(int cap) { return null; }
+    ObeliskFireDirectorPolicy.SpecialCandidate selectWave4Special() { return null; }
     void renderObeliskCollapse(Wave4ObeliskRuntimeState state) { }
     void advanceObeliskEmergence(Wave4ObeliskRuntimeState state) { }
     void renderObeliskActive(Wave4ObeliskRuntimeState state) { }

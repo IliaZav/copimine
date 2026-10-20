@@ -4,12 +4,12 @@ This record covers the migration's Paper plugin and Fabric client Gradle roots. 
 
 ## Checksum provenance
 
-[`GRADLE_DEPENDENCY_PROVENANCE.json`](GRADLE_DEPENDENCY_PROVENANCE.json) records the source URL, method, and SHA-256 for every external artifact entry in both manifests. The report contains 624 artifacts: 160 server artifacts and 464 client artifacts.
+[`GRADLE_DEPENDENCY_PROVENANCE.json`](GRADLE_DEPENDENCY_PROVENANCE.json) records the source URL, method, and SHA-256 for every external artifact entry in both manifests. The report contains 637 artifacts: 160 server artifacts and 477 client artifacts.
 
-- 531 recorded hashes match the publisher's `.sha256` sidecar fetched over HTTPS.
+- 544 recorded hashes match the publisher's `.sha256` sidecar fetched over HTTPS.
 - 93 recorded hashes match a direct HTTPS download of the exact artifact, hashed locally.
 - Six common parent POM sidecars from the Paper Maven mirror differed from the locked bytes. Direct Maven Central downloads matched the lock for all six. Maven Central is the first repository in the server build; strict verification will reject the Paper mirror's different POM bytes if repository fallback selects them.
-- The Paper API 26.3.build.205-stable JAR size and hash match `profile.lock.json`; its JAR, module metadata, and POM hashes match Paper Maven sidecars. Fabric Loom 1.19.1 and Fabric API 0.163.0+26.3 JAR/POM hashes, as well as the updated Fabric API module artifacts, match the SHA-256 sidecars published by Fabric Maven.
+- The Paper API 26.3.build.205-stable JAR size and hash match `profile.lock.json`; its JAR, module metadata, and POM hashes match Paper Maven sidecars. Fabric Loom 1.19.1 and Fabric API 0.164.0+26.3 JAR/POM hashes, as well as the updated Fabric API module artifacts, match the SHA-256 sidecars published by Fabric Maven.
 
 The sidecars and artifacts are served by the publishers' repositories. A separate HTTPS retrieval confirms the lock contents and catches stale or altered cached bytes, but it is not a third-party signature or cross-operator attestation. Gradle documents that bootstrapping verification metadata trusts the repositories used at bootstrap. This residual trust boundary is recorded rather than described as cryptographic provenance.
 

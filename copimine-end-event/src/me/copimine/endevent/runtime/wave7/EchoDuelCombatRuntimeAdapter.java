@@ -20,12 +20,12 @@ public final class EchoDuelCombatRuntimeAdapter {
     private static final int RANGED_RANGE_BLOCKS = 30;
     private static final int HEAL_THRESHOLD_PERMILLE = 550;
     private static final EchoDuelCombatPolicy.Cooldowns COOLDOWNS =
-            new EchoDuelCombatPolicy.Cooldowns(10, 20, 40, 32);
+            new EchoDuelCombatPolicy.Cooldowns(10, 20, 40, 32, 20, 100, 60);
 
     private EchoDuelCombatRuntimeAdapter() {
     }
 
-    public enum Action { NONE, MELEE, RANGED, CONSUMABLE }
+    public enum Action { NONE, MELEE, CRITICAL, RANGED, CONSUMABLE, SHIELD, JUMP }
 
     /** The live context must exactly match the persisted event, room, actor and duel identity. */
     public record Scope(UUID eventId, long attemptGeneration, long runtimeGeneration, int room,
@@ -57,7 +57,12 @@ public final class EchoDuelCombatRuntimeAdapter {
         }
     }
 
-    public record Observation(long tick, double distanceSquared, boolean lineOfSight) {
+    public record Observation(long tick, double distanceSquared, boolean lineOfSight,
+                              boolean onGround, boolean criticalWindow) {
+        public Observation(long tick, double distanceSquared, boolean lineOfSight) {
+            this(tick, distanceSquared, lineOfSight, true, false);
+        }
+
         public Observation {
             if (tick < 0 || tick > RealitySplitEchoDuelState.MAX_COUNTER
                     || !Double.isFinite(distanceSquared) || distanceSquared < 0.0D
@@ -81,8 +86,11 @@ public final class EchoDuelCombatRuntimeAdapter {
             Objects.requireNonNull(replica, "replica");
             if (action == Action.NONE && (itemSlot != -1 || ammoSlot != -1 || actionItem != null)
                     || action == Action.MELEE && (itemSlot < 0 || ammoSlot != -1 || actionItem == null)
+                    || action == Action.CRITICAL && (itemSlot < 0 || ammoSlot != -1 || actionItem == null)
                     || action == Action.RANGED && (itemSlot < 0 || ammoSlot < 0 || actionItem == null)
-                    || action == Action.CONSUMABLE && (itemSlot < 0 || ammoSlot != -1 || actionItem == null)) {
+                    || action == Action.CONSUMABLE && (itemSlot < 0 || ammoSlot != -1 || actionItem == null)
+                    || action == Action.SHIELD && (itemSlot < 0 || ammoSlot != -1 || actionItem == null)
+                    || action == Action.JUMP && (itemSlot != -1 || ammoSlot != -1 || actionItem != null)) {
                 throw new IllegalArgumentException("invalid Echo combat decision");
             }
         }
@@ -115,6 +123,10 @@ public final class EchoDuelCombatRuntimeAdapter {
 
             int consumableSlot = replica.find(EchoLoadoutState.Kind.GOLDEN_APPLE);
             if (consumableSlot < 0) consumableSlot = replica.find(EchoLoadoutState.Kind.FOOD);
+            if (duel.actor().shieldActiveUntilTick() > observation.tick()) {
+                return Optional.of(new Decision(scope, Action.NONE, duel, duel, baselineReplica,
+                        replica, -1, -1, null));
+            }
             boolean needsHealing = duel.actor().currentHealth() * 1_000.0D
                     <= duel.actor().maximumHealth() * HEAL_THRESHOLD_PERMILLE;
             if (needsHealing && duel.behaviorStrategy().sustainPermille() >= 250
@@ -132,8 +144,41 @@ public final class EchoDuelCombatRuntimeAdapter {
                 }
             }
 
+            int shieldSlot = replica.find(EchoLoadoutState.Kind.SHIELD);
+            if (shieldSlot >= 0 && observation.distanceSquared() <= RANGED_RANGE_BLOCKS * (double) RANGED_RANGE_BLOCKS
+                    && inProfileWindow(observation.tick(), duel.behaviorStrategy().defensePermille())) {
+                long holdTicks = 5L + 15L * duel.behaviorStrategy().defensePermille() / 1_000L;
+                Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartShield(
+                        duel.actor(), replica, shieldSlot, replica.revision(), observation.tick(),
+                        holdTicks, COOLDOWNS);
+                if (actor.isPresent()) {
+                    return decision(duel, baselineReplica, replica, scope, Action.SHIELD, actor.get(),
+                            shieldSlot, -1, replica.item(shieldSlot));
+                }
+            }
+
+            if (observation.onGround() && inProfileWindow(
+                    observation.tick(), duel.behaviorStrategy().mobilityPermille())) {
+                Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartJump(
+                        duel.actor(), observation.tick(), COOLDOWNS);
+                if (actor.isPresent()) {
+                    return decision(duel, baselineReplica, replica, scope, Action.JUMP, actor.get(),
+                            -1, -1, null);
+                }
+            }
+
             boolean inMeleeRange = observation.distanceSquared()
                     <= MELEE_RANGE_BLOCKS * (double) MELEE_RANGE_BLOCKS;
+            if (inMeleeRange && !observation.onGround() && observation.criticalWindow() && meleeSlot >= 0) {
+                EchoLoadoutState.Item item = replica.item(meleeSlot);
+                Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartCriticalMelee(
+                        duel.actor(), observation.tick(), COOLDOWNS);
+                if (actor.isPresent() && EchoDuelCombatPolicy.tryApplyGearWear(
+                        replica, meleeSlot, 1, replica.revision())) {
+                    return decision(duel, baselineReplica, replica, scope, Action.CRITICAL, actor.get(),
+                            meleeSlot, -1, item);
+                }
+            }
             if (inMeleeRange && meleeSlot >= 0
                     && duel.behaviorStrategy().meleePermille() >= duel.behaviorStrategy().rangedPermille()) {
                 EchoLoadoutState.Item item = replica.item(meleeSlot);
@@ -215,7 +260,9 @@ public final class EchoDuelCombatRuntimeAdapter {
             ActorState refundedActor = new ActorState(before.actorUuid(), before.currentHealth(),
                     before.maximumHealth(), before.lifecycle(), charged.actor().revision() + 1L,
                     before.nextActionTick(), before.meleeCooldownUntilTick(),
-                    before.rangedCooldownUntilTick(), before.pendingUseUntilTick(), before.deathSerial());
+                    before.rangedCooldownUntilTick(), before.pendingUseUntilTick(), before.deathSerial(),
+                    before.shieldActiveUntilTick(), before.shieldCooldownUntilTick(),
+                    before.jumpCooldownUntilTick());
             DuelRecord refunded = charged.withActor(charged.runtimeGeneration(),
                     prior.ownerStartingHealth(), prior.ownerMaximumHealth(), prior.returnDeadlineMillis(),
                     refundedActor, charged.revision() + 1L, refundedReplica.revision(),
@@ -230,9 +277,16 @@ public final class EchoDuelCombatRuntimeAdapter {
         return preferred >= 0 ? preferred : fallback;
     }
 
+    private static boolean inProfileWindow(long tick, int weightPermille) {
+        if (tick < 0L || weightPermille <= 0 || weightPermille > 1_000) return false;
+        long window = Math.max(1L, (weightPermille + 9L) / 10L);
+        return tick % 100L < window;
+    }
+
     private static ActorState withHealth(ActorState actor, double health) {
         return new ActorState(actor.actorUuid(), health, actor.maximumHealth(), actor.lifecycle(),
                 actor.revision(), actor.nextActionTick(), actor.meleeCooldownUntilTick(),
-                actor.rangedCooldownUntilTick(), actor.pendingUseUntilTick(), actor.deathSerial());
+                actor.rangedCooldownUntilTick(), actor.pendingUseUntilTick(), actor.deathSerial(),
+                actor.shieldActiveUntilTick(), actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick());
     }
 }

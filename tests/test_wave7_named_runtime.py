@@ -38,6 +38,8 @@ public class NamedWave7StartProbe {
     UUID parseUuidOrNull(String raw){return UUID.fromString(raw);}
     boolean isRealitySplitTrialRuntimeActive(){return !recovery;}
     boolean isOfficialCurrentAttempt(){return true;}
+    boolean shouldRetainWave7ActorChunksLoaded(){return false;}
+    void ensureOverlayChunksLoaded(World world){}
     void forcePhase(EventPhase phase,String reason){recovery=true;}
     void enterNamedRealitySplitRecovery(String reason){recoveryReason=reason;recovery=true;}
     void clearRealitySplitTrialEntities(String reason){}
@@ -69,6 +71,7 @@ public class NamedWave7StartProbe {
         "domain/ChamberIsolationPolicy.java", "domain/RealitySplitBarrierPolicy.java",
         "domain/Wave7AdmissionPolicy.java",
         "domain/Wave7EchoDuelCellPolicy.java", "domain/Wave7NamedTrialActorPolicy.java",
+        "domain/Wave7RoomLayoutPolicy.java",
         "domain/wave7/EchoBehaviorStrategy.java",
         "domain/wave7/EchoLoadoutState.java", "runtime/RealitySplitEchoDuelState.java",
         "runtime/RealitySplitChamberController.java", "runtime/RealitySplitTrialController.java",
@@ -113,6 +116,8 @@ public class NamedWave7LayoutRouteProbe {
     UUID parseUuidOrNull(String raw){try{return UUID.fromString(raw);}catch(RuntimeException ignored){return null;}}
     boolean isRealitySplitTrialRuntimeActive(){return !recovery;}
     boolean isOfficialCurrentAttempt(){return true;}
+    boolean shouldRetainWave7ActorChunksLoaded(){return false;}
+    void ensureOverlayChunksLoaded(World world){}
     void forcePhase(EventPhase phase,String reason){recovery=true;recoveryReason=reason;}
     void enterNamedRealitySplitRecovery(String reason){recovery=true;recoveryReason=reason;}
     void clearRealitySplitTrialEntities(String reason){}
@@ -195,6 +200,7 @@ public class NamedWave7LayoutRouteProbe {
     paths = [SOURCE / item for item in (
         "domain/ChamberIsolationPolicy.java", "domain/RealitySplitBarrierPolicy.java",
         "domain/Wave7EchoDuelCellPolicy.java", "domain/Wave7NamedTrialActorPolicy.java",
+        "domain/Wave7RoomLayoutPolicy.java",
         "domain/wave7/EchoBehaviorStrategy.java", "domain/wave7/EchoLoadoutState.java",
         "runtime/RealitySplitEchoDuelState.java", "runtime/RealitySplitChamberController.java",
         "runtime/RealitySplitTrialController.java", "runtime/RealitySplitTrialSnapshot.java",
@@ -227,6 +233,37 @@ def test_named_role_actor_runtime_is_checkpointed_scoped_and_death_authoritative
     assert "isCurrentRealitySplitTrialTarget(actor, target)" in projectile_admission
     assert "readNamedTrialActorCheckpoint(entity, trial)" in death
     assert "completeNamedActor(parseUuidOrNull(eventId), generation" in death
+
+
+def test_named_actor_profiles_do_not_bind_to_legacy_trial_enum():
+    source = (SOURCE / "CopiMineEndEvent.java").read_text(encoding="utf-8")
+    spawn = extract(source, "Entity spawnRealitySplitTrialEntity(World world, Location location, EntityType type,")
+    named = extract(source, "boolean ensureNamedRealitySplitTrialRoom(World world, Location core,")
+    assert "boolean attachLegacyTrialRuntimeState" in spawn
+    assert "if (attachLegacyTrialRuntimeState)" in spawn
+    assert "RealitySplitTrialController.Trial.valueOf(role)" in spawn
+    assert "trial.chamber(), trial.trial().name(), -1, true, true)" in named
+    assert "trial.chamber(), trial.trial().name(), -1, true, false)" in named
+
+
+def test_wave7_live_boundary_runner_waits_for_actual_objective_start_marker():
+    runner = (ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1").read_text(encoding="utf-8")
+    assert "Wait-Log -AfterOffset $wave7Offset -Pattern 'WAVE_OBJECTIVE_STARTED.*wave=7\\b'" in runner
+
+
+def test_wave7_two_player_disposable_test_uses_non_echo_layout_for_bot_clients():
+    source = (SOURCE / "CopiMineEndEvent.java").read_text(encoding="utf-8")
+    preflight = extract(source, "boolean preflightWave7StartBeforeWorldMutation(World world, Location core,")
+    test_layout = extract(source, "List<RealitySplitTrialController.NamedTrial> namedWave7TestLayout(int playerCount)")
+    assert "if (sandbox)" in preflight and "namedWave7TestLayout((int) playerCount)" in preflight
+    assert "RealitySplitTrialController.NamedTrial.WARDEN" in test_layout
+    assert "RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN" in test_layout
+    assert "RealitySplitTrialController.NamedTrial.RIFT_ARCHMAGE" in test_layout
+    assert ".subList(0, playerCount)" in test_layout
+    assert "if (playerCount >= 4)" in test_layout
+    assert "return List.of(RealitySplitTrialController.NamedTrial.values());" in test_layout
+    runner = (ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1").read_text(encoding="utf-8")
+    assert "END_RIFT_NAMED_WAVE7_TRIALS_READY.*layout=\\[WARDEN, MOBILE_MARKSMAN\\]" in runner
 
 
 def test_named_death_requires_new_actor_identity_and_selected_role(tmp_path):
@@ -323,6 +360,7 @@ public class NamedWave7DeathProbe {
     paths = [SOURCE / item for item in (
         "domain/ChamberIsolationPolicy.java", "domain/Wave7EchoDuelCellPolicy.java",
         "domain/Wave7NamedTrialActorPolicy.java",
+        "domain/Wave7RoomLayoutPolicy.java",
         "domain/wave7/EchoBehaviorStrategy.java", "domain/wave7/EchoLoadoutState.java",
         "runtime/RealitySplitEchoDuelState.java", "runtime/RealitySplitTrialController.java",
     )]
@@ -370,6 +408,7 @@ def test_official_wave7_preflight_runs_before_cleanup_teleport_and_actor_spawn(t
     assert "startRealitySplitTrials(world, core)" in initializer
 
     preflight = extract(source, "boolean preflightWave7StartBeforeWorldMutation(")
+    test_layout = extract(source, "List<RealitySplitTrialController.NamedTrial> namedWave7TestLayout(int playerCount)")
     assert preflight.index("preflightNamedTrialActorAdapters()") < preflight.index(
         "preflightNamedEchoDuelRooms()")
     assert preflight.index("preflightNamedEchoDuelRooms()") < preflight.index(
@@ -388,6 +427,7 @@ import me.copimine.endevent.domain.*;
 import me.copimine.endevent.runtime.*;
 public class Wave7PreflightProbe {
     String eventId="00000000-0000-0000-0000-000000000071",recoveryReason="";
+    String lastWarning="";
     long generation=71; boolean adaptersReady=true,echoReady=true,journalReady=true,barrierCellsReady=true,recovery;
     boolean namedWave7InitialActorCreation,namedWave7RuntimeRestorePending;
     List<RealitySplitTrialController.NamedTrial> namedWave7PreflightSelectedLayout=List.of();
@@ -399,7 +439,9 @@ public class Wave7PreflightProbe {
     enum EventPhase { RECOVERY_REQUIRED }
     static class AttemptLifecycle { boolean enableWave7Returns(long generation){return true;} }
     AttemptLifecycle attemptLifecycle=new AttemptLifecycle();
-    Logger getLogger(){Logger value=Logger.getAnonymousLogger();value.setLevel(Level.OFF);return value;}
+    Logger getLogger(){return new Logger("wave7-preflight-probe",null){
+        @Override public void warning(String message){lastWarning=message;}
+    };}
     UUID parseUuidOrNull(String raw){return UUID.fromString(raw);}
     boolean preflightNamedTrialActorAdapters(){return adaptersReady;}
     boolean preflightNamedEchoDuelRooms(){return echoReady;}
@@ -409,13 +451,24 @@ public class Wave7PreflightProbe {
     boolean namedRealitySplitTrialImplemented(RealitySplitTrialController.NamedTrial trial){return true;}
     void enterNamedRealitySplitRecovery(String reason){recoveryReason=reason;recovery=true;}
     boolean saveStateSync(){saves++;return true;}
-''' + preflight + r'''
+''' + test_layout + preflight + r'''
     boolean initializeAfterPreflight(World world,Location core,List<UUID> owners){
         if(!preflightWave7StartBeforeWorldMutation(world,core,new LinkedHashSet<>(owners),false))return false;
         cleanups++;teleports++;spawns++;return true;
     }
     static void require(boolean value,String reason){if(!value)throw new AssertionError(reason);}
     public static void main(String[] args){
+        var solo=new Wave7PreflightProbe();
+        var soloWorld=new World();
+        require(!solo.initializeAfterPreflight(soloWorld,new Location(soloWorld),List.of(new UUID(0,1))),
+                "Wave 7 must refuse a one-player roster during preflight");
+        require(solo.lastWarning.contains("reason=minimum-roster-size")
+                        &&solo.lastWarning.contains("players=1")&&solo.lastWarning.contains("minimum=2"),
+                "single-player refusal must report the Wave 7 minimum clearly");
+        require(!solo.realitySplitChamberController.owns(71)&&!solo.realitySplitTrialController.owns(71)
+                        &&solo.activeWave==0&&solo.saves==0&&solo.cleanups==0
+                        &&solo.teleports==0&&solo.spawns==0&&!solo.recovery,
+                "single-player refusal must happen before event state, persistence, or world mutation");
         var refused=new Wave7PreflightProbe();refused.echoReady=false;
         var refusedWorld=new World();
         require(!refused.initializeAfterPreflight(refusedWorld,new Location(refusedWorld),List.of(new UUID(0,1),new UUID(0,2))),
@@ -455,6 +508,7 @@ public class Wave7PreflightProbe {
     paths = [SOURCE / item for item in (
         "domain/ChamberIsolationPolicy.java", "domain/RealitySplitBarrierPolicy.java", "domain/Wave7EchoDuelCellPolicy.java",
         "domain/Wave7NamedTrialActorPolicy.java", "domain/wave7/EchoBehaviorStrategy.java",
+        "domain/Wave7RoomLayoutPolicy.java",
         "domain/wave7/EchoLoadoutState.java", "runtime/RealitySplitEchoDuelState.java",
         "runtime/RealitySplitChamberController.java", "runtime/RealitySplitTrialController.java",
     )]
@@ -474,7 +528,50 @@ def test_wave7_barrier_world_preflight_reads_planned_blocks_without_mutating_wor
     assert "inspectWave7BarrierCell(world, core, floorY, cell)" in preflight
     for mutating_call in ("setType(", "spawn(", "spawnEntity(", ".remove(", "prepare("):
         assert mutating_call not in preflight
+
+
+def test_wave7_start_accepts_a_valid_restored_journal_from_another_wave():
+    source = (SOURCE / "CopiMineEndEvent.java").read_text(encoding="utf-8")
+    preflight = extract(source, "boolean preflightWave7BarrierJournal(World world)")
+    restored = preflight.index("if (journal.status() == HazardMutationJournal.Status.RESTORED) return true;")
+    barrier_only = preflight.index("entry -> !entry.isRealitySplitBarrierMutation()")
+    assert restored < barrier_only, (
+        "a valid RESTORED journal has no outstanding world mutations, so stale Wave 3/4/5 entries "
+        "must not prevent Wave 7 from starting"
+    )
+
+
+def test_wave7_barrier_builder_discards_restored_non_barrier_journal_entries():
+    source = (SOURCE / "CopiMineEndEvent.java").read_text(encoding="utf-8")
+    builder = extract(source, "boolean spawnRealitySplitBarriers(World world, Location core)")
+    discard = builder.index("boolean discardRestoredJournal =")
+    busy_check = builder.index("if (!journal.valid() ||")
+    entry_filter = builder.index("if (!entry.isRealitySplitBarrierMutation())")
+    assert discard < busy_check, "restored journal ownership must be decided before checking stale entry types"
+    assert "journal.status() == HazardMutationJournal.Status.RESTORED" in builder[discard:busy_check]
+    assert "!existingOnlyRealitySplit" in builder[discard:busy_check]
+    assert busy_check < builder.index("if (discardRestoredJournal)") < entry_filter
     inspect = extract(source,
         "Wave7BarrierPreflightPolicy.Candidate inspectWave7BarrierCell(World world, Location core,")
     assert "world.getBlockAt(" in inspect
     assert "Wave7BarrierPreflightPolicy.Candidate" in inspect
+
+
+def test_wave7_rehydration_matches_retained_journal_cells_to_canonical_absolute_geometry():
+    source = (SOURCE / "CopiMineEndEvent.java").read_text(encoding="utf-8")
+    builder = extract(source, "boolean spawnRealitySplitBarriers(World world, Location core)")
+    assert "Wave7BarrierPreflightPolicy.matchJournalCell(" in builder, (
+        "retained journal coordinates must match a canonical wall cell at its absolute Y"
+    )
+    rejection = builder.index("if (cellMatch.isEmpty())")
+    cell_resolution = builder.index("RealitySplitBarrierPolicy.Cell cell = cellMatch.get()", rejection)
+    assert "return false;" in builder[rejection:cell_resolution], (
+        "a retained journal cell outside canonical geometry must block rebuilding"
+    )
+    planned_skip = builder.index("if (plannedCellSet.contains(cell))", cell_resolution)
+    assert rejection < cell_resolution < planned_skip, (
+        "only valid canonical cells may reach the existing planned-cell recovery skip"
+    )
+    assert "entry.floorY() != floorY + cell.level() - 1" not in builder, (
+        "the Y check must not derive and validate the same level from the same journal entry"
+    )

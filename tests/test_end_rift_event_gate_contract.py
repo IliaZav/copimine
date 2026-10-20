@@ -66,3 +66,15 @@ def test_temporary_java_build_directory_is_removed_after_gate_completion_or_fail
     assert create_directory < ownership_marker < build_try < artifact_hashes < cleanup_finally < cleanup, (
         "The isolated Java build output must be removed from finally after success or a later gate failure"
     )
+
+
+def test_gate_pins_jdk25_for_nested_plugin_compilers() -> None:
+    source = RUNNER.read_text(encoding="utf-8")
+    java_version_check = source.index("$javaVersion -notmatch 'openjdk version \"25\\.0\\.4\\.1'")
+    build_start = source.index("if (-not $SkipBuilds)")
+
+    java_home_pin = source.index("$env:JAVA_HOME = $javaHome", java_version_check)
+    path_pin = source.index('$env:PATH = \"$javaHome\\bin;$env:PATH\"', java_version_check)
+
+    assert java_version_check < java_home_pin < build_start
+    assert java_version_check < path_pin < build_start

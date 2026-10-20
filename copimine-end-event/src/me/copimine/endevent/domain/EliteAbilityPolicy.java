@@ -32,7 +32,8 @@ public final class EliteAbilityPolicy {
     public static List<Ability> profileForWave(int wave, Role role) {
         if (role == null) return List.of();
         return switch (wave) {
-            case 2 -> role == Role.SKELETON ? List.of(Ability.TRIPLE_ARROWS) : List.of();
+            case 2 -> role == Role.SKELETON
+                    ? List.of(Ability.TRIPLE_ARROWS, Ability.ARROW_RAIN) : List.of();
             case 3 -> switch (role) {
                 case SKELETON -> List.of(Ability.TRIPLE_ARROWS, Ability.ARROW_RAIN);
                 case ENDERMAN -> List.of(Ability.RIFT_BOLT);

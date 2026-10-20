@@ -270,6 +270,7 @@ try {
   Wait-Log -AfterOffset $portalOffset -Pattern 'END_RIFT_PORTALS_READY.*count=3.*sequential=true' -Seconds 30 | Out-Null
   Wait-Log -AfterOffset $portalOffset -Pattern 'END_RIFT_PORTAL_VISUALS.*portals=3.*layers=GATE,INNER,SHARD' -Seconds 30 | Out-Null
   Wait-Log -AfterOffset $portalOffset -Pattern 'WAVE_TEST_STARTED.*wave=3' -Seconds 30 | Out-Null
+  Wait-Log -AfterOffset $portalOffset -Pattern 'WAVE3_PORTAL_MOB_SPAWNED.*portal=0.*live_portal_mobs=[1-3]' -Seconds 20 | Out-Null
   $objective = Invoke-LocalRcon 'cmend debug objectives'
   $objectivePlain = $objective -replace '\u00A7.', ''
   $portalLayersPattern = 'portalLayers=portals=3 observed=9/9 slots=0:GATE\+INNER\+SHARD,1:GATE\+INNER\+SHARD,2:GATE\+INNER\+SHARD'
@@ -283,6 +284,7 @@ try {
   }
   Assert-Output $mobVisual 'MOB_VISUAL_TOTAL=([1-9]\d*)' 'MOB_VISUAL_TOTAL'
   Write-Evidence 'CURRENT_WAVE3_PORTAL_LAYERS_PASS portalLayers=portals=3 observed=9/9 slots=0:GATE+INNER+SHARD,1:GATE+INNER+SHARD,2:GATE+INNER+SHARD'
+  Write-Evidence 'CURRENT_WAVE3_PORTAL_SPAWN_PASS source=active_portal live_cap=3'
   Write-Evidence 'CURRENT_WAVE3_VISUAL_PASS portals=3 layers=GATE,INNER,SHARD'
 
   $null = Invoke-LocalRcon 'cmend wave clear'

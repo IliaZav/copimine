@@ -30,6 +30,7 @@ import org.bukkit.event.entity.ProjectileLaunchEvent;
 public final class EchoCombatAdmissionListener implements Listener {
     private static final int MAX_PROJECTILES = 64, MAX_CLOUDS = 16;
     private final Supplier<Context> current;
+    private final IncomingOwnerHitHandler incomingOwnerHitHandler;
     private final Map<Projectile, Scope> projectiles = new IdentityHashMap<>();
     private final Map<AreaEffectCloud, Scope> clouds = new IdentityHashMap<>();
     private OwnerLethalReceipt ownerLethalReceipt;
@@ -42,8 +43,20 @@ public final class EchoCombatAdmissionListener implements Listener {
     private record OwnerActionReceipt(EchoCombatAdmission.Pair pair, long tick, UUID target,
                                      EntityDamageByEntityEvent damageEvent) { }
 
+    @FunctionalInterface
+    public interface IncomingOwnerHitHandler {
+        /** Return true only after durably spending the personal shield and blocking this exact hit. */
+        boolean block(Context context, EntityDamageByEntityEvent event, Entity direct, Entity causing);
+    }
+
     public EchoCombatAdmissionListener(Supplier<Context> current) {
+        this(current, null);
+    }
+
+    public EchoCombatAdmissionListener(Supplier<Context> current,
+                                       IncomingOwnerHitHandler incomingOwnerHitHandler) {
         this.current = Objects.requireNonNull(current);
+        this.incomingOwnerHitHandler = incomingOwnerHitHandler;
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -65,7 +78,23 @@ public final class EchoCombatAdmissionListener implements Listener {
         // cannot be interpreted as a foreign attacker or a proved owned effect.
         if (direct == null && causing == null) return;
         boolean potionEffect = direct instanceof ThrownPotion || direct instanceof AreaEffectCloud;
-        if (!allowed(context, direct, causing, event.getEntity(), potionEffect)) event.setCancelled(true);
+        if (!allowed(context, direct, causing, event.getEntity(), potionEffect)) {
+            event.setCancelled(true);
+            return;
+        }
+        if (incomingOwnerHitHandler != null && event instanceof EntityDamageByEntityEvent byEntity
+                && context != null && context.active()
+                && context.pair().actor().equals(id(event.getEntity()))
+                && context.pair().owner().equals(origin(direct))
+                && (causing == null || context.pair().owner().equals(id(causing)))) {
+            try {
+                if (incomingOwnerHitHandler.block(context, byEntity, direct, causing)) {
+                    event.setCancelled(true);
+                }
+            } catch (RuntimeException rejectedShieldCheckpoint) {
+                // A failed shield checkpoint must not cancel the hit or grant a free block.
+            }
+        }
     }
 
     /** Observe the final uncancelled hit; only its synchronous death callback can consume it. */

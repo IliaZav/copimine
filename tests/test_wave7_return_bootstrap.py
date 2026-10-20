@@ -173,6 +173,7 @@ public class Wave7ReturnBootstrapProbe {
         "domain/EndRiftObjective.java", "domain/ChamberIsolationPolicy.java",
         "domain/RiftCarrierPolicy.java",
         "domain/RealitySplitBarrierPolicy.java", "domain/Wave7EchoDuelCellPolicy.java",
+        "domain/Wave7RoomLayoutPolicy.java",
         "domain/wave7/EchoBehaviorStrategy.java", "domain/wave7/EchoLoadoutState.java",
         "runtime/RealitySplitChamberController.java",
         "runtime/RealitySplitTrialController.java", "runtime/RealitySplitEchoDuelState.java",

@@ -13,6 +13,7 @@ import me.copimine.endevent.domain.BossHealthPolicy;
 import me.copimine.endevent.domain.BossFinalStrikePolicy;
 import me.copimine.endevent.domain.AbyssAnchorPolicy;
 import me.copimine.endevent.domain.PortalCapturePolicy;
+import me.copimine.endevent.domain.ObeliskFireDirectorPolicy;
 
 /** Validated, immutable runtime configuration for one End Rift server. */
 public record EventConfig(
@@ -396,8 +397,9 @@ public record EventConfig(
         if (health != 3 || maxActive < 1 || maxActive > 6
                 || !(pulseRadius > 0.0D) || pulseRadius > 5.0D
                 || pulseInterval < 10 || pulseInterval > 200
-                || fireInterval < 20 || fireInterval > 400
-                || maxFireballs < 1 || maxFireballs > 8
+                || fireInterval < ObeliskFireDirectorPolicy.MIN_TELEGRAPH_TICKS
+                || fireInterval > ObeliskFireDirectorPolicy.MAX_BASE_FIRE_INTERVAL_TICKS
+                || maxFireballs < 1 || maxFireballs > 48
                 || !(fireballDamage > 0.0D) || fireballDamage > 40.0D
                 || blindnessTicks < 1 || blindnessTicks > 200
                 || debuffTicks < 1 || debuffTicks > 200
@@ -760,8 +762,10 @@ public record EventConfig(
             if (health != 3 || maxActive < 1 || maxActive > 6
                     || cooldownMinSeconds < 1 || cooldownMaxSeconds < cooldownMinSeconds
                     || pulseRadius <= 0.0D || pulseRadius > 5.0D
-                    || pulseIntervalTicks < 10 || fireIntervalTicks < 20
-                    || maxActiveFireballs < 1 || maxActiveFireballs > 8
+                    || pulseIntervalTicks < 10
+                    || fireIntervalTicks < ObeliskFireDirectorPolicy.MIN_TELEGRAPH_TICKS
+                    || fireIntervalTicks > ObeliskFireDirectorPolicy.MAX_BASE_FIRE_INTERVAL_TICKS
+                    || maxActiveFireballs < 1 || maxActiveFireballs > 48
                     || fireballDamage <= 0.0D || blindnessTicks < 1 || debuffTicks < 1
                     || spawnTelegraphTicks < 5 || destructionDelayTicks < 1
                     || minDistance < 2.0D || minDistance > 12.0D

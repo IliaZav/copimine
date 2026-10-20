@@ -43,12 +43,12 @@ public final class WaveTwoStagePolicyTest {
     }
 
     private static void waveTwoPressureExceptionIsBoundedToThreeGroups() {
-        var defaultRoster = new WaveMechanicsPolicy.WaveCounts(9, 8, 4, 0, 0);
+        var defaultRoster = new WaveMechanicsPolicy.WaveCounts(12, 12, 6, 0, 0);
         var defaultGroups = WaveTwoStagePolicy.split(defaultRoster);
-        check(defaultGroups.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).sum() == 21,
+        check(defaultGroups.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).sum() == 30,
                 "the Wave 2 exception preserves the complete default reserve");
-        check(defaultGroups.stream().allMatch(group -> group.total() == 7),
-                "two-player Wave 2 uses three seven-mob groups");
+        check(defaultGroups.stream().allMatch(group -> group.total() == 10),
+                "two-player Wave 2 uses three ten-mob groups");
 
         var maximum = WaveTwoStagePolicy.split(new WaveMechanicsPolicy.WaveCounts(56, 0, 0, 0, 0));
         check(maximum.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).sum()
@@ -68,12 +68,12 @@ public final class WaveTwoStagePolicyTest {
     }
 
     private static void waveTwoRosterScalesAcrossTheSupportedPartySizes() {
-        var configured = new WaveMechanicsPolicy.WaveCounts(9, 8, 4, 0, 0);
+        var configured = new WaveMechanicsPolicy.WaveCounts(12, 12, 6, 0, 0);
         int[] playerCounts = {2, 5, 6, 10, 20};
-        int[] expectedTotals = {21, 27, 29, 37, 56};
+        int[] expectedTotals = {30, 34, 36, 42, 56};
         int[] expectedGroupThreeElites = {1, 1, 1, 1, 1};
-        int[][] expectedGroupSizes = {{7, 7, 7}, {9, 9, 9}, {10, 10, 9},
-                {13, 12, 12}, {19, 19, 18}};
+        int[][] expectedGroupSizes = {{10, 10, 10}, {12, 11, 11}, {12, 12, 12},
+                {14, 14, 14}, {19, 19, 18}};
         for (int index = 0; index < playerCounts.length; index++) {
             int players = playerCounts[index];
             var scaled = WaveScalingPolicy.scale(2, configured, players,
@@ -112,7 +112,7 @@ public final class WaveTwoStagePolicyTest {
     }
 
     private static void rejectUnlaunchableThreeStageCompositions() {
-        var configured = new WaveMechanicsPolicy.WaveCounts(9, 8, 4, 0, 0);
+        var configured = new WaveMechanicsPolicy.WaveCounts(12, 12, 6, 0, 0);
         for (int hardCap = 0; hardCap <= 2; hardCap++) {
             var scaled = WaveScalingPolicy.scale(2, configured, 2, hardCap);
             check(scaled.total() == hardCap,

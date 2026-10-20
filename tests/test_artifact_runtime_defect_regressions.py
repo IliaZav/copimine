@@ -128,6 +128,25 @@ def test_gravedigger_consumes_only_matching_authenticated_unique_instance() -> N
     assert "isGravediggerContractStack" not in finalizer + spawn + pickup + schedule + entity_purge
 
 
+def test_gravedigger_capture_consumes_exact_authenticated_armor_instance() -> None:
+    source = _source()
+    capture = _method_body(source, "captureGravediggerContract")
+
+    assert "GravediggerContractCapturePolicy.firstEligible" in capture
+    assert "Arrays.asList(inventory.getStorageContents())" in capture
+    assert "inventory.getItemInOffHand()" in capture
+    assert "Arrays.asList(inventory.getArmorContents())" in capture
+    assert "this.gravediggerContractItem(stack) != null" in capture
+    assert "!this.isConsumedGravediggerContractAnywhere(stack)" in capture
+    assert "capturedSlot.stack().clone()" in capture
+    assert "case ARMOR" in capture
+    assert "int index = capturedSlot.index()" in capture
+    assert "armor[index] = new ItemStack(Material.AIR)" in capture
+    assert "inventory.setArmorContents(armor)" in capture
+    assert "event.getDrops().removeIf(stack -> this.isConsumedGravediggerContract(stack, capturedUniqueItemId))" in capture
+    assert "event.getItemsToKeep().removeIf(stack -> this.isConsumedGravediggerContract(stack, capturedUniqueItemId))" in capture
+
+
 def test_grave_command_is_dispatched_and_suggested() -> None:
     source = _source()
     dispatcher = _method_body(source, "onCommand")

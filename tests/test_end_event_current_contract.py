@@ -140,7 +140,7 @@ def test_local_schema_and_current_config() -> None:
     assert "health: 5000" in config
     assert re.search(r"(?ms)stages:\s*\[WAVE_4\]", config)
     assert "max-active: 6" in config
-    assert "max-active-fireballs: 8" in config
+    assert "max-active-fireballs: 20" in config
     assert "blindness-ticks: 40" in config
     assert "debuff-ticks: 60" in config
 
@@ -1418,8 +1418,8 @@ def test_wave1_charge_probe_uses_authoritative_logged_locations() -> None:
         driver,
     ), "Wave 1 probe must parse runtime locations from authoritative server markers"
     assert "END_RIFT_CARRIER_SELECTED[^\\r\\n]*entity=" in driver
-    assert "activeCarrierLocation = Parse-LoggedLocation $match.Value" in driver, (
-        "Wave 1 probe must use the selected carrier's logged location"
+    assert "activeChargeLocation = Parse-LoggedLocation $match.Value" in driver, (
+        "Wave 1 probe must use the dropped charge's authoritative logged location"
     )
 
 
@@ -1490,14 +1490,14 @@ def test_boss_bar_update_recreates_missing_bar_before_reading_audience() -> None
 def test_obelisk_probe_primes_health_after_survival_protection() -> None:
     probe = read(ROOT / "tests" / "RunEndRiftObeliskLive.ps1")
     assert re.search(
-        r"gamemode spectator \$name[\s\S]*?attribute \$name minecraft:generic\.max_health base set 1024[\s\S]*?"
-        r"attribute \$name minecraft:generic\.max_health base get[\s\S]*?gamemode survival \$name[\s\S]*?cmend test wave 4",
+        r"gamemode spectator \$name[\s\S]*?attribute \$name minecraft:max_health base set 1024[\s\S]*?"
+        r"attribute \$name minecraft:max_health base get[\s\S]*?gamemode survival \$name[\s\S]*?cmend test wave 4",
         probe,
     ), "obelisk reflection probe must verify max health before returning the bot to survival"
     assert re.search(
         r"effect clear \$name[\s\S]*?effect give \$name minecraft:resistance 120 4 true[\s\S]*?"
         r"effect give \$name minecraft:regeneration 120 4 true[\s\S]*?"
-        r"attribute \$name minecraft:generic\.max_health base get",
+        r"attribute \$name minecraft:max_health base get",
         probe,
     ), "obelisk reflection probe must protect the bot before verifying its real max health"
     assert "minecraft:slow_falling" not in probe, (
@@ -1517,8 +1517,8 @@ def test_obelisk_probe_uses_supported_player_max_health_commands() -> None:
         "Paper rejects direct NBT health writes for players; the live probe must not rely on that command"
     )
     assert re.search(
-        r"attribute \$name minecraft:generic\.max_health base set 1024[\s\S]*?"
-        r"attribute \$name minecraft:generic\.max_health base get[\s\S]*?"
+        r"attribute \$name minecraft:max_health base set 1024[\s\S]*?"
+        r"attribute \$name minecraft:max_health base get[\s\S]*?"
         r"\$maxHealthMatch",
         probe,
     ), "the probe must verify the supported real max-health attribute instead of an impossible player NBT write"
@@ -1552,8 +1552,8 @@ def test_obelisk_bot_retries_projectiles_until_paper_reach() -> None:
 
 def test_official_wave7_probe_targets_every_supported_living_mob_type() -> None:
     probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
-    assert "@('enderman', 'skeleton', 'spider')" in probe, (
-        "Wave 7 chamber positioning must enumerate every official living mob type"
+    assert "@('enderman', 'skeleton', 'spider', 'warden', 'ravager', 'vex')" in probe, (
+        "Wave 7 chamber positioning must include regular mobs and every supported elite type"
     )
     assert "type=$entityType" in probe, (
         "Wave 7 helper must use the enumerated type when selecting targets"
@@ -1647,7 +1647,7 @@ def test_official_probe_does_not_teleport_players_every_combat_poll() -> None:
     )
 
 
-def test_official_probe_does_not_reset_obelisk_positions_every_poll() -> None:
+def test_official_probe_keeps_wave4_reflection_positions_stable() -> None:
     probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
     wave4_block = re.search(
         r"\$w4Offset\s*=\s*\$waveFourStartOffset[\s\S]*?"
@@ -1656,17 +1656,15 @@ def test_official_probe_does_not_reset_obelisk_positions_every_poll() -> None:
     )
     assert wave4_block is not None, "Wave 4 probe block is missing"
     body = wave4_block.group(0)
-    assert "Teleport-PlayersToObeliskRing -Core $core" in body, (
-        "Wave 4 must still place clients near the authored obelisk ring"
-    )
-    assert "Teleport-PlayersToObeliskRingIfDisplaced" in body, (
-        "Wave 4 polling must have a conditional recovery path for knockback"
+    assert "Set-PlayerBotMode -Mode PASSIVE" in body
+    assert "Teleport-PlayersToWave4ReflectionLaneIfDue -Core $core" in body, (
+        "Wave 4 must use its conditional reflection positioning strategy"
     )
     assert re.search(
         r"\$w4Offset[\s\S]*?Set-PlayerBotMode\s+-Mode PASSIVE[\s\S]*?"
-        r"Teleport-PlayersToObeliskRing",
+        r"Teleport-PlayersToWave4ReflectionLaneIfDue",
         body,
-    ), "Wave 4 probe must keep combat navigation from leaving reflection lanes"
+    ), "Wave 4 must stop mob navigation before positioning real reflection clients"
     mode_helper = re.search(
         r"function Set-PlayerBotMode[\s\S]*?\n}\n\nfunction Start-PlayerBot",
         probe,
@@ -1681,7 +1679,7 @@ def test_official_probe_does_not_reset_obelisk_positions_every_poll() -> None:
     assert not re.search(
         r"-Action\s+\{\s*Teleport-PlayersToObeliskRing\s+-Core\s+\$core\s*\}",
         body,
-    ), "repositioning every 500ms prevents real clients from reflecting fireballs"
+    ), "unconditional ring teleports every 500ms prevent real clients from reflecting fireballs"
 
 
 def test_official_probe_carries_wave7_completion_cursor_into_boss_transition() -> None:
@@ -1794,9 +1792,11 @@ def test_official_probe_does_not_flood_rcon_while_waiting_for_wave_one_charge() 
         for delivery_number in (1, 2, 3)
     ), "Wave 1 probe must wait on authoritative delivery progress rather than a stale charge UUID"
     assert "Parse-LoggedLocation" in probe
-    assert "Teleport-PlayersToNearestWaveMobIfFar" in wait_block.group(0), (
-        "Wave 1 delivery polling must keep one real client near the current mob "
-        "until the carrier marker exists"
+    assert "Get-PlayerPosition" not in wait_block.group(0), (
+        "Wave 1 wait polling must not issue position RCON queries on every 500 ms tick"
+    )
+    assert "Teleport-Player $PickupPlayer $activeChargeLocation[0]" in wait_block.group(0), (
+        "only a newly observed charge should trigger the bounded pickup teleport"
     )
     assert "@a[uuid=" not in probe and "@e[uuid=" not in probe, (
         "the local Paper driver must not rely on unsupported UUID selectors"
@@ -1829,7 +1829,7 @@ def test_official_probe_does_not_revisit_historical_carrier_each_poll() -> None:
     )
 
 
-def test_official_probe_recovers_to_the_current_carrier_without_replaying_history() -> None:
+def test_official_probe_resets_a_stale_charge_when_the_server_selects_a_new_carrier() -> None:
     probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
     wait_block = re.search(
         r"function Wait-CarrierDelivery[\s\S]*?"
@@ -1837,15 +1837,13 @@ def test_official_probe_recovers_to_the_current_carrier_without_replaying_histor
         probe,
     )
     assert wait_block is not None, "Wave 1 delivery wait block is missing"
-    carrier_body = re.search(
-        r"elseif \(\$null -ne \$activeCarrier[\s\S]*?"
-        r"elseif \(\$null -eq \$activeCarrier",
-        wait_block.group(0),
-    )
-    assert carrier_body is not None, "active carrier recovery branch is missing"
-    assert "Teleport-PlayersToNearestWaveMobIfFar -Name $PickupPlayer" in carrier_body.group(0), (
-        "the probe must conditionally follow the live carrier after its logged spawn position "
-        "becomes stale"
+    body = wait_block.group(0)
+    assert "$candidate -ne $activeCarrier" in body
+    assert "$hadDroppedCharge = $null -ne $activeCharge" in body
+    assert "if ($hadDroppedCharge)" in body
+    assert "$activeCharge = $null" in body
+    assert "Set-PlayerBotMode -Mode 'ACTIVE'" in body, (
+        "a replacement carrier must resume real attacks after discarding the expired charge"
     )
 
 
@@ -1859,17 +1857,23 @@ def test_official_probe_uses_a_windows_powershell_compatible_tick_counter() -> N
     )
 
 
-def test_official_probe_rotates_small_wave4_rosters_across_all_obelisk_lanes() -> None:
+def test_small_wave4_rosters_use_a_centered_reflection_lane() -> None:
     probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
     assert "function Teleport-PlayersToWave4ReflectionLaneIfDue" in probe, (
-        "small official Wave 4 rosters need a bounded lane-rotation helper"
+        "small official Wave 4 rosters need a bounded positioning helper"
     )
-    assert re.search(
-        r"function Teleport-PlayersToWave4ReflectionLaneIfDue[\s\S]*?"
-        r"\[Environment\]::TickCount[\s\S]*?"
-        r"lastWave4LaneChangeAt[\s\S]*?Get-ObeliskCount",
+    helper = re.search(
+        r"function Teleport-PlayersToWave4ReflectionLaneIfDue[\s\S]*?\n}\n\nfunction Get-OfflinePlayerUuid",
         probe,
-    ), "Wave 4 lane rotation must be throttled and use the configured obelisk count"
+    )
+    assert helper is not None, "Wave 4 positioning helper is missing"
+    helper_text = helper.group(0)
+    assert "Get-ObeliskCount $playerNames.Count" in helper_text
+    assert "if ($playerNames.Count -ge $obeliskCount)" in helper_text
+    assert "Teleport-PlayersToObeliskRingIfDisplaced -Core $Core" in helper_text
+    assert "$smallRosterRadius = 2.5D" in helper_text, (
+        "a short roster must stand near the center so each source fireball has a real flight window"
+    )
     wave4_block = re.search(
         r"\$w4Offset\s*=\s*\$waveFourStartOffset[\s\S]*?"
         r"Write-Evidence \"CURRENT_WAVE_PASS event=\$eventId wave=4",
@@ -1877,7 +1881,7 @@ def test_official_probe_rotates_small_wave4_rosters_across_all_obelisk_lanes() -
     )
     assert wave4_block is not None, "Wave 4 probe block is missing"
     assert "Teleport-PlayersToWave4ReflectionLaneIfDue -Core $core" in wave4_block.group(0), (
-        "Wave 4 completion polling must move a 2-3 player roster between authored lanes"
+        "Wave 4 polling must recover a 2-3 player roster if mob knockback moves it"
     )
 
 
@@ -1914,7 +1918,7 @@ def test_combat_bot_passive_mode_cancels_inflight_navigation() -> None:
     )
 
 
-def test_wave4_lane_helper_recovers_displacement_during_lane_dwell() -> None:
+def test_wave4_center_helper_recovers_displacement_on_poll() -> None:
     probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
     helper = re.search(
         r"function Teleport-PlayersToWave4ReflectionLaneIfDue[\s\S]*?\n}\n\nfunction Get-OfflinePlayerUuid",
@@ -1922,20 +1926,16 @@ def test_wave4_lane_helper_recovers_displacement_during_lane_dwell() -> None:
     )
     assert helper is not None, "Wave 4 lane helper is missing"
     helper_text = helper.group(0)
-    assert "$shouldRotate" in helper_text, (
-        "lane rotation and position recovery need separate decisions"
-    )
+    assert "$laneTolerance = 0.75D" in helper_text
+    assert "Get-PlayerPosition -Name $playerNames[$index]" in helper_text
     assert re.search(
-        r"\$shouldRotate[\s\S]*?\$targetX[\s\S]*?\$dx \* \$dx",
+        r"if \(\$dx \* \$dx \+ \$dz \* \$dz -gt \$laneTolerance \* \$laneTolerance[\s\S]*?"
+        r"Teleport-Player \$playerNames\[\$index\] \$targetX \$y \$targetZ",
         helper_text,
-    ), "the helper must still check the current player's distance on every poll"
-    assert not re.search(
-        r"-lt 20000L\)\s*\{\s*return\s*\}",
-        helper_text,
-    ), "a lane dwell must not skip recovery after mob knockback"
+    ), "position recovery must run independently of any lane-rotation schedule"
 
 
-def test_wave4_lane_recovery_keeps_real_clients_inside_projectile_window() -> None:
+def test_wave4_center_position_keeps_real_clients_inside_projectile_window() -> None:
     probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
     helper = re.search(
         r"function Teleport-PlayersToWave4ReflectionLaneIfDue[\s\S]*?\n}\n\nfunction Get-OfflinePlayerUuid",
@@ -1946,20 +1946,24 @@ def test_wave4_lane_recovery_keeps_real_clients_inside_projectile_window() -> No
     assert "$laneTolerance = 0.75D" in helper_text, (
         "lane recovery must use a sub-block tolerance so a one-block mob nudge is corrected"
     )
-    assert "$reflectionRadius = 7.0D" in helper_text, (
-        "reflection lanes must stay at the clear inner radius instead of the east-wall collision edge"
+    assert "$smallRosterRadius = 2.5D" in helper_text, (
+        "a small roster must keep enough distance from launch sockets for fireballs to enter interaction reach"
     )
     assert re.search(
-        r"\$targetX[\s\S]*\$reflectionRadius|\$targetZ[\s\S]*\$reflectionRadius",
+        r"\$targetX[\s\S]*\$smallRosterRadius",
         helper_text,
-    ), "both coordinates must use the clear inner reflection radius"
+    ), "the centered X coordinate must use the configured radius"
+    assert re.search(
+        r"\$targetZ[\s\S]*\$smallRosterRadius",
+        helper_text,
+    ), "the centered Z coordinate must use the configured radius"
     assert re.search(
         r"\$dx \* \$dx \+ \$dz \* \$dz -gt \$laneTolerance \* \$laneTolerance",
         helper_text,
-    ), "lane recovery must apply the tight tolerance to every poll"
+    ), "center recovery must apply the tight tolerance on each poll"
 
 
-def test_official_probe_shortens_small_roster_wave4_lane_dwell() -> None:
+def test_official_probe_rechecks_center_position_without_rotation_dwell() -> None:
     probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
     helper = re.search(
         r"function Teleport-PlayersToWave4ReflectionLaneIfDue[\s\S]*?\n}\n\nfunction Get-OfflinePlayerUuid",
@@ -1967,13 +1971,12 @@ def test_official_probe_shortens_small_roster_wave4_lane_dwell() -> None:
     )
     assert helper is not None, "Wave 4 lane helper is missing"
     helper_text = helper.group(0)
-    assert "$wave4LaneDwellMs = 6000L" in helper_text, (
-        "small official rosters need a bounded short dwell so every active source gets repeated real reflection attempts"
+    assert "$smallRosterRadius = 2.5D" in helper_text
+    assert "$wave4LaneDwellMs" not in helper_text
+    assert "$script:lastWave4LaneChangeAt" not in helper_text
+    assert "Get-PlayerPosition -Name $playerNames[$index]" in helper_text, (
+        "the probe must observe mob displacement while keeping the target lane fixed"
     )
-    assert re.search(
-        r"\$now\s*-\s*\$script:lastWave4LaneChangeAt\s*-ge\s*\$wave4LaneDwellMs",
-        helper_text,
-    ), "Wave 4 rotation must use the explicit short dwell constant"
 
 
 def test_official_probe_removes_mob_knockback_from_reflection_clients() -> None:
@@ -1983,7 +1986,7 @@ def test_official_probe_removes_mob_knockback_from_reflection_clients() -> None:
         probe,
     )
     assert configure is not None, "official player configuration block is missing"
-    assert "minecraft:generic.knockback_resistance base set 1" in configure.group(0), (
+    assert "minecraft:knockback_resistance base set 1" in configure.group(0), (
         "reflection clients must not be displaced by event mobs while the probe measures real use_entity hits"
     )
 
@@ -2130,8 +2133,9 @@ def test_official_wave_bot_preserves_wave7_seal_and_wave4_source_aims() -> None:
     assert "const sourceAnchor = projectileOrigins.get(projectileKey)" in reflection
     assert "wave7Autopilot,\n      activeSeal,\n      sourceAnchor," in reflection
     assert "const sourceObelisk = nearestWave4ObeliskDisplay(entity.position)" in bot
-    assert "if (sourceObelisk?.position) projectileOrigins.set(projectileKey, sourceObelisk.position)" in bot
-    assert "if (wave7Autopilot || !sourceAnchor) return null" in target_selector
+    assert "preserveProjectileSourceAnchor(projectileOrigins.get(projectileKey), sourceObelisk.position)" in bot
+    assert "if (wave7Autopilot) return null" in target_selector
+    assert target_selector.index("if (sourceAnchor)") < target_selector.index("if (wave4Target)")
 
 
 def test_official_wave_bot_uses_stable_projectile_identity() -> None:
@@ -2288,8 +2292,8 @@ def test_official_probe_handles_a_carrier_picked_up_before_position_read() -> No
     )
     assert wait_block is not None
     assert "END_RIFT_CARRIER_SELECTED[^\\r\\n]*entity=([0-9a-fA-F-]{36})" in wait_block.group(0)
-    assert "Teleport-Player $PickupPlayer $activeCarrierLocation[0]" in wait_block.group(0), (
-        "Wave 1 probe must move a client to a selected live carrier so its combat bot can finish the objective"
+    assert "Teleport-Player $PickupPlayer $activeChargeLocation[0]" in wait_block.group(0), (
+        "Wave 1 probe must move a client to the authoritative dropped charge to finish the objective"
     )
 
 

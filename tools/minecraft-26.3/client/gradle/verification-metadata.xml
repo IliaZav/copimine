@@ -408,6 +408,14 @@
             <sha256 value="337eb993137d3656e438d14a5ff0fa68c190cdae06326748ed3a483a1e4efd14" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/cfr/0.2.2/cfr-0.2.2.module.sha256"/>
          </artifact>
       </component>
+      <component group="net.fabricmc" name="class-tweaker" version="0.3.0">
+         <artifact name="class-tweaker-0.3.0.jar">
+            <sha256 value="83bf284909d13c7b4ae953c3fe141628dfedbe56120217f61891c341f0be2f1f" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/class-tweaker/0.3.0/class-tweaker-0.3.0.jar.sha256"/>
+         </artifact>
+         <artifact name="class-tweaker-0.3.0.module">
+            <sha256 value="d942cc999a8876e808df3bd1252adfab0b0a028ca8aac2de487f2e2f5a43934e" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/class-tweaker/0.3.0/class-tweaker-0.3.0.module.sha256"/>
+         </artifact>
+      </component>
       <component group="net.fabricmc" name="class-tweaker" version="0.3.0-beta.2">
          <artifact name="class-tweaker-0.3.0-beta.2.jar">
             <sha256 value="47c5101083aa8d735eb88b5ff8d760ca69555460a7cf7c1142583b7aa664bc49" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/class-tweaker/0.3.0-beta.2/class-tweaker-0.3.0-beta.2.jar.sha256"/>
@@ -520,6 +528,14 @@
             <sha256 value="17f28ff1cfa90e1ff4e64a45e1ddcef6c49e68efd1d64df94040344791795add" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/tiny-remapper/0.14.0/tiny-remapper-0.14.0.module.sha256"/>
          </artifact>
       </component>
+      <component group="net.fabricmc" name="tiny-remapper" version="0.15.0">
+         <artifact name="tiny-remapper-0.15.0.jar">
+            <sha256 value="a70b6c0bf045286ab33855d2ca0c284877e09b2e6eb3655db487abac73fae6f6" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/tiny-remapper/0.15.0/tiny-remapper-0.15.0.jar.sha256"/>
+         </artifact>
+         <artifact name="tiny-remapper-0.15.0.module">
+            <sha256 value="10c43572ccc56c40d53524676045b0316874c3a4de06255b1e12458aef654fa2" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/tiny-remapper/0.15.0/tiny-remapper-0.15.0.module.sha256"/>
+         </artifact>
+      </component>
       <component group="net.fabricmc.fabric-api" name="fabric-advancement-api-v1" version="1.0.0+38c7a2d55d">
          <artifact name="fabric-advancement-api-v1-1.0.0+38c7a2d55d.jar">
             <sha256 value="89e2094ca63a5e3e4687ebd5530eb56a3f051fc568b7ab60243b69a6c8c3e74e" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-advancement-api-v1/1.0.0+38c7a2d55d/fabric-advancement-api-v1-1.0.0+38c7a2d55d.jar.sha256"/>
@@ -528,12 +544,36 @@
             <sha256 value="b3d9d8aa282d8049ec35db617d165c473a6746ec531eafb9e7b61ec4d04a50ee" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-advancement-api-v1/1.0.0+38c7a2d55d/fabric-advancement-api-v1-1.0.0+38c7a2d55d.pom.sha256"/>
          </artifact>
       </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-advancement-api-v1" version="1.0.1+38c7a2d55d">
+         <artifact name="fabric-advancement-api-v1-1.0.1+38c7a2d55d.jar">
+            <sha256 value="096f771e643e006bb93a348e0cfdea1652d9e7a83c2a088951d8bde323982b36" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-advancement-api-v1/1.0.1+38c7a2d55d/fabric-advancement-api-v1-1.0.1+38c7a2d55d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-advancement-api-v1-1.0.1+38c7a2d55d.pom">
+            <sha256 value="66242d7f95ad410108d2019403d672de04575af2630f360b0cc2cf6105d59ebc" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-advancement-api-v1/1.0.1+38c7a2d55d/fabric-advancement-api-v1-1.0.1+38c7a2d55d.pom.sha256"/>
+         </artifact>
+      </component>
       <component group="net.fabricmc.fabric-api" name="fabric-api" version="0.162.0+26.3">
          <artifact name="fabric-api-0.162.0+26.3.jar">
             <sha256 value="8626c189b702f466800b1c8ddac6203cf8a1e0bdaee75a5f9a33b18c2baa81b1" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.162.0+26.3/fabric-api-0.162.0+26.3.jar.sha256"/>
          </artifact>
          <artifact name="fabric-api-0.162.0+26.3.pom">
             <sha256 value="5a1ce5e8b815a41bb7621e14c0a5494bb91a2c5b0aff0e0625c95184cff8854b" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.162.0+26.3/fabric-api-0.162.0+26.3.pom.sha256"/>
+         </artifact>
+      </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-api" version="0.163.0+26.3">
+         <artifact name="fabric-api-0.163.0+26.3.jar">
+            <sha256 value="4969f5197ebedaf681cc913e4258c8bd17ccb98029db52a29e9b48e998267a2d" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.163.0+26.3/fabric-api-0.163.0+26.3.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-api-0.163.0+26.3.pom">
+            <sha256 value="3598e3a9fcef79bfcd6fc550b716970df5b6cea7e3079270c75e8222ca5a1789" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.163.0+26.3/fabric-api-0.163.0+26.3.pom.sha256"/>
+         </artifact>
+      </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-api" version="0.164.0+26.3">
+         <artifact name="fabric-api-0.164.0+26.3.jar">
+            <sha256 value="5a75198715a50a86787658617b03b97da9936d32df04896748c12135ba709de3" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.164.0+26.3/fabric-api-0.164.0+26.3.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-api-0.164.0+26.3.pom">
+            <sha256 value="f39bdf72241b13310117214672ef6afd49fe89c928710aca77b658c41242385c" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.164.0+26.3/fabric-api-0.164.0+26.3.pom.sha256"/>
          </artifact>
       </component>
       <component group="net.fabricmc.fabric-api" name="fabric-api-base" version="2.0.6+fcdff87f5d">
@@ -547,6 +587,16 @@
       <component group="net.fabricmc.fabric-api" name="fabric-api-deprecated" version="0.162.0+26.3">
          <artifact name="fabric-api-deprecated-0.162.0+26.3.pom">
             <sha256 value="e0558e9200b29ee4bb0df502e08546c7c9ba1d7291c268afc27fae63cd07fd46" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api-deprecated/0.162.0+26.3/fabric-api-deprecated-0.162.0+26.3.pom.sha256"/>
+         </artifact>
+      </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-api-deprecated" version="0.163.0+26.3">
+         <artifact name="fabric-api-deprecated-0.163.0+26.3.pom">
+            <sha256 value="94cc1ecaab1162a2216260272d9a55b15182a21bf59bf2aa1cd7ab9660c98be8" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api-deprecated/0.163.0+26.3/fabric-api-deprecated-0.163.0+26.3.pom.sha256"/>
+         </artifact>
+      </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-api-deprecated" version="0.164.0+26.3">
+         <artifact name="fabric-api-deprecated-0.164.0+26.3.pom">
+            <sha256 value="ee7189099c787d30e07e58f5e793565e8fe032e91d769f61edb018886bab3f43" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api-deprecated/0.164.0+26.3/fabric-api-deprecated-0.164.0+26.3.pom.sha256"/>
          </artifact>
       </component>
       <component group="net.fabricmc.fabric-api" name="fabric-api-lookup-api-v1" version="2.0.24+3434d6d95d">
@@ -581,12 +631,28 @@
             <sha256 value="910611b8848a3dd35cb9cf2aad95c7c9e0ff00b37de050080404c07a989fd6e0" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-block-getter-api-v2/2.0.9+3434d6d95d/fabric-block-getter-api-v2-2.0.9+3434d6d95d.pom.sha256"/>
          </artifact>
       </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-client-gametest-api-v1" version="6.0.10+131f8d475d">
+         <artifact name="fabric-client-gametest-api-v1-6.0.10+131f8d475d.jar">
+            <sha256 value="59bd1e1fdc9a46acec009515db3ba61fa6f35311f36dc996f008b2a082e004f0" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-client-gametest-api-v1/6.0.10+131f8d475d/fabric-client-gametest-api-v1-6.0.10+131f8d475d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-client-gametest-api-v1-6.0.10+131f8d475d.pom">
+            <sha256 value="1e9673ad51343a9464963c39479d9d0a8f5393fe0cf88f841d843a176e81c9dc" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-client-gametest-api-v1/6.0.10+131f8d475d/fabric-client-gametest-api-v1-6.0.10+131f8d475d.pom.sha256"/>
+         </artifact>
+      </component>
       <component group="net.fabricmc.fabric-api" name="fabric-client-gametest-api-v1" version="6.0.8+4be74c3f5d">
          <artifact name="fabric-client-gametest-api-v1-6.0.8+4be74c3f5d.jar">
             <sha256 value="60366504aa14ac66c3bc5c3edbe945d7d75d824c399b3b94e0a4a3e8e5c5ad28" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-client-gametest-api-v1/6.0.8+4be74c3f5d/fabric-client-gametest-api-v1-6.0.8+4be74c3f5d.jar.sha256"/>
          </artifact>
          <artifact name="fabric-client-gametest-api-v1-6.0.8+4be74c3f5d.pom">
             <sha256 value="94982cfc80453ca0ba5a869d96b6566bf41aee72f18f87e960bf4d7d93572a0c" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-client-gametest-api-v1/6.0.8+4be74c3f5d/fabric-client-gametest-api-v1-6.0.8+4be74c3f5d.pom.sha256"/>
+         </artifact>
+      </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-client-gametest-api-v1" version="6.0.9+4be74c3f5d">
+         <artifact name="fabric-client-gametest-api-v1-6.0.9+4be74c3f5d.jar">
+            <sha256 value="b43c755b865d530f2700a173adb5707eeedec03de8261d71d7e62fc78943a7c4" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-client-gametest-api-v1/6.0.9+4be74c3f5d/fabric-client-gametest-api-v1-6.0.9+4be74c3f5d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-client-gametest-api-v1-6.0.9+4be74c3f5d.pom">
+            <sha256 value="ff1ffcd439bfda4732c13fab4b62d2b8265c96ce31eefda030545c4ef7888352" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-client-gametest-api-v1/6.0.9+4be74c3f5d/fabric-client-gametest-api-v1-6.0.9+4be74c3f5d.pom.sha256"/>
          </artifact>
       </component>
       <component group="net.fabricmc.fabric-api" name="fabric-command-api-v2" version="3.1.2+fcdff87f5d">
@@ -605,12 +671,36 @@
             <sha256 value="e61625127909c1bd20205aa26547308ef358827ed77110c80e2772d6b3f294a5" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-content-registries-v0/15.0.4+74ed1ea55d/fabric-content-registries-v0-15.0.4+74ed1ea55d.pom.sha256"/>
          </artifact>
       </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-content-registries-v0" version="15.0.5+74ed1ea55d">
+         <artifact name="fabric-content-registries-v0-15.0.5+74ed1ea55d.jar">
+            <sha256 value="0c33e2d60c09974db6344c479ee1bf5b7fe8a495c4dc5110126d6dbe261f02dd" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-content-registries-v0/15.0.5+74ed1ea55d/fabric-content-registries-v0-15.0.5+74ed1ea55d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-content-registries-v0-15.0.5+74ed1ea55d.pom">
+            <sha256 value="6a97eacf3aa99897a0ad5d48c4ffc1018437165b47e6d1dfb114a6b2d3c10d7a" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-content-registries-v0/15.0.5+74ed1ea55d/fabric-content-registries-v0-15.0.5+74ed1ea55d.pom.sha256"/>
+         </artifact>
+      </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-content-registries-v0" version="15.0.6+74ed1ea55d">
+         <artifact name="fabric-content-registries-v0-15.0.6+74ed1ea55d.jar">
+            <sha256 value="db9b8ff6eeb885a06a6902ad94c86c98e6e7c50ea6641337ad2262d308729095" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-content-registries-v0/15.0.6+74ed1ea55d/fabric-content-registries-v0-15.0.6+74ed1ea55d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-content-registries-v0-15.0.6+74ed1ea55d.pom">
+            <sha256 value="a612732895f7fde99e646d7cbc84ff7d08f9c44d7c30a52e831051ea82e72125" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-content-registries-v0/15.0.6+74ed1ea55d/fabric-content-registries-v0-15.0.6+74ed1ea55d.pom.sha256"/>
+         </artifact>
+      </component>
       <component group="net.fabricmc.fabric-api" name="fabric-convention-tags-v2" version="4.10.3+6b5b47fd5d">
          <artifact name="fabric-convention-tags-v2-4.10.3+6b5b47fd5d.jar">
             <sha256 value="96fa76cd74df23aa2332980b0577eb88ec3ef8a2ab7c0eb0c99810bbc6390fe9" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-convention-tags-v2/4.10.3+6b5b47fd5d/fabric-convention-tags-v2-4.10.3+6b5b47fd5d.jar.sha256"/>
          </artifact>
          <artifact name="fabric-convention-tags-v2-4.10.3+6b5b47fd5d.pom">
             <sha256 value="089f6d91fce2b0ebc852be83d4d0712c67c675e8e68e3ec8f30a0f75481c431d" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-convention-tags-v2/4.10.3+6b5b47fd5d/fabric-convention-tags-v2-4.10.3+6b5b47fd5d.pom.sha256"/>
+         </artifact>
+      </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-convention-tags-v2" version="4.10.4+899e30535d">
+         <artifact name="fabric-convention-tags-v2-4.10.4+899e30535d.jar">
+            <sha256 value="bb01a9bb43bcf4ffc9796f37c15d6fdd2b139ed16eb62281236d11b4a87b5da7" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-convention-tags-v2/4.10.4+899e30535d/fabric-convention-tags-v2-4.10.4+899e30535d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-convention-tags-v2-4.10.4+899e30535d.pom">
+            <sha256 value="b1b8430045d6031ee48f7cfeceaea51b0d6554700d183f663bc5e42c99a7c6dc" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-convention-tags-v2/4.10.4+899e30535d/fabric-convention-tags-v2-4.10.4+899e30535d.pom.sha256"/>
          </artifact>
       </component>
       <component group="net.fabricmc.fabric-api" name="fabric-crash-report-info-v1" version="1.0.7+fcdff87f5d">
@@ -629,12 +719,28 @@
             <sha256 value="53072eaed3b926909fcc248a2ea3a577b647ee7c27e4fbb47d2ea3778f53b4a6" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-creative-tab-api-v1/5.0.21+fcdff87f5d/fabric-creative-tab-api-v1-5.0.21+fcdff87f5d.pom.sha256"/>
          </artifact>
       </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-creative-tab-api-v1" version="5.0.22+fcdff87f5d">
+         <artifact name="fabric-creative-tab-api-v1-5.0.22+fcdff87f5d.jar">
+            <sha256 value="de5ecc896f57aa2655aac45d7de798f9341b5bd75b4ac72aaf00e3b7e5c0afdd" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-creative-tab-api-v1/5.0.22+fcdff87f5d/fabric-creative-tab-api-v1-5.0.22+fcdff87f5d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-creative-tab-api-v1-5.0.22+fcdff87f5d.pom">
+            <sha256 value="a053a7d96b91c08fc6a5ec602c5f5f140d58ce8e2251ae484d780d7da8468a05" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-creative-tab-api-v1/5.0.22+fcdff87f5d/fabric-creative-tab-api-v1-5.0.22+fcdff87f5d.pom.sha256"/>
+         </artifact>
+      </component>
       <component group="net.fabricmc.fabric-api" name="fabric-data-attachment-api-v1" version="2.2.31+b9b88df45d">
          <artifact name="fabric-data-attachment-api-v1-2.2.31+b9b88df45d.jar">
             <sha256 value="847b42ba2a8130eca983e0588b8799b68c163868e1643882cc63ced1aed1fdab" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-data-attachment-api-v1/2.2.31+b9b88df45d/fabric-data-attachment-api-v1-2.2.31+b9b88df45d.jar.sha256"/>
          </artifact>
          <artifact name="fabric-data-attachment-api-v1-2.2.31+b9b88df45d.pom">
             <sha256 value="1d4c048bd0841aaa19db0ed8251d87f4b7e7a8474610a1c64e1a3818fc407c4a" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-data-attachment-api-v1/2.2.31+b9b88df45d/fabric-data-attachment-api-v1-2.2.31+b9b88df45d.pom.sha256"/>
+         </artifact>
+      </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-data-attachment-api-v1" version="2.2.32+b9b88df45d">
+         <artifact name="fabric-data-attachment-api-v1-2.2.32+b9b88df45d.jar">
+            <sha256 value="73b3ce0d74b3760382856b17ea3f397842eb4c23759c13b0770dbbd38c609c7d" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-data-attachment-api-v1/2.2.32+b9b88df45d/fabric-data-attachment-api-v1-2.2.32+b9b88df45d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-data-attachment-api-v1-2.2.32+b9b88df45d.pom">
+            <sha256 value="003c8118f78db72787f69c9c651100d350e90f85e94134d002d97da7c3ffe80d" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-data-attachment-api-v1/2.2.32+b9b88df45d/fabric-data-attachment-api-v1-2.2.32+b9b88df45d.pom.sha256"/>
          </artifact>
       </component>
       <component group="net.fabricmc.fabric-api" name="fabric-data-generation-api-v1" version="27.3.0+5be2453c5d">
@@ -645,6 +751,22 @@
             <sha256 value="dc6ef042a15dd9325863af2797df71ec852ae999ba0a309e2a0a469e37215e15" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-data-generation-api-v1/27.3.0+5be2453c5d/fabric-data-generation-api-v1-27.3.0+5be2453c5d.pom.sha256"/>
          </artifact>
       </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-data-generation-api-v1" version="27.4.0+e985c3605d">
+         <artifact name="fabric-data-generation-api-v1-27.4.0+e985c3605d.jar">
+            <sha256 value="709e59f2aea347c58339f4f6d22c2c0cfa059d3f28372d9b5beb2015cc5b6983" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-data-generation-api-v1/27.4.0+e985c3605d/fabric-data-generation-api-v1-27.4.0+e985c3605d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-data-generation-api-v1-27.4.0+e985c3605d.pom">
+            <sha256 value="d964d43d5bce281a741f9d001198ec30fa3e30e118fe03aeede66e251907eb4e" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-data-generation-api-v1/27.4.0+e985c3605d/fabric-data-generation-api-v1-27.4.0+e985c3605d.pom.sha256"/>
+         </artifact>
+      </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-data-generation-api-v1" version="27.4.1+501c7ef55d">
+         <artifact name="fabric-data-generation-api-v1-27.4.1+501c7ef55d.jar">
+            <sha256 value="0fc8818bb26ac822f0995b4e5fc4c5178f9ba3af00c849eddb6df34af7b2ee06" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-data-generation-api-v1/27.4.1+501c7ef55d/fabric-data-generation-api-v1-27.4.1+501c7ef55d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-data-generation-api-v1-27.4.1+501c7ef55d.pom">
+            <sha256 value="8f0585f1452927d4bd0fff0caca2afd82ce237814817b7aa046708b0c5b32d13" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-data-generation-api-v1/27.4.1+501c7ef55d/fabric-data-generation-api-v1-27.4.1+501c7ef55d.pom.sha256"/>
+         </artifact>
+      </component>
       <component group="net.fabricmc.fabric-api" name="fabric-debug-api-v1" version="1.0.4+3434d6d95d">
          <artifact name="fabric-debug-api-v1-1.0.4+3434d6d95d.jar">
             <sha256 value="1ef63bc24f6319cc43d2d4add8a2df5e8c3986b5bd1f39b920a5bd7738ec52e3" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-debug-api-v1/1.0.4+3434d6d95d/fabric-debug-api-v1-1.0.4+3434d6d95d.jar.sha256"/>
@@ -653,12 +775,28 @@
             <sha256 value="c37ec98212f83977056143f6d8ffc284a1876889c2d1b25db8f8062e15d3d112" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-debug-api-v1/1.0.4+3434d6d95d/fabric-debug-api-v1-1.0.4+3434d6d95d.pom.sha256"/>
          </artifact>
       </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-debug-api-v1" version="1.0.5+5af7744b5d">
+         <artifact name="fabric-debug-api-v1-1.0.5+5af7744b5d.jar">
+            <sha256 value="ddde75a663260a778fc3cba17cc8d515dd72eaeeb58e4e324fd6f3e55d6bc967" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-debug-api-v1/1.0.5+5af7744b5d/fabric-debug-api-v1-1.0.5+5af7744b5d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-debug-api-v1-1.0.5+5af7744b5d.pom">
+            <sha256 value="b1d485b5120198e2b10891c19d722ffab39585019477ec7b45673bd0a1cc7dd4" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-debug-api-v1/1.0.5+5af7744b5d/fabric-debug-api-v1-1.0.5+5af7744b5d.pom.sha256"/>
+         </artifact>
+      </component>
       <component group="net.fabricmc.fabric-api" name="fabric-dimensions-v1" version="5.1.19+47f74c985d">
          <artifact name="fabric-dimensions-v1-5.1.19+47f74c985d.jar">
             <sha256 value="1b2d1d92f0e32719b571a51de70acc363b388f888bd8abf0882580a9a0a4f4d5" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-dimensions-v1/5.1.19+47f74c985d/fabric-dimensions-v1-5.1.19+47f74c985d.jar.sha256"/>
          </artifact>
          <artifact name="fabric-dimensions-v1-5.1.19+47f74c985d.pom">
             <sha256 value="bc6b213f06b990c8fe59ccd4d112f2b851adebd8b012061f09c44f2aa06379ed" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-dimensions-v1/5.1.19+47f74c985d/fabric-dimensions-v1-5.1.19+47f74c985d.pom.sha256"/>
+         </artifact>
+      </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-dimensions-v1" version="5.1.20+5af7744b5d">
+         <artifact name="fabric-dimensions-v1-5.1.20+5af7744b5d.jar">
+            <sha256 value="bcb886da94f0d675e0269b47bf8669611abc3a00e745f853efe3d83cde85f1ff" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-dimensions-v1/5.1.20+5af7744b5d/fabric-dimensions-v1-5.1.20+5af7744b5d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-dimensions-v1-5.1.20+5af7744b5d.pom">
+            <sha256 value="9138dce7b604d629c4ac0be044c0d326a844f1e7047417bca8fc7a430b3fc7b6" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-dimensions-v1/5.1.20+5af7744b5d/fabric-dimensions-v1-5.1.20+5af7744b5d.pom.sha256"/>
          </artifact>
       </component>
       <component group="net.fabricmc.fabric-api" name="fabric-entity-events-v1" version="6.0.4+3434d6d95d">
@@ -677,6 +815,14 @@
             <sha256 value="d90a79b60ac012bdeedd371630c2bd67366f4f9df88534c3a8f99fcec66439d9" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-events-interaction-v0/5.3.7+b9b88df45d/fabric-events-interaction-v0-5.3.7+b9b88df45d.pom.sha256"/>
          </artifact>
       </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-events-interaction-v0" version="5.3.8+b9b88df45d">
+         <artifact name="fabric-events-interaction-v0-5.3.8+b9b88df45d.jar">
+            <sha256 value="217fd93b776c42d6fa688e39a37021060dbc6f042764686f95e0c07e568d401c" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-events-interaction-v0/5.3.8+b9b88df45d/fabric-events-interaction-v0-5.3.8+b9b88df45d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-events-interaction-v0-5.3.8+b9b88df45d.pom">
+            <sha256 value="b32175a4a2f33cd20814b3a1f226d8c1948477c5eef9b32fbd8b525d7828c196" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-events-interaction-v0/5.3.8+b9b88df45d/fabric-events-interaction-v0-5.3.8+b9b88df45d.pom.sha256"/>
+         </artifact>
+      </component>
       <component group="net.fabricmc.fabric-api" name="fabric-game-rule-api-v1" version="4.0.10+3434d6d95d">
          <artifact name="fabric-game-rule-api-v1-4.0.10+3434d6d95d.jar">
             <sha256 value="58266b2e28d20444584f22f1940b99656437728bd45e1b226c4869637e704638" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-game-rule-api-v1/4.0.10+3434d6d95d/fabric-game-rule-api-v1-4.0.10+3434d6d95d.jar.sha256"/>
@@ -693,12 +839,36 @@
             <sha256 value="d09ed9e7635c5945cd5d89ae0e7181d65efc3e58f1ea3afef48649e6827a4707" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-gametest-api-v1/4.0.33+3434d6d95d/fabric-gametest-api-v1-4.0.33+3434d6d95d.pom.sha256"/>
          </artifact>
       </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-gametest-api-v1" version="4.0.34+3434d6d95d">
+         <artifact name="fabric-gametest-api-v1-4.0.34+3434d6d95d.jar">
+            <sha256 value="4866d68dd97a49752e39817155a4031b9e335748f3f09bf633a36d4b152bac88" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-gametest-api-v1/4.0.34+3434d6d95d/fabric-gametest-api-v1-4.0.34+3434d6d95d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-gametest-api-v1-4.0.34+3434d6d95d.pom">
+            <sha256 value="44315d3122a058e51af0183fcb3357becb066dae591fd436939d0f8c77e09b44" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-gametest-api-v1/4.0.34+3434d6d95d/fabric-gametest-api-v1-4.0.34+3434d6d95d.pom.sha256"/>
+         </artifact>
+      </component>
       <component group="net.fabricmc.fabric-api" name="fabric-item-api-v1" version="14.7.0+cf6bc2db5d">
          <artifact name="fabric-item-api-v1-14.7.0+cf6bc2db5d.jar">
             <sha256 value="aff8cffc3d6da5475f21060e45cd28307676974674c4e10504c0fcc89c7746c4" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-item-api-v1/14.7.0+cf6bc2db5d/fabric-item-api-v1-14.7.0+cf6bc2db5d.jar.sha256"/>
          </artifact>
          <artifact name="fabric-item-api-v1-14.7.0+cf6bc2db5d.pom">
             <sha256 value="f3980014c71b921e06165db63053d5109cbbcd4b62e4274ca7fd6f35e46e77fc" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-item-api-v1/14.7.0+cf6bc2db5d/fabric-item-api-v1-14.7.0+cf6bc2db5d.pom.sha256"/>
+         </artifact>
+      </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-item-api-v1" version="14.7.1+5af7744b5d">
+         <artifact name="fabric-item-api-v1-14.7.1+5af7744b5d.jar">
+            <sha256 value="1ed3edd81d6c81dcdff334a776e06b3606abd35b37271c46f7bc62e0a4900047" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-item-api-v1/14.7.1+5af7744b5d/fabric-item-api-v1-14.7.1+5af7744b5d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-item-api-v1-14.7.1+5af7744b5d.pom">
+            <sha256 value="5af74361c91f091980a0fc6602f730da186642c90807612bf17255cfb49db1d3" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-item-api-v1/14.7.1+5af7744b5d/fabric-item-api-v1-14.7.1+5af7744b5d.pom.sha256"/>
+         </artifact>
+      </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-item-api-v1" version="14.8.0+d1c0d72b5d">
+         <artifact name="fabric-item-api-v1-14.8.0+d1c0d72b5d.jar">
+            <sha256 value="2bdb12e02cadd2e5336b4736581c8593b59bfcbeb4247d979e1ffd9a46aa47ca" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-item-api-v1/14.8.0+d1c0d72b5d/fabric-item-api-v1-14.8.0+d1c0d72b5d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-item-api-v1-14.8.0+d1c0d72b5d.pom">
+            <sha256 value="be7ee34a902d62cdf5d53f9a4182e1302f2a9dd5cf46d24b321673c6fbaa9ac8" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-item-api-v1/14.8.0+d1c0d72b5d/fabric-item-api-v1-14.8.0+d1c0d72b5d.pom.sha256"/>
          </artifact>
       </component>
       <component group="net.fabricmc.fabric-api" name="fabric-key-mapping-api-v1" version="2.0.8+3434d6d95d">
@@ -725,12 +895,28 @@
             <sha256 value="5d5ffb5d90b5d1cba4daf75e10edd90c3cd51617a1cf2862934e376e85756773" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-loot-api-v3/4.0.8+4068fd645d/fabric-loot-api-v3-4.0.8+4068fd645d.pom.sha256"/>
          </artifact>
       </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-loot-api-v3" version="4.0.9+4068fd645d">
+         <artifact name="fabric-loot-api-v3-4.0.9+4068fd645d.jar">
+            <sha256 value="fe10e38a468216616facf16dc109a85259c34c70f26d1e5e4f81e9e26c0e6272" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-loot-api-v3/4.0.9+4068fd645d/fabric-loot-api-v3-4.0.9+4068fd645d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-loot-api-v3-4.0.9+4068fd645d.pom">
+            <sha256 value="5b842f364f2f59b0e3adef5857fcef13d3d38f24c7d486817770e512aa7adb5f" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-loot-api-v3/4.0.9+4068fd645d/fabric-loot-api-v3-4.0.9+4068fd645d.pom.sha256"/>
+         </artifact>
+      </component>
       <component group="net.fabricmc.fabric-api" name="fabric-menu-api-v1" version="2.0.28+ed66f0a35d">
          <artifact name="fabric-menu-api-v1-2.0.28+ed66f0a35d.jar">
             <sha256 value="096e02e597c3843b419c678cb8613b4f71387a02706eaac194dd048853323de8" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-menu-api-v1/2.0.28+ed66f0a35d/fabric-menu-api-v1-2.0.28+ed66f0a35d.jar.sha256"/>
          </artifact>
          <artifact name="fabric-menu-api-v1-2.0.28+ed66f0a35d.pom">
             <sha256 value="158e4ddc80c69d149b74b33a95f3f8ef2e1cc966c549539df48d3169f54c6878" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-menu-api-v1/2.0.28+ed66f0a35d/fabric-menu-api-v1-2.0.28+ed66f0a35d.pom.sha256"/>
+         </artifact>
+      </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-menu-api-v1" version="2.0.29+ed66f0a35d">
+         <artifact name="fabric-menu-api-v1-2.0.29+ed66f0a35d.jar">
+            <sha256 value="b3f70b9b8bf55d400a800feb6ab09fd66a84006a5b44da0aa24e26b65e6ded2c" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-menu-api-v1/2.0.29+ed66f0a35d/fabric-menu-api-v1-2.0.29+ed66f0a35d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-menu-api-v1-2.0.29+ed66f0a35d.pom">
+            <sha256 value="2aa790eed3a5b572d005bc0d9a116a7380aac8beee1a32ad4039511ffa015ad2" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-menu-api-v1/2.0.29+ed66f0a35d/fabric-menu-api-v1-2.0.29+ed66f0a35d.pom.sha256"/>
          </artifact>
       </component>
       <component group="net.fabricmc.fabric-api" name="fabric-message-api-v1" version="7.0.10+3434d6d95d">
@@ -749,6 +935,22 @@
             <sha256 value="d0936fa5da194bac20f1c70b4c8c953c0969b649844417192c8fb0480e5ee631" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-model-loading-api-v1/8.0.35+fcdff87f5d/fabric-model-loading-api-v1-8.0.35+fcdff87f5d.pom.sha256"/>
          </artifact>
       </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-model-loading-api-v1" version="8.0.36+fcdff87f5d">
+         <artifact name="fabric-model-loading-api-v1-8.0.36+fcdff87f5d.jar">
+            <sha256 value="140a31b756509ca15182c23a87c2ace71dcff566f56cf15c3806aab306bb1fd9" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-model-loading-api-v1/8.0.36+fcdff87f5d/fabric-model-loading-api-v1-8.0.36+fcdff87f5d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-model-loading-api-v1-8.0.36+fcdff87f5d.pom">
+            <sha256 value="59a6de3b4a3eda40ec93700b86e52a441d34be723397ddea841ba909a0a846a9" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-model-loading-api-v1/8.0.36+fcdff87f5d/fabric-model-loading-api-v1-8.0.36+fcdff87f5d.pom.sha256"/>
+         </artifact>
+      </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-networking-api-v1" version="6.3.10+5c1fee4d5d">
+         <artifact name="fabric-networking-api-v1-6.3.10+5c1fee4d5d.jar">
+            <sha256 value="203a7f59f2c81c97cd4969fcb1725ac5bcaed8cd9b05cdd1e2cae76987917617" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-networking-api-v1/6.3.10+5c1fee4d5d/fabric-networking-api-v1-6.3.10+5c1fee4d5d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-networking-api-v1-6.3.10+5c1fee4d5d.pom">
+            <sha256 value="70ce8620a960f287f1668fcf6d2e8d91ef65f0880d8a08407fe4b2524896951f" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-networking-api-v1/6.3.10+5c1fee4d5d/fabric-networking-api-v1-6.3.10+5c1fee4d5d.pom.sha256"/>
+         </artifact>
+      </component>
       <component group="net.fabricmc.fabric-api" name="fabric-networking-api-v1" version="6.3.9+b9b88df45d">
          <artifact name="fabric-networking-api-v1-6.3.9+b9b88df45d.jar">
             <sha256 value="bf406731d74d14e0911946c6eb47c29a85b1fe7e236108e5ad513d2093fe17de" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-networking-api-v1/6.3.9+b9b88df45d/fabric-networking-api-v1-6.3.9+b9b88df45d.jar.sha256"/>
@@ -765,6 +967,14 @@
             <sha256 value="f2cea758fd6e378d999c747af1755b18e0fabcc79ed80dec05a9f46bf27fb21a" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-object-builder-api-v1/24.1.10+3434d6d95d/fabric-object-builder-api-v1-24.1.10+3434d6d95d.pom.sha256"/>
          </artifact>
       </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-object-builder-api-v1" version="24.1.11+e2f63d3e5d">
+         <artifact name="fabric-object-builder-api-v1-24.1.11+e2f63d3e5d.jar">
+            <sha256 value="aceb83f7a8d43ebb7c3a37b3219955e8574ee8e4db7278a530e047f75a39850c" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-object-builder-api-v1/24.1.11+e2f63d3e5d/fabric-object-builder-api-v1-24.1.11+e2f63d3e5d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-object-builder-api-v1-24.1.11+e2f63d3e5d.pom">
+            <sha256 value="6bfcac22e427ecec15c3c7b047f164769e3c5c161212e7ff2d435d0b3c437818" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-object-builder-api-v1/24.1.11+e2f63d3e5d/fabric-object-builder-api-v1-24.1.11+e2f63d3e5d.pom.sha256"/>
+         </artifact>
+      </component>
       <component group="net.fabricmc.fabric-api" name="fabric-particles-v1" version="5.0.25+3434d6d95d">
          <artifact name="fabric-particles-v1-5.0.25+3434d6d95d.jar">
             <sha256 value="04c0360a02228897a04c61d04628432a152d5028223cbb9a2a585f6cc02930cb" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-particles-v1/5.0.25+3434d6d95d/fabric-particles-v1-5.0.25+3434d6d95d.jar.sha256"/>
@@ -773,12 +983,28 @@
             <sha256 value="5e24d8781205af1bc1277094180fad2c8c04632bfce17fa3f735b67af55b3d26" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-particles-v1/5.0.25+3434d6d95d/fabric-particles-v1-5.0.25+3434d6d95d.pom.sha256"/>
          </artifact>
       </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-particles-v1" version="5.0.26+3434d6d95d">
+         <artifact name="fabric-particles-v1-5.0.26+3434d6d95d.jar">
+            <sha256 value="caab77671a4ae978b4cb3b59a956c29fce8aba73493a3697cc0c254edaaeca92" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-particles-v1/5.0.26+3434d6d95d/fabric-particles-v1-5.0.26+3434d6d95d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-particles-v1-5.0.26+3434d6d95d.pom">
+            <sha256 value="c9fe8dd0563b6735e2fd40fe0daef857ae7bd46a3878432cde0092e352efa5d1" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-particles-v1/5.0.26+3434d6d95d/fabric-particles-v1-5.0.26+3434d6d95d.pom.sha256"/>
+         </artifact>
+      </component>
       <component group="net.fabricmc.fabric-api" name="fabric-permission-api-v1" version="1.0.8+fcdff87f5d">
          <artifact name="fabric-permission-api-v1-1.0.8+fcdff87f5d.jar">
             <sha256 value="a3a82771b3fd9f2eb36e1098c5f90759ac877982b9ac297831a1fce9b2185bf8" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-permission-api-v1/1.0.8+fcdff87f5d/fabric-permission-api-v1-1.0.8+fcdff87f5d.jar.sha256"/>
          </artifact>
          <artifact name="fabric-permission-api-v1-1.0.8+fcdff87f5d.pom">
             <sha256 value="56fec0c216f871c188e75ffef994fee691bfa444a67c8a205afa866685c0f4cd" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-permission-api-v1/1.0.8+fcdff87f5d/fabric-permission-api-v1-1.0.8+fcdff87f5d.pom.sha256"/>
+         </artifact>
+      </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-recipe-api-v1" version="10.0.10+b9b88df45d">
+         <artifact name="fabric-recipe-api-v1-10.0.10+b9b88df45d.jar">
+            <sha256 value="efdaead73ec1f9d6702b441f2a4e7268f53a1398793a4b56983cb2262b72e987" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-recipe-api-v1/10.0.10+b9b88df45d/fabric-recipe-api-v1-10.0.10+b9b88df45d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-recipe-api-v1-10.0.10+b9b88df45d.pom">
+            <sha256 value="95ae2d1d55de762481507ed6698184eaefc81ffcfbe002f100b37647d7204195" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-recipe-api-v1/10.0.10+b9b88df45d/fabric-recipe-api-v1-10.0.10+b9b88df45d.pom.sha256"/>
          </artifact>
       </component>
       <component group="net.fabricmc.fabric-api" name="fabric-recipe-api-v1" version="10.0.9+b9b88df45d">
@@ -797,6 +1023,14 @@
             <sha256 value="b3e47302999a98cbdc98e247b25703248e8096ab82b63fdbce0feaefe257d98b" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-registry-sync-v0/8.0.2+1ca9f6365d/fabric-registry-sync-v0-8.0.2+1ca9f6365d.pom.sha256"/>
          </artifact>
       </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-registry-sync-v0" version="8.0.3+1ca9f6365d">
+         <artifact name="fabric-registry-sync-v0-8.0.3+1ca9f6365d.jar">
+            <sha256 value="1b050cdb82395c8533cc2120592406c5e5541bc49547631d5930da113942d106" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-registry-sync-v0/8.0.3+1ca9f6365d/fabric-registry-sync-v0-8.0.3+1ca9f6365d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-registry-sync-v0-8.0.3+1ca9f6365d.pom">
+            <sha256 value="c6cd31b70b41fa04813dfe1813067a99f1678b4032a029083b5058271c62033e" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-registry-sync-v0/8.0.3+1ca9f6365d/fabric-registry-sync-v0-8.0.3+1ca9f6365d.pom.sha256"/>
+         </artifact>
+      </component>
       <component group="net.fabricmc.fabric-api" name="fabric-renderer-api-v1" version="17.0.15+79385d0b5d">
          <artifact name="fabric-renderer-api-v1-17.0.15+79385d0b5d.jar">
             <sha256 value="2e4aaeb20f8615e8176f30bc82616cee25f8727323bfef7a70d5a6555ae8e9ee" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-renderer-api-v1/17.0.15+79385d0b5d/fabric-renderer-api-v1-17.0.15+79385d0b5d.jar.sha256"/>
@@ -805,12 +1039,28 @@
             <sha256 value="49862812269b990ca0fa6922e451fae68fe27dc68f6458d6f2d77521db6629c9" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-renderer-api-v1/17.0.15+79385d0b5d/fabric-renderer-api-v1-17.0.15+79385d0b5d.pom.sha256"/>
          </artifact>
       </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-renderer-api-v1" version="17.0.16+79385d0b5d">
+         <artifact name="fabric-renderer-api-v1-17.0.16+79385d0b5d.jar">
+            <sha256 value="424ed34187cdcdf58c705dcf8ed670fa7125f722395d089f11e2c80645f198cd" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-renderer-api-v1/17.0.16+79385d0b5d/fabric-renderer-api-v1-17.0.16+79385d0b5d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-renderer-api-v1-17.0.16+79385d0b5d.pom">
+            <sha256 value="eadfe9f0b4f14efbae95641c7ced1476b3149452fe46e18cc369b99e1c52e2b9" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-renderer-api-v1/17.0.16+79385d0b5d/fabric-renderer-api-v1-17.0.16+79385d0b5d.pom.sha256"/>
+         </artifact>
+      </component>
       <component group="net.fabricmc.fabric-api" name="fabric-renderer-indigo" version="9.1.23+b9d63e335d">
          <artifact name="fabric-renderer-indigo-9.1.23+b9d63e335d.jar">
             <sha256 value="1e71ac3ddf0dd1d1657425e02f5d9eae383fd8cbc47d0def4980e41d8a8b9c93" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-renderer-indigo/9.1.23+b9d63e335d/fabric-renderer-indigo-9.1.23+b9d63e335d.jar.sha256"/>
          </artifact>
          <artifact name="fabric-renderer-indigo-9.1.23+b9d63e335d.pom">
             <sha256 value="ab1d0dad32f6ad5e012d7dc9ab3daeae05eed1bbdabbdbd23cb1bf988a152484" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-renderer-indigo/9.1.23+b9d63e335d/fabric-renderer-indigo-9.1.23+b9d63e335d.pom.sha256"/>
+         </artifact>
+      </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-renderer-indigo" version="9.1.24+b9d63e335d">
+         <artifact name="fabric-renderer-indigo-9.1.24+b9d63e335d.jar">
+            <sha256 value="2d30f6cb575f1be40038ccfc159cdfc2e4490a26f52c2bde99d10bcd387c26b5" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-renderer-indigo/9.1.24+b9d63e335d/fabric-renderer-indigo-9.1.24+b9d63e335d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-renderer-indigo-9.1.24+b9d63e335d.pom">
+            <sha256 value="1a2c15bbf602dfdc42f270527e9212446e8daf0de0770fcdb6422c09d1b92d95" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-renderer-indigo/9.1.24+b9d63e335d/fabric-renderer-indigo-9.1.24+b9d63e335d.pom.sha256"/>
          </artifact>
       </component>
       <component group="net.fabricmc.fabric-api" name="fabric-rendering-fluids-v1" version="6.0.6+3434d6d95d">
@@ -829,6 +1079,14 @@
             <sha256 value="6c6265cef70bfb4141aa2ed4803ef72d4c846b21089fc4212bdf49d5a947bdc5" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-rendering-v1/27.0.14+901a437c5d/fabric-rendering-v1-27.0.14+901a437c5d.pom.sha256"/>
          </artifact>
       </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-rendering-v1" version="27.1.0+5af7744b5d">
+         <artifact name="fabric-rendering-v1-27.1.0+5af7744b5d.jar">
+            <sha256 value="a638a65f7a8d4f26e1764b6db5e84328d647b8e93c74b240fff3a07c149868ef" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-rendering-v1/27.1.0+5af7744b5d/fabric-rendering-v1-27.1.0+5af7744b5d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-rendering-v1-27.1.0+5af7744b5d.pom">
+            <sha256 value="535123fa593da7b6876db9036c620a84d64ae131b0470c9bd6ef279f98e717f9" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-rendering-v1/27.1.0+5af7744b5d/fabric-rendering-v1-27.1.0+5af7744b5d.pom.sha256"/>
+         </artifact>
+      </component>
       <component group="net.fabricmc.fabric-api" name="fabric-resource-conditions-api-v1" version="6.2.0+0d124ae85d">
          <artifact name="fabric-resource-conditions-api-v1-6.2.0+0d124ae85d.jar">
             <sha256 value="b63f952a61b97e14159c9cadbe8f9dbb10ad57ee4b48c96810309a920cc2039e" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-resource-conditions-api-v1/6.2.0+0d124ae85d/fabric-resource-conditions-api-v1-6.2.0+0d124ae85d.jar.sha256"/>
@@ -845,6 +1103,14 @@
             <sha256 value="380d8fa19a0d97dca447a7902f90689b4458befcdc3382ddda9d9898a74baf84" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-resource-loader-v0/3.3.26+4fc5413f5d/fabric-resource-loader-v0-3.3.26+4fc5413f5d.pom.sha256"/>
          </artifact>
       </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-resource-loader-v0" version="3.3.27+4fc5413f5d">
+         <artifact name="fabric-resource-loader-v0-3.3.27+4fc5413f5d.jar">
+            <sha256 value="78b83393ea9a20baddf9b6cc834b4dcb66339a75d4d90656dc18cf935d04fd5a" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-resource-loader-v0/3.3.27+4fc5413f5d/fabric-resource-loader-v0-3.3.27+4fc5413f5d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-resource-loader-v0-3.3.27+4fc5413f5d.pom">
+            <sha256 value="aecd86c725d7c847e62a11284fcb57ef0e3b90cd309aff60bc2a6a17667583a7" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-resource-loader-v0/3.3.27+4fc5413f5d/fabric-resource-loader-v0-3.3.27+4fc5413f5d.pom.sha256"/>
+         </artifact>
+      </component>
       <component group="net.fabricmc.fabric-api" name="fabric-resource-loader-v1" version="3.0.4+ba0d6c0d5d">
          <artifact name="fabric-resource-loader-v1-3.0.4+ba0d6c0d5d.pom">
             <sha256 value="ed7ea52f17e3c86e906f7f73279f3dec811fe6419e0ff3ea2aee2379011541cc" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-resource-loader-v1/3.0.4+ba0d6c0d5d/fabric-resource-loader-v1-3.0.4+ba0d6c0d5d.pom.sha256"/>
@@ -856,6 +1122,14 @@
          </artifact>
          <artifact name="fabric-resource-loader-v1-3.0.4+fcdff87f5d.pom">
             <sha256 value="5fcfd6c622716e0477becbf3a7b8f666093eb02d72dfd7fdf570b10d3c4c415c" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-resource-loader-v1/3.0.4+fcdff87f5d/fabric-resource-loader-v1-3.0.4+fcdff87f5d.pom.sha256"/>
+         </artifact>
+      </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-resource-loader-v1" version="3.1.0+5af7744b5d">
+         <artifact name="fabric-resource-loader-v1-3.1.0+5af7744b5d.jar">
+            <sha256 value="1585c8597def2fb59d864b1946a4c9d17a8cc3d0b6e2f4c3e73addf7b014b9f1" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-resource-loader-v1/3.1.0+5af7744b5d/fabric-resource-loader-v1-3.1.0+5af7744b5d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-resource-loader-v1-3.1.0+5af7744b5d.pom">
+            <sha256 value="bda8da72d5073519c4403b5c3823aaa98abc858958953d55d16216725e27361b" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-resource-loader-v1/3.1.0+5af7744b5d/fabric-resource-loader-v1-3.1.0+5af7744b5d.pom.sha256"/>
          </artifact>
       </component>
       <component group="net.fabricmc.fabric-api" name="fabric-screen-api-v1" version="5.2.4+48607d035d">
@@ -890,6 +1164,14 @@
             <sha256 value="9d892ce4ccec8e3cb235c8e6bccc5de31bb3508f281ccdaa6a0f32df647baa11" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-tag-api-v1/2.1.10+fcdff87f5d/fabric-tag-api-v1-2.1.10+fcdff87f5d.pom.sha256"/>
          </artifact>
       </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-tag-api-v1" version="2.1.11+fcdff87f5d">
+         <artifact name="fabric-tag-api-v1-2.1.11+fcdff87f5d.jar">
+            <sha256 value="13416c8bf0b387cd40c5bed3f612ce29c42631d5002e36b95996a31da1ebfbde" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-tag-api-v1/2.1.11+fcdff87f5d/fabric-tag-api-v1-2.1.11+fcdff87f5d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-tag-api-v1-2.1.11+fcdff87f5d.pom">
+            <sha256 value="3230a138f80559cad078fba9ea3a4b60da16cf6bcb43f775f88e00a153a80c5f" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-tag-api-v1/2.1.11+fcdff87f5d/fabric-tag-api-v1-2.1.11+fcdff87f5d.pom.sha256"/>
+         </artifact>
+      </component>
       <component group="net.fabricmc.fabric-api" name="fabric-transfer-api-v1" version="8.0.25+fcdff87f5d">
          <artifact name="fabric-transfer-api-v1-8.0.25+fcdff87f5d.jar">
             <sha256 value="599f69de9e7e693b4b8ca2f2792f129d8bd2e17fced9ae7b66f7e20b5a674db6" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-transfer-api-v1/8.0.25+fcdff87f5d/fabric-transfer-api-v1-8.0.25+fcdff87f5d.jar.sha256"/>
@@ -904,6 +1186,14 @@
          </artifact>
          <artifact name="fabric-transitive-access-wideners-v1-8.1.16+52268a0e5d.pom">
             <sha256 value="67129b22cbb721369da3e66ba3e0c1fa7e123e249164ef7738b9bf38913caef7" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-transitive-access-wideners-v1/8.1.16+52268a0e5d/fabric-transitive-access-wideners-v1-8.1.16+52268a0e5d.pom.sha256"/>
+         </artifact>
+      </component>
+      <component group="net.fabricmc.fabric-api" name="fabric-transitive-access-wideners-v1" version="8.1.17+e2f63d3e5d">
+         <artifact name="fabric-transitive-access-wideners-v1-8.1.17+e2f63d3e5d.jar">
+            <sha256 value="cf60bde121ed1879dead7da9e1455a7c1a383c4430a09b37d1c985df8b5de4b3" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-transitive-access-wideners-v1/8.1.17+e2f63d3e5d/fabric-transitive-access-wideners-v1-8.1.17+e2f63d3e5d.jar.sha256"/>
+         </artifact>
+         <artifact name="fabric-transitive-access-wideners-v1-8.1.17+e2f63d3e5d.pom">
+            <sha256 value="760a3d802206f8aed9db842216dc9ac48e37763089d5a404fae530d41519e49e" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-transitive-access-wideners-v1/8.1.17+e2f63d3e5d/fabric-transitive-access-wideners-v1-8.1.17+e2f63d3e5d.pom.sha256"/>
          </artifact>
       </component>
       <component group="net.fabricmc.fabric-loom" name="net.fabricmc.fabric-loom.gradle.plugin" version="1.19.1">
@@ -1101,6 +1391,14 @@
          </artifact>
          <artifact name="kotlin-metadata-jvm-2.3.20.pom">
             <sha256 value="0c5ffbff9746d426b9e866ac056be28928b318a25cdc56839081ec449b29cd97" origin="direct_https_artifact_download: https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-metadata-jvm/2.3.20/kotlin-metadata-jvm-2.3.20.pom"/>
+         </artifact>
+      </component>
+      <component group="org.jetbrains.kotlin" name="kotlin-metadata-jvm" version="2.4.10">
+         <artifact name="kotlin-metadata-jvm-2.4.10.jar">
+            <sha256 value="233aaa84ca268e26d6d3a99ce30401e6dc111a7ae10e0a0b4794ce6351d7adc4" origin="direct_https_artifact_download: https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-metadata-jvm/2.4.10/kotlin-metadata-jvm-2.4.10.jar"/>
+         </artifact>
+         <artifact name="kotlin-metadata-jvm-2.4.10.pom">
+            <sha256 value="694915b86862dbd6060c69239690594f1f52df2543bb110a011666242a41060b" origin="direct_https_artifact_download: https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-metadata-jvm/2.4.10/kotlin-metadata-jvm-2.4.10.pom"/>
          </artifact>
       </component>
       <component group="org.joml" name="joml" version="1.10.9">
@@ -1477,12 +1775,28 @@
             <sha256 value="e1b1c3832ca3ac0a9e563c405f4c760118b5556a4920daee14058886197e094d" origin="publisher_sha256_sidecar: https://repo.maven.apache.org/maven2/org/ow2/asm/asm/9.10.1/asm-9.10.1.pom.sha256"/>
          </artifact>
       </component>
+      <component group="org.ow2.asm" name="asm" version="9.11">
+         <artifact name="asm-9.11.jar">
+            <sha256 value="5fe3b469b8646e5bc53a897840952d63b712d4923d2a7a26aebc585f1fec7676" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/org/ow2/asm/asm/9.11/asm-9.11.jar.sha256"/>
+         </artifact>
+         <artifact name="asm-9.11.pom">
+            <sha256 value="c6a55c99df554e3a69496de184a507e1d3b0cfae1a5f4154280a600f04252d1f" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/org/ow2/asm/asm/9.11/asm-9.11.pom.sha256"/>
+         </artifact>
+      </component>
       <component group="org.ow2.asm" name="asm-analysis" version="9.10.1">
          <artifact name="asm-analysis-9.10.1.jar">
             <sha256 value="dede75a21306b65974ecd8f87114ff6970f09fb794157a4ca09ab25c888c2bfc" origin="publisher_sha256_sidecar: https://repo.maven.apache.org/maven2/org/ow2/asm/asm-analysis/9.10.1/asm-analysis-9.10.1.jar.sha256"/>
          </artifact>
          <artifact name="asm-analysis-9.10.1.pom">
             <sha256 value="534fbb85f643c2330691e92652ec40dd497b4f279ef13d829d85858905d33ba3" origin="publisher_sha256_sidecar: https://repo.maven.apache.org/maven2/org/ow2/asm/asm-analysis/9.10.1/asm-analysis-9.10.1.pom.sha256"/>
+         </artifact>
+      </component>
+      <component group="org.ow2.asm" name="asm-analysis" version="9.11">
+         <artifact name="asm-analysis-9.11.jar">
+            <sha256 value="a1421c20978ca0a330f241b17923a751a23fb1c9423fda1aba7591bb086b01d8" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/org/ow2/asm/asm-analysis/9.11/asm-analysis-9.11.jar.sha256"/>
+         </artifact>
+         <artifact name="asm-analysis-9.11.pom">
+            <sha256 value="14be2ed8117e2e97370ef9186d08cf9ac76cc10f5bc58bb6c6e6a2406cdce6aa" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/org/ow2/asm/asm-analysis/9.11/asm-analysis-9.11.pom.sha256"/>
          </artifact>
       </component>
       <component group="org.ow2.asm" name="asm-commons" version="9.10.1">
@@ -1493,6 +1807,14 @@
             <sha256 value="ceb2c43f3a273db88af8652d89ed6312f3e91a1a1e0ffc6f7823169278cf795c" origin="publisher_sha256_sidecar: https://repo.maven.apache.org/maven2/org/ow2/asm/asm-commons/9.10.1/asm-commons-9.10.1.pom.sha256"/>
          </artifact>
       </component>
+      <component group="org.ow2.asm" name="asm-commons" version="9.11">
+         <artifact name="asm-commons-9.11.jar">
+            <sha256 value="fcff37e6a0227a9f5ee81a7c07f51249307fa15889b56a359ae6f773c164c22b" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/org/ow2/asm/asm-commons/9.11/asm-commons-9.11.jar.sha256"/>
+         </artifact>
+         <artifact name="asm-commons-9.11.pom">
+            <sha256 value="cb98883b1451bf4982f6c9e7cbfb4a96c39e915d21abb49fce5d9ce8f7635e4b" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/org/ow2/asm/asm-commons/9.11/asm-commons-9.11.pom.sha256"/>
+         </artifact>
+      </component>
       <component group="org.ow2.asm" name="asm-tree" version="9.10.1">
          <artifact name="asm-tree-9.10.1.jar">
             <sha256 value="3dfb0d5b6a106cd40b5b250e39935fbf2f927f4477546a5369a3ac609cf0506b" origin="publisher_sha256_sidecar: https://repo.maven.apache.org/maven2/org/ow2/asm/asm-tree/9.10.1/asm-tree-9.10.1.jar.sha256"/>
@@ -1501,12 +1823,28 @@
             <sha256 value="963eebdea6e2e1ff25c9068b64a238e1585c99f8acd455595ac159a7f52b6c41" origin="publisher_sha256_sidecar: https://repo.maven.apache.org/maven2/org/ow2/asm/asm-tree/9.10.1/asm-tree-9.10.1.pom.sha256"/>
          </artifact>
       </component>
+      <component group="org.ow2.asm" name="asm-tree" version="9.11">
+         <artifact name="asm-tree-9.11.jar">
+            <sha256 value="da8ad24d0bf7efb0674a906f59a7d441692b641718371f3bce6762b191a169fd" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/org/ow2/asm/asm-tree/9.11/asm-tree-9.11.jar.sha256"/>
+         </artifact>
+         <artifact name="asm-tree-9.11.pom">
+            <sha256 value="7a37d97e93dd05500d270a24074adb34df50b7484c741d39e984b5b2aa97877d" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/org/ow2/asm/asm-tree/9.11/asm-tree-9.11.pom.sha256"/>
+         </artifact>
+      </component>
       <component group="org.ow2.asm" name="asm-util" version="9.10.1">
          <artifact name="asm-util-9.10.1.jar">
             <sha256 value="1bb99d091fba2597dc6d51193e9bbcf0d8447e7ed96bd8f0198b18152f09655c" origin="publisher_sha256_sidecar: https://repo.maven.apache.org/maven2/org/ow2/asm/asm-util/9.10.1/asm-util-9.10.1.jar.sha256"/>
          </artifact>
          <artifact name="asm-util-9.10.1.pom">
             <sha256 value="fcea2bad7868ed18949a2e71c40cf26de1516d16440e63f585c3e05d285c0d2b" origin="publisher_sha256_sidecar: https://repo.maven.apache.org/maven2/org/ow2/asm/asm-util/9.10.1/asm-util-9.10.1.pom.sha256"/>
+         </artifact>
+      </component>
+      <component group="org.ow2.asm" name="asm-util" version="9.11">
+         <artifact name="asm-util-9.11.jar">
+            <sha256 value="d5a23a677f31b8a7d2419895906e1fcbd9ac995beffb20944c8610c1bc377609" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/org/ow2/asm/asm-util/9.11/asm-util-9.11.jar.sha256"/>
+         </artifact>
+         <artifact name="asm-util-9.11.pom">
+            <sha256 value="1b5c442c10c4c00b0764ef8963e80152fdf72760d643fa56f47cd73ac714dc49" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/org/ow2/asm/asm-util/9.11/asm-util-9.11.pom.sha256"/>
          </artifact>
       </component>
       <component group="org.slf4j" name="slf4j-api" version="2.0.17">
@@ -1551,291 +1889,6 @@
          </artifact>
          <artifact name="vineflower-1.12.0.pom">
             <sha256 value="b84face6835db94c13de1172817cb9ffc32003ce3aaa07304f15de9ecd384aa7" origin="publisher_sha256_sidecar: https://repo.maven.apache.org/maven2/org/vineflower/vineflower/1.12.0/vineflower-1.12.0.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="org.ow2.asm" name="asm" version="9.11">
-         <artifact name="asm-9.11.jar">
-            <sha256 value="5fe3b469b8646e5bc53a897840952d63b712d4923d2a7a26aebc585f1fec7676" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/org/ow2/asm/asm/9.11/asm-9.11.jar.sha256"/>
-         </artifact>
-         <artifact name="asm-9.11.pom">
-            <sha256 value="c6a55c99df554e3a69496de184a507e1d3b0cfae1a5f4154280a600f04252d1f" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/org/ow2/asm/asm/9.11/asm-9.11.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="org.ow2.asm" name="asm-analysis" version="9.11">
-         <artifact name="asm-analysis-9.11.jar">
-            <sha256 value="a1421c20978ca0a330f241b17923a751a23fb1c9423fda1aba7591bb086b01d8" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/org/ow2/asm/asm-analysis/9.11/asm-analysis-9.11.jar.sha256"/>
-         </artifact>
-         <artifact name="asm-analysis-9.11.pom">
-            <sha256 value="14be2ed8117e2e97370ef9186d08cf9ac76cc10f5bc58bb6c6e6a2406cdce6aa" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/org/ow2/asm/asm-analysis/9.11/asm-analysis-9.11.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="org.ow2.asm" name="asm-commons" version="9.11">
-         <artifact name="asm-commons-9.11.jar">
-            <sha256 value="fcff37e6a0227a9f5ee81a7c07f51249307fa15889b56a359ae6f773c164c22b" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/org/ow2/asm/asm-commons/9.11/asm-commons-9.11.jar.sha256"/>
-         </artifact>
-         <artifact name="asm-commons-9.11.pom">
-            <sha256 value="cb98883b1451bf4982f6c9e7cbfb4a96c39e915d21abb49fce5d9ce8f7635e4b" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/org/ow2/asm/asm-commons/9.11/asm-commons-9.11.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="org.ow2.asm" name="asm-tree" version="9.11">
-         <artifact name="asm-tree-9.11.jar">
-            <sha256 value="da8ad24d0bf7efb0674a906f59a7d441692b641718371f3bce6762b191a169fd" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/org/ow2/asm/asm-tree/9.11/asm-tree-9.11.jar.sha256"/>
-         </artifact>
-         <artifact name="asm-tree-9.11.pom">
-            <sha256 value="7a37d97e93dd05500d270a24074adb34df50b7484c741d39e984b5b2aa97877d" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/org/ow2/asm/asm-tree/9.11/asm-tree-9.11.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="org.ow2.asm" name="asm-util" version="9.11">
-         <artifact name="asm-util-9.11.jar">
-            <sha256 value="d5a23a677f31b8a7d2419895906e1fcbd9ac995beffb20944c8610c1bc377609" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/org/ow2/asm/asm-util/9.11/asm-util-9.11.jar.sha256"/>
-         </artifact>
-         <artifact name="asm-util-9.11.pom">
-            <sha256 value="1b5c442c10c4c00b0764ef8963e80152fdf72760d643fa56f47cd73ac714dc49" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/org/ow2/asm/asm-util/9.11/asm-util-9.11.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc" name="class-tweaker" version="0.3.0">
-         <artifact name="class-tweaker-0.3.0.jar">
-            <sha256 value="83bf284909d13c7b4ae953c3fe141628dfedbe56120217f61891c341f0be2f1f" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/class-tweaker/0.3.0/class-tweaker-0.3.0.jar.sha256"/>
-         </artifact>
-         <artifact name="class-tweaker-0.3.0.module">
-            <sha256 value="d942cc999a8876e808df3bd1252adfab0b0a028ca8aac2de487f2e2f5a43934e" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/class-tweaker/0.3.0/class-tweaker-0.3.0.module.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc" name="tiny-remapper" version="0.15.0">
-         <artifact name="tiny-remapper-0.15.0.jar">
-            <sha256 value="a70b6c0bf045286ab33855d2ca0c284877e09b2e6eb3655db487abac73fae6f6" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/tiny-remapper/0.15.0/tiny-remapper-0.15.0.jar.sha256"/>
-         </artifact>
-         <artifact name="tiny-remapper-0.15.0.module">
-            <sha256 value="10c43572ccc56c40d53524676045b0316874c3a4de06255b1e12458aef654fa2" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/tiny-remapper/0.15.0/tiny-remapper-0.15.0.module.sha256"/>
-         </artifact>
-      </component>
-      <component group="org.jetbrains.kotlin" name="kotlin-metadata-jvm" version="2.4.10">
-         <artifact name="kotlin-metadata-jvm-2.4.10.jar">
-            <sha256 value="233aaa84ca268e26d6d3a99ce30401e6dc111a7ae10e0a0b4794ce6351d7adc4" origin="direct_https_artifact_download: https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-metadata-jvm/2.4.10/kotlin-metadata-jvm-2.4.10.jar"/>
-         </artifact>
-         <artifact name="kotlin-metadata-jvm-2.4.10.pom">
-            <sha256 value="694915b86862dbd6060c69239690594f1f52df2543bb110a011666242a41060b" origin="direct_https_artifact_download: https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-metadata-jvm/2.4.10/kotlin-metadata-jvm-2.4.10.pom"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-api" version="0.163.0+26.3">
-         <artifact name="fabric-api-0.163.0+26.3.jar">
-            <sha256 value="4969f5197ebedaf681cc913e4258c8bd17ccb98029db52a29e9b48e998267a2d" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.163.0+26.3/fabric-api-0.163.0+26.3.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-api-0.163.0+26.3.pom">
-            <sha256 value="3598e3a9fcef79bfcd6fc550b716970df5b6cea7e3079270c75e8222ca5a1789" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.163.0+26.3/fabric-api-0.163.0+26.3.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-advancement-api-v1" version="1.0.1+38c7a2d55d">
-         <artifact name="fabric-advancement-api-v1-1.0.1+38c7a2d55d.jar">
-            <sha256 value="096f771e643e006bb93a348e0cfdea1652d9e7a83c2a088951d8bde323982b36" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-advancement-api-v1/1.0.1+38c7a2d55d/fabric-advancement-api-v1-1.0.1+38c7a2d55d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-advancement-api-v1-1.0.1+38c7a2d55d.pom">
-            <sha256 value="66242d7f95ad410108d2019403d672de04575af2630f360b0cc2cf6105d59ebc" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-advancement-api-v1/1.0.1+38c7a2d55d/fabric-advancement-api-v1-1.0.1+38c7a2d55d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-api-deprecated" version="0.163.0+26.3">
-         <artifact name="fabric-api-deprecated-0.163.0+26.3.pom">
-            <sha256 value="94cc1ecaab1162a2216260272d9a55b15182a21bf59bf2aa1cd7ab9660c98be8" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api-deprecated/0.163.0+26.3/fabric-api-deprecated-0.163.0+26.3.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-client-gametest-api-v1" version="6.0.9+4be74c3f5d">
-         <artifact name="fabric-client-gametest-api-v1-6.0.9+4be74c3f5d.jar">
-            <sha256 value="b43c755b865d530f2700a173adb5707eeedec03de8261d71d7e62fc78943a7c4" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-client-gametest-api-v1/6.0.9+4be74c3f5d/fabric-client-gametest-api-v1-6.0.9+4be74c3f5d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-client-gametest-api-v1-6.0.9+4be74c3f5d.pom">
-            <sha256 value="ff1ffcd439bfda4732c13fab4b62d2b8265c96ce31eefda030545c4ef7888352" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-client-gametest-api-v1/6.0.9+4be74c3f5d/fabric-client-gametest-api-v1-6.0.9+4be74c3f5d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-content-registries-v0" version="15.0.5+74ed1ea55d">
-         <artifact name="fabric-content-registries-v0-15.0.5+74ed1ea55d.jar">
-            <sha256 value="0c33e2d60c09974db6344c479ee1bf5b7fe8a495c4dc5110126d6dbe261f02dd" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-content-registries-v0/15.0.5+74ed1ea55d/fabric-content-registries-v0-15.0.5+74ed1ea55d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-content-registries-v0-15.0.5+74ed1ea55d.pom">
-            <sha256 value="6a97eacf3aa99897a0ad5d48c4ffc1018437165b47e6d1dfb114a6b2d3c10d7a" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-content-registries-v0/15.0.5+74ed1ea55d/fabric-content-registries-v0-15.0.5+74ed1ea55d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-creative-tab-api-v1" version="5.0.22+fcdff87f5d">
-         <artifact name="fabric-creative-tab-api-v1-5.0.22+fcdff87f5d.jar">
-            <sha256 value="de5ecc896f57aa2655aac45d7de798f9341b5bd75b4ac72aaf00e3b7e5c0afdd" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-creative-tab-api-v1/5.0.22+fcdff87f5d/fabric-creative-tab-api-v1-5.0.22+fcdff87f5d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-creative-tab-api-v1-5.0.22+fcdff87f5d.pom">
-            <sha256 value="a053a7d96b91c08fc6a5ec602c5f5f140d58ce8e2251ae484d780d7da8468a05" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-creative-tab-api-v1/5.0.22+fcdff87f5d/fabric-creative-tab-api-v1-5.0.22+fcdff87f5d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-data-attachment-api-v1" version="2.2.32+b9b88df45d">
-         <artifact name="fabric-data-attachment-api-v1-2.2.32+b9b88df45d.jar">
-            <sha256 value="73b3ce0d74b3760382856b17ea3f397842eb4c23759c13b0770dbbd38c609c7d" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-data-attachment-api-v1/2.2.32+b9b88df45d/fabric-data-attachment-api-v1-2.2.32+b9b88df45d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-data-attachment-api-v1-2.2.32+b9b88df45d.pom">
-            <sha256 value="003c8118f78db72787f69c9c651100d350e90f85e94134d002d97da7c3ffe80d" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-data-attachment-api-v1/2.2.32+b9b88df45d/fabric-data-attachment-api-v1-2.2.32+b9b88df45d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-data-generation-api-v1" version="27.4.0+e985c3605d">
-         <artifact name="fabric-data-generation-api-v1-27.4.0+e985c3605d.jar">
-            <sha256 value="709e59f2aea347c58339f4f6d22c2c0cfa059d3f28372d9b5beb2015cc5b6983" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-data-generation-api-v1/27.4.0+e985c3605d/fabric-data-generation-api-v1-27.4.0+e985c3605d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-data-generation-api-v1-27.4.0+e985c3605d.pom">
-            <sha256 value="d964d43d5bce281a741f9d001198ec30fa3e30e118fe03aeede66e251907eb4e" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-data-generation-api-v1/27.4.0+e985c3605d/fabric-data-generation-api-v1-27.4.0+e985c3605d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-debug-api-v1" version="1.0.5+5af7744b5d">
-         <artifact name="fabric-debug-api-v1-1.0.5+5af7744b5d.jar">
-            <sha256 value="ddde75a663260a778fc3cba17cc8d515dd72eaeeb58e4e324fd6f3e55d6bc967" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-debug-api-v1/1.0.5+5af7744b5d/fabric-debug-api-v1-1.0.5+5af7744b5d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-debug-api-v1-1.0.5+5af7744b5d.pom">
-            <sha256 value="b1d485b5120198e2b10891c19d722ffab39585019477ec7b45673bd0a1cc7dd4" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-debug-api-v1/1.0.5+5af7744b5d/fabric-debug-api-v1-1.0.5+5af7744b5d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-dimensions-v1" version="5.1.20+5af7744b5d">
-         <artifact name="fabric-dimensions-v1-5.1.20+5af7744b5d.jar">
-            <sha256 value="bcb886da94f0d675e0269b47bf8669611abc3a00e745f853efe3d83cde85f1ff" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-dimensions-v1/5.1.20+5af7744b5d/fabric-dimensions-v1-5.1.20+5af7744b5d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-dimensions-v1-5.1.20+5af7744b5d.pom">
-            <sha256 value="9138dce7b604d629c4ac0be044c0d326a844f1e7047417bca8fc7a430b3fc7b6" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-dimensions-v1/5.1.20+5af7744b5d/fabric-dimensions-v1-5.1.20+5af7744b5d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-events-interaction-v0" version="5.3.8+b9b88df45d">
-         <artifact name="fabric-events-interaction-v0-5.3.8+b9b88df45d.jar">
-            <sha256 value="217fd93b776c42d6fa688e39a37021060dbc6f042764686f95e0c07e568d401c" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-events-interaction-v0/5.3.8+b9b88df45d/fabric-events-interaction-v0-5.3.8+b9b88df45d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-events-interaction-v0-5.3.8+b9b88df45d.pom">
-            <sha256 value="b32175a4a2f33cd20814b3a1f226d8c1948477c5eef9b32fbd8b525d7828c196" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-events-interaction-v0/5.3.8+b9b88df45d/fabric-events-interaction-v0-5.3.8+b9b88df45d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-gametest-api-v1" version="4.0.34+3434d6d95d">
-         <artifact name="fabric-gametest-api-v1-4.0.34+3434d6d95d.jar">
-            <sha256 value="4866d68dd97a49752e39817155a4031b9e335748f3f09bf633a36d4b152bac88" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-gametest-api-v1/4.0.34+3434d6d95d/fabric-gametest-api-v1-4.0.34+3434d6d95d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-gametest-api-v1-4.0.34+3434d6d95d.pom">
-            <sha256 value="44315d3122a058e51af0183fcb3357becb066dae591fd436939d0f8c77e09b44" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-gametest-api-v1/4.0.34+3434d6d95d/fabric-gametest-api-v1-4.0.34+3434d6d95d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-item-api-v1" version="14.7.1+5af7744b5d">
-         <artifact name="fabric-item-api-v1-14.7.1+5af7744b5d.jar">
-            <sha256 value="1ed3edd81d6c81dcdff334a776e06b3606abd35b37271c46f7bc62e0a4900047" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-item-api-v1/14.7.1+5af7744b5d/fabric-item-api-v1-14.7.1+5af7744b5d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-item-api-v1-14.7.1+5af7744b5d.pom">
-            <sha256 value="5af74361c91f091980a0fc6602f730da186642c90807612bf17255cfb49db1d3" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-item-api-v1/14.7.1+5af7744b5d/fabric-item-api-v1-14.7.1+5af7744b5d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-loot-api-v3" version="4.0.9+4068fd645d">
-         <artifact name="fabric-loot-api-v3-4.0.9+4068fd645d.jar">
-            <sha256 value="fe10e38a468216616facf16dc109a85259c34c70f26d1e5e4f81e9e26c0e6272" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-loot-api-v3/4.0.9+4068fd645d/fabric-loot-api-v3-4.0.9+4068fd645d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-loot-api-v3-4.0.9+4068fd645d.pom">
-            <sha256 value="5b842f364f2f59b0e3adef5857fcef13d3d38f24c7d486817770e512aa7adb5f" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-loot-api-v3/4.0.9+4068fd645d/fabric-loot-api-v3-4.0.9+4068fd645d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-menu-api-v1" version="2.0.29+ed66f0a35d">
-         <artifact name="fabric-menu-api-v1-2.0.29+ed66f0a35d.jar">
-            <sha256 value="b3f70b9b8bf55d400a800feb6ab09fd66a84006a5b44da0aa24e26b65e6ded2c" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-menu-api-v1/2.0.29+ed66f0a35d/fabric-menu-api-v1-2.0.29+ed66f0a35d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-menu-api-v1-2.0.29+ed66f0a35d.pom">
-            <sha256 value="2aa790eed3a5b572d005bc0d9a116a7380aac8beee1a32ad4039511ffa015ad2" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-menu-api-v1/2.0.29+ed66f0a35d/fabric-menu-api-v1-2.0.29+ed66f0a35d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-model-loading-api-v1" version="8.0.36+fcdff87f5d">
-         <artifact name="fabric-model-loading-api-v1-8.0.36+fcdff87f5d.jar">
-            <sha256 value="140a31b756509ca15182c23a87c2ace71dcff566f56cf15c3806aab306bb1fd9" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-model-loading-api-v1/8.0.36+fcdff87f5d/fabric-model-loading-api-v1-8.0.36+fcdff87f5d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-model-loading-api-v1-8.0.36+fcdff87f5d.pom">
-            <sha256 value="59a6de3b4a3eda40ec93700b86e52a441d34be723397ddea841ba909a0a846a9" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-model-loading-api-v1/8.0.36+fcdff87f5d/fabric-model-loading-api-v1-8.0.36+fcdff87f5d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-networking-api-v1" version="6.3.10+5c1fee4d5d">
-         <artifact name="fabric-networking-api-v1-6.3.10+5c1fee4d5d.jar">
-            <sha256 value="203a7f59f2c81c97cd4969fcb1725ac5bcaed8cd9b05cdd1e2cae76987917617" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-networking-api-v1/6.3.10+5c1fee4d5d/fabric-networking-api-v1-6.3.10+5c1fee4d5d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-networking-api-v1-6.3.10+5c1fee4d5d.pom">
-            <sha256 value="70ce8620a960f287f1668fcf6d2e8d91ef65f0880d8a08407fe4b2524896951f" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-networking-api-v1/6.3.10+5c1fee4d5d/fabric-networking-api-v1-6.3.10+5c1fee4d5d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-object-builder-api-v1" version="24.1.11+e2f63d3e5d">
-         <artifact name="fabric-object-builder-api-v1-24.1.11+e2f63d3e5d.jar">
-            <sha256 value="aceb83f7a8d43ebb7c3a37b3219955e8574ee8e4db7278a530e047f75a39850c" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-object-builder-api-v1/24.1.11+e2f63d3e5d/fabric-object-builder-api-v1-24.1.11+e2f63d3e5d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-object-builder-api-v1-24.1.11+e2f63d3e5d.pom">
-            <sha256 value="6bfcac22e427ecec15c3c7b047f164769e3c5c161212e7ff2d435d0b3c437818" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-object-builder-api-v1/24.1.11+e2f63d3e5d/fabric-object-builder-api-v1-24.1.11+e2f63d3e5d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-particles-v1" version="5.0.26+3434d6d95d">
-         <artifact name="fabric-particles-v1-5.0.26+3434d6d95d.jar">
-            <sha256 value="caab77671a4ae978b4cb3b59a956c29fce8aba73493a3697cc0c254edaaeca92" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-particles-v1/5.0.26+3434d6d95d/fabric-particles-v1-5.0.26+3434d6d95d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-particles-v1-5.0.26+3434d6d95d.pom">
-            <sha256 value="c9fe8dd0563b6735e2fd40fe0daef857ae7bd46a3878432cde0092e352efa5d1" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-particles-v1/5.0.26+3434d6d95d/fabric-particles-v1-5.0.26+3434d6d95d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-recipe-api-v1" version="10.0.10+b9b88df45d">
-         <artifact name="fabric-recipe-api-v1-10.0.10+b9b88df45d.jar">
-            <sha256 value="efdaead73ec1f9d6702b441f2a4e7268f53a1398793a4b56983cb2262b72e987" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-recipe-api-v1/10.0.10+b9b88df45d/fabric-recipe-api-v1-10.0.10+b9b88df45d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-recipe-api-v1-10.0.10+b9b88df45d.pom">
-            <sha256 value="95ae2d1d55de762481507ed6698184eaefc81ffcfbe002f100b37647d7204195" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-recipe-api-v1/10.0.10+b9b88df45d/fabric-recipe-api-v1-10.0.10+b9b88df45d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-registry-sync-v0" version="8.0.3+1ca9f6365d">
-         <artifact name="fabric-registry-sync-v0-8.0.3+1ca9f6365d.jar">
-            <sha256 value="1b050cdb82395c8533cc2120592406c5e5541bc49547631d5930da113942d106" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-registry-sync-v0/8.0.3+1ca9f6365d/fabric-registry-sync-v0-8.0.3+1ca9f6365d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-registry-sync-v0-8.0.3+1ca9f6365d.pom">
-            <sha256 value="c6cd31b70b41fa04813dfe1813067a99f1678b4032a029083b5058271c62033e" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-registry-sync-v0/8.0.3+1ca9f6365d/fabric-registry-sync-v0-8.0.3+1ca9f6365d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-renderer-api-v1" version="17.0.16+79385d0b5d">
-         <artifact name="fabric-renderer-api-v1-17.0.16+79385d0b5d.jar">
-            <sha256 value="424ed34187cdcdf58c705dcf8ed670fa7125f722395d089f11e2c80645f198cd" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-renderer-api-v1/17.0.16+79385d0b5d/fabric-renderer-api-v1-17.0.16+79385d0b5d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-renderer-api-v1-17.0.16+79385d0b5d.pom">
-            <sha256 value="eadfe9f0b4f14efbae95641c7ced1476b3149452fe46e18cc369b99e1c52e2b9" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-renderer-api-v1/17.0.16+79385d0b5d/fabric-renderer-api-v1-17.0.16+79385d0b5d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-renderer-indigo" version="9.1.24+b9d63e335d">
-         <artifact name="fabric-renderer-indigo-9.1.24+b9d63e335d.jar">
-            <sha256 value="2d30f6cb575f1be40038ccfc159cdfc2e4490a26f52c2bde99d10bcd387c26b5" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-renderer-indigo/9.1.24+b9d63e335d/fabric-renderer-indigo-9.1.24+b9d63e335d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-renderer-indigo-9.1.24+b9d63e335d.pom">
-            <sha256 value="1a2c15bbf602dfdc42f270527e9212446e8daf0de0770fcdb6422c09d1b92d95" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-renderer-indigo/9.1.24+b9d63e335d/fabric-renderer-indigo-9.1.24+b9d63e335d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-rendering-v1" version="27.1.0+5af7744b5d">
-         <artifact name="fabric-rendering-v1-27.1.0+5af7744b5d.jar">
-            <sha256 value="a638a65f7a8d4f26e1764b6db5e84328d647b8e93c74b240fff3a07c149868ef" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-rendering-v1/27.1.0+5af7744b5d/fabric-rendering-v1-27.1.0+5af7744b5d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-rendering-v1-27.1.0+5af7744b5d.pom">
-            <sha256 value="535123fa593da7b6876db9036c620a84d64ae131b0470c9bd6ef279f98e717f9" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-rendering-v1/27.1.0+5af7744b5d/fabric-rendering-v1-27.1.0+5af7744b5d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-resource-loader-v0" version="3.3.27+4fc5413f5d">
-         <artifact name="fabric-resource-loader-v0-3.3.27+4fc5413f5d.jar">
-            <sha256 value="78b83393ea9a20baddf9b6cc834b4dcb66339a75d4d90656dc18cf935d04fd5a" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-resource-loader-v0/3.3.27+4fc5413f5d/fabric-resource-loader-v0-3.3.27+4fc5413f5d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-resource-loader-v0-3.3.27+4fc5413f5d.pom">
-            <sha256 value="aecd86c725d7c847e62a11284fcb57ef0e3b90cd309aff60bc2a6a17667583a7" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-resource-loader-v0/3.3.27+4fc5413f5d/fabric-resource-loader-v0-3.3.27+4fc5413f5d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-resource-loader-v1" version="3.1.0+5af7744b5d">
-         <artifact name="fabric-resource-loader-v1-3.1.0+5af7744b5d.jar">
-            <sha256 value="1585c8597def2fb59d864b1946a4c9d17a8cc3d0b6e2f4c3e73addf7b014b9f1" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-resource-loader-v1/3.1.0+5af7744b5d/fabric-resource-loader-v1-3.1.0+5af7744b5d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-resource-loader-v1-3.1.0+5af7744b5d.pom">
-            <sha256 value="bda8da72d5073519c4403b5c3823aaa98abc858958953d55d16216725e27361b" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-resource-loader-v1/3.1.0+5af7744b5d/fabric-resource-loader-v1-3.1.0+5af7744b5d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-tag-api-v1" version="2.1.11+fcdff87f5d">
-         <artifact name="fabric-tag-api-v1-2.1.11+fcdff87f5d.jar">
-            <sha256 value="13416c8bf0b387cd40c5bed3f612ce29c42631d5002e36b95996a31da1ebfbde" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-tag-api-v1/2.1.11+fcdff87f5d/fabric-tag-api-v1-2.1.11+fcdff87f5d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-tag-api-v1-2.1.11+fcdff87f5d.pom">
-            <sha256 value="3230a138f80559cad078fba9ea3a4b60da16cf6bcb43f775f88e00a153a80c5f" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-tag-api-v1/2.1.11+fcdff87f5d/fabric-tag-api-v1-2.1.11+fcdff87f5d.pom.sha256"/>
-         </artifact>
-      </component>
-      <component group="net.fabricmc.fabric-api" name="fabric-transitive-access-wideners-v1" version="8.1.17+e2f63d3e5d">
-         <artifact name="fabric-transitive-access-wideners-v1-8.1.17+e2f63d3e5d.jar">
-            <sha256 value="cf60bde121ed1879dead7da9e1455a7c1a383c4430a09b37d1c985df8b5de4b3" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-transitive-access-wideners-v1/8.1.17+e2f63d3e5d/fabric-transitive-access-wideners-v1-8.1.17+e2f63d3e5d.jar.sha256"/>
-         </artifact>
-         <artifact name="fabric-transitive-access-wideners-v1-8.1.17+e2f63d3e5d.pom">
-            <sha256 value="760a3d802206f8aed9db842216dc9ac48e37763089d5a404fae530d41519e49e" origin="publisher_sha256_sidecar: https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-transitive-access-wideners-v1/8.1.17+e2f63d3e5d/fabric-transitive-access-wideners-v1-8.1.17+e2f63d3e5d.pom.sha256"/>
          </artifact>
       </component>
    </components>

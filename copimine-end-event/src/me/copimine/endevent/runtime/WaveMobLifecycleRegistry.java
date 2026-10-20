@@ -12,16 +12,21 @@ public final class WaveMobLifecycleRegistry {
         QUARANTINE
     }
 
-    private record Owner(String eventId, long generation, int wave) { }
+    private record Owner(String eventId, long generation, int wave, boolean portalSpawn) { }
 
     private final Map<UUID, Owner> unloaded = new HashMap<>();
 
     public synchronized void onUnload(UUID entityId, String eventId, long generation, int wave) {
+        onUnload(entityId, eventId, generation, wave, false);
+    }
+
+    public synchronized void onUnload(UUID entityId, String eventId, long generation,
+                                      int wave, boolean portalSpawn) {
         if (entityId == null || eventId == null || eventId.isBlank()
                 || generation <= 0L || wave < 1 || wave > 7) {
             return;
         }
-        unloaded.put(entityId, new Owner(eventId, generation, wave));
+        unloaded.put(entityId, new Owner(eventId, generation, wave, portalSpawn));
     }
 
     /** Remove the unload marker and only rehydrate an entity still owned by this live wave. */
@@ -55,6 +60,22 @@ public final class WaveMobLifecycleRegistry {
         int count = 0;
         for (Owner owner : unloaded.values()) {
             if (owner.generation() == generation && owner.wave() == wave
+                    && Objects.equals(owner.eventId(), eventId)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    public synchronized int countPortalSpawns(String eventId, long generation, int wave) {
+        if (eventId == null || eventId.isBlank() || generation <= 0L || wave < 1 || wave > 7) {
+            return 0;
+        }
+        unloaded.entrySet().removeIf(entry -> entry.getValue().generation() != generation
+                || !Objects.equals(entry.getValue().eventId(), eventId));
+        int count = 0;
+        for (Owner owner : unloaded.values()) {
+            if (owner.portalSpawn() && owner.generation() == generation && owner.wave() == wave
                     && Objects.equals(owner.eventId(), eventId)) {
                 count++;
             }

@@ -322,7 +322,7 @@ try {
   Wait-LocalBots
   foreach ($name in $spellMatrixBotNames) {
     $null = Invoke-LocalRcon -CommandText ("gamemode survival $name")
-    $null = Invoke-LocalRcon -CommandText ("attribute $name minecraft:generic.max_health base set 1000")
+    $null = Invoke-LocalRcon -CommandText ("attribute $name minecraft:max_health base set 1000")
     $null = Invoke-LocalRcon -CommandText ("heal $name")
     $null = Invoke-LocalRcon -CommandText ("effect give $name minecraft:resistance 1000 4 true")
     $null = Invoke-LocalRcon -CommandText ("effect give $name minecraft:regeneration 1000 4 true")
@@ -432,68 +432,54 @@ try {
   $null = Invoke-LocalRcon -CommandText 'cmend wave clear'
 
   $beforeMini = Get-LogLength
-  # Follow the assignments emitted by the server.  Wave 3 can legitimately
-  # expose only four distinct elite spells because its skeleton elite owns the
-  # arrow spell.  A second bounded probe uses Wave 5 when needed; its larger
-  # elite set covers the remaining policy spell (including void_snare).
-  # The server markers are TEST_WAVE_3_SPELL_ASSIGNMENTS and
-  # TEST_WAVE_5_SPELL_ASSIGNMENTS respectively.
-  $supportedMiniBossSpellIds = @('rift_step', 'void_snare', 'echo_pulse', 'arrow_salvo', 'rift_euphoria')
-  $requiredMiniBossSpellIds = @('rift_step', 'void_snare', 'echo_pulse', 'arrow_salvo', 'rift_euphoria')
-  $waveAssignments = @()
-  foreach ($wave in @(3, 5)) {
-    $missingBeforeWave = @($requiredMiniBossSpellIds | Where-Object {
-        $_ -notin $waveAssignments
-      })
-    if ($wave -eq 5 -and $missingBeforeWave.Count -eq 0) {
-      break
-    }
-    if ($wave -eq 5) {
-      $null = Invoke-LocalRcon -CommandText 'cmend wave clear'
-    }
-    $beforeWave = Get-LogLength
-    $waveCommand = if ($wave -eq 3) { 'cmend test wave 3' } else { 'cmend test wave 5' }
-    $response = Invoke-LocalRcon -CommandText $waveCommand
-    if ($response -match '(?i)refused|missing|event world') {
-      throw "Mini-boss spell wave $wave was refused:`n$response"
-    }
-    # The second pass is the concrete TEST_WAVE_5_SPELL_ASSIGNMENTS probe.
-    $assignment = Wait-LogMarker -PreviousLength $beforeWave `
-      -Pattern "TEST_WAVE_${wave}_SPELL_ASSIGNMENTS.*miniBossSpells=\[[^\]]*\]" -TimeoutSeconds 8
-    $assignmentMatch = [Regex]::Match($assignment, 'miniBossSpells=\[(?<spells>[^\]]*)\]')
-    if (-not $assignmentMatch.Success) {
-      throw "Wave $wave did not publish its assigned mini-boss spell set.`n$assignment"
-    }
-    $waveSpells = @([Regex]::Matches($assignmentMatch.Groups['spells'].Value, '[a-z][a-z_]*') |
-      ForEach-Object { $_.Value } | Sort-Object -Unique)
-    if ($waveSpells.Count -eq 0) {
-      throw "Wave $wave published an empty mini-boss spell set.`n$assignment"
-    }
-    $unknownMiniBossSpells = @($waveSpells | Where-Object {
-        $_ -notin $supportedMiniBossSpellIds
-      })
-    if ($unknownMiniBossSpells.Count -gt 0) {
-      throw "Wave $wave published an unknown mini-boss spell: $($unknownMiniBossSpells -join ', ')"
-    }
-    $waveAssignments = @($waveAssignments + $waveSpells | Sort-Object -Unique)
+  # Wave 3's current elite profiles own one physical cast each: the skeleton
+  # rains arrows, Endermen launch Rift Bolts, and the converted spider fires web.
+  # Keep the live acceptance set tied to EliteAbilityPolicy rather than older
+  # boss-style spell names.
+  $requiredWave3SpellIds = @('arrow_rain', 'rift_bolt', 'web_shot')
+  $beforeWave3 = Get-LogLength
+  $response = Invoke-LocalRcon -CommandText 'cmend test wave 3'
+  if ($response -match '(?i)refused|missing|event world') {
+    throw "Wave 3 physical elite spell probe was refused:`n$response"
   }
-  $assignedMiniBossSpells = @($waveAssignments | Sort-Object -Unique)
-  $missingMiniBossSpells = @($requiredMiniBossSpellIds | Where-Object {
-      $_ -notin $assignedMiniBossSpells
-    })
-  if ($missingMiniBossSpells.Count -gt 0) {
-    throw "The bounded mini-boss probes did not cover: $($missingMiniBossSpells -join ', ')"
+  $assignment = Wait-LogMarker -PreviousLength $beforeWave3 `
+    -Pattern 'TEST_WAVE_3_SPELL_ASSIGNMENTS.*miniBossSpells=\[[^\]]*\]' -TimeoutSeconds 8
+  $assignmentMatch = [Regex]::Match($assignment, 'miniBossSpells=\[(?<spells>[^\]]*)\]')
+  if (-not $assignmentMatch.Success) {
+    throw "Wave 3 did not publish its assigned elite spell set.`n$assignment"
   }
-  foreach ($spell in $assignedMiniBossSpells) {
+  $wave3Spells = @([Regex]::Matches($assignmentMatch.Groups['spells'].Value, '[a-z][a-z_]*') |
+    ForEach-Object { $_.Value } | Sort-Object -Unique)
+  $missingWave3Spells = @($requiredWave3SpellIds | Where-Object { $_ -notin $wave3Spells })
+  $unknownWave3Spells = @($wave3Spells | Where-Object { $_ -notin $requiredWave3SpellIds })
+  if ($missingWave3Spells.Count -gt 0 -or $unknownWave3Spells.Count -gt 0) {
+    throw "Wave 3 elite spell assignments differ from policy. missing=$($missingWave3Spells -join ',') unknown=$($unknownWave3Spells -join ','). $assignment"
+  }
+
+  foreach ($spell in $wave3Spells) {
     Wait-LogMarker -PreviousLength $beforeMini `
       -Pattern "MINIBOSS_SPELL_TELEGRAPH.*spell=$spell" -TimeoutSeconds 45 | Out-Null
     Wait-LogMarker -PreviousLength $beforeMini `
       -Pattern "MINIBOSS_SPELL_CAST.*spell=$spell" -TimeoutSeconds 45 | Out-Null
+    if ($spell -eq 'arrow_rain') {
+      Wait-LogMarker -PreviousLength $beforeMini `
+        -Pattern 'ELITE_ARROW_RAIN_RELEASE.*physical_arrows=5.*player_only=true' -TimeoutSeconds 45 | Out-Null
+      Wait-LogMarker -PreviousLength $beforeMini `
+        -Pattern 'ELITE_ARROW_RAIN_PLAYER_HIT.*target=' -TimeoutSeconds 45 | Out-Null
+      Write-Output 'LIVE_WAVE3_ELITE_SPELL_PASS spell=arrow_rain cast=1 physical_release=1 player_impact=1'
+      continue
+    }
+
+    $ability = $spell.ToUpperInvariant()
     Wait-LogMarker -PreviousLength $beforeMini `
-      -Pattern "MINIBOSS_SPELL_FLIGHT.*spell=$spell" -TimeoutSeconds 45 | Out-Null
+      -Pattern "ELITE_PROJECTILE_RELEASE.*ability=$ability.*player_only=true.*block_damage=false" -TimeoutSeconds 45 | Out-Null
     Wait-LogMarker -PreviousLength $beforeMini `
-      -Pattern "SPELL_IMPACT_VISUAL spell=$spell" -TimeoutSeconds 45 | Out-Null
-    Write-Output "LIVE_MINIBOSS_SPELL_PASS spell=$spell telegraph_flight_cast_impact=1"
+      -Pattern "ELITE_PROJECTILE_IMPACT.*ability=$ability.*target=[0-9a-f-]{36}.*block=false.*player_only=true" -TimeoutSeconds 45 | Out-Null
+    if ($spell -eq 'web_shot') {
+      Wait-LogMarker -PreviousLength $beforeMini `
+        -Pattern 'ELITE_SPIDER_WEB_HIT.*player=' -TimeoutSeconds 45 | Out-Null
+    }
+    Write-Output "LIVE_WAVE3_ELITE_SPELL_PASS spell=$spell cast=1 physical_release=1 impact=1"
   }
   $null = Invoke-LocalRcon -CommandText 'cmend wave clear'
   $status = Invoke-LocalRcon -CommandText 'cmend status'
@@ -505,7 +491,7 @@ try {
   if ($matrixLogDelta -match 'generated an exception') {
     throw "Spell matrix produced a Paper task exception:`n$matrixLogDelta"
   }
-  Write-Output "LIVE_SPELL_MATRIX_PASS boss=7 mini=$($assignedMiniBossSpells.Count) assigned=$($assignedMiniBossSpells -join ',') music_phases=24 cleanup=1 current_phases=6"
+  Write-Output "LIVE_SPELL_MATRIX_PASS boss=7 wave3=$($wave3Spells.Count) assigned=$($wave3Spells -join ',') music_phases=24 cleanup=1 current_phases=6"
 } finally {
   Stop-SpellMatrixBots
   try { Invoke-LocalRcon -CommandText 'cmend wave clear' | Out-Null } catch { }

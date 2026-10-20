@@ -141,12 +141,12 @@ try {
   $expectedBlockData = $blockDataMatch.Groups[1].Value
   $expectedMaterial = ($expectedBlockData -split '\[')[0]
   $restored = Invoke-LocalRcon "execute in minecraft:overworld if block 8 68 -39 $expectedMaterial run minecraft:time query gametime"
-  if ($restored -notmatch 'The time is') {
+  if ($restored -notmatch 'The (?:game )?time is') {
     throw "Core removal GUI did not restore the original vanilla block:`n$restored"
   }
   foreach ($displayType in @('item_display', 'block_display', 'text_display')) {
     $remaining = Invoke-LocalRcon "execute in minecraft:overworld positioned 8.5 69 -38.5 if entity @e[type=minecraft:$displayType,distance=..2] run minecraft:time query gametime"
-    if (-not [string]::IsNullOrWhiteSpace($remaining) -and $remaining -match 'The time is') {
+    if (-not [string]::IsNullOrWhiteSpace($remaining) -and $remaining -match 'The (?:game )?time is') {
       throw "Core removal GUI left a $displayType near the Core: $remaining"
     }
   }

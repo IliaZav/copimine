@@ -6,12 +6,14 @@ public final class EliteAbilityPolicyTest {
         check(EliteAbilityPolicy.profileForWave(1, EliteAbilityPolicy.Role.SKELETON).isEmpty(),
                 "Wave 1 must remain free of elite projectile pressure");
         check(EliteAbilityPolicy.profileForWave(2, EliteAbilityPolicy.Role.SKELETON)
-                        .equals(List.of(EliteAbilityPolicy.Ability.TRIPLE_ARROWS)),
-                "the Wave 2 group-3 elite skeleton keeps its three-arrow base attack only");
+                        .equals(List.of(EliteAbilityPolicy.Ability.TRIPLE_ARROWS,
+                                EliteAbilityPolicy.Ability.ARROW_RAIN)),
+                "the Wave 2 Bone Rift Archer keeps its triple-arrow volley and gains Arrow Rain");
         check(EliteAbilityPolicy.profileForWave(2, EliteAbilityPolicy.Role.ENDERMAN).isEmpty()
                         && EliteAbilityPolicy.profileForWave(2, EliteAbilityPolicy.Role.SPIDER).isEmpty()
-                        && EliteAbilityPolicy.activeCastForWave(2, EliteAbilityPolicy.Role.SKELETON) == null,
-                "Wave 2 adds no elite special-cast pool");
+                        && EliteAbilityPolicy.activeCastForWave(2, EliteAbilityPolicy.Role.SKELETON)
+                        == EliteAbilityPolicy.Ability.ARROW_RAIN,
+                "Wave 2 Arrow Rain is the active cast while other roles gain no spell pool");
         check(EliteAbilityPolicy.profileForWave(3, EliteAbilityPolicy.Role.SKELETON)
                         .equals(List.of(EliteAbilityPolicy.Ability.TRIPLE_ARROWS,
                                 EliteAbilityPolicy.Ability.ARROW_RAIN)),

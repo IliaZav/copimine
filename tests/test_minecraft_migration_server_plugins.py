@@ -46,20 +46,37 @@ def test_grim263_lock_pins_latest_official_bukkit_artifact_without_claiming_nati
     lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
     record=next(module for module in lock['modules'] if module.get('pluginName')=='GrimAC')
 
-    assert record['version']=='2.3.74-43850df'
+    assert record['version']=='2.3.74-3bc8959'
     assert record['channel']=='alpha'
-    assert record['versionId']=='ZgpTyoHe'
-    assert record['filename']=='GrimAC-2.3.74-43850df-creative-fix.jar'
-    assert record['url']=='https://cdn.modrinth.com/data/LJNGWSvH/versions/ZgpTyoHe/grimac-bukkit-2.3.74-43850df.jar'
-    assert record['upstreamFilename']=='grimac-bukkit-2.3.74-43850df.jar'
-    assert record['upstreamSize']==13139470
-    assert record['upstreamSha1']=='a1b4958238a78978ceaf7e0f97c1a704902af8a3'
-    assert record['upstreamSha256']=='505a77aaaae255d51603b459d1f1af382c1f998204802086de7a8d70fc8ee211'
-    assert record['upstreamSha512']=='d82b3de095f94bf1d697ef85e72162855540f5ceef00ef4dafd9fa0c6f7575cd5ab4545df8273b9734941201853424b465d6d2f402e6ab17a55995dee6771f21'
-    assert record['sourceCommit']=='43850df737be7dde18e390205afc895fd1af6c0c'
-    assert record['upstreamPublishedAt']=='2026-10-17T18:59:14.561114Z'
-    assert record['upstreamDeclares263'] is False
-    assert '26.3' not in record['gameVersions']
+    assert record['versionId']=='aQAyYziH'
+    assert record['filename']=='GrimAC-2.3.74-3bc8959-creative-fix.jar'
+    assert record['url']=='https://cdn.modrinth.com/data/LJNGWSvH/versions/aQAyYziH/grimac-bukkit-2.3.74-3bc8959.jar'
+    assert record['upstreamFilename']=='grimac-bukkit-2.3.74-3bc8959.jar'
+    assert record['upstreamSize']==13139508
+    assert record['upstreamSha1']=='47ddfbd92d3e63b8d83e9ec42b6df04122c7f172'
+    assert record['upstreamSha256']=='698f9fe2e019d9ccd16388c0aed40f7dfd68cd52d60685025e65f0c5b03c71fa'
+    assert record['upstreamSha512']=='fae6d12d553153fb20b5a4d639b6a0c2731fd02d07c152cd1da225eb70b409d73044025c97cc9304e99a65b5a1d435c726a98b674e60a895f81bb22f85e385e7'
+    assert record['sourceCommit']=='3bc895910193212efd92d5eea9995334efe22388'
+    assert record['upstreamPublishedAt']=='2026-10-19T03:16:55.871645Z'
+    assert record['upstreamDeclares263'] is True
+    assert '26.3' in record['gameVersions']
+    assert record['compatibilityStatus']=='requires-runtime-validation'
+    assert record['nativeVerified'] is False
+
+
+def test_tab_lock_pins_latest_official_paper_26_3_release():
+    lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
+    record=next(module for module in lock['modules'] if module.get('project')=='tab-was-taken')
+
+    assert record['version']=='6.2.1'
+    assert record['channel']=='release'
+    assert record['versionId']=='HlsRTW5F'
+    assert record['filename']=='TAB v6.2.1.jar'
+    assert record['url']=='https://cdn.modrinth.com/data/gG7VFbG0/versions/HlsRTW5F/TAB%20v6.2.1.jar'
+    assert record['sha1']=='cb772026895bfa856c29a47b6951e1f4910a0aa0'
+    assert record['sha256']=='0b6a21af6fd3b113c05821daaed00ff92234a84ca94b29b3aec0ef1bd313b8a9'
+    assert record['sha512']=='146fff1d94506459b32532d707f11e544da448b7dbfcb16c7a9a4fb91db7be8be272b275f3315e4c2122529a3ac30ccc344654fc013303615679d6a90207b41c'
+    assert record['size']==8483627
     assert record['compatibilityStatus']=='requires-runtime-validation'
     assert record['nativeVerified'] is False
 
@@ -297,6 +314,43 @@ donation-catalog:
     assert tombstone['operator-note']=='preserve-me'
     assert document['donation-catalog']['catalog-version']==7
     assert document['donation-catalog']['website-base-url']=='https://runtime.example'
+    assert mod.merge_artifacts_catalog_bytes(merged,canonical)==merged
+
+def test_artifacts_catalog_merge_disables_retired_item_in_indentless_yaml_lists():
+    mod=load()
+    canonical='''items: []
+donation-catalog:
+  catalog-version: 2
+  items:
+    - item-id: retired_item
+      display-name: "Canonical name"
+      enabled: false
+      price-donation: 100
+      effect-profile-id: RETIRED
+'''.encode('utf-8')
+    existing='''items: []
+donation-catalog:
+  catalog-version: 7
+  website-base-url: https://runtime.example
+  items:
+  - item-id: retired_item
+    display-name: "Runtime name"
+    enabled: true
+    price-donation: 175
+    effect-profile-id: RETIRED
+    operator-note: preserve-me
+'''.encode('utf-8')
+
+    merged=mod.merge_artifacts_catalog_bytes(existing,canonical)
+
+    import yaml
+    document=yaml.safe_load(merged)
+    retired=document['donation-catalog']['items'][0]
+    assert retired['enabled'] is False
+    assert retired['display-name']=='Runtime name'
+    assert retired['price-donation']==175
+    assert retired['operator-note']=='preserve-me'
+    assert document['donation-catalog']['catalog-version']==7
     assert mod.merge_artifacts_catalog_bytes(merged,canonical)==merged
 
 def test_artifacts_install_recovers_stale_catalog_even_when_plugin_jar_is_current(tmp_path):
@@ -1169,14 +1223,18 @@ def test_first_party_replacements_accept_the_exact_installed_predecessor_jars():
     lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
     baselines={row['pluginName']:row for row in lock['unchangedBaseline']}
     installed_predecessors={
-        'CopiMineArtifacts':'64340259981c4e4bb56e3e1168c8f901f2b658794338eeef458b2eb0617de5ef',
-        'CopiMineUltimateAdminPlus':'6ef8296d397f4cfea46dd9fa137ae18cecdac71dd0c259a9e512ad86dbdcd175',
-        'CopiMineNarcotics':'983fd1954eb85d8be8a5e18e0095200278933e930422854b4b19c19995fad116',
+        'CopiMineArtifacts':[
+            '64340259981c4e4bb56e3e1168c8f901f2b658794338eeef458b2eb0617de5ef',
+            '3202c55fb6b94423468f2eccf35b82d3e7a0cff39198aef2bf3777f0d2128ed8',
+        ],
+        'CopiMineUltimateAdminPlus':['6ef8296d397f4cfea46dd9fa137ae18cecdac71dd0c259a9e512ad86dbdcd175'],
+        'CopiMineNarcotics':['983fd1954eb85d8be8a5e18e0095200278933e930422854b4b19c19995fad116'],
     }
-    for plugin_name,digest in installed_predecessors.items():
-        assert digest in baselines[plugin_name].get('replaceSha256',[]), (
-            f'{plugin_name} locked installer does not recognize its verified installed predecessor'
-        )
+    for plugin_name,digests in installed_predecessors.items():
+        for digest in digests:
+            assert digest in baselines[plugin_name].get('replaceSha256',[]), (
+                f'{plugin_name} locked installer does not recognize its verified installed predecessor'
+            )
 
 def test_all_remaining_first_party_26_3_plugins_track_their_exact_build_and_runtime_jars():
     lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
@@ -1230,9 +1288,9 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     candidate=baseline['candidate']
     assert candidate['filename']=='CopiMineEndEvent-26.3.jar'
     assert candidate['runtimeFilename']=='CopiMineEndEvent.jar'
-    assert candidate['size']==1712610
-    assert candidate['sha256']=='10dd52eff90c85217caff45bfd08053eae8ee32d8349120d2f436b2f80ce6305'
-    assert candidate['sha512']=='da7c184ad8a35f265d86f253cade33a27599305738a82063990221ec32f29aa558cc06232da1b04198f3de62379bffb471d934326746d3155e212fd239c3bbda'
+    assert candidate['size']==1735507
+    assert candidate['sha256']=='80c7db84897a29bd1f89bf23f9cb066cb47733d740c5f46cd67f42ee13e2bb34'
+    assert candidate['sha512']=='fdea28412734142c90d3b5f6930898cca7b5d9d9226ebe0e9367a83e4aa5e9b06655caf7ef293d3d6beffdee44af6175241236d8929b1edeae4f6b8395ac748f'
     assert candidate['apiVersion']=='26.3'
     assert candidate['buildArtifact']=='build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar'
     assert candidate['nativeVerified'] is lock['nativeVerified']
@@ -1245,6 +1303,12 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
         'c07dd5b1a741bef33ff10f6a587f847782d21ea232c9ceb3c29af4882f44a038',
         'f6f09f56a663620b7a6f1e537071adee78b66f33137b20fad40ab24c20fe9f7d',
         '014b8ce72de3aaabfee26a62bc0341ec606d5683bc404f9edcb2496b1884865e',
+        '10dd52eff90c85217caff45bfd08053eae8ee32d8349120d2f436b2f80ce6305',
+        'a667e63d60d8441a24e80fa4131510bd30f6e58a88dd5f40a506a00bb697d8a0',
+    ]
+    assert candidate['replaceSha256']==[
+        '891da7cd4c450a32ffdb1c8c78724e8cbc410c2ab64afeac4209f9dc48e30d7e',
+        '10dd52eff90c85217caff45bfd08053eae8ee32d8349120d2f436b2f80ce6305',
     ]
 
     built=ROOT/candidate['buildArtifact']
@@ -2601,10 +2665,10 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
     assert luckperms['nativeVerified'] is False
 
     expected_candidates={
-        'CopiMineArtifacts':('3202c55fb6b94423468f2eccf35b82d3e7a0cff39198aef2bf3777f0d2128ed8',
-                             '72afa2254dee57ebf172882ad7ab0b452bef024b331c82a739fab267d815e18a8b79258fb67bbc6c9ff43047a755a8dfe68766d6e50dd4b663cb25934912de42',353920),
-        'CopiMineEndEvent':('10dd52eff90c85217caff45bfd08053eae8ee32d8349120d2f436b2f80ce6305',
-                            'da7c184ad8a35f265d86f253cade33a27599305738a82063990221ec32f29aa558cc06232da1b04198f3de62379bffb471d934326746d3155e212fd239c3bbda',1712610),
+        'CopiMineArtifacts':('372bae5777d7703c8e6628208dac3f087c59f657460ac6b4765d6fc4386925ec',
+                             'a3bfb5d16bb1d1fa01cbb31bc829299e59cc884d5fa52d4a534eff7b3d5ccee00d8d6de1de01ebbbea5c027a6ef2a9038c74aa613ffa1f6ecfc106e843a4d22d',357909),
+        'CopiMineEndEvent':('80c7db84897a29bd1f89bf23f9cb066cb47733d740c5f46cd67f42ee13e2bb34',
+                            'fdea28412734142c90d3b5f6930898cca7b5d9d9226ebe0e9367a83e4aa5e9b06655caf7ef293d3d6beffdee44af6175241236d8929b1edeae4f6b8395ac748f',1735507),
         'CopiMineNarcotics':('29d4894f4bde94ce950bf05f3f1a61fbafc3369851c8cb15ec330878ec5641c6',
                              '2de76b3edce9140092f483e2610696cf33f94c2804a0353c20d6ab72fc1f3ceb0057874c188e364fab8e4c17729b23fa6843c6df7d1a8d2be099ae342aa7b90f',363263),
     }

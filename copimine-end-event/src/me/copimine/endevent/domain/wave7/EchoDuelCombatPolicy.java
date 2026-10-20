@@ -17,12 +17,22 @@ public final class EchoDuelCombatPolicy {
 
     /** Positive tick durations make every accepted action leave a replay-resistant gate. */
     public record Cooldowns(long sharedActionTicks, long meleeTicks,
-                            long rangedTicks, long consumableUseTicks) {
+                            long rangedTicks, long consumableUseTicks,
+                            long shieldHoldTicks, long shieldCooldownTicks,
+                            long jumpCooldownTicks) {
+        public Cooldowns(long sharedActionTicks, long meleeTicks,
+                         long rangedTicks, long consumableUseTicks) {
+            this(sharedActionTicks, meleeTicks, rangedTicks, consumableUseTicks, 20L, 100L, 60L);
+        }
+
         public Cooldowns {
             requireDuration(sharedActionTicks, "shared action cooldown");
             requireDuration(meleeTicks, "melee cooldown");
             requireDuration(rangedTicks, "ranged cooldown");
             requireDuration(consumableUseTicks, "consumable use duration");
+            requireDuration(shieldHoldTicks, "shield hold duration");
+            requireDuration(shieldCooldownTicks, "shield cooldown");
+            requireDuration(jumpCooldownTicks, "jump cooldown");
         }
     }
 
@@ -33,7 +43,14 @@ public final class EchoDuelCombatPolicy {
         }
         return advance(actor, tick, cooldowns.sharedActionTicks(),
                 deadline(tick, cooldowns.meleeTicks()), actor.rangedCooldownUntilTick(),
-                actor.pendingUseUntilTick());
+                actor.pendingUseUntilTick(), actor.shieldActiveUntilTick(),
+                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick());
+    }
+
+    /** A falling attack shares melee wear/cooldown but is separately admitted by the runtime. */
+    public static Optional<ActorState> tryStartCriticalMelee(ActorState actor, long tick,
+                                                              Cooldowns cooldowns) {
+        return tryStartMelee(actor, tick, cooldowns);
     }
 
     /**
@@ -51,7 +68,8 @@ public final class EchoDuelCombatPolicy {
         }
         Optional<ActorState> updated = advance(actor, tick, cooldowns.sharedActionTicks(),
                 actor.meleeCooldownUntilTick(), deadline(tick, cooldowns.rangedTicks()),
-                actor.pendingUseUntilTick());
+                actor.pendingUseUntilTick(), actor.shieldActiveUntilTick(),
+                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick());
         if (updated.isEmpty() || !replica.consume(ammoSlot, 1, expectedReplicaRevision)) {
             return Optional.empty();
         }
@@ -71,11 +89,62 @@ public final class EchoDuelCombatPolicy {
         }
         Optional<ActorState> updated = advance(actor, tick, cooldowns.sharedActionTicks(),
                 actor.meleeCooldownUntilTick(), actor.rangedCooldownUntilTick(),
-                deadline(tick, cooldowns.consumableUseTicks()));
+                deadline(tick, cooldowns.consumableUseTicks()), actor.shieldActiveUntilTick(),
+                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick());
         if (updated.isEmpty() || !replica.consume(consumableSlot, 1, expectedReplicaRevision)) {
             return Optional.empty();
         }
         return updated;
+    }
+
+    /** Starts a finite shield window without spending shield durability until a real hit is blocked. */
+    public static Optional<ActorState> tryStartShield(ActorState actor, EchoLoadoutState replica,
+                                                       int shieldSlot, long expectedReplicaRevision,
+                                                       long tick, long holdTicks, Cooldowns cooldowns) {
+        if (!ready(actor, tick, cooldowns) || tick < actor.shieldCooldownUntilTick()
+                || holdTicks <= 0L || holdTicks > cooldowns.shieldHoldTicks()
+                || !hasKind(replica, shieldSlot, expectedReplicaRevision, EchoLoadoutState.Kind.SHIELD)
+                || replica.item(shieldSlot).maximumDamage() <= 0) {
+            return Optional.empty();
+        }
+        long activeUntil = deadline(tick, holdTicks);
+        long cooldownUntil = deadline(tick, cooldowns.shieldCooldownTicks());
+        if (activeUntil < 0L || cooldownUntil < activeUntil) return Optional.empty();
+        return advance(actor, tick, cooldowns.sharedActionTicks(), actor.meleeCooldownUntilTick(),
+                actor.rangedCooldownUntilTick(), actor.pendingUseUntilTick(), activeUntil,
+                cooldownUntil, actor.jumpCooldownUntilTick());
+    }
+
+    /** Starts a bounded vertical hop; horizontal motion remains under the room-scoped pathfinder. */
+    public static Optional<ActorState> tryStartJump(ActorState actor, long tick,
+                                                     Cooldowns cooldowns) {
+        if (!ready(actor, tick, cooldowns) || tick < actor.jumpCooldownUntilTick()) {
+            return Optional.empty();
+        }
+        long jumpCooldownUntil = deadline(tick, cooldowns.jumpCooldownTicks());
+        if (jumpCooldownUntil < 0L) return Optional.empty();
+        return advance(actor, tick, cooldowns.sharedActionTicks(), actor.meleeCooldownUntilTick(),
+                actor.rangedCooldownUntilTick(), actor.pendingUseUntilTick(),
+                actor.shieldActiveUntilTick(), actor.shieldCooldownUntilTick(), jumpCooldownUntil);
+    }
+
+    /** Block only an admitted, owner-originated, front-facing hit during a persisted shield window. */
+    public static boolean tryBlockWithShield(ActorState actor, EchoLoadoutState replica,
+                                              int shieldSlot, long expectedReplicaRevision,
+                                              long tick, boolean ownerAttackAdmitted,
+                                              boolean attackerInFront, double incomingDamage) {
+        if (actor == null || actor.lifecycle() != ActorLifecycle.ALIVE
+                || tick < 0L || tick >= actor.shieldActiveUntilTick()
+                || !ownerAttackAdmitted || !attackerInFront
+                || !Double.isFinite(incomingDamage) || incomingDamage <= 0.0D
+                || incomingDamage > 1_000_000.0D
+                || !hasKind(replica, shieldSlot, expectedReplicaRevision, EchoLoadoutState.Kind.SHIELD)) {
+            return false;
+        }
+        EchoLoadoutState.Item shield = replica.item(shieldSlot);
+        int wear = (int) Math.min(10_000L, 1L + (long) Math.floor(incomingDamage));
+        return shield.maximumDamage() > 0
+                && tryApplyGearWear(replica, shieldSlot, wear, expectedReplicaRevision);
     }
 
     /** Records native-computed wear only on a usable, durable piece of copied duel gear. */
@@ -133,14 +202,19 @@ public final class EchoDuelCombatPolicy {
     }
 
     private static Optional<ActorState> advance(ActorState actor, long tick, long sharedTicks,
-                                                long meleeUntil, long rangedUntil, long pendingUseUntil) {
+                                                long meleeUntil, long rangedUntil, long pendingUseUntil,
+                                                long shieldActiveUntil, long shieldCooldownUntil,
+                                                long jumpCooldownUntil) {
         long nextAction = deadline(tick, sharedTicks);
-        if (nextAction < 0L || meleeUntil < 0L || rangedUntil < 0L || pendingUseUntil < 0L) {
+        if (nextAction < 0L || meleeUntil < 0L || rangedUntil < 0L || pendingUseUntil < 0L
+                || shieldActiveUntil < 0L || shieldCooldownUntil < shieldActiveUntil
+                || jumpCooldownUntil < 0L) {
             return Optional.empty();
         }
         return Optional.of(new ActorState(actor.actorUuid(), actor.currentHealth(), actor.maximumHealth(),
                 actor.lifecycle(), actor.revision() + 1L, nextAction, meleeUntil,
-                rangedUntil, pendingUseUntil, actor.deathSerial()));
+                rangedUntil, pendingUseUntil, actor.deathSerial(), shieldActiveUntil,
+                shieldCooldownUntil, jumpCooldownUntil));
     }
 
     /** Returns -1 if a deadline would exceed the persisted counter bounds. */

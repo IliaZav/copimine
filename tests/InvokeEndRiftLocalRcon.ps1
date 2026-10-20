@@ -31,9 +31,16 @@ $rconPortRows = @($serverPropertiesLines | Where-Object { $_ -match '^rcon\.port
 if ($rconPortRows.Count -ne 1 -or $rconPortRows[0] -cne ("rcon.port=" + $RconPort)) {
   throw 'Local RCON port does not match the isolated server configuration.'
 }
-$serverReceipt = Get-EndRiftLocalServerReceipt -ServerDir $ServerDir -LocalRuntimeRoot $localRuntimeRoot
+$portReceiptPath = Join-Path $ServerDir ('.end-rift-process-receipt-' + $ServerPort + '.json')
+$receiptPath = if (Test-Path -LiteralPath $portReceiptPath -PathType Leaf) {
+  $portReceiptPath
+} else {
+  Join-Path $ServerDir '.end-rift-process-receipt.json'
+}
+$serverReceipt = Get-EndRiftLocalServerReceipt -ServerDir $ServerDir -LocalRuntimeRoot $localRuntimeRoot -ReceiptPath $receiptPath
 $expectedPaperJarPath = Assert-EndRiftLocalRuntimePath -Path (Join-Path $ServerDir 'purpur.jar') -LocalRuntimeRoot $localRuntimeRoot -MustExist
-if (-not [string]::Equals([IO.Path]::GetFullPath([string]$serverReceipt.PaperJarPath), $expectedPaperJarPath, [StringComparison]::OrdinalIgnoreCase)) {
+$canonicalReceiptPaperJarPath = Resolve-EndRiftLocalDriveSubstitutions -Path ([string]$serverReceipt.PaperJarPath)
+if (-not [string]::Equals($canonicalReceiptPaperJarPath, $expectedPaperJarPath, [StringComparison]::OrdinalIgnoreCase)) {
   throw 'Local RCON receipt does not identify the Paper JAR in the selected isolated server directory.'
 }
 $identityMatches = Test-EndRiftLocalServerProcessIdentity `
@@ -49,7 +56,7 @@ if (-not $identityMatches) {
 Assert-EndRiftLocalServerBind -ServerDir $ServerDir `
   -ServerPort $ServerPort `
   -RconPort $RconPort `
-  -ExpectedProcessId $serverReceipt.ProcessId
+  -ExpectedProcessId $serverReceipt.ProcessId | Out-Null
 $rconPasswordLines = @()
 foreach ($line in [IO.File]::ReadLines($propertiesPath)) {
   if ($line.StartsWith('rcon.password=', [StringComparison]::Ordinal)) { $rconPasswordLines += $line }

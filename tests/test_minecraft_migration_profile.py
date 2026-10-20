@@ -105,25 +105,25 @@ def test_fabric_api_lock_matches_the_current_pinned_26_3_release():
     readme = (ROOT / 'docs/minecraft-26.3/README.md').read_text(encoding='utf-8')
     fabric_api = next(module for module in lock['modules'] if module['project'] == 'fabric-api')
 
-    assert profile['fabric']['api'] == '0.163.0+26.3'
+    assert profile['fabric']['api'] == '0.164.0+26.3'
     assert profile['fabric']['loom'] == '1.19.1'
-    assert lock['verifiedAt'] == '2026-10-18'
+    assert lock['verifiedAt'] == '2026-10-19'
     assert fabric_api['version'] == profile['fabric']['api']
     assert f"| Fabric API | {profile['fabric']['api']} |" in readme
-    assert fabric_api['versionId'] == 'bq3SsNGk'
+    assert fabric_api['versionId'] == 'LEklt8GT'
     assert fabric_api['projectId'] == 'P7dR8mSH'
-    assert fabric_api['filename'] == 'fabric-api-0.163.0+26.3.jar'
+    assert fabric_api['filename'] == 'fabric-api-0.164.0+26.3.jar'
     assert fabric_api['fabricMetadataVersion'] == profile['fabric']['api']
     assert fabric_api['url'] == (
-        'https://cdn.modrinth.com/data/P7dR8mSH/versions/bq3SsNGk/'
-        'fabric-api-0.163.0%2B26.3.jar'
+        'https://cdn.modrinth.com/data/P7dR8mSH/versions/LEklt8GT/'
+        'fabric-api-0.164.0%2B26.3.jar'
     )
-    assert fabric_api['sha1'] == '65ada8c72b61ffb256e956baf53df28155daa479'
+    assert fabric_api['sha1'] == '7ec45ba92a286ed7d0c57bcd74cf9182789741ec'
     assert fabric_api['sha512'] == (
-        '44fd8de10fa71ea39cf984d44d2ec4c8e9314f8af88ad95788d9a09ac7b02b5c'
-        '2f796ae88f40e314bd27df677e66fed59d1a1b6784350b0cc1fd62efac9e08a3'
+        '2ce7b0826f75801a56e8150eb5ceca467cdf8b4b44e160b5a5381e5412567d0'
+        '24f46a16c679f29c4a9346b2687fa1740f91ed6026a31b2ed1f3d4b5035968d69'
     )
-    assert fabric_api['size'] == 1_774_707
+    assert fabric_api['size'] == 1_775_592
 
 
 def test_sodium_lock_respects_iris_exact_26_3_dependency():
@@ -154,10 +154,10 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     artifact = profile['clientArtifact']
 
     assert artifact['filename'] == 'CopiMineClient-0.1.3+26.3.jar'
-    assert artifact['size'] == 14_980_837
+    assert artifact['size'] == 14_983_485
     assert artifact['sha512'] == (
-        'cb9b44e25cf9fbfa3fec0e86afef8e126d7a70e670cdc569e26e5f1ba389207e'
-        '7e7fbdad45b50337596985aa08ce9a7a1919ec122ef8296366bfb4128e79b6fa'
+        'a917784b70efc94d1b6cb1649b2a5c265e8db0624f84a25f6985489542ada6c9'
+        'cb21966d0734e135d29789d7df32d30f9cc05c94ca4c4c4286faf7d172a60ee8'
     )
 
 
@@ -1208,7 +1208,7 @@ def test_malformed_resource_pack_options_fail_before_profile_mutation(tmp_path, 
     assert not (profile / 'copimine-migration-receipt.json').exists()
 
 
-def test_existing_copimineclient_mod_is_rejected_before_profile_mutation(tmp_path):
+def test_existing_copimineclient_mod_is_rejected_or_upgraded_transactionally(tmp_path):
     shell = shutil.which('pwsh') or shutil.which('powershell')
     if os.name != 'nt' or not shell:
         pytest.skip('PowerShell profile installation requires a Windows verification host')
@@ -1277,11 +1277,11 @@ def test_existing_copimineclient_mod_is_rejected_before_profile_mutation(tmp_pat
     assert not (profile / 'copimine-migration-receipt.json').exists()
 
     existing_client.unlink()
-    previous_client = mods / 'CopiMineClient-0.1.1+26.3.jar'
+    previous_client = mods / 'CopiMineClient-0.1.2+26.3.jar'
     with zipfile.ZipFile(previous_client, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr('fabric.mod.json', json.dumps({
             'id': 'copimineclient',
-            'version': '0.1.1+26.3',
+            'version': '0.1.2+26.3',
             'depends': {'minecraft': '26.3'},
         }))
     profile_before_locked_install = {

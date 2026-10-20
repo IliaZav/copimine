@@ -154,6 +154,25 @@ def test_wave4_obelisk_fireball_passes_through_only_nonparticipants_in_current_s
     assert "isActiveArenaParticipant(player)" in collision
 
 
+def test_wave4_reflected_fireball_entity_hit_does_not_consume_objective_shot():
+    source = SOURCE_PATH.read_text(encoding="utf-8")
+    impact = _java_method_body(
+        source,
+        "private void handleRiftFireballImpact(LargeFireball fireball, Entity hitEntity,",
+    )
+    hit_event = _java_method_body(source, "public void onRiftFireballHit(")
+
+    guard = impact.index("RiftFireballCollisionPolicy.shouldPassThroughNonParticipantCollision(")
+    assert "hitEntity != null" in impact
+    assert "state.isWave4Obelisk()" in impact
+    assert "activeWave == 4 && phase == EventPhase.WAVE_4" in impact
+    assert "state.generation() == generation" in impact
+    assert "ownedBySession(fireball, eventId, generation)" in impact
+    assert "isActiveArenaParticipant(player)" in impact
+    assert guard < impact.index("return;", guard) < impact.index('"current-reflected-miss"')
+    assert hit_event.index("event.setCancelled(true)") < hit_event.index("handleRiftFireballImpact(")
+
+
 def test_dragon_breath_cloud_is_ticked_without_a_vanilla_effect_payload():
     source = SOURCE_PATH.read_text(encoding="utf-8")
     state_tick = _java_method_body(source, "private void tickEliteAbilityState(")

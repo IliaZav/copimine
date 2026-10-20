@@ -17,6 +17,15 @@ def test_wave_one_bot_modes_send_right_clicks_for_charge_and_core():
     assert "bot.activateBlock(coreBlock)" in bot
 
 
+def test_wave_bots_use_the_protocol_that_survives_via_to_paper_26_3():
+    bot = BOT.read_text(encoding="utf-8")
+
+    assert re.search(r"version:\s*'1\.21\.1'", bot), (
+        "The installed Mineflayer 26.1 schema is rejected by Paper 26.3; "
+        "use the verified 1.21.1 ViaVersion path for server-state probes."
+    )
+
+
 def test_wave_one_driver_activates_charge_and_delivers_as_authoritative_holder():
     driver = DRIVER.read_text(encoding="utf-8")
     wait_delivery = driver.split("function Wait-CarrierDelivery", 1)[1].split(
@@ -31,6 +40,122 @@ def test_wave_one_driver_activates_charge_and_delivers_as_authoritative_holder()
     assert "END_RIFT_CARRIER_DELIVERED" in wait_delivery
 
 
+def test_wave_one_runner_teleports_before_waiting_for_delivery_mode_ack():
+    driver = DRIVER.read_text(encoding="utf-8")
+    bot = BOT.read_text(encoding="utf-8")
+    mode_writer = driver.split("function Set-PlayerBotModeForName", 1)[1].split(
+        "function Start-PlayerBot", 1
+    )[0]
+    pickup_branch = driver.split("function Wait-CarrierDelivery", 1)[1].split(
+        "function Get-Status", 1
+    )[0]
+    delivered_branch = pickup_branch.split(
+        "if ($tail -match $deliveredPattern)", 1
+    )[1].split("return $tail", 1)[0]
+
+    assert "Wait-PlayerBotModeAcknowledgement" not in mode_writer, (
+        "A blocking bot-log acknowledgement can consume the carrier's 10-second "
+        "lifetime before the holder is teleported to the core."
+    )
+    mode_request = pickup_branch.index(
+        "Set-PlayerBotModeForName -Name $holderName -Mode 'CORE_DELIVER'"
+    )
+    core_teleport = pickup_branch.index("Teleport-Player $holderName")
+    assert mode_request < core_teleport
+    assert "Wait-PlayerBotModeAcknowledgement -Name $activeHolder -Mode 'CORE_DELIVER'" in delivered_branch
+    assert "BOT_OBJECTIVE_INTERACTION" in bot
+    assert "CURRENT_WAVE1_CHARGE_TRACKED" in pickup_branch
+
+
+def test_wave_one_pickup_ack_is_bound_to_the_client_that_received_the_request():
+    driver = DRIVER.read_text(encoding="utf-8")
+    wait_delivery = driver.split("function Wait-CarrierDelivery", 1)[1].split(
+        "function Get-Status", 1
+    )[0]
+    pickup_request = wait_delivery.split(
+        "if ($configuredPickupCharge -ne $activeCharge)", 1
+    )[1].split("$configuredPickupCharge = $activeCharge", 1)[0]
+    picked_holder = wait_delivery.split(
+        "if ($null -ne $pickedPattern -and $tail -match $pickedPattern)", 1
+    )[1].split("} elseif ($null -ne $activeCharge)", 1)[0]
+
+    assert "$activePickupPlayer = $PickupPlayer" in pickup_request
+    assert pickup_request.index("$activePickupPlayer = $PickupPlayer") < pickup_request.index(
+        "Set-PlayerBotModeForName -Name $PickupPlayer -Mode 'CARRIER_PICKUP'"
+    )
+    assert "$activePickupPlayer = $holderName" not in picked_holder
+
+
+def test_official_runner_allows_live_bot_log_reads_while_capturing_output():
+    driver = DRIVER.read_text(encoding="utf-8")
+
+    assert "[IO.FileShare]::ReadWrite" in driver, (
+        "The runner polls objective acknowledgements while the bot is writing its log; "
+        "the output stream must permit shared reads or Wave 1 aborts on a file lock."
+    )
+
+
+def test_wave_one_delivery_poll_does_not_issue_slow_rcon_mob_recovery():
+    driver = DRIVER.read_text(encoding="utf-8")
+    wait_delivery = driver.split("function Wait-CarrierDelivery", 1)[1].split(
+        "function Get-Status", 1
+    )[0]
+
+    assert "Teleport-PlayersToNearestWaveMobIfFar" not in wait_delivery, (
+        "Repeated position queries and RCON teleports can take longer than the "
+        "10-second carrier charge lifetime and hide a fresh charge until it expires."
+    )
+    assert "Teleport-Player $PickupPlayer $activeCarrierLocation" not in wait_delivery, (
+        "The live bot's combat navigation should reach the selected carrier; "
+        "do not spend charge lifetime on an unrelated RCON teleport."
+    )
+
+
+def test_official_runner_keeps_probe_players_passive_until_wave_one_starts():
+    driver = DRIVER.read_text(encoding="utf-8")
+    start = driver.index("Start-PlayerBot -Name $name -Core $core")
+    mode_before_start = driver.rfind("Set-PlayerBotModeForName -Name $name -Mode '", 0, start)
+    assert mode_before_start >= 0
+    assert "-Mode 'PASSIVE'" in driver[mode_before_start:start]
+    assert "-Mode 'ACTIVE'" not in driver[mode_before_start:start]
+
+    wave_one_started = driver.index(".*wave=1\\b")
+    first_wave_one_delivery = driver.index("Wait-CarrierDelivery -AfterOffset $carrierOffset")
+    active_mode = driver.index("Set-PlayerBotMode -Mode 'ACTIVE'", wave_one_started)
+    assert wave_one_started < active_mode < first_wave_one_delivery
+
+
+def test_passive_probe_freezes_client_physics_and_active_mode_restores_it():
+    bot = BOT.read_text(encoding="utf-8")
+    passive_mode = bot.split("function enterPassiveMode ()", 1)[1].split(
+        "function enterActiveMode (", 1
+    )[0]
+    active_mode = bot.split("function enterActiveMode (", 1)[1].split(
+        "function stopObjectiveInteraction", 1
+    )[0]
+
+    assert "bot.physicsEnabled = false" in passive_mode, (
+        "A passive live probe must not simulate stale movement or knockback off "
+        "a rune while Paper measures the continuous hold."
+    )
+    assert "bot.physicsEnabled = true" in active_mode, (
+        "Wave combat must restore client physics when the probe becomes active."
+    )
+
+
+def test_official_runner_does_not_teleport_bots_repeatedly_during_start_ritual_hold():
+    driver = DRIVER.read_text(encoding="utf-8")
+    ritual_completion_wait = next(
+        line for line in driver.splitlines()
+        if "RITUAL_COMPLETED.*event=" in line
+    )
+
+    assert "-Action" not in ritual_completion_wait, (
+        "Repeated RCON teleports during the ten-second rune hold can desynchronize "
+        "the player clients and evict them from their pads."
+    )
+
+
 def test_wave_one_driver_resumes_combat_after_a_charge_timeout_transfer():
     driver = DRIVER.read_text(encoding="utf-8")
     wait_delivery = driver.split("function Wait-CarrierDelivery", 1)[1].split(
@@ -39,6 +164,31 @@ def test_wave_one_driver_resumes_combat_after_a_charge_timeout_transfer():
 
     assert "END_RIFT_CARRIER_TIMEOUT_(?:TRANSFER|REPLACEMENT)" in wait_delivery
     assert "Set-PlayerBotMode -Mode 'ACTIVE'" in wait_delivery
+
+
+def test_wave_one_timeout_search_skips_historical_timeouts_for_later_charges():
+    driver = DRIVER.read_text(encoding="utf-8")
+    wait_delivery = driver.split("function Wait-CarrierDelivery", 1)[1].split(
+        "function Get-Status", 1
+    )[0]
+
+    assert "$timeoutMatches = [Regex]::Matches($tail, $timeoutPattern)" in wait_delivery
+    assert "foreach ($candidateTimeout in $timeoutMatches)" in wait_delivery
+    assert "$candidateTimeout.Index -gt $chargeCreatedMatch.Index" in wait_delivery
+
+    tail = "\n".join(
+        [
+            "END_RIFT_CARRIER_CHARGE_CREATED charge=first location=0,0,0",
+            "END_RIFT_CARRIER_TIMEOUT_REPLACEMENT delivered=0",
+            "END_RIFT_CARRIER_CHARGE_CREATED charge=second location=1,0,0",
+            "END_RIFT_CARRIER_TIMEOUT_TRANSFER delivered=0",
+            "END_RIFT_CARRIER_CHARGE_CREATED charge=third location=2,0,0",
+        ]
+    )
+    second_charge = re.search(r"CHARGE_CREATED[^\n]*charge=second", tail)
+    timeout_matches = list(re.finditer(r"CARRIER_TIMEOUT_(?:TRANSFER|REPLACEMENT)[^\n]*delivered=0", tail))
+    selected = next(match for match in timeout_matches if match.start() > second_charge.start())
+    assert "TIMEOUT_TRANSFER" in selected.group(0)
 
 
 def test_wave_one_charge_pickup_accepts_paper_pre_cancelled_air_interactions():

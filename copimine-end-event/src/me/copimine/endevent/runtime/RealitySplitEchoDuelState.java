@@ -23,6 +23,14 @@ public final class RealitySplitEchoDuelState {
 
     private RealitySplitEchoDuelState() { }
 
+    /** An offline owner must resume before the original deadline or fail closed. */
+    public static boolean ownerReturnDeadlineExpired(Lifecycle lifecycle, long deadlineMillis, long nowMillis) {
+        if (lifecycle != Lifecycle.OWNER_OFFLINE) return false;
+        return nowMillis < MIN_RETURN_DEADLINE_MILLIS || nowMillis > MAX_RETURN_DEADLINE_MILLIS
+                || deadlineMillis < MIN_RETURN_DEADLINE_MILLIS || deadlineMillis > MAX_RETURN_DEADLINE_MILLIS
+                || nowMillis >= deadlineMillis;
+    }
+
     /** Resume is permitted only after the owner has passed the event's explicit return gate. */
     public static boolean ownerMayResume(boolean online, boolean alive, boolean sameWorld,
                                          boolean clientReady, boolean combatAdmitted) {
@@ -59,7 +67,19 @@ public final class RealitySplitEchoDuelState {
     public record ActorState(UUID actorUuid, double currentHealth, double maximumHealth,
                              ActorLifecycle lifecycle, long revision, long nextActionTick,
                              long meleeCooldownUntilTick, long rangedCooldownUntilTick,
-                             long pendingUseUntilTick, long deathSerial) {
+                             long pendingUseUntilTick, long deathSerial,
+                             long shieldActiveUntilTick, long shieldCooldownUntilTick,
+                             long jumpCooldownUntilTick) {
+        /** Source-compatible constructor for pre-v5 fixtures and zeroed legacy action state. */
+        public ActorState(UUID actorUuid, double currentHealth, double maximumHealth,
+                          ActorLifecycle lifecycle, long revision, long nextActionTick,
+                          long meleeCooldownUntilTick, long rangedCooldownUntilTick,
+                          long pendingUseUntilTick, long deathSerial) {
+            this(actorUuid, currentHealth, maximumHealth, lifecycle, revision, nextActionTick,
+                    meleeCooldownUntilTick, rangedCooldownUntilTick, pendingUseUntilTick,
+                    deathSerial, 0L, 0L, 0L);
+        }
+
         public ActorState {
             Objects.requireNonNull(actorUuid, "actorUuid");
             Objects.requireNonNull(lifecycle, "lifecycle");
@@ -70,6 +90,12 @@ public final class RealitySplitEchoDuelState {
             requireCounter(rangedCooldownUntilTick, "ranged cooldown");
             requireCounter(pendingUseUntilTick, "pending use");
             requireCounter(deathSerial, "death serial");
+            requireCounter(shieldActiveUntilTick, "shield active deadline");
+            requireCounter(shieldCooldownUntilTick, "shield cooldown");
+            requireCounter(jumpCooldownUntilTick, "jump cooldown");
+            if (shieldActiveUntilTick > shieldCooldownUntilTick) {
+                throw new IllegalArgumentException("Echo shield active deadline exceeds its cooldown");
+            }
             if (lifecycle == ActorLifecycle.ALIVE
                     && (!(currentHealth > 0.0D) || deathSerial != 0L)
                     || lifecycle == ActorLifecycle.DEAD
@@ -85,7 +111,8 @@ public final class RealitySplitEchoDuelState {
             }
             return new ActorState(actorUuid, 0.0D, maximumHealth, ActorLifecycle.DEAD,
                     revision + 1L, nextActionTick, meleeCooldownUntilTick,
-                    rangedCooldownUntilTick, pendingUseUntilTick, serial);
+                    rangedCooldownUntilTick, pendingUseUntilTick, serial, shieldActiveUntilTick,
+                    shieldCooldownUntilTick, jumpCooldownUntilTick);
         }
     }
 
@@ -251,6 +278,9 @@ public final class RealitySplitEchoDuelState {
                 && left.meleeCooldownUntilTick() == right.meleeCooldownUntilTick()
                 && left.rangedCooldownUntilTick() == right.rangedCooldownUntilTick()
                 && left.pendingUseUntilTick() == right.pendingUseUntilTick()
-                && left.deathSerial() == right.deathSerial();
+                && left.deathSerial() == right.deathSerial()
+                && left.shieldActiveUntilTick() == right.shieldActiveUntilTick()
+                && left.shieldCooldownUntilTick() == right.shieldCooldownUntilTick()
+                && left.jumpCooldownUntilTick() == right.jumpCooldownUntilTick();
     }
 }

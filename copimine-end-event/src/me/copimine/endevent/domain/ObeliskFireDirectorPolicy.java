@@ -10,16 +10,67 @@ import java.util.UUID;
 
 /** Bounded, deterministic fire sequencing for the physical Wave 4 towers. */
 public final class ObeliskFireDirectorPolicy {
-    public static final int DEFAULT_FIRE_INTERVAL_TICKS = 80;
+    public static final int DEFAULT_FIRE_INTERVAL_TICKS = 26;
     public static final int MIN_TELEGRAPH_TICKS = 20;
+    public static final int MAX_RELEASE_GAP_TICKS = 60;
+    public static final int MAX_BASE_FIRE_INTERVAL_TICKS = MAX_RELEASE_GAP_TICKS - MIN_TELEGRAPH_TICKS;
+    public static final int POST_RELEASE_RECOVERY_TICKS = 4;
     public static final int MIN_STAGGER_TICKS = 6;
     public static final int MAX_STAGGER_TICKS = 10;
+    public static final int MAX_FIREBALL_LIFETIME_TICKS = 160;
+    public static final int MIN_FIREBALL_RELEASE_GAP_TICKS = 40;
 
     private ObeliskFireDirectorPolicy() {
     }
 
     public static int maxSimultaneousSequences(int livingPlayers) {
         return ObeliskScalingPolicy.profileForPlayers(livingPlayers).fireballCap();
+    }
+
+    /**
+     * Bound live projectiles plus one reserved warning sequence per active
+     * tower. A projectile can remain for 160 ticks; the fastest release cycle
+     * is the 20-tick rest plus the 20-tick warning.
+     */
+    public static int fireballAdmissionSlots(int activeObelisks) {
+        int count = Math.max(0, Math.min(ObeliskScalingPolicy.MAX_OBELISKS, activeObelisks));
+        int livePerObelisk = (MAX_FIREBALL_LIFETIME_TICKS + MIN_FIREBALL_RELEASE_GAP_TICKS - 1)
+                / MIN_FIREBALL_RELEASE_GAP_TICKS;
+        return count * (livePerObelisk + 1);
+    }
+
+    public record FireSequence(String eventId, long generation, UUID obeliskId,
+                               UUID targetId, long startedTick, long releaseTick,
+                               long expiresTick) {
+        public FireSequence {
+            if (eventId == null || eventId.isBlank() || generation <= 0L
+                    || obeliskId == null || targetId == null || startedTick < 0L
+                    || releaseTick <= startedTick || expiresTick <= releaseTick) {
+                throw new IllegalArgumentException("invalid Wave 4 fire sequence");
+            }
+        }
+    }
+
+    public static FireSequence beginFireSequence(String eventId, long generation,
+                                                 UUID obeliskId, UUID targetId,
+                                                 long startedTick, int warningTicks) {
+        if (eventId == null || eventId.isBlank() || generation <= 0L
+                || obeliskId == null || targetId == null || startedTick < 0L
+                || warningTicks < MIN_TELEGRAPH_TICKS
+                || startedTick > Long.MAX_VALUE - warningTicks - POST_RELEASE_RECOVERY_TICKS) {
+            return null;
+        }
+        long releaseTick = startedTick + warningTicks;
+        return new FireSequence(eventId, generation, obeliskId, targetId,
+                startedTick, releaseTick, releaseTick + POST_RELEASE_RECOVERY_TICKS);
+    }
+
+    public static boolean validFireSequence(FireSequence sequence, String eventId,
+                                            long generation, UUID obeliskId, long nowTick) {
+        return sequence != null && eventId != null && eventId.equals(sequence.eventId())
+                && generation > 0L && generation == sequence.generation()
+                && obeliskId != null && obeliskId.equals(sequence.obeliskId())
+                && nowTick >= sequence.startedTick() && nowTick < sequence.expiresTick();
     }
 
     public static int staggerTicks(int fireIntervalTicks, int totalObelisks) {
@@ -31,8 +82,9 @@ public final class ObeliskFireDirectorPolicy {
 
     public static int fireInterval(int baseIntervalTicks, boolean channelerAccelerated,
                                    int minimumTelegraphTicks) {
-        int minimum = Math.max(MIN_TELEGRAPH_TICKS, minimumTelegraphTicks);
-        int base = Math.max(minimum, baseIntervalTicks);
+        int minimum = Math.min(MAX_BASE_FIRE_INTERVAL_TICKS,
+                Math.max(MIN_TELEGRAPH_TICKS, minimumTelegraphTicks));
+        int base = Math.min(MAX_BASE_FIRE_INTERVAL_TICKS, Math.max(minimum, baseIntervalTicks));
         if (!channelerAccelerated) {
             return base;
         }

@@ -135,6 +135,7 @@ function Get-EndRiftLocalBotSafeEnvironmentVariableNames {
     'END_RIFT_BOT_WAVE7_HOLD_POSITION', 'END_RIFT_GUARDIAN_PROBE_NAMES',
     'END_RIFT_OBELISK_TARGETS', 'END_RIFT_REFLECT_DIAGNOSTICS',
     'END_RIFT_REFLECT_ENABLED', 'END_RIFT_REFLECT_START_MS',
+    'END_RIFT_TEST_CLIENT_MOD_HANDSHAKE', 'END_RIFT_TEST_CLIENT_MOD_VERSION',
     'END_RIFT_TENTACLE_PROBE_MAX_ATTACKS', 'END_RIFT_TENTACLE_PROBE_NAMES',
     'END_RIFT_TENTACLE_PROBE_TARGETS_FILE', 'END_RIFT_TENTACLE_TRACE',
     'END_RIFT_WAVE7_CHAMBERS'
@@ -261,14 +262,24 @@ function Assert-EndRiftLocalServerBind {
   $propertiesLines = Get-Content -LiteralPath $propertiesPath
   Test-EndRiftLocalServerBind -ServerPropertiesLines $propertiesLines | Out-Null
 
-  $minecraftListenerRows = @(
-    Get-NetTCPConnection -LocalPort $ServerPort -State Listen -ErrorAction SilentlyContinue |
-      Select-Object LocalAddress, OwningProcess
-  )
-  $rconListenerRows = @(
-    Get-NetTCPConnection -LocalPort $RconPort -State Listen -ErrorAction SilentlyContinue |
-      Select-Object LocalAddress, OwningProcess
-  )
+  $minecraftListenerRows = @()
+  $rconListenerRows = @()
+  for ($snapshotAttempt = 1; $snapshotAttempt -le 3; $snapshotAttempt++) {
+    $minecraftListenerRows = @(
+      Get-NetTCPConnection -LocalPort $ServerPort -State Listen -ErrorAction SilentlyContinue |
+        Select-Object LocalAddress, OwningProcess
+    )
+    $rconListenerRows = @(
+      Get-NetTCPConnection -LocalPort $RconPort -State Listen -ErrorAction SilentlyContinue |
+        Select-Object LocalAddress, OwningProcess
+    )
+    if ($minecraftListenerRows.Count -gt 0 -and $rconListenerRows.Count -gt 0) {
+      break
+    }
+    if ($snapshotAttempt -lt 3) {
+      Start-Sleep -Milliseconds 100
+    }
+  }
   $minecraftListeners = @($minecraftListenerRows | Select-Object -ExpandProperty LocalAddress -Unique)
   $rconListeners = @($rconListenerRows | Select-Object -ExpandProperty LocalAddress -Unique)
   Test-EndRiftLocalListenerAddresses `
@@ -322,13 +333,20 @@ public static class EndRiftLocalFileIdentityNative {
   }
 
   $fullPath = [IO.Path]::GetFullPath($Path)
+  $nativePath = if ($fullPath.StartsWith('\\?\', [StringComparison]::OrdinalIgnoreCase)) {
+    $fullPath
+  } elseif ($fullPath.StartsWith('\\', [StringComparison]::OrdinalIgnoreCase)) {
+    '\\?\UNC\' + $fullPath.Substring(2)
+  } else {
+    '\\?\' + $fullPath
+  }
   $item = Get-Item -LiteralPath $fullPath -Force -ErrorAction Stop
   if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
     throw "Refused a reparse-point runtime path: $fullPath"
   }
   $flags = if ($item.PSIsContainer) { [uint32]0x02000000 } else { [uint32]0 }
   $handle = [EndRiftLocalFileIdentityNative]::CreateFileW(
-    $fullPath, [uint32]0, [uint32]7, [IntPtr]::Zero, [uint32]3, $flags, [IntPtr]::Zero)
+    $nativePath, [uint32]0, [uint32]7, [IntPtr]::Zero, [uint32]3, $flags, [IntPtr]::Zero)
   if ($handle.IsInvalid) {
     throw "Unable to inspect runtime file identity: $fullPath"
   }
@@ -498,16 +516,57 @@ function Write-EndRiftLocalServerReceipt {
   return [pscustomobject]$receipt
 }
 
+function Resolve-EndRiftLocalDriveSubstitutions {
+  [CmdletBinding()]
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  $fullPath = [IO.Path]::GetFullPath($Path)
+  $commandProcessor = [Environment]::GetEnvironmentVariable('ComSpec')
+  if ([string]::IsNullOrWhiteSpace($commandProcessor) -or -not (Test-Path -LiteralPath $commandProcessor -PathType Leaf)) {
+    return $fullPath
+  }
+  $mappingLines = @(& $commandProcessor /d /c subst 2>$null)
+  if ($LASTEXITCODE -ne 0) { return $fullPath }
+  for ($depth = 0; $depth -lt 8; $depth++) {
+    $mapped = $false
+    foreach ($line in $mappingLines) {
+      if ([string]$line -notmatch '^(?<drive>[A-Za-z]:)\\: => (?<target>.+)$') { continue }
+      $driveRoot = $Matches.drive + '\'
+      if (-not $fullPath.StartsWith($driveRoot, [StringComparison]::OrdinalIgnoreCase)) { continue }
+      $targetRoot = [IO.Path]::GetFullPath($Matches.target).TrimEnd('\')
+      $suffix = $fullPath.Substring($driveRoot.Length)
+      $fullPath = if ([string]::IsNullOrWhiteSpace($suffix)) {
+        $targetRoot
+      } else {
+        [IO.Path]::GetFullPath((Join-Path $targetRoot $suffix))
+      }
+      $mapped = $true
+      break
+    }
+    if (-not $mapped) { break }
+  }
+  return $fullPath
+}
+
 function Get-EndRiftLocalServerReceipt {
   [CmdletBinding()]
-  param([Parameter(Mandatory = $true)][string]$ServerDir, [Parameter(Mandatory = $true)][string]$LocalRuntimeRoot)
+  param(
+    [Parameter(Mandatory = $true)][string]$ServerDir,
+    [Parameter(Mandatory = $true)][string]$LocalRuntimeRoot,
+    [string]$ReceiptPath = ''
+  )
 
   $safeServerDir = Assert-EndRiftLocalRuntimePath -Path $ServerDir -LocalRuntimeRoot $LocalRuntimeRoot -MustExist
-  $receiptPath = Assert-EndRiftLocalRuntimePath -Path (Join-Path $safeServerDir '.end-rift-process-receipt.json') -LocalRuntimeRoot $LocalRuntimeRoot -MustExist
-  $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+  if ([string]::IsNullOrWhiteSpace($ReceiptPath)) {
+    $ReceiptPath = Join-Path $safeServerDir '.end-rift-process-receipt.json'
+  }
+  $safeReceiptPath = Assert-EndRiftLocalRuntimePath -Path $ReceiptPath -LocalRuntimeRoot $LocalRuntimeRoot -MustExist
+  $receipt = Get-Content -LiteralPath $safeReceiptPath -Raw | ConvertFrom-Json
+  $receiptWorkingDirectory = Resolve-EndRiftLocalDriveSubstitutions -Path ([string]$receipt.WorkingDirectory)
+  $canonicalServerDir = Resolve-EndRiftLocalDriveSubstitutions -Path $safeServerDir
   if ([int]$receipt.ProcessId -le 0 -or [int64]$receipt.ProcessStartTimeUtcTicks -le 0 -or
       -not [IO.Path]::IsPathRooted([string]$receipt.PaperJarPath) -or
-      -not [string]::Equals([IO.Path]::GetFullPath([string]$receipt.WorkingDirectory), $safeServerDir, [StringComparison]::OrdinalIgnoreCase)) {
+      -not [string]::Equals($receiptWorkingDirectory, $canonicalServerDir, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'Local Paper process receipt is malformed or targets another working directory.'
   }
   return $receipt
@@ -526,8 +585,11 @@ function Test-EndRiftLocalServerProcessIdentity {
 
   try {
     $safeServerDir = Assert-EndRiftLocalRuntimePath -Path $ServerDir -LocalRuntimeRoot $LocalRuntimeRoot -MustExist
-    $safeJarPath = Assert-EndRiftLocalRuntimePath -Path $PaperJarPath -LocalRuntimeRoot $LocalRuntimeRoot -MustExist
-    if (-not [string]::Equals([IO.Path]::GetFullPath($ExpectedWorkingDirectory), $safeServerDir, [StringComparison]::OrdinalIgnoreCase)) { return $false }
+    $canonicalPaperJarPath = Resolve-EndRiftLocalDriveSubstitutions -Path $PaperJarPath
+    $safeJarPath = Assert-EndRiftLocalRuntimePath -Path $canonicalPaperJarPath -LocalRuntimeRoot $LocalRuntimeRoot -MustExist
+    $expectedWorkingDirectory = Resolve-EndRiftLocalDriveSubstitutions -Path $ExpectedWorkingDirectory
+    $canonicalServerDir = Resolve-EndRiftLocalDriveSubstitutions -Path $safeServerDir
+    if (-not [string]::Equals($expectedWorkingDirectory, $canonicalServerDir, [StringComparison]::OrdinalIgnoreCase)) { return $false }
     $process = Get-Process -Id $ExpectedProcessId -ErrorAction Stop
     if ($process.ProcessName -notin @('java', 'javaw')) { return $false }
     if ($process.StartTime.ToUniversalTime().Ticks -ne $ExpectedProcessStartTimeUtcTicks) { return $false }
@@ -565,8 +627,13 @@ public static class EndRiftCommandLineNative {
     }
     if ($jarIndices.Count -ne 1) { return $false }
     $jarArgument = $arguments[$jarIndices[0] + 1]
-    if (-not [IO.Path]::IsPathRooted($jarArgument)) { return $false }
-    $paperJarArgumentMatches = [string]::Equals([IO.Path]::GetFullPath($jarArgument), $safeJarPath, [StringComparison]::OrdinalIgnoreCase)
+    $resolvedPaperJarPath = if ([IO.Path]::IsPathRooted($jarArgument)) {
+      [IO.Path]::GetFullPath($jarArgument)
+    } else {
+      [IO.Path]::GetFullPath((Join-Path $expectedWorkingDirectory $jarArgument))
+    }
+    $resolvedPaperJarPath = Resolve-EndRiftLocalDriveSubstitutions -Path $resolvedPaperJarPath
+    $paperJarArgumentMatches = [string]::Equals($resolvedPaperJarPath, $safeJarPath, [StringComparison]::OrdinalIgnoreCase)
     if (-not $paperJarArgumentMatches) { return $false }
     return $true
   } catch { return $false }

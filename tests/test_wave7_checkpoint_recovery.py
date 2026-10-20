@@ -195,7 +195,7 @@ public class Wave7CheckpointProbe {
         "domain/ChamberIsolationPolicy.java", "domain/RealitySplitBarrierPolicy.java",
         "domain/RealitySplitChamberSnapshot.java",
         "domain/Wave7EchoDuelCellPolicy.java", "domain/wave7/EchoBehaviorStrategy.java",
-        "domain/wave7/EchoLoadoutState.java",
+        "domain/Wave7RoomLayoutPolicy.java", "domain/wave7/EchoLoadoutState.java",
         "runtime/RealitySplitChamberController.java",
         "runtime/RealitySplitEchoDuelState.java", "runtime/RealitySplitTrialController.java",
         "runtime/RealitySplitTrialSnapshot.java",

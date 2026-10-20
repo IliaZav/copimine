@@ -114,7 +114,8 @@ def test_wave6_ritual_spawn_failure_is_transactional_and_diagnostic() -> None:
     assert "removeRitualEntity(entity.getUniqueId())" in placement_body
     assert "reason=spawn-refused" in placement_body
     assert "reason=no-safe-destination" in placement_body
-    assert "reason=teleport-refused" in placement_body
+    assert '" reason=" + failureReason' in placement_body
+    assert '"bukkit-teleport-rejected"' in placement_body
     assert "ritualSphereVisualUuid == null" in body
     assert "!isLiveOwnedEntity(ritualSphereVisualUuid)" in body
     assert "waveObjectiveStartedMillis = 0L;" in body
@@ -223,6 +224,8 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     assert "Set-EndRiftLocalBotChildEnvironmentOverrides -StartInfo $startInfo -Overrides @{" in start_bot
     assert "END_RIFT_BOT_SKIP_AUTH = '1'" in start_bot
     assert "END_RIFT_BOT_SKIP_REGISTER = '1'" in start_bot
+    assert "END_RIFT_TEST_CLIENT_MOD_HANDSHAKE = '1'" in start_bot
+    assert "END_RIFT_TEST_CLIENT_MOD_VERSION = '0.1.3+26.3'" in start_bot
     assert "$null = Assert-EndRiftLocalAuthMeDisabled -PluginListOutput (Invoke-LocalRcon 'plugins')" in live_script
     assert "Join-Path $runtimeRoot 'end-rift.env'" in live_script
     assert "Join-Path $runtimeRoot 'local.env'" not in live_script
@@ -246,6 +249,9 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     assert "function Set-LocalArenaMobSpawning" in live_script
     assert "gamerule doMobSpawning false" in live_script
     assert "previousLocalMobSpawning" in live_script
+    assert "ReadLocalMinecraftMobSpawning.js" in live_script
+    assert "Invoke-LocalRcon 'save-all'" in live_script
+    assert "gamerule doMobSpawning'" not in live_script
     wave6_start = live_script.index("$wave6Offset = Log-Length")
     assert "Set-LocalArenaMobSpawning -Enabled $false" in live_script[:wave6_start]
     finally_start = live_script.index("finally {")
@@ -259,7 +265,7 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     configure_end = live_script.index("function Wait-BotsOnline", configure_start)
     configure_body = live_script[configure_start:configure_end]
     assert "[switch]$SkipTeleport" in configure_body
-    assert "attribute $name minecraft:generic.knockback_resistance base set 1" in configure_body
+    assert "attribute $name minecraft:knockback_resistance base set 1" in configure_body
     assert "minecraft:item replace entity $name hotbar.0 with minecraft:netherite_sword" in configure_body
     assert "minecraft:item replace entity $name hotbar.1 with minecraft:bow" in configure_body
     assert "give $name minecraft:arrow 64" in configure_body
@@ -273,6 +279,7 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     assert "function Wait-BotsOnline" in live_script
     assert live_script.count("Wait-BotsOnline -Names") >= 2
     assert "function Wait-BotsHeldItemSynced" in live_script
+    assert 'Wait-Until -Description ("held-item sync for " + ($Names -join \', \')) -Seconds 60 -Condition {' in live_script
     assert "Wait-BotsHeldItemSynced -Names $Names" in live_script
     assert "Wait-BotsHeldItemSynced -Names $names" in live_script
     assert "function Wait-Until" in live_script
@@ -285,12 +292,24 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     wave6_control_start = live_script.index("Start-LiveStep -Id 'W6-SEAL-01'")
     assert "Set-BotMode -Names $names -Mode 'PASSIVE'" in live_script[:wave6_control_start]
     wave7_control_start = live_script.index("Start-LiveStep -Id 'W7-BARRIER-01'")
-    assert "Set-BotMode -Names $names -Mode 'ACTIVE_WAVE7'" in live_script[wave7_control_start:]
+    wave7_restart_start = live_script.index("Start-LiveStep -Id 'W7-RESTART-01'")
+    wave7_natural_start = live_script.index("Start-LiveStep -Id 'W7-NATURAL-CLEANUP-01'")
+    assert "Set-BotMode -Names $names -Mode 'PASSIVE'" in live_script[wave7_control_start:wave7_restart_start], (
+        "Wave 7 bots must not finish the disposable room before the restart barrier is checked"
+    )
+    assert "Set-BotMode -Names $names -Mode 'ACTIVE_WAVE7'" in live_script[wave7_natural_start:], (
+        "combat should resume only after the recovered wall and reconnect state are verified"
+    )
     assert "$cleanupFailures =" in live_script
     assert "catch { }" not in live_script
     assert "Start-Sleep -Seconds" not in live_script
     restart_start = live_script.index("Start-LocalMinecraft")
     restart_body = live_script[restart_start:]
+    restart_function_start = live_script.index("function Start-LocalMinecraft {")
+    restart_function_end = live_script.index("function Wait-Log-MarkerIncrease", restart_function_start)
+    restart_function = live_script[restart_function_start:restart_function_end]
+    assert "temurin-25.0.4.1\\jdk-25.0.4.1+1\\bin\\java.exe" in restart_function
+    assert "'-Xmx512M'" in restart_function
     assert "Configure-Bot -Name $name -Core $core -SkipTeleport" in restart_body
     join_start = root.index("public void onPlayerJoin")
     join_end = root.index("public void onPlayerQuit", join_start)
@@ -340,7 +359,8 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     assert "slotId: 1" in bot
     assert "slotId: 0" in bot
     assert "END_RIFT_BOUNDARY_SYNC_HELD_ITEM" in bot
-    assert "END_RIFT_BOUNDARY_SYNC_HELD_ITEM" in live_script
+    assert ".held-item-sync" in live_script
+    assert "END_RIFT_BOUNDARY_SYNC_HELD_ITEM" not in live_script
     assert "function Sync-BotsHeldItem" in live_script
     assert "wave7Autopilot && navigationPath.length === 0" in bot
     assert "bot.setControlState('jump', Boolean(" in bot
@@ -404,10 +424,11 @@ def test_wave7_cleanup_recovery_and_final_seal_require_complete_owned_geometry()
     assert "realitySplitBarrierCells.equals(requiredCells)" in final_seal
     assert "RealitySplitBarrierCoveragePolicy.missing(requiredInsideArena" in plan
     assert "existingWall.getState() instanceof org.bukkit.block.TileState" in plan
-    assert "entry.floorY() != floorY" in plan, (
-        "relative cell geometry must not let a stale journal entry at a different absolute Y "
-        "alias a valid wall level"
+    assert "Wave7BarrierPreflightPolicy.matchJournalCell(" in plan, (
+        "retained journal entries must be resolved against canonical absolute-Y geometry"
     )
+    assert "if (cellMatch.isEmpty())" in plan
+    assert "journal-cell-outside-canonical-geometry" in plan
 
 
 def test_disposable_wave_completion_does_not_require_official_reward_roster() -> None:
@@ -570,8 +591,10 @@ def test_wave7_bot_serializes_aim_and_attack_against_navigation_race() -> None:
     assert "lookAtServer(finalTarget.position.offset(0, 0.8, 0))" in bot
     assert "bot.look(yaw, pitch, true)" in bot
     assert "bot._client.write('look', {" in bot
-    assert "yaw: Math.fround((Math.PI - yaw) * 180 / Math.PI)" in bot
-    assert "pitch: Math.fround(-pitch * 180 / Math.PI)" in bot
+    assert "const packetYaw = Math.fround((Math.PI - yaw) * 180 / Math.PI)" in bot
+    assert "const packetPitch = Math.fround(-pitch * 180 / Math.PI)" in bot
+    assert "yaw: packetYaw" in bot
+    assert "pitch: packetPitch" in bot
     assert "bot._client.write('use_entity', {" in bot
     assert "hand: 0" in bot
     assert "bot._client.write('arm_animation', { hand: 0 })" in bot
@@ -712,3 +735,10 @@ def test_wave7_generic_elites_are_zero_across_config_scaling_recovery_and_spawn_
     end = root.index("} else {", start + 8)
     trial_spawn = root[start:end]
     assert "realitySplitTrialController.activeTrialCount(), 0, 0, 0, 0" in trial_spawn
+
+
+def test_wave7_live_runner_reads_visual_count_from_barrier_ready_marker_before_combat_cleanup() -> None:
+    live_script = read(ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1")
+
+    assert r"[Regex]::Match($barrierLog, 'visual_cells=(\d+)')" in live_script
+    assert '"Wave 7 barrier did not expose visual cells: $barrierLog"' in live_script

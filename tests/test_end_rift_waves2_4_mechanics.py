@@ -323,7 +323,7 @@ public final class Waves24MechanicsHarness {
     }
     static final class Wave4ObeliskRuntimeState {
         final UUID id = UUID.randomUUID();
-        WaveCombatCoordinator.Lease fireLease;
+        ObeliskFireDirectorPolicy.FireSequence fireLease;
         Location fireAim;
         long fireReleaseTick;
         int health = 3, maximum = 3;
@@ -919,6 +919,7 @@ public final class WaveTwoEntityLoadHarness {
         copy.pdc.values.putAll(original.pdc.values); copy.pdc.types.putAll(original.pdc.types);
         return copy;
     }
+    boolean indexPersistedNamedWave7Actor(Entity entity) { return false; }
     __METHODS__
     static void check(boolean condition, String message) { if (!condition) throw new AssertionError(message); }
     public static void main(String[] args) {

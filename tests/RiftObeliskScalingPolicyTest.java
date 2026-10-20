@@ -18,6 +18,12 @@ public final class RiftObeliskScalingPolicyTest {
                 "ten players use five obelisks");
         check(ObeliskScalingPolicy.profileForPlayers(20).obeliskCount() == 6,
                 "twenty players use six obelisks");
+        check(ObeliskScalingPolicy.profileForPlayers(2).fireballCap() == 20,
+                "four towers need five bounded projectile/sequence slots each at the minimum roster");
+        check(ObeliskScalingPolicy.profileForPlayers(10).fireballCap() == 25,
+                "five towers reserve enough projectile capacity for each tower");
+        check(ObeliskScalingPolicy.profileForPlayers(20).fireballCap() == 30,
+                "six towers retain their 160-tick projectile lifetime within the hard cap");
         check(ObeliskScalingPolicy.MAX_OBELISKS == 6,
                 "Wave 4 hard cap is six physical obelisks");
         System.out.println("RiftObeliskScalingPolicyTest OK");

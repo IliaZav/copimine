@@ -3362,30 +3362,19 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          return;
       }
       PlayerInventory inventory = player.getInventory();
-      int slot = -1;
-      ItemStack captured = null;
-      for (int index = 0; index < inventory.getStorageContents().length; index++) {
-         ItemStack stack = inventory.getItem(index);
-         CatalogItem item = this.gravediggerContractItem(stack);
-         if (item != null && !this.isConsumedGravediggerContractAnywhere(stack)) {
-            slot = index;
-            captured = stack.clone();
-            break;
-         }
-      }
-      if (slot < 0) {
-         ItemStack offhand = inventory.getItemInOffHand();
-         CatalogItem item = this.gravediggerContractItem(offhand);
-         if (item != null && !this.isConsumedGravediggerContractAnywhere(offhand)) {
-            slot = 40;
-            captured = offhand.clone();
-         }
-      }
-      if (slot < 0) {
+      GravediggerContractCapturePolicy.Candidate<ItemStack> capturedSlot =
+            GravediggerContractCapturePolicy.firstEligible(
+                  Arrays.asList(inventory.getStorageContents()),
+                  inventory.getItemInOffHand(),
+                  Arrays.asList(inventory.getArmorContents()),
+                  stack -> this.gravediggerContractItem(stack) != null
+                        && !this.isConsumedGravediggerContractAnywhere(stack));
+      if (capturedSlot == null) {
          // No authenticated contract was consumed. Do not destroy other
          // contract instances merely because one death had no valid token.
          return;
       }
+      ItemStack captured = capturedSlot.stack().clone();
       String capturedUniqueItemId = this.uniqueItemIdOf(captured);
       if (capturedUniqueItemId.isBlank()) {
          return;
@@ -3398,10 +3387,27 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          player.sendMessage(this.color("&cКонтракт могильщика не был использован: не удалось сохранить его уникальный ID."));
          return;
       }
-      if (slot == 40) {
-         inventory.setItemInOffHand(new ItemStack(Material.AIR));
-      } else {
-         inventory.setItem(slot, new ItemStack(Material.AIR));
+      switch (capturedSlot.container()) {
+         case STORAGE -> {
+            ItemStack current = inventory.getItem(capturedSlot.index());
+            if (this.isConsumedGravediggerContract(current, capturedUniqueItemId)) {
+               inventory.setItem(capturedSlot.index(), new ItemStack(Material.AIR));
+            }
+         }
+         case OFFHAND -> {
+            ItemStack current = inventory.getItemInOffHand();
+            if (this.isConsumedGravediggerContract(current, capturedUniqueItemId)) {
+               inventory.setItemInOffHand(new ItemStack(Material.AIR));
+            }
+          }
+         case ARMOR -> {
+            ItemStack[] armor = inventory.getArmorContents();
+            int index = capturedSlot.index();
+            if (index < armor.length && this.isConsumedGravediggerContract(armor[index], capturedUniqueItemId)) {
+               armor[index] = new ItemStack(Material.AIR);
+               inventory.setArmorContents(armor);
+            }
+          }
       }
       PersistentDataContainer data = player.getPersistentDataContainer();
       data.set(this.keyGraveConsumedUniqueItemId, PersistentDataType.STRING, capturedUniqueItemId);

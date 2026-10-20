@@ -15,6 +15,7 @@ public final class Wave7RoomLayoutPolicyTest {
         samplesThreeDistinctTrialsForThreePlayers();
         seededSelectionAndSnapshotRestoreAreStable();
         fourOrMorePlayersRunEveryTrialInParallel();
+        fullRoomLayoutsRandomizeTrialAssignments();
         extraPlayersAreDistributedInStableRoundRobinOrder();
         rejectsInvalidRostersAndPersistedSnapshots();
         snapshotAndRoomMembershipAreImmutable();
@@ -80,6 +81,19 @@ public final class Wave7RoomLayoutPolicyTest {
             check(snapshot.rooms().stream().allMatch(room -> !room.players().isEmpty()),
                     "no selected trial has an empty room");
         }
+    }
+
+    private static void fullRoomLayoutsRandomizeTrialAssignments() {
+        Set<List<Trial>> assignments = new HashSet<>();
+        for (long seed = 0; seed < 24; seed++) {
+            List<Trial> orderedTrials = Wave7RoomLayoutPolicy.select(500 + seed,
+                    roster(4), new Random(seed)).rooms().stream().map(Room::trial).toList();
+            check(new HashSet<>(orderedTrials).equals(Set.of(Trial.values())),
+                    "full layouts retain every unique trial");
+            assignments.add(orderedTrials);
+        }
+        check(assignments.size() > 1,
+                "all four parallel rooms randomize which player room receives each trial");
     }
 
     private static void extraPlayersAreDistributedInStableRoundRobinOrder() {

@@ -11,6 +11,8 @@
     "PrisonerTargetOutlineColorMixin",
     "ClientPlayerInteractionManagerPrisonerMixin",
     "EndermanEntityRendererMixin",
+    "WardenEntityRendererMixin",
+    "EvokerEntityRendererMixin",
     "EndermanEyesFeatureRendererMixin",
     "LivingEntityRendererMixin",
     "EchoPlayerRendererMixin",

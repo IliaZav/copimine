@@ -14,9 +14,15 @@ public final class RitualCasterProgressionPolicyTest {
         check(!first.prisonBroken(), "the first death does not break the prison");
         check(RitualCasterProgressionPolicy.isSpellEnabled(1, MajorSpell.RIFT_BARRAGE),
                 "the first death enables Rift Barrage");
+        check(!RitualCasterProgressionPolicy.mayTakeCasterDamage(false, false),
+                "official casters stay protected until the prisoner is captured");
+        check(RitualCasterProgressionPolicy.mayTakeCasterDamage(true, false),
+                "capturing the prisoner admits official caster combat");
+        check(RitualCasterProgressionPolicy.mayTakeCasterDamage(false, true),
+                "the isolated combat sandbox can exercise caster attacks without capture");
         check(!RitualCasterProgressionPolicy.isSpellEnabled(1, MajorSpell.GRAVITY_WELL),
                 "Gravity Well is added by the second death");
-        check(!RitualCasterProgressionPolicy.mayComplete(1, false, true),
+        check(!RitualCasterProgressionPolicy.mayComplete(1, false, false, true),
                 "Wave 6 cannot complete after one Caster death");
 
         Transition second = RitualCasterProgressionPolicy.afterCasterDeath(first.deathCount());
@@ -47,9 +53,11 @@ public final class RitualCasterProgressionPolicyTest {
         check(fifth.prisonBroken(), "the fifth death breaks the prison");
         check(!RitualCasterProgressionPolicy.isSpellEnabled(5, MajorSpell.SOUL_BRAND),
                 "the final death leaves no earlier major spell enabled");
-        check(!RitualCasterProgressionPolicy.mayComplete(5, true, false),
+        check(!RitualCasterProgressionPolicy.mayComplete(5, true, true, false),
                 "Wave 6 waits for required cleanup after the prison breaks");
-        check(RitualCasterProgressionPolicy.mayComplete(5, true, true),
+        check(!RitualCasterProgressionPolicy.mayComplete(5, false, true, true),
+                "Wave 6 cannot complete when casters die without a captured prisoner");
+        check(RitualCasterProgressionPolicy.mayComplete(5, true, true, true),
                 "Wave 6 completes only after all steps and cleanup finish");
 
         for (int deaths = 0; deaths <= 5; deaths++) {

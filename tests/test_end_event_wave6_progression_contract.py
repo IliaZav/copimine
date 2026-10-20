@@ -48,6 +48,34 @@ def test_caster_progression_requires_the_fifth_death_and_cleanup_before_completi
     assert "RitualCasterProgressionPolicy.mayComplete" in completion
 
 
+def test_official_caster_damage_waits_for_prisoner_capture_and_combat_sandbox_is_explicit() -> None:
+    source = EVENT.read_text(encoding="utf-8")
+    admission = method_body(source, "public void onRitualCasterDamageAdmission",
+                            "public void onOwnedEntityDeath")
+    assert "isCurrentRitualCaster" in admission
+    assert "ritualPrisonerId() != null" in admission
+    assert "testRitualCombatMode" in admission
+    assert "RitualCasterProgressionPolicy.mayTakeCasterDamage" in admission
+    assert "event.setCancelled(true)" in admission
+
+
+def test_wave6_completion_requires_capture_outside_the_combat_sandbox() -> None:
+    source = EVENT.read_text(encoding="utf-8")
+    completion = method_body(source, "private boolean currentObjectiveProgressComplete",
+                             "private void tickCurrentCarrierObjective")
+    assert "ritualPrisonerId() != null || testRitualCombatMode" in completion
+    assert "RitualCasterProgressionPolicy.mayComplete" in completion
+
+
+def test_repeated_completion_check_after_prison_break_still_requires_capture() -> None:
+    source = EVENT.read_text(encoding="utf-8")
+    tick = method_body(source, "private void tickCurrentRitualSphereObjective",
+                       "private void renderRitualSphereChanneling")
+    broken_branch = tick[tick.index("if (wave6PrisonBroken)"):tick.index("ensureRitualSphereVisual")]
+    assert "ritualPrisonerId() != null || testRitualCombatMode" in broken_branch
+    assert "RitualCasterProgressionPolicy.mayComplete" in broken_branch
+
+
 def test_scheduler_has_generation_fenced_single_telegraph_execute_active_recovery_flow() -> None:
     source = SPELL_CONTROLLER.read_text(encoding="utf-8")
     for stage in ("IDLE", "TELEGRAPH", "EXECUTE", "ACTIVE", "RECOVERY"):

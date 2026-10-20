@@ -63,9 +63,12 @@ def test_wave2_direct_bukkit_melee_has_separate_higher_and_monitor_admission_hoo
 
 def test_wave2_mark_inverts_directional_input_only_while_reverse_mark_is_active() -> None:
     mixin = CLIENT_INPUT_MIXIN.read_text(encoding="utf-8")
-    assert "ClientBridgeProtocol.endEventState().isReverseActive(System.currentTimeMillis())" in mixin
-    assert "WaveTwoControlInputPolicy.apply(this.keyPresses, true)" in mixin
-    assert "WaveTwoControlInputPolicy.moveVector(this.keyPresses)" in mixin
+    assert "WaveTwoControlInputPolicy.applyIfReverseActive(" in mixin
+    assert "ClientBridgeProtocol.endEventState()" in mixin
+    assert "this.keyPresses = applied.keyPresses()" in mixin
+    assert "this.moveVector = applied.moveVector()" in mixin
+    for camera_rotation_write in ("setYRot(", "setXRot(", "turn(", "yRot =", "xRot ="):
+        assert camera_rotation_write not in mixin
 
     protocol = (ROOT / "tools/minecraft-26.3/client/src/main/java/me/copimine/client/ClientBridgeProtocol.java").read_text(
         encoding="utf-8")

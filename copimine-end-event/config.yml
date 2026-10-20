@@ -149,9 +149,9 @@ waves:
     elite-skeletons: 0
   wave-2:
     type: RIFT_HUNT
-    endermen: 9
-    spiders: 8
-    skeletons: 4
+    endermen: 12
+    spiders: 12
+    skeletons: 6
     elite-endermen: 0
     elite-skeletons: 0
   wave-3:
@@ -353,8 +353,10 @@ boss:
     max-active: 6
     pulse-radius: 5.0
     pulse-interval-ticks: 40
-    fire-interval-ticks: 80
-    max-active-fireballs: 8
+    # Cooldown ticks plus the 20-tick warning must keep each release gap at or below 60 ticks.
+    fire-interval-ticks: 26
+    # Includes active fireballs and reserved warning sequences; scaling can raise this to 5 slots per tower.
+    max-active-fireballs: 20
     fireball-damage: 6.0
     blindness-ticks: 40
     debuff-ticks: 60

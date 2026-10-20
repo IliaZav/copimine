@@ -10,6 +10,18 @@ public final class EndEventStateMachineTest {
         check(machine.transition(EventPhase.START_RITUAL, EventPhase.WAVE_1,
                 "ritual complete", "event:wave-one").success(),
                 "start ritual must hand off to the first wave");
+        EndEventStateMachine ritualRetry = new EndEventStateMachine(EventPhase.READY_FOR_PLAYERS);
+        check(ritualRetry.transition(EventPhase.READY_FOR_PLAYERS, EventPhase.START_RITUAL,
+                "first rune hold", "event:start-ritual:attempt-1").success(),
+                "the first rune hold must enter START_RITUAL");
+        check(ritualRetry.transition(EventPhase.START_RITUAL, EventPhase.READY_FOR_PLAYERS,
+                "participant left pad", "event:ritual-cancel:attempt-1").success(),
+                "a canceled rune hold must return to READY_FOR_PLAYERS");
+        check(ritualRetry.transition(EventPhase.READY_FOR_PLAYERS, EventPhase.START_RITUAL,
+                "second rune hold", "event:start-ritual:attempt-2").success(),
+                "a later rune hold must not replay the canceled attempt's transition");
+        check(ritualRetry.phase() == EventPhase.START_RITUAL,
+                "a retried rune hold must update the authoritative state machine phase");
         EndEventStateMachine officialSequence = new EndEventStateMachine(EventPhase.WAVE_5);
         check(officialSequence.transition(EventPhase.WAVE_5, EventPhase.INTERMISSION_5,
                 "wave five complete", "event:intermission-five").success(),

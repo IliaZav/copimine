@@ -41,6 +41,86 @@ def test_local_starter_checks_properties_before_start_and_listeners_after_readin
     )
 
 
+def test_local_starter_places_compressed_oops_heap_above_zero_based_range() -> None:
+    source = (ROOT / "tests" / "StartEndRiftLocal.ps1").read_text(encoding="utf-8")
+
+    assert "'-XX:HeapBaseMinAddress=34g'" in source, (
+        "The fatal Temurin 25 report still showed zero-based compressed oops in the "
+        "first 32 GiB with a 4 GiB heap base; move this 2 GiB local heap above that range."
+    )
+
+
+def test_local_starter_limits_memory_pressure_for_desktop_event_probes() -> None:
+    source = (ROOT / "tests" / "StartEndRiftLocal.ps1").read_text(encoding="utf-8")
+
+    assert "'-Xms128M'" in source
+    assert "'-Xmx512M'" in source
+    assert "'-XX:CICompilerCount=2'" in source
+    assert "'-XX:TieredStopAtLevel=1'" in source
+    assert "'-Xss512k'" in source
+
+
+def test_local_starter_uses_the_pinned_local_temurin_25_runtime() -> None:
+    source = (ROOT / "tests" / "StartEndRiftLocal.ps1").read_text(encoding="utf-8")
+
+    assert "toolchains\\temurin-25.0.4.1\\jdk-25.0.4.1+1\\bin\\java.exe" in source, (
+        "The local probe must not depend on whichever Java happens to be first on PATH."
+    )
+    assert "openjdk version \"25\\.0\\.4\\.1" in source, (
+        "Fail closed if the pinned local executable is not the expected Temurin 25 build."
+    )
+
+
+def test_local_starter_fails_fast_if_paper_exits_before_readiness() -> None:
+    source = (ROOT / "tests" / "StartEndRiftLocal.ps1").read_text(encoding="utf-8")
+    readiness = source.split("for ($second = 0; $second -lt $ReadyTimeoutSeconds; $second++)", 1)[1]
+
+    assert "$paper.Refresh()" in readiness
+    assert "if ($paper.HasExited)" in readiness
+    assert "$paper.ExitCode" in readiness
+
+
+def test_official_two_player_probe_uses_guarded_rcon_without_child_powershell() -> None:
+    source = (ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1").read_text(encoding="utf-8")
+    rcon_function = source.split("function Invoke-LocalRcon {", 1)[1].split("function Read-PaperLog", 1)[0]
+
+    assert "& $rconScript -ServerDir $serverDir -RconPort 25576 -CommandText $CommandText" in rcon_function
+    assert "powershell -NoLogo -NoProfile" not in rcon_function
+
+
+def test_official_probe_returns_passive_bots_to_runes_before_transition_wait() -> None:
+    source = (ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1").read_text(encoding="utf-8")
+    transition = source.split("function Wait-Transition {", 1)[1].split("function Wait-WaveComplete", 1)[0]
+    first_wait = transition.index("Wait-Log -AfterOffset $offset -Pattern")
+
+    assert "Set-PlayerBotMode -Mode 'PASSIVE'" in transition[:first_wait]
+    assert "Teleport-PlayersToPads -Pads $Pads" in transition[:first_wait]
+    assert "Set-PlayerBotMode -Mode 'ACTIVE'" in transition
+
+
+def test_wave_four_short_roster_is_positioned_before_first_fireball() -> None:
+    source = (ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1").read_text(encoding="utf-8")
+    wave_four = source.split("$obeliskCount = Get-ObeliskCount $playerNames.Count", 1)[1].split(
+        "$waveFourTransitionOffset = Wait-WaveComplete", 1
+    )[0]
+    first_launch_wait = wave_four.index("Wait-Log -AfterOffset $w4Offset -Pattern 'RIFT_FIREBALL_LAUNCH '")
+
+    assert "Teleport-PlayersToWave4ReflectionLaneIfDue -Core $core" in wave_four[:first_launch_wait]
+    assert "Teleport-PlayersToObeliskRing -Core $core" not in wave_four[:first_launch_wait]
+    assert "-Action { Teleport-PlayersToWave4ReflectionLaneIfDue -Core $core }" in wave_four
+
+
+def test_official_probe_holds_bots_passive_through_wave_three_portal_capture() -> None:
+    source = (ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1").read_text(encoding="utf-8")
+    wave_three_start = source.index("$waveThreeStartOffset = Wait-Transition")
+    portal_loop = source.index("for ($portalIndex = 0; $portalIndex -lt 3; $portalIndex++)", wave_three_start)
+    wave_three_complete = source.index("$waveThreeTransitionOffset = Wait-WaveComplete", portal_loop)
+    passive = source.index("Set-PlayerBotMode -Mode 'PASSIVE'", wave_three_start)
+    active = source.index("Set-PlayerBotMode -Mode 'ACTIVE'", portal_loop)
+
+    assert passive < portal_loop < active < wave_three_complete
+
+
 def test_rune_wait_music_bot_child_cannot_inherit_host_port_or_chat_actions() -> None:
     source = (ROOT / "tests" / "RunEndRiftRuneWaitMusicLive.ps1").read_text(encoding="utf-8")
     helper = (ROOT / "tests" / "EndRiftLocalAuthMode.ps1").read_text(encoding="utf-8")
@@ -107,6 +187,48 @@ def test_local_rcon_uses_canonical_descendant_path_guard() -> None:
     assert "-not $paperJarArgumentMatches" in identity
 
 
+def test_local_rcon_resolves_relative_jar_only_from_verified_server_directory() -> None:
+    identity = (ROOT / "tests" / "EndRiftLocalAuthMode.ps1").read_text(encoding="utf-8")
+
+    assert "$resolvedPaperJarPath = if ([IO.Path]::IsPathRooted($jarArgument))" in identity
+    assert "Join-Path $expectedWorkingDirectory $jarArgument" in identity
+    assert "$resolvedPaperJarPath, $safeJarPath" in identity
+
+
+def test_local_rcon_selects_a_receipt_bound_to_the_requested_server_port() -> None:
+    source = (ROOT / "tests" / "InvokeEndRiftLocalRcon.ps1").read_text(encoding="utf-8")
+
+    assert "$portReceiptPath = Join-Path $ServerDir" in source
+    assert "'.end-rift-process-receipt-' + $ServerPort + '.json'" in source
+    assert "Get-EndRiftLocalServerReceipt -ServerDir $ServerDir -LocalRuntimeRoot $localRuntimeRoot -ReceiptPath $receiptPath" in source
+
+
+def test_local_server_identity_normalizes_subst_paths_before_comparing_receipt() -> None:
+    identity = (ROOT / "tests" / "EndRiftLocalAuthMode.ps1").read_text(encoding="utf-8")
+
+    assert "function Resolve-EndRiftLocalDriveSubstitutions" in identity
+    assert "& $commandProcessor /d /c subst" in identity
+    assert "Resolve-EndRiftLocalDriveSubstitutions -Path $PaperJarPath" in identity
+    assert "Resolve-EndRiftLocalDriveSubstitutions -Path ([string]$receipt.WorkingDirectory)" in identity
+    assert "Resolve-EndRiftLocalDriveSubstitutions -Path $ExpectedWorkingDirectory" in identity
+
+
+def test_local_rcon_normalizes_receipt_jar_path_before_server_directory_check() -> None:
+    source = (ROOT / "tests" / "InvokeEndRiftLocalRcon.ps1").read_text(encoding="utf-8")
+
+    assert "$canonicalReceiptPaperJarPath = Resolve-EndRiftLocalDriveSubstitutions -Path ([string]$serverReceipt.PaperJarPath)" in source
+    assert "[string]::Equals($canonicalReceiptPaperJarPath, $expectedPaperJarPath" in source
+
+
+def test_local_runtime_identity_supports_windows_extended_length_paths() -> None:
+    source = (ROOT / "tests" / "EndRiftLocalAuthMode.ps1").read_text(encoding="utf-8")
+    hard_link_probe = source[source.index("function GetHardLinkCount"):source.index("function Assert-EndRiftLocalServerTreeIsolated")]
+
+    assert "'\\\\?\\'" in hard_link_probe
+    assert "[EndRiftLocalFileIdentityNative]::CreateFileW(" in hard_link_probe
+    assert "$nativePath, [uint32]0" in hard_link_probe
+
+
 def test_wave7_rcon_forwards_the_configured_server_port() -> None:
     source = (ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1").read_text(encoding="utf-8")
     rcon_script = source.index("function Invoke-LocalRcon")
@@ -126,7 +248,10 @@ def test_wave7_restart_starts_the_jar_by_its_absolute_isolated_path() -> None:
 
     assert "$paperJarPath = Assert-EndRiftLocalRuntimePath" in restart
     assert "-Path (Join-Path $serverDir 'purpur.jar') -LocalRuntimeRoot $localRuntimeRoot" in restart
-    assert "('-Xms1G', '-Xmx2G', '-jar', ('\"' + $paperJarPath + '\"'), 'nogui')" in restart
+    assert "-ArgumentList @(" in restart
+    assert "'-jar', ('\"' + $paperJarPath + '\"'), 'nogui'" in restart, (
+        "Wave 7 restart must pass the resolved absolute server JAR as one quoted argument"
+    )
 
 
 def test_wave7_runner_rejects_reparse_paths_before_writing_control_files() -> None:
@@ -232,6 +357,73 @@ def test_official_two_player_probe_forwards_only_its_explicit_child_environment(
     assert "'20', '900'" not in source[helper:launch]
 
 
+def test_official_two_player_probe_keeps_reflection_available_in_every_wave() -> None:
+    source = (ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1").read_text(encoding="utf-8")
+    bot = (ROOT / "tests" / "LocalEndRiftMobCombatBot.js").read_text(encoding="utf-8")
+    start_bot = source.split("function Start-PlayerBot", 1)[1].split("function ", 1)[0]
+    attack = bot.split("function attackNearest()", 1)[1].split("function ", 1)[0]
+    reflect = bot.split("async function reflectFireball(entity)", 1)[1].split("function scheduleFireballReflection", 1)[0]
+    schedule = bot.split("function scheduleFireballReflection(entity)", 1)[1].split("function scanRiftFireballs", 1)[0]
+    navigation = bot.split("function tickWave7Navigation()", 1)[1].split("function navigateWave7", 1)[0]
+
+    assert "END_RIFT_REFLECT_ENABLED = [string]$env:END_RIFT_REFLECT_ENABLED" in start_bot
+    assert "$Name -eq $FirstBotName" not in start_bot
+    assert "if (reflectEnabled && reflectionInFlight.size > 0) return" in attack
+    assert "if (meleeActionInFlight) return false" in reflect
+    assert "isAimWithinReflectionCone" in reflect
+    assert "aim-outside-reflection-cone" in reflect
+    assert "createReflectionActionQueue" in bot
+    assert "runReflectionAction(() => reflectFireball(current))" in schedule
+    assert "if (reflectEnabled && reflectionInFlight.size > 0)" in navigation
+    assert "stopNavigation()" in navigation
+
+
+def test_wave_one_mode_acknowledgement_uses_correlated_control_file() -> None:
+    source = (ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1").read_text(encoding="utf-8")
+    bot = (ROOT / "tests" / "LocalEndRiftMobCombatBot.js").read_text(encoding="utf-8")
+    wait = source.split("function Wait-PlayerBotModeAcknowledgement", 1)[1].split("function ", 1)[0]
+    setter = source.split("function Set-PlayerBotModeForName", 1)[1].split("function ", 1)[0]
+    poll = bot.split("function pollControlMode ()", 1)[1].split("function ", 1)[0]
+
+    assert "modeRequestId" in setter
+    assert "|$modeRequestId" in setter
+    assert '$script:botModeRequestIds["$Name|$Mode"]' in setter
+    assert ".mode.ack" in wait
+    assert '$script:botModeRequestIds["$Name|$Mode"]' in wait
+    assert "Get-Content -LiteralPath $safeBotLogPath -Raw" not in wait
+    assert "requestedRequestId" in poll
+    assert "fs.appendFileSync(modeAckFile" in poll
+
+
+def test_wave_four_small_roster_stays_near_center_instead_of_rotating_under_obelisks() -> None:
+    source = (ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1").read_text(encoding="utf-8")
+    lane = source.split("function Teleport-PlayersToWave4ReflectionLaneIfDue {", 1)[1].split(
+        "function Get-OfflinePlayerUuid", 1
+    )[0]
+
+    assert "if ($playerNames.Count -ge $obeliskCount)" in lane
+    assert "$smallRosterRadius = 2.5D" in lane
+    assert "2.0D * [Math]::PI * $index / $playerNames.Count" in lane
+    assert "Teleport-Player $playerNames[$index] $targetX $y $targetZ" in lane
+    assert "$wave4LaneDwellMs" not in lane
+    assert "$script:wave4ReflectionLane" not in lane
+
+
+def test_live_wave_probes_use_minecraft_26_3_attribute_identifiers() -> None:
+    names = (
+        "RunEndRiftOfficialTwoPlayerLive.ps1",
+        "RunEndRiftObeliskLive.ps1",
+        "RunEndRiftAiPhasesLive.ps1",
+        "RunEndRiftMobCombatLive.ps1",
+        "RunEndRiftSpellMatrixLive.ps1",
+        "RunEndRiftWave6Wave7BoundariesLive.ps1",
+    )
+    for name in names:
+        source = (ROOT / "tests" / name).read_text(encoding="utf-8")
+        assert "minecraft:generic.max_health" not in source, name
+        assert "minecraft:generic.knockback_resistance" not in source, name
+
+
 def test_every_environment_configurable_local_bot_uses_shared_loopback_guard() -> None:
     names = (
         "LocalEndRiftBot.js",
@@ -268,6 +460,19 @@ def test_wave6_wave7_diagnostic_artifacts_and_bot_controls_guard_each_write_path
     assert "$output = Assert-EndRiftLocalRuntimePath" in bot_start
     assert "$errorOutput = Assert-EndRiftLocalRuntimePath" in bot_start
     assert "$path = Assert-EndRiftLocalRuntimePath" in bot_mode
+
+
+def test_wave6_wave7_held_item_sync_uses_the_isolated_bot_control_channel() -> None:
+    runner = (ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1").read_text(encoding="utf-8")
+    bot = (ROOT / "tests" / "LocalEndRiftMobCombatBot.js").read_text(encoding="utf-8")
+    sync = runner.split("function Sync-BotsHeldItem", 1)[1].split("function Wait-BotsHeldItemSynced", 1)[0]
+    control_poll = bot.split("function pollControlMode ()", 1)[1].split("function distance(", 1)[0]
+
+    assert ".held-item-sync" in runner
+    assert ".held-item-sync" in bot
+    assert "pollHeldItemSyncRequest()" in control_poll
+    assert "WriteAllText" in sync
+    assert "END_RIFT_BOUNDARY_SYNC_HELD_ITEM" not in sync
 
 
 def test_visual_five_player_child_guards_its_direct_evidence_and_bot_outputs() -> None:
@@ -405,6 +610,8 @@ def test_ai_and_no_auth_probes_fail_closed_before_mutation_and_isolate_bot_envir
     assert "Invoke-EndRiftLocalBotEnvironment -BotHost '127.0.0.1' -BotPort 25566" in ai_start
     assert "END_RIFT_BOT_SKIP_REGISTER = '1'" in ai_start
     assert "END_RIFT_BOT_SKIP_AUTH = '1'" in ai_start
+    assert "END_RIFT_TEST_CLIENT_MOD_HANDSHAKE = '1'" in ai_start
+    assert "END_RIFT_TEST_CLIENT_MOD_VERSION = '0.1.3+26.3'" in ai_start
     assert ai_start.find("Invoke-EndRiftLocalBotEnvironment") < ai_start.find("Start-Process")
 
     smoke = (ROOT / "tests" / "RunEndRiftLocalNoAuthSmoke.ps1").read_text(encoding="utf-8")

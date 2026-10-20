@@ -98,10 +98,12 @@ class RiftEventSkeletonModelTest {
         var elite = renderer.modelFor("END_RIFT_ELITE_SKELETON_V1");
         var waveGuardian = renderer.modelFor("END_RIFT_WAVE_GUARDIAN_SKELETON_V1");
         var ritualGuard = renderer.modelFor("END_RIFT_RITUAL_GUARD_SKELETON_V1");
+        var wave7Marksman = renderer.modelFor("END_RIFT_WAVE7_MARKSMAN_V1");
         assertNotNull(ordinary);
         assertNotNull(elite);
         assertNotNull(waveGuardian);
         assertNotNull(ritualGuard);
+        assertNotNull(wave7Marksman, "the named Wave 7 marksman uses the existing articulated skeleton rig");
         assertNotSame(ordinary, elite);
         assertNotSame(elite, waveGuardian);
         assertNotSame(waveGuardian, ritualGuard);

@@ -696,6 +696,7 @@ def test_actual_visual_abort_preserves_core_pad_rewards_and_foreign_entities(tmp
     maps = ('waveGuardianEntities', 'nextWavePathRequestMillis', 'lastWavePathLogMillis',
             'recentWaveTargets', 'waveLastProgressLocations', 'waveLastProgressAt',
             'nextWaveStuckRepositionMillis', 'waveMobTactics', 'combatTeleportPermits',
+            'combatTeleportRejectionReasons',
             'blockedTeleportLogAt', 'nextSkeletonArrowMillis', 'spellServants',
             'miniBossSpells', 'nextMiniBossSpellMillis', 'waveCommanders', 'lootIssuedEntityUuids')
     fields = '\n'.join(f'static final String EVENT_KIND_{kind}="{kind}";' for kind in constants)

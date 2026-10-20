@@ -123,7 +123,10 @@ public final class EndEventBlackFogManager {
         if (dimension.isBlank() || !dimension.equals(requestedDimension)) {
             return 0.0F;
         }
-        return 30.0F - 20.0F * intensity;
+        // Keep the active fog inside the arena: the server's normal 0.88
+        // intensity should obscure distant portals and arena edges, while
+        // still leaving a few blocks of visibility for safe-zone navigation.
+        return 8.0F - 4.0F * intensity;
     }
 
     public synchronized boolean active() {

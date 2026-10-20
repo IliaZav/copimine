@@ -90,7 +90,7 @@ try {
     if ($i -eq 39) { throw "Bot did not join: $BotName" }
   }
   $null = Rcon "gamemode survival $BotName"
-  $null = Rcon "attribute $BotName minecraft:generic.max_health base set 1000"
+  $null = Rcon "attribute $BotName minecraft:max_health base set 1000"
   $null = Rcon "heal $BotName"
   $null = Rcon "effect clear $BotName minecraft:resistance"
   $null = Rcon "tp $BotName $($core[0] + 8) $($core[1] + 1) $($core[2]) 90 0"

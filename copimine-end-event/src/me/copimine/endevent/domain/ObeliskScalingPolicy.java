@@ -5,6 +5,7 @@ public final class ObeliskScalingPolicy {
     public static final int MIN_PLAYERS = 2;
     public static final int MAX_PLAYERS = 20;
     public static final int MAX_OBELISKS = 6;
+    public static final int MAX_FIREBALL_ADMISSION_SLOTS = 48;
 
     private ObeliskScalingPolicy() {
     }
@@ -14,18 +15,18 @@ public final class ObeliskScalingPolicy {
             return Profile.NONE;
         }
         if (livingPlayers <= 4) {
-            return new Profile(4, 3, 12, 3, 1);
+            return new Profile(4, 3, 12, 3, ObeliskFireDirectorPolicy.fireballAdmissionSlots(4));
         }
         if (livingPlayers <= 7) {
-            return new Profile(4, 3, 12, 4, 2);
+            return new Profile(4, 3, 12, 4, ObeliskFireDirectorPolicy.fireballAdmissionSlots(4));
         }
         if (livingPlayers <= 10) {
-            return new Profile(5, 3, 15, 5, 2);
+            return new Profile(5, 3, 15, 5, ObeliskFireDirectorPolicy.fireballAdmissionSlots(5));
         }
         if (livingPlayers <= 15) {
-            return new Profile(5, 3, 15, 6, 3);
+            return new Profile(5, 3, 15, 6, ObeliskFireDirectorPolicy.fireballAdmissionSlots(5));
         }
-        return new Profile(6, 3, 18, 8, 3);
+        return new Profile(6, 3, 18, 8, ObeliskFireDirectorPolicy.fireballAdmissionSlots(6));
     }
 
     public static int obeliskCount(int livingPlayers) {

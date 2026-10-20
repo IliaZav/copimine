@@ -1,6 +1,7 @@
 """Execute the wave-owned elite matrix and retain objective role assignments."""
 from pathlib import Path
 import subprocess
+import re
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,12 +23,14 @@ public class WaveAiRolesProbe {
           check(EliteAbilityPolicy.profileForWave(1,role).isEmpty(),"Wave 1 has no elite ability");
         }
         check(EliteAbilityPolicy.profileForWave(2,EliteAbilityPolicy.Role.SKELETON)
-          .equals(List.of(EliteAbilityPolicy.Ability.TRIPLE_ARROWS)),"Wave 2 elite skeleton has only triple arrows");
+          .equals(List.of(EliteAbilityPolicy.Ability.TRIPLE_ARROWS, EliteAbilityPolicy.Ability.ARROW_RAIN)),
+          "Wave 2 elite skeleton retains triple arrows and gains arrow rain");
         check(EliteAbilityPolicy.profileForWave(2,EliteAbilityPolicy.Role.ENDERMAN).isEmpty()
           &&EliteAbilityPolicy.profileForWave(2,EliteAbilityPolicy.Role.SPIDER).isEmpty(),
           "Wave 2 has no Enderman or spider elite cast pool");
-        check(EliteAbilityPolicy.activeCastForWave(2,EliteAbilityPolicy.Role.SKELETON)==null,
-          "Wave 2 elite skeleton has no special cast");
+        check(EliteAbilityPolicy.activeCastForWave(2,EliteAbilityPolicy.Role.SKELETON)
+          ==EliteAbilityPolicy.Ability.ARROW_RAIN,
+          "Wave 2 elite skeleton actively casts arrow rain");
       }
       case "wave-owned-abilities" -> {
         check(EliteAbilityPolicy.activeCastForWave(3,EliteAbilityPolicy.Role.SKELETON)
@@ -186,3 +189,24 @@ def test_web_snowball_hit_can_apply_without_a_damage_event():
     assert "eliteProjectileDamageAllowed.add(projectileId)" in hit
     assert "eliteProjectileDamageAllowed.contains(projectileId)" in resolve
     assert "applyEliteSpiderWeb(player, shooter)" in resolve
+
+
+def test_wave_one_and_wave_two_default_rosters_are_increased_for_small_parties():
+    config = (ROOT / "copimine-end-event/config.yml").read_text(encoding="utf-8")
+    waves = config.split("\nwaves:\n", 1)[1]
+
+    def counts(wave):
+        match = re.search(rf"(?m)^  wave-{wave}:\n((?:    .*\n|    .*\Z)*)", waves)
+        assert match, f"missing Wave {wave} roster"
+        return {key: int(value) for key, value in re.findall(
+            r"(?m)^    (endermen|spiders|skeletons): (\d+)\s*$", match.group(1)
+        )}
+
+    wave_one = counts(1)
+    wave_two = counts(2)
+    assert sum(wave_one.values()) == 22
+    assert sum(wave_two.values()) == 30
+    pressure = (ROOT / "copimine-end-event/src/me/copimine/endevent/domain/WavePressurePolicy.java").read_text(
+        encoding="utf-8"
+    )
+    assert "SMALL_PARTY_WAVE_ONE_PRESSURE = 10" in pressure

@@ -59,6 +59,25 @@ def _texture_path(resource_location: str) -> Path:
     return ASSET_ROOT / namespace / "textures" / f"{path}.png"
 
 
+def test_wave7_evoker_renderer_mixin_matches_erased_get_texture_parameter():
+    mixin = (
+        ROOT
+        / "CopiMineClient"
+        / "src"
+        / "main"
+        / "java"
+        / "me"
+        / "copimine"
+        / "client"
+        / "mixin"
+        / "EvokerEntityRendererMixin.java"
+    ).read_text(encoding="utf-8")
+
+    assert "SpellcastingIllagerEntity entity" in mixin
+    assert "entity instanceof EvokerEntity evoker" in mixin
+    assert "evoker.getUuid().toString()" in mixin
+
+
 def test_wave_three_portal_models_resolve_to_the_event_texture():
     texture = COPIMINE / "textures" / "item" / "end_event_portal.png"
     assert texture.is_file()
@@ -157,6 +176,46 @@ def test_wave_six_ritual_sphere_uses_a_unique_custom_model_data_entry():
     assert entries[0]["base_material"] == "paper"
     assert entries[0]["custom_model_data"] == 830019
     assert entries[0]["model"] == "copimine:item/end_event_ritual_sphere"
+
+
+def test_wave_six_rune_pad_states_have_registered_pack_models():
+    source = (ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "endevent"
+              / "CopiMineEndEvent.java").read_text(encoding="utf-8")
+    constants = {
+        name: int(value)
+        for name, value in re.findall(
+            r"private static final int (MODEL_RUNE_OVERLAY(?:_OCCUPIED|_CHARGING|_COMPLETE)?) = (\d+);",
+            source,
+        )
+    }
+    rune_states = {
+        "MODEL_RUNE_OVERLAY": ("end_event_pad", 830003),
+        "MODEL_RUNE_OVERLAY_OCCUPIED": ("end_event_pad_occupied", 830005),
+        "MODEL_RUNE_OVERLAY_CHARGING": ("end_event_pad_charging", 830015),
+        "MODEL_RUNE_OVERLAY_COMPLETE": ("end_event_pad_complete", 830016),
+    }
+    manifest = json.loads(PACK_MANIFEST.read_text(encoding="utf-8"))
+    builder = (ROOT / "resourcepacks" / "build-resourcepack.py").read_text(encoding="utf-8")
+
+    for constant, (item_id, expected_model_data) in rune_states.items():
+        assert constants.get(constant) == expected_model_data
+        assert f"overlayItem({constant}," in source
+        entries = [entry for entry in manifest["items"] if entry.get("id") == item_id]
+        assert len(entries) == 1, f"Missing unique resource-pack model mapping for {constant} ({item_id})."
+        entry = entries[0]
+        assert entry["base_material"] == "paper"
+        assert entry["custom_model_data"] == expected_model_data
+
+        model_namespace, model_name = entry["model"].split(":", 1)
+        model_path = ASSET_ROOT / model_namespace / "models" / f"{model_name}.json"
+        texture = entry["texture"]
+        texture_path = _texture_path(texture)
+        assert model_path.is_file(), f"Missing model for rune state {constant}: {model_path}"
+        assert texture_path.is_file(), f"Missing texture for rune state {constant}: {texture_path}"
+        assert f"assets/{model_namespace}/models/{model_name}.json" in builder
+        texture_namespace, texture_name = texture.split(":", 1)
+        texture_asset = f"assets/{texture_namespace}/textures/{texture_name}.png"
+        assert texture_asset in builder
 
 
 def test_obelisk_portrait_is_only_projected_on_front_and_back_faces():

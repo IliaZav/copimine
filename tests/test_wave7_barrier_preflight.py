@@ -4,6 +4,7 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = ROOT / "copimine-end-event/src/me/copimine/endevent/domain/Wave7BarrierPreflightPolicy.java"
+BARRIER_POLICY = ROOT / "copimine-end-event/src/me/copimine/endevent/domain/RealitySplitBarrierPolicy.java"
 
 
 def test_barrier_preflight_accepts_safe_cells_and_rejects_unsafe_world_observations(tmp_path):
@@ -46,10 +47,57 @@ public class Wave7BarrierPreflightProbe {
 }
 ''', encoding="utf-8")
     compiled = subprocess.run(
-        ["javac", "-encoding", "UTF-8", "-d", str(tmp_path), str(POLICY), str(probe)],
+        ["javac", "-encoding", "UTF-8", "-d", str(tmp_path),
+         str(BARRIER_POLICY), str(POLICY), str(probe)],
         capture_output=True, text=True, timeout=30)
     assert compiled.returncode == 0, compiled.stdout + compiled.stderr
     executed = subprocess.run(
         ["java", "-cp", str(tmp_path), "Wave7BarrierPreflightProbe"],
+        capture_output=True, text=True, timeout=30)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+def test_retained_journal_matching_uses_canonical_absolute_y_and_six_level_geometry(tmp_path):
+    probe = tmp_path / "Wave7BarrierJournalCellProbe.java"
+    probe.write_text('''
+import java.util.List;
+import me.copimine.endevent.domain.RealitySplitBarrierPolicy;
+import me.copimine.endevent.domain.Wave7BarrierPreflightPolicy;
+public class Wave7BarrierJournalCellProbe {
+    static void require(boolean result, String message) {
+        if (!result) throw new AssertionError(message);
+    }
+    public static void main(String[] args) {
+        int combatFloorY = 64;
+        var geometry = RealitySplitBarrierPolicy.cells(2);
+        var top = geometry.stream()
+                .filter(cell -> cell.level() == RealitySplitBarrierPolicy.HEIGHT)
+                .findFirst().orElseThrow();
+        var validUpperRow = Wave7BarrierPreflightPolicy.matchJournalCell(
+                top.xOffset(), top.zOffset(), combatFloorY + top.level() - 1,
+                combatFloorY, geometry);
+        require(validUpperRow.isPresent() && validUpperRow.get().equals(top),
+                "a retained journal entry at the valid sixth wall level is preserved");
+        require(Wave7BarrierPreflightPolicy.matchJournalCell(top.xOffset(), top.zOffset(),
+                        combatFloorY + RealitySplitBarrierPolicy.HEIGHT,
+                        combatFloorY, geometry).isEmpty(),
+                "a journal Y above the six-level wall is rejected");
+        require(Wave7BarrierPreflightPolicy.matchJournalCell(top.xOffset(), top.zOffset(),
+                        combatFloorY - 1, combatFloorY, geometry).isEmpty(),
+                "a journal Y below the combat floor is rejected");
+        require(Wave7BarrierPreflightPolicy.matchJournalCell(top.xOffset() + 100,
+                        top.zOffset(), combatFloorY + top.level() - 1,
+                        combatFloorY, geometry).isEmpty(),
+                "an entry outside canonical wall geometry is rejected");
+    }
+}
+''', encoding="utf-8")
+    compiled = subprocess.run(
+        ["javac", "-encoding", "UTF-8", "-d", str(tmp_path),
+         str(BARRIER_POLICY), str(POLICY), str(probe)],
+        capture_output=True, text=True, timeout=30)
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = subprocess.run(
+        ["java", "-cp", str(tmp_path), "Wave7BarrierJournalCellProbe"],
         capture_output=True, text=True, timeout=30)
     assert executed.returncode == 0, executed.stdout + executed.stderr

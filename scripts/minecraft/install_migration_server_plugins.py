@@ -263,6 +263,48 @@ def _yaml_mapping_end(lines,header_index,parent_indent):
     return len(lines)
 
 
+def _yaml_sequence_bounds(lines,header_index):
+    header_indent=len(lines[header_index])-len(lines[header_index].lstrip(' '))
+    row_indent=None
+    first_row=None
+    for index in range(header_index+1,len(lines)):
+        stripped=lines[index].strip()
+        if not stripped or stripped.startswith('#'):continue
+        leading=lines[index][:len(lines[index])-len(lines[index].lstrip(' \t'))]
+        if '\t' in leading:raise ValueError('Tabs are not supported in the Artifacts catalog YAML')
+        if re.match(r'^ *-\s',lines[index]):
+            row_indent=len(leading)
+            first_row=index
+            break
+        if len(leading)<=header_indent:break
+
+    if row_indent is None:
+        end=len(lines)
+        for index in range(header_index+1,len(lines)):
+            stripped=lines[index].strip()
+            if not stripped or stripped.startswith('#'):continue
+            leading=lines[index][:len(lines[index])-len(lines[index].lstrip(' \t'))]
+            if '\t' in leading:raise ValueError('Tabs are not supported in the Artifacts catalog YAML')
+            if len(leading)<=header_indent:
+                end=index
+                break
+        return end,None,[]
+
+    end=len(lines)
+    row_pattern=re.compile(r'^ {'+str(row_indent)+r'}-\s')
+    for index in range(first_row,len(lines)):
+        stripped=lines[index].strip()
+        if not stripped or stripped.startswith('#'):continue
+        leading=lines[index][:len(lines[index])-len(lines[index].lstrip(' \t'))]
+        if '\t' in leading:raise ValueError('Tabs are not supported in the Artifacts catalog YAML')
+        if row_pattern.match(lines[index]):continue
+        if len(leading)<=row_indent:
+            end=index
+            break
+    row_starts=[index for index in range(first_row,end) if row_pattern.match(lines[index])]
+    return end,row_indent,row_starts
+
+
 def _yaml_render_rows(rows,indent,newline):
     import yaml
     rendered=yaml.safe_dump(rows,sort_keys=False,allow_unicode=True,
@@ -280,18 +322,16 @@ def _yaml_append_list_rows(text,header_index,key,indent,rows,newline,existing_co
         suffix=(' '+inline_empty.group('comment') if inline_empty.group('comment') else '')+ending
         lines[header_index]=inline_empty.group('prefix')+suffix
         text=''.join(lines)
-    body_end=_yaml_mapping_end(lines,header_index,indent-2)
-    found_indents=[
-        len(lines[index])-len(lines[index].lstrip(' '))
-        for index in range(header_index+1,body_end)
-        if re.match(r'^ *-\s',lines[index])
-    ]
-    list_indent=min(found_indents) if found_indents else indent
-    if list_indent!=indent or sum(value==list_indent for value in found_indents)!=existing_count:
+    body_end,found_indent,row_starts=_yaml_sequence_bounds(lines,header_index)
+    if len(row_starts)!=existing_count:
+        raise ValueError('Unexpected Artifacts catalog list indentation')
+    list_indent=indent if found_indent is None else found_indent
+    header_indent=len(lines[header_index])-len(lines[header_index].lstrip(' '))
+    if found_indent is not None and list_indent not in (indent,header_indent):
         raise ValueError('Unexpected Artifacts catalog list indentation')
     insert_at=sum(len(line) for line in lines[:body_end])
     prefix='' if insert_at==0 or text[:insert_at].endswith(('\n','\r')) else newline
-    return text[:insert_at]+prefix+_yaml_render_rows(rows,indent,newline)+text[insert_at:]
+    return text[:insert_at]+prefix+_yaml_render_rows(rows,list_indent,newline)+text[insert_at:]
 
 
 def _disable_retired_donation_rows(text,existing_rows,disabled_ids):
@@ -306,19 +346,19 @@ def _disable_retired_donation_rows(text,existing_rows,disabled_ids):
     items_header=_yaml_find_header(lines,'items',2,donation_header+1,donation_end)
     if items_header is None:
         return text,False
-    items_end=_yaml_mapping_end(lines,items_header,2)
-    row_starts=[
-        index for index in range(items_header+1,items_end)
-        if re.match(r'^ {4}-\s',lines[index])
-    ]
+    items_end,row_indent,row_starts=_yaml_sequence_bounds(lines,items_header)
     if len(row_starts)!=len(existing_rows):
         raise ValueError('Existing donation item rows do not match the parsed catalog')
 
     changed=False
+    enabled_indent=(row_indent if row_indent is not None else
+                    len(lines[items_header])-len(lines[items_header].lstrip(' ')))+2
+    enabled_prefix=' '*enabled_indent
     enabled_line=re.compile(
-        r'^(?P<prefix> {6}enabled:[ \t]*)(?P<value>[^#\r\n]*?)'
+        r'^(?P<prefix>'+re.escape(enabled_prefix)+r'enabled:[ \t]*)(?P<value>[^#\r\n]*?)'
         r'(?P<comment>[ \t]*(?:#.*)?)(?P<newline>\r?\n)?$'
     )
+    enabled_field=re.compile('^'+re.escape(enabled_prefix)+r'enabled:')
     newline='\r\n' if '\r\n' in text else '\n'
     for row_index in reversed(range(len(row_starts))):
         row=existing_rows[row_index]
@@ -330,7 +370,7 @@ def _disable_retired_donation_rows(text,existing_rows,disabled_ids):
         block=lines[start:end]
         enabled_positions=[
             index for index,line in enumerate(block)
-            if re.match(r'^ {6}enabled:',line)
+            if enabled_field.match(line)
         ]
         if len(enabled_positions)>1:
             raise ValueError('Existing donation item has ambiguous enabled fields: '+str(item_id))
@@ -349,7 +389,7 @@ def _disable_retired_donation_rows(text,existing_rows,disabled_ids):
             if not first_line.endswith(('\n','\r')):
                 first_line+=newline
             block[0]=first_line
-            block.insert(1,'      enabled: false'+newline)
+            block.insert(1,enabled_prefix+'enabled: false'+newline)
             lines[start:end]=block
             changed=True
     return ''.join(lines),changed

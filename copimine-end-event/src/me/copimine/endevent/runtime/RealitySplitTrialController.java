@@ -10,6 +10,7 @@ import java.util.UUID;
 import java.nio.charset.StandardCharsets;
 import java.util.random.RandomGenerator;
 import me.copimine.endevent.domain.ChamberIsolationPolicy;
+import me.copimine.endevent.domain.Wave7RoomLayoutPolicy;
 import me.copimine.endevent.domain.Wave7EchoDuelCellPolicy;
 
 /**
@@ -72,11 +73,18 @@ public final class RealitySplitTrialController {
             validateNamedOwners(assignment, named);
             return;
         }
-        List<NamedTrial> pool = new ArrayList<>(List.of(NamedTrial.values()));
-        List<NamedTrial> selected = new ArrayList<>();
-        while (selected.size() < assignment.chamberCount()) {
-            selected.add(pool.remove(random.nextInt(pool.size())));
+        List<UUID> participants = new ArrayList<>(assignment.chamberByPlayer().keySet());
+        Wave7RoomLayoutPolicy.Snapshot selectedRooms =
+                Wave7RoomLayoutPolicy.select(generation, participants, random);
+        if (!selectedRooms.roomByPlayer().equals(assignment.chamberByPlayer())) {
+            throw new IllegalArgumentException("shared Wave 7 layout changed the assigned room owners");
         }
+        List<NamedTrial> selected = selectedRooms.rooms().stream().map(room -> switch (room.trial()) {
+            case WARDEN -> NamedTrial.WARDEN;
+            case ECHO -> NamedTrial.PERSONAL_ECHO;
+            case MARKSMAN -> NamedTrial.MOBILE_MARKSMAN;
+            case ARCHMAGE -> NamedTrial.RIFT_ARCHMAGE;
+        }).toList();
         beginNamed(eventId, generation, assignment, selected);
     }
 

@@ -38,3 +38,14 @@ def test_echo_repeated_disconnect_reuses_persisted_deadline_in_tick():
     assert "duel.returnDeadlineMillis()" in tick
     assert "offlineDeadline.getAsLong()" in tick
     assert "duel.ownerOffline(System.currentTimeMillis() + 120_000L" not in tick
+
+
+def test_echo_expired_return_deadline_is_checked_before_online_unadmitted_owner_waits():
+    source = EVENT_SOURCE.read_text(encoding="utf-8")
+    tick = method_body(source, "private boolean tickNamedEchoDuel(")
+
+    expiry_check = tick.index("ownerReturnDeadlineExpired")
+    not_ready_branch = tick.index("if (!ownerReady)")
+    assert expiry_check < not_ready_branch
+    assert "if (!ownerReady && me.copimine.endevent.runtime.RealitySplitEchoDuelState.ownerReturnDeadlineExpired(" in tick
+    assert "duel.lifecycle(), duel.returnDeadlineMillis(), System.currentTimeMillis())" in tick

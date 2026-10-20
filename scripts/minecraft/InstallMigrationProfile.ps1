@@ -682,14 +682,15 @@ if (Test-Path -LiteralPath $mods -PathType Container) {
                     }
                     if (-not $DependenciesOnly -and $existingModId -eq 'copimineclient' -and
                         $existingJar.FullName -ne $clientDestination) {
-                        $isPreviousMigrationClient = $existingJar.Name -ceq 'CopiMineClient-0.1.1+26.3.jar' -and
-                            $existingMetadata.version -ceq '0.1.1+26.3' -and
+                        $existingClientVersion = [string]$existingMetadata.version
+                        $isPreviousMigrationClient = @('0.1.1+26.3', '0.1.2+26.3') -ccontains $existingClientVersion -and
+                            $existingJar.Name -ceq ('CopiMineClient-' + $existingClientVersion + '.jar') -and
                             [string]$existingMetadata.depends.minecraft -ceq '26.3'
                         if (-not $isPreviousMigrationClient) {
                             throw ('Another CopiMineClient mod is already present: ' + $existingJar.Name)
                         }
                         if ($ValidateOnly) {
-                            throw 'CopiMineClient 0.1.1+26.3 is installed; run the installer to upgrade it to the pinned migration version.'
+                            throw ('CopiMineClient ' + $existingClientVersion + ' is installed; run the installer to upgrade it to the pinned migration version.')
                         }
                         if ($existingJar.Attributes -band [IO.FileAttributes]::ReparsePoint) {
                             throw ('Existing CopiMineClient is a link and cannot be backed up safely: ' + $existingJar.Name)

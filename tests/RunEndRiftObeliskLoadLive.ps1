@@ -181,6 +181,73 @@ function Wait-LogCount {
   throw "Timed out waiting for $Minimum log matches of '$Pattern'. See $paperLog"
 }
 
+function Get-PerObeliskReleaseCadence {
+  param(
+    [Parameter(Mandatory = $true)][string[]]$LogLines,
+    [Parameter(Mandatory = $true)][string]$EventId,
+    [Parameter(Mandatory = $true)][long]$Generation,
+    [Parameter(Mandatory = $true)][int]$ExpectedObelisks,
+    [int]$MaximumGapTicks = 60,
+    [switch]$AllowIncomplete
+  )
+
+  $ticksByObelisk = @{}
+  foreach ($line in $LogLines) {
+    if ($line -notmatch 'RIFT_FIREBALL_LAUNCH ') { continue }
+    $eventMatch = [Regex]::Match($line, '(?:^|\s)event=(?<value>\S+)')
+    $obeliskMatch = [Regex]::Match($line, '(?:^|\s)obelisk=(?<value>[0-9a-fA-F-]{36})(?:\s|$)')
+    $generationMatch = [Regex]::Match($line, '(?:^|\s)generation=(?<value>\d+)(?:\s|$)')
+    $tickMatch = [Regex]::Match($line, '(?:^|\s)tick=(?<value>\d+)(?:\s|$)')
+    if (-not $eventMatch.Success -or -not $obeliskMatch.Success -or
+        -not $generationMatch.Success -or -not $tickMatch.Success) {
+      throw "Malformed Wave 4 launch record lacks event, obelisk, generation, or tick: $line"
+    }
+    if ($eventMatch.Groups['value'].Value -cne $EventId -or
+        [long]$generationMatch.Groups['value'].Value -ne $Generation) {
+      continue
+    }
+    $obeliskId = $obeliskMatch.Groups['value'].Value.ToLowerInvariant()
+    if (-not $ticksByObelisk.ContainsKey($obeliskId)) {
+      $ticksByObelisk[$obeliskId] = [Collections.Generic.List[long]]::new()
+    }
+    $ticksByObelisk[$obeliskId].Add([long]$tickMatch.Groups['value'].Value)
+  }
+
+  if ($ticksByObelisk.Count -gt $ExpectedObelisks) {
+    throw "Wave 4 event $EventId emitted launches for more than $ExpectedObelisks obelisks."
+  }
+  $incomplete = $ticksByObelisk.Count -ne $ExpectedObelisks
+  foreach ($ticks in $ticksByObelisk.Values) {
+    if ($ticks.Count -lt 2) { $incomplete = $true }
+  }
+  if ($incomplete) {
+    if ($AllowIncomplete) {
+      return [pscustomobject]@{ Complete = $false; ObelisksChecked = $ticksByObelisk.Count; MaxGapTicks = 0 }
+    }
+    throw "Wave 4 cadence needs two launch ticks from each of $ExpectedObelisks obelisks; observed $($ticksByObelisk.Count) obelisks."
+  }
+
+  $maxGap = 0L
+  foreach ($entry in $ticksByObelisk.GetEnumerator()) {
+    $ticks = @($entry.Value | Sort-Object -Unique)
+    if ($ticks.Count -lt 2) {
+      throw "Wave 4 obelisk $($entry.Key) has fewer than two distinct launch ticks."
+    }
+    for ($index = 1; $index -lt $ticks.Count; $index++) {
+      $gap = [long]$ticks[$index] - [long]$ticks[$index - 1]
+      if ($gap -gt $MaximumGapTicks) {
+        throw "Wave 4 obelisk $($entry.Key) release gap $gap ticks exceeded $MaximumGapTicks ticks."
+      }
+      if ($gap -gt $maxGap) { $maxGap = $gap }
+    }
+  }
+  return [pscustomobject]@{
+    Complete = $true
+    ObelisksChecked = $ticksByObelisk.Count
+    MaxGapTicks = $maxGap
+  }
+}
+
 function Wait-Players {
   param([Parameter(Mandatory = $true)][int64]$AfterOffset)
   $deadline = (Get-Date).AddSeconds(90)
@@ -361,13 +428,30 @@ try {
   # Wave 4 is the current obelisk encounter.  The old probe spawned a boss
   # and requested a removed spell id, so it never exercised the live W4 path.
   $expectedObelisks = if ($PlayerCount -le 7) { 4 } elseif ($PlayerCount -le 15) { 5 } else { 6 }
+  $expectedFireballCap = 5 * $expectedObelisks
   $spawnOffset = Get-LogLength
   $null = Invoke-LocalRcon -CommandText 'cmend test wave 4'
-  Wait-LogCount -Pattern ('END_RIFT_OBELISK_ASSAULT_READY .*players=' + $PlayerCount + ' .*obelisks=' + $expectedObelisks + ' .*real_blocks=true') `
-    -AfterOffset $spawnOffset -WaitSeconds 45 | Out-Null
+  $readyLines = Wait-LogCount -Pattern ('END_RIFT_OBELISK_ASSAULT_READY .*players=' + $PlayerCount + ' .*obelisks=' + $expectedObelisks + ' .*real_blocks=true') `
+    -AfterOffset $spawnOffset -WaitSeconds 45
+  $readyMatch = [Regex]::Match([string](@($readyLines)[0]),
+    'END_RIFT_OBELISK_ASSAULT_READY .*?event=(?<event>\S+) .*?generation=(?<generation>\d+)')
+  if (-not $readyMatch.Success) { throw 'Wave 4 ready log is missing event/generation identity.' }
+  $eventId = $readyMatch.Groups['event'].Value
+  $generation = [long]$readyMatch.Groups['generation'].Value
   Wait-LogCount -Pattern 'END_RIFT_OBELISK_ACTIVE ' -Minimum $expectedObelisks -AfterOffset $spawnOffset -WaitSeconds 45 | Out-Null
   Wait-LogCount -Pattern 'END_RIFT_OBELISK_PULSE ' -Minimum $expectedObelisks -AfterOffset $spawnOffset -WaitSeconds 45 | Out-Null
-  Wait-LogCount -Pattern 'RIFT_FIREBALL_LAUNCH .*cap=' -Minimum 1 -AfterOffset $spawnOffset -WaitSeconds 45 | Out-Null
+  $cadenceDeadline = (Get-Date).AddSeconds(45)
+  $cadence = [pscustomobject]@{ Complete = $false; ObelisksChecked = 0; MaxGapTicks = 0 }
+  do {
+    $paperText = Read-SharedText -Path $paperLog
+    $tail = if ($spawnOffset -lt $paperText.Length) { $paperText.Substring([int]$spawnOffset) } else { '' }
+    $cadence = Get-PerObeliskReleaseCadence -LogLines @($tail -split '\r?\n') `
+      -EventId $eventId -Generation $generation -ExpectedObelisks $expectedObelisks -AllowIncomplete
+    if (-not $cadence.Complete) { Start-Sleep -Milliseconds 250 }
+  } while (-not $cadence.Complete -and (Get-Date) -lt $cadenceDeadline)
+  if (-not $cadence.Complete) {
+    throw "Wave 4 did not emit two tick-stamped fireball launches from every obelisk within 45 seconds; observed $($cadence.ObelisksChecked)/$expectedObelisks."
+  }
 
   Start-Sleep -Seconds 3
   $status = Invoke-LocalRcon -CommandText 'cmend status'
@@ -387,15 +471,15 @@ try {
   if ($liveObelisks -ne $expectedObelisks) {
     throw "$PlayerCount-player load lost an obelisk without a reflected hit: live=$liveObelisks`n$status"
   }
-  if ($liveFireballs -gt 8) {
+  if ($liveFireballs -gt $expectedFireballCap) {
     throw "Rift Fireball hard cap exceeded: live=$liveFireballs`n$status"
   }
   $list = Invoke-LocalRcon -CommandText 'list'
   $missing = @($playerNames | Where-Object { $list -notmatch [Regex]::Escape($_) })
   if ($missing.Count -gt 0) { throw "$PlayerCount-player load disconnected clients: $($missing -join ', ')`n$list" }
   $success = $true
-  Write-Output ("LIVE_RIFT_OBELISK_LOAD_PASS players={0} obelisks={1}/{2} fireballs={3}/8 staggered=true pulse_radius=5 pulse_ticks=40 hard_cap=56 arena_bound=true" -f
-    $PlayerCount, $liveObelisks, $expectedObelisks, $liveFireballs)
+  Write-Output ("LIVE_RIFT_OBELISK_LOAD_PASS players={0} obelisks={1}/{2} fireballs={3}/{4} staggered=true max_release_gap_ticks={5}/60 cadence_verified=true pulse_radius=5 pulse_ticks=40 hard_cap=48 arena_bound=true" -f
+    $PlayerCount, $liveObelisks, $expectedObelisks, $liveFireballs, $expectedFireballCap, $cadence.MaxGapTicks)
 } finally {
   foreach ($entry in $processes) {
     if ($entry -and -not $entry.Process.HasExited) {

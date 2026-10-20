@@ -48,6 +48,7 @@ $botLogDirectory = Assert-EndRiftLocalRuntimePath `
   -Path (Join-Path $runtimeRoot 'official-current-bots') -LocalRuntimeRoot $runtimeRoot
 $playerNames = @($FirstBotName, $SecondBotName) + @($AdditionalBotNames)
 $processes = @()
+$script:botModeRequestIds = @{}
 $controlDirectory = Assert-EndRiftLocalRuntimePath `
   -Path (Join-Path $botLogDirectory 'control') -LocalRuntimeRoot $runtimeRoot
 $oldReflectEnabled = [Environment]::GetEnvironmentVariable('END_RIFT_REFLECT_ENABLED', 'Process')
@@ -116,9 +117,10 @@ $ritualProfile = Get-RitualScalingProfile -Participants $playerNames.Count
 
 function Invoke-LocalRcon {
   param([Parameter(Mandatory = $true)][string]$CommandText)
-  $result = & powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File $rconScript -ServerDir $serverDir -RconPort 25576 -CommandText $CommandText | Out-String
-  if ($LASTEXITCODE -ne 0) {
-    throw "Local RCON command failed: $CommandText $result"
+  try {
+    $result = & $rconScript -ServerDir $serverDir -RconPort 25576 -CommandText $CommandText | Out-String
+  } catch {
+    throw "Local RCON command failed: $CommandText $($_.Exception.Message)"
   }
   return $result.Trim()
 }
@@ -224,10 +226,9 @@ function Wait-CarrierDelivery {
   $activeCharge = $null
   $activeChargeLocation = $null
   $activeCarrier = $null
-  $activeCarrierLocation = $null
-  $teleportedCarrier = $null
   $configuredPickupCharge = $null
   $configuredHolderCharge = $null
+  $activePickupPlayer = $null
   $activeHolder = $null
   $deliveredPattern = 'END_RIFT_CARRIER_DELIVERED.*charge=' + $DeliveryNumber + '/3'
   while ((Get-Date) -lt $deadline) {
@@ -236,12 +237,20 @@ function Wait-CarrierDelivery {
     # delivered.  The objective's delivery counter is authoritative; do not
     # keep waiting on a stale UUID after the server has advanced.
     if ($tail -match $deliveredPattern) {
+      # Verify both client mode transitions after the objective has completed.
+      # Waiting before teleport can consume the full 10-second charge lifetime.
+      if ($null -ne $activePickupPlayer) {
+        Wait-PlayerBotModeAcknowledgement -Name $activePickupPlayer -Mode 'CARRIER_PICKUP'
+      }
+      if ($null -ne $activeHolder) {
+        Wait-PlayerBotModeAcknowledgement -Name $activeHolder -Mode 'CORE_DELIVER'
+      }
       Set-PlayerBotMode -Mode 'ACTIVE'
       return $tail
     }
 
     $carrierMatches = [Regex]::Matches($tail,
-      'END_RIFT_CARRIER_SELECTED[^\r\n]*entity=([0-9a-fA-F-]{36})[^\r\n]*location=[^\s]+\s+-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?')
+      'END_RIFT_CARRIER_SELECTED[^\r\n]*entity=([0-9a-fA-F-]{36})[^\r\n]*')
     # Get-LogTail intentionally keeps the whole pre-delivery history so a
     # same-tick charge marker cannot be missed.  The newest selected carrier
     # is the only live target; replaying older matches makes the holder
@@ -252,8 +261,6 @@ function Wait-CarrierDelivery {
       if ($candidate -ne $activeCarrier) {
         $hadDroppedCharge = $null -ne $activeCharge
         $activeCarrier = $candidate
-        $activeCarrierLocation = Parse-LoggedLocation $match.Value
-        $teleportedCarrier = $null
         if ($hadDroppedCharge) {
           # The old charge expired and the server selected another carrier.
           # Resume real attacks before following this new mob.
@@ -261,8 +268,22 @@ function Wait-CarrierDelivery {
           $activeChargeLocation = $null
           $configuredPickupCharge = $null
           $configuredHolderCharge = $null
+          $activePickupPlayer = $null
           $activeHolder = $null
           Set-PlayerBotMode -Mode 'ACTIVE'
+        }
+        if ($null -eq $activeCharge) {
+          $carrierLocation = Parse-LoggedLocation $match.Value
+          if ($null -eq $carrierLocation -or @($carrierLocation).Count -lt 3) {
+            throw "Could not parse the server location for Wave 1 carrier $candidate."
+          }
+          # A selected carrier can be pinned behind the recovered arena's
+          # geometry. Move only this probe's designated picker beside that
+          # target; it still sends a vanilla attack and the server validates
+          # the hit before creating a charge.
+          Teleport-Player $PickupPlayer `
+            ($carrierLocation[0] + 1.0D) $carrierLocation[1] ($carrierLocation[2] + 1.0D)
+          Write-Evidence "CURRENT_WAVE1_CARRIER_HUNT_POSITION name=$PickupPlayer target=$candidate location=$($carrierLocation -join ',')"
         }
       }
     }
@@ -286,19 +307,29 @@ function Wait-CarrierDelivery {
       $chargeCreatedMatch = [Regex]::Match($tail, $chargeCreatedPattern)
       $timeoutPattern = 'END_RIFT_CARRIER_TIMEOUT_(?:TRANSFER|REPLACEMENT)[^\r\n]*delivered=' +
         ($DeliveryNumber - 1) + '\b'
-      $timeoutMatch = [Regex]::Match($tail, $timeoutPattern)
-      if ($chargeCreatedMatch.Success -and $timeoutMatch.Success -and
-          $timeoutMatch.Index -gt $chargeCreatedMatch.Index) {
+      $timeoutMatch = $null
+      if ($chargeCreatedMatch.Success) {
+        # Match returns the first historical timeout in the whole log tail.
+        # Search all markers and select the first one after this charge instead,
+        # so later charges can recover after their own timeout transfer.
+        $timeoutMatches = [Regex]::Matches($tail, $timeoutPattern)
+        foreach ($candidateTimeout in $timeoutMatches) {
+          if ($candidateTimeout.Index -gt $chargeCreatedMatch.Index) {
+            $timeoutMatch = $candidateTimeout
+            break
+          }
+        }
+      }
+      if ($null -ne $timeoutMatch) {
         # A timeout transfer changes the selected carrier without emitting a
         # second CARRIER_SELECTED marker. Drop the stale item target and resume
         # normal attacks so the next carrier can produce a fresh charge.
         $activeCharge = $null
         $activeChargeLocation = $null
         $activeCarrier = $null
-        $activeCarrierLocation = $null
-        $teleportedCarrier = $null
         $configuredPickupCharge = $null
         $configuredHolderCharge = $null
+        $activePickupPlayer = $null
         $activeHolder = $null
         Set-PlayerBotMode -Mode 'ACTIVE'
         Write-Evidence "CURRENT_WAVE1_CHARGE_TIMEOUT_RECOVERED delivery=$DeliveryNumber"
@@ -338,32 +369,20 @@ function Wait-CarrierDelivery {
         $activeHolder = $holderName
       }
     } elseif ($null -ne $activeCharge) {
-      if ($null -ne $activeChargeLocation -and $configuredPickupCharge -ne $activeCharge) {
+      if ($null -eq $activeChargeLocation) {
+        throw "Could not parse the server location for Wave 1 charge $activeCharge."
+      }
+      if ($configuredPickupCharge -ne $activeCharge) {
         # Proximity pickup is intentionally disabled in Wave 1. Keep other
         # probes still, move one disposable client beside the charge, then
         # have that client send the explicit right-click-air interaction.
+        Write-Evidence "CURRENT_WAVE1_CHARGE_TRACKED delivery=$DeliveryNumber charge=$activeCharge location=$($activeChargeLocation -join ',') pickup=$PickupPlayer"
         Set-PlayerBotMode -Mode 'PASSIVE'
+        $activePickupPlayer = $PickupPlayer
         Set-PlayerBotModeForName -Name $PickupPlayer -Mode 'CARRIER_PICKUP'
         Teleport-Player $PickupPlayer $activeChargeLocation[0] $activeChargeLocation[1] $activeChargeLocation[2]
         $configuredPickupCharge = $activeCharge
       }
-    } elseif ($null -ne $activeCarrier) {
-      # The carrier is a live mob until a bot kills it.  First move one
-      # disposable client to the authoritative selection location; after the
-      # mob starts walking or climbing, use the throttled current-mob recovery
-      # instead of replaying every historical selection marker.
-      if ($activeCarrier -ne $teleportedCarrier) {
-        if ($null -ne $activeCarrierLocation) {
-          Teleport-Player $PickupPlayer $activeCarrierLocation[0] $activeCarrierLocation[1] $activeCarrierLocation[2]
-        }
-        $teleportedCarrier = $activeCarrier
-      }
-      Teleport-PlayersToNearestWaveMobIfFar -Name $PickupPlayer
-    } elseif ($null -eq $activeCarrier -and $null -eq $activeCharge) {
-      # Before the front dies there is no carrier marker yet.  Keep one real
-      # client near the current tagged mob so the normal attack packet can
-      # finish the front and cause the authoritative carrier transition.
-      Teleport-PlayersToNearestWaveMobIfFar -Name $PickupPlayer
     }
     Start-Sleep -Milliseconds 500
   }
@@ -557,52 +576,15 @@ function Teleport-PlayersIfOutsideCombatArea {
   }
 }
 
-$script:lastWave1MobRecoveryCheckAt = 0L
-
-function Teleport-PlayersToNearestWaveMobIfFar {
-  param([Parameter(Mandatory = $true)][string]$Name)
-  # Wave 1 creates the carrier only after the real front is defeated.  Keep
-  # one client close enough for its ordinary attack packets without polling
-  # RCON more often than the other throttled recovery helpers.
-  $now = [Environment]::TickCount
-  if ($now - $script:lastWave1MobRecoveryCheckAt -lt 2000L) { return }
-  $script:lastWave1MobRecoveryCheckAt = $now
-  $playerPosition = Get-PlayerPosition -Name $Name
-  if ($null -eq $playerPosition) { return }
-  $targetCandidates = @()
-  foreach ($entityType in @('enderman', 'skeleton', 'spider')) {
-    $targetText = Invoke-LocalRcon (
-      "execute positioned $(Format-Coordinate $playerPosition[0]) $(Format-Coordinate $playerPosition[1]) $(Format-Coordinate $playerPosition[2]) run data get entity @e[tag=copimine_end_event,type=$entityType,sort=nearest,limit=1,distance=..32] Pos")
-    $match = [Regex]::Match([string]$targetText,
-      '\[(-?\d+(?:\.\d+)?)[dD]?\s*,\s*(-?\d+(?:\.\d+)?)[dD]?\s*,\s*(-?\d+(?:\.\d+)?)[dD]?\]')
-    if (-not $match.Success) { continue }
-    $targetPosition = [double[]]@(
-      [double]$match.Groups[1].Value,
-      [double]$match.Groups[2].Value,
-      [double]$match.Groups[3].Value)
-    $dx = $targetPosition[0] - $playerPosition[0]
-    $dy = $targetPosition[1] - $playerPosition[1]
-    $dz = $targetPosition[2] - $playerPosition[2]
-    $targetCandidates += [pscustomobject]@{
-      Position = $targetPosition
-      DistanceSquared = $dx * $dx + $dy * $dy + $dz * $dz
-    }
-  }
-  $target = $targetCandidates | Sort-Object DistanceSquared | Select-Object -First 1
-  if ($null -eq $target -or $target.DistanceSquared -le 4.5D * 4.5D) { return }
-  Teleport-Player $Name $target.Position[0] $target.Position[1] $target.Position[2]
-}
-
 $script:lastWaveCombatRecoveryCheckAt = 0L
 
 function Teleport-PlayersToNearestWaveMobIfOutOfMeleeRange {
-  # Test-only positioning aid for the real combat packet path.  Current Wave
-  # 5/6 arena geometry contains two-block amethyst walls, so a disposable
-  # Mineflayer client can be physically pinned while it is trying to walk to a
-  # valid target.  Resolve only this event's tagged living mobs and teleport
-  # only a client outside the same conservative range used by the bot.  The
-  # client still sends the vanilla use_entity attack and the server still
-  # validates reach, aim, phase and damage.
+  # Test-only positioning aid for the real combat packet path. The recovered
+  # local arena can pin a disposable Mineflayer client while it walks toward a
+  # valid mob. Resolve only this event's tagged living mobs and teleport a
+  # client only when the target is outside the bot's melee range. The client
+  # still sends the vanilla use_entity attack and the server still validates
+  # reach, aim, phase and damage.
   $now = [Environment]::TickCount
   if ($now - $script:lastWaveCombatRecoveryCheckAt -lt 2000L) { return }
   $script:lastWaveCombatRecoveryCheckAt = $now
@@ -742,9 +724,6 @@ function Teleport-PlayersToObeliskRingIfDisplaced {
   }
 }
 
-$script:lastWave4LaneChangeAt = 0L
-$script:wave4ReflectionLane = -1
-
 function Teleport-PlayersToWave4ReflectionLaneIfDue {
   param([Parameter(Mandatory = $true)][object]$Core)
   $obeliskCount = Get-ObeliskCount $playerNames.Count
@@ -753,24 +732,12 @@ function Teleport-PlayersToWave4ReflectionLaneIfDue {
     return
   }
 
-  # A Paper LargeFireball is reliably interactable for this probe at its
-  # authored launch socket, 5.8 blocks above the obelisk.  With fewer clients
-  # than active obelisks, keep the small roster on one source lane at a time
-  # and rotate only after a quiet interval.  This preserves a real
-  # use_entity reflection while avoiding a teleport/reset loop every poll.
-  $now = [Environment]::TickCount
-  # A small roster needs several projectiles per source before rotating.  Six
-  # seconds is long enough for repeated server launches but short enough to
-  # cover all four lanes well before the official probe timeout.
-  $wave4LaneDwellMs = 6000L
-  $shouldRotate = $script:wave4ReflectionLane -lt 0 -or
-    $now - $script:lastWave4LaneChangeAt -ge $wave4LaneDwellMs
-  if ($shouldRotate) {
-    $script:lastWave4LaneChangeAt = $now
-    $script:wave4ReflectionLane =
-      ($script:wave4ReflectionLane + 1) % $obeliskCount
-  }
-
+  # Every obelisk fires toward a participant. Keep a short roster around the
+  # arena center so fireballs travel far enough to fall into the player's
+  # interaction reach before arrival. Rotating to the outer ring put one
+  # player under each launch socket; those initial fireballs were too high to
+  # reflect toward their source and the bot treated its unconfirmed swing as
+  # success.
   $pending = [System.Collections.Generic.Stack[object]]::new()
   $pending.Push($Core)
   $coordinates = [System.Collections.Generic.List[object]]::new()
@@ -789,18 +756,21 @@ function Teleport-PlayersToWave4ReflectionLaneIfDue {
   $y = [double]$coordinates[1]
   $z = [double]$coordinates[2]
   $halfPi = [Math]::PI / 2.0D
-  $angle = -$halfPi + (2.0D * [Math]::PI * $script:wave4ReflectionLane / $obeliskCount)
-  # Stay one block farther inside the authored obelisk ring.  The east-side
-  # arena wall resolves a radius-8 teleport to x=15.5, so radius 7 is the
-  # symmetric clear point for all four launch sockets.
-  $reflectionRadius = 7.0D
-  $targetX = $x + 0.5D + [Math]::Cos($angle) * $reflectionRadius
-  $targetZ = $z + 0.5D + [Math]::Sin($angle) * $reflectionRadius
-  # Keep the real clients inside the projectile interaction window.  A mob
-  # nudge of one block must be corrected on the next poll rather than being
-  # mistaken for an intentional lane dwell.
+  $smallRosterRadius = 2.5D
   $laneTolerance = 0.75D
   for ($index = 0; $index -lt $playerNames.Count; $index++) {
+    # Opposite points on the same axis let one bot stand directly in the
+    # other bot's reflected-fireball path. Use perpendicular lanes for two
+    # players while keeping both close enough to receive and reflect shots.
+    $angle = if ($playerNames.Count -eq 2 -and $index -eq 1) {
+      0.0D
+    } elseif ($playerNames.Count -eq 2) {
+      -$halfPi
+    } else {
+      -$halfPi + (2.0D * [Math]::PI * $index / $playerNames.Count)
+    }
+    $targetX = $x + 0.5D + [Math]::Cos($angle) * $smallRosterRadius
+    $targetZ = $z + 0.5D + [Math]::Sin($angle) * $smallRosterRadius
     $position = Get-PlayerPosition -Name $playerNames[$index]
     if ($null -eq $position) { continue }
     $dx = $position[0] - $targetX
@@ -877,6 +847,37 @@ function Set-PlayerBotMode {
   }
 }
 
+function Wait-PlayerBotModeAcknowledgement {
+  param(
+    [Parameter(Mandatory = $true)][string]$Name,
+    [Parameter(Mandatory = $true)]
+    [ValidateSet('CARRIER_PICKUP', 'CORE_DELIVER')]
+    [string]$Mode,
+    [int]$WaitSeconds = 5
+  )
+  $modePath = Assert-EndRiftLocalRuntimePath `
+    -Path (Join-Path $controlDirectory ($Name + '.mode')) -LocalRuntimeRoot $runtimeRoot -MustExist
+  $safeModeAckPath = Assert-EndRiftLocalRuntimePath `
+    -Path (Join-Path $controlDirectory ($Name + '.mode.ack')) -LocalRuntimeRoot $runtimeRoot
+  $modeRequestId = $script:botModeRequestIds["$Name|$Mode"]
+  if ([string]::IsNullOrWhiteSpace($modeRequestId)) {
+    throw "Probe player $Name has no correlated mode request for $Mode."
+  }
+  $acknowledgement = "$Mode|$modeRequestId"
+  $deadline = (Get-Date).AddSeconds($WaitSeconds)
+  while ((Get-Date) -lt $deadline) {
+    if (Test-Path -LiteralPath $safeModeAckPath -PathType Leaf) {
+      $botAcknowledgements = Get-Content -LiteralPath $safeModeAckPath -ErrorAction SilentlyContinue
+      if ($botAcknowledgements -contains $acknowledgement) {
+        Write-Evidence "CURRENT_WAVE1_BOT_MODE_ACK name=$Name mode=$Mode"
+        return
+      }
+    }
+    Start-Sleep -Milliseconds 100
+  }
+  throw "Probe player $Name did not acknowledge objective mode $Mode within $WaitSeconds seconds. Expected $acknowledgement at $safeModeAckPath."
+}
+
 function Set-PlayerBotModeForName {
   param(
     [Parameter(Mandatory = $true)][string]$Name,
@@ -889,8 +890,21 @@ function Set-PlayerBotModeForName {
   }
   $modePath = Assert-EndRiftLocalRuntimePath `
     -Path (Join-Path $controlDirectory ($Name + '.mode')) -LocalRuntimeRoot $runtimeRoot
+  $controlValue = $Mode
+  if ($Mode -in @('CARRIER_PICKUP', 'CORE_DELIVER')) {
+    $modeRequestId = [guid]::NewGuid().ToString('N')
+    $controlValue = "$Mode|$modeRequestId"
+    $script:botModeRequestIds["$Name|$Mode"] = $modeRequestId
+  }
   Set-Content -LiteralPath $modePath `
-    -Value $Mode -NoNewline -Encoding ASCII
+    -Value $controlValue -NoNewline -Encoding ASCII
+  $writtenMode = (Get-Content -LiteralPath $modePath -Raw).Trim()
+  if ($writtenMode -ne $controlValue) {
+    throw "Failed to set probe player $Name mode. Expected $Mode, found $writtenMode."
+  }
+  if ($Mode -in @('CARRIER_PICKUP', 'CORE_DELIVER')) {
+    Write-Evidence "CURRENT_WAVE1_BOT_MODE_REQUEST name=$Name mode=$Mode"
+  }
 }
 
 function Start-PlayerBot {
@@ -916,6 +930,12 @@ function Start-PlayerBot {
     END_RIFT_BOT_CONTROL_DIRECTORY = $safeControlDirectory
     END_RIFT_BOT_SKIP_AUTH = '1'
     END_RIFT_BOT_SKIP_REGISTER = '1'
+    # This local test bot answers only the 26.3 CopiMine mod challenge on
+    # 127.0.0.1:25566. Production listeners and mod checks stay unchanged.
+    END_RIFT_TEST_CLIENT_MOD_HANDSHAKE = '1'
+    END_RIFT_TEST_CLIENT_MOD_VERSION = '0.1.3+26.3'
+    # Both clients must reflect: Wave 7 launches independent chamber-local
+    # projectiles and authorizes only the player assigned to each chamber.
     END_RIFT_REFLECT_ENABLED = [string]$env:END_RIFT_REFLECT_ENABLED
     END_RIFT_REFLECT_START_MS = [string]$env:END_RIFT_REFLECT_START_MS
     END_RIFT_REFLECT_DIAGNOSTICS = [string]$env:END_RIFT_REFLECT_DIAGNOSTICS
@@ -938,8 +958,13 @@ function Start-PlayerBot {
       (Format-Coordinate ($Core[2] + 0.5D)) + ' ' + [string]$interactionRange + ' ' +
       [string]$attackIntervalMilliseconds + ' "' + $safeControlDirectory + '"'
   }
-  $stdoutStream = [IO.File]::Create($out)
-  $stderrStream = [IO.File]::Create($err)
+  # The runner polls these files for mode acknowledgements while Node keeps
+  # writing bot output. Allow concurrent readers so those polls do not fail
+  # with a Windows sharing violation.
+  $stdoutStream = [IO.FileStream]::new(
+    $out, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::ReadWrite)
+  $stderrStream = [IO.FileStream]::new(
+    $err, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::ReadWrite)
   $process = [Diagnostics.Process]::new()
   $process.StartInfo = $startInfo
   try {
@@ -968,12 +993,42 @@ function Wait-PlayersOnline {
   throw "Local players did not join: $($playerNames -join ', ')"
 }
 
+function Wait-ClientBridgeV4Ready {
+  param([Parameter(Mandatory = $true)][int64]$AfterOffset)
+  $deadline = (Get-Date).AddSeconds(30)
+  while ((Get-Date) -lt $deadline) {
+    $paperText = Get-LogTail -Offset $AfterOffset
+    foreach ($name in $playerNames) {
+      $rejected = [Regex]::Match($paperText,
+        ('Rejected ' + [Regex]::Escape($name) + ' during CopiMineClient check: ([^\r\n]+)'))
+      if ($rejected.Success) {
+        throw "Local test client $name failed the authenticated V4 bridge handshake: $($rejected.Groups[1].Value)."
+      }
+    }
+    $readyCount = 0
+    foreach ($name in $playerNames) {
+      $botLog = Join-Path $botLogDirectory ($name + '.log')
+      if ((Test-Path -LiteralPath $botLog -PathType Leaf) -and
+          ((Get-Content -LiteralPath $botLog -Raw) -match
+            ('TEST_CLIENT_BRIDGE_V4_READY ' + [Regex]::Escape($name) + '\b'))) {
+        $readyCount++
+      }
+    }
+    if ($readyCount -eq $playerNames.Count) {
+      Write-Evidence "CURRENT_CLIENT_BRIDGE_V4_PASS players=$readyCount"
+      return
+    }
+    Start-Sleep -Milliseconds 250
+  }
+  throw "Timed out waiting for authenticated V4 bridge readiness for: $($playerNames -join ', ')."
+}
+
 function Configure-Players {
   foreach ($name in $playerNames) {
     $null = Invoke-LocalRcon ("gamemode survival $name")
     $null = Invoke-LocalRcon ("clear $name")
-    $null = Invoke-LocalRcon ("attribute $name minecraft:generic.max_health base set 1000")
-    $null = Invoke-LocalRcon ("attribute $name minecraft:generic.knockback_resistance base set 1")
+    $null = Invoke-LocalRcon ("attribute $name minecraft:max_health base set 1000")
+    $null = Invoke-LocalRcon ("attribute $name minecraft:knockback_resistance base set 1")
     $null = Invoke-LocalRcon ("give $name minecraft:netherite_sword 1")
     $null = Invoke-LocalRcon ("enchant $name minecraft:sharpness 5")
     $null = Invoke-LocalRcon ("effect give $name minecraft:resistance 1000 4 true")
@@ -990,10 +1045,16 @@ function Wait-Transition {
     [int64]$AfterOffset = -1
   )
   $offset = if ($AfterOffset -ge 0) { $AfterOffset } else { Get-LogLength }
+  # Once a wave finishes, the bots must stop combat navigation and return to
+  # their own start runes before the server can commit its continuous hold.
+  # Waiting for readiness first leaves them active in the combat ring forever.
+  Set-PlayerBotMode -Mode 'PASSIVE'
+  Teleport-PlayersToPads -Pads $Pads
   Wait-Log -AfterOffset $offset -Pattern ('END_RIFT_TRANSITION_RUNES_READY.*completed_wave=' + $CompletedWave) -WaitSeconds 120 | Out-Null
   Teleport-PlayersToPads -Pads $Pads
   $next = $CompletedWave + 1
   Wait-Log -AfterOffset $offset -Pattern ('END_RIFT_WAVE_STARTED.*wave=' + $next + '\b') -WaitSeconds 120 -Action { Teleport-PlayersToPads -Pads $Pads } | Out-Null
+  Set-PlayerBotMode -Mode 'ACTIVE'
   Write-Evidence "CURRENT_TRANSITION_PASS completed_wave=$CompletedWave next_wave=$next pads=$($Pads.Count) hold_ms=10000" | Out-Null
   # The next objective's first marker may share the exact tick with
   # END_RIFT_WAVE_STARTED. Preserve the cursor from before the transition.
@@ -1178,19 +1239,25 @@ $env:END_RIFT_REFLECT_DIAGNOSTICS = '1'
   $env:END_RIFT_GUARDIAN_PROBE_NAMES = $playerNames -join ','
   $env:END_RIFT_ATTACK_INTERVAL_MS = '200'
   foreach ($name in $playerNames) {
-    Set-PlayerBotModeForName -Name $name -Mode 'ACTIVE'
+    # Probe players must not chase ambient mobs while they are being placed on
+    # the start runes. Enable combat only after the official Wave 1 marker.
+    Set-PlayerBotModeForName -Name $name -Mode 'PASSIVE'
     Start-PlayerBot -Name $name -Core $core
     Start-Sleep -Milliseconds 250
   }
   Wait-PlayersOnline
+  Wait-ClientBridgeV4Ready -AfterOffset $runLogOffset
   Configure-Players
   # Rune occupancy can complete the ritual in the same command batch as the
   # pad teleports. Capture the cursor before that mutation, otherwise the
   # reader can start after RITUAL_STARTED and lose the whole transition.
   $ritualOffset = $runLogOffset
   Teleport-PlayersToPads -Pads $pads
-  Wait-Log -AfterOffset $ritualOffset -Pattern ('RITUAL_STARTED.*event=' + $eventId) -WaitSeconds 30 -Action { Teleport-PlayersToPads -Pads $pads } | Out-Null
-  Wait-Log -AfterOffset $ritualOffset -Pattern ('RITUAL_COMPLETED.*event=' + $eventId) -WaitSeconds 100 -Action { Teleport-PlayersToPads -Pads $pads } | Out-Null
+  # The bots are passive during the start ritual and were placed above. Repeated
+  # teleports while Paper measures the continuous ten-second hold can make the
+  # client resend stale movement and evict it from the rune.
+  Wait-Log -AfterOffset $ritualOffset -Pattern ('RITUAL_STARTED.*event=' + $eventId) -WaitSeconds 30 | Out-Null
+  Wait-Log -AfterOffset $ritualOffset -Pattern ('RITUAL_COMPLETED.*event=' + $eventId) -WaitSeconds 100 | Out-Null
   Write-Evidence "CURRENT_RITUAL_PASS event=$eventId players=$($playerNames.Count)"
 
   # RITUAL_COMPLETED, the state transition, and WAVE_STARTED are emitted by
@@ -1201,6 +1268,7 @@ $env:END_RIFT_REFLECT_DIAGNOSTICS = '1'
   # objective can create the first carrier in the same tick as wave start.
   $waveOneObjectiveOffset = $waveOffset
   Wait-Log -AfterOffset $waveOffset -Pattern ('END_RIFT_WAVE_STARTED.*event=' + $eventId + '.*wave=1\b') -WaitSeconds 30 | Out-Null
+  Set-PlayerBotMode -Mode 'ACTIVE'
   $waveOneCompletionOffset = $null
   $seenCarrierCharges = @{}
   $carrierOffset = $waveOneObjectiveOffset
@@ -1221,12 +1289,17 @@ $env:END_RIFT_REFLECT_DIAGNOSTICS = '1'
 
   $pads = Get-Pads
   $waveTwoStartOffset = Wait-Transition -CompletedWave 1 -Pads $pads -AfterOffset $waveOneTransitionOffset
-  $waveTwoTransitionOffset = Wait-WaveComplete -Wave 2 -Core $core -Seconds 300
+  $waveTwoTransitionOffset = Wait-WaveComplete -Wave 2 -Core $core -Seconds 300 -Action {
+    Teleport-PlayersToNearestWaveMobIfOutOfMeleeRange
+  }
+  Wait-Log -AfterOffset $waveTwoStartOffset -Pattern 'ELITE_ARROW_RAIN_RELEASE.*player_only=true' -WaitSeconds 45 | Out-Null
+  Write-Evidence "CURRENT_WAVE2_ELITE_SPELL_PASS spell=arrow_rain projectiles=5 player_only=true"
   Write-Evidence "CURRENT_WAVE_PASS event=$eventId wave=2 objective=RIFT_HUNT"
   if ($StopAfterWave -eq 2) { return }
 
   $pads = Get-Pads
   $waveThreeStartOffset = Wait-Transition -CompletedWave 2 -Pads $pads -AfterOffset $waveTwoTransitionOffset
+  Set-PlayerBotMode -Mode 'PASSIVE'
   $portalOffset = $waveThreeStartOffset
   Wait-Log -AfterOffset $portalOffset -Pattern 'END_RIFT_PORTALS_READY.*count=3.*sequential=true' -WaitSeconds 60 -Action { Teleport-PlayersToCombatRing -Core $core } | Out-Null
   for ($portalIndex = 0; $portalIndex -lt 3; $portalIndex++) {
@@ -1257,6 +1330,7 @@ $env:END_RIFT_REFLECT_DIAGNOSTICS = '1'
   # The final portal capture and Wave 3 completion may be committed in the
   # same Paper tick.  Keep the pre-portal cursor so a fast multi-player run
   # cannot advance past END_RIFT_WAVE_COMPLETED before this wait starts.
+  Set-PlayerBotMode -Mode 'ACTIVE'
   $waveThreeTransitionOffset = Wait-WaveComplete -Wave 3 -Core $core -Seconds 300 -AfterOffset $portalOffset
   Write-Evidence "CURRENT_WAVE_PASS event=$eventId wave=3 objective=RIFT_GATES portals=3"
   if ($StopAfterWave -eq 3) { return }
@@ -1272,13 +1346,13 @@ $env:END_RIFT_REFLECT_DIAGNOSTICS = '1'
   # passive while they perform that packet interaction; otherwise nearby
   # assault mobs make Mineflayer chase them out of the reflection lanes.
   Set-PlayerBotMode -Mode PASSIVE
-  Teleport-PlayersToObeliskRing -Core $core
-  Wait-Log -AfterOffset $w4Offset -Pattern ('END_RIFT_OBELISK_ASSAULT_READY.*obelisks=' + $obeliskCount + '.*real_blocks=true') -WaitSeconds 150 -Action { Teleport-PlayersToObeliskRingIfDisplaced -Core $core } | Out-Null
-  Teleport-PlayersToObeliskRing -Core $core
-  Wait-LogCount -AfterOffset $w4Offset -Pattern 'END_RIFT_OBELISK_ACTIVE ' -Minimum $obeliskCount -WaitSeconds 90 -Action { Teleport-PlayersToObeliskRingIfDisplaced -Core $core } | Out-Null
-  Teleport-PlayersToObeliskRing -Core $core
-  Wait-Log -AfterOffset $w4Offset -Pattern 'RIFT_FIREBALL_LAUNCH ' -WaitSeconds 120 -Action { Teleport-PlayersToObeliskRingIfDisplaced -Core $core } | Out-Null
-  Teleport-PlayersToObeliskRing -Core $core
+  Teleport-PlayersToWave4ReflectionLaneIfDue -Core $core
+  Wait-Log -AfterOffset $w4Offset -Pattern ('END_RIFT_OBELISK_ASSAULT_READY.*obelisks=' + $obeliskCount + '.*real_blocks=true') -WaitSeconds 150 -Action { Teleport-PlayersToWave4ReflectionLaneIfDue -Core $core } | Out-Null
+  Teleport-PlayersToWave4ReflectionLaneIfDue -Core $core
+  Wait-LogCount -AfterOffset $w4Offset -Pattern 'END_RIFT_OBELISK_ACTIVE ' -Minimum $obeliskCount -WaitSeconds 90 -Action { Teleport-PlayersToWave4ReflectionLaneIfDue -Core $core } | Out-Null
+  Teleport-PlayersToWave4ReflectionLaneIfDue -Core $core
+  Wait-Log -AfterOffset $w4Offset -Pattern 'RIFT_FIREBALL_LAUNCH ' -WaitSeconds 120 -Action { Teleport-PlayersToWave4ReflectionLaneIfDue -Core $core } | Out-Null
+  Teleport-PlayersToWave4ReflectionLaneIfDue -Core $core
   $waveFourTransitionOffset = Wait-WaveComplete -Wave 4 -Core $core -Seconds 600 -Action { Teleport-PlayersToWave4ReflectionLaneIfDue -Core $core }
   Set-PlayerBotMode -Mode ACTIVE
   Write-Evidence "CURRENT_WAVE_PASS event=$eventId wave=4 objective=OBELISK_ASSAULT obelisks=$obeliskCount"

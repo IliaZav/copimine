@@ -13,9 +13,14 @@ def packet_probe(tmp_path_factory):
     source = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(encoding="utf-8")
     protocol_constant = re.search(r"private static final int CLIENT_BRIDGE_PROTOCOL_VERSION = \d+;", source)
     assert protocol_constant, "production bridge protocol version constant is required by the extracted packet boundary"
-    start = source.index("    private void sendClientPacket(Player player, String type, String instanceId, long durationMillis,\n"
-                         "                                  String subjectId, String visualId, int health, int maxHealth,\n"
-                         "                                  float progress, String clearPolicy, String status, String source)")
+    signature = re.search(
+        r"    private boolean sendClientPacket\(Player player, String type, String instanceId, long durationMillis,\s+"
+        r"String subjectId, String visualId, int health, int maxHealth,\s+"
+        r"float progress, String clearPolicy, String status, String source\)",
+        source,
+    )
+    assert signature, "production fail-closed packet boundary is required by the disabled-plugin probe"
+    start = signature.start()
     opening = source.index("{", start)
     depth, end = 1, opening + 1
     while depth:

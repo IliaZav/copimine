@@ -55,10 +55,15 @@ public final class RitualCasterProgressionPolicy {
                 .filter(spell -> isSpellEnabled(deathCount, spell)).toList();
     }
 
-    /** Cleanup is part of the objective and must finish before W6 is complete. */
-    public static boolean mayComplete(int deathCount, boolean prisonBroken,
-                                      boolean runtimeCleaned) {
-        return deathCount == TOTAL_CASTERS && prisonBroken && runtimeCleaned;
+    /** Official caster combat is locked until the prisoner is captured; only the isolated combat sandbox bypasses it. */
+    public static boolean mayTakeCasterDamage(boolean prisonerCaptured, boolean combatSandbox) {
+        return prisonerCaptured || combatSandbox;
+    }
+
+    /** Capture is mandatory for an official Wave 6 completion; sandbox combat is explicitly exempt. */
+    public static boolean mayComplete(int deathCount, boolean prisonerCaptured,
+                                      boolean prisonBroken, boolean runtimeCleaned) {
+        return deathCount == TOTAL_CASTERS && prisonerCaptured && prisonBroken && runtimeCleaned;
     }
 
     public record Transition(int deathCount,

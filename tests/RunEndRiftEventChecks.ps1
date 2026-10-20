@@ -43,6 +43,31 @@ function Get-FileSha256 {
 # names only the schema-4, seven-wave, real-health encounter. Production is
 # never started or mutated by this script.
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$javaHome = Join-Path $root 'local-runtime\toolchains\temurin-25.0.4.1\jdk-25.0.4.1+1'
+$script:javaExecutable = Join-Path $javaHome 'bin\java.exe'
+$script:javacExecutable = Join-Path $javaHome 'bin\javac.exe'
+$javaExecutableExists = Test-Path -LiteralPath $script:javaExecutable -PathType Leaf
+$javacExecutableExists = Test-Path -LiteralPath $script:javacExecutable -PathType Leaf
+if (-not $javaExecutableExists -or -not $javacExecutableExists) {
+  throw "The End Rift gate requires the pinned Temurin 25.0.4.1 toolchain under $javaHome."
+}
+$previousErrorActionPreference = $ErrorActionPreference
+try {
+  # Java writes its version to stderr; allow that diagnostic without hiding its exit code.
+  $ErrorActionPreference = 'Continue'
+  $javaVersion = (& $script:javaExecutable -version 2>&1 | Out-String)
+  $javaVersionExitCode = $LASTEXITCODE
+} finally {
+  $ErrorActionPreference = $previousErrorActionPreference
+}
+if ($javaVersionExitCode -ne 0 -or $javaVersion -notmatch 'openjdk version "25\.0\.4\.1') {
+  throw 'The End Rift gate requires Temurin 25.0.4.1 for all Java compilation and execution.'
+}
+# The plugin build scripts invoke javac and jar by name. Pin nested PowerShell
+# builds to the same JDK verified above instead of inheriting an older system JDK.
+$env:JAVA_HOME = $javaHome
+$env:PATH = "$javaHome\bin;$env:PATH"
+Write-Host 'Using pinned End Rift Java toolchain: Temurin 25.0.4.1'
 $configPath = Join-Path $root 'copimine-end-event\config.yml'
 $config = Get-Content -LiteralPath $configPath -Raw
 if ($config -notmatch '(?m)^environment:\s*(local|staging)\s*$') {
@@ -68,7 +93,7 @@ function Invoke-GateStep {
 function Invoke-JavaTest {
   param([Parameter(Mandatory)][string]$Classpath, [Parameter(Mandatory)][string]$MainClass)
   $javaTestJvmArgs = @('-Xms128m', '-Xmx1g', '-XX:ActiveProcessorCount=4')
-  & java @javaTestJvmArgs -cp $Classpath $MainClass
+  & $script:javaExecutable @javaTestJvmArgs -cp $Classpath $MainClass
   if ($LASTEXITCODE -ne 0) {
     throw "Java test $MainClass failed with exit code $LASTEXITCODE"
   }
@@ -264,7 +289,9 @@ Invoke-GateStep 'Current Python contract' {
 Invoke-GateStep 'Live bot reflection target and dependency tests' {
   Push-Location $root
   try {
-    & node --test '.\tests\LocalEndRiftReflectionTarget.test.js' '.\tests\LocalEndRiftBotDependencies.test.js'
+    & node --test '.\tests\LocalEndRiftReflectionTarget.test.js' `
+      '.\tests\LocalEndRiftBotDependencies.test.js' `
+      '.\tests\EndRiftBotClientModHandshake.test.js'
     if ($LASTEXITCODE -ne 0) {
       throw "Live bot reflection target tests failed with exit code $LASTEXITCODE"
     }
@@ -338,6 +365,7 @@ $pureTests = @(
   'BlackFogSafeZonePolicyTest',
   'BlackFogTimingPolicyTest',
   'BlackFogEffectLeasePolicyTest',
+  'Wave5PreFogRefillPolicyTest',
   'CollapseRingGeometryPolicyTest',
   'BossDefeatCinematicPolicyTest',
   'BossHitboxDedupePolicyTest',
@@ -462,6 +490,7 @@ $pureTests = @(
   'Wave4PressurePackPolicyTest',
   'IntermissionWatchdogPolicyTest',
   'Wave3PortalPolicyTest',
+  'Wave3PortalSpawnPolicyTest',
   'WaveCommanderPolicyTest',
   'WaveDamagePolicyTest',
   'WaveMechanicsPolicyTest',
@@ -489,7 +518,7 @@ Invoke-GateStep 'Current pure Java policies' {
   $pureSourceList = Join-Path $testBuild 'pure-sources.args'
   $pureSourceArguments = @($pureSources | ForEach-Object { '"' + $_.Replace('\', '/') + '"' })
   Set-Content -LiteralPath $pureSourceList -Value $pureSourceArguments -Encoding ascii
-  & javac -proc:none -encoding UTF-8 -d $testBuild ('@' + $pureSourceList)
+  & $script:javacExecutable -proc:none -encoding UTF-8 -d $testBuild ('@' + $pureSourceList)
   if ($LASTEXITCODE -ne 0) { throw 'Current pure Java compilation failed.' }
   foreach ($name in $pureTests) {
     Invoke-JavaTest -Classpath $testBuild -MainClass $name
@@ -606,7 +635,7 @@ $persistenceSources += Join-Path $root 'copimine-end-event\src\me\copimine\endev
 $persistenceSources += Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\EncounterResourceScope.java'
 
 Invoke-GateStep 'Current persistence and recovery' {
-  & javac -proc:none -encoding UTF-8 -cp $persistenceClasspathText -d $testBuild @persistenceSources
+  & $script:javacExecutable -proc:none -encoding UTF-8 -cp $persistenceClasspathText -d $testBuild @persistenceSources
   if ($LASTEXITCODE -ne 0) { throw 'Persistence Java compilation failed.' }
   foreach ($name in $persistenceTests) {
     Invoke-JavaTest -Classpath $persistenceClasspathText -MainClass $name

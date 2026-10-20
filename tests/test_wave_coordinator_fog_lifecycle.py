@@ -202,18 +202,21 @@ public class WaveFogLifecycleProbe {
     if(args[0].equals("arrow-stale"))h.generation++;
     check(h.isEventArrowPhaseAllowed(a)==args[0].equals("arrow-resume"),"already launched arrow phase/generation admission leaked");
    }
-    case "ritual-guard-arrow", "ritual-guard-stale", "ritual-guard-session", "ritual-guard-unregistered", "ritual-guard-intermission", "ritual-prisoner-arrow" -> {
+    case "ritual-guard-arrow", "ritual-guard-stale", "ritual-guard-session", "ritual-guard-unregistered", "ritual-guard-intermission", "ritual-prisoner-arrow",
+         "ritual-guard-shot", "ritual-guard-shot-stale", "ritual-guard-shot-session", "ritual-guard-shot-unregistered", "ritual-guard-shot-intermission" -> {
      h.activeWave=6;h.phase=EventPhase.WAVE_6;
      var shooter=new Skeleton();shooter.wave=6;shooter.kind=EVENT_KIND_RITUAL_GUARD;
      h.ownedEntities.put(shooter.id,shooter);h.ritualGuardUuids.add(shooter.id);
-     if(args[0].equals("ritual-guard-stale"))shooter.gen--;
-     if(args[0].equals("ritual-guard-session"))shooter.session="another-event";
-     if(args[0].equals("ritual-guard-unregistered"))h.ritualGuardUuids.remove(shooter.id);
-     if(args[0].equals("ritual-guard-intermission"))h.phase=EventPhase.INTERMISSION_6;
+     if(args[0].contains("stale"))shooter.gen--;
+     if(args[0].contains("session"))shooter.session="another-event";
+     if(args[0].contains("unregistered"))h.ritualGuardUuids.remove(shooter.id);
+     if(args[0].contains("intermission"))h.phase=EventPhase.INTERMISSION_6;
      if(args[0].equals("ritual-prisoner-arrow"))shooter.kind=EVENT_KIND_RITUAL_CASTER;
      var arrow=new Arrow();arrow.shooter=shooter;
-     boolean expected=args[0].equals("ritual-guard-arrow");
-     check(h.isEventArrowPhaseAllowed(arrow)==expected,"Wave 6 ritual-guard arrow current attempt/session/phase admission mismatch: "+args[0]);
+     boolean expected=args[0].equals("ritual-guard-arrow")||args[0].equals("ritual-guard-shot");
+     if(args[0].startsWith("ritual-guard-shot"))
+      check(h.isWaveProjectileShooterAllowed(shooter)==expected,"Wave 6 ritual-guard shot current attempt/session/phase admission mismatch: "+args[0]);
+     else check(h.isEventArrowPhaseAllowed(arrow)==expected,"Wave 6 ritual-guard arrow current attempt/session/phase admission mismatch: "+args[0]);
     }
    case "elite-fog", "elite-stale", "elite-resume" -> {
     var m=new Enderman();h.ownedEntities.put(m.id,m);var p=new Projectile();p.shooter=m;h.activeEliteProjectileExpiresAtTick.put(p.id,100L);
@@ -290,7 +293,7 @@ public class WaveFogLifecycleProbe {
     return out
 
 
-@pytest.mark.parametrize("scenario", ["fog", "fog-three-cycles", "intermission", "intermission-wave1", "intermission-wave3", "all-intermissions", "core", "empty-resume", "generation-stale", "arrow-fog", "arrow-intermission", "arrow-stale", "arrow-resume", "ritual-guard-arrow", "ritual-guard-stale", "ritual-guard-session", "ritual-guard-unregistered", "ritual-guard-intermission", "ritual-prisoner-arrow", "elite-fog", "elite-stale", "elite-resume", "side-fog", "side-stale", "side-resume", "fog-cleanup", "cloud-fog", "cloud-stale", "cloud-resume", "cloud-cleaned-resume", "impact-fog", "impact-stale", "impact-resume", "impact-cleaned-resume", "local-arrow-ready", "local-side-ready", "local-arrow-fog", "local-side-fog", "local-arrow-stale", "local-side-stale", "local-arrow-session", "local-side-session"])
+@pytest.mark.parametrize("scenario", ["fog", "fog-three-cycles", "intermission", "intermission-wave1", "intermission-wave3", "all-intermissions", "core", "empty-resume", "generation-stale", "arrow-fog", "arrow-intermission", "arrow-stale", "arrow-resume", "ritual-guard-arrow", "ritual-guard-stale", "ritual-guard-session", "ritual-guard-unregistered", "ritual-guard-intermission", "ritual-guard-shot", "ritual-guard-shot-stale", "ritual-guard-shot-session", "ritual-guard-shot-unregistered", "ritual-guard-shot-intermission", "ritual-prisoner-arrow", "elite-fog", "elite-stale", "elite-resume", "side-fog", "side-stale", "side-resume", "fog-cleanup", "cloud-fog", "cloud-stale", "cloud-resume", "cloud-cleaned-resume", "impact-fog", "impact-stale", "impact-resume", "impact-cleaned-resume", "local-arrow-ready", "local-side-ready", "local-arrow-fog", "local-side-fog", "local-arrow-stale", "local-side-stale", "local-arrow-session", "local-side-session"])
 def test_heartbeat_and_projectile_admission(probe, scenario):
     run = subprocess.run(["java", "-cp", str(probe), "WaveFogLifecycleProbe", scenario], capture_output=True, text=True)
     assert run.returncode == 0, run.stdout + run.stderr

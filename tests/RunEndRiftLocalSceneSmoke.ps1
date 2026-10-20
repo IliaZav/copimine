@@ -66,7 +66,7 @@ function Assert-Condition {
     [Parameter(Mandatory = $true)][string]$CommandText
   )
   $result = Invoke-SceneRcon $CommandText
-  if ($result -notmatch 'The time is') {
+  if ($result -notmatch 'The (?:game )?time is') {
     throw "$Label condition was false. Actual response: $result"
   }
   Write-Host "PASS $Label"
@@ -97,8 +97,8 @@ if ($gateInfo -notmatch 'gate\.status=.*(?:UNSET|RESTORED)') {
   throw "gate closed state expected UNSET or RESTORED. Actual response: $gateInfo"
 }
 Write-Host 'PASS gate closed state (UNSET/RESTORED)'
-$portalInfo = Invoke-SceneRcon 'cmend portalroom info'
-Assert-Text 'portal room metadata' $portalInfo '31.5,68.0,-42.5'
+# The local portal geometry is arena scenery. `portal-room` config is the
+# post-victory Rift Shard destination and is intentionally untouched here.
 
 Assert-Condition 'closed gate is obsidian' "execute in $world run execute if block $gateMinX $gateMinY $gateMinZ minecraft:obsidian run minecraft:time query gametime"
 Assert-Condition 'portal remains active before opening' "execute in $world run execute if block $portalX $portalY $portalZ minecraft:end_portal run minecraft:time query gametime"
@@ -107,7 +107,7 @@ Assert-Condition 'portal remains active before opening' "execute in $world run e
 Assert-Condition 'portal room is roofless' "execute in $world run execute if block 30 71 -40 minecraft:air run minecraft:time query gametime"
 $enableStation = Invoke-SceneRcon "execute in $world run execute if block 0 64 -17 minecraft:stone_button[face=wall,facing=south,powered=false] run minecraft:time query gametime"
 $clearStation = Invoke-SceneRcon "execute in $world run execute if block 3 64 -17 minecraft:stone_button[face=wall,facing=south,powered=false] run minecraft:time query gametime"
-if ($enableStation -match 'The time is' -and $clearStation -match 'The time is') {
+if ($enableStation -match 'The (?:game )?time is' -and $clearStation -match 'The (?:game )?time is') {
   Assert-Condition 'enable station button exists' "execute in $world run execute if block 0 64 -17 minecraft:stone_button[face=wall,facing=south,powered=false] run minecraft:time query gametime"
   Assert-Condition 'clear station button exists' "execute in $world run execute if block 3 64 -17 minecraft:stone_button[face=wall,facing=south,powered=false] run minecraft:time query gametime"
   Assert-Text 'enable station function' (Invoke-SceneRcon 'execute in minecraft:overworld run data get block 0 64 -16 Command') 'function copimine:spawn/max_on'

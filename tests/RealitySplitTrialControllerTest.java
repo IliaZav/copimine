@@ -3,6 +3,7 @@ import java.util.ArrayList;
 import java.util.Map;
 import java.util.UUID;
 import me.copimine.endevent.domain.ChamberIsolationPolicy;
+import me.copimine.endevent.domain.Wave7RoomLayoutPolicy;
 import me.copimine.endevent.domain.wave7.EchoBehaviorStrategy;
 import me.copimine.endevent.domain.wave7.EchoLoadoutState;
 import me.copimine.endevent.runtime.RealitySplitEchoDuelState;
@@ -128,9 +129,21 @@ public final class RealitySplitTrialControllerTest {
             var assignment = ChamberIsolationPolicy.assign(roster);
             var sampled = new java.util.HashSet<RealitySplitTrialController.NamedTrial>();
             for (int seed = 0; seed < 64; seed++) {
+                long sampleSeed = seed * 1_000_000_007L;
                 var controller = new RealitySplitTrialController();
-                controller.beginNamed(event, 71L, assignment, new java.util.Random(seed));
+                var expectedLayout = Wave7RoomLayoutPolicy.select(71L, roster, new java.util.Random(sampleSeed));
+                check(expectedLayout.roomByPlayer().equals(assignment.chamberByPlayer()),
+                        "shared layout policy preserves the authoritative chamber assignment");
+                controller.beginNamed(event, 71L, assignment, new java.util.Random(sampleSeed));
                 var data = controller.namedSnapshot();
+                var expectedTrials = expectedLayout.rooms().stream().map(room -> switch (room.trial()) {
+                    case WARDEN -> RealitySplitTrialController.NamedTrial.WARDEN;
+                    case ECHO -> RealitySplitTrialController.NamedTrial.PERSONAL_ECHO;
+                    case MARKSMAN -> RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN;
+                    case ARCHMAGE -> RealitySplitTrialController.NamedTrial.RIFT_ARCHMAGE;
+                }).toList();
+                check(data.selectedLayout().equals(expectedTrials),
+                        "production room roles use the shared Wave 7 layout policy");
                 check(data.trials().size() == Math.min(4, size), "roster chooses same count of parallel rooms");
                 check(new java.util.HashSet<>(data.selectedLayout()).size() == data.selectedLayout().size(),
                         "selection is without replacement");

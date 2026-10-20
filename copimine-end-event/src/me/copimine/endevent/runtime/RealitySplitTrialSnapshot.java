@@ -26,7 +26,8 @@ public final class RealitySplitTrialSnapshot {
     private static final String LEGACY_LAYOUT = "legacy-four-trials";
     private static final String GENERATION = PREFIX + "generation";
     private static final String TRIAL_PREFIX = PREFIX + "room.";
-    private static final int NAMED_SCHEMA = 4;
+    private static final int NAMED_SCHEMA = 5;
+    private static final int PREVIOUS_NAMED_SCHEMA = 4;
     public static final String NAMED_LAYOUT = "named-parallel-trials";
     private static final String EVENT = PREFIX + "event";
     private static final String SELECTED = PREFIX + "selected";
@@ -145,6 +146,7 @@ public final class RealitySplitTrialSnapshot {
         if (encoded == null || encoded.keySet().stream().anyMatch(key -> key == null)) {
             throw new IllegalArgumentException("MALFORMED_NAMED_WAVE7_SNAPSHOT");
         }
+        encoded = upgradeKnownNamedSchema(encoded);
         if (expectedRuntimeGeneration < 0L) {
             throw new IllegalArgumentException("named Wave 7 runtime generation is invalid");
         }
@@ -258,7 +260,10 @@ public final class RealitySplitTrialSnapshot {
                 Long.toString(duel.actor().revision()), Long.toString(duel.actor().nextActionTick()),
                 Long.toString(duel.actor().meleeCooldownUntilTick()),
                 Long.toString(duel.actor().rangedCooldownUntilTick()),
-                Long.toString(duel.actor().pendingUseUntilTick()), Long.toString(duel.actor().deathSerial()));
+                Long.toString(duel.actor().pendingUseUntilTick()), Long.toString(duel.actor().deathSerial()),
+                Long.toString(duel.actor().shieldActiveUntilTick()),
+                Long.toString(duel.actor().shieldCooldownUntilTick()),
+                Long.toString(duel.actor().jumpCooldownUntilTick()));
         String replica = duel.replicaState().entrySet().stream().sorted(Map.Entry.comparingByKey())
                 .map(entry -> base64(entry.getKey()) + "=" + base64(entry.getValue()))
                 .collect(Collectors.joining(","));
@@ -307,12 +312,33 @@ public final class RealitySplitTrialSnapshot {
     private static ActorState decodeActor(String raw) {
         if (raw.equals("-")) return null;
         String[] parts = raw.split(":", -1);
-        if (parts.length != 10) throw new IllegalArgumentException("malformed personal Echo actor record");
+        if (parts.length != 13) throw new IllegalArgumentException("malformed personal Echo actor record");
         return new ActorState(parseUuid(parts[0], "echo actor"), parseDouble(parts[1], "actor health"),
                 parseDouble(parts[2], "actor maximum health"), parseEnum(ActorLifecycle.class, parts[3], "actor lifecycle"),
                 parseLong(parts[4], "actor revision"), parseLong(parts[5], "actor next action"),
                 parseLong(parts[6], "actor melee cooldown"), parseLong(parts[7], "actor ranged cooldown"),
-                parseLong(parts[8], "actor pending use"), parseLong(parts[9], "actor death serial"));
+                parseLong(parts[8], "actor pending use"), parseLong(parts[9], "actor death serial"),
+                parseLong(parts[10], "actor shield active deadline"),
+                parseLong(parts[11], "actor shield cooldown"), parseLong(parts[12], "actor jump cooldown"));
+    }
+
+    /** Upgrade only the previously supported named layout; unknown/legacy layouts still fail closed. */
+    private static Map<String, String> upgradeKnownNamedSchema(Map<String, String> encoded) {
+        if (!Integer.toString(PREVIOUS_NAMED_SCHEMA).equals(encoded.get(SCHEMA))
+                || !NAMED_LAYOUT.equals(encoded.get(LAYOUT))) return encoded;
+        Map<String, String> upgraded = new LinkedHashMap<>(encoded);
+        upgraded.put(SCHEMA, Integer.toString(NAMED_SCHEMA));
+        for (Map.Entry<String, String> entry : encoded.entrySet()) {
+            if (!entry.getKey().startsWith(ECHO_DUEL_PREFIX)) continue;
+            String[] duel = entry.getValue().split("\\|", -1);
+            if (duel.length != 15 || "-".equals(duel[11])) continue;
+            String[] actor = duel[11].split(":", -1);
+            if (actor.length == 10) {
+                duel[11] = String.join(":", actor) + ":0:0:0";
+                upgraded.put(entry.getKey(), String.join("|", duel));
+            }
+        }
+        return Map.copyOf(upgraded);
     }
 
     private static Map<String, String> decodeReplica(String raw) {

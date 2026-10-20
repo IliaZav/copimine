@@ -18,6 +18,7 @@ def probe(tmp_path_factory):
     source = SOURCE.read_text("utf-8")
     methods = "\n".join(extract(source, signature) for signature in [
         "void tickBlackFogObjective(long now)",
+        "void replenishWaveFiveCombatIfNeeded(long now)",
         "void sendCurrentBlackFogPacket(Player player, boolean active, Location core)",
         "boolean restoreCurrentSafeZoneBlocks()",
         "void restoreBlackFogBlock(Block block, String originalBlockData)",
@@ -28,7 +29,10 @@ import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import me.copimine.endevent.domain.BlackFogTimingPolicy;
+import me.copimine.endevent.domain.BlackFogSafeZonePolicy;
 import me.copimine.endevent.domain.EndRiftObjective;
+import me.copimine.endevent.domain.Wave5PreFogRefillPolicy;
+import me.copimine.endevent.domain.WaveMechanicsPolicy;
 
 public final class BlackFogAdapterProbe {
     enum EventPhase { WAVE_5, RECOVERY_REQUIRED }
@@ -104,6 +108,12 @@ public final class BlackFogAdapterProbe {
     String eventId = "event", recoveryReason = "";
     long generation = 4L, blackFogPhaseDeadlineMillis, currentFogZoneSetupRetryAtMillis;
     int activeWave = 5, currentFogCycle, currentFogZoneCount, currentFogZoneSide, currentFogZoneSetupAttempts;
+    int waveSpawnGroupIndex = 1, waveSpawnEntityOffset, liveWaveMobCount, refillPacks;
+    long wave5PreFogRefillAtMillis;
+    boolean testWaveFrontVisualMode;
+    String worldName = "world";
+    List<WaveMechanicsPolicy.WaveCounts> waveSpawnSchedule = List.of(
+            new WaveMechanicsPolicy.WaveCounts(2, 1, 0, 0, 0));
     boolean zoneSetupSucceeds = true, frozen, restoreThrows;
     int setupCalls, fogEffects, packetRefreshes, cleanupCalls;
     String sentPacketSubject = "", sentPacketStatus = "", sentPacketVisual = "";
@@ -161,6 +171,13 @@ public final class BlackFogAdapterProbe {
         block.type = Material.STONE;
     }
     Logger getLogger() { return Logger.getAnonymousLogger(); }
+    int countLiveWaveEntitiesForWave(int wave) { return wave == 5 ? liveWaveMobCount : 0; }
+    void spawnWaveGroup(World world, Location location, int wave, boolean guardian,
+                        boolean test, WaveMechanicsPolicy.WaveCounts group, int offset) {
+        check(wave == 5 && !guardian, "pre-fog refill uses the Wave 5 normal mob roster");
+        refillPacks++;
+        liveWaveMobCount += group.total();
+    }
     void markBlackFogRecoveryRequired(String reason) {
         recoveryReason = reason;
         phase = EventPhase.RECOVERY_REQUIRED;
@@ -195,12 +212,33 @@ public final class BlackFogAdapterProbe {
                                 && p.sentPacketDuration == 0L && p.sentPacketIntensity == 0.0F,
                         "clear fog packet must not carry an active cycle");
             }
+            case "pre-fog-refill" -> {
+                Bukkit.world = p.core.world;
+                p.blackFogPhaseDeadlineMillis = 20_000L;
+                p.tickBlackFogObjective(10_000L);
+                check(p.refillPacks == 1 && p.liveWaveMobCount == 3,
+                        "an empty pre-first-fog combat phase starts one bounded Wave 5 refill pack");
+                check(p.wave5PreFogRefillAtMillis == 15_000L,
+                        "a successful refill stores its retry deadline");
+                p.liveWaveMobCount = 0;
+                p.tickBlackFogObjective(14_999L);
+                check(p.refillPacks == 1, "refill does not repeat before its retry deadline");
+                p.tickBlackFogObjective(15_000L);
+                check(p.refillPacks == 2, "a second full clear before the first fog receives another pack");
+                p.liveWaveMobCount = 0;
+                p.currentFogCycle = 1;
+                p.tickBlackFogObjective(15_001L);
+                check(p.refillPacks == 2, "refills stop after the first fog cycle begins");
+            }
             case "three-cycles" -> {
                 long now = 40_000L;
                 p.blackFogPhaseDeadlineMillis = now;
                 for (int cycle = 0; cycle < 3; cycle++) {
                     p.tickBlackFogObjective(now);
                     check(p.blackFogPhase == BlackFogPhase.SAFE, "due combat must reveal a safe area");
+                    int expectedSide = cycle == 0 ? 2 : 1;
+                    check(p.currentFogZoneSide == expectedSide,
+                            "four-player safe zones must shrink by the player-count policy");
                     long safeDeadline = now + 8_000L;
                     p.tickBlackFogObjective(safeDeadline);
                     check(p.blackFogPhase == BlackFogPhase.FOG && p.frozen,
@@ -304,14 +342,16 @@ public final class BlackFogAdapterProbe {
     compiled = subprocess.run([
         "javac", "-proc:none", "-encoding", "UTF-8", "-d", str(output), str(java),
         str(domain / "BlackFogTimingPolicy.java"), str(domain / "EndRiftObjective.java"),
-        str(domain / "BlackFogRecoverySnapshot.java"),
+        str(domain / "BlackFogRecoverySnapshot.java"), str(domain / "BlackFogSafeZonePolicy.java"),
+        str(domain / "Wave5PreFogRefillPolicy.java"), str(domain / "WaveMechanicsPolicy.java"),
+        str(domain / "PressureBudgetController.java"),
     ], capture_output=True, text=True, check=False)
     assert compiled.returncode == 0, compiled.stdout + compiled.stderr
     return output
 
 
 @pytest.mark.parametrize("scenario", [
-    "three-cycles", "setup-retry", "invalid-journal", "mark-restored-failure",
+    "three-cycles", "pre-fog-refill", "setup-retry", "invalid-journal", "mark-restored-failure",
     "restore-failure-does-not-advance", "invalid-original-data",
 ])
 def test_wave5_black_fog_adapter(probe, scenario):

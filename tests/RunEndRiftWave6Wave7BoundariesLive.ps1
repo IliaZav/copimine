@@ -344,6 +344,10 @@ function Start-Bot {
     END_RIFT_BOT_CONTROL_DIRECTORY = $controlDirectory
     END_RIFT_BOT_SKIP_AUTH = '1'
     END_RIFT_BOT_SKIP_REGISTER = '1'
+    # The local probe must answer the same 26.3 mod challenge as the official
+    # two-player runner before Paper accepts any survival interactions.
+    END_RIFT_TEST_CLIENT_MOD_HANDSHAKE = '1'
+    END_RIFT_TEST_CLIENT_MOD_VERSION = '0.1.3+26.3'
     END_RIFT_BOT_WAVE7_AUTOPILOT = [string]$env:END_RIFT_BOT_WAVE7_AUTOPILOT
     END_RIFT_BOT_WAVE7_HOLD_POSITION = [string]$env:END_RIFT_BOT_WAVE7_HOLD_POSITION
     END_RIFT_REFLECT_ENABLED = '1'
@@ -433,7 +437,7 @@ function Configure-Bot {
     [switch]$SkipTeleport
   )
   $null = Invoke-LocalRcon ("gamemode survival $name")
-  $null = Invoke-LocalRcon ("attribute $name minecraft:generic.max_health base set 1000")
+  $null = Invoke-LocalRcon ("attribute $name minecraft:max_health base set 1000")
   # The local probe accounts are reused between runs.  Older diagnostics set
   # their persistent base attack damage to zero, which makes a netherite-sword
   # packet reach PrePlayerAttack but fail Paper's positive-damage gate for one
@@ -442,7 +446,7 @@ function Configure-Bot {
   # Keep the geometry probe focused on containment, reach and server-authority
   # instead of allowing a mob hit to eject a client from its assigned chamber.
   # The official multi-player probe uses the same deterministic combat setup.
-  $null = Invoke-LocalRcon ("attribute $name minecraft:generic.knockback_resistance base set 1")
+  $null = Invoke-LocalRcon ("attribute $name minecraft:knockback_resistance base set 1")
   # Amplifier 255 overflows the vanilla instant-health shift on 1.21.1 and
   # can heal only one point.  Level 11 is already far above the local 1000 HP
   # harness maximum without relying on that overflow edge case.
@@ -479,14 +483,23 @@ function Wait-BotsOnline([string[]]$Names) {
 }
 
 function Sync-BotsHeldItem {
-  # Mineflayer can believe slot 0 is already selected and skip the packet that
-  # makes Paper re-evaluate the item attribute modifier. Signal the already
-  # configured clients after every replacement instead of racing from spawn.
-  $null = Invoke-LocalRcon 'say END_RIFT_BOUNDARY_SYNC_HELD_ITEM'
+  # Minecraft 26.3 chat component decoding is not reliable in the local
+  # Mineflayer probe. Use its loopback-only control directory after all item
+  # replacements instead of relying on a server chat round-trip.
+  foreach ($name in $names) {
+    $path = Assert-EndRiftLocalRuntimePath `
+      -Path (Join-Path $controlDirectory ($name + '.held-item-sync')) `
+      -LocalRuntimeRoot $localRuntimeRoot
+    [System.IO.File]::WriteAllText($path, [guid]::NewGuid().ToString('N') + [Environment]::NewLine,
+      [System.Text.UTF8Encoding]::new($false))
+  }
 }
 
 function Wait-BotsHeldItemSynced([string[]]$Names) {
-  Wait-Until -Description ("held-item sync for " + ($Names -join ', ')) -Seconds 20 -Condition {
+  # The ViaVersion-backed 1.21.1 probes can take longer to process the 26.3
+  # inventory/chat packets after reconnecting. Keep waiting for the explicit
+  # client acknowledgement instead of failing before the disposable wave starts.
+  Wait-Until -Description ("held-item sync for " + ($Names -join ', ')) -Seconds 60 -Condition {
     $missing = @($Names | Where-Object {
         $path = Join-Path $runtimeRoot ($_ + '-wave6-wave7.log')
         -not (Test-Path -LiteralPath $path -PathType Leaf) -or
@@ -605,13 +618,16 @@ function Start-LocalMinecraft {
   Assert-EndRiftLocalServerTreeIsolated `
     -ServerDir $serverDir -LocalRuntimeRoot $localRuntimeRoot | Out-Null
   Read-LocalEnvironment
-  $java = (Get-Command java.exe -ErrorAction Stop).Source
+  $java = Assert-EndRiftLocalRuntimePath `
+    -Path (Join-Path $runtimeRoot 'toolchains\temurin-25.0.4.1\jdk-25.0.4.1+1\bin\java.exe') `
+    -LocalRuntimeRoot $localRuntimeRoot -MustExist
   $paperJarPath = Assert-EndRiftLocalRuntimePath -Path (Join-Path $serverDir 'purpur.jar') -LocalRuntimeRoot $localRuntimeRoot -MustExist
   $stdout = Assert-EndRiftLocalRuntimePath -Path (Join-Path $runtimeRoot ("wave7-restart-" + (Get-Date -Format 'yyyyMMddHHmmss') + '.stdout.log')) `
     -LocalRuntimeRoot $localRuntimeRoot
   $stderr = Assert-EndRiftLocalRuntimePath -Path (Join-Path $runtimeRoot ("wave7-restart-" + (Get-Date -Format 'yyyyMMddHHmmss') + '.stderr.log')) `
     -LocalRuntimeRoot $localRuntimeRoot
-  $process = Start-Process -FilePath $java -ArgumentList @('-Xms1G', '-Xmx2G', '-jar', ('"' + $paperJarPath + '"'), 'nogui') `
+  $process = Start-Process -FilePath $java `
+    -ArgumentList @('-Xms128M', '-Xmx512M', '-Xss512k', '-XX:CICompilerCount=2', '-XX:TieredStopAtLevel=1', '-XX:HeapBaseMinAddress=34g', '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-Dfile.encoding=UTF-8', '-jar', ('"' + $paperJarPath + '"'), 'nogui') `
     -WorkingDirectory $serverDir -RedirectStandardOutput $stdout -RedirectStandardError $stderr `
     -WindowStyle Hidden -PassThru
   $processes.Add($process)
@@ -678,13 +694,30 @@ try {
   # Keep the Wave 6 seal probe stationary.  The clients still use real
   # survival packets; navigation resumes explicitly before Wave 7 starts.
   Set-BotMode -Names $names -Mode 'PASSIVE'
-  $mobSpawning = Invoke-LocalRcon 'gamerule doMobSpawning'
-  $mobSpawningMatch = [Regex]::Match($mobSpawning,
-    '(?i)doMobSpawning(?:\s*=\s*|\s+is\s+currently\s+set\s+to:\s*)(true|false)')
-  if (-not $mobSpawningMatch.Success) {
-    throw "Could not read local doMobSpawning gamerule: $mobSpawning"
+  # Minecraft 26.3's /gamerule command requires a value and no longer returns
+  # the current value when invoked with only a rule name. Persist first, then
+  # read the saved rule from level.dat; an omitted value means the vanilla
+  # default (true). The live test restores this exact value in its cleanup.
+  $null = Invoke-LocalRcon 'save-all'
+  $levelNameLine = @((Get-Content -LiteralPath (Join-Path $serverDir 'server.properties')) |
+    Where-Object { $_ -match '^level-name=' })
+  if ($levelNameLine.Count -ne 1) {
+    throw 'Could not identify the isolated local world level-name.'
   }
-  $previousLocalMobSpawning = $mobSpawningMatch.Groups[1].Value.ToLowerInvariant()
+  $levelName = $levelNameLine[0].Substring('level-name='.Length).Trim()
+  if ([string]::IsNullOrWhiteSpace($levelName)) {
+    throw 'The isolated local world level-name is empty.'
+  }
+  $levelDatPath = Assert-EndRiftLocalRuntimePath `
+    -Path (Join-Path (Join-Path $serverDir $levelName) 'level.dat') `
+    -LocalRuntimeRoot $localRuntimeRoot -MustExist
+  $node = (Get-Command node.exe -ErrorAction Stop).Source
+  $gameruleReader = Join-Path $PSScriptRoot 'ReadLocalMinecraftMobSpawning.js'
+  $mobSpawning = (& $node $gameruleReader $levelDatPath | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0 -or $mobSpawning -notmatch '^(?i:true|false)$') {
+    throw "Could not read saved local doMobSpawning gamerule: $mobSpawning"
+  }
+  $previousLocalMobSpawning = $mobSpawning.ToLowerInvariant()
   Set-LocalArenaMobSpawning -Enabled $false
   $null = Invoke-LocalRcon 'cmend wave clear'
   $null = Invoke-LocalRcon 'cmend boss kill cleanup'
@@ -722,13 +755,17 @@ try {
   Complete-LiveStep
 
   Start-LiveStep -Id 'W7-BARRIER-01' -Description 'Build the connected one-block Wave 7 barrier and probe a real collision cell.'
-  Set-BotMode -Names $names -Mode 'ACTIVE_WAVE7'
+  # Keep the disposable trial intact through the barrier and restart probes.
+  # The bot mode survives process restarts, so switch combat on only after the
+  # rehydrated wall has been checked and the clients are configured again.
+  Set-BotMode -Names $names -Mode 'PASSIVE'
   $null = Invoke-LocalRcon 'cmend wave clear'
   Clear-LocalArenaAmbientMobs -Core $core
   Restart-Bots -Names $names -Core $core
   $wave7Offset = Log-Length
   $null = Invoke-LocalRcon 'cmend test wave 7'
-  Wait-Log -AfterOffset $wave7Offset -Pattern 'WAVE_TEST_STARTED.*wave=7\b' | Out-Null
+  Wait-Log -AfterOffset $wave7Offset -Pattern 'WAVE_OBJECTIVE_STARTED.*wave=7\b' | Out-Null
+  Wait-Log -AfterOffset $wave7Offset -Pattern 'END_RIFT_NAMED_WAVE7_TRIALS_READY.*layout=\[WARDEN, MOBILE_MARKSMAN\]' | Out-Null
   $barrierLog = Wait-Log -AfterOffset $wave7Offset `
     -Pattern 'END_RIFT_WAVE7_BARRIERS_READY.*cells=(\d+).*height=6.*material=barrier.*collision=true.*visible=true.*journaled=true'
   $barrierMatch = [Regex]::Match($barrierLog, 'END_RIFT_WAVE7_BARRIERS_READY.*cells=(\d+)')
@@ -743,10 +780,12 @@ try {
   # the bots are online. Probe the physical cells before asking for the
   # objective summary, so cleanup cannot erase the evidence first.
   $probePoint = Assert-BarrierBlock -Core $core -FloorY $floorY -AfterOffset $wave7Offset
-  $wave7Objective = Invoke-LocalRcon 'cmend debug objectives'
-  $wave7VisualMatch = [Regex]::Match(($wave7Objective -replace '\u00A7.', ''), 'visuals=(\d+)')
+  # The bots can complete the Mobile Marksman trial immediately after the
+  # physical probe, which removes the barrier displays before a later status
+  # query. Read the visual count from the barrier-ready event captured above.
+  $wave7VisualMatch = [Regex]::Match($barrierLog, 'visual_cells=(\d+)')
   if (-not $wave7VisualMatch.Success -or [int]$wave7VisualMatch.Groups[1].Value -le 0) {
-    throw "Wave 7 did not expose barrier visuals: $wave7Objective"
+    throw "Wave 7 barrier did not expose visual cells: $barrierLog"
   }
   Write-Output "LIVE_WAVE7_ONE_BLOCK_WALL_PASS chambers=2 cells=$($barrierMatch.Groups[1].Value) columns=$($columnMatch.Groups[1].Value) visual_displays=$($wave7VisualMatch.Groups[1].Value) wall_material=barrier barrier=$probePoint collision=true connected=raster"
   Complete-LiveStep
@@ -813,6 +852,7 @@ try {
   Complete-LiveStep
 
   Start-LiveStep -Id 'W7-NATURAL-CLEANUP-01' -Description 'Allow recovered Wave 7 to complete naturally and verify server-owned cleanup.'
+  Set-BotMode -Names $names -Mode 'ACTIVE_WAVE7'
   $naturalOffset = Log-Length
   Wait-Log -AfterOffset $naturalOffset -Pattern 'END_RIFT_CHAMBERS_COMPLETE.*chambers=2' -Seconds $BotDurationSeconds | Out-Null
   Wait-Log -AfterOffset $naturalOffset -Pattern 'DISPOSABLE_WAVE_NATURAL_COMPLETE.*wave=7.*cleanup=server.*phase_unchanged=true' -Seconds $TimeoutSeconds | Out-Null

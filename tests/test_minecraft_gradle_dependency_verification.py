@@ -297,7 +297,7 @@ def test_gradle_dependency_provenance_covers_every_external_checksum() -> None:
 
     assert report["counts"] == {
         "totalExternalArtifacts": len(expected_checksums),
-        "publisherSidecarMatches": 531,
+        "publisherSidecarMatches": 544,
         "directArtifactMatches": 93,
         "alternateMirrorSidecarMismatches": 6,
     }

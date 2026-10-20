@@ -22,10 +22,13 @@ public abstract class KeyboardInputPrisonerMixin extends ClientInput {
             return;
         }
 
-        boolean reverseActive = ClientBridgeProtocol.endEventState().isReverseActive(System.currentTimeMillis());
-        if (reverseActive) {
-            this.keyPresses = WaveTwoControlInputPolicy.apply(this.keyPresses, true);
-            this.moveVector = WaveTwoControlInputPolicy.moveVector(this.keyPresses);
-        }
+        WaveTwoControlInputPolicy.applyIfReverseActive(
+                this.keyPresses,
+                ClientBridgeProtocol.endEventState(),
+                System.currentTimeMillis())
+                .ifPresent(applied -> {
+                    this.keyPresses = applied.keyPresses();
+                    this.moveVector = applied.moveVector();
+                });
     }
 }

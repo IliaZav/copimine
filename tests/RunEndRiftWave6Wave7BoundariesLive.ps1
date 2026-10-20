@@ -870,8 +870,8 @@ try {
   }
   $damageLedger = Get-PositivePlayerDamageLedger -AfterOffset $naturalOffset
   $damageParts = [System.Collections.Generic.List[string]]::new()
-  # The reflection-only chamber does not require Warden damage; its three reflected seal hits
-  # are checked by END_RIFT_CHAMBERS_COMPLETE for this same two-player trial.
+  # Only a selected Warden trial requires Warden-to-player damage evidence.
+  # Other random layouts are covered by the authoritative chamber completion marker.
   foreach ($name in $names) {
     $uuid = $playerUuids[$name]
     if (-not $damageLedger.ContainsKey($uuid) -or [int]$damageLedger[$uuid].hits -lt 1) { continue }
@@ -879,11 +879,15 @@ try {
         [int]$damageLedger[$uuid].hits,
         ([double]$damageLedger[$uuid].totalDelta).ToString('0.###', [Globalization.CultureInfo]::InvariantCulture)))
   }
-  if ($damageParts.Count -lt 1) {
+  if ($wave7Layout -contains 'WARDEN' -and $damageParts.Count -lt 1) {
     throw 'Wave 7 natural completion did not record any positive authoritative Warden-to-player damage.'
   }
-  Write-Output ("LIVE_WAVE7_PLAYER_DAMAGE_LEDGER_PASS players={0} positive_attackers={1} {2}" -f
-    $names.Count, $damageParts.Count, ($damageParts -join ' '))
+  if ($wave7Layout -contains 'WARDEN') {
+    Write-Output ("LIVE_WAVE7_PLAYER_DAMAGE_LEDGER_PASS players={0} positive_attackers={1} {2}" -f
+      $names.Count, $damageParts.Count, ($damageParts -join ' '))
+  } else {
+    Write-Output "LIVE_WAVE7_PLAYER_DAMAGE_LEDGER_NOT_APPLICABLE selected_trials=$($wave7Layout -join ',') reason=warden_not_selected"
+  }
   Write-Output 'LIVE_WAVE7_NATURAL_COMPLETION_CLEANUP_PASS blocks_restored=true displays_removed=true transient_entities=0 phase_unchanged=true'
   Complete-LiveStep
 

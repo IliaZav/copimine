@@ -93,3 +93,22 @@ Loaded the canonical commerce catalog directly for a source consistency check: a
 ## Acceptance state
 
 Source changes imported and focused compilation passed. Tests were compiled/parsed only. Server startup/accessibility, gameplay, native Minecraft, release installation, and independent review remain unverified by this task. `nativeVerified=false`. This checkpoint is intended for one local source commit followed by independent review before any push.
+
+## Independent review correction round
+
+Starting checkpoint: `7318a0efb79955602f3a23454739c3ace3abfc29`. The coordinator supplied the completed independent review (two P2 policy-test defects) and the CodeRabbit Warden-layout finding, and authorized one focused correction commit plus source policy test execution.
+
+Validated and fixed:
+
+1. `PressureBudgetControllerTest`: imported expected totals 9/11/15 for 3/4/6 players were inconsistent with the existing ordinary budget. Production `Profile.projectileCap()` remains `max(4, min(16, 4 + players / 3))`, using integer division; this gives ordinary limits 4/5/5/6 for 2/3/4/6 players. The accepted checkpoint adds exactly five reserved named-rain children, yielding combined limits 9/10/10/11. The source change explicitly preserves ordinary caps, so production behavior was retained and the test now independently checks ordinary values and correct combined totals. Before correction, execution failed at the three-player assertion.
+2. `WaveProjectileAdmissionControllerTest`: removed the old mutually exclusive reservation assumptions. The sequence now verifies ordinary-first and rain-first coexistence, atomic rejection above the ordinary cap, one named rain at a time, separate release accounting, group rollback, transfer-to-cloud accounting, release of named unmaterialized children while retaining the live child, last-child lane reuse, and clearing/reusing both fully occupied lanes. Before correction, execution failed at the assertion forbidding a rain alongside one ordinary projectile.
+3. `RunEndRiftWave6Wave7BoundariesLive.ps1`: the initial random layout still requires exactly two distinct members of the valid four-trial pool. The Warden damage assertion and PASS marker now run only when `WARDEN` is selected. A layout without Warden emits an explicit NOT_APPLICABLE marker with its selected trials, and retains authoritative chamber-completion/cleanup requirements. The source contract checks the count, uniqueness, validity, conditional Warden assertion, and non-applicable result. The live runner was never executed.
+
+Verification after correction:
+
+- Exact JDK `25.0.4.1` compiled all five source policy tests against the already built canonical End Event classes.
+- Executed only these plain Java policy tests: `BlackFogCurtainPolicyTest`, `PressureBudgetControllerTest`, `WavePressurePolicyTest`, `WaveProjectileAdmissionControllerTest`, `me.copimine.endevent.domain.WaveTwoStagePolicyTest`. All five returned `OK`.
+- `python -m pytest -q tests/test_wave7_named_runtime.py -k sandbox_uses_the_same_distinct_random_trial_pool --basetemp=build/pytest-review-policy-fix -o cache_dir=build/pytest-review-cache`: `1 passed, 12 deselected`. This selected test reads source text only; no server, wave simulation, or Java subprocess fixtures were run by pytest.
+- PowerShell parser on the changed runner: passed.
+- `git diff --check`: passed.
+- No production source, global toolchain, build JAR, live runtime, or other worktree changed in the correction round. No gameplay/live-plugin tests or push. Native/server acceptance remains unverified; `nativeVerified=false`.

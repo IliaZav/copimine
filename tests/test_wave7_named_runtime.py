@@ -262,6 +262,10 @@ def test_wave7_sandbox_uses_the_same_distinct_random_trial_pool_as_official_runs
     assert "layout=\\[([A-Z_, ]+)\\]" in runner
     assert "Groups[1].Value -split ', '" in runner
     assert "$wave7Layout.Count -ne 2" in runner
+    assert "@($wave7Layout | Select-Object -Unique).Count -ne 2" in runner
+    assert "@($wave7Layout | Where-Object { $_ -notin $validWave7Trials }).Count -gt 0" in runner
+    assert "if ($wave7Layout -contains 'WARDEN' -and $damageParts.Count -lt 1)" in runner
+    assert "LIVE_WAVE7_PLAYER_DAMAGE_LEDGER_NOT_APPLICABLE" in runner
     assert "layout=\\[WARDEN, MOBILE_MARKSMAN\\]" not in runner
 
 

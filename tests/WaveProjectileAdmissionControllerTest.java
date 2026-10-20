@@ -11,18 +11,20 @@ public final class WaveProjectileAdmissionControllerTest {
         UUID occupiedSlot = UUID.randomUUID();
         check(admission.reserveGroup(occupiedSlot, 2, 1),
                 "an ordinary projectile reserves its configured slot first");
-        check(!admission.reserveNamedFiveArrowRain(UUID.randomUUID(), 2),
-                "the five-arrow exception cannot be layered over an existing projectile");
-        check(admission.releaseUnspawnedReservations(occupiedSlot) == 1,
-                "the setup reservation can be released before the named rain test");
         check(admission.reserveNamedFiveArrowRain(rain, 2),
-                "the approved five-arrow rain fits its named exception at two players");
+                "the named rain can coexist with an already reserved ordinary projectile");
+        check(admission.activeProjectileCount() == 6,
+                "both lanes contribute their physical children to diagnostics");
+        check(admission.releaseUnspawnedReservations(occupiedSlot) == 1,
+                "releasing the ordinary reservation leaves the named lane intact");
+        check(!admission.reserveNamedFiveArrowRain(UUID.randomUUID(), 2),
+                "the active named lane cannot admit a second rain");
         check(admission.activeProjectileCount() == 5,
                 "the full physical child count is reserved atomically before spawning");
 
         UUID blockedVolley = UUID.randomUUID();
-        check(!admission.reserveGroup(blockedVolley, 2, 3),
-                "a three-arrow volley is denied whole when its physical children cannot fit");
+        check(!admission.reserveGroup(blockedVolley, 2, 5),
+                "an ordinary group above its four-child lane cap is denied whole");
         check(admission.projectileIds(blockedVolley).isEmpty()
                         && admission.activeProjectileCount() == 5,
                 "a rejected volley cannot leave a partial cast or reserve leaked children");
@@ -40,8 +42,13 @@ public final class WaveProjectileAdmissionControllerTest {
                 "an impacted child releases its physical projectile slot");
         check(admission.activeProjectileCount() == 4,
                 "one cleanup frees exactly one simultaneous entity slot");
-        check(!admission.reserveGroup(blockedVolley, 2, 3),
-                "a remaining four children still cannot admit a partial three-arrow volley");
+        check(admission.reserveGroup(blockedVolley, 2, 3),
+                "ordinary projectiles can reserve after a named rain is already active");
+        check(admission.activeProjectileCount() == 7,
+                "three ordinary and four remaining named children coexist");
+        check(admission.releaseUnspawnedReservations(blockedVolley) == 3
+                        && admission.activeProjectileCount() == 4,
+                "ordinary rollback frees only its own lane while rain children remain tracked");
         for (int index = 1; index < rainArrows.length; index++) {
             check(admission.releaseProjectile(rainArrows[index]),
                     "additional expired children release their physical slots");
@@ -141,6 +148,26 @@ public final class WaveProjectileAdmissionControllerTest {
         UUID retryAfterFailure = UUID.randomUUID();
         check(admission.reserveNamedFiveArrowRain(retryAfterFailure, 2),
                 "the full physical cap is reusable immediately after failed-cast rollback");
+        UUID survivingRainChild = UUID.randomUUID();
+        check(admission.trackProjectile(retryAfterFailure, survivingRainChild),
+                "a partial named cast can retain its one physical child");
+        check(admission.releaseUnspawnedReservations(retryAfterFailure) == 4
+                        && admission.activeProjectileCount() == 1,
+                "named rollback releases unmaterialized children without dropping the live child");
+        check(!admission.reserveNamedFiveArrowRain(UUID.randomUUID(), 2),
+                "a surviving named child keeps the single named lane occupied");
+        check(admission.releaseProjectile(survivingRainChild)
+                        && admission.reserveNamedFiveArrowRain(UUID.randomUUID(), 2),
+                "the last named child releases the lane for a new rain");
+        check(admission.reserveGroup(UUID.randomUUID(), 2, 4),
+                "ordinary capacity is reusable after partial rollback");
+        admission.clear();
+        check(admission.activeGroupCount() == 0 && admission.activeProjectileCount() == 0,
+                "clear resets both populated lanes and all physical counters");
+        check(admission.reserveGroup(UUID.randomUUID(), 2, 4)
+                        && admission.reserveNamedFiveArrowRain(UUID.randomUUID(), 2),
+                "both lanes can be filled again immediately after clear");
+        admission.clear();
         System.out.println("WaveProjectileAdmissionControllerTest OK");
     }
 

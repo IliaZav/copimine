@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Never reset, clean, overwrite, or mass-commit any existing dirty worktree.
-- Before cleanup, publish reviewable source/config/docs changes from in-scope dirty worktrees to GitHub recovery refs so the original state can be restored.
+- Before cleanup, publish reviewable source/config/docs changes from in-scope dirty worktrees on the canonical branch and verify the remote SHA so the original state can be restored from Git history.
 - Preserve the active recovered arena world, server runtime, secrets, unique release data, and all unrelated plugin sources.
 - Keep operational `admin-web/backend`, cabinet, shop, authentication, event, election, and server-management code unless a replacement is proven.
 - Exclude standalone `site-v6` and `CopiMineLauncher` features from the canonical branch because the user said they are not needed.
@@ -48,8 +48,8 @@
 - Do not modify the existing `copimine-main` checkout or active End Rift worktree.
 
 - [x] Verify the integration base commit and create the new local checkout from it.
-- [ ] Record branch, commit, remote, and initial clean status in a short audit note.
-- [ ] Confirm the new checkout has no local runtime world or secret files.
+- [x] Record branch, commit, remote, and initial clean status in a short audit note.
+- [x] Confirm the new checkout has no local runtime world or secret files.
 
 ### Task 3: Review and integrate non-site plugin/core deltas
 
@@ -96,6 +96,6 @@
 - Candidate output: `D:\Desktop\Copimine\copimine-main\.worktrees\site-launcher-audit\artifacts\launcher`.
 - Preserve `admin-web`, launcher source/branch metadata until separately retired, all Minecraft `instance*` and runtime roots, recovered arena data, release-stage worlds, and test snapshots that contain plugin/runtime evidence.
 
-- [ ] Recheck the candidate path is ignored/untracked and contains no Minecraft world markers immediately before deletion.
+- [ ] Recheck each exact candidate path is ignored/untracked and contains no Minecraft world markers immediately before deletion.
 - [ ] Delete only individually verified generated launcher/site/cache outputs that are ignored or untracked and contain no runtime, world, secret, or unique evidence data; report measured reclaimed size.\r\n- [ ] Do not promise a 300 GB reduction unless the verified candidates total that much; report what remains and why.
 - [ ] Re-inventory the root and list remaining cleanup candidates without deleting any registered worktree or world-bearing archive.

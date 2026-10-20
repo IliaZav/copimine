@@ -89,3 +89,45 @@ Results:
 - Initial generic Python 3.14 dependency probe lacked FastAPI. Initial pytest under Python 3.14 passed assertions but failed during cleanup of the global temp `pytest-current` symlink with WinError 5; no cleanup workaround touched that shared path. Switched to existing Python 3.13 with installed backend dependencies and explicit worktree scratch `--basetemp`; final focused run completed cleanly.
 
 Limits: these are source and automated isolated SQLite/contract checks. They do not prove PostgreSQL concurrency, deployed RCON behavior, live server mechanics, or native client acceptance. No full build was needed for the selected Python/JavaScript source changes; excluded Java files were not rebuilt.
+
+
+## Independent review: fix round 1
+
+Base for this separate fix commit: `18e61ca7f94b9204ee68d38f89625d7cd9f2190d`. Implemented the two important identity findings and the minor rate-test finding in one fix round. No push or runtime operations.
+
+Changes:
+
+- Candidate queries now iterate every ordered result for both UUID and name, including both durable link sources. Removed the six resolver `LIMIT 1` clauses; rejecting a hydrated identity continues to the next result in the same source before moving to the next source.
+- Added `lock_player_account_identity`, shared by credential update and deletion. In the same transaction it locks the account using `FOR UPDATE`, rejects a changed cached UUID, locks relevant Minecraft and whitelist link rows using `FOR UPDATE`, and revalidates the effective active durable identity and target ownership. Changed/revoked/reassigned identities return HTTP 409 before credentials, whitelist, or deletion statements are changed. Accounts predating durable links retain their valid cached-identity behavior.
+- Deletion explicitly pins whitelist removal and associated identity cleanup to the originally requested UUID/name, after locked validation.
+- Rate-limit test computes the production constant assignment expressions from `main.py` with a controlled environment, then resolves the actual route argument. Removed duplicated production defaults from the test. It checks the minimum with low configured values and verifies an explicit configured value is honored.
+- Added `tests/test_player_identity_admin_contract.py` with four candidate-iteration scenarios (cache UUID/name and both durable name sources), four deterministic rebind scenarios (update/delete, cache plus link/link-only), and a valid-link deletion/whitelist target check. Existing backend regression checks continue to cover valid credential updates and durable-link updates.
+
+RED evidence:
+
+```powershell
+py -3.13 -m pytest -q --basetemp=.superpowers/sdd/2026-10-20-copimine-source-of-truth/pytest-review-red tests/test_player_identity_admin_contract.py
+py -3.13 -m pytest -q --basetemp=.superpowers/sdd/2026-10-20-copimine-source-of-truth/pytest-review-race-red tests/test_player_identity_admin_contract.py -k 'mutation or valid_link'
+```
+
+The initial run reproduced all four candidate failures. Its deletion fixtures initially lacked legacy production relation tables; those empty disposable tables were added to the fixture. The corrected race run then demonstrated **4 failed, 1 passed, 4 deselected**, with all four failures being the intended `DID NOT RAISE HTTPException` assertions, and valid deletion passing. This establishes the update and delete race regressions independently of missing-table fixture errors.
+
+Final verification:
+
+```powershell
+py -3.13 -m pytest -q --basetemp=.superpowers/sdd/2026-10-20-copimine-source-of-truth/pytest-review-green tests/test_player_identity_admin_contract.py tests/test_public_rate_limit_contract.py tests/test_public_config_catalog_cache.py
+py -3.13 admin-web/scripts/backend_security_regression_test.py
+py -3.13 -m pytest -q --basetemp=.superpowers/sdd/2026-10-20-copimine-source-of-truth/pytest-review-compat tests/test_public_rate_limit_contract.py tests/test_bed_respawn_contract.py tests/test_narcotics_signing_contract.py tests/test_launcher_auth_slowness_contract.py
+py -3.13 admin-web/scripts/frontend_backend_contract_test.py
+git diff --check
+```
+
+Results:
+
+- Focused identity/cache/rate suite: exit 0, **12 passed, 2 subtests passed in 68.21s**. Existing FastAPI lifespan deprecation warnings only.
+- Complete backend security regression: exit 0, `Backend security regression test OK`; existing intentional audit/panel write failure simulations logged as before. Full output retained only in ignored `backend-review-fix.log`.
+- Compatibility/rate suite: exit 0, **13 passed, 2 subtests passed in 2.07s**. The two rate tests overlap with the focused run; there are **23 distinct passing pytest cases** across these commands.
+- Frontend/backend contract: exit 0, `routes=226 references=152 direct_calls=151`.
+- Diff whitespace check: exit 0; informational Git LF/CRLF notice only.
+
+Self-review: the shared helper is used by both resolver-to-lock mutation paths. A changed identity reaches HTTP 409 before whitelist removal, and the deterministic tests verify the account remains present and its credentials remain unchanged. Both PostgreSQL link queries explicitly request row locks and retain them through the surrounding transaction. The fixture reproduces the database state visible after an interleaving by injecting the rebind just after resolution; SQLite does not provide PostgreSQL row-lock behavior, so this is deterministic interleaving coverage plus source inspection, not a claim of a live concurrent PostgreSQL test. Native/runtime acceptance remains unperformed and `nativeVerified=false`.

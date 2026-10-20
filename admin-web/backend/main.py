@@ -4353,7 +4353,6 @@ def player_site_account_for_identity(
                     SELECT * FROM site_accounts
                     WHERE role='player' AND minecraft_uuid=%s
                     ORDER BY enabled DESC,last_login_at DESC,created_at DESC
-                    LIMIT 1
                     """,
                     (uuid_value,),
                 ),
@@ -4364,7 +4363,6 @@ def player_site_account_for_identity(
                     JOIN site_accounts sa ON sa.id=mal.site_account_id
                     WHERE sa.role='player' AND mal.minecraft_uuid=%s AND mal.status='ACTIVE'
                     ORDER BY sa.enabled DESC,mal.updated_at DESC,sa.updated_at DESC
-                    LIMIT 1
                     """,
                     (uuid_value,),
                 ),
@@ -4375,7 +4373,6 @@ def player_site_account_for_identity(
                     JOIN site_accounts sa ON sa.id=wal.site_account_id
                     WHERE sa.role='player' AND wal.minecraft_uuid=%s AND wal.whitelisted=1
                     ORDER BY sa.enabled DESC,wal.synced_at DESC,sa.updated_at DESC
-                    LIMIT 1
                     """,
                     (uuid_value,),
                 ),
@@ -4389,7 +4386,6 @@ def player_site_account_for_identity(
                     SELECT * FROM site_accounts
                     WHERE role='player' AND LOWER(minecraft_name)=LOWER(%s)
                     ORDER BY enabled DESC,last_login_at DESC,created_at DESC
-                    LIMIT 1
                     """,
                     (name_value,),
                 ),
@@ -4400,7 +4396,6 @@ def player_site_account_for_identity(
                     JOIN site_accounts sa ON sa.id=mal.site_account_id
                     WHERE sa.role='player' AND LOWER(mal.minecraft_name)=LOWER(%s) AND mal.status='ACTIVE'
                     ORDER BY sa.enabled DESC,mal.updated_at DESC,sa.updated_at DESC
-                    LIMIT 1
                     """,
                     (name_value,),
                 ),
@@ -4411,15 +4406,13 @@ def player_site_account_for_identity(
                     JOIN site_accounts sa ON sa.id=wal.site_account_id
                     WHERE sa.role='player' AND LOWER(wal.minecraft_name)=LOWER(%s) AND wal.whitelisted=1
                     ORDER BY sa.enabled DESC,wal.synced_at DESC,sa.updated_at DESC
-                    LIMIT 1
                     """,
                     (name_value,),
                 ),
             ]
         )
     for query, params in queries:
-        row = conn.execute(query, params).fetchone()
-        if row:
+        for row in conn.execute(query, params).fetchall():
             account = hydrate_player_account_link(conn, dict(row))
             # Hydration can replace a stale cache with a different active link.
             # Never expose or mutate that other identity through this lookup.
@@ -4430,6 +4423,57 @@ def player_site_account_for_identity(
                 continue
             return account
     return None
+
+
+def lock_player_account_identity(conn: Any, account_id: str, requested_uuid: str) -> dict[str, Any]:
+    """Lock the account and durable links, then validate the mutation target.
+
+    Rebind operations lock the account before changing its link rows. Keeping
+    those locks until commit prevents a lookup made earlier in the transaction
+    from redirecting a credential update or deletion to a new identity.
+    """
+    conflict = "Minecraft-привязка изменилась. Обнови карточку игрока и повтори действие"
+    row = conn.execute(
+        "SELECT id,username,role,minecraft_uuid,minecraft_name FROM site_accounts WHERE id=%s AND role='player' FOR UPDATE",
+        (account_id,),
+    ).fetchone()
+    if not row or str(row_get(row, "minecraft_uuid", "") or "").strip() != requested_uuid:
+        raise HTTPException(status_code=409, detail=conflict)
+    links = conn.execute(
+        """
+        SELECT minecraft_uuid,site_account_id,status FROM minecraft_account_links
+        WHERE site_account_id=%s OR minecraft_uuid=%s
+        ORDER BY updated_at DESC,linked_at DESC,minecraft_uuid
+        FOR UPDATE
+        """,
+        (account_id, requested_uuid),
+    ).fetchall()
+    whitelist_links = conn.execute(
+        """
+        SELECT minecraft_uuid,site_account_id,whitelisted FROM whitelist_account_links
+        WHERE site_account_id=%s OR minecraft_uuid=%s
+        ORDER BY synced_at DESC,minecraft_uuid
+        FOR UPDATE
+        """,
+        (account_id, requested_uuid),
+    ).fetchall()
+    active = [link for link in links if row_get(link, "status") == "ACTIVE"]
+    whitelisted = [link for link in whitelist_links if row_get(link, "whitelisted") == 1]
+    for link in [*active, *whitelisted]:
+        if row_get(link, "minecraft_uuid") == requested_uuid and row_get(link, "site_account_id") != account_id:
+            raise HTTPException(status_code=409, detail=conflict)
+    own_links = [link for link in links if row_get(link, "site_account_id") == account_id]
+    own_whitelist = [link for link in whitelist_links if row_get(link, "site_account_id") == account_id]
+    effective = next((link for link in active if row_get(link, "site_account_id") == account_id), None)
+    if effective is None:
+        effective = next((link for link in whitelisted if row_get(link, "site_account_id") == account_id), None)
+    if effective is not None:
+        if row_get(effective, "minecraft_uuid") != requested_uuid:
+            raise HTTPException(status_code=409, detail=conflict)
+    elif own_links or own_whitelist:
+        # A revoked durable link cannot be revived by stale cached columns.
+        raise HTTPException(status_code=409, detail=conflict)
+    return dict(row)
 
 
 def player_account_by_id(conn: Any, account_id: str) -> dict[str, Any]:
@@ -5706,13 +5750,7 @@ def admin_update_player_account_sync(player: str, actor: str, data: AdminPlayerA
         row = player_site_account_for_identity(conn, uuid, player)
         if not row:
             raise HTTPException(status_code=409, detail="У игрока нет привязанного аккаунта сайта")
-        locked_row = conn.execute(
-            "SELECT id,username,role,minecraft_uuid,minecraft_name FROM site_accounts WHERE id=%s AND role='player' FOR UPDATE",
-            (row.get("id"),),
-        ).fetchone()
-        if not locked_row:
-            raise HTTPException(status_code=409, detail="Аккаунт уже удалён или изменён")
-        current = dict(locked_row)
+        current = lock_player_account_identity(conn, str(row.get("id") or ""), uuid)
         username_changed = bool(requested_username and requested_username.lower() != str(current.get("username") or "").lower())
         if username_changed:
             collision = conn.execute(
@@ -5770,16 +5808,10 @@ def admin_delete_player_account_sync(player: str, actor: str) -> dict[str, Any]:
         row = player_site_account_for_identity(conn, uuid, player)
         if not row:
             raise HTTPException(status_code=409, detail="У игрока нет привязанного аккаунта сайта")
-        locked_row = conn.execute(
-            "SELECT id,username,role,minecraft_uuid,minecraft_name FROM site_accounts WHERE id=%s AND role='player' FOR UPDATE",
-            (row.get("id"),),
-        ).fetchone()
-        if not locked_row:
-            raise HTTPException(status_code=409, detail="Аккаунт уже удалён или изменён")
-        current = dict(locked_row)
+        current = lock_player_account_identity(conn, str(row.get("id") or ""), uuid)
         account_id = str(current.get("id") or "").strip()
-        old_uuid = str(current.get("minecraft_uuid") or uuid).strip()
-        old_name = str(current.get("minecraft_name") or uuid_to_name().get(old_uuid, player)).strip()
+        old_uuid = uuid
+        old_name = player
         if not account_id or not old_uuid:
             raise HTTPException(status_code=409, detail="У аккаунта отсутствует Minecraft-привязка")
         try:

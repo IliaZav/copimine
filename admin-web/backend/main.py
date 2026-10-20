@@ -81,6 +81,7 @@ from .commerce_catalog import admin_gift_catalog_snapshot, ar_catalog_snapshot, 
 from .download_manager import artifact_file_response, artifact_metadata
 from .deploy_runtime import runtime_snapshot as managed_runtime_snapshot
 from .envfile import load_env_file_to_os, resolve_env_file
+from .public_config_cache import FileMtimeMemo
 from .startup_checks import run_startup_checks
 from .yookassa_gateway import YooKassaGateway, YooKassaGatewayError, YooKassaSettings
 from .plugin_registry import (
@@ -154,9 +155,12 @@ OWNER_ONLY_SERVER_PROPERTY_KEYS = {
     "enable-command-block",
 }
 GENERAL_RATE_BUCKETS: dict[str, list[int]] = {}
+PUBLIC_STATUS_RATE_LIMIT = max(50, int(os.getenv("PUBLIC_STATUS_RATE_LIMIT", "120")))
+PUBLIC_PRESIDENT_SKIN_RATE_LIMIT = max(50, int(os.getenv("PUBLIC_PRESIDENT_SKIN_RATE_LIMIT", "60")))
 PUBLIC_STATUS_CACHE_LOCK = threading.RLock()
 PUBLIC_STATUS_CACHE: tuple[float, dict[str, Any]] = (0.0, {})
 PUBLIC_STATUS_CACHE_TTL_SECONDS = max(2, int(os.getenv("PUBLIC_STATUS_CACHE_TTL_SECONDS", "10")))
+PUBLIC_SITE_CONFIG_DONATION_MEMO = FileMtimeMemo()
 PUBLIC_SKIN_CACHE_LOCK = threading.RLock()
 PUBLIC_SKIN_CACHE: dict[str, tuple[float, bytes, str]] = {}
 PUBLIC_SKIN_CACHE_TTL_SECONDS = max(60, int(os.getenv("PUBLIC_SKIN_CACHE_TTL_SECONDS", "600")))
@@ -4326,6 +4330,108 @@ def hydrate_player_account_link(conn: Any, account: Mapping[str, Any] | dict[str
     return hydrated
 
 
+def player_site_account_for_identity(
+    conn: Any,
+    minecraft_uuid: str = "",
+    minecraft_name: str = "",
+) -> Optional[dict[str, Any]]:
+    """Resolve a player site account from every durable Minecraft link source.
+
+    ``site_accounts.minecraft_*`` is a cache, not the source of truth.  Older
+    link flows can leave those two columns empty while the active identity is
+    present in ``minecraft_account_links`` or ``whitelist_account_links``.
+    Admin player cards must still expose account actions for that identity.
+    """
+    uuid_value = str(minecraft_uuid or "").strip()
+    name_value = str(minecraft_name or "").strip()
+    queries: list[tuple[str, tuple[Any, ...]]] = []
+    if uuid_value:
+        queries.extend(
+            [
+                (
+                    """
+                    SELECT * FROM site_accounts
+                    WHERE role='player' AND minecraft_uuid=%s
+                    ORDER BY enabled DESC,last_login_at DESC,created_at DESC
+                    LIMIT 1
+                    """,
+                    (uuid_value,),
+                ),
+                (
+                    """
+                    SELECT sa.*
+                    FROM minecraft_account_links mal
+                    JOIN site_accounts sa ON sa.id=mal.site_account_id
+                    WHERE sa.role='player' AND mal.minecraft_uuid=%s AND mal.status='ACTIVE'
+                    ORDER BY sa.enabled DESC,mal.updated_at DESC,sa.updated_at DESC
+                    LIMIT 1
+                    """,
+                    (uuid_value,),
+                ),
+                (
+                    """
+                    SELECT sa.*
+                    FROM whitelist_account_links wal
+                    JOIN site_accounts sa ON sa.id=wal.site_account_id
+                    WHERE sa.role='player' AND wal.minecraft_uuid=%s AND wal.whitelisted=1
+                    ORDER BY sa.enabled DESC,wal.synced_at DESC,sa.updated_at DESC
+                    LIMIT 1
+                    """,
+                    (uuid_value,),
+                ),
+            ]
+        )
+    if name_value:
+        queries.extend(
+            [
+                (
+                    """
+                    SELECT * FROM site_accounts
+                    WHERE role='player' AND LOWER(minecraft_name)=LOWER(%s)
+                    ORDER BY enabled DESC,last_login_at DESC,created_at DESC
+                    LIMIT 1
+                    """,
+                    (name_value,),
+                ),
+                (
+                    """
+                    SELECT sa.*
+                    FROM minecraft_account_links mal
+                    JOIN site_accounts sa ON sa.id=mal.site_account_id
+                    WHERE sa.role='player' AND LOWER(mal.minecraft_name)=LOWER(%s) AND mal.status='ACTIVE'
+                    ORDER BY sa.enabled DESC,mal.updated_at DESC,sa.updated_at DESC
+                    LIMIT 1
+                    """,
+                    (name_value,),
+                ),
+                (
+                    """
+                    SELECT sa.*
+                    FROM whitelist_account_links wal
+                    JOIN site_accounts sa ON sa.id=wal.site_account_id
+                    WHERE sa.role='player' AND LOWER(wal.minecraft_name)=LOWER(%s) AND wal.whitelisted=1
+                    ORDER BY sa.enabled DESC,wal.synced_at DESC,sa.updated_at DESC
+                    LIMIT 1
+                    """,
+                    (name_value,),
+                ),
+            ]
+        )
+    for query, params in queries:
+        row = conn.execute(query, params).fetchone()
+        if row:
+            account = hydrate_player_account_link(conn, dict(row))
+            # Hydration can replace a stale cache with a different active link.
+            # Never expose or mutate that other identity through this lookup.
+            if uuid_value:
+                if str(account.get("minecraft_uuid") or "").strip() != uuid_value:
+                    continue
+            elif str(account.get("minecraft_name") or "").strip().lower() != name_value.lower():
+                continue
+            return account
+    return None
+
+
 def player_account_by_id(conn: Any, account_id: str) -> dict[str, Any]:
     row = conn.execute("SELECT * FROM site_accounts WHERE id=%s AND enabled=1", (account_id,)).fetchone()
     if not row:
@@ -4339,24 +4445,7 @@ def player_account_by_username(conn: Any, username: str) -> Optional[dict[str, A
 
 
 def player_account_by_minecraft_name(conn: Any, minecraft_name: str) -> Optional[dict[str, Any]]:
-    normalized = str(minecraft_name or "").strip().lower()
-    if not normalized:
-        return None
-    row = conn.execute("SELECT * FROM site_accounts WHERE LOWER(minecraft_name)=%s ORDER BY updated_at DESC LIMIT 1", (normalized,)).fetchone()
-    if row:
-        return hydrate_player_account_link(conn, dict(row))
-    row = conn.execute(
-        """
-        SELECT sa.*
-        FROM whitelist_account_links wal
-        JOIN site_accounts sa ON sa.id=wal.site_account_id
-        WHERE LOWER(wal.minecraft_name)=%s
-        ORDER BY sa.updated_at DESC
-        LIMIT 1
-        """,
-        (normalized,),
-    ).fetchone()
-    return hydrate_player_account_link(conn, dict(row)) if row else None
+    return player_site_account_for_identity(conn, minecraft_name=minecraft_name)
 
 
 def require_player(request: Request, authorization: str = Header(default="")) -> dict[str, Any]:
@@ -5552,17 +5641,7 @@ def player_site_bank_profile_sync(minecraft_uuid: str, minecraft_name: str) -> d
     with auth_conn() as conn:
         ensure_v4_schema(conn)
         expire_temporary_pin_resets(conn, minecraft_uuid)
-        site_row = conn.execute(
-            """
-            SELECT id,username,enabled,created_at,updated_at,last_login_at,minecraft_name
-            FROM site_accounts
-            WHERE minecraft_uuid=%s
-            ORDER BY enabled DESC,last_login_at DESC,created_at DESC
-            LIMIT 1
-            """,
-            (minecraft_uuid,),
-        ).fetchone()
-        site = dict(site_row) if site_row else {}
+        site = player_site_account_for_identity(conn, minecraft_uuid, minecraft_name) or {}
         bank = ensure_player_bank_account(conn, minecraft_uuid, minecraft_name)
         ensure_donation_account_row(conn, minecraft_uuid, minecraft_name)
         donation_row = conn.execute(
@@ -5624,19 +5703,16 @@ def admin_update_player_account_sync(player: str, actor: str, data: AdminPlayerA
     now = now_ts()
     with auth_conn() as conn:
         ensure_v4_schema(conn)
-        row = conn.execute(
-            """
-            SELECT id,username,username_norm,minecraft_uuid,minecraft_name,enabled
-            FROM site_accounts
-            WHERE minecraft_uuid=%s AND role='player'
-            ORDER BY enabled DESC,last_login_at DESC,created_at DESC
-            LIMIT 1
-            """,
-            (uuid,),
-        ).fetchone()
+        row = player_site_account_for_identity(conn, uuid, player)
         if not row:
             raise HTTPException(status_code=409, detail="У игрока нет привязанного аккаунта сайта")
-        current = dict(row)
+        locked_row = conn.execute(
+            "SELECT id,username,role,minecraft_uuid,minecraft_name FROM site_accounts WHERE id=%s AND role='player' FOR UPDATE",
+            (row.get("id"),),
+        ).fetchone()
+        if not locked_row:
+            raise HTTPException(status_code=409, detail="Аккаунт уже удалён или изменён")
+        current = dict(locked_row)
         username_changed = bool(requested_username and requested_username.lower() != str(current.get("username") or "").lower())
         if username_changed:
             collision = conn.execute(
@@ -5691,20 +5767,16 @@ def admin_delete_player_account_sync(player: str, actor: str) -> dict[str, Any]:
     deleted_rows: dict[str, int] = {}
     with auth_conn() as conn:
         ensure_v4_schema(conn)
-        row = conn.execute(
-            """
-            SELECT id,username,role,minecraft_uuid,minecraft_name
-            FROM site_accounts
-            WHERE minecraft_uuid=%s AND role='player'
-            ORDER BY enabled DESC,last_login_at DESC,created_at DESC
-            LIMIT 1
-            FOR UPDATE
-            """,
-            (uuid,),
-        ).fetchone()
+        row = player_site_account_for_identity(conn, uuid, player)
         if not row:
             raise HTTPException(status_code=409, detail="У игрока нет привязанного аккаунта сайта")
-        current = dict(row)
+        locked_row = conn.execute(
+            "SELECT id,username,role,minecraft_uuid,minecraft_name FROM site_accounts WHERE id=%s AND role='player' FOR UPDATE",
+            (row.get("id"),),
+        ).fetchone()
+        if not locked_row:
+            raise HTTPException(status_code=409, detail="Аккаунт уже удалён или изменён")
+        current = dict(locked_row)
         account_id = str(current.get("id") or "").strip()
         old_uuid = str(current.get("minecraft_uuid") or uuid).strip()
         old_name = str(current.get("minecraft_name") or uuid_to_name().get(old_uuid, player)).strip()
@@ -10518,7 +10590,10 @@ def public_site_config_sync() -> dict[str, Any]:
     public_host = MC_PUBLIC_ADDRESS or ("" if MC_HOST in {"127.0.0.1", "localhost", "::1"} else MC_HOST)
     props = read_server_properties()
     version = MC_PUBLIC_VERSION or "1.21.x"
-    donation_enabled = bool((donation_catalog_snapshot_sync().get("items") or []))
+    donation_enabled = PUBLIC_SITE_CONFIG_DONATION_MEMO.get(
+        ARTIFACTS_ITEMS_FILE,
+        lambda: bool((donation_catalog_snapshot_sync().get("items") or [])),
+    )
     return {
         "serverName": "CopiMine",
         "serverAddress": public_host,
@@ -12316,7 +12391,7 @@ async def public_cms() -> dict[str, Any]:
 
 @app.get("/api/public/status")
 async def public_status(request: Request) -> dict[str, Any]:
-    check_rate_limit(request, "public-status", limit=30, window_seconds=60)
+    check_rate_limit(request, "public-status", limit=PUBLIC_STATUS_RATE_LIMIT, window_seconds=60)
     return {"ok": True, "data": await bg(public_site_status_sync)}
 
 
@@ -12342,7 +12417,7 @@ async def public_president() -> dict[str, Any]:
 
 @app.get("/api/public/president/skin/body")
 async def public_president_skin_body(request: Request, uuid: str = Query(default="")) -> Response:
-    check_rate_limit(request, "public-president-skin", limit=20, window_seconds=60)
+    check_rate_limit(request, "public-president-skin", limit=PUBLIC_PRESIDENT_SKIN_RATE_LIMIT, window_seconds=60)
     safe_uuid = str(uuid or "").strip().lower()
     if not re.fullmatch(r"[0-9a-f-]{32,36}", safe_uuid):
         raise HTTPException(status_code=404, detail="Президентский скин недоступен")

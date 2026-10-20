@@ -52,6 +52,85 @@ items:
     lore:
       - "&7Возвращает к точке возрождения"
 
+  # Issued only by the first-party End Rift event reward service.  It is not
+  # listed in the AR shop and cannot be purchased or granted by the admin GUI.
+  - id: rift_core_shard
+    category: TOOL
+    material: ECHO_SHARD
+    source: ADMIN_ONLY
+    custom_model_data: 830004
+    custom-texture-mode-allowed: true
+    name: "&eОсколок Ядра Разлома"
+    rarity: LEGENDARY
+    price_ar: 0
+    supply_limit: 0
+    per_player_limit: 0
+    cooldown_seconds: 600
+    effect: RIFT_CORE_SHARD
+    effect_chance_percent: 100
+    visual_effect_id: ""
+    lore:
+      - "&eИз него всё ещё доносятся отголоски хаоса Разлома."
+
+  # Issued only by the first-party End Rift reward service.  Gameplay powers
+  # are intentionally not assigned here until a separate item design exists.
+  - id: night_cloak
+    category: TOOL
+    material: LEATHER_CHESTPLATE
+    source: ADMIN_ONLY
+    custom_model_data: 830005
+    custom-texture-mode-allowed: true
+    name: "&eПлащ Ночи"
+    rarity: LEGENDARY
+    price_ar: 0
+    supply_limit: 0
+    per_player_limit: 0
+    cooldown_seconds: 0
+    effect: NONE
+    effect_chance_percent: 100
+    visual_effect_id: ""
+    lore: []
+
+  - id: gravedigger_contract
+    category: TOOL
+    material: PAPER
+    source: AR_SHOP
+    custom_model_data: 10029
+    custom-texture-mode-allowed: true
+    name: "&dКонтракт могильщика"
+    rarity: EPIC
+    price_ar: 300
+    supply_limit: 0
+    per_player_limit: 3
+    cooldown_seconds: 0
+    effect: GRAVEDIGGER_CONTRACT
+    effect_chance_percent: 100
+    visual_effect_id: ""
+    max_stack_size: 1
+    lore:
+      - "&7После смерти возвращает к месту гибели."
+      - "&7После смерти: &f/cmartifacts grave"
+
+  - id: signal_bell
+    category: TOOL
+    material: BELL
+    source: AR_SHOP
+    custom_model_data: 10030
+    custom-texture-mode-allowed: true
+    name: "&dСигнальный колокол"
+    rarity: EPIC
+    price_ar: 150
+    supply_limit: 0
+    per_player_limit: 3
+    cooldown_seconds: 0
+    effect: SIGNAL_BELL
+    effect_chance_percent: 100
+    visual_effect_id: ""
+    max_stack_size: 1
+    lore:
+      - "&7Привяжите колокол к сундуку."
+      - "&7Он уведомит держателя при открытии."
+
   - id: angel_wings
     category: TOOL
     material: FEATHER
@@ -489,8 +568,8 @@ items:
       - "&7за помощь в развитии проекта CopiMine"
 
 donation-catalog:
-  catalog-version: 1
-  updated-at: 1782345600
+  catalog-version: 2
+  updated-at: 1792312127
   website-base-url: "https://copimine.ru"
   items:
     - item-id: batin_remen_sudnogo_dnya
@@ -545,8 +624,8 @@ donation-catalog:
       reclaim-policy: LOSS_ONLY
       consume-policy: BREAKABLE
       effect-profile-id: NALOGOVAYA_KOSA
-      effect-description: "Вампиризм + шанс с каждым ударом украсть 1 АР со счёта цели"
-      cooldown-seconds: 18
+      effect-description: "Вампиризм: независимо 30% шанс украсть 3 HP, 20% шанс наложить голод, 20% шанс наложить иссушение и 10% шанс наложить слепоту III на 7 секунд; отдельно 2.5% шанс украсть 1–3 AR"
+      cooldown-seconds: 0
       proc-chance: 0.30
       max-stack: 1
       repairable: true
@@ -554,7 +633,7 @@ donation-catalog:
       custom-model-data: 20003
       visual-effect-id: STATIC_NOISE
       lore:
-        - "&7Вампиризм + шанс с каждым ударом украсть 1 АР со счёта цели"
+        - "&7Вампиризм; шанс 2.5% украсть 1–3 AR со счёта цели"
 
     - item-id: kaska_prorab_huev
       display-name: "&6Каска \"Прораб хуев\""
@@ -609,7 +688,7 @@ donation-catalog:
       consume-policy: BREAKABLE
       effect-profile-id: NOT_TODAY_SHIELD
       effect-description: "На него всем похуй"
-      cooldown-seconds: 22
+      cooldown-seconds: 20
       proc-chance: 1.0
       max-stack: 1
       repairable: true
@@ -665,7 +744,7 @@ donation-catalog:
       display-name: "&6Компас телепортации"
       base-material: COMPASS
       price-donation: 100
-      enabled: true
+      enabled: false
       source: DONATION_SHOP
       owner-bound: true
       reclaim-policy: LOSS_ONLY
@@ -681,3 +760,66 @@ donation-catalog:
       visual-effect-id: ""
       lore:
         - "&7Телепортация по направлению взгляда"
+
+    - item-id: berserker_heart
+      display-name: "&dСердце берсерка"
+      base-material: NETHER_STAR
+      price-donation: 200
+      enabled: true
+      source: DONATION_SHOP
+      owner-bound: true
+      reclaim-policy: LOSS_ONLY
+      consume-policy: PERSISTENT
+      effect-profile-id: BERSERKER_HEART
+      effect-description: "При критически низком здоровье даёт боевые эффекты"
+      cooldown-seconds: 420
+      proc-chance: 1.0
+      max-stack: 1
+      repairable: false
+      custom-texture-mode-allowed: true
+      custom-model-data: 20013
+      visual-effect-id: ""
+      lore:
+        - "&7Срабатывает при здоровье ниже 10%."
+
+    - item-id: zhilorez_pickaxe
+      display-name: "&6Кирка «Жилорез»"
+      base-material: NETHERITE_PICKAXE
+      price-donation: 250
+      enabled: true
+      source: DONATION_SHOP
+      owner-bound: true
+      reclaim-policy: LOSS_ONLY
+      consume-policy: PERSISTENT
+      effect-profile-id: VEIN_MINER
+      effect-description: "Ограниченно добывает жилу одинаковой руды"
+      cooldown-seconds: 0
+      proc-chance: 1.0
+      max-stack: 1
+      repairable: true
+      custom-texture-mode-allowed: true
+      custom-model-data: 20011
+      visual-effect-id: ""
+      lore:
+        - "&7Добывает до 32 блоков одной жилы."
+
+    - item-id: donation_night_cloak
+      display-name: "&6Плащ ночи"
+      base-material: PHANTOM_MEMBRANE
+      price-donation: 150
+      enabled: true
+      source: DONATION_SHOP
+      owner-bound: false
+      reclaim-policy: LOSS_ONLY
+      consume-policy: PERSISTENT
+      effect-profile-id: NIGHT_CLOAK
+      effect-description: "Ночью даёт скорость, ночное зрение и невидимость"
+      cooldown-seconds: 0
+      proc-chance: 1.0
+      max-stack: 1
+      repairable: false
+      custom-texture-mode-allowed: true
+      custom-model-data: 20012
+      visual-effect-id: ""
+      lore:
+        - "&7Ночью даёт скорость I, ночное зрение I и невидимость I."

@@ -188,7 +188,7 @@ public final class VisualRuntimeService {
         if (!manifestFlag("true_shader_runtime_supported")) {
             return "CopiMineClient uses built-in ZIP shaderpacks through Iris when available; without client support the server falls back to light particles only";
         }
-        return "available through optional CopiMineClient runtime";
+        return "available through the required CopiMineClient runtime";
     }
 
     public String clientShaderLikeSupportReason() {
@@ -204,7 +204,7 @@ public final class VisualRuntimeService {
         if (!shaderLikeSupportedManifestFlag()) {
             return "client-mod visual runtime disabled by visuals manifest";
         }
-        return "available through optional CopiMineClient post-process and Iris shaderpack runtime";
+        return "available through CopiMineClient post-process and optional Iris shaderpack runtime";
     }
 
     public String clientShaderpackSupportReason() {
@@ -217,7 +217,7 @@ public final class VisualRuntimeService {
         if (!manifestFlag("client_zip_shaderpack_runtime_supported")) {
             return "client ZIP shaderpack runtime not declared in visuals manifest";
         }
-        return "available through optional CopiMineClient + Iris runtime switching for built-in shaderpacks";
+        return "available through CopiMineClient with optional Iris runtime switching for built-in shaderpacks";
     }
 
     public String overlaySupportReason() {
@@ -233,8 +233,8 @@ public final class VisualRuntimeService {
     }
 
     /**
-     * True only after the optional client has completed its authenticated-in-session
-     * handshake.  The server still owns every gameplay effect; this flag is used
+     * True only after the required CopiMineClient has completed its challenge-bound
+     * version check. The server still owns every gameplay effect; this flag is used
      * solely to decide whether vanilla status icons can be consolidated.
      */
     public boolean clientModAvailable(Player player) {
@@ -281,15 +281,17 @@ public final class VisualRuntimeService {
         VisualSession current = sessions.get(player.getUniqueId());
         if (sameVisualSession(current, route, normalized, nowMillis)) {
             long extendedUntil = Math.max(current.untilMillis(), untilMillis);
-            sessions.put(player.getUniqueId(), new VisualSession(normalized, route, extendedUntil, overdose));
             if (route == VisualRoute.CLIENT_MOD_VISUAL && extendedUntil > current.untilMillis()) {
                 // Keep the client-side shader pipeline alive while extending
                 // the visible timer.  A refresh packet is cheaper than a
                 // clear/start pair and the client deduplicates the same
                 // effect+shaderpack without reloading Iris.
+                UUID refreshEpoch = UUID.randomUUID();
+                sessions.put(player.getUniqueId(),
+                        new VisualSession(normalized, route, extendedUntil, overdose, refreshEpoch));
                 int refreshSeconds = (int) Math.max(1L, Math.min(600L,
                         (long) Math.ceil((extendedUntil - nowMillis) / 1000.0D)));
-                clientBridge.visuals().sendVisualRefresh(
+                long refreshSequence = clientBridge.visuals().sendVisualRefresh(
                         player,
                         normalized,
                         requestedClientShaderpack(normalized, overdose),
@@ -304,10 +306,13 @@ public final class VisualRuntimeService {
                                 return;
                             }
                             VisualSession session = sessions.get(playerUuid);
-                            if (session == null || session.route() != VisualRoute.CLIENT_MOD_VISUAL || !session.effectId().equalsIgnoreCase(clientEffectId)) {
+                            if (session == null || session.route() != VisualRoute.CLIENT_MOD_VISUAL
+                                    || !session.effectId().equalsIgnoreCase(clientEffectId)
+                                    || !VisualSessionCompletionPolicy.canApplyFallback(session.clientCommandEpoch(),
+                                            refreshEpoch, session.untilMillis(), System.currentTimeMillis())) {
                                 return;
                             }
-                            applyServerFallbackRoute(online, clientEffectId, seconds, session.overdose());
+                            applyServerFallbackRoute(online, clientEffectId, session.untilMillis(), session.overdose());
                         }),
                         (playerUuid, clientEffectId, source, reason) -> plugin.getServer().getScheduler().runTask(plugin, () -> {
                             Player online = plugin.getServer().getPlayer(playerUuid);
@@ -315,51 +320,75 @@ public final class VisualRuntimeService {
                                 return;
                             }
                             VisualSession session = sessions.get(playerUuid);
-                            if (session == null || session.route() != VisualRoute.CLIENT_MOD_VISUAL || !session.effectId().equalsIgnoreCase(clientEffectId)) {
+                            if (session == null || session.route() != VisualRoute.CLIENT_MOD_VISUAL
+                                    || !session.effectId().equalsIgnoreCase(clientEffectId)
+                                    || !VisualSessionCompletionPolicy.isCurrent(session.clientCommandEpoch(), refreshEpoch)) {
                                 return;
                             }
                             clearInternal(online, false);
                         })
                 );
+                if (refreshSequence <= 0L) {
+                    applyServerFallbackRoute(player, normalized, extendedUntil, overdose);
+                    return;
+                }
+            } else {
+                sessions.put(player.getUniqueId(), new VisualSession(
+                        normalized, route, extendedUntil, overdose, current.clientCommandEpoch()));
             }
-            scheduleCleanup(player, extendedUntil);
+            VisualSession latest = sessions.get(player.getUniqueId());
+            if (latest != null && latest.untilMillis() == extendedUntil) {
+                scheduleCleanup(player, extendedUntil);
+            }
             return;
         }
         clear(player);
-        sessions.put(player.getUniqueId(), new VisualSession(normalized, route, untilMillis, overdose));
+        UUID commandEpoch = UUID.randomUUID();
+        sessions.put(player.getUniqueId(), new VisualSession(normalized, route, untilMillis, overdose, commandEpoch));
         switch (route) {
-            case CLIENT_MOD_VISUAL -> clientBridge.visuals().sendVisualStart(
-                    player,
-                    normalized,
-                    requestedClientShaderpack(normalized, overdose),
-                    durationSeconds,
-                    overdose ? 1.0F : 0.85F,
-                    CLIENT_SHADER_FADE_IN_MILLIS,
-                    CLIENT_SHADER_FADE_OUT_MILLIS,
-                    ignoreGate ? "ADMIN_TEST" : "NARCOTICS",
-                    (playerUuid, clientEffectId, seconds, intensity, source, reason) -> plugin.getServer().getScheduler().runTask(plugin, () -> {
-                        Player online = plugin.getServer().getPlayer(playerUuid);
-                        if (online == null || !online.isOnline()) {
-                            return;
-                        }
-                        VisualSession session = sessions.get(playerUuid);
-                        if (session == null || session.route() != VisualRoute.CLIENT_MOD_VISUAL || !session.effectId().equalsIgnoreCase(clientEffectId)) {
-                            return;
-                        }
-                        applyServerFallbackRoute(online, clientEffectId, seconds, session.overdose());
-                    }),
-                    (playerUuid, clientEffectId, source, reason) -> plugin.getServer().getScheduler().runTask(plugin, () -> {
-                        Player online = plugin.getServer().getPlayer(playerUuid);
-                        if (online == null) {
-                            return;
-                        }
-                        VisualSession session = sessions.get(playerUuid);
-                        if (session == null || session.route() != VisualRoute.CLIENT_MOD_VISUAL || !session.effectId().equalsIgnoreCase(clientEffectId)) {
-                            return;
-                        }
-                        clearInternal(online, false);
-                    })
-            );
+            case CLIENT_MOD_VISUAL -> {
+                long commandSequence = clientBridge.visuals().sendVisualStart(
+                        player,
+                        normalized,
+                        requestedClientShaderpack(normalized, overdose),
+                        durationSeconds,
+                        overdose ? 1.0F : 0.85F,
+                        CLIENT_SHADER_FADE_IN_MILLIS,
+                        CLIENT_SHADER_FADE_OUT_MILLIS,
+                        ignoreGate ? "ADMIN_TEST" : "NARCOTICS",
+                        (playerUuid, clientEffectId, seconds, intensity, source, reason) -> plugin.getServer().getScheduler().runTask(plugin, () -> {
+                            Player online = plugin.getServer().getPlayer(playerUuid);
+                            if (online == null || !online.isOnline()) {
+                                return;
+                            }
+                            VisualSession session = sessions.get(playerUuid);
+                            if (session == null || session.route() != VisualRoute.CLIENT_MOD_VISUAL
+                                    || !session.effectId().equalsIgnoreCase(clientEffectId)
+                                    || !VisualSessionCompletionPolicy.canApplyFallback(session.clientCommandEpoch(),
+                                            commandEpoch, session.untilMillis(), System.currentTimeMillis())) {
+                                return;
+                            }
+                            applyServerFallbackRoute(online, clientEffectId, session.untilMillis(), session.overdose());
+                        }),
+                        (playerUuid, clientEffectId, source, reason) -> plugin.getServer().getScheduler().runTask(plugin, () -> {
+                            Player online = plugin.getServer().getPlayer(playerUuid);
+                            if (online == null) {
+                                return;
+                            }
+                            VisualSession session = sessions.get(playerUuid);
+                            if (session == null || session.route() != VisualRoute.CLIENT_MOD_VISUAL
+                                    || !session.effectId().equalsIgnoreCase(clientEffectId)
+                                    || !VisualSessionCompletionPolicy.isCurrent(session.clientCommandEpoch(), commandEpoch)) {
+                                return;
+                            }
+                            clearInternal(online, false);
+                        })
+                );
+                if (commandSequence <= 0L) {
+                    applyServerFallbackRoute(player, normalized, untilMillis, overdose);
+                    return;
+                }
+            }
             case SERVER_RESOURCE_PACK_OVERLAY -> {
                 applyServerOverlay(player, normalized, durationSeconds, overdose);
                 applyServerFallback(player, normalized, durationSeconds, overdose);
@@ -378,16 +407,20 @@ public final class VisualRuntimeService {
                 && current.untilMillis() > nowMillis;
     }
 
-    private void applyServerFallbackRoute(Player player, String effectId, int durationSeconds, boolean overdose) {
+    private void applyServerFallbackRoute(Player player, String effectId, long untilMillis, boolean overdose) {
+        int remainingSeconds = VisualSessionCompletionPolicy.remainingSecondsUntil(untilMillis, System.currentTimeMillis());
+        if (remainingSeconds <= 0) {
+            return;
+        }
         VisualRoute fallbackRoute = forcedServerRoute(player, effectId);
-        long untilMillis = System.currentTimeMillis() + (durationSeconds * 1000L);
-        sessions.put(player.getUniqueId(), new VisualSession(effectId.toUpperCase(Locale.ROOT), fallbackRoute, untilMillis, overdose));
+        sessions.put(player.getUniqueId(), new VisualSession(
+                effectId.toUpperCase(Locale.ROOT), fallbackRoute, untilMillis, overdose, null));
         switch (fallbackRoute) {
             case SERVER_RESOURCE_PACK_OVERLAY -> {
-                applyServerOverlay(player, effectId, durationSeconds, overdose);
-                applyServerFallback(player, effectId, durationSeconds, overdose);
+                applyServerOverlay(player, effectId, remainingSeconds, overdose);
+                applyServerFallback(player, effectId, remainingSeconds, overdose);
             }
-            case SERVER_PARTICLE_FALLBACK -> applyServerFallback(player, effectId, durationSeconds, overdose);
+            case SERVER_PARTICLE_FALLBACK -> applyServerFallback(player, effectId, remainingSeconds, overdose);
             case CLIENT_MOD_VISUAL, DISABLED -> {
             }
         }
@@ -613,6 +646,7 @@ public final class VisualRuntimeService {
         return Path.of("").toAbsolutePath().resolve("opt").resolve("copimine");
     }
 
-    private record VisualSession(String effectId, VisualRoute route, long untilMillis, boolean overdose) {
+    private record VisualSession(String effectId, VisualRoute route, long untilMillis, boolean overdose,
+            UUID clientCommandEpoch) {
     }
 }

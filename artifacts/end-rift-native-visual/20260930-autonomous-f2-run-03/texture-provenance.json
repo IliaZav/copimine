@@ -1,0 +1,37 @@
+{
+  "archive": {
+    "file": "elite mobs.rar",
+    "sha256": "dd03281fc320b4dc8656bf980bdbc33324f6b3f45540e6717611c322316fc3e4"
+  },
+  "clientJarSha256": "66b3af1949b753f22843485a5e2a35d6b3460831fdcd7d885eaa27ee75ad2256",
+  "textures": [
+    {
+      "visualId": "END_RIFT_ELITE_V1",
+      "archiveEntry": "enderman_elite.png",
+      "assetSource": "CopiMineClient/src/main/asset-source/elite-end-event-mobs/enderman_elite.png",
+      "runtimeTexture": "CopiMineClient/src/main/resources/assets/copimineclient/textures/entity/end_rift_elite.png",
+      "sha256": "5923111b4ac459daee04aeeea4930dcac4b1156ed3d94bbaaa4b89b987fc6bdc",
+      "archiveToSource": "MATCH",
+      "sourceToRuntime": "MATCH"
+    },
+    {
+      "visualId": "END_RIFT_ELITE_SKELETON_V1",
+      "archiveEntry": "skeleton_elite.png",
+      "assetSource": "CopiMineClient/src/main/asset-source/elite-end-event-mobs/skeleton_elite.png",
+      "runtimeTexture": "CopiMineClient/src/main/resources/assets/copimineclient/textures/entity/end_rift_elite_skeleton.png",
+      "sha256": "df29a577e2cc5896507044db37349216c2401311e458576ecbb2e0fe8ce65514",
+      "archiveToSource": "MATCH",
+      "sourceToRuntime": "MATCH"
+    },
+    {
+      "visualId": "END_RIFT_ELITE_SPIDER_V1",
+      "archiveEntry": "spider_elite.png",
+      "assetSource": "CopiMineClient/src/main/asset-source/elite-end-event-mobs/spider_elite.png",
+      "runtimeTexture": "CopiMineClient/src/main/resources/assets/copimineclient/textures/entity/end_rift_elite_spider.png",
+      "sha256": "40ab699e7dc46d50a26728679539b30ced556269b795b06ed7bf498dd1b4d052",
+      "archiveToSource": "MATCH",
+      "sourceToRuntime": "MATCH"
+    }
+  ],
+  "note": "The archive has both spider_elite.png and spider elite.png. The runtime texture matches the exact spider_elite.png entry."
+}

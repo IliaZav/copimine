@@ -1,0 +1,83 @@
+import me.copimine.endevent.domain.CombatMovementPolicy;
+
+public final class CombatMovementPolicyTest {
+    public static void main(String[] args) {
+        testStepIsHorizontalAndCapped();
+        testStepStopsAtTarget();
+        testInvalidInputsProduceNoMovement();
+        testArenaBoundsRejectUnsafePositions();
+        testContainmentRadiusLeavesNativeMovementMargin();
+        testReturnKeepsEachMobsRadialPosition();
+        System.out.println("CombatMovementPolicyTest OK");
+    }
+
+    private static void testStepIsHorizontalAndCapped() {
+        CombatMovementPolicy.Step step = CombatMovementPolicy.stepTowards(
+                10.0D, 68.0D, -39.0D, 0.0D, 99.0D, -39.0D, 2.0D);
+        check(step.horizontalLength() <= CombatMovementPolicy.MAX_COMBAT_STEP_BLOCKS,
+                "fallback step must be capped");
+        check(Math.abs(step.y()) < 0.0001D, "fallback step must never steer vertically");
+        check(step.x() < 0.0D && Math.abs(step.z()) < 0.0001D,
+                "fallback step must point toward the target horizontally");
+    }
+
+    private static void testStepStopsAtTarget() {
+        CombatMovementPolicy.Step step = CombatMovementPolicy.stepTowards(
+                1.0D, 68.0D, 1.0D, 1.05D, 70.0D, 1.0D, 1.0D);
+        check(Math.abs(step.x() - 0.05D) < 0.0001D,
+                "fallback step must not overshoot a nearby target");
+    }
+
+    private static void testInvalidInputsProduceNoMovement() {
+        check(CombatMovementPolicy.stepTowards(Double.NaN, 0.0D, 0.0D,
+                1.0D, 0.0D, 1.0D, 1.0D).equals(CombatMovementPolicy.Step.ZERO),
+                "non-finite input must fail closed");
+        check(CombatMovementPolicy.stepTowards(0.0D, 0.0D, 0.0D,
+                1.0D, 0.0D, 1.0D, 0.0D).equals(CombatMovementPolicy.Step.ZERO),
+                "non-positive speed must fail closed");
+    }
+
+    private static void testArenaBoundsRejectUnsafePositions() {
+        check(CombatMovementPolicy.withinBounds(0.5D, 68.0D, 0.5D,
+                4.5D, 68.0D, 0.5D, 20.0D, 3.0D, 3.5D),
+                "a safe floor position must be accepted");
+        check(!CombatMovementPolicy.withinBounds(0.5D, 68.0D, 0.5D,
+                0.5D, 68.0D, 0.5D, 20.0D, 3.0D, 3.5D),
+                "Core position must be rejected");
+        check(!CombatMovementPolicy.withinBounds(0.5D, 68.0D, 0.5D,
+                4.5D, 72.0D, 0.5D, 20.0D, 3.0D, 3.5D),
+                "vertical escape must be rejected");
+    }
+
+    private static void testContainmentRadiusLeavesNativeMovementMargin() {
+        double configuredRadius = 20.0D;
+        double movementRadius = CombatMovementPolicy.movementContainmentRadius(configuredRadius);
+        check(movementRadius < configuredRadius,
+                "AI movement radius must be inside the configured leash");
+        check(configuredRadius - movementRadius
+                        >= CombatMovementPolicy.CONTAINMENT_SAFETY_MARGIN_BLOCKS,
+                "AI movement radius must reserve the configured safety margin");
+        check(CombatMovementPolicy.movementContainmentRadius(Double.NaN) == 0.0D,
+                "non-finite containment radius must fail closed");
+    }
+
+    private static void check(boolean condition, String message) {
+        if (!condition) {
+            throw new AssertionError(message);
+        }
+    }
+
+    private static void testReturnKeepsEachMobsRadialPosition() {
+        var east = CombatMovementPolicy.leashReturnOffset(19.15, 0, 19);
+        var west = CombatMovementPolicy.leashReturnOffset(-19.15, 0, 19);
+        var diagonal = CombatMovementPolicy.leashReturnOffset(20, 20, 19);
+        check(east.x() > 0 && west.x() < 0 && east.z() == 0 && west.z() == 0,
+                "opposite mobs must return on their own side, not one global cell");
+        check(Math.abs(east.horizontalLength() - 17.75) < .0001,
+                "return must reserve an inward hysteresis margin");
+        check(Math.abs(diagonal.x() - diagonal.z()) < .0001 && diagonal.horizontalLength() < 19,
+                "diagonal return must preserve direction and stay inside containment");
+        check(CombatMovementPolicy.leashReturnOffset(Double.NaN, 1, 19).equals(CombatMovementPolicy.Step.ZERO),
+                "invalid radial input must fail closed");
+    }
+}

@@ -1,5 +1,7 @@
 package me.copimine.clientbridge;
 
+import me.copimine.protocol.NarcoticsBridgeBodyCodec;
+
 import java.util.UUID;
 
 public final class ClientVisualCommand {
@@ -22,6 +24,8 @@ public final class ClientVisualCommand {
     private final int fadeInMillis;
     private final int fadeOutMillis;
     private final String source;
+    private final NarcoticsBridgeBodyCodec.Body body;
+    private final String streamId;
     private final long createdAtMillis;
     private final FallbackHandler fallbackHandler;
     private final FinishHandler finishHandler;
@@ -41,6 +45,8 @@ public final class ClientVisualCommand {
             int fadeInMillis,
             int fadeOutMillis,
             String source,
+            NarcoticsBridgeBodyCodec.Body body,
+            String streamId,
             long createdAtMillis,
             FallbackHandler fallbackHandler,
             FinishHandler finishHandler
@@ -56,6 +62,8 @@ public final class ClientVisualCommand {
         this.fadeInMillis = fadeInMillis;
         this.fadeOutMillis = fadeOutMillis;
         this.source = source;
+        this.body = body;
+        this.streamId = streamId;
         this.createdAtMillis = createdAtMillis;
         this.fallbackHandler = fallbackHandler;
         this.finishHandler = finishHandler;
@@ -103,6 +111,14 @@ public final class ClientVisualCommand {
 
     String source() {
         return source;
+    }
+
+    NarcoticsBridgeBodyCodec.Body body() {
+        return body;
+    }
+
+    String streamId() {
+        return streamId;
     }
 
     long createdAtMillis() {

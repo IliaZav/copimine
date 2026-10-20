@@ -1,0 +1,146 @@
+........................................................................ [  4%]
+...............................................s........................ [  9%]
+........................................................................ [ 13%]
+........................................................................ [ 18%]
+........................................................................ [ 23%]
+........................................................................ [ 27%]
+........................................................................ [ 32%]
+........................................................................ [ 36%]
+........................................................................ [ 41%]
+........................................................................ [ 46%]
+........................................................................ [ 50%]
+................................ss.....................................s [ 55%]
+...................................................................s.... [ 59%]
+......................s................................................. [ 64%]
+........................................................................ [ 69%]
+..................s..................................................... [ 73%]
+........................................................................ [ 78%]
+........................................................................ [ 82%]
+........................................................................ [ 87%]
+........................................................................ [ 92%]
+........................................................................ [ 96%]
+..................................................                       [100%]
+============================== warnings summary ===============================
+admin-web\backend\main.py:1412
+  <WORKTREE>\admin-web\backend\main.py:1412: DeprecationWarning:
+          on_event is deprecated, use lifespan event handlers instead.
+
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+
+    @app.on_event("startup")
+
+<USERPROFILE>\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\applications.py:4681
+<USERPROFILE>\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\applications.py:4681
+  <USERPROFILE>\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning:
+          on_event is deprecated, use lifespan event handlers instead.
+
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+admin-web\backend\main.py:1440
+  <WORKTREE>\admin-web\backend\main.py:1440: DeprecationWarning:
+          on_event is deprecated, use lifespan event handlers instead.
+
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+
+    @app.on_event("shutdown")
+
+tests/test_end_event_resource_visual_contract.py::test_heavy_tentacle_is_opaque_and_guardian_shield_blends_as_translucent_violet
+  <WORKTREE>\tests\test_end_event_resource_visual_contract.py:245: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert any(0 < alpha < 255 for alpha in shield_alpha.getdata()), (
+
+tests/test_end_event_resource_visual_contract.py::test_client_and_server_use_the_same_transparent_guardian_shield_silhouette
+tests/test_end_event_resource_visual_contract.py::test_client_and_server_use_the_same_transparent_guardian_shield_silhouette
+  <WORKTREE>\tests\test_end_event_resource_visual_contract.py:291: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(client.getdata()) == list(server.getdata()), (
+
+tests/test_end_event_resource_visual_contract.py::test_client_and_server_use_the_same_transparent_guardian_shield_silhouette
+  <WORKTREE>\tests\test_end_event_resource_visual_contract.py:307: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    pixels = list(client.getdata())
+
+tests/test_end_event_resource_visual_contract.py::test_generated_mob_faces_put_eyes_on_the_visible_front_uv_islands
+tests/test_end_event_resource_visual_contract.py::test_generated_mob_faces_put_eyes_on_the_visible_front_uv_islands
+tests/test_end_event_resource_visual_contract.py::test_generated_mob_faces_put_eyes_on_the_visible_front_uv_islands
+tests/test_end_event_resource_visual_contract.py::test_generated_mob_faces_put_eyes_on_the_visible_front_uv_islands
+tests/test_end_event_resource_visual_contract.py::test_generated_mob_faces_put_eyes_on_the_visible_front_uv_islands
+tests/test_end_event_resource_visual_contract.py::test_generated_mob_faces_put_eyes_on_the_visible_front_uv_islands
+tests/test_end_event_resource_visual_contract.py::test_generated_mob_faces_put_eyes_on_the_visible_front_uv_islands
+tests/test_end_event_resource_visual_contract.py::test_generated_mob_faces_put_eyes_on_the_visible_front_uv_islands
+  <WORKTREE>\tests\test_end_event_resource_visual_contract.py:397: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    return sum(1 for red, green, blue, alpha in image.crop(box).getdata()
+
+tests/test_end_event_resource_visual_contract.py::test_generated_mob_faces_put_eyes_on_the_visible_front_uv_islands
+tests/test_end_event_resource_visual_contract.py::test_generated_mob_faces_put_eyes_on_the_visible_front_uv_islands
+tests/test_end_event_resource_visual_contract.py::test_generated_mob_faces_put_eyes_on_the_visible_front_uv_islands
+  <WORKTREE>\tests\test_end_event_resource_visual_contract.py:418: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    face_pixels = list(image.crop((7, 7, 14, 14)).getdata())
+
+tests/test_end_event_resource_visual_contract.py::test_archived_skeleton_is_preserved_and_authored_rift_atlases_are_render_ready
+tests/test_end_event_resource_visual_contract.py::test_archived_skeleton_is_preserved_and_authored_rift_atlases_are_render_ready
+tests/test_end_event_resource_visual_contract.py::test_archived_skeleton_is_preserved_and_authored_rift_atlases_are_render_ready
+  <WORKTREE>\tests\test_end_event_resource_visual_contract.py:438: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert all(alpha == 255 for alpha in image.getchannel("A").getdata()), name
+
+tests/test_end_event_resource_visual_contract.py::test_archived_skeleton_is_preserved_and_authored_rift_atlases_are_render_ready
+tests/test_end_event_resource_visual_contract.py::test_archived_skeleton_is_preserved_and_authored_rift_atlases_are_render_ready
+tests/test_end_event_resource_visual_contract.py::test_archived_skeleton_is_preserved_and_authored_rift_atlases_are_render_ready
+  <WORKTREE>\tests\test_end_event_resource_visual_contract.py:439: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    face_pixels = list(image.crop((7, 7, 14, 14)).getdata())
+
+tests/test_end_event_resource_visual_contract.py::test_archived_skeleton_is_preserved_and_authored_rift_atlases_are_render_ready
+tests/test_end_event_resource_visual_contract.py::test_archived_skeleton_is_preserved_and_authored_rift_atlases_are_render_ready
+tests/test_end_event_resource_visual_contract.py::test_archived_skeleton_is_preserved_and_authored_rift_atlases_are_render_ready
+  <WORKTREE>\tests\test_end_event_resource_visual_contract.py:442: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    torso_pixels = list(image.crop((16, 0, 28, 16)).getdata())
+
+tests/test_end_event_resource_visual_contract.py::test_archived_skeleton_is_preserved_and_authored_rift_atlases_are_render_ready
+tests/test_end_event_resource_visual_contract.py::test_archived_skeleton_is_preserved_and_authored_rift_atlases_are_render_ready
+tests/test_end_event_resource_visual_contract.py::test_archived_skeleton_is_preserved_and_authored_rift_atlases_are_render_ready
+  <WORKTREE>\tests\test_end_event_resource_visual_contract.py:446: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    for red, green, blue, _ in image.getdata()), name
+
+tests/test_end_event_resource_visual_contract.py::test_elite_mob_atlases_match_the_supplied_archive_exactly
+tests/test_end_event_resource_visual_contract.py::test_elite_mob_atlases_match_the_supplied_archive_exactly
+tests/test_end_event_resource_visual_contract.py::test_elite_mob_atlases_match_the_supplied_archive_exactly
+  <WORKTREE>\tests\test_end_event_resource_visual_contract.py:461: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    alpha = set(image.getchannel("A").getdata())
+
+tests/test_end_event_wave_mob_visual_contract.py: 10 warnings
+  <WORKTREE>\tests\test_end_event_wave_mob_visual_contract.py:34: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    {pixel[3] for pixel in image.getdata()},
+
+tests/test_end_event_wave_mob_visual_contract.py: 10 warnings
+  <WORKTREE>\tests\test_end_event_wave_mob_visual_contract.py:35: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    {pixel[:3] for pixel in image.getdata()},
+
+tests/test_end_event_wave_mob_visual_contract.py::test_elite_mob_atlases_are_the_exact_supplied_archive_files
+tests/test_end_event_wave_mob_visual_contract.py::test_elite_mob_atlases_are_the_exact_supplied_archive_files
+tests/test_end_event_wave_mob_visual_contract.py::test_elite_mob_atlases_are_the_exact_supplied_archive_files
+  <WORKTREE>\tests\test_end_event_wave_mob_visual_contract.py:112: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert set(image.getchannel("A").getdata()) <= {0, 255}, name
+
+tests/test_end_event_wave_mob_visual_contract.py: 13 warnings
+  <WORKTREE>\CopiMineClient\tools\validate_end_rift_mob_uv.py:53: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    alpha = {pixel[3] for pixel in image.getdata()}
+
+tests/test_end_event_wave_mob_visual_contract.py: 13 warnings
+  <WORKTREE>\CopiMineClient\tools\validate_end_rift_mob_uv.py:57: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    colours = {pixel[:3] for pixel in image.getdata()}
+
+tests/test_end_rift_wave6_visual_mechanics.py::test_spell_textures_and_screen_cues_share_the_actual_stage_and_target_gates
+tests/test_end_rift_wave6_visual_mechanics.py::test_spell_textures_and_screen_cues_share_the_actual_stage_and_target_gates
+tests/test_end_rift_wave6_visual_mechanics.py::test_spell_textures_and_screen_cues_share_the_actual_stage_and_target_gates
+tests/test_end_rift_wave6_visual_mechanics.py::test_spell_textures_and_screen_cues_share_the_actual_stage_and_target_gates
+  <WORKTREE>\tests\test_end_rift_wave6_visual_mechanics.py:201: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    alpha = list(image.getchannel('A').getdata())
+
+tests/test_recolored_vanilla_bow_crossbow_contract.py::test_explosive_crossbow_charged_animation_is_valid_and_keeps_custom_tnt
+  <WORKTREE>\tests\test_recolored_vanilla_bow_crossbow_contract.py:144: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert any(pixel[0] > pixel[1] * 2 for pixel in atlas.getdata() if pixel[3])
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+1555 passed, 7 skipped, 88 warnings in 519.93s (0:08:39)

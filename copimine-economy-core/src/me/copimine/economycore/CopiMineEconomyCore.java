@@ -291,6 +291,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     /** Typed optional API exported through Bukkit's service registry. */
     public interface ElectionRuntimeService {
+        boolean databaseReady();
         Map<String, Object> activePresidentRevenueProfile();
         CompletableFuture<Map<String, Object>> grantTaxClockExemption(UUID playerUuid, String playerName, String artifactInstanceId);
     }
@@ -335,7 +336,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
          * The economy plugin owns this recovery query so feature plugins never
          * read bank tables directly.
          */
-        List<Map<String, Object>> findOrphanedArtifactShopTransfers(int limit);
+        List<Map<String, Object>> findOrphanedArtifactShopTransfers(int limit, long afterCreatedAt, String afterTxId);
         long balance(UUID playerUuid, String playerName);
         Health health(UUID playerUuid, String context);
     }
@@ -4079,18 +4080,32 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                     return new TxnResult(false, "NO_BANK_ACCOUNT", "Victim has no bank account.", 0L, "");
                 }
                 Map<String, Object> toAccount = ensureBankAccount(connection, toUuid.toString(), first(toName, ""));
+                if (toAccount == null || toAccount.isEmpty()) {
+                    return new TxnResult(false, "INVALID_DESTINATION", "Attacker player account is unavailable.", 0L, "");
+                }
+                String resolvedToId = string(toAccount.get("account_id"));
+                String resolvedToOwnerUuid = string(toAccount.get("owner_uuid"));
+                String resolvedToType = string(toAccount.get("account_type"));
+                if (!toId.equalsIgnoreCase(resolvedToId)
+                        || !toUuid.toString().equalsIgnoreCase(resolvedToOwnerUuid)
+                        || !"PLAYER".equalsIgnoreCase(resolvedToType)
+                        || TREASURY_ACCOUNT_ID.equalsIgnoreCase(resolvedToId)) {
+                    getLogger().warning("Rejected Kosa AR theft destination account=" + resolvedToId
+                            + " expected=" + toId + " owner=" + resolvedToOwnerUuid);
+                    return new TxnResult(false, "INVALID_DESTINATION", "AR theft destination is not the attacker player account.", 0L, "");
+                }
                 String txKey = first(idempotencyKey, "kosa-ar-steal-" + UUID.randomUUID());
-                TxnResult replay = replayTransferIfCommitted(connection, txKey, fromId, toId, amount);
+                TxnResult replay = replayTransferIfCommitted(connection, txKey, fromId, resolvedToId, amount);
                 if (replay != null) {
                     return replay;
                 }
                 long fromBefore;
                 long toBefore;
-                if (fromId.compareTo(toId) <= 0) {
+                if (fromId.compareTo(resolvedToId) <= 0) {
                     fromBefore = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", fromId);
-                    toBefore = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", toId);
+                    toBefore = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", resolvedToId);
                 } else {
-                    toBefore = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", toId);
+                    toBefore = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", resolvedToId);
                     fromBefore = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", fromId);
                 }
                 if (fromBefore < amount) {
@@ -4100,13 +4115,13 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 long fromAfter = fromBefore - amount;
                 long toAfter = toBefore + amount;
                 update(connection, "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=? WHERE account_id=?", fromAfter, when, fromId);
-                update(connection, "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=? WHERE account_id=?", toAfter, when, toId);
+                update(connection, "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=? WHERE account_id=?", toAfter, when, resolvedToId);
                 update(connection, "INSERT INTO cmv4_bank_transfers(tx_id,from_account_id,to_account_id,amount,currency,status,idempotency_key,created_at,actor,details) VALUES(?,?,?,?,'AR','COMMITTED',?,?,?,?)",
-                    txKey, fromId, toId, amount, txKey, when, "CopiMine Kosa", first(details, ""));
+                    txKey, fromId, resolvedToId, amount, txKey, when, "CopiMine Kosa", first(details, ""));
                 update(connection, "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                    txKey + ":out", fromId, toId, fromUuid.toString(), first(action, "AR_STEAL_OUT"), amount, fromAfter, txKey + ":out", "COMMITTED", when, first(fromName, ""), first(details, ""));
+                    txKey + ":out", fromId, resolvedToId, fromUuid.toString(), first(action, "AR_STEAL_OUT"), amount, fromAfter, txKey + ":out", "COMMITTED", when, first(fromName, ""), first(details, ""));
                 update(connection, "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                    txKey + ":in", toId, fromId, toUuid.toString(), first(action, "AR_STEAL_IN"), amount, toAfter, txKey + ":in", "COMMITTED", when, "CopiMine Kosa", first(details, ""));
+                    txKey + ":in", resolvedToId, fromId, toUuid.toString(), first(action, "AR_STEAL_IN"), amount, toAfter, txKey + ":in", "COMMITTED", when, "CopiMine Kosa", first(details, ""));
                 return new TxnResult(true, "OK", "AR stolen.", toAfter, txKey);
             });
         } catch (Exception error) {
@@ -6126,25 +6141,28 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
 
         @Override
-        public List<Map<String, Object>> findOrphanedArtifactShopTransfers(int limit) {
+        public List<Map<String, Object>> findOrphanedArtifactShopTransfers(int limit, long afterCreatedAt, String afterTxId) {
             requireAsyncBankContext("ArtifactsBridge.findOrphanedArtifactShopTransfers");
             int boundedLimit = Math.max(1, Math.min(limit, 256));
+            String cursorTxId = first(afterTxId, "");
             try {
                 return queryList(
                     "SELECT t.tx_id,t.to_account_id,t.amount,t.idempotency_key,l.player_uuid,l.actor "
+                        + ",t.created_at "
                         + "FROM cmv4_bank_transfers t "
                         + "JOIN cmv4_bank_ledger l ON l.tx_id=t.tx_id || ':out' AND l.tx_type='AR_SHOP_PURCHASE' "
                         + "WHERE t.idempotency_key LIKE 'artifact-purchase-%' "
+                        + "  AND (t.created_at > ? OR (t.created_at = ? AND (? = '' OR t.tx_id > ?))) "
                         + "  AND NOT EXISTS (SELECT 1 FROM artifact_purchases p WHERE p.idempotency_key=t.idempotency_key) "
                         + "  AND NOT EXISTS (SELECT 1 FROM cmv4_bank_transfers r WHERE r.idempotency_key IN ( "
                         + "      REPLACE(t.idempotency_key,'artifact-purchase-','artifact-refund-'), "
                         + "      REPLACE(t.idempotency_key,'artifact-purchase-','artifact-orphan-refund-'))) "
-                        + "ORDER BY t.created_at ASC LIMIT ?",
-                    boundedLimit
+                        + "ORDER BY t.created_at ASC, t.tx_id ASC LIMIT ?",
+                    afterCreatedAt, afterCreatedAt, cursorTxId, cursorTxId, boundedLimit
                 );
             } catch (Exception error) {
                 getLogger().log(java.util.logging.Level.WARNING, "Artifact orphan transfer lookup failed", error);
-                return List.of();
+                throw new IllegalStateException("Artifact orphan transfer lookup failed; callers must retry.", error);
             }
         }
 

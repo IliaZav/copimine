@@ -1,0 +1,129 @@
+{
+  "status": "CAPTURED_AND_REVIEWED_WITH_LIMITATIONS",
+  "capturedAt": "2026-09-30T06:56:54.9716624Z",
+  "branch": "codex/end-rift-event",
+  "gitHead": "58cf79a90291eeb13afa60dccd0de916d94d9dc8",
+  "server": {
+    "address": "127.0.0.1:25566",
+    "rconPort": 25576,
+    "environment": "local",
+    "serverJarSha256": "58f8c7c37dd7e1633cc6f26dba62d1a1a746badfed471cb4a837de0ce069f2bf"
+  },
+  "client": {
+    "gameDirectory": "local Minecraft 1.21.1 profile",
+    "clientJarSha256": "66b3af1949b753f22843485a5e2a35d6b3460831fdcd7d885eaa27ee75ad2256"
+  },
+  "scene": {
+    "setup": "cmend test showroom",
+    "phase": "static local End Rift showroom",
+    "core": {
+      "x": 8.0,
+      "y": 68.0,
+      "z": -39.0
+    },
+    "eliteMappings": [
+      {
+        "visualId": "END_RIFT_ELITE_V1",
+        "texture": "end_rift_elite.png"
+      },
+      {
+        "visualId": "END_RIFT_ELITE_SKELETON_V1",
+        "texture": "end_rift_elite_skeleton.png"
+      },
+      {
+        "visualId": "END_RIFT_ELITE_SPIDER_V1",
+        "texture": "end_rift_elite_spider.png"
+      }
+    ],
+    "eliteFrames": [
+      {
+        "visualId": "END_RIFT_ELITE_V1",
+        "target": {
+          "x": 1.8636800972951226,
+          "y": 68.0,
+          "z": -32.42058735164628
+        },
+        "camera": {
+          "x": -0.318889361062467,
+          "y": 68.0,
+          "z": -30.080418434784796,
+          "yaw": -137,
+          "pitch": 1
+        }
+      },
+      {
+        "visualId": "END_RIFT_ELITE_SKELETON_V1",
+        "target": {
+          "x": 13.162305945527025,
+          "y": 68.0,
+          "z": -48.463076998111745
+        },
+        "camera": {
+          "x": 14.503217545432916,
+          "y": 68.0,
+          "z": -50.921116070469594,
+          "yaw": 29,
+          "pitch": 8
+        }
+      },
+      {
+        "visualId": "END_RIFT_ELITE_SPIDER_V1",
+        "target": {
+          "x": 5.64435264608362,
+          "y": 68.0,
+          "z": -27.877134181866438
+        },
+        "camera": {
+          "x": 5.147099756166226,
+          "y": 68.0,
+          "z": -25.52921178888391,
+          "yaw": -168,
+          "pitch": 14
+        }
+      }
+    ]
+  },
+  "screenshots": [
+    {
+      "name": "showroom-overview",
+      "file": "showroom-overview.png",
+      "bytes": 969756,
+      "sha256": "d4d2c5190f3514848ba8d208bb185812f068f331f44a14fc8fe34c135458ee3d",
+      "capturedAt": "2026-09-30T06:55:53.4778815Z",
+      "method": "Minecraft F2"
+    },
+    {
+      "name": "elite-enderman",
+      "file": "elite-enderman.png",
+      "bytes": 1304611,
+      "sha256": "4d62e77f6c80d3bbd9fda678176ca72ec97e738aba0a4c9955276857f53b0c56",
+      "capturedAt": "2026-09-30T06:56:06.9257413Z",
+      "method": "Minecraft F2"
+    },
+    {
+      "name": "elite-skeleton",
+      "file": "elite-skeleton.png",
+      "bytes": 1308432,
+      "sha256": "013a2d15fa0bd9f2fa5889cfc556161940c45f8e9267977f12e7b441ba1ca978",
+      "capturedAt": "2026-09-30T06:56:20.0692755Z",
+      "method": "Minecraft F2"
+    },
+    {
+      "name": "elite-spider",
+      "file": "elite-spider.png",
+      "bytes": 1301896,
+      "sha256": "6c65e82ce8caa25690dcdcb81d5a21a8feb8055e861b2082008be5e7ff5fda1e",
+      "capturedAt": "2026-09-30T06:56:33.3743152Z",
+      "method": "Minecraft F2"
+    },
+    {
+      "name": "tentacles-ready",
+      "file": "tentacles-ready.png",
+      "bytes": 1191733,
+      "sha256": "78d71159862878293afc12b2ab2094fe31fa45115c688d7d2b8fb50adca43263",
+      "capturedAt": "2026-09-30T06:56:45.2206515Z",
+      "method": "Minecraft F2"
+    }
+  ],
+  "visualReview": "Original F2 PNGs were opened individually. Expected textures are visible; full model silhouette/scale and tentacle animation remain NOT_VERIFIED. See visual-review.json."
+}

@@ -232,7 +232,7 @@ def test_brewing_consumes_the_submitted_ingredient_once_and_has_no_player_owner_
     service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
     decision = between(service, "public boolean tryAddIngredient", "public void handleCauldronBroken")
     assert "itemFactory.consumeOne(player, stack)" in decision
-    assert "ownerUuid" not in decision
+    assert "base.ownerUuid()" not in decision
     assert "Objects.equals" not in decision
 
 
@@ -241,7 +241,7 @@ def test_brewing_keeps_a_valid_three_of_four_prefix_pending():
     decision = between(service, "public boolean tryAddIngredient", "public void handleCauldronBroken")
     assert "if (current.size() >= MINIMUM_RECIPE_CHECK_SIZE && exact != null)" in decision
     assert "if (current.size() < maximumRecipeSize)" in decision
-    assert "return queueIngredients(block, key, current, nextVersion, nowMillis);" in decision
+    assert "return queueIngredients(block, key, current, nextVersion, nowMillis, player.getUniqueId(), ingredient);" in decision
 
 
 def test_brewing_does_not_finish_a_wrong_mix_before_the_longest_recipe_can_be_completed():
@@ -310,7 +310,8 @@ def test_brewing_accepts_arbitrary_items_as_a_three_item_buffer_then_checks_the_
 def test_brewing_completion_physically_drops_both_success_and_wrong_mix_outputs():
     service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
     effects = between(service, "private void finishBrewing", "private void simulateWrongMixExplosion")
-    assert "dropItemNaturally" in effects
+    assert "completeBrewingState(key, version, ownerUuid, definition.id())" in effects
+    assert "dropCompletedBrewingOutput(dropLocation, definition, outputId)" in effects
     assert "simulateWrongMixExplosion(block, initiator)" in effects
     assert "clearState(block, key, version)" in effects
 
@@ -333,7 +334,7 @@ def test_brewing_rejects_a_three_item_prefix_that_cannot_match_any_recipe():
 def test_wrong_mix_damages_players_only_inside_six_block_radius():
     service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
     explosion = between(service, "private void simulateWrongMixExplosion", "private boolean queueIngredients")
-    assert "getPlayers" in explosion
+    assert "getNearbyEntities" in explosion
     assert "distanceSquared" in explosion
     assert "damage(" in explosion
     assert "WRONG_MIX_DAMAGE_RADIUS = 6.0D" in service
@@ -345,7 +346,8 @@ def test_shared_cauldron_lets_a_different_player_finish_and_receive_the_brew():
     service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
     decision = between(service, "public boolean tryAddIngredient", "public void handleCauldronBroken")
     completion = between(service, "private void finishBrewing", "private void simulateWrongMixExplosion")
-    assert "ownerUuid" not in decision + completion
+    assert "base.ownerUuid()" not in decision + completion
+    assert "completeBrewingState(key, version, ownerUuid, definition.id())" in completion
     assert "Objects.equals" not in completion
 
 
@@ -435,16 +437,17 @@ def test_legacy_ar_is_not_silently_reissued_and_failed_issuance_is_token_scoped(
 def test_brewing_consumes_the_submitted_ingredient_and_drops_output_in_world():
     service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
     queue = between(service, "private boolean queueIngredients", "private void clearState")
-    assert "saveBrewingState(key, version, frozen)" in queue
-    assert "ownerUuid" not in queue
-    assert "dropItemNaturally" in service
+    assert "saveBrewingState(key, version, frozen, ownerUuid)" in queue
+    assert "queuePendingRefund(ownerUuid, consumedIngredient)" in queue
+    assert "dropCompletedBrewingOutput" in service
 
 
 def test_brewing_world_output_is_public_and_never_mailbox_delivered():
     plugin = read("copimine-narcotics/src/me/copimine/narcotics/CopiMineNarcotics.java")
     cauldron = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
-    assert "dropItemNaturally" in between(cauldron, "private void finishBrewing", "private void simulateWrongMixExplosion")
-    assert "ownerUuid" not in cauldron
+    assert "dropCompletedBrewingOutput(dropLocation, definition, outputId)" in between(cauldron, "private void finishBrewing", "private void simulateWrongMixExplosion")
+    assert "ownerUuid" in cauldron
+    assert "base.ownerUuid()" not in cauldron
 
 
 def test_brewing_completion_consumes_the_rig_for_a_fresh_second_setup():
@@ -586,11 +589,26 @@ def test_adminplus_leaves_official_ar_as_a_vanilla_item():
         assert f"public void {method}" not in admin
 
 
-def test_shop_revenue_starts_pending_and_waits_for_the_async_credit_worker():
+def test_shop_direct_transfer_is_recorded_as_settled_without_a_second_credit():
     artifacts = read("copimine-artifacts/src/me/copimine/artifacts/CopiMineArtifacts.java")
     persist = between(artifacts, "private void persistPaidPurchase", "private void deliverPurchase")
-    assert 'var8.setString(10, "PENDING")' in persist
-    assert 'var8.setString(10, "CREDITED")' not in persist
+    payout_worker = between(artifacts, "private void processRevenuePayout", "private Map<String, Object> readRevenuePayoutRow")
+    assert 'var8.setString(10, "CREDITED")' in persist
+    assert 'var8.setString(11, var3.txId())' in persist
+    assert "creditAccount(" not in payout_worker
+    assert 'markRevenuePayoutCredited(var1, bankTransactionId)' in payout_worker
+    assert 'String reason = amount <= 0L ? "amount_invalid" : "bank_tx_missing"' in payout_worker
+    assert 'this.markRevenuePayoutReview(var1, reason)' in payout_worker
+
+
+def test_shop_ambiguous_database_failure_waits_for_reconciliation_before_refund():
+    artifacts = read("copimine-artifacts/src/me/copimine/artifacts/CopiMineArtifacts.java")
+    purchase_flow = between(artifacts, "this.persistPaidPurchase(var1, var7, var10);", "private void persistPaidPurchase")
+    assert "shouldRefundAfterPersistenceFailure" in purchase_flow
+    assert "isWithinOrphanRefundGracePeriod" in artifacts
+    assert "Покупка ожидает проверки" in purchase_flow
+    assert "lockArtifactPurchasePersistence(var4, var2.purchaseId())" in artifacts
+    assert "SET LOCAL lock_timeout = '5s'" in artifacts
 
 
 def test_atm_label_is_above_the_block_model():

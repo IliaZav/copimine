@@ -1,0 +1,27 @@
+SKIPPED_RELEASE_ARTIFACT_VALIDATORS count=25 names=ValidateCopiMineAllPluginsAudit.ps1,ValidateCopiMineArtifactsStructure.ps1,ValidateCopiMineArtifactsV4ShopAndBlackMarket.ps1,ValidateCopiMineAuditLeastPrivilegeAndWorldSafety.ps1,ValidateCopiMineClientAssetsInsideModJar.ps1,ValidateCopiMineClientJarContainsAssets.ps1,ValidateCopiMineDirectionalSpecialItemModels.ps1,ValidateCopiMineDonationTexturesInPack.ps1,ValidateCopiMineElectionRolesAndCandidateBooks.ps1,ValidateCopiMineFirstRunPerformancePlus.ps1,ValidateCopiMineNarcoticsPlugin.ps1,ValidateCopiMineNarcoticsResourcePackZipContainsAssets.ps1,ValidateCopiMineNarcoticsResourcePackZipContainsOverlayAssets.ps1,ValidateCopiMineNarcoticsResourcePackZipHashSynced.ps1,ValidateCopiMineNarcoticsTextureAssetsInPack.ps1,ValidateCopiMineNarcoticsTextureDefaultVanilla.ps1,ValidateCopiMinePerformanceAnticheat.ps1,ValidateCopiMinePermissions.ps1,ValidateCopiMinePluginCommands.ps1,ValidateCopiMineReleaseCleanlinessAndGuide.ps1,ValidateCopiMineResourcePackBuildAndHash.ps1,ValidateCopiMineResourcePackReproducible.ps1,ValidateCopiMineShieldResourcePackModel.ps1,ValidateCopiMineSinglePluginAndWorkflows.ps1,ValidateCopiMineTabBannerConfigured.ps1
+PROGRESS 25/635 passed=25 failed=0
+PROGRESS 50/635 passed=50 failed=0
+PROGRESS 75/635 passed=75 failed=0
+PROGRESS 100/635 passed=100 failed=0
+PROGRESS 125/635 passed=125 failed=0
+PROGRESS 150/635 passed=150 failed=0
+PROGRESS 175/635 passed=175 failed=0
+PROGRESS 200/635 passed=200 failed=0
+PROGRESS 225/635 passed=225 failed=0
+PROGRESS 250/635 passed=250 failed=0
+PROGRESS 275/635 passed=275 failed=0
+PROGRESS 300/635 passed=300 failed=0
+PROGRESS 325/635 passed=325 failed=0
+PROGRESS 350/635 passed=350 failed=0
+PROGRESS 375/635 passed=375 failed=0
+PROGRESS 400/635 passed=400 failed=0
+PROGRESS 425/635 passed=425 failed=0
+PROGRESS 450/635 passed=450 failed=0
+PROGRESS 475/635 passed=475 failed=0
+PROGRESS 500/635 passed=500 failed=0
+PROGRESS 525/635 passed=525 failed=0
+PROGRESS 550/635 passed=550 failed=0
+PROGRESS 575/635 passed=575 failed=0
+PROGRESS 600/635 passed=600 failed=0
+PROGRESS 625/635 passed=625 failed=0
+VALIDATOR_SUMMARY total=635 passed=635 failed=0 skipped=25

@@ -221,6 +221,36 @@ public record BridgePayload(
         );
     }
 
+    /** Encode one server-validated prisoner ability press in the shared v2 envelope. */
+    public static BridgePayload prisonerAbilityRequest(String sessionId, long generation,
+                                                        String eventId, String abilityId,
+                                                        String targetUuid) {
+        return new BridgePayload(
+                ClientBridgeProtocol.TYPE_PRISONER_ABILITY_REQUEST,
+                ClientBridgeProtocol.PROTOCOL_VERSION,
+                Math.max(0L, generation),
+                System.currentTimeMillis(),
+                sessionId,
+                CopiMineClient.CLIENT_VERSION,
+                false,
+                false,
+                false,
+                false,
+                Set.of(),
+                "",
+                safe(eventId),
+                1,
+                0.0F,
+                0,
+                0,
+                safe(abilityId),
+                safe(targetUuid),
+                "",
+                "",
+                ""
+        );
+    }
+
     @Override
     public Id<? extends CustomPayload> getId() {
         return ID;
@@ -368,6 +398,10 @@ public record BridgePayload(
         Set<String> normalized = new LinkedHashSet<>();
         if (supportedEffects != null) {
             for (String effectId : supportedEffects) {
+                if ("ECHO_PRESENTATION_V1".equalsIgnoreCase(effectId)) {
+                    normalized.add("ECHO_PRESENTATION_V1");
+                    continue;
+                }
                 String effect = normalizeEffectId(effectId);
                 if (!effect.isBlank()) {
                     normalized.add(effect);

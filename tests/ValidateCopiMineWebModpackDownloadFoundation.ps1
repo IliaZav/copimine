@@ -47,20 +47,21 @@ try {
 }
 
 foreach ($required in @(
-    "mods/CopiMineClient-0.1.0.jar",
+    "mods/CopiMineClient-0.1.1.jar",
     "mods/emotecraft-for-MC1.21.1-2.4.12-fabric.jar",
-    "mods/fabric-api-0.116.11+1.21.1.jar",
+    "mods/fabric-api-0.116.12+1.21.1.jar",
     "mods/voicechat-fabric-1.21.1-2.6.16.jar",
     "mods/iris-fabric-1.8.8+mc1.21.1.jar",
     "mods/sodium-fabric-0.6.13+mc1.21.1.jar",
-    "mods/CustomSkinLoader_Fabric-14.26.1.jar",
-    "modpack_manifest.json",
-    "README_RU.txt",
-    "VOICE_CHAT_OFFICIAL_DOWNLOAD.txt"
+    "mods/CustomSkinLoader_Fabric-14.26.1.jar"
 )) {
     if ($zipEntries -notcontains $required) {
         throw "CopiMineMods.zip is missing required entry: $required"
     }
+}
+
+if (($zipEntries | Where-Object { $_ -ne 'mods' -and $_ -notmatch '^mods/.+\.jar$' }).Count -gt 0) {
+    throw "CopiMineMods.zip must contain only the mods directory and JAR files under it"
 }
 
 if ($manifestText -notmatch '"requiredExternal"\s*:\s*\[\s*\]') {

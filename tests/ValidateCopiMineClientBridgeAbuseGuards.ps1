@@ -10,12 +10,35 @@ if ($bridge -notmatch 'MAX_INBOUND_MESSAGE_BYTES' -or $bridge -notmatch 'allowIn
 }
 
 if ($bridge -notmatch 'copimine\.narcotics\.admin' -or $bridge -notmatch '"require"\.equals\(sub\)') {
-    throw 'Changing the server-wide client requirement must require the full narcotics administrator permission.'
+    throw 'Viewing the immutable server-wide client requirement must require the full narcotics administrator permission.'
+}
+
+foreach ($eventType in @(
+    'PlayerItemConsumeEvent',
+    'ProjectileLaunchEvent',
+    'PlayerFishEvent',
+    'PlayerShearEntityEvent',
+    'PlayerArmorStandManipulateEvent',
+    'PlayerTakeLecternBookEvent',
+    'PlayerBucketEmptyEvent',
+    'PlayerBucketFillEvent'
+)) {
+    if ($bridge -notmatch [regex]::Escape($eventType)) {
+        throw "Pending clients must not be able to mutate gameplay through $eventType."
+    }
+}
+if ($bridge -notmatch 'EntityDamageEvent' -or $bridge -notmatch 'isPendingClient\(victim\)') {
+    throw 'Pending clients must be protected from damage while the handshake is in progress.'
+}
+
+$pendingMove = [regex]::Match($bridge, '(?s)public void onPendingMove\(PlayerMoveEvent event\) \{.*?(?=\r?\n\s*@EventHandler|\r?\n\s*private )')
+if (-not $pendingMove.Success -or $pendingMove.Value -notmatch 'PlayerTeleportEvent' -or $pendingMove.Value -notmatch 'instanceof PlayerTeleportEvent') {
+    throw 'Pending movement restrictions must allow server-issued teleports used by offline-mode authentication.'
 }
 
 $join = [regex]::Match($bridge, '(?s)public void onJoin\(PlayerJoinEvent event\) \{.*?(?=\r?\n\s*@EventHandler\r?\n\s*public void onQuit)')
-if (-not $join.Success -or $join.Value -match 'kickPlayer\(' -or $join.Value -notmatch 'cannot prove that a client mod is installed') {
-    throw 'A plugin-channel HELLO must not be treated as proof that a client mod is installed for automatic kicking.'
+if (-not $join.Success -or $join.Value -notmatch 'PendingClientHandshake' -or $join.Value -notmatch 'encodeClientModChallenge') {
+    throw 'The join path must create a per-connection CopiMineClient challenge and timeout.'
 }
 
 if ($payloads -notmatch 'Float\.isFinite\(value\)') {

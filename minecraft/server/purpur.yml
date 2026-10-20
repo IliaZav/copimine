@@ -173,7 +173,12 @@ settings:
       second: '%02d second'
       seconds: '%02d seconds'
   bee-count-payload: false
-  clamp-attributes: true
+  # End Rift V2 uses the real entity health field for its 5,000-20,000 HP boss.
+  # Purpur's attribute clamp is disabled so the MAX_HEALTH attribute is not
+  # truncated to vanilla's 2,048 limit. This affects only attributes that a
+  # plugin explicitly sets above the normal range; ordinary entities retain
+  # their normal defaults.
+  clamp-attributes: false
   logger:
     suppress-init-legacy-material-errors: false
     suppress-ignored-advancement-warnings: false

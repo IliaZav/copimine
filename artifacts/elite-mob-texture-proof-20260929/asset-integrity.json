@@ -1,0 +1,47 @@
+{
+  "title": "Elite mob static asset proof",
+  "sourceArchive": "elite mobs.rar",
+  "sourceAtlasByteHash": "SHA-256",
+  "clientArchive": "thirdparty/CopiMineMods.zip",
+  "clientJarSha256": "0391b586fe3884e4464bba074da6a02bf0704997666333b543e3b02892a428b1",
+  "modpackSha256": "0f3de3cba0ae0ba1672225674f1c9796b4e458e30269e15508c1f76a851ac5e1",
+  "mobs": [
+    {
+      "mob": "ЭЛИТНЫЙ ЭНДЕРМЕН",
+      "role": "END_RIFT_ELITE_V1",
+      "archiveAtlas": "enderman_elite.png",
+      "archivePreview": "enderman prime.png",
+      "clientResource": "assets/copimineclient/textures/entity/end_rift_elite.png",
+      "sha256": "5923111b4ac459daee04aeeea4930dcac4b1156ed3d94bbaaa4b89b987fc6bdc",
+      "matchesSource": true,
+      "matchesBuiltJar": true,
+      "matchesStagedJar": true,
+      "matchesModpackJar": true
+    },
+    {
+      "mob": "ЭЛИТНЫЙ СКЕЛЕТ",
+      "role": "END_RIFT_ELITE_SKELETON_V1",
+      "archiveAtlas": "skeleton_elite.png",
+      "archivePreview": "skeletom prime.png",
+      "clientResource": "assets/copimineclient/textures/entity/end_rift_elite_skeleton.png",
+      "sha256": "df29a577e2cc5896507044db37349216c2401311e458576ecbb2e0fe8ce65514",
+      "matchesSource": true,
+      "matchesBuiltJar": true,
+      "matchesStagedJar": true,
+      "matchesModpackJar": true
+    },
+    {
+      "mob": "ЭЛИТНЫЙ ПАУК",
+      "role": "END_RIFT_ELITE_SPIDER_V1",
+      "archiveAtlas": "spider_elite.png",
+      "archivePreview": "spider elite.png",
+      "clientResource": "assets/copimineclient/textures/entity/end_rift_elite_spider.png",
+      "sha256": "40ab699e7dc46d50a26728679539b30ced556269b795b06ed7bf498dd1b4d052",
+      "matchesSource": true,
+      "matchesBuiltJar": true,
+      "matchesStagedJar": true,
+      "matchesModpackJar": true
+    }
+  ],
+  "visualStatus": "static asset proof only; no live Minecraft render was captured"
+}

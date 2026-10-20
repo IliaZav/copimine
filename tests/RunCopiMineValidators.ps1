@@ -1,6 +1,10 @@
 param(
   [string]$Pattern = 'Validate*.ps1',
-  [switch]$SkipReleaseArtifacts
+  [switch]$SkipReleaseArtifacts,
+  [string]$MigrationJavaHome = $env:COPIMINE_JAVA_25_HOME,
+  [string]$MigrationGradleExecutable = $env:COPIMINE_MIGRATION_GRADLE_EXECUTABLE,
+  [string]$MavenRepository = $env:COPIMINE_MAVEN_REPOSITORY,
+  [string]$PaperApiJar = $env:COPIMINE_PAPER_263_API_JAR
 )
 
 $ErrorActionPreference = 'Stop'
@@ -43,6 +47,10 @@ $failures = [System.Collections.Generic.List[string]]::new()
 $passed = 0
 $index = 0
 $skippedCount = 0
+$validatorShell = Get-Command pwsh -CommandType Application -ErrorAction SilentlyContinue
+if (-not $validatorShell) {
+  $validatorShell = Get-Command powershell -CommandType Application -ErrorAction Stop
+}
 
 if ($SkipReleaseArtifacts) {
   $skipped = $allTests | Where-Object { $_.Name -in $releaseArtifactValidators }
@@ -50,10 +58,41 @@ if ($SkipReleaseArtifacts) {
   Write-Host "SKIPPED_RELEASE_ARTIFACT_VALIDATORS count=$skippedCount names=$($skipped.Name -join ',')"
 }
 
+function Get-ValidatorArguments([string]$ValidatorName) {
+  switch ($ValidatorName) {
+    'ValidateCopiMinePaper263CompileDependencies.ps1' {
+      foreach ($argument in @($MigrationJavaHome, $MavenRepository, $PaperApiJar)) {
+        if ([string]::IsNullOrWhiteSpace($argument)) {
+          throw 'Paper 26.3 compile dependency validation requires MigrationJavaHome, MavenRepository, and PaperApiJar.'
+        }
+      }
+      return @('-JavaHome', $MigrationJavaHome, '-MavenRepository', $MavenRepository, '-PaperApiJar', $PaperApiJar)
+    }
+    'ValidateClientBridgeV4FailClosed.ps1' {
+      foreach ($argument in @($MigrationJavaHome, $MigrationGradleExecutable)) {
+        if ([string]::IsNullOrWhiteSpace($argument)) {
+          throw 'Client bridge fail-closed validation requires MigrationJavaHome and MigrationGradleExecutable.'
+        }
+      }
+      return @('-JavaHome', $MigrationJavaHome, '-GradleExecutable', $MigrationGradleExecutable)
+    }
+    default {
+      return @()
+    }
+  }
+}
+
 foreach ($test in $tests) {
   $index++
   try {
-    & $test.FullName *>&1 | Out-Null
+    $validatorArguments = Get-ValidatorArguments $test.Name
+    $testOutput = @(& $validatorShell.Source -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+      -File $test.FullName @validatorArguments *>&1)
+    $testExitCode = $LASTEXITCODE
+    if ($testExitCode -ne 0) {
+      $details = ($testOutput | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
+      throw "Validator process exited with code $testExitCode.$([Environment]::NewLine)$details"
+    }
     $passed++
   } catch {
     $failures.Add(('{0}: {1}' -f $test.Name, $_.Exception.Message))

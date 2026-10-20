@@ -1,0 +1,317 @@
+import java.util.*;
+import java.util.function.Consumer;
+import me.copimine.endevent.domain.PortalCapturePolicy;
+import me.copimine.endevent.domain.PortalPresentationPolicy;
+
+public class PortalLayerRuntimeProbe {
+    enum PortalVisualLayer {FRAME, INNER, SHARD}
+    record PortalVisualSlot(int portalIndex, PortalVisualLayer layer) {}
+    enum EventPhase {WAVE_3, CANCELLED, RECOVERY_REQUIRED}
+    static final int MODEL_RIFT_GATE=1, MODEL_PORTAL_INNER_OVERLAY=2, MODEL_PORTAL_SHARD_OVERLAY=3;
+    static final String EVENT_KIND_DISPLAY="display";
+    String eventId="event";
+    long generation=7;
+    long portalVisualGeneration=7;
+    long portalVisualFailedGeneration=Long.MIN_VALUE;
+    Set<Integer> portalVisualTransactionsInProgress=new LinkedHashSet<>();
+    String recoveryReason;
+    int activeWave=3;
+    EventPhase phase=EventPhase.WAVE_3;
+    boolean testPortalVisualMode;
+    Map<UUID,Entity> ownedEntities=new LinkedHashMap<>();
+    Map<Integer,List<UUID>> wavePortalModelVisuals=new LinkedHashMap<>();
+    Map<UUID,PortalVisualLayer> wavePortalVisualLayers=new LinkedHashMap<>();
+    Map<UUID,Integer> wavePortalVisualIndices=new LinkedHashMap<>();
+    Map<PortalVisualSlot,Integer> portalVisualRebuildAttempts=new LinkedHashMap<>();
+    Set<PortalVisualSlot> portalVisualSpawnsInProgress=new LinkedHashSet<>();
+    Map<PortalVisualSlot,Long> portalVisualRebuildRetryAtMillis=new LinkedHashMap<>();
+    Set<UUID> waveObjectiveVisuals=new LinkedHashSet<>();
+    Map<UUID,Object> waveObjectiveVisualTexts=new HashMap<>();
+    Map<Integer,Long> portalClosingStartedMillis=new HashMap<>();
+    Map<Integer,Integer> portalProgressMilestones=new HashMap<>();
+    Map<Integer,List<Location>> wavePortals=new HashMap<>();
+    Map<Integer,List<PortalCapturePolicy.PortalState>> portalCaptureStates=new HashMap<>();
+    World world=new World();
+    Location portal=new Location(world);
+    BukkitTask portalVisualTask;
+    Registry taskRegistry=new Registry();
+    int failedModel=0, remainingFailures=0, spawnCalls=0;
+    String failure="null";
+    Runnable spawnHook=()->{};
+    ItemDisplay lastTemporary;
+    PortalLayerRuntimeProbe(){world.owner=this; wavePortals.put(3,List.of(portal));
+        portalCaptureStates.put(3,List.of(PortalCapturePolicy.initial()));}
+    class Registry {boolean owns(long g){return generation==g;}}
+    static class BukkitTask {boolean cancelled; Runnable callback; void cancel(){cancelled=true;}}
+    static class Scheduler {BukkitTask runTaskTimer(Object plugin,Runnable r,long a,long b){
+        BukkitTask t=new BukkitTask(); t.callback=r; return t;}}
+    static class Bukkit {static Map<UUID,Entity> entities=new HashMap<>();
+        static Entity getEntity(UUID id){return entities.get(id);} static Scheduler getScheduler(){return new Scheduler();}}
+    static class Entity {UUID id=UUID.randomUUID(); boolean valid=true,dead; long g=7; String event="event";
+        Set<String> tags=new HashSet<>();
+        boolean addScoreboardTag(String t){return tags.add(t);} Set<String> getScoreboardTags(){return tags;}
+        UUID getUniqueId(){return id;} boolean isValid(){return valid;} boolean isDead(){return dead;}
+        void remove(){valid=false;dead=true;}}
+    static class ItemDisplay extends Entity {
+        enum ItemDisplayTransform {NONE}
+        int model;
+        void setItemStack(int v){model=v;}
+        void setBrightness(Object v){} void setItemDisplayTransform(Object v){} void setBillboard(Object v){}
+        void setViewRange(float v){} void setDisplayWidth(float v){} void setDisplayHeight(float v){}
+        void setInterpolationDelay(int v){} void setInterpolationDuration(int v){} void setPersistent(boolean v){}
+        void setGravity(boolean v){} void setInvulnerable(boolean v){} void setShadowRadius(float v){}
+        void setTransformation(Object v){}
+    }
+    static class Display {record Brightness(int a,int b){} enum Billboard{FIXED}}
+    static class Vector3f {Vector3f(float a,float b,float c){}}
+    static class AxisAngle4f {}
+    static class Transformation {Transformation(Object a,Object b,Object c,Object d){}}
+    static class Location {World world; Location(World w){world=w;} World getWorld(){return world;}
+        int getBlockX(){return 0;} int getBlockZ(){return 0;}}
+    static class Chunk {int getX(){return 0;} int getZ(){return 0;}}
+    static class EntitiesLoadEvent {World world; List<Entity> entities;
+        EntitiesLoadEvent(World w){this(w,List.of());}
+        EntitiesLoadEvent(World w,List<Entity> es){world=w;entities=es;}
+        World getWorld(){return world;} Chunk getChunk(){return new Chunk();} List<Entity> getEntities(){return entities;}}
+    static class ChunkLoadEvent extends EntitiesLoadEvent {ChunkLoadEvent(World w){super(w);}}
+    static class World {
+        PortalLayerRuntimeProbe owner;
+        ItemDisplay spawn(Location l,Class<ItemDisplay> c,Consumer<ItemDisplay> init){
+            owner.spawnCalls++;
+            ItemDisplay d=new ItemDisplay();owner.lastTemporary=d;init.accept(d);
+            if((d.model==owner.failedModel || owner.failedModel==-1) && owner.remainingFailures-->0){
+                switch(owner.failure){
+                    case "null": return null;
+                    case "exception": throw new IllegalArgumentException("invalid resource");
+                    case "invalid": d.valid=false; break;
+                    case "dead": d.dead=true; break;
+                    case "wrong-owner": d.event="foreign"; break;
+                    case "unregistered": d.event="unregistered"; break;
+                    case "wrong-slot": d.event="wrong-slot"; break;
+                }
+            }
+            Bukkit.entities.put(d.id,d); owner.spawnHook.run(); return d;
+        }
+    }
+    int overlayItem(int model,String name){return model;}
+    Location portalDisplayOrigin(Location l){return l;}
+    void tag(Entity d,String kind,int wave,boolean official){
+        if(d!=null && !d.event.equals("unregistered"))ownedEntities.put(d.id,d);
+    }
+    boolean ownedBySession(Entity d,String event,long g){return d!=null && d.event.equals(event) && d.g==g;}
+    Entity unregisterOwnedEntity(UUID id,String reason){return ownedEntities.remove(id);}
+    void registerOwnedEntity(Entity e){ownedEntities.put(e.id,e);}
+    void registerEncounterTask(BukkitTask task){}
+    void forcePhase(EventPhase next,String reason){phase=next;}
+    int currentWave3ActivePortal(List<PortalCapturePolicy.PortalState> states,long now){return PortalPresentationPolicy.activeIndex(states);}
+    void animatePortalModelVisuals(long now){}
+    java.util.logging.Logger getLogger(){return java.util.logging.Logger.getLogger("portal-test");}
+    // PRODUCTION_METHODS
+    void spawn(){spawnPortalObjectiveVisuals(world,List.of(portal));}
+    void spawnMany(){List<Location> portals=List.of(portal,new Location(world),new Location(world));
+        wavePortals.put(3,portals);portalCaptureStates.put(3,List.of(PortalCapturePolicy.initial(),
+                PortalCapturePolicy.initial(),PortalCapturePolicy.initial()));spawnPortalObjectiveVisuals(world,portals);}
+    void refresh(long now){refreshPortalObjectiveVisuals(portalCaptureStates.get(3),now);}
+    int live(){return (int)ownedEntities.values().stream().filter(e->e.valid && !e.dead).count();}
+    void fail(int model,int count,String kind){failedModel=model;remainingFailures=count;failure=kind;}
+    void closed(){portalCaptureStates.put(3,List.of(new PortalCapturePolicy.PortalState(true,5000,0,0)));}
+    static void check(boolean ok,String message){if(!ok)throw new AssertionError(message);}
+    public static void main(String[] args){
+        PortalLayerRuntimeProbe p=new PortalLayerRuntimeProbe();
+        String s=args[0]; long now=System.currentTimeMillis()+10_000;
+        switch(s){
+            case "frame", "inner", "shard", "transient": {
+                int model=s.equals("inner")?2:s.equals("shard")?3:1;
+                p.fail(model,s.equals("transient")?3:1,"null");p.spawn();
+                check(p.live()==0,"failed portal transaction must roll back all FRAME/INNER/SHARD layers");
+                p.refresh(0);check(p.spawnCalls==3,"initial failure must back off");
+                p.refresh(now);p.refresh(now+1000);p.refresh(now+2000);
+                check(p.live()==3,"later retry must restore missing layer");
+                check(p.spawnCalls<=12,"whole-portal retry must remain bounded");break;
+            }
+            case "invalid", "dead", "unregistered", "wrong-owner", "null", "exception": {
+                p.fail(1,10,s);p.spawn();
+                check(p.wavePortalModelVisuals.getOrDefault(3,List.of()).isEmpty(),
+                    "failed portal transaction must not publish a partial tracked layer set");
+                p.refresh(now);
+                check(p.spawnCalls<=6,"one retry observation must not start unbounded spawn recursion");
+                check(p.live()==0,"failed temporary and sibling handles must be cleaned");break;
+            }
+            case "wrong-slot": {
+                p.spawn();UUID id=p.wavePortalVisualLayers.entrySet().stream().filter(e->e.getValue()==PortalVisualLayer.FRAME).findFirst().get().getKey();
+                p.wavePortalVisualIndices.put(id,1);p.refresh(now);
+                check(p.wavePortalVisualIndices.values().stream().allMatch(v->v==0),"stale portal index must not survive reconciliation");break;
+            }
+            case "duplicate": {
+                p.spawn();UUID good=p.wavePortalModelVisuals.get(3).get(0);
+                ItemDisplay d=new ItemDisplay();p.ownedEntities.put(d.id,d);Bukkit.entities.put(d.id,d);
+                p.wavePortalVisualLayers.put(d.id,PortalVisualLayer.FRAME);p.wavePortalVisualIndices.put(d.id,0);
+                p.wavePortalModelVisuals.get(3).add(d.id);p.refresh(now);p.refresh(now+1000);
+                check(p.live()==3 && p.spawnCalls==3,"duplicate reconcile must retain one layer without spawning again");
+                check(p.ownedEntities.containsKey(good),"last known good layer must survive");break;
+            }
+            case "exhausted-reload", "permanent", "exhausted-task": {
+                p.fail(1,100,"invalid");p.spawn();
+                for(int i=0;i<20;i++)p.refresh(now+i*1000);
+                check(p.spawnCalls<=12,"permanent resource must stop after a bounded number of transactions");
+                check(p.live()==0,"permanently incomplete portal must remove all sibling layers");
+                check(p.phase==EventPhase.RECOVERY_REQUIRED || p.activeWave!=3,
+                    "essential portal reconstruction exhaustion must stop active Wave 3 in explicit safe recovery");
+                int exhaustedSpawnCalls=p.spawnCalls;
+                if(s.equals("exhausted-task")){p.startPortalVisualAnimation(p.world);
+                    if(p.portalVisualTask!=null)p.portalVisualTask.callback.run();
+                    check(p.spawnCalls==exhaustedSpawnCalls,"animation callback must not reopen exhausted retries");break;}
+                if(s.equals("permanent"))break;
+                p.fail(1,0,"invalid");p.onPortalVisualEntitiesLoad(new EntitiesLoadEvent(p.world));p.refresh(now+30000);
+                check(p.live()==0 && p.spawnCalls==exhaustedSpawnCalls,
+                    "chunk reload alone must not reopen a failed encounter outside explicit recovery");break;
+            }
+            case "exhaustion-safe-recovery": {
+                p.fail(1,100,"null");p.spawn();
+                for(int i=0;i<20;i++)p.refresh(now+i*1000);
+                check(p.phase==EventPhase.RECOVERY_REQUIRED || p.activeWave!=3,
+                    "retry exhaustion must leave active gameplay and enter explicit safe recovery");
+                check(p.live()==0,"safe recovery must remove incomplete portal siblings");
+                break;
+            }
+            case "exhausted-loaded-sibling": {
+                p.spawn();Entity unloaded=p.ownedEntities.values().iterator().next();
+                p.ownedEntities.remove(unloaded.id);p.wavePortalVisualIndices.remove(unloaded.id);
+                p.wavePortalVisualLayers.remove(unloaded.id);p.wavePortalModelVisuals.get(3).remove(unloaded.id);
+                p.fail(1,100,"null");for(int i=0;i<5;i++)p.refresh(now+i*1000);
+                int calls=p.spawnCalls;
+                p.onPortalVisualEntitiesLoad(new EntitiesLoadEvent(p.world,List.of(unloaded)));
+                check(!unloaded.valid&&p.live()==0&&p.spawnCalls==calls,
+                    "persisted sibling loaded after exhaustion must be removed without reopening recovery");break;
+            }
+            case "explicit-restart-after-exhaustion": {
+                p.fail(1,100,"null");p.spawn();for(int i=0;i<5;i++)p.refresh(now+i*1000);
+                check(p.phase==EventPhase.RECOVERY_REQUIRED,"fixture must exhaust first");
+                p.fail(1,0,"null");p.phase=EventPhase.WAVE_3;p.spawn();
+                check(p.live()==3&&p.portalVisualFailedGeneration!=p.generation,
+                    "explicit encounter restart must reset the failure fence and build one complete portal");break;
+            }
+            case "multi-portal-exhaustion": {
+                p.spawnMany();
+                UUID frame=p.wavePortalVisualIndices.entrySet().stream()
+                    .filter(e->e.getValue()==1&&p.wavePortalVisualLayers.get(e.getKey())==PortalVisualLayer.FRAME)
+                    .map(Map.Entry::getKey).findFirst().orElseThrow();
+                p.removePortalModelVisual(frame,"fixture-failure");p.fail(1,100,"null");
+                for(int i=0;i<5;i++)p.refresh(now+i*1000);
+                check(p.phase==EventPhase.RECOVERY_REQUIRED&&p.live()==0,
+                    "one exhausted mandatory portal must retire all encounter portal siblings");break;
+            }
+            case "sibling-removed-during-transaction": {
+                p.spawnHook=()->{
+                    if(p.spawnCalls==3){
+                        p.spawnHook=()->{};
+                        UUID id=p.wavePortalVisualLayers.entrySet().stream()
+                            .filter(e->e.getValue()==PortalVisualLayer.FRAME).map(Map.Entry::getKey).findFirst().orElseThrow();
+                        p.removePortalModelVisual(id,"synchronous-layer-loss");
+                    }
+                };
+                p.spawn();
+                check(p.live()==0&&p.wavePortalModelVisuals.getOrDefault(3,List.of()).isEmpty(),
+                    "transaction must revalidate earlier siblings before publishing the complete set");
+                p.refresh(now);check(p.live()==3,"bounded retry must recover after synchronous sibling loss");break;
+            }
+            case "closed":p.fail(1,1,"null");p.spawn();p.closed();p.refresh(now);
+                check(p.spawnCalls==3,"closed portal must not rebuild pending layer");break;
+            case "close-during-spawn":p.fail(1,1,"null");p.spawn();p.spawnHook=p::closed;p.refresh(now);
+                check(p.live()<=2,"synchronous close must discard temporary replacement");break;
+            case "generation":p.fail(1,1,"null");p.spawn();p.spawnHook=()->p.generation++;p.refresh(now);
+                check(p.spawnCalls==4 && p.live()==0,"generation replacement must roll back the transaction and stop reconciliation");break;
+            case "restart":p.fail(2,1,"null");p.spawn();p.clearPortalModelVisuals("restart-cleanup");p.spawn();p.refresh(now);
+                check(p.live()==3 && p.wavePortalModelVisuals.get(3).size()==3,"recovery initialization after restart cleanup must restore exactly three layers");break;
+            case "empty-start":p.fail(1,100,"null");p.spawn();
+                for(UUID id:new ArrayList<>(p.ownedEntities.keySet()))p.removePortalModelVisual(id,"unloaded");
+                p.startPortalVisualAnimation(p.world);check(p.portalVisualTask!=null,"all missing layers must retain bounded recovery scheduling");break;
+            case "chunk-adoption", "chunk-duplicate": {
+                p.spawn(); List<Entity> loaded=new ArrayList<>(p.ownedEntities.values());
+                p.wavePortalVisualLayers.clear();p.wavePortalVisualIndices.clear();p.wavePortalModelVisuals.clear();p.ownedEntities.clear();
+                if(s.equals("chunk-duplicate")){ItemDisplay duplicate=new ItemDisplay();
+                    duplicate.tags.addAll(loaded.get(0).tags);loaded.add(duplicate);Bukkit.entities.put(duplicate.id,duplicate);}
+                p.onPortalVisualEntitiesLoad(new EntitiesLoadEvent(p.world,loaded));p.refresh(now);
+                check(p.spawnCalls==3 && p.live()==3,"chunk reload must adopt owned persisted layers and remove duplicates before spawning");
+                check(p.wavePortalModelVisuals.get(3).size()==3,"adopted layers must all remain tracked");break;
+            }
+            case "exception-cleanup": {
+                p.fail(3,1,"exception");p.spawn();
+                check(!p.lastTemporary.isValid(),"spawn initializer temporary must be removed even if spawn throws before world registration");break;
+            }
+            case "stale-chunk": {
+                p.fail(1,100,"invalid");p.spawn();for(int i=0;i<4;i++)p.refresh(now+i*1000);
+                int callsBeforeStaleCallback=p.spawnCalls;
+                p.generation++;p.fail(1,0,"invalid");p.onPortalVisualEntitiesLoad(new EntitiesLoadEvent(p.world));p.refresh(now+10000);
+                if(p.portalVisualTask!=null)p.portalVisualTask.callback.run();
+                check(p.spawnCalls==callsBeforeStaleCallback && p.portalVisualTask==null,"old-generation chunk callback must not reopen portal recovery");break;
+            }
+            case "closed-collapse": {
+                p.fail(1,1,"null");p.spawn();p.closed();p.portalClosingStartedMillis.put(0,now);p.refresh(now);
+                check(p.spawnCalls==3,"completed portal must not rebuild even while collapse remains visible");break;
+            }
+            case "reentrant-refresh": {
+                p.fail(1,1,"null");p.spawn();p.spawnHook=()->{p.spawnHook=()->{};p.refresh(now);};p.refresh(now);
+                check(p.spawnCalls==6 && p.live()==3,"synchronous callbacks must not recursively spawn a duplicate transaction");break;
+            }
+            case "reload-during-spawn": {
+                p.spawn();Entity old=p.ownedEntities.values().iterator().next();
+                p.ownedEntities.remove(old.id);p.wavePortalVisualLayers.remove(old.id);p.wavePortalVisualIndices.remove(old.id);
+                p.wavePortalModelVisuals.get(3).remove(old.id);
+                p.spawnHook=()->{p.spawnHook=()->{};p.onPortalVisualEntitiesLoad(new EntitiesLoadEvent(p.world,List.of(old)));};p.refresh(now);
+                check(p.spawnCalls==6 && p.live()==3,"chunk adoption during a transaction must discard replacement and retain recovered good layer");
+                check(p.ownedEntities.containsKey(old.id),"loaded known good layer must survive in-flight replacement");break;
+            }
+            case "timer-close", "timer-generation": {
+                p.fail(1,1,"null");p.spawn();p.startPortalVisualAnimation(p.world);BukkitTask task=p.portalVisualTask;
+                if(s.equals("timer-close"))p.phase=EventPhase.CANCELLED;else p.generation++;
+                task.callback.run();check(task.cancelled && p.portalVisualTask==null && p.spawnCalls==3,
+                    "pending timer must cancel without spawning after close or generation replacement");break;
+            }
+            case "all-exhausted": {
+                p.fail(-1,100,"invalid");p.spawn();p.startPortalVisualAnimation(p.world);BukkitTask task=p.portalVisualTask;
+                for(int i=0;i<10;i++)p.refresh(now+i*1000);
+                task.callback.run();check(task.cancelled && p.portalVisualTask==null && p.spawnCalls==12 && p.live()==0,
+                    "all failed layers must exhaust independent bounded budgets and stop empty animation task");break;
+            }
+            case "repeat-chunk": {
+                p.spawn();List<Entity> loaded=new ArrayList<>(p.ownedEntities.values());
+                for(int i=0;i<5;i++)p.onPortalVisualEntitiesLoad(new EntitiesLoadEvent(p.world,loaded));
+                check(p.spawnCalls==3 && p.live()==3 && p.wavePortalModelVisuals.get(3).size()==3,
+                    "repeated loaded-entity reconciliation must never duplicate a live valid layer");break;
+            }
+            case "three-portals-observed": {
+                p.spawnMany();
+                check(p.portalVisualLayerObservationText().equals(
+                        "portals=3 observed=9/9 slots=0:GATE+INNER+SHARD,1:GATE+INNER+SHARD,2:GATE+INNER+SHARD"),
+                        "snapshot must report all nine live layers with their portal indices");
+                break;
+            }
+            case "missing-observed-layer": {
+                p.spawnMany();
+                UUID inner = p.wavePortalVisualIndices.entrySet().stream()
+                        .filter(e -> e.getValue() == 1 && p.wavePortalVisualLayers.get(e.getKey()) == PortalVisualLayer.INNER)
+                        .map(Map.Entry::getKey).findFirst().orElseThrow();
+                p.removePortalModelVisual(inner,"fixture-layer-loss");
+                check(p.portalVisualLayerObservationText().equals(
+                        "portals=3 observed=8/9 slots=0:GATE+INNER+SHARD,1:GATE+SHARD,2:GATE+INNER+SHARD"),
+                        "snapshot must expose a missing live layer instead of relying on aggregate visuals");
+                break;
+            }
+            case "close-all-missing": {
+                p.fail(-1,100,"invalid");p.spawn();p.spawnHook=p::closed;p.refresh(now);
+                check(p.spawnCalls==4,"synchronous close during first rebuild must stop attempts for all remaining layers");break;
+            }
+            case "seeded-exhausted-reload": {
+                p.spawn();UUID id=p.wavePortalModelVisuals.get(3).get(0);p.removePortalModelVisual(id,"exhausted-fixture");
+                p.portalVisualRebuildAttempts.put(new PortalVisualSlot(0,PortalVisualLayer.FRAME),3);
+                p.refresh(now);check(p.spawnCalls==3,"exhaustion must survive ordinary reconciliation");
+                p.onPortalVisualEntitiesLoad(new EntitiesLoadEvent(p.world));p.refresh(now+1000);
+                check(p.spawnCalls==3 && p.live()==0 && p.phase==EventPhase.RECOVERY_REQUIRED,
+                    "matching chunk reload must not restart an exhausted portal encounter");break;
+            }
+            default:throw new AssertionError(s);
+        }
+        System.out.println("PASS "+s);
+    }
+}

@@ -1,0 +1,8 @@
+Timestamp: 2026-10-11 16:54 UTC
+Probe: Minecraft status handshake and status request over TCP
+Endpoint: 127.0.0.1:25568
+Result: status response received
+Server version: Paper 26.3
+Protocol: 777
+Players: 0/1
+Limit: loopback status probe only; no player login or plugin-bridge negotiation was performed.

@@ -1,5 +1,6 @@
 package me.copimine.narcotics.config;
 
+import me.copimine.protocol.ClientModHandshakePolicy;
 import me.copimine.narcotics.model.ConfiguredEffect;
 import me.copimine.narcotics.model.NarcoticDefinition;
 import org.bukkit.ChatColor;
@@ -58,8 +59,7 @@ public final class NarcoticsConfigService {
     private boolean blockProcessingInventories;
     private int schemaVersion;
     private boolean clientBridgeEnabled;
-    private boolean requireClientMod;
-    private boolean kickIfMissingClient;
+    private String requiredClientModVersion;
     private int handshakeTimeoutSeconds;
     private boolean preferClientVisuals;
     private boolean fallbackToServerOverlay;
@@ -97,9 +97,27 @@ public final class NarcoticsConfigService {
         textureMode = parseTextureMode(root.getString("textures.mode", "VANILLA"));
         visualMode = parseVisualMode(root.getString("visuals.mode", "AUTO"));
         blockProcessingInventories = root.getBoolean("storage.block_processing_inventories", true);
-        clientBridgeEnabled = root.getBoolean("client_bridge.enabled", true);
-        requireClientMod = root.getBoolean("client_bridge.require_client_mod", false);
-        kickIfMissingClient = root.getBoolean("client_bridge.kick_if_missing_client", false);
+        if (!root.getBoolean("client_bridge.enabled", true)) {
+            plugin.getLogger().warning("CopiMineClient is mandatory; client_bridge.enabled cannot be disabled. Enabling it.");
+            plugin.getConfig().set("client_bridge.enabled", true);
+            plugin.saveConfig();
+        }
+        clientBridgeEnabled = true;
+        String configuredClientModId = root.getString("client_bridge.required_client_mod_id", ClientModHandshakePolicy.MOD_ID);
+        if (!ClientModHandshakePolicy.MOD_ID.equals(configuredClientModId)) {
+            plugin.getLogger().warning("Only the CopiMineClient mod is required; resetting client_bridge.required_client_mod_id.");
+            plugin.getConfig().set("client_bridge.required_client_mod_id", ClientModHandshakePolicy.MOD_ID);
+            plugin.saveConfig();
+        }
+        String configuredClientModVersion = readRequiredClientModVersion(root);
+        requiredClientModVersion = configuredClientModVersion;
+        if (requiredClientModVersion.isBlank() || requiredClientModVersion.length() > 64) {
+            plugin.getLogger().warning("Invalid required CopiMineClient version; using "
+                    + ClientModHandshakePolicy.DEFAULT_REQUIRED_VERSION + ".");
+            requiredClientModVersion = ClientModHandshakePolicy.DEFAULT_REQUIRED_VERSION;
+            plugin.getConfig().set("client_bridge.required_client_mod_version", requiredClientModVersion);
+            plugin.saveConfig();
+        }
         handshakeTimeoutSeconds = clamp(root.getInt("client_bridge.handshake_timeout_seconds", 10), 3, 120);
         preferClientVisuals = root.getBoolean("client_bridge.prefer_client_visuals", true);
         fallbackToServerOverlay = root.getBoolean("client_bridge.fallback_to_server_overlay", false);
@@ -301,12 +319,8 @@ public final class NarcoticsConfigService {
         return clientBridgeEnabled;
     }
 
-    public boolean requireClientMod() {
-        return requireClientMod;
-    }
-
-    public boolean kickIfMissingClient() {
-        return kickIfMissingClient;
+    public String requiredClientModVersion() {
+        return requiredClientModVersion;
     }
 
     public int handshakeTimeoutSeconds() {
@@ -394,10 +408,12 @@ public final class NarcoticsConfigService {
         plugin.saveConfig();
     }
 
-    public void setRequireClientMod(boolean required) {
-        requireClientMod = required;
-        plugin.getConfig().set("client_bridge.require_client_mod", required);
-        plugin.saveConfig();
+    static String readRequiredClientModVersion(ConfigurationSection root) {
+        String configuredVersion = root.getString(
+                "client_bridge.required_client_mod_version",
+                ClientModHandshakePolicy.DEFAULT_REQUIRED_VERSION
+        );
+        return ClientModHandshakePolicy.requiredVersionFromConfig(configuredVersion);
     }
 
     private TextureMode parseTextureMode(String raw) {

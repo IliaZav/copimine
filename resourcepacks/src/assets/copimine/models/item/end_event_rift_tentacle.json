@@ -1,0 +1,492 @@
+{
+  "parent": "minecraft:block/block",
+  "ambientocclusion": false,
+  "textures": {
+    "particle": "copimine:item/end_event_rift_tentacle_hd",
+    "tentacle": "copimine:item/end_event_rift_tentacle_hd"
+  },
+  "copimine_rig": {
+    "texture_size": [
+      8,
+      8
+    ],
+    "forward_axis": "+Y",
+    "bones": [
+      "1layer",
+      "1layer2",
+      "2layer",
+      "2layer2",
+      "3layer",
+      "3layer2"
+    ],
+    "grab_socket": {
+      "parent": "3layer2",
+      "geometry": false,
+      "local": [
+        0.0,
+        7.6181,
+        0.0
+      ]
+    }
+  },
+  "elements": [
+    {
+      "from": [
+        5.525,
+        0.0,
+        6.0
+      ],
+      "to": [
+        9.525,
+        4.0,
+        10.0
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            16.0,
+            16.0,
+            32.0,
+            32.0
+          ],
+          "texture": "#tentacle"
+        },
+        "east": {
+          "uv": [
+            0.0,
+            16.0,
+            16.0,
+            32.0
+          ],
+          "texture": "#tentacle"
+        },
+        "south": {
+          "uv": [
+            48.0,
+            16.0,
+            64.0,
+            32.0
+          ],
+          "texture": "#tentacle"
+        },
+        "west": {
+          "uv": [
+            32.0,
+            16.0,
+            48.0,
+            32.0
+          ],
+          "texture": "#tentacle"
+        },
+        "up": {
+          "uv": [
+            32.0,
+            16.0,
+            16.0,
+            0.0
+          ],
+          "texture": "#tentacle"
+        },
+        "down": {
+          "uv": [
+            48.0,
+            0.0,
+            32.0,
+            16.0
+          ],
+          "texture": "#tentacle"
+        }
+      },
+      "rotation": {
+        "origin": [
+          7.525,
+          0.0,
+          8.0
+        ],
+        "axis": "z",
+        "angle": 0.0,
+        "rescale": false
+      }
+    },
+    {
+      "from": [
+        6.525,
+        3.5,
+        6.5
+      ],
+      "to": [
+        10.025,
+        7.0,
+        9.5
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            8.0,
+            40.0,
+            16.0,
+            48.0
+          ],
+          "texture": "#tentacle"
+        },
+        "east": {
+          "uv": [
+            0.0,
+            40.0,
+            8.0,
+            48.0
+          ],
+          "texture": "#tentacle"
+        },
+        "south": {
+          "uv": [
+            24.0,
+            40.0,
+            32.0,
+            48.0
+          ],
+          "texture": "#tentacle"
+        },
+        "west": {
+          "uv": [
+            16.0,
+            40.0,
+            24.0,
+            48.0
+          ],
+          "texture": "#tentacle"
+        },
+        "up": {
+          "uv": [
+            16.0,
+            40.0,
+            8.0,
+            32.0
+          ],
+          "texture": "#tentacle"
+        },
+        "down": {
+          "uv": [
+            24.0,
+            32.0,
+            16.0,
+            40.0
+          ],
+          "texture": "#tentacle"
+        }
+      },
+      "rotation": {
+        "origin": [
+          8.525,
+          3.5,
+          8.0
+        ],
+        "axis": "z",
+        "angle": 0.0,
+        "rescale": false
+      }
+    },
+    {
+      "from": [
+        7.325,
+        6.5,
+        6.7
+      ],
+      "to": [
+        10.475000000000001,
+        10.0,
+        9.3
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            40.0,
+            40.0,
+            48.0,
+            48.0
+          ],
+          "texture": "#tentacle"
+        },
+        "east": {
+          "uv": [
+            32.0,
+            40.0,
+            40.0,
+            48.0
+          ],
+          "texture": "#tentacle"
+        },
+        "south": {
+          "uv": [
+            56.0,
+            40.0,
+            64.0,
+            48.0
+          ],
+          "texture": "#tentacle"
+        },
+        "west": {
+          "uv": [
+            48.0,
+            40.0,
+            56.0,
+            48.0
+          ],
+          "texture": "#tentacle"
+        },
+        "up": {
+          "uv": [
+            48.0,
+            40.0,
+            40.0,
+            32.0
+          ],
+          "texture": "#tentacle"
+        },
+        "down": {
+          "uv": [
+            56.0,
+            32.0,
+            48.0,
+            40.0
+          ],
+          "texture": "#tentacle"
+        }
+      }
+    },
+    {
+      "from": [
+        7.575,
+        9.5,
+        6.95
+      ],
+      "to": [
+        10.225000000000001,
+        12.0,
+        9.0
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            8.0,
+            56.0,
+            16.0,
+            64.0
+          ],
+          "texture": "#tentacle"
+        },
+        "east": {
+          "uv": [
+            0.0,
+            56.0,
+            8.0,
+            64.0
+          ],
+          "texture": "#tentacle"
+        },
+        "south": {
+          "uv": [
+            24.0,
+            56.0,
+            32.0,
+            64.0
+          ],
+          "texture": "#tentacle"
+        },
+        "west": {
+          "uv": [
+            16.0,
+            56.0,
+            24.0,
+            64.0
+          ],
+          "texture": "#tentacle"
+        },
+        "up": {
+          "uv": [
+            16.0,
+            56.0,
+            8.0,
+            48.0
+          ],
+          "texture": "#tentacle"
+        },
+        "down": {
+          "uv": [
+            24.0,
+            48.0,
+            16.0,
+            56.0
+          ],
+          "texture": "#tentacle"
+        }
+      },
+      "rotation": {
+        "origin": [
+          8.825000000000001,
+          9.5,
+          8.0
+        ],
+        "axis": "z",
+        "angle": 0.0,
+        "rescale": false
+      }
+    },
+    {
+      "from": [
+        7.575,
+        11.0,
+        7.05
+      ],
+      "to": [
+        9.875,
+        13.6,
+        8.85
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            32.0,
+            48.0,
+            40.0,
+            56.0
+          ],
+          "texture": "#tentacle"
+        },
+        "east": {
+          "uv": [
+            32.0,
+            48.0,
+            32.0,
+            56.0
+          ],
+          "texture": "#tentacle"
+        },
+        "south": {
+          "uv": [
+            40.0,
+            48.0,
+            48.0,
+            56.0
+          ],
+          "texture": "#tentacle"
+        },
+        "west": {
+          "uv": [
+            40.0,
+            48.0,
+            40.0,
+            56.0
+          ],
+          "texture": "#tentacle"
+        },
+        "up": {
+          "uv": [
+            40.0,
+            48.0,
+            32.0,
+            48.0
+          ],
+          "texture": "#tentacle"
+        },
+        "down": {
+          "uv": [
+            48.0,
+            48.0,
+            40.0,
+            48.0
+          ],
+          "texture": "#tentacle"
+        }
+      },
+      "rotation": {
+        "origin": [
+          7.375,
+          11.0,
+          8.0
+        ],
+        "axis": "z",
+        "angle": 22.5,
+        "rescale": false
+      }
+    },
+    {
+      "from": [
+        6.514,
+        13.7362,
+        7.1
+      ],
+      "to": [
+        8.614,
+        15.7362,
+        8.8
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            48.0,
+            48.0,
+            56.0,
+            56.0
+          ],
+          "texture": "#tentacle"
+        },
+        "east": {
+          "uv": [
+            48.0,
+            48.0,
+            48.0,
+            56.0
+          ],
+          "texture": "#tentacle"
+        },
+        "south": {
+          "uv": [
+            56.0,
+            48.0,
+            64.0,
+            56.0
+          ],
+          "texture": "#tentacle"
+        },
+        "west": {
+          "uv": [
+            56.0,
+            48.0,
+            56.0,
+            56.0
+          ],
+          "texture": "#tentacle"
+        },
+        "up": {
+          "uv": [
+            56.0,
+            48.0,
+            48.0,
+            48.0
+          ],
+          "texture": "#tentacle"
+        },
+        "down": {
+          "uv": [
+            64.0,
+            48.0,
+            56.0,
+            48.0
+          ],
+          "texture": "#tentacle"
+        }
+      },
+      "rotation": {
+        "origin": [
+          7.525,
+          13.6,
+          8.0
+        ],
+        "axis": "z",
+        "angle": 45.0,
+        "rescale": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,300 @@
+import java.util.*;
+import java.util.logging.*;
+import me.copimine.endevent.domain.*;
+
+/** In-memory boundary only. All pack/retry/rollback/completion code is extracted unchanged. */
+public class Wave4PackRuntimeProbe {
+    enum Wave4PressurePackResult { COMPLETE, RETRYABLE_FAILURE, PERMANENT_FAILURE }
+    enum EntityType { SPIDER, ENDERMAN, SKELETON, OTHER }
+    enum ObeliskStage { ACTIVE, COLLAPSING, EMERGING }
+    static class PersistentDataType { static final Object STRING = new Object(); }
+    static class Data {
+        Map<Object, String> values = new HashMap<>();
+        void set(Object key, Object type, String value) { values.put(key, value); }
+    }
+    static class Entity {
+        UUID id = UUID.randomUUID(); EntityType type; boolean valid = true;
+        long generation = 5; Data data = new Data();
+        Entity(EntityType type) { this.type = type; }
+        UUID getUniqueId() { return id; }
+        EntityType getType() { return type; }
+        Data getPersistentDataContainer() { return data; }
+        boolean isValid() { return valid; }
+        boolean isDead() { return !valid; }
+        void remove() { valid = false; }
+    }
+    static class LivingEntity extends Entity {
+        LivingEntity(EntityType type) { super(type); }
+        void setCustomName(String name) { }
+        void setCustomNameVisible(boolean visible) { }
+    }
+    static class World {
+        List<Entity> entities = new ArrayList<>();
+        List<Entity> getEntities() { return entities; }
+    }
+    static class Bukkit {
+        static World world = new World();
+        static World getWorld(String name) { return world; }
+        static List<World> getWorlds() { return List.of(world); }
+        static Entity getEntity(UUID id) {
+            return world.entities.stream().filter(e -> e.id.equals(id)).findFirst().orElse(null);
+        }
+    }
+    static class Location { }
+    static class ChatColor { static final String DARK_PURPLE = ""; }
+    static class EventConfig {
+        static class RiftObeliskTuning {
+            int maxActiveFireballs() { return 1; }
+            int fireIntervalTicks() { return 26; }
+        }
+        RiftObeliskTuning riftObeliskTuning() { return new RiftObeliskTuning(); }
+    }
+    static class Wave4ObeliskRuntimeState {
+        UUID id = UUID.randomUUID(); ObeliskFireDirectorPolicy.FireSequence fireLease;
+        Object pulseLease, fireAim;
+        ObeliskStage stage = ObeliskStage.ACTIVE;
+        UUID id() { return id; }
+        ObeliskStage stage() { return stage; }
+        long destroyAtTick() { return 0; }
+        long nextFireTick() { return Long.MAX_VALUE; }
+        long lastFireTick() { return 0; }
+        int health() { return 3; }
+        UUID lastTargetUuid() { return null; }
+        void lastFireTick(long tick) { }
+        void scheduleNextFire(long tick) { }
+    }
+    static class RiftFireballRuntimeState { UUID originObeliskId() { return null; } }
+    static class Coordinator { boolean valid(Object lease, long gen, long tick) { return false; } }
+    static class EndRiftObjective { static String objective(int wave) { return "OBELISKS"; } }
+
+    final Object keyWave4PressureSlot = "slot", keyObeliskWave4Role = "role", keyWave = "wave", keyKind = "kind";
+    final String EVENT_KIND_WAVE_MOB = "mob", EVENT_KIND_ELITE = "elite";
+    Set<String> currentWave4PressureSpawnSlots = new LinkedHashSet<>();
+    Map<UUID, Entity> ownedEntities = new LinkedHashMap<>();
+    Map<UUID, Wave4ObeliskRuntimeState> activeWave4Obelisks = new LinkedHashMap<>();
+    Map<UUID, RiftFireballRuntimeState> activeRiftFireballs = new HashMap<>();
+    Map<UUID, UUID> waveChannelerObelisks = new HashMap<>();
+    Map<Object, Object> currentWave4CollapseTransforms = new HashMap<>(), currentWave4ObeliskCells = new HashMap<>();
+    Set<Object> currentWave4ConsumedFireballs = new HashSet<>();
+    EventConfig config = new EventConfig(); Coordinator waveCombatCoordinator = new Coordinator();
+    EventPhase phase = EventPhase.WAVE_4;
+    int currentWaveScalePlayers = 2, currentWave4PressurePackAttempts, waveSpawnGroupIndex, activeWave = 4;
+    long generation = 5, eventTickCounter = 5, currentWave4PressureRetryAtMillis, phaseDeadlineMillis;
+    String eventId = UUID.randomUUID().toString(), worldName = "fixture", recoveryReason;
+    boolean testWave4ObeliskMode, testWaveFrontVisualMode, currentWave4MobsStarted,
+            currentWave4StartupFailed, currentWave4ObeliskAssaultComplete, waveObjectiveComplete;
+    WaveMechanicsPolicy.WaveCounts composition = new WaveMechanicsPolicy.WaveCounts(1, 1, 1, 0, 0);
+    List<WaveMechanicsPolicy.WaveCounts> waveSpawnSchedule = List.of(composition);
+    Set<Integer> failing = new HashSet<>(), throwAfterRegister = new HashSet<>();
+    List<Integer> spawnCalls = new ArrayList<>();
+    int canceled, announced; boolean rejectRegistration, removeSpiderDuringSpawn;
+
+    Wave4PackRuntimeProbe() {
+        Bukkit.world = new World();
+        var obelisk = new Wave4ObeliskRuntimeState(); activeWave4Obelisks.put(obelisk.id, obelisk);
+    }
+    Logger getLogger() { return Logger.getLogger("Wave4PackRuntimeProbe"); }
+    String readString(Entity e, Object key) { return e == null ? "" : e.data.values.getOrDefault(key, ""); }
+    int readInt(Entity e, Object key, int fallback) {
+        String value = readString(e, key); return value.isEmpty() ? fallback : Integer.parseInt(value);
+    }
+    boolean ownedBySession(Entity e, String event, long gen) { return e.generation == gen; }
+    void unregisterOwnedEntity(UUID id, String reason) { ownedEntities.remove(id); }
+    Entity spawn(EntityType type, int index) {
+        spawnCalls.add(index); if (failing.contains(index)) return null;
+        if (removeSpiderDuringSpawn && index == 1) {
+            removeSpiderDuringSpawn = false;
+            Entity stalker = ownedEntities.values().stream()
+                    .filter(entity -> entity.getType() == EntityType.SPIDER).findFirst().orElseThrow();
+            unregisterOwnedEntity(stalker.id, "synchronous-spawn-callback");
+            stalker.remove();
+        }
+        var e = new LivingEntity(type); e.generation = generation;
+        e.data.values.put(keyWave, "4"); e.data.values.put(keyKind, EVENT_KIND_WAVE_MOB);
+        Bukkit.world.entities.add(e);
+        if (!rejectRegistration) ownedEntities.put(e.id, e);
+        if (throwAfterRegister.remove(index)) throw new IllegalStateException("spawn failed after registration");
+        return e;
+    }
+    Entity spawnOwnedMob(World world, Location core, EntityType type, int wave, String kind, boolean test, int index) {
+        return spawn(type, index);
+    }
+    Entity spawnEnderman(World world, Location core, int wave, boolean elite, boolean boss, boolean test, int index, int offset) {
+        return spawn(EntityType.ENDERMAN, index);
+    }
+    Entity spawnSkeleton(World world, Location core, int wave, boolean elite, boolean boss, boolean test, int index, int offset) {
+        return spawn(EntityType.SKELETON, index);
+    }
+    WaveMechanicsPolicy.WaveCounts currentWave4MobCounts(int players) { return composition; }
+    Location coreCombatAnchorLocation() { return new Location(); }
+    boolean isOfficialCurrentAttempt() { return phase == EventPhase.WAVE_4; }
+    boolean isOfficialAttempt() { return !testWaveFrontVisualMode; }
+    void forcePhase(EventPhase next, String reason) { phase = next; }
+    void cancelWaveSpawnTask() { canceled++; }
+    void removeWave4Obelisk(UUID id, String reason) { activeWave4Obelisks.remove(id); }
+    void cleanupRiftFireball(UUID id, String reason) { activeRiftFireballs.remove(id); }
+    ObeliskFireDirectorPolicy.SpecialCandidate selectWave4Special() { return null; }
+    void renderObeliskCollapse(Wave4ObeliskRuntimeState state) { }
+    void advanceObeliskEmergence(Wave4ObeliskRuntimeState state) { }
+    void renderObeliskActive(Wave4ObeliskRuntimeState state) { }
+    void clearWaveCombatCue(UUID id) { }
+    void tickWave4Pulse(Wave4ObeliskRuntimeState state, EventConfig.RiftObeliskTuning tuning) { }
+    void renderWave4ChannelerBeams() { }
+    int activeWave4FireballCount() { return 0; }
+    boolean launchWave4Fireball(Wave4ObeliskRuntimeState state) { return false; }
+    void tickRiftFireballs() { }
+    boolean tickWaveObjective() { return tickWave4ObeliskAssault(); }
+    void clearWaveCombatEntities(String reason) { clearWave4PressurePackEntities(reason); }
+    int countLiveWaveEntitiesForWave(int wave) { return liveCount(); }
+    boolean spawnWaveCompletionLoot(int wave) { return true; }
+    void announceWaveComplete(int wave) { announced++; }
+    boolean clearWaveObjectiveState() { clearWave4Obelisks("completed"); return true; }
+    void saveStateAsync() { }
+    int liveCount() {
+        return (int) ownedEntities.values().stream().filter(e -> isLiveOwnedEntity(e.id)
+                && ownedBySession(e, eventId, generation)).count();
+    }
+    Wave4PressurePackResult pack() {
+        return spawnWave4PressurePack(Bukkit.world, new Location(), ObeliskScalingPolicy.profileForPlayers(2), false);
+    }
+    void retryNow() { currentWave4PressureRetryAtMillis = 0; tickWave4ObeliskAssault(); }
+    static void check(boolean condition, String message) { if (!condition) throw new AssertionError(message); }
+    static void completePack(Wave4PackRuntimeProbe p) {
+        check(p.currentWave4MobsStarted && p.liveCount() == 3, "complete requires exactly three live registered roles");
+        check(p.ownedEntities.values().stream().map(e -> p.readString(e, p.keyWave4PressureSlot)).distinct().count() == 3,
+                "complete pack must have unique stable slots");
+        for (Entity e : p.ownedEntities.values())
+            check(p.readString(e, p.keyWave4PressureSlot).startsWith(p.inferredWave4Role(e) + ":"), "role identity changed");
+    }
+    public static void main(String[] args) {
+        Logger.getLogger("Wave4PackRuntimeProbe").setLevel(Level.OFF);
+        var p = new Wave4PackRuntimeProbe(); String scenario = args[0];
+        switch (scenario) {
+            case "success" -> {
+                p.retryNow(); completePack(p); p.retryNow();
+                check(p.spawnCalls.size() == 3, "completed pack must not spawn again");
+            }
+            case "first", "middle", "last", "all", "lost-slot", "obelisk-complete" -> {
+                int failed = scenario.equals("first") ? 0 : scenario.equals("middle") ? 1 : 2;
+                p.failing.add(failed); if (scenario.equals("all")) p.failing.addAll(List.of(0, 1, 2));
+                p.retryNow();
+                check(!p.currentWave4MobsStarted && p.waveSpawnGroupIndex == 0, "partial creation accepted as started");
+                if (scenario.equals("obelisk-complete")) {
+                    p.activeWave4Obelisks.clear(); p.currentWave4ObeliskAssaultComplete = true;
+                    p.tickWaveCompletion();
+                    check(p.announced == 1 && p.liveCount() == 0, "obelisk completion must release pending pressure schedule");
+                    check(p.spawnCalls.size() == 3, "destroyed obelisks must not trigger pressure retry");
+                    break;
+                }
+                if (scenario.equals("lost-slot")) {
+                    Entity lost = p.ownedEntities.values().iterator().next();
+                    p.ownedEntities.remove(lost.id); lost.remove();
+                }
+                int before = p.spawnCalls.size(); int missing = 3 - p.liveCount();
+                p.failing.clear(); p.retryNow(); completePack(p);
+                check(p.spawnCalls.size() - before == missing, "retry must attempt only missing live roles");
+            }
+            case "backoff" -> {
+                p.failing.add(1); p.retryNow(); int calls = p.spawnCalls.size();
+                p.currentWave4PressureRetryAtMillis = Long.MAX_VALUE; p.tickWave4ObeliskAssault();
+                check(p.spawnCalls.size() == calls && p.currentWave4PressurePackAttempts == 1, "backoff ignored");
+                p.failing.clear(); p.retryNow(); completePack(p);
+            }
+            case "throw-after-partial-success" -> {
+                p.throwAfterRegister.add(1);
+                p.retryNow();
+                check(p.currentWave4PressurePackAttempts == 1 && !p.currentWave4MobsStarted,
+                        "spawner exception must count as a retryable attempt");
+                check(p.currentWave4PressureRetryAtMillis > System.currentTimeMillis(),
+                        "spawner exception must enter normal retry backoff");
+                check(p.currentWave4PressureSpawnSlots.isEmpty() && p.liveCount() == 0
+                                && Bukkit.world.entities.stream().noneMatch(Entity::isValid),
+                        "throw-after-registration must roll back every entity owned by the failed attempt");
+                int calls = p.spawnCalls.size(); p.tickWave4ObeliskAssault();
+                check(p.spawnCalls.size() == calls, "failed attempt must respect retry backoff");
+                p.throwAfterRegister.clear(); p.retryNow(); completePack(p);
+                check(p.spawnCalls.equals(List.of(0, 1, 0, 1, 2)),
+                        "retry after rollback must spawn each slot once without duplicate ownership");
+            }
+            case "throw-preserves-prior-slot" -> {
+                p.failing.addAll(List.of(1, 2)); p.retryNow();
+                check(p.liveCount() == 1 && p.currentWave4PressureSpawnSlots.contains("STALKER:0"),
+                        "setup must retain the accepted slot from the prior attempt");
+                p.failing.clear(); p.throwAfterRegister.add(2); p.retryNow();
+                check(p.currentWave4PressurePackAttempts == 2 && !p.currentWave4MobsStarted,
+                        "later spawner exception must be returned through normal attempt accounting");
+                check(p.liveCount() == 1 && p.currentWave4PressureSpawnSlots.equals(Set.of("STALKER:0")),
+                        "rollback must preserve earlier accepted ownership and remove only this attempt's mobs");
+                int calls = p.spawnCalls.size(); p.tickWave4ObeliskAssault();
+                check(p.spawnCalls.size() == calls, "failed retry must respect normal backoff");
+                p.throwAfterRegister.clear(); p.retryNow(); completePack(p);
+                check(p.spawnCalls.equals(List.of(0, 1, 2, 1, 2, 1, 2)),
+                        "recovery must spawn only missing roles and keep prior ownership unique");
+            }
+            case "registration-refused" -> {
+                p.rejectRegistration = true; p.retryNow();
+                check(!p.currentWave4MobsStarted && p.currentWave4PressureSpawnSlots.isEmpty(),
+                        "returned but unregistered entities must not complete the pack");
+                check(Bukkit.world.entities.stream().noneMatch(Entity::isValid), "registration refusal left orphan mobs");
+                p.rejectRegistration = false; p.retryNow(); completePack(p);
+            }
+            case "synchronous-slot-loss" -> {
+                p.removeSpiderDuringSpawn = true;
+                p.retryNow();
+                check(!p.currentWave4MobsStarted && p.liveCount() == 2,
+                        "synchronous spawn callback must not accept a pack missing its earlier Stalker");
+                check(!p.currentWave4PressureSpawnSlots.contains("STALKER:0") && p.waveSpawnGroupIndex == 0,
+                        "final slot reconciliation must leave the removed Stalker pending");
+                p.retryNow(); completePack(p);
+                check(p.spawnCalls.equals(List.of(0, 1, 2, 0)),
+                        "retry after synchronous loss must create only the missing Stalker");
+            }
+            case "exhaustion", "permanent" -> {
+                Entity unrelated = p.spawn(EntityType.OTHER, 99); unrelated.data.values.put(p.keyWave, "3");
+                p.spawnCalls.clear(); p.failing.add(1);
+                if (scenario.equals("permanent")) p.composition = new WaveMechanicsPolicy.WaveCounts(0, 0, 0, 0, 0);
+                int attempts = scenario.equals("permanent") ? 1 : Wave4PressurePackPolicy.MAX_TOTAL_ATTEMPTS;
+                for (int n = 0; n < attempts; n++) p.retryNow();
+                check(p.currentWave4StartupFailed && !p.currentWave4MobsStarted, "exhaustion must fail closed");
+                check(p.currentWave4PressureSpawnSlots.isEmpty() && p.ownedEntities.size() == 1 && unrelated.valid,
+                        "rollback must remove only pressure pack entities");
+                check(p.canceled == 1, "exhaustion must cancel schedule");
+                int calls = p.spawnCalls.size(); p.retryNow(); p.retryNow();
+                check(p.spawnCalls.size() == calls && p.phase == EventPhase.RECOVERY_REQUIRED, "exhausted attempt retried");
+            }
+            case "duplicate-slot" -> {
+                p.pack(); Entity original = p.ownedEntities.values().iterator().next();
+                Entity duplicate = p.spawn(original.type, 99);
+                duplicate.data.values.put(p.keyWave4PressureSlot, p.readString(original, p.keyWave4PressureSlot));
+                duplicate.data.values.put(p.keyObeliskWave4Role, p.inferredWave4Role(original));
+                p.retryNow(); completePack(p);
+            }
+            case "restart" -> {
+                p.failing.add(1); p.pack();
+                // Rehydrate the same persisted registered entities into a fresh adapter.
+                var restored = new Wave4PackRuntimeProbe(); restored.ownedEntities.putAll(p.ownedEntities);
+                Bukkit.world.entities.addAll(p.ownedEntities.values()); restored.retryNow(); completePack(restored);
+                check(restored.spawnCalls.equals(List.of(1)), "rehydration must retry only missing role");
+                restored.currentWave4PressureSpawnSlots.clear(); restored.retryNow();
+                check(restored.spawnCalls.size() == 1, "repeated restore must not duplicate pack");
+            }
+            case "reset", "obsolete-generation" -> {
+                p.failing.add(1); p.retryNow();
+                p.clearWave4PressurePackEntities("fixture-reset"); p.clearWave4Obelisks("fixture-reset");
+                p.phase = EventPhase.READY_FOR_PLAYERS; p.tickWave4ObeliskAssault();
+                check(p.liveCount() == 0 && p.currentWave4PressurePackAttempts == 0
+                        && p.currentWave4PressureRetryAtMillis == 0, "reset left retry state or orphan pack");
+                p.generation++; p.phase = EventPhase.WAVE_4; p.failing.clear();
+                if (scenario.equals("obsolete-generation")) {
+                    Entity stale = p.spawn(EntityType.SPIDER, 99); stale.generation--;
+                    stale.data.values.put(p.keyWave4PressureSlot, "STALKER:0");
+                }
+                var obelisk = new Wave4ObeliskRuntimeState(); p.activeWave4Obelisks.put(obelisk.id, obelisk);
+                p.retryNow(); check(p.liveCount() == 3 && p.currentWave4MobsStarted, "new generation failed to restart");
+            }
+            default -> throw new AssertionError("unknown scenario " + scenario);
+        }
+        System.out.println("Wave4PackRuntimeProbe OK " + scenario);
+    }
+    // PRODUCTION_METHODS
+}

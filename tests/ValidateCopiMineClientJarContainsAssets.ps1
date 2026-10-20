@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
-$jar = Join-Path $root 'CopiMineClient\build\libs\CopiMineClient-0.1.0.jar'
+$jar = Join-Path $root 'CopiMineClient\build\libs\CopiMineClient-0.1.1.jar'
 if (-not (Test-Path $jar)) { throw 'CopiMineClient jar not found. Build the client first.' }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [IO.Compression.ZipFile]::OpenRead($jar)

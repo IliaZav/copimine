@@ -1,0 +1,373 @@
+package me.copimine.endevent.runtime;
+
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import me.copimine.endevent.domain.EndRiftObjective;
+import me.copimine.endevent.domain.EventPhase;
+import me.copimine.endevent.runtime.encounter.BlackFogEncounter;
+import me.copimine.endevent.runtime.encounter.CollapseRingsEncounter;
+import me.copimine.endevent.runtime.encounter.ObeliskAssaultEncounter;
+import me.copimine.endevent.runtime.encounter.RealitySplitEncounter;
+import me.copimine.endevent.runtime.encounter.RitualSphereEncounter;
+import me.copimine.endevent.runtime.encounter.RiftCarriersEncounter;
+import me.copimine.endevent.runtime.encounter.RiftGatesEncounter;
+import me.copimine.endevent.runtime.encounter.RiftHuntEncounter;
+import me.copimine.endevent.runtime.encounter.WaveEncounter;
+
+/**
+ * Pure orchestration boundary for the canonical seven-wave graph. Bukkit
+ * adapters own entities and effects; this coordinator owns ordering,
+ * generation fences and objective progress admission.
+ */
+public final class EndRiftEncounterCoordinator implements AutoCloseable {
+    private final EndRiftSession session;
+    private final Map<EndRiftObjective.Objective, WaveEncounter> encounters = new EnumMap<>(EndRiftObjective.Objective.class);
+    private final Map<String, WaveOperation> waveOperations = new HashMap<>();
+    private final List<Transition> history = new ArrayList<>();
+    private boolean closed;
+    private RuntimeException closeFailure;
+
+    public EndRiftEncounterCoordinator(EncounterContext context, EventPhase initialPhase) {
+        this(context, initialPhase, null);
+    }
+
+    public EndRiftEncounterCoordinator(EncounterContext context, EventPhase initialPhase,
+                                       AutoCloseable resourceScope) {
+        this(context, initialPhase, resourceScope, Map.of());
+    }
+
+    public EndRiftEncounterCoordinator(EncounterContext context, EventPhase initialPhase,
+                                       AutoCloseable resourceScope,
+                                       Map<EndRiftObjective.Objective, WaveEncounter> overrides) {
+        this(new EndRiftSession(context, initialPhase, resourceScope), overrides);
+    }
+
+    /** Build wave adapters around the same session used by the live lifecycle controller. */
+    public EndRiftEncounterCoordinator(EndRiftSession session) {
+        this(session, Map.of());
+    }
+
+    public EndRiftEncounterCoordinator(EndRiftSession session,
+                                       Map<EndRiftObjective.Objective, WaveEncounter> overrides) {
+        if (session == null) throw new IllegalArgumentException("session is required");
+        this.session = session;
+        register(new RiftCarriersEncounter());
+        register(new RiftHuntEncounter());
+        register(new RiftGatesEncounter());
+        register(new ObeliskAssaultEncounter());
+        register(new BlackFogEncounter());
+        register(new CollapseRingsEncounter());
+        register(new RitualSphereEncounter());
+        register(new RealitySplitEncounter());
+        if (overrides != null) overrides.values().forEach(this::register);
+    }
+
+    public synchronized EndRiftSession session() { return session; }
+    public synchronized EncounterContext context() { return session.context(); }
+    public synchronized EventPhase phase() { return session.phase(); }
+    public synchronized List<Transition> history() { return List.copyOf(history); }
+    public synchronized WaveEncounter encounter(EndRiftObjective.Objective objective) {
+        return encounters.get(objective);
+    }
+
+    /** Transition only through the strict graph; no wave number jump is exposed. */
+    public synchronized Result transition(EventPhase expected, EventPhase next,
+                                           String reason, String idempotencyKey) {
+        if (closed) return rejected("COORDINATOR_CLOSED");
+        EndRiftSession.TransitionOutcome outcome = session.transition(expected, next, reason, idempotencyKey);
+        if (!outcome.accepted()) return rejected(outcome.code());
+        if (!"IDEMPOTENT_REPLAY".equals(outcome.code())) {
+            session.updateObjectiveForPhase();
+            history.add(new Transition(expected, next, idempotencyKey));
+        }
+        return accepted(next, outcome.code(), "transition accepted");
+    }
+
+    /** Start the next canonical wave, including its required predecessor phase. */
+    public synchronized Result startNextWave(EndRiftObjective.Objective objective,
+                                             String reason, String idempotencyKey) {
+        if (closed || objective == null) return rejected("INVALID_OBJECTIVE");
+        Result replay = replayWaveOperation("START", objective, idempotencyKey);
+        if (replay != null) return replay;
+        EventPhase target = wavePhase(objective);
+        EventPhase predecessor = predecessorPhase(objective);
+        if (session.phase() != predecessor) return rejected("PREDECESSOR_PHASE_REQUIRED");
+        WaveEncounter encounter = encounters.get(objective);
+        if (encounter == null) return rejected("UNKNOWN_OBJECTIVE");
+        EndRiftSession.TransitionOutcome preview = session.previewTransition(
+                predecessor, target, reason, idempotencyKey);
+        if (!preview.accepted()) return rejected(preview.code());
+        WaveEncounter.Result started = encounter.start(session.context().withObjective(objective));
+        if (!started.accepted()) return rejected("START_REJECTED");
+        Result moved = transition(predecessor, target, reason, idempotencyKey);
+        if (!moved.accepted()) {
+            encounter.reset();
+            return moved;
+        }
+        Result result = fromEncounter(started, target);
+        waveOperations.put(idempotencyKey.trim(), new WaveOperation("START", objective, result));
+        return result;
+    }
+
+    /** Start a wave after an adapter has already committed the phase transition. */
+    public synchronized Result startCurrentWave(EndRiftObjective.Objective objective) {
+        return startCurrentWave(objective, session.context());
+    }
+
+    /** Start the live adapter after the shared lifecycle already entered its wave phase. */
+    public synchronized Result startCurrentWave(EndRiftObjective.Objective objective,
+                                                 EncounterContext liveContext) {
+        if (closed || objective == null || session.phase() != wavePhase(objective)) {
+            return rejected("WAVE_PHASE_REQUIRED");
+        }
+        if (liveContext == null || !session.accepts(liveContext.eventId(), liveContext.generation())) {
+            return rejected("STALE_OR_MISSING_CONTEXT");
+        }
+        WaveEncounter encounter = encounters.get(objective);
+        if (encounter == null) return rejected("UNKNOWN_OBJECTIVE");
+        if (encounter.generation() != 0L && encounter.generation() != liveContext.generation()) {
+            encounter.reset();
+        }
+        EncounterContext objectiveContext = liveContext.withObjective(objective);
+        session.replaceContext(objectiveContext);
+        return fromEncounter(encounter.start(objectiveContext));
+    }
+
+    /** Restore Wave 6's durable prisoner identity through the active adapter. */
+    public synchronized WaveEncounter.Result restoreCurrentRitualPrisoner(
+            EncounterContext liveContext, UUID prisoner) {
+        EndRiftObjective.Objective objective = EndRiftObjective.Objective.RITUAL_SPHERE;
+        if (closed || session.phase() != EventPhase.WAVE_6) {
+            return rejectedWave("WAVE_PHASE_REQUIRED");
+        }
+        if (liveContext == null || !session.accepts(liveContext.eventId(), liveContext.generation())) {
+            return rejectedWave("STALE_OR_MISSING_CONTEXT");
+        }
+        WaveEncounter encounter = encounters.get(objective);
+        if (!(encounter instanceof RitualSphereEncounter ritual)) {
+            return rejectedWave("UNKNOWN_OBJECTIVE");
+        }
+        EncounterContext objectiveContext = liveContext.withObjective(objective);
+        session.replaceContext(objectiveContext);
+        return ritual.restoreCapturedPrisoner(objectiveContext, prisoner);
+    }
+
+    public synchronized Result tickCurrentWave() {
+        EndRiftObjective.Objective objective = objectiveForWavePhase(session.phase());
+        if (objective == null) return rejected("NOT_IN_WAVE");
+        return fromEncounter(encounters.get(objective).tick(session.context().withObjective(objective)));
+    }
+
+    /**
+     * Tick the active adapter and admit the result produced by its live Bukkit
+     * objective. Only the shared lifecycle controller can commit a phase change.
+     */
+    public synchronized Result tickCurrentWave(EncounterContext liveContext,
+                                               boolean objectiveComplete) {
+        if (closed) return rejected("COORDINATOR_CLOSED");
+        EndRiftObjective.Objective objective = objectiveForWavePhase(session.phase());
+        if (objective == null) return rejected("NOT_IN_WAVE");
+        if (liveContext == null || !session.accepts(liveContext.eventId(), liveContext.generation())) {
+            return rejected("STALE_OR_MISSING_CONTEXT");
+        }
+        WaveEncounter encounter = encounters.get(objective);
+        if (encounter == null) return rejected("UNKNOWN_OBJECTIVE");
+        EncounterContext objectiveContext = liveContext.withObjective(objective);
+        session.replaceContext(objectiveContext);
+        WaveEncounter.Result tick = encounter.tick(objectiveContext);
+        if (!tick.accepted()) return fromEncounter(tick, session.phase());
+        return fromEncounter(encounter.reportRuntimeResult(objectiveContext, objectiveComplete),
+                session.phase());
+    }
+
+    /** Validate and store a terminal wave result without advancing global phase. */
+    public synchronized WaveEncounter.Result completeCurrentWaveObjective(
+            EndRiftObjective.Objective objective) {
+        if (closed || objective == null || session.phase() != wavePhase(objective)) {
+            return rejectedWave("WAVE_PHASE_REQUIRED");
+        }
+        WaveEncounter encounter = encounters.get(objective);
+        if (encounter == null) return rejectedWave("UNKNOWN_OBJECTIVE");
+        if (encounter.completed()) {
+            return new WaveEncounter.Result(WaveEncounter.Status.COMPLETE,
+                    encounter.progress(), encounter.required(), "objective already complete");
+        }
+        EncounterContext context = session.context();
+        if (context == null) return rejectedWave("CONTEXT_REQUIRED");
+        return encounter.complete(context.withObjective(objective));
+    }
+
+    /** Complete an objective and enter its only legal following stage. */
+    public synchronized Result completeWave(EndRiftObjective.Objective objective,
+                                             String reason, String idempotencyKey) {
+        if (closed || objective == null) {
+            return rejected("WAVE_PHASE_REQUIRED");
+        }
+        WaveEncounter encounter = encounters.get(objective);
+        if (encounter == null) return rejected("UNKNOWN_OBJECTIVE");
+        Result replay = replayWaveOperation("COMPLETE", objective, idempotencyKey);
+        if (replay != null) return replay;
+        if (session.phase() != wavePhase(objective)) {
+            return rejected("WAVE_PHASE_REQUIRED");
+        }
+        EventPhase current = session.phase();
+        int wave = EndRiftEncounterController.waveNumber(objective);
+        EventPhase next = session.phaseAfterWave(wave);
+        EndRiftSession.TransitionOutcome preview = session.previewCompleteWave(
+                wave, reason, idempotencyKey);
+        if (!preview.accepted()) return rejected(preview.code());
+        WaveEncounter.Result completed = completeCurrentWaveObjective(objective);
+        if (!completed.accepted() || !completed.complete()) return fromEncounter(completed);
+        EndRiftSession.TransitionOutcome completion = session.completeWave(
+                wave, reason, idempotencyKey);
+        Result moved = completion.accepted()
+                ? accepted(completion.phase(), completion.code(), completion.reason())
+                : rejected(completion.code());
+        if (moved.accepted() && !"IDEMPOTENT_REPLAY".equals(moved.code())) {
+            session.updateObjectiveForPhase();
+            history.add(new Transition(current, completion.phase(), idempotencyKey));
+        }
+        if (!moved.accepted()) {
+            encounter.reset();
+            return moved;
+        }
+        Result result = fromEncounter(completed, next);
+        waveOperations.put(idempotencyKey.trim(), new WaveOperation("COMPLETE", objective, result));
+        return result;
+    }
+
+    /** Core restoration is followed by the canonical Wave 4 rune hold. */
+    public synchronized Result completeCoreRestoration(String reason, String idempotencyKey) {
+        if (closed || session.phase() != EventPhase.CORE_RESTORATION) {
+            return rejected("CORE_RESTORATION_REQUIRED");
+        }
+        EndRiftSession.TransitionOutcome outcome = session.completeCoreRestoration(
+                reason, idempotencyKey);
+        if (!outcome.accepted()) return rejected(outcome.code());
+        session.updateObjectiveForPhase();
+        history.add(new Transition(EventPhase.CORE_RESTORATION, outcome.phase(), idempotencyKey));
+        return accepted(outcome.phase(), outcome.code(), outcome.reason());
+    }
+
+    /** Advance only from an intermission that belongs to the corresponding wave. */
+    public synchronized Result advanceIntermission(String reason, String idempotencyKey) {
+        int nextWave = EndRiftEncounterController.nextWaveNumberAfterIntermission(session.phase());
+        if (nextWave == 0) return rejected("INTERMISSION_REQUIRED");
+        return startNextWave(EndRiftObjective.objective(nextWave), reason, idempotencyKey);
+    }
+
+    public synchronized boolean accepts(String eventId, long generation) {
+        return !closed && session.accepts(eventId, generation);
+    }
+
+    public synchronized void resetEncounter(EndRiftObjective.Objective objective) {
+        WaveEncounter encounter = encounters.get(objective);
+        if (encounter != null) encounter.reset();
+    }
+
+    @Override
+    public synchronized void close() {
+        if (closed) {
+            if (closeFailure != null) throw closeFailure;
+            return;
+        }
+        closed = true;
+        RuntimeException failure = null;
+        for (WaveEncounter encounter : encounters.values()) {
+            try {
+                encounter.reset();
+            } catch (RuntimeException error) {
+                failure = combineCloseFailure(failure, error);
+            }
+        }
+        try {
+            session.close();
+        } catch (RuntimeException error) {
+            failure = combineCloseFailure(failure, error);
+        }
+        closeFailure = failure;
+        if (failure != null) throw failure;
+    }
+
+    private static RuntimeException combineCloseFailure(RuntimeException first,
+                                                         RuntimeException next) {
+        if (first == null) return next;
+        if (next != null && next != first) first.addSuppressed(next);
+        return first;
+    }
+
+    private void register(WaveEncounter encounter) {
+        if (encounter != null) encounters.put(encounter.objective(), encounter);
+    }
+
+    private static Result fromEncounter(WaveEncounter.Result result) {
+        return new Result(result.accepted(), null, result.status().name(), result.reason(),
+                result.progress(), result.required());
+    }
+
+    private static Result fromEncounter(WaveEncounter.Result result, EventPhase phase) {
+        return new Result(result.accepted(), phase, result.status().name(), result.reason(),
+                result.progress(), result.required());
+    }
+
+    private Result replayWaveOperation(String kind, EndRiftObjective.Objective objective,
+                                       String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) return null;
+        WaveOperation operation = waveOperations.get(idempotencyKey.trim());
+        if (operation == null) return null;
+        if (!operation.kind().equals(kind) || operation.objective() != objective) {
+            return rejected("IDEMPOTENCY_KEY_CONFLICT");
+        }
+        Result result = operation.result();
+        return new Result(true, result.phase(), "IDEMPOTENT_REPLAY", result.reason(),
+                result.progress(), result.required());
+    }
+
+    private Result accepted(EventPhase phase, String code, String reason) {
+        return new Result(true, phase, code, reason, 0, 0);
+    }
+
+    private Result rejected(String reason) {
+        return new Result(false, session.phase(), reason, "", 0, 0);
+    }
+
+    private static WaveEncounter.Result rejectedWave(String reason) {
+        return new WaveEncounter.Result(WaveEncounter.Status.REJECTED, 0, 0, reason);
+    }
+
+    public static EventPhase wavePhase(EndRiftObjective.Objective objective) {
+        return EndRiftEncounterController.wavePhase(
+                EndRiftEncounterController.waveNumber(objective));
+    }
+
+    private static EventPhase predecessorPhase(EndRiftObjective.Objective objective) {
+        return EndRiftEncounterController.predecessorPhase(
+                EndRiftEncounterController.waveNumber(objective));
+    }
+
+    private static EndRiftObjective.Objective objectiveForWavePhase(EventPhase phase) {
+        return switch (phase) {
+            case WAVE_1 -> EndRiftObjective.Objective.RIFT_CARRIERS;
+            case WAVE_2 -> EndRiftObjective.Objective.RIFT_HUNT;
+            case WAVE_3 -> EndRiftObjective.Objective.RIFT_GATES;
+            case WAVE_4 -> EndRiftObjective.Objective.OBELISK_ASSAULT;
+            case WAVE_5 -> EndRiftObjective.Objective.BLACK_FOG;
+            case WAVE_6 -> EndRiftObjective.Objective.RITUAL_SPHERE;
+            case WAVE_7 -> EndRiftObjective.Objective.REALITY_SPLIT;
+            default -> null;
+        };
+    }
+
+    public record Result(boolean accepted, EventPhase phase, String code, String reason,
+                         int progress, int required) {
+    }
+
+    public record Transition(EventPhase from, EventPhase to, String idempotencyKey) {
+    }
+
+    private record WaveOperation(String kind, EndRiftObjective.Objective objective, Result result) { }
+}

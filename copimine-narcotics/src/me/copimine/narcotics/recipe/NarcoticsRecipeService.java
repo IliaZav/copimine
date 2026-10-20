@@ -5,6 +5,8 @@ import me.copimine.narcotics.item.NarcoticItemFactory;
 import me.copimine.narcotics.model.NarcoticDefinition;
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.BlockStateMeta;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.PotionMeta;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.potion.PotionType;
@@ -74,6 +76,9 @@ public final class NarcoticsRecipeService {
         if (stack == null || stack.getType() == Material.AIR) {
             return null;
         }
+        if (!isRoundTripSafeIngredient(stack)) {
+            return null;
+        }
         if (itemFactory != null && itemFactory.isOfficialFinishedItem(stack)) {
             return null;
         }
@@ -88,6 +93,35 @@ public final class NarcoticsRecipeService {
             return createPotionEntry(stack, genericPotionKey(stack));
         }
         return new IngredientEntry("MATERIAL:" + stack.getType().name(), stack.getType().name(), "", "", 1);
+    }
+
+    /**
+     * IngredientEntry deliberately stores a compact, recipe-owned identity,
+     * not a complete ItemStack snapshot. Reject metadata that cannot be
+     * reconstructed after a restart instead of consuming a unique item whose
+     * lore, container contents, or persistent identity would be lost.
+     */
+    private boolean isRoundTripSafeIngredient(ItemStack stack) {
+        if (stack == null || stack.getType().isAir()) {
+            return false;
+        }
+        ItemMeta meta = stack.getItemMeta();
+        if (meta == null) {
+            return true;
+        }
+        if (meta instanceof BlockStateMeta
+                || meta.hasDisplayName()
+                || meta.hasLore()
+                || meta.hasEnchants()
+                || meta.hasCustomModelData()
+                || meta.isUnbreakable()
+                || !meta.getPersistentDataContainer().getKeys().isEmpty()) {
+            return false;
+        }
+        // PotionMeta is retained only when its vanilla base/effect is encoded
+        // by createPotionEntry; arbitrary empty potion metadata has no
+        // round-trippable recipe identity.
+        return !isPotion(stack) || potionIngredientKey(stack) != null;
     }
 
     public NarcoticDefinition matchExact(List<IngredientEntry> ingredientEntries) {

@@ -1,0 +1,74 @@
+{
+  "source": "resourcepacks/tools/generate_wave3_wave4_structures.py",
+  "license": "Original CopiMine procedural artwork and geometry; no third-party source",
+  "native_visual_acceptance": "NOT VERIFIED: requires current installed Minecraft captures",
+  "carrier_charge": {
+    "custom_model_data": 830029,
+    "base_material": "paper",
+    "model": "copimine:item/end_event_carrier_charge",
+    "usage": "W1 owned drop/presentation; never reuse portal shard layer"
+  },
+  "portal": {
+    "model_floor_y": -8,
+    "item_none_center": [
+      8,
+      8,
+      8
+    ],
+    "world_scale": 2.24,
+    "floor_translation": [
+      0,
+      2.24,
+      0
+    ],
+    "target_size_blocks": [
+      4.48,
+      5.6,
+      1.42
+    ],
+    "layers": {
+      "frame": 830018,
+      "membrane": 830008,
+      "shards": 830009
+    },
+    "progress": "Server keeps frame footprint fixed; independently compresses membrane/shards at 0/25/50/75/100"
+  },
+  "obelisk": {
+    "item_none_bounds": [
+      -0.5,
+      0.5
+    ],
+    "model_floor_y": 0,
+    "world_scale": [
+      3.25,
+      5,
+      3.25
+    ],
+    "floor_translation": [
+      0,
+      2.5,
+      0
+    ],
+    "collision_presentation": "Use invisible journal-owned collision cells; opaque blocks occlude the authored model",
+    "health_models": {
+      "full": 830010,
+      "damaged": 830011,
+      "critical": 830012
+    },
+    "supplied_hd_textures": "Preserved without writing"
+  },
+  "sha256": {
+    "src/assets/copimine/models/item/end_event_rift_gate.json": "4901c5b89f92c082606c9292ebcad8f391c9b0fdca6d5c104c4080d54ece9cc8",
+    "src/assets/copimine/models/item/end_event_carrier_charge.json": "e8a5084551c60af6cdff30bdf8204937372a14743d7d3941430401c74a082171",
+    "src/assets/copimine/textures/item/end_event_carrier_charge.png": "79bd99c2e659b3cef93fb4b64bd1c7b477ccb93e629575c501ef443284711101",
+    "src/assets/copimine/models/block/end_event_portal_inner.json": "f28e777fa49830f274440d961b2ffd95ff2da6c3463919a3eee96b54c7cbcb75",
+    "src/assets/copimine/models/block/end_event_portal_shard.json": "74b0fbf95bf16f1c12cae83ca60ec0548401f3fcf4520a858a78fd45f1aba7f5",
+    "src/assets/copimine/models/item/end_event_rift_obelisk_full.json": "cfc25d96a343be4ea574d72376600ad91dba663dc43587fecc663f49c7a13a15",
+    "src/assets/copimine/models/item/end_event_rift_obelisk_damaged.json": "71d3201110398417564f9dcf27e02a8bf49f5e60f039661f1a19a3789ba384da",
+    "src/assets/copimine/models/item/end_event_rift_obelisk_critical.json": "2068d8520f1bb7ec6d8078d90642e1ce95936abb1a0d31a5ede0ebf866bf759c",
+    "src/assets/copimine/textures/item/end_event_rift_structure_stone.png": "e964d3b3668ec72e6d416368b85b9d0aab65c708741658c5e297e53466f32153",
+    "src/assets/copimine/textures/item/end_event_rift_structure_energy.png": "468e04d61c9ee7ba1b69f719b2570b2c2d56fac7cf58c3763543621a889d0a47",
+    "src/assets/copimine/textures/item/end_event_rift_membrane.png": "692b22880544f53fa05ec0371032d6cf7bf856690c4a89072c2f647459143c00",
+    "src/assets/copimine/textures/item/end_event_rift_membrane.png.mcmeta": "b6aedd3518ecd8e00910e6ed23868ca557ac9cc9d28387660e4b46b78801d7b5"
+  }
+}

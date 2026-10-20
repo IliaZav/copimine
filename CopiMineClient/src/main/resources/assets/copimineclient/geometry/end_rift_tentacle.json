@@ -1,0 +1,2375 @@
+{
+  "format": "copimine:kagune-import-v1",
+  "texture": {
+    "width": 64,
+    "height": 64,
+    "uv_size": [
+      8,
+      8
+    ]
+  },
+  "groups": [
+    {
+      "uuid": "a81b7991-7d27-69d2-5ef9-e13b83d2ef6e",
+      "name": "1layer",
+      "parent": null,
+      "origin": [
+        0.35,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "uuid": "518d3bf5-e2db-af94-72ee-5c4a9a8110ee",
+      "name": "1layer2",
+      "parent": "1layer",
+      "origin": [
+        0.5,
+        1.5,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "uuid": "9a8cbfba-c094-6e2f-1f96-6bd09d04ab1c",
+      "name": "2layer",
+      "parent": null,
+      "origin": [
+        0.75,
+        3.25,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "uuid": "31f6ddaf-9ec2-a353-1d4f-da670778b472",
+      "name": "2layer2",
+      "parent": "2layer",
+      "origin": [
+        0.75,
+        4.5,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "uuid": "bcd9c5a3-94c6-872c-7d05-b4b5d771468b",
+      "name": "3layer",
+      "parent": null,
+      "origin": [
+        0.35,
+        5.75,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "uuid": "64cc6af8-32e9-10a0-5555-483c8e4b7078",
+      "name": "3layer2",
+      "parent": "3layer",
+      "origin": [
+        -0.1,
+        6.6,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  ],
+  "elements": [
+    {
+      "uuid": "902c4c08-aaf0-902d-9d57-1a1637c113c8",
+      "name": "cube",
+      "bone": "1layer",
+      "from": [
+        -1.0,
+        -0.25,
+        -1.0
+      ],
+      "to": [
+        1.0,
+        1.75,
+        1.0
+      ],
+      "origin": [
+        0.0,
+        -0.25,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        -10.0
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            2.0,
+            2.0,
+            4.0,
+            4.0
+          ],
+          "rotation": 0
+        },
+        "east": {
+          "uv": [
+            0.0,
+            2.0,
+            2.0,
+            4.0
+          ],
+          "rotation": 0
+        },
+        "south": {
+          "uv": [
+            6.0,
+            2.0,
+            8.0,
+            4.0
+          ],
+          "rotation": 0
+        },
+        "west": {
+          "uv": [
+            4.0,
+            2.0,
+            6.0,
+            4.0
+          ],
+          "rotation": 0
+        },
+        "up": {
+          "uv": [
+            4.0,
+            2.0,
+            2.0,
+            0.0
+          ],
+          "rotation": 0
+        },
+        "down": {
+          "uv": [
+            6.0,
+            0.0,
+            4.0,
+            2.0
+          ],
+          "rotation": 0
+        }
+      }
+    },
+    {
+      "uuid": "cc251c9b-7eae-6083-2032-714f59af60fd",
+      "name": "cube",
+      "bone": "1layer2",
+      "from": [
+        -0.5,
+        1.5,
+        -0.75
+      ],
+      "to": [
+        1.25,
+        3.25,
+        0.75
+      ],
+      "origin": [
+        0.5,
+        1.5,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        -10.0
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            1.0,
+            5.0,
+            2.0,
+            6.0
+          ],
+          "rotation": 0
+        },
+        "east": {
+          "uv": [
+            0.0,
+            5.0,
+            1.0,
+            6.0
+          ],
+          "rotation": 0
+        },
+        "south": {
+          "uv": [
+            3.0,
+            5.0,
+            4.0,
+            6.0
+          ],
+          "rotation": 0
+        },
+        "west": {
+          "uv": [
+            2.0,
+            5.0,
+            3.0,
+            6.0
+          ],
+          "rotation": 0
+        },
+        "up": {
+          "uv": [
+            2.0,
+            5.0,
+            1.0,
+            4.0
+          ],
+          "rotation": 0
+        },
+        "down": {
+          "uv": [
+            3.0,
+            4.0,
+            2.0,
+            5.0
+          ],
+          "rotation": 0
+        }
+      }
+    },
+    {
+      "uuid": "29ba0c30-74bc-091b-b4e8-fb413faa49f8",
+      "name": "cube",
+      "bone": "2layer",
+      "from": [
+        -0.1,
+        3.0,
+        -0.65
+      ],
+      "to": [
+        1.475,
+        4.75,
+        0.65
+      ],
+      "origin": [
+        0.75,
+        3.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            5.0,
+            5.0,
+            6.0,
+            6.0
+          ],
+          "rotation": 0
+        },
+        "east": {
+          "uv": [
+            4.0,
+            5.0,
+            5.0,
+            6.0
+          ],
+          "rotation": 0
+        },
+        "south": {
+          "uv": [
+            7.0,
+            5.0,
+            8.0,
+            6.0
+          ],
+          "rotation": 0
+        },
+        "west": {
+          "uv": [
+            6.0,
+            5.0,
+            7.0,
+            6.0
+          ],
+          "rotation": 0
+        },
+        "up": {
+          "uv": [
+            6.0,
+            5.0,
+            5.0,
+            4.0
+          ],
+          "rotation": 0
+        },
+        "down": {
+          "uv": [
+            7.0,
+            4.0,
+            6.0,
+            5.0
+          ],
+          "rotation": 0
+        }
+      }
+    },
+    {
+      "uuid": "33736e74-4e1d-1a78-dbff-69a3bda71546",
+      "name": "cube",
+      "bone": "2layer2",
+      "from": [
+        0.025,
+        4.5,
+        -0.525
+      ],
+      "to": [
+        1.35,
+        5.75,
+        0.5
+      ],
+      "origin": [
+        0.65,
+        4.5,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        11.0
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            1.0,
+            7.0,
+            2.0,
+            8.0
+          ],
+          "rotation": 0
+        },
+        "east": {
+          "uv": [
+            0.0,
+            7.0,
+            1.0,
+            8.0
+          ],
+          "rotation": 0
+        },
+        "south": {
+          "uv": [
+            3.0,
+            7.0,
+            4.0,
+            8.0
+          ],
+          "rotation": 0
+        },
+        "west": {
+          "uv": [
+            2.0,
+            7.0,
+            3.0,
+            8.0
+          ],
+          "rotation": 0
+        },
+        "up": {
+          "uv": [
+            2.0,
+            7.0,
+            1.0,
+            6.0
+          ],
+          "rotation": 0
+        },
+        "down": {
+          "uv": [
+            3.0,
+            6.0,
+            2.0,
+            7.0
+          ],
+          "rotation": 0
+        }
+      }
+    },
+    {
+      "uuid": "73880bf5-0d6e-eac5-ae57-10435e9cf76b",
+      "name": "cube",
+      "bone": "3layer",
+      "from": [
+        0.025,
+        5.25,
+        -0.475
+      ],
+      "to": [
+        1.175,
+        6.55,
+        0.425
+      ],
+      "origin": [
+        -0.075,
+        5.25,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        27.5
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            4.0,
+            6.0,
+            5.0,
+            7.0
+          ],
+          "rotation": 0
+        },
+        "east": {
+          "uv": [
+            4.0,
+            6.0,
+            4.0,
+            7.0
+          ],
+          "rotation": 0
+        },
+        "south": {
+          "uv": [
+            5.0,
+            6.0,
+            6.0,
+            7.0
+          ],
+          "rotation": 0
+        },
+        "west": {
+          "uv": [
+            5.0,
+            6.0,
+            5.0,
+            7.0
+          ],
+          "rotation": 0
+        },
+        "up": {
+          "uv": [
+            5.0,
+            6.0,
+            4.0,
+            6.0
+          ],
+          "rotation": 0
+        },
+        "down": {
+          "uv": [
+            6.0,
+            6.0,
+            5.0,
+            6.0
+          ],
+          "rotation": 0
+        }
+      }
+    },
+    {
+      "uuid": "764a9521-b11d-5e13-0162-f016195c1831",
+      "name": "cube",
+      "bone": "3layer2",
+      "from": [
+        -0.5055,
+        6.6181,
+        -0.45
+      ],
+      "to": [
+        0.5445,
+        7.6181,
+        0.4
+      ],
+      "origin": [
+        0.0,
+        6.55,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        39.0
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            6.0,
+            6.0,
+            7.0,
+            7.0
+          ],
+          "rotation": 0
+        },
+        "east": {
+          "uv": [
+            6.0,
+            6.0,
+            6.0,
+            7.0
+          ],
+          "rotation": 0
+        },
+        "south": {
+          "uv": [
+            7.0,
+            6.0,
+            8.0,
+            7.0
+          ],
+          "rotation": 0
+        },
+        "west": {
+          "uv": [
+            7.0,
+            6.0,
+            7.0,
+            7.0
+          ],
+          "rotation": 0
+        },
+        "up": {
+          "uv": [
+            7.0,
+            6.0,
+            6.0,
+            6.0
+          ],
+          "rotation": 0
+        },
+        "down": {
+          "uv": [
+            8.0,
+            6.0,
+            7.0,
+            6.0
+          ],
+          "rotation": 0
+        }
+      }
+    }
+  ],
+  "animations": {
+    "idle": {
+      "length": 4.0,
+      "loop": "once",
+      "tracks": {
+        "2layer": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 2.0,
+              "value": [
+                0.0,
+                0.0,
+                2.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 4.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 2.0,
+              "value": [
+                -0.2,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 4.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "3layer": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 2.0,
+              "value": [
+                0.0,
+                0.0,
+                8.5
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 4.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 2.0,
+              "value": [
+                -0.3,
+                -0.1,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 4.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "1layer2": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 2.0,
+              "value": [
+                0.0,
+                0.0,
+                5.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 4.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        }
+      }
+    },
+    "emerge": {
+      "length": 1.0,
+      "loop": "once",
+      "tracks": {
+        "1layer": {
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                -8.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "2layer": {
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                -8.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "3layer": {
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                -8.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        }
+      }
+    },
+    "telegraph_grab": {
+      "length": 1.25,
+      "loop": "once",
+      "tracks": {
+        "1layer": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 1.25,
+              "value": [
+                0.0,
+                -45.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "2layer": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 1.25,
+              "value": [
+                -42.5,
+                -47.5,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 1.25,
+              "value": [
+                0.375,
+                0.0,
+                -0.225
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "3layer": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 1.25,
+              "value": [
+                -68.5,
+                -45.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 1.25,
+              "value": [
+                1.625,
+                -0.725,
+                -1.575
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "1layer2": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 1.25,
+              "value": [
+                -22.5,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "3layer2": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 1.25,
+              "value": [
+                0.0,
+                0.0,
+                7.0
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 1.25,
+              "value": [
+                0.75,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        }
+      }
+    },
+    "grab_success": {
+      "length": 0.83333,
+      "loop": "once",
+      "tracks": {
+        "1layer": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                -45.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "2layer": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                -42.5,
+                -47.5,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.83333,
+              "value": [
+                -57.8908,
+                -20.4313,
+                26.4637
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                0.375,
+                0.0,
+                -0.225
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.83333,
+              "value": [
+                -0.22,
+                -0.2,
+                -0.72
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "3layer": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                -68.5,
+                -45.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.83333,
+              "value": [
+                -77.5382,
+                -12.8192,
+                8.3899
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                1.625,
+                -0.725,
+                -1.575
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.83333,
+              "value": [
+                -0.17,
+                -1.32,
+                -2.77
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "1layer2": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                -22.5,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.83333,
+              "value": [
+                -20.0888,
+                10.3502,
+                26.1618
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "3layer2": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                7.0
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                0.75,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        }
+      }
+    },
+    "hold": {
+      "length": 1.20833,
+      "loop": "once",
+      "tracks": {
+        "1layer": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                -45.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "2layer": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                -57.8908,
+                -20.4313,
+                26.4637
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                -58.9058,
+                -15.3195,
+                29.7661
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                -0.22,
+                -0.2,
+                -0.72
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "3layer": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                -77.5382,
+                -12.8192,
+                8.3899
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                -77.3236,
+                16.493,
+                14.8508
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                -0.17,
+                -1.32,
+                -2.77
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                -0.47,
+                -1.32,
+                -2.47
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "1layer2": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                -20.0888,
+                10.3502,
+                26.1618
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "3layer2": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                7.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                0.0,
+                0.0,
+                28.5
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                0.75,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                3.25,
+                0.7,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        }
+      }
+    },
+    "trow": {
+      "length": 0.875,
+      "loop": "once",
+      "tracks": {
+        "1layer": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                -45.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "2layer": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                -58.9058,
+                -15.3195,
+                29.7661
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.79167,
+              "value": [
+                -18.9058,
+                -15.3195,
+                29.7661
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                -0.22,
+                -0.2,
+                -0.72
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.79167,
+              "value": [
+                -0.62,
+                -0.2,
+                -0.22
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "3layer": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                -77.3236,
+                16.493,
+                14.8508
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                -77.7341,
+                -7.9352,
+                9.478
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.79167,
+              "value": [
+                -42.7341,
+                -7.9352,
+                9.478
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.875,
+              "value": [
+                -17.2215,
+                -20.6887,
+                15.4524
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                -0.47,
+                -1.32,
+                -2.47
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                -1.17,
+                -0.92,
+                -1.67
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.79167,
+              "value": [
+                -1.67,
+                -0.62,
+                -1.17
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "1layer2": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                -20.0888,
+                10.3502,
+                26.1618
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.79167,
+              "value": [
+                2.4112,
+                10.3502,
+                26.1618
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "3layer2": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                28.5
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                0.0,
+                0.0,
+                16.5
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                3.25,
+                0.7,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                1.85,
+                0.2,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        }
+      }
+    },
+    "grab_miss": {
+      "length": 0.83333,
+      "loop": "once",
+      "tracks": {
+        "2layer": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.20833,
+              "value": [
+                0.0,
+                0.0,
+                58.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.75,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.20833,
+              "value": [
+                -1.0,
+                -0.4,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.75,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "3layer": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.20833,
+              "value": [
+                0.0,
+                0.0,
+                56.5
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.75,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.20833,
+              "value": [
+                -3.0,
+                -1.9,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.75,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "1layer2": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.20833,
+              "value": [
+                0.0,
+                0.0,
+                32.5
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.75,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        }
+      }
+    },
+    "hurt": {
+      "length": 0.25,
+      "loop": "once",
+      "tracks": {
+        "2layer": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.125,
+              "value": [
+                0.0,
+                0.0,
+                10.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.25,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.125,
+              "value": [
+                -0.3,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.25,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "3layer": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.125,
+              "value": [
+                0.0,
+                0.0,
+                7.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.25,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.125,
+              "value": [
+                -0.8,
+                -0.1,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.25,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "1layer2": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.125,
+              "value": [
+                0.0,
+                0.0,
+                7.5
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.25,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        }
+      }
+    },
+    "death": {
+      "length": 1.25,
+      "loop": "once",
+      "tracks": {
+        "2layer": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 1.25,
+              "value": [
+                0.0,
+                0.0,
+                54.5
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 1.25,
+              "value": [
+                -0.5,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "3layer": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 1.25,
+              "value": [
+                0.0,
+                0.0,
+                109.0
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 1.25,
+              "value": [
+                -2.3,
+                -2.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "1layer2": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 1.25,
+              "value": [
+                0.0,
+                0.0,
+                20.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "2layer2": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 1.25,
+              "value": [
+                0.0,
+                0.0,
+                27.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "3layer2": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 1.25,
+              "value": [
+                0.0,
+                0.0,
+                59.0
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 1.25,
+              "value": [
+                0.2,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        }
+      }
+    },
+    "retract": {
+      "length": 0.875,
+      "loop": "once",
+      "tracks": {
+        "1layer": {
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.875,
+              "value": [
+                0.0,
+                -10.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "2layer": {
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.875,
+              "value": [
+                0.0,
+                -10.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "3layer": {
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.875,
+              "value": [
+                0.0,
+                -10.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        }
+      }
+    },
+    "spawn_under_player": {
+      "length": 0.41667,
+      "loop": "once",
+      "tracks": {
+        "1layer": {
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                -7.9,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.41667,
+              "value": [
+                0.0,
+                -4.9,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "2layer": {
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                -0.3,
+                -7.9,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.41667,
+              "value": [
+                -0.3,
+                -4.7,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "3layer": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                -26.0
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                -8.1,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.41667,
+              "value": [
+                0.0,
+                -4.5,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "1layer2": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                10.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "2layer2": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                -12.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "3layer2": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                -10.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        }
+      }
+    },
+    "shield_channel": {
+      "length": 0.41667,
+      "loop": "once",
+      "tracks": {
+        "2layer": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                38.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.20833,
+              "value": [
+                0.0,
+                -22.5,
+                38.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.41667,
+              "value": [
+                0.0,
+                0.0,
+                38.0
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                -1.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.41667,
+              "value": [
+                -1.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "3layer": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                37.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.20833,
+              "value": [
+                0.0,
+                -22.5,
+                37.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.41667,
+              "value": [
+                0.0,
+                0.0,
+                37.0
+              ],
+              "interpolation": "linear"
+            }
+          ],
+          "position": [
+            {
+              "time": 0.0,
+              "value": [
+                -2.6,
+                -0.8,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.41667,
+              "value": [
+                -2.6,
+                -0.8,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "1layer2": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                30.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.20833,
+              "value": [
+                0.0,
+                22.5,
+                30.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.41667,
+              "value": [
+                0.0,
+                0.0,
+                30.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "2layer2": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.20833,
+              "value": [
+                0.0,
+                22.5,
+                0.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.41667,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "3layer2": {
+          "rotation": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                11.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.20833,
+              "value": [
+                0.0,
+                22.5,
+                11.0
+              ],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.41667,
+              "value": [
+                0.0,
+                0.0,
+                11.0
+              ],
+              "interpolation": "linear"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

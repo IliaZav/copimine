@@ -1014,9 +1014,9 @@ def test_migration_lock_loader_includes_each_built_first_party_plugin():
     assert '983fd1954eb85d8be8a5e18e0095200278933e930422854b4b19c19995fad116' in narcotics['replaceSha256']
     narcotics_candidate=next(item['candidate'] for item in lock['unchangedBaseline']
                              if item['pluginName']=='CopiMineNarcotics')
-    assert narcotics_candidate['size'] == 363263
-    assert narcotics_candidate['sha256'] == '29d4894f4bde94ce950bf05f3f1a61fbafc3369851c8cb15ec330878ec5641c6'
-    assert narcotics_candidate['sha512'] == '2de76b3edce9140092f483e2610696cf33f94c2804a0353c20d6ab72fc1f3ceb0057874c188e364fab8e4c17729b23fa6843c6df7d1a8d2be099ae342aa7b90f'
+    assert narcotics_candidate['size'] == 364299
+    assert narcotics_candidate['sha256'] == '835b8043781cc2bf580900c09653da7aa3436c8485266f7838b478ac5a047e70'
+    assert narcotics_candidate['sha512'] == '5e0a35b14715ebae3d538ce3e3a7215a8cb4095ff64dd8ad9ee1eaf01e30cb7129907a864875fe9feb7a9bee471f1b7b8d531f357fe0820a199857c9ece1046d'
 
 def test_production_or_symlink_target_is_refused(tmp_path):
     mod=load();server,stage,r,old,new=fixture(tmp_path)
@@ -1288,9 +1288,9 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     candidate=baseline['candidate']
     assert candidate['filename']=='CopiMineEndEvent-26.3.jar'
     assert candidate['runtimeFilename']=='CopiMineEndEvent.jar'
-    assert candidate['size']==1735507
-    assert candidate['sha256']=='80c7db84897a29bd1f89bf23f9cb066cb47733d740c5f46cd67f42ee13e2bb34'
-    assert candidate['sha512']=='fdea28412734142c90d3b5f6930898cca7b5d9d9226ebe0e9367a83e4aa5e9b06655caf7ef293d3d6beffdee44af6175241236d8929b1edeae4f6b8395ac748f'
+    assert candidate['size']==1851218
+    assert candidate['sha256']=='9274112cc63ed39e62b1a6e3f5d7284b9d92876137c248f7507d65b0b61b1118'
+    assert candidate['sha512']=='2ebe3998459f0fd0ff9e094aec685430d46e59209b2e924b2d3ba4502ffa5fa3e8a496247277293022c5b563d41aefdd66749f5777b68e8d264a51c69f77daa5'
     assert candidate['apiVersion']=='26.3'
     assert candidate['buildArtifact']=='build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar'
     assert candidate['nativeVerified'] is lock['nativeVerified']
@@ -1305,10 +1305,14 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
         '014b8ce72de3aaabfee26a62bc0341ec606d5683bc404f9edcb2496b1884865e',
         '10dd52eff90c85217caff45bfd08053eae8ee32d8349120d2f436b2f80ce6305',
         'a667e63d60d8441a24e80fa4131510bd30f6e58a88dd5f40a506a00bb697d8a0',
+        'c50a03cd92eec82a97fb8acecf58301cc8da85488b04b20b0a4ca2458f2320be',
+        'e2d0e255e67e9666cc5b82431461e52136667538b6ba81ebe619cb561a17dc9d',
     ]
     assert candidate['replaceSha256']==[
         '891da7cd4c450a32ffdb1c8c78724e8cbc410c2ab64afeac4209f9dc48e30d7e',
         '10dd52eff90c85217caff45bfd08053eae8ee32d8349120d2f436b2f80ce6305',
+        'c50a03cd92eec82a97fb8acecf58301cc8da85488b04b20b0a4ca2458f2320be',
+        'e2d0e255e67e9666cc5b82431461e52136667538b6ba81ebe619cb561a17dc9d',
     ]
 
     built=ROOT/candidate['buildArtifact']
@@ -1369,7 +1373,24 @@ def test_active_26_3_plugin_directory_matches_the_unique_locked_inventory():
     receipt_inventory={entry['pluginName']:{'filename':entry['filename'],'sha256':entry['sha256']} for entry in receipt_rows}
     assert len(receipt_inventory)==len(receipt_rows), 'runtime receipt must not contain duplicate plugin rows'
     assert receipt_inventory==expected, 'runtime receipt names, filenames, and digests must match the active locked plugin inventory'
-    for plugin_name,entry in expected.items():
+    active_expected=dict(expected)
+    local_override_path=server/'migration-local-end-event-build.json'
+    if local_override_path.is_file():
+        local_override=json.loads(local_override_path.read_text(encoding='utf-8'))
+        event_entry=expected['CopiMineEndEvent']
+        event_path=runtime/event_entry['filename']
+        backup_path=Path(local_override['replacementBackup']).resolve()
+        backup_root=(server/'migration-backups/plugins').resolve()
+        assert local_override['scope']=='local-development-override'
+        assert local_override['plugin']=='CopiMineEndEvent'
+        assert Path(local_override['runtimePath']).resolve()==event_path.resolve()
+        assert local_override['replacedJarSha256']==event_entry['sha256']
+        assert backup_path.is_relative_to(backup_root)
+        assert hashlib.sha256(backup_path.read_bytes()).hexdigest()==event_entry['sha256']
+        active_expected['CopiMineEndEvent']={
+            'filename':event_entry['filename'],'sha256':local_override['builtJarSha256'],
+        }
+    for plugin_name,entry in active_expected.items():
         artifact=runtime/entry['filename']
         assert hashlib.sha256(artifact.read_bytes()).hexdigest()==entry['sha256'], plugin_name
 
@@ -2160,7 +2181,7 @@ def test_prepare_runtime_refuses_blank_recreation_when_only_an_archived_world_re
     assert (snapshot/'world/level.dat').read_bytes()==b'preserve the only remaining world copy'
 
 
-def _write_startup_validation_fixture(root):
+def _write_startup_validation_fixture(root,*,full_plugin_set=False):
     mod=load()
     runtime=root/'local-runtime/end-rift-server-26.3'
     plugins=runtime/'plugins'
@@ -2171,6 +2192,7 @@ def _write_startup_validation_fixture(root):
     records=[]
     for name,version,filename in (
         ('CoreProtect','26.3','CoreProtect-26.3.jar'),
+        ('CopiMineEndEvent','0.1.0','CopiMineEndEvent.jar'),
         ('AuthMe','6.0.1','AuthMe-6.0.1.jar'),
         ('voicechat','2.6.24','voicechat-bukkit-2.6.24.jar'),
     ):
@@ -2181,8 +2203,8 @@ def _write_startup_validation_fixture(root):
             'sha256':hashlib.sha256(content).hexdigest(),'sha512':hashlib.sha512(content).hexdigest(),
             'size':len(content),'replaceSha256':[],
         })
-        if name!='AuthMe':(plugins/filename).write_bytes(content)
-        if name!='AuthMe':
+        if name!='AuthMe' or full_plugin_set:(plugins/filename).write_bytes(content)
+        if name!='AuthMe' or full_plugin_set:
             plugin_rows.append({
                 'pluginName':name,'filename':filename,'sha256':hashlib.sha256(content).hexdigest(),
                 'sha512':hashlib.sha512(content).hexdigest(),
@@ -2192,7 +2214,7 @@ def _write_startup_validation_fixture(root):
     lock.write_text(json.dumps({'modules':records,'unchangedBaseline':[]}),encoding='utf-8')
     receipt={
         'schemaVersion':1,'minecraftVersion':'26.3','nativeVerified':False,
-        'authenticationMode':'disabled-for-local-testing',
+        'authenticationMode':'AuthMe-6.0.1' if full_plugin_set else 'disabled-for-local-testing',
         'installed':[
             {**row,'version':next(record['version'] for record in records if record['pluginName']==row['pluginName'])}
             for row in plugin_rows
@@ -2213,6 +2235,76 @@ def test_startup_settings_require_complete_locked_plugin_inventory_and_local_tes
         'voiceChatBindAddress':'127.0.0.1'}
     assert (tmp_path/'local-runtime/end-rift-server-26.3/plugins/voicechat/voicechat-server.properties').read_text(
         encoding='utf-8')=='bind_address=127.0.0.1\n'
+
+
+def _install_local_end_event_override_fixture(runtime,plugins):
+    target=plugins/'CopiMineEndEvent.jar'
+    previous=target.read_bytes()
+    local_build=jar('CopiMineEndEvent','0.1.0-dev')
+    target.write_bytes(local_build)
+    backup=runtime/'migration-backups/plugins/test-session/CopiMineEndEvent.jar'
+    backup.parent.mkdir(parents=True)
+    backup.write_bytes(previous)
+    manifest={
+        'schemaVersion':1,
+        'scope':'local-development-override',
+        'plugin':'CopiMineEndEvent',
+        'minecraftVersion':'26.3',
+        'runtimePath':str(target.resolve()),
+        'builtJarSize':len(local_build),
+        'builtJarSha256':hashlib.sha256(local_build).hexdigest(),
+        'builtJarSha512':hashlib.sha512(local_build).hexdigest(),
+        'replacedJarSha256':hashlib.sha256(previous).hexdigest(),
+        'replacementBackup':str(backup.resolve()),
+        'sourceBranch':'codex/local-test',
+        'sourceHead':'a'*40,
+        'sourceTreeSha256':'b'*64,
+        'sourceJavaFileCount':1,
+        'sourceWorkingTreeDirty':True,
+        'javaVersion':'Temurin 25.0.4.1',
+    }
+    (runtime/'migration-local-end-event-build.json').write_text(json.dumps(manifest),encoding='utf-8')
+    return target,backup,manifest
+
+
+def test_startup_settings_accept_only_receipted_local_end_event_override(tmp_path,capsys):
+    mod,runtime,plugins=_write_startup_validation_fixture(tmp_path,full_plugin_set=True)
+    _,_,manifest=_install_local_end_event_override_fixture(runtime,plugins)
+
+    mod.main(root=tmp_path,argv=['--startup-settings-json','--local-end-event-build'])
+
+    assert json.loads(capsys.readouterr().out)=={
+        'serverIp':'127.0.0.1','serverPort':25566,'onlineMode':'false','enableRcon':'false',
+        'voiceChatBindAddress':'127.0.0.1'}
+    receipt=json.loads((runtime/'migration-plugin-receipt.json').read_text(encoding='utf-8'))
+    locked_row=next(row for row in receipt['pluginInventory'] if row['pluginName']=='CopiMineEndEvent')
+    assert manifest['replacedJarSha256']==locked_row['sha256']
+
+
+def test_startup_settings_do_not_auto_accept_local_end_event_override(tmp_path):
+    mod,runtime,plugins=_write_startup_validation_fixture(tmp_path,full_plugin_set=True)
+    _install_local_end_event_override_fixture(runtime,plugins)
+
+    with pytest.raises(ValueError,match='Active plugin inventory differs from the locked 26.3 candidates'):
+        mod.main(root=tmp_path,argv=['--startup-settings-json'])
+
+
+def test_local_end_event_override_keeps_other_locked_plugin_hashes_enforced(tmp_path):
+    mod,runtime,plugins=_write_startup_validation_fixture(tmp_path,full_plugin_set=True)
+    _install_local_end_event_override_fixture(runtime,plugins)
+    (plugins/'CoreProtect-26.3.jar').write_bytes(jar('CoreProtect','26.3')+b'unreceipted change')
+
+    with pytest.raises(ValueError,match='Active plugin inventory differs from the locked 26.3 candidates'):
+        mod.main(root=tmp_path,argv=['--startup-settings-json','--local-end-event-build'])
+
+
+def test_local_end_event_override_requires_the_pinned_jar_backup(tmp_path):
+    mod,runtime,plugins=_write_startup_validation_fixture(tmp_path,full_plugin_set=True)
+    _,backup,_=_install_local_end_event_override_fixture(runtime,plugins)
+    backup.unlink()
+
+    with pytest.raises(ValueError,match='Local End Event build backup is missing'):
+        mod.main(root=tmp_path,argv=['--startup-settings-json','--local-end-event-build'])
 
 
 @pytest.mark.parametrize('damage',['missing_receipt','missing_plugin','partial_receipt'])
@@ -2455,6 +2547,15 @@ def test_migration_test_server_launcher_supports_explicit_full_plugin_loopback_m
     assert 'enableRcon' in source
 
 
+def test_migration_launcher_requires_full_auth_mode_for_receipted_local_end_event_build():
+    source=(ROOT/'scripts/minecraft/StartMigrationTestServer.ps1').read_text(encoding='utf-8')
+
+    assert '[switch]$LocalEndEventBuild' in source
+    assert 'if ($LocalEndEventBuild -and -not $FullPluginSet)' in source
+    assert "if ($LocalEndEventBuild) { $startupSettingsArguments += '--local-end-event-build' }" in source
+    assert 'receipted local CopiMineEndEvent build' in source
+
+
 def test_migration_test_server_launcher_checks_java_version_process_exit_code_explicitly():
     source=(ROOT/'scripts/minecraft/StartMigrationTestServer.ps1').read_text(encoding='utf-8')
 
@@ -2665,12 +2766,12 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
     assert luckperms['nativeVerified'] is False
 
     expected_candidates={
-        'CopiMineArtifacts':('372bae5777d7703c8e6628208dac3f087c59f657460ac6b4765d6fc4386925ec',
-                             'a3bfb5d16bb1d1fa01cbb31bc829299e59cc884d5fa52d4a534eff7b3d5ccee00d8d6de1de01ebbbea5c027a6ef2a9038c74aa613ffa1f6ecfc106e843a4d22d',357909),
-        'CopiMineEndEvent':('80c7db84897a29bd1f89bf23f9cb066cb47733d740c5f46cd67f42ee13e2bb34',
-                            'fdea28412734142c90d3b5f6930898cca7b5d9d9226ebe0e9367a83e4aa5e9b06655caf7ef293d3d6beffdee44af6175241236d8929b1edeae4f6b8395ac748f',1735507),
-        'CopiMineNarcotics':('29d4894f4bde94ce950bf05f3f1a61fbafc3369851c8cb15ec330878ec5641c6',
-                             '2de76b3edce9140092f483e2610696cf33f94c2804a0353c20d6ab72fc1f3ceb0057874c188e364fab8e4c17729b23fa6843c6df7d1a8d2be099ae342aa7b90f',363263),
+        'CopiMineArtifacts':('0c3d91b2f763f62797b04791341026d09384258dcb181e82230d76c9dd391d9a',
+                             '7e2e62a7fe07066d2c37b2e845cde503b94617f7de740b66e76b782ea035d2f3ba0f00b09092067a35586328408b7ecc96ed7e452d125e18f1dd52b8d92bceef',359386),
+        'CopiMineEndEvent':('9274112cc63ed39e62b1a6e3f5d7284b9d92876137c248f7507d65b0b61b1118',
+                            '2ebe3998459f0fd0ff9e094aec685430d46e59209b2e924b2d3ba4502ffa5fa3e8a496247277293022c5b563d41aefdd66749f5777b68e8d264a51c69f77daa5',1851218),
+        'CopiMineNarcotics':('835b8043781cc2bf580900c09653da7aa3436c8485266f7838b478ac5a047e70',
+                             '5e0a35b14715ebae3d538ce3e3a7215a8cb4095ff64dd8ad9ee1eaf01e30cb7129907a864875fe9feb7a9bee471f1b7b8d531f357fe0820a199857c9ece1046d',364299),
     }
     for plugin_name,(sha256,sha512,size) in expected_candidates.items():
         candidate=baseline[plugin_name]['candidate']
@@ -2679,3 +2780,12 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
         assert candidate['size']==size
         assert candidate['compatibilityStatus']=='requires-runtime-validation'
         assert candidate['nativeVerified'] is False
+
+
+def test_artifacts_candidate_upgrade_accepts_the_currently_installed_candidate():
+    lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
+    artifacts=next(row for row in lock['unchangedBaseline'] if row['pluginName']=='CopiMineArtifacts')
+    previously_installed_candidate='372bae5777d7703c8e6628208dac3f087c59f657460ac6b4765d6fc4386925ec'
+
+    assert previously_installed_candidate in artifacts['replaceSha256'], (
+        'the official installer must recognize the current candidate before replacing it')

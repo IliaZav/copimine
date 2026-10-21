@@ -3,6 +3,7 @@ package me.copimine.client;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 
 /** Server-authored, bounded Wave 1/2 player presentation; never advances gameplay. */
 public final class EndEventPlayerVisualManager {
@@ -150,6 +151,14 @@ public final class EndEventPlayerVisualManager {
             }
         }
         return selected == null ? null : new VisualState(selectedKind, selected.startedAtMillis, selected.expiresAtMillis);
+    }
+
+    /** Hide remote player models and their renderer layers only for the marked viewer. */
+    public synchronized boolean hidesPlayer(UUID renderedPlayer, UUID localPlayer,
+                                             String requestedDimension, long nowMillis) {
+        if (renderedPlayer == null || localPlayer == null || renderedPlayer.equals(localPlayer)) return false;
+        VisualState state = visualState(requestedDimension, nowMillis);
+        return state != null && state.kind() == Kind.HUNT;
     }
 
     public synchronized void tick(long nowMillis) {

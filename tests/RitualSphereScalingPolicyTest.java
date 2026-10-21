@@ -6,17 +6,17 @@ public final class RitualSphereScalingPolicyTest {
                 "solo Wave 6 must still spawn exactly five ritual casters");
         check(RitualSphereScalingPolicy.forPlayers(20).casterCount() == 5,
                 "large-party Wave 6 must still spawn exactly five ritual casters");
-        checkProfile(2, 5, 5, 3, 1, 8);
-        checkProfile(3, 5, 5, 4, 1, 8);
-        checkProfile(4, 5, 5, 5, 1, 8);
-        checkProfile(5, 5, 10, 5, 1, 7);
-        checkProfile(8, 5, 10, 7, 1, 7);
-        checkProfile(9, 5, 15, 7, 2, 6);
-        checkProfile(12, 5, 15, 7, 2, 6);
-        checkProfile(13, 5, 15, 7, 2, 6);
-        checkProfile(16, 5, 15, 7, 2, 6);
-        checkProfile(17, 5, 15, 7, 3, 5);
-        checkProfile(20, 5, 15, 7, 3, 5);
+        checkProfile(2, 5, 5, 3, 1, 14);
+        checkProfile(3, 5, 5, 4, 1, 14);
+        checkProfile(4, 5, 5, 5, 1, 14);
+        checkProfile(5, 5, 10, 5, 1, 14);
+        checkProfile(8, 5, 10, 7, 1, 14);
+        checkProfile(9, 5, 15, 7, 2, 14);
+        checkProfile(12, 5, 15, 7, 2, 14);
+        checkProfile(13, 5, 15, 7, 2, 14);
+        checkProfile(16, 5, 15, 7, 2, 14);
+        checkProfile(17, 5, 15, 7, 3, 14);
+        checkProfile(20, 5, 15, 7, 3, 14);
         RitualSphereScalingPolicy.Profile capped = RitualSphereScalingPolicy.forPlayers(999);
         check(capped.participants() == 20, "participants must be capped at twenty");
         check(capped.guardCount() == capped.casterCount() * 3,

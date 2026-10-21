@@ -63,9 +63,10 @@ def test_local_starter_limits_memory_pressure_for_desktop_event_probes() -> None
 def test_local_starter_uses_the_pinned_local_temurin_25_runtime() -> None:
     source = (ROOT / "tests" / "StartEndRiftLocal.ps1").read_text(encoding="utf-8")
 
-    assert "toolchains\\temurin-25.0.4.1\\jdk-25.0.4.1+1\\bin\\java.exe" in source, (
-        "The local probe must not depend on whichever Java happens to be first on PATH."
+    assert "Join-Path $localRuntimeRoot 'toolchains\\temurin-25.0.4.1\\jdk-25.0.4.1+1'" in source, (
+        "The default local probe must keep using the pinned Java home rather than PATH."
     )
+    assert "Join-Path $javaHomePath 'bin\\java.exe'" in source
     assert "openjdk version \"25\\.0\\.4\\.1" in source, (
         "Fail closed if the pinned local executable is not the expected Temurin 25 build."
     )
@@ -216,6 +217,8 @@ def test_local_server_identity_normalizes_subst_paths_before_comparing_receipt()
 def test_local_rcon_normalizes_receipt_jar_path_before_server_directory_check() -> None:
     source = (ROOT / "tests" / "InvokeEndRiftLocalRcon.ps1").read_text(encoding="utf-8")
 
+    assert "$expectedPaperJarPath = Join-Path $ServerDir 'paper-26.3-205.jar'" in source
+    assert "Join-Path $ServerDir 'purpur.jar'" in source
     assert "$canonicalReceiptPaperJarPath = Resolve-EndRiftLocalDriveSubstitutions -Path ([string]$serverReceipt.PaperJarPath)" in source
     assert "[string]::Equals($canonicalReceiptPaperJarPath, $expectedPaperJarPath" in source
 
@@ -316,6 +319,68 @@ def test_local_paper_boot_and_wave7_restart_share_environment_file_parsing() -> 
     assert "function Import-EndRiftLocalEnvironment" in helper
     assert ".Trim().Trim('\"').Trim(\"'\")" in helper
     assert "Set-Item -Path (\"Env:\" + $name) -Value $value" in helper
+
+
+def test_end_rift_bots_use_pinned_via_backwards_protocol_route_to_paper_26_3() -> None:
+    helper = (ROOT / "tests" / "EndRiftLocalAuthMode.ps1").read_text(encoding="utf-8")
+    bot = (ROOT / "tests" / "LocalEndRiftMobCombatBot.js").read_text(encoding="utf-8")
+    runner = (ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1").read_text(encoding="utf-8")
+
+    assert "mc-bot-26.3-complete-probe\\node_modules" in helper
+    assert "END_RIFT_BOT_NODE_MODULES" in helper
+    assert "END_RIFT_BOT_PROTOCOL_VERSION" in helper
+    assert "'26.1'" in helper
+    assert "ViaVersion-5.12.1.jar" in helper
+    assert "ViaBackwards-5.12.1.jar" in helper
+    assert "b8033807e7182c35003a45962352dd642c1e91880ca281da3a43cb6f481a95a2" in helper
+    assert "29d94d3a26c85c8a327574b2322db4078992ae457f0173325431a12aac384911" in helper
+    assert "Assert-EndRiftLocalBotProtocolGateway" in helper
+    assert "process.env.END_RIFT_BOT_NODE_MODULES" in bot
+    assert "process.env.END_RIFT_BOT_PROTOCOL_VERSION" in bot
+    assert "minecraftProtocol.supportedVersions.includes(protocolVersion)" in bot
+    assert "mineflayer.testedVersions.includes(protocolVersion)" in bot
+    assert "protocolVersion !== '26.1'" in bot
+    assert "bot.on('physicsTick'" in bot
+    assert "queueMicrotask" in bot
+    assert "bot._client.write('tick_end', {})" in bot
+    assert "host !== '127.0.0.1' || port !== 25566" in bot
+    assert "client=26.1 backend=Paper-26.3-205 gateway=ViaVersion-5.12.1" in bot
+    assert "version: '1.21.1'" not in bot
+
+    assert "Add-LocalProbeWhitelistEntries" in runner
+    assert "Remove-LocalProbeWhitelistEntries" in runner
+    assert "whitelist add $name" in runner
+    assert "whitelist remove $name" in runner
+
+
+def test_local_bot_gateway_keeps_the_isolated_allowlist_enabled() -> None:
+    helper = (ROOT / "tests" / "EndRiftLocalAuthMode.ps1").read_text(encoding="utf-8")
+
+    assert "white-list=true" in helper
+    assert "online-mode=false" in helper
+    assert "Refused a bot protocol route outside isolated port 25566" in helper
+    assert "InvokeEndRiftLocalRcon.ps1" in helper
+
+
+def test_local_starter_accepts_only_locked_event_artifact_and_pinned_paper() -> None:
+    source = (ROOT / "tests" / "StartEndRiftLocal.ps1").read_text(encoding="utf-8")
+
+    assert "[string]$PluginArtifactPath" in source
+    assert "server-plugins.lock.json" in source
+    assert "$endEventCandidate.sha256" in source
+    assert "paper-26.3-205.jar" in source
+    assert "profileLock.paper.sha256" in source
+    assert "[string]$EnvironmentFilePath" in source
+
+
+def test_local_starter_confines_explicit_java_home_to_isolated_server() -> None:
+    source = (ROOT / "tests" / "StartEndRiftLocal.ps1").read_text(encoding="utf-8")
+
+    assert "[string]$JavaHomePath = ''" in source
+    assert "Test-EndRiftLocalRuntimePath" in source
+    assert "$javaHomePath.StartsWith($serverJavaPrefix" in source
+    assert "An explicit local End Rift Java home must be inside the isolated server directory." in source
+    assert "openjdk version \"25\\.0\\.4\\.1" in source
 
 
 def test_mob_and_spell_bots_receive_only_explicit_loopback_environment() -> None:

@@ -130,7 +130,8 @@ function Get-EndRiftLocalBotSafeEnvironmentVariableNames {
     'USERPROFILE', 'LOCALAPPDATA', 'APPDATA', 'HOMEDRIVE', 'HOMEPATH', 'OS',
     'PROCESSOR_ARCHITECTURE', 'PROCESSOR_IDENTIFIER', 'NUMBER_OF_PROCESSORS',
     'END_RIFT_ATTACK_INTERVAL_MS', 'END_RIFT_BOSS_UUID', 'END_RIFT_BOT_CONTROL_DIRECTORY',
-    'END_RIFT_BOT_HOST', 'END_RIFT_BOT_PORT', 'END_RIFT_BOT_SKIP_AUTH',
+    'END_RIFT_BOT_HOST', 'END_RIFT_BOT_NODE_MODULES', 'END_RIFT_BOT_PORT',
+    'END_RIFT_BOT_PROTOCOL_VERSION', 'END_RIFT_BOT_SKIP_AUTH',
     'END_RIFT_BOT_SKIP_REGISTER', 'END_RIFT_BOT_WAVE7_AUTOPILOT',
     'END_RIFT_BOT_WAVE7_HOLD_POSITION', 'END_RIFT_GUARDIAN_PROBE_NAMES',
     'END_RIFT_OBELISK_TARGETS', 'END_RIFT_REFLECT_DIAGNOSTICS',
@@ -153,6 +154,87 @@ function Test-EndRiftLocalBotEnvironmentVariableToRemove {
   return $Name -notin $safeNames
 }
 
+function Get-EndRiftLocalBotNodeModulesPath {
+  $repositoryRoot = Split-Path -Parent $PSScriptRoot
+  $localRuntimeRoot = (Resolve-Path -LiteralPath (Join-Path $repositoryRoot 'local-runtime') -ErrorAction Stop).Path
+  $botNodeModules = Assert-EndRiftLocalRuntimePath `
+    -Path (Join-Path $localRuntimeRoot 'mc-bot-26.3-complete-probe\node_modules') `
+    -LocalRuntimeRoot $localRuntimeRoot -MustExist
+  foreach ($requiredModule in @(
+      'mineflayer\package.json',
+      'minecraft-protocol\package.json',
+      'prismarine-chunk\package.json'
+    )) {
+    if (-not (Test-Path -LiteralPath (Join-Path $botNodeModules $requiredModule) -PathType Leaf)) {
+      throw "The pinned ViaBackwards test-bot dependency is missing: $requiredModule"
+    }
+  }
+  return $botNodeModules
+}
+
+function Assert-EndRiftLocalBotProtocolGateway {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet(25566)]
+    [int]$BotPort
+  )
+
+  if ($BotPort -ne 25566) {
+    throw 'Refused a bot protocol route outside isolated port 25566.'
+  }
+  $repositoryRoot = Split-Path -Parent $PSScriptRoot
+  $localRuntimeRoot = (Resolve-Path -LiteralPath (Join-Path $repositoryRoot 'local-runtime') -ErrorAction Stop).Path
+  $serverDir = Assert-EndRiftLocalRuntimePath `
+    -Path (Join-Path $localRuntimeRoot 'end-rift-server') `
+    -LocalRuntimeRoot $localRuntimeRoot -MustExist
+  $propertiesPath = Assert-EndRiftLocalRuntimePath `
+    -Path (Join-Path $serverDir 'server.properties') `
+    -LocalRuntimeRoot $localRuntimeRoot -MustExist
+  $properties = [IO.File]::ReadAllLines($propertiesPath)
+  Test-EndRiftLocalServerBind -ServerPropertiesLines $properties | Out-Null
+  foreach ($requiredSetting in @(
+      'server-port=25566', 'rcon.ip=127.0.0.1', 'rcon.port=25576',
+      'white-list=true', 'online-mode=false'
+    )) {
+    if ($properties -cnotcontains $requiredSetting) {
+      throw "Refused the bot gateway: isolated server setting is not $requiredSetting."
+    }
+  }
+
+  $pinnedArtifacts = @(
+    @{ Name = 'ViaVersion-5.12.1.jar'; Sha256 = 'b8033807e7182c35003a45962352dd642c1e91880ca281da3a43cb6f481a95a2'; Size = 6503218 },
+    @{ Name = 'ViaBackwards-5.12.1.jar'; Sha256 = '29d94d3a26c85c8a327574b2322db4078992ae457f0173325431a12aac384911'; Size = 1436080 }
+  )
+  $pluginDir = Assert-EndRiftLocalRuntimePath `
+    -Path (Join-Path $serverDir 'plugins') -LocalRuntimeRoot $localRuntimeRoot -MustExist
+  foreach ($artifact in $pinnedArtifacts) {
+    $artifactPath = Assert-EndRiftLocalRuntimePath `
+      -Path (Join-Path $pluginDir $artifact.Name) `
+      -LocalRuntimeRoot $localRuntimeRoot -MustExist
+    $actualSize = (Get-Item -LiteralPath $artifactPath).Length
+    $actualSha256 = (Get-FileHash -LiteralPath $artifactPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actualSize -ne $artifact.Size -or $actualSha256 -ne $artifact.Sha256) {
+      throw "Refused the bot gateway because $($artifact.Name) does not match its pinned official release."
+    }
+  }
+
+  $rconScript = Join-Path $PSScriptRoot 'InvokeEndRiftLocalRcon.ps1'
+  try {
+    $pluginList = & $rconScript -ServerDir $serverDir -ServerPort 25566 `
+      -RconPort 25576 -CommandText 'plugins' | Out-String
+  } catch {
+    throw "Refused the bot gateway because isolated local RCON did not verify it: $($_.Exception.Message)"
+  }
+  $plainPluginList = $pluginList -replace '(?i)\u00A7x(?:\u00A7[0-9a-f]){6}', ''
+  $plainPluginList = $plainPluginList -replace '[\u00A7&][0-9A-FK-ORa-fk-or]', ''
+  if ($plainPluginList -notmatch '(?i)ViaVersion' -or
+      $plainPluginList -notmatch '(?i)ViaBackwards') {
+    throw 'Refused the bot gateway because the pinned ViaVersion plugins are not enabled on Paper.'
+  }
+  return $true
+}
+
 function Invoke-EndRiftLocalBotEnvironment {
   [CmdletBinding()]
   param(
@@ -160,12 +242,14 @@ function Invoke-EndRiftLocalBotEnvironment {
     [ValidateSet('127.0.0.1')]
     [string]$BotHost,
     [Parameter(Mandatory = $true)]
-    [ValidateRange(1, 65535)]
+    [ValidateSet(25566)]
     [int]$BotPort,
     [Parameter(Mandatory = $true)]
     [scriptblock]$Action
   )
 
+  $null = Assert-EndRiftLocalBotProtocolGateway -BotPort $BotPort
+  $botNodeModules = Get-EndRiftLocalBotNodeModulesPath
   $previousValues = @{}
   foreach ($environmentVariableName in [Environment]::GetEnvironmentVariables('Process').Keys) {
     $previousValues[[string]$environmentVariableName] = [Environment]::GetEnvironmentVariable(
@@ -179,6 +263,8 @@ function Invoke-EndRiftLocalBotEnvironment {
     }
     [Environment]::SetEnvironmentVariable('END_RIFT_BOT_HOST', $BotHost, 'Process')
     [Environment]::SetEnvironmentVariable('END_RIFT_BOT_PORT', [string]$BotPort, 'Process')
+    [Environment]::SetEnvironmentVariable('END_RIFT_BOT_NODE_MODULES', $botNodeModules, 'Process')
+    [Environment]::SetEnvironmentVariable('END_RIFT_BOT_PROTOCOL_VERSION', '26.1', 'Process')
     & $Action
   } finally {
     foreach ($environmentVariableName in @([Environment]::GetEnvironmentVariables('Process').Keys)) {
@@ -644,15 +730,19 @@ function Set-EndRiftLocalBotChildEnvironment {
   param(
     [Parameter(Mandatory = $true)][System.Diagnostics.ProcessStartInfo]$StartInfo,
     [ValidateSet('127.0.0.1')][string]$BotHost = '127.0.0.1',
-    [ValidateRange(1, 65535)][int]$BotPort = 25566
+    [ValidateSet(25566)][int]$BotPort = 25566
   )
   foreach ($name in @($StartInfo.EnvironmentVariables.Keys)) {
     if (Test-EndRiftLocalBotEnvironmentVariableToRemove -Name ([string]$name)) {
       [void]$StartInfo.EnvironmentVariables.Remove([string]$name)
     }
   }
+  $null = Assert-EndRiftLocalBotProtocolGateway -BotPort $BotPort
+  $botNodeModules = Get-EndRiftLocalBotNodeModulesPath
   $StartInfo.EnvironmentVariables['END_RIFT_BOT_HOST'] = $BotHost
   $StartInfo.EnvironmentVariables['END_RIFT_BOT_PORT'] = [string]$BotPort
+  $StartInfo.EnvironmentVariables['END_RIFT_BOT_NODE_MODULES'] = $botNodeModules
+  $StartInfo.EnvironmentVariables['END_RIFT_BOT_PROTOCOL_VERSION'] = '26.1'
 }
 
 function Set-EndRiftLocalBotChildEnvironmentOverrides {

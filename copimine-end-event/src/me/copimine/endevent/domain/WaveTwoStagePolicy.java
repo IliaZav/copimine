@@ -3,93 +3,148 @@ package me.copimine.endevent.domain;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Deterministic pacing and composition for the three bounded Wave 2 groups. */
+/** Deterministic pacing and composition for bounded Wave 2 pressure periods. */
 public final class WaveTwoStagePolicy {
-    public static final int STAGE_COUNT = 3;
-    /** Wave 2 may exceed generic pressure only inside this three-stage reserve. */
+    public static final int OPENING_GROUP_COUNT = 2;
+    public static final int LATE_REINFORCEMENT_BUDGET = 8;
+    public static final int MAX_GROUP_COUNT = OPENING_GROUP_COUNT + LATE_REINFORCEMENT_BUDGET / 2;
+    /** Compatibility name for persistence bounds; schedules contain two to six groups. */
+    public static final int STAGE_COUNT = MAX_GROUP_COUNT;
+    public static final int FIRST_LATE_GROUP = OPENING_GROUP_COUNT + 1;
+    /** Wave 2 may exceed generic pressure only inside this bounded total reserve. */
     public static final int MAX_TOTAL_MOBS = PressureBudgetController.HARD_CAP;
-    /** Balanced groups from the global Wave 2 cap never exceed this live group size. */
-    public static final int MAX_ACTIVE_GROUP_MOBS = (MAX_TOTAL_MOBS + STAGE_COUNT - 1) / STAGE_COUNT;
-    public static final long MARK_DURATION_MILLIS = 20_000L;
-    public static final long NEXT_GROUP_PAUSE_MILLIS = 5_000L;
+    /** Two opening groups share the maximum initial reserve after late slots are reserved. */
+    public static final int MAX_ACTIVE_GROUP_MOBS =
+            (MAX_TOTAL_MOBS - LATE_REINFORCEMENT_BUDGET + 1) / OPENING_GROUP_COUNT;
+    public static final long MARK_DURATION_MILLIS = WaveTwoHuntPolicy.MARK_ROTATION_MILLIS;
+    public static final long NEXT_GROUP_PAUSE_MILLIS = 0L;
 
     private WaveTwoStagePolicy() { }
 
     /**
-     * Split the configured/scaled count into three balanced ordinary groups.
-     * Stale elite entries are normalized using the same Wave 2 rules as live
-     * spawning, so this policy can never create a new elite.
+     * Preserve the scaled total as two large opening groups followed by at
+     * most four two-mob reinforcement groups. The late allowance is reserved
+     * from the scaled roster, so this schedule never exceeds its total budget.
      */
     public static List<WaveMechanicsPolicy.WaveCounts> split(
             WaveMechanicsPolicy.WaveCounts requested) {
         WaveMechanicsPolicy.WaveCounts ordinary = WaveMechanicsPolicy.compositionForWave(2, requested);
-        if (ordinary.total() > MAX_TOTAL_MOBS) {
+        int total = ordinary.total();
+        if (total > MAX_TOTAL_MOBS) {
             throw new IllegalArgumentException("Wave 2 reserve exceeds the bounded event hard cap");
         }
-        int[][] counts = new int[STAGE_COUNT][3];
-        int role = 0;
-        int mobOrdinal = 0;
-        int[] totals = {
+        if (total < OPENING_GROUP_COUNT) return List.of();
+
+        int lateBudget = Math.min(LATE_REINFORCEMENT_BUDGET, total - OPENING_GROUP_COUNT);
+        int openingBudget = total - lateBudget;
+        int lateGroupCount = (lateBudget + 1) / 2;
+        int groupCount = OPENING_GROUP_COUNT + lateGroupCount;
+        int[][] counts = new int[groupCount][3];
+        int[] groupCapacity = new int[groupCount];
+        groupCapacity[0] = (openingBudget + 1) / 2;
+        groupCapacity[1] = openingBudget / 2;
+        for (int group = OPENING_GROUP_COUNT; group < groupCount; group++) {
+            groupCapacity[group] = Math.min(2, lateBudget - (group - OPENING_GROUP_COUNT) * 2);
+        }
+        int[] groupSize = new int[groupCount];
+        int[] remaining = {
                 Math.max(0, ordinary.endermen()),
                 Math.max(0, ordinary.spiders()),
                 Math.max(0, ordinary.skeletons())};
-        for (int type = 0; type < totals.length; type++) {
-            for (int index = 0; index < totals[type]; index++) {
-                role = type;
-                counts[mobOrdinal++ % STAGE_COUNT][role]++;
+
+        // Balance the two opening groups while preserving each ordinary role.
+        for (int type = 0; type < remaining.length; type++) {
+            int openingSlots = openingBudget - groupSize[0] - groupSize[1];
+            int openingCount = Math.min(remaining[type], openingSlots);
+            for (int index = 0; index < openingCount; index++) {
+                int selected = groupSize[0] <= groupSize[1] ? 0 : 1;
+                if (groupSize[selected] >= groupCapacity[selected]) selected = 1 - selected;
+                if (groupSize[selected] >= groupCapacity[selected]) {
+                    throw new IllegalStateException("Wave 2 opening reserve allocation is inconsistent");
+                }
+                counts[selected][type]++;
+                groupSize[selected]++;
             }
+            remaining[type] -= openingCount;
         }
-        int finalEliteSkeletons = ordinary.skeletons() > 0 ? 1 : 0;
-        if (finalEliteSkeletons > 0) {
-            if (counts[STAGE_COUNT - 1][2] > 0) {
-                counts[STAGE_COUNT - 1][2]--;
-            } else {
-                for (int stage = 0; stage < STAGE_COUNT - 1; stage++) {
-                    if (counts[stage][2] > 0) {
-                        counts[stage][2]--;
+
+        // Distribute the reserved trickle evenly, with deterministic role rotation.
+        int lateCursor = 0;
+        for (int type = 0; type < remaining.length; type++) {
+            while (remaining[type] > 0) {
+                int selected = -1;
+                for (int offset = 0; offset < lateGroupCount; offset++) {
+                    int candidate = OPENING_GROUP_COUNT + (lateCursor + offset) % lateGroupCount;
+                    if (groupSize[candidate] < groupCapacity[candidate]) {
+                        selected = candidate;
+                        lateCursor = (candidate - OPENING_GROUP_COUNT + 1) % lateGroupCount;
                         break;
                     }
                 }
+                if (selected < 0) {
+                    throw new IllegalStateException("Wave 2 reinforcement reserve allocation is inconsistent");
+                }
+                counts[selected][type]++;
+                groupSize[selected]++;
+                remaining[type]--;
             }
         }
-        List<WaveMechanicsPolicy.WaveCounts> groups = new ArrayList<>(STAGE_COUNT);
-        for (int stage = 0; stage < STAGE_COUNT; stage++) {
+
+        reserveFirstLateEnderman(counts, groupCount);
+
+        int firstLateElite = counts.length > FIRST_LATE_GROUP - 1
+                && counts[FIRST_LATE_GROUP - 1][2] > 0 ? 1 : 0;
+        if (firstLateElite > 0) counts[FIRST_LATE_GROUP - 1][2]--;
+        List<WaveMechanicsPolicy.WaveCounts> groups = new ArrayList<>(groupCount);
+        for (int group = 0; group < groupCount; group++) {
             groups.add(new WaveMechanicsPolicy.WaveCounts(
-                    counts[stage][0], counts[stage][1], counts[stage][2], 0,
-                    stage == STAGE_COUNT - 1 ? finalEliteSkeletons : 0));
+                    counts[group][0], counts[group][1], counts[group][2], 0,
+                    group == FIRST_LATE_GROUP - 1 ? firstLateElite : 0));
         }
         return List.copyOf(groups);
     }
 
+    /** Keep one existing Enderman slot in the first late group for the server-owned phantom activation. */
+    private static void reserveFirstLateEnderman(int[][] counts, int groupCount) {
+        int lateGroup = FIRST_LATE_GROUP - 1;
+        if (groupCount <= lateGroup || counts[lateGroup][0] > 0) return;
+        int replacementType = counts[lateGroup][1] > 0 ? 1 : counts[lateGroup][2] > 0 ? 2 : -1;
+        if (replacementType < 0) return;
+
+        for (int openingGroup = 0; openingGroup < OPENING_GROUP_COUNT; openingGroup++) {
+            if (counts[openingGroup][0] <= 0) continue;
+            counts[openingGroup][0]--;
+            counts[openingGroup][replacementType]++;
+            counts[lateGroup][replacementType]--;
+            counts[lateGroup][0]++;
+            return;
+        }
+    }
+
     /**
-     * Whether a scaled Wave 2 composition can satisfy all three kill stages.
-     * Each stage must contain at least one mob, and the final group must be
-     * able to promote one skeleton without adding roster pressure.
+     * Whether the two opening groups can launch inside the bounded Wave 2 budget.
      */
     public static boolean canStart(WaveMechanicsPolicy.WaveCounts requested) {
         if (requested == null) return false;
         WaveMechanicsPolicy.WaveCounts ordinary = WaveMechanicsPolicy.compositionForWave(2, requested);
-        if (ordinary.total() < STAGE_COUNT || ordinary.total() > MAX_TOTAL_MOBS
-                || ordinary.skeletons() <= 0) return false;
+        if (ordinary.total() < OPENING_GROUP_COUNT || ordinary.total() > MAX_TOTAL_MOBS) return false;
         List<WaveMechanicsPolicy.WaveCounts> groups = split(ordinary);
-        if (groups.size() != STAGE_COUNT
+        if (groups.size() < OPENING_GROUP_COUNT || groups.size() > MAX_GROUP_COUNT
                 || groups.stream().anyMatch(group -> group == null || group.total() <= 0
                 || group.total() > MAX_ACTIVE_GROUP_MOBS)) {
             return false;
         }
-        WaveMechanicsPolicy.WaveCounts finalGroup = groups.get(STAGE_COUNT - 1);
-        return finalGroup.eliteEndermen() == 0 && finalGroup.eliteSkeletons() == 1;
+        return groups.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).sum() == ordinary.total();
     }
 
     /**
-     * Sanitize a group at its final spawn boundary. The one approved elite
-     * replaces an ordinary skeleton in group three; legacy elite slots are
-     * still folded into ordinary roles and cannot leak into earlier groups.
+     * Sanitize each group at its spawn boundary. One approved elite skeleton
+     * may replace an ordinary skeleton in the first late pressure group.
      */
     public static WaveMechanicsPolicy.WaveCounts sanitizeForSpawn(
             int groupNumber, WaveMechanicsPolicy.WaveCounts requested) {
         WaveMechanicsPolicy.WaveCounts ordinary = WaveMechanicsPolicy.compositionForWave(2, requested);
-        if (groupNumber != STAGE_COUNT || requested == null) return ordinary;
+        if (groupNumber != FIRST_LATE_GROUP || requested == null) return ordinary;
         int eliteSkeletons = Math.min(1, Math.max(0, requested.eliteSkeletons()));
         return new WaveMechanicsPolicy.WaveCounts(ordinary.endermen(), ordinary.spiders(),
                 Math.max(0, ordinary.skeletons() - eliteSkeletons), 0, eliteSkeletons);
@@ -99,7 +154,36 @@ public final class WaveTwoStagePolicy {
         if (groupClearedAtMillis < 0L) {
             throw new IllegalArgumentException("group clear time must not be negative");
         }
-        return Math.addExact(groupClearedAtMillis, NEXT_GROUP_PAUSE_MILLIS);
+        return groupClearedAtMillis;
+    }
+
+    /**
+     * Start the first pressure batch immediately. Hold the second substantial
+     * batch until the second mark begins, then gate late reinforcements by
+     * completed mark periods so the first two marks retain pressure.
+     */
+    public static boolean maySpawnNextGroup(int spawnedGroups,
+                                            int completedMarkPeriods,
+                                            int lastLateGroupMarkPeriod) {
+        if (spawnedGroups < 0 || spawnedGroups >= MAX_GROUP_COUNT
+                || completedMarkPeriods < 0
+                || completedMarkPeriods > WaveTwoHuntPolicy.MAX_COMPLETED_MARK_PERIODS
+                || lastLateGroupMarkPeriod < 0 || lastLateGroupMarkPeriod > completedMarkPeriods) {
+            return false;
+        }
+        int nextGroupNumber = spawnedGroups + 1;
+        if (nextGroupNumber == 1) return true;
+        if (nextGroupNumber == 2) return completedMarkPeriods >= 1;
+        if (nextGroupNumber == FIRST_LATE_GROUP) {
+            return completedMarkPeriods >= WaveTwoHuntPolicy.MIN_MARK_PERIODS
+                    && lastLateGroupMarkPeriod == 0;
+        }
+        if (lastLateGroupMarkPeriod == 0) {
+            // A pre-redesign snapshot may already have spawned the legacy
+            // final group, which now occupies the first late-group slot.
+            return completedMarkPeriods >= WaveTwoHuntPolicy.MIN_MARK_PERIODS;
+        }
+        return completedMarkPeriods > lastLateGroupMarkPeriod;
     }
 
     /** Reject durable counters that could skip a group or award a clear on resume. */

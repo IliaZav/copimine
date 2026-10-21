@@ -188,12 +188,14 @@ def test_new_attempt_generation_is_not_committed_before_scope_cleanup():
     start = _method(source, "private void completeStartRitual(Set<UUID> candidateRoster)")
     recovery = _method(source, "private void recoverTransientSession()")
 
-    generation_commit = "generation = Math.max(1L, generation + 1L);"
+    generation_commit = "generation = nextGeneration;"
+    assert "Long nextGeneration = preflightNextGeneration(\"start ritual commit\");" in start
     assert "if (!cancelSessionTasks())" in start
     assert start.index("if (!cancelSessionTasks())") < start.index(generation_commit)
     assert start.index(generation_commit) < start.index("attemptLifecycle.begin(")
     assert "if (!cancelSessionTasks())" in recovery
-    recovery_commit = "generation = Math.max(1L, staleGeneration + 1L);"
+    recovery_commit = "generation = nextGeneration;"
+    assert "Long nextGeneration = preflightNextGeneration(\"transient recovery\");" in recovery
     assert recovery.index("if (!cancelSessionTasks())") < recovery.index(recovery_commit)
 
 
@@ -221,7 +223,7 @@ def test_wave_two_roster_archive_failure_stops_cancel_reset_and_initialization()
     )
     assert "if (!clearWaveEntities())" in sandbox
     assert sandbox.index("if (!clearWaveEntities())") < sandbox.index(
-        "generation = Math.max(1L, generation + 1L);"
+        "generation = nextGeneration;"
     )
     reset = _method(source, "private void resetEventSafely(")
     assert "if (!archiveWaveTwoRosterForCleanup(\"admin-safe-reset\"))" in reset
@@ -334,7 +336,8 @@ def test_caster_kill_probe_uses_real_health_death_and_slot_identity():
 def test_repeated_sandbox_start_cleans_before_allocating_a_new_packet_generation():
     sandbox = _method(_source(), "private boolean spawnTestWave(")
     cleanup = sandbox.index("if (!cancelSessionTasks())")
-    allocate = sandbox.index("generation = Math.max(1L, generation + 1L);")
+    allocate = sandbox.index("generation = nextGeneration;")
+    assert "Long nextGeneration = preflightNextGeneration(\"sandbox wave start\");" in sandbox
     assert cleanup < allocate < sandbox.index("initializeWaveGameplay(")
     assert "resetEncounterTaskRegistry(generation)" in sandbox
 

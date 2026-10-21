@@ -1,10 +1,12 @@
-"""Keep the Wave 2 hunt mark to its agreed glow-only presentation."""
+"""Keep Wave 2's written contract aligned with the current hunt design."""
 
 from pathlib import Path
+import re
 import shutil
 import subprocess
 
 import pytest
+import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,12 +38,20 @@ def test_hunt_target_does_not_emit_world_particles() -> None:
     assert "PotionEffectType.RESISTANCE" not in update
 
 
-def test_wave_two_spec_matches_latest_glow_only_decision() -> None:
+def test_wave_two_spec_matches_45_second_phantom_hunt_contract() -> None:
     spec = SPEC.read_text(encoding="utf-8").casefold()
-    assert "approved_presentation: glow_only" in spec
-    assert "no_shader" in spec
-    assert "no_extra_particles" in spec
-    assert "controls_inverted_while_marked" in spec
+    match = re.search(r"```yaml\s*(.*?)```", spec, re.DOTALL)
+    assert match, "Wave 2 must publish its machine-readable gameplay invariants"
+    contract = yaml.safe_load(match.group(1))
+    assert contract == {
+        "minimum_mark_periods": 2,
+        "mark_rotation_seconds": 45,
+        "controls_inverted_while_marked": False,
+        "opening_pressure_periods": 2,
+        "late_reinforcements_per_period": "1-2",
+        "phantom_requires_real_materialized_enderman": True,
+    }
+    assert "approved_presentation: glow_only" not in spec
 
 
 def test_hunt_screen_layout_is_empty_but_carrier_layout_is_kept(tmp_path: Path) -> None:

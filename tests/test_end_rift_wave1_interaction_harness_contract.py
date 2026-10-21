@@ -17,13 +17,14 @@ def test_wave_one_bot_modes_send_right_clicks_for_charge_and_core():
     assert "bot.activateBlock(coreBlock)" in bot
 
 
-def test_wave_bots_use_the_protocol_that_survives_via_to_paper_26_3():
+def test_wave_bots_use_the_pinned_via_backwards_26_1_protocol_route():
     bot = BOT.read_text(encoding="utf-8")
 
-    assert re.search(r"version:\s*'1\.21\.1'", bot), (
-        "The installed Mineflayer 26.1 schema is rejected by Paper 26.3; "
-        "use the verified 1.21.1 ViaVersion path for server-state probes."
-    )
+    assert "const protocolVersion = process.env.END_RIFT_BOT_PROTOCOL_VERSION || '26.1'" in bot
+    assert "protocolVersion !== '26.1'" in bot
+    assert "client=26.1 backend=Paper-26.3-205 gateway=ViaVersion-5.12.1" in bot
+    assert "minecraftProtocol.supportedVersions.includes(protocolVersion)" in bot
+    assert re.search(r"version:\s*protocolVersion", bot)
 
 
 def test_wave_one_driver_activates_charge_and_delivers_as_authoritative_holder():
@@ -125,18 +126,32 @@ def test_official_runner_keeps_probe_players_passive_until_wave_one_starts():
     assert wave_one_started < active_mode < first_wave_one_delivery
 
 
-def test_passive_probe_freezes_client_physics_and_active_mode_restores_it():
+def test_passive_probe_keeps_client_tick_stream_alive_without_attacking_or_navigating():
     bot = BOT.read_text(encoding="utf-8")
     passive_mode = bot.split("function enterPassiveMode ()", 1)[1].split(
         "function enterActiveMode (", 1
+    )[0]
+    objective_mode = bot.split("function enterWaveOneInteractionMode (", 1)[1].split(
+        "function pollControlMode", 1
     )[0]
     active_mode = bot.split("function enterActiveMode (", 1)[1].split(
         "function stopObjectiveInteraction", 1
     )[0]
 
-    assert "bot.physicsEnabled = false" in passive_mode, (
-        "A passive live probe must not simulate stale movement or knockback off "
-        "a rune while Paper measures the continuous hold."
+    assert "bot.physicsEnabled = true" in passive_mode, (
+        "Passive mode must retain Mineflayer's movement/tick_end stream for the "
+        "26.1-to-26.3 ViaBackwards route."
+    )
+    assert "stopNavigation()" in passive_mode
+    assert "clearControlStates()" in passive_mode
+    assert "clearInterval(attackTimer)" in passive_mode
+    assert "bot.physicsEnabled = false" not in objective_mode, (
+        "Wave 1 carrier and core interactions also require the real client "
+        "movement/tick_end cadence through the protocol gateway."
+    )
+    assert "bot.on('physicsTick'" in bot and "bot._client.write('tick_end', {})" in bot, (
+        "Passive bots must keep emitting real 26.1 client tick boundaries while "
+        "the server-authoritative probe holds its position."
     )
     assert "bot.physicsEnabled = true" in active_mode, (
         "Wave combat must restore client physics when the probe becomes active."

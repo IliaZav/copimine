@@ -48,7 +48,17 @@ def test_wave4_restart_cleans_the_transient_generation_before_retrying():
     state_machine = (ROOT / "copimine-end-event/src/me/copimine/endevent/domain/EndEventStateMachine.java").read_text(
         encoding="utf-8")
 
+    # Generation advancement is now delegated to the shared overflow-safe
+    # policy. Keep recovery fail-closed before cleanup and publish only after
+    # stale-generation resources have been fenced off.
+    preflight = recovery.index("Long nextGeneration = preflightNextGeneration(\"transient recovery\")")
+    refusal = recovery.index("if (nextGeneration == null)", preflight)
+    cleanup = recovery.index("cleanupOwnedEntities(eventId, staleGeneration)", refusal)
+    publish = recovery.index("generation = nextGeneration;", cleanup)
+
     assert "cleanupOwnedEntities(eventId, staleGeneration)" in recovery
-    assert "generation = Math.max(1L, staleGeneration + 1L)" in recovery
+    assert "enterGenerationAdvanceRecovery(\"transient recovery\")" in recovery[refusal:cleanup]
+    assert "return;" in recovery[refusal:cleanup]
+    assert preflight < refusal < cleanup < publish
     assert "case COLLECTING, READY_FOR_PLAYERS -> persisted" in state_machine
     assert "default -> EventPhase.READY_FOR_PLAYERS" in state_machine

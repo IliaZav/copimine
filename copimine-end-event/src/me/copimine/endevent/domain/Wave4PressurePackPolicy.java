@@ -15,9 +15,26 @@ public final class Wave4PressurePackPolicy {
     public static List<Slot> plan(WaveMechanicsPolicy.WaveCounts composition) {
         if (composition == null) return List.of();
         List<Slot> slots = new ArrayList<>(composition.total());
-        append(slots, "STALKER", composition.spiders());
-        append(slots, "BRUTE", composition.endermen());
-        append(slots, "CHANNELER", composition.skeletons());
+        int[] ordinary = {
+                Math.max(0, composition.endermen()),
+                Math.max(0, composition.spiders()),
+                Math.max(0, composition.skeletons())};
+        int ordinaryTotal = ordinary[0] + ordinary[1] + ordinary[2];
+        int zombies = ordinaryTotal == 0 ? 0 : 1;
+        int giants = ordinaryTotal >= 8 ? 1 : 0;
+
+        // Keep the roster's existing pressure size. New W4 roles replace the
+        // largest current ordinary role bucket, with stable tie ordering.
+        for (int replacement = 0; replacement < zombies + giants; replacement++) {
+            int selected = largestOrdinaryBucket(ordinary);
+            if (selected < 0) break;
+            ordinary[selected]--;
+        }
+        append(slots, "STALKER", ordinary[1]);
+        append(slots, "BRUTE", ordinary[0]);
+        append(slots, "CHANNELER", ordinary[2]);
+        append(slots, "ZOMBIE", zombies);
+        append(slots, "RIFT_GIANT", giants);
         return List.copyOf(slots);
     }
 
@@ -44,6 +61,16 @@ public final class Wave4PressurePackPolicy {
         for (int ordinal = 0; ordinal < Math.max(0, count); ordinal++) {
             slots.add(new Slot(role, ordinal, slots.size()));
         }
+    }
+
+    private static int largestOrdinaryBucket(int[] counts) {
+        int selected = -1;
+        for (int index = 0; index < counts.length; index++) {
+            if (counts[index] > 0 && (selected < 0 || counts[index] > counts[selected])) {
+                selected = index;
+            }
+        }
+        return selected;
     }
 
     public record Slot(String role, int ordinal, int spawnIndex) {

@@ -38,7 +38,8 @@ public class MainTickWaveDispatch {
   BridgeTicker endEventBridgeV4;
   long lastMainThreadTickAtMillis, lastMainThreadGeneration, generation = 5,
        eventTickCounter, nextVictoryRetryMillis;
-  String lastMainThreadPhase; int lastMainThreadWave, activeWave, objectives, bosses, profileTicks, returnTicks, echoTicks;
+  String lastMainThreadPhase; int lastMainThreadWave, activeWave, objectives, bosses, profileTicks, returnTicks,
+      echoTicks, wave6RuntimeTicks;
   EventPhase phase = EventPhase.READY_FOR_PLAYERS; Object boss;
   static class BridgeTicker { int ticks; void tick() { ticks++; } }
   boolean isEnabled() { return enabled; }
@@ -46,6 +47,7 @@ public class MainTickWaveDispatch {
   void renderRitualZoneVisuals(long now) { }
   void tickWaveCompletion() { objectives++; }
   void tickBoss() { bosses++; }
+  void tickWave6RitualRuntimeOnce() { wave6RuntimeTicks++; }
   void tickEventCombatProfiles() { profileTicks++; }
   void tickWave7Returns() { returnTicks++; }
   void tickEchoPresentationProbe() { echoTicks++; }
@@ -68,6 +70,8 @@ public class MainTickWaveDispatch {
       throw new AssertionError("return staging must share the existing five-tick loop and boot fence");
     if (p.echoTicks != (p.bootstrapped ? 1 : 0))
       throw new AssertionError("Echo probe must share the existing five-tick loop and boot fence");
+    if (p.wave6RuntimeTicks != (p.bootstrapped ? 1 : 0))
+      throw new AssertionError("Wave 6 ritual effects must advance once in the boot-fenced event tick");
     if (p.endEventBridgeV4.ticks != (p.bootstrapped ? 1 : 0))
       throw new AssertionError("End Event Bridge V4 ticker must share the existing five-tick loop and boot fence");
   }

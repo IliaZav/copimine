@@ -38,7 +38,11 @@ $receiptPath = if (Test-Path -LiteralPath $portReceiptPath -PathType Leaf) {
   Join-Path $ServerDir '.end-rift-process-receipt.json'
 }
 $serverReceipt = Get-EndRiftLocalServerReceipt -ServerDir $ServerDir -LocalRuntimeRoot $localRuntimeRoot -ReceiptPath $receiptPath
-$expectedPaperJarPath = Assert-EndRiftLocalRuntimePath -Path (Join-Path $ServerDir 'purpur.jar') -LocalRuntimeRoot $localRuntimeRoot -MustExist
+$expectedPaperJarPath = Join-Path $ServerDir 'paper-26.3-205.jar'
+if (-not (Test-Path -LiteralPath $expectedPaperJarPath -PathType Leaf)) {
+  $expectedPaperJarPath = Join-Path $ServerDir 'purpur.jar'
+}
+$expectedPaperJarPath = Assert-EndRiftLocalRuntimePath -Path $expectedPaperJarPath -LocalRuntimeRoot $localRuntimeRoot -MustExist
 $canonicalReceiptPaperJarPath = Resolve-EndRiftLocalDriveSubstitutions -Path ([string]$serverReceipt.PaperJarPath)
 if (-not [string]::Equals($canonicalReceiptPaperJarPath, $expectedPaperJarPath, [StringComparison]::OrdinalIgnoreCase)) {
   throw 'Local RCON receipt does not identify the Paper JAR in the selected isolated server directory.'

@@ -454,6 +454,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          } else if (!this.runAsync(() -> {
             try {
                Class.forName("org.postgresql.Driver");
+               EconomyDatabaseStartupGate.await(() -> {
+                  BridgeHealthSnapshot health = this.bridge.health((UUID) null, "artifacts-schema-bootstrap");
+                  return health.bridgeReady && health.postgresReady;
+               });
                this.pgSettings = this.loadPgSettings();
                this.pgPool = new CopiMineArtifacts.PgPool(this.pgSettings, 4);
                this.ensureSchema();

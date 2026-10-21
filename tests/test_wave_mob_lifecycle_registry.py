@@ -30,6 +30,10 @@ public final class WaveMobLifecycleRegistryProbe {
             long generation = 20 + wave;
 
             registry.onUnload(id, event, generation, wave);
+            check(registry.isUnloaded(id, event, generation),
+                    "the registry must distinguish a temporarily unloaded owner");
+            check(!registry.isUnloaded(id, event, generation + 1),
+                    "an owner unload marker from another generation is not current");
             check(registry.count(event, generation, wave) == 1,
                     "unloaded wave " + wave + " vanished from completion count");
             boolean mayTransition = registry.count(event, generation, wave) == 0;
@@ -46,6 +50,8 @@ public final class WaveMobLifecycleRegistryProbe {
 
             var disposition = registry.onLoad(id, event, generation, wave, true,
                     event, generation, wave);
+            check(!registry.isUnloaded(id, event, generation),
+                    "a reloaded owner must leave the unloaded-owner fence");
             check(disposition == WaveMobLifecycleRegistry.LoadDisposition.REHYDRATE,
                     "current wave " + wave + " should be reindexed on chunk load");
             boolean trackedAfterLoad = true;
@@ -58,6 +64,12 @@ public final class WaveMobLifecycleRegistryProbe {
                     "confirmed death did not release wave " + wave + " completion fence");
 
             UUID staleGenerationId = UUID.randomUUID();
+            registry.onUnload(staleGenerationId, event, generation, wave);
+            check(registry.isUnloaded(staleGenerationId, event, generation),
+                    "a disappeared unloaded owner must retain its unload marker until reconciled");
+            registry.onDeath(staleGenerationId);
+            check(!registry.isUnloaded(staleGenerationId, event, generation),
+                    "orphan reconciliation must be able to clear a stale unload marker");
             registry.onUnload(staleGenerationId, event, generation, wave);
             check(registry.count(event, generation + 1, wave) == 0,
                     "stale wave " + wave + " kept counting after generation changed");

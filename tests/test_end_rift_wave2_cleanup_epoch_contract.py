@@ -121,8 +121,8 @@ def test_wave2_legacy_final_elite_migration_requires_the_exact_active_durable_me
     assert "taggedCleanupEpoch = waveTwoCleanupEpoch" in disposition
     assert "cleanupTombstone" in policy
     assert "taggedGeneration == expectedGeneration" in policy
-    assert "taggedGroup == WaveTwoStagePolicy.STAGE_COUNT" in policy
-    assert "activeGroup == WaveTwoStagePolicy.STAGE_COUNT" in policy
+    assert "taggedGroup == WaveTwoStagePolicy.FIRST_LATE_GROUP" in policy
+    assert "activeGroup == WaveTwoStagePolicy.FIRST_LATE_GROUP" in policy
     assert "outstandingMember" in policy
     assert "stampCurrentWaveTwoCleanupEpochIfMissing(entity)" in reindex
     assert "stampCurrentWaveTwoCleanupEpochIfMissing(entity)" in load_event

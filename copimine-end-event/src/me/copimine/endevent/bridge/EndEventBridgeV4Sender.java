@@ -248,6 +248,14 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
     public synchronized boolean send(UUID recipient, String type, String instanceId, long durationMillis,
             String subjectOrMode, String visualId, int health, int maxHealth,
             float progress, String clearPolicy, String status, String source) {
+        return send(recipient, type, instanceId, durationMillis, subjectOrMode, visualId,
+                health, maxHealth, progress, clearPolicy, status, source, "");
+    }
+
+    @Override
+    public synchronized boolean send(UUID recipient, String type, String instanceId, long durationMillis,
+            String subjectOrMode, String visualId, int health, int maxHealth,
+            float progress, String clearPolicy, String status, String source, String reason) {
         Player player = playerFor(recipient);
         if (player == null || !player.isOnline()) {
             return false;
@@ -275,7 +283,7 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
         EndEventBridgeBodyCodec.Body body = new EndEventBridgeBodyCodec.Body(bodyType,
                 context.generation(), timestamp, context.eventUuid(), nullToEmpty(instanceId), nullToEmpty(source),
                 nullToEmpty(visualId), duration, boundedProgress, Math.max(0, health), Math.max(0, maxHealth),
-                nullToEmpty(subjectOrMode), nullToEmpty(clearPolicy), "", "", nullToEmpty(status));
+                nullToEmpty(subjectOrMode), nullToEmpty(clearPolicy), nullToEmpty(reason), "", nullToEmpty(status));
         return sendApplication(player, state, body);
     }
 

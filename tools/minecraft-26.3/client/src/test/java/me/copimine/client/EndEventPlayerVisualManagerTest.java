@@ -32,6 +32,21 @@ class EndEventPlayerVisualManagerTest {
     }
 
     @Test
+    void huntPresentationHidesOnlyOtherPlayersForTheMarkedClient() {
+        EndEventPlayerVisualManager manager = new EndEventPlayerVisualManager();
+        assertTrue(manager.apply(packet("event", 4, 100, 2, 1, "ACTIVE", 11_000), 1_000));
+        java.util.UUID localPlayer = java.util.UUID.fromString("00000000-0000-0000-0000-000000000001");
+        java.util.UUID teammate = java.util.UUID.fromString("00000000-0000-0000-0000-000000000002");
+
+        assertTrue(manager.hidesPlayer(teammate, localPlayer, "the_end", 1_100));
+        assertFalse(manager.hidesPlayer(localPlayer, localPlayer, "the_end", 1_100));
+        assertFalse(manager.hidesPlayer(teammate, localPlayer, "overworld", 1_100));
+        assertFalse(manager.hidesPlayer(teammate, localPlayer, "the_end", 12_000));
+        assertTrue(manager.apply(packet("event", 4, 200, 2, 1, "CLEAR", 1_500), 1_200));
+        assertFalse(manager.hidesPlayer(teammate, localPlayer, "the_end", 1_200));
+    }
+
+    @Test
     void aDuplicateActiveCannotExtendAnExpiredWindow() {
         EndEventPlayerVisualManager manager = new EndEventPlayerVisualManager();
         BridgePayload active = packet("event", 4, 100, 1, 0, "ACTIVE", 1_500);

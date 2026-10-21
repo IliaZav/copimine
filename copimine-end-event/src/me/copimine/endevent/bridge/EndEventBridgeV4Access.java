@@ -19,6 +19,15 @@ public interface EndEventBridgeV4Access extends AutoCloseable {
             String subjectOrMode, String visualId, int health, int maxHealth,
             float progress, String clearPolicy, String status, String source);
 
+    /** Sends the server-authored Wave 2 phantom identifier in the reserved reason field. */
+    default boolean send(UUID recipient, String type, String instanceId, long durationMillis,
+            String subjectOrMode, String visualId, int health, int maxHealth,
+            float progress, String clearPolicy, String status, String source, String reason) {
+        if (reason != null && !reason.isEmpty()) return false;
+        return send(recipient, type, instanceId, durationMillis, subjectOrMode, visualId,
+                health, maxHealth, progress, clearPolicy, status, source);
+    }
+
     boolean bindContext(UUID recipient, EventContext context);
 
     boolean onRequest(Player player, byte[] requestBytes);

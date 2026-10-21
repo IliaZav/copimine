@@ -75,6 +75,7 @@ public class RitualChannelAdmissionProbe {
 ''' + execute + r'''
         executed=true;
     }
+    void clearRitualSpellRuntimeCast(){ritualSpellController.clear(generation);}
     static void check(boolean ok,String message){if(!ok)throw new AssertionError(message);}
     public static void main(String[] args){
         var p=new RitualChannelAdmissionProbe();

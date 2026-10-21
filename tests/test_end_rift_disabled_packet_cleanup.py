@@ -16,7 +16,7 @@ def packet_probe(tmp_path_factory):
     signature = re.search(
         r"    private boolean sendClientPacket\(Player player, String type, String instanceId, long durationMillis,\s+"
         r"String subjectId, String visualId, int health, int maxHealth,\s+"
-        r"float progress, String clearPolicy, String status, String source\)",
+        r"float progress, String clearPolicy, String status,\s+String source, String reason\)",
         source,
     )
     assert signature, "production fail-closed packet boundary is required by the disabled-plugin probe"
@@ -44,6 +44,11 @@ public class DisabledPacketCleanup {
                  float progress, String clearPolicy, String status, String source) {
       return recipient != null;
     }
+    boolean send(UUID recipient, String type, String instanceId, long durationMillis,
+                 String subjectId, String visualId, int health, int maxHealth,
+                 float progress, String clearPolicy, String status, String source, String reason) {
+      return recipient != null;
+    }
   }
   EndEventBridgeV4Access endEventBridgeV4 = new EndEventBridgeV4Access();
   boolean isEnabled() { return enabled; }
@@ -58,12 +63,13 @@ public class DisabledPacketCleanup {
     }
   }
   void recordPluginMessage() { packets++; }
+  void tickWave6RitualRuntimeOnce() { }
   java.util.logging.Logger getLogger() { return java.util.logging.Logger.getAnonymousLogger(); }
   public static void main(String[] args) {
     var p = new DisabledPacketCleanup();
     p.enabled = Boolean.parseBoolean(args[0]);
     if (Boolean.parseBoolean(args[1])) p.config = null;
-    p.sendClientPacket(p.new Player(), "CLEAR", "binding", 0, "entity", "visual", 0, 0, 0, "CLEAR", "", "");
+  p.sendClientPacket(p.new Player(), "CLEAR", "binding", 0, "entity", "visual", 0, 0, 0, "CLEAR", "", "", "");
     p.checkpointSaved = true;
     if (!p.checkpointSaved || p.packets != Integer.parseInt(args[2]))
       throw new AssertionError("cleanup must reach its checkpoint; only enabled plugins send packets");

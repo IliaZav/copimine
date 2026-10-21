@@ -143,5 +143,3 @@ def test_built_artifacts_jar_embeds_the_current_catalog() -> None:
         embedded = yaml.safe_load(archive.read("items.yml").decode("utf-8"))
 
     assert embedded == expected
-
-\n

@@ -80,6 +80,8 @@ public final class WaveProbeAdapterHarness {
     static final String WAVE_TWO_CYCLES_PROGRESS_KEY = "wave2-hunt-cycles";
     static final String WAVE_TWO_GROUPS_SPAWNED_PROGRESS_KEY = "wave2-groups-spawned";
     static final String WAVE_TWO_GROUP_CLEARED_PROGRESS_KEY = "wave2-group-cleared";
+    static final String WAVE_TWO_MARK_PERIODS_PROGRESS_KEY = "wave2-mark-periods";
+    static final String WAVE_TWO_LAST_LATE_MARK_PROGRESS_KEY = "wave2-last-late-mark-period";
     static final String WAVE_TWO_OUTSTANDING_UUIDS_PROGRESS_KEY = "wave2-outstanding-uuids";
     static final String WAVE_TWO_ATTEMPT_LIFECYCLE_PREFIX = "wave2-attempt-lifecycle.";
     static final long OFFLINE_RECONNECT_GRACE_MILLIS = 25_000L;
@@ -90,7 +92,8 @@ public final class WaveProbeAdapterHarness {
     int creativeTestStage = 3, creativeTestStageTicks, activeWave, waveSpawnGroupIndex,
             waveSpawnEntityOffset, sharedInitializations, initializedWave, saveCalls,
             registryGeneration, sessionCancellations, scopeCloses, currentHuntCycles,
-            waveTwoGroupsSpawned, currentCarrierCharges, ritualCasterDeathCount;
+            waveTwoGroupsSpawned, waveTwoCompletedMarkPeriods, waveTwoLastLateGroupMarkPeriod,
+            currentCarrierCharges, ritualCasterDeathCount;
         boolean waveTwoGroupCleared;
     Set<UUID> waveTwoOutstandingEntityUuids = Set.of();
         Set<UUID> waveTwoCleanupEntityUuids = Set.of();
@@ -511,6 +514,7 @@ public final class WaveProbeAdapterHarness {
                                str(domain / "PressureBudgetController.java"),
                                str(domain / "WaveMechanicsPolicy.java"),
                                str(domain / "WaveTwoStagePolicy.java"),
+                               str(domain / "WaveTwoHuntPolicy.java"),
                                str(domain / "WaveTwoEntityRecoveryPolicy.java"),
                                str(runtime / "AttemptLifecycleController.java"),
                                str(runtime / "WaveTwoAttemptLifecycleSnapshot.java")],

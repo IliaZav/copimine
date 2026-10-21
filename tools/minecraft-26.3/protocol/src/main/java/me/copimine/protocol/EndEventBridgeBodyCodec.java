@@ -45,6 +45,8 @@ public final class EndEventBridgeBodyCodec {
     private static final Pattern RESOURCE_LOCATION = Pattern.compile("[a-z0-9_.-]+:[a-z0-9_/.-]+");
     private static final Pattern CANONICAL_NONNEGATIVE = Pattern.compile("(?:0|[1-9][0-9]*)");
     private static final Pattern CANONICAL_POSITIVE = Pattern.compile("[1-9][0-9]*");
+    private static final Pattern SERVER_POSITION_COORDINATE = Pattern.compile(
+            "-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?");
 
     private EndEventBridgeBodyCodec() {
     }
@@ -227,7 +229,12 @@ public final class EndEventBridgeBodyCodec {
         requireString(body.reservedOne(), MAX_GENERAL_STRING_BYTES, "reserved field");
         requireString(body.reservedTwo(), MAX_GENERAL_STRING_BYTES, "reserved field");
         requireString(body.status(), MAX_GENERAL_STRING_BYTES, "status");
-        if (!body.reservedOne().isEmpty() || !body.reservedTwo().isEmpty()) {
+        boolean phantomActivation = body.type() == Type.END_PLAYER_STATE
+                && "WAVE2_PHANTOM_ACTIVATION_V1".equals(body.visualId());
+        boolean waveTwoLayoutEntry = body.type() == Type.END_PLAYER_STATE
+                && "WAVE2_HUNT_MARK_V1".equals(body.visualId());
+        if ((!body.reservedOne().isEmpty() && !phantomActivation && !waveTwoLayoutEntry)
+                || !body.reservedTwo().isEmpty()) {
             throw new IllegalArgumentException("End Event reserved strings must be empty");
         }
         if (!Float.isFinite(body.progressOrIntensity()) || isNegativeZero(body.progressOrIntensity())
@@ -395,15 +402,79 @@ public final class EndEventBridgeBodyCodec {
     }
 
     private static void validatePlayerState(Body body) {
+        if (body.visualId().equals("WAVE2_PHANTOM_ACTIVATION_V1")) {
+            validateWaveTwoPhantomActivation(body);
+            return;
+        }
         if (!body.visualId().equals("WAVE1_CARRIER_V1") && !body.visualId().equals("WAVE2_HUNT_MARK_V1")) {
             throw new IllegalArgumentException("Unknown End Event player-state visual");
         }
         requireIdentifier(body.instanceId(), "player-state instance");
         requireWaveSubject(body.subjectOrMode(), body.visualId().equals("WAVE1_CARRIER_V1") ? 1 : 2);
-        if (!body.controlId().isEmpty() || !body.clearPolicy().isEmpty()
+        boolean waveTwo = body.visualId().equals("WAVE2_HUNT_MARK_V1");
+        boolean hasLayoutEntry = !body.controlId().isEmpty() || !body.reservedOne().isEmpty();
+        if ((!waveTwo && (!body.controlId().isEmpty() || !body.reservedOne().isEmpty()))
+                || waveTwo && hasLayoutEntry
+                && (body.controlId().isEmpty() || body.reservedOne().isEmpty()
+                || !body.status().equals("ACTIVE"))
+                || !body.clearPolicy().isEmpty()
                 || body.health() != 0 || body.maxHealth() != 0
                 || (!body.status().equals("ACTIVE") && !body.status().equals("CLEAR"))) {
             throw new IllegalArgumentException("Invalid End Event player-state fields");
+        }
+        if (waveTwo && hasLayoutEntry) {
+            requireIdentifier(body.reservedOne(), "Wave 2 phantom ID");
+            requireServerPosition(body.controlId());
+        }
+    }
+
+    private static void validateWaveTwoPhantomActivation(Body body) {
+        if (!"wave2-phantom-activation".equals(body.instanceId())) {
+            throw new IllegalArgumentException("Invalid Wave 2 phantom activation instance");
+        }
+        requireIdentifier(body.reservedOne(), "Wave 2 phantom ID");
+        requireWaveSubject(body.subjectOrMode(), 2);
+        requireServerPosition(body.controlId());
+        if (!body.clearPolicy().isEmpty() || body.health() != 0 || body.maxHealth() != 0
+                || body.progressOrIntensity() != 0.0F) {
+            throw new IllegalArgumentException("Invalid Wave 2 phantom activation fields");
+        }
+        if ("ACTIVE".equals(body.status())) {
+            if (body.durationMillis() <= 0L || body.durationMillis() > 15_000L
+                    || body.durationMillis() % 50L != 0L) {
+                throw new IllegalArgumentException("Wave 2 phantom warning duration is outside its bounds");
+            }
+        } else if ("CLEAR".equals(body.status())) {
+            if (body.durationMillis() != 0L) {
+                throw new IllegalArgumentException("Wave 2 phantom clear carries an active duration");
+            }
+        } else {
+            throw new IllegalArgumentException("Unknown Wave 2 phantom activation status");
+        }
+    }
+
+    private static void requireServerPosition(String value) {
+        String[] coordinates = value.split(",", -1);
+        if (coordinates.length != 3) {
+            throw new IllegalArgumentException("Invalid Wave 2 phantom position");
+        }
+        double[] parsed = new double[3];
+        for (int index = 0; index < coordinates.length; index++) {
+            if (!SERVER_POSITION_COORDINATE.matcher(coordinates[index]).matches()) {
+                throw new IllegalArgumentException("Invalid Wave 2 phantom coordinate");
+            }
+            try {
+                parsed[index] = Double.parseDouble(coordinates[index]);
+            } catch (NumberFormatException invalidCoordinate) {
+                throw new IllegalArgumentException("Invalid Wave 2 phantom coordinate", invalidCoordinate);
+            }
+            if (!Double.isFinite(parsed[index])) {
+                throw new IllegalArgumentException("Non-finite Wave 2 phantom coordinate");
+            }
+        }
+        if (Math.abs(parsed[0]) > 29_999_998.0D || parsed[1] < -4_096.0D || parsed[1] > 4_096.0D
+                || Math.abs(parsed[2]) > 29_999_998.0D) {
+            throw new IllegalArgumentException("Wave 2 phantom position exceeds world coordinate bounds");
         }
     }
 

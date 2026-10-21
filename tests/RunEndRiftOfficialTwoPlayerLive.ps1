@@ -27,7 +27,7 @@ $branchLines = @(& git -C $root branch --show-current 2>$null)
 $branchExitCode = $LASTEXITCODE
 $branch = if ($branchLines.Count -gt 0) { ([string]$branchLines[0]).Trim() } else { '' }
 if ($branchExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($branch) -or
-    $branch -notin @('codex/end-rift-event', 'codex/end-rift-26-3-integrated-final')) {
+    $branch -notin @('codex/end-rift-event', 'codex/end-rift-26-3-integrated-final', 'codex/copimine-source-of-truth-20261020')) {
   throw "Refused Git branch '$branch'."
 }
 $runtimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
@@ -48,6 +48,7 @@ $botLogDirectory = Assert-EndRiftLocalRuntimePath `
   -Path (Join-Path $runtimeRoot 'official-current-bots') -LocalRuntimeRoot $runtimeRoot
 $playerNames = @($FirstBotName, $SecondBotName) + @($AdditionalBotNames)
 $processes = @()
+$script:temporaryProbeWhitelistNames = [System.Collections.Generic.List[string]]::new()
 $script:botModeRequestIds = @{}
 $controlDirectory = Assert-EndRiftLocalRuntimePath `
   -Path (Join-Path $botLogDirectory 'control') -LocalRuntimeRoot $runtimeRoot
@@ -103,8 +104,7 @@ function Get-RitualScalingProfile {
   $projectiles = if ($count -le 2) { 3 } elseif ($count -eq 3) { 4 } `
     elseif ($count -le 5) { 5 } elseif ($count -eq 6) { 6 } else { 7 }
   $zones = if ($count -le 8) { 1 } elseif ($count -le 16) { 2 } else { 3 }
-  $cooldown = if ($count -le 4) { 8 } elseif ($count -le 8) { 7 } `
-    elseif ($count -le 12) { 6 } elseif ($count -le 16) { 6 } else { 5 }
+  $cooldown = 14
   return [pscustomobject]@{
     Casters = 5
     Guards = $guards
@@ -157,6 +157,7 @@ function Wait-Log {
   )
   $deadline = (Get-Date).AddSeconds($WaitSeconds)
   while ((Get-Date) -lt $deadline) {
+    Assert-LocalBotsStillRunning
     $tail = Get-LogTail -Offset $AfterOffset
     if ($tail -match $Pattern) { return $tail }
     if ($null -ne $Action) {
@@ -177,6 +178,7 @@ function Wait-LogCount {
   )
   $deadline = (Get-Date).AddSeconds($WaitSeconds)
   while ((Get-Date) -lt $deadline) {
+    Assert-LocalBotsStillRunning
     $tail = Get-LogTail -Offset $AfterOffset
     if (([Regex]::Matches($tail, $Pattern)).Count -ge $Minimum) { return $tail }
     if ($null -ne $Action) { & $Action }
@@ -194,6 +196,7 @@ function Wait-NewCarrierCharge {
   )
   $deadline = (Get-Date).AddSeconds($WaitSeconds)
   while ((Get-Date) -lt $deadline) {
+    Assert-LocalBotsStillRunning
     # Wave start, replacement spawn and charge creation can share one Paper
     # tick. Scan from the single pre-wave cursor and select the first UUID
     # that this probe has not consumed instead of advancing a byte cursor
@@ -232,6 +235,7 @@ function Wait-CarrierDelivery {
   $activeHolder = $null
   $deliveredPattern = 'END_RIFT_CARRIER_DELIVERED.*charge=' + $DeliveryNumber + '/3'
   while ((Get-Date) -lt $deadline) {
+    Assert-LocalBotsStillRunning
     $tail = Get-LogTail -Offset $AfterOffset
     # A larger roster can pick a replacement charge before the first one is
     # delivered.  The objective's delivery counter is authoritative; do not
@@ -967,6 +971,7 @@ function Start-PlayerBot {
     $err, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::ReadWrite)
   $process = [Diagnostics.Process]::new()
   $process.StartInfo = $startInfo
+  $process | Add-Member -NotePropertyName EndRiftBotName -NotePropertyValue $Name -Force
   try {
     if (-not $process.Start()) { throw "Could not start disposable local bot $Name." }
     $stdoutCopy = $process.StandardOutput.BaseStream.CopyToAsync($stdoutStream)
@@ -984,10 +989,83 @@ function Start-PlayerBot {
   $script:processes += $process
 }
 
+function Assert-LocalBotsStillRunning {
+  foreach ($process in $processes) {
+    if ($null -eq $process) { continue }
+    try {
+      $process.Refresh()
+      if (-not $process.HasExited) { continue }
+    } catch { continue }
+
+    $diagnosticParts = @()
+    $capture = $process.EndRiftOutputCapture
+    if ($null -ne $capture) {
+      foreach ($entry in @(
+          @{ Name = 'stdout'; Task = $capture.StdoutTask },
+          @{ Name = 'stderr'; Task = $capture.StderrTask }
+        )) {
+        try {
+          if (-not $entry.Task.Wait(5000)) {
+            $diagnosticParts += ($entry.Name + ' capture did not finish within five seconds')
+          }
+        } catch {
+          $diagnosticParts += ($entry.Name + ' capture failed: ' + $_.Exception.GetBaseException().Message)
+        }
+        if ($entry.Task.IsFaulted -and $null -ne $entry.Task.Exception) {
+          $diagnosticParts += ($entry.Name + ' capture failed: ' + $entry.Task.Exception.GetBaseException().Message)
+        }
+      }
+      foreach ($streamEntry in @(
+          @{ Name = 'stdout'; Stream = $capture.StdoutStream },
+          @{ Name = 'stderr'; Stream = $capture.StderrStream }
+        )) {
+        try { $streamEntry.Stream.Flush() }
+        catch { $diagnosticParts += ($streamEntry.Name + ' capture flush failed: ' + $_.Exception.GetBaseException().Message) }
+      }
+    }
+    $name = if (-not [string]::IsNullOrWhiteSpace([string]$process.EndRiftBotName)) {
+      [string]$process.EndRiftBotName
+    } else {
+      'unknown'
+    }
+    foreach ($suffix in @('.log', '.err.log')) {
+      $logPath = Join-Path $botLogDirectory ($name + $suffix)
+      if (-not (Test-Path -LiteralPath $logPath -PathType Leaf)) { continue }
+      $readStream = $null
+      try {
+        # The async pipe copier still owns a write handle while it drains the
+        # process's final bytes. Open a concurrent read handle explicitly so
+        # Windows share-mode negotiation cannot hide the useful bot error.
+        $readStream = [IO.FileStream]::new(
+          $logPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+        $reader = [IO.StreamReader]::new($readStream, [Text.Encoding]::UTF8, $true)
+        try { $content = $reader.ReadToEnd() }
+        finally { $reader.Dispose() }
+        if ($content.Length -gt 6000) { $content = $content.Substring($content.Length - 6000) }
+        if (-not [string]::IsNullOrWhiteSpace($content)) {
+          $diagnosticParts += ($suffix + ': ' + $content.Trim())
+        }
+      } catch {
+        $diagnosticParts += ($suffix + ' could not be read: ' + $_.Exception.GetBaseException().Message)
+      } finally {
+        if ($null -ne $readStream) { $readStream.Dispose() }
+      }
+    }
+    $diagnostic = if ($diagnosticParts.Count -gt 0) {
+      $diagnosticParts -join [Environment]::NewLine
+    } else {
+      'No bot stdout or stderr was captured.'
+    }
+    throw "Local player bot $name exited with code $($process.ExitCode) before probe completion. $diagnostic"
+  }
+}
+
 function Wait-PlayersOnline {
   for ($attempt = 0; $attempt -lt 100; $attempt++) {
+    Assert-LocalBotsStillRunning
     $list = Invoke-LocalRcon 'list'
     if (@($playerNames | Where-Object { $list -notmatch [Regex]::Escape($_) }).Count -eq 0) { return }
+    Assert-LocalBotsStillRunning
     Start-Sleep -Milliseconds 500
   }
   throw "Local players did not join: $($playerNames -join ', ')"
@@ -997,6 +1075,7 @@ function Wait-ClientBridgeV4Ready {
   param([Parameter(Mandatory = $true)][int64]$AfterOffset)
   $deadline = (Get-Date).AddSeconds(30)
   while ((Get-Date) -lt $deadline) {
+    Assert-LocalBotsStillRunning
     $paperText = Get-LogTail -Offset $AfterOffset
     foreach ($name in $playerNames) {
       $rejected = [Regex]::Match($paperText,
@@ -1189,7 +1268,56 @@ function Teleport-GuardianProbeToNearest {
 
 $null = Assert-EndRiftLocalAuthMeDisabled -PluginListOutput (Invoke-LocalRcon 'plugins')
 
+function Get-LocalWhitelistNames {
+  $whitelistPath = Assert-EndRiftLocalRuntimePath `
+    -Path (Join-Path $serverDir 'whitelist.json') -LocalRuntimeRoot $runtimeRoot -MustExist
+  try {
+    $entries = @(Get-Content -LiteralPath $whitelistPath -Raw | ConvertFrom-Json -ErrorAction Stop)
+  } catch {
+    throw "Could not safely read the isolated test whitelist: $($_.Exception.Message)"
+  }
+  return @($entries | ForEach-Object { [string]$_.name } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
+
+function Add-LocalProbeWhitelistEntries {
+  foreach ($name in $playerNames) {
+    if ((Get-LocalWhitelistNames) -contains $name) { continue }
+    # Track before the RCON mutation so finally can remove a partially applied
+    # entry even if the subsequent confirmation read fails.
+    $script:temporaryProbeWhitelistNames.Add($name)
+    $null = Invoke-LocalRcon ("whitelist add $name")
+    if ((Get-LocalWhitelistNames) -notcontains $name) {
+      throw "The isolated server did not persist temporary probe whitelist entry $name."
+    }
+  }
+  Write-Evidence "LOCAL_AUTH_MODE whitelist=enabled temporary_probe_accounts=$($script:temporaryProbeWhitelistNames.Count)"
+}
+
+function Remove-LocalProbeWhitelistEntries {
+  $remaining = [System.Collections.Generic.List[string]]::new()
+  foreach ($name in @($script:temporaryProbeWhitelistNames)) {
+    try {
+      $null = Invoke-LocalRcon ("whitelist remove $name")
+      if ((Get-LocalWhitelistNames) -contains $name) {
+        throw 'The server whitelist still contains the temporary probe name.'
+      }
+    } catch {
+      $remaining.Add($name)
+      Write-Warning "Could not remove a temporary local probe whitelist entry: $name ($($_.Exception.Message))"
+    }
+  }
+  $script:temporaryProbeWhitelistNames.Clear()
+  foreach ($name in $remaining) { $script:temporaryProbeWhitelistNames.Add($name) }
+  if ($remaining.Count -eq 0) {
+    Write-Evidence 'LOCAL_AUTH_MODE temporary_probe_accounts_removed=true'
+  } else {
+    throw "Temporary local probe whitelist cleanup remains incomplete for $($remaining.Count) test account(s)."
+  }
+}
+
 try {
+  $null = Assert-EndRiftLocalBotProtocolGateway -BotPort 25566
+  Add-LocalProbeWhitelistEntries
   $safeBotLogDirectory = Assert-EndRiftLocalRuntimePath `
     -Path $botLogDirectory -LocalRuntimeRoot $runtimeRoot
   $safeControlDirectory = Assert-EndRiftLocalRuntimePath `
@@ -1330,6 +1458,10 @@ $env:END_RIFT_REFLECT_DIAGNOSTICS = '1'
   # The final portal capture and Wave 3 completion may be committed in the
   # same Paper tick.  Keep the pre-portal cursor so a fast multi-player run
   # cannot advance past END_RIFT_WAVE_COMPLETED before this wait starts.
+  Wait-Log -AfterOffset $portalOffset `
+    -Pattern 'WAVE3_PORTAL_ELITE_SPAWNED.*portal=1.*mode=(EMERGE|FALLBACK)' `
+    -WaitSeconds 45 | Out-Null
+  Write-Evidence "CURRENT_WAVE3_PORTAL_ELITE_PASS source=portal-two mode=emerge-or-captured-anchor"
   Set-PlayerBotMode -Mode 'ACTIVE'
   $waveThreeTransitionOffset = Wait-WaveComplete -Wave 3 -Core $core -Seconds 300 -AfterOffset $portalOffset
   Write-Evidence "CURRENT_WAVE_PASS event=$eventId wave=3 objective=RIFT_GATES portals=3"
@@ -1486,6 +1618,7 @@ finally {
       try { $capture.StderrStream.Dispose() } catch { }
     }
   }
+  try { Remove-LocalProbeWhitelistEntries } catch { Write-Warning $_.Exception.Message }
   try { Invoke-LocalRcon 'cmend wave clear' | Out-Null } catch { }
   try { Invoke-LocalRcon 'cmend boss kill cleanup' | Out-Null } catch { }
   if ($null -ne $originalCore -and $originalRequiredPlayers -ge 2 -and $originalRequiredPlayers -le 20) {

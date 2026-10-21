@@ -40,7 +40,7 @@ public class Wave4ObjectiveDispatchProbe {
   long lastMainThreadTickAtMillis, lastMainThreadGeneration, generation = 5,
        eventTickCounter, nextVictoryRetryMillis;
   String lastMainThreadPhase;
-  int lastMainThreadWave, activeWave = 4, objectives, wave4Objectives, fireSchedules;
+  int lastMainThreadWave, activeWave = 4, objectives, wave4Objectives, fireSchedules, wave6RuntimeTicks;
   boolean cancelInAi, restartInObjective, cancelInObjective;
   EventPhase phase = EventPhase.READY_FOR_PLAYERS;
   BridgeTicker endEventBridgeV4 = new BridgeTicker();
@@ -49,6 +49,7 @@ public class Wave4ObjectiveDispatchProbe {
   Object liveBoss() { return null; }
   void renderRitualZoneVisuals(long now) { }
   void tickWaveCompletion() { objectives++; if (activeWave == 4) tickWave4ObeliskAssault(); }
+  void tickWave6RitualRuntimeOnce() { wave6RuntimeTicks++; }
   void tickWave4ObeliskAssault() {
     wave4Objectives++; fireSchedules++;
     if (restartInObjective) { generation++; phase = EventPhase.WAVE_4; }
@@ -89,6 +90,9 @@ public class Wave4ObjectiveDispatchProbe {
                 + " dispatches=" + probe.objectives + " mutations=" + probe.fireSchedules + "; expected=" + total);
       if (probe.endEventBridgeV4.ticks != cycle)
         throw new AssertionError(scenario + " End Event Bridge V4 ticks=" + probe.endEventBridgeV4.ticks
+                + "; expected=" + cycle);
+      if (probe.wave6RuntimeTicks != cycle)
+        throw new AssertionError(scenario + " Wave 6 runtime ticks=" + probe.wave6RuntimeTicks
                 + "; expected=" + cycle);
     }
   }

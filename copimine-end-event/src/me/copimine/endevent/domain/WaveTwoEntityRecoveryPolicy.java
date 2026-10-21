@@ -180,8 +180,8 @@ public final class WaveTwoEntityRecoveryPolicy {
                 && !cleanupTombstone
                 && expectedGeneration > 0L
                 && taggedGeneration == expectedGeneration
-                && taggedGroup == WaveTwoStagePolicy.STAGE_COUNT
-                && activeGroup == WaveTwoStagePolicy.STAGE_COUNT
+                && taggedGroup == WaveTwoStagePolicy.FIRST_LATE_GROUP
+                && activeGroup == WaveTwoStagePolicy.FIRST_LATE_GROUP
                 && expectedCleanupEpoch > 0L
                 && waveTwoActive
                 && !groupCleared

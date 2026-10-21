@@ -28,6 +28,45 @@ def test_live_wave6_uses_the_shared_spell_controller_without_drain_or_control_sw
     assert "startRitualControlSwap(" not in cast
 
 
+def test_wave6_runtime_adapter_is_the_single_tick_owner_for_major_spells() -> None:
+    source = EVENT.read_text(encoding="utf-8")
+    global_tick = method_body(source, "private void tick()",
+                              "private void updatePadOccupancy")
+    runtime_tick = method_body(source, "private void tickWave6RitualRuntimeOnce",
+                               "private void castNextRitualAbility")
+    cast = method_body(source, "private void castNextRitualAbility",
+                       "private RitualSpellController.Spell ritualSpellForRole")
+    tick = method_body(source, "private void tickRitualSpellController",
+                       "private void tickActiveRitualSpell")
+    assert "tickWave6RitualRuntimeOnce()" in global_tick
+    assert "lastWave6RitualRuntimeTick == eventTickCounter" in runtime_tick
+    assert "wave6RitualRuntimeAdapter.tick(generation, eventTickCounter)" in runtime_tick
+    assert "wave6RitualRuntimeAdapter.snapshot()" in cast
+    assert "ritualSpellController.tick(" not in cast
+    assert "wave6RitualRuntimeAdapter.snapshot()" in tick
+    assert "ritualSpellController.tick(" not in tick
+    assert "snapshot.wave6Spell() != null" in tick
+
+
+def test_wave6_replacement_spells_use_owned_crystal_and_anvil_display_effects() -> None:
+    source = EVENT.read_text(encoding="utf-8")
+    cast = method_body(source, "private void castNextRitualAbility",
+                       "private AnvilCluster lockFallingAnvilCluster")
+    test_hook = method_body(source, "private boolean forceRitualCoreAbilityForTest",
+                            "private void logTestWaveSpellAssignments")
+    effects = method_body(source, "private final class BukkitWave6RitualEffects",
+                          "private RitualSpellController.Spell ritualSpellForRole")
+    assert "startGravityAnchor(" in cast
+    assert "startFallingAnvils(" in cast
+    assert "startGravityAnchor(" in test_hook
+    assert "startFallingAnvils(" in test_hook
+    assert "world.spawn(location, EnderCrystal.class" in effects
+    assert "Material.ANVIL" in effects and "ItemDisplay.class" in effects
+    assert "isFreeRitualTarget(target)" in effects
+    assert "createExplosion(" not in effects
+    assert "case GRAVITY_WELL, RIFT_CHAINS -> false;" in source
+
+
 def test_wave6_no_longer_changes_prisoner_health_for_drain_or_health_floor() -> None:
     source = EVENT.read_text(encoding="utf-8")
     assert "private void applyRitualSphereDrain" not in source
@@ -83,4 +122,3 @@ def test_scheduler_has_generation_fenced_single_telegraph_execute_active_recover
     assert "eventGeneration != generation" in source
     assert "stage != Stage.IDLE" in source
     assert "TELEGRAPH_TICKS = 20L" in source
-    assert "RECOVERY_TICKS = 20L" in source

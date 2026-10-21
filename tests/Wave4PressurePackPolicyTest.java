@@ -12,6 +12,22 @@ public final class Wave4PressurePackPolicyTest {
         check(planned.stream().map(Wave4PressurePackPolicy.Slot::key).distinct().count() == 21,
                 "planned slots must be stable and unique");
 
+        var smallRoster = new WaveMechanicsPolicy.WaveCounts(1, 2, 0, 0, 0);
+        List<Wave4PressurePackPolicy.Slot> smallPlan = Wave4PressurePackPolicy.plan(smallRoster);
+        check(smallPlan.size() == 3
+                        && countRole(smallPlan, "ZOMBIE") == 1
+                        && countRole(smallPlan, "RIFT_GIANT") == 0,
+                "normal zombie pressure must replace an existing slot at small rosters");
+
+        var maxRoster = new WaveMechanicsPolicy.WaveCounts(2, 5, 1, 0, 0);
+        List<Wave4PressurePackPolicy.Slot> maxPlan = Wave4PressurePackPolicy.plan(maxRoster);
+        check(maxPlan.size() == 8,
+                "maximum roster replacements must not add pressure slots");
+        check(countRole(maxPlan, "ZOMBIE") == 1,
+                "maximum roster retains one ordinary zombie pressure slot");
+        check(countRole(maxPlan, "RIFT_GIANT") == 1,
+                "maximum roster uses one bounded Giant replacement slot");
+
         var completed = new LinkedHashSet<String>();
         planned.stream().map(Wave4PressurePackPolicy.Slot::key)
                 .filter(key -> !key.equals("CHANNELER:3")).forEach(completed::add);
@@ -64,5 +80,9 @@ public final class Wave4PressurePackPolicyTest {
 
     private static void check(boolean condition, String message) {
         if (!condition) throw new AssertionError(message);
+    }
+
+    private static long countRole(List<Wave4PressurePackPolicy.Slot> slots, String role) {
+        return slots.stream().filter(slot -> slot.role().equals(role)).count();
     }
 }

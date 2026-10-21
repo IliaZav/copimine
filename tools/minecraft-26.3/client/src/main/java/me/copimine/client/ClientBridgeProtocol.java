@@ -154,6 +154,10 @@ public final class ClientBridgeProtocol {
     private static final EndEventWorldVfxManager END_EVENT_WORLD_VFX = new EndEventWorldVfxManager();
     private static final EndEventBlackFogManager END_EVENT_BLACK_FOG = new EndEventBlackFogManager();
     private static final EndEventPlayerVisualManager END_EVENT_PLAYER_VISUALS = new EndEventPlayerVisualManager();
+    private static final WaveTwoPhantomActivationManager END_EVENT_WAVE_TWO_PHANTOM_ACTIVATIONS =
+            new WaveTwoPhantomActivationManager();
+    private static final WaveTwoPhantomLayoutManager END_EVENT_WAVE_TWO_PHANTOM_LAYOUTS =
+            new WaveTwoPhantomLayoutManager();
     private static final PrisonerHudController PRISONER_HUD = new PrisonerHudController();
 
     private ClientBridgeProtocol() {
@@ -229,6 +233,18 @@ public final class ClientBridgeProtocol {
             if (body.type() == EndEventBridgeBodyCodec.Type.CONTEXT_UNBIND) {
                 resetEndEventConnection();
                 return;
+            }
+            if (body.type() == EndEventBridgeBodyCodec.Type.END_PLAYER_STATE
+                    && "WAVE2_PHANTOM_ACTIVATION_V1".equals(body.visualId())) {
+                CopiMineClientLogger.runFromServer(() -> {
+                    boolean applied = END_EVENT_WAVE_TWO_PHANTOM_ACTIVATIONS.apply(body, System.currentTimeMillis());
+                    logWorldVfxResult("END_PLAYER_STATE", toLegacyAdapterPayload(body), applied);
+                });
+                return;
+            }
+            if (body.type() == EndEventBridgeBodyCodec.Type.END_PLAYER_STATE
+                    && "WAVE2_HUNT_MARK_V1".equals(body.visualId())) {
+                END_EVENT_WAVE_TWO_PHANTOM_LAYOUTS.apply(body, System.currentTimeMillis());
             }
             BridgePayload payload = toLegacyAdapterPayload(body);
             CopiMineClientLogger.runFromServer(() -> applyEndEventPayload(payload));
@@ -730,6 +746,8 @@ public final class ClientBridgeProtocol {
         END_EVENT_WORLD_VFX.clear();
         END_EVENT_BLACK_FOG.clear();
         END_EVENT_PLAYER_VISUALS.clear();
+        END_EVENT_WAVE_TWO_PHANTOM_ACTIVATIONS.clearPresentation();
+        END_EVENT_WAVE_TWO_PHANTOM_LAYOUTS.clearPresentation();
         EchoVanillaRenderer.clear();
         PRISONER_HUD.clear();
     }
@@ -739,6 +757,8 @@ public final class ClientBridgeProtocol {
         END_EVENT_WORLD_VFX.reset();
         END_EVENT_BLACK_FOG.reset();
         END_EVENT_PLAYER_VISUALS.reset();
+        END_EVENT_WAVE_TWO_PHANTOM_ACTIVATIONS.reset();
+        END_EVENT_WAVE_TWO_PHANTOM_LAYOUTS.reset();
         EchoVanillaRenderer.reset();
         PRISONER_HUD.reset();
     }
@@ -753,6 +773,14 @@ public final class ClientBridgeProtocol {
 
     public static EndEventPlayerVisualManager endEventPlayerVisuals() {
         return END_EVENT_PLAYER_VISUALS;
+    }
+
+    static WaveTwoPhantomActivationManager waveTwoPhantomActivations() {
+        return END_EVENT_WAVE_TWO_PHANTOM_ACTIVATIONS;
+    }
+
+    static WaveTwoPhantomLayoutManager waveTwoPhantomLayouts() {
+        return END_EVENT_WAVE_TWO_PHANTOM_LAYOUTS;
     }
 
     public static void renderEndEventWorldVfx(net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext context) {

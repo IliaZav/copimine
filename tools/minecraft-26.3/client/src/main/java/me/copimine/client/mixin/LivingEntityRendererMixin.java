@@ -15,6 +15,7 @@ import me.copimine.client.RiftEventSkeletonModelRenderer;
 import me.copimine.client.RiftGuardianModel;
 import me.copimine.client.RiftGuardianModelRenderer;
 import me.copimine.client.RiftSpiderModelRenderer;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.model.Model;
 import net.minecraft.client.model.monster.enderman.EndermanModel;
@@ -35,6 +36,8 @@ import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.texture.UvMapping;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
 import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -90,6 +93,21 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity,
                                                   CallbackInfo ci) {
         copimine$activeModel = null;
         if (state == null) return;
+
+        if (state instanceof EndRiftRenderStateAccess bound) {
+            Minecraft client = Minecraft.getInstance();
+            if (client.player != null && client.level != null) {
+                Entity rendered = bound.copimine$entityId() < 0
+                        ? null : client.level.getEntity(bound.copimine$entityId());
+                if (rendered instanceof Player
+                        && ClientBridgeProtocol.endEventPlayerVisuals().hidesPlayer(
+                        rendered.getUUID(), client.player.getUUID(),
+                        client.level.dimension().identifier().getPath(), System.currentTimeMillis())) {
+                    ci.cancel();
+                    return;
+                }
+            }
+        }
 
         if (state instanceof EndRiftRenderStateAccess bound) {
             String visual = bound.copimine$visual();

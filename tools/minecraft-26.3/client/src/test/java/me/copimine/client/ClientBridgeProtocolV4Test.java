@@ -542,6 +542,131 @@ final class ClientBridgeProtocolV4Test {
     }
 
     @Test
+    void explicitContextUnbindAllowsTheSameEventGenerationToRebind() throws Exception {
+        String stream = establishReady(BridgeRequestCodec.Sender.END_EVENT, 17);
+        byte[] firstBind = endEventContextBind(1, NOW + 2);
+        assertTrue(protocol.onEnvelope(signedEnvelope(trustedKey, stream, 4, NOW + 2, firstBind), PLAYER, NOW + 2));
+        transport.drainClientQueue();
+
+        byte[] unbind = endEventContextUnbind(1, NOW + 3);
+        assertTrue(protocol.onEnvelope(signedEnvelope(trustedKey, stream, 5, NOW + 3, unbind), PLAYER, NOW + 3));
+        transport.drainClientQueue();
+
+        byte[] rebound = endEventContextBind(1, NOW + 4);
+        assertTrue(protocol.onEnvelope(signedEnvelope(trustedKey, stream, 6, NOW + 4, rebound), PLAYER, NOW + 4),
+                "a viewer returning to the same event may rebind its exact current generation after CONTEXT_UNBIND");
+        transport.drainClientQueue();
+        assertEquals(List.of("clear", "bind:1", "clear", "bind:1"), endEventLifecycle);
+    }
+
+    @Test
+    void contextUnbindDoesNotAuthorizeSameGenerationForAnotherEvent() throws Exception {
+        String stream = establishReady(BridgeRequestCodec.Sender.END_EVENT, 18);
+        UUID otherEvent = new UUID(0L, 0x44L);
+        byte[] firstBind = endEventContextBind(1, NOW + 2);
+        assertTrue(protocol.onEnvelope(signedEnvelope(trustedKey, stream, 4, NOW + 2, firstBind), PLAYER, NOW + 2));
+        transport.drainClientQueue();
+
+        byte[] unbind = endEventContextUnbind(1, NOW + 3);
+        assertTrue(protocol.onEnvelope(signedEnvelope(trustedKey, stream, 5, NOW + 3, unbind), PLAYER, NOW + 3));
+        transport.drainClientQueue();
+
+        byte[] unrelatedBind = endEventContextBind(otherEvent, 1, NOW + 4,
+                "the_end|0,0,0|10,10,10");
+        assertTrue(protocol.onEnvelope(
+                signedEnvelope(trustedKey, stream, 6, NOW + 4, unrelatedBind), PLAYER, NOW + 4));
+        transport.drainClientQueue();
+        assertEquals(1L, endEventLifecycle.stream().filter("bind:1"::equals).count());
+        assertTrue(state.activeStream(ClientBridgeConnectionState.Sender.END_EVENT).isEmpty());
+    }
+
+    @Test
+    void contextUnbindDoesNotAuthorizeSameGenerationWithChangedBounds() throws Exception {
+        String stream = establishReady(BridgeRequestCodec.Sender.END_EVENT, 19);
+        byte[] firstBind = endEventContextBind(1, NOW + 2);
+        assertTrue(protocol.onEnvelope(signedEnvelope(trustedKey, stream, 4, NOW + 2, firstBind), PLAYER, NOW + 2));
+        transport.drainClientQueue();
+
+        byte[] unbind = endEventContextUnbind(1, NOW + 3);
+        assertTrue(protocol.onEnvelope(signedEnvelope(trustedKey, stream, 5, NOW + 3, unbind), PLAYER, NOW + 3));
+        transport.drainClientQueue();
+
+        byte[] changedBounds = endEventContextBind(EVENT, 1, NOW + 4,
+                "the_end|0,0,0|11,10,10");
+        assertTrue(protocol.onEnvelope(
+                signedEnvelope(trustedKey, stream, 6, NOW + 4, changedBounds), PLAYER, NOW + 4));
+        transport.drainClientQueue();
+        assertEquals(1L, endEventLifecycle.stream().filter("bind:1"::equals).count());
+        assertTrue(state.activeStream(ClientBridgeConnectionState.Sender.END_EVENT).isEmpty());
+    }
+
+    @Test
+    void streamScopedGenerationFenceSupportsMoreThanSixtyFourEvents() throws Exception {
+        String stream = establishReady(BridgeRequestCodec.Sender.END_EVENT, 20);
+        long counter = 4L;
+        for (long generation = 1; generation <= 70; generation++) {
+            UUID event = new UUID(0L, 0x1000L + generation);
+            long timestamp = NOW + counter;
+            byte[] bind = endEventContextBind(event, generation, timestamp,
+                    "the_end|0,0,0|10,10,10");
+            assertTrue(protocol.onEnvelope(
+                    signedEnvelope(trustedKey, stream, counter++, timestamp, bind), PLAYER, timestamp),
+                    "global generation " + generation + " should bind without UUID history exhaustion");
+            transport.drainClientQueue();
+
+            timestamp = NOW + counter;
+            byte[] unbind = endEventContextUnbind(event, generation, timestamp);
+            assertTrue(protocol.onEnvelope(
+                    signedEnvelope(trustedKey, stream, counter++, timestamp, unbind), PLAYER, timestamp));
+            transport.drainClientQueue();
+        }
+        assertEquals(java.util.OptionalLong.of(70L), state.generationHighWater());
+    }
+
+    @Test
+    void freshStreamReassertsTheCurrentContextAndStartsItsOwnGenerationFence() throws Exception {
+        String stream = establishReady(BridgeRequestCodec.Sender.END_EVENT, 21);
+        byte[] firstBind = endEventContextBind(100, NOW + 3);
+        assertTrue(protocol.onEnvelope(signedEnvelope(trustedKey, stream, 4, NOW + 3, firstBind), PLAYER, NOW + 3));
+        transport.drainClientQueue();
+        assertEquals(java.util.OptionalLong.of(100L), state.generationHighWater());
+
+        assertTrue(protocol.requestReopen(BridgeRequestCodec.Sender.END_EVENT));
+        BridgeRequestCodec.StreamReopenRequest reopen = lastRequest(BridgeRequestCodec.StreamReopenRequest.class);
+        String replacementStream = streamId(22);
+        byte[] helloAck = signedEnvelope(trustedKey, replacementStream, 1, NOW + 4,
+                BridgeControlBodyCodec.encode(new BridgeControlBodyCodec.HelloAck(
+                        BridgeRequestCodec.Sender.END_EVENT, SESSION, 1, reopen.requestId())));
+        assertTrue(protocol.onEnvelope(helloAck, PLAYER, NOW + 4));
+        transport.drainClientQueue();
+
+        BridgeRequestCodec.SenderReady ready = lastRequestFor(
+                BridgeRequestCodec.Sender.END_EVENT, BridgeRequestCodec.SenderReady.class);
+        byte[] readyAck = signedEnvelope(trustedKey, replacementStream, 2, NOW + 5,
+                BridgeControlBodyCodec.encode(new BridgeControlBodyCodec.SenderReadyAck(
+                        BridgeRequestCodec.Sender.END_EVENT, SESSION,
+                        ready.requestId(), ready.requestCounter())));
+        assertTrue(protocol.onEnvelope(readyAck, PLAYER, NOW + 5));
+        transport.drainClientQueue();
+
+        BridgeRequestCodec.SenderReadyConfirm confirm = lastRequestFor(
+                BridgeRequestCodec.Sender.END_EVENT, BridgeRequestCodec.SenderReadyConfirm.class);
+        byte[] confirmAck = signedEnvelope(trustedKey, replacementStream, 3, NOW + 6,
+                BridgeControlBodyCodec.encode(new BridgeControlBodyCodec.SenderReadyConfirmAck(
+                        BridgeRequestCodec.Sender.END_EVENT, SESSION, ready.requestId(), ready.requestCounter(),
+                        MessageDigest.getInstance("SHA-256").digest(BridgeRequestCodec.encode(confirm)))));
+        assertTrue(protocol.onEnvelope(confirmAck, PLAYER, NOW + 6));
+        transport.drainClientQueue();
+
+        byte[] reassertedBind = endEventContextBind(100, NOW + 7);
+        assertTrue(protocol.onEnvelope(
+                signedEnvelope(trustedKey, replacementStream, 4, NOW + 7, reassertedBind), PLAYER, NOW + 7));
+        transport.drainClientQueue();
+        assertEquals(java.util.OptionalLong.of(100L), state.generationHighWater());
+        assertEquals(2L, endEventLifecycle.stream().filter("bind:100"::equals).count());
+    }
+
+    @Test
     void exactRetainedNarcoticsDuplicateReplaysItsOriginalReportWithoutReapplying() throws Exception {
         String stream = establishReady(BridgeRequestCodec.Sender.NARCOTICS, 18);
         byte[] start = narcoticsBody(SESSION, NOW + 2);
@@ -1242,10 +1367,24 @@ final class ClientBridgeProtocolV4Test {
     }
 
     private static byte[] endEventContextBind(long generation, long timestamp) {
+        return endEventContextBind(EVENT, generation, timestamp, "the_end|0,0,0|10,10,10");
+    }
+
+    private static byte[] endEventContextBind(UUID eventUuid, long generation, long timestamp, String bounds) {
         return EndEventBridgeBodyCodec.encode(new EndEventBridgeBodyCodec.Body(
-                EndEventBridgeBodyCodec.Type.CONTEXT_BIND, generation, timestamp, EVENT,
+                EndEventBridgeBodyCodec.Type.CONTEXT_BIND, generation, timestamp, eventUuid,
                 "", "", "", 0, 0.0F, 0, 0,
-                "the_end|0,0,0|10,10,10", "", "", "", ""));
+                bounds, "", "", "", ""));
+    }
+
+    private static byte[] endEventContextUnbind(long generation, long timestamp) {
+        return endEventContextUnbind(EVENT, generation, timestamp);
+    }
+
+    private static byte[] endEventContextUnbind(UUID eventUuid, long generation, long timestamp) {
+        return EndEventBridgeBodyCodec.encode(new EndEventBridgeBodyCodec.Body(
+                EndEventBridgeBodyCodec.Type.CONTEXT_UNBIND, generation, timestamp, eventUuid,
+                "", "", "", 0, 0.0F, 0, 0, "", "", "", "", ""));
     }
 
     private static String streamId(long seed) throws Exception {

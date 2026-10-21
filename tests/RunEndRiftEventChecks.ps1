@@ -215,7 +215,7 @@ Invoke-GateStep 'Wave navigation and physical passage regression' {
     if ($LASTEXITCODE -ne 0) { throw "Wave navigation and passage regressions failed with exit code $LASTEXITCODE" }
     & python -m pytest -q '.\tests\test_wave4_special_attack_fairness.py'
     if ($LASTEXITCODE -ne 0) { throw 'Wave 4 special attack fairness regression failed.' }
-    & python -m pytest -q '.\tests\test_wave1_carrier_retreat.py' '.\tests\test_wave1_carrier_slowness_lease.py' '.\tests\test_wave3_capture_clock.py' '.\tests\test_wave3_active_sequence.py' '.\tests\test_end_rift_portal_layer_runtime.py' '.\tests\test_end_rift_wave4_pack_runtime.py' '.\tests\test_end_rift_intermission_watchdog.py' '.\tests\test_wave4_warning_geometry.py' '.\tests\test_wave4_obelisk_collapse.py' '.\tests\test_wave5_ai_freeze_ownership.py' '.\tests\test_wave5_black_fog_adapter.py' '.\tests\test_minecraft_attribute_compat.py' '.\tests\test_minecraft_26_3_pack.py'
+    & python -m pytest -q '.\tests\test_wave1_carrier_retreat.py' '.\tests\test_wave1_carrier_slowness_lease.py' '.\tests\test_wave3_capture_clock.py' '.\tests\test_wave3_active_sequence.py' '.\tests\test_wave3_portal_spawn_runtime_contract.py' '.\tests\test_wave3_portal_elite_runtime_contract.py' '.\tests\test_end_rift_portal_layer_runtime.py' '.\tests\test_end_rift_wave4_pack_runtime.py' '.\tests\test_rift_giant_runtime_contract.py' '.\tests\test_end_rift_intermission_watchdog.py' '.\tests\test_wave4_warning_geometry.py' '.\tests\test_wave4_obelisk_collapse.py' '.\tests\test_wave5_ai_freeze_ownership.py' '.\tests\test_wave5_black_fog_adapter.py' '.\tests\test_minecraft_attribute_compat.py' '.\tests\test_minecraft_26_3_pack.py'
     if ($LASTEXITCODE -ne 0) { throw 'Waves 1-5 timing, objective and AI ownership regressions failed.' }
   } finally {
     Pop-Location
@@ -344,6 +344,8 @@ $runtimeSources = @(
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\PreBossTransitionController.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\BossStartGateway.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\ritual\RitualSpellController.java'),
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\ritual\FallingAnvilImpactConfirmation.java'),
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\ritual\Wave6RitualRuntimeAdapter.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\ritual\PrisonerAbilityController.java')
 )
 $runtimeSources += @(Get-ChildItem (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\encounter') -Filter '*.java' |
@@ -417,6 +419,7 @@ $pureTests = @(
   'RitualCasterShieldPolicyTest',
   'RitualCasterTacticsPolicyTest',
   'RitualSpellControllerTest',
+  'Wave6RitualRuntimeAdapterTest',
   'RitualCasterAiOwnershipPolicyTest',
   'RitualGuardAbilityPolicyTest',
   'RitualGuardAggroPolicyTest',
@@ -495,11 +498,15 @@ $pureTests = @(
   'IntermissionWatchdogPolicyTest',
   'Wave3PortalPolicyTest',
   'Wave3PortalSpawnPolicyTest',
+  'Wave3PortalElitePolicyTest',
+  'RiftGiantPolicyTest',
   'WaveCommanderPolicyTest',
   'WaveDamagePolicyTest',
   'WaveMechanicsPolicyTest',
   'WavePressurePolicyTest',
   'me.copimine.endevent.domain.WaveTwoStagePolicyTest',
+  'WaveTwoHuntPolicyTest',
+  'WaveTwoPhantomMaterializationPolicyTest',
   'WaveTwoEntityRecoveryPolicyTest',
   'WaveRewardPolicyTest',
   'WaveScalingPolicyTest',

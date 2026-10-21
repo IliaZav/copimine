@@ -121,9 +121,10 @@ public final class WaveTwoRecoveryAiFenceProbe {
     pressure = DOMAIN / "PressureBudgetController.java"
     wave_mechanics = DOMAIN / "WaveMechanicsPolicy.java"
     wave_stages = DOMAIN / "WaveTwoStagePolicy.java"
+    wave_hunt = DOMAIN / "WaveTwoHuntPolicy.java"
     compiled = subprocess.run(["javac", "-proc:none", "-encoding", "UTF-8", "-d", str(output),
                                str(java), str(policy), str(pressure), str(wave_mechanics),
-                               str(wave_stages)], capture_output=True, text=True)
+                               str(wave_stages), str(wave_hunt)], capture_output=True, text=True)
     assert compiled.returncode == 0, compiled.stdout + compiled.stderr
     result = subprocess.run(["java", "-cp", str(output), "WaveTwoRecoveryAiFenceProbe"],
                             capture_output=True, text=True)

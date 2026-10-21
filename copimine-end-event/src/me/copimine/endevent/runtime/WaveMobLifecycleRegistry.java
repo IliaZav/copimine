@@ -51,6 +51,19 @@ public final class WaveMobLifecycleRegistry {
         if (entityId != null) unloaded.remove(entityId);
     }
 
+    /** Report a current-generation owner known to be in an unloaded chunk. */
+    public synchronized boolean isUnloaded(UUID entityId,
+                                           String currentEventId,
+                                           long currentGeneration) {
+        if (entityId == null || currentEventId == null || currentEventId.isBlank()
+                || currentGeneration <= 0L) {
+            return false;
+        }
+        Owner owner = unloaded.get(entityId);
+        return owner != null && owner.generation() == currentGeneration
+                && Objects.equals(owner.eventId(), currentEventId);
+    }
+
     public synchronized int count(String eventId, long generation, int wave) {
         if (eventId == null || eventId.isBlank() || generation <= 0L || wave < 1 || wave > 7) {
             return 0;

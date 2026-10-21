@@ -96,6 +96,7 @@ def test_wave7_damage_gate_matches_the_warden_and_reflection_trial_mix() -> None
         )
     ]
 
-    assert "reflection-only chamber does not require Warden damage" in natural
-    assert "if ($damageParts.Count -lt 1)" in natural
+    assert "if ($wave7Layout -contains 'WARDEN' -and $damageParts.Count -lt 1)" in natural
+    assert "LIVE_WAVE7_PLAYER_DAMAGE_LEDGER_NOT_APPLICABLE" in natural
+    assert "reason=warden_not_selected" in natural
     assert "did not record positive player damage for $name" not in natural

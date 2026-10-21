@@ -46,6 +46,7 @@ public final class ClientBridgeProtocolV4 {
     private final LinkedHashMap<Long, NarcoticsReceipt> narcoticsReceipts = new LinkedHashMap<>();
 
     private EventContext activeEventContext;
+    private EventContext lastUnboundEventContext;
     private boolean endEventReassertionRequired;
     private long narcoticsCommandHighWater;
     private long lastControlHelloSentAt;
@@ -679,17 +680,26 @@ public final class ClientBridgeProtocolV4 {
                 if (!activeEventContext.bounds().equals(bounds)) {
                     throw new IllegalArgumentException("End Event context reassertion changed the active arena bounds");
                 }
+                if (!connectionState.recordGeneration(body.generation())) {
+                    throw new IllegalArgumentException("End Event context reassertion has a stale generation");
+                }
                 endEventReassertionRequired = false;
                 return body;
             }
-            OptionalLongHighWater previous = generationHighWater(body.eventUuid());
-            if (previous.present() && body.generation() <= previous.value()) {
+            EventContext requestedContext = new EventContext(body.eventUuid(), body.generation(), bounds);
+            java.util.OptionalLong previous = connectionState.generationHighWater();
+            boolean exactUnbindRebind = previous.isPresent()
+                    && body.generation() == previous.getAsLong()
+                    && requestedContext.equals(lastUnboundEventContext);
+            if (previous.isPresent() && (body.generation() < previous.getAsLong()
+                    || (body.generation() == previous.getAsLong() && !exactUnbindRebind))) {
                 throw new IllegalArgumentException("End Event bind did not advance its generation high-water mark");
             }
-            if (!connectionState.recordGeneration(body.eventUuid(), body.generation())) {
+            if (!connectionState.recordGeneration(body.generation())) {
                 throw new IllegalArgumentException("End Event generation history is stale or exhausted");
             }
-            activeEventContext = new EventContext(body.eventUuid(), body.generation(), bounds);
+            lastUnboundEventContext = null;
+            activeEventContext = requestedContext;
             endEventReassertionRequired = false;
             return body;
         }
@@ -698,13 +708,14 @@ public final class ClientBridgeProtocolV4 {
             if (activeEventContext == null || !matches(activeEventContext, body)) {
                 return null;
             }
+            lastUnboundEventContext = activeEventContext;
             activeEventContext = null;
             endEventReassertionRequired = false;
             return body;
         }
 
-        OptionalLongHighWater highWater = generationHighWater(body.eventUuid());
-        if (highWater.present() && body.generation() < highWater.value()) {
+        java.util.OptionalLong highWater = connectionState.generationHighWater();
+        if (highWater.isPresent() && body.generation() < highWater.getAsLong()) {
             return null;
         }
         if (activeEventContext == null || !matches(activeEventContext, body)) {
@@ -876,11 +887,6 @@ public final class ClientBridgeProtocolV4 {
         return null;
     }
 
-    private OptionalLongHighWater generationHighWater(UUID eventUuid) {
-        java.util.OptionalLong highWater = connectionState.generationHighWater(eventUuid);
-        return new OptionalLongHighWater(highWater.isPresent(), highWater.orElse(0L));
-    }
-
     private static boolean matches(EventContext context, EndEventBridgeBodyCodec.Body body) {
         return context.eventUuid().equals(body.eventUuid()) && context.generation() == body.generation();
     }
@@ -893,6 +899,7 @@ public final class ClientBridgeProtocolV4 {
         controlHelloBytes = null;
         if (clearEventContext) {
             activeEventContext = null;
+            lastUnboundEventContext = null;
             endEventReassertionRequired = false;
         } else {
             endEventReassertionRequired = activeEventContext != null;
@@ -990,9 +997,6 @@ public final class ClientBridgeProtocolV4 {
     }
 
     private record EventContext(UUID eventUuid, long generation, EndEventBridgeBodyCodec.ArenaBounds bounds) {
-    }
-
-    private record OptionalLongHighWater(boolean present, long value) {
     }
 
     private record NarcoticsReceipt(byte[] fingerprint, BridgePayload report) {

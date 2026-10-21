@@ -5,7 +5,7 @@ import me.copimine.endevent.domain.*;
 /** In-memory boundary only. All pack/retry/rollback/completion code is extracted unchanged. */
 public class Wave4PackRuntimeProbe {
     enum Wave4PressurePackResult { COMPLETE, RETRYABLE_FAILURE, PERMANENT_FAILURE }
-    enum EntityType { SPIDER, ENDERMAN, SKELETON, OTHER }
+    enum EntityType { SPIDER, ENDERMAN, SKELETON, ZOMBIE, GIANT, OTHER }
     enum ObeliskStage { ACTIVE, COLLAPSING, EMERGING }
     static class PersistentDataType { static final Object STRING = new Object(); }
     static class Data {
@@ -16,6 +16,7 @@ public class Wave4PackRuntimeProbe {
         UUID id = UUID.randomUUID(); EntityType type; boolean valid = true;
         long generation = 5; Data data = new Data();
         Entity(EntityType type) { this.type = type; }
+        Location getLocation() { return new Location(); }
         UUID getUniqueId() { return id; }
         EntityType getType() { return type; }
         Data getPersistentDataContainer() { return data; }
@@ -27,6 +28,20 @@ public class Wave4PackRuntimeProbe {
         LivingEntity(EntityType type) { super(type); }
         void setCustomName(String name) { }
         void setCustomNameVisible(boolean visible) { }
+        AttributeInstance getAttribute(Object key) { return new AttributeInstance(); }
+        void setHealth(double value) { }
+    }
+    static class Mob extends LivingEntity {
+        Mob(EntityType type) { super(type); }
+        void setAI(boolean value) { }
+        void setAware(boolean value) { }
+        void setTarget(Player target) { }
+    }
+    static class Player { }
+    static class AttributeInstance { void setBaseValue(double value) { } }
+    static class Attribute {
+        static final Object GENERIC_MAX_HEALTH = new Object();
+        static final Object GENERIC_ATTACK_DAMAGE = new Object();
     }
     static class World {
         List<Entity> entities = new ArrayList<>();
@@ -48,6 +63,7 @@ public class Wave4PackRuntimeProbe {
             int fireIntervalTicks() { return 26; }
         }
         RiftObeliskTuning riftObeliskTuning() { return new RiftObeliskTuning(); }
+        double containmentRadius() { return 20.0; }
     }
     static class Wave4ObeliskRuntimeState {
         UUID id = UUID.randomUUID(); ObeliskFireDirectorPolicy.FireSequence fireLease;
@@ -88,6 +104,7 @@ public class Wave4PackRuntimeProbe {
     Set<Integer> failing = new HashSet<>(), throwAfterRegister = new HashSet<>();
     List<Integer> spawnCalls = new ArrayList<>();
     int canceled, announced; boolean rejectRegistration, removeSpiderDuringSpawn;
+    double WAVE_MOB_DAMAGE_REDUCTION = 0.0D;
 
     Wave4PackRuntimeProbe() {
         Bukkit.world = new World();
@@ -109,7 +126,7 @@ public class Wave4PackRuntimeProbe {
             unregisterOwnedEntity(stalker.id, "synchronous-spawn-callback");
             stalker.remove();
         }
-        var e = new LivingEntity(type); e.generation = generation;
+        var e = new Mob(type); e.generation = generation;
         e.data.values.put(keyWave, "4"); e.data.values.put(keyKind, EVENT_KIND_WAVE_MOB);
         Bukkit.world.entities.add(e);
         if (!rejectRegistration) ownedEntities.put(e.id, e);
@@ -119,6 +136,9 @@ public class Wave4PackRuntimeProbe {
     Entity spawnOwnedMob(World world, Location core, EntityType type, int wave, String kind, boolean test, int index) {
         return spawn(type, index);
     }
+    Entity spawnRiftGiantElite(World world, Location core, int wave, boolean test, int index) {
+        return spawn(EntityType.ZOMBIE, index);
+    }
     Entity spawnEnderman(World world, Location core, int wave, boolean elite, boolean boss, boolean test, int index, int offset) {
         return spawn(EntityType.ENDERMAN, index);
     }
@@ -127,6 +147,8 @@ public class Wave4PackRuntimeProbe {
     }
     WaveMechanicsPolicy.WaveCounts currentWave4MobCounts(int players) { return composition; }
     Location coreCombatAnchorLocation() { return new Location(); }
+    Player ritualNearestTarget(Location origin, double radius) { return null; }
+    double boundedCombatRadius(double radius) { return radius; }
     boolean isOfficialCurrentAttempt() { return phase == EventPhase.WAVE_4; }
     boolean isOfficialAttempt() { return !testWaveFrontVisualMode; }
     void forcePhase(EventPhase next, String reason) { phase = next; }
@@ -155,7 +177,8 @@ public class Wave4PackRuntimeProbe {
                 && ownedBySession(e, eventId, generation)).count();
     }
     Wave4PressurePackResult pack() {
-        return spawnWave4PressurePack(Bukkit.world, new Location(), ObeliskScalingPolicy.profileForPlayers(2), false);
+        return spawnWave4PressurePack(Bukkit.world, new Location(),
+                ObeliskScalingPolicy.profileForPlayers(currentWaveScalePlayers), false);
     }
     void retryNow() { currentWave4PressureRetryAtMillis = 0; tickWave4ObeliskAssault(); }
     static void check(boolean condition, String message) { if (!condition) throw new AssertionError(message); }
@@ -170,9 +193,29 @@ public class Wave4PackRuntimeProbe {
         Logger.getLogger("Wave4PackRuntimeProbe").setLevel(Level.OFF);
         var p = new Wave4PackRuntimeProbe(); String scenario = args[0];
         switch (scenario) {
+            case "pressure-matrix" -> {
+                p.currentWaveScalePlayers = 16;
+                p.composition = new WaveMechanicsPolicy.WaveCounts(2, 5, 1, 0, 0);
+                check(p.pack() == Wave4PressurePackResult.COMPLETE,
+                        "the max-roster pressure pack must materialize all planned replacements");
+                check(p.liveCount() == 8 && p.currentWave4PressureSpawnSlots.size() == 8,
+                        "the Zombie and Giant must replace ordinary slots without growing the pack");
+                check(p.ownedEntities.values().stream()
+                                .filter(e -> e.type == EntityType.ZOMBIE
+                                        && "ZOMBIE".equals(p.readString(e, p.keyObeliskWave4Role))).count() == 1
+                                && p.ownedEntities.values().stream()
+                                .filter(e -> e.type == EntityType.ZOMBIE
+                                        && "RIFT_GIANT".equals(p.readString(e, p.keyObeliskWave4Role))).count() == 1,
+                        "one normal Zombie and one scaled zombie-base Rift Giant must be present at the max roster");
+                int calls = p.spawnCalls.size(); p.pack();
+                check(p.spawnCalls.size() == calls, "completed replacement slots must not duplicate");
+            }
             case "success" -> {
                 p.retryNow(); completePack(p); p.retryNow();
                 check(p.spawnCalls.size() == 3, "completed pack must not spawn again");
+                check(p.ownedEntities.values().stream()
+                                .filter(e -> e.type == EntityType.ZOMBIE).count() == 1,
+                        "normal roster should materialize one Zombie pressure mob");
             }
             case "first", "middle", "last", "all", "lost-slot", "obelisk-complete" -> {
                 int failed = scenario.equals("first") ? 0 : scenario.equals("middle") ? 1 : 2;

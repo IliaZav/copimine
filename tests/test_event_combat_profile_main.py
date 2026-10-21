@@ -110,7 +110,8 @@ public class CombatProfileMainProbe {
                production / "domain/wave7/EchoBehaviorStrategy.java",
                production / "domain/EventPhase.java", production / "domain/PreBossTickSnapshotPolicy.java",
                production / "domain/PressureBudgetController.java", production / "domain/WaveMechanicsPolicy.java",
-               production / "domain/WaveTwoStagePolicy.java", production / "domain/WaveTwoEntityRecoveryPolicy.java",
+               production / "domain/WaveTwoStagePolicy.java", production / "domain/WaveTwoHuntPolicy.java",
+               production / "domain/WaveTwoEntityRecoveryPolicy.java",
                listener_stub, probe]
     result = subprocess.run(["javac", str(ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/EncounterGenerationPolicy.java"), "-encoding", "UTF-8", "-d", str(tmp_path), *map(str, sources)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr

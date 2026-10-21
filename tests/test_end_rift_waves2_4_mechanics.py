@@ -93,8 +93,13 @@ def mechanics_harness(tmp_path_factory):
     fields += "\n    private boolean restoredWaveTwoGroupCleared;"
     fields += "\n    private long waveNextSpawnAtMillis;"
     fields += "\n    private List<WaveMechanicsPolicy.WaveCounts> waveSpawnSchedule = List.of();"
-    fields += "\n    private boolean testWaveFrontVisualMode;"
+    # These detached scenarios cover combat scheduling, not client rendering.
+    fields += "\n    private boolean testWaveFrontVisualMode = true;"
     fields += "\n    private int activeWave;"
+    fields += "\n    private WaveTwoPhantomMaterializationPolicy.State waveTwoPhantomActivationState;"
+    fields += "\n    private Location waveTwoPhantomActivationLocation;"
+    fields += "\n    private BukkitTask waveTwoPhantomWarningTask;"
+    fields += "\n    private List<WaveTwoPhantomLayoutPolicy.Phantom> waveTwoPhantomLayout = List.of();"
     fields += "\n" + "\n".join(re.findall(
         r"    private final (?:Map<PotionEffectType, PotionEffect>|Set<PotionEffectType>) waveTwo\w*[^;]*;", source))
     cleanup = _declaration(source, "private boolean clearWaveObjectiveState(")
@@ -105,7 +110,7 @@ def mechanics_harness(tmp_path_factory):
         calls = [line for line in lifecycle.splitlines() if "releaseCurrentHuntTarget(" in line]
         methods.append(f"void {name}(Player player) {{ UUID uuid = player.getUniqueId(); " + "\n".join(calls) + "}")
     constants = "\n".join(re.findall(
-        r"    private static final int WAVE_TWO_\w+[^;]*;", source))
+        r"    private static final int (?:MAX_)?WAVE_TWO_\w+[^;]*;", source))
     harness = r'''
 import java.util.*;
 import java.util.logging.*;
@@ -194,13 +199,24 @@ public final class Waves24MechanicsHarness {
             String subject, String viewer, String status) {
         if ("CLEAR".equals(status)) clientClears++; else clientActive++;
     }
+    void sendClientPacket(Player player, String type, String instance, long duration,
+            String mode, String shaderpack, int width, int height, float intensity,
+            String subject, String status, String encodedPosition, String phantomId) {
+        if ("CLEAR".equals(status)) clientClears++; else clientActive++;
+    }
     void sendWorldBeamPacket(Player player, String key, Location from, Location to, int color, float width) {}
     void clearWorldVfxBeamsByPrefix(String key) {}
+    String encodeWaveTwoPosition(WaveTwoPhantomLayoutPolicy.Position position) { return "detached"; }
     void playWaveFeedback(String cue,Location point) {}
     void clearWaveCombatCue(UUID owner) {}
     int countLiveWaveEntitiesForWave(int wave) { return wave == 2 ? liveWaveEntitiesForWave2 : 0; }
+    boolean tryBeginWaveTwoPhantomActivation(World world, Location core,
+            WaveMechanicsPolicy.WaveCounts group, int groupNumber) { return false; }
+    void clearWaveTwoPhantomActivationPresentation() { waveTwoPhantomWarningTask = null; }
+    void ensureWaveTwoPhantomLayout(Player player, Location core) { }
     void spawnWaveGroup(World world, Location core, int wave, boolean guardianWave,
-                        boolean test, WaveMechanicsPolicy.WaveCounts group, int baseIndex) {
+                        boolean test, WaveMechanicsPolicy.WaveCounts group, int baseIndex,
+                        Location reservedPhantomSpawn) {
         spawnedWaveGroups.add(group);
     }
     void renderWave4ObeliskCue(Wave4ObeliskRuntimeState state, String stage, String ability, Location mark, double radius) {}
@@ -216,6 +232,7 @@ public final class Waves24MechanicsHarness {
     }
     enum Sound { ENTITY_ENDERMAN_STARE, ENTITY_GENERIC_EXPLODE, BLOCK_AMETHYST_BLOCK_RESONATE, BLOCK_RESPAWN_ANCHOR_CHARGE }
     enum SoundCategory { HOSTILE }
+    static final class BukkitTask { void cancel() {} }
     static final class EndRiftObjective { static final int REQUIRED_HUNT_CYCLES = 3; }
     static final class Color { static Color fromRGB(int r,int g,int b) { return new Color(); } }
     static final class DustOptions { DustOptions(Color color, float size) {} }
@@ -375,13 +392,10 @@ public final class Waves24MechanicsHarness {
         Player player = new Player(); Bukkit.players.add(player);
         String scenario = args[0]; long start = 1_000_000L;
         switch (scenario) {
-            case "initial-delay" -> {
+            case "immediate-initial-mark" -> {
                 h.startHunt(start); h.selectAt(start);
-                check(h.waveTwoMarkedPlayerUuid == null, "first mark must not commit on first tick");
-                h.selectAt(start + 1_999L);
-                check(h.waveTwoMarkedPlayerUuid == null, "first mark must retain two second readable lead-in");
-                h.selectAt(start + 4_000L);
-                check(player.id.equals(h.waveTwoMarkedPlayerUuid), "first mark must commit by four seconds");
+                check(player.id.equals(h.waveTwoMarkedPlayerUuid),
+                        "the first mark starts immediately without an empty lead-in");
             }
             case "full-window", "scaled-full-window" -> {
                 if ("scaled-full-window".equals(scenario)) h.scalePlayers = 32;
@@ -468,39 +482,53 @@ public final class Waves24MechanicsHarness {
                 check(!player.glowing(start + 1_100L) && second.glowing(start + 1_100L),
                         "observer mark must transfer to replacement only");
             }
-            case "three-cycles" -> {
+            case "two-opening-batches-late-gate" -> {
                 h.startHunt(start);
                 h.waveSpawnSchedule = WaveTwoStagePolicy.split(
                         new WaveMechanicsPolicy.WaveCounts(9, 0, 0, 0, 0));
                 h.waveSpawnWave = 2;
                 h.spawnNextWaveGroup(new World(), new Location());
+                h.selectAt(start);
                 Mob fighter = h.addWaveTwoFighter(1);
-                for (int stage = 1; stage <= 3; stage++) {
-                    long clearedAt = start + stage * 10_000L;
-                    h.liveWaveEntitiesForWave2 = 1;
-                    h.tickCurrentHuntObjective(clearedAt - 1L);
-                    check(h.currentHuntCycles == stage - 1,
-                            "living fighters cannot advance the Wave 2 stage");
-                    h.liveWaveEntitiesForWave2 = 0; Bukkit.now = clearedAt;
-                    check(h.confirmWaveTwoFighterDeath(fighter),
-                            "only a confirmed death retires the active group's durable fighter UUID");
-                    h.tickCurrentHuntObjective(clearedAt);
-                    check(h.currentHuntCycles == stage && h.waveTwoMarkedPlayerUuid == null,
-                            "only defeating the current group commits stage progress and clears its mark");
-                    if (stage < 3) {
-                        h.tickCurrentHuntObjective(clearedAt + 4_999L);
-                        check(h.spawnedWaveGroups.size() == stage,
-                                "the next group waits for the full post-kill pause");
-                        h.tickCurrentHuntObjective(clearedAt + 5_000L);
-                        check(h.spawnedWaveGroups.size() == stage + 1,
-                                "the next group spawns after the five-second pause");
-                        fighter = h.addWaveTwoFighter(stage + 1);
-                    }
-                }
-                check(h.spawnedWaveGroups.size() == 3,
-                        "three defeated groups complete Wave 2 without a fourth spawn");
+                long firstClear = start + 10_000L;
+                h.liveWaveEntitiesForWave2 = 0; Bukkit.now = firstClear;
+                check(h.confirmWaveTwoFighterDeath(fighter), "confirmed opening-group death retires its UUID");
+                h.tickCurrentHuntObjective(firstClear);
+                check(h.currentHuntCycles == 1 && h.spawnedWaveGroups.size() == 1
+                                && h.waveTwoGroupCleared,
+                        "the first opening group clears but the second batch waits for mark two");
+                check(h.waveTwoMarkedPlayerUuid != null,
+                        "clearing a group does not interrupt the independent 45-second mark period");
+
+                Bukkit.now = start + 45_000L;
+                h.tickCurrentHuntObjective(Bukkit.now);
+                check(h.waveTwoCompletedMarkPeriods == 1 && h.spawnedWaveGroups.size() == 1,
+                        "the first completed mark releases the second substantial batch, not late reinforcements");
+                Bukkit.now++;
+                h.tickCurrentHuntObjective(Bukkit.now);
+                check(h.spawnedWaveGroups.size() == 2 && h.waveSpawnGroupIndex == 2,
+                        "the second substantial batch starts at the beginning of mark two");
+
+                fighter = h.addWaveTwoFighter(2);
+                long secondClear = start + 55_000L;
+                Bukkit.now = secondClear;
+                check(h.confirmWaveTwoFighterDeath(fighter), "confirmed second opening-group death retires its UUID");
+                h.tickCurrentHuntObjective(secondClear);
+                check(h.currentHuntCycles == 2 && h.spawnedWaveGroups.size() == 2,
+                        "late reinforcements stay locked until two full mark periods finish");
+                Bukkit.now = start + 90_000L;
+                h.tickCurrentHuntObjective(Bukkit.now);
+                check(h.waveTwoCompletedMarkPeriods == 2 && h.spawnedWaveGroups.size() == 2,
+                        "the second period is counted without releasing a late group in the same tick");
+                Bukkit.now++;
+                h.tickCurrentHuntObjective(Bukkit.now);
+                check(h.spawnedWaveGroups.size() == 3 && h.waveSpawnGroupIndex == 3,
+                        "the first late reinforcement starts only after both complete marks");
+                check(h.spawnedWaveGroups.get(2).total() <= 2,
+                        "each late reinforcement stays within the two-mob limit");
             }
             case "unloaded-group-roster" -> {
+                h.startHunt(start); h.selectAt(start);
                 h.waveSpawnSchedule = WaveTwoStagePolicy.split(
                         new WaveMechanicsPolicy.WaveCounts(9, 0, 0, 0, 0));
                 h.waveSpawnWave = 2;
@@ -525,11 +553,19 @@ public final class Waves24MechanicsHarness {
                 check(h.retireWaveTwoRosterAfterConfirmedDeath(confirmedDead) && h.saveCalls == 1,
                         "duplicate death callbacks do not checkpoint or retire the fighter twice");
                 h.tickCurrentHuntObjective(unloadedAt + 1L);
-                check(h.waveTwoGroupCleared && h.currentHuntCycles == 1,
-                        "the group may clear after its last outstanding UUID is confirmed dead");
-                h.tickCurrentHuntObjective(unloadedAt + 5_001L);
+                check(h.waveTwoGroupCleared && h.currentHuntCycles == 1
+                                && h.spawnedWaveGroups.size() == 1,
+                        "the group clears immediately after its final UUID dies, while mark pacing holds the next batch");
+                h.tickCurrentHuntObjective(unloadedAt + 2L);
+                check(h.spawnedWaveGroups.size() == 1,
+                        "an additional tick before mark two cannot start the second opening batch");
+                long secondMark = start + 45_000L;
+                Bukkit.now = secondMark;
+                h.tickCurrentHuntObjective(secondMark);
+                Bukkit.now++;
+                h.tickCurrentHuntObjective(Bukkit.now);
                 check(h.spawnedWaveGroups.size() == 2,
-                        "the five-second next-group cadence starts only after the confirmed clear");
+                        "the second opening batch starts after mark one completes");
             }
             case "sandbox-confirmed-death" -> {
                 Mob fighter = h.addWaveTwoFighter(1);
@@ -541,90 +577,42 @@ public final class Waves24MechanicsHarness {
                 check(h.waveTwoOutstandingEntityUuids.isEmpty() && h.saveCalls == 0,
                         "sandbox group retirement clears only its tracked UUID and does not persist official state");
             }
-            case "twenty-second-mark-retention" -> {
+            case "forty-five-second-mark-retention" -> {
                 Player second = new Player(); Bukkit.players.add(second);
                 h.waveSpawnSchedule = List.of(new WaveMechanicsPolicy.WaveCounts(3, 0, 0, 0, 0));
                 h.waveSpawnGroupIndex = 1;
                 h.liveWaveEntitiesForWave2 = 1;
                 h.addWaveTwoFighter(1);
-                h.startHunt(start); h.selectAt(start + 4_000L);
-                long firstStageEnd = start + 24_000L;
-                h.tickCurrentHuntObjective(firstStageEnd - 1L);
-                check(player.id.equals(h.waveTwoMarkedPlayerUuid) && h.currentHuntCycles == 0,
-                        "Wave 2 mark must remain on its player for the full twenty-second stage");
+                h.startHunt(start); h.selectAt(start);
+                UUID firstTarget = h.waveTwoMarkedPlayerUuid;
+                long firstMarkEnd = start + 45_000L;
+                h.tickCurrentHuntObjective(firstMarkEnd - 1L);
+                check(firstTarget.equals(h.waveTwoMarkedPlayerUuid) && h.currentHuntCycles == 0,
+                        "Wave 2 mark must remain on its player for the full forty-five-second period");
             }
-            case "twenty-second-mark-rotation" -> {
+            case "forty-five-second-mark-rotation" -> {
                 Player second = new Player(); Bukkit.players.add(second);
                 h.waveSpawnSchedule = List.of(new WaveMechanicsPolicy.WaveCounts(3, 0, 0, 0, 0));
                 h.waveSpawnGroupIndex = 1;
                 h.liveWaveEntitiesForWave2 = 1;
                 h.addWaveTwoFighter(1);
-                h.startHunt(start); h.selectAt(start + 4_000L);
-                h.tickCurrentHuntObjective(start + 24_000L - 1L);
-                check(player.id.equals(h.waveTwoMarkedPlayerUuid) && h.currentHuntCycles == 0,
-                        "the first mark must remain until its complete twenty-second deadline");
-                h.tickCurrentHuntObjective(start + 24_000L);
-                check(second.id.equals(h.waveTwoMarkedPlayerUuid) && h.currentHuntCycles == 0,
-                        "Wave 2 mark must move to the next player at twenty seconds without completing the mob stage");
-                h.tickCurrentHuntObjective(start + 44_000L - 1L);
-                check(second.id.equals(h.waveTwoMarkedPlayerUuid) && h.currentHuntCycles == 0,
-                        "the second mark must also remain for its complete twenty-second deadline");
-                h.tickCurrentHuntObjective(start + 44_000L);
-                check(player.id.equals(h.waveTwoMarkedPlayerUuid) && h.currentHuntCycles == 0,
-                        "the mark must rotate again at the next twenty-second boundary without completing the mob stage");
-            }
-            case "kill-to-advance-five-second-pause" -> {
-                h.waveSpawnSchedule = WaveTwoStagePolicy.split(
-                        new WaveMechanicsPolicy.WaveCounts(9, 8, 4, 7, 7));
-                h.waveSpawnWave = 2;
-                h.spawnNextWaveGroup(new World(), new Location());
-                Mob fighter = h.addWaveTwoFighter(1);
-                check(h.waveSpawnGroupIndex == 1 && h.spawnedWaveGroups.size() == 1,
-                        "the first ordinary group must be present before its kill gate starts");
-                long clearedAt = start + 30_000L;
-                h.liveWaveEntitiesForWave2 = 1;
-                h.tickCurrentHuntObjective(clearedAt - 1L);
-                check(h.spawnedWaveGroups.size() == 1,
-                        "a living group must block the next Wave 2 spawn regardless of elapsed time");
-                h.liveWaveEntitiesForWave2 = 0;
-                check(h.confirmWaveTwoFighterDeath(fighter), "confirmed group one death retires its roster UUID");
-                h.tickCurrentHuntObjective(clearedAt);
-                check(h.currentHuntCycles == 1 && h.spawnedWaveGroups.size() == 1,
-                        "defeating the current group must record one stage and start the pause");
-                h.tickCurrentHuntObjective(clearedAt + 4_999L);
-                check(h.spawnedWaveGroups.size() == 1 && h.waveSpawnGroupIndex == 1,
-                        "the next Wave 2 group must wait the full five seconds after the kill");
-                h.tickCurrentHuntObjective(clearedAt + 5_000L);
-                check(h.spawnedWaveGroups.size() == 2 && h.waveSpawnGroupIndex == 2,
-                        "the next ordinary group must spawn at the five-second post-kill boundary");
-                fighter = h.addWaveTwoFighter(2);
-                long secondClear = clearedAt + 10_000L;
-                h.liveWaveEntitiesForWave2 = 1;
-                h.tickCurrentHuntObjective(secondClear - 1L);
-                h.liveWaveEntitiesForWave2 = 0;
-                check(h.confirmWaveTwoFighterDeath(fighter), "confirmed group two death retires its roster UUID");
-                h.tickCurrentHuntObjective(secondClear);
-                check(h.currentHuntCycles == 2 && h.spawnedWaveGroups.size() == 2,
-                        "the second group must also require a kill before stage progress advances");
-                h.tickCurrentHuntObjective(secondClear + 5_000L);
-                check(h.spawnedWaveGroups.size() == 3 && h.waveSpawnGroupIndex == 3,
-                        "the third ordinary group must spawn after the second group's five-second pause");
-                fighter = h.addWaveTwoFighter(3);
-                h.liveWaveEntitiesForWave2 = 1;
-                h.tickCurrentHuntObjective(secondClear + 5_001L);
-                h.liveWaveEntitiesForWave2 = 0;
-                check(h.confirmWaveTwoFighterDeath(fighter), "confirmed final group death retires its roster UUID");
-                h.tickCurrentHuntObjective(secondClear + 6_000L);
-                h.tickCurrentHuntObjective(secondClear + 11_000L);
-                check(h.currentHuntCycles == 3 && h.spawnedWaveGroups.size() == 3,
-                        "defeating the final group must complete Wave 2 without spawning a fourth group");
-                check(h.spawnedWaveGroups.get(0).eliteEndermen() == 0
-                                && h.spawnedWaveGroups.get(0).eliteSkeletons() == 0
-                                && h.spawnedWaveGroups.get(1).eliteEndermen() == 0
-                                && h.spawnedWaveGroups.get(1).eliteSkeletons() == 0
-                                && h.spawnedWaveGroups.get(2).eliteEndermen() == 0
-                                && h.spawnedWaveGroups.get(2).eliteSkeletons() == 1,
-                        "only the final spawned Wave 2 stage owns one elite skeleton");
+                h.startHunt(start); h.selectAt(start);
+                UUID firstTarget = h.waveTwoMarkedPlayerUuid;
+                h.tickCurrentHuntObjective(start + 45_000L - 1L);
+                check(firstTarget.equals(h.waveTwoMarkedPlayerUuid) && h.currentHuntCycles == 0,
+                        "the first mark remains stable until its exact forty-five-second deadline");
+                h.tickCurrentHuntObjective(start + 45_000L);
+                UUID secondTarget = h.waveTwoMarkedPlayerUuid;
+                check(secondTarget != null && !secondTarget.equals(firstTarget)
+                                && h.waveTwoCompletedMarkPeriods == 1,
+                        "the first complete mark period rotates to a different eligible player");
+                h.tickCurrentHuntObjective(start + 90_000L - 1L);
+                check(secondTarget.equals(h.waveTwoMarkedPlayerUuid),
+                        "the second mark remains stable for its full forty-five-second period");
+                h.tickCurrentHuntObjective(start + 90_000L);
+                check(firstTarget.equals(h.waveTwoMarkedPlayerUuid)
+                                && h.waveTwoCompletedMarkPeriods == 2 && h.currentHuntCycles == 0,
+                        "the second complete period rotates fairly and is tracked separately from kills");
             }
             case "wave2-edge-spawns" -> {
                 for (int index = 0; index < 3; index++) {
@@ -737,6 +725,7 @@ public final class Waves24MechanicsHarness {
     dependencies = [DOMAIN / f"{name}.java" for name in (
         "WaveScalingPolicy", "WaveMechanicsPolicy", "PressureBudgetController", "ObeliskIntegrityPolicy", "ObeliskProjectilePolicy",
         "ObeliskFireDirectorPolicy", "ObeliskScalingPolicy", "RiftFireballReflectionPolicy", "WaveTwoStagePolicy",
+        "WaveTwoHuntPolicy", "WaveTwoPhantomMaterializationPolicy", "WaveTwoPhantomLayoutPolicy",
         "WaveTwoEntityRecoveryPolicy",
     )]
     dependencies.append(DOMAIN.parent / 'runtime/WaveCombatCoordinator.java')
@@ -873,6 +862,8 @@ public final class WaveTwoEntityLoadHarness {
     }
     void emitUntrackedEntityRemovalDiagnostic(Entity entity, String reason) { removalDiagnostics++; }
     void unregisterOwnedEntity(UUID uuid, String reason) { unregisterCalls++; ownedEntities.remove(uuid); }
+    void registerLoadedRiftGiantOwners(List<Entity> entities) { }
+    Set<UUID> retireOrphanedRiftGiantSummons(List<Entity> entities) { return Set.of(); }
     void registerOwnedEntity(Entity entity) { registerCalls++; ownedEntities.put(entity.id, entity); }
     void combatTactic(Entity entity, int seed) { tacticCalls++; }
     void ensureEventCombatAi(Entity entity) {
@@ -1135,7 +1126,7 @@ public final class WaveTwoEntityLoadHarness {
     java.write_text(harness, encoding="utf-8")
     dependencies = [DOMAIN / f"{name}.java" for name in (
             "PressureBudgetController", "WaveTwoEntityRecoveryPolicy", "WaveEliteCompositionPolicy",
-            "WaveTwoStagePolicy", "WaveMechanicsPolicy", "EliteAbilityPolicy", "EndRiftAiPolicy",
+            "WaveTwoStagePolicy", "WaveTwoHuntPolicy", "WaveMechanicsPolicy", "EliteAbilityPolicy", "EndRiftAiPolicy",
     )]
     dependencies.append(DOMAIN.parent / "runtime/WaveMobLifecycleRegistry.java")
     compiled = subprocess.run(["javac", "-proc:none", "-encoding", "UTF-8", "-d", str(output),
@@ -1160,9 +1151,9 @@ def test_wave2_persisted_entity_load_adapter(wave2_entity_load_harness, scenario
 
 
 @pytest.mark.parametrize("scenario", [
-    "initial-delay", "full-window", "scaled-full-window", "leaving-roster", "cleanup", "foreign-glow", "reveal-effects-cleanup",
+    "immediate-initial-mark", "full-window", "scaled-full-window", "leaving-roster", "cleanup", "foreign-glow", "reveal-effects-cleanup",
     "infinite-glow-preserved", "infinite-reveal-preserved", "stronger-glow-cleanup",
-    "death", "disconnect", "replacement", "three-cycles", "invalid-at-deadline-death", "invalid-at-deadline-disconnect", "invalid-at-deadline-arena",
+    "death", "disconnect", "replacement", "invalid-at-deadline-death", "invalid-at-deadline-disconnect", "invalid-at-deadline-arena",
     "wave-roster-launch", "charge-disconnect", "charge-generation",
     "boss-only-excluded", "wave-reflection", "sandbox-outsider-reflection", "boss-reflection-preserved", "wave7-reflection-boundary",
     "wave-reflected-hit", "stale-hit",
@@ -1199,15 +1190,21 @@ public final class Wave2SpawnHarness {
     }
     static final class RealitySplitTrialController { int activeTrialCount() { return 0; } }
     static final class World {}
-    static final class Location {}
+    static final class Location { public Location clone() { return new Location(); } }
     static final class Bukkit { static long now; }
     List<WaveMechanicsPolicy.WaveCounts> waveSpawnSchedule = List.of();
     List<WaveMechanicsPolicy.WaveCounts> spawned = new ArrayList<>();
     RealitySplitTrialController realitySplitTrialController = new RealitySplitTrialController();
-    boolean currentWave4MobsStarted, currentWave4StartupFailed, testWaveFrontVisualMode;
+    boolean currentWave4MobsStarted, currentWave4StartupFailed;
+    boolean testWaveFrontVisualMode = true;
     boolean waveTwoGroupCleared;
+    WaveTwoPhantomMaterializationPolicy.State waveTwoPhantomActivationState;
+    int waveTwoPhantomActivationGroup;
+    Location waveTwoPhantomActivationLocation;
+    BukkitTask waveTwoPhantomWarningTask;
     int waveSpawnWave, waveSpawnGroupIndex, waveSpawnEntityOffset;
-    int waveTwoGroupsSpawned, saveCalls;
+    int waveTwoGroupsSpawned, waveTwoCompletedMarkPeriods, waveTwoLastLateGroupMarkPeriod, saveCalls;
+    int waveTwoPhantomActivationCycle;
     Set<String> currentWave4PressureSpawnSlots = new HashSet<>();
     int currentWave4PressurePackAttempts;
     long currentWave4PressureRetryAtMillis;
@@ -1238,6 +1235,7 @@ public final class Wave2SpawnHarness {
     enum EventPhase { RECOVERY_REQUIRED }
     EventPhase phase;
     String eventId = "event", recoveryReason;
+    long generation = 5L;
     static final Logger LOGGER = Logger.getLogger("wave2-spawn");
     static { LOGGER.setLevel(Level.OFF); }
     Logger getLogger() { return LOGGER; }
@@ -1274,10 +1272,15 @@ public final class Wave2SpawnHarness {
         WaveMechanicsPolicy.WaveCounts scaled;
         __SCHEDULE_CHAIN__
     }
+    boolean tryBeginWaveTwoPhantomActivation(World world, Location core,
+            WaveMechanicsPolicy.WaveCounts group, int groupNumber) { return false; }
+    void clearWaveTwoPhantomActivationPresentation() { waveTwoPhantomWarningTask = null; }
     void spawnWaveGroup(World world, Location core, int wave, boolean guardianWave,
-                        boolean test, WaveMechanicsPolicy.WaveCounts group, int baseIndex) {
+                        boolean test, WaveMechanicsPolicy.WaveCounts group, int baseIndex,
+                        Location reservedPhantomSpawn) {
         spawned.add(group);
     }
+    static final class BukkitTask { void cancel() {} }
         void checkpointWaveTwoGroupSpawn() { }
     __SPAWN_NEXT_GROUP__
     __TAG_GROUP__
@@ -1290,31 +1293,30 @@ public final class Wave2SpawnHarness {
         Wave2SpawnHarness h = new Wave2SpawnHarness();
         String scenario = args[0];
         switch (scenario) {
-            case "three-stage-schedule" -> {
+            case "two-openings-four-reinforcements" -> {
                 h.initializeWaveTwoSchedule(2);
-                check(h.waveSpawnSchedule.size() == 3,
-                        "Wave 2 must prepare exactly three separately spawnable stage groups");
+                check(h.waveSpawnSchedule.size() == 6,
+                        "Wave 2 must prepare two opening and four separately spawnable late groups");
                 check(h.waveSpawnSchedule.stream().allMatch(group -> group.total() > 0),
-                        "each Wave 2 stage must have a bounded non-empty group");
+                        "each Wave 2 group must be bounded and non-empty");
                 check(h.waveSpawnSchedule.get(0).eliteEndermen() == 0
                                 && h.waveSpawnSchedule.get(0).eliteSkeletons() == 0
                                 && h.waveSpawnSchedule.get(1).eliteEndermen() == 0
                                 && h.waveSpawnSchedule.get(1).eliteSkeletons() == 0
                                 && h.waveSpawnSchedule.get(2).eliteEndermen() == 0
                                 && h.waveSpawnSchedule.get(2).eliteSkeletons() == 1,
-                        "only the final Wave 2 group contains one skeleton elite");
+                        "the first late group contains one replacement skeleton elite");
                 check(h.waveSpawnSchedule.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).sum()
                                 == 21,
-                        "all 21 configured mobs survive scaling across the three finite groups");
-                check(h.waveSpawnSchedule.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total)
-                                .boxed().toList().equals(List.of(7, 7, 7)),
-                        "the configured two-player roster is balanced into three seven-mob groups");
+                        "all 21 configured mobs survive scaling across the finite schedule");
+                check(h.waveSpawnSchedule.subList(2, 6).stream().allMatch(group -> group.total() <= 2),
+                        "all later Wave 2 reinforcements stay at two mobs or fewer");
             }
             case "scaled-party-rosters" -> {
                 for (int players : new int[] {2, 5, 6}) {
                     h.initializeWaveTwoSchedule(players);
                     int expected = players == 2 ? 21 : players == 5 ? 27 : 29;
-                    check(h.waveSpawnSchedule.size() == 3
+                    check(h.waveSpawnSchedule.size() == 6
                                     && h.waveSpawnSchedule.stream().mapToInt(
                                     WaveMechanicsPolicy.WaveCounts::total).sum() == expected,
                             "Wave 2 preserves bounded scaled reserves for party size " + players);
@@ -1324,16 +1326,16 @@ public final class Wave2SpawnHarness {
                     h.waveSpawnSchedule = List.of();
                 }
             }
-            case "group3-final-elite-only" -> {
+            case "group3-first-late-elite-only" -> {
                 var groups = WaveTwoStagePolicy.split(
                         new WaveMechanicsPolicy.WaveCounts(3, 4, 5, 9, 8));
-                check(groups.size() == 3 && groups.get(0).eliteEndermen() == 0
+                check(groups.size() == 6 && groups.get(0).eliteEndermen() == 0
                                 && groups.get(0).eliteSkeletons() == 0
                                 && groups.get(1).eliteEndermen() == 0
                                 && groups.get(1).eliteSkeletons() == 0
                                 && groups.get(2).eliteEndermen() == 0
                                 && groups.get(2).eliteSkeletons() == 1,
-                        "stale elite counts normalize while the final group gets one skeleton conversion");
+                        "stale elite counts normalize while the first late group gets one skeleton conversion");
                 check(groups.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).sum() == 29,
                         "legacy elite counts do not add pressure");
             }
@@ -1363,7 +1365,7 @@ public final class Wave2SpawnHarness {
                 h.ownedEntities.put(ordinary.id, ordinary);
                 int rosterSize = h.tagWaveTwoSpawnGroup(3, Set.of(ordinary.id));
                 check(rosterSize == 1 && h.waveTwoOutstandingEntityUuids.equals(Set.of(elite.id)),
-                        "only the marked final-group elite enters the new group UUID roster");
+                        "only the marked group-three elite enters the new group UUID roster");
             }
             case "empty-positive-spawn-fails-closed" -> {
                 h.waveSpawnWave = 2;
@@ -1390,6 +1392,8 @@ public final class Wave2SpawnHarness {
     java.write_text(harness, encoding="utf-8")
     dependencies = [DOMAIN / f"{name}.java" for name in (
         "WaveScalingPolicy", "WaveMechanicsPolicy", "WavePressurePolicy", "PressureBudgetController", "WaveTwoStagePolicy",
+        "WaveTwoHuntPolicy",
+        "WaveTwoHuntPolicy", "WaveTwoPhantomMaterializationPolicy",
         "WaveTwoEntityRecoveryPolicy",
     )]
     compiled = subprocess.run(["javac", "-proc:none", "-encoding", "UTF-8", "-d", str(output),
@@ -1399,22 +1403,22 @@ public final class Wave2SpawnHarness {
 
 
 @pytest.mark.parametrize("scenario", [
-    "three-stage-schedule", "scaled-party-rosters", "group3-final-elite-only", "ordinary-mobs-only-roster",
+    "two-openings-four-reinforcements", "scaled-party-rosters", "group3-first-late-elite-only", "ordinary-mobs-only-roster",
     "group-3-elite-roster",
     "empty-positive-spawn-fails-closed",
 ])
-def test_wave2_three_stage_spawn_contracts(wave2_spawn_harness, scenario):
+def test_wave2_bounded_group_spawn_contracts(wave2_spawn_harness, scenario):
     result = subprocess.run(["java", "-cp", str(wave2_spawn_harness),
                              "Wave2SpawnHarness", scenario], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
 
 
 @pytest.mark.parametrize("scenario", [
-    "twenty-second-mark-retention", "twenty-second-mark-rotation", "unloaded-group-roster",
+    "forty-five-second-mark-retention", "forty-five-second-mark-rotation", "unloaded-group-roster",
     "sandbox-confirmed-death",
-    "kill-to-advance-five-second-pause", "wave2-edge-spawns", "wave2-edge-spawns-respect-bounds",
+    "two-opening-batches-late-gate", "wave2-edge-spawns", "wave2-edge-spawns-respect-bounds",
 ])
-def test_wave2_twenty_second_stages_and_edge_spawn(mechanics_harness, scenario):
+def test_wave2_mark_periods_and_edge_spawn(mechanics_harness, scenario):
     if scenario.startswith("wave2-edge-spawns"):
         source = EVENT.read_text(encoding="utf-8")
         route = _declaration(source, "private Location safeSpawnLocationForWave(")
@@ -1426,7 +1430,7 @@ def test_wave2_twenty_second_stages_and_edge_spawn(mechanics_harness, scenario):
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_wave2_restart_restores_all_three_groups_and_durable_hunt_progress():
+def test_wave2_restart_restores_bounded_groups_and_durable_hunt_progress():
     source = EVENT.read_text(encoding="utf-8")
     apply_snapshot = _declaration(source, "private void applySnapshot(")
     restore = _declaration(source, "private void restorePersistedWaveSchedule()")
@@ -1456,9 +1460,15 @@ def test_wave2_restart_restores_all_three_groups_and_durable_hunt_progress():
     assert 'waveTwoOutstandingEntityUuids.addAll(restoredWaveTwoOutstanding)' in apply_snapshot
     assert 'WAVE_TWO_GROUPS_SPAWNED_PROGRESS_KEY' in wave_snapshot
     assert 'WAVE_TWO_GROUP_CLEARED_PROGRESS_KEY' in wave_snapshot
+    assert 'WAVE_TWO_MARK_PERIODS_PROGRESS_KEY' in wave_snapshot
+    assert 'WAVE_TWO_LAST_LATE_MARK_PROGRESS_KEY' in wave_snapshot
     assert 'checkpointWaveTwoGroupClear()' in _declaration(source, 'private void tickCurrentHuntObjective(')
     assert 'checkpointWaveTwoGroupSpawn()' in spawn
     assert 'clearCurrentHuntMark(System.currentTimeMillis())' in disable
+    assert 'WaveTwoHuntPolicy.MARK_ROTATION_MILLIS' in _declaration(
+        source, 'private void updateMarkedTargetObjective(')
+    assert 'END_CONTROL_START' not in source
+    assert 'END_CONTROL_STOP' not in source
 
 
 def test_wave2_coordinator_keeps_unloaded_roster_out_of_live_entity_execution():

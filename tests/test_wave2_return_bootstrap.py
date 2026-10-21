@@ -150,6 +150,7 @@ public class Wave2ReturnBootstrapProbe {
     paths = (
         "domain/EventPhase.java", "domain/EndRiftObjective.java",
         "domain/EndEventStateMachine.java", "domain/WaveTwoStagePolicy.java",
+        "domain/WaveTwoHuntPolicy.java",
         "domain/WaveMechanicsPolicy.java", "domain/PressureBudgetController.java",
         "domain/RiftCarrierPolicy.java",
     )

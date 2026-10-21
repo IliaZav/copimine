@@ -9,6 +9,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 CURRENT_END_RIFT_BRANCH = "codex/end-rift-26-3-integrated-final"
+CURRENT_SOURCE_OF_TRUTH_BRANCH = "codex/copimine-source-of-truth-20261020"
 REQUIRED_BRANCH_GUARDED_RUNNERS = {
     "RunEndRiftMobCombatLive.ps1",
     "RunEndRiftSpellMatrixLive.ps1",
@@ -117,7 +118,10 @@ try {{
     "wrapper_name",
     ("RunEndRiftOfficialFivePlayerLive.ps1", "RunEndRiftOfficialTenPlayerLive.ps1"),
 )
-@pytest.mark.parametrize("branch", ("codex/end-rift-event", CURRENT_END_RIFT_BRANCH))
+@pytest.mark.parametrize(
+    "branch",
+    ("codex/end-rift-event", CURRENT_END_RIFT_BRANCH, CURRENT_SOURCE_OF_TRUTH_BRANCH),
+)
 def test_official_scaled_wrappers_run_the_shared_driver_on_each_allowed_branch(
     wrapper_name: str, branch: str
 ) -> None:
@@ -126,6 +130,26 @@ def test_official_scaled_wrappers_run_the_shared_driver_on_each_allowed_branch(
     assert result.returncode == 0, result.stdout + result.stderr
     assert "OFFICIAL_SHARED_DRIVER_REACHED" in result.stdout
     assert "refused Git branch" not in (result.stdout + result.stderr)
+
+
+def test_official_two_player_driver_allows_the_source_of_truth_branch() -> None:
+    source = (ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1").read_text(encoding="utf-8")
+    assert CURRENT_SOURCE_OF_TRUTH_BRANCH in source
+
+
+def test_official_two_player_driver_fails_fast_with_exited_bot_diagnostics() -> None:
+    source = (ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1").read_text(encoding="utf-8")
+    assert "function Assert-LocalBotsStillRunning" in source
+    assert "EndRiftBotName" in source
+    assert "Local player bot $name exited with code" in source
+    assert "[IO.FileShare]::ReadWrite" in source
+    assert "capture failed:" in source
+    assert "could not be read:" in source
+    assert "No bot stdout or stderr was captured." in source
+    wait_players = source.split("function Wait-PlayersOnline {", 1)[1].split(
+        "function Wait-ClientBridgeV4Ready", 1
+    )[0]
+    assert "Assert-LocalBotsStillRunning" in wait_players
 
 
 @pytest.mark.parametrize(
@@ -602,6 +626,7 @@ def test_boss_multiplayer_runner_accepts_the_runtime_root_before_validating_chil
 
         script = f"""
 function git {{ $global:LASTEXITCODE = 0; Write-Output '{branch}' }}
+function Get-NetTCPConnection {{ return @() }}
 try {{
   & {_ps_quote(runner)} -FirstBotName 'ProbeOne' -SecondBotName 'ProbeTwo'
 }} catch {{

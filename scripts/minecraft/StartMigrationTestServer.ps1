@@ -3,7 +3,8 @@ param(
     [string]$JavaHome,
     [string]$PostgresBin,
     [switch]$ValidateOnly,
-    [switch]$FullPluginSet
+    [switch]$FullPluginSet,
+    [switch]$LocalEndEventBuild
 )
 
 $ErrorActionPreference = 'Stop'
@@ -87,11 +88,15 @@ try {
     if ($FullPluginSet -and ($authMeJars.Count -ne 1 -or $authEffectsJars.Count -ne 1)) {
         throw 'AuthMe and AuthEffects are required for -FullPluginSet. Install the full locked candidate runtime without -unauthenticated-test-runtime first.'
     }
+    if ($LocalEndEventBuild -and -not $FullPluginSet) {
+        throw '-LocalEndEventBuild requires -FullPluginSet so AuthMe and AuthEffects stay enabled.'
+    }
     if (-not $FullPluginSet -and ($authMeJars.Count -gt 0 -or $authEffectsJars.Count -gt 0)) {
         throw 'AuthMe or AuthEffects is still active. Run the unauthenticated local-test plugin installer first.'
     }
     $startupSettingsArguments = @('--startup-settings-json')
     if (-not $FullPluginSet) { $startupSettingsArguments += '--unauthenticated-test-runtime' }
+    if ($LocalEndEventBuild) { $startupSettingsArguments += '--local-end-event-build' }
     $settingsOutputPath = [IO.Path]::Combine([IO.Path]::GetTempPath(), 'copimine-migration-settings-' + [guid]::NewGuid().ToString('N') + '.stdout')
     $settingsErrorPath = [IO.Path]::Combine([IO.Path]::GetTempPath(), 'copimine-migration-settings-' + [guid]::NewGuid().ToString('N') + '.stderr')
     $settingsArguments = @('-3.13', ('"' + $pluginInstaller + '"')) + $startupSettingsArguments
@@ -183,7 +188,10 @@ try {
     }
 
     if ($ValidateOnly) {
-        if ($FullPluginSet) {
+        if ($LocalEndEventBuild) {
+            Write-Output "Validated full locked-plugin Minecraft 26.3 server on 127.0.0.1:$serverPort with the receipted local CopiMineEndEvent build, AuthMe and AuthEffects enabled; loopback-only."
+        }
+        elseif ($FullPluginSet) {
             Write-Output "Validated full locked-plugin Minecraft 26.3 candidate server on 127.0.0.1:$serverPort with AuthMe and AuthEffects enabled; loopback-only."
         }
         else {
@@ -192,7 +200,10 @@ try {
         return
     }
 
-    if ($FullPluginSet) {
+    if ($LocalEndEventBuild) {
+        Write-Output "Starting the full locked-plugin Minecraft 26.3 server on 127.0.0.1:$serverPort with the receipted local CopiMineEndEvent build, AuthMe and AuthEffects enabled. This server remains loopback-only."
+    }
+    elseif ($FullPluginSet) {
         Write-Output "Starting the full locked-plugin Minecraft 26.3 candidate server on 127.0.0.1:$serverPort with AuthMe and AuthEffects enabled. This server remains loopback-only."
     }
     else {

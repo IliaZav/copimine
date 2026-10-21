@@ -18,6 +18,16 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def method(source: str, signature: str) -> str:
+    start = source.index(signature)
+    opening = source.index("{", start)
+    depth, end = 1, opening + 1
+    while depth:
+        depth += (source[end] == "{") - (source[end] == "}")
+        end += 1
+    return source[start:end]
+
+
 def test_ritual_caster_policy_has_guarded_exposed_and_awakened_states() -> None:
     policy_path = DOMAIN / "RitualCasterTacticsPolicy.java"
     assert policy_path.is_file(), "Wave 6 casters need a dedicated pure tactics policy"
@@ -74,24 +84,22 @@ def test_wave6_caster_runtime_keeps_casters_passive_until_guard_death_and_first_
 
 def test_wave6_spell_dispatch_uses_accumulated_unlocks_independently_of_caster_slot() -> None:
     root = read(SRC / "CopiMineEndEvent.java")
-    start = root.index("private void castNextRitualAbility")
-    end = root.index("private void startRitualZone", start)
-    body = root[start:end]
+    body = method(root, "private void castNextRitualAbility(")
     assert "RitualCasterTacticsPolicy.Role role" in body
     assert "RitualCasterTacticsPolicy.roleForSlot(" in body
     # Roles identify the surviving caster in logs. The sphere retains spells
     # unlocked by deaths, even if the original role's caster was the first to die.
     assert "RitualCasterProgressionPolicy.availableSpells(ritualCasterDeathCount)" in body
     assert "availableSpells.isEmpty()" in body
-    assert "availableSpells.get(Math.floorMod(ritualSpellCursor, availableSpells.size()))" in body
+    normalized_body = " ".join(body.split())
+    assert "availableSpells.get( Math.floorMod(ritualSpellCursor, availableSpells.size()))" in normalized_body
     assert "ritualSpellForMajor(" in body
     assert "ritualSpellForRole(candidateRole)" not in body
     assert "candidateRole == RitualCasterTacticsPolicy.Role.FINAL_SEAL" not in body
-    for handler in (
-        "spawnRitualProjectileVolley",
-        "startRitualZone",
-    ):
-        assert handler in body
+    assert "wave6RitualRuntimeAdapter.startGravityAnchor(" in body
+    assert "wave6RitualRuntimeAdapter.startFallingAnvils(" in body
+    assert "ritualSpellController.start(generation, spell," in body
+    assert "ritualSpellCursor = Math.floorMod(ritualSpellCursor + 1, availableSpells.size())" in body
     assert "startRitualReverse" not in body
     assert "startRitualControlSwap" not in body
     for removed in (
@@ -108,9 +116,7 @@ def test_wave6_scheduler_retains_unlocked_spells_and_uses_only_live_owners() -> 
     """The shared sphere scheduler survives original-role deaths and caster awakening."""
 
     root = read(SRC / "CopiMineEndEvent.java")
-    start = root.index("private void castNextRitualAbility")
-    end = root.index("private void startRitualZone", start)
-    body = root[start:end]
+    body = method(root, "private void castNextRitualAbility(")
     assert "isLiveOwnedEntity(entity.getUniqueId())" in body
     assert "ritualSpellForMajor(" in body
     assert "RitualCasterTacticsPolicy.ownsRitualAbility(" not in body

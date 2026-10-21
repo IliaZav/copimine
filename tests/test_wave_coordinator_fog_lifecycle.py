@@ -82,7 +82,8 @@ public class WaveFogLifecycleProbe {
  static class Player extends LivingEntity {int damageCalls;boolean isOnline(){return true;}void damage(double d,LivingEntity e){damageCalls++;}Location getEyeLocation(){return new Location();}}
  static class Path {int stopCount;void stopPathfinding(){stopCount++;}}
  static class Mob extends LivingEntity {boolean ai=true,aware=true;LivingEntity target;Path path=new Path();LivingEntity getTarget(){return target;}void setTarget(LivingEntity p){target=p;}Path getPathfinder(){return path;}boolean hasAI(){return ai;}boolean isAware(){return aware;}void setAI(boolean b){ai=b;}void setAware(boolean b){aware=b;}void setVelocity(Vector v){}Location getEyeLocation(){return new Location();}}
- static class Skeleton extends Mob {}static class Spider extends Mob {}static class Enderman extends Mob {}
+ static class Skeleton extends Mob {}static class Spider extends Mob {}static class Enderman extends Mob {}static class Zombie extends Mob {}
+ boolean isRiftGiant(Entity entity){return false;}void tickRiftGiantAura(Zombie giant,long now){}boolean tickRiftGiantOffense(Zombie giant,Player target,long now){return false;}
  static class Projectile extends Entity {Object shooter;Object getShooter(){return shooter;}}
  static class Arrow extends Projectile {UUID volleyId;Vector velocity=new Vector();void setShooter(Entity e){shooter=e;}Vector getVelocity(){return velocity.clone();}}
  static class AreaEffectCloud extends Entity {double getRadius(){return 3;}}

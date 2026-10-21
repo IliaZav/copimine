@@ -888,7 +888,7 @@ def test_java_event_tests_bound_heap_and_compiler_threads() -> None:
     event_runner = (ROOT / "tests" / "RunEndRiftEventChecks.ps1").read_text(encoding="utf-8")
 
     assert "$javaTestJvmArgs = @('-Xms128m', '-Xmx1g', '-XX:ActiveProcessorCount=4')" in event_runner
-    assert "& java @javaTestJvmArgs -cp $Classpath $MainClass" in event_runner
+    assert "& $script:javaExecutable @javaTestJvmArgs -cp $Classpath $MainClass" in event_runner
 
 
 def test_legacy_client_build_bounds_gradle_and_test_fork_memory() -> None:

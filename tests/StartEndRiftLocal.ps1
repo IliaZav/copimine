@@ -4,6 +4,9 @@ param(
   [string]$LogPath = '',
   [string]$ErrPath = '',
   [string]$ResourcePackSourcePath = '',
+  [string]$PluginArtifactPath = '',
+  [string]$EnvironmentFilePath = '',
+  [string]$JavaHomePath = '',
   # A cold local Paper boot with all pinned plugins can legitimately take
   # several minutes while ImageFrame, TAB and the database-backed plugins
   # initialize. Keep the fail-closed cleanup, but do not kill a healthy
@@ -27,9 +30,11 @@ if ($profileLock.minecraftVersion -ne '26.3' -or
 }
 $expectedLegacyPackSha256 = ([string]$profileLock.resourcePackMigration.legacyPackSha256).ToLowerInvariant()
 $expectedMigrationPackSha256 = ([string]$profileLock.resourcePackMigration.candidateSha256).ToLowerInvariant()
+$expectedPaperSha256 = ([string]$profileLock.paper.sha256).ToLowerInvariant()
 if ($expectedLegacyPackSha256 -notmatch '^[0-9a-f]{64}$' -or
-    $expectedMigrationPackSha256 -notmatch '^[0-9a-f]{64}$') {
-  throw 'Pinned resource-pack SHA-256 values are invalid.'
+    $expectedMigrationPackSha256 -notmatch '^[0-9a-f]{64}$' -or
+    $expectedPaperSha256 -notmatch '^[0-9a-f]{64}$') {
+  throw 'Pinned Paper or resource-pack SHA-256 values are invalid.'
 }
 $defaultResourcePackSourcePath = Join-Path $worktreeRoot 'build\minecraft-26.3\CopiMineResourcePack-26.3.zip'
 $selectedResourcePackSourcePath = if ([string]::IsNullOrWhiteSpace($ResourcePackSourcePath)) {
@@ -55,7 +60,19 @@ $propertiesPath = Test-EndRiftLocalRuntimePath -Path $propertiesPath -LocalRunti
 $eventConfigPath = Join-Path $ServerDir 'plugins\CopiMineEndEvent\config.yml'
 $eventConfigPath = Test-EndRiftLocalRuntimePath -Path $eventConfigPath -LocalRuntimeRoot $localRuntimeRoot -MustExist
 $configSourcePath = Join-Path $worktreeRoot 'copimine-end-event\config.yml'
-$envPath = Join-Path $localRuntimeRoot 'end-rift.env'
+$defaultEnvironmentFilePath = Join-Path $localRuntimeRoot 'end-rift.env'
+$selectedEnvironmentFilePath = if ([string]::IsNullOrWhiteSpace($EnvironmentFilePath)) {
+  $defaultEnvironmentFilePath
+} else {
+  $EnvironmentFilePath
+}
+$envPath = Test-EndRiftLocalRuntimePath `
+  -Path ([IO.Path]::GetFullPath($selectedEnvironmentFilePath)) `
+  -LocalRuntimeRoot $localRuntimeRoot
+if (-not [string]::IsNullOrWhiteSpace($EnvironmentFilePath) -and
+    -not (Test-Path -LiteralPath $envPath -PathType Leaf)) {
+  throw "Selected local environment file is missing: $envPath"
+}
 
 function Get-LocalSha256 {
   param([Parameter(Mandatory = $true)][string]$LiteralPath)
@@ -146,15 +163,38 @@ if ((Get-Content -LiteralPath $eventConfigPath -Raw) -notmatch '(?m)^environment
   throw 'Refused to start a non-local End Rift configuration.'
 }
 
-$pluginSourcePath = Join-Path $worktreeRoot 'copimine-end-event\CopiMineEndEvent.jar'
+$pluginLockPath = Join-Path $worktreeRoot 'tools\minecraft-26.3\server-plugins.lock.json'
+if (-not (Test-Path -LiteralPath $pluginLockPath -PathType Leaf)) {
+  throw "Pinned server-plugin lock is missing: $pluginLockPath"
+}
+$pluginLock = Get-Content -LiteralPath $pluginLockPath -Raw | ConvertFrom-Json
+$endEventEntries = @($pluginLock.unchangedBaseline | Where-Object { $_.pluginName -ceq 'CopiMineEndEvent' })
+if ($endEventEntries.Count -ne 1 -or $null -eq $endEventEntries[0].candidate) {
+  throw 'Pinned server-plugin lock must contain exactly one CopiMineEndEvent candidate.'
+}
+$endEventCandidate = $endEventEntries[0].candidate
+$expectedPluginSha256 = ([string]$endEventCandidate.sha256).ToLowerInvariant()
+if ($endEventCandidate.runtimeEligible -ne $true -or $expectedPluginSha256 -notmatch '^[0-9a-f]{64}$') {
+  throw 'Pinned CopiMineEndEvent candidate is not eligible or has an invalid SHA-256.'
+}
+$defaultPluginSourcePath = Join-Path $worktreeRoot ([string]$endEventCandidate.buildArtifact)
+$selectedPluginSourcePath = if ([string]::IsNullOrWhiteSpace($PluginArtifactPath)) {
+  $defaultPluginSourcePath
+} else {
+  $PluginArtifactPath
+}
+$pluginSourcePath = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $selectedPluginSourcePath -ErrorAction Stop).ProviderPath)
 $pluginTargetPath = Join-Path $ServerDir 'plugins\CopiMineEndEvent.jar'
 if (-not (Test-Path -LiteralPath $pluginSourcePath -PathType Leaf)) {
-  throw "Current local End Rift plugin build is missing: $pluginSourcePath"
+  throw "Selected local End Rift plugin build is missing: $pluginSourcePath"
 }
 if (-not (Test-Path -LiteralPath (Split-Path $pluginTargetPath -Parent) -PathType Container)) {
   New-Item -ItemType Directory -Path (Split-Path $pluginTargetPath -Parent) -Force | Out-Null
 }
 $sourcePluginHash = Get-LocalSha256 -LiteralPath $pluginSourcePath
+if ($sourcePluginHash -ne $expectedPluginSha256) {
+  throw "Selected local End Rift plugin SHA-256 differs from its pinned candidate: expected=$expectedPluginSha256 actual=$sourcePluginHash"
+}
 $targetPluginHash = if (Test-Path -LiteralPath $pluginTargetPath -PathType Leaf) {
   Get-LocalSha256 -LiteralPath $pluginTargetPath
 } else {
@@ -201,8 +241,23 @@ foreach ($logCandidatePath in @($LogPath, $ErrPath)) {
 }
 $LogPath = Assert-EndRiftLocalOutputPath -Path $LogPath -LocalRuntimeRoot $localRuntimeRoot
 $ErrPath = Assert-EndRiftLocalOutputPath -Path $ErrPath -LocalRuntimeRoot $localRuntimeRoot
+$defaultJavaHomePath = Join-Path $localRuntimeRoot 'toolchains\temurin-25.0.4.1\jdk-25.0.4.1+1'
+$selectedJavaHomePath = if ([string]::IsNullOrWhiteSpace($JavaHomePath)) {
+  $defaultJavaHomePath
+} else {
+  [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $JavaHomePath -ErrorAction Stop).ProviderPath)
+}
+$javaHomePath = Test-EndRiftLocalRuntimePath `
+  -Path $selectedJavaHomePath `
+  -LocalRuntimeRoot $localRuntimeRoot -MustExist
+if (-not [string]::IsNullOrWhiteSpace($JavaHomePath)) {
+  $serverJavaPrefix = $ServerDir + [IO.Path]::DirectorySeparatorChar
+  if (-not $javaHomePath.StartsWith($serverJavaPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'An explicit local End Rift Java home must be inside the isolated server directory.'
+  }
+}
 $java = Assert-EndRiftLocalRuntimePath `
-  -Path (Join-Path $localRuntimeRoot 'toolchains\temurin-25.0.4.1\jdk-25.0.4.1+1\bin\java.exe') `
+  -Path (Join-Path $javaHomePath 'bin\java.exe') `
   -LocalRuntimeRoot $localRuntimeRoot -MustExist
 $previousErrorActionPreference = $ErrorActionPreference
 try {
@@ -221,8 +276,17 @@ if ($javaVersionExitCode -ne 0 -or $javaVersion -notmatch 'openjdk version "25\.
 # range and leave room for the desktop and the user's separate server. The
 # machine ran out of commit even with a 1 GiB heap, so this local-only probe
 # uses a 512 MiB heap and stops tiered compilation at C1 to avoid C2 arenas.
+$paperJarPath = Join-Path $ServerDir 'paper-26.3-205.jar'
+if (-not (Test-Path -LiteralPath $paperJarPath -PathType Leaf)) {
+  $paperJarPath = Join-Path $ServerDir 'purpur.jar'
+}
+$paperJarPath = Assert-EndRiftLocalRuntimePath -Path $paperJarPath -LocalRuntimeRoot $localRuntimeRoot -MustExist
+$paperJarHash = Get-LocalSha256 -LiteralPath $paperJarPath
+if ($paperJarHash -ne $expectedPaperSha256) {
+  throw "Selected local Paper server SHA-256 differs from the pinned 26.3 build: expected=$expectedPaperSha256 actual=$paperJarHash"
+}
 $paper = Start-Process -FilePath $java `
-  -ArgumentList @('-Xms128M', '-Xmx512M', '-Xss512k', '-XX:CICompilerCount=2', '-XX:TieredStopAtLevel=1', '-XX:HeapBaseMinAddress=34g', '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-Dfile.encoding=UTF-8', '-jar', ('"' + (Assert-EndRiftLocalRuntimePath -Path (Join-Path $ServerDir 'purpur.jar') -LocalRuntimeRoot $localRuntimeRoot -MustExist) + '"'), 'nogui') `
+  -ArgumentList @('-Xms128M', '-Xmx512M', '-Xss512k', '-XX:CICompilerCount=2', '-XX:TieredStopAtLevel=1', '-XX:HeapBaseMinAddress=34g', '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-Dfile.encoding=UTF-8', '-jar', ('"' + $paperJarPath + '"'), 'nogui') `
   -WorkingDirectory $ServerDir `
   -RedirectStandardOutput $LogPath `
   -RedirectStandardError $ErrPath `
@@ -258,7 +322,6 @@ if (-not $ready) {
   throw "Local Paper PID $($paper.Id) did not become ready within $ReadyTimeoutSeconds seconds."
 }
 
-$paperJarPath = Assert-EndRiftLocalRuntimePath -Path (Join-Path $ServerDir 'purpur.jar') -LocalRuntimeRoot $localRuntimeRoot -MustExist
 try {
   $bindEvidence = Assert-EndRiftLocalServerBind -ServerDir $ServerDir -ServerPort 25566 -RconPort 25576 -ExpectedProcessId $paper.Id
   Write-EndRiftLocalServerReceipt -ProcessId $paper.Id -ServerDir $ServerDir -PaperJarPath $paperJarPath -LocalRuntimeRoot $localRuntimeRoot | Out-Null

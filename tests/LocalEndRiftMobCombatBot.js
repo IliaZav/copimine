@@ -5,8 +5,13 @@
  */
 const path = require('path')
 const fs = require('fs')
-const mineflayer = require(path.resolve(__dirname, '..', 'local-runtime', 'mc-bot', 'node_modules', 'mineflayer'))
-const { Vec3 } = require(path.resolve(__dirname, '..', 'local-runtime', 'mc-bot', 'node_modules', 'vec3'))
+const botNodeModules = path.resolve(
+  process.env.END_RIFT_BOT_NODE_MODULES
+    || path.resolve(__dirname, '..', 'local-runtime', 'mc-bot-26.3-complete-probe', 'node_modules'),
+)
+const mineflayer = require(path.join(botNodeModules, 'mineflayer'))
+const { Vec3 } = require(path.join(botNodeModules, 'vec3'))
+const minecraftProtocol = require(path.join(botNodeModules, 'minecraft-protocol'))
 const {
   createReflectionActionQueue,
   isAimWithinReflectionCone,
@@ -104,9 +109,37 @@ try {
 const attackIntervalMs = Number.isFinite(configuredAttackIntervalMs)
   ? Math.max(200, Math.min(5000, Math.floor(configuredAttackIntervalMs)))
   : 400
-// Mineflayer's 26.1 schema currently sends an incomplete teleport confirmation
-// to Paper 26.3. Use the verified ViaVersion-compatible 1.21.1 schema here.
-const bot = mineflayer.createBot({ host, port, username, version: '1.21.1', auth: 'offline' })
+const protocolVersion = process.env.END_RIFT_BOT_PROTOCOL_VERSION || '26.1'
+if (protocolVersion !== '26.1') {
+  throw new Error(`Local End Rift bots require the tested Minecraft 26.1 ViaBackwards client, got ${protocolVersion}`)
+}
+if (!Array.isArray(minecraftProtocol.supportedVersions)
+    || !minecraftProtocol.supportedVersions.includes(protocolVersion)) {
+  throw new Error('Installed minecraft-protocol package does not support Minecraft 26.1')
+}
+if (!Array.isArray(mineflayer.testedVersions)
+    || !mineflayer.testedVersions.includes(protocolVersion)) {
+  const latestSupportedVersion = mineflayer.latestSupportedVersion || 'unknown'
+  throw new Error(`Installed Mineflayer package has no Minecraft 26.1 support; latest supported version is ${latestSupportedVersion}`)
+}
+if (host !== '127.0.0.1' || port !== 25566) {
+  throw new Error(`End Rift protocol bots are restricted to 127.0.0.1:25566, got ${host}:${port}`)
+}
+const bot = mineflayer.createBot({ host, port, username, version: protocolVersion, auth: 'offline' })
+let movementTickEndCount = 0
+// 26.3 Paper disconnects clients that do not close each 1.21.2+ client tick.
+// Mineflayer 4.39.0 does not emit this packet itself. physicsTick is emitted
+// before updatePosition in Mineflayer's tick loop, so a microtask sends one
+// genuine tick_end after that tick's movement packet rather than fabricating
+// a version alias or inserting extra movement boundaries.
+bot.on('physicsTick', () => {
+  queueMicrotask(() => {
+    if (bot._client.state === 'play' && !bot._client.ended) {
+      bot._client.write('tick_end', {})
+      movementTickEndCount++
+    }
+  })
+})
 if (process.env.END_RIFT_TEST_CLIENT_MOD_HANDSHAKE === '1') {
   attachLocalClientModHandshake(bot, {
     host,
@@ -242,10 +275,13 @@ function enterPassiveMode () {
   // between the server-side recovery teleports.
   stopNavigation()
   if (typeof bot.clearControlStates === 'function') bot.clearControlStates()
-  // Clearing controls alone does not stop Mineflayer from integrating stale
-  // velocity or knockback. Keep a passive probe on its assigned rune while
-  // the server validates the continuous hold; active modes restore physics.
-  bot.physicsEnabled = false
+  // Keep the protocol physics loop alive even while the probe is passive.
+  // Mineflayer's 26.1 movement/tick_end cadence is required by the official
+  // ViaBackwards route into Paper 26.3; disabling physics makes Paper reject
+  // the client with an invalid-move packet before the server can place it.
+  // Clearing controls stops probe-authored navigation; the server remains
+  // authoritative for rune hold and any recovery teleport.
+  bot.physicsEnabled = true
   wave7Autopilot = false
   console.log(`BOT_PASSIVE ${username}`)
 }
@@ -308,7 +344,9 @@ function enterWaveOneInteractionMode (mode) {
   }
   stopNavigation()
   if (typeof bot.clearControlStates === 'function') bot.clearControlStates()
-  bot.physicsEnabled = false
+  // Objective interactions also keep the 26.1 movement/tick_end cadence alive
+  // while disabling attack and navigation inputs.
+  bot.physicsEnabled = true
   stopObjectiveInteraction()
   wave7Autopilot = false
   objectiveInteractionMode = mode
@@ -1196,6 +1234,7 @@ bot._client.on('packet', (data, meta) => {
 bot.once('spawn', () => {
   joined = true
   const playerUuid = bot.entity?.uuid || bot.uuid || bot._client?.uuid || 'unknown'
+  console.log(`BOT_PROTOCOL_JOIN username=${username} client=26.1 backend=Paper-26.3-205 gateway=ViaVersion-5.12.1 tick_end=physics-cadence`)
   console.log(`PLAYER_JOIN ${username} uuid=${playerUuid} reflect_enabled=${reflectEnabled} reflect_targets=${obeliskTargets.length} guardian_probe=${guardianProbeEnabled} wave7_hold_position=${wave7HoldPosition}`)
   if (tentacleTraceEnabled) {
     bot._client.on('entity_velocity', packet => {
@@ -1293,6 +1332,7 @@ bot.on('error', error => {
   process.exitCode = 1
 })
 bot.on('end', () => {
+  console.log(`BOT_PROTOCOL_END username=${username} client=26.1 tick_end_packets=${movementTickEndCount}`)
   for (const timer of [sampleTimer, attackTimer, healthTimer, controlTimer, navigationTimer, objectiveInteractionTimer]) if (timer !== null) clearInterval(timer)
   if (heldItemSyncReturnTimer !== null) clearTimeout(heldItemSyncReturnTimer)
   if (reflectionScanTimer !== null) clearInterval(reflectionScanTimer)

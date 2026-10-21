@@ -2,9 +2,7 @@ package me.copimine.client;
 
 import java.util.Base64;
 import java.util.EnumMap;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
@@ -23,7 +21,6 @@ public final class ClientBridgeConnectionState {
     public static final int NONCE_BYTES = 32;
     public static final int STREAM_ID_BYTES = 16;
     public static final int MAX_STREAM_IDS_PER_SENDER = 256;
-    public static final int MAX_EVENT_GENERATIONS = 64;
 
     private static final AtomicLong NEXT_LOCAL_EPOCH = new AtomicLong();
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -31,7 +28,8 @@ public final class ClientBridgeConnectionState {
     private static final Base64.Decoder BASE64_URL_DECODER = Base64.getUrlDecoder();
 
     private final EnumMap<Sender, SenderState> senders = new EnumMap<>(Sender.class);
-    private final Map<UUID, Long> generationHighWater = new HashMap<>();
+    private long generationHighWater;
+    private boolean hasGenerationHighWater;
     private final Set<String> seenStreamIds = new HashSet<>();
     private final EnumMap<Sender, Integer> seenStreamCounts = new EnumMap<>(Sender.class);
 
@@ -138,8 +136,9 @@ public final class ClientBridgeConnectionState {
     /**
      * Installs a newly acknowledged sender stream. Stream IDs are canonical 16-byte Base64URL values,
      * unique across both senders for this play connection, and retained for the lifetime of the
-     * connection. Returns false for an absent verified session, replay, malformed ID, or exhausted
-     * per-sender history.
+     * connection. Installing a fresh END_EVENT stream also begins a fresh generation fence because
+     * packets from the retired stream can no longer pass the stream binding check.
+     * Returns false for an absent verified session, replay, malformed ID, or exhausted history.
      */
     public synchronized boolean installStream(Sender sender, String streamId) {
         Objects.requireNonNull(sender, "sender");
@@ -161,6 +160,10 @@ public final class ClientBridgeConnectionState {
         state.activeStreamId = streamId;
         state.ready = false;
         state.outstandingRequestId = null;
+        if (sender == Sender.END_EVENT) {
+            generationHighWater = 0L;
+            hasGenerationHighWater = false;
+        }
         return true;
     }
 
@@ -246,41 +249,29 @@ public final class ClientBridgeConnectionState {
         return Optional.ofNullable(controlHelloId);
     }
 
-    /** Records an event generation without lowering a seen high-water mark or evicting history. */
-    public synchronized boolean recordGeneration(UUID eventId, long generation) {
-        if (eventId == null
-                || generation <= 0
+    /** Records the monotonically increasing event generation within the active END_EVENT stream. */
+    public synchronized boolean recordGeneration(long generation) {
+        if (generation <= 0
                 || generation == Long.MAX_VALUE
                 || connection == null
-                || verifiedSessionId == null) {
+                || verifiedSessionId == null
+                || senders.get(Sender.END_EVENT).activeStreamId == null) {
             return false;
         }
 
-        Long previous = generationHighWater.get(eventId);
-        if (previous != null) {
-            if (generation < previous) {
-                return false;
-            }
-            if (generation > previous) {
-                generationHighWater.put(eventId, generation);
-            }
-            return true;
-        }
-
-        if (generationHighWater.size() >= MAX_EVENT_GENERATIONS) {
+        if (hasGenerationHighWater && generation < generationHighWater) {
             return false;
         }
-        generationHighWater.put(eventId, generation);
+        if (!hasGenerationHighWater || generation > generationHighWater) {
+            generationHighWater = generation;
+            hasGenerationHighWater = true;
+        }
         return true;
     }
 
-    public synchronized OptionalLong generationHighWater(UUID eventId) {
-        Long value = generationHighWater.get(eventId);
-        return value == null ? OptionalLong.empty() : OptionalLong.of(value);
-    }
-
-    public synchronized int generationCount() {
-        return generationHighWater.size();
+    /** Returns the event generation fence for the active END_EVENT stream, if one was recorded. */
+    public synchronized OptionalLong generationHighWater() {
+        return hasGenerationHighWater ? OptionalLong.of(generationHighWater) : OptionalLong.empty();
     }
 
     public synchronized int seenStreamCount(Sender sender) {
@@ -296,7 +287,8 @@ public final class ClientBridgeConnectionState {
         queueRevision = 0;
         queueRevisionExhausted = false;
         resetSenders();
-        generationHighWater.clear();
+        generationHighWater = 0L;
+        hasGenerationHighWater = false;
         seenStreamIds.clear();
         for (Sender sender : Sender.values()) {
             seenStreamCounts.put(sender, 0);

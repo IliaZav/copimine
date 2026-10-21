@@ -44,6 +44,7 @@ def inventory_probe(tmp_path_factory):
     java.write_text(r'''
 import java.util.*;
 import me.copimine.endevent.domain.RiftCarrierPolicy;
+import me.copimine.endevent.domain.RiftCarrierCustodyPolicy;
 import me.copimine.endevent.domain.CarrierSlownessLeasePolicy;
 public class CarrierInventoryAcceptanceProbe {
     static final int MODEL_CARRIER_CHARGE=1;
@@ -378,6 +379,7 @@ public class CarrierInventoryAcceptanceProbe {
 ''', encoding="utf-8")
     result = subprocess.run(["javac", "-J-Xmx128m", "-encoding", "UTF-8", "-d", str(folder),
                             str(DOMAIN / "RiftCarrierPolicy.java"),
+                            str(DOMAIN / "RiftCarrierCustodyPolicy.java"),
                             str(DOMAIN / "CarrierSlownessLeasePolicy.java"), str(java)],
                             capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stdout + result.stderr

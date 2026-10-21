@@ -115,7 +115,83 @@ def complete_receipt(server,receipt,records):
     return receipt
 
 
-def validate_active_plugin_inventory(server,records,*,unauthenticated_test_mode=False):
+def _local_end_event_build_record(server,expected):
+    record=expected.get('CopiMineEndEvent')
+    if record is None:
+        raise ValueError('The locked runtime has no CopiMineEndEvent candidate to override')
+
+    server=Path(server)
+    server_root=server.resolve(strict=True)
+    manifest_path=server/'migration-local-end-event-build.json'
+    try:
+        _ensure_regular_file(manifest_path,'local End Event build receipt')
+        if manifest_path.stat().st_size>100_000:
+            raise ValueError('Local End Event build receipt exceeds the safe size limit')
+        manifest=json.loads(manifest_path.read_text(encoding='utf-8-sig'))
+    except FileNotFoundError as error:
+        raise ValueError('Local End Event build receipt is missing') from error
+    except (OSError,UnicodeError,json.JSONDecodeError) as error:
+        raise ValueError('Local End Event build receipt is invalid') from error
+    if not manifest_path.resolve(strict=True).is_relative_to(server_root):
+        raise ValueError('Local End Event build receipt resolves outside the isolated runtime')
+
+    required_strings=('runtimePath','builtJarSha256','builtJarSha512','replacedJarSha256',
+                      'replacementBackup','sourceBranch','sourceHead','sourceTreeSha256','javaVersion')
+    if (not isinstance(manifest,dict) or manifest.get('schemaVersion')!=1 or
+        manifest.get('scope')!='local-development-override' or
+        manifest.get('plugin')!='CopiMineEndEvent' or manifest.get('minecraftVersion')!='26.3' or
+        any(not isinstance(manifest.get(key),str) or not manifest[key].strip() for key in required_strings) or
+        not isinstance(manifest.get('builtJarSize'),int) or isinstance(manifest.get('builtJarSize'),bool) or
+        not 0<manifest['builtJarSize']<100_000_000 or
+        not isinstance(manifest.get('sourceJavaFileCount'),int) or isinstance(manifest.get('sourceJavaFileCount'),bool) or
+        manifest['sourceJavaFileCount']<=0 or not isinstance(manifest.get('sourceWorkingTreeDirty'),bool) or
+        not re.fullmatch(r'[0-9a-f]{64}',manifest['builtJarSha256']) or
+        not re.fullmatch(r'[0-9a-f]{128}',manifest['builtJarSha512']) or
+        not re.fullmatch(r'[0-9a-f]{64}',manifest['replacedJarSha256']) or
+        not re.fullmatch(r'[0-9a-f]{64}',manifest['sourceTreeSha256']) or
+        not re.fullmatch(r'[0-9a-f]{40,64}',manifest['sourceHead'])):
+        raise ValueError('Local End Event build receipt is malformed')
+
+    active_path=server/'plugins'/(record.get('runtimeFilename') or record['filename'])
+    _ensure_regular_file(active_path,'local End Event plugin JAR')
+    active_resolved=active_path.resolve(strict=True)
+    try:
+        receipt_runtime=Path(manifest['runtimePath']).resolve(strict=True)
+    except (OSError,RuntimeError) as error:
+        raise ValueError('Local End Event build receipt has an invalid runtime path') from error
+    if receipt_runtime!=active_resolved or not active_resolved.is_relative_to(server_root):
+        raise ValueError('Local End Event build receipt points to a different runtime JAR')
+    if (active_path.stat().st_size!=manifest['builtJarSize'] or
+        digest(active_path,'sha256')!=manifest['builtJarSha256'] or
+        digest(active_path,'sha512')!=manifest['builtJarSha512']):
+        raise ValueError('Local End Event build does not match its receipt')
+    if manifest['replacedJarSha256']!=record['sha256']:
+        raise ValueError('Local End Event build receipt does not name the pinned candidate it replaced')
+
+    backup_root=server/'migration-backups'/'plugins'
+    try:
+        resolved_backup_root=backup_root.resolve(strict=True)
+        backup_candidate=Path(manifest['replacementBackup'])
+        _ensure_regular_file(backup_candidate,'pinned End Event plugin backup')
+        backup_path=backup_candidate.resolve(strict=True)
+    except (OSError,RuntimeError) as error:
+        raise ValueError('Local End Event build backup is missing or invalid') from error
+    if (not resolved_backup_root.is_relative_to(server_root) or backup_path==resolved_backup_root or
+        not backup_path.is_relative_to(resolved_backup_root)):
+        raise ValueError('Local End Event build backup is outside the runtime plugin backup directory')
+    if (backup_path.name!=(record.get('runtimeFilename') or record['filename']) or
+        digest(backup_candidate,'sha256')!=record['sha256'] or digest(backup_candidate,'sha512')!=record['sha512']):
+        raise ValueError('Local End Event build backup does not match the pinned candidate')
+
+    return {
+        'pluginName':record['pluginName'],
+        'filename':record.get('runtimeFilename') or record['filename'],
+        'sha256':manifest['builtJarSha256'],
+        'sha512':manifest['builtJarSha512'],
+    }
+
+
+def validate_active_plugin_inventory(server,records,*,unauthenticated_test_mode=False,local_end_event_build=False):
     server=Path(server)
     selected=select_runtime_records(records,unauthenticated_test_mode=unauthenticated_test_mode)
     expected={}
@@ -131,6 +207,11 @@ def validate_active_plugin_inventory(server,records,*,unauthenticated_test_mode=
             raise ValueError('Locked plugin inventory contains duplicate identities or filenames')
         expected[name]={'pluginName':name,'filename':filename,'sha256':sha256,'sha512':sha512}
 
+    active_expected=expected
+    if local_end_event_build:
+        active_expected=dict(expected)
+        active_expected['CopiMineEndEvent']=_local_end_event_build_record(server,expected)
+
     plugins=server/'plugins'
     try:
         info=plugins.lstat()
@@ -143,7 +224,7 @@ def validate_active_plugin_inventory(server,records,*,unauthenticated_test_mode=
         raise ValueError('Active plugin inventory directory is not a plain directory')
     actual=capture_plugin_inventory(plugins)
     actual_by_name={row['pluginName']:row for row in actual}
-    if len(actual_by_name)!=len(actual) or actual_by_name!=expected:
+    if len(actual_by_name)!=len(actual) or actual_by_name!=active_expected:
         raise ValueError('Active plugin inventory differs from the locked 26.3 candidates')
 
     receipt_path=server/'migration-plugin-receipt.json'
@@ -1910,13 +1991,18 @@ def main(root=None,argv=None):
                            help='Validate and print the effective loopback-only server settings for the local launcher')
     parser.add_argument('--unauthenticated-test-runtime',action='store_true',
                         help='Disable AuthMe and AuthEffects only in the loopback-only local test runtime; never use this option for a public server')
+    parser.add_argument('--local-end-event-build',action='store_true',
+                        help='Allow one exact, receipted local CopiMineEndEvent build while keeping all other plugin pins enforced; startup validation only')
     args=parser.parse_args(argv)
+    if args.local_end_event_build and (not args.startup_settings_json or args.unauthenticated_test_runtime):
+        parser.error('--local-end-event-build is supported only for startup validation with the full plugin set')
     root=Path(root).resolve() if root is not None else Path(__file__).resolve().parents[2]
     if args.startup_settings_json:
         server=root/'local-runtime/end-rift-server-26.3'
         records=load_install_records(root)
         actual=validate_active_plugin_inventory(
-            server,records,unauthenticated_test_mode=args.unauthenticated_test_runtime)
+            server,records,unauthenticated_test_mode=args.unauthenticated_test_runtime,
+            local_end_event_build=args.local_end_event_build)
         settings=runtime_startup_settings(server)
         if any(row['pluginName'].casefold()=='voicechat' for row in actual):
             settings.update(configure_loopback_voicechat(server))

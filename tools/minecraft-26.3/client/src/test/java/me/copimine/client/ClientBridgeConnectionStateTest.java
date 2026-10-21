@@ -58,7 +58,7 @@ class ClientBridgeConnectionStateTest {
         state.setControlHelloId(streamId(23));
         assertEquals(1, state.nextRequestCounter(ClientBridgeConnectionState.Sender.END_EVENT));
         assertEquals(1, state.nextRequestCounter(ClientBridgeConnectionState.Sender.NARCOTICS));
-        assertTrue(state.recordGeneration(EVENT_ID, 4));
+        assertTrue(state.recordGeneration(4));
         ClientBridgeConnectionState.QueueTicket queuedBeforeSameSession = state.captureQueueTicket();
         ClientBridgeConnectionState.QueueTicket queuedBeforeReplacement = state.captureQueueTicket();
 
@@ -87,9 +87,12 @@ class ClientBridgeConnectionStateTest {
         assertEquals(1, state.seenStreamCount(ClientBridgeConnectionState.Sender.NARCOTICS));
         assertFalse(state.installStream(ClientBridgeConnectionState.Sender.END_EVENT, endEventStreamText));
         assertFalse(state.installStream(ClientBridgeConnectionState.Sender.NARCOTICS, narcoticsStreamText));
-        assertTrue(state.recordGeneration(EVENT_ID, 4));
-        assertFalse(state.recordGeneration(EVENT_ID, 3));
-        assertEquals(OptionalLong.of(4), state.generationHighWater(EVENT_ID));
+        assertEquals(OptionalLong.of(4), state.generationHighWater());
+        assertTrue(state.installStream(ClientBridgeConnectionState.Sender.END_EVENT,
+                encodeStreamId(streamId(113))));
+        assertEquals(OptionalLong.empty(), state.generationHighWater());
+        assertTrue(state.recordGeneration(3));
+        assertEquals(OptionalLong.of(3), state.generationHighWater());
 
         assertTrue(state.installStream(ClientBridgeConnectionState.Sender.END_EVENT, encodeStreamId(streamId(13))));
         assertEquals(1, state.nextRequestCounter(ClientBridgeConnectionState.Sender.END_EVENT));
@@ -134,33 +137,36 @@ class ClientBridgeConnectionStateTest {
     }
 
     @Test
-    void generationHighWaterIsBoundedRetainedAcrossSessionReplacementAndResetOnConnectionChange() {
+    void generationHighWaterUsesConstantSpaceAndResetsOnlyForANewEndEventStream() {
         ClientBridgeConnectionState state = openAndVerify(SESSION_ONE);
+        assertTrue(state.installStream(ClientBridgeConnectionState.Sender.END_EVENT,
+                encodeStreamId(streamId(991))));
 
-        UUID sentinelEvent = uuid(999);
-        assertFalse(state.recordGeneration(sentinelEvent, Long.MAX_VALUE));
-        assertEquals(OptionalLong.empty(), state.generationHighWater(sentinelEvent));
+        assertFalse(state.recordGeneration(Long.MAX_VALUE));
+        assertEquals(OptionalLong.empty(), state.generationHighWater());
 
-        for (int index = 0; index < 64; index++) {
-            assertTrue(state.recordGeneration(uuid(index + 100), index + 1L));
+        for (int generation = 1; generation <= 96; generation++) {
+            assertTrue(state.recordGeneration(generation));
         }
-        assertFalse(state.recordGeneration(uuid(1000), 1));
-        assertEquals(64, state.generationCount());
-        assertTrue(state.recordGeneration(uuid(100), 1));
-        assertTrue(state.recordGeneration(uuid(100), 99));
-        assertFalse(state.recordGeneration(uuid(100), 98));
-        assertEquals(OptionalLong.of(99), state.generationHighWater(uuid(100)));
+        assertTrue(state.recordGeneration(96));
+        assertFalse(state.recordGeneration(95));
+        assertEquals(OptionalLong.of(96), state.generationHighWater());
 
         state.verifiedSessionChanged(SESSION_TWO);
-        assertEquals(64, state.generationCount());
-        assertEquals(OptionalLong.of(99), state.generationHighWater(uuid(100)));
-        assertFalse(state.recordGeneration(uuid(1000), 1));
+        assertEquals(OptionalLong.of(96), state.generationHighWater());
+        assertFalse(state.recordGeneration(1));
+        assertTrue(state.installStream(ClientBridgeConnectionState.Sender.END_EVENT,
+                encodeStreamId(streamId(997))));
+        assertEquals(OptionalLong.empty(), state.generationHighWater());
+        assertTrue(state.recordGeneration(2));
 
         state.close();
         state.open(PLAYER_ID);
         state.verifiedSessionChanged(SESSION_ONE);
-        assertEquals(0, state.generationCount());
-        assertTrue(state.recordGeneration(uuid(1000), 1));
+        assertTrue(state.installStream(ClientBridgeConnectionState.Sender.END_EVENT,
+                encodeStreamId(streamId(998))));
+        assertEquals(OptionalLong.empty(), state.generationHighWater());
+        assertTrue(state.recordGeneration(1));
     }
 
     @Test
@@ -172,7 +178,7 @@ class ClientBridgeConnectionStateTest {
         state.setOutstandingRequestId(ClientBridgeConnectionState.Sender.END_EVENT, streamId(42));
         state.setControlHelloId(streamId(43));
         assertEquals(1, state.nextRequestCounter(ClientBridgeConnectionState.Sender.END_EVENT));
-        assertTrue(state.recordGeneration(EVENT_ID, 6));
+        assertTrue(state.recordGeneration(6));
         ClientBridgeConnectionState.QueueTicket queued = state.captureQueueTicket();
         long closedEpoch = state.currentConnection().orElseThrow().localEpoch();
 
@@ -187,15 +193,14 @@ class ClientBridgeConnectionStateTest {
         assertEquals(Optional.empty(), state.controlHelloId());
         assertEquals(0, state.lastRequestCounter(ClientBridgeConnectionState.Sender.END_EVENT));
         assertEquals(0, state.seenStreamCount(ClientBridgeConnectionState.Sender.END_EVENT));
-        assertEquals(0, state.generationCount());
-        assertEquals(OptionalLong.empty(), state.generationHighWater(EVENT_ID));
+        assertEquals(OptionalLong.empty(), state.generationHighWater());
 
         ClientBridgeConnectionState.Connection reopened = state.open(PLAYER_ID);
         assertTrue(reopened.localEpoch() > closedEpoch);
         assertTrue(state.isCurrent(state.captureQueueTicket()));
         state.verifiedSessionChanged(SESSION_ONE);
         assertTrue(state.installStream(ClientBridgeConnectionState.Sender.END_EVENT, streamText));
-        assertTrue(state.recordGeneration(EVENT_ID, 1));
+        assertTrue(state.recordGeneration(1));
     }
 
     @Test
@@ -211,7 +216,7 @@ class ClientBridgeConnectionStateTest {
         assertTrue(next.localEpoch() > firstEpoch);
         assertFalse(state.isCurrent(firstConnection));
         assertEquals(0, state.seenStreamCount(ClientBridgeConnectionState.Sender.END_EVENT));
-        assertEquals(0, state.generationCount());
+        assertEquals(OptionalLong.empty(), state.generationHighWater());
     }
 
     @Test

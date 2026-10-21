@@ -29,6 +29,7 @@ def pack_probe(tmp_path_factory):
         "boolean isCurrentWave4PressureSpawnEntity(",
         "int clearWave4PressurePackEntities(", "boolean isWave4PressurePackEntity(",
         "void reconcileWave4PressureSpawnSlots(", "String inferredWave4Role(",
+        "void configureWave4PressureEntity(",
         "void tagWave4Role(", "void tagWave4PressureSlot(",
         "boolean tickWave4ObeliskAssault()", "void clearWave4Obelisks(",
         "boolean isLiveOwnedEntity(",
@@ -40,7 +41,8 @@ def pack_probe(tmp_path_factory):
     java = directory / "Wave4PackRuntimeProbe.java"
     java.write_text(template.replace("// PRODUCTION_METHODS", "\n".join(
         method(source, signature) for signature in signatures) + "\n" + completion), encoding="utf-8")
-    policies = ["Wave4PressurePackPolicy", "WaveMechanicsPolicy", "PressureBudgetController",
+    policies = ["Wave4PressurePackPolicy", "WaveMechanicsPolicy", "WaveScalingPolicy",
+                "WaveDamagePolicy", "PressureBudgetController",
                 "ObeliskScalingPolicy", "ObeliskFireDirectorPolicy", "EventPhase"]
     result = subprocess.run(["javac", "-J-Xmx128m", "-encoding", "UTF-8", "-d", str(directory),
                              *[str(DOMAIN / (name + ".java")) for name in policies], str(java)],
@@ -50,6 +52,7 @@ def pack_probe(tmp_path_factory):
 
 
 @pytest.mark.parametrize("scenario", [
+    "pressure-matrix",
     "success", "first", "middle", "last", "all", "backoff", "exhaustion", "permanent",
     "lost-slot", "registration-refused", "duplicate-slot", "restart", "reset", "obsolete-generation", "obelisk-complete",
     "synchronous-slot-loss", "throw-after-partial-success", "throw-preserves-prior-slot",

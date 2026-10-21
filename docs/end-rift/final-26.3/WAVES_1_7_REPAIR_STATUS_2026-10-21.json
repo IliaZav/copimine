@@ -1,0 +1,211 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-21",
+  "repository": {
+    "path": "D:/Desktop/Copimine/copimine-source-of-truth",
+    "branch": "codex/copimine-source-of-truth-20261020",
+    "baseCommit": "04a006c1f295650b055cfef1cab22e82f90effb8",
+    "implementationCommit": "7fb4cb3360bd58fc1ac1b03af3c3183f5c4f243f",
+    "pushed": false
+  },
+  "status": {
+    "sourceImplementation": "implemented_and_committed",
+    "wavePolicyAndAdapterGate": "passed",
+    "fullPythonSuite": "partial_with_remaining_failures",
+    "liveWaveAcceptance": "incomplete",
+    "nativeVerified": false
+  },
+  "waves": [
+    {
+      "wave": 1,
+      "summary": "Carrier custody, charge ownership, recovery, and delivery lifecycle fencing added with policy/runtime coverage."
+    },
+    {
+      "wave": 2,
+      "summary": "45-second hunt rotation contract, server-authored phantom layout/materialization, bounded client rendering, activation, and event/generation stale-packet fences added."
+    },
+    {
+      "wave": 3,
+      "summary": "Sequential portal capture and portal-elite/Rift Giant policies added with runtime contract probes."
+    },
+    {
+      "wave": 4,
+      "summary": "Bounded pressure packs, retries, obelisk assault, physical reflected fireballs, and bot reflection behavior covered."
+    },
+    {
+      "wave": 5,
+      "summary": "Black-fog timing, safe-zone capacity, and coordinator lifecycle policies/adapters covered."
+    },
+    {
+      "wave": 6,
+      "summary": "Ritual Sphere capture, prisoner targeting, five-caster progression, spell/channel admission, physical anvil impact confirmation, and runtime lifecycle added."
+    },
+    {
+      "wave": 7,
+      "summary": "Chamber/trial lifecycle, participant return, cleanup, and no-generic-elite constraints covered."
+    }
+  ],
+  "verification": {
+    "endRiftEventGate": {
+      "command": "tests/RunEndRiftEventChecks.ps1 -SkipBuilds",
+      "result": "passed",
+      "exitCode": 0,
+      "pythonContractTestsPassed": 328,
+      "pythonContractWarnings": 79,
+      "javaPolicyAndRuntimeProbes": "passed"
+    },
+    "clientGradle": {
+      "command": "gradle -p tools/minecraft-26.3/client --no-daemon test build",
+      "result": "passed",
+      "java": "Temurin 25.0.4.1",
+      "gradle": "9.8.1"
+    },
+    "wave2FocusedPython": {
+      "result": "passed",
+      "passed": 7
+    },
+    "migrationProfileTests": {
+      "result": "passed",
+      "passed": 48,
+      "skipped": 1
+    },
+    "postRunFocusedRetests": {
+      "clientArtifactDocumentation": {
+        "result": "passed",
+        "passed": 1
+      },
+      "postgresJunctionGuard": {
+        "result": "passed",
+        "passed": 1
+      }
+    },
+    "fullPythonSuite": {
+      "command": "py -3.13 -m pytest -q --basetemp=build/pytest-solo-full-final-20261021",
+      "runResult": {
+        "passed": 2244,
+        "skipped": 8,
+        "failed": 7,
+        "warnings": 124,
+        "subtestsPassed": 2
+      },
+      "twoFailuresPassedInFocusedRetests": [
+        "tests/test_ci_release_job_contract.py::test_client_artifact_size_documentation_matches_the_profile_lock",
+        "tests/test_minecraft_26_3_custom_plugin_database_contracts.py::test_migration_postgres_initializer_rejects_junction_ancestor_before_writing"
+      ],
+      "remainingFailures": [
+        "tests/test_copimine_client_mob_artifact.py::test_dev_jar_is_compiler_output_and_remap_output_is_newer",
+        "tests/test_integrated_artifact_catalog.py::test_latest_scythe_and_shield_catalog_values_are_preserved",
+        "tests/test_minecraft_migration_server_plugins.py::test_all_remaining_first_party_26_3_plugins_track_their_exact_build_and_runtime_jars",
+        "tests/test_minecraft_migration_server_plugins.py::test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar",
+        "tests/test_minecraft_migration_server_plugins.py::test_active_26_3_plugin_directory_matches_the_unique_locked_inventory"
+      ],
+      "fullSuiteRerunAfterFocusedRetests": false
+    },
+    "securityAudit": {
+      "command": "py -3.13 -m pip_audit -r requirements-security.txt",
+      "result": "passed",
+      "knownVulnerabilities": 0,
+      "scope": "requirements-security.txt"
+    },
+    "codeRabbit": {
+      "result": "completed",
+      "issues": 0,
+      "reviewedFiles": 113
+    }
+  },
+  "runtime": {
+    "postgres": {
+      "version": "16.15",
+      "host": "127.0.0.1",
+      "port": 55434,
+      "database": "copimine_migration_test",
+      "role": "copimine_migration_test",
+      "schema": "copimine_migration_26_3_candidate",
+      "listening": true,
+      "authenticatedReadOnlyCheck": true,
+      "authentication": "scram-sha-256",
+      "baseTables": 102,
+      "grimMigrationTables": 6,
+      "grimPendingMigrations": 0,
+      "startupWarning": "One Windows shared-memory reservation warning (error code 487); PostgreSQL remained ready.",
+      "privateValuesIncluded": false
+    },
+    "paper26_3": {
+      "version": "26.3",
+      "build": 205,
+      "host": "127.0.0.1",
+      "port": 25567,
+      "listening": true,
+      "fullPluginSet": true,
+      "databaseBackedPluginsReady": [
+        "CopiMineEconomyCore",
+        "CopiMineElectionCore",
+        "CopiMineArtifacts",
+        "CopiMineUltimateAdminPlus"
+      ],
+      "endEventPhase": "UNCONFIGURED",
+      "installedEndEventJarSha256": "ede85b42fd29c8d917b552a5d4028fa9a9ed9a129f8db0b6982f2b93c19893bf",
+      "currentCandidateJarSha256": "9274112cc63ed39e62b1a6e3f5d7284b9d92876137c248f7507d65b0b61b1118",
+      "currentCandidateLoaded": false,
+      "v4SignerReady": false
+    },
+    "isolatedCandidateServer": {
+      "host": "127.0.0.1",
+      "port": 25566,
+      "currentEndEventCandidateLoaded": true,
+      "rconStatus": {
+        "state": "COLLECTING",
+        "wave": 0,
+        "requiredPlayers": 2,
+        "participants": 0,
+        "eventMobs": 0
+      },
+      "liveWaveStarted": false
+    },
+    "officialTwoPlayerBots": {
+      "result": "failed_before_wave_start",
+      "reason": "Timed out waiting for authenticated V4 bridge readiness; signer was unavailable."
+    },
+    "nativeGameplayAndScreenshots": {
+      "result": "not_performed",
+      "nativeVerified": false
+    },
+    "wavePerformanceMeasurements": "not_available_without_a_live_wave_run"
+  },
+  "artifacts": {
+    "paper": {
+      "filename": "paper-26.3-205.jar",
+      "size": 55242379,
+      "sha256": "a0a58f532f08054ea92eb916d3edb6ed3c86429d77175317304f6e995cce9968"
+    },
+    "endEvent": {
+      "filename": "CopiMineEndEvent-26.3.jar",
+      "size": 1851218,
+      "sha256": "9274112cc63ed39e62b1a6e3f5d7284b9d92876137c248f7507d65b0b61b1118",
+      "sha512": "2ebe3998459f0fd0ff9e094aec685430d46e59209b2e924b2d3ba4502ffa5fa3e8a496247277293022c5b563d41aefdd66749f5777b68e8d264a51c69f77daa5"
+    },
+    "client": {
+      "filename": "CopiMineClient-0.1.3+26.3.jar",
+      "size": 15008511,
+      "sha256": "dbe0cad70a8772ff9caea4e7b180ee61f649e14932249386f32526e01c1f0e9c",
+      "sha512": "fac8a2282f2e19ee16117655dbfb65686fab6377f2d01e9ca38e55a084eb8e1c7603f4c96f482ff329d1d4ec71f121438d2c53031097ea4c7cc9ce6e75e09a71"
+    },
+    "resourcePack": {
+      "filename": "CopiMineResourcePack-26.3.zip",
+      "size": 36252428,
+      "sha256": "7229299416f31e9c22086b20b2adf397b8b5d3d4cf42ef969517b7f484173ca1"
+    }
+  },
+  "review": {
+    "subagentsStartedByThisAgent": 0,
+    "nativeVerificationChecklist": "docs/end-rift/final-26.3/VISUAL_VERIFICATION_WAVES_1_7.md",
+    "productionDatabaseOrWorldModified": false
+  },
+  "remainingWork": [
+    "Provision the existing V4 signer through the approved local secret mechanism without changing the pinned trust anchor or bypassing fail-closed checks.",
+    "Use a safe restart window to install the current locked plugin inventory into the intended runtime and confirm the current EndEvent candidate is loaded.",
+    "Rerun official two-player bot acceptance, then the required larger rosters and per-wave performance measurements.",
+    "Perform and inspect the native Minecraft scenarios twice; preserve nativeVerified=false until genuine gameplay evidence passes.",
+    "Resolve the five remaining full-suite failures and rerun the complete Python suite."
+  ]
+}

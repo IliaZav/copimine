@@ -8286,12 +8286,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!(sender instanceof ConsoleCommandSender)
                 && !(sender instanceof RemoteConsoleCommandSender)
                 && !(sender instanceof Player && sender.hasPermission("copimine.endevent.admin")
-                && args.length > 2 && "killcaster".equalsIgnoreCase(args[2]))) {
+                && args.length > 2 && ("killcaster".equalsIgnoreCase(args[2])
+                || "killguard".equalsIgnoreCase(args[2])))) {
             message(sender, "&cLOCAL_TEST_HOOK доступен только серверной консоли.");
             return;
         }
         if (args.length < 3) {
-            message(sender, "&e/cmend test ritual caster <guarded|exposed|awakened> | force <barrage|gravity|brand|chains> | controls clear | complete");
+            message(sender, "&e/cmend test ritual caster <guarded|exposed|awakened> | force <barrage|gravity|brand|chains> | killcaster <1-5> | killguard <caster 1-5> <guard 1-3> | controls clear | complete");
             return;
         }
         String action = args[2].toLowerCase(Locale.ROOT);
@@ -8300,6 +8301,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             message(sender, killRitualCasterForTest(slot)
                     ? "&aТестовый маг побеждён через обычный путь смерти."
                     : "&cНужна активная тестовая волна 6 и живой маг: /cmend test ritual killcaster <1-5>");
+            return;
+        }
+        if ("killguard".equals(action)) {
+            int casterSlot = parseInt(args, 3, 0) - 1;
+            int guardSlot = parseInt(args, 4, 0) - 1;
+            message(sender, killRitualGuardForTest(casterSlot, guardSlot)
+                    ? "&aТестовый защитник побеждён через обычный путь смерти."
+                    : "&cНужны активная тестовая волна 6 и живой защитник: /cmend test ritual killguard <caster 1-5> <guard 1-3>");
             return;
         }
         if ("caster".equals(action)) {
@@ -8341,7 +8350,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if (!"force".equals(action) || args.length < 4) {
-            message(sender, "&e/cmend test ritual caster <guarded|exposed|awakened> | force <barrage|gravity|brand|chains> | controls clear | complete");
+            message(sender, "&e/cmend test ritual caster <guarded|exposed|awakened> | force <barrage|gravity|brand|chains> | killcaster <1-5> | killguard <caster 1-5> <guard 1-3> | controls clear | complete");
             return;
         }
         RitualCasterTacticsPolicy.Role role = switch (args[3].toLowerCase(Locale.ROOT)) {
@@ -8376,6 +8385,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             Entity entity = ownedEntities.get(id);
             if (!(entity instanceof LivingEntity caster) || !isLiveOwnedEntity(id)) return false;
             caster.setHealth(0.0D);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Retire one selected guard through the same owned-entity death handler as
+     * gameplay. Only the local sandbox and the admin test-command gate may use it.
+     */
+    private boolean killRitualGuardForTest(int casterSlot, int guardSlot) {
+        if (!testWaveFrontVisualMode || !ritualWaveActive()
+                || casterSlot < 0 || casterSlot >= RitualCasterProgressionPolicy.TOTAL_CASTERS
+                || guardSlot < 0 || guardSlot >= RitualSphereScalingPolicy.GUARDS_PER_CASTER) return false;
+        for (UUID id : Set.copyOf(ritualGuardUuids)) {
+            UUID casterId = ritualGuardCasters.get(id);
+            if (casterId == null || ritualCasterSlots.getOrDefault(casterId, -1) != casterSlot) continue;
+            Entity entity = ownedEntities.get(id);
+            if (!(entity instanceof LivingEntity guard) || !isLiveOwnedEntity(id)) continue;
+            if (readInt(guard, keyRitualGuardSlot, -1) != guardSlot) continue;
+            guard.setHealth(0.0D);
             return true;
         }
         return false;
@@ -27151,6 +27180,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return lockFallingAnvilCluster(participants, null);
     }
 
+    /**
+     * The 2-3 participant matrix drops one Anvil over each free player.  Two
+     * players can share a horizontal column on different arena levels, so the
+     * identity of a landing point is its full x/y/z position, not its column.
+     */
+    private static List<LandingPoint> selectSingleAnvilLandingPoints(List<LandingPoint> candidates) {
+        List<LandingPoint> selected = new ArrayList<>();
+        if (candidates == null) return List.of();
+        for (LandingPoint point : candidates) {
+            if (point != null && !selected.contains(point)) selected.add(point);
+        }
+        return List.copyOf(selected);
+    }
+
     private AnvilCluster lockFallingAnvilCluster(int participants, Location avoidCenter) {
         List<Player> targets = eligibleFallingAnvilTargets(participants);
         if (targets.isEmpty()) return null;
@@ -27179,15 +27222,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Set<String> occupiedColumns = new HashSet<>();
         int eligibleTargets = 0;
         if (participants <= 3) {
+            List<LandingPoint> candidates = new ArrayList<>();
             for (Player target : targets) {
-                LandingPoint point = safeLandingPoint(target.getLocation().getWorld(),
+                candidates.add(safeLandingPoint(target.getLocation().getWorld(),
                         target.getLocation().getBlockX(), target.getLocation().getBlockZ(),
-                        target.getLocation().getBlockY());
-                if (point == null || !occupiedColumns.add(landingColumn(point))) continue;
-                locked.add(point);
-                eligibleTargets++;
+                        target.getLocation().getBlockY()));
             }
-            return eligibleTargets == 0 ? null : new AnvilCluster(eligibleTargets, locked);
+            List<LandingPoint> selected = selectSingleAnvilLandingPoints(candidates);
+            return selected.isEmpty() ? null : new AnvilCluster(selected.size(), selected);
         }
 
         int[][] centerOffsets = {{0, 0}, {3, 0}, {-3, 0}, {0, 3}, {0, -3},

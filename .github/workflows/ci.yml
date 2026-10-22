@@ -320,7 +320,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          python -m pip install --disable-pip-version-check 'Pillow==12.3.0' 'PyYAML==6.0.2' 'pytest==9.1.1'
+          python -m pip install --disable-pip-version-check 'Pillow==13.0.0' 'PyYAML==6.0.2' 'pytest==9.1.1'
           if ($LASTEXITCODE -ne 0) { throw 'Release-asset Python dependencies failed to install.' }
       - name: Set up pinned Java 21 for plugin releases
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0

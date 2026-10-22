@@ -185,7 +185,7 @@ def test_java_release_job_prepares_python_and_asserts_resource_pack_artifact() -
     java_job = text.split("\n  java-plugins:\n", 1)[1]
 
     setup = "uses: actions/setup-python@v5"
-    install = "python -m pip install --disable-pip-version-check 'Pillow==12.3.0'"
+    install = "python -m pip install --disable-pip-version-check 'Pillow==13.0.0'"
     build = "build-resourcepack.ps1"
     archive_assertion = "Resource pack archive was not created"
     sidecar_assertion = "Resource-pack digest sidecar was not created"
@@ -287,7 +287,7 @@ def test_candidate_build_pins_pillow_before_migration_pack_generation() -> None:
     requirements = (ROOT / "admin-web/requirements.txt").read_text(encoding="utf-8")
     candidate_builder = (ROOT / "scripts/minecraft/PrepareMigrationCandidates.ps1").read_text(encoding="utf-8")
 
-    assert "Pillow==12.3.0" in requirements
+    assert "Pillow==13.0.0" in requirements
     assert "resourcepacks/build-migration-pack.py" in candidate_builder
 
 

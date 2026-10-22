@@ -19,7 +19,7 @@ $branchLines = @(& git -C $root branch --show-current 2>$null)
 $branchExitCode = $LASTEXITCODE
 $branch = if ($branchLines.Count -gt 0) { ([string]$branchLines[0]).Trim() } else { '' }
 if ($branchExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($branch) -or
-    $branch -notin @('codex/end-rift-event', 'codex/end-rift-26-3-integrated-final')) {
+    $branch -notin @('codex/end-rift-event', 'codex/end-rift-26-3-integrated-final', 'codex/copimine-source-of-truth-20261020')) {
   throw "Refused Git branch '$branch'."
 }
 $runtimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path

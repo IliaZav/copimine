@@ -8,7 +8,7 @@ param(
   # not invalidated by the bot's own lifetime expiring.
   [ValidateRange(240, 600)]
   [int]$BotDurationSeconds = 300,
-  [string]$ExpectedBranch = 'codex/end-rift-26-3-integrated-final'
+  [string]$ExpectedBranch = 'codex/copimine-source-of-truth-20261020'
 )
 
 # Local-only spell/music smoke. It talks to the isolated Paper RCON endpoint,

@@ -103,8 +103,8 @@ if ((Get-Content -LiteralPath $eventConfig -Raw) -notmatch '(?m)^environment:\s*
 }
 
 $branch = (& git -C $worktreeRoot branch --show-current 2>$null).Trim()
-if ($LASTEXITCODE -ne 0 -or $branch -notin @('codex/end-rift-event', 'codex/end-rift-26-3-integrated-final')) {
-  throw "Refused to start unexpected Git branch '$branch'; expected codex/end-rift-event or codex/end-rift-26-3-integrated-final."
+if ($LASTEXITCODE -ne 0 -or $branch -notin @('codex/end-rift-event', 'codex/end-rift-26-3-integrated-final', 'codex/copimine-source-of-truth-20261020')) {
+  throw "Refused to start unexpected Git branch '$branch'; expected codex/end-rift-event, codex/end-rift-26-3-integrated-final or codex/copimine-source-of-truth-20261020."
 }
 $head = (& git -C $worktreeRoot rev-parse --short=12 HEAD 2>$null).Trim()
 Write-Host "Using local worktree branch=$branch HEAD=$head"

@@ -3,7 +3,7 @@ param(
   [ValidatePattern('^[A-Za-z0-9_]{1,16}$')]
   [string]$BotName = 'EndRiftMobNow',
   [int]$BotDurationSeconds = 30,
-  [string]$ExpectedBranch = 'codex/end-rift-26-3-integrated-final'
+  [string]$ExpectedBranch = 'codex/copimine-source-of-truth-20261020'
 )
 
 # This is a local red/green runtime contract. It deliberately uses an

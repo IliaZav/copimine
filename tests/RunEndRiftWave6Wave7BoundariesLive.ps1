@@ -662,7 +662,7 @@ function Wait-Log-MarkerIncrease {
 $names = @($FirstBotName, $SecondBotName)
 if ($names[0] -eq $names[1]) { throw 'Boundary probe players must be distinct.' }
 $branch = (& git -C $root branch --show-current 2>$null).Trim()
-if ($LASTEXITCODE -ne 0 -or $branch -notin @('codex/end-rift-event', 'codex/end-rift-26-3-integrated-final')) {
+if ($LASTEXITCODE -ne 0 -or $branch -notin @('codex/end-rift-event', 'codex/end-rift-26-3-integrated-final', 'codex/copimine-source-of-truth-20261020')) {
   throw "Refused Git branch '$branch'."
 }
 $properties = Get-Content -LiteralPath (Join-Path $serverDir 'server.properties') -Raw

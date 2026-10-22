@@ -50,10 +50,28 @@ def test_wave6_start_stops_if_owned_barrier_journal_cannot_be_restored() -> None
     assert body.index(checked_cleanup) < body.index('clearLegacyWave3PortalArtifacts("wave6-start")')
 
 
-def test_wave6_live_probe_allows_the_integrated_end_rift_branch() -> None:
+def test_wave6_live_probe_allows_the_current_source_of_truth_branch() -> None:
     probe = read(ROOT / "tests/RunEndRiftWave6RitualLive.ps1")
+    assert "codex/copimine-source-of-truth-20261020" in probe
     assert "codex/end-rift-26-3-integrated-final" in probe
     assert "codex/end-rift-event" in probe
+
+
+def test_wave6_live_harnesses_allow_the_current_source_of_truth_branch() -> None:
+    for name in (
+        "RunEndRiftWave6Wave7BoundariesLive.ps1",
+        "RunEndRiftAiPhasesLive.ps1",
+        "RunEndRiftSpellMatrixLive.ps1",
+        "RunEndRiftMobCombatLive.ps1",
+        "StartEndRiftLocalUserSession.ps1",
+        "RunEndRiftLocalNoAuthSmoke.ps1",
+    ):
+        probe = read(ROOT / "tests" / name)
+        assert "codex/copimine-source-of-truth-20261020" in probe, name
+    native = read(ROOT / "tools/end-rift-native-visual/CaptureEndRiftF2.ps1")
+    assert "codex/copimine-source-of-truth-20261020" in native
+    native_config = read(ROOT / "tools/end-rift-native-visual/config.example.json")
+    assert "codex/copimine-source-of-truth-20261020" in native_config
 
 
 def test_bootstrap_clears_stale_wave7_walls_and_wave3_portals_outside_wave7() -> None:

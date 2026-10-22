@@ -64,7 +64,7 @@ function Wait-Players([int]$Minimum, [int]$Seconds) {
 }
 
 $branch = (& git -C $root branch --show-current).Trim()
-$allowedBranches = @('codex/end-rift-event', 'codex/end-rift-26-3-integrated-final')
+$allowedBranches = @('codex/end-rift-event', 'codex/end-rift-26-3-integrated-final', 'codex/copimine-source-of-truth-20261020')
 if ($allowedBranches -notcontains $branch) { throw "Refused branch '$branch'." }
 if ((Get-Content -LiteralPath $pluginConfig -Raw) -notmatch '(?m)^environment:\s*local\s*$') {
   throw 'Refused: End Rift config is not environment: local.'

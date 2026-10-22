@@ -21,12 +21,12 @@ $expectedWorktree = (Resolve-Path -LiteralPath (Join-Path $scriptDirectory '..\.
 if (-not [string]::Equals($worktree, $expectedWorktree, [StringComparison]::OrdinalIgnoreCase)) {
     throw "Refused config Worktree outside this helper's checkout: $worktree"
 }
-if ([string]$c.ExpectedBranch -ne 'codex/end-rift-event') {
+if ([string]$c.ExpectedBranch -ne 'codex/copimine-source-of-truth-20261020') {
     throw "Refused unexpected ExpectedBranch: $($c.ExpectedBranch)"
 }
 $branch = (& git -C $worktree branch --show-current 2>$null | Out-String).Trim()
-if ($LASTEXITCODE -ne 0 -or $branch -ne 'codex/end-rift-event') {
-    throw "Refused Git branch '$branch'; expected codex/end-rift-event."
+if ($LASTEXITCODE -ne 0 -or $branch -ne 'codex/copimine-source-of-truth-20261020') {
+    throw "Refused Git branch '$branch'; expected codex/copimine-source-of-truth-20261020."
 }
 $gitHead = (& git -C $worktree rev-parse HEAD 2>$null | Out-String).Trim()
 if ($LASTEXITCODE -ne 0 -or $gitHead -notmatch '^[0-9a-f]{40}$') {

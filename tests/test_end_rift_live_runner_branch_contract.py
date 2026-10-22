@@ -16,10 +16,10 @@ REQUIRED_BRANCH_GUARDED_RUNNERS = {
 }
 
 
-def test_active_local_runners_default_to_the_current_end_rift_branch() -> None:
+def test_active_local_runners_default_to_the_current_source_of_truth_branch() -> None:
     expected = {
-        "RunEndRiftMobCombatLive.ps1": CURRENT_END_RIFT_BRANCH,
-        "RunEndRiftSpellMatrixLive.ps1": CURRENT_END_RIFT_BRANCH,
+        "RunEndRiftMobCombatLive.ps1": CURRENT_SOURCE_OF_TRUTH_BRANCH,
+        "RunEndRiftSpellMatrixLive.ps1": CURRENT_SOURCE_OF_TRUTH_BRANCH,
     }
     for name, branch in expected.items():
         source = (ROOT / "tests" / name).read_text(encoding="utf-8")

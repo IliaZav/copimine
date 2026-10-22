@@ -1,5 +1,9 @@
 param(
   [string]$LegacyClientJavaHome,
+  # Explicit JDK for this gate. Hosted CI installs the pinned Temurin 25.0.4.1
+  # archive outside the checkout (JAVA_HOME_25_X64/actions/setup-java), so the
+  # local-runtime toolchain path is only a fallback for developer machines.
+  [string]$JavaHome,
   # Useful after the current process has already built every artifact: this
   # preserves the exact verification suite without redundantly compiling all
   # unrelated first-party plugins a second time.
@@ -43,31 +47,64 @@ function Get-FileSha256 {
 # names only the schema-4, seven-wave, real-health encounter. Production is
 # never started or mutated by this script.
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$javaHome = Join-Path $root 'local-runtime\toolchains\temurin-25.0.4.1\jdk-25.0.4.1+1'
-$script:javaExecutable = Join-Path $javaHome 'bin\java.exe'
-$script:javacExecutable = Join-Path $javaHome 'bin\javac.exe'
-$javaExecutableExists = Test-Path -LiteralPath $script:javaExecutable -PathType Leaf
-$javacExecutableExists = Test-Path -LiteralPath $script:javacExecutable -PathType Leaf
-if (-not $javaExecutableExists -or -not $javacExecutableExists) {
-  throw "The End Rift gate requires the pinned Temurin 25.0.4.1 toolchain under $javaHome."
+
+function Resolve-PinnedEndRiftJavaHome {
+  param(
+    [string]$Requested,
+    [Parameter(Mandatory = $true)][string]$RepositoryRoot
+  )
+
+  $defaultHome = Join-Path $RepositoryRoot 'local-runtime\toolchains\temurin-25.0.4.1\jdk-25.0.4.1+1'
+  $candidate = if ([string]::IsNullOrWhiteSpace($Requested)) { $defaultHome } else { $Requested }
+  $source = if ([string]::IsNullOrWhiteSpace($Requested)) { 'local-runtime fallback' } else { 'explicit -JavaHome' }
+  if (-not (Test-Path -LiteralPath $candidate -PathType Container)) {
+    throw "The End Rift gate requires the pinned Temurin 25.0.4.1 toolchain; $source path does not exist: $candidate"
+  }
+  $resolved = (Resolve-Path -LiteralPath $candidate).Path
+  $javaExecutable = Join-Path $resolved 'bin\java.exe'
+  $javacExecutable = Join-Path $resolved 'bin\javac.exe'
+  if (-not (Test-Path -LiteralPath $javaExecutable -PathType Leaf) -or
+      -not (Test-Path -LiteralPath $javacExecutable -PathType Leaf)) {
+    throw "The End Rift gate requires bin\java.exe and bin\javac.exe from the pinned Temurin 25.0.4.1 toolchain; $source path is incomplete: $resolved"
+  }
+
+  $previousErrorActionPreference = $ErrorActionPreference
+  try {
+    # Java writes its version to stderr; allow that diagnostic without hiding its exit code.
+    $ErrorActionPreference = 'Continue'
+    $global:LASTEXITCODE = 0
+    $javaVersion = (& $javaExecutable -version 2>&1 | Out-String)
+    $javaVersionExitCode = $LASTEXITCODE
+    $global:LASTEXITCODE = 0
+    $javacVersion = (& $javacExecutable -version 2>&1 | Out-String)
+    $javacVersionExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+  if ($javaVersionExitCode -ne 0 -or $javaVersion -notmatch 'openjdk version "25\.0\.4\.1') {
+    throw "The End Rift gate requires Temurin 25.0.4.1 for Java execution; the $source path resolved to an unexpected runtime: $resolved"
+  }
+  if ($javacVersionExitCode -ne 0 -or $javacVersion -notmatch 'javac 25\.0\.4\.1') {
+    throw "The End Rift gate requires Temurin 25.0.4.1 for Java compilation; $source path resolved to an unexpected compiler: $resolved"
+  }
+
+  return [pscustomobject]@{
+    JavaHome = $resolved
+    JavaExecutable = $javaExecutable
+    JavacExecutable = $javacExecutable
+    Source = $source
+  }
 }
-$previousErrorActionPreference = $ErrorActionPreference
-try {
-  # Java writes its version to stderr; allow that diagnostic without hiding its exit code.
-  $ErrorActionPreference = 'Continue'
-  $javaVersion = (& $script:javaExecutable -version 2>&1 | Out-String)
-  $javaVersionExitCode = $LASTEXITCODE
-} finally {
-  $ErrorActionPreference = $previousErrorActionPreference
-}
-if ($javaVersionExitCode -ne 0 -or $javaVersion -notmatch 'openjdk version "25\.0\.4\.1') {
-  throw 'The End Rift gate requires Temurin 25.0.4.1 for all Java compilation and execution.'
-}
+
+$toolchain = Resolve-PinnedEndRiftJavaHome -Requested $JavaHome -RepositoryRoot $root
+$javaHome = $toolchain.JavaHome
+$script:javaExecutable = $toolchain.JavaExecutable
+$script:javacExecutable = $toolchain.JavacExecutable
 # The plugin build scripts invoke javac and jar by name. Pin nested PowerShell
 # builds to the same JDK verified above instead of inheriting an older system JDK.
 $env:JAVA_HOME = $javaHome
 $env:PATH = "$javaHome\bin;$env:PATH"
-Write-Host 'Using pinned End Rift Java toolchain: Temurin 25.0.4.1'
+Write-Host "Using pinned End Rift Java toolchain (Temurin 25.0.4.1) from $($toolchain.Source): $javaHome"
 $configPath = Join-Path $root 'copimine-end-event\config.yml'
 $config = Get-Content -LiteralPath $configPath -Raw
 if ($config -notmatch '(?m)^environment:\s*(local|staging)\s*$') {

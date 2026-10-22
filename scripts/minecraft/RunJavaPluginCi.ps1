@@ -624,7 +624,13 @@ $eventStderrLog = $eventLog + '.stderr'
 $gateExitCode = 0
 try {
     $eventRunnerPath = Join-Path $repo 'tests/RunEndRiftEventChecks.ps1'
-    $eventRunnerArguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $eventRunnerPath), '-SkipBuilds')
+    # Forward the verified pinned migration JDK explicitly. Hosted CI installs the
+    # same Temurin 25.0.4.1 outside the checkout, so the child gate must not rely
+    # solely on the local-runtime toolchain fallback path.
+    $eventJavaHomeArgument = '"{0}"' -f $migrationJdk
+    $eventRunnerArguments = @(
+        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $eventRunnerPath),
+        '-SkipBuilds', '-JavaHome', $eventJavaHomeArgument)
     $eventProcess = Start-Process -FilePath 'powershell.exe' -ArgumentList $eventRunnerArguments -WorkingDirectory $repo `
         -RedirectStandardOutput $eventStdoutLog -RedirectStandardError $eventStderrLog -WindowStyle Hidden -PassThru
     $eventProcessHandle = $eventProcess.Handle

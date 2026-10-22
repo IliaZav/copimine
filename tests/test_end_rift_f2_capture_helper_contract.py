@@ -8,7 +8,7 @@ CAPTURE = ROOT / "tools" / "end-rift-native-visual" / "CaptureEndRiftF2.ps1"
 def test_f2_capture_helper_is_locked_to_the_isolated_end_rift_server():
     script = CAPTURE.read_text(encoding="utf-8")
 
-    assert "codex/end-rift-event" in script
+    assert "codex/copimine-source-of-truth-20261020" in script
     assert "127.0.0.1:25566" in script
     assert "25576" in script
     assert "local-runtime" in script

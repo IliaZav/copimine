@@ -8,6 +8,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $workspaceRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '../..')).Path
 Import-Module -Name (Join-Path $PSScriptRoot 'MigrationDatabaseEnvironment.psm1') -Force
+Import-Module -Name (Join-Path $PSScriptRoot 'MigrationPostgresLifecycle.psm1') -Force
+foreach ($path in @($workspaceRoot, $PSScriptRoot, $RuntimeDirectory)) {
+    Assert-MigrationPathNoReparseAncestors -Path $path
+}
 $runtime = (Resolve-Path -LiteralPath $RuntimeDirectory -ErrorAction Stop).Path
 $expectedRuntime = [IO.Path]::GetFullPath((Join-Path $workspaceRoot 'local-runtime/end-rift-server-26.3'))
 if (-not [string]::Equals($runtime.TrimEnd('\'), $expectedRuntime.TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)) {
@@ -57,6 +61,10 @@ foreach ($path in @($runtime, $data, $logDirectory)) {
         throw "Migration PostgreSQL directories cannot be reparse points: $path"
     }
 }
+
+# This script is an explicit first-provisioning path. Reject initialized or
+# partially-written data before creating or changing any private credentials.
+$null = Assert-MigrationPostgresNewClusterDirectory -RuntimeDirectory $runtime -DataDirectory $data
 
 if ([string]::IsNullOrWhiteSpace($PostgresBin)) {
     $candidateBin = [IO.Path]::GetFullPath((Join-Path $workspaceRoot '../../local-runtime/postgresql/pgsql/bin'))

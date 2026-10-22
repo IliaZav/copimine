@@ -225,7 +225,7 @@ Invoke-GateStep 'Wave navigation and physical passage regression' {
 Invoke-GateStep 'Wave mob phase and chunk unload lifecycle' {
   Push-Location $root
   try {
-    & python -m pytest -q '.\tests\test_wave_coordinator_fog_lifecycle.py' '.\tests\test_wave_mob_lifecycle_registry.py'
+    & python -m pytest -q '.\tests\test_wave_coordinator_fog_lifecycle.py' '.\tests\test_wave_mob_lifecycle_registry.py' '.\tests\test_wave_mob_removal_policy.py'
     if ($LASTEXITCODE -ne 0) { throw "Wave mob lifecycle regressions failed with exit code $LASTEXITCODE" }
   } finally {
     Pop-Location
@@ -277,7 +277,7 @@ Invoke-GateStep 'Current Python contract' {
   if ($LASTEXITCODE -ne 0) { throw "WorldGuard web guard checks failed with exit code $LASTEXITCODE" }
   & python -m pytest -q '.\tests\test_end_rift_prisoner_client_boundaries.py' '.\tests\test_end_rift_portal_presentation_contract.py' '.\tests\test_end_rift_wave6_visual_mechanics.py' '.\tests\test_end_rift_barrier_coverage.py' '.\tests\test_end_rift_fog_effect_cleanup.py' '.\tests\test_end_rift_server_tick_transitions.py'
   if ($LASTEXITCODE -ne 0) { throw "Wave presentation regression tests failed with exit code $LASTEXITCODE" }
-  & python -m pytest -q '.\tests\test_wave6_visual_cleanup_contract.py' '.\tests\test_end_event_wave6_progression_contract.py' '.\tests\test_end_event_wave6_no_legacy_contract.py' '.\tests\test_wave6_ritual_amplifier_contract.py' '.\tests\test_official_live_runner_wave6_contract.py' '.\tests\test_end_rift_wave1_interaction_harness_contract.py' '.\tests\test_end_rift_prisoner_hud_assets.py' '.\tests\test_end_rift_guard_tactics_runtime.py' '.\tests\test_end_rift_supplied_asset_checkout.py' '.\tests\test_end_rift_wave_daylight_runtime.py'
+  & python -m pytest -q '.\tests\test_wave6_visual_cleanup_contract.py' '.\tests\test_end_event_wave6_progression_contract.py' '.\tests\test_end_event_wave6_no_legacy_contract.py' '.\tests\test_wave6_ritual_amplifier_contract.py' '.\tests\test_official_live_runner_wave6_contract.py' '.\tests\test_end_rift_wave1_interaction_harness_contract.py' '.\tests\test_end_rift_prisoner_hud_assets.py' '.\tests\test_end_rift_guard_tactics_runtime.py' '.\tests\test_end_rift_supplied_asset_checkout.py' '.\tests\test_end_rift_wave_daylight_runtime.py' '.\tests\test_wave_skeleton_protection_runtime.py'
   if ($LASTEXITCODE -ne 0) { throw "Additional wave gameplay regression tests failed with exit code $LASTEXITCODE" }
   & python -m pytest -q '.\tests\test_end_rift_wave_ai_roles.py' '.\tests\test_end_rift_miniboss_counterplay.py' '.\tests\test_end_rift_waves2_4_mechanics.py' '.\tests\test_end_rift_wave2_cleanup_epoch_contract.py' '.\tests\test_wave2_unlaunchable_start_contract.py' '.\tests\test_wave2_recovery_ai_fence.py' '.\tests\test_end_rift_obelisk_pulse_roster.py' '.\tests\test_end_rift_wave_structure_assets.py' '.\tests\test_end_rift_wave5_safe_tile_assets.py' '.\tests\test_end_rift_wave_glyph_assets.py' '.\tests\test_end_rift_disabled_packet_cleanup.py' '.\tests\test_end_rift_local_pack_sync.py' '.\tests\test_end_rift_main_tick_dispatch.py' '.\tests\test_end_rift_wave4_objective_dispatch_once.py' '.\tests\test_end_rift_wave4_pressure_retries.py'
   if ($LASTEXITCODE -ne 0) { throw "Waves 1-5 gameplay and authored assets failed with exit code $LASTEXITCODE" }
@@ -327,6 +327,8 @@ $runtimeSources = @(
   (Join-Path $root 'tools\minecraft-26.3\protocol\src\main\java\me\copimine\protocol\EncounterGenerationPolicy.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\EventSnapshot.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\WaveCombatCoordinator.java'),
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\RiftGiantOwnerLocationRegistry.java'),
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\WaveMobLifecycleRegistry.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\AttemptLifecycleController.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\WaveTwoAttemptLifecycleSnapshot.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\CombatTraceService.java'),
@@ -355,6 +357,7 @@ $diagnosticSources = @(Get-ChildItem (Join-Path $root 'copimine-end-event\src\me
 $pureTests = @(
   'Wave7AdmissionPolicyTest',
   'WaveEliteCompositionPolicyTest',
+  'WaveSkeletonProtectionPolicyTest',
   'WaveCombatCoordinatorTest',
   'WaveStructurePlacementTest',
   'AbyssAnchorPolicyTest',
@@ -500,6 +503,9 @@ $pureTests = @(
   'Wave3PortalSpawnPolicyTest',
   'Wave3PortalElitePolicyTest',
   'RiftGiantPolicyTest',
+  'RiftGiantAuraEffectPolicyTest',
+  'RiftGiantOwnerLocationRegistryTest',
+  'WaveMobRemovalPolicyTest',
   'WaveCommanderPolicyTest',
   'WaveDamagePolicyTest',
   'WaveMechanicsPolicyTest',

@@ -138,14 +138,26 @@ def test_solo_guard_roster_includes_all_roles_and_spider_snare_is_an_owned_proje
     assert 'spawnRitualGuardWebProjectile(' in release
     projectile = method('private boolean spawnRitualGuardWebProjectile(')
     assert 'ARROW_SPELL_RITUAL_GUARD_WEB' in projectile
-    assert 'tagRitualProjectile(arrow)' in projectile and 'trackEventArrow(arrow)' in projectile
     assert 'committedAim' in projectile
+    shared_projectile = method('private boolean spawnRitualGuardPhysicalProjectile(')
+    assert 'tagRitualProjectile(arrow)' in shared_projectile
+    assert 'trackEventArrow(arrow)' in shared_projectile
+    assert 'ARROW_SPELL_RITUAL_GUARD_WEB' not in shared_projectile
     hit = method('private void onCustomEventArrowDamage(')
     assert 'ARROW_SPELL_RITUAL_GUARD_WEB.equals(spell)' in hit
-    assert 'RitualGuardAbilityPolicy.forEntityType("SPIDER").damage()' in hit
+    assert 'RitualGuardAbilityPolicy.Role.WEB_SNARE' in hit
     trail = method('private void spawnEventArrowTrail(')
     assert 'ARROW_SPELL_RITUAL_GUARD_WEB.equals(spell)' in trail
     assert 'Material.COBWEB' in trail
+
+
+def test_warden_slam_uses_ground_height_per_victim_los_and_accepted_damage():
+    release = method('private void resolveRitualGuardAbility(')
+    assert 'guard.hasLineOfSight(victim)' in release
+    assert 'mayHitWardenSlamVictim(' in release
+    assert 'victim.getAbsorptionAmount()' in release
+    assert 'acceptedPlayerDamage(' in release
+    assert 'if (!accepted) continue;' in release
 
 
 def test_major_spell_visuals_are_world_packets_with_immediate_owned_cleanup():
@@ -164,9 +176,15 @@ def test_major_spell_visuals_are_world_packets_with_immediate_owned_cleanup():
 
 def test_spider_web_retires_with_its_own_guard_and_caster_before_damage():
     launch = method('private boolean spawnRitualGuardWebProjectile(')
-    assert 'tagRitualProjectileOrigin(arrow, start)' in launch
-    assert 'tagRitualProjectileTarget(arrow, guard, target)' in launch
-    provenance = method('private boolean ritualGuardWebProvenanceAllowed(')
+    assert 'spawnRitualGuardPhysicalProjectile(' in launch
+    shared_launch = method('private boolean spawnRitualGuardPhysicalProjectile(')
+    assert 'tagRitualProjectileOrigin(arrow, start)' in shared_launch
+    assert 'tagRitualProjectileTarget(arrow, guard, target)' in shared_launch
+    assert 'trackEventArrow(arrow)' in shared_launch
+    assert 'clearWaveProjectileGroup(groupId,' in shared_launch
+    web_provenance = method('private boolean ritualGuardWebProvenanceAllowed(')
+    assert 'RitualGuardAbilityPolicy.Role.WEB_SNARE' in web_provenance
+    provenance = method('private boolean ritualGuardProjectileProvenanceAllowed(')
     assert 'isCurrentRitualGuard(guard)' in provenance
     assert 'ritualGuardCasters.get(' in provenance
     assert 'ritualCasterUuids.contains(caster)' in provenance and 'isLiveOwnedEntity(caster)' in provenance
@@ -639,15 +657,21 @@ def test_actual_guard_warning_redraws_every_event_tick_before_resolve(tmp_path):
     import subprocess
 
     body = method('private void tickRitualGuardAbilities(')
-    warning = body[:body.index('        if (isRitualMajorSpellBusy())')] + '\n}'
+    warning = body[:body.index('        List<UUID> guards =')] + '\n}'
     fixture = tmp_path / 'GuardWarningProbe.java'
     fixture.write_text('''
+import me.copimine.endevent.domain.RitualGuardAbilityPolicy;
 public class GuardWarningProbe {
     boolean active=true, valid=true, wave6PrisonBroken=false;
+    boolean hardControlWindow;
     Object ritualGuardAbilityGuard=new Object();
+    me.copimine.endevent.domain.RitualGuardAbilityPolicy.Profile ritualGuardAbilityProfile =
+        me.copimine.endevent.domain.RitualGuardAbilityPolicy.forRole(
+            me.copimine.endevent.domain.RitualGuardAbilityPolicy.Role.WEB_SNARE);
     long eventTickCounter, ritualGuardAbilityResolveAtTick;
     int renders, resolves, clears;
     boolean ritualWaveActive(){return active;}
+    boolean isRitualHardControlWindowActive(){return hardControlWindow;}
     boolean isRitualGuardAbilityCastValid(){return valid;}
     void clearRitualGuardAbilityState(String reason){clears++;}
     void cancelRitualGuardAbilityCast(String reason){clears++;}
@@ -670,9 +694,32 @@ public class GuardWarningProbe {
             probe.active=false; probe.tickRitualGuardAbilities(0);
             if(probe.clears!=2||probe.renders!=3)throw new AssertionError("inactive wave clears warning");
         }
+    var interruptedWeb=new GuardWarningProbe();
+    interruptedWeb.ritualGuardAbilityResolveAtTick=40;
+    interruptedWeb.eventTickCounter=5;
+    interruptedWeb.hardControlWindow=true;
+    interruptedWeb.tickRitualGuardAbilities(0);
+    if(interruptedWeb.clears!=1||interruptedWeb.renders!=0||interruptedWeb.resolves!=0)
+        throw new AssertionError("an active Web Snare telegraph is cancelled when a major escape window begins");
+
+    var ordinaryAttack=new GuardWarningProbe();
+    ordinaryAttack.ritualGuardAbilityProfile=RitualGuardAbilityPolicy.forRole(
+        RitualGuardAbilityPolicy.Role.WARDEN_SLAM);
+    ordinaryAttack.ritualGuardAbilityResolveAtTick=40;
+    ordinaryAttack.eventTickCounter=5;
+    ordinaryAttack.hardControlWindow=true;
+    ordinaryAttack.tickRitualGuardAbilities(0);
+    if(ordinaryAttack.clears!=0||ordinaryAttack.renders!=1||ordinaryAttack.resolves!=0)
+        throw new AssertionError("ordinary guard attacks remain active during a major escape window");
+    ordinaryAttack.eventTickCounter=40;
+    ordinaryAttack.tickRitualGuardAbilities(0);
+    if(ordinaryAttack.resolves!=1)
+        throw new AssertionError("ordinary guard attack resolves during the major escape window");
     }
 ''' + warning + '\n}', encoding='utf-8')
-    compiled = subprocess.run(['javac', '-J-Xmx96m', '-encoding', 'UTF-8', str(fixture)],
+    compiled = subprocess.run(['javac', '-J-Xmx96m', '-encoding', 'UTF-8',
+                               '-d', str(tmp_path), str(fixture),
+                               str(ROOT / 'copimine-end-event/src/me/copimine/endevent/domain/RitualGuardAbilityPolicy.java')],
                               capture_output=True, text=True, timeout=30)
     assert compiled.returncode == 0, compiled.stderr
     executed = subprocess.run(['java', '-Xms8m', '-Xmx96m', '-XX:+UseSerialGC', '-cp', str(tmp_path),

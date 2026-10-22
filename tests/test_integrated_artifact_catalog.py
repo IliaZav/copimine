@@ -68,14 +68,14 @@ def test_latest_scythe_and_shield_catalog_values_are_preserved() -> None:
     shield = donation["ne_segodnya_suka_shield"]
 
     assert scythe["cooldown-seconds"] == 0
-    assert scythe["proc-chance"] == 0.20
+    assert scythe["proc-chance"] == 0.30
     assert "2.5%" in scythe["lore"][0]
     assert shield["cooldown-seconds"] == 20
 
     source = (ROOT / "copimine-artifacts/src/me/copimine/artifacts/CopiMineArtifacts.java").read_text(
         encoding="utf-8"
     )
-    assert "KOSA_HEALTH_PROC_CHANCE" in source
+    assert "KOSA_HEALTH_PROC_CHANCE = 0.30D" in source
     assert "KOSA_HUNGER_PROC_CHANCE" in source
     assert "SHIELD_LIGHTNING_COOLDOWN_SECONDS" in source
 

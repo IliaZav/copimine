@@ -1,5 +1,6 @@
 package me.copimine.client;
 
+import net.minecraft.client.renderer.entity.state.EndermanRenderState;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -96,6 +97,40 @@ class WaveTwoPhantomLayoutTest {
 
         assertEquals((float) (Math.PI / 2.0D), WaveTwoPhantomLayout.targetYaw(phantom, player), 1.0E-6F);
         assertEquals(0.0F, WaveTwoPhantomLayout.targetYaw(phantom, phantom));
+    }
+
+    @Test
+    void phantomLookPoseKeepsTheBodyStillAndTurnsOnlyTheHead() {
+        WaveTwoPhantomLayout.Position phantom = new WaveTwoPhantomLayout.Position(0.0D, 64.0D, 0.0D);
+        WaveTwoPhantomLayout.LookPose eastward = WaveTwoPhantomLayout.lookAt(
+                phantom, new WaveTwoPhantomLayout.Position(4.0D, 65.5D, 0.0D));
+        WaveTwoPhantomLayout.LookPose northward = WaveTwoPhantomLayout.lookAt(
+                phantom, new WaveTwoPhantomLayout.Position(0.0D, 65.5D, -4.0D));
+        WaveTwoPhantomLayout.LookPose westward = WaveTwoPhantomLayout.lookAt(
+                phantom, new WaveTwoPhantomLayout.Position(-4.0D, 65.5D, 0.0D));
+        WaveTwoPhantomLayout.LookPose southward = WaveTwoPhantomLayout.lookAt(
+                phantom, new WaveTwoPhantomLayout.Position(0.0D, 65.5D, 4.0D));
+
+        assertEquals(0.0F, eastward.bodyYawDegrees());
+        assertEquals(-90.0F, eastward.headYawDegrees(), 1.0E-5F);
+        assertEquals(0.0F, northward.bodyYawDegrees());
+        assertEquals(-180.0F, northward.headYawDegrees(), 1.0E-5F);
+        assertEquals(0.0F, westward.bodyYawDegrees());
+        assertEquals(90.0F, westward.headYawDegrees(), 1.0E-5F);
+        assertEquals(0.0F, southward.bodyYawDegrees());
+        assertEquals(0.0F, southward.headYawDegrees(), 1.0E-5F);
+    }
+
+    @Test
+    void phantomRendererAppliesTheLookPoseAsHeadRotationOnly() {
+        EndermanRenderState state = new EndermanRenderState();
+        state.xRot = 12.0F;
+        WaveTwoPhantomLayout.LookPose lookPose = new WaveTwoPhantomLayout.LookPose(0.0F, -90.0F);
+
+        WaveTwoPhantomRenderer.applyHeadLook(state, lookPose);
+
+        assertEquals(-90.0F, state.yRot, 1.0E-5F);
+        assertEquals(0.0F, state.xRot);
     }
 
     @Test

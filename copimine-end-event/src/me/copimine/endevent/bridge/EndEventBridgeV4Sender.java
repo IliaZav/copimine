@@ -321,10 +321,38 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
     }
 
     @Override
-    public synchronized boolean isReady(UUID playerUuid) {
+    public synchronized EndEventBridgeV4Access.ReadinessReason readinessReason(UUID playerUuid) {
+        if (closed) {
+            return EndEventBridgeV4Access.ReadinessReason.SENDER_CLOSED;
+        }
+        if (playerUuid == null) {
+            return EndEventBridgeV4Access.ReadinessReason.PLAYER_OFFLINE;
+        }
         Player player = playerFor(playerUuid);
-        PlayerState state = currentReadyState(player);
-        return state != null && state.stream != null && state.stream.readyConfirmed;
+        if (player == null || !player.isOnline()) {
+            return EndEventBridgeV4Access.ReadinessReason.PLAYER_OFFLINE;
+        }
+        if (!signer.isAvailable()) {
+            return EndEventBridgeV4Access.ReadinessReason.SIGNER_UNAVAILABLE;
+        }
+        PlayerState state = players.get(playerUuid);
+        if (state == null) {
+            return EndEventBridgeV4Access.ReadinessReason.NO_VERIFIED_SESSION;
+        }
+        boolean wasReady = state.stream != null && state.stream.readyConfirmed;
+        if (!isCurrentBinding(player, state)) {
+            return wasReady ? EndEventBridgeV4Access.ReadinessReason.STALE_READINESS
+                    : EndEventBridgeV4Access.ReadinessReason.NO_VERIFIED_SESSION;
+        }
+        if (state.stream == null || !state.stream.readyConfirmed) {
+            return EndEventBridgeV4Access.ReadinessReason.STREAM_NOT_READY;
+        }
+        return EndEventBridgeV4Access.ReadinessReason.READY;
+    }
+
+    @Override
+    public synchronized boolean isReady(UUID playerUuid) {
+        return readinessReason(playerUuid) == EndEventBridgeV4Access.ReadinessReason.READY;
     }
 
     @Override
@@ -990,7 +1018,10 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
             return null;
         }
         Player cached = playerHandles.get(playerUuid);
-        return cached != null && cached.isOnline() ? cached : Bukkit.getPlayer(playerUuid);
+        if (cached != null && cached.isOnline()) {
+            return cached;
+        }
+        return Bukkit.getServer() == null ? null : Bukkit.getPlayer(playerUuid);
     }
 
     private static String newStreamId(Set<String> used) {

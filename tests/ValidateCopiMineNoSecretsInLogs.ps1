@@ -21,7 +21,7 @@ foreach ($file in $sources) {
   if ($text -match 'getLogger\(\)\.(info|warning|severe)\([^;\r\n]*(\bpassword\b|\bPIN\b|\bpin\b|\.env|\bsecret\b|\btoken\b)[^;\r\n]*\+') {
     $errors.Add("Potential secret logged with concatenated data: $($file.FullName)")
   }
-  if ($text -match '(?i)(password|secret|token)\s*=\s*["''][^"'']{8,}["'']') {
+  if ($text -match '(?i)(password|secret|token)\s*=\s*["''][^"''\r\n]{8,}["'']') {
     $errors.Add("Potential hardcoded secret: $($file.FullName)")
   }
 }

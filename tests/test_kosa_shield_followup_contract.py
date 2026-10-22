@@ -104,7 +104,7 @@ class KosaShieldFollowupContractTest(unittest.TestCase):
         self.assertIn('"Kosa 2.5% proc"', theft)
         self.assertIn("boolean fromInventory, int amount", self.source)
 
-    def test_shield_has_independent_attacker_effects_and_real_lightning_cooldown(self) -> None:
+    def test_shield_has_independent_attacker_effects_and_visual_lightning_cooldown(self) -> None:
         self.assertIn("SHIELD_NAUSEA_PROC_CHANCE = 0.10D", self.source)
         self.assertIn("SHIELD_WEAKNESS_PROC_CHANCE = 0.10D", self.source)
         self.assertIn("SHIELD_OWNER_BUFF_PROC_CHANCE = 0.01D", self.source)
@@ -114,19 +114,20 @@ class KosaShieldFollowupContractTest(unittest.TestCase):
         start = self.source.index('if (var5 != null && "NOT_TODAY_SHIELD"')
         end = self.source.index("\n         }\n      }\n   }", start)
         shield = self.source[start:end]
-        self.assertNotIn("strikeLightningEffect", shield)
         for marker in (
             "random.nextDouble() < SHIELD_NAUSEA_PROC_CHANCE",
             "random.nextDouble() < SHIELD_WEAKNESS_PROC_CHANCE",
             "PotionEffectType.NAUSEA, SHIELD_EFFECT_DURATION_TICKS, 2",
             "PotionEffectType.WEAKNESS, SHIELD_EFFECT_DURATION_TICKS, 2",
-            "attacker.getWorld().strikeLightning(attacker.getLocation())",
+            "attacker.getWorld().strikeLightningEffect(strikeLocation)",
+            "attacker.getWorld().spawnParticle(Particle.ELECTRIC_SPARK",
             "current + SHIELD_LIGHTNING_COOLDOWN_SECONDS",
             "random.nextDouble() < SHIELD_OWNER_BUFF_PROC_CHANCE",
             "PotionEffectType.REGENERATION, SHIELD_EFFECT_DURATION_TICKS, 1",
             "PotionEffectType.SPEED, SHIELD_EFFECT_DURATION_TICKS, 0",
         ):
             self.assertIn(marker, shield)
+        self.assertNotIn("strikeLightning(", shield)
         self.assertNotIn("PotionEffectType.RESISTANCE", shield)
         self.assertNotIn("var2.getWorld().spawnParticle", shield)
 

@@ -14,6 +14,45 @@ public final class RitualCasterProgressionPolicyTest {
         check(!first.prisonBroken(), "the first death does not break the prison");
         check(RitualCasterProgressionPolicy.isSpellEnabled(1, MajorSpell.RIFT_BARRAGE),
                 "the first death enables Rift Barrage");
+        check(RitualCasterProgressionPolicy.advanceSpellCursor(0, 4) == 1
+                        && RitualCasterProgressionPolicy.advanceSpellCursor(3, 4) == 0,
+                "a failed spell start skips exactly one spell with bounded wraparound");
+        check(RitualCasterProgressionPolicy.advanceSpellCursor(Integer.MAX_VALUE, 4) == 0
+                        && RitualCasterProgressionPolicy.advanceSpellCursor(0, 1) == 0,
+                "spell cursor advancement handles extreme counters and a single available spell");
+        check(RitualCasterProgressionPolicy.shouldSkipSpellAfterBlocker(
+                        RitualCasterProgressionPolicy.StartBlocker.INVALID_GEOMETRY),
+                "unsafe anvil geometry skips only that attempt so the unlocked rotation can progress");
+        check(!RitualCasterProgressionPolicy.shouldSkipSpellAfterBlocker(
+                        RitualCasterProgressionPolicy.StartBlocker.NO_ELIGIBLE_PARTICIPANTS)
+                        && !RitualCasterProgressionPolicy.shouldSkipSpellAfterBlocker(
+                        RitualCasterProgressionPolicy.StartBlocker.CLEANUP_PENDING),
+                "no-target and cleanup states must wait without advancing the spell rotation");
+        check(RitualCasterProgressionPolicy.requiresRecovery(
+                        RitualCasterProgressionPolicy.StartBlocker.ENCOUNTER_FAILURE)
+                        && !RitualCasterProgressionPolicy.requiresRecovery(
+                        RitualCasterProgressionPolicy.StartBlocker.INVALID_GEOMETRY),
+                "unexpected runtime admission failure enters explicit recovery, not a silent skip");
+        check(RitualCasterProgressionPolicy.resolutionFor(
+                        RitualCasterProgressionPolicy.StartBlocker.NO_ELIGIBLE_PARTICIPANTS)
+                        == RitualCasterProgressionPolicy.StartBlockerResolution.WAIT
+                        && RitualCasterProgressionPolicy.resolutionFor(
+                        RitualCasterProgressionPolicy.StartBlocker.CLEANUP_PENDING)
+                        == RitualCasterProgressionPolicy.StartBlockerResolution.WAIT
+                        && RitualCasterProgressionPolicy.resolutionFor(
+                        RitualCasterProgressionPolicy.StartBlocker.INVALID_GEOMETRY)
+                        == RitualCasterProgressionPolicy.StartBlockerResolution.SKIP_AND_RETRY
+                        && RitualCasterProgressionPolicy.resolutionFor(
+                        RitualCasterProgressionPolicy.StartBlocker.ENCOUNTER_FAILURE)
+                        == RitualCasterProgressionPolicy.StartBlockerResolution.RECOVERY_REQUIRED,
+                "every failure class has a distinct bounded scheduler response");
+        int fairCursor = 3;
+        fairCursor = RitualCasterProgressionPolicy.advanceSpellCursor(fairCursor, 4);
+        check(fairCursor == 0, "invalid geometry yields to the first other unlocked spell");
+        fairCursor = RitualCasterProgressionPolicy.advanceSpellCursor(fairCursor, 4);
+        fairCursor = RitualCasterProgressionPolicy.advanceSpellCursor(fairCursor, 4);
+        fairCursor = RitualCasterProgressionPolicy.advanceSpellCursor(fairCursor, 4);
+        check(fairCursor == 3, "the temporarily unavailable anvil spell remains in the fair rotation");
         check(!RitualCasterProgressionPolicy.mayTakeCasterDamage(false, false),
                 "official casters stay protected until the prisoner is captured");
         check(RitualCasterProgressionPolicy.mayTakeCasterDamage(true, false),

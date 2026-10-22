@@ -12,6 +12,10 @@ public final class RitualGuardStatsPolicyTest {
                 "tuning never lowers a pre-existing configured maximum");
         check(RitualGuardStatsPolicy.maximumHealth(50.0D, true) == 50.0D,
                 "persisted guard health is not multiplied again after reload");
+        check(RitualGuardStatsPolicy.ZOMBIE_KNOCKBACK_RESISTANCE == 0.6D,
+                "ordinary zombie tank guards resist 60 percent of knockback");
+        check(RitualGuardStatsPolicy.ZOMBIE_ATTACK_KNOCKBACK == 1.0D,
+                "ordinary zombie tank attacks apply bounded Knockback-I-equivalent force");
         System.out.println("RitualGuardStatsPolicyTest OK");
     }
 

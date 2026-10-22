@@ -537,6 +537,20 @@ $artifactsPluginClasses = Join-Path $repo 'copimine-artifacts/build/classes'
 if (-not (Test-Path -LiteralPath $artifactsPluginClasses -PathType Container)) {
     throw "Artifacts plugin classes are missing after the plugin build: $artifactsPluginClasses"
 }
+$startupGateTestSources = @(
+    (Join-Path $repo 'tests/ArtifactEconomyStartupReadinessGateTest.java'),
+    (Join-Path $repo 'tests/ArtifactDatabaseBootstrapLifecycleTest.java')
+)
+$startupGateTestBuild = Join-Path $tempRoot 'artifact-startup-gate-tests'
+New-Item -ItemType Directory -Path $startupGateTestBuild -Force | Out-Null
+& $javac -proc:none -encoding UTF-8 -cp $artifactsPluginClasses -d $startupGateTestBuild @startupGateTestSources
+if ($LASTEXITCODE -ne 0) { throw 'Artifacts startup readiness gate tests failed to compile.' }
+$startupGateTestClasspath = @($startupGateTestBuild, $artifactsPluginClasses) -join [IO.Path]::PathSeparator
+& $java -cp $startupGateTestClasspath me.copimine.artifacts.ArtifactEconomyStartupReadinessGateTest
+if ($LASTEXITCODE -ne 0) { throw 'Artifacts startup readiness gate test failed.' }
+& $java -cp $startupGateTestClasspath me.copimine.artifacts.ArtifactDatabaseBootstrapLifecycleTest
+if ($LASTEXITCODE -ne 0) { throw 'Artifacts database bootstrap lifecycle test failed.' }
+
 New-Item -ItemType Directory -Path $orphanRefundTestBuild -Force | Out-Null
 & $javac -proc:none -encoding UTF-8 -cp $artifactsPluginClasses -d $orphanRefundTestBuild $orphanRefundTestSource
 if ($LASTEXITCODE -ne 0) { throw 'Artifacts orphan-transfer recovery state test compilation failed.' }

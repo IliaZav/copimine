@@ -14,6 +14,7 @@ public final class WaveTwoHuntPolicyTest {
         initialAssignmentsRequireTwoPeriodsAndDistinctPlayersWhenPossible();
         rotationAvoidsThePreviousTargetWhenPossible();
         clearedBatchDoesNotWaitForAnotherMarkPeriod();
+        packetAssignmentIdentityIsIndependentAndCannotWrap();
         initialAndLateReinforcementsRespectBothBudgets();
         System.out.println("WaveTwoHuntPolicyTest OK");
     }
@@ -99,6 +100,41 @@ public final class WaveTwoHuntPolicyTest {
         int late = WaveTwoHuntPolicy.lateReinforcementCount(8, remaining);
         check(initial == 4 && late == 1 && initial + late <= 5,
                 "initial and late additions together never exceed the supplied total budget");
+    }
+
+    private static void packetAssignmentIdentityIsIndependentAndCannotWrap() {
+        int ceiling = WaveTwoHuntPolicy.MAX_MARK_ASSIGNMENT_ID;
+        check(WaveTwoHuntPolicy.MAX_COMPLETED_MARK_PERIODS < ceiling,
+                "gameplay completion remains bounded separately from packet identity");
+        check(WaveTwoHuntPolicy.nextMarkAssignmentId(0) == 1
+                        && WaveTwoHuntPolicy.nextMarkAssignmentId(ceiling - 1) == ceiling,
+                "assignment IDs advance monotonically through the final representable identity");
+        check(!WaveTwoHuntPolicy.markAssignmentIdsExhausted(ceiling - 1)
+                        && WaveTwoHuntPolicy.markAssignmentIdsExhausted(ceiling),
+                "exhaustion is detected before integer wrap");
+        expectFailure(() -> WaveTwoHuntPolicy.nextMarkAssignmentId(ceiling),
+                "exhausted IDs cannot wrap and weaken stale-packet protection");
+        expectFailure(() -> WaveTwoHuntPolicy.markAssignmentIdsExhausted(-1),
+                "negative packet identities are rejected");
+
+        check(WaveTwoHuntPolicy.restoreMarkAssignmentId("1000010", 1) == 1_000_010,
+                "near-boundary interrupted assignments survive snapshot restoration independently of completions");
+        check(WaveTwoHuntPolicy.restoreMarkAssignmentId(null, 2)
+                        == WaveTwoHuntPolicy.LEGACY_MAX_MARK_ASSIGNMENT_ID,
+                "legacy snapshots reserve the complete old packet-ID range");
+        expectFailure(() -> WaveTwoHuntPolicy.restoreMarkAssignmentId("12", 13),
+                "restored identities cannot precede completed gameplay periods");
+        expectFailure(() -> WaveTwoHuntPolicy.restoreMarkAssignmentId("2147483648", 0),
+                "overflowing checkpoint identities are rejected");
+    }
+
+    private static void expectFailure(Runnable action, String message) {
+        try {
+            action.run();
+            throw new AssertionError(message);
+        } catch (IllegalArgumentException | IllegalStateException expected) {
+            // Expected bounded failure.
+        }
     }
 
     private static void check(boolean value, String message) {

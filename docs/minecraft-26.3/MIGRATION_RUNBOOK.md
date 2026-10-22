@@ -52,7 +52,9 @@ $Python313 = (py -3.13 -c 'import sys; print(sys.executable)').Trim()
 
 ## Локальный Paper runtime
 
-`StartMigrationTestServer.ps1` использует отдельный PostgreSQL `copimine_migration_test`, schema `copimine_migration_26_3_candidate`, порт 55434 и listener `127.0.0.1:25568`. Для удобства проверки разрешён `online-mode=false` только в этом loopback runtime; это допускает offline/cracked и licensed клиент с той же машины. Настройка не делает сервер доступным извне и не является публичной схемой аутентификации.
+`StartMigrationTestServer.ps1` использует отдельный PostgreSQL `copimine_migration_test` со schema `copimine_migration_26_3_candidate` на `127.0.0.1:55434`. Paper listener читается из `server.properties` и проверяется перед запуском: новый runtime создаётся с `server-port=25566`, а существующий `local-runtime/end-rift-server-26.3` сейчас настроен на `25567`. Не подставляйте фиксированный Minecraft port вместо значения файла. Для удобства проверки `online-mode=false` разрешён только в этом loopback runtime; это допускает offline/cracked и licensed клиент с той же машины. Настройка не делает сервер доступным извне и не является публичной схемой аутентификации.
+
+Обычный запуск проверяет и переиспользует уже созданный кластер; при необходимости он может запустить только этот остановленный кластер после проверки его владельца и identity. `InitializeMigrationPostgres.ps1` предназначен только для явно новой пустой тестовой папки данных и откажет при обнаружении существующих или частичных данных. `-ValidateOnly` не запускает службы и не записывает в runtime или БД.
 
 Paper runtime, успешно достигший строки `Done`, подтверждает запуск JAR, загрузку и включение плагинов, но не полную проверку их команд и игровых сценариев. FarmControl 1.3.0 и SeeMore 1.0.2 включились в наблюдавшемся запуске, однако их upstream metadata не заявляет поддержку 26.3; до проверки команд и поведения они остаются `requires-runtime-validation`.
 

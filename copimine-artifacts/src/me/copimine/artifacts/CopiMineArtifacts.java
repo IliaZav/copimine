@@ -302,6 +302,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private final Object donationLossJournalLock = new Object();
    private final AtomicBoolean bridgeWarned = new AtomicBoolean(false);
    private final AtomicBoolean visualRepairDrainRunning = new AtomicBoolean(false);
+   private volatile ArtifactDatabaseBootstrapLifecycle databaseBootstrapLifecycle;
    private final ArtifactShopPurchaseRecoveryGuard activeArtifactShopPurchases = new ArtifactShopPurchaseRecoveryGuard();
    private final Random random = new Random();
    private static final long SESSION_TTL_SECONDS = 900L;
@@ -370,6 +371,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private long catalogGeneration = 1L;
 
    public void onEnable() {
+      ArtifactDatabaseBootstrapLifecycle bootstrapLifecycle = new ArtifactDatabaseBootstrapLifecycle();
+      this.databaseBootstrapLifecycle = bootstrapLifecycle;
       this.saveDefaultConfig();
       this.loadPendingInfiniteTotemRestores();
       this.debugGui = this.getConfig().getBoolean("debug_gui", false);
@@ -452,33 +455,58 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                .severe("CopiMineEconomyCore ArtifactsBridge is unavailable. CopiMineArtifacts will not start without the official economy bridge.");
             this.getServer().getPluginManager().disablePlugin(this);
          } else if (!this.runAsync(() -> {
+            if (!bootstrapLifecycle.beginWaiting()) {
+               return;
+            }
             try {
                Class.forName("org.postgresql.Driver");
-               EconomyDatabaseStartupGate.await(() -> {
-                  BridgeHealthSnapshot health = this.bridge.health((UUID) null, "artifacts-schema-bootstrap");
-                  return health.bridgeReady && health.postgresReady;
-               });
-               this.pgSettings = this.loadPgSettings();
-               this.pgPool = new CopiMineArtifacts.PgPool(this.pgSettings, 4);
-               this.ensureSchema();
-               if (!this.customBlockVisualsEnabled()) {
-                  this.deactivateAllProtectedBlockVisualRowsAsync();
+               boolean initialized = EconomyDatabaseStartupGate.awaitAndInitialize(
+                     () -> {
+                        BridgeHealthSnapshot health = this.bridge.health((UUID) null, "artifacts-schema-bootstrap");
+                        return health.bridgeReady && health.postgresReady;
+                     },
+                     bootstrapLifecycle::isCancelled,
+                     30_000L,
+                     180_000L,
+                     1_000L,
+                     () -> this.getLogger().warning(
+                           "EconomyCore PostgreSQL schema is still unavailable; retrying Artifacts bootstrap within the 180-second deadline."),
+                     () -> {
+                        if (!bootstrapLifecycle.beginInitialization()) {
+                           return;
+                        }
+                        this.pgSettings = this.loadPgSettings();
+                        this.pgPool = new CopiMineArtifacts.PgPool(this.pgSettings, 4);
+                        this.ensureSchema();
+                        if (!this.customBlockVisualsEnabled()) {
+                           this.deactivateAllProtectedBlockVisualRowsAsync();
+                        }
+                        this.syncCatalogToPostgres();
+                        this.loadShopsFromPostgres();
+                        this.loadInstanceCache();
+                        this.flushPendingDonationLossJournalAsync();
+                        this.runAsync(this::reconcilePendingRevenuePayouts);
+                        this.scheduleOrphanedShopTransferReconciliation();
+                        this.runAsync(() -> {
+                           CopiMineArtifacts.BridgeHealthSnapshot health = this.bridge.health((UUID)null, "artifacts-startup");
+                           this.getLogger().info("Artifacts bridge ready=" + health.bridgeReady() + " postgres=" + health.postgresReady() + " context=" + health.context());
+                           this.audit("SERVER", "bridge_ready", "CopiMineEconomyCore", "postgres=" + health.postgresReady() + " context=" + health.context());
+                        });
+                        this.runSync(this::finishEnable);
+                        bootstrapLifecycle.complete();
+                     });
+               if (!initialized) {
+                  return;
                }
-               this.syncCatalogToPostgres();
-               this.loadShopsFromPostgres();
-               this.loadInstanceCache();
-               this.flushPendingDonationLossJournalAsync();
-               this.runAsync(this::reconcilePendingRevenuePayouts);
-               this.scheduleOrphanedShopTransferReconciliation();
-               this.runAsync(() -> {
-                  CopiMineArtifacts.BridgeHealthSnapshot health = this.bridge.health((UUID)null, "artifacts-startup");
-                  this.getLogger().info("Artifacts bridge ready=" + health.bridgeReady() + " postgres=" + health.postgresReady() + " context=" + health.context());
-                  this.audit("SERVER", "bridge_ready", "CopiMineEconomyCore", "postgres=" + health.postgresReady() + " context=" + health.context());
-               });
-               Bukkit.getScheduler().runTask(this, this::finishEnable);
             } catch (Exception error) {
-               this.getLogger().log(Level.SEVERE, "CopiMineArtifacts failed to initialize PostgreSQL: " + this.safeErr(error), error);
-               Bukkit.getScheduler().runTask(this, () -> this.getServer().getPluginManager().disablePlugin(this));
+               if (bootstrapLifecycle.fail()) {
+                  this.getLogger().log(Level.SEVERE, "CopiMineArtifacts failed to initialize PostgreSQL: " + this.safeErr(error), error);
+                  this.runSync(() -> {
+                     if (this.isEnabled() && bootstrapLifecycle.isFailed()) {
+                        this.getServer().getPluginManager().disablePlugin(this);
+                     }
+                  });
+               }
             }
          })) {
             this.getLogger().severe("CopiMineArtifacts database queue is unavailable; refusing to enable without a durable database.");
@@ -638,6 +666,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    public void onDisable() {
+      ArtifactDatabaseBootstrapLifecycle bootstrapLifecycle = this.databaseBootstrapLifecycle;
+      if (bootstrapLifecycle != null) {
+         bootstrapLifecycle.cancel();
+      }
       if (this.eventArtifactRewardService != null) {
          Bukkit.getServicesManager().unregister(
                EventArtifactRewardService.class, this.eventArtifactRewardService);
@@ -5269,7 +5301,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                }
                long lightningReadyAt = this.shieldLightningCooldowns.getOrDefault(var2.getUniqueId(), 0L);
                if (lightningReadyAt <= current) {
-                  attacker.getWorld().strikeLightning(attacker.getLocation());
+                   Location strikeLocation = attacker.getLocation().add(0.0, 1.0, 0.0);
+                   attacker.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, strikeLocation,
+                         18, 0.35, 0.55, 0.35, 0.04);
+                   attacker.getWorld().strikeLightningEffect(strikeLocation);
                   this.shieldLightningCooldowns.put(var2.getUniqueId(), current + SHIELD_LIGHTNING_COOLDOWN_SECONDS);
                }
             }

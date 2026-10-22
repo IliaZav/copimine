@@ -41,4 +41,77 @@ final class EconomyDatabaseStartupGate {
             }
         }
     }
+
+    /**
+     * Waits across bounded retry windows and invokes initialization once after readiness.
+     * Returns false when the owning plugin lifecycle is cancelled before readiness.
+     */
+    static boolean awaitAndInitialize(
+            BooleanSupplier economyPostgresReady,
+            BooleanSupplier cancelled,
+            long retryWindowMillis,
+            long totalTimeoutMillis,
+            long pollIntervalMillis,
+            Runnable onRetry,
+            CheckedInitialization initialize) throws Exception {
+        Objects.requireNonNull(economyPostgresReady, "economyPostgresReady");
+        Objects.requireNonNull(cancelled, "cancelled");
+        Objects.requireNonNull(onRetry, "onRetry");
+        Objects.requireNonNull(initialize, "initialize");
+        if (retryWindowMillis <= 0L || totalTimeoutMillis <= 0L || pollIntervalMillis <= 0L) {
+            throw new IllegalArgumentException("Retry window, total timeout, and poll interval must be positive.");
+        }
+        if (retryWindowMillis > totalTimeoutMillis) {
+            throw new IllegalArgumentException("Retry window cannot exceed the total timeout.");
+        }
+        long maximumSafeTimeoutMillis = Long.MAX_VALUE / 1_000_000L / 2L;
+        if (totalTimeoutMillis > maximumSafeTimeoutMillis) {
+            throw new IllegalArgumentException("Total timeout is too large for a monotonic deadline.");
+        }
+
+        long retryWindowNanos = TimeUnit.MILLISECONDS.toNanos(retryWindowMillis);
+        long totalTimeoutNanos = TimeUnit.MILLISECONDS.toNanos(totalTimeoutMillis);
+        long pollIntervalNanos = TimeUnit.MILLISECONDS.toNanos(pollIntervalMillis);
+        long startedAt = System.nanoTime();
+        long nextRetryAtNanos = retryWindowNanos;
+        while (true) {
+            if (cancelled.getAsBoolean()) {
+                return false;
+            }
+            if (economyPostgresReady.getAsBoolean()) {
+                if (cancelled.getAsBoolean()) {
+                    return false;
+                }
+                initialize.run();
+                return true;
+            }
+
+            long elapsedNanos = System.nanoTime() - startedAt;
+            long remainingNanos = totalTimeoutNanos - elapsedNanos;
+            if (remainingNanos <= 0L) {
+                throw new IllegalStateException(
+                        "Timed out waiting for EconomyCore PostgreSQL schema readiness after bounded retries.");
+            }
+            if (elapsedNanos >= nextRetryAtNanos) {
+                onRetry.run();
+                nextRetryAtNanos = nextRetryAtNanos > totalTimeoutNanos - retryWindowNanos
+                        ? totalTimeoutNanos
+                        : nextRetryAtNanos + retryWindowNanos;
+                continue;
+            }
+
+            long untilRetryNanos = nextRetryAtNanos - elapsedNanos;
+            try {
+                TimeUnit.NANOSECONDS.sleep(Math.min(remainingNanos, Math.min(untilRetryNanos, pollIntervalNanos)));
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw interrupted;
+            }
+        }
+    }
+
+    @FunctionalInterface
+    interface CheckedInitialization {
+        void run() throws Exception;
+    }
 }

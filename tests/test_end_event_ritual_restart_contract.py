@@ -62,7 +62,8 @@ def test_unloaded_living_caster_is_not_counted_as_a_restart_death():
         "an incomplete Caster roster must stop restart before it can alter progression"
     )
     assert "ritualCasterDeathCount = recoveredProfile.casterCount() - recoveredCasters" not in start
-    assert "RitualSphereEncounterSnapshot.encode(ritualSphereState, ritualCasterDeathCount)" in EVENT
+    assert "ritualSpellCursor = wave6.spellCursor();" in EVENT
+    assert "RitualSphereEncounterSnapshot.encode(\n                            ritualSphereState, ritualCasterDeathCount, ritualSpellCursor)" in EVENT
 
 
 def test_wave6_restart_loads_bounded_arena_and_rebuilds_unique_caster_and_guard_slots():

@@ -130,6 +130,51 @@ class BridgePrivateKeyLoaderTest {
     }
 
     @Test
+    void reportsSafeFailureReasonsWithoutIncludingConfiguredPathOrKeyMaterial() throws Exception {
+        KeyPair pair = newEd25519KeyPair();
+        KeyPair otherPair = newEd25519KeyPair();
+
+        assertEquals(BridgePrivateKeyLoader.FailureReason.CONFIGURATION_ABSENT,
+                BridgePrivateKeyLoader.loadConfiguredPath(
+                        " ", pair.getPublic(), fingerprint(pair.getPublic())).failureReason());
+        var missing = BridgePrivateKeyLoader.loadWithDiagnostics(
+                tempDir.resolve("missing-secret-file.b64"), pair.getPublic(), fingerprint(pair.getPublic()));
+        assertEquals(BridgePrivateKeyLoader.FailureReason.FILE_MISSING, missing.failureReason());
+        assertFalse(missing.toString().contains("missing-secret-file.b64"));
+        assertFalse(missing.toString().contains(fingerprint(pair.getPublic())));
+        assertEquals(BridgePrivateKeyLoader.FailureReason.FILE_UNREADABLE,
+                BridgePrivateKeyLoader.loadWithDiagnostics(
+                        tempDir, pair.getPublic(), fingerprint(pair.getPublic())).failureReason());
+
+        Path malformedFile = tempDir.resolve("malformed.b64");
+        Files.writeString(malformedFile, "not-base64", StandardCharsets.US_ASCII);
+        assertEquals(BridgePrivateKeyLoader.FailureReason.INVALID_ENCODING,
+                BridgePrivateKeyLoader.loadWithDiagnostics(
+                        malformedFile, pair.getPublic(), fingerprint(pair.getPublic())).failureReason());
+
+        KeyPairGenerator ed448Generator = KeyPairGenerator.getInstance("Ed448");
+        KeyPair ed448Pair = ed448Generator.generateKeyPair();
+        Path wrongTypeFile = tempDir.resolve("wrong-type.b64");
+        Files.write(wrongTypeFile, encodedPrivateKey(ed448Pair));
+        assertEquals(BridgePrivateKeyLoader.FailureReason.WRONG_KEY_TYPE,
+                BridgePrivateKeyLoader.loadWithDiagnostics(
+                        wrongTypeFile, pair.getPublic(), fingerprint(pair.getPublic())).failureReason());
+
+        Path mismatchedFile = writeKeyFile(tempDir.resolve("mismatched.b64"), otherPair);
+        assertEquals(BridgePrivateKeyLoader.FailureReason.PUBLIC_KEY_MISMATCH,
+                BridgePrivateKeyLoader.loadWithDiagnostics(
+                        mismatchedFile, pair.getPublic(), fingerprint(pair.getPublic())).failureReason());
+
+        Path validFile = writeKeyFile(tempDir.resolve("valid.b64"), pair);
+        var loaded = BridgePrivateKeyLoader.loadWithDiagnostics(
+                validFile, pair.getPublic(), fingerprint(pair.getPublic()));
+        assertEquals(BridgePrivateKeyLoader.FailureReason.NONE, loaded.failureReason());
+        assertTrue(loaded.signer().isPresent());
+        assertFalse(loaded.toString().contains(Base64.getEncoder().encodeToString(pair.getPrivate().getEncoded())));
+        loaded.signer().orElseThrow().close();
+    }
+
+    @Test
     void rejectsSymbolicLinksEvenWhenTheyTargetAValidKeyFile() throws Exception {
         KeyPair pair = newEd25519KeyPair();
         Path target = writeKeyFile(tempDir.resolve("signer-target.b64"), pair);

@@ -204,7 +204,10 @@ def test_event_arrow_slowness_requires_an_accepted_nested_damage_event():
     assert "pendingPlayerDamageOutcome" in damage
     assert "DragonBreathCloudPolicy.shouldApplyEffects(" in damage
     assert "damageOutcome.isCancelled()" in damage
-    assert "if (debuffTicks > 0)" in damage
+    assert "if (appliedDebuffTicks > 0)" in damage
+    assert damage.index("if (!DragonBreathCloudPolicy.shouldApplyEffects(") < damage.index(
+        "int appliedDebuffTicks ="
+    ) < damage.index("if (appliedDebuffTicks > 0)")
     assert "pending.outcome = event" in outcome
     assert "pending.playerId.equals(player.getUniqueId())" in outcome
 

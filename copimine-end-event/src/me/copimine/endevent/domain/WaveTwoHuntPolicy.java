@@ -11,6 +11,10 @@ public final class WaveTwoHuntPolicy {
     public static final int MIN_MARK_PERIODS = 2;
     public static final int MAX_LATE_REINFORCEMENTS = 2;
     public static final int MAX_COMPLETED_MARK_PERIODS = 1_000_000;
+    /** Packet identity is independent from the bounded gameplay completion counter. */
+    public static final int MAX_MARK_ASSIGNMENT_ID = Integer.MAX_VALUE;
+    /** Highest identity issued by the legacy implementation before it stalled. */
+    public static final int LEGACY_MAX_MARK_ASSIGNMENT_ID = MAX_COMPLETED_MARK_PERIODS + 1;
 
     private WaveTwoHuntPolicy() { }
 
@@ -55,6 +59,41 @@ public final class WaveTwoHuntPolicy {
     /** The exact deadline is the first instant at which the assignment expires. */
     public static boolean markExpired(long nowMillis, long deadlineMillis) {
         return nowMillis >= 0L && deadlineMillis > 0L && nowMillis >= deadlineMillis;
+    }
+
+    /** Whether another monotonically increasing packet identity can be issued. */
+    public static boolean markAssignmentIdsExhausted(int assignmentId) {
+        if (assignmentId < 0) {
+            throw new IllegalArgumentException("mark assignment identity must not be negative");
+        }
+        return assignmentId >= MAX_MARK_ASSIGNMENT_ID;
+    }
+
+    /** Advance the packet identity without changing gameplay completion progress. */
+    public static int nextMarkAssignmentId(int assignmentId) {
+        if (markAssignmentIdsExhausted(assignmentId)) {
+            throw new IllegalStateException("Wave 2 mark assignment identity is exhausted");
+        }
+        return assignmentId + 1;
+    }
+
+    /** Legacy snapshots lack packet identity; reserve all IDs the old code could have issued. */
+    public static int restoreMarkAssignmentId(String encoded, int completedMarkPeriods) {
+        if (completedMarkPeriods < 0 || completedMarkPeriods > MAX_COMPLETED_MARK_PERIODS) {
+            throw new IllegalArgumentException("completed Wave 2 mark periods are outside their bounded range");
+        }
+        if (encoded == null) {
+            return LEGACY_MAX_MARK_ASSIGNMENT_ID;
+        }
+        try {
+            int assignmentId = Integer.parseInt(encoded);
+            if (assignmentId < 0 || assignmentId < completedMarkPeriods) {
+                throw new IllegalArgumentException("Wave 2 mark assignment identity regressed");
+            }
+            return assignmentId;
+        } catch (NumberFormatException malformed) {
+            throw new IllegalArgumentException("Wave 2 mark assignment identity is malformed", malformed);
+        }
     }
 
     /** A batch may clear after two mark periods, without requiring a third period. */

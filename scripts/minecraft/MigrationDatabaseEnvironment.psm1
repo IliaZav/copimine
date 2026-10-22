@@ -154,7 +154,16 @@ function Assert-MigrationDatabaseEnvironment {
         [string]::IsNullOrWhiteSpace([string]$settings['POSTGRES_PASSWORD'])) {
         throw 'The isolated migration database user password is not present in its private environment file.'
     }
-    return $settings
+    # This function is exported and PowerShell emits unassigned return values.
+    # Never return the parsed environment map: it may contain credentials in
+    # POSTGRES_PASSWORD, DATABASE_URL, or future connection settings.
+    $diagnosticSettings = @{}
+    foreach ($name in @('POSTGRES_HOST', 'POSTGRES_PORT', 'POSTGRES_DB', 'POSTGRES_SCHEMA', 'POSTGRES_USER')) {
+        if ($settings.ContainsKey($name)) {
+            $diagnosticSettings[$name] = [string]$settings[$name]
+        }
+    }
+    return $diagnosticSettings
 }
 
 function Initialize-MigrationPostgresCredentialFiles {

@@ -99,7 +99,15 @@ def test_wave6_spell_dispatch_uses_accumulated_unlocks_independently_of_caster_s
     assert "wave6RitualRuntimeAdapter.startGravityAnchor(" in body
     assert "wave6RitualRuntimeAdapter.startFallingAnvils(" in body
     assert "ritualSpellController.start(generation, spell," in body
-    assert "ritualSpellCursor = Math.floorMod(ritualSpellCursor + 1, availableSpells.size())" in body
+    assert "advanceAndPersistRitualSpellCursor(availableSpells.size())" in body
+    assert "StartBlocker.INVALID_GEOMETRY" in body
+    assert "StartBlocker.NO_ELIGIBLE_PARTICIPANTS" in body
+    assert "StartBlocker.CLEANUP_PENDING" in body
+    assert "StartBlocker.ENCOUNTER_FAILURE" in body
+    failed_start = body.split("if (!started.accepted())", 1)[1].split("return;", 1)[0]
+    assert "handleRitualMajorSpellBlocker(" in failed_start
+    assert "StartBlocker.ENCOUNTER_FAILURE" in failed_start
+    assert "advanceAndPersistRitualSpellCursor" not in failed_start
     assert "startRitualReverse" not in body
     assert "startRitualControlSwap" not in body
     for removed in (
@@ -110,6 +118,36 @@ def test_wave6_spell_dispatch_uses_accumulated_unlocks_independently_of_caster_s
     ):
         assert removed not in body
     assert "RitualSphereEncounterPolicy.Ability.values()" not in body
+
+
+def test_wave6_major_spell_cursor_is_persisted_and_restored_without_replaying_a_skipped_cast() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    snapshot = read(DOMAIN / "RitualSphereEncounterSnapshot.java")
+    advancement = method(root, "private void advanceAndPersistRitualSpellCursor(")
+    blocker = method(root, "private void handleRitualMajorSpellBlocker(")
+    apply_snapshot = method(root, "private void applySnapshot(")
+    wave_snapshot = method(root, "private Map<String, String> waveObjectiveProgressSnapshot()")
+
+    assert "RitualCasterProgressionPolicy.advanceSpellCursor(" in advancement
+    assert "saveStateAsync()" in advancement
+    assert "RitualCasterProgressionPolicy.resolutionFor(blocker)" in blocker
+    assert "case SKIP_AND_RETRY" in blocker
+    assert "case WAIT" in blocker
+    assert "case RECOVERY_REQUIRED" in blocker
+    assert "ritualSpellCursor = wave6.spellCursor()" in apply_snapshot
+    assert "ritualSpellCursor" in wave_snapshot
+    assert "SPELL_CURSOR" in snapshot
+    assert "spellCursor" in snapshot
+    assert "RitualCasterProgressionPolicy.availableSpells(casterDeaths).size()" in snapshot
+
+
+def test_guard_melee_and_cast_share_composed_controller_ownership() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    ability_scheduler = method(root, "private void tickRitualGuardAbilities(")
+    assert "RitualGuardAbilityPolicy.endermanMeleeOwnsController(" in ability_scheduler
+    guard_post = method(root, "private void tickRitualGuardPost(")
+    assert "guard.getUniqueId().equals(ritualGuardAbilityGuard)" in guard_post
+    assert "guard.setAI(false)" in guard_post
 
 
 def test_wave6_scheduler_retains_unlocked_spells_and_uses_only_live_owners() -> None:
@@ -198,9 +236,15 @@ def test_wave6_guards_have_tuned_once_health_and_one_shared_cancellable_ability(
     assert "keyRitualGuardHealthConfigured" in root
     assert "RitualGuardStatsPolicy.maximumHealth(" in root
     assert "tickRitualGuardAbilities(now)" in group_tick
-    assert "RitualGuardAbilityPolicy.forGuardSlot(" in ability_tick
+    assert "RitualGuardAbilityPolicy.roleSlot(casterSlot, guardSlot)" in ability_tick
+    assert "RitualGuardAbilityPolicy.forGuardActionAtRange(" in ability_tick
+    assert "roleSlot, actionOrdinal, distance)" in ability_tick
+    assert "actionOrdinal" in ability_tick
     assert "RitualGuardAbilityPolicy.mayCommit(" in ability_tick
-    assert "RitualGuardAbilityPolicy.hits(" in ability_tick
+    resolve = root[root.index("private void resolveRitualGuardAbility("):
+                    root.index("private void completeRitualGuardAbility(")]
+    assert "RitualGuardAbilityPolicy.mayHitWardenSlamVictim(" in resolve
+    assert "RitualGuardAbilityPolicy.acceptedPlayerDamage(" in resolve
     assert "clearRitualGuardAbilityState(" in clear
     assert "PotionEffectType.SLOWNESS" in ability_tick
     cast_validity = root[root.index("private boolean isRitualGuardAbilityCastValid"):
@@ -225,6 +269,122 @@ def test_wave6_shield_stage_uses_the_selected_profiles_guard_total() -> None:
     assert "ritualExpectedGuardsPerCaster()" in guard_tick
     assert "ritualSphereState.profile().guardsPerCaster()" in expected_count
     assert "ritualShieldName(shield)" in guard_tick
+
+
+def test_wave6_guard_roles_and_giant_replacements_preserve_the_selected_roster() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    ability_policy = read(DOMAIN / "RitualGuardAbilityPolicy.java")
+    spawn = method(root, "private boolean startRitualSphereObjective(")
+
+    assert "int roleSlot = RitualGuardAbilityPolicy.roleSlot(casterSlot, guardSlot)" in spawn
+    assert "RitualGuardAbilityPolicy.isGiantReplacement(" in spawn
+    assert "if (roleSlot == 0 && giantReplacement)" in spawn
+    assert "spawnRiftGiantEntity(world, guardLocation, 6, true, guardEntitySlot)" in spawn
+    assert "RitualGuardAbilityPolicy.entityTypeForGuardRole(roleSlot)" in spawn
+    assert "retagRitualEntity(guard, \"GUARD\", caster.getUniqueId(), casterSlot, guardSlot)" in spawn
+    assert "int guardsPerCaster = boundedParticipants <= 4 ? 1 : boundedParticipants <= 8 ? 2 : 3" in ability_policy
+    assert "guardSlot >= guardsPerCaster" in ability_policy
+    assert "int expected = boundedParticipants <= 4 ? 1 : boundedParticipants <= 8 ? 2 : 3" in ability_policy
+
+    recovery = method(root, "private boolean ensureRitualCasterRosterAvailableForRecovery(")
+    assert "isGuardEntityTypeCompatible" in recovery
+    assert "giantReplacement != isRiftGiant(guard)" in recovery
+
+
+def test_wave6_giant_guards_keep_one_combat_controller_and_support_guard_allies() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    giant_policy = read(DOMAIN / "RiftGiantPolicy.java")
+    generic_eligibility = method(root, "private boolean isWaveAiCombatEntity(")
+    guard_tick = method(root, "private void tickRitualGuardGroups(")
+    giant_check = method(root, "private boolean isRiftGiant(")
+
+    assert "if (isCurrentRitualGuard(entity)) return false" in generic_eligibility
+    assert guard_tick.count("tickRiftGiantOffense(giant, target, now)") == 1
+    assert "EVENT_KIND_RITUAL_GUARD.equals(kind)" in giant_check
+    assert "EVENT_KIND_ELITE.equals(kind)" in giant_check
+    assert "PersistentDataType.BYTE" in giant_check
+    assert "&& !ritualCaster" in giant_policy
+    assert "&& !ritualGuard" not in giant_policy
+
+
+def test_blocked_melee_and_projectile_hits_still_alert_the_casters_guard_group() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    damage = method(root, "public void onRitualCasterDamage(")
+    projectile = method(root, "public void onRitualCasterShieldProjectile(")
+
+    assert "alertRitualCasterAndGuards(caster, player)" in damage
+    assert damage.index("alertRitualCasterAndGuards(caster, player)") < damage.index(
+        "blockRitualCasterShieldHit(event, caster)"
+    )
+    assert "alertRitualCasterAndGuards(caster, player)" in projectile
+    assert projectile.index("alertRitualCasterAndGuards(caster, player)") < projectile.index(
+        "event.setCancelled(true)"
+    )
+
+
+def test_wave6_role_casts_release_physical_arrows_with_atomic_ownership() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    ability_tick = method(root, "private void tickRitualGuardAbilities(")
+    resolve = method(root, "private void resolveRitualGuardAbility(")
+    skeleton_damage = method(root, "public void onEventSkeletonArrowDamage(")
+    generic_damage = method(root, "public void onCustomEventArrowDamage(EntityDamageByEntityEvent event)")
+    volley = method(root, "private boolean spawnRitualGuardVolley(")
+    brand = method(root, "private boolean spawnRitualGuardSoulBrandProjectile(")
+    physical = method(root, "private boolean spawnRitualGuardPhysicalProjectile(")
+
+    assert "RitualGuardAbilityPolicy.forGuardActionAtRange(" in ability_tick
+    assert "roleSlot, actionOrdinal, distance)" in ability_tick
+    assert "isCompatibleWithMob(profile, guard.getType().name())" in ability_tick
+    assert "Skeleton skeleton = arrow.getShooter() instanceof Skeleton candidate ? candidate : null;" in skeleton_damage
+    assert "if (skeleton == null || !isEventSkeleton(skeleton)) return;" in skeleton_damage
+    assert "if (arrow.getShooter() instanceof Skeleton skeleton && isEventSkeleton(skeleton))" in generic_damage
+    assert "spawnRitualGuardVolley(guard, target, ritualGuardAbilityImpact)" in resolve
+    assert "spawnRitualGuardSoulBrandProjectile(" in resolve
+    assert "target, ritualGuardAbilityImpact)" in resolve
+    assert "distanceSquaredToSegment" not in resolve
+    assert "reserveWaveProjectileGroup(groupId, 3)" in volley
+    assert "world.spawnArrow(" in volley
+    assert "rotateAroundY" in volley
+    assert "tagRitualProjectileOrigin" in volley and "tagRitualProjectileTarget" in volley
+    assert "trackEventArrow" in volley
+    assert "clearWaveProjectileGroup" in volley
+    assert "ARROW_SPELL_RITUAL_GUARD_BRAND" in brand
+    assert "tagRitualProjectileTarget" in physical
+
+
+def test_wave6_spider_poison_requires_a_successful_owned_melee_bite() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    bite = method(root, "public void onRitualSpiderBitePoison(")
+
+    assert "@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)" in root[
+        root.index("@EventHandler", root.index("public void onRitualSpiderBitePoison(") - 100):
+        root.index("public void onRitualSpiderBitePoison(")
+    ]
+    assert "event.getCause() != EntityDamageEvent.DamageCause.ENTITY_ATTACK" in bite
+    assert "event.getFinalDamage() <= 0.0D" in bite
+    assert "isCurrentRitualGuard(spider)" in bite
+    assert "isFreeRitualTarget(player)" in bite
+    assert "PotionEffectType.POISON" in bite
+    assert "RITUAL_SPIDER_POISON_TICKS" in bite
+
+
+def test_wave6_only_escape_restricting_guard_control_waits_for_anchor_and_anvils() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    ability_tick = method(root, "private void tickRitualGuardAbilities(")
+    hard_control = method(root, "private boolean isRitualHardControlWindowActive(")
+    giant = method(root, "private boolean tickRiftGiantOffense(")
+    damage = method(root, "private void onCustomEventArrowDamage(EntityDamageByEntityEvent event, Arrow arrow, String spell)")
+
+    assert "if (isRitualMajorSpellBusy())" not in ability_tick
+    assert "isHardControl(ritualGuardAbilityProfile)" in ability_tick
+    assert "cancelRitualGuardAbilityCast" in ability_tick
+    assert "Wave6Spell.GRAVITY_ANCHOR" in hard_control
+    assert "Wave6Spell.FALLING_ANVILS" in hard_control
+    assert "RitualGuardAbilityPolicy.suppressesHardControl" in hard_control
+    assert "isRitualHardControlWindowActive()" in giant
+    assert "RIFT_GIANT_STRIKE_CANCELLED" in giant
+    assert "webProjectile && isRitualHardControlWindowActive()" in damage
+    assert "? 0 : debuffTicks" in damage
 
 
 def test_wave6_live_ai_probe_allows_server_controlled_passive_casters() -> None:

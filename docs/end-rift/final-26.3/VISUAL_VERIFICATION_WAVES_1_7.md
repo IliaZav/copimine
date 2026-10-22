@@ -1,76 +1,57 @@
 # End Rift Waves 1–7: native visual verification checklist
 
-**Status:** pending. No graphical Minecraft session or native F2 capture was used during the repair. Complete this checklist in a real 26.3 Fabric client connected to the pinned local Paper server. Headless protocol tests and static asset checks do not satisfy these visual gates.
+**Status: pending.** No graphical Minecraft session or native F2 capture was used during the repair. Complete this checklist in a real Minecraft 26.3 Fabric client after the current candidate is installed through the official path, the authenticated bridge is ready, and the existing arena configuration is identified. Use the existing user-built arena; do not generate or reshape a replacement arena to satisfy a screenshot. Headless protocol tests and static asset checks do not satisfy these visual gates.
 
-For every item, capture an F2 screenshot or short video with the wave, player POV, event generation, and timestamp visible where practical. Record any discrepancy with exact reproduction steps and retain the original capture.
+Before each capture set, record the server/plugin SHA, client profile, world, event generation, roster size, and POV. Use F2 screenshots for still states and short uncut videos for transitions. Keep the HUD and enough scene context visible to identify the state. If a prerequisite prevents reaching a wave, record it as blocked and do not substitute a static preview. Keep `nativeVerified=false` until the original captures are reviewed.
 
-## Wave 1 — carrier and core
+Every row below is one evidence item. The filename column is the required base name; append a sequence number if a row asks for several angles or states. Record the actual filename and pass/fail in the evidence log at the end.
 
-- [ ] Carrier item is visible in hand and has the correct model and texture.
-- [ ] Carrier-to-core beam is visible and terminates at the correct core.
-- [ ] Core charging animation and charging state are readable.
-- [ ] Inventory indicator updates while carrying and after depositing the charge.
-- [ ] Dropped-charge timer is visible and counts down accurately.
-- [ ] Capture the item, beam, core, inventory indicator, and dropped-charge timer separately.
-
-## Wave 2 — mark and phantom Endermen
-
-- [ ] Marked player's first-person view shows the intended mark effect for the full 45-second period.
-- [ ] Grey phantom Endermen render at the server-selected positions and remain distinguishable from real Endermen.
-- [ ] Phantom aggression transition shows the open-mouth and raised-arm cues.
-- [ ] Phantom activation materializes the corresponding real, colored Enderman with a readable transition.
-- [ ] Unmarked player POV shows the intended shared fight without the marked-only shader.
-- [ ] Shader and hidden-player presentation clear immediately on mark expiry, death, disconnect, wave clear, and reconnect.
-- [ ] Allies become visible again after the mark ends.
-- [ ] Capture marked and unmarked POVs, activation, and cleanup.
-
-## Wave 3 — portals
-
-- [ ] For each of the three portals, capture front, back, left, right, and top views.
-- [ ] Close-up confirms frame geometry and inner surface have no gaps or z-fighting.
-- [ ] Capture active, capturing, interrupted-capture, and closing states.
-- [ ] Regular mobs visibly emerge from each active portal.
-- [ ] Rift Giant visibly emerges from portal two specifically.
-- [ ] Closed portals stop emitting mobs and leave no visual residue.
-
-## Wave 4 — obelisks and reflected fireballs
-
-- [ ] Capture each obelisk undamaged, damaged, critical, and fully destroyed from multiple sides.
-- [ ] Fireball telegraph and trajectory point toward the selected target and remain dodgeable.
-- [ ] Capture a genuine reflected fireball striking the correct obelisk.
-- [ ] Destruction visuals and temporary collapse state clean up after the objective.
-- [ ] Confirm unrelated projectiles produce no objective visual feedback.
-
-## Wave 5 — fog and safe zones
-
-- [ ] Capture fog from arena center and outer boundary at each of the three cycles.
-- [ ] Emerald safe cells are in the expected positions and large enough for the supported player count.
-- [ ] Green safety beams are visible and align with the safe cells.
-- [ ] Capture each shrinking-zone phase and players occupying safe cells.
-- [ ] Capture danger damage and safe-zone protection feedback.
-- [ ] Capture AI pause/resume and confirm temporary floor blocks restore after each cycle and cleanup.
-
-## Wave 6 — Sphere, guards, spells, and anvils
-
-- [ ] Capture Sphere from outside: front, side, and top; then from the prisoner's POV.
-- [ ] Capture caster hand/channel poses and the full guard roster: zombie, skeleton, Enderman, and spider.
-- [ ] Capture Rift Giant aura and bounded summon visuals.
-- [ ] Capture Gravity Anchor warning, pull, explosion, and recovery; include a successful dodge.
-- [ ] Capture first and second anvil volleys, their warnings, falling anvils, impacts/misses, and cleanup.
-- [ ] At 11+ players, capture each 5×5 volley and show exactly 25 active anvil visuals per volley, two volleys total.
-- [ ] Capture prisoner Q/W/E/R UI progression and blue/violet target outlines.
-- [ ] Capture fifth-caster-death release and ensure the Sphere and all effects disappear.
-
-## Wave 7 — four trials and handoff
-
-- [ ] Capture all four chambers from front, back, left, right, and top.
-- [ ] Show physical wall collision from a moving player POV and confirm attacks do not cross walls.
-- [ ] Capture each actor model and its actual attack telegraph/impact.
-- [ ] Capture each separator opening independently as its assigned trial completes.
-- [ ] Capture Echo appearance, duel, accepted damage, and valid player ownership.
-- [ ] Capture natural Wave 7 completion, post-completion cleanup, player repair/heal, and the single 40-second handoff.
-- [ ] Confirm the handoff reaches the existing boss transition without changing the boss encounter or its Kagune/tentacle mechanics.
+| Done | ID / capture name | Setup and viewpoint | Action | Expected result | Failure symptoms |
+| --- | --- | --- | --- | --- | --- |
+| [ ] | `W1-CARRIER` | Wave 1; carrier POV, first person, item in hand and hotbar visible. | Pick up the charge and hold it without depositing. | Correct carrier model/texture; carrier state and inventory indicator agree. | Missing/wrong model, indicator absent or stale, wrong player marked as carrier. |
+| [ ] | `W1-BEAM-PRIVATE` | Two participants near the core; capture once from carrier POV and once from observer POV. | Carry the charge toward the core, then move away. | Beam joins the carrier to the correct core and appears only to the approved recipient. | Beam follows the wrong player/core, leaks to an unauthorized viewer, flickers, or persists after the carrier leaves. |
+| [ ] | `W1-CORE-CHARGE` | Wave 1; side view showing carrier, core, and nearby enemies. | Deliver three distinct charges one at a time. | Readable core charging feedback; each delivery advances once; no large overlay or sweeping shockwave. | Duplicate progress/reward, missing delivery, giant text, noisy particles, or feedback away from the core. |
+| [ ] | `W1-DROPPED-CHARGE` | Wave 1; close third-person view of a dropped charge and its timer. | Drop a charge and record the ring at early, middle, and near-expiry times. | Timer counts down; ring shrinks and changes color clearly; pickup/despawn outcome matches the timer. | Timer freezes, jumps, is unreadable, or remains after recovery/despawn. |
+| [ ] | `W1-CLEANUP` | Carrier POV plus observer POV; capture before and after a carrier death or disconnect/reconnect. | Trigger the supported carrier recovery path, then observe the next wave/handoff. | Charge ownership resolves once; carrier-only shader and Slowness clear; no stale beam/indicator remains. | Lost or duplicated charge, effect leaks to allies, shader remains, or stale carrier visuals persist. |
+| [ ] | `W2-MARK-ROTATION` | Two eligible participants; record both first-person POVs and the visible timer/state. | Observe the first full 45-second mark and the next full mark. | First and second marks select different players; each remains for 45 seconds; combat continues across the transition. | Early/late transition, same target despite two eligible players, an empty forced wait, or progress reset. |
+| [ ] | `W2-PHANTOM-AUDIENCE` | Marked and unmarked participant POVs in the same scene; keep the same ally visible to both. | Look at the same valid phantom positions and ally from both clients. | Marked client sees stable pale-grey stationary phantoms and locally hidden ally models/equipment/effects; unmarked client sees no phantom layer and sees the ally normally. | Phantoms leak to unmarked POV, flicker/wander, cover the world, hide real combat entities, or hide allies from unmarked viewers. |
+| [ ] | `W2-PHANTOM-AGGRESSION` | Marked POV with a phantom in view; observer records the same location. | Let one phantom activate; capture the warning and the materialization in one short video. | Phantom head tracks the marked player; arms rise and mouth opens before a synchronized real, muted-colored Enderman appears and pursues that player. Observer sees only the real entity. | No head tracking or warning, real hitbox appears before the warning, phantom remains after activation, color/model is wrong, or observer sees the fake layer. |
+| [ ] | `W2-SHADER-AND-ALLY-CLEANUP` | Marked player POV and an unmarked observer; include the marked client's current shaderpack identity in the evidence log, not a settings edit. | End a mark normally, then repeat one cleanup path through death or reconnect. | Only the marked player receives the approved vision; camera/input are unchanged; allies return; user's Iris/shader selection is preserved. | Global shader, inverted input, camera rotation, hidden allies after mark, or shaderpack setting changed. |
+| [ ] | `W3-PORTAL-1-GEOMETRY` | Portal 1; capture front, back, left, right, and top with a close frame/surface view. | Walk around the portal while it is active. | Three-dimensional opening, aligned frame and inner surface, correct orientation and no gaps/z-fighting. | Flat/stacked appearance, wrong facing, missing layer, clipping, flicker, or visible gaps. |
+| [ ] | `W3-PORTAL-2-GEOMETRY` | Portal 2; same five angles as portal 1. | Walk around the portal while it is active. | Same readable geometry and active state; portal 2 is the only source of the required Rift Giant. | Misalignment, bad surface depth, or giant appears from another portal. |
+| [ ] | `W3-PORTAL-3-GEOMETRY` | Portal 3; same five angles as portal 1. | Walk around the portal while it is active. | Correct sequential portal presentation, distinct active state, and no unrelated elite entrance. | Wrong order, incorrect orientation, layer leak, or giant appears here. |
+| [ ] | `W3-CAPTURE-STATES` | Current active portal; participant POV at the real capture center, plus a side view of the progress anchor. | Enter the capture radius, remain for the required interval, step out to interrupt, then re-enter. | Visible progress follows the real center; leaving suspends/reverses as specified; completion closes only this portal. | Progress advances outside the zone, does not interrupt, drifts from the visible anchor, or closes another portal. |
+| [ ] | `W3-MOB-EMERGENCE` | Observer at the active opening with enough arena context to see spawn origin. | Wait for regular spawns at each portal; observe portal 2 for the giant arrival; capture a portal after its required enemy. | Mobs emerge from/in front of the opening; the giant emerges visibly from portal 2; closure stops that portal's new spawns. | Mobs appear elsewhere/inside the frame, giant is absent or from another portal, or a closed portal keeps spawning. |
+| [ ] | `W3-PORTAL-CLEANUP` | Previously captured portal, viewed from front and back. | Finish capture and inspect after the close animation. | Portal layers disappear; no display/entity residue remains. | Floating frame/surface, orphan display entities, or active effects after closure. |
+| [ ] | `W4-OBELISK-STATES` | Each obelisk, with front/side/back views and the state visible. | Capture each obelisk at 3, 2, 1, and 0 HP. | Existing form remains readable; texture/damage/collapse transitions match health; final state cleans up. | Wrong state, crude scale jump, broken collapse, visual remains after destruction. |
+| [ ] | `W4-FIREBALL-AIM-AND-DODGE` | Moving participant with one eligible obelisk in view; record target position and firing time. | Move laterally during the firing interval and dodge the genuine fireball. | Physical non-homing projectile aims at the current/sensibly predicted position and can be dodged; no trajectory line is drawn. | Shot tracks the player, aims at an old position, cannot be dodged, or shows a projected line. |
+| [ ] | `W4-REFLECTION` | Player POV with the selected obelisk visible; capture an observer view if available. | Reflect one obelisk fireball, then show the obelisk state before and after the accepted hit. | Correct reflected projectile strikes the source obelisk once; unrelated projectile gives no progress. | Wrong obelisk changes, one reflection removes multiple HP, or foreign projectile gives feedback/progress. |
+| [ ] | `W5-FOG-CYCLES` | Record roster size. Capture arena center and outer boundary during warning and each of three cycles. | Let each fog cycle start and progress naturally. | Dense readable dark boundary/volume; safe interior remains orientable; no unbounded particle flood. | Only isolated particle drops, invisible boundary, unreadable safe area, or severe particle overload. |
+| [ ] | `W5-SAFE-ZONES` | Capture each emerald safe cell from above and at player height, including its green beam; record participants and phase. | Observe each shrink phase and fill safe cells with the supported number of survivors. Repeat the capacity view for rosters of 1, 2, 5, 10, and 20 when those fixtures are available. | Emerald blocks and green beams align; every eligible survivor can physically fit without forced teleportation. | Wrong block, missing/misaligned beam, blocked space, or impossible safe capacity. |
+| [ ] | `W5-DANGER-AND-PROTECTION` | Two participant POVs: one just outside a safe cell, one fully inside; keep both feet positions visible. | Let one damage interval resolve, then swap positions. | Danger damage affects the exposed player; protection prevents it inside the safe cell. | Damage/protection follows the wrong boundary, applies twice, or ignores the safe cell. |
+| [ ] | `W5-REFILL-AND-AI-RESUME` | Record combat area and a visible normal mob before fog; use the approved test setup to observe zero-mob refill if available. | Observe refill, fog hold, then resume. | A bounded group appears when required; held mob behavior resumes with its prior target/AI. | Empty inactive wave, infinite refill, lost target, or mob remains frozen after the cycle. |
+| [ ] | `W5-WORLD-RESTORE` | Capture each modified floor area before the fog cycle and after cycle/reset. | Complete or interrupt a cycle through the supported path. | Temporary emerald/world cells and visuals restore exactly; no player is trapped. | Original block changed, temporary cell remains, trapped player, or orphan beam/effect. |
+| [ ] | `W6-SPHERE-AND-CASTERS` | Outside view from front, side, and top, then prisoner first-person POV; include all five casters. | Start Wave 6 and observe channeling before combat. | Raised sphere is readable, caster arms/channel poses point toward it, and Sphere attacks originate at the Sphere. | Missing/partial sphere, missing caster, incorrect channel direction, or attacks visibly originate from hands. |
+| [ ] | `W6-GUARD-ROSTER` | Record total participant count; capture each assigned caster group from a side view and each role in close view. | Observe a zombie tank, skeleton defender, Enderman spell defender, spider support, and each giant replacement slot that the roster selects. Let each guard attack, then move its target outside its engagement radius and observe the return. | Correct role roster/counts; all four roles perform their attacks; guards return by path without teleporting; giants replace zombie slots; no extra guard or summon becomes a shield owner. | Missing role/attack, wrong mob type, excess roster, oscillating chase/return, giant lacks aura/scale, guard teleports home, or summons restore caster shield. |
+| [ ] | `W6-GUARD-CAST-RETENTION` | Enderman spell defender and one eligible free player; use the supported controlled setup with the player initially acquired inside the close radius. | Let the Enderman begin a telegraph, move the player to about 4.5 blocks away, then repeat beyond the outer retention boundary. | A valid committed target remains through the first move and cast resolves or cancels by its real conditions; target beyond the outer boundary is rejected. | Cast cancels solely because native targeting cleared, invalid target remains committed, or target is chased beyond the caster leash. |
+| [ ] | `W6-TARGETING-DENSE` | Prisoner client; use an approved crowded test scene with at least 256 nearby entities and a real wall plus Sphere obstruction in view. | Aim at an eligible ally and enemy, then aim through the Sphere and through a solid wall. | Bounded preview still selects valid targets; Sphere obstruction behaves as designed; real wall blocks occluded targeting. | Preview stalls, outlines select invalid entities, wall is ignored, or selection leaks across the room/arena. |
+| [ ] | `W6-PRISONER-HUD` | Prisoner POV with hotbar and nearby ally/hostile targets visible. | Capture after each of the first four caster deaths; aim at an eligible ally and hostile mob. | Q/W/E/R unlock in order; HUD stays above hotbar; blue ally and violet hostile outline appear only for valid prisoner targets. | Wrong unlock order/key, stale HUD, prisoner targetable as hostile, or outlines show for other players. |
+| [ ] | `W6-SPHERE-SPELLS` | Free combatant POV plus outside observer; capture each spell after its caster threshold. | Observe Rift Barrage, Gravity Anchor, Soul Brand, and Heavenly Judgment in order; record target warning and impact. | Each accumulated spell is visibly distinct, begins at the Sphere, warns, resolves once, then cleans before another major spell. | Wrong progression, no warning, simultaneous major hazards, duplicate hit, or lingering effect. |
+| [ ] | `W6-GRAVITY-ANCHOR` | Free player near the selected cluster; prisoner visible separately; capture crystal and player from side. | Let the fixed End Crystal appear, wait through warning/pull/explosion/fall, and have a player move out if possible. | Invulnerable vanilla crystal stays fixed; eligible players are lifted/pulled without crossing blocks; explosion does not alter terrain; landing resolves once. | Crystal follows target or breaks, prisoner is pulled, player clips through geometry, duplicate damage, terrain damage, or frozen movement. |
+| [ ] | `W6-ANVILS-2-3` | Two or three total participants; free player POV with warning area visible. | Observe the anvil cast and move outside the locked landing point. | One vanilla anvil visual per free player; warning is readable; player can escape; no world block/item remains. | Prisoner targeted, anvil follows the player, unavoidable hit, persistent block/item, or repeated damage. |
+| [ ] | `W6-ANVILS-4-10` | Four to ten total participants; capture each free target area from above and at player height. | Observe one Heavenly Judgment cast. | A 3×3 group per free player is visible; each target gets at most one receipt; visuals clean after impact. | Wrong group size, multiple receipts per target, friendly/prisoner hit, or lingering displays. |
+| [ ] | `W6-ANVILS-11-20` | Eleven or twenty total participants; overhead POV that shows all active visuals and the next target cluster. | Capture both full volleys, including the impact-to-next-warning interval. | Exactly 25 active anvil visuals per volley, exactly two sequential 5×5 volleys, one second after impact before the next warning, then cleanup. | More than 25 simultaneous anvils, third volley, wrong cluster, short warning, or stale visuals. |
+| [ ] | `W6-RELEASE-CLEANUP` | Outside view and prisoner POV; record roster before the fifth caster death. | Defeat the fifth caster naturally and inspect the area. | Prisoner is released; Sphere, guards, summons, spell objects, outlines, and effect leases clear. | Prisoner remains trapped, caster shield persists, orphan entity/effect remains, or duplicate reward appears. |
+| [ ] | `W7-ROOM-GEOMETRY` | For each assigned room, capture front/back/left/right/top, including corners, floor, and core. | Walk a player into each separator from multiple angles. | One-block-thick barriers are continuous with correct collision and no gaps. | Player crosses a closed wall, gap at floor/corner/core, wrong room assignment, or barrier persists after opening. |
+| [ ] | `W7-WARDEN` | Warden room POV; keep actor, target, warning space, and room boundary visible. | Bait a close attack and dodge inside the room. | Actor uses a readable close-combat warning and recovers; hit is room-local and dodgeable. | Permanent charge, no warning/recovery, attack crosses wall, or actor attacks from another room. |
+| [ ] | `W7-PERSONAL-ECHO` | Owner POV plus observer POV; keep assigned player and Echo identity clear. | Observe Echo appearance, then duel and accepted damage. | Echo uses approved skin/equipment approximation and purple-eye look where supported; attacks its owner only; no duplicate items/rewards. | Wrong owner, cross-room attack, missing appearance, copied inventory/reward, or Echo disappears. |
+| [ ] | `W7-MOBILE-MARKSMAN` | Marksman room POV with target and line of sight visible. | Observe quick shots, a warned heavy shot, and a close-range spread; move to break line of sight. | Genuine arrows/projectiles fire, aim is dodgeable, and actor repositions only for a real range/visibility need. | Animation without projectile, homing, endless retreat, or shot crosses a room wall. |
+| [ ] | `W7-RIFT-ARCHMAGE` | Archmage room POV; keep actor and target position visible. | Observe Fangs, Spear, Step, and Beam only when their target/range conditions occur. | Real spells are distinct, do not overlap, expose recovery, and reposition without crossing a barrier. | Missing actor, conflicting spells, pointless movement, wall-crossing spell, or unrecoverable disappearance. |
+| [ ] | `W7-ROOM-OPENING` | Four-room view or one observer in each affected room; capture each separator. | Complete one trial naturally at a time. | Only that trial's authorized separator opens; other rooms remain isolated until their own completion. | Wrong wall opens, all walls open together, completed room reopens after restart, or effects cross rooms. |
+| [ ] | `W7-COMPLETION-HANDOFF` | Eligible participant inventory/equipment view plus outside arena view; record in-game timer. | Finish all trials naturally and observe the transition. | Participants heal; eligible damaged gear repairs by 30% of max durability without losing metadata/slots; one 40-second handoff begins and enters the existing boss path. | Duplicate recovery/reward, wrong durability change, multiple timers, missing handoff, or boss/Kagune behavior differs. |
+| [ ] | `W7-FINAL-CLEANUP` | Revisit all four rooms from front/back and the arena center after handoff. | Observe after trial completion and transition. | No stale actors, barriers, rune visuals, Echo, projectiles, or trial effects remain; existing boss encounter is unchanged. | Orphan actor/display, closed separator, duplicate reward, or altered boss/tentacle mechanic. |
+| [ ] | `EVENT-RESET-COMPARISON` | Before starting and after a supported event reset, repeat the same saved viewpoints of the arena, portal locations, safe-zone floor, and four Wave 7 room boundaries. | Capture matched angles and compare original arena blocks and configured geometry. | Reset removes only event-owned temporary state and restores the original user-built arena exactly. | Missing original blocks, new arena geometry, leaked temporary blocks, or stale display entities. |
 
 ## Evidence log
 
-For each capture, record: filename, wave, POV/player, event generation, in-game time, reproduction command or action, expected result, observed result, and pass/fail. Attach original screenshots or videos without editing away HUD or context.
+For every row, record: final filename, capture type, wave, POV/player, roster size, event generation, server and artifact SHA, in-game time, setup/action, expected result, observed result, and pass/fail. For videos, retain the original uncut clip. Do not crop away HUD, warnings, damage feedback, or scene context. For any failure include exact reproduction steps and the original capture path.

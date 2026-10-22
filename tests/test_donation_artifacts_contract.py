@@ -127,7 +127,9 @@ def test_shield_debuffs_are_applied_to_direct_or_projectile_attacker() -> None:
     attacker_body = attacker.group(1)
     assert "this.applyCombatEffect(attacker, PotionEffectType.NAUSEA" in block
     assert "this.applyCombatEffect(attacker, PotionEffectType.WEAKNESS" in block
-    assert "attacker.getWorld().strikeLightning(attacker.getLocation())" in block
+    assert "attacker.getWorld().strikeLightningEffect(strikeLocation)" in block
+    assert "attacker.getWorld().spawnParticle(Particle.ELECTRIC_SPARK" in block
+    assert "strikeLightning(" not in block, "shield lightning must remain visual and deal no extra damage"
     assert "this.shieldLightningCooldowns" in block
     assert "var2.addPotionEffect" not in attacker_body
     resolver = re.search(
@@ -276,3 +278,29 @@ def test_retired_compass_is_disabled_in_player_catalog_and_retained_for_admin_gi
     java = JAVA.read_text(encoding="utf-8")
     assert "if (item.enabled() || adminGift)" in java
     assert "liveItem == null || !liveItem.enabled()" in java
+
+
+def test_artifact_validator_comment_filter_preserves_urls_and_following_code() -> None:
+    validator = (ROOT / "tests" / "ValidateCopiMineArtifactsUsesEconomyCoreDirectly.ps1").read_text(
+        encoding="utf-8"
+    )
+    match = re.search(r"\[regex\]::Replace\(\$artifacts,\s*'([^']+)'", validator)
+    assert match, "artifact validator comment filter is missing"
+    pattern = match.group(1)
+    assert pattern == r"(?s:/\*.*?\*/)|(?<!:)//[^\r\n]*"
+
+    source = '''
+class Dependencies {
+  static String metadata = "https://repo.example/CopiMineEconomyCore";
+  // remove this comment and retain the next declaration
+  static String dependency = "CopiMineEconomyCore";
+  /* remove this multi-line comment
+     without consuming later lines */
+  static String finalDependency = "CopiMineArtifacts";
+}
+'''
+    stripped = re.sub(pattern, " ", source)
+    assert "https://repo.example/CopiMineEconomyCore" in stripped
+    assert "remove this comment" not in stripped
+    assert "static String dependency = \"CopiMineEconomyCore\";" in stripped
+    assert "static String finalDependency = \"CopiMineArtifacts\";" in stripped

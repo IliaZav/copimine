@@ -45,8 +45,8 @@ if ($payloads -notmatch 'Float\.isFinite\(value\)') {
     throw 'Client visual intensity must reject NaN and infinite values.'
 }
 
-$forget = [regex]::Match($visuals, '(?s)public void forgetPlayer\(UUID playerUuid, String reason\) \{.*?(?=\r?\n\s*private void handleAck)')
-if (-not $forget.Success -or $forget.Value -notmatch 'lastAckByPlayer\.remove' -or $forget.Value -notmatch 'lastFinishedByPlayer\.remove' -or $forget.Value -notmatch 'lastErrorByPlayer\.remove') {
+$forget = [regex]::Match($visuals, '(?s)private void forgetPlayer\(UUID playerUuid, boolean clearSessionSequence\)\s*\{(?<body>.*?)(?=\r?\n\s*\}\s*\r?\n\s*synchronized void tick)')
+if (-not $forget.Success -or $forget.Groups['body'].Value -notmatch 'lastAckByPlayer\.remove' -or $forget.Groups['body'].Value -notmatch 'lastFinishedByPlayer\.remove' -or $forget.Groups['body'].Value -notmatch 'lastErrorByPlayer\.remove') {
     throw 'Client visual per-player diagnostics must be released when a player leaves.'
 }
 

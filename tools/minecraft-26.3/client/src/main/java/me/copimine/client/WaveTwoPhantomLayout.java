@@ -54,6 +54,12 @@ final class WaveTwoPhantomLayout {
         return (float) StrictMath.atan2(dx, dz);
     }
 
+    /** Keep the phantom's body facing forward and aim only its head at the marked player. */
+    static LookPose lookAt(Position phantom, Position markedPlayer) {
+        if (!finite(phantom) || !finite(markedPlayer)) return new LookPose(0.0F, 0.0F);
+        return new LookPose(0.0F, (float) -Math.toDegrees(targetYaw(phantom, markedPlayer)));
+    }
+
     static boolean finite(Position position) {
         return position != null
                 && Double.isFinite(position.x())
@@ -85,6 +91,8 @@ final class WaveTwoPhantomLayout {
         double unit = (mixed >>> 11) * 0x1.0p-53;
         return unit * (StrictMath.PI * 2.0D);
     }
+
+    record LookPose(float bodyYawDegrees, float headYawDegrees) { }
 
     record Position(double x, double y, double z) { }
 }

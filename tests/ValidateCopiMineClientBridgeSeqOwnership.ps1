@@ -6,27 +6,30 @@ if (-not (Test-Path $servicePath)) {
 
 $service = Get-Content -Raw -Encoding UTF8 $servicePath
 $errors = New-Object System.Collections.Generic.List[string]
+$handler = [regex]::Match($service, '(?s)public synchronized void handleMessage\(Player player, ClientBridgePayloads\.Message message\)\s*\{(?<body>.*?)(?=\r?\n\s*\}\s*\r?\n\s*public synchronized void onBridgeStateChanged)')
+if (-not $handler.Success) {
+  throw 'Could not locate the authenticated visual-report handler.'
+}
+$handlerBody = $handler.Groups['body'].Value
 
 foreach ($marker in @(
-  'commandMatchesPlayerSession(Player player, ClientBridgePayloads.Message message, ClientVisualCommand command)',
-  'command.sessionId().equals(message.sessionId())',
-  'pendingAcks.get(message.seq())',
-  'pendingAcks.remove(message.seq(), pending)',
-  'popOwnedCommand(player, message)'
+  'correlations.accept(',
+  'player.getUniqueId(), sessionUuid, streamId, message, clock.getAsLong()',
+  'CommandKey key = new CommandKey(player.getUniqueId(), sessionUuid, report.body().commandSeq())',
+  'ClientVisualCommand command = pendingAcks.get(key)',
+  'pendingAcks.remove(key, command)'
 )) {
-  if ($service -notmatch [regex]::Escape($marker)) {
+  if ($handlerBody -notmatch [regex]::Escape($marker)) {
     $errors.Add("Missing client-bridge ownership marker: $marker")
   }
 }
 
-if ($service -match 'handleAck\(Player player, ClientBridgePayloads\.Message message\)\s*\{\s*ClientVisualCommand pending = pendingAcks\.remove\(message\.seq\(\)\)') {
-  $errors.Add('handleAck still removes seq before verifying player/session ownership.')
+if ($handlerBody -match '(?:pendingAcks|runningCommands)\.remove\(message\.seq\(\)') {
+  $errors.Add('The visual report handler must not remove a command using an unscoped sequence number.')
 }
-if ($service -match 'handleFinished\(Player player, ClientBridgePayloads\.Message message\)\s*\{\s*ClientVisualCommand command = runningCommands\.remove\(message\.seq\(\)\)') {
-  $errors.Add('handleFinished still removes running command before verifying player/session ownership.')
-}
-if ($service -match 'handleError\(Player player, ClientBridgePayloads\.Message message\)\s*\{\s*ClientVisualCommand command = runningCommands\.remove\(message\.seq\(\)\)') {
-  $errors.Add('handleError still removes running command before verifying player/session ownership.')
+if ($handlerBody.IndexOf('correlations.accept(', [StringComparison]::Ordinal) -lt 0 -or
+    $handlerBody.IndexOf('correlations.accept(', [StringComparison]::Ordinal) -gt $handlerBody.IndexOf('pendingAcks.get(key)', [StringComparison]::Ordinal)) {
+  $errors.Add('The stream/player/session correlation must be accepted before looking up a command.')
 }
 
 if ($errors.Count -gt 0) {

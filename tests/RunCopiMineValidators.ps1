@@ -86,9 +86,23 @@ foreach ($test in $tests) {
   $index++
   try {
     $validatorArguments = Get-ValidatorArguments $test.Name
-    $testOutput = @(& $validatorShell.Source -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
-      -File $test.FullName @validatorArguments *>&1)
-    $testExitCode = $LASTEXITCODE
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+      # Windows PowerShell 5.1 promotes stderr from a child pwsh process to
+      # NativeCommandError records. A validator can legitimately emit compiler
+      # warnings on stderr while still succeeding, so keep capturing its full
+      # output and decide from the child's exit code below.
+      $ErrorActionPreference = 'Continue'
+      $global:LASTEXITCODE = $null
+      $testOutput = @(& $validatorShell.Source -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+        -File $test.FullName @validatorArguments *>&1)
+      $testExitCode = $LASTEXITCODE
+    } finally {
+      $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($null -eq $testExitCode) {
+      throw 'Validator process did not start or return an exit code.'
+    }
     if ($testExitCode -ne 0) {
       $details = ($testOutput | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
       throw "Validator process exited with code $testExitCode.$([Environment]::NewLine)$details"

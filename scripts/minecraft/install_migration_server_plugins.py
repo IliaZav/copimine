@@ -1453,7 +1453,7 @@ def runtime_startup_settings(runtime):
     return {'serverIp':'127.0.0.1','serverPort':port,'onlineMode':'false','enableRcon':'false'}
 
 
-def configure_loopback_voicechat(runtime):
+def configure_loopback_voicechat(runtime, *, write=True):
     runtime=Path(runtime)
     reparse_flag=getattr(stat,'FILE_ATTRIBUTE_REPARSE_POINT',0)
     for directory,label in ((runtime,'isolated runtime'),(runtime/'plugins','plugin directory')):
@@ -1464,7 +1464,10 @@ def configure_loopback_voicechat(runtime):
             raise ValueError('Voice chat configuration requires a plain '+label)
 
     config_directory=runtime/'plugins/voicechat'
-    if not _path_exists(config_directory):config_directory.mkdir()
+    if not _path_exists(config_directory):
+        if not write:
+            raise ValueError('Local Voice Chat configuration is missing; run the runtime preparation step before startup validation')
+        config_directory.mkdir()
     config_info=config_directory.lstat()
     if (stat.S_ISLNK(config_info.st_mode) or
         (reparse_flag and getattr(config_info,'st_file_attributes',0)&reparse_flag) or
@@ -1478,6 +1481,8 @@ def configure_loopback_voicechat(runtime):
             raise ValueError('Local Voice Chat server configuration exceeds the safe size limit')
         contents=config_path.read_text(encoding='utf-8')
     else:
+        if not write:
+            raise ValueError('Local Voice Chat server configuration is missing; startup validation is read-only')
         contents=''
     properties=_java_property_entries(contents)
     if len(properties.get('bind_address',[]))>1:
@@ -1501,8 +1506,12 @@ def configure_loopback_voicechat(runtime):
         leading=lines[index][:len(lines[index])-len(lines[index].lstrip(' \t\f'))]
         if properties.get('bind_address')==['127.0.0.1']:
             return {'voiceChatBindAddress':'127.0.0.1'}
+        if not write:
+            raise ValueError('Local Voice Chat bind_address must already be 127.0.0.1; startup validation is read-only')
         lines[index]=leading+'bind_address=127.0.0.1'
     else:
+        if not write:
+            raise ValueError('Local Voice Chat bind_address must already be 127.0.0.1; startup validation is read-only')
         lines.append('bind_address=127.0.0.1')
         had_final_newline=True
 
@@ -1625,6 +1634,9 @@ def load_install_records(root, lock=None):
             artifact=_local_artifact_path(root,candidate['buildArtifact'])
             filename=candidate.get('filename')
             runtime_filename=candidate.get('runtimeFilename') or filename
+            candidate_replacements=candidate.get('replaceSha256',[])
+            if not isinstance(candidate_replacements,list):
+                raise ValueError('Invalid local plugin candidate replacement SHA-256 allowlist: '+plugin_name)
             if artifact.name!=filename:
                 raise ValueError('Local plugin artifact filename differs from its lock: '+str(filename))
             if digest(artifact,'sha256')!=candidate.get('sha256'):
@@ -1641,7 +1653,9 @@ def load_install_records(root, lock=None):
                 'sha256':candidate['sha256'],
                 'sha512':digest(artifact,'sha512'),
                 'size':artifact.stat().st_size,
-                'replaceSha256':list(dict.fromkeys([old_sha256,*baseline.get('replaceSha256',[])])),
+                'replaceSha256':list(dict.fromkeys([
+                    old_sha256,*candidate_replacements,*baseline.get('replaceSha256',[])
+                ])),
             }
         elif candidate.get('url'):
             record={
@@ -2005,7 +2019,7 @@ def main(root=None,argv=None):
             local_end_event_build=args.local_end_event_build)
         settings=runtime_startup_settings(server)
         if any(row['pluginName'].casefold()=='voicechat' for row in actual):
-            settings.update(configure_loopback_voicechat(server))
+            settings.update(configure_loopback_voicechat(server,write=False))
         print(json.dumps(settings,sort_keys=True))
         return
     if args.prepare_runtime:

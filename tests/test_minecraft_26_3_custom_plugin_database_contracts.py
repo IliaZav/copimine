@@ -17,6 +17,16 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_artifacts_bootstrap_callbacks_use_shutdown_safe_main_thread_helper():
+    artifacts = _read("copimine-artifacts/src/me/copimine/artifacts/CopiMineArtifacts.java")
+    normalized = " ".join(artifacts.split())
+
+    assert "this.runSync(this::finishEnable)" in normalized
+    assert "this.runSync(() -> { if (this.isEnabled() && bootstrapLifecycle.isFailed())" in normalized
+    assert "Bukkit.getScheduler().runTask(this, this::finishEnable)" not in normalized
+    assert "catch (IllegalPluginAccessException ignored)" in artifacts
+
+
 def _read(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8")
 
@@ -504,7 +514,7 @@ def test_migration_plugin_build_order_follows_shared_bridge_dependencies():
         assert order == sorted(order), "plugin CI must build bridge providers before their consumers"
 
 
-def test_migration_server_provisions_a_dedicated_loopback_postgres_cluster():
+def test_migration_server_uses_a_dedicated_loopback_postgres_cluster_without_reprovisioning_on_restart():
     initializer_path = ROOT / "scripts/minecraft/InitializeMigrationPostgres.ps1"
     assert initializer_path.is_file(), "The migration server must provision its own local PostgreSQL cluster."
     initializer = initializer_path.read_text(encoding="utf-8")
@@ -513,7 +523,8 @@ def test_migration_server_provisions_a_dedicated_loopback_postgres_cluster():
     assert "--auth-host=scram-sha-256" in initializer
     assert "listen_addresses=127.0.0.1" in initializer
     assert "copimine_migration_test" in initializer
-    assert "InitializeMigrationPostgres.ps1" in launcher
+    assert "Ensure-MigrationPostgresReady" in launcher
+    assert "InitializeMigrationPostgres.ps1" not in launcher
     assert "55434" in initializer
     assert "55433" not in launcher
     assert "SHOW listen_addresses" in initializer
@@ -524,19 +535,13 @@ def test_migration_server_provisions_a_dedicated_loopback_postgres_cluster():
 
 def test_validate_only_server_check_does_not_initialize_or_start_postgres():
     launcher = _read("scripts/minecraft/StartMigrationTestServer.ps1")
-    database_environment_start = launcher.index("$databaseEnvironmentFile = Join-Path $runtime 'migration-isolated-postgres.env'")
-    validate_only_start = launcher.index("if ($ValidateOnly) {", database_environment_start)
-    initializer_call = "$databaseSetupOutput = @(& $postgresInitializer @databaseSetupArguments)"
-    database_environment_check = "$null = Assert-MigrationDatabaseEnvironment -Path $databaseEnvironmentFile -RequiredSettings $requiredDatabaseSettings"
-    assert database_environment_start < validate_only_start < launcher.index(initializer_call)
-    assert launcher.index(initializer_call) < launcher.index(database_environment_check)
-    database_setup_flow = launcher[database_environment_start:launcher.index(database_environment_check)]
-    validation_branch, startup_branch = re.split(r"(?m)^\s*}\s*else\s*{\s*$", database_setup_flow, maxsplit=1)
-
-    assert "$databaseEnvironmentFile = Join-Path $runtime 'migration-isolated-postgres.env'" in database_setup_flow
-    assert initializer_call not in validation_branch
-    assert initializer_call in startup_branch
-    assert database_environment_check in launcher
+    listener_check = launcher.index("Test-MigrationPaperRuntimeListener -Port $serverPort")
+    database_reuse = launcher.index("Ensure-MigrationPostgresReady -WorkspaceRoot $root")
+    assert listener_check < database_reuse
+    assert "InitializeMigrationPostgres.ps1" not in launcher
+    assert "-StartIfStopped:(-not $ValidateOnly)" in launcher
+    assert "$null = Assert-MigrationDatabaseEnvironment -Path $databaseEnvironmentFile -RequiredSettings $requiredDatabaseSettings" in launcher
+    assert "$env:COPIMINE_ENV_FILE = $databaseEnvironmentFile" in launcher
 
 
 def test_migration_database_environment_rejects_duplicate_and_conflicting_keys(tmp_path):
@@ -573,7 +578,7 @@ $duplicateMessage = ''
 try {{ $null = Assert-MigrationDatabaseEnvironment -Path '{escaped_duplicate}' -RequiredSettings $required }} catch {{ $duplicateMessage = $_.Exception.Message }}
 $conflictMessage = ''
 try {{ $null = Assert-MigrationDatabaseEnvironment -Path '{escaped_conflict}' -RequiredSettings $required }} catch {{ $conflictMessage = $_.Exception.Message }}
-[PSCustomObject]@{{ goodEndpoint = ($good['POSTGRES_HOST'] -ceq '127.0.0.1' -and $good['POSTGRES_PASSWORD'].Length -eq 64); duplicateMessage = $duplicateMessage; conflictMessage = $conflictMessage }} | ConvertTo-Json -Compress
+[PSCustomObject]@{{ goodEndpoint = ($good['POSTGRES_HOST'] -ceq '127.0.0.1' -and -not $good.ContainsKey('POSTGRES_PASSWORD') -and -not $good.ContainsKey('DATABASE_URL')); duplicateMessage = $duplicateMessage; conflictMessage = $conflictMessage }} | ConvertTo-Json -Compress
 """
     result = subprocess.run(
         [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
@@ -741,6 +746,7 @@ def test_migration_postgres_initializer_rejects_junction_ancestor_before_writing
     scripts.mkdir(parents=True)
     shutil.copy2(ROOT / "scripts/minecraft/InitializeMigrationPostgres.ps1", scripts)
     shutil.copy2(ROOT / "scripts/minecraft/MigrationDatabaseEnvironment.psm1", scripts)
+    shutil.copy2(ROOT / "scripts/minecraft/MigrationPostgresLifecycle.psm1", scripts)
 
     outside_runtime_root = tmp_path / "outside-runtime"
     outside_runtime = outside_runtime_root / "end-rift-server-26.3"
@@ -771,7 +777,7 @@ def test_migration_postgres_initializer_rejects_junction_ancestor_before_writing
         )
         output = result.stdout + result.stderr
         assert result.returncode == 73
-        assert "reparse" in output.casefold()
+        assert "reparse" in "".join(output.casefold().split())
         assert not (outside_runtime / "postgres-data").exists()
         assert not (outside_runtime / "logs").exists()
         assert not (outside_runtime / "migration-postgres-admin.env").exists()

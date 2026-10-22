@@ -124,19 +124,39 @@ def test_dead_ritual_shooter_keeps_prisoner_out_of_all_arrow_recipients() -> Non
     assert phase_body.index("isRitualProjectile(arrow)") < phase_body.index("arrow.getShooter()")
 
 
-def test_marked_arrow_direct_damage_does_not_require_a_live_skeleton_shooter() -> None:
+def test_marked_sphere_arrow_uses_one_authoritative_handler_without_skeleton_shooter() -> None:
     source = read_source()
 
-    damage_body = method_body(source, "public void onEventSkeletonArrowDamage")
-    assert "!isEventArrow(arrow)" in damage_body
-    assert "boolean ritualProjectile = isRitualProjectile(arrow)" in damage_body
-    assert "if (!ritualProjectile &&" in damage_body
-    assert "!isEventSkeleton(skeleton)" in damage_body
-    assert "skeleton != null && !realitySplitTargetAllowed(skeleton, player)" in damage_body
+    skeleton_body = method_body(source, "public void onEventSkeletonArrowDamage")
+    assert "!isEventArrow(arrow)" in skeleton_body
+    assert "if (skeleton == null || !isEventSkeleton(skeleton)) return;" in skeleton_body
 
-    custom_body = method_body(source, "public void onCustomEventArrowDamage")
-    assert "if (isRitualProjectile(arrow))" in custom_body
-    assert "onEventSkeletonArrowDamage(event)" in custom_body
+    listener_body = method_body(source, "public void onCustomEventArrowDamage")
+    assert "if (arrow.getShooter() instanceof Skeleton skeleton && isEventSkeleton(skeleton))" in listener_body
+    assert "onCustomEventArrowDamage(event, arrow, spell)" in listener_body
+
+    damage_body = method_body(
+        source,
+        "private void onCustomEventArrowDamage(EntityDamageByEntityEvent event, Arrow arrow, String spell)",
+    )
+    assert "boolean ritualProjectile = isRitualProjectileSpell(spell)" in damage_body
+    assert "damageShooter == null ? null : damageShooter.getUniqueId()" in damage_body
+    assert "livePlayer.damage(damage);" in damage_body
+    assert "ARROW_SPELL_RITUAL_PROJECTILE.equals(spell)" in method_body(
+        source, "private boolean isRitualProjectileSpell(String spell)"
+    )
+
+
+def test_ritual_guard_volley_uses_its_bounded_debuff_profile() -> None:
+    damage_body = method_body(
+        read_source(),
+        "private void onCustomEventArrowDamage(EntityDamageByEntityEvent event, Arrow arrow, String spell)",
+    )
+
+    assert "boolean guardVolley = ARROW_SPELL_RITUAL_GUARD_VOLLEY.equals(spell)" in damage_body
+    assert "guardVolley ? RitualGuardAbilityPolicy.forRole(" in damage_body
+    assert "RitualGuardAbilityPolicy.Role.DEFENSIVE_VOLLEY).slownessTicks()" in damage_body
+    assert "webProjectile || guardBrand || guardVolley" in damage_body
 
 
 def test_sphere_barrage_requires_live_caster_and_still_enabled_spell():

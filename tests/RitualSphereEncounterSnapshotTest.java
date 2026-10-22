@@ -18,9 +18,14 @@ public final class RitualSphereEncounterSnapshotTest {
         check(restored.profile().participants() == 13, "participant count must round-trip");
         check(RitualSphereEncounterSnapshot.decode(encoded, 9L).casterDeaths() == 0,
                 "new snapshots must persist the caster death count");
+        check(RitualSphereEncounterSnapshot.decode(encoded, 9L).spellCursor() == 0,
+                "old and default snapshots begin at the first unlocked spell");
         Map<String, String> withProgress = RitualSphereEncounterSnapshot.encode(original, 2);
         check(RitualSphereEncounterSnapshot.decode(withProgress, 9L).casterDeaths() == 2,
                 "caster death progression must round-trip without inference from loaded entities");
+        Map<String, String> withSpellCursor = RitualSphereEncounterSnapshot.encode(original, 2, 1);
+        check(RitualSphereEncounterSnapshot.decode(withSpellCursor, 9L).spellCursor() == 1,
+                "the major-spell fairness cursor must persist across restart");
         check(!RitualSphereEncounterSnapshot.decode(encoded, 9L).migratedLegacyState(),
                 "current state must not report legacy migration");
 
@@ -48,6 +53,8 @@ public final class RitualSphereEncounterSnapshotTest {
         preProgressSnapshot.remove("ritual-sphere.caster-deaths");
         check(RitualSphereEncounterSnapshot.decode(preProgressSnapshot, 9L).casterDeaths() == 0,
                 "old checkpoints default to zero and must rely on the live-roster gate");
+        check(RitualSphereEncounterSnapshot.decode(preProgressSnapshot, 9L).spellCursor() == 0,
+                "pre-cursor checkpoints migrate to the first spell without rejecting the encounter");
         check(RitualSphereEncounterSnapshot.decode(Map.of(), 9L).state() == null,
                 "missing state must decode as absent");
         expectFailure(() -> RitualSphereEncounterSnapshot.decode(encoded, 8L),
@@ -64,6 +71,10 @@ public final class RitualSphereEncounterSnapshotTest {
         tooManyDeaths.put("ritual-sphere.caster-deaths", "99");
         expectFailure(() -> RitualSphereEncounterSnapshot.decode(tooManyDeaths, 9L),
                 "caster deaths beyond the authored roster must fail closed");
+        Map<String, String> cursorOutOfRange = new java.util.LinkedHashMap<>(withSpellCursor);
+        cursorOutOfRange.put("ritual-sphere.spell-cursor", "2");
+        expectFailure(() -> RitualSphereEncounterSnapshot.decode(cursorOutOfRange, 9L),
+                "the restored cursor must be within the available spell rotation");
         Map<String, String> missingParticipantCount = new java.util.LinkedHashMap<>(encoded);
         missingParticipantCount.remove("ritual-sphere.participants");
         expectFailure(() -> RitualSphereEncounterSnapshot.decode(missingParticipantCount, 9L),

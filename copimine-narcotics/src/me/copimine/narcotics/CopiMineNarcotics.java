@@ -130,12 +130,14 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         pendingRefundKey = new NamespacedKey(this, "pending_refund_id");
         pendingOutputKey = new NamespacedKey(this, "pending_brewing_output_id");
         recipeService = new NarcoticsRecipeService(configService, itemFactory);
-        Optional<BridgeSigner> loadedSigner = BridgePrivateKeyLoader.loadFromEnvironment();
+        BridgePrivateKeyLoader.LoadResult signerLoad = BridgePrivateKeyLoader.loadFromEnvironmentWithDiagnostics();
+        Optional<BridgeSigner> loadedSigner = signerLoad.signer();
         bridgeSigner = loadedSigner.orElseGet(BridgeSigner::unavailable);
         if (loadedSigner.isPresent()) {
             getLogger().info("Client bridge signer is ready.");
         } else {
-            getLogger().warning("Client bridge signer is unavailable; protected client bridge sends are disabled.");
+            getLogger().warning("Client bridge signer is unavailable; reason=SIGNER_UNAVAILABLE; cause="
+                    + signerLoad.failureReason() + "; protected client bridge sends are disabled.");
         }
         clientModSessionRegistry = new ClientModSessionRegistryService(
                 message -> getLogger().warning(message));

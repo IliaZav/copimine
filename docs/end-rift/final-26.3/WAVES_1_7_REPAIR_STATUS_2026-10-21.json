@@ -9,6 +9,8 @@
     "pushed": false
   },
   "status": {
+    "snapshotStatus": "historical_superseded",
+    "supersededBy": "WAVES_1_7_CURRENT_EVIDENCE_2026-10-22.md",
     "sourceImplementation": "implemented_and_committed",
     "wavePolicyAndAdapterGate": "passed",
     "fullPythonSuite": "partial_with_remaining_failures",

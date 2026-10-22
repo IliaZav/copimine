@@ -81,6 +81,7 @@ public final class WaveProbeAdapterHarness {
     static final String WAVE_TWO_GROUPS_SPAWNED_PROGRESS_KEY = "wave2-groups-spawned";
     static final String WAVE_TWO_GROUP_CLEARED_PROGRESS_KEY = "wave2-group-cleared";
     static final String WAVE_TWO_MARK_PERIODS_PROGRESS_KEY = "wave2-mark-periods";
+    static final String WAVE_TWO_MARK_ASSIGNMENT_ID_PROGRESS_KEY = "wave2-mark-assignment-id";
     static final String WAVE_TWO_LAST_LATE_MARK_PROGRESS_KEY = "wave2-last-late-mark-period";
     static final String WAVE_TWO_OUTSTANDING_UUIDS_PROGRESS_KEY = "wave2-outstanding-uuids";
     static final String WAVE_TWO_ATTEMPT_LIFECYCLE_PREFIX = "wave2-attempt-lifecycle.";
@@ -93,10 +94,11 @@ public final class WaveProbeAdapterHarness {
             waveSpawnEntityOffset, sharedInitializations, initializedWave, saveCalls,
             registryGeneration, sessionCancellations, scopeCloses, currentHuntCycles,
             waveTwoGroupsSpawned, waveTwoCompletedMarkPeriods, waveTwoLastLateGroupMarkPeriod,
-            currentCarrierCharges, ritualCasterDeathCount;
+            waveTwoMarkCycle, currentCarrierCharges, ritualCasterDeathCount, ritualSpellCursor;
         boolean waveTwoGroupCleared;
     Set<UUID> waveTwoOutstandingEntityUuids = Set.of();
         Set<UUID> waveTwoCleanupEntityUuids = Set.of();
+    Map<String, String> waveTwoRecoveryCheckpoint = Map.of();
     boolean officialActive, officialCurrent, diagnosticsFailureInjection, cleanupSucceeds = true,
             testCombatAiMode, testWaveFrontVisualMode, testPortalVisualMode,
             testWave4ObeliskMode, testRitualCombatMode, testWaveInspectionMode, preserveRequested,
@@ -195,6 +197,10 @@ public final class WaveProbeAdapterHarness {
         static Map<String, String> encode(Object state) { return Map.of("ritual-wave", "6"); }
             static Map<String, String> encode(Object state, int casterDeaths) {
                 return Map.of("ritual-wave", "6", "caster-deaths", Integer.toString(casterDeaths));
+            }
+            static Map<String, String> encode(Object state, int casterDeaths, int spellCursor) {
+                return Map.of("ritual-wave", "6", "caster-deaths", Integer.toString(casterDeaths),
+                        "spell-cursor", Integer.toString(spellCursor));
             }
     }
     static final class RealitySplitChamberSnapshot {

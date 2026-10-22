@@ -107,12 +107,14 @@ public final class WaveTwoPhantomRenderer {
                         WaveTwoPhantomLayout.Position position = phantoms.get(index).position();
                         Vec3 phantomPosition = new Vec3(position.x(), position.y(), position.z());
                         if (cameraPosition.distanceToSqr(phantomPosition) > MAX_RENDER_DISTANCE_SQUARED) continue;
+                        WaveTwoPhantomLayout.LookPose lookPose = WaveTwoPhantomLayout.lookAt(position, target);
+                        applyHeadLook(MODEL_STATE, lookPose);
                         matrices.pushPose();
                         // Match LivingEntityRenderer's feet-anchored model transform:
-                        // invert model Y and offset by 1.501 blocks before drawing.
+                        // keep the body at its fixed forward yaw, invert model Y, and offset by
+                        // 1.501 blocks before drawing. setupAnim applies lookPose only to the head.
                         matrices.translate(position.x(), position.y() + 1.501D, position.z());
-                        float yaw = WaveTwoPhantomLayout.targetYaw(position, target);
-                        matrices.rotateDegrees(Axis.YP, 180.0F - (float) Math.toDegrees(yaw));
+                        matrices.rotateDegrees(Axis.YP, 180.0F - lookPose.bodyYawDegrees());
                         matrices.scale(-1.0F, -1.0F, 1.0F);
                         MODEL_STATE.isCreepy = index == selectedActivationIndex;
                         MODEL.setupAnim(MODEL_STATE);
@@ -122,6 +124,11 @@ public final class WaveTwoPhantomRenderer {
                     }
                     MODEL_STATE.isCreepy = false;
                 });
+    }
+
+    static void applyHeadLook(EndermanRenderState state, WaveTwoPhantomLayout.LookPose lookPose) {
+        state.yRot = lookPose.headYawDegrees();
+        state.xRot = 0.0F;
     }
 
     private static RiftEventEndermanModel createModel() {

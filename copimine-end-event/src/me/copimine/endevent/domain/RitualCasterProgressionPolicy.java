@@ -55,6 +55,33 @@ public final class RitualCasterProgressionPolicy {
                 .filter(spell -> isSpellEnabled(deathCount, spell)).toList();
     }
 
+    /** Advance one bounded scheduler slot after either an accepted or rejected start. */
+    public static int advanceSpellCursor(int cursor, int availableSpellCount) {
+        if (availableSpellCount < 1 || availableSpellCount > MajorSpell.values().length - 1) {
+            throw new IllegalArgumentException("available spell count must be in [1, 4]");
+        }
+        return (Math.floorMod(cursor, availableSpellCount) + 1) % availableSpellCount;
+    }
+
+    /** An invalid landing grid skips one unsafe cast; other blockers retain the cursor. */
+    public static boolean shouldSkipSpellAfterBlocker(StartBlocker blocker) {
+        return resolutionFor(blocker) == StartBlockerResolution.SKIP_AND_RETRY;
+    }
+
+    /** Unexpected failures after validated admission require operator-visible recovery. */
+    public static boolean requiresRecovery(StartBlocker blocker) {
+        return resolutionFor(blocker) == StartBlockerResolution.RECOVERY_REQUIRED;
+    }
+
+    public static StartBlockerResolution resolutionFor(StartBlocker blocker) {
+        if (blocker == null) throw new IllegalArgumentException("spell blocker is required");
+        return switch (blocker) {
+            case INVALID_GEOMETRY -> StartBlockerResolution.SKIP_AND_RETRY;
+            case NO_ELIGIBLE_PARTICIPANTS, CLEANUP_PENDING -> StartBlockerResolution.WAIT;
+            case ENCOUNTER_FAILURE -> StartBlockerResolution.RECOVERY_REQUIRED;
+        };
+    }
+
     /** Official caster combat is locked until the prisoner is captured; only the isolated combat sandbox bypasses it. */
     public static boolean mayTakeCasterDamage(boolean prisonerCaptured, boolean combatSandbox) {
         return prisonerCaptured || combatSandbox;
@@ -97,5 +124,18 @@ public final class RitualCasterProgressionPolicy {
         E_GUARDIAN_LINK,
         R_TURNCOAT,
         NONE
+    }
+
+    public enum StartBlocker {
+        INVALID_GEOMETRY,
+        NO_ELIGIBLE_PARTICIPANTS,
+        CLEANUP_PENDING,
+        ENCOUNTER_FAILURE
+    }
+
+    public enum StartBlockerResolution {
+        WAIT,
+        SKIP_AND_RETRY,
+        RECOVERY_REQUIRED
     }
 }

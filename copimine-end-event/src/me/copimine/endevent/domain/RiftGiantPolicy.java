@@ -28,6 +28,19 @@ public final class RiftGiantPolicy {
         return Math.min(budgetRemaining, remainingPressureSlots);
     }
 
+    /**
+     * Live giants persist the same encounter-wide total. The maximum keeps the
+     * budget conservative if only some entities have completed a checkpoint.
+     */
+    public static int sharedSummonsUsed(Iterable<Integer> persistedCounters) {
+        if (persistedCounters == null) return 0;
+        int used = 0;
+        for (Integer counter : persistedCounters) {
+            if (counter != null && counter > used) used = counter;
+        }
+        return used;
+    }
+
     public static boolean shouldBeginHeavyStrike(double targetDistanceSquared,
                                                   boolean targetEligible,
                                                   boolean cooldownReady,
@@ -57,7 +70,20 @@ public final class RiftGiantPolicy {
     public static boolean shouldRetireOrphanedSummon(boolean ownerPresent,
                                                      boolean ownerKnownUnloaded,
                                                      boolean ownerChunkLoaded) {
-        return !ownerPresent && !ownerKnownUnloaded && ownerChunkLoaded;
+        return shouldRetireOrphanedSummon(ownerPresent, ownerKnownUnloaded,
+                ownerChunkLoaded, false);
+    }
+
+    /**
+     * A known-unloaded owner is absent only after its actual last-known chunk
+     * is the chunk whose entity-load batch is being reconciled.
+     */
+    public static boolean shouldRetireOrphanedSummon(boolean ownerPresent,
+                                                     boolean ownerKnownUnloaded,
+                                                     boolean ownerChunkLoaded,
+                                                     boolean ownerChunkLoadedInThisEvent) {
+        return !ownerPresent && ownerChunkLoaded
+                && (!ownerKnownUnloaded || ownerChunkLoadedInThisEvent);
     }
 
     public static boolean shouldHitAfterTelegraph(double targetDistanceSquared,
@@ -75,6 +101,18 @@ public final class RiftGiantPolicy {
         return Double.isFinite(distanceSquared) && distanceSquared >= 0.0D
                 && distanceSquared <= AURA_RADIUS_BLOCKS * AURA_RADIUS_BLOCKS
                 && giantWave == allyWave && eventOwned && livingCombatMob && !giantItself
-                && !ritualCaster && !ritualGuard;
+                && !ritualCaster;
+    }
+
+    /** Keep an existing aura lease only while its source remains a nearby active owner. */
+    public static boolean shouldRetainAuraLease(boolean sourceIsActiveGiant,
+                                                boolean sameWorld,
+                                                double sourceDistanceSquared,
+                                                int sourceWave,
+                                                int recipientWave) {
+        return sourceIsActiveGiant && sameWorld
+                && Double.isFinite(sourceDistanceSquared) && sourceDistanceSquared >= 0.0D
+                && sourceDistanceSquared <= AURA_RADIUS_BLOCKS * AURA_RADIUS_BLOCKS
+                && sourceWave == recipientWave;
     }
 }

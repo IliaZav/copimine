@@ -69,6 +69,21 @@ class PrisonerTargetRayPolicyTest {
     }
 
     @Test
+    void eligibleAllyAfterFirst256EnumeratedEntitiesRemainsSelectable() {
+        List<PrisonerTargetRayPolicy.Candidate<String>> dense = new java.util.ArrayList<>();
+        for (int index = 0; index < 256; index++) {
+            dense.add(target("ineligible-" + index, UNKNOWN, 5 + index % 4, true, false));
+        }
+        dense.add(target("eligible-257", ALLY, 10, true, false));
+
+        var result = PrisonerTargetRayPolicy.select(CAMERA, FORWARD, 28, 28,
+                dense, ELIGIBLE::allows);
+        assertNotNull(result);
+        assertEquals("eligible-257", result.target());
+        assertTrue(result.ally());
+    }
+
+    @Test
     void cameraDirectionIsNormalizedBeforeClippingToColliderDistance() {
         assertNotNull(PrisonerTargetRayPolicy.select(CAMERA, new Vec3d(0, 0, 4),
                 28, 10.5, List.of(target("ally", ALLY, 10, true, false)), ELIGIBLE::allows));

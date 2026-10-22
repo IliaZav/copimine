@@ -56,6 +56,9 @@ def mechanics_harness(tmp_path_factory):
         "private boolean retireWaveTwoRosterAfterConfirmedDeath(Entity entity)",
         "private void applyCurrentReflectedObeliskHit(",
     )]
+    methods.append(_declaration(source, "private void requireWaveTwoMarkAssignmentRecovery("))
+    methods.append('Map<String, String> waveObjectiveProgressSnapshot() { return Map.of('
+                   + '"wave2-mark-assignment-id", Integer.toString(waveTwoMarkCycle)); }')
     methods.append(_declaration(source, "private Location spawnLocation("))
     if "private Location safeWaveTwoEdgeSpawnLocation(Location core, int index)" in source:
         methods.append(_declaration(source, "private Location safeWaveTwoEdgeSpawnLocation(Location core, int index)"))
@@ -89,6 +92,7 @@ def mechanics_harness(tmp_path_factory):
     fields = "\n".join(re.findall(
         r"    private (?:UUID|long|int|boolean|PotionEffect) (?:waveTwo\w*|currentHunt\w*)[^;]*;", source))
     fields += "\n    private String waveTwoControlInstanceId = \"\";"
+    fields += "\n    private Map<String, String> waveTwoRecoveryCheckpoint = Map.of();"
     fields += "\n    private int waveSpawnWave = 2, waveSpawnGroupIndex, waveSpawnEntityOffset;"
     fields += "\n    private boolean restoredWaveTwoGroupCleared;"
     fields += "\n    private long waveNextSpawnAtMillis;"
@@ -110,7 +114,7 @@ def mechanics_harness(tmp_path_factory):
         calls = [line for line in lifecycle.splitlines() if "releaseCurrentHuntTarget(" in line]
         methods.append(f"void {name}(Player player) {{ UUID uuid = player.getUniqueId(); " + "\n".join(calls) + "}")
     constants = "\n".join(re.findall(
-        r"    private static final int (?:MAX_)?WAVE_TWO_\w+[^;]*;", source))
+        r"    private static final (?:int|String) (?:MAX_)?WAVE_TWO_\w+[^;]*;", source))
     harness = r'''
 import java.util.*;
 import java.util.logging.*;
@@ -396,6 +400,24 @@ public final class Waves24MechanicsHarness {
                 h.startHunt(start); h.selectAt(start);
                 check(player.id.equals(h.waveTwoMarkedPlayerUuid),
                         "the first mark starts immediately without an empty lead-in");
+            }
+            case "assignment-id-exhaustion" -> {
+                h.phase = EventPhase.WAVE_2;
+                h.waveTwoMarkCycle = WaveTwoHuntPolicy.MAX_MARK_ASSIGNMENT_ID;
+                h.selectAt(start);
+                check(h.phase == EventPhase.RECOVERY_REQUIRED
+                                && "WAVE_TWO_MARK_ASSIGNMENT_ID_EXHAUSTED".equals(h.recoveryReason),
+                        "exhausted packet identity must leave Wave 2 for explicit recovery");
+                check(h.waveTwoMarkCycle == WaveTwoHuntPolicy.MAX_MARK_ASSIGNMENT_ID
+                                && h.waveTwoMarkedPlayerUuid == null && h.saveCalls == 1,
+                        "exhaustion must neither wrap, create another mark, nor skip its durable checkpoint");
+                check(h.waveTwoRecoveryCheckpoint.get("wave2-mark-assignment-id")
+                                .equals(Integer.toString(WaveTwoHuntPolicy.MAX_MARK_ASSIGNMENT_ID)),
+                        "recovery checkpoint must retain the terminal identity");
+                h.selectAt(start + 1_000L);
+                check(h.waveTwoMarkCycle == WaveTwoHuntPolicy.MAX_MARK_ASSIGNMENT_ID
+                                && h.waveTwoMarkedPlayerUuid == null,
+                        "later timer ticks cannot stall in W2 or wrap into stale packet IDs");
             }
             case "full-window", "scaled-full-window" -> {
                 if ("scaled-full-window".equals(scenario)) h.scalePlayers = 32;
@@ -786,8 +808,17 @@ public final class WaveTwoEntityLoadHarness {
     @interface EventHandler { EventPriority priority(); }
     static final class EntitiesLoadEvent {
         final List<Entity> entities;
+        final Chunk chunk = new Chunk();
         EntitiesLoadEvent(List<Entity> entities) { this.entities = entities; }
         List<Entity> getEntities() { return entities; }
+        Chunk getChunk() { return chunk; }
+    }
+    static final class World { UUID getUID() { return new UUID(0L, 1L); } }
+    static final class Chunk {
+        final World world = new World();
+        World getWorld() { return world; }
+        int getX() { return 0; }
+        int getZ() { return 0; }
     }
     static final class PersistentDataContainer {
         final Map<Object,Object> values = new HashMap<>();
@@ -863,7 +894,9 @@ public final class WaveTwoEntityLoadHarness {
     void emitUntrackedEntityRemovalDiagnostic(Entity entity, String reason) { removalDiagnostics++; }
     void unregisterOwnedEntity(UUID uuid, String reason) { unregisterCalls++; ownedEntities.remove(uuid); }
     void registerLoadedRiftGiantOwners(List<Entity> entities) { }
-    Set<UUID> retireOrphanedRiftGiantSummons(List<Entity> entities) { return Set.of(); }
+    boolean preserveRiftGiantOwnerInRecovery(Entity entity) { return false; }
+    Set<?> loadedRiftGiantChunkBatch(EntitiesLoadEvent event) { return Set.of(); }
+    Set<UUID> retireOrphanedRiftGiantSummons(List<Entity> entities, Set<?> chunks) { return Set.of(); }
     void registerOwnedEntity(Entity entity) { registerCalls++; ownedEntities.put(entity.id, entity); }
     void combatTactic(Entity entity, int seed) { tacticCalls++; }
     void ensureEventCombatAi(Entity entity) {
@@ -1417,6 +1450,7 @@ def test_wave2_bounded_group_spawn_contracts(wave2_spawn_harness, scenario):
     "forty-five-second-mark-retention", "forty-five-second-mark-rotation", "unloaded-group-roster",
     "sandbox-confirmed-death",
     "two-opening-batches-late-gate", "wave2-edge-spawns", "wave2-edge-spawns-respect-bounds",
+    "assignment-id-exhaustion",
 ])
 def test_wave2_mark_periods_and_edge_spawn(mechanics_harness, scenario):
     if scenario.startswith("wave2-edge-spawns"):
@@ -1439,6 +1473,8 @@ def test_wave2_restart_restores_bounded_groups_and_durable_hunt_progress():
     objective_snapshot = _declaration(source, "private Map<String, String> objectiveProgressSnapshot()")
     wave_snapshot = _declaration(source, "private Map<String, String> waveObjectiveProgressSnapshot()")
     objective_start = _declaration(source, "private WaveObjectiveStartResult startCanonicalObjective(")
+    mark_update = _declaration(source, "private void updateMarkedTargetObjective(")
+    mark_recovery = _declaration(source, "private void requireWaveTwoMarkAssignmentRecovery(")
     disable = _declaration(source, "public void onDisable()")
 
     assert 'snapshot.eventPhase() == EventPhase.WAVE_2' in apply_snapshot
@@ -1461,7 +1497,20 @@ def test_wave2_restart_restores_bounded_groups_and_durable_hunt_progress():
     assert 'WAVE_TWO_GROUPS_SPAWNED_PROGRESS_KEY' in wave_snapshot
     assert 'WAVE_TWO_GROUP_CLEARED_PROGRESS_KEY' in wave_snapshot
     assert 'WAVE_TWO_MARK_PERIODS_PROGRESS_KEY' in wave_snapshot
+    assert 'WAVE_TWO_MARK_ASSIGNMENT_ID_PROGRESS_KEY' in wave_snapshot
+    assert 'Integer.toString(waveTwoMarkCycle)' in wave_snapshot
     assert 'WAVE_TWO_LAST_LATE_MARK_PROGRESS_KEY' in wave_snapshot
+    assert 'WaveTwoHuntPolicy.restoreMarkAssignmentId(' in apply_snapshot
+    assert 'waveTwoMarkCycle = restoredWaveTwoMarkAssignmentId' in apply_snapshot
+    assert 'waveTwoMarkCycle = WaveTwoHuntPolicy.nextMarkAssignmentId(waveTwoMarkCycle)' in mark_update
+    assert 'WaveTwoHuntPolicy.markAssignmentIdsExhausted(waveTwoMarkCycle)' in mark_update
+    assert 'requireWaveTwoMarkAssignmentRecovery(now)' in mark_update
+    assert 'waveTwoRecoveryCheckpoint = waveObjectiveProgressSnapshot()' in mark_recovery
+    assert 'forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason)' in mark_recovery
+    assert 'WAVE_TWO_MARK_ASSIGNMENT_ID_EXHAUSTED' in mark_recovery
+    assert 'waveTwoRecoveryCheckpoint' in wave_snapshot
+    assert 'if (!waveTwoStageRehydrated)' in objective_start
+    assert objective_start.index('if (!waveTwoStageRehydrated)') < objective_start.index('waveTwoMarkCycle = 0;')
     assert 'checkpointWaveTwoGroupClear()' in _declaration(source, 'private void tickCurrentHuntObjective(')
     assert 'checkpointWaveTwoGroupSpawn()' in spawn
     assert 'clearCurrentHuntMark(System.currentTimeMillis())' in disable

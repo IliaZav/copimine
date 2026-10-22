@@ -5,7 +5,10 @@ $errors = [System.Collections.Generic.List[string]]::new()
 foreach ($marker in @(
   'rollEffectChance(var13)',
   'rollEffectChance(var4)',
-  'rollEffectChance(var5)',
+  'random.nextDouble() < SHIELD_NAUSEA_PROC_CHANCE',
+  'random.nextDouble() < SHIELD_WEAKNESS_PROC_CHANCE',
+  'random.nextDouble() < SHIELD_OWNER_BUFF_PROC_CHANCE',
+  'shieldLightningCooldowns.put(var2.getUniqueId(), current + SHIELD_LIGHTNING_COOLDOWN_SECONDS)',
   'actionCooldowns.put(this.actionCooldownKey(var2,'
 )) {
   if ($text -notmatch [regex]::Escape($marker)) { $errors.Add("Missing defense chance/cooldown marker: $marker") }

@@ -18,7 +18,7 @@
 
 ```mermaid
 flowchart LR
-    Paper[Paper 26.3 local runtime<br/>127.0.0.1:25568]
+    Paper[Paper 26.3 local runtime<br/>loopback port from server.properties]
     Env[Private process env<br/>POSTGRES_* / DATABASE_URL]
     PG[(copimine_migration_test<br/>schema: copimine_migration_26_3_candidate)]
     Election[CopiMineElectionCore]
@@ -45,6 +45,8 @@ flowchart LR
     Artifacts -. economy bridge .-> Economy
     Admin -. candidate schema .-> Election
 ```
+
+Paper port берётся из `server.properties`: новый runtime по умолчанию создаётся на `25566`, а подготовленный `local-runtime/end-rift-server-26.3` сейчас использует `25567`. Скрипт старта и проверка runtime используют фактическое значение файла.
 
 Верхнеуровневая принадлежность таблиц по коду:
 
@@ -124,3 +126,16 @@ CANDIDATES ||--o{ CANDIDATE_MIGRATION_DUPLICATE_ARCHIVE : records
 - `candidate_legacy_constraints_<uuid>` проверяет перенос старых `uuid`/`name`, включая expression unique index, и успешный канонический insert после снятия legacy constraint.
 
 Локальный тест требует loopback PostgreSQL; CI может разрешить только private адрес временного runner service. Публичный адрес запрещён. Тест без `COPIMINE_TEST_POSTGRES_DSN` считается skipped, а не passed.
+
+## Защищённая резервная копия перед миграцией
+
+Перед schema-changing migration или заменой database-backed plugins создавайте согласованную логическую копию целевой БД через закреплённый `pg_dump` 16.x в custom format (`-Fc`). `pg_dump` получает согласованный snapshot при работающем сервере; не копируйте каталог `postgres-data`, пока PostgreSQL запущен. Сохраняйте архив в новом каталоге `migration-backups/database/<уникальный-id>` с ACL только для текущего пользователя, `SYSTEM` и локальных администраторов. Не перезаписывайте существующую копию.
+
+Подключение выполняется к `127.0.0.1:55434`, базе `copimine_migration_test`, под существующей ролью администратора. Передавайте пароль только через process environment, прочитав его в памяти из `migration-postgres-admin.env`; не помещайте его в аргументы команд, файлы, историю PowerShell или вывод. Пример аргументов для `pg_dump.exe`:
+
+```powershell
+--no-password --format=custom --host=127.0.0.1 --port=55434 `
+  --username=postgres --dbname=copimine_migration_test --file=<новый-защищённый-путь>
+```
+
+Сохраните размер и SHA-256 архива, проверьте, что `pg_restore --list` читает его, затем восстановите его с `--exit-on-error` в отдельную новую disposable database на том же изолированном экземпляре. Проверьте наличие схемы и объектов в восстановленной копии и удаляйте только эту созданную disposable database после успешной проверки. Никогда не направляйте `pg_restore` в исходную БД. Сбой копирования или проверки не даёт разрешения продолжать schema-changing operation.

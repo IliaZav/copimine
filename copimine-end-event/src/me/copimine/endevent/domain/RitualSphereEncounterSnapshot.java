@@ -12,7 +12,9 @@ public final class RitualSphereEncounterSnapshot {
     private static final String PRISONER = PREFIX + "prisoner";
     private static final String PARTICIPANTS = PREFIX + "participants";
     private static final String CASTER_DEATHS = PREFIX + "caster-deaths";
-    private static final Set<String> CURRENT_KEYS = Set.of(GENERATION, PRISONER, PARTICIPANTS, CASTER_DEATHS);
+    private static final String SPELL_CURSOR = PREFIX + "spell-cursor";
+    private static final Set<String> CURRENT_KEYS = Set.of(
+            GENERATION, PRISONER, PARTICIPANTS, CASTER_DEATHS, SPELL_CURSOR);
     /** Previous releases wrote these values. They are accepted and discarded during migration. */
     private static final Set<String> LEGACY_KEYS = Set.of(
             PREFIX + "successful-drains", PREFIX + "intensity", PREFIX + "last-drain-millis");
@@ -25,17 +27,26 @@ public final class RitualSphereEncounterSnapshot {
     }
 
     public static Map<String, String> encode(RitualSphereEncounterPolicy.State state, int casterDeaths) {
+        return encode(state, casterDeaths, 0);
+    }
+
+    public static Map<String, String> encode(RitualSphereEncounterPolicy.State state,
+                                             int casterDeaths, int spellCursor) {
         if (state == null) {
             return Map.of();
         }
         if (casterDeaths < 0 || casterDeaths > state.profile().casterCount()) {
             throw new IllegalArgumentException("Ritual Sphere caster deaths are outside the live roster");
         }
+        if (!validSpellCursor(casterDeaths, spellCursor)) {
+            throw new IllegalArgumentException("Ritual Sphere spell cursor is outside the unlocked rotation");
+        }
         Map<String, String> encoded = new LinkedHashMap<>();
         encoded.put(GENERATION, Long.toString(state.generation()));
         encoded.put(PRISONER, state.prisoner() == null ? "" : state.prisoner().toString());
         encoded.put(PARTICIPANTS, Integer.toString(state.profile().participants()));
         encoded.put(CASTER_DEATHS, Integer.toString(casterDeaths));
+        encoded.put(SPELL_CURSOR, Integer.toString(spellCursor));
         return Map.copyOf(encoded);
     }
 
@@ -77,9 +88,21 @@ public final class RitualSphereEncounterSnapshot {
         if (casterDeaths < 0 || casterDeaths > profile.casterCount()) {
             throw new IllegalArgumentException("Ritual Sphere caster deaths exceed the authored roster");
         }
+        int spellCursor = encoded.containsKey(SPELL_CURSOR)
+                ? parseInt(encoded.get(SPELL_CURSOR), SPELL_CURSOR) : 0;
+        if (!validSpellCursor(casterDeaths, spellCursor)) {
+            throw new IllegalArgumentException("Ritual Sphere spell cursor is outside the unlocked rotation");
+        }
         RitualSphereEncounterPolicy.State state = new RitualSphereEncounterPolicy.State(
                 generation, prisoner, profile);
-        return new Data(state, migratedLegacyState, casterDeaths);
+        return new Data(state, migratedLegacyState, casterDeaths, spellCursor);
+    }
+
+    private static boolean validSpellCursor(int casterDeaths, int spellCursor) {
+        if (casterDeaths < 0 || casterDeaths > RitualCasterProgressionPolicy.TOTAL_CASTERS
+                || spellCursor < 0) return false;
+        int rotationSize = RitualCasterProgressionPolicy.availableSpells(casterDeaths).size();
+        return spellCursor < Math.max(1, rotationSize);
     }
 
     private static String required(Map<String, String> encoded, String key) {
@@ -118,13 +141,18 @@ public final class RitualSphereEncounterSnapshot {
     }
 
     public record Data(RitualSphereEncounterPolicy.State state, boolean migratedLegacyState,
-                       int casterDeaths) {
+                       int casterDeaths, int spellCursor) {
         public Data(RitualSphereEncounterPolicy.State state, boolean migratedLegacyState) {
-            this(state, migratedLegacyState, 0);
+            this(state, migratedLegacyState, 0, 0);
+        }
+
+        public Data(RitualSphereEncounterPolicy.State state, boolean migratedLegacyState,
+                    int casterDeaths) {
+            this(state, migratedLegacyState, casterDeaths, 0);
         }
 
         public Data(RitualSphereEncounterPolicy.State state) {
-            this(state, false, 0);
+            this(state, false, 0, 0);
         }
     }
 }

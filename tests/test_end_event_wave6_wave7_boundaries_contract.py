@@ -655,7 +655,7 @@ def test_disposable_wave6_restart_state_preserves_the_ritual_snapshot() -> None:
     assert '"6".equals(snapshot.objectiveProgress().get("test-wave"))' in root
     assert "persistedDisposableWave6" in root
     assert "testWaveFrontVisualMode && activeWave == 6" in root
-    assert "RitualSphereEncounterSnapshot.encode(ritualSphereState, ritualCasterDeathCount)" in root
+    assert "RitualSphereEncounterSnapshot.encode(\n                            ritualSphereState, ritualCasterDeathCount, ritualSpellCursor)" in root
     assert "restorePersistedRitualSphereObjective();" in root
     assert "END_RIFT_WAVE6_RESTART_PRESERVED" in root
     restore_start = root.index("private void restorePersistedRitualSphereObjective()")

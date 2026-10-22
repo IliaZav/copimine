@@ -4,6 +4,8 @@ package me.copimine.endevent.domain;
 public final class RitualGuardStatsPolicy {
     public static final double HEALTH_INCREASE = 1.50D;
     public static final double MAX_TUNED_HEALTH = 80.0D;
+    public static final double ZOMBIE_KNOCKBACK_RESISTANCE = 0.6D;
+    public static final double ZOMBIE_ATTACK_KNOCKBACK = 1.0D;
 
     private RitualGuardStatsPolicy() {
     }

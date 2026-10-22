@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "minecraftVersion": "26.3",
   "status": "migration-candidate",
-  "verifiedAt": "2026-10-21",
+  "verifiedAt": "2026-10-22",
   "minimumJava": 25,
   "buildJavaMajor": 25,
   "buildJavaVersion": "25.0.4.1",
@@ -19,8 +19,8 @@
   "clientArtifact": {
     "filename": "CopiMineClient-0.1.3+26.3.jar",
     "version": "0.1.3+26.3",
-    "size": 15008511,
-    "sha512": "fac8a2282f2e19ee16117655dbfb65686fab6377f2d01e9ca38e55a084eb8e1c7603f4c96f482ff329d1d4ec71f121438d2c53031097ea4c7cc9ce6e75e09a71"
+    "size": 15010246,
+    "sha512": "28fe88c4b451f10cf22f21a781940f5532ae44f885f3bc80d2ff0ad10bffb23465dc0018842d6a5806783d2953638d47bb447f48cbc453e01bf239735209ff69"
   },
   "paper": {
     "build": 205,

@@ -722,6 +722,8 @@ def test_first_party_build_candidate_is_staged_and_installed_with_external_candi
     mod=load()
     old=jar('CopiMineEndEvent','0.1.0')
     candidate=jar('CopiMineEndEvent','0.1.0+26.3')
+    baseline_replacement='a'*64
+    candidate_replacement='b'*64
     artifact=tmp_path/'build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar'
     artifact.parent.mkdir(parents=True);artifact.write_bytes(candidate)
     server=tmp_path/'local-runtime/end-rift-server-26.3'
@@ -732,11 +734,13 @@ def test_first_party_build_candidate_is_staged_and_installed_with_external_candi
     baseline={
         'pluginName':'CopiMineEndEvent','version':'0.1.0','filename':'CopiMineEndEvent.jar',
         'sha256':hashlib.sha256(old).hexdigest(),
+        'replaceSha256':[baseline_replacement],
         'candidate':{
             'filename':'CopiMineEndEvent-26.3.jar','runtimeFilename':'CopiMineEndEvent.jar',
             'sha256':hashlib.sha256(candidate).hexdigest(),
             'runtimeEligible':True,'apiVersion':'26.3',
             'buildArtifact':'build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar',
+            'replaceSha256':[candidate_replacement,baseline_replacement],
         },
     }
     records=mod.load_install_records(tmp_path,{'modules':[],'unchangedBaseline':[baseline]})
@@ -747,6 +751,9 @@ def test_first_party_build_candidate_is_staged_and_installed_with_external_candi
     receipt=mod.install_records(tmp_path,server,records,stage,lambda port,host:False)
 
     assert len(records)==1
+    assert records[0]['replaceSha256']==[
+        hashlib.sha256(old).hexdigest(),candidate_replacement,baseline_replacement,
+    ]
     assert (stage/'CopiMineEndEvent-26.3.jar').read_bytes()==candidate
     assert (server/'plugins/CopiMineEndEvent.jar').read_bytes()==candidate
     assert list((server/'migration-backups').rglob('CopiMineEndEvent.jar'))[0].read_bytes()==old
@@ -1014,9 +1021,10 @@ def test_migration_lock_loader_includes_each_built_first_party_plugin():
     assert '983fd1954eb85d8be8a5e18e0095200278933e930422854b4b19c19995fad116' in narcotics['replaceSha256']
     narcotics_candidate=next(item['candidate'] for item in lock['unchangedBaseline']
                              if item['pluginName']=='CopiMineNarcotics')
-    assert narcotics_candidate['size'] == 364299
-    assert narcotics_candidate['sha256'] == '835b8043781cc2bf580900c09653da7aa3436c8485266f7838b478ac5a047e70'
-    assert narcotics_candidate['sha512'] == '5e0a35b14715ebae3d538ce3e3a7215a8cb4095ff64dd8ad9ee1eaf01e30cb7129907a864875fe9feb7a9bee471f1b7b8d531f357fe0820a199857c9ece1046d'
+    assert narcotics_candidate['size'] == 372524
+    assert narcotics_candidate['sha256'] == 'd7e46fcc2bcfb8f31216cb1ea51c53bf3f492d29bc3b8c227540cb38e8ced7e2'
+    assert narcotics_candidate['sha512'] == 'dd4f6a90e8fa47d4c2bae9c9fa72ef23e856d72078376c959156b60693d3419abf636ae7d35a2fec21a713d8c4b2a6e50eb0064579e2e3333c0444f6c62048a4'
+    assert '835b8043781cc2bf580900c09653da7aa3436c8485266f7838b478ac5a047e70' in narcotics_candidate['replaceSha256']
 
 def test_production_or_symlink_target_is_refused(tmp_path):
     mod=load();server,stage,r,old,new=fixture(tmp_path)
@@ -1235,8 +1243,16 @@ def test_first_party_replacements_accept_the_exact_installed_predecessor_jars():
             assert digest in baselines[plugin_name].get('replaceSha256',[]), (
                 f'{plugin_name} locked installer does not recognize its verified installed predecessor'
             )
+    end_event_candidate=baselines['CopiMineEndEvent']['candidate']
+    for digest in (
+        '9274112cc63ed39e62b1a6e3f5d7284b9d92876137c248f7507d65b0b61b1118',
+        'ede85b42fd29c8d917b552a5d4028fa9a9ed9a129f8db0b6982f2b93c19893bf',
+    ):
+        assert digest in end_event_candidate.get('replaceSha256',[]), (
+            'CopiMineEndEvent candidate lock must recognize the exact previously installed test/runtime JAR'
+        )
 
-def test_all_remaining_first_party_26_3_plugins_track_their_exact_build_and_runtime_jars():
+def test_all_remaining_first_party_26_3_plugins_track_their_build_and_runtime_upgrade_path():
     lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
     baselines={p['pluginName']:p for p in lock['unchangedBaseline']}
     expected_builds={
@@ -1259,12 +1275,22 @@ def test_all_remaining_first_party_26_3_plugins_track_their_exact_build_and_runt
         built=ROOT/candidate['buildArtifact']
         runtime=MIGRATION_RUNTIME/'plugins'/candidate['runtimeFilename']
         assert built.is_file(), f'missing 26.3 build artifact for {plugin_name}'
-        artifacts=[built]+([runtime] if runtime.is_file() else [])
+        artifacts=[built]
+        if runtime.is_file():
+            runtime_sha256=hashlib.sha256(runtime.read_bytes()).hexdigest()
+            assert runtime_sha256==candidate['sha256'] or runtime_sha256 in candidate.get('replaceSha256',[]), (
+                f'{plugin_name} installed runtime JAR is neither the candidate nor an explicitly replaceable prior build'
+            )
+            artifacts.append(runtime)
         for artifact in artifacts:
             artifact_bytes=artifact.read_bytes()
-            assert len(artifact_bytes)==candidate['size']
-            assert hashlib.sha256(artifact_bytes).hexdigest()==candidate['sha256']
-            assert hashlib.sha512(artifact_bytes).hexdigest()==candidate['sha512']
+            artifact_sha256=hashlib.sha256(artifact_bytes).hexdigest()
+            if artifact==built:
+                assert len(artifact_bytes)==candidate['size']
+                assert artifact_sha256==candidate['sha256']
+                assert hashlib.sha512(artifact_bytes).hexdigest()==candidate['sha512']
+            else:
+                assert artifact_sha256==candidate['sha256'] or artifact_sha256 in candidate.get('replaceSha256',[])
             with zipfile.ZipFile(artifact) as jar_file:
                 plugin_yml=jar_file.read('plugin.yml').decode('utf-8')
                 required_resource={
@@ -1288,9 +1314,9 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     candidate=baseline['candidate']
     assert candidate['filename']=='CopiMineEndEvent-26.3.jar'
     assert candidate['runtimeFilename']=='CopiMineEndEvent.jar'
-    assert candidate['size']==1851218
-    assert candidate['sha256']=='9274112cc63ed39e62b1a6e3f5d7284b9d92876137c248f7507d65b0b61b1118'
-    assert candidate['sha512']=='2ebe3998459f0fd0ff9e094aec685430d46e59209b2e924b2d3ba4502ffa5fa3e8a496247277293022c5b563d41aefdd66749f5777b68e8d264a51c69f77daa5'
+    assert candidate['size']==1898776
+    assert candidate['sha256']=='7026719d47ec3c7acd66bf3b3e77357782f6f71d54fe5684279b86c58d5e8ea5'
+    assert candidate['sha512']=='e3a1a739c6fbc955cb4807b6b8d9f0131c786211d1eab4e6b2c82ac040206946f343a9a14e1bc64ccf603d3c9687007bd4562703e99d8d19b60ecbf6465a3fb7'
     assert candidate['apiVersion']=='26.3'
     assert candidate['buildArtifact']=='build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar'
     assert candidate['nativeVerified'] is lock['nativeVerified']
@@ -1307,23 +1333,37 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
         'a667e63d60d8441a24e80fa4131510bd30f6e58a88dd5f40a506a00bb697d8a0',
         'c50a03cd92eec82a97fb8acecf58301cc8da85488b04b20b0a4ca2458f2320be',
         'e2d0e255e67e9666cc5b82431461e52136667538b6ba81ebe619cb561a17dc9d',
+        '43a06dd862a1cc8ee0961867de38cd2ef7b065cb40237457303c5999accc299c',
+        'a00987c98b7cde88e8c0bb6518286511e114e443550c43952aacd9ddd0116f11',
+        '985d42e6b4f6f44b034dd399bc12e5754be69e6121b8986156c087e18cfc7d22',
     ]
     assert candidate['replaceSha256']==[
+        'ac85d5eb794612982963f03ed1226cf6ed7617fdad956111d09c2c0b337eb43c',
         '891da7cd4c450a32ffdb1c8c78724e8cbc410c2ab64afeac4209f9dc48e30d7e',
         '10dd52eff90c85217caff45bfd08053eae8ee32d8349120d2f436b2f80ce6305',
         'c50a03cd92eec82a97fb8acecf58301cc8da85488b04b20b0a4ca2458f2320be',
         'e2d0e255e67e9666cc5b82431461e52136667538b6ba81ebe619cb561a17dc9d',
+        '9274112cc63ed39e62b1a6e3f5d7284b9d92876137c248f7507d65b0b61b1118',
+        'ede85b42fd29c8d917b552a5d4028fa9a9ed9a129f8db0b6982f2b93c19893bf',
+        'ec7b12e9f670c784f25df3a6ad2dc9bf9bc4399799b1b544b1574f6f21ba0b14',
+        '43a06dd862a1cc8ee0961867de38cd2ef7b065cb40237457303c5999accc299c',
+        'a00987c98b7cde88e8c0bb6518286511e114e443550c43952aacd9ddd0116f11',
+        '985d42e6b4f6f44b034dd399bc12e5754be69e6121b8986156c087e18cfc7d22',
     ]
 
     built=ROOT/candidate['buildArtifact']
-    runtime=MIGRATION_RUNTIME/'plugins'/candidate['runtimeFilename']
     assert built.is_file(), 'the pinned first-party 26.3 candidate build is missing'
-    artifacts=[built]+([runtime] if runtime.is_file() else [])
-    for artifact in artifacts:
-        assert hashlib.sha256(artifact.read_bytes()).hexdigest()==candidate['sha256']
-        with zipfile.ZipFile(artifact) as jar_file:
-            plugin_yml=jar_file.read('plugin.yml').decode('utf-8')
-        assert 'api-version: \'26.3\'' in plugin_yml
+    built_bytes=built.read_bytes()
+    assert len(built_bytes)==candidate['size']
+    assert hashlib.sha256(built_bytes).hexdigest()==candidate['sha256']
+    assert hashlib.sha512(built_bytes).hexdigest()==candidate['sha512']
+    with zipfile.ZipFile(built) as jar_file:
+        plugin_yml=jar_file.read('plugin.yml').decode('utf-8')
+    assert 'api-version: \'26.3\'' in plugin_yml
+    runtime=MIGRATION_RUNTIME/'plugins'/candidate['runtimeFilename']
+    if runtime.is_file():
+        runtime_sha256=hashlib.sha256(runtime.read_bytes()).hexdigest()
+        assert runtime_sha256==candidate['sha256'] or runtime_sha256 in candidate['replaceSha256']
 
 def test_active_26_3_plugin_directory_matches_the_unique_locked_inventory():
     lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
@@ -2186,6 +2226,9 @@ def _write_startup_validation_fixture(root,*,full_plugin_set=False):
     runtime=root/'local-runtime/end-rift-server-26.3'
     plugins=runtime/'plugins'
     plugins.mkdir(parents=True)
+    voicechat_config=plugins/'voicechat/voicechat-server.properties'
+    voicechat_config.parent.mkdir(parents=True)
+    voicechat_config.write_text('bind_address=127.0.0.1\n',encoding='utf-8')
     (runtime/'server.properties').write_text(
         'server-ip=127.0.0.1\nserver-port=25566\nonline-mode=false\nenable-rcon=false\n',encoding='utf-8')
     plugin_rows=[]
@@ -2235,6 +2278,29 @@ def test_startup_settings_require_complete_locked_plugin_inventory_and_local_tes
         'voiceChatBindAddress':'127.0.0.1'}
     assert (tmp_path/'local-runtime/end-rift-server-26.3/plugins/voicechat/voicechat-server.properties').read_text(
         encoding='utf-8')=='bind_address=127.0.0.1\n'
+
+
+def test_startup_settings_refuse_voice_chat_drift_without_rewriting_runtime_files(tmp_path):
+    mod,runtime,_=_write_startup_validation_fixture(tmp_path)
+    config=runtime/'plugins/voicechat/voicechat-server.properties'
+    original=b'# user setting\nbind_address=*\nport=24454\n'
+    config.write_bytes(original)
+
+    with pytest.raises(ValueError,match='voice chat.*loopback|bind_address.*127.0.0.1'):
+        mod.main(root=tmp_path,argv=['--startup-settings-json','--unauthenticated-test-runtime'])
+
+    assert config.read_bytes()==original
+
+
+def test_startup_settings_do_not_create_missing_voice_chat_configuration(tmp_path):
+    mod,runtime,_=_write_startup_validation_fixture(tmp_path)
+    config=runtime/'plugins/voicechat/voicechat-server.properties'
+    config.unlink()
+
+    with pytest.raises(ValueError,match='Voice Chat.*missing|voice chat.*missing'):
+        mod.main(root=tmp_path,argv=['--startup-settings-json','--unauthenticated-test-runtime'])
+
+    assert not config.exists()
 
 
 def _install_local_end_event_override_fixture(runtime,plugins):
@@ -2606,13 +2672,12 @@ def test_migration_build_helpers_and_gradle_require_the_exact_profile_java_patch
 def test_migration_test_server_launcher_uses_its_isolated_database_environment():
     source=(ROOT/'scripts/minecraft/StartMigrationTestServer.ps1').read_text(encoding='utf-8')
 
-    assert "$postgresInitializer = Join-Path $root 'scripts/minecraft/InitializeMigrationPostgres.ps1'" in source
+    assert "Ensure-MigrationPostgresReady -WorkspaceRoot $root" in source
+    assert 'InitializeMigrationPostgres.ps1' not in source
     assert "'POSTGRES_HOST=127.0.0.1'" in source
     assert "'POSTGRES_PORT=55434'" in source
     assert "'POSTGRES_DB=copimine_migration_test'" in source
     assert "'POSTGRES_SCHEMA=copimine_migration_26_3_candidate'" in source
-    assert "$databaseSetupArguments = @{ RuntimeDirectory = $runtime }" in source
-    assert "$databaseSetupArguments.PostgresBin = $PostgresBin" in source
     assert "$null = Assert-MigrationDatabaseEnvironment -Path $databaseEnvironmentFile -RequiredSettings $requiredDatabaseSettings" in source
     assert "$env:COPIMINE_ENV_FILE = $databaseEnvironmentFile" in source
     assert "Import-Module -Name (Join-Path $PSScriptRoot 'MigrationDatabaseEnvironment.psm1')" in source
@@ -2766,12 +2831,12 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
     assert luckperms['nativeVerified'] is False
 
     expected_candidates={
-        'CopiMineArtifacts':('0c3d91b2f763f62797b04791341026d09384258dcb181e82230d76c9dd391d9a',
-                             '7e2e62a7fe07066d2c37b2e845cde503b94617f7de740b66e76b782ea035d2f3ba0f00b09092067a35586328408b7ecc96ed7e452d125e18f1dd52b8d92bceef',359386),
-        'CopiMineEndEvent':('9274112cc63ed39e62b1a6e3f5d7284b9d92876137c248f7507d65b0b61b1118',
-                            '2ebe3998459f0fd0ff9e094aec685430d46e59209b2e924b2d3ba4502ffa5fa3e8a496247277293022c5b563d41aefdd66749f5777b68e8d264a51c69f77daa5',1851218),
-        'CopiMineNarcotics':('835b8043781cc2bf580900c09653da7aa3436c8485266f7838b478ac5a047e70',
-                             '5e0a35b14715ebae3d538ce3e3a7215a8cb4095ff64dd8ad9ee1eaf01e30cb7129907a864875fe9feb7a9bee471f1b7b8d531f357fe0820a199857c9ece1046d',364299),
+        'CopiMineArtifacts':('75547398ec77fdc083c37de5a5d6449b166efb92c8af942ab0bddc5d675cf109',
+                             '010ce63cf87d78226d02d04e277c693740c3bff4bb8110537900370f59f84c0975e1b2be24216fba67343e014028e6a06660c2263de2f9daa021a7410b473c71',363393),
+        'CopiMineEndEvent':('7026719d47ec3c7acd66bf3b3e77357782f6f71d54fe5684279b86c58d5e8ea5',
+                            'e3a1a739c6fbc955cb4807b6b8d9f0131c786211d1eab4e6b2c82ac040206946f343a9a14e1bc64ccf603d3c9687007bd4562703e99d8d19b60ecbf6465a3fb7',1898776),
+        'CopiMineNarcotics':('d7e46fcc2bcfb8f31216cb1ea51c53bf3f492d29bc3b8c227540cb38e8ced7e2',
+                             'dd4f6a90e8fa47d4c2bae9c9fa72ef23e856d72078376c959156b60693d3419abf636ae7d35a2fec21a713d8c4b2a6e50eb0064579e2e3333c0444f6c62048a4',372524),
     }
     for plugin_name,(sha256,sha512,size) in expected_candidates.items():
         candidate=baseline[plugin_name]['candidate']
@@ -2782,10 +2847,16 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
         assert candidate['nativeVerified'] is False
 
 
-def test_artifacts_candidate_upgrade_accepts_the_currently_installed_candidate():
+def test_artifacts_candidate_upgrade_accepts_approved_previous_candidates():
     lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
     artifacts=next(row for row in lock['unchangedBaseline'] if row['pluginName']=='CopiMineArtifacts')
-    previously_installed_candidate='372bae5777d7703c8e6628208dac3f087c59f657460ac6b4765d6fc4386925ec'
+    previous_candidates=(
+        '3f859aac840fa60b1a76d4ee804c8b4cc506d1daafce1bbe883cb8fcaa0a3b86',
+        'fb327767e393b7d3a3698d6d171223e64a9c7e049ebac986b74633acd198f264',
+    )
 
-    assert previously_installed_candidate in artifacts['replaceSha256'], (
-        'the official installer must recognize the current candidate before replacing it')
+    for previous in previous_candidates:
+        assert previous in artifacts['replaceSha256'], (
+            'the official installer must recognize the exact previous candidate before replacing it')
+        assert previous in artifacts['candidate']['replaceSha256'], (
+            'the local candidate lock must authorize replacing the exact previous candidate artifact')

@@ -43,6 +43,7 @@ import me.copimine.endevent.domain.DragonBreathCloudPolicy;
 import me.copimine.endevent.domain.EliteProjectileImpactPolicy;
 import me.copimine.endevent.domain.WaveProjectileAdmissionController;
 import me.copimine.endevent.domain.WaveProjectileTargetPolicy;
+import me.copimine.endevent.domain.RitualGuardAbilityPolicy;
 public class WaveFogLifecycleProbe {
  enum EventPhase { WAVE_1,WAVE_2,WAVE_3,WAVE_4,WAVE_5,WAVE_6,WAVE_7,INTERMISSION_1,INTERMISSION_2,INTERMISSION_3,INTERMISSION_4,INTERMISSION_5,INTERMISSION_6,CORE_RESTORATION,RECOVERY_REQUIRED,BOSS_ACTIVE,READY_FOR_PLAYERS }
  enum BlackFogPhase { COMBAT,FOG }
@@ -50,7 +51,7 @@ public class WaveFogLifecycleProbe {
  long generation=3,eventTickCounter=40;int activeWave=5;boolean localTextureShowcase,testCombatAiMode;
  record Config(String environment){}Config config=new Config("local");Set<UUID> spellServants=new HashSet<>();
  Object keyKind=new Object(),keyWave=new Object(),keyEventId=new Object(),keyArrowSpell=new Object(),keyEliteProjectileAbility=new Object();String eventId="event",recoveryReason;
- static final String EVENT_KIND_BOSS="boss",EVENT_KIND_ELITE="elite",EVENT_KIND_PROJECTILE="projectile",ARROW_SPELL_RITUAL_PROJECTILE="ritual",ARROW_SPELL_RITUAL_GUARD_WEB="guard";
+ static final String EVENT_KIND_BOSS="boss",EVENT_KIND_ELITE="elite",EVENT_KIND_PROJECTILE="projectile",ARROW_SPELL_RITUAL_PROJECTILE="ritual",ARROW_SPELL_RITUAL_GUARD_WEB="guard",ARROW_SPELL_RITUAL_GUARD_VOLLEY="ritual_guard_volley",ARROW_SPELL_RITUAL_GUARD_BRAND="ritual_guard_soul_brand";
  WaveCombatCoordinator waveCombatCoordinator=new WaveCombatCoordinator();
  WaveProjectileAdmissionController waveProjectileAdmission=new WaveProjectileAdmissionController();
  Map<UUID,Entity> ownedEntities=new LinkedHashMap<>();Map<UUID,Object> waveLeashReturns=new HashMap<>();
@@ -107,6 +108,7 @@ public class WaveFogLifecycleProbe {
  boolean isTaggedEliteAbilityEntity(Entity e){return true;}void clearEliteProjectileRuntime(UUID id,String why,boolean keep){waveProjectileAdmission.releaseProjectile(id);activeEliteProjectileExpiresAtTick.remove(id);eliteProjectileImpactScheduled.remove(id);eliteProjectileDamageAllowed.remove(id);}
  void cleanupEventArrow(UUID id){waveProjectileAdmission.releaseProjectile(id);activeEventArrowAges.remove(id);Entity e=Bukkit.getEntity(id);if(e!=null)e.remove();}
  boolean isLiveOwnedEntity(UUID id){return ownedEntities.containsKey(id)&&!ownedEntities.get(id).removed;}
+ Player activeWaveSkeletonProtectionTarget(Mob mob,long now){return null;}
  boolean ownedBySession(Entity e,String id,long gen){return e.gen==gen&&e.session.equals(id);}
  boolean ownedByEvent(Entity e,String id){return e!=null&&e.session.equals(id);}long readEntityGeneration(Entity e){return e.gen;}
  boolean isWaveCombatKind(String kind){return true;}boolean isOfficialEntity(Entity e){return e.official;}
@@ -131,6 +133,7 @@ public class WaveFogLifecycleProbe {
  void forcePhase(EventPhase p,String why){phase=p;}
  void reconcileWave3GateSquadIntents(List<WaveCombatCoordinator.Squad> squads,long now){plannerReconciles++;}
  boolean isRitualProjectile(Arrow a){return false;}boolean ritualSphereProjectileProvenanceAllowed(Arrow a,Object p){return true;}
+ boolean ritualGuardProjectileProvenanceAllowed(Arrow a,UUID target,RitualGuardAbilityPolicy.Role role){return true;}
  boolean ritualGuardWebProvenanceAllowed(Arrow a,Object p){return true;}boolean hasLiveTestWaveEntities(){return false;}
  boolean isTestBoss(Entity e){return false;}boolean isEventSkeleton(Entity e){return e instanceof Skeleton;}
  boolean isTaggedEliteAbilityProjectile(Projectile p){return true;}
@@ -287,8 +290,8 @@ public class WaveFogLifecycleProbe {
 }
 ''', encoding="utf-8")
     sources = [java, ROOT / "copimine-end-event/src/me/copimine/endevent/runtime/WaveCombatCoordinator.java",
-               *[ROOT / ("copimine-end-event/src/me/copimine/endevent/domain/" + name + ".java")
-                 for name in ["EliteAbilityPolicy", "DragonBreathCloudPolicy", "SpiderEffectLeasePolicy", "BlackFogEffectLeasePolicy", "EliteProjectileImpactPolicy", "WaveProjectileAdmissionController", "WaveProjectileTargetPolicy", "PressureBudgetController"]]]
+                   *[ROOT / ("copimine-end-event/src/me/copimine/endevent/domain/" + name + ".java")
+                     for name in ["EliteAbilityPolicy", "DragonBreathCloudPolicy", "SpiderEffectLeasePolicy", "BlackFogEffectLeasePolicy", "EliteProjectileImpactPolicy", "WaveProjectileAdmissionController", "WaveProjectileTargetPolicy", "PressureBudgetController", "RitualGuardAbilityPolicy"]]]
     built = subprocess.run(["javac", "-proc:none", "-encoding", "UTF-8", "-d", str(out), *map(str, sources)], capture_output=True, text=True)
     assert built.returncode == 0, built.stdout + built.stderr
     return out

@@ -38,6 +38,22 @@ public interface EndEventBridgeV4Access extends AutoCloseable {
 
     boolean isReady(UUID playerUuid);
 
+    /** Safe diagnostic for why the authenticated V4 mutation gate is currently closed. */
+    default ReadinessReason readinessReason(UUID playerUuid) {
+        return isReady(playerUuid) ? ReadinessReason.READY : ReadinessReason.READINESS_UNAVAILABLE;
+    }
+
+    enum ReadinessReason {
+        READY,
+        SIGNER_UNAVAILABLE,
+        SENDER_CLOSED,
+        PLAYER_OFFLINE,
+        NO_VERIFIED_SESSION,
+        STREAM_NOT_READY,
+        STALE_READINESS,
+        READINESS_UNAVAILABLE
+    }
+
     boolean isCurrentVerifiedSession(UUID playerUuid, String sessionUuid);
 
     void unbindContext(UUID playerUuid);

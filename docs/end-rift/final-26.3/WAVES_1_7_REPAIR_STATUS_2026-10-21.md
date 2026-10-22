@@ -1,4 +1,6 @@
-# End Rift Waves 1–7 repair status — 2026-10-21
+# End Rift Waves 1–7 repair status — historical snapshot from 2026-10-21
+
+> Superseded by [the current evidence report](WAVES_1_7_CURRENT_EVIDENCE_2026-10-22.md). The runtime ports, artifact hashes, full-suite results, and profile status below describe the 2026-10-21 snapshot and must not be treated as current.
 
 **State:** source implementation committed and local automated checks pass. Full player acceptance is still incomplete: the active `25567` server has an older EndEvent JAR, and the current candidate bridge reports that its V4 signing service is unavailable. No wave was completed by live players or headless bots. `nativeVerified` remains `false`.
 

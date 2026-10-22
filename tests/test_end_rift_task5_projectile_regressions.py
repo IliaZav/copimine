@@ -86,6 +86,8 @@ def test_projectile_leases_cover_each_admitted_wave_launch_group():
     arrow_volley = java_method_body(source, "private void riftArrowVolley(LivingEntity caster, Player target, String spellId,")
     sphere = java_method_body(source, "private void spawnRitualSphereProjectileVolley(")
     guard_web = java_method_body(source, "private boolean spawnRitualGuardWebProjectile(")
+    guard_brand = java_method_body(source, "private boolean spawnRitualGuardSoulBrandProjectile(")
+    guard_physical = java_method_body(source, "private boolean spawnRitualGuardPhysicalProjectile(")
     diagnostics = source[source.index("RUNTIME_DIAGNOSTICS ownedLiving="):
                          source.index("RUNTIME_DIAGNOSTICS ownedLiving=") + 500]
 
@@ -99,7 +101,13 @@ def test_projectile_leases_cover_each_admitted_wave_launch_group():
     assert "clearWaveProjectileGroup(pending.volleyId()" in side_arrows
     assert "transferWaveProjectile(projectileId, cloud.getUniqueId())" in cloud
     assert "reserveWaveProjectileGroup(" in sphere
-    assert "reserveWaveProjectileGroup(" in guard_web
+    assert "spawnRitualGuardPhysicalProjectile(guard, target, committedAim," in guard_web
+    assert "ARROW_SPELL_RITUAL_GUARD_WEB" in guard_web
+    assert "spawnRitualGuardPhysicalProjectile(guard, target, committedAim," in guard_brand
+    assert "ARROW_SPELL_RITUAL_GUARD_BRAND" in guard_brand
+    assert "reserveWaveProjectileGroup(groupId, 1)" in guard_physical
+    assert "tagEventArrowVolley(arrow, groupId)" in guard_physical
+    assert "clearWaveProjectileGroup(groupId," in guard_physical
     assert "activeProjectileGroups=" in diagnostics
     assert "activeWaveProjectiles=" in diagnostics
     assert "waveProjectileCap=" in diagnostics
@@ -142,6 +150,8 @@ def test_all_bounded_volley_adapters_roll_back_spawn_and_configuration_failures(
         "private void riftArrowVolley(LivingEntity caster, Player target, String spellId,\n                                 SkeletonCombatPolicy.ArrowProfile profile, Location committedAim)",
     )
     guard_web = java_method_body(source, "private boolean spawnRitualGuardWebProjectile(")
+    guard_brand = java_method_body(source, "private boolean spawnRitualGuardSoulBrandProjectile(")
+    guard_physical = java_method_body(source, "private boolean spawnRitualGuardPhysicalProjectile(")
     elite_launch = java_method_body(source, "private boolean launchPhysicalEliteAbility(")
     cloud = java_method_body(source, "private boolean spawnEliteDragonBreathCloud(")
 
@@ -149,12 +159,19 @@ def test_all_bounded_volley_adapters_roll_back_spawn_and_configuration_failures(
         (bow, "skeleton-arrow-spawn-failed"),
         (side_arrows, "skeleton-side-arrow-spawn-failed"),
         (arrow_volley, "event-arrow-volley-spawn-failed"),
-        (guard_web, "ritual-guard-web-spawn-failed"),
         (elite_launch, "elite-projectile-configure-failed"),
     ):
         assert "catch (RuntimeException failure)" in adapter
         assert "clearWaveProjectileGroup(" in adapter
         assert reason in adapter
+    assert "spawnRitualGuardPhysicalProjectile(guard, target, committedAim," in guard_web
+    assert "ARROW_SPELL_RITUAL_GUARD_WEB" in guard_web
+    assert "spawnRitualGuardPhysicalProjectile(guard, target, committedAim," in guard_brand
+    assert "ARROW_SPELL_RITUAL_GUARD_BRAND" in guard_brand
+    assert "catch (RuntimeException failure)" in guard_physical
+    assert "clearWaveProjectileGroup(groupId, \"ritual-guard-projectile-spawn-failed\")" in guard_physical
+    assert "if (arrow != null)" in guard_physical
+    assert "if (arrow.isValid()) arrow.remove();" in guard_physical
     assert "catch (RuntimeException failure)" in cloud
     assert "clearEliteProjectileRuntime(cloud.getUniqueId()" in cloud
     assert "dragon-breath-cloud-spawn-failed" in cloud
@@ -165,9 +182,10 @@ def test_all_bounded_volley_adapters_roll_back_spawn_and_configuration_failures(
     assert "List<Arrow> spawned = new ArrayList<>();" in arrow_volley
     assert "for (Arrow arrow : spawned)" in arrow_volley
     assert "cleanupEventArrow(arrow.getUniqueId())" in arrow_volley
-    assert "Arrow arrow = null;" in guard_web
-    assert "if (arrow != null)" in guard_web
-    assert "if (arrow.isValid()) arrow.remove();" in guard_web
+    assert "Arrow arrow = null;" in guard_physical
+    assert "if (arrow != null)" in guard_physical
+    assert "cleanupEventArrow(arrow.getUniqueId())" in guard_physical
+    assert "if (arrow.isValid()) arrow.remove();" in guard_physical
 
 
 def test_partial_spawn_rollback_releases_full_capacity_for_retry(tmp_path):

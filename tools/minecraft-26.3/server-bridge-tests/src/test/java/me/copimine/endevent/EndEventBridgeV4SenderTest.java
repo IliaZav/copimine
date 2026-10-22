@@ -11,6 +11,8 @@ import me.copimine.protocol.BridgeSigningPolicy;
 import me.copimine.protocol.ClientModSessionRegistry;
 import me.copimine.protocol.EndEventBridgeBodyCodec;
 import me.copimine.protocol.InboundBridgeRequestRateLimiter;
+import org.bukkit.Bukkit;
+import org.bukkit.Server;
 import org.bukkit.entity.Player;
 import org.junit.jupiter.api.Test;
 
@@ -23,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -100,6 +103,89 @@ final class EndEventBridgeV4SenderTest {
                 EndEventBridgeBodyCodec.decode(fixture.verify(fixture.outbound.get(3), 4L).bodyBytes()).type());
         assertEquals(EndEventBridgeBodyCodec.Type.END_PLAYER_STATE,
                 EndEventBridgeBodyCodec.decode(fixture.verify(fixture.outbound.get(4), 5L).bodyBytes()).type());
+    }
+
+    @Test
+    void readinessDiagnosticsDistinguishUnverifiedUnconfirmedOfflineClosedAndStaleStates() throws Exception {
+        Fixture signerUnavailable = new Fixture(false, true);
+        assertEquals(EndEventBridgeV4Access.ReadinessReason.SIGNER_UNAVAILABLE,
+                signerUnavailable.sender.readinessReason(signerUnavailable.playerUuid));
+
+        Fixture unverified = new Fixture(true, true);
+        assertEquals(EndEventBridgeV4Access.ReadinessReason.NO_VERIFIED_SESSION,
+                unverified.sender.readinessReason(unverified.playerUuid));
+
+        Fixture handshaking = new Fixture(true, true);
+        handshaking.request(new BridgeRequestCodec.ControlHello(NONCE, handshaking.playerUuid,
+                handshaking.session.sessionUuid(), id(61)));
+        assertEquals(EndEventBridgeV4Access.ReadinessReason.STREAM_NOT_READY,
+                handshaking.sender.readinessReason(handshaking.playerUuid));
+
+        Fixture offline = readyFixture();
+        offline.online = false;
+        assertEquals(EndEventBridgeV4Access.ReadinessReason.PLAYER_OFFLINE,
+                offline.sender.readinessReason(offline.playerUuid));
+
+        Fixture closed = readyFixture();
+        closed.sender.close();
+        assertEquals(EndEventBridgeV4Access.ReadinessReason.SENDER_CLOSED,
+                closed.sender.readinessReason(closed.playerUuid));
+
+        Fixture stale = readyFixture();
+        stale.current = Optional.empty();
+        assertEquals(EndEventBridgeV4Access.ReadinessReason.STALE_READINESS,
+                stale.sender.readinessReason(stale.playerUuid));
+        assertFalse(stale.sender.isReady(stale.playerUuid));
+    }
+
+    @Test
+    void offlineReadinessReturnsOfflineWhenTheBukkitServerIsUnavailable() throws Exception {
+        Fixture fixture = readyFixture();
+        fixture.online = false;
+        java.lang.reflect.Field serverField = Bukkit.class.getDeclaredField("server");
+        serverField.setAccessible(true);
+        Server previous = (Server) serverField.get(null);
+        try {
+            serverField.set(null, null);
+            assertEquals(EndEventBridgeV4Access.ReadinessReason.PLAYER_OFFLINE,
+                    fixture.sender.readinessReason(fixture.playerUuid));
+        } finally {
+            serverField.set(null, previous);
+        }
+    }
+
+    @Test
+    void readinessFallsBackFromAnOfflineCachedHandleToTheCurrentOnlinePlayer() throws Exception {
+        Fixture fixture = readyFixture();
+        Player currentPlayer = (Player) Proxy.newProxyInstance(Player.class.getClassLoader(),
+                new Class<?>[] {Player.class}, (proxy, method, args) -> switch (method.getName()) {
+                    case "getUniqueId" -> fixture.playerUuid;
+                    case "isOnline" -> true;
+                    case "getName" -> "end-event-reconnected";
+                    default -> null;
+                });
+        java.lang.reflect.Field serverField = Bukkit.class.getDeclaredField("server");
+        serverField.setAccessible(true);
+        Server previous = (Server) serverField.get(null);
+        Server currentServer = (Server) Proxy.newProxyInstance(Server.class.getClassLoader(),
+                new Class<?>[] {Server.class}, (proxy, method, args) -> {
+                    if (method.getName().equals("getPlayer") && args != null && args.length == 1
+                            && fixture.playerUuid.equals(args[0])) {
+                        return currentPlayer;
+                    }
+                    if (method.getName().equals("getOnlinePlayers")) {
+                        return Set.of(currentPlayer);
+                    }
+                    return null;
+                });
+        try {
+            serverField.set(null, currentServer);
+            fixture.online = false;
+            assertEquals(EndEventBridgeV4Access.ReadinessReason.READY,
+                    fixture.sender.readinessReason(fixture.playerUuid));
+        } finally {
+            serverField.set(null, previous);
+        }
     }
 
     @Test
@@ -914,6 +1000,10 @@ final class EndEventBridgeV4SenderTest {
             } catch (Exception error) {
                 throw new AssertionError(error);
             }
+        }
+
+        @Override public boolean isAvailable() {
+            return available;
         }
     }
 }

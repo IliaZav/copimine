@@ -1314,9 +1314,9 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     candidate=baseline['candidate']
     assert candidate['filename']=='CopiMineEndEvent-26.3.jar'
     assert candidate['runtimeFilename']=='CopiMineEndEvent.jar'
-    assert candidate['size']==1898776
-    assert candidate['sha256']=='7026719d47ec3c7acd66bf3b3e77357782f6f71d54fe5684279b86c58d5e8ea5'
-    assert candidate['sha512']=='e3a1a739c6fbc955cb4807b6b8d9f0131c786211d1eab4e6b2c82ac040206946f343a9a14e1bc64ccf603d3c9687007bd4562703e99d8d19b60ecbf6465a3fb7'
+    assert candidate['size']==1899407
+    assert candidate['sha256']=='f5c3b01da174296256d21c69061c3b3d22f76bf3e5fbae267557d0b4ffdaf5cb'
+    assert candidate['sha512']=='06ce9a164e56be77b1d27a45a58f9b8995c13ca85b41f25751de510f97953f54610f74eb26aa6cd2b5ca46399feec0364874fa3beae529db5e594f75f184e695'
     assert candidate['apiVersion']=='26.3'
     assert candidate['buildArtifact']=='build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar'
     assert candidate['nativeVerified'] is lock['nativeVerified']
@@ -1338,6 +1338,7 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
         '985d42e6b4f6f44b034dd399bc12e5754be69e6121b8986156c087e18cfc7d22',
     ]
     assert candidate['replaceSha256']==[
+        '7026719d47ec3c7acd66bf3b3e77357782f6f71d54fe5684279b86c58d5e8ea5',
         'ac85d5eb794612982963f03ed1226cf6ed7617fdad956111d09c2c0b337eb43c',
         '891da7cd4c450a32ffdb1c8c78724e8cbc410c2ab64afeac4209f9dc48e30d7e',
         '10dd52eff90c85217caff45bfd08053eae8ee32d8349120d2f436b2f80ce6305',
@@ -1400,7 +1401,8 @@ def test_active_26_3_plugin_directory_matches_the_unique_locked_inventory():
         assert hashlib.sha256(backups[0].read_bytes()).hexdigest()==disabled_authme['sha256']
         disabled_auth_effects=expected.pop('AuthEffects')
         auth_effects_lock=next(row for row in lock['unchangedBaseline'] if row['pluginName']=='AuthEffects')
-        auth_effects_backup_filename=auth_effects_lock['candidate']['filename']
+        auth_effects_backup_filename=(auth_effects_lock['candidate'].get('runtimeFilename')
+                                      or auth_effects_lock['candidate']['filename'])
         auth_effects_backups=list((server/'migration-backups/plugins').rglob(auth_effects_backup_filename))
         assert len(auth_effects_backups)==1, 'test-only AuthEffects disablement must preserve exactly one locked backup'
         assert hashlib.sha256(auth_effects_backups[0].read_bytes()).hexdigest()==disabled_auth_effects['sha256']
@@ -2833,8 +2835,8 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
     expected_candidates={
         'CopiMineArtifacts':('75547398ec77fdc083c37de5a5d6449b166efb92c8af942ab0bddc5d675cf109',
                              '010ce63cf87d78226d02d04e277c693740c3bff4bb8110537900370f59f84c0975e1b2be24216fba67343e014028e6a06660c2263de2f9daa021a7410b473c71',363393),
-        'CopiMineEndEvent':('7026719d47ec3c7acd66bf3b3e77357782f6f71d54fe5684279b86c58d5e8ea5',
-                            'e3a1a739c6fbc955cb4807b6b8d9f0131c786211d1eab4e6b2c82ac040206946f343a9a14e1bc64ccf603d3c9687007bd4562703e99d8d19b60ecbf6465a3fb7',1898776),
+        'CopiMineEndEvent':('f5c3b01da174296256d21c69061c3b3d22f76bf3e5fbae267557d0b4ffdaf5cb',
+                            '06ce9a164e56be77b1d27a45a58f9b8995c13ca85b41f25751de510f97953f54610f74eb26aa6cd2b5ca46399feec0364874fa3beae529db5e594f75f184e695',1899407),
         'CopiMineNarcotics':('d7e46fcc2bcfb8f31216cb1ea51c53bf3f492d29bc3b8c227540cb38e8ced7e2',
                              'dd4f6a90e8fa47d4c2bae9c9fa72ef23e856d72078376c959156b60693d3419abf636ae7d35a2fec21a713d8c4b2a6e50eb0064579e2e3333c0444f6c62048a4',372524),
     }

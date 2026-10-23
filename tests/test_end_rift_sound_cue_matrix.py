@@ -79,6 +79,18 @@ def test_required_coverage_and_requirement_links() -> None:
     matrix = load_matrix()
     cues = matrix["cues"]
     assert {cue["wave"] for cue in cues} == {1, 2, 3, 4, 5, 6, 7}
+    ids = {cue["id"] for cue in cues}
+    assert {
+        "W1-CARRIER-DELIVERED", "W2-PHANTOM-WARNING", "W2-PHANTOM-MATERIALIZE",
+        "W3-CAPTURE-MILESTONE", "W3-PORTAL-AMBIENT", "W4-FIREBALL-LAUNCH",
+        "W4-OBELISK-COLLAPSE", "W5-FOG-COMPLETE",
+    } <= ids
+
+    source = SOURCE.read_text(encoding="utf-8")
+    assert 'playWaveFeedback("fog-complete"' in source
+    assert 'case "hunt-complete", "fog-resume", "fog-complete"' in source
+    assert "marked.playSound(marked.getLocation(), Sound.ENTITY_ENDERMAN_STARE" in source
+    assert "marked.playSound(location, Sound.ENTITY_ENDERMAN_TELEPORT" in source
 
     linked = {requirement_id for cue in cues for requirement_id in cue["requirementIds"]}
     assert set(REQUIREMENT_IDS[:9]) <= linked

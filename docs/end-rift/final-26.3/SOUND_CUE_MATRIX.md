@@ -1,6 +1,6 @@
 # Sound Cue Matrix — End Rift Waves 1–7
 
-Source: `docs/end-rift/final-26.3/SOUND_CUE_MATRIX.json` at `d44c8f51be00f3b6d911135f7722a155cbf20c13`.
+Source: `docs/end-rift/final-26.3/SOUND_CUE_MATRIX.json` at `0ad93ec792583c4eeac869c8a56ad36dad2f6500`.
 
 All gameplay cues are server-emitted vanilla `Sound` enum values. The matrix deliberately adds no unlicensed music and no duplicate client playback. `nativeAudioVerified` remains **false**: the table below proves source wiring and limits, not audible quality.
 
@@ -27,13 +27,21 @@ Automated check: `tests/test_end_rift_sound_cue_matrix.py` (4 tests).
 |---|---|---|---|---|---|---|---:|
 | W1-CARRIER-SELECTED | 1 | carrier-selected | completion | BLOCK_AMETHYST_BLOCK_RESONATE | event audience | 0.55 / 1.25 | 20 ticks |
 | W1-CARRIER-DROP | 1 | carrier-drop | failure | BLOCK_AMETHYST_BLOCK_BREAK | event audience | 0.55 / 1.25 | 20 ticks |
+| W1-CARRIER-DELIVERED | 1 | carrier-delivered | completion | BLOCK_BEACON_POWER_SELECT | event audience | 0.90 / 1.15 | one-shot |
 | W2-MARK-START | 2 | mark-start | telegraph | ENTITY_ENDERMAN_STARE | marked player | 0.80 / 1.35 | one-shot |
+| W2-PHANTOM-WARNING | 2 | phantom-warning | telegraph | ENTITY_ENDERMAN_STARE | marked player | 0.80 / 0.85 | one-shot |
+| W2-PHANTOM-MATERIALIZE | 2 | phantom-materialize | impact | ENTITY_ENDERMAN_TELEPORT | marked player | 0.65 / 1.40 | one-shot |
 | W2-HUNT-COMPLETE | 2 | hunt-complete | completion | BLOCK_BEACON_ACTIVATE | event audience | 0.55 / 1.25 | 20 ticks |
 | W3-PORTAL-OPEN | 3 | portal-open | telegraph | BLOCK_AMETHYST_BLOCK_RESONATE | event audience | 0.55 / 1.25 | 20 ticks |
 | W3-PORTAL-CLOSE | 3 | portal-close | completion | BLOCK_RESPAWN_ANCHOR_DEPLETE | event audience | 0.55 / 0.80 | 20 ticks |
+| W3-CAPTURE-MILESTONE | 3 | portal-capture-milestone | impact | BLOCK_AMETHYST_BLOCK_RESONATE | event audience | 0.55 / 0.80 | 40 ticks |
+| W3-PORTAL-AMBIENT | 3 | portal-occupied-ambient | ambient | BLOCK_PORTAL_AMBIENT | event audience | 0.12 / 0.75 | one-shot |
+| W4-FIREBALL-LAUNCH | 4 | fireball-launch | telegraph | ENTITY_GHAST_SHOOT | event audience | 0.75 / 1.35 | one-shot |
 | W4-OBELISK-HIT | 4 | obelisk-hit | impact | BLOCK_AMETHYST_BLOCK_BREAK | event audience | 0.55 / 1.25 | 20 ticks |
+| W4-OBELISK-COLLAPSE | 4 | obelisk-collapse | completion | ENTITY_GENERIC_EXPLODE | event audience | 0.80 / 0.75 | one-shot |
 | W5-FOG-ARRIVAL | 5 | fog-arrival | telegraph | BLOCK_RESPAWN_ANCHOR_DEPLETE | event audience | 0.55 / 0.55 | 20 ticks |
 | W5-FOG-SAFE-ZONE | 5 | fog-safe-zone | ambient | BLOCK_CONDUIT_AMBIENT_SHORT | sheltered player | 0.25 / 1.35 | 40 ticks |
+| W5-FOG-COMPLETE | 5 | fog-complete | completion | BLOCK_BEACON_ACTIVATE | event audience | 0.55 / 1.45 | one-shot |
 | W6-CASTER-DEATH | 6 | caster-death | completion | BLOCK_AMETHYST_BLOCK_CHIME | event audience | 0.80 / 0.77 | one-shot |
 | W6-SHIELD-HIT | 6 | caster-shield-hit | failure | BLOCK_METAL_HIT | event audience | 0.75 / 1.35 | one-shot |
 | W6-SHIELD-BREAK | 6 | caster-shield-break | completion | BLOCK_GLASS_BREAK | event audience | 0.80 / 1.35 | one-shot |

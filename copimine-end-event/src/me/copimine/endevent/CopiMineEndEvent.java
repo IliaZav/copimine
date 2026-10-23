@@ -4273,6 +4273,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 completedWave, reason, idempotencyKey);
         boolean published = publishLifecycleTransition(current, requested, reason, persist, result);
         if (result.success()) {
+            if (completedWave == 5) playWaveFeedback("fog-complete", coreCombatAnchorLocation());
             encounterCoordinator.resetEncounter(EndRiftObjective.objective(completedWave));
         }
         return published;
@@ -22881,6 +22882,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             waveTwoPhantomActivationGroup = groupNumber;
             waveTwoPhantomActivationLocation = location.clone();
             sendWaveTwoPhantomActivation(marked, true, waveTwoMarkCycle, phantom.id(), location);
+            marked.playSound(marked.getLocation(), Sound.ENTITY_ENDERMAN_STARE,
+                    SoundCategory.HOSTILE, 0.8F, 0.85F);
             try {
                 long callbackGeneration = generation;
                 String callbackEventId = eventId;
@@ -22954,7 +22957,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
 
         waveTwoPhantomActivationState = completed.state();
-        if (marked != null) sendWaveTwoPhantomActivation(marked, false, callbackCycle, phantomId, location);
+        if (marked != null) {
+            sendWaveTwoPhantomActivation(marked, false, callbackCycle, phantomId, location);
+            marked.playSound(location, Sound.ENTITY_ENDERMAN_TELEPORT,
+                    SoundCategory.HOSTILE, 0.65F, 1.4F);
+        }
         waveTwoPhantomActivationPlayerUuid = null;
         spawnNextWaveGroup(world, core);
     }
@@ -32247,19 +32254,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Sound primary = switch (cue) {
             case "carrier-selected", "portal-open" -> Sound.BLOCK_AMETHYST_BLOCK_RESONATE;
             case "carrier-drop", "obelisk-hit" -> Sound.BLOCK_AMETHYST_BLOCK_BREAK;
-            case "hunt-complete", "fog-resume" -> Sound.BLOCK_BEACON_ACTIVATE;
+            case "hunt-complete", "fog-resume", "fog-complete" -> Sound.BLOCK_BEACON_ACTIVATE;
             case "portal-close", "fog-arrival" -> Sound.BLOCK_RESPAWN_ANCHOR_DEPLETE;
             default -> null;
         };
         if (primary == null) return;
         Sound accent = switch (cue) {
-            case "carrier-selected", "portal-open", "hunt-complete" -> Sound.BLOCK_NOTE_BLOCK_CHIME;
+            case "carrier-selected", "portal-open", "hunt-complete", "fog-complete" -> Sound.BLOCK_NOTE_BLOCK_CHIME;
             case "carrier-drop" -> Sound.ENTITY_ITEM_PICKUP;
             case "obelisk-hit" -> Sound.ITEM_SHIELD_BLOCK;
             case "fog-arrival" -> Sound.BLOCK_GLASS_PLACE;
             default -> Sound.BLOCK_AMETHYST_BLOCK_CHIME;
         };
-        float pitch = cue.equals("fog-arrival") ? .55F : cue.equals("portal-close") ? .8F : 1.25F;
+        float pitch = cue.equals("fog-arrival") ? .55F : cue.equals("portal-close") ? .8F
+                : cue.equals("fog-complete") ? 1.45F : 1.25F;
         for (Player viewer : eventAudience()) {
             if (!isEventParticleViewer(viewer, point)) continue;
             viewer.playSound(point, primary, SoundCategory.BLOCKS, .55F, pitch);

@@ -1,6 +1,6 @@
 # Current handoff — End Rift Waves 1–7
 
-Updated: 2026-10-23. Latest source commit with recorded green CI: `5ab46ca1cae3629eecd6af48076208e034486b55`; previous green source commit `1c6b9fce62367bffba20512caca7c663bcf185d9`; `391dbe11d2de3e448aac3f444250c9b551e55b1a`; earlier `14fc53316d08d02de9f9268e412fba08d942a84e`; then `915b0cb0be5dd6ec2313cc92d5563359e6af7e5d`; then `c433d4325924ffc9893a2f58a75cb0ee8b30b91a`; then `4c774f7d0d1d2e037f3b7e614d32cd154c6dc4ae`; then `b94fa7ac55d8de2f0ecfa5ac83f0fc437486255d`; Wave 4 provenance fix published as `8af4f4bd`; Wave 6 pre-capture damage-lock fix published as `eef9d346`; Wave 2 client phantom-retirement fix published as `79a9610a`; baseline source commit: `d44c8f51be00f3b6d911135f7722a155cbf20c13` (branch `codex/copimine-source-of-truth-20261020`). The tree also contains the transition-rune stale-occupancy fix described below.
+Updated: 2026-10-23. Latest source commit with recorded green CI: `0ad93ec792583c4eeac869c8a56ad36dad2f6500`; previous green source commit `5ab46ca1cae3629eecd6af48076208e034486b55`; then `1c6b9fce62367bffba20512caca7c663bcf185d9`; `391dbe11d2de3e448aac3f444250c9b551e55b1a`; earlier `14fc53316d08d02de9f9268e412fba08d942a84e`; then `915b0cb0be5dd6ec2313cc92d5563359e6af7e5d`; then `c433d4325924ffc9893a2f58a75cb0ee8b30b91a`; then `4c774f7d0d1d2e037f3b7e614d32cd154c6dc4ae`; then `b94fa7ac55d8de2f0ecfa5ac83f0fc437486255d`; Wave 4 provenance fix published as `8af4f4bd`; Wave 6 pre-capture damage-lock fix published as `eef9d346`; Wave 2 client phantom-retirement fix published as `79a9610a`; baseline source commit: `d44c8f51be00f3b6d911135f7722a155cbf20c13` (branch `codex/copimine-source-of-truth-20261020`). The tree also contains the transition-rune stale-occupancy fix described below.
 
 ## Source and CI
 
@@ -21,6 +21,7 @@ Updated: 2026-10-23. Latest source commit with recorded green CI: `5ab46ca1cae36
 - Cancelled tentacle-guardian hits in this tree are rejected before any private slot-health transaction. Because the listeners use `ignoreCancelled=false`, a WorldGuard or sibling-plugin denial is now authoritative for melee and projectile hits; `tests/test_end_rift_tentacle_combat_evidence_contract.py` locks the guard order.
 - Guardian trimming in this tree removes permanent tentacles by slot range (`TentacleScalingPolicy.permanentSlotInRange`), not by map order plus a count check. A roster drop therefore cannot leave out-of-range slots alive and then re-fill `0..N` next tick; slots outside `0..target-1` are removed while dead-slot cooldowns for retained slots stay intact.
 - Guardian health, per-slot respawn deadlines, and the open damage window are now persisted in objective progress and rebased on restore (`TentacleGuardianPolicy.encodeSnapshot/decodeSnapshot`). A restart during Last Seal no longer heals dead guardians or shortens their cooldown; malformed guardian state fails closed to `RECOVERY_REQUIRED`.
+- Wave audio now covers the remaining authored gameplay moments: personal Wave 2 phantom warning/materialization, Wave 5 fog completion, plus matrix evidence for Wave 1 carrier delivery, Wave 3 capture milestone/portal ambient, and Wave 4 fireball launch/obelisk collapse. `SOUND_CUE_MATRIX.json` has 37 cues and still states `nativeAudioVerified=false`.
 - Hosted CI run `39939175031` on `4c774f7d` completed all three mandatory jobs successfully: `migration-postgres-contract`, `static-and-contract`, `java-plugins`.
 - Hosted CI run `39945591650` on `c433d432` completed all three mandatory jobs successfully: `migration-postgres-contract`, `static-and-contract`, `java-plugins`.
 - Hosted CI run `39950916699` on `915b0cb0` completed all three mandatory jobs successfully: `migration-postgres-contract`, `static-and-contract`, `java-plugins`.
@@ -28,6 +29,7 @@ Updated: 2026-10-23. Latest source commit with recorded green CI: `5ab46ca1cae36
 - Hosted CI run `39965647088` on `391dbe11` completed all three mandatory jobs successfully: `migration-postgres-contract`, `static-and-contract`, `java-plugins`.
 - Hosted CI run `39972153195` on `1c6b9fce` completed all three mandatory jobs successfully: `migration-postgres-contract`, `static-and-contract`, `java-plugins`.
 - Hosted CI run `39978756983` on `5ab46ca1` completed all three mandatory jobs successfully: `migration-postgres-contract`, `static-and-contract`, `java-plugins`.
+- Hosted CI run `39985350688` on `0ad93ec7` completed all three mandatory jobs successfully: `migration-postgres-contract`, `static-and-contract`, `java-plugins`.
 - Hosted CI run `39926722202` on `b94fa7ac` completed all three mandatory jobs successfully: `migration-postgres-contract`, `static-and-contract`, `java-plugins`.
 - Hosted CI run `39905475992` on `bf04d44f` completed all three mandatory jobs successfully: `migration-postgres-contract`, `static-and-contract`, `java-plugins`.
 - Hosted CI run `39916592533` on `8af4f4bd` completed successfully; run `39918244761` on `eef9d346` also completed all three jobs successfully.
@@ -38,7 +40,7 @@ Updated: 2026-10-23. Latest source commit with recorded green CI: `5ab46ca1cae36
 
 | Plugin | SHA-256 | Size |
 |---|---|---|
-| CopiMineEndEvent | `066624e84499bcfe9672471dcd9e03047b76397b7493657ae769cf4d64db3ddb` | 1,909,659 |
+| CopiMineEndEvent | `12f032de165dad419f990c97adfce055916302c93659f9d422c4c861468d543c` | 1,909,824 |
 | CopiMineArtifacts | `75547398ec77fdc083c37de5a5d6449b166efb92c8af942ab0bddc5d675cf109` | 363,393 |
 | CopiMineNarcotics | `d7e46fcc2bcfb8f31216cb1ea51c53bf3f492d29bc3b8c227540cb38e8ced7e2` | 372,524 |
 | CopiMineUltimateAdminPlus | `70eb0caa57ae48d918170fd9fd4f9ce853bfd8c967315f774cccc606b4abe9f0` | 272,236 |
@@ -46,14 +48,14 @@ Updated: 2026-10-23. Latest source commit with recorded green CI: `5ab46ca1cae36
 | CopiMineElectionCore | `d2256c6976cb88a2a98b372d5f7e1b1db63013a52fdcfe519a065e3896395b65` | 234,331 |
 | CopiMineWorldCore | `1b6822c1733b8ddc3dc12760e8319caed014f3148493bf1c826ca6f5153e3f14` | 36,778 |
 
-The previous installed EndEvent artifacts `c840119e531d827f883683ca729938a8b6aee6001eb219acc6ae5dca6fc56596`, `d56258aeb5a488ef2c0c316c2c93589aaa7eb7324304ca6d54c4c279a74b2aee`, `5212e427e7942729ecd85234aa4b4293a45fb30a00bb5f91f696914a48edfe64`, `bd5572bcbcf206cdd2c68c1fdd993ebea9f1f5199d86cdf22ae31892b31081a2`, `335e716a1f1e8a7bb7791ea7feca06d04aa7ae2ec8d9ffc162e68b7ae05fdbe7`, `a350e1a4b06e0765560219ea8dcc732e3c44b76e5931ffb3318f6a93c15bda97`, `ba2f880a2facca25bbc3c7f8a6e39939ecc3f9d7f71f32028f5b2da609a2c995`, `c9eec1ad834f89acf0595db8ab316714add829bec8573f062ad8eb0d1b26f8e1`, `e7ef03e68a608d3a6b8447dbb072d02c4427ef3d116263d285b23e1b39701742` and `152704c4b62488f2bf71ed67395a2de8fd906175ea7479dd6544769434846340` are retained only in the lock as superseded hashes.
+The previous installed EndEvent artifacts `066624e84499bcfe9672471dcd9e03047b76397b7493657ae769cf4d64db3ddb`, `c840119e531d827f883683ca729938a8b6aee6001eb219acc6ae5dca6fc56596`, `d56258aeb5a488ef2c0c316c2c93589aaa7eb7324304ca6d54c4c279a74b2aee`, `5212e427e7942729ecd85234aa4b4293a45fb30a00bb5f91f696914a48edfe64`, `bd5572bcbcf206cdd2c68c1fdd993ebea9f1f5199d86cdf22ae31892b31081a2`, `335e716a1f1e8a7bb7791ea7feca06d04aa7ae2ec8d9ffc162e68b7ae05fdbe7`, `a350e1a4b06e0765560219ea8dcc732e3c44b76e5931ffb3318f6a93c15bda97`, `ba2f880a2facca25bbc3c7f8a6e39939ecc3f9d7f71f32028f5b2da609a2c995`, `c9eec1ad834f89acf0595db8ab316714add829bec8573f062ad8eb0d1b26f8e1`, `e7ef03e68a608d3a6b8447dbb072d02c4427ef3d116263d285b23e1b39701742` and `152704c4b62488f2bf71ed67395a2de8fd906175ea7479dd6544769434846340` are retained only in the lock as superseded hashes.
 
 `AuthEffects` is **not installed** in the 27-plugin receipt; only its pinned candidate hash exists.
 
 ## Evidence added this pass
 
 - `REQUIREMENT_TEST_MATRIX.json/.md`: exactly 168 registry IDs, tests and honest statuses.
-- `SOUND_CUE_MATRIX.json/.md`: 28 server cues, all Waves 1–7, both anvil volleys and four Wave 7 trials; `nativeAudioVerified=false`.
+- `SOUND_CUE_MATRIX.json/.md`: 37 server cues, all Waves 1-7, both anvil volleys and four Wave 7 trials; `nativeAudioVerified=false`.
 - `OWN_PLUGIN_INVENTORY.json/.md`: eight first-party manifests/builds/installed hashes and known gaps.
 - `BOT_ACCEPTANCE.json/.md` and `PERFORMANCE_REPORT.md`: blocked, with no fake PASS.
 - New tests: sound cue matrix, requirement matrix, own-plugin inventory contract, acceptance reports, Wave 7 named-trial completion audio, and the Wave 1 canonical holder regression in `EndRiftEncounterCoordinatorTest`.

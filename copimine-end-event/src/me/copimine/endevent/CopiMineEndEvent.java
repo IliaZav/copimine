@@ -14819,9 +14819,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void resetTransitionRuneHoldForParticipant(UUID id) {
         if (id == null || phase != EventPhase.START_RITUAL && !isTransitionRunePhase(phase)
                 || !padOccupants.containsValue(id)) return;
+        TransitionRunePolicy.removeOccupantsFor(padOccupants, id);
         transitionRuneController.reset();
         transitionRuneRenderStates.clear();
         lastTransitionRuneCountdown = -1;
+        refreshRuneOverlayVisuals();
     }
 
     private void tickStartRitual() {

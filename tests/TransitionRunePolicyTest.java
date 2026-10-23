@@ -55,6 +55,20 @@ public final class TransitionRunePolicyTest {
                 occupied(UUID.fromString("00000000-0000-0000-0000-000000000003"), "rune-c")));
         check(external.complete(), "spectators and helpers outside the committed roster do not block the hold");
 
+        Map<String, UUID> occupants = new java.util.LinkedHashMap<>();
+        occupants.put("rune-a", alpha);
+        occupants.put("rune-b", bravo);
+        occupants.put("rune-c", alpha);
+        check(TransitionRunePolicy.removeOccupantsFor(occupants, alpha) == 2,
+                "reset must remove every stale rune assignment for the participant");
+        check(!occupants.containsValue(alpha), "a quit or dead participant cannot keep a rune assignment");
+        check(occupants.get("rune-b").equals(bravo), "other participants keep their rune assignment");
+        check(TransitionRunePolicy.removeOccupantsFor(occupants, null) == 0
+                        && TransitionRunePolicy.removeOccupantsFor(null, alpha) == 0,
+                "null player and null map are safe no-ops");
+        check(TransitionRunePolicy.removeOccupantsFor(occupants, UUID.randomUUID()) == 0,
+                "resetting an unknown participant is a no-op");
+
         System.out.println("TransitionRunePolicyTest OK");
     }
 

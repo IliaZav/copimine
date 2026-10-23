@@ -2,6 +2,7 @@ package me.copimine.endevent.domain;
 
 import java.util.Collection;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -98,6 +99,14 @@ public final class TransitionRunePolicy {
             return new Check(false, missing, reason);
         }
         return new Check(true, Set.of(), Reason.READY);
+    }
+
+    /** Removes every stale rune assignment for a player who quit, died, or changed worlds. */
+    public static int removeOccupantsFor(Map<String, UUID> occupants, UUID playerId) {
+        if (occupants == null || playerId == null) return 0;
+        int before = occupants.size();
+        occupants.entrySet().removeIf(entry -> playerId.equals(entry.getValue()));
+        return before - occupants.size();
     }
 
     public static HoldState advance(HoldState previous, Check check, long nowMillis, long holdMillis) {

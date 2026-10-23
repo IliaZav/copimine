@@ -508,7 +508,7 @@
         "E"
       ],
       "status": "BLOCKED",
-      "statusReason": "Requires an authenticated real protocol player/server run. COPIMINE_CLIENT_BRIDGE_PRIVATE_KEY_FILE is absent and no approved test signer matches the pinned trust anchor, so this evidence was not produced.",
+      "statusReason": "Canonical server-authoritative holder delivery is covered by tests/EndRiftEncounterCoordinatorTest.java (current holder required; no-holder/non-holder rejected). Full inventory/swap/offhand/drop behavior still requires an authenticated real protocol player/server run; COPIMINE_CLIENT_BRIDGE_PRIVATE_KEY_FILE is absent and no approved test signer matches the pinned trust anchor.",
       "tests": [
         "tests/test_wave1_carrier_retreat.py",
         "tests/test_wave1_carrier_slowness_lease.py",

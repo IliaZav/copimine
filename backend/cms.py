@@ -52,8 +52,8 @@ def _site_config(db, seed):
     defaults = seed.get("config", {})
     result = {key: value for key, value in defaults.items() if key in _SETTING_FIELDS}
     if not saved:
-        result["headline"] = "Выживай. Строй базу.\nТоргуй и выбирай."
-        result["description"] = "Торговля за АР, выборы президента и общий мир."
+        result["headline"] = "CopiMine —\nMinecraft-сервер."
+        result["description"] = "Строй и играй вместе с другими. Банк, выборы и магазин — на сайте."
     result.update({key: value for key, value in saved.items() if key in _SETTING_FIELDS})
     return result
 

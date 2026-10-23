@@ -64,8 +64,8 @@ def test_site_copy_is_versioned_and_only_public_fields_are_saved(client):
 
 def test_default_site_copy_uses_direct_copimine_text(client):
     config=client.get('/api/v6/state').json()['config']
-    assert config['headline']=='Выживай. Строй базу.\nТоргуй и выбирай.'
-    assert config['description']=='Торговля за АР, выборы президента и общий мир.'
+    assert config['headline']=='CopiMine —\nMinecraft-сервер.'
+    assert config['description']=='Строй и играй вместе с другими. Банк, выборы и магазин — на сайте.'
 
 
 def test_gallery_upload_is_private_until_the_image_is_published(client,tmp_path):

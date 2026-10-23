@@ -641,7 +641,12 @@ Invoke-MigrationGit -RepositoryPath '{destination_ps}' -HooksPath '{hooks_ps}' -
 if ($LASTEXITCODE -ne 0) {{ throw 'Isolated repository init failed' }}
 if ($env:GIT_TEMPLATE_DIR -ne $template) {{ throw 'Migration Git wrapper did not restore GIT_TEMPLATE_DIR' }}
 if (Test-Path Env:GIT_DIR) {{ throw 'Migration Git wrapper did not restore an unset GIT_DIR' }}
-if (-not (Test-Path Env:GIT_INDEX_FILE) -or $env:GIT_INDEX_FILE -ne '') {{ throw 'Migration Git wrapper did not restore an empty GIT_INDEX_FILE' }}
+# Windows PowerShell 5.1 has no representation for an empty process env var; absence is the exact restore there.
+if ($PSVersionTable.PSVersion.Major -ge 6) {{
+    if (-not (Test-Path Env:GIT_INDEX_FILE) -or $env:GIT_INDEX_FILE -ne '') {{ throw 'Migration Git wrapper did not restore an empty GIT_INDEX_FILE' }}
+}} elseif (Test-Path Env:GIT_INDEX_FILE) {{
+    throw 'Windows PowerShell 5.1 restored GIT_INDEX_FILE as a non-empty value'
+}}
 """, encoding="utf-8")
     environment = dict(os.environ)
     environment.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": str(tmp_path / "empty-global.gitconfig")})

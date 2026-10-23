@@ -60,8 +60,16 @@ def test_inventory_matches_manifests_commands_and_permissions() -> None:
 
 def test_inventory_tests_and_installed_hashes_are_real() -> None:
     inventory = load_inventory()
-    receipt = json.loads(RECEIPT.read_text(encoding="utf-8-sig"))
-    installed = {item["pluginName"]: item for item in receipt["installed"]}
+    receipt = (
+        json.loads(RECEIPT.read_text(encoding="utf-8-sig"))
+        if RECEIPT.is_file()
+        else None
+    )
+    installed = (
+        {item["pluginName"]: item for item in receipt["installed"]}
+        if receipt is not None
+        else None
+    )
     lock = json.loads(PLUGIN_LOCK.read_text(encoding="utf-8-sig"))
     candidates = {
         item["pluginName"]: item
@@ -76,6 +84,9 @@ def test_inventory_tests_and_installed_hashes_are_real() -> None:
         expected_candidate = entry.get("candidateSha256") or entry["sha256"]
         assert candidate["candidate"]["sha256"] == expected_candidate, entry["name"]
 
+        # The migration receipt only exists after a local official install; CI checks source candidates.
+        if installed is None:
+            continue
         if entry["installedJar"] is None:
             assert entry["name"] not in installed
             continue

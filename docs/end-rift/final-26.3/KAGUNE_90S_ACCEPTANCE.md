@@ -33,7 +33,7 @@ tickCurrentTentacles recalculates permanent target number from active participan
 ## Other newly identified event bugs/gaps
 
 ### Boss inferno is not the approved design
-CopiMineEndEvent.arenaInferno uses ARENA_INFERNO_DURATION_TICKS=100 and a 20-tick interval, explicitly says "safe sectors - five seconds", arranges fixed coordinate sectors and applies damage/Weakness. The approved spell should last about 20 seconds and use readable telegraphs, bounded ignition/armor durability effects and actual steam vents, without sector mechanics. Validate hazard journal rollback, no unsafe arena edits, natural counterplay and all failure paths.
+CopiMineEndEvent.arenaInferno now reads boss.arena-inferno.duration-ticks (default 400 = 20 seconds) and reports the real number of seconds. It still arranges fixed coordinate sectors and applies damage/Weakness. The approved spell also needs readable telegraphs, bounded ignition/armor durability effects and actual steam vents, without sector mechanics; that part remains open. Validate hazard journal rollback, no unsafe arena edits, natural counterplay and all failure paths.
 
 ### Portal visual resilience
 spawnPortalModelVisual accepts incomplete frame/inner/shard layer sets. refreshPortalObjectiveVisuals marks a rebuild attempt used before successful creation; PortalPresentationPolicy.shouldRebuild only permits attempts==0. Simulate twice-failed layer creation and verify retry or atomic rollback with no ghost entities. Native F2 must verify orientation and 3D texture from front/rear/left/right/top.

@@ -72,6 +72,14 @@ public final class BossAiSimulationTest {
         check(!hardBudget.reserve(A, BossHazardBudget.MechanicKind.FINAL_STRIKE, 1L).accepted(),
                 "second hard control on one player must be rejected");
         check(hardBudget.releaseGeneration(1L) == 1, "generation cleanup must release reservation");
+        check(BossHazardBudget.arenaInfernoDurationTicks(400) == 400,
+                "inferno duration must honor the configured 20 seconds");
+        check(BossHazardBudget.arenaInfernoDurationTicks(0)
+                        == BossHazardBudget.MIN_ARENA_INFERNO_TICKS,
+                "inferno duration must clamp non-positive configuration");
+        check(BossHazardBudget.arenaInfernoDurationTicks(99999)
+                        == BossHazardBudget.MAX_ARENA_INFERNO_TICKS,
+                "inferno duration must clamp runaway configuration");
 
         BossPerceptionSnapshot.PlayerObservation survivor =
                 new BossPerceptionSnapshot.PlayerObservation(B, true, 0.2, 6, true,

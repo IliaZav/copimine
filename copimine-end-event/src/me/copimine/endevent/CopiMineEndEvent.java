@@ -561,7 +561,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     // The window is released only after our authoritative real-health
     // transaction; it is never changed globally or for natural entities.
     private static final int EVENT_ENTITY_MAX_NO_DAMAGE_TICKS = 3;
-    private static final int ARENA_INFERNO_DURATION_TICKS = 100;
     private static final int WAVE_ONE_PULSE_TELEGRAPH_TICKS = 50;
     private static final double WAVE_ONE_PULSE_DAMAGE = 6.0D;
     private static final double WAVE_MOB_DAMAGE_REDUCTION = 4.0D;
@@ -39730,25 +39729,29 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             restoreArenaInfernoBlocks();
             return;
         }
+        int durationTicks = BossHazardBudget.arenaInfernoDurationTicks(
+                getConfig().getInt("boss.arena-inferno.duration-ticks", 400));
+        int durationSeconds = Math.max(1, (durationTicks + 19) / 20);
         Location center = coreCombatAnchorLocation().add(0.0D, 0.8D, 0.0D);
         world.playSound(center, Sound.ENTITY_ENDERMAN_SCREAM, 1.0F, 0.5F);
-        announceEventTitle("§4ПЛАМЯ РАЗЛОМА", "§cИщите безопасные сектора — пять секунд", true);
+        announceEventTitle("§4ПЛАМЯ РАЗЛОМА",
+                "§cИщите безопасные сектора — " + durationSeconds + " секунд", true);
         getLogger().info("BOSS_SPELL_ARENA_INFERNO event=" + eventId
                 + " logical_hazards=" + arenaInfernoBlocks.size()
                 + " safe_floor_ratio>=0.35"
                 + " real_fire=false visual=particles+magma"
                 + " damage_interval_ticks=20"
                 + " journal_entries=" + journalEntries.size()
-                + " duration_ticks=" + ARENA_INFERNO_DURATION_TICKS);
-        final int[] elapsedSeconds = {0};
+                + " duration_ticks=" + durationTicks);
+        final int[] elapsedTicks = {0};
         arenaInfernoTask = Bukkit.getScheduler().runTaskTimer(this, () -> {
             LivingEntity live = liveBoss();
-            if (live == null || elapsedSeconds[0] >= ARENA_INFERNO_DURATION_TICKS / 20) {
+            if (live == null || elapsedTicks[0] >= durationTicks) {
                 clearArenaInferno();
                 return;
             }
             renderArenaInferno(live);
-            elapsedSeconds[0]++;
+            elapsedTicks[0] += 20;
         }, 0L, 20L);
         if (taskRegistry != null) {
             registerEncounterTask(arenaInfernoTask);

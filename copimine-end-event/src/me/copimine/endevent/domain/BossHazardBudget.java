@@ -18,6 +18,13 @@ public final class BossHazardBudget {
     public static final int MIN_PLAYERS = 2;
     public static final int MAX_PLAYERS = 20;
     public static final int MAX_HARD_CONTROL_PER_PLAYER = 1;
+    public static final int MIN_ARENA_INFERNO_TICKS = 20;
+    public static final int MAX_ARENA_INFERNO_TICKS = 1200;
+
+    public static int arenaInfernoDurationTicks(int configuredTicks) {
+        return Math.max(MIN_ARENA_INFERNO_TICKS,
+                Math.min(MAX_ARENA_INFERNO_TICKS, configuredTicks));
+    }
 
     public enum MechanicKind {
         MAJOR_GRAB(2, true),

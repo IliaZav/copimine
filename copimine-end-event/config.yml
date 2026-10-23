@@ -323,7 +323,7 @@ boss:
   max-summoned-servants: 4
   arena-inferno:
     telegraph-ticks: 50
-    duration-ticks: 100
+    duration-ticks: 400
     minimum-safe-ratio: 0.35
   # One bounded, once-per-boss LAST_SEAL strike. It never changes blocks.
   final-strike:

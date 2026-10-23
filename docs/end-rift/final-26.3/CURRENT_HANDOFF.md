@@ -1,6 +1,6 @@
 # Current handoff — End Rift Waves 1–7
 
-Updated: 2026-10-23. Latest source commit with recorded green CI: `4c774f7d0d1d2e037f3b7e614d32cd154c6dc4ae`; previous green source commit `b94fa7ac55d8de2f0ecfa5ac83f0fc437486255d`; Wave 4 provenance fix published as `8af4f4bd`; Wave 6 pre-capture damage-lock fix published as `eef9d346`; Wave 2 client phantom-retirement fix published as `79a9610a`; baseline source commit: `d44c8f51be00f3b6d911135f7722a155cbf20c13` (branch `codex/copimine-source-of-truth-20261020`). The tree also contains the transition-rune stale-occupancy fix described below.
+Updated: 2026-10-23. Latest source commit with recorded green CI: `c433d4325924ffc9893a2f58a75cb0ee8b30b91a`; previous green source commit `4c774f7d0d1d2e037f3b7e614d32cd154c6dc4ae`; earlier `b94fa7ac55d8de2f0ecfa5ac83f0fc437486255d`; Wave 4 provenance fix published as `8af4f4bd`; Wave 6 pre-capture damage-lock fix published as `eef9d346`; Wave 2 client phantom-retirement fix published as `79a9610a`; baseline source commit: `d44c8f51be00f3b6d911135f7722a155cbf20c13` (branch `codex/copimine-source-of-truth-20261020`). The tree also contains the transition-rune stale-occupancy fix described below.
 
 ## Source and CI
 
@@ -18,6 +18,7 @@ Updated: 2026-10-23. Latest source commit with recorded green CI: `4c774f7d0d1d2
 - Regression coverage: `tests/Wave3PortalProgressSnapshotTest.java` plus the `wave3-snapshot`, `wave3-restart`, and `wave3-invalid-restart` scenarios in `tests/test_end_rift_wave_probe_adapters.py`.
 - Last Seal guardian-shield orbit in this tree now derives its plate slots from `livingTentacleGuardianSlots()` instead of a hardcoded `0..3` list, so dead or retracting guardians no longer leave orphan shield plates. Native visual verification remains pending.
 - Hosted CI run `39939175031` on `4c774f7d` completed all three mandatory jobs successfully: `migration-postgres-contract`, `static-and-contract`, `java-plugins`.
+- Hosted CI run `39945591650` on `c433d432` completed all three mandatory jobs successfully: `migration-postgres-contract`, `static-and-contract`, `java-plugins`.
 - Hosted CI run `39926722202` on `b94fa7ac` completed all three mandatory jobs successfully: `migration-postgres-contract`, `static-and-contract`, `java-plugins`.
 - Hosted CI run `39905475992` on `bf04d44f` completed all three mandatory jobs successfully: `migration-postgres-contract`, `static-and-contract`, `java-plugins`.
 - Hosted CI run `39916592533` on `8af4f4bd` completed successfully; run `39918244761` on `eef9d346` also completed all three jobs successfully.
@@ -28,7 +29,7 @@ Updated: 2026-10-23. Latest source commit with recorded green CI: `4c774f7d0d1d2
 
 | Plugin | SHA-256 | Size |
 |---|---|---|
-| CopiMineEndEvent | `335e716a1f1e8a7bb7791ea7feca06d04aa7ae2ec8d9ffc162e68b7ae05fdbe7` | 1,904,886 |
+| CopiMineEndEvent | `bd5572bcbcf206cdd2c68c1fdd993ebea9f1f5199d86cdf22ae31892b31081a2` | 1,905,124 |
 | CopiMineArtifacts | `75547398ec77fdc083c37de5a5d6449b166efb92c8af942ab0bddc5d675cf109` | 363,393 |
 | CopiMineNarcotics | `d7e46fcc2bcfb8f31216cb1ea51c53bf3f492d29bc3b8c227540cb38e8ced7e2` | 372,524 |
 | CopiMineUltimateAdminPlus | `70eb0caa57ae48d918170fd9fd4f9ce853bfd8c967315f774cccc606b4abe9f0` | 272,236 |
@@ -36,7 +37,7 @@ Updated: 2026-10-23. Latest source commit with recorded green CI: `4c774f7d0d1d2
 | CopiMineElectionCore | `d2256c6976cb88a2a98b372d5f7e1b1db63013a52fdcfe519a065e3896395b65` | 234,331 |
 | CopiMineWorldCore | `1b6822c1733b8ddc3dc12760e8319caed014f3148493bf1c826ca6f5153e3f14` | 36,778 |
 
-The previous installed EndEvent artifacts `a350e1a4b06e0765560219ea8dcc732e3c44b76e5931ffb3318f6a93c15bda97`, `ba2f880a2facca25bbc3c7f8a6e39939ecc3f9d7f71f32028f5b2da609a2c995`, `c9eec1ad834f89acf0595db8ab316714add829bec8573f062ad8eb0d1b26f8e1`, `e7ef03e68a608d3a6b8447dbb072d02c4427ef3d116263d285b23e1b39701742` and `152704c4b62488f2bf71ed67395a2de8fd906175ea7479dd6544769434846340` are retained only in the lock as superseded hashes.
+The previous installed EndEvent artifacts `335e716a1f1e8a7bb7791ea7feca06d04aa7ae2ec8d9ffc162e68b7ae05fdbe7`, `a350e1a4b06e0765560219ea8dcc732e3c44b76e5931ffb3318f6a93c15bda97`, `ba2f880a2facca25bbc3c7f8a6e39939ecc3f9d7f71f32028f5b2da609a2c995`, `c9eec1ad834f89acf0595db8ab316714add829bec8573f062ad8eb0d1b26f8e1`, `e7ef03e68a608d3a6b8447dbb072d02c4427ef3d116263d285b23e1b39701742` and `152704c4b62488f2bf71ed67395a2de8fd906175ea7479dd6544769434846340` are retained only in the lock as superseded hashes.
 
 `AuthEffects` is **not installed** in the 27-plugin receipt; only its pinned candidate hash exists.
 

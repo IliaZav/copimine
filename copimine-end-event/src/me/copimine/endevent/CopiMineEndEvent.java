@@ -42415,13 +42415,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private Wave4ObeliskRuntimeState findWave4ObeliskAt(Block hitBlock,
-                                                             Location impact) {
+                                                             Location impact,
+                                                             UUID expectedObeliskId) {
         if (hitBlock != null) {
             UUID directId = currentWave4ObeliskCells.get(new BlockCellKey(
                     hitBlock.getWorld().getUID(), hitBlock.getX(), hitBlock.getY(), hitBlock.getZ()));
             Wave4ObeliskRuntimeState direct = directId == null
                     ? null : activeWave4Obelisks.get(directId);
-            if (direct != null && direct.stage() == ObeliskStage.ACTIVE) {
+            if (direct != null && direct.stage() == ObeliskStage.ACTIVE
+                    && direct.id().equals(expectedObeliskId)) {
                 return direct;
             }
         }
@@ -42430,6 +42432,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         return activeWave4Obelisks.values().stream()
                 .filter(state -> state.stage() == ObeliskStage.ACTIVE
+                        && state.id().equals(expectedObeliskId)
                         && state.base().getWorld().equals(impact.getWorld())
                         && horizontalDistanceSquared(state.base(), impact) <= 2.2D * 2.2D
                         // The fireball is intentionally spawned above the
@@ -42443,13 +42446,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private Wave4ObeliskRuntimeState findWave4ObeliskAlongPath(Location from,
-                                                                    Location to) {
+                                                                    Location to,
+                                                                    UUID expectedObeliskId) {
         if (from == null || to == null || from.getWorld() == null
                 || to.getWorld() == null || !from.getWorld().equals(to.getWorld())) {
             return null;
         }
         return activeWave4Obelisks.values().stream()
                 .filter(state -> state.stage() == ObeliskStage.ACTIVE
+                        && state.id().equals(expectedObeliskId)
                         && state.base().getWorld().equals(to.getWorld())
                         && RiftFireballCollisionPolicy.segmentIntersectsObelisk(
                         from.getX(), from.getY(), from.getZ(),
@@ -42479,6 +42484,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 fireball.generation() == generation,
                 reflector != null && isActiveArenaParticipant(reflector),
                 obelisk.stage() == ObeliskStage.ACTIVE && obelisk.health() > 0,
+                fireball.originObeliskId() != null
+                        && fireball.originObeliskId().equals(obelisk.id()),
                 fireball.consumed());
         if (!result.accepted()) {
             getLogger().warning("END_RIFT_OBELISK_HIT_REJECTED event=" + eventId
@@ -42789,9 +42796,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 // fireball must not tunnel through a real journaled block
                 // structure between samples.
                 Wave4ObeliskRuntimeState currentObelisk = findWave4ObeliskAlongPath(
-                        state.lastLocation(), point);
+                        state.lastLocation(), point, state.originObeliskId());
                 if (currentObelisk == null) {
-                    currentObelisk = findWave4ObeliskAt(null, point);
+                    currentObelisk = findWave4ObeliskAt(null, point, state.originObeliskId());
                 }
                 if (currentObelisk != null) {
                     applyCurrentReflectedObeliskHit(currentObelisk, state);
@@ -43003,7 +43010,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         Location impact = fireball.getLocation().clone();
         if (state.reflected()) {
-            Wave4ObeliskRuntimeState currentObelisk = findWave4ObeliskAt(hitBlock, impact);
+            Wave4ObeliskRuntimeState currentObelisk = findWave4ObeliskAt(
+                    hitBlock, impact, state.originObeliskId());
             if (currentObelisk != null) {
                 applyCurrentReflectedObeliskHit(currentObelisk, state);
                 cleanupRiftFireball(fireball.getUniqueId(), "current-obelisk-hit");

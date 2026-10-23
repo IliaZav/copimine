@@ -25,7 +25,8 @@ public final class ObeliskIntegrityPolicy {
         NOT_REFLECTED,
         STALE_GENERATION,
         NON_PARTICIPANT_REFLECTOR,
-        TARGET_INACTIVE
+        TARGET_INACTIVE,
+        WRONG_SOURCE_OBELISK
     }
 
     /**
@@ -54,6 +55,7 @@ public final class ObeliskIntegrityPolicy {
                                                boolean generationMatches,
                                                boolean officialReflector,
                                                boolean targetActive,
+                                               boolean sourceObeliskMatches,
                                                boolean alreadyConsumed) {
         int maximum = Math.max(1, maximumHealth);
         int current = Math.max(0, Math.min(maximum, currentHealth));
@@ -80,6 +82,9 @@ public final class ObeliskIntegrityPolicy {
         }
         if (!targetActive) {
             return rejected(current, maximum, RejectReason.TARGET_INACTIVE);
+        }
+        if (!sourceObeliskMatches) {
+            return rejected(current, maximum, RejectReason.WRONG_SOURCE_OBELISK);
         }
         int remaining = current - 1;
         return new HitDecision(remaining, true, remaining == 0,

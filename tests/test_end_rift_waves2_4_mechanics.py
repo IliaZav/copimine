@@ -362,10 +362,12 @@ public final class Waves24MechanicsHarness {
     static final class RiftFireballRuntimeState {
         final UUID id = UUID.randomUUID();
         UUID reflector;
+        UUID originObeliskId;
         boolean wave4 = true, wave7, consumed;
         long generation = 5L;
         ObeliskProjectilePolicy.State state = ObeliskProjectilePolicy.State.REFLECTED;
         UUID entityId() { return id; }
+        UUID originObeliskId() { return originObeliskId; }
         UUID reflectorUuid() { return reflector; }
         boolean isWave4Obelisk() { return wave4; }
         boolean consumed() { return consumed; }
@@ -718,6 +720,7 @@ public final class Waves24MechanicsHarness {
             case "wave-reflected-hit" -> {
                 RiftFireballRuntimeState fireball = new RiftFireballRuntimeState(); fireball.reflector = player.id;
                 Wave4ObeliskRuntimeState obelisk = new Wave4ObeliskRuntimeState();
+                fireball.originObeliskId = obelisk.id;
                 h.applyCurrentReflectedObeliskHit(obelisk, fireball);
                 check(obelisk.health == 2, "current wave reflector must damage obelisk despite stale boss roster");
                 h.applyCurrentReflectedObeliskHit(obelisk, fireball);
@@ -728,8 +731,20 @@ public final class Waves24MechanicsHarness {
                 player.boss = true;
                 RiftFireballRuntimeState fireball = new RiftFireballRuntimeState(); fireball.reflector = player.id; fireball.generation = 4L;
                 Wave4ObeliskRuntimeState obelisk = new Wave4ObeliskRuntimeState();
+                fireball.originObeliskId = obelisk.id;
                 h.applyCurrentReflectedObeliskHit(obelisk, fireball);
                 check(obelisk.health == 3 && !fireball.consumed, "stale generation cannot consume health");
+            }
+            case "wrong-source-reflected-hit" -> {
+                RiftFireballRuntimeState fireball = new RiftFireballRuntimeState(); fireball.reflector = player.id;
+                Wave4ObeliskRuntimeState source = new Wave4ObeliskRuntimeState();
+                Wave4ObeliskRuntimeState other = new Wave4ObeliskRuntimeState();
+                fireball.originObeliskId = source.id;
+                h.applyCurrentReflectedObeliskHit(other, fireball);
+                check(other.health == 3 && !fireball.consumed,
+                        "a reflected projectile must not damage or consume against a non-source obelisk");
+                check(h.hitReactions == 0 && h.visualUpdates == 0,
+                        "a wrong-source impact must not render a hit or update obelisk visuals");
             }
             default -> throw new IllegalArgumentException(scenario);
         }
@@ -1189,7 +1204,7 @@ def test_wave2_persisted_entity_load_adapter(wave2_entity_load_harness, scenario
     "death", "disconnect", "replacement", "invalid-at-deadline-death", "invalid-at-deadline-disconnect", "invalid-at-deadline-arena",
     "wave-roster-launch", "charge-disconnect", "charge-generation",
     "boss-only-excluded", "wave-reflection", "sandbox-outsider-reflection", "boss-reflection-preserved", "wave7-reflection-boundary",
-    "wave-reflected-hit", "stale-hit",
+    "wave-reflected-hit", "stale-hit", "wrong-source-reflected-hit",
 ])
 def test_wave2_and_wave4_production_decisions(mechanics_harness, scenario):
     result = subprocess.run(["java", "-cp", str(mechanics_harness),

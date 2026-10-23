@@ -39,7 +39,7 @@ def test_current_handoff_tracks_installed_hashes_and_blocks() -> None:
     text = (DOCS / "CURRENT_HANDOFF.md").read_text(encoding="utf-8")
     for value in (
         "d44c8f51be00f3b6d911135f7722a155cbf20c13",
-        "d0b61f8c8d9e073729fdb67c946314625c13d018ecec78d8a16659f80a578209",
+        "152704c4b62488f2bf71ed67395a2de8fd906175ea7479dd6544769434846340",
         "75547398ec77fdc083c37de5a5d6449b166efb92c8af942ab0bddc5d675cf109",
         "d7e46fcc2bcfb8f31216cb1ea51c53bf3f492d29bc3b8c227540cb38e8ced7e2",
         "COPIMINE_CLIENT_BRIDGE_PRIVATE_KEY_FILE",

@@ -29,7 +29,7 @@ public final class RiftCarriersEncounter extends AbstractWaveEncounter {
     public synchronized Result deliver(EncounterContext context, UUID player, UUID deliveryId,
                                        boolean atCore) {
         if (!participantIsValid(context, player) || deliveryId == null || !atCore
-                || (holder != null && !holder.equals(player)) || consumedDeliveries.contains(deliveryId)) {
+                || holder == null || !holder.equals(player) || consumedDeliveries.contains(deliveryId)) {
             return rejected("DELIVERY_REJECTED");
         }
         consumedDeliveries.add(deliveryId);

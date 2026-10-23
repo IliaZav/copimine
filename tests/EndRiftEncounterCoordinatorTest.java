@@ -26,6 +26,7 @@ import me.copimine.endevent.runtime.encounter.WaveEncounter;
 public final class EndRiftEncounterCoordinatorTest {
     public static void main(String[] args) {
         testCanonicalSevenWaveLifecycle();
+        testCarrierDeliveryRequiresCurrentHolder();
         testW6CannotBypassW7();
         testTransitionReplayDoesNotRepeatCoordinatorSideEffects();
         testWaveStartIsAtomicWhenEncounterRejects();
@@ -213,6 +214,31 @@ public final class EndRiftEncounterCoordinatorTest {
         check(coordinator.phase() == EventPhase.PRE_BOSS_COOLDOWN, "wave 7 must lead to pre-boss cooldown");
     }
 
+    private static void testCarrierDeliveryRequiresCurrentHolder() {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        Set<UUID> players = new LinkedHashSet<>(Set.of(first, second));
+        EncounterContext context = new EncounterContext("holder-test", 9L, "CopiMine",
+                0, 64, 0, new EncounterContext.ArenaBounds(-20, 0, -20, 20, 100, 20),
+                players, players, null);
+        EndRiftEncounterCoordinator coordinator = new EndRiftEncounterCoordinator(
+                context, EventPhase.START_RITUAL);
+        check(coordinator.startNextWave(EndRiftObjective.Objective.RIFT_CARRIERS,
+                "test", "w1").accepted(), "wave 1 must start after ritual");
+        RiftCarriersEncounter carriers = (RiftCarriersEncounter) coordinator.encounter(
+                EndRiftObjective.Objective.RIFT_CARRIERS);
+        EncounterContext wave = context.withObjective(EndRiftObjective.Objective.RIFT_CARRIERS);
+
+        check(!carriers.deliver(wave, second, UUID.randomUUID(), true).accepted(),
+                "delivery without a selected holder must be rejected");
+        check(carriers.progress() == 0, "rejected delivery must not add progress");
+        check(carriers.selectCarrier(wave, first), "carrier must be selectable");
+        check(!carriers.deliver(wave, second, UUID.randomUUID(), true).accepted(),
+                "non-holder delivery must be rejected");
+        check(carriers.deliver(wave, first, UUID.randomUUID(), true).accepted(),
+                "current holder delivery must be accepted");
+    }
+
     private static void testW6CannotBypassW7() {
         EndEventStateMachine machine = new EndEventStateMachine(EventPhase.WAVE_6);
         check(!machine.transition(EventPhase.WAVE_6, EventPhase.PRE_BOSS_COOLDOWN,
@@ -274,9 +300,11 @@ public final class EndRiftEncounterCoordinatorTest {
                 "start", "atomic-wave").accepted(), "wave must start");
         RiftCarriersEncounter carriers = (RiftCarriersEncounter) coordinator.encounter(
                 EndRiftObjective.Objective.RIFT_CARRIERS);
+        EncounterContext wave = context.withObjective(EndRiftObjective.Objective.RIFT_CARRIERS);
         for (int index = 0; index < 3; index++) {
-            check(carriers.deliver(context.withObjective(EndRiftObjective.Objective.RIFT_CARRIERS),
-                    player, UUID.randomUUID(), true).accepted(), "delivery must count");
+            check(carriers.selectCarrier(wave, player), "carrier must be selectable");
+            check(carriers.deliver(wave, player, UUID.randomUUID(), true).accepted(),
+                    "delivery must count");
         }
         EndRiftEncounterCoordinator.Result invalid = coordinator.completeWave(
                 EndRiftObjective.Objective.RIFT_CARRIERS, "missing key", "");

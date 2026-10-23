@@ -157,7 +157,13 @@
 }
 
 @media (max-width: 680px) {
+  .cm72-scroll-cue {
+    left: 15px;
+    transform: none;
+  }
+
   .cm72-about {
+    grid-template-columns: minmax(0, 1fr);
     gap: 25px;
   }
 

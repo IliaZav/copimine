@@ -9,10 +9,20 @@
   const api = window.CM72 = { galleryIndex: 0, skinYaw: -25, skinPitch: -6 };
   const photo = 'assets/photos/copimine-night.webp';
   const thumb = 'assets/photos/copimine-night-small.webp';
-  const asset = path => M.asset(path);
+  const asset = path => String(path || '').startsWith('/api/v6/') ? path : M.asset(path);
   const motion = () => state().preferences.motion !== false && !state().reviewPersonal?.reduceMotion && !matchMedia('(prefers-reduced-motion: reduce)').matches;
   const el = id => document.getElementById(id);
   const publicName = p => E(p?.displayName || p?.name || 'Игрок');
+
+
+  function publishedPagesInNavigation() {
+    return (state().pages || []).filter(page => page?.published?.nav === true && page.slug !== 'rules' && /^[a-z0-9][a-z0-9-]{1,39}$/.test(page.slug));
+  }
+
+  function publicNavLink(slug, label, active) {
+    const selected = active === slug || active === 'page' && M.UI.tab === slug;
+    return `<a href="#${E(slug)}" class="${selected ? 'active' : ''}" ${selected ? 'aria-current="page"' : ''}>${E(label)}</a>`;
+  }
   const arrow = (name, action, extra = '') => `<button type="button" class="cm72-round" data-action="${action}" ${extra} aria-label="${name}" title="${name}">${icon(action.includes('prev') ? 'arrow-left' : 'arrow-right')}</button>`;
 
   // There is exactly one account menu per public page, including narrow layouts.
@@ -22,9 +32,9 @@
     const p = M.me(), count = state().cart.reduce((n, x) => n + x.qty, 0);
     const unread = state().reviewPersonal?.notifyTransfers === false ? 0 : (A.wallet?.unread || 0);
     const menu = p ? `<div class="v71-user-menu"><button type="button" class="v71-user-trigger" data-action="v71-user-menu" aria-haspopup="menu" aria-expanded="false" aria-label="Меню аккаунта">${W.head(p, 30)}<span>${publicName(p)}</span>${icon('chevron-down')}</button><div class="v71-user-popover" role="menu" hidden><div class="v71-popover-user"><strong>${publicName(p)}</strong><small>${E(Q.user?.email || 'Почта не привязана')}</small></div><a role="menuitem" href="#account">${icon('user')}Личный кабинет</a><a role="menuitem" href="#settings/profile">${icon('settings')}Настройки</a>${CM6.canAdmin() ? `<a role="menuitem" href="#admin/overview">${icon('sliders')}Управление</a>` : ''}<button role="menuitem" type="button" class="v71-exit-link v71-danger" data-action="logout">${icon('log-out')}Выйти</button></div></div>` : '<a class="btn cm72-signin" href="#auth/login">Войти</a>';
-    return `<div class="container cm72-header-container"><header class="site-header"><a class="brand" href="#home" aria-label="CopiMine — главная"><img class="wordmark" src="${asset('assets/img/logo.png')}" alt="CopiMine" width="166" height="34"></a><nav class="site-nav" aria-label="Основное меню">${[['shop', 'Магазин'], ['donate', 'Донат'], ['map', 'Карта'], ['rules', 'Правила']].map(([id, label]) => `<a href="#${id}" class="${active === id ? 'active' : ''}" ${active === id ? 'aria-current="page"' : ''}>${label}</a>`).join('')}</nav><div class="header-actions">${p ? `<button type="button" class="v71-notification-button icon-btn" data-action="v71-notifications" aria-label="Уведомления${unread ? ': ' + unread : ''}" title="Уведомления">${icon('bell')}${unread ? `<b>${unread}</b>` : ''}</button>` : ''}<a href="#cart" class="v7-cart-link" aria-label="Корзина" title="Корзина">${icon('bag')}<span data-cart-count ${count ? '' : 'hidden'}>${count}</span></a>${menu}<button type="button" class="icon-btn v7-menu-toggle" data-action="v7-menu" aria-label="Открыть меню">${icon('menu')}</button></div></header></div>`;
+    return `<div class="container cm72-header-container"><header class="site-header"><a class="brand" href="#home" aria-label="CopiMine — главная"><img class="wordmark" src="${asset('assets/img/logo.png')}" alt="CopiMine" width="166" height="34"></a><nav class="site-nav" aria-label="Основное меню">${[['shop', 'Магазин'], ['donate', 'Донат'], ['map', 'Карта'], ['rules', 'Правила']].map(([id, label]) => publicNavLink(id,label,active)).join('')}${publishedPagesInNavigation().map(page=>publicNavLink(page.slug,page.published.title||page.slug,active)).join('')}</nav><div class="header-actions">${p ? `<button type="button" class="v71-notification-button icon-btn" data-action="v71-notifications" aria-label="Уведомления${unread ? ': ' + unread : ''}" title="Уведомления">${icon('bell')}${unread ? `<b>${unread}</b>` : ''}</button>` : ''}<a href="#cart" class="v7-cart-link" aria-label="Корзина" title="Корзина">${icon('bag')}<span data-cart-count ${count ? '' : 'hidden'}>${count}</span></a>${menu}<button type="button" class="icon-btn v7-menu-toggle" data-action="v7-menu" aria-label="Открыть меню">${icon('menu')}</button></div></header></div>`;
   };
-  H['v7-menu'] = () => M.openModal('Разделы сайта', `<nav class="v7-mobile-menu">${[['home', 'Главная', 'home'], ['shop', 'Магазин', 'bag'], ['donate', 'Донат', 'heart'], ['map', 'Карта', 'map'], ['rules', 'Правила', 'shield']].map(([url, text, ic]) => `<a href="#${url}">${icon(ic)}${text}${icon('arrow-right')}</a>`).join('')}</nav>`);
+  H['v7-menu'] = () => M.openModal('Разделы сайта', `<nav class="v7-mobile-menu">${[['home', 'Главная', 'home'], ['shop', 'Магазин', 'bag'], ['donate', 'Донат', 'heart'], ['map', 'Карта', 'map'], ['rules', 'Правила', 'shield']].concat(publishedPagesInNavigation().map(page => [page.slug,page.published.title||page.slug,'file'])).map(([url, text, ic]) => `<a href="#${url}">${icon(ic)}${text}${icon('arrow-right')}</a>`).join('')}</nav>`);
 
   function seedGallery() {
     if (state().design73Gallery) return;
@@ -44,7 +54,7 @@
     if (!list.length) return '';
     api.galleryIndex = Math.min(api.galleryIndex, list.length - 1);
     const item = list[api.galleryIndex];
-    return `<section id="cm72-carousel" class="cm72-gallery cm72-reveal" role="region" aria-roledescription="карусель" aria-label="Кадры проекта" tabindex="0"><div class="cm72-section-heading"><div><h2>Кадры проекта</h2><p>Места, постройки и моменты нашей игры.</p></div><div class="cm72-gallery-controls"><span id="cm72-gallery-count" aria-live="polite">${String(api.galleryIndex + 1).padStart(2, '0')} <i>/ ${String(list.length).padStart(2, '0')}</i></span>${list.length > 1 ? arrow('Предыдущий кадр', 'cm72-gallery-prev') + arrow('Следующий кадр', 'cm72-gallery-next') : ''}</div></div><button class="cm72-gallery-frame ${item.kind === 'map' || item.src.includes('/map') ? 'is-map' : ''}" type="button" data-action="cm72-gallery-open" aria-label="Открыть кадр на весь экран"><img id="cm72-gallery-image" src="${asset(item.src)}" alt="${E(item.alt || item.title)}" loading="lazy" draggable="false"><span class="cm72-gallery-caption"><strong id="cm72-gallery-title">${E(item.title)}</strong><small id="cm72-gallery-description">${E(item.caption || '')}</small></span><span class="cm72-gallery-expand">${icon('fullscreen')}<span>Открыть</span></span></button><div class="cm72-gallery-thumbnails" aria-label="Выбрать кадр">${list.map((x, i) => `<button type="button" data-action="cm72-gallery-pick" data-index="${i}" aria-label="Кадр ${i + 1}: ${E(x.title)}" aria-current="${i === api.galleryIndex ? 'true' : 'false'}"><img src="${asset(x.src === photo ? thumb : x.src)}" alt="" loading="lazy" draggable="false"><span>${E(x.title)}</span></button>`).join('')}</div></section>`;
+    return `<section id="cm72-carousel" class="cm72-gallery cm72-reveal" role="region" aria-roledescription="карусель" aria-label="Кадры проекта" tabindex="0"><div class="cm72-section-heading"><div><h2>Скриншоты CopiMine</h2><p>Игровые места и постройки.</p></div><div class="cm72-gallery-controls"><span id="cm72-gallery-count" aria-live="polite">${String(api.galleryIndex + 1).padStart(2, '0')} <i>/ ${String(list.length).padStart(2, '0')}</i></span>${list.length > 1 ? arrow('Предыдущий кадр', 'cm72-gallery-prev') + arrow('Следующий кадр', 'cm72-gallery-next') : ''}</div></div><button class="cm72-gallery-frame ${item.kind === 'map' || item.src.includes('/map') ? 'is-map' : ''}" type="button" data-action="cm72-gallery-open" aria-label="Открыть кадр на весь экран"><img id="cm72-gallery-image" src="${asset(item.src)}" alt="${E(item.alt || item.title)}" loading="lazy" draggable="false"><span class="cm72-gallery-caption"><strong id="cm72-gallery-title">${E(item.title)}</strong><small id="cm72-gallery-description">${E(item.caption || '')}</small></span><span class="cm72-gallery-expand">${icon('fullscreen')}<span>Открыть</span></span></button><div class="cm72-gallery-thumbnails" aria-label="Выбрать кадр">${list.map((x, i) => `<button type="button" data-action="cm72-gallery-pick" data-index="${i}" aria-label="Кадр ${i + 1}: ${E(x.title)}" aria-current="${i === api.galleryIndex ? 'true' : 'false'}"><img src="${asset(x.src === photo ? thumb : x.src)}" alt="" loading="lazy" draggable="false"><span>${E(x.title)}</span></button>`).join('')}</div></section>`;
   }
   function setGallery(index) {
     const list = galleryItems(); if (!list.length) return;
@@ -68,6 +78,35 @@
     M.openModal(x.title, `<div class="cm72-lightbox"><img src="${asset(x.src)}" alt="${E(x.alt || x.title)}"><div class="cm72-lightbox-bottom"><p>${E(x.caption || '')}</p><div>${arrow('Предыдущий кадр', 'cm72-lightbox-prev')}<span>${api.galleryIndex + 1} / ${list.length}</span>${arrow('Следующий кадр', 'cm72-lightbox-next')}</div></div></div>`, 'cm72-lightbox-dialog');
     if (api.galleryOpener?.isConnected) M.UI.backFocus = api.galleryOpener;
   }
+
+
+  function heroCopy() {
+    const config = state().config || {};
+    const lines = String(config.headline || 'Строй. Торгуй.\nИграй с друзьями.').split(/\r?\n/);
+    const title = lines.shift()?.trim() || 'CopiMine';
+    const accent = lines.join(' ').trim();
+    const description = String(config.description || 'Minecraft-сервер с экономикой, выборами и событиями.');
+    return `<h1>${E(title)}${accent ? `<br><span>${E(accent)}</span>` : ''}</h1><p>${E(description)}</p>`;
+  }
+
+
+  function mapPreview() {
+    const mapState = window.CMBlueMap?.state?.() || {};
+    const info = mapState.info || null;
+    const dimensions = info?.dimensions || [];
+    const available = dimensions.filter(item => item.available).map(item => item.name);
+    const title = !mapState.loaded ? 'Проверяем публикацию' : mapState.error ? 'Карта временно недоступна' : !info ? 'Публикации пока нет' : info.enabled === false ? 'Карта скрыта' : available.length ? 'Карта опубликована' : 'Публикации пока нет';
+    const detail = available.length ? `Доступны: ${available.join(', ')}` : mapState.error ? 'Открой карту и повтори запрос.' : !mapState.loaded ? 'Проверяем доступность миров.' : 'Сохранённые участки появятся после первой публикации.';
+    return `<a href="#map" class="cm72-map-image cm72-map-preview" aria-label="${E(`Карта миров. ${title}. ${detail} Открыть карту.`)}"><div class="cm72-map-preview-mark">${icon('map')}</div><div class="cm72-map-preview-copy"><span>Обычный мир · Незер · Энд</span><strong>${E(title)}</strong><small>${E(detail)}</small></div><span class="cm72-map-preview-link">Открыть карту ${icon('arrow-up-right')}</span></a>`;
+  }
+  function mapSchedule() {
+    const mapState = window.CMBlueMap?.state?.() || {};
+    const available = mapState.info?.dimensions?.some(item => item.available);
+    if (!mapState.loaded) return 'Проверяем статус карты';
+    if (mapState.error) return 'Статус карты недоступен';
+    if (!available || mapState.info?.enabled === false) return 'Публикации пока нет';
+    return CM6Domain.mapInterval(state().mapSettings.intervalMinutes, state().mapSettings.enabled && state().mapSettings.autoRefresh !== false);
+  }
   let draggedGallery = false;
   H['cm72-gallery-open'] = () => { if (draggedGallery) { draggedGallery = false; return; } galleryModal(); };
   H['gallery-open'] = b => { const i = galleryItems().findIndex(x => x.id === b.dataset.id); if (i >= 0) api.galleryIndex = i; galleryModal(); };
@@ -82,13 +121,13 @@
     }
   });
 
-  R.home = () => `<section class="cm72-hero"><img class="cm72-hero-photo" src="${asset(photo)}" alt="Ночной пейзаж CopiMine" fetchpriority="high"><div class="cm72-hero-content"><h1>Minecraft.<br><span>В своей компании.</span></h1><p>Строй, торгуй и играй вместе на CopiMine.</p>${M.btn('Начать играть', 'play', 'arrow-right', 'primary cm72-start')}<button type="button" class="cm72-address" data-action="copy-ip" aria-label="Скопировать адрес сервера"><span>${E(state().config.serverIp)}</span>${icon('copy')}</button></div><a href="#home?section=about" class="cm72-scroll-cue" data-action="cm72-scroll-about" aria-label="Подробнее о сервере"><span>О сервере</span>${icon('chevron-down')}</a></section>
-  <section id="cm72-about" class="cm72-about cm72-reveal"><div class="cm72-intro"><h2>Один сервер.<br>Много общего.</h2><p>Дом, лавка или целый город — выбирай, чем заняться. Игровая экономика, выборы и общая казна связывают всё, что происходит в мире.</p></div><div class="cm72-feature-list"><a href="#account/transfers"><span class="cm72-feature-number">01</span><div><h3>Банк и торговля</h3><p>Счёт в АР, переводы игрокам и история операций.</p></div>${icon('arrow-up-right')}</a><a href="#account/elections"><span class="cm72-feature-number">02</span><div><h3>Выборы и казна</h3><p>Кандидаты, голосование и общие расходы.</p></div>${icon('arrow-up-right')}</a><a href="#shop"><span class="cm72-feature-number">03</span><div><h3>Предметы CopiMine</h3><p>Снаряжение и инструменты с особыми механиками.</p></div>${icon('arrow-up-right')}</a></div></section>
+  R.home = () => `<section class="cm72-hero"><img class="cm72-hero-photo" src="${asset(photo)}" alt="Ночной пейзаж CopiMine" fetchpriority="high"><div class="cm72-hero-content">${heroCopy()}${M.btn('Начать играть', 'play', 'arrow-right', 'primary cm72-start')}<button type="button" class="cm72-address" data-action="copy-ip" aria-label="Скопировать адрес сервера"><span>${E(state().config.serverIp)}</span>${icon('copy')}</button></div><a href="#home?section=about" class="cm72-scroll-cue" data-action="cm72-scroll-about" aria-label="Подробнее о сервере"><span>О сервере</span>${icon('chevron-down')}</a></section>
+  <section id="cm72-about" class="cm72-about cm72-reveal"><div class="cm72-intro"><h2>Что можно делать</h2><p>Выживать, торговать за АР и участвовать в выборах. Построй базу, найди лавку и голосуй за кандидатов.</p></div><div class="cm72-feature-list"><a href="#account/transfers"><span class="cm72-feature-number">01</span><div><h3>Банк и переводы</h3><p>Переводи АР игрокам и проверяй историю операций.</p></div>${icon('arrow-up-right')}</a><a href="#account/elections"><span class="cm72-feature-number">02</span><div><h3>Выборы и казна</h3><p>Читай программы кандидатов, голосуй и смотри расходы казны.</p></div>${icon('arrow-up-right')}</a><a href="#shop"><span class="cm72-feature-number">03</span><div><h3>Предметы CopiMine</h3><p>Перед покупкой проверь описание, цену и валюту.</p></div>${icon('arrow-up-right')}</a></div></section>
   ${carousel()}
-  <section class="cm72-shop-section cm72-reveal"><div class="cm72-section-heading"><div><h2>Пригодится в игре</h2><p>Несколько предметов из магазина.</p></div><a class="text-link" href="#shop">Весь каталог ${icon('arrow-right')}</a></div><div class="product-grid four">${['return_stone', 'infinite_torch', 'pohuy_na_debaffy_amulet', 'gde_moy_lut_blyat_compass'].map(M.item).filter(p => p?.enabled).map(M.productCard).join('')}</div></section>
-  <section class="cm72-map-section cm72-reveal"><div class="cm72-map-copy"><h2>Найди своё<br>место на карте.</h2><p>Обычный мир, Незер и Энд. Приближай детали, переходи по координатам и планируй следующую вылазку.</p>${M.link('Открыть карту', '#map', 'arrow-up-right', 'primary')}<small>${E(CM6Domain.mapInterval(state().mapSettings.intervalMinutes, state().mapSettings.enabled && state().mapSettings.autoRefresh !== false))}</small></div><a href="#map" class="cm72-map-image" aria-label="Открыть интерактивную карту"><img src="${asset('assets/img/map-world.webp')}" alt="Участок карты CopiMine" loading="lazy"><span>${icon('map')}Три измерения ${icon('arrow-up-right')}</span></a></section>
+  <section class="cm72-shop-section cm72-reveal"><div class="cm72-section-heading"><div><h2>Предметы в магазине</h2><p>Описание и цена видны в каждой карточке.</p></div><a class="text-link" href="#shop">Весь каталог ${icon('arrow-right')}</a></div><div class="product-grid four">${['return_stone', 'infinite_torch', 'pohuy_na_debaffy_amulet', 'gde_moy_lut_blyat_compass'].map(M.item).filter(p => p?.enabled).map(M.productCard).join('')}</div></section>
+  <section class="cm72-map-section cm72-reveal"><div class="cm72-map-copy"><h2>Карта миров</h2><p>Проверь, какие миры уже опубликованы, и выбери измерение.</p>${M.link('Открыть карту', '#map', 'arrow-up-right', 'primary')}<small>${E(mapSchedule())}</small></div>${mapPreview()}</section>
   <section class="cm72-faq cm72-reveal"><div><h2>Перед первым<br>входом</h2><p>Ответы на частые вопросы.</p><a class="text-link" href="#rules">Правила сервера ${icon('arrow-right')}</a></div><div class="faq-list">${state().faq.filter(x => x.published).map(x => `<details name="cm72-faq"><summary>${E(x.question)}${icon('plus')}</summary><p>${E(x.answer)}</p></details>`).join('')}</div></section>
-  <section class="cm72-community cm72-reveal"><img src="${asset(thumb)}" alt="" loading="lazy"><div><h2>Увидимся на сервере.</h2><p>А до встречи — заходи в Discord. Там можно найти компанию и задать вопрос.</p></div>${M.btn('Открыть Discord', 'discord', 'arrow-up-right', '')}</section>`;
+  <section class="cm72-community cm72-reveal"><img src="${asset(thumb)}" alt="" loading="lazy"><div><h2>Нужна помощь?</h2><p>Напиши администрации через обращения в личном кабинете.</p></div>${M.link('Написать в поддержку', '#account/support', 'chat', 'primary')}</section>`;
   H['cm72-scroll-about'] = () => el('cm72-about')?.scrollIntoView({ behavior: motion() ? 'smooth' : 'instant', block: 'start' });
 
   // Skin geometry uses the Minecraft PNG atlas. The fallback is visibly labelled,

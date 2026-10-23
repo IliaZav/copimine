@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .auth import create_user, router as auth_router
+from .cms import router as cms_router
 from .config import Settings
 from .db import Database
 from .security import ANON_COOKIE, COOKIE, anonymous_csrf, current_user, digest, fail, signed_anonymous, valid_anonymous
@@ -88,9 +89,10 @@ def create_app(settings=None):
                 if not csrf or not hmac.compare_digest(csrf, request.state.csrf):
                     return JSONResponse({"error": {"code": "csrf", "message": "Сеанс изменился. Обновите страницу и повторите действие."}}, status_code=403)
                 chunks, total = [], 0
+                max_request_bytes = 6 * 1024 * 1024 if request.url.path == "/api/v6/admin/content/gallery/image" else 128 * 1024
                 async for chunk in request.stream():
                     total += len(chunk)
-                    if total > 128 * 1024:
+                    if total > max_request_bytes:
                         return JSONResponse({"error": {"code": "request_too_large", "message": "Запрос слишком большой."}}, status_code=413)
                     chunks.append(chunk)
                 request._body = b"".join(chunks)
@@ -107,7 +109,7 @@ def create_app(settings=None):
         if "X-Frame-Options" not in response.headers:
             response.headers["X-Frame-Options"] = "DENY"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        if request.url.path.startswith("/api/"):
+        if request.url.path.startswith("/api/") and not request.url.path.startswith("/api/v6/gallery/"):
             response.headers["Cache-Control"] = "no-store"
         if settings.secure_cookies:
             response.headers["Strict-Transport-Security"] = "max-age=31536000"
@@ -115,6 +117,7 @@ def create_app(settings=None):
 
     app.include_router(auth_router)
     app.include_router(domain_router)
+    app.include_router(cms_router)
     app.include_router(mail_router)
     app.include_router(mfa_router)
     app.include_router(maps_router)

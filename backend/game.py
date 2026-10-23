@@ -20,6 +20,12 @@ from .security import fail
 MC_NAME = re.compile(r"[A-Za-z0-9_]{1,32}\Z")
 
 
+def catalog_version(item):
+    fields = ("id", "name", "description", "category", "currency", "price", "limit", "enabled", "visibility", "sourceType", "material", "maxQuantity")
+    snapshot = {key: item.get(key) for key in fields}
+    return hashlib.sha256(json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()[:24]
+
+
 class GameAdapter:
     def __init__(self, settings, database):
         self.settings, self.database = settings, database
@@ -244,5 +250,13 @@ class GameAdapter:
                 items=parsed
             except (OSError,ValueError,TypeError,yaml.YAMLError):
                 fail(503,'catalog_unavailable','Каталог игрового сервера временно недоступен. Покупка не выполнена.')
-        for item in items:item['maxQuantity']=1
+        overrides = self.database.setting("catalog_overrides", {})
+        for item in items:
+            item['maxQuantity']=1
+            overlay = overrides.get(item.get("id"), {}) if isinstance(overrides, dict) else {}
+            if isinstance(overlay, dict):
+                for key in ("name", "description", "category"):
+                    if key in overlay:
+                        item[key] = overlay[key]
+            item["version"] = catalog_version(item)
         return items if private else [x for x in items if x.get("visibility") == "public"]

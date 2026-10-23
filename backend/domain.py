@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import json
 import re
 import secrets
@@ -9,6 +10,8 @@ from fastapi import APIRouter, Request, Response
 from starlette.concurrency import run_in_threadpool
 
 from .auth import create_user, issue_session, login, logout
+from .cms import public_config, public_sections
+from .game import catalog_version
 from .security import PERMISSIONS, RANK, check_hierarchy, current_user, fail, hash_password, public_user, throttle, verify_password
 
 router = APIRouter()
@@ -36,11 +39,7 @@ def target_user(database, identifier):
 
 
 def content(request):
-    database, settings = request.app.state.database, request.app.state.settings
-    seed = json.loads((settings.frontend / "data" / "content-v6-public.json").read_text(encoding="utf-8"))
-    if not isinstance(seed, dict):
-        seed = {}
-    return {key: database.setting(key, seed.get(key, [])) for key in ("pages", "gallery", "faq")}
+    return public_sections(request)
 
 
 def build_state(request):
@@ -52,9 +51,10 @@ def build_state(request):
         "maxPlayers": info["maxPlayers"], "transferFeePercent": 0, "production": True,
         "maintenance": database.setting("maintenance", {"enabled": False}),
     }
-    config.update(database.setting("public_config", {}))
+    config.update(public_config(request))
+    config["serverVersion"] = config.get("gameVersion", config["serverVersion"])
     result = {
-        "players": [], "catalog": game.catalog(), "orders": [], "payments": [], "ledger": [],
+        "players": [], "catalog": game.catalog(private=bool(request.state.user and "catalog.manage" in PERMISSIONS.get(request.state.user["role"], []))), "orders": [], "payments": [], "ledger": [],
         "tickets": [], "audit": [], "sanctions": [], "playerSnapshots": [], "playerActions": [],
         "purchaseLimits": [], "contactIdentities": [], "siteSessions": [], "eventLog": [],
         "config": config, "game": info, **content(request),
@@ -310,6 +310,75 @@ def admin_health(request: Request):
     return {"website": "ok", "database": "postgresql" if not request.app.state.database.sqlite else "sqlite-test", "game": request.app.state.game.health(detailed=True), "mail": {"configured": bool(settings.smtp_host), "ready": settings.mail_domain_ready, "pending": pending}, "vk": {"configured": bool(settings.vk_client_id)}, "payments": {"configured": False}}
 
 
+@router.patch("/api/v6/admin/catalog/{identifier}")
+async def update_catalog_item(request: Request, identifier: str):
+    user = current_user(request, "catalog.manage", fresh=True)
+    data = await request.json()
+    allowed = {"version", "name", "description", "category", "price", "limit", "reason"}
+    if set(data) - allowed:
+        fail(400, "invalid_catalog_update", "В форме есть поля, которые нельзя менять здесь.")
+    reason = safe_reason(data.get("reason"))
+    database = request.app.state.database
+    with database.transaction() as db:
+        if not db.sqlite:
+            db.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", ("copimine-catalog:" + str(identifier),))
+        items = request.app.state.game.catalog(private=True)
+        item = next((row for row in items if row.get("id") == identifier), None)
+        if not item:
+            fail(404, "catalog_item_not_found", "Предмет не найден в игровом каталоге.")
+        if item.get("visibility") != "public" or item.get("sourceType") not in {"AR_SHOP", "DONATION_SHOP"}:
+            fail(403, "catalog_item_protected", "Этот предмет нельзя менять через магазин.")
+        expected = data.get("version")
+        if not isinstance(expected, str) or not hmac.compare_digest(catalog_version(item), expected):
+            fail(409, "catalog_item_changed", "Каталог изменился. Обнови список и повтори правку.")
+        name = str(data.get("name", item.get("name", ""))).strip()
+        description = str(data.get("description", item.get("description", ""))).strip()
+        category = str(data.get("category", item.get("category", ""))).strip()
+        if not 1 <= len(name) <= 120 or not 1 <= len(description) <= 3000 or not 1 <= len(category) <= 80:
+            fail(400, "invalid_catalog_update", "Проверь название, описание и категорию товара.")
+        if re.search(r"(?i)<\s*/?\s*[a-z!][^>]*>|javascript\s*:|data\s*:\s*text/html", name + "\n" + description + "\n" + category):
+            fail(400, "invalid_catalog_update", "HTML и активные ссылки в карточках товара запрещены.")
+        price, limit = data.get("price"), data.get("limit")
+        if type(price) is not int or not 1 <= price <= 1_000_000_000:
+            fail(400, "invalid_catalog_update", "Цена должна быть целым числом от 1 до 1 000 000 000.")
+        if type(limit) is not int or not 0 <= limit <= 1000:
+            fail(400, "invalid_catalog_update", "Лимит на игрока должен быть от 0 до 1000; 0 снимает лимит.")
+        currency = item.get("currency")
+        bucket = "AR" if currency == "AR" else "DONATION" if currency == "CM" else ""
+        if not bucket:
+            fail(409, "catalog_currency_unknown", "Валюта товара не распознана. Покупка не изменена.")
+        applied = []
+        if price != item.get("price") or limit != item.get("limit", 0):
+            legacy = request.app.state.game.legacy()
+            try:
+                if price != item.get("price"):
+                    await run_in_threadpool(legacy.update_shop_price_sync, identifier, bucket, price, user["name"], uuid.uuid4().hex)
+                    applied.append(("price", int(item.get("price", 0))))
+                if limit != item.get("limit", 0):
+                    await run_in_threadpool(legacy.update_shop_limit_sync, identifier, bucket, limit, user["name"], uuid.uuid4().hex)
+                    applied.append(("limit", int(item.get("limit", 0))))
+            except Exception:
+                rollback_failed = False
+                for field, old_value in reversed(applied):
+                    try:
+                        function = legacy.update_shop_price_sync if field == "price" else legacy.update_shop_limit_sync
+                        await run_in_threadpool(function, identifier, bucket, old_value, user["name"], uuid.uuid4().hex)
+                    except Exception:
+                        rollback_failed = True
+                if rollback_failed:
+                    fail(503, "catalog_partial_update", "Не удалось завершить правку. Проверь цену и лимит товара в игре.")
+                raise
+        row = db.execute("SELECT value FROM cm_site_settings WHERE key=%s", ("catalog_overrides",)).fetchone()
+        overlays = json.loads(row["value"]) if row else {}
+        if not isinstance(overlays, dict):
+            overlays = {}
+        overlays[identifier] = {"name": name, "description": description, "category": category}
+        now = int(time.time())
+        db.execute("INSERT INTO cm_site_settings(key,value,updated_s,actor) VALUES(%s,%s,%s,%s) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_s=excluded.updated_s,actor=excluded.actor", ("catalog_overrides", json.dumps(overlays, ensure_ascii=False), now, user["name"]))
+        db.execute("INSERT INTO cm_site_audit(id,actor_id,actor_name,action,target,reason,details,created_s) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)", (uuid.uuid4().hex, user["id"], user["name"], "catalog.updated", identifier, reason, json.dumps({"price": price, "limit": limit, "currency": currency}, ensure_ascii=False), now))
+    return {"ok": True, "id": identifier}
+
+
 @router.get("/api/v6/admin/actions")
 def admin_actions(request: Request):
     current_user(request, "players.view")
@@ -455,17 +524,8 @@ async def maintenance(request: Request):
 
 
 async def save_content(request, data):
-    user = current_user(request, "content.manage", fresh=True)
-    for key, value in data.items():
-        if key not in {"pages", "gallery", "faq"} or not isinstance(value, list) or len(value) > 100 or len(json.dumps(value)) > 64000:
-            fail(400, "invalid_content", "Проверьте содержимое и размер раздела.")
-        # Content is displayed through escaping frontend renderers; active URLs
-        # and embedded markup are not accepted as stored CMS content.
-        if re.search(r"(?i)<\s*(script|iframe|object)|javascript:|data:text/html", json.dumps(value)):
-            fail(400, "invalid_content", "Активное содержимое запрещено.")
-        request.app.state.database.set_setting(key, value, user["name"])
-    request.app.state.database.audit(user, "content.updated", details={"sections": list(data)})
-    return {"ok": True}
+    current_user(request, "content.manage", fresh=True)
+    fail(409, "versioned_editor_required", "Открой редактор контента: он проверяет версию перед сохранением.")
 
 
 @router.post("/api/v6/admin/content")

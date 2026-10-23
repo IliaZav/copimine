@@ -1,0 +1,200 @@
+/* Small visual refinements for the existing CopiMine site language. */
+.cm72-about {
+  grid-template-columns: minmax(250px, .82fr) minmax(0, 1.18fr);
+  gap: clamp(38px, 7vw, 96px);
+}
+
+.cm72-intro > p {
+  max-width: 43ch;
+  line-height: 1.85;
+}
+
+.cm72-feature-list > a {
+  padding: 17px 14px;
+  border-radius: 10px;
+  transition: background-color .18s ease, border-color .18s ease;
+}
+
+.cm72-feature-list > a:hover {
+  background: #171d20;
+}
+
+.cm72-feature-list > a:focus-visible {
+  outline-offset: 2px;
+}
+
+.cm72-feature-list h3 {
+  margin-bottom: 6px;
+}
+
+.cm72-feature-list p {
+  max-width: 48ch;
+  line-height: 1.65;
+}
+
+.cm72-map-copy > h2 {
+  max-width: 12ch;
+}
+
+.cm72-map-preview {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  grid-template-rows: 1fr auto;
+  align-items: end;
+  gap: 22px 18px;
+  padding: clamp(22px, 4vw, 42px);
+  isolation: isolate;
+  background-color: #111919;
+  background-image:
+    linear-gradient(28deg, transparent 49.6%, #b8d5b51a 50%, transparent 50.4%),
+    linear-gradient(148deg, transparent 49.6%, #b8d5b51a 50%, transparent 50.4%),
+    repeating-linear-gradient(0deg, transparent 0 39px, #b8d5b50d 40px),
+    repeating-linear-gradient(90deg, transparent 0 39px, #b8d5b50d 40px),
+    radial-gradient(ellipse at 72% 20%, #48634a40, transparent 52%),
+    linear-gradient(145deg, #111919, #1c2822 62%, #111716);
+}
+
+.cm72-map-preview::after {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, transparent 12%, #090d0dc9 100%);
+  content: "";
+}
+
+.cm72-map-preview-mark {
+  display: grid;
+  grid-column: 1;
+  grid-row: 1;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border: 1px solid #83c59555;
+  border-radius: 12px;
+  color: #8fd0a1;
+  background: #0e1914d9;
+}
+
+.cm72-map-preview-copy {
+  display: grid;
+  grid-column: 2;
+  grid-row: 1;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cm72-map-preview-copy > span {
+  color: #9ac9a6;
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.cm72-map-preview-copy > strong {
+  color: #f0f4f1;
+  font-size: clamp(21px, 2.4vw, 30px);
+  line-height: 1.2;
+}
+
+.cm72-map-preview-copy > small {
+  color: #b3c0b8;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.cm72-map-preview > .cm72-map-preview-link {
+  position: static;
+  display: flex;
+  grid-column: 2;
+  grid-row: 2;
+  width: fit-content;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  padding: 11px 14px;
+  border: 1px solid #ffffff28;
+  border-radius: 9px;
+  color: #edf4ef;
+  background: #0c1310bd;
+  font-size: 12px;
+  backdrop-filter: blur(8px);
+}
+
+.cm72-map-preview:hover > .cm72-map-preview-link {
+  border-color: #8fd0a1a0;
+  background: #17221b;
+}
+
+.cm-public-page {
+  max-width: 860px;
+  margin-bottom: 32px;
+  padding: clamp(22px, 4vw, 38px);
+}
+
+.cm-public-page > :first-child {
+  margin-top: 0;
+}
+
+.cm-public-page > :last-child {
+  margin-bottom: 0;
+}
+
+.admin-content .v6-map-page .section-head h1 {
+  font-size: clamp(30px, 3vw, 42px);
+  line-height: 1.12;
+  letter-spacing: -.035em;
+}
+
+.admin-content .v6-map-page .v6-map-sidebar {
+  align-self: start;
+}
+
+@media (max-width: 1100px) {
+  .cm72-about {
+    gap: 44px;
+  }
+}
+
+@media (max-width: 680px) {
+  .cm72-about {
+    gap: 25px;
+  }
+
+  .cm72-feature-list > a {
+    padding-inline: 10px;
+  }
+
+  .cm72-map-preview {
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 16px 12px;
+    padding: 20px 16px;
+  }
+
+  .cm72-map-preview-mark {
+    width: 38px;
+    height: 38px;
+  }
+
+  .cm72-map-preview-copy > span {
+    font-size: 9px;
+  }
+
+  .cm72-map-preview-copy > strong {
+    font-size: 20px;
+  }
+
+  .cm72-map-preview-copy > small {
+    font-size: 11px;
+  }
+
+  .cm-public-page {
+    padding: 20px 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cm72-feature-list > a {
+    transition: none;
+  }
+}

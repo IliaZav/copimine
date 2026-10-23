@@ -39,6 +39,12 @@ public final class TentacleScalingPolicy {
         return stage == BossPhase.LAST_SEAL ? Math.min(partyTarget, MAX_PERMANENT) : 0;
     }
 
+    /** Trim by slot range, not by arbitrary map order, so 0..target-1 stay stable on roster changes. */
+    public static boolean permanentSlotInRange(int slot, int target) {
+        int safeTarget = Math.max(0, Math.min(MAX_PERMANENT, target));
+        return slot >= 0 && slot < safeTarget;
+    }
+
     public static int temporaryFor(int players, BossPhase stage) {
         int safePlayers = Math.max(0, Math.min(20, players));
         if (safePlayers == 0 || stage == null

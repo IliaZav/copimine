@@ -40791,7 +40791,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (TentacleController.VisualState state
                 : new ArrayList<>(tentacleController.states().values())) {
             if (state.temporary() && tentacleController.temporaryCount() > safeTemporary
-                    || !state.temporary() && tentacleController.permanentCount() > safePermanent) {
+                    || !state.temporary()
+                    && !TentacleScalingPolicy.permanentSlotInRange(state.slot(), safePermanent)) {
                 removeTentacle(state.entityId(), "participant-scaling");
             }
         }

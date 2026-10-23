@@ -46,6 +46,15 @@ public final class TentacleScalingPolicyTest {
                 "empty roster must not spawn tentacles");
         check(TentacleScalingPolicy.initialTemporaryAttemptTick(240L) == 240L,
                 "cast tentacles must be eligible on the first late-phase boss tick");
+        check(TentacleScalingPolicy.permanentSlotInRange(0, 2)
+                        && TentacleScalingPolicy.permanentSlotInRange(1, 2),
+                "active slots must survive a duo trim");
+        check(!TentacleScalingPolicy.permanentSlotInRange(2, 2)
+                        && !TentacleScalingPolicy.permanentSlotInRange(-1, 2),
+                "out-of-range and negative slots must be trimmed");
+        check(TentacleScalingPolicy.permanentSlotInRange(7, 99)
+                        && !TentacleScalingPolicy.permanentSlotInRange(8, 99),
+                "trim target must clamp to the permanent cap");
         System.out.println("TentacleScalingPolicyTest OK");
     }
 

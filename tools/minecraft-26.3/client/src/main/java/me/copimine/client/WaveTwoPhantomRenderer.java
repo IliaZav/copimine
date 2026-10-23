@@ -15,6 +15,7 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /** Renders local-only grey Enderman phantoms while the local player is marked in Wave 2. */
@@ -93,6 +94,8 @@ public final class WaveTwoPhantomRenderer {
         }
         if (activationIndex < 0) activation = null;
         int selectedActivationIndex = activationIndex;
+        Set<String> materializedPhantomIds = activationManager.usedPhantomIds(
+                dimension, manager.eventId(), manager.generation(), layoutCycle);
 
         var camera = client.gameRenderer.mainCamera();
         if (camera == null || !camera.isInitialized()) return;
@@ -104,7 +107,10 @@ public final class WaveTwoPhantomRenderer {
         EndRiftRenderSubmission.submit(context, cameraPosition,
                 RenderTypes.entityTranslucent(TEXTURE), (matrices, buffer) -> {
                     for (int index = 0; index < phantoms.size(); index++) {
-                        WaveTwoPhantomLayout.Position position = phantoms.get(index).position();
+                        WaveTwoPhantomLayoutManager.Phantom phantom = phantoms.get(index);
+                        if (isRetiredPhantom(index, selectedActivationIndex, phantom.id(),
+                                materializedPhantomIds)) continue;
+                        WaveTwoPhantomLayout.Position position = phantom.position();
                         Vec3 phantomPosition = new Vec3(position.x(), position.y(), position.z());
                         if (cameraPosition.distanceToSqr(phantomPosition) > MAX_RENDER_DISTANCE_SQUARED) continue;
                         WaveTwoPhantomLayout.LookPose lookPose = WaveTwoPhantomLayout.lookAt(position, target);
@@ -124,6 +130,12 @@ public final class WaveTwoPhantomRenderer {
                     }
                     MODEL_STATE.isCreepy = false;
                 });
+    }
+
+    /** A materialized phantom is replaced by its real entity, except during its own warning. */
+    static boolean isRetiredPhantom(int index, int selectedActivationIndex, String phantomId,
+                                    Set<String> materializedPhantomIds) {
+        return index != selectedActivationIndex && materializedPhantomIds.contains(phantomId);
     }
 
     static void applyHeadLook(EndermanRenderState state, WaveTwoPhantomLayout.LookPose lookPose) {

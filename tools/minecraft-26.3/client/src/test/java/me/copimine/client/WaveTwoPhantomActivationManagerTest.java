@@ -3,6 +3,7 @@ package me.copimine.client;
 import me.copimine.protocol.EndEventBridgeBodyCodec;
 import org.junit.jupiter.api.Test;
 
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -78,6 +79,54 @@ class WaveTwoPhantomActivationManagerTest {
         assertFalse(manager.apply(packet(EVENT, 4, 10_400, 9, "phantom-15", "13.5,64,-3.25", "ACTIVE", 1_500), 1_000));
         assertTrue(manager.apply(packet(EVENT, 4, 10_500, 9, "phantom-16", "15.5,64,-3.25", "ACTIVE", 1_500), 1_100));
         assertEquals("phantom-16", manager.active("the_end", 1_101).phantomId());
+    }
+
+    @Test
+    void retiresMaterializedPhantomsFromTheCurrentLayoutAfterClear() {
+        WaveTwoPhantomActivationManager manager = new WaveTwoPhantomActivationManager();
+        assertTrue(manager.apply(packet(EVENT, 4, 10_000, 8, "phantom-14",
+                "12.5,64,-3.25", "ACTIVE", 1_500), 500));
+        assertEquals(Set.of("phantom-14"),
+                manager.usedPhantomIds("the_end", EVENT.toString(), 4, 8));
+
+        assertTrue(manager.apply(packet(EVENT, 4, 10_100, 8, "phantom-14",
+                "12.5,64,-3.25", "CLEAR", 0), 600));
+        assertNull(manager.active("the_end", 700));
+        assertEquals(Set.of("phantom-14"),
+                manager.usedPhantomIds("the_end", EVENT.toString(), 4, 8));
+        assertTrue(WaveTwoPhantomRenderer.isRetiredPhantom(0, -1, "phantom-14",
+                manager.usedPhantomIds("the_end", EVENT.toString(), 4, 8)));
+
+        assertTrue(manager.apply(packet(EVENT, 4, 10_200, 8, "phantom-15",
+                "13.5,64,-3.25", "ACTIVE", 1_500), 800));
+        assertEquals(Set.of("phantom-14", "phantom-15"),
+                manager.usedPhantomIds("the_end", EVENT.toString(), 4, 8));
+        assertFalse(WaveTwoPhantomRenderer.isRetiredPhantom(0, 0, "phantom-15",
+                manager.usedPhantomIds("the_end", EVENT.toString(), 4, 8)),
+                "the phantom currently warning must stay visible");
+
+        manager.clearPresentation();
+        assertEquals(Set.of("phantom-14", "phantom-15"),
+                manager.usedPhantomIds("the_end", EVENT.toString(), 4, 8));
+    }
+
+    @Test
+    void usedPhantomsAreFencedToTheCurrentEventCycleAndDimension() {
+        WaveTwoPhantomActivationManager manager = new WaveTwoPhantomActivationManager();
+        assertTrue(manager.apply(packet(EVENT, 4, 10_000, 8, "phantom-14",
+                "12.5,64,-3.25", "ACTIVE", 1_500), 500));
+
+        assertEquals(Set.of(), manager.usedPhantomIds("overworld", EVENT.toString(), 4, 8));
+        assertEquals(Set.of(), manager.usedPhantomIds("the_end", EVENT.toString(), 3, 8));
+        assertEquals(Set.of(), manager.usedPhantomIds("the_end", EVENT.toString(), 4, 7));
+        assertEquals(Set.of(), manager.usedPhantomIds("the_end",
+                "00000000-0000-0000-0000-000000000222", 4, 8));
+
+        assertTrue(manager.apply(packet(EVENT, 4, 10_100, 9, "phantom-15",
+                "13.5,64,-3.25", "ACTIVE", 1_500), 600));
+        assertEquals(Set.of("phantom-15"),
+                manager.usedPhantomIds("the_end", EVENT.toString(), 4, 9),
+                "each mark cycle starts with a fresh retirement set");
     }
 
     @Test

@@ -122,6 +122,17 @@ final class WaveTwoPhantomActivationManager {
         return current.activation.dimension().equals(requestedDimension) ? current.activation : null;
     }
 
+    /** Phantom ids already materialized in the current layout cycle, for local layout retirement. */
+    synchronized Set<String> usedPhantomIds(String requestedDimension, String requestedEventId,
+                                            long expectedGeneration, int expectedCycle) {
+        if (requestedEventId == null || expectedGeneration <= 0L || expectedCycle < 1) return Set.of();
+        EventFence fence = eventFences.get(requestedEventId);
+        if (fence == null || fence != current || fence.retired
+                || fence.generation != expectedGeneration || fence.cycle != expectedCycle
+                || !fence.dimension.equals(requestedDimension)) return Set.of();
+        return Set.copyOf(fence.usedPhantomIds);
+    }
+
     /** Hides the current warning after a local mark, phase, world, or life-state transition. */
     synchronized void clearPresentation() {
         if (current != null) current.activation = null;

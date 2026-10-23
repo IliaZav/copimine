@@ -1,6 +1,6 @@
 # Current handoff — End Rift Waves 1–7
 
-Updated: 2026-10-23. Previous source commit with recorded green CI: `bf04d44faa58a2d281c4da6e810e64a2da784a38`; Wave 4 provenance fix published as `8af4f4bd`; baseline source commit: `d44c8f51be00f3b6d911135f7722a155cbf20c13` (branch `codex/copimine-source-of-truth-20261020`). The tree also contains the Wave 6 pre-capture damage-lock fix described below.
+Updated: 2026-10-23. Previous source commit with recorded green CI: `bf04d44faa58a2d281c4da6e810e64a2da784a38`; Wave 4 provenance fix published as `8af4f4bd`; Wave 6 pre-capture damage-lock fix published as `eef9d346`; baseline source commit: `d44c8f51be00f3b6d911135f7722a155cbf20c13` (branch `codex/copimine-source-of-truth-20261020`). The tree also contains the Wave 2 client phantom-retirement fix described below.
 
 ## Source and CI
 
@@ -11,8 +11,11 @@ Updated: 2026-10-23. Previous source commit with recorded green CI: `bf04d44faa5
 - New behavioral coverage: `tests/ObeliskIntegrityPolicyTest.java` and the `wrong-source-reflected-hit` runtime scenario in `tests/test_end_rift_waves2_4_mechanics.py`.
 - Wave 6 fix in this tree rechecks the pre-capture caster damage lock inside `onWaveMobPlayerDamageAuthoritative` before shield handling and the health commit. A sibling `HIGHEST` listener has no ordering guarantee, so the separate admission listener alone could be bypassed.
 - Regression coverage: `tests/test_wave6_ritual_caster_behavior_contract.py::test_wave6_pre_capture_lock_is_rechecked_inside_the_health_transaction`.
+- Wave 2 client fix in this tree retires a grey phantom locally once the server has materialized it into a real Enderman. The activation manager exposes the fenced used-ID set for the current layout cycle; the renderer skips those IDs except the phantom currently in its warning window. No protocol or server change.
+- Regression coverage: `WaveTwoPhantomActivationManagerTest.retiresMaterializedPhantomsFromTheCurrentLayoutAfterClear` and `usedPhantomsAreFencedToTheCurrentEventCycleAndDimension`.
 - Hosted CI run `39905475992` on `bf04d44f` completed all three mandatory jobs successfully: `migration-postgres-contract`, `static-and-contract`, `java-plugins`.
 - Hosted CI run `39916592533` on `8af4f4bd` was still queued at the last check; do not claim it green until all three jobs finish.
+- Hosted CI run `39918244761` on `eef9d346`: `static-and-contract` and `migration-postgres-contract` succeeded; `java-plugins` was still in progress at the last check.
 - Earlier run `39901216861` on `5af6f148` was also fully green; do not treat it as evidence for the current tree.
 
 ## Installed first-party artifacts (disposable runtime)

@@ -1,0 +1,16 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.sqlite3*
+data/
+backups/
+node_modules/
+.superpowers/
+.12ui/
+dist/
+artifacts/
+*.pem
+*.key
+secrets/

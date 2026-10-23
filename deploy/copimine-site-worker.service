@@ -1,0 +1,22 @@
+[Unit]
+Description=CopiMine map publication and mail worker
+After=network.target copimine-site.service copimine-game.service
+[Service]
+User=copimine-site
+Group=copimine
+WorkingDirectory=/opt/copimine-site
+EnvironmentFile=/etc/copimine-site.env
+ExecStart=/opt/copimine-site/.venv/bin/python -m backend.worker
+Restart=on-failure
+RestartSec=10
+UMask=0027
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/copimine-site/data /var/lib/copimine-site /opt/copimine-game/minecraft/server/plugins/CopiMineWebsiteBridge/requests
+[Install]
+WantedBy=multi-user.target

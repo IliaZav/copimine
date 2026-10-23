@@ -1,0 +1,71 @@
+{
+  "plugins": {
+    "CopiMineArtifacts": {
+      "displayName": "CopiMineArtifacts",
+      "configPath": "minecraft/server/plugins/CopiMineArtifacts/config.yml",
+      "reloadMode": "plugin-command",
+      "reloadCommand": "cmartifacts reload",
+      "editableKeys": {
+        "debug_gui": { "type": "bool" },
+        "performance.pending-hints-seconds": { "type": "int", "min": 10, "max": 600 },
+        "performance.session-cleanup-seconds": { "type": "int", "min": 10, "max": 600 },
+        "performance.session-ttl-seconds": { "type": "int", "min": 60, "max": 1800 },
+        "donation.fixed-packs": { "type": "int_list", "allow": [50, 100, 250, 500, 1000] },
+        "donation.max-history-rows": { "type": "int", "min": 1, "max": 50 },
+        "donation.max-reclaim-rows": { "type": "int", "min": 1, "max": 50 },
+        "custom-block-visuals.enabled": { "type": "bool" }
+      }
+    },
+    "CopiMineElectionCore": {
+      "displayName": "CopiMineElectionCore",
+      "configPath": "minecraft/server/plugins/CopiMineElectionCore/config.yml",
+      "reloadMode": "none",
+      "reloadCommand": "",
+      "editableKeys": {
+        "custom-block-visuals.enabled": { "type": "bool" }
+      }
+    },
+    "CopiMineNarcotics": {
+      "displayName": "CopiMineNarcotics",
+      "configPath": "minecraft/server/plugins/CopiMineNarcotics/config.yml",
+      "reloadMode": "plugin-command",
+      "reloadCommand": "cmnarcotics reload",
+      "editableKeys": {
+        "textures.mode": { "type": "enum", "allow": ["VANILLA", "CUSTOM"] },
+        "visuals.enabled": { "type": "bool" },
+        "visuals.mode": { "type": "enum", "allow": ["AUTO", "CLIENT_MOD", "SERVER_OVERLAY", "SERVER_FALLBACK"] },
+        "usage.consume_cooldown_seconds": { "type": "int", "min": 1, "max": 3600 },
+        "usage.usage_window_seconds": { "type": "int", "min": 60, "max": 86400 },
+        "usage.overdose_threshold": { "type": "int", "min": 1, "max": 10000 }
+      }
+    },
+    "CopiMineWorldCore": {
+      "displayName": "CopiMineWorldCore",
+      "configPath": "minecraft/server/plugins/CopiMineWorldCore/config.yml",
+      "reloadMode": "plugin-command",
+      "reloadCommand": "cmworld reload",
+      "editableKeys": {
+        "world_limits.overworld.enabled": { "type": "bool" },
+        "world_limits.overworld.radius": { "type": "int", "min": 100, "max": 500000 },
+        "world_access.nether.enabled": { "type": "bool" },
+        "world_access.end.enabled": { "type": "bool" }
+      }
+    },
+    "CopiMineUltimateAdminPlus": {
+      "displayName": "CopiMineUltimateAdminPlus",
+      "configPath": "minecraft/server/plugins/CopiMineUltimateAdmin/config.yml",
+      "reloadMode": "none",
+      "reloadCommand": "",
+      "editableKeys": {
+        "disable-legacy-admin-map": { "type": "bool" }
+      }
+    },
+    "CopiMineEconomyCore": {
+      "displayName": "CopiMineEconomyCore",
+      "configPath": "",
+      "reloadMode": "none",
+      "reloadCommand": "",
+      "editableKeys": {}
+    }
+  }
+}

@@ -1,0 +1,20 @@
+[Unit]
+Description=CopiMine website API
+After=network.target postgresql.service
+Requires=postgresql.service
+[Service]
+User=copimine-site
+Group=copimine
+WorkingDirectory=/opt/copimine-site
+EnvironmentFile=/etc/copimine-site.env
+ExecStart=/opt/copimine-site/.venv/bin/uvicorn backend.app:create_app --factory --host 127.0.0.1 --port 8001 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=on-failure
+RestartSec=5
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/copimine-site/data /var/lib/copimine-site /opt/copimine-game/minecraft/server/plugins/CopiMineWebsiteBridge/requests
+[Install]
+WantedBy=multi-user.target

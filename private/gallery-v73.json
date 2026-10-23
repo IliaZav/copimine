@@ -1,0 +1,32 @@
+[
+  {
+    "id": "project-riverside",
+    "title": "Над рекой",
+    "caption": "Скриншот проекта",
+    "src": "assets/photos/copimine-riverside.webp",
+    "alt": "Холмы, река и деревянный мост",
+    "kind": "photo",
+    "published": true,
+    "position": 1
+  },
+  {
+    "id": "project-mountain",
+    "title": "На вершине",
+    "caption": "Скриншот проекта",
+    "src": "assets/photos/copimine-mountain.webp",
+    "alt": "Игроки на снежном склоне",
+    "kind": "photo",
+    "published": true,
+    "position": 2
+  },
+  {
+    "id": "project-arena",
+    "title": "Вечер на арене",
+    "caption": "Скриншот проекта",
+    "src": "assets/photos/copimine-arena.webp",
+    "alt": "Игровой кадр с существами CopiMine",
+    "kind": "photo",
+    "published": true,
+    "position": 3
+  }
+]

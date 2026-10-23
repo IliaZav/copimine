@@ -1,0 +1,98 @@
+/* CopiMine v7.3.1: microanimations ONLY; existing color, layout and typography untouched. */
+/* Root preference and operating-system reduce-motion both take precedence. */
+@keyframes cm731-soft-enter {
+  from { opacity: .45; transform: translate3d(0, 8px, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+@keyframes cm731-gentle-rise {
+  from { opacity: .25; transform: translate3d(0, 12px, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+@keyframes cm731-item-chosen {
+  0% { box-shadow: 0 0 0 0 #2de39b00; }
+  45% { box-shadow: 0 0 0 3px #2de39b45; }
+  100% { box-shadow: 0 0 0 1px #2de39b33; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  html[data-motion="on"] .v71-admin-brand img,
+  html[data-motion="on"] #persistent-header .brand img {
+    transition: transform .24s cubic-bezier(.2,.7,.2,1);
+    transform-origin: left center;
+  }
+  html[data-motion="on"] .v71-admin-brand:hover img,
+  html[data-motion="on"] .v71-admin-brand:focus-visible img,
+  html[data-motion="on"] #persistent-header .brand:hover img {
+    transform: translateY(-1px) scale(1.025);
+  }
+  /* Keep menu dimensions fixed: navigation shifts are transforms, not layout changes. */
+  html[data-motion="on"] .v71-admin-nav a,
+  html[data-motion="on"] .v71-settings-side nav a,
+  html[data-motion="on"] .v71-user-popover a {
+    transition: color .18s ease, background-color .18s ease, transform .18s ease;
+  }
+  html[data-motion="on"] .v71-admin-nav a:not(.active):hover,
+  html[data-motion="on"] .v71-admin-nav a:not(.active):focus-visible {
+    transform: translateX(3px);
+  }
+  html[data-motion="on"] .v71-nav-group:not(.folded) > div {
+    animation: cm731-soft-enter .20s cubic-bezier(.2,.7,.2,1) both;
+  }
+  html[data-motion="on"] .v71-admin-shell .v71-admin-surface,
+  html[data-motion="on"] #page-root > main > .page-head,
+  html[data-motion="on"] #page-root > main > .v71-account-cover {
+    animation: cm731-soft-enter .27s cubic-bezier(.2,.75,.2,1) both;
+  }
+  html[data-motion="on"] .cm72-hero-content > h1 {
+    animation: cm731-gentle-rise .58s cubic-bezier(.2,.65,.25,1) both;
+  }
+  html[data-motion="on"] .cm72-hero-content > p {
+    animation: cm731-gentle-rise .60s .085s cubic-bezier(.2,.65,.25,1) both;
+  }
+  html[data-motion="on"] .cm72-hero-content > .btn,
+  html[data-motion="on"] .cm72-hero-content > .cm72-address {
+    animation: cm731-gentle-rise .60s .16s cubic-bezier(.2,.65,.25,1) both;
+  }
+  html[data-motion="on"] .btn:not(:disabled),
+  html[data-motion="on"] .cm72-round,
+  html[data-motion="on"] .v71-admin-user > a,
+  html[data-motion="on"] .v71-admin-user > button {
+    transition: transform .18s ease, background-color .18s ease, border-color .18s ease, box-shadow .18s ease;
+  }
+  @media (hover: hover) {
+    html[data-motion="on"] .btn:not(:disabled):hover,
+    html[data-motion="on"] .cm72-round:hover { transform: translateY(-2px); }
+    html[data-motion="on"] .v71-admin-user > a:hover,
+    html[data-motion="on"] .v71-admin-user > button:hover { transform: translateY(-1px); }
+  }
+  html[data-motion="on"] .btn:not(:disabled):active,
+  html[data-motion="on"] .cm72-round:active { transform: translateY(0) scale(.98); }
+  html[data-motion="on"] .cm72-gallery-thumbnails > button > img {
+    transition: opacity .20s ease, transform .22s ease;
+  }
+  html[data-motion="on"] .cm72-gallery-thumbnails > button[aria-current="true"] > img {
+    transform: scale(1.045);
+  }
+  html[data-motion="on"] .cm72-gallery-caption {
+    transition: transform .25s ease;
+  }
+  @media (hover: hover) {
+    html[data-motion="on"] .cm72-gallery-frame:hover .cm72-gallery-caption {
+      transform: translateY(-3px);
+    }
+  }
+  html[data-motion="on"] .cm73-slot.selected {
+    animation: cm731-item-chosen .32s ease-out both;
+  }
+  html[data-motion="on"] #modal[open] {
+    animation: cm731-soft-enter .20s cubic-bezier(.2,.75,.2,1) both;
+  }
+  html[data-motion="on"] .v71-user-popover:not([hidden]),
+  html[data-motion="on"] .toast {
+    animation: cm731-soft-enter .22s cubic-bezier(.2,.75,.2,1) both;
+  }
+}
+/* The preference lives on html; the user's OS may disable it independently. */
+@media (prefers-reduced-motion: reduce) {
+  .v71-admin-brand img, .cm72-gallery-thumbnails > button > img,
+  .cm72-hero-content > h1, .cm72-hero-content > p { animation: none !important; transition: none !important; }
+}

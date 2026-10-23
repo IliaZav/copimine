@@ -3,12 +3,16 @@ import me.copimine.endevent.domain.TentacleAnimationPolicy;
 import me.copimine.endevent.domain.TentacleScalingPolicy;
 import me.copimine.endevent.domain.BossPhase;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 public final class TentacleGuardianPolicyTest {
     public static void main(String[] args) {
         testHealthBudgetIsBoundedAndDistributed();
         testShieldWindowAndRespawnBoundaries();
         testPermanentAttackScheduleIsStaggered();
         testHealthVisualStates();
+        testRestartSnapshotRebasesDeadlines();
         System.out.println("TentacleGuardianPolicyTest OK");
     }
 
@@ -93,6 +97,41 @@ public final class TentacleGuardianPolicyTest {
                 "critical guardian state must be readable");
         check("DEAD".equals(TentacleGuardianPolicy.healthVisualState(0.0D, 60.0D)),
                 "dead guardian state must be readable");
+    }
+
+    private static void testRestartSnapshotRebasesDeadlines() {
+        Map<Integer, Double> health = new LinkedHashMap<>();
+        health.put(0, 42.5D);
+        health.put(1, 0.0D);
+        Map<Integer, Long> respawn = new LinkedHashMap<>();
+        respawn.put(1, 1800L);
+        Map<String, String> encoded = TentacleGuardianPolicy.encodeSnapshot(
+                health, respawn, 900L, 1000L);
+        check(encoded.containsKey("tentacle-guardian.1.respawn-in"),
+                "dead slot cooldown must be persisted");
+        TentacleGuardianPolicy.SnapshotState restored =
+                TentacleGuardianPolicy.decodeSnapshot(encoded, 200L);
+        check(restored != null, "guardian snapshot must decode");
+        check(restored.health().get(0) == 42.5D && restored.health().get(1) == 0.0D,
+                "guardian health must survive a restart");
+        check(restored.respawnAt().get(1) == 1000L,
+                "respawn cooldown must be rebased onto the new tick counter");
+        check(restored.damageWindowStartedTick() == 100L,
+                "open damage window must keep its remaining duration");
+        check(TentacleGuardianPolicy.decodeSnapshot(Map.of(), 0L) == null,
+                "a snapshot without guardian keys must stay backward compatible");
+        check(!TentacleGuardianPolicy.encodeSnapshot(
+                        Map.of(0, 1.0D), Map.of(), 100L, 1000L)
+                .containsKey("tentacle-guardian.damage-window-elapsed"),
+                "an expired damage window must not be persisted");
+        boolean rejected = false;
+        try {
+            TentacleGuardianPolicy.decodeSnapshot(
+                    Map.of("tentacle-guardian.8.health", "10"), 0L);
+        } catch (IllegalArgumentException expected) {
+            rejected = true;
+        }
+        check(rejected, "out-of-range guardian slots must fail closed");
     }
 
     private static void check(boolean condition, String message) {

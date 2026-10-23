@@ -1,5 +1,8 @@
 package me.copimine.endevent.domain;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * Bounded server policy for the permanent guardians used by the boss's
  * LAST_SEAL stage.
@@ -16,6 +19,8 @@ public final class TentacleGuardianPolicy {
     public static final int ATTACK_STAGGER_TICKS = 20;
     public static final int MIN_TOTAL_HEALTH = 120;
     public static final int MAX_TOTAL_HEALTH = 336;
+    public static final String SNAPSHOT_PREFIX = "tentacle-guardian.";
+    private static final int MAX_SNAPSHOT_SLOTS = TentacleScalingPolicy.MAX_PERMANENT;
 
     private TentacleGuardianPolicy() {
     }
@@ -125,6 +130,95 @@ public final class TentacleGuardianPolicy {
                 == TentacleAnimationPolicy.State.SHIELD_CHANNEL
                 || TentacleAnimationPolicy.canonical(state)
                 == TentacleAnimationPolicy.State.READY);
+    }
+
+    /**
+     * Restart-safe guardian state. Respawn and damage-window deadlines are
+     * re-based onto the new tick counter so a restart cannot shorten either.
+     */
+    public record SnapshotState(Map<Integer, Double> health,
+                                Map<Integer, Long> respawnAt,
+                                long damageWindowStartedTick) {
+    }
+
+    public static Map<String, String> encodeSnapshot(Map<Integer, Double> health,
+                                                     Map<Integer, Long> respawnAt,
+                                                     long damageWindowStartedTick,
+                                                     long nowTick) {
+        Map<String, String> encoded = new LinkedHashMap<>();
+        long safeNow = Math.max(0L, nowTick);
+        if (damageWindowStartedTick >= 0L && damageWindowStartedTick <= safeNow) {
+            long elapsed = safeNow - damageWindowStartedTick;
+            if (elapsed < DAMAGE_WINDOW_TICKS) {
+                encoded.put(SNAPSHOT_PREFIX + "damage-window-elapsed", Long.toString(elapsed));
+            }
+        }
+        for (int slot = 0; slot < MAX_SNAPSHOT_SLOTS; slot++) {
+            Double current = health.get(slot);
+            Long respawn = respawnAt.get(slot);
+            if (current == null && respawn == null) continue;
+            String base = SNAPSHOT_PREFIX + slot + ".";
+            if (current != null) {
+                if (!Double.isFinite(current) || current < 0.0D) {
+                    throw new IllegalArgumentException("INVALID_GUARDIAN_HEALTH");
+                }
+                encoded.put(base + "health", Double.toString(current));
+            }
+            if (respawn != null) {
+                encoded.put(base + "respawn-in", Long.toString(Math.max(0L, respawn - safeNow)));
+            }
+        }
+        return Map.copyOf(encoded);
+    }
+
+    /** Returns null when the snapshot predates guardian persistence. */
+    public static SnapshotState decodeSnapshot(Map<String, String> progress, long nowTick) {
+        if (progress == null || progress.keySet().stream()
+                .noneMatch(key -> key.startsWith(SNAPSHOT_PREFIX))) {
+            return null;
+        }
+        long safeNow = Math.max(0L, nowTick);
+        Map<Integer, Double> health = new LinkedHashMap<>();
+        Map<Integer, Long> respawn = new LinkedHashMap<>();
+        long damageWindow = -1L;
+        try {
+            for (Map.Entry<String, String> entry : progress.entrySet()) {
+                String key = entry.getKey();
+                if (!key.startsWith(SNAPSHOT_PREFIX)) continue;
+                String suffix = key.substring(SNAPSHOT_PREFIX.length());
+                if (suffix.equals("damage-window-elapsed")) {
+                    long elapsed = Long.parseLong(entry.getValue());
+                    if (elapsed < 0L) throw new IllegalArgumentException("INVALID_DAMAGE_WINDOW");
+                    if (elapsed < DAMAGE_WINDOW_TICKS) {
+                        damageWindow = Math.max(0L, safeNow - elapsed);
+                    }
+                    continue;
+                }
+                int dot = suffix.indexOf('.');
+                if (dot <= 0) throw new IllegalArgumentException("UNKNOWN_GUARDIAN_KEY");
+                int slot = Integer.parseInt(suffix.substring(0, dot));
+                if (slot < 0 || slot >= MAX_SNAPSHOT_SLOTS) {
+                    throw new IllegalArgumentException("INVALID_GUARDIAN_SLOT");
+                }
+                String field = suffix.substring(dot + 1);
+                if (field.equals("health")) {
+                    double value = Double.parseDouble(entry.getValue());
+                    if (!Double.isFinite(value) || value < 0.0D) {
+                        throw new IllegalArgumentException("INVALID_GUARDIAN_HEALTH");
+                    }
+                    health.put(slot, value);
+                } else if (field.equals("respawn-in")) {
+                    long remaining = Long.parseLong(entry.getValue());
+                    if (remaining < 0L) throw new IllegalArgumentException("INVALID_GUARDIAN_RESPAWN");
+                    respawn.put(slot, Math.addExact(safeNow, remaining));
+                } else {
+                    throw new IllegalArgumentException("UNKNOWN_GUARDIAN_KEY");
+                }
+            }
+        } catch (NumberFormatException | ArithmeticException invalid) {
+            throw new IllegalArgumentException("INVALID_GUARDIAN_SNAPSHOT", invalid);
+        }
+        return new SnapshotState(Map.copyOf(health), Map.copyOf(respawn), damageWindow);
     }
 
     public static String healthVisualState(double current, double maximum) {

@@ -19,6 +19,7 @@ def test_profile_main_binding_preserves_attempt_and_filters_diagnostic_players(t
     probe.write_text(r'''
 import java.util.*;import java.util.logging.*;
 import me.copimine.endevent.domain.EventPhase;
+import me.copimine.endevent.domain.TentacleGuardianPolicy;
 import me.copimine.endevent.domain.WaveTwoEntityRecoveryPolicy;
 import me.copimine.endevent.runtime.*;
 import me.copimine.endevent.runtime.EventCombatProfileService.Context;
@@ -42,6 +43,8 @@ public class CombatProfileMainProbe {
     AttemptLifecycleController attemptLifecycle=new AttemptLifecycleController();
     Set<UUID> officialRewardRoster=new LinkedHashSet<>();UUID prisoner;
     Set<UUID> waveTwoCleanupEntityUuids=new LinkedHashSet<>(),waveTwoOutstandingEntityUuids=new LinkedHashSet<>();
+    Map<Integer,Double> tentacleGuardianHealth=new HashMap<>();Map<Integer,Long> tentacleGuardianRespawnAt=new HashMap<>();
+    long tentacleDamageWindowStartedTick=-1L;
     PreBoss preBossTransitionController=new PreBoss();
     static class Chambers {Assignment assignment(){return new Assignment();}}
     static class Assignment {Map<UUID,Integer> chamberByPlayer(){return Map.of();}}
@@ -112,6 +115,8 @@ public class CombatProfileMainProbe {
                production / "domain/PressureBudgetController.java", production / "domain/WaveMechanicsPolicy.java",
                production / "domain/WaveTwoStagePolicy.java", production / "domain/WaveTwoHuntPolicy.java",
                production / "domain/WaveTwoEntityRecoveryPolicy.java",
+               production / "domain/TentacleGuardianPolicy.java", production / "domain/TentacleScalingPolicy.java",
+               production / "domain/TentacleAnimationPolicy.java", production / "domain/BossPhase.java",
                listener_stub, probe]
     result = subprocess.run(["javac", str(ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/EncounterGenerationPolicy.java"), "-encoding", "UTF-8", "-d", str(tmp_path), *map(str, sources)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr

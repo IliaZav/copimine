@@ -3698,7 +3698,31 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         restoreCombatProfiles(snapshot.objectiveProgress());
+        restoreTentacleGuardianState(snapshot.objectiveProgress());
         restoreWave7ReturnParticipation(snapshot);
+    }
+
+    /** Restore dead-slot cooldowns and the open window instead of healing every guardian. */
+    private void restoreTentacleGuardianState(Map<String, String> progress) {
+        tentacleGuardianHealth.clear();
+        tentacleGuardianRespawnAt.clear();
+        tentacleDamageWindowStartedTick = -1L;
+        if (bossPhase != BossPhase.LAST_SEAL) return;
+        try {
+            TentacleGuardianPolicy.SnapshotState restored =
+                    TentacleGuardianPolicy.decodeSnapshot(progress, eventTickCounter);
+            if (restored == null) return;
+            tentacleGuardianHealth.putAll(restored.health());
+            tentacleGuardianRespawnAt.putAll(restored.respawnAt());
+            tentacleDamageWindowStartedTick = restored.damageWindowStartedTick();
+        } catch (IllegalArgumentException invalid) {
+            phase = EventPhase.RECOVERY_REQUIRED;
+            recoveryReason = "INVALID_TENTACLE_GUARDIAN_SNAPSHOT";
+            tentacleGuardianHealth.clear();
+            tentacleGuardianRespawnAt.clear();
+            tentacleDamageWindowStartedTick = -1L;
+            getLogger().log(Level.SEVERE, "End Rift guardian snapshot refused", invalid);
+        }
     }
 
     /** Restore the one durable Wave 1 charge before deciding whether a restart may resume combat. */
@@ -3989,6 +4013,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     waveTwoOutstandingEntityUuids, WaveTwoEntityRecoveryPolicy.MAX_OUTSTANDING_UUIDS));
         }
         encoded.putAll(combatProfiles.encode());
+        if (!tentacleGuardianHealth.isEmpty() || !tentacleGuardianRespawnAt.isEmpty()
+                || tentacleDamageWindowStartedTick >= 0L) {
+            encoded.putAll(TentacleGuardianPolicy.encodeSnapshot(
+                    tentacleGuardianHealth, tentacleGuardianRespawnAt,
+                    tentacleDamageWindowStartedTick, eventTickCounter));
+        }
         if (isOfficialWave7ReturnContext() && attemptLifecycle.hasWave7Returns(generation)) {
             encoded.putAll(attemptLifecycle.encodeWave7Returns(eventId,
                     realitySplitChamberController.assignment().chamberByPlayer(),

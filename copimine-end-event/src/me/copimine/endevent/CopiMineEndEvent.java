@@ -40386,7 +40386,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             clearGuardianShieldOrbit("guardian-shield-inactive");
             return;
         }
-        List<Integer> guardianSlots = List.of(0, 1, 2, 3);
+        List<Integer> guardianSlots = livingTentacleGuardianSlots();
         List<ShieldOrbitPolicy.Segment> segments = ShieldOrbitPolicy.positions(
                 boss.getLocation().getX(), boss.getLocation().getY(), boss.getLocation().getZ(),
                 eventTickCounter, guardianSlots.size());

@@ -1,6 +1,6 @@
 # Current handoff — End Rift Waves 1–7
 
-Updated: 2026-10-23. Latest source commit with recorded green CI: `0ad93ec792583c4eeac869c8a56ad36dad2f6500`; previous green source commit `5ab46ca1cae3629eecd6af48076208e034486b55`; then `1c6b9fce62367bffba20512caca7c663bcf185d9`; `391dbe11d2de3e448aac3f444250c9b551e55b1a`; earlier `14fc53316d08d02de9f9268e412fba08d942a84e`; then `915b0cb0be5dd6ec2313cc92d5563359e6af7e5d`; then `c433d4325924ffc9893a2f58a75cb0ee8b30b91a`; then `4c774f7d0d1d2e037f3b7e614d32cd154c6dc4ae`; then `b94fa7ac55d8de2f0ecfa5ac83f0fc437486255d`; Wave 4 provenance fix published as `8af4f4bd`; Wave 6 pre-capture damage-lock fix published as `eef9d346`; Wave 2 client phantom-retirement fix published as `79a9610a`; baseline source commit: `d44c8f51be00f3b6d911135f7722a155cbf20c13` (branch `codex/copimine-source-of-truth-20261020`). The tree also contains the transition-rune stale-occupancy fix described below.
+Updated: 2026-10-23. Latest source commit with recorded green CI: `d3007e7adce6410d3906a9c75ceb3594e0a34c9f`; previous green source commit `0ad93ec792583c4eeac869c8a56ad36dad2f6500`; then `5ab46ca1cae3629eecd6af48076208e034486b55`; then `1c6b9fce62367bffba20512caca7c663bcf185d9`; `391dbe11d2de3e448aac3f444250c9b551e55b1a`; earlier `14fc53316d08d02de9f9268e412fba08d942a84e`; then `915b0cb0be5dd6ec2313cc92d5563359e6af7e5d`; then `c433d4325924ffc9893a2f58a75cb0ee8b30b91a`; then `4c774f7d0d1d2e037f3b7e614d32cd154c6dc4ae`; then `b94fa7ac55d8de2f0ecfa5ac83f0fc437486255d`; Wave 4 provenance fix published as `8af4f4bd`; Wave 6 pre-capture damage-lock fix published as `eef9d346`; Wave 2 client phantom-retirement fix published as `79a9610a`; baseline source commit: `d44c8f51be00f3b6d911135f7722a155cbf20c13` (branch `codex/copimine-source-of-truth-20261020`). The tree also contains the transition-rune stale-occupancy fix described below.
 
 ## Source and CI
 
@@ -30,6 +30,7 @@ Updated: 2026-10-23. Latest source commit with recorded green CI: `0ad93ec792583
 - Hosted CI run `39972153195` on `1c6b9fce` completed all three mandatory jobs successfully: `migration-postgres-contract`, `static-and-contract`, `java-plugins`.
 - Hosted CI run `39978756983` on `5ab46ca1` completed all three mandatory jobs successfully: `migration-postgres-contract`, `static-and-contract`, `java-plugins`.
 - Hosted CI run `39985350688` on `0ad93ec7` completed all three mandatory jobs successfully: `migration-postgres-contract`, `static-and-contract`, `java-plugins`.
+- Hosted CI run `39996047838` on `d3007e7a` completed all three mandatory jobs successfully: `migration-postgres-contract`, `static-and-contract`, `java-plugins`.
 - Hosted CI run `39926722202` on `b94fa7ac` completed all three mandatory jobs successfully: `migration-postgres-contract`, `static-and-contract`, `java-plugins`.
 - Hosted CI run `39905475992` on `bf04d44f` completed all three mandatory jobs successfully: `migration-postgres-contract`, `static-and-contract`, `java-plugins`.
 - Hosted CI run `39916592533` on `8af4f4bd` completed successfully; run `39918244761` on `eef9d346` also completed all three jobs successfully.

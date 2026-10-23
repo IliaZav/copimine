@@ -37,6 +37,7 @@ def test_every_requirement_has_layer_status_tests_and_reason() -> None:
     matrix = load_matrix()
     for entry in matrix["entries"]:
         assert entry["requirement"].strip(), entry["id"]
+        assert "###" not in entry["requirement"], entry["id"]
         assert entry["layers"], entry["id"]
         assert entry["status"] in ALLOWED_STATUSES, entry["id"]
         assert entry["tests"], entry["id"]

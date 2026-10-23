@@ -59,12 +59,13 @@ def test_temporary_java_build_directory_is_removed_after_gate_completion_or_fail
     create_directory = source.index("New-Item -ItemType Directory -Path $testBuild | Out-Null")
     ownership_marker = source.index("$testBuildCreated = $true", create_directory)
     build_try = source.index("try {", ownership_marker)
+    evidence_gate = source.index("Invoke-GateStep 'Acceptance evidence matrices and plugin inventory'")
     artifact_hashes = source.index("Write-Host '== Current artifact hashes =='")
     cleanup = source.index("Remove-Item -LiteralPath $testBuild -Recurse -Force")
     cleanup_finally = source.rfind("finally {", artifact_hashes, cleanup)
 
-    assert create_directory < ownership_marker < build_try < artifact_hashes < cleanup_finally < cleanup, (
-        "The isolated Java build output must be removed from finally after success or a later gate failure"
+    assert create_directory < ownership_marker < build_try < evidence_gate < artifact_hashes < cleanup_finally < cleanup, (
+        "The isolated Java build output must be removed from finally after success or any gate failure, including the evidence matrix step"
     )
 
 

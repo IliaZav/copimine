@@ -39,7 +39,7 @@ def test_current_handoff_tracks_installed_hashes_and_blocks() -> None:
     text = (DOCS / "CURRENT_HANDOFF.md").read_text(encoding="utf-8")
     for value in (
         "d44c8f51be00f3b6d911135f7722a155cbf20c13",
-        "aa8f9ea94ee471cd28efc4f574a16460412a2886e749ca4956bb337372561a42",
+        "d0b61f8c8d9e073729fdb67c946314625c13d018ecec78d8a16659f80a578209",
         "75547398ec77fdc083c37de5a5d6449b166efb92c8af942ab0bddc5d675cf109",
         "d7e46fcc2bcfb8f31216cb1ea51c53bf3f492d29bc3b8c227540cb38e8ced7e2",
         "COPIMINE_CLIENT_BRIDGE_PRIVATE_KEY_FILE",
@@ -52,4 +52,5 @@ def test_old_evidence_snapshot_is_marked_historical() -> None:
     text = (DOCS / "WAVES_1_7_CURRENT_EVIDENCE_2026-10-22.md").read_text(encoding="utf-8")
     assert "Исторический снимок" in text
     assert "CURRENT_HANDOFF.md" in text
-    assert "aa8f9ea94ee471cd28efc4f574a16460412a2886e749ca4956bb337372561a42" in text
+    assert "7026719d47ec3c7acd66bf3b3e77357782f6f71d54fe5684279b86c58d5e8ea5" in text
+    assert "aa8f9ea94ee471cd28efc4f574a16460412a2886e749ca4956bb337372561a42" not in text

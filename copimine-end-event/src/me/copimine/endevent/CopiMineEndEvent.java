@@ -27566,8 +27566,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             wave6AnvilVisuals.put(key, List.copyOf(displays));
             Location center = anvilVolleyCenter(volley);
             if (center != null) {
+                float warningPitch = volley.volleyIndex() >= 2 ? 1.05F : 0.75F;
                 center.getWorld().playSound(center, Sound.BLOCK_ANVIL_PLACE,
-                        SoundCategory.HOSTILE, 0.7F, 0.75F);
+                        SoundCategory.HOSTILE, 0.7F, warningPitch);
             }
             return displaysLive(displays);
         }

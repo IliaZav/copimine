@@ -355,6 +355,7 @@ $testBuild = Join-Path ([IO.Path]::GetTempPath()) `
 New-Item -ItemType Directory -Path $testBuild | Out-Null
 $testBuildCreated = $true
 
+try {
 Invoke-GateStep 'Acceptance evidence matrices and plugin inventory' {
   Push-Location $root
   try {
@@ -365,7 +366,6 @@ Invoke-GateStep 'Acceptance evidence matrices and plugin inventory' {
   }
 }
 
-try {
 $domainSources = @(Get-ChildItem (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain') -Filter '*.java' |
   ForEach-Object FullName)
 $domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain\wave7\EchoBehaviorStrategy.java')

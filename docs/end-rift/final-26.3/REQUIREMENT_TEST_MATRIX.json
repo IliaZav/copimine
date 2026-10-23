@@ -5,8 +5,8 @@
   "registrySource": "section 9 of CopiMine_DeepSeek_All_Waves_Master.md",
   "registryCount": 168,
   "summary": {
-    "BLOCKED": 141,
-    "NOT RUN": 14,
+    "BLOCKED": 149,
+    "NOT RUN": 6,
     "PASS": 13
   },
   "statusDefinitions": {
@@ -251,8 +251,8 @@
         "A",
         "P"
       ],
-      "status": "NOT RUN",
-      "statusReason": "Requires an authenticated real protocol player/server run. COPIMINE_CLIENT_BRIDGE_PRIVATE_KEY_FILE is absent and no approved test signer matches the pinned trust anchor, so this evidence was not produced.",
+      "status": "BLOCKED",
+      "statusReason": "Executed the stale event/generation/phase/recipient callback and duplicate-request adapter suite: 224 passed, 1 unrelated staged-client freshness check deselected. The Paper callback path was not run, so the P layer remains blocked; no live bot run is claimed.",
       "tests": [
         "tests/test_end_event_current_contract.py",
         "tests/test_end_event_wave6_wave7_boundaries_contract.py",
@@ -2856,7 +2856,7 @@
     },
     {
       "id": "W7-13",
-      "requirement": "existing boss transition получает управление единожды; тест заканчивает проверку handoff, не переписывает boss/Kagune.### J. Звуки, клиент и ресурсы (SND / VIS)",
+      "requirement": "existing boss transition получает управление единожды; тест заканчивает проверку handoff, не переписывает boss/Kagune.",
       "layers": [
         "E"
       ],
@@ -2902,8 +2902,8 @@
         "A",
         "P"
       ],
-      "status": "NOT RUN",
-      "statusReason": "Requires an authenticated real protocol player/server run. COPIMINE_CLIENT_BRIDGE_PRIVATE_KEY_FILE is absent and no approved test signer matches the pinned trust anchor, so this evidence was not produced.",
+      "status": "BLOCKED",
+      "statusReason": "Executed the sound-cue static/adapter suites: 6 passed. The P-layer emitted-sound path was not run; native audio remains unverified.",
       "tests": [
         "tests/test_end_rift_sound_cue_matrix.py",
         "tests/test_end_rift_combat_sfx_contract.py",
@@ -3087,8 +3087,8 @@
         "A",
         "P"
       ],
-      "status": "NOT RUN",
-      "statusReason": "Requires an authenticated real protocol player/server run. COPIMINE_CLIENT_BRIDGE_PRIVATE_KEY_FILE is absent and no approved test signer matches the pinned trust anchor, so this evidence was not produced.",
+      "status": "BLOCKED",
+      "statusReason": "Executed the static visual suite: 173 passed, 1 skipped (native acceptance). The P-layer in-game visual path was not run; native visual remains unverified.",
       "tests": [
         "tests/test_end_event_resource_visual_contract.py",
         "tests/test_end_event_model_uv_contract.py",
@@ -3152,8 +3152,8 @@
       "layers": [
         "P"
       ],
-      "status": "NOT RUN",
-      "statusReason": "Requires an authenticated real protocol player/server run. COPIMINE_CLIENT_BRIDGE_PRIVATE_KEY_FILE is absent and no approved test signer matches the pinned trust anchor, so this evidence was not produced.",
+      "status": "BLOCKED",
+      "statusReason": "Executed the static visual suite: 173 passed, 1 skipped (native acceptance). The P-layer in-game visual path was not run; native visual remains unverified.",
       "tests": [
         "tests/test_end_event_resource_visual_contract.py",
         "tests/test_end_event_model_uv_contract.py",
@@ -3324,8 +3324,8 @@
         "A",
         "P"
       ],
-      "status": "NOT RUN",
-      "statusReason": "Requires an authenticated real protocol player/server run. COPIMINE_CLIENT_BRIDGE_PRIVATE_KEY_FILE is absent and no approved test signer matches the pinned trust anchor, so this evidence was not produced.",
+      "status": "BLOCKED",
+      "statusReason": "Executed the plugin hardening suite: 177 passed, 4 skipped. The P-layer live malformed-protocol path was not run.",
       "tests": [
         "tests/test_minecraft_migration_server_plugins.py",
         "tests/test_ci_plugin_fixtures.py",
@@ -3592,8 +3592,8 @@
         "A",
         "P"
       ],
-      "status": "NOT RUN",
-      "statusReason": "Requires an authenticated real protocol player/server run. COPIMINE_CLIENT_BRIDGE_PRIVATE_KEY_FILE is absent and no approved test signer matches the pinned trust anchor, so this evidence was not produced.",
+      "status": "BLOCKED",
+      "statusReason": "Executed the artifact runtime suite: 68 passed. The P-layer live logout/reset path was not run.",
       "tests": [
         "tests/test_artifact_catalog_runtime_migration.py",
         "tests/test_artifact_new_items_runtime.py",
@@ -3833,8 +3833,8 @@
         "P",
         "A"
       ],
-      "status": "NOT RUN",
-      "statusReason": "Requires an authenticated real protocol player/server run. COPIMINE_CLIENT_BRIDGE_PRIVATE_KEY_FILE is absent and no approved test signer matches the pinned trust anchor, so this evidence was not produced.",
+      "status": "BLOCKED",
+      "statusReason": "Unit V4 signature/trust/ownership contracts executed: 191 passed, 2 skipped. Live valid/invalid signed handshake is blocked: COPIMINE_CLIENT_BRIDGE_PRIVATE_KEY_FILE is absent and no approved test signer matches the pinned trust anchor; no bypass was attempted.",
       "tests": [
         "tests/test_end_event_v4_wiring_contract.py",
         "tests/test_narcotics_signing_contract.py",
@@ -3853,8 +3853,8 @@
         "P",
         "A"
       ],
-      "status": "NOT RUN",
-      "statusReason": "Requires an authenticated real protocol player/server run. COPIMINE_CLIENT_BRIDGE_PRIVATE_KEY_FILE is absent and no approved test signer matches the pinned trust anchor, so this evidence was not produced.",
+      "status": "BLOCKED",
+      "statusReason": "Unit malformed/out-of-order/replayed packet and foreign-state contracts executed: 191 passed, 2 skipped. Live protocol-frame evidence is blocked by the same missing approved V4 signer; no bypass was attempted.",
       "tests": [
         "tests/test_end_event_v4_wiring_contract.py",
         "tests/test_narcotics_signing_contract.py",

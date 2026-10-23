@@ -107,6 +107,24 @@ def test_required_coverage_and_requirement_links() -> None:
     assert warning_stages["archmage-warning"] == "telegraph"
 
 
+def test_anvil_second_volley_warning_is_distinct() -> None:
+    matrix = load_matrix()
+    warnings = [cue for cue in matrix["cues"] if cue["event"].startswith("anvil-volley-warning")]
+    assert len(warnings) == 2
+    first, second = sorted(warnings, key=lambda cue: cue["pitch"])
+    assert first["event"] == "anvil-volley-warning"
+    assert second["event"] == "anvil-volley-warning-second"
+    assert first["id"] != second["id"]
+    assert first["dedupKey"] != second["dedupKey"]
+    assert first["pitch"] < second["pitch"]
+    assert first["volume"] == second["volume"] == 0.7
+    for cue in warnings:
+        assert cue["sourceAnchor"] == "showAnvilWarning"
+        assert cue["soundKey"] == "BLOCK_ANVIL_PLACE"
+    source = SOURCE.read_text(encoding="utf-8")
+    assert "volley.volleyIndex() >= 2 ? 1.05F : 0.75F" in source
+
+
 def test_no_client_duplicate_and_no_owned_loop() -> None:
     matrix = load_matrix()
     for cue in matrix["cues"]:

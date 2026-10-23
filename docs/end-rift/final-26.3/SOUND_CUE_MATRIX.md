@@ -40,7 +40,8 @@ Automated check: `tests/test_end_rift_sound_cue_matrix.py` (4 tests).
 | W6-GUARD-ABILITY | 6 | guard-ability | telegraph | BLOCK_BEACON_POWER_SELECT | event audience | 0.65 / 1.15 | one-shot |
 | W6-ANCHOR-WARNING | 6 | gravity-anchor-warning | telegraph | BLOCK_BEACON_AMBIENT | event audience | 0.80 / 0.70 | one-shot |
 | W6-ANCHOR-IMPACT | 6 | gravity-anchor-impact | impact | ENTITY_GENERIC_EXPLODE | event audience | 0.70 / 1.15 | one-shot |
-| W6-ANVIL-WARNING | 6 | anvil-volley-warning | telegraph | BLOCK_ANVIL_PLACE | event audience | 0.65 / 0.85 | one-shot |
+| W6-ANVIL-WARNING | 6 | anvil-volley-warning | telegraph | BLOCK_ANVIL_PLACE | event audience | 0.70 / 0.75 | one-shot |
+| W6-ANVIL-WARNING-2 | 6 | anvil-volley-warning-second | telegraph | BLOCK_ANVIL_PLACE | event audience | 0.70 / 1.05 | one-shot |
 | W6-ANVIL-VOLLEY-1-IMPACT | 6 | anvil-volley-first-impact | impact | BLOCK_ANVIL_LAND | event audience | 0.70 / 0.95 | one-shot |
 | W6-ANVIL-VOLLEY-2-IMPACT | 6 | anvil-volley-second-impact | impact | BLOCK_ANVIL_LAND | event audience | 0.70 / 0.95 | one-shot |
 | W6-SPELL-TELEGRAPH | 6 | major-spell-telegraph | telegraph | BLOCK_RESPAWN_ANCHOR_CHARGE | event audience | 0.80 / 0.70 | one-shot |

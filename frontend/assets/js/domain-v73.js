@@ -36,5 +36,38 @@ function rank(query,aliases){
  }
  return score;
 }
-const api={slots,fingerprint,remove,quote,rank,normalize,keyboard};root.CM73Domain=api;if(typeof module!=='undefined')module.exports=api;
+const ITEM_SEARCH_ALIASES={
+ zmei_gorynych:['змей','горыныч','меч дракона','незеритовый меч','критический удар','ослабление','урон'],
+ repair_kit:['набор для ремонта','ремонт','починка','починить предмет','починить инструмент','ножницы','shears'],
+ return_stone:['возвращение домой','домой','телепорт домой','точка возрождения','камень возврата','эхо-осколок'],
+ angel_wings:['крылья','летать','полет','полёт','полёт на 15 секунд','перо','feather'],
+ infinite_torch:['факел','свет','освещение','поставить факел','не расходуется','torch'],
+ combat_crossbow:['лук','стрела','телепорт к стреле','телепорт по попаданию','перемещение к стреле','bow'],
+ cobblestone_trail_bow:['лук','стрела','булыжник','дорожка из блоков','строить стрелой','bow'],
+ explosive_crossbow:['арбалет','взрыв','взрывной болт','тнт','tnt','crossbow'],
+ smena_bez_perekura_pickaxe:['кирка','спешка','скорость копания','копать быстрее','ускорение копки','netherite pickaxe'],
+ lesnoy_bespredel_axe:['топор','лесоруб','рубка дерева','срубить дерево','дерево целиком','axe'],
+ kopatel_transhey_shovel:['лопата','кладоискатель','песок','гравий','поиск руды','добыча руды','shovel'],
+ fermer_bez_sna_hoe:['мотыга','ферма','фермер','грядка','обработать грядки','обработка 5 на 5','netherite hoe'],
+ dezhurniy_argument_sword:['меч','ослабление','ослабить противника','эффект при ударе','бой','pvp','netherite sword'],
+ vechniy_razgon_firework:['фейерверк','ракета','салют','бесконечные ракеты','ускорение фейерверком','firework rocket'],
+ eternal_totem:['тотем','бессмертие','спасение от смерти','тотем бессмертия','воскрешение','totem'],
+ treasurer_chestplate:['нагрудник','броня','казначей','эффект при уроне','защита','netherite chestplate'],
+ copimine_miner_pickaxe:['кирка','шахтёр','шахтер','шахта','копать 3 на 3','копать 3x3','добыча блоков','netherite pickaxe'],
+ craftsman_hammer:['молот','молот ветра','подбросить','подбрасывание','оглушение','mace'],
+ batin_remen_sudnogo_dnya:['гром','молния','топор','удар молнией','ускорение игрока','netherite axe'],
+ nu_ty_i_nakopal_blyat_pickaxe:['кирка','ловушка','закопать игрока','ловчий','удар по игроку','netherite pickaxe'],
+ kosa_nalogovoy_inspekcii:['коса','казначей','вампиризм','кража ар','украсть ар','деньги с противника','netherite hoe'],
+ kaska_prorab_huev:['каска','строитель','падение','защита от падения','скорость бега','netherite helmet'],
+ mne_pohuy_ya_v_tanke_vest:['жилет','броня','защита','снижение урона','20 процентов урона','netherite chestplate'],
+ ne_segodnya_suka_shield:['щит','блокировать удар','защита','ванильный щит','отражение удара','shield'],
+ pohuy_na_debaffy_amulet:['амулет','очищение','снять негативный эффект','снять дебафф','замена эффектов','heart of the sea'],
+ vremya_platit_nalogi_clock:['часы','казначей','налоги','освобождение от налогов','не платить налоги','clock'],
+ gde_moy_lut_blyat_compass:['компас','телепортация','телепорт','направление взгляда','перемещение по взгляду','compass']
+};
+function productSearchTerms(item={}){
+ const material=String(item.material||'').replace(/^minecraft:/i,'').replace(/[_-]+/g,' ');
+ return [...new Set([item.name,item.id,String(item.id||'').replace(/[_-]+/g,' '),material,item.category,item.description,...(Array.isArray(item.aliases)?item.aliases:[]),...(ITEM_SEARCH_ALIASES[item.id]||[])].filter(Boolean).map(String))];
+}
+const api={slots,fingerprint,remove,quote,rank,normalize,keyboard,productSearchTerms};root.CM73Domain=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

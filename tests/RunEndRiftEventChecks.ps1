@@ -551,6 +551,7 @@ $pureTests = @(
   'Wave3PortalPolicyTest',
   'Wave3PortalSpawnPolicyTest',
   'Wave3PortalElitePolicyTest',
+  'Wave3PortalProgressSnapshotTest',
   'RiftGiantPolicyTest',
   'RiftGiantAuraEffectPolicyTest',
   'RiftGiantOwnerLocationRegistryTest',

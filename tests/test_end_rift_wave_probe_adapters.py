@@ -40,6 +40,7 @@ def probe_harness(tmp_path_factory):
         _declaration(source, "private Map<String, String> captureBlackFogRecoveryCheckpoint()"),
         _declaration(source, "private void captureBlackFogShutdownCheckpoint()"),
         _declaration(source, "private void restoreBlackFogRecoveryCheckpoint(EventPhase persistedPhase,"),
+        _declaration(source, "private void restoreWave3PortalCheckpoint(EventPhase persistedPhase,"),
     ]
     if "private boolean spawnInspectionWave(" in source:
         methods.append(_declaration(source, "private boolean spawnInspectionWave("))
@@ -71,6 +72,8 @@ import me.copimine.endevent.domain.SandboxWaveSessionSnapshot;
 import me.copimine.endevent.domain.WaveTwoEntityRecoveryPolicy;
 import me.copimine.endevent.domain.RiftCarrierPolicy;
 import me.copimine.endevent.domain.RiftCarrierRecoverySnapshot;
+import me.copimine.endevent.domain.PortalCapturePolicy;
+import me.copimine.endevent.domain.Wave3PortalProgressSnapshot;
 import me.copimine.endevent.runtime.AttemptLifecycleController;
 import me.copimine.endevent.runtime.WaveTwoAttemptLifecycleSnapshot;
 
@@ -108,6 +111,9 @@ public final class WaveProbeAdapterHarness {
     BlackFogPhase blackFogPhase = BlackFogPhase.COMBAT;
     Map<String, String> blackFogRecoveryCheckpoint = Map.of();
     Map<String, String> wave1RecoveryCheckpoint = Map.of(), ritualSphereRecoveryCheckpoint = Map.of();
+    Map<Integer, List<PortalCapturePolicy.PortalState>> portalCaptureStates = new LinkedHashMap<>();
+    Wave3PortalProgressSnapshot.Data wave3RestoredPortalCheckpoint;
+    boolean wave3PortalEliteSpawned;
     RiftCarrierPolicy.State currentCarrierState;
     UUID currentCarrierInventoryToken;
     boolean wave1CarrierCheckpointRestored;
@@ -328,6 +334,47 @@ public final class WaveProbeAdapterHarness {
                                 && "0".equals(saved.get(ownerPrefix + "offline-deadline-millis")),
                         "active Wave 2 checkpoint must include the controller's registered participant state");
             }
+            case "wave3-snapshot" -> {
+                probe.phase = EventPhase.WAVE_3;
+                probe.portalCaptureStates.put(3, List.of(
+                        new PortalCapturePolicy.PortalState(true, 5_000L, -1L, -1L),
+                        new PortalCapturePolicy.PortalState(false, 2_500L, -1L, -1L),
+                        PortalCapturePolicy.initial()));
+                probe.wave3PortalEliteSpawned = true;
+                Map<String, String> saved = probe.waveObjectiveProgressSnapshot();
+                check("event".equals(saved.get("wave3.portal.event"))
+                                && Long.toString(probe.generation).equals(saved.get("wave3.portal.generation"))
+                                && "3".equals(saved.get("wave3.portal.count"))
+                                && "true".equals(saved.get("wave3.portal.elite-spawned"))
+                                && "true".equals(saved.get("wave3.portal.0.completed"))
+                                && "5000".equals(saved.get("wave3.portal.0.progress"))
+                                && "false".equals(saved.get("wave3.portal.1.completed"))
+                                && "2500".equals(saved.get("wave3.portal.1.progress")),
+                        "Wave 3 must checkpoint completed, partial and elite state");
+            }
+            case "wave3-restart" -> {
+                List<PortalCapturePolicy.PortalState> states = List.of(
+                        new PortalCapturePolicy.PortalState(true, 5_000L, -1L, -1L),
+                        new PortalCapturePolicy.PortalState(false, 2_500L, -1L, -1L),
+                        PortalCapturePolicy.initial());
+                Map<String, String> saved = Wave3PortalProgressSnapshot.encode(
+                        probe.eventId, probe.generation, states, true);
+                probe.phase = EventPhase.WAVE_3;
+                probe.restoreWave3PortalCheckpoint(EventPhase.WAVE_3, saved);
+                check(probe.phase == EventPhase.WAVE_3,
+                        "a valid Wave 3 restart must remain resumable");
+                check(probe.wave3RestoredPortalCheckpoint != null
+                                && probe.wave3RestoredPortalCheckpoint.states().equals(states)
+                                && probe.wave3RestoredPortalCheckpoint.eliteSpawned(),
+                        "portal progress and elite admission must survive the restart boundary");
+            }
+            case "wave3-invalid-restart" -> {
+                probe.restoreWave3PortalCheckpoint(EventPhase.WAVE_3,
+                        Map.of("wave3.portal.event", "event"));
+                check(probe.phase == EventPhase.RECOVERY_REQUIRED
+                                && "INVALID_WAVE3_PORTAL_CHECKPOINT".equals(probe.recoveryReason),
+                        "a truncated Wave 3 checkpoint must fail closed");
+            }
             case "wave5-snapshot" -> {
                 probe.phase = EventPhase.WAVE_5;
                 probe.activeWave = 5;
@@ -522,6 +569,8 @@ public final class WaveProbeAdapterHarness {
                                str(domain / "WaveTwoStagePolicy.java"),
                                str(domain / "WaveTwoHuntPolicy.java"),
                                str(domain / "WaveTwoEntityRecoveryPolicy.java"),
+                               str(domain / "PortalCapturePolicy.java"),
+                               str(domain / "Wave3PortalProgressSnapshot.java"),
                                str(runtime / "AttemptLifecycleController.java"),
                                str(runtime / "WaveTwoAttemptLifecycleSnapshot.java")],
                               capture_output=True, text=True, check=False)
@@ -547,6 +596,24 @@ public final class WaveProbeAdapterHarness {
 def test_wave_probe_session_boundaries(probe_harness, scenario, wave):
     result = subprocess.run(["java", "-cp", str(probe_harness), "WaveProbeAdapterHarness",
                              scenario, str(wave)], capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_wave3_checkpoint_persists_capture_and_elite_progress(probe_harness):
+    result = subprocess.run(["java", "-cp", str(probe_harness), "WaveProbeAdapterHarness",
+                             "wave3-snapshot", "3"], capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_wave3_restart_restores_partial_capture_progress(probe_harness):
+    result = subprocess.run(["java", "-cp", str(probe_harness), "WaveProbeAdapterHarness",
+                             "wave3-restart", "3"], capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_wave3_invalid_restart_fails_closed(probe_harness):
+    result = subprocess.run(["java", "-cp", str(probe_harness), "WaveProbeAdapterHarness",
+                             "wave3-invalid-restart", "3"], capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stdout + result.stderr
 
 

@@ -119,6 +119,7 @@ import me.copimine.endevent.domain.BlackFogRecoverySnapshot;
 import me.copimine.endevent.domain.EliteProjectileImpactPolicy;
 import me.copimine.endevent.domain.Wave3PortalSpawnPolicy;
 import me.copimine.endevent.domain.Wave3PortalElitePolicy;
+import me.copimine.endevent.domain.Wave3PortalProgressSnapshot;
 import me.copimine.endevent.domain.RiftGiantPolicy;
 import me.copimine.endevent.domain.RiftGiantAuraEffectPolicy;
 import me.copimine.endevent.domain.Wave5PreFogRefillPolicy;
@@ -770,6 +771,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** One scaled, resource-pack gate model; the configured blocks remain authoritative. */
     private final Set<UUID> gateModelVisuals = new LinkedHashSet<>();
     private final Map<Integer, List<PortalCapturePolicy.PortalState>> portalCaptureStates = new LinkedHashMap<>();
+    private Wave3PortalProgressSnapshot.Data wave3RestoredPortalCheckpoint;
     /** Keeps the disposable Wave 3 visual probe animated without entering an official phase. */
     private boolean testPortalVisualMode;
     /** Keeps the disposable Wave 1 wave-front probe alive without combat state. */
@@ -3544,6 +3546,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         restoreBlackFogRecoveryCheckpoint(snapshot.eventPhase(), snapshot.objectiveProgress());
         restoreWave1CarrierCheckpoint(snapshot.eventPhase(), snapshot.objectiveProgress());
+        restoreWave3PortalCheckpoint(snapshot.eventPhase(), snapshot.objectiveProgress());
         encounterController.restore(eventId, generation, phase, null);
         boolean persistedDisposableWave6 = generation > 0L
                 && "6".equals(snapshot.objectiveProgress().get("test-wave"))
@@ -3731,6 +3734,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             retained.putIfAbsent(RiftCarrierRecoverySnapshot.PREFIX + "recovery-reason", recoveryReason);
             wave1RecoveryCheckpoint = Map.copyOf(retained);
             getLogger().log(Level.SEVERE, "End Rift Wave 1 recovery checkpoint refused", invalid);
+        }
+    }
+
+    /** Restore only the exact Wave 3 generation; invalid progress fails closed. */
+    private void restoreWave3PortalCheckpoint(EventPhase persistedPhase, Map<String, String> progress) {
+        boolean savedWaveThree = persistedPhase == EventPhase.WAVE_3;
+        boolean hasCheckpoint = progress != null && progress.keySet().stream()
+                .anyMatch(key -> key.startsWith(Wave3PortalProgressSnapshot.PREFIX));
+        if (!savedWaveThree && !hasCheckpoint) return;
+        try {
+            Wave3PortalProgressSnapshot.Data decoded = Wave3PortalProgressSnapshot.decode(
+                    progress, eventId, generation);
+            if (decoded == null) {
+                if (!savedWaveThree) return;
+                throw new IllegalArgumentException("WAVE3_PORTAL_CHECKPOINT_MISSING");
+            }
+            wave3RestoredPortalCheckpoint = decoded;
+        } catch (IllegalArgumentException invalid) {
+            wave3RestoredPortalCheckpoint = null;
+            phase = EventPhase.RECOVERY_REQUIRED;
+            recoveryReason = "INVALID_WAVE3_PORTAL_CHECKPOINT";
+            getLogger().log(Level.SEVERE, "End Rift Wave 3 recovery checkpoint refused", invalid);
         }
     }
 
@@ -4000,6 +4025,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (phase == EventPhase.WAVE_5) {
             return blackFogRecoveryCheckpoint.isEmpty()
                     ? captureBlackFogRecoveryCheckpoint() : blackFogRecoveryCheckpoint;
+        }
+        if (phase == EventPhase.WAVE_3) {
+            try {
+                return Wave3PortalProgressSnapshot.encode(eventId, generation,
+                        portalCaptureStates.getOrDefault(3, List.of()), wave3PortalEliteSpawned);
+            } catch (RuntimeException invalid) {
+                getLogger().log(Level.SEVERE,
+                        "Wave 3 portal checkpoint could not be captured; restart will fail closed", invalid);
+                return Map.of(Wave3PortalProgressSnapshot.PREFIX + "recovery-reason",
+                        "INVALID_WAVE3_PORTAL_CHECKPOINT");
+            }
         }
         if (phase == EventPhase.WAVE_1) {
             try {
@@ -16108,6 +16144,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 progress = Wave3PortalElitePolicy.PortalProgress.OPEN;
             }
         }
+        if (progress == Wave3PortalElitePolicy.PortalProgress.CAPTURED
+                && wave3PortalEliteDueAtMillis <= 0L) {
+            // A restart after portal two closed must still admit its giant.
+            wave3PortalEliteDueAtMillis = now;
+        }
         if (progress == Wave3PortalElitePolicy.PortalProgress.OPEN
                 && wave3PortalEliteDueAtMillis <= 0L) {
             wave3PortalEliteDueAtMillis = now + WAVE3_PORTAL_ELITE_DELAY_MILLIS;
@@ -23600,6 +23641,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             portals.add(core.clone().add(Math.cos(angle) * 8.0D, 0.0D,
                     Math.sin(angle) * 8.0D));
             states.add(PortalCapturePolicy.initial());
+        }
+        Wave3PortalProgressSnapshot.Data restored = wave3RestoredPortalCheckpoint;
+        wave3RestoredPortalCheckpoint = null;
+        if (restored != null) {
+            states = new ArrayList<>(restored.states());
+            wave3PortalEliteSpawned = restored.eliteSpawned();
         }
         wavePortals.put(3, portals);
         portalCaptureStates.put(3, states);

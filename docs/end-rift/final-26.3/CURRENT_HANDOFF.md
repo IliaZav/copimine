@@ -1,6 +1,6 @@
 # Current handoff — End Rift Waves 1–7
 
-Updated: 2026-10-23. Previous source commit with recorded green CI: `bf04d44faa58a2d281c4da6e810e64a2da784a38`; Wave 4 provenance fix published as `8af4f4bd`; Wave 6 pre-capture damage-lock fix published as `eef9d346`; baseline source commit: `d44c8f51be00f3b6d911135f7722a155cbf20c13` (branch `codex/copimine-source-of-truth-20261020`). The tree also contains the Wave 2 client phantom-retirement fix described below.
+Updated: 2026-10-23. Previous source commit with recorded green CI: `bf04d44faa58a2d281c4da6e810e64a2da784a38`; Wave 4 provenance fix published as `8af4f4bd`; Wave 6 pre-capture damage-lock fix published as `eef9d346`; Wave 2 client phantom-retirement fix published as `79a9610a`; baseline source commit: `d44c8f51be00f3b6d911135f7722a155cbf20c13` (branch `codex/copimine-source-of-truth-20261020`). The tree also contains the Wave 3 portal-capture recovery fix described below.
 
 ## Source and CI
 
@@ -13,16 +13,18 @@ Updated: 2026-10-23. Previous source commit with recorded green CI: `bf04d44faa5
 - Regression coverage: `tests/test_wave6_ritual_caster_behavior_contract.py::test_wave6_pre_capture_lock_is_rechecked_inside_the_health_transaction`.
 - Wave 2 client fix in this tree retires a grey phantom locally once the server has materialized it into a real Enderman. The activation manager exposes the fenced used-ID set for the current layout cycle; the renderer skips those IDs except the phantom currently in its warning window. No protocol or server change.
 - Regression coverage: `WaveTwoPhantomActivationManagerTest.retiresMaterializedPhantomsFromTheCurrentLayoutAfterClear` and `usedPhantomsAreFencedToTheCurrentEventCycleAndDimension`.
+- Wave 3 fix in this tree persists the three portal capture states and the second-portal elite-spawn flag in `waveObjectiveProgressSnapshot()`, restores them through `Wave3PortalProgressSnapshot` on restart, and reuses the restored states in `currentPrepareSequentialPortals`. A restart after portal two closed now rebases the elite due time instead of waiting forever.
+- Regression coverage: `tests/Wave3PortalProgressSnapshotTest.java` plus the `wave3-snapshot`, `wave3-restart`, and `wave3-invalid-restart` scenarios in `tests/test_end_rift_wave_probe_adapters.py`.
 - Hosted CI run `39905475992` on `bf04d44f` completed all three mandatory jobs successfully: `migration-postgres-contract`, `static-and-contract`, `java-plugins`.
-- Hosted CI run `39916592533` on `8af4f4bd` was still queued at the last check; do not claim it green until all three jobs finish.
-- Hosted CI run `39918244761` on `eef9d346`: `static-and-contract` and `migration-postgres-contract` succeeded; `java-plugins` was still in progress at the last check.
+- Hosted CI run `39916592533` on `8af4f4bd` completed successfully; run `39918244761` on `eef9d346` also completed all three jobs successfully.
+- Hosted CI run `39922421586` on `79a9610a` failed only `static-and-contract`: the client jar changed, while `tools/minecraft-26.3/profile.lock.json` still pinned the old client size/hash. This tree refreshes that pin to the current repeatable build; `migration-postgres-contract` passed and `java-plugins` was skipped.
 - Earlier run `39901216861` on `5af6f148` was also fully green; do not treat it as evidence for the current tree.
 
 ## Installed first-party artifacts (disposable runtime)
 
 | Plugin | SHA-256 | Size |
 |---|---|---|
-| CopiMineEndEvent | `c9eec1ad834f89acf0595db8ab316714add829bec8573f062ad8eb0d1b26f8e1` | 1,899,864 |
+| CopiMineEndEvent | `ba2f880a2facca25bbc3c7f8a6e39939ecc3f9d7f71f32028f5b2da609a2c995` | 1,904,485 |
 | CopiMineArtifacts | `75547398ec77fdc083c37de5a5d6449b166efb92c8af942ab0bddc5d675cf109` | 363,393 |
 | CopiMineNarcotics | `d7e46fcc2bcfb8f31216cb1ea51c53bf3f492d29bc3b8c227540cb38e8ced7e2` | 372,524 |
 | CopiMineUltimateAdminPlus | `70eb0caa57ae48d918170fd9fd4f9ce853bfd8c967315f774cccc606b4abe9f0` | 272,236 |
@@ -30,7 +32,7 @@ Updated: 2026-10-23. Previous source commit with recorded green CI: `bf04d44faa5
 | CopiMineElectionCore | `d2256c6976cb88a2a98b372d5f7e1b1db63013a52fdcfe519a065e3896395b65` | 234,331 |
 | CopiMineWorldCore | `1b6822c1733b8ddc3dc12760e8319caed014f3148493bf1c826ca6f5153e3f14` | 36,778 |
 
-The previous installed EndEvent artifacts `e7ef03e68a608d3a6b8447dbb072d02c4427ef3d116263d285b23e1b39701742` and `152704c4b62488f2bf71ed67395a2de8fd906175ea7479dd6544769434846340` are retained only in the lock as superseded hashes.
+The previous installed EndEvent artifacts `c9eec1ad834f89acf0595db8ab316714add829bec8573f062ad8eb0d1b26f8e1`, `e7ef03e68a608d3a6b8447dbb072d02c4427ef3d116263d285b23e1b39701742` and `152704c4b62488f2bf71ed67395a2de8fd906175ea7479dd6544769434846340` are retained only in the lock as superseded hashes.
 
 `AuthEffects` is **not installed** in the 27-plugin receipt; only its pinned candidate hash exists.
 

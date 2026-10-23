@@ -1,0 +1,245 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-23",
+  "sourceCommit": "d44c8f51be00f3b6d911135f7722a155cbf20c13",
+  "scope": "First-party plugins only. Third-party plugins are pinned but excluded from ownership claims.",
+  "plugins": [
+    {
+      "name": "CopiMineUltimateAdminPlus",
+      "directory": "copimine-admin-plugin",
+      "version": "9.2.0-postgres-v4-balance-credit",
+      "main": "me.copimine.ultimateplus.CopiMineUltimateAdminPlus",
+      "dependencies": ["CopiMineEconomyCore", "CopiMineElectionCore"],
+      "softDependencies": ["PlaceholderAPI", "LuckPerms", "Essentials", "voicechat", "CopiMineWorldCore"],
+      "commands": ["cmultra", "cadm", "ar", "cmbank", "cmcredit", "appeal", "report", "reporta", "rpguard", "oldvoteoff", "cmsealdrop"],
+      "permissions": 11,
+      "database": "PostgreSQL through pinned 42.7.5 driver; permission checks are command-local.",
+      "tests": [
+        "tests/test_admin_data_contracts.py",
+        "tests/test_admin_startup_readiness_contract.py",
+        "tests/test_admin_auth_price_catalog_contract.py",
+        "tests/test_player_identity_admin_contract.py",
+        "tests/test_economy_narcotics_audit_contract.py"
+      ],
+      "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineUltimateAdminPlus.jar",
+      "sha256": "70eb0caa57ae48d918170fd9fd4f9ce853bfd8c967315f774cccc606b4abe9f0",
+      "sourceBuild": "PASS",
+      "unitContract": "PASS",
+      "realServerEnable": "BLOCKED",
+      "negativeCoverage": "PARTIAL",
+      "knownGaps": [
+        "No authenticated player was available to exercise destructive commands against a disposable server.",
+        "Revoked-permission-mid-action and foreign-world scope are covered only by source contracts, not a live permission backend."
+      ],
+      "blockedReason": "Server is stopped and authenticated gameplay is unavailable; no destructive command was executed."
+    },
+    {
+      "name": "CopiMineArtifacts",
+      "directory": "copimine-artifacts",
+      "version": "1.1.0-shops-blocks-prices",
+      "main": "me.copimine.artifacts.CopiMineArtifacts",
+      "dependencies": ["CopiMineEconomyCore"],
+      "softDependencies": ["CopiMineElectionCore", "CopiMineUltimateAdminPlus", "CopiMineNarcotics"],
+      "commands": ["cmartifacts", "setprice"],
+      "permissions": 8,
+      "database": "PostgreSQL artifact catalog, revenue payout and shop recovery guards.",
+      "tests": [
+        "tests/test_artifact_catalog_runtime_migration.py",
+        "tests/test_artifact_new_items_runtime.py",
+        "tests/test_artifact_release_catalog_contract.py",
+        "tests/test_artifact_runtime_defect_regressions.py",
+        "tests/test_artifact_runtime_guards_contract.py",
+        "tests/test_artifact_runtime_regressions.py",
+        "tests/test_combat_ar_artifacts_contract.py",
+        "tests/test_donation_artifacts_contract.py",
+        "tests/test_integrated_artifact_catalog.py",
+        "tests/ArtifactRewardServiceContractTest.java",
+        "tests/ArtifactShopPurchaseRecoveryGuardTest.java"
+      ],
+      "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineArtifacts.jar",
+      "sha256": "75547398ec77fdc083c37de5a5d6449b166efb92c8af942ab0bddc5d675cf109",
+      "sourceBuild": "PASS",
+      "unitContract": "PASS",
+      "realServerEnable": "BLOCKED",
+      "negativeCoverage": "PARTIAL",
+      "knownGaps": [
+        "Full inventory, quit during purchase, and restart compensation were not exercised on a live economy database.",
+        "Actual client item rendering for every artifact state remains a native visual item."
+      ],
+      "blockedReason": "No live authenticated purchase/refund run was performed."
+    },
+    {
+      "name": "CopiMineEconomyCore",
+      "directory": "copimine-economy-core",
+      "version": "1.0.0",
+      "main": "me.copimine.economycore.CopiMineEconomyCore",
+      "dependencies": [],
+      "softDependencies": ["PlaceholderAPI", "LuckPerms", "Essentials"],
+      "commands": [],
+      "permissions": 0,
+      "database": "PostgreSQL balances and audit ledger through pinned 42.7.5 driver.",
+      "tests": [
+        "tests/test_economy_narcotics_audit_contract.py",
+        "tests/test_admin_auth_price_catalog_contract.py",
+        "tests/test_database_migrations.py",
+        "tests/test_migration_postgres_lifecycle.py"
+      ],
+      "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineEconomyCore.jar",
+      "sha256": "7fd9c779e0a5ca80b5dad4effcc0bf59d5cbcd181be7400e10432b6e69cabd32",
+      "sourceBuild": "PASS",
+      "unitContract": "PASS",
+      "realServerEnable": "BLOCKED",
+      "negativeCoverage": "PARTIAL",
+      "knownGaps": [
+        "Atomic transfer races, insufficient funds, precision extremes and DB failure-to-zero were not executed against a live PostgreSQL instance in this pass.",
+        "No live idempotency-key mismatch or disconnect-retry test was run."
+      ],
+      "blockedReason": "PostgreSQL and the server are stopped; no authenticated economic operation was performed."
+    },
+    {
+      "name": "CopiMineElectionCore",
+      "directory": "copimine-election-core",
+      "version": "9.2.0-postgres-v4-balance-credit",
+      "main": "me.copimine.electioncore.CopiMineElectionCore",
+      "dependencies": ["CopiMineEconomyCore"],
+      "softDependencies": ["PlaceholderAPI", "LuckPerms", "Essentials"],
+      "commands": ["hidelive", "presidentsay"],
+      "permissions": 5,
+      "database": "PostgreSQL election state and mandate inventory transport.",
+      "tests": [
+        "tests/test_deep_election_artifacts_audit_contract.py",
+        "tests/test_election_maintenance_contract.py",
+        "tests/test_public_cabinet_election_freshness.py",
+        "tests/test_president_mandate_inventory_transport_contract.py",
+        "tests/test_utility_inventory_transport_contract.py"
+      ],
+      "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineElectionCore.jar",
+      "sha256": "d2256c6976cb88a2a98b372d5f7e1b1db63013a52fdcfe519a065e3896395b65",
+      "sourceBuild": "PASS",
+      "unitContract": "PASS",
+      "realServerEnable": "BLOCKED",
+      "negativeCoverage": "PARTIAL",
+      "knownGaps": [
+        "No live election rewrite, cabinet rehydration or mandate inventory transfer was run.",
+        "Concurrent election maintenance with real players remains unverified."
+      ],
+      "blockedReason": "No authenticated player election/cabinet run was performed."
+    },
+    {
+      "name": "CopiMineEndEvent",
+      "directory": "copimine-end-event",
+      "version": "0.1.0",
+      "main": "me.copimine.endevent.CopiMineEndEvent",
+      "dependencies": ["CopiMineWorldCore", "CopiMineArtifacts"],
+      "softDependencies": ["WorldGuard", "CopiMineNarcotics"],
+      "commands": ["cmend"],
+      "permissions": 2,
+      "database": "No direct JDBC; uses event-state, layout, journal and receipt files owned by the migration runtime.",
+      "tests": [
+        "tests/test_end_event_current_contract.py",
+        "tests/test_end_event_wave6_wave7_boundaries_contract.py",
+        "tests/test_end_rift_wave6_visual_mechanics.py",
+        "tests/test_end_rift_waves2_4_mechanics.py",
+        "tests/test_end_rift_guard_tactics_runtime.py",
+        "tests/test_end_event_ritual_restart_contract.py",
+        "tests/test_end_rift_recovery_contract.py",
+        "tests/Wave6RitualRuntimeAdapterTest.java",
+        "tests/RitualCasterProgressionPolicyTest.java",
+        "tests/PrisonerAbilityControllerTest.java"
+      ],
+      "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineEndEvent.jar",
+      "sha256": "aa8f9ea94ee471cd28efc4f574a16460412a2886e749ca4956bb337372561a42",
+      "sourceBuild": "PASS",
+      "unitContract": "PASS",
+      "realServerEnable": "BLOCKED",
+      "negativeCoverage": "PARTIAL",
+      "knownGaps": [
+        "No complete Waves 1-7 run with 2/5/10/11/20 real players.",
+        "No real death, quit, disconnect, crash or restart recovery at each wave.",
+        "Native F2/video and audio evidence is absent."
+      ],
+      "blockedReason": "Authenticated V4 signer is absent; the server is stopped."
+    },
+    {
+      "name": "CopiMineNarcotics",
+      "directory": "copimine-narcotics",
+      "version": "2.1.0-client-bridge",
+      "main": "me.copimine.narcotics.CopiMineNarcotics",
+      "dependencies": [],
+      "softDependencies": ["ProtocolLib"],
+      "commands": ["cmclient", "cmnarcotics"],
+      "permissions": 8,
+      "database": "PostgreSQL hidden state plus signed client-bridge packets.",
+      "tests": [
+        "tests/test_narcotics_signing_contract.py",
+        "tests/test_narcotic_recipe_books_contract.py",
+        "tests/test_economy_narcotics_audit_contract.py",
+        "tests/test_client_legacy_bridge_auth_contract.py"
+      ],
+      "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineNarcotics.jar",
+      "sha256": "d7e46fcc2bcfb8f31216cb1ea51c53bf3f492d29bc3b8c227540cb38e8ced7e2",
+      "sourceBuild": "PASS",
+      "unitContract": "PASS",
+      "realServerEnable": "BLOCKED",
+      "negativeCoverage": "PARTIAL",
+      "knownGaps": [
+        "No authenticated client-bridge packet exchange was performed.",
+        "Hidden mechanics were not exposed or exercised through a real client."
+      ],
+      "blockedReason": "The pinned signer/trust anchor is unavailable; no authenticated bridge run was performed."
+    },
+    {
+      "name": "CopiMineWorldCore",
+      "directory": "copimine-world-core",
+      "version": "1.0.0",
+      "main": "me.copimine.worldcore.CopiMineWorldCore",
+      "dependencies": [],
+      "softDependencies": [],
+      "commands": ["cmworld"],
+      "permissions": 1,
+      "database": "No direct JDBC; world access policy and compile-classpath contracts.",
+      "tests": [
+        "tests/test_world_core_compile_classpath_contract.py",
+        "tests/test_admin_data_contracts.py"
+      ],
+      "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineWorldCore.jar",
+      "sha256": "1b6822c1733b8ddc3dc12760e8319caed014f3148493bf1c826ca6f5153e3f14",
+      "sourceBuild": "PASS",
+      "unitContract": "PASS",
+      "realServerEnable": "BLOCKED",
+      "negativeCoverage": "PARTIAL",
+      "knownGaps": [
+        "No live foreign-world command was attempted.",
+        "World ownership and access denial remain source-contract verified only."
+      ],
+      "blockedReason": "No authenticated command session was available."
+    },
+    {
+      "name": "AuthEffects",
+      "directory": "minecraft/server/plugins/AuthEffects",
+      "version": "1.0.0",
+      "main": "me.serverrp.autheffects.AuthEffectsPlugin",
+      "dependencies": [],
+      "softDependencies": ["AuthMe"],
+      "commands": [],
+      "permissions": 0,
+      "database": "No direct JDBC; login/logout effect ownership and cleanup.",
+      "tests": [
+        "tests/test_autheffects_authme_exemptions.py",
+        "tests/test_client_legacy_bridge_auth_contract.py"
+      ],
+      "installedJar": null,
+      "sha256": null,
+      "candidateSha256": "09aa0017cd8731470eb2324af327fc5780490c317469881f82a8d8c5bfd5e11c",
+      "sourceBuild": "PASS",
+      "unitContract": "PASS",
+      "realServerEnable": "BLOCKED",
+      "negativeCoverage": "PARTIAL",
+      "knownGaps": [
+        "Not present in the installed 27-plugin runtime receipt; only the source/candidate artifact is pinned.",
+        "No real AuthMe login/logout effect cleanup was exercised."
+      ],
+      "blockedReason": "Not installed in the current disposable runtime; no authenticated AuthMe session."
+    }
+  ]
+}

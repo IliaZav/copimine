@@ -354,6 +354,17 @@ $testBuild = Join-Path ([IO.Path]::GetTempPath()) `
   ("CopiMine-EndRiftEventChecks-" + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $testBuild | Out-Null
 $testBuildCreated = $true
+
+Invoke-GateStep 'Acceptance evidence matrices and plugin inventory' {
+  Push-Location $root
+  try {
+    & python -m pytest -q '.\tests\test_end_rift_requirement_matrix.py' '.\tests\test_end_rift_sound_cue_matrix.py' '.\tests\test_own_plugin_inventory_contract.py' '.\tests\test_end_rift_acceptance_reports.py' '.\tests\test_wave7_named_trial_completion_audio_contract.py'
+    if ($LASTEXITCODE -ne 0) { throw 'Acceptance evidence matrices, reports or plugin inventory contract failed.' }
+  } finally {
+    Pop-Location
+  }
+}
+
 try {
 $domainSources = @(Get-ChildItem (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain') -Filter '*.java' |
   ForEach-Object FullName)

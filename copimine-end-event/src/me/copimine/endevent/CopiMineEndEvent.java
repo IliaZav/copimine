@@ -29608,7 +29608,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (trial == null || trial.stage() != RealitySplitTrialController.Stage.COMPLETE
                 || !realitySplitChamberController.owns(generation)) return;
         // Persist the trial receipt and graph completion together before granting physical access.
-        realitySplitChamberController.markChamberComplete(generation, chamber);
+        boolean newlyCompleted = realitySplitChamberController.markChamberComplete(generation, chamber);
         if (!saveStateSync()) {
             enterNamedRealitySplitRecovery("WAVE7_NAMED_COMPLETION_SAVE_FAILED:" + chamber);
             return;
@@ -29622,6 +29622,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         openCompletedRealitySplitRoom(chamber, realitySplitChamberController.assignment().chamberCount());
         if (phase == EventPhase.RECOVERY_REQUIRED) return;
+        if (newlyCompleted) {
+            for (UUID owner : trial.owners()) {
+                Player player = Bukkit.getPlayer(owner);
+                if (player == null || !player.isOnline()) continue;
+                player.playSound(player.getLocation(), Sound.BLOCK_BEACON_ACTIVATE,
+                        SoundCategory.PLAYERS, 0.7F, 1.2F);
+            }
+        }
         saveStateAsync();
         getLogger().info("END_RIFT_NAMED_WAVE7_TRIAL_COMPLETE event=" + eventId
                 + " generation=" + generation + " chamber=" + chamber

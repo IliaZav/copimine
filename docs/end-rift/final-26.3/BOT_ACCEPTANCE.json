@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-23",
+  "sourceCommit": "d44c8f51be00f3b6d911135f7722a155cbf20c13",
+  "protocolHarness": {
+    "runners": [
+      "tests/RunEndRiftOfficialTwoPlayerLive.ps1",
+      "tests/RunEndRiftOfficialFivePlayerLive.ps1",
+      "tests/RunEndRiftOfficialTenPlayerLive.ps1",
+      "tests/RunEndRiftWave6RitualLive.ps1",
+      "tests/RunEndRiftWave6Wave7BoundariesLive.ps1",
+      "tests/RunEndRiftMobCombatLive.ps1",
+      "tests/RunEndRiftObeliskLive.ps1",
+      "tests/RunEndRiftSpellMatrixLive.ps1",
+      "tests/RunEndRiftRecoverySmoke.ps1",
+      "tests/LocalEndRiftBot.js"
+    ],
+    "negotiationProof": "NOT RUN this pass",
+    "reason": "No authenticated signer is available and the disposable server is stopped."
+  },
+  "authentication": {
+    "authMe": "installed/pinned; not bypassed",
+    "v4Signer": "unavailable",
+    "privateKeyFileEnv": "COPIMINE_CLIENT_BRIDGE_PRIVATE_KEY_FILE is absent",
+    "trustAnchor": "pinned production anchor; no approved isolated test-anchor override",
+    "disablingAttempted": false,
+    "randomKeypairGenerated": false
+  },
+  "server": {
+    "running": false,
+    "canonicalPort": 25567,
+    "postgresPort": 55434,
+    "note": "Both listeners are absent; port 25566 belongs to an unrelated process and was not used."
+  },
+  "attempts": [],
+  "matrix": [
+    {
+      "participants": 2,
+      "requiredWaves": "W1-W7 plus boss handoff, one free fighter in W6",
+      "status": "BLOCKED",
+      "acceptedDamageReceipts": 0,
+      "wins": 0,
+      "losses": 0,
+      "reason": "No authenticated real protocol players."
+    },
+    {
+      "participants": 5,
+      "requiredWaves": "W1-W7 plus boss handoff",
+      "status": "BLOCKED",
+      "acceptedDamageReceipts": 0,
+      "wins": 0,
+      "losses": 0,
+      "reason": "No authenticated real protocol players."
+    },
+    {
+      "participants": 10,
+      "requiredWaves": "W1-W7 plus boss handoff",
+      "status": "BLOCKED",
+      "acceptedDamageReceipts": 0,
+      "wins": 0,
+      "losses": 0,
+      "reason": "No authenticated real protocol players."
+    },
+    {
+      "participants": 11,
+      "requiredWaves": "W1-W7 plus boss handoff; both Heavenly Judgment volleys",
+      "status": "BLOCKED",
+      "acceptedDamageReceipts": 0,
+      "wins": 0,
+      "losses": 0,
+      "reason": "No authenticated real protocol players."
+    },
+    {
+      "participants": 20,
+      "requiredWaves": "W1-W7 plus boss handoff; both Heavenly Judgment volleys",
+      "status": "BLOCKED",
+      "acceptedDamageReceipts": 0,
+      "wins": 0,
+      "losses": 0,
+      "reason": "No authenticated real protocol players."
+    }
+  ],
+  "nativeVisualVerified": false,
+  "nativeAudioVerified": false,
+  "claims": {
+    "botOnlineCountedAsSuccess": false,
+    "forceClearUsedAsSuccess": false,
+    "mockPlayerUsedAsRealPlayer": false,
+    "hiddenServerStateUsedForDodge": false
+  }
+}

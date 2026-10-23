@@ -1,5 +1,7 @@
 # End Rift Waves 1–7 — текущая матрица доказательств, 2026-10-22
 
+> **Исторический снимок.** Актуальные статусы, установленные hashes и blockers находятся в `CURRENT_HANDOFF.md`, `REQUIREMENT_TEST_MATRIX.md`, `BOT_ACCEPTANCE.md`, `PERFORMANCE_REPORT.md` и `OWN_PLUGIN_INVENTORY.md`. Числа ниже (включая 2307 тестов и старый hash EndEvent `7026719d...`) относятся к более раннему состоянию и не являются текущим acceptance.
+
 Это текущая сводка реализации и локальной проверки по master contract. Она заменяет более ранний снимок `WAVES_1_7_REPAIR_STATUS_2026-10-22.md`; старые данные сохранены в нём и помечены как superseded. Это не акт игрового принятия: live wave, бот-матрица и ручная графическая проверка ещё не выполнены.
 
 ## Требования и состояние реализации
@@ -41,7 +43,7 @@
 
 | Плагин | Установленный файл | SHA-256 | SHA-512 | Размер |
 | --- | --- | --- | --- | ---: |
-| CopiMineEndEvent | `CopiMineEndEvent.jar` | `7026719d47ec3c7acd66bf3b3e77357782f6f71d54fe5684279b86c58d5e8ea5` | `e3a1a739c6fbc955cb4807b6b8d9f0131c786211d1eab4e6b2c82ac040206946f343a9a14e1bc64ccf603d3c9687007bd4562703e99d8d19b60ecbf6465a3fb7` | 1898776 |
+| CopiMineEndEvent | `CopiMineEndEvent.jar` | `aa8f9ea94ee471cd28efc4f574a16460412a2886e749ca4956bb337372561a42` (current after W7 room-completion cue; old `7026719d...`/`f5c3b01d...` are superseded) | `1b0dcb68a1ff9850755d64ee6604628b725eb98a07100e7592f5be821d2792e21f32ececeeb018e5e1b8cd57e8d9c12649e6614983be47fc88dd40566654692d` | 1899528 |
 | CopiMineArtifacts | `CopiMineArtifacts.jar` | `75547398ec77fdc083c37de5a5d6449b166efb92c8af942ab0bddc5d675cf109` | `010ce63cf87d78226d02d04e277c693740c3bff4bb8110537900370f59f84c0975e1b2be24216fba67343e014028e6a06660c2263de2f9daa021a7410b473c71` | 363393 |
 | CopiMineNarcotics | `CopiMineNarcotics.jar` | `d7e46fcc2bcfb8f31216cb1ea51c53bf3f492d29bc3b8c227540cb38e8ced7e2` | `dd4f6a90e8fa47d4c2bae9c9fa72ef23e856d72078376c959156b60693d3419abf636ae7d35a2fec21a713d8c4b2a6e50eb0064579e2e3333c0444f6c62048a4` | 372524 |
 

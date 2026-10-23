@@ -1,6 +1,6 @@
 # Current handoff — End Rift Waves 1–7
 
-Updated: 2026-10-23. Previous verified source commit: `bf04d44faa58a2d281c4da6e810e64a2da784a38`; baseline source commit: `d44c8f51be00f3b6d911135f7722a155cbf20c13` (branch `codex/copimine-source-of-truth-20261020`). The tree also contains the Wave 4 reflected-projectile provenance fix described below.
+Updated: 2026-10-23. Previous source commit with recorded green CI: `bf04d44faa58a2d281c4da6e810e64a2da784a38`; Wave 4 provenance fix published as `8af4f4bd`; baseline source commit: `d44c8f51be00f3b6d911135f7722a155cbf20c13` (branch `codex/copimine-source-of-truth-20261020`). The tree also contains the Wave 6 pre-capture damage-lock fix described below.
 
 ## Source and CI
 
@@ -9,14 +9,17 @@ Updated: 2026-10-23. Previous verified source commit: `bf04d44faa58a2d281c4da6e8
 - `5af6f148` requires a current Wave 1 carrier holder for canonical delivery and adds a Java regression test.
 - Wave 4 fix in this tree enforces reflected-fireball provenance: both target lookup and `ObeliskIntegrityPolicy` now require the projectile's `originObeliskId` to match the obelisk being damaged. A reflected shot can no longer consume another obelisk's HP.
 - New behavioral coverage: `tests/ObeliskIntegrityPolicyTest.java` and the `wrong-source-reflected-hit` runtime scenario in `tests/test_end_rift_waves2_4_mechanics.py`.
+- Wave 6 fix in this tree rechecks the pre-capture caster damage lock inside `onWaveMobPlayerDamageAuthoritative` before shield handling and the health commit. A sibling `HIGHEST` listener has no ordering guarantee, so the separate admission listener alone could be bypassed.
+- Regression coverage: `tests/test_wave6_ritual_caster_behavior_contract.py::test_wave6_pre_capture_lock_is_rechecked_inside_the_health_transaction`.
 - Hosted CI run `39905475992` on `bf04d44f` completed all three mandatory jobs successfully: `migration-postgres-contract`, `static-and-contract`, `java-plugins`.
+- Hosted CI run `39916592533` on `8af4f4bd` was still queued at the last check; do not claim it green until all three jobs finish.
 - Earlier run `39901216861` on `5af6f148` was also fully green; do not treat it as evidence for the current tree.
 
 ## Installed first-party artifacts (disposable runtime)
 
 | Plugin | SHA-256 | Size |
 |---|---|---|
-| CopiMineEndEvent | `e7ef03e68a608d3a6b8447dbb072d02c4427ef3d116263d285b23e1b39701742` | 1,899,829 |
+| CopiMineEndEvent | `c9eec1ad834f89acf0595db8ab316714add829bec8573f062ad8eb0d1b26f8e1` | 1,899,864 |
 | CopiMineArtifacts | `75547398ec77fdc083c37de5a5d6449b166efb92c8af942ab0bddc5d675cf109` | 363,393 |
 | CopiMineNarcotics | `d7e46fcc2bcfb8f31216cb1ea51c53bf3f492d29bc3b8c227540cb38e8ced7e2` | 372,524 |
 | CopiMineUltimateAdminPlus | `70eb0caa57ae48d918170fd9fd4f9ce853bfd8c967315f774cccc606b4abe9f0` | 272,236 |
@@ -24,7 +27,7 @@ Updated: 2026-10-23. Previous verified source commit: `bf04d44faa58a2d281c4da6e8
 | CopiMineElectionCore | `d2256c6976cb88a2a98b372d5f7e1b1db63013a52fdcfe519a065e3896395b65` | 234,331 |
 | CopiMineWorldCore | `1b6822c1733b8ddc3dc12760e8319caed014f3148493bf1c826ca6f5153e3f14` | 36,778 |
 
-The previous installed EndEvent artifact `152704c4b62488f2bf71ed67395a2de8fd906175ea7479dd6544769434846340` is retained only in the lock as a superseded hash.
+The previous installed EndEvent artifacts `e7ef03e68a608d3a6b8447dbb072d02c4427ef3d116263d285b23e1b39701742` and `152704c4b62488f2bf71ed67395a2de8fd906175ea7479dd6544769434846340` are retained only in the lock as superseded hashes.
 
 `AuthEffects` is **not installed** in the 27-plugin receipt; only its pinned candidate hash exists.
 

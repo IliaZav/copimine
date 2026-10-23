@@ -12785,8 +12785,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !ownedEntities.containsKey(victim.getUniqueId())) {
             return;
         }
-        // HIGHEST listeners have no cross-listener ordering guarantee. Protect
-        // the health transaction itself, rather than relying on later cancellation.
+        // HIGHEST listeners have no cross-listener ordering guarantee. Re-check
+        // the caster admission lock inside the health transaction itself.
+        if (ritualCasterDamageLocked(victim)) {
+            event.setCancelled(true);
+            return;
+        }
         if (blockRitualCasterShieldHit(event, victim)) return;
         if (!victim.isValid() || victim.isDead() || victim.getHealth() <= 0.0D) {
             event.setCancelled(true);
@@ -43736,11 +43740,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onRitualCasterDamageAdmission(EntityDamageEvent event) {
-        if (event == null || event.isCancelled() || !isCurrentRitualCaster(event.getEntity())) return;
-        boolean prisonerCaptured = ritualPrisonerId() != null;
-        if (RitualCasterProgressionPolicy.mayTakeCasterDamage(prisonerCaptured,
-                testRitualCombatMode)) return;
+        if (event == null || event.isCancelled() || !ritualCasterDamageLocked(event.getEntity())) return;
         event.setCancelled(true);
+    }
+
+    private boolean ritualCasterDamageLocked(Entity entity) {
+        return isCurrentRitualCaster(entity)
+                && !RitualCasterProgressionPolicy.mayTakeCasterDamage(
+                ritualPrisonerId() != null, testRitualCombatMode);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

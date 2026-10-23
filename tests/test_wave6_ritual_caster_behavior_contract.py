@@ -150,6 +150,34 @@ def test_guard_melee_and_cast_share_composed_controller_ownership() -> None:
     assert "guard.setAI(false)" in guard_post
 
 
+def test_wave6_pre_capture_lock_is_rechecked_inside_the_health_transaction() -> None:
+    """Listener registration order must not open pre-capture caster damage."""
+
+    root = read(SRC / "CopiMineEndEvent.java")
+    commit = method(root, "public void onWaveMobPlayerDamageAuthoritative(")
+    admission = method(root, "public void onRitualCasterDamageAdmission(")
+    gate = method(root, "private boolean ritualCasterDamageLocked(")
+
+    assert gate.index("isCurrentRitualCaster(entity)") < gate.index(
+        "RitualCasterProgressionPolicy.mayTakeCasterDamage("
+    )
+    assert "ritualPrisonerId() != null" in gate
+    assert "testRitualCombatMode" in gate
+    assert "ritualCasterDamageLocked(victim)" in commit
+    assert commit.index("ritualCasterDamageLocked(victim)") < commit.index(
+        "blockRitualCasterShieldHit(event, victim)"
+    )
+    assert commit.index("ritualCasterDamageLocked(victim)") < commit.index(
+        "victim.setHealth(result.remainingHealth())"
+    )
+    assert "event.setCancelled(true)" in commit[
+        commit.index("ritualCasterDamageLocked(victim)"):
+        commit.index("blockRitualCasterShieldHit(event, victim)")
+    ]
+    assert "ritualCasterDamageLocked(event.getEntity())" in admission
+    assert "mayTakeCasterDamage" not in admission
+
+
 def test_wave6_scheduler_retains_unlocked_spells_and_uses_only_live_owners() -> None:
     """The shared sphere scheduler survives original-role deaths and caster awakening."""
 

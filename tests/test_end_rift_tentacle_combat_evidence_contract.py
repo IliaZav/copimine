@@ -114,6 +114,22 @@ def test_local_tentacle_hit_diagnostics_explain_rejected_player_packets():
     assert "tentacle_state=" in handler
 
 
+def test_cancelled_tentacle_hits_never_apply_authoritative_damage():
+    source = END_EVENT.read_text(encoding="utf-8")
+
+    melee = source.split("public void onTentacleGuardianDamage(", 1)[1]
+    melee = melee.split("/** Route bow hits", 1)[0]
+    snapshot = melee.index("boolean cancelledBefore = event.isCancelled();")
+    rejection = melee.index('String rejection = cancelledBefore ? "hit-cancelled-before"')
+    assert snapshot < rejection
+
+    projectile = source.split("public void onTentacleGuardianProjectile(", 1)[1]
+    projectile = projectile.split("/**", 1)[0]
+    guard = projectile.index("if (event.isCancelled())")
+    assert guard < projectile.index("event.setCancelled(true);")
+    assert guard < projectile.index("applyTentacleGuardianDamage(")
+
+
 def test_official_boss_probe_protects_and_restores_named_human_viewers():
     script = HARNESS.read_text(encoding="utf-8")
 

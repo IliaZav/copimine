@@ -10468,6 +10468,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         boolean localDiagnostics = config != null
                 && "local".equalsIgnoreCase(config.environment());
+        // ignoreCancelled=false delivers protected hits too; never convert a
+        // denial by another plugin into authoritative slot damage.
+        boolean cancelledBefore = event.isCancelled();
         Player attacker = event.getDamager() instanceof Player player ? player : null;
         boolean attackerActive = attacker != null && isActiveBossParticipant(attacker);
         boolean damageWindowOpen = tentacleDamageWindowOpen();
@@ -10490,7 +10493,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // The health carrier is event-owned even when the attacker is invalid.
         // Cancel first so vanilla damage cannot bypass the slot health ledger.
         event.setCancelled(true);
-        String rejection = attacker == null ? "damager-not-player"
+        String rejection = cancelledBefore ? "hit-cancelled-before"
+                : attacker == null ? "damager-not-player"
                 : !attackerActive ? "attacker-not-active-participant"
                 : !damageWindowOpen ? "damage-window-closed"
                 : state == null ? "tentacle-state-missing"
@@ -10523,6 +10527,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         Projectile projectile = event.getEntity();
+        if (event.isCancelled()) {
+            // A protection/region denial also owns the projectile outcome.
+            return;
+        }
         event.setCancelled(true);
         projectile.remove();
         TentacleController.VisualState state = tentacleController.state(display.getUniqueId());

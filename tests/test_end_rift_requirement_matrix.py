@@ -71,3 +71,18 @@ def test_markdown_mirror_lists_every_requirement() -> None:
     assert len(rows) == 168
     assert rows == [entry["id"] for entry in matrix["entries"]]
     assert "Native visual/audio remains false." in markdown
+
+
+def test_markdown_summary_and_statuses_match_json() -> None:
+    matrix = load_matrix()
+    markdown = MATRIX_MD.read_text(encoding="utf-8")
+    summary = matrix["summary"]
+    declared = re.search(
+        r"Counts: BLOCKED=(\d+), NOT RUN=(\d+), PASS=(\d+)", markdown
+    )
+    assert declared is not None
+    assert tuple(int(value) for value in declared.groups()) == (
+        summary["BLOCKED"], summary["NOT RUN"], summary["PASS"]
+    )
+    rows = re.findall(r"^\| ([A-Z0-9]+-\d+) \| [^|]+ \| ([A-Z/ ]+) \|", markdown, re.M)
+    assert dict(rows) == {entry["id"]: entry["status"] for entry in matrix["entries"]}

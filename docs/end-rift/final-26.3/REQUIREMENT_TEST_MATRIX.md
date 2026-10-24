@@ -2,7 +2,7 @@
 
 - Source commit: `d44c8f51be00f3b6d911135f7722a155cbf20c13`
 - Registry: section 9 of `CopiMine_DeepSeek_All_Waves_Master.md`
-- Counts: BLOCKED=143, NOT RUN=6, PASS=19
+- Counts: BLOCKED=149, NOT RUN=6, PASS=13
 - `PASS` means the named unit/adapter contract was executed locally; it does not prove real gameplay.
 - `BLOCKED` and `NOT RUN` are not successes. Native visual/audio remains false.
 

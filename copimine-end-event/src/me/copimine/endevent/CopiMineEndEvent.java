@@ -45753,6 +45753,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // diagnostics select an event entity without ever touching a natural
         // mob with the same type near the arena.
         entity.addScoreboardTag("copimine_end_event");
+        if (entity instanceof LivingEntity living && isWaveCombatKind(kind)) {
+            // A wave fighter that vanilla-despawns or is swept by a mob
+            // limiter aborts the wave as an unexpected removal.
+            living.setPersistent(true);
+            living.setRemoveWhenFarAway(false);
+            entity.addScoreboardTag("clearlag_exclude");
+        }
         registerOwnedEntity(entity);
         if (official && entity instanceof LivingEntity living
                 && (EVENT_KIND_BOSS.equals(kind) || isWaveCombatKind(kind))) {

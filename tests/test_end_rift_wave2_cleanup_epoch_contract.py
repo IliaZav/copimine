@@ -130,6 +130,16 @@ def test_wave2_legacy_final_elite_migration_requires_the_exact_active_durable_me
     assert "data.getKeys().contains(keyWaveTwoCleanupEpoch)" in stamp
 
 
+def test_wave_combat_mobs_cannot_despawn_or_be_swept_as_unexpected_removals() -> None:
+    source = ROOT_SOURCE.read_text(encoding="utf-8")
+    tag = _method_body(source, "private void tag(Entity entity, String kind, int wave, boolean official)")
+
+    assert "isWaveCombatKind(kind)" in tag
+    assert tag.index("living.setPersistent(true)") < tag.index("registerOwnedEntity(entity)")
+    assert tag.index("living.setRemoveWhenFarAway(false)") < tag.index("registerOwnedEntity(entity)")
+    assert 'entity.addScoreboardTag("clearlag_exclude")' in tag
+
+
 def test_confirmed_admin_cleanup_archives_wave2_roster_before_removing_entities() -> None:
     source = ROOT_SOURCE.read_text(encoding="utf-8")
     on_command = _method_body(

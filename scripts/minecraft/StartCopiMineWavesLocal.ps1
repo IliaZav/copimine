@@ -84,9 +84,6 @@ $port = [int]$properties['server-port']
 if ($port -lt 1 -or $port -gt 65535) { throw 'Canonical runtime server-port is invalid.' }
 
 $server = Join-Path $root 'scripts/minecraft/StartMigrationTestServer.ps1'
-$serverArguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $server)
-if ($JavaHome) { $serverArguments += @('-JavaHome', $JavaHome) }
-if ($Doctor) { $serverArguments += '-ValidateOnly' }
 
 $logDirectory = Join-Path $root 'local-runtime/logs'
 New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
@@ -103,8 +100,29 @@ if ($Doctor) {
     Write-Output 'Waiting for Paper to load. Keep this console open; stop with Ctrl+C or the server console.'
 }
 
-& powershell.exe @serverArguments 2>&1 | Tee-Object -FilePath $logPath -Append
-$exitCode = $LASTEXITCODE
+$transcriptStarted = $false
+try {
+    Start-Transcript -Path $logPath -Append | Out-Null
+    $transcriptStarted = $true
+} catch {
+    Write-Warning "Transcript logging is unavailable: $($_.Exception.Message)"
+}
+try {
+    if ($Doctor -and $JavaHome) {
+        & $server -JavaHome $JavaHome -ValidateOnly
+    } elseif ($Doctor) {
+        & $server -ValidateOnly
+    } elseif ($JavaHome) {
+        & $server -JavaHome $JavaHome
+    } else {
+        & $server
+    }
+    $exitCode = $LASTEXITCODE
+} finally {
+    if ($transcriptStarted) {
+        Stop-Transcript | Out-Null
+    }
+}
 if ($exitCode -ne 0) {
     throw "Paper or its preflight failed with exit code $exitCode. See $logPath"
 }

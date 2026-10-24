@@ -36,6 +36,8 @@ def test_launcher_pins_the_single_canonical_runtime_and_artifacts():
     assert "resourcePackMigration.candidateSha256" in text
     assert "Get-Process -Name" not in text
     assert "Stop-Process -Name" not in text
+    assert "Start-Transcript" in text
+    assert "& powershell.exe" not in text
 
 
 def test_launcher_refuses_a_missing_installed_end_event(tmp_path):

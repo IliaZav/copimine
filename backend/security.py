@@ -16,7 +16,7 @@ PERMISSIONS = {
     "helper": ["players.view", "tickets.manage"],
     "junior_admin": ["players.view", "players.moderate", "tickets.manage"],
     "moderator": ["players.view", "players.moderate", "inventory.view", "tickets.manage"],
-    "admin": ["players.view", "players.moderate", "inventory.view", "inventory.manage", "tickets.manage", "catalog.manage", "content.manage", "logs.view"],
+    "admin": ["players.view", "players.moderate", "inventory.view", "inventory.manage", "tickets.manage", "catalog.manage", "content.manage", "logs.view", "analytics.read"],
 }
 PERMISSIONS["admin"] += ["map.view", "map.manage"]
 PERMISSIONS["owner"] = PERMISSIONS["admin"] + ["server.manage", "accounts.manage", "recovery.manage", "economy.manage", "settings.manage"]

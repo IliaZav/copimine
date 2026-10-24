@@ -34,7 +34,7 @@ H['v6-inventory-refresh']=H['production-inventory-refresh'];
 const originalInventory=window.CM73?.inventory;
 
 const beforeAdminOverview=W.adminExtensions.overview;
-function metric(label,value,copy=''){return '<section class="panel"><span class="label">'+label+'</span><strong class="production-metric">'+E(value)+'</strong><p class="hint">'+copy+'</p></section>';}
+function metric(label,value){return '<section class="panel"><span class="label">'+label+'</span><strong class="production-metric">'+E(value)+'</strong></section>';}
 P.refreshHealth=async()=>{P.health=await X.request('/admin/health');};
 function gameStatus(game,health=P.health){
  if(health?.error)return 'Нет доступа к проверке';
@@ -65,7 +65,7 @@ function vkStatus(vk,health){
 }
 W.adminExtensions.overview=()=>{
  const game=P.health?.game||M.state.game||{},owner=X.can('accounts.manage');
- return '<div class="v6-server-summary">'+metric('Игровой сервер',gameStatus(game),game.ready?'Обязательные плагины подтвердили готовность.':'Смотри причину в разделе подключений.')+metric('Онлайн',game.players??'—','Сведения текущего подключения.')+metric('База сайта',databaseStatus(P.health),'Аккаунты, обращения и журнал сохраняются.')+'</div><section class="panel mt"><h2>Управление</h2><div class="v6-actions-grid mt">'+[['players','Игроки и инвентари'],['shop','Каталог'],['world','Карта и расписание'],['moderation','Обращения'],['logs','Журнал действий'],['system','Подключения и аккаунты']].map(([id,text])=>M.link(text,'#admin/'+id,'arrow-right','')).join('')+'</div></section><section class="panel mt"><h2>Последние действия</h2>'+((M.state.audit||[]).length?V.table(['Время','Действие','Кто','Объект'],M.state.audit.slice(0,10).map(r=>[M.date(r.at,true),E(r.action),E(r.actor),E(r.target)])):M.empty('Записей пока нет','Здесь появятся подтверждённые действия.','history'))+'</section>';
+ return '<div class="v6-server-summary">'+metric('Игровой сервер',gameStatus(game))+metric('Онлайн',game.players??'—')+metric('База сайта',databaseStatus(P.health))+'</div><section class="panel mt"><h2>Управление</h2><div class="v6-actions-grid mt">'+[['players','Игроки и инвентари'],['shop','Каталог'],['world','Карта и расписание'],['moderation','Обращения'],['logs','Журнал действий'],['system','Подключения и аккаунты']].map(([id,text])=>M.link(text,'#admin/'+id,'arrow-right','')).join('')+'</div></section><section class="panel mt"><h2>Последние действия</h2>'+((M.state.audit||[]).length?V.table(['Время','Действие','Кто','Объект'],M.state.audit.slice(0,10).map(r=>[M.date(r.at,true),E(r.action),E(r.actor),E(r.target)])):M.empty('Записей пока нет','Здесь появятся подтверждённые действия.','history'))+'</section>';
 };
 W.adminExtensions.system=()=>{
  const h=P.health,g=h?.game||{};

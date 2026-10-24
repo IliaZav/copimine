@@ -6,7 +6,7 @@
 const M=CM,A=CM71,V=CMV4,W=CM5,X=CM6,Q=CMReview,E=M.esc,H=M.handlers,F=M.forms,s=()=>M.state;
 const priorAdmin=M.renderers.admin,ext=W.adminExtensions;
 const entries=[
- ['overview','Обзор','Текущие задачи, очереди и последние изменения.','grid'],
+ ['overview','Обзор','','grid'],
  ['statistics','Аналитика сайта','Посещения, покупки и популярные предметы.','chart'],
  ['performance','Производительность','Ресурсы сервера, TPS и MSPT.','activity'],
  ['players','Игроки и аккаунты','Найди игрока, затем выбери действие.','users'],
@@ -96,7 +96,7 @@ M.renderers.admin=(key='overview')=>{
  case 'finance':body=ext.finance(sub||'orders');break;
  default:body=prior(key);
  }
- return `<div class="admin-shell v7-admin-shell v71-admin-shell"><aside class="admin-sidebar">${nav(key)}</aside><div class="admin-main"><header class="admin-top"><div class="breadcrumb"><button type="button" class="icon-btn v71-admin-mobile-menu" data-action="v71-admin-mobile-menu" aria-label="Открыть меню">${icon('menu')}</button><span>CopiMine</span>${icon('chevron-right')}<strong>${meta[1]}</strong></div>${window.CM73Search?.box()||''}<div class="actions"><span class="v71-local-label ${X.live?'is-connected':'is-disconnected'}" role="status" aria-live="polite"><i></i>${X.live?'Сайт подключён':'Нет связи с сайтом'}</span><a href="#home" class="btn ghost small">${icon('arrow-up-right')}<span>Сайт</span></a></div></header><main id="view" class="admin-content"><div class="v71-admin-heading"><div><h1>${meta[1]}</h1><p>${meta[2]}</p></div>${A.help(meta[2])}</div><div class="v71-admin-surface" data-admin-section="${key}">${rewrite(body||M.empty('Нет данных','В этом разделе пока нет записей.'))}</div></main></div></div>`;
+ return `<div class="admin-shell v7-admin-shell v71-admin-shell"><aside class="admin-sidebar">${nav(key)}</aside><div class="admin-main"><header class="admin-top"><div class="breadcrumb"><button type="button" class="icon-btn v71-admin-mobile-menu" data-action="v71-admin-mobile-menu" aria-label="Открыть меню">${icon('menu')}</button><span>CopiMine</span>${icon('chevron-right')}<strong>${meta[1]}</strong></div>${window.CM73Search?.box()||''}<div class="actions"><a href="#home" class="btn ghost small">${icon('arrow-up-right')}<span>Сайт</span></a></div></header><main id="view" class="admin-content"><div class="v71-admin-heading"><div><h1>${meta[1]}</h1>${meta[2]?`<p>${meta[2]}</p>`:''}</div></div><div class="v71-admin-surface" data-admin-section="${key}">${rewrite(body||M.empty('Нет данных','В этом разделе пока нет записей.'))}</div></main></div></div>`;
 };
 H['v71-nav-group']=b=>{const section=b.closest('.v71-nav-group'),folded=section.classList.toggle('folded');b.setAttribute('aria-expanded',String(!folded));(s().preferences.navFolded||={})[b.dataset.id]=folded;M.save();};
 function closeAdminDrawer(){document.querySelector('.admin-sidebar')?.classList.remove('v71-open');document.body.classList.remove('v71-drawer-open');}

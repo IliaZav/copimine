@@ -96,6 +96,8 @@ V.after.push((page,tab)=>{
  document.querySelectorAll('[data-action="copy-ip"]').forEach(b=>b.setAttribute('title','Нажми, чтобы скопировать адрес сервера'));
 });
 const originalCopy=H['copy-ip'];H['copy-ip']=async b=>{await originalCopy(b);b.classList.add('v71-copied');const old=b.getAttribute('aria-label');b.setAttribute('aria-label','Адрес скопирован');setTimeout(()=>{b.classList.remove('v71-copied');b.setAttribute('aria-label',old||'Скопировать адрес');},1700);};
+let openedTicketRoute='';
+V.after.push((page,tab)=>{const id=M.UI.params.get('ticket');if(page==='account'&&tab==='support'&&id&&openedTicketRoute!==id){const ticket=s().tickets.find(row=>row.id===id);if(ticket){openedTicketRoute=id;setTimeout(()=>H['ticket-detail']?.({dataset:{id}}),0);}}if(!id)openedTicketRoute='';});
 // Keep the last valid account screen, not a blank page, for old bookmark aliases.
 R.transfer=()=>R.account('transfers');
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>M.render(),{once:true});else M.render();

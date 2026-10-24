@@ -140,20 +140,16 @@
   margin-bottom: 0;
 }
 
-/* Home page: a field-survey frame built from CopiMine's block grid. */
+/* The hero uses only a soft gradient over the server photo. */
 .cm72-hero {
-  border: 1px solid #78866a;
-  border-radius: 5px 22px 5px 22px;
-  box-shadow: inset 0 0 0 1px #d2b87824, 0 22px 54px #0005;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .cm72-hero::after {
   inset: 0;
-  background-image:
-    linear-gradient(180deg, #070a1026 0%, transparent 28%, #10121438 45%, #101214ce 74%, #101214 100%),
-    linear-gradient(145deg, transparent 48.9%, #c9d8ad20 49.7%, transparent 50.5%),
-    repeating-linear-gradient(0deg, transparent 0 39px, #d7dfc710 40px),
-    repeating-linear-gradient(90deg, transparent 0 39px, #d7dfc710 40px);
+  background-image: linear-gradient(180deg, #070a1026 0%, transparent 28%, #10121438 45%, #101214ce 74%, #101214 100%);
 }
 
 .cm72-hero-content .kicker {
@@ -266,11 +262,7 @@
   }
 
   .cm72-hero {
-    border-radius: 4px 15px 4px 15px;
-  }
-
-  .cm72-hero::after {
-    background-size: auto, auto, 100% 40px, 40px 100%;
+    border-radius: 0;
   }
 }
 
@@ -303,4 +295,203 @@
   .product .product-image img {
     transition: none;
   }
+}
+
+/* Cookie choice stays small and readable over the page. */
+.v6-cookie-banner {
+  width: min(570px, calc(100vw - 40px));
+  gap: 15px;
+  align-items: center;
+  padding: 15px;
+  border: 1px solid #3b4a43;
+  border-radius: 13px;
+  background: #111817ed;
+  box-shadow: 0 12px 38px #0006;
+  backdrop-filter: blur(12px);
+}
+
+.v6-cookie-banner > .v6-cookie-illustration {
+  display: block;
+  flex: 0 0 68px;
+  width: 68px;
+  height: 68px;
+  margin: 0;
+  object-fit: contain;
+  background: transparent;
+  filter: none;
+}
+
+.v6-cookie-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.v6-cookie-copy h2 {
+  margin: 0 0 4px;
+  color: #f0f2ee;
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+.v6-cookie-copy p {
+  margin: 0;
+  color: #b8c1bb;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.v6-cookie-info {
+  display: inline-block;
+  margin-top: 3px;
+  color: #a7b1aa;
+  font-size: 10px;
+  line-height: 1.4;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.v6-cookie-info:hover,
+.v6-cookie-info:focus-visible {
+  color: #31daa1;
+}
+
+.v6-cookie-actions {
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.v6-cookie-actions .btn {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 11px;
+}
+
+@media (max-width: 600px) {
+  .v6-cookie-banner {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: auto;
+    gap: 8px;
+    padding: 12px;
+    border-radius: 11px;
+  }
+
+  .v6-cookie-banner > .v6-cookie-illustration {
+    flex-basis: 46px;
+    width: 46px;
+    height: 46px;
+  }
+
+  .v6-cookie-copy h2 {
+    font-size: 15px;
+  }
+
+  .v6-cookie-copy p {
+    font-size: 11px;
+  }
+
+  .v6-cookie-actions {
+    width: calc(100% + 54px);
+    gap: 6px;
+    margin: 10px 0 0 -54px;
+  }
+
+  .v6-cookie-actions .btn {
+    flex: 1 1 auto;
+    min-height: 32px;
+    padding: 7px 6px;
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  .cm72-hero h1 {
+    max-width: calc(100vw - 56px);
+    font-size: clamp(30px, 8vw, 34px);
+    overflow-wrap: anywhere;
+  }
+
+  .site-header {
+    min-width: 0;
+  }
+
+  .site-header > .brand {
+    min-width: 0;
+    flex-shrink: 1;
+  }
+
+  .site-header > .header-actions {
+    flex: 0 0 auto;
+  }
+}
+
+/* The first frame follows the hero's real geometry while the server bootstrap loads. */
+.cm-initial-skeleton {
+  min-height: 100svh;
+  overflow: hidden;
+  background: #101214;
+  color: #f3f4f1;
+}
+
+.cm-skeleton-header {
+  height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 0 clamp(18px, 4vw, 42px);
+  border-bottom: 1px solid #ffffff0d;
+}
+
+.cm-skeleton-header img {
+  width: 166px;
+  height: auto;
+  object-fit: contain;
+}
+
+.cm-skeleton-nav,
+.cm-skeleton-action,
+.cm-skeleton-copy i,
+.cm-skeleton-copy b,
+.cm-skeleton-copy span,
+.cm-skeleton-copy em {
+  display: block;
+  background: #ffffff12;
+  border-radius: 4px;
+}
+
+.cm-skeleton-nav { width: 58px; height: 7px; margin-left: auto; }
+.cm-skeleton-nav.short { width: 42px; margin-left: 0; }
+.cm-skeleton-action { width: 76px; height: 31px; margin-left: 8px; border-radius: 7px; }
+
+.cm-skeleton-hero {
+  min-height: calc(100svh - 58px);
+  display: flex;
+  align-items: center;
+  padding: 9vh clamp(24px, 8vw, 84px);
+  background: linear-gradient(90deg, #080b0bd9, #080b0b70 58%, #080b0b36), linear-gradient(0deg, #080b0b8c, transparent 60%), url("img/world.webp") center 48% / cover no-repeat;
+}
+
+.cm-skeleton-copy { width: min(560px, 78vw); }
+.cm-skeleton-copy i { width: 108px; height: 8px; margin-bottom: 24px; }
+.cm-skeleton-copy b { width: min(430px, 70vw); height: clamp(29px, 5.6vw, 56px); margin: 9px 0; background: #ffffff20; }
+.cm-skeleton-copy b.short { width: min(305px, 55vw); }
+.cm-skeleton-copy span { width: min(370px, 70vw); height: 8px; margin: 22px 0 0; background: #ffffff16; }
+.cm-skeleton-copy span.short { width: min(255px, 49vw); margin-top: 8px; }
+.cm-skeleton-copy em { width: 132px; height: 42px; margin-top: 27px; border-radius: 7px; background: #ffffff18; }
+.cm-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+button.is-loading { cursor: progress !important; pointer-events: none; }
+button.is-loading::after { content: ""; display: inline-block; width: 12px; height: 12px; margin-left: 9px; vertical-align: -2px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: cm-ui-spin .65s linear infinite; }
+@keyframes cm-ui-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 600px) {
+  .cm-skeleton-header { height: 54px; gap: 10px; padding-inline: 12px; }
+  .cm-skeleton-header img { width: 108px; }
+  .cm-skeleton-nav { display: none; }
+  .cm-skeleton-action { width: 62px; height: 30px; margin-left: auto; }
+  .cm-skeleton-hero { min-height: calc(100svh - 54px); padding-inline: 26px; background-position: 54% center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button.is-loading::after { animation: none; border-right-color: currentColor; opacity: .55; }
 }

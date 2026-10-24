@@ -32,48 +32,6 @@
 .v71-admin-shell .quick-actions>a:hover { background: #22292b; }
 /* Do not change .admin-sidebar dimensions, its sticky scroll, or .admin-shell grid. */
 
-/* The first paint is the existing approved image. A second layer crossfades
-   into it after decoding, without resizing the hero or shifting text. */
-.cm72-hero .cm74-hero-next {
-  opacity: 0;
-  animation: none !important;
-  transition: opacity 1.6s cubic-bezier(.42,0,.2,1);
-  pointer-events: none;
-  z-index: -2;
-}
-.cm72-hero .cm74-hero-next.cm74-show { opacity: 1; }
-.cm74-hero-controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  position: absolute;
-  z-index: 3;
-  bottom: 25px;
-  right: 27px;
-  color: #d8e1e4;
-  font-size: 11px;
-  text-shadow: 0 1px 6px #0008;
-}
-.cm74-hero-counter { font: 500 11px ui-monospace,SFMono-Regular,Consolas,monospace; letter-spacing: .06em; padding: 0 7px; }
-.cm74-hero-controls button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 31px;
-  border-radius: 7px;
-  color: #e8f0f0;
-  background: #11191dc9;
-  border: 1px solid #a3becd40;
-  padding: 5px 10px;
-  font-size: 11px;
-  cursor: pointer;
-  backdrop-filter: blur(9px);
-}
-.cm74-hero-controls button:hover { background: #243036eb; border-color: #9bbab17a; }
-.cm74-hero-controls button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
-.cm74-hero-skip { width: 32px; padding: 5px !important; }
-.cm74-hero-skip>.icon { width: 15px; height: 15px; }
-
 /* Footer: calm navigation, real links, copyable address, and small legal line. */
 .site-footer.cm74-footer {
   display: block;
@@ -119,8 +77,8 @@
   html[data-motion="on"] .v71-admin-shell .overview-summary>a { transition: background-color .22s ease,box-shadow .22s ease; }
   html[data-motion="on"] .cm72-feature-list>a .icon, html[data-motion="on"] .cm74-footer-ip>.icon { transition: transform .24s ease; }
   html[data-motion="on"] .cm72-feature-list>a:hover .icon, html[data-motion="on"] .cm74-footer-ip:hover>.icon { transform: translate(3px,-1px); }
-  html[data-motion="on"] .cm74-footer-ip,html[data-motion="on"] .cm74-hero-controls button { transition: background-color .2s ease,border-color .2s ease,transform .2s ease; }
-  @media (hover:hover) { html[data-motion="on"] .cm74-footer-ip:hover,html[data-motion="on"] .cm74-hero-controls button:hover { transform: translateY(-1px); } }
+  html[data-motion="on"] .cm74-footer-ip { transition: background-color .2s ease,border-color .2s ease,transform .2s ease; }
+  @media (hover:hover) { html[data-motion="on"] .cm74-footer-ip:hover { transform: translateY(-1px); } }
   html[data-motion="on"] .cm72-faq details[open] p { animation: cm74-enter .25s ease both; }
 }
 @media (max-width: 1020px) {
@@ -132,9 +90,6 @@
 }
 @media (max-width: 760px) {
   .v71-admin-shell .overview-summary>a,.v71-admin-shell .overview-summary>a:first-child { padding: 16px 15px; }
-  .cm74-hero-controls { right: 15px; bottom: 13px; gap: 4px; }
-  .cm74-hero-counter { font-size: 9px; padding: 0 2px; }
-  .cm74-hero-controls button { min-height: 30px; padding: 5px 8px; font-size: 10px; }
   .site-footer.cm74-footer { margin: 42px 0 0; border-radius: 12px 12px 0 0; }
   .cm74-footer-main { grid-template-columns: 1fr; gap: 29px; padding: 31px 23px 29px; }
   .cm74-footer-brand p { max-width: 270px; margin-top: 9px; }
@@ -145,10 +100,9 @@
   .cm74-footer-bottom>button { justify-self: start; margin-top: 5px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .cm74-hero-next, .cm74-footer-links a, .cm74-footer-links button, .cm74-footer-ip,
+  .cm74-footer-links a, .cm74-footer-links button, .cm74-footer-ip,
   .v71-admin-shell .panel { animation: none !important; transition: none !important; transform: none !important; }
 }
-html[data-motion="off"] .cm74-hero-next,
 html[data-motion="off"] .cm74-footer-links a,
 html[data-motion="off"] .cm74-footer-links button,
 html[data-motion="off"] .v71-admin-shell .panel { animation: none !important; transition: none !important; }

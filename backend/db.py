@@ -54,9 +54,10 @@ CREATE TABLE IF NOT EXISTS cm_site_tickets (
  created_s BIGINT NOT NULL, updated_s BIGINT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS cm_site_notifications (
- id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL,
+ id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, href TEXT NOT NULL DEFAULT '',
  created_s BIGINT NOT NULL, read_s BIGINT NOT NULL DEFAULT 0
 );
+CREATE INDEX IF NOT EXISTS cm_site_notifications_user_created ON cm_site_notifications(user_id,created_s DESC);
 CREATE TABLE IF NOT EXISTS cm_site_receipts (
  actor_id TEXT NOT NULL, key TEXT NOT NULL, operation TEXT NOT NULL, fingerprint TEXT NOT NULL,
  status TEXT NOT NULL, result TEXT NOT NULL DEFAULT '{}', created_s BIGINT NOT NULL,
@@ -75,7 +76,15 @@ CREATE TABLE IF NOT EXISTS cm_site_map_jobs (
 CREATE TABLE IF NOT EXISTS cm_site_backup_codes (
  id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES cm_site_users(id), code_hash TEXT NOT NULL,
  consumed_s BIGINT NOT NULL DEFAULT 0
-)
+);
+CREATE TABLE IF NOT EXISTS cm_site_analytics_events (
+ id TEXT PRIMARY KEY, event_type TEXT NOT NULL, page TEXT NOT NULL,
+ visitor_hash TEXT NOT NULL, item_id TEXT NOT NULL DEFAULT '', quantity INTEGER NOT NULL DEFAULT 0,
+ created_s BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS cm_site_analytics_created ON cm_site_analytics_events(created_s);
+CREATE INDEX IF NOT EXISTS cm_site_analytics_page_created ON cm_site_analytics_events(event_type,page,created_s);
+CREATE INDEX IF NOT EXISTS cm_site_analytics_visitor_created ON cm_site_analytics_events(visitor_hash,created_s)
 """
 
 
@@ -126,6 +135,12 @@ class Database:
             for sql in SCHEMA.split(";"):
                 if sql.strip():
                     db.execute(sql)
+            if self.sqlite:
+                columns = {row["name"] for row in db.execute("PRAGMA table_info(cm_site_notifications)").fetchall()}
+                if "href" not in columns:
+                    db.execute("ALTER TABLE cm_site_notifications ADD COLUMN href TEXT NOT NULL DEFAULT ''")
+            else:
+                db.execute("ALTER TABLE cm_site_notifications ADD COLUMN IF NOT EXISTS href TEXT NOT NULL DEFAULT ''")
 
     def setting(self, key, default=None):
         with self.transaction() as db:

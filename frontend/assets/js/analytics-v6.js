@@ -4,8 +4,8 @@
   const M = window.CM, V = window.CMV4, W = window.CM5, X = window.CM6;
   if (!M || !V || !W || !X) return;
   const E = M.esc, H = M.handlers, DAY = 86400000;
-  const publicPages = new Set(["home", "shop", "donate", "map", "rules", "support"]);
-  const pageNames = { home: "Главная", shop: "Магазин", donate: "Донат", map: "Карта", rules: "Правила", support: "Помощь" };
+  const publicPages = new Set(["home", "shop", "cart", "donate", "map", "rules", "support"]);
+  const pageNames = { home: "Главная", shop: "Магазин", cart: "Корзина", donate: "Донат", map: "Карта", rules: "Правила", support: "Помощь" };
   const eventNames = { page_view: "Открытие страницы", cart_add: "Добавление в корзину", add_to_cart: "Добавление в корзину", item_view: "Просмотр предмета", product_view: "Просмотр предмета", cart_remove: "Удаление из корзины", donation_start: "Начало пополнения", payment_created: "Создание платежа", checkout_start: "Начало оформления", checkout_started: "Начало оформления", checkout_complete: "Заказ оформлен", checkout_completed: "Заказ оформлен", checkout: "Оформление заказа", purchase: "Покупка", download_mods: "Загрузка сборки", download_launcher: "Загрузка лаунчера", play: "Инструкция по входу" };
   const ranges = [["day", "Сегодня"], ["7d", "7 дней"], ["30d", "30 дней"], ["year", "За год"]];
   const tabs = [["overview", "Обзор"], ["pages", "Страницы"], ["events", "События"], ["economy", "Экономика"]];
@@ -15,6 +15,8 @@
   const integer = value => Number.isFinite(Number(value)) ? Math.max(0, Math.trunc(Number(value))) : 0;
   const number = value => Number.isFinite(Number(value)) ? Number(value) : 0;
   const fmt = value => number(value).toLocaleString("ru-RU");
+  const rubles = data => data.paymentsAvailable === false ? "—" : fmt(data.rubles) + " ₽";
+  const rublesHint = data => data.paymentsAvailable === false ? "Платёжный сервис не подключён" : "Подтверждённые платежи";
   const dayString = value => new Date(value).toISOString().slice(0, 10);
   function consented() { return X.consent?.analytics === true; }
   function currentPage() {
@@ -208,9 +210,12 @@
     return rows.length ? table(["Событие", "Страница", "Количество"], rows.map(row => [E(eventNames[row.type] || row.type.replace(/_/g, " ")), E(pageNames[row.page] || row.page), `<strong class="numeric">${fmt(row.count)}</strong>`])) : empty("Событий пока нет", "Добавления в корзину и начало пополнения появятся после согласия посетителей.");
   }
   function economyPanel(data) {
+    if (data.paymentsAvailable === false && chartCurrency === "RUB") chartCurrency = "CM";
     const daily = dailySeries((data.days || []).map(row => ({ day: typeof row.at === "number" ? dayString(row.at) : String(row.at).slice(0, 10), value: number(row[chartCurrency === "RUB" ? "rubles" : chartCurrency]) })), data);
     const top = (data.top || []).slice(0, 30);
-    return `<div class="v6-analytics-kpis v6-analytics-kpis-compact">${kpi("Оборот AR", fmt(data.revenue?.AR) + " AR", "Выданные предметы за AR")}${kpi("Оборот CM", fmt(data.revenue?.CM) + " CM", "Выданные предметы за CM")}${kpi("Оплаченные пополнения", fmt(data.rubles) + " ₽", "Только подтверждённые платежи")}</div><section class="panel"><div class="panel-head"><h3>Оборот по дням</h3><div class="v6-analytics-units" aria-label="Валюта графика">${["AR", "CM", "RUB"].map(unit => `<button type="button" data-action="v6-analytics-unit" data-unit="${unit}" aria-pressed="${unit === chartCurrency}">${unit === "RUB" ? "₽" : unit}</button>`).join("")}</div></div>${barChart(daily, chartCurrency === "RUB" ? "Оплаченные пополнения, ₽" : "Оборот, " + chartCurrency, " " + (chartCurrency === "RUB" ? "₽" : chartCurrency))}</section><section class="panel mt"><div class="panel-head"><h3>Покупаемые предметы</h3><span class="hint">По количеству</span></div>${top.length ? table(["Предмет", "Количество", "Оборот", "Заказы"], top.map(row => [E(row.name || row.id), fmt(row.qty), M.money(row.revenue, row.currency), fmt(row.orders)])) : empty("Покупок пока нет", "Предметы появятся здесь после подтверждения выдачи.")}</section><div class="v6-analytics-note"><span>Ожидают выдачи: <strong>${fmt(data.pending)}</strong></span><span>Ошибки выдачи: <strong>${fmt(data.failed)}</strong></span><span>Полностью возвращено: <strong>${fmt(data.refunded)}</strong></span><span>Покупатели: <strong>${fmt(data.buyers)}</strong></span></div><p class="hint mt12">Оборот включает подтверждённую выдачу. В частично выполненном заказе учитываются только выданные предметы.</p>`;
+    const units = ["AR", "CM", ...(data.paymentsAvailable === false ? [] : ["RUB"])];
+    const chartTitle = chartCurrency === "RUB" ? "Оплаченные пополнения, ₽" : "Оборот, " + chartCurrency;
+    return `<div class="v6-analytics-kpis v6-analytics-kpis-compact">${kpi("Оборот AR", fmt(data.revenue?.AR) + " AR", "Выданные предметы за AR")}${kpi("Оборот CM", fmt(data.revenue?.CM) + " CM", "Выданные предметы за CM")}${kpi("Пополнения", rubles(data), rublesHint(data))}</div><section class="panel"><div class="panel-head"><h3>Оборот по дням</h3><div class="v6-analytics-units" aria-label="Валюта графика">${units.map(unit => `<button type="button" data-action="v6-analytics-unit" data-unit="${unit}" aria-pressed="${unit === chartCurrency}">${unit === "RUB" ? "₽" : unit}</button>`).join("")}</div></div>${barChart(daily, chartTitle, " " + (chartCurrency === "RUB" ? "₽" : chartCurrency))}</section><section class="panel mt"><div class="panel-head"><h3>Покупаемые предметы</h3><span class="hint">По количеству</span></div>${top.length ? table(["Предмет", "Количество", "Оборот", "Заказы"], top.map(row => [E(row.name || row.id), fmt(row.qty), M.money(row.revenue, row.currency), fmt(row.orders)])) : empty("Покупок пока нет", "Предметы появятся здесь после подтверждения выдачи.")}</section><div class="v6-analytics-note"><span>Ожидают выдачи: <strong>${fmt(data.pending)}</strong></span><span>Ошибки выдачи: <strong>${fmt(data.failed)}</strong></span><span>Полностью возвращено: <strong>${fmt(data.refunded)}</strong></span><span>Покупатели: <strong>${fmt(data.buyers)}</strong></span></div><p class="hint mt12">Оборот включает подтверждённую выдачу. В частично выполненном заказе учитываются только выданные предметы.</p>`;
   }
   function render(sub = "overview") {
     const owner = M.me?.()?.id || "";
@@ -226,7 +231,7 @@
     if (sub === "economy") body = economyPanel(data);
     else if (sub === "pages") body = `<section class="panel"><div class="panel-head"><h3>Посещения по страницам</h3></div>${pagesPanel(data)}</section><section class="panel mt">${barChart(trafficDays(data), "Просмотры по дням")}</section>`;
     else if (sub === "events") body = `<section class="panel"><div class="panel-head"><h3>Действия на публичных страницах</h3></div>${eventPanel(data)}</section>`;
-    else body = `<div class="v6-analytics-kpis">${kpi("Просмотры", fmt(data.visits), "Открытия публичных страниц")}${kpi("Посетители по дням", fmt(data.visitors), "Сумма дневных уникальных")}${kpi("Заказы", fmt(data.orders), "С выданными предметами")}${kpi("Выдано предметов", fmt(data.items), "Штук за выбранный период")}${kpi("Оборот CM", fmt(data.revenue?.CM) + " CM", "Покупки в магазине")}${kpi("Пополнения", fmt(data.rubles) + " ₽", "Подтверждённые платежи")}</div><div class="v6-analytics-grid"><section class="panel"><div class="panel-head"><h3>Посещения</h3></div>${barChart(trafficDays(data), "Просмотры по дням")}</section><section class="panel"><div class="panel-head"><h3>Популярные страницы</h3></div>${pagesPanel(data, true)}</section></div>`;
+    else body = `<div class="v6-analytics-kpis">${kpi("Просмотры", fmt(data.visits), "Открытия публичных страниц")}${kpi("Посетители по дням", fmt(data.visitors), "Сумма дневных уникальных")}${kpi("Заказы", fmt(data.orders), "С выданными предметами")}${kpi("Выдано предметов", fmt(data.items), "Штук за выбранный период")}${kpi("Оборот CM", fmt(data.revenue?.CM) + " CM", "Покупки в магазине")}${kpi("Пополнения", rubles(data), rublesHint(data))}</div><div class="v6-analytics-grid"><section class="panel"><div class="panel-head"><h3>Посещения</h3></div>${barChart(trafficDays(data), "Просмотры по дням")}</section><section class="panel"><div class="panel-head"><h3>Популярные страницы</h3></div>${pagesPanel(data, true)}</section></div>`;
     return heading + body + `<footer class="v6-analytics-footer"><span>${X.live ? "Данные сайта" : "Локальная проверка"} · ${E(b.from + " — " + b.to)} · UTC${cached ? " · обновлено " + E(new Date(cached.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })) : ""}</span><p>Учитываются публичные страницы и согласие на аналитику. Поиск в панели, имена игроков и содержимое форм в отчёт не попадают.</p></footer>`;
   }
   W.adminExtensions.statistics = render;
@@ -246,7 +251,7 @@
     if (!canRead()) return;
     const range = selectedRange(), data = X.live ? cache.get(range)?.data : localSummary(range);
     if (!data) return;
-    const rows = [["Показатель", "Значение"], ["С", data.from || bounds(range).from], ["По", data.to || bounds(range).to], ["Просмотры", data.visits], ["Посетители по дням", data.visitors], ["Заказы", data.orders], ["Покупатели", data.buyers], ["Предметы", data.items], ["Оборот AR", data.revenue?.AR], ["Оборот CM", data.revenue?.CM], ["Оплачено RUB", data.rubles], [], ["Страница", "Просмотры"], ...(data.pages || []).filter(row => publicPages.has(row.page)).map(row => [pageNames[row.page], row.count])];
+    const rows = [["Показатель", "Значение"], ["С", data.from || bounds(range).from], ["По", data.to || bounds(range).to], ["Просмотры", data.visits], ["Посетители по дням", data.visitors], ["Заказы", data.orders], ["Покупатели", data.buyers], ["Предметы", data.items], ["Оборот AR", data.revenue?.AR], ["Оборот CM", data.revenue?.CM], ["Оплачено RUB", data.paymentsAvailable === false ? "Платёжный сервис не подключён" : data.rubles], [], ["Страница", "Просмотры"], ...(data.pages || []).filter(row => publicPages.has(row.page)).map(row => [pageNames[row.page], row.count])];
     const csv = "\uFEFF" + rows.map(row => row.map(value => '"' + String(value ?? "").replace(/"/g, '""') + '"').join(";")).join("\r\n");
     M.downloadFile("CopiMine-analytics-" + dayString(Date.now()) + ".csv", csv);
   };

@@ -18,12 +18,13 @@ def test_project_settings_screen_uses_the_server_owned_settings_editor():
     assert "X.request('/admin/site-settings'" in cms
 
 
-def test_admin_status_labels_report_provider_and_game_readiness_truthfully():
+def test_admin_header_omits_redundant_connection_badge():
     admin = (ROOT / "frontend/assets/js/admin-v71.js").read_text(encoding="utf-8")
     production = (ROOT / "frontend/assets/js/production.js").read_text(encoding="utf-8")
 
     assert "Подключено к серверу" not in admin
-    assert "Сайт подключён" in admin
+    assert "Сайт подключён" not in admin
+    assert "v71-local-label" not in admin
     assert "SMTP не настроен" in production
     assert "Ожидает проверки домена" in production
     assert "ID приложения VK задан" in production

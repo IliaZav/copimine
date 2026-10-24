@@ -5513,7 +5513,7 @@ def player_bank_overview_sync(account: dict[str, Any], limit: int = 80) -> dict[
         ledger = conn.execute(
             """
             SELECT l.tx_id,l.tx_type,l.amount,l.balance_after,l.counterparty_account_id,
-                   COALESCE(counterparty.owner_name,'') AS counterparty_name,l.created_at,l.details
+                   COALESCE(counterparty.owner_name,'') AS counterparty_name,l.created_at,l.details,l.status
             FROM cmv4_bank_ledger l
             LEFT JOIN cmv4_bank_accounts counterparty ON counterparty.account_id=l.counterparty_account_id
             WHERE l.account_id=%s

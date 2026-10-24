@@ -5,6 +5,7 @@ import re
 import secrets
 import time
 import uuid
+from urllib.parse import quote
 
 from fastapi import APIRouter, Request, Response
 from starlette.concurrency import run_in_threadpool
@@ -36,6 +37,113 @@ def target_user(database, identifier):
     if not row:
         fail(404, "not_found", "Аккаунт не найден.")
     return dict(row)
+
+
+def add_notification(database, user_id, title, body, identifier=None, href=""):
+    notification_id = identifier or uuid.uuid4().hex
+    with database.transaction() as db:
+        db.execute(
+            "INSERT INTO cm_site_notifications(id,user_id,title,body,href,created_s) VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(id) DO NOTHING",
+            (notification_id, user_id, title[:120], body[:1000], href[:500], int(time.time())),
+        )
+
+
+def notification_feed(database, user_id):
+    with database.transaction() as db:
+        rows = db.execute(
+            "SELECT id,title,body,href,created_s,read_s FROM cm_site_notifications WHERE user_id=%s ORDER BY created_s DESC LIMIT 50",
+            (user_id,),
+        ).fetchall()
+        unread = db.execute(
+            "SELECT COUNT(*) AS count FROM cm_site_notifications WHERE user_id=%s AND read_s=0",
+            (user_id,),
+        ).fetchone()["count"]
+    return {
+        "unread": int(unread),
+        "notifications": [
+            {"id": row["id"], "type": str(row["id"]).split(":", 1)[0], "title": row["title"], "body": row["body"], "href": row["href"], "createdAt": int(row["created_s"]) * 1000, "read": bool(row["read_s"])}
+            for row in rows
+        ],
+    }
+
+
+def transfer_history(database, user, value):
+    with database.transaction() as db:
+        linked = db.execute(
+            "SELECT id,name,display_name,minecraft_uuid,minecraft_name FROM cm_site_users WHERE minecraft_uuid<>''"
+        ).fetchall()
+    by_uuid = {str(row["minecraft_uuid"]): dict(row) for row in linked}
+    own_name = user.get("minecraft_name") or user["name"]
+    results = []
+    for row in value.get("ledger", []):
+        kind = str(row.get("tx_type") or "").upper()
+        if kind not in {"TRANSFER_IN", "TRANSFER_OUT"} or (row.get("status") and row["status"] != "COMMITTED"):
+            continue
+        details = row.get("details") or "{}"
+        try:
+            details = json.loads(details) if isinstance(details, str) else details
+        except (TypeError, ValueError):
+            details = {}
+        if not isinstance(details, dict):
+            details = {}
+        counterparty = str(row.get("counterparty_account_id") or "")
+        peer_uuid = counterparty.split(":", 1)[1] if ":" in counterparty else ""
+        peer = by_uuid.get(peer_uuid, {})
+        incoming = kind == "TRANSFER_IN"
+        peer_name = row.get("counterparty_name") or peer.get("minecraft_name") or peer.get("name") or "Игрок"
+        tx_id = str(row.get("tx_id") or "")
+        for suffix in (":in", ":out"):
+            if tx_id.endswith(suffix):
+                tx_id = tx_id[:-len(suffix)]
+                break
+        results.append({
+            "id": tx_id,
+            "sender": peer.get("id", "") if incoming else user["id"],
+            "recipient": user["id"] if incoming else peer.get("id", ""),
+            "fromName": peer_name if incoming else own_name,
+            "toName": own_name if incoming else (details.get("recipient") or peer_name),
+            "amount": abs(int(row.get("amount") or 0)),
+            "fee": 0,
+            "fee_percent": 0,
+            "at": int(row.get("created_at") or 0),
+            "note": str(details.get("note") or "")[:140],
+            "status": "COMMITTED",
+            "incoming": incoming,
+            "seen": True,
+        })
+    return sorted(results, key=lambda item: item["at"], reverse=True)[:100]
+
+
+def sync_incoming_transfer_notifications(database, user_id, value):
+    now = int(time.time())
+    with database.transaction() as db:
+        for row in value.get("ledger", []):
+            if str(row.get("tx_type") or "").upper() != "TRANSFER_IN" or row.get("status", "COMMITTED") != "COMMITTED":
+                continue
+            tx_id = str(row.get("tx_id") or "")
+            if tx_id.endswith(":in"):
+                tx_id = tx_id[:-3]
+            if not tx_id:
+                continue
+            try:
+                details = row.get("details") or "{}"
+                details = json.loads(details) if isinstance(details, str) else details
+            except (TypeError, ValueError):
+                details = {}
+            if not isinstance(details, dict):
+                details = {}
+            created_ms = int(row.get("created_at") or now * 1000)
+            created_s = max(1, created_ms // 1000)
+            sender = str(row.get("counterparty_name") or "Игрок")[:32]
+            body = f"{sender} перевёл {abs(int(row.get('amount') or 0))} АР."
+            note = str(details.get("note") or "")[:140]
+            if note:
+                body += f" Сообщение: {note}"
+            read_s = 0 if now - 7 * 86400 <= created_s <= now + 300 else created_s
+            db.execute(
+                "INSERT INTO cm_site_notifications(id,user_id,title,body,href,created_s,read_s) VALUES(%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(id) DO NOTHING",
+                (f"transfer:{tx_id}", user_id, "Входящий перевод", body[:1000], f"#account/transfers?history=1&transfer={quote(tx_id, safe='')}", created_s, read_s),
+            )
 
 
 def content(request):
@@ -156,6 +264,7 @@ async def password(request: Request):
         db.execute("UPDATE cm_site_users SET password_hash=%s,updated_s=%s WHERE id=%s", (encoded, now, user["id"]))
         db.execute("UPDATE cm_site_sessions SET revoked_s=%s WHERE user_id=%s AND token_hash<>%s", (now, user["id"], request.state.session["token_hash"]))
     request.app.state.database.audit(user, "password.changed", user["name"])
+    add_notification(request.app.state.database, user["id"], "Пароль изменён", "Пароль аккаунта CopiMine обновлён.", f"password:{user['id']}:{now}", "#settings/security")
     return {"ok": True, "user": review_user(user)}
 
 
@@ -176,6 +285,7 @@ async def unlink(request: Request):
     with request.app.state.database.transaction() as db:
         db.execute("UPDATE cm_site_users SET vk_id=NULL WHERE id=%s", (user["id"],))
     request.app.state.database.audit(user, "vk.unlinked", user["name"])
+    add_notification(request.app.state.database, user["id"], "VK ID отвязан", "Вход через VK ID отключён для аккаунта CopiMine.", f"vk-unlink:{user['id']}:{int(time.time())}", "#settings/connections")
     return {"ok": True, "user": review_user(target_user(request.app.state.database, user["id"]))}
 
 
@@ -203,10 +313,13 @@ async def reply_ticket(identifier: str, request: Request):
     if len(reply) > 6000 or status not in {"open", "closed", "in_progress", "resolved", "answered"}:
         fail(400, "invalid_ticket", "Проверьте ответ и статус обращения.")
     with request.app.state.database.transaction() as db:
-        if not db.execute("SELECT id FROM cm_site_tickets WHERE id=%s", (identifier,)).fetchone():
+        ticket = db.execute("SELECT id,user_id,title FROM cm_site_tickets WHERE id=%s", (identifier,)).fetchone()
+        if not ticket:
             fail(404, "not_found", "Обращение не найдено.")
-        db.execute("UPDATE cm_site_tickets SET reply=%s,status=%s,updated_s=%s WHERE id=%s", (reply, status, int(time.time()), identifier))
+        updated = int(time.time())
+        db.execute("UPDATE cm_site_tickets SET reply=%s,status=%s,updated_s=%s WHERE id=%s", (reply, status, updated, identifier))
     request.app.state.database.audit(user, "ticket.replied", identifier)
+    add_notification(request.app.state.database, ticket["user_id"], "Ответ по обращению", f"Команда ответила на обращение «{ticket['title']}».", f"ticket-reply:{identifier}:{updated}", f"#account/support?ticket={quote(identifier, safe='')}")
     return {"ok": True}
 
 
@@ -407,7 +520,9 @@ async def link_confirm(request: Request):
     throttle(request.app.state.database, "link-confirm:" + user["id"], 8, 600)
     data = await request.json()
     result = await run_in_threadpool(request.app.state.game.link_confirm, user, str(data.get("code", "")))
-    return {**result, "user": review_user(target_user(request.app.state.database, user["id"]))}
+    updated = target_user(request.app.state.database, user["id"])
+    add_notification(request.app.state.database, user["id"], "Minecraft привязан", f"К аккаунту CopiMine привязан профиль {updated['minecraft_name']}.", f"minecraft-link:{user['id']}:{updated['minecraft_uuid']}", "#settings/connections")
+    return {**result, "user": review_user(updated)}
 
 
 @router.get("/api/v7/economy")
@@ -416,8 +531,28 @@ def wallet(request: Request):
     value = request.app.state.game.wallet(user)
     with request.app.state.database.transaction() as db:
         recipients = db.execute("SELECT id,display_name,name FROM cm_site_users WHERE minecraft_uuid<>'' AND id<>%s AND enabled=1 ORDER BY name_norm LIMIT 200", (user["id"],)).fetchall()
-        transfers = db.execute("SELECT result FROM cm_site_receipts WHERE actor_id=%s AND operation='transfer' AND status='COMMITTED' ORDER BY created_s DESC LIMIT 100", (user["id"],)).fetchall()
-    return {"balance": value["account"]["balance"], "currency": "AR", "feePercent": 0, "transferFeePercent": 0, "recipients": [{"id": r["id"], "name": r["name"], "displayName": r["display_name"]} for r in recipients], "transfers": [json.loads(r["result"])["transfer"] for r in transfers], "unread": 0, "pin": value["pin"], "ledger": value["ledger"]}
+    sync_incoming_transfer_notifications(request.app.state.database, user["id"], value)
+    feed = notification_feed(request.app.state.database, user["id"])
+    transfers = transfer_history(request.app.state.database, user, value)
+    return {"balance": value["account"]["balance"], "currency": "AR", "feePercent": 0, "transferFeePercent": 0, "recipients": [{"id": r["id"], "name": r["name"], "displayName": r["display_name"]} for r in recipients], "transfers": transfers, "notifications": feed["notifications"], "unread": feed["unread"], "pin": value["pin"], "ledger": value["ledger"]}
+
+
+@router.get("/api/v7/notifications")
+@router.get("/api/v6/account/notifications")
+def account_notifications(request: Request):
+    user = current_user(request)
+    return notification_feed(request.app.state.database, user["id"])
+
+
+@router.post("/api/v7/notifications/{identifier}/read")
+def read_notification(identifier: str, request: Request):
+    user = current_user(request)
+    with request.app.state.database.transaction() as db:
+        updated = db.execute(
+            "UPDATE cm_site_notifications SET read_s=%s WHERE id=%s AND user_id=%s AND read_s=0",
+            (int(time.time()), identifier, user["id"]),
+        )
+    return {"ok": True, "updated": updated.rowcount == 1}
 
 
 def receipt_lookup(database, actor, key, operation, data):
@@ -470,6 +605,10 @@ async def transfer(request: Request):
     result = await run_in_threadpool(request.app.state.game.transfer, user, recipient["minecraft_name"], amount, pin, note, "site-" + hashlib.sha256((user["id"] + key).encode()).hexdigest())
     value = {"ok": True, "transfer": {"id": result["txId"], "sender": user["id"], "recipient": recipient["id"], "fromName": user["name"], "toName": recipient["name"], "amount": amount, "fee": 0, "fee_percent": 0, "created": time.time(), "note": note, "status": "COMMITTED"}}
     save_receipt(request.app.state.database, user, key, "transfer", fingerprint, value)
+    body = f"{user.get('display_name') or user['name']} перевёл {amount} АР."
+    if note:
+        body += f" Сообщение: {note}"
+    add_notification(request.app.state.database, recipient["id"], "Входящий перевод", body, f"transfer:{result['txId']}", f"#account/transfers?history=1&transfer={quote(str(result['txId']), safe='')}")
     request.app.state.database.audit(user, "bank.transfer", recipient["id"], details={"amount": amount, "txId": result["txId"]})
     return value
 

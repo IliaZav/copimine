@@ -1,4 +1,8 @@
 from pathlib import Path
+import shutil
+import subprocess
+
+import pytest
 
 
 ROOT = Path(__file__).parents[1]
@@ -23,3 +27,18 @@ def test_admin_status_labels_report_provider_and_game_readiness_truthfully():
     assert "SMTP не настроен" in production
     assert "Ожидает проверки домена" in production
     assert "ID приложения VK задан" in production
+
+
+def test_recovery_ui_uses_authenticated_server_identity_without_player_row():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node.js is needed for the recovery UI behavior regression")
+
+    result = subprocess.run(
+        [node, "--test", str(ROOT / "tests" / "recovery-ui.test.mjs")],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

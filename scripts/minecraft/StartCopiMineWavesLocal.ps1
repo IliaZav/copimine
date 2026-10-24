@@ -108,15 +108,12 @@ try {
     Write-Warning "Transcript logging is unavailable: $($_.Exception.Message)"
 }
 try {
-    if ($Doctor -and $JavaHome) {
-        & $server -JavaHome $JavaHome -ValidateOnly
-    } elseif ($Doctor) {
-        & $server -ValidateOnly
-    } elseif ($JavaHome) {
-        & $server -JavaHome $JavaHome
-    } else {
-        & $server
-    }
+    $childArguments = @()
+    if ($Doctor) { $childArguments += '-ValidateOnly' }
+    if ($JavaHome) { $childArguments += @('-JavaHome', $JavaHome) }
+    # Run the starter in its own host process: in-process invocation can stall
+    # while the isolated PostgreSQL cluster finishes recovery on Windows.
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $server @childArguments
     $exitCode = $LASTEXITCODE
 } finally {
     if ($transcriptStarted) {

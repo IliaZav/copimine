@@ -122,8 +122,8 @@ if (!Array.isArray(mineflayer.testedVersions)
   const latestSupportedVersion = mineflayer.latestSupportedVersion || 'unknown'
   throw new Error(`Installed Mineflayer package has no Minecraft 26.1 support; latest supported version is ${latestSupportedVersion}`)
 }
-if (host !== '127.0.0.1' || port !== 25566) {
-  throw new Error(`End Rift protocol bots are restricted to 127.0.0.1:25566, got ${host}:${port}`)
+if (host !== '127.0.0.1') {
+  throw new Error(`End Rift protocol bots are restricted to loopback, got ${host}:${port}`)
 }
 const bot = mineflayer.createBot({ host, port, username, version: protocolVersion, auth: 'offline' })
 let movementTickEndCount = 0
@@ -914,6 +914,7 @@ function attackNearest() {
         mouse: 1,
         hand: 0,
         sneaking: false,
+        location: { x: 0, y: 0, z: 0 },
       })
       bot._client.write('arm_animation', { hand: 0 })
       attackCount += 1
@@ -1059,7 +1060,10 @@ function lookAtServer(point) {
   bot._client.write('look', {
     yaw: packetYaw,
     pitch: packetPitch,
-    onGround: bot.entity.onGround,
+    flags: {
+      onGround: Boolean(bot.entity.onGround),
+      hasHorizontalCollision: undefined,
+    },
   })
   return {
     yaw,
@@ -1159,7 +1163,9 @@ async function reflectFireball(entity) {
     bot._client.write('use_entity', {
       target: target.id,
       mouse: 1,
+      hand: 0,
       sneaking: false,
+      location: { x: 0, y: 0, z: 0 },
     })
     bot._client.write('arm_animation', { hand: 0 })
     reflectedProjectiles.add(projectileKey)

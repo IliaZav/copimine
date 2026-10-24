@@ -108,8 +108,8 @@ function acceptLocalTestResourcePack(bot, packet) {
 }
 
 function attachLocalClientModHandshake(bot, endpoint) {
-  if (!endpoint || endpoint.host !== '127.0.0.1' || Number(endpoint.port) !== 25566) {
-    throw new Error('test client handshake is restricted to 127.0.0.1:25566')
+  if (!endpoint || endpoint.host !== '127.0.0.1') {
+    throw new Error(`test client handshake is restricted to loopback, got ${endpoint && endpoint.host}`)
   }
   if (endpoint.version !== REQUIRED_VERSION) {
     throw new Error(`test client handshake only emulates ${REQUIRED_VERSION}`)

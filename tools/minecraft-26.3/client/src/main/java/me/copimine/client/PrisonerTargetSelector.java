@@ -65,7 +65,8 @@ public final class PrisonerTargetSelector {
         client.level.getEntities(EntityTypeTest.forClass(Entity.class), rayBounds,
                 target -> target != client.player
                         && target instanceof LivingEntity living
-                        && living.isAlive() && !living.isSpectator() && living.level() == client.level,
+                        && living.isAlive() && !living.isSpectator() && living.level() == client.level
+                        && PrisonerTargetRayPolicy.intersectsSegment(origin, end, target.getBoundingBox()),
                 queryEntities, MAX_QUERY_ENTITIES);
         List<PrisonerTargetRayPolicy.Candidate<Entity>> candidates = new ArrayList<>(queryEntities.size());
         for (Entity target : queryEntities) {

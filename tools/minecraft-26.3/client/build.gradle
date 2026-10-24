@@ -68,4 +68,6 @@ tasks.withType(Test).configureEach {
     useJUnitPlatform()
     maxParallelForks = 1
     maxHeapSize = '256m'
+    // Keep the heap out of the low 4 GiB so native allocations are not blocked.
+    jvmArgs '-XX:HeapBaseMinAddress=4g'
 }

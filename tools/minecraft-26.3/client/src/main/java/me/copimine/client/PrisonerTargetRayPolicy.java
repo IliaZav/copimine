@@ -48,6 +48,13 @@ public final class PrisonerTargetRayPolicy {
         return result;
     }
 
+    /** Keeps the broad-phase query to the narrow camera corridor, not its whole bounding box. */
+    public static boolean intersectsSegment(Vec3 origin, Vec3 end, AABB bounds) {
+        if (!finite(origin) || !finite(end) || bounds == null || bounds.hasNaN()) return false;
+        AABB padded = bounds.inflate(0.3D);
+        return padded.contains(origin) || padded.clip(origin, end).isPresent();
+    }
+
     private static boolean finite(Vec3 vector) {
         return vector != null && Double.isFinite(vector.x)
                 && Double.isFinite(vector.y) && Double.isFinite(vector.z);

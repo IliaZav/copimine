@@ -94,29 +94,31 @@ class PrisonerTargetRayPolicyTest {
     }
 
     @Test
-    void denseBroadPhaseResultsCanHideAnEligibleTargetAfterTheCurrent256EntryLimit() {
+    void denseOffRayEntitiesCannotHideAnEligibleTargetBehindTheQueryLimit() {
         List<PrisonerTargetRayPolicy.Candidate<String>> broadPhaseResults = new ArrayList<>();
         for (int index = 0; index < CURRENT_QUERY_LIMIT; index++) {
             UUID id = UUID.nameUUIDFromBytes(
                     ("off-ray-living-entity-" + index).getBytes(StandardCharsets.UTF_8));
             // These boxes fall inside the selector's rayBounds.inflate(1) query,
-            // but their X range misses the narrow camera ray. They still occupy
-            // result slots because the query predicate does not filter by aim or eligibility.
+            // but their X range misses the narrow camera ray. They must not
+            // consume result slots because the selector filters by the corridor.
             broadPhaseResults.add(new PrisonerTargetRayPolicy.Candidate<>(
                     "off-ray-" + index, id, new AABB(0.55, 1.0, 5, 0.95, 2.0, 5.6),
                     5, true, false));
         }
         broadPhaseResults.add(target("late-ally", ALLY, 10, true, false));
+        Vec3 end = CAMERA.add(FORWARD.scale(28));
+        List<PrisonerTargetRayPolicy.Candidate<String>> corridorResults = broadPhaseResults.stream()
+                .filter(candidate -> PrisonerTargetRayPolicy.intersectsSegment(
+                        CAMERA, end, candidate.bounds()))
+                .limit(CURRENT_QUERY_LIMIT)
+                .toList();
 
-        var boundedQuerySelection = selectCandidates(
-                broadPhaseResults.subList(0, CURRENT_QUERY_LIMIT), 28);
+        var boundedQuerySelection = selectCandidates(corridorResults, 28);
         var completeQuerySelection = selectCandidates(broadPhaseResults, 28);
 
-        // Level.getEntities(..., maxCount) may return the first 256 matching
-        // entities from the broad-phase box. With that ordering, the client
-        // preview cannot see the 257th candidate even though the ray policy
-        // selects it when given the complete candidate list.
-        assertNull(boundedQuerySelection);
+        assertNotNull(boundedQuerySelection);
+        assertEquals("late-ally", boundedQuerySelection.target());
         assertNotNull(completeQuerySelection);
         assertEquals("late-ally", completeQuerySelection.target());
     }

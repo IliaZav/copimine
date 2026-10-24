@@ -32,7 +32,7 @@
 |---|---|---|
 | `mail` | A | `90.188.117.117` |
 | `@` | TXT | `v=spf1 ip4:90.188.117.117 -all` |
-| `site202610._domainkey` | TXT | Содержимое `DKIM_PUBLIC_RECORD.txt`: соединить строки внутри кавычек без пробелов между частями ключа |
+| `site202610._domainkey` | TXT | Значение из [`DKIM_PUBLIC_RECORD.txt`](../deploy/DKIM_PUBLIC_RECORD.txt), без внешних кавычек |
 | `_dmarc` | TXT | `v=DMARC1; p=none; adkim=r; aspf=r` |
 
 SPF следует **объединить с существующей политикой**, если появятся другие

@@ -1,0 +1,5 @@
+Public DKIM TXT record for copimine.ru.
+DNS name: site202610._domainkey
+Type: TXT
+Value (paste without surrounding quotes):
+v=DKIM1; h=sha256; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApGMnZKxh36233NVmSSYpF5NWDlYaWdLAjAVotL77y/pdKi2DCwkqt6SU8S4HK7ShkSTpdmUv+Cy8kPe14XzopCbOrsNiJ6u7FhqTWPkXp6sEeMqWLk8J8iafsnXmxGqt3ibGF4IJ+t8yKrG1AFJ9aKXe2LDp6NOBCBMjTMIMKZgYaweIdIxDu7nnsdcMI/7aeT78uUQvKT0LDOtedQVzti84gYpjbC59U5YWH/nk7hWR2qJNLi3MS+saVDmlaMWrfELr2nQakcHn+UD1n3ekrsDktlocES8h+XHrAYL861SsbctY9cS+ca1jlOmVaQhSgNrSYnjUspFd0Brvp490XQIDAQAB

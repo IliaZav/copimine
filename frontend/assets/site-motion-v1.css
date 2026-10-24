@@ -1,0 +1,181 @@
+:root {
+  --bg: #171b1e;
+  --surface: #1e2428;
+  --raised: #272e32;
+  --hover: #30383d;
+  --line: #3a444a;
+  --v6-grid: #3a444a;
+}
+
+body { background: #171b1e !important; }
+
+.cm72-hero-photo { filter: brightness(1.55) saturate(1.04); }
+.cm72-hero::after {
+  background: linear-gradient(180deg, #070a1015 0%, transparent 30%, #10121420 50%, #171b1eae 77%, #171b1e 100%);
+}
+
+.cm72-map-preview { isolation: isolate; background: #192329; }
+.cm72-map-preview::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(90deg, #111a1feF 0%, #111a1fdf 40%, #111a1f66 72%, #111a1f10 100%);
+  pointer-events: none;
+}
+.cm72-map-preview::after { display: none !important; }
+.cm72-map-preview > img {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  image-rendering: auto;
+  filter: saturate(.82) brightness(.88);
+}
+.cm72-map-preview-mark,
+.cm72-map-preview-copy,
+.cm72-map-preview-link { position: relative; z-index: 1; }
+.cm72-map-preview-copy { max-width: min(470px, 70%); }
+.cm72-map-preview-copy > strong { overflow-wrap: anywhere; }
+.cm72-map-preview-link { white-space: nowrap; }
+
+.cm72-gallery-stage {
+  position: relative;
+  height: 520px;
+  perspective: 1450px;
+  perspective-origin: 50% 43%;
+  transform-style: preserve-3d;
+  touch-action: pan-y;
+  user-select: none;
+  cursor: grab;
+}
+.cm72-gallery-track { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; }
+.cm72-gallery-stage.is-dragging { cursor: grabbing; }
+.cm72-carousel-slide {
+  position: absolute;
+  inset-block: 22px 18px;
+  inset-inline: 0;
+  width: min(76%, 860px);
+  margin-inline: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #ffffff28;
+  border-radius: 16px;
+  background: #182025;
+  color: inherit;
+  text-align: left;
+  box-shadow: 0 18px 65px #0006;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  cursor: pointer;
+  will-change: transform, opacity;
+}
+.cm72-carousel-slide > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  filter: brightness(.96) saturate(.94);
+}
+.cm72-carousel-slide::after {
+  content: "";
+  position: absolute;
+  inset: 38% 0 0;
+  background: linear-gradient(transparent, #071014d9);
+  pointer-events: none;
+}
+.cm72-carousel-slide[aria-current="true"] { border-color: #ffffff58; }
+.cm72-carousel-slide[aria-hidden="true"] { visibility: hidden; }
+.cm72-carousel-caption {
+  position: absolute;
+  z-index: 1;
+  inset-inline: 27px;
+  bottom: 24px;
+  display: grid;
+  gap: 4px;
+  pointer-events: none;
+}
+.cm72-carousel-caption strong { color: #fff; font-size: 19px; letter-spacing: -.025em; }
+.cm72-carousel-caption small { color: #d0dbdd; font-size: 12px; }
+.cm72-gallery-hint { display: none; }
+
+.cm-initial-skeleton { background: #171b1e; }
+.cm-skeleton-header {
+  left: 50%;
+  right: auto;
+  width: min(1240px, calc(100% - 80px));
+  padding-inline: 32px;
+  transform: translateX(-50%);
+}
+.cm-skeleton-hero {
+  width: min(1240px, calc(100% - 80px));
+  margin: 28px auto 0;
+  border-radius: 22px;
+  overflow: hidden;
+}
+.cm-skeleton-hero::before { filter: brightness(1.55) saturate(1.04); }
+.cm-skeleton-hero::after {
+  background: linear-gradient(180deg, #070a1015 0%, transparent 30%, #10121420 50%, #171b1eae 77%, #171b1e 100%);
+}
+
+.v9-auth-field-hint { display: block; margin: -11px 0 17px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.v6-map-shell { width: min(1760px, calc(100% - 64px)); max-width: calc(100vw - 32px); min-width: 0; }
+body:has(.v6-map-shell) { overflow-x: clip; }
+.v6-map-title { min-width: 0; flex-wrap: wrap; }
+.v6-map-title > * { min-width: 0; }
+.v6-map-title h1 { max-width: 100%; overflow-wrap: anywhere; }
+.v6-map-toolbar { min-width: 0; flex-wrap: wrap; }
+.v6-world-tabs { min-width: 0; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+.v6-world-tabs::-webkit-scrollbar { display: none; }
+.v6-world-tabs > button { flex: 0 0 auto; white-space: nowrap; }
+
+@media (min-width: 1600px) {
+  .cm-skeleton-header { width: min(1320px, calc(100% - 100px)); }
+  .cm-skeleton-hero { width: min(1320px, calc(100% - 100px)); }
+}
+@media (max-width: 1100px) {
+  .cm-skeleton-header { width: calc(100% - 48px); }
+  .cm-skeleton-hero { width: calc(100% - 48px); }
+}
+@media (max-width: 899px) {
+  .cm-skeleton-hero { justify-content: center; padding: 0 28px 90px; }
+  .cm-skeleton-copy { text-align: center; }
+  .cm-skeleton-copy i,
+  .cm-skeleton-copy b,
+  .cm-skeleton-copy span,
+  .cm-skeleton-copy em,
+  .cm-skeleton-copy small { margin-left: auto; margin-right: auto; }
+}
+@media (max-width: 760px) {
+  .cm72-hero-photo { filter: brightness(1.58) saturate(1.05); }
+  .cm-skeleton-header { top: 14px; width: calc(100% - 28px); height: 68px; padding-inline: 13px; }
+  .cm-skeleton-hero { width: calc(100% - 28px); height: 650px; min-height: 580px; max-height: calc(100svh - 33px); margin-top: 14px; padding: 0 15px 77px; border-radius: 16px; }
+  .cm-skeleton-hero::before { background-position: 54% 32%; filter: brightness(1.58) saturate(1.05); }
+  .cm72-gallery-stage { height: 350px; perspective: 1000px; }
+  .cm72-carousel-slide { inset-block: 13px 13px; width: calc(100% - 26px); border-radius: 12px; }
+  .cm72-carousel-caption { inset-inline: 17px; bottom: 17px; }
+  .cm72-carousel-caption strong { font-size: 15px; }
+  .cm72-carousel-caption small { font-size: 10px; }
+  .v6-map-shell { width: calc(100% - 32px); margin: 20px auto 35px; }
+  .v6-map-title { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .v6-map-title h1 { font-size: clamp(29px, 8vw, 36px); }
+  .v6-map-toolbar { align-items: stretch; }
+  .v6-world-tabs { width: 100%; flex: 1 1 100%; }
+  .v6-map-toolbar > .icon-btn { align-self: flex-end; }
+  .cm72-map-preview-copy { max-width: 82%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cm72-carousel-slide,
+  .cm72-hero-photo,
+  .cm-skeleton-nav,
+  .cm-skeleton-cart,
+  .cm-skeleton-action,
+  .cm-skeleton-copy i,
+  .cm-skeleton-copy b,
+  .cm-skeleton-copy span,
+  .cm-skeleton-copy em,
+  .cm-skeleton-copy small { animation: none !important; transition: none !important; }
+}

@@ -102,6 +102,23 @@ def test_registration_uses_only_username_and_password(client):
     assert current["emailVerified"] is False
 
 
+def test_registration_keeps_profile_nickname_separate_from_login(client):
+    session = client.get("/api/v6/session").json()
+    response = client.post(
+        "/api/v6/auth/register",
+        headers={"Origin": "http://testserver", "X-CSRF-Token": session["csrf"]},
+        json={
+            "username": "SiteLogin",
+            "displayName": "Игровое имя",
+            "password": "A-simple-test-password-2026",
+        },
+    )
+    assert response.status_code == 200, response.text
+    current = client.get("/api/v6/session").json()["user"]
+    assert current["username"] == "SiteLogin"
+    assert current["displayName"] == "Игровое имя"
+
+
 def test_email_cannot_be_used_as_login_name(client):
     from backend.auth import create_user
 

@@ -10,16 +10,19 @@ from .security import COOKIE, current_user, digest, fail, hash_password, public_
 router = APIRouter(prefix="/api/v6")
 
 
-def create_user(database, name, password, email="", role="player", email_verified=False, encoded=None):
+def create_user(database, name, password, email="", role="player", email_verified=False, encoded=None, display_name=None):
     if not valid_name(name):
         fail(400, "invalid_name", "Логин: от 3 до 32 латинских букв, цифр или символов подчёркивания.")
+    display_name = str(display_name or name).strip()
+    if not 2 <= len(display_name) <= 32 or any(ord(char) < 32 for char in display_name):
+        fail(400, "invalid_display_name", "Ник профиля должен содержать от 2 до 32 символов.")
     encoded = encoded or hash_password(password)
     now = int(time.time())
     user_id = uuid.uuid4().hex
     with database.transaction() as db:
         if db.execute("SELECT id FROM cm_site_users WHERE name_norm=%s OR (email_norm IS NOT NULL AND email_norm=%s)", (name.lower(), email.lower() or None)).fetchone():
             fail(409, "account_exists", "Аккаунт с такими данными уже существует.")
-        db.execute("INSERT INTO cm_site_users(id,name,name_norm,display_name,email,email_norm,password_hash,role,email_verified,created_s,updated_s) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (user_id, name, name.lower(), name, email, email.lower() or None, encoded, role, int(email_verified), now, now))
+        db.execute("INSERT INTO cm_site_users(id,name,name_norm,display_name,email,email_norm,password_hash,role,email_verified,created_s,updated_s) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (user_id, name, name.lower(), display_name, email, email.lower() or None, encoded, role, int(email_verified), now, now))
         return dict(db.execute("SELECT * FROM cm_site_users WHERE id=%s", (user_id,)).fetchone())
 
 
@@ -100,6 +103,6 @@ async def register(request: Request, response: Response):
     throttle(database, "register-name:" + ip + ":" + name.lower(), 3, 3600)
     if data.get("terms") is False:
         fail(400, "terms_required", "Для регистрации нужно принять правила проекта.")
-    user = create_user(database, name, data.get("password", ""))
+    user = create_user(database, name, data.get("password", ""), display_name=data.get("displayName"))
     database.audit(user, "auth.register")
     return issue_session(request, response, user, bool(data.get("remember", False)))

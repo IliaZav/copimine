@@ -53,21 +53,21 @@
     const list = galleryItems();
     if (!list.length) return '';
     api.galleryIndex = Math.min(api.galleryIndex, list.length - 1);
-    const item = list[api.galleryIndex];
-    return `<section id="cm72-carousel" class="cm72-gallery cm72-reveal" role="region" aria-roledescription="карусель" aria-label="Кадры проекта" tabindex="0"><div class="cm72-section-heading"><div><h2>Скриншоты CopiMine</h2><p>Игровые места и постройки.</p></div><div class="cm72-gallery-controls"><span id="cm72-gallery-count" aria-live="polite">${String(api.galleryIndex + 1).padStart(2, '0')} <i>/ ${String(list.length).padStart(2, '0')}</i></span>${list.length > 1 ? arrow('Предыдущий кадр', 'cm72-gallery-prev') + arrow('Следующий кадр', 'cm72-gallery-next') : ''}</div></div><button class="cm72-gallery-frame ${item.kind === 'map' || item.src.includes('/map') ? 'is-map' : ''}" type="button" data-action="cm72-gallery-open" aria-label="Открыть кадр на весь экран"><img id="cm72-gallery-image" src="${asset(item.src)}" alt="${E(item.alt || item.title)}" loading="lazy" draggable="false"><span class="cm72-gallery-caption"><strong id="cm72-gallery-title">${E(item.title)}</strong><small id="cm72-gallery-description">${E(item.caption || '')}</small></span><span class="cm72-gallery-expand">${icon('fullscreen')}<span>Открыть</span></span></button><div class="cm72-gallery-thumbnails" aria-label="Выбрать кадр">${list.map((x, i) => `<button type="button" data-action="cm72-gallery-pick" data-index="${i}" aria-label="Кадр ${i + 1}: ${E(x.title)}" aria-current="${i === api.galleryIndex ? 'true' : 'false'}"><img src="${asset(x.src === photo ? thumb : x.src)}" alt="" loading="lazy" draggable="false"><span>${E(x.title)}</span></button>`).join('')}</div></section>`;
+    const current = api.galleryIndex;
+    return `<section id="cm72-carousel" class="cm72-gallery cm72-reveal" role="region" aria-roledescription="карусель" aria-label="Скриншоты CopiMine" tabindex="0"><div class="cm72-section-heading"><div><h2>Скриншоты CopiMine</h2><p>Игровые места и постройки.</p></div><div class="cm72-gallery-controls"><span id="cm72-gallery-count" aria-live="polite">${String(current + 1).padStart(2, '0')} <i>/ ${String(list.length).padStart(2, '0')}</i></span>${list.length > 1 ? arrow('Предыдущий кадр', 'cm72-gallery-prev') + arrow('Следующий кадр', 'cm72-gallery-next') : ''}</div></div><div class="cm72-gallery-stage" id="cm72-gallery-stage" aria-label="Перетаскивай кадры мышью или пальцем"><div class="cm72-gallery-track">${list.map((item, i) => {
+      const offset = i === current ? 0 : i === (current + 1) % list.length ? 1 : i === (current + list.length - 1) % list.length ? -1 : 2;
+      const visible = Math.abs(offset) <= 1;
+      return `<button class="cm72-carousel-slide" type="button" data-action="cm72-gallery-open" data-index="${i}" data-position="${offset}" aria-label="${E(item.title)}. ${E(item.caption || '')}" aria-current="${String(i === current)}" aria-hidden="${String(!visible)}" tabindex="${visible ? '0' : '-1'}"><img src="${asset(item.src)}" alt="${E(item.alt || item.title)}" loading="lazy" decoding="async" draggable="false"><span class="cm72-carousel-caption"><strong>${E(item.title)}</strong><small>${E(item.caption || '')}</small></span></button>`;
+    }).join('')}</div></div></section>`;
   }
   function setGallery(index) {
-    const list = galleryItems(); if (!list.length) return;
+    const list = galleryItems();
+    if (!list.length) return;
     api.galleryIndex = (index + list.length) % list.length;
-    const x = list[api.galleryIndex], frame = document.querySelector('.cm72-gallery-frame');
-    if (!frame) return;
-    const img = el('cm72-gallery-image'); img.src = asset(x.src); img.alt = x.alt || x.title;
-    img.classList.remove('cm72-frame-enter'); void img.offsetWidth; if (motion()) img.classList.add('cm72-frame-enter');
-    frame.classList.toggle('is-map', x.kind === 'map' || x.src.includes('/map'));
-    el('cm72-gallery-title').textContent = x.title;
-    el('cm72-gallery-description').textContent = x.caption || '';
-    el('cm72-gallery-count').innerHTML = String(api.galleryIndex + 1).padStart(2, '0') + ' <i>/ ' + String(list.length).padStart(2, '0') + '</i>';
-    document.querySelectorAll('[data-action="cm72-gallery-pick"]').forEach((b, i) => b.setAttribute('aria-current', String(i === api.galleryIndex)));
+    const count = el('cm72-gallery-count');
+    if (count) count.innerHTML = String(api.galleryIndex + 1).padStart(2, '0') + ' <i>/ ' + String(list.length).padStart(2, '0') + '</i>';
+    const slides = document.querySelectorAll('.cm72-carousel-slide');
+    if (slides.length) window.CMSiteMotion?.carousel(slides, api.galleryIndex, motion());
   }
   H['cm72-gallery-prev'] = () => setGallery(api.galleryIndex - 1);
   H['cm72-gallery-next'] = () => setGallery(api.galleryIndex + 1);
@@ -97,7 +97,7 @@
     const available = dimensions.filter(item => item.available).map(item => item.name);
     const title = !mapState.loaded ? 'Проверяем публикацию' : mapState.error ? 'Карта временно недоступна' : !info ? 'Публикации пока нет' : info.enabled === false ? 'Карта скрыта' : available.length ? 'Карта опубликована' : 'Публикации пока нет';
     const detail = available.length ? `Доступны: ${available.join(', ')}` : mapState.error ? 'Открой карту и повтори запрос.' : !mapState.loaded ? 'Проверяем доступность миров.' : 'Сохранённые участки появятся после первой публикации.';
-    return `<a href="#map" class="cm72-map-image cm72-map-preview" aria-label="${E(`Карта миров. ${title}. ${detail} Открыть карту.`)}"><div class="cm72-map-preview-mark">${icon('map')}</div><div class="cm72-map-preview-copy"><span>Обычный мир · Незер · Энд</span><strong>${E(title)}</strong><small>${E(detail)}</small></div><span class="cm72-map-preview-link">Открыть карту ${icon('arrow-up-right')}</span></a>`;
+    return `<a href="#map" class="cm72-map-image cm72-map-preview" aria-label="${E(`Карта миров. ${title}. ${detail} Открыть карту.`)}"><img src="${asset('assets/img/map-world.webp')}" alt="" loading="lazy" decoding="async"><div class="cm72-map-preview-mark">${icon('map')}</div><div class="cm72-map-preview-copy"><span>Обычный мир · Незер · Энд</span><strong>${E(title)}</strong><small>${E(detail)}</small></div><span class="cm72-map-preview-link">Открыть карту ${icon('arrow-up-right')}</span></a>`;
   }
   function mapSchedule() {
     const mapState = window.CMBlueMap?.state?.() || {};
@@ -108,14 +108,19 @@
     return CM6Domain.mapInterval(state().mapSettings.intervalMinutes, state().mapSettings.enabled && state().mapSettings.autoRefresh !== false);
   }
   let draggedGallery = false;
-  H['cm72-gallery-open'] = () => { if (draggedGallery) { draggedGallery = false; return; } galleryModal(); };
-  H['gallery-open'] = b => { const i = galleryItems().findIndex(x => x.id === b.dataset.id); if (i >= 0) api.galleryIndex = i; galleryModal(); };
+  H['cm72-gallery-open'] = b => {
+    if (draggedGallery) { draggedGallery = false; return; }
+    const selected = Number(b?.dataset.index);
+    if (Number.isInteger(selected) && selected !== api.galleryIndex) { setGallery(selected); return; }
+    galleryModal();
+  };
+  H['gallery-open'] = b => { const i = galleryItems().findIndex(x => x.id === b.dataset.id); if (i >= 0) setGallery(i); galleryModal(); };
   H['cm72-lightbox-prev'] = () => { setGallery(api.galleryIndex - 1); galleryModal(); };
   H['cm72-lightbox-next'] = () => { setGallery(api.galleryIndex + 1); galleryModal(); };
   document.addEventListener('keydown', e => {
     const lightbox = el('modal')?.open && el('modal').classList.contains('cm72-lightbox-dialog');
     if (api.galleryOpener?.isConnected) M.UI.backFocus = api.galleryOpener;
-    if (!lightbox && !e.target.closest('#cm72-carousel')) return;
+    if (!lightbox && !e.target.closest?.('#cm72-carousel')) return;
     if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
       e.preventDefault(); setGallery(api.galleryIndex + (e.key === 'ArrowRight' ? 1 : -1)); if (lightbox) galleryModal();
     }
@@ -274,10 +279,9 @@
       form.addEventListener('submit', () => { hint.textContent = 'Сохраняем…'; const settled = () => { if (!form.isConnected) return; if (submit.disabled) { setTimeout(settled, 100); return; } const error = form.querySelector('.form-error'); if (error?.textContent) hint.textContent = 'Изменения не сохранены'; else { form.dataset.cm72Dirty = 'false'; hint.textContent = 'Сохранено'; } }; setTimeout(settled, 100); });
     });
   }
-  let observer;
   V.after.push((page, tab) => {
     document.body.classList.add('cm72');
-    document.documentElement.style.setProperty('--bg', '#101214');
+    document.documentElement.style.setProperty('--bg', '#171b1e');
     if (el('v7-save-status')) el('v7-save-status').setAttribute('aria-live', 'polite');
     const version = document.querySelector('.v71-reviewbar>span:first-child'); if (version) version.innerHTML = '<i></i>v7.3.2 <b>Локальный просмотр</b>';
     // Hidden is a semantic state. Some inherited component rules set display:flex;
@@ -285,9 +289,34 @@
     document.querySelectorAll('.v71-header-exit').forEach(n => n.remove());
     document.querySelectorAll('.v7-test-hint,.event-rail').forEach(n => n.remove());
     if (page === 'home') {
-      const frame = document.querySelector('.cm72-gallery-frame'); let start;
-      frame?.addEventListener('pointerdown', e => { start = e.clientX; draggedGallery = false; });
-      frame?.addEventListener('pointerup', e => { if (start != null && Math.abs(e.clientX - start) > 45) { draggedGallery = true; setGallery(api.galleryIndex + (e.clientX < start ? 1 : -1)); } start = null; });
+      const stage = el('cm72-gallery-stage'); let startX = null, lastX = 0, raf = 0;
+      stage?.addEventListener('pointerdown', e => {
+        if (e.button !== 0) return;
+        const slide = e.target.closest('.cm72-carousel-slide'); if (!slide) return;
+        startX = e.clientX; lastX = 0; draggedGallery = false;
+        try { slide.setPointerCapture(e.pointerId); } catch { /* Pointer capture is optional. */ }
+      });
+      stage?.addEventListener('pointermove', e => {
+        if (startX === null) return;
+        lastX = e.clientX - startX;
+        if (Math.abs(lastX) < 7) return;
+        draggedGallery = true; stage.classList.add('is-dragging');
+        if (!raf) raf = requestAnimationFrame(() => { raf = 0; window.CMSiteMotion?.drag(stage, lastX, motion()); });
+      });
+      const finishDrag = e => {
+        if (startX === null) return;
+        const delta = e.clientX - startX;
+        if (Math.abs(delta) > 45) {
+          draggedGallery = true;
+          setGallery(api.galleryIndex + (delta < 0 ? 1 : -1));
+          setTimeout(() => { draggedGallery = false; }, 0);
+        } else draggedGallery = false;
+        startX = null; stage.classList.remove('is-dragging');
+        window.CMSiteMotion?.settle(stage, motion());
+      };
+      stage?.addEventListener('pointerup', finishDrag);
+      stage?.addEventListener('pointercancel', e => { startX = null; draggedGallery = false; stage.classList.remove('is-dragging'); window.CMSiteMotion?.settle(stage, motion()); });
+      window.CMSiteMotion?.carousel(document.querySelectorAll('.cm72-carousel-slide'), api.galleryIndex, motion());
     }
     if (page !== 'admin') {
       const title = document.querySelector('.page-head,.v7-page-heading,.v71-page-head');
@@ -299,11 +328,8 @@
       input.type = 'search'; const b = document.createElement('button'); b.type = 'button'; b.className = 'cm72-search-clear'; b.dataset.action = 'cm72-search-clear'; b.setAttribute('aria-label', 'Очистить поиск'); b.innerHTML = icon('x'); wrap.append(b);
       const update = () => { b.hidden = !input.value; }; input.addEventListener('input', update); update();
     });
-    observer?.disconnect();
-    if (motion() && 'IntersectionObserver' in window) {
-      observer = new IntersectionObserver(entries => entries.forEach(entry => { if (entry.isIntersecting) { entry.target.classList.add('cm72-visible'); observer.unobserve(entry.target); } }), { threshold: .06 });
-      document.querySelectorAll('.cm72-reveal').forEach(n => { n.classList.add('cm72-motion-ready'); observer.observe(n); });
-    }
+    window.CMSiteMotion?.route(el('view'), motion());
+    window.CMSiteMotion?.reveal(document.querySelectorAll('.cm72-reveal'), motion());
     bindSkins(); bindFormFeedback();
     if (page === 'settings' && M.UI.params.get('skin')) setTimeout(() => el('cm72-skin-settings')?.scrollIntoView({ block: 'center', behavior: motion() ? 'smooth' : 'instant' }), 100);
     const top = el('cm72-back-top'); if (top) top.hidden = page === 'admin' || window.scrollY < 750;

@@ -28,6 +28,9 @@ test('auth, FAQ route and admin breadcrumb expose the intended navigation', () =
 
   const register = M.renderers.auth('register');
   const login = M.renderers.auth('login');
+  assert.match(register, /name="displayName"/);
+  assert.match(register, /Ник профиля/);
+  assert.match(register, /Логин/);
   assert.match(register, /name="username"/);
   assert.match(register, /name="password"/);
   assert.doesNotMatch(register, /type="email"|Почт|VK ID|VK/iu);

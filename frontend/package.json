@@ -1,0 +1,15 @@
+{
+  "name": "copimine-site-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build:motion": "esbuild assets/js/site-motion.js --bundle --minify --format=iife --target=es2020 --outfile=assets/js/site-motion.v1.js"
+  },
+  "dependencies": {
+    "animejs": "^4.5.0",
+    "motion": "^14.6.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}

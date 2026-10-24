@@ -1,8 +1,9 @@
 /* Navigation search only: typing can open/highlight a screen, NEVER execute an action. */
 (function(){
 'use strict';
-const M=CM,V=CMV4,X=CM6,A=CM71,E=M.esc,D=CM73Domain,H=M.handlers;
-let query='',timer=0,keepFocus=false,lastUrl='',matches=[],notice='';
+const M=CM,V=CMV4,X=CM6,A=CM71,W=CM5,E=M.esc,D=CM73Domain,H=M.handlers;
+const queryKey='copimine.admin.search.query.v1';
+let query=(()=>{try{return sessionStorage.getItem(queryKey)||'';}catch{return '';}})(),timer=0,keepFocus=false,lastUrl='',matches=[],notice='';
 const aliases={
  overview:'обзор;главная;рабочий стол;сводка;состояние проекта;dashboard;home;summary',
  statistics:'аналитика;статистика;посещения;посетители;популярный предмет;самый популярный товар;воронка;конверсия;продажи;популярность;отчеты;метрики;analytics;conversion;sales',
@@ -65,12 +66,12 @@ function entries(){
  const rows=A.adminEntries.map(e=>({id:e[0],title:e[1],url:'#admin/'+e[0],aliases:[e[1],...(aliases[e[0]]||'').split(';')],icon:e[3]}));
  for(const [id,title,route,a]of special)rows.push({id,title,url:'#admin/'+route,aliases:[title,...a.split(';')],icon:'search'});
  for(const a of X.actions.filter(a=>a.scope!=='server'))rows.push({id:a.id,title:a.label,url:'#admin/players?player='+encodeURIComponent(target)+'&sub=actions',aliases:[a.label,a.id,...(actionAliases[a.id]||'').split(';')],icon:a.icon||'sliders'});
- for(const p of M.state.players)rows.push({id:p.id,title:p.name,url:'#admin/players?player='+encodeURIComponent(p.id),aliases:[p.name,p.displayName||'',p.id],icon:'user'});
+ for(const p of M.state.players)rows.push({id:p.id,title:p.displayName||p.name,url:'#admin/players?player='+encodeURIComponent(p.id),aliases:[p.name,p.displayName||'',p.minecraftName||'',p.minecraftUuid||'',p.id],icon:'user',avatar:W.head(p,28)});
  for(const p of M.state.catalog)rows.push({id:p.id,title:p.name,url:'#admin/shop?scope='+(p.visibility==='public'?'public':'private'),aliases:[p.name,p.id,p.adminSubtitle||'',...(p.aliases||[])],icon:'package'});
  return rows;
 }
 function search(q){return entries().map(e=>({...e,score:D.rank(q,e.aliases)})).filter(e=>Number.isFinite(e.score)).sort((a,b)=>a.score-b.score).filter((e,i,rows)=>rows.findIndex(x=>x.id===e.id&&x.url===e.url)===i).slice(0,5);}
-function status(){const box=document.getElementById('cm73-search-results');if(!box)return;box.hidden=!query.trim();box.innerHTML=notice?`<p role="status">${E(notice)}</p>`:matches.length?matches.map((m,i)=>`<button type="button" data-action="v73-search-go" data-index="${i}">${icon(m.icon)}<span>${E(m.title)}</span>${icon('arrow-right')}</button>`).join(''):`<p role="status">Совпадений нет. Попробуй название функции или ник.</p>`;}
+function status(){const box=document.getElementById('cm73-search-results');if(!box)return;box.hidden=!query.trim();box.innerHTML=notice?`<p role="status">${E(notice)}</p>`:matches.length?matches.map((m,i)=>`<button type="button" data-action="v73-search-go" data-index="${i}">${m.avatar||icon(m.icon)}<span>${E(m.title)}</span>${icon('arrow-right')}</button>`).join(''):`<p role="status">Совпадений нет. Попробуй название функции или ник.</p>`;}
 function go(row){if(!row)return;const url=row.url+(row.url.includes('?')?'&':'?')+'focus='+encodeURIComponent(row.id);lastUrl=url;notice='Открыто: '+row.title;M.navTo(url.slice(1));status();highlight(row.id);}
 function highlight(key){setTimeout(()=>{
  const main=document.querySelector('main');if(!main)return;
@@ -81,11 +82,11 @@ function highlight(key){setTimeout(()=>{
  },120);}
 window.CM73Search={box:()=>`<div class="cm73-global-search"><label class="input-wrap">${icon('search')}<input type="text" id="cm73-search-input" value="${E(query)}" placeholder="Игрок, предмет или действие" aria-label="Поиск по панели" autocomplete="off" maxlength="100"><button type="button" data-action="v73-search-clear" aria-label="Очистить поиск" ${query?'':'hidden'}>${icon('x')}</button><kbd>Ctrl K</kbd></label><div id="cm73-search-results" class="cm73-search-results" hidden></div></div>`,search,aliases};
 H['admin-search']=H['admin-command']=()=>{if(X.canAdmin()){keepFocus=true;document.getElementById('cm73-search-input')?.focus();}};
-H['v73-search-clear']=()=>{query='';notice='';matches=[];clearTimeout(timer);const input=document.getElementById('cm73-search-input');if(input){input.value='';input.focus();}document.querySelector('[data-action="v73-search-clear"]')?.setAttribute('hidden','');status();document.querySelectorAll('.cm73-search-highlight').forEach(n=>n.classList.remove('cm73-search-highlight'));};
+H['v73-search-clear']=()=>{query='';notice='';matches=[];clearTimeout(timer);try{sessionStorage.removeItem(queryKey);}catch{}const input=document.getElementById('cm73-search-input');if(input){input.value='';input.focus();}document.querySelector('[data-action="v73-search-clear"]')?.setAttribute('hidden','');status();document.querySelectorAll('.cm73-search-highlight').forEach(n=>n.classList.remove('cm73-search-highlight'));};
 H['v73-search-go']=b=>{keepFocus=false;go(matches[Number(b.dataset.index)]);document.getElementById('cm73-search-results').hidden=true;};
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('.cm73-global-search')){keepFocus=false;const box=document.getElementById('cm73-search-results');if(box)box.hidden=true;}});
 V.after.push((page)=>{if(page!=='admin'){query='';keepFocus=false;return;}const input=document.getElementById('cm73-search-input');if(!input)return;
- input.addEventListener('input',()=>{query=input.value;notice='';keepFocus=true;clearTimeout(timer);document.querySelector('[data-action="v73-search-clear"]').hidden=!query;matches=search(query);status();
+ input.addEventListener('input',()=>{query=input.value;notice='';keepFocus=true;try{query?sessionStorage.setItem(queryKey,query):sessionStorage.removeItem(queryKey);}catch{}clearTimeout(timer);document.querySelector('[data-action="v73-search-clear"]').hidden=!query;matches=search(query);status();
   if(query.trim().length>=3&&matches.length&&matches[0].score<2)timer=setTimeout(()=>{const m=matches[0];if(m){const url=m.url+(m.url.includes('?')?'&':'?')+'focus='+encodeURIComponent(m.id);if(location.hash!==url)go(m);else highlight(m.id);}},420);
  });
  input.addEventListener('keydown',e=>{if(e.key==='Enter'&&matches[0]){e.preventDefault();clearTimeout(timer);go(matches[0]);}if(e.key==='Escape'){document.getElementById('cm73-search-results').hidden=true;input.blur();keepFocus=false;}if(e.key==='Tab')keepFocus=false;});

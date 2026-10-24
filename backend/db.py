@@ -51,8 +51,15 @@ CREATE TABLE IF NOT EXISTS cm_site_tickets (
  id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES cm_site_users(id),
  title TEXT NOT NULL, body TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'support',
  status TEXT NOT NULL DEFAULT 'open', reply TEXT NOT NULL DEFAULT '',
- created_s BIGINT NOT NULL, updated_s BIGINT NOT NULL
+ created_s BIGINT NOT NULL, updated_s BIGINT NOT NULL,
+ priority TEXT NOT NULL DEFAULT 'normal', first_reply_s BIGINT NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS cm_site_ticket_messages (
+ id TEXT PRIMARY KEY, ticket_id TEXT NOT NULL REFERENCES cm_site_tickets(id) ON DELETE CASCADE,
+ actor_id TEXT NOT NULL, actor_name TEXT NOT NULL, actor_role TEXT NOT NULL,
+ body TEXT NOT NULL, created_s BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS cm_site_ticket_messages_ticket_created ON cm_site_ticket_messages(ticket_id,created_s,id);
 CREATE TABLE IF NOT EXISTS cm_site_notifications (
  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, href TEXT NOT NULL DEFAULT '',
  created_s BIGINT NOT NULL, read_s BIGINT NOT NULL DEFAULT 0
@@ -139,8 +146,26 @@ class Database:
                 columns = {row["name"] for row in db.execute("PRAGMA table_info(cm_site_notifications)").fetchall()}
                 if "href" not in columns:
                     db.execute("ALTER TABLE cm_site_notifications ADD COLUMN href TEXT NOT NULL DEFAULT ''")
+                ticket_columns = {row["name"] for row in db.execute("PRAGMA table_info(cm_site_tickets)").fetchall()}
+                if "priority" not in ticket_columns:
+                    db.execute("ALTER TABLE cm_site_tickets ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal'")
+                if "first_reply_s" not in ticket_columns:
+                    db.execute("ALTER TABLE cm_site_tickets ADD COLUMN first_reply_s BIGINT NOT NULL DEFAULT 0")
             else:
                 db.execute("ALTER TABLE cm_site_notifications ADD COLUMN IF NOT EXISTS href TEXT NOT NULL DEFAULT ''")
+                db.execute("ALTER TABLE cm_site_tickets ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'normal'")
+                db.execute("ALTER TABLE cm_site_tickets ADD COLUMN IF NOT EXISTS first_reply_s BIGINT NOT NULL DEFAULT 0")
+            db.execute("UPDATE cm_site_ticket_messages SET created_s=created_s*1000 WHERE created_s<1000000000000")
+            legacy_tickets = db.execute("SELECT t.*,u.name AS actor_name FROM cm_site_tickets t JOIN cm_site_users u ON u.id=t.user_id ORDER BY t.created_s").fetchall()
+            for ticket in legacy_tickets:
+                if not db.execute("SELECT id FROM cm_site_ticket_messages WHERE ticket_id=%s LIMIT 1", (ticket["id"],)).fetchone():
+                    first = str(ticket["body"] or "").strip()
+                    if first:
+                        db.execute("INSERT INTO cm_site_ticket_messages(id,ticket_id,actor_id,actor_name,actor_role,body,created_s) VALUES(%s,%s,%s,%s,%s,%s,%s)", ("initial-" + ticket["id"], ticket["id"], ticket["user_id"], ticket["actor_name"], "player", first, ticket["created_s"] * 1000))
+                if ticket["reply"] and not db.execute("SELECT id FROM cm_site_ticket_messages WHERE ticket_id=%s AND actor_role<>'player' LIMIT 1", (ticket["id"],)).fetchone():
+                    reply_at = ticket["first_reply_s"] or ticket["updated_s"]
+                    db.execute("INSERT INTO cm_site_ticket_messages(id,ticket_id,actor_id,actor_name,actor_role,body,created_s) VALUES(%s,%s,%s,%s,%s,%s,%s)", ("legacy-reply-" + ticket["id"], ticket["id"], "system", "Команда", "owner", ticket["reply"], reply_at * 1000))
+                    db.execute("UPDATE cm_site_tickets SET first_reply_s=%s WHERE id=%s AND first_reply_s=0", (reply_at, ticket["id"]))
 
     def setting(self, key, default=None):
         with self.transaction() as db:

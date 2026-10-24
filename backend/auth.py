@@ -48,7 +48,7 @@ async def login(request: Request, response: Response):
     throttle(database, "login-ip:" + ip, 40)
     throttle(database, "login-name:" + ip + ":" + name, 5)
     with database.transaction() as db:
-        row = db.execute("SELECT * FROM cm_site_users WHERE name_norm=%s OR email_norm=%s", (name, name)).fetchone()
+        row = db.execute("SELECT * FROM cm_site_users WHERE name_norm=%s", (name,)).fetchone()
     if not row or not verify_password(data.get("password", ""), row["password_hash"]):
         fail(401, "invalid_credentials", "Неверный логин или пароль.")
     user = dict(row)
@@ -91,7 +91,15 @@ async def reauthenticate(request: Request):
 
 
 @router.post("/auth/register")
-async def register(request: Request):
+async def register(request: Request, response: Response):
     data = await request.json()
-    from .mail import request_challenge
-    return request_challenge(request, "register", data)
+    database = request.app.state.database
+    ip = request.client.host if request.client else "unknown"
+    name = str(data.get("name", data.get("username", ""))).strip()
+    throttle(database, "register-ip:" + ip, 8, 3600)
+    throttle(database, "register-name:" + ip + ":" + name.lower(), 3, 3600)
+    if data.get("terms") is False:
+        fail(400, "terms_required", "Для регистрации нужно принять правила проекта.")
+    user = create_user(database, name, data.get("password", ""))
+    database.audit(user, "auth.register")
+    return issue_session(request, response, user, bool(data.get("remember", False)))

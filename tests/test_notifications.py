@@ -148,7 +148,7 @@ def test_password_and_minecraft_changes_create_account_notifications(tmp_path, m
         assert {item["title"] for item in payload["notifications"]} >= {"Minecraft привязан", "Пароль изменён"}
         assert payload["unread"] == 2
         routes = {item["title"]: item["href"] for item in payload["notifications"]}
-        assert routes["Minecraft привязан"] == "#settings/connections"
+        assert routes["Minecraft привязан"] == "#settings/security"
         assert routes["Пароль изменён"] == "#settings/security"
 
 

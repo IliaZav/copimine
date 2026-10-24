@@ -176,8 +176,15 @@ def build_state(request):
         result["players"] = [{**public_user(dict(row)), "AR": None, "CM": None, "online": False, "purchaseLimits": []} for row in rows]
         if "logs.view" in permissions:
             result["audit"] = [{"id": r["id"], "actor": r["actor_name"], "action": r["action"], "target": r["target"], "reason": r["reason"], "at": r["created_s"] * 1000} for r in db.execute("SELECT * FROM cm_site_audit ORDER BY created_s DESC LIMIT 300").fetchall()]
-        ticket_rows = db.execute("SELECT * FROM cm_site_tickets ORDER BY updated_s DESC LIMIT 200").fetchall() if "tickets.manage" in permissions else db.execute("SELECT * FROM cm_site_tickets WHERE user_id=%s ORDER BY updated_s DESC LIMIT 100", (user["id"],)).fetchall()
-        result["tickets"] = [{**dict(row), "playerId": row["user_id"], "at": row["created_s"] * 1000, "createdAt": row["created_s"] * 1000} for row in ticket_rows]
+        ticket_rows = db.execute("SELECT t.*,u.name AS player,u.display_name AS player_name FROM cm_site_tickets t JOIN cm_site_users u ON u.id=t.user_id ORDER BY t.updated_s DESC LIMIT 200").fetchall() if "tickets.manage" in permissions else db.execute("SELECT t.*,u.name AS player,u.display_name AS player_name FROM cm_site_tickets t JOIN cm_site_users u ON u.id=t.user_id WHERE t.user_id=%s ORDER BY t.updated_s DESC LIMIT 100", (user["id"],)).fetchall()
+        ticket_ids = [row["id"] for row in ticket_rows]
+        ticket_messages = {}
+        if ticket_ids:
+            marks = ",".join(["%s"] * len(ticket_ids))
+            message_rows = db.execute(f"SELECT * FROM cm_site_ticket_messages WHERE ticket_id IN ({marks}) ORDER BY created_s,id", tuple(ticket_ids)).fetchall()
+            for message in message_rows:
+                ticket_messages.setdefault(message["ticket_id"], []).append({"id": message["id"], "actorId": message["actor_id"], "actor": message["actor_name"], "role": message["actor_role"], "body": message["body"], "at": message["created_s"]})
+        result["tickets"] = [{**dict(row), "playerId": row["user_id"], "player": row["player"], "playerName": row["player_name"] or row["player"], "at": row["created_s"] * 1000, "createdAt": row["created_s"] * 1000, "firstReplyAt": row["first_reply_s"] * 1000 if row["first_reply_s"] else None, "messages": ticket_messages.get(row["id"], [])} for row in ticket_rows]
         result["siteSessions"] = [{"id": row["token_hash"][:20], "playerId": row["user_id"], "createdAt": row["created_s"] * 1000, "expiresAt": row["expires_s"] * 1000, "device": row["user_agent"], "current": row["token_hash"] == request.state.session["token_hash"]} for row in db.execute("SELECT * FROM cm_site_sessions WHERE user_id=%s AND revoked_s=0 AND expires_s>%s ORDER BY created_s DESC", (user["id"], int(time.time()))).fetchall()]
         receipts = db.execute("SELECT * FROM cm_site_receipts WHERE actor_id=%s AND status='COMMITTED' ORDER BY created_s DESC LIMIT 100", (user["id"],)).fetchall()
         for row in receipts:
@@ -244,7 +251,7 @@ async def profile(request: Request):
     if not 1 <= len(name) <= 32:
         fail(400, "invalid_profile", "Отображаемое имя: от 1 до 32 символов.")
     if "email" in data and str(data["email"]).lower() != user["email"].lower():
-        fail(400, "email_verification_required", "Измените почту через подтверждение адреса в разделе «Способы входа».")
+        fail(400, "invalid_profile", "В этой форме можно изменить только отображаемое имя.")
     with request.app.state.database.transaction() as db:
         db.execute("UPDATE cm_site_users SET display_name=%s,updated_s=%s WHERE id=%s", (name, int(time.time()), user["id"]))
     return {"ok": True, "user": review_user(target_user(request.app.state.database, user["id"]))}
@@ -266,6 +273,32 @@ async def password(request: Request):
     request.app.state.database.audit(user, "password.changed", user["name"])
     add_notification(request.app.state.database, user["id"], "Пароль изменён", "Пароль аккаунта CopiMine обновлён.", f"password:{user['id']}:{now}", "#settings/security")
     return {"ok": True, "user": review_user(user)}
+
+
+@router.post("/api/v6/account/sessions/{identifier}/revoke")
+def revoke_account_session(identifier: str, request: Request):
+    user = current_user(request)
+    if not re.fullmatch(r"[a-f0-9]{20}", identifier):
+        fail(404, "not_found", "Сеанс не найден.")
+    now = int(time.time())
+    with request.app.state.database.transaction() as db:
+        row = db.execute("SELECT token_hash FROM cm_site_sessions WHERE user_id=%s AND substr(token_hash,1,20)=%s AND revoked_s=0 AND token_hash<>%s", (user["id"], identifier, request.state.session["token_hash"])).fetchone()
+        if not row:
+            fail(404, "not_found", "Сеанс не найден или это текущее устройство.")
+        db.execute("UPDATE cm_site_sessions SET revoked_s=%s WHERE token_hash=%s", (now, row["token_hash"]))
+    request.app.state.database.audit(user, "session.revoked", identifier)
+    return {"ok": True}
+
+
+@router.post("/api/v6/account/sessions/revoke-others")
+def revoke_other_account_sessions(request: Request):
+    user = current_user(request)
+    now = int(time.time())
+    with request.app.state.database.transaction() as db:
+        cursor = db.execute("UPDATE cm_site_sessions SET revoked_s=%s WHERE user_id=%s AND revoked_s=0 AND token_hash<>%s", (now, user["id"], request.state.session["token_hash"]))
+        revoked = cursor.rowcount
+    request.app.state.database.audit(user, "sessions.revoked_others", user["id"], details={"count": revoked})
+    return {"ok": True, "revoked": revoked}
 
 
 @router.post("/api/v7/dismiss-hint")
@@ -297,12 +330,37 @@ async def create_ticket(request: Request):
     title, body = str(data.get("title", "")).strip(), str(data.get("body", "")).strip()
     if not 3 <= len(title) <= 160 or not 5 <= len(body) <= 6000:
         fail(400, "invalid_ticket", "Заполните тему и описание обращения.")
-    ticket = {"id": uuid.uuid4().hex, "title": title, "body": body, "type": str(data.get("type", "support"))[:32]}
+    ticket = {"id": uuid.uuid4().hex, "title": title, "body": body, "type": str(data.get("type", "support"))[:32], "player": user["name"], "priority": "normal", "status": "open"}
     now = int(time.time())
     with request.app.state.database.transaction() as db:
-        db.execute("INSERT INTO cm_site_tickets(id,user_id,title,body,type,status,created_s,updated_s) VALUES(%s,%s,%s,%s,%s,'open',%s,%s)", (ticket["id"], user["id"], title, body, ticket["type"], now, now))
+        db.execute("INSERT INTO cm_site_tickets(id,user_id,title,body,type,status,created_s,updated_s,priority) VALUES(%s,%s,%s,%s,%s,'open',%s,%s,'normal')", (ticket["id"], user["id"], title, body, ticket["type"], now, now))
+        db.execute("INSERT INTO cm_site_ticket_messages(id,ticket_id,actor_id,actor_name,actor_role,body,created_s) VALUES(%s,%s,%s,%s,'player',%s,%s)", (uuid.uuid4().hex, ticket["id"], user["id"], user["display_name"] or user["name"], body, int(time.time() * 1000)))
     request.app.state.database.audit(user, "ticket.created", ticket["id"])
     return {"ok": True, "ticket": ticket}
+
+
+@router.post("/api/v6/tickets/{identifier}/messages")
+async def add_ticket_message(identifier: str, request: Request):
+    user = current_user(request)
+    data = await request.json()
+    body = str(data.get("body", "")).strip()
+    if not 3 <= len(body) <= 6000:
+        fail(400, "invalid_ticket_message", "Сообщение должно содержать от 3 до 6000 символов.")
+    throttle(request.app.state.database, "ticket-message:" + user["id"], 20, 3600)
+    now = int(time.time())
+    message_id = uuid.uuid4().hex
+    with request.app.state.database.transaction() as db:
+        ticket = db.execute("SELECT id,status FROM cm_site_tickets WHERE id=%s AND user_id=%s", (identifier, user["id"])).fetchone()
+        if not ticket:
+            fail(404, "not_found", "Обращение не найдено.")
+        if ticket["status"] == "closed":
+            fail(409, "ticket_closed", "Обращение закрыто. Создай новое, если вопрос остался.")
+        previous = db.execute("SELECT max(created_s) AS created_s FROM cm_site_ticket_messages WHERE ticket_id=%s", (identifier,)).fetchone()["created_s"] or 0
+        message_at = max(int(time.time() * 1000), previous + 1)
+        db.execute("INSERT INTO cm_site_ticket_messages(id,ticket_id,actor_id,actor_name,actor_role,body,created_s) VALUES(%s,%s,%s,%s,'player',%s,%s)", (message_id, identifier, user["id"], user["display_name"] or user["name"], body, message_at))
+        db.execute("UPDATE cm_site_tickets SET status='open',updated_s=%s WHERE id=%s", (now, identifier))
+    request.app.state.database.audit(user, "ticket.message", identifier)
+    return {"ok": True, "message": {"id": message_id, "actorId": user["id"], "actor": user["display_name"] or user["name"], "role": "player", "body": body, "at": message_at}}
 
 
 @router.patch("/api/v6/admin/tickets/{identifier}")
@@ -310,16 +368,24 @@ async def reply_ticket(identifier: str, request: Request):
     user = current_user(request, "tickets.manage")
     data = await request.json()
     reply, status = str(data.get("reply", "")).strip(), data.get("status", "open")
-    if len(reply) > 6000 or status not in {"open", "closed", "in_progress", "resolved", "answered"}:
+    priority = data.get("priority", "normal")
+    if len(reply) > 6000 or status not in {"open", "review", "closed", "in_progress", "resolved", "answered"} or priority not in {"low", "normal", "high", "urgent"}:
         fail(400, "invalid_ticket", "Проверьте ответ и статус обращения.")
     with request.app.state.database.transaction() as db:
         ticket = db.execute("SELECT id,user_id,title FROM cm_site_tickets WHERE id=%s", (identifier,)).fetchone()
         if not ticket:
             fail(404, "not_found", "Обращение не найдено.")
         updated = int(time.time())
-        db.execute("UPDATE cm_site_tickets SET reply=%s,status=%s,updated_s=%s WHERE id=%s", (reply, status, updated, identifier))
-    request.app.state.database.audit(user, "ticket.replied", identifier)
-    add_notification(request.app.state.database, ticket["user_id"], "Ответ по обращению", f"Команда ответила на обращение «{ticket['title']}».", f"ticket-reply:{identifier}:{updated}", f"#account/support?ticket={quote(identifier, safe='')}")
+        if reply:
+            db.execute("UPDATE cm_site_tickets SET reply=%s,status=%s,priority=%s,updated_s=%s,first_reply_s=CASE WHEN first_reply_s=0 THEN %s ELSE first_reply_s END WHERE id=%s", (reply, status, priority, updated, updated, identifier))
+            previous = db.execute("SELECT max(created_s) AS created_s FROM cm_site_ticket_messages WHERE ticket_id=%s", (identifier,)).fetchone()["created_s"] or 0
+            message_at = max(int(time.time() * 1000), previous + 1)
+            db.execute("INSERT INTO cm_site_ticket_messages(id,ticket_id,actor_id,actor_name,actor_role,body,created_s) VALUES(%s,%s,%s,%s,%s,%s,%s)", (uuid.uuid4().hex, identifier, user["id"], user["display_name"] or user["name"], user["role"], reply, message_at))
+        else:
+            db.execute("UPDATE cm_site_tickets SET status=%s,priority=%s,updated_s=%s WHERE id=%s", (status, priority, updated, identifier))
+    request.app.state.database.audit(user, "ticket.replied" if reply else "ticket.updated", identifier, details={"status": status, "priority": priority})
+    if reply:
+        add_notification(request.app.state.database, ticket["user_id"], "Ответ по обращению", f"Команда ответила на обращение «{ticket['title']}».", f"ticket-reply:{identifier}:{uuid.uuid4().hex}", f"#account/support?ticket={quote(identifier, safe='')}")
     return {"ok": True}
 
 
@@ -379,20 +445,17 @@ async def recover_account(request: Request):
         fail(409, "identity_proof_required", "Это действие требует отдельного подтверждения игровой личности. Обратитесь к владельцу сервера.")
     with request.app.state.database.transaction() as db:
         if action == "password.reset":
-            if not target["email_verified"]:
-                fail(409, "verified_email_required", "У аккаунта нет подтверждённой почты. Сброс без проверки личности запрещён.")
-            db.execute("UPDATE cm_site_users SET password_hash=%s WHERE id=%s", (hash_password(secrets.token_urlsafe(48)), target["id"]))
+            new_password = data.get("newPassword", "")
+            encoded_password = hash_password(new_password)
+            db.execute("UPDATE cm_site_users SET password_hash=%s,updated_s=%s WHERE id=%s", (encoded_password, now, target["id"]))
         if action == "mfa.reset":
-            if not target["email_verified"]:
-                fail(409, "verified_email_required", "Для восстановления второго фактора нужна подтверждённая почта.")
-            # Recovery is finalized by a one-time challenge sent to the owner.
-            fail(409, "identity_proof_required", "Сброс второго фактора завершается владельцем через подтверждённую почту.")
+            fail(409, "identity_proof_required", "Для второго фактора нужен отдельный безопасный сценарий. Действие не выполнено.")
         if action == "login.unlock":
             db.execute("DELETE FROM cm_site_attempts WHERE key LIKE %s", ("%:" + target["name_norm"],))
         if action in {"sessions.revoke", "password.reset"}:
             db.execute("UPDATE cm_site_sessions SET revoked_s=%s WHERE user_id=%s", (now, target["id"]))
     request.app.state.database.audit(actor, "recovery." + action, target["id"], reason)
-    return {"ok": True, "status": "completed", "action": action, "message": "Операция выполнена. Восстановление пароля проходит через подтверждённую почту."}
+    return {"ok": True, "status": "completed", "action": action, "message": "Пароль обновлён." if action == "password.reset" else "Операция выполнена."}
 
 
 @router.post("/api/v7/ban")
@@ -521,7 +584,7 @@ async def link_confirm(request: Request):
     data = await request.json()
     result = await run_in_threadpool(request.app.state.game.link_confirm, user, str(data.get("code", "")))
     updated = target_user(request.app.state.database, user["id"])
-    add_notification(request.app.state.database, user["id"], "Minecraft привязан", f"К аккаунту CopiMine привязан профиль {updated['minecraft_name']}.", f"minecraft-link:{user['id']}:{updated['minecraft_uuid']}", "#settings/connections")
+    add_notification(request.app.state.database, user["id"], "Minecraft привязан", f"К аккаунту CopiMine привязан профиль {updated['minecraft_name']}.", f"minecraft-link:{user['id']}:{updated['minecraft_uuid']}", "#settings/security")
     return {**result, "user": review_user(updated)}
 
 

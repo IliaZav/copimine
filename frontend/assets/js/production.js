@@ -15,7 +15,7 @@ Q.request=(function(original){return async(path,body)=>{
    throw error;
  }
 };})(Q.request);
-H['v7-vk']=async()=>{const data=await X.request('/providers');if(!data.vk.enabled)return M.openModal('Вход через VK ID','<p>VK ID ещё не настроен. Вход по паролю доступен.</p><p class="hint mt">После регистрации приложения в VK ID владелец подключит его к сайту.</p>'+button('Закрыть','close','','primary'));if(Q.user){const r=await X.request('/account/vk/start',{method:'POST',body:{}});location.href=r.authorizeUrl;}else location.href='/api/v6/auth/vk/start';};
+H['v7-vk']=undefined;
 H['v7-totp']=()=>H['v6-totp-setup']();
 H['v7-game-link']=()=>M.openModal('Связать Minecraft','<p>Зайдите на сервер и войдите через AuthMe. Код появится в личном сообщении в игре.</p><form data-form="production-mc-code">'+field('Ник Minecraft','name','','text','required pattern="[A-Za-z0-9_]{3,16}" autocomplete="off"')+V.actions('Получить код в игре')+'</form>');
 F['production-mc-code']=async(f,d)=>{await X.request('/account/minecraft/request',{method:'POST',body:{name:d.get('name')}});M.openModal('Введите код из Minecraft','<form data-form="production-mc-confirm">'+field('Код из личного сообщения','code','','text','required minlength="6" maxlength="12" autocomplete="one-time-code"')+V.actions('Подтвердить привязку')+'</form>');};
@@ -51,25 +51,13 @@ function databaseStatus(health){
  if(health.database==='sqlite-test')return 'Тестовая база';
  return 'Нет данных';
 }
-function mailStatus(mail,health){
- if(health?.error)return 'Нет доступа к проверке';
- if(!mail)return 'Проверяется';
- if(!mail.configured)return 'SMTP не настроен';
- if(!mail.ready)return 'Ожидает проверки домена';
- return Number(mail.pending)>0?'Готова · в очереди '+Number(mail.pending):'Готова';
-}
-function vkStatus(vk,health){
- if(health?.error)return 'Нет доступа к проверке';
- if(!vk)return 'Проверяется';
- return vk.configured?'ID приложения VK задан':'Приложение не настроено';
-}
 W.adminExtensions.overview=()=>{
  const game=P.health?.game||M.state.game||{},owner=X.can('accounts.manage');
  return '<div class="v6-server-summary">'+metric('Игровой сервер',gameStatus(game))+metric('Онлайн',game.players??'—')+metric('База сайта',databaseStatus(P.health))+'</div><section class="panel mt"><h2>Управление</h2><div class="v6-actions-grid mt">'+[['players','Игроки и инвентари'],['shop','Каталог'],['world','Карта и расписание'],['moderation','Обращения'],['logs','Журнал действий'],['system','Подключения и аккаунты']].map(([id,text])=>M.link(text,'#admin/'+id,'arrow-right','')).join('')+'</div></section><section class="panel mt"><h2>Последние действия</h2>'+((M.state.audit||[]).length?V.table(['Время','Действие','Кто','Объект'],M.state.audit.slice(0,10).map(r=>[M.date(r.at,true),E(r.action),E(r.actor),E(r.target)])):M.empty('Записей пока нет','Здесь появятся подтверждённые действия.','history'))+'</section>';
 };
 W.adminExtensions.system=()=>{
  const h=P.health,g=h?.game||{};
- return '<section class="panel"><h2>Подключения</h2>'+V.table(['Сервис','Состояние'],[['База сайта',E(databaseStatus(h))],['Minecraft',E(gameStatus(g,h))],['Почта',E(mailStatus(h?.mail,h))],['VK ID',E(vkStatus(h?.vk,h))],['Платежи','Не подключены']])+'<p class="hint mt">Почта считается готовой после проверки SPF, DKIM и DMARC и контрольной доставки. Для VK ID нужны ID приложения и рабочий callback. Секреты задаются только в закрытой конфигурации сервера; статус ID не подтверждает реальный вход.</p>'+button('Проверить подключения','production-health','refresh','mt')+'</section>'+(X.can('accounts.manage')?'<section class="panel mt"><h2>Аккаунты сайта</h2><p class="hint">Права проверяет сервер. Создать или изменить аккаунт с равными правами нельзя.</p>'+button('Создать аккаунт','production-account-new','plus','primary mt')+V.table(['Аккаунт','Роль','Доступ',''],M.state.players.filter(p=>!p.gameOnly).map(p=>[E(p.displayName||p.name),E(p.serverRole||p.role),p.enabled?'Открыт':'Закрыт',p.id!==M.me()?.id?button('Изменить','production-account-edit','edit','small').replace('data-action="production-account-edit"','data-action="production-account-edit" data-id="'+E(p.id)+'"'):'Текущий аккаунт']))+'</section>':'');
+ return '<section class="panel"><h2>Подключения</h2>'+V.table(['Сервис','Состояние'],[['База сайта',E(databaseStatus(h))],['Minecraft',E(gameStatus(g,h))],['Платежи','Не подключены']])+'<div class="actions mt">'+button('Проверить подключения','production-health','refresh','ghost small')+'</div></section>'+(X.can('accounts.manage')?'<section class="panel mt"><h2>Аккаунты сайта</h2><p class="hint">Создай аккаунт или измени роль и доступ. Все изменения записываются в журнал.</p>'+button('Создать аккаунт','production-account-new','plus','primary mt')+V.table(['Аккаунт','Роль','Доступ',''],M.state.players.filter(p=>!p.gameOnly).map(p=>[E(p.displayName||p.name),E(p.serverRole||p.role),p.enabled?'Открыт':'Закрыт',p.id!==M.me()?.id?button('Изменить','production-account-edit','edit','small').replace('data-action="production-account-edit"','data-action="production-account-edit" data-id="'+E(p.id)+'"'):'Текущий аккаунт']))+'</section>':'');
 };
 H['production-health']=async()=>{await P.refreshHealth();M.render();};
 H['production-account-new']=()=>M.openModal('Создать аккаунт','<form data-form="production-account">'+field('Логин','name','','text','required pattern="[A-Za-z0-9_]{3,32}"')+field('Временный пароль','password','','password','required minlength="12" autocomplete="new-password"')+V.select('Роль','role',[['player','Игрок'],['helper','Помощник'],['moderator','Модератор'],['admin','Администратор']],'player')+field('Причина','reason','','text','required minlength="3"')+V.actions('Создать аккаунт')+'</form>');

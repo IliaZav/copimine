@@ -32,7 +32,122 @@ def test_support_ticket_is_persistent_and_recorded(client):
     session = login(client)
     response = client.post("/api/v6/tickets", headers={"Origin": "http://testserver", "X-CSRF-Token": session["csrf"]}, json={"title": "A real support request", "body": "Please check this persisted support request", "type": "support"})
     assert response.status_code == 200
-    assert any(t["id"] == response.json()["ticket"]["id"] for t in client.get("/api/v6/state").json()["tickets"])
+    ticket = next(t for t in client.get("/api/v6/state").json()["tickets"] if t["id"] == response.json()["ticket"]["id"])
+    assert ticket["player"] == "TestOwner"
+    assert ticket["messages"][0]["body"] == "Please check this persisted support request"
+
+
+def test_support_conversation_is_persistent_for_player_and_admin(client):
+    owner = login(client)
+    owner_headers = {"Origin": "http://testserver", "X-CSRF-Token": owner["csrf"]}
+    created = client.post(
+        "/api/v6/admin/accounts",
+        headers=owner_headers,
+        json={"name": "TicketPlayer", "password": "A-secure-ticket-player-password-2026", "role": "player", "reason": "Support conversation test"},
+    )
+    assert created.status_code == 200, created.text
+    client.post("/api/v6/auth/logout", headers=owner_headers, json={})
+    anonymous = client.get("/api/v6/session").json()
+    player_login = client.post(
+        "/api/v6/auth/login",
+        headers={"Origin": "http://testserver", "X-CSRF-Token": anonymous["csrf"]},
+        json={"name": "TicketPlayer", "password": "A-secure-ticket-player-password-2026"},
+    )
+    assert player_login.status_code == 200, player_login.text
+
+    player_session = client.get("/api/v6/session").json()
+    player_headers = {"Origin": "http://testserver", "X-CSRF-Token": player_session["csrf"]}
+    created_ticket = client.post(
+        "/api/v6/tickets",
+        headers=player_headers,
+        json={"title": "Не вижу заказ", "body": "Проверьте, пожалуйста, выдачу покупки."},
+    )
+    assert created_ticket.status_code == 200, created_ticket.text
+    ticket_id = created_ticket.json()["ticket"]["id"]
+
+    extra = client.post(
+        f"/api/v6/tickets/{ticket_id}/messages",
+        headers=player_headers,
+        json={"body": "Добавляю номер заказа: CM-TEST-42"},
+    )
+    assert extra.status_code == 200, extra.text
+    player_ticket = next(t for t in client.get("/api/v6/state").json()["tickets"] if t["id"] == ticket_id)
+    assert len(player_ticket["messages"]) == 2
+
+    client.post("/api/v6/auth/logout", headers=player_headers, json={})
+    owner = login(client)
+    owner_headers = {"Origin": "http://testserver", "X-CSRF-Token": owner["csrf"]}
+    admin_ticket = next(t for t in client.get("/api/v6/state").json()["tickets"] if t["id"] == ticket_id)
+    assert admin_ticket["player"] == "TicketPlayer"
+    assert admin_ticket["messages"][1]["body"] == "Добавляю номер заказа: CM-TEST-42"
+
+    reply = client.patch(
+        f"/api/v6/admin/tickets/{ticket_id}",
+        headers=owner_headers,
+        json={"reply": "Нашли заказ и повторно отправили предметы.", "status": "review", "priority": "high"},
+    )
+    assert reply.status_code == 200, reply.text
+    admin_ticket = next(t for t in client.get("/api/v6/state").json()["tickets"] if t["id"] == ticket_id)
+    assert admin_ticket["status"] == "review"
+    assert admin_ticket["priority"] == "high"
+    assert admin_ticket["messages"][-1]["role"] == "owner"
+
+    client.post("/api/v6/auth/logout", headers=owner_headers, json={})
+    player_session = client.get("/api/v6/session").json()
+    player_login = client.post(
+        "/api/v6/auth/login",
+        headers={"Origin": "http://testserver", "X-CSRF-Token": player_session["csrf"]},
+        json={"name": "TicketPlayer", "password": "A-secure-ticket-player-password-2026"},
+    )
+    assert player_login.status_code == 200, player_login.text
+    player_ticket = next(t for t in client.get("/api/v6/state").json()["tickets"] if t["id"] == ticket_id)
+    assert player_ticket["messages"][-1]["body"] == "Нашли заказ и повторно отправили предметы."
+    notification = client.get("/api/v6/account/notifications").json()["notifications"][0]
+    assert notification["href"] == f"#account/support?ticket={ticket_id}"
+
+
+def test_owner_can_reset_player_password_without_email(client):
+    owner = login(client)
+    owner_headers = {"Origin": "http://testserver", "X-CSRF-Token": owner["csrf"]}
+    created = client.post(
+        "/api/v6/admin/accounts",
+        headers=owner_headers,
+        json={"name": "ResetPlayer", "password": "A-secure-old-password-2026", "role": "player", "reason": "Password reset test"},
+    )
+    assert created.status_code == 200, created.text
+    response = client.post(
+        "/api/v7/recovery",
+        headers=owner_headers,
+        json={"player": created.json()["user"]["id"], "action": "password.reset", "reason": "Player requested a password reset", "newPassword": "A-secure-new-password-2026"},
+    )
+    assert response.status_code == 200, response.text
+    client.post("/api/v6/auth/logout", headers=owner_headers, json={})
+    anonymous = client.get("/api/v6/session").json()
+    login_result = client.post(
+        "/api/v6/auth/login",
+        headers={"Origin": "http://testserver", "X-CSRF-Token": anonymous["csrf"]},
+        json={"username": "ResetPlayer", "password": "A-secure-new-password-2026"},
+    )
+    assert login_result.status_code == 200, login_result.text
+
+
+def test_account_can_revoke_its_other_sessions(client):
+    from fastapi.testclient import TestClient
+
+    current = login(client)
+    with TestClient(client.app) as other:
+        anonymous = other.get("/api/v6/session").json()
+        logged_in = other.post(
+            "/api/v6/auth/login",
+            headers={"Origin": "http://testserver", "X-CSRF-Token": anonymous["csrf"]},
+            json={"username": "TestOwner", "password": "This-is-only-a-test-owner-password-2026"},
+        )
+        assert logged_in.status_code == 200, logged_in.text
+        other_id = next(row["id"] for row in other.get("/api/v6/state").json()["siteSessions"] if row["current"])
+        headers = {"Origin": "http://testserver", "X-CSRF-Token": current["csrf"]}
+        response = client.post(f"/api/v6/account/sessions/{other_id}/revoke", headers=headers, json={})
+        assert response.status_code == 200, response.text
+        assert other.get("/api/v6/session").json()["user"] is None
 
 
 def test_unlinked_player_transfer_fails_instead_of_using_demo_money(client):

@@ -86,3 +86,30 @@ def test_failed_login_never_accepts_demo_credentials(client):
     for name in ("1", "2", "3"):
         response = client.post("/api/v6/auth/login", headers={"Origin": "http://testserver", "X-CSRF-Token": session["csrf"]}, json={"name": name, "password": name})
         assert response.status_code == 401
+
+
+def test_registration_uses_only_username_and_password(client):
+    session = client.get("/api/v6/session").json()
+    response = client.post(
+        "/api/v6/auth/register",
+        headers={"Origin": "http://testserver", "X-CSRF-Token": session["csrf"]},
+        json={"username": "SimplePlayer", "password": "A-simple-test-password-2026"},
+    )
+    assert response.status_code == 200, response.text
+    current = client.get("/api/v6/session").json()["user"]
+    assert current["username"] == "SimplePlayer"
+    assert current["email"] == ""
+    assert current["emailVerified"] is False
+
+
+def test_email_cannot_be_used_as_login_name(client):
+    from backend.auth import create_user
+
+    create_user(client.app.state.database, "MailAddressLogin", "A-simple-test-password-2026", email="player@example.test", email_verified=True)
+    session = client.get("/api/v6/session").json()
+    response = client.post(
+        "/api/v6/auth/login",
+        headers={"Origin": "http://testserver", "X-CSRF-Token": session["csrf"]},
+        json={"username": "player@example.test", "password": "A-simple-test-password-2026"},
+    )
+    assert response.status_code == 401

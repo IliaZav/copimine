@@ -575,8 +575,20 @@ function Ensure-MigrationPostgresReady {
         Schema = $Schema
         Role = $Role
     }
-    $identityValid = Invoke-MigrationPostgresLifecycleOperation -Name 'ValidateIdentity' `
-        -Arguments @($context) -Operations $Operations
+    $identityAttempt = 0
+    while ($true) {
+        try {
+            $identityValid = Invoke-MigrationPostgresLifecycleOperation -Name 'ValidateIdentity' `
+                -Arguments @($context) -Operations $Operations
+            break
+        } catch {
+            # pg_ctl -w returns before a just-started cluster accepts authenticated
+            # queries on some Windows hosts; only retry an owned start we initiated.
+            $identityAttempt++
+            if (-not $startedByThisCall -or $identityAttempt -ge 20) { throw }
+            Start-Sleep -Milliseconds 250
+        }
+    }
     if (-not $identityValid) { throw 'The existing PostgreSQL cluster failed read-only identity validation.' }
 
     return [pscustomobject]@{

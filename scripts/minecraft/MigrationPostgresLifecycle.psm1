@@ -203,7 +203,8 @@ function Get-MigrationPostgresClusterState {
     $output = @(& $pgCtl -D $DataDirectory status 2>&1 | ForEach-Object { [string]$_ })
     $exitCode = $LASTEXITCODE
     if ($exitCode -ne 0) {
-        if (($output -join ' ') -notmatch '(?i)no server running|PID file .* does not exist') {
+        # pg_ctl status exit code 3 means "no server running"; its text is localized.
+        if ($exitCode -ne 3 -and (($output -join ' ') -notmatch '(?i)no server running|PID file .* does not exist')) {
             throw 'pg_ctl could not safely determine whether the owned PostgreSQL cluster is running.'
         }
         $stalePid = Get-MigrationPostgresStalePidRecord -DataDirectory $DataDirectory -Port 55434

@@ -145,3 +145,14 @@ def test_no_client_duplicate_and_no_owned_loop() -> None:
         assert cue["loop"] is False
     # Music is a separate phase-track contract; gameplay cues never become loops.
     assert matrix["nativeAudioVerified"] is False
+
+
+def test_wave_two_warning_is_emitted_only_by_the_server() -> None:
+    renderer = (ROOT / "tools/minecraft-26.3/client/src/main/java/me/copimine/client/"
+                "WaveTwoPhantomRenderer.java").read_text(encoding="utf-8")
+    assert "playLocalSound" not in renderer
+    assert "SoundEvents.ENDERMAN_STARE" not in renderer
+    assert "lastPlayedWarningToken" not in renderer
+
+    server = SOURCE.read_text(encoding="utf-8")
+    assert "marked.playSound(marked.getLocation(), Sound.ENTITY_ENDERMAN_STARE" in server

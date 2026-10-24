@@ -10,8 +10,6 @@ import net.minecraft.client.renderer.entity.state.EndermanRenderState;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.Identifier;
-import net.minecraft.sounds.SoundEvents;
-import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
@@ -28,7 +26,6 @@ public final class WaveTwoPhantomRenderer {
 
     private static final RiftEventEndermanModel MODEL = createModel();
     private static final EndermanRenderState MODEL_STATE = stationaryModelState();
-    private static String lastPlayedWarningToken = "";
     private static ClientLevel currentWorld;
 
     private WaveTwoPhantomRenderer() { }
@@ -65,7 +62,6 @@ public final class WaveTwoPhantomRenderer {
         int layoutCycle = layoutManager.cycle(dimension, manager.eventId(), manager.generation());
         if (layoutCycle < 1 || !layoutManager.isComplete(
                 dimension, manager.eventId(), manager.generation(), layoutCycle)) {
-            playActivationWarning(client, null);
             return;
         }
         List<WaveTwoPhantomLayoutManager.Phantom> phantoms = layoutManager.layout(
@@ -99,7 +95,6 @@ public final class WaveTwoPhantomRenderer {
 
         var camera = client.gameRenderer.mainCamera();
         if (camera == null || !camera.isInitialized()) return;
-        playActivationWarning(client, activation);
         Vec3 cameraPosition = camera.position();
         WaveTwoPhantomLayout.Position target = new WaveTwoPhantomLayout.Position(
                 playerPosition.x, playerPosition.y + client.player.getBbHeight() * 0.82D,
@@ -167,21 +162,5 @@ public final class WaveTwoPhantomRenderer {
     private static void clearActivationPresentation() {
         ClientBridgeProtocol.waveTwoPhantomActivations().clearPresentation();
         ClientBridgeProtocol.waveTwoPhantomLayouts().clearPresentation();
-        lastPlayedWarningToken = "";
-    }
-
-    private static void playActivationWarning(Minecraft client,
-            WaveTwoPhantomActivationManager.Activation activation) {
-        if (activation == null) {
-            lastPlayedWarningToken = "";
-            return;
-        }
-        String warningToken = activation.warningToken();
-        if (warningToken.equals(lastPlayedWarningToken)) return;
-        lastPlayedWarningToken = warningToken;
-        if (client.level != null && client.player != null) {
-            client.level.playLocalSound(client.player.getX(), client.player.getY(), client.player.getZ(),
-                    SoundEvents.ENDERMAN_STARE, SoundSource.HOSTILE, 0.3F, 1.0F, false);
-        }
     }
 }

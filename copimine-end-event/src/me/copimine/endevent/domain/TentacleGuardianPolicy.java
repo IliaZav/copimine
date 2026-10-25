@@ -14,7 +14,13 @@ import java.util.Map;
  */
 public final class TentacleGuardianPolicy {
     public static final int DAMAGE_WINDOW_TICKS = 300; // 15 seconds
-    public static final int RESPAWN_DELAY_TICKS = 800; // 40 seconds
+    // 90 seconds of ACTIVE combat.  Stored as nominal ticks for config/compat,
+    // but the adapter converts it to milliseconds so a lagging server cannot
+    // stretch the wait into 180 wall-clock seconds.
+    public static final int RESPAWN_DELAY_TICKS = 1800; // 90 seconds
+    public static final long TICK_MILLIS = 50L;
+    public static final int MIN_VULNERABILITY_MILLIS = 15_000;
+    public static final int RESPAWN_WARNING_MILLIS = 5_000;
     public static final int ATTACK_INTERVAL_TICKS = 220;
     public static final int ATTACK_STAGGER_TICKS = 20;
     public static final int MIN_TOTAL_HEALTH = 120;
@@ -132,6 +138,43 @@ public final class TentacleGuardianPolicy {
                 == TentacleAnimationPolicy.State.READY);
     }
 
+    public static long respawnDelayMillis(int configuredTicks) {
+        return Math.max(RESPAWN_DELAY_TICKS, Math.max(1, configuredTicks)) * TICK_MILLIS;
+    }
+
+    /** Never shorter than the guaranteed vulnerability window. */
+    public static long damageWindowMillis(int configuredTicks) {
+        return Math.max(MIN_VULNERABILITY_MILLIS, Math.max(1, configuredTicks) * TICK_MILLIS);
+    }
+
+    public static long respawnDeadline(long nowMillis, int configuredTicks) {
+        return Math.max(0L, nowMillis) + respawnDelayMillis(configuredTicks);
+    }
+
+    public static boolean respawnDueAt(long nowMillis, Long deadlineMillis) {
+        return deadlineMillis != null && nowMillis >= deadlineMillis;
+    }
+
+    /** Five-second telegraph before the effective appearance; not a live guardian. */
+    public static boolean respawnWarningDueAt(long nowMillis, Long deadlineMillis) {
+        return deadlineMillis != null
+                && deadlineMillis - nowMillis <= RESPAWN_WARNING_MILLIS
+                && deadlineMillis - nowMillis > 0L;
+    }
+
+    /**
+     * Dead slots wait for their own deadline and never return inside the
+     * guaranteed vulnerability window. A slot already marked alive only needs
+     * its missing display reconciled.
+     */
+    public static boolean slotReadyForSpawnAt(long nowMillis, Long deadlineMillis,
+                                              double health, boolean frozen) {
+        if (Double.isFinite(health) && health > 0.0D) {
+            return true;
+        }
+        return !frozen && (deadlineMillis == null || respawnDueAt(nowMillis, deadlineMillis));
+    }
+
     /**
      * Restart-safe guardian state. Respawn and damage-window deadlines are
      * re-based onto the new tick counter so a restart cannot shorten either.
@@ -219,6 +262,104 @@ public final class TentacleGuardianPolicy {
             throw new IllegalArgumentException("INVALID_GUARDIAN_SNAPSHOT", invalid);
         }
         return new SnapshotState(Map.copyOf(health), Map.copyOf(respawn), damageWindow);
+    }
+
+    /**
+     * Active-combat millisecond snapshot. Remaining durations are persisted, not
+     * absolute ticks, so a cold restart at a low tick counter keeps exactly the
+     * time the player already earned (and cannot refill the damage window).
+     */
+    public record SnapshotStateMillis(Map<Integer, Double> health,
+                                      Map<Integer, Long> respawnAtMillis,
+                                      long damageWindowEndsMillis) {
+    }
+
+    public static Map<String, String> encodeSnapshotMillis(Map<Integer, Double> health,
+            Map<Integer, Long> respawnAtMillis, long damageWindowEndsMillis, long nowMillis) {
+        Map<String, String> encoded = new LinkedHashMap<>();
+        long safeNow = Math.max(0L, nowMillis);
+        if (damageWindowEndsMillis > safeNow) {
+            encoded.put(SNAPSHOT_PREFIX + "damage-window-remaining-ms",
+                    Long.toString(damageWindowEndsMillis - safeNow));
+        }
+        for (int slot = 0; slot < MAX_SNAPSHOT_SLOTS; slot++) {
+            Double current = health.get(slot);
+            Long deadline = respawnAtMillis.get(slot);
+            if (current == null && deadline == null) continue;
+            String base = SNAPSHOT_PREFIX + slot + ".";
+            if (current != null) {
+                if (!Double.isFinite(current) || current < 0.0D) {
+                    throw new IllegalArgumentException("INVALID_GUARDIAN_HEALTH");
+                }
+                encoded.put(base + "health", Double.toString(current));
+            }
+            if (deadline != null) {
+                encoded.put(base + "respawn-in-ms", Long.toString(Math.max(0L, deadline - safeNow)));
+            }
+        }
+        return Map.copyOf(encoded);
+    }
+
+    /** Returns null when the snapshot predates guardian persistence. */
+    public static SnapshotStateMillis decodeSnapshotMillis(Map<String, String> progress,
+                                                           long nowMillis) {
+        if (progress == null || progress.keySet().stream()
+                .noneMatch(key -> key.startsWith(SNAPSHOT_PREFIX))) {
+            return null;
+        }
+        long safeNow = Math.max(0L, nowMillis);
+        Map<Integer, Double> health = new LinkedHashMap<>();
+        Map<Integer, Long> respawn = new LinkedHashMap<>();
+        long damageWindowEnds = -1L;
+        try {
+            for (Map.Entry<String, String> entry : progress.entrySet()) {
+                String key = entry.getKey();
+                if (!key.startsWith(SNAPSHOT_PREFIX)) continue;
+                String suffix = key.substring(SNAPSHOT_PREFIX.length());
+                if (suffix.equals("damage-window-remaining-ms")) {
+                    long remaining = Long.parseLong(entry.getValue());
+                    if (remaining < 0L) throw new IllegalArgumentException("INVALID_DAMAGE_WINDOW");
+                    if (remaining > 0L) damageWindowEnds = Math.addExact(safeNow, remaining);
+                    continue;
+                }
+                if (suffix.equals("damage-window-elapsed")) {
+                    // Legacy tick snapshot: rebase the remaining part, never the
+                    // elapsed part, so a restart at tick zero cannot refill it.
+                    long elapsed = Long.parseLong(entry.getValue());
+                    if (elapsed < 0L) throw new IllegalArgumentException("INVALID_DAMAGE_WINDOW");
+                    long remaining = DAMAGE_WINDOW_TICKS * TICK_MILLIS - elapsed * TICK_MILLIS;
+                    if (remaining > 0L) damageWindowEnds = Math.addExact(safeNow, remaining);
+                    continue;
+                }
+                int dot = suffix.indexOf('.');
+                if (dot <= 0) throw new IllegalArgumentException("UNKNOWN_GUARDIAN_KEY");
+                int slot = Integer.parseInt(suffix.substring(0, dot));
+                if (slot < 0 || slot >= MAX_SNAPSHOT_SLOTS) {
+                    throw new IllegalArgumentException("INVALID_GUARDIAN_SLOT");
+                }
+                String field = suffix.substring(dot + 1);
+                if (field.equals("health")) {
+                    double value = Double.parseDouble(entry.getValue());
+                    if (!Double.isFinite(value) || value < 0.0D) {
+                        throw new IllegalArgumentException("INVALID_GUARDIAN_HEALTH");
+                    }
+                    health.put(slot, value);
+                } else if (field.equals("respawn-in-ms")) {
+                    long remaining = Long.parseLong(entry.getValue());
+                    if (remaining < 0L) throw new IllegalArgumentException("INVALID_GUARDIAN_RESPAWN");
+                    respawn.put(slot, Math.addExact(safeNow, remaining));
+                } else if (field.equals("respawn-in")) {
+                    long remainingTicks = Long.parseLong(entry.getValue());
+                    if (remainingTicks < 0L) throw new IllegalArgumentException("INVALID_GUARDIAN_RESPAWN");
+                    respawn.put(slot, Math.addExact(safeNow, remainingTicks * TICK_MILLIS));
+                } else {
+                    throw new IllegalArgumentException("UNKNOWN_GUARDIAN_KEY");
+                }
+            }
+        } catch (NumberFormatException | ArithmeticException invalid) {
+            throw new IllegalArgumentException("INVALID_GUARDIAN_SNAPSHOT", invalid);
+        }
+        return new SnapshotStateMillis(Map.copyOf(health), Map.copyOf(respawn), damageWindowEnds);
     }
 
     public static String healthVisualState(double current, double maximum) {

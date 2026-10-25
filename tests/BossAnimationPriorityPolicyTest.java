@@ -8,7 +8,8 @@ public final class BossAnimationPriorityPolicyTest {
                 "hurt must interrupt an ordinary cast cue");
 
         for (String protectedAnimation : new String[]{
-                "DYING", "FINAL_STRIKE", "PHASE_TRANSITION", "GROUND_SLAM", "CHEST_STRIKE"}) {
+                "DYING", "FINAL_STRIKE", "PHASE_TRANSITION", "GROUND_SLAM", "MELEE_SWIPE",
+                "CHEST_STRIKE"}) {
             require(!BossAnimationPriorityPolicy.canInterruptWithHurt(protectedAnimation),
                     protectedAnimation + " must not be interrupted by ordinary hurt feedback");
         }

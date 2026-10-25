@@ -36,6 +36,13 @@ public final class BossDefeatCinematicPolicyTest {
         check(BossDefeatCinematicPolicy.phaseAt(BossDefeatCinematicPolicy.TOTAL_TICKS)
                         == BossDefeatCinematicPolicy.Phase.COMPLETE,
                 "defeat cinematic must be bounded");
+        check(BossDefeatCinematicPolicy.DEFEAT_DYING_TICKS == 40,
+                "the authored Dying2 clip is 40 ticks (2.0 s)");
+        check(BossDefeatCinematicPolicy.DEFEAT_DYING_TICKS > 0
+                        && BossDefeatCinematicPolicy.COMMIT_TICK
+                                + BossDefeatCinematicPolicy.DEFEAT_DYING_TICKS
+                                >= BossDefeatCinematicPolicy.TOTAL_TICKS,
+                "the defeat cue must play its full 2 s clip before real health reaches zero");
     }
 
     private static void testInterruptedDefeatIsFinalizedAfterRestart() {

@@ -312,7 +312,7 @@ boss:
   attack-damage-bonus: 11.0
   target-rotation-seconds: [5, 8]
   recent-target-memory: 3
-  target-lock-seconds: 6
+  target-lock-seconds: 11
   teleport-cooldown-seconds: 12
   spell-cooldown-seconds: [5, 8]
   spell-telegraph-ticks: 30
@@ -336,7 +336,7 @@ boss:
   tentacle-guardians:
     enabled: true
     damage-window-ticks: 300
-    respawn-delay-ticks: 800
+    respawn-delay-ticks: 1800
     attack-interval-ticks: 220
     attack-stagger-ticks: 20
     hitbox-width: 1.90

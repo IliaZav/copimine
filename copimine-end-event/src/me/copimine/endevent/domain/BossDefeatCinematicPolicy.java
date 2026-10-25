@@ -6,6 +6,8 @@ public final class BossDefeatCinematicPolicy {
     public static final int COLLAPSE_TICK = 24;
     public static final int COMMIT_TICK = 40;
     public static final int TOTAL_TICKS = 45;
+    /** Dying2 is an authored 2.0 s clip; real health reaches zero only after it plays. */
+    public static final int DEFEAT_DYING_TICKS = 40;
 
     private BossDefeatCinematicPolicy() {
     }

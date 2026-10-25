@@ -43,8 +43,8 @@ public class CombatProfileMainProbe {
     AttemptLifecycleController attemptLifecycle=new AttemptLifecycleController();
     Set<UUID> officialRewardRoster=new LinkedHashSet<>();UUID prisoner;
     Set<UUID> waveTwoCleanupEntityUuids=new LinkedHashSet<>(),waveTwoOutstandingEntityUuids=new LinkedHashSet<>();
-    Map<Integer,Double> tentacleGuardianHealth=new HashMap<>();Map<Integer,Long> tentacleGuardianRespawnAt=new HashMap<>();
-    long tentacleDamageWindowStartedTick=-1L;
+    Map<Integer,Double> tentacleGuardianHealth=new HashMap<>();Map<Integer,Long> tentacleGuardianRespawnDeadlineMillis=new HashMap<>();
+    long tentacleDamageWindowEndsMillis=-1L,tentacleActiveMillis=0L;
     PreBoss preBossTransitionController=new PreBoss();
     static class Chambers {Assignment assignment(){return new Assignment();}}
     static class Assignment {Map<UUID,Integer> chamberByPlayer(){return Map.of();}}

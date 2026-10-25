@@ -437,7 +437,7 @@ public record EventConfig(
         double hitboxWidth = section.getDouble("hitbox-width", -1.0D);
         double hitboxHeight = section.getDouble("hitbox-height", -1.0D);
         if (damageWindowTicks < 100 || damageWindowTicks > 600
-                || respawnDelayTicks < 400 || respawnDelayTicks > 1600
+                || respawnDelayTicks < 400 || respawnDelayTicks > 3600
                 || attackIntervalTicks < 100 || attackIntervalTicks > 400
                 || attackStaggerTicks < 0 || attackStaggerTicks > 80
                 || !Double.isFinite(hitboxWidth) || hitboxWidth < 0.5D || hitboxWidth > 2.5D

@@ -12,6 +12,15 @@ public final class BossTargetSelector {
         if (snapshot == null || snapshot.livingPlayers().isEmpty()) {
             return new TargetDecision(null, 0.0D, "NO_ELIGIBLE_PLAYER");
         }
+        // The adapter's BossTargetPolicy owns the lock window; the brain must not
+        // re-score its way onto a different primary target inside that window.
+        if (currentTarget != null) {
+            for (BossPerceptionSnapshot.PlayerObservation player : snapshot.livingPlayers()) {
+                if (currentTarget.equals(player.playerId())) {
+                    return scored(player, currentTarget);
+                }
+            }
+        }
         return snapshot.livingPlayers().stream()
                 .map(player -> scored(player, currentTarget))
                 .max(Comparator.comparingDouble(TargetDecision::score)

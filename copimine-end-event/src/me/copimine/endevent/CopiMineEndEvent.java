@@ -1092,9 +1092,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, UUID> tentacleHitboxesByDisplay = new HashMap<>();
     private final Map<UUID, UUID> tentacleDisplaysByHitbox = new HashMap<>();
     private final Map<Integer, Double> tentacleGuardianHealth = new HashMap<>();
-    private final Map<Integer, Long> tentacleGuardianRespawnAt = new HashMap<>();
+    private final Map<Integer, Long> tentacleGuardianRespawnDeadlineMillis = new HashMap<>();
+    private final Set<Integer> tentacleGuardianWarnedSlots = new HashSet<>();
     private final Map<UUID, Long> tentacleNextAttackTick = new HashMap<>();
-    private long tentacleDamageWindowStartedTick = -1L;
+    /** Respawn/vulnerability timing runs on active combat time, not wall time. */
+    private long tentacleActiveMillis;
+    private long tentacleActiveLastNanos;
+    private long tentacleDamageWindowEndsMillis = -1L;
     /** Composite, model-aligned Interaction rig for the real boss carrier. */
     private BossHitboxController bossHitboxController;
     private long lastBossHitboxUpdateServerTick = Long.MIN_VALUE;
@@ -1198,6 +1202,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private BukkitTask bossCastTask;
     private BukkitTask bossFinalStrikeTask;
     private BukkitTask bossDefeatCinematicTask;
+    /** Terminal health commit deferred so the authored Dying2 clip can play. */
+    private BukkitTask bossDefeatDeathTask;
     private BukkitTask currentLastSealVisualTask;
     private BukkitTask waveFrontVisualTask;
     private BukkitTask portalVisualTask;
@@ -3705,22 +3711,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** Restore dead-slot cooldowns and the open window instead of healing every guardian. */
     private void restoreTentacleGuardianState(Map<String, String> progress) {
         tentacleGuardianHealth.clear();
-        tentacleGuardianRespawnAt.clear();
-        tentacleDamageWindowStartedTick = -1L;
+        tentacleGuardianRespawnDeadlineMillis.clear();
+        tentacleGuardianWarnedSlots.clear();
+        tentacleDamageWindowEndsMillis = -1L;
         if (bossPhase != BossPhase.LAST_SEAL) return;
         try {
-            TentacleGuardianPolicy.SnapshotState restored =
-                    TentacleGuardianPolicy.decodeSnapshot(progress, eventTickCounter);
+            TentacleGuardianPolicy.SnapshotStateMillis restored =
+                    TentacleGuardianPolicy.decodeSnapshotMillis(progress, tentacleActiveMillis);
             if (restored == null) return;
             tentacleGuardianHealth.putAll(restored.health());
-            tentacleGuardianRespawnAt.putAll(restored.respawnAt());
-            tentacleDamageWindowStartedTick = restored.damageWindowStartedTick();
+            tentacleGuardianRespawnDeadlineMillis.putAll(restored.respawnAtMillis());
+            tentacleDamageWindowEndsMillis = restored.damageWindowEndsMillis();
         } catch (IllegalArgumentException invalid) {
             phase = EventPhase.RECOVERY_REQUIRED;
             recoveryReason = "INVALID_TENTACLE_GUARDIAN_SNAPSHOT";
             tentacleGuardianHealth.clear();
-            tentacleGuardianRespawnAt.clear();
-            tentacleDamageWindowStartedTick = -1L;
+            tentacleGuardianRespawnDeadlineMillis.clear();
+            tentacleGuardianWarnedSlots.clear();
+            tentacleDamageWindowEndsMillis = -1L;
             getLogger().log(Level.SEVERE, "End Rift guardian snapshot refused", invalid);
         }
     }
@@ -4013,11 +4021,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     waveTwoOutstandingEntityUuids, WaveTwoEntityRecoveryPolicy.MAX_OUTSTANDING_UUIDS));
         }
         encoded.putAll(combatProfiles.encode());
-        if (!tentacleGuardianHealth.isEmpty() || !tentacleGuardianRespawnAt.isEmpty()
-                || tentacleDamageWindowStartedTick >= 0L) {
-            encoded.putAll(TentacleGuardianPolicy.encodeSnapshot(
-                    tentacleGuardianHealth, tentacleGuardianRespawnAt,
-                    tentacleDamageWindowStartedTick, eventTickCounter));
+        if (!tentacleGuardianHealth.isEmpty() || !tentacleGuardianRespawnDeadlineMillis.isEmpty()
+                || tentacleDamageWindowEndsMillis >= 0L) {
+            encoded.putAll(TentacleGuardianPolicy.encodeSnapshotMillis(
+                    tentacleGuardianHealth, tentacleGuardianRespawnDeadlineMillis,
+                    tentacleDamageWindowEndsMillis, tentacleActiveMillis));
         }
         if (isOfficialWave7ReturnContext() && attemptLifecycle.hasWave7Returns(generation)) {
             encoded.putAll(attemptLifecycle.encodeWave7Returns(eventId,
@@ -38146,6 +38154,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             bossDefeatCinematicTask.cancel();
             bossDefeatCinematicTask = null;
         }
+        if (bossDefeatDeathTask != null) {
+            bossDefeatDeathTask.cancel();
+            bossDefeatDeathTask = null;
+        }
         bossDefeatCinematicStarted = false;
         bossDefeatCinematicBossUuid = null;
         bossDefeatCinematicElapsedTicks = 0;
@@ -38585,7 +38597,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " reason=permanent-guardian-shield"
                     + " stage=" + bossPhase
                     + " living_guardians=" + livingTentacleGuardianCount()
-                    + " damage_window=" + (tentacleDamageWindowStartedTick >= 0L));
+                    + " damage_window=" + tentacleVulnerabilityOpen());
             return;
         }
         // Invulnerability is only a projection of the bounded cast state. A
@@ -38704,7 +38716,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " reason=permanent-guardian-shield"
                     + " stage=" + bossPhase
                     + " living_guardians=" + livingTentacleGuardianCount()
-                    + " damage_window=" + (tentacleDamageWindowStartedTick >= 0L));
+                    + " damage_window=" + tentacleVulnerabilityOpen());
             return;
         }
         if (isTestBoss(boss) && !testCombatAiMode) {
@@ -38810,7 +38822,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " reason=permanent-guardian-shield"
                     + " stage=" + bossPhase
                     + " living_guardians=" + livingTentacleGuardianCount()
-                    + " damage_window=" + (tentacleDamageWindowStartedTick >= 0L));
+                    + " damage_window=" + tentacleVulnerabilityOpen());
             return false;
         }
         if (isTestBoss(boss) && !testCombatAiMode) {
@@ -39195,14 +39207,33 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !bossDefeatCinematicBossUuid.equals(boss.getUniqueId())) {
             return;
         }
-        boss.setInvulnerable(false);
         sendBossAnimationVisualUpdate(boss, "DEFEAT_COLLAPSE");
         renderBossDefeatCinematic(boss, BossDefeatCinematicPolicy.COMMIT_TICK);
         getLogger().info("BOSS_DEFEAT_COMMITTED event=" + eventId
                 + " boss=" + boss.getUniqueId() + " phase=" + bossPhase
                 + " mode=player-finisher finisher="
                 + (finisher == null ? "unknown" : finisher.getUniqueId()));
-        boss.setHealth(0.0D);
+        // B-A08: Dying2 is a 2.0 s authored clip.  Zeroing health in the same tick
+        // replaced it with the vanilla death animation, so the terminal health
+        // commit is deferred by exactly the clip length while victory/reward
+        // bookkeeping still happens at COMMIT_TICK.
+        if (bossDefeatDeathTask != null) {
+            bossDefeatDeathTask.cancel();
+            bossDefeatDeathTask = null;
+        }
+        long callbackGeneration = generation;
+        UUID bossId = boss.getUniqueId();
+        boss.setInvulnerable(true);
+        bossDefeatDeathTask = Bukkit.getScheduler().runTaskLater(this, () -> {
+            bossDefeatDeathTask = null;
+            if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
+                    || bossUuid == null || !bossUuid.equals(bossId)
+                    || !boss.isValid() || boss.isDead()) {
+                return;
+            }
+            boss.setInvulnerable(false);
+            boss.setHealth(0.0D);
+        }, BossDefeatCinematicPolicy.DEFEAT_DYING_TICKS);
     }
 
     private boolean castBossSpell(LivingEntity boss, boolean forced) {
@@ -40166,6 +40197,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             return;
         }
+        advanceTentacleActiveClock();
         if (!tentacleController.owns(generation)) {
             tentacleController.begin(generation);
             nextTentacleTemporaryTick = TentacleScalingPolicy.initialTemporaryAttemptTick(
@@ -40197,31 +40229,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
         int livingGuardians = livingTentacleGuardianCount();
         if (permanentTarget > 0 && !tentacleGuardianHealth.isEmpty()
-                && livingGuardians == 0 && tentacleDamageWindowStartedTick < 0L) {
-            tentacleDamageWindowStartedTick = eventTickCounter;
+                && livingGuardians == 0 && tentacleDamageWindowEndsMillis < 0L) {
+            tentacleDamageWindowEndsMillis = tentacleActiveMillis + tentacleDamageWindowMillis();
             renderGuardianShieldBreak(boss, true);
             getLogger().info("RIFT_GUARDIAN_SHIELD_BROKEN event=" + eventId
-                    + " boss=" + boss.getUniqueId() + " start_tick="
-                    + tentacleDamageWindowStartedTick + " duration_ticks="
-                    + tentacleDamageWindowTicks());
+                    + " boss=" + boss.getUniqueId() + " active_ms="
+                    + tentacleActiveMillis + " duration_ms="
+                    + tentacleDamageWindowMillis());
         }
-        boolean damageWindowOpen = TentacleGuardianPolicy.damageWindowOpen(
-                bossPhase, livingGuardians, tentacleDamageWindowStartedTick,
-                eventTickCounter, tentacleDamageWindowTicks());
-        if (tentacleDamageWindowStartedTick >= 0L
-                && eventTickCounter - tentacleDamageWindowStartedTick
-                >= tentacleDamageWindowTicks()) {
-            restoreTentacleGuardians(boss, permanentTarget);
-            tentacleDamageWindowStartedTick = -1L;
-            damageWindowOpen = false;
-            renderGuardianShieldBreak(boss, false);
-            getLogger().info("RIFT_GUARDIAN_SHIELD_RESTORED event=" + eventId
-                    + " boss=" + boss.getUniqueId() + " guardians="
-                    + permanentTarget);
-        }
-        if (!damageWindowOpen) {
-            ensurePermanentTentacles(boss, permanentTarget);
-        }
+        boolean damageWindowOpen = tentacleVulnerabilityOpen();
+        // Always reconcile: dead slots keep their own 90 s deadlines and the
+        // minimum 15 s freeze is enforced inside the policy, not by skipping.
+        ensurePermanentTentacles(boss, permanentTarget);
         reconcileGuardianShieldOrbit(boss, !damageWindowOpen && tentacleGuardianShielded());
         if (!damageWindowOpen && temporaryTarget > tentacleController.temporaryCount()
                 && eventTickCounter >= nextTentacleTemporaryTick) {
@@ -40295,15 +40314,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 .collect(Collectors.toSet());
         for (int slot = 0; slot < safeDesired; slot++) {
             double health = tentacleGuardianHealth.getOrDefault(slot, 0.0D);
-            Long respawnAt = tentacleGuardianRespawnAt.get(slot);
-            if (!TentacleGuardianPolicy.slotReadyForSpawn(health, respawnAt,
-                    eventTickCounter, tentacleDamageWindowStartedTick >= 0L)) {
+            Long respawnAt = tentacleGuardianRespawnDeadlineMillis.get(slot);
+            boolean ready = TentacleGuardianPolicy.slotReadyForSpawnAt(
+                    tentacleActiveMillis, respawnAt, health, tentacleRespawnFrozen());
+            if (health <= 0.0D && respawnAt != null && !ready
+                    && TentacleGuardianPolicy.respawnWarningDueAt(tentacleActiveMillis, respawnAt)
+                    && tentacleGuardianWarnedSlots.add(slot)) {
+                // Telegraphed appearance; the guardian is still absent here.
+                Location warning = permanentTentacleLocation(slot, safeDesired);
+                if (warning != null && warning.getWorld() != null) {
+                    warning.getWorld().spawnParticle(Particle.SCULK_SOUL,
+                            warning.clone().add(0.0D, 1.0D, 0.0D), 24, 0.6D, 1.2D, 0.6D, 0.01D);
+                    warning.getWorld().playSound(warning, Sound.BLOCK_SCULK_SENSOR_CLICKING,
+                            SoundCategory.HOSTILE, 1.0F, 0.6F);
+                }
+            }
+            if (!ready) {
                 continue;
             }
             if (health <= 0.0D) {
-                health = TentacleGuardianPolicy.perGuardianHealth(eventScalePlayers());
-                tentacleGuardianHealth.put(slot, health);
-                tentacleGuardianRespawnAt.remove(slot);
+                tentacleGuardianRespawnDeadlineMillis.remove(slot);
             }
             if (slots.contains(slot)) {
                 continue;
@@ -40311,6 +40341,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             Location location = permanentTentacleLocation(slot, safeDesired);
             if (location != null && spawnTentacle(boss, location, false, slot, null) != null) {
                 slots.add(slot);
+                tentacleGuardianWarnedSlots.remove(slot);
+                if (tentacleDamageWindowEndsMillis >= 0L) {
+                    // A defender returned: the seal closes again.
+                    tentacleDamageWindowEndsMillis = -1L;
+                    renderGuardianShieldBreak(boss, false);
+                    getLogger().info("RIFT_GUARDIAN_SHIELD_RETURNING event=" + eventId
+                            + " boss=" + boss.getUniqueId() + " slot=" + slot
+                            + " active_ms=" + tentacleActiveMillis);
+                }
             }
         }
     }
@@ -40369,6 +40408,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 : config.tentacleGuardianTuning().respawnDelayTicks();
     }
 
+    private long tentacleDamageWindowMillis() {
+        return TentacleGuardianPolicy.damageWindowMillis(tentacleDamageWindowTicks());
+    }
+
     private int tentacleAttackIntervalTicks() {
         return config == null || config.tentacleGuardianTuning() == null
                 ? TentacleGuardianPolicy.ATTACK_INTERVAL_TICKS
@@ -40401,11 +40444,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private boolean tentacleGuardianShielded() {
         int livingGuardians = livingTentacleGuardianCount();
-        boolean damageWindowOpen = TentacleGuardianPolicy.damageWindowOpen(bossPhase,
-                livingGuardians, tentacleDamageWindowStartedTick, eventTickCounter);
+        boolean damageWindowOpen = tentacleVulnerabilityOpen();
         boolean guardiansPendingInitialization = bossPhase == BossPhase.LAST_SEAL
-                && !damageWindowOpen
-                && tentacleDamageWindowStartedTick < 0L
+                && tentacleDamageWindowEndsMillis < 0L
                 && tentacleGuardianHealth.isEmpty()
                 && TentacleScalingPolicy.permanentFor(eventScalePlayers(),
                 BossPhase.LAST_SEAL) > 0;
@@ -40413,21 +40454,31 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 damageWindowOpen, guardiansPendingInitialization);
     }
 
-    private void restoreTentacleGuardians(LivingEntity boss, int desired) {
-        int safeDesired = Math.max(0, Math.min(TentacleScalingPolicy.MAX_PERMANENT, desired));
-        for (TentacleController.VisualState state
-                : new ArrayList<>(tentacleController.states().values())) {
-            if (!state.temporary()
-                    && tentacleGuardianHealth.getOrDefault(state.slot(), 0.0D) <= 0.0D) {
-                removeTentacle(state.entityId(), "guardian-shield-window-ended");
-            }
+    /** One authoritative answer for "the seal is open and the boss can be hurt". */
+    private boolean tentacleVulnerabilityOpen() {
+        return bossPhase == BossPhase.LAST_SEAL
+                && tentacleDamageWindowEndsMillis >= 0L
+                && livingTentacleGuardianCount() == 0;
+    }
+
+    /** The guaranteed minimum window: no defender may return inside it. */
+    private boolean tentacleRespawnFrozen() {
+        return bossPhase == BossPhase.LAST_SEAL
+                && tentacleDamageWindowEndsMillis >= 0L
+                && tentacleActiveMillis < tentacleDamageWindowEndsMillis;
+    }
+
+    /**
+     * Active combat time only advances while the guardians are being ticked, so
+     * a paused/empty server cannot consume a 90 s respawn or the 15 s window.
+     */
+    private void advanceTentacleActiveClock() {
+        long now = System.nanoTime();
+        if (tentacleActiveLastNanos != 0L && now > tentacleActiveLastNanos) {
+            tentacleActiveMillis += Math.min(1000L,
+                    (now - tentacleActiveLastNanos) / 1_000_000L);
         }
-        tentacleGuardianRespawnAt.clear();
-        for (int slot = 0; slot < safeDesired; slot++) {
-            tentacleGuardianHealth.put(slot,
-                    (double) TentacleGuardianPolicy.perGuardianHealth(eventScalePlayers()));
-        }
-        ensurePermanentTentacles(boss, safeDesired);
+        tentacleActiveLastNanos = now;
     }
 
     private void renderGuardianShieldBreak(LivingEntity boss, boolean broken) {
@@ -40582,9 +40633,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void resetTentacleGuardianLedger() {
         clearGuardianShieldOrbit("guardian-ledger-reset");
         tentacleGuardianHealth.clear();
-        tentacleGuardianRespawnAt.clear();
+        tentacleGuardianRespawnDeadlineMillis.clear();
+        tentacleGuardianWarnedSlots.clear();
         tentacleNextAttackTick.clear();
-        tentacleDamageWindowStartedTick = -1L;
+        tentacleDamageWindowEndsMillis = -1L;
+        tentacleActiveMillis = 0L;
+        tentacleActiveLastNanos = 0L;
     }
 
     private Location permanentTentacleLocation(int slot, int count) {
@@ -40826,7 +40880,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (!temporary) {
             tentacleGuardianHealth.put(Math.max(0, slot), guardianMaxHealth);
-            tentacleGuardianRespawnAt.remove(Math.max(0, slot));
+            tentacleGuardianRespawnDeadlineMillis.remove(Math.max(0, slot));
+            tentacleGuardianWarnedSlots.remove(Math.max(0, slot));
             tentacleNextAttackTick.put(display.getUniqueId(),
                     eventTickCounter + 60L + Math.max(0, slot)
                             * tentacleAttackStaggerTicks());
@@ -41140,8 +41195,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " visual=" + readString(display, keyTentacleHealthState));
         if (after <= 0.0D) {
             if (!temporary) {
-                tentacleGuardianRespawnAt.put(slot,
-                        eventTickCounter + tentacleRespawnDelayTicks());
+                tentacleGuardianRespawnDeadlineMillis.put(slot,
+                        TentacleGuardianPolicy.respawnDeadline(
+                                tentacleActiveMillis, tentacleRespawnDelayTicks()));
+                tentacleGuardianWarnedSlots.remove(slot);
                 tentacleNextAttackTick.remove(display.getUniqueId());
             }
             setTentacleState(display, TentacleAnimationPolicy.State.DYING, null);

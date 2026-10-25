@@ -54,16 +54,55 @@ public record BossPerceptionSnapshot(
     }
 
     public boolean partyStacked() {
-        return livingPlayers().size() >= 2 && partySpreadRadius() <= 4.0D;
+        return livingPlayers().size() >= 2 && partyHorizontalSpreadRadius() <= 4.0D;
     }
 
     public boolean partySpread() {
-        return partySpreadRadius() >= 8.0D || !isolatedPlayers().isEmpty();
+        return partyHorizontalSpreadRadius() >= 8.0D || !isolatedPlayers().isEmpty();
+    }
+
+    /** Blocks are stacked by walkable ground position, not by a ledge above the party. */
+    public double partyHorizontalSpreadRadius() {
+        Position center = partyCentroid();
+        return livingPlayers().stream()
+                .mapToDouble(player -> horizontalDistance(center.x(), center.z(), player.x(), player.z()))
+                .max().orElse(0.0D);
     }
 
     public boolean bossSurrounded() {
-        long close = livingPlayers().stream().filter(player -> player.distanceToBoss() <= 3.5D).count();
-        return close >= 2;
+        List<PlayerObservation> close = livingPlayers().stream()
+                .filter(player -> horizontalDistance(bossPosition.x(), bossPosition.z(),
+                        player.x(), player.z()) <= 3.5D)
+                .toList();
+        // Two players hugging the same side are pressure, not an encirclement:
+        // at least one pair must stand on opposing sides before the boss reacts.
+        for (int first = 0; first < close.size(); first++) {
+            for (int second = first + 1; second < close.size(); second++) {
+                if (opposingSides(close.get(first), close.get(second))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean opposingSides(PlayerObservation first, PlayerObservation second) {
+        double firstX = first.x() - bossPosition.x();
+        double firstZ = first.z() - bossPosition.z();
+        double secondX = second.x() - bossPosition.x();
+        double secondZ = second.z() - bossPosition.z();
+        double firstLength = Math.sqrt(firstX * firstX + firstZ * firstZ);
+        double secondLength = Math.sqrt(secondX * secondX + secondZ * secondZ);
+        if (firstLength < 1.0e-6D || secondLength < 1.0e-6D) {
+            return false;
+        }
+        return (firstX * secondX + firstZ * secondZ) / (firstLength * secondLength) <= 0.0D;
+    }
+
+    private static double horizontalDistance(double firstX, double firstZ, double secondX, double secondZ) {
+        double dx = firstX - secondX;
+        double dz = firstZ - secondZ;
+        return Math.sqrt(dx * dx + dz * dz);
     }
 
     private static double distance(Position center, double x, double y, double z) {

@@ -14,6 +14,7 @@ public final class BossAnimationPriorityPolicy {
                 && current != BossAnimationId.FINAL_STRIKE
                 && current != BossAnimationId.PHASE_TRANSITION
                 && current != BossAnimationId.GROUND_SLAM
+                && current != BossAnimationId.MELEE_SWIPE
                 && current != BossAnimationId.CHEST_STRIKE;
     }
 }

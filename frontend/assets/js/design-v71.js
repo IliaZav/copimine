@@ -50,7 +50,7 @@ R.home=()=>`<section class="hero v71-hero"><img class="hero-photo" src="${M.asse
 
 
 const inheritedAccount=R.account;
-const accountNav=[['overview','Обзор','user'],['transfers','Переводы АР','transfer'],['orders','Покупки','bag'],['payments','Донаты','heart'],['elections','Выборы','vote'],['treasury','Казна','bank'],['support','Обращения','chat']];
+const accountNav=[['overview','Обзор','user'],['link','Minecraft','gamepad'],['transfers','Переводы АР','transfer'],['orders','Покупки','bag'],['payments','Донаты','heart'],['elections','Выборы','vote'],['treasury','Казна','bank'],['support','Обращения','chat']];
 accountTabs=tab=>A.tabs('account',accountNav,tab);M.accountTabs=accountTabs;
 A.nudge=()=>Q.hint?`<div class="v7-email-nudge"><div class="v7-connection-icon">${icon('mail')}</div><div><strong>Добавь почту на всякий случай</strong><p>Ещё один способ вернуть доступ, если с входом через VK возникнут проблемы.</p></div>${M.link('Привязать почту','#settings/connections','arrow-right','small')}${M.iconBtn('x','Закрыть','v7-dismiss-hint')}</div>`:'';
 function profileSummary(){const p=M.me(),orders=s().orders.filter(x=>x.playerId===p.id||x.player===p.name),wallet=A.wallet,balance=wallet?.balance??p.AR,linked=p.gameLinkVerified||p.linked;

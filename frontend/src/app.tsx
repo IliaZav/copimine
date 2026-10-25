@@ -282,10 +282,9 @@ function mountReactAnalytics(model: LegacyRouteModel) {
 }
 
 function CopiMineApp({ model }: { model: LegacyRouteModel }) {
-  const linkingRequired = model.page === "account" && (
-    model.tab === "link" ||
-    !!window.CM?.me?.() && !window.CMAccountLink?.state?.()?.user?.gameLinkVerified
-  );
+  const accountLinkUser = window.CMAccountLink?.state?.()?.user || window.CM?.me?.();
+  const accountNeedsLink = model.page === "account" && !!accountLinkUser && !accountLinkUser.gameLinkVerified;
+  const showLinkGuide = accountNeedsLink && (model.tab === "link" || !model.tab || model.tab === "overview");
   useLayoutEffect(() => {
     restoreNavigationState(model);
     mountReactAnalytics(model);
@@ -298,14 +297,15 @@ function CopiMineApp({ model }: { model: LegacyRouteModel }) {
         {model.page === "admin"
           ? <LegacyPage html={model.html} />
           : <>
-              <main id="view" className={model.page === "map" ? undefined : linkingRequired ? "cm-link-route" : "container"}>
+              <main id="view" className={model.page === "map" ? undefined : "container"}>
                 {model.page === "home" ? <HomePage />
                   : model.page === "map" ? <MapPage />
                   : model.page === "rules" ? <RulesPage html={model.html} />
-                  : linkingRequired ? <MinecraftLinkPage />
+                  : model.page === "account" && model.tab === "link" ? <><LegacyPage html={model.html} /><MinecraftLinkPage /></>
+                  : model.page === "account" ? <>{showLinkGuide && <div className="cm-link-onboarding"><MinecraftLinkPage /></div>}<LegacyPage html={model.html} /></>
                   : <LegacyPage html={model.html} />}
               </main>
-              {model.page !== "map" && !linkingRequired && <div className="container"><div dangerouslySetInnerHTML={{ __html: model.footer }} /></div>}
+              {model.page !== "map" && <div className="container"><div dangerouslySetInnerHTML={{ __html: model.footer }} /></div>}
             </>}
       </div>
     </>

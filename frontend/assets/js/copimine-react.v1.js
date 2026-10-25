@@ -9395,7 +9395,7 @@ function ae(e) {
 	}
 }
 function x({ model: e }) {
-	let t = e.page === "account" && (e.tab === "link" || !!window.CM?.me?.() && !window.CMAccountLink?.state?.()?.user?.gameLinkVerified);
+	let t = window.CMAccountLink?.state?.()?.user || window.CM?.me?.(), n = e.page === "account" && !!t && !t.gameLinkVerified && (e.tab === "link" || !e.tab || e.tab === "overview");
 	return (0, u.useLayoutEffect)(() => {
 		ie(e), ae(e);
 	}, [e.revision]), /* @__PURE__ */ (0, d.jsxs)(d.Fragment, { children: [/* @__PURE__ */ (0, d.jsx)("div", {
@@ -9405,9 +9405,12 @@ function x({ model: e }) {
 		id: "page-root",
 		children: e.page === "admin" ? /* @__PURE__ */ (0, d.jsx)(re, { html: e.html }) : /* @__PURE__ */ (0, d.jsxs)(d.Fragment, { children: [/* @__PURE__ */ (0, d.jsx)("main", {
 			id: "view",
-			className: e.page === "map" ? void 0 : t ? "cm-link-route" : "container",
-			children: e.page === "home" ? /* @__PURE__ */ (0, d.jsx)(b, {}) : e.page === "map" ? /* @__PURE__ */ (0, d.jsx)(ee, {}) : e.page === "rules" ? /* @__PURE__ */ (0, d.jsx)(te, { html: e.html }) : t ? /* @__PURE__ */ (0, d.jsx)(ne, {}) : /* @__PURE__ */ (0, d.jsx)(re, { html: e.html })
-		}), e.page !== "map" && !t && /* @__PURE__ */ (0, d.jsx)("div", {
+			className: e.page === "map" ? void 0 : "container",
+			children: e.page === "home" ? /* @__PURE__ */ (0, d.jsx)(b, {}) : e.page === "map" ? /* @__PURE__ */ (0, d.jsx)(ee, {}) : e.page === "rules" ? /* @__PURE__ */ (0, d.jsx)(te, { html: e.html }) : e.page === "account" && e.tab === "link" ? /* @__PURE__ */ (0, d.jsxs)(d.Fragment, { children: [/* @__PURE__ */ (0, d.jsx)(re, { html: e.html }), /* @__PURE__ */ (0, d.jsx)(ne, {})] }) : e.page === "account" ? /* @__PURE__ */ (0, d.jsxs)(d.Fragment, { children: [n && /* @__PURE__ */ (0, d.jsx)("div", {
+				className: "cm-link-onboarding",
+				children: /* @__PURE__ */ (0, d.jsx)(ne, {})
+			}), /* @__PURE__ */ (0, d.jsx)(re, { html: e.html })] }) : /* @__PURE__ */ (0, d.jsx)(re, { html: e.html })
+		}), e.page !== "map" && /* @__PURE__ */ (0, d.jsx)("div", {
 			className: "container",
 			children: /* @__PURE__ */ (0, d.jsx)("div", { dangerouslySetInnerHTML: { __html: e.footer } })
 		})] })

@@ -57,10 +57,6 @@ async def login(request: Request, response: Response):
     user = dict(row)
     if not user["enabled"] or (user["blocked_until_s"] and user["blocked_until_s"] > time.time()):
         fail(403, "account_blocked", "Вход в этот аккаунт ограничен. Обратитесь в поддержку.")
-    if user["totp_secret"]:
-        from .mfa import verify_factor
-        if not verify_factor(database, request.app.state.settings.secret_key, user, data.get("totp", "")):
-            fail(401, "invalid_credentials", "Укажите действующий код двухфакторной защиты.")
     if request.state.session:
         with database.transaction() as db:
             db.execute("UPDATE cm_site_sessions SET revoked_s=%s WHERE token_hash=%s", (int(time.time()), request.state.session["token_hash"]))

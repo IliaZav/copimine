@@ -50,6 +50,28 @@ function reveal(nodes, enabled) {
   });
 }
 
+function auth(root, enabled) {
+  if (!root) return;
+  const fields = Array.from(root.querySelectorAll(".v7-auth-main form > .field, .v7-auth-main form > .check-row, .v7-auth-main form > .btn, .v7-auth-bottom"));
+  const image = root.querySelector(".v7-auth-aside img");
+  if (!allowed(enabled)) {
+    root.style.opacity = "";
+    root.style.transform = "";
+    fields.forEach((field) => { field.style.opacity = ""; field.style.transform = ""; });
+    if (image) image.style.transform = "";
+    return;
+  }
+  anime(root, { opacity: [0, 1], translateY: [18, 0], duration: 520, ease: "outCubic" });
+  if (image) anime(image, { scale: [1.045, 1], duration: 900, ease: "outCubic" });
+  fields.forEach((field, index) => anime(field, {
+    opacity: [0, 1],
+    translateY: [10, 0],
+    delay: 90 + index * 42,
+    duration: 340,
+    ease: "outCubic"
+  }));
+}
+
 function carousel(slides, index, enabled) {
   const items = Array.from(slides || []);
   const count = items.length;
@@ -102,4 +124,4 @@ function settle(stage, enabled) {
   else stage.style.transform = "";
 }
 
-window.CMSiteMotion = Object.freeze({ route, reveal, carousel, drag, settle });
+window.CMSiteMotion = Object.freeze({ route, reveal, auth, carousel, drag, settle });

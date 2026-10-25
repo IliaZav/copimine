@@ -39,19 +39,19 @@
     const registering = tab === 'register';
     const title = registering ? 'Создать аккаунт' : 'Войти';
     const intro = registering ? 'Создай логин сайта и пароль. Затем привяжи Minecraft.' : 'Введи логин и пароль.';
-    return `<div class="v7-auth-layout v9-auth-layout"><aside class="v7-auth-aside"><img src="${M.asset('assets/img/world.webp')}" alt="" decoding="async"></aside><section class="v7-auth-main"><h1>${title}</h1><p class="v7-auth-lead">${intro}</p><nav class="v7-auth-tabs" aria-label="Вход или регистрация"><a class="${registering ? '' : 'active'}" href="#auth/login">Вход</a><a class="${registering ? 'active' : ''}" href="#auth/register">Регистрация</a></nav><form data-form="${registering ? 'v7-register' : 'v7-login'}"><label class="field">Логин сайта<input name="username" type="text" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_]{3,32}" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Логин" value=""></label>${registering ? '<label class="field">Пароль<input name="password" type="password" required minlength="10" maxlength="256" autocomplete="new-password" placeholder="Не меньше 10 символов"></label><label class="field">Повтори пароль<input name="repeat" type="password" required minlength="10" maxlength="256" autocomplete="new-password"></label><label class="check-row"><input type="checkbox" name="terms" required><span>Принимаю <a href="#rules">правила сервера</a></span></label>' : '<label class="field">Пароль<input name="password" type="password" required maxlength="256" autocomplete="current-password" placeholder="Пароль аккаунта"></label><label class="field v9-totp-field">Код защиты <input name="totp" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="Если включён"></label><label class="check-row"><input type="checkbox" name="remember" checked><span>Оставаться в аккаунте на этом устройстве</span></label>'}<div class="form-error" role="alert"></div><button type="submit" class="btn primary wide">${title}${icon('arrow-right')}</button></form>${registering ? '<p class="v7-auth-bottom">Уже зарегистрирован? <a href="#auth/login">Войти</a></p>' : '<p class="v7-auth-bottom">Нет аккаунта? <a href="#auth/register">Создать</a></p>'}</section></div>`;
+    return `<div class="v7-auth-layout v9-auth-layout"><aside class="v7-auth-aside"><img src="${M.asset('assets/img/world.webp')}" alt="" decoding="async"></aside><section class="v7-auth-main"><h1>${title}</h1><p class="v7-auth-lead">${intro}</p><nav class="v7-auth-tabs" aria-label="Вход или регистрация"><a class="${registering ? '' : 'active'}" href="#auth/login">Вход</a><a class="${registering ? 'active' : ''}" href="#auth/register">Регистрация</a></nav><form data-form="${registering ? 'v7-register' : 'v7-login'}"><label class="field">Логин сайта<input name="username" type="text" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_]{3,32}" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Логин" value=""></label>${registering ? '<label class="field">Пароль<input name="password" type="password" required minlength="10" maxlength="256" autocomplete="new-password" placeholder="Не меньше 10 символов"></label><label class="field">Повтори пароль<input name="repeat" type="password" required minlength="10" maxlength="256" autocomplete="new-password"></label><label class="check-row"><input type="checkbox" name="terms" required><span>Принимаю <a href="#rules">правила сервера</a></span></label>' : '<label class="field">Пароль<input name="password" type="password" required maxlength="256" autocomplete="current-password" placeholder="Пароль аккаунта"></label><label class="check-row"><input type="checkbox" name="remember" checked><span>Оставаться в аккаунте на этом устройстве</span></label>'}<div class="form-error" role="alert"></div><button type="submit" class="btn primary wide">${title}${icon('arrow-right')}</button></form>${registering ? '<p class="v7-auth-bottom">Уже зарегистрирован? <a href="#auth/login">Войти</a></p>' : '<p class="v7-auth-bottom">Нет аккаунта? <a href="#auth/register">Создать</a></p>'}</section></div>`;
   }
 
   R.auth = tab => authMarkup(tab === 'register' ? 'register' : 'login');
   R.inbox = () => R.auth('login');
   F['v7-login'] = async (form, data) => {
-    const result = await Q.request('login', { username: String(data.get('username') || '').trim(), password: data.get('password'), totp: String(data.get('totp') || ''), remember: !!data.get('remember') });
+    const result = await Q.request('login', { username: String(data.get('username') || '').trim(), password: data.get('password'), remember: !!data.get('remember') });
     Q.csrf = result.csrf || Q.csrf;
     await Q.reload();
     if (!Q.user) throw Error('Не удалось открыть аккаунт. Обнови страницу и войди ещё раз.');
     Q.hint = false;
     M.closeModal();
-    M.navTo((M.me() || Q.user)?.gameLinkVerified ? authReturn() : 'account/link');
+    M.navTo(authReturn());
   };
   F['v7-register'] = async (form, data) => {
     if (!data.get('terms')) throw Error('Прими правила сервера, чтобы продолжить.');
@@ -62,7 +62,7 @@
     if (!Q.user) throw Error('Аккаунт создан, но войти не удалось. Попробуй выполнить вход.');
     Q.hint = false;
     M.closeModal();
-    M.navTo((M.me() || Q.user)?.gameLinkVerified ? authReturn() : 'account/link');
+    M.navTo(authReturn());
   };
   F['v7-code'] = F['v7-reset'] = F['v7-confirm-code'] = async () => { throw Error('Войди по нику и паролю.'); };
   H['v7-vk'] = undefined;
@@ -85,6 +85,7 @@
 
   R.account = tab => {
     Q.hint = false;
+    if (tab === 'link' && M.me()) return A.heading('Minecraft', 'Привяжи игровой аккаунт по коду из игры.', M.link('В кабинет', '#account', 'arrow-left', 'ghost')) + M.accountTabs('link');
     if (tab !== 'support' || !M.me()) return oldAccount(tab);
     const user = M.me();
     const tickets = (state().tickets || []).filter(ticket => ticket.playerId === user.id || ticket.player === user.name);
@@ -199,9 +200,8 @@
   }
   H['v7-game-link'] = () => {
     const user = M.me();
-    if (!user) { saveAuthReturn('settings/security'); M.navTo('auth/login'); return; }
-    if (user.gameLinkVerified) return M.openModal('Minecraft привязан', `<p>К аккаунту привязан ник <strong>${E(user.minecraftName || user.name)}</strong>.</p>${M.link('Кабинет', '#account', 'arrow-left', 'ghost')}`);
-    M.openModal('Привязать Minecraft', `<ol class="v7-steps"><li><strong>Укажи игровой ник</strong><p>Используй ник аккаунта, которым входишь на сервере.</p></li><li><strong>Получи личное сообщение</strong><p>Сайт отправит одноразовый код через игровой сервер.</p></li><li><strong>Введи код здесь</strong><p>После подтверждения профиль и статус обновятся в кабинете.</p></li></ol><form data-form="production-mc-code">${V.field('Ник Minecraft', 'name', '', 'text', 'required pattern="[A-Za-z0-9_]{3,16}" minlength="3" maxlength="16" autocomplete="off" autocapitalize="none"')}<div class="form-error" role="alert"></div>${V.actions('Получить код')}</form>`);
+    if (!user) { saveAuthReturn('account/link'); M.navTo('auth/login'); return; }
+    M.navTo('account/link');
   };
   F['production-mc-code'] = async (form, data) => {
     const name = String(data.get('name') || '').trim();
@@ -223,6 +223,7 @@
   window.CMAccountLink = { state: () => ({ user: M.me() || Q.user || null, pending: pendingMinecraftLink ? { ...pendingMinecraftLink } : null }) };
 
   V.after.push((page, tab) => {
+    if (page === 'auth') window.CMSiteMotion?.auth?.(document.querySelector('.v9-auth-layout'));
     if (page === 'account' && pendingMinecraftLink) startMinecraftPoll();
     if (page === 'faq') document.title = 'FAQ · CopiMine';
     document.querySelectorAll('.breadcrumb').forEach(crumb => {

@@ -37,7 +37,23 @@ _DISCORD_INVITE = re.compile(r"^https://(?:discord\.gg/[A-Za-z0-9_-]+|discord\.c
 def _seed(request):
     path = request.app.state.settings.frontend / "data" / "content-v6-public.json"
     value = json.loads(path.read_text(encoding="utf-8"))
-    return value if isinstance(value, dict) else {}
+    if not isinstance(value, dict):
+        return {}
+    gallery_path = Path(request.app.state.settings.private) / "gallery-v73.json"
+    if gallery_path.is_file():
+        defaults = json.loads(gallery_path.read_text(encoding="utf-8"))
+        if isinstance(defaults, list):
+            gallery = value.get("gallery")
+            if not isinstance(gallery, list):
+                gallery = []
+                value["gallery"] = gallery
+            known_ids = {str(row.get("id", "")) for row in gallery if isinstance(row, dict)}
+            for row in defaults:
+                identifier = str(row.get("id", "")) if isinstance(row, dict) else ""
+                if identifier and identifier not in known_ids:
+                    gallery.append(row)
+                    known_ids.add(identifier)
+    return value
 
 
 def _value(db, seed, section):
@@ -59,7 +75,17 @@ def _site_config(db, seed):
 
 
 def _gallery_rows(db, seed):
-    return _value(db, seed, "gallery")
+    rows = copy.deepcopy(_value(db, seed, "gallery"))
+    known_ids = {str(row.get("id", "")) for row in rows if isinstance(row, dict)}
+    for row in seed.get("gallery", []):
+        if not isinstance(row, dict):
+            continue
+        identifier = str(row.get("id", ""))
+        if identifier and identifier not in known_ids:
+            rows.append(copy.deepcopy(row))
+            known_ids.add(identifier)
+    rows.sort(key=lambda x: (int(x.get("position", 0)), str(x.get("id", ""))))
+    return rows
 
 
 def _gallery_file(settings, filename):
@@ -203,7 +229,10 @@ def public_sections(request):
     database = request.app.state.database
     seed = _seed(request)
     with database.transaction() as db:
-        sections = {name: _value(db, seed, name) for name in SECTIONS}
+        sections = {
+            name: _gallery_rows(db, seed) if name == "gallery" else _value(db, seed, name)
+            for name in SECTIONS
+        }
     pages = []
     for row in sections["pages"]:
         if not isinstance(row, dict) or row.get("archived") is True:
@@ -230,7 +259,10 @@ def get_content(request: Request):
     current_user(request, "content.manage")
     seed = _seed(request)
     with request.app.state.database.transaction() as db:
-        values = {name: _value(db, seed, name) for name in SECTIONS}
+        values = {
+            name: _gallery_rows(db, seed) if name == "gallery" else _value(db, seed, name)
+            for name in SECTIONS
+        }
     return {"data": values, "versions": {name: _version(value) for name, value in values.items()}}
 
 
@@ -343,7 +375,7 @@ async def update_content_section(request: Request, section: str):
     with database.transaction() as db:
         if not db.sqlite:
             db.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", ("copimine-cms:" + section,))
-        rows = _value(db, seed, section)
+        rows = _gallery_rows(db, seed) if section == "gallery" else _value(db, seed, section)
         if not hmac.compare_digest(_version(rows), expected):
             fail(409, "content_changed", "Содержимое уже изменилось. Обнови редактор и повтори правку.")
         item = data.get("item")

@@ -25,10 +25,8 @@ function route(node, enabled) {
 function heroAtmosphere(root) {
   if (!root) return () => {};
   const photos = Array.from(root.querySelectorAll("[data-hero-frame]"));
-  const risingLines = root.querySelector(".cm-react-hero-lines");
   const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
   let cameraAnimation = null;
-  let lightAnimation = null;
   let frameAnimations = [];
   let frameTimer = 0;
   let activeFrame = Math.max(0, photos.findIndex((photo) => photo.dataset.active === "true"));
@@ -39,8 +37,6 @@ function heroAtmosphere(root) {
     frameTimer = 0;
     cameraAnimation?.cancel();
     cameraAnimation = null;
-    lightAnimation?.cancel();
-    lightAnimation = null;
     frameAnimations.forEach((animation) => animation.cancel());
     frameAnimations = [];
     photos.forEach((photo, index) => {
@@ -48,7 +44,6 @@ function heroAtmosphere(root) {
       photo.style.opacity = "";
       photo.style.transform = "";
     });
-    if (risingLines) risingLines.style.opacity = "";
   }
 
   function motionEnabled() {
@@ -91,14 +86,6 @@ function heroAtmosphere(root) {
       stop();
       return;
     }
-    if (!lightAnimation && risingLines) lightAnimation = anime(risingLines, {
-      opacity: [0.72, 1],
-      duration: 4600,
-      ease: "inOutSine",
-      alternate: true,
-      loop: true,
-      delay: 900
-    });
     const shouldPlay = heroVisible && !document.hidden && root.dataset.heroPaused !== "true";
     if (shouldPlay) {
       if (!cameraAnimation && photos.length) cameraAnimation = anime(photos[activeFrame], {
@@ -111,14 +98,12 @@ function heroAtmosphere(root) {
         loop: true
       });
       cameraAnimation?.resume();
-      lightAnimation?.resume();
       frameAnimations.forEach((animation) => animation.resume());
       if (!frameTimer && photos.length > 1) frameTimer = window.setTimeout(advanceFrame, 3200);
     } else {
       window.clearTimeout(frameTimer);
       frameTimer = 0;
       cameraAnimation?.pause();
-      lightAnimation?.pause();
       frameAnimations.forEach((animation) => animation.pause());
     }
   }

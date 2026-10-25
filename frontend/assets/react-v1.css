@@ -10,8 +10,6 @@
 .cm-skeleton-copy span.short{width:min(300px,35vw);margin-top:8px}
 .cm-skeleton-copy em{width:176px;height:52px;margin-top:22px;border-radius:9px;background:rgba(56,221,164,.24)}
 .cm-skeleton-copy small{width:76px;height:8px;margin:16px 0 0 8px;border-radius:2px;background:linear-gradient(90deg,#ffffff08,#ffffff10,#ffffff08);background-size:220% 100%;animation-duration:2.2s}
-.cm-react-hero-lines{position:absolute;inset:0;z-index:1;pointer-events:none;mask-image:linear-gradient(180deg,transparent 8%,#000 36%,#000 85%,transparent)}
-.cm-react-rising-lines canvas{display:block;width:100%;height:100%}
 .cm-react-hero-content{position:relative;z-index:2}
 .cm-react-hero-actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
 .cm-react-hero-actions .btn{display:inline-flex;align-items:center;gap:10px}

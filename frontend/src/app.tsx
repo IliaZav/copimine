@@ -2,7 +2,6 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { AnalyticsModel } from "./charts";
 import { CoverflowGallery, type GallerySlide } from "./coverflow-gallery";
-import { RisingLines } from "./rising-lines";
 
 type LegacyRouteModel = {
   page: string;
@@ -76,7 +75,6 @@ function ServerHero() {
           />)}
         </div>
       </div>
-      <RisingLines className="cm-react-hero-lines" particles={160} color="#5ce5b2" opacity={0.38} />
       <div className="cm72-hero-content">
         <h1 className="cm-react-hero-title">
           {first}{second && <><br /><span>{second}</span></>}

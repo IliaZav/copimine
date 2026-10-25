@@ -7,6 +7,7 @@
   const M = CM, V = CMV4, A = CM71, W = CM5, Q = CMReview;
   const R = M.renderers, H = M.handlers, E = M.esc, state = () => M.state;
   const api = window.CM72 = { galleryIndex: 0, skinYaw: -25, skinPitch: -6 };
+  const photo = 'assets/photos/copimine-night.webp';
   const thumb = 'assets/photos/copimine-night-small.webp';
   const asset = path => String(path || '').startsWith('/api/v6/') ? path : M.asset(path);
   const motion = () => state().preferences.motion !== false && !state().reviewPersonal?.reduceMotion && !matchMedia('(prefers-reduced-motion: reduce)').matches;

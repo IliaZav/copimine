@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PrisonerTargetRayPolicyTest {
-    private static final int CURRENT_QUERY_LIMIT = 256;
+    private static final int OLD_QUERY_LIMIT = 256;
     private static final UUID ALLY = UUID.fromString("33333333-3333-3333-3333-333333333333");
     private static final UUID MOB = UUID.fromString("44444444-4444-4444-4444-444444444444");
     private static final UUID UNKNOWN = UUID.fromString("55555555-5555-5555-5555-555555555555");
@@ -94,33 +94,52 @@ class PrisonerTargetRayPolicyTest {
     }
 
     @Test
-    void denseOffRayEntitiesCannotHideAnEligibleTargetBehindTheQueryLimit() {
-        List<PrisonerTargetRayPolicy.Candidate<String>> broadPhaseResults = new ArrayList<>();
-        for (int index = 0; index < CURRENT_QUERY_LIMIT; index++) {
-            UUID id = UUID.nameUUIDFromBytes(
-                    ("off-ray-living-entity-" + index).getBytes(StandardCharsets.UTF_8));
-            // These boxes fall inside the selector's rayBounds.inflate(1) query,
-            // but their X range misses the narrow camera ray. They must not
-            // consume result slots because the selector filters by the corridor.
-            broadPhaseResults.add(new PrisonerTargetRayPolicy.Candidate<>(
-                    "off-ray-" + index, id, new AABB(0.55, 1.0, 5, 0.95, 2.0, 5.6),
-                    5, true, false));
-        }
-        broadPhaseResults.add(target("late-ally", ALLY, 10, true, false));
+    void paddedNearMissesCannotHideAnEligibleTargetBehindTheOldQueryLimit() {
         Vec3 end = CAMERA.add(FORWARD.scale(28));
-        List<PrisonerTargetRayPolicy.Candidate<String>> corridorResults = broadPhaseResults.stream()
+        List<PrisonerTargetRayPolicy.Candidate<String>> scene = new ArrayList<>();
+        for (int index = 0; index < 300; index++) {
+            UUID id = UUID.nameUUIDFromBytes(
+                    ("padded-near-miss-" + index).getBytes(StandardCharsets.UTF_8));
+            // Inside the old 0.3 broad-phase padding of the ray, but never on the ray.
+            double z = 5.0 + (index % 7) * 0.2;
+            scene.add(new PrisonerTargetRayPolicy.Candidate<>("near-miss-" + index, id,
+                    new AABB(0.06, 1.0, z, 0.30, 2.0, z + 0.6), 5, true, false));
+        }
+        scene.add(target("late-ally", ALLY, 10, true, false));
+
+        List<PrisonerTargetRayPolicy.Candidate<String>> corridor = scene.stream()
                 .filter(candidate -> PrisonerTargetRayPolicy.intersectsSegment(
                         CAMERA, end, candidate.bounds()))
-                .limit(CURRENT_QUERY_LIMIT)
                 .toList();
 
-        var boundedQuerySelection = selectCandidates(corridorResults, 28);
-        var completeQuerySelection = selectCandidates(broadPhaseResults, 28);
+        // The broad-phase filter must keep only real corridor hits, so no budget exists to exhaust.
+        assertEquals(1, corridor.size());
+        assertEquals("late-ally", selectCandidates(corridor, 28).target());
+        // The old fixed 256-slot query filled itself with padded near misses and lost the ally.
+        assertNull(selectCandidates(scene.subList(0, OLD_QUERY_LIMIT), 28));
+    }
 
-        assertNotNull(boundedQuerySelection);
-        assertEquals("late-ally", boundedQuerySelection.target());
-        assertNotNull(completeQuerySelection);
-        assertEquals("late-ally", completeQuerySelection.target());
+    @Test
+    void broadPhaseAndNarrowPhaseShareOneColliderGeometry() {
+        Vec3 end = CAMERA.add(FORWARD.scale(28));
+        assertFalse(PrisonerTargetRayPolicy.intersectsSegment(CAMERA, end,
+                new AABB(0.06, 1.0, 5.0, 0.30, 2.0, 5.6)));
+        assertTrue(PrisonerTargetRayPolicy.intersectsSegment(CAMERA, end,
+                new AABB(-0.3, 0, 9.7, 0.3, 1.8, 10.3)));
+    }
+
+    @Test
+    void equalDistanceTargetsResolveDeterministicallyById() {
+        var low = new PrisonerTargetRayPolicy.Candidate<>("low",
+                UUID.fromString("10000000-0000-0000-0000-000000000000"),
+                new AABB(-0.3, 0, 9.7, 0.3, 1.8, 10.3), 10, true, false);
+        var high = new PrisonerTargetRayPolicy.Candidate<>("high",
+                UUID.fromString("20000000-0000-0000-0000-000000000000"),
+                new AABB(-0.3, 0, 9.7, 0.3, 1.8, 10.3), 10, true, false);
+        assertEquals("low", PrisonerTargetRayPolicy.select(CAMERA, FORWARD, 28, 28,
+                List.of(high, low), (ability, id) -> true).target());
+        assertEquals("low", PrisonerTargetRayPolicy.select(CAMERA, FORWARD, 28, 28,
+                List.of(low, high), (ability, id) -> true).target());
     }
 
     @Test

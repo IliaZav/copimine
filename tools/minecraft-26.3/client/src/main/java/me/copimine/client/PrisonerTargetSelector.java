@@ -21,7 +21,6 @@ import java.util.UUID;
 
 /** Local crosshair target preview; it sends nothing until an ability key is pressed. */
 public final class PrisonerTargetSelector {
-    private static final int MAX_QUERY_ENTITIES = 256;
     private static final PrisonerTargetPreviewCache PREVIEW_CACHE = new PrisonerTargetPreviewCache();
 
     private PrisonerTargetSelector() {
@@ -61,17 +60,20 @@ public final class PrisonerTargetSelector {
         double colliderDistance = blockHit.getType() == HitResult.Type.MISS
                 ? rayLength : origin.distanceTo(blockHit.getLocation());
         AABB rayBounds = new AABB(origin, end).inflate(1.0D);
-        List<Entity> queryEntities = new ArrayList<>(MAX_QUERY_ENTITIES);
-        client.level.getEntities(EntityTypeTest.forClass(Entity.class), rayBounds,
+        // Ineligible actors are dropped before the nearest-target selection, so a crowded
+        // corridor cannot exhaust a fixed result budget and hide the real target.
+        List<Entity> queryEntities = client.level.getEntities(
+                EntityTypeTest.forClass(Entity.class), rayBounds,
                 target -> target != client.player
                         && target instanceof LivingEntity living
                         && living.isAlive() && !living.isSpectator() && living.level() == client.level
-                        && PrisonerTargetRayPolicy.intersectsSegment(origin, end, target.getBoundingBox()),
-                queryEntities, MAX_QUERY_ENTITIES);
+                        && ((living instanceof Player player
+                                && hud.isTargetAllowed(PrisonerHudController.Ability.HEAL, player.getUUID()))
+                            || (living instanceof Mob mob
+                                && hud.isTargetAllowed(PrisonerHudController.Ability.TURNCOAT, mob.getUUID())))
+                        && PrisonerTargetRayPolicy.intersectsSegment(origin, end, living.getBoundingBox()));
         List<PrisonerTargetRayPolicy.Candidate<Entity>> candidates = new ArrayList<>(queryEntities.size());
         for (Entity target : queryEntities) {
-            if (!(target instanceof LivingEntity) || !target.isAlive() || target.isSpectator()
-                    || target.level() != client.level) continue;
             candidates.add(new PrisonerTargetRayPolicy.Candidate<>(target, target.getUUID(),
                     target.getBoundingBox(), client.player.position().distanceTo(target.position()),
                     target instanceof Player, target instanceof Mob));

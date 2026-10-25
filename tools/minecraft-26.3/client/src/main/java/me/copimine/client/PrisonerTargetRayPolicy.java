@@ -23,6 +23,7 @@ public final class PrisonerTargetRayPolicy {
         Vec3 end = origin.add(direction.normalize().scale(rayLength));
         double nearest = Math.min(rayLength, colliderDistance);
         Selection<T> result = null;
+        UUID bestId = null;
         for (Candidate<T> candidate : candidates) {
             if (candidate == null || candidate.target() == null || candidate.id() == null
                     || candidate.bounds() == null || candidate.bounds().hasNaN()) continue;
@@ -35,14 +36,15 @@ public final class PrisonerTargetRayPolicy {
                     && PrisonerTargetRangePolicy.allows(PrisonerHudController.Ability.TURNCOAT,
                             candidate.playerDistance());
             if (!ally && !hostile) continue;
-            Vec3 intersection = candidate.bounds().contains(origin) ? origin
-                    : candidate.bounds().clip(origin, end).orElse(null);
+            Vec3 intersection = intersection(origin, end, candidate.bounds());
             if (intersection == null) continue;
             double hitDistance = origin.distanceTo(intersection);
-            // A collider at the same point wins; do not preview through walls or Core blocks.
-            if (hitDistance < nearest) {
+            // A collider at the same point wins; equal-distance hits stay deterministic.
+            if (hitDistance < nearest || (hitDistance == nearest && result != null
+                    && candidate.id().compareTo(bestId) < 0)) {
                 nearest = hitDistance;
                 result = new Selection<>(candidate.target(), ally, hostile);
+                bestId = candidate.id();
             }
         }
         return result;
@@ -51,8 +53,12 @@ public final class PrisonerTargetRayPolicy {
     /** Keeps the broad-phase query to the narrow camera corridor, not its whole bounding box. */
     public static boolean intersectsSegment(Vec3 origin, Vec3 end, AABB bounds) {
         if (!finite(origin) || !finite(end) || bounds == null || bounds.hasNaN()) return false;
-        AABB padded = bounds.inflate(0.3D);
-        return padded.contains(origin) || padded.clip(origin, end).isPresent();
+        return intersection(origin, end, bounds) != null;
+    }
+
+    /** One geometry path for the broad-phase filter and the exact selection. */
+    private static Vec3 intersection(Vec3 origin, Vec3 end, AABB bounds) {
+        return bounds.contains(origin) ? origin : bounds.clip(origin, end).orElse(null);
     }
 
     private static boolean finite(Vec3 vector) {

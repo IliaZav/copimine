@@ -7,7 +7,6 @@
   const M = CM, V = CMV4, A = CM71, W = CM5, Q = CMReview;
   const R = M.renderers, H = M.handlers, E = M.esc, state = () => M.state;
   const api = window.CM72 = { galleryIndex: 0, skinYaw: -25, skinPitch: -6 };
-  const photo = 'assets/photos/copimine-night.webp';
   const thumb = 'assets/photos/copimine-night-small.webp';
   const asset = path => String(path || '').startsWith('/api/v6/') ? path : M.asset(path);
   const motion = () => state().preferences.motion !== false && !state().reviewPersonal?.reduceMotion && !matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -36,14 +35,42 @@
   };
   H['v7-menu'] = () => M.openModal('Разделы сайта', `<nav class="v7-mobile-menu">${[['home', 'Главная', 'home'], ['shop', 'Магазин', 'bag'], ['donate', 'Донат', 'heart'], ['map', 'Карта', 'map'], ['rules', 'Правила', 'shield'], ['faq', 'FAQ', 'help-circle']].concat(publishedPagesInNavigation().map(page => [page.slug,page.published.title||page.slug,'file'])).map(([url, text, ic]) => `<a href="#${url}">${icon(ic)}${text}${icon('arrow-right')}</a>`).join('')}</nav>`);
 
+  const galleryDefaults = [
+    { id: 'world-original', title: 'Вечер на сервере', caption: 'Общий вид мира CopiMine', src: 'assets/img/world.webp', alt: 'Ночной игровой пейзаж CopiMine', kind: 'photo', published: true, position: 0 },
+    { id: 'project-riverside', title: 'У реки', caption: 'Мост через реку', src: 'assets/photos/copimine-riverside.webp', alt: 'Деревянный мост между зелёными берегами CopiMine', kind: 'photo', published: true, position: 1 },
+    { id: 'project-mountain', title: 'Зимний склон', caption: 'Вид с горного хребта', src: 'assets/photos/copimine-mountain.webp', alt: 'Игроки на снежном склоне с видом на долину', kind: 'photo', published: true, position: 2 },
+    { id: 'project-arena', title: 'Арена', caption: 'Бой на закате', src: 'assets/photos/copimine-arena.webp', alt: 'Игрок сражается с существами на арене CopiMine', kind: 'photo', published: true, position: 3 }
+  ];
+  const oldGalleryCopy = {
+    'world-original': ['Вечер в CopiMine', 'Ночь над холмами'],
+    'project-riverside': ['Над рекой', 'Скриншот проекта'],
+    'project-mountain': ['На вершине', 'Скриншот проекта'],
+    'project-arena': ['Вечер на арене', 'Скриншот проекта']
+  };
   function seedGallery() {
-    if (state().design73Gallery) return;
-    state().gallery=(state().gallery||[]).filter(x=>x.kind!=='map'&&!['world-save','map-nether','map-end'].includes(x.id));
-    const first=state().gallery.find(x=>x.id==='world-original');
-    if(first)Object.assign(first,{kind:'photo',src:photo,title:'Вечер в CopiMine',caption:'Ночь над холмами',position:0});
-    const incoming=[{"id":"project-riverside","title":"Над рекой","caption":"Скриншот проекта","src":"assets/photos/copimine-riverside.webp","alt":"Холмы, река и деревянный мост","kind":"photo","published":true,"position":1},{"id":"project-mountain","title":"На вершине","caption":"Скриншот проекта","src":"assets/photos/copimine-mountain.webp","alt":"Игроки на снежном склоне","kind":"photo","published":true,"position":2},{"id":"project-arena","title":"Вечер на арене","caption":"Скриншот проекта","src":"assets/photos/copimine-arena.webp","alt":"Игровой кадр с существами CopiMine","kind":"photo","published":true,"position":3}];
-    incoming.forEach(x=>{if(!state().gallery.some(y=>y.id===x.id))state().gallery.push(x);});
-    state().design72Gallery=true;state().design73Gallery=true;
+    const gallery = (Array.isArray(state().gallery) ? state().gallery : [])
+      .filter(item => item.kind !== 'map' && !['world-save', 'map-nether', 'map-end'].includes(item.id));
+    for (const fallback of galleryDefaults) {
+      const existing = gallery.find(item => item.id === fallback.id);
+      if (!existing) {
+        gallery.push({ ...fallback });
+        continue;
+      }
+      const previousCopy = oldGalleryCopy[fallback.id];
+      if (previousCopy && existing.title === previousCopy[0] && existing.caption === previousCopy[1]) {
+        const wasPublished = existing.published;
+        Object.assign(existing, fallback);
+        if (wasPublished === false) existing.published = false;
+      } else {
+        for (const key of ['src', 'alt', 'kind', 'published', 'position']) {
+          if (existing[key] == null || existing[key] === '') existing[key] = fallback[key];
+        }
+      }
+    }
+    gallery.sort((a, b) => (a.position || 0) - (b.position || 0));
+    state().gallery = gallery;
+    state().design72Gallery = true;
+    state().design73Gallery = true;
   }
   function galleryItems() {
     seedGallery();

@@ -8857,7 +8857,7 @@ function f({ slides: e, startIndex: t = 0, asset: n, onOpen: r }) {
 						children: [/* @__PURE__ */ (0, d.jsx)("img", {
 							src: n(e.src || ""),
 							alt: e.alt || e.title || "",
-							loading: "lazy",
+							loading: "eager",
 							decoding: "async",
 							draggable: !1
 						}), /* @__PURE__ */ (0, d.jsxs)("span", {

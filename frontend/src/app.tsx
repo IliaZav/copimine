@@ -1,4 +1,4 @@
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { AnalyticsModel } from "./charts";
 import { CoverflowGallery, type GallerySlide } from "./coverflow-gallery";
@@ -201,34 +201,51 @@ function MinecraftLinkPage() {
   }
 
   return (
-    <section className="cm-link-flow" aria-labelledby="cm-link-title">
+    <section className="cm-link-flow" aria-labelledby="cm-link-title" data-link-panel>
       <div className="cm-link-progress" aria-label={pending ? "Шаг 2 из 2: код" : "Шаг 1 из 2: ник"}>
-        <span className="is-done"><b>01</b><small>Ник</small></span><i /><span className={pending ? "is-current" : ""}><b>02</b><small>Код</small></span>
+        <span className={pending ? "is-done" : "is-current"} aria-current={pending ? undefined : "step"}><b>01</b><small>Ник</small></span><i /><span className={pending ? "is-current" : ""} aria-current={pending ? "step" : undefined}><b>02</b><small>Код</small></span>
       </div>
       <span className="kicker">Привязка аккаунта</span>
       <h1 id="cm-link-title">{pending ? "Подтверди ник в игре" : "Укажи ник Minecraft"}</h1>
       {!pending ? (
         <>
-          <p>Укажи ник Minecraft. Привязка подтвердится сообщением в игре.</p>
+          <p>Сначала войди на сервер под нужным ником. Сайт проверит игровую сессию и отправит одноразовый код в чат.</p>
           <form data-form="production-mc-code" className="cm-link-form">
-            <label className="field">Ник Minecraft<input name="name" type="text" required pattern="[A-Za-z0-9_]{3,16}" minLength={3} maxLength={16} autoComplete="off" autoCapitalize="none" spellCheck={false} /></label>
+            <label className="field">Ник, с которым ты вошёл на сервер<input name="name" type="text" required pattern="[A-Za-z0-9_]{3,16}" minLength={3} maxLength={16} autoComplete="off" autoCapitalize="none" spellCheck={false} /></label>
             <div className="form-error" role="alert" />
-            <button className="btn primary" type="submit">Продолжить {iconMarkup("arrow-right")}</button>
+            <button className="btn primary" type="submit">Отправить код в чат {iconMarkup("arrow-right")}</button>
           </form>
+          <p className="cm-link-note">Нужен активный вход на сервер. Один игровой профиль можно связать только с одним аккаунтом сайта.</p>
         </>
       ) : (
         <>
-          <ol className="cm-link-steps"><li>Войди на сервер под ником <strong>{pending.name}</strong>.</li><li>Открой личное сообщение от CopiMine и введи код ниже.</li></ol>
+          <p>Код отправлен в игровой чат для <strong>{pending.name}</strong>. Не выходя с сервера, открой чат, скопируй код и введи его здесь.</p>
+          <ol className="cm-link-steps"><li>Оставь Minecraft запущенным под этим ником.</li><li>Введи одноразовый код из чата. После проверки личный кабинет откроется автоматически.</li></ol>
           <form data-form="production-mc-confirm" className="cm-link-form">
             <label className="field">Одноразовый код<input name="code" type="text" required minLength={6} maxLength={12} autoComplete="one-time-code" autoCapitalize="characters" /></label>
             <div className="form-error" role="alert" />
             <button className="btn primary" type="submit">Подтвердить и открыть кабинет {iconMarkup("arrow-right")}</button>
           </form>
-          <p className="cm-link-status" data-link-status role="status">Код действует до {pending.expiresAt ? new Date(pending.expiresAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "10 минут"}.</p>
-          <button className="cm-link-restart" type="button" data-action="production-mc-restart">Запросить новый код</button>
+          <p className="cm-link-status" data-link-status role="status">Код действует до {pending.expiresAt ? new Date(pending.expiresAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "через 10 минут"}. Проверяем привязку автоматически.</p>
+          <button className="cm-link-restart" type="button" data-action="production-mc-restart">Изменить ник или запросить новый код</button>
         </>
       )}
     </section>
+  );
+}
+
+function MinecraftLinkGate() {
+  const { user } = window.CMAccountLink?.state?.() || {};
+  return (
+    <div className="cm-account-link-gate" data-link-gate>
+      <header className="cm-link-gate-header" data-link-enter>
+        <img src={window.CM?.asset?.("assets/img/logo.png") || "/assets/img/logo.png"} alt="CopiMine" />
+        <div className="cm-link-gate-session"><span>Вошёл как <strong>{user?.name || ""}</strong></span><button type="button" className="cm-link-gate-logout" data-action="logout">{iconMarkup("log-out")}Выйти</button></div>
+      </header>
+      <main id="view" className="cm-link-gate-main" aria-label="Привязка Minecraft">
+        <MinecraftLinkPage />
+      </main>
+    </div>
   );
 }
 
@@ -283,12 +300,29 @@ function mountReactAnalytics(model: LegacyRouteModel) {
 
 function CopiMineApp({ model }: { model: LegacyRouteModel }) {
   const accountLinkUser = window.CMAccountLink?.state?.()?.user || window.CM?.me?.();
-  const accountNeedsLink = model.page === "account" && !!accountLinkUser && !accountLinkUser.gameLinkVerified;
-  const showLinkGuide = accountNeedsLink && (model.tab === "link" || !model.tab || model.tab === "overview");
+  const accountNeedsLink = !!accountLinkUser && !accountLinkUser.gameLinkVerified;
+  const gateRoot = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
+    if (accountNeedsLink) {
+      document.getElementById("app")?.removeAttribute("aria-busy");
+      if (model.page !== "account" || model.tab !== "link") {
+        window.CM?.navTo?.("account/link");
+        return;
+      }
+      window.CM?.mountRoute?.("account", "link");
+      const root = document.querySelector<HTMLElement>("[data-link-gate]");
+      if (root && root !== gateRoot.current) {
+        gateRoot.current = root;
+        window.CMSiteMotion?.linkGate?.(root, document.documentElement.dataset.motion !== "off");
+      }
+      return;
+    }
+    gateRoot.current = null;
     restoreNavigationState(model);
     mountReactAnalytics(model);
-  }, [model.revision]);
+  }, [model.revision, accountNeedsLink]);
+
+  if (accountNeedsLink) return <MinecraftLinkGate />;
 
   return (
     <>
@@ -302,7 +336,7 @@ function CopiMineApp({ model }: { model: LegacyRouteModel }) {
                   : model.page === "map" ? <MapPage />
                   : model.page === "rules" ? <RulesPage html={model.html} />
                   : model.page === "account" && model.tab === "link" ? <><LegacyPage html={model.html} /><MinecraftLinkPage /></>
-                  : model.page === "account" ? <>{showLinkGuide && <div className="cm-link-onboarding"><MinecraftLinkPage /></div>}<LegacyPage html={model.html} /></>
+                  : model.page === "account" ? <LegacyPage html={model.html} />
                   : <LegacyPage html={model.html} />}
               </main>
               {model.page !== "map" && <div className="container"><div dangerouslySetInnerHTML={{ __html: model.footer }} /></div>}
@@ -329,7 +363,8 @@ export function mountCopiMineReact() {
       model.analytics = window.CMAnalyticsReactModel || null;
       model.serviceMetrics = window.CM?.state?.serviceMetrics || [];
       appRoot?.render(<CopiMineApp model={model} />);
-      dockRoot?.render(<div dangerouslySetInnerHTML={{ __html: model.dock }} />);
+      const accountUser = window.CMAccountLink?.state?.()?.user || window.CM?.me?.();
+      dockRoot?.render(accountUser && !accountUser.gameLinkVerified ? null : <div dangerouslySetInnerHTML={{ __html: model.dock }} />);
     },
   };
 }

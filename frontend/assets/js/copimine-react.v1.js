@@ -9200,7 +9200,7 @@ function ee() {
 }
 function te({ html: e }) {
 	let t = (window.CM?.state?.pages || []).find((e) => e?.slug === "rules" && e?.published)?.published;
-	return !t || !window.CMDomain?.markdown ? /* @__PURE__ */ (0, d.jsx)(re, { html: e }) : /* @__PURE__ */ (0, d.jsxs)("article", {
+	return !t || !window.CMDomain?.markdown ? /* @__PURE__ */ (0, d.jsx)(ie, { html: e }) : /* @__PURE__ */ (0, d.jsxs)("article", {
 		className: "cm-react-rules",
 		children: [
 			/* @__PURE__ */ (0, d.jsx)("h1", { children: t.title || "Правила" }),
@@ -9232,18 +9232,21 @@ function ne() {
 	}) : /* @__PURE__ */ (0, d.jsxs)("section", {
 		className: "cm-link-flow",
 		"aria-labelledby": "cm-link-title",
+		"data-link-panel": !0,
 		children: [
 			/* @__PURE__ */ (0, d.jsxs)("div", {
 				className: "cm-link-progress",
 				"aria-label": t ? "Шаг 2 из 2: код" : "Шаг 1 из 2: ник",
 				children: [
 					/* @__PURE__ */ (0, d.jsxs)("span", {
-						className: "is-done",
+						className: t ? "is-done" : "is-current",
+						"aria-current": t ? void 0 : "step",
 						children: [/* @__PURE__ */ (0, d.jsx)("b", { children: "01" }), /* @__PURE__ */ (0, d.jsx)("small", { children: "Ник" })]
 					}),
 					/* @__PURE__ */ (0, d.jsx)("i", {}),
 					/* @__PURE__ */ (0, d.jsxs)("span", {
 						className: t ? "is-current" : "",
+						"aria-current": t ? "step" : void 0,
 						children: [/* @__PURE__ */ (0, d.jsx)("b", { children: "02" }), /* @__PURE__ */ (0, d.jsx)("small", { children: "Код" })]
 					})
 				]
@@ -9257,13 +9260,14 @@ function ne() {
 				children: t ? "Подтверди ник в игре" : "Укажи ник Minecraft"
 			}),
 			t ? /* @__PURE__ */ (0, d.jsxs)(d.Fragment, { children: [
+				/* @__PURE__ */ (0, d.jsxs)("p", { children: [
+					"Код отправлен в игровой чат для ",
+					/* @__PURE__ */ (0, d.jsx)("strong", { children: t.name }),
+					". Не выходя с сервера, открой чат, скопируй код и введи его здесь."
+				] }),
 				/* @__PURE__ */ (0, d.jsxs)("ol", {
 					className: "cm-link-steps",
-					children: [/* @__PURE__ */ (0, d.jsxs)("li", { children: [
-						"Войди на сервер под ником ",
-						/* @__PURE__ */ (0, d.jsx)("strong", { children: t.name }),
-						"."
-					] }), /* @__PURE__ */ (0, d.jsx)("li", { children: "Открой личное сообщение от CopiMine и введи код ниже." })]
+					children: [/* @__PURE__ */ (0, d.jsx)("li", { children: "Оставь Minecraft запущенным под этим ником." }), /* @__PURE__ */ (0, d.jsx)("li", { children: "Введи одноразовый код из чата. После проверки личный кабинет откроется автоматически." })]
 				}),
 				/* @__PURE__ */ (0, d.jsxs)("form", {
 					"data-form": "production-mc-confirm",
@@ -9301,45 +9305,52 @@ function ne() {
 						t.expiresAt ? new Date(t.expiresAt).toLocaleTimeString("ru-RU", {
 							hour: "2-digit",
 							minute: "2-digit"
-						}) : "10 минут",
-						"."
+						}) : "через 10 минут",
+						". Проверяем привязку автоматически."
 					]
 				}),
 				/* @__PURE__ */ (0, d.jsx)("button", {
 					className: "cm-link-restart",
 					type: "button",
 					"data-action": "production-mc-restart",
-					children: "Запросить новый код"
+					children: "Изменить ник или запросить новый код"
 				})
-			] }) : /* @__PURE__ */ (0, d.jsxs)(d.Fragment, { children: [/* @__PURE__ */ (0, d.jsx)("p", { children: "Укажи ник Minecraft. Привязка подтвердится сообщением в игре." }), /* @__PURE__ */ (0, d.jsxs)("form", {
-				"data-form": "production-mc-code",
-				className: "cm-link-form",
-				children: [
-					/* @__PURE__ */ (0, d.jsxs)("label", {
-						className: "field",
-						children: ["Ник Minecraft", /* @__PURE__ */ (0, d.jsx)("input", {
-							name: "name",
-							type: "text",
-							required: !0,
-							pattern: "[A-Za-z0-9_]{3,16}",
-							minLength: 3,
-							maxLength: 16,
-							autoComplete: "off",
-							autoCapitalize: "none",
-							spellCheck: !1
-						})]
-					}),
-					/* @__PURE__ */ (0, d.jsx)("div", {
-						className: "form-error",
-						role: "alert"
-					}),
-					/* @__PURE__ */ (0, d.jsxs)("button", {
-						className: "btn primary",
-						type: "submit",
-						children: ["Продолжить ", h("arrow-right")]
-					})
-				]
-			})] })
+			] }) : /* @__PURE__ */ (0, d.jsxs)(d.Fragment, { children: [
+				/* @__PURE__ */ (0, d.jsx)("p", { children: "Сначала войди на сервер под нужным ником. Сайт проверит игровую сессию и отправит одноразовый код в чат." }),
+				/* @__PURE__ */ (0, d.jsxs)("form", {
+					"data-form": "production-mc-code",
+					className: "cm-link-form",
+					children: [
+						/* @__PURE__ */ (0, d.jsxs)("label", {
+							className: "field",
+							children: ["Ник, с которым ты вошёл на сервер", /* @__PURE__ */ (0, d.jsx)("input", {
+								name: "name",
+								type: "text",
+								required: !0,
+								pattern: "[A-Za-z0-9_]{3,16}",
+								minLength: 3,
+								maxLength: 16,
+								autoComplete: "off",
+								autoCapitalize: "none",
+								spellCheck: !1
+							})]
+						}),
+						/* @__PURE__ */ (0, d.jsx)("div", {
+							className: "form-error",
+							role: "alert"
+						}),
+						/* @__PURE__ */ (0, d.jsxs)("button", {
+							className: "btn primary",
+							type: "submit",
+							children: ["Отправить код в чат ", h("arrow-right")]
+						})
+					]
+				}),
+				/* @__PURE__ */ (0, d.jsx)("p", {
+					className: "cm-link-note",
+					children: "Нужен активный вход на сервер. Один игровой профиль можно связать только с одним аккаунтом сайта."
+				})
+			] })
 		]
 	}) : /* @__PURE__ */ (0, d.jsxs)("section", {
 		className: "cm-link-flow",
@@ -9350,10 +9361,38 @@ function ne() {
 		})]
 	});
 }
-function re({ html: e }) {
+function re() {
+	let { user: e } = window.CMAccountLink?.state?.() || {};
+	return /* @__PURE__ */ (0, d.jsxs)("div", {
+		className: "cm-account-link-gate",
+		"data-link-gate": !0,
+		children: [/* @__PURE__ */ (0, d.jsxs)("header", {
+			className: "cm-link-gate-header",
+			"data-link-enter": !0,
+			children: [/* @__PURE__ */ (0, d.jsx)("img", {
+				src: window.CM?.asset?.("assets/img/logo.png") || "/assets/img/logo.png",
+				alt: "CopiMine"
+			}), /* @__PURE__ */ (0, d.jsxs)("div", {
+				className: "cm-link-gate-session",
+				children: [/* @__PURE__ */ (0, d.jsxs)("span", { children: ["Вошёл как ", /* @__PURE__ */ (0, d.jsx)("strong", { children: e?.name || "" })] }), /* @__PURE__ */ (0, d.jsxs)("button", {
+					type: "button",
+					className: "cm-link-gate-logout",
+					"data-action": "logout",
+					children: [h("log-out"), "Выйти"]
+				})]
+			})]
+		}), /* @__PURE__ */ (0, d.jsx)("main", {
+			id: "view",
+			className: "cm-link-gate-main",
+			"aria-label": "Привязка Minecraft",
+			children: /* @__PURE__ */ (0, d.jsx)(ne, {})
+		})]
+	});
+}
+function ie({ html: e }) {
 	return /* @__PURE__ */ (0, d.jsx)("div", { dangerouslySetInnerHTML: { __html: e } });
 }
-function ie(e) {
+function ae(e) {
 	document.getElementById("app")?.removeAttribute("aria-busy"), window.CM?.mountRoute?.(e.page, e.tab), document.querySelector(".header-actions button[aria-label='Открыть меню']")?.classList.add("mobile-nav-toggle");
 	let t = document.querySelector(".v71-admin-nav");
 	if (t && e.page === "admin" && (t.scrollTop = e.sideScroll), e.same) {
@@ -9366,14 +9405,14 @@ function ie(e) {
 		behavior: "instant"
 	});
 }
-function ae(e) {
+function x(e) {
 	let t = document.getElementById("cm-react-analytics-charts");
 	if (t && e.analytics) {
 		let n = e.analytics;
 		import("./charts-Bl1VJC7a.mjs").then(({ AdminAnalyticsCharts: e }) => {
 			if (!t.isConnected || document.getElementById(t.id) !== t) return;
 			let r = (0, l.createRoot)(t);
-			r.render(/* @__PURE__ */ (0, d.jsx)(e, { model: n })), ce.push(r);
+			r.render(/* @__PURE__ */ (0, d.jsx)(e, { model: n })), le.push(r);
 		}).catch(() => {
 			t.isConnected && (t.textContent = "Графики аналитики не загрузились.");
 		});
@@ -9388,39 +9427,46 @@ function ae(e) {
 		import("./charts-Bl1VJC7a.mjs").then(({ AdminAnalyticsCharts: e }) => {
 			if (!n.isConnected || document.getElementById(n.id) !== n) return;
 			let r = (0, l.createRoot)(n);
-			r.render(/* @__PURE__ */ (0, d.jsx)(e, { model: t })), ce.push(r);
+			r.render(/* @__PURE__ */ (0, d.jsx)(e, { model: t })), le.push(r);
 		}).catch(() => {
 			n.isConnected && (n.textContent = "Графики аналитики не загрузились.");
 		});
 	}
 }
-function x({ model: e }) {
-	let t = window.CMAccountLink?.state?.()?.user || window.CM?.me?.(), n = e.page === "account" && !!t && !t.gameLinkVerified && (e.tab === "link" || !e.tab || e.tab === "overview");
+function oe({ model: e }) {
+	let t = window.CMAccountLink?.state?.()?.user || window.CM?.me?.(), n = !!t && !t.gameLinkVerified, r = (0, u.useRef)(null);
 	return (0, u.useLayoutEffect)(() => {
-		ie(e), ae(e);
-	}, [e.revision]), /* @__PURE__ */ (0, d.jsxs)(d.Fragment, { children: [/* @__PURE__ */ (0, d.jsx)("div", {
+		if (n) {
+			if (document.getElementById("app")?.removeAttribute("aria-busy"), e.page !== "account" || e.tab !== "link") {
+				window.CM?.navTo?.("account/link");
+				return;
+			}
+			window.CM?.mountRoute?.("account", "link");
+			let t = document.querySelector("[data-link-gate]");
+			t && t !== r.current && (r.current = t, window.CMSiteMotion?.linkGate?.(t, document.documentElement.dataset.motion !== "off"));
+		} else r.current = null, ae(e), x(e);
+	}, [e.revision, n]), n ? /* @__PURE__ */ (0, d.jsx)(re, {}) : /* @__PURE__ */ (0, d.jsxs)(d.Fragment, { children: [/* @__PURE__ */ (0, d.jsx)("div", {
 		id: "persistent-header",
 		dangerouslySetInnerHTML: { __html: e.header }
 	}), /* @__PURE__ */ (0, d.jsx)("div", {
 		id: "page-root",
-		children: e.page === "admin" ? /* @__PURE__ */ (0, d.jsx)(re, { html: e.html }) : /* @__PURE__ */ (0, d.jsxs)(d.Fragment, { children: [/* @__PURE__ */ (0, d.jsx)("main", {
+		children: e.page === "admin" ? /* @__PURE__ */ (0, d.jsx)(ie, { html: e.html }) : /* @__PURE__ */ (0, d.jsxs)(d.Fragment, { children: [/* @__PURE__ */ (0, d.jsx)("main", {
 			id: "view",
 			className: e.page === "map" ? void 0 : "container",
-			children: e.page === "home" ? /* @__PURE__ */ (0, d.jsx)(b, {}) : e.page === "map" ? /* @__PURE__ */ (0, d.jsx)(ee, {}) : e.page === "rules" ? /* @__PURE__ */ (0, d.jsx)(te, { html: e.html }) : e.page === "account" && e.tab === "link" ? /* @__PURE__ */ (0, d.jsxs)(d.Fragment, { children: [/* @__PURE__ */ (0, d.jsx)(re, { html: e.html }), /* @__PURE__ */ (0, d.jsx)(ne, {})] }) : e.page === "account" ? /* @__PURE__ */ (0, d.jsxs)(d.Fragment, { children: [n && /* @__PURE__ */ (0, d.jsx)("div", {
-				className: "cm-link-onboarding",
-				children: /* @__PURE__ */ (0, d.jsx)(ne, {})
-			}), /* @__PURE__ */ (0, d.jsx)(re, { html: e.html })] }) : /* @__PURE__ */ (0, d.jsx)(re, { html: e.html })
+			children: e.page === "home" ? /* @__PURE__ */ (0, d.jsx)(b, {}) : e.page === "map" ? /* @__PURE__ */ (0, d.jsx)(ee, {}) : e.page === "rules" ? /* @__PURE__ */ (0, d.jsx)(te, { html: e.html }) : e.page === "account" && e.tab === "link" ? /* @__PURE__ */ (0, d.jsxs)(d.Fragment, { children: [/* @__PURE__ */ (0, d.jsx)(ie, { html: e.html }), /* @__PURE__ */ (0, d.jsx)(ne, {})] }) : (e.page, /* @__PURE__ */ (0, d.jsx)(ie, { html: e.html }))
 		}), e.page !== "map" && /* @__PURE__ */ (0, d.jsx)("div", {
 			className: "container",
 			children: /* @__PURE__ */ (0, d.jsx)("div", { dangerouslySetInnerHTML: { __html: e.footer } })
 		})] })
 	})] });
 }
-var oe = null, se = null, ce = [];
-function le() {
+var se = null, ce = null, le = [];
+function ue() {
 	let e = document.getElementById("app"), t = document.getElementById("dock-root");
-	e && t && !oe && (oe = (0, l.createRoot)(e), se = (0, l.createRoot)(t), window.CopimineReactBridge = { render(e) {
-		ce.forEach((e) => e.unmount()), ce = [], e.analytics = window.CMAnalyticsReactModel || null, e.serviceMetrics = window.CM?.state?.serviceMetrics || [], oe?.render(/* @__PURE__ */ (0, d.jsx)(x, { model: e })), se?.render(/* @__PURE__ */ (0, d.jsx)("div", { dangerouslySetInnerHTML: { __html: e.dock } }));
+	e && t && !se && (se = (0, l.createRoot)(e), ce = (0, l.createRoot)(t), window.CopimineReactBridge = { render(e) {
+		le.forEach((e) => e.unmount()), le = [], e.analytics = window.CMAnalyticsReactModel || null, e.serviceMetrics = window.CM?.state?.serviceMetrics || [], se?.render(/* @__PURE__ */ (0, d.jsx)(oe, { model: e }));
+		let t = window.CMAccountLink?.state?.()?.user || window.CM?.me?.();
+		ce?.render(t && !t.gameLinkVerified ? null : /* @__PURE__ */ (0, d.jsx)("div", { dangerouslySetInnerHTML: { __html: e.dock } }));
 	} });
 }
-le(), window.dispatchEvent(new Event("copimine:react-ready"));
+ue(), window.dispatchEvent(new Event("copimine:react-ready"));

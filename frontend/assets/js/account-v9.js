@@ -7,7 +7,75 @@
   const R = M.renderers, F = M.forms, H = M.handlers, E = M.esc, state = () => M.state;
   const oldSettings = R.settings, oldPage = R.page, oldAccount = R.account;
   const authReturnKey = 'copimine.auth.return.v1';
+  const pendingLinkKey = 'copimine.minecraft-link.pending.v1';
+  const linkedCabinetKey = 'copimine.minecraft-link.complete.v1';
   let minecraftPoll = 0, pendingMinecraftLink = null;
+
+  const currentAccountUser = () => Q.user || M.me() || null;
+  function syncLinkedUser(user) {
+    if (!user?.id || !user.gameLinkVerified) return;
+    Q.user = user;
+    const players = state().players || (state().players = []);
+    let player = players.find(item => item.id === user.id);
+    if (!player) {
+      player = { id: user.id, name: user.name, AR: null, CM: null, role: 'Игрок', status: 'active', purchaseLimits: [] };
+      players.push(player);
+    }
+    Object.assign(player, {
+      name: user.name,
+      displayName: user.displayName || user.name,
+      minecraftName: user.minecraftName,
+      minecraftUuid: user.minecraftUuid,
+      gameUuid: user.gameUUID || user.minecraftUuid,
+      gameLinkVerified: true,
+      linked: true
+    });
+    state().session = { ...(state().session || {}), id: user.id };
+  }
+  function loadPendingLink(user) {
+    if (!user?.id || user.gameLinkVerified) return null;
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(pendingLinkKey) || 'null');
+      if (saved?.userId === user.id && /^[A-Za-z0-9_]{3,16}$/.test(saved.name || '') && Number.isFinite(Number(saved.expiresAt))) {
+        return { name: saved.name, expiresAt: Number(saved.expiresAt), userId: user.id };
+      }
+      if (saved) sessionStorage.removeItem(pendingLinkKey);
+    } catch { /* The saved step is optional; the player can request another code. */ }
+    return null;
+  }
+  function savePendingLink(user, pending) {
+    if (!user?.id || !pending) return;
+    pendingMinecraftLink = { ...pending, userId: user.id };
+    try { sessionStorage.setItem(pendingLinkKey, JSON.stringify(pendingMinecraftLink)); } catch { /* The flow still works without session storage. */ }
+  }
+  function clearPendingLink() {
+    pendingMinecraftLink = null;
+    try { sessionStorage.removeItem(pendingLinkKey); } catch { /* Optional state. */ }
+  }
+  function motionEnabled() { return document.documentElement.dataset.motion !== 'off'; }
+  function animateLinkStep() {
+    requestAnimationFrame(() => window.CMSiteMotion?.linkStep?.(document.querySelector('[data-link-panel]'), motionEnabled()));
+  }
+  function finishLinkTransition() {
+    return new Promise(resolve => {
+      const root = document.querySelector('[data-link-gate]');
+      const complete = () => resolve();
+      if (root && window.CMSiteMotion?.completeLink) window.CMSiteMotion.completeLink(root, complete, motionEnabled());
+      else complete();
+    });
+  }
+  async function openLinkedCabinet() {
+    await finishLinkTransition();
+    try { sessionStorage.setItem(linkedCabinetKey, '1'); } catch { /* Animation is optional. */ }
+    M.toast('Minecraft привязан.');
+    M.navTo('account');
+  }
+  const previousLogoutCommit = H['logout-commit'];
+  H['logout-commit'] = async (...args) => {
+    stopMinecraftPoll(); clearPendingLink();
+    try { sessionStorage.removeItem(linkedCabinetKey); } catch { /* Optional state. */ }
+    return previousLogoutCommit?.(...args);
+  };
 
   async function api(path, body, method) {
     const headers = { Accept: 'application/json' };
@@ -27,8 +95,8 @@
     try {
       const route = sessionStorage.getItem(authReturnKey) || '';
       sessionStorage.removeItem(authReturnKey);
-      return /^account(?:\/[a-z-]+)?(?:\?ticket=[a-f0-9]+)?$/i.test(route) ? route : 'account';
-    } catch { return 'account'; }
+      return /^account(?:\/[a-z-]+)?(?:\?ticket=[a-f0-9]+)?$/i.test(route) ? route : 'account/link';
+    } catch { return 'account/link'; }
   }
 
   function saveAuthReturn(route) {
@@ -38,7 +106,7 @@
   function authMarkup(tab) {
     const registering = tab === 'register';
     const title = registering ? 'Создать аккаунт' : 'Войти';
-    const intro = registering ? 'Создай логин сайта и пароль. Затем привяжи Minecraft.' : 'Введи логин и пароль.';
+    const intro = registering ? 'Создай логин и пароль. После входа подтверди Minecraft, чтобы открыть личный кабинет.' : 'Введи логин и пароль.';
     return `<div class="v7-auth-layout v9-auth-layout"><aside class="v7-auth-aside"><img src="${M.asset('assets/img/world.webp')}" alt="" decoding="async"></aside><section class="v7-auth-main"><h1>${title}</h1><p class="v7-auth-lead">${intro}</p><nav class="v7-auth-tabs" aria-label="Вход или регистрация"><a class="${registering ? '' : 'active'}" href="#auth/login">Вход</a><a class="${registering ? 'active' : ''}" href="#auth/register">Регистрация</a></nav><form data-form="${registering ? 'v7-register' : 'v7-login'}"><label class="field">Логин сайта<input name="username" type="text" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_]{3,32}" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Логин" value=""></label>${registering ? '<label class="field">Пароль<input name="password" type="password" required minlength="10" maxlength="256" autocomplete="new-password" placeholder="Не меньше 10 символов"></label><label class="field">Повтори пароль<input name="repeat" type="password" required minlength="10" maxlength="256" autocomplete="new-password"></label><label class="check-row"><input type="checkbox" name="terms" required><span>Принимаю <a href="#rules">правила сервера</a></span></label>' : '<label class="field">Пароль<input name="password" type="password" required maxlength="256" autocomplete="current-password" placeholder="Пароль аккаунта"></label><label class="check-row"><input type="checkbox" name="remember" checked><span>Оставаться в аккаунте на этом устройстве</span></label>'}<div class="form-error" role="alert"></div><button type="submit" class="btn primary wide">${title}${icon('arrow-right')}</button></form>${registering ? '<p class="v7-auth-bottom">Уже зарегистрирован? <a href="#auth/login">Войти</a></p>' : '<p class="v7-auth-bottom">Нет аккаунта? <a href="#auth/register">Создать</a></p>'}</section></div>`;
   }
 
@@ -176,7 +244,7 @@
   function startMinecraftPoll() {
     stopMinecraftPoll();
     minecraftPoll = setInterval(async () => {
-      const user = M.me();
+      const user = currentAccountUser();
       const onLinkPage = M.UI?.page === 'account' && (M.UI.tab === 'link' || user && !user.gameLinkVerified);
       if (!pendingMinecraftLink || !onLinkPage) { stopMinecraftPoll(); return; }
       const status = document.querySelector('[data-link-status]');
@@ -188,10 +256,10 @@
       try {
         const session = await api('session');
         if (session.user?.gameLinkVerified) {
-          stopMinecraftPoll(); pendingMinecraftLink = null;
-          await Q.reload();
-          M.toast('Minecraft привязан.');
-          M.navTo('account');
+          stopMinecraftPoll(); clearPendingLink();
+          try { await Q.reload({ silent: true }); } catch { /* The authenticated session response still carries the confirmed link. */ }
+          syncLinkedUser(session.user);
+          await openLinkedCabinet();
         }
       } catch {
         if (status) status.textContent = 'Проверка временно недоступна. Повторяем запрос.';
@@ -199,32 +267,55 @@
     }, 3000);
   }
   H['v7-game-link'] = () => {
-    const user = M.me();
+    const user = currentAccountUser();
     if (!user) { saveAuthReturn('account/link'); M.navTo('auth/login'); return; }
     M.navTo('account/link');
   };
   F['production-mc-code'] = async (form, data) => {
     const name = String(data.get('name') || '').trim();
     const result = await api('account/minecraft/request', { name });
-    pendingMinecraftLink = { name, expiresAt: Number(result.expiresAt || Date.now() + 600000) };
+    savePendingLink(currentAccountUser(), { name, expiresAt: Number(result.expiresAt || Date.now() + 600000) });
     M.render();
     startMinecraftPoll();
+    animateLinkStep();
   };
   F['production-mc-confirm'] = async (form, data) => {
-    await api('account/minecraft/confirm', { code: String(data.get('code') || '').trim() });
-    await Q.reload();
-    if ((M.me() || Q.user)?.gameLinkVerified) {
-      stopMinecraftPoll(); pendingMinecraftLink = null; M.toast('Minecraft привязан.'); M.navTo('account');
+    const result = await api('account/minecraft/confirm', { code: String(data.get('code') || '').trim() });
+    try { await Q.reload({ silent: true }); } catch { /* The confirmation response still carries the linked account. */ }
+    syncLinkedUser(result.user);
+    if (result.user?.gameLinkVerified || currentAccountUser()?.gameLinkVerified) {
+      stopMinecraftPoll(); clearPendingLink();
+      await openLinkedCabinet();
     } else {
-      M.render(); startMinecraftPoll();
+      M.render(); startMinecraftPoll(); animateLinkStep();
     }
   };
-  H['production-mc-restart'] = () => { stopMinecraftPoll(); pendingMinecraftLink = null; M.render(); };
-  window.CMAccountLink = { state: () => ({ user: M.me() || Q.user || null, pending: pendingMinecraftLink ? { ...pendingMinecraftLink } : null }) };
+  H['production-mc-restart'] = () => { stopMinecraftPoll(); clearPendingLink(); M.render(); animateLinkStep(); };
+  window.CMAccountLink = { state: () => {
+    const user = currentAccountUser();
+    if (pendingMinecraftLink && pendingMinecraftLink.userId !== user?.id) pendingMinecraftLink = null;
+    if (!pendingMinecraftLink && user) pendingMinecraftLink = loadPendingLink(user);
+    return { user, pending: pendingMinecraftLink ? { name: pendingMinecraftLink.name, expiresAt: pendingMinecraftLink.expiresAt } : null };
+  } };
 
   V.after.push((page, tab) => {
+    const user = currentAccountUser();
+    if (user && !user.gameLinkVerified) {
+      document.title = 'Привязка Minecraft · CopiMine';
+      if (page !== 'account' || tab !== 'link') { M.navTo('account/link'); return; }
+      if (pendingMinecraftLink) startMinecraftPoll();
+      return;
+    }
+    if (user?.gameLinkVerified && page === 'account' && tab === 'link') { M.navTo('account'); return; }
+    if (page === 'account' && !tab) {
+      try {
+        if (sessionStorage.getItem(linkedCabinetKey) === '1') {
+          sessionStorage.removeItem(linkedCabinetKey);
+          requestAnimationFrame(() => window.CMSiteMotion?.accountReveal?.(document.getElementById('view'), motionEnabled()));
+        }
+      } catch { /* The cabinet remains available without session storage. */ }
+    }
     if (page === 'auth') window.CMSiteMotion?.auth?.(document.querySelector('.v9-auth-layout'));
-    if (page === 'account' && pendingMinecraftLink) startMinecraftPoll();
     if (page === 'faq') document.title = 'FAQ · CopiMine';
     document.querySelectorAll('.breadcrumb').forEach(crumb => {
       const root = [...crumb.children].find(node => node.tagName === 'SPAN' && ['CopiMine', 'Управление'].includes(node.textContent.trim()));

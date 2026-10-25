@@ -22,7 +22,7 @@ function clearTransferError(){const alert=document.querySelector('#v71-transfer-
 function offlineLedger(){return s().reviewEconomy||(s().reviewEconomy={balances:Object.fromEntries(s().players.map(p=>[p.id,Number(p.AR||0)])),transfers:[]});}
 function offlineView(id){const ledger=offlineLedger();return {feePercent:Number(s().config.transferFeePercent||0),balance:ledger.balances[id]||0,recipients:s().players.filter(p=>p.id!==id).map(p=>({id:p.id,name:p.displayName||p.name,online:false})),transfers:ledger.transfers.filter(t=>t.sender===id||t.recipient===id).map(t=>({...t,incoming:t.recipient===id})),unread:ledger.transfers.filter(t=>t.recipient===id&&!t.seen).length,review_only:true};}
 A.refreshWallet=async(force=false)=>{
- const p=M.me();if(!Q.ready||!p||loading||(!force&&loadedUser===p.id))return;
+ const p=M.me(),user=Q.user;if(!Q.ready||!p||user?.id===p.id&&!user.gameLinkVerified||p.gameLinkVerified!==true||loading||(!force&&loadedUser===p.id))return;
  const id=p.id;loading=true;error='';
  try{const [economy,feed]=await Promise.allSettled(Q.offline?[Promise.resolve(offlineView(id)),Promise.resolve(null)]:[Q.request('economy'),Q.request('notifications')]);if(M.me()?.id!==id)return;if(economy.status==='fulfilled'){A.wallet=economy.value;loadedUser=id;p.AR=economy.value.balance;}else{error=economy.reason?.message||'Не удалось загрузить игровой счёт.';loadedUser=id;A.wallet={balance:p.AR,recipients:[],transfers:[],notifications:[],unread:0};}if(feed.status==='fulfilled'&&feed.value){A.wallet.notifications=feed.value.notifications||[];A.wallet.unread=Number(feed.value.unread)||0;}}
  catch(e){error=e.message;loadedUser=id;if(M.me()?.id===id)A.wallet={balance:p.AR,recipients:[],transfers:[],notifications:[],unread:0};}

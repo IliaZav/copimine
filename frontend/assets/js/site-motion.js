@@ -72,6 +72,80 @@ function auth(root, enabled) {
   }));
 }
 
+function linkGate(root, enabled) {
+  if (!root) return;
+  const intro = Array.from(root.querySelectorAll("[data-link-enter]"));
+  const panel = root.querySelector("[data-link-panel]");
+  const nodes = Array.from(root.querySelectorAll(".cm-link-gate-node"));
+  const path = root.querySelector(".cm-link-gate-identity path");
+  if (!allowed(enabled)) return;
+
+  anime(root, { opacity: [0, 1], duration: 460, ease: "outCubic" });
+  intro.forEach((node, index) => anime(node, {
+    opacity: [0, 1],
+    translateY: [16, 0],
+    delay: 70 + index * 90,
+    duration: 460,
+    ease: "outCubic"
+  }));
+  if (panel) anime(panel, {
+    opacity: [0, 1],
+    translateY: [22, 0],
+    scale: [0.985, 1],
+    delay: 160,
+    duration: 600,
+    ease: "outCubic"
+  });
+  nodes.forEach((node, index) => anime(node, {
+    scale: [0.84, 1],
+    delay: 250 + index * 80,
+    duration: 620,
+    ease: "outBack(1.6)"
+  }));
+  if (path) anime(path, { strokeDashoffset: [172, 0], delay: 260, duration: 700, ease: "outCubic" });
+}
+
+function linkStep(panel, enabled) {
+  if (!panel || !allowed(enabled)) return;
+  const fields = Array.from(panel.querySelectorAll(".cm-link-form > *"));
+  anime(panel, { opacity: [0.78, 1], translateY: [7, 0], duration: 300, ease: "outCubic" });
+  fields.forEach((field, index) => anime(field, {
+    opacity: [0.45, 1],
+    translateY: [7, 0],
+    delay: index * 45,
+    duration: 300,
+    ease: "outCubic"
+  }));
+}
+
+function completeLink(root, onComplete, enabled) {
+  if (!root || !allowed(enabled)) {
+    onComplete?.();
+    return;
+  }
+  anime(root, {
+    opacity: [1, 0],
+    scale: [1, 0.985],
+    duration: 380,
+    ease: "inCubic",
+    onComplete
+  });
+}
+
+function accountReveal(root, enabled) {
+  if (!root || !allowed(enabled)) return;
+  const panels = Array.from(root.querySelectorAll(".v71-page-heading, .v71-account-grid > *, .v71-account-section, .v9-account-section"));
+  const targets = panels.length ? panels : Array.from(root.children);
+  anime(root, { opacity: [0, 1], translateY: [12, 0], duration: 520, ease: "outCubic" });
+  targets.forEach((panel, index) => anime(panel, {
+    opacity: [0, 1],
+    translateY: [14, 0],
+    delay: 100 + Math.min(index * 65, 325),
+    duration: 460,
+    ease: "outCubic"
+  }));
+}
+
 function carousel(slides, index, enabled) {
   const items = Array.from(slides || []);
   const count = items.length;
@@ -124,4 +198,4 @@ function settle(stage, enabled) {
   else stage.style.transform = "";
 }
 
-window.CMSiteMotion = Object.freeze({ route, reveal, auth, carousel, drag, settle });
+window.CMSiteMotion = Object.freeze({ route, reveal, auth, linkGate, linkStep, completeLink, accountReveal, carousel, drag, settle });

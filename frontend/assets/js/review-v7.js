@@ -42,9 +42,9 @@ function applyUser(user){
 }
 Q.scheduleSave=()=>{};
 function applyWorkspace(workspace){if(workspace){Object.assign(s(),workspace);window.CM6_CATALOG_SOURCE=workspace.catalog||[];}}
-async function boot(){
- try{const data=await request('bootstrap');Q.csrf=data.csrf;applying=true;applyWorkspace(data.workspace);if(data.personal)Object.assign(s(),data.personal);Q.maintenance=data.maintenance||{enabled:false};applyUser(data.user);applying=false;Q.ready=true;saveStatus('saved');await X.refresh();M.render();}
- catch(err){Q.ready=true;Q.status='error';Q.user=null;s().session=null;s().players=[];X.connectionError=err.message;M.render();}
+async function boot(options={}){
+ try{const data=await request('bootstrap');Q.csrf=data.csrf;applying=true;applyWorkspace(data.workspace);if(data.personal)Object.assign(s(),data.personal);Q.maintenance=data.maintenance||{enabled:false};applyUser(data.user);applying=false;Q.ready=true;saveStatus('saved');await X.refresh({silent:!!options.silent});if(!options.silent)M.render();}
+ catch(err){Q.ready=true;Q.status='error';Q.user=null;s().session=null;s().players=[];X.connectionError=err.message;if(options.silent)throw err;M.render();}
 }
 Q.reload=boot;Q.flush=async()=>{};
 const appSave=M.save;M.save=()=>{const result=appSave();Q.scheduleSave();return result;};

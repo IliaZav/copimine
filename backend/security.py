@@ -31,8 +31,8 @@ def digest(value):
 
 
 def hash_password(password):
-    if not isinstance(password, str) or not 12 <= len(password) <= 256:
-        fail(400, "password_policy", "Пароль должен содержать от 12 до 256 символов.")
+    if not isinstance(password, str) or not 10 <= len(password) <= 256:
+        fail(400, "password_policy", "Пароль должен содержать от 10 до 256 символов.")
     salt = secrets.token_bytes(16)
     value = hashlib.scrypt(password.encode(), salt=salt, n=32768, r=8, p=1, maxmem=64 * 1024 * 1024)
     return "scrypt$" + base64.b64encode(salt).decode() + "$" + base64.b64encode(value).decode()

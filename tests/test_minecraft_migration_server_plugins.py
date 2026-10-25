@@ -81,6 +81,23 @@ def test_tab_lock_pins_latest_official_paper_26_3_release():
     assert record['nativeVerified'] is False
 
 
+def test_bluemap_lock_pins_26_3_paper_release():
+    lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
+    record=next(module for module in lock['modules'] if module.get('project')=='bluemap')
+
+    assert record['version']=='5.29'
+    assert record['channel']=='release'
+    assert record['versionId']=='uHQIrUdf'
+    assert record['filename']=='bluemap-5.29-paper.jar'
+    assert record['url']=='https://cdn.modrinth.com/data/swbUV1cr/versions/uHQIrUdf/bluemap-5.29-paper.jar'
+    assert record['size']==6336407
+    assert record['sha256']=='7bf475936c26107d476c63151c76d5b49e865eebeada12c9e7d92155de877b9f'
+    assert record['sha512']=='e936198eaf7ea83429e1d08b8e2a5447dd359c0252e3410cb3cc101860c933abcc055462a11b034a4dd77b699da54017412ac73728860fd8b68a672c32d9926c'
+    assert '26.3' in record['gameVersions']
+    assert record['compatibilityStatus']=='requires-runtime-validation'
+    assert record['nativeVerified'] is False
+
+
 def test_coreprotect_lock_does_not_claim_upstream_declares_minecraft_26_3():
     lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
     record=next(module for module in lock['modules'] if module.get('pluginName')=='CoreProtect')
@@ -1002,8 +1019,8 @@ def test_migration_lock_loader_includes_each_built_first_party_plugin():
 
     records=load().load_install_records(ROOT,lock)
 
-    assert len(records)==len(lock['modules'])+len(build_candidates)+len(remote_candidates)==29
-    assert len({record['pluginName'] for record in records})==29
+    assert len(records)==len(lock['modules'])+len(build_candidates)+len(remote_candidates)==30
+    assert len({record['pluginName'] for record in records})==30
     assert {'FarmControl','SeeMore'}.isdisjoint({record['pluginName'] for record in records})
     assert next(row for row in lock['unchangedBaseline'] if row['pluginName']=='FarmControl')['candidate']['runtimeEligible'] is False
     assert next(row for row in lock['unchangedBaseline'] if row['pluginName']=='SeeMore')['candidate']['runtimeEligible'] is False
@@ -1407,7 +1424,7 @@ def test_active_26_3_plugin_directory_matches_the_unique_locked_inventory():
     assert len({entry['filename'] for entry in expected.values()})==len(expected), 'plugin lock must not assign one runtime filename to multiple plugins'
     runtime=MIGRATION_RUNTIME/'plugins'
     if not runtime.is_dir():pytest.skip('isolated 26.3 runtime is not installed in this checkout')
-    assert len(expected)==29, 'runtime-eligible candidates must collapse to one entry per installed plugin'
+    assert len(expected)==30, 'runtime-eligible candidates must collapse to one entry per installed plugin'
     server=runtime.parent
     receipt=json.loads((server/'migration-plugin-receipt.json').read_text(encoding='utf-8'))
     if receipt.get('authenticationMode')=='disabled-for-local-testing':

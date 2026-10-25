@@ -695,6 +695,33 @@
       "replaceSha256": [
         "a6b5ed97f43a5cf5bbaf00a7c8cd23c5afc9bd003f849875af8b36e6cf77d01d"
       ]
+    },
+    {
+      "project": "bluemap",
+      "pluginName": "BlueMap",
+      "version": "5.29",
+      "channel": "release",
+      "versionId": "uHQIrUdf",
+      "projectId": "swbUV1cr",
+      "source": "https://modrinth.com/plugin/bluemap",
+      "license": {
+        "id": "MIT",
+        "name": "MIT License",
+        "url": "https://github.com/BlueMap-Minecraft/BlueMap/blob/master/LICENSE"
+      },
+      "filename": "bluemap-5.29-paper.jar",
+      "url": "https://cdn.modrinth.com/data/swbUV1cr/versions/uHQIrUdf/bluemap-5.29-paper.jar",
+      "size": 6336407,
+      "sha1": "3d09cf5e219ef82167fd1ca553006c77e21c6d2d",
+      "sha512": "e936198eaf7ea83429e1d08b8e2a5447dd359c0252e3410cb3cc101860c933abcc055462a11b034a4dd77b699da54017412ac73728860fd8b68a672c32d9926c",
+      "sha256": "7bf475936c26107d476c63151c76d5b49e865eebeada12c9e7d92155de877b9f",
+      "artifactVersion": "5.29",
+      "platform": "paper",
+      "gameVersions": [
+        "26.3"
+      ],
+      "compatibilityStatus": "requires-runtime-validation",
+      "nativeVerified": false
     }
   ],
   "unchangedBaseline": [

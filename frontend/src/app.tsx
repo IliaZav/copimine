@@ -45,15 +45,18 @@ const iconMarkup = (name: string, className = "") => {
 function ServerHero() {
   const model = window.CM?.state || {};
   const config = model.config || {};
+  const heroRef = useRef<HTMLElement | null>(null);
   const lines = String(config.headline || "CopiMine —\nMinecraft-сервер.").split(/\r?\n/);
   const first = lines.shift()?.trim() || "CopiMine";
   const second = lines.join(" ").trim();
   const address = config.serverIp || "copimine.ru";
 
+  useLayoutEffect(() => window.CMSiteMotion?.heroAtmosphere?.(heroRef.current), []);
+
   return (
-    <section className="cm72-hero cm-react-hero">
+    <section ref={heroRef} className="cm72-hero cm-react-hero">
       <img className="cm72-hero-photo" src={window.CM.asset("assets/photos/copimine-night.webp")} alt="" fetchPriority="high" />
-      <RisingLines className="cm-react-hero-lines" particles={74} color="#5ce5b2" opacity={0.14} />
+      <RisingLines className="cm-react-hero-lines" particles={112} color="#5ce5b2" opacity={0.26} />
       <div className="cm72-hero-content">
         <h1 className="cm-react-hero-title">
           {first}{second && <><br /><span>{second}</span></>}

@@ -22,6 +22,79 @@ function route(node, enabled) {
   });
 }
 
+function heroAtmosphere(root) {
+  if (!root) return () => {};
+  const photo = root.querySelector(".cm72-hero-photo");
+  const risingLines = root.querySelector(".cm-react-hero-lines");
+  const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+  let photoAnimation = null;
+  let lightAnimation = null;
+  let heroVisible = true;
+
+  function stop() {
+    photoAnimation?.cancel();
+    lightAnimation?.cancel();
+    photoAnimation = null;
+    lightAnimation = null;
+    if (photo) photo.style.transform = "";
+    if (risingLines) risingLines.style.opacity = "";
+  }
+
+  function sync() {
+    if (mediaQuery.matches || document.documentElement.dataset.motion === "off") {
+      stop();
+      return;
+    }
+    if (!photoAnimation && photo) photoAnimation = anime(photo, {
+      scale: [1, 1.045],
+      translateX: [0, -6],
+      translateY: [0, -3],
+      duration: 26000,
+      ease: "inOutSine",
+      alternate: true,
+      loop: true,
+      delay: 900
+    });
+    if (!lightAnimation && risingLines) lightAnimation = anime(risingLines, {
+      opacity: [0.62, 1],
+      duration: 5200,
+      ease: "inOutSine",
+      alternate: true,
+      loop: true,
+      delay: 900
+    });
+    const shouldPlay = heroVisible && !document.hidden;
+    if (shouldPlay) {
+      photoAnimation?.resume();
+      lightAnimation?.resume();
+    } else {
+      photoAnimation?.pause();
+      lightAnimation?.pause();
+    }
+  }
+
+  const visibilityObserver = "IntersectionObserver" in window
+    ? new IntersectionObserver((entries) => {
+        heroVisible = entries[0]?.isIntersecting ?? true;
+        sync();
+      }, { rootMargin: "80px" })
+    : null;
+  const preferenceObserver = new MutationObserver(sync);
+  preferenceObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-motion"] });
+  visibilityObserver?.observe(root);
+  mediaQuery.addEventListener("change", sync);
+  document.addEventListener("visibilitychange", sync);
+  sync();
+
+  return () => {
+    preferenceObserver.disconnect();
+    visibilityObserver?.disconnect();
+    mediaQuery.removeEventListener("change", sync);
+    document.removeEventListener("visibilitychange", sync);
+    stop();
+  };
+}
+
 function reveal(nodes, enabled) {
   revealObserver?.disconnect();
   revealObserver = undefined;
@@ -198,4 +271,4 @@ function settle(stage, enabled) {
   else stage.style.transform = "";
 }
 
-window.CMSiteMotion = Object.freeze({ route, reveal, auth, linkGate, linkStep, completeLink, accountReveal, carousel, drag, settle });
+window.CMSiteMotion = Object.freeze({ route, heroAtmosphere, reveal, auth, linkGate, linkStep, completeLink, accountReveal, carousel, drag, settle });

@@ -52,6 +52,14 @@ def test_home_uses_visual_sections_without_repeated_marketing_panels():
     assert 'Игровые места и постройки.' not in gallery
 
 
+def test_react_bootstrap_replaces_the_legacy_first_render():
+    app=(ROOT/'assets/js/app.js').read_text(encoding='utf-8')
+    entry=(ROOT/'src/main.tsx').read_text(encoding='utf-8')
+    assert 'copimine:react-ready' in app
+    assert 'window.CM?.render?.()' in app
+    assert 'copimine:react-ready' in entry
+
+
 def test_payment_methods_use_local_brand_marks_and_cookie_notice_stays_compact():
     payments=(ROOT/'assets/js/public-v4.js').read_text(encoding='utf-8')
     assert "assets/img/brands/sbp.png" in payments

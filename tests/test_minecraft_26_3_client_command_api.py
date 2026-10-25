@@ -75,14 +75,27 @@ def test_prisoner_preview_uses_a_bounded_26_3_entity_query():
         CLIENT_SOURCE_ROOT / "me/copimine/client/PrisonerTargetSelector.java"
     ).read_text(encoding="utf-8")
 
-    assert "MAX_QUERY_ENTITIES = 256" in selector
-    assert "client.level.getEntities(EntityTypeTest.forClass(Entity.class), rayBounds," in selector
+    # No fixed result cap: eligible actors are filtered inside the 26.3 query so a
+    # crowded corridor cannot consume a budget before the real target is considered.
+    assert "MAX_QUERY_ENTITIES" not in selector
+    assert "client.level.getEntities(" in selector
     compact_selector = re.sub(r"\s+", " ", selector)
+    assert (
+        "EntityTypeTest.forClass(Entity.class), rayBounds, target -> target != client.player"
+    ) in compact_selector
     assert (
         "target != client.player && target instanceof LivingEntity living "
         "&& living.isAlive() && !living.isSpectator() && living.level() == client.level"
     ) in compact_selector
-    assert "queryEntities, MAX_QUERY_ENTITIES" in selector
+    assert (
+        "hud.isTargetAllowed(PrisonerHudController.Ability.HEAL, player.getUUID())"
+    ) in compact_selector
+    assert (
+        "hud.isTargetAllowed(PrisonerHudController.Ability.TURNCOAT, mob.getUUID())"
+    ) in compact_selector
+    assert (
+        "PrisonerTargetRayPolicy.intersectsSegment(origin, end, living.getBoundingBox())"
+    ) in compact_selector
     assert "client.level.getEntities(client.player, rayBounds)" not in selector
 
 

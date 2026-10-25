@@ -24,52 +24,103 @@ function route(node, enabled) {
 
 function heroAtmosphere(root) {
   if (!root) return () => {};
-  const photo = root.querySelector(".cm72-hero-photo");
+  const photos = Array.from(root.querySelectorAll("[data-hero-frame]"));
   const risingLines = root.querySelector(".cm-react-hero-lines");
   const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-  let photoAnimation = null;
+  let cameraAnimation = null;
   let lightAnimation = null;
+  let frameAnimations = [];
+  let frameTimer = 0;
+  let activeFrame = Math.max(0, photos.findIndex((photo) => photo.dataset.active === "true"));
   let heroVisible = true;
 
   function stop() {
-    photoAnimation?.cancel();
+    window.clearTimeout(frameTimer);
+    frameTimer = 0;
+    cameraAnimation?.cancel();
+    cameraAnimation = null;
     lightAnimation?.cancel();
-    photoAnimation = null;
     lightAnimation = null;
-    if (photo) photo.style.transform = "";
+    frameAnimations.forEach((animation) => animation.cancel());
+    frameAnimations = [];
+    photos.forEach((photo, index) => {
+      photo.dataset.active = String(index === activeFrame);
+      photo.style.opacity = "";
+      photo.style.transform = "";
+    });
     if (risingLines) risingLines.style.opacity = "";
   }
 
+  function motionEnabled() {
+    return !mediaQuery.matches
+      && document.documentElement.dataset.motion !== "off";
+  }
+
+  function advanceFrame() {
+    frameTimer = 0;
+    if (!motionEnabled() || root.dataset.heroPaused === "true" || !heroVisible || document.hidden || photos.length < 2) {
+      sync();
+      return;
+    }
+
+    const previousIndex = activeFrame;
+    activeFrame = (activeFrame + 1) % photos.length;
+    const previous = photos[previousIndex];
+    const next = photos[activeFrame];
+    cameraAnimation?.cancel();
+    cameraAnimation = null;
+    photos.forEach((photo, index) => { photo.dataset.active = String(index === activeFrame); });
+    frameAnimations.forEach((animation) => animation.cancel());
+    frameAnimations = [
+      anime(previous, { opacity: [1, 0], duration: 1250, ease: "inOutSine" }),
+      anime(next, { opacity: [0, 1], duration: 1750, ease: "inOutSine" })
+    ];
+    cameraAnimation = anime(next, {
+      scale: [1.025, 1.12],
+      translateX: [0, -30],
+      translateY: [0, -18],
+      duration: 12500,
+      ease: "inOutSine",
+      alternate: true,
+      loop: true
+    });
+    frameTimer = window.setTimeout(advanceFrame, 7600);
+  }
+
   function sync() {
-    if (mediaQuery.matches || document.documentElement.dataset.motion === "off") {
+    if (!motionEnabled()) {
       stop();
       return;
     }
-    if (!photoAnimation && photo) photoAnimation = anime(photo, {
-      scale: [1, 1.045],
-      translateX: [0, -6],
-      translateY: [0, -3],
-      duration: 26000,
-      ease: "inOutSine",
-      alternate: true,
-      loop: true,
-      delay: 900
-    });
     if (!lightAnimation && risingLines) lightAnimation = anime(risingLines, {
-      opacity: [0.62, 1],
-      duration: 5200,
+      opacity: [0.72, 1],
+      duration: 4600,
       ease: "inOutSine",
       alternate: true,
       loop: true,
       delay: 900
     });
-    const shouldPlay = heroVisible && !document.hidden;
+    const shouldPlay = heroVisible && !document.hidden && root.dataset.heroPaused !== "true";
     if (shouldPlay) {
-      photoAnimation?.resume();
+      if (!cameraAnimation && photos.length) cameraAnimation = anime(photos[activeFrame], {
+        scale: [1.025, 1.12],
+        translateX: [0, -30],
+        translateY: [0, -18],
+        duration: 12500,
+        ease: "inOutSine",
+        alternate: true,
+        loop: true
+      });
+      cameraAnimation?.resume();
       lightAnimation?.resume();
+      frameAnimations.forEach((animation) => animation.resume());
+      if (!frameTimer && photos.length > 1) frameTimer = window.setTimeout(advanceFrame, 3200);
     } else {
-      photoAnimation?.pause();
+      window.clearTimeout(frameTimer);
+      frameTimer = 0;
+      cameraAnimation?.pause();
       lightAnimation?.pause();
+      frameAnimations.forEach((animation) => animation.pause());
     }
   }
 
@@ -81,6 +132,7 @@ function heroAtmosphere(root) {
     : null;
   const preferenceObserver = new MutationObserver(sync);
   preferenceObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-motion"] });
+  preferenceObserver.observe(root, { attributes: true, attributeFilter: ["data-hero-paused"] });
   visibilityObserver?.observe(root);
   mediaQuery.addEventListener("change", sync);
   document.addEventListener("visibilitychange", sync);

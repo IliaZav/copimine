@@ -150,7 +150,7 @@ export function RisingLines({ className = "", particles = 74, color = "#38dda4",
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       const count = particles > 0
-        ? Math.min(240, Math.max(24, Math.round(particles * width * height / (800 * 400))))
+        ? Math.min(300, Math.max(24, Math.round(particles * width * height / (800 * 400))))
         : 0;
       points = Array.from({ length: count }, () => ({
         x: rng() * width,
@@ -159,7 +159,7 @@ export function RisingLines({ className = "", particles = 74, color = "#38dda4",
         length: 12 + Math.pow(rng(), 0.7) * 34,
         alpha: 0.25 + rng() * 0.75,
       }));
-      glows = Array.from({ length: Math.min(40, Math.round(count * 0.16)) }, () => ({
+      glows = Array.from({ length: Math.min(48, Math.round(count * 0.16)) }, () => ({
         x: rng() * width,
         y: rng() * height,
         speed: 5 + rng() * 14,

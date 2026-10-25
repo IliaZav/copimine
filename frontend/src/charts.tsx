@@ -261,6 +261,20 @@ function ChoroplethChart({ title, regions }: { title: string; regions: NonNullab
 }
 
 export function AdminAnalyticsCharts({ model }: { model: AnalyticsModel }) {
+  if (model.error && !model.data) {
+    return <section className="cm-react-chart-section" role="alert"><div className="cm-react-chart-error">Статистика недоступна: {model.error}</div></section>;
+  }
+  if (model.loading && !model.data) {
+    return <section className="cm-react-chart-section" aria-label="Загрузка графиков" aria-busy="true">
+      <div className="cm-react-chart-grid cm-react-chart-loading-grid" aria-hidden="true">
+        {[0, 1, 2].map((index) => <div className="cm-react-chart-card cm-react-chart-loading-card" key={index}>
+          <span className="cm-react-chart-skeleton-title" />
+          <div className="cm-react-chart-skeleton-plot"><i /></div>
+          <span className="cm-react-chart-skeleton-legend" />
+        </div>)}
+      </div>
+    </section>;
+  }
   if (model.sub === "live") {
     return <div className="cm-react-chart-section"><LiveLineChart samples={model.data?.live?.samples || []} /></div>;
   }

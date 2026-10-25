@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { AnalyticsModel } from "./charts";
 import { CoverflowGallery, type GallerySlide } from "./coverflow-gallery";
@@ -46,6 +46,11 @@ function ServerHero() {
   const model = window.CM?.state || {};
   const config = model.config || {};
   const heroRef = useRef<HTMLElement | null>(null);
+  const [paused, setPaused] = useState(false);
+  const photos = [
+    { id: "copimine-night-wide", src: "assets/photos/copimine-night.webp", position: "50% 31%" },
+    { id: "copimine-night-pan", src: "assets/photos/copimine-night.webp", position: "54% 43%" },
+  ];
   const lines = String(config.headline || "CopiMine —\nMinecraft-сервер.").split(/\r?\n/);
   const first = lines.shift()?.trim() || "CopiMine";
   const second = lines.join(" ").trim();
@@ -55,8 +60,21 @@ function ServerHero() {
 
   return (
     <section ref={heroRef} className="cm72-hero cm-react-hero">
-      <img className="cm72-hero-photo" src={window.CM.asset("assets/photos/copimine-night.webp")} alt="" fetchPriority="high" />
-      <RisingLines className="cm-react-hero-lines" particles={112} color="#5ce5b2" opacity={0.26} />
+      <div className="cm72-hero-frames" aria-hidden="true">
+        {photos.map((photo, index) => <img
+          key={photo.id || photo.src || index}
+          className="cm72-hero-photo"
+          data-hero-frame=""
+          data-active={index === 0 ? "true" : "false"}
+          src={window.CM.asset(photo.src || "assets/photos/copimine-night.webp")}
+          style={{ objectPosition: photo.position }}
+          alt=""
+          loading={index === 0 ? "eager" : "lazy"}
+          decoding="async"
+          fetchPriority={index === 0 ? "high" : "auto"}
+        />)}
+      </div>
+      <RisingLines className="cm-react-hero-lines" particles={160} color="#5ce5b2" opacity={0.38} />
       <div className="cm72-hero-content">
         <h1 className="cm-react-hero-title">
           {first}{second && <><br /><span>{second}</span></>}
@@ -69,6 +87,22 @@ function ServerHero() {
           <span>{address}</span>{iconMarkup("copy")}
         </button>
       </div>
+      {photos.length > 1 && <button
+        className="cm72-hero-motion-toggle"
+        type="button"
+        aria-label={paused ? "Продолжить анимацию фона" : "Приостановить анимацию фона"}
+        aria-pressed={paused}
+        title={paused ? "Продолжить анимацию фона" : "Приостановить анимацию фона"}
+        onClick={() => {
+          const nextPaused = !paused;
+          if (heroRef.current) heroRef.current.dataset.heroPaused = String(nextPaused);
+          setPaused(nextPaused);
+        }}
+      >
+        {paused
+          ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m8 5 11 7-11 7z" /></svg>
+          : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 5v14M15 5v14" /></svg>}
+      </button>}
     </section>
   );
 }

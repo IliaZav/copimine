@@ -611,3 +611,25 @@ button.is-loading::after { content: ""; display: inline-block; width: 12px; heig
 @media (prefers-reduced-motion: reduce) {
   button.is-loading::after { animation: none; border-right-color: currentColor; opacity: .55; }
 }
+
+/* The home scene reuses published CopiMine screenshots as a restrained crossfade. */
+.cm72-hero-frames{position:absolute;inset:0;z-index:-2;overflow:hidden;pointer-events:none;background:#172027}
+.cm72-hero-frames .cm72-hero-photo{position:absolute;inset:0;width:100%;height:100%;display:block;object-fit:cover;object-position:50% 31%;z-index:auto;filter:brightness(1.3);opacity:0;transform:scale(1.025);animation:none;will-change:opacity,transform}
+.cm72-hero-frames .cm72-hero-photo[data-active="true"]{opacity:1}
+.cm72-hero-motion-toggle{position:absolute;top:94px;right:18px;z-index:3;width:36px;height:36px;display:grid;place-items:center;padding:0;border:1px solid rgba(92,229,178,.48);border-radius:50%;background:rgba(13,19,21,.76);color:#eef5f1;backdrop-filter:blur(8px);cursor:pointer;transition:background .18s ease,border-color .18s ease,transform .18s ease}
+.cm72-hero-motion-toggle svg{width:15px;height:15px}
+.cm72-hero-motion-toggle:hover{background:rgba(13,19,21,.78);border-color:rgba(92,229,178,.65);transform:scale(1.04)}
+.cm72-hero-motion-toggle:focus-visible{outline:2px solid #5ce5b2;outline-offset:3px}
+.v71-overview-analytics>.panel-head{margin-bottom:14px}
+.v71-overview-analytics .cm-react-chart-section{margin-top:14px}
+.cm-react-chart-loading-card{height:230px;overflow:hidden}
+.cm-react-chart-skeleton-title,.cm-react-chart-skeleton-legend{display:block;height:10px;border-radius:8px;background:linear-gradient(90deg,#ffffff08,#ffffff16,#ffffff08);background-size:220% 100%;animation:cm-react-chart-shimmer 1.8s linear infinite}
+.cm-react-chart-skeleton-title{width:42%;margin-bottom:20px}
+.cm-react-chart-skeleton-legend{width:58%;height:7px;margin-top:14px}
+.cm-react-chart-skeleton-plot{position:relative;height:132px;overflow:hidden;border-left:1px solid rgba(220,233,227,.1);border-bottom:1px solid rgba(220,233,227,.1);background:repeating-linear-gradient(to bottom,transparent 0 31px,rgba(220,233,227,.07) 32px)}
+.cm-react-chart-skeleton-plot::before{content:"";position:absolute;inset:26% 0 12%;background:linear-gradient(180deg,rgba(56,221,164,.16),rgba(56,221,164,0));clip-path:polygon(0 78%,16% 62%,31% 68%,48% 32%,64% 49%,80% 19%,100% 29%,100% 100%,0 100%)}
+.cm-react-chart-skeleton-plot i{position:absolute;left:0;right:0;top:45%;height:2px;background:linear-gradient(90deg,#38dda4aa,#92e8bf55,#38dda4aa);clip-path:polygon(0 95%,16% 48%,31% 70%,48% 20%,64% 52%,80% 8%,100% 35%,100% 100%,80% 73%,64% 90%,48% 58%,31% 100%,16% 78%,0 100%)}
+.cm-react-chart-error{padding:18px 20px;border:1px solid rgba(228,141,130,.25);border-radius:12px;background:rgba(72,39,35,.28);color:#efb2a9;font-size:13px}
+@keyframes cm-react-chart-shimmer{to{background-position:-220% 0}}
+@media(max-width:760px){.cm72-hero-motion-toggle{top:78px;right:12px;width:33px;height:33px}.cm-react-chart-loading-card{height:210px}}
+@media(prefers-reduced-motion:reduce){.cm72-hero-motion-toggle{transition:none}.cm-react-chart-skeleton-title,.cm-react-chart-skeleton-legend{animation:none}}

@@ -8939,14 +8939,14 @@ function m({ className: e = "", particles: t = 74, color: n = "#38dda4", opacity
 		function fe() {
 			let e = c.getBoundingClientRect();
 			h = Math.max(1, Math.floor(e.width)), g = Math.max(1, Math.floor(e.height)), _ = Math.min(window.devicePixelRatio || 1, 1.5), l.width = Math.floor(h * _), l.height = Math.floor(g * _), l.style.width = h + "px", l.style.height = g + "px", u.setTransform(_, 0, 0, _, 0, 0);
-			let n = t > 0 ? Math.min(240, Math.max(24, Math.round(t * h * g / 32e4))) : 0;
+			let n = t > 0 ? Math.min(300, Math.max(24, Math.round(t * h * g / 32e4))) : 0;
 			b = Array.from({ length: n }, () => ({
 				x: y() * h,
 				y: y() * g,
 				speed: 8 + y() * 20,
 				length: 12 + y() ** .7 * 34,
 				alpha: .25 + y() * .75
-			})), ee = Array.from({ length: Math.min(40, Math.round(n * .16)) }, () => ({
+			})), ee = Array.from({ length: Math.min(48, Math.round(n * .16)) }, () => ({
 				x: y() * h,
 				y: y() * g,
 				speed: 5 + y() * 14,
@@ -8991,29 +8991,46 @@ var h = (e, t = "") => {
 	});
 };
 function g() {
-	let e = (window.CM?.state || {}).config || {}, t = (0, u.useRef)(null), n = String(e.headline || "CopiMine —\nMinecraft-сервер.").split(/\r?\n/), r = n.shift()?.trim() || "CopiMine", i = n.join(" ").trim(), a = e.serverIp || "copimine.ru";
+	let e = (window.CM?.state || {}).config || {}, t = (0, u.useRef)(null), [n, r] = (0, u.useState)(!1), i = [{
+		id: "copimine-night-wide",
+		src: "assets/photos/copimine-night.webp",
+		position: "50% 31%"
+	}, {
+		id: "copimine-night-pan",
+		src: "assets/photos/copimine-night.webp",
+		position: "54% 43%"
+	}], a = String(e.headline || "CopiMine —\nMinecraft-сервер.").split(/\r?\n/), o = a.shift()?.trim() || "CopiMine", s = a.join(" ").trim(), c = e.serverIp || "copimine.ru";
 	return (0, u.useLayoutEffect)(() => window.CMSiteMotion?.heroAtmosphere?.(t.current), []), /* @__PURE__ */ (0, d.jsxs)("section", {
 		ref: t,
 		className: "cm72-hero cm-react-hero",
 		children: [
-			/* @__PURE__ */ (0, d.jsx)("img", {
-				className: "cm72-hero-photo",
-				src: window.CM.asset("assets/photos/copimine-night.webp"),
-				alt: "",
-				fetchPriority: "high"
+			/* @__PURE__ */ (0, d.jsx)("div", {
+				className: "cm72-hero-frames",
+				"aria-hidden": "true",
+				children: i.map((e, t) => /* @__PURE__ */ (0, d.jsx)("img", {
+					className: "cm72-hero-photo",
+					"data-hero-frame": "",
+					"data-active": t === 0 ? "true" : "false",
+					src: window.CM.asset(e.src || "assets/photos/copimine-night.webp"),
+					style: { objectPosition: e.position },
+					alt: "",
+					loading: t === 0 ? "eager" : "lazy",
+					decoding: "async",
+					fetchPriority: t === 0 ? "high" : "auto"
+				}, e.id || e.src || t))
 			}),
 			/* @__PURE__ */ (0, d.jsx)(m, {
 				className: "cm-react-hero-lines",
-				particles: 112,
+				particles: 160,
 				color: "#5ce5b2",
-				opacity: .26
+				opacity: .38
 			}),
 			/* @__PURE__ */ (0, d.jsxs)("div", {
 				className: "cm72-hero-content",
 				children: [
 					/* @__PURE__ */ (0, d.jsxs)("h1", {
 						className: "cm-react-hero-title",
-						children: [r, i && /* @__PURE__ */ (0, d.jsxs)(d.Fragment, { children: [/* @__PURE__ */ (0, d.jsx)("br", {}), /* @__PURE__ */ (0, d.jsx)("span", { children: i })] })]
+						children: [o, s && /* @__PURE__ */ (0, d.jsxs)(d.Fragment, { children: [/* @__PURE__ */ (0, d.jsx)("br", {}), /* @__PURE__ */ (0, d.jsx)("span", { children: s })] })]
 					}),
 					/* @__PURE__ */ (0, d.jsxs)("div", {
 						className: "cm-react-hero-actions",
@@ -9032,10 +9049,40 @@ function g() {
 						className: "cm72-address",
 						type: "button",
 						"data-action": "copy-ip",
-						"aria-label": "Скопировать адрес сервера " + a,
-						children: [/* @__PURE__ */ (0, d.jsx)("span", { children: a }), h("copy")]
+						"aria-label": "Скопировать адрес сервера " + c,
+						children: [/* @__PURE__ */ (0, d.jsx)("span", { children: c }), h("copy")]
 					})
 				]
+			}),
+			i.length > 1 && /* @__PURE__ */ (0, d.jsx)("button", {
+				className: "cm72-hero-motion-toggle",
+				type: "button",
+				"aria-label": n ? "Продолжить анимацию фона" : "Приостановить анимацию фона",
+				"aria-pressed": n,
+				title: n ? "Продолжить анимацию фона" : "Приостановить анимацию фона",
+				onClick: () => {
+					let e = !n;
+					t.current && (t.current.dataset.heroPaused = String(e)), r(e);
+				},
+				children: n ? /* @__PURE__ */ (0, d.jsx)("svg", {
+					viewBox: "0 0 24 24",
+					fill: "none",
+					stroke: "currentColor",
+					strokeWidth: "1.8",
+					strokeLinecap: "round",
+					strokeLinejoin: "round",
+					"aria-hidden": "true",
+					children: /* @__PURE__ */ (0, d.jsx)("path", { d: "m8 5 11 7-11 7z" })
+				}) : /* @__PURE__ */ (0, d.jsx)("svg", {
+					viewBox: "0 0 24 24",
+					fill: "none",
+					stroke: "currentColor",
+					strokeWidth: "1.8",
+					strokeLinecap: "round",
+					strokeLinejoin: "round",
+					"aria-hidden": "true",
+					children: /* @__PURE__ */ (0, d.jsx)("path", { d: "M9 5v14M15 5v14" })
+				})
 			})
 		]
 	});
@@ -9467,7 +9514,7 @@ function x(e) {
 	let t = document.getElementById("cm-react-analytics-charts");
 	if (t && e.analytics) {
 		let n = e.analytics;
-		import("./charts-Bl1VJC7a.mjs").then(({ AdminAnalyticsCharts: e }) => {
+		import("./charts-BHRYKUB3.mjs").then(({ AdminAnalyticsCharts: e }) => {
 			if (!t.isConnected || document.getElementById(t.id) !== t) return;
 			let r = (0, l.createRoot)(t);
 			r.render(/* @__PURE__ */ (0, d.jsx)(e, { model: n })), le.push(r);
@@ -9482,7 +9529,7 @@ function x(e) {
 			data: { live: { samples: e.serviceMetrics || [] } },
 			sub: "live"
 		};
-		import("./charts-Bl1VJC7a.mjs").then(({ AdminAnalyticsCharts: e }) => {
+		import("./charts-BHRYKUB3.mjs").then(({ AdminAnalyticsCharts: e }) => {
 			if (!n.isConnected || document.getElementById(n.id) !== n) return;
 			let r = (0, l.createRoot)(n);
 			r.render(/* @__PURE__ */ (0, d.jsx)(e, { model: t })), le.push(r);

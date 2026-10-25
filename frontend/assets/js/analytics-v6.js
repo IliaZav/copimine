@@ -136,7 +136,10 @@
       events: [...eventMap.values()], from: b.from, to: b.to
     };
   }
-  function adminPage() { return location.hash.startsWith("#admin/statistics"); }
+  function adminPage() {
+    const route = location.hash.slice(1).split("?")[0];
+    return route === "admin/statistics" || route === "admin/overview" || route === "admin";
+  }
   function canRead() { return X.canAdmin() && (!X.live || (typeof X.can === "function" && X.can("analytics.read"))); }
   async function loadSummary(range, force = false) {
     if (!X.live || typeof X.request !== "function" || !canRead()) return;
@@ -216,7 +219,7 @@
     const data = X.live ? cached?.data : localSummary(range);
     window.CMAnalyticsReactModel = { data: data || null, sub, range, loading: !data && !errors.has(range), error: errors.get(range) || '' };
     const heading = `<div class="v6-analytics-toolbar"><div class="v6-analytics-range" aria-label="Период отчёта">${ranges.map(([id, title]) => `<button type="button" data-action="v6-analytics-range" data-range="${id}" aria-pressed="${range === id}">${title}</button>`).join("")}</div><div class="actions">${M.btn("Обновить", "v6-analytics-refresh", "refresh", "small", requests.has(range) ? "disabled" : "")}${M.btn("CSV", "v6-analytics-export", "download", "small", data ? "" : "disabled")}</div></div><nav class="tabs" aria-label="Разделы статистики">${tabs.map(([id, label]) => `<a href="#admin/statistics?sub=${id}&range=${range}" class="${sub === id ? "active" : ""}">${E(label)}</a>`).join("")}</nav>`;
-    if (!data) return heading + (errors.has(range) ? `<section class="panel">${empty("Не удалось загрузить статистику", errors.get(range))}${M.btn("Повторить", "v6-analytics-refresh", "refresh", "primary")}</section>` : `<section class="panel v6-analytics-loading" role="status">Загружаем статистику…</section>`);
+    if (!data) return heading + (errors.has(range) ? `<section class="panel">${empty("Не удалось загрузить статистику", errors.get(range))}${M.btn("Повторить", "v6-analytics-refresh", "refresh", "primary")}</section>` : `<section class="panel v6-analytics-loading"><div id="cm-react-analytics-charts"></div></section>`);
     let body;
     if (sub === "economy") body = economyPanel(data);
     else if (sub === "pages") body = `<section class="panel"><div class="panel-head"><h3>Посещения по страницам</h3></div>${pagesPanel(data)}</section><section class="panel mt">${barChart(trafficDays(data), "Просмотры по дням")}</section>`;
@@ -224,7 +227,18 @@
     else body = `<div class="v6-analytics-kpis">${kpi("Просмотры", fmt(data.visits), "Открытия публичных страниц")}${kpi("Посетители по дням", fmt(data.visitors), "Сумма дневных уникальных")}${kpi("Заказы", fmt(data.orders), "С выданными предметами")}${kpi("Выдано предметов", fmt(data.items), "Штук за выбранный период")}${kpi("Оборот CM", fmt(data.revenue?.CM) + " CM", "Покупки в магазине")}${kpi("Пополнения", rubles(data), rublesHint(data))}</div><div class="v6-analytics-grid"><section class="panel"><div class="panel-head"><h3>Посещения</h3></div>${barChart(trafficDays(data), "Просмотры по дням")}</section><section class="panel"><div class="panel-head"><h3>Популярные страницы</h3></div>${pagesPanel(data, true)}</section></div>`;
     return heading + body + `<footer class="v6-analytics-footer"><span>${X.live ? "Данные сайта" : "Локальная проверка"} · ${E(b.from + " — " + b.to)} · UTC${cached ? " · обновлено " + E(new Date(cached.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })) : ""}</span><p>Учитываются публичные страницы и согласие на аналитику. Поиск в панели, имена игроков и содержимое форм в отчёт не попадают.</p></footer>`;
   }
+  function dashboardCharts() {
+    const owner = M.me?.()?.id || "";
+    if (cacheOwner !== owner) { cache.clear(); requests.clear(); errors.clear(); cacheOwner = owner; }
+    if (!canRead()) return "";
+    const range = selectedRange(), cached = cache.get(range), error = errors.get(range) || "";
+    if (X.live && !cached && !requests.has(range) && !error) Promise.resolve().then(() => loadSummary(range));
+    const data = X.live ? cached?.data : localSummary(range);
+    window.CMAnalyticsReactModel = { data: data || null, sub: "overview", range, loading: !data && !error, error };
+    return `<section class="panel mt v71-overview-analytics"><div class="panel-head"><h2>Аналитика сайта</h2>${M.link("Все отчёты", "#admin/statistics", "arrow-right", "ghost small")}</div><div id="cm-react-analytics-charts"></div></section>`;
+  }
   W.adminExtensions.statistics = render;
+  W.adminExtensions.dashboardAnalytics = dashboardCharts;
   H["v6-analytics-range"] = button => {
     const range = button.dataset.range;
     if (!ranges.some(([id]) => id === range)) return;

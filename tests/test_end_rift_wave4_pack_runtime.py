@@ -25,6 +25,8 @@ def pack_probe(tmp_path_factory):
     template = (ROOT / "tests/fixtures/Wave4PackRuntimeProbe.java.template").read_text(encoding="utf-8")
     signatures = [
         "Wave4PressurePackResult spawnWave4PressurePack(",
+        "Entity spawnWave4PressureSlot(",
+        "<T extends Entity> T spawnLiveRingEntity(",
         "boolean rollbackWave4PressureSpawnAttempt(",
         "boolean isCurrentWave4PressureSpawnEntity(",
         "int clearWave4PressurePackEntities(", "boolean isWave4PressurePackEntity(",
@@ -54,7 +56,7 @@ def pack_probe(tmp_path_factory):
 @pytest.mark.parametrize("scenario", [
     "pressure-matrix",
     "success", "first", "middle", "last", "all", "backoff", "exhaustion", "permanent",
-    "lost-slot", "registration-refused", "duplicate-slot", "restart", "reset", "obsolete-generation", "obelisk-complete",
+    "lost-slot", "registration-refused", "ring-spawn-relocation", "duplicate-slot", "restart", "reset", "obsolete-generation", "obelisk-complete",
     "synchronous-slot-loss", "throw-after-partial-success", "throw-preserves-prior-slot",
 ])
 def test_wave4_pack_lifecycle(pack_probe, scenario):

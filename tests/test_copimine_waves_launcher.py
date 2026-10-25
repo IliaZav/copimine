@@ -1,4 +1,4 @@
-from pathlib import Path
+﻿from pathlib import Path
 import json
 import shutil
 import subprocess
@@ -79,3 +79,49 @@ def test_launcher_refuses_an_unknown_end_event_hash(tmp_path):
     output = result.stdout + result.stderr
     assert result.returncode != 0
     assert "Installed CopiMineEndEvent hash mismatch" in output
+
+STARTER = ROOT / "scripts" / "minecraft" / "StartMigrationTestServer.ps1"
+
+
+def test_starter_exempts_first_party_event_spawns_from_clearlag():
+    text = STARTER.read_text(encoding="utf-8")
+    assert "function Protect-MigrationEventSpawnsFromClearLag" in text
+    assert "exempt-spawn-reasons:" in text
+    assert "'- CUSTOM'" in text
+    call = text.index("Protect-MigrationEventSpawnsFromClearLag -RuntimeDirectory $runtime")
+    assert call > text.index("if ($ValidateOnly) {")
+    assert call < text.index("& $java @javaArguments")
+
+
+def _run_clearlag_helper(shell, helper, runtime):
+    command = f". '{helper}'; Protect-MigrationEventSpawnsFromClearLag -RuntimeDirectory '{runtime}'"
+    return subprocess.run([shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+                          capture_output=True, text=True, timeout=60)
+
+
+def test_clearlag_exemption_is_idempotent_and_scoped_to_existing_configs(tmp_path):
+    shell = _powershell()
+    if not shell:
+        pytest.skip("PowerShell is required")
+    text = STARTER.read_text(encoding="utf-8")
+    start = text.index("function Protect-MigrationEventSpawnsFromClearLag {")
+    end = text.index("function Test-MigrationPaperRuntimeListener {")
+    helper = tmp_path / "clearlag-helper.ps1"
+    helper.write_text(text[start:end], encoding="utf-8")
+    config = tmp_path / "plugins/ClearLag/config.yml"
+    config.parent.mkdir(parents=True)
+    original = "mob-spawn-limiter:\n  enabled: true\n  exempt-spawn-reasons:\n    - CURED\n  per-world: {}\n"
+    config.write_text(original, encoding="utf-8")
+
+    _run_clearlag_helper(shell, helper.as_posix(), tmp_path)
+    after_first = config.read_text(encoding="utf-8")
+    assert after_first == original.replace("    - CURED\n", "    - CURED\n    - CUSTOM\n")
+
+    _run_clearlag_helper(shell, helper.as_posix(), tmp_path)
+    assert config.read_text(encoding="utf-8") == after_first
+
+    empty = tmp_path / "no-clearlag"
+    empty.mkdir()
+    result = _run_clearlag_helper(shell, helper.as_posix(), empty)
+    assert result.returncode == 0, result.stderr
+    assert not (empty / "plugins/ClearLag/config.yml").exists()

@@ -20,6 +20,42 @@ if (-not [string]::Equals($runtime, $expectedRuntime, [StringComparison]::Ordina
     throw 'Migration server path resolved outside its owned local runtime.'
 }
 
+function Protect-MigrationEventSpawnsFromClearLag {
+    # ClearLag's mob-spawn-limiter cancels plugin spawns once its hostile cap is
+    # reached, which aborted End Rift wave objectives.  First-party event mobs spawn
+    # with reason CUSTOM, so exempt exactly that reason and leave the file otherwise
+    # untouched.
+    param([Parameter(Mandatory)][string]$RuntimeDirectory)
+    $config = Join-Path $RuntimeDirectory 'plugins/ClearLag/config.yml'
+    if (-not (Test-Path -LiteralPath $config -PathType Leaf)) { return }
+    $lines = [IO.File]::ReadAllLines($config)
+    $key = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match '^\s*exempt-spawn-reasons:\s*$') { $key = $i; break }
+    }
+    if ($key -lt 0) { return }
+    $itemIndent = $null
+    $insertAt = $key + 1
+    for ($i = $key + 1; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match '^(\s*)-\s+(.*)$') {
+            if ($Matches[2].Trim() -ceq 'CUSTOM') { return }
+            $itemIndent = $Matches[1]
+            $insertAt = $i + 1
+            continue
+        }
+        if ([string]::IsNullOrWhiteSpace($lines[$i])) { continue }
+        break
+    }
+    if ($null -eq $itemIndent) {
+        $itemIndent = [regex]::Match($lines[$key], '^(\s*)').Groups[1].Value + '  '
+    }
+    $updated = @($lines[0..($insertAt - 1)])
+    $updated += @($itemIndent + '- CUSTOM')
+    if ($insertAt -lt $lines.Count) { $updated += @($lines[$insertAt..($lines.Count - 1)]) }
+    [IO.File]::WriteAllLines($config, $updated)
+    Write-Output 'ClearLag: exempting CUSTOM spawns so End Rift event mobs are never refused.'
+}
+
 function Test-MigrationPaperRuntimeListener {
     [CmdletBinding()]
     param(
@@ -243,6 +279,8 @@ try {
         }
         return
     }
+
+    Protect-MigrationEventSpawnsFromClearLag -RuntimeDirectory $runtime
 
     if ($LocalEndEventBuild) {
         Write-Output "Starting the full locked-plugin Minecraft 26.3 server on 127.0.0.1:$serverPort with the receipted local CopiMineEndEvent build, AuthMe and AuthEffects enabled. This server remains loopback-only."

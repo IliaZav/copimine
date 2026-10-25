@@ -343,7 +343,8 @@ def test_end_rift_bots_use_pinned_via_backwards_protocol_route_to_paper_26_3() -
     assert "bot.on('physicsTick'" in bot
     assert "queueMicrotask" in bot
     assert "bot._client.write('tick_end', {})" in bot
-    assert "host !== '127.0.0.1' || port !== 25566" in bot
+    assert "if (host !== '127.0.0.1') {" in bot
+    assert "End Rift protocol bots are restricted to loopback" in bot
     assert "client=26.1 backend=Paper-26.3-205 gateway=ViaVersion-5.12.1" in bot
     assert "version: '1.21.1'" not in bot
 

@@ -53,5 +53,7 @@ def test_wave6_guards_and_named_wave7_actors_cannot_disappear_as_a_successful_cl
     assert "EVENT_KIND_RITUAL_CASTER.equals(kind)" in wave6
     assert "EVENT_KIND_REALITY_SPLIT_TRIAL.equals(kind)" in wave7
     assert "EVENT_KIND_REALITY_SPLIT_OBJECTIVE.equals(kind)" in wave7
+    assert "if (isNamedTrialProjectile(entity)) return false;" in wave7
+    assert wave7.index("isNamedTrialProjectile(entity)") < wave7.index("String kind")
     assert "WaveMobRemovalPolicy.Disposition.UNEXPECTED" in evidence
     assert "EventPhase.RECOVERY_REQUIRED" in evidence

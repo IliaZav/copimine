@@ -42,6 +42,50 @@ def test_wave4_pressure_pack_retries_only_missing_persistent_slots():
     assert "currentWave4PressureRetryAtMillis = now" in tick
 
 
+def test_refused_spawn_cells_are_relocated_by_the_shared_ring_spawner():
+    source = SOURCE.read_text(encoding="utf-8")
+    spawn = method(source, "private Wave4PressurePackResult spawnWave4PressurePack")
+    helper = method(source, "private Entity spawnWave4PressureSlot")
+    ring = method(source, "private <T extends Entity> T spawnLiveRingEntity")
+
+    # One spawn helper owns the relocation so every objective (wave 4 pack,
+    # wave 6 ritual) survives a spawn guard silently removing a fresh actor.
+    assert "END_RIFT_SPAWN_CELL_REFUSED" in ring
+    assert "spawn-cell-refused" in ring
+    assert "isLiveOwnedEntity(entity.getUniqueId())" in ring
+    assert "int cell = index + attempt" in ring
+    for caller in (
+        "private Entity spawnOwnedMob(",
+        "private Enderman spawnEnderman(",
+        "private Entity spawnRiftGiantElite(",
+    ):
+        assert "spawnLiveRingEntity(index, cell -> {" in method(source, caller), caller
+
+    # The pack keeps its own missing-slot retry policy when every cell is refused.
+    assert "spawnWave4PressureSlot(world, core, slot, test, slot.spawnIndex())" in spawn
+    assert "wave-4-pressure-registration-refused" in spawn
+    assert "END_RIFT_OBELISK_PRESSURE_SLOT_REFUSED" not in spawn
+
+    for role, spawner in (
+        ("STALKER", "spawnOwnedMob(world, core, EntityType.SPIDER"),
+        ("ZOMBIE", "spawnOwnedMob(world, core, EntityType.ZOMBIE"),
+        ("BRUTE", "spawnEnderman(world, core, 4, true, false, test, index"),
+        ("CHANNELER", "spawnSkeleton(world, core, 4, true, false, test, index"),
+        ("RIFT_GIANT", "spawnRiftGiantElite(world, core, 4, test, index"),
+    ):
+        assert f'case "{role}" -> {spawner}' in helper, role
+    assert "index" in helper and "slot.spawnIndex()" not in helper
+
+
+def test_wave4_local_probe_abort_leaves_no_phantom_active_assault():
+    source = SOURCE.read_text(encoding="utf-8")
+    tick = method(source, "private boolean tickWave4ObeliskAssault")
+    branch = tick.split('clearWave4Obelisks("local-probe-startup-failed")', 1)[1]
+    branch = branch.split("return false;", 1)[0]
+
+    assert "testWave4ObeliskMode = false" in branch
+
+
 def test_wave4_restart_cleans_the_transient_generation_before_retrying():
     source = SOURCE.read_text(encoding="utf-8")
     recovery = method(source, "private void recoverTransientSession")

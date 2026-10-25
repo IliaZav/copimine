@@ -16259,8 +16259,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private Entity spawnRiftGiantElite(World world, Location core, int wave,
                                        boolean test, int index) {
         if (world == null || core == null || wave < 1 || wave > MAX_EVENT_WAVE) return null;
-        Location spawn = safeSpawnLocationForWave(core, index, 3.0D, wave);
-        return spawn == null ? null : spawnRiftGiantEntity(world, spawn, wave, !test, index);
+        return spawnLiveRingEntity(index, cell -> {
+            Location spawn = safeSpawnLocationForWave(core, cell, 3.0D, wave);
+            return spawn == null ? null : spawnRiftGiantEntity(world, spawn, wave, !test, cell);
+        });
     }
 
     /** Shared zombie base, vanilla scale/hitbox, bounded melee stats and AI for every Rift Giant. */
@@ -23214,19 +23216,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         int spawned = 0;
         try {
             for (Wave4PressurePackPolicy.Slot slot : missing) {
-                Entity entity = switch (slot.role()) {
-                    case "STALKER" -> spawnOwnedMob(world, core, EntityType.SPIDER, 4,
-                            EVENT_KIND_WAVE_MOB, test, slot.spawnIndex());
-                    case "BRUTE" -> spawnEnderman(world, core, 4, true, false, test,
-                            slot.spawnIndex(), slot.spawnIndex() + 1);
-                    case "CHANNELER" -> spawnSkeleton(world, core, 4, true, false, test,
-                            slot.spawnIndex(), slot.spawnIndex() + 1);
-                    case "ZOMBIE" -> spawnOwnedMob(world, core, EntityType.ZOMBIE, 4,
-                            EVENT_KIND_WAVE_MOB, test, slot.spawnIndex());
-                    case "RIFT_GIANT" -> spawnRiftGiantElite(world, core, 4,
-                            test, slot.spawnIndex());
-                    default -> null;
-                };
+                Entity entity = spawnWave4PressureSlot(world, core, slot, test, slot.spawnIndex());
                 if (entity == null) {
                     continue;
                 }
@@ -23277,6 +23267,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return stillMissing.isEmpty()
                 ? Wave4PressurePackResult.COMPLETE
                 : Wave4PressurePackResult.RETRYABLE_FAILURE;
+    }
+
+    /** Spawn one Wave 4 pressure slot at the ring cell selected by {@code index}. */
+    private Entity spawnWave4PressureSlot(World world, Location core,
+                                          Wave4PressurePackPolicy.Slot slot, boolean test, int index) {
+        return switch (slot.role()) {
+            case "STALKER" -> spawnOwnedMob(world, core, EntityType.SPIDER, 4,
+                    EVENT_KIND_WAVE_MOB, test, index);
+            case "BRUTE" -> spawnEnderman(world, core, 4, true, false, test, index, index + 1);
+            case "CHANNELER" -> spawnSkeleton(world, core, 4, true, false, test, index, index + 1);
+            case "ZOMBIE" -> spawnOwnedMob(world, core, EntityType.ZOMBIE, 4,
+                    EVENT_KIND_WAVE_MOB, test, index);
+            case "RIFT_GIANT" -> spawnRiftGiantElite(world, core, 4, test, index);
+            default -> null;
+        };
     }
 
     /** Remove only newly spawned current-session Wave 4 mobs from this failed attempt. */
@@ -35912,15 +35917,36 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return removed;
     }
 
+    /**
+     * Spawn at the first ring cell around {@code index} whose actor survives creation.
+     * A third-party spawn guard can silently remove a freshly spawned entity, which
+     * used to abort whole objectives (wave 4 pack, wave 6 ritual).
+     */
+    private <T extends Entity> T spawnLiveRingEntity(int index, java.util.function.IntFunction<T> spawner) {
+        for (int attempt = 0; attempt < 3; attempt++) {
+            int cell = index + attempt;
+            T entity = spawner.apply(cell);
+            if (entity == null) continue;
+            if (isLiveOwnedEntity(entity.getUniqueId())) return entity;
+            getLogger().warning("END_RIFT_SPAWN_CELL_REFUSED index=" + cell
+                    + " type=" + entity.getType() + " attempt=" + (attempt + 1));
+            unregisterOwnedEntity(entity.getUniqueId(), "spawn-cell-refused");
+            entity.remove();
+        }
+        return null;
+    }
+
     private Enderman spawnEnderman(World world, Location core, int wave, boolean elite,
                                    boolean guardianWave, boolean test, int index, int abilityIndex) {
-        Location location = safeSpawnLocationForWave(core, index, elite ? 4.0D : 2.0D, wave);
-        if (location == null) {
-            getLogger().warning("Cannot find a safe floor spawn for End Rift wave mob.");
-            return null;
-        }
-        return spawnEndermanAtLocation(world, location, wave, elite,
-                guardianWave, test, index, abilityIndex);
+        return spawnLiveRingEntity(index, cell -> {
+            Location location = safeSpawnLocationForWave(core, cell, elite ? 4.0D : 2.0D, wave);
+            if (location == null) {
+                getLogger().warning("Cannot find a safe floor spawn for End Rift wave mob.");
+                return null;
+            }
+            return spawnEndermanAtLocation(world, location, wave, elite,
+                    guardianWave, test, cell, abilityIndex);
+        });
     }
 
     private Enderman spawnEndermanAtLocation(World world, Location requestedLocation, int wave,
@@ -36097,36 +36123,38 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private Entity spawnOwnedMob(World world, Location core, EntityType type, int wave,
                                  String kind, boolean test, int index) {
-        Location location = safeSpawnLocationForWave(core, index, 3.0D, wave);
-        if (location == null) {
-            getLogger().warning("Cannot find a safe floor spawn for End Rift wave mob type=" + type);
-            return null;
-        }
-        Entity entity = world.spawnEntity(location, type);
-        tag(entity, kind, wave, !test);
-        setLootProfile(entity, test ? "test"
-                : type == EntityType.SPIDER ? "spider"
-                : type == EntityType.SKELETON
-                ? EVENT_KIND_ELITE.equals(kind) ? "elite-skeleton"
-                : EVENT_KIND_WAVE_GUARDIAN.equals(kind) ? "wave-guardian" : "skeleton"
-                : "reality-split");
-        if (entity instanceof LivingEntity living) {
-            living.setPersistent(true);
-            configureEventMobStats(living, type);
-            applyWaveThreeModifiers(living, wave);
-            if (living instanceof Mob mob) {
-                mob.setAI(true);
-                mob.setAware(true);
+        return spawnLiveRingEntity(index, cell -> {
+            Location location = safeSpawnLocationForWave(core, cell, 3.0D, wave);
+            if (location == null) {
+                getLogger().warning("Cannot find a safe floor spawn for End Rift wave mob type=" + type);
+                return null;
             }
-        }
-        registerOwnedEntity(entity);
-        assignRealitySplitChamber(entity, index);
-        assignCombatTactic(entity, index);
-        bindEventEntityClientForOnlinePlayers(entity);
-        if (wave == MAX_EVENT_WAVE && !test && EVENT_KIND_WAVE_GUARDIAN.equals(kind)) {
-            waveGuardianEntities.add(entity.getUniqueId());
-        }
-        return entity;
+            Entity entity = world.spawnEntity(location, type);
+            tag(entity, kind, wave, !test);
+            setLootProfile(entity, test ? "test"
+                    : type == EntityType.SPIDER ? "spider"
+                    : type == EntityType.SKELETON
+                    ? EVENT_KIND_ELITE.equals(kind) ? "elite-skeleton"
+                    : EVENT_KIND_WAVE_GUARDIAN.equals(kind) ? "wave-guardian" : "skeleton"
+                    : "reality-split");
+            if (entity instanceof LivingEntity living) {
+                living.setPersistent(true);
+                configureEventMobStats(living, type);
+                applyWaveThreeModifiers(living, wave);
+                if (living instanceof Mob mob) {
+                    mob.setAI(true);
+                    mob.setAware(true);
+                }
+            }
+            registerOwnedEntity(entity);
+            assignRealitySplitChamber(entity, cell);
+            assignCombatTactic(entity, cell);
+            bindEventEntityClientForOnlinePlayers(entity);
+            if (wave == MAX_EVENT_WAVE && !test && EVENT_KIND_WAVE_GUARDIAN.equals(kind)) {
+                waveGuardianEntities.add(entity.getUniqueId());
+            }
+            return entity;
+        });
     }
 
     /** Wave III makes the portal defenders visibly faster and hit with bounded knockback. */
@@ -41802,6 +41830,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 getLogger().warning("END_RIFT_OBELISK_ASSAULT_ABORTED event=" + eventId
                         + " generation=" + generation + " reason=startup-failed local_probe=true");
                 clearWave4Obelisks("local-probe-startup-failed");
+                // The probe is over; leaving the flag set kept cmend status
+                // reporting a phantom assault=ACTIVE after the abort.
+                testWave4ObeliskMode = false;
                 return false;
             }
             getLogger().severe("END_RIFT_OBELISK_ASSAULT_ABORTED event=" + eventId
@@ -46160,6 +46191,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (entity == null || readInt(entity, keyWave, 0) != 7
                 || !ownedBySession(entity, eventId, generation)
                 || readString(entity, keyTrialRole).isBlank()) return false;
+        // Trial hazards (fangs, arrows) expire by design and vanilla discards them with Cause.DESPAWN.
+        if (isNamedTrialProjectile(entity)) return false;
         String kind = readString(entity, keyKind);
         return EVENT_KIND_REALITY_SPLIT_TRIAL.equals(kind)
                 || EVENT_KIND_REALITY_SPLIT_OBJECTIVE.equals(kind);
@@ -46175,7 +46208,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         forcePhase(EventPhase.RECOVERY_REQUIRED,
                 actorType + " disappeared without death, unload, or owned cleanup evidence");
         getLogger().severe(actorType + "_REMOVAL_RECOVERY_REQUIRED entity=" + entity.getUniqueId()
-                + " event=" + eventId + " generation=" + generation + " cause=" + cause);
+                + " event=" + eventId + " generation=" + generation + " cause=" + cause
+                + " type=" + entity.getType() + " role=" + readString(entity, keyTrialRole)
+                + " kind=" + readString(entity, keyKind) + " location=" + locationText(entity.getLocation())
+                + " persistent=" + entity.isPersistent()
+                + " removeWhenFarAway=" + (entity instanceof LivingEntity livingActor
+                        ? livingActor.getRemoveWhenFarAway() : "n/a")
+                + " aware=" + (entity instanceof Mob mobActor ? mobActor.isAware() : "n/a"));
     }
 
     private void bindBossClientForOnlinePlayers() {

@@ -10,7 +10,7 @@ This table covers only first-party plugins. Third-party jars remain pinned in `t
 | CopiMineArtifacts | 1.1.0-shops-blocks-prices | EconomyCore | 2 / 8 | `75547398...f109` | PASS (contracts + Java) | BLOCKED |
 | CopiMineEconomyCore | 1.0.0 | none | 0 / 0 | `7fd9c779...bd32` | PASS (contracts) | BLOCKED |
 | CopiMineElectionCore | 9.2.0-postgres-v4-balance-credit | EconomyCore | 2 / 5 | `d2256c69...5b65` | PASS (contracts) | BLOCKED |
-| CopiMineEndEvent | 0.1.0 | WorldCore, Artifacts | 1 / 2 | `12f032de...8d543c` | PASS (wide suite) | BLOCKED |
+| CopiMineEndEvent | 0.1.0 | WorldCore, Artifacts | 1 / 2 | `33301a85...2270ab` | PASS (wide suite) | BLOCKED |
 | CopiMineNarcotics | 2.1.0-client-bridge | none (ProtocolLib soft) | 2 / 8 | `d7e46fcc...d7e2` | PASS (contracts) | BLOCKED |
 | CopiMineWorldCore | 1.0.0 | none | 1 / 1 | `1b6822c1...3f14` | PASS (contracts) | BLOCKED |
 | AuthEffects | 1.0.0 | AuthMe soft | 0 / 0 | not installed (candidate `09aa0017...e11c`) | PASS (contracts) | BLOCKED |

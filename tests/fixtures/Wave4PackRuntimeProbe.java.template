@@ -101,7 +101,7 @@ public class Wave4PackRuntimeProbe {
             currentWave4StartupFailed, currentWave4ObeliskAssaultComplete, waveObjectiveComplete;
     WaveMechanicsPolicy.WaveCounts composition = new WaveMechanicsPolicy.WaveCounts(1, 1, 1, 0, 0);
     List<WaveMechanicsPolicy.WaveCounts> waveSpawnSchedule = List.of(composition);
-    Set<Integer> failing = new HashSet<>(), throwAfterRegister = new HashSet<>();
+    Set<Integer> failing = new HashSet<>(), throwAfterRegister = new HashSet<>(), refusingSpawn = new HashSet<>();
     List<Integer> spawnCalls = new ArrayList<>();
     int canceled, announced; boolean rejectRegistration, removeSpiderDuringSpawn;
     double WAVE_MOB_DAMAGE_REDUCTION = 0.0D;
@@ -119,6 +119,12 @@ public class Wave4PackRuntimeProbe {
     void unregisterOwnedEntity(UUID id, String reason) { ownedEntities.remove(id); }
     Entity spawn(EntityType type, int index) {
         spawnCalls.add(index); if (failing.contains(index)) return null;
+        if (refusingSpawn.remove(index)) {
+            var refused = new Mob(type); refused.generation = generation; refused.valid = false;
+            refused.data.values.put(keyWave, "4"); refused.data.values.put(keyKind, EVENT_KIND_WAVE_MOB);
+            Bukkit.world.entities.add(refused);
+            return refused;
+        }
         if (removeSpiderDuringSpawn && index == 1) {
             removeSpiderDuringSpawn = false;
             Entity stalker = ownedEntities.values().stream()
@@ -280,6 +286,13 @@ public class Wave4PackRuntimeProbe {
                         "returned but unregistered entities must not complete the pack");
                 check(Bukkit.world.entities.stream().noneMatch(Entity::isValid), "registration refusal left orphan mobs");
                 p.rejectRegistration = false; p.retryNow(); completePack(p);
+            }
+            case "ring-spawn-relocation" -> {
+                p.refusingSpawn.add(2);
+                Entity ring = p.spawnLiveRingEntity(2, i -> p.spawn(EntityType.SPIDER, i));
+                check(ring != null && p.spawnCalls.equals(List.of(2, 3)),
+                        "the shared ring spawner must relocate past a refused cell");
+                check(p.liveCount() == 1, "a refused cell must not leave an orphan owned actor");
             }
             case "synchronous-slot-loss" -> {
                 p.removeSpiderDuringSpawn = true;

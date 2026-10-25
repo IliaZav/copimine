@@ -1,0 +1,335 @@
+import { useLayoutEffect } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import type { AnalyticsModel } from "./charts";
+import { CoverflowGallery, type GallerySlide } from "./coverflow-gallery";
+import { RisingLines } from "./rising-lines";
+
+type LegacyRouteModel = {
+  page: string;
+  tab: string;
+  raw: string;
+  html: string;
+  header: string;
+  footer: string;
+  dock: string;
+  revision: number;
+  same: boolean;
+  scrollY: number;
+  sideScroll: number;
+  focusId?: string;
+  focusStart?: number | null;
+  analytics?: AnalyticsModel | null;
+  serviceMetrics?: Array<Record<string, unknown>>;
+};
+
+type CopiMineWindow = Window & {
+  CM?: any;
+  CM6Domain?: any;
+  CMBlueMap?: any;
+  CMAccountLink?: { state: () => { user?: any; pending?: { name?: string; expiresAt?: number } | null } };
+  CMDomain?: { markdown?: (source: string) => string };
+  CM72?: { galleryIndex?: number };
+  CMAnalyticsReactModel?: AnalyticsModel | null;
+  CMSiteMotion?: any;
+  icon?: (name: string, className?: string) => string;
+  CopimineReactBridge?: { render: (model: LegacyRouteModel) => void };
+};
+
+declare const window: CopiMineWindow;
+
+const iconMarkup = (name: string, className = "") => {
+  const html = window.icon?.(name, className) || "";
+  return <span className={className} aria-hidden="true" dangerouslySetInnerHTML={{ __html: html }} />;
+};
+
+function ServerHero() {
+  const model = window.CM?.state || {};
+  const config = model.config || {};
+  const lines = String(config.headline || "CopiMine —\nMinecraft-сервер.").split(/\r?\n/);
+  const first = lines.shift()?.trim() || "CopiMine";
+  const second = lines.join(" ").trim();
+  const address = config.serverIp || "copimine.ru";
+
+  return (
+    <section className="cm72-hero cm-react-hero">
+      <img className="cm72-hero-photo" src={window.CM.asset("assets/photos/copimine-night.webp")} alt="" fetchPriority="high" />
+      <RisingLines className="cm-react-hero-lines" particles={74} color="#5ce5b2" opacity={0.14} />
+      <div className="cm72-hero-content">
+        <h1 className="cm-react-hero-title">
+          {first}{second && <><br /><span>{second}</span></>}
+        </h1>
+        <div className="cm-react-hero-actions">
+          <button className="btn primary cm72-start" type="button" data-action="play">Начать играть {iconMarkup("arrow-right")}</button>
+          <a className="btn ghost" href="#map">{iconMarkup("map")}Посмотреть карту</a>
+        </div>
+        <button className="cm72-address" type="button" data-action="copy-ip" aria-label={"Скопировать адрес сервера " + address}>
+          <span>{address}</span>{iconMarkup("copy")}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function ProductCard({ product }: { product: any }) {
+  const M = window.CM;
+  return (
+    <article className="product reveal">
+      <div className="product-image">
+        <span className="tag">{product.category}</span>
+        <img src={M.asset(product.image)} alt={product.name} width={86} height={86} loading="lazy" />
+        <button className="icon-btn" type="button" data-action="product" data-id={product.id} aria-label={"Подробнее: " + product.name}>{iconMarkup("arrow-up-right")}</button>
+      </div>
+      <div className="product-body">
+        <h3><button type="button" data-action="product" data-id={product.id}>{product.name}</button></h3>
+        <p>{product.description}</p>
+        <div className="product-bottom"><span className="price">{Number(product.price).toLocaleString("ru-RU")} <small>{product.currency}</small></span><button className="btn" type="button" data-action="add-cart" data-id={product.id}>{iconMarkup("plus")}В корзину</button></div>
+      </div>
+    </article>
+  );
+}
+
+function MapPreview() {
+  return (
+    <a href="#map" className="cm72-map-image cm72-map-preview" aria-label="Открыть карту миров CopiMine">
+      <img src={window.CM.asset("assets/img/map-world.webp")} alt="" loading="lazy" decoding="async" />
+      <div className="cm72-map-preview-content">
+        <div className="cm72-map-preview-brand"><img src={window.CM.asset("assets/img/brands/bluemap.png")} alt="BlueMap" loading="lazy" /><strong>Карта миров</strong></div>
+        <span className="cm72-map-preview-link">Открыть {iconMarkup("arrow-up-right")}</span>
+      </div>
+    </a>
+  );
+}
+
+function getGallery(): GallerySlide[] {
+  return (window.CM?.state?.gallery || [])
+    .filter((item: GallerySlide & { published?: boolean; kind?: string }) => item.published && item.kind !== "map" && !String(item.src || "").includes("/map/"))
+    .sort((a: any, b: any) => (a.position || 0) - (b.position || 0));
+}
+
+function HomePage() {
+  const M = window.CM;
+  const state = M.state;
+  const gallery = getGallery();
+  const items = ["return_stone", "infinite_torch", "pohuy_na_debaffy_amulet", "gde_moy_lut_blyat_compass"]
+    .map((id) => M.item(id))
+    .filter((product: any) => product?.enabled);
+  const faq = (state.faq || []).filter((entry: any) => entry.published);
+  const openGalleryItem = (slide: GallerySlide) => {
+    M.openModal(M.esc(slide.title || "Скриншот"), '<div class="cm72-lightbox"><img src="' + M.asset(slide.src || "") + '" alt="' + M.esc(slide.alt || slide.title || "") + '"><div class="cm72-lightbox-bottom"><p>' + M.esc(slide.caption || "") + '</p></div></div>', "cm72-lightbox-dialog");
+  };
+
+  return (
+    <>
+      <ServerHero />
+      <CoverflowGallery slides={gallery} startIndex={window.CM72?.galleryIndex || 0} asset={M.asset} onOpen={openGalleryItem} />
+      <section className="cm72-shop-section cm72-reveal cm-react-shop-section">
+        <div className="cm72-section-heading"><div><h2>Магазин</h2></div><a className="text-link" href="#shop">Весь каталог {iconMarkup("arrow-right")}</a></div>
+        <div className="product-grid four">{items.map((product: any) => <ProductCard key={product.id} product={product} />)}</div>
+      </section>
+      <section className="cm72-map-section cm72-reveal cm-react-map-section">
+        <MapPreview />
+      </section>
+      {faq.length > 0 && <section className="cm72-faq cm72-reveal">
+        <div><h2>FAQ</h2><a className="text-link" href="#faq">Все вопросы {iconMarkup("arrow-right")}</a></div>
+        <div className="faq-list">{faq.map((entry: any) => <details key={entry.id || entry.question} name="cm72-faq"><summary>{entry.question}{iconMarkup("plus")}</summary><p>{entry.answer}</p></details>)}</div>
+      </section>}
+    </>
+  );
+}
+
+function MapPage() {
+  const map = window.CMBlueMap?.state?.() || {};
+  const dimensions: [string, string][] = [
+    ["overworld", "Обычный мир"],
+    ["nether", "Незер"],
+    ["end", "Энд"],
+  ];
+  const dimension = map.dimension || "overworld";
+
+  return (
+    <section className="cm-react-map-page" aria-labelledby="map-title">
+      <header className="cm-react-map-header">
+        <h1 id="map-title">Карта</h1>
+        <div className="cm-react-map-service" aria-label="BlueMap">
+          <img src={window.CM.asset("assets/img/brands/bluemap.png")} alt="BlueMap" />
+          <span>BlueMap</span>
+        </div>
+      </header>
+      <div className="cm-react-map-toolbar" role="toolbar" aria-label="Управление картой">
+        <div className="cm-react-map-worlds" role="group" aria-label="Измерение">
+          {dimensions.map(([id, name]) => (
+            <button key={id} type="button" data-action="production-map-dimension" data-dimension={id} aria-pressed={dimension === id}>
+              {name}
+            </button>
+          ))}
+        </div>
+        <button className="cm-react-map-fullscreen" type="button" data-action="v6-map-fullscreen" aria-label="Открыть карту на весь экран">На весь экран {iconMarkup("expand")}</button>
+      </div>
+      <div className="cm-react-map-stage production-map-stage" id="production-map-stage">
+        {map.viewerUrl ? (
+          <iframe className="production-map-frame" id="production-map-frame" src={map.viewerUrl} title={`BlueMap — ${dimensions.find(([id]) => id === dimension)?.[1] || "карта"}`} allow="fullscreen" referrerPolicy="same-origin" />
+        ) : (
+          <div className="cm-react-map-empty" role={map.error ? "alert" : "status"}>
+            <img src={window.CM.asset("assets/img/brands/bluemap.png")} alt="" />
+            <p>{map.error ? "Карта сейчас недоступна." : map.loaded ? "Карта ещё не опубликована." : "Загрузка карты…"}</p>
+            {map.error && <button className="btn" type="button" data-action="production-map-retry">Повторить</button>}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function RulesPage({ html }: { html: string }) {
+  const page = (window.CM?.state?.pages || []).find((item: any) => item?.slug === "rules" && item?.published);
+  const published = page?.published;
+  if (!published || !window.CMDomain?.markdown) return <LegacyPage html={html} />;
+  return (
+    <article className="cm-react-rules">
+      <h1>{published.title || "Правила"}</h1>
+      <div className="prose" dangerouslySetInnerHTML={{ __html: window.CMDomain.markdown(published.body || "") }} />
+      <a className="cm-react-rules-support" href="#faq">Вопросы и поддержка {iconMarkup("arrow-right")}</a>
+    </article>
+  );
+}
+
+function MinecraftLinkPage() {
+  const { user, pending } = window.CMAccountLink?.state?.() || {};
+  if (!user) return <section className="cm-link-flow"><h1>Войди в аккаунт</h1><a className="btn primary" href="#auth/login">Войти</a></section>;
+  if (user.gameLinkVerified) {
+    return <section className="cm-link-flow cm-link-complete"><p>Привязан к аккаунту Minecraft</p><h1>{user.minecraftName || user.name}</h1><a className="btn primary" href="#account">Открыть кабинет {iconMarkup("arrow-right")}</a></section>;
+  }
+
+  return (
+    <section className="cm-link-flow" aria-labelledby="cm-link-title">
+      <div className="cm-link-progress" aria-label={pending ? "Шаг 2 из 2: код" : "Шаг 1 из 2: ник"}>
+        <span className="is-done"><b>01</b><small>Ник</small></span><i /><span className={pending ? "is-current" : ""}><b>02</b><small>Код</small></span>
+      </div>
+      <span className="kicker">Привязка аккаунта</span>
+      <h1 id="cm-link-title">{pending ? "Подтверди ник в игре" : "Укажи ник Minecraft"}</h1>
+      {!pending ? (
+        <>
+          <p>Укажи ник Minecraft. Привязка подтвердится сообщением в игре.</p>
+          <form data-form="production-mc-code" className="cm-link-form">
+            <label className="field">Ник Minecraft<input name="name" type="text" required pattern="[A-Za-z0-9_]{3,16}" minLength={3} maxLength={16} autoComplete="off" autoCapitalize="none" spellCheck={false} /></label>
+            <div className="form-error" role="alert" />
+            <button className="btn primary" type="submit">Продолжить {iconMarkup("arrow-right")}</button>
+          </form>
+        </>
+      ) : (
+        <>
+          <ol className="cm-link-steps"><li>Войди на сервер под ником <strong>{pending.name}</strong>.</li><li>Открой личное сообщение от CopiMine и введи код ниже.</li></ol>
+          <form data-form="production-mc-confirm" className="cm-link-form">
+            <label className="field">Одноразовый код<input name="code" type="text" required minLength={6} maxLength={12} autoComplete="one-time-code" autoCapitalize="characters" /></label>
+            <div className="form-error" role="alert" />
+            <button className="btn primary" type="submit">Подтвердить и открыть кабинет {iconMarkup("arrow-right")}</button>
+          </form>
+          <p className="cm-link-status" data-link-status role="status">Код действует до {pending.expiresAt ? new Date(pending.expiresAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "10 минут"}.</p>
+          <button className="cm-link-restart" type="button" data-action="production-mc-restart">Запросить новый код</button>
+        </>
+      )}
+    </section>
+  );
+}
+
+function LegacyPage({ html }: { html: string }) {
+  return <div dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+function restoreNavigationState(model: LegacyRouteModel) {
+  const app = document.getElementById("app");
+  app?.removeAttribute("aria-busy");
+  window.CM?.mountRoute?.(model.page, model.tab);
+  const mobileToggle = document.querySelector(".header-actions button[aria-label='Открыть меню']");
+  mobileToggle?.classList.add("mobile-nav-toggle");
+  const adminNav = document.querySelector<HTMLElement>(".v71-admin-nav");
+  if (adminNav && model.page === "admin") adminNav.scrollTop = model.sideScroll;
+  if (model.same) {
+    const focus = model.focusId ? document.getElementById(model.focusId) as (HTMLElement & { setSelectionRange?: (start: number, end: number) => void }) | null : null;
+    focus?.focus({ preventScroll: true });
+    if (focus && typeof model.focusStart === "number") {
+      try { focus.setSelectionRange?.(model.focusStart, model.focusStart); } catch { /* Non-text controls do not expose selections. */ }
+    }
+  } else window.scrollTo({ top: 0, behavior: "instant" });
+}
+
+function mountReactAnalytics(model: LegacyRouteModel) {
+  const host = document.getElementById("cm-react-analytics-charts");
+  if (host && model.analytics) {
+    const analytics = model.analytics;
+    void import("./charts").then(({ AdminAnalyticsCharts }) => {
+      if (!host.isConnected || document.getElementById(host.id) !== host) return;
+      const root = createRoot(host);
+      root.render(<AdminAnalyticsCharts model={analytics} />);
+      embeddedRoots.push(root);
+    }).catch(() => {
+      if (host.isConnected) host.textContent = "Графики аналитики не загрузились.";
+    });
+    return;
+  }
+  const liveHost = document.getElementById("cm-react-live-chart");
+  if (liveHost) {
+    const analytics: AnalyticsModel = { data: { live: { samples: model.serviceMetrics || [] } }, sub: "live" };
+    void import("./charts").then(({ AdminAnalyticsCharts }) => {
+      if (!liveHost.isConnected || document.getElementById(liveHost.id) !== liveHost) return;
+      const root = createRoot(liveHost);
+      root.render(<AdminAnalyticsCharts model={analytics} />);
+      embeddedRoots.push(root);
+    }).catch(() => {
+      if (liveHost.isConnected) liveHost.textContent = "Графики аналитики не загрузились.";
+    });
+  }
+}
+
+function CopiMineApp({ model }: { model: LegacyRouteModel }) {
+  const linkingRequired = model.page === "account" && (
+    model.tab === "link" ||
+    !!window.CM?.me?.() && !window.CMAccountLink?.state?.()?.user?.gameLinkVerified
+  );
+  useLayoutEffect(() => {
+    restoreNavigationState(model);
+    mountReactAnalytics(model);
+  }, [model.revision]);
+
+  return (
+    <>
+      <div id="persistent-header" dangerouslySetInnerHTML={{ __html: model.header }} />
+      <div id="page-root">
+        {model.page === "admin"
+          ? <LegacyPage html={model.html} />
+          : <>
+              <main id="view" className={model.page === "map" ? undefined : linkingRequired ? "cm-link-route" : "container"}>
+                {model.page === "home" ? <HomePage />
+                  : model.page === "map" ? <MapPage />
+                  : model.page === "rules" ? <RulesPage html={model.html} />
+                  : linkingRequired ? <MinecraftLinkPage />
+                  : <LegacyPage html={model.html} />}
+              </main>
+              {model.page !== "map" && !linkingRequired && <div className="container"><div dangerouslySetInnerHTML={{ __html: model.footer }} /></div>}
+            </>}
+      </div>
+    </>
+  );
+}
+
+let appRoot: Root | null = null;
+let dockRoot: Root | null = null;
+let embeddedRoots: Root[] = [];
+
+export function mountCopiMineReact() {
+  const app = document.getElementById("app");
+  const dock = document.getElementById("dock-root");
+  if (!app || !dock || appRoot) return;
+  appRoot = createRoot(app);
+  dockRoot = createRoot(dock);
+  window.CopimineReactBridge = {
+    render(model) {
+      embeddedRoots.forEach((root) => root.unmount());
+      embeddedRoots = [];
+      model.analytics = window.CMAnalyticsReactModel || null;
+      model.serviceMetrics = window.CM?.state?.serviceMetrics || [];
+      appRoot?.render(<CopiMineApp model={model} />);
+      dockRoot?.render(<div dangerouslySetInnerHTML={{ __html: model.dock }} />);
+    },
+  };
+}

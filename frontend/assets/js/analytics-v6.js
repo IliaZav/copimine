@@ -175,18 +175,7 @@
     rows.windowed = windowed;
     return rows;
   }
-  function barChart(rows, title, suffix = "", color = "green") {
-    if (!rows.length || !rows.some(row => number(row.value) > 0)) return rows.windowed ? empty("Нет событий за последние 90 дней", "Итоги всего выбранного периода доступны в показателях выше.") : empty("Пока нет данных", "За выбранный период нет событий для этого графика.");
-    if (rows.windowed) title += " · последние 90 дней";
-    const sorted = rows.slice().sort((a, b) => String(a.day).localeCompare(String(b.day))).slice(-90);
-    const max = Math.max(1, ...sorted.map(row => number(row.value))), width = 800, top = 20, base = 175, height = 180, step = 740 / sorted.length;
-    const bars = sorted.map((row, index) => {
-      const h = Math.max(0, number(row.value) / max * 145), barWidth = Math.max(1, Math.min(84, step * .76));
-      return `<rect x="${30 + index * step + (step - barWidth) / 2}" y="${base - h}" width="${barWidth}" height="${h}" rx="${Math.min(4, step / 5)}"><title>${E(row.day)}: ${E(fmt(row.value) + suffix)}</title></rect>`;
-    }).join("");
-    const middle = Math.floor((sorted.length - 1) / 2);
-    return `<figure class="v6-analytics-chart ${color}"><figcaption>${E(title)}</figcaption><div class="v6-analytics-chart-max">${E(fmt(max) + suffix)}</div><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${E(title)}. Максимум: ${E(fmt(max) + suffix)}" preserveAspectRatio="none"><line x1="30" x2="770" y1="${top}" y2="${top}"></line><line x1="30" x2="770" y1="${base}" y2="${base}"></line>${bars}</svg><div class="v6-analytics-chart-axis"><span>${E(sorted[0].day)}</span>${sorted.length > 2 ? `<span class="v6-axis-middle">${E(sorted[middle].day)}</span>` : ""}${sorted.length > 1 ? `<span>${E(sorted[sorted.length - 1].day)}</span>` : ""}</div></figure>`;
-  }
+  function barChart() { return '<div id="cm-react-analytics-charts"></div>'; }
   function trafficDays(data) {
     const map = new Map();
     for (const e of data.events || []) if (e.type === "page_view") map.set(e.day, (map.get(e.day) || 0) + integer(e.count));
@@ -225,12 +214,13 @@
     const range = selectedRange(), b = bounds(range), cached = cache.get(range);
     if (X.live && !cached && !requests.has(range) && !errors.has(range)) Promise.resolve().then(() => loadSummary(range));
     const data = X.live ? cached?.data : localSummary(range);
+    window.CMAnalyticsReactModel = { data: data || null, sub, range, loading: !data && !errors.has(range), error: errors.get(range) || '' };
     const heading = `<div class="v6-analytics-toolbar"><div class="v6-analytics-range" aria-label="Период отчёта">${ranges.map(([id, title]) => `<button type="button" data-action="v6-analytics-range" data-range="${id}" aria-pressed="${range === id}">${title}</button>`).join("")}</div><div class="actions">${M.btn("Обновить", "v6-analytics-refresh", "refresh", "small", requests.has(range) ? "disabled" : "")}${M.btn("CSV", "v6-analytics-export", "download", "small", data ? "" : "disabled")}</div></div><nav class="tabs" aria-label="Разделы статистики">${tabs.map(([id, label]) => `<a href="#admin/statistics?sub=${id}&range=${range}" class="${sub === id ? "active" : ""}">${E(label)}</a>`).join("")}</nav>`;
     if (!data) return heading + (errors.has(range) ? `<section class="panel">${empty("Не удалось загрузить статистику", errors.get(range))}${M.btn("Повторить", "v6-analytics-refresh", "refresh", "primary")}</section>` : `<section class="panel v6-analytics-loading" role="status">Загружаем статистику…</section>`);
     let body;
     if (sub === "economy") body = economyPanel(data);
     else if (sub === "pages") body = `<section class="panel"><div class="panel-head"><h3>Посещения по страницам</h3></div>${pagesPanel(data)}</section><section class="panel mt">${barChart(trafficDays(data), "Просмотры по дням")}</section>`;
-    else if (sub === "events") body = `<section class="panel"><div class="panel-head"><h3>Действия на публичных страницах</h3></div>${eventPanel(data)}</section>`;
+    else if (sub === "events") body = `<section class="panel"><div class="panel-head"><h3>Действия на публичных страницах</h3></div>${eventPanel(data)}</section><div id="cm-react-analytics-charts"></div>`;
     else body = `<div class="v6-analytics-kpis">${kpi("Просмотры", fmt(data.visits), "Открытия публичных страниц")}${kpi("Посетители по дням", fmt(data.visitors), "Сумма дневных уникальных")}${kpi("Заказы", fmt(data.orders), "С выданными предметами")}${kpi("Выдано предметов", fmt(data.items), "Штук за выбранный период")}${kpi("Оборот CM", fmt(data.revenue?.CM) + " CM", "Покупки в магазине")}${kpi("Пополнения", rubles(data), rublesHint(data))}</div><div class="v6-analytics-grid"><section class="panel"><div class="panel-head"><h3>Посещения</h3></div>${barChart(trafficDays(data), "Просмотры по дням")}</section><section class="panel"><div class="panel-head"><h3>Популярные страницы</h3></div>${pagesPanel(data, true)}</section></div>`;
     return heading + body + `<footer class="v6-analytics-footer"><span>${X.live ? "Данные сайта" : "Локальная проверка"} · ${E(b.from + " — " + b.to)} · UTC${cached ? " · обновлено " + E(new Date(cached.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })) : ""}</span><p>Учитываются публичные страницы и согласие на аналитику. Поиск в панели, имена игроков и содержимое форм в отчёт не попадают.</p></footer>`;
   }

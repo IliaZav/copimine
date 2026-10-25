@@ -76,9 +76,6 @@ F['v6-totp-confirm']=async(f,d)=>{const r=await X.request('/auth/totp/confirm',{
 
 V.after.push((page,tab)=>{
  document.querySelectorAll('.v7-reviewbar,.v7-test-hint,.v7-local-mail-note,[data-action="v7-feedback"],[data-action="v7-review-options"]').forEach(n=>n.remove());
- if(X.connectionError&&!document.getElementById('production-connection-error')){
-  const main=document.getElementById('view');if(main)main.insertAdjacentHTML('afterbegin','<div id="production-connection-error" class="notice" role="alert">'+E(X.connectionError)+' '+button('Повторить','v7-refresh-page','refresh','small')+'</div>');
- }
  const send=document.getElementById('v71-send-error');
  if(send&&!document.getElementById('production-bank-pin'))send.insertAdjacentHTML('beforebegin',field('PIN игрового банка','pin','','password','id="production-bank-pin" inputmode="numeric" pattern="[0-9]{4,8}" autocomplete="off" required'));
  if(page==='admin'&&tab==='players'){

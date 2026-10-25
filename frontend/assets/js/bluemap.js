@@ -27,7 +27,7 @@ async function refresh(force=false){
 }
 M.renderers.map=()=>view(false);W.adminExtensions.world=()=>view(true);
 X.refreshMap=refresh;
-window.CMBlueMap={state:()=>({info,loaded,error})};
+window.CMBlueMap={state:()=>({info,loaded,error,dimension,viewerUrl:viewerUrl(false)})};
 H['production-map-dimension']=b=>{rememberCamera();dimension=['overworld','nether','end'].includes(b.dataset.dimension)?b.dataset.dimension:'overworld';M.render();};
 H['production-map-scope']=b=>{rememberCamera();scope=b.dataset.scope==='private'?'private':'public';M.render();};
 H['production-map-retry']=()=>refresh(true);

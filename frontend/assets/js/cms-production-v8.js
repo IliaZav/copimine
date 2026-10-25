@@ -149,7 +149,7 @@ function renderPublicContentPage(slug){
  const row=(s().pages||[]).find(item=>item?.slug===slug&&item.published&&typeof item.published==='object');
  if(!row)return `<div class="page-head"><div><h1>Страница не найдена</h1><p>Этот материал не опубликован или был удалён.</p></div></div>${M.link('На главную','#home','arrow-left','ghost small')}`;
  const published=row.published;
- return `<div class="page-head"><div><h1>${E(published.title||'Информация')}</h1>${published.description?`<p>${E(published.description)}</p>`:''}</div></div><article class="panel cm-public-page help-copy">${CMV4.markdown(published.body||'')}</article>`;
+ return `<div class="page-head"><div><h1>${E(published.title||'Информация')}</h1>${published.description?`<p>${E(published.description)}</p>`:''}</div></div><article class="panel cm-public-page help-copy">${CMDomain.markdown(published.body||'')}</article>`;
 }
 M.renderers.rules=()=>renderPublicContentPage('rules');
 M.renderers.page=slug=>renderPublicContentPage(slug);

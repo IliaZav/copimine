@@ -75,8 +75,8 @@ if(X.live){
  const blocked=/^(demo-|v6-demo|reset|export$|vk-|identity-|otp-|launcher-(start|confirm|deny|switch)|payment-(success|cancel|simulate)|simulate|mark-delivered|delivery-(retry|complete)|balance-|player-(ban|unban|role)|role-(delete|apply)|recipe-(save|publish|delete|new|import)|device-revoke)/;
  for(const name of Object.keys(H))if(blocked.test(name))H[name]=()=>M.toast('Для этой операции нужен настроенный серверный сервис. Действие не выполнено.',true);
  for(const key of ['launcher-demo','launcher-link'])R[key]=()=>M.empty('Вход в лаунчер','Авторизация устройства доступна через настроенный сервер лаунчера.','monitor');
- window.addEventListener('DOMContentLoaded',()=>X.refresh().catch(error=>{M.render();M.toast(error.message,true);}),{once:true});
- window.addEventListener('focus',()=>{if(!document.getElementById('modal')?.open)X.refresh({silent:true}).then(()=>M.render()).catch(()=>{});});
+ window.addEventListener('DOMContentLoaded',()=>X.refresh().catch(()=>{M.render();}),{once:true});
+ let lastFocusRefresh=0;window.addEventListener('focus',()=>{if(document.getElementById('modal')?.open||Date.now()-lastFocusRefresh<2500)return;lastFocusRefresh=Date.now();const current=()=>{const u=X.sessionUser;return JSON.stringify([u?.id||null,u?.role||null,u?.permissions||[],!!u?.totpEnabled]);};const before=current();X.refresh({silent:true}).then(()=>{if(before!==current())M.render();}).catch(()=>{});});
 }
 V.after.push((page,tab)=>{if(X.live){document.querySelectorAll('#view .demo-note').forEach(n=>n.hidden=true);document.querySelectorAll('input[type=file]:not([data-cm-gallery-upload])').forEach(n=>{n.disabled=true;const label=n.closest('label');if(label){label.title='Загрузка доступна через защищённый серверный импорт.';label.classList.add('v6-unavailable');}});}if(page==='account'&&X.live&&!X.ready)document.getElementById('view').innerHTML='<div class="v6-loading">Получаем профиль…</div>';});
 })();

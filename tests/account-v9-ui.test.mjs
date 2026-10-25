@@ -28,9 +28,10 @@ test('auth, FAQ route and admin breadcrumb expose the intended navigation', () =
 
   const register = M.renderers.auth('register');
   const login = M.renderers.auth('login');
-  assert.match(register, /name="displayName"/);
-  assert.match(register, /Ник профиля/);
-  assert.match(register, /Логин/);
+  assert.doesNotMatch(register, /name="displayName"|Ник профиля/);
+  assert.doesNotMatch(register, /Игровой аккаунт|Баланс, покупки и поддержка|ЛИЧНЫЙ КАБИНЕТ/iu);
+  assert.match(register, /Логин сайта/);
+  assert.match(register, /Затем привяжи Minecraft/);
   assert.match(register, /name="username"/);
   assert.match(register, /name="password"/);
   assert.doesNotMatch(register, /type="email"|Почт|VK ID|VK/iu);

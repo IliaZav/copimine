@@ -38,9 +38,8 @@
   function authMarkup(tab) {
     const registering = tab === 'register';
     const title = registering ? 'Создать аккаунт' : 'Войти';
-    const intro = registering ? 'Придумай ник профиля, отдельный логин и пароль. Minecraft можно привязать позже.' : 'Покупки, переводы и обращения находятся в личном кабинете.';
-    const profileName = registering ? '<label class="field">Ник профиля<input name="displayName" type="text" required minlength="2" maxlength="32" autocomplete="nickname" placeholder="Как тебя называть"></label><small class="v9-auth-field-hint">Этот ник виден в кабинете и обращениях. Ник Minecraft привязывается отдельно.</small>' : '';
-    return `<div class="v7-auth-layout v9-auth-layout"><aside class="v7-auth-aside"><img src="${M.asset('assets/img/world.webp')}" alt=""><div><span class="kicker">CopiMine</span><h2>Твой игровой аккаунт</h2><p>Баланс, покупки, поддержка и привязка Minecraft.</p></div></aside><section class="v7-auth-main"><span class="kicker">Личный кабинет</span><h1>${title}</h1><p class="v7-auth-lead">${intro}</p><nav class="v7-auth-tabs" aria-label="Вход или регистрация"><a class="${registering ? '' : 'active'}" href="#auth/login">Вход</a><a class="${registering ? 'active' : ''}" href="#auth/register">Регистрация</a></nav><form data-form="${registering ? 'v7-register' : 'v7-login'}">${profileName}<label class="field">Логин<input name="username" type="text" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_]{3,32}" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Логин для сайта" value=""></label>${registering ? '<label class="field">Пароль<input name="password" type="password" required minlength="12" maxlength="256" autocomplete="new-password" placeholder="Не меньше 12 символов"></label><label class="field">Повтори пароль<input name="repeat" type="password" required minlength="12" maxlength="256" autocomplete="new-password"></label><label class="check-row"><input type="checkbox" name="terms" required><span>Принимаю <a href="#rules">правила сервера</a></span></label>' : '<label class="field">Пароль<input name="password" type="password" required maxlength="256" autocomplete="current-password" placeholder="Пароль аккаунта"></label><label class="field v9-totp-field">Код защиты <input name="totp" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="Если включён"></label><label class="check-row"><input type="checkbox" name="remember" checked><span>Оставаться в аккаунте на этом устройстве</span></label>'}<div class="form-error" role="alert"></div><button type="submit" class="btn primary wide">${title}${icon('arrow-right')}</button></form>${registering ? '<p class="v7-auth-bottom">Уже зарегистрирован? <a href="#auth/login">Войти</a></p>' : '<p class="v7-auth-bottom">Нет аккаунта? <a href="#auth/register">Создать</a></p>'}</section></div>`;
+    const intro = registering ? 'Создай логин сайта и пароль. Затем привяжи Minecraft.' : 'Введи логин и пароль.';
+    return `<div class="v7-auth-layout v9-auth-layout"><aside class="v7-auth-aside"><img src="${M.asset('assets/img/world.webp')}" alt="" decoding="async"></aside><section class="v7-auth-main"><h1>${title}</h1><p class="v7-auth-lead">${intro}</p><nav class="v7-auth-tabs" aria-label="Вход или регистрация"><a class="${registering ? '' : 'active'}" href="#auth/login">Вход</a><a class="${registering ? 'active' : ''}" href="#auth/register">Регистрация</a></nav><form data-form="${registering ? 'v7-register' : 'v7-login'}"><label class="field">Логин сайта<input name="username" type="text" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_]{3,32}" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Логин" value=""></label>${registering ? '<label class="field">Пароль<input name="password" type="password" required minlength="12" maxlength="256" autocomplete="new-password" placeholder="Не меньше 12 символов"></label><label class="field">Повтори пароль<input name="repeat" type="password" required minlength="12" maxlength="256" autocomplete="new-password"></label><label class="check-row"><input type="checkbox" name="terms" required><span>Принимаю <a href="#rules">правила сервера</a></span></label>' : '<label class="field">Пароль<input name="password" type="password" required maxlength="256" autocomplete="current-password" placeholder="Пароль аккаунта"></label><label class="field v9-totp-field">Код защиты <input name="totp" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="Если включён"></label><label class="check-row"><input type="checkbox" name="remember" checked><span>Оставаться в аккаунте на этом устройстве</span></label>'}<div class="form-error" role="alert"></div><button type="submit" class="btn primary wide">${title}${icon('arrow-right')}</button></form>${registering ? '<p class="v7-auth-bottom">Уже зарегистрирован? <a href="#auth/login">Войти</a></p>' : '<p class="v7-auth-bottom">Нет аккаунта? <a href="#auth/register">Создать</a></p>'}</section></div>`;
   }
 
   R.auth = tab => authMarkup(tab === 'register' ? 'register' : 'login');
@@ -52,18 +51,18 @@
     if (!Q.user) throw Error('Не удалось открыть аккаунт. Обнови страницу и войди ещё раз.');
     Q.hint = false;
     M.closeModal();
-    M.navTo(authReturn());
+    M.navTo((M.me() || Q.user)?.gameLinkVerified ? authReturn() : 'account/link');
   };
   F['v7-register'] = async (form, data) => {
     if (!data.get('terms')) throw Error('Прими правила сервера, чтобы продолжить.');
     if (data.get('password') !== data.get('repeat')) throw Error('Пароли не совпадают.');
-    const result = await api('auth/register', { username: String(data.get('username') || '').trim(), displayName: String(data.get('displayName') || '').trim(), password: data.get('password'), terms: true, remember: false });
+    const result = await api('auth/register', { username: String(data.get('username') || '').trim(), password: data.get('password'), terms: true, remember: false });
     Q.csrf = result.csrf || Q.csrf;
     await Q.reload();
     if (!Q.user) throw Error('Аккаунт создан, но войти не удалось. Попробуй выполнить вход.');
     Q.hint = false;
     M.closeModal();
-    M.navTo(authReturn());
+    M.navTo((M.me() || Q.user)?.gameLinkVerified ? authReturn() : 'account/link');
   };
   F['v7-code'] = F['v7-reset'] = F['v7-confirm-code'] = async () => { throw Error('Войди по нику и паролю.'); };
   H['v7-vk'] = undefined;
@@ -176,16 +175,26 @@
   function startMinecraftPoll() {
     stopMinecraftPoll();
     minecraftPoll = setInterval(async () => {
-      const modal = document.getElementById('modal');
-      if (!pendingMinecraftLink || !modal?.open) { stopMinecraftPoll(); return; }
-      if (Date.now() > pendingMinecraftLink.expiresAt) { stopMinecraftPoll(); const status = modal.querySelector('[data-link-status]'); if (status) status.textContent = 'Код истёк. Запроси новый.'; return; }
+      const user = M.me();
+      const onLinkPage = M.UI?.page === 'account' && (M.UI.tab === 'link' || user && !user.gameLinkVerified);
+      if (!pendingMinecraftLink || !onLinkPage) { stopMinecraftPoll(); return; }
+      const status = document.querySelector('[data-link-status]');
+      if (Date.now() > pendingMinecraftLink.expiresAt) {
+        stopMinecraftPoll();
+        if (status) status.textContent = 'Код истёк. Запроси новый.';
+        return;
+      }
       try {
         const session = await api('session');
         if (session.user?.gameLinkVerified) {
           stopMinecraftPoll(); pendingMinecraftLink = null;
-          await Q.reload(); M.closeModal(); M.toast('Minecraft привязан.');
+          await Q.reload();
+          M.toast('Minecraft привязан.');
+          M.navTo('account');
         }
-      } catch { /* Keep the form open; the next check can recover from a brief network failure. */ }
+      } catch {
+        if (status) status.textContent = 'Проверка временно недоступна. Повторяем запрос.';
+      }
     }, 3000);
   }
   H['v7-game-link'] = () => {
@@ -195,20 +204,26 @@
     M.openModal('Привязать Minecraft', `<ol class="v7-steps"><li><strong>Укажи игровой ник</strong><p>Используй ник аккаунта, которым входишь на сервере.</p></li><li><strong>Получи личное сообщение</strong><p>Сайт отправит одноразовый код через игровой сервер.</p></li><li><strong>Введи код здесь</strong><p>После подтверждения профиль и статус обновятся в кабинете.</p></li></ol><form data-form="production-mc-code">${V.field('Ник Minecraft', 'name', '', 'text', 'required pattern="[A-Za-z0-9_]{3,16}" minlength="3" maxlength="16" autocomplete="off" autocapitalize="none"')}<div class="form-error" role="alert"></div>${V.actions('Получить код')}</form>`);
   };
   F['production-mc-code'] = async (form, data) => {
-    const result = await api('account/minecraft/request', { name: String(data.get('name') || '').trim() });
-    pendingMinecraftLink = { expiresAt: Number(result.expiresAt || Date.now() + 600000) };
-    M.openModal('Подтвердить Minecraft', `<div class="v9-link-steps"><span class="v9-link-current">1</span><span class="v9-link-line"></span><span class="v9-link-current">2</span><span class="v9-link-line"></span><span class="v9-link-current">3</span></div><p>Войди на сервер под ником <strong>${E(data.get('name'))}</strong> и забери код из личного сообщения.</p><form data-form="production-mc-confirm">${V.field('Одноразовый код', 'code', '', 'text', 'required minlength="6" maxlength="12" autocomplete="one-time-code" autocapitalize="characters"')}<div class="form-error" role="alert"></div>${V.actions('Подтвердить привязку')}</form><p class="hint" data-link-status>Проверяем статус автоматически. Код действует до ${M.date(result.expiresAt, true)}.</p>`);
+    const name = String(data.get('name') || '').trim();
+    const result = await api('account/minecraft/request', { name });
+    pendingMinecraftLink = { name, expiresAt: Number(result.expiresAt || Date.now() + 600000) };
+    M.render();
     startMinecraftPoll();
   };
   F['production-mc-confirm'] = async (form, data) => {
     await api('account/minecraft/confirm', { code: String(data.get('code') || '').trim() });
     await Q.reload();
-    if (Q.user?.gameLinkVerified) {
-      stopMinecraftPoll(); pendingMinecraftLink = null; M.closeModal(); M.toast('Minecraft привязан.');
-    } else startMinecraftPoll();
+    if ((M.me() || Q.user)?.gameLinkVerified) {
+      stopMinecraftPoll(); pendingMinecraftLink = null; M.toast('Minecraft привязан.'); M.navTo('account');
+    } else {
+      M.render(); startMinecraftPoll();
+    }
   };
+  H['production-mc-restart'] = () => { stopMinecraftPoll(); pendingMinecraftLink = null; M.render(); };
+  window.CMAccountLink = { state: () => ({ user: M.me() || Q.user || null, pending: pendingMinecraftLink ? { ...pendingMinecraftLink } : null }) };
 
   V.after.push((page, tab) => {
+    if (page === 'account' && pendingMinecraftLink) startMinecraftPoll();
     if (page === 'faq') document.title = 'FAQ · CopiMine';
     document.querySelectorAll('.breadcrumb').forEach(crumb => {
       const root = [...crumb.children].find(node => node.tagName === 'SPAN' && ['CopiMine', 'Управление'].includes(node.textContent.trim()));

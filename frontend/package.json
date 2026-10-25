@@ -3,13 +3,24 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build:motion": "esbuild assets/js/site-motion.js --bundle --minify --format=iife --target=es2020 --outfile=assets/js/site-motion.v1.js"
+    "build:motion": "esbuild assets/js/site-motion.js --bundle --minify --format=iife --target=es2020 --outfile=assets/js/site-motion.v1.js",
+    "dev": "vite --host 127.0.0.1",
+    "build:react": "vite build",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && npm run build:react"
   },
   "dependencies": {
     "animejs": "^4.5.0",
-    "motion": "^14.6.0"
+    "motion": "^14.6.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
-    "esbuild": "^0.28.2"
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.5"
   }
 }

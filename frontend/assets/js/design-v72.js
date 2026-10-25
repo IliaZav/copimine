@@ -119,6 +119,7 @@
   H['cm72-lightbox-next'] = () => { setGallery(api.galleryIndex + 1); galleryModal(); };
   document.addEventListener('keydown', e => {
     const lightbox = el('modal')?.open && el('modal').classList.contains('cm72-lightbox-dialog');
+    if (window.CopimineReactBridge && !lightbox && e.target.closest?.('#cm72-carousel')) return;
     if (api.galleryOpener?.isConnected) M.UI.backFocus = api.galleryOpener;
     if (!lightbox && !e.target.closest?.('#cm72-carousel')) return;
     if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
@@ -288,7 +289,7 @@
     // the final CSS explicitly preserves [hidden] across all account menus.
     document.querySelectorAll('.v71-header-exit').forEach(n => n.remove());
     document.querySelectorAll('.v7-test-hint,.event-rail').forEach(n => n.remove());
-    if (page === 'home') {
+    if (page === 'home' && !window.CopimineReactBridge) {
       const stage = el('cm72-gallery-stage'); let startX = null, lastX = 0, raf = 0;
       stage?.addEventListener('pointerdown', e => {
         if (e.button !== 0) return;

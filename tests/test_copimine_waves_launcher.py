@@ -125,3 +125,56 @@ def test_clearlag_exemption_is_idempotent_and_scoped_to_existing_configs(tmp_pat
     result = _run_clearlag_helper(shell, helper.as_posix(), empty)
     assert result.returncode == 0, result.stderr
     assert not (empty / "plugins/ClearLag/config.yml").exists()
+
+
+def _clearlag_helper(shell, tmp_path):
+    text = STARTER.read_text(encoding="utf-8")
+    start = text.index("function Protect-MigrationEventSpawnsFromClearLag {")
+    end = text.index("function Test-MigrationPaperRuntimeListener {")
+    helper = tmp_path / "clearlag-helper.ps1"
+    helper.write_text(text[start:end], encoding="utf-8")
+    config = tmp_path / "plugins/ClearLag/config.yml"
+    config.parent.mkdir(parents=True)
+    return helper, config
+
+
+@pytest.mark.parametrize("inline, expected", [
+    ("[]", "[CUSTOM]"),
+    ("[CURED]", "[CURED, CUSTOM]"),
+    ("[CURED,CUSTOM]", None),
+    ("['CUSTOM']", None),
+    ("[CURED] # keep", "[CURED, CUSTOM] # keep"),
+])
+def test_clearlag_inline_spawn_reason_lists_are_supported(tmp_path, inline, expected):
+    shell = _powershell()
+    if not shell:
+        pytest.skip("PowerShell is required")
+    helper, config = _clearlag_helper(shell, tmp_path)
+    original = "mob-spawn-limiter:\n  enabled: true\n  exempt-spawn-reasons: " + inline + "\n  per-world: {}\n"
+    config.write_text(original, encoding="utf-8")
+
+    result = _run_clearlag_helper(shell, helper.as_posix(), tmp_path)
+    assert result.returncode == 0, result.stderr
+    after_first = config.read_text(encoding="utf-8")
+    if expected is None:
+        assert after_first == original
+    else:
+        assert "  exempt-spawn-reasons: " + expected + "\n" in after_first
+    assert "  per-world: {}\n" in after_first
+
+    _run_clearlag_helper(shell, helper.as_posix(), tmp_path)
+    assert config.read_text(encoding="utf-8") == after_first
+
+
+def test_clearlag_unsupported_inline_scalar_fails_with_a_configuration_error(tmp_path):
+    shell = _powershell()
+    if not shell:
+        pytest.skip("PowerShell is required")
+    helper, config = _clearlag_helper(shell, tmp_path)
+    original = "mob-spawn-limiter:\n  exempt-spawn-reasons: CURED\n"
+    config.write_text(original, encoding="utf-8")
+
+    result = _run_clearlag_helper(shell, helper.as_posix(), tmp_path)
+    assert result.returncode != 0
+    assert "unsupported inline value for exempt-spawn-reasons" in (result.stdout + result.stderr)
+    assert config.read_text(encoding="utf-8") == original

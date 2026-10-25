@@ -24,16 +24,38 @@ function Protect-MigrationEventSpawnsFromClearLag {
     # ClearLag's mob-spawn-limiter cancels plugin spawns once its hostile cap is
     # reached, which aborted End Rift wave objectives.  First-party event mobs spawn
     # with reason CUSTOM, so exempt exactly that reason and leave the file otherwise
-    # untouched.
+    # untouched.  Both the block list and the inline `[]` / `[CURED]` spellings are
+    # valid ClearLag YAML; an unknown inline scalar is rejected, never skipped.
     param([Parameter(Mandatory)][string]$RuntimeDirectory)
     $config = Join-Path $RuntimeDirectory 'plugins/ClearLag/config.yml'
     if (-not (Test-Path -LiteralPath $config -PathType Leaf)) { return }
     $lines = [IO.File]::ReadAllLines($config)
     $key = -1
     for ($i = 0; $i -lt $lines.Count; $i++) {
-        if ($lines[$i] -match '^\s*exempt-spawn-reasons:\s*$') { $key = $i; break }
+        if ($lines[$i] -match '^(?<indent>\s*)exempt-spawn-reasons:(?<value>\s+[^#][^#]*)?\s*(?<comment>#.*)?$') {
+            $key = $i
+            break
+        }
     }
     if ($key -lt 0) { return }
+    $indent = $Matches['indent']
+    $inline = if ($Matches['value']) { $Matches['value'].Trim() } else { '' }
+    $comment = if ($Matches['comment']) { ' ' + $Matches['comment'] } else { '' }
+    if ($inline.Length -gt 0) {
+        if (-not ($inline.StartsWith('[') -and $inline.EndsWith(']'))) {
+            throw "ClearLag config: unsupported inline value for exempt-spawn-reasons in ${config}: '$inline'"
+        }
+        $inner = $inline.Substring(1, $inline.Length - 2)
+        $items = @($inner.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_.Length -gt 0 })
+        foreach ($item in $items) {
+            if ($item.Trim("'`"") -ceq 'CUSTOM') { return }
+        }
+        $newInner = if ($items.Count -eq 0) { 'CUSTOM' } else { ($items -join ', ') + ', CUSTOM' }
+        $lines[$key] = $indent + 'exempt-spawn-reasons: [' + $newInner + ']' + $comment
+        [IO.File]::WriteAllLines($config, $lines)
+        Write-Output 'ClearLag: exempting CUSTOM spawns so End Rift event mobs are never refused.'
+        return
+    }
     $itemIndent = $null
     $insertAt = $key + 1
     for ($i = $key + 1; $i -lt $lines.Count; $i++) {

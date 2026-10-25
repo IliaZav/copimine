@@ -60,6 +60,13 @@ def test_react_bootstrap_replaces_the_legacy_first_render():
     assert 'copimine:react-ready' in entry
 
 
+def test_production_react_bundle_does_not_require_a_node_process_global():
+    bundle=(ROOT/'assets/js/copimine-react.v1.js').read_text(encoding='utf-8')
+    assert 'process.env.NODE_ENV' not in bundle
+    for chunk in re.findall(r'["\']\.\/([^"\']+\.mjs)["\']',bundle):
+        assert 'process.env.NODE_ENV' not in (ROOT/'assets/js'/chunk).read_text(encoding='utf-8')
+
+
 def test_payment_methods_use_local_brand_marks_and_cookie_notice_stays_compact():
     payments=(ROOT/'assets/js/public-v4.js').read_text(encoding='utf-8')
     assert "assets/img/brands/sbp.png" in payments

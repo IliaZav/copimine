@@ -17,6 +17,9 @@ export default defineConfig(({ command }) => ({
       },
     },
   ],
+  define: {
+    "process.env.NODE_ENV": JSON.stringify(command === "build" ? "production" : "development"),
+  },
   server: {
     host: "127.0.0.1",
     port: 5173,

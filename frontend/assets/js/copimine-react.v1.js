@@ -8896,7 +8896,7 @@ function m({ className: e = "", particles: t = 74, color: n = "#38dda4", opacity
 			164
 		], ae = ie[0] + "," + ie[1] + "," + ie[2], x = oe();
 		function oe() {
-			return te.matches || document.documentElement.dataset.motion === "off" || window.CM?.state?.preferences?.motion === !1;
+			return te.matches || window.CM?.state?.reviewPersonal?.reduceMotion === !0;
 		}
 		function se(e) {
 			let t = 1 - e / g;
@@ -8994,11 +8994,11 @@ function g() {
 	let e = (window.CM?.state || {}).config || {}, t = (0, u.useRef)(null), [n, r] = (0, u.useState)(!1), i = [{
 		id: "copimine-night-wide",
 		src: "assets/photos/copimine-night.webp",
-		position: "50% 31%"
+		position: "42% 25%"
 	}, {
 		id: "copimine-night-pan",
 		src: "assets/photos/copimine-night.webp",
-		position: "54% 43%"
+		position: "64% 59%"
 	}], a = String(e.headline || "CopiMine —\nMinecraft-сервер.").split(/\r?\n/), o = a.shift()?.trim() || "CopiMine", s = a.join(" ").trim(), c = e.serverIp || "copimine.ru";
 	return (0, u.useLayoutEffect)(() => window.CMSiteMotion?.heroAtmosphere?.(t.current), []), /* @__PURE__ */ (0, d.jsxs)("section", {
 		ref: t,
@@ -9007,17 +9007,20 @@ function g() {
 			/* @__PURE__ */ (0, d.jsx)("div", {
 				className: "cm72-hero-frames",
 				"aria-hidden": "true",
-				children: i.map((e, t) => /* @__PURE__ */ (0, d.jsx)("img", {
-					className: "cm72-hero-photo",
-					"data-hero-frame": "",
-					"data-active": t === 0 ? "true" : "false",
-					src: window.CM.asset(e.src || "assets/photos/copimine-night.webp"),
-					style: { objectPosition: e.position },
-					alt: "",
-					loading: t === 0 ? "eager" : "lazy",
-					decoding: "async",
-					fetchPriority: t === 0 ? "high" : "auto"
-				}, e.id || e.src || t))
+				children: /* @__PURE__ */ (0, d.jsx)("div", {
+					className: "cm72-hero-camera",
+					children: i.map((e, t) => /* @__PURE__ */ (0, d.jsx)("img", {
+						className: "cm72-hero-photo",
+						"data-hero-frame": "",
+						"data-active": t === 0 ? "true" : "false",
+						src: window.CM.asset(e.src || "assets/photos/copimine-night.webp"),
+						style: { objectPosition: e.position },
+						alt: "",
+						loading: t === 0 ? "eager" : "lazy",
+						decoding: "async",
+						fetchPriority: t === 0 ? "high" : "auto"
+					}, e.id || e.src || t))
+				})
 			}),
 			/* @__PURE__ */ (0, d.jsx)(m, {
 				className: "cm-react-hero-lines",

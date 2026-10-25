@@ -52,8 +52,7 @@ function heroAtmosphere(root) {
   }
 
   function motionEnabled() {
-    return !mediaQuery.matches
-      && document.documentElement.dataset.motion !== "off";
+    return !mediaQuery.matches;
   }
 
   function advanceFrame() {

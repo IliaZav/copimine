@@ -48,8 +48,8 @@ function ServerHero() {
   const heroRef = useRef<HTMLElement | null>(null);
   const [paused, setPaused] = useState(false);
   const photos = [
-    { id: "copimine-night-wide", src: "assets/photos/copimine-night.webp", position: "50% 31%" },
-    { id: "copimine-night-pan", src: "assets/photos/copimine-night.webp", position: "54% 43%" },
+    { id: "copimine-night-wide", src: "assets/photos/copimine-night.webp", position: "42% 25%" },
+    { id: "copimine-night-pan", src: "assets/photos/copimine-night.webp", position: "64% 59%" },
   ];
   const lines = String(config.headline || "CopiMine —\nMinecraft-сервер.").split(/\r?\n/);
   const first = lines.shift()?.trim() || "CopiMine";
@@ -61,18 +61,20 @@ function ServerHero() {
   return (
     <section ref={heroRef} className="cm72-hero cm-react-hero">
       <div className="cm72-hero-frames" aria-hidden="true">
-        {photos.map((photo, index) => <img
-          key={photo.id || photo.src || index}
-          className="cm72-hero-photo"
-          data-hero-frame=""
-          data-active={index === 0 ? "true" : "false"}
-          src={window.CM.asset(photo.src || "assets/photos/copimine-night.webp")}
-          style={{ objectPosition: photo.position }}
-          alt=""
-          loading={index === 0 ? "eager" : "lazy"}
-          decoding="async"
-          fetchPriority={index === 0 ? "high" : "auto"}
-        />)}
+        <div className="cm72-hero-camera">
+          {photos.map((photo, index) => <img
+            key={photo.id || photo.src || index}
+            className="cm72-hero-photo"
+            data-hero-frame=""
+            data-active={index === 0 ? "true" : "false"}
+            src={window.CM.asset(photo.src || "assets/photos/copimine-night.webp")}
+            style={{ objectPosition: photo.position }}
+            alt=""
+            loading={index === 0 ? "eager" : "lazy"}
+            decoding="async"
+            fetchPriority={index === 0 ? "high" : "auto"}
+          />)}
+        </div>
       </div>
       <RisingLines className="cm-react-hero-lines" particles={160} color="#5ce5b2" opacity={0.38} />
       <div className="cm72-hero-content">

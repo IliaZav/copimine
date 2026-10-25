@@ -50,8 +50,7 @@ export function RisingLines({ className = "", particles = 74, color = "#38dda4",
 
     function motionIsReduced() {
       return mediaQuery.matches
-        || document.documentElement.dataset.motion === "off"
-        || window.CM?.state?.preferences?.motion === false;
+        || window.CM?.state?.reviewPersonal?.reduceMotion === true;
     }
 
     function fadeAt(y: number) {

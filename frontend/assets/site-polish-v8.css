@@ -612,10 +612,14 @@ button.is-loading::after { content: ""; display: inline-block; width: 12px; heig
   button.is-loading::after { animation: none; border-right-color: currentColor; opacity: .55; }
 }
 
-/* The home scene reuses published CopiMine screenshots as a restrained crossfade. */
+/* The home scene uses a real CopiMine screenshot with a slow camera drift. */
 .cm72-hero-frames{position:absolute;inset:0;z-index:-2;overflow:hidden;pointer-events:none;background:#172027}
+.cm72-hero-camera{position:absolute;inset:-7%;transform:scale(1.04);transform-origin:center;will-change:transform}
 .cm72-hero-frames .cm72-hero-photo{position:absolute;inset:0;width:100%;height:100%;display:block;object-fit:cover;object-position:50% 31%;z-index:auto;filter:brightness(1.3);opacity:0;transform:scale(1.025);animation:none;will-change:opacity,transform}
 .cm72-hero-frames .cm72-hero-photo[data-active="true"]{opacity:1}
+@keyframes cm72-hero-camera-drift{0%{transform:scale(1.035) translate3d(1.6%,.8%,0)}100%{transform:scale(1.16) translate3d(-2.3%,-1.7%,0)}}
+.cm72-hero-camera{animation:cm72-hero-camera-drift 9.5s cubic-bezier(.45,.05,.55,.95) infinite alternate}
+.cm72-hero[data-hero-paused="true"] .cm72-hero-camera{animation-play-state:paused}
 .cm72-hero-motion-toggle{position:absolute;top:94px;right:18px;z-index:3;width:36px;height:36px;display:grid;place-items:center;padding:0;border:1px solid rgba(92,229,178,.48);border-radius:50%;background:rgba(13,19,21,.76);color:#eef5f1;backdrop-filter:blur(8px);cursor:pointer;transition:background .18s ease,border-color .18s ease,transform .18s ease}
 .cm72-hero-motion-toggle svg{width:15px;height:15px}
 .cm72-hero-motion-toggle:hover{background:rgba(13,19,21,.78);border-color:rgba(92,229,178,.65);transform:scale(1.04)}
@@ -632,4 +636,4 @@ button.is-loading::after { content: ""; display: inline-block; width: 12px; heig
 .cm-react-chart-error{padding:18px 20px;border:1px solid rgba(228,141,130,.25);border-radius:12px;background:rgba(72,39,35,.28);color:#efb2a9;font-size:13px}
 @keyframes cm-react-chart-shimmer{to{background-position:-220% 0}}
 @media(max-width:760px){.cm72-hero-motion-toggle{top:78px;right:12px;width:33px;height:33px}.cm-react-chart-loading-card{height:210px}}
-@media(prefers-reduced-motion:reduce){.cm72-hero-motion-toggle{transition:none}.cm-react-chart-skeleton-title,.cm-react-chart-skeleton-legend{animation:none}}
+@media(prefers-reduced-motion:reduce){.cm72-hero-camera{animation:none!important;transform:scale(1.04)}.cm72-hero-motion-toggle{transition:none}.cm-react-chart-skeleton-title,.cm-react-chart-skeleton-legend{animation:none}}

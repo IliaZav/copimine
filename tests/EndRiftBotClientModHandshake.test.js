@@ -199,13 +199,17 @@ test('local bot refuses to emulate the client on any non-test endpoint', () => {
 
   assert.throws(() => attachLocalClientModHandshake(bot, {
     host: 'example.com', port: 25566, version: CLIENT_VERSION,
-  }), /127\.0\.0\.1:25566/)
+  }), /restricted to loopback/)
   assert.throws(() => attachLocalClientModHandshake(bot, {
-    host: '127.0.0.1', port: 25567, version: CLIENT_VERSION,
-  }), /127\.0\.0\.1:25566/)
+    host: '192.168.1.5', port: 25567, version: CLIENT_VERSION,
+  }), /restricted to loopback/)
   assert.throws(() => attachLocalClientModHandshake(bot, {
     host: '127.0.0.1', port: 25566, version: '0.1.2',
   }), /0\.1\.3\+26\.3/)
+  client.write = () => {}
+  assert.doesNotThrow(() => attachLocalClientModHandshake(bot, {
+    host: '127.0.0.1', port: 25567, version: CLIENT_VERSION,
+  }))
 })
 
 test('local bot ignores malformed and mismatched server challenges', () => {

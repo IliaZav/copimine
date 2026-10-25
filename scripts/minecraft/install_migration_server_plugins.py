@@ -1583,7 +1583,18 @@ def load_install_records(root, lock=None):
     records=[]
     for original in lock['modules']:
         record={**original,'runtimeFilename':original.get('runtimeFilename') or original['filename'],'sourceType':'remote'}
-        if original.get('buildScript'):
+        if original.get('vendorArtifact'):
+            # Third-party releases whose upstream URL is mutable are vendored
+            # under thirdparty/ and still verified against the pinned digests.
+            artifact=_local_artifact_path(root,original['vendorArtifact'])
+            if artifact.name!=original['filename'] or artifact.stat().st_size!=original.get('size'):
+                raise ValueError('Vendored plugin artifact size or filename differs from its lock: '+original['pluginName'])
+            if digest(artifact,'sha256')!=original.get('sha256') or digest(artifact,'sha512')!=original.get('sha512'):
+                raise ValueError('Vendored plugin artifact digest differs from its lock: '+original['pluginName'])
+            if identity(artifact)!=original['pluginName']:
+                raise ValueError('Vendored plugin artifact identity differs from its lock: '+original['pluginName'])
+            record.update({'sourceType':'local','artifactPath':str(artifact)})
+        elif original.get('buildScript'):
             relative_artifact=original.get('buildArtifact')
             relative_receipt=original.get('buildReceipt')
             build_sha256=original.get('buildSha256','')

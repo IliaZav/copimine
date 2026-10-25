@@ -18,6 +18,7 @@ Install steps:
 4. If you already have older versions of these mods, replace them with the files from this archive.
 
 Notes:
+- ProtocolLib 5.5.0-SNAPSHOT-d89a5de (GPL-2.0-only) is vendored byte-for-byte at thirdparty/server-plugins/ProtocolLib-26.3-dev.jar; server plugin staging verifies its sha256/sha512 and never downloads the mutable dev-build release asset.
 - CoreProtect and Emotecraft Bukkit are not part of the client archive.
 - Iris and Sodium are included, but they are not required to join the server.
 - CustomSkinLoader is a client-only skin loader; TL Skin is not included in this archive.

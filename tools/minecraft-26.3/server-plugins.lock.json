@@ -486,6 +486,7 @@
       },
       "filename": "ProtocolLib-26.3-dev.jar",
       "url": "https://github.com/dmulloy2/ProtocolLib/releases/download/dev-build/ProtocolLib.jar",
+      "vendorArtifact": "thirdparty/server-plugins/ProtocolLib-26.3-dev.jar",
       "sourceCommit": "d89a5deb3eb625b16846da57fbbb04bfdd0d031d",
       "upstreamPacketMappingVersion": "26.3",
       "upstreamMappingCommit": "583353e9fa3dcec1f6da06d89c189d4ecda1afd4",

@@ -1008,7 +1008,7 @@ def test_migration_lock_loader_includes_each_built_first_party_plugin():
     assert next(row for row in lock['unchangedBaseline'] if row['pluginName']=='FarmControl')['candidate']['runtimeEligible'] is False
     assert next(row for row in lock['unchangedBaseline'] if row['pluginName']=='SeeMore')['candidate']['runtimeEligible'] is False
     expected_local={item['pluginName'] for item in build_candidates}
-    expected_local.update(item['pluginName'] for item in lock['modules'] if item.get('buildArtifact'))
+    expected_local.update(item['pluginName'] for item in lock['modules'] if item.get('buildArtifact') or item.get('vendorArtifact'))
     assert {record['pluginName'] for record in records if record['sourceType']=='local'}==expected_local
     narcotics=next(record for record in records if record['pluginName']=='CopiMineNarcotics')
     assert '4a3e01050f8ab635f4760164fdb2723482b81923fafe75099506b6290b89b4d8' in narcotics['replaceSha256']
@@ -1638,6 +1638,27 @@ def test_protocollib_26_3_packet_mapping_evidence_is_distinct_from_tested_maximu
     assert b'v26_3' in packets
     for packet in [b'ADD_TRANSIENT_BLOCK',b'HURT_ANIMATION',b'SHOW_DIALOG']:
         assert packet in packets
+
+
+def test_protocollib_dev_build_is_vendored_so_the_mutable_upstream_tag_cannot_change_ci(tmp_path):
+    lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
+    candidate=next(p for p in lock['modules'] if p['pluginName']=='ProtocolLib')
+    assert candidate['vendorArtifact']=='thirdparty/server-plugins/'+candidate['filename']
+    artifact=ROOT/candidate['vendorArtifact']
+    assert artifact.is_file()
+    assert artifact.stat().st_size==candidate['size']
+    digests=hashlib.sha256(artifact.read_bytes()).hexdigest(),hashlib.sha512(artifact.read_bytes()).hexdigest()
+    assert digests==(candidate['sha256'],candidate['sha512'])
+    records=load().load_install_records(ROOT,lock)
+    assert next(r for r in records if r['pluginName']=='ProtocolLib')['sourceType']=='local'
+
+    only={'modules':[candidate]}
+    assert len(load().load_install_records(ROOT,only))==1
+    vendored=tmp_path/candidate['vendorArtifact']
+    vendored.parent.mkdir(parents=True)
+    vendored.write_bytes(artifact.read_bytes()[:-1])
+    with pytest.raises(ValueError,match='Vendored plugin artifact size or filename differs from its lock'):
+        load().load_install_records(tmp_path,only)
 
 
 def test_remaining_official_server_plugins_have_verified_26_3_release_candidates():

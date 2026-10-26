@@ -1038,9 +1038,9 @@ def test_migration_lock_loader_includes_each_built_first_party_plugin():
     assert '983fd1954eb85d8be8a5e18e0095200278933e930422854b4b19c19995fad116' in narcotics['replaceSha256']
     narcotics_candidate=next(item['candidate'] for item in lock['unchangedBaseline']
                              if item['pluginName']=='CopiMineNarcotics')
-    assert narcotics_candidate['size'] == 372524
-    assert narcotics_candidate['sha256'] == 'd7e46fcc2bcfb8f31216cb1ea51c53bf3f492d29bc3b8c227540cb38e8ced7e2'
-    assert narcotics_candidate['sha512'] == 'dd4f6a90e8fa47d4c2bae9c9fa72ef23e856d72078376c959156b60693d3419abf636ae7d35a2fec21a713d8c4b2a6e50eb0064579e2e3333c0444f6c62048a4'
+    assert narcotics_candidate['size'] == 365656
+    assert narcotics_candidate['sha256'] == 'a91028c50325c4dd94ad9b22fce96bcd550af90cc696f7d38645436468f69365'
+    assert narcotics_candidate['sha512'] == 'b5605ba6ddc9621fa52ede6a914d854a515dd2dd65b0c361cd261194eb6535fa3f928b2dbcf54d055a211142cbfb25925f14bf95f4394c2e3b0104a0e9de0f13'
     assert '835b8043781cc2bf580900c09653da7aa3436c8485266f7838b478ac5a047e70' in narcotics_candidate['replaceSha256']
 
 def test_production_or_symlink_target_is_refused(tmp_path):
@@ -1239,10 +1239,17 @@ def test_admin_26_3_candidate_keeps_baseline_hash_and_tracks_runtime_build():
     assert built.is_file(), 'the pinned 26.3 AdminPlus candidate build is missing'
     artifacts=[built]+([runtime] if runtime.is_file() else [])
     for artifact in artifacts:
-        assert hashlib.sha256(artifact.read_bytes()).hexdigest()==candidate['sha256']
+        digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+        # An installed jar may still be the explicitly replaceable predecessor until the
+        # runtime is reinstalled; the built candidate itself must always match exactly.
+        assert digest == candidate['sha256'] or (
+            artifact is runtime and digest in candidate.get('replaceSha256', [])
+        )
         with zipfile.ZipFile(artifact) as jar_file:
             assert 'messages_ru.yml' in jar_file.namelist()
-            assert jar_file.read('messages_ru.yml')==(ROOT/'copimine-admin-plugin/messages_ru.yml').read_bytes()
+            # Artifact YAML is canonical LF; a Windows checkout keeps CRLF, so compare content only.
+            assert (jar_file.read('messages_ru.yml').replace(b'\r\n', b'\n')
+                    == (ROOT/'copimine-admin-plugin/messages_ru.yml').read_bytes().replace(b'\r\n', b'\n'))
 
 def test_first_party_replacements_accept_the_exact_installed_predecessor_jars():
     lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
@@ -1318,7 +1325,9 @@ def test_all_remaining_first_party_26_3_plugins_track_their_build_and_runtime_up
                     assert resource_name in jar_file.namelist(), (
                         f'{plugin_name} migration JAR is missing required runtime resource {resource_name}'
                     )
-                    assert jar_file.read(resource_name)==source_path.read_bytes(), (
+                    # Artifact YAML is canonical LF; a Windows checkout keeps CRLF, so compare content only.
+                    assert (jar_file.read(resource_name).replace(b'\r\n', b'\n')
+                            == source_path.read_bytes().replace(b'\r\n', b'\n')), (
                         f'{plugin_name} migration JAR resource {resource_name} differs from its source catalog'
                     )
             assert f'name: {plugin_name}' in plugin_yml
@@ -1331,9 +1340,9 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     candidate=baseline['candidate']
     assert candidate['filename']=='CopiMineEndEvent-26.3.jar'
     assert candidate['runtimeFilename']=='CopiMineEndEvent.jar'
-    assert candidate['size']==1916135
-    assert candidate['sha256']=='8105e10a11a7f76e41f75333e3c71e8abffb96d7ae1e37759a03fdfa807837c0'
-    assert candidate['sha512']=='a142b3f09b1e30875ae1996b44ccb886f5d32c25dfd63b69c77395fd7655efda4936a9fcc6ed590ba9033f05624766fa010b8187756e4acb69e73622e9602785'
+    assert candidate['size']==1916095
+    assert candidate['sha256']=='fc81375344c583c979ee4aa03446da9295d02b9f09486bf374cdc4de9cce2e13'
+    assert candidate['sha512']=='cd1c199b3ca0d239d3f4aaeea345c6cb1f4ad43a42395b44997f5f382fb197dfeb2944675df6fdcd6437f43eff10d8cdfde51a89c30755def98bd986e54b2d10'
     assert candidate['apiVersion']=='26.3'
     assert candidate['buildArtifact']=='build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar'
     assert candidate['nativeVerified'] is lock['nativeVerified']
@@ -1355,6 +1364,7 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
         '985d42e6b4f6f44b034dd399bc12e5754be69e6121b8986156c087e18cfc7d22',
     ]
     assert candidate['replaceSha256']==[
+        '8105e10a11a7f76e41f75333e3c71e8abffb96d7ae1e37759a03fdfa807837c0',
         '33301a85349352168ef6a9c0bb431d73c361cf1e7a71779e27b60104462270ab',
         '949fb0a9cdbffd62ad9c340b68612768bea1f1e10bb578af3a10dd2d55bf9fb9',
         '07a5b6ecd77077061b3cee57082e9d9cfe840418e50bd093e3573ff613ffbf9b',
@@ -2889,12 +2899,12 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
     assert luckperms['nativeVerified'] is False
 
     expected_candidates={
-        'CopiMineArtifacts':('75547398ec77fdc083c37de5a5d6449b166efb92c8af942ab0bddc5d675cf109',
-                             '010ce63cf87d78226d02d04e277c693740c3bff4bb8110537900370f59f84c0975e1b2be24216fba67343e014028e6a06660c2263de2f9daa021a7410b473c71',363393),
-        'CopiMineEndEvent':('8105e10a11a7f76e41f75333e3c71e8abffb96d7ae1e37759a03fdfa807837c0',
-                            'a142b3f09b1e30875ae1996b44ccb886f5d32c25dfd63b69c77395fd7655efda4936a9fcc6ed590ba9033f05624766fa010b8187756e4acb69e73622e9602785',1916135),
-        'CopiMineNarcotics':('d7e46fcc2bcfb8f31216cb1ea51c53bf3f492d29bc3b8c227540cb38e8ced7e2',
-                             'dd4f6a90e8fa47d4c2bae9c9fa72ef23e856d72078376c959156b60693d3419abf636ae7d35a2fec21a713d8c4b2a6e50eb0064579e2e3333c0444f6c62048a4',372524),
+        'CopiMineArtifacts':('e82f5fa76818c0030cfaf43f2d40e0a6ac2e5726643c1c1e01ef1cc5d03054d2',
+                             'dd1df56d8ec37d0db4aedb54a3d925e7b29af6035eb48d23ca01d7cb0a47754fdf36ded21c69ac04c5b46595272a38d05e4e8ea9df8bf0424e14962ed0ee503c',363351),
+        'CopiMineEndEvent':('fc81375344c583c979ee4aa03446da9295d02b9f09486bf374cdc4de9cce2e13',
+                            'cd1c199b3ca0d239d3f4aaeea345c6cb1f4ad43a42395b44997f5f382fb197dfeb2944675df6fdcd6437f43eff10d8cdfde51a89c30755def98bd986e54b2d10',1916095),
+        'CopiMineNarcotics':('a91028c50325c4dd94ad9b22fce96bcd550af90cc696f7d38645436468f69365',
+                             'b5605ba6ddc9621fa52ede6a914d854a515dd2dd65b0c361cd261194eb6535fa3f928b2dbcf54d055a211142cbfb25925f14bf95f4394c2e3b0104a0e9de0f13',365656),
     }
     for plugin_name,(sha256,sha512,size) in expected_candidates.items():
         candidate=baseline[plugin_name]['candidate']

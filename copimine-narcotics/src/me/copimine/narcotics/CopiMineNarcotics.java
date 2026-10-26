@@ -1583,25 +1583,17 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
         if ("status".equalsIgnoreCase(args[1])) {
             NarcoticsResourcePackAudit.Report report = resourcePackAudit.inspect();
-            sender.sendMessage(ChatColor.GRAY + "Визуалы включены: " + configService.visualsEnabled());
-            sender.sendMessage(ChatColor.GRAY + "Настроенный режим: " + configService.visualMode().name());
-            sender.sendMessage(ChatColor.GRAY + "Client bridge включён: " + configService.clientBridgeEnabled());
-            sender.sendMessage(ChatColor.GRAY + "Client visuals разрешены: " + configService.allowClientModVisuals());
-            sender.sendMessage(ChatColor.GRAY + "Client ZIP shaderpack runtime поддерживается: " + visualRuntime.supportsClientZipShaderpackRuntime());
-            sender.sendMessage(ChatColor.GRAY + "Причина ZIP shaderpack runtime: " + visualRuntime.clientShaderpackSupportReason());
-            sender.sendMessage(ChatColor.GRAY + "Server overlay поддерживается: " + visualRuntime.supportsServerOverlayRuntime());
-            sender.sendMessage(ChatColor.GRAY + "Причина overlay: " + visualRuntime.serverOverlaySupportReason());
-            sender.sendMessage(ChatColor.GRAY + "Server fallback поддерживается: " + visualRuntime.supportsServerParticleFallback());
-            sender.sendMessage(ChatColor.GRAY + "Клиентский visual runtime поддерживается: " + visualRuntime.supportsClientShaderLikeRuntime());
-            sender.sendMessage(ChatColor.GRAY + "Причина клиентского visual runtime: " + visualRuntime.clientShaderLikeSupportReason());
-            sender.sendMessage(ChatColor.GRAY + "True shader runtime поддерживается: " + visualRuntime.supportsShaderRuntime());
-            sender.sendMessage(ChatColor.GRAY + "Причина true shader runtime: " + visualRuntime.shaderSupportReason());
-            sender.sendMessage(ChatColor.GRAY + "Overlay-ассеты на месте: " + !report.overlayTextures().isEmpty());
-            sender.sendMessage(ChatColor.GRAY + "Shader-профили на месте: " + !report.shaderProfiles().isEmpty());
-            sender.sendMessage(ChatColor.GRAY + "Только серверный fallback: " + (!visualRuntime.supportsServerOverlayRuntime() && !visualRuntime.supportsClientShaderLikeRuntime()));
-            sender.sendMessage(ChatColor.GRAY + "Включённые эффекты: " + configService.visualEffectIds().stream().filter(configService::isVisualEffectEnabled).sorted().toList());
+            sender.sendMessage(ChatColor.GRAY + "Визуализация: "
+                    + (configService.visualsEnabled() ? "включена" : "выключена")
+                    + " (" + configService.visualMode().name() + ")");
+            sender.sendMessage(ChatColor.GRAY + "Клиентский мост: " + configService.clientBridgeEnabled());
+            sender.sendMessage(ChatColor.GRAY + "Частицы: " + visualRuntime.supportsServerParticleFallback());
+            sender.sendMessage(ChatColor.GRAY + "Эффекты: " + configService.visualEffectIds().stream()
+                    .filter(configService::isVisualEffectEnabled).sorted().toList());
             String sampleEffect = configService.visualEffectIds().stream().sorted().findFirst().orElse("CHAOS");
-            sender.sendMessage(ChatColor.GRAY + "Маршрут эффекта (" + sampleEffect + "): " + visualRuntime.resolvedModeFor(sampleEffect));
+            sender.sendMessage(ChatColor.GRAY + "Маршрут для " + sampleEffect + ": "
+                    + visualRuntime.resolvedModeFor(sampleEffect));
+            sender.sendMessage(ChatColor.GRAY + "Наложений в наборе: " + report.overlayTextures().size());
             if (!report.ok()) {
                 sender.sendMessage(ChatColor.RED + "Проблема resource pack: " + report.summary());
             }
@@ -1674,10 +1666,10 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                 visualRuntime.apply(target, effectId, seconds, false);
             }
             database.auditAsync(sender.getName(), "visual_test", target.getName() + "," + requestedId + "," + effectId + "," + seconds + "," + overdoseTest);
-            sender.sendMessage(ChatColor.GREEN + "Visual test started: " + target.getName()
-                    + " / request=" + requestedId
-                    + " / effect=" + effectId
-                    + (overdoseTest ? " / overdose-route" : ""));
+            sender.sendMessage(ChatColor.GREEN + "Тест визуала запущен: " + target.getName()
+                    + " / запрос=" + requestedId
+                    + " / эффект=" + effectId
+                    + (overdoseTest ? " / маршрут передозировки" : ""));
             return true;
         }
         sendHelpV2(sender);
@@ -1748,30 +1740,23 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
         NarcoticsResourcePackAudit.Report report = resourcePackAudit.inspect();
         sender.sendMessage(message("selfcheck_ok"));
-        sender.sendMessage(ChatColor.GRAY + "Client bridge enabled: " + configService.clientBridgeEnabled());
-        sender.sendMessage(ChatColor.GRAY + "Client visuals allowed: " + configService.allowClientModVisuals());
-        sender.sendMessage(ChatColor.GRAY + "Client ZIP shaderpack runtime supported: " + visualRuntime.supportsClientZipShaderpackRuntime());
-        sender.sendMessage(ChatColor.GRAY + "Client ZIP shaderpack runtime reason: " + visualRuntime.clientShaderpackSupportReason());
-        sender.sendMessage(ChatColor.GRAY + "Server overlay supported: " + visualRuntime.supportsServerOverlayRuntime());
-        sender.sendMessage(ChatColor.GRAY + "Server fallback supported: " + visualRuntime.supportsServerParticleFallback());
-        sender.sendMessage(ChatColor.GRAY + "Client visual runtime supported: " + visualRuntime.supportsClientShaderLikeRuntime());
-        sender.sendMessage(ChatColor.GRAY + "Client visual runtime reason: " + visualRuntime.clientShaderLikeSupportReason());
-        sender.sendMessage(ChatColor.GRAY + "True shader runtime supported: " + visualRuntime.supportsShaderRuntime());
-        sender.sendMessage(ChatColor.GRAY + "True shader runtime reason: " + visualRuntime.shaderSupportReason());
-        sender.sendMessage(ChatColor.GRAY + "Предметов: " + configService.items().size());
-        sender.sendMessage(ChatColor.GRAY + "Режим текстур: " + configService.textureMode().name());
-        sender.sendMessage(ChatColor.GRAY + "Режим визуалов: " + configService.visualMode().name());
-        sender.sendMessage(ChatColor.GRAY + "Визуалы включены: " + configService.visualsEnabled());
-        sender.sendMessage(ChatColor.GRAY + "Кэш котлов: " + cauldronService.cachedStateCount());
-        sender.sendMessage(ChatColor.GRAY + "Моделей предметов: " + report.itemModels().size());
-        sender.sendMessage(ChatColor.GRAY + "Текстур предметов: " + report.itemTextures().size());
-        sender.sendMessage(ChatColor.GRAY + "Overlay-ассетов: " + report.overlayTextures().size());
-        sender.sendMessage(ChatColor.GRAY + "Shader-профилей: " + report.shaderProfiles().size());
-        sender.sendMessage(ChatColor.GRAY + "Font manifest: " + report.fontManifestPresent());
-        sender.sendMessage(ChatColor.GRAY + "Документ сторонних ассетов: " + report.thirdPartyDocPresent());
-        sender.sendMessage(ChatColor.GRAY + "Документ лицензий: " + report.licensesDocPresent());
-        sender.sendMessage(ChatColor.GRAY + "Без hotlink: " + report.noHotlinks());
-        sender.sendMessage(ChatColor.GRAY + "Без runtime download: " + report.noRuntimeDownloads());
+        sender.sendMessage(ChatColor.GRAY + "Клиентский мост: " + configService.clientBridgeEnabled());
+        sender.sendMessage(ChatColor.GRAY + "Частицы: " + visualRuntime.supportsServerParticleFallback());
+        sender.sendMessage(ChatColor.GRAY + "Визуал: " + configService.visualMode().name()
+                + ", включён: " + configService.visualsEnabled());
+        sender.sendMessage(ChatColor.GRAY + "Предметов: " + configService.items().size()
+                + ", текстуры: " + configService.textureMode().name());
+        sender.sendMessage(ChatColor.GRAY + "Котлов в кэше: " + cauldronService.cachedStateCount());
+        sender.sendMessage(ChatColor.GRAY + "Модели: " + report.itemModels().size()
+                + ", текстуры: " + report.itemTextures().size()
+                + ", наложения: " + report.overlayTextures().size());
+        sender.sendMessage(ChatColor.GRAY + "Шрифт: " + report.fontManifestPresent()
+                + ", лицензии: " + report.licensesDocPresent()
+                + ", без hotlink: " + report.noHotlinks()
+                + ", без загрузок: " + report.noRuntimeDownloads());
+        sender.sendMessage(ChatColor.GRAY + "SHA1 набора: "
+                + (report.zipSha1() == null ? "нет" : report.zipSha1())
+                + ", синхронизирован: " + report.hashSynced());
         sender.sendMessage(ChatColor.GRAY + "SHA1 pack: " + (report.zipSha1() == null ? "missing" : report.zipSha1()));
         sender.sendMessage(ChatColor.GRAY + "SHA1 синхронизирован: " + report.hashSynced());
         sender.sendMessage(report.ok() ? ChatColor.GREEN + "Проверка resource pack пройдена" : ChatColor.RED + "Проблема resource pack: " + report.summary());
@@ -1984,7 +1969,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals status");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals enable <effectId|all>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals disable <effectId|all>");
-        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals mode <auto|client_mod|server_fallback>");
+        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals mode <auto|client_mod|server_overlay|server_fallback>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals test <игрок> <effectId|narcoticId|overdose> [seconds]");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics selfcheck");
         sender.sendMessage(ChatColor.GOLD + "/cmclient check <игрок>");
@@ -2008,7 +1993,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals status");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals enable <effectId|all>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals disable <effectId|all>");
-        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals mode <auto|client_mod|server_fallback>");
+        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals mode <auto|client_mod|server_overlay|server_fallback>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals test <игрок> <effectId|narcoticId|overdose> [seconds]");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics selfcheck");
         sender.sendMessage(ChatColor.GOLD + "/cmclient check <игрок>");

@@ -10,7 +10,7 @@ softdepend:
   - ProtocolLib
 commands:
   cmnarcotics:
-    description: Управление чёрным рынком
+    description: Управление RP-предметами и их состоянием
     usage: /cmnarcotics
     aliases: [narcotics]
   cmclient:
@@ -18,7 +18,7 @@ commands:
     usage: /cmclient
 permissions:
   copimine.narcotics.admin:
-    description: Полный доступ к чёрному рынку
+    description: Полный доступ к RP-предметам
     default: op
     children:
       copimine.narcotics.give: true
@@ -32,10 +32,10 @@ permissions:
     description: Выдача официальных RP-предметов
     default: op
   copimine.narcotics.reload:
-    description: Перезагрузка чёрного рынка
+    description: Перезагрузка конфигурации RP-предметов
     default: op
   copimine.narcotics.reset:
-    description: Очистка состояния чёрного рынка
+    description: Очистка состояния RP-предметов
     default: op
   copimine.narcotics.texture:
     description: Управление режимом текстур и миграцией официальных предметов

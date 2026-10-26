@@ -69,6 +69,19 @@ modules.each { name, module ->
         filesMatching('plugin.yml') {
             filter { line -> line.startsWith('api-version:') ? "api-version: '${profile.minecraftVersion}'" : line }
         }
+        // The line filter emits the platform separator and checked-out YAML keeps its own line
+        // endings, so without this a Windows build never matches the Linux CI artifact digest.
+        doLast {
+            fileTree(destinationDirectory.get().asFile)
+                    .matching { include '**/*.yml', '**/*.yaml' }
+                    .each { file ->
+                        def text = file.getText('UTF-8')
+                        def normalized = text.replace('\r\n', '\n').replace('\r', '\n')
+                        if (normalized != text) {
+                            file.setText(normalized, 'UTF-8')
+                        }
+                    }
+        }
     }
     tasks.register("${name}Jar", Jar) {
         dependsOn(sourceSets[name].classesTaskName)

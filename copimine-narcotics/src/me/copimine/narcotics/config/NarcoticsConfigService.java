@@ -9,6 +9,10 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffectType;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -69,7 +73,34 @@ public final class NarcoticsConfigService {
         this.plugin = plugin;
     }
 
+    /**
+     * Approved defaults are a five second cooldown and an immediate Zhuzevo overload. Only the
+     * exact legacy default lines are rewritten, so an operator's own values and the file's
+     * comments and line endings stay untouched.
+     */
+    private void migrateLegacyUsageDefaults() {
+        File file = new File(plugin.getDataFolder(), "config.yml");
+        if (!file.isFile()) {
+            return;
+        }
+        try {
+            String text = Files.readString(file.toPath(), StandardCharsets.UTF_8);
+            String migrated = text
+                    .replace("consume_cooldown_seconds: 0", "consume_cooldown_seconds: 5")
+                    .replace("zhuzevo_forces_overdose: false", "zhuzevo_forces_overdose: true");
+            if (migrated.equals(text)) {
+                return;
+            }
+            Files.writeString(file.toPath(), migrated, StandardCharsets.UTF_8);
+            plugin.getLogger().info("NARCOTICS_USAGE_DEFAULTS_MIGRATED consume_cooldown_seconds=5"
+                    + " zhuzevo_forces_overdose=true");
+        } catch (IOException error) {
+            plugin.getLogger().warning("NARCOTICS_USAGE_DEFAULTS_MIGRATION_FAILED " + error.getMessage());
+        }
+    }
+
     public void reload() {
+        migrateLegacyUsageDefaults();
         plugin.reloadConfig();
         ConfigurationSection root = plugin.getConfig();
         narcoticVersion = root.getInt("runtime.narcotic_version", 1);
@@ -80,13 +111,13 @@ public final class NarcoticsConfigService {
         requireFullWater = root.getBoolean("cauldron.require_full_water", true);
         clearCauldronOnCompletion = root.getBoolean("cauldron.clear_cauldron_on_completion", true);
         dropIngredientsOnBreakOrWaterLoss = root.getBoolean("cauldron.drop_ingredients_on_break_or_water_loss", true);
-        consumeCooldownSeconds = Math.max(0, root.getInt("usage.consume_cooldown_seconds", 0));
+        consumeCooldownSeconds = Math.max(0, root.getInt("usage.consume_cooldown_seconds", 5));
         usageWindowSeconds = Math.max(60, root.getInt("usage.usage_window_seconds", 900));
         overdoseThreshold = Math.max(1, root.getInt("usage.overdose_threshold", 100));
         durationOverrideSeconds = Math.max(0, root.getInt("usage.duration_override_seconds", 0));
         clearNormalEffectsBeforeNewUse = root.getBoolean("usage.clear_normal_effects_before_new_use", true);
         milkBlocksDuringOverdose = root.getBoolean("usage.milk_blocks_during_overdose", true);
-        zhuzevoForcesOverdose = root.getBoolean("usage.zhuzevo_forces_overdose", false);
+        zhuzevoForcesOverdose = root.getBoolean("usage.zhuzevo_forces_overdose", true);
         visualsEnabled = root.getBoolean("visuals.enabled", false);
         allowClientModVisuals = root.getBoolean("visuals.allow_client_mod_visuals", true);
         allowServerResourcePackOverlay = root.getBoolean("visuals.allow_server_resource_pack_overlay", false);

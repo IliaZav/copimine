@@ -22,6 +22,7 @@
         "tests/test_economy_narcotics_audit_contract.py"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineUltimateAdminPlus.jar",
+      "candidateSha256": "41b1721f3cf9aad16619339d171dc7b33d9be81c931943c69b3fcb4253e678da",
       "sha256": "70eb0caa57ae48d918170fd9fd4f9ce853bfd8c967315f774cccc606b4abe9f0",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
@@ -57,6 +58,7 @@
         "tests/ArtifactShopPurchaseRecoveryGuardTest.java"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineArtifacts.jar",
+      "candidateSha256": "e82f5fa76818c0030cfaf43f2d40e0a6ac2e5726643c1c1e01ef1cc5d03054d2",
       "sha256": "75547398ec77fdc083c37de5a5d6449b166efb92c8af942ab0bddc5d675cf109",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
@@ -85,6 +87,7 @@
         "tests/test_migration_postgres_lifecycle.py"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineEconomyCore.jar",
+      "candidateSha256": "f0d1f6b2c189b12c68270cd53d046f38a723c52b0f240f8272bfd3cbd360e3e6",
       "sha256": "7fd9c779e0a5ca80b5dad4effcc0bf59d5cbcd181be7400e10432b6e69cabd32",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
@@ -114,6 +117,7 @@
         "tests/test_utility_inventory_transport_contract.py"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineElectionCore.jar",
+      "candidateSha256": "ce4749dc346134680366fdccd044cfb0d61cb8fcbf7c8ee1a90e69917a4a4182",
       "sha256": "d2256c6976cb88a2a98b372d5f7e1b1db63013a52fdcfe519a065e3896395b65",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
@@ -148,8 +152,8 @@
         "tests/PrisonerAbilityControllerTest.java"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineEndEvent.jar",
+      "candidateSha256": "fc81375344c583c979ee4aa03446da9295d02b9f09486bf374cdc4de9cce2e13",
       "sha256": "33301a85349352168ef6a9c0bb431d73c361cf1e7a71779e27b60104462270ab",
-      "candidateSha256": "8105e10a11a7f76e41f75333e3c71e8abffb96d7ae1e37759a03fdfa807837c0",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
       "realServerEnable": "BLOCKED",
@@ -178,6 +182,7 @@
         "tests/test_client_legacy_bridge_auth_contract.py"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineNarcotics.jar",
+      "candidateSha256": "a91028c50325c4dd94ad9b22fce96bcd550af90cc696f7d38645436468f69365",
       "sha256": "d7e46fcc2bcfb8f31216cb1ea51c53bf3f492d29bc3b8c227540cb38e8ced7e2",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
@@ -204,8 +209,8 @@
         "tests/test_admin_data_contracts.py"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineWorldCore.jar",
+      "candidateSha256": "6617940e38dcc8f6211da778ed58555a0d4019eab438f0682dbc04352bdd3e0a",
       "sha256": "1b6822c1733b8ddc3dc12760e8319caed014f3148493bf1c826ca6f5153e3f14",
-      "candidateSha256": "aa4f37a7aa00fde41c6861d1355e5b668a5fd6dce155b3b9c0de52f4bf7bd067",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
       "realServerEnable": "BLOCKED",
@@ -232,7 +237,7 @@
       ],
       "installedJar": null,
       "sha256": null,
-      "candidateSha256": "09aa0017cd8731470eb2324af327fc5780490c317469881f82a8d8c5bfd5e11c",
+      "candidateSha256": "c2a2ab2cd162d383858cf3c917fcbfc712143077ac98241fe90fc1a29a12b9f7",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
       "realServerEnable": "BLOCKED",

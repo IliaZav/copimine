@@ -1,4 +1,4 @@
-﻿runtime:
+runtime:
   narcotic_version: 1
   strict_release_mode: true
   async_threads: 2
@@ -14,13 +14,13 @@ cauldron:
   drop_ingredients_on_break_or_water_loss: true
 
 usage:
-  consume_cooldown_seconds: 0
+  consume_cooldown_seconds: 5
   usage_window_seconds: 900
   overdose_threshold: 100
   duration_override_seconds: 0
   clear_normal_effects_before_new_use: true
   milk_blocks_during_overdose: true
-  zhuzevo_forces_overdose: false
+  zhuzevo_forces_overdose: true
 
 textures:
   # The release resource pack contains the item models used by the active server.

@@ -610,7 +610,7 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
         }
         if (args.length == 0) {
             sender.sendMessage(ChatColor.GOLD + "/cmclient check <игрок>");
-            sender.sendMessage(ChatColor.GOLD + "/cmclient visualtest <игрок> <effectId> [seconds] [intensity]");
+            sender.sendMessage(ChatColor.GOLD + "/cmclient visualtest <игрок> <effectId> [seconds]");
             sender.sendMessage(ChatColor.GOLD + "/cmclient fallbacktest <игрок> <effectId> [seconds]");
             sender.sendMessage(ChatColor.GOLD + "/cmclient stop <игрок> [effectId]");
             sender.sendMessage(ChatColor.GOLD + "/cmclient clear <игрок>");
@@ -622,7 +622,7 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
         }
         String sub = args[0].toLowerCase(Locale.ROOT);
         if ("sessions".equals(sub)) {
-            sender.sendMessage(ChatColor.GRAY + "Client bridge sessions: " + visuals.sessionsSummary());
+            sender.sendMessage(ChatColor.GRAY + "Сессии визуала: " + visuals.sessionsSummary());
             return true;
         }
         if ("require".equals(sub) && args.length >= 2 && "client".equalsIgnoreCase(args[1])) {
@@ -697,28 +697,7 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
                 return true;
             }
         }
-        if ("visualtest".equals(sub)) {
-            if (!visuals.canUse(target, effectId)) {
-                sender.sendMessage(ChatColor.YELLOW + "У игрока нет поддержки CopiMineClient для эффекта " + effectId + ".");
-                return true;
-            }
-            visuals.sendVisualStart(
-                    target,
-                    effectId,
-                    "",
-                    seconds,
-                    intensity,
-                    1_500,
-                    2_500,
-                    "ADMIN_TEST",
-                    (playerUuid, effect, fallbackSeconds, fallbackIntensity, source, reason) -> fallbackTest.accept(target, effect + ":" + fallbackSeconds),
-                    (playerUuid, effect, source, reason) -> {
-                    }
-            );
-            sender.sendMessage(ChatColor.GREEN + "Клиентский visual test отправлен: " + target.getName() + " / " + effectId);
-            return true;
-        }
-        if ("fallbacktest".equals(sub)) {
+        if ("visualtest".equals(sub) || "fallbacktest".equals(sub)) {
             fallbackTest.accept(target, effectId + ":" + seconds);
             sender.sendMessage(ChatColor.GREEN + "Серверный fallback test отправлен: " + target.getName() + " / " + effectId);
             return true;

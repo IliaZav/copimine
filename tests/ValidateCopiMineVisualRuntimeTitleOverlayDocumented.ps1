@@ -5,6 +5,6 @@ $runtime = Read-Utf8 (Join-Path $root 'copimine-narcotics\src\me\copimine\visual
 
 Require-Contains $config 'server_overlay:' 'Narcotics config must declare server overlay runtime settings.'
 Require-Contains $config 'use_titles: false' 'Narcotics config must keep title-based overlay disabled.'
-Require-Contains $runtime 'server title overlay disabled' 'VisualRuntime status must document that server overlay is disabled.'
+Require-Contains $runtime 'server title overlay retired' 'VisualRuntime status must document that server overlay is retired.'
 
 Throw-IfErrors 'ValidateCopiMineVisualRuntimeTitleOverlayDocumented'

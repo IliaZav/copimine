@@ -1272,7 +1272,10 @@ function Get-LocalWhitelistNames {
   $whitelistPath = Assert-EndRiftLocalRuntimePath `
     -Path (Join-Path $serverDir 'whitelist.json') -LocalRuntimeRoot $runtimeRoot -MustExist
   try {
-    $entries = @(Get-Content -LiteralPath $whitelistPath -Raw | ConvertFrom-Json -ErrorAction Stop)
+    # Windows PowerShell 5.1 does not enumerate ConvertFrom-Json output, so
+    # @(<pipeline> | ConvertFrom-Json) yields a single nested array element.
+    $parsed = Get-Content -LiteralPath $whitelistPath -Raw | ConvertFrom-Json -ErrorAction Stop
+    $entries = @($parsed)
   } catch {
     throw "Could not safely read the isolated test whitelist: $($_.Exception.Message)"
   }

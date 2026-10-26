@@ -41055,14 +41055,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     if (!tentacleContactResolved.contains(display.getUniqueId())
                             && elapsed >= contactTick) {
                         tentacleContactResolved.add(display.getUniqueId());
-                        boolean inRange = withinTentacleGrabRange(display.getLocation(),
-                                target.getLocation());
+                        // The target was validated and locked at telegraph time, so the
+                        // grab is guaranteed: walking away must not downgrade it to a miss.
                         tentacleMarker(display, TentacleAnimationPolicy.Marker.CONTACT, target);
-                        if (!inRange) {
-                            setTentacleState(display, TentacleAnimationPolicy.State.MISS_RECOVERY,
-                                    target.getUniqueId());
-                            return;
-                        }
                         // Capture the projected launch while the target is still
                         // at the contact point. HOLD subsequently moves it to the
                         // socket, where deriving the direction would be zero.

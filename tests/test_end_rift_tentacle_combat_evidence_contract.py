@@ -330,6 +330,18 @@ def test_live_probe_verifies_safe_viewer_mode_after_official_phase_start():
     assert phase_start < protection_check < bot_attack_start
 
 
+def test_committed_grab_target_is_never_downgraded_to_a_miss():
+    source = END_EVENT.read_text(encoding="utf-8")
+    grab = source[source.index("case GRAB_SUCCESS"):]
+    contact_arm = grab.split("TentacleAnimationPolicy.Marker.CONTACT, target)", 1)[0]
+    contact_gate = contact_arm.split("tentacleContactResolved.add(display.getUniqueId());", 1)[1]
+
+    # Range is only a target-selection filter; once a target is locked the grab must land.
+    assert "withinTentacleGrabRange(origin, player.getLocation())" in source
+    assert "MISS_RECOVERY" not in contact_gate
+    assert "withinTentacleGrabRange" not in contact_gate
+
+
 def test_nonlethal_hits_preserve_attacks_and_only_flinch_idle_tentacles():
     source = END_EVENT.read_text(encoding="utf-8")
     policy = ANIMATION_POLICY.read_text(encoding="utf-8")

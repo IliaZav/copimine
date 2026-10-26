@@ -95,6 +95,7 @@ import me.copimine.endevent.domain.PadLayout;
 import me.copimine.endevent.domain.PortalCapturePolicy;
 import me.copimine.endevent.domain.PortalPresentationPolicy;
 import me.copimine.endevent.domain.VisualRefreshDeadline;
+import me.copimine.endevent.domain.VictorySagaRecoveryPolicy;
 import me.copimine.endevent.domain.RitualShieldOrbitPolicy;
 import me.copimine.endevent.domain.RewardRoster;
 import me.copimine.endevent.domain.ResourceProgressFormatter;
@@ -3685,7 +3686,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         bossLootCommitted = snapshot.bossLootCommitted()
                 || BOSS_REWARDS_DELIVERED.equals(bossRewardStatus);
-        returnStoneStatus = snapshot.returnStoneStatus();
+        String restoredReturnStoneStatus = VictorySagaRecoveryPolicy.restoredReturnStoneStatus(
+                snapshot.returnStoneStatus());
+        if (!Objects.equals(restoredReturnStoneStatus, snapshot.returnStoneStatus())) {
+            getLogger().info("RETURN_STONE_RETRY_ON_RESTORE event=" + eventId
+                    + " previous=" + snapshot.returnStoneStatus() + " status=" + restoredReturnStoneStatus);
+        }
+        returnStoneStatus = restoredReturnStoneStatus;
         victoryStep = snapshot.victoryStep();
         updatedAt = snapshot.updatedAt();
         phaseDeadlineMillis = snapshot.phaseDeadlineMillis();
@@ -44144,7 +44151,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (endUnlocked || worldAccessService.isEndEnabled()) {
             endUnlocked = true;
             victoryStep = VICTORY_UNLOCKED;
-            saveStateSync();
+            persistUnlockStateOrWarn("already-enabled");
             issueVictoryRewards();
             return;
         }
@@ -44162,9 +44169,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         endUnlocked = true;
         victoryStep = VICTORY_UNLOCKED;
-        saveStateSync();
+        persistUnlockStateOrWarn("worldcore-unlock");
         getLogger().info("END_UNLOCKED event=" + eventId + " code=" + result.code());
         issueVictoryRewards();
+    }
+
+    /**
+     * WorldCore already holds the permanent unlock, so a failed local save must be loud but must
+     * not block idempotent reward delivery.
+     */
+    private void persistUnlockStateOrWarn(String reason) {
+        if (!saveStateSync()) {
+            getLogger().severe("END_UNLOCK_STATE_NOT_PERSISTED event=" + eventId
+                    + " step=" + victoryStep + " reason=" + reason);
+        }
     }
 
     private void issueVictoryRewards() {
@@ -44191,8 +44209,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             EventArtifactRewardRequest request = EventArtifactRewardRequest.toPlayer(
                     eventId, key, config.shardItemId(), playerUuid, offlineName(playerUuid));
             rewardStatuses.put(playerUuid, "REQUESTED");
+            String callbackEventId = eventId;
+            long callbackGeneration = generation;
             CompletableFuture<RewardIssueResult> future = rewardService.issueToPlayer(request);
             future.whenComplete((result, error) -> Bukkit.getScheduler().runTask(this, () -> {
+                if (!VictorySagaRecoveryPolicy.callbackIsCurrent(
+                        callbackEventId, callbackGeneration, eventId, generation)) {
+                    getLogger().info("RIFT_SHARD_REWARD_STALE event=" + callbackEventId
+                            + " player=" + playerUuid + " generation=" + callbackGeneration);
+                    return;
+                }
                 rewardRequestsInFlight.remove(playerUuid);
                 if (error != null || result == null || !result.accepted()) {
                     rewardStatuses.put(playerUuid, "PENDING_RETRY");
@@ -44213,7 +44239,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 EventArtifactRewardRequest request = EventArtifactRewardRequest.worldDrop(
                         eventId, key, config.returnStoneItemId());
                 returnStoneStatus = "REQUESTED";
+                String callbackEventId = eventId;
+                long callbackGeneration = generation;
                 rewardService.issueWorldDrop(request, drop).whenComplete((result, error) -> Bukkit.getScheduler().runTask(this, () -> {
+                    if (!VictorySagaRecoveryPolicy.callbackIsCurrent(
+                            callbackEventId, callbackGeneration, eventId, generation)) {
+                        getLogger().info("RETURN_STONE_REWARD_STALE event=" + callbackEventId
+                                + " generation=" + callbackGeneration);
+                        return;
+                    }
                     if (error != null || result == null || !result.accepted()) {
                         returnStoneStatus = "PENDING_RETRY";
                         getLogger().log(Level.WARNING, "Return Stone reward remains pending", error);
@@ -44260,8 +44294,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         String key = "end-rift:" + eventId + ":boss:player:" + playerUuid + ":night-cloak";
         EventArtifactRewardRequest request = EventArtifactRewardRequest.toPlayer(
                 eventId, key, "night_cloak", playerUuid, offlineName(playerUuid));
+        String callbackEventId = eventId;
+        long callbackGeneration = generation;
         rewardService.issueToPlayer(request).whenComplete((result, error) ->
                 Bukkit.getScheduler().runTask(this, () -> {
+                    if (!VictorySagaRecoveryPolicy.callbackIsCurrent(
+                            callbackEventId, callbackGeneration, eventId, generation)) {
+                        getLogger().info("NIGHT_CLOAK_REWARD_STALE event=" + callbackEventId
+                                + " player=" + playerUuid + " generation=" + callbackGeneration);
+                        return;
+                    }
                     nightCloakRequestsInFlight.remove(playerUuid);
                     if (error != null || result == null || !result.accepted()) {
                         // Keep WON durable.  The next retry will reuse the

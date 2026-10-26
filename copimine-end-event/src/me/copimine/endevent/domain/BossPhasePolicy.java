@@ -59,6 +59,7 @@ public final class BossPhasePolicy {
                     EndRiftAiPolicy.BossSpell.VOID_BLAST,
                     EndRiftAiPolicy.BossSpell.RIFT_ARROWS,
                     EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS,
+                    EndRiftAiPolicy.BossSpell.ARENA_INFERNO,
                     EndRiftAiPolicy.BossSpell.BOSS_FIREBALL);
             case RAGE -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_BLAST,

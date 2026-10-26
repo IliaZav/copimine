@@ -952,15 +952,16 @@
       "candidate": {
         "filename": "CopiMineEndEvent-26.3.jar",
         "runtimeFilename": "CopiMineEndEvent.jar",
-        "sha256": "33301a85349352168ef6a9c0bb431d73c361cf1e7a71779e27b60104462270ab",
+        "sha256": "8105e10a11a7f76e41f75333e3c71e8abffb96d7ae1e37759a03fdfa807837c0",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "size": 1911022,
-        "sha512": "55f287b7552b5ffb0bca27cefeed53d6315bb96b72d5cf711ce1ec4d4c4f40f0f47b8450d8094d3995fed7e28cbb18666cecec359eee932993966123071d7e6b",
+        "size": 1916135,
+        "sha512": "a142b3f09b1e30875ae1996b44ccb886f5d32c25dfd63b69c77395fd7655efda4936a9fcc6ed590ba9033f05624766fa010b8187756e4acb69e73622e9602785",
         "runtimeEligible": true,
         "replaceSha256": [
+          "33301a85349352168ef6a9c0bb431d73c361cf1e7a71779e27b60104462270ab",
           "949fb0a9cdbffd62ad9c340b68612768bea1f1e10bb578af3a10dd2d55bf9fb9",
           "07a5b6ecd77077061b3cee57082e9d9cfe840418e50bd093e3573ff613ffbf9b",
           "12f032de165dad419f990c97adfce055916302c93659f9d422c4c861468d543c",
@@ -1064,15 +1065,16 @@
       "candidate": {
         "filename": "CopiMineWorldCore-26.3.jar",
         "runtimeFilename": "CopiMineWorldCore.jar",
-        "sha256": "1b6822c1733b8ddc3dc12760e8319caed014f3148493bf1c826ca6f5153e3f14",
+        "sha256": "aa4f37a7aa00fde41c6861d1355e5b668a5fd6dce155b3b9c0de52f4bf7bd067",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineWorldCore-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "size": 36778,
-        "sha512": "e5524fa6ee455f043dbb5f4194367cdd0eed5068b08b224c878292d8b8a7688e59d36ca2af60f9db2531dde7082c3d4909ba4210516c510e4c89312feaae7a8c",
+        "size": 36878,
+        "sha512": "ed89ad478a3e6090fbfa0d4b4d29b17b4cb5c4b5255c2ed434c3490474e31c4791a743f00db312e18a45d062c07df03885b18bc2deba123a89290b86f4b96bff",
         "runtimeEligible": true,
         "replaceSha256": [
+          "1b6822c1733b8ddc3dc12760e8319caed014f3148493bf1c826ca6f5153e3f14",
           "6fad6b8e325992330105324c1777ba583137776d1de3b8f52887b84764efc90b"
         ]
       },

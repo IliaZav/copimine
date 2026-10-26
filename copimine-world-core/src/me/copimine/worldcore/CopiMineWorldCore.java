@@ -852,10 +852,19 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
             }
             evacuationQueued.remove(request.playerUuid());
             Player player = Bukkit.getPlayer(request.playerUuid());
-            if (player != null && player.isOnline() && matchesAccessWorld(request.access(), player.getWorld())) {
+            if (player != null && player.isOnline() && stillBlocked(request.access(), player.getWorld())) {
                 redirectPlayer(player, request.access(), request.message());
             }
         }
+    }
+
+    /**
+     * Access can be opened while a redirect sits in the queue or waits for its chunk, so the
+     * world must still be closed at the moment the teleport would actually run.
+     */
+    private boolean stillBlocked(WorldAccess requested, World world) {
+        WorldAccess current = accessFor(world);
+        return current != null && !current.enabled() && matchesAccessWorld(requested, world);
     }
 
     private boolean isBlockedWorld(World world, boolean portalTeleport) {
@@ -930,6 +939,9 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
                 if (preparationError != null) {
                     getLogger().warning("WorldCore failed to prepare redirect chunk: " + preparationError.getMessage());
                 }
+                return;
+            }
+            if (!stillBlocked(access, player.getWorld())) {
                 return;
             }
             Location safe = access.redirectToSafeSpawn() ? safeSpawn(target) : findSafeLocation(target, target.getSpawnLocation());

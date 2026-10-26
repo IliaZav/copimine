@@ -546,6 +546,7 @@ $pureTests = @(
   'TransitionRuneControllerTest',
   'PreBossTickSnapshotPolicyTest',
   'TransitionRunePolicyTest',
+  'VictorySagaRecoveryPolicyTest',
   'Wave4PressurePackPolicyTest',
   'IntermissionWatchdogPolicyTest',
   'Wave3PortalPolicyTest',

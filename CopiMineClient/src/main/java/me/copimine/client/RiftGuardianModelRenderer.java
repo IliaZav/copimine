@@ -49,7 +49,23 @@ public final class RiftGuardianModelRenderer {
             CopiMineClientLogger.error("Unknown End Rift boss animation: " + raw
                     + "; keeping an explicit UNKNOWN pose", null);
         }
-        return resolved.wireId();
+        return authoredClipFor(resolved).wireId();
+    }
+
+    /**
+     * Known actions that ship no clip of their own must still show authored motion instead of
+     * freezing in the identity pose. This is presentation only: server timing stays authoritative.
+     * An explicit UNKNOWN keeps the rest pose on purpose.
+     */
+    private static BossAnimationId authoredClipFor(BossAnimationId resolved) {
+        return switch (resolved) {
+            case CAST_CHARGE, CAST_RELEASE, CAST_IMPACT, RECOVERY, MARK_CONTROL,
+                    SPELL_VOID_BLAST, SPELL_RIFT_PROJECTILE, SPELL_RIFT_ARROWS,
+                    SPELL_ARROW_SALVO, SPELL_VOID_MARK, FINAL_STRIKE -> BossAnimationId.CHEST_STRIKE;
+            case SUMMON_CHANNEL, SPELL_SUMMON, SPELL_SUMMON_SERVANTS,
+                    SPELL_RIFT_OBELISKS, SPELL_ARENA_INFERNO -> BossAnimationId.GROUND_SLAM;
+            default -> resolved;
+        };
     }
 
     public enum Phase {

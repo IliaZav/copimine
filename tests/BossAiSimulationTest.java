@@ -6,6 +6,8 @@ import me.copimine.endevent.domain.BossHazardBudget;
 import me.copimine.endevent.domain.BossIntent;
 import me.copimine.endevent.domain.BossPerceptionSnapshot;
 import me.copimine.endevent.domain.BossPhase;
+import me.copimine.endevent.domain.BossPhasePolicy;
+import me.copimine.endevent.domain.EndRiftAiPolicy;
 
 public final class BossAiSimulationTest {
     private static final UUID A = UUID.fromString("00000000-0000-0000-0000-000000000001");
@@ -80,6 +82,15 @@ public final class BossAiSimulationTest {
         check(BossHazardBudget.arenaInfernoDurationTicks(99999)
                         == BossHazardBudget.MAX_ARENA_INFERNO_TICKS,
                 "inferno duration must clamp runaway configuration");
+
+        check(BossPhasePolicy.spellPool(BossPhase.OVERLOAD)
+                        .contains(EndRiftAiPolicy.BossSpell.ARENA_INFERNO),
+                "OVERLOAD must be able to cast the arena inferno");
+        check(!BossPhasePolicy.spellPool(BossPhase.RIFT)
+                        .contains(EndRiftAiPolicy.BossSpell.ARENA_INFERNO),
+                "arena inferno must stay out of the RIFT phase");
+        check(BossHazardBudget.arenaInfernoDurationTicks(400) == 400,
+                "configured arena inferno must last the authored 400 ticks");
 
         BossPerceptionSnapshot.PlayerObservation survivor =
                 new BossPerceptionSnapshot.PlayerObservation(B, true, 0.2, 6, true,

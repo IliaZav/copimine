@@ -36,6 +36,9 @@ public final class BossHazardBudget {
         ARENA_INFERNO(2, false),
         SUMMON_SERVANTS(1, false),
         BOSS_FIREBALL(1, false),
+        MELEE_SWIPE(1, false),
+        CHEST_STRIKE(1, false),
+        GROUND_SLAM(2, false),
         REPOSITION(0, false),
         RECOVER(0, false);
 

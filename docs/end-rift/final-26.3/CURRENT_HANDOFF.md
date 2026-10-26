@@ -65,7 +65,7 @@ The previous installed EndEvent artifacts `07a5b6ecd77077061b3cee57082e9d9cfe840
 
 ## Hard blockers
 
-1. `COPIMINE_CLIENT_BRIDGE_PRIVATE_KEY_FILE` is absent; the existing signing secret does not match the pinned V4 trust anchor. No approved test-anchor override exists.
+1. Resolved 2026-10-25: the signer is supplied at startup through `COPIMINE_CLIENT_BRIDGE_PRIVATE_KEY_FILE` (Base64 PKCS#8 Ed25519, outside the repo). Narcotics now logs `Client bridge signer is ready.` and EndEvent `signed V4 bridge registered`; the key's SPKI fingerprint matches the pinned anchor `2dadc8a9…ff62`. Per-player V4 readiness still needs a live signed client to confirm.
 2. Paper and PostgreSQL are stopped; canonical listeners `25567`/`55434` are absent.
 3. No real 2/5/10/11/20-player runs, restart/death/quit recovery, combat performance or native F2/video/audio evidence.
 4. GitLab push/CI remains unavailable (previous HTTP 401); GitHub is the active remote.
@@ -74,7 +74,7 @@ Do not mark Waves 1–7 fully accepted until those blockers are cleared. Automat
 
 ## Next safe actions
 
-1. Provide the approved signer through normal protected configuration; do not disable V4/AuthMe and do not generate a replacement keypair.
+1. Signer is wired (see blocker 1); confirm per-player V4 readiness with a signed client and only then re-run the Wave 6 capture and Wave 7 Echo trials.
 2. Start the disposable runtime with the official initializer/installer and loopback-only ports.
 3. Run the existing live runners: 2, 5, 10, 11, 20 players; all waves; death/quit/reconnect; restart; targeted boundaries; second seed.
 4. Record accepted hit/death/objective receipts, timings, TPS/MSPT/memory and exact hashes.

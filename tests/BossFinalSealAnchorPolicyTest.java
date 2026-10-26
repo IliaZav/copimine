@@ -15,6 +15,9 @@ public final class BossFinalSealAnchorPolicyTest {
                         12.0D, 64.0D, -3.5D,
                         10.5D, 64.0D, -3.5D, 0.05D),
                 "an offset boss must not be reported as on Core");
+        require(BossFinalSealAnchorPolicy.HOVER_HEIGHT >= 2.0D
+                        && BossFinalSealAnchorPolicy.HOVER_HEIGHT <= 4.0D,
+                "LAST_SEAL must hover clear of the Core block but stay in reach");
         System.out.println("BossFinalSealAnchorPolicyTest OK");
     }
 

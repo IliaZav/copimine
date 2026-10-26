@@ -3955,6 +3955,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 Map<String, Object> toAccount = resolveManagedAccount(connection, toAccountId, toOwnerUuid, toOwnerName);
                 String fromId = string(fromAccount.get("account_id"));
                 String resolvedToId = string(toAccount.get("account_id"));
+                if (fromId.equals(resolvedToId)) {
+                    return new TxnResult(false, "INVALID_REQUEST", "Cannot transfer AR to the same account.", 0L, "");
+                }
                 PinVerification pinVerification = verifyPersonalPinForMutation(
                         connection, playerKey, providedPin, "economy-artifact-transfer");
                 if (!pinVerification.valid()) {
@@ -4018,6 +4021,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 Map<String, Object> toAccount = ensureBankAccount(connection, toUuid.toString(), first(toName, ""));
                 String resolvedFromId = string(fromAccount.get("account_id"));
                 String toId = string(toAccount.get("account_id"));
+                if (resolvedFromId.equals(toId)) {
+                    return new TxnResult(false, "INVALID_REQUEST", "Cannot transfer AR to the same account.", 0L, "");
+                }
                 String txKey = first(idempotencyKey, "managed-transfer-" + UUID.randomUUID());
                 TxnResult replay = replayTransferIfCommitted(connection, txKey, resolvedFromId, toId, amount);
                 if (replay != null) {

@@ -27,7 +27,15 @@ public final class BossRealHealthDamagePolicy {
             return new Result(current, 0.0D, false, false);
         }
         double remaining = Math.max(0.0D, current - effective);
-        return new Result(remaining, effective, true, remaining <= 0.0D);
+        // One hit may cross at most one band: stage progression (ties, banners,
+        // ability swaps) is authored per transition, so clamping to the next
+        // threshold is the only way a big crit cannot skip a phase.
+        double floor = BossPhasePolicy.bandFloor(current, maxHealth);
+        if (floor > 0.0D && floor < current && remaining < floor) {
+            remaining = floor;
+        }
+        double applied = current - remaining;
+        return new Result(remaining, applied, applied > 0.0D, remaining <= 0.0D);
     }
 
     public static Result apply(double currentHealth, double finalDamage,

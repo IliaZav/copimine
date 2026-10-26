@@ -18,6 +18,9 @@ public final class EndRiftAiPolicy {
         SUMMON_SERVANTS("summon_servants", "Призыв слуг Разлома"),
         ARENA_INFERNO("arena_inferno", "Пламя Разлома"),
         BOSS_FIREBALL("boss_fireball", "Огненный шар Разлома"),
+        MELEE_SWIPE("melee_swipe", "Взмах когтя"),
+        CHEST_STRIKE("chest_strike", "Удар в грудь"),
+        GROUND_SLAM("ground_slam", "Удар по земле"),
         FINAL_STRIKE("final_strike", "Приговор Разлома");
 
         private final String id;

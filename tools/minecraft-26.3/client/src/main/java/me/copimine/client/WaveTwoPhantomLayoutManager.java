@@ -92,7 +92,7 @@ final class WaveTwoPhantomLayoutManager {
     synchronized boolean isComplete(String requestedDimension, String expectedEventId,
                                     long expectedGeneration, int expectedCycle) {
         return matches(requestedDimension, expectedEventId, expectedGeneration, expectedCycle)
-                && active && positions.size() == WaveTwoPhantomLayout.TARGET_PHANTOM_COUNT;
+                && active && positions.size() >= WaveTwoPhantomLayout.MIN_PHANTOM_COUNT;
     }
 
     synchronized int cycle(String requestedDimension, String expectedEventId, long expectedGeneration) {

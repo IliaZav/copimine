@@ -3,6 +3,8 @@ package me.copimine.endevent.domain;
 /** Position contract for the boss's final seal phase. */
 public final class BossFinalSealAnchorPolicy {
     public static final double DEFAULT_TOLERANCE = 0.15D;
+    /** LAST_SEAL hovers this far above the Core top instead of standing on it. */
+    public static final double HOVER_HEIGHT = 2.5D;
 
     private BossFinalSealAnchorPolicy() {
     }

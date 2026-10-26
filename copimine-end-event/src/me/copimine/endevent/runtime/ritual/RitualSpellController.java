@@ -7,6 +7,7 @@ import me.copimine.endevent.domain.FallingAnvilVolleyPolicy.LandingPoint;
 import me.copimine.endevent.domain.GravityAnchorPolicy;
 import me.copimine.endevent.domain.GravityAnchorPolicy.AnchorPoint;
 import me.copimine.endevent.domain.GravityAnchorPolicy.Phase;
+import me.copimine.endevent.domain.RitualSphereScalingPolicy;
 
 /**
  * One generation-fenced scheduler for Wave 6 major Caster spells.
@@ -152,7 +153,7 @@ public final class RitualSpellController {
         if (eventGeneration != generation
                 || requestedCaster == null
                 || combinedProjectiles < 0
-                || combinedProjectiles > 2
+                || combinedProjectiles > RitualSphereScalingPolicy.MAX_PROJECTILES_PER_VOLLEY
                 || nowTick < 0L
                 || !waveActive
                 || !casterAlive

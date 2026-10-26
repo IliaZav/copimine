@@ -70,9 +70,12 @@ public final class EndRiftTentacleRig {
         float z = origin.z() - parentOrigin.z() + delta.translationZ();
         return new Matrix4f(parentMatrix)
                 .translate(x, y, z)
-                .rotateXYZ((float) Math.toRadians(restRotation.x()) + delta.pitch(),
-                        (float) Math.toRadians(restRotation.y()) + delta.yaw(),
-                        (float) Math.toRadians(restRotation.z()) + delta.roll())
+                // Artist/Blockbench bones use Minecraft's ZYX order with
+                // negated Y/Z.  rotateXYZ made each independent root section
+                // drift apart at the joints during grab/hold/throw.
+                .rotateZYX(-((float) Math.toRadians(restRotation.z()) + delta.roll()),
+                        -((float) Math.toRadians(restRotation.y()) + delta.yaw()),
+                        (float) Math.toRadians(restRotation.x()) + delta.pitch())
                 .scale(delta.scaleX(), delta.scaleY(), delta.scaleZ());
     }
 
@@ -118,7 +121,7 @@ public final class EndRiftTentacleRig {
             EndRiftTentaclePose.BoneTransform rootDelta = safePose.root();
             Matrix4f rootMatrix = new Matrix4f()
                     .translate(rootDelta.translationX(), rootDelta.translationY(), rootDelta.translationZ())
-                    .rotateXYZ(rootDelta.pitch(), rootDelta.yaw(), rootDelta.roll())
+                    .rotateZYX(-rootDelta.roll(), -rootDelta.yaw(), rootDelta.pitch())
                     .scale(rootDelta.scaleX(), rootDelta.scaleY(), rootDelta.scaleZ());
             List<RenderedVertex> vertices = new ArrayList<>(model.elements().size() * 24);
             for (KaguneModelImporter.Bone root : roots) {

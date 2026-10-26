@@ -413,6 +413,8 @@ $pureTests = @(
   'EventSnapshotGenerationBoundaryTest',
   'EncounterGenerationPreflightTest',
   'BossDamagePolicyTest',
+  'BossEdgeVolleyPolicyTest',
+  'BossFinalSealAnchorPolicyTest',
   'BossAnimationIdTest',
   'BossAnimationPosePolicyTest',
   'CreativeTestAdmissionPolicyTest',

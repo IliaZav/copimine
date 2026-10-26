@@ -10,6 +10,8 @@ import java.util.function.Function;
 /** Deterministic candidates for the server-owned stationary Wave 2 phantom presentation. */
 public final class WaveTwoPhantomLayoutPolicy {
     public static final int TARGET_PHANTOM_COUNT = 32;
+    /** The spec allows 25–35 phantom slots, so a partly blocked ring must not void the layout. */
+    public static final int MIN_PHANTOM_COUNT = 25;
     private static final int CANDIDATES_PER_RING = TARGET_PHANTOM_COUNT;
     private static final double[] RADII = {6.0D, 8.0D, 10.0D, 12.0D};
 

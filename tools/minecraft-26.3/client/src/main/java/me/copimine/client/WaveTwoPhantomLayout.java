@@ -9,6 +9,8 @@ import java.util.function.Function;
 /** Deterministic world positions for the client-only Wave 2 phantom presentation. */
 final class WaveTwoPhantomLayout {
     static final int TARGET_PHANTOM_COUNT = 32;
+    /** Mirror of the server floor: a partly blocked ring still produces a playable layout. */
+    static final int MIN_PHANTOM_COUNT = 25;
     private static final int PHANTOMS_PER_RING = 16;
     private static final double[] RING_RADII = {6.0D, 8.0D, 10.0D, 12.0D};
 

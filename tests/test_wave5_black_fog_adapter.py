@@ -230,6 +230,8 @@ public final class BlackFogAdapterProbe {
 
     EventPhase phase = EventPhase.WAVE_5;
     BlackFogPhase blackFogPhase = BlackFogPhase.COMBAT;
+    boolean fogSafeZoneTelegraphActive;
+    static final long FOG_SAFE_ZONE_TELEGRAPH_MILLIS = 3_000L;
     String eventId = "event", recoveryReason = "";
     long generation = 4L, blackFogPhaseDeadlineMillis, currentFogZoneSetupRetryAtMillis;
     int activeWave = 5, currentFogCycle, currentFogZoneCount, currentFogZoneSide, currentFogZoneSetupAttempts;
@@ -368,11 +370,16 @@ public final class BlackFogAdapterProbe {
                 p.blackFogPhaseDeadlineMillis = now;
                 for (int cycle = 0; cycle < 3; cycle++) {
                     p.tickBlackFogObjective(now);
-                    check(p.blackFogPhase == BlackFogPhase.SAFE, "due combat must reveal a safe area");
+                    check(p.blackFogPhase == BlackFogPhase.COMBAT
+                                    && p.fogSafeZoneTelegraphActive,
+                            "due combat must telegraph the safe area first");
+                    long safeAt = now + 3_000L;
+                    p.tickBlackFogObjective(safeAt);
+                    check(p.blackFogPhase == BlackFogPhase.SAFE, "telegraph must reveal a safe area");
                     int expectedSide = cycle == 0 ? 2 : 1;
                     check(p.currentFogZoneSide == expectedSide,
                             "four-player safe zones must shrink by the player-count policy");
-                    long safeDeadline = now + 8_000L;
+                    long safeDeadline = safeAt + 8_000L;
                     p.tickBlackFogObjective(safeDeadline);
                     check(p.blackFogPhase == BlackFogPhase.FOG && p.frozen,
                             "safe-zone deadline must enter fog and hold mob AI");
@@ -415,6 +422,10 @@ public final class BlackFogAdapterProbe {
                 p.liveWaveMobCount = 3;
                 p.blackFogPhaseDeadlineMillis = 40_000L;
                 p.tickBlackFogObjective(40_000L);
+                check(p.blackFogPhase == BlackFogPhase.COMBAT
+                                && p.fogSafeZoneTelegraphActive,
+                        "twenty-player setup must telegraph the safe area first");
+                p.tickBlackFogObjective(43_000L);
                 check(p.blackFogPhase == BlackFogPhase.SAFE
                                 && p.currentFogZoneSide == 1 && p.currentFogZoneCount == 20,
                         "twenty eligible players must receive twenty one-cell safe zones before fog");
@@ -432,9 +443,13 @@ public final class BlackFogAdapterProbe {
                 p.liveWaveMobCount = 3;
                 p.blackFogPhaseDeadlineMillis = 40_000L;
                 p.tickBlackFogObjective(40_000L);
-                check(p.blackFogPhase == BlackFogPhase.SAFE
+                check(p.blackFogPhase == BlackFogPhase.COMBAT
+                                && p.fogSafeZoneTelegraphActive
                                 && p.currentSafeZoneCells.size() == 9,
                         "initial safe-zone setup must fit the two currently eligible players");
+                p.tickBlackFogObjective(43_000L);
+                check(p.blackFogPhase == BlackFogPhase.SAFE,
+                        "the initial telegraph must activate the safe area");
                 long firstSafeDeadline = p.blackFogPhaseDeadlineMillis;
                 for (int i = 0; i < 8; i++) p.eligiblePlayers.add(new Player());
                 p.tickBlackFogObjective(firstSafeDeadline);

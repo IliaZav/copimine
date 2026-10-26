@@ -5,7 +5,9 @@
  */
 const path = require('path')
 const { resolveLocalEndRiftEndpoint } = require('./LocalEndRiftEndpoint')
-const mc = require(path.resolve(__dirname, '..', 'local-runtime', 'mc-bot', 'node_modules', 'minecraft-protocol'))
+const protocolRoot = process.env.END_RIFT_BOT_PROTOCOL_ROOT ||
+  path.resolve(__dirname, '..', 'local-runtime', 'mc-bot', 'node_modules', 'minecraft-protocol')
+const mc = require(protocolRoot)
 
 const { host, port } = resolveLocalEndRiftEndpoint()
 const username = process.argv[2] || 'EndRiftBot'
@@ -22,7 +24,7 @@ const client = mc.createClient({
   host,
   port,
   username,
-  version: '1.21.1',
+  version: process.env.END_RIFT_BOT_VERSION || '1.21.1',
   auth: 'offline',
   disableChatSigning: true,
   // The phase harness owns the reply explicitly below.  Keeping a single
@@ -40,7 +42,20 @@ const client = mc.createClient({
   }
 })
 
+const sessionEpoch = Date.now()
 let joined = false
+const originalWrite = client.write.bind(client)
+client.write = (name, params) => {
+  if (process.env.END_RIFT_BOT_LOG_OUT === '1') {
+    console.log(`OUT ${((Date.now() - sessionEpoch) / 1000).toFixed(2)} ${name} ${JSON.stringify(params)}`)
+  }
+  try {
+    return originalWrite(name, params)
+  } catch (error) {
+    console.log(`OUT_ERROR ${name} ${error.message}`)
+    throw error
+  }
+}
 let position = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }
 let positionTimer = null
 let sessionStarted = false
@@ -71,7 +86,12 @@ function startSession () {
 // teleport arrives. Mirror the vanilla acknowledgement and keep sending the
 // accepted position so a local bot can genuinely stand on a rune.
 client.on('packet', (data, meta) => {
+  if (process.env.END_RIFT_BOT_LOG_PACKETS === '1') {
+    console.log(`PKT ${((Date.now() - sessionEpoch) / 1000).toFixed(2)} ${meta?.state}:${meta?.name}`)
+  }
   if (meta?.name === 'login') console.log(`CLIENT_LOGIN ${username}`)
+  // Paper 26.3 keeps configuration open until the client answers its ping.
+  if (meta?.name === 'ping') client.write('pong', { id: data.id })
   if (meta?.name === 'finish_configuration') console.log(`CLIENT_FINISH_CONFIGURATION ${username}`)
   if (meta?.name === 'disconnect') console.log(`CLIENT_DISCONNECT ${username} ${JSON.stringify(data)}`)
   if (process.env.END_RIFT_BOT_LOG_SOUND === '1'
@@ -81,6 +101,29 @@ client.on('packet', (data, meta) => {
   if (process.env.END_RIFT_BOT_LOG_ALL_CHAT === '1'
       && ['system_chat', 'player_chat', 'disguised_chat', 'set_action_bar_text'].includes(meta?.name)) {
     console.log(`CHAT_PACKET ${username} ${meta.name} ${JSON.stringify(data)}`)
+  }
+  if (meta?.name === 'show_dialog') {
+    // Native 26.3 dialogs (AuthMe pre-join register/login) block configuration
+    // until the client posts a custom click action back.
+    const dialog = data?.dialog?.value ?? {}
+    const buttons = dialog.actions?.value?.value ?? []
+    const submitId = buttons
+      .map(entry => entry?.action?.value?.id?.value)
+      .find(id => typeof id === 'string' && id.endsWith('/submit'))
+    console.log(`DIALOG ${username} ${submitId || 'no-submit'} ${JSON.stringify(data)}`)
+    const password = process.env.END_RIFT_BOT_AUTH_PASSWORD
+    if (submitId && password) {
+      const inputs = {}
+      for (const input of dialog.inputs?.value?.value ?? []) {
+        const key = input?.key?.value
+        if (key) inputs[key] = { type: 'string', value: password }
+      }
+      client.write('custom_click_action', {
+        id: submitId,
+        nbt: { type: 'compound', value: inputs }
+      })
+      console.log(`DIALOG_SUBMIT ${username} ${submitId}`)
+    }
   }
   if (meta?.name === 'add_resource_pack') {
     // The local protocol client does not render/download packs.  Report the
@@ -98,10 +141,18 @@ client.on('packet', (data, meta) => {
     yaw: relative('yaw') ? position.yaw + data.yaw : data.yaw,
     pitch: relative('pitch') ? position.pitch + data.pitch : data.pitch
   }
-  client.write('teleport_confirm', { teleportId: data.teleportId })
+  // 26.3 echoes the accepted position back with the teleport id.
+  client.write('teleport_confirm', {
+    teleportId: data.teleportId,
+    x: position.x,
+    y: position.y,
+    z: position.z,
+    yRot: position.yaw,
+    xRot: position.pitch
+  })
   if (positionTimer === null && process.env.END_RIFT_BOT_HOLD_POSITION !== '1') {
     positionTimer = setInterval(() => {
-      client.write('position_look', { ...position, onGround: true })
+      client.write('position_look', { ...position, flags: { onGround: true } })
     }, 100)
   }
   console.log(`SERVER_POSITION ${username} ${position.x},${position.y},${position.z}`)

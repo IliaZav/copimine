@@ -24,8 +24,10 @@ class WaveTwoPhantomLayoutManagerTest {
             WaveTwoPhantomLayout.Position position = new WaveTwoPhantomLayout.Position(index + 0.5, 64, -3.5);
             expected.add(new WaveTwoPhantomLayoutManager.Phantom(id, position));
             assertTrue(manager.apply(packet(10_000 + index, 8, id, position, "ACTIVE"), 500 + index));
-            if (index < WaveTwoPhantomLayout.TARGET_PHANTOM_COUNT - 1) {
+            if (index + 1 < WaveTwoPhantomLayout.MIN_PHANTOM_COUNT) {
                 assertFalse(manager.isComplete("the_end", EVENT.toString(), 4, 8));
+            } else {
+                assertTrue(manager.isComplete("the_end", EVENT.toString(), 4, 8));
             }
         }
 

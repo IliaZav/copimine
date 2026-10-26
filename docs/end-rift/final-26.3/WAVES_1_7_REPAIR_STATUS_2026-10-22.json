@@ -1,0 +1,1086 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-22",
+  "repository": {
+    "path": "D:/Desktop/Copimine/copimine-source-of-truth",
+    "branch": "codex/copimine-source-of-truth-20261020",
+    "head": "88cd812a62fff626a760a6c00e4ea351d9bcc3e0",
+    "implementationCommit": "7fb4cb3360bd58fc1ac1b03af3c3183f5c4f243f",
+    "workingTreeClean": false,
+    "commitOrPushMadeThisPass": false,
+    "preExistingWorkPreserved": true
+  },
+  "status": "superseded_historical_snapshot",
+  "agents": {
+    "started": 0,
+    "reason": "Owner directly requested work without subagents."
+  },
+  "waves": [
+    {
+      "wave": 1,
+      "sourceSummary": "Carrier custody, charge ownership, recovery, and delivery lifecycle fencing.",
+      "automatedChecks": "passed",
+      "livePaperBots": "not_run"
+    },
+    {
+      "wave": 2,
+      "sourceSummary": "45-second mark rotation and bounded phantom/materialization behavior; client phantoms track the marked player with head-only yaw verified in four cardinal directions.",
+      "automatedChecks": "passed",
+      "livePaperBots": "not_run"
+    },
+    {
+      "wave": 3,
+      "sourceSummary": "Sequential portal capture, portal spawns, and portal elite/Rift Giant policies.",
+      "automatedChecks": "passed",
+      "livePaperBots": "not_run"
+    },
+    {
+      "wave": 4,
+      "sourceSummary": "Pressure packs, obelisk timing, physical reflected fireballs, projectile provenance.",
+      "automatedChecks": "passed",
+      "livePaperBots": "not_run"
+    },
+    {
+      "wave": 5,
+      "sourceSummary": "Fog timing, safe-zone capacity, refill, effect lease, and lifecycle.",
+      "automatedChecks": "passed",
+      "livePaperBots": "not_run"
+    },
+    {
+      "wave": 6,
+      "sourceSummary": "Five-caster progression, guard AI, prisoner controls, sphere spells, anvil scheduling, and hit-confirmed normal-zombie protection for nearby normal Skeletons; Enderman melee burst spans two pinned 20-tick vanilla attack windows.",
+      "automatedChecks": "passed",
+      "livePaperBots": "not_run"
+    },
+    {
+      "wave": 7,
+      "sourceSummary": "Named trial actors, room separation, Echo duel, physical passage, return/grace, cleanup, no generic elites.",
+      "automatedChecks": "passed",
+      "livePaperBots": "not_run"
+    }
+  ],
+  "verification": [
+    {
+      "name": "full_python_suite_pre_candidate_lock_update",
+      "command": "py -3.13 -m pytest -q --tb=short --basetemp=C:\\Temp\\CopiMine-Pytest-Full-<GUID>",
+      "exitCode": 0,
+      "passed": 2277,
+      "skipped": 8,
+      "failed": 0,
+      "warnings": 124,
+      "subtestsPassed": 2,
+      "durationSeconds": 514.64
+    },
+    {
+      "name": "end_rift_event_gate",
+      "command": "tests/RunEndRiftEventChecks.ps1 -SkipBuilds",
+      "exitCode": 0,
+      "result": "passed",
+      "scope": "Local event regression, Java policy/runtime probes, persistence/recovery, and Node bot/protocol checks."
+    },
+    {
+      "name": "enderman_melee_burst_adapter",
+      "command": "py -3.13 -m pytest -q tests/test_end_rift_guard_tactics_runtime.py",
+      "exitCode": 0,
+      "passed": 13,
+      "failed": 0,
+      "result": "passed; native melee remains active through tick 139 and stops at tick 140"
+    },
+    {
+      "name": "migration_server_plugin_inventory_contracts",
+      "command": "py -3.13 -m pytest -q tests/test_minecraft_migration_server_plugins.py",
+      "exitCode": 0,
+      "passed": 137,
+      "skipped": 1,
+      "failed": 0,
+      "result": "historical pass with the previous pinned candidate; not a full-suite result for the current candidate lock"
+    },
+    {
+      "name": "end_event_candidate_bytecode_inspection",
+      "command": "javap -verbose RitualGuardAbilityPolicy on preserved candidate and active runtime JARs",
+      "exitCode": 0,
+      "candidateEndermanBurstTicks": 40,
+      "activeRuntimeEndermanBurstTicks": 15,
+      "result": "current-source candidate differs from the JAR loaded by the active runtime"
+    },
+    {
+      "name": "client_and_paper_bridge_integration",
+      "command": "tests/RunClientBridgeV4Integration.ps1 -JavaHome <Temurin 25.0.4.1> -GradleExecutable <Gradle 9.8.1> -SkipEndRiftGate",
+      "exitCode": 0,
+      "result": "passed",
+      "scope": "Client JUnit, Paper bridge unit tests, fail-closed source guards, pinned plugin builds/resources, Paper API verification. It built a current-source EndEvent candidate but did not install it or load the signer."
+    },
+    {
+      "name": "end_event_candidate_reproducible_builds_previous_candidate",
+      "command": "tests/RunClientBridgeV4Integration.ps1 -JavaHome <Temurin 25.0.4.1> -GradleExecutable <Gradle 9.8.1> -SkipEndRiftGate; then gradle -p tools/minecraft-26.3 migrationPlugins --rerun-tasks",
+      "exitCodes": [
+        0,
+        0
+      ],
+      "buildCount": 2,
+      "candidateSize": 1859554,
+      "candidateSha256": "567bb428e36483baee15657d347c1e7afcf659540c3a8691f3657ad977ad25a8",
+      "candidateSha512": "cdf1c586e44287b28d32dca0b24b52903b28803a58068b03374b66f4c1ca5a2f954ec1a273e53869a6f128a560cb9e49ed0558930a6445828170eb0038d69511",
+      "result": "both pinned builds produced byte-identical current-source output; the candidate lock now matches it"
+    },
+    {
+      "name": "candidate_lock_focused_inventory_checks_previous_candidate",
+      "command": "py -3.13 -m pytest -q <five focused migration artifact tests>",
+      "exitCode": 1,
+      "passed": 4,
+      "failed": 1,
+      "failedTest": "test_active_26_3_plugin_directory_matches_the_unique_locked_inventory",
+      "failure": "active runtime receipt still reports SHA-256 43a06dd862a1cc8ee0961867de38cd2ef7b065cb40237457303c5999accc299c; new locked candidate is 567bb428e36483baee15657d347c1e7afcf659540c3a8691f3657ad977ad25a8 and is not installed",
+      "result": "deployment gate remains strict; no assertion was weakened"
+    },
+    {
+      "name": "migration_server_plugin_inventory_contracts_after_previous_candidate_lock",
+      "command": "py -3.13 -m pytest -q --basetemp=<unique temp directory> tests/test_minecraft_migration_server_plugins.py --tb=short",
+      "exitCode": 1,
+      "passed": 136,
+      "failed": 1,
+      "skipped": 1,
+      "failedTest": "test_active_26_3_plugin_directory_matches_the_unique_locked_inventory",
+      "result": "the strict active receipt gate remains red until the new locked candidate is installed after a normal Paper stop"
+    },
+    {
+      "name": "end_event_latest_candidate_reproducible_builds",
+      "command": "Pinned Gradle 9.8.1 endEventJar in an isolated stage; repeated with --rerun-tasks",
+      "exitCodes": [
+        0,
+        0
+      ],
+      "buildCount": 2,
+      "candidateSize": 1862930,
+      "candidateSha256": "138ca3011bbbb6ee01a6819e2455bde5e021a910ca01737b33accbf4e1e91e6b",
+      "candidateSha512": "62dc623ba299c6e129ebf89b8041ac3686913822ae963af0032f21f741edff0ecd44fc064ae2770ad3e3c0ef8fec9b9510fb8b0c336ab6172e7013c322a6f0cd",
+      "modifiedProductionJavaFilesMatchingStagedCopy": 9,
+      "installed": false,
+      "result": "both staged builds produced byte-identical current-source candidate; current lock and candidate cache match"
+    },
+    {
+      "name": "migration_server_plugin_inventory_contracts_after_latest_candidate_lock",
+      "command": "py -3.13 -m pytest -q --tb=short --basetemp=<unique temp directory> tests/test_minecraft_migration_server_plugins.py",
+      "exitCode": 1,
+      "passed": 136,
+      "failed": 1,
+      "skipped": 1,
+      "failedTest": "test_active_26_3_plugin_directory_matches_the_unique_locked_inventory",
+      "failure": "active runtime receipt reports SHA-256 43a06dd862a1cc8ee0961867de38cd2ef7b065cb40237457303c5999accc299c; latest locked candidate is 138ca3011bbbb6ee01a6819e2455bde5e021a910ca01737b33accbf4e1e91e6b and is not installed",
+      "assertionsWeakened": false
+    },
+    {
+      "name": "end_rift_full_local_gate_latest_wave6_source",
+      "command": "tests/RunEndRiftEventChecks.ps1 -SkipBuilds",
+      "exitCode": 0,
+      "passed": true,
+      "groups": {
+        "wave7Echo": 178,
+        "navigationAndPassage": 25,
+        "waves1_3_4_5": 139,
+        "waves1_3_4_5Skipped": 1,
+        "waveLifecycle": 51,
+        "wave7Return": 10,
+        "additionalFocusedGroupsPassed": [
+          8,
+          6,
+          3,
+          64,
+          2,
+          3,
+          75,
+          149
+        ],
+        "currentPythonContracts": 335,
+        "wave6Mechanics": 50,
+        "nodeBotReflection": 13,
+        "ritualRestart": 4
+      },
+      "javaPolicyAndPersistenceSuites": "passed",
+      "artifactHashes": "passed",
+      "diffHygiene": "passed",
+      "nativeVerified": false,
+      "result": "all current local event checks passed; this is automated evidence and does not establish live Paper gameplay"
+    },
+    {
+      "name": "migration_server_plugin_installer_validate_only",
+      "command": "py -3.13 scripts/minecraft/install_migration_server_plugins.py --validate-only",
+      "exitCode": 1,
+      "result": "blocked",
+      "reason": "Paper held the runtime lifecycle lock; no bypass or installation was attempted."
+    },
+    {
+      "name": "node_protocol_tests",
+      "exitCode": 0,
+      "passed": 13,
+      "failed": 0
+    },
+    {
+      "name": "copimine_profile_install_and_validate",
+      "exitCode": 0,
+      "result": "passed",
+      "scope": "Official installation and read-only validation of 12 locked external mods, CopiMineClient, and resource pack."
+    },
+    {
+      "name": "server_read_only_validation_before_candidate_lock_reconciliation",
+      "exitCode": 0,
+      "result": "passed",
+      "databaseReadiness": true,
+      "loopbackOnly": true,
+      "scope": "Historical pass before the current EndEvent candidate lock changed; it is not the result of the latest validation attempt."
+    },
+    {
+      "name": "postgres_lifecycle_and_secret_output_recheck",
+      "command": "py -3.13 -m pytest -q --tb=short --basetemp=<unique temp directory> tests/test_migration_database_environment_output.py tests/test_migration_postgres_lifecycle.py tests/test_migration_postgres_restart_contract.py",
+      "exitCode": 0,
+      "passed": 9,
+      "failed": 0,
+      "durationSeconds": 4.22
+    },
+    {
+      "name": "wave3_portal_and_wave6_prisoner_client_recheck",
+      "command": "py -3.13 -m pytest -q --tb=short --basetemp=<unique temp directory> tests/test_end_rift_portal_layer_runtime.py tests/test_end_rift_portal_presentation_contract.py tests/test_wave3_portal_spawn_runtime_contract.py tests/test_end_rift_prisoner_client_boundaries.py tests/test_minecraft_26_3_client_command_api.py tests/test_end_rift_wave6_visual_mechanics.py",
+      "exitCode": 0,
+      "passed": 121,
+      "failed": 0,
+      "warnings": 4,
+      "result": "Pillow Image.Image.getdata deprecation warnings only",
+      "scope": "source and adapter evidence only; no native visual or live-bot acceptance"
+    },
+    {
+      "name": "owned_server_and_postgres_read_only_recheck_before_candidate_lock_reconciliation",
+      "command": "StartMigrationTestServer.ps1 -JavaHome <Temurin 25.0.4.1> -PostgresBin <PostgreSQL 16.15 bin> -FullPluginSet -ValidateOnly",
+      "exitCode": 0,
+      "result": "historical pass before current EndEvent candidate-lock reconciliation",
+      "databaseReadiness": true,
+      "loopbackOnly": true,
+      "servicesStartedOrModified": false
+    },
+    {
+      "name": "v4_key_environment_scope_inventory",
+      "command": "Presence-only COPIMINE_CLIENT_BRIDGE_PRIVATE_KEY_FILE check for Process, User, and Machine environment scopes",
+      "result": "unset_in_all_checked_scopes",
+      "keyPathOrContentsPrinted": false,
+      "externalPaperProcessEnvironmentInspected": false
+    },
+    {
+      "name": "pip_audit",
+      "command": "py -3.13 -m pip_audit -r requirements-security.txt",
+      "exitCode": 0,
+      "result": "no_known_vulnerabilities",
+      "scope": "requirements-security.txt"
+    },
+    {
+      "name": "coderabbit",
+      "result": "completed",
+      "issues": 0,
+      "reviewedFiles": 40,
+      "excludedBinaryFiles": [
+        "copimine-artifacts/CopiMineArtifacts.jar",
+        "copimine-narcotics/CopiMineNarcotics.jar"
+      ],
+      "coversFinalDeadSkeletonGuard": false
+    },
+    {
+      "name": "ci",
+      "result": "not_run",
+      "reason": "The verified working tree remains uncommitted."
+    },
+    {
+      "name": "server_validate_only_after_previous_candidate_lock_reconciliation",
+      "command": "StartMigrationTestServer.ps1 -JavaHome <Temurin 25.0.4.1> -PostgresBin <PostgreSQL 16.15 bin> -FullPluginSet -ValidateOnly",
+      "exitCode": 1,
+      "result": "blocked before database validation by the strict active plugin inventory gate",
+      "failure": "Active EndEvent SHA-256 is 43a06dd862a1cc8ee0961867de38cd2ef7b065cb40237457303c5999accc299c; locked current-source candidate SHA-256 is 567bb428e36483baee15657d347c1e7afcf659540c3a8691f3657ad977ad25a8.",
+      "servicesStartedOrModified": false,
+      "assertionsWeakened": false
+    },
+    {
+      "name": "postgres_identity_read_only_after_candidate_lock_reconciliation",
+      "command": "Ensure-MigrationPostgresReady -WorkspaceRoot <source-of-truth> -RuntimeDirectory <end-rift-server-26.3> -PostgresBin <PostgreSQL 16.15 bin> -StartIfStopped:$false",
+      "exitCode": 0,
+      "ready": true,
+      "endpoint": "127.0.0.1:55434",
+      "database": "copimine_migration_test",
+      "schema": "copimine_migration_26_3_candidate",
+      "role": "copimine_migration_test",
+      "postgresqlVersion": "16.15",
+      "servicesStartedOrModified": false,
+      "credentialsIncluded": false
+    },
+    {
+      "name": "paper_process_read_only_identity_and_log_recheck",
+      "exitCode": 0,
+      "processId": 22072,
+      "listener": "127.0.0.1:25567",
+      "pinnedJavaPathMatches": true,
+      "runtimeRootMarkerMatches": true,
+      "runtimePortMarkerMatches": true,
+      "lockedPaperJarMarkerMatches": true,
+      "activeWorld": "world-codex-wave-20261018",
+      "paperDoneInLog": true,
+      "requiredPluginEnableMarkers": [
+        "CopiMineEndEvent",
+        "CopiMineNarcotics",
+        "CopiMineEconomyCore",
+        "CopiMineElectionCore",
+        "CopiMineArtifacts",
+        "CopiMineUltimateAdminPlus",
+        "CopiMineWorldCore",
+        "AuthEffects",
+        "AuthMe"
+      ],
+      "paperErrorLines": 0,
+      "v4SignerFailureReason": "CONFIGURATION_ABSENT",
+      "waveGameplayRun": false,
+      "credentialsIncluded": false
+    },
+    {
+      "name": "wave2_client_suite_and_pinned_jar_build",
+      "command": "gradle --no-daemon --project-cache-dir build/minecraft-26.3/gradle-project-cache/client -p tools/minecraft-26.3/client test jar",
+      "exitCode": 0,
+      "tests": 281,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "result": "passed",
+      "artifactSize": 15010246,
+      "artifactSha256": "7109be41f04d8bce5a880712d7a5b7350f08a894fc312205f08b1c9d2914b5c1",
+      "artifactSha512": "28fe88c4b451f10cf22f21a781940f5532ae44f885f3bc80d2ff0ad10bffb23465dc0018842d6a5806783d2953638d47bb447f48cbc453e01bf239735209ff69"
+    },
+    {
+      "name": "client_jar_repeat_build",
+      "command": "gradle --no-daemon --project-cache-dir build/minecraft-26.3/gradle-project-cache/client -p tools/minecraft-26.3/client jar --rerun-tasks",
+      "exitCode": 0,
+      "result": "same size and SHA-256/SHA-512 as the preceding test jar build"
+    },
+    {
+      "name": "current_client_profile_install_and_validate",
+      "command": "InstallMigrationProfile.ps1 -ProfileDirectory D:\\.minecraft\\versions\\CopiMine; InstallMigrationProfile.ps1 -ProfileDirectory D:\\.minecraft\\versions\\CopiMine -ValidateOnly",
+      "exitCode": 0,
+      "result": "passed",
+      "clientJarMatchesLock": true,
+      "resourcePackMatchesLock": true,
+      "interactiveClientLaunched": false
+    },
+    {
+      "name": "migration_profile_and_client_artifact_contracts",
+      "command": "py -3.13 -m pytest -q --tb=short --basetemp=<unique temp directory> tests/test_minecraft_migration_profile.py tests/test_copimine_client_mob_artifact.py",
+      "exitCode": 0,
+      "passed": 53,
+      "skipped": 2,
+      "failed": 0,
+      "durationSeconds": 88.41,
+      "result": "passed"
+    },
+    {
+      "name": "full_python_suite_current_dirty_tree_before_followup_fixes",
+      "command": "py -3.13 -m pytest -q --tb=short --basetemp=<unique temp directory>",
+      "exitCode": 1,
+      "passed": 2278,
+      "skipped": 8,
+      "failed": 3,
+      "warnings": 124,
+      "subtestsPassed": 2,
+      "durationSeconds": 649.33,
+      "failures": [
+        "Stale CopiMineClient size in docs/minecraft-26.3/README.md; updated to the current lock and candidate.",
+        "Receipt-verified active EndEvent SHA was absent from the top-level upgrade allowlist; added after matching both runtime file and receipt.",
+        "Active runtime EndEvent SHA 43a06dd862a1cc8ee0961867de38cd2ef7b065cb40237457303c5999accc299c differs from current-source candidate SHA 138ca3011bbbb6ee01a6819e2455bde5e021a910ca01737b33accbf4e1e91e6b while Paper holds the lifecycle lock."
+      ]
+    },
+    {
+      "name": "python_suite_followup_for_docs_and_upgrade_allowlist",
+      "command": "py -3.13 -m pytest -q --tb=short tests/test_ci_release_job_contract.py::test_client_artifact_size_documentation_matches_the_profile_lock tests/test_minecraft_26_3_custom_plugin_database_contracts.py::test_first_party_candidate_hashes_cover_the_installed_runtime_upgrade_path tests/test_minecraft_migration_server_plugins.py::test_active_26_3_plugin_directory_matches_the_unique_locked_inventory",
+      "exitCode": 1,
+      "passed": 2,
+      "failed": 1,
+      "result": "the docs and allowlist regressions are fixed; the strict active-runtime inventory check still fails only on the old loaded EndEvent JAR"
+    },
+    {
+      "name": "migration_server_plugin_contracts_after_active_predecessor_allowlist_update",
+      "command": "py -3.13 -m pytest -q --tb=short --basetemp=<unique temp directory> tests/test_minecraft_migration_server_plugins.py",
+      "exitCode": 1,
+      "passed": 136,
+      "skipped": 1,
+      "failed": 1,
+      "result": "all candidate, installer, and predecessor allowlist contracts pass; only the strict active runtime inventory differs from the current candidate",
+      "failingTest": "test_active_26_3_plugin_directory_matches_the_unique_locked_inventory",
+      "activeEndEventSha256": "43a06dd862a1cc8ee0961867de38cd2ef7b065cb40237457303c5999accc299c",
+      "lockedCandidateEndEventSha256": "138ca3011bbbb6ee01a6819e2455bde5e021a910ca01737b33accbf4e1e91e6b"
+    },
+    {
+      "name": "full_python_suite_after_docs_and_upgrade_allowlist_fixes",
+      "command": "py -3.13 -m pytest -q --tb=short --basetemp=<unique temp directory>",
+      "exitCode": 1,
+      "passed": 2280,
+      "skipped": 8,
+      "failed": 1,
+      "warnings": 124,
+      "subtestsPassed": 2,
+      "durationSeconds": 614.01,
+      "failingTest": "tests/test_minecraft_migration_server_plugins.py::test_active_26_3_plugin_directory_matches_the_unique_locked_inventory",
+      "activeEndEventSha256": "43a06dd862a1cc8ee0961867de38cd2ef7b065cb40237457303c5999accc299c",
+      "lockedCandidateEndEventSha256": "138ca3011bbbb6ee01a6819e2455bde5e021a910ca01737b33accbf4e1e91e6b"
+    },
+    {
+      "name": "postgres_owned_cluster_read_only_identity_recheck",
+      "command": "Ensure-MigrationPostgresReady -WorkspaceRoot <source-of-truth> -RuntimeDirectory <end-rift-server-26.3> -PostgresBin <PostgreSQL 16.15 bin> -StartIfStopped:$false",
+      "exitCode": 0,
+      "ready": true,
+      "endpoint": "127.0.0.1:55434",
+      "database": "copimine_migration_test",
+      "role": "copimine_migration_test",
+      "schema": "copimine_migration_26_3_candidate",
+      "postgresqlVersion": "16.15",
+      "servicesStartedOrModified": false,
+      "credentialsIncluded": false
+    },
+    {
+      "name": "postgres_lifecycle_and_live_inventory_focused_followup",
+      "command": "python -m pytest -q --basetemp=<unique external directory> tests/test_migration_postgres_lifecycle.py tests/test_migration_postgres_restart_contract.py tests/test_migration_database_environment_output.py tests/test_minecraft_migration_server_plugins.py::test_active_26_3_plugin_directory_matches_the_unique_locked_inventory",
+      "exitCode": 1,
+      "passed": 9,
+      "failed": 1,
+      "durationSeconds": 4.15,
+      "failingTest": "tests/test_minecraft_migration_server_plugins.py::test_active_26_3_plugin_directory_matches_the_unique_locked_inventory",
+      "activeEndEventSha256": "43a06dd862a1cc8ee0961867de38cd2ef7b065cb40237457303c5999accc299c",
+      "lockedCandidateEndEventSha256": "138ca3011bbbb6ee01a6819e2455bde5e021a910ca01737b33accbf4e1e91e6b",
+      "result": "All PostgreSQL lifecycle, restart, and secret-output tests passed; only the expected active JAR versus candidate inventory check remains. The initial default-basetemp run encountered a pytest-current cleanup PermissionError; the fresh external basetemp rerun completed cleanly."
+    },
+    {
+      "name": "postgres_lifecycle_restart_environment_and_startup_diagnostic_contracts",
+      "command": "python -m pytest -q --basetemp=<unique external directory> tests/test_migration_postgres_lifecycle.py tests/test_migration_postgres_restart_contract.py tests/test_migration_database_environment_output.py",
+      "exitCode": 0,
+      "passed": 10,
+      "failed": 0,
+      "durationSeconds": 4.29,
+      "result": "The PostgreSQL lifecycle, restart, secret-output, and accurate runtime-validator diagnostic checks passed."
+    },
+    {
+      "name": "official_server_validate_only_latest_candidate",
+      "command": "StartMigrationTestServer.ps1 -JavaHome <Temurin 25.0.4.1> -PostgresBin <PostgreSQL 16.15 bin> -FullPluginSet -ValidateOnly",
+      "exitCode": 1,
+      "startedOrStoppedServices": false,
+      "failureCategory": "active_plugin_inventory",
+      "failure": "Active plugin inventory differs from the locked 26.3 candidates",
+      "diagnosticLabel": "Migration runtime validator failed",
+      "activeEndEventSha256": "43a06dd862a1cc8ee0961867de38cd2ef7b065cb40237457303c5999accc299c",
+      "lockedCandidateEndEventSha256": "138ca3011bbbb6ee01a6819e2455bde5e021a910ca01737b33accbf4e1e91e6b"
+    },
+    {
+      "name": "postgres_election_core_migration_marker_read_only_verification",
+      "command": "psql read-only catalog lookup and SELECT over copimine_migration_26_3_candidate.cmv4_schema_migrations",
+      "exitCode": 0,
+      "trackingTable": "copimine_migration_26_3_candidate.cmv4_schema_migrations",
+      "electionCoreMarkers": "4/4",
+      "additionalTablesPresent": [
+        "donation_item_claims",
+        "president_terms"
+      ],
+      "readOnly": true,
+      "credentialsIncluded": false,
+      "applicationDatabaseReadyLogs": [
+        "CopiMineEconomyCore",
+        "CopiMineElectionCore"
+      ]
+    },
+    {
+      "name": "postgres_and_paper_log_error_review",
+      "currentPostgresProcessId": 30596,
+      "currentPostgresProcessStartTime": "2026-10-21T23:41:26+03:00",
+      "historicalPreStartLogErrors": [
+        {
+          "time": "2026-10-21T08:42:27+03:00",
+          "message": "could not reserve shared memory region for child; Windows error code 487"
+        },
+        {
+          "time": "2026-10-21T09:13:44+03:00",
+          "message": "prior identity probe lacked permission to read data_directory"
+        },
+        {
+          "time": "2026-10-20T23:48:55+03:00",
+          "message": "missing donation_item_claims relation",
+          "count": 1,
+          "tablePresentNow": true
+        },
+        {
+          "timeRange": "2026-10-21T12:06:09+03:00 through 2026-10-21T12:15:24+03:00",
+          "message": "missing president_terms relation",
+          "count": 15,
+          "tablePresentNow": true
+        }
+      ],
+      "errorLinesAfterCurrentProcessStart": 0,
+      "authenticationFailures": 0,
+      "currentPaperErrorMarkers": 0,
+      "notes": "Both PostgreSQL log errors predate the current cluster process; the current cluster accepts connections and the current Paper startup reaches Done."
+    },
+    {
+      "name": "current_end_rift_event_gate_rerun_20261022",
+      "command": "tests/RunEndRiftEventChecks.ps1 -SkipBuilds",
+      "exitCode": 0,
+      "result": "passed",
+      "groups": {
+        "wave7EchoPassed": 178,
+        "navigationAndPassagePassed": 25,
+        "currentPythonContractsPassed": 335,
+        "wave6MechanicsPassed": 50,
+        "nodeBotProtocolPassed": 13,
+        "ritualRestartPassed": 4,
+        "javaPolicyRuntimePersistence": "all reported OK",
+        "artifactHashVerification": "passed",
+        "gitDiffCheck": "passed"
+      },
+      "notes": "Pillow deprecation warnings and one bounded diagnostic queue warning were non-failing. These are automated source/policy/protocol checks, not live gameplay."
+    },
+    {
+      "name": "postgres_protected_backup_and_disposable_restore_20261022",
+      "command": "PostgreSQL 16.15 pg_dump -Fc; pg_restore --list; restore --exit-on-error to a new disposable database; read-only schema/table/migration verification; drop only that disposable database",
+      "exitCode": 0,
+      "backupPath": "local-runtime/migration-backups/database/end-rift-predeploy-20261022T010608Z-82432dba/copimine_migration_test.dump",
+      "bytes": 254679,
+      "sha256": "1bccb5b7c2628a803ccc7d9cc701b4fe22ca96160ce4ea8397893ccd35c0a3f8",
+      "archiveEntries": 528,
+      "restoredSchemaTableMigrationCounts": "1:102:5",
+      "disposableDatabaseDropped": true,
+      "sourceDatabaseChanged": false,
+      "credentialsIncluded": false
+    },
+    {
+      "name": "codex_security_diff_scan_20261022",
+      "scanId": "52e10002-dfd7-43a3-8191-64a7d654b9bb",
+      "status": "complete",
+      "reviewedDiffPaths": 49,
+      "reportableFindings": 0,
+      "coverage": "complete for selected diff only; not a repository-wide audit",
+      "snapshotDigest": "codex-security-snapshot/v1:sha256:e79ace267741d0fff03fc87182fa0a3a04541bca164cc5beaae76b9d1ce35776",
+      "coversFinalDeadSkeletonGuard": false
+    },
+    {
+      "name": "paper_controlled_console_stop_attempt_20261022",
+      "runtimePid": 22072,
+      "ownerLauncherPid": 11976,
+      "saveAllFlushInputAttempted": true,
+      "stopInputAttempted": true,
+      "acknowledged": false,
+      "processStillRunning": true,
+      "forceStopUsed": false,
+      "pluginReplacementOrRestartPerformed": false,
+      "worldSnapshotTaken": false,
+      "result": "blocked: owning console is not attached to this task and the detached process did not respond to console-buffer input"
+    },
+    {
+      "name": "official_startup_validate_only_current_runtime_20261022",
+      "command": "StartMigrationTestServer.ps1 -JavaHome <Temurin 25.0.4.1> -PostgresBin <PostgreSQL 16.15 bin> -FullPluginSet -ValidateOnly",
+      "exitCode": 1,
+      "startedOrStoppedServices": false,
+      "failureCategory": "active_plugin_inventory",
+      "failure": "Active plugin inventory differs from the locked 26.3 candidates",
+      "activeEndEventSha256": "43a06dd862a1cc8ee0961867de38cd2ef7b065cb40237457303c5999accc299c",
+      "lockedCandidateEndEventSha256": "138ca3011bbbb6ee01a6819e2455bde5e021a910ca01737b33accbf4e1e91e6b"
+    },
+    {
+      "name": "official_installer_validate_only_current_runtime_20261022",
+      "command": "py -3.13 scripts/minecraft/install_migration_server_plugins.py --validate-only",
+      "exitCode": 1,
+      "failureCategory": "runtime_lifecycle_lock",
+      "failure": "Migration runtime lifecycle lock is held by server startup or another installer",
+      "serverStopped": false,
+      "pluginReplacementPerformed": false
+    },
+    {
+      "name": "read_only_existing_arena_layout_discovery_20261022",
+      "result": "no authoritative layout discovered",
+      "worldGuardWorlds": [
+        "world-codex-wave-20261018",
+        "world-codex-wave-20261018_nether",
+        "world-codex-wave-20261018_the_end"
+      ],
+      "worldGuardRegionFilesFound": 0,
+      "worldEditSchematicsFound": 0,
+      "endEventLayoutFilePresent": false,
+      "eventStatePhase": "UNCONFIGURED",
+      "activeLevel": "world-codex-wave-20261018",
+      "configuredArenaWorld": "CopiMine",
+      "worldOrArenaModified": false
+    },
+    {
+      "name": "event_state_and_backup_arena_recovery_check_20261022",
+      "result": "no arena bounds recoverable from current or backup state",
+      "currentStateSha256": "8c8cbb5f657db673be55ccd352d558cb2e564c10eaf25180c3a4cdb7ef3ce5ca",
+      "backupStateSha256": "d8fc6d416e0743357b39101219d11107e012e7877252c18e326bbdfbe4d6e0a0",
+      "currentPhase": "UNCONFIGURED",
+      "backupPhase": "UNCONFIGURED",
+      "currentWorld": "",
+      "backupWorld": "",
+      "currentAndBackupArenaBounds": "all zero",
+      "eventLayoutFilePresent": false,
+      "filesModified": false
+    },
+    {
+      "name": "coderabbit_uncommitted_review_current_diff_20261022",
+      "command": "coderabbit review --agent -t uncommitted",
+      "exitCode": 0,
+      "outcome": "completed",
+      "issueCount": 0,
+      "reviewedTextFileCount": 40,
+      "excludedBinaryFiles": [
+        "copimine-artifacts/CopiMineArtifacts.jar",
+        "copimine-narcotics/CopiMineNarcotics.jar"
+      ],
+      "runtimeOrGameplayAcceptance": "not established by this review",
+      "coversFinalDeadSkeletonGuard": false
+    },
+    {
+      "name": "current_turn_wave6_and_postgres_preservation_regressions",
+      "command": "py -3.13 -m pytest tests/test_end_rift_guard_tactics_runtime.py tests/test_end_rift_wave6_visual_mechanics.py tests/test_wave6_ritual_caster_behavior_contract.py tests/test_migration_database_environment_output.py tests/test_migration_postgres_lifecycle.py tests/test_migration_postgres_restart_contract.py -q --basetemp=<unique %TEMP% directory>",
+      "exitCode": 0,
+      "passed": 81,
+      "failed": 0,
+      "warnings": 4,
+      "durationSeconds": 21.45,
+      "warningSummary": "Pillow Image.Image.getdata deprecation warnings",
+      "scope": "Wave 6 guard tactics/visual contracts and PostgreSQL environment-output, lifecycle, and restart contracts; not live Paper gameplay"
+    },
+    {
+      "name": "current_turn_existing_postgres_cluster_identity_read_only",
+      "command": "Ensure-MigrationPostgresReady -WorkspaceRoot <canonical checkout> -RuntimeDirectory local-runtime/end-rift-server-26.3 -PostgresBin local-runtime/toolchains/postgresql-16.15/pgsql/bin -StartIfStopped:$false",
+      "exitCode": 0,
+      "ready": true,
+      "startedByThisCall": false,
+      "version": "16.15",
+      "endpoint": "127.0.0.1:55434",
+      "database": "copimine_migration_test",
+      "schema": "copimine_migration_26_3_candidate",
+      "role": "copimine_migration_test",
+      "result": "read-only owned-cluster identity and readiness passed; no credentials emitted"
+    },
+    {
+      "name": "migration_module_dependency_reimport_regression_20261022",
+      "command": "py -3.13 -m pytest tests/test_migration_postgres_restart_contract.py::test_initializer_refuses_initialized_fixture_before_changing_credentials tests/test_migration_postgres_restart_contract.py::test_startup_module_import_order_keeps_environment_cleanup_command_visible -q --basetemp=<unique %TEMP% directory>",
+      "exitCode": 0,
+      "passed": 2,
+      "failed": 0,
+      "scope": "Disposable initialized-cluster fixture reached the non-provisioning guard after imports and verified dummy credential files remained byte-identical; startup cleanup import remained visible; production database untouched"
+    },
+    {
+      "name": "wave_skeleton_protection_policy_and_adapter_regressions_20261022",
+      "exitCode": 0,
+      "results": [
+        "77 passed, 4 Pillow deprecation warnings",
+        "54 passed for coordinator plus protection regressions",
+        "WaveSkeletonProtectionPolicyTest passed in the Java policy loop of the full event gate"
+      ],
+      "scope": "Confirmed positive health delta triggers a capped nearest-responder reaction for an owned normal-wave Skeleton; range, duration, lease ownership, invalid target/role/world/generation, and cleanup paths are covered. No live Paper fight was run."
+    },
+    {
+      "name": "end_rift_event_gate_after_skeleton_protection_20261022",
+      "command": "tests/RunEndRiftEventChecks.ps1 -SkipBuilds",
+      "exitCode": 0,
+      "result": "passed",
+      "groups": {
+        "wave7Echo": 178,
+        "navigationAndPassage": 25,
+        "waves1_3_4_5": 139,
+        "waves1_3_4_5Skipped": 1,
+        "waveLifecycle": 51,
+        "wave7Return": 10,
+        "additionalFocusedGroupsPassed": [
+          8,
+          6,
+          3,
+          64,
+          2,
+          3,
+          75,
+          149
+        ],
+        "currentPythonContracts": 335,
+        "wave6Mechanics": 50,
+        "nodeBotReflection": 13,
+        "ritualRestart": 4,
+        "waveSkeletonProtectionPolicy": "passed"
+      },
+      "scope": "Full local event regression, policy/runtime probes, recovery, Node bot/protocol checks, integrity, and diff hygiene. Not live Paper gameplay."
+    },
+    {
+      "name": "candidate_migration_plugin_suite_before_dead_skeleton_guard_20261022",
+      "command": "py -3.13 -m pytest -q --tb=short --basetemp=<unique %TEMP% directory> tests/test_minecraft_migration_server_plugins.py",
+      "exitCode": 1,
+      "passed": 136,
+      "failed": 1,
+      "skipped": 1,
+      "durationSeconds": 19.03,
+      "failedTest": "test_active_26_3_plugin_directory_matches_the_unique_locked_inventory",
+      "activeEndEventSha256": "43a06dd862a1cc8ee0961867de38cd2ef7b065cb40237457303c5999accc299c",
+      "lockedCandidateEndEventSha256": "4f6019d3d95efa5582a4613ad4da961c6b8731aecbce639254fee2952896a9e3",
+      "assertionsWeakened": false,
+      "result": "Candidate, installer, and allowlist contracts pass; strict active inventory remains red until a normal Paper stop and controlled installation."
+    },
+    {
+      "name": "candidate_builds_before_dead_skeleton_guard_20261022",
+      "exitCodes": [
+        0,
+        0
+      ],
+      "buildCount": 2,
+      "candidateSize": 1869386,
+      "candidateSha256": "4f6019d3d95efa5582a4613ad4da961c6b8731aecbce639254fee2952896a9e3",
+      "candidateSha512": "713f8fdf1cdadf995efdb0097e2f43632a6abd7f659cbe91e2043505388d2a90cf287517297246c5c4d9a9ee2677b8b066fddcd2b76a3a9fb6ff3e2ddd111ca6",
+      "lockedCandidateMatchesBuild": true,
+      "preservedEvidenceCopyMatchesBuild": true,
+      "candidateContainsWaveSkeletonProtectionPolicy": true,
+      "installed": false,
+      "commands": [
+        "tests/RunClientBridgeV4Integration.ps1 -JavaHome <Temurin 25.0.4.1> -GradleExecutable <Gradle 9.8.1> -SkipEndRiftGate",
+        "gradle -p tools/minecraft-26.3 migrationPlugins -Dorg.gradle.jvmargs=-Xmx384m --max-workers=1 --no-daemon --rerun-tasks --console=plain"
+      ],
+      "scope": "Reproducible candidate build and preserved evidence only; not an installer receipt or live plugin startup."
+    },
+    {
+      "name": "official_server_validate_only_before_dead_skeleton_guard_20261022",
+      "command": "StartMigrationTestServer.ps1 -JavaHome <Temurin 25.0.4.1> -PostgresBin <PostgreSQL 16.15 bin> -FullPluginSet -ValidateOnly",
+      "exitCode": 1,
+      "startedOrStoppedServices": false,
+      "failureCategory": "active_plugin_inventory",
+      "failure": "Active plugin inventory differs from the locked 26.3 candidates",
+      "activeEndEventSha256": "43a06dd862a1cc8ee0961867de38cd2ef7b065cb40237457303c5999accc299c",
+      "lockedCandidateEndEventSha256": "4f6019d3d95efa5582a4613ad4da961c6b8731aecbce639254fee2952896a9e3"
+    },
+    {
+      "name": "wave_skeleton_dead_target_regression_red_20261022",
+      "command": "py -3.13 -m pytest -q --tb=short --basetemp=<unique %TEMP% directory> tests/test_wave_skeleton_protection_runtime.py::test_real_wave_skeleton_protection_adapter[dead-skeleton]",
+      "exitCode": 1,
+      "expectedFailure": "a lethal hit cannot summon defenders after the Skeleton dies",
+      "result": "The test reproduced the delayed callback bug before the production guard was added."
+    },
+    {
+      "name": "wave_skeleton_protection_adapter_after_dead_target_guard_20261022",
+      "command": "py -3.13 -m pytest -q --tb=short --basetemp=<unique %TEMP% directory> tests/test_wave_skeleton_protection_runtime.py",
+      "exitCode": 0,
+      "passed": 9,
+      "failed": 0,
+      "scope": "Detached adapter scenarios verify the real extracted production methods reject dead/unregistered skeletons, validate ownership and attempt metadata, cap nearest responders, preserve leases, and resume normal AI on expiry."
+    },
+    {
+      "name": "end_rift_event_gate_after_dead_skeleton_guard_20261022",
+      "command": "tests/RunEndRiftEventChecks.ps1 -SkipBuilds",
+      "exitCode": 0,
+      "result": "passed",
+      "groups": {
+        "wave7Echo": 178,
+        "navigationAndPassage": 25,
+        "waves1_3_4_5": 139,
+        "waves1_3_4_5Skipped": 1,
+        "waveLifecycle": 51,
+        "wave7Return": 10,
+        "additionalFocusedGroupsPassed": [
+          8,
+          6,
+          3,
+          64,
+          2,
+          3,
+          75,
+          149
+        ],
+        "currentPythonContracts": 335,
+        "wave6Mechanics": 50,
+        "nodeBotReflection": 13,
+        "ritualRestart": 4,
+        "waveSkeletonProtectionPolicy": "passed",
+        "artifactHashAndDiffHygiene": "passed"
+      },
+      "scope": "Full local End Rift regression and build-artifact integrity. Automated checks only; not live Paper gameplay."
+    },
+    {
+      "name": "current_source_end_event_candidate_builds_after_dead_skeleton_guard_20261022",
+      "exitCodes": [
+        0,
+        0
+      ],
+      "buildCount": 2,
+      "candidateSize": 1869495,
+      "candidateSha256": "ac85d5eb794612982963f03ed1226cf6ed7617fdad956111d09c2c0b337eb43c",
+      "candidateSha512": "e2066f0775483d626a7cc316c9f72e0a585cfc4ea4b9df7b75ec83fc171d6a6ce4cf369c7e0c518af29f610013dfcb3a7dba5d3f56dbb0b44a0472653fb17b79",
+      "lockedCandidateMatchesBuild": true,
+      "preservedEvidenceCopyMatchesBuild": true,
+      "candidateContainsSkeletonLivenessRevalidation": true,
+      "installed": false,
+      "command": "Pinned Gradle 9.8.1 migrationPlugins --rerun-tasks, repeated with the same inputs",
+      "scope": "Both current-source builds passed resource and Paper API verification; no server installation or restart was performed."
+    },
+    {
+      "name": "current_candidate_migration_plugin_suite_after_dead_skeleton_guard_20261022",
+      "command": "py -3.13 -m pytest -q --tb=short --basetemp=<unique %TEMP% directory> tests/test_minecraft_migration_server_plugins.py",
+      "exitCode": 1,
+      "passed": 136,
+      "failed": 1,
+      "skipped": 1,
+      "durationSeconds": 17.49,
+      "failedTest": "test_active_26_3_plugin_directory_matches_the_unique_locked_inventory",
+      "activeEndEventSha256": "43a06dd862a1cc8ee0961867de38cd2ef7b065cb40237457303c5999accc299c",
+      "lockedCandidateEndEventSha256": "ac85d5eb794612982963f03ed1226cf6ed7617fdad956111d09c2c0b337eb43c",
+      "assertionsWeakened": false,
+      "result": "All candidate and installer checks passed. The sole failure is the strict installed-runtime mismatch."
+    },
+    {
+      "name": "official_server_validate_only_current_dead_skeleton_candidate_20261022",
+      "command": "StartMigrationTestServer.ps1 -JavaHome <Temurin 25.0.4.1> -PostgresBin <PostgreSQL 16.15 bin> -FullPluginSet -ValidateOnly",
+      "exitCode": 1,
+      "startedOrStoppedServices": false,
+      "failureCategory": "active_plugin_inventory",
+      "failure": "Active plugin inventory differs from the locked 26.3 candidates",
+      "activeEndEventSha256": "43a06dd862a1cc8ee0961867de38cd2ef7b065cb40237457303c5999accc299c",
+      "lockedCandidateEndEventSha256": "ac85d5eb794612982963f03ed1226cf6ed7617fdad956111d09c2c0b337eb43c"
+    },
+    {
+      "name": "full_python_suite_after_dead_skeleton_guard_20261022",
+      "command": "py -3.13 -m pytest -q --tb=short --basetemp=<unique %TEMP% directory>",
+      "exitCode": 1,
+      "passed": 2291,
+      "failed": 1,
+      "skipped": 8,
+      "subtestsPassed": 2,
+      "warnings": 124,
+      "durationSeconds": 561.55,
+      "failedTest": "test_active_26_3_plugin_directory_matches_the_unique_locked_inventory",
+      "activeEndEventSha256": "43a06dd862a1cc8ee0961867de38cd2ef7b065cb40237457303c5999accc299c",
+      "lockedCandidateEndEventSha256": "ac85d5eb794612982963f03ed1226cf6ed7617fdad956111d09c2c0b337eb43c",
+      "assertionsWeakened": false,
+      "logPath": "%TEMP%/copimine-pytest-final-0b79706b16834017accd4c647f6344a2.log",
+      "result": "The only failure is the strict active plugin inventory check: the runtime receipt still contains the older EndEvent JAR digest. The final source candidate is built and locked, but not installed."
+    }
+  ],
+  "runtime": {
+    "postgres": {
+      "version": "16.15",
+      "binaryDirectory": "local-runtime/toolchains/postgresql-16.15/pgsql/bin",
+      "dataDirectory": "local-runtime/end-rift-server-26.3/postgres-data",
+      "host": "127.0.0.1",
+      "port": 55434,
+      "database": "copimine_migration_test",
+      "role": "copimine_migration_test",
+      "schema": "copimine_migration_26_3_candidate",
+      "listening": true,
+      "pgIsReady": true,
+      "authentication": "scram-sha-256",
+      "baseTables": 102,
+      "migrationRecords": [
+        "20260611_001_plugin_postgres_v4"
+      ],
+      "credentialsIncluded": false,
+      "existingDataPreserved": true,
+      "backupRestoredToDisposableDatabase": true,
+      "latestProtectedLogicalBackup": {
+        "path": "local-runtime/migration-backups/database/end-rift-predeploy-20261022T010608Z-82432dba/copimine_migration_test.dump",
+        "format": "PostgreSQL 16.15 custom archive",
+        "bytes": 254679,
+        "sha256": "1bccb5b7c2628a803ccc7d9cc701b4fe22ca96160ce4ea8397893ccd35c0a3f8",
+        "archiveEntries": 528,
+        "restoredToSeparateDisposableDatabase": true,
+        "restoredSchemaFound": true,
+        "restoredBaseTableCount": 102,
+        "restoredMigrationMarkerCount": 5,
+        "disposableDatabaseDroppedAfterVerification": true,
+        "sourceDatabaseChanged": false,
+        "aclPrincipals": "current user, SYSTEM, local Administrators"
+      }
+    },
+    "paper": {
+      "version": "26.3",
+      "build": 205,
+      "java": "Temurin 25.0.4.1",
+      "host": "127.0.0.1",
+      "port": 25567,
+      "listening": true,
+      "startupDone": true,
+      "activeWorld": "world-codex-wave-20261018",
+      "fullPluginSet": true,
+      "authMeEnabled": true,
+      "authEffectsEnabled": true,
+      "databaseReadyPlugins": [
+        "CopiMineEconomyCore",
+        "CopiMineElectionCore",
+        "CopiMineArtifacts",
+        "CopiMineUltimateAdminPlus"
+      ],
+      "endEventPhase": "UNCONFIGURED",
+      "arenaWorldConfigured": false,
+      "arenaBoundsConfigured": false,
+      "v4SignerReady": false,
+      "v4SignerFailureReason": "CONFIGURATION_ABSENT",
+      "v4KeyConfigScopes": {
+        "process": false,
+        "user": false,
+        "machine": false
+      },
+      "firstPartyCandidateJarsMatchRuntime": false,
+      "endEventRuntimeJarSha256": "43a06dd862a1cc8ee0961867de38cd2ef7b065cb40237457303c5999accc299c",
+      "endEventCurrentSourceBuildInstalled": false,
+      "runtimeLifecycleLockHeld": true,
+      "nativeVerified": false,
+      "ownerLauncherProcessId": 11976,
+      "ownerConsoleAttachedToCodexTask": false,
+      "controlledSaveInputAttempted": true,
+      "controlledStopInputAttempted": true,
+      "controlledStopAcknowledged": false,
+      "processStillRunningAfterStopAttempt": true,
+      "worldSnapshotTaken": false,
+      "eventConfigWorld": "CopiMine",
+      "activeLevelMatchesEventConfig": false,
+      "arenaOrBlockEditsPerformed": false
+    },
+    "port25566": {
+      "listenerProcess": "qbittorrent.exe",
+      "pid": 18240,
+      "paperServer": false,
+      "usedForTesting": false,
+      "modified": false
+    },
+    "botMatrix": {
+      "2": "not_run",
+      "5": "not_run",
+      "10": "not_run",
+      "11": "not_run",
+      "20": "not_run"
+    },
+    "previousTwoPlayerAttempt": {
+      "result": "timed_out_before_wave_start",
+      "reason": "Timed out waiting for authenticated V4 bridge readiness while signer configuration was absent."
+    }
+  },
+  "artifacts": {
+    "paper": {
+      "filename": "paper-26.3-205.jar",
+      "size": 55242379,
+      "sha256": "a0a58f532f08054ea92eb916d3edb6ed3c86429d77175317304f6e995cce9968"
+    },
+    "firstPartyPlugins": [
+      {
+        "name": "CopiMineEndEvent",
+        "sha256": "43a06dd862a1cc8ee0961867de38cd2ef7b065cb40237457303c5999accc299c",
+        "candidateMatchesRuntime": false,
+        "candidateSha256": "ac85d5eb794612982963f03ed1226cf6ed7617fdad956111d09c2c0b337eb43c",
+        "candidateSize": 1869495,
+        "candidateSha512": "e2066f0775483d626a7cc316c9f72e0a585cfc4ea4b9df7b75ec83fc171d6a6ce4cf369c7e0c518af29f610013dfcb3a7dba5d3f56dbb0b44a0472653fb17b79",
+        "candidateIncludesLatestSkeletonProtectionFix": true,
+        "candidateIncludesSkeletonLivenessRevalidation": true,
+        "candidateIncludesLatestEndermanBurstFix": true,
+        "activeRuntimeIncludesLatestEndermanBurstFix": false
+      },
+      {
+        "name": "CopiMineNarcotics",
+        "sha256": "d7e46fcc2bcfb8f31216cb1ea51c53bf3f492d29bc3b8c227540cb38e8ced7e2",
+        "candidateMatchesRuntime": true
+      },
+      {
+        "name": "CopiMineArtifacts",
+        "sha256": "0c3d91b2f763f62797b04791341026d09384258dcb181e82230d76c9dd391d9a",
+        "candidateMatchesRuntime": true
+      },
+      {
+        "name": "CopiMineEconomyCore",
+        "sha256": "7fd9c779e0a5ca80b5dad4effcc0bf59d5cbcd181be7400e10432b6e69cabd32",
+        "candidateMatchesRuntime": true
+      },
+      {
+        "name": "CopiMineElectionCore",
+        "sha256": "d2256c6976cb88a2a98b372d5f7e1b1db63013a52fdcfe519a065e3896395b65",
+        "candidateMatchesRuntime": true
+      },
+      {
+        "name": "CopiMineUltimateAdminPlus",
+        "sha256": "70eb0caa57ae48d918170fd9fd4f9ce853bfd8c967315f774cccc606b4abe9f0",
+        "candidateMatchesRuntime": true
+      },
+      {
+        "name": "CopiMineWorldCore",
+        "sha256": "1b6822c1733b8ddc3dc12760e8319caed014f3148493bf1c826ca6f5153e3f14",
+        "candidateMatchesRuntime": true
+      },
+      {
+        "name": "AuthEffects",
+        "sha256": "09aa0017cd8731470eb2324af327fc5780490c317469881f82a8d8c5bfd5e11c",
+        "candidateMatchesRuntime": true
+      }
+    ],
+    "endEventPreviousCurrentSourceBuild": {
+      "migrationCandidateSha256": "567bb428e36483baee15657d347c1e7afcf659540c3a8691f3657ad977ad25a8",
+      "migrationCandidateSize": 1859554,
+      "migrationCandidateSha512": "cdf1c586e44287b28d32dca0b24b52903b28803a58068b03374b66f4c1ca5a2f954ec1a273e53869a6f128a560cb9e49ed0558930a6445828170eb0038d69511",
+      "lockedCandidateSha256": "567bb428e36483baee15657d347c1e7afcf659540c3a8691f3657ad977ad25a8",
+      "reproducedBuildCount": 2,
+      "buildCommand": "tests/RunClientBridgeV4Integration.ps1 ... -SkipEndRiftGate",
+      "buildPassed": true,
+      "installed": false,
+      "migrationCandidateArtifactAtLockedPath": true,
+      "evidenceArtifactPath": "artifacts/end-rift-candidates/wave6-enderman-40-tick-20261022/CopiMineEndEvent-26.3.jar",
+      "evidenceManifestPath": "artifacts/end-rift-candidates/wave6-enderman-40-tick-20261022/candidate-evidence.json",
+      "sourceInputsSha256": "e1ef7b9330393373c9defe0a3fe5e3493441a25802d58ea586e0fed9a45cc8ce",
+      "sourceInputFilesCount": 345,
+      "inspectedClass": "me.copimine.endevent.domain.RitualGuardAbilityPolicy",
+      "candidateEndermanBurstTicks": 40,
+      "activeRuntimeEndermanBurstTicks": 15,
+      "classConstantInspectionVerified": true,
+      "sourceBuildScriptOutput": {
+        "command": "copimine-end-event/build-plugin.ps1",
+        "sha256": "6372b2a8dd3385bbcd3463d2b71081747bde4c42aebdb22d52fa27e68b874fe2",
+        "size": 1658237,
+        "built": true,
+        "activeRuntime": false
+      },
+      "reason": "Active Paper lifecycle lock and old installed-plugin receipt must be preserved until a normal server stop; strict active inventory remains pending deployment."
+    },
+    "endEventCurrentSourceBuild": {
+      "migrationCandidateSha256": "ac85d5eb794612982963f03ed1226cf6ed7617fdad956111d09c2c0b337eb43c",
+      "migrationCandidateSize": 1869495,
+      "migrationCandidateSha512": "e2066f0775483d626a7cc316c9f72e0a585cfc4ea4b9df7b75ec83fc171d6a6ce4cf369c7e0c518af29f610013dfcb3a7dba5d3f56dbb0b44a0472653fb17b79",
+      "lockedCandidateSha256": "ac85d5eb794612982963f03ed1226cf6ed7617fdad956111d09c2c0b337eb43c",
+      "reproducedBuildCount": 2,
+      "buildCommand": "Pinned Gradle 9.8.1 migrationPlugins --rerun-tasks, repeated with the same inputs",
+      "buildPassed": true,
+      "installed": false,
+      "migrationCandidateArtifactAtLockedPath": true,
+      "evidenceArtifactPath": "artifacts/end-rift-candidates/wave6-skeleton-dead-target-20261022/CopiMineEndEvent-26.3.jar",
+      "evidenceManifestPath": "artifacts/end-rift-candidates/wave6-skeleton-dead-target-20261022/candidate-evidence.json",
+      "buildCommands": [
+        "gradle -p tools/minecraft-26.3 migrationPlugins -Dorg.gradle.jvmargs=-Xmx384m --max-workers=1 --no-daemon --rerun-tasks --console=plain",
+        "gradle -p tools/minecraft-26.3 migrationPlugins -Dorg.gradle.jvmargs=-Xmx384m --max-workers=1 --no-daemon --rerun-tasks --console=plain (repeated build)"
+      ],
+      "inspectedClass": "me.copimine.endevent.domain.RitualGuardAbilityPolicy",
+      "candidateEndermanBurstTicks": 40,
+      "activeRuntimeEndermanBurstTicks": 15,
+      "classConstantInspectionVerified": true,
+      "candidateIncludesLatestSkeletonProtectionFix": true,
+      "candidateIncludesSkeletonLivenessRevalidation": true,
+      "reason": "Active Paper lifecycle lock and old installed-plugin receipt must be preserved until a normal server stop; strict active inventory remains pending deployment."
+    },
+    "client": {
+      "filename": "CopiMineClient-0.1.3+26.3.jar",
+      "size": 15010246,
+      "sha256": "7109be41f04d8bce5a880712d7a5b7350f08a894fc312205f08b1c9d2914b5c1",
+      "sha1": "ceddfbf9e1ffc20e71a67c5b01ca0425b460281d",
+      "sha512": "28fe88c4b451f10cf22f21a781940f5532ae44f885f3bc80d2ff0ad10bffb23465dc0018842d6a5806783d2953638d47bb447f48cbc453e01bf239735209ff69",
+      "candidateMatchesInstalledProfile": true
+    },
+    "resourcePack": {
+      "filename": "CopiMineResourcePack-26.3.zip",
+      "size": 36252428,
+      "sha256": "7229299416f31e9c22086b20b2adf397b8b5d3d4cf42ef969517b7f484173ca1",
+      "sha1": "ae863669efb0bb08210ef268f2a74f4ea247552a",
+      "candidateMatchesInstalledProfile": true
+    }
+  },
+  "remainingWork": [
+    "Identify the approved existing V4 Ed25519 signer file path or local configuration mechanism; do not send the key contents.",
+    "Identify the intended existing arena world and authoritative layout/coordinates; do not create or alter an arena without that information.",
+    "Stop Paper normally from its owning console after a save completes, then promote the current-source EndEvent candidate with the official installer and verify its receipt.",
+    "Run official two-player natural acceptance, then the 5/10/11/20 participant matrix, restart/failure cases, and performance measurements after the signer and arena are configured.",
+    "Perform and inspect the documented native in-game F2/video checklist. Keep nativeVerified false until genuine evidence is reviewed.",
+    "Review dirty working-tree ownership, then commit and obtain CI evidence for the accepted final commit."
+  ],
+  "visualVerificationChecklist": "VISUAL_VERIFICATION_WAVES_1_7.md",
+  "supersededBy": "WAVES_1_7_CURRENT_EVIDENCE_2026-10-22.json"
+}

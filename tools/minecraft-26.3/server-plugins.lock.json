@@ -881,15 +881,16 @@
       "candidate": {
         "filename": "CopiMineEconomyCore-26.3.jar",
         "runtimeFilename": "CopiMineEconomyCore.jar",
-        "sha256": "f0d1f6b2c189b12c68270cd53d046f38a723c52b0f240f8272bfd3cbd360e3e6",
+        "sha256": "29fce619840efb99fc56e80552272cd4b67580042c10015546dbd98a9ddae4e1",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineEconomyCore-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "sha512": "2bbb96ccb8be0ebb292e336610e538ce1a15ef1e0c799f9ebbfecbb5290da7573ab99dc2c5e2e7fad78e59773f86c3cd23dc00139ff151ac43cffd0e17623358",
-        "size": 170211,
+        "sha512": "b3785b596a543c993b90e7e19d13314881311c50e4b4b7d0ddbdf7d55050ec725c1d8337ef8cc2ab2bf9034a5575c191fad0ca9f373e290f138ec8c640045bba",
+        "size": 170288,
         "runtimeEligible": true,
         "replaceSha256": [
+          "f0d1f6b2c189b12c68270cd53d046f38a723c52b0f240f8272bfd3cbd360e3e6",
           "7fd9c779e0a5ca80b5dad4effcc0bf59d5cbcd181be7400e10432b6e69cabd32",
           "b388785fe59144ef5faaecbe0ca1ab545e3bbd38c79366ae142c95c66fc91cdc"
         ]
@@ -956,15 +957,16 @@
       "candidate": {
         "filename": "CopiMineEndEvent-26.3.jar",
         "runtimeFilename": "CopiMineEndEvent.jar",
-        "sha256": "66aabae0c32a037281026b38f2b89e84e21b3a4062063c8275568d0459124853",
+        "sha256": "5342d7793aa90bd36208f60f5ed44443a54ef8a44e62064112fcc3324db8b117",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "size": 1916028,
-        "sha512": "aebc3bd96fd522ef94ed777f4ef2b56032c6d2585fb683d3156b8b09951277bcfb1eb7ca541b0f4b6def528b7395b028954fc017909e97981aeb78f26e88b84f",
+        "size": 1923614,
+        "sha512": "875ac5d3bd90d44f09e3c26cee141ac9fcbed1c3f12e303765848789b79b6176b24251e6ee364b94cd5928e56794685ac4db6b1741b16ff6ca79ff5995770667",
         "runtimeEligible": true,
         "replaceSha256": [
+          "66aabae0c32a037281026b38f2b89e84e21b3a4062063c8275568d0459124853",
           "fc81375344c583c979ee4aa03446da9295d02b9f09486bf374cdc4de9cce2e13",
           "8105e10a11a7f76e41f75333e3c71e8abffb96d7ae1e37759a03fdfa807837c0",
           "33301a85349352168ef6a9c0bb431d73c361cf1e7a71779e27b60104462270ab",
@@ -996,7 +998,9 @@
           "ec7b12e9f670c784f25df3a6ad2dc9bf9bc4399799b1b544b1574f6f21ba0b14",
           "43a06dd862a1cc8ee0961867de38cd2ef7b065cb40237457303c5999accc299c",
           "a00987c98b7cde88e8c0bb6518286511e114e443550c43952aacd9ddd0116f11",
-          "985d42e6b4f6f44b034dd399bc12e5754be69e6121b8986156c087e18cfc7d22"
+          "985d42e6b4f6f44b034dd399bc12e5754be69e6121b8986156c087e18cfc7d22",
+          "1f7af4f92349a0c7f3cca951728620ea1f2abab7f852a52822ac5f89b96e839f",
+          "b8ef1e9c4e70b5c9bafc076e96fe637f162de79f388449ce1a5d369997bb5964"
         ]
       },
       "nativeVerified": false

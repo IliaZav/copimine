@@ -25,6 +25,12 @@ public final class BossRealHealthDamagePolicyTest {
         var lethal = BossRealHealthDamagePolicy.apply(5, 10, 1.0D, 5000);
         check(lethal.lethal() && lethal.remainingHealth() == 0,
                 "lethal real-health transaction must clamp to zero");
+        var clamped = BossRealHealthDamagePolicy.apply(4_500.0D, 2_000.0D, 1.0D, 5_000.0D);
+        check(clamped.remainingHealth() == 4_000.0D,
+                "one hit must not skip more than one health band");
+        var lastSeal = BossRealHealthDamagePolicy.apply(900.0D, 1_000.0D, 1.0D, 5_000.0D);
+        check(lastSeal.lethal() && lastSeal.remainingHealth() == 0.0D,
+                "LAST_SEAL must let the authored finisher reach zero");
         System.out.println("BossRealHealthDamagePolicyTest OK");
     }
 

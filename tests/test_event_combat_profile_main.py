@@ -35,8 +35,8 @@ public class CombatProfileMainProbe {
     }
     static class Bukkit {static int getCurrentTick(){return 80;}}
     static class PreBoss {long elapsedServerTicks(long tick){return tick;}}
-    boolean bootstrapped=true,testWaveFrontVisualMode,testCombatAiMode,testWaveInspectionMode,preBossHandoffCommitted;
-    String eventId="event";long generation=71,eventTickCounter=80,restoredPreBossElapsedTicks,lastCombatProfileSaveTick,waveTwoCleanupEpoch;
+    boolean bootstrapped=true,testWaveFrontVisualMode,testCombatAiMode,testWaveInspectionMode,preBossHandoffCommitted,bossHalfRepelCommitted;
+    String eventId="event";long generation=71,eventTickCounter=80,restoredPreBossElapsedTicks,lastCombatProfileSaveTick,waveTwoCleanupEpoch,nextBossEdgeVolleyMillis;
     int activeWave=1;EventPhase phase=EventPhase.WAVE_1;BlackFogPhase blackFogPhase=BlackFogPhase.COMBAT;
     EventCombatProfileService combatProfiles=new EventCombatProfileService();
     EventCombatProfileListener combatProfileListener;

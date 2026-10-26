@@ -44,29 +44,44 @@ public final class BossPhasePolicy {
         return switch (phase) {
             case AWAKENING -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_BLAST,
-                    EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE);
+                    EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
+                    EndRiftAiPolicy.BossSpell.MELEE_SWIPE,
+                    EndRiftAiPolicy.BossSpell.CHEST_STRIKE,
+                    EndRiftAiPolicy.BossSpell.GROUND_SLAM);
             case HUNT -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_BLAST,
                     EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
                     EndRiftAiPolicy.BossSpell.RIFT_ARROWS,
-                    EndRiftAiPolicy.BossSpell.VOID_MARK);
+                    EndRiftAiPolicy.BossSpell.VOID_MARK,
+                    EndRiftAiPolicy.BossSpell.MELEE_SWIPE,
+                    EndRiftAiPolicy.BossSpell.CHEST_STRIKE,
+                    EndRiftAiPolicy.BossSpell.GROUND_SLAM);
             case RIFT -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_MARK,
                     EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
                     EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS,
-                    EndRiftAiPolicy.BossSpell.BOSS_FIREBALL);
+                    EndRiftAiPolicy.BossSpell.BOSS_FIREBALL,
+                    EndRiftAiPolicy.BossSpell.MELEE_SWIPE,
+                    EndRiftAiPolicy.BossSpell.CHEST_STRIKE,
+                    EndRiftAiPolicy.BossSpell.GROUND_SLAM);
             case OVERLOAD -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_BLAST,
                     EndRiftAiPolicy.BossSpell.RIFT_ARROWS,
                     EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS,
                     EndRiftAiPolicy.BossSpell.ARENA_INFERNO,
-                    EndRiftAiPolicy.BossSpell.BOSS_FIREBALL);
+                    EndRiftAiPolicy.BossSpell.BOSS_FIREBALL,
+                    EndRiftAiPolicy.BossSpell.MELEE_SWIPE,
+                    EndRiftAiPolicy.BossSpell.CHEST_STRIKE,
+                    EndRiftAiPolicy.BossSpell.GROUND_SLAM);
             case RAGE -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_BLAST,
                     EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
                     EndRiftAiPolicy.BossSpell.RIFT_ARROWS,
                     EndRiftAiPolicy.BossSpell.ARENA_INFERNO,
-                    EndRiftAiPolicy.BossSpell.BOSS_FIREBALL);
+                    EndRiftAiPolicy.BossSpell.BOSS_FIREBALL,
+                    EndRiftAiPolicy.BossSpell.MELEE_SWIPE,
+                    EndRiftAiPolicy.BossSpell.CHEST_STRIKE,
+                    EndRiftAiPolicy.BossSpell.GROUND_SLAM);
             case LAST_SEAL -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_MARK,
                     EndRiftAiPolicy.BossSpell.ARENA_INFERNO,
@@ -109,6 +124,20 @@ public final class BossPhasePolicy {
 
     public static double lastSealThreshold(double maxHealth) {
         return positive(maxHealth, BossHealthPolicy.MIN_HEALTH) * 0.20D;
+    }
+
+    /**
+     * Lowest health a single hit may leave the boss at without skipping a phase band.
+     * It is the next phase's threshold (crossing it is exactly one transition), or
+     * zero in LAST_SEAL where the authored finisher owns the kill.
+     */
+    public static double bandFloor(double health, double maxHealth) {
+        BossPhase phase = phaseFor(health, maxHealth);
+        BossPhase[] phases = BossPhase.values();
+        if (phase.rank() + 1 >= phases.length) {
+            return 0.0D;
+        }
+        return upperThreshold(phases[phase.rank() + 1], maxHealth);
     }
 
     public enum DamageImmunityReason {

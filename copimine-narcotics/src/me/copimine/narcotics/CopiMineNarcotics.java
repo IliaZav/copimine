@@ -1677,8 +1677,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         sender.sendMessage(message("selfcheck_ok"));
         sender.sendMessage(ChatColor.GRAY + "Клиентский мост: " + configService.clientBridgeEnabled());
         sender.sendMessage(ChatColor.GRAY + "Шейдеры: "
-                + (configService.visualsForceDisabled() ? "отключены аварийно" : "включаются при употреблении")
-                + ", рантайм: " + visualRuntime.supportsShaderRuntime());
+                + (configService.visualsForceDisabled() ? "отключены аварийно" : "включаются при употреблении"));
         sender.sendMessage(ChatColor.GRAY + "Частицы: " + visualRuntime.supportsServerParticleFallback());
         sender.sendMessage(ChatColor.GRAY + "Предметов: " + configService.items().size()
                 + ", текстуры: " + configService.textureMode().name());

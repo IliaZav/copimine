@@ -1,4 +1,4 @@
-. "$PSScriptRoot\ElectionPhase1Validator.Helpers.ps1"
+﻿. "$PSScriptRoot\ElectionPhase1Validator.Helpers.ps1"
 $errors = New-ErrorList
 $runtime = Read-Utf8 (Join-Path $root 'copimine-narcotics\src\me\copimine\visualruntime\VisualRuntimeService.java')
 $clientRootCandidates = @(
@@ -18,12 +18,11 @@ $irisRuntime = Read-Utf8 (Join-Path $clientRoot 'src\main\java\me\copimine\clien
 $registry = Read-Utf8 (Join-Path $clientRoot 'src\main\java\me\copimine\client\ShaderpackRegistry.java')
 
 Require-Contains $runtime 'public boolean supportsOverlayRuntime()' 'VisualRuntimeService must expose overlay capability checks.'
-Require-Contains $runtime 'supportsServerParticleFallback()' 'VisualRuntimeService must expose the particle fallback capability.'
-Require-Contains $runtime 'narcotics screen shaders retired' 'Server fallback path must describe its limitation honestly.'
-Require-Contains $runtime 'client visuals disabled in config' 'VisualRuntimeService must explain fallback reasons.'
-foreach ($retired in @('sendVisualStart','sendVisualRefresh','client_zip_shaderpack_runtime_supported')) {
-  if ($runtime -match [regex]::Escape($retired)) { throw "Retired narcotics shader surface must not be used: $retired" }
-}
+Require-Contains $runtime 'public boolean supportsShaderRuntime()' 'VisualRuntimeService must expose shader capability checks.'
+Require-Contains $runtime 'supportsClientZipShaderpackRuntime()' 'VisualRuntimeService must expose ZIP shaderpack capability checks.'
+Require-Contains $runtime 'server falls back to light particles only' 'Server fallback path must describe its limitation honestly.'
+Require-Contains $runtime 'client bridge disabled' 'VisualRuntimeService must explain fallback reasons.'
+Require-Contains $runtime 'client_zip_shaderpack_runtime_supported' 'VisualRuntimeService must use the ZIP shaderpack manifest flag.'
 foreach ($marker in @('drawEffect','drawNoiseGrid','drawColorShiftPass','drawScanPulse','drawVignette','drawHatch')) {
   Require-Contains $client $marker "ClientVisualManager must contain upgraded renderer helper $marker."
 }

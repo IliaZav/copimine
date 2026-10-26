@@ -1038,9 +1038,9 @@ def test_migration_lock_loader_includes_each_built_first_party_plugin():
     assert '983fd1954eb85d8be8a5e18e0095200278933e930422854b4b19c19995fad116' in narcotics['replaceSha256']
     narcotics_candidate=next(item['candidate'] for item in lock['unchangedBaseline']
                              if item['pluginName']=='CopiMineNarcotics')
-    assert narcotics_candidate['size'] == 365656
-    assert narcotics_candidate['sha256'] == 'a91028c50325c4dd94ad9b22fce96bcd550af90cc696f7d38645436468f69365'
-    assert narcotics_candidate['sha512'] == 'b5605ba6ddc9621fa52ede6a914d854a515dd2dd65b0c361cd261194eb6535fa3f928b2dbcf54d055a211142cbfb25925f14bf95f4394c2e3b0104a0e9de0f13'
+    assert narcotics_candidate['size'] == 369935
+    assert narcotics_candidate['sha256'] == 'eff91384fddfeb0564076fad094e4a9ee7ece805277dae17c568c3df07079529'
+    assert narcotics_candidate['sha512'] == '9a36625e172722ee15057f480f27881204844a8274dc3fc0e20bb7b365709084ce82c752bca8c800d2ab9dd6b9b2a9826f151696347089674810a93385f8307a'
     assert '835b8043781cc2bf580900c09653da7aa3436c8485266f7838b478ac5a047e70' in narcotics_candidate['replaceSha256']
 
 def test_production_or_symlink_target_is_refused(tmp_path):
@@ -2903,8 +2903,8 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
                              'dd1df56d8ec37d0db4aedb54a3d925e7b29af6035eb48d23ca01d7cb0a47754fdf36ded21c69ac04c5b46595272a38d05e4e8ea9df8bf0424e14962ed0ee503c',363351),
         'CopiMineEndEvent':('fc81375344c583c979ee4aa03446da9295d02b9f09486bf374cdc4de9cce2e13',
                             'cd1c199b3ca0d239d3f4aaeea345c6cb1f4ad43a42395b44997f5f382fb197dfeb2944675df6fdcd6437f43eff10d8cdfde51a89c30755def98bd986e54b2d10',1916095),
-        'CopiMineNarcotics':('a91028c50325c4dd94ad9b22fce96bcd550af90cc696f7d38645436468f69365',
-                             'b5605ba6ddc9621fa52ede6a914d854a515dd2dd65b0c361cd261194eb6535fa3f928b2dbcf54d055a211142cbfb25925f14bf95f4394c2e3b0104a0e9de0f13',365656),
+        'CopiMineNarcotics':('eff91384fddfeb0564076fad094e4a9ee7ece805277dae17c568c3df07079529',
+                             '9a36625e172722ee15057f480f27881204844a8274dc3fc0e20bb7b365709084ce82c752bca8c800d2ab9dd6b9b2a9826f151696347089674810a93385f8307a',369935),
     }
     for plugin_name,(sha256,sha512,size) in expected_candidates.items():
         candidate=baseline[plugin_name]['candidate']

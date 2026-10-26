@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
 function Require-Contains([string]$path, [string]$needle, [string]$message) {
@@ -23,10 +23,7 @@ Require-Contains $overdose 'clientModAvailable(Player player, String effectId)' 
 Require-Contains $overdose 'hideNegativeIcons' 'Overdose service must keep vanilla negative effects gameplay-identical while consolidating their icons.'
 Require-Contains $overdose 'ZHUZEVO_TRIP' 'Zhuzevo must use the dedicated trip visual route.'
 Require-Contains $visual 'sameVisualSession' 'Visual runtime must coalesce repeated identical visual starts.'
-$visualText = Get-Content -LiteralPath $visual -Raw -Encoding UTF8
-foreach ($retired in @('sendVisualStart','sendVisualRefresh')) {
-  if ($visualText -match [regex]::Escape($retired)) { throw "Retired narcotics shader route must not be started: $retired" }
-}
+Require-Contains $visual 'sendVisualRefresh' 'Visual runtime must refresh an extended client effect without clearing the shader pipeline.'
 Require-Contains $payloads 'OVERDOSE' 'Server bridge must allow the unified overdose visual id.'
 Require-Contains $clientProtocol 'OVERDOSE' 'Client bridge must advertise the unified overdose visual id.'
 Require-Contains $clientManager 'drawStatusBadge' 'Client mod must render a single status badge for consolidated effects.'

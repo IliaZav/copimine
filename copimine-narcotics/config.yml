@@ -38,6 +38,9 @@ client_bridge:
 visuals:
   enabled: true
   mode: AUTO
+  # Emergency only: true disables the consumption shader for everyone.
+  # Normal players cannot enable or disable the shader from settings.
+  force_disable: false
   allow_client_mod_visuals: true
   allow_server_resource_pack_overlay: false
   allow_server_particle_fallback: true

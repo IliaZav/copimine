@@ -89,7 +89,6 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
      * and only then call bridge.charge(...) with an explicit idempotency key.
      */
     private static final Set<String> VALID_TEXTURE_MODES = Set.of("VANILLA", "CUSTOM");
-    private static final Set<String> VALID_VISUAL_MODES = Set.of("AUTO", "CLIENT_MOD", "SERVER_FALLBACK");
 
     private final ConcurrentHashMap<UUID, Long> consumeCooldownUntil = new ConcurrentHashMap<>();
     private final Set<UUID> consumeInFlight = ConcurrentHashMap.newKeySet();
@@ -1125,8 +1124,6 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                 case "stop" -> handleStopVisuals(sender, args);
                 case "texture", "texture-mode" -> handleTextureV2(sender, args);
                 case "visuals" -> handleVisualsV3(sender, args);
-                case "visual-mode" -> handleVisualMode(sender, args);
-                case "visual-effect" -> handleVisualEffect(sender, args);
                 case "selfcheck" -> handleSelfCheckV2(sender);
                 case "info" -> handleInfo(sender, args);
                 case "setweight" -> handleSetWeight(sender, args);
@@ -1583,13 +1580,16 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
         if ("status".equalsIgnoreCase(args[1])) {
             NarcoticsResourcePackAudit.Report report = resourcePackAudit.inspect();
-            sender.sendMessage(ChatColor.GRAY + "Визуализация: "
-                    + (configService.visualsEnabled() ? "включена" : "выключена")
-                    + " (" + configService.visualMode().name() + ")");
+            sender.sendMessage(ChatColor.GRAY + "Шейдеры: "
+                    + (configService.visualsForceDisabled()
+                            ? "отключены аварийно (visuals.force_disable)"
+                            : "включаются только при употреблении"));
             sender.sendMessage(ChatColor.GRAY + "Клиентский мост: " + configService.clientBridgeEnabled());
-            sender.sendMessage(ChatColor.GRAY + "Частицы: " + visualRuntime.supportsServerParticleFallback());
-            sender.sendMessage(ChatColor.GRAY + "Эффекты: " + configService.visualEffectIds().stream()
-                    .filter(configService::isVisualEffectEnabled).sorted().toList());
+            sender.sendMessage(ChatColor.GRAY + "Шейдерный рантайм: " + visualRuntime.supportsShaderRuntime()
+                    + (visualRuntime.supportsShaderRuntime() ? "" : " (" + visualRuntime.shaderSupportReason() + ")"));
+            sender.sendMessage(ChatColor.GRAY + "Частицы без мода: " + visualRuntime.supportsServerParticleFallback());
+            sender.sendMessage(ChatColor.GRAY + "Наложение: " + visualRuntime.supportsServerOverlayRuntime()
+                    + " (" + visualRuntime.serverOverlaySupportReason() + ")");
             String sampleEffect = configService.visualEffectIds().stream().sorted().findFirst().orElse("CHAOS");
             sender.sendMessage(ChatColor.GRAY + "Маршрут для " + sampleEffect + ": "
                     + visualRuntime.resolvedModeFor(sampleEffect));
@@ -1599,39 +1599,11 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             }
             return true;
         }
-        if ("enable".equalsIgnoreCase(args[1]) || "disable".equalsIgnoreCase(args[1])) {
-            boolean enable = "enable".equalsIgnoreCase(args[1]);
-            if (args.length == 2) {
-                configService.setVisualsEnabled(enable);
-                sender.sendMessage(enable ? message("visuals_enabled") : message("visuals_disabled"));
-                database.auditAsync(sender.getName(), "visuals", enable ? "enable" : "disable");
-                return true;
-            }
-            String effectId = args[2].toUpperCase(Locale.ROOT);
-            if (!"ALL".equals(effectId) && !configService.visualEffectIds().contains(effectId)) {
-                sender.sendMessage(ChatColor.RED + "Неизвестный visual effect id.");
-                return true;
-            }
-            if ("ALL".equals(effectId)) {
-                for (String id : configService.visualEffectIds()) {
-                    configService.setVisualEffectEnabled(id, enable);
-                }
-            } else {
-                configService.setVisualEffectEnabled(effectId, enable);
-            }
-            if (enable) {
-                configService.setVisualsEnabled(true);
-            }
-            sender.sendMessage(message("visual_effect_set", effectId, enable ? "ON" : "OFF"));
-            database.auditAsync(sender.getName(), "visual_effect", effectId + "=" + enable);
+        if ("enable".equalsIgnoreCase(args[1]) || "disable".equalsIgnoreCase(args[1])
+                || "mode".equalsIgnoreCase(args[1])) {
+            sender.sendMessage(ChatColor.RED + "Визуал привязан к употреблению и из настроек не переключается.");
+            sender.sendMessage(ChatColor.GRAY + "Аварийное отключение: visuals.force_disable: true в config.yml, затем /cmnarcotics reload.");
             return true;
-        }
-        if ("mode".equalsIgnoreCase(args[1])) {
-            if (args.length < 3) {
-                sendHelpV2(sender);
-                return true;
-            }
-            return handleVisualMode(sender, new String[]{"visual-mode", args[2]});
         }
         if ("test".equalsIgnoreCase(args[1])) {
             if (args.length < 4) {
@@ -1692,47 +1664,6 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         return handleVisualsV3(sender, args);
     }
 
-    private boolean handleVisualMode(CommandSender sender, String[] args) {
-        if (!hasPermission(sender, "copimine.narcotics.visuals")) {
-            sender.sendMessage(message("no_permission"));
-            return true;
-        }
-        if (args.length < 2) {
-            sendHelpV2(sender);
-            return true;
-        }
-        String mode = args[1].toUpperCase(Locale.ROOT);
-        if (!VALID_VISUAL_MODES.contains(mode)) {
-            sender.sendMessage(ChatColor.RED + "Неверный visual mode. Доступно: AUTO, CLIENT_MOD, SERVER_FALLBACK.");
-            return true;
-        }
-        configService.setVisualMode(mode);
-        sender.sendMessage(message("visual_mode_set", configService.visualMode().name()));
-        database.auditAsync(sender.getName(), "visual_mode", configService.visualMode().name());
-        return true;
-    }
-
-    private boolean handleVisualEffect(CommandSender sender, String[] args) {
-        if (!hasPermission(sender, "copimine.narcotics.visuals")) {
-            sender.sendMessage(message("no_permission"));
-            return true;
-        }
-        if (args.length < 3) {
-            sendHelpV2(sender);
-            return true;
-        }
-        String effectId = args[1].toUpperCase(Locale.ROOT);
-        if (!configService.visualEffectIds().contains(effectId)) {
-            sender.sendMessage(ChatColor.RED + "Неизвестный visual effect id.");
-            return true;
-        }
-        boolean enabled = "on".equalsIgnoreCase(args[2]);
-        configService.setVisualEffectEnabled(effectId, enabled);
-        sender.sendMessage(message("visual_effect_set", effectId, enabled ? "ON" : "OFF"));
-        database.auditAsync(sender.getName(), "visual_effect", effectId + "=" + enabled);
-        return true;
-    }
-
     private boolean handleSelfCheckV2(CommandSender sender) {
         if (!hasPermission(sender, "copimine.narcotics.selfcheck")) {
             sender.sendMessage(message("no_permission"));
@@ -1741,9 +1672,10 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         NarcoticsResourcePackAudit.Report report = resourcePackAudit.inspect();
         sender.sendMessage(message("selfcheck_ok"));
         sender.sendMessage(ChatColor.GRAY + "Клиентский мост: " + configService.clientBridgeEnabled());
+        sender.sendMessage(ChatColor.GRAY + "Шейдеры: "
+                + (configService.visualsForceDisabled() ? "отключены аварийно" : "включаются при употреблении")
+                + ", рантайм: " + visualRuntime.supportsShaderRuntime());
         sender.sendMessage(ChatColor.GRAY + "Частицы: " + visualRuntime.supportsServerParticleFallback());
-        sender.sendMessage(ChatColor.GRAY + "Визуал: " + configService.visualMode().name()
-                + ", включён: " + configService.visualsEnabled());
         sender.sendMessage(ChatColor.GRAY + "Предметов: " + configService.items().size()
                 + ", текстуры: " + configService.textureMode().name());
         sender.sendMessage(ChatColor.GRAY + "Котлов в кэше: " + cauldronService.cachedStateCount());
@@ -1757,8 +1689,6 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         sender.sendMessage(ChatColor.GRAY + "SHA1 набора: "
                 + (report.zipSha1() == null ? "нет" : report.zipSha1())
                 + ", синхронизирован: " + report.hashSynced());
-        sender.sendMessage(ChatColor.GRAY + "SHA1 pack: " + (report.zipSha1() == null ? "missing" : report.zipSha1()));
-        sender.sendMessage(ChatColor.GRAY + "SHA1 синхронизирован: " + report.hashSynced());
         sender.sendMessage(report.ok() ? ChatColor.GREEN + "Проверка resource pack пройдена" : ChatColor.RED + "Проблема resource pack: " + report.summary());
         return true;
     }
@@ -1967,9 +1897,6 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics texture mode <vanilla|custom>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics texture migrate <online|nearby>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals status");
-        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals enable <effectId|all>");
-        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals disable <effectId|all>");
-        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals mode <auto|client_mod|server_overlay|server_fallback>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals test <игрок> <effectId|narcoticId|overdose> [seconds]");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics selfcheck");
         sender.sendMessage(ChatColor.GOLD + "/cmclient check <игрок>");
@@ -1991,9 +1918,6 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics texture mode <vanilla|custom>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics texture migrate <online|nearby>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals status");
-        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals enable <effectId|all>");
-        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals disable <effectId|all>");
-        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals mode <auto|client_mod|server_overlay|server_fallback>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals test <игрок> <effectId|narcoticId|overdose> [seconds]");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics selfcheck");
         sender.sendMessage(ChatColor.GOLD + "/cmclient check <игрок>");

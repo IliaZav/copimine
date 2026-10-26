@@ -4,7 +4,6 @@ $main = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'copimine-narcotics\src
 $config = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'copimine-narcotics\src\me\copimine\narcotics\config\NarcoticsConfigService.java')
 foreach ($marker in @(
   'VALID_TEXTURE_MODES',
-  'VALID_VISUAL_MODES',
   'parseBoundedInt',
   '1, 1000',
   '1, 10000',

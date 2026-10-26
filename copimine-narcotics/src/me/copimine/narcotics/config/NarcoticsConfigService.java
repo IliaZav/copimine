@@ -52,6 +52,7 @@ public final class NarcoticsConfigService {
     private boolean milkBlocksDuringOverdose;
     private boolean zhuzevoForcesOverdose;
     private boolean visualsEnabled;
+    private boolean visualsForceDisabled;
     private boolean allowClientModVisuals;
     private boolean allowServerResourcePackOverlay;
     private boolean allowServerParticleFallback;
@@ -119,6 +120,7 @@ public final class NarcoticsConfigService {
         milkBlocksDuringOverdose = root.getBoolean("usage.milk_blocks_during_overdose", true);
         zhuzevoForcesOverdose = root.getBoolean("usage.zhuzevo_forces_overdose", true);
         visualsEnabled = root.getBoolean("visuals.enabled", false);
+        visualsForceDisabled = root.getBoolean("visuals.force_disable", false);
         allowClientModVisuals = root.getBoolean("visuals.allow_client_mod_visuals", true);
         allowServerResourcePackOverlay = root.getBoolean("visuals.allow_server_resource_pack_overlay", false);
         allowServerParticleFallback = root.getBoolean("visuals.allow_server_particle_fallback", true);
@@ -296,6 +298,11 @@ public final class NarcoticsConfigService {
 
     public boolean visualsEnabled() {
         return visualsEnabled;
+    }
+
+    /** Emergency only: turns the narcotics shader presentation off for everyone. */
+    public boolean visualsForceDisabled() {
+        return visualsForceDisabled;
     }
 
     public boolean allowClientModVisuals() {

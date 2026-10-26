@@ -182,7 +182,7 @@
         "tests/test_client_legacy_bridge_auth_contract.py"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineNarcotics.jar",
-      "candidateSha256": "a91028c50325c4dd94ad9b22fce96bcd550af90cc696f7d38645436468f69365",
+      "candidateSha256": "eff91384fddfeb0564076fad094e4a9ee7ece805277dae17c568c3df07079529",
       "sha256": "d7e46fcc2bcfb8f31216cb1ea51c53bf3f492d29bc3b8c227540cb38e8ced7e2",
       "sourceBuild": "PASS",
       "unitContract": "PASS",

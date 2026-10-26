@@ -1585,7 +1585,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                             ? "отключены аварийно (visuals.force_disable)"
                             : "включаются только при употреблении"));
             sender.sendMessage(ChatColor.GRAY + "Клиентский мост: " + configService.clientBridgeEnabled());
-            sender.sendMessage(ChatColor.GRAY + "Шейдерный рантайм: " + visualRuntime.supportsShaderRuntime()
+            sender.sendMessage(ChatColor.GRAY + "Шейдерный рантайм (локальная сборка): " + visualRuntime.supportsShaderRuntime()
                     + (visualRuntime.supportsShaderRuntime() ? "" : " (" + visualRuntime.shaderSupportReason() + ")"));
             sender.sendMessage(ChatColor.GRAY + "Частицы без мода: " + visualRuntime.supportsServerParticleFallback());
             sender.sendMessage(ChatColor.GRAY + "Наложение: " + visualRuntime.supportsServerOverlayRuntime()
@@ -1593,9 +1593,13 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             String sampleEffect = configService.visualEffectIds().stream().sorted().findFirst().orElse("CHAOS");
             sender.sendMessage(ChatColor.GRAY + "Маршрут для " + sampleEffect + ": "
                     + visualRuntime.resolvedModeFor(sampleEffect));
-            sender.sendMessage(ChatColor.GRAY + "Наложений в наборе: " + report.overlayTextures().size());
-            if (!report.ok()) {
-                sender.sendMessage(ChatColor.RED + "Проблема resource pack: " + report.summary());
+            if (!resourcePackSourceAvailable()) {
+                sender.sendMessage(ChatColor.GRAY + "Набор ресурсов входит в клиентский модпак.");
+            } else {
+                sender.sendMessage(ChatColor.GRAY + "Наложений в наборе: " + report.overlayTextures().size());
+                if (!report.ok()) {
+                    sender.sendMessage(ChatColor.RED + "Проблема resource pack: " + report.summary());
+                }
             }
             return true;
         }
@@ -1679,18 +1683,28 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         sender.sendMessage(ChatColor.GRAY + "Предметов: " + configService.items().size()
                 + ", текстуры: " + configService.textureMode().name());
         sender.sendMessage(ChatColor.GRAY + "Котлов в кэше: " + cauldronService.cachedStateCount());
-        sender.sendMessage(ChatColor.GRAY + "Модели: " + report.itemModels().size()
-                + ", текстуры: " + report.itemTextures().size()
-                + ", наложения: " + report.overlayTextures().size());
-        sender.sendMessage(ChatColor.GRAY + "Шрифт: " + report.fontManifestPresent()
-                + ", лицензии: " + report.licensesDocPresent()
-                + ", без hotlink: " + report.noHotlinks()
-                + ", без загрузок: " + report.noRuntimeDownloads());
-        sender.sendMessage(ChatColor.GRAY + "SHA1 набора: "
-                + (report.zipSha1() == null ? "нет" : report.zipSha1())
-                + ", синхронизирован: " + report.hashSynced());
-        sender.sendMessage(report.ok() ? ChatColor.GREEN + "Проверка resource pack пройдена" : ChatColor.RED + "Проблема resource pack: " + report.summary());
+        if (!resourcePackSourceAvailable()) {
+            sender.sendMessage(ChatColor.GRAY + "Набор ресурсов входит в клиентский модпак.");
+        } else {
+            sender.sendMessage(ChatColor.GRAY + "Модели: " + report.itemModels().size()
+                    + ", текстуры: " + report.itemTextures().size()
+                    + ", наложения: " + report.overlayTextures().size());
+            sender.sendMessage(ChatColor.GRAY + "Шрифт: " + report.fontManifestPresent()
+                    + ", лицензии: " + report.licensesDocPresent()
+                    + ", без hotlink: " + report.noHotlinks()
+                    + ", без загрузок: " + report.noRuntimeDownloads());
+            sender.sendMessage(ChatColor.GRAY + "SHA1 набора: "
+                    + (report.zipSha1() == null ? "нет" : report.zipSha1())
+                    + ", синхронизирован: " + report.hashSynced());
+            sender.sendMessage(report.ok() ? ChatColor.GREEN + "Проверка resource pack пройдена"
+                    : ChatColor.RED + "Проблема resource pack: " + report.summary());
+        }
         return true;
+    }
+
+    private boolean resourcePackSourceAvailable() {
+        return java.nio.file.Files.isDirectory(
+                resourcePackAudit.projectRoot().resolve("resourcepacks").resolve("src"));
     }
 
     private boolean handleSelfCheck(CommandSender sender) {

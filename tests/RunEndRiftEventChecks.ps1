@@ -416,6 +416,7 @@ $pureTests = @(
   'ArenaInfernoPolicyTest',
   'BossEdgeVolleyPolicyTest',
   'BossPhaseGatingTest',
+  'BossAmbushPolicyTest',
   'BossContactStrikePolicyTest',
   'BossFinalSealAnchorPolicyTest',
   'BossAnimationIdTest',

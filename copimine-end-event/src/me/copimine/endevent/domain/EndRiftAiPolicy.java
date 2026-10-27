@@ -21,7 +21,8 @@ public final class EndRiftAiPolicy {
         MELEE_SWIPE("melee_swipe", "Взмах когтя"),
         CHEST_STRIKE("chest_strike", "Удар в грудь"),
         GROUND_SLAM("ground_slam", "Удар по земле"),
-        FINAL_STRIKE("final_strike", "Приговор Разлома");
+        FINAL_STRIKE("final_strike", "Приговор Разлома"),
+        AMBUSH_GRAB("ambush_grab", "Засада из-под земли");
 
         private final String id;
         private final String displayName;

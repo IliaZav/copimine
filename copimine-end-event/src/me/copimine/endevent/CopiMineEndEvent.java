@@ -55,6 +55,7 @@ import me.copimine.endevent.domain.BossAnimationPriorityPolicy;
 import me.copimine.endevent.domain.BossAnimationPosePolicy;
 import me.copimine.endevent.domain.BossHitboxPose;
 import me.copimine.endevent.domain.BossBrain;
+import me.copimine.endevent.domain.BossAmbushPolicy;
 import me.copimine.endevent.domain.BossCastTimeline;
 import me.copimine.endevent.domain.BossContactStrikePolicy;
 import me.copimine.endevent.domain.BossDamagePolicy;
@@ -504,6 +505,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final long TENTACLE_TEMPORARY_INTERVAL_TICKS =
             TentacleScalingPolicy.TEMPORARY_CAST_INTERVAL_TICKS;
     private static final double TENTACLE_MAX_GRAB_RANGE = 3.0D;
+    /** Ambush apparitions live outside the permanent guardian slot range. */
+    private static final int TENTACLE_AMBUSH_SLOT = TentacleScalingPolicy.MAX_PERMANENT;
     private static final float TENTACLE_DISPLAY_WIDTH = 2.25F;
     private static final float TENTACLE_DISPLAY_HEIGHT = (float) TentacleScalingPolicy.DEFAULT_LOGICAL_LENGTH;
     private static final double TENTACLE_TEMPORARY_MAX_HEALTH = 20.0D;
@@ -1124,6 +1127,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<UUID> tentacleContactResolved = new HashSet<>();
     private final Set<UUID> tentacleReleaseResolved = new HashSet<>();
     private final Map<UUID, TentacleThrowPolicy.Launch> tentacleThrowLaunches = new HashMap<>();
+    /** Last committed under-player ambush per player, for grab pressure. */
+    private final Map<UUID, Long> tentacleAmbushTargetMillis = new HashMap<>();
     private final Map<Integer, UUID> guardianShieldDisplayIds = new HashMap<>();
     /** Permanent guardian hitboxes are separate from the client visual carrier. */
     private final Map<UUID, UUID> tentacleHitboxesByDisplay = new HashMap<>();
@@ -9488,6 +9493,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 case "melee_swipe" -> EndRiftAiPolicy.BossSpell.MELEE_SWIPE;
                 case "chest_strike" -> EndRiftAiPolicy.BossSpell.CHEST_STRIKE;
                 case "ground_slam" -> EndRiftAiPolicy.BossSpell.GROUND_SLAM;
+            case "ambush_grab" -> EndRiftAiPolicy.BossSpell.AMBUSH_GRAB;
                         default -> EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS;
                     };
                     castCurrentBossSpell(boss, requestedSpell, true);
@@ -39825,6 +39831,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             return false;
         }
+        if (spell == EndRiftAiPolicy.BossSpell.AMBUSH_GRAB) {
+            Player target = currentBrainTarget(boss, spell);
+            if (target == null || !reserveBossHazard(spell, target)) {
+                return false;
+            }
+            previousBossSpell = spell;
+            return startTentacleAmbush(boss, target);
+        }
         Player target = currentBrainTarget(boss, spell);
         if (target == null) {
             return false;
@@ -39837,6 +39851,53 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " spell=" + spell.id() + " target=" + target.getUniqueId()
                 + " stage=" + bossPhase);
         return telegraphBossSpell(boss, target, spell, forced);
+    }
+
+    /**
+     * LAST_SEAL under-player ambush.  The canonical contract makes the
+     * committed target a guaranteed grab, so the cast either commits to a
+     * legal target or refuses for a concrete safety reason; there is no
+     * random miss roll.  The apparition reuses the shared tentacle lifecycle
+     * so the hold lock, throw launch and single damage hit stay server-owned.
+     */
+    private boolean startTentacleAmbush(LivingEntity boss, Player target) {
+        if (boss == null || target == null || !isCombatTarget(target)) {
+            releaseBossHazardReservation("ambush-invalid-target");
+            return false;
+        }
+        long now = System.currentTimeMillis();
+        long lastGrab = tentacleAmbushTargetMillis.getOrDefault(target.getUniqueId(), 0L);
+        boolean restrained = tentacleController.states().values().stream()
+                .anyMatch(state -> target.getUniqueId().equals(state.target()));
+        Location ground = target.getLocation().clone();
+        boolean floorSolid = ground.clone().subtract(0.0D, 0.5D, 0.0D).getBlock()
+                .getType().isSolid();
+        BossAmbushPolicy.Decision decision = BossAmbushPolicy.decide(bossPhase,
+                true, restrained, floorSolid, now, lastGrab);
+        if (decision != BossAmbushPolicy.Decision.COMMIT) {
+            getLogger().info("BOSS_AMBUSH_REFUSED event=" + eventId
+                    + " target=" + target.getUniqueId()
+                    + " reason=" + decision.name().toLowerCase(Locale.ROOT));
+            releaseBossHazardReservation("ambush-refused");
+            return false;
+        }
+        ItemDisplay display = spawnTentacle(boss, ground,
+                TentacleAnimationPolicy.Kind.UNDER_PLAYER, TENTACLE_AMBUSH_SLOT, target);
+        if (display == null) {
+            releaseBossHazardReservation("ambush-spawn-failed");
+            return false;
+        }
+        tentacleAmbushTargetMillis.put(target.getUniqueId(), now);
+        setTentacleState(display, TentacleAnimationPolicy.State.SPAWN_UNDER_PLAYER,
+                target.getUniqueId());
+        // The apparition owns its own generation-guarded lifecycle, so the
+        // one major-cast reservation ends with the successful commitment.
+        releaseBossHazardReservation("ambush-committed");
+        getLogger().info("BOSS_AMBUSH_COMMITTED event=" + eventId
+                + " boss=" + boss.getUniqueId() + " target=" + target.getUniqueId()
+                + " entity=" + display.getUniqueId() + " generation=" + generation
+                + " warning_ticks=" + BossAmbushPolicy.GROUND_WARNING_TICKS);
+        return true;
     }
 
     private Player currentBrainTarget(LivingEntity boss, EndRiftAiPolicy.BossSpell spell) {
@@ -41534,6 +41595,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private ItemDisplay spawnTentacle(LivingEntity boss, Location requested,
                                       boolean temporary, int slot, Player target) {
+        return spawnTentacle(boss, requested,
+                temporary ? TentacleAnimationPolicy.Kind.TEMPORARY
+                        : TentacleAnimationPolicy.Kind.PERMANENT, slot, target);
+    }
+
+    private ItemDisplay spawnTentacle(LivingEntity boss, Location requested,
+                                      TentacleAnimationPolicy.Kind kind, int slot, Player target) {
+        boolean temporary = kind != TentacleAnimationPolicy.Kind.PERMANENT;
         Location anchor = coreCombatAnchorLocation();
         Location location = resolveTentacleLocation(anchor, requested);
         if (temporary && location == null) {
@@ -41544,11 +41613,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " temporary=" + temporary + " slot=" + slot + " reason=unsafe-location");
             return null;
         }
-        TentacleAnimationPolicy.Kind tentacleKind = temporary
-                ? TentacleAnimationPolicy.Kind.TEMPORARY : TentacleAnimationPolicy.Kind.PERMANENT;
-        TentacleAnimationPolicy.State initialState = temporary
-                ? TentacleAnimationPolicy.State.TELEGRAPH_GRAB
-                : TentacleAnimationPolicy.initialSpawnState(tentacleKind, localTextureShowcase);
+        TentacleAnimationPolicy.Kind tentacleKind = kind;
+        TentacleAnimationPolicy.State initialState = switch (tentacleKind) {
+            case TEMPORARY -> TentacleAnimationPolicy.State.TELEGRAPH_GRAB;
+            case UNDER_PLAYER -> TentacleAnimationPolicy.State.SPAWN_UNDER_PLAYER;
+            case PERMANENT -> TentacleAnimationPolicy.initialSpawnState(tentacleKind,
+                    localTextureShowcase);
+        };
         ItemDisplay display = location.getWorld().spawn(location, ItemDisplay.class, entity -> {
             entity.setItemStack(overlayItem(MODEL_RIFT_TENTACLE, "end_event_rift_tentacle"));
             entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
@@ -41783,12 +41854,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         switch (animation) {
             case SPAWN_UNDER_PLAYER -> {
                 if (elapsed >= TentacleAnimationPolicy.durationTicks(animation)) {
-                    // An under-player eruption is a short, dodgeable hazard,
-                    // not the beginning of the permanent grab lifecycle.  It
-                    // must recover and retract after its emergence instead of
-                    // silently turning into a second grab attempt.
-                    setTentacleState(display, TentacleAnimationPolicy.State.RECOVERY,
-                            null);
+                    // The canonical ambush is a committed capture: a target
+                    // that is still legal when the emergence ends continues
+                    // into the grab telegraph.  Anything else cancels through
+                    // the ordinary miss recovery, never a random roll.
+                    Player target = playerForTentacle(state.target(), participants);
+                    if (state.kind() == TentacleAnimationPolicy.Kind.UNDER_PLAYER
+                            && target != null
+                            && BossAmbushPolicy.keepsCommitment(true,
+                                    tentacleController.owns(generation),
+                                    bossUuid != null && Bukkit.getEntity(bossUuid) != null)) {
+                        setTentacleState(display,
+                                TentacleAnimationPolicy.State.TELEGRAPH_GRAB,
+                                target.getUniqueId());
+                    } else {
+                        setTentacleState(display,
+                                TentacleAnimationPolicy.State.MISS_RECOVERY, null);
+                    }
                 }
             }
             case TELEGRAPH_GRAB -> {

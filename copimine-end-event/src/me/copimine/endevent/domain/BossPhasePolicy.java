@@ -83,6 +83,7 @@ public final class BossPhasePolicy {
                     EndRiftAiPolicy.BossSpell.VOID_MARK,
                     EndRiftAiPolicy.BossSpell.ARENA_INFERNO,
                     EndRiftAiPolicy.BossSpell.BOSS_FIREBALL,
+                    EndRiftAiPolicy.BossSpell.AMBUSH_GRAB,
                     EndRiftAiPolicy.BossSpell.FINAL_STRIKE);
         };
     }

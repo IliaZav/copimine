@@ -78,7 +78,8 @@ public final class EndRiftAiPolicyTest {
             "Взмах когтя",
             "Удар в грудь",
             "Удар по земле",
-            "Приговор Разлома"
+            "Приговор Разлома",
+            "Засада из-под земли"
         };
         EndRiftAiPolicy.BossSpell[] spells = EndRiftAiPolicy.BossSpell.values();
         check(spells.length == expected.length, "boss spell list changed without updating display names");

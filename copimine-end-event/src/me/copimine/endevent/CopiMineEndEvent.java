@@ -37969,6 +37969,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossPhase = transition.current();
         boss.getPersistentDataContainer().set(keyBossPhase,
                 PersistentDataType.STRING, bossPhase.name());
+        // Every crossed band is processed once, in rank order, before the final
+        // phase banner: a single large hit can advance several thresholds.
+        for (BossPhase enteredPhase : transition.entered()) {
+            getLogger().info("BOSS_STAGE_ENTERED event=" + eventId
+                    + " boss=" + boss.getUniqueId() + " phase=" + enteredPhase
+                    + " from=" + previous + " health=" + health + " max=" + maxHealth);
+        }
         getLogger().info("BOSS_STAGE_TRANSITION event=" + eventId
                 + " boss=" + boss.getUniqueId() + " from=" + previous
                 + " to=" + bossPhase + " crossed=" + transition.entered()
@@ -37985,7 +37992,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 clearCurrentRiftFractures("Current stage exit from RIFT");
             }
         }
-        if (transition.entered().contains(BossPhase.RIFT)) {
+        if (bossPhase == BossPhase.RIFT && transition.entered().contains(BossPhase.RIFT)) {
             startCurrentRiftFractures(boss);
         }
         if (transition.entered().contains(BossPhase.LAST_SEAL)) {
@@ -38773,6 +38780,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " boss=" + boss.getUniqueId() + " reason=phase phase=" + phase);
             return;
         }
+        synchronizeBossPhase(boss);
         BossPhasePolicy.DamageImmunityReason immunityReason = bossDamageImmunityReason();
         BossDamagePolicy.Decision damageDecision = BossDamagePolicy.evaluate(
                 bossPhase, immunityReason);
@@ -38844,7 +38852,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // counted. Unlike noDamageTicks manipulation, this leaves no native
         // hurt window behind for the next independent player hit.
         event.setCancelled(true);
-        boss.setHealth(result.remainingHealth());
+        BossHealthCommit healthCommit = commitCurrentBossHealth(boss, result);
+        result = healthCommit.result();
         applyBossHitFeedbackAt(boss, source, bodyImpactContact(boss, source),
                 BossHitFeedbackPolicy.forAcceptedHit(source instanceof Projectile));
         authoritativeCombatTraceEvents.put(event, Boolean.TRUE);
@@ -38856,6 +38865,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + (source == null ? "environment" : source.getType() + ":" + source.getUniqueId())
                 + " raw=" + rawDamage + " final=" + finalDamage
                 + " applied=" + result.appliedDamage()
+                + " shield_blocked=" + healthCommit.shieldBlockedDamage()
                 + " health_before=" + healthBefore + " health_after=" + result.remainingHealth()
                 + " max=" + bossMaxHealth(boss) + " stage=" + bossPhase
                 + " tick=" + Bukkit.getCurrentTick()
@@ -38887,6 +38897,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " boss=" + boss.getUniqueId() + " reason=phase phase=" + phase);
             return;
         }
+        synchronizeBossPhase(boss);
         BossPhasePolicy.DamageImmunityReason immunityReason = bossDamageImmunityReason();
         BossDamagePolicy.Decision damageDecision = BossDamagePolicy.evaluate(
                 bossPhase, immunityReason);
@@ -38959,7 +38970,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             combatHelpers.add(player.getUniqueId());
         }
         event.setCancelled(true);
-        boss.setHealth(result.remainingHealth());
+        BossHealthCommit healthCommit = commitCurrentBossHealth(boss, result);
+        result = healthCommit.result();
         applyBossHitFeedbackAt(boss, projectile, bodyImpactContact(boss, projectile),
                 BossHitFeedbackPolicy.forAcceptedHit(true));
         emitBossDamageDiagnostic("DAMAGE_ACCEPT", "INFO", boss, projectile,
@@ -38970,6 +38982,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + projectile.getType() + ":" + projectile.getUniqueId()
                 + " raw=" + rawDamage + " final=" + finalDamage
                 + " applied=" + result.appliedDamage()
+                + " shield_blocked=" + healthCommit.shieldBlockedDamage()
                 + " health_before=" + healthBefore + " health_after=" + result.remainingHealth()
                 + " max=" + bossMaxHealth(boss) + " stage=" + bossPhase
                 + " tick=" + Bukkit.getCurrentTick()
@@ -38992,6 +39005,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " boss=" + boss.getUniqueId() + " reason=phase phase=" + phase);
             return false;
         }
+        synchronizeBossPhase(boss);
         BossPhasePolicy.DamageImmunityReason immunityReason = bossDamageImmunityReason();
         BossDamagePolicy.Decision damageDecision = BossDamagePolicy.evaluate(
                 bossPhase, immunityReason);
@@ -39058,7 +39072,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             bossKillerUuid = player.getUniqueId();
             combatHelpers.add(player.getUniqueId());
         }
-        boss.setHealth(result.remainingHealth());
+        BossHealthCommit healthCommit = commitCurrentBossHealth(boss, result);
+        result = healthCommit.result();
         applyBossHitFeedbackAt(boss, projectile, bodyImpactContact(boss, projectile),
                 BossHitFeedbackPolicy.forAcceptedHit(true));
         emitBossDamageDiagnostic("DAMAGE_ACCEPT", "INFO", boss, projectile,
@@ -39069,12 +39084,40 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + projectile.getType() + ":" + projectile.getUniqueId()
                 + " raw=" + rawDamage + " final=" + finalDamage
                 + " applied=" + result.appliedDamage()
+                + " shield_blocked=" + healthCommit.shieldBlockedDamage()
                 + " health_before=" + healthBefore + " health_after=" + result.remainingHealth()
                 + " max=" + bossMaxHealth(boss) + " stage=" + bossPhase
                 + " tick=" + Bukkit.getCurrentTick()
                 + " accepted=true cancelled=true authority=entity-health"
                 + " transaction=real-health lethal=" + result.lethal());
         return true;
+    }
+
+    private record BossHealthCommit(BossRealHealthDamagePolicy.Result result,
+                                    double shieldBlockedDamage) { }
+
+    /** Commit every crossed phase before checking the newly entered Last Seal shield. */
+    private BossHealthCommit commitCurrentBossHealth(LivingEntity boss,
+                                                     BossRealHealthDamagePolicy.Result requested) {
+        double before = boss.getHealth();
+        double sealThreshold = BossPhasePolicy.lastSealThreshold(bossMaxHealth(boss));
+        if (bossPhase != BossPhase.LAST_SEAL && before > sealThreshold
+                && requested.remainingHealth() <= sealThreshold) {
+            boss.setHealth(sealThreshold);
+            synchronizeBossPhase(boss);
+            if (tentacleGuardianShielded()) {
+                double applied = before - sealThreshold;
+                var shielded = new BossRealHealthDamagePolicy.Result(sealThreshold,
+                        applied, applied > 0.0D, false);
+                return new BossHealthCommit(shielded,
+                        Math.max(0.0D, requested.appliedDamage() - applied));
+            }
+        }
+        boss.setHealth(requested.remainingHealth());
+        if (!requested.lethal()) {
+            synchronizeBossPhase(boss);
+        }
+        return new BossHealthCommit(requested, 0.0D);
     }
 
     private void applyBossDamage(LivingEntity boss, double damage, Entity source) {
@@ -40878,6 +40921,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean tentacleGuardianShielded() {
+        if (!tentacleGuardiansEnabled()) {
+            return false;
+        }
         int livingGuardians = livingTentacleGuardianCount();
         boolean damageWindowOpen = tentacleVulnerabilityOpen();
         boolean guardiansPendingInitialization = bossPhase == BossPhase.LAST_SEAL

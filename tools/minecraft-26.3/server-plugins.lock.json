@@ -1031,13 +1031,13 @@
       "candidate": {
         "filename": "CopiMineNarcotics-26.3.jar",
         "runtimeFilename": "CopiMineNarcotics.jar",
-        "sha256": "5bf3a9fa04492019340edb67934dd9a3dc280b9aa7d0337c41ee21e41f548873",
+        "sha256": "bea72432491f7afa0a0cbd23b608654b56899b8e463720f98dbfef0f39f2ef0d",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineNarcotics-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "size": 370241,
-        "sha512": "f5b4445184e42dd94732462cdb903f95444383ce35e1c474f4a91888df4fe74880e7ec55a85b997d2a989107b9adab140e88293689ee84df66421cc9167913d5",
+        "size": 370363,
+        "sha512": "c2e3439ca69fd8ecc2b19aa654a38fb6bcd81e5be1da2da52934988edf1f75a5bb0170cbada994015500a6ccc6b2fcb6e8bc2bf4222a154c1b1fe6b5c14a586b",
         "runtimeEligible": true,
         "replaceSha256": [
           "c450df097cd067378bbdd556167d4450e51cf25c8c18068f59b393f36b7cfc35",
@@ -1050,7 +1050,8 @@
           "d7e46fcc2bcfb8f31216cb1ea51c53bf3f492d29bc3b8c227540cb38e8ced7e2",
           "bc4599107401e31cda2457d51c3faf7e3edddea3eeb41deddef35b5513a4fc2e",
           "29d4894f4bde94ce950bf05f3f1a61fbafc3369851c8cb15ec330878ec5641c6",
-          "835b8043781cc2bf580900c09653da7aa3436c8485266f7838b478ac5a047e70"
+          "835b8043781cc2bf580900c09653da7aa3436c8485266f7838b478ac5a047e70",
+          "5bf3a9fa04492019340edb67934dd9a3dc280b9aa7d0337c41ee21e41f548873"
         ]
       },
       "nativeVerified": false

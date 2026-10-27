@@ -271,11 +271,11 @@ public final class VisualRuntimeService {
         VisualSession current = sessions.get(player.getUniqueId());
         if (sameVisualSession(current, route, normalized, nowMillis)) {
             long extendedUntil = Math.max(current.untilMillis(), untilMillis);
-            if (route == VisualRoute.CLIENT_MOD_VISUAL && extendedUntil > current.untilMillis()) {
-                // Keep the client-side shader pipeline alive while extending
-                // the visible timer.  A refresh packet is cheaper than a
-                // clear/start pair and the client deduplicates the same
-                // effect+shaderpack without reloading Iris.
+            boolean presentationChanged = current.overdose() != overdose;
+            if (route == VisualRoute.CLIENT_MOD_VISUAL
+                    && (extendedUntil > current.untilMillis() || presentationChanged)) {
+                // Preserve the visual instance and its original expiry when
+                // the timer extends or overdose changes the presentation.
                 UUID refreshEpoch = UUID.randomUUID();
                 sessions.put(player.getUniqueId(),
                         new VisualSession(normalized, route, extendedUntil, overdose, refreshEpoch));
@@ -325,6 +325,10 @@ public final class VisualRuntimeService {
             } else {
                 sessions.put(player.getUniqueId(), new VisualSession(
                         normalized, route, extendedUntil, overdose, current.clientCommandEpoch()));
+                if (presentationChanged && route == VisualRoute.SERVER_PARTICLE_FALLBACK) {
+                    int remainingSeconds = VisualSessionCompletionPolicy.remainingSecondsUntil(extendedUntil, nowMillis);
+                    applyServerFallback(player, normalized, remainingSeconds, overdose);
+                }
             }
             VisualSession latest = sessions.get(player.getUniqueId());
             if (latest != null && latest.untilMillis() == extendedUntil) {
@@ -398,6 +402,12 @@ public final class VisualRuntimeService {
     }
 
     private void applyServerFallbackRoute(Player player, String effectId, long untilMillis, boolean overdose) {
+        VisualSession previous = sessions.get(player.getUniqueId());
+        if (previous != null && previous.route() == VisualRoute.CLIENT_MOD_VISUAL) {
+            // A failed refresh may leave the prior authenticated visual active.
+            // Clear that bridge-owned stream before switching to server fallback.
+            clientBridge.visuals().clearVisuals(player);
+        }
         int remainingSeconds = VisualSessionCompletionPolicy.remainingSecondsUntil(untilMillis, System.currentTimeMillis());
         if (remainingSeconds <= 0) {
             return;

@@ -8,9 +8,9 @@ This table covers only first-party plugins. Third-party jars remain pinned in `t
 |---|---|---|---|---|---|---|
 | CopiMineUltimateAdminPlus | 9.2.0-postgres-v4-balance-credit | EconomyCore, ElectionCore | 11 / 11 | `41b1721f...78da` | PASS (contracts) | BLOCKED |
 | CopiMineArtifacts | 1.1.0-shops-blocks-prices | EconomyCore | 2 / 8 | `e82f5fa7...54d2` | PASS (contracts + Java) | BLOCKED |
-| CopiMineEconomyCore | 1.0.0 | none | 0 / 0 | `29fce619...e4e1` | PASS (contracts) | BLOCKED |
+| CopiMineEconomyCore | 1.0.0 | none | 0 / 0 | `d4051688...8e89` | PASS (contracts) | BLOCKED |
 | CopiMineElectionCore | 9.2.0-postgres-v4-balance-credit | EconomyCore | 2 / 5 | `ce4749dc...4182` | PASS (contracts) | BLOCKED |
-| CopiMineEndEvent | 0.1.0 | WorldCore, Artifacts | 1 / 2 | `5342d779...b117` | PASS (wide suite) | BLOCKED |
+| CopiMineEndEvent | 0.1.0 | WorldCore, Artifacts | 1 / 2 | `a8a7a971...9599` | PASS (wide suite) | BLOCKED |
 | CopiMineNarcotics | 2.1.0-client-bridge | none (ProtocolLib soft) | 2 / 8 | `5bf3a9fa...8873` | PASS (contracts) | BLOCKED |
 | CopiMineWorldCore | 1.0.0 | none | 1 / 1 | `6617940e...3e0a` | PASS (contracts) | BLOCKED |
 | AuthEffects | 1.0.0 | AuthMe soft | 0 / 0 | not installed (candidate `c2a2ab2c...b9f7`) | PASS (contracts) | BLOCKED |

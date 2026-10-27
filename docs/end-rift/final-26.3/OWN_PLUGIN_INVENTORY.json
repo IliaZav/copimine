@@ -87,8 +87,8 @@
         "tests/test_migration_postgres_lifecycle.py"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineEconomyCore.jar",
-      "candidateSha256": "29fce619840efb99fc56e80552272cd4b67580042c10015546dbd98a9ddae4e1",
-      "sha256": "29fce619840efb99fc56e80552272cd4b67580042c10015546dbd98a9ddae4e1",
+      "candidateSha256": "d4051688d7a56e1c59b8b31023783d054724be6fac3554611ed6bf65d8568e89",
+      "sha256": "d4051688d7a56e1c59b8b31023783d054724be6fac3554611ed6bf65d8568e89",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
       "realServerEnable": "BLOCKED",
@@ -152,8 +152,8 @@
         "tests/PrisonerAbilityControllerTest.java"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineEndEvent.jar",
-      "candidateSha256": "5342d7793aa90bd36208f60f5ed44443a54ef8a44e62064112fcc3324db8b117",
-      "sha256": "5342d7793aa90bd36208f60f5ed44443a54ef8a44e62064112fcc3324db8b117",
+      "candidateSha256": "a8a7a971d44fb330689e7659a184d968de712e797f8cb73f8029ad3b8c699599",
+      "sha256": "a8a7a971d44fb330689e7659a184d968de712e797f8cb73f8029ad3b8c699599",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
       "realServerEnable": "BLOCKED",

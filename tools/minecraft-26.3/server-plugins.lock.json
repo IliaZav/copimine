@@ -881,15 +881,16 @@
       "candidate": {
         "filename": "CopiMineEconomyCore-26.3.jar",
         "runtimeFilename": "CopiMineEconomyCore.jar",
-        "sha256": "29fce619840efb99fc56e80552272cd4b67580042c10015546dbd98a9ddae4e1",
+        "sha256": "d4051688d7a56e1c59b8b31023783d054724be6fac3554611ed6bf65d8568e89",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineEconomyCore-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "sha512": "b3785b596a543c993b90e7e19d13314881311c50e4b4b7d0ddbdf7d55050ec725c1d8337ef8cc2ab2bf9034a5575c191fad0ca9f373e290f138ec8c640045bba",
-        "size": 170288,
+        "sha512": "9f40d2cadddade341ab0152ca69c9678a349cf2a5e81761764cff6f12931cb0c1aef7afe8e5afc34c0ec5b22bf3fe00d9106fdb13268180cfbb9b4ed3a0ea1f2",
+        "size": 170427,
         "runtimeEligible": true,
         "replaceSha256": [
+          "29fce619840efb99fc56e80552272cd4b67580042c10015546dbd98a9ddae4e1",
           "f0d1f6b2c189b12c68270cd53d046f38a723c52b0f240f8272bfd3cbd360e3e6",
           "7fd9c779e0a5ca80b5dad4effcc0bf59d5cbcd181be7400e10432b6e69cabd32",
           "b388785fe59144ef5faaecbe0ca1ab545e3bbd38c79366ae142c95c66fc91cdc"
@@ -897,6 +898,7 @@
       },
       "nativeVerified": false,
       "replaceSha256": [
+        "29fce619840efb99fc56e80552272cd4b67580042c10015546dbd98a9ddae4e1",
         "41c35fdc9631fb4fae6dc8eefe746fb7bb1f8b6923b4c22ad8e1f1fabc369d5b",
         "3172e18242e43ee7ce601b3adc7857da31ffd51ac85b9a96d4c99282dd0bdc0b",
         "43a7a3241b9fdd347a7bd4ad56b2436dec4b97b3822c69f5371182604c6d7bc9"

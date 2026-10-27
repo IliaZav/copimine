@@ -5351,7 +5351,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 ensureDonationAccount(connection, playerUuid.toString(), first(playerName, ""));
                 return scalarLong(connection, "SELECT COALESCE(balance,0) FROM donation_accounts WHERE player_uuid=?", playerUuid.toString());
             } catch (Exception error) {
-                return 0L;
+                throw new IllegalStateException("Donation balance read failed; callers must retry.", error);
             }
         }
 
@@ -6201,11 +6201,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                     statement.execute("SELECT 1");
                 }
                 PinStatus pin = pinStatus(playerUuid);
-                // BankService.balance() intentionally returns a safe zero to
-                // gameplay callers when a read fails.  Health must not use
-                // that fail-soft value as a green readiness signal: perform
-                // the same account/read operation here and let any SQL error
-                // mark PostgreSQL unhealthy.
+                // Check the account read independently so any SQL failure
+                // marks PostgreSQL unhealthy instead of reporting readiness.
                 long balance = playerUuid == null ? 0L : readBankBalanceForHealth(playerUuid);
                 return new Health(true, true, pin.configured && !pin.mustChange && pin.lockedSeconds <= 0, balance, first(context, "health"), "");
             } catch (Exception error) {
@@ -6253,7 +6250,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 ensureBankAccount(connection, playerUuid.toString(), first(playerName, ""));
                 return scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=?", bankAccountId(playerUuid.toString()));
             } catch (Exception error) {
-                return 0L;
+                throw new IllegalStateException("Bank balance read failed; callers must retry.", error);
             }
         }
 

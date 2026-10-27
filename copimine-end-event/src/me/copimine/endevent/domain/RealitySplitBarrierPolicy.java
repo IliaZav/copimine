@@ -229,6 +229,21 @@ public final class RealitySplitBarrierPolicy {
      * graph edge may still be recorded by the logical controller, but it must
      * not remove an unrelated wall.
      */
+    /**
+     * The single chamber a completed room may open a passage to.
+     *
+     * <p>A room owns the separator that leads to its successor.  Opening every
+     * adjacent wall would also expose a neighbouring trial that was never
+     * completed, which section 9.1 forbids.</p>
+     */
+    public static int approvedPassagePartner(int chamber, int chamberCount) {
+        int count = safeChamberCount(chamberCount);
+        if (chamber < 0 || chamber >= count) {
+            return -1;
+        }
+        return (chamber + 1) % count;
+    }
+
     public static int boundaryForPair(int first, int second, int chamberCount) {
         int count = safeChamberCount(chamberCount);
         if (first < 0 || second < 0 || first >= count || second >= count || first == second) {

@@ -18,6 +18,22 @@ public final class RealitySplitBarrierPolicyTest {
                             == boundary,
                     "adjacent duo actor slots must map to their physical barrier");
         }
+        for (int count = 2; count <= 4; count++) {
+            Set<Integer> boundaries = new HashSet<>();
+            for (int chamber = 0; chamber < count; chamber++) {
+                int partner = RealitySplitBarrierPolicy.approvedPassagePartner(chamber, count);
+                check(partner >= 0 && partner < count && partner != chamber,
+                        "a completed chamber must open exactly one other chamber");
+                int boundary = RealitySplitBarrierPolicy.boundaryForPair(chamber, partner, count);
+                check(boundary >= 0, "the approved partner must share a real physical boundary");
+                boundaries.add(boundary);
+            }
+            check(boundaries.size() == (count == 2 ? 1 : count),
+                    "each chamber opens only its own boundary, never both neighbours");
+        }
+        check(RealitySplitBarrierPolicy.approvedPassagePartner(-1, 3) == -1
+                        && RealitySplitBarrierPolicy.approvedPassagePartner(3, 3) == -1,
+                "out-of-range chambers must not open a passage");
         check(RealitySplitBarrierPolicy.cellsExcludingBoundaries(3, Set.of(0, 1, 2)).isEmpty(),
                 "opening all three actor boundaries releases their shared Core join");
         check(RealitySplitBarrierPolicy.HEIGHT >= 5

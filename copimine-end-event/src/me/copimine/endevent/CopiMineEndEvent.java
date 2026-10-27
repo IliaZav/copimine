@@ -24553,7 +24553,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void replenishWaveFiveCombatIfNeeded(long now) {
-        if (!Wave5PreFogRefillPolicy.shouldRefill(activeWave, currentFogCycle,
+        if (!Wave5PreFogRefillPolicy.shouldRefill(activeWave,
                 blackFogPhase == BlackFogPhase.COMBAT, countLiveWaveEntitiesForWave(5),
                 now, wave5PreFogRefillAtMillis)
                 || waveSpawnGroupIndex < waveSpawnSchedule.size() || waveSpawnSchedule.isEmpty()) {
@@ -24595,7 +24595,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (core == null) {
             return;
         }
-        if (blackFogPhase == BlackFogPhase.COMBAT && currentFogCycle == 0) {
+        if (blackFogPhase == BlackFogPhase.COMBAT) {
             replenishWaveFiveCombatIfNeeded(now);
         }
         if (blackFogPhaseDeadlineMillis <= 0L) {
@@ -29955,17 +29955,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private int tryOpenCompletedRealitySplitPassages(int chamber, int chamberCount) {
         if (phase == EventPhase.RECOVERY_REQUIRED || !mayOpenRealitySplitPassage()) return 0;
         long expectedGeneration = generation;
-        int opened = 0;
-        for (int other = 0; other < chamberCount; other++) {
-            if (phase == EventPhase.RECOVERY_REQUIRED) break;
-            if (realitySplitChamberController.canOpenCompletedPassage(
-                    expectedGeneration, chamber, other)
-                    && openRealitySplitPassageDurably(chamber, other, chamberCount)) {
-                opened++;
-            }
-            if (phase == EventPhase.RECOVERY_REQUIRED) break;
+        // Section 9.1: a completed chamber opens only its approved passage.  The
+        // old "open every legal neighbour" loop also exposed the unfinished
+        // trial on the room's other side.
+        int partner = RealitySplitBarrierPolicy.approvedPassagePartner(chamber, chamberCount);
+        if (partner < 0 || !realitySplitChamberController.canOpenCompletedPassage(
+                expectedGeneration, chamber, partner)) {
+            return 0;
         }
-        return opened;
+        return openRealitySplitPassageDurably(chamber, partner, chamberCount) ? 1 : 0;
     }
 
     private boolean mayOpenRealitySplitPassage() {

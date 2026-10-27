@@ -361,9 +361,11 @@ public final class BlackFogAdapterProbe {
                 p.tickBlackFogObjective(15_000L);
                 check(p.refillPacks == 2, "a second full clear before the first fog receives another pack");
                 p.liveWaveMobCount = 0;
-                p.currentFogCycle = 1;
+                p.currentFogCycle = 2;
+                p.wave5PreFogRefillAtMillis = 0L;
                 p.tickBlackFogObjective(15_001L);
-                check(p.refillPacks == 2, "refills stop after the first fog cycle begins");
+                check(p.refillPacks == 3,
+                        "a later fog cycle also replenishes an empty combat segment");
             }
             case "three-cycles" -> {
                 long now = 40_000L;

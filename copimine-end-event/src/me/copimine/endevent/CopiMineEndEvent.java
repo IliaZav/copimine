@@ -46,6 +46,7 @@ import java.util.logging.Level;
 import me.copimine.artifacts.api.EventArtifactRewardRequest;
 import me.copimine.artifacts.api.EventArtifactRewardService;
 import me.copimine.artifacts.api.RewardIssueResult;
+import me.copimine.endevent.domain.ArenaInfernoPolicy;
 import me.copimine.endevent.domain.BossAbilityState;
 import me.copimine.endevent.domain.BossAbilityId;
 import me.copimine.endevent.domain.BossAbilitySelector;
@@ -609,10 +610,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** The safe zone is shown before it becomes the only survivable ground. */
     private static final long FOG_SAFE_ZONE_TELEGRAPH_MILLIS = 3_000L;
     /** Steam vents and the small bounded armour budget of one inferno cast. */
-    private static final int ARENA_INFERNO_VENT_COUNT = 3;
-    private static final long ARENA_INFERNO_VENT_PERIOD_TICKS = 60L;
-    private static final int ARENA_INFERNO_IGNITE_TICKS = 40;
-    private static final int ARENA_INFERNO_MAX_ARMOR_WEAR = 40;
+    private static final int ARENA_INFERNO_VENT_COUNT = ArenaInfernoPolicy.VENT_COUNT;
+    private static final long ARENA_INFERNO_VENT_PERIOD_TICKS = ArenaInfernoPolicy.VENT_PERIOD_TICKS;
+    private static final int ARENA_INFERNO_IGNITE_TICKS = ArenaInfernoPolicy.IGNITE_TICKS;
+    private static final int ARENA_INFERNO_MAX_ARMOR_WEAR = ArenaInfernoPolicy.MAX_ARMOR_WEAR;
     private static final int MAX_ACTIVE_WORLD_VFX = 64;
     private static final long WORLD_VFX_BEAM_DURATION_MILLIS = 650L;
     private static final float WORLD_VFX_BEAM_DEFAULT_WIDTH = 0.12F;
@@ -40407,10 +40408,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (int x = minX; x <= maxX; x++) {
             for (int z = minZ; z <= maxZ; z++) {
                 Block floor = world.getBlockAt(x, fireY - 1, z);
-                boolean safeLane = Math.floorMod(x * 31 + z * 17, 100) < 35;
                 boolean protectedCell = isProtectedInfernoCell(x, z);
-                if (!safeLane && !protectedCell && floor.getType() != Material.MAGMA_BLOCK
-                        && floor.getType().isSolid() && !floor.isLiquid()
+                if (ArenaInfernoPolicy.igniteCell(protectedCell, floor.getType().isSolid(),
+                        floor.isLiquid(), floor.getType() == Material.MAGMA_BLOCK)
                         && isArenaLocation(floor.getLocation())) {
                     arenaInfernoBlocks.add(floor);
                     HazardPlanner.Point point = new HazardPlanner.Point(x, z);
@@ -40454,8 +40454,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 "§cИщите безопасные сектора — " + durationSeconds + " секунд", true);
         getLogger().info("BOSS_SPELL_ARENA_INFERNO event=" + eventId
                 + " logical_hazards=" + arenaInfernoBlocks.size()
-                + " safe_floor_ratio>=0.35"
+                + " burning_floor=all-protected-core-and-pads"
                 + " real_fire=ignition-bounded steam_vents=" + ARENA_INFERNO_VENT_COUNT
+                + " vent_warning_ticks=" + ArenaInfernoPolicy.VENT_WARNING_TICKS
                 + " armor_wear_cap=" + ARENA_INFERNO_MAX_ARMOR_WEAR
                 + " damage_interval_ticks=20"
                 + " journal_entries=" + journalEntries.size()
@@ -40503,7 +40504,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** One point of wear per danger tick, hard-capped for the whole cast. */
     private void wearArenaInfernoArmor(Player player) {
-        if (player == null || arenaInfernoArmorWear >= ARENA_INFERNO_MAX_ARMOR_WEAR) {
+        if (player == null || !ArenaInfernoPolicy.armorWearAllowed(arenaInfernoArmorWear)) {
             return;
         }
         List<ItemStack> pieces = new ArrayList<>();
@@ -40520,19 +40521,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         arenaInfernoArmorWear++;
     }
 
-    /** Steam vents launch and injure whoever stands on them, on a readable cadence. */
+    /** Steam vents warn first, then launch and injure whoever stays on them. */
     private void spawnArenaInfernoSteamVents(LivingEntity boss) {
-        if (boss == null || boss.getWorld() == null || arenaInfernoBlocks.isEmpty()
-                || Math.floorMod(eventTickCounter, ARENA_INFERNO_VENT_PERIOD_TICKS) >= 20L) {
+        if (boss == null || boss.getWorld() == null || arenaInfernoBlocks.isEmpty()) {
+            return;
+        }
+        ArenaInfernoPolicy.VentPhase phase = ArenaInfernoPolicy.ventPhase(
+                (int) Math.floorMod(eventTickCounter, ARENA_INFERNO_VENT_PERIOD_TICKS));
+        if (phase == ArenaInfernoPolicy.VentPhase.IDLE) {
             return;
         }
         World world = boss.getWorld();
         List<Block> blocks = new ArrayList<>(arenaInfernoBlocks);
-        int stride = Math.max(1, blocks.size() / ARENA_INFERNO_VENT_COUNT);
+        int stride = ArenaInfernoPolicy.ventStride(blocks.size());
         int vents = 0;
         for (int index = 0; index < blocks.size() && vents < ARENA_INFERNO_VENT_COUNT;
                 index += stride, vents++) {
             Location point = blocks.get(index).getLocation().add(0.5D, 1.0D, 0.5D);
+            if (phase == ArenaInfernoPolicy.VentPhase.WARNING) {
+                world.spawnParticle(Particle.CAMPFIRE_COSY_SMOKE, point, 8, 0.3D, 0.4D, 0.3D, 0.01D);
+                world.spawnParticle(Particle.SMOKE, point, 6, 0.25D, 0.25D, 0.25D, 0.02D);
+                world.playSound(point, Sound.BLOCK_LAVA_AMBIENT,
+                        SoundCategory.HOSTILE, 0.6F, 1.4F);
+                continue;
+            }
             world.spawnParticle(Particle.CLOUD, point, 24, 0.4D, 0.6D, 0.4D, 0.05D);
             world.playSound(point, Sound.BLOCK_FIRE_EXTINGUISH,
                     SoundCategory.HOSTILE, 0.8F, 0.7F);

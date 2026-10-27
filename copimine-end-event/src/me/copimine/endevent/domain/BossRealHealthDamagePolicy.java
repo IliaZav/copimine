@@ -26,14 +26,10 @@ public final class BossRealHealthDamagePolicy {
         if (!Double.isFinite(effective) || effective <= 0.0D) {
             return new Result(current, 0.0D, false, false);
         }
+        // Accepted damage is never truncated at a phase threshold: the phase
+        // layer reports every crossed band (BossPhasePolicy.transition), so a
+        // large hit keeps its full value and still advances deterministically.
         double remaining = Math.max(0.0D, current - effective);
-        // One hit may cross at most one band: stage progression (ties, banners,
-        // ability swaps) is authored per transition, so clamping to the next
-        // threshold is the only way a big crit cannot skip a phase.
-        double floor = BossPhasePolicy.bandFloor(current, maxHealth);
-        if (floor > 0.0D && floor < current && remaining < floor) {
-            remaining = floor;
-        }
         double applied = current - remaining;
         return new Result(remaining, applied, applied > 0.0D, remaining <= 0.0D);
     }

@@ -67,11 +67,13 @@ public final class EndRiftTentacleRig {
         float x = origin.x() - parentOrigin.x() + delta.translationX();
         float y = origin.y() - parentOrigin.y() + delta.translationY();
         float z = origin.z() - parentOrigin.z() + delta.translationZ();
+        // Rotation order and axis signs live in TentacleRigTransformPolicy so the
+        // rig and its tests cannot drift apart.
         return new Matrix4f(parentMatrix)
-                .translate(x, y, z)
-                .rotateXYZ((float) Math.toRadians(restRotation.x()) + delta.pitch(),
+                .mul(new Matrix4f(TentacleRigTransformPolicy.local(x, y, z,
+                        (float) Math.toRadians(restRotation.x()) + delta.pitch(),
                         (float) Math.toRadians(restRotation.y()) + delta.yaw(),
-                        (float) Math.toRadians(restRotation.z()) + delta.roll())
+                        (float) Math.toRadians(restRotation.z()) + delta.roll(), 1.0D)))
                 .scale(delta.scaleX(), delta.scaleY(), delta.scaleZ());
     }
 
@@ -115,9 +117,9 @@ public final class EndRiftTentacleRig {
             EndRiftTentaclePose.TentaclePose safePose = pose == null
                     ? EndRiftTentaclePose.TentaclePose.identity() : pose;
             EndRiftTentaclePose.BoneTransform rootDelta = safePose.root();
-            Matrix4f rootMatrix = new Matrix4f()
-                    .translate(rootDelta.translationX(), rootDelta.translationY(), rootDelta.translationZ())
-                    .rotateXYZ(rootDelta.pitch(), rootDelta.yaw(), rootDelta.roll())
+            Matrix4f rootMatrix = new Matrix4f(TentacleRigTransformPolicy.local(
+                    rootDelta.translationX(), rootDelta.translationY(), rootDelta.translationZ(),
+                    rootDelta.pitch(), rootDelta.yaw(), rootDelta.roll(), 1.0D))
                     .scale(rootDelta.scaleX(), rootDelta.scaleY(), rootDelta.scaleZ());
             List<RenderedVertex> vertices = new ArrayList<>(model.elements().size() * 24);
             for (KaguneModelImporter.Bone root : roots) {
@@ -158,10 +160,11 @@ public final class EndRiftTentacleRig {
                                   List<RenderedVertex> output) {
             KaguneModelImporter.Vec3 elementLocalOrigin = cuboid.origin().subtract(bone.origin());
             Matrix4f cuboidMatrix = new Matrix4f(boneMatrix)
-                    .translate(elementLocalOrigin.x(), elementLocalOrigin.y(), elementLocalOrigin.z())
-                    .rotateXYZ((float) Math.toRadians(cuboid.rotation().x()),
+                    .mul(new Matrix4f(TentacleRigTransformPolicy.local(
+                            elementLocalOrigin.x(), elementLocalOrigin.y(), elementLocalOrigin.z(),
+                            (float) Math.toRadians(cuboid.rotation().x()),
                             (float) Math.toRadians(cuboid.rotation().y()),
-                            (float) Math.toRadians(cuboid.rotation().z()));
+                            (float) Math.toRadians(cuboid.rotation().z()), 1.0D)));
             Matrix3f normalMatrix = new Matrix3f(cuboidMatrix);
             float x0 = cuboid.from().x() - cuboid.origin().x();
             float y0 = cuboid.from().y() - cuboid.origin().y();

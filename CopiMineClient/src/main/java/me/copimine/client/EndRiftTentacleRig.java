@@ -70,12 +70,13 @@ public final class EndRiftTentacleRig {
         float z = origin.z() - parentOrigin.z() + delta.translationZ();
         return new Matrix4f(parentMatrix)
                 .translate(x, y, z)
-                // Artist/Blockbench bones use Minecraft's ZYX order with
-                // negated Y/Z.  rotateXYZ made each independent root section
-                // drift apart at the joints during grab/hold/throw.
-                .rotateZYX(-((float) Math.toRadians(restRotation.z()) + delta.roll()),
-                        -((float) Math.toRadians(restRotation.y()) + delta.yaw()),
-                        (float) Math.toRadians(restRotation.x()) + delta.pitch())
+                // Bedrock source rotations compose as Rx*Ry*Rz
+                // (BedrockCoordinateTransform.sourceRotation). This renderer draws
+                // the imported vertices in the same Y-up model space, so no
+                // diag(1,-1,1) conjugation or axis negation applies here.
+                .rotateXYZ((float) Math.toRadians(restRotation.x()) + delta.pitch(),
+                        (float) Math.toRadians(restRotation.y()) + delta.yaw(),
+                        (float) Math.toRadians(restRotation.z()) + delta.roll())
                 .scale(delta.scaleX(), delta.scaleY(), delta.scaleZ());
     }
 
@@ -121,7 +122,7 @@ public final class EndRiftTentacleRig {
             EndRiftTentaclePose.BoneTransform rootDelta = safePose.root();
             Matrix4f rootMatrix = new Matrix4f()
                     .translate(rootDelta.translationX(), rootDelta.translationY(), rootDelta.translationZ())
-                    .rotateZYX(-rootDelta.roll(), -rootDelta.yaw(), rootDelta.pitch())
+                    .rotateXYZ(rootDelta.pitch(), rootDelta.yaw(), rootDelta.roll())
                     .scale(rootDelta.scaleX(), rootDelta.scaleY(), rootDelta.scaleZ());
             List<RenderedVertex> vertices = new ArrayList<>(model.elements().size() * 24);
             for (KaguneModelImporter.Bone root : roots) {

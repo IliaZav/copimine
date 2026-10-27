@@ -127,9 +127,11 @@ public final class BossPhasePolicy {
     }
 
     /**
-     * Lowest health a single hit may leave the boss at without skipping a phase band.
-     * It is the next phase's threshold (crossing it is exactly one transition), or
-     * zero in LAST_SEAL where the authored finisher owns the kill.
+     * Next phase boundary strictly below {@code health}, or zero in LAST_SEAL.
+     *
+     * <p>Reporting helper only: accepted damage is never clamped to it. The
+     * deterministic phase walk lives in {@link #transition(BossPhase, double, double)},
+     * which returns every crossed band in rank order.</p>
      */
     public static double bandFloor(double health, double maxHealth) {
         BossPhase phase = phaseFor(health, maxHealth);

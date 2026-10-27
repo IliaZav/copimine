@@ -125,9 +125,10 @@ def test_cancelled_tentacle_hits_never_apply_authoritative_damage():
 
     projectile = source.split("public void onTentacleGuardianProjectile(", 1)[1]
     projectile = projectile.split("/**", 1)[0]
-    guard = projectile.index("if (event.isCancelled())")
-    assert guard < projectile.index("event.setCancelled(true);")
-    assert guard < projectile.index("applyTentacleGuardianDamage(")
+    # Collision must never be converted into HP damage: only the carrier's
+    # EntityDamageByEntityEvent (which handles protection denials) may apply it.
+    assert "projectile.remove()" not in projectile
+    assert "applyTentacleGuardianDamage(" not in projectile
 
 
 def test_official_boss_probe_protects_and_restores_named_human_viewers():

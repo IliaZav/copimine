@@ -29,23 +29,39 @@ public final class Wave7AdmissionRuntimeAdapter {
     /** IGNORE keeps waves 1-6, ordinary damage and unrelated entities untouched. */
     public enum Decision { IGNORE, ALLOW, DENY }
 
-    private static final int MAX_SCOPES = 64;
+    private static final int MAX_SCOPES = 4096;
+    private static final long SCOPE_TTL_MILLIS = 120_000L;
     private final RealitySplitChamberController chambers;
     private final RealitySplitTrialController trials;
     private final LongSupplier generation;
     private final Function<UUID, Integer> roomOf;
+    private final LongSupplier clockMillis;
     private final Map<UUID, Tracked> launched = new LinkedHashMap<>();
 
-    private record Tracked(UUID actor, AttackScope scope) { }
+    private record Tracked(UUID actor, AttackScope scope, long expiresAtMillis) { }
 
     public Wave7AdmissionRuntimeAdapter(RealitySplitChamberController chambers,
                                         RealitySplitTrialController trials,
                                         LongSupplier generation,
                                         Function<UUID, Integer> roomOf) {
+        this(chambers, trials, generation, roomOf, System::currentTimeMillis);
+    }
+
+    public Wave7AdmissionRuntimeAdapter(RealitySplitChamberController chambers,
+                                        RealitySplitTrialController trials,
+                                        LongSupplier generation,
+                                        Function<UUID, Integer> roomOf,
+                                        LongSupplier clockMillis) {
         this.chambers = Objects.requireNonNull(chambers);
         this.trials = Objects.requireNonNull(trials);
         this.generation = Objects.requireNonNull(generation);
         this.roomOf = Objects.requireNonNull(roomOf);
+        this.clockMillis = Objects.requireNonNull(clockMillis);
+    }
+
+    private void purgeExpiredScopes() {
+        long now = clockMillis.getAsLong();
+        launched.entrySet().removeIf(entry -> entry.getValue().expiresAtMillis() <= now);
     }
 
     /**
@@ -115,7 +131,12 @@ public final class Wave7AdmissionRuntimeAdapter {
         if (state == null || projectile == null) return Decision.IGNORE;
         int room = actorRoom(state, actor);
         if (room < 0) return Decision.IGNORE;
-        if (launched.containsKey(projectile)) return Decision.ALLOW;
+        purgeExpiredScopes();
+        Tracked existing = launched.get(projectile);
+        if (existing != null) {
+            return existing.actor().equals(actor) && existing.scope().generation() == state.generation()
+                    ? Decision.ALLOW : Decision.DENY;
+        }
         boolean echo = state.trials().get(room) == Trial.ECHO;
         UUID echoOwner = echo ? echoOwner(state, room, actor) : null;
         if (echo && echoOwner == null || state.completedRooms().contains(room)) return Decision.DENY;
@@ -125,14 +146,14 @@ public final class Wave7AdmissionRuntimeAdapter {
                 regions.add(candidate);
             }
         }
-        if (launched.size() >= MAX_SCOPES) {
-            var oldest = launched.keySet().iterator();
-            if (oldest.hasNext()) { oldest.next(); oldest.remove(); }
-        }
-        // shortcut: reach is derived from the trial room and the completed graph,
-        // not live mob coordinates; upgrade with per-actor position tracking.
+        // Do not discard an active projectile's launch receipt. If a pathological
+        // burst fills this bounded ledger, reject the NEW launch rather than
+        // silently turning an existing legitimate impact into a denied hit.
+        if (launched.size() >= MAX_SCOPES) return Decision.DENY;
+        // Reach is frozen to the trial room/passages at actual launch time.
         launched.put(projectile, new Tracked(actor,
-                new AttackScope(state.generation(), room, echoOwner, regions)));
+                new AttackScope(state.generation(), room, echoOwner, regions),
+                clockMillis.getAsLong() + SCOPE_TTL_MILLIS));
         return Decision.ALLOW;
     }
 
@@ -143,6 +164,7 @@ public final class Wave7AdmissionRuntimeAdapter {
         int room = actorRoom(state, actor);
         if (room < 0) return Decision.IGNORE;
         if (projectile == null) return decide(state, room, actor, target);
+        purgeExpiredScopes();
         Tracked tracked = launched.get(projectile);
         if (tracked == null || !tracked.actor().equals(actor)) return Decision.DENY;
         return Wave7AdmissionPolicy.mayResolveAttack(state, tracked.scope(), room, target)

@@ -172,16 +172,15 @@ public class Wave7AdmissionRuntimeChecks {
                 require(adapter.launch(id(301), WARDEN) == Decision.IGNORE,
                         "an inactive attempt must not cancel launches");
             }
-            case "scope-cap-evicts" -> {
-                for (int i = 0; i < 64; i++) {
-                    require(adapter.launch(id(400 + i), MARKSMAN) == Decision.ALLOW, "launch " + i);
+            case "active-projectile-scope-is-not-evicted" -> {
+                for (int i = 0; i < 65; i++) {
+                    require(adapter.launch(id(400 + i), MARKSMAN) == Decision.ALLOW,
+                            "legal launch " + i);
                 }
-                require(adapter.trackedScopes() == 64, "scope budget is bounded");
-                require(adapter.launch(id(500), MARKSMAN) == Decision.ALLOW,
-                        "a full budget evicts instead of locking the actor out");
-                require(adapter.trackedScopes() == 64, "scope budget stays bounded");
-                require(adapter.damage(id(400), MARKSMAN, C) == Decision.DENY,
-                        "an evicted receipt cannot resolve");
+                require(adapter.trackedScopes() == 65,
+                        "an active projectile cannot be silently evicted at the old 64-receipt cap");
+                require(adapter.damage(id(400), MARKSMAN, C) == Decision.ALLOW,
+                        "the first still-airborne projectile must retain its authorized scope");
             }
             default -> throw new AssertionError("unknown " + s);
         }
@@ -212,7 +211,7 @@ def admission_probe(tmp_path_factory):
     "echo-owner-allowed", "echo-foreign-owner-denied", "echo-unbound-actor-denied",
     "echo-passage-filtered", "marksman-helper-allowed", "helper-unfinished-denied",
     "launch-scope-frozen", "untracked-projectile-denied", "foreign-projectile-ignored",
-    "stale-generation-denied", "legacy-ignored", "inactive-ignored", "scope-cap-evicts",
+    "stale-generation-denied", "legacy-ignored", "inactive-ignored", "active-projectile-scope-is-not-evicted",
 ])
 def test_adapter_admits_only_the_named_wave7_action(admission_probe, scenario):
     result = subprocess.run(

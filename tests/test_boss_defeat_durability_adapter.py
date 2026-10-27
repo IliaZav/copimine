@@ -175,6 +175,19 @@ public class BossLethalDefeatProbe {
         diagnostics.add(action + "/" + reason + "/" + healthBefore);
     }
     void commitOfficialBossDefeat(LivingEntity boss, Entity source) { commits++; }
+    // Last Seal entry must create its defenders before any victory is decided.
+    int requiredGuardians = 4;
+    int ensureCalls;
+    int livingGuardians = 4;
+    boolean shielded = true;
+    boolean testBoss;
+    int permanentTentacleTarget(boolean test) { testBoss = test; return requiredGuardians; }
+    void ensurePermanentTentacles(LivingEntity boss, int target) { ensureCalls++; }
+    int livingTentacleGuardianCount() { return livingGuardians; }
+    boolean tentacleGuardianShielded() { return shielded; }
+    boolean isTestBoss(LivingEntity boss) { return false; }
+    enum EventPhase { BOSS_ACTIVE }
+    EventPhase phase = EventPhase.BOSS_ACTIVE;
 
 ''' + method + r'''
 
@@ -189,29 +202,35 @@ public class BossLethalDefeatProbe {
         accepted.owner = new Player(playerId);
         LivingEntity boss = new LivingEntity(9000.0D);
         accepted.handleOfficialLethalHit(boss, accepted.owner, 9000.0D, 12000.0D, 8000.0D, false);
-        check(accepted.commits == 1,
-                "a player-owned lethal hit must commit the durable defeat");
+        check(accepted.commits == 0,
+                "a lethal hit that only reaches Last Seal must withhold victory");
+        check(accepted.ensureCalls == 1 && !accepted.testBoss,
+                "Last Seal entry must create its defenders before any victory: "
+                        + accepted.ensureCalls);
         check(boss.health == BossPhasePolicy.lastSealThreshold(20000.0D),
                 "the lethal hit must stop at the Last Seal threshold, never zero real HP inline");
         check(accepted.synchronizes == 1
                         && accepted.synchronizedHealth == boss.health,
-                "crossed phase bands must be entered before the terminal commit");
+                "crossed phase bands must be entered before the defenders spawn");
         check(accepted.feedbacks == 1,
                 "an accepted lethal hit still needs its hit feedback");
         check(accepted.diagnostics.equals(
-                        List.of("DAMAGE_ACCEPT/official-lethal-defeat/9000.0")),
-                "accepted lethal diagnostic missing: " + accepted.diagnostics);
-        check(playerId.equals(accepted.bossKillerUuid)
-                        && accepted.combatHelpers.contains(playerId),
-                "the accepted lethal hit must record its killer and participation");
+                        List.of("DAMAGE_ACCEPT/last-seal-entry-shield-pending/9000.0")),
+                "Last Seal entry diagnostic missing: " + accepted.diagnostics);
 
         BossLethalDefeatProbe lastSeal = new BossLethalDefeatProbe();
         lastSeal.bossPhase = BossPhase.LAST_SEAL;
         lastSeal.owner = new Player(playerId);
+        lastSeal.shielded = false;
         boss = new LivingEntity(1000.0D);
         lastSeal.handleOfficialLethalHit(boss, lastSeal.owner, 1000.0D, 1000.0D, 1000.0D, true);
         check(lastSeal.commits == 1 && lastSeal.synchronizes == 0 && boss.health == 1000.0D,
                 "a Last Seal lethal hit must not replay bands or zero HP inline");
+        check(lastSeal.ensureCalls == 0,
+                "Last Seal entry defenders must not respawn on the terminal hit");
+        check(playerId.equals(lastSeal.bossKillerUuid)
+                        && lastSeal.combatHelpers.contains(playerId),
+                "the accepted lethal hit must record its killer and participation");
 
         BossLethalDefeatProbe stranger = new BossLethalDefeatProbe();
         stranger.owner = new Player(playerId);

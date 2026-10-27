@@ -1253,6 +1253,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private BukkitTask bossSpawnTask;
     private BukkitTask arenaInfernoTask;
     private BukkitTask bossCastTask;
+    private long bossChestStrikeSequence;
     private BukkitTask bossFinalStrikeTask;
     private BukkitTask bossDefeatCinematicTask;
     /** Terminal health commit deferred so the authored Dying2 clip can play. */
@@ -27683,7 +27684,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
 
         List<LandingPoint> locked = new ArrayList<>();
-        Set<String> occupiedColumns = new HashSet<>();
         int eligibleTargets = 0;
         if (participants <= 3) {
             List<LandingPoint> candidates = new ArrayList<>();
@@ -27696,22 +27696,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return selected.isEmpty() ? null : new AnvilCluster(selected.size(), selected);
         }
 
-        int[][] centerOffsets = {{0, 0}, {3, 0}, {-3, 0}, {0, 3}, {0, -3},
-                {3, 3}, {3, -3}, {-3, 3}, {-3, -3}, {6, 0}, {-6, 0}, {0, 6}, {0, -6}};
+        // Every eligible free player owns a full 3x3 pattern at their locked
+        // position. Overlapping patterns are legal: impact processing already
+        // deduplicates damage per player/volley. Never shift an entire pattern
+        // away from its intended target or silently omit that target.
         for (Player target : targets) {
-            List<LandingPoint> selectedGrid = null;
-            for (int[] offset : centerOffsets) {
-                List<LandingPoint> candidate = safeLandingGrid(target.getLocation(), 3,
-                        offset[0], offset[1]);
-                if (candidate != null && candidate.stream()
-                        .noneMatch(point -> occupiedColumns.contains(landingColumn(point)))) {
-                    selectedGrid = candidate;
-                    break;
-                }
-            }
-            if (selectedGrid == null) continue;
+            List<LandingPoint> selectedGrid = safeLandingGrid(target.getLocation(), 3, 0, 0);
+            if (selectedGrid == null) return null;
             locked.addAll(selectedGrid);
-            selectedGrid.forEach(point -> occupiedColumns.add(landingColumn(point)));
             eligibleTargets++;
         }
         return eligibleTargets == 0 ? null : new AnvilCluster(eligibleTargets, locked);
@@ -38494,6 +38486,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void cancelBossCastTask() {
+        // Every delayed chest sweep must belong to its exact originating
+        // cast. A new spell/50% repel invalidates all old sweep callbacks.
+        bossChestStrikeSequence++;
         if (bossCastTask != null) {
             bossCastTask.cancel();
             bossCastTask = null;
@@ -39615,10 +39610,32 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         double sealThreshold = BossPhasePolicy.lastSealThreshold(bossMaxHealth(boss));
         if (bossPhase != BossPhase.LAST_SEAL && healthBefore > sealThreshold) {
-            // A single lethal hit may cross several thresholds; each required
-            // band entry still happens exactly once before the terminal state.
+            // A lethal hit may enter Last Seal, but it cannot skip the newly
+            // required defensive guardians. Commit all phase entries before
+            // spawning their authoritative actors and withhold victory.
             boss.setHealth(sealThreshold);
             synchronizeBossPhase(boss);
+            int requiredGuardians = permanentTentacleTarget(isTestBoss(boss));
+            if (phase == EventPhase.BOSS_ACTIVE && requiredGuardians > 0) {
+                ensurePermanentTentacles(boss, requiredGuardians);
+            }
+            applyBossHitFeedbackAt(boss, source, bodyImpactContact(boss, source),
+                    BossHitFeedbackPolicy.forAcceptedHit(projectile));
+            emitBossDamageDiagnostic("DAMAGE_ACCEPT", "INFO", boss, source,
+                    rawDamage, finalDamage, Math.max(0.0D, healthBefore - sealThreshold),
+                    healthBefore, sealThreshold, "last-seal-entry-shield-pending");
+            getLogger().info("BOSS_LETHAL_HIT_BLOCKED_BY_LAST_SEAL_ENTRY event=" + eventId
+                    + " boss=" + boss.getUniqueId()
+                    + " living_guardians=" + livingTentacleGuardianCount()
+                    + " intended_guardians=" + requiredGuardians
+                    + " shield_active=" + tentacleGuardianShielded());
+            return;
+        }
+        if (tentacleGuardianShielded()) {
+            emitBossDamageDiagnostic("DAMAGE_REJECT", "INFO", boss, source,
+                    rawDamage, finalDamage, 0.0D, healthBefore, healthBefore,
+                    "last-seal-guardians-still-shielded");
+            return;
         }
         bossKillerUuid = owner.getUniqueId();
         combatHelpers.add(owner.getUniqueId());
@@ -40543,6 +40560,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * never homes, never reaches through a wall and has a finite lifetime.
      */
     private void startChestStrike(LivingEntity boss, Player target, long callbackGeneration) {
+        long castSequence = ++bossChestStrikeSequence;
         Location origin = boss.getLocation();
         World world = origin.getWorld();
         if (world == null) {
@@ -40561,8 +40579,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             int sweepStep = step;
             long delay = BossContactStrikePolicy.CHEST_STRIKE_LAUNCH_TICKS + step;
             BukkitTask task = Bukkit.getScheduler().runTaskLater(this, () -> {
-                if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
+                if (bossChestStrikeSequence != castSequence
+                        || taskRegistry == null || !taskRegistry.owns(callbackGeneration)
                         || bossUuid == null || !bossUuid.equals(bossId) || !boss.isValid() || boss.isDead()
+                        || bossPhase == BossPhase.LAST_SEAL
                         || (phase != EventPhase.BOSS_ACTIVE && !isTestBoss(boss))) {
                     return;
                 }

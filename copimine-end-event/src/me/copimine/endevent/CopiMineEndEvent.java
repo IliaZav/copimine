@@ -40810,11 +40810,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " remainingMillis=" + (nextBossEdgeVolleyMillis - now));
             return;
         }
-        nextBossEdgeVolleyMillis = now + BossEdgeVolleyPolicy.COOLDOWN_MILLIS;
         Location corner = farthestBossCorner(boss);
-        if (corner != null) {
-            teleportCombatEntity(boss, corner);
+        if (BossEdgeVolleyPolicy.decide(true, corner != null, false)
+                == BossEdgeVolleyPolicy.Decision.NO_CORNER) {
+            getLogger().info("BOSS_EDGE_VOLLEY_ABORTED event=" + eventId
+                    + " boss=" + boss.getUniqueId() + " reason=no-safe-corner");
+            return;
         }
+        teleportCombatEntity(boss, corner);
+        double cornerDistance = boss.getWorld() == corner.getWorld()
+                ? boss.getLocation().distance(corner) : Double.MAX_VALUE;
+        if (!BossEdgeVolleyPolicy.relocated(cornerDistance)) {
+            getLogger().info("BOSS_EDGE_VOLLEY_ABORTED event=" + eventId
+                    + " boss=" + boss.getUniqueId() + " reason=reposition-failed"
+                    + " distance=" + String.format(java.util.Locale.ROOT, "%.2f", cornerDistance));
+            return;
+        }
+        nextBossEdgeVolleyMillis = now + BossEdgeVolleyPolicy.COOLDOWN_MILLIS;
         getLogger().info("BOSS_EDGE_VOLLEY_START event=" + eventId
                 + " boss=" + boss.getUniqueId() + " phase=" + bossPhase
                 + " salvos=" + BossEdgeVolleyPolicy.SALVO_COUNT

@@ -83,6 +83,12 @@ public final class BossPhaseGatingTest {
         require(BossPhasePolicy.spellPool(BossPhase.HUNT).contains(BossSpell.RIFT_ARROWS)
                         && !BossEdgeVolleyPolicy.allowsPhase(BossPhase.HUNT),
                 "Hunt keeps the plain arrow volley; the corner volley unlocks later");
+        // The edge-volley trigger lives in the RIFT_ARROWS branch, so phase
+        // three must actually offer that spell or the ability is unreachable.
+        require(BossPhasePolicy.spellPool(BossPhase.RIFT).contains(BossSpell.RIFT_ARROWS),
+                "Rift must offer the arrow volley so the corner volley is reachable");
+        require(!BossPhasePolicy.spellPool(BossPhase.LAST_SEAL).contains(BossSpell.RIFT_ARROWS),
+                "the hovering Last Seal must not offer the edge volley");
         for (BossPhase phase : new BossPhase[]{BossPhase.RIFT, BossPhase.OVERLOAD, BossPhase.RAGE}) {
             require(BossEdgeVolleyPolicy.allowsPhase(phase),
                     phase + " must allow the corner volley");

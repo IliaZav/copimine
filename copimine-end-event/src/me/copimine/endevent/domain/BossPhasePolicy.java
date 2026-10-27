@@ -56,6 +56,7 @@ public final class BossPhasePolicy {
             case RIFT -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_MARK,
                     EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
+                    EndRiftAiPolicy.BossSpell.RIFT_ARROWS,
                     EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS,
                     EndRiftAiPolicy.BossSpell.BOSS_FIREBALL,
                     EndRiftAiPolicy.BossSpell.MELEE_SWIPE,

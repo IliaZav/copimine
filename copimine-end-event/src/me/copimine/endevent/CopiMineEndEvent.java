@@ -38149,8 +38149,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         BossPhasePolicy.StageTransition transition = BossPhasePolicy.transition(
                 bossPhase, health, maxHealth);
         if (!bossHalfRepelCommitted && maxHealth > 0.0D && health <= maxHealth * 0.50D) {
-            bossHalfRepelCommitted = true;
-            applyBossHalfRepel(boss);
+            commitBossHalfRepel(boss);
         }
         if (transition.current() == bossPhase) {
             return;
@@ -38194,6 +38193,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * The single 50% repel: a 5-6 block push plus a short blind and slow window.
      * Committed before the effect so a restart can never replay it.
      */
+    /**
+     * Durable exactly-once gate for the 50% repel.  The completion marker is
+     * persisted BEFORE any velocity, blind or slow is applied, and a failed
+     * save releases the flag without effects so a later tick can retry; an
+     * async save after the effects is not a durability guarantee.
+     */
+    private void commitBossHalfRepel(LivingEntity boss) {
+        bossHalfRepelCommitted = true;
+        if (!saveStateSync()) {
+            bossHalfRepelCommitted = false;
+            getLogger().warning("BOSS_HALF_REPEL_DEFERRED event=" + eventId
+                    + " boss=" + boss.getUniqueId() + " reason=durable-commit-failed");
+            return;
+        }
+        applyBossHalfRepel(boss);
+    }
+
     private void applyBossHalfRepel(LivingEntity boss) {
         if (boss == null) {
             return;
@@ -38216,7 +38232,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 6, 2.0D, 1.0D, 2.0D, 0.0D);
         getLogger().info("BOSS_HALF_REPEL event=" + eventId + " boss=" + boss.getUniqueId()
                 + " health=" + boss.getHealth() + " max=" + boss.getMaxHealth());
-        saveStateAsync();
     }
 
     /**
@@ -39036,6 +39051,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             bossKillerUuid = player.getUniqueId();
             combatHelpers.add(player.getUniqueId());
         }
+        if (result.lethal() && isOfficialBoss(boss)) {
+            event.setCancelled(true);
+            authoritativeCombatTraceEvents.put(event, Boolean.TRUE);
+            handleOfficialLethalHit(boss, source, healthBefore, rawDamage, finalDamage,
+                    source instanceof Projectile);
+            return;
+        }
         // Commit the approved final amount exactly once. Cancelling first is
         // intentional: Paper must not run its native damage application after
         // this real-health write, otherwise the same hit would be double
@@ -39159,6 +39181,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             bossKillerUuid = player.getUniqueId();
             combatHelpers.add(player.getUniqueId());
         }
+        if (result.lethal() && isOfficialBoss(boss)) {
+            event.setCancelled(true);
+            handleOfficialLethalHit(boss, projectile, healthBefore, rawDamage, finalDamage, true);
+            return;
+        }
         event.setCancelled(true);
         BossHealthCommit healthCommit = commitCurrentBossHealth(boss, result);
         result = healthCommit.result();
@@ -39261,6 +39288,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (projectile.getShooter() instanceof Player player) {
             bossKillerUuid = player.getUniqueId();
             combatHelpers.add(player.getUniqueId());
+        }
+        if (result.lethal() && isOfficialBoss(boss)) {
+            handleOfficialLethalHit(boss, projectile, healthBefore, rawDamage, finalDamage, true);
+            return true;
         }
         BossHealthCommit healthCommit = commitCurrentBossHealth(boss, result);
         result = healthCommit.result();
@@ -39438,6 +39469,60 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         && officialRewardRoster.contains(candidate.getUniqueId()))
                 .anyMatch(this::isCombatTarget);
         return !onlineRosterPlayer;
+    }
+
+    /**
+     * Terminal handler for an accepted lethal hit on the official boss.
+     *
+     * <p>A legal player-owned hit is the only permitted victory trigger, so it
+     * enters every crossed phase band once (including the 50% repel) and then
+     * hands the terminal state to the durable defeat marker instead of writing
+     * zero health here. Administrative, cleanup, environment or non-roster
+     * damage is rejected and cannot kill the encounter.</p>
+     */
+    private void handleOfficialLethalHit(LivingEntity boss, Entity source,
+                                         double healthBefore, double rawDamage,
+                                         double finalDamage, boolean projectile) {
+        Player owner = playerDamageOwner(source);
+        if (owner == null || !isActiveBossParticipant(owner)) {
+            emitBossDamageDiagnostic("DAMAGE_REJECT", "INFO", boss, source,
+                    rawDamage, finalDamage, 0.0D, healthBefore, healthBefore,
+                    "lethal-hit-not-player-owned");
+            getLogger().info("BOSS_LETHAL_HIT_REJECTED event=" + eventId
+                    + " boss=" + boss.getUniqueId()
+                    + " source=" + (source == null ? "environment"
+                            : source.getType() + ":" + source.getUniqueId())
+                    + " reason=lethal-hit-not-player-owned");
+            return;
+        }
+        double sealThreshold = BossPhasePolicy.lastSealThreshold(bossMaxHealth(boss));
+        if (bossPhase != BossPhase.LAST_SEAL && healthBefore > sealThreshold) {
+            // A single lethal hit may cross several thresholds; each required
+            // band entry still happens exactly once before the terminal state.
+            boss.setHealth(sealThreshold);
+            synchronizeBossPhase(boss);
+        }
+        bossKillerUuid = owner.getUniqueId();
+        combatHelpers.add(owner.getUniqueId());
+        applyBossHitFeedbackAt(boss, source, bodyImpactContact(boss, source),
+                BossHitFeedbackPolicy.forAcceptedHit(projectile));
+        emitBossDamageDiagnostic("DAMAGE_ACCEPT", "INFO", boss, source,
+                rawDamage, finalDamage, 0.0D, healthBefore, healthBefore,
+                "official-lethal-defeat");
+        commitOfficialBossDefeat(boss, source);
+        getLogger().info("BOSS_LETHAL_HIT_COMMITTED event=" + eventId
+                + " boss=" + boss.getUniqueId() + " owner=" + owner.getUniqueId()
+                + " generation=" + generation + " health_before=" + healthBefore);
+    }
+
+    /** Durable defeat marker written before the death cinematic or direct death. */
+    private boolean bossDefeatPending(Entity entity) {
+        if (entity == null || keyBossDefeatPending == null) {
+            return false;
+        }
+        Byte pending = entity.getPersistentDataContainer().get(
+                keyBossDefeatPending, PersistentDataType.BYTE);
+        return pending != null && pending == (byte) 1;
     }
 
     private void commitOfficialBossDefeat(LivingEntity boss, Entity source) {
@@ -44889,11 +44974,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 getLogger().info("TEST_BOSS_DEFEATED event=" + eventId);
                 return;
             }
-            boolean naturalCurrentDeath = !officialBossDeathCommitted
+            boolean defeatPending = bossDefeatPending(entity);
+            boolean naturalCurrentDeath = defeatPending && !officialBossDeathCommitted
                     && phase == EventPhase.BOSS_ACTIVE
                     && isOfficialEntity(entity)
                     && isOfficialBoss(entity);
-            boolean terminalOfficialDeath = !officialBossDeathCommitted
+            boolean terminalOfficialDeath = defeatPending && !officialBossDeathCommitted
                     && phase == EventPhase.BOSS_FINISH
                     && isOfficialEntity(entity)
                     && isOfficialBoss(entity);
@@ -44912,6 +44998,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 saveStateSync();
                 getLogger().info("BOSS_DEFEATED event=" + eventId + " boss=" + entity.getUniqueId());
                 beginVictory();
+            } else if (!officialBossDeathCommitted) {
+                // /kill, cleanup, actor unload and test commands must not issue
+                // official loot or open the End without the durable receipt.
+                getLogger().warning("BOSS_DEATH_UNSANCTIONED event=" + eventId
+                        + " boss=" + entity.getUniqueId() + " phase=" + phase
+                        + " defeat_pending=" + defeatPending);
+                forcePhase(EventPhase.RECOVERY_REQUIRED,
+                        "Official boss died without a durable player-owned lethal commit");
             }
         } else {
             String profile = readString(entity, keyLootProfile);

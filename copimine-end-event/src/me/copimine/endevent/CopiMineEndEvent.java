@@ -55,6 +55,7 @@ import me.copimine.endevent.domain.BossAnimationPosePolicy;
 import me.copimine.endevent.domain.BossHitboxPose;
 import me.copimine.endevent.domain.BossBrain;
 import me.copimine.endevent.domain.BossCastTimeline;
+import me.copimine.endevent.domain.BossContactStrikePolicy;
 import me.copimine.endevent.domain.BossDamagePolicy;
 import me.copimine.endevent.domain.BossDefeatCinematicPolicy;
 import me.copimine.endevent.domain.BossFinalStrikePolicy;
@@ -172,6 +173,7 @@ import me.copimine.endevent.runtime.ritual.Wave6RitualRuntimeAdapter.AnvilImpact
 import me.copimine.endevent.runtime.ritual.Wave6RitualRuntimeAdapter.AnvilVolley;
 import me.copimine.endevent.runtime.ritual.Wave6RitualRuntimeAdapter.Effects;
 import me.copimine.endevent.runtime.ritual.Wave6RitualRuntimeAdapter.GravityAnchorCast;
+import me.copimine.endevent.runtime.ritual.Wave6RitualRuntimeAdapter.GravityAnchorBarrageProgress;
 import me.copimine.endevent.domain.FallingAnvilVolleyPolicy.LandingPoint;
 import me.copimine.endevent.domain.GravityAnchorCohortPolicy;
 import me.copimine.endevent.domain.GravityAnchorLandingPolicy;
@@ -964,6 +966,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, Set<UUID>> wave6AnchorLandingDamageApplied = new HashMap<>();
     private final Map<UUID, Set<UUID>> wave6AnchorLandingResolvedPlayers = new HashMap<>();
     private final Map<UUID, Set<UUID>> wave6AnchorLiftedPlayers = new HashMap<>();
+    private record Wave6AnchorFallLease(UUID worldId, long untilMillis) { }
+    private final Map<UUID, Wave6AnchorFallLease> wave6AnchorFallLeases = new HashMap<>();
+    private static final String WAVE6_CRYSTAL_CHARGE_TAG = "copimine_wave6_crystal_charge";
+    private static final class Wave6CrystalBarrage {
+        final String eventId;
+        final GravityAnchorCast cast;
+        final UUID groupId;
+        final int expected;
+        final Set<UUID> shots = new LinkedHashSet<>();
+        final Set<UUID> pending = new LinkedHashSet<>();
+        int impacts;
+        boolean failed;
+
+        Wave6CrystalBarrage(String eventId, GravityAnchorCast cast, UUID groupId, int expected) {
+            this.eventId = eventId;
+            this.cast = cast;
+            this.groupId = groupId;
+            this.expected = expected;
+        }
+    }
+    private final Map<UUID, Wave6CrystalBarrage> wave6CrystalBarrages = new HashMap<>();
+    private final Map<UUID, Wave6CrystalBarrage> wave6CrystalBarrageShots = new HashMap<>();
     /** Persistent for the caster's lifetime; the old alert map is guard-only. */
     private final Set<UUID> ritualCasterAwakened = new LinkedHashSet<>();
     private final Set<UUID> ritualPrisonerTeleportPermits = new LinkedHashSet<>();
@@ -8693,7 +8717,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     new AnchorPoint(Math.floor(targetLocation.getX()) + 0.5D,
                             targetLocation.getY() + 3.5D,
                             Math.floor(targetLocation.getZ()) + 0.5D),
-                    RitualSphereScalingPolicy.forPlayers(waveScalePlayers()).projectilesPerVolley(),
+                    Math.min(RitualSpellController.MAX_COMBINED_BARRAGE_PROJECTILES,
+                            RitualSphereScalingPolicy.forPlayers(waveScalePlayers()).projectilesPerVolley()),
                     true, casterAlive, true, targetEligible, eventTickCounter);
         } else if (spell == RitualSpellController.Spell.RIFT_CHAINS) {
             int participants = waveScalePlayers();
@@ -11768,6 +11793,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     public void onEventProjectileCollide(ProjectileCollideEvent event) {
         if (event.isCancelled()) return;
         Projectile projectile = event.getEntity();
+        if (handleWave6CrystalBarrageCollision(event)) return;
         RiftFireballRuntimeState fireballState = activeRiftFireballs.get(projectile.getUniqueId());
         if (projectile instanceof LargeFireball fireball && isRiftFireball(fireball)
                 && fireballState != null) {
@@ -11821,6 +11847,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 event.setCancelled(true);
             }
         }
+    }
+
+    private boolean handleWave6CrystalBarrageCollision(ProjectileCollideEvent event) {
+        Projectile projectile = event.getEntity();
+        Wave6CrystalBarrage crystalBarrage = wave6CrystalBarrageShots.get(projectile.getUniqueId());
+        if (crystalBarrage == null) return false;
+        if (!crystalBarrage.pending.contains(projectile.getUniqueId())
+                || !Objects.equals(crystalBarrage.eventId, eventId)
+                || !wave6AnchorCastValid(crystalBarrage.cast)) {
+            crystalBarrage.failed = true;
+            event.setCancelled(true);
+        } else if (!crystalBarrage.cast.crystalEntity().equals(event.getCollidedWith().getUniqueId())) {
+            // These charging shots cannot damage a player, the prisoner or another entity.
+            event.setCancelled(true);
+        }
+        return true;
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
@@ -27291,7 +27333,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             advanceAndPersistRitualSpellCursor(availableSpells.size());
             started = wave6RitualRuntimeAdapter.startGravityAnchor(generation,
                     casterEntity.getUniqueId(), target.getUniqueId(), fixedCrystalPoint,
-                    RitualSphereScalingPolicy.forPlayers(waveScalePlayers()).projectilesPerVolley(),
+                    Math.min(RitualSpellController.MAX_COMBINED_BARRAGE_PROJECTILES,
+                            RitualSphereScalingPolicy.forPlayers(waveScalePlayers()).projectilesPerVolley()),
                     true, casterAlive, spellAvailable, targetEligible, eventTickCounter);
         } else if (selectedMajor == RitualCasterProgressionPolicy.MajorSpell.RIFT_CHAINS) {
             int participants = waveScalePlayers();
@@ -27404,11 +27447,98 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    private boolean wave6AnchorCastValid(GravityAnchorCast cast) {
+        if (cast == null || cast.generation() != generation || !ritualWaveActive()
+                || ritualSpellController == null) return false;
+        RitualSpellController.Snapshot spell = ritualSpellController.snapshot();
+        if (spell.generation() != generation
+                || spell.wave6Spell() != RitualSpellController.Wave6Spell.GRAVITY_ANCHOR
+                || !cast.caster().equals(spell.caster())
+                || !cast.target().equals(spell.gravityAnchorState().targetPlayer())
+                || !cast.crystalEntity().equals(spell.gravityAnchorState().crystalEntity())) return false;
+        Entity caster = ownedEntities.get(cast.caster());
+        Entity crystal = ownedEntities.get(cast.crystalEntity());
+        Player target = Bukkit.getPlayer(cast.target());
+        return caster instanceof LivingEntity && isCurrentRitualCaster(caster)
+                && isLiveOwnedEntity(cast.caster()) && ownedBySession(caster, eventId, generation)
+                && crystal instanceof EnderCrystal && isLiveOwnedEntity(cast.crystalEntity())
+                && ownedBySession(crystal, eventId, generation)
+                && target != null && target.isOnline() && !target.isDead()
+                && target.getWorld().equals(crystal.getWorld())
+                && isArenaLocation(target.getLocation()) && isFreeRitualTarget(target);
+    }
+
+    private void releaseWave6CrystalShot(Wave6CrystalBarrage barrage, UUID projectileId) {
+        barrage.pending.remove(projectileId);
+        waveProjectileAdmission.releaseProjectile(projectileId);
+        removeRitualEntity(projectileId);
+    }
+
+    private void clearWave6CrystalBarrage(UUID crystalId) {
+        Wave6CrystalBarrage barrage = wave6CrystalBarrages.remove(crystalId);
+        if (barrage == null) return;
+        for (UUID projectileId : Set.copyOf(barrage.shots)) {
+            releaseWave6CrystalShot(barrage, projectileId);
+            wave6CrystalBarrageShots.remove(projectileId, barrage);
+        }
+        waveProjectileAdmission.releaseGroup(barrage.groupId);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onWave6CrystalBarrageDamage(EntityDamageByEntityEvent event) {
+        if (wave6CrystalBarrageShots.containsKey(event.getDamager().getUniqueId())
+                || event.getDamager() instanceof Projectile projectile
+                && projectile.getScoreboardTags().contains(WAVE6_CRYSTAL_CHARGE_TAG)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+    public void onWave6CrystalBarrageImpact(ProjectileHitEvent event) {
+        UUID projectileId = event.getEntity().getUniqueId();
+        Wave6CrystalBarrage barrage = wave6CrystalBarrageShots.get(projectileId);
+        if (barrage == null || !barrage.pending.contains(projectileId)) return;
+        Entity hit = event.getHitEntity();
+        boolean validImpact = !event.isCancelled() && Objects.equals(barrage.eventId, eventId)
+                && wave6AnchorCastValid(barrage.cast) && hit != null
+                && barrage.cast.crystalEntity().equals(hit.getUniqueId());
+        if (validImpact) {
+            barrage.impacts++;
+            hit.getWorld().spawnParticle(Particle.PORTAL, hit.getLocation(), 6,
+                    0.25D, 0.25D, 0.25D, 0.02D);
+        } else {
+            barrage.failed = true;
+        }
+        releaseWave6CrystalShot(barrage, projectileId);
+    }
+
+    /** Preserve one bounded fall protection after a cancelled cast releases its crystal. */
+    private void preserveWave6AnchorFallProtection(GravityAnchorCast cast) {
+        long now = System.currentTimeMillis();
+        wave6AnchorFallLeases.entrySet().removeIf(entry -> entry.getValue().untilMillis() < now);
+        Set<UUID> resolved = wave6AnchorLandingResolvedPlayers.getOrDefault(cast.crystalEntity(), Set.of());
+        for (UUID playerId : wave6AnchorLiftedPlayers.getOrDefault(cast.crystalEntity(), Set.of())) {
+            Player player = Bukkit.getPlayer(playerId);
+            if (resolved.contains(playerId) || player == null || !player.isOnline()
+                    || player.isDead() || player.isOnGround() || player.getWorld() == null) continue;
+            player.setFallDistance(0.0F);
+            wave6AnchorFallLeases.put(playerId,
+                    new Wave6AnchorFallLease(player.getWorld().getUID(), now + 10_000L));
+        }
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onGravityAnchorFallDamage(EntityDamageEvent event) {
         if (event.getCause() != EntityDamageEvent.DamageCause.FALL
                 || !(event.getEntity() instanceof Player player)) return;
         UUID playerId = player.getUniqueId();
+        Wave6AnchorFallLease released = wave6AnchorFallLeases.remove(playerId);
+        if (released != null && released.untilMillis() >= System.currentTimeMillis()
+                && released.worldId().equals(player.getWorld().getUID())) {
+            event.setCancelled(true);
+            player.setFallDistance(0.0F);
+            return;
+        }
         for (Map.Entry<UUID, Set<UUID>> anchor : wave6AnchorLiftedPlayers.entrySet()) {
             if (!anchor.getValue().contains(playerId)) continue;
             Set<UUID> resolvedPlayers = wave6AnchorLandingResolvedPlayers.get(anchor.getKey());
@@ -27636,24 +27766,73 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         @Override
         public boolean fireRiftBarrageIntoCrystal(GravityAnchorCast cast, int projectileCount) {
             EnderCrystal crystal = anchorCrystal(cast);
-            if (crystal == null || projectileCount <= 0) return false;
-            Location impact = crystal.getLocation();
-            World impactWorld = impact.getWorld();
-            if (impactWorld == null) return false;
-            int bounded = Math.min(projectileCount,
-                    RitualSphereScalingPolicy.MAX_PROJECTILES_PER_VOLLEY);
-            for (int index = 0; index < bounded; index++) {
-                double angle = Math.PI * 2.0D * index / bounded;
-                Location origin = impact.clone().add(
-                        StrictMath.cos(angle) * 1.4D, 0.9D, StrictMath.sin(angle) * 1.4D);
-                impactWorld.spawnParticle(Particle.SOUL_FIRE_FLAME, origin, 2,
-                        0.05D, 0.05D, 0.05D, 0.0D);
-                impactWorld.spawnParticle(Particle.PORTAL, impact, 3,
-                        0.3D, 0.3D, 0.3D, 0.05D);
+            Location origin = ritualSphereCenter(coreCombatAnchorLocation());
+            Entity caster = cast == null ? null : ownedEntities.get(cast.caster());
+            if (crystal == null || origin == null || !(caster instanceof LivingEntity shooter)
+                    || !wave6AnchorCastValid(cast) || projectileCount <= 0
+                    || projectileCount > RitualSpellController.MAX_COMBINED_BARRAGE_PROJECTILES
+                    || wave6CrystalBarrages.containsKey(cast.crystalEntity())
+                    || !origin.getWorld().equals(crystal.getWorld())) return false;
+            Location impact = crystal.getBoundingBox().getCenter().toLocation(crystal.getWorld());
+            Vector direction = impact.toVector().subtract(origin.toVector());
+            if (!Double.isFinite(direction.lengthSquared()) || direction.lengthSquared() < 1.0E-6D
+                    || !hasProjectileBlockLineOfSight(origin, impact)) return false;
+            direction.normalize().multiply(RitualSphereProjectilePolicy.MAX_INITIAL_SPEED);
+            UUID groupId = UUID.randomUUID();
+            if (!reserveWaveProjectileGroup(groupId, projectileCount)) return false;
+            Wave6CrystalBarrage barrage = new Wave6CrystalBarrage(eventId, cast, groupId, projectileCount);
+            wave6CrystalBarrages.put(cast.crystalEntity(), barrage);
+            try {
+                for (int index = 0; index < projectileCount; index++) {
+                    Snowball shot = origin.getWorld().spawn(origin, Snowball.class);
+                    UUID shotId = shot.getUniqueId();
+                    barrage.shots.add(shotId);
+                    barrage.pending.add(shotId);
+                    wave6CrystalBarrageShots.put(shotId, barrage);
+                    shot.addScoreboardTag(WAVE6_CRYSTAL_CHARGE_TAG);
+                    shot.setGravity(false);
+                    shot.setPersistent(false);
+                    shot.setShooter(shooter);
+                    shot.setVelocity(direction.clone());
+                    tag(shot, EVENT_KIND_PROJECTILE, 6, isOfficialEntity(shooter));
+                    if (!trackWaveProjectile(shot, groupId)) {
+                        clearWave6CrystalBarrage(cast.crystalEntity());
+                        return false;
+                    }
+                }
+            } catch (RuntimeException failure) {
+                clearWave6CrystalBarrage(cast.crystalEntity());
+                getLogger().warning("WAVE6_CRYSTAL_BARRAGE_LAUNCH_FAILED event=" + eventId
+                        + " generation=" + generation + " reason=" + failure.getClass().getSimpleName());
+                return false;
             }
-            impactWorld.playSound(impact, Sound.ENTITY_ENDER_DRAGON_SHOOT,
+            origin.getWorld().playSound(origin, Sound.ENTITY_ENDER_DRAGON_SHOOT,
                     SoundCategory.HOSTILE, 0.9F, 1.35F);
             return true;
+        }
+
+        @Override
+        public boolean isGravityAnchorCastValid(GravityAnchorCast cast) {
+            return wave6AnchorCastValid(cast);
+        }
+
+        @Override
+        public GravityAnchorBarrageProgress gravityAnchorBarrageProgress(GravityAnchorCast cast) {
+            Wave6CrystalBarrage barrage = cast == null ? null : wave6CrystalBarrages.get(cast.crystalEntity());
+            if (barrage == null || barrage.failed || !Objects.equals(barrage.eventId, eventId)
+                    || !wave6AnchorCastValid(cast)) return GravityAnchorBarrageProgress.FAILED;
+            for (UUID projectileId : Set.copyOf(barrage.pending)) {
+                Entity projectile = ownedEntities.get(projectileId);
+                if (projectile == null || !isLiveOwnedEntity(projectileId)
+                        || !ownedBySession(projectile, barrage.eventId, cast.generation())) {
+                    barrage.failed = true;
+                    return GravityAnchorBarrageProgress.FAILED;
+                }
+                projectile.getWorld().spawnParticle(Particle.SOUL_FIRE_FLAME,
+                        projectile.getLocation(), 2, 0.03D, 0.03D, 0.03D, 0.0D);
+            }
+            return barrage.pending.isEmpty() && barrage.impacts == barrage.expected
+                    ? GravityAnchorBarrageProgress.CHARGED : GravityAnchorBarrageProgress.PENDING;
         }
 
         @Override
@@ -27785,6 +27964,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         @Override
         public boolean cleanupGravityAnchor(GravityAnchorCast cast) {
             if (cast == null) return true;
+            preserveWave6AnchorFallProtection(cast);
+            clearWave6CrystalBarrage(cast.crystalEntity());
             removeRitualEntity(cast.crystalEntity());
             waveObjectiveVisuals.remove(cast.crystalEntity());
             wave6AnchorPullStartedAt.remove(cast.crystalEntity());
@@ -28093,7 +28274,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || spell.stage() == RitualSpellController.Stage.EXECUTE
                 || spell.stage() == RitualSpellController.Stage.ACTIVE);
         Location sphere = ritualSphereCenter(coreCombatAnchorLocation());
-        if (!visibleStage || spell.generation() != generation || sphere == null
+        // Replacement Wave 6 spells render through their own runtime adapter;
+        // their legacy spell identity is intentionally null.
+        if (!visibleStage || spell.spell() == null || spell.generation() != generation || sphere == null
                 || target == null || !target.isOnline() || !isFreeRitualTarget(target)
                 || !sphere.getWorld().equals(target.getWorld())) {
             clearWorldVfxBeamsByPrefix("wave6-spell-");
@@ -39958,12 +40141,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                            EndRiftAiPolicy.BossSpell spell,
                                            long callbackGeneration) {
         bossAbilityState = BossAbilityState.EXECUTING;
-        Location origin = boss.getLocation();
-        Vector facing = origin.getDirection().setY(0.0D);
-        if (facing.lengthSquared() < 0.01D) {
-            facing = new Vector(0.0D, 0.0D, 1.0D);
+        if (spell == EndRiftAiPolicy.BossSpell.CHEST_STRIKE) {
+            startChestStrike(boss, target, callbackGeneration);
+            return;
         }
-        facing.normalize();
+        Location origin = boss.getLocation();
+        Vector facing = contactFacing(origin);
         int hits = 0;
         for (Player player : activeLivingPlayers()) {
             if (player == null || !player.getWorld().equals(origin.getWorld())) {
@@ -39973,48 +40156,29 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             double distance = offset.length();
             Vector flat = offset.clone().setY(0.0D);
             boolean inFront = flat.lengthSquared() > 0.01D
-                    && flat.normalize().dot(facing) >= 0.1D;
-            boolean hit = switch (spell) {
-                case MELEE_SWIPE -> distance <= 4.5D && inFront;
-                case CHEST_STRIKE -> {
-                    Vector line = offset.clone().setY(0.0D);
-                    double along = line.dot(facing);
-                    double lateral = Math.abs(line.getX() * facing.getZ()
-                            - line.getZ() * facing.getX());
-                    yield along > 0.0D && along <= 12.0D && lateral <= 2.0D
-                            && Math.abs(offset.getY()) <= 3.0D;
-                }
-                case GROUND_SLAM -> distance <= 7.0D && Math.abs(offset.getY()) <= 4.0D;
-                default -> false;
-            };
+                    && flat.normalize().dot(facing) >= BossContactStrikePolicy.MELEE_SWIPE_FRONT_DOT;
+            boolean hit = spell == EndRiftAiPolicy.BossSpell.MELEE_SWIPE
+                    ? distance <= BossContactStrikePolicy.MELEE_SWIPE_RANGE && inFront
+                    : distance <= BossContactStrikePolicy.GROUND_SLAM_RANGE
+                    && Math.abs(offset.getY()) <= BossContactStrikePolicy.GROUND_SLAM_VERTICAL;
             if (!hit) {
                 continue;
             }
-            hits++;
-            player.damage(switch (spell) {
-                case MELEE_SWIPE -> 8.0D;
-                case CHEST_STRIKE -> 10.0D;
-                default -> 12.0D;
-            }, boss);
             Vector push = flat.lengthSquared() < 0.01D
                     ? facing.clone() : flat.clone().normalize();
-            push.multiply(spell == EndRiftAiPolicy.BossSpell.GROUND_SLAM ? 0.55D : 0.35D);
-            push.setY(spell == EndRiftAiPolicy.BossSpell.GROUND_SLAM ? 0.75D : 0.3D);
-            player.setVelocity(push);
-            player.playEffect(EntityEffect.HURT);
+            push.multiply(BossContactStrikePolicy.knockback(spell));
+            push.setY(BossContactStrikePolicy.lift(spell));
+            if (applyContactHit(player, boss, BossContactStrikePolicy.damage(spell), push)) {
+                hits++;
+            }
         }
         switch (spell) {
             case MELEE_SWIPE -> spawnEventParticle(origin.clone().add(facing.clone().multiply(2.0D))
                     .add(0.0D, 1.0D, 0.0D), Particle.SWEEP_ATTACK, 6, 0.6D, 0.4D, 0.6D, 0.0D);
-            case CHEST_STRIKE -> spawnEventParticle(origin.clone().add(facing.clone().multiply(3.0D))
-                    .add(0.0D, 1.5D, 0.0D), Particle.SOUL_FIRE_FLAME, 18, 0.5D, 0.3D, 0.5D, 0.03D);
             default -> spawnEventParticle(origin, Particle.EXPLOSION, 8, 3.0D, 0.3D, 3.0D, 0.0D);
         }
-        origin.getWorld().playSound(origin, switch (spell) {
-            case MELEE_SWIPE -> Sound.ENTITY_PLAYER_ATTACK_SWEEP;
-            case CHEST_STRIKE -> Sound.ENTITY_WARDEN_SONIC_BOOM;
-            default -> Sound.ENTITY_GENERIC_EXPLODE;
-        }, 1.0F, 1.0F);
+        origin.getWorld().playSound(origin, spell == EndRiftAiPolicy.BossSpell.MELEE_SWIPE
+                ? Sound.ENTITY_PLAYER_ATTACK_SWEEP : Sound.ENTITY_GENERIC_EXPLODE, 1.0F, 1.0F);
         getLogger().info("BOSS_CONTACT_ABILITY_IMPACT boss=" + boss.getUniqueId()
                 + " spell=" + spell.id() + " target=" + target.getUniqueId()
                 + " hits=" + hits + " generation=" + callbackGeneration);
@@ -40022,6 +40186,104 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossCastDeadlineMillis = System.currentTimeMillis() + 20L * 50L;
         bossSpellPauseUntilMillis = bossCastDeadlineMillis;
         releaseBossHazardReservation("contact-impact");
+    }
+
+    private Vector contactFacing(Location origin) {
+        Vector facing = origin.getDirection().setY(0.0D);
+        if (facing.lengthSquared() < 0.01D) {
+            facing = new Vector(0.0D, 0.0D, 1.0D);
+        }
+        return facing.normalize();
+    }
+
+    /**
+     * A contact move may only react when the damage really landed: an immune,
+     * invulnerable or otherwise cancelled hit produces no knockback and no hurt
+     * flash, so the reaction can never disagree with the accepted damage.
+     */
+    private boolean applyContactHit(Player player, LivingEntity boss, double damage, Vector knockback) {
+        if (player == null || !player.isOnline() || player.isDead() || player.isInvulnerable()) {
+            return false;
+        }
+        double before = player.getHealth();
+        player.damage(damage, boss);
+        if (!BossContactStrikePolicy.landed(before, player.getHealth(), player.isDead())) {
+            return false;
+        }
+        player.setVelocity(knockback);
+        player.playEffect(EntityEffect.HURT);
+        return true;
+    }
+
+    /**
+     * Directed chest strike: the probe leaves the chest on the authored launch
+     * tick and sweeps forward one step per tick until it reaches its range. It
+     * never homes, never reaches through a wall and has a finite lifetime.
+     */
+    private void startChestStrike(LivingEntity boss, Player target, long callbackGeneration) {
+        Location origin = boss.getLocation();
+        World world = origin.getWorld();
+        if (world == null) {
+            releaseBossHazardReservation("chest-strike-world-missing");
+            return;
+        }
+        Vector direction = contactFacing(origin);
+        Location chest = new Location(world, origin.getX(),
+                origin.getY() + boss.getHeight() * BossContactStrikePolicy.CHEST_HEIGHT_RATIO, origin.getZ());
+        UUID bossId = boss.getUniqueId();
+        Set<UUID> alreadyHit = new HashSet<>();
+        int[] hits = new int[]{0};
+        int lastStep = BossContactStrikePolicy.chestStrikeTicks();
+        world.playSound(chest, Sound.ENTITY_WARDEN_SONIC_CHARGE, SoundCategory.HOSTILE, 1.0F, 1.2F);
+        for (int step = 1; step <= lastStep; step++) {
+            int sweepStep = step;
+            long delay = BossContactStrikePolicy.CHEST_STRIKE_LAUNCH_TICKS + step;
+            BukkitTask task = Bukkit.getScheduler().runTaskLater(this, () -> {
+                if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
+                        || bossUuid == null || !bossUuid.equals(bossId) || !boss.isValid() || boss.isDead()
+                        || (phase != EventPhase.BOSS_ACTIVE && !isTestBoss(boss))) {
+                    return;
+                }
+                double probe = BossContactStrikePolicy.chestProbeDistance(sweepStep);
+                Location point = chest.clone().add(direction.clone().multiply(probe));
+                world.spawnParticle(Particle.SOUL_FIRE_FLAME, point, 3, 0.15D, 0.15D, 0.15D, 0.01D);
+                for (Player player : activeLivingPlayers()) {
+                    if (player == null || !player.getWorld().equals(world)
+                            || alreadyHit.contains(player.getUniqueId())) {
+                        continue;
+                    }
+                    Vector offset = player.getLocation().toVector().subtract(chest.toVector());
+                    double along = offset.getX() * direction.getX() + offset.getZ() * direction.getZ();
+                    double lateral = Math.abs(offset.getX() * direction.getZ()
+                            - offset.getZ() * direction.getX());
+                    double vertical = player.getLocation().getY() + player.getHeight() * 0.5D - chest.getY();
+                    if (!BossContactStrikePolicy.chestStrikeHits(probe, along, lateral, vertical)) {
+                        continue;
+                    }
+                    if (!hasProjectileBlockLineOfSight(chest, player.getEyeLocation())) {
+                        continue;
+                    }
+                    alreadyHit.add(player.getUniqueId());
+                    Vector knockback = direction.clone()
+                            .multiply(BossContactStrikePolicy.CHEST_STRIKE_KNOCKBACK);
+                    knockback.setY(BossContactStrikePolicy.CHEST_STRIKE_LIFT);
+                    if (applyContactHit(player, boss, BossContactStrikePolicy.CHEST_STRIKE_DAMAGE, knockback)) {
+                        hits[0]++;
+                    }
+                }
+                if (sweepStep == lastStep) {
+                    getLogger().info("BOSS_CONTACT_ABILITY_IMPACT boss=" + bossId
+                            + " spell=" + EndRiftAiPolicy.BossSpell.CHEST_STRIKE.id()
+                            + " target=" + target.getUniqueId() + " hits=" + hits[0]
+                            + " generation=" + callbackGeneration);
+                    bossAbilityState = BossAbilityState.RECOVERY;
+                    bossCastDeadlineMillis = System.currentTimeMillis() + 20L * 50L;
+                    bossSpellPauseUntilMillis = bossCastDeadlineMillis;
+                    releaseBossHazardReservation("contact-impact");
+                }
+            }, delay);
+            registerEncounterTask(task);
+        }
     }
 
     private void executeBossSpell(LivingEntity boss, Player target, Location mark,
@@ -41640,6 +41902,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         TentacleController.VisualState state = tentacleController.state(display.getUniqueId());
         if (state == null
+                // A closed animation window rejects the entire hit, not just
+                // its flinch. Both melee and projectile paths enter here.
+                || !TentacleAnimationPolicy.shouldEnterHitRecovery(state.state())
                 || (!state.temporary()
                 && tentacleGuardianHealth.getOrDefault(state.slot(), 0.0D) <= 0.0D)
                 || state.state() == TentacleAnimationPolicy.State.DYING

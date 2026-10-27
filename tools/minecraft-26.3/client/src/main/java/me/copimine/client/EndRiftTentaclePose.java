@@ -129,6 +129,14 @@ public final class EndRiftTentaclePose {
             return grab_socket.z();
         }
 
+        /** Uniform actor size is separate from authored bone animation and clip blending. */
+        public TentaclePose withRigScale(float scale) {
+            float safeScale = Float.isFinite(scale) && scale > 0.0F ? scale : 1.0F;
+            return new TentaclePose(root, base, seg_01, seg_02, seg_03, seg_04, seg_05,
+                    seg_06, tip, tip_claw_1, tip_claw_2, tip_claw_3, tip_claw_4,
+                    grab_socket, safeScale);
+        }
+
         /** Blend a render-only transition without changing server marker timing. */
         public static TentaclePose lerp(TentaclePose from, TentaclePose to, float amount) {
             TentaclePose start = from == null ? identity() : from;

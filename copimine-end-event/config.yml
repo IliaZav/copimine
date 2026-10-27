@@ -343,6 +343,17 @@ boss:
     # Cover the full logical tentacle envelope. Interaction is anchored at its
     # feet, so increasing height does not lift the hitbox above the visible rig.
     hitbox-height: 6.25
+  # Separate finite melee-only LAST_SEAL summons. These editable values retain
+  # the implementation draft defaults; they are not a canonical balance table.
+  # The cap shares the controller's overall temporary-actor limit of six.
+  small-kagune:
+    enabled: true
+    max-active: 4
+    health: 20.0
+    damage: 6.0
+    range: 3.0
+    lifetime-ticks: 600
+    scale: 0.6
   # This optional boss visual is restricted to the current RIFT band. Vanilla
   # fireball assets are never replaced globally.
   rift-obelisks:

@@ -648,7 +648,7 @@ def test_tentacle_hitbox_covers_the_full_visible_rig() -> None:
     assert "entity.setAI(false);" in spawn
     assert "entity.setInvisible(true);" in spawn
     assert "Attribute.GENERIC_SCALE" in spawn
-    assert "scale.setBaseValue(tentacleCarrierScale());" in spawn
+    assert "scale.setBaseValue(tentacleCarrierScale() * roleScale);" in spawn
     assert "tentacleHitboxesByDisplay.put(display.getUniqueId(), hitbox.getUniqueId());" in spawn
     assert "tentacleDisplaysByHitbox.put(hitbox.getUniqueId(), display.getUniqueId());" in spawn
     size_start = source.index("private double tentacleHitboxHeight()")

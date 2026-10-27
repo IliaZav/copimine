@@ -22,7 +22,8 @@ public final class EndRiftAiPolicy {
         CHEST_STRIKE("chest_strike", "Удар в грудь"),
         GROUND_SLAM("ground_slam", "Удар по земле"),
         FINAL_STRIKE("final_strike", "Приговор Разлома"),
-        AMBUSH_GRAB("ambush_grab", "Засада из-под земли");
+        AMBUSH_GRAB("ambush_grab", "Засада из-под земли"),
+        SMALL_KAGUNE("small_kagune", "Малые кагуне");
 
         private final String id;
         private final String displayName;

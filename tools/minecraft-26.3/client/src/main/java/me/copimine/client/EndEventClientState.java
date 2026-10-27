@@ -186,8 +186,10 @@ public final class EndEventClientState {
      */
     public synchronized EndRiftTentaclePose.TentaclePose tentaclePoseForEntity(
             String uuid, long elapsedTicks) {
-        return EndRiftTentacleRenderer.poseFor(
+        EndRiftTentaclePose.TentaclePose pose = EndRiftTentacleRenderer.poseFor(
                 visualForEntity(uuid), entityAnimationForEntity(uuid), elapsedTicks);
+        EntityAnimationBinding binding = entityAnimations.get(uuid);
+        return pose == null || binding == null ? pose : pose.withRigScale(binding.roleScale());
     }
 
     /** Resolve a pose from the phase receipt timeline rather than entity age. */
@@ -252,7 +254,7 @@ public final class EndEventClientState {
         }
         return new TentacleAnimationSnapshot(binding.instanceId(), binding.animationId(),
                 binding.stateStartServerTick(), binding.startedAtMillis(), binding.durationMillis(),
-                binding.healthState(), binding.targetId());
+                binding.healthState(), binding.targetId(), binding.role(), binding.roleScale());
     }
 
     public synchronized String bossUuid() {
@@ -421,7 +423,7 @@ public final class EndEventClientState {
         entityVisuals.put(packet.subjectId(), new EntityVisualBinding(packet.instanceId(), packet.visualId()));
         entityAnimations.put(packet.subjectId(), new EntityAnimationBinding(
                 packet.instanceId(), "READY", -1L, nowMillis, 60_000L, "FULL", "",
-                null, 0L, 0L));
+                "LEGACY", 1.0F, null, 0L, 0L));
         return true;
     }
 
@@ -480,7 +482,7 @@ public final class EndEventClientState {
                 sameClip ? binding.stateStartServerTick() : cue.stateStartServerTick(),
                 sameClip ? binding.startedAtMillis() : nowMillis,
                 sameClip ? binding.durationMillis() : durationMillis,
-                cue.healthState(), cue.targetId(), blendFrom,
+                cue.healthState(), cue.targetId(), cue.role(), cue.roleScale(), blendFrom,
                 sameClip ? binding.blendStartedAtMillis() : blendFrom == null ? 0L : nowMillis,
                 sameClip ? binding.blendDurationMillis()
                         : blendFrom == null ? 0L : TENTACLE_POSE_BLEND_MILLIS));
@@ -494,16 +496,17 @@ public final class EndEventClientState {
                 visualId, binding.animationId(), elapsedMillis,
                 binding.durationMillis(), seed);
         if (binding.blendFromPose() == null || binding.blendDurationMillis() <= 0L) {
-            return current;
+            return current.withRigScale(binding.roleScale());
         }
         float linear = (float) ((nowMillis - binding.blendStartedAtMillis())
                 / (double) binding.blendDurationMillis());
         if (!Float.isFinite(linear) || linear >= 1.0F) {
-            return current;
+            return current.withRigScale(binding.roleScale());
         }
         float t = Math.max(0.0F, linear);
         float smooth = t * t * (3.0F - 2.0F * t);
-        return EndRiftTentaclePose.TentaclePose.lerp(binding.blendFromPose(), current, smooth);
+        return EndRiftTentaclePose.TentaclePose.lerp(binding.blendFromPose(), current, smooth)
+                .withRigScale(binding.roleScale());
     }
 
     private static boolean knownRitualCasterPhase(String phase) {
@@ -541,6 +544,8 @@ public final class EndEventClientState {
         long stateStartServerTick = -1L;
         String healthState = "FULL";
         String targetId = "";
+        String role = "LEGACY";
+        float roleScale = 1.0F;
         for (int index = 1; index < parts.length; index++) {
             String part = parts[index].trim();
             if (part.startsWith("t=")) {
@@ -556,9 +561,26 @@ public final class EndEventClientState {
                 healthState = normalizeHealthState(part.substring("health=".length()));
             } else if (part.startsWith("target=")) {
                 targetId = normalizeTargetId(part.substring("target=".length()));
+            } else if (tentacleVisual && part.startsWith("role=")) {
+                String candidate = part.substring("role=".length()).toUpperCase(Locale.ROOT);
+                if (Set.of("PERMANENT", "UNDER_PLAYER", "TEMPORARY", "SMALL").contains(candidate)) {
+                    role = candidate;
+                }
+            } else if (tentacleVisual && part.startsWith("scale=")) {
+                try {
+                    float candidate = Float.parseFloat(part.substring("scale=".length()));
+                    if (Float.isFinite(candidate) && candidate >= 0.2F && candidate <= 0.9F) {
+                        roleScale = candidate;
+                    }
+                } catch (NumberFormatException ignored) {
+                    // Old or malformed optional presentation fields retain the full-size fallback.
+                }
             }
         }
-        return new AnimationCue(animation, stateStartServerTick, healthState, targetId);
+        if (!"SMALL".equals(role)) {
+            roleScale = 1.0F;
+        }
+        return new AnimationCue(animation, stateStartServerTick, healthState, targetId, role, roleScale);
     }
 
     private static String normalizeTentacleAnimation(String animationId) {
@@ -723,19 +745,22 @@ public final class EndEventClientState {
                                           long stateStartServerTick,
                                           long startedAtMillis, long durationMillis,
                                           String healthState, String targetId,
+                                          String role, float roleScale,
                                           EndRiftTentaclePose.TentaclePose blendFromPose,
                                           long blendStartedAtMillis,
                                           long blendDurationMillis) {
     }
 
     private record AnimationCue(String animationId, long stateStartServerTick,
-                                String healthState, String targetId) {
+                                String healthState, String targetId,
+                                String role, float roleScale) {
     }
 
     public record TentacleAnimationSnapshot(String instanceId, String animationId,
                                              long stateStartServerTick,
                                              long startedAtMillis, long durationMillis,
-                                             String healthState, String targetId) {
+                                             String healthState, String targetId,
+                                             String role, float roleScale) {
     }
 
     private record BossPhaseBinding(String instanceId, String phaseId, long transitionDurationMillis,

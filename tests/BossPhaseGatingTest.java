@@ -59,6 +59,10 @@ public final class BossPhaseGatingTest {
         }
         require(BossPhasePolicy.spellPool(BossPhase.LAST_SEAL).contains(BossSpell.FINAL_STRIKE),
                 "Last Seal must offer the Final Strike");
+        require(BossPhasePolicy.spellPool(BossPhase.LAST_SEAL).contains(BossSpell.SMALL_KAGUNE),
+                "Last Seal must expose the small melee Kagune summon");
+        require(!BossPhasePolicy.spellPool(BossPhase.RIFT).contains(BossSpell.SMALL_KAGUNE),
+                "the small Kagune summon belongs to LAST_SEAL only");
 
         for (BossPhase phase : new BossPhase[]{BossPhase.AWAKENING, BossPhase.HUNT,
                 BossPhase.RIFT, BossPhase.OVERLOAD, BossPhase.RAGE}) {

@@ -40,6 +40,18 @@ public final class BossEdgeVolleyPolicyTest {
                 "a boss that never reached the corner must count as a failed reposition");
         require(!BossEdgeVolleyPolicy.relocated(Double.NaN),
                 "an unknown distance must count as a failed reposition");
+        require(BossEdgeVolleyPolicy.ARRIVAL_AIM_TICKS >= 10L,
+                "the boss needs a readable aim window before the first salvo");
+        require(BossEdgeVolleyPolicy.salvoAllowed(BossPhase.RIFT, true, true, true),
+                "a live RIFT boss with a legal target keeps firing its salvos");
+        require(!BossEdgeVolleyPolicy.salvoAllowed(BossPhase.LAST_SEAL, true, true, true),
+                "entering LAST_SEAL must cancel the remaining salvos");
+        require(!BossEdgeVolleyPolicy.salvoAllowed(BossPhase.RIFT, false, true, true),
+                "a finished encounter must cancel the remaining salvos");
+        require(!BossEdgeVolleyPolicy.salvoAllowed(BossPhase.RIFT, true, false, true),
+                "a dead boss must cancel the remaining salvos");
+        require(!BossEdgeVolleyPolicy.salvoAllowed(BossPhase.RIFT, true, true, false),
+                "an illegal target must cancel the remaining salvos");
         System.out.println("BossEdgeVolleyPolicyTest OK");
     }
 

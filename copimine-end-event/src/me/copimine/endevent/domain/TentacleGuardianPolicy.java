@@ -23,6 +23,14 @@ public final class TentacleGuardianPolicy {
     public static final int RESPAWN_WARNING_MILLIS = 5_000;
     public static final int ATTACK_INTERVAL_TICKS = 220;
     public static final int ATTACK_STAGGER_TICKS = 20;
+    /**
+     * A defender's telegraphed close-combat hit costs the same as an ambush
+     * throw (TentacleThrowPolicy.RELEASE_DAMAGE), so the two roles feel
+     * equally dangerous without new tuning.
+     */
+    public static final double STRIKE_DAMAGE = 10.0D;
+    public static final double STRIKE_KNOCKBACK = 0.45D;
+    public static final double STRIKE_LIFT = 0.25D;
     public static final int MIN_TOTAL_HEALTH = 120;
     public static final int MAX_TOTAL_HEALTH = 336;
     public static final String SNAPSHOT_PREFIX = "tentacle-guardian.";
@@ -153,11 +161,36 @@ public final class TentacleGuardianPolicy {
         return deadlineMillis != null && nowMillis >= deadlineMillis;
     }
 
+    /**
+     * A defeated slot keeps its own clock, but cannot return inside the
+     * protected boss-vulnerability window. Use this same effective deadline
+     * for both warning and spawn checks so a deferred return has an honest
+     * five-second telegraph. A missing deadline denotes initial/live-actor
+     * reconciliation and must not acquire a fabricated death cooldown.
+     */
+    public static Long effectiveRespawnDeadline(Long deadlineMillis,
+                                               long damageWindowEndsMillis) {
+        return deadlineMillis == null ? null
+                : Math.max(deadlineMillis, damageWindowEndsMillis);
+    }
+
+    public static boolean respawnDueAt(long nowMillis, Long deadlineMillis,
+                                       long damageWindowEndsMillis) {
+        return respawnDueAt(nowMillis,
+                effectiveRespawnDeadline(deadlineMillis, damageWindowEndsMillis));
+    }
+
     /** Five-second telegraph before the effective appearance; not a live guardian. */
     public static boolean respawnWarningDueAt(long nowMillis, Long deadlineMillis) {
         return deadlineMillis != null
                 && deadlineMillis - nowMillis <= RESPAWN_WARNING_MILLIS
                 && deadlineMillis - nowMillis > 0L;
+    }
+
+    public static boolean respawnWarningDueAt(long nowMillis, Long deadlineMillis,
+                                              long damageWindowEndsMillis) {
+        return respawnWarningDueAt(nowMillis,
+                effectiveRespawnDeadline(deadlineMillis, damageWindowEndsMillis));
     }
 
     /**
@@ -276,9 +309,9 @@ public final class TentacleGuardianPolicy {
             Map<Integer, Long> respawnAtMillis, long damageWindowEndsMillis, long nowMillis) {
         Map<String, String> encoded = new LinkedHashMap<>();
         long safeNow = Math.max(0L, nowMillis);
-        if (damageWindowEndsMillis > safeNow) {
+        if (damageWindowEndsMillis >= 0L) {
             encoded.put(SNAPSHOT_PREFIX + "damage-window-remaining-ms",
-                    Long.toString(damageWindowEndsMillis - safeNow));
+                    Long.toString(Math.max(0L, damageWindowEndsMillis - safeNow)));
         }
         for (int slot = 0; slot < MAX_SNAPSHOT_SLOTS; slot++) {
             Double current = health.get(slot);
@@ -317,7 +350,7 @@ public final class TentacleGuardianPolicy {
                 if (suffix.equals("damage-window-remaining-ms")) {
                     long remaining = Long.parseLong(entry.getValue());
                     if (remaining < 0L) throw new IllegalArgumentException("INVALID_DAMAGE_WINDOW");
-                    if (remaining > 0L) damageWindowEnds = Math.addExact(safeNow, remaining);
+                    damageWindowEnds = Math.addExact(safeNow, remaining);
                     continue;
                 }
                 if (suffix.equals("damage-window-elapsed")) {

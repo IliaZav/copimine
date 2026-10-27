@@ -9,6 +9,46 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EndEventClientStateTest {
     @Test
+    void smallKaguneServerScaleReachesTheRenderedPoseAcrossAnimationChanges() {
+        EndEventClientState state = new EndEventClientState();
+        assertTrue(state.apply(tentacleBind("small", "small-instance"), 100L));
+        assertTrue(state.apply(tentaclePhase("small", "small-instance",
+                "EMERGING|t=5|role=SMALL|scale=0.5"), 101L));
+        assertEquals(0.5F, state.tentaclePoseForEntityAt("small", 200L).rigScale(), 0.0001F);
+        assertEquals(0.31F, EndRiftTentacleWorldScalePolicy.rendererLengthScaleForRig(
+                state.tentaclePoseForEntityAt("small", 200L).rigScale()), 0.0001F);
+        assertTrue(state.apply(tentaclePhase("small", "small-instance",
+                "TELEGRAPH_GRAB|t=25|role=SMALL|scale=0.5"), 300L));
+        for (long time : new long[]{300L, 350L, 420L, 500L}) {
+            assertEquals(0.5F, state.tentaclePoseForEntityAt("small", time).rigScale(), 0.0001F,
+                    "clip blending must not expand a small actor into a full guardian");
+        }
+    }
+
+    @Test
+    void guardianAmbushAndLegacyPacketsKeepFullScaleAndMalformedScaleIsSafe() {
+        for (String cue : new String[]{"READY", "READY|role=PERMANENT|scale=0.5",
+                "READY|role=UNDER_PLAYER|scale=0.5", "READY|role=SMALL|scale=NaN",
+                "READY|role=SMALL|scale=Infinity", "READY|role=SMALL|scale=0",
+                "READY|role=SMALL|scale=5", "READY|role=SMALL|scale=-1"}) {
+            EndEventClientState state = new EndEventClientState();
+            assertTrue(state.apply(tentacleBind("actor", "instance"), 100L));
+            assertTrue(state.apply(tentaclePhase("actor", "instance", cue), 101L));
+            assertEquals(1.0F, state.tentaclePoseForEntityAt("actor", 200L).rigScale(), 0.0001F, cue);
+        }
+    }
+
+    private static EndEventPacket tentacleBind(String subject, String instance) {
+        return new EndEventPacket("END_ENTITY_BIND", "test-event", 1L, instance,
+                0L, subject, EndRiftTentacleModel.VISUAL_ID, "", "");
+    }
+
+    private static EndEventPacket tentaclePhase(String subject, String instance, String cue) {
+        return new EndEventPacket("END_ENTITY_PHASE", "test-event", 1L, instance,
+                1000L, subject, "", cue, "");
+    }
+
+    @Test
     void entityBindingsStayBoundedAndUnbindReleasesCapacity() {
         EndEventClientState state = new EndEventClientState();
         for (int index = 0; index < EndEventClientState.MAX_ENTITY_BINDINGS; index++) {

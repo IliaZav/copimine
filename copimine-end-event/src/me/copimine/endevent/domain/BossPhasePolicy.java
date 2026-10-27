@@ -85,6 +85,7 @@ public final class BossPhasePolicy {
                     EndRiftAiPolicy.BossSpell.ARENA_INFERNO,
                     EndRiftAiPolicy.BossSpell.BOSS_FIREBALL,
                     EndRiftAiPolicy.BossSpell.AMBUSH_GRAB,
+                    EndRiftAiPolicy.BossSpell.SMALL_KAGUNE,
                     EndRiftAiPolicy.BossSpell.FINAL_STRIKE);
         };
     }

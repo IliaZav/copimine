@@ -24,11 +24,11 @@ def _declaration(source: str, signature: str) -> str:
 
 def test_late_enderman_group_defers_when_no_warning_can_be_started() -> None:
     source = EVENT.read_text(encoding="utf-8")
-    body = _declaration(source, "private void spawnNextWaveGroup(")
+    body = _declaration(source, "private boolean spawnNextWaveGroup(")
     call = body.index("tryBeginWaveTwoPhantomActivation(")
     after_call = body[call:call + 120]
 
     assert re.match(
-        r"tryBeginWaveTwoPhantomActivation\(world, core, group, groupNumber\);\s*return;",
+        r"tryBeginWaveTwoPhantomActivation\(world, core, group, groupNumber\);\s*return false;",
         after_call,
     ), "an unavailable mark, layout, or slot must defer the group instead of spawning its Enderman directly"

@@ -50,7 +50,7 @@ def mechanics_harness(tmp_path_factory):
     methods += [_declaration(source, signature) for signature in (
         "private void tickCurrentHuntObjective(long now)",
         "private void updateMarkedTargetObjective(long now)",
-        "private void spawnNextWaveGroup(World world, Location core)",
+        "private boolean spawnNextWaveGroup(World world, Location core)",
         "private boolean isWaveTwoOrdinaryMob(Entity entity)",
         "private boolean isApprovedWaveTwoFinalElite(Entity entity)",
         "private boolean retireWaveTwoRosterAfterConfirmedDeath(Entity entity)",
@@ -1219,7 +1219,7 @@ def wave2_spawn_harness(tmp_path_factory):
     schedule_start = initializer.index("        if (wave == 4)")
     schedule_end = initializer.index("        if (waveSpawnSchedule.isEmpty())", schedule_start)
     schedule_chain = initializer[schedule_start:schedule_end]
-    spawn_next_group = _declaration(source, "private void spawnNextWaveGroup(World world, Location core)")
+    spawn_next_group = _declaration(source, "private boolean spawnNextWaveGroup(World world, Location core)")
     spawn_next_group = spawn_next_group.replace("System.currentTimeMillis()", "Bukkit.now")
     tag_group = _declaration(source, "private int tagWaveTwoSpawnGroup(")
     ordinary_mob = _declaration(source, "private boolean isWaveTwoOrdinaryMob(Entity entity)")
@@ -1483,7 +1483,7 @@ def test_wave2_restart_restores_bounded_groups_and_durable_hunt_progress():
     source = EVENT.read_text(encoding="utf-8")
     apply_snapshot = _declaration(source, "private void applySnapshot(")
     restore = _declaration(source, "private void restorePersistedWaveSchedule()")
-    spawn = _declaration(source, "private void spawnNextWaveGroup(")
+    spawn = _declaration(source, "private boolean spawnNextWaveGroup(")
     group_tag = _declaration(source, "private int tagWaveTwoSpawnGroup(")
     objective_snapshot = _declaration(source, "private Map<String, String> objectiveProgressSnapshot()")
     wave_snapshot = _declaration(source, "private Map<String, String> waveObjectiveProgressSnapshot()")

@@ -75,6 +75,7 @@ public class BossHalfRepelProbe {
     final List<String> order = new ArrayList<>();
 
     boolean saveStateSync() { order.add("save"); return saveResult; }
+    void cancelBossCastForHalfRepel() { order.add("cancel"); }
     void applyBossHalfRepel(LivingEntity boss) { order.add("effects"); effects = true; }
 
 ''' + method + r'''
@@ -88,8 +89,8 @@ public class BossHalfRepelProbe {
         durable.commitBossHalfRepel(new LivingEntity());
         check(durable.bossHalfRepelCommitted && durable.effects,
                 "a saved repel must stay committed and play its effects");
-        check(durable.order.equals(List.of("save", "effects")),
-                "repel effects must run only after the durable save: " + durable.order);
+        check(durable.order.equals(List.of("save", "cancel", "effects")),
+                "the cast must be cancelled after the durable save and before the effects: " + durable.order);
 
         BossHalfRepelProbe failed = new BossHalfRepelProbe();
         failed.saveResult = false;
@@ -103,7 +104,7 @@ public class BossHalfRepelProbe {
         failed.commitBossHalfRepel(new LivingEntity());
         check(failed.bossHalfRepelCommitted && failed.effects,
                 "the retry after a failed save must apply the repel once");
-        check(failed.order.equals(List.of("save", "save", "effects")),
+        check(failed.order.equals(List.of("save", "save", "cancel", "effects")),
                 "retry must save before the effects exactly once: " + failed.order);
     }
 }

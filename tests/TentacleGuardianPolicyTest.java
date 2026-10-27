@@ -20,6 +20,10 @@ public final class TentacleGuardianPolicyTest {
         testGuardianSnapshotKeepsRemainingActiveTime();
         testLegacyGuardianSnapshotMigratesRemainingTicks();
         testDeadGuardianSlotsStayUnspawnableUntilDue();
+        testDeferredRespawnWarnsBeforeEffectiveAppearance();
+        testPartialGuardianHealthAndDeferredGraceSurviveRestart();
+        testExpiredUnshieldedWindowDoesNotRefillAfterRestart();
+        testDefendersStrikeWithTheAuthoredThrowCost();
         System.out.println("TentacleGuardianPolicyTest OK");
     }
 
@@ -252,6 +256,83 @@ public final class TentacleGuardianPolicyTest {
                 "the same slot becomes spawnable exactly at the deadline");
         check(!TentacleGuardianPolicy.slotReadyForSpawnAt(90_000L, 90_000L, 0.0D, true),
                 "the guaranteed vulnerability window overrides the deadline");
+    }
+
+    private static void testDeferredRespawnWarnsBeforeEffectiveAppearance() {
+        long guardianA = TentacleGuardianPolicy.respawnDeadline(0L, 1800);
+        long guardianB = TentacleGuardianPolicy.respawnDeadline(85_000L, 1800);
+        long graceEnds = 100_000L;
+        check(!TentacleGuardianPolicy.respawnWarningDueAt(85_000L, guardianA, graceEnds),
+                "a deferred guardian must not warn before its effective five-second window");
+        check(!TentacleGuardianPolicy.respawnWarningDueAt(94_999L, guardianA, graceEnds),
+                "effective warning must not begin even one millisecond early");
+        check(TentacleGuardianPolicy.respawnWarningDueAt(95_000L, guardianA, graceEnds),
+                "the deferred appearance at 100s must warn at 95s");
+        check(!TentacleGuardianPolicy.respawnDueAt(99_999L, guardianA, graceEnds),
+                "the deferred guardian cannot appear inside the protected window");
+        check(TentacleGuardianPolicy.respawnDueAt(100_000L, guardianA, graceEnds),
+                "the deferred guardian becomes due when the protected window ends");
+        check(!TentacleGuardianPolicy.respawnWarningDueAt(100_000L, guardianA, graceEnds),
+                "warning must not start after effective appearance is already due");
+        check(TentacleGuardianPolicy.effectiveRespawnDeadline(guardianB, graceEnds) == 175_000L,
+                "another guardian keeps its own later 90-second deadline");
+        check(!TentacleGuardianPolicy.respawnWarningDueAt(169_999L, guardianB, graceEnds)
+                        && TentacleGuardianPolicy.respawnWarningDueAt(170_000L, guardianB, graceEnds),
+                "the second guardian's warning remains independent of the deferred first slot");
+        check(TentacleGuardianPolicy.effectiveRespawnDeadline(null, graceEnds) == null,
+                "an uninitialized or missing live actor must not acquire a death deadline");
+        check(TentacleGuardianPolicy.effectiveRespawnDeadline(guardianA, -1L) == 90_000L,
+                "without a protected window the original deadline stays unchanged");
+    }
+
+    private static void testPartialGuardianHealthAndDeferredGraceSurviveRestart() {
+        Map<String, String> encoded = TentacleGuardianPolicy.encodeSnapshotMillis(
+                Map.of(0, 37.5D, 1, 0.0D, 2, 0.0D),
+                Map.of(1, 90_000L, 2, 175_000L), 100_000L, 89_000L);
+        TentacleGuardianPolicy.SnapshotStateMillis restored =
+                TentacleGuardianPolicy.decodeSnapshotMillis(encoded, 0L);
+        check(restored.health().get(0) == 37.5D,
+                "a damaged living guardian must retain its exact partial health after restart");
+        check(restored.health().get(1) == 0.0D && restored.health().get(2) == 0.0D,
+                "the two defeated guardians must remain dead after restart");
+        check(!restored.respawnAtMillis().containsKey(0),
+                "the partial-health living slot must not acquire a respawn schedule");
+        check(restored.damageWindowEndsMillis() == 11_000L,
+                "restart must preserve the remaining 11 seconds without refilling the window");
+        check(TentacleGuardianPolicy.effectiveRespawnDeadline(
+                        restored.respawnAtMillis().get(1), restored.damageWindowEndsMillis()) == 11_000L,
+                "the expired-first guardian remains deferred to the saved vulnerability end");
+        check(TentacleGuardianPolicy.respawnWarningDueAt(6_000L,
+                        restored.respawnAtMillis().get(1), restored.damageWindowEndsMillis()),
+                "after restart the same effective appearance must still have five seconds warning");
+        check(restored.respawnAtMillis().get(2) == 86_000L,
+                "the second guardian's remaining 86 seconds must not be grouped with the first");
+    }
+
+    private static void testExpiredUnshieldedWindowDoesNotRefillAfterRestart() {
+        Map<String, String> encoded = TentacleGuardianPolicy.encodeSnapshotMillis(
+                Map.of(0, 0.0D), Map.of(0, 90_000L), 15_000L, 30_000L);
+        TentacleGuardianPolicy.SnapshotStateMillis restored =
+                TentacleGuardianPolicy.decodeSnapshotMillis(encoded, 0L);
+        check(restored.damageWindowEndsMillis() == 0L,
+                "an expired but committed window must restore as expired, not become uninitialized");
+        check(!TentacleGuardianPolicy.slotReadyForSpawnAt(59_999L,
+                        restored.respawnAtMillis().get(0), 0.0D, false),
+                "restoring an expired window must keep the defender's remaining 60-second deadline");
+    }
+
+    private static void testDefendersStrikeWithTheAuthoredThrowCost() {
+        check(TentacleGuardianPolicy.STRIKE_DAMAGE > 0.0D,
+                "a defender's telegraphed hit must deal real damage");
+        check(TentacleGuardianPolicy.STRIKE_DAMAGE
+                        == me.copimine.endevent.domain.TentacleThrowPolicy.RELEASE_DAMAGE,
+                "defender strike reuses the approved throw cost instead of new tuning");
+        check(TentacleGuardianPolicy.STRIKE_KNOCKBACK > 0.0D
+                        && TentacleGuardianPolicy.STRIKE_KNOCKBACK <= 1.0D,
+                "knockback must be bounded");
+        check(TentacleGuardianPolicy.STRIKE_LIFT > 0.0D
+                        && TentacleGuardianPolicy.STRIKE_LIFT < 1.0D,
+                "lift must be a small bounded hop");
     }
 
     private static void check(boolean condition, String message) {

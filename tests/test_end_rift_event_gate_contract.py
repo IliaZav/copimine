@@ -61,11 +61,16 @@ def test_temporary_java_build_directory_is_removed_after_gate_completion_or_fail
     build_try = source.index("try {", ownership_marker)
     evidence_gate = source.index("Invoke-GateStep 'Acceptance evidence matrices and plugin inventory'")
     artifact_hashes = source.index("Write-Host '== Current artifact hashes =='")
-    cleanup = source.index("Remove-Item -LiteralPath $testBuild -Recurse -Force")
+    cleanup = source.index("Remove-Item -LiteralPath $resolvedTestBuild -Recurse -Force")
     cleanup_finally = source.rfind("finally {", artifact_hashes, cleanup)
+    reparse_guard = source.index("Refused to remove a reparse point", cleanup_finally)
+    temp_root_guard = source.index("outside the expected temporary root", reparse_guard)
 
     assert create_directory < ownership_marker < build_try < evidence_gate < artifact_hashes < cleanup_finally < cleanup, (
         "The isolated Java build output must be removed from finally after success or any gate failure, including the evidence matrix step"
+    )
+    assert cleanup_finally < reparse_guard < temp_root_guard < cleanup, (
+        "The cleanup must resolve the directory and refuse reparse points or paths outside the temporary root before deleting"
     )
 
 

@@ -15,7 +15,9 @@ public final class TentacleAnimationPolicy {
         PERMANENT,
         TEMPORARY,
         /** A short-lived eruption whose only job is to emerge below a player. */
-        UNDER_PLAYER
+        UNDER_PLAYER,
+        /** Small LAST_SEAL melee summon: never grabs, shields or respawns. */
+        SMALL
     }
 
     public enum State {

@@ -414,10 +414,13 @@ $pureTests = @(
   'EncounterGenerationPreflightTest',
   'BossDamagePolicyTest',
   'ArenaInfernoPolicyTest',
+  'Wave6CrystalLifecycleTest',
   'BossEdgeVolleyPolicyTest',
   'BossPhaseGatingTest',
   'BossAmbushPolicyTest',
+  'SmallKagunePolicyTest',
   'BossContactStrikePolicyTest',
+        'BossRepelPolicyTest',
   'BossFinalSealAnchorPolicyTest',
   'BossAnimationIdTest',
   'BossAnimationPosePolicyTest',
@@ -749,6 +752,13 @@ Write-Host 'End Rift current local checks passed.'
     if ($testBuildItem.Attributes -band [IO.FileAttributes]::ReparsePoint) {
       throw 'Refused to remove a reparse point in place of the isolated Java test build directory.'
     }
-    Remove-Item -LiteralPath $testBuild -Recurse -Force
+    $resolvedTestBuild = [IO.Path]::GetFullPath($testBuildItem.FullName)
+    $expectedTestParent = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\', '/')
+    if (-not [string]::Equals([IO.Path]::GetDirectoryName($resolvedTestBuild),
+          $expectedTestParent, [StringComparison]::OrdinalIgnoreCase) -or
+        [IO.Path]::GetFileName($resolvedTestBuild) -notmatch '^CopiMine-EndRiftEventChecks-[a-f0-9]{32}$') {
+      throw 'Refused to remove a Java test build directory outside the expected temporary root.'
+    }
+    Remove-Item -LiteralPath $resolvedTestBuild -Recurse -Force
   }
 }

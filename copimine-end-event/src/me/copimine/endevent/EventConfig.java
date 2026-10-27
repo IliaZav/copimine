@@ -88,7 +88,8 @@ public record EventConfig(
         String bridgeChannel,
         BossFinalStrikeTuning finalStrikeTuning,
         RiftObeliskTuning riftObeliskTuning,
-        TentacleGuardianTuning tentacleGuardianTuning) {
+        TentacleGuardianTuning tentacleGuardianTuning,
+        SmallKaguneTuning smallKaguneTuning) {
 
     public EventConfig {
         resourceRequirements = Map.copyOf(resourceRequirements);
@@ -110,6 +111,9 @@ public record EventConfig(
         }
         if (tentacleGuardianTuning == null) {
             throw new IllegalArgumentException("Tentacle Guardian tuning is required");
+        }
+        if (smallKaguneTuning == null) {
+            smallKaguneTuning = SmallKaguneTuning.defaults();
         }
         if (finalStrikeTuning == null) {
             throw new IllegalArgumentException("Boss final strike tuning is required");
@@ -144,6 +148,11 @@ public record EventConfig(
         RiftObeliskTuning riftObeliskTuning = riftObeliskTuning(requiredSection(boss, "rift-obelisks"));
         TentacleGuardianTuning tentacleGuardianTuning = tentacleGuardianTuning(
                 requiredSection(boss, "tentacle-guardians"));
+        ConfigurationSection smallKaguneSection = boss.getConfigurationSection("small-kagune");
+        if (boss.contains("small-kagune") && smallKaguneSection == null) {
+            throw new IllegalStateException("boss.small-kagune must be a configuration section");
+        }
+        SmallKaguneTuning smallKaguneTuning = smallKaguneTuning(smallKaguneSection);
         ConfigurationSection rewards = requiredSection(plugin, "rewards");
         ConfigurationSection eventLoot = plugin.getConfig().getConfigurationSection("event-loot");
         ConfigurationSection eventLootRolls = plugin.getConfig().getConfigurationSection("event-loot-rolls");
@@ -281,7 +290,8 @@ public record EventConfig(
                 text(client.getString("bridge-channel", "copimine:client_bridge"), "copimine:client_bridge"),
                 finalStrikeTuning,
                 riftObeliskTuning,
-                tentacleGuardianTuning);
+                tentacleGuardianTuning,
+                smallKaguneTuning);
     }
 
     private static WaveDefinition wave(ConfigurationSection parent, String key) {
@@ -447,6 +457,24 @@ public record EventConfig(
         return new TentacleGuardianTuning(section.getBoolean("enabled", true),
                 damageWindowTicks, respawnDelayTicks, attackIntervalTicks,
                 attackStaggerTicks, hitboxWidth, hitboxHeight);
+    }
+
+    private static SmallKaguneTuning smallKaguneTuning(ConfigurationSection section) {
+        SmallKaguneTuning defaults = SmallKaguneTuning.defaults();
+        if (section == null) {
+            return defaults;
+        }
+        try {
+            return new SmallKaguneTuning(section.getBoolean("enabled", defaults.enabled()),
+                    section.getInt("max-active", defaults.maxActive()),
+                    section.getDouble("health", defaults.health()),
+                    section.getDouble("damage", defaults.damage()),
+                    section.getDouble("range", defaults.range()),
+                    section.getInt("lifetime-ticks", defaults.lifetimeTicks()),
+                    section.getDouble("scale", defaults.scale()));
+        } catch (IllegalArgumentException invalid) {
+            throw new IllegalStateException("boss.small-kagune contains unsafe bounds", invalid);
+        }
     }
 
     private static LinkedHashMap<String, Integer> readMaterials(ConfigurationSection section, String path) {
@@ -793,6 +821,31 @@ public record EventConfig(
                     || hitboxWidth < 0.5D || hitboxHeight < 1.5D) {
                 throw new IllegalArgumentException("invalid Tentacle Guardian tuning");
             }
+        }
+    }
+
+    /** Finite role-specific tuning; defaults are the approved final-phase pressure, not boss balance. */
+    public record SmallKaguneTuning(
+            boolean enabled,
+            int maxActive,
+            double health,
+            double damage,
+            double range,
+            int lifetimeTicks,
+            double scale) {
+        public SmallKaguneTuning {
+            if (maxActive < 1 || maxActive > 6
+                    || !Double.isFinite(health) || health < 1.0D || health > 336.0D
+                    || !Double.isFinite(damage) || damage < 0.0D || damage > 20.0D
+                    || !Double.isFinite(range) || range < 0.5D || range > 5.0D
+                    || lifetimeTicks < 20 || lifetimeTicks > 1200
+                    || !Double.isFinite(scale) || scale < 0.2D || scale > 0.9D) {
+                throw new IllegalArgumentException("invalid small Kagune tuning");
+            }
+        }
+
+        public static SmallKaguneTuning defaults() {
+            return new SmallKaguneTuning(true, 4, 20.0D, 6.0D, 3.0D, 600, 0.6D);
         }
     }
 }

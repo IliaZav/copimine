@@ -1272,14 +1272,36 @@ function Get-LocalWhitelistNames {
   $whitelistPath = Assert-EndRiftLocalRuntimePath `
     -Path (Join-Path $serverDir 'whitelist.json') -LocalRuntimeRoot $runtimeRoot -MustExist
   try {
-    # Windows PowerShell 5.1 does not enumerate ConvertFrom-Json output, so
-    # @(<pipeline> | ConvertFrom-Json) yields a single nested array element.
-    $parsed = Get-Content -LiteralPath $whitelistPath -Raw | ConvertFrom-Json -ErrorAction Stop
-    $entries = @($parsed)
+    $json = Get-Content -LiteralPath $whitelistPath -Raw -ErrorAction Stop
+    if ([string]::IsNullOrWhiteSpace($json) -or -not $json.TrimStart().StartsWith('[')) {
+      throw 'Whitelist root must be a JSON array.'
+    }
+    # Validate the original document before wrapping it. The wrapper keeps the
+    # root array intact on both Windows PowerShell 5.1 and PowerShell 7, even
+    # for empty, single-entry, or nested arrays.
+    $null = ConvertFrom-Json -InputObject $json -ErrorAction Stop
+    $wrapper = ConvertFrom-Json -InputObject ('{"entries":' + $json + '}') -ErrorAction Stop
+    if ($wrapper.entries -isnot [array]) { throw 'Whitelist root must be a JSON array.' }
+    $names = [System.Collections.Generic.List[string]]::new()
+    foreach ($entry in $wrapper.entries) {
+      if ($null -eq $entry -or $entry -isnot [pscustomobject]) {
+        throw 'Whitelist entries must be JSON objects.'
+      }
+      $name = $entry.PSObject.Properties['name']
+      $uuid = $entry.PSObject.Properties['uuid']
+      $parsedUuid = [guid]::Empty
+      if ($null -eq $name -or $name.Value -isnot [string] -or
+          [string]::IsNullOrWhiteSpace($name.Value) -or
+          $null -eq $uuid -or $uuid.Value -isnot [string] -or
+          -not [guid]::TryParse($uuid.Value, [ref]$parsedUuid)) {
+        throw 'Whitelist entries must contain a name and valid UUID.'
+      }
+      $names.Add($name.Value)
+    }
   } catch {
     throw "Could not safely read the isolated test whitelist: $($_.Exception.Message)"
   }
-  return @($entries | ForEach-Object { [string]$_.name } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+  return $names.ToArray()
 }
 
 function Add-LocalProbeWhitelistEntries {

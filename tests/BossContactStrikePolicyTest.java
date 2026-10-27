@@ -58,6 +58,38 @@ public final class BossContactStrikePolicyTest {
         require(!BossContactStrikePolicy.chestStrikeHits(6.0D, 6.0D, 0.0D, -3.1D),
                 "the vertical band is symmetric");
 
+        require(BossContactStrikePolicy.CHEST_STRIKE_LAUNCH_MARKER_TICKS >= 30
+                        && BossContactStrikePolicy.CHEST_STRIKE_LAUNCH_MARKER_TICKS <= 50,
+                "the chest release pose must sit near the authored 2 s mark, not at the clip end");
+        require(BossContactStrikePolicy.CHEST_STRIKE_LAUNCH_MARKER_TICKS
+                        + BossContactStrikePolicy.CHEST_STRIKE_LAUNCH_TICKS
+                        + BossContactStrikePolicy.chestStrikeTicks() <= 90,
+                "the whole chest strike must still fit inside the 4.04 s clip");
+
+        require(BossContactStrikePolicy.MELEE_SWIPE_CONTACT_MARKER_TICKS >= 20
+                        && BossContactStrikePolicy.MELEE_SWIPE_CONTACT_MARKER_TICKS <= 30,
+                "the swipe must land on the authored ~1.3 s cross-body keyframe");
+        require(BossContactStrikePolicy.GROUND_SLAM_CONTACT_MARKER_TICKS >= 100
+                        && BossContactStrikePolicy.GROUND_SLAM_CONTACT_MARKER_TICKS <= 120,
+                "the slam must land on the authored 5.0-5.5 s contact keyframe");
+        for (BossSpell spell : new BossSpell[]{
+                BossSpell.MELEE_SWIPE,
+                BossSpell.CHEST_STRIKE,
+                BossSpell.GROUND_SLAM}) {
+            int marker = BossContactStrikePolicy.contactMarkerTicks(spell);
+            int clip = BossContactStrikePolicy.clipTicks(spell);
+            require(marker > 0 && clip > marker,
+                    spell + " must land before the clip ends, not on its last frame");
+            require(BossContactStrikePolicy.followThroughTicks(spell) >= 20,
+                    spell + " must leave a visible follow-through after the impact");
+            require(BossContactStrikePolicy.followThroughTicks(spell) == clip - marker,
+                    spell + " follow-through is exactly the rest of the clip");
+        }
+        require(BossContactStrikePolicy.contactMarkerTicks(
+                        BossSpell.MELEE_SWIPE) == 26
+                        && BossContactStrikePolicy.contactMarkerTicks(
+                        BossSpell.GROUND_SLAM) == 110,
+                "the authored contact keyframes are 26 and 110 ticks");
         require(!BossContactStrikePolicy.landed(20.0D, 20.0D, false),
                 "a cancelled or immune hit must not produce a hit reaction");
         require(BossContactStrikePolicy.landed(20.0D, 10.0D, false),

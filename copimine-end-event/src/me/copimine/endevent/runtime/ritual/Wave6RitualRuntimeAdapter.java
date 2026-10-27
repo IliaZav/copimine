@@ -132,7 +132,11 @@ public final class Wave6RitualRuntimeAdapter {
         /** Capture the eligible free-player cohort when the pull starts; an empty list is valid. */
         Optional<List<UUID>> captureGravityAnchorCohort(GravityAnchorCast cast);
 
-        /** Optional existing Rift Barrage projectiles are aimed into the crystal. */
+        /**
+         * Optional existing Rift Barrage projectiles are aimed into the crystal.
+         * On refusal, release any partially created projectiles and reservations;
+         * the adapter may continue this still-valid crystal as a standalone Anchor.
+         */
         boolean fireRiftBarrageIntoCrystal(GravityAnchorCast cast, int projectileCount);
 
         /** Revalidate the captured caster, target, crystal and encounter identity. */
@@ -239,11 +243,34 @@ public final class Wave6RitualRuntimeAdapter {
         anchorStartedAtTick = nowTick;
         Snapshot bound = controller.gravityAnchorCrystalSpawned(eventGeneration, crystal, nowTick);
         if (bound.gravityAnchorState().phase() != Phase.ANCHOR
-                || !effects.showGravityAnchorWarning(cast, GRAVITY_ANCHOR_WARNING_TICKS)
-                || combinedProjectiles > 0
-                && !effects.fireRiftBarrageIntoCrystal(cast, combinedProjectiles)) {
+                || !effects.showGravityAnchorWarning(cast, GRAVITY_ANCHOR_WARNING_TICKS)) {
             abortAnchor(eventGeneration);
             return rejectedStart();
+        }
+        if (combinedProjectiles > 0
+                && !effects.fireRiftBarrageIntoCrystal(cast, combinedProjectiles)) {
+            // Blocked sphere-to-crystal sight-lines or a full projectile budget
+            // do not invalidate the independent Anchor spell. Keep its crystal,
+            // fixed point and complete warning, but make the shared snapshot
+            // accurately describe a standalone cast with no awaited projectiles.
+            if (!effects.isGravityAnchorCastValid(cast)) {
+                abortAnchor(eventGeneration);
+                return rejectedStart();
+            }
+            controller.clear(eventGeneration);
+            StartResult standalone = controller.startGravityAnchor(eventGeneration, caster, target,
+                    fixedCrystalPoint, 0, waveActive, casterAlive, spellAvailable, targetEligible, nowTick);
+            if (!standalone.accepted()) {
+                abortAnchor(eventGeneration);
+                return rejectedStart();
+            }
+            anchorCast = new GravityAnchorCast(eventGeneration, caster, target,
+                    fixedCrystalPoint, crystal, 0);
+            Snapshot rebound = controller.gravityAnchorCrystalSpawned(eventGeneration, crystal, nowTick);
+            if (rebound.gravityAnchorState().phase() != Phase.ANCHOR) {
+                abortAnchor(eventGeneration);
+                return rejectedStart();
+            }
         }
         return new StartResult(true, controller.snapshot());
     }

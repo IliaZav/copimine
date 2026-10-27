@@ -49,6 +49,7 @@ import me.copimine.artifacts.api.RewardIssueResult;
 import me.copimine.endevent.domain.ArenaInfernoPolicy;
 import me.copimine.endevent.domain.BossAbilityState;
 import me.copimine.endevent.domain.BossAbilityId;
+import me.copimine.endevent.domain.SmallKagunePolicy;
 import me.copimine.endevent.domain.BossAbilitySelector;
 import me.copimine.endevent.domain.BossAnimationId;
 import me.copimine.endevent.domain.BossAnimationPriorityPolicy;
@@ -68,6 +69,7 @@ import me.copimine.endevent.domain.BossMovementPolicy;
 import me.copimine.endevent.domain.BossPhase;
 import me.copimine.endevent.domain.BossPhasePolicy;
 import me.copimine.endevent.domain.BossPerceptionSnapshot;
+import me.copimine.endevent.domain.BossRepelPolicy;
 import me.copimine.endevent.domain.BossStatsPolicy;
 import me.copimine.endevent.domain.BossTargetPolicy;
 import me.copimine.endevent.domain.BossTargetSelector;
@@ -330,6 +332,7 @@ import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockSpreadEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityRegainHealthEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.ExplosionPrimeEvent;
@@ -507,6 +510,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final double TENTACLE_MAX_GRAB_RANGE = 3.0D;
     /** Ambush apparitions live outside the permanent guardian slot range. */
     private static final int TENTACLE_AMBUSH_SLOT = TentacleScalingPolicy.MAX_PERMANENT;
+    /** Small melee summons live outside every guardian slot range. */
+    private static final int TENTACLE_SMALL_SLOT = TentacleScalingPolicy.MAX_PERMANENT + 1;
     private static final float TENTACLE_DISPLAY_WIDTH = 2.25F;
     private static final float TENTACLE_DISPLAY_HEIGHT = (float) TentacleScalingPolicy.DEFAULT_LOGICAL_LENGTH;
     private static final double TENTACLE_TEMPORARY_MAX_HEALTH = 20.0D;
@@ -613,7 +618,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** The safe zone is shown before it becomes the only survivable ground. */
     private static final long FOG_SAFE_ZONE_TELEGRAPH_MILLIS = 3_000L;
     /** Steam vents and the small bounded armour budget of one inferno cast. */
-    private static final int ARENA_INFERNO_VENT_COUNT = ArenaInfernoPolicy.VENT_COUNT;
     private static final long ARENA_INFERNO_VENT_PERIOD_TICKS = ArenaInfernoPolicy.VENT_PERIOD_TICKS;
     private static final int ARENA_INFERNO_IGNITE_TICKS = ArenaInfernoPolicy.IGNITE_TICKS;
     private static final int ARENA_INFERNO_MAX_ARMOR_WEAR = ArenaInfernoPolicy.MAX_ARMOR_WEAR;
@@ -1002,6 +1006,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<UUID> echoPresentationCapablePlayers = new HashSet<>();
     private EchoPresentationProbe echoPresentationProbe;
     private EchoCombatAdmissionListener echoCombatAdmissionListener;
+    private me.copimine.endevent.runtime.wave7.Wave7AdmissionRuntimeAdapter wave7Admission;
+    private me.copimine.endevent.runtime.wave7.Wave7AdmissionListener wave7AdmissionListener;
     private EchoCombatAdmission.Pair echoProbeCombatPair;
     private boolean echoProbeCombatClosing;
     private long echoPresentationEpoch;
@@ -1129,6 +1135,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, TentacleThrowPolicy.Launch> tentacleThrowLaunches = new HashMap<>();
     /** Last committed under-player ambush per player, for grab pressure. */
     private final Map<UUID, Long> tentacleAmbushTargetMillis = new HashMap<>();
+    /** Absolute tick at which each small melee Kagune retracts. */
+    private final Map<UUID, Long> smallKaguneExpiryTicks = new HashMap<>();
     private final Map<Integer, UUID> guardianShieldDisplayIds = new HashMap<>();
     /** Permanent guardian hitboxes are separate from the client visual carrier. */
     private final Map<UUID, UUID> tentacleHitboxesByDisplay = new HashMap<>();
@@ -1136,6 +1144,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<Integer, Double> tentacleGuardianHealth = new HashMap<>();
     private final Map<Integer, Long> tentacleGuardianRespawnDeadlineMillis = new HashMap<>();
     private final Set<Integer> tentacleGuardianWarnedSlots = new HashSet<>();
+    private final Map<Integer, Integer> tentacleGuardianSpawnFailures = new HashMap<>();
+    /** Once all defenders die, no subsequent respawn may re-enable healing in this generation. */
+    private long tentacleGuardianRegenerationDisabledGeneration = Long.MIN_VALUE;
     private final Map<UUID, Long> tentacleNextAttackTick = new HashMap<>();
     /** Respawn/vulnerability timing runs on active combat time, not wall time. */
     private long tentacleActiveMillis;
@@ -1702,10 +1713,46 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Bukkit.getPluginManager().registerEvents(combatProfileListener, this);
         echoCombatAdmissionListener = new EchoCombatAdmissionListener(this::currentEchoCombatContext);
         Bukkit.getPluginManager().registerEvents(echoCombatAdmissionListener, this);
+        // Wave 7 room boundaries are also enforced server-side: an attack may not
+        // cross a closed partition even if a client or AI decided otherwise.
+        wave7Admission = new me.copimine.endevent.runtime.wave7.Wave7AdmissionRuntimeAdapter(
+                realitySplitChamberController, realitySplitTrialController,
+                () -> generation, this::wave7PlayerRoom);
+        wave7AdmissionListener =
+                new me.copimine.endevent.runtime.wave7.Wave7AdmissionListener(wave7Admission);
+        Bukkit.getPluginManager().registerEvents(wave7AdmissionListener, this);
         Bukkit.getPluginManager().registerEvents(new me.copimine.endevent.runtime.Wave7ReturnProtectionListener(
                 player -> isOfficialWave7ReturnContext() && attemptLifecycle.isReturnProtected(
                         player.getUniqueId(), generation, eventTickCounter), this::cancelWave7ReturnForOffense), this);
         Bukkit.getPluginManager().registerEvents(this, this);
+    }
+
+    /**
+     * Which Wave 7 chamber the player physically stands in, or -1 when the
+     * Wave 7 layout is not active. Movement itself is already gated by the
+     * existing boundary checks; this only feeds the admission view.
+     */
+    private int wave7PlayerRoom(UUID playerId) {
+        if (playerId == null) return -1;
+        Player player = Bukkit.getPlayer(playerId);
+        Location anchor = coreCombatAnchorLocation();
+        if (player == null || anchor == null || anchor.getWorld() == null
+                || !anchor.getWorld().equals(player.getWorld())) {
+            return -1;
+        }
+        int count = realitySplitChamberController.assignment().chamberCount();
+        if (count < 1) return -1;
+        for (int room = 0; room < count; room++) {
+            if (ChamberIsolationPolicy.containsPoint(room, player.getX() - anchor.getX(),
+                    player.getZ() - anchor.getZ(), count)) {
+                return room;
+            }
+        }
+        return -1;
+    }
+
+    private void clearWave7Admission() {
+        if (wave7Admission != null) wave7Admission.clear();
     }
 
     /** Optional first-party death integration; bound to this exact lethal event. */
@@ -3630,6 +3677,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || BossFinalSealBarrierPolicy.keepFor(phase, activeWave);
         realitySplitChamberController.clear();
         realitySplitTrialController.clear();
+        clearWave7Admission();
         realitySplitTrialEntityUuids.clear();
         realitySplitTrialRuntimeStates.clear();
         realitySplitTrialNextFireballTick.clear();
@@ -3827,9 +3875,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         tentacleGuardianHealth.clear();
         tentacleGuardianRespawnDeadlineMillis.clear();
         tentacleGuardianWarnedSlots.clear();
+        tentacleGuardianSpawnFailures.clear();
+        tentacleGuardianRegenerationDisabledGeneration = Long.MIN_VALUE;
         tentacleDamageWindowEndsMillis = -1L;
         if (bossPhase != BossPhase.LAST_SEAL) return;
         try {
+            if (progress != null && progress.containsKey("boss-guardian-regeneration-disabled")) {
+                if (!"DONE".equals(progress.get("boss-guardian-regeneration-disabled"))) {
+                    throw new IllegalArgumentException("INVALID_GUARDIAN_REGENERATION_RECEIPT");
+                }
+                tentacleGuardianRegenerationDisabledGeneration = generation;
+            }
             TentacleGuardianPolicy.SnapshotStateMillis restored =
                     TentacleGuardianPolicy.decodeSnapshotMillis(progress, tentacleActiveMillis);
             if (restored == null) return;
@@ -4135,12 +4191,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     waveTwoOutstandingEntityUuids, WaveTwoEntityRecoveryPolicy.MAX_OUTSTANDING_UUIDS));
         }
         encoded.putAll(combatProfiles.encode());
-        if (!tentacleGuardianHealth.isEmpty() || !tentacleGuardianRespawnDeadlineMillis.isEmpty()
-                || tentacleDamageWindowEndsMillis >= 0L) {
-            encoded.putAll(TentacleGuardianPolicy.encodeSnapshotMillis(
-                    tentacleGuardianHealth, tentacleGuardianRespawnDeadlineMillis,
-                    tentacleDamageWindowEndsMillis, tentacleActiveMillis));
-        }
+        encodeTentacleGuardianState(encoded);
         if (isOfficialWave7ReturnContext() && attemptLifecycle.hasWave7Returns(generation)) {
             encoded.putAll(attemptLifecycle.encodeWave7Returns(eventId,
                     realitySplitChamberController.assignment().chamberByPlayer(),
@@ -5098,6 +5149,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         releaseAllSpiderEffects();
         if (deathDropIntegration != null) deathDropIntegration.close();
         if (deathProtectionListener != null) deathProtectionListener.clear();
+        clearWave7Admission();
         releaseAllBlackFogEffects();
         clearShardPassiveEffects();
         clearClientEffects();
@@ -9494,6 +9546,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 case "chest_strike" -> EndRiftAiPolicy.BossSpell.CHEST_STRIKE;
                 case "ground_slam" -> EndRiftAiPolicy.BossSpell.GROUND_SLAM;
             case "ambush_grab" -> EndRiftAiPolicy.BossSpell.AMBUSH_GRAB;
+            case "small_kagune" -> EndRiftAiPolicy.BossSpell.SMALL_KAGUNE;
                         default -> EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS;
                     };
                     castCurrentBossSpell(boss, requestedSpell, true);
@@ -10641,7 +10694,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // ignoreCancelled=false delivers protected hits too; never convert a
         // denial by another plugin into authoritative slot damage.
         boolean cancelledBefore = event.isCancelled();
-        Player attacker = event.getDamager() instanceof Player player ? player : null;
+        Player attacker = playerDamageOwner(event.getDamager());
         boolean attackerActive = attacker != null && isActiveBossParticipant(attacker);
         boolean damageWindowOpen = tentacleDamageWindowOpen();
         TentacleController.VisualState state = tentacleController.state(display.getUniqueId());
@@ -10682,11 +10735,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             return;
         }
-        applyTentacleGuardianDamage(display, Math.max(0.0D,
-                Math.max(event.getFinalDamage(), event.getDamage())), attacker);
+        applyTentacleGuardianDamage(display, Math.max(0.0D, event.getFinalDamage()), attacker);
     }
 
-    /** Route bow hits through the same slot-health transaction as sword hits. */
+    /** Collision is not accepted damage; the living carrier's damage event owns HP. */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onTentacleGuardianProjectile(ProjectileHitEvent event) {
         if (event == null || event.getHitEntity() == null) {
@@ -10696,26 +10748,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (display == null) {
             return;
         }
-        Projectile projectile = event.getEntity();
-        if (event.isCancelled()) {
-            // A protection/region denial also owns the projectile outcome.
-            return;
-        }
-        event.setCancelled(true);
-        projectile.remove();
-        TentacleController.VisualState state = tentacleController.state(display.getUniqueId());
-        if (!(projectile.getShooter() instanceof Player attacker)
-                || !isActiveBossParticipant(attacker)
-                || !tentacleDamageWindowOpen()
-                || state == null
-                || (state.temporary()
-                ? bossPhase != BossPhase.RAGE && bossPhase != BossPhase.LAST_SEAL
-                : bossPhase != BossPhase.LAST_SEAL)) {
-            return;
-        }
-        double damage = projectile instanceof AbstractArrow arrow
-                ? Math.max(1.0D, arrow.getDamage()) : 4.0D;
-        applyTentacleGuardianDamage(display, damage, attacker);
+        // Do not cancel or remove a legal projectile here. Paper subsequently
+        // emits EntityDamageByEntityEvent, including armor and protection
+        // cancellation. That single transaction handles player-owned shots.
     }
 
     /**
@@ -14677,6 +14712,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     public void onCarrierChargeInventoryDrag(InventoryDragEvent event) {
         if (event.getWhoClicked() instanceof Player player && isActiveArenaParticipant(player))
             observeCurrentCarrierInventory(event.getView().getTopInventory());
+    }
+
+    /**
+     * Item 8.10: the prisoner's inventory stays theirs, but the prison state owns
+     * dropping. Q is a spell key, so a Q bound to "drop" must not throw an item.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onRitualPrisonerDrop(PlayerDropItemEvent event) {
+        if (event == null || event.getPlayer() == null
+                || activeWave != 6 || wave6PrisonBroken
+                || !isCurrentRitualPrisoner(event.getPlayer())) {
+            return;
+        }
+        event.setCancelled(true);
+        event.getPlayer().sendActionBar(Component.text(
+                "Пока вы внутри сферы предметы выбросить нельзя.", NamedTextColor.AQUA));
     }
 
     private ItemStack heldWithAmount(ItemStack held, int amount) {
@@ -22928,9 +22979,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /** Spawn the next bounded group for the canonical numbered-wave flow. */
-    private void spawnNextWaveGroup(World world, Location core) {
+    /**
+     * @return true only when the group really materialised; Wave 2 uses this to
+     *         retire the phantom illusion exactly when the real Enderman exists.
+     */
+    private boolean spawnNextWaveGroup(World world, Location core) {
         if (world == null || core == null || waveSpawnGroupIndex >= waveSpawnSchedule.size()) {
-            return;
+            return false;
         }
         if (waveSpawnWave == 2
                 && (waveSpawnSchedule.size() < WaveTwoStagePolicy.OPENING_GROUP_COUNT
@@ -22941,12 +22996,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             forcePhase(EventPhase.RECOVERY_REQUIRED,
                     "Wave 2 group exceeds its bounded simultaneous pressure allowance");
             if (isOfficialCurrentAttempt()) saveStateSync();
-            return;
+            return false;
         }
         if (waveSpawnWave == 2 && !waveTwoOutstandingEntityUuids.isEmpty()) {
             forcePhase(EventPhase.RECOVERY_REQUIRED,
                     "Wave 2 attempted to spawn a group while the prior UUID roster was outstanding");
-            return;
+            return false;
         }
         WaveMechanicsPolicy.WaveCounts group = waveSpawnSchedule.get(waveSpawnGroupIndex);
         int groupNumber = waveSpawnGroupIndex + 1;
@@ -22965,10 +23020,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     || activation != null
                     && (activation.phase() == WaveTwoPhantomMaterializationPolicy.Phase.WARNING
                     || activation.phase() == WaveTwoPhantomMaterializationPolicy.Phase.TARGETABLE)) {
-                return;
+                return false;
             } else {
                 tryBeginWaveTwoPhantomActivation(world, core, group, groupNumber);
-                return;
+                return false;
             }
         }
         Set<UUID> waveTwoEntitiesBeforeSpawn = new HashSet<>();
@@ -22998,7 +23053,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             + " group=" + groupNumber + " expected=" + group.total()
                             + " roster=" + rosterSize);
                 }
-                return;
+                return false;
             }
         }
         waveSpawnEntityOffset += group.total();
@@ -23014,6 +23069,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + waveSpawnSchedule.size() + " spawned=" + group.total()
                 + " next_ms=" + waveNextSpawnAtMillis);
         if (waveSpawnWave == 2) checkpointWaveTwoGroupSpawn();
+        return true;
     }
 
     private boolean tryBeginWaveTwoPhantomActivation(World world, Location core,
@@ -23134,13 +23190,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
 
         waveTwoPhantomActivationState = completed.state();
+        // The illusion may only be retired once the real Enderman exists: a
+        // failed spawn must not leave the marked player with neither.
+        if (!spawnNextWaveGroup(world, core)) {
+            getLogger().info("WAVE_TWO_PHANTOM_RETIRE_DEFERRED event=" + eventId
+                    + " phantom=" + phantomId + " group=" + fence.groupNumber());
+            return;
+        }
         if (marked != null) {
             sendWaveTwoPhantomActivation(marked, false, callbackCycle, phantomId, location);
             marked.playSound(location, Sound.ENTITY_ENDERMAN_TELEPORT,
                     SoundCategory.HOSTILE, 0.65F, 1.4F);
         }
         waveTwoPhantomActivationPlayerUuid = null;
-        spawnNextWaveGroup(world, core);
     }
 
     private WaveTwoPhantomMaterializationPolicy.Budget currentWaveTwoPhantomBudget(
@@ -27221,6 +27283,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** The scheduled event tick is the only place that advances the shared spell owner. */
     private void tickWave6RitualRuntimeOnce() {
+        // Released players may land after their cast (or adapter) has cleared.
+        // Retire their one-fall leases independently of spell availability.
+        retireWave6AnchorFallLeases();
         if (wave6RitualRuntimeAdapter == null
                 || lastWave6RitualRuntimeTick == eventTickCounter) {
             return;
@@ -27521,17 +27586,33 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** Preserve one bounded fall protection after a cancelled cast releases its crystal. */
     private void preserveWave6AnchorFallProtection(GravityAnchorCast cast) {
+        retireWave6AnchorFallLeases();
+        if (cast == null || cast.generation() != generation) return;
+        Entity crystal = ownedEntities.get(cast.crystalEntity());
+        World anchorWorld = crystal == null ? Bukkit.getWorld(worldName) : crystal.getWorld();
+        if (anchorWorld == null) return;
         long now = System.currentTimeMillis();
-        wave6AnchorFallLeases.entrySet().removeIf(entry -> entry.getValue().untilMillis() < now);
         Set<UUID> resolved = wave6AnchorLandingResolvedPlayers.getOrDefault(cast.crystalEntity(), Set.of());
         for (UUID playerId : wave6AnchorLiftedPlayers.getOrDefault(cast.crystalEntity(), Set.of())) {
             Player player = Bukkit.getPlayer(playerId);
             if (resolved.contains(playerId) || player == null || !player.isOnline()
-                    || player.isDead() || player.isOnGround() || player.getWorld() == null) continue;
+                    || player.isDead() || player.isOnGround()
+                    || !anchorWorld.equals(player.getWorld())) continue;
             player.setFallDistance(0.0F);
             wave6AnchorFallLeases.put(playerId,
                     new Wave6AnchorFallLease(player.getWorld().getUID(), now + 10_000L));
         }
+    }
+
+    /** A safe first landing, logout or world change also consumes cast ownership. */
+    private void retireWave6AnchorFallLeases() {
+        long now = System.currentTimeMillis();
+        wave6AnchorFallLeases.entrySet().removeIf(entry -> {
+            Player player = Bukkit.getPlayer(entry.getKey());
+            return entry.getValue().untilMillis() < now || player == null
+                    || !player.isOnline() || player.isDead() || player.isOnGround()
+                    || !entry.getValue().worldId().equals(player.getWorld().getUID());
+        });
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -27960,7 +28041,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     resolvedPlayers.add(affectedPlayer);
                 } else if (eventTickCounter - startedAt >= ANCHOR_LANDING_TICKS) {
                     target.setFallDistance(0.0F);
-                    resolvedPlayers.add(affectedPlayer);
+                    // Release the major spell, but this is not an actual
+                    // landing. Cleanup must retain a bounded one-fall lease
+                    // for the airborne player instead of treating it as paid.
                 } else {
                     allResolved = false;
                 }
@@ -38205,7 +38288,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " boss=" + boss.getUniqueId() + " reason=durable-commit-failed");
             return;
         }
+        cancelBossCastForHalfRepel();
         applyBossHalfRepel(boss);
+    }
+
+    /**
+     * The forced arena-wide repel resolves the cast the players just lost
+     * control in: an ability still in its windup cannot continue after the shake.
+     */
+    private void cancelBossCastForHalfRepel() {
+        cancelBossCastTask();
+        cancelBossFinalStrike();
+        if (bossAbilityState == BossAbilityState.TELEGRAPHING
+                || bossAbilityState == BossAbilityState.EXECUTING) {
+            bossAbilityState = BossAbilityState.NONE;
+            bossCastDeadlineMillis = 0L;
+            releaseBossHazardReservation("half-repel-cancelled");
+            getLogger().info("BOSS_CAST_CANCELLED event=" + eventId
+                    + " reason=half-repel state=from-telegraph-or-execute");
+        }
     }
 
     private void applyBossHalfRepel(LivingEntity boss) {
@@ -38219,11 +38320,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     || push.lengthSquared() < 0.01D) {
                 push = new Vector(1.0D, 0.0D, 0.0D);
             }
-            player.setVelocity(push.normalize().multiply(1.1D).setY(0.45D));
+            Vector direction = push.normalize();
+            boolean displaced = false;
+            for (double distance : BossRepelPolicy.travelCandidates()) {
+                Location destination = player.getLocation().clone()
+                        .add(direction.clone().multiply(distance));
+                if (!isSafeCombatParticipantLocation(destination, player)) {
+                    continue;
+                }
+                player.setVelocity(direction.clone()
+                        .multiply(BossRepelPolicy.IMPULSE).setY(BossRepelPolicy.LIFT));
+                displaced = true;
+                break;
+            }
+            if (!displaced) {
+                // Blind and slow still apply; the shove is skipped because every
+                // reachable landing spot is void, wall or protected geometry.
+                getLogger().info("BOSS_HALF_REPEL_DISPLACEMENT_SKIPPED event=" + eventId
+                        + " player=" + player.getUniqueId());
+            }
             player.addPotionEffect(new PotionEffect(
-                    PotionEffectType.DARKNESS, 60, 0, false, false, true));
+                    PotionEffectType.DARKNESS, BossRepelPolicy.DARKNESS_TICKS, 0, false, false, true));
             player.addPotionEffect(new PotionEffect(
-                    PotionEffectType.SLOWNESS, 100, 1, false, false, true));
+                    PotionEffectType.SLOWNESS, BossRepelPolicy.SLOWNESS_TICKS,
+                    BossRepelPolicy.SLOWNESS_AMPLIFIER, false, false, true));
         }
         boss.getWorld().playSound(center, Sound.ENTITY_ENDER_DRAGON_GROWL, 1.2F, 0.7F);
         spawnEventParticle(center.clone().add(0.0D, 1.0D, 0.0D), Particle.EXPLOSION,
@@ -39922,6 +40042,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             previousBossSpell = spell;
             return startTentacleAmbush(boss, target);
         }
+        if (spell == EndRiftAiPolicy.BossSpell.SMALL_KAGUNE) {
+            Player anchor = currentBrainTarget(boss, spell);
+            if (anchor == null || !reserveBossHazard(spell, anchor)) {
+                return false;
+            }
+            previousBossSpell = spell;
+            boolean summoned = startSmallKaguneSummon(boss);
+            releaseBossHazardReservation(summoned
+                    ? "small-kagune-summoned" : "small-kagune-refused");
+            return summoned;
+        }
         Player target = currentBrainTarget(boss, spell);
         if (target == null) {
             return false;
@@ -39981,6 +40112,44 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " entity=" + display.getUniqueId() + " generation=" + generation
                 + " warning_ticks=" + BossAmbushPolicy.GROUND_WARNING_TICKS);
         return true;
+    }
+
+    /**
+     * LAST_SEAL small Kagune: a finite melee-only summon.  Their lifetime is
+     * bounded by SmallKagunePolicy.LIFETIME_TICKS and they never reserve a
+     * guardian slot, shield or 90-second respawn deadline.
+     */
+    private boolean startSmallKaguneSummon(LivingEntity boss) {
+        List<Player> roster = activeBossParticipants();
+        var tuning = smallKaguneTuning();
+        if (boss == null || roster.isEmpty() || bossPhase != BossPhase.LAST_SEAL
+                || !tuning.enabled()) {
+            return false;
+        }
+        int active = (int) tentacleController.states().values().stream()
+                .filter(state -> state.kind() == TentacleAnimationPolicy.Kind.SMALL).count();
+        int budget = Math.min(SmallKagunePolicy.budget(eventScalePlayers(), tuning.maxActive(), active),
+                Math.max(0, TentacleController.MAX_TEMPORARY - tentacleController.temporaryCount()));
+        int spawned = 0;
+        for (int index = 0; index < budget; index++) {
+            Player target = roster.get(Math.floorMod(tentacleTargetCursor++, roster.size()));
+            if (target == null) {
+                break;
+            }
+            ItemDisplay display = spawnTentacle(boss, target.getLocation().clone(),
+                    TentacleAnimationPolicy.Kind.SMALL, TENTACLE_SMALL_SLOT, null);
+            if (display != null) {
+                spawned++;
+            }
+        }
+        getLogger().info("RIFT_SMALL_KAGUNE_SUMMON event=" + eventId
+                + " boss=" + boss.getUniqueId() + " budget=" + budget
+                + " spawned=" + spawned + " generation=" + generation);
+        return spawned > 0;
+    }
+
+    private EventConfig.SmallKaguneTuning smallKaguneTuning() {
+        return config == null ? EventConfig.SmallKaguneTuning.defaults() : config.smallKaguneTuning();
     }
 
     private Player currentBrainTarget(LivingEntity boss, EndRiftAiPolicy.BossSpell spell) {
@@ -40254,9 +40423,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         int configured = config == null ? 20 : config.bossSpellTelegraphTicks();
         return switch (spell) {
             case BOSS_FIREBALL -> BossFireballPolicy.telegraphTicks(configured);
-            case MELEE_SWIPE -> 60;
-            case CHEST_STRIKE -> 81;
-            case GROUND_SLAM -> 181;
+            // Contact moves resolve on their authored keyframe, not at the last
+            // frame of the clip: the boss then holds the rest of the clip as the
+            // visible follow-through (see BossContactStrikePolicy.followThroughTicks).
+            case MELEE_SWIPE -> BossContactStrikePolicy.MELEE_SWIPE_CONTACT_MARKER_TICKS;
+            // The chest clip is 4.04 s but its release pose is the ~2 s mark: the
+            // projectile must leave the chest there and travel while the clip finishes.
+            case CHEST_STRIKE -> BossContactStrikePolicy.CHEST_STRIKE_LAUNCH_MARKER_TICKS;
+            case GROUND_SLAM -> BossContactStrikePolicy.GROUND_SLAM_CONTACT_MARKER_TICKS;
             default -> Math.max(1, configured);
         };
     }
@@ -40278,9 +40452,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /**
-     * The three authored contact attacks resolve on the ability's final frame
-     * instead of travelling as a projectile: the windup IS the animation, so
-     * the hit lands exactly when the clip ends and each player is hit once.
+     * The melee swipe and the ground slam resolve against the boss body when the
+     * animation commits. The chest strike resolves earlier, on the authored
+     * release pose, and then travels as a swept probe until it reaches its range.
      */
     private void executeContactBossAbility(LivingEntity boss, Player target,
                                            EndRiftAiPolicy.BossSpell spell,
@@ -40328,7 +40502,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " spell=" + spell.id() + " target=" + target.getUniqueId()
                 + " hits=" + hits + " generation=" + callbackGeneration);
         bossAbilityState = BossAbilityState.RECOVERY;
-        bossCastDeadlineMillis = System.currentTimeMillis() + 20L * 50L;
+        // The clip keeps playing after the impact, so the boss stays committed
+        // for its remaining follow-through instead of snapping to a new action.
+        bossCastDeadlineMillis = System.currentTimeMillis()
+                + (BossContactStrikePolicy.followThroughTicks(spell) + 20L) * 50L;
         bossSpellPauseUntilMillis = bossCastDeadlineMillis;
         releaseBossHazardReservation("contact-impact");
     }
@@ -40595,11 +40772,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location center = coreCombatAnchorLocation().add(0.0D, 0.8D, 0.0D);
         world.playSound(center, Sound.ENTITY_ENDERMAN_SCREAM, 1.0F, 0.5F);
         announceEventTitle("§4ПЛАМЯ РАЗЛОМА",
-                "§cИщите безопасные сектора — " + durationSeconds + " секунд", true);
+                "§cПол под ногами горит — " + durationSeconds + " секунд", true);
         getLogger().info("BOSS_SPELL_ARENA_INFERNO event=" + eventId
                 + " logical_hazards=" + arenaInfernoBlocks.size()
                 + " burning_floor=all-protected-core-and-pads"
-                + " real_fire=ignition-bounded steam_vents=" + ARENA_INFERNO_VENT_COUNT
+                + " real_fire=ignition-bounded steam_vents="
+                + ArenaInfernoPolicy.ventCountForRoster(activeLivingPlayers().size())
                 + " vent_warning_ticks=" + ArenaInfernoPolicy.VENT_WARNING_TICKS
                 + " armor_wear_cap=" + ARENA_INFERNO_MAX_ARMOR_WEAR
                 + " damage_interval_ticks=20"
@@ -40665,38 +40843,45 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         arenaInfernoArmorWear++;
     }
 
-    /** Steam vents warn first, then launch and injure whoever stays on them. */
+    /** Steam vents warn first, then erupt once and injure whoever stays on them. */
     private void spawnArenaInfernoSteamVents(LivingEntity boss) {
         if (boss == null || boss.getWorld() == null || arenaInfernoBlocks.isEmpty()) {
             return;
         }
         ArenaInfernoPolicy.VentPhase phase = ArenaInfernoPolicy.ventPhase(
                 (int) Math.floorMod(eventTickCounter, ARENA_INFERNO_VENT_PERIOD_TICKS));
-        if (phase == ArenaInfernoPolicy.VentPhase.IDLE) {
+        if (phase == ArenaInfernoPolicy.VentPhase.REMOVE) {
             return;
         }
         World world = boss.getWorld();
         List<Block> blocks = new ArrayList<>(arenaInfernoBlocks);
         int stride = ArenaInfernoPolicy.ventStride(blocks.size());
+        int ventBudget = ArenaInfernoPolicy.ventCountForRoster(activeLivingPlayers().size());
         int vents = 0;
-        for (int index = 0; index < blocks.size() && vents < ARENA_INFERNO_VENT_COUNT;
+        for (int index = 0; index < blocks.size() && vents < ventBudget;
                 index += stride, vents++) {
             Location point = blocks.get(index).getLocation().add(0.5D, 1.0D, 0.5D);
-            if (phase == ArenaInfernoPolicy.VentPhase.WARNING) {
-                world.spawnParticle(Particle.CAMPFIRE_COSY_SMOKE, point, 8, 0.3D, 0.4D, 0.3D, 0.01D);
-                world.spawnParticle(Particle.SMOKE, point, 6, 0.25D, 0.25D, 0.25D, 0.02D);
-                world.playSound(point, Sound.BLOCK_LAVA_AMBIENT,
-                        SoundCategory.HOSTILE, 0.6F, 1.4F);
-                continue;
-            }
-            world.spawnParticle(Particle.CLOUD, point, 24, 0.4D, 0.6D, 0.4D, 0.05D);
-            world.playSound(point, Sound.BLOCK_FIRE_EXTINGUISH,
-                    SoundCategory.HOSTILE, 0.8F, 0.7F);
-            for (Player player : eventAudience()) {
-                if (player.getWorld().equals(world)
-                        && player.getLocation().distanceSquared(point) <= 2.25D) {
-                    player.setVelocity(player.getVelocity().setY(0.9D));
-                    player.damage(3.0D, boss);
+            switch (phase) {
+                case WARN -> {
+                    world.spawnParticle(Particle.CAMPFIRE_COSY_SMOKE, point, 8, 0.3D, 0.4D, 0.3D, 0.01D);
+                    world.spawnParticle(Particle.SMOKE, point, 6, 0.25D, 0.25D, 0.25D, 0.02D);
+                    world.playSound(point, Sound.BLOCK_LAVA_AMBIENT,
+                            SoundCategory.HOSTILE, 0.6F, 1.4F);
+                }
+                case ERUPT -> {
+                    world.spawnParticle(Particle.CLOUD, point, 24, 0.4D, 0.6D, 0.4D, 0.05D);
+                    world.playSound(point, Sound.BLOCK_FIRE_EXTINGUISH,
+                            SoundCategory.HOSTILE, 0.8F, 0.7F);
+                    for (Player player : eventAudience()) {
+                        if (player.getWorld().equals(world)
+                                && player.getLocation().distanceSquared(point) <= 2.25D) {
+                            player.setVelocity(player.getVelocity().setY(0.9D));
+                            player.damage(3.0D, boss);
+                        }
+                    }
+                }
+                case RECOVER -> world.spawnParticle(Particle.CLOUD, point, 6, 0.3D, 0.3D, 0.3D, 0.02D);
+                default -> {
                 }
             }
         }
@@ -40990,12 +41175,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         UUID bossId = boss.getUniqueId();
         long callbackGeneration = generation;
         for (int salvo = 0; salvo < BossEdgeVolleyPolicy.SALVO_COUNT; salvo++) {
-            long delay = 1L + salvo * BossEdgeVolleyPolicy.SALVO_INTERVAL_TICKS;
+            long delay = BossEdgeVolleyPolicy.ARRIVAL_AIM_TICKS
+                    + salvo * BossEdgeVolleyPolicy.SALVO_INTERVAL_TICKS;
             BukkitTask task = Bukkit.getScheduler().runTaskLater(this, () -> {
                 if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
-                        || phase != EventPhase.BOSS_ACTIVE || bossUuid == null
+                        || bossUuid == null
                         || !bossUuid.equals(bossId) || !boss.isValid() || boss.isDead()
-                        || !isCombatTarget(target)) {
+                        || !BossEdgeVolleyPolicy.salvoAllowed(bossPhase,
+                                phase == EventPhase.BOSS_ACTIVE || isTestBoss(boss),
+                                true, isCombatTarget(target))) {
                     return;
                 }
                 riftArrowVolley(boss, target, EndRiftAiPolicy.BossSpell.RIFT_ARROWS.id(),
@@ -41105,6 +41293,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             return;
         }
+        if (activeBossParticipants().isEmpty() && !showroomBoss) {
+            tentacleActiveLastNanos = 0L;
+            return;
+        }
         advanceTentacleActiveClock();
         if (!tentacleController.owns(generation)) {
             tentacleController.begin(generation);
@@ -41112,10 +41304,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     eventTickCounter);
         }
         List<Player> participants = activeBossParticipants();
-        int permanentTarget = showroomBoss
-                ? TentacleScalingPolicy.permanentFor(2, bossPhase)
-                : TentacleScalingPolicy.permanentFor(participants.size(), bossPhase);
-        int temporaryTarget = showroomBoss ? 0
+        int permanentTarget = permanentTentacleTarget(showroomBoss);
+        int temporaryTarget = showroomBoss || bossPhase == BossPhase.LAST_SEAL ? 0
                 : TentacleScalingPolicy.temporaryFor(participants.size(), bossPhase);
         // A phase transition can leave a previous cadence timestamp behind.
         // Do not make the first cast tentacle wait eight seconds just because
@@ -41135,20 +41325,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             ensurePermanentTentacles(boss, permanentTarget);
         }
 
-        int livingGuardians = livingTentacleGuardianCount();
-        if (permanentTarget > 0 && !tentacleGuardianHealth.isEmpty()
-                && livingGuardians == 0 && tentacleDamageWindowEndsMillis < 0L) {
-            tentacleDamageWindowEndsMillis = tentacleActiveMillis + tentacleDamageWindowMillis();
-            renderGuardianShieldBreak(boss, true);
-            getLogger().info("RIFT_GUARDIAN_SHIELD_BROKEN event=" + eventId
-                    + " boss=" + boss.getUniqueId() + " active_ms="
-                    + tentacleActiveMillis + " duration_ms="
-                    + tentacleDamageWindowMillis());
-        }
+        if (!commitTentacleGuardianDeathWindow(boss, permanentTarget)) return;
         boolean damageWindowOpen = tentacleVulnerabilityOpen();
         // Always reconcile: dead slots keep their own 90 s deadlines and the
         // minimum 15 s freeze is enforced inside the policy, not by skipping.
         ensurePermanentTentacles(boss, permanentTarget);
+        if (phase == EventPhase.RECOVERY_REQUIRED) {
+            return;
+        }
         reconcileGuardianShieldOrbit(boss, !damageWindowOpen && tentacleGuardianShielded());
         if (!damageWindowOpen && temporaryTarget > tentacleController.temporaryCount()
                 && eventTickCounter >= nextTentacleTemporaryTick) {
@@ -41179,6 +41363,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // allowed to add another pair during the same active phase.
             nextTentacleTemporaryTick = eventTickCounter
                     + (spawned == 0 ? 10L : TENTACLE_TEMPORARY_INTERVAL_TICKS);
+        }
+        if (permanentTarget <= 0) {
+            tickTentaclesWithoutGuardians(participants);
+            return;
         }
         for (TentacleController.VisualState state
                 : new ArrayList<>(tentacleController.states().values())) {
@@ -41216,40 +41404,83 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void ensurePermanentTentacles(LivingEntity boss, int desired) {
         int safeDesired = Math.max(0, Math.min(TentacleScalingPolicy.MAX_PERMANENT, desired));
+        for (TentacleController.VisualState state
+                : new ArrayList<>(tentacleController.states().values())) {
+            if (state.temporary()) continue;
+            Entity display = ownedEntities.get(state.entityId());
+            UUID hitboxId = tentacleHitboxesByDisplay.get(state.entityId());
+            Entity hitbox = hitboxId == null ? null : ownedEntities.get(hitboxId);
+            if (!(display instanceof ItemDisplay) || !display.isValid() || display.isDead()
+                    || !ownedBySession(display, eventId, generation)
+                    || !(hitbox instanceof LivingEntity) || !hitbox.isValid() || hitbox.isDead()
+                    || !ownedBySession(hitbox, eventId, generation)
+                    || !state.entityId().equals(tentacleDisplaysByHitbox.get(hitboxId))) {
+                removeTentacle(state.entityId(), "guardian-actor-reconcile");
+            }
+        }
         Set<Integer> slots = tentacleController.states().values().stream()
                 .filter(state -> !state.temporary())
                 .map(TentacleController.VisualState::slot)
                 .collect(Collectors.toSet());
         for (int slot = 0; slot < safeDesired; slot++) {
+            if (tentacleGuardianSpawnFailures.getOrDefault(slot, 0) >= 3) {
+                return;
+            }
             double health = tentacleGuardianHealth.getOrDefault(slot, 0.0D);
             Long respawnAt = tentacleGuardianRespawnDeadlineMillis.get(slot);
-            boolean ready = TentacleGuardianPolicy.slotReadyForSpawnAt(
-                    tentacleActiveMillis, respawnAt, health, tentacleRespawnFrozen());
-            if (health <= 0.0D && respawnAt != null && !ready
-                    && TentacleGuardianPolicy.respawnWarningDueAt(tentacleActiveMillis, respawnAt)
-                    && tentacleGuardianWarnedSlots.add(slot)) {
-                // Telegraphed appearance; the guardian is still absent here.
-                Location warning = permanentTentacleLocation(slot, safeDesired);
-                if (warning != null && warning.getWorld() != null) {
+            if (health <= 0.0D && respawnAt != null) {
+                long effective = TentacleGuardianPolicy.effectiveRespawnDeadline(
+                        respawnAt, tentacleDamageWindowEndsMillis);
+                if (effective > respawnAt) {
+                    tentacleGuardianRespawnDeadlineMillis.put(slot, effective);
+                    tentacleGuardianWarnedSlots.remove(slot);
+                }
+                respawnAt = effective;
+                if (!tentacleGuardianWarnedSlots.contains(slot)
+                        && tentacleActiveMillis >= effective
+                        - TentacleGuardianPolicy.RESPAWN_WARNING_MILLIS) {
+                    Location warning = permanentTentacleLocation(slot, safeDesired);
+                    if (warning == null || warning.getWorld() == null) {
+                        recordTentacleGuardianSpawnFailure(slot);
+                        continue;
+                    }
+                    // A late tick or cold restore still owes a full real warning.
+                    respawnAt = Math.max(effective, tentacleActiveMillis
+                            + TentacleGuardianPolicy.RESPAWN_WARNING_MILLIS);
+                    tentacleGuardianRespawnDeadlineMillis.put(slot, respawnAt);
                     warning.getWorld().spawnParticle(Particle.SCULK_SOUL,
                             warning.clone().add(0.0D, 1.0D, 0.0D), 24, 0.6D, 1.2D, 0.6D, 0.01D);
                     warning.getWorld().playSound(warning, Sound.BLOCK_SCULK_SENSOR_CLICKING,
                             SoundCategory.HOSTILE, 1.0F, 0.6F);
+                    tentacleGuardianWarnedSlots.add(slot);
                 }
             }
+            boolean ready = TentacleGuardianPolicy.slotReadyForSpawnAt(
+                    tentacleActiveMillis, respawnAt, health, tentacleRespawnFrozen());
             if (!ready) {
                 continue;
-            }
-            if (health <= 0.0D) {
-                tentacleGuardianRespawnDeadlineMillis.remove(slot);
             }
             if (slots.contains(slot)) {
                 continue;
             }
             Location location = permanentTentacleLocation(slot, safeDesired);
-            if (location != null && spawnTentacle(boss, location, false, slot, null) != null) {
+            ItemDisplay spawned = null;
+            try {
+                spawned = location == null ? null : spawnTentacle(boss, location, false, slot, null);
+            } catch (RuntimeException failedSpawn) {
+                getLogger().log(Level.WARNING, "Guardian spawn failed for slot " + slot, failedSpawn);
+            }
+            if (spawned != null) {
                 slots.add(slot);
+                if (health > 0.0D) {
+                    // Reconcile a missing living actor without healing the saved slot.
+                    tentacleGuardianHealth.put(slot, health);
+                    updateTentacleGuardianHealthVisual(spawned, health,
+                            tentacleMaxHealth(TentacleAnimationPolicy.Kind.PERMANENT));
+                }
+                tentacleGuardianRespawnDeadlineMillis.remove(slot);
                 tentacleGuardianWarnedSlots.remove(slot);
+                tentacleGuardianSpawnFailures.remove(slot);
                 if (tentacleDamageWindowEndsMillis >= 0L) {
                     // A defender returned: the seal closes again.
                     tentacleDamageWindowEndsMillis = -1L;
@@ -41258,7 +41489,76 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             + " boss=" + boss.getUniqueId() + " slot=" + slot
                             + " active_ms=" + tentacleActiveMillis);
                 }
+            } else {
+                recordTentacleGuardianSpawnFailure(slot);
             }
+        }
+    }
+
+    private int permanentTentacleTarget(boolean showroomBoss) {
+        return TentacleScalingPolicy.permanentFor(showroomBoss ? 2 : eventScalePlayers(), bossPhase);
+    }
+
+    private boolean allTentacleGuardiansDefeated(int desired) {
+        if (desired <= 0 || desired > TentacleScalingPolicy.MAX_PERMANENT) return false;
+        for (int slot = 0; slot < desired; slot++) {
+            Double health = tentacleGuardianHealth.get(slot);
+            if (health == null || !Double.isFinite(health) || health > 0.0D
+                    || !tentacleGuardianRespawnDeadlineMillis.containsKey(slot)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean commitTentacleGuardianDeathWindow(LivingEntity boss, int permanentTarget) {
+        if (!allTentacleGuardiansDefeated(permanentTarget)
+                || tentacleDamageWindowEndsMillis >= 0L) return true;
+        tentacleDamageWindowEndsMillis = tentacleActiveMillis + tentacleDamageWindowMillis();
+        tentacleGuardianRegenerationDisabledGeneration = generation;
+        if (!saveStateSync()) {
+            recoveryReason = "GUARDIAN_DEATH_WINDOW_COMMIT_FAILED";
+            forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
+            return false;
+        }
+        renderGuardianShieldBreak(boss, true);
+        getLogger().info("RIFT_GUARDIAN_SHIELD_BROKEN event=" + eventId
+                + " boss=" + boss.getUniqueId() + " active_ms=" + tentacleActiveMillis
+                + " duration_ms=" + tentacleDamageWindowMillis());
+        return true;
+    }
+
+    private void recordTentacleGuardianSpawnFailure(int slot) {
+        int failures = tentacleGuardianSpawnFailures.merge(slot, 1, Integer::sum);
+        if (failures >= 3) {
+            recoveryReason = "GUARDIAN_SPAWN_FAILED_SLOT_" + slot;
+            forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
+            getLogger().warning("RIFT_GUARDIAN_SPAWN_RECOVERY event=" + eventId
+                    + " generation=" + generation + " slot=" + slot + " attempts=" + failures);
+        }
+    }
+
+    private boolean tentacleGuardianRegenerationDisabled() {
+        return tentacleGuardianRegenerationDisabledGeneration == generation;
+    }
+
+    private void encodeTentacleGuardianState(Map<String, String> encoded) {
+        if (!tentacleGuardianHealth.isEmpty() || !tentacleGuardianRespawnDeadlineMillis.isEmpty()
+                || tentacleDamageWindowEndsMillis >= 0L) {
+            encoded.putAll(TentacleGuardianPolicy.encodeSnapshotMillis(
+                    tentacleGuardianHealth, tentacleGuardianRespawnDeadlineMillis,
+                    tentacleDamageWindowEndsMillis, tentacleActiveMillis));
+        }
+        if (tentacleGuardianRegenerationDisabled()) {
+            encoded.put("boss-guardian-regeneration-disabled", "DONE");
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onBossGuardianRegeneration(EntityRegainHealthEvent event) {
+        if (event.getEntity() instanceof LivingEntity boss && isCurrentBossCarrier(boss)
+                && isOfficialBoss(boss) && tentacleGuardianRegenerationDisabled()) {
+            event.setCancelled(true);
         }
     }
 
@@ -41546,7 +41846,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         tentacleGuardianHealth.clear();
         tentacleGuardianRespawnDeadlineMillis.clear();
         tentacleGuardianWarnedSlots.clear();
+        tentacleGuardianSpawnFailures.clear();
         tentacleNextAttackTick.clear();
+        smallKaguneExpiryTicks.clear();
         tentacleDamageWindowEndsMillis = -1L;
         tentacleActiveMillis = 0L;
         tentacleActiveLastNanos = 0L;
@@ -41700,16 +42002,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         TentacleAnimationPolicy.State initialState = switch (tentacleKind) {
             case TEMPORARY -> TentacleAnimationPolicy.State.TELEGRAPH_GRAB;
             case UNDER_PLAYER -> TentacleAnimationPolicy.State.SPAWN_UNDER_PLAYER;
+            case SMALL -> TentacleAnimationPolicy.State.EMERGING;
             case PERMANENT -> TentacleAnimationPolicy.initialSpawnState(tentacleKind,
                     localTextureShowcase);
         };
+        boolean smallKagune = tentacleKind == TentacleAnimationPolicy.Kind.SMALL;
+        float roleScale = smallKagune ? (float) smallKaguneTuning().scale() : 1.0F;
+        float displayWidth = TENTACLE_DISPLAY_WIDTH * roleScale;
+        float displayHeight = TENTACLE_DISPLAY_HEIGHT * roleScale;
+        float fallbackScale = TENTACLE_FALLBACK_SCALE * roleScale;
         ItemDisplay display = location.getWorld().spawn(location, ItemDisplay.class, entity -> {
             entity.setItemStack(overlayItem(MODEL_RIFT_TENTACLE, "end_event_rift_tentacle"));
             entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
             entity.setBillboard(Display.Billboard.FIXED);
             entity.setViewRange(64.0F);
-            entity.setDisplayWidth(TENTACLE_DISPLAY_WIDTH);
-            entity.setDisplayHeight(TENTACLE_DISPLAY_HEIGHT);
+            entity.setDisplayWidth(displayWidth);
+            entity.setDisplayHeight(displayHeight);
             entity.setInterpolationDuration(5);
             entity.setInterpolationDelay(0);
             entity.setPersistent(false);
@@ -41719,8 +42027,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             entity.setTransformation(new Transformation(
                     new Vector3f(-TENTACLE_FALLBACK_CENTER, 0.0F, -TENTACLE_FALLBACK_CENTER),
                     new AxisAngle4f(),
-                    new Vector3f(TENTACLE_FALLBACK_SCALE, TENTACLE_FALLBACK_SCALE,
-                            TENTACLE_FALLBACK_SCALE), new AxisAngle4f()));
+                    new Vector3f(fallbackScale, fallbackScale,
+                            fallbackScale), new AxisAngle4f()));
         });
         boolean official = isOfficialEntity(boss);
         tag(display, EVENT_KIND_TENTACLE, 0, official);
@@ -41732,8 +42040,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 PersistentDataType.STRING, initialState.name());
         display.getPersistentDataContainer().set(keyTentacleTarget,
                 PersistentDataType.STRING, target == null ? "" : target.getUniqueId().toString());
-        double guardianMaxHealth = temporary ? TENTACLE_TEMPORARY_MAX_HEALTH
-                : TentacleGuardianPolicy.perGuardianHealth(eventScalePlayers());
+        double guardianMaxHealth = tentacleMaxHealth(kind);
         if (guardianMaxHealth <= 0.0D) {
             display.remove();
             unregisterOwnedEntity(display.getUniqueId(), "tentacle-spawn-refused");
@@ -41763,7 +42070,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     Integer.MAX_VALUE, 0, false, false, false));
             AttributeInstance scale = entity.getAttribute(Attribute.GENERIC_SCALE);
             if (scale != null) {
-                scale.setBaseValue(tentacleCarrierScale());
+                scale.setBaseValue(tentacleCarrierScale() * roleScale);
             }
             AttributeInstance maxHealth = entity.getAttribute(Attribute.GENERIC_MAX_HEALTH);
             if (maxHealth != null) {
@@ -41807,10 +42114,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     eventTickCounter + 60L + Math.max(0, slot)
                             * tentacleAttackStaggerTicks());
         }
-        if (temporary && target != null) {
+        if (tentacleKind == TentacleAnimationPolicy.Kind.TEMPORARY && target != null) {
             tentacleController.transition(generation, display.getUniqueId(),
                     TentacleAnimationPolicy.State.TELEGRAPH_GRAB,
                     eventTickCounter, target.getUniqueId());
+        }
+        if (smallKagune) {
+            smallKaguneExpiryTicks.put(display.getUniqueId(),
+                    eventTickCounter + smallKaguneTuning().lifetimeTicks());
         }
         bindEventEntityClientForOnlinePlayers(hitbox);
         bindEventEntityClientForOnlinePlayers(display);
@@ -41827,16 +42138,49 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return display;
     }
 
+    private double tentacleMaxHealth(TentacleAnimationPolicy.Kind kind) {
+        return switch (kind) {
+            case SMALL -> smallKaguneTuning().health();
+            case TEMPORARY, UNDER_PLAYER -> TENTACLE_TEMPORARY_MAX_HEALTH;
+            case PERMANENT -> TentacleGuardianPolicy.perGuardianHealth(eventScalePlayers());
+        };
+    }
+
     private void trimTentacles(int permanentTarget, int temporaryTarget) {
         int safePermanent = Math.max(0, Math.min(TentacleScalingPolicy.MAX_PERMANENT, permanentTarget));
         int safeTemporary = Math.max(0, Math.min(TentacleScalingPolicy.MAX_TEMPORARY, temporaryTarget));
         for (TentacleController.VisualState state
                 : new ArrayList<>(tentacleController.states().values())) {
-            if (state.temporary() && tentacleController.temporaryCount() > safeTemporary
-                    || !state.temporary()
+            long ordinaryTemporaryCount = tentacleController.states().values().stream()
+                    .filter(candidate -> candidate.kind() == TentacleAnimationPolicy.Kind.TEMPORARY).count();
+            if (state.kind() == TentacleAnimationPolicy.Kind.TEMPORARY && ordinaryTemporaryCount > safeTemporary
+                    || !state.temporary() && state.kind() != TentacleAnimationPolicy.Kind.SMALL
                     && !TentacleScalingPolicy.permanentSlotInRange(state.slot(), safePermanent)) {
                 removeTentacle(state.entityId(), "participant-scaling");
             }
+        }
+    }
+
+    /**
+     * No defensive guardian slots exist for this roster/phase.  Stray
+     * defenders are removed here, while the independent small-summon role and
+     * temporary ambush casts keep their own lifetime and are still ticked.
+     */
+    private void tickTentaclesWithoutGuardians(List<Player> participants) {
+        for (TentacleController.VisualState state
+                : new ArrayList<>(tentacleController.states().values())) {
+            if (state.kind() != TentacleAnimationPolicy.Kind.SMALL && !state.temporary()) {
+                removeTentacle(state.entityId(), "no-permanent-guardian-slots");
+                continue;
+            }
+            Entity entity = ownedEntities.get(state.entityId());
+            if (!(entity instanceof ItemDisplay display)
+                    || !display.isValid() || display.isDead()
+                    || !ownedBySession(display, eventId, generation)) {
+                tentacleController.remove(state.entityId());
+                continue;
+            }
+            tickTentacle(display, state, participants);
         }
     }
 
@@ -41854,6 +42198,49 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         Player target = sorted.get(Math.floorMod(tentacleTargetCursor++, sorted.size()));
         return target;
+    }
+
+    /**
+     * The defensive role hits where the ambush role captures. The hit goes
+     * through the normal damage pipeline so armour, shields and cancellation
+     * still apply, and it only lands if the target is still inside reach at the
+     * contact frame - stepping away during the windup dodges it.
+     */
+    private void strikeTentacleGuardianTarget(ItemDisplay display, Player target) {
+        Location origin = display.getLocation();
+        if (!withinTentacleGrabRange(origin, target.getLocation())) {
+            getLogger().info("RIFT_TENTACLE_STRIKE_MISS event=" + eventId
+                    + " entity=" + display.getUniqueId()
+                    + " target=" + target.getUniqueId() + " reason=out-of-reach");
+            return;
+        }
+        Entity source = liveBoss();
+        double healthBefore = target.getHealth();
+        target.damage(TentacleGuardianPolicy.STRIKE_DAMAGE,
+                source != null ? source : display);
+        double healthAfter = target.getHealth();
+        if (healthAfter >= healthBefore) {
+            // Rejected or fully absorbed: no flinch, no push, no fake hit.
+            getLogger().info("RIFT_TENTACLE_STRIKE_REJECTED event=" + eventId
+                    + " entity=" + display.getUniqueId()
+                    + " target=" + target.getUniqueId());
+            return;
+        }
+        target.playEffect(EntityEffect.HURT);
+        Vector away = target.getLocation().toVector()
+                .subtract(origin.toVector())
+                .setY(0.0D);
+        if (away.lengthSquared() > 1.0E-4D) {
+            target.setVelocity(away.normalize()
+                    .multiply(TentacleGuardianPolicy.STRIKE_KNOCKBACK)
+                    .setY(TentacleGuardianPolicy.STRIKE_LIFT));
+        }
+        getLogger().info("RIFT_TENTACLE_STRIKE event=" + eventId
+                + " entity=" + display.getUniqueId()
+                + " target=" + target.getUniqueId()
+                + " damage=" + TentacleGuardianPolicy.STRIKE_DAMAGE
+                + " applied=" + String.format(Locale.ROOT, "%.3f",
+                        healthBefore - healthAfter));
     }
 
     private boolean withinTentacleGrabRange(Location tentacle, Location target) {
@@ -41874,6 +42261,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         updateTentacleDisplay(display, state);
         long elapsed = Math.max(0L, eventTickCounter - state.startedTick());
         TentacleAnimationPolicy.State animation = state.state();
+        if (state.kind() == TentacleAnimationPolicy.Kind.SMALL) {
+            tickSmallKagune(display, state, participants);
+            return;
+        }
         if (!state.temporary()) {
             switch (animation) {
                 case EMERGING -> {
@@ -41961,6 +42352,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     Player target = playerForTentacle(state.target(), participants);
                     if (target == null) {
                         setTentacleState(display, TentacleAnimationPolicy.State.MISS_RECOVERY, null);
+                    } else if (!state.temporary()) {
+                        // Defenders hit, they do not capture: the grab/hold/throw
+                        // chain belongs to the under-player ambush role alone.
+                        strikeTentacleGuardianTarget(display, target);
+                        setTentacleState(display, TentacleAnimationPolicy.State.RECOVERY, null);
                     } else {
                         tentacleContactResolved.remove(display.getUniqueId());
                         setTentacleState(display, TentacleAnimationPolicy.State.GRAB_SUCCESS,
@@ -42084,6 +42480,93 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && isActiveBossParticipant(target) ? target : null;
     }
 
+    /**
+     * Role C: a bounded melee-only apparition.  It shares the tentacle display
+     * and damage plumbing but owns this loop, so it can never enter the
+     * grab/hold/throw lifecycle, touch a guardian slot or open a boss shield.
+     */
+    private void tickSmallKagune(ItemDisplay display, TentacleController.VisualState state,
+                                 List<Player> participants) {
+        UUID displayId = display.getUniqueId();
+        TentacleAnimationPolicy.State animation = state.state();
+        long elapsed = Math.max(0L, eventTickCounter - state.startedTick());
+        if (animation == TentacleAnimationPolicy.State.DYING
+                || animation == TentacleAnimationPolicy.State.RETRACT
+                || animation == TentacleAnimationPolicy.State.DEAD_RESPAWN) {
+            if (elapsed < TentacleAnimationPolicy.durationTicks(animation)) {
+                return;
+            }
+            tentacleMarker(display, TentacleAnimationPolicy.Marker.HIDE_BELOW_FLOOR, null);
+            removeTentacle(displayId, "small-kagune-retract");
+            return;
+        }
+        if (SmallKagunePolicy.expired(eventTickCounter,
+                smallKaguneExpiryTicks.getOrDefault(displayId, 0L))) {
+            tentacleMarker(display, TentacleAnimationPolicy.Marker.RECOVERY_START, null);
+            setTentacleState(display, TentacleAnimationPolicy.State.RETRACT, null);
+            return;
+        }
+        if (elapsed < TentacleAnimationPolicy.durationTicks(animation)) {
+            return;
+        }
+        switch (animation) {
+            case EMERGING, RECOVERY -> {
+                Player target = chooseTentacleTarget(participants, display.getLocation());
+                setTentacleState(display, target == null
+                                ? TentacleAnimationPolicy.State.RECOVERY
+                                : TentacleAnimationPolicy.State.TELEGRAPH_GRAB,
+                        target == null ? null : target.getUniqueId());
+            }
+            case TELEGRAPH_GRAB -> {
+                Player target = playerForTentacle(state.target(), participants);
+                if (target != null && applySmallKaguneStrike(display, target)) {
+                    tentacleMarker(display, TentacleAnimationPolicy.Marker.CONTACT, target);
+                    setTentacleState(display, TentacleAnimationPolicy.State.HIT_RECOVERY,
+                            target.getUniqueId());
+                } else {
+                    setTentacleState(display, TentacleAnimationPolicy.State.RECOVERY, null);
+                }
+            }
+            default -> setTentacleState(display, TentacleAnimationPolicy.State.RECOVERY, null);
+        }
+    }
+
+    private boolean withinSmallKaguneRange(ItemDisplay display, Player target) {
+        return display != null && target != null
+                && display.getWorld().equals(target.getWorld())
+                && SmallKagunePolicy.inStrikeRange(
+                        display.getLocation().distanceSquared(target.getLocation()), smallKaguneTuning().range());
+    }
+
+    private boolean applySmallKaguneStrike(ItemDisplay display, Player target) {
+        if (display == null || target == null || !target.isOnline()
+                || phase != EventPhase.BOSS_ACTIVE || !isActiveBossParticipant(target)
+                || !withinSmallKaguneRange(display, target)
+                || !ownedBySession(display, eventId, generation)) {
+            return false;
+        }
+        UUID carrierId = tentacleHitboxesByDisplay.get(display.getUniqueId());
+        Entity entity = carrierId == null ? null : ownedEntities.get(carrierId);
+        if (!(entity instanceof LivingEntity carrier) || !carrier.isValid() || carrier.isDead()
+                || !ownedBySession(carrier, eventId, generation) || !carrier.hasLineOfSight(target)) {
+            return false;
+        }
+        double before = target.getHealth();
+        target.damage(smallKaguneTuning().damage(), carrier);
+        if (target.getHealth() >= before && !target.isDead()) {
+            return false;
+        }
+        target.playEffect(EntityEffect.HURT);
+        double after = target.getHealth();
+        getLogger().info("RIFT_SMALL_KAGUNE_STRIKE event=" + eventId
+                + " entity=" + display.getUniqueId() + " target=" + target.getUniqueId()
+                + " damage=" + smallKaguneTuning().damage()
+                + " applied=" + String.format(Locale.ROOT, "%.3f", before - after)
+                + " health_before=" + String.format(Locale.ROOT, "%.3f", before)
+                + " health_after=" + String.format(Locale.ROOT, "%.3f", after));
+        return true;
+    }
+
     private void applyTentacleGuardianDamage(ItemDisplay display, double damage,
                                              Player attacker) {
         if (display == null || attacker == null || damage <= 0.0D) {
@@ -42102,8 +42585,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         int slot = state.slot();
         boolean temporary = state.temporary();
-        double maximum = temporary ? TENTACLE_TEMPORARY_MAX_HEALTH
-                : TentacleGuardianPolicy.perGuardianHealth(eventScalePlayers());
+        double maximum = tentacleMaxHealth(state.kind());
         double before = temporary
                 ? readDouble(display, keyTentacleHealth, maximum)
                 : tentacleGuardianHealth.getOrDefault(slot, maximum);
@@ -42386,6 +42868,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void removeTentacle(UUID entityId, String reason) {
+        smallKaguneExpiryTicks.remove(entityId);
         if (entityId == null) {
             return;
         }
@@ -45873,6 +46356,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             phase = EventPhase.RECOVERY_REQUIRED;
             activeWave = 0; finalSealBarrierHold = false;
             realitySplitChamberController.clear(); realitySplitTrialController.clear();
+            clearWave7Admission();
             encounterController.restore(eventId, generation, phase, null);
             getLogger().severe("WAVE7_PARTICIPATION_RESTORE_REFUSED event=" + eventId
                     + " generation=" + generation + " action=recovery-no-return-grant");
@@ -47450,12 +47934,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         String targetId = readString(entity, keyTentacleTarget);
         String targetSuffix = targetId.isBlank() ? "" : "|target=" + targetId;
+        TentacleController.VisualState visual = tentacleController.state(entity.getUniqueId());
+        String role = visual == null ? "PERMANENT" : visual.kind().name();
+        double roleScale = visual != null && visual.kind() == TentacleAnimationPolicy.Kind.SMALL
+                ? config.smallKaguneTuning().scale() : 1.0D;
+        String roleSuffix = "|role=" + role + "|scale=" + roleScale;
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (isEventVisualViewer(player)) {
                 sendClientPacket(player, "END_ENTITY_PHASE", instance, durationMillis,
                         entity.getUniqueId().toString(), TentacleAnimationPolicy.wireName(state)
                                 + "|t=" + Math.max(0L, eventTickCounter)
-                                + "|health=" + healthState + targetSuffix);
+                                + "|health=" + healthState + targetSuffix + roleSuffix);
             }
         }
     }

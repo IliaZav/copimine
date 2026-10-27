@@ -14,6 +14,8 @@ def test_profile_main_binding_preserves_attempt_and_filters_diagnostic_players(t
         "void restoreCombatProfiles(Map<String, String> progress)",
         "Map<String, String> objectiveProgressSnapshot()",
         "boolean isOfficialAttemptActive()",
+        "void encodeTentacleGuardianState(Map<String, String> encoded)",
+        "boolean tentacleGuardianRegenerationDisabled()",
     ))
     probe = tmp_path / "CombatProfileMainProbe.java"
     probe.write_text(r'''
@@ -45,6 +47,7 @@ public class CombatProfileMainProbe {
     Set<UUID> waveTwoCleanupEntityUuids=new LinkedHashSet<>(),waveTwoOutstandingEntityUuids=new LinkedHashSet<>();
     Map<Integer,Double> tentacleGuardianHealth=new HashMap<>();Map<Integer,Long> tentacleGuardianRespawnDeadlineMillis=new HashMap<>();
     long tentacleDamageWindowEndsMillis=-1L,tentacleActiveMillis=0L;
+    long tentacleGuardianRegenerationDisabledGeneration=Long.MIN_VALUE;
     PreBoss preBossTransitionController=new PreBoss();
     static class Chambers {Assignment assignment(){return new Assignment();}}
     static class Assignment {Map<UUID,Integer> chamberByPlayer(){return Map.of();}}

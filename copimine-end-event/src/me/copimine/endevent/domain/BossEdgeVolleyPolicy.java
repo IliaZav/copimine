@@ -8,6 +8,8 @@ package me.copimine.endevent.domain;
 public final class BossEdgeVolleyPolicy {
     public static final int SALVO_COUNT = 5;
     public static final long SALVO_INTERVAL_TICKS = 16L;
+    /** Readable arrival + aim window before the first salvo leaves the corner. */
+    public static final long ARRIVAL_AIM_TICKS = 20L;
     /** Spec: 60-90 s between volleys. */
     public static final long COOLDOWN_MILLIS = 75_000L;
     public static final double CORNER_INSET_BLOCKS = 2.0D;
@@ -25,6 +27,15 @@ public final class BossEdgeVolleyPolicy {
 
     public static boolean onCooldown(long nowMillis, long nextAllowedMillis) {
         return nowMillis < nextAllowedMillis;
+    }
+
+    /**
+     * A salvo that is already scheduled must re-check the boss phase: a boss that
+     * enters LAST_SEAL or dies between salvos cancels the rest of the cast.
+     */
+    public static boolean salvoAllowed(BossPhase phase, boolean bossActive,
+                                       boolean bossAlive, boolean targetLegal) {
+        return bossActive && bossAlive && targetLegal && allowsPhase(phase);
     }
 
     /** What a volley attempt should do before any salvo is scheduled. */

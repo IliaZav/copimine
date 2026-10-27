@@ -13,36 +13,55 @@ public final class ArenaInfernoPolicyTest {
         testVentCadence();
         testWarningPrecedesDamage();
         testVentStride();
+        testVentCountScaling();
         testArmorWearBudget();
         testIgniteCell();
         System.out.println("ArenaInfernoPolicyTest OK");
     }
 
     private static void testVentCadence() {
-        check(ArenaInfernoPolicy.ventPhase(0) == ArenaInfernoPolicy.VentPhase.WARNING, "tick 0 warns");
-        check(ArenaInfernoPolicy.ventPhase(19) == ArenaInfernoPolicy.VentPhase.WARNING, "tick 19 warns");
-        check(ArenaInfernoPolicy.ventPhase(20) == ArenaInfernoPolicy.VentPhase.DAMAGE, "tick 20 damages");
-        check(ArenaInfernoPolicy.ventPhase(29) == ArenaInfernoPolicy.VentPhase.DAMAGE, "tick 29 damages");
-        check(ArenaInfernoPolicy.ventPhase(30) == ArenaInfernoPolicy.VentPhase.IDLE, "tick 30 idles");
-        check(ArenaInfernoPolicy.ventPhase(59) == ArenaInfernoPolicy.VentPhase.IDLE, "tick 59 idles");
-        check(ArenaInfernoPolicy.ventPhase(60) == ArenaInfernoPolicy.VentPhase.WARNING, "cadence wraps");
-        check(ArenaInfernoPolicy.ventPhase(-1) == ArenaInfernoPolicy.VentPhase.IDLE, "negative ticks stay bounded");
+        check(ArenaInfernoPolicy.ventPhase(0) == ArenaInfernoPolicy.VentPhase.WARN, "tick 0 warns");
+        check(ArenaInfernoPolicy.ventPhase(15) == ArenaInfernoPolicy.VentPhase.WARN, "the last warning tick warns");
+        check(ArenaInfernoPolicy.ventPhase(16) == ArenaInfernoPolicy.VentPhase.ERUPT, "tick 16 erupts");
+        check(ArenaInfernoPolicy.ventPhase(17) == ArenaInfernoPolicy.VentPhase.RECOVER, "tick 17 recovers");
+        check(ArenaInfernoPolicy.ventPhase(26) == ArenaInfernoPolicy.VentPhase.RECOVER, "the last recovery tick recovers");
+        check(ArenaInfernoPolicy.ventPhase(27) == ArenaInfernoPolicy.VentPhase.REMOVE, "tick 27 is removed");
+        check(ArenaInfernoPolicy.ventPhase(59) == ArenaInfernoPolicy.VentPhase.REMOVE, "tick 59 is removed");
+        check(ArenaInfernoPolicy.ventPhase(60) == ArenaInfernoPolicy.VentPhase.WARN, "cadence wraps");
+        check(ArenaInfernoPolicy.ventPhase(-1) == ArenaInfernoPolicy.VentPhase.REMOVE, "negative ticks stay bounded");
     }
 
     private static void testWarningPrecedesDamage() {
         int lastWarning = -1;
-        int firstDamage = Integer.MAX_VALUE;
+        int firstEruption = Integer.MAX_VALUE;
+        int eruptions = 0;
         for (int tick = 0; tick < ArenaInfernoPolicy.VENT_PERIOD_TICKS; tick++) {
             ArenaInfernoPolicy.VentPhase phase = ArenaInfernoPolicy.ventPhase(tick);
-            if (phase == ArenaInfernoPolicy.VentPhase.WARNING) {
+            if (phase == ArenaInfernoPolicy.VentPhase.WARN) {
                 lastWarning = Math.max(lastWarning, tick);
-            } else if (phase == ArenaInfernoPolicy.VentPhase.DAMAGE) {
-                firstDamage = Math.min(firstDamage, tick);
+            } else if (ArenaInfernoPolicy.ventDamages(phase)) {
+                firstEruption = Math.min(firstEruption, tick);
+                eruptions++;
             }
         }
         check(lastWarning >= 0, "every cadence warns");
-        check(firstDamage > lastWarning, "damage never starts before the warning finished");
-        check(lastWarning + 1 == firstDamage, "damage starts on the first tick after the warning");
+        check(firstEruption > lastWarning, "damage never starts before the warning finished");
+        check(lastWarning + 1 == firstEruption, "eruption happens on the first tick after the warning");
+        check(eruptions == 1, "a vent erupts exactly once per cadence, never on every warning tick");
+        check(!ArenaInfernoPolicy.ventDamages(ArenaInfernoPolicy.VentPhase.WARN)
+                        && !ArenaInfernoPolicy.ventDamages(ArenaInfernoPolicy.VentPhase.RECOVER)
+                        && !ArenaInfernoPolicy.ventDamages(ArenaInfernoPolicy.VentPhase.REMOVE),
+                "only the eruption tick may damage");
+    }
+
+    private static void testVentCountScaling() {
+        check(ArenaInfernoPolicy.ventCountForRoster(0) == 1, "an empty roster still gets one warned vent");
+        check(ArenaInfernoPolicy.ventCountForRoster(4) == 1, "a small roster gets one vent");
+        check(ArenaInfernoPolicy.ventCountForRoster(8) == 2, "eight players get two vents");
+        check(ArenaInfernoPolicy.ventCountForRoster(20) == ArenaInfernoPolicy.VENT_COUNT,
+                "a full roster gets the authored maximum");
+        check(ArenaInfernoPolicy.ventCountForRoster(500) == ArenaInfernoPolicy.VENT_COUNT,
+                "the simultaneous vent count is bounded");
     }
 
     private static void testVentStride() {

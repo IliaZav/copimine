@@ -41263,34 +41263,34 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private int livingTentacleGuardianCount() {
-        int count = 0;
-        for (TentacleController.VisualState state : tentacleController.states().values()) {
-            if (state.temporary()
-                    || tentacleGuardianHealth.getOrDefault(state.slot(), 0.0D) <= 0.0D) {
-                continue;
-            }
-            TentacleAnimationPolicy.State animation = TentacleAnimationPolicy.canonical(state.state());
-            if (animation == TentacleAnimationPolicy.State.DYING
-                    || animation == TentacleAnimationPolicy.State.DEAD_RESPAWN
-                    || animation == TentacleAnimationPolicy.State.RETRACT) {
-                continue;
-            }
-            count++;
+        return livingTentacleGuardianSlots().size();
+    }
+
+    private boolean isLivingTentacleGuardian(TentacleController.VisualState state) {
+        if (state.temporary()
+                || tentacleGuardianHealth.getOrDefault(state.slot(), 0.0D) <= 0.0D) {
+            return false;
         }
-        return count;
+        TentacleAnimationPolicy.State animation = TentacleAnimationPolicy.canonical(state.state());
+        if (animation == TentacleAnimationPolicy.State.DYING
+                || animation == TentacleAnimationPolicy.State.DEAD_RESPAWN
+                || animation == TentacleAnimationPolicy.State.RETRACT) {
+            return false;
+        }
+        Entity display = ownedEntities.get(state.entityId());
+        UUID hitboxId = tentacleHitboxesByDisplay.get(state.entityId());
+        Entity hitbox = hitboxId == null ? null : ownedEntities.get(hitboxId);
+        return display instanceof ItemDisplay && display.isValid() && !display.isDead()
+                && ownedBySession(display, eventId, generation)
+                && hitbox instanceof LivingEntity && hitbox.isValid() && !hitbox.isDead()
+                && ownedBySession(hitbox, eventId, generation)
+                && state.entityId().equals(tentacleDisplaysByHitbox.get(hitboxId));
     }
 
     private List<Integer> livingTentacleGuardianSlots() {
         List<Integer> slots = new ArrayList<>();
         for (TentacleController.VisualState state : tentacleController.states().values()) {
-            if (state.temporary()
-                    || tentacleGuardianHealth.getOrDefault(state.slot(), 0.0D) <= 0.0D) {
-                continue;
-            }
-            TentacleAnimationPolicy.State animation = TentacleAnimationPolicy.canonical(state.state());
-            if (animation == TentacleAnimationPolicy.State.DYING
-                    || animation == TentacleAnimationPolicy.State.DEAD_RESPAWN
-                    || animation == TentacleAnimationPolicy.State.RETRACT) {
+            if (!isLivingTentacleGuardian(state)) {
                 continue;
             }
             slots.add(state.slot());

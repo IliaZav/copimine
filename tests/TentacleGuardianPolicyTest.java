@@ -45,8 +45,8 @@ public final class TentacleGuardianPolicyTest {
                 "the all-dead window must release the boss");
         check(!TentacleGuardianPolicy.shielded(BossPhase.RAGE, 1, false),
                 "guardians must not shield before Last Seal");
-        check(TentacleGuardianPolicy.shielded(BossPhase.LAST_SEAL, 0, false, true),
-                "Last Seal must be shielded while guardians are initializing");
+        check(!TentacleGuardianPolicy.shielded(BossPhase.LAST_SEAL, 0, false, true),
+                "pending or failed initialization must not create an invisible shield");
         check(!TentacleGuardianPolicy.shielded(BossPhase.LAST_SEAL, 0, false, false),
                 "an empty non-initializing set must not invent a shield window");
         check(TentacleGuardianPolicy.damageWindowOpen(BossPhase.LAST_SEAL, 0, 100L, 399L),

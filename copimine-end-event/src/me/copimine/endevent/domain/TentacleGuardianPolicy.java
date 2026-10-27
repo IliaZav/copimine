@@ -59,18 +59,16 @@ public final class TentacleGuardianPolicy {
     }
 
     /**
-     * Keep the seal closed during the single-tick guardian initialization
-     * boundary.  Stage changes and the central runtime tick are both main
-     * thread operations, but a player damage event can arrive between them;
-     * allowing that gap would let a full party kill the boss before its
-     * permanent guardians exist.
+     * Compatibility overload for callers carrying the old initialization flag.
+     * Only actual living guardians grant protection: a pending or failed spawn
+     * cannot create an invisible shield during the initialization boundary.
      */
     public static boolean shielded(BossPhase stage, int livingGuardians,
                                    boolean damageWindowOpen,
                                    boolean guardiansPendingInitialization) {
         return stage == BossPhase.LAST_SEAL
                 && !damageWindowOpen
-                && (livingGuardians > 0 || guardiansPendingInitialization);
+                && livingGuardians > 0;
     }
 
     public static boolean damageWindowOpen(BossPhase stage, int livingGuardians,

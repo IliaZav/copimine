@@ -7,7 +7,6 @@ import me.copimine.endevent.domain.FallingAnvilVolleyPolicy.LandingPoint;
 import me.copimine.endevent.domain.GravityAnchorPolicy;
 import me.copimine.endevent.domain.GravityAnchorPolicy.AnchorPoint;
 import me.copimine.endevent.domain.GravityAnchorPolicy.Phase;
-import me.copimine.endevent.domain.RitualSphereScalingPolicy;
 
 /**
  * One generation-fenced scheduler for Wave 6 major Caster spells.
@@ -20,6 +19,9 @@ import me.copimine.endevent.domain.RitualSphereScalingPolicy;
  * contract while Gravity Anchor and Falling Anvils replace their old mechanics.</p>
  */
 public final class RitualSpellController {
+    /** Gravity Anchor combines with at most two Barrage projectiles. */
+    public static final int MAX_COMBINED_BARRAGE_PROJECTILES = 2;
+
     /** Legacy/persisted spell names; do not rename or remove without migration. */
     public enum Spell {
         RIFT_BARRAGE,
@@ -153,7 +155,7 @@ public final class RitualSpellController {
         if (eventGeneration != generation
                 || requestedCaster == null
                 || combinedProjectiles < 0
-                || combinedProjectiles > RitualSphereScalingPolicy.MAX_PROJECTILES_PER_VOLLEY
+                || combinedProjectiles > MAX_COMBINED_BARRAGE_PROJECTILES
                 || nowTick < 0L
                 || !waveActive
                 || !casterAlive

@@ -63,10 +63,21 @@ public final class BossPhaseGatingTest {
         for (BossPhase phase : new BossPhase[]{BossPhase.AWAKENING, BossPhase.HUNT,
                 BossPhase.RIFT, BossPhase.OVERLOAD, BossPhase.RAGE}) {
             List<BossSpell> pool = BossPhasePolicy.spellPool(phase);
-            for (BossSpell contact : new BossSpell[]{
-                    BossSpell.MELEE_SWIPE, BossSpell.CHEST_STRIKE, BossSpell.GROUND_SLAM}) {
-                require(pool.contains(contact), phase + " must keep the real contact ability " + contact);
-            }
+            require(pool.contains(BossSpell.MELEE_SWIPE), phase + " must keep the basic swipe");
+        }
+        require(!awakening.contains(BossSpell.CHEST_STRIKE) && !awakening.contains(BossSpell.GROUND_SLAM),
+                "Awakening must not unlock the later grounded contact attacks");
+        require(hunt.contains(BossSpell.CHEST_STRIKE) && !hunt.contains(BossSpell.GROUND_SLAM),
+                "Hunt unlocks chest strike; ground slam starts in Rift");
+        for (BossPhase phase : new BossPhase[]{BossPhase.RIFT, BossPhase.OVERLOAD, BossPhase.RAGE}) {
+            List<BossSpell> pool = BossPhasePolicy.spellPool(phase);
+            require(pool.contains(BossSpell.CHEST_STRIKE) && pool.contains(BossSpell.GROUND_SLAM),
+                    phase + " must keep both later grounded contact attacks");
+        }
+        for (BossSpell contact : new BossSpell[]{BossSpell.MELEE_SWIPE,
+                BossSpell.CHEST_STRIKE, BossSpell.GROUND_SLAM}) {
+            require(!BossPhasePolicy.spellPool(BossPhase.LAST_SEAL).contains(contact),
+                    "the hovering Last Seal must not use grounded contact ability " + contact);
         }
 
         require(BossPhasePolicy.spellPool(BossPhase.HUNT).contains(BossSpell.RIFT_ARROWS)

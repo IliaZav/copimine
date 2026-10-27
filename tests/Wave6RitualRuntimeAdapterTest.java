@@ -18,6 +18,7 @@ import me.copimine.endevent.runtime.ritual.Wave6RitualRuntimeAdapter.Effects;
 
 public final class Wave6RitualRuntimeAdapterTest {
     public static void main(String[] args) {
+        invalidCombinedBarrageCountDoesNotSpawnCrystal();
         failedAnchorStartupRollsBackAndCanBeRetried();
         staleGenerationStillRetriesOwnedAnchorCleanup();
         gravityAnchorKeepsCrystalVisibleForFullWarningAndCleansAfterLanding();
@@ -32,6 +33,24 @@ public final class Wave6RitualRuntimeAdapterTest {
         gravityAnchorCapturesOnlyNearbyEligibleFreePlayers();
         gravityAnchorCarriesOneCapturedCohortThroughCleanup();
         System.out.println("Wave6RitualRuntimeAdapterTest OK");
+    }
+
+    private static void invalidCombinedBarrageCountDoesNotSpawnCrystal() {
+        for (int count : new int[] {-1, 3, 7, 8}) {
+            long generation = 79L;
+            FakeEffects effects = new FakeEffects();
+            effects.crystalToSpawn = id("00000000-0000-0000-0000-000000000003");
+            Wave6RitualRuntimeAdapter adapter = new Wave6RitualRuntimeAdapter(
+                    new RitualSpellController(generation), effects);
+            var result = adapter.startGravityAnchor(generation,
+                    id("00000000-0000-0000-0000-000000000001"),
+                    id("00000000-0000-0000-0000-000000000002"),
+                    new AnchorPoint(0.5D, 70.0D, 0.5D), count,
+                    true, true, true, true, 0L);
+            check(!result.accepted() && result.snapshot().stage() == Stage.IDLE
+                            && effects.calls.isEmpty(),
+                    "invalid combined projectile count must be rejected before spawning: " + count);
+        }
     }
 
     private static void failedAnchorStartupRollsBackAndCanBeRetried() {
@@ -548,6 +567,17 @@ public final class Wave6RitualRuntimeAdapterTest {
                                                   int projectileCount) {
             calls.add("barrage:" + projectileCount + ":" + cast.crystalEntity());
             return true;
+        }
+
+        @Override
+        public boolean isGravityAnchorCastValid(Wave6RitualRuntimeAdapter.GravityAnchorCast cast) {
+            return true;
+        }
+
+        @Override
+        public Wave6RitualRuntimeAdapter.GravityAnchorBarrageProgress gravityAnchorBarrageProgress(
+                Wave6RitualRuntimeAdapter.GravityAnchorCast cast) {
+            return Wave6RitualRuntimeAdapter.GravityAnchorBarrageProgress.CHARGED;
         }
 
         @Override

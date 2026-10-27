@@ -29,6 +29,7 @@ import me.copimine.endevent.runtime.ritual.RitualSpellController.Wave6Spell;
  */
 public final class Wave6RitualRuntimeAdapter {
     public static final int GRAVITY_ANCHOR_WARNING_TICKS = 40;
+    public static final int GRAVITY_ANCHOR_BARRAGE_TIMEOUT_TICKS = 100;
     public static final int FALLING_ANVIL_WARNING_TICKS = 60;
     public static final int FALLING_ANVIL_DROP_TICKS = 10;
     public static final int SECOND_VOLLEY_CLUSTER_RETRY_INTERVAL_TICKS = 10;
@@ -37,6 +38,12 @@ public final class Wave6RitualRuntimeAdapter {
     public enum AnvilImpactProgress {
         PENDING,
         CONFIRMED,
+        FAILED
+    }
+
+    public enum GravityAnchorBarrageProgress {
+        PENDING,
+        CHARGED,
         FAILED
     }
 
@@ -51,7 +58,8 @@ public final class Wave6RitualRuntimeAdapter {
         public GravityAnchorCast {
             if (caster == null || target == null || fixedCrystalPoint == null
                     || crystalEntity == null || combinedRiftBarrageProjectiles < 0
-                    || combinedRiftBarrageProjectiles > 2 || affectedPlayers == null) {
+                    || combinedRiftBarrageProjectiles > RitualSpellController.MAX_COMBINED_BARRAGE_PROJECTILES
+                    || affectedPlayers == null) {
                 throw new IllegalArgumentException("invalid captured Gravity Anchor cast");
             }
             affectedPlayers = List.copyOf(affectedPlayers);
@@ -127,6 +135,12 @@ public final class Wave6RitualRuntimeAdapter {
         /** Optional existing Rift Barrage projectiles are aimed into the crystal. */
         boolean fireRiftBarrageIntoCrystal(GravityAnchorCast cast, int projectileCount);
 
+        /** Revalidate the captured caster, target, crystal and encounter identity. */
+        boolean isGravityAnchorCastValid(GravityAnchorCast cast);
+
+        /** A combined cast is charged only after its physical projectiles hit. */
+        GravityAnchorBarrageProgress gravityAnchorBarrageProgress(GravityAnchorCast cast);
+
         /** Start the host-configured pull after the crystal warning expires. */
         boolean beginGravityAnchorPull(GravityAnchorCast cast);
 
@@ -174,6 +188,7 @@ public final class Wave6RitualRuntimeAdapter {
     private final Effects effects;
 
     private GravityAnchorCast anchorCast;
+    private long anchorStartedAtTick = -1L;
     private AnvilVolley anvilVolley;
     private AnvilVolley lastResolvedAnvilVolley;
     private boolean anchorLandingResolved;
@@ -221,6 +236,7 @@ public final class Wave6RitualRuntimeAdapter {
         GravityAnchorCast cast = new GravityAnchorCast(eventGeneration, caster, target,
                 fixedCrystalPoint, crystal, combinedProjectiles);
         anchorCast = cast;
+        anchorStartedAtTick = nowTick;
         Snapshot bound = controller.gravityAnchorCrystalSpawned(eventGeneration, crystal, nowTick);
         if (bound.gravityAnchorState().phase() != Phase.ANCHOR
                 || !effects.showGravityAnchorWarning(cast, GRAVITY_ANCHOR_WARNING_TICKS)
@@ -295,6 +311,7 @@ public final class Wave6RitualRuntimeAdapter {
         }
         if (anchorCast != null && effects.cleanupGravityAnchor(anchorCast)) {
             anchorCast = null;
+            anchorStartedAtTick = -1L;
             anchorLandingResolved = false;
         }
         if (anvilVolley != null && effects.cleanupAnvilVolley(anvilVolley)) {
@@ -322,6 +339,20 @@ public final class Wave6RitualRuntimeAdapter {
     }
 
     private void tickGravityAnchor(Snapshot snapshot, long nowTick) {
+        if (!effects.isGravityAnchorCastValid(anchorCast)) {
+            abortAnchor(snapshot.generation());
+            return;
+        }
+        GravityAnchorBarrageProgress barrage = anchorCast.combinedRiftBarrageProjectiles() == 0
+                ? GravityAnchorBarrageProgress.CHARGED
+                : effects.gravityAnchorBarrageProgress(anchorCast);
+        if (barrage == null || barrage == GravityAnchorBarrageProgress.FAILED
+                || barrage == GravityAnchorBarrageProgress.PENDING
+                && anchorStartedAtTick >= 0L && nowTick >= anchorStartedAtTick
+                && nowTick - anchorStartedAtTick >= GRAVITY_ANCHOR_BARRAGE_TIMEOUT_TICKS) {
+            abortAnchor(snapshot.generation());
+            return;
+        }
         Phase phase = snapshot.gravityAnchorState().phase();
         if (snapshot.stage() == Stage.TELEGRAPH && phase == Phase.ANCHOR) {
             long remaining = Math.max(0L, snapshot.deadlineTick() - nowTick);
@@ -331,6 +362,9 @@ public final class Wave6RitualRuntimeAdapter {
             return;
         }
         if (snapshot.stage() == Stage.EXECUTE && phase == Phase.ANCHOR) {
+            if (barrage != GravityAnchorBarrageProgress.CHARGED) {
+                return;
+            }
             Optional<List<UUID>> captured = effects.captureGravityAnchorCohort(anchorCast);
             if (captured == null || captured.isEmpty()) {
                 abortAnchor(snapshot.generation());
@@ -370,6 +404,7 @@ public final class Wave6RitualRuntimeAdapter {
                 if (anchorLandingResolved && effects.cleanupGravityAnchor(anchorCast)) {
                     controller.advanceGravityAnchorPhase(snapshot.generation(), Phase.COMPLETE, nowTick);
                     anchorCast = null;
+                    anchorStartedAtTick = -1L;
                     anchorLandingResolved = false;
                 }
             }
@@ -511,6 +546,7 @@ public final class Wave6RitualRuntimeAdapter {
     private void abortAnchor(long eventGeneration) {
         if (anchorCast != null && effects.cleanupGravityAnchor(anchorCast)) {
             anchorCast = null;
+            anchorStartedAtTick = -1L;
             anchorLandingResolved = false;
         }
         controller.clear(eventGeneration);
@@ -540,6 +576,7 @@ public final class Wave6RitualRuntimeAdapter {
         if (anchorCast != null && controller.snapshot().wave6Spell() != Wave6Spell.GRAVITY_ANCHOR
                 && effects.cleanupGravityAnchor(anchorCast)) {
             anchorCast = null;
+            anchorStartedAtTick = -1L;
             anchorLandingResolved = false;
         }
         if (anvilVolley != null && controller.snapshot().wave6Spell() != Wave6Spell.FALLING_ANVILS

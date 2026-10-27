@@ -45,17 +45,14 @@ public final class BossPhasePolicy {
             case AWAKENING -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_BLAST,
                     EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
-                    EndRiftAiPolicy.BossSpell.MELEE_SWIPE,
-                    EndRiftAiPolicy.BossSpell.CHEST_STRIKE,
-                    EndRiftAiPolicy.BossSpell.GROUND_SLAM);
+                    EndRiftAiPolicy.BossSpell.MELEE_SWIPE);
             case HUNT -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_BLAST,
                     EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
                     EndRiftAiPolicy.BossSpell.RIFT_ARROWS,
                     EndRiftAiPolicy.BossSpell.VOID_MARK,
                     EndRiftAiPolicy.BossSpell.MELEE_SWIPE,
-                    EndRiftAiPolicy.BossSpell.CHEST_STRIKE,
-                    EndRiftAiPolicy.BossSpell.GROUND_SLAM);
+                    EndRiftAiPolicy.BossSpell.CHEST_STRIKE);
             case RIFT -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_MARK,
                     EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,

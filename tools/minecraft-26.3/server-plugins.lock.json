@@ -141,9 +141,9 @@
     {
       "project": "simple-voice-chat",
       "pluginName": "voicechat",
-      "version": "bukkit-2.6.24",
+      "version": "bukkit-2.6.27",
       "channel": "release",
-      "versionId": "EJth3OAr",
+      "versionId": "3Br8wxJY",
       "projectId": "9eGKb6K1",
       "source": "https://modrinth.com/plugin/simple-voice-chat",
       "license": {
@@ -151,15 +151,16 @@
         "name": "",
         "url": null
       },
-      "filename": "voicechat-bukkit-2.6.24.jar",
-      "url": "https://cdn.modrinth.com/data/9eGKb6K1/versions/EJth3OAr/voicechat-bukkit-2.6.24.jar",
-      "size": 939426,
-      "sha1": "bdc44827f53e392800935452dc2c6e6e20f378d4",
-      "sha512": "7f1d5765e79cd42616f14f40322d1171a8505e1116dfff71c7bd0e59af9d255c06f70a68a5b622015c0407d40c80e70298c172992007ff339cedcef0116fec42",
+      "filename": "voicechat-bukkit-2.6.27.jar",
+      "url": "https://cdn.modrinth.com/data/9eGKb6K1/versions/3Br8wxJY/voicechat-bukkit-2.6.27.jar",
+      "size": 940342,
+      "sha1": "1e367706440cbcb6c380d54527dc4f3c66443cf1",
+      "sha512": "9d55c64e79289da87b6c51295124477b4061f5820bd68370c1f6b82137c7ca19d5db7bc05828f12091f23c6ddf1b328b8c5018d4df85fa7c3ddacc6f8f114abe",
       "dependencies": [],
-      "sha256": "af3d4e2ad318d3065959248c1370ae32a619752cb4d2a4fec2f7a79b10067769",
-      "artifactVersion": "2.6.24",
+      "sha256": "b2fab978bfd891576d6d2417b2886228493db30e9ffd81ad4f7b97af3a3cd13e",
+      "artifactVersion": "2.6.27",
       "replaceSha256": [
+        "af3d4e2ad318d3065959248c1370ae32a619752cb4d2a4fec2f7a79b10067769",
         "d2b7c115f5132b9bff2a9a49dd6306b6b7b2049950961112b15b8936b129ff30"
       ]
     },
@@ -250,9 +251,9 @@
     },
     {
       "project": "grimac",
-      "version": "2.3.74-3bc8959",
+      "version": "2.3.75-1299a2a",
       "channel": "alpha",
-      "versionId": "aQAyYziH",
+      "versionId": "QNc4r5Qj",
       "projectId": "LJNGWSvH",
       "source": "https://modrinth.com/plugin/grimac",
       "license": {
@@ -260,11 +261,11 @@
         "name": "GNU General Public License v3.0 or later",
         "url": "https://github.com/GrimAnticheat/Grim/blob/2.0/LICENSE"
       },
-      "filename": "GrimAC-2.3.74-3bc8959-creative-fix.jar",
-      "url": "https://cdn.modrinth.com/data/LJNGWSvH/versions/aQAyYziH/grimac-bukkit-2.3.74-3bc8959.jar",
-      "size": 13139387,
-      "sha512": "c53dad14107cb474f25d44561c733453fd2010d9d6658401c7ca7edd016f5dd10b7ddb62c9a93d3a4c0bb5016845c3a59663719474bf59d9e32dd5484a24800a",
-      "sha1": "d116118f24dfc1daf79727ad4c84f71d63d7fa14",
+      "filename": "GrimAC-2.3.75-1299a2a-creative-fix.jar",
+      "url": "https://cdn.modrinth.com/data/LJNGWSvH/versions/QNc4r5Qj/grimac-bukkit-2.3.75-1299a2a.jar",
+      "size": 13193362,
+      "sha512": "b267e85d2a54681faa56dec8f0951a92a5da89a85afe98d770d3f1255c17edd0d3948e0fbd6605e5e9d8bbfb87746899f780ed06a69813713d7abd5370a333a6",
+      "sha1": "a7dacb5d06070e101a33863e945ec1275d3bf4d1",
       "dependencies": [],
       "upstreamDeclares263": true,
       "gameVersions": [
@@ -353,23 +354,25 @@
         "26.2",
         "26.3"
       ],
-      "upstreamPublishedAt": "2026-10-19T03:16:55.871645Z",
+      "upstreamPublishedAt": "2026-10-28T04:12:54.358135Z",
       "compatibilityStatus": "requires-runtime-validation",
       "nativeVerified": false,
-      "sha256": "55951173f16d23bc4c263309bacdd6c81db0d32c3816700f202f4dff94066f20",
+      "sha256": "10a905ee82fcc35130fcacd9a2f51b1e3b253d043466458f3be36b1319bd6279",
       "pluginName": "GrimAC",
-      "artifactVersion": "2.3.74-3bc8959",
+      "artifactVersion": "2.3.75-1299a2a",
       "replaceSha256": [
+        "55951173f16d23bc4c263309bacdd6c81db0d32c3816700f202f4dff94066f20",
+        "10a905ee82fcc35130fcacd9a2f51b1e3b253d043466458f3be36b1319bd6279",
         "7f1df9c02b52c1d2f69949a0c465781ed8c53dd0c52234feec01785e675ff5d1",
         "074c3421d99b42ad189c5eafb038dc8e41569b0c36283efada3cc07637e006ab"
       ],
-      "upstreamFilename": "grimac-bukkit-2.3.74-3bc8959.jar",
-      "upstreamSize": 13139508,
-      "upstreamSha512": "fae6d12d553153fb20b5a4d639b6a0c2731fd02d07c152cd1da225eb70b409d73044025c97cc9304e99a65b5a1d435c726a98b674e60a895f81bb22f85e385e7",
-      "upstreamSha1": "47ddfbd92d3e63b8d83e9ec42b6df04122c7f172",
-      "upstreamSha256": "698f9fe2e019d9ccd16388c0aed40f7dfd68cd52d60685025e65f0c5b03c71fa",
+      "upstreamFilename": "grimac-bukkit-2.3.75-1299a2a.jar",
+      "upstreamSize": 13193483,
+      "upstreamSha512": "c0d42abcffc0698fc6a66d7063a2b2892bfc4307031b8d22ba14bf449f528c212f8f987e1dd0e6f0ce9f17a73307770373f6a0a8722573973c447f4789328e4b",
+      "upstreamSha1": "4dca6f6dc537c542b982435c55d4762f104e886b",
+      "upstreamSha256": "080e01c5545695b7e755f705d73da49c5eae9b86d67f1425f88f2c7b414f8da9",
       "patch": "thirdparty/grim-creative-patch/minecraft-26.3/build.ps1",
-      "sourceCommit": "3bc895910193212efd92d5eea9995334efe22388"
+      "sourceCommit": "1299a2aa35b2138df2604f9c7d6bcae357afef31"
     },
     {
       "project": "coreprotect",
@@ -478,7 +481,7 @@
     },
     {
       "project": "protocollib",
-      "version": "dev-d89a5de",
+      "version": "dev-501e187",
       "channel": "development",
       "source": "https://github.com/dmulloy2/ProtocolLib/releases/tag/dev-build",
       "license": {
@@ -487,21 +490,23 @@
       "filename": "ProtocolLib-26.3-dev.jar",
       "url": "https://github.com/dmulloy2/ProtocolLib/releases/download/dev-build/ProtocolLib.jar",
       "vendorArtifact": "thirdparty/server-plugins/ProtocolLib-26.3-dev.jar",
-      "sourceCommit": "d89a5deb3eb625b16846da57fbbb04bfdd0d031d",
+      "sourceCommit": "501e187342ac5c26e0c3044f23de730e24e56def",
       "upstreamPacketMappingVersion": "26.3",
       "upstreamMappingCommit": "583353e9fa3dcec1f6da06d89c189d4ecda1afd4",
       "upstreamMappingUrl": "https://github.com/dmulloy2/ProtocolLib/commit/583353e9fa3dcec1f6da06d89c189d4ecda1afd4",
       "upstreamMaximumTestedVersion": "26.2",
       "compatibilityStatus": "requires-runtime-validation",
       "nativeVerified": false,
-      "sha512": "6372787a9d8a63425184f60b06f082ea6ab1bb7415c2e7fd6a38c39f7d808ed8b44305b299bb5b4ecc3c432bb04987d0c5c26b9e776590c93961da677476e604",
-      "sha256": "ca3ec620315ff92bee2d6d09af297d77362e99b4791b163135b745262df75ecc",
-      "size": 10567022,
+      "sha512": "bfb665d114da3cc9e288d30554a36f975e13b591b03a8db228eb15c996b5c2868966216da9ade92fa6637e50fbff4a067f944d5b742271675c6c5b301e9c45e1",
+      "sha256": "c286eff99f14e90a955278af787cb7c9b506699b47abd912a9f99bdfc5a837b9",
+      "size": 10568131,
       "pluginName": "ProtocolLib",
-      "artifactVersion": "5.5.0-SNAPSHOT-d89a5de",
+      "artifactVersion": "5.5.0-SNAPSHOT-501e187",
       "replaceSha256": [
+        "ca3ec620315ff92bee2d6d09af297d77362e99b4791b163135b745262df75ecc",
         "ee2e7ab9b5386f2d103081c4d108e61b1035df2ca692b53d6e2409fb1f5caccf"
-      ]
+      ],
+      "sha1": "50a8ae8b1e462da68180f6d0d3c159b545c82d1e"
     },
     {
       "project": "chunky",
@@ -603,7 +608,7 @@
     {
       "project": "luckperms",
       "pluginName": "LuckPerms",
-      "version": "5.5.87",
+      "version": "5.5.88",
       "channel": "release",
       "source": "https://metadata.luckperms.net/data/all",
       "license": {
@@ -611,13 +616,13 @@
         "name": "MIT License",
         "url": "https://github.com/LuckPerms/LuckPerms/blob/master/LICENSE"
       },
-      "filename": "LuckPerms-Bukkit-5.5.87.jar",
-      "url": "https://download.luckperms.net/1674/bukkit/loader/LuckPerms-Bukkit-5.5.87.jar",
+      "filename": "LuckPerms-Bukkit-5.5.88.jar",
+      "url": "https://download.luckperms.net/1675/bukkit/loader/LuckPerms-Bukkit-5.5.88.jar",
       "size": 1509479,
-      "sha1": "072fbb8d2c70007c3170b12563af4911cee286da",
-      "sha512": "e4b277a5c80e78c96a0e7530bd3c9839e2d2bf294f339e5ae094d3da9b2e84f201bfe1b9751276519c3d057104065055bd1fec7e2be803524407267e7153d57d",
-      "sha256": "09d07b68965717976d2bab2f8d10436676f7c68d90bf6d24628cc0e5228bf406",
-      "artifactVersion": "5.5.87",
+      "sha1": "8eaa850a6b420e3b0858a5e0ac26f4e725644d49",
+      "sha512": "063790790c1b994dc594a64bb97637b8297a5a3786e08072896c95dd6dfd47f57d0be0db86d6adc249bc5eac68f262f9d41e521a5eb740acfcb862cada57d35e",
+      "sha256": "af18d92f0b8d85b73835546e3376630dea62417291ed8571930e6875436a64be",
+      "artifactVersion": "5.5.88",
       "platform": "paper",
       "gameVersions": [
         "26.3"
@@ -625,6 +630,7 @@
       "compatibilityStatus": "requires-runtime-validation",
       "nativeVerified": false,
       "replaceSha256": [
+        "09d07b68965717976d2bab2f8d10436676f7c68d90bf6d24628cc0e5228bf406",
         "ddae0381514663e3b499e601d05b058274e3567be702fb635e3cb3b0eaabf934"
       ]
     },

@@ -55,7 +55,7 @@ Install-PinnedToolArchive -Archive $archive -Algorithm SHA256 -ExpectedHash $pro
 $voiceChatPlugin = @($serverPluginLock.modules | Where-Object { $_.pluginName -ceq 'voicechat' })
 if ($voiceChatPlugin.Count -ne 1) { throw 'Exactly one pinned Paper Voice Chat plugin candidate is required for the admin API classpath' }
 $voiceChatPlugin = $voiceChatPlugin[0]
-if ($voiceChatPlugin.filename -cne 'voicechat-bukkit-2.6.24.jar' -or
+if ($voiceChatPlugin.filename -cne 'voicechat-bukkit-2.6.27.jar' -or
     $voiceChatPlugin.sha512 -notmatch '^[0-9a-f]{128}$' -or
     [long]$voiceChatPlugin.size -le 0 -or
     $voiceChatPlugin.url -cnotmatch ('^https://cdn\.modrinth\.com/data/' + [regex]::Escape($voiceChatPlugin.projectId) + '/versions/' + [regex]::Escape($voiceChatPlugin.versionId) + '/')) {

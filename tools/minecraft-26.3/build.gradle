@@ -6,7 +6,7 @@ def profile = new JsonSlurper().parse(file('profile.lock.json'))
 def serverPluginLock = new JsonSlurper().parse(file('server-plugins.lock.json'))
 def checkout = file('../..').canonicalFile
 def voiceChatPlugin = serverPluginLock.modules.find { it.pluginName == 'voicechat' }
-if (voiceChatPlugin == null || voiceChatPlugin.filename != 'voicechat-bukkit-2.6.24.jar') {
+if (voiceChatPlugin == null || voiceChatPlugin.filename != 'voicechat-bukkit-2.6.27.jar') {
     throw new GradleException('Pinned Paper Voice Chat API candidate is missing from the server lock')
 }
 def voiceChatApiCandidate = new File(checkout, "build/minecraft-26.3/server-plugins/${voiceChatPlugin.filename}")

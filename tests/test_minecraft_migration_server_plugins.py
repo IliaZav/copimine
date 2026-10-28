@@ -46,18 +46,18 @@ def test_grim263_lock_pins_latest_official_bukkit_artifact_without_claiming_nati
     lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
     record=next(module for module in lock['modules'] if module.get('pluginName')=='GrimAC')
 
-    assert record['version']=='2.3.74-3bc8959'
+    assert record['version']=='2.3.75-1299a2a'
     assert record['channel']=='alpha'
-    assert record['versionId']=='aQAyYziH'
-    assert record['filename']=='GrimAC-2.3.74-3bc8959-creative-fix.jar'
-    assert record['url']=='https://cdn.modrinth.com/data/LJNGWSvH/versions/aQAyYziH/grimac-bukkit-2.3.74-3bc8959.jar'
-    assert record['upstreamFilename']=='grimac-bukkit-2.3.74-3bc8959.jar'
-    assert record['upstreamSize']==13139508
-    assert record['upstreamSha1']=='47ddfbd92d3e63b8d83e9ec42b6df04122c7f172'
-    assert record['upstreamSha256']=='698f9fe2e019d9ccd16388c0aed40f7dfd68cd52d60685025e65f0c5b03c71fa'
-    assert record['upstreamSha512']=='fae6d12d553153fb20b5a4d639b6a0c2731fd02d07c152cd1da225eb70b409d73044025c97cc9304e99a65b5a1d435c726a98b674e60a895f81bb22f85e385e7'
-    assert record['sourceCommit']=='3bc895910193212efd92d5eea9995334efe22388'
-    assert record['upstreamPublishedAt']=='2026-10-19T03:16:55.871645Z'
+    assert record['versionId']=='QNc4r5Qj'
+    assert record['filename']=='GrimAC-2.3.75-1299a2a-creative-fix.jar'
+    assert record['url']=='https://cdn.modrinth.com/data/LJNGWSvH/versions/QNc4r5Qj/grimac-bukkit-2.3.75-1299a2a.jar'
+    assert record['upstreamFilename']=='grimac-bukkit-2.3.75-1299a2a.jar'
+    assert record['upstreamSize']==13193483
+    assert record['upstreamSha1']=='4dca6f6dc537c542b982435c55d4762f104e886b'
+    assert record['upstreamSha256']=='080e01c5545695b7e755f705d73da49c5eae9b86d67f1425f88f2c7b414f8da9'
+    assert record['upstreamSha512']=='c0d42abcffc0698fc6a66d7063a2b2892bfc4307031b8d22ba14bf449f528c212f8f987e1dd0e6f0ce9f17a73307770373f6a0a8722573973c447f4789328e4b'
+    assert record['sourceCommit']=='1299a2aa35b2138df2604f9c7d6bcae357afef31'
+    assert record['upstreamPublishedAt']=='2026-10-28T04:12:54.358135Z'
     assert record['upstreamDeclares263'] is True
     assert '26.3' in record['gameVersions']
     assert record['compatibilityStatus']=='requires-runtime-validation'
@@ -1058,9 +1058,9 @@ def test_luckperms_download_allows_only_its_official_release_url():
     mod=load()
     record={
         'pluginName':'LuckPerms',
-        'filename':'LuckPerms-Bukkit-5.5.87.jar',
-        'runtimeFilename':'LuckPerms-Bukkit-5.5.87.jar',
-        'url':'https://download.luckperms.net/1674/bukkit/loader/LuckPerms-Bukkit-5.5.87.jar',
+        'filename':'LuckPerms-Bukkit-5.5.88.jar',
+        'runtimeFilename':'LuckPerms-Bukkit-5.5.88.jar',
+        'url':'https://download.luckperms.net/1675/bukkit/loader/LuckPerms-Bukkit-5.5.88.jar',
         'sha512':'0'*128,
         'sha256':'0'*64,
         'size':1024,
@@ -1683,7 +1683,7 @@ def test_worldedit_26_3_candidate_uses_latest_stable_and_keeps_worldguard_pair()
 def test_protocollib_26_3_packet_mapping_evidence_is_distinct_from_tested_maximum():
     lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
     candidate=next(p for p in lock['modules'] if p['pluginName']=='ProtocolLib')
-    assert candidate['version']=='dev-d89a5de'
+    assert candidate['version']=='dev-501e187'
     assert candidate['upstreamPacketMappingVersion']=='26.3'
     assert candidate['upstreamMappingCommit']=='583353e9fa3dcec1f6da06d89c189d4ecda1afd4'
     assert candidate['upstreamMappingUrl']=='https://github.com/dmulloy2/ProtocolLib/commit/583353e9fa3dcec1f6da06d89c189d4ecda1afd4'
@@ -1736,11 +1736,11 @@ def test_remaining_official_server_plugins_have_verified_26_3_release_candidates
             'sha256':'530d2c7430a96a39957391b7088be144daa3108f7665896d1c23aa8dd4af32f3','size':304_616,
         },
         'LuckPerms':{
-            'version':'5.5.87',
-            'filename':'LuckPerms-Bukkit-5.5.87.jar',
-            'url':'https://download.luckperms.net/1674/bukkit/loader/LuckPerms-Bukkit-5.5.87.jar',
-            'sha512':'e4b277a5c80e78c96a0e7530bd3c9839e2d2bf294f339e5ae094d3da9b2e84f201bfe1b9751276519c3d057104065055bd1fec7e2be803524407267e7153d57d',
-            'sha256':'09d07b68965717976d2bab2f8d10436676f7c68d90bf6d24628cc0e5228bf406','size':1_509_479,
+            'version':'5.5.88',
+            'filename':'LuckPerms-Bukkit-5.5.88.jar',
+            'url':'https://download.luckperms.net/1675/bukkit/loader/LuckPerms-Bukkit-5.5.88.jar',
+            'sha512':'063790790c1b994dc594a64bb97637b8297a5a3786e08072896c95dd6dfd47f57d0be0db86d6adc249bc5eac68f262f9d41e521a5eb740acfcb862cada57d35e',
+            'sha256':'af18d92f0b8d85b73835546e3376630dea62417291ed8571930e6875436a64be','size':1_509_479,
         },
         'GSit':{
             'version':'3.7.0',
@@ -2339,7 +2339,7 @@ def _write_startup_validation_fixture(root,*,full_plugin_set=False):
         ('CoreProtect','26.3','CoreProtect-26.3.jar'),
         ('CopiMineEndEvent','0.1.0','CopiMineEndEvent.jar'),
         ('AuthMe','6.0.1','AuthMe-6.0.1.jar'),
-        ('voicechat','2.6.24','voicechat-bukkit-2.6.24.jar'),
+        ('voicechat','2.6.27','voicechat-bukkit-2.6.27.jar'),
     ):
         content=jar(name,version)
         records.append({
@@ -2892,7 +2892,7 @@ def test_upstream_baseline_plugins_have_locked_candidates_that_declare_minecraft
     expected={
         'Chunky':('1.5.3','Chunky-Bukkit-1.5.3.jar','https://cdn.modrinth.com/data/fALzjamp/versions/MdY6JATr/Chunky-Bukkit-1.5.3.jar'),
         'GSit':('3.7.0','GSit-3.7.0.jar','https://hangarcdn.papermc.io/plugins/Gecolay/GSit/versions/3.7.0/PAPER/GSit-3.7.0.jar'),
-        'LuckPerms':('5.5.87','LuckPerms-Bukkit-5.5.87.jar','https://download.luckperms.net/1674/bukkit/loader/LuckPerms-Bukkit-5.5.87.jar'),
+        'LuckPerms':('5.5.88','LuckPerms-Bukkit-5.5.88.jar','https://download.luckperms.net/1675/bukkit/loader/LuckPerms-Bukkit-5.5.88.jar'),
         'Vault':('2.20.3','VaultUnlocked-2.20.3.jar','https://cdn.modrinth.com/data/ayRaM8J7/versions/qZgRzoYs/VaultUnlocked-2.20.3.jar'),
     }
     for plugin_name,(version,filename,url) in expected.items():
@@ -2919,14 +2919,14 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
     baseline={row['pluginName']:row for row in lock['unchangedBaseline']}
 
     luckperms=modules['LuckPerms']
-    assert luckperms['version']=='5.5.87'
-    assert luckperms['artifactVersion']=='5.5.87'
+    assert luckperms['version']=='5.5.88'
+    assert luckperms['artifactVersion']=='5.5.88'
     assert luckperms['source']=='https://metadata.luckperms.net/data/all'
-    assert luckperms['filename']=='LuckPerms-Bukkit-5.5.87.jar'
-    assert luckperms['url']=='https://download.luckperms.net/1674/bukkit/loader/LuckPerms-Bukkit-5.5.87.jar'
-    assert luckperms['sha1']=='072fbb8d2c70007c3170b12563af4911cee286da'
-    assert luckperms['sha256']=='09d07b68965717976d2bab2f8d10436676f7c68d90bf6d24628cc0e5228bf406'
-    assert luckperms['sha512']=='e4b277a5c80e78c96a0e7530bd3c9839e2d2bf294f339e5ae094d3da9b2e84f201bfe1b9751276519c3d057104065055bd1fec7e2be803524407267e7153d57d'
+    assert luckperms['filename']=='LuckPerms-Bukkit-5.5.88.jar'
+    assert luckperms['url']=='https://download.luckperms.net/1675/bukkit/loader/LuckPerms-Bukkit-5.5.88.jar'
+    assert luckperms['sha1']=='8eaa850a6b420e3b0858a5e0ac26f4e725644d49'
+    assert luckperms['sha256']=='af18d92f0b8d85b73835546e3376630dea62417291ed8571930e6875436a64be'
+    assert luckperms['sha512']=='063790790c1b994dc594a64bb97637b8297a5a3786e08072896c95dd6dfd47f57d0be0db86d6adc249bc5eac68f262f9d41e521a5eb740acfcb862cada57d35e'
     assert luckperms['size']==1509479
     assert 'versionId' not in luckperms and 'projectId' not in luckperms
     assert luckperms['compatibilityStatus']=='requires-runtime-validation'

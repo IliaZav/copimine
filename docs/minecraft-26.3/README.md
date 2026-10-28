@@ -59,7 +59,7 @@ Lock фиксирует 13 client mod artifacts: Fabric API `0.164.0+26.3` вл�
 | Armor Durability HUD | 8.1.1.6 |
 | Player Animation Library | 1.2.8+mc.26.3 |
 | Sodium | 0.9.2+mc26.3 |
-| Simple Voice Chat | 2.6.24+26.3 |
+| Simple Voice Chat | 2.6.27+26.3 |
 | CustomSkinLoader | 15.1 |
 
 Sodium `0.9.3-beta.1` уже опубликован для 26.3, но текущий Iris `1.11.7` объявляет обязательную точную зависимость от Sodium `0.9.2`. Поэтому lock держит последний совместимый release; обновление Sodium возможно после публикации Iris, который принимает новую версию.

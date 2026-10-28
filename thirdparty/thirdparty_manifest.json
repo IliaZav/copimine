@@ -96,12 +96,12 @@
                                             },
                                             {
                                                 "name":  "ProtocolLib",
-                                                "version":  "5.5.0-SNAPSHOT-d89a5de",
+                                                "version":  "5.5.0-SNAPSHOT-501e187",
                                                 "path":  "thirdparty/server-plugins/ProtocolLib-26.3-dev.jar",
                                                 "sha1":  "9793f5910863f04c8f9ac86f8e59d53e7ffafb21",
                                                 "license":  "GPL-2.0-only",
                                                 "source":  "https://github.com/dmulloy2/ProtocolLib",
-                                                "sha256":  "ca3ec620315ff92bee2d6d09af297d77362e99b4791b163135b745262df75ecc"
+                                                "sha256":  "c286eff99f14e90a955278af787cb7c9b506699b47abd912a9f99bdfc5a837b9"
                                             }
                                         ]
                   }

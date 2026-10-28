@@ -86,12 +86,12 @@ def test_admin_plugin_compiles_against_the_pinned_paper_voicechat_api():
     gradle = (ROOT / "tools/minecraft-26.3/build.gradle").read_text(encoding="utf-8")
     build_script = (ROOT / "scripts/minecraft/BuildMigrationPlugins.ps1").read_text(encoding="utf-8")
 
-    assert voicechat["filename"] == "voicechat-bukkit-2.6.24.jar"
+    assert voicechat["filename"] == "voicechat-bukkit-2.6.27.jar"
     assert "server-plugins.lock.json" in gradle
     assert "voiceChatApiCandidate" in gradle
     assert "adminCompileOnly files(voiceChatApiCandidate)" in gradle
     assert "voicechat-fabric-1.21.1-2.6.16.jar" not in gradle
-    assert "voicechat-bukkit-2.6.24.jar" in build_script
+    assert "voicechat-bukkit-2.6.27.jar" in build_script
     assert build_script.index("Save-PinnedArtifact -Uri $voiceChatPlugin.url") < build_script.index("& $gradle ")
 
 

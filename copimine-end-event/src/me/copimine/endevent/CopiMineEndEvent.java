@@ -6411,8 +6411,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         EndRiftDiagnosticSnapshot snapshot = currentDiagnosticSnapshot();
-        boolean coherent = snapshot.generation() >= 1L
-                && snapshot.ownedEntityCount() >= 0
+        // Only the counters belong in this invariant: an idle event legitimately reports
+        // generation 0, which previously made this operator command fail on a healthy server.
+        boolean coherent = snapshot.ownedEntityCount() >= 0
                 && snapshot.activeTaskCount() >= 0
                 && snapshot.bossHitboxProxyCount() >= 0
                 && snapshot.wave7TemporaryBlockCount() >= 0;

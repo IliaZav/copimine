@@ -34,8 +34,8 @@
 
 `build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar`
 
-- Размер: **1969511** bytes.
-- SHA-256: `ab1f1f1cd352602dd4e24e039642f0cdbfa08b74ea354288d1001cebb37a31d9`.
+- Размер: **1969473** bytes.
+- SHA-256: `325f116b46d3d584395a0c53e1f8a1f6fde391a3552a250401b2dffbda4d4936`.
 - SHA-512: `40c3f63b6df9835f2f09ebadcc5cd81fec40c238f13617274d4376423a245f1becdcc35bdbded72904c1ddf893b3da8190419eefb2d7aab4141e2633d829f055`.
 - Lock и inventory обновлены по собранному файлу. Предыдущий кандидат `c9ca37eb…` добавлен в оба списка допустимой замены; история прежних кандидатов сохранена.
 

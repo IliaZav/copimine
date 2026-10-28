@@ -27,7 +27,9 @@
     "ModelPartCuboidAccessor",
     "SpiderEntityRendererMixin",
     "SkeletonEntityRendererMixin",
-    "ZombieEntityRendererMixin"
+    "ZombieEntityRendererMixin",
+    "PlayerListHudMixin",
+    "PlayerListHudAccessor"
   ],
   "injectors": {
     "defaultRequire": 1

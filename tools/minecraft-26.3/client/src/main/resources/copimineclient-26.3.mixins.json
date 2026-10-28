@@ -29,6 +29,8 @@
     "ZombieEntityRendererMixin",
     "SkeletonEntityRendererMixin",
     "WardenEntityRendererMixin",
+    "PlayerTabOverlayMixin",
+    "PlayerTabOverlayAccessor",
     "GameRendererPostProcessMixin"
   ],
   "injectors": {

@@ -93,7 +93,8 @@ public abstract class PlayerTabOverlayMixin {
         }
 
         context.fill(left, top, right, top + bodyHeight, BACKGROUND_COLOR);
-        context.outline(left, top, right, top + bodyHeight, BORDER_COLOR);
+        // outline takes a width/height pair, not the right/bottom edges fill takes.
+        context.outline(left, top, panelWidth, bodyHeight, BORDER_COLOR);
 
         int y = top;
         for (FormattedCharSequence line : headLines) {

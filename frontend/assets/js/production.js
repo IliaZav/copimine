@@ -54,9 +54,21 @@ function databaseStatus(health){
  if(health.database==='sqlite-test')return 'Тестовая база';
  return 'Нет данных';
 }
+// Что требует решения: обращения, выдача, черновики. Входы в журнал сюда не попадают.
+const needs=()=>{const st=M.state,open=(st.tickets||[]).filter(t=>!['closed','resolved'].includes(t.status)),queue=(st.orders||[]).filter(o=>['queued','pending','awaiting_delivery'].includes(o.status)),drafts=(st.pages||[]).filter(p=>p.publishedRevision!==p.revision);return {open,queue,drafts};};
+const attention=(label,count,href,text,ic)=>'<a class="v71-attention" href="'+href+'">'+icon(ic)+'<div><span class="label">'+label+'</span><strong>'+count+'</strong><small>'+text+'</small></div>'+icon('chevron-right')+'</a>';
 W.adminExtensions.overview=()=>{
- const game=P.health?.game||M.state.game||{},owner=X.can('accounts.manage');
- return '<div class="v6-server-summary">'+metric('Игровой сервер',gameStatus(game))+metric('Онлайн',game.players??'—')+metric('База сайта',databaseStatus(P.health))+'</div><section class="panel mt"><h2>Управление</h2><div class="v6-actions-grid mt">'+[['players','Игроки и инвентари'],['shop','Каталог'],['world','Карта и расписание'],['requests','Обращения'],['moderation','Наказания'],['audit','Журнал действий'],['system','Подключения и аккаунты']].map(([id,text])=>M.link(text,'#admin/'+id,'arrow-right','')).join('')+'</div></section><section class="panel mt"><h2>Последние действия</h2>'+((M.state.audit||[]).length?V.table(['Время','Действие','Кто','Объект'],M.state.audit.slice(0,10).map(r=>[M.date(r.at,true),E(r.action),E(r.actor),E(r.target)])):M.empty('Записей пока нет','Здесь появятся подтверждённые действия.','history'))+'</section>';
+ const game=P.health?.game||M.state.game||{},{open,queue,drafts}=needs();
+ const recent=(M.state.audit||[]).filter(r=>r.action!=='auth.login').slice(0,10);
+ return '<div class="v6-server-summary">'+metric('Игровой сервер',gameStatus(game))+metric('Онлайн',game.players??'—')+metric('База сайта',databaseStatus(P.health))+'</div>'
+  +'<section class="panel mt"><div class="panel-head"><h2>Требует внимания</h2></div><div class="v71-attention-grid">'
+  +attention('Обращения',open.length,'#admin/requests',open.length?'Ждут ответа':'Всё разобрано','chat')
+  +attention('Выдача заказов',queue.length,'#admin/finance?sub=orders',queue.length?'В очереди':'Очередь пуста','package')
+  +attention('Черновики',drafts.length,'#admin/content',drafts.length?'Не опубликованы':'Всё опубликовано','file')
+  +'</div></section>'
+  +(W.adminExtensions.dashboardAnalytics?W.adminExtensions.dashboardAnalytics():'')
+  +'<section class="panel mt"><div class="panel-head"><h2>Последние действия</h2>'+M.link('Журнал','#admin/audit','arrow-right','ghost small')+'</div>'+(recent.length?V.table(['Время','Действие','Кто','Объект'],recent.map(r=>[M.date(r.at,true),E(r.action),E(r.actor),E(r.target||'—')])):M.empty('Записей пока нет','Здесь появятся подтверждённые действия.','history'))+'</section>'
+  +'<section class="panel mt"><h2>Управление</h2><div class="v6-actions-grid mt">'+[['players','Игроки и инвентари'],['shop','Каталог'],['world','Карта и расписание'],['requests','Обращения'],['moderation','Наказания'],['audit','Журнал действий'],['system','Подключения и аккаунты']].map(([id,text])=>M.link(text,'#admin/'+id,'arrow-right','')).join('')+'</div></section>';
 };
 W.adminExtensions.system=()=>{
  const h=P.health,g=h?.game||{};

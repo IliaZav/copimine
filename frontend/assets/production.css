@@ -58,3 +58,21 @@
 .cm74-footer-bottom a:hover{color:var(--text)}
 @media(max-width:620px){.cm-legal h2{font-size:19px}.cm-legal-table th,.cm-legal-table td{padding:9px 10px}}
 .v7-remember-hint{display:block;margin-top:4px;color:var(--quiet);font-size:10.5px;line-height:1.5}
+/* «Требует внимания» на обзоре админки: три кликабельные карточки вместо списка ссылок. */
+.v71-attention-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}
+.v71-attention{display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--line);border-radius:10px;background:var(--surface,#15191b);text-decoration:none;color:inherit}
+.v71-attention:hover{border-color:#75e9b740}
+.v71-attention>.icon{flex:none;width:18px;height:18px;color:var(--muted,#a0a7a6)}
+.v71-attention>div{flex:1;min-width:0;display:grid}
+.v71-attention>div>.label{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--quiet)}
+.v71-attention>div>strong{font-size:22px;line-height:1.25}
+.v71-attention>div>small{font-size:11px;color:var(--muted,#a0a7a6);overflow-wrap:anywhere}
+.v71-attention>svg:last-child{flex:none;width:15px;height:15px;color:var(--quiet)}
+.v6-audit-bucket{flex:0 0 190px;margin:0;min-width:0}
+.v6-audit-bucket select{width:100%;min-height:42px}
+/* Кнопка меню на мобильном оставалась пустым квадратом: общее правило прятало .icon внутри хлебных крошек. */
+.admin-top .breadcrumb .v71-admin-mobile-menu .icon{display:block}
+/* Табы карточки игрока и любые .v71-tabs на узком экране: раньше обрезались без признака прокрутки. */
+.v6-player-tabs,.v71-tabs{-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}
+.v6-player-tabs>*,.v71-tabs>*{scroll-snap-align:start}
+@media(max-width:700px){.v71-attention-grid{grid-template-columns:1fr}.v6-audit-bucket{flex:1 1 100%}.admin-content .tabs,.admin-content .v6-player-tabs,.v71-tabs,.v71-settings-side nav{flex-wrap:wrap;overflow:visible;white-space:normal;row-gap:6px}}

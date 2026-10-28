@@ -5647,8 +5647,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private String latestWinnerName(){
-        try{List<Map<String,Object>> r=query("SELECT winner_name FROM elections WHERE COALESCE(winner_name,'')<>'' ORDER BY COALESCE(ended_at,0) DESC,COALESCE(started_at,0) DESC LIMIT 1"); return r.isEmpty()?"нет":first(s(r.get(0).get("winner_name")),"нет");}
-        catch(Throwable ignored){return"нет";}
+        try{List<Map<String,Object>> r=query("SELECT winner_name FROM elections WHERE COALESCE(winner_name,'')<>'' ORDER BY COALESCE(ended_at,0) DESC,COALESCE(started_at,0) DESC LIMIT 1"); return r.isEmpty()?"не выбран":first(s(r.get(0).get("winner_name")),"не выбран");}
+        catch(Throwable ignored){return"не выбран";}
     }
 
     private String safeWinnerName(String eid){

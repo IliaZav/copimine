@@ -140,8 +140,8 @@ W.adminExtensions.releases=()=>{
   return [E(x.version)+'<small>'+M.date(x.created_s*1000,true)+'</small>',M.pill(state,x.status==='blocked'?'danger':x.status==='armed'||x.status==='rollback_armed'?'':'green'),E(x.actor_name),E(x.reason||''),actions||'—'];
  });
  return '<section class="panel"><h2>Что установлено</h2>'+V.table(['Показатель','Значение'],[
-   ['Коммит GitHub',i.commit?E(i.commit)+(i.commitSource?' <small>'+E(i.commitSource)+'</small>':''):'<span class="hint">не reported</span>'],
-   ['Результат CI',ci?M.pill(ciStatus[ci.status]||ci.status,ci.status==='pass'?'green':ci.status==='fail'?'danger':'')+(ci.url?' '+M.link('Сборка',''+E(ci.url),'arrow-up-right','small'):''):'<span class="hint">не reported</span>'],
+   ['Коммит GitHub',i.commit?E(i.commit)+(i.commitSource?' <small>'+E(i.commitSource)+'</small>':''):'<span class="hint">не указан</span>'],
+   ['Результат CI',ci?M.pill(ciStatus[ci.status]||ci.status,ci.status==='pass'?'green':ci.status==='fail'?'danger':'')+(ci.url?' '+M.link('Сборка',''+E(ci.url),'arrow-up-right','small'):''):'<span class="hint">не указан</span>'],
    ['Paper',E(i.paper||'—')],
    ['Minecraft',E(i.minecraft||'—')],
    ['Плагинов',plugins.length]

@@ -9,7 +9,7 @@ const actions=[
  ['sessions.revoke','Завершить все сеансы','monitor','Выход со всех устройств этого аккаунта. Сам пароль остаётся прежним.','Завершить сеансы'],
  ['login.unlock','Снять блокировку попыток','refresh','Снять ограничение после неверных попыток входа. Это не отменяет блокировку аккаунта.','Снять ограничение']
 ];
-let chosen='demo-001',accounts=[],accountsOwner='',accountsLoading=false;
+let chosen='',accounts=[],accountsOwner='',accountsLoading=false;
 const pby=id=>M.state.players.find(p=>p.id===id);
 const sessionOwner=()=>X.live?X.sessionUser?.id||null:M.me()?.id||null;
 const actorName=()=>X.live?X.sessionUser?.name||'Администратор':M.me()?.name||'Администратор';
@@ -17,7 +17,7 @@ function availableAccounts(){return Q.offline?[{id:'demo-001',username:'1',displ
 function accountPlayer(record){const p=pby(record.id)||{id:record.id,name:record.username,AR:0,CM:0,role:'Игрок',status:'active',purchaseLimits:[],provenance:'local-demo'};if(!pby(record.id))M.state.players.push(p);p.displayName=record.display_name;delete p.email;delete p.emailVerified;p.webBlocked=record.blocked;return p;}
 function user(){const list=availableAccounts();list.forEach(accountPlayer);const selected=M.UI.params.get('player')||chosen,record=list.find(x=>x.id===selected)||list[0];if(record){chosen=record.id;return accountPlayer(record);}return pby(selected)||null;}
 async function loadAccounts(){const owner=sessionOwner();if(!Q.ready||Q.offline||!X.can('recovery.manage')||!owner||accountsLoading||accountsOwner===owner)return;accountsLoading=true;try{const result=await Q.request('recovery-accounts');if(sessionOwner()!==owner)return;accounts=Array.isArray(result.accounts)?result.accounts:[];accountsOwner=owner;accounts.forEach(accountPlayer);if(M.UI.page==='admin'&&M.UI.tab==='recovery')M.render();}catch(err){M.toast(err.message,true);}finally{accountsLoading=false;}}
-const label=status=>({preview:'Проверка интерфейса',completed:'Выполнено локально',awaiting_player:'Ждём игрока',queued:'В очереди'}[status]||status);
+const label=status=>({preview:'Не выполнено',completed:'Выполнено',awaiting_player:'Ждём игрока',queued:'В очереди'}[status]||status);
 C.recoveryView=()=>{
  if(!X.can('recovery.manage'))return `<div class="cm73-recovery">${M.empty('Нет доступа','Этот раздел доступен владельцу сайта.','lock')}</div>`;
  const p=user(),options=availableAccounts().map(accountPlayer);
@@ -34,7 +34,7 @@ F['v73-recovery']=async(f,d)=>{
  if(Q.offline){result={...body,id:X.uid('recovery'),status:'preview',review_only:true};}
  else result=await Q.request('recovery',body);
  (M.state.reviewRecoveryLog||=[]).unshift({...body,...result,at:Date.now(),actor:actorName()});M.audit('Восстановление доступа',pby(body.player)?.name,body.reason);M.save();M.closeModal();M.render();
- M.toast(result.status==='preview'?'Тестовая заявка записана.':result.message||'Действие выполнено.');
+ M.toast(result.message||'Действие выполнено.');
 };
 V.after.push((page,tab)=>{if(page==='admin'&&tab==='recovery')void loadAccounts();if(!X.can('recovery.manage')){accounts=[];accountsOwner='';}if(page==='admin'&&tab==='recovery')document.getElementById('cm73-recovery-player')?.addEventListener('change',e=>{chosen=e.target.value;M.navTo('admin/recovery?player='+encodeURIComponent(chosen));});});
 })();

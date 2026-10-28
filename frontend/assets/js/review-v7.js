@@ -177,7 +177,7 @@ V.after.push((page,tab)=>{
  }
  const log=document.getElementById('v7-log-search');if(log)log.oninput=()=>document.querySelectorAll('[data-v7-log]').forEach(n=>n.hidden=!D.search(log.value,n.textContent));
  const search=document.getElementById('v7-recovery-search');if(search)search.oninput=()=>document.querySelectorAll('[data-recovery-search]').forEach(n=>n.closest('tr').hidden=!D.search(search.value,n.dataset.recoverySearch));
- if(page==='admin')document.querySelectorAll('.v6-action-group h2,.v6-action-group h3').forEach(n=>{if(!n.querySelector('[data-help]'))n.insertAdjacentHTML('beforeend',help('Выбери действие, проверь параметры и укажи причину. В этой копии изменяются только тестовые данные.'));});
+ if(page==='admin')document.querySelectorAll('.v6-action-group h2,.v6-action-group h3').forEach(n=>{if(!n.querySelector('[data-help]'))n.insertAdjacentHTML('beforeend',help('Выбери действие, проверь параметры и укажи причину. Результат выполнения виден в истории игрока.'));});
  document.querySelectorAll('button,a').forEach(n=>{if(n.matches('.v7-help'))return;if(n.getAttribute('title')&&n.classList.contains('icon-btn'))n.removeAttribute('title');});
 });
 window.addEventListener('DOMContentLoaded',boot,{once:true});

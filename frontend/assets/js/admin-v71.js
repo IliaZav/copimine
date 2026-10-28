@@ -38,7 +38,7 @@ function playerRows(query='',scope='all'){
  if(scope==='blocked')rows=rows.filter(p=>p.webBlocked||p.status==='banned');if(scope==='team')rows=rows.filter(p=>CM6Domain.roleLevel(p.role)>=10);
  return rows.length?V.table(['Игрок','Аккаунт Minecraft','Игровой баланс','Донатный баланс','Статус',''],rows.map(p=>[`<a href="#admin/players?player=${E(p.id)}" class="v71-player-link">${W.head(p,36)}<span><strong>${E(p.displayName||p.name)}</strong><small>${E(p.minecraftName||p.name)}</small></span></a>`,M.pill(p.gameLinkVerified||p.linked?'Привязан':'Не привязан',p.gameLinkVerified||p.linked?'green':''),`<strong class="numeric">${p.AR==null?'—':Number(p.AR).toLocaleString('ru-RU')} АР</strong>`,`<span class="numeric">${p.CM==null?'—':Number(p.CM).toLocaleString('ru-RU')} CM</span>`,M.pill(p.webBlocked||p.status==='banned'?'Заблокирован':'Активен',p.webBlocked||p.status==='banned'?'danger':'green'),M.link('Открыть',`#admin/players?player=${E(p.id)}`,'arrow-up-right','small ghost')])):M.empty('Ничего не найдено','Попробуй другой ник или ID.','search');
 }
-function players(){return `<div class="v71-player-directory"><div class="v71-directory-controls"><label class="input-wrap">${icon('search')}<input id="v71-player-search" type="search" placeholder="Ник, игровой ник или ID" aria-label="Поиск игроков"></label><select id="v71-player-scope" aria-label="Фильтр аккаунтов"><option value="all">Все аккаунты</option><option value="team">Команда</option><option value="blocked">Заблокирован</option></select><span class="hint">Аккаунтов: ${s().players.length}</span></div><div id="v71-player-rows">${playerRows()}</div><div class="v71-inline-info">${icon('info')}Открой игрока: покупки, инвентари, наказания и действия — в его карточке.</div></div>`;}
+function players(){const q=X.board.get('playerQuery')||'',scope=X.board.get('playerScope')||'all';return `<div class="v71-player-directory"><div class="v71-directory-controls"><label class="input-wrap">${icon('search')}<input id="v71-player-search" type="search" value="${E(q)}" placeholder="Ник, игровой ник или ID" aria-label="Поиск игроков"></label><select id="v71-player-scope" aria-label="Фильтр аккаунтов"><option value="all"${scope==='all'?' selected':''}>Все аккаунты</option><option value="team"${scope==='team'?' selected':''}>Команда</option><option value="blocked"${scope==='blocked'?' selected':''}>Заблокирован</option></select><span class="hint">Аккаунтов: ${s().players.length}</span></div><div id="v71-player-rows">${playerRows(q,scope)}</div><div class="v71-inline-info">${icon('info')}Открой игрока: покупки, инвентари, наказания и действия — в его карточке.</div></div>`;}
 function siteSettings(){return window.CMCMS?.siteSettingsView?.()||'<section class="panel" role="status"><h2>Настройки сайта</h2><p>Редактор сейчас недоступен. Обнови страницу и попробуй снова.</p></section>';}
 const rewrite=html=>html.replaceAll('#admin/moderation?sub=tickets','#admin/requests').replaceAll('#admin/moderation?sub=cases','#admin/moderation').replaceAll('#admin/moderation?sub=anticheat','#admin/moderation').replaceAll('#admin/moderation?sub=sanctions','#admin/moderation').replaceAll('#admin/world?sub=elections','#admin/world').replaceAll('#admin/world?sub=laws','#admin/world').replaceAll('#admin/world?sub=points','#admin/world').replaceAll('#admin/system?sub=plugins','#admin/system').replaceAll('#admin/system?sub=jobs','#admin/system').replaceAll('#admin/system?sub=backups','#admin/system').replaceAll('#admin/access?sub=audit','#admin/audit').replaceAll('#admin/players?sub=inventory','#admin/players');
 M.renderers.admin=(key='overview')=>{
@@ -47,7 +47,7 @@ M.renderers.admin=(key='overview')=>{
  let body='';const meta=entries.find(e=>e[0]===key)||entries[0];
  switch(key){
  case 'overview':body=ext.overview();break;
- case 'players':body=M.UI.params.has('player')?ext.players(sub||'profile'):players();break;
+ case 'players':body=sub==='list'||!(M.UI.params.has('player')||X.board?.get('player'))?players():ext.players(sub||'profile');break;
  case 'requests':body=operations('moderation','tickets');break;
  case 'moderation':body=ext.moderation(sub);break;
  case 'recovery':body=window.CM73?.recoveryView?.()||prior(key);break;
@@ -90,14 +90,16 @@ H['admin-search']=H['admin-command']=()=>{if(!X.canAdmin())return;M.openModal('�
 document.addEventListener('keydown',e=>{if(!document.querySelector('#v71-command-query'))return;const nodes=[...document.querySelectorAll('.v71-search-results a')];if(['ArrowDown','ArrowUp'].includes(e.key)){e.preventDefault();const i=nodes.indexOf(document.activeElement);nodes[(i+(e.key==='ArrowDown'?1:-1)+nodes.length)%nodes.length]?.focus();}if(e.key==='Enter'&&document.activeElement.id==='v71-command-query'&&nodes[0]){e.preventDefault();nodes[0].click();}});
 V.after.push((page,tab)=>{
  if(page!=='admin')return;
- document.getElementById('v71-player-search')?.addEventListener('input',e=>{document.getElementById('v71-player-rows').innerHTML=playerRows(e.target.value,document.getElementById('v71-player-scope').value);});
- document.getElementById('v71-player-scope')?.addEventListener('change',e=>{document.getElementById('v71-player-rows').innerHTML=playerRows(document.getElementById('v71-player-search').value,e.target.value);});
+ const searchInput=document.getElementById('v71-player-search'),scopeSelect=document.getElementById('v71-player-scope'),rowsHost=document.getElementById('v71-player-rows');
+ const paint=()=>{rowsHost.innerHTML=playerRows(searchInput.value,scopeSelect.value);};
+ searchInput?.addEventListener('input',()=>{X.board?.set('playerQuery',searchInput.value||null);paint();});
+ scopeSelect?.addEventListener('change',()=>{X.board?.set('playerScope',scopeSelect.value==='all'?null:scopeSelect.value);paint();});
  document.querySelectorAll('.admin-sidebar a').forEach(a=>a.addEventListener('click',closeAdminDrawer));
 });
 
 let currentActionGroup=0;
 function selectActionGroup(index){
- currentActionGroup=index;
+ currentActionGroup=index;X.board?.set('actionGroup',index);
  document.querySelectorAll('.v6-action-group').forEach((node,i)=>node.hidden=i!==index);
  document.querySelectorAll('[data-action="v71-action-category"]').forEach((node,i)=>{node.classList.toggle('active',i===index);node.setAttribute('aria-pressed',String(i===index));});
 }
@@ -113,14 +115,14 @@ V.after.push((page,tab)=>{
  host.classList.add('v71-action-workspace');
  const nav=document.createElement('nav');nav.className='v71-action-categories';nav.setAttribute('aria-label','Категории действий');
  nav.innerHTML=groups.map((g,i)=>`<button type="button" data-action="v71-action-category" data-index="${i}"><span>${E(g.querySelector('h2').firstChild.textContent)}</span><b>${g.querySelectorAll('[data-action-search]').length}</b></button>`).join('');
- host.before(nav);selectActionGroup(Math.min(currentActionGroup,groups.length-1));
+ host.before(nav);const savedGroup=X.board?.get('actionGroup');currentActionGroup=Number.isInteger(savedGroup)?savedGroup:currentActionGroup;selectActionGroup(Math.min(currentActionGroup,groups.length-1));
  const empty=document.createElement('div');empty.className='v71-action-empty';empty.hidden=true;empty.innerHTML=M.empty('Действие не найдено','Попробуй другой запрос.','search');host.append(empty);
- document.getElementById('v6-action-search').addEventListener('input',e=>{
+ document.getElementById('v6-action-search').addEventListener('input',e=>{X.board?.set('actionSearch',e.target.value.trim()||null);
   if(!e.target.value.trim()){empty.hidden=true;selectActionGroup(currentActionGroup);return;}
   nav.querySelectorAll('button').forEach(n=>{n.classList.remove('active');n.setAttribute('aria-pressed','false');});
   empty.hidden=groups.some(g=>!g.hidden);
  });
- const find=M.UI.params.get('find');if(find){const input=document.getElementById('v6-action-search');input.value=find;input.dispatchEvent(new Event('input',{bubbles:true}));}
+ const find=M.UI.params.get('find')||X.board?.get('actionSearch');if(find){const input=document.getElementById('v6-action-search');input.value=find;input.dispatchEvent(new Event('input',{bubbles:true}));}
 });
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>M.render(),{once:true});else M.render();
 })();

@@ -4,7 +4,7 @@
 const M=CM,V=CMV4,D=CM6Domain,E=M.esc,H=M.handlers,F=M.forms,R=M.renderers,s=()=>M.state;
 const X=window.CM6={live:window.CM_SERVER_MODE===true,ready:window.CM_SERVER_MODE!==true,actions:[],uid:(prefix='id')=>prefix+'-'+(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2))};
 X.canAdmin=()=>!!M.me()&&D.roleLevel(M.me().role)>=10;
-X.previewNote=()=>X.live?'':'<div class="notice v6-preview-note">'+icon('monitor')+'Режим просмотра. Изменения ниже относятся к тестовым данным.</div>';
+X.previewNote=()=>X.live?'':'<div class="notice v6-preview-note">'+icon('monitor')+'Нет связи с игровым сервером: ниже последние полученные данные.</div>';
 for(const key of ['sanctions','playerActions','analyticsEvents'])if(!Array.isArray(s()[key]))s()[key]=[];
 s().mapSettings||={enabled:true,autoRefresh:true,intervalMinutes:720,minAgeMinutes:0,playerDelayMinutes:5,showPlayers:false};
 for(const p of s().players)p.purchaseLimits||=[];

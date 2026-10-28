@@ -87,12 +87,57 @@ CREATE TABLE IF NOT EXISTS cm_site_backup_codes (
 CREATE TABLE IF NOT EXISTS cm_site_analytics_events (
  id TEXT PRIMARY KEY, event_type TEXT NOT NULL, page TEXT NOT NULL,
  visitor_hash TEXT NOT NULL, item_id TEXT NOT NULL DEFAULT '', quantity INTEGER NOT NULL DEFAULT 0,
- created_s BIGINT NOT NULL
+ session_hash TEXT NOT NULL DEFAULT '', device TEXT NOT NULL DEFAULT '', browser TEXT NOT NULL DEFAULT '',
+ os TEXT NOT NULL DEFAULT '', lang TEXT NOT NULL DEFAULT '', screen TEXT NOT NULL DEFAULT '',
+ source TEXT NOT NULL DEFAULT '', utm_source TEXT NOT NULL DEFAULT '', utm_medium TEXT NOT NULL DEFAULT '',
+ utm_campaign TEXT NOT NULL DEFAULT '', created_s BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS cm_site_analytics_created ON cm_site_analytics_events(created_s);
 CREATE INDEX IF NOT EXISTS cm_site_analytics_page_created ON cm_site_analytics_events(event_type,page,created_s);
-CREATE INDEX IF NOT EXISTS cm_site_analytics_visitor_created ON cm_site_analytics_events(visitor_hash,created_s)
+CREATE INDEX IF NOT EXISTS cm_site_analytics_visitor_created ON cm_site_analytics_events(visitor_hash,created_s);
+CREATE TABLE IF NOT EXISTS cm_site_consents (
+ id TEXT PRIMARY KEY, consent_hash TEXT NOT NULL DEFAULT '', visitor_hash TEXT NOT NULL DEFAULT '',
+ necessary INTEGER NOT NULL DEFAULT 1, analytics INTEGER NOT NULL DEFAULT 0, preferences INTEGER NOT NULL DEFAULT 0,
+ policy_version TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT '', user_agent TEXT NOT NULL DEFAULT '',
+ created_s BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS cm_site_consents_created ON cm_site_consents(created_s);
+CREATE TABLE IF NOT EXISTS cm_site_mapart_uploads (
+ id TEXT PRIMARY KEY, image TEXT NOT NULL, url TEXT NOT NULL, name TEXT NOT NULL,
+ width INTEGER NOT NULL, height INTEGER NOT NULL, command TEXT NOT NULL,
+ author_id TEXT NOT NULL DEFAULT '', author_name TEXT NOT NULL DEFAULT '',
+ world TEXT NOT NULL DEFAULT '', x INTEGER, y INTEGER, z INTEGER,
+ created_s BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS cm_site_mapart_uploads_created ON cm_site_mapart_uploads(created_s DESC);
+CREATE TABLE IF NOT EXISTS cm_site_server_metrics (
+ id TEXT PRIMARY KEY, sampled_s BIGINT NOT NULL, online INTEGER NOT NULL DEFAULT 0,
+ players INTEGER NOT NULL DEFAULT 0, tps REAL, mspt REAL, plugins INTEGER NOT NULL DEFAULT 0,
+ worlds TEXT NOT NULL DEFAULT '[]', host TEXT NOT NULL DEFAULT '{}',
+ database TEXT NOT NULL DEFAULT '{}', errors TEXT NOT NULL DEFAULT '[]',
+ source TEXT NOT NULL DEFAULT 'bridge'
+);
+CREATE INDEX IF NOT EXISTS cm_site_server_metrics_sampled ON cm_site_server_metrics(sampled_s DESC);
+CREATE TABLE IF NOT EXISTS cm_site_login_events (
+ id TEXT PRIMARY KEY, user_id TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '',
+ result TEXT NOT NULL, ip TEXT NOT NULL DEFAULT '', user_agent TEXT NOT NULL DEFAULT '',
+ created_s BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS cm_site_login_events_user ON cm_site_login_events(user_id, created_s DESC);
+CREATE TABLE IF NOT EXISTS cm_site_releases (
+ id TEXT PRIMARY KEY, version TEXT NOT NULL, commit_sha TEXT NOT NULL DEFAULT '',
+ target TEXT NOT NULL DEFAULT '{}', actor_id TEXT NOT NULL, actor_name TEXT NOT NULL,
+ reason TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'prepared',
+ backup TEXT NOT NULL DEFAULT '{}', check_result TEXT NOT NULL DEFAULT '{}',
+ apply_result TEXT NOT NULL DEFAULT '{}', created_s BIGINT NOT NULL, updated_s BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS cm_site_releases_created ON cm_site_releases(created_s DESC)
 """
+
+ANALYTICS_COLUMNS = (
+    "session_hash", "device", "browser", "os", "lang", "screen",
+    "source", "utm_source", "utm_medium", "utm_campaign",
+)
 
 
 class Connection:
@@ -138,7 +183,11 @@ class Database:
                 raw.close()
 
     def initialize(self):
+        # Both services migrate on boot; a shared advisory lock keeps two
+        # start-ups from deadlocking on CREATE TABLE/INDEX.
         with self.transaction() as db:
+            if not self.sqlite:
+                db.execute("SELECT pg_advisory_xact_lock(7319001)")
             for sql in SCHEMA.split(";"):
                 if sql.strip():
                     db.execute(sql)
@@ -151,10 +200,18 @@ class Database:
                     db.execute("ALTER TABLE cm_site_tickets ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal'")
                 if "first_reply_s" not in ticket_columns:
                     db.execute("ALTER TABLE cm_site_tickets ADD COLUMN first_reply_s BIGINT NOT NULL DEFAULT 0")
+                analytics_columns = {row["name"] for row in db.execute("PRAGMA table_info(cm_site_analytics_events)").fetchall()}
+                for name in ANALYTICS_COLUMNS:
+                    if name not in analytics_columns:
+                        db.execute(f"ALTER TABLE cm_site_analytics_events ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
             else:
                 db.execute("ALTER TABLE cm_site_notifications ADD COLUMN IF NOT EXISTS href TEXT NOT NULL DEFAULT ''")
                 db.execute("ALTER TABLE cm_site_tickets ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'normal'")
                 db.execute("ALTER TABLE cm_site_tickets ADD COLUMN IF NOT EXISTS first_reply_s BIGINT NOT NULL DEFAULT 0")
+                for name in ANALYTICS_COLUMNS:
+                    db.execute(f"ALTER TABLE cm_site_analytics_events ADD COLUMN IF NOT EXISTS {name} TEXT NOT NULL DEFAULT ''")
+            # After the column migration: older tables gain session_hash only above.
+            db.execute("CREATE INDEX IF NOT EXISTS cm_site_analytics_session_created ON cm_site_analytics_events(session_hash,created_s)")
             db.execute("UPDATE cm_site_ticket_messages SET created_s=created_s*1000 WHERE created_s<1000000000000")
             legacy_tickets = db.execute("SELECT t.*,u.name AS actor_name FROM cm_site_tickets t JOIN cm_site_users u ON u.id=t.user_id ORDER BY t.created_s").fetchall()
             for ticket in legacy_tickets:

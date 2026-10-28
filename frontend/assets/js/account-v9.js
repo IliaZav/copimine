@@ -103,17 +103,91 @@
     try { sessionStorage.setItem(authReturnKey, route); } catch { /* Optional navigation convenience. */ }
   }
 
+  function passField(label, name, autocomplete, placeholder, minlength = 0, hint = '') {
+    return `<label class="field">${label}<span class="v7-pass-wrap"><input name="${name}" type="password" required${minlength ? ` minlength="${minlength}"` : ''} maxlength="256" autocomplete="${autocomplete}" placeholder="${placeholder}"${hint ? ` aria-describedby="auth-${name}-hint"` : ''}><button type="button" class="v7-pass-toggle" data-action="v7-pass-toggle" aria-label="Показать пароль" aria-pressed="false">${icon('eye')}</button></span>${hint ? `<small class="field-hint" id="auth-${name}-hint">${hint}</small>` : ''}<em class="v7-caps" data-caps-lock role="status" hidden>Caps Lock включён</em></label>`;
+  }
+
   function authMarkup(tab) {
     const registering = tab === 'register';
     const title = registering ? 'Создать аккаунт' : 'Войти';
-    const intro = registering ? 'Создай логин и пароль. После входа подтверди Minecraft, чтобы открыть личный кабинет.' : 'Введи логин и пароль.';
-    return `<div class="v7-auth-layout v9-auth-layout"><aside class="v7-auth-aside"><img src="${M.asset('assets/img/world.webp')}" alt="" decoding="async"></aside><section class="v7-auth-main"><h1>${title}</h1><p class="v7-auth-lead">${intro}</p><nav class="v7-auth-tabs" aria-label="Вход или регистрация"><a class="${registering ? '' : 'active'}" href="#auth/login">Вход</a><a class="${registering ? 'active' : ''}" href="#auth/register">Регистрация</a></nav><form data-form="${registering ? 'v7-register' : 'v7-login'}"><label class="field">Логин сайта<input name="username" type="text" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_]{3,32}" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Логин" value=""></label>${registering ? '<label class="field">Пароль<input name="password" type="password" required minlength="10" maxlength="256" autocomplete="new-password" placeholder="Не меньше 10 символов"></label><label class="field">Повтори пароль<input name="repeat" type="password" required minlength="10" maxlength="256" autocomplete="new-password"></label><label class="check-row"><input type="checkbox" name="terms" required><span>Принимаю <a href="#rules">правила сервера</a></span></label>' : '<label class="field">Пароль<input name="password" type="password" required maxlength="256" autocomplete="current-password" placeholder="Пароль аккаунта"></label><label class="check-row"><input type="checkbox" name="remember" checked><span>Оставаться в аккаунте на этом устройстве</span></label>'}<div class="form-error" role="alert"></div><button type="submit" class="btn primary wide">${title}${icon('arrow-right')}</button></form>${registering ? '<p class="v7-auth-bottom">Уже зарегистрирован? <a href="#auth/login">Войти</a></p>' : '<p class="v7-auth-bottom">Нет аккаунта? <a href="#auth/register">Создать</a></p>'}</section></div>`;
+    const intro = registering ? 'Создай логин и пароль. Затем привяжи Minecraft, чтобы видеть баланс и покупки.' : 'Введи логин и пароль.';
+    return `<div class="v7-auth-layout v9-auth-layout"><aside class="v7-auth-aside"><img src="${M.asset('assets/img/world.webp')}" alt="" decoding="async"></aside><section class="v7-auth-main"><h1>${title}</h1><p class="v7-auth-lead">${intro}</p><nav class="v7-auth-tabs" aria-label="Вход или регистрация"><a class="${registering ? '' : 'active'}" href="#auth/login"${registering ? '' : ' aria-current="page"'}>Вход</a><a class="${registering ? 'active' : ''}" href="#auth/register"${registering ? ' aria-current="page"' : ''}>Регистрация</a></nav><form data-form="${registering ? 'v7-register' : 'v7-login'}"><label class="field">Логин сайта<input name="username" type="text" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_]{3,32}" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Логин сайта" value=""></label>${registering ? passField('Пароль', 'password', 'new-password', 'Пароль', 10, 'Минимум 10 символов.') + passField('Повтори пароль', 'repeat', 'new-password', 'Ещё раз', 10) + '<label class="check-row"><input type="checkbox" name="terms" required><span>Принимаю <a href="#rules">правила сервера</a></span></label>' : passField('Пароль', 'password', 'current-password', 'Пароль аккаунта') + '<label class="check-row"><input type="checkbox" name="remember" checked><span>Оставаться в аккаунте на этом устройстве<small class="v7-remember-hint">30 дней без повторного входа. Без галочки сеанс завершится при закрытии браузера.</small></span></label>' + '<details class="v7-2fa"><summary>Включена двухфакторная защита</summary><label class="field">Код из приложения<input name="totp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="6 цифр"></label></details>'}<div class="form-error" role="alert"></div><button type="submit" class="btn primary wide">${title}${icon('arrow-right')}</button></form>${registering ? '<p class="v7-auth-bottom">Уже зарегистрирован? <a href="#auth/login">Войти</a></p>' : '<p class="v7-auth-bottom">Нет аккаунта? <a href="#auth/register">Создать</a></p>'}</section></div>`;
   }
+
+  const capsHint = event => {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement) || !input.closest('.v7-pass-wrap')) return;
+    const hint = input.closest('.field')?.querySelector('[data-caps-lock]');
+    if (hint) hint.hidden = !(typeof event.getModifierState === 'function' && event.getModifierState('CapsLock'));
+  };
+  document.addEventListener('keydown', capsHint, true);
+  document.addEventListener('keyup', capsHint, true);
+  document.addEventListener('focusout', event => {
+    const hint = event.target?.closest?.('.field')?.querySelector?.('[data-caps-lock]');
+    if (hint) hint.hidden = true;
+  }, true);
+  H['v7-pass-toggle'] = button => {
+    const input = button.closest('.v7-pass-wrap')?.querySelector('input');
+    if (!input) return;
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    button.innerHTML = icon(show ? 'eye-off' : 'eye');
+    button.setAttribute('aria-label', show ? 'Скрыть пароль' : 'Показать пароль');
+    button.setAttribute('aria-pressed', String(show));
+    input.focus({ preventScroll: true });
+  };
+
+  // Every password field gets the same reveal and Caps Lock hint, including
+  // settings, recovery and admin forms that are rendered outside this file.
+  function enhancePasswordFields(root = document) {
+    root.querySelectorAll('input[type="password"]').forEach(input => {
+      if (input.closest('.v7-pass-wrap') || input.dataset.cmPassReady) return;
+      input.dataset.cmPassReady = '1';
+      const wrap = document.createElement('span');
+      wrap.className = 'v7-pass-wrap';
+      input.parentNode.insertBefore(wrap, input);
+      wrap.appendChild(input);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'v7-pass-toggle';
+      button.dataset.action = 'v7-pass-toggle';
+      button.setAttribute('aria-label', 'Показать пароль');
+      button.setAttribute('aria-pressed', 'false');
+      button.innerHTML = icon('eye');
+      wrap.appendChild(button);
+      const field = input.closest('.field');
+      if (field && !field.querySelector('[data-caps-lock]')) {
+        const hint = document.createElement('em');
+        hint.className = 'v7-caps';
+        hint.dataset.capsLock = '';
+        hint.setAttribute('role', 'status');
+        hint.hidden = true;
+        hint.textContent = 'Caps Lock включён';
+        field.appendChild(hint);
+      }
+    });
+  }
+  let passEnhanceFrame = 0;
+  function schedulePasswordEnhance() {
+    if (passEnhanceFrame) return;
+    passEnhanceFrame = requestAnimationFrame(() => { passEnhanceFrame = 0; enhancePasswordFields(document); });
+  }
+  new MutationObserver(schedulePasswordEnhance).observe(document.body, { childList: true, subtree: true });
+  schedulePasswordEnhance();
 
   R.auth = tab => authMarkup(tab === 'register' ? 'register' : 'login');
   R.inbox = () => R.auth('login');
   F['v7-login'] = async (form, data) => {
-    const result = await Q.request('login', { username: String(data.get('username') || '').trim(), password: data.get('password'), remember: !!data.get('remember') });
+    let result;
+    try {
+      result = await Q.request('login', { username: String(data.get('username') || '').trim(), password: data.get('password'), totp: String(data.get('totp') || '').trim(), remember: !!data.get('remember') });
+    } catch (error) {
+      if (/двухфактор/i.test(error.message || '') && form) {
+        const block = form.querySelector('details.v7-2fa');
+        if (block && !block.open) { block.open = true; block.querySelector('input')?.focus(); }
+      }
+      throw error;
+    }
     Q.csrf = result.csrf || Q.csrf;
     await Q.reload();
     if (!Q.user) throw Error('Не удалось открыть аккаунт. Обнови страницу и войди ещё раз.');
@@ -222,6 +296,9 @@
       const rows = state().siteSessions || [];
       return settingsShell(tab, `<section class="v7-settings-section"><div class="panel-head"><h2>Устройства</h2>${rows.some(row => !row.current) ? M.btn('Завершить остальные', 'v9-revoke-others', 'log-out', 'ghost small') : ''}</div>${rows.length ? `<div class="v9-session-list">${rows.map(row => `<article class="v9-session-row"><div>${icon('monitor')}<span><strong>${E(row.device || 'Браузер')}</strong><small>${M.date(row.createdAt, true)} · ${row.current ? 'Это устройство' : 'Активный сеанс'}</small></span></div>${row.current ? M.pill('Текущий', 'green') : M.btn('Завершить', 'v9-revoke-session', 'log-out', 'ghost small', `data-id="${E(row.id)}"`)}</article>`).join('')}</div>` : M.empty('Активных сеансов нет', '', 'monitor')}</section>`);
     }
+    if (tab === 'privacy') {
+      return settingsShell(tab, `<section class="v7-settings-section"><h2>Приватность</h2><p class="muted">Сайт хранит только то, что нужно для входа, покупок и обращений. Полный перечень — в <a href="#privacy">политике конфиденциальности</a>.</p><div class="v7-form-narrow"><h3>Файлы cookie</h3><p class="hint">Аналитику и настройки интерфейса можно включать и выключать в любой момент.</p>${M.btn('Изменить выбор cookie', 'v6-cookies', 'settings', 'ghost')}<h3 class="mt">Мои данные</h3><p class="hint">Выгрузим аккаунт, сеансы, историю входов, обращения и заказы одним файлом JSON.</p>${M.btn('Скачать мои данные', 'v9-export-data', 'download', 'ghost')}<h3 class="mt">Удаление аккаунта</h3><p class="hint">Аккаунт обезличивается и не может войти. Заказы и журнал действий администрации остаются — этого требует закон. Вернуть аккаунт после удаления нельзя.</p>${M.btn('Удалить аккаунт', 'v9-delete-account', 'trash', 'danger-btn')}</div></section>`);
+    }
     const html = oldSettings(tab);
     const parsed = new DOMParser().parseFromString(html, 'text/html');
     const content = parsed.querySelector('.v71-settings-content')?.innerHTML || parsed.querySelector('.v7-settings-layout > div')?.innerHTML || html;
@@ -238,6 +315,27 @@
   H['v9-revoke-others-confirm'] = async () => {
     const result = await api('account/sessions/revoke-others', {});
     M.closeModal(); await Q.reload(); M.toast(`Завершено сеансов: ${result.revoked}.`);
+  };
+
+  const call = (path, body) => (window.CM6 && window.CM6.request ? window.CM6.request(path, { method: 'POST', body }) : api(path, body));
+
+  H['v9-export-data'] = async () => {
+    const result = await call('account/export', {});
+    const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob), link = document.createElement('a');
+    link.href = url; link.download = `copimine-account-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    M.toast('Файл с данными скачан.');
+  };
+  H['v9-delete-account'] = () => M.openModal('Удалить аккаунт?', `<p>Аккаунт будет обезличен и больше не сможет войти. Заказы и журнал администрации сохранятся.</p><form data-form="v9-delete-account"><label class="field">Введи слово УДАЛИТЬ<input name="confirm" required autocomplete="off" maxlength="20"></label><label class="field">Пароль<input name="password" type="password" required autocomplete="current-password" maxlength="256"></label><div class="form-error" role="alert"></div><div class="v71-dialog-actions">${M.btn('Отмена', 'close', '', 'ghost')}<button class="btn danger-btn" type="submit">Удалить аккаунт</button></div></form>`);
+  F['v9-delete-account'] = async (form, data) => {
+    await api('account/delete', { confirm: String(data.get('confirm') || ''), password: String(data.get('password') || '') });
+    M.closeModal();
+    Q.user = null;
+    await Q.reload();
+    M.navTo('home');
+    M.toast('Аккаунт удалён.');
   };
 
   function stopMinecraftPoll() { clearInterval(minecraftPoll); minecraftPoll = 0; }
@@ -300,9 +398,10 @@
 
   V.after.push((page, tab) => {
     const user = currentAccountUser();
-    if (user && !user.gameLinkVerified) {
+    const admin = !!window.CM6?.canAdmin?.();
+    if (user && !user.gameLinkVerified && !admin && page === 'account') {
       document.title = 'Привязка Minecraft · CopiMine';
-      if (page !== 'account' || tab !== 'link') { M.navTo('account/link'); return; }
+      if (tab !== 'link') { M.navTo('account/link'); return; }
       if (pendingMinecraftLink) startMinecraftPoll();
       return;
     }
@@ -315,7 +414,6 @@
         }
       } catch { /* The cabinet remains available without session storage. */ }
     }
-    if (page === 'auth') window.CMSiteMotion?.auth?.(document.querySelector('.v9-auth-layout'));
     if (page === 'faq') document.title = 'FAQ · CopiMine';
     document.querySelectorAll('.breadcrumb').forEach(crumb => {
       const root = [...crumb.children].find(node => node.tagName === 'SPAN' && ['CopiMine', 'Управление'].includes(node.textContent.trim()));

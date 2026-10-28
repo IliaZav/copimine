@@ -17,14 +17,14 @@ import time
 import uuid
 
 from fastapi import APIRouter, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from .security import current_user, fail, throttle
 
 router = APIRouter()
 DIMENSIONS = [('overworld', 'Обычный мир'), ('nether', 'Незер'), ('end', 'Энд')]
 ACTIVE = ('queued', 'waiting_for_resources', 'running', 'validating', 'publishing')
 DEFAULTS = dict(enabled=True, autoRefresh=True, intervalMinutes=720, minAgeMinutes=0,
-                showPlayers=False, positionDelaySeconds=0)
+                showPlayers=False, positionDelaySeconds=0, perspective=False, firstPerson=False)
 VERSION = re.compile(r'[a-f0-9]{32}\Z')
 
 
@@ -254,7 +254,7 @@ class MapJobs:
         if not isinstance(reason,str) or not 5 <= len(reason.strip()) <= 500: fail(400,'reason_required','Укажите причину изменения настроек карты.')
         if set(data) - set(DEFAULTS): fail(400,'map_settings','Неизвестный параметр карты.')
         config = self.config()
-        for key in ('enabled','autoRefresh','showPlayers'):
+        for key in ('enabled','autoRefresh','showPlayers','perspective','firstPerson'):
             if key in data and type(data[key]) is not bool: fail(400,'map_settings','Ожидался переключатель.')
         for key, low, high in [('intervalMinutes',60,10080),('minAgeMinutes',0,1440),('positionDelaySeconds',0,3600)]:
             if key in data and (type(data[key]) is not int or not low <= data[key] <= high): fail(400,'map_settings','Проверьте интервал: от 60 минут до 7 дней; задержка публикации — до суток.')
@@ -312,6 +312,7 @@ def public_metadata(request: Request):
     ids=current.get('dimensions',{}).get('public',[]) if config['enabled'] else []
     version=current.get('version')
     return dict(enabled=config['enabled'],players=[],publishedAt=current.get('publishedAt'),version=version,
+                perspective=bool(config['perspective']),firstPerson=bool(config['firstPerson']),
                 dimensions=[dict(id=d,name=name,available=any(x+d in ids for x in ('public-','public_'))) for d,name in DIMENSIONS],
                 viewerUrl=f'/maps/public/{version}/index.html' if version and config['enabled'] else None,
                 privacy='Показаны чанки с сохранённым временем присутствия игроков поблизости. Это общая освоенная область сервера.')
@@ -355,6 +356,18 @@ def map_asset(scope: str, version: str, asset: str, request: Request):
         if str(error)=='missing_asset' and '/tiles/' in asset:
             return Response(status_code=204,headers={'Cache-Control':'private, no-store' if scope=='private' else 'public, max-age=31536000, immutable'})
         fail(404,'not_found','Файл карты не найден.')
+    # Publication flags are applied per request so the admin toggles work without a re-render.
+    if scope == 'public' and path.name == 'settings.json':
+        try: metadata = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, ValueError): fail(404,'not_found','Файл карты не найден.')
+        if not isinstance(metadata, dict): fail(404,'not_found','Файл карты не найден.')
+        if asset == 'settings.json':
+            metadata['defaultToFlatView'] = not bool(config['perspective'])
+        else:
+            metadata['perspectiveView'] = bool(config['perspective'])
+            metadata['freeFlightView'] = bool(config['firstPerson'])
+            metadata['flatView'] = True
+        return JSONResponse(metadata, headers={'Cache-Control':'no-store','X-Frame-Options':'SAMEORIGIN'})
     headers={'Cache-Control':'private, no-store' if scope=='private' else 'public, max-age=31536000, immutable',
              'X-Frame-Options':'SAMEORIGIN','Content-Security-Policy':"default-src 'self' data: blob:; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'self'"}
     name=path.name

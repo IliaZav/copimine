@@ -40,6 +40,8 @@ def test_account_auth_and_navigation_contract():
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
@@ -55,6 +57,8 @@ def test_recovery_ui_uses_authenticated_server_identity_without_player_row():
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr

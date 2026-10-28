@@ -18,7 +18,7 @@ input::placeholder,textarea::placeholder{color:#818c94}.tag.green,.badge.green,.
 #persistent-header{background:#101214ed;border-color:#262c30;backdrop-filter:blur(16px)}#persistent-header .site-header{height:82px;gap:28px}
 #persistent-header .site-nav{gap:27px}#persistent-header .site-nav>a{font-size:13px;font-weight:550;color:#c2c9ce;padding:0 2px}
 #persistent-header .site-nav>a:hover,#persistent-header .site-nav>a.active{color:#fff}
-#persistent-header .site-nav>a::after,#persistent-header .site-nav>a.active::after{bottom:18px;height:2px;right:2px;left:2px;border-radius:2px}
+#persistent-header .site-nav>a::after,#persistent-header .site-nav>a.active::after{bottom:-1px;height:2px;right:2px;left:2px;border-radius:2px}
 #persistent-header .brand .wordmark{width:160px;height:auto;max-height:42px;object-fit:contain}
 .header-actions{gap:8px!important;margin-left:18px}.header-actions>.v7-cart-link{width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;color:#c9d0d5}
 .header-actions>.v7-cart-link:hover,.v71-notification-button:hover{background:#ffffff0b;border-radius:9px;color:#fff}.header-actions .cm72-signin{min-width:84px;background:#f3f5f5;border-color:#f3f5f5;color:#111518}

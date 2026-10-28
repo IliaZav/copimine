@@ -69,22 +69,23 @@ def test_production_react_bundle_does_not_require_a_node_process_global():
 
 def test_payment_methods_use_local_brand_marks_and_cookie_notice_stays_compact():
     payments=(ROOT/'assets/js/public-v4.js').read_text(encoding='utf-8')
-    assert "assets/img/brands/sbp.png" in payments
-    assert "assets/img/brands/mir.png" in payments
-    assert (ROOT/'assets/img/brands/sbp.png').is_file()
-    assert (ROOT/'assets/img/brands/mir.png').is_file()
+    assert "assets/img/brands/sbp.webp" in payments
+    assert "assets/img/brands/mir.webp" in payments
+    assert (ROOT/'assets/img/brands/sbp.webp').is_file()
+    assert (ROOT/'assets/img/brands/mir.webp').is_file()
 
     site_v6=(ROOT/'assets/js/site-v6.js').read_text(encoding='utf-8')
     rendered_donate=site_v6.split("R.donate=()=>",1)[1].split('\n',1)[0]
     assert "payBrand(id)" in rendered_donate
     assert "assets/img/brands/" in site_v6
-    assert "sbp.png" in site_v6
-    assert "mir.png" in site_v6
+    assert "sbp.webp" in site_v6
+    assert "mir.webp" in site_v6
     payment_css=(ROOT/'assets/site-motion-v1.css').read_text(encoding='utf-8')
     assert ".payment-brand-card" in payment_css
 
     cookie_source=(ROOT/'assets/js/site-v6.js').read_text(encoding='utf-8')
     banner=cookie_source.split('function cookieBanner()',1)[1].split('\n',1)[0]
     assert "M.btn('Настроить','v6-cookies'" not in banner
-    assert "M.btn('Разрешить','v6-cookies-all'" in banner
-    assert "M.btn('Только нужные','v6-cookies-essential'" in banner
+    assert "M.btn('Принять всё','v6-cookies-all'" in banner
+    assert "M.btn('Только необходимые','v6-cookies-essential'" in banner
+    assert 'href="#privacy"' in banner

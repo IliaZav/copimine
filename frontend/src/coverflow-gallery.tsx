@@ -34,7 +34,6 @@ export function CoverflowGallery({ slides, startIndex = 0, asset, onOpen }: Cove
     if (event.button !== 0) return;
     startX.current = event.clientX;
     dragged.current = false;
-    event.currentTarget.setPointerCapture(event.pointerId);
   };
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     if (startX.current === null) return;
@@ -97,7 +96,7 @@ export function CoverflowGallery({ slides, startIndex = 0, asset, onOpen }: Cove
                   else onOpen(slide, index);
                 }}
               >
-                <img src={asset(slide.src || "")} alt={slide.alt || slide.title || ""} loading="eager" decoding="async" draggable={false} />
+                <img src={visible ? asset(slide.src || "") : "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"} alt={slide.alt || slide.title || ""} loading="lazy" decoding="async" draggable={false} />
                 <span className="cm72-carousel-caption"><strong>{slide.title}</strong><small>{slide.caption}</small></span>
               </button>
             );

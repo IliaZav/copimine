@@ -22,8 +22,10 @@ test('auth, FAQ route and admin breadcrumb expose the intended navigation', () =
   const document = {
     querySelectorAll: selector => selector === '.breadcrumb' ? [crumb, managementCrumb] : [],
     createElement: () => ({ setAttribute(name, value) { this[name] = value; } }),
+    addEventListener() {},
+    body: {},
   };
-  const context = { window: { CM: M, CMV4: V, CMReview: Q, CM71: { heading: () => '' }, CM5: { head: () => '' } }, document, CM71: { heading: () => '' }, CM5: { head: () => '' }, icon: () => '' };
+  const context = { window: { CM: M, CMV4: V, CMReview: Q, CM71: { heading: () => '' }, CM5: { head: () => '' } }, document, requestAnimationFrame: callback => { callback(); return 1; }, MutationObserver: class { observe() {} disconnect() {} }, CM71: { heading: () => '' }, CM5: { head: () => '' }, icon: () => '' };
   vm.runInNewContext(readFileSync(new URL('../frontend/assets/js/account-v9.js', import.meta.url), 'utf8'), context);
 
   const register = M.renderers.auth('register');

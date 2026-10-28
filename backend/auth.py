@@ -26,6 +26,18 @@ def create_user(database, name, password, email="", role="player", email_verifie
         return dict(db.execute("SELECT * FROM cm_site_users WHERE id=%s", (user_id,)).fetchone())
 
 
+def login_event(database, request, name, result, user_id=""):
+    """Records every attempt, including failures, for the admin login history."""
+    try:
+        with database.transaction() as db:
+            db.execute(
+                "INSERT INTO cm_site_login_events(id,user_id,name,result,ip,user_agent,created_s) VALUES(%s,%s,%s,%s,%s,%s,%s)",
+                (uuid.uuid4().hex, user_id or "", (name or "")[:64], result[:24], request.client.host if request.client else "", request.headers.get("user-agent", "")[:300], int(time.time())),
+            )
+    except Exception:
+        return
+
+
 def issue_session(request, response, user, remember=False):
     now = int(time.time())
     ttl = 30 * 86400 if remember else request.app.state.settings.session_hours * 3600
@@ -53,13 +65,21 @@ async def login(request: Request, response: Response):
     with database.transaction() as db:
         row = db.execute("SELECT * FROM cm_site_users WHERE name_norm=%s", (name,)).fetchone()
     if not row or not verify_password(data.get("password", ""), row["password_hash"]):
+        login_event(database, request, name, "invalid_credentials", row["id"] if row else "")
         fail(401, "invalid_credentials", "Неверный логин или пароль.")
     user = dict(row)
     if not user["enabled"] or (user["blocked_until_s"] and user["blocked_until_s"] > time.time()):
+        login_event(database, request, name, "blocked", user["id"])
         fail(403, "account_blocked", "Вход в этот аккаунт ограничен. Обратитесь в поддержку.")
+    if user["totp_secret"]:
+        from .mfa import verify_factor
+        if not verify_factor(database, request.app.state.settings.secret_key, user, str(data.get("totp", "")).strip()):
+            login_event(database, request, name, "totp_failed", user["id"])
+            fail(401, "totp_required", "Введи код двухфакторной защиты.")
     if request.state.session:
         with database.transaction() as db:
             db.execute("UPDATE cm_site_sessions SET revoked_s=%s WHERE token_hash=%s", (int(time.time()), request.state.session["token_hash"]))
+    login_event(database, request, name, "success", user["id"])
     database.audit(user, "auth.login")
     return issue_session(request, response, user, bool(data.get("remember", data.get("remember_me", False))))
 

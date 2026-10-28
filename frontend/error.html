@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0c0e0f">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/img/favicon-32.png"><link rel="shortcut icon" href="assets/img/favicon.ico"><link rel="apple-touch-icon" sizes="180x180" href="assets/img/apple-touch-icon.png">
+<title>Ошибка — CopiMine</title>
+<style>
+:root{color-scheme:dark;--bg:#0b0d0e;--panel:#14181a;--line:#2c3236;--text:#f0f2f1;--muted:#a4acb1;--quiet:#7d878d;--green:#77e9b8;--mint:#2de39b;--danger:#f09189;--amber:#e6c58e;--ease:cubic-bezier(.22,1,.36,1)}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:'Segoe UI Variable','Segoe UI',system-ui,-apple-system,sans-serif;overflow-x:hidden;display:flex;flex-direction:column;min-height:100vh}
+a{color:inherit;text-decoration:none}
+.skip{position:absolute;left:-9999px}
+.skip:focus{left:16px;top:16px;z-index:20;padding:10px 14px;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.err-bg{position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:0}
+.err-orb{position:absolute;border-radius:50%;filter:blur(70px);opacity:.55;animation:orbFloat 17s var(--ease) infinite alternate}
+.err-orb.a{width:46vw;height:46vw;left:-12vw;top:-14vw;background:radial-gradient(circle,#1d7a5a,transparent 66%)}
+.err-orb.b{width:38vw;height:38vw;right:-10vw;top:16vh;background:radial-gradient(circle,#1d5c7a,transparent 68%);animation-delay:-6s}
+.err-orb.c{width:30vw;height:30vw;left:32vw;bottom:-16vw;background:radial-gradient(circle,#6b5a24,transparent 70%);animation-delay:-11s;opacity:.34}
+@keyframes orbFloat{from{transform:translate3d(0,0,0) scale(1)}to{transform:translate3d(3vw,4vh,0) scale(1.12)}}
+.err-top{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:16px;max-width:1180px;width:100%;margin:0 auto;padding:22px clamp(18px,4vw,34px)}
+.err-top img{display:block;width:152px;height:34px}
+.err-top .err-home{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border:1px solid var(--line);border-radius:11px;background:rgba(20,24,26,.72);color:var(--muted);font-size:13px;transition:border-color .2s,color .2s,transform .2s}
+.err-top .err-home:hover{border-color:#3d5d52;color:var(--text);transform:translateY(-1px)}
+.err-main{position:relative;z-index:2;flex:1;display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);align-items:center;gap:clamp(24px,4vw,64px);max-width:1180px;width:100%;margin:0 auto;padding:clamp(8px,2vw,28px) clamp(18px,4vw,34px) clamp(36px,6vw,72px)}
+.err-visual{position:relative;min-height:min(52vh,440px);display:grid;place-items:center}
+.err-code{position:relative;margin:0;font-size:clamp(104px,17vw,212px);line-height:.82;font-weight:800;letter-spacing:-.055em;color:#eafff6;text-shadow:0 22px 60px rgba(45,227,155,.14);animation:codeIn .5s var(--ease) both}
+.err-code::before,.err-code::after{content:attr(data-code);position:absolute;inset:0;pointer-events:none}
+.err-code::before{color:var(--mint);clip-path:inset(12% 0 62% 0);transform:translateX(-4px);opacity:.5;animation:glitchA 3.8s steps(1,end) infinite}
+.err-code::after{color:#63c4ff;clip-path:inset(64% 0 12% 0);transform:translateX(5px);opacity:.45;animation:glitchB 4.6s steps(1,end) infinite}
+@keyframes codeIn{from{opacity:0;transform:translateY(18px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes glitchA{0%,92%,100%{transform:translateX(-4px)}93%{transform:translateX(9px)}95%{transform:translateX(-11px)}97%{transform:translateX(4px)}}
+@keyframes glitchB{0%,90%,100%{transform:translateX(5px)}91%{transform:translateX(-8px)}94%{transform:translateX(10px)}96%{transform:translateX(-3px)}}
+.err-cube{position:absolute;width:44px;height:44px;border:1px solid rgba(119,233,184,.35);border-radius:10px;background:linear-gradient(145deg,rgba(45,227,155,.16),rgba(20,26,24,.06));box-shadow:0 18px 40px rgba(0,0,0,.35);animation:float 8s var(--ease) infinite alternate}
+.err-cube::after{content:"";position:absolute;inset:8px;border:1px solid rgba(119,233,184,.22);border-radius:6px}
+.err-cube.c1{left:8%;top:12%;animation-delay:-1s;transform:rotate(-12deg)}
+.err-cube.c2{right:12%;top:22%;width:26px;height:26px;animation-delay:-4s;transform:rotate(18deg)}
+.err-cube.c3{left:22%;bottom:10%;width:18px;height:18px;animation-delay:-2s;transform:rotate(32deg)}
+.err-cube.c4{right:22%;bottom:16%;width:58px;height:58px;animation-delay:-6s;transform:rotate(-6deg);opacity:.6}
+@keyframes float{from{translate:0 0}to{translate:0 -22px}}
+.err-copy{position:relative;max-width:520px}
+.err-kicker{display:inline-flex;align-items:center;gap:9px;margin:0 0 16px;padding:7px 12px;border:1px solid #2f4a41;border-radius:999px;background:rgba(45,227,155,.08);color:var(--green);font-size:12px;font-weight:650;letter-spacing:.09em;text-transform:uppercase}
+.err-kicker i{width:7px;height:7px;border-radius:50%;background:var(--mint);box-shadow:0 0 0 0 rgba(45,227,155,.55);animation:pulse 2.4s infinite}
+@keyframes pulse{70%{box-shadow:0 0 0 8px rgba(45,227,155,0)}100%{box-shadow:0 0 0 0 rgba(45,227,155,0)}}
+.err-copy h1{margin:0 0 14px;font-size:clamp(28px,3.6vw,44px);line-height:1.08;letter-spacing:-.03em}
+.err-copy p{margin:0;color:var(--muted);font-size:clamp(14px,1.3vw,16px);line-height:1.65}
+.err-incident{margin-top:14px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:rgba(20,24,26,.7);color:var(--quiet);font-size:12px;font-variant-numeric:tabular-nums}
+.err-incident[hidden]{display:none}
+.err-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
+.err-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border:1px solid var(--line);border-radius:11px;background:var(--panel);color:var(--text);font:inherit;font-size:14px;font-weight:600;cursor:pointer;transition:transform .2s var(--ease),border-color .2s,background .2s}
+.err-btn:hover{transform:translateY(-2px);border-color:#3d5d52}
+.err-btn[hidden]{display:none}
+.err-btn.primary{background:linear-gradient(180deg,#8ff0c9,#5fe0ac);border-color:transparent;color:#08231a}
+.err-btn.primary:hover{background:linear-gradient(180deg,#a3f6d6,#6ce9b9)}
+.err-support{margin-top:30px;padding:18px;border:1px dashed #35574b;border-radius:14px;background:rgba(45,227,155,.045);animation:rise .55s var(--ease) both .18s}
+.err-support[hidden]{display:none}
+.err-support strong{display:block;margin-bottom:6px;font-size:15px}
+.err-support p{margin:0 0 13px;color:var(--muted);font-size:13px;line-height:1.6}
+.err-support a{display:inline-flex;align-items:center;gap:8px;color:var(--green);font-size:14px;font-weight:650}
+.err-support a:hover{text-decoration:underline}
+@keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.err-foot{position:relative;z-index:2;max-width:1180px;width:100%;margin:0 auto;padding:0 clamp(18px,4vw,34px) 24px;color:var(--quiet);font-size:12px}
+.err-foot span{display:inline-flex;gap:8px;align-items:center}
+.err-foot i{width:5px;height:5px;border-radius:50%;background:var(--quiet);opacity:.7}
+.err-teapot{display:none;width:min(320px,74vw);overflow:visible;filter:drop-shadow(0 26px 44px rgba(45,227,155,.16))}
+body[data-code="418"] .err-teapot{display:block;animation:teaIn .6s var(--ease) both}
+body[data-code="418"] .err-code,body[data-code="418"] .err-cube{display:none}
+.tea-body{transform-box:view-box;transform-origin:120px 168px;animation:teaSway 5.5s ease-in-out infinite alternate}
+.tea-steam path{opacity:0;transform-box:fill-box;transform-origin:50% 100%;animation:teaSteam 3.8s ease-in-out infinite}
+.tea-steam path:nth-child(2){animation-delay:1.2s}
+.tea-steam path:nth-child(3){animation-delay:2.4s}
+@keyframes teaIn{from{opacity:0;transform:translateY(18px) scale(.94)}to{opacity:1;transform:none}}
+@keyframes teaSway{from{transform:rotate(-1.8deg)}to{transform:rotate(1.8deg)}}
+@keyframes teaSteam{0%{opacity:0;transform:translateY(10px) scale(.85)}30%{opacity:.55}100%{opacity:0;transform:translateY(-26px) scale(1.12)}}
+@media(max-width:860px){
+ .err-main{grid-template-columns:1fr;gap:26px;text-align:center;padding-top:0}
+ .err-visual{min-height:min(34vh,300px)}
+ .err-code{font-size:clamp(98px,30vw,150px)}
+ .err-copy{margin:0 auto}
+ .err-copy p{margin-inline:auto}
+ .err-actions,.err-kicker{justify-content:center}
+ .err-support{text-align:left}
+ .err-cube.c4{display:none}
+}
+@media(prefers-reduced-motion:reduce){
+ *,*::before,*::after{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body data-code="{{CODE}}" data-incident="{{INCIDENT}}">
+<a class="skip" href="#error-content">К содержанию</a>
+<div class="err-bg" aria-hidden="true"><div class="err-orb a"></div><div class="err-orb b"></div><div class="err-orb c"></div></div>
+<header class="err-top">
+ <a href="/#home" aria-label="CopiMine — на главную"><img src="assets/img/logo.webp" width="152" height="34" alt="CopiMine"></a>
+ <a class="err-home" href="/#home">На главную <span aria-hidden="true">→</span></a>
+</header>
+<main class="err-main" id="error-content">
+ <div class="err-visual" aria-hidden="true">
+  <p class="err-code" data-code="404" data-error-code>404</p>
+  <span class="err-cube c1"></span><span class="err-cube c2"></span><span class="err-cube c3"></span><span class="err-cube c4"></span>
+  <svg class="err-teapot" viewBox="0 0 240 210" aria-hidden="true" focusable="false">
+   <defs>
+    <linearGradient id="teaBody" x1="0" y1="0" x2=".8" y2="1">
+     <stop offset="0" stop-color="#a6f7d8"/><stop offset=".5" stop-color="#5fe0ac"/><stop offset="1" stop-color="#2f9d72"/>
+    </linearGradient>
+    <linearGradient id="teaLid" x1="0" y1="0" x2="0" y2="1">
+     <stop offset="0" stop-color="#c7ffe8"/><stop offset="1" stop-color="#52d6a0"/>
+    </linearGradient>
+   </defs>
+   <ellipse cx="120" cy="188" rx="62" ry="9" fill="#04120c" opacity=".55"/>
+   <g class="tea-body">
+    <path d="M70 108 C56 98 42 88 28 84 L24 96 C38 104 50 118 62 134 Z" fill="url(#teaBody)"/>
+    <path d="M170 112 C204 104 210 152 172 160" fill="none" stroke="url(#teaLid)" stroke-width="13" stroke-linecap="round"/>
+    <path d="M64 104 Q120 92 176 104 Q194 132 178 160 Q120 184 62 160 Q46 132 64 104 Z" fill="url(#teaBody)"/>
+    <ellipse cx="96" cy="120" rx="17" ry="9" fill="#fff" opacity=".18" transform="rotate(-20 96 120)"/>
+    <ellipse cx="120" cy="100" rx="40" ry="11" fill="url(#teaLid)"/>
+    <ellipse cx="120" cy="98" rx="30" ry="7" fill="#0d3b2b" opacity=".35"/>
+    <circle cx="120" cy="84" r="7" fill="url(#teaLid)"/>
+   </g>
+   <g class="tea-steam" fill="none" stroke="#77e9b8" stroke-width="4" stroke-linecap="round">
+    <path d="M104 72 C94 62 110 56 100 42 C95 34 102 30 100 24"/>
+    <path d="M122 68 C112 58 128 52 118 38 C112 30 119 26 118 20"/>
+    <path d="M140 73 C132 64 146 58 137 46 C132 39 139 35 138 29"/>
+   </g>
+  </svg>
+ </div>
+ <div class="err-copy">
+  <p class="err-kicker"><i></i><span data-error-label>Ошибка</span></p>
+  <h1 data-error-title>Страница потерялась между чанками</h1>
+  <p data-error-text>Такой страницы нет. Возможно, ссылка устарела или в адресе опечатка.</p>
+  <p class="err-incident" hidden>Код обращения: <strong data-error-incident></strong></p>
+  <div class="err-actions">
+   <a class="err-btn primary" href="/#home">Вернуться на главную</a>
+   <button class="err-btn" type="button" data-error-back hidden>Назад</button>
+   <button class="err-btn" type="button" data-error-retry hidden>Повторить</button>
+  </div>
+  <section class="err-support" data-support hidden>
+   <strong>Не нашли нужное?</strong>
+   <p>Если страница должна открываться — напишите в поддержку: проверим ссылку и доступ.</p>
+   <a href="/#account/support">Написать в поддержку <span aria-hidden="true">→</span></a>
+  </section>
+ </div>
+</main>
+<footer class="err-foot"><span>CopiMine <i></i> Minecraft-сервер и магазин</span></footer>
+<script src="assets/js/error.js?v=errors3"></script>
+</body>
+</html>

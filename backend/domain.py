@@ -5,7 +5,7 @@ import re
 import secrets
 import time
 import uuid
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from fastapi import APIRouter, Request, Response
 from starlette.concurrency import run_in_threadpool
@@ -13,7 +13,7 @@ from starlette.concurrency import run_in_threadpool
 from .auth import create_user, issue_session, login, logout
 from .cms import public_config, public_sections
 from .game import catalog_version
-from .security import PERMISSIONS, RANK, check_hierarchy, current_user, fail, hash_password, public_user, throttle, verify_password
+from .security import COOKIE, PERMISSIONS, RANK, check_hierarchy, current_user, fail, hash_password, public_user, throttle, verify_password
 
 router = APIRouter()
 SUPPORTED_ACTIONS = {"kick", "ban", "unban", "heal", "feed", "kill", "gamemode", "teleport", "freeze", "unfreeze", "inventory.snapshot", "inventory.remove", "whitelist.add", "whitelist.remove", "time.day", "time.night", "weather.clear", "weather.rain", "save"}
@@ -301,6 +301,66 @@ def revoke_other_account_sessions(request: Request):
     return {"ok": True, "revoked": revoked}
 
 
+@router.post("/api/v6/account/export")
+def export_account(request: Request):
+    """Returns everything the site stores about the caller as one JSON document."""
+    user = current_user(request, fresh=True)
+    database = request.app.state.database
+    with database.transaction() as db:
+        tickets = db.execute("SELECT id,title,body,type,status,created_s,updated_s FROM cm_site_tickets WHERE user_id=%s ORDER BY created_s", (user["id"],)).fetchall()
+        messages = db.execute("SELECT m.ticket_id,m.actor_name,m.actor_role,m.body,m.created_s FROM cm_site_ticket_messages m JOIN cm_site_tickets t ON t.id=m.ticket_id WHERE t.user_id=%s ORDER BY m.created_s", (user["id"],)).fetchall()
+        receipts = db.execute("SELECT key,operation,status,result,created_s FROM cm_site_receipts WHERE actor_id=%s ORDER BY created_s", (user["id"],)).fetchall()
+        sessions = db.execute("SELECT created_s,expires_s,revoked_s,ip,user_agent FROM cm_site_sessions WHERE user_id=%s ORDER BY created_s DESC", (user["id"],)).fetchall()
+        logins = db.execute("SELECT result,ip,user_agent,created_s FROM cm_site_login_events WHERE user_id=%s ORDER BY created_s DESC LIMIT 500", (user["id"],)).fetchall()
+        notifications = db.execute("SELECT title,body,created_s,read_s FROM cm_site_notifications WHERE user_id=%s ORDER BY created_s DESC", (user["id"],)).fetchall()
+    database.audit(user, "account.exported", user["id"])
+    return {
+        "exportedAt": int(time.time() * 1000),
+        "account": {key: user[key] for key in ("id", "name", "display_name", "email", "role", "created_s", "last_login_s", "minecraft_uuid", "minecraft_name", "email_verified", "vk_id") if key in user.keys()},
+        "preferences": user["preferences"],
+        "tickets": [dict(row) for row in tickets],
+        "ticketMessages": [dict(row) for row in messages],
+        "orders": [dict(row) for row in receipts],
+        "sessions": [dict(row) for row in sessions],
+        "logins": [dict(row) for row in logins],
+        "notifications": [dict(row) for row in notifications],
+    }
+
+
+@router.post("/api/v6/account/delete")
+async def delete_account(request: Request):
+    """Anonymises the account. Financial receipts and the audit trail stay for legal reasons."""
+    user = current_user(request, fresh=True)
+    data = await request.json()
+    throttle(request.app.state.database, "account-delete:" + user["id"], 5, 3600)
+    if data.get("confirm") != "УДАЛИТЬ":
+        fail(400, "confirm_required", "Введите слово УДАЛИТЬ, чтобы подтвердить.")
+    if not verify_password(data.get("password", ""), user["password_hash"]):
+        fail(401, "invalid_credentials", "Пароль указан неверно.")
+    if user["role"] == "owner":
+        fail(409, "owner_transfer_required", "Сначала передайте владение другому аккаунту.")
+    database = request.app.state.database
+    now = int(time.time())
+    alias = "deleted_" + uuid.uuid4().hex[:8]
+    database.audit(user, "account.deleted", user["name"], details={"alias": alias})
+    with database.transaction() as db:
+        db.execute("DELETE FROM cm_site_ticket_messages WHERE ticket_id IN (SELECT id FROM cm_site_tickets WHERE user_id=%s)", (user["id"],))
+        db.execute("DELETE FROM cm_site_tickets WHERE user_id=%s", (user["id"],))
+        for table in ("cm_site_notifications", "cm_site_backup_codes", "cm_site_login_events"):
+            db.execute("DELETE FROM " + table + " WHERE user_id=%s", (user["id"],))
+        db.execute("DELETE FROM cm_site_oauth WHERE user_id=%s", (user["id"],))
+        db.execute("UPDATE cm_site_sessions SET revoked_s=%s WHERE user_id=%s AND revoked_s=0", (now, user["id"]))
+        db.execute(
+            "UPDATE cm_site_users SET name=%s,name_norm=%s,display_name=%s,email=NULL,email_norm=NULL,"
+            "password_hash=%s,minecraft_uuid=NULL,minecraft_name=NULL,vk_id=NULL,totp_secret=NULL,"
+            "pending_totp=NULL,preferences='{}',enabled=0,updated_s=%s,blocked_reason=%s,blocked_until_s=%s WHERE id=%s",
+            (alias, alias, "Удалённый аккаунт", hash_password(secrets.token_urlsafe(48)), now, "account.deleted", now + 315360000, user["id"]),
+        )
+    response = Response()
+    response.delete_cookie(COOKIE, path="/")
+    return {"ok": True, "alias": alias}
+
+
 @router.post("/api/v7/dismiss-hint")
 def dismiss_hint(request: Request):
     current_user(request)
@@ -486,11 +546,34 @@ def admin_health(request: Request):
     return {"website": "ok", "database": "postgresql" if not request.app.state.database.sqlite else "sqlite-test", "game": request.app.state.game.health(detailed=True), "mail": {"configured": bool(settings.smtp_host), "ready": settings.mail_domain_ready, "pending": pending}, "vk": {"configured": bool(settings.vk_client_id)}, "payments": {"configured": False}}
 
 
+@router.get("/api/v6/admin/audit")
+def admin_audit(request: Request):
+    current_user(request, "logs.view")
+    with request.app.state.database.transaction() as db:
+        rows = db.execute("SELECT * FROM cm_site_audit ORDER BY created_s DESC LIMIT 300").fetchall()
+    entries = []
+    for row in rows:
+        item = dict(row)
+        entries.append({
+            "id": item["id"],
+            "kind": item["action"],
+            "action": item["action"],
+            "actor_id": item["actor_id"],
+            "actor": item["actor_name"],
+            "target_id": item["target"],
+            "target": item["target"],
+            "reason": item["reason"],
+            "detail": item["reason"],
+            "at": item["created_s"] * 1000,
+        })
+    return {"entries": entries}
+
+
 @router.patch("/api/v6/admin/catalog/{identifier}")
 async def update_catalog_item(request: Request, identifier: str):
     user = current_user(request, "catalog.manage", fresh=True)
     data = await request.json()
-    allowed = {"version", "name", "description", "category", "price", "limit", "reason"}
+    allowed = {"version", "name", "description", "category", "price", "limit", "video", "reason"}
     if set(data) - allowed:
         fail(400, "invalid_catalog_update", "В форме есть поля, которые нельзя менять здесь.")
     reason = safe_reason(data.get("reason"))
@@ -510,8 +593,12 @@ async def update_catalog_item(request: Request, identifier: str):
         name = str(data.get("name", item.get("name", ""))).strip()
         description = str(data.get("description", item.get("description", ""))).strip()
         category = str(data.get("category", item.get("category", ""))).strip()
+        video = str(data.get("video", item.get("video", ""))).strip()
         if not 1 <= len(name) <= 120 or not 1 <= len(description) <= 3000 or not 1 <= len(category) <= 80:
             fail(400, "invalid_catalog_update", "Проверь название, описание и категорию товара.")
+        parsed_video = urlparse(video) if video else None
+        if video and (len(video) > 500 or parsed_video.scheme != "https" or not parsed_video.netloc or any(c in video for c in "\"'<> \r\n\t")):
+            fail(400, "invalid_catalog_video", "Ссылка на видео должна начинаться с https:// и вести на YouTube, Rutube или файл mp4/webm.")
         if re.search(r"(?i)<\s*/?\s*[a-z!][^>]*>|javascript\s*:|data\s*:\s*text/html", name + "\n" + description + "\n" + category):
             fail(400, "invalid_catalog_update", "HTML и активные ссылки в карточках товара запрещены.")
         price, limit = data.get("price"), data.get("limit")
@@ -548,7 +635,7 @@ async def update_catalog_item(request: Request, identifier: str):
         overlays = json.loads(row["value"]) if row else {}
         if not isinstance(overlays, dict):
             overlays = {}
-        overlays[identifier] = {"name": name, "description": description, "category": category}
+        overlays[identifier] = {"name": name, "description": description, "category": category, "video": video}
         now = int(time.time())
         db.execute("INSERT INTO cm_site_settings(key,value,updated_s,actor) VALUES(%s,%s,%s,%s) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_s=excluded.updated_s,actor=excluded.actor", ("catalog_overrides", json.dumps(overlays, ensure_ascii=False), now, user["name"]))
         db.execute("INSERT INTO cm_site_audit(id,actor_id,actor_name,action,target,reason,details,created_s) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)", (uuid.uuid4().hex, user["id"], user["name"], "catalog.updated", identifier, reason, json.dumps({"price": price, "limit": limit, "currency": currency}, ensure_ascii=False), now))

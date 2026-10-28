@@ -21,7 +21,7 @@ MC_NAME = re.compile(r"[A-Za-z0-9_]{1,32}\Z")
 
 
 def catalog_version(item):
-    fields = ("id", "name", "description", "category", "currency", "price", "limit", "enabled", "visibility", "sourceType", "material", "maxQuantity")
+    fields = ("id", "name", "description", "category", "video", "currency", "price", "limit", "enabled", "visibility", "sourceType", "material", "maxQuantity")
     snapshot = {key: item.get(key) for key in fields}
     return hashlib.sha256(json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()[:24]
 
@@ -255,8 +255,9 @@ class GameAdapter:
             item['maxQuantity']=1
             overlay = overrides.get(item.get("id"), {}) if isinstance(overrides, dict) else {}
             if isinstance(overlay, dict):
-                for key in ("name", "description", "category"):
+                for key in ("name", "description", "category", "video"):
                     if key in overlay:
                         item[key] = overlay[key]
             item["version"] = catalog_version(item)
-        return items if private else [x for x in items if x.get("visibility") == "public"]
+        # adminSubtitle marks internal catalog entries (closed recipes) that must not be sold publicly
+        return items if private else [x for x in items if x.get("visibility") == "public" and not x.get("adminSubtitle")]

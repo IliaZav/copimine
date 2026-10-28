@@ -2,3 +2,38 @@
 
 .admin-content .v6-map-page>.section-head{display:none}.v71-local-label{display:flex}.v71-local-label.is-connected>i{background:#75cf91}.v71-local-label.is-disconnected>i{background:#d89574}.production-map-page .tabs{flex-wrap:wrap}
 .v6-server-summary .production-metric{font-size:clamp(1.2rem,1.6vw,1.5rem);line-height:1.3;overflow-wrap:anywhere}
+.v6-spark{display:block;margin-top:14px;color:#a7d08b;min-height:70px}
+.v6-log-samples{margin:14px 0 0;padding:14px 16px;background:var(--surface,#15191b);border-radius:10px;font-size:.8rem;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;max-height:280px;overflow:auto;color:var(--muted,#a0a7a6)}
+.v6-logins-body{margin-top:6px}
+
+/* Admin polish: left-aligned quick links. Table heads cannot be sticky here:
+   .table-wrap is the scroll container, so a top offset pushes them over rows. */
+.v71-admin-shell .v6-actions-grid .btn{justify-content:flex-start;text-align:left;width:100%}
+.v71-balance-number.is-empty{color:#78848a;letter-spacing:0}
+/* Short admin pages: keep one background instead of a hard seam under the content. */
+.v71-admin-shell .admin-main{background:#111619}
+.v71-admin-shell .admin-content{background:transparent}.v71-admin-shell{background:#111619}
+.admin-shell.v7-admin-shell.v71-admin-shell{background:#111619}
+
+/* Privacy policy and consent details. */
+.cm-legal{line-height:1.75}
+.cm-legal h2{font-size:22px;margin:34px 0 12px;letter-spacing:-.02em}
+.cm-legal h2:first-of-type{margin-top:22px}
+.cm-legal p{color:var(--muted);margin:0 0 14px}
+.cm-legal ul{color:var(--muted);margin:0 0 16px;padding-left:20px}
+.cm-legal li{margin:7px 0}
+.cm-legal code{background:#ffffff0d;border:1px solid var(--line);border-radius:3px;padding:1px 5px;font-size:12px;overflow-wrap:anywhere}
+.cm-legal a{color:var(--green)}
+.cm-legal-table{overflow-x:auto;margin:8px 0 18px;border:1px solid var(--line);border-radius:6px}
+.cm-legal-table table{width:100%;border-collapse:collapse;min-width:560px}
+.cm-legal-table th,.cm-legal-table td{text-align:left;vertical-align:top;padding:10px 12px;border-bottom:1px solid var(--line);font-size:12px}
+.cm-legal-table th{color:var(--quiet);text-transform:uppercase;letter-spacing:.06em;font-size:10px;background:#ffffff05}
+.cm-legal-table tr:last-child td{border-bottom:0}
+.cm-legal-table td{color:var(--muted)}
+.cm-legal-table td:first-child{color:var(--text);white-space:nowrap}
+.cm-legal-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:18px 0 4px}
+.cm74-footer-bottom{flex-wrap:wrap;gap:12px}
+.cm74-footer-bottom a{color:var(--quiet);font-size:11px}
+.cm74-footer-bottom a:hover{color:var(--text)}
+@media(max-width:620px){.cm-legal h2{font-size:19px}.cm-legal-table th,.cm-legal-table td{padding:9px 10px}}
+.v7-remember-hint{display:block;margin-top:4px;color:var(--quiet);font-size:10.5px;line-height:1.5}

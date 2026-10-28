@@ -116,24 +116,16 @@ def _gallery_bytes(encoded):
             image.seek(0)
             image = ImageOps.exif_transpose(image)
             image.load()
-            if image_format == "JPEG":
-                image = image.convert("RGB")
-                output_format = "JPEG"
-            elif image_format == "GIF":
-                image = image.convert("RGBA")
-                output_format = "PNG"
-            else:
-                output_format = image_format
+            has_alpha = image.mode in ("RGBA", "LA", "PA") or "transparency" in image.info
+            image = image.convert("RGBA" if has_alpha else "RGB")
             output = io.BytesIO()
-            save_options = {"quality": 88, "method": 4} if output_format == "WEBP" else {"quality": 88} if output_format == "JPEG" else {}
-            image.save(output, format=output_format, **save_options)
+            image.save(output, format="WEBP", quality=88, method=4)
             data = output.getvalue()
     except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
         fail(400, "invalid_gallery_image", "Файл повреждён или не является поддерживаемым изображением.")
     if not data or len(data) > _MAX_GALLERY_BYTES:
         fail(413, "gallery_image_too_large", "После обработки изображение превышает 4 МБ.")
-    extension, media_type = _GALLERY_MIMES[output_format]
-    return data, extension, media_type
+    return data, "webp", "image/webp"
 
 
 def public_config(request):

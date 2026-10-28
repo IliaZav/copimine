@@ -29,6 +29,7 @@ test('loads and selects recovery accounts from the authenticated server session'
     live: true,
     sessionUser: { id: 'owner-id', name: 'Owner', role: 'owner' },
     canAdmin: () => true,
+    can: () => true,
     uid: () => 'recovery-id',
   };
   const Q = {

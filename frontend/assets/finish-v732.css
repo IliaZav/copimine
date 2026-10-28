@@ -1,6 +1,7 @@
 /* CopiMine v7.3.2. Keep the approved full-height sidebar and existing grid.
  * Only panels are made darker. All movement is opt-in and motion-safe.
  */
+body { padding-bottom: 0; }
 .v71-admin-shell .panel,
 .v71-admin-shell .v71-recovery-person,
 .v71-admin-shell .cm73-recovery-person,

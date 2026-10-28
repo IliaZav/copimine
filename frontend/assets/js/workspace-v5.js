@@ -4,9 +4,10 @@
 (function(){
 'use strict';
 const M=CM,V=CMV4,D=CM5Domain,R=CM5_REGISTRY,E=M.esc,H=M.handlers,F=M.forms,s=()=>M.state;
-const materials=new Map(R.materials.flatMap(x=>{const key=x.key||(String(x.id).includes(':')?x.id:'minecraft:'+x.id);return [[key,x],[String(x.id).toLowerCase(),x]];}));
+const materials=new Map();
+const syncMaterials=()=>{if(materials.size)return;for(const x of (window.CM5_REGISTRY?.materials||[])){const key=x.key||(String(x.id).includes(':')?x.id:'minecraft:'+x.id);materials.set(key,x);materials.set(String(x.id).toLowerCase(),x);}};
 const head=(p,size=28)=>`<img class="mc-head" width="${size}" height="${size}" src="${M.asset(p?.skin?.head||'assets/skins/steve-head.png')}" alt="" draggable="false">`;
-const mat=id=>materials.get(String(id).includes(':')?id:'minecraft:'+String(id).toLowerCase());
+const mat=id=>{syncMaterials();return materials.get(String(id).includes(':')?id:'minecraft:'+String(id).toLowerCase());};
 const materialName=id=>{const c=s().catalog.find(x=>x.id===id||'copimine:'+x.id===id);if(c)return c.name;const m=mat(id);return m?(s().materialRu?.[m.id]||m.ru||m.en):String(id||'');};
 const texture=(id,size=24)=>{const m=mat(id),c=s().catalog.find(x=>x.id===id||'copimine:'+x.id===id);return (c?.image||m?.image)?`<img class="mc-item" width="${size}" height="${size}" src="${M.asset(c?.image||m.image)}" alt="" loading="lazy">`:`<span class="missing-material" title="${E(id)}">${icon('package')}</span>`;};
 const label=html=>`<span class="quiet">${html}</span>`;

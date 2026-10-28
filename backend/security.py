@@ -18,8 +18,8 @@ PERMISSIONS = {
     "moderator": ["players.view", "players.moderate", "inventory.view", "tickets.manage"],
     "admin": ["players.view", "players.moderate", "inventory.view", "inventory.manage", "tickets.manage", "catalog.manage", "content.manage", "logs.view", "analytics.read"],
 }
-PERMISSIONS["admin"] += ["map.view", "map.manage"]
-PERMISSIONS["owner"] = PERMISSIONS["admin"] + ["server.manage", "accounts.manage", "recovery.manage", "economy.manage", "settings.manage"]
+PERMISSIONS["admin"] += ["map.view", "map.manage", "server.monitor"]
+PERMISSIONS["owner"] = PERMISSIONS["admin"] + ["server.manage", "accounts.manage", "recovery.manage", "economy.manage", "settings.manage", "release.manage"]
 
 
 def fail(status, code, message):

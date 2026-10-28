@@ -9,6 +9,10 @@ backups/
 node_modules/
 .superpowers/
 .12ui/
+.agents/
+.codex/
+.serena/
+package-lock.json
 dist/
 artifacts/
 *.pem

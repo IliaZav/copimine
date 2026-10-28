@@ -15,6 +15,6 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
-ReadWritePaths=/opt/copimine-site/data /var/lib/copimine-site /opt/copimine-game/minecraft/server/plugins/CopiMineWebsiteBridge/requests
+ReadWritePaths=/opt/copimine-site/data /opt/copimine-site/private /var/lib/copimine-site /opt/copimine-game/minecraft/server/plugins/CopiMineWebsiteBridge/requests
 [Install]
 WantedBy=multi-user.target

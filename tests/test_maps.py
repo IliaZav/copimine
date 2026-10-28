@@ -131,6 +131,25 @@ def test_bluemap_translation_compiler_policy_is_scoped_and_private_files_not_cac
     assert 'unsafe-eval' not in client.get('/').headers.get('Content-Security-Policy','')
 
 
+def test_public_view_flags_follow_admin_settings_without_republish(client, tmp_path):
+    from backend.maps import MapStorage
+    source = source_tree(tmp_path / 'source')
+    store = MapStorage(tmp_path / 'published', minimum_free=0)
+    version = 'c' * 32
+    store.publish(source, version)
+    client.app.state.settings = replace(client.app.state.settings, map_root=store.root)
+    h = headers(client)
+    assert client.get('/api/v6/map').json()['perspective'] is False
+    metadata = client.get(f'/maps/public/{version}/maps/public-overworld/settings.json').json()
+    assert (metadata['perspectiveView'], metadata['freeFlightView'], metadata['flatView']) == (False, False, True)
+    result = client.post('/api/v6/admin/map/settings', headers=h, json={'perspective': True, 'firstPerson': True})
+    assert result.status_code == 200
+    assert result.json()['settings']['perspective'] is True
+    metadata = client.get(f'/maps/public/{version}/maps/public-overworld/settings.json').json()
+    assert (metadata['perspectiveView'], metadata['freeFlightView'], metadata['flatView']) == (True, True, True)
+    assert client.get(f'/maps/public/{version}/settings.json').json()['defaultToFlatView'] is False
+
+
 def test_unchanged_publication_does_not_copy_all_source_files_again(tmp_path):
     from backend.maps import MapStorage
     source=source_tree(tmp_path/'source')

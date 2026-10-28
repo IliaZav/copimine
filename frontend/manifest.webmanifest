@@ -1,0 +1,15 @@
+{
+  "name": "CopiMine",
+  "short_name": "CopiMine",
+  "description": "Minecraft-сервер CopiMine: общий мир, банк, выборы и магазин.",
+  "lang": "ru",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#20282b",
+  "theme_color": "#20282b",
+  "icons": [
+    { "src": "assets/img/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "assets/img/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

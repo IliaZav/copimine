@@ -100,6 +100,91 @@ def test_consent_events_feed_the_admin_report_without_storing_visitor_tokens(cli
     assert hashlib.sha256(visitor.encode()).hexdigest() in stored_tokens
 
 
+def test_consent_log_records_the_choice_and_deduplicates_repeats(client):
+    consent_id = "consent-record-1234567890"
+    payload = {
+        "consentId": consent_id,
+        "analytics": True,
+        "preferences": False,
+        "policyVersion": "2026-10-27",
+        "source": "banner",
+    }
+    headers = csrf_headers(client)
+    first = client.post("/api/v6/analytics/consent", headers=headers, json=payload)
+    assert first.status_code == 200, first.text
+    assert first.json() == {"ok": True, "analytics": True, "preferences": False, "policyVersion": "2026-10-27"}
+
+    repeat = client.post("/api/v6/analytics/consent", headers=headers, json=payload)
+    assert repeat.status_code == 200
+    changed = client.post("/api/v6/analytics/consent", headers=headers, json={**payload, "preferences": True, "source": "settings"})
+    assert changed.status_code == 200
+    invalid = client.post("/api/v6/analytics/consent", headers=headers, json={**payload, "consentId": "short"})
+    assert invalid.status_code == 400
+
+    with client.app.state.database.transaction() as db:
+        rows = db.execute("SELECT consent_hash,analytics,preferences,source FROM cm_site_consents ORDER BY created_s").fetchall()
+    assert len(rows) == 2
+    assert consent_id not in {row["consent_hash"] for row in rows}
+    assert hashlib.sha256(consent_id.encode()).hexdigest() == rows[0]["consent_hash"]
+    assert [(int(row["analytics"]), int(row["preferences"]), row["source"]) for row in rows] == [(1, 0, "banner"), (1, 1, "settings")]
+
+    today = datetime.now(timezone.utc).date().isoformat()
+    data = client.get(f"/api/v6/admin/analytics?from={today}&to={today}", headers=login_owner(client)).json()["data"]
+    assert data["consents"]["total"] == 2
+    assert data["consents"]["analytics"] == 2
+    assert data["consents"]["preferences"] == 1
+
+
+def test_analytics_context_is_aggregated_and_untrusted_values_are_dropped(client):
+    visitor = "context-visitor-123456789"
+    session = "tab-session-1234567890"
+    event = [{"type": "page_view", "page": "home", "visitor": visitor}]
+    response = client.post(
+        "/api/v6/analytics/events",
+        headers=csrf_headers(client),
+        json={
+            "consent": True,
+            "events": event,
+            "context": {
+                "session": session,
+                "device": "mobile",
+                "browser": "Firefox",
+                "os": "Android",
+                "lang": "ru-RU",
+                "screen": "412x915",
+                "source": "vk.com",
+                "utm": {"source": "vk", "medium": "social", "campaign": "autumn"},
+            },
+        },
+    )
+    assert response.status_code == 200, response.text
+
+    headers = login_owner(client)
+    today = datetime.now(timezone.utc).date().isoformat()
+    data = client.get(f"/api/v6/admin/analytics?from={today}&to={today}", headers=headers).json()["data"]
+    assert data["engagement"] == {"uniqueVisitors": 1, "sessions": 1, "returning": 0}
+    assert data["audience"]["devices"] == [{"name": "mobile", "count": 1}]
+    assert data["audience"]["browsers"] == [{"name": "Firefox", "count": 1}]
+    assert data["audience"]["languages"] == [{"name": "ru-RU", "count": 1}]
+    assert data["sources"] == [{"name": "vk.com", "count": 1}]
+    assert data["campaigns"] == [{"source": "vk", "medium": "social", "campaign": "autumn", "count": 1}]
+
+    rejected = client.post(
+        "/api/v6/analytics/events",
+        headers=csrf_headers(client),
+        json={
+            "consent": True,
+            "events": event,
+            "context": {"device": "toaster", "browser": "<script>", "screen": "big", "source": "http://evil/x"},
+        },
+    )
+    assert rejected.status_code == 200
+    data = client.get(f"/api/v6/admin/analytics?from={today}&to={today}", headers=headers).json()["data"]
+    assert data["audience"]["devices"] == [{"name": "mobile", "count": 1}]
+    assert data["audience"]["screens"] == [{"name": "412x915", "count": 1}]
+    assert data["sources"] == [{"name": "vk.com", "count": 1}]
+
+
 def test_analytics_report_requires_an_authorized_account(client):
     today = datetime.now(timezone.utc).date().isoformat()
     response = client.get(f"/api/v6/admin/analytics?from={today}&to={today}")

@@ -84,7 +84,7 @@ def test_gallery_upload_is_private_until_the_image_is_published(client,tmp_path)
     item=uploaded.json()['item'];public_url=item['src']
     assert client.get(public_url).status_code==404
     private=client.get('/api/v6/admin/content/gallery/image/'+item['id'])
-    assert private.status_code==200 and private.headers['content-type']=='image/png'
+    assert private.status_code==200 and private.headers['content-type']=='image/webp'
     assert Image.open(io.BytesIO(private.content)).size==(1,1)
     published=client.patch('/api/v6/admin/content/gallery',headers=headers,json={
         'item':{**item,'published':True},'expectedVersion':uploaded.json()['version'],'reason':'Опубликовал фото',

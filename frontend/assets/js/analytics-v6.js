@@ -8,8 +8,8 @@
   const pageNames = { home: "Главная", shop: "Магазин", cart: "Корзина", donate: "Донат", map: "Карта", rules: "Правила", support: "Помощь" };
   const eventNames = { page_view: "Открытие страницы", cart_add: "Добавление в корзину", add_to_cart: "Добавление в корзину", item_view: "Просмотр предмета", product_view: "Просмотр предмета", cart_remove: "Удаление из корзины", donation_start: "Начало пополнения", payment_created: "Создание платежа", checkout_start: "Начало оформления", checkout_started: "Начало оформления", checkout_complete: "Заказ оформлен", checkout_completed: "Заказ оформлен", checkout: "Оформление заказа", purchase: "Покупка", download_mods: "Загрузка сборки", download_launcher: "Загрузка лаунчера", play: "Инструкция по входу" };
   const ranges = [["day", "Сегодня"], ["7d", "7 дней"], ["30d", "30 дней"], ["year", "За год"]];
-  const tabs = [["overview", "Обзор"], ["pages", "Страницы"], ["events", "События"], ["economy", "Экономика"]];
-  const storageKey = "copimine.analytics.visitor.v6";
+  const tabs = [["overview", "Обзор"], ["audience", "Аудитория"], ["sources", "Источники"], ["pages", "Страницы"], ["events", "События"], ["consents", "Согласия"], ["economy", "Экономика"]];
+  const storageKey = "copimine.analytics.visitor.v6", sessionKey = "copimine.analytics.session.v6";
   let queue = [], flushTimer = null, sending = false, generation = 0, lastPage = "", chartCurrency = "CM", cacheOwner = "";
   const cache = new Map(), requests = new Map(), errors = new Map();
   const integer = value => Number.isFinite(Number(value)) ? Math.max(0, Math.trunc(Number(value))) : 0;
@@ -23,16 +23,72 @@
     const page = (location.hash.slice(1).split(/[/?]/)[0] || "home").toLowerCase();
     return publicPages.has(page) ? page : null;
   }
+  function cookie(name) {
+    const row = document.cookie.split("; ").find(item => item.indexOf(name + "=") === 0);
+    if (!row) return "";
+    try { return decodeURIComponent(row.slice(name.length + 1)); } catch { return ""; }
+  }
+  function writeCookie(name, value, days) {
+    const secure = location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = name + "=" + encodeURIComponent(value) + "; Path=/; Max-Age=" + Math.round(days * 86400) + "; SameSite=Lax" + secure;
+  }
+  function removeCookie(name) { document.cookie = name + "=; Path=/; Max-Age=0; SameSite=Lax"; }
+  function randomId() {
+    return crypto.randomUUID ? crypto.randomUUID() : [...crypto.getRandomValues(new Uint8Array(16))].map(n => n.toString(16).padStart(2, "0")).join("");
+  }
   function visitor() {
     try {
-      let id = sessionStorage.getItem(storageKey);
+      let id = cookie("cm_visitor") || sessionStorage.getItem(storageKey);
       if (!/^[a-z0-9-]{16,80}$/i.test(id || "")) {
-        id = crypto.randomUUID ? crypto.randomUUID() : [...crypto.getRandomValues(new Uint8Array(16))].map(n => n.toString(16).padStart(2, "0")).join("");
+        id = randomId();
+        writeCookie("cm_visitor", id, 365);
         sessionStorage.setItem(storageKey, id);
       }
       return id;
     } catch { return null; }
   }
+  X.analyticsVisitor = visitor;
+  function session() {
+    try {
+      let id = sessionStorage.getItem(sessionKey);
+      if (!/^[a-z0-9-]{16,80}$/i.test(id || "")) { id = randomId(); sessionStorage.setItem(sessionKey, id); }
+      return id;
+    } catch { return ""; }
+  }
+  function browserName() {
+    const ua = navigator.userAgent || "";
+    if (/Edg\//.test(ua)) return "Edge";
+    if (/OPR\/|Opera/.test(ua)) return "Opera";
+    if (/YaBrowser/.test(ua)) return "Яндекс";
+    if (/Firefox\//.test(ua)) return "Firefox";
+    if (/Chrome\//.test(ua)) return "Chrome";
+    if (/Safari\//.test(ua)) return "Safari";
+    return "Другое";
+  }
+  function osName() {
+    const ua = navigator.userAgent || "";
+    if (/Windows/.test(ua)) return "Windows";
+    if (/Android/.test(ua)) return "Android";
+    if (/iPhone|iPad|iPod/.test(ua)) return "iOS";
+    if (/Mac OS X/.test(ua)) return "macOS";
+    if (/Linux/.test(ua)) return "Linux";
+    return "Другое";
+  }
+  function context() {
+    let referrer = "";
+    try { const url = new URL(document.referrer); if (/^https?:$/.test(url.protocol)) referrer = url.hostname === location.hostname ? "internal" : url.hostname.toLowerCase().slice(0, 64); } catch { referrer = ""; }
+    const params = new URLSearchParams(location.search), clean = value => String(value || "").slice(0, 64);
+    return {
+      session: session(),
+      device: innerWidth <= 620 ? "mobile" : innerWidth <= 1024 ? "tablet" : "desktop",
+      browser: browserName(), os: osName(),
+      lang: String(navigator.language || "").slice(0, 12),
+      screen: screen.width + "x" + screen.height,
+      source: referrer,
+      utm: { source: clean(params.get("utm_source")), medium: clean(params.get("utm_medium")), campaign: clean(params.get("utm_campaign")) },
+    };
+  }
+  let pageContext = null;
   function schedule(ms = 1500) {
     if (flushTimer || !X.live || !queue.length || !consented()) return;
     flushTimer = setTimeout(() => { flushTimer = null; flush(); }, ms);
@@ -40,8 +96,9 @@
   async function flush() {
     if (sending || !consented() || !X.live || !queue.length || typeof X.request !== "function") return;
     const batch = queue.splice(0, 40), epoch = generation;
+    if (!pageContext) pageContext = context();
     sending = true;
-    try { await X.request("/analytics/events", { method: "POST", body: { events: batch, consent: true } }); }
+    try { await X.request("/analytics/events", { method: "POST", body: { events: batch, consent: true, context: pageContext } }); }
     catch {
       if (epoch === generation && consented()) queue = batch.concat(queue).slice(-40);
     } finally {
@@ -76,9 +133,9 @@
     if (page) X.track("page_view", { page });
   }
   document.addEventListener("cm-consent", () => {
-    generation++; queue = [];
+    generation++; queue = []; pageContext = null;
     clearTimeout(flushTimer); flushTimer = null;
-    if (!consented()) { try { sessionStorage.removeItem(storageKey); } catch {} }
+    if (!consented()) { removeCookie("cm_visitor"); try { sessionStorage.removeItem(storageKey); sessionStorage.removeItem(sessionKey); } catch {} }
     lastPage = "";
     routeView();
   });
@@ -201,6 +258,52 @@
     const rows = [...map.values()].sort((a, b) => b.count - a.count);
     return rows.length ? table(["Событие", "Страница", "Количество"], rows.map(row => [E(eventNames[row.type] || row.type.replace(/_/g, " ")), E(pageNames[row.page] || row.page), `<strong class="numeric">${fmt(row.count)}</strong>`])) : empty("Событий пока нет", "Добавления в корзину и начало пополнения появятся после согласия посетителей.");
   }
+  const deviceNames = { desktop: "Компьютер", mobile: "Телефон", tablet: "Планшет", other: "Другое" };
+  const sourceNames = { direct: "Прямые переходы", internal: "Внутри сайта" };
+  function shareBar(count, total) { const pct = Math.round(integer(count) / Math.max(1, integer(total)) * 100); return `<span class="v6-analytics-share"><i style="width:${pct}%"></i><span>${pct}%</span></span>`; }
+  function shareTable(title, rows, nameLabel, formatter = name => name, hint = "") {
+    const list = (rows || []).filter(row => row && row.name);
+    const head = `<div class="panel-head"><h3>${E(title)}</h3>${hint ? `<span class="hint">${E(hint)}</span>` : ""}</div>`;
+    if (!list.length) return `<section class="panel mt">${head}${empty("Данных пока нет", "Значения появятся после согласия посетителей на аналитику.")}</section>`;
+    const total = list.reduce((n, row) => n + integer(row.count), 0);
+    return `<section class="panel mt">${head}${table([nameLabel, "Просмотры", "Доля"], list.slice(0, 20).map(row => [E(formatter(row.name)), `<strong class="numeric">${fmt(row.count)}</strong>`, shareBar(row.count, total)]))}</section>`;
+  }
+  function audiencePanel(data) {
+    const e = data.engagement || {}, accounts = data.accounts || {}, audience = data.audience || {};
+    return `<div class="v6-analytics-kpis">${kpi("Уникальные посетители", fmt(e.uniqueVisitors), "Согласие на аналитику")}${kpi("Сеансы", fmt(e.sessions), "Открытые вкладки браузера")}${kpi("Вернулись", fmt(e.returning), "Приходили до начала периода")}${kpi("Аккаунты", fmt(accounts.total), "Создано всего")}${kpi("Новые аккаунты", fmt(accounts.new), "За выбранный период")}${kpi("Активные аккаунты", fmt(accounts.active), "Входили в аккаунт")}</div>`
+      + shareTable("Устройства", audience.devices, "Тип", name => deviceNames[name] || name)
+      + shareTable("Браузеры", audience.browsers, "Браузер")
+      + shareTable("Операционные системы", audience.os, "Система")
+      + shareTable("Языки браузера", audience.languages, "Язык")
+      + shareTable("Разрешения экрана", audience.screens, "Экран")
+      + `<p class="hint mt12">Minecraft привязан у ${fmt(accounts.linked)} из ${fmt(accounts.total)} аккаунтов. Статистика обезличена: IP-адрес и точное местоположение не собираются.</p>`;
+  }
+  function sourcesPanel(data) {
+    const sources = (data.sources || []).filter(row => row && row.name);
+    const campaigns = (data.campaigns || []).slice(0, 30);
+    const total = sources.reduce((n, row) => n + integer(row.count), 0);
+    return `<section class="panel"><div class="panel-head"><h3>Откуда пришли</h3><span class="hint">Домен предыдущей страницы</span></div>${sources.length ? table(["Источник", "Переходы", "Доля"], sources.map(row => [E(sourceNames[row.name] || row.name), `<strong class="numeric">${fmt(row.count)}</strong>`, shareBar(row.count, total)])) : empty("Источников пока нет", "Прямые переходы и внешние сайты появятся после согласия на аналитику.")}</section>`
+      + `<section class="panel mt"><div class="panel-head"><h3>Метки ссылок</h3><span class="hint">utm_source · utm_medium · utm_campaign</span></div>${campaigns.length ? table(["Кампания", "Источник", "Тип", "Переходы"], campaigns.map(row => [E(row.campaign || "—"), E(row.source || "—"), E(row.medium || "—"), `<strong class="numeric">${fmt(row.count)}</strong>`])) : empty("Меток нет", "Ссылки с utm-метками ещё не открывали.")}</section>`
+      + `<p class="hint mt12">Путь и содержимое внешних ссылок не сохраняются, только домен и метки.</p>`;
+  }
+  function consentsPanel(data) {
+    const consent = data.consents || {}, recent = consent.recent || [], total = integer(consent.total);
+    const share = total ? Math.round(integer(consent.analytics) / total * 100) : 0;
+    const inventory = [
+      ["Просмотры страниц", "публичные страницы: главная, магазин, корзина, донат, карта, правила, помощь", "оценивать интерес к разделам", "13 месяцев"],
+      ["Действия в магазине", "событие, предмет, количество", "понимать спрос и ошибки выдачи", "13 месяцев"],
+      ["Псевдоним посетителя", "случайный cookie cm_visitor", "отличать посетителей, считать возвраты", "13 месяцев"],
+      ["Сеанс", "случайный идентификатор вкладки", "считать глубину визита", "до закрытия вкладки"],
+      ["Устройство", "тип, браузер, ОС, язык, размер экрана", "правильно поддерживать интерфейсы", "13 месяцев"],
+      ["Источник перехода", "домен предыдущей страницы и utm-метки", "оценивать эффективность ссылок", "13 месяцев"],
+      ["Выбор cookie", "разрешённые категории, время, версия политики, браузер", "подтверждать и отзывать согласие", "3 года"],
+      ["Аккаунт", "логин, почта, хэш пароля, привязка Minecraft, покупки, обращения", "работа аккаунта и безопасность", "пока аккаунт существует"],
+    ];
+    return `<div class="v6-analytics-kpis">${kpi("Записей о выборе", fmt(total), "За выбранный период")}${kpi("Аналитика разрешена", fmt(consent.analytics), share + "% записей")}${kpi("Настройки разрешены", fmt(consent.preferences), "Тема, анимации, корзина")}${kpi("Версия политики", consent.policyVersion || "—", "Отмечается в каждой записи")}</div>`
+      + `<section class="panel mt"><div class="panel-head"><h3>Последние решения</h3><span class="hint">IP и идентификаторы не показаны</span></div>${recent.length ? table(["Время", "Аналитика", "Настройки", "Где выбрано"], recent.map(row => [E(new Date(integer(row.at)).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })), M.pill(row.analytics ? "Разрешена" : "Отклонена", row.analytics ? "green" : "amber"), M.pill(row.preferences ? "Включены" : "Отключены", row.preferences ? "green" : ""), E(row.source === "settings" ? "Настройки" : "Баннер")])) : empty("Выборов пока нет", "Записи появляются, когда посетитель принимает или отклоняет cookie.")}</section>`
+      + `<section class="panel mt"><div class="panel-head"><h3>Что собирается</h3><a class="text-link" href="#privacy">Официальная политика</a></div>${table(["Данные", "Как собираем", "Зачем", "Срок хранения"], inventory.map(row => row.map(E)))}</section>`
+      + `<p class="hint mt12">Не собираем IP-адрес в статистике, точную геолокацию, данные платежей, рекламные идентификаторы и ничего вне copimine.ru.</p>`;
+  }
   function economyPanel(data) {
     if (data.paymentsAvailable === false && chartCurrency === "RUB") chartCurrency = "CM";
     const daily = dailySeries((data.days || []).map(row => ({ day: typeof row.at === "number" ? dayString(row.at) : String(row.at).slice(0, 10), value: number(row[chartCurrency === "RUB" ? "rubles" : chartCurrency]) })), data);
@@ -221,11 +324,15 @@
     const heading = `<div class="v6-analytics-toolbar"><div class="v6-analytics-range" aria-label="Период отчёта">${ranges.map(([id, title]) => `<button type="button" data-action="v6-analytics-range" data-range="${id}" aria-pressed="${range === id}">${title}</button>`).join("")}</div><div class="actions">${M.btn("Обновить", "v6-analytics-refresh", "refresh", "small", requests.has(range) ? "disabled" : "")}${M.btn("CSV", "v6-analytics-export", "download", "small", data ? "" : "disabled")}</div></div><nav class="tabs" aria-label="Разделы статистики">${tabs.map(([id, label]) => `<a href="#admin/statistics?sub=${id}&range=${range}" class="${sub === id ? "active" : ""}">${E(label)}</a>`).join("")}</nav>`;
     if (!data) return heading + (errors.has(range) ? `<section class="panel">${empty("Не удалось загрузить статистику", errors.get(range))}${M.btn("Повторить", "v6-analytics-refresh", "refresh", "primary")}</section>` : `<section class="panel v6-analytics-loading"><div id="cm-react-analytics-charts"></div></section>`);
     let body;
+    const engagement = data.engagement || {};
     if (sub === "economy") body = economyPanel(data);
+    else if (sub === "audience") body = audiencePanel(data);
+    else if (sub === "sources") body = sourcesPanel(data);
+    else if (sub === "consents") body = consentsPanel(data);
     else if (sub === "pages") body = `<section class="panel"><div class="panel-head"><h3>Посещения по страницам</h3></div>${pagesPanel(data)}</section><section class="panel mt">${barChart(trafficDays(data), "Просмотры по дням")}</section>`;
     else if (sub === "events") body = `<section class="panel"><div class="panel-head"><h3>Действия на публичных страницах</h3></div>${eventPanel(data)}</section><div id="cm-react-analytics-charts"></div>`;
-    else body = `<div class="v6-analytics-kpis">${kpi("Просмотры", fmt(data.visits), "Открытия публичных страниц")}${kpi("Посетители по дням", fmt(data.visitors), "Сумма дневных уникальных")}${kpi("Заказы", fmt(data.orders), "С выданными предметами")}${kpi("Выдано предметов", fmt(data.items), "Штук за выбранный период")}${kpi("Оборот CM", fmt(data.revenue?.CM) + " CM", "Покупки в магазине")}${kpi("Пополнения", rubles(data), rublesHint(data))}</div><div class="v6-analytics-grid"><section class="panel"><div class="panel-head"><h3>Посещения</h3></div>${barChart(trafficDays(data), "Просмотры по дням")}</section><section class="panel"><div class="panel-head"><h3>Популярные страницы</h3></div>${pagesPanel(data, true)}</section></div>`;
-    return heading + body + `<footer class="v6-analytics-footer"><span>${X.live ? "Данные сайта" : "Локальная проверка"} · ${E(b.from + " — " + b.to)} · UTC${cached ? " · обновлено " + E(new Date(cached.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })) : ""}</span><p>Учитываются публичные страницы и согласие на аналитику. Поиск в панели, имена игроков и содержимое форм в отчёт не попадают.</p></footer>`;
+    else body = `<div class="v6-analytics-kpis">${kpi("Просмотры", fmt(data.visits), "Открытия публичных страниц")}${kpi("Уникальные посетители", fmt(engagement.uniqueVisitors), "С согласием на аналитику")}${kpi("Сеансы", fmt(engagement.sessions), "Открытые вкладки")}${kpi("Посетители по дням", fmt(data.visitors), "Сумма дневных уникальных")}${kpi("Заказы", fmt(data.orders), "С выданными предметами")}${kpi("Выдано предметов", fmt(data.items), "Штук за выбранный период")}${kpi("Оборот CM", fmt(data.revenue?.CM) + " CM", "Покупки в магазине")}${kpi("Пополнения", rubles(data), rublesHint(data))}</div><section class="panel"><div class="panel-head"><h3>Посещения</h3></div>${barChart(trafficDays(data), "Просмотры по дням")}</section>`;
+    return heading + body + `<footer class="v6-analytics-footer"><span>${X.live ? "Данные сайта" : "Локальная проверка"} · ${E(b.from + " — " + b.to)} · UTC${cached ? " · обновлено " + E(new Date(cached.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })) : ""}</span><p>Учитываются публичные страницы и согласие на аналитику. Имена игроков и содержимое форм в отчёт не попадают. <a href="#privacy">Какие данные собираются</a>.</p></footer>`;
   }
   function dashboardCharts() {
     const owner = M.me?.()?.id || "";
@@ -255,7 +362,8 @@
     if (!canRead()) return;
     const range = selectedRange(), data = X.live ? cache.get(range)?.data : localSummary(range);
     if (!data) return;
-    const rows = [["Показатель", "Значение"], ["С", data.from || bounds(range).from], ["По", data.to || bounds(range).to], ["Просмотры", data.visits], ["Посетители по дням", data.visitors], ["Заказы", data.orders], ["Покупатели", data.buyers], ["Предметы", data.items], ["Оборот AR", data.revenue?.AR], ["Оборот CM", data.revenue?.CM], ["Оплачено RUB", data.paymentsAvailable === false ? "Платёжный сервис не подключён" : data.rubles], [], ["Страница", "Просмотры"], ...(data.pages || []).filter(row => publicPages.has(row.page)).map(row => [pageNames[row.page], row.count])];
+    const e = data.engagement || {}, consent = data.consents || {}, accounts = data.accounts || {};
+    const rows = [["Показатель", "Значение"], ["С", data.from || bounds(range).from], ["По", data.to || bounds(range).to], ["Просмотры", data.visits], ["Посетители по дням", data.visitors], ["Уникальные посетители", e.uniqueVisitors], ["Сеансы", e.sessions], ["Вернулись", e.returning], ["Заказы", data.orders], ["Покупатели", data.buyers], ["Предметы", data.items], ["Оборот AR", data.revenue?.AR], ["Оборот CM", data.revenue?.CM], ["Оплачено RUB", data.paymentsAvailable === false ? "Платёжный сервис не подключён" : data.rubles], ["Записей о согласии", consent.total], ["Аналитика разрешена", consent.analytics], ["Настройки разрешены", consent.preferences], ["Аккаунтов всего", accounts.total], ["Новых аккаунтов", accounts.new], ["Активных аккаунтов", accounts.active], ["Minecraft привязан", accounts.linked], [], ["Страница", "Просмотры"], ...(data.pages || []).filter(row => publicPages.has(row.page)).map(row => [pageNames[row.page], row.count]), [], ["Устройство", "Просмотры"], ...(data.audience?.devices || []).map(row => [row.name, row.count]), [], ["Браузер", "Просмотры"], ...(data.audience?.browsers || []).map(row => [row.name, row.count]), [], ["Система", "Просмотры"], ...(data.audience?.os || []).map(row => [row.name, row.count]), [], ["Язык", "Просмотры"], ...(data.audience?.languages || []).map(row => [row.name, row.count]), [], ["Экран", "Просмотры"], ...(data.audience?.screens || []).map(row => [row.name, row.count]), [], ["Источник", "Переходы"], ...(data.sources || []).map(row => [row.name, row.count]), [], ["utm_source", "utm_medium", "utm_campaign", "Переходы"], ...(data.campaigns || []).map(row => [row.source, row.medium, row.campaign, row.count])];
     const csv = "\uFEFF" + rows.map(row => row.map(value => '"' + String(value ?? "").replace(/"/g, '""') + '"').join(";")).join("\r\n");
     M.downloadFile("CopiMine-analytics-" + dayString(Date.now()) + ".csv", csv);
   };

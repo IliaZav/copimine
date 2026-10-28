@@ -1,5 +1,85 @@
 [
   {
+    "id": "shot-spawn-aerial",
+    "title": "Спавн с высоты",
+    "caption": "Террасы, река и мост",
+    "src": "assets/photos/copimine-spawn-aerial.webp",
+    "alt": "Вид сверху на террасы спавна CopiMine, реку и мост",
+    "kind": "photo",
+    "published": true,
+    "position": 1
+  },
+  {
+    "id": "shot-sunset-house",
+    "title": "Закат над спавном",
+    "caption": "Тёплый свет на террасах",
+    "src": "assets/photos/copimine-sunset-house.webp",
+    "alt": "Деревянный дом на террасах спавна в лучах заката",
+    "kind": "photo",
+    "published": true,
+    "position": 2
+  },
+  {
+    "id": "shot-riverside-house",
+    "title": "Дом у реки",
+    "caption": "Террасы спускаются к воде",
+    "src": "assets/photos/copimine-riverside-house.webp",
+    "alt": "Деревянный дом у реки на террасах CopiMine",
+    "kind": "photo",
+    "published": true,
+    "position": 3
+  },
+  {
+    "id": "shot-ice-peaks",
+    "title": "Ледяные пики",
+    "caption": "Игроки на голубом склоне",
+    "src": "assets/photos/copimine-ice-peaks.webp",
+    "alt": "Игроки на ледяном склоне с видом на долину",
+    "kind": "photo",
+    "published": true,
+    "position": 4
+  },
+  {
+    "id": "shot-night-courtyard",
+    "title": "Ночной двор",
+    "caption": "Фонари и тишина",
+    "src": "assets/photos/copimine-night-courtyard.webp",
+    "alt": "Ночной двор CopiMine с фонарями",
+    "kind": "photo",
+    "published": true,
+    "position": 5
+  },
+  {
+    "id": "shot-spawn-day",
+    "title": "Спавн днём",
+    "caption": "Террасы и дом у воды",
+    "src": "assets/photos/copimine-spawn-day.webp",
+    "alt": "Дневной вид на террасы и деревянный дом у воды",
+    "kind": "photo",
+    "published": true,
+    "position": 6
+  },
+  {
+    "id": "shot-water-house",
+    "title": "Отражение",
+    "caption": "Каменный дом на берегу",
+    "src": "assets/photos/copimine-water-house.webp",
+    "alt": "Каменный дом отражается в воде на берегу CopiMine",
+    "kind": "photo",
+    "published": true,
+    "position": 7
+  },
+  {
+    "id": "shot-elections",
+    "title": "Здание выборов",
+    "caption": "Площадка для голосования",
+    "src": "assets/photos/copimine-elections.webp",
+    "alt": "Здание с площадкой для президентских выборов на сервере",
+    "kind": "photo",
+    "published": true,
+    "position": 8
+  },
+  {
     "id": "project-riverside",
     "title": "У реки",
     "caption": "Мост через реку",
@@ -7,7 +87,7 @@
     "alt": "Деревянный мост между зелёными берегами CopiMine",
     "kind": "photo",
     "published": true,
-    "position": 1
+    "position": 9
   },
   {
     "id": "project-mountain",
@@ -17,7 +97,7 @@
     "alt": "Игроки на снежном склоне с видом на долину",
     "kind": "photo",
     "published": true,
-    "position": 2
+    "position": 10
   },
   {
     "id": "project-arena",
@@ -27,6 +107,6 @@
     "alt": "Игрок сражается с существами на арене CopiMine",
     "kind": "photo",
     "published": true,
-    "position": 3
+    "position": 11
   }
 ]

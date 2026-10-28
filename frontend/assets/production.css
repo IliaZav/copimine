@@ -16,6 +16,12 @@
 .v6-inline-form .form-error:empty{display:none}
 .v6-inline-form .form-error{flex-basis:100%}
 .v6-log-samples{margin:14px 0 0;padding:14px 16px;background:var(--surface,#15191b);border-radius:10px;font-size:.8rem;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;max-height:280px;overflow:auto;color:var(--muted,#a0a7a6)}
+/* Плашка о последствиях опасного действия: показывается в модалке до кнопки подтверждения. */
+.cm-danger-note{display:flex;gap:11px;align-items:flex-start;margin:0 0 14px;padding:13px 15px;border:1px solid #733b3f;border-radius:9px;background:#2a1b1e;color:#f49190}
+.cm-danger-note svg{flex:none;width:18px;height:18px;margin-top:1px}
+.cm-danger-note strong{display:block;font-size:12px;letter-spacing:.06em;text-transform:uppercase;font-weight:650}
+.cm-danger-note p{margin:5px 0 0;font-size:12.5px;line-height:1.55;color:#e6c3c3}
+.v6-action-modal .cm-danger-note,.cm73-remove-dialog .cm-danger-note{max-width:none}
 .v6-logins-body{margin-top:6px}
 
 /* Admin polish: left-aligned quick links. Table heads cannot be sticky here:

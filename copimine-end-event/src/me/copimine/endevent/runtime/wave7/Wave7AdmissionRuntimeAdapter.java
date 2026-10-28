@@ -159,10 +159,13 @@ public final class Wave7AdmissionRuntimeAdapter {
 
     /** Melee (null projectile) or an already launched projectile. */
     public Decision damage(UUID projectile, UUID actor, UUID target) {
+        // A recorded event projectile remains ours when its actor or layout
+        // disappears. IGNORE would hand the stale hit back to vanilla damage.
+        boolean ownedProjectile = projectile != null && launched.containsKey(projectile);
         State state = snapshot();
-        if (state == null) return Decision.IGNORE;
+        if (state == null) return ownedProjectile ? Decision.DENY : Decision.IGNORE;
         int room = actorRoom(state, actor);
-        if (room < 0) return Decision.IGNORE;
+        if (room < 0) return ownedProjectile ? Decision.DENY : Decision.IGNORE;
         if (projectile == null) return decide(state, room, actor, target);
         purgeExpiredScopes();
         Tracked tracked = launched.get(projectile);

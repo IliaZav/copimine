@@ -152,6 +152,24 @@ public class Wave7AdmissionRuntimeChecks {
                 require(adapter.damage(shot, MARKSMAN, C) == Decision.DENY,
                         "a launch receipt from an older generation cannot resolve");
             }
+            case "stale-removed-shooter-denied" -> {
+                var shot = id(204);
+                require(adapter.launch(shot, MARKSMAN) == Decision.ALLOW, "legal original launch");
+                gen[0] = GEN + 1;
+                chambers.restore(GEN + 1, ASSIGNMENT, Set.of(), Set.of());
+                trials.beginNamed(EVENT, GEN + 1, ASSIGNMENT, LAYOUT);
+                require(adapter.damage(shot, MARKSMAN, C) == Decision.DENY,
+                        "an old owned projectile cannot become unrelated when its shooter disappears");
+            }
+            case "owned-projectile-after-layout-clear-denied" -> {
+                var shot = id(205);
+                require(adapter.launch(shot, MARKSMAN) == Decision.ALLOW, "legal original launch");
+                chambers.clear();
+                require(adapter.damage(shot, MARKSMAN, C) == Decision.DENY,
+                        "clearing the layout must not release a known owned projectile into vanilla damage");
+                require(adapter.damage(id(206), OTHER, C) == Decision.IGNORE,
+                        "unrelated damage remains outside admission ownership");
+            }
             case "legacy-ignored" -> {
                 var legacyChambers = new RealitySplitChamberController();
                 var legacyTrials = new RealitySplitTrialController();
@@ -211,7 +229,8 @@ def admission_probe(tmp_path_factory):
     "echo-owner-allowed", "echo-foreign-owner-denied", "echo-unbound-actor-denied",
     "echo-passage-filtered", "marksman-helper-allowed", "helper-unfinished-denied",
     "launch-scope-frozen", "untracked-projectile-denied", "foreign-projectile-ignored",
-    "stale-generation-denied", "legacy-ignored", "inactive-ignored", "active-projectile-scope-is-not-evicted",
+    "stale-generation-denied", "stale-removed-shooter-denied", "owned-projectile-after-layout-clear-denied",
+    "legacy-ignored", "inactive-ignored", "active-projectile-scope-is-not-evicted",
 ])
 def test_adapter_admits_only_the_named_wave7_action(admission_probe, scenario):
     result = subprocess.run(

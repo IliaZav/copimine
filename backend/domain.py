@@ -179,12 +179,15 @@ def build_state(request):
         ticket_rows = db.execute("SELECT t.*,u.name AS player,u.display_name AS player_name FROM cm_site_tickets t JOIN cm_site_users u ON u.id=t.user_id ORDER BY t.updated_s DESC LIMIT 200").fetchall() if "tickets.manage" in permissions else db.execute("SELECT t.*,u.name AS player,u.display_name AS player_name FROM cm_site_tickets t JOIN cm_site_users u ON u.id=t.user_id WHERE t.user_id=%s ORDER BY t.updated_s DESC LIMIT 100", (user["id"],)).fetchall()
         ticket_ids = [row["id"] for row in ticket_rows]
         ticket_messages = {}
+        ticket_files = {}
         if ticket_ids:
             marks = ",".join(["%s"] * len(ticket_ids))
             message_rows = db.execute(f"SELECT * FROM cm_site_ticket_messages WHERE ticket_id IN ({marks}) ORDER BY created_s,id", tuple(ticket_ids)).fetchall()
             for message in message_rows:
                 ticket_messages.setdefault(message["ticket_id"], []).append({"id": message["id"], "actorId": message["actor_id"], "actor": message["actor_name"], "role": message["actor_role"], "body": message["body"], "at": message["created_s"]})
-        result["tickets"] = [{**dict(row), "playerId": row["user_id"], "player": row["player"], "playerName": row["player_name"] or row["player"], "at": row["created_s"] * 1000, "createdAt": row["created_s"] * 1000, "firstReplyAt": row["first_reply_s"] * 1000 if row["first_reply_s"] else None, "messages": ticket_messages.get(row["id"], [])} for row in ticket_rows]
+            for row in db.execute(f"SELECT id,ticket_id,name,mime,bytes,uploader_name,created_s FROM cm_site_ticket_files WHERE ticket_id IN ({marks}) ORDER BY created_s,id", tuple(ticket_ids)).fetchall():
+                ticket_files.setdefault(row["ticket_id"], []).append({"id": row["id"], "name": row["name"], "mime": row["mime"], "bytes": row["bytes"], "by": row["uploader_name"], "at": row["created_s"]})
+        result["tickets"] = [{**dict(row), "playerId": row["user_id"], "player": row["player"], "playerName": row["player_name"] or row["player"], "at": row["created_s"] * 1000, "createdAt": row["created_s"] * 1000, "firstReplyAt": row["first_reply_s"] * 1000 if row["first_reply_s"] else None, "messages": ticket_messages.get(row["id"], []), "files": ticket_files.get(row["id"], [])} for row in ticket_rows]
         result["siteSessions"] = [{"id": row["token_hash"][:20], "playerId": row["user_id"], "createdAt": row["created_s"] * 1000, "expiresAt": row["expires_s"] * 1000, "device": row["user_agent"], "current": row["token_hash"] == request.state.session["token_hash"]} for row in db.execute("SELECT * FROM cm_site_sessions WHERE user_id=%s AND revoked_s=0 AND expires_s>%s ORDER BY created_s DESC", (user["id"], int(time.time()))).fetchall()]
         receipts = db.execute("SELECT * FROM cm_site_receipts WHERE actor_id=%s AND status='COMMITTED' ORDER BY created_s DESC LIMIT 100", (user["id"],)).fetchall()
         for row in receipts:
@@ -343,7 +346,13 @@ async def delete_account(request: Request):
     now = int(time.time())
     alias = "deleted_" + uuid.uuid4().hex[:8]
     database.audit(user, "account.deleted", user["name"], details={"alias": alias})
+    from .attachments import _root as _attachment_root
+    files_root = _attachment_root(request)
     with database.transaction() as db:
+        for row in db.execute("SELECT f.id,f.mime FROM cm_site_ticket_files f JOIN cm_site_tickets t ON t.id=f.ticket_id WHERE t.user_id=%s", (user["id"],)).fetchall():
+            from .attachments import ALLOWED as _attachment_types
+            (files_root / (row["id"] + _attachment_types.get(row["mime"], ""))).unlink(missing_ok=True)
+        db.execute("DELETE FROM cm_site_ticket_files WHERE ticket_id IN (SELECT id FROM cm_site_tickets WHERE user_id=%s)", (user["id"],))
         db.execute("DELETE FROM cm_site_ticket_messages WHERE ticket_id IN (SELECT id FROM cm_site_tickets WHERE user_id=%s)", (user["id"],))
         db.execute("DELETE FROM cm_site_tickets WHERE user_id=%s", (user["id"],))
         for table in ("cm_site_notifications", "cm_site_backup_codes", "cm_site_login_events"):

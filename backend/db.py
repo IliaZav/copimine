@@ -60,6 +60,13 @@ CREATE TABLE IF NOT EXISTS cm_site_ticket_messages (
  body TEXT NOT NULL, created_s BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS cm_site_ticket_messages_ticket_created ON cm_site_ticket_messages(ticket_id,created_s,id);
+CREATE TABLE IF NOT EXISTS cm_site_ticket_files (
+ id TEXT PRIMARY KEY, ticket_id TEXT NOT NULL REFERENCES cm_site_tickets(id) ON DELETE CASCADE,
+ message_id TEXT NOT NULL DEFAULT '', uploader_id TEXT NOT NULL, uploader_name TEXT NOT NULL,
+ name TEXT NOT NULL, mime TEXT NOT NULL, bytes BIGINT NOT NULL, sha256 TEXT NOT NULL,
+ scan TEXT NOT NULL, scan_detail TEXT NOT NULL DEFAULT '', created_s BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS cm_site_ticket_files_ticket ON cm_site_ticket_files(ticket_id,created_s,id);
 CREATE TABLE IF NOT EXISTS cm_site_notifications (
  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, href TEXT NOT NULL DEFAULT '',
  created_s BIGINT NOT NULL, read_s BIGINT NOT NULL DEFAULT 0
@@ -112,7 +119,7 @@ CREATE TABLE IF NOT EXISTS cm_site_mapart_uploads (
 CREATE INDEX IF NOT EXISTS cm_site_mapart_uploads_created ON cm_site_mapart_uploads(created_s DESC);
 CREATE TABLE IF NOT EXISTS cm_site_server_metrics (
  id TEXT PRIMARY KEY, sampled_s BIGINT NOT NULL, online INTEGER NOT NULL DEFAULT 0,
- players INTEGER NOT NULL DEFAULT 0, tps REAL, mspt REAL, plugins INTEGER NOT NULL DEFAULT 0,
+ players INTEGER NOT NULL DEFAULT 0, tps REAL, mspt REAL, cpu REAL, plugins INTEGER NOT NULL DEFAULT 0,
  worlds TEXT NOT NULL DEFAULT '[]', host TEXT NOT NULL DEFAULT '{}',
  database TEXT NOT NULL DEFAULT '{}', errors TEXT NOT NULL DEFAULT '[]',
  source TEXT NOT NULL DEFAULT 'bridge'
@@ -201,11 +208,15 @@ class Database:
                 if "first_reply_s" not in ticket_columns:
                     db.execute("ALTER TABLE cm_site_tickets ADD COLUMN first_reply_s BIGINT NOT NULL DEFAULT 0")
                 analytics_columns = {row["name"] for row in db.execute("PRAGMA table_info(cm_site_analytics_events)").fetchall()}
+                metric_columns = {row["name"] for row in db.execute("PRAGMA table_info(cm_site_server_metrics)").fetchall()}
+                if "cpu" not in metric_columns:
+                    db.execute("ALTER TABLE cm_site_server_metrics ADD COLUMN cpu REAL")
                 for name in ANALYTICS_COLUMNS:
                     if name not in analytics_columns:
                         db.execute(f"ALTER TABLE cm_site_analytics_events ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
             else:
                 db.execute("ALTER TABLE cm_site_notifications ADD COLUMN IF NOT EXISTS href TEXT NOT NULL DEFAULT ''")
+                db.execute("ALTER TABLE cm_site_server_metrics ADD COLUMN IF NOT EXISTS cpu REAL")
                 db.execute("ALTER TABLE cm_site_tickets ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'normal'")
                 db.execute("ALTER TABLE cm_site_tickets ADD COLUMN IF NOT EXISTS first_reply_s BIGINT NOT NULL DEFAULT 0")
                 for name in ANALYTICS_COLUMNS:

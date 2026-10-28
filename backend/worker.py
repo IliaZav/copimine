@@ -11,7 +11,7 @@ from .db import Database
 from .game import GameAdapter
 from .mail import pump_outbox
 from .maps import MapJobs, MapStorage, PublicationError
-from .ops import SAMPLE_SECONDS, sample
+from .ops import SAMPLE_SECONDS, sample, sample_interval
 
 LOG = logging.getLogger('copimine.worker')
 
@@ -106,19 +106,21 @@ def main():
     worker=MapWorker(database,settings,GameAdapter(settings,database))
     logging.basicConfig(level=logging.INFO)
     last_sample=0
+    interval=SAMPLE_SECONDS
     while True:
         try:
             worker.tick()
             if settings.smtp_host and settings.mail_domain_ready:pump_outbox(database,settings)
-            if time.time()-last_sample>=SAMPLE_SECONDS:
+            if time.time()-last_sample>=interval:
                 try:
                     sample(database,settings,worker.game)
                 except Exception as error:
                     LOG.warning('Metrics sample failed type=%s',type(error).__name__)
                 last_sample=time.time()
+                interval=sample_interval(database)
         except Exception as error:
             LOG.error('Worker iteration failed type=%s',type(error).__name__)
-        time.sleep(5)
+        time.sleep(1)
 
 
 if __name__=='__main__':main()

@@ -2,7 +2,19 @@
 
 .admin-content .v6-map-page>.section-head{display:none}.v71-local-label{display:flex}.v71-local-label.is-connected>i{background:#75cf91}.v71-local-label.is-disconnected>i{background:#d89574}.production-map-page .tabs{flex-wrap:wrap}
 .v6-server-summary .production-metric{font-size:clamp(1.2rem,1.6vw,1.5rem);line-height:1.3;overflow-wrap:anywhere}
+.v6-server-summary-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media(max-width:1100px){.v6-server-summary-4{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .v6-spark{display:block;margin-top:14px;color:#a7d08b;min-height:70px}
+.v6-spark-grid{stroke:currentColor;stroke-opacity:.16;stroke-dasharray:2 3}
+.v6-spark-legend{margin-top:6px}
+.v6-spark-cpu{color:#7aa6c9}
+.v6-inline-form{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;max-width:360px}
+.v6-inline-form .field{flex:0 1 120px;margin:0;min-width:0}
+.v6-inline-form .field input{width:100%;min-height:42px}
+.v6-inline-form .btn{align-self:flex-end;white-space:nowrap}
+/* Пустой блок ошибки иначе занимает свою строку и выталкивает кнопку вниз. */
+.v6-inline-form .form-error:empty{display:none}
+.v6-inline-form .form-error{flex-basis:100%}
 .v6-log-samples{margin:14px 0 0;padding:14px 16px;background:var(--surface,#15191b);border-radius:10px;font-size:.8rem;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;max-height:280px;overflow:auto;color:var(--muted,#a0a7a6)}
 .v6-logins-body{margin-top:6px}
 

@@ -20,12 +20,24 @@ from .security import current_user, fail
 
 router = APIRouter()
 GAME_UNIT = "copimine-game.service"
-SAMPLE_SECONDS = 60
+# Замер по умолчанию раз в 3 секунды; интервал настраивается в панели мониторинга.
+SAMPLE_SECONDS = 3
+SAMPLE_MIN, SAMPLE_MAX = 2, 300
+INTERVAL_KEY = "monitor_interval"
 RETENTION_DAYS = 7
 LOGIN_RETENTION_DAYS = 30
 REQUIRED_PLUGINS = ("CopiMineEconomyCore", "CopiMineElectionCore", "CopiMineUltimateAdminPlus", "CopiMineArtifacts", "CopiMineWorldCore", "CopiMineNarcotics")
 TAG = re.compile(r"\[([^\[\]]{1,48})\]")
 INVENTORY_CACHE = {"at": 0.0, "data": None}
+# Предыдущее значение счётчика CPU процесса игры: разница за интервал даёт нагрузку.
+PROCESS_CPU = {"value": None, "at": 0.0}
+# Тяжёлые чтения (журнал, systemctl, статистика базы) обновляем не каждый замер.
+HEAVY_CACHE = {"at": 0.0, "host": {}, "database": {}, "errors": {}}
+HEAVY_SECONDS = 15
+# Журнал просадок кэшируется на полминуты: запрос по суткам тяжёлый.
+INCIDENT_CACHE = {"at": 0.0, "database": None, "data": []}
+INCIDENT_FLOOR = 18.0
+INCIDENT_MSPT = 40.0
 
 
 def _number(value):
@@ -48,6 +60,33 @@ def _server(settings):
 
 def _releases_root(settings):
     return settings.map_root.parent / "releases"
+
+
+def sample_interval(database):
+    """Интервал замера из настроек, по умолчанию 3 секунды."""
+    try:
+        value = int(database.setting(INTERVAL_KEY, SAMPLE_SECONDS))
+    except (TypeError, ValueError):
+        return SAMPLE_SECONDS
+    return min(SAMPLE_MAX, max(SAMPLE_MIN, value))
+
+
+def process_cpu(unit=GAME_UNIT):
+    """Загрузка процесса игры в процентах одного ядра, по счётчику из systemd."""
+    result = _run(["systemctl", "show", unit, "-p", "CPUUsageNSec"])
+    if not result or result.returncode:
+        return None
+    raw = result.stdout.strip().partition("=")[2]
+    value = _number(raw)
+    if value is None:
+        return None
+    now = time.monotonic()
+    previous = PROCESS_CPU.get("value")
+    PROCESS_CPU["value"], elapsed = value, now - PROCESS_CPU["at"]
+    PROCESS_CPU["at"] = now
+    if previous is None or elapsed <= 0:
+        return None
+    return round((value - previous) / (elapsed * 1e9) * 100, 1)
 
 
 def host_stats():
@@ -232,6 +271,17 @@ def sample(database, settings, game, now=None):
     except Exception:
         health = {}
     worlds = [{"name": w.get("name"), "dimension": w.get("dimension"), "chunks": w.get("loadedChunks")} for w in health.get("worlds") or []]
+    # Журнал, systemctl и статистику Postgres читаем раз в HEAVY_SECONDS:
+    # раз в три секунды это лишняя нагрузка на сервер.
+    mono = time.monotonic()
+    if mono - HEAVY_CACHE["at"] >= HEAVY_SECONDS:
+        HEAVY_CACHE["host"] = {"process": service_state(), "system": host_stats()}
+        HEAVY_CACHE["database"] = database_stats(database)
+        HEAVY_CACHE["errors"] = log_errors(settings)
+        HEAVY_CACHE["at"] = mono
+    host = dict(HEAVY_CACHE["host"])
+    if host.get("process"):
+        host["process"] = {**host["process"], "cpuPercent": process_cpu()}
     row = {
         "id": uuid.uuid4().hex,
         "sampled_s": now,
@@ -239,16 +289,17 @@ def sample(database, settings, game, now=None):
         "players": int(health.get("online") or 0),
         "tps": health.get("tps"),
         "mspt": health.get("mspt"),
+        "cpu": (host.get("process") or {}).get("cpuPercent"),
         "plugins": len(health.get("plugins") or []),
         "worlds": json.dumps(worlds),
-        "host": json.dumps({"process": service_state(), "system": host_stats()}),
-        "database": json.dumps(database_stats(database)),
-        "errors": json.dumps(log_errors(settings)),
+        "host": json.dumps(host),
+        "database": json.dumps(HEAVY_CACHE["database"]),
+        "errors": json.dumps(HEAVY_CACHE["errors"]),
         "source": "bridge" if health.get("tps") is not None else "unavailable",
     }
     with database.transaction() as db:
         db.execute(
-            "INSERT INTO cm_site_server_metrics (id,sampled_s,online,players,tps,mspt,plugins,worlds,host,database,errors,source) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            "INSERT INTO cm_site_server_metrics (id,sampled_s,online,players,tps,mspt,cpu,plugins,worlds,host,database,errors,source) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             tuple(row.values()),
         )
         db.execute("DELETE FROM cm_site_server_metrics WHERE sampled_s < %s", (now - RETENTION_DAYS * 86400,))
@@ -267,23 +318,129 @@ def _decode(row, keys=("worlds", "host", "database", "errors", "target", "backup
     return out
 
 
+def incidents(rows, tps_floor=18.0, mspt_ceiling=40.0):
+    """Просадки из истории: начало, длительность, минимум TPS и что было рядом.
+
+    rows идут от новых к старым.
+    """
+    out, run = [], None
+    for row in reversed(rows):  # от старых к новым, чтобы склеить непрерывные просадки
+        sample_host = row.get("host") or {}
+        system, process = sample_host.get("system") or {}, sample_host.get("process") or {}
+        tps, mspt = row.get("tps"), row.get("mspt")
+        bad = (tps is not None and tps < tps_floor) or (mspt is not None and mspt > mspt_ceiling)
+        if bad and run is None:
+            run = {"from": row["sampled_s"], "to": row["sampled_s"], "tps": tps, "mspt": mspt, "samples": 1,
+                   "players": row.get("players") or 0, "cpu": process.get("cpuPercent"),
+                   "load": (system.get("load") or [None])[0], "memoryPercent": system.get("memoryPercent")}
+        elif bad:
+            run["to"] = row["sampled_s"]
+            run["samples"] += 1
+            if tps is not None and (run["tps"] is None or tps < run["tps"]):
+                run["tps"] = tps
+            if mspt is not None and (run["mspt"] is None or mspt > run["mspt"]):
+                run["mspt"] = mspt
+            run["players"] = max(run["players"], row.get("players") or 0)
+            run["cpu"] = process.get("cpuPercent") or run["cpu"]
+            run["load"] = (system.get("load") or [None])[0] or run["load"]
+        elif run is not None:
+            out.append(run)
+            run = None
+    if run is not None:
+        out.append(run)
+    return out[-20:]
+
+
 @router.get("/api/v6/admin/monitor")
 def monitor(request: Request):
     current_user(request, "server.monitor")
     database = request.app.state.database
+    interval = sample_interval(database)
     with database.transaction() as db:
-        rows = [dict(r) for r in db.execute("SELECT * FROM cm_site_server_metrics ORDER BY sampled_s DESC LIMIT 121").fetchall()]
-    if not rows:
-        return {"sample": None, "history": [], "intervalSeconds": SAMPLE_SECONDS, "stale": None}
-    rows = [_decode(row) for row in rows]
-    latest = rows[0]
+        rows = [dict(r) for r in db.execute("SELECT * FROM cm_site_server_metrics ORDER BY sampled_s DESC LIMIT 1").fetchall()]
+        if not rows:
+            return {"sample": None, "history": [], "incidents": [], "intervalSeconds": interval, "stale": None}
+        latest = _decode(rows[0])
+        # График за два часа: замер раз в три секунды дал бы тысячи точек,
+        # поэтому в базу уходит группировка по минутам.
+        history = [
+            {"at": int(r["at"]), "tps": _round(r["lo"], 1), "high": _round(r["hi"], 1), "mspt": _round(r["mspt"], 1),
+             "players": int(r["players"] or 0), "cpu": _round(r["cpu"], 1)}
+            for r in reversed(db.execute(
+                "SELECT (sampled_s / 60) * 60 AS at, min(tps) AS lo, max(tps) AS hi, max(mspt) AS mspt, "
+                "max(players) AS players, max(cpu) AS cpu FROM cm_site_server_metrics "
+                "WHERE sampled_s >= %s GROUP BY 1 ORDER BY 1 DESC LIMIT 140",
+                (int(time.time()) - 7200,)).fetchall())
+        ]
     return {
         "sample": latest,
-        "history": [{"at": r["sampled_s"], "tps": r["tps"], "mspt": r["mspt"], "players": r["players"]} for r in reversed(rows)],
-        "intervalSeconds": SAMPLE_SECONDS,
+        "history": history,
+        "incidents": incident_list(database),
+        "intervalSeconds": interval,
         "stale": max(0, int(time.time()) - latest["sampled_s"]),
         "requiredPlugins": list(REQUIRED_PLUGINS),
     }
+
+
+def _round(value, digits=1):
+    return None if value is None else round(float(value), digits)
+
+
+def incident_list(database, hours=24):
+    """Просадки за сутки, сгруппированные по минутам. Кэш на полминуты: запрос тяжёлый."""
+    now = time.monotonic()
+    if INCIDENT_CACHE["database"] is database and now - INCIDENT_CACHE["at"] < 30:
+        return INCIDENT_CACHE["data"]
+    with database.transaction() as db:
+        rows = [dict(r) for r in db.execute(
+            "SELECT (sampled_s / 60) * 60 AS at, min(tps) AS tps, max(mspt) AS mspt, max(players) AS players, "
+            "max(cpu) AS cpu, max(online) AS online FROM cm_site_server_metrics "
+            "WHERE sampled_s >= %s GROUP BY 1 HAVING min(tps) < %s OR max(mspt) > %s ORDER BY 1 LIMIT 600",
+            (int(time.time()) - hours * 3600, INCIDENT_FLOOR, INCIDENT_MSPT)).fetchall()]
+    data = coalesce(rows)
+    INCIDENT_CACHE.update(at=now, database=database, data=data)
+    return data
+
+
+def coalesce(rows):
+    """Склеивает соседние плохие минуты в одну запись: просадка длиной 5 минут — это одна строка."""
+    out, run = [], None
+    for row in rows:
+        if run and row["at"] - run["to"] <= 60:
+            run["to"] = row["at"]
+            run["samples"] += 1
+            if row["tps"] is not None and (run["tps"] is None or row["tps"] < run["tps"]):
+                run["tps"] = row["tps"]
+            if row["mspt"] is not None and (run["mspt"] is None or row["mspt"] > run["mspt"]):
+                run["mspt"] = row["mspt"]
+            run["players"] = max(run["players"] or 0, row["players"] or 0)
+            run["cpu"] = max(run["cpu"] or 0, row["cpu"] or 0) or None
+            continue
+        if run:
+            out.append(run)
+        run = {"from": int(row["at"]), "to": int(row["at"]), "samples": 1,
+               "tps": _round(row["tps"], 1), "mspt": _round(row["mspt"], 0),
+               "players": row["players"], "cpu": _round(row["cpu"], 0)}
+    if run:
+        out.append(run)
+    return out[-20:]
+
+
+@router.post("/api/v6/admin/monitor/interval")
+async def set_monitor_interval(request: Request):
+    """Интервал замера. Право то же, что на просмотр мониторинга."""
+    user = current_user(request, "server.monitor")
+    data = await request.json()
+    try:
+        value = int(data.get("seconds"))
+    except (TypeError, ValueError):
+        fail(400, "invalid_interval", "Укажите интервал в секундах.")
+    if not SAMPLE_MIN <= value <= SAMPLE_MAX:
+        fail(400, "invalid_interval", f"Интервал — от {SAMPLE_MIN} до {SAMPLE_MAX} секунд.")
+    database = request.app.state.database
+    database.set_setting(INTERVAL_KEY, value, user["name"])
+    database.audit(user, "monitor.interval", str(value), reason=str(data.get("reason") or "")[:240])
+    return {"ok": True, "intervalSeconds": value}
 
 
 @router.get("/api/v6/admin/releases")

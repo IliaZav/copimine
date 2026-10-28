@@ -367,6 +367,9 @@ def map_asset(scope: str, version: str, asset: str, request: Request):
             metadata['perspectiveView'] = bool(config['perspective'])
             metadata['freeFlightView'] = bool(config['firstPerson'])
             metadata['flatView'] = True
+            # В Незере и Энде нет небесного света, поэтому при ambientLight 0 карта чёрная.
+            if asset.split('/')[1].endswith(('_nether', '_end')):
+                metadata['ambientLight'] = max(float(metadata.get('ambientLight') or 0), 0.7)
         return JSONResponse(metadata, headers={'Cache-Control':'no-store','X-Frame-Options':'SAMEORIGIN'})
     headers={'Cache-Control':'private, no-store' if scope=='private' else 'public, max-age=31536000, immutable',
              'X-Frame-Options':'SAMEORIGIN','Content-Security-Policy':"default-src 'self' data: blob:; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'self'"}

@@ -35,13 +35,24 @@ def test_monitor_reports_cached_sample_and_release_inventory(client):
     monitor = client.get("/api/v6/admin/monitor")
     assert monitor.status_code == 200
     body = monitor.json()
-    assert body["intervalSeconds"] >= 30
+    assert 2 <= body["intervalSeconds"] <= 300
     assert "history" in body
     assert "requiredPlugins" in body or body["sample"] is None
 
     releases = client.get("/api/v6/admin/releases")
     assert releases.status_code == 200
     assert "plugins" in releases.json()["installed"]
+
+
+def test_monitor_interval_can_be_changed(client):
+    session = login(client)
+    change = client.post("/api/v6/admin/monitor/interval", headers=headers(session), json={"seconds": 5})
+    assert change.status_code == 200, change.text
+    assert client.get("/api/v6/admin/monitor").json()["intervalSeconds"] == 5
+    for bad in (1, 301, 0):
+        rejected = client.post("/api/v6/admin/monitor/interval", headers=headers(session), json={"seconds": bad})
+        assert rejected.status_code == 400, bad
+    client.post("/api/v6/admin/monitor/interval", headers=headers(session), json={"seconds": 3})
 
 
 def test_player_cannot_read_monitor_or_releases(client):

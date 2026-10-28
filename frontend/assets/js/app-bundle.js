@@ -1816,7 +1816,7 @@ const previewTicket=F.ticket,previewReply=F.reply;
 F.ticket=async(f,d)=>{if(!X.live)return previewTicket(f,d);await X.request('/tickets',{method:'POST',body:{title:d.get('title'),body:d.get('body'),type:d.get('type')}});await X.refresh();M.navTo('account/support');M.toast('Обращение сохранено.');};
 F.reply=async(f,d)=>{if(!X.live)return previewReply(f,d);await X.request('/admin/tickets/'+encodeURIComponent(d.get('id')),{method:'PATCH',body:{reply:d.get('reply'),status:d.get('status'),priority:d.get('priority')||'normal',reason:'Ответ на обращение'}});await X.refresh();M.toast('Ответ сохранён.');};
 if(X.live){
- const supportedForms=new Set(['login','legacy-login','register','create-payment','catalog-save','transfer','ticket','reply','v6-reauth','v6-profile','v6-password','v6-totp-setup','v6-totp-confirm','v6-cookie-settings','v6-player-action','v6-sanction-revoke','v6-limit-remove','v6-role','v6-map-settings','v6-server-action']);
+ const supportedForms=new Set(['login','legacy-login','register','create-payment','catalog-save','transfer','ticket','reply','ticket-answer','ticket-message','v6-reauth','v6-profile','v6-password','v6-totp-setup','v6-totp-confirm','v6-cookie-settings','v6-player-action','v6-sanction-revoke','v6-limit-remove','v6-role','v6-map-settings','v6-server-action']);
  for(const name of Object.keys(F))if(!supportedForms.has(name))F[name]=()=>{throw Error('Эта операция требует подключения соответствующего серверного сервиса. Изменения не сохранены.');};
  const blocked=/^(demo-|v6-demo|reset|export$|vk-|identity-|otp-|launcher-(start|confirm|deny|switch)|payment-(success|cancel|simulate)|simulate|mark-delivered|delivery-(retry|complete)|balance-|player-(ban|unban|role)|role-(delete|apply)|recipe-(save|publish|delete|new|import)|device-revoke)/;
  for(const name of Object.keys(H))if(blocked.test(name))H[name]=()=>M.toast('Для этой операции нужен настроенный серверный сервис. Действие не выполнено.',true);
@@ -3359,7 +3359,7 @@ const M=CM,V=CMV4,X=CM6,W=CM5,Q=CMReview,E=M.esc,H=M.handlers,F=M.forms;
 const P=window.CMProduction={health:null};
 const field=V.field,button=(label,action,iconName='refresh',className='')=>M.btn(label,action,iconName,className);
 M.audit=()=>{};Q.scheduleSave=()=>{};Q.offline=false;
-const allowedForms=new Set(['v7-login','v7-register','v7-code','v7-reset','v7-confirm-code','v7-link-email','v7-profile','v7-password','v7-maintenance','v7-site-ban','v73-recovery','v73-inv-remove','v71-transfer','v6-reauth','v6-profile','v6-password','v6-totp-setup','v6-totp-confirm','v6-cookie-settings','v6-player-action','v6-server-action','ticket','reply','v6-map-settings','catalog-save','v6-role','production-account','production-account-edit','production-mc-code','production-mc-confirm','production-checkout','production-content','production-totp-disable','production-release','production-release-apply','production-release-rollback','production-release-report']);
+const allowedForms=new Set(['v7-login','v7-register','v7-code','v7-reset','v7-confirm-code','v7-link-email','v7-profile','v7-password','v7-maintenance','v7-site-ban','v73-recovery','v73-inv-remove','v71-transfer','v6-reauth','v6-profile','v6-password','v6-totp-setup','v6-totp-confirm','v6-cookie-settings','v6-player-action','v6-server-action','ticket','reply','v6-map-settings','catalog-save','v6-role','ticket-answer','ticket-message','production-account','production-account-edit','production-mc-code','production-mc-confirm','production-checkout','production-content','production-totp-disable','production-release','production-release-apply','production-release-rollback','production-release-report','production-monitor-interval']);
 for(const key of Object.keys(F))if(!allowedForms.has(key))F[key]=()=>{throw Error('Действие недоступно. Изменения не сохранены.');};
 for(const key of Object.keys(H))if(/^(demo|v6-demo|v7-test|payment-(success|simulate)|balance-|mark-delivered|delivery-|recipe-(save|publish|delete|import)|v7-feedback|v7-inbox|reset)/.test(key))H[key]=()=>M.toast('Операция недоступна.',true);
 Q.request=(function(original){return async(path,body)=>{
@@ -3435,29 +3435,46 @@ const ciStatus={pass:'Пройден',fail:'Ошибка',running:'Выполн�
 function spark(points){
  if(!points.length)return '';
  const step=100/Math.max(1,points.length-1);
- const path=points.map((p,i)=>(i?'L':'M')+(i*step).toFixed(2)+' '+(30-Math.min(20,Math.max(0,Number(p.tps)||0))/20*30).toFixed(2)).join(' ');
- return '<svg class="v6-spark" viewBox="0 0 100 30" preserveAspectRatio="none" width="100%" height="70" role="img" aria-label="TPS за последние '+points.length+' замеров"><path d="'+path+'" fill="none" stroke="currentColor" stroke-width="1.2" vector-effect="non-scaling-stroke"/></svg>';
+ // Шкала 15–20 TPS: иначе ровные 20 рисуют линию по самому краю и график выглядит пустым.
+ const y=t=>{const v=Math.min(20,Math.max(15,Number(t.tps)||0));return (8+(20-v)/5*20).toFixed(2);};
+ const line=points.map((p,i)=>(i?'L':'M')+(i*step).toFixed(2)+' '+y(p)).join(' ');
+ const tps=points.map(p=>Number(p.tps)||0),last=tps[tps.length-1];
+ const lows=points.map(p=>p.low!=null?Number(p.low):Number(p.tps)||0);
+ const cpu=points.map(p=>p.cpu).filter(v=>v!=null).map(Number);
+ // CPU игры рисуем по его собственной шкале: 8% и 80% надо различать глазом.
+ const cpuMax=cpu.length?Math.max(10,Math.ceil(Math.max(...cpu)/10)*10):0;
+ const cpuLine=cpuMax?points.map((p,i)=>(i?'L':'M')+(i*step).toFixed(2)+' '+(28-Math.min(cpuMax,Math.max(0,Number(p.cpu)||0))/cpuMax*20).toFixed(2)).join(' '):'';
+ return '<svg class="v6-spark" viewBox="0 0 100 30" preserveAspectRatio="none" width="100%" height="90" role="img" aria-label="TPS за последние '+points.length+' минут: от '+Math.min(...lows).toFixed(1)+' до '+Math.max(...tps).toFixed(1)+'">'
+  +'<line x1="0" y1="8" x2="100" y2="8" class="v6-spark-grid" vector-effect="non-scaling-stroke"/>'
+  +'<line x1="0" y1="28" x2="100" y2="28" class="v6-spark-grid" vector-effect="non-scaling-stroke"/>'
+  +(cpuLine?'<path d="'+cpuLine+'" fill="none" stroke="#7aa6c9" stroke-width="1.2" opacity=".9" vector-effect="non-scaling-stroke"/>':'')
+  +'<path d="'+line+'" fill="none" stroke="currentColor" stroke-width="1.8" vector-effect="non-scaling-stroke"/>'
+  +'</svg>'
+  +'<p class="hint v6-spark-legend">TPS сейчас '+last.toFixed(1)+' · минимум '+Math.min(...lows).toFixed(1)+' · максимум '+Math.max(...tps).toFixed(1)
+  +(cpuMax?' · <span class="v6-spark-cpu">CPU игры</span> до '+Math.max(...cpu).toFixed(0)+'% из '+cpuMax+'% на шкале':'')+' за '+points.length+' минут</p>';
 }
 P.refreshMonitor=async()=>{P.monitor=await X.request('/admin/monitor');};
 P.refreshReleases=async()=>{P.releases=await X.request('/admin/releases');};
 
-W.adminExtensions.monitor=()=>{
+W.adminExtensions.monitor=()=>'<div id="v6-monitor-body">'+monitorBody()+'</div>';
+
+function monitorBody(){
  if(!can('server.monitor'))return M.empty('Нужны права администратора','Мониторинг доступен администраторам и владельцу.','lock');
  const r=P.monitor;
- if(!r)return '<section class="panel" role="status"><h2>Мониторинг сервера</h2><p>Загружаем последний замер. Он собирается раз в минуту отдельным процессом, поэтому страница не нагружает игру.</p></section>';
+ if(!r)return '<section class="panel" role="status"><h2>Мониторинг сервера</h2><p>Загружаем последний замер. Сборщик пишет его раз в полминуты, а панель подставляет свежие данные без перезагрузки страницы.</p></section>';
  if(r.error)return '<section class="panel"><h2>Мониторинг сервера</h2><p class="hint">'+E(r.error)+'</p><div class="actions mt">'+button('Повторить','production-monitor-refresh','refresh','ghost small')+'</div></section>';
  const s=r.sample;
- if(!s)return '<section class="panel"><h2>Замеров пока нет</h2><p class="hint">Сборщик запускается вместе с сайтом. Первый замер появится в течение минуты.</p><div class="actions mt">'+button('Обновить','production-monitor-refresh','refresh','ghost small')+'</div></section>';
+ if(!s)return '<section class="panel"><h2>Замеров пока нет</h2><p class="hint">Сборщик запускается вместе с сайтом. Первый замер появится в течение тридцати секунд.</p><div class="actions mt">'+button('Обновить','production-monitor-refresh','refresh','ghost small')+'</div></section>';
  const process=s.host?.process||{},system=s.host?.system||{},db=s.database||{},errors=s.errors||{};
  const worlds=s.worlds||[],history=r.history||[];
  const ages=r.stale==null?'—':r.stale<120?r.stale+' сек назад':Math.round(r.stale/60)+' мин назад';
- return '<div class="v6-server-summary">'
+ return '<div class="v6-server-summary v6-server-summary-4">'
   +metric('TPS',s.tps==null?'—':Number(s.tps).toFixed(1))
   +metric('MSPT',s.mspt==null?'—':Number(s.mspt).toFixed(2)+' мс')
   +metric('Игроков онлайн',s.players)
   +metric('Служба',process.activeState==='active'?'Работает':E(process.activeState||'Нет данных'))
   +'</div>'
-  +'<section class="panel mt"><div class="panel-head"><div><h2>TPS и задержка тика</h2><p class="hint">Замер '+(s.sampled_s?M.date(s.sampled_s*1000,true):'—')+' · обновление раз в '+Math.round((r.intervalSeconds||60)/60)+' мин · '+ages+(r.stale>300?' · сборщик молчит':'')+'</p></div>'+button('Обновить','production-monitor-refresh','refresh','ghost small')+'</div>'+spark(history)+'</section>'
+  +'<section class="panel mt"><div class="panel-head"><div><h2>TPS и задержка тика</h2><p class="hint">Замер '+(s.sampled_s?M.date(s.sampled_s*1000,true):'—')+' · обновляется на месте, замер раз в '+Math.round(r.intervalSeconds||3)+' сек · '+'<span id="v6-monitor-age">'+ages+'</span>'+(r.stale>300?' · сборщик молчит':'')+' · зелёная линия — TPS, синяя — загрузка игры</p></div>'+button('Обновить','production-monitor-refresh','refresh','ghost small')+'</div>'+spark(history)+'</section>'
   +'<div class="admin-grid mt">'
   +'<section class="panel"><h2>Память и диск</h2>'+V.table(['Показатель','Значение'],[
     ['Память сервера, всего',bytes(system.memoryTotal)],
@@ -3479,8 +3496,23 @@ W.adminExtensions.monitor=()=>{
   ])+'</section></div>'
   +'<section class="panel mt"><h2>Нагрузка по мирам</h2>'+(worlds.length?V.table(['Мир','Измерение','Загружено чанков'],worlds.map(w=>[E(w.name||'—'),E(w.dimension||'—'),w.chunks??'—'])):M.empty('Нет данных по мирам','Ответ игрового моста не содержит списка миров.','map'))+'<p class="hint mt">Количество сущностей игровой сервер пока не отдаёт: плагин-мост его не считает. Показаны загруженные чанки.</p></section>'
   +'<section class="panel mt"><h2>Ошибки плагинов</h2>'+(errors.available?(errors.count?V.table(['Источник','Предупреждений и ошибок'],Object.entries(errors.bySource||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>[E(k),v]))+(errors.samples||[]).length?'<pre class="v6-log-samples">'+errors.samples.map(l=>E(l)).join('\n')+'</pre>':'':'<p class="hint">В последних '+errors.tail+' строках журнала предупреждений нет.</p>'):'<p class="hint">Журнал игры недоступен для чтения.</p>')+'</section>'
-  +'<section class="panel mt"><h2>Плагины</h2><p class="hint">Версии читаются из установленных jar при каждом замере: '+s.plugins+' шт. Полный список с контрольными суммами — в разделе «Релизы».</p></section>';
-};
+  +'<section class="panel mt"><h2>Плагины</h2><p class="hint">Версии читаются из установленных jar при каждом замере: '+s.plugins+' шт. Полный список с контрольными суммами — в разделе «Релизы».</p></section>'
+  +'<section class="panel mt"><div class="panel-head"><div><h2>Журнал нагрузки</h2><p class="hint">Просадки TPS ниже 18 или тик дольше 40 мс. Рядом — что было в этот момент.</p></div></div>'+incidentsTable(r.incidents||[])+'</section>'
+  +'<section class="panel mt"><div class="panel-head"><div><h2>Интервал замера</h2><p class="hint">Сборщик пишет замер с этой частотой, панель подтягивает его без перезагрузки страницы.</p></div></div>'
+  +'<form data-form="production-monitor-interval" class="v6-inline-form">'+field('Секунды','seconds',String(r.intervalSeconds||3),'number','min="2" max="300" required step="1"')+V.actions('Сохранить интервал')+'</form></section>';
+}
+
+function incidentsTable(list){
+ if(!list.length)return '<p class="hint">За сутки просадок не было.</p>';
+ return V.table(['Начало','Длительность','TPS','Тик','Игроков','CPU игры'],list.slice().reverse().map(x=>[
+  M.date(x.from*1000,true),
+  Math.max(1,x.to-x.from)+' сек',
+  x.tps==null?'—':Number(x.tps).toFixed(1),
+  x.mspt==null?'—':Number(x.mspt).toFixed(0)+' мс',
+  x.players??'—',
+  x.cpu==null?'—':Number(x.cpu).toFixed(0)+'%'
+ ]));
+}
 
 W.adminExtensions.releases=()=>{
  if(!can('release.manage'))return M.empty('Нужен доступ владельца','Управление релизами доступно только владельцу: установка меняет игровой сервер.','lock');
@@ -3508,7 +3540,42 @@ W.adminExtensions.releases=()=>{
   +'<section class="panel mt"><h2>Как применяется установка</h2><p class="hint">Кнопка «Установить» требует ввести слово подтверждения и создаёт задание. Файлы плагинов меняет отдельная команда на сервере от root — веб-приложение не имеет права писать в каталог плагинов, поэтому одно нажатие не может ничего сломать. Перед заменой команда сохраняет прежние jar и проверяет SHA-256.</p><pre class="v6-log-samples">'+E(r.installCommand||'')+'&lt;id&gt;</pre></section>';
 };
 
-H['production-monitor-refresh']=async()=>{try{await P.refreshMonitor();M.render();M.toast('Данные обновлены.');}catch(e){M.toast(e.message,true);}};
+H['production-monitor-refresh']=async()=>{try{await P.refreshMonitor();paintMonitor();M.toast('Данные обновлены.');}catch(e){M.toast(e.message,true);}};
+F['production-monitor-interval']=async(f,d)=>{
+ await X.request('/admin/monitor/interval',{method:'POST',body:{seconds:Number(d.get('seconds'))}});
+ await P.refreshMonitor();
+ paintMonitor();
+ P.monitorLive();
+ M.toast('Интервал сохранён: '+(P.monitor?.intervalSeconds||d.get('seconds'))+' сек.');
+};
+
+// Метрики обновляются на месте: страница не перерисовывается целиком.
+let monitorTimer=0,ageTimer=0;
+function paintMonitor(){
+ const host=document.getElementById('v6-monitor-body');
+ if(!host)return false;
+ host.innerHTML=monitorBody();
+ return true;
+}
+P.monitorStop=()=>{clearInterval(monitorTimer);clearInterval(ageTimer);monitorTimer=0;ageTimer=0;};
+P.monitorLive=()=>{
+ clearInterval(monitorTimer);clearInterval(ageTimer);
+ // «N сек назад» тикает каждую секунду, но сам блок не перерисовывается.
+ ageTimer=setInterval(()=>{
+  const node=document.getElementById('v6-monitor-age'),stamp=P.monitor?.sample?.sampled_s;
+  if(!node)return clearInterval(ageTimer);
+  if(stamp)node.textContent=Math.max(0,Math.round(Date.now()/1000-stamp))+' сек назад';
+ },1000);
+ const tick=async()=>{
+  if(document.hidden||!document.getElementById('v6-monitor-body'))return;
+  // Перерисовываем только когда пришёл новый замер, чтобы блок не мигал.
+  const before=P.monitor?.sample?.id;
+  try{await P.refreshMonitor();if(P.monitor?.sample?.id!==before)paintMonitor();}catch{}
+ };
+ // Опрос с той же частотой, с какой сборщик пишет замер.
+ const seconds=Math.max(2,Number(P.monitor?.intervalSeconds)||3);
+ monitorTimer=setInterval(tick,seconds*1000);
+};
 H['production-release-refresh']=async()=>{try{await P.refreshReleases();M.render();M.toast('Данные обновлены.');}catch(e){M.toast(e.message,true);}};
 H['production-release-new']=()=>M.openModal('Подготовить обновление','<p>Шаги выполнятся по порядку: релиз → резервная копия плагинов и базы → проверка совместимости. Установка запускается отдельно и только словом подтверждения.</p><form data-form="production-release">'+field('Версия','version','','text','required pattern="[0-9A-Za-z._-]{3,40}" placeholder="2026.10.28-1"')+field('Причина','reason','','text','required minlength="3" maxlength="240"')+V.actions('Подготовить, сохранить копию и проверить')+'</form>');
 F['production-release']=async(f,d)=>{
@@ -3536,9 +3603,12 @@ V.after.push((page,tab)=>{
  if(page==='admin'&&tab==='players'){
   document.querySelectorAll('.cm73-inventory').forEach(n=>{if(!n.querySelector('[data-action="production-inventory-refresh"]'))n.querySelector('.cm73-inventory-head')?.insertAdjacentHTML('beforeend',button('Обновить из игры','production-inventory-refresh','refresh','small').replace('data-action="production-inventory-refresh"','data-action="production-inventory-refresh" data-player="'+E(n.dataset.player)+'"'));});
  }
+ // Каждая из этих загрузок заканчивается M.render(), поэтому повторный запрос
+ // запускается только когда данных ещё нет — иначе страница рендерится по кругу.
  if(page==='admin'&&!P.health&&!P.loading){P.loading=true;P.refreshHealth().then(()=>M.render()).catch(e=>{P.health={error:e.message};}).finally(()=>P.loading=false);}
- if(page==='admin'&&tab==='monitor'&&!P.monitorLoad){P.monitorLoad=true;P.refreshMonitor().then(()=>M.render()).catch(e=>{P.monitor={sample:null,history:[],error:e.message};}).finally(()=>P.monitorLoad=false);}
- if(page==='admin'&&tab==='releases'&&!P.releasesLoad){P.releasesLoad=true;P.refreshReleases().then(()=>M.render()).catch(e=>{P.releases={error:e.message,installed:{},staging:[],releases:[]};}).finally(()=>P.releasesLoad=false);}
+ if(page==='admin'&&tab==='monitor'&&!P.monitor&&!P.monitorLoad){P.monitorLoad=true;P.refreshMonitor().then(()=>{if(!paintMonitor())M.render();}).catch(e=>{P.monitor={sample:null,history:[],error:e.message};M.render();}).finally(()=>P.monitorLoad=false);}
+ if(page==='admin'&&tab==='monitor')P.monitorLive();else P.monitorStop();
+ if(page==='admin'&&tab==='releases'&&!P.releases&&!P.releasesLoad){P.releasesLoad=true;P.refreshReleases().then(()=>M.render()).catch(e=>{P.releases={error:e.message,installed:{},staging:[],releases:[]};}).finally(()=>P.releasesLoad=false);}
 });
 })();
 
@@ -3554,7 +3624,10 @@ const errors={game_unavailable:'Minecraft не ответил.',bluemap_unavaila
 const date=value=>value?new Date(value*1000).toLocaleString('ru-RU'):'Ещё не было';
 const btn=(label,action,icon='refresh',cls='',extra='')=>M.btn(label,action,icon,cls,extra);
 function activeJob(){return admin?.job&&['queued','waiting_for_resources','running','validating','publishing'].includes(admin.job.status);}
-function viewerUrl(isAdmin){const url=isAdmin&&scope==='private'?admin?.viewerUrl:info?.viewerUrl;if(!url)return null;const privateView=isAdmin&&scope==='private';const mode=privateView?camera:camera.replace(/:(?:flat|perspective|free)$/,'')+(info?.perspective?':perspective':':flat');return url+'?v='+(info?.publishedAt||0)+(info?.perspective?'p':'f')+(info?.firstPerson?'1':'0')+'#'+(privateView?'admin_':'public_')+dimension+mode;}
+// Hash BlueMap: map:x:y:z:distance:rotation:angle:tilt:ortho:state. Флаг ortho=1
+// возвращает плоскую проекцию, поэтому вместе со state переключаем и его.
+function cameraMode(cam,on){const p=cam.split(':');if(p.length!==10)return cam;p[6]=on?(Number(p[6])>0.05?p[6]:'0.62'):'0';p[8]=on?'0':'1';p[9]=on?'perspective':'flat';return p.join(':');}
+function viewerUrl(isAdmin){const url=isAdmin&&scope==='private'?admin?.viewerUrl:info?.viewerUrl;if(!url)return null;const privateView=isAdmin&&scope==='private';const mode=privateView?camera:cameraMode(camera,!!info?.perspective);return url+'?v='+(info?.publishedAt||0)+(info?.perspective?'p':'f')+(info?.firstPerson?'1':'0')+'#'+(privateView?'admin_':'public_')+dimension+mode;}
 function rememberCamera(){try{const hash=document.getElementById('production-map-frame')?.contentWindow.location.hash;if(hash&&hash.includes(':'))camera=hash.slice(hash.indexOf(':'));}catch{}}
 function stateHtml(){const j=admin?.job;return '<div class="production-map-state" role="status" aria-live="polite">'+(j?M.pill(labels[j.status]||j.status,j.status==='completed'?'green':j.status==='failed'?'red':''):'Обновление ещё не запускалось')+(j?.error?'<span>'+E(errors[j.error]||j.error)+'</span>':'')+'</div><dl class="detail-specs"><div><dt>Последняя публикация</dt><dd>'+E(date(info?.publishedAt))+'</dd></div><div><dt>Следующее по расписанию</dt><dd>'+E(admin?.settings?.autoRefresh?date(admin.nextScheduledAt):'Расписание выключено')+'</dd></div></dl>';}
 function settingsHtml(){const c=admin?.settings||{};return '<section class="panel production-map-settings mt"><h2>Публикация и обновление</h2><p class="hint mt12">Сайт переключается на новый снимок только после успешной проверки. До этого доступна предыдущая карта.</p><form data-form="v6-map-settings"><div class="v6-form-grid three"><label class="check-row"><input type="checkbox" name="enabled" '+(c.enabled!==false?'checked':'')+'>Показывать публичную карту</label><label class="check-row"><input type="checkbox" name="autoRefresh" '+(c.autoRefresh?'checked':'')+'>Обновлять по расписанию</label><label class="check-row"><input type="checkbox" name="perspective" '+(c.perspective?'checked':'')+'>Разрешить 3D-обзор (перспектива)</label><label class="check-row"><input type="checkbox" name="firstPerson" '+(c.firstPerson?'checked':'')+'>Разрешить вид от первого лица</label><label class="check-row"><input type="checkbox" disabled>Метки игроков отключены</label>'+V.field('Интервал публикации, минуты','intervalMinutes',c.intervalMinutes||720,'number','required min="60" max="10080"')+V.field('Задержка публикации, минуты','minAgeMinutes',c.minAgeMinutes||0,'number','required min="0" max="1440"')+'</div>'+V.field('Причина изменения','reason','','text','required minlength="5" maxlength="500"')+V.actions('Сохранить настройки')+'</form><p class="hint">Метки останутся выключены до проверки приватности, vanish и задержки позиций в Minecraft.</p></section>';}
@@ -4051,7 +4124,7 @@ M.renderers.page=slug=>renderPublicContentPage(slug);
     return previousLogoutCommit?.(...args);
   };
 
-  async function api(path, body, method) {
+async function api(path, body, method) {
     const headers = { Accept: 'application/json' };
     const options = { method: method || (body === undefined ? 'GET' : 'POST'), credentials: 'same-origin', headers };
     if (body !== undefined) {
@@ -4063,6 +4136,21 @@ M.renderers.page=slug=>renderPublicContentPage(slug);
     const result = await response.json();
     if (!response.ok) throw Error(result.error?.message || result.message || 'Не удалось выполнить запрос.');
     return result;
+  }
+
+  // Файл уходит base64 в JSON: сервер проверяет тип, размер и антивирус.
+  async function uploadAttachment(form, id) {
+    const input = form.querySelector('input[type="file"][data-ticket-file]');
+    const file = input?.files?.[0];
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) throw Error('Файл больше 8 МБ.');
+    const data = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+      reader.onerror = () => reject(Error('Не удалось прочитать файл.'));
+      reader.readAsDataURL(file);
+    });
+    await api(`tickets/${encodeURIComponent(id)}/files`, { name: file.name, mime: file.type || 'application/octet-stream', data });
   }
 
   function authReturn() {
@@ -4210,16 +4298,26 @@ M.renderers.page=slug=>renderPublicContentPage(slug);
 
   H['new-ticket'] = () => {
     if (!M.me()) { saveAuthReturn('account/support'); M.navTo('auth/login'); return; }
-    M.openModal('Новое обращение', `<form data-form="ticket"><label class="field">Тема<select name="type"><option>Покупка</option><option>Вход в игру</option><option>Жалоба</option><option>Другое</option></select></label>${V.field('Коротко о проблеме', 'title', '', 'text', 'required minlength="3" maxlength="160"')}${V.area('Сообщение', 'body', '', 5, 'required minlength="5" maxlength="6000" placeholder="Опиши, что произошло"')}<div class="form-error" role="alert"></div>${V.actions('Отправить обращение')}</form>`);
+    M.openModal('Новое обращение', `<form data-form="ticket"><label class="field">Тема<select name="type"><option>Покупка</option><option>Вход в игру</option><option>Жалоба</option><option>Другое</option></select></label>${V.field('Коротко о проблеме', 'title', '', 'text', 'required minlength="3" maxlength="160"')}${V.area('Сообщение', 'body', '', 5, 'required minlength="5" maxlength="6000" placeholder="Опиши, что произошло"')}<label class="field">Приложить фото или файл<small>Фото, PDF, лог или архив до 8 МБ. Файл проверяется антивирусом до сохранения.</small><input type="file" name="attachment" accept="image/png,image/jpeg,image/webp,image/gif,text/plain,text/csv,application/json,application/pdf,application/zip,application/gzip" data-ticket-file="new"></label><div class="form-error" role="alert"></div>${V.actions('Отправить обращение')}</form>`);
   };
   F.ticket = async (form, data) => {
     if (!M.me()) throw Error('Войди в аккаунт, чтобы написать в поддержку.');
     const title = String(data.get('title') || '').trim(), body = String(data.get('body') || '').trim();
     if (title.length < 3 || body.length < 5) throw Error('Заполни тему и сообщение.');
-    await api('tickets', { title, body, type: String(data.get('type') || 'support') });
+    const result = await api('tickets', { title, body, type: String(data.get('type') || 'support') });
+    if (result?.ticket?.id) await uploadAttachment(form, result.ticket.id);
     await Q.reload();
+    // navTo на текущий маршрут не меняет хеш и не вызывает render(), поэтому
+    // окно закрываем сами — иначе форма висит поверх списка.
+    M.closeModal();
     M.navTo('account/support');
     M.toast('Обращение отправлено.');
+  };
+
+  const filesRow = (ticket) => {
+    const files = ticket.files || [];
+    if (!files.length) return '';
+    return `<div class="v9-ticket-files">${files.map(file => `<a class="v9-ticket-file" href="/ticket-file/${E(file.id)}" target="_blank" rel="noopener">${E(file.name)}<small>${Math.max(1, Math.round((file.bytes || 0) / 1024))} КБ</small></a>`).join('')}</div>`;
   };
 
   H['ticket-detail'] = button => {
@@ -4227,25 +4325,27 @@ M.renderers.page=slug=>renderPublicContentPage(slug);
     if (!ticket) return;
     const admin = M.UI.page === 'admin';
     const messages = ticket.messages?.length ? ticket.messages : [{ actor: ticket.player || 'Игрок', role: 'player', body: ticket.body, at: ticket.at }, ...(ticket.reply ? [{ actor: 'Команда', role: 'owner', body: ticket.reply, at: ticket.firstReplyAt || ticket.updated_s * 1000 }] : [])];
-    const thread = `<div class="v9-ticket-thread">${messages.map(message => `<article class="v9-ticket-message ${message.role === 'player' ? 'from-player' : 'from-team'}"><small>${E(message.actor || (message.role === 'player' ? ticket.player : 'Команда'))} · ${M.date(message.at, true)}</small><p>${E(message.body)}</p></article>`).join('')}</div>`;
+    const thread = `<div class="v9-ticket-thread">${messages.map(message => `<article class="v9-ticket-message ${message.role === 'player' ? 'from-player' : 'from-team'}"><small>${E(message.actor || (message.role === 'player' ? ticket.player : 'Команда'))} · ${M.date(message.at, true)}</small><p>${E(message.body)}</p></article>`).join('')}</div>${filesRow(ticket)}`;
     const actions = admin
       ? `<form data-form="ticket-answer" class="v9-ticket-reply"><input type="hidden" name="id" value="${E(ticket.id)}">${V.area('Ответ игроку', 'reply', '', 4, 'required minlength="3" maxlength="6000"')}<div class="field-row">${V.select('Статус', 'status', [['open', 'Новое'], ['review', 'В работе'], ['closed', 'Закрыть']], ticket.status)}${V.select('Приоритет', 'priority', [['normal', 'Обычный'], ['high', 'Высокий'], ['urgent', 'Срочный']], ticket.priority || 'normal')}</div><div class="form-error" role="alert"></div>${V.actions('Отправить ответ')}</form><div class="actions mt">${M.btn('Создать расследование', 'case-from-ticket', 'shield', 'ghost small', `data-id="${E(ticket.id)}"`)}</div>`
       : ticket.status === 'closed'
         ? `<p class="v9-ticket-closed">Обращение закрыто. Если вопрос остался, создай новое.</p>${M.btn('Новое обращение', 'new-ticket', 'plus', 'ghost small')}`
-        : `<form data-form="ticket-message" class="v9-ticket-reply"><input type="hidden" name="id" value="${E(ticket.id)}">${V.area('Сообщение', 'body', '', 3, 'required minlength="3" maxlength="6000"')}<div class="form-error" role="alert"></div>${V.actions('Отправить')}</form>`;
+        : `<form data-form="ticket-message" class="v9-ticket-reply"><input type="hidden" name="id" value="${E(ticket.id)}">${V.area('Сообщение', 'body', '', 3, 'required minlength="3" maxlength="6000"')}<label class="field">Приложить фото или файл<small>Фото, PDF, лог или архив до 8 МБ. Файл проверяется антивирусом до сохранения.</small><input type="file" name="attachment" accept="image/png,image/jpeg,image/webp,image/gif,text/plain,text/csv,application/json,application/pdf,application/zip,application/gzip" data-ticket-file="${E(ticket.id)}"></label><div class="form-error" role="alert"></div>${V.actions('Отправить')}</form>`;
     M.openModal(`${E(ticket.title)} <span class="v9-ticket-id">${E(ticket.id)}</span>`, `<div class="v9-ticket-meta">${M.status(ticket.status)}${admin ? M.pill(ticket.priority === 'urgent' ? 'Срочно' : ticket.priority === 'high' ? 'Высокий приоритет' : 'Обычный') : ''}${admin ? `<span>${E(ticket.playerName || ticket.player || '')}</span>` : ''}</div>${thread}${actions}`, 'v9-ticket-dialog');
   };
 
   F['ticket-message'] = async (form, data) => {
     const id = String(data.get('id') || '');
     await api(`tickets/${encodeURIComponent(id)}/messages`, { body: String(data.get('body') || '').trim() });
+    await uploadAttachment(form, id);
     await Q.reload();
+    M.closeModal();
     M.navTo(`account/support?ticket=${encodeURIComponent(id)}`);
     M.toast('Сообщение отправлено.');
   };
   F['ticket-answer'] = async (form, data) => {
     const id = String(data.get('id') || ''), reply = String(data.get('reply') || '').trim();
-    await api(`admin/tickets/${encodeURIComponent(id)}`, { reply, status: data.get('status'), priority: data.get('priority') });
+    await api(`admin/tickets/${encodeURIComponent(id)}`, { reply, status: data.get('status'), priority: data.get('priority') }, 'PATCH');
     await Q.reload();
     H['ticket-detail']({ dataset: { id } });
     M.toast(reply ? 'Ответ сохранён.' : 'Изменения сохранены.');

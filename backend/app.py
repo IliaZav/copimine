@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .auth import create_user, router as auth_router
 from .analytics import router as analytics_router
+from .attachments import router as attachments_router
 from .cms import router as cms_router
 from .config import Settings
 from .db import Database
@@ -154,6 +155,7 @@ def create_app(settings=None):
 
     app.include_router(auth_router)
     app.include_router(analytics_router)
+    app.include_router(attachments_router)
     app.include_router(domain_router)
     app.include_router(cms_router)
     app.include_router(mail_router)

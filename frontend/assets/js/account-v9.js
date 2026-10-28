@@ -77,7 +77,7 @@
     return previousLogoutCommit?.(...args);
   };
 
-  async function api(path, body, method) {
+async function api(path, body, method) {
     const headers = { Accept: 'application/json' };
     const options = { method: method || (body === undefined ? 'GET' : 'POST'), credentials: 'same-origin', headers };
     if (body !== undefined) {
@@ -89,6 +89,21 @@
     const result = await response.json();
     if (!response.ok) throw Error(result.error?.message || result.message || 'Не удалось выполнить запрос.');
     return result;
+  }
+
+  // Файл уходит base64 в JSON: сервер проверяет тип, размер и антивирус.
+  async function uploadAttachment(form, id) {
+    const input = form.querySelector('input[type="file"][data-ticket-file]');
+    const file = input?.files?.[0];
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) throw Error('Файл больше 8 МБ.');
+    const data = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+      reader.onerror = () => reject(Error('Не удалось прочитать файл.'));
+      reader.readAsDataURL(file);
+    });
+    await api(`tickets/${encodeURIComponent(id)}/files`, { name: file.name, mime: file.type || 'application/octet-stream', data });
   }
 
   function authReturn() {
@@ -236,16 +251,26 @@
 
   H['new-ticket'] = () => {
     if (!M.me()) { saveAuthReturn('account/support'); M.navTo('auth/login'); return; }
-    M.openModal('Новое обращение', `<form data-form="ticket"><label class="field">Тема<select name="type"><option>Покупка</option><option>Вход в игру</option><option>Жалоба</option><option>Другое</option></select></label>${V.field('Коротко о проблеме', 'title', '', 'text', 'required minlength="3" maxlength="160"')}${V.area('Сообщение', 'body', '', 5, 'required minlength="5" maxlength="6000" placeholder="Опиши, что произошло"')}<div class="form-error" role="alert"></div>${V.actions('Отправить обращение')}</form>`);
+    M.openModal('Новое обращение', `<form data-form="ticket"><label class="field">Тема<select name="type"><option>Покупка</option><option>Вход в игру</option><option>Жалоба</option><option>Другое</option></select></label>${V.field('Коротко о проблеме', 'title', '', 'text', 'required minlength="3" maxlength="160"')}${V.area('Сообщение', 'body', '', 5, 'required minlength="5" maxlength="6000" placeholder="Опиши, что произошло"')}<label class="field">Приложить фото или файл<small>Фото, PDF, лог или архив до 8 МБ. Файл проверяется антивирусом до сохранения.</small><input type="file" name="attachment" accept="image/png,image/jpeg,image/webp,image/gif,text/plain,text/csv,application/json,application/pdf,application/zip,application/gzip" data-ticket-file="new"></label><div class="form-error" role="alert"></div>${V.actions('Отправить обращение')}</form>`);
   };
   F.ticket = async (form, data) => {
     if (!M.me()) throw Error('Войди в аккаунт, чтобы написать в поддержку.');
     const title = String(data.get('title') || '').trim(), body = String(data.get('body') || '').trim();
     if (title.length < 3 || body.length < 5) throw Error('Заполни тему и сообщение.');
-    await api('tickets', { title, body, type: String(data.get('type') || 'support') });
+    const result = await api('tickets', { title, body, type: String(data.get('type') || 'support') });
+    if (result?.ticket?.id) await uploadAttachment(form, result.ticket.id);
     await Q.reload();
+    // navTo на текущий маршрут не меняет хеш и не вызывает render(), поэтому
+    // окно закрываем сами — иначе форма висит поверх списка.
+    M.closeModal();
     M.navTo('account/support');
     M.toast('Обращение отправлено.');
+  };
+
+  const filesRow = (ticket) => {
+    const files = ticket.files || [];
+    if (!files.length) return '';
+    return `<div class="v9-ticket-files">${files.map(file => `<a class="v9-ticket-file" href="/ticket-file/${E(file.id)}" target="_blank" rel="noopener">${E(file.name)}<small>${Math.max(1, Math.round((file.bytes || 0) / 1024))} КБ</small></a>`).join('')}</div>`;
   };
 
   H['ticket-detail'] = button => {
@@ -253,25 +278,27 @@
     if (!ticket) return;
     const admin = M.UI.page === 'admin';
     const messages = ticket.messages?.length ? ticket.messages : [{ actor: ticket.player || 'Игрок', role: 'player', body: ticket.body, at: ticket.at }, ...(ticket.reply ? [{ actor: 'Команда', role: 'owner', body: ticket.reply, at: ticket.firstReplyAt || ticket.updated_s * 1000 }] : [])];
-    const thread = `<div class="v9-ticket-thread">${messages.map(message => `<article class="v9-ticket-message ${message.role === 'player' ? 'from-player' : 'from-team'}"><small>${E(message.actor || (message.role === 'player' ? ticket.player : 'Команда'))} · ${M.date(message.at, true)}</small><p>${E(message.body)}</p></article>`).join('')}</div>`;
+    const thread = `<div class="v9-ticket-thread">${messages.map(message => `<article class="v9-ticket-message ${message.role === 'player' ? 'from-player' : 'from-team'}"><small>${E(message.actor || (message.role === 'player' ? ticket.player : 'Команда'))} · ${M.date(message.at, true)}</small><p>${E(message.body)}</p></article>`).join('')}</div>${filesRow(ticket)}`;
     const actions = admin
       ? `<form data-form="ticket-answer" class="v9-ticket-reply"><input type="hidden" name="id" value="${E(ticket.id)}">${V.area('Ответ игроку', 'reply', '', 4, 'required minlength="3" maxlength="6000"')}<div class="field-row">${V.select('Статус', 'status', [['open', 'Новое'], ['review', 'В работе'], ['closed', 'Закрыть']], ticket.status)}${V.select('Приоритет', 'priority', [['normal', 'Обычный'], ['high', 'Высокий'], ['urgent', 'Срочный']], ticket.priority || 'normal')}</div><div class="form-error" role="alert"></div>${V.actions('Отправить ответ')}</form><div class="actions mt">${M.btn('Создать расследование', 'case-from-ticket', 'shield', 'ghost small', `data-id="${E(ticket.id)}"`)}</div>`
       : ticket.status === 'closed'
         ? `<p class="v9-ticket-closed">Обращение закрыто. Если вопрос остался, создай новое.</p>${M.btn('Новое обращение', 'new-ticket', 'plus', 'ghost small')}`
-        : `<form data-form="ticket-message" class="v9-ticket-reply"><input type="hidden" name="id" value="${E(ticket.id)}">${V.area('Сообщение', 'body', '', 3, 'required minlength="3" maxlength="6000"')}<div class="form-error" role="alert"></div>${V.actions('Отправить')}</form>`;
+        : `<form data-form="ticket-message" class="v9-ticket-reply"><input type="hidden" name="id" value="${E(ticket.id)}">${V.area('Сообщение', 'body', '', 3, 'required minlength="3" maxlength="6000"')}<label class="field">Приложить фото или файл<small>Фото, PDF, лог или архив до 8 МБ. Файл проверяется антивирусом до сохранения.</small><input type="file" name="attachment" accept="image/png,image/jpeg,image/webp,image/gif,text/plain,text/csv,application/json,application/pdf,application/zip,application/gzip" data-ticket-file="${E(ticket.id)}"></label><div class="form-error" role="alert"></div>${V.actions('Отправить')}</form>`;
     M.openModal(`${E(ticket.title)} <span class="v9-ticket-id">${E(ticket.id)}</span>`, `<div class="v9-ticket-meta">${M.status(ticket.status)}${admin ? M.pill(ticket.priority === 'urgent' ? 'Срочно' : ticket.priority === 'high' ? 'Высокий приоритет' : 'Обычный') : ''}${admin ? `<span>${E(ticket.playerName || ticket.player || '')}</span>` : ''}</div>${thread}${actions}`, 'v9-ticket-dialog');
   };
 
   F['ticket-message'] = async (form, data) => {
     const id = String(data.get('id') || '');
     await api(`tickets/${encodeURIComponent(id)}/messages`, { body: String(data.get('body') || '').trim() });
+    await uploadAttachment(form, id);
     await Q.reload();
+    M.closeModal();
     M.navTo(`account/support?ticket=${encodeURIComponent(id)}`);
     M.toast('Сообщение отправлено.');
   };
   F['ticket-answer'] = async (form, data) => {
     const id = String(data.get('id') || ''), reply = String(data.get('reply') || '').trim();
-    await api(`admin/tickets/${encodeURIComponent(id)}`, { reply, status: data.get('status'), priority: data.get('priority') });
+    await api(`admin/tickets/${encodeURIComponent(id)}`, { reply, status: data.get('status'), priority: data.get('priority') }, 'PATCH');
     await Q.reload();
     H['ticket-detail']({ dataset: { id } });
     M.toast(reply ? 'Ответ сохранён.' : 'Изменения сохранены.');

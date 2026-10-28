@@ -445,6 +445,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final String CLIENT_VISUAL_RITUAL_GUARD_ENDERMAN = "END_RIFT_RITUAL_GUARD_ENDERMAN_V1";
     private static final String CLIENT_VISUAL_SPIDER = "END_RIFT_SPIDER_V1";
     private static final String CLIENT_VISUAL_ELITE_SPIDER = "END_RIFT_ELITE_SPIDER_V1";
+    private static final String CLIENT_VISUAL_ZOMBIE = "END_RIFT_ZOMBIE_V1";
+    private static final String CLIENT_VISUAL_ELITE_ZOMBIE = "END_RIFT_ELITE_ZOMBIE_V1";
     private static final String CLIENT_VISUAL_WAVE_GUARDIAN_SPIDER = "END_RIFT_WAVE_GUARDIAN_SPIDER_V1";
     private static final String CLIENT_VISUAL_RITUAL_GUARD_SPIDER = "END_RIFT_RITUAL_GUARD_SPIDER_V1";
     private static final String CLIENT_VISUAL_SKELETON = "END_RIFT_SKELETON_V1";
@@ -8999,6 +9001,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     "assets/copimineclient/textures/entity/end_rift_user_enderman.png";
             case CLIENT_VISUAL_SPIDER -> "assets/copimineclient/textures/entity/end_rift_user_spider.png";
             case CLIENT_VISUAL_ELITE_SPIDER -> "assets/copimineclient/textures/entity/end_rift_elite_spider.png";
+            case CLIENT_VISUAL_ZOMBIE -> "assets/copimineclient/textures/entity/end_rift_zombie.png";
+            case CLIENT_VISUAL_ELITE_ZOMBIE ->
+                    "assets/copimineclient/textures/entity/end_rift_elite_zombie.png";
             case CLIENT_VISUAL_WAVE_GUARDIAN_SPIDER,
                     CLIENT_VISUAL_RITUAL_GUARD_SPIDER ->
                     "assets/copimineclient/textures/entity/end_rift_user_spider.png";
@@ -48096,6 +48101,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (EVENT_KIND_WAVE_MOB.equals(kind)) {
                 return CLIENT_VISUAL_ENDERMAN;
             }
+        }
+        if (entity.getType() == EntityType.ZOMBIE) {
+            // Vanilla zombies never carry an event kind, so they keep the vanilla skin.
+            return EVENT_KIND_ELITE.equals(kind) ? CLIENT_VISUAL_ELITE_ZOMBIE : CLIENT_VISUAL_ZOMBIE;
         }
         return "";
     }

@@ -36,6 +36,8 @@ MOB_TEXTURES = (
     "end_rift_elite.png",
     "end_rift_elite_skeleton.png",
     "end_rift_elite_spider.png",
+    "end_rift_zombie.png",
+    "end_rift_elite_zombie.png",
     "end_event_ritual_shell.png",
     "end_event_ritual_membrane.png",
 )
@@ -83,6 +85,8 @@ def assert_current_mob_payload(
         ("END_RIFT_ELITE_V1", "end_rift_elite.png"),
         ("END_RIFT_ELITE_SKELETON_V1", "end_rift_elite_skeleton.png"),
         ("END_RIFT_ELITE_SPIDER_V1", "end_rift_elite_spider.png"),
+        ("END_RIFT_ZOMBIE_V1", "end_rift_zombie.png"),
+        ("END_RIFT_ELITE_ZOMBIE_V1", "end_rift_elite_zombie.png"),
     ):
         assert visual_id.encode("ascii") in catalog, f"{artifact} is missing {visual_id}"
         assert texture.encode("ascii") in catalog, f"{artifact} does not bind {texture}"

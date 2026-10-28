@@ -523,6 +523,7 @@ public final class EndEventClientState {
     private static boolean wavePoseVisual(String visual) {
         return Set.of("END_RIFT_ENDERMAN_V1", "END_RIFT_ELITE_V1", "END_RIFT_SKELETON_V1", "END_RIFT_ELITE_SKELETON_V1",
                 "END_RIFT_SPIDER_V1", "END_RIFT_ELITE_SPIDER_V1", "END_RIFT_WAVE_GUARDIAN_ENDERMAN_V1",
+                "END_RIFT_ZOMBIE_V1", "END_RIFT_ELITE_ZOMBIE_V1",
                 "END_RIFT_WAVE_GUARDIAN_SKELETON_V1", "END_RIFT_WAVE_GUARDIAN_SPIDER_V1",
                 "END_RIFT_RITUAL_GUARD_ENDERMAN_V1", "END_RIFT_RITUAL_GUARD_SKELETON_V1", "END_RIFT_RITUAL_GUARD_SPIDER_V1").contains(visual);
     }

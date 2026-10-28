@@ -1063,6 +1063,8 @@ def test_supplied_boss_geometry_and_animation_assets_are_runtime_bound() -> None
     assert 'textures.put("END_RIFT_ELITE_V1", entityTexture("end_rift_elite.png"));' in catalog
     assert 'textures.put("END_RIFT_ELITE_SPIDER_V1", entityTexture("end_rift_elite_spider.png"));' in catalog
     assert 'textures.put("END_RIFT_ELITE_SKELETON_V1", entityTexture("end_rift_elite_skeleton.png"));' in catalog
+    assert 'textures.put("END_RIFT_ZOMBIE_V1", entityTexture("end_rift_zombie.png"));' in catalog
+    assert 'textures.put("END_RIFT_ELITE_ZOMBIE_V1", entityTexture("end_rift_elite_zombie.png"));' in catalog
     assert 'entityTexture("end_rift_skeleton.png")' not in catalog
 
 

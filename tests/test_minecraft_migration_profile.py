@@ -154,10 +154,10 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     artifact = profile['clientArtifact']
 
     assert artifact['filename'] == 'CopiMineClient-0.1.3+26.3.jar'
-    assert artifact['size'] == 15_014_845
+    assert artifact['size'] == 15_020_043
     assert artifact['sha512'] == (
-        '3114e5dddeeef6d24f6cce632289252a56872e000fc2515676988fd114230c3b'
-        '14ecdf40f8237b39902a022590b3db3f30426509e837c8e8c1714e39e5897fd6'
+        '24ebda890a1d87032a0319fa8786e27682ab18f65f3b9584c829e28c2c8d061c'
+        'd2d1e9af0a3e63ee565c4126ba7c32d36919dced96fa2ce530a3dcfec2e475ca'
     )
 
 

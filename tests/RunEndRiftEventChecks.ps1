@@ -762,6 +762,7 @@ Invoke-GateStep 'Boss accepted hits, cast ownership and Kagune recovery' {
   try {
     & python -m pytest -q 'tests/test_boss_attack_damage_admission.py' `
       'tests/test_boss_edge_volley_runtime.py' 'tests/test_boss_cast_position_adapter.py' `
+      'tests/test_boss_telegraph_runtime.py' `
       'tests/test_inferno_runtime_cadence.py' 'tests/test_guardian_respawn_recovery_adapter.py' `
       'tests/test_small_kagune_strike_adapter.py' 'tests/test_tentacle_throw_protection_adapter.py' `
       'tests/test_boss_phase_damage_transaction_adapter.py' 'tests/test_boss_defeat_durability_adapter.py' `

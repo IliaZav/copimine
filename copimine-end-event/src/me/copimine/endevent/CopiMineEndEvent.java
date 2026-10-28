@@ -40520,7 +40520,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         final int[] ticks = {0};
         BukkitTask[] holder = new BukkitTask[1];
         holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
-            if (bossCastSequence != castSequence || generation != callbackGeneration
+            if (holder[0].isCancelled() || bossCastSequence != castSequence || generation != callbackGeneration
                     || !Objects.equals(eventId, callbackEvent)) {
                 holder[0].cancel();
                 return;
@@ -40536,16 +40536,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 releaseBossHazardReservation("cast-telegraph-cancelled");
                 return;
             }
-            ticks[0] += 5;
-            Particle particle = switch (spell) {
-                case VOID_BLAST -> Particle.DRAGON_BREATH;
-                case RIFT_ARROWS -> Particle.CRIT;
-                default -> Particle.REVERSE_PORTAL;
-            };
-            Location effect = spell == EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS
-                    ? boss.getLocation().add(0.0D, 1.0D, 0.0D) : mark;
-            spawnEventParticle(effect, particle, 12, 0.9D, 0.2D, 0.9D, 0.02D);
-            renderSpellTelegraphVisual(boss, mark, spell.id(), ticks[0], telegraphTicks);
+            ticks[0]++;
+            if (ticks[0] % 5 == 0 || ticks[0] >= telegraphTicks) {
+                Particle particle = switch (spell) {
+                    case VOID_BLAST -> Particle.DRAGON_BREATH;
+                    case RIFT_ARROWS -> Particle.CRIT;
+                    default -> Particle.REVERSE_PORTAL;
+                };
+                Location effect = spell == EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS
+                        ? boss.getLocation().add(0.0D, 1.0D, 0.0D) : mark;
+                spawnEventParticle(effect, particle, 12, 0.9D, 0.2D, 0.9D, 0.02D);
+                renderSpellTelegraphVisual(boss, mark, spell.id(), ticks[0], telegraphTicks);
+            }
             if (ticks[0] >= telegraphTicks) {
                 holder[0].cancel();
                 if (bossCastTask == holder[0]) {
@@ -40556,7 +40558,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     executeBossSpell(boss, target, mark, spell, forced, callbackGeneration);
                 }
             }
-        }, 0L, 5L);
+        }, 1L, 1L);
         bossCastTask = holder[0];
         registerEncounterTask(holder[0]);
         return true;

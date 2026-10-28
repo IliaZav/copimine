@@ -1259,7 +1259,11 @@ def test_first_party_replacements_accept_the_exact_installed_predecessor_jars():
             '64340259981c4e4bb56e3e1168c8f901f2b658794338eeef458b2eb0617de5ef',
             '3202c55fb6b94423468f2eccf35b82d3e7a0cff39198aef2bf3777f0d2128ed8',
         ],
-        'CopiMineUltimateAdminPlus':['6ef8296d397f4cfea46dd9fa137ae18cecdac71dd0c259a9e512ad86dbdcd175'],
+        'CopiMineUltimateAdminPlus':[
+            '6ef8296d397f4cfea46dd9fa137ae18cecdac71dd0c259a9e512ad86dbdcd175',
+            # The 9.2.0 build the live game server and the rift runtime both run today.
+            '41b1721f3cf9aad16619339d171dc7b33d9be81c931943c69b3fcb4253e678da',
+        ],
         'CopiMineNarcotics':['983fd1954eb85d8be8a5e18e0095200278933e930422854b4b19c19995fad116'],
     }
     for plugin_name,digests in installed_predecessors.items():

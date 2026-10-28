@@ -1105,7 +1105,8 @@
         "runtimeEligible": true,
         "replaceSha256": [
           "70eb0caa57ae48d918170fd9fd4f9ce853bfd8c967315f774cccc606b4abe9f0",
-          "f55645d6f437ee9ff6d6f83f8ec1e150ece869dc76d72b172484ea5b46ffbdf9"
+          "f55645d6f437ee9ff6d6f83f8ec1e150ece869dc76d72b172484ea5b46ffbdf9",
+          "41b1721f3cf9aad16619339d171dc7b33d9be81c931943c69b3fcb4253e678da"
         ]
       },
       "nativeVerified": false,
@@ -1113,7 +1114,8 @@
         "4f877a067ca3abb01cedb4ef1d1b71ef06bfa8a1bc2df6c8d5fd6ce78402562f",
         "8d7c19ab35886b56610a1ad8c54f73c1612ee18aa2601b3486a5e7e072e98092",
         "0995029374cde2780eb85c578d0400c54859c83891da14b323e06a787a8c9587",
-        "6ef8296d397f4cfea46dd9fa137ae18cecdac71dd0c259a9e512ad86dbdcd175"
+        "6ef8296d397f4cfea46dd9fa137ae18cecdac71dd0c259a9e512ad86dbdcd175",
+        "41b1721f3cf9aad16619339d171dc7b33d9be81c931943c69b3fcb4253e678da"
       ]
     },
     {

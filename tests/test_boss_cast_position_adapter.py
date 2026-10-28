@@ -31,8 +31,9 @@ public class BossCastPositionProbe {
 ''' + methods + r'''
     static void check(boolean b,String m){if(!b)throw new AssertionError(m);}
     public static void main(String[] args){
-        var p=new BossCastPositionProbe();var b=new Mob();p.holdBossCastPosition(b);
-        check(b.target==null&&b.path.stopped&&!b.ai&&!b.aware,"native pursuit survived cast commitment");
+        var p=new BossCastPositionProbe();var b=new Mob();Object focus=b.target;p.holdBossCastPosition(b);
+        check(b.target==focus,"cast pause discarded the stable pursuit focus");
+        check(b.path.stopped&&!b.ai&&!b.aware,"native pursuit survived cast commitment");
         check(b.gravity&&b.velocity.x()==0&&b.velocity.z()==0&&b.velocity.y()==0,"committed boss drifted or flew");
         check(b.yaw==73,"committed aim changed");
         b.velocity=new Vector(1,-.7,2);p.holdBossCastPosition(b);

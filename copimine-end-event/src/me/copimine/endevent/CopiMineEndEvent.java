@@ -38781,7 +38781,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void rotateBossTarget(Mob boss) {
         List<Player> candidates = Bukkit.getOnlinePlayers().stream()
-                .filter(this::isCombatTarget)
+                .filter(this::isActiveBossParticipant)
                 .map(player -> (Player) player)
                 .sorted(Comparator.comparing(player -> player.getUniqueId().toString()))
                 .toList();
@@ -38791,7 +38791,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         long now = System.currentTimeMillis();
-        Player current = boss.getTarget() instanceof Player player && isCombatTarget(player)
+        Player current = boss.getTarget() instanceof Player player && isActiveBossParticipant(player)
                 ? player : null;
         BossTargetPolicy.TargetDecision decision = BossTargetPolicy.chooseTarget(
                 candidates.stream().map(Player::getUniqueId).toList(),
@@ -38799,7 +38799,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 new ArrayList<>(recentBossTargets), now, bossTargetLockUntilMillis,
                 bossTargetCursor++, config.bossTargetLockSeconds() * 1000L);
         Player target = decision.target() == null ? null : Bukkit.getPlayer(decision.target());
-        if (target == null || !isCombatTarget(target)) {
+        if (target == null || !isActiveBossParticipant(target)) {
             boss.setTarget(null);
             bossTargetLockUntilMillis = 0L;
             return;
@@ -40448,7 +40448,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void holdBossCastPosition(LivingEntity boss) {
         if (boss == null || !boss.isValid() || boss.isDead()) return;
         if (boss instanceof Mob mob) {
-            mob.setTarget(null);
             mob.getPathfinder().stopPathfinding();
             mob.setAI(false);
             mob.setAware(false);

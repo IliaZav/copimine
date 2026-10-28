@@ -42771,6 +42771,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         target.setVelocity(new Vector(launch.x(), launch.y(), launch.z()));
         target.setFallDistance(0.0F);
+        // Reuse the world-bound, first-landing lease. Its central tick cleanup
+        // also retires safe landings, disconnects and world changes, so this
+        // throw cannot add vanilla fall damage or protect a later unrelated fall.
+        wave6AnchorFallLeases.put(target.getUniqueId(),
+                new Wave6AnchorFallLease(target.getWorld().getUID(), System.currentTimeMillis() + 10_000L));
         getLogger().info("RIFT_TENTACLE_THROW event=" + eventId
                 + " entity=" + display.getUniqueId() + " target=" + target.getUniqueId()
                 + " launch=" + String.format(Locale.ROOT, "%.3f,%.3f,%.3f",

@@ -22,6 +22,9 @@
 .cm-danger-note strong{display:block;font-size:12px;letter-spacing:.06em;text-transform:uppercase;font-weight:650}
 .cm-danger-note p{margin:5px 0 0;font-size:12.5px;line-height:1.55;color:#e6c3c3}
 .v6-action-modal .cm-danger-note,.cm73-remove-dialog .cm-danger-note{max-width:none}
+/* Счётчик непрочитанного на вкладках кабинета и в настройках. */
+.v71-tabs>a .v71-tab-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--green,#75e9b7);color:#111314;font-size:10px;font-weight:700;line-height:1}
+.v71-settings-side nav a .v71-tab-count{margin-left:auto;display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--green,#75e9b7);color:#111314;font-size:10px;font-weight:700;line-height:1}
 .v6-logins-body{margin-top:6px}
 
 /* Admin polish: left-aligned quick links. Table heads cannot be sticky here:

@@ -17,6 +17,19 @@ from .security import COOKIE, PERMISSIONS, RANK, check_hierarchy, current_user, 
 
 router = APIRouter()
 SUPPORTED_ACTIONS = {"kick", "ban", "unban", "heal", "feed", "kill", "gamemode", "teleport", "freeze", "unfreeze", "inventory.snapshot", "inventory.remove", "whitelist.add", "whitelist.remove", "time.day", "time.night", "weather.clear", "weather.rain", "save"}
+# Действия в игре, о которых игрок узнаёт в кабинете.
+GAME_NOTICES = {
+    "ban": "Вы заблокированы на сервере",
+    "unban": "Блокировка на сервере снята",
+    "kick": "Вас отключили от сервера",
+    "freeze": "Вас заморозили",
+    "unfreeze": "Заморозка снята",
+    "gamemode": "Изменён игровой режим",
+    "kill": "Вас убили по решению администрации",
+    "inventory.remove": "Изъяты предметы из инвентаря",
+    "whitelist.add": "Вы добавлены в вайтлист",
+    "whitelist.remove": "Вы удалены из вайтлиста",
+}
 
 
 def review_user(row):
@@ -46,6 +59,21 @@ def add_notification(database, user_id, title, body, identifier=None, href=""):
             "INSERT INTO cm_site_notifications(id,user_id,title,body,href,created_s) VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(id) DO NOTHING",
             (notification_id, user_id, title[:120], body[:1000], href[:500], int(time.time())),
         )
+
+
+def player_notification(database, target, title, body, kind, href=""):
+    """Notify the site account behind a game target (uuid or nickname)."""
+    uuid_value = str((target or {}).get("uuid") or "")
+    name_value = str((target or {}).get("player") or "")
+    if not uuid_value and not name_value:
+        return
+    with database.transaction() as db:
+        row = db.execute(
+            "SELECT id FROM cm_site_users WHERE minecraft_uuid=%s OR lower(minecraft_name)=%s",
+            (uuid_value, name_value.lower()),
+        ).fetchone()
+    if row:
+        add_notification(database, row["id"], title, body, f"{kind}:{uuid.uuid4().hex}", href)
 
 
 def notification_feed(database, user_id):
@@ -488,6 +516,13 @@ async def admin_update_account(identifier: str, request: Request):
         db.execute("UPDATE cm_site_users SET role=%s,enabled=%s,blocked_reason=%s,blocked_until_s=0,updated_s=%s WHERE id=%s", (role,int(enabled),'' if enabled else reason,int(time.time()),target['id']))
         db.execute("UPDATE cm_site_sessions SET revoked_s=%s WHERE user_id=%s", (int(time.time()), target["id"]))
     request.app.state.database.audit(actor, "account.access_changed", target["id"], reason, {"role": role,'enabled':enabled})
+    if role != target["role"] or enabled != bool(target["enabled"]):
+        add_notification(
+            request.app.state.database, target["id"],
+            "Изменён доступ к сайту",
+            "Администратор изменил роль аккаунта или доступ к сайту. Все сеансы завершены — войдите заново." if enabled else "Доступ к сайту закрыт администратором.",
+            f"account:{uuid.uuid4().hex}", "#settings/sessions",
+        )
     return {"ok": True}
 
 
@@ -524,6 +559,10 @@ async def recover_account(request: Request):
         if action in {"sessions.revoke", "password.reset"}:
             db.execute("UPDATE cm_site_sessions SET revoked_s=%s WHERE user_id=%s", (now, target["id"]))
     request.app.state.database.audit(actor, "recovery." + action, target["id"], reason)
+    if action in {"password.reset", "sessions.revoke", "login.unlock"}:
+        titles = {"password.reset": "Пароль сброшен администратором", "sessions.revoke": "Завершены все сеансы", "login.unlock": "Снята блокировка входа"}
+        bodies = {"password.reset": "Пароль изменён администратором. Все сеансы завершены — войдите с новым паролем.", "sessions.revoke": "Все сеансы завершены администратором. Войдите заново.", "login.unlock": "Ограничение после неверных попыток входа снято."}
+        add_notification(request.app.state.database, target["id"], titles[action], bodies[action], f"recovery:{uuid.uuid4().hex}", "#settings/sessions")
     return {"ok": True, "status": "completed", "action": action, "message": "Пароль обновлён." if action == "password.reset" else "Операция выполнена."}
 
 
@@ -543,6 +582,12 @@ async def web_ban(request: Request):
         if blocked:
             db.execute("UPDATE cm_site_sessions SET revoked_s=%s WHERE user_id=%s", (int(time.time()), target["id"]))
     request.app.state.database.audit(actor, "account.blocked" if blocked else "account.unblocked", target["id"], reason)
+    add_notification(
+        request.app.state.database, target["id"],
+        "Доступ к сайту заблокирован" if blocked else "Доступ к сайту восстановлен",
+        (f"Причина: {reason}" if blocked else "Блокировка снята администратором."),
+        f"account:{uuid.uuid4().hex}", "#settings/sessions" if blocked else "#account",
+    )
     return {"ok": True, "user": review_user(target_user(request.app.state.database, target["id"]))}
 
 
@@ -876,6 +921,12 @@ async def remove_inventory(identifier: str, request: Request):
     value = await run_in_threadpool(request.app.state.game.rpc, "inventory.remove", user, params, key)
     save_receipt(request.app.state.database, user, key, "inventory.remove", fingerprint, value)
     request.app.state.database.audit(user, "inventory.remove", identifier, reason, {"slot": slot, "kind": kind, "quantity": quantity, "requestId": key})
+    player_notification(
+        request.app.state.database, target,
+        "Изъяты предметы",
+        f"Администратор изъял {quantity} шт. из «{'эндер-сундука' if kind == 'ender' else 'инвентаря'}». Причина: {reason}",
+        f"inventory:{uuid.uuid4().hex}", "#account",
+    )
     return value
 
 
@@ -906,4 +957,6 @@ async def execute_action(request: Request):
     value = await run_in_threadpool(request.app.state.game.rpc, action, user, params, key)
     save_receipt(request.app.state.database, user, key, action, fingerprint, value)
     request.app.state.database.audit(user, "game." + action, str(params.get("player", "server")), reason, {"requestId": key})
+    if action in GAME_NOTICES and not server:
+        player_notification(request.app.state.database, params, GAME_NOTICES[action], f"Причина: {reason}", f"game:{action}:{uuid.uuid4().hex}", "#account")
     return value

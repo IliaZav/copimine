@@ -22,7 +22,7 @@
         "tests/test_economy_narcotics_audit_contract.py"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineUltimateAdminPlus.jar",
-      "candidateSha256": "41b1721f3cf9aad16619339d171dc7b33d9be81c931943c69b3fcb4253e678da",
+      "candidateSha256": "8b4b7922be1aa0ce8ba1c6a856139bf8405a03239d6ea53a810386b44efbf3a2",
       "sha256": "41b1721f3cf9aad16619339d171dc7b33d9be81c931943c69b3fcb4253e678da",
       "sourceBuild": "PASS",
       "unitContract": "PASS",

@@ -1080,12 +1080,12 @@
       "candidate": {
         "filename": "CopiMineUltimateAdminPlus-26.3.jar",
         "runtimeFilename": "CopiMineUltimateAdminPlus.jar",
-        "sha256": "41b1721f3cf9aad16619339d171dc7b33d9be81c931943c69b3fcb4253e678da",
+        "sha256": "8b4b7922be1aa0ce8ba1c6a856139bf8405a03239d6ea53a810386b44efbf3a2",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineUltimateAdminPlus-26.3.jar",
         "nativeVerified": false,
-        "size": 272217,
-        "sha512": "6f913223d40e9ea2ccc5fc77a1b82d840994ea9cf92ca77d2c8cb59a74ca29ccaae6f1ceb2a68450123b2279548d327609156d3462b2e973b7cc94e54113a79f",
+        "size": 272254,
+        "sha512": "be7a42ccc89d5ebc765befde09606c55545808f31bd5c3aed5a9fda3f09536aa5308a380703c004ffd447f48d9236e2acfed7da9ef447a07a7f3acc34e213d98",
         "runtimeEligible": true,
         "replaceSha256": [
           "70eb0caa57ae48d918170fd9fd4f9ce853bfd8c967315f774cccc606b4abe9f0",

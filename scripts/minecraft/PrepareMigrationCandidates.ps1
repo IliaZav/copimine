@@ -184,8 +184,20 @@ Reset-GeneratedDirectory -Path $clientLocalProjectCache -Description 'Gradle cli
 $previousJava = $env:JAVA_HOME
 try {
     $env:JAVA_HOME = (Resolve-Path -LiteralPath $BuildJavaHome).Path
-    & $gradle --no-daemon --project-cache-dir $clientGradleProjectCache -p $clientProject test jar
-    if ($LASTEXITCODE -ne 0) { throw 'CopiMineClient 26.3 build and tests failed' }
+    # Loom resolves its own plugin classpath from maven.fabricmc.net on every cold run; a stalled CDN
+    # socket must not be mistaken for a source defect, so retry the same verified command a bounded
+    # number of times. The digest pin below still rejects any wrong artifact.
+    $clientBuildExit = 1
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        & $gradle --no-daemon --project-cache-dir $clientGradleProjectCache -p $clientProject test jar
+        $clientBuildExit = $LASTEXITCODE
+        if ($clientBuildExit -eq 0) { break }
+        if ($attempt -lt 3) {
+            Write-Warning ('CopiMineClient 26.3 build attempt ' + $attempt + ' failed; retrying after transient dependency resolution failure.')
+            Start-Sleep -Seconds (20 * $attempt)
+        }
+    }
+    if ($clientBuildExit -ne 0) { throw 'CopiMineClient 26.3 build and tests failed' }
     Assert-DirectoryTreeNoReparse -Path $clientBuildOutput -Description 'CopiMineClient build output' -StopAt $root
     Assert-DirectoryTreeNoReparse -Path $clientGradleProjectCache -Description 'Gradle client project cache' -StopAt $root
     Assert-DirectoryTreeNoReparse -Path $clientLocalProjectCache -Description 'Gradle client local cache' -StopAt $root

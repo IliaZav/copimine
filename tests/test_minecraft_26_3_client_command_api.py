@@ -115,6 +115,28 @@ def test_migration_candidate_gate_runs_client_tests_with_the_jar_build():
     assert "CopiMineClient 26.3 build and tests failed" in script
 
 
+def test_migration_candidate_gate_retries_transient_client_dependency_outages():
+    """Loom resolves its plugin classpath from maven.fabricmc.net on every cold build.
+
+    Two consecutive CI runs failed with ``Read timed out`` while downloading
+    ``net.fabricmc:mercury:0.4.3`` before any source was compiled, so the gate must
+    retry the same verified command a bounded number of times and must still keep
+    the digest pin as the only acceptance criterion.
+    """
+    script = MIGRATION_CANDIDATE_SCRIPT.read_text(encoding="utf-8")
+
+    assert "for ($attempt = 1; $attempt -le 3; $attempt++)" in script
+    assert "--project-cache-dir $clientGradleProjectCache" in script
+    # A retry loop must never turn into an unbounded wait.
+    assert "-le 3" in script
+    assert "Start-Sleep" in script
+    # The pinned digest check stays mandatory after the retries.
+    assert "CopiMineClient build output differs from its pinned artifact digest and size" in script
+    assert script.index("for ($attempt = 1; $attempt -le 3; $attempt++)") < script.index(
+        "CopiMineClient build output differs from its pinned artifact digest and size"
+    )
+
+
 def test_minecraft_26_3_client_commands_use_fabric_3_api():
     source = CLIENT_ENTRYPOINT.read_text(encoding="utf-8")
 

@@ -23,6 +23,8 @@ def test_guardian_recovery_preserves_damage_and_independent_effective_deadlines(
         "private void encodeTentacleGuardianState(",
         "private int permanentTentacleTarget(",
         "private void tickTentaclesWithoutGuardians(",
+        "private void tickCurrentTentacles(",
+        "private void trimTentacles(",
     )
     methods = "\n".join(_method(source, signature) for signature in signatures)
     probe = tmp_path / "GuardianRespawnRecoveryProbe.java"
@@ -40,6 +42,7 @@ public class GuardianRespawnRecoveryProbe {
     static class Entity {
         final UUID id = UUID.randomUUID(); boolean valid=true, dead=false;
         UUID getUniqueId(){return id;} boolean isValid(){return valid;} boolean isDead(){return dead;}
+        Location getLocation(){return new Location();}
     }
     static class LivingEntity extends Entity { double hp=60; }
     static class Player extends LivingEntity { }
@@ -70,6 +73,21 @@ public class GuardianRespawnRecoveryProbe {
     final Location position=new Location();
     int admitted=10, online=10, spawnAttempts, spawned, saves, breaks, temporaryTicks; boolean failSpawn, saveFails;
     String recoveryReason;
+    final Object config=new Object();boolean localTextureShowcase,testCombatAiMode,guardiansEnabled=true;
+    long tentacleActiveLastNanos,nextTentacleTemporaryTick,eventTickCounter;
+    static final long TENTACLE_TEMPORARY_INTERVAL_TICKS=160;
+    final Map<UUID,Long> tentacleNextAttackTick=new HashMap<>();
+    boolean tentacleGuardiansEnabled(){return guardiansEnabled;}
+    List<Player> activeBossParticipants(){return List.of(new Player());}
+    void advanceTentacleActiveClock(){}
+    void clearTentacles(String reason){throw new AssertionError("whole-role cleanup: "+reason);}
+    void resetTentacleGuardianLedger(){tentacleGuardianHealth.clear();tentacleGuardianRespawnDeadlineMillis.clear();}
+    boolean tentacleVulnerabilityOpen(){return false;}
+    boolean tentacleGuardianShielded(){return false;}
+    void reconcileGuardianShieldOrbit(LivingEntity b,boolean active){}
+    Player chooseTentacleTarget(List<Player> p,Location l){return p.getFirst();}
+    int tentacleAttackStaggerTicks(){return 10;}
+    void setTentacleState(ItemDisplay d,TentacleAnimationPolicy.State s,UUID target){}
     GuardianRespawnRecoveryProbe(){tentacleController.begin(generation);}
     int eventScalePlayers(){return admitted;}
     boolean tentacleRespawnFrozen(){return tentacleDamageWindowEndsMillis>=0
@@ -184,7 +202,8 @@ public class GuardianRespawnRecoveryProbe {
         var small=new ItemDisplay(); disabled.ownedEntities.put(small.id,small);
         disabled.tentacleController.register(disabled.generation,small.id,
                 TentacleAnimationPolicy.Kind.SMALL,9,0);
-        disabled.tickTentaclesWithoutGuardians(List.of());
+        disabled.guardiansEnabled=false;
+        disabled.tickCurrentTentacles(disabled.boss);
         check(disabled.tentacleController.permanentCount()==0
                         && disabled.tentacleController.state(small.id)!=null && disabled.temporaryTicks==1,
                 "disabling defensive guardians removed or froze the independent small summon role");

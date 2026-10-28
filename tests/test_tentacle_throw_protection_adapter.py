@@ -74,6 +74,9 @@ public class TentacleThrowProtectionProbe {
     TentacleThrowPolicy.Launch safeTentacleThrowLaunch(ItemDisplay d,Player p,TentacleThrowPolicy.Launch launch){return launch;}
     boolean isActiveBossParticipant(Player p){return true;}
     boolean isTestBoss(LivingEntity b){return false;} LivingEntity liveBoss(){return null;}
+    boolean applyBossActorAbilityDamage(LivingEntity boss,LivingEntity source,Player player,double amount){
+        double before=player.getHealth();player.damage(amount,source);return player.getHealth()<before;
+    }
     Logger getLogger(){return Logger.getLogger("throw-protection");}
 ''' + methods + r'''
     static void check(boolean value,String message){if(!value)throw new AssertionError(message);}

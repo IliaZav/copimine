@@ -22,6 +22,8 @@ def test_inferno_vents_get_full_warning_and_a_real_accepted_eruption(tmp_path):
 import java.util.*;
 import me.copimine.endevent.domain.ArenaInfernoPolicy;
 public class InfernoRuntimeCadenceProbe {
+    enum EventPhase { BOSS_ACTIVE, VICTORY_PROCESSING }
+    enum BossPhase { OVERLOAD, LAST_SEAL }
     enum Particle { CAMPFIRE_COSY_SMOKE, SMOKE, CLOUD }
     enum Sound { BLOCK_LAVA_AMBIENT, BLOCK_FIRE_EXTINGUISH }
     enum SoundCategory { HOSTILE }
@@ -35,7 +37,7 @@ public class InfernoRuntimeCadenceProbe {
     }
     static class Block { Location getLocation(){return new Location();} }
     static class Vector { Vector setY(double y){return this;} }
-    static class LivingEntity { World getWorld(){return WORLD;} }
+    static class LivingEntity { final UUID id=UUID.randomUUID(); UUID getUniqueId(){return id;} boolean isValid(){return true;}boolean isDead(){return false;} World getWorld(){return WORLD;} }
     static class Player extends LivingEntity {
         double health=20; int hits,impulses; boolean cancelled;
         Location getLocation(){return new Location();} double getHealth(){return health;}
@@ -43,7 +45,7 @@ public class InfernoRuntimeCadenceProbe {
         Vector getVelocity(){return new Vector();} void setVelocity(Vector v){impulses++;}
     }
     static final World WORLD=new World();
-    static class BukkitTask { }
+    static class BukkitTask { void cancel(){} }
     static class Scheduler {
         Runnable callback;long period;
         BukkitTask runTaskTimer(Object plugin,Runnable task,long delay,long period){
@@ -55,15 +57,20 @@ public class InfernoRuntimeCadenceProbe {
     final List<Block> arenaInfernoBlocks=List.of(new Block());
     final long eventTickCounter=137;
     final long ARENA_INFERNO_VENT_PERIOD_TICKS=60;
-    BukkitTask arenaInfernoTask;final Object taskRegistry=null;
+    static class Registry {boolean owns(long g){return g==7;}}
+    BukkitTask arenaInfernoTask;final Registry taskRegistry=null;
+    String eventId="event";long generation=7,arenaInfernoSequence;
+    EventPhase phase=EventPhase.BOSS_ACTIVE;BossPhase bossPhase=BossPhase.OVERLOAD;
     int floorCalls;boolean cleared,admitted=true;
     LivingEntity liveBoss(){return boss;}
-    void clearArenaInferno(){cleared=true;}
+    void clearArenaInferno(){arenaInfernoSequence++;cleared=true;}
     void renderArenaInferno(LivingEntity boss){floorCalls++;}
     void registerEncounterTask(BukkitTask task){ }
     List<Player> eventAudience(){return List.of(target);}
     List<Player> activeLivingPlayers(){return List.of(target);}
     boolean isActiveBossParticipant(Player p){return admitted;}
+    boolean isTestBoss(LivingEntity e){return false;}
+    boolean applyBossAbilityDamage(LivingEntity b,Player p,double amount){double before=p.health;p.damage(amount,b);return p.health<before;}
 ''' + ticker + "\n" + steam + r'''
     static void check(boolean v,String m){if(!v)throw new AssertionError(m);}
     public static void main(String[] args){
@@ -84,6 +91,14 @@ public class InfernoRuntimeCadenceProbe {
         viewer.startArenaInfernoTicker(120);
         for(int tick=0;tick<=16;tick++)Bukkit.scheduler.callback.run();
         check(viewer.target.hits==0 && viewer.target.impulses==0,"a nearby nonparticipant was hit by an event vent");
+        var replacement=new InfernoRuntimeCadenceProbe();replacement.startArenaInfernoTicker(120);
+        Runnable stale=Bukkit.scheduler.callback;
+        replacement.clearArenaInferno();replacement.cleared=false;replacement.startArenaInfernoTicker(120);
+        stale.run();
+        check(replacement.floorCalls==0&&!replacement.cleared,"old Inferno callback damaged or cleared a replacement cast");
+        Bukkit.scheduler.callback.run();check(replacement.floorCalls==1,"replacement Inferno lost its ticker");
+        replacement.bossPhase=BossPhase.LAST_SEAL;Bukkit.scheduler.callback.run();
+        check(replacement.cleared&&replacement.floorCalls==1,"phase change retained old magma damage");
     }
 }
 ''', encoding="utf-8")

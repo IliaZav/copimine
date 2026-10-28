@@ -112,6 +112,10 @@ public class WaveFogLifecycleProbe {
  boolean ownedBySession(Entity e,String id,long gen){return e.gen==gen&&e.session.equals(id);}
  boolean ownedByEvent(Entity e,String id){return e!=null&&e.session.equals(id);}long readEntityGeneration(Entity e){return e.gen;}
  boolean isWaveCombatKind(String kind){return true;}boolean isOfficialEntity(Entity e){return e.official;}
+ enum BossPhase {LAST_SEAL} enum BossAbilityState {NONE}
+ BossAbilityState bossAbilityState=BossAbilityState.NONE;
+ boolean isCurrentBossCarrier(Entity e){return false;}
+ void holdBossCastPosition(LivingEntity e){throw new AssertionError("wave actor entered boss cast hold");}
  boolean testBossMovementFrozen,officialAttempt=true;Object bossPhase;static final String EVENT_KIND_REALITY_SPLIT_TRIAL="trial",EVENT_KIND_RITUAL_CASTER="caster",EVENT_KIND_RITUAL_GUARD="guard";
  Map<UUID,Set<UUID>> ritualGuardsByCaster=new HashMap<>();
  Set<UUID> ritualGuardUuids=new HashSet<>();boolean testWaveFrontVisualMode;

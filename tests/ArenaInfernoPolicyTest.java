@@ -16,7 +16,20 @@ public final class ArenaInfernoPolicyTest {
         testVentCountScaling();
         testArmorWearBudget();
         testIgniteCell();
+        testConcurrentSpells();
         System.out.println("ArenaInfernoPolicyTest OK");
+    }
+
+    private static void testConcurrentSpells() {
+        for (var spell : me.copimine.endevent.domain.EndRiftAiPolicy.BossSpell.values()) {
+            boolean incompatible = switch (spell) {
+                case RIFT_ARROWS, VOID_MARK, AMBUSH_GRAB, ARENA_INFERNO -> true;
+                default -> false;
+            };
+            check(ArenaInfernoPolicy.allowsConcurrent(spell) != incompatible,
+                    "inferno overlap policy: " + spell);
+        }
+        check(!ArenaInfernoPolicy.allowsConcurrent(null), "missing spell cannot reserve a hazard");
     }
 
     private static void testVentCadence() {

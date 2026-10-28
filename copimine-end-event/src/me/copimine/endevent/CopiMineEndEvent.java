@@ -19500,8 +19500,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (destination != null) {
             teleportCombatEntity(miniBoss, destination);
         }
-        target.damage(WaveDamagePolicy.minimumCombatDamage(
-                config.miniBossTuning().riftStepDamage(), WAVE_MOB_DAMAGE_REDUCTION), miniBoss);
+        if (!applyWaveAbilityDamage(miniBoss, target, WaveDamagePolicy.minimumCombatDamage(
+                config.miniBossTuning().riftStepDamage(), WAVE_MOB_DAMAGE_REDUCTION))) return;
         target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
                 SLOWNESS_DEBUFF_TICKS, abilityDebuffAmplifier("mini-rift-step"), false, true, true));
         spawnEventParticle(target.getLocation().add(0.0D, 1.0D, 0.0D), Particle.PORTAL,
@@ -19512,8 +19512,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (usesWaveCombatCoordination(miniBoss) && (!isMiniBossTargetAllowed(miniBoss, target)
                 || !miniBoss.hasLineOfSight(target)
                 || horizontalDistanceSquared(target.getLocation(), mark) > 2.1D * 2.1D)) return;
-        target.damage(WaveDamagePolicy.minimumCombatDamage(
-                config.miniBossTuning().voidSnareDamage(), WAVE_MOB_DAMAGE_REDUCTION), miniBoss);
+        if (!applyWaveAbilityDamage(miniBoss, target, WaveDamagePolicy.minimumCombatDamage(
+                config.miniBossTuning().voidSnareDamage(), WAVE_MOB_DAMAGE_REDUCTION))) return;
         target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
                 SLOWNESS_DEBUFF_TICKS, abilityDebuffAmplifier("mini-void-snare"), false, true, true));
         target.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS,
@@ -19527,11 +19527,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!isMiniBossTargetAllowed(miniBoss, player)) {
                 continue;
             }
-            if (player.getLocation().distanceSquared(center) > 25.0D) {
+            if (player.getLocation().distanceSquared(center) > 25.0D
+                    || !miniBoss.hasLineOfSight(player)
+                    || !hasProjectileBlockLineOfSight(miniBoss.getEyeLocation(), player.getEyeLocation())) {
                 continue;
             }
-            player.damage(WaveDamagePolicy.minimumCombatDamage(
-                    config.miniBossTuning().echoPulseDamage(), WAVE_MOB_DAMAGE_REDUCTION), miniBoss);
+            if (!applyWaveAbilityDamage(miniBoss, player, WaveDamagePolicy.minimumCombatDamage(
+                    config.miniBossTuning().echoPulseDamage(), WAVE_MOB_DAMAGE_REDUCTION))) continue;
             Vector push = player.getLocation().toVector().subtract(center.toVector());
             if (push.lengthSquared() < 0.01D) {
                 push = new Vector(0.0D, 0.25D, 0.0D);
@@ -19542,6 +19544,33 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         spawnEventParticle(center.add(0.0D, 1.0D, 0.0D), Particle.END_ROD,
                 32, 1.0D, 0.6D, 1.0D, 0.03D);
+    }
+
+    /** Secondary effects belong only to a real accepted hit of this encounter. */
+    private boolean applyWaveAbilityDamage(LivingEntity attacker, Player target, double amount) {
+        if (attacker == null || !attacker.isValid() || attacker.isDead()
+                || target == null || !target.isOnline() || target.isDead() || target.isInvulnerable()
+                || !Double.isFinite(amount) || amount <= 0.0D
+                || !isMiniBossTargetAllowed(attacker, target)) return false;
+        String hitEvent = eventId;
+        long hitGeneration = generation;
+        double absorptionBefore = target.getAbsorptionAmount();
+        PendingPlayerDamageOutcome pending = new PendingPlayerDamageOutcome(
+                hitEvent, hitGeneration, attacker.getUniqueId(), target.getUniqueId());
+        PendingPlayerDamageOutcome previous = pendingPlayerDamageOutcome;
+        pendingPlayerDamageOutcome = pending;
+        try {
+            target.damage(amount, attacker);
+        } finally {
+            pendingPlayerDamageOutcome = previous;
+        }
+        EntityDamageEvent outcome = pending.outcome;
+        return Objects.equals(eventId, hitEvent) && generation == hitGeneration
+                && attacker.isValid() && !attacker.isDead()
+                && isMiniBossTargetAllowed(attacker, target)
+                && outcome != null && !outcome.isCancelled()
+                && (outcome.getFinalDamage() > 0.0D
+                    || target.getAbsorptionAmount() < absorptionBefore);
     }
 
     private void miniBossArrowSalvo(LivingEntity miniBoss, Player target) {
@@ -24612,7 +24641,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             clearCurrentHuntMark(now);
             waveTwoNextMarkMillis = now;
-            if (isOfficialCurrentAttempt()) saveStateSync();
+            if (isOfficialCurrentAttempt() && !saveStateSync()) {
+                forcePhase(EventPhase.RECOVERY_REQUIRED,
+                        "Wave 2 completed mark period could not be durably checkpointed");
+                return;
+            }
         }
         if (currentHuntCycles < waveSpawnSchedule.size()
                 || waveTwoCompletedMarkPeriods < WaveTwoHuntPolicy.MIN_MARK_PERIODS) {
@@ -31589,7 +31622,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             double distance = start.distance(target.getEyeLocation());
             if (world.rayTraceBlocks(start, direction, Math.max(0.0D, distance - 0.5D),
                     org.bukkit.FluidCollisionMode.NEVER, true) != null) continue;
-            target.damage(9.0D, actor);
+            if (!applyWaveAbilityDamage(actor, target, 9.0D)) continue;
             target.addPotionEffect(new org.bukkit.potion.PotionEffect(
                     org.bukkit.potion.PotionEffectType.BLINDNESS, 36, 0, true, true, true));
         }
@@ -31891,6 +31924,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     || state.hitPlayers.contains(player.getUniqueId())
                     || isOfficialWave7ReturnContext() && !attemptLifecycle.incarnationMatches(
                     player.getUniqueId(), generation, state.launchIncarnations.getOrDefault(player.getUniqueId(), 0L))) continue;
+            if (player.getLocation().getY() >= origin.getY() + attacker.getHeight()
+                    || player.getLocation().getY() + player.getHeight() <= origin.getY()
+                    || !hasNamedTrialLineOfSight(attacker.getEyeLocation(), player.getEyeLocation())) continue;
             boolean hit;
             if (swept) {
                 hit = distanceSquaredToSegment(player.getLocation().toVector(),
@@ -31904,8 +31940,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 hit = forward >= 0.0D && forward <= range && lateral <= width;
             }
             if (!hit) continue;
+            if (!applyWaveAbilityDamage(attacker, player, damage)) continue;
             state.hitPlayers.add(player.getUniqueId());
-            player.damage(damage, attacker);
             player.setVelocity(player.getVelocity().add(
                     state.direction.clone().multiply(0.42D).setY(0.20D)));
         }

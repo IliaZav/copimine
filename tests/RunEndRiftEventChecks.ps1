@@ -526,6 +526,8 @@ $pureTests = @(
   'WaveProjectileTargetPolicyTest',
   'ResourceProgressFormatterTest',
   'RiftCarrierPolicyTest',
+  'RiftCarrierCustodyPolicyTest',
+  'RiftCarrierRecoverySnapshotTest',
   'CarrierSlownessLeasePolicyTest',
   'EventMusicSyncPolicyTest',
   'VisualRefreshDeadlineTest',
@@ -742,6 +744,16 @@ foreach ($artifact in @(
     Path = $artifact
     Algorithm = 'SHA256'
     Hash = (Get-FileSha256 -Path $artifact).ToUpperInvariant()
+  }
+}
+
+Invoke-GateStep 'Accepted wave hits and durable mark periods' {
+  Push-Location $root
+  try {
+    & python -m pytest -q 'tests/test_wave_ability_damage_admission.py' 'tests/test_wave2_mark_checkpoint_failure.py'
+    if ($LASTEXITCODE -ne 0) { throw 'Wave damage admission or mark checkpoint regression failed.' }
+  } finally {
+    Pop-Location
   }
 }
 

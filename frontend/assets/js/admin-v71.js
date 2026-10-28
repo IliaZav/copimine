@@ -47,7 +47,7 @@ M.renderers.admin=(key='overview')=>{
  let body='';const meta=entries.find(e=>e[0]===key)||entries[0];
  switch(key){
  case 'overview':body=ext.overview();break;
- case 'players':body=sub==='list'||!(M.UI.params.has('player')||X.board?.get('player'))?players():ext.players(sub||'profile');break;
+ case 'players':body=sub==='list'||!(M.UI.params.has('player')||X.board?.get('player'))?players():ext.players(sub);break;
  case 'requests':body=operations('moderation','tickets');break;
  case 'moderation':body=ext.moderation(sub);break;
  case 'recovery':body=window.CM73?.recoveryView?.()||prior(key);break;

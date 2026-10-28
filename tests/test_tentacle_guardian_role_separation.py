@@ -44,12 +44,12 @@ def test_strike_is_a_real_dodgeable_damage_event(event_source: str) -> None:
     strike = method_body(event_source,
                          "private void strikeTentacleGuardianTarget(ItemDisplay display")
     assert "withinTentacleGrabRange(origin, target.getLocation())" in strike
-    assert strike.index("withinTentacleGrabRange") < strike.index("target.damage(")
+    assert strike.index("withinTentacleGrabRange") < strike.index("applyBossAbilityDamage(")
     assert "TentacleGuardianPolicy.STRIKE_DAMAGE" in strike
     assert "setHealth" not in strike
-    # A rejected or fully absorbed hit must not flinch or push the player.
-    assert "if (healthAfter >= healthBefore) {" in strike
-    assert strike.index("healthAfter >= healthBefore") < strike.index("EntityEffect.HURT")
+    # Reactions depend on the observed accepted event, including absorption.
+    assert "if (!accepted ||" in strike
+    assert strike.index("if (!accepted ||") < strike.index("EntityEffect.HURT")
     assert strike.index("EntityEffect.HURT") < strike.index("setVelocity(")
 
 

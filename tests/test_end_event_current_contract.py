@@ -629,7 +629,8 @@ def test_wave7_final_seal_suspends_vanilla_enderman_teleport_ai() -> None:
     tick_start = source.index("private void tickCurrentBoss")
     tick_end = source.index("private boolean pinBossToFinalSealCore", tick_start)
     tick = source[tick_start:tick_end]
-    assert "if (!finalSealPinned) {\n            enforceCombatLeash(boss" in tick
+    assert "if (!finalSealPinned && bossAbilityState == BossAbilityState.NONE) {\n            enforceCombatLeash(boss" in tick
+    assert "if (!finalSealPinned && bossAbilityState != BossAbilityState.NONE) holdBossCastPosition(boss);" in tick
 
     live_probe = read(ROOT / "tests" / "RunEndRiftBossHitboxLive.ps1")
     assert "Get-CoreTopPosition" in live_probe

@@ -526,6 +526,8 @@ $pureTests = @(
   'WaveProjectileTargetPolicyTest',
   'ResourceProgressFormatterTest',
   'RiftCarrierPolicyTest',
+  'RiftCarrierCustodyPolicyTest',
+  'RiftCarrierRecoverySnapshotTest',
   'CarrierSlownessLeasePolicyTest',
   'EventMusicSyncPolicyTest',
   'VisualRefreshDeadlineTest',
@@ -742,6 +744,33 @@ foreach ($artifact in @(
     Path = $artifact
     Algorithm = 'SHA256'
     Hash = (Get-FileSha256 -Path $artifact).ToUpperInvariant()
+  }
+}
+
+Invoke-GateStep 'Accepted wave hits and durable mark periods' {
+  Push-Location $root
+  try {
+    & python -m pytest -q 'tests/test_wave_ability_damage_admission.py' 'tests/test_wave2_mark_checkpoint_failure.py'
+    if ($LASTEXITCODE -ne 0) { throw 'Wave damage admission or mark checkpoint regression failed.' }
+  } finally {
+    Pop-Location
+  }
+}
+
+Invoke-GateStep 'Boss accepted hits, cast ownership and Kagune recovery' {
+  Push-Location $root
+  try {
+    & python -m pytest -q 'tests/test_boss_attack_damage_admission.py' `
+      'tests/test_boss_edge_volley_runtime.py' 'tests/test_boss_cast_position_adapter.py' `
+      'tests/test_boss_telegraph_runtime.py' `
+      'tests/test_boss_target_roster_adapter.py' `
+      'tests/test_inferno_runtime_cadence.py' 'tests/test_guardian_respawn_recovery_adapter.py' `
+      'tests/test_small_kagune_strike_adapter.py' 'tests/test_tentacle_throw_protection_adapter.py' `
+      'tests/test_boss_phase_damage_transaction_adapter.py' 'tests/test_boss_defeat_durability_adapter.py' `
+      'tests/test_kagune_rig_transform_contract.py'
+    if ($LASTEXITCODE -ne 0) { throw 'Boss combat, cast ownership or Kagune recovery regression failed.' }
+  } finally {
+    Pop-Location
   }
 }
 

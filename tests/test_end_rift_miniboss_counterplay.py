@@ -39,6 +39,11 @@ public class SnareCounterplay {
   Config config=new Config();
   boolean isMiniBossTargetAllowed(LivingEntity caster,Player target){return target.eligible;}
   boolean usesWaveCombatCoordination(LivingEntity caster){return true;}
+  // This fixture isolates telegraph geometry; damage admission is exercised
+  // with the real helper in test_wave_ability_damage_admission.py.
+  boolean applyWaveAbilityDamage(LivingEntity caster,Player target,double amount){
+    target.damage(amount,caster);return true;
+  }
   double horizontalDistanceSquared(Location a,Location b){return (a.x-b.x)*(a.x-b.x);}
   int abilityDebuffAmplifier(String s){return 0;} int weaknessDebuffAmplifier(String s){return 0;}
   void spawnEventParticle(Location p,Object particle,int count,double x,double y,double z,double speed){}

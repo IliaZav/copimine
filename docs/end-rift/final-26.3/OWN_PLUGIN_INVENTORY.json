@@ -9,9 +9,30 @@
       "directory": "copimine-admin-plugin",
       "version": "9.2.0-postgres-v4-balance-credit",
       "main": "me.copimine.ultimateplus.CopiMineUltimateAdminPlus",
-      "dependencies": ["CopiMineEconomyCore", "CopiMineElectionCore"],
-      "softDependencies": ["PlaceholderAPI", "LuckPerms", "Essentials", "voicechat", "CopiMineWorldCore"],
-      "commands": ["cmultra", "cadm", "ar", "cmbank", "cmcredit", "appeal", "report", "reporta", "rpguard", "oldvoteoff", "cmsealdrop"],
+      "dependencies": [
+        "CopiMineEconomyCore",
+        "CopiMineElectionCore"
+      ],
+      "softDependencies": [
+        "PlaceholderAPI",
+        "LuckPerms",
+        "Essentials",
+        "voicechat",
+        "CopiMineWorldCore"
+      ],
+      "commands": [
+        "cmultra",
+        "cadm",
+        "ar",
+        "cmbank",
+        "cmcredit",
+        "appeal",
+        "report",
+        "reporta",
+        "rpguard",
+        "oldvoteoff",
+        "cmsealdrop"
+      ],
       "permissions": 11,
       "database": "PostgreSQL through pinned 42.7.5 driver; permission checks are command-local.",
       "tests": [
@@ -39,9 +60,18 @@
       "directory": "copimine-artifacts",
       "version": "1.1.0-shops-blocks-prices",
       "main": "me.copimine.artifacts.CopiMineArtifacts",
-      "dependencies": ["CopiMineEconomyCore"],
-      "softDependencies": ["CopiMineElectionCore", "CopiMineUltimateAdminPlus", "CopiMineNarcotics"],
-      "commands": ["cmartifacts", "setprice"],
+      "dependencies": [
+        "CopiMineEconomyCore"
+      ],
+      "softDependencies": [
+        "CopiMineElectionCore",
+        "CopiMineUltimateAdminPlus",
+        "CopiMineNarcotics"
+      ],
+      "commands": [
+        "cmartifacts",
+        "setprice"
+      ],
       "permissions": 8,
       "database": "PostgreSQL artifact catalog, revenue payout and shop recovery guards.",
       "tests": [
@@ -76,7 +106,11 @@
       "version": "1.0.0",
       "main": "me.copimine.economycore.CopiMineEconomyCore",
       "dependencies": [],
-      "softDependencies": ["PlaceholderAPI", "LuckPerms", "Essentials"],
+      "softDependencies": [
+        "PlaceholderAPI",
+        "LuckPerms",
+        "Essentials"
+      ],
       "commands": [],
       "permissions": 0,
       "database": "PostgreSQL balances and audit ledger through pinned 42.7.5 driver.",
@@ -104,9 +138,18 @@
       "directory": "copimine-election-core",
       "version": "9.2.0-postgres-v4-balance-credit",
       "main": "me.copimine.electioncore.CopiMineElectionCore",
-      "dependencies": ["CopiMineEconomyCore"],
-      "softDependencies": ["PlaceholderAPI", "LuckPerms", "Essentials"],
-      "commands": ["hidelive", "presidentsay"],
+      "dependencies": [
+        "CopiMineEconomyCore"
+      ],
+      "softDependencies": [
+        "PlaceholderAPI",
+        "LuckPerms",
+        "Essentials"
+      ],
+      "commands": [
+        "hidelive",
+        "presidentsay"
+      ],
       "permissions": 5,
       "database": "PostgreSQL election state and mandate inventory transport.",
       "tests": [
@@ -134,9 +177,17 @@
       "directory": "copimine-end-event",
       "version": "0.1.0",
       "main": "me.copimine.endevent.CopiMineEndEvent",
-      "dependencies": ["CopiMineWorldCore", "CopiMineArtifacts"],
-      "softDependencies": ["WorldGuard", "CopiMineNarcotics"],
-      "commands": ["cmend"],
+      "dependencies": [
+        "CopiMineWorldCore",
+        "CopiMineArtifacts"
+      ],
+      "softDependencies": [
+        "WorldGuard",
+        "CopiMineNarcotics"
+      ],
+      "commands": [
+        "cmend"
+      ],
       "permissions": 2,
       "database": "No direct JDBC; uses event-state, layout, journal and receipt files owned by the migration runtime.",
       "tests": [
@@ -152,8 +203,8 @@
         "tests/PrisonerAbilityControllerTest.java"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineEndEvent.jar",
-      "candidateSha256": "de68867e66062de531399a9f38691057c12b0b448a100aa765587edfe9898d4d",
-      "sha256": "de68867e66062de531399a9f38691057c12b0b448a100aa765587edfe9898d4d",
+      "candidateSha256": "ab1f1f1cd352602dd4e24e039642f0cdbfa08b74ea354288d1001cebb37a31d9",
+      "sha256": "ab1f1f1cd352602dd4e24e039642f0cdbfa08b74ea354288d1001cebb37a31d9",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
       "realServerEnable": "BLOCKED",
@@ -171,8 +222,13 @@
       "version": "2.1.0-client-bridge",
       "main": "me.copimine.narcotics.CopiMineNarcotics",
       "dependencies": [],
-      "softDependencies": ["ProtocolLib"],
-      "commands": ["cmclient", "cmnarcotics"],
+      "softDependencies": [
+        "ProtocolLib"
+      ],
+      "commands": [
+        "cmclient",
+        "cmnarcotics"
+      ],
       "permissions": 8,
       "database": "PostgreSQL hidden state plus signed client-bridge packets.",
       "tests": [
@@ -201,7 +257,9 @@
       "main": "me.copimine.worldcore.CopiMineWorldCore",
       "dependencies": [],
       "softDependencies": [],
-      "commands": ["cmworld"],
+      "commands": [
+        "cmworld"
+      ],
       "permissions": 1,
       "database": "No direct JDBC; world access policy and compile-classpath contracts.",
       "tests": [
@@ -227,7 +285,9 @@
       "version": "1.0.0",
       "main": "me.serverrp.autheffects.AuthEffectsPlugin",
       "dependencies": [],
-      "softDependencies": ["AuthMe"],
+      "softDependencies": [
+        "AuthMe"
+      ],
       "commands": [],
       "permissions": 0,
       "database": "No direct JDBC; login/logout effect ownership and cleanup.",

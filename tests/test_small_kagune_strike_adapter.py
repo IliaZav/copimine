@@ -68,6 +68,10 @@ public class SmallKaguneStrikeProbe {
     final Map<UUID,UUID> tentacleHitboxesByDisplay = new HashMap<>();
     final Map<UUID,Entity> ownedEntities = new HashMap<>();
     boolean isActiveBossParticipant(Player p) { return true; }
+    LivingEntity liveBoss(){return new LivingEntity();}
+    boolean applyBossActorAbilityDamage(LivingEntity boss,LivingEntity source,Player player,double amount){
+        double before=player.getHealth();player.damage(amount,source);return player.getHealth()<before;
+    }
     boolean ownedBySession(Entity e, UUID event, long gen) { return e.owned; }
     Logger getLogger() { return Logger.getLogger("small-kagune-probe"); }
     int eventScalePlayers() { return 20; }

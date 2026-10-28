@@ -48,8 +48,8 @@ public final class BossContactStrikePolicy {
     public static final double CHEST_STRIKE_DAMAGE = 10.0D;
     public static final double CHEST_STRIKE_KNOCKBACK = 0.55D;
     public static final double CHEST_STRIKE_LIFT = 0.32D;
-    /** Authored launch tick of the chest animation, counted from the cast resolution. */
-    public static final int CHEST_STRIKE_LAUNCH_TICKS = 6;
+    /** The telegraph already ends at the authored release marker; flight starts next tick. */
+    public static final int CHEST_STRIKE_LAUNCH_TICKS = 0;
     /**
      * The chest clip is 4.0417 s (81 ticks) but its release pose sits around the
      * 2 s mark, so the telegraph ends there and the probe travels for the rest.

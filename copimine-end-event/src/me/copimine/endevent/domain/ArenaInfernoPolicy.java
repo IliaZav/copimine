@@ -29,6 +29,14 @@ public final class ArenaInfernoPolicy {
     private ArenaInfernoPolicy() {
     }
 
+    /** Do not combine magma/vents with a new relocation volley or hard restraint. */
+    public static boolean allowsConcurrent(EndRiftAiPolicy.BossSpell spell) {
+        return spell != null && spell != EndRiftAiPolicy.BossSpell.RIFT_ARROWS
+                && spell != EndRiftAiPolicy.BossSpell.VOID_MARK
+                && spell != EndRiftAiPolicy.BossSpell.AMBUSH_GRAB
+                && spell != EndRiftAiPolicy.BossSpell.ARENA_INFERNO;
+    }
+
     /**
      * Splits the vent cadence into warning, the one eruption tick, the recovery
      * puff and removal. Warning always comes first, so a vent never hurts a

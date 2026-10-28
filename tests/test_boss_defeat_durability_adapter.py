@@ -219,6 +219,27 @@ public class BossLethalDefeatProbe {
                 "Last Seal entry diagnostic missing: " + accepted.diagnostics);
 
         BossLethalDefeatProbe lastSeal = new BossLethalDefeatProbe();
+        BossLethalDefeatProbe disabledGuardians = new BossLethalDefeatProbe();
+        disabledGuardians.owner = new Player(playerId);
+        disabledGuardians.requiredGuardians = 0;
+        disabledGuardians.livingGuardians = 0;
+        disabledGuardians.shielded = false;
+        boss = new LivingEntity(9000.0D);
+        disabledGuardians.handleOfficialLethalHit(boss, disabledGuardians.owner,
+                9000.0D, 12000.0D, 12000.0D, false);
+        check(disabledGuardians.commits == 1,
+                "disabled guardians must not invent a Last Seal shield or discard lethal damage");
+
+        BossLethalDefeatProbe missingGuardians = new BossLethalDefeatProbe();
+        missingGuardians.owner = new Player(playerId);
+        missingGuardians.livingGuardians = 0;
+        missingGuardians.shielded = false;
+        boss = new LivingEntity(9000.0D);
+        missingGuardians.handleOfficialLethalHit(boss, missingGuardians.owner,
+                9000.0D, 12000.0D, 12000.0D, false);
+        check(missingGuardians.ensureCalls == 1 && missingGuardians.commits == 1,
+                "failed guardian creation must not grant an invisible shield");
+
         lastSeal.bossPhase = BossPhase.LAST_SEAL;
         lastSeal.owner = new Player(playerId);
         lastSeal.shielded = false;

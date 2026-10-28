@@ -39615,26 +39615,34 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         double sealThreshold = BossPhasePolicy.lastSealThreshold(bossMaxHealth(boss));
         if (bossPhase != BossPhase.LAST_SEAL && healthBefore > sealThreshold) {
-            // A lethal hit may enter Last Seal, but it cannot skip the newly
-            // required defensive guardians. Commit all phase entries before
-            // spawning their authoritative actors and withhold victory.
+            // Enter every crossed phase and create real defenders before
+            // evaluating their shields. A requested or failed spawn is not
+            // itself an immunity and cannot discard accepted lethal damage.
             boss.setHealth(sealThreshold);
             synchronizeBossPhase(boss);
             int requiredGuardians = permanentTentacleTarget(isTestBoss(boss));
             if (phase == EventPhase.BOSS_ACTIVE && requiredGuardians > 0) {
                 ensurePermanentTentacles(boss, requiredGuardians);
             }
-            applyBossHitFeedbackAt(boss, source, bodyImpactContact(boss, source),
-                    BossHitFeedbackPolicy.forAcceptedHit(projectile));
-            emitBossDamageDiagnostic("DAMAGE_ACCEPT", "INFO", boss, source,
-                    rawDamage, finalDamage, Math.max(0.0D, healthBefore - sealThreshold),
-                    healthBefore, sealThreshold, "last-seal-entry-shield-pending");
-            getLogger().info("BOSS_LETHAL_HIT_BLOCKED_BY_LAST_SEAL_ENTRY event=" + eventId
-                    + " boss=" + boss.getUniqueId()
-                    + " living_guardians=" + livingTentacleGuardianCount()
-                    + " intended_guardians=" + requiredGuardians
-                    + " shield_active=" + tentacleGuardianShielded());
-            return;
+            if (phase != EventPhase.BOSS_ACTIVE) {
+                emitBossDamageDiagnostic("DAMAGE_REJECT", "WARN", boss, source,
+                        rawDamage, finalDamage, 0.0D, healthBefore, sealThreshold,
+                        "last-seal-entry-recovery-required");
+                return;
+            }
+            if (tentacleGuardianShielded()) {
+                applyBossHitFeedbackAt(boss, source, bodyImpactContact(boss, source),
+                        BossHitFeedbackPolicy.forAcceptedHit(projectile));
+                emitBossDamageDiagnostic("DAMAGE_ACCEPT", "INFO", boss, source,
+                        rawDamage, finalDamage, Math.max(0.0D, healthBefore - sealThreshold),
+                        healthBefore, sealThreshold, "last-seal-entry-shield-pending");
+                getLogger().info("BOSS_LETHAL_HIT_BLOCKED_BY_LAST_SEAL_ENTRY event=" + eventId
+                        + " boss=" + boss.getUniqueId()
+                        + " living_guardians=" + livingTentacleGuardianCount()
+                        + " intended_guardians=" + requiredGuardians
+                        + " shield_active=" + tentacleGuardianShielded());
+                return;
+            }
         }
         if (tentacleGuardianShielded()) {
             emitBossDamageDiagnostic("DAMAGE_REJECT", "INFO", boss, source,
@@ -40808,6 +40816,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " damage_interval_ticks=20"
                 + " journal_entries=" + journalEntries.size()
                 + " duration_ticks=" + durationTicks);
+        startArenaInfernoTicker(durationTicks);
+    }
+
+    private void startArenaInfernoTicker(int durationTicks) {
         final int[] elapsedTicks = {0};
         arenaInfernoTask = Bukkit.getScheduler().runTaskTimer(this, () -> {
             LivingEntity live = liveBoss();
@@ -40815,12 +40827,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 clearArenaInferno();
                 return;
             }
-            renderArenaInferno(live);
-            elapsedTicks[0] += 20;
-        }, 0L, 20L);
+            tickArenaInferno(live, elapsedTicks[0]++);
+        }, 0L, 1L);
         if (taskRegistry != null) {
             registerEncounterTask(arenaInfernoTask);
         }
+    }
+
+    private void tickArenaInferno(LivingEntity boss, int castTick) {
+        if (castTick % 20 == 0) {
+            renderArenaInferno(boss);
+        }
+        spawnArenaInfernoSteamVents(boss, castTick);
     }
 
     private void renderArenaInferno(LivingEntity boss) {
@@ -40838,15 +40856,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             player.spawnParticle(danger ? Particle.SOUL_FIRE_FLAME : Particle.END_ROD,
                     player.getLocation().add(0.0D, 0.15D, 0.0D), danger ? 16 : 8,
                     0.45D, 0.1D, 0.45D, 0.02D);
-            if (danger) {
+            if (danger && isActiveBossParticipant(player)) {
+                double healthBefore = player.getHealth();
                 player.damage(6.0D, boss);
+                if (player.getHealth() >= healthBefore) {
+                    continue;
+                }
                 player.setFireTicks(Math.max(player.getFireTicks(), ARENA_INFERNO_IGNITE_TICKS));
                 player.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS,
                         ARENA_INFERNO_DEBUFF_TICKS, abilityDebuffAmplifier("boss-arena-inferno"), false, true, true));
                 wearArenaInfernoArmor(player);
             }
         }
-        spawnArenaInfernoSteamVents(boss);
     }
 
     /** One point of wear per danger tick, hard-capped for the whole cast. */
@@ -40869,12 +40890,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /** Steam vents warn first, then erupt once and injure whoever stays on them. */
-    private void spawnArenaInfernoSteamVents(LivingEntity boss) {
+    private void spawnArenaInfernoSteamVents(LivingEntity boss, int castTick) {
         if (boss == null || boss.getWorld() == null || arenaInfernoBlocks.isEmpty()) {
             return;
         }
         ArenaInfernoPolicy.VentPhase phase = ArenaInfernoPolicy.ventPhase(
-                (int) Math.floorMod(eventTickCounter, ARENA_INFERNO_VENT_PERIOD_TICKS));
+                (int) Math.floorMod(castTick, ARENA_INFERNO_VENT_PERIOD_TICKS));
         if (phase == ArenaInfernoPolicy.VentPhase.REMOVE) {
             return;
         }
@@ -40890,18 +40911,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 case WARN -> {
                     world.spawnParticle(Particle.CAMPFIRE_COSY_SMOKE, point, 8, 0.3D, 0.4D, 0.3D, 0.01D);
                     world.spawnParticle(Particle.SMOKE, point, 6, 0.25D, 0.25D, 0.25D, 0.02D);
-                    world.playSound(point, Sound.BLOCK_LAVA_AMBIENT,
-                            SoundCategory.HOSTILE, 0.6F, 1.4F);
+                    if (castTick % ARENA_INFERNO_VENT_PERIOD_TICKS == 0) {
+                        world.playSound(point, Sound.BLOCK_LAVA_AMBIENT,
+                                SoundCategory.HOSTILE, 0.6F, 1.4F);
+                    }
                 }
                 case ERUPT -> {
                     world.spawnParticle(Particle.CLOUD, point, 24, 0.4D, 0.6D, 0.4D, 0.05D);
                     world.playSound(point, Sound.BLOCK_FIRE_EXTINGUISH,
                             SoundCategory.HOSTILE, 0.8F, 0.7F);
                     for (Player player : eventAudience()) {
-                        if (player.getWorld().equals(world)
+                        if (isActiveBossParticipant(player) && player.getWorld().equals(world)
                                 && player.getLocation().distanceSquared(point) <= 2.25D) {
-                            player.setVelocity(player.getVelocity().setY(0.9D));
+                            double healthBefore = player.getHealth();
                             player.damage(3.0D, boss);
+                            if (player.getHealth() < healthBefore) {
+                                player.setVelocity(player.getVelocity().setY(0.9D));
+                            }
                         }
                     }
                 }
@@ -42050,7 +42076,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             entity.setInvulnerable(true);
             entity.setShadowRadius(0.0F);
             entity.setTransformation(new Transformation(
-                    new Vector3f(-TENTACLE_FALLBACK_CENTER, 0.0F, -TENTACLE_FALLBACK_CENTER),
+                    new Vector3f(-TENTACLE_FALLBACK_CENTER * roleScale, 0.0F,
+                            -TENTACLE_FALLBACK_CENTER * roleScale),
                     new AxisAngle4f(),
                     new Vector3f(fallbackScale, fallbackScale,
                             fallbackScale), new AxisAngle4f()));
@@ -42730,13 +42757,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (TentacleThrowPolicy.shouldApplyReleaseDamage(isActiveBossParticipant(target),
                 phase == EventPhase.BOSS_ACTIVE, localTestBossShowroom)) {
             double healthBefore = target.getHealth();
-            double requestedHealthAfter = TentacleThrowPolicy.healthAfterReleaseDamage(healthBefore);
-            // This is a fixed boss move, so write its defined HP cost directly.
-            // Calling damage(10, boss) runs the unrelated boss damage multiplier
-            // and has yielded 12.5 HP in the live encounter; vanilla hurt
-            // resistance can also reduce it. Both made the move unpredictable.
-            target.setHealth(requestedHealthAfter);
-            target.playEffect(EntityEffect.HURT);
+            if (!applyTentacleReleaseHit(display, target)) {
+                target.setFallDistance(0.0F);
+                return;
+            }
             double healthAfter = target.getHealth();
             getLogger().info("RIFT_TENTACLE_THROW_DAMAGE event=" + eventId
                     + " entity=" + display.getUniqueId() + " target=" + target.getUniqueId()
@@ -42752,6 +42776,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " launch=" + String.format(Locale.ROOT, "%.3f,%.3f,%.3f",
                 launch.x(), launch.y(), launch.z())
                 + " horizontal=" + String.format(Locale.ROOT, "%.3f", launch.horizontalLength()));
+    }
+
+    /** The living tentacle owns this hit; boss-only multipliers must not apply. */
+    private boolean applyTentacleReleaseHit(ItemDisplay display, Player target) {
+        UUID carrierId = tentacleHitboxesByDisplay.get(display.getUniqueId());
+        Entity entity = carrierId == null ? null : ownedEntities.get(carrierId);
+        if (!(entity instanceof LivingEntity carrier) || !carrier.isValid() || carrier.isDead()
+                || !ownedBySession(display, eventId, generation)
+                || !ownedBySession(carrier, eventId, generation)
+                || !carrier.getWorld().equals(target.getWorld()) || target.isDead()
+                || target.isInvulnerable()) {
+            return false;
+        }
+        double before = target.getHealth();
+        target.damage(TentacleThrowPolicy.RELEASE_DAMAGE, carrier);
+        if (target.getHealth() >= before && !target.isDead()) {
+            return false;
+        }
+        target.playEffect(EntityEffect.HURT);
+        return true;
     }
 
     private TentacleThrowPolicy.Launch safeTentacleThrowLaunch(
@@ -42835,11 +42879,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // the articulated rig from the same state timeline. Keeping the
         // carrier transform fixed prevents double-applied bends and keeps
         // the server socket at a deterministic base location.
+        float roleScale = state.kind() == TentacleAnimationPolicy.Kind.SMALL
+                ? (float) smallKaguneTuning().scale() : 1.0F;
+        float fallbackScale = TENTACLE_FALLBACK_SCALE * roleScale;
         display.setTransformation(new Transformation(
-                new Vector3f(-TENTACLE_FALLBACK_CENTER, 0.0F, -TENTACLE_FALLBACK_CENTER),
+                new Vector3f(-TENTACLE_FALLBACK_CENTER * roleScale, 0.0F,
+                        -TENTACLE_FALLBACK_CENTER * roleScale),
                 new AxisAngle4f(),
-                new Vector3f(TENTACLE_FALLBACK_SCALE, TENTACLE_FALLBACK_SCALE,
-                        TENTACLE_FALLBACK_SCALE),
+                new Vector3f(fallbackScale, fallbackScale, fallbackScale),
                 new AxisAngle4f()));
         if (eventTickCounter % 20L == 0L
                 && (state.state() == TentacleAnimationPolicy.State.TELEGRAPH_GRAB

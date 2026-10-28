@@ -10,6 +10,7 @@ fallback.  ``RunJavaPluginCi.ps1`` must forward the JDK it already verified.
 from __future__ import annotations
 
 import shutil
+import os
 import subprocess
 import textwrap
 from pathlib import Path
@@ -68,11 +69,26 @@ def test_pinned_jdk_resolver_accepts_hosted_explicit_path_and_local_fallback(tmp
     empty_root.mkdir()
     empty_jdk = tmp_path / "empty jdk"
     empty_jdk.mkdir()
-    system_java_21 = Path(shutil.which("java") or "")
-    if not system_java_21.name.lower() == "java.exe":
-        java_21_home = ""
-    else:
-        java_21_home = str(system_java_21.parent.parent)
+    # PATH may deliberately contain the valid pinned JDK 25. It cannot also
+    # serve as the negative Java-21 fixture: accepting it would be correct.
+    java_21_home = ""
+    system_java = shutil.which("java")
+    candidates = [
+        os.environ.get("COPIMINE_JAVA_21_HOME"),
+        os.environ.get("JAVA_HOME_21_X64"),
+        str(ROOT / "build/minecraft-26.3/toolchain/jdk-21.0.12.1+1"),
+        str(Path(system_java).parent.parent) if system_java else None,
+    ]
+    for home in candidates:
+        if not home:
+            continue
+        executable = Path(home) / "bin/java.exe"
+        if not executable.is_file():
+            continue
+        version = subprocess.run([str(executable), "-version"], capture_output=True, text=True, timeout=20)
+        if version.returncode == 0 and 'version "21.' in version.stdout + version.stderr:
+            java_21_home = str(Path(home))
+            break
 
     gate_path = str(GATE).replace("'", "''")
     repository = str(ROOT).replace("'", "''")

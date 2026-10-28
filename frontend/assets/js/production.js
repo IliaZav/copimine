@@ -29,7 +29,10 @@ P.refreshInventory=async id=>{
  }
  return snap;
 };
-H['production-inventory-refresh']=async b=>{await P.refreshInventory(b.dataset.player);M.render();M.toast('Получен снимок Minecraft.');};
+H['production-inventory-refresh']=async b=>{
+ try{await P.refreshInventory(b.dataset.player);M.render();M.toast('Получен снимок Minecraft.');}
+ catch(e){M.toast(e.message,true);}
+};
 H['v6-inventory-refresh']=H['production-inventory-refresh'];
 const originalInventory=window.CM73?.inventory;
 

@@ -44,6 +44,25 @@ def test_monitor_reports_cached_sample_and_release_inventory(client):
     assert "plugins" in releases.json()["installed"]
 
 
+def test_action_registry_uses_real_permissions():
+    """Кнопки админки берут права из реестра действий: опечатка в имени права
+    навсегда выключает кнопку, потому что такого права нет ни у одной роли."""
+    import json
+    import pathlib
+    import re
+
+    from backend.security import PERMISSIONS
+
+    known = {token for tokens in PERMISSIONS.values() for token in tokens}
+    root = pathlib.Path(__file__).resolve().parents[1]
+    source = (root / "frontend" / "assets" / "js" / "actions-v6.js").read_text(encoding="utf-8")
+    registry = json.loads(re.search(r"window\.CM6_ADMIN_ACTIONS\s*=\s*(\{.*\})", source, re.S).group(1))
+    actions = registry["actions"] if isinstance(registry, dict) else registry
+    assert actions
+    unknown = sorted({a["permission"] for a in actions if a.get("permission")} - known)
+    assert unknown == [], unknown
+
+
 def test_monitor_interval_can_be_changed(client):
     session = login(client)
     change = client.post("/api/v6/admin/monitor/interval", headers=headers(session), json={"seconds": 5})

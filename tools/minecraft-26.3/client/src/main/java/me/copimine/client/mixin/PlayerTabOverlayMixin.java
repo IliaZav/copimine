@@ -105,12 +105,14 @@ public abstract class PlayerTabOverlayMixin {
         }
 
         for (PlayerInfo player : players) {
-            context.text(font, copimine$nameForDisplay(player), left + PANEL_MARGIN, y + 2, TEXT_COLOR);
-            copimine$drawPingBars(context, right - PANEL_MARGIN - BAR_AREA_WIDTH, y + 11,
-                    TabPanelLayout.pingBars(player.getLatency()));
+            Component name = copimine$nameForDisplay(player);
             String ping = "Ping: " + player.getLatency();
-            int pingX = right - PANEL_MARGIN - BAR_AREA_WIDTH - 3 - font.width(ping);
+            int nameX = TabPanelLayout.playerRowLeft(left, panelWidth, font.width(name), font.width(ping));
+            context.text(font, name, nameX, y + 2, TEXT_COLOR);
+            int pingX = nameX + font.width(name) + 6;
             context.text(font, ping, pingX, y + 2, LABEL_COLOR);
+            copimine$drawPingBars(context, pingX + font.width(ping) + 3, y + 11,
+                    TabPanelLayout.pingBars(player.getLatency()));
             y += ROW_HEIGHT;
         }
 

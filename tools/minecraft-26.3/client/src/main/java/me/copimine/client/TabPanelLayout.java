@@ -58,6 +58,12 @@ public final class TabPanelLayout {
         return 0;
     }
 
+    /** Left edge for the centered name, ping label, and bars row. */
+    public static int playerRowLeft(int panelLeft, int panelWidth, int nameWidth, int pingWidth) {
+        int rowWidth = nameWidth + 6 + pingWidth + 3 + 14;
+        return panelLeft + (panelWidth - rowWidth) / 2;
+    }
+
     /** Preserve blank lines as deliberate vertical spacing in the server-provided layout. */
     public static boolean isDrawnLine(String plainLine) {
         return true;

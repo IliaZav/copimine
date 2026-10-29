@@ -104,12 +104,14 @@ public abstract class PlayerListHudMixin {
         }
 
         for (PlayerListEntry player : players) {
-            context.drawTextWithShadow(font, copimine$nameForDisplay(player), left + PANEL_MARGIN, y + 2, TEXT_COLOR);
-            copimine$drawPingBars(context, right - PANEL_MARGIN - BAR_AREA_WIDTH, y + 11,
-                    TabPanelLayout.pingBars(player.getLatency()));
+            Text name = copimine$nameForDisplay(player);
             String ping = "Ping: " + player.getLatency();
-            int pingX = right - PANEL_MARGIN - BAR_AREA_WIDTH - 3 - font.getWidth(ping);
+            int nameX = TabPanelLayout.playerRowLeft(left, panelWidth, font.getWidth(name), font.getWidth(ping));
+            context.drawTextWithShadow(font, name, nameX, y + 2, TEXT_COLOR);
+            int pingX = nameX + font.getWidth(name) + 6;
             context.drawTextWithShadow(font, ping, pingX, y + 2, LABEL_COLOR);
+            copimine$drawPingBars(context, pingX + font.getWidth(ping) + 3, y + 11,
+                    TabPanelLayout.pingBars(player.getLatency()));
             y += ROW_HEIGHT;
         }
 

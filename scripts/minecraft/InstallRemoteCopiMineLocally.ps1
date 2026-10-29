@@ -26,9 +26,9 @@ $PluginStagePath = (Resolve-Path -LiteralPath $PluginStagePath).Path
 $installerPath = Join-Path $root 'scripts/minecraft/install_migration_server_plugins.py'
 $worldExtractor = Join-Path $root 'scripts/minecraft/copimine_world_snapshot.py'
 $archiveSha256 = '1c3af8ec92fad95d8a5632ce5357c852c577b020965fa79f6eb5dbd97ba04af2'
-$resourcePackUrl = 'https://copimine.ru/assets/CopiMineResourcePack-26.3-7229299416f31e9c.zip'
-$resourcePackSha1 = 'ae863669efb0bb08210ef268f2a74f4ea247552a'
-$resourcePackSha256 = '7229299416f31e9c22086b20b2adf397b8b5d3d4cf42ef969517b7f484173ca1'
+$resourcePackUrl = 'https://copimine.ru/assets/CopiMineResourcePack-26.3-56771a2256367c22.zip'
+$resourcePackSha1 = '2f0fe6e974cb0b2f0915c0e584a9c91512737fb5'
+$resourcePackSha256 = '56771a2256367c22f73f3e1b0c96d4151d9562cc11730ff79bbb6cd5401d228c'
 $offlineKuusoUuid = '5fa2e00c-ad45-3663-837f-d7ce56e73d3d'
 
 if (-not (Test-Path -LiteralPath $WorldArchivePath -PathType Leaf)) {

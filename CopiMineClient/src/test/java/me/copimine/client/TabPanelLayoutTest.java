@@ -47,4 +47,9 @@ class TabPanelLayoutTest {
         assertTrue(TabPanelLayout.isDrawnLine("   "));
         assertTrue(TabPanelLayout.isDrawnLine("\u2501\u2501\u2501"));
     }
+
+    @Test
+    void playerDetailsStayCenteredAsOneGroup() {
+        assertEquals(212, TabPanelLayout.playerRowLeft(45, 544, 106, 80));
+    }
 }

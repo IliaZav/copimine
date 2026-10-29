@@ -97,9 +97,11 @@ public abstract class PlayerTabOverlayMixin {
 
         int y = top;
         for (FormattedCharSequence line : headLines) {
-            int lineHeight = TabPanelLayout.lineHeight(copimine$plainText(line));
+            String plainLine = copimine$plainText(line);
+            int lineHeight = TabPanelLayout.lineHeight(plainLine);
             y += lineHeight;
-            context.centeredText(font, line, (left + right) / 2, y - lineHeight + 1, TEXT_COLOR);
+            context.centeredText(font, line, (left + right) / 2,
+                    y - lineHeight + 1 + TabPanelLayout.textYOffset(plainLine), TEXT_COLOR);
         }
 
         for (PlayerInfo player : players) {
@@ -114,9 +116,11 @@ public abstract class PlayerTabOverlayMixin {
 
         y += 4;
         for (FormattedCharSequence line : footLines) {
-            int lineHeight = TabPanelLayout.lineHeight(copimine$plainText(line));
+            String plainLine = copimine$plainText(line);
+            int lineHeight = TabPanelLayout.lineHeight(plainLine);
             y += lineHeight;
-            context.centeredText(font, line, (left + right) / 2, y - lineHeight + 1, TEXT_COLOR);
+            context.centeredText(font, line, (left + right) / 2,
+                    y - lineHeight + 1 + TabPanelLayout.textYOffset(plainLine), TEXT_COLOR);
         }
     }
 

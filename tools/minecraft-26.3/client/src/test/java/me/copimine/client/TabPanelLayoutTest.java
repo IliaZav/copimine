@@ -35,6 +35,13 @@ class TabPanelLayoutTest {
     }
 
     @Test
+    void highAscentLogoIsShiftedIntoItsReservedLineBox() {
+        assertEquals(0, TabPanelLayout.textYOffset("Президент: не выбран"));
+        assertEquals(16, TabPanelLayout.textYOffset("\uE000"));
+        assertEquals(16, TabPanelLayout.textYOffset("\uE300"));
+    }
+
+    @Test
     void blankLinesArePreservedAsLayoutSpacing() {
         assertTrue(TabPanelLayout.isDrawnLine(""));
         assertTrue(TabPanelLayout.isDrawnLine("   "));

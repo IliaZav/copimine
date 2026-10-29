@@ -7,6 +7,8 @@ public final class TabPanelLayout {
     public static final int LOGO_LINE_HEIGHT = 30;
     /** Height of {@code \uE300}, which maps to copimine:gui/tab/copimine_logo.png at height 52. */
     public static final int LARGE_LOGO_LINE_HEIGHT = 52;
+    private static final int SMALL_LOGO_BASELINE_OFFSET = LOGO_LINE_HEIGHT - 14;
+    private static final int LARGE_LOGO_BASELINE_OFFSET = LARGE_LOGO_LINE_HEIGHT - 36;
 
     private TabPanelLayout() {
     }
@@ -40,6 +42,20 @@ public final class TabPanelLayout {
             return LOGO_LINE_HEIGHT;
         }
         return LINE_HEIGHT;
+    }
+
+    /**
+     * Resource-pack glyphs use an ascent larger than vanilla's 8px text baseline.
+     * Offset their draw origin so the full bitmap sits inside its reserved line box.
+     */
+    public static int textYOffset(String plainLine) {
+        if (plainLine.indexOf('\uE300') >= 0) {
+            return LARGE_LOGO_BASELINE_OFFSET;
+        }
+        if (plainLine.indexOf('\uE000') >= 0) {
+            return SMALL_LOGO_BASELINE_OFFSET;
+        }
+        return 0;
     }
 
     /** Preserve blank lines as deliberate vertical spacing in the server-provided layout. */

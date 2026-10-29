@@ -96,9 +96,11 @@ public abstract class PlayerListHudMixin {
 
         int y = top;
         for (OrderedText line : headLines) {
-            int lineHeight = TabPanelLayout.lineHeight(copimine$plainText(line));
+            String plainLine = copimine$plainText(line);
+            int lineHeight = TabPanelLayout.lineHeight(plainLine);
             y += lineHeight;
-            context.drawCenteredTextWithShadow(font, line, (left + right) / 2, y - lineHeight + 1, TEXT_COLOR);
+            context.drawCenteredTextWithShadow(font, line, (left + right) / 2,
+                    y - lineHeight + 1 + TabPanelLayout.textYOffset(plainLine), TEXT_COLOR);
         }
 
         for (PlayerListEntry player : players) {
@@ -113,9 +115,11 @@ public abstract class PlayerListHudMixin {
 
         y += 4;
         for (OrderedText line : footLines) {
-            int lineHeight = TabPanelLayout.lineHeight(copimine$plainText(line));
+            String plainLine = copimine$plainText(line);
+            int lineHeight = TabPanelLayout.lineHeight(plainLine);
             y += lineHeight;
-            context.drawCenteredTextWithShadow(font, line, (left + right) / 2, y - lineHeight + 1, TEXT_COLOR);
+            context.drawCenteredTextWithShadow(font, line, (left + right) / 2,
+                    y - lineHeight + 1 + TabPanelLayout.textYOffset(plainLine), TEXT_COLOR);
         }
     }
 

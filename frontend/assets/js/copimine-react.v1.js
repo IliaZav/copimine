@@ -10126,12 +10126,7 @@ function me(e) {
 	if (t && e.analytics) {
 		let n = e.analytics;
 		import("./charts-BHRYKUB3.mjs").then(({ AdminAnalyticsCharts: e }) => {
-			if (!t.isConnected || document.getElementById(t.id) !== t) return;
-			let r = (0, d.createRoot)(t);
-			r.render(/* @__PURE__ */ (0, p.jsx)(e, { model: n })), ve.push({
-				root: r,
-				host: t
-			});
+			t.isConnected && document.getElementById(t.id) === t && ye(t, /* @__PURE__ */ (0, p.jsx)(e, { model: n }));
 		}).catch(() => {
 			t.isConnected && (t.textContent = "Графики аналитики не загрузились.");
 		});
@@ -10144,12 +10139,7 @@ function me(e) {
 			sub: "live"
 		};
 		import("./charts-BHRYKUB3.mjs").then(({ AdminAnalyticsCharts: e }) => {
-			if (!n.isConnected || document.getElementById(n.id) !== n) return;
-			let r = (0, d.createRoot)(n);
-			r.render(/* @__PURE__ */ (0, p.jsx)(e, { model: t })), ve.push({
-				root: r,
-				host: n
-			});
+			n.isConnected && document.getElementById(n.id) === n && ye(n, /* @__PURE__ */ (0, p.jsx)(e, { model: t }));
 		}).catch(() => {
 			n.isConnected && (n.textContent = "Графики аналитики не загрузились.");
 		});
@@ -10192,15 +10182,24 @@ function he({ model: e }) {
 		})] })
 	})] });
 }
-var ge = null, _e = null, ve = [];
-function ye() {
+var ge = null, _e = null, ve = /* @__PURE__ */ new Map();
+function ye(e, t) {
+	let n = ve.get(e);
+	if (n) {
+		n.render(t);
+		return;
+	}
+	let r = (0, d.createRoot)(e);
+	r.render(t), ve.set(e, r);
+}
+function be() {
 	let e = document.getElementById("app"), t = document.getElementById("dock-root");
 	e && t && !ge && (ge = (0, d.createRoot)(e), _e = (0, d.createRoot)(t), window.CopimineReactBridge = { render(e) {
-		ve.forEach(({ root: e, host: t }) => {
+		ve.forEach((e, t) => {
 			t.isConnected && e.unmount();
-		}), ve = [], e.analytics = window.CMAnalyticsReactModel || null, e.serviceMetrics = window.CM?.state?.serviceMetrics || [], ge?.render(/* @__PURE__ */ (0, p.jsx)(he, { model: e }));
+		}), ve.clear(), e.analytics = window.CMAnalyticsReactModel || null, e.serviceMetrics = window.CM?.state?.serviceMetrics || [], ge?.render(/* @__PURE__ */ (0, p.jsx)(he, { model: e }));
 		let t = window.CMAccountLink?.state?.()?.user || window.CM?.me?.();
 		_e?.render(t && !t.gameLinkVerified ? null : /* @__PURE__ */ (0, p.jsx)("div", { dangerouslySetInnerHTML: { __html: e.dock } }));
 	} });
 }
-ye(), window.dispatchEvent(new Event("copimine:react-ready"));
+be(), window.dispatchEvent(new Event("copimine:react-ready"));

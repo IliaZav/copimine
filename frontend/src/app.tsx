@@ -738,9 +738,7 @@ function mountReactAnalytics(model: LegacyRouteModel) {
     const analytics = model.analytics;
     void import("./charts").then(({ AdminAnalyticsCharts }) => {
       if (!host.isConnected || document.getElementById(host.id) !== host) return;
-      const root = createRoot(host);
-      root.render(<AdminAnalyticsCharts model={analytics} />);
-      embeddedRoots.push({ root, host });
+      renderEmbedded(host, <AdminAnalyticsCharts model={analytics} />);
     }).catch(() => {
       if (host.isConnected) host.textContent = "Графики аналитики не загрузились.";
     });
@@ -751,9 +749,7 @@ function mountReactAnalytics(model: LegacyRouteModel) {
     const analytics: AnalyticsModel = { data: { live: { samples: model.serviceMetrics || [] } }, sub: "live" };
     void import("./charts").then(({ AdminAnalyticsCharts }) => {
       if (!liveHost.isConnected || document.getElementById(liveHost.id) !== liveHost) return;
-      const root = createRoot(liveHost);
-      root.render(<AdminAnalyticsCharts model={analytics} />);
-      embeddedRoots.push({ root, host: liveHost });
+      renderEmbedded(liveHost, <AdminAnalyticsCharts model={analytics} />);
     }).catch(() => {
       if (liveHost.isConnected) liveHost.textContent = "Графики аналитики не загрузились.";
     });
@@ -822,7 +818,17 @@ function CopiMineApp({ model }: { model: LegacyRouteModel }) {
 
 let appRoot: Root | null = null;
 let dockRoot: Root | null = null;
-let embeddedRoots: { root: Root; host: HTMLElement }[] = [];
+let embeddedRoots = new Map<HTMLElement, Root>();
+
+// Повторный рендер (например, после догрузки библиотеки предметов) не должен
+// создавать второй корень на том же контейнере — React тогда падает на removeChild.
+function renderEmbedded(host: HTMLElement, node: React.ReactElement) {
+  const existing = embeddedRoots.get(host);
+  if (existing) { existing.render(node); return; }
+  const root = createRoot(host);
+  root.render(node);
+  embeddedRoots.set(host, root);
+}
 
 export function mountCopiMineReact() {
   const app = document.getElementById("app");
@@ -834,8 +840,8 @@ export function mountCopiMineReact() {
     render(model) {
       // Unmount only roots whose host is still in the document: the legacy HTML swap
       // detaches chart hosts first, and unmounting those throws removeChild.
-      embeddedRoots.forEach(({ root, host }) => { if (host.isConnected) root.unmount(); });
-      embeddedRoots = [];
+      embeddedRoots.forEach((root, host) => { if (host.isConnected) root.unmount(); });
+      embeddedRoots.clear();
       model.analytics = window.CMAnalyticsReactModel || null;
       model.serviceMetrics = window.CM?.state?.serviceMetrics || [];
       appRoot?.render(<CopiMineApp model={model} />);

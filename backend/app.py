@@ -26,6 +26,7 @@ from .mail import router as mail_router
 from .mfa import router as mfa_router
 from .maps import router as maps_router
 from .mapart import router as mapart_router
+from .narcotics import router as narcotics_router
 from .ops import router as ops_router
 from .vk import router as vk_router
 
@@ -125,6 +126,8 @@ def create_app(settings=None):
                     return JSONResponse({"error": {"code": "csrf", "message": "Сеанс изменился. Обновите страницу и повторите действие."}}, status_code=403)
                 chunks, total = [], 0
                 max_request_bytes = 6 * 1024 * 1024 if request.url.path in {"/api/v6/admin/content/gallery/image", "/api/v6/mapart/image"} else 128 * 1024
+                if "/media" in request.url.path or request.url.path.endswith("/texture"):
+                    max_request_bytes = 12 * 1024 * 1024
                 async for chunk in request.stream():
                     total += len(chunk)
                     if total > max_request_bytes:
@@ -162,6 +165,7 @@ def create_app(settings=None):
     app.include_router(mfa_router)
     app.include_router(maps_router)
     app.include_router(mapart_router)
+    app.include_router(narcotics_router)
     app.include_router(ops_router)
     app.include_router(vk_router)
 

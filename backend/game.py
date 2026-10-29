@@ -255,7 +255,7 @@ class GameAdapter:
             item['maxQuantity']=1
             overlay = overrides.get(item.get("id"), {}) if isinstance(overrides, dict) else {}
             if isinstance(overlay, dict):
-                for key in ("name", "description", "category", "video"):
+                for key in ("name", "description", "category", "video", "image"):
                     if key in overlay:
                         item[key] = overlay[key]
             item["version"] = catalog_version(item)

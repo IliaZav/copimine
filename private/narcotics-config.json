@@ -1,0 +1,469 @@
+{
+  "version": 1,
+  "source": "CopiMineNarcotics config.yml",
+  "effects": [
+    "DESATURATE",
+    "COLOR_CONVOLVE",
+    "SCAN_PINCUSHION",
+    "GREEN_NOISE",
+    "INVERT",
+    "WOBBLE",
+    "BLOBS",
+    "PENCIL",
+    "CHAOS"
+  ],
+  "items": {
+    "feta": {
+      "display_name": "&fФета",
+      "material": "WHITE_DYE",
+      "fallback_material": "",
+      "texture_key": "narcotic_feta",
+      "custom_model_data": 810001,
+      "overdose_weight": 30,
+      "visual_effect": "DESATURATE",
+      "recipe": [
+        {
+          "key": "MATERIAL:WHITE_DYE",
+          "count": 1
+        },
+        {
+          "key": "MATERIAL:GLOWSTONE_DUST",
+          "count": 1
+        },
+        {
+          "key": "MATERIAL:RABBIT_FOOT",
+          "count": 1
+        },
+        {
+          "key": "POTION:WEAKNESS",
+          "count": 1
+        }
+      ],
+      "normal_effects": [
+        {
+          "type": "SPEED",
+          "amplifier": 1,
+          "duration_seconds": 90
+        },
+        {
+          "type": "RESISTANCE",
+          "amplifier": 0,
+          "duration_seconds": 40
+        }
+      ],
+      "overdose_effects": [
+        {
+          "type": "POISON",
+          "amplifier": 0,
+          "duration_seconds": 90
+        },
+        {
+          "type": "WEAKNESS",
+          "amplifier": 0,
+          "duration_seconds": 90
+        },
+        {
+          "type": "SLOWNESS",
+          "amplifier": 0,
+          "duration_seconds": 90
+        }
+      ]
+    },
+    "kola": {
+      "display_name": "&fКола",
+      "material": "SUGAR",
+      "fallback_material": "",
+      "texture_key": "narcotic_kola",
+      "custom_model_data": 810002,
+      "overdose_weight": 35,
+      "visual_effect": "COLOR_CONVOLVE",
+      "recipe": [
+        {
+          "key": "MATERIAL:SUGAR",
+          "count": 1
+        },
+        {
+          "key": "MATERIAL:DIAMOND",
+          "count": 1
+        },
+        {
+          "key": "MATERIAL:JUNGLE_LEAVES",
+          "count": 1
+        }
+      ],
+      "normal_effects": [
+        {
+          "type": "SPEED",
+          "amplifier": 1,
+          "duration_seconds": 180
+        }
+      ],
+      "overdose_effects": [
+        {
+          "type": "POISON",
+          "amplifier": 0,
+          "duration_seconds": 90
+        },
+        {
+          "type": "HUNGER",
+          "amplifier": 0,
+          "duration_seconds": 180
+        },
+        {
+          "type": "WEAKNESS",
+          "amplifier": 0,
+          "duration_seconds": 120
+        }
+      ]
+    },
+    "girion": {
+      "display_name": "&aГирион",
+      "material": "SLIME_BALL",
+      "fallback_material": "",
+      "texture_key": "narcotic_girion",
+      "custom_model_data": 810003,
+      "overdose_weight": 40,
+      "visual_effect": "SCAN_PINCUSHION",
+      "recipe": [
+        {
+          "key": "MATERIAL:SLIME_BLOCK",
+          "count": 1
+        },
+        {
+          "key": "MATERIAL:TURTLE_SCUTE",
+          "count": 1
+        },
+        {
+          "key": "MATERIAL:EMERALD",
+          "count": 1
+        }
+      ],
+      "normal_effects": [
+        {
+          "type": "REGENERATION",
+          "amplifier": 0,
+          "duration_seconds": 90
+        },
+        {
+          "type": "RESISTANCE",
+          "amplifier": 0,
+          "duration_seconds": 40
+        },
+        {
+          "type": "ABSORPTION",
+          "amplifier": 0,
+          "duration_seconds": 120
+        }
+      ],
+      "overdose_effects": [
+        {
+          "type": "SLOWNESS",
+          "amplifier": 3,
+          "duration_seconds": 20
+        },
+        {
+          "type": "WITHER",
+          "amplifier": 0,
+          "duration_seconds": 40
+        }
+      ]
+    },
+    "sbp": {
+      "display_name": "&6СБП",
+      "material": "GOLD_INGOT",
+      "fallback_material": "",
+      "texture_key": "narcotic_sbp",
+      "custom_model_data": 810004,
+      "overdose_weight": 30,
+      "visual_effect": "GREEN_NOISE",
+      "recipe": [
+        {
+          "key": "MATERIAL:GOLD_INGOT",
+          "count": 1
+        },
+        {
+          "key": "MATERIAL:GOLDEN_CARROT",
+          "count": 1
+        },
+        {
+          "key": "MATERIAL:STRING",
+          "count": 1
+        }
+      ],
+      "normal_effects": [
+        {
+          "type": "LUCK",
+          "amplifier": 0,
+          "duration_seconds": 300
+        },
+        {
+          "type": "INVISIBILITY",
+          "amplifier": 0,
+          "duration_seconds": 180
+        }
+      ],
+      "overdose_effects": [
+        {
+          "type": "SLOW_DIGGING",
+          "amplifier": 4,
+          "duration_seconds": 300
+        },
+        {
+          "type": "CONFUSION",
+          "amplifier": 0,
+          "duration_seconds": 120
+        }
+      ]
+    },
+    "sos": {
+      "display_name": "&fСось",
+      "material": "BONE_MEAL",
+      "fallback_material": "",
+      "texture_key": "narcotic_sos",
+      "custom_model_data": 810005,
+      "overdose_weight": 35,
+      "visual_effect": "INVERT",
+      "recipe": [
+        {
+          "key": "MATERIAL:BONE",
+          "count": 1
+        },
+        {
+          "key": "MATERIAL:IRON_BLOCK",
+          "count": 1
+        },
+        {
+          "key": "MATERIAL:GHAST_TEAR",
+          "count": 1
+        }
+      ],
+      "normal_effects": [
+        {
+          "type": "STRENGTH",
+          "amplifier": 1,
+          "duration_seconds": 90
+        },
+        {
+          "type": "JUMP_BOOST",
+          "amplifier": 1,
+          "duration_seconds": 90
+        }
+      ],
+      "overdose_effects": [
+        {
+          "type": "BLINDNESS",
+          "amplifier": 0,
+          "duration_seconds": 20
+        },
+        {
+          "type": "SLOWNESS",
+          "amplifier": 0,
+          "duration_seconds": 90
+        }
+      ]
+    },
+    "drun": {
+      "display_name": "&dДрун",
+      "material": "PAPER",
+      "fallback_material": "",
+      "texture_key": "narcotic_drun",
+      "custom_model_data": 810006,
+      "overdose_weight": 25,
+      "visual_effect": "WOBBLE",
+      "recipe": [
+        {
+          "key": "MATERIAL:AMETHYST_BLOCK",
+          "count": 1
+        },
+        {
+          "key": "MATERIAL:END_ROD",
+          "count": 1
+        },
+        {
+          "key": "MATERIAL:IRON_INGOT",
+          "count": 1
+        }
+      ],
+      "normal_effects": [
+        {
+          "type": "HASTE",
+          "amplifier": 1,
+          "duration_seconds": 60
+        },
+        {
+          "type": "GLOWING",
+          "amplifier": 0,
+          "duration_seconds": 40
+        }
+      ],
+      "overdose_effects": [
+        {
+          "type": "HUNGER",
+          "amplifier": 0,
+          "duration_seconds": 60
+        },
+        {
+          "type": "UNLUCK",
+          "amplifier": 0,
+          "duration_seconds": 60
+        }
+      ]
+    },
+    "chups": {
+      "display_name": "&bЧупс",
+      "material": "BLUE_STAINED_GLASS_PANE",
+      "fallback_material": "",
+      "texture_key": "narcotic_chups",
+      "custom_model_data": 810007,
+      "overdose_weight": 30,
+      "visual_effect": "BLOBS",
+      "recipe": [
+        {
+          "key": "MATERIAL:BLUE_STAINED_GLASS",
+          "count": 1
+        },
+        {
+          "key": "POTION:SPEED",
+          "count": 1
+        },
+        {
+          "key": "MATERIAL:COCOA_BEANS",
+          "count": 1
+        },
+        {
+          "key": "MATERIAL:IRON_NUGGET",
+          "count": 1
+        }
+      ],
+      "normal_effects": [
+        {
+          "type": "SPEED",
+          "amplifier": 0,
+          "duration_seconds": 90
+        },
+        {
+          "type": "WATER_BREATHING",
+          "amplifier": 0,
+          "duration_seconds": 180
+        },
+        {
+          "type": "REGENERATION",
+          "amplifier": 0,
+          "duration_seconds": 90
+        },
+        {
+          "type": "SLOW_FALLING",
+          "amplifier": 0,
+          "duration_seconds": 90
+        },
+        {
+          "type": "JUMP_BOOST",
+          "amplifier": 2,
+          "duration_seconds": 90
+        }
+      ],
+      "overdose_effects": [
+        {
+          "type": "POISON",
+          "amplifier": 0,
+          "duration_seconds": 120
+        },
+        {
+          "type": "WITHER",
+          "amplifier": 0,
+          "duration_seconds": 40
+        },
+        {
+          "type": "HUNGER",
+          "amplifier": 0,
+          "duration_seconds": 180
+        },
+        {
+          "type": "BAD_OMEN",
+          "amplifier": 0,
+          "duration_seconds": 6000
+        }
+      ]
+    },
+    "borshevik": {
+      "display_name": "&2Борщевик",
+      "material": "KELP",
+      "fallback_material": "",
+      "texture_key": "narcotic_borshevik",
+      "custom_model_data": 810008,
+      "overdose_weight": 40,
+      "visual_effect": "PENCIL",
+      "recipe": [
+        {
+          "key": "MATERIAL:LARGE_FERN",
+          "count": 1
+        },
+        {
+          "key": "MATERIAL:DRIED_KELP_BLOCK",
+          "count": 1
+        },
+        {
+          "key": "MATERIAL:SUGAR_CANE",
+          "count": 1
+        }
+      ],
+      "normal_effects": [
+        {
+          "type": "REGENERATION",
+          "amplifier": 0,
+          "duration_seconds": 45
+        },
+        {
+          "type": "FIRE_RESISTANCE",
+          "amplifier": 0,
+          "duration_seconds": 180
+        }
+      ],
+      "overdose_effects": [
+        {
+          "type": "DARKNESS",
+          "amplifier": 0,
+          "duration_seconds": 60
+        },
+        {
+          "type": "HARM",
+          "amplifier": 0,
+          "duration_seconds": 1
+        }
+      ]
+    },
+    "zhuzevo": {
+      "display_name": "&6Жужево",
+      "material": "BROWN_DYE",
+      "fallback_material": "ROTTEN_FLESH",
+      "texture_key": "narcotic_zhuzevo",
+      "custom_model_data": 810009,
+      "overdose_weight": 0,
+      "visual_effect": "CHAOS",
+      "recipe": [],
+      "normal_effects": [],
+      "overdose_effects": [
+        {
+          "type": "POISON",
+          "amplifier": 1,
+          "duration_seconds": 120
+        },
+        {
+          "type": "WITHER",
+          "amplifier": 0,
+          "duration_seconds": 60
+        },
+        {
+          "type": "SLOWNESS",
+          "amplifier": 1,
+          "duration_seconds": 90
+        },
+        {
+          "type": "CONFUSION",
+          "amplifier": 0,
+          "duration_seconds": 120
+        }
+      ]
+    }
+  }
+}

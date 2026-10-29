@@ -16,6 +16,9 @@ from .game import catalog_version
 from .security import COOKIE, PERMISSIONS, RANK, check_hierarchy, current_user, fail, hash_password, public_user, throttle, verify_password
 
 router = APIRouter()
+# Карточка товара показывает либо файл из репозитория, либо загруженное фото.
+_CATALOG_IMAGE = re.compile(r"^assets/[A-Za-z0-9_./-]+\.(?:png|jpe?g|webp|avif|gif)$", re.I)
+_CATALOG_MEDIA = re.compile(r"^/api/v6/media/[a-f0-9]{24}\.(?:webp|mp4|webm)$")
 SUPPORTED_ACTIONS = {"kick", "ban", "unban", "heal", "feed", "kill", "gamemode", "teleport", "freeze", "unfreeze", "inventory.snapshot", "inventory.remove", "whitelist.add", "whitelist.remove", "time.day", "time.night", "weather.clear", "weather.rain", "save"}
 
 
@@ -582,7 +585,7 @@ def admin_audit(request: Request):
 async def update_catalog_item(request: Request, identifier: str):
     user = current_user(request, "catalog.manage", fresh=True)
     data = await request.json()
-    allowed = {"version", "name", "description", "category", "price", "limit", "video", "reason"}
+    allowed = {"version", "name", "description", "category", "price", "limit", "video", "image", "reason"}
     if set(data) - allowed:
         fail(400, "invalid_catalog_update", "В форме есть поля, которые нельзя менять здесь.")
     reason = safe_reason(data.get("reason"))
@@ -603,10 +606,17 @@ async def update_catalog_item(request: Request, identifier: str):
         description = str(data.get("description", item.get("description", ""))).strip()
         category = str(data.get("category", item.get("category", ""))).strip()
         video = str(data.get("video", item.get("video", ""))).strip()
+        image = str(data.get("image", item.get("image", ""))).strip()
+        if image and len(image) > 300:
+            fail(400, "invalid_catalog_image", "Ссылка на изображение слишком длинная.")
+        if image and not (_CATALOG_IMAGE.fullmatch(image) or _CATALOG_MEDIA.fullmatch(image)):
+            fail(400, "invalid_catalog_image", "Изображение — файл с сайта: assets/... или загруженный через карточку товара.")
         if not 1 <= len(name) <= 120 or not 1 <= len(description) <= 3000 or not 1 <= len(category) <= 80:
             fail(400, "invalid_catalog_update", "Проверь название, описание и категорию товара.")
         parsed_video = urlparse(video) if video else None
-        if video and (len(video) > 500 or parsed_video.scheme != "https" or not parsed_video.netloc or any(c in video for c in "\"'<> \r\n\t")):
+        # Загруженный файл живёт на сайте, поэтому относительный /api/v6/media/ тоже допустим.
+        uploaded = bool(_CATALOG_MEDIA.fullmatch(video)) and video.endswith((".mp4", ".webm"))
+        if video and not uploaded and (len(video) > 500 or parsed_video.scheme != "https" or not parsed_video.netloc or any(c in video for c in "\"'<> \r\n\t")):
             fail(400, "invalid_catalog_video", "Ссылка на видео должна начинаться с https:// и вести на YouTube, Rutube или файл mp4/webm.")
         if re.search(r"(?i)<\s*/?\s*[a-z!][^>]*>|javascript\s*:|data\s*:\s*text/html", name + "\n" + description + "\n" + category):
             fail(400, "invalid_catalog_update", "HTML и активные ссылки в карточках товара запрещены.")
@@ -644,7 +654,7 @@ async def update_catalog_item(request: Request, identifier: str):
         overlays = json.loads(row["value"]) if row else {}
         if not isinstance(overlays, dict):
             overlays = {}
-        overlays[identifier] = {"name": name, "description": description, "category": category, "video": video}
+        overlays[identifier] = {"name": name, "description": description, "category": category, "video": video, "image": image}
         now = int(time.time())
         db.execute("INSERT INTO cm_site_settings(key,value,updated_s,actor) VALUES(%s,%s,%s,%s) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_s=excluded.updated_s,actor=excluded.actor", ("catalog_overrides", json.dumps(overlays, ensure_ascii=False), now, user["name"]))
         db.execute("INSERT INTO cm_site_audit(id,actor_id,actor_name,action,target,reason,details,created_s) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)", (uuid.uuid4().hex, user["id"], user["name"], "catalog.updated", identifier, reason, json.dumps({"price": price, "limit": limit, "currency": currency}, ensure_ascii=False), now))

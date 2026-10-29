@@ -76,3 +76,36 @@
 .v6-player-tabs,.v71-tabs{-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}
 .v6-player-tabs>*,.v71-tabs>*{scroll-snap-align:start}
 @media(max-width:700px){.v71-attention-grid{grid-template-columns:1fr}.v6-audit-bucket{flex:1 1 100%}.admin-content .tabs,.admin-content .v6-player-tabs,.v71-tabs,.v71-settings-side nav{flex-wrap:wrap;overflow:visible;white-space:normal;row-gap:6px}}
+
+/* Наркотики: список слева, редактор справа. Переиспользуем токены панели. */
+.cm-narc-layout{display:grid;grid-template-columns:230px minmax(0,1fr);gap:24px;align-items:start}
+.cm-narc-list{border-right:1px solid var(--line);padding-right:16px;min-width:0}
+.cm-narc-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;min-width:0}
+.cm-narc-row:hover,.cm-narc-row.active{background:var(--raised)}
+.cm-narc-row img{flex:0 0 auto;border-radius:4px;image-rendering:pixelated;background:#1b2226}
+.cm-narc-row span{min-width:0}.cm-narc-row strong{display:block;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cm-narc-row small{color:var(--muted);font-size:11px}
+.cm-narc-main{min-width:0}
+.cm-narc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px 16px}
+.cm-narc-texture{display:flex;align-items:center;gap:14px;margin:16px 0;padding:12px;border:1px solid var(--line);border-radius:10px}
+.cm-narc-texture img{image-rendering:pixelated;border-radius:6px;background:#1b2226}
+.cm-narc-parts{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:6px}
+.cm-narc-part{display:flex;align-items:center;gap:10px;padding:6px 10px;border:1px solid var(--line);border-radius:8px}
+.cm-narc-part-name{flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cm-narc-part-name small{display:block;color:var(--muted);font-size:11px}
+.cm-narc-count{width:64px}
+.cm-narc-potion{display:grid;place-items:center;width:26px;height:26px;border-radius:4px;background:var(--raised);color:var(--green)}
+.cm-narc-fx{margin-top:20px;padding-top:14px;border-top:1px solid var(--line)}
+.cm-narc-fx-row{display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap}
+.cm-narc-fx-row select{min-width:180px}
+.cm-narc-mini{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.cm-narc-mini input{width:78px}
+.cm-narc-effect{padding:8px 12px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:var(--raised);text-align:left}
+.cm-narc-effect:hover{border-color:var(--green);color:var(--green)}
+.cm-media-upload{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 12px}
+.cm-narc-loading{display:flex;gap:6px;padding:40px 0;justify-content:center}
+.cm-narc-loading span{width:8px;height:8px;border-radius:50%;background:var(--muted);animation:cm-narc-pulse 1s infinite}
+.cm-narc-loading span:nth-child(2){animation-delay:.15s}.cm-narc-loading span:nth-child(3){animation-delay:.3s}
+@keyframes cm-narc-pulse{50%{opacity:.25}}
+@media(max-width:900px){.cm-narc-layout{grid-template-columns:1fr}.cm-narc-list{border-right:0;border-bottom:1px solid var(--line);padding:0 0 12px;display:flex;gap:6px;overflow-x:auto}.cm-narc-list .panel-head{display:none}.cm-narc-row{flex:0 0 auto;max-width:190px}}
+@media(prefers-reduced-motion:reduce){.cm-narc-loading span{animation:none}}

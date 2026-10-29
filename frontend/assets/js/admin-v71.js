@@ -18,13 +18,14 @@ const entries=[
  ['monitor','Мониторинг сервера','TPS, память, миры, база и ошибки плагинов.','activity'],
  ['releases','Релизы и обновления','Коммит, версии плагинов, CI и откат.','package'],
  ['mapart','Картины в мире','Загрузки, авторы и координаты картин.','grid'],
+ ['narcotics','Наркотики','Рецепты котла, эффекты и текстуры предметов плагина.','package'],
  ['audit','Журнал действий','Кто, что изменил, когда и почему.','history'],
  ['admins','Команда','Учётные записи команды и роли.','users'],
  ['content','Контент сайта','Страницы, галерея, вопросы и навигация.','edit'],
  ['settings','Настройки сайта','Название, адрес и отображение сайта.','settings'],
  ['system','Сервер и службы','Состояние подключений и аккаунты сайта.','server']
 ];
-const groups=[['Проект',['overview','statistics']],['Игроки',['players','requests','moderation','recovery']],['Экономика и мир',['shop','finance','world','mapart']],['Сервер',['monitor','releases']],['Сайт и команда',['content','admins','audit','settings','system']]];
+const groups=[['Проект',['overview','statistics']],['Игроки',['players','requests','moderation','recovery']],['Экономика и мир',['shop','finance','world','mapart','narcotics']],['Сервер',['monitor','releases']],['Сайт и команда',['content','admins','audit','settings','system']]];
 const legacyRoutes={performance:'statistics',inventories:'players',investigations:'moderation',anticheat:'moderation',whitelist:'players',bank:'finance',elections:'world',laws:'world',points:'world',recipes:'shop',logs:'audit',sources:'system',jobs:'system',backups:'system',maintenance:'system'};
 A.adminEntries=entries;
 function badge(id){const n=id==='requests'?s().tickets.filter(t=>t.status==='open').length:id==='finance'?s().orders.filter(o=>o.status==='queued').length:0;return n?`<small class="v71-nav-count">${n}</small>`:'';}
@@ -60,6 +61,7 @@ M.renderers.admin=(key='overview')=>{
  case 'monitor':body=ext.monitor(sub);break;
  case 'releases':body=ext.releases(sub);break;
  case 'mapart':body='<div data-mapart-admin></div>';break;
+ case 'narcotics':body='<div data-narcotics-admin></div>';break;
  case 'system':body=ext.system(sub);break;
  case 'shop':body=W.adminExtensions.shop(sub);break;
  case 'finance':body=ext.finance(sub||'orders');break;

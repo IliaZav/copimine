@@ -1050,7 +1050,7 @@ X.updateCart=()=>{
 };
 function setQuantity(id,delta){const row=s().cart.find(x=>x.id===id),qty=(row?.qty||0)+delta,next=s().cart.filter(x=>x.id!==id).map(x=>({...x}));if(qty>0)next.push({id,qty});D.validateCart(next,s().catalog,M.me(),s().orders);s().cart=next;M.save();if(M.UI.page==='cart')M.render();else X.updateCart();if(delta>0)X.track?.('add_to_cart',{itemId:id,quantity:delta});else if(delta<0)X.track?.('cart_remove',{itemId:id,quantity:Math.abs(delta)});}
 H['add-cart']=b=>setQuantity(b.dataset.id,1);H['v6-cart-plus']=H['add-cart'];H['v6-cart-minus']=b=>setQuantity(b.dataset.id,-1);
-function videoEmbed(url){const safe=String(url||'').trim();if(!/^https:\/\//i.test(safe))return '';const yt=safe.match(/(?:youtube\.com\/(?:watch\?(?:[^#]*&)?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{6,})/i);if(yt)return '<iframe class="cm-product-video-frame" src="https://www.youtube.com/embed/'+E(yt[1])+'" title="Видео о товаре" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>';const rt=safe.match(/rutube\.ru\/(?:video|play\/embed)\/([\w-]+)/i);if(rt)return '<iframe class="cm-product-video-frame" src="https://rutube.ru/play/embed/'+E(rt[1])+'/" title="Видео о товаре" loading="lazy" allow="clipboard-write; autoplay; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>';if(/\.(mp4|webm)(?:[?#].*)?$/i.test(safe))return '<video class="cm-product-video-frame" src="'+E(safe)+'" controls preload="metadata" playsinline></video>';return '<a class="cm-product-video-link" href="'+E(safe)+'" target="_blank" rel="noopener noreferrer">Смотреть видео</a>';}
+function videoEmbed(url){const safe=String(url||'').trim();const local=/^\/api\/v6\/media\/[a-f0-9]{24}\.(?:mp4|webm)$/.test(safe);if(!local&&!/^https:\/\//i.test(safe))return '';const yt=safe.match(/(?:youtube\.com\/(?:watch\?(?:[^#]*&)?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{6,})/i);if(yt)return '<iframe class="cm-product-video-frame" src="https://www.youtube.com/embed/'+E(yt[1])+'" title="Видео о товаре" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>';const rt=safe.match(/rutube\.ru\/(?:video|play\/embed)\/([\w-]+)/i);if(rt)return '<iframe class="cm-product-video-frame" src="https://rutube.ru/play/embed/'+E(rt[1])+'/" title="Видео о товаре" loading="lazy" allow="clipboard-write; autoplay; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>';if(/\.(mp4|webm)(?:[?#].*)?$/i.test(safe))return '<video class="cm-product-video-frame" src="'+E(safe)+'" controls preload="metadata" playsinline></video>';return '<a class="cm-product-video-link" href="'+E(safe)+'" target="_blank" rel="noopener noreferrer">Смотреть видео</a>';}
 H.product=b=>{const p=M.item(b.dataset.id);if(!p||((p.visibility||'public')!=='public'&&!X.canAdmin()))return;X.track?.('product_view',{itemId:p.id});M.openModal(E(p.name),'<div class="product-detail-v6"><img class="v6-detail-item" src="'+M.asset(p.image)+'" width="112" height="112" alt="'+E(p.name)+'"><p>'+E(p.description)+'</p>'+(p.video?'<div class="cm-product-video">'+videoEmbed(p.video)+'</div>':'')+'<dl class="detail-specs"><div><dt>Категория</dt><dd>'+E(p.category)+'</dd></div><div><dt>Цена</dt><dd>'+M.money(p.price,p.currency)+'</dd></div>'+(p.cooldown?'<div><dt>Перезарядка</dt><dd>'+p.cooldown+' с</dd></div>':'')+(p.ownerBound?'<div><dt>Привязка</dt><dd>К владельцу</dd></div>':'')+'</dl>'+(p.enabled&&(p.visibility||'public')==='public'?X.cartControl(p.id):M.pill('Недоступен для покупки'))+'</div>');};
 const previewCheckout=H.checkout;
 H.checkout=async()=>{if(!M.me())return M.navTo('auth/login');D.validateCart(s().cart,s().catalog,M.me(),s().orders);X.track?.('checkout_start');if(!X.live)return previewCheckout();const signature=JSON.stringify(s().cart);if(X.checkoutSignature!==signature){X.checkoutSignature=signature;X.checkoutKey=X.uid('checkout');}await X.request('/checkout',{method:'POST',body:{items:s().cart.map(x=>({id:x.id,qty:x.qty})),idempotencyKey:X.checkoutKey}});s().cart=[];X.checkoutKey=null;await X.refresh();X.track?.('checkout_completed');M.navTo('account/orders');M.toast('Заказ создан. Статус выдачи появится в покупках.');};
@@ -1888,14 +1888,37 @@ W.adminExtensions.shop=sub=>{sub=['materials','delivery'].includes(sub)?sub:'cat
 H['v6-material-page']=b=>{materialsPage=Math.max(0,Number(b.dataset.page)||0);document.getElementById('v6-material-list').innerHTML=materialList();};
 H['v6-material-detail']=b=>{const m=(window.CM6_MATERIALS||[]).find(m=>m.id===b.dataset.id);if(!m)return;M.openModal(E(m.ru||m.en||m.id),'<div class="slot-detail-icon">'+W.texture(m.key||m.id,88)+'</div><dl class="detail-specs"><div><dt>Minecraft ID</dt><dd>'+E(m.key||'minecraft:'+m.id)+'</dd></div><div><dt>Английское название</dt><dd>'+E(m.en||m.id)+'</dd></div><div><dt>Версия</dt><dd>26.3</dd></div></dl>'+(!m.image?'<p class="hint mt">В клиенте нет готового плоского спрайта этого предмета. ID и название подтверждены.</p>':'')+(can('inventory.manage')&&m.giveable!==false?M.btn('Выдать игроку','v6-material-give','package','primary mt','data-id="'+E(m.id)+'"'):'') );};
 H['v6-material-give']=b=>{const id=b.dataset.id,p=X.player();if(!p)return;H['v6-player-action']({dataset:{id:'give',player:p.id}});const selected=document.getElementById('v6-selected-item');if(selected){selected.value=id;document.getElementById('v6-item-selection').textContent='Выбрано: '+W.materialName(id);}};
-H['admin-product']=b=>{const p=M.item(b.dataset.id);if(!p||!can('catalog.manage')||p.visibility!=='public'||!['AR_SHOP','DONATION_SHOP'].includes(p.sourceType))return;M.openModal(E(p.name),'<form data-form="catalog-save"><input type="hidden" name="id" value="'+E(p.id)+'"><input type="hidden" name="version" value="'+E(p.version||'')+'"><div class="product-editor-head">'+W.texture(p.id,64)+'<span class="hint">'+E(p.id)+'</span></div>'+V.field('Название на сайте','name',p.name,'text','required maxlength="120"')+V.area('Описание на сайте','description',p.description,4,'required maxlength="3000"')+'<div class="v6-form-grid">'+V.field('Цена','price',p.price,'number','required min="1" max="1000000000" step="1"')+'<div class="cm-catalog-fixed"><span>Валюта</span><strong>'+E(p.currency)+'</strong><small>Определяется игровой лавкой.</small></div></div>'+V.field('Категория на сайте','category',p.category,'text','required maxlength="80"')+V.field('Видео о товаре','video',p.video||'','url','maxlength="500" placeholder="https://youtube.com/watch?v=..."')+'<p class="hint mb">Ссылка на YouTube, Rutube или mp4/webm. Пустое поле — видео не показывается.</p>'+V.field('Лимит на игрока','limit',p.limit||0,'number','required min="0" max="1000" step="1"')+'<p class="hint mb">Цена и лимит обновятся в настройках лавки. Название, описание и категория сохраняются на сайте. Валюту и доступность товара здесь изменить нельзя.</p>'+reason()+V.actions('Сохранить товар')+'</form>');};
-F['catalog-save']=async(f,d)=>{const id=d.get('id'),body={name:d.get('name'),description:d.get('description'),category:d.get('category'),video:d.get('video')||'',price:D.integer(d.get('price'),1,1e9),limit:D.integer(d.get('limit'),0,1000),version:String(d.get('version')),reason:d.get('reason')};if(X.live){await X.request('/admin/catalog/'+encodeURIComponent(id),{method:'PATCH',body});await X.refresh();M.closeModal();}else{Object.assign(M.item(id),body);delete M.item(id).reason;M.audit('Изменён товар',id,body.reason);M.save();M.render();}M.toast('Товар сохранён.');};
+H['admin-product']=b=>{const p=M.item(b.dataset.id);if(!p||!can('catalog.manage')||p.visibility!=='public'||!['AR_SHOP','DONATION_SHOP'].includes(p.sourceType))return;M.openModal(E(p.name),'<form data-form="catalog-save"><input type="hidden" name="id" value="'+E(p.id)+'"><input type="hidden" name="version" value="'+E(p.version||'')+'"><div class="product-editor-head">'+W.texture(p.id,64)+'<span class="hint">'+E(p.id)+'</span></div>'+V.field('Название на сайте','name',p.name,'text','required maxlength="120"')+V.area('Описание на сайте','description',p.description,4,'required maxlength="3000"')+'<div class="v6-form-grid">'+V.field('Цена','price',p.price,'number','required min="1" max="1000000000" step="1"')+'<div class="cm-catalog-fixed"><span>Валюта</span><strong>'+E(p.currency)+'</strong><small>Определяется игровой лавкой.</small></div></div>'+V.field('Категория на сайте','category',p.category,'text','required maxlength="80"')+V.field('Видео о товаре','video',p.video||'','url','maxlength="500" placeholder="https://youtube.com/watch?v=..."')+'<p class="hint mb">Ссылка на YouTube, Rutube или mp4/webm. Можно загрузить файл — он заменит ссылку.</p><div class="cm-media-upload"><label class="btn small ghost">'+icon('upload')+'Видео файлом<input type="file" name="video-file" accept="video/mp4,video/webm" hidden></label><label class="btn small ghost">'+icon('upload')+'Фото товара<input type="file" name="image-file" accept="image/png,image/jpeg,image/webp" hidden></label><span class="hint" id="cm-media-hint">MP4 или WebM до 8 МБ. Фото — до 6 МБ.</span></div>'+'<input type="hidden" name="image" value="'+E(p.image||'')+'"><p class="hint mb" id="cm-image-hint">'+(p.image?('Сейчас: '+E(String(p.image).split('/').pop())):'Фото не задано — показывается стандартная текстура предмета.')+'</p>'+V.field('Лимит на игрока','limit',p.limit||0,'number','required min="0" max="1000" step="1"')+'<p class="hint mb">Цена и лимит обновятся в настройках лавки. Название, описание и категория сохраняются на сайте. Валюту и доступность товара здесь изменить нельзя.</p>'+reason()+V.actions('Сохранить товар')+'</form>');};
+F['catalog-save']=async(f,d)=>{const id=d.get('id'),body={name:d.get('name'),description:d.get('description'),category:d.get('category'),video:d.get('video')||'',image:d.get('image')||'',price:D.integer(d.get('price'),1,1e9),limit:D.integer(d.get('limit'),0,1000),version:String(d.get('version')),reason:d.get('reason')};if(X.live){await X.request('/admin/catalog/'+encodeURIComponent(id),{method:'PATCH',body});await X.refresh();M.closeModal();}else{Object.assign(M.item(id),body);delete M.item(id).reason;M.audit('Изменён товар',id,body.reason);M.save();M.render();}M.toast('Товар сохранён.');};
 
+// Файл уходит отдельным запросом: он переживает правку текста карточки.
+document.addEventListener('change',async event=>{
+ const node=event.target.closest('[name="video-file"],[name="image-file"]');
+ if(!node)return;
+ const form=node.form,file=node.files&&node.files[0];
+ if(!form||!file)return;
+ const reason=String(form.querySelector('[name="reason"]')?.value||'').trim();
+ const hint=document.querySelector('#cm-media-hint');
+ if(reason.length<3){node.value='';M.toast('Сначала укажи причину изменения.',true);form.querySelector('[name="reason"]')?.focus();return;}
+ const kind=node.name==='video-file'?'video':'image';
+ const limit=(kind==='video'?8:6)*1024*1024;
+ try{
+  if(file.size>limit)throw Error(kind==='video'?'Видео не больше 8 МБ.':'Фото не больше 6 МБ.');
+  // Фото уменьшаем в браузере: на сервер уходит уже лёгкий файл.
+  const dataUrl=kind==='image'?await V.imageData(file,1400):await V.fileData(file);
+  if(hint)hint.textContent='Загружаем…';
+  const saved=await X.request('/admin/catalog/'+encodeURIComponent(form.querySelector('[name="id"]').value)+'/media',{method:'POST',body:{kind,data:dataUrl.split(',')[1],reason}});
+  if(kind==='video')form.querySelector('[name="video"]').value=saved.url;
+  else{form.querySelector('[name="image"]').value=saved.url;const label=document.querySelector('#cm-image-hint');if(label)label.textContent='Фото загружено: '+Math.round(saved.bytes/1024)+' КБ. Заменит прежнее после сохранения товара.';}
+  if(hint)hint.textContent=(kind==='video'?'Видео':'Фото')+' загружено: '+Math.round(saved.bytes/1024)+' КБ. Не забудь сохранить товар.';
+ }catch(error){if(hint)hint.textContent='MP4 или WebM до 8 МБ. Фото — до 6 МБ.';M.toast(error?.message||'Не удалось загрузить файл.',true);}
+ finally{node.value='';}
+});
 function orderList(pending=false){const orders=s().orders.filter(o=>!pending||['pending','queued','awaiting_delivery','processing','failed'].includes(o.status));return '<section class="panel"><div class="panel-head"><h2>'+(pending?'Очередь выдачи':'Покупки')+'</h2>'+M.pill(countOrders(orders)+' заказов')+'</div>'+rowsTable(['Дата / заказ','Игрок','Предмет','Сумма','Статус'],orders.map(o=>[M.date(o.at)+'<small>'+E(o.id)+'</small>',E(o.player),E(o.name)+' × '+o.qty,M.money(o.total,o.currency),status(o.status)]),'Заказов пока нет','Заказ появляется после списания баланса, выдачу подтверждает игровой сервер.','bag')+'</section>';}
 W.adminExtensions.finance=sub=>{if(!can('economy.manage')&&!can('analytics.read'))return denied();sub=['orders','payments','ledger'].includes(sub)?sub:'accounts';const tabs=nav('finance',[['accounts','Балансы'],['orders','Покупки'],['payments','Донаты'],['ledger','Операции']],sub);if(sub==='orders')return tabs+orderList();if(sub==='payments')return tabs+'<section class="panel"><h2>Донаты</h2>'+rowsTable(['Дата','Игрок','Оплачено','CM','Статус'],s().payments.map(p=>[M.date(p.at),E(p.player),M.money(p.rubles,'₽'),M.money(p.amount,'CM'),status(p.status)]),'Платежей пока нет','Статус и зачисление поступают от платёжного сервиса.','wallet')+'</section>';if(sub==='ledger')return tabs+'<section class="panel"><div class="panel-head"><h2>Журнал баланса</h2>'+M.btn('Скачать CSV','v6-ledger-export','download','small')+'</div>'+rowsTable(['Дата','Игрок','Основание','Изменение','Остаток'],s().ledger.map(l=>[M.date(l.at),E(l.player),E(l.reason||l.kind),M.money(l.amount,l.currency),M.money(l.balance??l.balance_after,l.currency)]),'Операций пока нет','Здесь учитываются пополнения, покупки, переводы и правки баланса.','wallet')+'</section>';return tabs+'<section class="panel"><h2>Балансы сайта</h2><p class="hint mt12 mb">AR и CM учитываются отдельно. Игровая экономика доступна в действиях над игроком.</p>'+rowsTable(['Игрок','AR','CM',''],s().players.map(p=>[E(p.name),M.money(p.AR,'AR'),M.money(p.CM,'CM'),M.link('Карточка игрока','#admin/players?player='+encodeURIComponent(p.id)+'&sub=finance','arrow-right','small')]),'Аккаунтов нет','Игроки появятся после регистрации.','users')+'</section>';};
 H['v6-ledger-export']=()=>M.downloadFile('copimine-ledger.csv','\ufeff'+D.csv([['Дата','Игрок','Валюта','Сумма','Баланс','Основание'],...s().ledger.map(l=>[new Date(l.at).toISOString(),l.player,l.currency,l.amount,l.balance??l.balance_after,l.reason||l.kind])]),'text/csv;charset=utf-8');
 // Понятные названия для кодов журнала: сырые коды вроде auth.login ничего не говорят.
-const auditLabels={'auth.login':'Вход на сайт','auth.register':'Регистрация','auth.password_reset':'Сброс пароля','owner.bootstrap':'Создан владелец','account.created':'Создан аккаунт','account.access_changed':'Изменён доступ','account.blocked':'Заблокирован вход','account.unblocked':'Снята блокировка','account.deleted':'Удалён аккаунт','account.exported':'Экспорт данных','password.changed':'Смена пароля','session.revoked':'Завершён сеанс','sessions.revoked_others':'Завершены остальные сеансы','recovery.password.reset':'Сброс пароля','recovery.sessions.revoke':'Завершены сеансы','recovery.login.unlock':'Снята блокировка входа','bank.transfer':'Перевод АР','shop.checkout':'Покупка','ticket.created':'Создано обращение','ticket.message':'Сообщение в обращении','ticket.replied':'Ответ по обращению','ticket.updated':'Обращение обновлено','ticket.file':'Файл в обращении','ticket.file.infected':'Отклонён заражённый файл','catalog.updated':'Изменён товар','monitor.interval':'Интервал мониторинга','map.request':'Запрошено обновление карты','map.published':'Карта опубликована','map.failed':'Ошибка обновления карты','map.settings':'Настройки карты','site.settings.updated':'Настройки сайта','site.maintenance':'Режим обслуживания','content.updated':'Изменён контент','inventory.remove':'Изъят предмет','vk.link':'Привязан VK','vk.unlink':'Отвязан VK','vk.login':'Вход через VK','minecraft.link':'Привязан Minecraft','mfa.enabled':'Включена 2FA','mfa.disabled':'Отключена 2FA','release.reported':'Указан коммит релиза','release.prepared':'Подготовлен релиз','release.backup':'Резервная копия релиза','release.checked':'Проверен релиз','release.armed':'Запущена установка','release.rollback_armed':'Запущен откат'};
+const auditLabels={'auth.login':'Вход на сайт','auth.register':'Регистрация','auth.password_reset':'Сброс пароля','owner.bootstrap':'Создан владелец','account.created':'Создан аккаунт','account.access_changed':'Изменён доступ','account.blocked':'Заблокирован вход','account.unblocked':'Снята блокировка','account.deleted':'Удалён аккаунт','account.exported':'Экспорт данных','password.changed':'Смена пароля','session.revoked':'Завершён сеанс','sessions.revoked_others':'Завершены остальные сеансы','recovery.password.reset':'Сброс пароля','recovery.sessions.revoke':'Завершены сеансы','recovery.login.unlock':'Снята блокировка входа','bank.transfer':'Перевод АР','shop.checkout':'Покупка','ticket.created':'Создано обращение','ticket.message':'Сообщение в обращении','ticket.replied':'Ответ по обращению','ticket.updated':'Обращение обновлено','ticket.file':'Файл в обращении','ticket.file.infected':'Отклонён заражённый файл','catalog.updated':'Изменён товар','catalog.media':'Загружено фото или видео товара','narcotics.updated':'Изменены наркотики','narcotics.texture':'Обновлена текстура наркотика','monitor.interval':'Интервал мониторинга','map.request':'Запрошено обновление карты','map.published':'Карта опубликована','map.failed':'Ошибка обновления карты','map.settings':'Настройки карты','site.settings.updated':'Настройки сайта','site.maintenance':'Режим обслуживания','content.updated':'Изменён контент','inventory.remove':'Изъят предмет','vk.link':'Привязан VK','vk.unlink':'Отвязан VK','vk.login':'Вход через VK','minecraft.link':'Привязан Minecraft','mfa.enabled':'Включена 2FA','mfa.disabled':'Отключена 2FA','release.reported':'Указан коммит релиза','release.prepared':'Подготовлен релиз','release.backup':'Резервная копия релиза','release.checked':'Проверен релиз','release.armed':'Запущена установка','release.rollback_armed':'Запущен откат'};
 const auditLabel=a=>{const code=String(a.kind||a.action||'');if(auditLabels[code])return auditLabels[code];if(code.startsWith('game.')){const id=code.slice(5);return (X.actions.find(x=>x.id===id)?.label||id)+' (игра)';}return code;};
 const AUDIT_BUCKETS=[['','Всё'],['account','Вход и аккаунт'],['moderation','Модерация'],['economy','Магазин и экономика'],['content','Сайт и обращения'],['server','Сервер и карты']];
 function auditBucketOf(code){if(/^game\./.test(code)&&!/^game\.money/.test(code))return 'moderation';if(/^(inventory\.|account\.(blocked|unblocked)$)/.test(code))return 'moderation';if(/^(auth\.|account\.|password\.|sessions?\.|mfa\.|email\.|vk\.|minecraft\.|recovery\.)/.test(code))return 'account';if(/^(shop\.|catalog\.|bank\.|game\.money)/.test(code))return 'economy';if(/^(ticket\.|site\.|content\.|cms\.)/.test(code))return 'content';if(/^(map\.|monitor\.|release\.|db\.)/.test(code))return 'server';return '';}
@@ -2436,13 +2459,14 @@ const entries=[
  ['monitor','Мониторинг сервера','TPS, память, миры, база и ошибки плагинов.','activity'],
  ['releases','Релизы и обновления','Коммит, версии плагинов, CI и откат.','package'],
  ['mapart','Картины в мире','Загрузки, авторы и координаты картин.','grid'],
+ ['narcotics','Наркотики','Рецепты котла, эффекты и текстуры предметов плагина.','package'],
  ['audit','Журнал действий','Кто, что изменил, когда и почему.','history'],
  ['admins','Команда','Учётные записи команды и роли.','users'],
  ['content','Контент сайта','Страницы, галерея, вопросы и навигация.','edit'],
  ['settings','Настройки сайта','Название, адрес и отображение сайта.','settings'],
  ['system','Сервер и службы','Состояние подключений и аккаунты сайта.','server']
 ];
-const groups=[['Проект',['overview','statistics']],['Игроки',['players','requests','moderation','recovery']],['Экономика и мир',['shop','finance','world','mapart']],['Сервер',['monitor','releases']],['Сайт и команда',['content','admins','audit','settings','system']]];
+const groups=[['Проект',['overview','statistics']],['Игроки',['players','requests','moderation','recovery']],['Экономика и мир',['shop','finance','world','mapart','narcotics']],['Сервер',['monitor','releases']],['Сайт и команда',['content','admins','audit','settings','system']]];
 const legacyRoutes={performance:'statistics',inventories:'players',investigations:'moderation',anticheat:'moderation',whitelist:'players',bank:'finance',elections:'world',laws:'world',points:'world',recipes:'shop',logs:'audit',sources:'system',jobs:'system',backups:'system',maintenance:'system'};
 A.adminEntries=entries;
 function badge(id){const n=id==='requests'?s().tickets.filter(t=>t.status==='open').length:id==='finance'?s().orders.filter(o=>o.status==='queued').length:0;return n?`<small class="v71-nav-count">${n}</small>`:'';}
@@ -2478,6 +2502,7 @@ M.renderers.admin=(key='overview')=>{
  case 'monitor':body=ext.monitor(sub);break;
  case 'releases':body=ext.releases(sub);break;
  case 'mapart':body='<div data-mapart-admin></div>';break;
+ case 'narcotics':body='<div data-narcotics-admin></div>';break;
  case 'system':body=ext.system(sub);break;
  case 'shop':body=W.adminExtensions.shop(sub);break;
  case 'finance':body=ext.finance(sub||'orders');break;
@@ -2609,6 +2634,312 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 
   V.after.push((page, tab) => {
     if (page === 'admin' && tab === 'mapart') void mount();
+  });
+})();
+
+/* assets/js/admin-narcotics-v1.js *//* Наркотики CopiMineNarcotics: рецепты, эффекты и текстуры.
+   Проверки повторяют плагин: то, что не прошло здесь, на сервер не уходит. */
+(function () {
+  'use strict';
+  const M = CM, V = CMV4, W = CM5, X = CM6, E = M.esc, H = M.handlers, F = M.forms;
+  const ALIASES = { CONFUSION: 'NAUSEA', HARM: 'INSTANT_DAMAGE', SLOW_DIGGING: 'MINING_FATIGUE' };
+  const EFFECT_RU = {
+    SPEED: 'Скорость', SLOWNESS: 'Замедление', HASTE: 'Спешка', MINING_FATIGUE: 'Усталость',
+    STRENGTH: 'Сила', INSTANT_HEALTH: 'Мгновенное лечение', INSTANT_DAMAGE: 'Мгновенный урон',
+    JUMP_BOOST: 'Прыгучесть', NAUSEA: 'Тошнота', REGENERATION: 'Регенерация', RESISTANCE: 'Сопротивление',
+    FIRE_RESISTANCE: 'Огнестойкость', WATER_BREATHING: 'Подводное дыхание', INVISIBILITY: 'Невидимость',
+    BLINDNESS: 'Слепота', NIGHT_VISION: 'Ночное зрение', HUNGER: 'Голод', WEAKNESS: 'Слабость',
+    POISON: 'Отравление', WITHER: 'Иссушение', HEALTH_BOOST: 'Прибавка здоровья', ABSORPTION: 'Поглощение',
+    SATURATION: 'Насыщение', GLOWING: 'Свечение', LEVITATION: 'Левитация', LUCK: 'Удача', UNLUCK: 'Неудача',
+    SLOW_FALLING: 'Медленное падение', CONDUIT_POWER: 'Сила проводника', DOLPHINS_GRACE: 'Грация дельфина',
+    BAD_OMEN: 'Дурное предзнаменование', HERO_OF_THE_VILLAGE: 'Герой деревни', DARKNESS: 'Тьма',
+    OOZING: 'Слизь', WIND_CHARGED: 'Ветряной заряд', INFESTED: 'Заражение', TRIAL_OMEN: 'Знамение испытания',
+    RAID_OMEN: 'Знамение набега',
+  };
+  const VISUAL_RU = {
+    DESATURATE: 'Обесцвечивание', COLOR_CONVOLVE: 'Искажение цвета', SCAN_PINCUSHION: 'Пинкушин',
+    GREEN_NOISE: 'Зелёный шум', INVERT: 'Инверсия', WOBBLE: 'Волны', BLOBS: 'Пятна',
+    PENCIL: 'Карандаш', CHAOS: 'Хаос',
+  };
+  let doc = null, version = '', visuals = [], effects = [], current = '', draft = null;
+  const drafts = {};
+  let picker = { mode: 'material', query: '', page: 0 };
+  const fxName = (id) => EFFECT_RU[id] || id;
+
+  // ---- клиентская проверка: те же правила, что в NarcoticsConfigService ----
+  function check(document, ids) {
+    if (!document || !document.items || !Object.keys(document.items).length) throw Error('Оставь хотя бы один наркотик.');
+    const signatures = {}, models = new Set();
+    for (const id of Object.keys(document.items)) {
+      const it = document.items[id];
+      const name = String(it.display_name || '').replace(/[&§][0-9a-fk-or]/gi, '').trim();
+      if (!name || name.length > 64) throw Error('«' + id + '»: название от 1 до 64 символов.');
+      if (!ids.has(it.material)) throw Error('«' + id + '»: основной материал не из каталога Minecraft.');
+      if (it.fallback_material && !ids.has(it.fallback_material)) throw Error('«' + id + '»: запасной материал не из каталога.');
+      if (!/^narcotic_[a-z0-9_]{1,56}$/.test(it.texture_key)) throw Error('«' + id + '»: ключ текстуры вида narcotic_<id>.');
+      if (!Number.isInteger(it.custom_model_data) || it.custom_model_data < 1) throw Error('«' + id + '»: custom_model_data — целое больше нуля.');
+      if (!Number.isInteger(it.overdose_weight) || it.overdose_weight < 0 || it.overdose_weight > 1000) throw Error('«' + id + '»: вес передозировки от 0 до 1000.');
+      if (!visuals.includes(it.visual_effect)) throw Error('«' + id + '»: визуальный эффект не из списка плагина.');
+      if (id !== 'zhuzevo' && it.recipe.length < 3) throw Error('«' + id + '»: в рецепте минимум 3 ингредиента — иначе котёл не запустится.');
+      if (id === 'zhuzevo' && it.recipe.length) throw Error('У zhuzevo рецепт всегда пустой: это эффект передозировки.');
+      if (it.recipe.length > 9) throw Error('«' + id + '»: не больше 9 ингредиентов.');
+      for (const part of it.recipe) {
+        if (part.key.startsWith('MATERIAL:') && !ids.has(part.key.slice(9))) throw Error('«' + id + '»: предмета ' + part.key.slice(9) + ' нет в каталоге.');
+        if (!Number.isInteger(part.count) || part.count < 1 || part.count > 64) throw Error('«' + id + '»: количество ингредиента от 1 до 64.');
+      }
+      for (const [label, list] of [['обычных эффектов', it.normal_effects], ['эффектов передозировки', it.overdose_effects]]) {
+        if (list.length > 16) throw Error('«' + id + '»: ' + label + ' не больше 16.');
+        for (const row of list) if (!Number.isInteger(row.amplifier) || row.amplifier < 0 || row.amplifier > 255 || !Number.isInteger(row.duration_seconds) || row.duration_seconds < 1 || row.duration_seconds > 86400) throw Error('«' + id + '»: проверь усилитель и длительность эффекта.');
+      }
+      const signature = it.recipe.flatMap((part) => Array(part.count).fill(part.key)).sort().join('|');
+      if (signature) {
+        if (signatures[signature]) throw Error('Набор «' + id + '» совпадает с «' + signatures[signature] + '»: рецепты не должны повторяться.');
+        signatures[signature] = id;
+      }
+      const model = it.material + ':' + it.custom_model_data;
+      if (models.has(model)) throw Error('custom_model_data ' + it.custom_model_data + ' уже занят для ' + it.material + '.');
+      models.add(model);
+    }
+    return document;
+  }
+
+  function materialIds() {
+    return new Set((window.CM6_MATERIALS || []).filter((row) => row.giveable !== false && row.id).map((row) => String(row.id).toUpperCase()));
+  }
+
+  // ---- разметка ----
+  const input = (path, value, extra = '') => `<input data-narc="${path}" value="${E(value ?? '')}" ${extra}>`;
+  const num = (path, value, min, max) => `<input data-narc="${path}" type="number" value="${E(value ?? 0)}" min="${min}" max="${max}" step="1" required>`;
+  const texSrc = (id, at) => `/api/v6/admin/narcotics/${encodeURIComponent(id)}/texture?preview=1${at ? '&t=' + at : ''}`;
+
+  function itemRow(id, it) {
+    const name = String(it.display_name || '').replace(/[&§][0-9a-fk-or]/gi, '').trim() || id;
+    return `<a href="#admin/narcotics?item=${encodeURIComponent(id)}" class="cm-narc-row ${id === current ? 'active' : ''}">
+      <img data-narc-tex="${E(id)}" src="${texSrc(id)}" alt="" width="28" height="28" loading="lazy">
+      <span><strong>${E(name)}</strong><small>${E(id)} · ${it.recipe.length ? it.recipe.length + ' ингр.' : 'без рецепта'}</small></span></a>`;
+  }
+
+  function recipeEditor(id) {
+    const locked = id === 'zhuzevo';
+    const rows = draft.recipe.map((part, index) => {
+      const material = part.key.startsWith('MATERIAL:');
+      const itemId = 'minecraft:' + part.key.slice(9).toLowerCase();
+      return `<li class="cm-narc-part">
+        ${material ? W.texture(itemId, 26) : `<span class="cm-narc-potion">${icon('package')}</span>`}
+        <span class="cm-narc-part-name">${E(material ? W.materialName(itemId) : 'Зелье: ' + fxName(part.key.slice(7)))}<small>${E(part.key)}</small></span>
+        <input data-narc="recipe.${index}.count" type="number" min="1" max="64" step="1" value="${part.count}" aria-label="Количество" class="cm-narc-count">
+        <button type="button" class="icon-btn" data-action="narc-part-del" data-index="${index}" aria-label="Убрать ингредиент">${icon('x')}</button>
+      </li>`;
+    }).join('');
+    if (locked) return `<p class="hint">У zhuzevo рецепта нет: это эффект передозировки, плагин не примет набор для него.</p>`;
+    return `<ul class="cm-narc-parts">${rows || '<li class="hint">Пока пусто — нужно минимум три ингредиента.</li>'}</ul>
+      <div class="actions mt"><button type="button" class="btn small ghost" data-action="narc-part-add" data-kind="material">${icon('plus')}Предмет</button><button type="button" class="btn small ghost" data-action="narc-part-add" data-kind="potion">${icon('plus')}Зелье</button></div>
+      <p class="hint mt12">Порядок не важен, считается набор. Один и тот же набор не может быть у двух наркотиков.</p>`;
+  }
+
+  function effectEditor(group, label) {
+    const list = draft[group];
+    return `<div class="cm-narc-fx"><div class="panel-head"><h3>${label}</h3><button type="button" class="btn small ghost" data-action="narc-fx-add" data-group="${group}">${icon('plus')}Эффект</button></div>
+      ${list.length ? list.map((row, index) => `<div class="cm-narc-fx-row">
+        <select data-narc="${group}.${index}.type" aria-label="Эффект">${effects.map((id) => `<option value="${id}"${id === row.type ? ' selected' : ''}>${E(fxName(id))}</option>`).join('')}</select>
+        <label class="cm-narc-mini">Уровень ${num(group + '.' + index + '.amplifier', row.amplifier, 0, 255)}</label>
+        <label class="cm-narc-mini">Секунды ${num(group + '.' + index + '.duration_seconds', row.duration_seconds, 1, 86400)}</label>
+        <button type="button" class="icon-btn" data-action="narc-fx-del" data-group="${group}" data-index="${index}" aria-label="Убрать эффект">${icon('x')}</button>
+      </div>`).join('') : '<p class="hint">Эффектов нет.</p>'}</div>`;
+  }
+
+  function editor() {
+    const id = current, it = draft;
+    return `<section class="panel cm-narc-editor"><div class="panel-head"><div><h2>${E(String(it.display_name || id).replace(/[&§][0-9a-fk-or]/gi, '').trim() || id)}</h2><p class="hint mt12"><code>${E(id)}</code> · ${E(it.material)}:${it.custom_model_data}</p></div><button type="button" class="btn ghost small" data-action="narc-export">${icon('download')}config.yml</button></div>
+      <div class="cm-narc-grid">
+        <label class="field">Название в игре<input data-narc="display_name" value="${E(it.display_name)}" maxlength="64" required></label>
+        <label class="field">Основной материал<input data-narc="material" value="${E(it.material)}" list="cm-narc-materials" maxlength="64" required></label>
+        <label class="field">Запасной материал<input data-narc="fallback_material" value="${E(it.fallback_material || '')}" list="cm-narc-materials" maxlength="64"></label>
+        <label class="field">Ключ текстуры<input data-narc="texture_key" value="${E(it.texture_key)}" maxlength="64" required></label>
+        <label class="field">custom_model_data${num('custom_model_data', it.custom_model_data, 1, 2000000000)}</label>
+        <label class="field">Вес передозировки${num('overdose_weight', it.overdose_weight, 0, 1000)}</label>
+        <label class="field">Визуальный эффект<select data-narc="visual_effect">${visuals.map((row) => `<option value="${row}"${row === it.visual_effect ? ' selected' : ''}>${E(VISUAL_RU[row] || row)}</option>`).join('')}</select></label>
+      </div>
+      <datalist id="cm-narc-materials">${(window.CM6_MATERIALS || []).slice(0, 2000).map((row) => `<option value="${E(String(row.id).toUpperCase())}">${E(row.ru || row.en || row.id)}</option>`).join('')}</datalist>
+      <div class="cm-narc-texture"><img data-narc-tex="${E(id)}" src="${texSrc(id)}" alt="" width="64" height="64"><div><strong>Текстура предмета</strong><p class="hint">Квадратная картинка: плагин берёт из неё 16×16 для набора ресурсов.</p><label class="btn small ghost">${icon('upload')}Загрузить фото<input type="file" data-narc-texture accept="image/png,image/jpeg,image/webp" hidden></label></div></div>
+      <h3 class="mt">Рецепт в котле</h3>${recipeEditor(id)}
+      ${effectEditor('normal_effects', 'Обычные эффекты')}
+      ${effectEditor('overdose_effects', 'Эффекты передозировки')}
+      <label class="field mt">Причина изменения<textarea data-narc="__reason" rows="2" maxlength="240" minlength="3" required placeholder="Видна только администрации"></textarea></label>
+      <div class="actions"><button type="submit" class="btn primary">${icon('check')}Сохранить наркотик</button><span class="hint">Проверка идёт здесь и повторно на сервере. В игру ничего не пишется.</span></div>
+    </section>`;
+  }
+
+  function shell() {
+    if (!doc) return `<div class="cm-narc-loading" role="status"><span></span><span></span><span></span></div>`;
+    const ids = Object.keys(doc.items);
+    return `<div class="cm-narc-layout"><aside class="cm-narc-list"><div class="panel-head"><h3>Наркотики</h3>${M.pill(ids.length + ' шт.')}</div>${ids.map((id) => itemRow(id, doc.items[id])).join('')}</aside><div class="cm-narc-main"><form data-form="narcotics-save">${editor()}</form></div></div>`;
+  }
+
+  // ---- данные ----
+  async function load(force) {
+    if (!doc || force) {
+      const data = await X.request('/admin/narcotics');
+      doc = data.document; version = data.version; visuals = data.visuals || []; effects = data.effects || [];
+    }
+    const ids = Object.keys(doc.items);
+    const wanted = M.UI.params.get('item');
+    current = wanted && doc.items[wanted] ? wanted : (doc.items[current] ? current : ids[0]);
+    // Правки разных наркотиков не должны теряться при переключении.
+    drafts[current] ||= M.clone(doc.items[current]);
+    draft = drafts[current];
+  }
+
+  function paint(root) { root.innerHTML = shell(); attachTextureFallback(); }
+
+  function attachTextureFallback() {
+    document.querySelectorAll('img[data-narc-tex]').forEach((img) => {
+      if (img.dataset.bound) return;
+      img.dataset.bound = '1';
+      img.addEventListener('error', () => { img.src = M.asset('assets/materials/' + (doc?.items?.[img.dataset.narcTex]?.material || 'paper').toLowerCase() + '.png'); }, { once: true });
+    });
+  }
+
+  const root = () => document.querySelector('[data-narcotics-admin]');
+
+  async function mount() {
+    const host = root();
+    if (!host || host.dataset.loaded) return;
+    host.dataset.loaded = '1';
+    host.innerHTML = `<div class="cm-narc-loading" role="status"><span></span><span></span><span></span></div>`;
+    try {
+      if (!X.live) { host.innerHTML = M.empty('Только на сервере', 'Наркотики читаются и сохраняются на рабочем сервере.', 'lock'); return; }
+      // Пикер и поиск материалов строятся по библиотеке предметов.
+      if (!window.CM6_MATERIALS && window.CMMaterials) await window.CMMaterials.ready();
+      await load();
+      paint(host);
+    } catch (error) {
+      host.innerHTML = M.empty('Раздел не открылся', error?.message || 'Повтори попытку.', 'alert');
+    }
+  }
+
+  // ---- правка черновика ----
+  function setPath(target, path, value) {
+    const keys = path.split('.');
+    let node = target;
+    for (let i = 0; i < keys.length - 1; i++) node = node[keys[i]];
+    node[keys[keys.length - 1]] = value;
+  }
+
+  document.addEventListener('input', (event) => {
+    const node = event.target.closest('[data-narc]');
+    if (!node || !draft) return;
+    const path = node.dataset.narc;
+    const numeric = node.type === 'number';
+    const value = numeric ? (node.value === '' ? NaN : Number(node.value)) : node.value;
+    if (path === '__reason') draft.__reason = value;
+    else setPath(draft, path, value);
+  });
+  document.addEventListener('change', (event) => {
+    const node = event.target.closest('select[data-narc]');
+    if (!node || !draft) return;
+    setPath(draft, node.dataset.narc, node.value);
+  });
+
+  H['narc-part-del'] = (button) => { draft.recipe.splice(+button.dataset.index, 1); M.render(); };
+  H['narc-part-add'] = (button) => openPicker(button.dataset.kind);
+  H['narc-fx-add'] = (button) => { if (draft[button.dataset.group].length >= 16) return M.toast('Не больше 16 эффектов.', true); draft[button.dataset.group].push({ type: effects[0], amplifier: 0, duration_seconds: 60 }); M.render(); };
+  H['narc-fx-del'] = (button) => { draft[button.dataset.group].splice(+button.dataset.index, 1); M.render(); };
+
+  // ---- пикер предметов и зелий ----
+  function openPicker(mode) {
+    picker = { mode, query: '', page: 0 };
+    M.openModal(mode === 'potion' ? 'Эффект зелья' : 'Предмет Minecraft',
+      `<div class="creative-picker">${mode === 'potion' ? '' : `<label class="input-wrap">${icon('search')}<input id="cm-narc-search" placeholder="Камень, stone, minecraft:stone" aria-label="Поиск предмета" autocomplete="off"></label>`}<div class="creative-grid" id="cm-narc-results"></div><div class="picker-description" id="cm-narc-desc">${mode === 'potion' ? 'Ингредиент-зелье: плагин берёт эффект и варит по нему.' : 'Выбери предмет: он попадёт в рецепт.'}</div><div class="picker-pagination">${M.btn('Назад','narc-page','chevron-left','small','data-delta="-1"')}<span id="cm-narc-count"></span>${M.btn('Дальше','narc-page','chevron-right','small','data-delta="1"')}</div></div>`, 'wide-dialog');
+    if (mode !== 'potion') {
+      const search = document.getElementById('cm-narc-search');
+      let timer;
+      search.addEventListener('input', () => { picker.query = search.value; picker.page = 0; clearTimeout(timer); timer = setTimeout(pick, 60); });
+      search.focus();
+    }
+    pick();
+  }
+
+  function candidates() {
+    if (picker.mode === 'potion') {
+      const list = effects.map((id) => ({ id, label: fxName(id) }));
+      const q = picker.query.trim().toLowerCase();
+      return q ? list.filter((row) => (row.id + ' ' + row.label).toLowerCase().includes(q)) : list;
+    }
+    const rows = (window.CM6_MATERIALS || []).filter((row) => row.giveable !== false && row.id !== 'air');
+    const q = picker.query.trim().toLowerCase();
+    return rows.filter((row) => !q || [row.id, row.ru, row.en].join(' ').toLowerCase().includes(q)).slice(0, 400);
+  }
+
+  function pick() {
+    const grid = document.getElementById('cm-narc-results');
+    if (!grid) return;
+    const list = candidates(), size = 72, pages = Math.max(1, Math.ceil(list.length / size));
+    picker.page = Math.min(pages - 1, Math.max(0, picker.page));
+    grid.innerHTML = list.slice(picker.page * size, (picker.page + 1) * size).map((row) => picker.mode === 'potion'
+      ? `<button type="button" class="cm-narc-effect" data-action="narc-choose" data-kind="potion" data-id="${E(row.id)}" title="${E(row.id)}">${E(row.label)}</button>`
+      : `<button type="button" class="creative-slot" data-action="narc-choose" data-kind="material" data-id="${E(String(row.id).toUpperCase())}" title="${E((row.ru || row.en || row.id) + '\n' + row.id)}"><img src="${M.asset(row.image || 'assets/materials/' + row.id + '.png')}" alt="" width="32" height="32" loading="lazy"></button>`).join('') || '<p class="creative-empty">Ничего не найдено.</p>';
+    document.getElementById('cm-narc-count').textContent = list.length + ' · ' + (picker.page + 1) + ' / ' + pages;
+    const prev = document.querySelector('[data-action="narc-page"][data-delta="-1"]'), next = document.querySelector('[data-action="narc-page"][data-delta="1"]');
+    if (prev) prev.disabled = picker.page === 0;
+    if (next) next.disabled = picker.page >= pages - 1;
+  }
+
+  H['narc-page'] = (button) => { picker.page += +button.dataset.delta; pick(); };
+  H['narc-choose'] = (button) => {
+    const id = (button.dataset.kind === 'potion' ? 'POTION:' : 'MATERIAL:') + (ALIASES[button.dataset.id] || button.dataset.id);
+    if (draft.recipe.length >= 9) return M.toast('Не больше 9 ингредиентов.', true);
+    const existing = draft.recipe.find((part) => part.key === id);
+    // Набор считается по количеству: повторный выбор увеличивает количество.
+    if (existing && existing.count < 64) existing.count += 1;
+    else draft.recipe.push({ key: id, count: 1 });
+    M.closeModal();
+    M.render();
+  };
+
+  // ---- сохранение ----
+  F['narcotics-save'] = async () => {
+    const reason = String(draft.__reason || '').trim();
+    if (reason.length < 3) throw Error('Укажи причину изменения: от 3 символов.');
+    const clean = M.clone(draft);
+    delete clean.__reason;
+    const candidate = M.clone(doc);
+    candidate.items[current] = clean;
+    check(candidate, materialIds());
+    if (!X.live) return M.toast('Черновик проверен.', false);
+    const saved = await X.request('/admin/narcotics', { method: 'PUT', body: { document: candidate, version, reason } });
+    doc = saved.document; version = saved.version;
+    drafts[current] = M.clone(doc.items[current]); draft = drafts[current];
+    M.render();
+    M.toast('Наркотик сохранён. Проверки прошли.');
+  };
+
+  H['narc-export'] = async () => {
+    const data = await X.request('/admin/narcotics/export');
+    M.downloadFile('copimine-narcotics.yml', data.yaml, 'text/yaml;charset=utf-8');
+  };
+
+  document.addEventListener('change', async (event) => {
+    const node = event.target.closest('input[data-narc-texture]');
+    if (!node) return;
+    const file = node.files?.[0];
+    if (!file) return;
+    const reasonNode = document.querySelector('[data-narc="__reason"]');
+    const reason = String(reasonNode?.value || '').trim();
+    if (reason.length < 3) { node.value = ''; return M.toast('Сначала укажи причину изменения.', true); }
+    try {
+      const dataUrl = await V.imageData(file, 512);
+      await X.request('/admin/narcotics/' + encodeURIComponent(current) + '/texture', { method: 'POST', body: { image: dataUrl.split(',')[1], reason } });
+      document.querySelectorAll('[data-narc-tex="' + current + '"]').forEach((img) => { img.src = texSrc(current, Date.now()); img.dataset.bound = ''; });
+      attachTextureFallback();
+      M.toast('Текстура загружена.');
+    } catch (error) {
+      M.toast(error?.message || 'Не удалось загрузить текстуру.', true);
+    } finally { node.value = ''; }
+  });
+
+  V.after.push((page, tab) => {
+    if (page === 'admin' && tab === 'narcotics') void mount();
   });
 })();
 
@@ -3431,7 +3762,7 @@ const M=CM,V=CMV4,X=CM6,W=CM5,Q=CMReview,E=M.esc,H=M.handlers,F=M.forms;
 const P=window.CMProduction={health:null};
 const field=V.field,button=(label,action,iconName='refresh',className='')=>M.btn(label,action,iconName,className);
 M.audit=()=>{};Q.scheduleSave=()=>{};Q.offline=false;
-const allowedForms=new Set(['v7-login','v7-register','v7-code','v7-reset','v7-confirm-code','v7-link-email','v7-profile','v7-password','v7-maintenance','v7-site-ban','v73-recovery','v73-inv-remove','v71-transfer','v6-reauth','v6-profile','v6-password','v6-totp-setup','v6-totp-confirm','v6-cookie-settings','v6-player-action','v6-server-action','ticket','reply','v6-map-settings','catalog-save','v6-role','ticket-answer','ticket-message','production-account','production-account-edit','production-mc-code','production-mc-confirm','production-checkout','production-content','production-totp-disable','production-release','production-release-apply','production-release-rollback','production-release-report','production-monitor-interval']);
+const allowedForms=new Set(['v7-login','v7-register','v7-code','v7-reset','v7-confirm-code','v7-link-email','v7-profile','v7-password','v7-maintenance','v7-site-ban','v73-recovery','v73-inv-remove','v71-transfer','v6-reauth','v6-profile','v6-password','v6-totp-setup','v6-totp-confirm','v6-cookie-settings','v6-player-action','v6-server-action','ticket','reply','v6-map-settings','catalog-save','v6-role','ticket-answer','ticket-message','production-account','production-account-edit','production-mc-code','production-mc-confirm','production-checkout','production-content','production-totp-disable','production-release','production-release-apply','production-release-rollback','production-release-report','production-monitor-interval','narcotics-save']);
 for(const key of Object.keys(F))if(!allowedForms.has(key))F[key]=()=>{throw Error('Действие недоступно. Изменения не сохранены.');};
 for(const key of Object.keys(H))if(/^(demo|v6-demo|v7-test|payment-(success|simulate)|balance-|mark-delivered|delivery-|recipe-(save|publish|delete|import)|v7-feedback|v7-inbox|reset)/.test(key))H[key]=()=>M.toast('Операция недоступна.',true);
 Q.request=(function(original){return async(path,body)=>{

@@ -35,6 +35,8 @@ function ensure(){
   s.siteSessions.push({id:'browser-local',name:'Этот браузер',owner:'DemoBuilder',at:Date.now(),current:true,revoked:false});
   M.save();
  }
+ // Прод-сборка засеяла treasury пустым объектом, и панель казны падала на t.transactions.
+ if(!s.treasury||!Array.isArray(s.treasury.transactions))s.treasury={balance:Number(s.treasury&&s.treasury.balance)||0,transactions:[]};
 
 }
 ensure();

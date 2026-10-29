@@ -19,6 +19,7 @@ from .attachments import router as attachments_router
 from .cms import router as cms_router
 from .config import Settings
 from .db import Database
+from . import easter
 from .security import ANON_COOKIE, COOKIE, anonymous_csrf, current_user, digest, fail, signed_anonymous, valid_anonymous
 from .domain import build_state, router as domain_router
 from .game import GameAdapter
@@ -161,6 +162,7 @@ def create_app(settings=None):
     app.include_router(attachments_router)
     app.include_router(domain_router)
     app.include_router(cms_router)
+    app.include_router(easter.router)
     app.include_router(mail_router)
     app.include_router(mfa_router)
     app.include_router(maps_router)
@@ -220,6 +222,18 @@ def create_app(settings=None):
     @app.head("/manifest.webmanifest")
     def manifest():
         return FileResponse(settings.frontend / "manifest.webmanifest", media_type="application/manifest+json")
+
+    # Пасхалки нет ни в одном меню: попасть можно только по прямому адресу.
+    @app.get("/teapot")
+    @app.head("/teapot")
+    def teapot(request: Request):
+        try:
+            easter.guard(request)
+        except HTTPException:
+            pass
+        else:
+            easter.record(request)
+        return error_page(418)
 
     app.mount("/assets", StaticFiles(directory=settings.frontend / "assets"), name="assets")
     app.mount("/data", StaticFiles(directory=settings.frontend / "data"), name="public-data")

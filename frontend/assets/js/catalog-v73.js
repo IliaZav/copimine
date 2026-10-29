@@ -5,6 +5,8 @@
 const M=CM,V=CMV4,X=CM6,W=CM5,Q=CMReview,E=M.esc,H=M.handlers,F=M.forms;
 const C=window.CM73=window.CM73||{};C.sourceCommit='13e8f2a4bb9baf65136d0f374324b5f7fc8e402f';
 let privateRows=[],lastRows=null,lastRole=null,requested='',loading=false,query='',scope='all';
+// Набор своих текстур: ссылка на архив появляется только когда что-то загружено.
+let texturePack=0,textureAt=0;
 const state=()=>M.state, publicRows=()=>window.CM6_CATALOG_SOURCE||[];
 function syncCatalog(){
  const admin=X.canAdmin();if(lastRows===state().catalog&&lastRole===admin)return;
@@ -41,13 +43,24 @@ function list(){
   M.btn(p.visibility==='public'?'Изменить':'Сведения',p.visibility==='public'?'admin-product':'v73-item-info',p.visibility==='public'?'edit':'info','small ghost',`data-id="${E(p.id)}"`)
  ]))+'</div>';
 }
+async function loadTextures(){
+ if(!X.canAdmin()||Date.now()-textureAt<30000)return;
+ try{
+  const r=await X.request('/admin/catalog/textures');
+  texturePack=String(r.changed||0);textureAt=Date.now();
+  const slot=document.getElementById('v73-texture-pack');
+  if(slot)slot.innerHTML=Number(r.changed)>0
+   ?`<a class="btn small ghost" href="/api/v6/admin/catalog/textures/pack.zip" download>${icon('download')}Набор текстур (${Number(r.changed)})</a>`
+   :'<span class="hint">Свои текстуры ещё не загружены: открой товар и загрузи 16×16 картинку.</span>';
+ }catch(error){textureAt=0;}
+}
 const oldShop=W.adminExtensions.shop;
 W.adminExtensions.shop=sub=>{
  if(!X.canAdmin())return '';
  const requestedScope=M.UI.params.get('scope');if(['all','public','private'].includes(requestedScope))scope=requestedScope;
  if(sub==='materials'||sub==='delivery')return oldShop(sub);
  const all=state().catalog.length,closed=state().catalog.filter(p=>p.visibility!=='public').length;
- return `<nav class="tabs"><a href="#admin/shop" class="active">Каталог CopiMine</a><a href="#admin/shop?sub=materials">Предметы Minecraft</a><a href="#admin/shop?sub=delivery">Выдача заказов</a></nav><section class="panel cm73-catalog"><div class="panel-head"><div><strong>Предметы проекта</strong><p class="hint">Источник · <code>13e8f2a</code></p></div><label class="input-wrap">${icon('search')}<input id="v73-catalog-query" type="search" value="${E(query)}" placeholder="Название, ID или плагин" aria-label="Найти предмет"></label></div><div class="cm73-catalog-filters" role="group" aria-label="Доступ к предметам">${[['all','Все',all],['public','Магазин',all-closed],['private','Закрытые',closed]].map(([id,label,count])=>`<button type="button" data-action="v73-catalog-filter" data-scope="${id}" data-search-target="${id}" aria-pressed="${scope===id}" class="${scope===id?'active':''}">${label}<span>${count}</span></button>`).join('')}</div><div id="v73-catalog-rows">${list()}</div><div class="cm73-source-foot">${icon('lock')}Закрытые позиции не показываются игрокам. Награды нельзя выдать через магазин.<span>${loading?'Загружаем закрытые определения…':''}</span></div></section>`;
+ return `<nav class="tabs"><a href="#admin/shop" class="active">Каталог CopiMine</a><a href="#admin/shop?sub=materials">Предметы Minecraft</a><a href="#admin/shop?sub=delivery">Выдача заказов</a></nav><section class="panel cm73-catalog"><div class="panel-head"><div><strong>Предметы проекта</strong><p class="hint">Источник · <code>13e8f2a</code></p></div><label class="input-wrap">${icon('search')}<input id="v73-catalog-query" type="search" value="${E(query)}" placeholder="Название, ID или плагин" aria-label="Найти предмет"></label></div><div class="cm73-catalog-filters" role="group" aria-label="Доступ к предметам">${[['all','Все',all],['public','Магазин',all-closed],['private','Закрытые',closed]].map(([id,label,count])=>`<button type="button" data-action="v73-catalog-filter" data-scope="${id}" data-search-target="${id}" aria-pressed="${scope===id}" class="${scope===id?'active':''}">${label}<span>${count}</span></button>`).join('')}</div><div id="v73-catalog-rows">${list()}</div><div class="cm73-source-foot">${icon('lock')}Закрытые позиции не показываются игрокам. Награды нельзя выдать через магазин.<span id="v73-texture-pack">${Number(texturePack)>0?`<a class="btn small ghost" href="/api/v6/admin/catalog/textures/pack.zip" download>${icon('download')}Набор текстур (${Number(texturePack)})</a>`:'<span class="hint">Свои текстуры ещё не загружены: открой товар и загрузи 16×16 картинку.</span>'}</span><span>${loading?'Загружаем закрытые определения…':''}</span></div></section>`;
 };
 H['v73-catalog-filter']=b=>{scope=b.dataset.scope;query='';M.navTo('admin/shop?scope='+scope);};
 H['v73-item-info']=b=>{const p=M.item(b.dataset.id);if(!p||!X.canAdmin())return;
@@ -56,6 +69,7 @@ H['v73-item-info']=b=>{const p=M.item(b.dataset.id);if(!p||!X.canAdmin())return;
 V.after.push((page,tab)=>{if(page!=='admin'||tab!=='shop')return;
  document.getElementById('v73-catalog-query')?.addEventListener('input',e=>{query=e.target.value;document.getElementById('v73-catalog-rows').innerHTML=list();});
  const focus=M.UI.params.get('focus');if(focus){const item=M.item(focus);if(item){scope=item.visibility==='public'?'public':'private';query='';document.getElementById('v73-catalog-rows').innerHTML=list();}}
+ void loadTextures();
 });
 // Do not offer reward-only/removed definitions through the give picker either.
 const giveHandler=H['v6-item-select'];H['v6-item-select']=b=>{const item=M.item(b.dataset.id);if(item?.grantable===false)return M.toast('Этот предмет выдаётся только сервисом наград.',true);return giveHandler?.(b);};

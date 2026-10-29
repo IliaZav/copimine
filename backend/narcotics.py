@@ -14,13 +14,15 @@ import json
 import re
 import time
 import uuid
+import zipfile
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from .security import current_user, fail
+from . import antivirus
 
 router = APIRouter()
 
@@ -371,10 +373,13 @@ async def upload_narcotic_texture(request: Request, item_id: str):
     png, webp = io.BytesIO(), io.BytesIO()
     pack.save(png, format="PNG", optimize=True)
     preview.save(webp, format="WEBP", quality=90, method=4)
-    (root / (item_id + ".png")).write_bytes(png.getvalue())
-    (root / (item_id + "-preview.webp")).write_bytes(webp.getvalue())
-    now = int(time.time())
     database = request.app.state.database
+    # Проверяем до публикации: файл остаётся в хранилище только после чистой проверки.
+    await antivirus.store(root / (item_id + "-preview.webp"), webp.getvalue(), database, user,
+                          "narcotic:" + item_id, reason, "narcotics.texture.infected")
+    await antivirus.store(root / (item_id + ".png"), png.getvalue(), database, user,
+                          "narcotic:" + item_id, reason, "narcotics.texture.infected")
+    now = int(time.time())
     with database.transaction() as db:
         db.execute(
             "INSERT INTO cm_site_audit(id,actor_id,actor_name,action,target,reason,details,created_s) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)",
@@ -463,12 +468,8 @@ async def upload_catalog_media(request: Request, identifier: str):
             fail(400, "invalid_media", "Видео должно быть MP4 или WebM — сервер не перекодирует файлы.")
     name = uuid.uuid4().hex[:24] + "." + extension
     path = root / name
-    with path.open("xb") as output:
-        output.write(payload)
-    try:
-        path.chmod(0o640)
-    except OSError:
-        pass
+    # Видео сайт сохраняет как есть, поэтому проверка антивирусом здесь обязательна.
+    await antivirus.store(path, payload, request.app.state.database, user, identifier, reason, "catalog.media.infected")
     now = int(time.time())
     database = request.app.state.database
     with database.transaction() as db:
@@ -491,4 +492,146 @@ def public_media(request: Request, filename: str):
     media = "video/mp4" if filename.endswith(".mp4") else "video/webm" if filename.endswith(".webm") else "image/webp"
     return FileResponse(path, media_type=media, headers={
         "Cache-Control": "public, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff",
+    })
+
+
+# --------------------------------------------------------------------------- текстуры кастомных предметов
+#
+# Заготовка под игровой ресурспак: сайт хранит 16×16 PNG и отдаёт архив ровно в
+# той раскладке, которую ждёт CopiMineArtifacts. Сам сервер здесь не трогается.
+
+PACK_ROOT = "assets/copimine/textures/item/artifacts"
+
+
+def _custom_textures_dir(request):
+    root = (Path(request.app.state.settings.private) / "catalog-textures").resolve()
+    root.mkdir(parents=True, exist_ok=True, mode=0o750)
+    return root
+
+
+def _custom_item(request, identifier):
+    item = next((row for row in request.app.state.game.catalog(private=True) if row.get("id") == identifier), None)
+    if not item:
+        fail(404, "catalog_item_not_found", "Предмет не найден в игровом каталоге.")
+    if not str(item.get("customModelData") or "").isdigit() or int(item.get("customModelData") or 0) <= 0:
+        fail(400, "catalog_item_not_custom", "У этого предмета нет своей модели в ресурспаке — менять нечего.")
+    return item
+
+
+def _texture_state(request, item):
+    path = _custom_textures_dir(request) / (item["id"] + ".png")
+    if not path.is_file():
+        return {"custom": False}
+    stat = path.stat()
+    return {"custom": True, "bytes": stat.st_size, "at": int(stat.st_mtime),
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest()[:16]}
+
+
+@router.get("/api/v6/admin/catalog/textures")
+def read_custom_textures(request: Request):
+    current_user(request, "catalog.manage")
+    items = [row for row in request.app.state.game.catalog(private=True)
+             if str(row.get("customModelData") or "").isdigit() and int(row.get("customModelData") or 0) > 0]
+    rows = [{"id": item["id"], "name": item.get("name", item["id"]), "model": int(item["customModelData"]),
+             **_texture_state(request, item)} for item in sorted(items, key=lambda x: str(x.get("name", "")))]
+    return {"items": rows, "changed": sum(1 for row in rows if row["custom"])}
+
+
+@router.post("/api/v6/admin/catalog/{identifier}/texture")
+async def upload_custom_texture(request: Request, identifier: str):
+    """Своя 16×16 текстура предмета. В игру по-прежнему попадает только через сборку ресурспака."""
+    user = current_user(request, "catalog.manage", fresh=True)
+    data = await request.json()
+    if set(data) - {"image", "reason"}:
+        fail(400, "invalid_texture", "В запросе лишние поля.")
+    reason = str(data.get("reason", "")).strip()
+    if not 3 <= len(reason) <= 240:
+        fail(400, "reason_required", "Укажи причину изменения: от 3 до 240 символов.")
+    item = _custom_item(request, identifier)
+    source = _decode_image(data.get("image"))
+    try:
+        with Image.open(io.BytesIO(source)) as image:
+            if image.format not in IMAGE_FORMATS:
+                fail(400, "invalid_image", "Поддерживаются PNG, JPEG, WebP и GIF.")
+            image.seek(0)
+            image = ImageOps.exif_transpose(image).convert("RGBA")
+            # Пак рисует предмет из 16×16: другое разрешение игра растянет с мылом.
+            pack = image.resize((16, 16), Image.LANCZOS)
+            preview = image.resize((128, 128), Image.LANCZOS)
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+        fail(400, "invalid_image", "Файл повреждён или это не изображение.")
+    png, webp = io.BytesIO(), io.BytesIO()
+    pack.save(png, format="PNG", optimize=True)
+    preview.save(webp, format="WEBP", quality=90, method=4)
+    root = _custom_textures_dir(request)
+    database = request.app.state.database
+    await antivirus.store(root / (identifier + "-preview.webp"), webp.getvalue(), database, user,
+                          "catalog:" + identifier, reason, "catalog.texture.infected")
+    await antivirus.store(root / (identifier + ".png"), png.getvalue(), database, user,
+                          "catalog:" + identifier, reason, "catalog.texture.infected")
+    now = int(time.time())
+    with database.transaction() as db:
+        db.execute(
+            "INSERT INTO cm_site_audit(id,actor_id,actor_name,action,target,reason,details,created_s) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)",
+            (uuid.uuid4().hex, user["id"], user["name"], "catalog.texture", "catalog:" + identifier, reason,
+             json.dumps({"bytes": len(png.getvalue())}, ensure_ascii=False), now),
+        )
+    return {"ok": True, "url": _texture_url(identifier), "at": now}
+
+
+def _texture_url(identifier):
+    return "/api/v6/admin/catalog/" + identifier + "/texture"
+
+
+@router.get("/api/v6/admin/catalog/{identifier}/texture")
+def read_custom_texture(request: Request, identifier: str, preview: int = 1):
+    current_user(request, "catalog.manage")
+    item = _custom_item(request, identifier)
+    root = _custom_textures_dir(request)
+    path = root / (identifier + ("-preview.webp" if preview else ".png"))
+    if path.is_file():
+        media = "image/webp" if preview else "image/png"
+    else:
+        # Пока своя не загружена — показываем иконку магазина.
+        path = Path(request.app.state.settings.frontend) / str(item.get("image") or "")
+        media = "image/png"
+        if not path.is_file():
+            fail(404, "texture_not_found", "Текстура ещё не загружена.")
+    return FileResponse(path, media_type=media, headers={
+        "Cache-Control": "private, max-age=60", "X-Content-Type-Options": "nosniff",
+    })
+
+
+@router.get("/api/v6/admin/catalog/textures/pack.zip")
+def download_texture_pack(request: Request):
+    """Заготовка ресурспака: только изменённые текстуры и манифест, без записи на игровой сервер."""
+    current_user(request, "catalog.manage")
+    root = _custom_textures_dir(request)
+    files = sorted(root.glob("*.png"))
+    if not files:
+        fail(404, "texture_pack_empty", "Пока ни одна своя текстура не загружена.")
+    stamp = (1980, 1, 1, 0, 0, 0)
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as pack:
+        def add(name, payload):
+            info = zipfile.ZipInfo(name, stamp)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o644 << 16
+            pack.writestr(info, payload)
+        add("pack.mcmeta", json.dumps({"pack": {
+            "pack_format": 34, "description": "CopiMine: текстуры предметов, загруженные на сайте"}, }, ensure_ascii=False).encode("utf-8"))
+        changed = []
+        for path in files:
+            payload = path.read_bytes()
+            add(PACK_ROOT + "/" + path.name, payload)
+            changed.append({"id": path.stem, "sha256": hashlib.sha256(payload).hexdigest()})
+        # Манифест повторяет поля, которые проверяет NarcoticsResourcePackAudit.
+        add("assets/copimine/manifests/artifacts_textures_manifest.json", json.dumps({
+            "source": "copimine-site", "textures_root": PACK_ROOT,
+            "requires_server_rebuild": True, "client_mod_visual_supported": True,
+            "files": changed,
+        }, ensure_ascii=False, indent=1).encode("utf-8"))
+    return Response(output.getvalue(), media_type="application/zip", headers={
+        "Content-Disposition": 'attachment; filename="copimine-artifact-textures.zip"',
+        "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
     })

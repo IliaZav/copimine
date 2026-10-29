@@ -17,6 +17,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse
 
 from .security import current_user, fail, throttle
+from . import antivirus
 
 router = APIRouter()
 
@@ -51,24 +52,8 @@ def _clean_name(value):
 
 
 def _scan(path):
-    """status: clean | infected | unavailable. Коды clamdscan: 0 чисто, 1 найдено, 2 ошибка.
-
-    --stream: файл отправляет сам сайт. Демон clamd работает под другим
-    пользователем и в каталог сайта зайти не может.
-    """
-    import subprocess
-    try:
-        result = subprocess.run(["clamdscan", "--stream", "--no-summary", "--stdout", str(path)],
-                                capture_output=True, text=True, timeout=120)
-    except (OSError, subprocess.SubprocessError) as error:
-        return "unavailable", str(error)[:200]
-    lines = (result.stdout + result.stderr).strip().splitlines()
-    detail = lines[0][:200] if lines else ""
-    if result.returncode == 0:
-        return "clean", "Проверено ClamAV"
-    if result.returncode == 1:
-        return "infected", detail
-    return "unavailable", detail
+    """status: clean | infected | unavailable. Коды clamdscan: 0 чисто, 1 найдено, 2 ошибка."""
+    return antivirus.scan(path)
 
 
 def _check_signature(data, suffix):

@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from .security import current_user, digest, fail, throttle
+from . import antivirus
 
 router = APIRouter()
 
@@ -136,7 +137,9 @@ async def upload_mapart_image(request: Request):
     if data.get("image"):
         png = _png(data.get("image"))
         filename = secrets.token_hex(16) + ".png"
-        (root / filename).write_bytes(png)
+        # Картинка анонимная, поэтому антивирус проверяет её до попадания в хранилище.
+        await antivirus.store(root / filename, png, request.app.state.database, user, "mapart:" + filename,
+                              "Загружена картинка для картины", "mapart.infected")
         for old in sorted(root.glob("*.png"), key=lambda path: path.stat().st_mtime, reverse=True)[200:]:
             old.unlink(missing_ok=True)
         url = request.app.state.settings.public_url + "/mapart/image/" + filename

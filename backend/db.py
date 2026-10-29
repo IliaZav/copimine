@@ -138,7 +138,14 @@ CREATE TABLE IF NOT EXISTS cm_site_releases (
  backup TEXT NOT NULL DEFAULT '{}', check_result TEXT NOT NULL DEFAULT '{}',
  apply_result TEXT NOT NULL DEFAULT '{}', created_s BIGINT NOT NULL, updated_s BIGINT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS cm_site_releases_created ON cm_site_releases(created_s DESC)
+CREATE INDEX IF NOT EXISTS cm_site_releases_created ON cm_site_releases(created_s DESC);
+CREATE TABLE IF NOT EXISTS cm_site_easter_eggs (
+ id TEXT PRIMARY KEY, visitor_hash TEXT NOT NULL DEFAULT '', user_id TEXT NOT NULL DEFAULT '',
+ user_name TEXT NOT NULL DEFAULT '', ip TEXT NOT NULL DEFAULT '', user_agent TEXT NOT NULL DEFAULT '',
+ referer TEXT NOT NULL DEFAULT '', path TEXT NOT NULL DEFAULT '', status INT NOT NULL DEFAULT 418,
+ created_s BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS cm_site_easter_eggs_created ON cm_site_easter_eggs(created_s DESC)
 """
 
 ANALYTICS_COLUMNS = (

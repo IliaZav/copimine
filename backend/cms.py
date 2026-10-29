@@ -18,6 +18,7 @@ from fastapi.responses import FileResponse
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from .security import current_user, fail
+from . import antivirus
 
 router = APIRouter()
 SECTIONS = {"pages", "gallery", "faq"}
@@ -281,9 +282,10 @@ async def upload_gallery_image(request: Request):
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o750)
     created = False
     try:
-        with path.open("xb") as output:
-            created = True
-            output.write(image_data)
+        # Файл публикуется только после чистой проверки антивирусом.
+        await antivirus.store(path, image_data, request.app.state.database, user, "gallery:" + item_id, reason,
+                              "content.gallery.infected")
+        created = True
         try:
             os.chmod(path, 0o640)
         except OSError:

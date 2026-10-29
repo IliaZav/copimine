@@ -80,8 +80,6 @@ public abstract class PlayerListHudMixin {
         int panelWidth = Math.min(contentWidth + 24, width - 4);
         int left = (width - panelWidth) / 2;
         int right = left + panelWidth;
-        int top = 2;
-
         int bodyHeight = 0;
         for (OrderedText line : headLines) {
             bodyHeight += TabPanelLayout.lineHeight(copimine$plainText(line));
@@ -91,6 +89,7 @@ public abstract class PlayerListHudMixin {
         for (OrderedText line : footLines) {
             bodyHeight += TabPanelLayout.lineHeight(copimine$plainText(line));
         }
+        int top = Math.max(2, (MinecraftClient.getInstance().getWindow().getScaledHeight() - bodyHeight) / 2);
 
         context.fill(left, top, right, top + bodyHeight, BACKGROUND_COLOR);
         context.drawBorder(left, top, panelWidth, bodyHeight, BORDER_COLOR);

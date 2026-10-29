@@ -80,8 +80,6 @@ public abstract class PlayerTabOverlayMixin {
         int panelWidth = Math.min(contentWidth + 24, width - 4);
         int left = (width - panelWidth) / 2;
         int right = left + panelWidth;
-        int top = 2;
-
         int bodyHeight = 0;
         for (FormattedCharSequence line : headLines) {
             bodyHeight += TabPanelLayout.lineHeight(copimine$plainText(line));
@@ -91,6 +89,7 @@ public abstract class PlayerTabOverlayMixin {
         for (FormattedCharSequence line : footLines) {
             bodyHeight += TabPanelLayout.lineHeight(copimine$plainText(line));
         }
+        int top = Math.max(2, (Minecraft.getInstance().getWindow().getGuiScaledHeight() - bodyHeight) / 2);
 
         context.fill(left, top, right, top + bodyHeight, BACKGROUND_COLOR);
         // outline takes a width/height pair, not the right/bottom edges fill takes.

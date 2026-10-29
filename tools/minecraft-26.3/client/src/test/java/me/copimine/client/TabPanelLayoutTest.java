@@ -35,9 +35,9 @@ class TabPanelLayoutTest {
     }
 
     @Test
-    void blankLinesAreNotDrawn() {
-        assertFalse(TabPanelLayout.isDrawnLine(""));
-        assertFalse(TabPanelLayout.isDrawnLine("   "));
+    void blankLinesArePreservedAsLayoutSpacing() {
+        assertTrue(TabPanelLayout.isDrawnLine(""));
+        assertTrue(TabPanelLayout.isDrawnLine("   "));
         assertTrue(TabPanelLayout.isDrawnLine("\u2501\u2501\u2501"));
     }
 }

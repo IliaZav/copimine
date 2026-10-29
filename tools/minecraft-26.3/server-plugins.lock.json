@@ -739,19 +739,20 @@
       "candidate": {
         "filename": "AuthEffects-26.3.jar",
         "runtimeFilename": "AuthEffects.jar",
-        "sha256": "e00175601f97e65b3081bdba67143c0407c185f7b17d4bfa14ff540906e4b455",
+        "sha256": "3ae5874bad098f6ac97c983806eb6e7143acc6fde5e57ea4ff9508fe6fef4e8f",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/AuthEffects-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "sha512": "4ee1682d7701e6b76acfd85fa8faba9f8efdf56693517f5debb23a491c1ef17400fc0764eb6cc8fc33ebd76968dfb7179e57eded7e1fdaa46b854108bdf87885",
+        "sha512": "493f03c2fef8540c5e61339d01422d36a712c3fa6a331ea7a8a56e002e388ac60a424d5ddf18789a6de943a7909865b0663ae15cc11b7fbe327784846fc3c113",
         "size": 11604,
         "runtimeEligible": true,
         "replaceSha256": [
           "09aa0017cd8731470eb2324af327fc5780490c317469881f82a8d8c5bfd5e11c",
           "efb94ae4c8224ad69f65988535e0a1dea087837e136325fa07f11ae5ba997892",
           "c2a2ab2cd162d383858cf3c917fcbfc712143077ac98241fe90fc1a29a12b9f7",
-          "3b0dcba8ad45a5b68f500263c773dd450951949119dbb47314011c170565068d"
+          "3b0dcba8ad45a5b68f500263c773dd450951949119dbb47314011c170565068d",
+          "e00175601f97e65b3081bdba67143c0407c185f7b17d4bfa14ff540906e4b455"
         ]
       },
       "nativeVerified": false

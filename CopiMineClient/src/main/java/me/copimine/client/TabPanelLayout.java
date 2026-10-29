@@ -42,8 +42,8 @@ public final class TabPanelLayout {
         return LINE_HEIGHT;
     }
 
-    /** Blank lines carry height only when nothing else is on them, so skip them entirely. */
+    /** Preserve blank lines as deliberate vertical spacing in the server-provided layout. */
     public static boolean isDrawnLine(String plainLine) {
-        return !plainLine.isBlank();
+        return true;
     }
 }

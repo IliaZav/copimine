@@ -38,7 +38,7 @@ SITE_CSP = (
     "script-src 'self' 'sha256-pSVJdIq1jRIlzWQKa3g0UuRWuip3puoNmO5Lsdzj/uc=' "
     "'sha256-EX0O0xR2fST3O7nurZD8S5PXeFfjqlRZRWCxPYJOw0Y=' "
     "'sha256-EpW5/oov5qNltRC237doLObhBPcDR5U9KQVN0L4W34A=' "
-    "'sha256-8aMCAHch0bXxDgSOK+XRwAMQzuFmaQ0Sob1yMWGa2hk='; "
+    "'sha256-LfSLHVCdM6MXCr2IjLxWIplWWMa0spJY6IwMIADPBbk='; "
     "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; "
     "frame-src 'self'; media-src 'self'; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; "
     "base-uri 'self'; form-action 'self'; frame-ancestors 'none'"

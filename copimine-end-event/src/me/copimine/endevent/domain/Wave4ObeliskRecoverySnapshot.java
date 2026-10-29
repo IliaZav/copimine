@@ -13,7 +13,7 @@ import java.util.Objects;
 public final class Wave4ObeliskRecoverySnapshot {
     public static final String PREFIX = "wave4-obelisk.";
     private static final String VERSION = "2";
-    private static final int MAX_OBELISKS = 8;
+    private static final int MAX_OBELISKS = 6;
     public static final long MAX_TIMER_REMAINING_TICKS = 7L * 24L * 60L * 60L * 20L;
 
     private Wave4ObeliskRecoverySnapshot() {

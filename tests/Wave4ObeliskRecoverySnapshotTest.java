@@ -185,6 +185,8 @@ public final class Wave4ObeliskRecoverySnapshotTest {
                 "negative health must be refused");
         expectIllegal(() -> new Wave4ObeliskRecoverySnapshot.ObeliskReceipt(0, 1, 0, "ACTIVE"),
                 "a zero maximum must be refused");
+        expectIllegal(() -> new Wave4ObeliskRecoverySnapshot.ObeliskReceipt(6, 1, 3, "ACTIVE"),
+                "an obelisk ordinal beyond the six-obelisk encounter cap must be refused");
         expectIllegal(() -> new Wave4ObeliskRecoverySnapshot.ObeliskReceipt(0, 1, 3, " "),
                 "a blank stage must be refused");
         expectIllegal(() -> new Wave4ObeliskRecoverySnapshot.ObeliskReceipt(

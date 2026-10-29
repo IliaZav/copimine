@@ -45,8 +45,8 @@ document.addEventListener('change',async event=>{
   if(hint)hint.textContent='Загружаем…';
   const saved=await X.request('/admin/catalog/'+encodeURIComponent(form.querySelector('[name="id"]').value)+'/media',{method:'POST',body:{kind,data:dataUrl.split(',')[1],reason}});
   if(kind==='video')form.querySelector('[name="video"]').value=saved.url;
-  else{form.querySelector('[name="image"]').value=saved.url;const label=document.querySelector('#cm-image-hint');if(label)label.textContent='Фото загружено: '+Math.round(saved.bytes/1024)+' КБ. Заменит прежнее после сохранения товара.';}
-  if(hint)hint.textContent=(kind==='video'?'Видео':'Фото')+' загружено: '+Math.round(saved.bytes/1024)+' КБ. Не забудь сохранить товар.';
+  else{form.querySelector('[name="image"]').value=saved.url;const label=document.querySelector('#cm-image-hint');if(label)label.textContent='Фото загружено: '+Math.ceil(saved.bytes/1024)+' КБ. Заменит прежнее после сохранения товара.';}
+  if(hint)hint.textContent=(kind==='video'?'Видео':'Фото')+' загружено: '+Math.ceil(saved.bytes/1024)+' КБ. Не забудь сохранить товар.';
  }catch(error){if(hint)hint.textContent='MP4 или WebM до 8 МБ. Фото — до 6 МБ.';M.toast(error?.message||'Не удалось загрузить файл.',true);}
  finally{node.value='';}
 });

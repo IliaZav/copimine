@@ -280,11 +280,55 @@ async function api(path, body, method) {
     const messages = ticket.messages?.length ? ticket.messages : [{ actor: ticket.player || 'Игрок', role: 'player', body: ticket.body, at: ticket.at }, ...(ticket.reply ? [{ actor: 'Команда', role: 'owner', body: ticket.reply, at: ticket.firstReplyAt || ticket.updated_s * 1000 }] : [])];
     const thread = `<div class="v9-ticket-thread">${messages.map(message => `<article class="v9-ticket-message ${message.role === 'player' ? 'from-player' : 'from-team'}"><small>${E(message.actor || (message.role === 'player' ? ticket.player : 'Команда'))} · ${M.date(message.at, true)}</small><p>${E(message.body)}</p></article>`).join('')}</div>${filesRow(ticket)}`;
     const actions = admin
-      ? `<form data-form="ticket-answer" class="v9-ticket-reply"><input type="hidden" name="id" value="${E(ticket.id)}">${V.area('Ответ игроку', 'reply', '', 4, 'required minlength="3" maxlength="6000"')}<div class="field-row">${V.select('Статус', 'status', [['open', 'Новое'], ['review', 'В работе'], ['closed', 'Закрыть']], ticket.status)}${V.select('Приоритет', 'priority', [['normal', 'Обычный'], ['high', 'Высокий'], ['urgent', 'Срочный']], ticket.priority || 'normal')}</div><div class="form-error" role="alert"></div>${V.actions('Отправить ответ')}</form><div class="actions mt">${M.btn('Создать расследование', 'case-from-ticket', 'shield', 'ghost small', `data-id="${E(ticket.id)}"`)}</div>`
+      ? `<div class="v9-ticket-templates" data-templates="${E(ticket.id)}"><span class="hint">Шаблоны ответов</span></div><form data-form="ticket-answer" class="v9-ticket-reply"><input type="hidden" name="id" value="${E(ticket.id)}">${V.area('Ответ игроку', 'reply', '', 4, 'required minlength="3" maxlength="6000"')}<div class="field-row">${V.select('Статус', 'status', [['open', 'Новое'], ['review', 'В работе'], ['closed', 'Закрыть']], ticket.status)}${V.select('Приоритет', 'priority', [['normal', 'Обычный'], ['high', 'Высокий'], ['urgent', 'Срочный']], ticket.priority || 'normal')}</div><div class="form-error" role="alert"></div>${V.actions('Отправить ответ')}<div class="actions mt">${M.btn('Сохранить как шаблон','v9-template-save','save','ghost small')}</div></form><div class="actions mt">${M.btn('Создать расследование', 'case-from-ticket', 'shield', 'ghost small', `data-id="${E(ticket.id)}"`)}</div>`
       : ticket.status === 'closed'
         ? `<p class="v9-ticket-closed">Обращение закрыто. Если вопрос остался, создай новое.</p>${M.btn('Новое обращение', 'new-ticket', 'plus', 'ghost small')}`
         : `<form data-form="ticket-message" class="v9-ticket-reply"><input type="hidden" name="id" value="${E(ticket.id)}">${V.area('Сообщение', 'body', '', 3, 'required minlength="3" maxlength="6000"')}<label class="field">Приложить фото или файл<small>Фото, PDF, лог или архив до 8 МБ. Файл проверяется антивирусом до сохранения.</small><input type="file" name="attachment" accept="image/png,image/jpeg,image/webp,image/gif,text/plain,text/csv,application/json,application/pdf,application/zip,application/gzip" data-ticket-file="${E(ticket.id)}"></label><div class="form-error" role="alert"></div>${V.actions('Отправить')}</form>`;
     M.openModal(`${E(ticket.title)} <span class="v9-ticket-id">${E(ticket.id)}</span>`, `<div class="v9-ticket-meta">${M.status(ticket.status)}${admin ? M.pill(ticket.priority === 'urgent' ? 'Срочно' : ticket.priority === 'high' ? 'Высокий приоритет' : 'Обычный') : ''}${admin ? `<span>${E(ticket.playerName || ticket.player || '')}</span>` : ''}</div>${thread}${actions}`, 'v9-ticket-dialog');
+    if (admin) loadTemplates().catch(() => {});
+  };
+
+  // Шаблоны ответов: один запрос при открытии окна, вставка текста в поле ответа.
+  let ticketTemplates = null;
+  async function loadTemplates() {
+    const host = document.querySelector('[data-templates]');
+    if (!host) return;
+    try {
+      if (!ticketTemplates) ticketTemplates = (await api('admin/ticket-templates')).templates || [];
+    } catch (error) {
+      host.innerHTML = `<span class="hint">Шаблоны недоступны: ${E(error.message)}</span>`;
+      return;
+    }
+    host.innerHTML = ticketTemplates.length
+      ? `<label class="field">Вставить шаблон<select id="v9-template-pick"><option value="">Выбери шаблон</option>${ticketTemplates.map(t => `<option value="${E(t.id)}">${E(t.title)}</option>`).join('')}</select></label>${M.btn('Удалить','v9-template-delete','trash','small ghost')}`
+      : '<span class="hint">Своих шаблонов нет. Напиши ответ и сохрани его как шаблон.</span>';
+    document.getElementById('v9-template-pick')?.addEventListener('change', event => {
+      const template = ticketTemplates.find(t => t.id === event.target.value);
+      const area = document.querySelector('[data-form="ticket-answer"] [name="reply"]');
+      if (template && area) { area.value = template.body; area.focus(); }
+    });
+  }
+  H['v9-template-delete'] = async () => {
+    const select = document.getElementById('v9-template-pick');
+    const id = select?.value;
+    if (!id) return M.toast('Выбери шаблон для удаления.', true);
+    await api(`admin/ticket-templates/${encodeURIComponent(id)}`, undefined, 'DELETE');
+    ticketTemplates = null;
+    await loadTemplates();
+    M.toast('Шаблон удалён.');
+  };
+  H['v9-template-save'] = () => {
+    const area = document.querySelector('[data-form="ticket-answer"] [name="reply"]');
+    const body = String(area?.value || '').trim();
+    if (body.length < 3) return M.toast('Сначала напиши текст ответа.', true);
+    M.openModal('Сохранить шаблон', `<form data-form="ticket-template-save">${V.field('Название шаблона', 'title', body.split('\n')[0].slice(0, 80), 'text', 'required minlength="2" maxlength="120"')}<input type="hidden" name="body" value="${E(body)}"><div class="form-error" role="alert"></div>${V.actions('Сохранить шаблон')}</form>`);
+  };
+  F['ticket-template-save'] = async (form, data) => {
+    await api('admin/ticket-templates', { title: String(data.get('title') || '').trim(), body: String(data.get('body') || '') });
+    ticketTemplates = null;
+    M.closeModal();
+    await loadTemplates();
+    M.toast('Шаблон сохранён.');
   };
 
   F['ticket-message'] = async (form, data) => {

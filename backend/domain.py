@@ -7,7 +7,7 @@ import time
 import uuid
 from urllib.parse import quote, urlparse
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 from starlette.concurrency import run_in_threadpool
 
 from .auth import create_user, issue_session, login, logout
@@ -49,6 +49,24 @@ def add_notification(database, user_id, title, body, identifier=None, href=""):
             "INSERT INTO cm_site_notifications(id,user_id,title,body,href,created_s) VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(id) DO NOTHING",
             (notification_id, user_id, title[:120], body[:1000], href[:500], int(time.time())),
         )
+
+
+def notify_staff(database, except_user_id, permission, title, body, identifier, href=""):
+    """Одно уведомление каждому админу с нужным правом; автор события пропускается."""
+    roles = sorted(role for role, rights in PERMISSIONS.items() if permission in rights)
+    if not roles:
+        return
+    marks = ",".join(["%s"] * len(roles))
+    with database.transaction() as db:
+        rows = db.execute("SELECT id FROM cm_site_users WHERE enabled=1 AND id<>%s AND role IN (" + marks + ")",
+                          (except_user_id, *roles)).fetchall()
+        for row in rows:
+            # id — первичный ключ: у каждого получателя своё уведомление, тип берётся из префикса.
+            db.execute(
+                "INSERT INTO cm_site_notifications(id,user_id,title,body,href,created_s)"
+                " VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(id) DO NOTHING",
+                (identifier + ":" + row["id"], row["id"], title[:120], body[:1000], href[:500], int(time.time())),
+            )
 
 
 def notification_feed(database, user_id):
@@ -408,6 +426,9 @@ async def create_ticket(request: Request):
         db.execute("INSERT INTO cm_site_tickets(id,user_id,title,body,type,status,created_s,updated_s,priority) VALUES(%s,%s,%s,%s,%s,'open',%s,%s,'normal')", (ticket["id"], user["id"], title, body, ticket["type"], now, now))
         db.execute("INSERT INTO cm_site_ticket_messages(id,ticket_id,actor_id,actor_name,actor_role,body,created_s) VALUES(%s,%s,%s,%s,'player',%s,%s)", (uuid.uuid4().hex, ticket["id"], user["id"], user["display_name"] or user["name"], body, int(time.time() * 1000)))
     request.app.state.database.audit(user, "ticket.created", ticket["id"])
+    notify_staff(request.app.state.database, user["id"], "tickets.manage", "Новое обращение",
+                 f"{user['display_name'] or user['name']}: «{title}».",
+                 f"ticket-new:{ticket['id']}", f"#admin/requests?status=open")
     return {"ok": True, "ticket": ticket}
 
 
@@ -459,6 +480,60 @@ async def reply_ticket(identifier: str, request: Request):
     if reply:
         add_notification(request.app.state.database, ticket["user_id"], "Ответ по обращению", f"Команда ответила на обращение «{ticket['title']}».", f"ticket-reply:{identifier}:{uuid.uuid4().hex}", f"#account/support?ticket={quote(identifier, safe='')}")
     return {"ok": True}
+
+
+@router.get("/api/v6/admin/ticket-templates")
+def list_ticket_templates(request: Request):
+    current_user(request, "tickets.manage")
+    with request.app.state.database.transaction() as db:
+        rows = db.execute("SELECT id,title,body,actor_name,created_s FROM cm_site_ticket_templates"
+                          " ORDER BY created_s DESC LIMIT 100").fetchall()
+    return {"templates": [{"id": row["id"], "title": row["title"], "body": row["body"],
+                           "actor": row["actor_name"], "at": row["created_s"] * 1000} for row in rows]}
+
+
+@router.post("/api/v6/admin/ticket-templates")
+async def create_ticket_template(request: Request):
+    user = current_user(request, "tickets.manage")
+    data = await request.json()
+    title = str(data.get("title", "")).strip()
+    body = str(data.get("body", "")).strip()
+    if not 2 <= len(title) <= 120 or not 3 <= len(body) <= 6000:
+        fail(400, "invalid_template", "Название — от 2 до 120 символов, текст — от 3 до 6000.")
+    if any(c in title + body for c in "\x00"):
+        fail(400, "invalid_template", "В шаблоне недопустимые символы.")
+    template_id = uuid.uuid4().hex
+    with request.app.state.database.transaction() as db:
+        db.execute("INSERT INTO cm_site_ticket_templates(id,title,body,actor_id,actor_name,created_s)"
+                   " VALUES(%s,%s,%s,%s,%s,%s)",
+                   (template_id, title, body, user["id"], user["display_name"] or user["name"], int(time.time())))
+    request.app.state.database.audit(user, "ticket.template", template_id, details={"title": title})
+    return {"ok": True, "template": {"id": template_id, "title": title, "body": body}}
+
+
+@router.delete("/api/v6/admin/ticket-templates/{identifier}")
+def delete_ticket_template(identifier: str, request: Request):
+    user = current_user(request, "tickets.manage")
+    with request.app.state.database.transaction() as db:
+        deleted = db.execute("DELETE FROM cm_site_ticket_templates WHERE id=%s", (identifier,))
+        if deleted.rowcount != 1:
+            fail(404, "not_found", "Шаблон не найден.")
+    request.app.state.database.audit(user, "ticket.template.deleted", identifier)
+    return {"ok": True}
+
+
+@router.get("/api/v6/admin/roles")
+def admin_roles(request: Request):
+    """Настоящая матрица прав: то же, что проверяет сервер, а не текст в вёрстке."""
+    current_user(request, "players.view")
+    with request.app.state.database.transaction() as db:
+        rows = db.execute("SELECT role,count(*) AS n FROM cm_site_users WHERE enabled=1 GROUP BY role").fetchall()
+    counts = {row["role"]: int(row["n"]) for row in rows}
+    return {"roles": [
+        {"id": role, "rank": RANK[role], "permissions": list(PERMISSIONS.get(role, [])),
+         "accounts": counts.get(role, 0)}
+        for role in sorted(RANK, key=lambda name: RANK[name], reverse=True)
+    ]}
 
 
 @router.post("/api/v6/admin/accounts")
@@ -558,11 +633,79 @@ def admin_health(request: Request):
     return {"website": "ok", "database": "postgresql" if not request.app.state.database.sqlite else "sqlite-test", "game": request.app.state.game.health(detailed=True), "mail": {"configured": bool(settings.smtp_host), "ready": settings.mail_domain_ready, "pending": pending}, "vk": {"configured": bool(settings.vk_client_id)}, "payments": {"configured": False}}
 
 
+# Фильтр журнала живёт на сервере: на 5000+ записей клиентская фильтрация тормозит.
+# Группы совпадают с AUDIT_BUCKETS в admin-v6.js, приоритет — сверху вниз.
+AUDIT_BUCKET_SQL = {
+    "moderation": ("(action LIKE 'game.%%' AND action NOT LIKE 'game.money%%')"
+                   " OR action LIKE 'inventory.%%' OR action IN ('account.blocked','account.unblocked')"),
+    "account": ("(action LIKE 'auth.%%' OR action LIKE 'account.%%' OR action LIKE 'password.%%'"
+                " OR action LIKE 'session%%' OR action LIKE 'mfa.%%' OR action LIKE 'email.%%'"
+                " OR action LIKE 'vk.%%' OR action LIKE 'minecraft.%%' OR action LIKE 'recovery.%%')"
+                " AND action NOT IN ('account.blocked','account.unblocked')"),
+    "economy": ("action LIKE 'shop.%%' OR action LIKE 'catalog.%%' OR action LIKE 'bank.%%'"
+                " OR action LIKE 'game.money%%'"),
+    "content": ("action LIKE 'ticket.%%' OR action LIKE 'site.%%' OR action LIKE 'content.%%'"
+                " OR action LIKE 'cms.%%'"),
+    "server": ("action LIKE 'map.%%' OR action LIKE 'monitor.%%' OR action LIKE 'release.%%'"
+               " OR action LIKE 'db.%%'"),
+}
+
+
+def _audit_where(params, target_values=None, target_actor=None):
+    """Собирает WHERE и аргументы из строковых параметров запроса."""
+    clauses, args = [], []
+    bucket = params.get("bucket", "")
+    if bucket in AUDIT_BUCKET_SQL:
+        clauses.append("(" + AUDIT_BUCKET_SQL[bucket] + ")")
+    actor = str(params.get("actor", "")).strip()
+    if actor:
+        clauses.append("actor_id=%s")
+        args.append(actor[:128])
+    target = str(params.get("target", "")).strip()
+    if target_values:
+        # Цель ищется по id, нику и игровому нику: игровые действия пишут ник Minecraft.
+        # Действия самого игрока тоже входят в его историю.
+        clause = "target IN (" + ",".join(["%s"] * len(target_values)) + ")"
+        args.extend(target_values)
+        if target_actor:
+            clause = "(" + clause + " OR actor_id=%s)"
+            args.append(target_actor)
+        clauses.append(clause)
+    elif target:
+        clauses.append("target=%s")
+        args.append(target[:128])
+    query = str(params.get("q", "")).strip()[:120]
+    if query:
+        pattern = "%" + query.replace("%", "").replace("_", "") + "%"
+        clauses.append("(action LIKE %s OR actor_name LIKE %s OR target LIKE %s OR reason LIKE %s)")
+        args.extend([pattern] * 4)
+    return (" WHERE " + " AND ".join(clauses)) if clauses else "", args
+
+
 @router.get("/api/v6/admin/audit")
 def admin_audit(request: Request):
     current_user(request, "logs.view")
+    params = request.query_params
+    try:
+        limit = min(max(int(params.get("limit", "100")), 1), 500)
+        offset = max(int(params.get("offset", "0")), 0)
+    except ValueError:
+        fail(400, "invalid_paging", "Проверьте размер страницы журнала.")
+    target_values, target_actor = None, None
+    target = str(params.get("target", "")).strip()
+    if target:
+        with request.app.state.database.transaction() as db:
+            row = db.execute("SELECT id,name,minecraft_name FROM cm_site_users WHERE id=%s OR name_norm=%s",
+                             (target, target.lower())).fetchone()
+        if row:
+            target_values = sorted({target, row["id"], row["name"], row["minecraft_name"] or row["name"]})
+            target_actor = row["id"]
+    where, args = _audit_where(params, target_values, target_actor)
     with request.app.state.database.transaction() as db:
-        rows = db.execute("SELECT * FROM cm_site_audit ORDER BY created_s DESC LIMIT 300").fetchall()
+        total = db.execute("SELECT count(*) AS n FROM cm_site_audit" + where, tuple(args)).fetchone()["n"]
+        rows = db.execute("SELECT * FROM cm_site_audit" + where +
+                          " ORDER BY created_s DESC, id DESC LIMIT %s OFFSET %s",
+                          (*args, limit, offset)).fetchall()
     entries = []
     for row in rows:
         item = dict(row)
@@ -578,7 +721,7 @@ def admin_audit(request: Request):
             "detail": item["reason"],
             "at": item["created_s"] * 1000,
         })
-    return {"entries": entries}
+    return {"entries": entries, "total": int(total), "hasMore": offset + len(entries) < int(total)}
 
 
 @router.patch("/api/v6/admin/catalog/{identifier}")
@@ -887,6 +1030,58 @@ async def remove_inventory(identifier: str, request: Request):
     save_receipt(request.app.state.database, user, key, "inventory.remove", fingerprint, value)
     request.app.state.database.audit(user, "inventory.remove", identifier, reason, {"slot": slot, "kind": kind, "quantity": quantity, "requestId": key})
     return value
+
+
+# Массово осмысленны только действия без собственных координат и снимков.
+BULK_ACTIONS = {"kick", "ban", "unban", "freeze", "unfreeze", "heal", "feed", "kill", "gamemode"}
+
+
+@router.post("/api/v6/admin/actions/bulk")
+async def execute_bulk_action(request: Request):
+    """Одно и то же действие над списком игроков.
+
+    Каждая цель проверяется отдельно: неподходящие (нет привязки Minecraft, равные
+    права) попадают в отчёт как ошибка, но не отменяют остальные.
+    """
+    data = await request.json()
+    action = data.get("action")
+    if action not in BULK_ACTIONS:
+        current_user(request, "players.view")
+        fail(400, "unsupported_action", "Это действие нельзя выполнить сразу для нескольких игроков.")
+    user = current_user(request, "players.moderate", fresh=True)
+    reason = safe_reason(data.get("reason"))
+    players = data.get("players")
+    if not isinstance(players, list) or not 1 <= len(players) <= 100:
+        fail(400, "invalid_players", "Выберите от 1 до 100 игроков.")
+    identifiers = []
+    for value in players:
+        identifier = str(value or "").strip()[:64]
+        if not identifier:
+            fail(400, "invalid_players", "В списке есть пустой игрок.")
+        if identifier not in identifiers:
+            identifiers.append(identifier)
+    params = data.get("params", {})
+    if not isinstance(params, dict):
+        fail(400, "invalid_parameters", "Проверьте параметры действия.")
+    allowed = {"mode", "durationMs"}
+    params = {key: value for key, value in params.items() if key in allowed}
+    results = []
+    for identifier in identifiers:
+        try:
+            target = game_target(request, identifier, mutation=True)
+            body = {**params, **target, "reason": reason}
+            value = await run_in_threadpool(request.app.state.game.rpc, action, user, body, "")
+            request.app.state.database.audit(user, "game." + action, str(body.get("player", identifier)), reason,
+                                             {"bulk": True, "target": identifier})
+            results.append({"player": identifier, "ok": True, "result": value})
+        except HTTPException as error:
+            detail = error.detail if isinstance(error.detail, dict) else {}
+            results.append({"player": identifier, "ok": False,
+                            "error": detail.get("message") or "Не удалось выполнить действие."})
+        except Exception as error:  # noqa: BLE001 — один игрок не должен ронять весь список
+            results.append({"player": identifier, "ok": False, "error": str(error)[:200]})
+    done = sum(1 for row in results if row["ok"])
+    return {"ok": True, "total": len(results), "done": done, "failed": len(results) - done, "results": results}
 
 
 @router.post("/api/v6/admin/actions")

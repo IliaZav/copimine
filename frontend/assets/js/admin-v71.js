@@ -34,12 +34,56 @@ function legacy(key,sub){return A.clean(V.legacyAdminContent(key,sub));}
 function operations(key,sub){return A.clean(CMOperations.render(key,sub));}
 function prior(key){return A.clean(priorAdmin(key),'#view');}
 function subtabs(key,items,selected){return `<nav class="v71-tabs" aria-label="Подразделы">${items.map(([id,label])=>`<a href="#admin/${key}?sub=${id}" class="${id===selected?'active':''}">${label}</a>`).join('')}</nav>`;}
-function playerRows(query='',scope='all'){
+const PAGE_SIZE=50;
+const BULK_IDS=['kick','ban','unban','freeze','unfreeze','heal','feed','kill','gamemode'];
+let playerSelection=new Set();
+function playerList(query='',scope='all'){
  let rows=s().players.filter(p=>[p.name,p.displayName,p.minecraftName,p.minecraftUuid,p.id,p.role,...(p.aliases||[])].join(' ').toLowerCase().includes(query.toLowerCase()));
  if(scope==='blocked')rows=rows.filter(p=>p.webBlocked||p.status==='banned');if(scope==='team')rows=rows.filter(p=>CM6Domain.roleLevel(p.role)>=10);
- return rows.length?V.table(['Игрок','Аккаунт Minecraft','Игровой баланс','Донатный баланс','Статус',''],rows.map(p=>[`<a href="#admin/players?player=${E(p.id)}" class="v71-player-link">${W.head(p,36)}<span><strong>${E(p.displayName||p.name)}</strong><small>${E(p.minecraftName||p.name)}</small></span></a>`,M.pill(p.gameLinkVerified||p.linked?'Привязан':'Не привязан',p.gameLinkVerified||p.linked?'green':''),`<strong class="numeric">${p.AR==null?'—':Number(p.AR).toLocaleString('ru-RU')} АР</strong>`,`<span class="numeric">${p.CM==null?'—':Number(p.CM).toLocaleString('ru-RU')} CM</span>`,M.pill(p.webBlocked||p.status==='banned'?'Заблокирован':'Активен',p.webBlocked||p.status==='banned'?'danger':'green'),M.link('Открыть',`#admin/players?player=${E(p.id)}`,'arrow-up-right','small ghost')])):M.empty('Ничего не найдено','Попробуй другой ник или ID.','search');
+ return rows;
 }
-function players(){const q=X.board.get('playerQuery')||'',scope=X.board.get('playerScope')||'all';return `<div class="v71-player-directory"><div class="v71-directory-controls"><label class="input-wrap">${icon('search')}<input id="v71-player-search" type="search" value="${E(q)}" placeholder="Ник, игровой ник или ID" aria-label="Поиск игроков"></label><select id="v71-player-scope" aria-label="Фильтр аккаунтов"><option value="all"${scope==='all'?' selected':''}>Все аккаунты</option><option value="team"${scope==='team'?' selected':''}>Команда</option><option value="blocked"${scope==='blocked'?' selected':''}>Заблокирован</option></select><span class="hint">Аккаунтов: ${s().players.length}</span></div><div id="v71-player-rows">${playerRows(q,scope)}</div><div class="v71-inline-info">${icon('info')}Открой игрока: покупки, инвентари, наказания и действия — в его карточке.</div></div>`;}
+/* База игроков растёт, а DOM — нет: видна ровно одна страница строк. */
+function playerWindow(){
+ const query=document.getElementById('v71-player-search')?.value||'',scope=document.getElementById('v71-player-scope')?.value||'all';
+ const all=playerList(query,scope),pages=Math.max(1,Math.ceil(all.length/PAGE_SIZE));
+ const page=Math.min(Math.max(Number(X.board.get('playerPage'))||0,0),pages-1);
+ return {all,page,pages,rows:all.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE)};
+}
+function bulkBar(){
+ const actions=X.actions.filter(a=>BULK_IDS.includes(a.id));
+ if(!actions.length)return '';
+ return `<section class="panel v71-bulk" aria-label="Массовые действия"><div class="panel-head"><h2>Массовые действия</h2><span class="hint" id="v71-bulk-count">Выбрано: ${playerSelection.size}</span></div><div class="v71-bulk-form"><label class="field">Действие<select id="v71-bulk-action">${actions.map(a=>`<option value="${E(a.id)}">${E(a.label||a.name||a.id)}</option>`).join('')}</select></label><label class="field">Режим игры<select id="v71-bulk-mode"><option value="survival">Выживание</option><option value="creative">Творческий</option><option value="adventure">Приключение</option><option value="spectator">Наблюдатель</option></select></label><label class="field">Срок, часов<input id="v71-bulk-hours" type="number" min="1" step="1" placeholder="Бессрочно"></label><label class="field">Причина<input id="v71-bulk-reason" maxlength="500" placeholder="Одна для всех выбранных"></label>${M.btn('Применить','v71-bulk-run','check','primary')}</div><p class="hint">Режим учитывается только у смены режима, срок — у бана и заморозки. Каждый игрок проверяется отдельно.</p></section>`;
+}
+function playerRows(){
+ const {all,page,pages,rows}=playerWindow();
+ if(!all.length)return M.empty('Ничего не найдено','Попробуй другой ник или ID.','search');
+ const allChecked=rows.every(p=>playerSelection.has(p.id));
+ return V.table(['<input type="checkbox" data-player-select-all aria-label="Выбрать всех на странице"'+(allChecked?' checked':'')+'>','Игрок','Аккаунт Minecraft','Игровой баланс','Донатный баланс','Статус',''],rows.map(p=>['<input type="checkbox" data-player-select="'+E(p.id)+'" aria-label="Выбрать '+E(p.name)+'"'+(playerSelection.has(p.id)?' checked':'')+'>',`<a href="#admin/players?player=${E(p.id)}" class="v71-player-link">${W.head(p,36)}<span><strong>${E(p.displayName||p.name)}</strong><small>${E(p.minecraftName||p.name)}</small></span></a>`,M.pill(p.gameLinkVerified||p.linked?'Привязан':'Не привязан',p.gameLinkVerified||p.linked?'green':''),`<strong class="numeric">${p.AR==null?'—':Number(p.AR).toLocaleString('ru-RU')} АР</strong>`,`<span class="numeric">${p.CM==null?'—':Number(p.CM).toLocaleString('ru-RU')} CM</span>`,M.pill(p.webBlocked||p.status==='banned'?'Заблокирован':'Активен',p.webBlocked||p.status==='banned'?'danger':'green'),M.link('Открыть',`#admin/players?player=${E(p.id)}`,'arrow-up-right','small ghost')]))
+  +`<div class="table-toolbar mt"><p class="hint">${all.length?page*PAGE_SIZE+1:0}–${page*PAGE_SIZE+rows.length} из ${all.length}</p><span class="spacer"></span>${M.btn('Назад','v71-player-prev','arrow-left','small',page<=0?'disabled':'')}${M.btn('Дальше','v71-player-next','arrow-right','small',page>=pages-1?'disabled':'')}</div>`;
+}
+function paintPlayers(resetPage=false){
+ if(resetPage)X.board.set('playerPage',0);
+ const host=document.getElementById('v71-player-rows');if(host)host.innerHTML=playerRows();
+ const count=document.getElementById('v71-bulk-count');if(count)count.textContent='Выбрано: '+playerSelection.size;
+}
+function players(){const q=X.board.get('playerQuery')||'',scope=X.board.get('playerScope')||'all';return `<div class="v71-player-directory"><div class="v71-directory-controls"><label class="input-wrap">${icon('search')}<input id="v71-player-search" type="search" value="${E(q)}" placeholder="Ник, игровой ник или ID" aria-label="Поиск игроков"></label><select id="v71-player-scope" aria-label="Фильтр аккаунтов"><option value="all"${scope==='all'?' selected':''}>Все аккаунты</option><option value="team"${scope==='team'?' selected':''}>Команда</option><option value="blocked"${scope==='blocked'?' selected':''}>Заблокирован</option></select><span class="hint">Аккаунтов: ${playerList(q,scope).length}</span></div>${bulkBar()}<div id="v71-player-rows">${playerRows()}</div><div class="v71-inline-info">${icon('info')}Открой игрока: покупки, инвентари, наказания и действия — в его карточке.</div></div>`;}
+H['v71-player-prev']=()=>{X.board.set('playerPage',Math.max((Number(X.board.get('playerPage'))||0)-1,0));paintPlayers();};
+H['v71-player-next']=()=>{X.board.set('playerPage',(Number(X.board.get('playerPage'))||0)+1);paintPlayers();};
+H['v71-bulk-run']=async()=>{
+ const ids=[...playerSelection];
+ if(!ids.length)return M.toast('Отметь хотя бы одного игрока.',true);
+ const action=document.getElementById('v71-bulk-action').value;
+ const reason=document.getElementById('v71-bulk-reason').value.trim();
+ if(reason.length<3)return M.toast('Укажи причину — не короче 3 символов.',true);
+ const params={},hours=Number(document.getElementById('v71-bulk-hours').value);
+ if(hours>0&&['ban','freeze'].includes(action))params.durationMs=Math.round(hours*3600000);
+ if(action==='gamemode')params.mode=document.getElementById('v71-bulk-mode').value;
+ const result=await X.request('/admin/actions/bulk',{method:'POST',body:{action,players:ids,params,reason}});
+ playerSelection=new Set();paintPlayers();
+ M.toast(`Готово: ${result.done} из ${result.total}.`,result.failed>0);
+ const failed=(result.results||[]).filter(x=>!x.ok);
+ if(failed.length)M.openModal('Не удалось выполнить',V.table(['Игрок','Причина'],failed.map(x=>[E(x.player),E(x.error)])));
+};
 function siteSettings(){return window.CMCMS?.siteSettingsView?.()||'<section class="panel" role="status"><h2>Настройки сайта</h2><p>Редактор сейчас недоступен. Обнови страницу и попробуй снова.</p></section>';}
 const rewrite=html=>html.replaceAll('#admin/moderation?sub=tickets','#admin/requests').replaceAll('#admin/moderation?sub=cases','#admin/moderation').replaceAll('#admin/moderation?sub=anticheat','#admin/moderation').replaceAll('#admin/moderation?sub=sanctions','#admin/moderation').replaceAll('#admin/world?sub=elections','#admin/world').replaceAll('#admin/world?sub=laws','#admin/world').replaceAll('#admin/world?sub=points','#admin/world').replaceAll('#admin/system?sub=plugins','#admin/system').replaceAll('#admin/system?sub=jobs','#admin/system').replaceAll('#admin/system?sub=backups','#admin/system').replaceAll('#admin/access?sub=audit','#admin/audit').replaceAll('#admin/players?sub=inventory','#admin/players');
 M.renderers.admin=(key='overview')=>{
@@ -93,9 +137,13 @@ document.addEventListener('keydown',e=>{if(!document.querySelector('#v71-command
 V.after.push((page,tab)=>{
  if(page!=='admin')return;
  const searchInput=document.getElementById('v71-player-search'),scopeSelect=document.getElementById('v71-player-scope'),rowsHost=document.getElementById('v71-player-rows');
- const paint=()=>{rowsHost.innerHTML=playerRows(searchInput.value,scopeSelect.value);};
- searchInput?.addEventListener('input',()=>{X.board?.set('playerQuery',searchInput.value||null);paint();});
- scopeSelect?.addEventListener('change',()=>{X.board?.set('playerScope',scopeSelect.value==='all'?null:scopeSelect.value);paint();});
+ searchInput?.addEventListener('input',()=>{X.board?.set('playerQuery',searchInput.value||null);paintPlayers(true);});
+ scopeSelect?.addEventListener('change',()=>{X.board?.set('playerScope',scopeSelect.value==='all'?null:scopeSelect.value);paintPlayers(true);});
+ rowsHost?.addEventListener('change',e=>{
+  const pageBox=e.target.closest('[data-player-select-all]'),box=e.target.closest('[data-player-select]');
+  if(pageBox){playerWindow().rows.forEach(p=>pageBox.checked?playerSelection.add(p.id):playerSelection.delete(p.id));paintPlayers();}
+  else if(box){box.checked?playerSelection.add(box.dataset.playerSelect):playerSelection.delete(box.dataset.playerSelect);paintPlayers();}
+ });
  document.querySelectorAll('.admin-sidebar a').forEach(a=>a.addEventListener('click',closeAdminDrawer));
 });
 

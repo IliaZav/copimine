@@ -145,7 +145,13 @@ CREATE TABLE IF NOT EXISTS cm_site_easter_eggs (
  referer TEXT NOT NULL DEFAULT '', path TEXT NOT NULL DEFAULT '', status INT NOT NULL DEFAULT 418,
  created_s BIGINT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS cm_site_easter_eggs_created ON cm_site_easter_eggs(created_s DESC)
+CREATE INDEX IF NOT EXISTS cm_site_easter_eggs_created ON cm_site_easter_eggs(created_s DESC);
+CREATE TABLE IF NOT EXISTS cm_site_ticket_templates (
+ id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL,
+ actor_id TEXT NOT NULL DEFAULT '', actor_name TEXT NOT NULL DEFAULT '',
+ created_s BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS cm_site_ticket_templates_created ON cm_site_ticket_templates(created_s DESC)
 """
 
 ANALYTICS_COLUMNS = (

@@ -70,18 +70,25 @@ function ServerHero() {
     <section ref={heroRef} className="cm72-hero cm-react-hero">
       <div className="cm72-hero-frames" aria-hidden="true">
         <div className="cm72-hero-camera">
-          {photos.map((photo, index) => <img
-            key={photo.id}
-            className="cm72-hero-photo"
-            data-hero-frame=""
-            data-active={index === 0 ? "true" : "false"}
-            src={window.CM.asset(photo.src)}
-            style={{ objectPosition: photo.position }}
-            alt=""
-            loading={index === 0 ? "eager" : "lazy"}
-            decoding="async"
-            fetchPriority={index === 0 ? "high" : "auto"}
-          />)}
+          {photos.map((photo, index) => <picture key={photo.id}>
+            {/* AVIF вдвое легче webp при том же виде; webp остаётся запасным. */}
+            <source
+              type="image/avif"
+              srcSet={[800, 1440].map(w => `${window.CM.asset(photo.src.replace(/\.webp$/, `-${w}.avif`))} ${w}w`).join(", ")}
+              sizes="100vw"
+            />
+            <img
+              className="cm72-hero-photo"
+              data-hero-frame=""
+              data-active={index === 0 ? "true" : "false"}
+              src={window.CM.asset(photo.src)}
+              style={{ objectPosition: photo.position }}
+              alt=""
+              loading={index === 0 ? "eager" : "lazy"}
+              decoding="async"
+              fetchPriority={index === 0 ? "high" : "auto"}
+            />
+          </picture>)}
         </div>
       </div>
       <div className="cm72-hero-content">

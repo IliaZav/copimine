@@ -8915,7 +8915,11 @@ function g() {
 			"aria-hidden": "true",
 			children: /* @__PURE__ */ (0, p.jsx)("div", {
 				className: "cm72-hero-camera",
-				children: n.map((e, t) => /* @__PURE__ */ (0, p.jsx)("img", {
+				children: n.map((e, t) => /* @__PURE__ */ (0, p.jsxs)("picture", { children: [/* @__PURE__ */ (0, p.jsx)("source", {
+					type: "image/avif",
+					srcSet: [800, 1440].map((t) => `${window.CM.asset(e.src.replace(/\.webp$/, `-${t}.avif`))} ${t}w`).join(", "),
+					sizes: "100vw"
+				}), /* @__PURE__ */ (0, p.jsx)("img", {
 					className: "cm72-hero-photo",
 					"data-hero-frame": "",
 					"data-active": t === 0 ? "true" : "false",
@@ -8925,7 +8929,7 @@ function g() {
 					loading: t === 0 ? "eager" : "lazy",
 					decoding: "async",
 					fetchPriority: t === 0 ? "high" : "auto"
-				}, e.id))
+				})] }, e.id))
 			})
 		}), /* @__PURE__ */ (0, p.jsxs)("div", {
 			className: "cm72-hero-content",

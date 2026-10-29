@@ -24,6 +24,8 @@
   };
   let doc = null, version = '', visuals = [], effects = [], current = '', draft = null;
   const drafts = {};
+  // Готовые текстуры (из ресурспака): из них можно выбрать любую, не загружая файл.
+  let textureOptions = [];
   let picker = { mode: 'material', query: '', page: 0 };
   const fxName = (id) => EFFECT_RU[id] || id;
 
@@ -122,7 +124,7 @@
         <label class="field">Визуальный эффект<select data-narc="visual_effect">${visuals.map((row) => `<option value="${row}"${row === it.visual_effect ? ' selected' : ''}>${E(VISUAL_RU[row] || row)}</option>`).join('')}</select></label>
       </div>
       <datalist id="cm-narc-materials">${(window.CM6_MATERIALS || []).slice(0, 2000).map((row) => `<option value="${E(String(row.id).toUpperCase())}">${E(row.ru || row.en || row.id)}</option>`).join('')}</datalist>
-      <div class="cm-narc-texture"><img data-narc-tex="${E(id)}" src="${texSrc(id)}" alt="" width="64" height="64"><div><strong>Текстура предмета</strong><p class="hint">Квадратная картинка: плагин берёт из неё 16×16 для набора ресурсов.</p><label class="btn small ghost">${icon('upload')}Загрузить фото<input type="file" data-narc-texture accept="image/png,image/jpeg,image/webp" hidden></label></div></div>
+      <div class="cm-narc-texture"><img data-narc-tex="${E(id)}" src="${texSrc(id)}" alt="" width="64" height="64"><div><strong>Текстура предмета</strong><p class="hint">Квадратная картинка. В игре используется текстура из ресурспака этого предмета.</p><div class="actions mt"><label class="btn small ghost">${icon('upload')}Загрузить фото<input type="file" data-narc-texture accept="image/png,image/jpeg,image/webp" hidden></label>${textureOptions.length > 1 ? `<select data-narc-texture-pick aria-label="Выбрать готовую текстуру"><option value="">Взять другую текстуру…</option>${textureOptions.map((row) => `<option value="${E(row.id)}"${row.id === id ? ' selected' : ''}>${E(row.name)}${row.own ? ' (своя)' : ''}</option>`).join('')}</select>` : ''}</div></div></div>
       <h3 class="mt">Рецепт в котле</h3>${recipeEditor(id)}
       ${effectEditor('normal_effects', 'Обычные эффекты')}
       ${effectEditor('overdose_effects', 'Эффекты передозировки')}
@@ -142,6 +144,8 @@
     if (!doc || force) {
       const data = await X.request('/admin/narcotics');
       doc = data.document; version = data.version; visuals = data.visuals || []; effects = data.effects || [];
+      // Список готовых текстур нужен для выбора; без него остаётся только загрузка файла.
+      try { textureOptions = (await X.request('/admin/narcotics/textures')).items || []; } catch { textureOptions = []; }
     }
     const ids = Object.keys(doc.items);
     const wanted = M.UI.params.get('item');
@@ -157,7 +161,7 @@
     document.querySelectorAll('img[data-narc-tex]').forEach((img) => {
       if (img.dataset.bound) return;
       img.dataset.bound = '1';
-      img.addEventListener('error', () => { img.src = M.asset('assets/materials/' + (doc?.items?.[img.dataset.narcTex]?.material || 'paper').toLowerCase() + '.png'); }, { once: true });
+      img.addEventListener('error', () => { img.src = M.asset('assets/narcotics/' + img.dataset.narcTex + '.png'); }, { once: true });
     });
   }
 
@@ -281,6 +285,27 @@
   };
 
   document.addEventListener('change', async (event) => {
+    // Выбор готовой текстуры из ресурспака — без загрузки файла.
+    const pick = event.target.closest('select[data-narc-texture-pick]');
+    if (pick) {
+      const source = pick.value;
+      if (!source || !current) return;
+      const reasonNode = document.querySelector('[data-narc="__reason"]');
+      const reason = String(reasonNode?.value || '').trim();
+      if (reason.length < 3) { pick.value = ''; return M.toast('Сначала укажи причину изменения.', true); }
+      try {
+        await X.request('/admin/narcotics/' + encodeURIComponent(current) + '/texture',
+          { method: 'POST', body: { source, reason } });
+        document.querySelectorAll('[data-narc-tex="' + current + '"]').forEach((img) => {
+          img.src = texSrc(current, Date.now()); img.dataset.bound = '';
+        });
+        attachTextureFallback();
+        M.toast('Текстура выбрана.');
+      } catch (error) {
+        M.toast(error?.message || 'Не удалось выбрать текстуру.', true);
+      } finally { pick.value = ''; }
+      return;
+    }
     const node = event.target.closest('input[data-narc-texture]');
     if (!node) return;
     const file = node.files?.[0];

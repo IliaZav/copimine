@@ -346,28 +346,60 @@ def _effect_line(row):
     return "type:%s,amplifier:%d,duration_seconds:%d" % (row["type"], row["amplifier"], row["duration_seconds"])
 
 
+@router.get("/api/v6/admin/narcotics/textures")
+def read_narcotic_textures(request: Request):
+    """Готовые текстуры: из ресурспака и загруженные на сайте. Из них можно выбрать любую."""
+    current_user(request, "catalog.manage")
+    document = _load(request)["document"]
+    builtin = Path(request.app.state.settings.frontend) / "assets" / "narcotics"
+    root = _texture_dir(request)
+    own = {path.stem for path in root.glob("*.png")}
+    rows = []
+    for item_id, item in sorted(document["items"].items()):
+        if (builtin / (item_id + ".png")).is_file() or item_id in own:
+            rows.append({"id": item_id, "own": item_id in own,
+                         "name": str(item.get("display_name", item_id)).replace("&", "").replace("§", "").strip()})
+    return {"items": rows}
+
+
 @router.post("/api/v6/admin/narcotics/{item_id}/texture")
 async def upload_narcotic_texture(request: Request, item_id: str):
     user = current_user(request, "catalog.manage", fresh=True)
     if not ITEM_ID.fullmatch(item_id):
         fail(400, "invalid_narcotic", "Неизвестный ID наркотика.")
     data = await request.json()
-    if set(data) - {"image", "reason"}:
+    if set(data) - {"image", "source", "reason"}:
         fail(400, "invalid_narcotic", "В запросе лишние поля.")
     reason = str(data.get("reason", "")).strip()
     if not 3 <= len(reason) <= 240:
         fail(400, "reason_required", "Укажи причину изменения: от 3 до 240 символов.")
-    source = _decode_image(data.get("image"))
+    source_id = str(data.get("source") or "").strip()
+    if source_id:
+        # Выбор готовой текстуры: берём файл из ресурспака или из уже загруженных.
+        if not ITEM_ID.fullmatch(source_id):
+            fail(400, "invalid_narcotic", "Неизвестная текстура.")
+        builtin = Path(request.app.state.settings.frontend) / "assets" / "narcotics" / (source_id + ".png")
+        path = builtin if builtin.is_file() else _texture_dir(request) / (source_id + ".png")
+        if not path.is_file():
+            fail(404, "texture_not_found", "Такой текстуры нет.")
+        image_bytes = path.read_bytes()
+    else:
+        image_bytes = _decode_image(data.get("image"))
     root = _texture_dir(request)
     try:
-        with Image.open(io.BytesIO(source)) as image:
+        with Image.open(io.BytesIO(image_bytes)) as image:
             if image.format not in IMAGE_FORMATS:
                 fail(400, "invalid_image", "Поддерживаются PNG, JPEG, WebP и GIF.")
             image.seek(0)
             image = ImageOps.exif_transpose(image).convert("RGBA")
-            # Игра берёт 16×16, в админке показываем увеличенное превью.
-            pack = image.resize((16, 16), Image.LANCZOS)
-            preview = image.resize((128, 128), Image.LANCZOS)
+            # В паке текстуры 32×32, ванильные — 16×16. Не ломаем родное разрешение.
+            if max(image.size) > 64:
+                image.thumbnail((64, 64), Image.LANCZOS)
+            side = max(image.size)
+            square = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+            square.paste(image, ((side - image.width) // 2, (side - image.height) // 2))
+            pack = square
+            preview = square.resize((128, 128), Image.LANCZOS)
     except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
         fail(400, "invalid_image", "Файл повреждён или это не изображение.")
     png, webp = io.BytesIO(), io.BytesIO()
@@ -398,9 +430,8 @@ def read_narcotic_texture(request: Request, item_id: str, preview: int = 1):
     name = item_id + ("-preview.webp" if preview else ".png")
     path = root / name
     if not path.is_file():
-        # Пока своя текстура не загружена, показываем иконку материала из каталога.
-        item = _load(request)["document"]["items"].get(item_id) or {}
-        fallback = Path(request.app.state.settings.frontend) / "assets" / "materials" / (str(item.get("material", "")).lower() + ".png")
+        # Пока своя не загружена — текстура из ресурспака, а не иконка ванильного материала.
+        fallback = Path(request.app.state.settings.frontend) / "assets" / "narcotics" / (item_id + ".png")
         if not fallback.is_file():
             fail(404, "texture_not_found", "Текстура ещё не загружена.")
         return FileResponse(fallback, media_type="image/png", headers={"Cache-Control": "private, max-age=60", "X-Content-Type-Options": "nosniff"})

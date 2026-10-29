@@ -46,6 +46,7 @@ public class CombatProfileMainProbe {
     Set<UUID> officialRewardRoster=new LinkedHashSet<>();UUID prisoner;
     Set<UUID> waveTwoCleanupEntityUuids=new LinkedHashSet<>(),waveTwoOutstandingEntityUuids=new LinkedHashSet<>();
     Map<Integer,Double> tentacleGuardianHealth=new HashMap<>();Map<Integer,Long> tentacleGuardianRespawnDeadlineMillis=new HashMap<>();
+    double tentacleGuardianRegenerationGranted;
     long tentacleDamageWindowEndsMillis=-1L,tentacleActiveMillis=0L;
     long tentacleGuardianRegenerationDisabledGeneration=Long.MIN_VALUE;
     PreBoss preBossTransitionController=new PreBoss();

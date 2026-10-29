@@ -76,8 +76,9 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
             return;
         }
         initialiseAuthApi();
-        if (!authApiAvailable && (!loginHookRegistered || !logoutHookRegistered)) {
-            getLogger().severe("AuthMeApi is unavailable and AuthEffects has no complete login hook/logout hook pair; disabling fail-closed.");
+        if (!AuthenticationHookReadinessPolicy.canEnable(
+                loginHookRegistered, logoutHookRegistered, authApiAvailable)) {
+            getLogger().severe("AuthEffects requires a logout hook and either a login hook or AuthMeApi; disabling fail-closed.");
             Bukkit.getPluginManager().disablePlugin(this);
             return;
         }

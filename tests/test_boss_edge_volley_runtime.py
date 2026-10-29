@@ -117,3 +117,20 @@ public class BossEdgeVolleyRuntimeProbe {
 def test_edge_volley_owns_its_whole_five_salvo_action(volley_probe, scenario):
     result = subprocess.run(["java", "-cp", str(volley_probe), "BossEdgeVolleyRuntimeProbe", scenario], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_edge_volley_needs_a_sustained_cluster_not_an_arrow_cast():
+    """Spec 5.4(1): the trigger is a persistent majority cluster, not RIFT_ARROWS itself."""
+    source = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(encoding="utf-8")
+    opening = source.index("case RIFT_ARROWS ->", source.index("private void castBossSpell("))
+    body = source[opening:source.index("case VOID_MARK ->", opening)]
+    assert "BossEdgeVolleyPolicy.allowsPhase(bossPhase)" in body
+    assert "bossEdgeVolleyClusterDwell.satisfied()" in body
+    assert body.index("bossEdgeVolleyClusterDwell.satisfied()") < body.index("startBossEdgeVolley(boss, target)")
+    # The plain arrow fallback must stay reachable when the party is not clustered.
+    assert "else {" in body and "riftArrowVolley(boss, target," in body
+    # The dwell must be sampled every tick, otherwise a 2-3 s window is unobservable.
+    tick = source[source.index("private void tickCurrentBoss(LivingEntity boss)"):
+                  source.index("private boolean pinBossToFinalSealCore", source.index("private void tickCurrentBoss(LivingEntity boss)"))]
+    assert "trackBossEdgeVolleyClusterDwell(boss)" in tick
+    assert "bossEdgeVolleyClusterDwell.reset()" in tick

@@ -58,6 +58,7 @@ import java.util.stream.Collectors;
 import me.copimine.artifacts.api.EventArtifactRewardRequest;
 import me.copimine.artifacts.api.EventArtifactRewardService;
 import me.copimine.artifacts.api.RewardIssueResult;
+import me.copimine.artifacts.domain.EventRewardIdempotencyPolicy;
 import me.copimine.economycore.CopiMineEconomyCore;
 import me.copimine.economycore.CopiMineEconomyCore.ArtifactsBridge;
 import me.copimine.economycore.CopiMineEconomyCore.DonationBalanceService;
@@ -16103,11 +16104,20 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       String ownerName = worldDrop
             ? "CopiMine End Event"
             : this.firstNonBlank(request.recipientName(), "Participant");
+      String deliveryMode = worldDrop ? "EVENT_WORLD" : "EVENT_PLAYER";
+      String worldName = worldDrop ? drop.worldName() : "";
+      double x = worldDrop ? drop.x() : 0.0D;
+      double y = worldDrop ? drop.y() : 0.0D;
+      double z = worldDrop ? drop.z() : 0.0D;
+      EventRewardIdempotencyPolicy.Payload expectedPayload =
+            new EventRewardIdempotencyPolicy.Payload(
+                  request.eventId(), item.itemId(), ownerUuid.toString(), ownerName,
+                  deliveryMode, worldName, x, y, z);
       Connection connection = null;
       try {
          connection = this.pgPool.acquire();
          connection.setAutoCommit(false);
-         RewardIssueResult existing = this.readEventReward(connection, key);
+         RewardIssueResult existing = this.readEventReward(connection, key, expectedPayload);
          if (existing != null) {
             connection.rollback();
             return existing;
@@ -16135,12 +16145,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          String uniqueItemId = UUID.randomUUID().toString();
          long timestamp = this.now();
          String status = worldDrop ? "WORLD_PENDING" : "PENDING_DELIVERY";
-         String deliveryMode = worldDrop ? "EVENT_WORLD" : "EVENT_PLAYER";
-         String worldName = worldDrop ? drop.worldName() : "";
-         double x = worldDrop ? drop.x() : 0.0D;
-         double y = worldDrop ? drop.y() : 0.0D;
-         double z = worldDrop ? drop.z() : 0.0D;
-
          try (PreparedStatement event = connection.prepareStatement(
                   "INSERT INTO artifact_event_rewards "
                         + "(idempotency_key,event_id,item_id,recipient_uuid,recipient_name,"
@@ -16229,7 +16233,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             // A concurrent request may have won the idempotency race.  Read
             // that durable winner before reporting a failure to the event.
             if ("23505".equals(error.getSQLState())) {
-               RewardIssueResult winner = this.readEventReward(connection, key);
+               RewardIssueResult winner = this.readEventReward(connection, key, expectedPayload);
                if (winner != null) {
                   return winner;
                }
@@ -16248,12 +16252,27 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
    }
 
-   private RewardIssueResult readEventReward(Connection connection, String idempotencyKey) {
+   private RewardIssueResult readEventReward(
+         Connection connection,
+         String idempotencyKey,
+         EventRewardIdempotencyPolicy.Payload expectedPayload) {
       try (PreparedStatement query = connection.prepareStatement(
-            "SELECT status,unique_item_id FROM artifact_event_rewards WHERE idempotency_key=? FOR UPDATE")) {
+            "SELECT status,unique_item_id,event_id,item_id,recipient_uuid,recipient_name,"
+                  + "delivery_mode,world_name,drop_x,drop_y,drop_z "
+                  + "FROM artifact_event_rewards WHERE idempotency_key=? FOR UPDATE")) {
          query.setString(1, idempotencyKey);
          try (ResultSet rows = query.executeQuery()) {
             if (rows.next()) {
+               EventRewardIdempotencyPolicy.Payload persistedPayload =
+                     new EventRewardIdempotencyPolicy.Payload(
+                           rows.getString(3), rows.getString(4), rows.getString(5), rows.getString(6),
+                           rows.getString(7), rows.getString(8), rows.getDouble(9),
+                           rows.getDouble(10), rows.getDouble(11));
+               if (!EventRewardIdempotencyPolicy.sameRequest(expectedPayload, persistedPayload)) {
+                  return RewardIssueResult.rejected(
+                        idempotencyKey,
+                        "Reward idempotency key conflicts with a different request payload.");
+               }
                return RewardIssueResult.alreadyIssued(
                      idempotencyKey,
                      this.firstNonBlank(rows.getString(2), ""),
@@ -16262,6 +16281,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          }
       } catch (SQLException error) {
          this.getLogger().log(Level.FINE, "Event reward idempotency lookup failed", error);
+         return RewardIssueResult.rejected(
+               idempotencyKey, "Unable to verify the existing event reward request.");
       }
       return null;
    }

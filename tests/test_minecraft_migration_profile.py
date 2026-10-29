@@ -107,7 +107,7 @@ def test_fabric_api_lock_matches_the_current_pinned_26_3_release():
 
     assert profile['fabric']['api'] == '0.164.0+26.3'
     assert profile['fabric']['loom'] == '1.19.1'
-    assert lock['verifiedAt'] == '2026-10-19'
+    assert lock['verifiedAt'] == '2026-10-29'
     assert fabric_api['version'] == profile['fabric']['api']
     assert f"| Fabric API | {profile['fabric']['api']} |" in readme
     assert fabric_api['versionId'] == 'LEklt8GT'
@@ -124,6 +124,30 @@ def test_fabric_api_lock_matches_the_current_pinned_26_3_release():
         '24f46a16c679f29c4a9346b2687fa1740f91ed6026a31b2ed1f3d4b5035968d69'
     )
     assert fabric_api['size'] == 1_775_592
+
+
+def test_voicechat_client_lock_matches_the_newest_published_26_3_fabric_build():
+    lock = json.loads((ROOT / 'tools/minecraft-26.3/client-mods.lock.json').read_text(encoding='utf-8'))
+    candidate_builder = (ROOT / 'scripts/minecraft/PrepareMigrationCandidates.ps1').read_text(encoding='utf-8')
+    voicechat = next(module for module in lock['modules'] if module['modId'] == 'voicechat')
+
+    assert lock['verifiedAt'] == '2026-10-29'
+    assert voicechat['version'] == 'fabric-2.6.27+26.3'
+    assert voicechat['versionId'] == '9350669'
+    assert voicechat['projectId'] == '416089'
+    assert voicechat['filename'] == 'voicechat-fabric-2.6.27+26.3.jar'
+    assert voicechat['fabricMetadataVersion'] == '2.6.27+26.3'
+    assert voicechat['url'] == (
+        'https://edge.forgecdn.net/files/9350/669/'
+        'voicechat-fabric-2.6.27%2B26.3.jar'
+    )
+    assert voicechat['sha1'] == '23442735927fe3839650196c0656eb82b0322d87'
+    assert voicechat['sha512'] == (
+        'f2de66761c0f249bb0f9a4b348f98b97ab4e89d3ed3fd37638420364b7431b757'
+        '933aa08c0cc3e7ba3dd85a602d6c2de313c2309fc587e93cabf31fc5f6df27e'
+    )
+    assert voicechat['size'] == 5_611_159
+    assert voicechat['url'] in candidate_builder
 
 
 def test_sodium_lock_respects_iris_exact_26_3_dependency():
@@ -154,10 +178,10 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     artifact = profile['clientArtifact']
 
     assert artifact['filename'] == 'CopiMineClient-0.1.3+26.3.jar'
-    assert artifact['size'] == 15_025_264
+    assert artifact['size'] == 15_025_274
     assert artifact['sha512'] == (
-        '67665f71488f9a563a9cc3a5c33fc7fd0ff80a11ea9753147f21b03031d7fcc9'
-        '3fb48830bd505d3d5d73e067587f0f05a87b384e386a78665bddbf45d117f7c4'
+        '157b660802fb087fc6e5da6cf3e34af31f6f1fa14ccafdfd36e6c04486605b3d'
+        '860e647e2f3b2614dcc86b1cccd168550ec4191d31f6f6cf55044f23db5c4e8f'
     )
 
 
@@ -524,6 +548,8 @@ def test_validation_modes_cannot_be_combined(tmp_path):
     ('CustomSkinLoader_Universal-15.1.jar', 'https://edge.forgecdn.net/files/9023/814/CustomSkinLoader_Universal-15.1.jar', '286924', '9023814', True),
     ('mc-armor-hud-8.1.1.6-26.3-fabric.jar', 'https://edge.forgecdn.net/files/9021/707/mc-armor-hud-8.1.1.6-26.3-fabric.jar', '1155218', '9021707', True),
     ('mc-armor-hud-8.1.1.6-26.3-fabric.jar', 'https://edge.forgecdn.net/files/9021/708/mc-armor-hud-8.1.1.6-26.3-fabric.jar', '1155218', '9021708', False),
+    ('voicechat-fabric-2.6.27+26.3.jar', 'https://edge.forgecdn.net/files/9350/669/voicechat-fabric-2.6.27%2B26.3.jar', '416089', '9350669', True),
+    ('voicechat-fabric-2.6.27+26.3.jar', 'https://edge.forgecdn.net/files/9350/670/voicechat-fabric-2.6.27%2B26.3.jar', '416089', '9350670', False),
     ('CustomSkinLoader_Universal-15.1.jar', 'https://malicious.example/files/CustomSkinLoader_Universal-15.1.jar', '9023814', '9023814', False),
     ('FixtureMod-1.0.jar', 'https://cdn.modrinth.com/data/A1b2C3d4/versions/Z9y8X7w6/FixtureMod-1.0.jar', 'A1b2C3d4', 'Z9y8X7w6', True),
     ('FixtureMod-1.0.jar', 'https://cdn.modrinth.com/data/E5f6G7h8/versions/Z9y8X7w6/FixtureMod-1.0.jar', 'A1b2C3d4', 'Z9y8X7w6', False),

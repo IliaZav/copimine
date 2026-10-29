@@ -630,7 +630,11 @@ foreach ($module in $lock.modules) {
     $trustedArmorHudSource = $module.filename -eq 'mc-armor-hud-8.1.1.6-26.3-fabric.jar' -and
         $module.projectId -ceq '1155218' -and $module.versionId -ceq '9021707' -and
         $module.url -ceq 'https://edge.forgecdn.net/files/9021/707/mc-armor-hud-8.1.1.6-26.3-fabric.jar'
-    if ((-not $trustedModrinthSource -and -not $trustedCustomSkinLoaderSource -and -not $trustedArmorHudSource) -or
+    $trustedVoiceChatSource = $module.filename -eq 'voicechat-fabric-2.6.27+26.3.jar' -and
+        $module.projectId -ceq '416089' -and $module.versionId -ceq '9350669' -and
+        $module.url -ceq 'https://edge.forgecdn.net/files/9350/669/voicechat-fabric-2.6.27%2B26.3.jar'
+    if ((-not $trustedModrinthSource -and -not $trustedCustomSkinLoaderSource -and
+         -not $trustedArmorHudSource -and -not $trustedVoiceChatSource) -or
         $module.sha512 -notmatch '^[0-9a-f]{128}$' -or
         [long]$module.size -le 0 -or [long]$module.size -gt 100000000) { throw 'Mod source, digest, or size is invalid' }
 }

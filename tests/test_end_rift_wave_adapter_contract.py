@@ -77,7 +77,11 @@ def test_playable_wave_adapters_do_not_schedule_the_removed_wave_front():
     assert "startWaveFrontAnimation(" not in sandbox
     assert "startWaveFrontAnimation(" not in official
     assert "startWaveFrontAnimation(" not in gameplay
-    assert source.count("updateCorePulseObjective(") == 1
+    # Spec 3.2 forbids the Wave 1 Core pulse and floor sectors outright; the
+    # helper must not come back as a one-line enable.
+    for removed in ("updateCorePulseObjective(", "renderWaveOneArenaZones(",
+                    "isWaveOneSafeSector(", "WAVE_ONE_PULSE_DAMAGE"):
+        assert removed not in source, f"forbidden Wave 1 mechanic returned: {removed}"
 
 
 def test_sandbox_wave7_starts_real_trials_without_generic_replacement_mobs():
@@ -197,6 +201,16 @@ def test_new_attempt_generation_is_not_committed_before_scope_cleanup():
     recovery_commit = "generation = nextGeneration;"
     assert "Long nextGeneration = preflightNextGeneration(\"transient recovery\");" in recovery
     assert recovery.index("if (!cancelSessionTasks())") < recovery.index(recovery_commit)
+
+
+def test_wave_four_invalid_checkpoint_is_discarded_when_generation_advances():
+    recovery = _method(_source(), "private void recoverTransientSession()")
+
+    assert "wave4RestoredObeliskCheckpoint = null;" in recovery
+    assert "wave4InvalidObeliskCheckpointFields = Map.of();" in recovery
+    assert recovery.index("wave4InvalidObeliskCheckpointFields = Map.of();") < recovery.index(
+        "generation = nextGeneration;"
+    )
 
 
 def test_wave_two_roster_archive_failure_stops_cancel_reset_and_initialization():

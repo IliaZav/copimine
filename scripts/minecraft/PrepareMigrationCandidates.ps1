@@ -132,7 +132,8 @@ foreach ($clientMod in $clientModsLock.modules) {
     }
     $trustedForgeCdnSources = @(
         'https://edge.forgecdn.net/files/9023/814/CustomSkinLoader_Universal-15.1.jar',
-        'https://edge.forgecdn.net/files/9021/707/mc-armor-hud-8.1.1.6-26.3-fabric.jar'
+        'https://edge.forgecdn.net/files/9021/707/mc-armor-hud-8.1.1.6-26.3-fabric.jar',
+        'https://edge.forgecdn.net/files/9350/669/voicechat-fabric-2.6.27%2B26.3.jar'
     )
     if ($modUri.Host -eq 'edge.forgecdn.net' -and $clientMod.url -cnotin $trustedForgeCdnSources) {
         throw ('Client mod URL is not an explicitly pinned CurseForge artifact: ' + $clientMod.filename)

@@ -86,6 +86,7 @@ import me.copimine.endevent.domain.CombatTraceRecord;
 import me.copimine.endevent.domain.CombatTacticsPolicy;
 import me.copimine.endevent.runtime.WaveCombatCoordinator;
 import me.copimine.endevent.runtime.RiftGiantOwnerLocationRegistry;
+import me.copimine.endevent.domain.GuardianRegenerationPolicy;
 import me.copimine.endevent.domain.GroundedBossMotionPolicy;
 import me.copimine.endevent.domain.CoreDepositMath;
 import me.copimine.endevent.domain.CoreInteractionGuard;
@@ -127,6 +128,8 @@ import me.copimine.endevent.domain.EliteProjectileImpactPolicy;
 import me.copimine.endevent.domain.Wave3PortalSpawnPolicy;
 import me.copimine.endevent.domain.Wave3PortalElitePolicy;
 import me.copimine.endevent.domain.Wave3PortalProgressSnapshot;
+import me.copimine.endevent.domain.Wave4ObeliskRecoverySnapshot;
+import me.copimine.endevent.domain.Wave4ObeliskRecoveryPolicy;
 import me.copimine.endevent.domain.RiftGiantPolicy;
 import me.copimine.endevent.domain.RiftGiantAuraEffectPolicy;
 import me.copimine.endevent.domain.Wave5PreFogRefillPolicy;
@@ -463,9 +466,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final String CLIENT_VISUAL_TENTACLE = "END_RIFT_TENTACLE_V1";
     private static final String CLIENT_VISUAL_TENTACLE_HITBOX = "END_RIFT_TENTACLE_HITBOX_V1";
     private static final String CLIENT_VISUAL_GUARDIAN_SHIELD = "END_RIFT_GUARDIAN_SHIELD_V1";
-    /** Four visible shield carriers orbit the boss, independently of the
-     * number of damageable tentacle guardians. */
-    private static final int GUARDIAN_SHIELD_DISPLAY_COUNT = 4;
     private static final long REALITY_SPLIT_ORPHAN_GRACE_MILLIS = 15_000L;
     private static final int REALITY_SPLIT_ACTION_TELEGRAPH_TICKS = 20;
     private static final int REALITY_SPLIT_REFLECTION_INTERVAL_TICKS = 70;
@@ -577,14 +577,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     // The window is released only after our authoritative real-health
     // transaction; it is never changed globally or for natural entities.
     private static final int EVENT_ENTITY_MAX_NO_DAMAGE_TICKS = 3;
-    private static final int WAVE_ONE_PULSE_TELEGRAPH_TICKS = 50;
-    private static final double WAVE_ONE_PULSE_DAMAGE = 6.0D;
     private static final double WAVE_MOB_DAMAGE_REDUCTION = 4.0D;
     private static final int SLOWNESS_DEBUFF_TICKS = 60;
-    private static final int WAVE_ONE_ZONE_RENDER_INTERVAL_TICKS = 5;
-    private static final double WAVE_ONE_ZONE_RADIUS_BLOCKS = 18.0D;
-    private static final int WAVE_ONE_ZONE_POINTS_PER_SECTOR = 14;
-    private static final String WAVE_ONE_ZONES = "WAVE_ONE_ZONES";
     private static final long WAVE_PATH_REQUEST_INTERVAL_MILLIS = 500L;
     private static final int RITUAL_GUARD_RETURN_MAX_PATH_REQUESTS =
             RitualGuardAggroPolicy.RETURN_PATH_MAX_REQUESTS;
@@ -794,6 +788,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<UUID> gateModelVisuals = new LinkedHashSet<>();
     private final Map<Integer, List<PortalCapturePolicy.PortalState>> portalCaptureStates = new LinkedHashMap<>();
     private Wave3PortalProgressSnapshot.Data wave3RestoredPortalCheckpoint;
+    /** Spec 11: Wave 4 obelisk HP receipts, scoped to one generation. */
+    private Wave4ObeliskRecoverySnapshot.Data wave4RestoredObeliskCheckpoint;
+    private final Map<Integer, Wave4ObeliskRecoverySnapshot.ObeliskReceipt>
+            currentWave4DestroyedObeliskReceipts = new HashMap<>();
+    private Map<String, String> wave4InvalidObeliskCheckpointFields = Map.of();
     /** Keeps the disposable Wave 3 visual probe animated without entering an official phase. */
     private boolean testPortalVisualMode;
     /** Keeps the disposable Wave 1 wave-front probe alive without combat state. */
@@ -805,10 +804,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private int waveObjectiveMobCount;
     private long portalCaptureTraceAtMillis;
     private final Map<UUID, Long> objectiveActionBarAt = new HashMap<>();
-    private long waveOneNextPulseMillis;
-    private long waveOnePulseDeadlineMillis;
-    private int waveOnePulseIndex;
-    private long nextWaveOneZoneVisualMillis;
     private UUID waveTwoMarkedPlayerUuid;
     private UUID waveTwoPreviousMarkedPlayerUuid;
     private long waveTwoNextMarkMillis;
@@ -1149,6 +1144,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<Integer, Integer> tentacleGuardianSpawnFailures = new HashMap<>();
     /** Once all defenders die, no subsequent respawn may re-enable healing in this generation. */
     private long tentacleGuardianRegenerationDisabledGeneration = Long.MIN_VALUE;
+    /** Spec 6.4: health already restored by guardian-protected regeneration this generation. */
+    private double tentacleGuardianRegenerationGranted;
+    private long tentacleGuardianRegenerationNextStepMillis;
     private final Map<UUID, Long> tentacleNextAttackTick = new HashMap<>();
     /** Respawn/vulnerability timing runs on active combat time, not wall time. */
     private long tentacleActiveMillis;
@@ -1262,6 +1260,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private float bossCastLockedYaw;
     private long bossEdgeVolleySequence;
     private boolean bossEdgeVolleyActive;
+    /** Spec 3.2: the volley needs a sustained majority cluster, not a one-tick condition. */
+    private final BossEdgeVolleyPolicy.ClusterDwell bossEdgeVolleyClusterDwell =
+            new BossEdgeVolleyPolicy.ClusterDwell();
     private BukkitTask bossFinalStrikeTask;
     private BukkitTask bossDefeatCinematicTask;
     /** Terminal health commit deferred so the authored Dying2 clip can play. */
@@ -3654,6 +3655,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         restoreBlackFogRecoveryCheckpoint(snapshot.eventPhase(), snapshot.objectiveProgress());
         restoreWave1CarrierCheckpoint(snapshot.eventPhase(), snapshot.objectiveProgress());
         restoreWave3PortalCheckpoint(snapshot.eventPhase(), snapshot.objectiveProgress());
+        restoreWave4ObeliskCheckpoint(snapshot.eventPhase(), snapshot.objectiveProgress());
         encounterController.restore(eventId, generation, phase, null);
         boolean persistedDisposableWave6 = generation > 0L
                 && "6".equals(snapshot.objectiveProgress().get("test-wave"))
@@ -3886,6 +3888,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         tentacleGuardianWarnedSlots.clear();
         tentacleGuardianSpawnFailures.clear();
         tentacleGuardianRegenerationDisabledGeneration = Long.MIN_VALUE;
+        tentacleGuardianRegenerationGranted = 0.0D;
+        tentacleGuardianRegenerationNextStepMillis = 0L;
         tentacleDamageWindowEndsMillis = -1L;
         if (bossPhase != BossPhase.LAST_SEAL) return;
         try {
@@ -3894,6 +3898,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     throw new IllegalArgumentException("INVALID_GUARDIAN_REGENERATION_RECEIPT");
                 }
                 tentacleGuardianRegenerationDisabledGeneration = generation;
+            }
+            if (progress != null && progress.containsKey("boss-guardian-regeneration-granted")) {
+                double granted;
+                try {
+                    granted = Double.parseDouble(progress.get("boss-guardian-regeneration-granted"));
+                } catch (NumberFormatException invalid) {
+                    throw new IllegalArgumentException("INVALID_GUARDIAN_REGENERATION_RECEIPT", invalid);
+                }
+                if (!Double.isFinite(granted) || granted < 0.0D) {
+                    throw new IllegalArgumentException("INVALID_GUARDIAN_REGENERATION_RECEIPT");
+                }
+                tentacleGuardianRegenerationGranted = granted;
             }
             TentacleGuardianPolicy.SnapshotStateMillis restored =
                     TentacleGuardianPolicy.decodeSnapshotMillis(progress, tentacleActiveMillis);
@@ -3967,6 +3983,98 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             recoveryReason = "INVALID_WAVE3_PORTAL_CHECKPOINT";
             getLogger().log(Level.SEVERE, "End Rift Wave 3 recovery checkpoint refused", invalid);
         }
+    }
+
+    /** Restore only the exact Wave 4 generation; invalid progress fails closed. */
+    private void restoreWave4ObeliskCheckpoint(EventPhase persistedPhase, Map<String, String> progress) {
+        boolean savedWaveFour = persistedPhase == EventPhase.WAVE_4;
+        boolean hasCheckpoint = Wave4ObeliskRecoverySnapshot.hasCheckpoint(progress);
+        if (!savedWaveFour && !hasCheckpoint) return;
+        try {
+            Wave4ObeliskRecoverySnapshot.Data decoded = Wave4ObeliskRecoverySnapshot.decode(
+                    progress, eventId, generation);
+            wave4RestoredObeliskCheckpoint = decoded;
+            wave4InvalidObeliskCheckpointFields = Map.of();
+        } catch (IllegalArgumentException invalid) {
+            wave4RestoredObeliskCheckpoint = null;
+            wave4InvalidObeliskCheckpointFields = Wave4ObeliskRecoverySnapshot.extract(progress);
+            phase = EventPhase.RECOVERY_REQUIRED;
+            recoveryReason = "INVALID_WAVE4_OBELISK_CHECKPOINT";
+            getLogger().log(Level.SEVERE, "End Rift Wave 4 recovery checkpoint refused", invalid);
+        }
+    }
+
+    /** Spec 11: capture distinct obelisk HP receipts for the current generation. */
+    private Map<String, String> captureWave4ObeliskCheckpoint() {
+        if (phase == EventPhase.RECOVERY_REQUIRED || currentWave4StartupFailed) {
+            if (!wave4InvalidObeliskCheckpointFields.isEmpty()) {
+                return Map.copyOf(wave4InvalidObeliskCheckpointFields);
+            }
+            if (wave4RestoredObeliskCheckpoint != null) {
+                return wave4RestoredObeliskCheckpoint.encode();
+            }
+        }
+        List<Wave4ObeliskRecoverySnapshot.ObeliskReceipt> receipts = new ArrayList<>();
+        receipts.addAll(currentWave4DestroyedObeliskReceipts.values());
+        activeWave4Obelisks.values().stream()
+                .sorted(Comparator.comparingInt(Wave4ObeliskRuntimeState::ordinal))
+                .forEach(state -> {
+                    ObeliskStage stage = state.stage();
+                    long emergenceElapsed = stage == ObeliskStage.ACTIVE
+                            || stage == ObeliskStage.COLLAPSING
+                            ? ObeliskGeometryPolicy.EMERGENCE_TICKS
+                            : Math.max(0L, Math.min(ObeliskGeometryPolicy.EMERGENCE_TICKS,
+                            eventTickCounter - state.emergenceStartTick()));
+                    long pulseRemaining = stage == ObeliskStage.ACTIVE
+                            ? Math.max(0L, state.nextPulseTick() - eventTickCounter) : 0L;
+                    long fireRemaining = stage == ObeliskStage.ACTIVE
+                            ? Math.max(0L, state.nextFireTick() - eventTickCounter) : 0L;
+                    long collapseRemaining = stage == ObeliskStage.COLLAPSING
+                            ? Math.max(0L, Math.min(8L, state.destroyAtTick() - eventTickCounter)) : 0L;
+                    receipts.add(new Wave4ObeliskRecoverySnapshot.ObeliskReceipt(
+                            state.ordinal(), state.health(), state.maxHealth(), stage.name(),
+                            emergenceElapsed, pulseRemaining, fireRemaining, collapseRemaining));
+                });
+        receipts.sort(Comparator.comparingInt(Wave4ObeliskRecoverySnapshot.ObeliskReceipt::ordinal));
+        return new Wave4ObeliskRecoverySnapshot.Data(eventId, generation, receipts,
+                currentWave4ObeliskAssaultComplete, currentWave4MobsStarted,
+                currentWave4PressurePackAttempts).encode();
+    }
+
+    private void applyRestoredObeliskReceipt(
+            Wave4ObeliskRuntimeState state,
+            Wave4ObeliskRecoverySnapshot.ObeliskReceipt receipt) {
+        if (state == null || receipt == null) return;
+        Wave4ObeliskRecoveryPolicy.RestoredTiming timing =
+                Wave4ObeliskRecoveryPolicy.restoreTiming(eventTickCounter, receipt);
+        ObeliskStage restoredStage = ObeliskStage.valueOf(receipt.stage());
+        state.health(receipt.health());
+        state.emergenceStartTick = timing.emergenceStartTick();
+        state.activationTick = timing.activationTick();
+        state.stage(restoredStage, timing.stageStartedTick());
+        state.scheduleNextPulse(timing.nextPulseTick());
+        state.scheduleNextFire(timing.nextFireTick());
+        if (restoredStage == ObeliskStage.ACTIVE) {
+            applyObeliskStageBlocks(state, ObeliskStage.ACTIVE);
+            ensureCurrentObeliskVisuals(state, ObeliskStage.ACTIVE);
+        } else if (restoredStage == ObeliskStage.COLLAPSING) {
+            state.destroyAt(timing.destroyAtTick());
+            state.fractureCuePlayed = true;
+            ensureCurrentObeliskVisuals(state, ObeliskStage.ACTIVE);
+        } else {
+            applyObeliskStageBlocks(state, restoredStage);
+            ensureCurrentObeliskVisuals(state, restoredStage);
+        }
+    }
+
+    private void requireWave4Recovery(String reason, RuntimeException failure) {
+        currentWave4StartupFailed = true;
+        recoveryReason = reason;
+        phase = EventPhase.RECOVERY_REQUIRED;
+        getLogger().log(Level.SEVERE,
+                "END_RIFT_OBELISK_RECOVERY_REQUIRED event=" + eventId
+                        + " generation=" + generation + " reason=" + reason,
+                failure);
     }
 
     private boolean canResumeWave1AfterRestart() {
@@ -4240,6 +4348,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (phase == EventPhase.WAVE_5) {
             return blackFogRecoveryCheckpoint.isEmpty()
                     ? captureBlackFogRecoveryCheckpoint() : blackFogRecoveryCheckpoint;
+        }
+        if (phase == EventPhase.WAVE_4) {
+            try {
+                return captureWave4ObeliskCheckpoint();
+            } catch (RuntimeException invalid) {
+                getLogger().log(Level.SEVERE,
+                        "Wave 4 obelisk checkpoint could not be captured; restart will fail closed", invalid);
+                return Map.of(Wave4ObeliskRecoverySnapshot.PREFIX + "recovery-reason",
+                        "INVALID_WAVE4_OBELISK_CHECKPOINT");
+            }
         }
         if (phase == EventPhase.WAVE_3) {
             try {
@@ -4607,6 +4725,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         cleanupOwnedEntities(eventId, staleGeneration);
         clearClientEffects();
         realitySplitPlayerTeleportPermits.clear();
+        // Spec 11: a Wave 3 checkpoint belongs to the generation that wrote it.
+        wave3RestoredPortalCheckpoint = null;
+        wave4RestoredObeliskCheckpoint = null;
+        wave4InvalidObeliskCheckpointFields = Map.of();
         generation = nextGeneration;
         encounterController.restore(eventId, generation, phase, null);
         resetEncounterTaskRegistry(generation);
@@ -4950,6 +5072,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossSpellPauseUntilMillis = 0L;
         bossHalfRepelCommitted = false;
         nextBossEdgeVolleyMillis = 0L;
+        bossEdgeVolleyClusterDwell.reset();
         lastBossTeleportMillis = 0L;
         lastBossPathRequestMillis = 0L;
         lastBossFeintMillis = 0L;
@@ -5865,7 +5988,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " visuals=" + waveObjectiveVisuals.size()
                     + " portalLayers=" + portalVisualLayerObservationText()
                     + " marked=" + (waveTwoMarkedPlayerUuid == null ? "none" : waveTwoMarkedPlayerUuid)
-                    + " pulseDeadline=" + waveOnePulseDeadlineMillis
                     + " safeCells=" + currentSafeZoneCells.size()
                     + " collapseRings=" + currentCollapsedRings);
         }
@@ -35340,57 +35462,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    private void updateCorePulseObjective(long now) {
-        Location core = coreCombatAnchorLocation();
-        if (core == null) {
-            return;
-        }
-        if (now >= nextWaveOneZoneVisualMillis) {
-            renderWaveOneArenaZones(core, now);
-            nextWaveOneZoneVisualMillis = now + WAVE_ONE_ZONE_RENDER_INTERVAL_TICKS * 50L;
-        }
-        if (waveOnePulseDeadlineMillis <= 0L && now >= waveOneNextPulseMillis) {
-            waveOnePulseDeadlineMillis = now + WAVE_ONE_PULSE_TELEGRAPH_TICKS * 50L;
-            getLogger().info("WAVE_OBJECTIVE_TELEGRAPH event=" + eventId
-                    + " wave=1 type=CORE_PULSE pulse=" + waveOnePulseIndex);
-        }
-        if (waveOnePulseDeadlineMillis > 0L) {
-            boolean impact = now >= waveOnePulseDeadlineMillis;
-            for (Player player : eventAudience()) {
-                if (!player.getWorld().equals(core.getWorld())
-                        || horizontalDistanceSquared(player.getLocation(), core)
-                        > config.arenaRadius() * config.arenaRadius()) {
-                    continue;
-                }
-                boolean safe = isWaveOneSafeSector(player.getLocation(), core, waveOnePulseIndex);
-                spawnTypedParticle(player, safe ? Particle.END_ROD : Particle.DRAGON_BREATH,
-                        player.getLocation().add(0.0D, 0.15D, 0.0D), impact ? 16 : 6,
-                        0.45D, 0.1D, 0.45D, 0.02D);
-                if (impact && !safe) {
-                    player.damage(WAVE_ONE_PULSE_DAMAGE);
-                    player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
-                            WaveScalingPolicy.effectDurationTicks(SLOWNESS_DEBUFF_TICKS,
-                                    eventScalePlayers()), 1, false, true, true));
-                }
-            }
-            if (impact) {
-                core.getWorld().playSound(core, Sound.BLOCK_RESPAWN_ANCHOR_DEPLETE, 0.9F, 0.65F);
-                waveOnePulseDeadlineMillis = 0L;
-                waveOnePulseIndex++;
-                waveOneNextPulseMillis = now + randomSeconds(18, 22) * 1000L;
-                getLogger().info("WAVE_OBJECTIVE_IMPACT event=" + eventId
-                        + " wave=1 type=CORE_PULSE damage=" + WAVE_ONE_PULSE_DAMAGE
-                        + " next_ms=" + waveOneNextPulseMillis);
-            }
-        }
-    }
-
-    private boolean isWaveOneSafeSector(Location player, Location core, int pulse) {
-        double angle = Math.atan2(player.getZ() - core.getZ(), player.getX() - core.getX());
-        int sector = Math.floorMod((int) Math.floor((angle + Math.PI) / (Math.PI / 2.0D)), 4);
-        return sector == Math.floorMod(pulse, 4);
-    }
-
     private void updateMarkedTargetObjective(long now) {
         Player marked = waveTwoMarkedPlayerUuid == null
                 ? null : Bukkit.getPlayer(waveTwoMarkedPlayerUuid);
@@ -35667,40 +35738,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " player=" + playerUuid + " reason=" + reason);
     }
 
-    /** Keep wave one readable from the first tick: four safe-sector beacons. */
-    private void renderWaveOneArenaZones(Location core, long now) {
-        if (core == null || core.getWorld() == null) {
-            return;
-        }
-        Location floor = core.clone();
-        floor.setY(combatFloorY() + 1.05D);
-        double spin = now * 0.0012D;
-        Particle.DustOptions cyan = new Particle.DustOptions(Color.fromRGB(69, 218, 255), 1.15F);
-        Particle.DustOptions violet = new Particle.DustOptions(Color.fromRGB(190, 76, 255), 1.05F);
-        for (Player viewer : eventAudience()) {
-            if (!isEventParticleViewer(viewer, floor)) {
-                continue;
-            }
-            spawnPatternRing(viewer, floor, new Vector(1.0D, 0.0D, 0.0D),
-                    new Vector(0.0D, 0.0D, 1.0D), 2.25D, 24, -spin, Particle.END_ROD);
-            for (int sector = 0; sector < 4; sector++) {
-                double start = -Math.PI + sector * Math.PI / 2.0D + spin;
-                double end = start + Math.PI / 2.0D;
-                spawnPatternArc(viewer, floor, WAVE_ONE_ZONE_RADIUS_BLOCKS,
-                        start, end, WAVE_ONE_ZONE_POINTS_PER_SECTOR, Particle.DUST, cyan);
-                Location inner = floor.clone().add(0.0D, 0.04D, 0.0D);
-                spawnPatternArc(viewer, inner, 4.5D, start, end, 6, Particle.DUST, violet);
-                Location boundaryStart = floor.clone().add(
-                        Math.cos(start) * 2.2D, 0.03D, Math.sin(start) * 2.2D);
-                Location boundaryEnd = floor.clone().add(
-                        Math.cos(start) * WAVE_ONE_ZONE_RADIUS_BLOCKS, 0.03D,
-                        Math.sin(start) * WAVE_ONE_ZONE_RADIUS_BLOCKS);
-                spawnPatternSegment(viewer, boundaryStart, boundaryEnd,
-                        Particle.END_ROD, cyan);
-            }
-        }
-    }
-
     private void spawnPatternArc(Player player, Location center, double radius,
                                  double startAngle, double endAngle, int points,
                                  Particle particle, Particle.DustOptions dust) {
@@ -35910,10 +35947,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         waveObjectiveVisuals.clear();
         waveObjectiveVisualTexts.clear();
-        waveOneNextPulseMillis = 0L;
-        waveOnePulseDeadlineMillis = 0L;
-        waveOnePulseIndex = 0;
-        nextWaveOneZoneVisualMillis = 0L;
         clearCurrentHuntMark(System.currentTimeMillis());
         waveTwoNextMarkMillis = 0L;
         waveTwoGroupClearedAtMillis = 0L;
@@ -38032,6 +38065,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ensureEventCombatAi(boss);
         long now = System.currentTimeMillis();
         synchronizeBossPhase(boss);
+        // Spec 3.2: sample the formation every tick so the 2-3 s dwell is real,
+        // not a sampling artefact of the spell cooldown.
+        if (phase == EventPhase.BOSS_ACTIVE && BossEdgeVolleyPolicy.allowsPhase(bossPhase)) {
+            trackBossEdgeVolleyClusterDwell(boss);
+        } else {
+            bossEdgeVolleyClusterDwell.reset();
+        }
         reconcileBossCastProjection(boss, now);
         tickCurrentRiftFractures(boss);
         tickCurrentTentacles(boss);
@@ -40901,8 +40941,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         case VOID_BLAST -> voidBlast(boss, target);
                         case RIFT_PROJECTILE -> riftProjectile(boss, target);
                         case RIFT_ARROWS -> {
-                            if (BossEdgeVolleyPolicy.allowsPhase(bossPhase)) {
+                            if (BossEdgeVolleyPolicy.allowsPhase(bossPhase)
+                                    && bossEdgeVolleyClusterDwell.satisfied()) {
                                 startBossEdgeVolley(boss, target);
+                                // A second volley needs a fresh dwell, not the old one.
+                                bossEdgeVolleyClusterDwell.reset();
                             } else {
                                 riftArrowVolley(boss, target,
                                         EndRiftAiPolicy.BossSpell.RIFT_ARROWS.id(),
@@ -41408,6 +41451,29 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /**
+     * Spec 3.2 / 5.4(1): the Edge Volley unlocks on a sustained majority cluster
+     * away from the boss, never on a one-tick reading or an ordinary arrow cast.
+     * Sampled once per event tick, independent of the boss spell cooldown.
+     */
+    private boolean trackBossEdgeVolleyClusterDwell(LivingEntity boss) {
+        if (boss == null || !boss.isValid() || boss.isDead()) {
+            bossEdgeVolleyClusterDwell.reset();
+            return false;
+        }
+        List<BossEdgeVolleyPolicy.ClusterPoint> points = new ArrayList<>();
+        for (Player player : activeLivingPlayers()) {
+            Location location = player.getLocation();
+            if (location == null || location.getWorld() != boss.getWorld()) continue;
+            points.add(new BossEdgeVolleyPolicy.ClusterPoint(
+                    player.getUniqueId(), location.getX(), location.getZ()));
+        }
+        Location bossLocation = boss.getLocation();
+        boolean clustered = BossEdgeVolleyPolicy.majorityCluster(
+                points, bossLocation.getX(), bossLocation.getZ()) != null;
+        return bossEdgeVolleyClusterDwell.observe(clustered, System.currentTimeMillis());
+    }
+
+    /**
      * RIFT+ corner volley: reposition to the corner farthest from the players,
      * then fire exactly five salvos. The cooldown is persisted so a restart
      * cannot turn it into a second volley inside the same window.
@@ -41630,6 +41696,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         reconcileGuardianShieldOrbit(boss, !damageWindowOpen && tentacleGuardianShielded());
+        // Spec 6.4: the approved small regeneration only exists behind living shields.
+        tickGuardianProtectedRegeneration(boss);
         if (!damageWindowOpen && temporaryTarget > tentacleController.temporaryCount()
                 && eventTickCounter >= nextTentacleTemporaryTick) {
             // A cast is a bounded refill, not a single attempt every eight
@@ -41720,7 +41788,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 .collect(Collectors.toSet());
         for (int slot = 0; slot < safeDesired; slot++) {
             if (tentacleGuardianSpawnFailures.getOrDefault(slot, 0) >= 3) {
-                return;
+                continue;
             }
             double health = tentacleGuardianHealth.getOrDefault(slot, 0.0D);
             Long respawnAt = tentacleGuardianRespawnDeadlineMillis.get(slot);
@@ -41838,6 +41906,38 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return tentacleGuardianRegenerationDisabledGeneration == generation;
     }
 
+    /**
+     * Spec 6.4: heal only while real guardian shields live, in small readable
+     * steps, capped for this encounter generation. Never runs once the
+     * all-guardians-dead event permanently disabled healing.
+     */
+    private void tickGuardianProtectedRegeneration(LivingEntity boss) {
+        if (boss == null || !boss.isValid() || boss.isDead() || config == null
+                || bossPhase != BossPhase.LAST_SEAL
+                || tentacleGuardianRegenerationDisabled()
+                || !tentacleGuardianShielded()) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (now < tentacleGuardianRegenerationNextStepMillis) {
+            return;
+        }
+        tentacleGuardianRegenerationNextStepMillis =
+                now + GuardianRegenerationPolicy.STEP_INTERVAL_MILLIS;
+        double maxHealth = bossMaxHealth(boss);
+        double healed = GuardianRegenerationPolicy.step(maxHealth, boss.getHealth(),
+                tentacleGuardianRegenerationGranted);
+        if (healed <= 0.0D) {
+            return;
+        }
+        tentacleGuardianRegenerationGranted += healed;
+        boss.setHealth(Math.min(maxHealth, boss.getHealth() + healed));
+        getLogger().info("RIFT_GUARDIAN_REGENERATION event=" + eventId
+                + " boss=" + boss.getUniqueId() + " healed=" + healed
+                + " granted=" + tentacleGuardianRegenerationGranted
+                + " cap=" + GuardianRegenerationPolicy.cap(maxHealth));
+    }
+
     private void encodeTentacleGuardianState(Map<String, String> encoded) {
         if (!tentacleGuardianHealth.isEmpty() || !tentacleGuardianRespawnDeadlineMillis.isEmpty()
                 || tentacleDamageWindowEndsMillis >= 0L) {
@@ -41847,6 +41947,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (tentacleGuardianRegenerationDisabled()) {
             encoded.put("boss-guardian-regeneration-disabled", "DONE");
+        }
+        if (tentacleGuardianRegenerationGranted > 0.0D) {
+            encoded.put("boss-guardian-regeneration-granted",
+                    Double.toString(tentacleGuardianRegenerationGranted));
         }
     }
 
@@ -42148,6 +42252,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         tentacleDamageWindowEndsMillis = -1L;
         tentacleActiveMillis = 0L;
         tentacleActiveLastNanos = 0L;
+        tentacleGuardianRegenerationGranted = 0.0D;
+        tentacleGuardianRegenerationNextStepMillis = 0L;
     }
 
     private Location permanentTentacleLocation(int slot, int count) {
@@ -43516,6 +43622,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " reason=not-enough-safe-real-block-sites");
             return;
         }
+        Map<Integer, Wave4ObeliskRecoverySnapshot.ObeliskReceipt> restoredReceipts = Map.of();
+        if (wave4RestoredObeliskCheckpoint != null) {
+            try {
+                restoredReceipts = Wave4ObeliskRecoveryPolicy.reconcile(
+                        wave4RestoredObeliskCheckpoint, profile.obeliskCount(), profile.health(),
+                        Set.of("GROUND_WARNING", "EMERGE_BASE", "EMERGE_LOWER", "EMERGE_CORE",
+                                "EMERGE_UPPER", "EMERGE_CROWN", "AWAKEN", "ACTIVE", "COLLAPSING"));
+            } catch (IllegalArgumentException invalid) {
+                requireWave4Recovery("INVALID_WAVE4_OBELISK_CHECKPOINT", invalid);
+                return;
+            }
+            currentWave4ObeliskAssaultComplete = wave4RestoredObeliskCheckpoint.assaultComplete();
+            currentWave4MobsStarted = wave4RestoredObeliskCheckpoint.mobsStarted();
+            currentWave4PressurePackAttempts = wave4RestoredObeliskCheckpoint.pressurePackAttempts();
+        }
         HazardMutationJournal.Snapshot existing = hazardJournal == null
                 ? HazardMutationJournal.Snapshot.empty() : hazardJournal.load();
         if (existing.status() != HazardMutationJournal.Status.EMPTY
@@ -43534,17 +43655,36 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         for (Wave4ObeliskRuntimeState state : planned) {
+            Wave4ObeliskRecoverySnapshot.ObeliskReceipt receipt = restoredReceipts.get(state.ordinal());
+            if (receipt != null && "DESTROYED".equals(receipt.stage())) {
+                currentWave4DestroyedObeliskReceipts.put(receipt.ordinal(), receipt);
+                continue;
+            }
+            applyRestoredObeliskReceipt(state, receipt);
             activeWave4Obelisks.put(state.id(), state);
             for (BlockCellKey cell : state.cells()) {
                 currentWave4ObeliskCells.put(cell, state.id());
             }
+            if (currentWave4StartupFailed) {
+                requireWave4Recovery("WAVE4_OBELISK_RESTORE_APPLY_FAILED",
+                        new IllegalStateException("restored obelisk cells changed before reapplication"));
+                return;
+            }
             renderObeliskTelegraph(state);
+        }
+        wave4RestoredObeliskCheckpoint = null;
+        wave4InvalidObeliskCheckpointFields = Map.of();
+        if (activeWave4Obelisks.isEmpty() && currentWave4ObeliskAssaultComplete) {
+            if (hazardJournal != null) hazardJournal.markRestored();
+            getLogger().info("END_RIFT_OBELISK_ASSAULT_RESTORED event=" + eventId
+                    + " generation=" + generation + " obelisks=0 complete=true");
+            return;
         }
         world.playSound(core, Sound.BLOCK_RESPAWN_ANCHOR_CHARGE,
                 SoundCategory.BLOCKS, 1.0F, 0.55F);
         getLogger().info("END_RIFT_OBELISK_ASSAULT_READY event=" + eventId
                 + " generation=" + generation + " players=" + players
-                + " obelisks=" + planned.size() + " hp_each=" + profile.health()
+                + " obelisks=" + activeWave4Obelisks.size() + " hp_each=" + profile.health()
                 + " required_reflected_hits=" + profile.requiredHits()
                 + " mob_count=" + profile.mobCount() + " fireball_cap=" + profile.fireballCap()
                 + " real_blocks=true journal_entries=" + journalEntries.size());
@@ -44480,6 +44620,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (state == null) {
             return;
         }
+        if ("destroyed".equalsIgnoreCase(reason) && state.health() == 0
+                && state.stage() == ObeliskStage.COLLAPSING) {
+            currentWave4DestroyedObeliskReceipts.put(state.ordinal(),
+                    new Wave4ObeliskRecoverySnapshot.ObeliskReceipt(
+                            state.ordinal(), 0, state.maxHealth(), "DESTROYED"));
+        }
         waveCombatCoordinator.release(state.pulseLease);
         waveCombatCoordinator.remove(id);
         clearWaveCombatCue(id);
@@ -44535,6 +44681,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         currentWave4CollapseTransforms.clear();
         currentWave4ObeliskCells.clear();
         currentWave4ConsumedFireballs.clear();
+        currentWave4DestroyedObeliskReceipts.clear();
         currentWave4MobsStarted = false;
         currentWave4StartupFailed = false;
         currentWave4ObeliskAssaultComplete = false;
@@ -45282,8 +45429,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         private final Set<BlockCellKey> appliedCells = new LinkedHashSet<>();
         private final Map<Integer, UUID> visualIds = new LinkedHashMap<>();
         private final int ordinal;
-        private final long emergenceStartTick;
-        private final long activationTick;
+        private long emergenceStartTick;
+        private long activationTick;
         private ObeliskStage stage = ObeliskStage.GROUND_WARNING;
         private long stageStartedTick;
         private long nextPulseTick;
@@ -45373,7 +45520,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
         private void stage(ObeliskStage value, long tick) {
             stage = value == null ? stage : value;
-            stageStartedTick = Math.max(0L, tick);
+            stageStartedTick = tick;
         }
 
         private long stageStartedTick() {

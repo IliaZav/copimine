@@ -33,7 +33,8 @@ def pack_probe(tmp_path_factory):
         "void reconcileWave4PressureSpawnSlots(", "String inferredWave4Role(",
         "void configureWave4PressureEntity(",
         "void tagWave4Role(", "void tagWave4PressureSlot(",
-        "boolean tickWave4ObeliskAssault()", "void clearWave4Obelisks(",
+        "boolean tickWave4ObeliskAssault()", "void applyRestoredObeliskReceipt(",
+        "void clearWave4Obelisks(",
         "boolean isLiveOwnedEntity(",
     ]
     # Exercise the exact completion gate; later Wave 7 / phase-transition services
@@ -45,7 +46,9 @@ def pack_probe(tmp_path_factory):
         method(source, signature) for signature in signatures) + "\n" + completion), encoding="utf-8")
     policies = ["Wave4PressurePackPolicy", "WaveMechanicsPolicy", "WaveScalingPolicy",
                 "WaveDamagePolicy", "PressureBudgetController",
-                "ObeliskScalingPolicy", "ObeliskFireDirectorPolicy", "EventPhase"]
+                "ObeliskScalingPolicy", "ObeliskFireDirectorPolicy",
+                "ObeliskGeometryPolicy", "Wave4ObeliskRecoverySnapshot",
+                "Wave4ObeliskRecoveryPolicy", "EventPhase"]
     result = subprocess.run(["javac", "-J-Xmx128m", "-encoding", "UTF-8", "-d", str(directory),
                              *[str(DOMAIN / (name + ".java")) for name in policies], str(java)],
                             capture_output=True, text=True)
@@ -54,7 +57,7 @@ def pack_probe(tmp_path_factory):
 
 
 @pytest.mark.parametrize("scenario", [
-    "pressure-matrix",
+    "pressure-matrix", "restore-emergence", "restore-timing",
     "success", "first", "middle", "last", "all", "backoff", "exhaustion", "permanent",
     "lost-slot", "registration-refused", "ring-spawn-relocation", "duplicate-slot", "restart", "reset", "obsolete-generation", "obelisk-complete",
     "synchronous-slot-loss", "throw-after-partial-success", "throw-preserves-prior-slot",

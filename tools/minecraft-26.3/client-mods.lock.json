@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "minecraftVersion": "26.3",
   "loader": "fabric",
-  "verifiedAt": "2026-10-19",
+  "verifiedAt": "2026-10-29",
   "nativeVerified": false,
   "modules": [
     {
@@ -310,25 +310,25 @@
     },
     {
       "project": "simple-voice-chat",
-      "version": "fabric-2.6.24+26.3",
+      "version": "fabric-2.6.27+26.3",
       "channel": "beta",
-      "versionId": "OLnMVWXy",
-      "projectId": "9eGKb6K1",
-      "source": "https://modrinth.com/mod/simple-voice-chat",
+      "versionId": "9350669",
+      "projectId": "416089",
+      "source": "https://www.curseforge.com/minecraft/mc-mods/simple-voice-chat/files/9350669",
       "license": {
         "id": "LicenseRef-All-Rights-Reserved",
         "name": "",
         "url": null
       },
-      "filename": "voicechat-fabric-2.6.24+26.3.jar",
+      "filename": "voicechat-fabric-2.6.27+26.3.jar",
       "modId": "voicechat",
       "tlauncherArtifactPrefixes": [
         "voicechat-fabric"
       ],
-      "url": "https://cdn.modrinth.com/data/9eGKb6K1/versions/OLnMVWXy/voicechat-fabric-2.6.24%2B26.3.jar",
-      "sha512": "414eb51967305fe7740d34016bc8e3e4e2fa1590e1278ad06bcdfa0687f65007b825d345dc09f79a992704a51ec93baf01fe727e0bbc32fdf506828b5a65d85a",
-      "sha1": "2ac4bb844e3b23b6e0a729edcf521ba1198ec5d2",
-      "size": 5612855,
+      "url": "https://edge.forgecdn.net/files/9350/669/voicechat-fabric-2.6.27%2B26.3.jar",
+      "sha512": "f2de66761c0f249bb0f9a4b348f98b97ab4e89d3ed3fd37638420364b7431b757933aa08c0cc3e7ba3dd85a602d6c2de313c2309fc587e93cabf31fc5f6df27e",
+      "sha1": "23442735927fe3839650196c0656eb82b0322d87",
+      "size": 5611159,
       "dependencies": [
         {
           "version_id": null,
@@ -373,7 +373,7 @@
           "dependency_type": "optional"
         }
       ],
-      "fabricMetadataVersion": "2.6.24+26.3"
+      "fabricMetadataVersion": "2.6.27+26.3"
     },
     {
       "project": "customskinloader",

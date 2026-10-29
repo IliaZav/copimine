@@ -6,7 +6,10 @@ import me.copimine.endevent.domain.*;
 public class Wave4PackRuntimeProbe {
     enum Wave4PressurePackResult { COMPLETE, RETRYABLE_FAILURE, PERMANENT_FAILURE }
     enum EntityType { SPIDER, ENDERMAN, SKELETON, ZOMBIE, GIANT, OTHER }
-    enum ObeliskStage { ACTIVE, COLLAPSING, EMERGING }
+    enum ObeliskStage {
+        GROUND_WARNING, EMERGE_BASE, EMERGE_LOWER, EMERGE_CORE, EMERGE_UPPER,
+        EMERGE_CROWN, AWAKEN, ACTIVE, COLLAPSING
+    }
     static class PersistentDataType { static final Object STRING = new Object(); }
     static class Data {
         Map<Object, String> values = new HashMap<>();
@@ -69,15 +72,28 @@ public class Wave4PackRuntimeProbe {
         UUID id = UUID.randomUUID(); ObeliskFireDirectorPolicy.FireSequence fireLease;
         Object pulseLease, fireAim;
         ObeliskStage stage = ObeliskStage.ACTIVE;
+        int currentHealth = 3, maxHealth = 3;
+        long emergenceStartTick, activationTick, stageStartedTick, nextPulseTick,
+                nextFireTick, destroyAtTick = -1L;
+        boolean fractureCuePlayed;
         UUID id() { return id; }
         ObeliskStage stage() { return stage; }
-        long destroyAtTick() { return 0; }
-        long nextFireTick() { return Long.MAX_VALUE; }
+        void stage(ObeliskStage value, long tick) { stage = value; stageStartedTick = tick; }
+        int health() { return currentHealth; }
+        int maxHealth() { return maxHealth; }
+        void health(int value) { currentHealth = Math.max(0, Math.min(maxHealth, value)); }
+        long emergenceStartTick() { return emergenceStartTick; }
+        long activationTick() { return activationTick; }
+        long stageStartedTick() { return stageStartedTick; }
+        long nextPulseTick() { return nextPulseTick; }
+        void scheduleNextPulse(long tick) { nextPulseTick = tick; }
+        long nextFireTick() { return nextFireTick; }
         long lastFireTick() { return 0; }
-        int health() { return 3; }
+        void scheduleNextFire(long tick) { nextFireTick = tick; }
+        long destroyAtTick() { return destroyAtTick; }
+        void destroyAt(long tick) { destroyAtTick = tick; }
         UUID lastTargetUuid() { return null; }
         void lastFireTick(long tick) { }
-        void scheduleNextFire(long tick) { }
     }
     static class RiftFireballRuntimeState { UUID originObeliskId() { return null; } }
     static class Coordinator { boolean valid(Object lease, long gen, long tick) { return false; } }
@@ -88,6 +104,7 @@ public class Wave4PackRuntimeProbe {
     Set<String> currentWave4PressureSpawnSlots = new LinkedHashSet<>();
     Map<UUID, Entity> ownedEntities = new LinkedHashMap<>();
     Map<UUID, Wave4ObeliskRuntimeState> activeWave4Obelisks = new LinkedHashMap<>();
+    Map<Integer, Object> currentWave4DestroyedObeliskReceipts = new HashMap<>();
     Map<UUID, RiftFireballRuntimeState> activeRiftFireballs = new HashMap<>();
     Map<UUID, UUID> waveChannelerObelisks = new HashMap<>();
     Map<Object, Object> currentWave4CollapseTransforms = new HashMap<>(), currentWave4ObeliskCells = new HashMap<>();
@@ -164,6 +181,8 @@ public class Wave4PackRuntimeProbe {
     ObeliskFireDirectorPolicy.SpecialCandidate selectWave4Special() { return null; }
     void renderObeliskCollapse(Wave4ObeliskRuntimeState state) { }
     void advanceObeliskEmergence(Wave4ObeliskRuntimeState state) { }
+    void applyObeliskStageBlocks(Wave4ObeliskRuntimeState state, ObeliskStage stage) { }
+    void ensureCurrentObeliskVisuals(Wave4ObeliskRuntimeState state, ObeliskStage stage) { }
     void renderObeliskActive(Wave4ObeliskRuntimeState state) { }
     void clearWaveCombatCue(UUID id) { }
     void tickWave4Pulse(Wave4ObeliskRuntimeState state, EventConfig.RiftObeliskTuning tuning) { }
@@ -199,6 +218,47 @@ public class Wave4PackRuntimeProbe {
         Logger.getLogger("Wave4PackRuntimeProbe").setLevel(Level.OFF);
         var p = new Wave4PackRuntimeProbe(); String scenario = args[0];
         switch (scenario) {
+            case "restore-emergence" -> {
+                var state = new Wave4ObeliskRuntimeState();
+                state.stage(ObeliskStage.GROUND_WARNING, 0L);
+                p.eventTickCounter = 200L;
+                p.applyRestoredObeliskReceipt(state,
+                        new Wave4ObeliskRecoverySnapshot.ObeliskReceipt(0, 3, 3, "EMERGE_CORE"));
+                check(state.stage() == ObeliskStage.EMERGE_CORE,
+                        "restored Wave 4 emergence stage must resume from its checkpoint");
+            }
+            case "restore-timing" -> {
+                String[] stages = {"GROUND_WARNING", "EMERGE_BASE", "EMERGE_LOWER",
+                        "EMERGE_CORE", "EMERGE_UPPER", "EMERGE_CROWN", "AWAKEN"};
+                long[] elapsed = {5L, 14L, 29L, 35L, 45L, 55L, 65L};
+                long[] offsets = {0L, 10L, 20L, 30L, 40L, 50L, 60L};
+                p.eventTickCounter = 3L;
+                for (int index = 0; index < stages.length; index++) {
+                    var state = new Wave4ObeliskRuntimeState();
+                    var receipt = new Wave4ObeliskRecoverySnapshot.ObeliskReceipt(
+                            0, 3, 3, stages[index], elapsed[index], 0L, 0L, 0L);
+                    p.applyRestoredObeliskReceipt(state, receipt);
+                    check(state.stage().name().equals(stages[index]), "restore changed the saved emergence stage");
+                    check(state.emergenceStartTick == 3L - elapsed[index],
+                            "restore must preserve elapsed emergence ticks across event-counter reset");
+                    check(state.activationTick == 73L - elapsed[index],
+                            "restore must preserve the original activation countdown");
+                    check(state.stageStartedTick == 3L - (elapsed[index] - offsets[index]),
+                            "restore must preserve elapsed time within the current emergence stage");
+                }
+                var active = new Wave4ObeliskRuntimeState();
+                p.applyRestoredObeliskReceipt(active,
+                        new Wave4ObeliskRecoverySnapshot.ObeliskReceipt(
+                                0, 2, 3, "ACTIVE", 70L, 9L, 4L, 0L));
+                check(active.nextPulseTick == 12L && active.nextFireTick == 7L,
+                        "active attacks must use saved remaining cooldowns");
+                var collapsing = new Wave4ObeliskRuntimeState();
+                p.applyRestoredObeliskReceipt(collapsing,
+                        new Wave4ObeliskRecoverySnapshot.ObeliskReceipt(
+                                0, 0, 3, "COLLAPSING", 70L, 0L, 0L, 3L));
+                check(collapsing.destroyAtTick == 6L,
+                        "collapse must keep only its saved remaining animation ticks");
+            }
             case "pressure-matrix" -> {
                 p.currentWaveScalePlayers = 16;
                 p.composition = new WaveMechanicsPolicy.WaveCounts(2, 5, 1, 0, 0);

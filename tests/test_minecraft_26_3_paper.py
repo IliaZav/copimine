@@ -95,6 +95,23 @@ def test_admin_plugin_compiles_against_the_pinned_paper_voicechat_api():
     assert build_script.index("Save-PinnedArtifact -Uri $voiceChatPlugin.url") < build_script.index("& $gradle ")
 
 
+def test_simple_voice_chat_server_and_client_are_pinned_to_the_26_3_beta_build():
+    server_lock = json.loads((ROOT / "tools/minecraft-26.3/server-plugins.lock.json").read_text(encoding="utf-8"))
+    client_lock = json.loads((ROOT / "tools/minecraft-26.3/client-mods.lock.json").read_text(encoding="utf-8"))
+    server = next(row for row in server_lock["modules"] if row["pluginName"] == "voicechat")
+    client = next(row for row in client_lock["modules"] if row["modId"] == "voicechat")
+
+    assert server["version"] == "bukkit-2.6.27"
+    assert server["channel"] == "beta"
+    assert server["versionId"] == "3Br8wxJY"
+    assert server["projectId"] == "9eGKb6K1"
+    assert server["filename"] == "voicechat-bukkit-2.6.27.jar"
+    assert client["version"] == "fabric-2.6.27+26.3"
+    assert client["channel"] == "beta"
+    assert client["versionId"] == "9350669"
+    assert client["filename"] == "voicechat-fabric-2.6.27+26.3.jar"
+
+
 def test_migration_build_scripts_guard_generated_paths_before_external_writers():
     scripts = ROOT / "scripts/minecraft"
     coreprotect = (scripts / "BuildCoreProtectMigration.ps1").read_text(encoding="utf-8")

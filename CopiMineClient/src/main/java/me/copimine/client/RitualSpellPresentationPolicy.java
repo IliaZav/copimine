@@ -16,7 +16,8 @@ public final class RitualSpellPresentationPolicy {
         RIFT_BARRAGE(4.7F, Orientation.HORIZONTAL, "barrage", "Разломный обстрел"),
         GRAVITY_WELL(8.0F, Orientation.HORIZONTAL, "gravity", "Гравитационный колодец"),
         SOUL_BRAND(1.5F, Orientation.BILLBOARD, "brand", "Метка души"),
-        RIFT_CHAINS(1.1F, Orientation.BILLBOARD, "chains", "Цепи разлома");
+        // Compatibility identifier: the shipped mechanics are Heavenly Judgment falling anvils.
+        RIFT_CHAINS(1.1F, Orientation.BILLBOARD, "chains", "Небесный приговор");
 
         private final float diameter;
         private final Orientation orientation;

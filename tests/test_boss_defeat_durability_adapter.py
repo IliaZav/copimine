@@ -274,3 +274,104 @@ public class BossLethalDefeatProbe {
 }
 ''', ("BossPhase", "BossHealthPolicy", "BossPhasePolicy",
       "EndRiftAiPolicy", "BossHitFeedbackPolicy"))
+
+
+def test_two_simultaneous_lethal_hits_commit_the_defeat_exactly_once(tmp_path):
+    """Spec 8.1: a second lethal hit in the same tick must not restart the defeat."""
+    method = _method(SOURCE.read_text(encoding="utf-8"),
+                     "private void commitOfficialBossDefeat(LivingEntity boss, Entity source)")
+    _run_probe(tmp_path, "BossSingleDefeatProbe", r"""
+import java.util.*;
+import me.copimine.endevent.domain.*;
+
+public class BossSingleDefeatProbe {
+    static class Entity {
+        private final UUID id = UUID.randomUUID();
+        UUID getUniqueId() { return id; }
+    }
+    static final class Player extends Entity { }
+    static final class LivingEntity {
+        double health = 1.0D;
+        boolean dead;
+        boolean valid = true;
+        double getHealth() { return health; }
+        void setHealth(double value) { health = value; dead = value <= 0.0D; }
+        boolean isDead() { return dead; }
+        boolean isValid() { return valid; }
+        void setInvulnerable(boolean value) { }
+        PersistentDataContainer getPersistentDataContainer() { return new PersistentDataContainer(); }
+        UUID getUniqueId() { return UUID.fromString("00000000-0000-0000-0000-0000000000aa"); }
+    }
+    static final class PersistentDataType {
+        static final PersistentDataType BYTE = new PersistentDataType();
+    }
+    static final class PersistentDataContainer {
+        void set(Object key, PersistentDataType type, byte value) { }
+    }
+    static final class Log {
+        void info(String message) { }
+    }
+
+    final Log log = new Log();
+    Log getLogger() { return log; }
+    long eventId = 42L;
+    BossPhase bossPhase = BossPhase.LAST_SEAL;
+    UUID bossKillerUuid;
+    boolean bossDefeatCinematicStarted;
+    boolean testBoss;
+    Object keyBossDefeatPending;
+    Player owner;
+    int prepares;
+    int cinematics;
+
+    Player playerDamageOwner(Entity source) { return owner; }
+    boolean isActiveBossParticipant(Player player) { return true; }
+    boolean isOfficialBoss(LivingEntity boss) { return false; }
+    boolean isTestBoss(LivingEntity boss) { return testBoss; }
+    boolean prepareOfficialBossDefeat(LivingEntity boss) { prepares++; return true; }
+    void startBossDefeatCinematic(LivingEntity boss, Player finisher) {
+        cinematics++;
+        bossDefeatCinematicStarted = true;
+    }
+
+""" + method + r"""
+
+    static void check(boolean value, String message) {
+        if (!value) throw new AssertionError(message);
+    }
+
+    public static void main(String[] args) {
+        BossSingleDefeatProbe probe = new BossSingleDefeatProbe();
+        probe.owner = new Player();
+        LivingEntity boss = new LivingEntity();
+        probe.commitOfficialBossDefeat(boss, probe.owner);
+        probe.commitOfficialBossDefeat(boss, probe.owner);
+        check(probe.cinematics == 1,
+                "two simultaneous lethal hits started " + probe.cinematics + " defeat cinematics");
+        check(probe.prepares == 1,
+                "the defeat preparation ran " + probe.prepares + " times for one death");
+        check(boss.health > 0.0D && !boss.isDead(),
+                "the committed cinematic must not zero real health inline");
+
+        BossSingleDefeatProbe repeated = new BossSingleDefeatProbe();
+        repeated.owner = new Player();
+        LivingEntity second = new LivingEntity();
+        repeated.commitOfficialBossDefeat(second, repeated.owner);
+        repeated.commitOfficialBossDefeat(second, repeated.owner);
+        check(repeated.cinematics == 1 && repeated.prepares == 1,
+                "a replayed lethal callback re-ran the committed defeat");
+
+        BossSingleDefeatProbe immediate = new BossSingleDefeatProbe();
+        immediate.owner = null;
+        LivingEntity environmentBoss = new LivingEntity();
+        immediate.commitOfficialBossDefeat(environmentBoss, new Entity());
+        check(immediate.cinematics == 0 && immediate.prepares == 1,
+                "an environment hit must use the immediate path, never the player cinematic");
+        check(environmentBoss.health == 0.0D,
+                "the immediate path must still commit the durable death");
+        immediate.commitOfficialBossDefeat(environmentBoss, new Entity());
+        check(immediate.prepares == 1,
+                "the immediate path re-prepared an already committed defeat");
+    }
+}
+""", ("BossDefeatCinematicPolicy", "BossPhase"))

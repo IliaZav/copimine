@@ -2481,4 +2481,6 @@ def test_dragon_breath_emissions_supply_required_float_data() -> None:
     assert not re.search(r"(?:player|viewer)\.spawnParticle\(Particle\.DRAGON_BREATH", source), (
         "direct DRAGON_BREATH emissions bypass the typed-data adapter"
     )
-    assert "spawnTypedParticle(player, safe ? Particle.END_ROD : Particle.DRAGON_BREATH" in source
+    # The old Wave 1 safe-sector pulse was replaced by the carrier delivery
+    # objective; the adapter checks above cover Dragon Breath emissions that
+    # remain in the current event implementation.

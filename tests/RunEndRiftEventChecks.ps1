@@ -20,7 +20,8 @@ if (-not (Test-Path -LiteralPath 'C:\Temp' -PathType Container)) {
   throw 'The isolated C:\Temp directory required by the End Rift test gate is unavailable.'
 }
 $existingPytestAddopts = [string][Environment]::GetEnvironmentVariable('PYTEST_ADDOPTS', [EnvironmentVariableTarget]::Process)
-$isolatedPytestOption = "--basetemp=$pytestTempRoot"
+$pytestBasetemp = $pytestTempRoot.Replace('\', '/')
+$isolatedPytestOption = "--basetemp=$pytestBasetemp"
 $env:PYTEST_ADDOPTS = if ([string]::IsNullOrWhiteSpace($existingPytestAddopts)) {
   $isolatedPytestOption
 } else {
@@ -416,6 +417,8 @@ $pureTests = @(
   'ArenaInfernoPolicyTest',
   'Wave6CrystalLifecycleTest',
   'BossEdgeVolleyPolicyTest',
+  'GuardianRegenerationPolicyTest',
+  'Wave4ObeliskRecoverySnapshotTest',
   'BossPhaseGatingTest',
   'BossAmbushPolicyTest',
   'SmallKagunePolicyTest',

@@ -19,8 +19,15 @@ public final class BossTargetPolicyTest {
         BossTargetPolicy.TargetDecision expired = BossTargetPolicy.chooseTarget(
                 List.of(FIRST, SECOND), FIRST, List.of(), 6_000L, 6_000L, 0L);
         check(expired.target().equals(SECOND), "an expired two-player lock must switch once, not oscillate");
-        check(expired.newLockUntilMillis() == 11_000L,
+        check(expired.newLockUntilMillis() == 17_000L,
                 "a newly selected target must receive one bounded lock window");
+        check(BossTargetPolicy.DEFAULT_LOCK_MILLIS >= 10_000L
+                        && BossTargetPolicy.DEFAULT_LOCK_MILLIS <= 12_000L,
+                "the default primary-focus lock must stay inside the spec's 10-12 s window");
+        BossTargetPolicy.TargetDecision stolen = BossTargetPolicy.chooseTarget(
+                List.of(FIRST, SECOND), FIRST, List.of(), 2_000L, 11_000L, 0L);
+        check(stolen.target().equals(FIRST),
+                "a single hit from a new player must not steal aggro inside the lock");
 
         BossTargetPolicy.TargetDecision invalid = BossTargetPolicy.chooseTarget(
                 List.of(SECOND, THIRD), FIRST, List.of(FIRST), 2_000L, 10_000L, 0L);

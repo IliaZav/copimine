@@ -74,6 +74,7 @@ import me.copimine.endevent.domain.RiftCarrierPolicy;
 import me.copimine.endevent.domain.RiftCarrierRecoverySnapshot;
 import me.copimine.endevent.domain.PortalCapturePolicy;
 import me.copimine.endevent.domain.Wave3PortalProgressSnapshot;
+    import me.copimine.endevent.domain.Wave4ObeliskRecoverySnapshot;
 import me.copimine.endevent.runtime.AttemptLifecycleController;
 import me.copimine.endevent.runtime.WaveTwoAttemptLifecycleSnapshot;
 
@@ -113,6 +114,8 @@ public final class WaveProbeAdapterHarness {
     Map<String, String> wave1RecoveryCheckpoint = Map.of(), ritualSphereRecoveryCheckpoint = Map.of();
     Map<Integer, List<PortalCapturePolicy.PortalState>> portalCaptureStates = new LinkedHashMap<>();
     Wave3PortalProgressSnapshot.Data wave3RestoredPortalCheckpoint;
+    Wave4ObeliskRecoverySnapshot.Data wave4RestoredObeliskCheckpoint;
+    Map<String, String> captureWave4ObeliskCheckpoint() { return Map.of(); }
     boolean wave3PortalEliteSpawned;
     RiftCarrierPolicy.State currentCarrierState;
     UUID currentCarrierInventoryToken;
@@ -571,6 +574,8 @@ public final class WaveProbeAdapterHarness {
                                str(domain / "WaveTwoEntityRecoveryPolicy.java"),
                                str(domain / "PortalCapturePolicy.java"),
                                str(domain / "Wave3PortalProgressSnapshot.java"),
+                                str(domain / "ObeliskGeometryPolicy.java"),
+                               str(domain / "Wave4ObeliskRecoverySnapshot.java"),
                                str(runtime / "AttemptLifecycleController.java"),
                                str(runtime / "WaveTwoAttemptLifecycleSnapshot.java")],
                               capture_output=True, text=True, check=False)

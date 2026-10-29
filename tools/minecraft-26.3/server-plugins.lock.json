@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "minecraftVersion": "26.3",
-  "verifiedAt": "2026-10-20",
+  "verifiedAt": "2026-10-29",
   "nativeVerified": false,
   "status": "runtime-candidates",
   "modules": [
@@ -142,7 +142,7 @@
       "project": "simple-voice-chat",
       "pluginName": "voicechat",
       "version": "bukkit-2.6.27",
-      "channel": "release",
+      "channel": "beta",
       "versionId": "3Br8wxJY",
       "projectId": "9eGKb6K1",
       "source": "https://modrinth.com/plugin/simple-voice-chat",
@@ -739,17 +739,19 @@
       "candidate": {
         "filename": "AuthEffects-26.3.jar",
         "runtimeFilename": "AuthEffects.jar",
-        "sha256": "c2a2ab2cd162d383858cf3c917fcbfc712143077ac98241fe90fc1a29a12b9f7",
+        "sha256": "e00175601f97e65b3081bdba67143c0407c185f7b17d4bfa14ff540906e4b455",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/AuthEffects-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "sha512": "363380b1caece9b3b0e01e8386083257cadfcc8f0ffbbf52012103e7ddd059ea537eac232ba5a1a4b91bf9a18ea494a60c389206942d680e6cfb360b44b3c455",
-        "size": 10995,
+        "sha512": "4ee1682d7701e6b76acfd85fa8faba9f8efdf56693517f5debb23a491c1ef17400fc0764eb6cc8fc33ebd76968dfb7179e57eded7e1fdaa46b854108bdf87885",
+        "size": 11604,
         "runtimeEligible": true,
         "replaceSha256": [
           "09aa0017cd8731470eb2324af327fc5780490c317469881f82a8d8c5bfd5e11c",
-          "efb94ae4c8224ad69f65988535e0a1dea087837e136325fa07f11ae5ba997892"
+          "efb94ae4c8224ad69f65988535e0a1dea087837e136325fa07f11ae5ba997892",
+          "c2a2ab2cd162d383858cf3c917fcbfc712143077ac98241fe90fc1a29a12b9f7",
+          "3b0dcba8ad45a5b68f500263c773dd450951949119dbb47314011c170565068d"
         ]
       },
       "nativeVerified": false
@@ -848,13 +850,13 @@
       "candidate": {
         "filename": "CopiMineArtifacts-26.3.jar",
         "runtimeFilename": "CopiMineArtifacts.jar",
-        "sha256": "e82f5fa76818c0030cfaf43f2d40e0a6ac2e5726643c1c1e01ef1cc5d03054d2",
+        "sha256": "a5e0420d503850cb604445c52705f5af71fdc65770a78b943c5d2bc252fabcc5",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineArtifacts-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "sha512": "dd1df56d8ec37d0db4aedb54a3d925e7b29af6035eb48d23ca01d7cb0a47754fdf36ded21c69ac04c5b46595272a38d05e4e8ea9df8bf0424e14962ed0ee503c",
-        "size": 363351,
+        "sha512": "a054cfeef3dc37dc364ef33d550063b6aa105f2394501bd982295af2fc791bba82cce15623c3ff7b09c4c3250683fb1caf7cdb72312e3c91bf50dd0c2fc39600",
+        "size": 366356,
         "runtimeEligible": true,
         "replaceSha256": [
           "75547398ec77fdc083c37de5a5d6449b166efb92c8af942ab0bddc5d675cf109",
@@ -862,7 +864,8 @@
           "327c862fcc3da7df2d491f89e886504ca82f8d33520a8b57cfff44c431aa9bf3",
           "372bae5777d7703c8e6628208dac3f087c59f657460ac6b4765d6fc4386925ec",
           "3f859aac840fa60b1a76d4ee804c8b4cc506d1daafce1bbe883cb8fcaa0a3b86",
-          "fb327767e393b7d3a3698d6d171223e64a9c7e049ebac986b74633acd198f264"
+          "fb327767e393b7d3a3698d6d171223e64a9c7e049ebac986b74633acd198f264",
+          "e82f5fa76818c0030cfaf43f2d40e0a6ac2e5726643c1c1e01ef1cc5d03054d2"
         ]
       },
       "nativeVerified": false,
@@ -971,18 +974,19 @@
         "de68867e66062de531399a9f38691057c12b0b448a100aa765587edfe9898d4d",
         "c9ca37ebab60b629be5e04e945524ecb5c3b8ec0bb61362e3deb10dbd94a14b5",
         "7f4c4cafa2a6aca85bea236337b6a200dec8761559a88ee4740c84db9a6204b0",
-        "82e8de1318a39c527c072a963ef01b7838fe430c7fc7b6ead3e85dfe40337b9f"
+        "82e8de1318a39c527c072a963ef01b7838fe430c7fc7b6ead3e85dfe40337b9f",
+        "ac7962cabc1e70a7c8f647f4675285b19d9f886745efe5d03c8ea31ad973a78f"
       ],
       "candidate": {
         "filename": "CopiMineEndEvent-26.3.jar",
         "runtimeFilename": "CopiMineEndEvent.jar",
-        "sha256": "325f116b46d3d584395a0c53e1f8a1f6fde391a3552a250401b2dffbda4d4936",
+        "sha256": "0e56ffb0971b10c5b9513ae34909bb339cec432d3f8dd1f0ddce6d7af0af1277",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "size": 1969473,
-        "sha512": "09fb8be2f905ed35e76a6c788b05e22ff30fd35b70f4f420fd86373795a418e204eaf0ed41de239b5562aa5a6fa19de994414bff8bf19e8f3cbe60fbcf9ed9c8",
+        "size": 1989672,
+        "sha512": "1ae14d14a915bc44033789b417a51dbecf6c7a2c022a4b2d7829c2d3eeee17b490f1d4455f801726595069e1d8637d7ad365c8d64b71ddc4cf7745b5876a8361",
         "runtimeEligible": true,
         "replaceSha256": [
           "ab1f1f1cd352602dd4e24e039642f0cdbfa08b74ea354288d1001cebb37a31d9",
@@ -1039,7 +1043,9 @@
           "de68867e66062de531399a9f38691057c12b0b448a100aa765587edfe9898d4d",
           "c9ca37ebab60b629be5e04e945524ecb5c3b8ec0bb61362e3deb10dbd94a14b5",
           "7f4c4cafa2a6aca85bea236337b6a200dec8761559a88ee4740c84db9a6204b0",
-          "82e8de1318a39c527c072a963ef01b7838fe430c7fc7b6ead3e85dfe40337b9f"
+          "82e8de1318a39c527c072a963ef01b7838fe430c7fc7b6ead3e85dfe40337b9f",
+          "325f116b46d3d584395a0c53e1f8a1f6fde391a3552a250401b2dffbda4d4936",
+          "ac7962cabc1e70a7c8f647f4675285b19d9f886745efe5d03c8ea31ad973a78f"
         ]
       },
       "nativeVerified": false

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-23",
+  "generatedAt": "2026-10-29",
   "sourceCommit": "d44c8f51be00f3b6d911135f7722a155cbf20c13",
   "scope": "First-party plugins only. Third-party plugins are pinned but excluded from ownership claims.",
   "plugins": [
@@ -44,7 +44,7 @@
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineUltimateAdminPlus.jar",
       "candidateSha256": "8b4b7922be1aa0ce8ba1c6a856139bf8405a03239d6ea53a810386b44efbf3a2",
-      "sha256": "41b1721f3cf9aad16619339d171dc7b33d9be81c931943c69b3fcb4253e678da",
+      "sha256": "8b4b7922be1aa0ce8ba1c6a856139bf8405a03239d6ea53a810386b44efbf3a2",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
       "realServerEnable": "BLOCKED",
@@ -88,8 +88,8 @@
         "tests/ArtifactShopPurchaseRecoveryGuardTest.java"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineArtifacts.jar",
-      "candidateSha256": "e82f5fa76818c0030cfaf43f2d40e0a6ac2e5726643c1c1e01ef1cc5d03054d2",
-      "sha256": "e82f5fa76818c0030cfaf43f2d40e0a6ac2e5726643c1c1e01ef1cc5d03054d2",
+      "candidateSha256": "a5e0420d503850cb604445c52705f5af71fdc65770a78b943c5d2bc252fabcc5",
+      "sha256": "a5e0420d503850cb604445c52705f5af71fdc65770a78b943c5d2bc252fabcc5",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
       "realServerEnable": "BLOCKED",
@@ -203,8 +203,8 @@
         "tests/PrisonerAbilityControllerTest.java"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineEndEvent.jar",
-      "candidateSha256": "325f116b46d3d584395a0c53e1f8a1f6fde391a3552a250401b2dffbda4d4936",
-      "sha256": "325f116b46d3d584395a0c53e1f8a1f6fde391a3552a250401b2dffbda4d4936",
+      "candidateSha256": "0e56ffb0971b10c5b9513ae34909bb339cec432d3f8dd1f0ddce6d7af0af1277",
+      "sha256": "ac7962cabc1e70a7c8f647f4675285b19d9f886745efe5d03c8ea31ad973a78f",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
       "realServerEnable": "BLOCKED",
@@ -293,20 +293,20 @@
       "database": "No direct JDBC; login/logout effect ownership and cleanup.",
       "tests": [
         "tests/test_autheffects_authme_exemptions.py",
-        "tests/test_client_legacy_bridge_auth_contract.py"
+        "tests/test_client_legacy_bridge_auth_contract.py",
+        "tests/AuthenticationHookReadinessPolicyTest.java"
       ],
-      "installedJar": null,
-      "sha256": null,
-      "candidateSha256": "c2a2ab2cd162d383858cf3c917fcbfc712143077ac98241fe90fc1a29a12b9f7",
+      "installedJar": "local-runtime/end-rift-server-26.3/plugins/AuthEffects.jar",
+      "sha256": "3b0dcba8ad45a5b68f500263c773dd450951949119dbb47314011c170565068d",
+      "candidateSha256": "e00175601f97e65b3081bdba67143c0407c185f7b17d4bfa14ff540906e4b455",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
       "realServerEnable": "BLOCKED",
       "negativeCoverage": "PARTIAL",
       "knownGaps": [
-        "Not present in the installed 27-plugin runtime receipt; only the source/candidate artifact is pinned.",
         "No real AuthMe login/logout effect cleanup was exercised."
       ],
-      "blockedReason": "Not installed in the current disposable runtime; no authenticated AuthMe session."
+      "blockedReason": "Local Paper startup and authenticated AuthMe gameplay are unverified; the remote candidate enabled but no login/logout event was exercised."
     }
   ]
 }

@@ -517,6 +517,20 @@ foreach ($relativeDirectory in @(
     if ($LASTEXITCODE -ne 0) { throw "Build failed: $relativeDirectory" }
 }
 
+$javac = Join-Path $jdk 'bin\javac.exe'
+$authEffectsClasses = Join-Path $repo 'minecraft/server/plugins/AuthEffects/build/classes'
+$authHookReadinessTestBuild = Join-Path $tempRoot 'auth-hook-readiness-test'
+$authHookReadinessTestSource = Join-Path $repo 'tests/AuthenticationHookReadinessPolicyTest.java'
+if (-not (Test-Path -LiteralPath $authEffectsClasses -PathType Container)) {
+    throw "AuthEffects policy classes are missing after the plugin build: $authEffectsClasses"
+}
+New-Item -ItemType Directory -Path $authHookReadinessTestBuild -Force | Out-Null
+& $javac -proc:none -encoding UTF-8 -cp $authEffectsClasses -d $authHookReadinessTestBuild $authHookReadinessTestSource
+if ($LASTEXITCODE -ne 0) { throw 'AuthEffects hook readiness policy test compilation failed.' }
+$authHookReadinessTestClasspath = @($authHookReadinessTestBuild, $authEffectsClasses) -join [IO.Path]::PathSeparator
+& $java -cp $authHookReadinessTestClasspath AuthenticationHookReadinessPolicyTest
+if ($LASTEXITCODE -ne 0) { throw 'AuthEffects hook readiness policy test failed.' }
+
 $ackTestSource = Join-Path $repo 'tests/ClientVisualAckStatusPolicyTest.java'
 $ackTestBuild = Join-Path $tempRoot 'client-visual-ack-test'
 $ackPluginClasses = Join-Path $repo 'copimine-narcotics/build/classes'
@@ -524,7 +538,6 @@ if (-not (Test-Path -LiteralPath $ackPluginClasses -PathType Container)) {
     throw "Client visual ACK policy classes are missing after the Narcotics build: $ackPluginClasses"
 }
 New-Item -ItemType Directory -Path $ackTestBuild -Force | Out-Null
-$javac = Join-Path $jdk 'bin\javac.exe'
 & $javac -proc:none -encoding UTF-8 -cp $ackPluginClasses -d $ackTestBuild $ackTestSource
 if ($LASTEXITCODE -ne 0) { throw 'Client visual ACK status policy test compilation failed.' }
 $ackTestClasspath = @($ackTestBuild, $ackPluginClasses) -join [IO.Path]::PathSeparator

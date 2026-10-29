@@ -11,7 +11,8 @@ import java.util.UUID;
  * kept until its lock expires or the player leaves the eligible roster.
  */
 public final class BossTargetPolicy {
-    public static final long DEFAULT_LOCK_MILLIS = 5_000L;
+    /** Spec 3.1: a valid primary focus must hold for 10-12 seconds. */
+    public static final long DEFAULT_LOCK_MILLIS = 11_000L;
 
     private BossTargetPolicy() {
     }

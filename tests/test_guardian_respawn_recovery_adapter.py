@@ -18,6 +18,7 @@ def test_guardian_recovery_preserves_damage_and_independent_effective_deadlines(
         "private boolean commitTentacleGuardianDeathWindow(",
         "private void recordTentacleGuardianSpawnFailure(",
         "private boolean tentacleGuardianRegenerationDisabled()",
+        "private void tickGuardianProtectedRegeneration(",
         "public void onBossGuardianRegeneration(",
         "private void restoreTentacleGuardianState(",
         "private void encodeTentacleGuardianState(",
@@ -44,7 +45,7 @@ public class GuardianRespawnRecoveryProbe {
         UUID getUniqueId(){return id;} boolean isValid(){return valid;} boolean isDead(){return dead;}
         Location getLocation(){return new Location();}
     }
-    static class LivingEntity extends Entity { double hp=60; }
+    static class LivingEntity extends Entity { double hp=60; double getHealth(){return hp;} void setHealth(double v){hp=v;} }
     static class Player extends LivingEntity { }
     static class ItemDisplay extends Entity { final Location location=new Location();
         Location getLocation(){return location;} }
@@ -67,13 +68,15 @@ public class GuardianRespawnRecoveryProbe {
     final Map<UUID,UUID> tentacleDisplaysByHitbox=new HashMap<>();
     long generation=7, tentacleGuardianRegenerationDisabledGeneration=Long.MIN_VALUE;
     long tentacleActiveMillis=0, tentacleDamageWindowEndsMillis=-1;
+    double tentacleGuardianRegenerationGranted, tentacleGuardianRegenerationNextStepMillis;
+    double regenHeals; double bossMaxHealthValue=60;
     EventPhase phase=EventPhase.BOSS_ACTIVE;
     BossPhase bossPhase=BossPhase.LAST_SEAL;
     final UUID eventId=UUID.randomUUID(); final LivingEntity boss=new LivingEntity();
     final Location position=new Location();
     int admitted=10, online=10, spawnAttempts, spawned, saves, breaks, temporaryTicks; boolean failSpawn, saveFails;
     String recoveryReason;
-    final Object config=new Object();boolean localTextureShowcase,testCombatAiMode,guardiansEnabled=true;
+    final Object config=new Object();boolean localTextureShowcase,testCombatAiMode,guardiansEnabled=true,shielded;
     long tentacleActiveLastNanos,nextTentacleTemporaryTick,eventTickCounter;
     static final long TENTACLE_TEMPORARY_INTERVAL_TICKS=160;
     final Map<UUID,Long> tentacleNextAttackTick=new HashMap<>();
@@ -83,7 +86,7 @@ public class GuardianRespawnRecoveryProbe {
     void clearTentacles(String reason){throw new AssertionError("whole-role cleanup: "+reason);}
     void resetTentacleGuardianLedger(){tentacleGuardianHealth.clear();tentacleGuardianRespawnDeadlineMillis.clear();}
     boolean tentacleVulnerabilityOpen(){return false;}
-    boolean tentacleGuardianShielded(){return false;}
+    boolean tentacleGuardianShielded(){return shielded;}
     void reconcileGuardianShieldOrbit(LivingEntity b,boolean active){}
     Player chooseTentacleTarget(List<Player> p,Location l){return p.getFirst();}
     int tentacleAttackStaggerTicks(){return 10;}
@@ -99,6 +102,7 @@ public class GuardianRespawnRecoveryProbe {
     boolean isOfficialEntity(Entity entity){return entity==boss;}
     boolean isTestBoss(LivingEntity entity){return false;}
     Logger getLogger(){return Logger.getAnonymousLogger();}
+    double bossMaxHealth(LivingEntity b){return bossMaxHealthValue;}
     long tentacleDamageWindowMillis(){return 15_000L;}
     boolean saveStateSync(){saves++; return !saveFails;}
     void forcePhase(EventPhase state,String reason){phase=state; recoveryReason=reason;}
@@ -207,12 +211,41 @@ public class GuardianRespawnRecoveryProbe {
         check(disabled.tentacleController.permanentCount()==0
                         && disabled.tentacleController.state(small.id)!=null && disabled.temporaryTicks==1,
                 "disabling defensive guardians removed or froze the independent small summon role");
+
+        // Spec 6.4: only living shields may heal, and only up to the generation cap.
+        var regen=new GuardianRespawnRecoveryProbe();
+        regen.bossMaxHealthValue=1_000.0; regen.boss.hp=100.0;
+        regen.tickGuardianProtectedRegeneration(regen.boss);
+        check(regen.boss.hp==100.0,"the boss healed with zero living guardian shields");
+        regen.shielded=true;
+        regen.tickGuardianProtectedRegeneration(regen.boss);
+        check(regen.boss.hp>100.0 && regen.boss.hp<=110.0,
+                "guardian-protected regeneration did not restore a small readable step");
+        check(regen.tentacleGuardianRegenerationGranted>0.0,
+                "granted regeneration was not accumulated for the cap");
+        regen.tentacleGuardianRegenerationNextStepMillis=0L;
+        regen.tentacleGuardianRegenerationDisabledGeneration=regen.generation;
+        double before=regen.boss.hp;
+        regen.tickGuardianProtectedRegeneration(regen.boss);
+        check(regen.boss.hp==before,
+                "regeneration resumed after the all-guardians-dead ban for this generation");
+        var capped=new GuardianRespawnRecoveryProbe();
+        capped.bossMaxHealthValue=1_000.0; capped.boss.hp=10.0; capped.shielded=true;
+        capped.tentacleGuardianRegenerationGranted=250.0;
+        capped.tickGuardianProtectedRegeneration(capped.boss);
+        check(capped.boss.hp==10.0,"regeneration ignored the 25% generation cap");
+        var notSeal=new GuardianRespawnRecoveryProbe();
+        notSeal.bossMaxHealthValue=1_000.0; notSeal.boss.hp=100.0; notSeal.shielded=true;
+        notSeal.bossPhase=BossPhase.RAGE;
+        notSeal.tickGuardianProtectedRegeneration(notSeal.boss);
+        check(notSeal.boss.hp==100.0,"regeneration ran outside the LAST_SEAL phase");
     }
 }
 ''', encoding="utf-8")
     classes = [SOURCES / ("me/copimine/endevent/" + name + ".java") for name in (
         "domain/TentacleGuardianPolicy", "domain/TentacleScalingPolicy",
         "domain/TentacleAnimationPolicy", "domain/BossPhase", "runtime/TentacleController",
+        "domain/GuardianRegenerationPolicy",
     )]
     result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path),
                              *map(str, classes), str(probe)], capture_output=True, text=True)

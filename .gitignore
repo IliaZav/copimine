@@ -4,7 +4,7 @@ __pycache__/
 .pytest_cache/
 *.pyc
 *.sqlite3*
-data/
+/data/
 backups/
 node_modules/
 .superpowers/

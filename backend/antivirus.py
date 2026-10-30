@@ -6,7 +6,10 @@
 """
 
 import asyncio
+import logging
+import os
 import subprocess
+import tempfile
 from pathlib import Path
 
 from .security import fail
@@ -32,19 +35,37 @@ def scan(path):
 
 
 async def store(path: Path, payload, database, user, target, reason="", infected_action="file.infected"):
-    """Записывает файл и оставляет его только если антивирус сказал clean."""
+    """Проверяет отдельный кандидат и атомарно публикует только чистые байты."""
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o750)
-    path.write_bytes(payload)
+    descriptor, filename = tempfile.mkstemp(prefix="." + path.name + ".", suffix=".scan", dir=path.parent)
+    staged = Path(filename)
     try:
-        path.chmod(0o640)
-    except OSError:
-        pass
-    status, detail = await asyncio.to_thread(scan, path)
-    if status == "clean":
-        return {"scan": status, "detail": detail}
-    path.unlink(missing_ok=True)
-    if status == "infected":
-        database.audit(user or {"id": "system", "name": "system"}, infected_action, str(target), reason,
-                       {"detail": detail, "bytes": len(payload)})
-        fail(422, "file_infected", "Файл не прошёл проверку антивирусом и был удалён.")
-    fail(503, "scan_unavailable", "Проверка антивирусом сейчас недоступна. Попробуйте позже.")
+        with os.fdopen(descriptor, "wb") as candidate:
+            candidate.write(payload)
+            candidate.flush()
+            os.fsync(candidate.fileno())
+        try:
+            staged.chmod(0o640)
+        except OSError:
+            pass
+        try:
+            status, detail = await asyncio.to_thread(scan, staged)
+        except (OSError, subprocess.SubprocessError):
+            fail(503, "scan_unavailable", "Проверка антивирусом сейчас недоступна. Попробуйте позже.")
+        if status == "clean":
+            # Same-directory atomic replacement: the previous good file remains
+            # readable until scanning has finished and is never removed on rejection.
+            os.replace(staged, path)
+            return {"scan": status, "detail": detail}
+        if status == "infected":
+            database.audit(user or {"id": "system", "name": "system"}, infected_action, str(target), reason,
+                           {"detail": detail, "bytes": len(payload)})
+            fail(422, "file_infected", "Файл не прошёл проверку антивирусом и был удалён.")
+        fail(503, "scan_unavailable", "Проверка антивирусом сейчас недоступна. Попробуйте позже.")
+    finally:
+        try:
+            staged.unlink(missing_ok=True)
+        except OSError:
+            # A cancelled Windows scan may still own its handle. Never remove the
+            # published asset or turn a cancellation into publication to compensate.
+            logging.getLogger("copimine.site").warning("Scanner staging cleanup deferred")

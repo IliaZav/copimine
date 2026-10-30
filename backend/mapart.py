@@ -50,7 +50,7 @@ def _png(encoded):
                 source = source.convert("RGBA" if "A" in source.getbands() else "RGB")
             output = io.BytesIO()
             source.save(output, format="PNG", optimize=True)
-    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+    except (UnidentifiedImageError, OSError, ValueError, SyntaxError, Image.DecompressionBombError):
         fail(400, "invalid_mapart_image", "Файл повреждён или не является поддерживаемым изображением.")
     png = output.getvalue()
     if not png or len(png) > _MAX_BYTES:

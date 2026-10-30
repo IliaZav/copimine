@@ -53,7 +53,7 @@ def moduleRuntimeResources = [
     artifacts: ['plugin.yml', 'config.yml', 'items.yml'],
     electionCore: ['plugin.yml', 'config.yml'],
     narcotics: ['plugin.yml', 'config.yml'],
-    endEvent: ['plugin.yml', 'config.yml'],
+    endEvent: ['plugin.yml', 'config.yml', 'me/copimine/protocol/EncounterGenerationPolicy.class'],
     authEffects: ['plugin.yml']
 ]
 
@@ -96,6 +96,16 @@ modules.each { name, module ->
 }
 
 sourceSets.narcotics.java.srcDir(new File(checkout, 'tools/minecraft-26.3/protocol/src/main/java'))
+
+// End Rift snapshots validate their generation before the optional Narcotics
+// bridge is available. Package the tiny shared generation policy in this JAR
+// so a saved event can be recovered independently of plugin load order.
+tasks.named('endEventJar', Jar) {
+    dependsOn sourceSets.narcotics.classesTaskName
+    from(sourceSets.narcotics.output) {
+        include 'me/copimine/protocol/EncounterGenerationPolicy.class'
+    }
+}
 
 sourceSets.create('bridgeServerTest') {
     java.srcDir(file('server-bridge-tests/src/test/java'))

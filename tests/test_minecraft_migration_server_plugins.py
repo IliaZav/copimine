@@ -1344,9 +1344,9 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     candidate=baseline['candidate']
     assert candidate['filename']=='CopiMineEndEvent-26.3.jar'
     assert candidate['runtimeFilename']=='CopiMineEndEvent.jar'
-    assert candidate['size']==1995218
-    assert candidate['sha256']=='6aeca12efcdc8d609d4a5ffc77208cd0d4d8d90ee58ca65badd0009bf8259464'
-    assert candidate['sha512']=='b6b14855a9af8bf1a9a0466286b9536d4579830e36403153e51d39cddb53e33d5bd09e64850550ae2c64d3809b58186f7f1c58f836f99863d4557abb3a23cb9c'
+    assert candidate['size']==1996268
+    assert candidate['sha256']=='db2a4e73c205b208ab27380f9d091d0689bb08422ee657ac5b503cd62fe7ba35'
+    assert candidate['sha512']=='73b6039d217b0ef9985c513cffb4e61e66533f180d21a8ce38227ad6ed87e641c52b645c76326c048ca08fa3c0dea287f878ee02cf4ef3f4d17b1c7f746a4373'
     assert candidate['apiVersion']=='26.3'
     assert candidate['buildArtifact']=='build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar'
     assert candidate['nativeVerified'] is lock['nativeVerified']
@@ -2958,8 +2958,8 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
     expected_candidates={
         'CopiMineArtifacts':('a5e0420d503850cb604445c52705f5af71fdc65770a78b943c5d2bc252fabcc5',
                              'a054cfeef3dc37dc364ef33d550063b6aa105f2394501bd982295af2fc791bba82cce15623c3ff7b09c4c3250683fb1caf7cdb72312e3c91bf50dd0c2fc39600',366356),
-        'CopiMineEndEvent':('6aeca12efcdc8d609d4a5ffc77208cd0d4d8d90ee58ca65badd0009bf8259464',
-                            'b6b14855a9af8bf1a9a0466286b9536d4579830e36403153e51d39cddb53e33d5bd09e64850550ae2c64d3809b58186f7f1c58f836f99863d4557abb3a23cb9c',1995218),
+        'CopiMineEndEvent':('db2a4e73c205b208ab27380f9d091d0689bb08422ee657ac5b503cd62fe7ba35',
+                            '73b6039d217b0ef9985c513cffb4e61e66533f180d21a8ce38227ad6ed87e641c52b645c76326c048ca08fa3c0dea287f878ee02cf4ef3f4d17b1c7f746a4373',1996268),
         'CopiMineNarcotics':('bea72432491f7afa0a0cbd23b608654b56899b8e463720f98dbfef0f39f2ef0d',
                              'c2e3439ca69fd8ecc2b19aa654a38fb6bcd81e5be1da2da52934988edf1f75a5bb0170cbada994015500a6ccc6b2fcb6e8bc2bf4222a154c1b1fe6b5c14a586b',370363),
     }

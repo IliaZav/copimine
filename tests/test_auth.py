@@ -23,6 +23,11 @@ def client(tmp_path):
         secure_cookies=False,
         bootstrap_owner="TestOwner",
         bootstrap_password="This-is-only-a-test-owner-password-2026",
+        # Without these the defaults point at /opt/copimine-game and
+        # /var/lib/copimine-site, so a test that prepares a release writes
+        # outside tmp_path and fails on a clean machine.
+        game_root=tmp_path / "game",
+        map_root=tmp_path / "maps",
     )
     with TestClient(create_app(settings)) as session:
         yield session

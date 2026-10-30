@@ -140,9 +140,15 @@ def matching_tests(route, blocks):
 
 
 def render():
-    test_source = "\n".join(p.read_text(encoding="utf-8", errors="replace")
-                            for p in TESTS.glob("*.py"))
-    blocks = _test_blocks(test_source)
+    # Blocks are cut per file: joining every test file into one string makes the
+    # last test of a file absorb the next file's imports, so the result depended
+    # on the order glob() returned, which differs between Windows and Linux.
+    # The matrix test itself is skipped: it names routes to assert on them, it
+    # does not exercise them, and counting it would mark every route as tested.
+    blocks = {}
+    for path in TESTS.glob("*.py"):
+        if path.name != "test_acceptance_matrix.py":
+            blocks.update(_test_blocks(path.read_text(encoding="utf-8", errors="replace")))
     callers = frontend_callers()
 
     rows = []

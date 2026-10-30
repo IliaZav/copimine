@@ -136,11 +136,26 @@ class GameAdapter:
         if not request_path.exists():
             temporary = self.requests / ("." + request_id + "." + secrets.token_hex(4))
             fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o640)
-            with os.fdopen(fd, "w", encoding="utf-8") as file:
-                json.dump({"payload": payload, "signature": signature}, file, ensure_ascii=False)
-                file.flush()
-                os.fsync(file.fileno())
-            os.replace(temporary, request_path)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as file:
+                    json.dump({"payload": payload, "signature": signature}, file, ensure_ascii=False)
+                    file.flush()
+                    os.fsync(file.fileno())
+                # os.replace would let two processes with the same id publish different
+                # payloads and silently keep the last one; link fails for the loser.
+                os.link(temporary, request_path)
+            except FileExistsError:
+                try:
+                    winner = json.loads(json.loads(request_path.read_text(encoding="utf-8"))["payload"])
+                except (OSError, ValueError, KeyError):
+                    fail(409, "request_conflict", "Не удалось проверить предыдущий запрос. Обновите данные.")
+                if stable(winner) != stable(body):
+                    fail(409, "idempotency_conflict", "Этот идентификатор уже использован для другой операции.")
+            finally:
+                try:
+                    os.unlink(temporary)
+                except OSError:
+                    pass
         result = self._parse_rcon(self.rcon("cmwebbridge " + request_id))
         if not result.get("ok"):
             code = result.get("code", "game_action_failed")

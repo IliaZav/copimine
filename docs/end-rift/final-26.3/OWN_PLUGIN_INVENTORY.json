@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedAt": "2026-10-29",
   "sourceCommit": "d44c8f51be00f3b6d911135f7722a155cbf20c13",
-  "scope": "First-party plugins only. Third-party plugins are pinned but excluded from ownership claims.",
+  "scope": "First-party plugins only. Historical sourceBuild/unitContract/realServerEnable/negativeCoverage/knownGaps/blockedReason fields describe the original 2026-10-29 acceptance pass. Candidate and installed hashes are the separately measured current artifact snapshot; see runtimeArtifactSnapshot and the current completion audit. Third-party plugins are pinned but excluded from ownership claims.",
   "plugins": [
     {
       "name": "CopiMineUltimateAdminPlus",
@@ -203,8 +203,8 @@
         "tests/PrisonerAbilityControllerTest.java"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineEndEvent.jar",
-      "candidateSha256": "ca4c8f5f40730e5c6f7e2431ce649315403fc64a2599721a39fc68d15ca7afca",
-      "sha256": "ac7962cabc1e70a7c8f647f4675285b19d9f886745efe5d03c8ea31ad973a78f",
+      "candidateSha256": "c32924bcf3283606a15b233d91214edbafcc986bb593ad7b198224107686fe7d",
+      "sha256": "c32924bcf3283606a15b233d91214edbafcc986bb593ad7b198224107686fe7d",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
       "realServerEnable": "BLOCKED",
@@ -267,8 +267,8 @@
         "tests/test_admin_data_contracts.py"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineWorldCore.jar",
-      "candidateSha256": "9d0b51fee6289c38b04fd76592d5bc2743e2f984db6db110d39be0f49c9c3755",
-      "sha256": "6617940e38dcc8f6211da778ed58555a0d4019eab438f0682dbc04352bdd3e0a",
+      "candidateSha256": "e6a2703e8091053f2d7e4fb53fb9b278a8d1ad62956250c64da334c780a742bc",
+      "sha256": "e6a2703e8091053f2d7e4fb53fb9b278a8d1ad62956250c64da334c780a742bc",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
       "realServerEnable": "BLOCKED",
@@ -297,7 +297,7 @@
         "tests/AuthenticationHookReadinessPolicyTest.java"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/AuthEffects.jar",
-      "sha256": "3b0dcba8ad45a5b68f500263c773dd450951949119dbb47314011c170565068d",
+      "sha256": "3ae5874bad098f6ac97c983806eb6e7143acc6fde5e57ea4ff9508fe6fef4e8f",
       "candidateSha256": "3ae5874bad098f6ac97c983806eb6e7143acc6fde5e57ea4ff9508fe6fef4e8f",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
@@ -308,5 +308,14 @@
       ],
       "blockedReason": "Local Paper startup and authenticated AuthMe gameplay are unverified; the remote candidate enabled but no login/logout event was exercised."
     }
-  ]
+  ],
+  "acceptanceStatusAsOf": "2026-10-29",
+  "runtimeArtifactSnapshot": {
+    "measuredAt": "2026-10-30T11:06:39.014789+00:00",
+    "runtime": "isolated local Paper 26.3",
+    "installedReceiptSha256": "d7004021a527d1c1695d60504a69225f58a1f58ed635687b08a097d82ea42ffc",
+    "installedPluginCount": 30,
+    "audit": "docs/end-rift/final-26.3/AUDIT_2026-10-30_EVENT_COMPLETION.md",
+    "nativeVerified": false
+  }
 }

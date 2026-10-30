@@ -65,6 +65,7 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
     private WorldLimit overworldLimit;
     private WorldAccess netherAccess;
     private WorldAccess endAccess;
+    private String pendingWorldAccessConfiguration;
     private final Set<UUID> warnedOutside = new LinkedHashSet<>();
     private final Map<UUID, String> blockedWorldWarnings = new HashMap<>();
     private final Map<String, BorderSnapshot> savedBorders = new HashMap<>();
@@ -202,6 +203,10 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
 
     private boolean handleCommand(CommandSender sender, String[] args) {
         if ("reload".equalsIgnoreCase(args[0])) {
+            if (!reconcileWorldAccessConfiguration()) {
+                sender.sendMessage(color("&cСохранение состояния мира требует повторной проверки."));
+                return true;
+            }
             reloadConfig();
             reloadLocalConfig();
             applyOverworldBorder();
@@ -243,6 +248,10 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
                 sender.sendMessage(color("&eЧасть игроков окажется за границей. Повтори: &f/cmworld border set " + radius + " confirm"));
                 return true;
             }
+            if (!reconcileWorldAccessConfiguration()) {
+                sender.sendMessage(color("&cСохранение состояния мира требует повторной проверки."));
+                return true;
+            }
             getConfig().set("world_limits.overworld.radius", radius);
             saveConfig();
             reloadLocalConfig();
@@ -265,7 +274,7 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         }
         if ("open".equalsIgnoreCase(args[1])) {
             if (!isNether) {
-                WorldAccessResult result = worldAccessService.setEndEnabled(true, sender.getName(), "cmworld:end:open");
+                WorldAccessResult result = worldAccessService.setEndEnabled(true, sender.getName(), "cmworld:end:open:" + UUID.randomUUID());
                 sender.sendMessage(color((result.success() ? "&a" : "&c") + result.message()));
             } else {
                 OperationResult result = setWorldState(true, true);
@@ -280,7 +289,7 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
                 return true;
             }
             if (!isNether) {
-                WorldAccessResult result = worldAccessService.setEndEnabled(false, sender.getName(), "cmworld:end:close");
+                WorldAccessResult result = worldAccessService.setEndEnabled(false, sender.getName(), "cmworld:end:close:" + UUID.randomUUID());
                 sender.sendMessage(color((result.success() ? "&a" : "&c") + result.message()));
             } else {
                 OperationResult result = setWorldState(true, false);
@@ -293,14 +302,31 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
     }
 
     private OperationResult setWorldState(boolean nether, boolean enabled) {
+        return persistWorldAccessChange(nether, enabled, null, null);
+    }
+
+    private OperationResult persistWorldAccessChange(boolean nether, boolean enabled,
+                                                     String operationKey, String actor) {
+        if (!reconcileWorldAccessConfiguration()) {
+            return new OperationResult(false, "Сохранение состояния мира требует повторной проверки.");
+        }
         String path = nether ? "world_access.nether.enabled" : "world_access.end.enabled";
         String title = nether ? "Нижний мир" : "Энд";
         WorldAccess previous = nether ? netherAccess : endAccess;
         try {
-            getConfig().set(path, enabled);
-            saveConfig();
-            reloadLocalConfig();
-            if (!enabled) {
+            // JavaPlugin.saveConfig logs and swallows IOException. Never publish
+            // access or report victory until the state and receipt are on disk.
+            YamlConfiguration candidate = new YamlConfiguration();
+            candidate.loadFromString(getConfig().saveToString());
+            candidate.set(path, enabled);
+            if (operationKey != null) {
+                String receipt = worldAccessReceiptPath(operationKey);
+                candidate.set(receipt + ".key", operationKey);
+                candidate.set(receipt + ".enabled", enabled);
+                candidate.set(receipt + ".actor", actor == null ? "" : actor);
+            }
+            saveWorldAccessConfiguration(candidate);
+            if (!enabled && previous != null && previous.enabled()) {
                 evacuatePlayers(previous, color("&e" + title + " сейчас закрыт."));
             }
             return new OperationResult(true, title + (enabled ? " открыт." : " закрыт."));
@@ -310,25 +336,107 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         }
     }
 
+    private String worldAccessReceiptPath(String operationKey) {
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest(
+                    operationKey.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return "world_access.operation_receipts." + java.util.HexFormat.of().formatHex(digest);
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 unavailable", impossible);
+        }
+    }
+
+    private void saveWorldAccessConfiguration(YamlConfiguration candidate) throws IOException {
+        Path directory = getDataFolder().toPath();
+        Files.createDirectories(directory);
+        Path target = directory.resolve("config.yml");
+        if (Files.isSymbolicLink(target)) {
+            throw new IOException("World access configuration must be a regular file");
+        }
+        String serialized = candidate.saveToString();
+        Path temporary = Files.createTempFile(directory, "world-access-", ".tmp");
+        try {
+            Files.writeString(temporary, serialized, java.nio.charset.StandardCharsets.UTF_8);
+            try (FileChannel channel = FileChannel.open(temporary, StandardOpenOption.WRITE)) {
+                channel.force(true);
+            }
+            // Both files are on the same filesystem. If atomic publication is
+            // unavailable, fail closed instead of risking a partial config.
+            Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            // Publication may succeed even when read-back fails. Keep this
+            // receipt fenced until disk and memory agree; no later operation
+            // may overwrite it from the old in-memory configuration.
+            pendingWorldAccessConfiguration = serialized;
+            if (!reconcileWorldAccessConfiguration()) {
+                throw new IOException("World access configuration requires read-back recovery");
+            }
+        } finally {
+            Files.deleteIfExists(temporary);
+        }
+    }
+
+    private boolean reconcileWorldAccessConfiguration() {
+        if (pendingWorldAccessConfiguration == null) return true;
+        try {
+            Path target = getDataFolder().toPath().resolve("config.yml");
+            if (!pendingWorldAccessConfiguration.equals(
+                    Files.readString(target, java.nio.charset.StandardCharsets.UTF_8))) {
+                throw new IOException("World access configuration read-back mismatch");
+            }
+            getConfig().loadFromString(pendingWorldAccessConfiguration);
+            reloadLocalConfig();
+            pendingWorldAccessConfiguration = null;
+            return true;
+        } catch (Exception error) {
+            getLogger().log(java.util.logging.Level.WARNING,
+                    "WorldCore cannot confirm published world access; further changes are blocked", error);
+            return false;
+        }
+    }
+
     private final class WorldAccessServiceImpl implements WorldAccessService {
         @Override
         public WorldAccessResult setEndEnabled(boolean enabled, String actor, String idempotencyKey) {
-            if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            if (idempotencyKey == null || idempotencyKey.isBlank() || idempotencyKey.length() > 512) {
                 return new WorldAccessResult(false, false, "IDEMPOTENCY_KEY_REQUIRED", "Не указан ключ операции.");
             }
-            if (endAccess != null && endAccess.enabled() == enabled) {
+            if (!reconcileWorldAccessConfiguration()) {
+                return new WorldAccessResult(false, false, "RECOVERY_REQUIRED",
+                        "Сохранение состояния мира требует повторной проверки.");
+            }
+            String receipt = worldAccessReceiptPath(idempotencyKey);
+            if (getConfig().contains(receipt)) {
+                if (!idempotencyKey.equals(getConfig().getString(receipt + ".key"))
+                        || !getConfig().isBoolean(receipt + ".enabled")
+                        || getConfig().getBoolean(receipt + ".enabled") != enabled) {
+                    return new WorldAccessResult(false, false, "IDEMPOTENCY_CONFLICT",
+                            "Ключ операции уже использован для другого запроса.");
+                }
+                if (endAccess == null || endAccess.enabled() != enabled) {
+                    return new WorldAccessResult(false, false, "SUPERSEDED",
+                            "Состояние мира изменено более поздней операцией.");
+                }
                 return new WorldAccessResult(true, false, enabled ? "ALREADY_OPEN" : "ALREADY_CLOSED",
                         "Энд уже " + (enabled ? "открыт." : "закрыт."));
             }
-            OperationResult result = setWorldState(false, enabled);
-            return new WorldAccessResult(result.success(), result.success(),
-                    result.success() ? (enabled ? "OPENED" : "CLOSED") : "FAILED",
+            ConfigurationSection receipts = getConfig().getConfigurationSection("world_access.operation_receipts");
+            if (receipts != null && receipts.getKeys(false).size() >= 4096) {
+                return new WorldAccessResult(false, false, "RECEIPT_LIMIT",
+                        "Журнал операций заполнен. Обратитесь к администратору.");
+            }
+            boolean changed = endAccess == null || endAccess.enabled() != enabled;
+            // Record same-state requests too: a late replay must not undo a later
+            // administrative close merely because this request originally was a no-op.
+            OperationResult result = persistWorldAccessChange(false, enabled, idempotencyKey, actor);
+            return new WorldAccessResult(result.success(), result.success() && changed,
+                    result.success() ? (changed ? (enabled ? "OPENED" : "CLOSED")
+                            : (enabled ? "ALREADY_OPEN" : "ALREADY_CLOSED")) : "FAILED",
                     result.message());
         }
 
         @Override
         public boolean isEndEnabled() {
-            return endAccess != null && endAccess.enabled();
+            return pendingWorldAccessConfiguration == null && endAccess != null && endAccess.enabled();
         }
 
         @Override

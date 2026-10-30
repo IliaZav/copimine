@@ -44,6 +44,13 @@ public class InfernoRuntimeCadenceProbe {
         void damage(double amount,LivingEntity boss){hits++;if(!cancelled)health-=amount;}
         Vector getVelocity(){return new Vector();} void setVelocity(Vector v){impulses++;}
     }
+    static class ArenaInfernoGeyserEffects {
+        static int bursts;
+        static int erupt(Player viewer, Location point) { bursts++; return 5; }
+    }
+    int accountedParticles;
+    boolean isEventParticleViewer(Player viewer, Location point) { return true; }
+    void recordParticleEmission(int count) { accountedParticles += count; }
     static final World WORLD=new World();
     static class BukkitTask { void cancel(){} }
     static class Scheduler {
@@ -78,10 +85,14 @@ public class InfernoRuntimeCadenceProbe {
         check(Bukkit.scheduler.period==1,"vent ERUPT at tick16 is unreachable from the 20-tick scheduler");
         for(int tick=0;tick<16;tick++)Bukkit.scheduler.callback.run();
         check(p.target.hits==0,"a cast inherited a global-clock eruption without its full warning");
+        check(ArenaInfernoGeyserEffects.bursts==0,"a geyser erupted during the warning");
         Bukkit.scheduler.callback.run();
         check(p.target.hits==1 && p.target.impulses==1,"the first warned eruption never hit");
+        check(ArenaInfernoGeyserEffects.bursts==1 && p.accountedParticles==5,
+                "the eruption did not publish and account exactly one geyser burst");
         for(int tick=17;tick<60;tick++)Bukkit.scheduler.callback.run();
         check(p.target.hits==1 && p.floorCalls==3,"floor cadence or single-eruption receipt changed");
+        check(ArenaInfernoGeyserEffects.bursts==1,"the visual burst repeated during recovery");
         p.target.cancelled=true;
         for(int tick=60;tick<=76;tick++)Bukkit.scheduler.callback.run();
         check(p.target.hits==2 && p.target.impulses==1,"cancelled steam damage still launched the player");

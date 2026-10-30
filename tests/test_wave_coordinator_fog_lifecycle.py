@@ -28,6 +28,12 @@ def probe(tmp_path_factory):
         "void resolveEliteProjectileImpact(UUID projectileId, UUID shooterId, UUID targetId,",
         "boolean isWaveAiCombatEntity(Entity entity)",
         "boolean isCurrentRitualGuard(Entity entity)",
+        "boolean isRitualConvertedArrow(Arrow arrow)",
+        "boolean ritualConvertedArrowTargetAllowed(Arrow arrow, LivingEntity target)",
+        "boolean isRitualConvertedMob(Entity entity)",
+        "boolean isRitualConvertedTargetAllowed(Entity source, LivingEntity target)",
+        "boolean isRitualConversionCombatTarget(Entity target)",
+        "boolean isRitualConvertibleHostile(Entity target)",
     ])
     if "private void clearWaveProjectilesForFog()" in source:
         methods += extract(source, "void clearWaveProjectilesForFog()")
@@ -44,6 +50,7 @@ import me.copimine.endevent.domain.EliteProjectileImpactPolicy;
 import me.copimine.endevent.domain.WaveProjectileAdmissionController;
 import me.copimine.endevent.domain.WaveProjectileTargetPolicy;
 import me.copimine.endevent.domain.RitualGuardAbilityPolicy;
+import me.copimine.endevent.domain.RitualConversionTargetPolicy;
 public class WaveFogLifecycleProbe {
  enum EventPhase { WAVE_1,WAVE_2,WAVE_3,WAVE_4,WAVE_5,WAVE_6,WAVE_7,INTERMISSION_1,INTERMISSION_2,INTERMISSION_3,INTERMISSION_4,INTERMISSION_5,INTERMISSION_6,CORE_RESTORATION,RECOVERY_REQUIRED,BOSS_ACTIVE,READY_FOR_PLAYERS }
  enum BlackFogPhase { COMBAT,FOG }
@@ -51,6 +58,12 @@ public class WaveFogLifecycleProbe {
  long generation=3,eventTickCounter=40;int activeWave=5;boolean localTextureShowcase,testCombatAiMode;
  record Config(String environment){}Config config=new Config("local");Set<UUID> spellServants=new HashSet<>();
  Object keyKind=new Object(),keyWave=new Object(),keyEventId=new Object(),keyArrowSpell=new Object(),keyEliteProjectileAbility=new Object();String eventId="event",recoveryReason;
+ Object keyRitualConverted=new Object(),keyRitualProjectileOwner=new Object(),keyMiniBossSpell=new Object();
+ Map<UUID,Long> ritualConvertedMobUntilMillis=new HashMap<>();
+ static final String ARROW_SPELL_RITUAL_CONVERTED="ritual_converted",ARROW_SPELL_SKELETON="skeleton",ARROW_SPELL_POISON_NAUSEA="poison_nausea",ARROW_SPELL_EXPLOSIVE="explosive",EVENT_KIND_DISPLAY="display",EVENT_KIND_WAVE_GUARDIAN="wave_guardian";
+ static class DataType<T>{}
+ static class PersistentDataType {static final DataType<Byte> BYTE=new DataType<>();static final DataType<String> STRING=new DataType<>();}
+ static class Data {Map<Object,Object> values=new HashMap<>();@SuppressWarnings("unchecked") <T>T getOrDefault(Object key,DataType<T> type,T fallback){return (T)values.getOrDefault(key,fallback);}}
  static final String EVENT_KIND_BOSS="boss",EVENT_KIND_ELITE="elite",EVENT_KIND_PROJECTILE="projectile",ARROW_SPELL_RITUAL_PROJECTILE="ritual",ARROW_SPELL_RITUAL_GUARD_WEB="guard",ARROW_SPELL_RITUAL_GUARD_VOLLEY="ritual_guard_volley",ARROW_SPELL_RITUAL_GUARD_BRAND="ritual_guard_soul_brand";
  WaveCombatCoordinator waveCombatCoordinator=new WaveCombatCoordinator();
  WaveProjectileAdmissionController waveProjectileAdmission=new WaveProjectileAdmissionController();
@@ -78,11 +91,11 @@ public class WaveFogLifecycleProbe {
  static final World WORLD=new World();
  static class Location {double x,y,z;double distanceSquared(Location l){double dx=x-l.x,dy=y-l.y,dz=z-l.z;return dx*dx+dy*dy+dz*dz;}double getX(){return x;}double getY(){return y;}double getZ(){return z;}public Location clone(){Location copy=new Location();copy.x=x;copy.y=y;copy.z=z;return copy;}World getWorld(){return WORLD;}void setWorld(World w){}}
  static class World {UUID getUID(){return new UUID(0,1);}Arrow spawnArrow(Location l,Vector v,float s,float spread){Arrow arrow=new Arrow();arrow.location=l.clone();arrow.velocity=v.clone().normalize().multiply(s);Bukkit.entities.put(arrow.id,arrow);return arrow;}}
- static class Entity {UUID id=UUID.randomUUID();long gen=3;int wave=5;String kind="elite",session="event";boolean removed,official=true;Location location=new Location();UUID getUniqueId(){return id;}World getWorld(){return WORLD;}Location getLocation(){return location;}boolean isValid(){return !removed;}boolean isDead(){return removed;}void remove(){removed=true;}}
- static class LivingEntity extends Entity {}
+ static class Entity {final Data data=new Data();Data getPersistentDataContainer(){return data;}UUID id=UUID.randomUUID();long gen=3;int wave=5;String kind="elite",session="event";boolean removed,official=true;Location location=new Location();UUID getUniqueId(){return id;}World getWorld(){return WORLD;}Location getLocation(){return location;}boolean isValid(){return !removed;}boolean isDead(){return removed;}void remove(){removed=true;}}
+ static class LivingEntity extends Entity {double getHealth(){return 20;}}
  static class Player extends LivingEntity {int damageCalls;boolean isOnline(){return true;}void damage(double d,LivingEntity e){damageCalls++;}Location getEyeLocation(){return new Location();}}
  static class Path {int stopCount;void stopPathfinding(){stopCount++;}}
- static class Mob extends LivingEntity {boolean ai=true,aware=true;LivingEntity target;Path path=new Path();LivingEntity getTarget(){return target;}void setTarget(LivingEntity p){target=p;}Path getPathfinder(){return path;}boolean hasAI(){return ai;}boolean isAware(){return aware;}void setAI(boolean b){ai=b;}void setAware(boolean b){aware=b;}void setVelocity(Vector v){}Location getEyeLocation(){return new Location();}}
+ static class Mob extends LivingEntity {boolean hasLineOfSight(Entity e){return true;}boolean ai=true,aware=true;LivingEntity target;Path path=new Path();LivingEntity getTarget(){return target;}void setTarget(LivingEntity p){target=p;}Path getPathfinder(){return path;}boolean hasAI(){return ai;}boolean isAware(){return aware;}void setAI(boolean b){ai=b;}void setAware(boolean b){aware=b;}void setVelocity(Vector v){}Location getEyeLocation(){return new Location();}}
  static class Skeleton extends Mob {}static class Spider extends Mob {}static class Enderman extends Mob {}static class Zombie extends Mob {}
  boolean isRiftGiant(Entity entity){return false;}void tickRiftGiantAura(Zombie giant,long now){}boolean tickRiftGiantOffense(Zombie giant,Player target,long now){return false;}
  static class Projectile extends Entity {Object shooter;Object getShooter(){return shooter;}}
@@ -136,6 +149,10 @@ public class WaveFogLifecycleProbe {
  boolean isOfficialCurrentAttempt(){return officialAttempt;}boolean isCurrentRitualCaster(Entity e){return false;}boolean isCurrentCollapseGuard(Entity e){return false;}
  void forcePhase(EventPhase p,String why){phase=p;}
  void reconcileWave3GateSquadIntents(List<WaveCombatCoordinator.Squad> squads,long now){plannerReconciles++;}
+ boolean ritualWaveActive(){return phase==EventPhase.WAVE_6&&activeWave==6;}
+ boolean isWaveCommander(Entity e){return false;}
+ boolean isCombatTarget(Player p){return p.isValid()&&!p.isDead();}
+ double horizontalDistanceSquared(Location a,Location b){double x=a.x-b.x,z=a.z-b.z;return x*x+z*z;}
  boolean isRitualProjectile(Arrow a){return false;}boolean ritualSphereProjectileProvenanceAllowed(Arrow a,Object p){return true;}
  boolean ritualGuardProjectileProvenanceAllowed(Arrow a,UUID target,RitualGuardAbilityPolicy.Role role){return true;}
  boolean ritualGuardWebProvenanceAllowed(Arrow a,Object p){return true;}boolean hasLiveTestWaveEntities(){return false;}
@@ -295,7 +312,7 @@ public class WaveFogLifecycleProbe {
 ''', encoding="utf-8")
     sources = [java, ROOT / "copimine-end-event/src/me/copimine/endevent/runtime/WaveCombatCoordinator.java",
                    *[ROOT / ("copimine-end-event/src/me/copimine/endevent/domain/" + name + ".java")
-                     for name in ["EliteAbilityPolicy", "DragonBreathCloudPolicy", "SpiderEffectLeasePolicy", "BlackFogEffectLeasePolicy", "EliteProjectileImpactPolicy", "WaveProjectileAdmissionController", "WaveProjectileTargetPolicy", "PressureBudgetController", "RitualGuardAbilityPolicy"]]]
+                     for name in ["EliteAbilityPolicy", "DragonBreathCloudPolicy", "SpiderEffectLeasePolicy", "BlackFogEffectLeasePolicy", "EliteProjectileImpactPolicy", "WaveProjectileAdmissionController", "WaveProjectileTargetPolicy", "PressureBudgetController", "RitualGuardAbilityPolicy", "RitualConversionTargetPolicy"]]]
     built = subprocess.run(["javac", "-proc:none", "-encoding", "UTF-8", "-d", str(out), *map(str, sources)], capture_output=True, text=True)
     assert built.returncode == 0, built.stdout + built.stderr
     return out

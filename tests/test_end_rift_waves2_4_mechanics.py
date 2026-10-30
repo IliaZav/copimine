@@ -790,6 +790,8 @@ def wave2_entity_load_harness(tmp_path_factory):
         "private EndRiftAiPolicy.MiniBossSpell miniBossSpellFor(EliteAbilityPolicy.Ability ability)",
         "private void suspendWaveTwoRecoveryEntity(Entity entity)",
         "public void onPersistedCombatEntitiesLoad(EntitiesLoadEvent event)",
+        "private boolean isLiveOwnedEntity(UUID entityUuid)",
+        "private boolean ownedBySession(Entity entity, String expectedEventId, long expectedGeneration)",
         "private boolean isWaveTwoOrdinaryMob(Entity entity)",
         "private WaveTwoEntityRecoveryPolicy.LoadDisposition waveTwoEntityLoadDisposition(Entity entity)",
         "private boolean isWaveTwoRecoveryFenced(Entity entity)",
@@ -876,7 +878,7 @@ public final class WaveTwoEntityLoadHarness {
     static final class Spider extends Mob {}
     final Object keyWave = new Object(), keyKind = new Object(), keyEventGeneration = new Object();
     final Object keyGeneration = new Object(), keyWaveSpawnGroup = new Object(), keyEventId = new Object();
-    final Object keyOfficial = new Object();
+    final Object keyOfficial = new Object(), keyRitualConverted = new Object();
     final Object keyWaveTwoFinalElite = new Object();
     final Object keyWaveTwoCleanupEpoch = new Object(), keyTrialRole = new Object();
     final Object keyMiniBossSpell = new Object(), keyLootProfile = new Object();
@@ -892,6 +894,12 @@ public final class WaveTwoEntityLoadHarness {
     Set<UUID> waveTwoCleanupEntityUuids = new LinkedHashSet<>();
     Set<UUID> waveTwoRecoveryFencedEntityUuids = new LinkedHashSet<>();
     Map<UUID,Entity> ownedEntities = new LinkedHashMap<>();
+    Map<UUID,Long> ritualConvertedMobUntilMillis = new HashMap<>();
+    boolean ritualWaveActive() { return activeWave == 6 && phase == EventPhase.WAVE_6; }
+    void removeRitualEntity(UUID id) {
+        unregisterOwnedEntity(id, "ritual-entity-cleanup");
+        ritualConvertedMobUntilMillis.remove(id);
+    }
     Map<UUID,EndRiftAiPolicy.MiniBossSpell> miniBossSpells = new LinkedHashMap<>();
     Map<UUID,Long> nextMiniBossSpellMillis = new LinkedHashMap<>();
     final WaveMobLifecycleRegistry unloadedWaveMobs = new WaveMobLifecycleRegistry();

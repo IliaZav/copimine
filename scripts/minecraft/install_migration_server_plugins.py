@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import glob
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -308,7 +309,7 @@ def _unique_yaml_mapping(loader,node,deep=False):
 
 def _artifacts_yaml_load(text,label):
     try:import yaml
-    except ImportError as error:raise ValueError('PyYAML is required to safely merge the Artifacts catalog') from error
+    except ImportError as error:raise ValueError('PyYAML is required to safely parse '+label+' YAML') from error
 
     class UniqueSafeLoader(yaml.SafeLoader):pass
     UniqueSafeLoader.add_constructor('tag:yaml.org,2002:map',_unique_yaml_mapping)
@@ -1301,6 +1302,11 @@ def prepare_runtime(root=None):
                 'rcon.port=25576\n'
             )
             (temporary/'server.properties').write_text(properties,encoding='utf-8',newline='\n')
+            # Spigot's default cap cannot represent the canonical 20,000-HP boss.
+            # Seed only a fresh runtime; operator-owned existing configs are never rewritten.
+            (temporary/'spigot.yml').write_text(
+                'settings:\n  attribute:\n    maxHealth:\n      max: 20000.0\n',
+                encoding='utf-8',newline='\n')
             (temporary/'eula.txt').write_text('eula=false\n',encoding='ascii',newline='\n')
             metadata={
                 'schemaVersion':1,
@@ -1434,6 +1440,33 @@ def _validate_local_runtime_properties(properties):
     if len(rcon_values)>1:raise ValueError('Duplicate runtime enable-rcon')
     if len(rcon_values)!=1 or rcon_values[0].strip().casefold()!='false':
         raise ValueError('Migration runtime requires enable-rcon=false')
+
+
+def validate_runtime_max_health(runtime):
+    """Read the effective Spigot prerequisite; validation never edits operator settings."""
+    target=Path(runtime)/'spigot.yml'
+    try:
+        _ensure_regular_file(target,'runtime spigot.yml')
+        if target.stat().st_size>1_000_000:
+            raise ValueError('Runtime spigot.yml exceeds the safe size limit')
+        text=target.read_text(encoding='utf-8-sig')
+    except (OSError,UnicodeError) as error:
+        raise ValueError('Runtime spigot.yml is missing or unreadable; '
+                         'settings.attribute.maxHealth.max must be at least 20000') from error
+    value=_artifacts_yaml_load(text,'runtime spigot.yml')
+    setting='settings.attribute.maxHealth.max'
+    for key in setting.split('.'):
+        if not isinstance(value,dict) or key not in value:
+            raise ValueError('Runtime spigot.yml is missing the explicit '+setting+' setting')
+        value=value[key]
+    finite=False
+    if isinstance(value,(int,float)) and not isinstance(value,bool):
+        try:finite=math.isfinite(value)
+        except OverflowError:pass
+    if not finite or value<20_000:
+        raise ValueError('Runtime spigot.yml '+setting+' must be a finite number >= 20000 '
+                         'before starting the End Rift runtime')
+    return value
 
 
 def runtime_startup_settings(runtime):
@@ -2029,6 +2062,7 @@ def main(root=None,argv=None):
             server,records,unauthenticated_test_mode=args.unauthenticated_test_runtime,
             local_end_event_build=args.local_end_event_build)
         settings=runtime_startup_settings(server)
+        validate_runtime_max_health(server)
         if any(row['pluginName'].casefold()=='voicechat' for row in actual):
             settings.update(configure_loopback_voicechat(server,write=False))
         print(json.dumps(settings,sort_keys=True))

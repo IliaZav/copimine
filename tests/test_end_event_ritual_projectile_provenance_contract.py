@@ -121,7 +121,21 @@ def test_dead_ritual_shooter_keeps_prisoner_out_of_all_arrow_recipients() -> Non
 
     phase_body = method_body(source, "private boolean isEventArrowPhaseAllowed(Arrow arrow)")
     assert "isRitualProjectile(arrow)" in phase_body
-    assert phase_body.index("isRitualProjectile(arrow)") < phase_body.index("arrow.getShooter()")
+    # Converted ownership must be checked before the ritual fast path, even
+    # after its live lease was removed. Ordinary guard arrows still require
+    # their real source; sphere/ability arrows keep their own provenance gates.
+    ritual_fast_path = phase_body.index("if (isRitualProjectile(arrow))")
+    assert phase_body.index("isRitualConvertedArrow(arrow)") < ritual_fast_path
+    assert phase_body.index("keyRitualConverted, PersistentDataType.BYTE") < ritual_fast_path
+    for guard in (
+        "ARROW_SPELL_SKELETON.equals(ritualSpell)",
+        "ARROW_SPELL_POISON_NAUSEA.equals(ritualSpell)",
+        "ARROW_SPELL_EXPLOSIVE.equals(ritualSpell)",
+        "!isLiveOwnedEntity(guard.getUniqueId())",
+        "!ownedBySession(guard, eventId, generation)",
+        "!isCurrentRitualGuard(guard)",
+    ):
+        assert guard in phase_body
 
 
 def test_marked_sphere_arrow_uses_one_authoritative_handler_without_skeleton_shooter() -> None:

@@ -46,6 +46,7 @@ public class CombatProfileMainProbe {
     Set<UUID> officialRewardRoster=new LinkedHashSet<>();UUID prisoner;
     Set<UUID> waveTwoCleanupEntityUuids=new LinkedHashSet<>(),waveTwoOutstandingEntityUuids=new LinkedHashSet<>();
     Map<Integer,Double> tentacleGuardianHealth=new HashMap<>();Map<Integer,Long> tentacleGuardianRespawnDeadlineMillis=new HashMap<>();
+    final Set<Integer> tentacleGuardianWarnedSlots=new HashSet<>();
     double tentacleGuardianRegenerationGranted;
     long tentacleDamageWindowEndsMillis=-1L,tentacleActiveMillis=0L;
     long tentacleGuardianRegenerationDisabledGeneration=Long.MIN_VALUE;
@@ -71,8 +72,14 @@ public class CombatProfileMainProbe {
         main.combatProfiles.acceptedHit(context,"first",EventCombatProfileService.Weapon.SWORD,false,false);
         UUID cleanupId=new UUID(0,2);
         main.waveTwoCleanupEntityUuids.add(cleanupId);
+        main.tentacleActiveMillis=89_000L;
+        main.tentacleGuardianHealth.put(0,0.0D);
+        main.tentacleGuardianRespawnDeadlineMillis.put(0,90_000L);
+        main.tentacleGuardianWarnedSlots.add(0);
         var checkpoint=main.objectiveProgressSnapshot();
         require(checkpoint.containsKey("combat-profile.schema")&&checkpoint.containsKey("other-objective"),"profile and wave objective checkpoint coexist");
+        require("DONE".equals(checkpoint.get("boss-guardian-respawn-warned.0")),
+                "guardian warning receipt coexists with combat profile and objective checkpoint");
         require("0".equals(checkpoint.get(WAVE_TWO_CLEANUP_EPOCH_PROGRESS_KEY)),
                 "Wave 2 cleanup epoch is always represented in the durable objective checkpoint");
         require(cleanupId.toString().equals(checkpoint.get(WAVE_TWO_CLEANUP_UUIDS_PROGRESS_KEY)),

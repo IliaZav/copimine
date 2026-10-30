@@ -10,6 +10,7 @@ import java.util.UUID;
  */
 public final class RiftCarrierPolicy {
     public static final int REQUIRED_DELIVERIES = 3;
+    /** Upper bound for reading legacy version-1 checkpoint deadlines. */
     public static final long CHARGE_TIMEOUT_TICKS = 200L;
 
     private RiftCarrierPolicy() {
@@ -38,42 +39,41 @@ public final class RiftCarrierPolicy {
             return state;
         }
         return new State(state.generation(), state.delivered(), null, charge, null,
-                safeNow(nowTick) + CHARGE_TIMEOUT_TICKS, Phase.CHARGE_DROPPED);
+                0L, Phase.CHARGE_DROPPED);
     }
 
-    /** Replace only the lost presentation entity, preserving the gameplay deadline. */
+    /** Replace only the lost presentation entity, preserving charge ownership. */
     public static State replaceMissingCharge(State state, long generation, UUID charge) {
         if (!valid(state, generation) || charge == null
                 || (state.phase() != Phase.CHARGE_DROPPED
                 && state.phase() != Phase.CHARGE_CARRIED)) return state;
         return new State(state.generation(), state.delivered(), null, charge, state.holder(),
-                state.deadlineTick(), state.phase());
+                0L, state.phase());
     }
 
     public static State pickUp(State state, long generation, UUID player,
                                UUID charge, long nowTick) {
         if (!valid(state, generation) || player == null || charge == null
                 || state.charge() == null || !charge.equals(state.charge())
-                || state.phase() != Phase.CHARGE_DROPPED || expired(state, nowTick)) {
+                || state.phase() != Phase.CHARGE_DROPPED) {
             return state;
         }
         return new State(state.generation(), state.delivered(), null, charge, player,
-                safeNow(nowTick) + CHARGE_TIMEOUT_TICKS, Phase.CHARGE_CARRIED);
+                0L, Phase.CHARGE_CARRIED);
     }
 
-    /** Transfer the single live inventory token without restarting its delivery deadline. */
+    /** Transfer the single live inventory token to its new holder. */
     public static State transferHolder(State state, long generation, UUID previous, UUID next, long nowTick) {
         if (!valid(state, generation) || state.phase() != Phase.CHARGE_CARRIED
-                || previous == null || next == null || !previous.equals(state.holder()) || expired(state, nowTick)) return state;
+                || previous == null || next == null || !previous.equals(state.holder())) return state;
         return new State(state.generation(), state.delivered(), state.carrier(), state.charge(), next,
-                state.deadlineTick(), state.phase());
+                0L, state.phase());
     }
 
     public static State deliver(State state, long generation, UUID player,
                                 boolean atCore, long nowTick) {
         if (!valid(state, generation) || player == null || !player.equals(state.holder())
-                || !atCore || state.phase() != Phase.CHARGE_CARRIED
-                || expired(state, nowTick)) {
+                || !atCore || state.phase() != Phase.CHARGE_CARRIED) {
             return state;
         }
         int delivered = Math.min(REQUIRED_DELIVERIES, state.delivered() + 1);
@@ -84,9 +84,8 @@ public final class RiftCarrierPolicy {
 
     /**
      * Release a carried charge as soon as its authoritative holder becomes
-     * unusable. Death, disconnect and leaving the event world must not leave a
-     * ten-second carried state waiting for a timeout callback. The charge is
-     * kept, so another participant can pick up the same delivery immediately.
+     * unusable. Death, disconnect and leaving the event world release the charge
+     * so another participant can pick it up.
      */
     public static State releaseHolder(State state, long generation, UUID holder,
                                       long nowTick) {
@@ -96,20 +95,13 @@ public final class RiftCarrierPolicy {
             return state;
         }
         return new State(state.generation(), state.delivered(), null, state.charge(), null,
-                safeNow(nowTick) + CHARGE_TIMEOUT_TICKS, Phase.CHARGE_DROPPED);
+                0L, Phase.CHARGE_DROPPED);
     }
 
-    /** Transfer an unclaimed or carried charge after its ten-second window. */
+    /** Kept for callers compiled against older releases; charges no longer expire. */
     public static State timeoutTransfer(State state, long generation, UUID nextCarrier,
                                          long nowTick) {
-        if (!valid(state, generation) || isComplete(state)
-                || (state.phase() != Phase.CHARGE_DROPPED
-                && state.phase() != Phase.CHARGE_CARRIED)
-                || !expired(state, nowTick) || nextCarrier == null) {
-            return state;
-        }
-        return new State(state.generation(), state.delivered(), nextCarrier,
-                null, null, 0L, Phase.CARRIER_ACTIVE);
+        return state;
     }
 
     /**
@@ -130,20 +122,9 @@ public final class RiftCarrierPolicy {
                 || state.phase() == Phase.READY_FOR_NEXT_CARRIER;
     }
 
-    /**
-     * Clears an expired dropped/carried charge before the adapter creates a
-     * fresh candidate.  The delivered count is preserved and the generation
-     * fence remains intact.
-     */
+    /** Kept for compatibility with old callers; charges no longer expire. */
     public static State expireForReplacement(State state, long generation, long nowTick) {
-        if (!valid(state, generation) || isComplete(state)
-                || (state.phase() != Phase.CHARGE_DROPPED
-                && state.phase() != Phase.CHARGE_CARRIED)
-                || !expired(state, nowTick)) {
-            return state;
-        }
-        return new State(state.generation(), state.delivered(), null, null, null,
-                0L, Phase.READY_FOR_NEXT_CARRIER);
+        return state;
     }
 
     public static boolean isComplete(State state) {
@@ -152,17 +133,12 @@ public final class RiftCarrierPolicy {
     }
 
     public static boolean expired(State state, long nowTick) {
-        return state != null && state.deadlineTick() > 0L
-                && safeNow(nowTick) >= state.deadlineTick();
+        return false;
     }
 
     private static boolean valid(State state, long generation) {
         return state != null && state.generation() == generation
                 && generation > 0L;
-    }
-
-    private static long safeNow(long tick) {
-        return Math.max(0L, tick);
     }
 
     public enum Phase {

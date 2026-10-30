@@ -18,8 +18,7 @@ public final class RiftCarrierRecoverySnapshot {
     private RiftCarrierRecoverySnapshot() { }
 
     /**
-     * Store remaining server ticks, not the process-local Bukkit tick counter.
-     * Downtime therefore pauses the charge timeout and cannot itself consume a charge.
+     * Keep the version-1 deadline field as zero for compatibility; charges do not expire.
      */
     public static Map<String, String> encode(String eventId, long generation,
                                               RiftCarrierPolicy.State state, UUID inventoryToken,
@@ -28,8 +27,7 @@ public final class RiftCarrierRecoverySnapshot {
         if (state == null || state.generation() != generation) {
             throw new IllegalArgumentException("Wave 1 carrier state generation mismatch");
         }
-        long remainingTicks = state.deadlineTick() == 0L ? 0L
-                : Math.max(0L, state.deadlineTick() - Math.max(0L, eventTick));
+        long remainingTicks = 0L;
         validateState(state.delivered(), state.phase(), state.carrier(), state.charge(), state.holder(),
                 inventoryToken, remainingTicks);
         Map<String, String> result = new LinkedHashMap<>();
@@ -82,7 +80,7 @@ public final class RiftCarrierRecoverySnapshot {
         long remainingTicks = parseLong(encoded.get(PREFIX + "remaining-ticks"));
         validateState(delivered, phase, carrier, charge, holder, inventoryToken, remainingTicks);
         RiftCarrierPolicy.State state = new RiftCarrierPolicy.State(expectedGeneration, delivered,
-                carrier, charge, holder, remainingTicks, phase);
+                carrier, charge, holder, 0L, phase);
         return new Data(expectedEventId, expectedGeneration, state, inventoryToken, savedMillis);
     }
 

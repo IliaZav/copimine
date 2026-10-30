@@ -24,8 +24,14 @@ public final class RiftCarrierRecoverySnapshotTest {
                         && restored.state().phase() == RiftCarrierPolicy.Phase.CHARGE_CARRIED
                         && restored.state().charge().equals(charge)
                         && restored.state().holder().equals(holder)
-                        && restored.state().deadlineTick() == 150L,
-                "restart must preserve the same carried token, owner, charge, progress, and paused timeout");
+                        && restored.state().deadlineTick() == 0L,
+                "restart must preserve the same carried token, owner, charge and progress without a timeout");
+
+        Map<String, String> legacy = new LinkedHashMap<>(encoded);
+        legacy.put(RiftCarrierRecoverySnapshot.PREFIX + "remaining-ticks", "150");
+        var migrated = RiftCarrierRecoverySnapshot.decode(legacy, event, generation, 1_900_000_000_500L);
+        check(migrated.state().deadlineTick() == 0L && migrated.inventoryToken().equals(token),
+                "a legacy timed checkpoint must preserve its charge and discard its obsolete deadline");
 
         var waiting = RiftCarrierRecoverySnapshot.decode(RiftCarrierRecoverySnapshot.encode(
                 event, generation, RiftCarrierPolicy.initial(generation), null, 0L,

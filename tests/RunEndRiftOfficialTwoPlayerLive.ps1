@@ -242,7 +242,7 @@ function Wait-CarrierDelivery {
     # keep waiting on a stale UUID after the server has advanced.
     if ($tail -match $deliveredPattern) {
       # Verify both client mode transitions after the objective has completed.
-      # Waiting before teleport can consume the full 10-second charge lifetime.
+      # Wait for the bot to acknowledge the current interaction mode.
       if ($null -ne $activePickupPlayer) {
         Wait-PlayerBotModeAcknowledgement -Name $activePickupPlayer -Mode 'CARRIER_PICKUP'
       }
@@ -266,8 +266,7 @@ function Wait-CarrierDelivery {
         $hadDroppedCharge = $null -ne $activeCharge
         $activeCarrier = $candidate
         if ($hadDroppedCharge) {
-          # The old charge expired and the server selected another carrier.
-          # Resume real attacks before following this new mob.
+          # Reconcile a newly selected carrier before following it.
           $activeCharge = $null
           $activeChargeLocation = $null
           $configuredPickupCharge = $null
@@ -302,41 +301,6 @@ function Wait-CarrierDelivery {
         $activeChargeLocation = Parse-LoggedLocation $match.Value
         $activeHolder = $null
         break
-      }
-    }
-
-    if ($null -ne $activeCharge) {
-      $chargeCreatedPattern = 'END_RIFT_CARRIER_CHARGE_CREATED[^\r\n]*charge=' +
-        [Regex]::Escape($activeCharge) + '[^\r\n]*'
-      $chargeCreatedMatch = [Regex]::Match($tail, $chargeCreatedPattern)
-      $timeoutPattern = 'END_RIFT_CARRIER_TIMEOUT_(?:TRANSFER|REPLACEMENT)[^\r\n]*delivered=' +
-        ($DeliveryNumber - 1) + '\b'
-      $timeoutMatch = $null
-      if ($chargeCreatedMatch.Success) {
-        # Match returns the first historical timeout in the whole log tail.
-        # Search all markers and select the first one after this charge instead,
-        # so later charges can recover after their own timeout transfer.
-        $timeoutMatches = [Regex]::Matches($tail, $timeoutPattern)
-        foreach ($candidateTimeout in $timeoutMatches) {
-          if ($candidateTimeout.Index -gt $chargeCreatedMatch.Index) {
-            $timeoutMatch = $candidateTimeout
-            break
-          }
-        }
-      }
-      if ($null -ne $timeoutMatch) {
-        # A timeout transfer changes the selected carrier without emitting a
-        # second CARRIER_SELECTED marker. Drop the stale item target and resume
-        # normal attacks so the next carrier can produce a fresh charge.
-        $activeCharge = $null
-        $activeChargeLocation = $null
-        $activeCarrier = $null
-        $configuredPickupCharge = $null
-        $configuredHolderCharge = $null
-        $activePickupPlayer = $null
-        $activeHolder = $null
-        Set-PlayerBotMode -Mode 'ACTIVE'
-        Write-Evidence "CURRENT_WAVE1_CHARGE_TIMEOUT_RECOVERED delivery=$DeliveryNumber"
       }
     }
 

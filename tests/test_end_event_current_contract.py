@@ -1847,7 +1847,7 @@ def test_official_probe_resets_a_stale_charge_when_the_server_selects_a_new_carr
     assert "if ($hadDroppedCharge)" in body
     assert "$activeCharge = $null" in body
     assert "Set-PlayerBotMode -Mode 'ACTIVE'" in body, (
-        "a replacement carrier must resume real attacks after discarding the expired charge"
+        "a newly selected carrier must restore the probe's combat mode"
     )
 
 

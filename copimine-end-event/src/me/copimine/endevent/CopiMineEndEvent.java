@@ -14821,7 +14821,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             RiftCarrierPolicy.State transferred = RiftCarrierPolicy.transferHolder(currentCarrierState,
                     generation, previous, candidate.getUniqueId(), eventTickCounter);
             if (transferred == currentCarrierState) {
-                releaseCurrentCarrierHolder(previous, "inventory-custody-expired");
+                releaseCurrentCarrierHolder(previous, "inventory-custody-rejected");
                 return false;
             }
             ItemMeta meta = candidateStack.getItemMeta();
@@ -24430,40 +24430,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 releaseCurrentCarrierHolder(currentCarrierState.holder(), "holder-unavailable");
             }
         }
-        if ((currentCarrierState.phase() == RiftCarrierPolicy.Phase.CHARGE_DROPPED
-                || currentCarrierState.phase() == RiftCarrierPolicy.Phase.CHARGE_CARRIED)
-                && RiftCarrierPolicy.expired(currentCarrierState, eventTickCounter)) {
-            if (currentCarrierState.phase() == RiftCarrierPolicy.Phase.CHARGE_CARRIED) {
-                removeCurrentCarrierInventoryCharge(Bukkit.getPlayer(currentCarrierState.holder()));
-            }
-            Entity next = findCurrentCarrierCandidate();
-            if (next != null) {
-                removeCurrentCarrierChargeVisual();
-                currentCarrierState = RiftCarrierPolicy.timeoutTransfer(currentCarrierState,
-                        generation, next.getUniqueId(), eventTickCounter);
-                syncCurrentCarrierFields();
-                saveStateAsync();
-                getLogger().info("END_RIFT_CARRIER_TIMEOUT_TRANSFER event=" + eventId
-                        + " entity=" + next.getUniqueId()
-                        + " delivered=" + currentCarrierCharges);
-            } else if (allGroupsSpawned
-                    && currentCarrierReplacementCount < CARRIER_REPLACEMENT_CAP) {
-                RiftCarrierPolicy.State replacementState = RiftCarrierPolicy.expireForReplacement(
-                        currentCarrierState, generation, eventTickCounter);
-                if (replacementState != currentCarrierState) {
-                    removeCurrentCarrierChargeVisual();
-                    currentCarrierState = replacementState;
-                    syncCurrentCarrierFields();
-                    saveStateAsync();
-                    World world = Bukkit.getWorld(worldName);
-                    Location core = coreCombatAnchorLocation();
-                    if (spawnCurrentCarrierReplacement(world, core)) {
-                        getLogger().info("END_RIFT_CARRIER_TIMEOUT_REPLACEMENT event=" + eventId
-                                + " delivered=" + currentCarrierCharges);
-                    }
-                }
-            }
-        }
         if (currentCarrierState.phase() == RiftCarrierPolicy.Phase.WAITING_FOR_CARRIER
                 || currentCarrierState.phase() == RiftCarrierPolicy.Phase.READY_FOR_NEXT_CARRIER) {
             Entity next = findCurrentCarrierCandidate();
@@ -24829,8 +24795,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         renderCurrentCarrierCharge(charge);
         playWaveFeedback("carrier-drop", charge.getLocation());
         getLogger().info("END_RIFT_CARRIER_CHARGE_CREATED event=" + eventId
-                + " charge=" + charge.getUniqueId() + " entity=ITEM timeout_ticks="
-                + RiftCarrierPolicy.CHARGE_TIMEOUT_TICKS
+                + " charge=" + charge.getUniqueId() + " entity=ITEM"
                 + " location=" + locationText(charge.getLocation()));
     }
 

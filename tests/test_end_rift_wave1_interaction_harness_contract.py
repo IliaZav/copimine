@@ -171,39 +171,15 @@ def test_official_runner_does_not_teleport_bots_repeatedly_during_start_ritual_h
     )
 
 
-def test_wave_one_driver_resumes_combat_after_a_charge_timeout_transfer():
+def test_wave_one_driver_keeps_the_charge_without_a_timeout():
     driver = DRIVER.read_text(encoding="utf-8")
     wait_delivery = driver.split("function Wait-CarrierDelivery", 1)[1].split(
         "function Get-Status", 1
     )[0]
 
-    assert "END_RIFT_CARRIER_TIMEOUT_(?:TRANSFER|REPLACEMENT)" in wait_delivery
+    assert "END_RIFT_CARRIER_TIMEOUT_" not in wait_delivery
     assert "Set-PlayerBotMode -Mode 'ACTIVE'" in wait_delivery
-
-
-def test_wave_one_timeout_search_skips_historical_timeouts_for_later_charges():
-    driver = DRIVER.read_text(encoding="utf-8")
-    wait_delivery = driver.split("function Wait-CarrierDelivery", 1)[1].split(
-        "function Get-Status", 1
-    )[0]
-
-    assert "$timeoutMatches = [Regex]::Matches($tail, $timeoutPattern)" in wait_delivery
-    assert "foreach ($candidateTimeout in $timeoutMatches)" in wait_delivery
-    assert "$candidateTimeout.Index -gt $chargeCreatedMatch.Index" in wait_delivery
-
-    tail = "\n".join(
-        [
-            "END_RIFT_CARRIER_CHARGE_CREATED charge=first location=0,0,0",
-            "END_RIFT_CARRIER_TIMEOUT_REPLACEMENT delivered=0",
-            "END_RIFT_CARRIER_CHARGE_CREATED charge=second location=1,0,0",
-            "END_RIFT_CARRIER_TIMEOUT_TRANSFER delivered=0",
-            "END_RIFT_CARRIER_CHARGE_CREATED charge=third location=2,0,0",
-        ]
-    )
-    second_charge = re.search(r"CHARGE_CREATED[^\n]*charge=second", tail)
-    timeout_matches = list(re.finditer(r"CARRIER_TIMEOUT_(?:TRANSFER|REPLACEMENT)[^\n]*delivered=0", tail))
-    selected = next(match for match in timeout_matches if match.start() > second_charge.start())
-    assert "TIMEOUT_TRANSFER" in selected.group(0)
+    assert "$activeCharge = $candidate" in wait_delivery
 
 
 def test_wave_one_charge_pickup_accepts_paper_pre_cancelled_air_interactions():

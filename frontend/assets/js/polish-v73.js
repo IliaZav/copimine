@@ -8,8 +8,9 @@ M.forms['v73-fee']=async(f,d)=>{const percent=Number(d.get('transferFeePercent')
 M.handlers['qty-plus']=M.handlers['v6-cart-plus'];M.handlers['qty-minus']=M.handlers['v6-cart-minus'];
 // The new visual inventory has both containers. Keep old links routable, but not
 // two near-identical cards that open exactly the same editor.
-const sourceActions=X.actions;X.actions=sourceActions.filter((a,i,list)=>a.id!=='ender.remove'&&list.findIndex(b=>b.id===a.id)===i);
-const inv=X.actions.find(a=>a.id==='inventory.remove');if(inv){inv.label='Инвентарь и эндер-сундук';inv.group='Инвентари';}
+const dedupe=list=>list.filter((a,i,list)=>a.id!=='ender.remove'&&list.findIndex(b=>b.id===a.id)===i);
+X.actions=dedupe(X.actions);X.baseActions=dedupe(X.baseActions||[]);
+for(const list of [X.actions,X.baseActions]){const inv=list.find(a=>a.id==='inventory.remove');if(inv){inv.label='Инвентарь и эндер-сундук';inv.group='Инвентари';}}
 // A contextual shortcut always leads to the same recovery workflow.
 const originalAction=M.handlers['v6-player-action'];M.handlers['v6-player-action']=(b,e)=>{if(b.dataset.id==='sessions.revoke'){M.navTo('admin/recovery?player='+encodeURIComponent(b.dataset.player||X.player()?.id||X.board?.get('player')||'')+'&focus=sessions.revoke');return;}return originalAction(b,e);};
 V.after.push((page,tab)=>{

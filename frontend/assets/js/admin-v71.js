@@ -163,10 +163,14 @@ V.after.push((page,tab)=>{
  const groups=[...document.querySelectorAll('.v6-action-group')],host=document.querySelector('.v6-action-groups');
  if(!host||!groups.length)return;
  host.classList.add('v71-action-workspace');
+ // V.after срабатывает на каждую перерисовку, а nav живёт рядом с блоком — без очистки копились дубли.
+ document.querySelectorAll('.v71-action-categories').forEach(node=>node.remove());
  const nav=document.createElement('nav');nav.className='v71-action-categories';nav.setAttribute('aria-label','Категории действий');
  nav.innerHTML=groups.map((g,i)=>`<button type="button" data-action="v71-action-category" data-index="${i}"><span>${E(g.querySelector('h2').firstChild.textContent)}</span><b>${g.querySelectorAll('[data-action-search]').length}</b></button>`).join('');
  host.before(nav);const savedGroup=X.board?.get('actionGroup');currentActionGroup=Number.isInteger(savedGroup)?savedGroup:currentActionGroup;selectActionGroup(Math.min(currentActionGroup,groups.length-1));
- const empty=document.createElement('div');empty.className='v71-action-empty';empty.hidden=true;empty.innerHTML=M.empty('Действие не найдено','Попробуй другой запрос.','search');host.append(empty);
+ const empty=document.createElement('div');empty.className='v71-action-empty';empty.hidden=true;empty.innerHTML=M.empty('Действие не найдено','Попробуй другой запрос.','search');
+ document.querySelectorAll('.v71-action-empty').forEach(node=>node.remove());
+ host.append(empty);
  document.getElementById('v6-action-search').addEventListener('input',e=>{X.board?.set('actionSearch',e.target.value.trim()||null);
   if(!e.target.value.trim()){empty.hidden=true;selectActionGroup(currentActionGroup);return;}
   nav.querySelectorAll('button').forEach(n=>{n.classList.remove('active');n.setAttribute('aria-pressed','false');});

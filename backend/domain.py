@@ -186,7 +186,7 @@ def build_state(request):
         "players": [], "catalog": game.catalog(private=bool(request.state.user and "catalog.manage" in PERMISSIONS.get(request.state.user["role"], []))), "orders": [], "payments": [], "ledger": [],
         "tickets": [], "audit": [], "sanctions": [], "playerSnapshots": [], "playerActions": [],
         "purchaseLimits": [], "contactIdentities": [], "siteSessions": [], "eventLog": [],
-        "config": config, "game": info, **content(request),
+        "config": config, "game": {key: info[key] for key in ("online", "ready", "players", "maxPlayers", "version")}, **content(request),
     }
     if not request.state.user:
         return result
@@ -807,7 +807,7 @@ async def update_catalog_item(request: Request, identifier: str):
 @router.get("/api/v6/admin/actions")
 def admin_actions(request: Request):
     current_user(request, "players.view")
-    path = request.app.state.settings.frontend / "data" / "admin-actions.json"
+    path = request.app.state.settings.private / "admin-actions.json"
     definitions = json.loads(path.read_text(encoding="utf-8"))["actions"]
     return {"actions": [row for row in definitions if row["id"] in SUPPORTED_ACTIONS], "unsupportedReason": "В игровом адаптере нет подтверждённого обработчика этой операции."}
 
@@ -906,14 +906,15 @@ async def transfer(request: Request):
     if recipient["id"] == user["id"] or not recipient["minecraft_uuid"]:
         fail(400, "invalid_recipient", "Выберите другого игрока с подтверждённым Minecraft.")
     note = str(data.get("note", ""))[:140]
+    # Local validation cannot reserve a key: nothing has been dispatched yet.
+    if type(data.get("expectedFee", 0)) is not int or data.get("expectedFee", 0) != 0:
+        fail(409, "quote_changed", "Комиссия изменилась. Обновите условия перевода.")
+    pin = data.get("pin", "")
+    if not isinstance(pin, str) or not re.fullmatch(r"[0-9]{4,8}", pin):
+        fail(400, "pin_required", "Введите банковский PIN из 4–8 цифр.")
     fingerprint, replay = receipt_lookup(request.app.state.database, user, key, "transfer", {"to": recipient["id"], "amount": amount, "note": note})
     if replay:
         return replay
-    if data.get("expectedFee", 0) != 0:
-        fail(409, "quote_changed", "Комиссия изменилась. Обновите условия перевода.")
-    pin = str(data.get("pin", ""))
-    if not re.fullmatch(r"[0-9]{4,8}", pin):
-        fail(400, "pin_required", "Введите банковский PIN из 4–8 цифр.")
     result = await run_in_threadpool(request.app.state.game.transfer, user, recipient["minecraft_name"], amount, pin, note, "site-" + hashlib.sha256((user["id"] + key).encode()).hexdigest())
     value = {"ok": True, "transfer": {"id": result["txId"], "sender": user["id"], "recipient": recipient["id"], "fromName": user["name"], "toName": recipient["name"], "amount": amount, "fee": 0, "fee_percent": 0, "created": time.time(), "note": note, "status": "COMMITTED"}}
     save_receipt(request.app.state.database, user, key, "transfer", fingerprint, value)
@@ -936,6 +937,8 @@ def read_transfers(request: Request):
 @router.post("/api/v6/checkout")
 async def checkout(request: Request):
     user = current_user(request)
+    if not user["minecraft_uuid"]:
+        fail(409, "game_link_required", "Сначала подтвердите привязку Minecraft в настройках.")
     data = await request.json()
     rows = data.get("items", data.get("cart", []))
     if not isinstance(rows, list) or not 1 <= len(rows) <= 12:
@@ -943,19 +946,30 @@ async def checkout(request: Request):
     catalog = {x["id"]: x for x in request.app.state.game.catalog() if x.get("enabled", True)}
     items, currencies, total = [], set(), 0
     for row in rows:
-        item = catalog.get(row.get("id", row.get("itemId", "")))
-        if not item or row.get("qty", row.get("quantity", 1)) != 1 or item["id"] in items:
+        if not isinstance(row, dict):
+            fail(400, "invalid_cart", "Каждая позиция корзины должна содержать идентификатор товара.")
+        identifier = row.get("id", row.get("itemId", ""))
+        quantity = row.get("qty", row.get("quantity", 1))
+        if not isinstance(identifier, str) or type(quantity) is not int or quantity != 1:
             fail(400, "invalid_cart", "Игровая выдача принимает по одному экземпляру каждого товара за заказ.")
-        items.append(item["id"]); currencies.add(item["currency"]); total += int(item["price"])
+        item = catalog.get(identifier)
+        if not item or item["id"] in items:
+            fail(400, "invalid_cart", "Игровая выдача принимает по одному экземпляру каждого товара за заказ.")
+        if item.get("currency") not in {"AR", "CM"} or type(item.get("price")) is not int or item["price"] <= 0:
+            fail(503, "catalog_unavailable", "Цена или валюта товара недоступна. Покупка не выполнена.")
+        items.append(item["id"]); currencies.add(item["currency"]); total += item["price"]
     if len(currencies) != 1:
         fail(400, "mixed_currencies", "Оформите покупки за АР и CM отдельными заказами.")
-    if data.get("expectedTotal", total) != total:
+    if total > 1_000_000_000 or type(data.get("expectedTotal", total)) is not int or data.get("expectedTotal", total) != total:
         fail(409, "quote_changed", "Цена изменилась. Обновите корзину перед оплатой.")
+    pin = data.get("pin", "")
+    if not isinstance(pin, str) or not re.fullmatch(r"[0-9]{4,8}", pin):
+        fail(400, "pin_required", "Введите банковский PIN из 4–8 цифр.")
     key = data.get("idempotencyKey", data.get("key", ""))
     fingerprint, replay = receipt_lookup(request.app.state.database, user, key, "checkout", {"items": items, "total": total, "currency": sorted(currencies)})
     if replay:
         return replay
-    value = await run_in_threadpool(request.app.state.game.checkout, user, items, str(data.get("pin", "")), total, "site-" + hashlib.sha256((user["id"] + key).encode()).hexdigest(), next(iter(currencies)))
+    value = await run_in_threadpool(request.app.state.game.checkout, user, items, pin, total, "site-" + hashlib.sha256((user["id"] + key).encode()).hexdigest(), next(iter(currencies)))
     orders = [{"id": row["purchaseId"], "playerId": user["id"], "itemId": row["itemId"], "qty": 1, "status": row["status"], "total": row.get("priceAr", catalog[row["itemId"]]["price"]), "currency": next(iter(currencies)), "at": int(time.time() * 1000)} for row in value["items"]]
     result = {"ok": True, "orders": orders, "receipt": value, "message": value.get("pickupHint", "Покупка записана. Получите предмет в игре.")}
     save_receipt(request.app.state.database, user, key, "checkout", fingerprint, result)

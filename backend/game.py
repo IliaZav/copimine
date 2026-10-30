@@ -21,7 +21,7 @@ MC_NAME = re.compile(r"[A-Za-z0-9_]{1,32}\Z")
 
 
 def catalog_version(item):
-    fields = ("id", "name", "description", "category", "video", "currency", "price", "limit", "enabled", "visibility", "sourceType", "material", "maxQuantity")
+    fields = ("id", "name", "description", "category", "image", "video", "currency", "price", "limit", "enabled", "visibility", "sourceType", "material", "maxQuantity")
     snapshot = {key: item.get(key) for key in fields}
     return hashlib.sha256(json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()[:24]
 

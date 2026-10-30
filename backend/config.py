@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 import os
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,11 +37,25 @@ class Settings:
         secret = os.environ.get("SECRET_KEY", "")
         if not database_url.startswith(("postgresql://", "postgres://")):
             raise RuntimeError("Production DATABASE_URL must select PostgreSQL")
-        if len(secret) < 40:
-            raise RuntimeError("Set a persistent SECRET_KEY with at least 40 characters")
+        if (len(secret) < 40 or len(set(secret)) < 8 or secret != secret.strip()
+                or any(marker in secret.lower() for marker in ("replace_", "changeme", "change_me", "placeholder"))):
+            raise RuntimeError("Set a persistent random SECRET_KEY, not the deployment template")
+        public_url = os.getenv("SITE_PUBLIC_URL", "https://copimine.ru").rstrip("/")
+        try:
+            origin = urlsplit(public_url)
+            port = origin.port  # Reject malformed ports before constructing callbacks.
+            valid_origin = (origin.scheme == "https" and bool(origin.hostname)
+                            and origin.username is None and origin.password is None
+                            and not origin.path and not origin.query and not origin.fragment
+                            and not any(character.isspace() for character in public_url)
+                            and (port is None or 1 <= port <= 65535))
+        except ValueError:
+            valid_origin = False
+        if not valid_origin:
+            raise RuntimeError("SITE_PUBLIC_URL must be an HTTPS origin without credentials, path, query or fragment")
         return cls(
             database_url=database_url, secret_key=secret,
-            public_url=os.getenv("SITE_PUBLIC_URL", "https://copimine.ru").rstrip("/"),
+            public_url=public_url,
             secure_cookies=True,
             bootstrap_owner=os.getenv("SITE_BOOTSTRAP_OWNER", ""),
             bootstrap_password=os.getenv("SITE_BOOTSTRAP_PASSWORD", ""),

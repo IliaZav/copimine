@@ -236,7 +236,24 @@ def create_app(settings=None):
         return error_page(418)
 
     app.mount("/assets", StaticFiles(directory=settings.frontend / "assets"), name="assets")
-    app.mount("/data", StaticFiles(directory=settings.frontend / "data"), name="public-data")
+    # Only immutable release reference data is public. Administrative action
+    # definitions and incidental files must never be exposed by a directory mount.
+    public_data_files = frozenset({
+        "catalog-current.json", "catalog-v6-public.json", "content-v6-public.json",
+        "materials-base.json", "materials-v6.json", "materials.json",
+        "map-manifest.json", "map-source.json",
+    })
+
+    @app.get("/data/{filename}")
+    @app.head("/data/{filename}")
+    def public_reference_data(filename: str):
+        if filename not in public_data_files:
+            fail(404, "not_found", "Файл не найден.")
+        path = settings.frontend / "data" / filename
+        if not path.is_file():
+            fail(404, "not_found", "Файл не найден.")
+        return FileResponse(path, media_type="application/json",
+                            headers={"Cache-Control": "public, max-age=3600"})
 
     @app.get("/{filename}.html")
     def html_route(filename: str):

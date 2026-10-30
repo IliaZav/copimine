@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 from pathlib import Path
 from zipfile import ZipFile
@@ -18,6 +19,7 @@ MIGRATION_CLASSES = ROOT / "build" / "minecraft-26.3" / "client" / "classes" / "
 STAGED_JAR = ROOT / "thirdparty" / "client-mods" / "CopiMineClient-0.1.1.jar"
 MODPACK = ROOT / "thirdparty" / "CopiMineMods.zip"
 MODPACK_CLIENT_ENTRY = "mods/CopiMineClient-0.1.1.jar"
+LEGACY_REFMAP = BUILD / "classes" / "java" / "main" / "CopiMineClient-refmap.json"
 SOURCE_TEXTURES = CLIENT / "src" / "main" / "resources" / "assets" / "copimineclient" / "textures" / "entity"
 EXPECTED_CURRENT_SKELETON_TEXTURE = "end_rift_user_skeleton.png"
 
@@ -184,3 +186,22 @@ def test_configured_live_profile_jar_matches_the_gradle_remap_output() -> None:
         f"live-profile client JAR {profile_jar} is stale relative to the locked Minecraft 26.3 build"
     )
     assert_current_mob_payload(str(profile_jar), profile_jar.read_bytes(), MIGRATION_CLASSES)
+
+
+def test_legacy_zombie_texture_mixin_targets_the_declaring_renderer_class() -> None:
+    mixin = (CLIENT / "src" / "main" / "java" / "me" / "copimine" / "client"
+             / "mixin" / "ZombieEntityRendererMixin.java").read_text(encoding="utf-8")
+    assert "import net.minecraft.client.render.entity.ZombieBaseEntityRenderer;" in mixin
+    assert "@Mixin(ZombieBaseEntityRenderer.class)" in mixin
+
+
+def test_legacy_zombie_texture_method_is_remapped_in_the_built_refmap() -> None:
+    assert LEGACY_REFMAP.is_file(), f"legacy client refmap is missing: {LEGACY_REFMAP}"
+    refmap = json.loads(LEGACY_REFMAP.read_text(encoding="utf-8"))
+    mappings = refmap.get("mappings", {}).get(
+        "me/copimine/client/mixin/ZombieEntityRendererMixin", {}
+    )
+    assert mappings.get("getTexture") == (
+        "Lnet/minecraft/class_968;method_4163"
+        "(Lnet/minecraft/class_1642;)Lnet/minecraft/class_2960;"
+    ), "legacy zombie texture injector is not mapped to ZombieBaseEntityRenderer#getTexture"

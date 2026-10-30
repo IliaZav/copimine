@@ -2,7 +2,7 @@ package me.copimine.client.mixin;
 
 import me.copimine.client.ClientBridgeProtocol;
 import me.copimine.client.EndEventTextureCatalog;
-import net.minecraft.client.render.entity.ZombieEntityRenderer;
+import net.minecraft.client.render.entity.ZombieBaseEntityRenderer;
 import net.minecraft.entity.mob.ZombieEntity;
 import net.minecraft.util.Identifier;
 import org.spongepowered.asm.mixin.Mixin;
@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /** Event zombies receive the supplied skin only after a server UUID binding. */
-@Mixin(ZombieEntityRenderer.class)
+@Mixin(ZombieBaseEntityRenderer.class)
 public abstract class ZombieEntityRendererMixin {
     @Inject(method = "getTexture", at = @At("HEAD"), cancellable = true)
     private void copimine$zombieTexture(ZombieEntity entity, CallbackInfoReturnable<Identifier> cir) {

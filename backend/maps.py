@@ -22,6 +22,10 @@ from .security import current_user, fail, throttle
 
 router = APIRouter()
 DIMENSIONS = [('overworld', 'Обычный мир'), ('nether', 'Незер'), ('end', 'Энд')]
+# BlueMap may name a map "public_overworld" or "public-overworld"; this is the
+# one explicit table both the publisher and the asset scope check read.
+MAP_IDS = {scope: {dim: (scope + '-' + dim, scope + '_' + dim) for dim, _ in DIMENSIONS}
+           for scope in ('public', 'admin')}
 ACTIVE = ('queued', 'waiting_for_resources', 'running', 'validating', 'publishing')
 DEFAULTS = dict(enabled=True, autoRefresh=True, intervalMinutes=720, minAgeMinutes=0,
                 showPlayers=False, positionDelaySeconds=0, perspective=False, firstPerson=False)
@@ -82,8 +86,9 @@ class MapStorage:
         if scope not in ('public', 'private') or not VERSION.fullmatch(version):
             raise PublicationError('invalid_path')
         relative = self.relative(asset)
-        expected = 'public-' if scope == 'public' else 'admin-'
-        if relative.parts[0] == 'maps' and (len(relative.parts) < 3 or relative.parts[1] not in {prefix+d for prefix in (expected, expected.replace('-', '_')) for d,_ in DIMENSIONS}):
+        expected = 'public' if scope == 'public' else 'admin'
+        allowed_ids = {name for pair in MAP_IDS[expected].values() for name in pair}
+        if relative.parts[0] == 'maps' and (len(relative.parts) < 3 or relative.parts[1] not in allowed_ids):
             raise PublicationError('wrong_scope')
         base = self.root / 'versions' / version / scope
         path = base.joinpath(*relative.parts)
@@ -168,7 +173,9 @@ class MapStorage:
             raw_ids = [m if isinstance(m, str) else m.get('id') for m in settings['maps']]
             for scope, prefix in [('public', 'public-'), ('private', 'admin-')]:
                 target = stage / scope; target.mkdir()
-                ids = [candidate for d,_ in DIMENSIONS for candidate in (prefix+d, prefix.replace('-', '_')+d) if candidate in raw_ids]
+                ids = [candidate for d,_ in DIMENSIONS
+                       for candidate in MAP_IDS['public' if scope == 'public' else 'admin'][d]
+                       if candidate in raw_ids]
                 if not ids:
                     raise PublicationError('no_maps_in_scope')
                 # Explicit viewer settings only: no scripts, external map roots or private IDs.

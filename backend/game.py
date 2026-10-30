@@ -19,6 +19,10 @@ from .security import fail
 
 MC_NAME = re.compile(r"[A-Za-z0-9_]{1,32}\Z")
 
+# One value for the message the plugin prints in game and the expiry the site
+# enforces; the shipped JAR says five minutes, so the site must match it.
+LINK_TTL_MS = 5 * 60 * 1000
+
 
 def catalog_version(item):
     fields = ("id", "name", "description", "category", "image", "video", "currency", "price", "limit", "enabled", "visibility", "sourceType", "material", "maxQuantity")
@@ -193,9 +197,9 @@ class GameAdapter:
         now = int(time.time() * 1000)
         with legacy.auth_conn() as db:
             db.execute("UPDATE one_time_link_codes SET status='EXPIRED' WHERE site_account_id=%s AND status='PENDING'", (user["id"],))
-            db.execute("INSERT INTO one_time_link_codes(id,site_account_id,minecraft_name,minecraft_uuid,code_hash,status,created_at,expires_at) VALUES(%s,%s,%s,%s,%s,'PENDING',%s,%s)", (uuid.uuid4().hex, user["id"], identity["name"], identity["uuid"], legacy.sha256_hex(code), now, now + 600000))
+            db.execute("INSERT INTO one_time_link_codes(id,site_account_id,minecraft_name,minecraft_uuid,code_hash,status,created_at,expires_at) VALUES(%s,%s,%s,%s,%s,'PENDING',%s,%s)", (uuid.uuid4().hex, user["id"], identity["name"], identity["uuid"], legacy.sha256_hex(code), now, now + LINK_TTL_MS))
             db.commit()
-        return {"ok": True, "deliveredInGame": True, "expiresAt": now + 600000}
+        return {"ok": True, "deliveredInGame": True, "expiresAt": now + LINK_TTL_MS}
 
     def link_confirm(self, user, code):
         legacy = self.legacy()

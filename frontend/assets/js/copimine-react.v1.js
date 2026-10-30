@@ -10017,7 +10017,7 @@ function ue() {
 						t.expiresAt ? new Date(t.expiresAt).toLocaleTimeString("ru-RU", {
 							hour: "2-digit",
 							minute: "2-digit"
-						}) : "через 10 минут",
+						}) : "через 5 минут",
 						". Проверяем привязку автоматически."
 					]
 				}),

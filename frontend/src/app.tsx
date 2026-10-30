@@ -688,7 +688,7 @@ function MinecraftLinkPage() {
             <div className="form-error" role="alert" />
             <button className="btn primary" type="submit">Подтвердить и открыть кабинет {iconMarkup("arrow-right")}</button>
           </form>
-          <p className="cm-link-status" data-link-status role="status">Код действует до {pending.expiresAt ? new Date(pending.expiresAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "через 10 минут"}. Проверяем привязку автоматически.</p>
+          <p className="cm-link-status" data-link-status role="status">Код действует до {pending.expiresAt ? new Date(pending.expiresAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "через 5 минут"}. Проверяем привязку автоматически.</p>
           <button className="cm-link-restart" type="button" data-action="production-mc-restart">Изменить ник или запросить новый код</button>
         </>
       )}

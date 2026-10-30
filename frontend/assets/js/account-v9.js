@@ -443,7 +443,7 @@ async function api(path, body, method) {
   F['production-mc-code'] = async (form, data) => {
     const name = String(data.get('name') || '').trim();
     const result = await api('account/minecraft/request', { name });
-    savePendingLink(currentAccountUser(), { name, expiresAt: Number(result.expiresAt || Date.now() + 600000) });
+    savePendingLink(currentAccountUser(), { name, expiresAt: Number(result.expiresAt || Date.now() + 300000) });
     M.render();
     startMinecraftPoll();
     animateLinkStep();

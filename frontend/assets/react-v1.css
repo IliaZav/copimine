@@ -158,8 +158,9 @@ html[data-initial-route="mapart"] .cm-skeleton-mapart{display:flex}
 .cm-mapart-tabs{display:inline-flex;gap:4px;padding:3px;margin-bottom:16px;border:1px solid #30373c;border-radius:8px;background:#12171a}
 .cm-mapart-tabs button{min-width:84px;padding:8px 14px;border-radius:6px;color:#9fadb4;font-size:12px;font-weight:600;transition:background .18s,color .18s}
 .cm-mapart-tabs button.active{background:#27332d;color:#dff7e8}
-.cm-mapart-drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;min-height:168px;padding:24px;border:1px dashed #46545b;border-radius:9px;background:#12181b;text-align:center;cursor:pointer;transition:border-color .2s,background .2s}
+.cm-mapart-drop{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;min-height:168px;padding:24px;border:1px dashed #46545b;border-radius:9px;background:#12181b;text-align:center;cursor:pointer;transition:border-color .2s,background .2s}
 .cm-mapart-drop:hover{border-color:#6f9f84;background:#141d1a}
+.cm-mapart-drop.is-dragging{border-color:var(--green);background:#16241d}
 .cm-mapart-drop input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 .cm-mapart-drop>.icon{width:26px;height:26px;color:var(--green);margin-bottom:4px}
 .cm-mapart-drop strong{font-size:13px;font-weight:600;color:#e4edf0;overflow-wrap:anywhere}

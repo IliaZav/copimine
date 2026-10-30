@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { createPortal } from "react-dom";
 import type { AnalyticsModel } from "./charts";
@@ -424,6 +424,7 @@ function MapArtPage() {
   const [previewError, setPreviewError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [dragging, setDragging] = useState(false);
   const [result, setResult] = useState<{ url: string; command: string; location?: { world: string; x: number; y: number; z: number } } | null>(null);
 
   useEffect(() => () => {
@@ -439,8 +440,21 @@ function MapArtPage() {
 
   const reset = () => { setResult(null); setError(""); };
 
-  const chooseFile = (event: ChangeEvent<HTMLInputElement>) => {
-    const chosen = event.currentTarget.files?.[0];
+  // Файл, брошенный где угодно вне зоны, браузер открывает вместо сайта —
+  // гасим это, пока открыта вкладка картин.
+  useEffect(() => {
+    const stop = (event: Event) => {
+      if (!(event.target as Element | null)?.closest?.(".cm-mapart-drop")) event.preventDefault();
+    };
+    window.addEventListener("dragover", stop);
+    window.addEventListener("drop", stop);
+    return () => {
+      window.removeEventListener("dragover", stop);
+      window.removeEventListener("drop", stop);
+    };
+  }, []);
+
+  const acceptFile = (chosen: File | undefined | null) => {
     if (!chosen) return;
     if (!/^image\/(png|jpeg|webp|gif)$/i.test(chosen.type)) {
       setError("Подойдёт PNG, JPG, WebP или GIF.");
@@ -455,6 +469,29 @@ function MapArtPage() {
     setNatural(null);
     setPreviewError(false);
     reset();
+  };
+
+  const chooseFile = (event: ChangeEvent<HTMLInputElement>) => {
+    acceptFile(event.currentTarget.files?.[0]);
+    // Сбрасываем значение, иначе повторный выбор того же файла не сработает.
+    event.currentTarget.value = "";
+  };
+
+  const onDragOver = (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    if (!dragging) setDragging(true);
+  };
+
+  const onDragLeave = (event: DragEvent<HTMLLabelElement>) => {
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+    setDragging(false);
+  };
+
+  const onDrop = (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    setDragging(false);
+    acceptFile(event.dataTransfer.files?.[0]);
   };
 
   const build = async () => {
@@ -515,8 +552,14 @@ function MapArtPage() {
               <button type="button" role="tab" aria-selected={mode === "url"} className={mode === "url" ? "active" : ""} onClick={() => { setMode("url"); reset(); }}>Ссылка</button>
             </div>
             {mode === "file" ? (
-              <label className="cm-mapart-drop">
-                <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={chooseFile} />
+              <label
+                className={"cm-mapart-drop" + (dragging ? " is-dragging" : "")}
+                onDragOver={onDragOver}
+                onDragEnter={onDragOver}
+                onDragLeave={onDragLeave}
+                onDrop={onDrop}
+              >
+                <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={chooseFile} data-cm-upload />
                 {iconMarkup("grid")}
                 <strong>{file ? file.name : "Перетащи картинку или выбери файл"}</strong>
                 <small>PNG, JPG, WebP или GIF · до 4 МБ · длинная сторона уменьшится до 2048 px</small>

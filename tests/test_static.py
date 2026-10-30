@@ -74,6 +74,30 @@ def test_gallery_slide_is_centred_by_css_not_by_its_own_size():
     assert 'translate3d(' in gallery
 
 
+def test_mapart_upload_accepts_drops_and_is_not_disabled_by_the_bridge():
+    """Поле картины должно принимать и клик, и перетаскивание.
+
+    bridge-v6.js выключал все input[type=file] без отметки, поэтому проводник
+    не открывался, а перетаскивание нигде не было подключено. Поле помечено
+    data-cm-upload, и у него есть настоящий серверный приём (POST /api/v6/mapart/image).
+    """
+    app=(ROOT/'src/app.tsx').read_text(encoding='utf-8')
+    assert 'data-cm-upload' in app
+    for handler in ('onDragOver={onDragOver}','onDrop={onDrop}','onDragLeave={onDragLeave}'):
+        assert handler in app
+    assert 'event.dataTransfer.files' in app
+    assert 'preventDefault();\n    event.dataTransfer.dropEffect' in app
+
+    bridge=(ROOT/'assets/js/bridge-v6.js').read_text(encoding='utf-8')
+    assert ":not([data-cm-upload])" in bridge
+    bundle=(ROOT/'assets/js/app-bundle.js').read_text(encoding='utf-8')
+    assert ":not([data-cm-upload])" in bundle
+
+    react=(ROOT/'assets/js/copimine-react.v1.js').read_text(encoding='utf-8')
+    assert 'dataTransfer' in react
+    assert '" is-dragging"' in react
+
+
 def test_production_react_bundle_does_not_require_a_node_process_global():
     bundle=(ROOT/'assets/js/copimine-react.v1.js').read_text(encoding='utf-8')
     assert 'process.env.NODE_ENV' not in bundle

@@ -9535,21 +9535,37 @@ function oe(e) {
 	});
 }
 function se() {
-	let e = window.CM, t = e?.me?.(), n = t?.minecraftName || t?.displayName || t?.name || "", [r, i] = (0, f.useState)("file"), [a, o] = (0, f.useState)(null), [s, c] = (0, f.useState)(""), [l, u] = (0, f.useState)(""), [d, m] = (0, f.useState)(3), [g, _] = (0, f.useState)(3), [v, y] = (0, f.useState)(() => "art-" + Math.random().toString(36).slice(2, 7)), [b, ee] = (0, f.useState)(n), [re, x] = (0, f.useState)(null), [ie, S] = (0, f.useState)(!1), [se, ce] = (0, f.useState)(!1), [le, ue] = (0, f.useState)(""), [de, fe] = (0, f.useState)(null);
+	let e = window.CM, t = e?.me?.(), n = t?.minecraftName || t?.displayName || t?.name || "", [r, i] = (0, f.useState)("file"), [a, o] = (0, f.useState)(null), [s, c] = (0, f.useState)(""), [l, u] = (0, f.useState)(""), [d, m] = (0, f.useState)(3), [g, _] = (0, f.useState)(3), [v, y] = (0, f.useState)(() => "art-" + Math.random().toString(36).slice(2, 7)), [b, ee] = (0, f.useState)(n), [re, x] = (0, f.useState)(null), [ie, S] = (0, f.useState)(!1), [se, ce] = (0, f.useState)(!1), [le, ue] = (0, f.useState)(""), [de, fe] = (0, f.useState)(!1), [pe, me] = (0, f.useState)(null);
 	(0, f.useEffect)(() => () => {
 		s && URL.revokeObjectURL(s);
 	}, [s]);
-	let pe = r === "file" ? s : /^https:\/\//i.test(l.trim()) ? l.trim() : "", me = d * g, he = "";
+	let he = r === "file" ? s : /^https:\/\//i.test(l.trim()) ? l.trim() : "", ge = d * g, _e = "";
 	try {
-		he = new URL(l.trim()).hostname;
+		_e = new URL(l.trim()).hostname;
 	} catch {}
-	let ge = !he || ne.has(he), _e = re ? Math.abs(re.w / re.h - d / g) > .03 : !1, ve = () => {
-		fe(null), ue("");
-	}, ye = (e) => {
-		let t = e.currentTarget.files?.[0];
-		t && (/^image\/(png|jpeg|webp|gif)$/i.test(t.type) ? t.size > 4194304 ? ue("Картинка должна быть не больше 4 МБ.") : (o(t), c(URL.createObjectURL(t)), x(null), S(!1), ve()) : ue("Подойдёт PNG, JPG, WebP или GIF."));
-	}, be = async () => {
-		ue(""), fe(null);
+	let ve = !_e || ne.has(_e), ye = re ? Math.abs(re.w / re.h - d / g) > .03 : !1, be = () => {
+		me(null), ue("");
+	};
+	(0, f.useEffect)(() => {
+		let e = (e) => {
+			e.target?.closest?.(".cm-mapart-drop") || e.preventDefault();
+		};
+		return window.addEventListener("dragover", e), window.addEventListener("drop", e), () => {
+			window.removeEventListener("dragover", e), window.removeEventListener("drop", e);
+		};
+	}, []);
+	let xe = (e) => {
+		e && (/^image\/(png|jpeg|webp|gif)$/i.test(e.type) ? e.size > 4194304 ? ue("Картинка должна быть не больше 4 МБ.") : (o(e), c(URL.createObjectURL(e)), x(null), S(!1), be()) : ue("Подойдёт PNG, JPG, WebP или GIF."));
+	}, Se = (e) => {
+		xe(e.currentTarget.files?.[0]), e.currentTarget.value = "";
+	}, Ce = (e) => {
+		e.preventDefault(), e.dataTransfer.dropEffect = "copy", de || fe(!0);
+	}, we = (e) => {
+		e.currentTarget.contains(e.relatedTarget) || fe(!1);
+	}, Te = (e) => {
+		e.preventDefault(), fe(!1), xe(e.dataTransfer.files?.[0]);
+	}, Ee = async () => {
+		ue(""), me(null);
 		try {
 			if (r === "file" && !a) throw Error("Сначала выбери картинку.");
 			let t = (v.trim().replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "copimine-art").slice(0, 32);
@@ -9585,7 +9601,7 @@ function se() {
 			if (!o?.url) throw Error("Сервер не вернул ссылку на картинку.");
 			i = o.url;
 			let s = `/imageframe create ${t} ${i} ${d} ${g}`;
-			fe({
+			me({
 				url: i,
 				command: s,
 				location: o.location
@@ -9595,7 +9611,7 @@ function se() {
 		} finally {
 			ce(!1);
 		}
-	}, xe = {
+	}, De = {
 		backgroundImage: "linear-gradient(to right,rgba(255,255,255,.3) 1px,transparent 1px),linear-gradient(to bottom,rgba(255,255,255,.3) 1px,transparent 1px)",
 		backgroundSize: `${100 / d}% ${100 / g}%`
 	};
@@ -9629,7 +9645,7 @@ function se() {
 								"aria-selected": r === "file",
 								className: r === "file" ? "active" : "",
 								onClick: () => {
-									i("file"), ve();
+									i("file"), be();
 								},
 								children: "Файл"
 							}), /* @__PURE__ */ (0, p.jsx)("button", {
@@ -9638,17 +9654,22 @@ function se() {
 								"aria-selected": r === "url",
 								className: r === "url" ? "active" : "",
 								onClick: () => {
-									i("url"), ve();
+									i("url"), be();
 								},
 								children: "Ссылка"
 							})]
 						}), r === "file" ? /* @__PURE__ */ (0, p.jsxs)("label", {
-							className: "cm-mapart-drop",
+							className: "cm-mapart-drop" + (de ? " is-dragging" : ""),
+							onDragOver: Ce,
+							onDragEnter: Ce,
+							onDragLeave: we,
+							onDrop: Te,
 							children: [
 								/* @__PURE__ */ (0, p.jsx)("input", {
 									type: "file",
 									accept: "image/png,image/jpeg,image/webp,image/gif",
-									onChange: ye
+									onChange: Se,
+									"data-cm-upload": !0
 								}),
 								h("grid"),
 								/* @__PURE__ */ (0, p.jsx)("strong", { children: a ? a.name : "Перетащи картинку или выбери файл" }),
@@ -9664,12 +9685,12 @@ function se() {
 									placeholder: "https://i.imgur.com/...",
 									value: l,
 									onChange: (e) => {
-										u(e.currentTarget.value), x(null), S(!1), ve();
+										u(e.currentTarget.value), x(null), S(!1), be();
 									}
 								})]
 							}), /* @__PURE__ */ (0, p.jsx)("small", {
-								className: ge ? "hint" : "cm-mapart-warn",
-								children: ge ? "Ссылка должна открываться без авторизации." : `Домен ${he} не в белом списке ImageFrame — сервер может не загрузить картинку. Надёжнее загрузить файл.`
+								className: ve ? "hint" : "cm-mapart-warn",
+								children: ve ? "Ссылка должна открываться без авторизации." : `Домен ${_e} не в белом списке ImageFrame — сервер может не загрузить картинку. Надёжнее загрузить файл.`
 							})]
 						})]
 					}), /* @__PURE__ */ (0, p.jsxs)("section", {
@@ -9680,15 +9701,15 @@ function se() {
 								aspectRatio: `${d} / ${g}`,
 								width: `min(100%, ${Math.round(560 * d / g)}px)`
 							},
-							children: pe && !ie ? /* @__PURE__ */ (0, p.jsxs)(p.Fragment, { children: [/* @__PURE__ */ (0, p.jsx)(ae, {
-								src: pe,
+							children: he && !ie ? /* @__PURE__ */ (0, p.jsxs)(p.Fragment, { children: [/* @__PURE__ */ (0, p.jsx)(ae, {
+								src: he,
 								width: d,
 								height: g,
 								onNatural: x,
 								onError: () => S(!0)
 							}), /* @__PURE__ */ (0, p.jsx)("div", {
 								className: "cm-mapart-grid",
-								style: xe,
+								style: De,
 								"aria-hidden": "true"
 							})] }) : /* @__PURE__ */ (0, p.jsxs)("div", {
 								className: "cm-mapart-placeholder",
@@ -9700,7 +9721,7 @@ function se() {
 							})
 						}), /* @__PURE__ */ (0, p.jsxs)("div", {
 							className: "cm-mapart-caption",
-							children: [/* @__PURE__ */ (0, p.jsx)("span", { children: pe && !ie ? `${re ? `${re.w} × ${re.h} px` : "Изображение"} · ${d * 128} × ${g * 128} px · ${me} карт` : "Сетка показывает границы карт" }), _e && /* @__PURE__ */ (0, p.jsx)("span", {
+							children: [/* @__PURE__ */ (0, p.jsx)("span", { children: he && !ie ? `${re ? `${re.w} × ${re.h} px` : "Изображение"} · ${d * 128} × ${g * 128} px · ${ge} карт` : "Сетка показывает границы карт" }), ye && /* @__PURE__ */ (0, p.jsx)("span", {
 								className: "cm-mapart-warn",
 								children: "Пропорции не совпадают: картинка впишется целиком, по краям будут прозрачные поля."
 							})]
@@ -9719,7 +9740,7 @@ function se() {
 									children: ["Ширина", /* @__PURE__ */ (0, p.jsx)("select", {
 										value: d,
 										onChange: (e) => {
-											m(Number(e.currentTarget.value)), ve();
+											m(Number(e.currentTarget.value)), be();
 										},
 										children: Array.from({ length: 10 }, (e, t) => t + 1).map((e) => /* @__PURE__ */ (0, p.jsx)("option", {
 											value: e,
@@ -9731,7 +9752,7 @@ function se() {
 									children: ["Высота", /* @__PURE__ */ (0, p.jsx)("select", {
 										value: g,
 										onChange: (e) => {
-											_(Number(e.currentTarget.value)), ve();
+											_(Number(e.currentTarget.value)), be();
 										},
 										children: Array.from({ length: 10 }, (e, t) => t + 1).map((e) => /* @__PURE__ */ (0, p.jsx)("option", {
 											value: e,
@@ -9742,7 +9763,7 @@ function se() {
 							}),
 							/* @__PURE__ */ (0, p.jsx)("div", {
 								className: "cm-mapart-cost single",
-								children: /* @__PURE__ */ (0, p.jsxs)("div", { children: [/* @__PURE__ */ (0, p.jsx)("span", { children: "Нужно пустых карт" }), /* @__PURE__ */ (0, p.jsx)("strong", { children: me })] })
+								children: /* @__PURE__ */ (0, p.jsxs)("div", { children: [/* @__PURE__ */ (0, p.jsx)("span", { children: "Нужно пустых карт" }), /* @__PURE__ */ (0, p.jsx)("strong", { children: ge })] })
 							}),
 							/* @__PURE__ */ (0, p.jsx)("p", {
 								className: "hint",
@@ -9763,7 +9784,7 @@ function se() {
 										maxLength: 32,
 										pattern: "[A-Za-z0-9_-]+",
 										onChange: (e) => {
-											y(e.currentTarget.value), ve();
+											y(e.currentTarget.value), be();
 										}
 									})
 								]
@@ -9784,7 +9805,7 @@ function se() {
 							/* @__PURE__ */ (0, p.jsxs)("button", {
 								type: "button",
 								className: "btn primary wide",
-								onClick: be,
+								onClick: Ee,
 								disabled: se || (r === "file" ? !a : !l.trim()),
 								children: [se ? "Загружаем картинку…" : "Получить команду", h("arrow-right")]
 							}),
@@ -9793,17 +9814,17 @@ function se() {
 								role: "alert",
 								children: le
 							}),
-							de && /* @__PURE__ */ (0, p.jsxs)("div", {
+							pe && /* @__PURE__ */ (0, p.jsxs)("div", {
 								className: "cm-mapart-result",
 								children: [
-									/* @__PURE__ */ (0, p.jsx)("code", { children: de.command }),
+									/* @__PURE__ */ (0, p.jsx)("code", { children: pe.command }),
 									/* @__PURE__ */ (0, p.jsxs)("button", {
 										type: "button",
 										className: "btn ghost wide",
-										onClick: () => e?.copyText?.(de.command),
+										onClick: () => e?.copyText?.(pe.command),
 										children: [h("copy"), "Скопировать команду"]
 									}),
-									/* @__PURE__ */ (0, p.jsx)("small", { children: de.location ? `Точка загрузки: ${te(de.location.world)} · ${de.location.x} ${de.location.y} ${de.location.z}. Она будет в журнале.` : "Вставь в чат Minecraft. Нужны пустые карты и право imageframe.create." })
+									/* @__PURE__ */ (0, p.jsx)("small", { children: pe.location ? `Точка загрузки: ${te(pe.location.world)} · ${pe.location.x} ${pe.location.y} ${pe.location.z}. Она будет в журнале.` : "Вставь в чат Minecraft. Нужны пустые карты и право imageframe.create." })
 								]
 							})
 						]

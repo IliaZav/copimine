@@ -8,7 +8,8 @@ public final class WaveTwoStagePolicyTest {
         rejectUnlaunchableTwoOpeningBatches();
         spawnBoundaryKeepsOnlyTheApprovedFirstLateElite();
         everyNonEmptyGroupGetsMobsWhenEnoughExist();
-        waveTwoPressureExceptionIsBoundedToSixGroups();
+        waveTwoPressureExceptionIsBoundedToThreeGroups();
+        expandedConfiguredRosterUsesTheHardCapWithoutAddingGroups();
         waveTwoRosterScalesAcrossTheSupportedPartySizes();
         defaultTwoPlayerPlanReservesAReachablePhantomActivationSlot();
         huntUsesFortyFiveSecondMarksAndImmediateClearAdvancement();
@@ -21,7 +22,7 @@ public final class WaveTwoStagePolicyTest {
     private static void splitIntoTwoOpeningBatchesAndBoundedLateGroupsWithoutChangingComposition() {
         var total = new WaveMechanicsPolicy.WaveCounts(8, 4, 5, 2, 1);
         List<WaveMechanicsPolicy.WaveCounts> groups = WaveTwoStagePolicy.split(total);
-        check(groups.size() == 6, "Wave 2 plans two opening groups and four bounded late groups");
+        check(groups.size() == 3, "Wave 2 plans exactly two opening groups and one final reserve group");
         check(groups.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).sum() == 20,
                 "group split preserves the elite-normalized mob total");
         check(groups.get(0).eliteEndermen() == 0 && groups.get(0).eliteSkeletons() == 0
@@ -29,9 +30,8 @@ public final class WaveTwoStagePolicyTest {
                 "the first two Wave 2 groups stay free of elites");
         check(groups.get(2).eliteEndermen() == 0 && groups.get(2).eliteSkeletons() == 1,
                 "the first late Wave 2 group converts one skeleton into an elite");
-        check(groups.get(2).total() <= 2 && groups.get(3).total() <= 2
-                        && groups.get(4).total() <= 2 && groups.get(5).total() <= 2,
-                "later reinforcements contain no more than two mobs each");
+        check(groups.get(2).total() == WaveTwoStagePolicy.LATE_REINFORCEMENT_BUDGET,
+                "the final reserve is delivered as one bounded subwave");
         check(groups.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).sum() == total.total(),
                 "the first late elite replaces a skeleton without increasing pressure");
         check(groups.equals(WaveTwoStagePolicy.split(total)), "group plan is deterministic");
@@ -42,21 +42,20 @@ public final class WaveTwoStagePolicyTest {
                 new WaveMechanicsPolicy.WaveCounts(7, 2, 0, 0, 0));
         check(groups.stream().allMatch(group -> group.total() > 0),
                 "a sufficiently large ordinary roster fills every planned group");
-        int smallest = groups.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).min().orElse(0);
-        int largest = groups.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).max().orElse(0);
-        check(largest - smallest <= 1, "stage groups stay balanced");
+        check(groups.size() == 3 && groups.get(0).total() == 1 && groups.get(1).total() == 1
+                        && groups.get(2).total() == 7,
+                "two balanced opening groups lead into one consolidated final reserve");
     }
 
-    private static void waveTwoPressureExceptionIsBoundedToSixGroups() {
-        var defaultRoster = new WaveMechanicsPolicy.WaveCounts(14, 14, 8, 0, 0);
+    private static void waveTwoPressureExceptionIsBoundedToThreeGroups() {
+        var defaultRoster = new WaveMechanicsPolicy.WaveCounts(18, 18, 12, 0, 0);
         var defaultGroups = WaveTwoStagePolicy.split(defaultRoster);
-        check(defaultGroups.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).sum() == 36,
+        check(defaultGroups.size() == 3
+                        && defaultGroups.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).sum() == 48,
                 "the Wave 2 exception preserves the complete default reserve");
-        check(defaultGroups.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).toArray()[0] == 14
-                        && defaultGroups.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).toArray()[1] == 14
-                        && defaultGroups.subList(2, defaultGroups.size()).stream()
-                        .allMatch(group -> group.total() == 2),
-                "the default reserve uses two opening groups and four two-mob reinforcements");
+        check(defaultGroups.get(0).total() == 20 && defaultGroups.get(1).total() == 20
+                        && defaultGroups.get(2).total() == 8,
+                "the default reserve uses two larger openings and one eight-mob final subwave");
 
         var maximum = WaveTwoStagePolicy.split(new WaveMechanicsPolicy.WaveCounts(56, 0, 0, 0, 0));
         check(maximum.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).sum()
@@ -75,13 +74,27 @@ public final class WaveTwoStagePolicyTest {
         check(rejected, "the group planner refuses an over-cap reserve");
     }
 
+    private static void expandedConfiguredRosterUsesTheHardCapWithoutAddingGroups() {
+        var doubledConfiguration = new WaveMechanicsPolicy.WaveCounts(36, 36, 24, 0, 0);
+        var scaled = WaveScalingPolicy.scale(2, doubledConfiguration, 2,
+                WaveTwoStagePolicy.MAX_TOTAL_MOBS);
+        List<WaveMechanicsPolicy.WaveCounts> groups = WaveTwoStagePolicy.split(scaled);
+        check(scaled.total() == WaveTwoStagePolicy.MAX_TOTAL_MOBS,
+                "the doubled Wave 2 configuration fills but never exceeds the global 56-mob reserve");
+        check(groups.size() == 3
+                        && groups.get(0).total() == 24
+                        && groups.get(1).total() == 24
+                        && groups.get(2).total() == 8,
+                "the larger Wave 2 reserve stays in exactly three bounded subwaves");
+    }
+
     private static void waveTwoRosterScalesAcrossTheSupportedPartySizes() {
-        var configured = new WaveMechanicsPolicy.WaveCounts(14, 14, 8, 0, 0);
+        var configured = new WaveMechanicsPolicy.WaveCounts(18, 18, 12, 0, 0);
         int[] playerCounts = {2, 5, 6, 10, 20};
-        int[] expectedTotals = {36, 39, 40, 45, 56};
+        int[] expectedTotals = {48, 49, 50, 52, 56};
         int[] expectedFirstLateElites = {1, 1, 1, 1, 1};
-        int[][] expectedGroupSizes = {{14, 14, 2, 2, 2, 2}, {16, 15, 2, 2, 2, 2},
-                {16, 16, 2, 2, 2, 2}, {19, 18, 2, 2, 2, 2}, {24, 24, 2, 2, 2, 2}};
+        int[][] expectedGroupSizes = {{20, 20, 8}, {21, 20, 8},
+                {21, 21, 8}, {22, 22, 8}, {24, 24, 8}};
         for (int index = 0; index < playerCounts.length; index++) {
             int players = playerCounts[index];
             var scaled = WaveScalingPolicy.scale(2, configured, players,
@@ -91,7 +104,7 @@ public final class WaveTwoStagePolicyTest {
 
             check(total == expectedTotals[index], players + " players preserve the expected scaled Wave 2 roster");
             check(groups.size() == WaveTwoStagePolicy.MAX_GROUP_COUNT,
-                    players + " players retain two opening and four late groups");
+                    players + " players retain exactly three groups");
             check(groups.stream().allMatch(group -> group.total() > 0),
                     players + " players retain a meaningful roster in every planned group");
             for (int group = 0; group < groups.size(); group++) {
@@ -136,14 +149,14 @@ public final class WaveTwoStagePolicyTest {
     }
 
     private static void defaultTwoPlayerPlanReservesAReachablePhantomActivationSlot() {
-        var configured = new WaveMechanicsPolicy.WaveCounts(14, 14, 8, 0, 0);
+        var configured = new WaveMechanicsPolicy.WaveCounts(18, 18, 12, 0, 0);
         var scaled = WaveScalingPolicy.scale(2, configured, 2, WaveTwoStagePolicy.MAX_TOTAL_MOBS);
         List<WaveMechanicsPolicy.WaveCounts> groups = WaveTwoStagePolicy.split(scaled);
         var firstLate = groups.get(WaveTwoStagePolicy.FIRST_LATE_GROUP - 1);
 
         check(WaveTwoStagePolicy.canStart(scaled), "the normal two-player plan remains launchable");
-        check(groups.get(0).total() == 14 && groups.get(1).total() == 14,
-                "reserving the activation slot preserves the two substantial opening batches");
+        check(groups.get(0).total() == 20 && groups.get(1).total() == 20,
+                "the larger two-player roster preserves two substantial opening batches");
         check(firstLate.endermen() > 0,
                 "the first late group reserves a real Enderman slot for deterministic phantom activation");
         check(groups.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).sum() == scaled.total(),
@@ -199,8 +212,10 @@ public final class WaveTwoStagePolicyTest {
                 "a marker recovers the next group across a spawn-save crash window");
         check(WaveTwoStagePolicy.recoveryNextGroupIndex(2, 2, 0, true) == 2,
                 "two cleared stages resume with group three pending");
+        check(WaveTwoStagePolicy.recoveryNextGroupIndex(3, 3, 3, true) == 3,
+                "completed Wave 2 stays bounded at three groups");
         check(WaveTwoStagePolicy.recoveryNextGroupIndex(6, 6, 6, true) == 6,
-                "completed Wave 2 stays bounded at six groups");
+                "legacy six-stage checkpoints remain recoverable without spawning more groups");
         var groups = WaveTwoStagePolicy.split(new WaveMechanicsPolicy.WaveCounts(6, 3, 3, 0, 0));
         check(WaveTwoStagePolicy.spawnedMobOffset(groups, 2)
                         == groups.get(0).total() + groups.get(1).total(),
@@ -216,16 +231,18 @@ public final class WaveTwoStagePolicyTest {
                 "a cleared first group has one completed and one spawned stage");
         check(WaveTwoStagePolicy.hasConsistentProgress(1, 2, false),
                 "the next group can be active after one completed stage");
+        check(WaveTwoStagePolicy.hasConsistentProgress(3, 3, true),
+                "the final three-group checkpoint is internally consistent");
         check(WaveTwoStagePolicy.hasConsistentProgress(6, 6, true),
-                "the final bounded group checkpoint is internally consistent");
+                "legacy six-stage checkpoints remain internally consistent");
         check(!WaveTwoStagePolicy.hasConsistentProgress(1, 0, false),
                 "completed stages cannot exceed the durable spawn count");
         check(!WaveTwoStagePolicy.hasConsistentProgress(0, 2, false),
                 "the durable spawn cursor cannot skip a stage");
         check(!WaveTwoStagePolicy.hasConsistentProgress(1, 2, true),
                 "a cleared checkpoint cannot claim the next group as spawned");
-        check(!WaveTwoStagePolicy.hasConsistentProgress(6, 6, false),
-                "all six completed groups must have a cleared final group");
+        check(!WaveTwoStagePolicy.hasConsistentProgress(3, 3, false),
+                "all three completed groups must have a cleared final group");
     }
 
     private static void lateGroupsWaitForCompletedMarkPeriods() {
@@ -239,10 +256,8 @@ public final class WaveTwoStagePolicyTest {
                 "the first late reinforcement waits for two completed marks");
         check(WaveTwoStagePolicy.maySpawnNextGroup(2, 2, 0),
                 "the first late reinforcement starts after the second completed mark");
-        check(!WaveTwoStagePolicy.maySpawnNextGroup(3, 2, 2),
-                "a second late reinforcement waits for a new mark period");
-        check(WaveTwoStagePolicy.maySpawnNextGroup(3, 3, 2),
-                "a second late reinforcement starts after the next complete mark period");
+        check(!WaveTwoStagePolicy.maySpawnNextGroup(3, 3, 2),
+                "Wave 2 cannot spawn a fourth group after its final reserve");
     }
 
     private static void check(boolean value, String message) {

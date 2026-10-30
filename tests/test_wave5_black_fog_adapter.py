@@ -336,7 +336,7 @@ public final class BlackFogAdapterProbe {
                 check("the_end|wave5|1".equals(p.sentPacketSubject),
                         "first internal zero-based fog cycle must be sent as protocol cycle 1");
                 check("ACTIVE".equals(p.sentPacketStatus) && "WAVE5_FOG_V1".equals(p.sentPacketVisual)
-                                && p.sentPacketDuration == 8_000L && p.sentPacketIntensity == .88F,
+                                && p.sentPacketDuration == 8_000L && p.sentPacketIntensity == 1.0F,
                         "active fog packet must preserve its approved visual fields");
                 p.currentFogCycle = 2;
                 p.sendCurrentBlackFogPacket(new Player(), true, null);
@@ -436,8 +436,8 @@ public final class BlackFogAdapterProbe {
                 check(p.hazardJournal.prepareCalls == 1 && p.hazardJournal.snapshot.entries().size() == 20
                                 && p.hazardJournal.markAppliedCalls == 1,
                         "all twenty cells must be journaled before the setup is accepted");
-                check(p.core.world.blockMutationCount == 20 && p.core.world.itemDisplaySpawns == 20,
-                        "accepted twenty-player layout must mutate only its twenty safe floors and visuals");
+                check(p.core.world.blockMutationCount == 20 && p.core.world.itemDisplaySpawns == 0,
+                        "safe floors remain visibly emerald blocks without texture overlays hiding them");
             }
             case "reconnected-roster-refresh" -> {
                 p.eligiblePlayers.clear();

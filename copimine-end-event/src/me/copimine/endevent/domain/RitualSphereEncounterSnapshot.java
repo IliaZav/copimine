@@ -38,15 +38,13 @@ public final class RitualSphereEncounterSnapshot {
         if (casterDeaths < 0 || casterDeaths > state.profile().casterCount()) {
             throw new IllegalArgumentException("Ritual Sphere caster deaths are outside the live roster");
         }
-        if (!validSpellCursor(casterDeaths, spellCursor)) {
-            throw new IllegalArgumentException("Ritual Sphere spell cursor is outside the unlocked rotation");
-        }
+        int persistedSpellCursor = normalizeSpellCursor(casterDeaths, spellCursor);
         Map<String, String> encoded = new LinkedHashMap<>();
         encoded.put(GENERATION, Long.toString(state.generation()));
         encoded.put(PRISONER, state.prisoner() == null ? "" : state.prisoner().toString());
         encoded.put(PARTICIPANTS, Integer.toString(state.profile().participants()));
         encoded.put(CASTER_DEATHS, Integer.toString(casterDeaths));
-        encoded.put(SPELL_CURSOR, Integer.toString(spellCursor));
+        encoded.put(SPELL_CURSOR, Integer.toString(persistedSpellCursor));
         return Map.copyOf(encoded);
     }
 
@@ -90,19 +88,25 @@ public final class RitualSphereEncounterSnapshot {
         }
         int spellCursor = encoded.containsKey(SPELL_CURSOR)
                 ? parseInt(encoded.get(SPELL_CURSOR), SPELL_CURSOR) : 0;
-        if (!validSpellCursor(casterDeaths, spellCursor)) {
-            throw new IllegalArgumentException("Ritual Sphere spell cursor is outside the unlocked rotation");
-        }
+        spellCursor = normalizeSpellCursor(casterDeaths, spellCursor);
         RitualSphereEncounterPolicy.State state = new RitualSphereEncounterPolicy.State(
                 generation, prisoner, profile);
         return new Data(state, migratedLegacyState, casterDeaths, spellCursor);
     }
 
-    private static boolean validSpellCursor(int casterDeaths, int spellCursor) {
+    private static int normalizeSpellCursor(int casterDeaths, int spellCursor) {
         if (casterDeaths < 0 || casterDeaths > RitualCasterProgressionPolicy.TOTAL_CASTERS
-                || spellCursor < 0) return false;
+                || spellCursor < 0) {
+            throw new IllegalArgumentException("Ritual Sphere spell cursor is outside the unlocked rotation");
+        }
         int rotationSize = RitualCasterProgressionPolicy.availableSpells(casterDeaths).size();
-        return spellCursor < Math.max(1, rotationSize);
+        if (rotationSize == 0) {
+            return 0;
+        }
+        if (spellCursor >= rotationSize) {
+            throw new IllegalArgumentException("Ritual Sphere spell cursor is outside the unlocked rotation");
+        }
+        return spellCursor;
     }
 
     private static String required(Map<String, String> encoded, String key) {

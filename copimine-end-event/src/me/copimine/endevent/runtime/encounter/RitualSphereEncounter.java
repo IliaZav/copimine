@@ -25,7 +25,7 @@ public final class RitualSphereEncounter extends AbstractWaveEncounter {
         return result;
     }
 
-    /** Capture exactly one eligible participant after physical seal entry. */
+    /** Capture the nearest living participant as soon as Wave 6 opens. */
     public synchronized Result capture(EncounterContext context,
                                        List<RitualSealCapturePolicy.Candidate> candidates,
                                        double sealX, double sealZ) {
@@ -35,9 +35,9 @@ public final class RitualSphereEncounter extends AbstractWaveEncounter {
         if (RitualSphereEncounterPolicy.hasCaptured(state)) {
             return result(Status.IN_PROGRESS, "prisoner already captured");
         }
-        UUID prisoner = RitualSealCapturePolicy.select(candidates, sealX, sealZ);
+        UUID prisoner = RitualSealCapturePolicy.selectNearestEligible(candidates, sealX, sealZ);
         if (prisoner == null || !context.isLivingParticipant(prisoner)) {
-            return result(Status.IN_PROGRESS, "waiting for prisoner");
+            return result(Status.IN_PROGRESS, "waiting for eligible prisoner");
         }
         state = RitualSphereEncounterPolicy.capture(state, prisoner);
         return result(Status.IN_PROGRESS, "prisoner captured");

@@ -33,6 +33,7 @@ def test_wave5_safe_zones_use_emerald_blocks_and_a_central_green_locator_beam():
     beams = _method(source, "renderCurrentSafeZoneBeams")
 
     assert "setType(Material.EMERALD_BLOCK, false)" in safe_zones
+    assert "overlayItem(MODEL_SAFE_ZONE_FLOOR" not in safe_zones
     assert re.search(r"new Location\(core\.getWorld\(\),\s*point\.x\(\)\s*\+\s*\.5D", beams)
     assert "point.z() + .5D" in beams
     assert "0x42FF66" in beams

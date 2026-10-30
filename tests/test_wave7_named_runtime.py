@@ -254,10 +254,11 @@ def test_wave7_live_boundary_runner_waits_for_actual_objective_start_marker():
 def test_wave7_sandbox_uses_the_same_distinct_random_trial_pool_as_official_runs():
     source = (SOURCE / "CopiMineEndEvent.java").read_text(encoding="utf-8")
     preflight = extract(source, "boolean preflightWave7StartBeforeWorldMutation(World world, Location core,")
-    assert "if (sandbox)" not in preflight
+    assert "refuseWave7Preflight(sandbox, previousActiveWave," in preflight
     assert "namedWave7TestLayout" not in source
     assert "realitySplitTrialController.beginNamed(eventUuid, generation,\n                realitySplitChamberController.assignment(), java.util.concurrent.ThreadLocalRandom.current())" in preflight
     assert "preflightNamedEchoDuelRooms()" in preflight
+    assert '"unsupported-custom-item-slot-" + slot' in source
     runner = (ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1").read_text(encoding="utf-8")
     assert "layout=\\[([A-Z_, ]+)\\]" in runner
     assert "Groups[1].Value -split ', '" in runner
@@ -411,6 +412,7 @@ def test_official_wave7_preflight_runs_before_cleanup_teleport_and_actor_spawn(t
     assert "startRealitySplitTrials(world, core)" in initializer
 
     preflight = extract(source, "boolean preflightWave7StartBeforeWorldMutation(")
+    refusal = extract(source, "boolean refuseWave7Preflight(")
     assert preflight.index("preflightNamedTrialActorAdapters()") < preflight.index(
         "preflightNamedEchoDuelRooms()")
     assert preflight.index("preflightNamedEchoDuelRooms()") < preflight.index(
@@ -453,16 +455,16 @@ public class Wave7PreflightProbe {
     boolean namedRealitySplitTrialImplemented(RealitySplitTrialController.NamedTrial trial){return true;}
     void enterNamedRealitySplitRecovery(String reason){recoveryReason=reason;recovery=true;}
     boolean saveStateSync(){saves++;return true;}
-''' + preflight + r'''
-    boolean initializeAfterPreflight(World world,Location core,List<UUID> owners){
-        if(!preflightWave7StartBeforeWorldMutation(world,core,new LinkedHashSet<>(owners),false))return false;
+''' + refusal + preflight + r'''
+    boolean initializeAfterPreflight(World world,Location core,List<UUID> owners,boolean sandbox){
+        if(!preflightWave7StartBeforeWorldMutation(world,core,new LinkedHashSet<>(owners),sandbox))return false;
         cleanups++;teleports++;spawns++;return true;
     }
     static void require(boolean value,String reason){if(!value)throw new AssertionError(reason);}
     public static void main(String[] args){
         var solo=new Wave7PreflightProbe();
         var soloWorld=new World();
-        require(!solo.initializeAfterPreflight(soloWorld,new Location(soloWorld),List.of(new UUID(0,1))),
+        require(!solo.initializeAfterPreflight(soloWorld,new Location(soloWorld),List.of(new UUID(0,1)),false),
                 "Wave 7 must refuse a one-player roster during preflight");
         require(solo.lastWarning.contains("reason=minimum-roster-size")
                         &&solo.lastWarning.contains("players=1")&&solo.lastWarning.contains("minimum=2"),
@@ -473,37 +475,45 @@ public class Wave7PreflightProbe {
                 "single-player refusal must happen before event state, persistence, or world mutation");
         var refused=new Wave7PreflightProbe();refused.echoReady=false;
         var refusedWorld=new World();
-        require(!refused.initializeAfterPreflight(refusedWorld,new Location(refusedWorld),List.of(new UUID(0,1),new UUID(0,2))),
+        require(!refused.initializeAfterPreflight(refusedWorld,new Location(refusedWorld),List.of(new UUID(0,1),new UUID(0,2)),false),
                 "unready Echo must refuse Wave 7 before world work");
         require(refused.cleanups==0&&refused.teleports==0&&refused.spawns==0,
                 "failed preflight must not clear entities, teleport owners, or spawn actors");
         var adapterRefused=new Wave7PreflightProbe();adapterRefused.adaptersReady=false;
         var adapterWorld=new World();
         require(!adapterRefused.initializeAfterPreflight(adapterWorld,new Location(adapterWorld),
-                List.of(new UUID(0,1),new UUID(0,2))),"unsupported actor adapter must refuse the attempt");
+                List.of(new UUID(0,1),new UUID(0,2)),false),"unsupported actor adapter must refuse the attempt");
         require(adapterRefused.cleanups==0&&adapterRefused.teleports==0&&adapterRefused.spawns==0,
                 "adapter refusal must not mutate the room world");
         var journalRefused=new Wave7PreflightProbe();journalRefused.journalReady=false;
         var journalWorld=new World();
         require(!journalRefused.initializeAfterPreflight(journalWorld,new Location(journalWorld),
-                List.of(new UUID(0,1),new UUID(0,2))),"unsafe journal state must refuse the attempt");
+                List.of(new UUID(0,1),new UUID(0,2)),false),"unsafe journal state must refuse the attempt");
         require(journalRefused.cleanups==0&&journalRefused.teleports==0&&journalRefused.spawns==0,
                 "journal refusal must not mutate the room world");
         var cellsRefused=new Wave7PreflightProbe();cellsRefused.barrierCellsReady=false;
         var cellsWorld=new World();
-        require(!cellsRefused.initializeAfterPreflight(cellsWorld,new Location(cellsWorld),List.of(new UUID(0,1),new UUID(0,2))),
+        require(!cellsRefused.initializeAfterPreflight(cellsWorld,new Location(cellsWorld),List.of(new UUID(0,1),new UUID(0,2)),false),
                 "unsafe planned barrier cells must refuse Wave 7");
         require(cellsRefused.cleanups==0&&cellsRefused.teleports==0&&cellsRefused.spawns==0,
                 "invalid barrier geometry must not reach cleanup, teleport, or actor spawn");
         var ready=new Wave7PreflightProbe();
         var readyWorld=new World();
-        require(ready.initializeAfterPreflight(readyWorld,new Location(readyWorld),List.of(new UUID(0,1),new UUID(0,2))),
+        require(ready.initializeAfterPreflight(readyWorld,new Location(readyWorld),List.of(new UUID(0,1),new UUID(0,2)),false),
                 "valid Echo and journal preflight may continue");
         require(ready.cleanups==1&&ready.teleports==1&&ready.spawns==1,
                 "successful preflight permits the ordered world-start operations");
         require(ready.namedWave7PreflightSelectedLayout.equals(
                         ready.realitySplitTrialController.namedSnapshot().selectedLayout()),
                 "preflight retains the exact sampled room selection for startup");
+        var sandboxRefused=new Wave7PreflightProbe();sandboxRefused.echoReady=false;sandboxRefused.activeWave=6;
+        var sandboxWorld=new World();
+        require(!sandboxRefused.initializeAfterPreflight(sandboxWorld,new Location(sandboxWorld),
+                List.of(new UUID(0,1),new UUID(0,2)),true),"sandbox preflight refusal must stop before world work");
+        require(sandboxRefused.activeWave==6&&!sandboxRefused.recovery&&sandboxRefused.saves==0
+                        &&!sandboxRefused.realitySplitChamberController.owns(71)
+                        &&!sandboxRefused.realitySplitTrialController.owns(71),
+                "a failed Wave 7 test must restore prior state and never poison the official event");
     }
 }
 ''', encoding="utf-8")

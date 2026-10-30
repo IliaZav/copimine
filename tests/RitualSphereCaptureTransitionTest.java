@@ -27,21 +27,21 @@ public final class RitualSphereCaptureTransitionTest {
         check(encounter.capture(context, List.of(
                 new RitualSealCapturePolicy.Candidate(outsideLowest, true, 4.0D, 4.0D)
         ), 0.0D, 0.0D).accepted(),
-                "an outside participant must leave the encounter waiting");
-        check(encounter.state() != null && !RitualSphereEncounterPolicy.hasCaptured(encounter.state()),
-                "an outside participant must leave the authoritative state waiting");
+                "an eligible participant must be captured without first entering the seal");
+        check(encounter.state() != null && RitualSphereEncounterPolicy.hasCaptured(encounter.state()),
+                "the authoritative prisoner must be assigned immediately");
         check(encounter.capture(context, List.of(
                 new RitualSealCapturePolicy.Candidate(prisoner, true, 1.25D, 0.0D)
         ), 0.0D, 0.0D).accepted(),
-                "an eligible participant on the seal boundary must be captured");
+                "repeated capture ticks must stay accepted after immediate assignment");
         check(encounter.state() != null, "capture must create prisoner state");
-        check(prisoner.equals(encounter.state().prisoner()),
-                "capture must persist the physically captured UUID");
+        check(outsideLowest.equals(encounter.state().prisoner()),
+                "capture must persist the nearest initially eligible UUID");
         check(encounter.capture(context, List.of(
                 new RitualSealCapturePolicy.Candidate(outsideLowest, true, 0.0D, 0.0D)
         ), 0.0D, 0.0D).accepted(),
                 "a repeated capture attempt must remain idempotently accepted");
-        check(prisoner.equals(encounter.state().prisoner()),
+        check(outsideLowest.equals(encounter.state().prisoner()),
                 "a second player must not replace the captured prisoner");
 
         System.out.println("RitualSphereCaptureTransitionTest OK");

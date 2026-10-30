@@ -162,7 +162,8 @@ def test_wave5_safe_zone_failure_does_not_advance_to_fog():
 
     assert "if (!spawnCurrentSafeZoneVisuals(core.getWorld(), core))" in tick
     assert "blackFogPhase = BlackFogPhase.FOG;" in tick
-    assert "tag(display, EVENT_KIND_DISPLAY, 5, true);" in safe_zones
+    assert "floor=emerald-block overlay_displays=0" in safe_zones
+    assert "return !currentSafeZoneCells.isEmpty() && !currentSafeZoneCenters.isEmpty();" in safe_zones
     assert '"wave5-safe-zone-"' in source
 
 

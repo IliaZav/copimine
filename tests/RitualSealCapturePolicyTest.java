@@ -18,6 +18,14 @@ public final class RitualSealCapturePolicyTest {
         check(inside.equals(selected),
                 "the eligible player physically inside the ritual seal must be captured");
 
+        UUID immediate = RitualSealCapturePolicy.selectNearestEligible(List.of(
+                new RitualSealCapturePolicy.Candidate(outsideLowest, true, 11.0D, 0.0D),
+                new RitualSealCapturePolicy.Candidate(ineligibleInside, false, 0.25D, 0.25D),
+                new RitualSealCapturePolicy.Candidate(inside, true, 4.0D, 0.25D)
+        ), 0.0D, 0.0D);
+        check(inside.equals(immediate),
+                "Wave 6 must immediately assign the nearest eligible participant to the prison");
+
         UUID none = RitualSealCapturePolicy.select(List.of(
                 new RitualSealCapturePolicy.Candidate(outsideLowest, true, 4.0D, 4.0D)
         ), 0.0D, 0.0D);

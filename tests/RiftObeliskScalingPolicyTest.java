@@ -18,6 +18,13 @@ public final class RiftObeliskScalingPolicyTest {
                 "ten players use five obelisks");
         check(ObeliskScalingPolicy.profileForPlayers(20).obeliskCount() == 6,
                 "twenty players use six obelisks");
+        int[] players = {2, 5, 8, 11, 16};
+        int[] expectedMobCounts = {6, 8, 10, 12, 16};
+        for (int index = 0; index < players.length; index++) {
+            check(ObeliskScalingPolicy.profileForPlayers(players[index]).mobCount()
+                            == expectedMobCounts[index],
+                    "Wave 4 doubles its bounded pressure pack for " + players[index] + " players");
+        }
         check(ObeliskScalingPolicy.profileForPlayers(2).fireballCap() == 20,
                 "four towers need five bounded projectile/sequence slots each at the minimum roster");
         check(ObeliskScalingPolicy.profileForPlayers(10).fireballCap() == 25,

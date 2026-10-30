@@ -5,15 +5,16 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.SplittableRandom;
 import java.util.function.Function;
 
-/** Deterministic candidates for the server-owned stationary Wave 2 phantom presentation. */
+/** Stable randomized positions for the server-owned Wave 2 phantom presentation. */
 public final class WaveTwoPhantomLayoutPolicy {
-    public static final int TARGET_PHANTOM_COUNT = 32;
+    public static final int TARGET_PHANTOM_COUNT = 35;
     /** The spec allows 25–35 phantom slots, so a partly blocked ring must not void the layout. */
     public static final int MIN_PHANTOM_COUNT = 25;
-    private static final int CANDIDATES_PER_RING = TARGET_PHANTOM_COUNT;
-    private static final double[] RADII = {6.0D, 8.0D, 10.0D, 12.0D};
+    private static final int MAX_CANDIDATE_ATTEMPTS = TARGET_PHANTOM_COUNT * 10;
+    private static final double MAX_FIELD_RADIUS = 96.0D;
 
     private WaveTwoPhantomLayoutPolicy() { }
 
@@ -21,23 +22,28 @@ public final class WaveTwoPhantomLayoutPolicy {
      * Resolve deterministic candidates through the adapter's real arena and clearance checks.
      * Invalid candidates are skipped, resolved duplicates collapse, and IDs follow the final order.
      */
-    public static List<Phantom> selectSafe(Position anchor, long seed,
+    public static List<Phantom> selectSafe(Position anchor, long seed, double fieldRadius,
                                            Function<Position, Position> safeResolver) {
-        if (!finiteWorldPosition(anchor) || safeResolver == null) return List.of();
-        double phase = phase(seed);
+        if (!finiteWorldPosition(anchor) || safeResolver == null
+                || !Double.isFinite(fieldRadius) || fieldRadius <= 0.0D) return List.of();
+        double radius = Math.min(MAX_FIELD_RADIUS, fieldRadius);
+        double innerRadius = Math.min(radius * 0.35D, Math.max(1.0D, radius * 0.18D));
+        double innerRadiusSquared = innerRadius * innerRadius;
+        double radiusSquared = radius * radius;
+        SplittableRandom random = new SplittableRandom(mixSeed(seed));
         Set<Position> distinct = new LinkedHashSet<>(TARGET_PHANTOM_COUNT);
-        for (int ring = 0; ring < RADII.length && distinct.size() < TARGET_PHANTOM_COUNT; ring++) {
-            double ringOffset = (ring & 1) == 0 ? 0.0D : Math.PI / CANDIDATES_PER_RING;
-            for (int index = 0; index < CANDIDATES_PER_RING && distinct.size() < TARGET_PHANTOM_COUNT; index++) {
-                double angle = phase + ringOffset + Math.PI * 2.0D * index / CANDIDATES_PER_RING;
-                Position candidate = new Position(
-                        anchor.x() + StrictMath.cos(angle) * RADII[ring],
-                        anchor.y(),
-                        anchor.z() + StrictMath.sin(angle) * RADII[ring]);
-                if (!finiteWorldPosition(candidate)) continue;
-                Position resolved = safeResolver.apply(candidate);
-                if (finiteWorldPosition(resolved)) distinct.add(resolved);
-            }
+        for (int attempt = 0; attempt < MAX_CANDIDATE_ATTEMPTS
+                && distinct.size() < TARGET_PHANTOM_COUNT; attempt++) {
+            double distance = StrictMath.sqrt(innerRadiusSquared
+                    + random.nextDouble() * (radiusSquared - innerRadiusSquared));
+            double angle = random.nextDouble(0.0D, Math.PI * 2.0D);
+            Position candidate = new Position(
+                    anchor.x() + StrictMath.cos(angle) * distance,
+                    anchor.y(),
+                    anchor.z() + StrictMath.sin(angle) * distance);
+            if (!finiteWorldPosition(candidate)) continue;
+            Position resolved = safeResolver.apply(candidate);
+            if (finiteWorldPosition(resolved)) distinct.add(resolved);
         }
         if (distinct.isEmpty()) return List.of();
         List<Phantom> result = new ArrayList<>(distinct.size());
@@ -46,12 +52,6 @@ public final class WaveTwoPhantomLayoutPolicy {
             result.add(new Phantom(String.format(Locale.ROOT, "phantom-%02d", index++), position));
         }
         return List.copyOf(result);
-    }
-
-    private static double phase(long seed) {
-        long mixed = mixSeed(seed);
-        double unit = (mixed >>> 11) * 0x1.0p-53;
-        return unit * Math.PI * 2.0D;
     }
 
     private static long mixSeed(long value) {

@@ -121,6 +121,7 @@ import me.copimine.endevent.domain.ShardPassivePolicy;
 import me.copimine.endevent.domain.SkeletonCombatPolicy;
 import me.copimine.endevent.domain.SkeletonArrowPolicy;
 import me.copimine.endevent.domain.EliteAbilityPolicy;
+import me.copimine.endevent.domain.EliteCombatStatsPolicy;
 import me.copimine.endevent.domain.DragonBreathCloudPolicy;
 import me.copimine.endevent.domain.BlackFogEffectLeasePolicy;
 import me.copimine.endevent.domain.BlackFogRecoverySnapshot;
@@ -486,7 +487,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int MODEL_RITUAL_CASTER_SHIELD = 830021;
     private static final int MODEL_RIFT_GATE = 830018;
     private static final int MODEL_LAYOUT_GATE = 830028;
-    private static final int MODEL_SAFE_ZONE_FLOOR = 830027;
     private static final int MODEL_CARRIER_CHARGE = 830029;
     private static final int MODEL_RIFT_GUARDIAN_SHIELD = 830020;
     private static final int MODEL_RIFT_OBELISK_FULL = 830010;
@@ -1016,6 +1016,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, Long> ritualConvertedMobUntilMillis = new LinkedHashMap<>();
     private final Set<UUID> ritualConversionTargets = new LinkedHashSet<>();
     private long ritualLastContainmentLogMillis;
+    private long ritualPrisonerHudLastStateMillis;
     private boolean wave6Complete;
     /** Prevents objective bootstrap from replacing a valid post-restart ritual snapshot. */
     private boolean ritualSphereStateRehydrated;
@@ -11125,7 +11126,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /** Prisoner movement is a server-owned freeze; view rotation remains free. */
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onRitualPrisonerMove(PlayerMoveEvent event) {
         if (event == null || event.getPlayer() == null || event.getFrom() == null
                 || event.getTo() == null || !isCurrentRitualPrisoner(event.getPlayer())
@@ -11145,6 +11146,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         corrected.setYaw(to.getYaw());
         corrected.setPitch(to.getPitch());
         event.setTo(corrected);
+        event.getPlayer().setGravity(false);
         event.getPlayer().setVelocity(new Vector());
         event.getPlayer().setFallDistance(0.0F);
     }
@@ -16736,20 +16738,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 PersistentDataType.INTEGER, 0);
         AttributeInstance scale = giant.getAttribute(Attribute.GENERIC_SCALE);
         if (scale != null) scale.setBaseValue(1.8D);
-        double strength = WaveScalingPolicy.mobStrengthMultiplier(currentWaveScalePlayers);
-        double maxHealth = Math.min(80.0D, 64.0D * strength);
-        AttributeInstance health = giant.getAttribute(Attribute.GENERIC_MAX_HEALTH);
-        if (health != null) {
-            health.setBaseValue(maxHealth);
-            giant.setHealth(maxHealth);
-        }
-        AttributeInstance attack = giant.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
-        if (attack != null) {
-            attack.setBaseValue(Math.min(10.0D, WaveDamagePolicy.minimumCombatDamage(
-                    8.0D * strength, WAVE_MOB_DAMAGE_REDUCTION)));
-        }
         AttributeInstance movement = giant.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED);
         if (movement != null) movement.setBaseValue(0.18D);
+        applyEliteCombatStats(giant, 64.0D, 4.0D);
         AttributeInstance attackKnockback = giant.getAttribute(Attribute.GENERIC_ATTACK_KNOCKBACK);
         if (attackKnockback != null) attackKnockback.setBaseValue(1.0D);
         AttributeInstance knockback = giant.getAttribute(Attribute.GENERIC_KNOCKBACK_RESISTANCE);
@@ -21841,6 +21832,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private boolean preflightWave7StartBeforeWorldMutation(World world, Location core,
             Set<UUID> roster, boolean sandbox) {
+        int previousActiveWave = activeWave;
         UUID eventUuid = parseUuidOrNull(eventId);
         if (world == null || core == null || core.getWorld() == null || !core.getWorld().equals(world)
                 || eventUuid == null
@@ -21864,34 +21856,51 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         wave7RecoveryCheckpoint = Map.of();
 
         if (!preflightNamedTrialActorAdapters()) {
-            enterNamedRealitySplitRecovery("WAVE7_NAMED_ACTOR_ADAPTER_PREFLIGHT_FAILED");
-            return false;
+            return refuseWave7Preflight(sandbox, previousActiveWave,
+                    "WAVE7_NAMED_ACTOR_ADAPTER_PREFLIGHT_FAILED");
         }
         if (!preflightNamedEchoDuelRooms()) {
-            enterNamedRealitySplitRecovery("WAVE7_NAMED_ECHO_PREFLIGHT_FAILED");
-            return false;
+            return refuseWave7Preflight(sandbox, previousActiveWave,
+                    "WAVE7_NAMED_ECHO_PREFLIGHT_FAILED");
         }
         if (!preflightNamedEchoDuelBarrierPlan() || !preflightWave7BarrierJournal(world)
                 || !preflightWave7BarrierCells(world, core)) {
-            enterNamedRealitySplitRecovery("WAVE7_BARRIER_PREFLIGHT_FAILED");
-            return false;
+            return refuseWave7Preflight(sandbox, previousActiveWave,
+                    "WAVE7_BARRIER_PREFLIGHT_FAILED");
         }
         if (!sandbox && !attemptLifecycle.enableWave7Returns(generation)) {
             getLogger().severe("WAVE7_RETURN_RIGHTS_START_REFUSED event=" + eventId
                     + " generation=" + generation + " reason=missing-participation-claims");
-            enterNamedRealitySplitRecovery("WAVE7_RETURN_RIGHTS_START_REFUSED");
-            return false;
+            return refuseWave7Preflight(sandbox, previousActiveWave,
+                    "WAVE7_RETURN_RIGHTS_START_REFUSED");
         }
 
         namedWave7PreflightSelectedLayout = List.copyOf(
                 realitySplitTrialController.namedSnapshot().selectedLayout());
         if (!saveStateSync()) {
             namedWave7PreflightSelectedLayout = List.of();
-            enterNamedRealitySplitRecovery("WAVE7_NAMED_LAYOUT_CHECKPOINT_FAILED");
-            return false;
+            return refuseWave7Preflight(sandbox, previousActiveWave,
+                    "WAVE7_NAMED_LAYOUT_CHECKPOINT_FAILED");
         }
         namedWave7InitialActorCreation = true;
         return true;
+    }
+
+    private boolean refuseWave7Preflight(boolean sandbox, int previousActiveWave, String reason) {
+        if (sandbox) {
+            realitySplitChamberController.clear();
+            realitySplitTrialController.clear();
+            activeWave = previousActiveWave;
+            namedWave7InitialActorCreation = false;
+            namedWave7RuntimeRestorePending = false;
+            wave7RecoveryCheckpoint = Map.of();
+            namedWave7PreflightSelectedLayout = List.of();
+            getLogger().warning("END_RIFT_WAVE7_SANDBOX_PREFLIGHT_REFUSED event=" + eventId
+                    + " generation=" + generation + " reason=" + reason);
+            return false;
+        }
+        enterNamedRealitySplitRecovery(reason);
+        return false;
     }
 
     private boolean preflightNamedTrialActorAdapters() {
@@ -22318,51 +22327,82 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean preflightNamedEchoDuelRooms() {
-        if (!realitySplitTrialController.ownsNamed(parseUuidOrNull(eventId), generation)) return false;
+        if (!realitySplitTrialController.ownsNamed(parseUuidOrNull(eventId), generation)) {
+            return refuseNamedEchoDuelPreflight(null, null, "named-controller-not-owned");
+        }
         for (var trial : realitySplitTrialController.namedSnapshot().trials().values()) {
             if (trial.trial() != RealitySplitTrialController.NamedTrial.PERSONAL_ECHO
                     || trial.stage() == RealitySplitTrialController.Stage.COMPLETE) continue;
             Map<UUID, me.copimine.endevent.runtime.RealitySplitEchoDuelState.DuelRecord> duels =
                     realitySplitTrialController.namedSnapshot().personalEchoDuels().get(trial.chamber());
-            if (duels == null) return false;
+            if (duels == null) {
+                return refuseNamedEchoDuelPreflight(null, null, "duel-roster-missing");
+            }
             for (UUID ownerId : trial.owners()) {
                 var duel = duels.get(ownerId);
-                if (duel == null) return false;
+                if (duel == null) {
+                    return refuseNamedEchoDuelPreflight(ownerId, null, "duel-record-missing");
+                }
                 if (duel.lifecycle() != me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.PLANNED) {
                     try {
                         me.copimine.endevent.runtime.wave7.EchoReplicaInventory.restore(
                                 duel.replicaState(), duel.eventId(), duel.attemptGeneration(), duel.duelId(),
                                 duel.ownerUuid(), duel.replicaRevision());
                     } catch (RuntimeException invalidSnapshot) {
-                        return false;
+                        return refuseNamedEchoDuelPreflight(ownerId, duel.duelId(),
+                                "persisted-replica-invalid");
                     }
                     continue;
                 }
                 Player owner = Bukkit.getPlayer(ownerId);
-                if (owner == null || !owner.isOnline() || owner.isDead()
-                        || !owner.getWorld().equals(worldFor(coreCombatAnchorLocation()))
-                        || !isNamedEchoClientReady(owner)
-                        || combatProfiles.echoBehaviorStrategy(ownerId) == null) return false;
+                if (owner == null || !owner.isOnline()) {
+                    return refuseNamedEchoDuelPreflight(ownerId, duel.duelId(), "owner-offline");
+                }
+                if (owner.isDead()) {
+                    return refuseNamedEchoDuelPreflight(ownerId, duel.duelId(), "owner-dead");
+                }
+                if (!owner.getWorld().equals(worldFor(coreCombatAnchorLocation()))) {
+                    return refuseNamedEchoDuelPreflight(ownerId, duel.duelId(), "owner-outside-arena-world");
+                }
+                if (!isNamedEchoClientReady(owner)) {
+                    return refuseNamedEchoDuelPreflight(ownerId, duel.duelId(), "echo-client-not-ready");
+                }
+                if (combatProfiles.echoBehaviorStrategy(ownerId) == null) {
+                    return refuseNamedEchoDuelPreflight(ownerId, duel.duelId(), "echo-combat-profile-missing");
+                }
                 try {
                     var replica = me.copimine.endevent.runtime.wave7.EchoReplicaInventory.capture(
                             owner.getInventory(), parseUuidOrNull(eventId), generation,
                             duel.duelId(), ownerId);
                     for (int slot = 0; slot < 42; slot++) {
-                        if (replica.state().item(slot).custom()) return false;
+                        if (replica.state().item(slot).custom()) {
+                            return refuseNamedEchoDuelPreflight(ownerId, duel.duelId(),
+                                    "unsupported-custom-item-slot-" + slot);
+                        }
                     }
                     AttributeInstance maxHealth = owner.getAttribute(Attribute.GENERIC_MAX_HEALTH);
                     if (maxHealth == null || !Double.isFinite(owner.getHealth())
                             || !Double.isFinite(maxHealth.getValue()) || owner.getHealth() <= 0.0D
                             || maxHealth.getValue() <= 0.0D
                             || maxHealth.getValue() > me.copimine.endevent.runtime.RealitySplitEchoDuelState.MAX_HEALTH) {
-                        return false;
+                        return refuseNamedEchoDuelPreflight(ownerId, duel.duelId(),
+                                "owner-health-outside-replica-bounds");
                     }
                 } catch (RuntimeException invalidLoadout) {
-                    return false;
+                    return refuseNamedEchoDuelPreflight(ownerId, duel.duelId(), "owner-loadout-invalid");
                 }
             }
         }
         return true;
+    }
+
+    private boolean refuseNamedEchoDuelPreflight(UUID ownerId, UUID duelId, String reason) {
+        getLogger().warning("WAVE7_ECHO_PREFLIGHT_REFUSED event=" + eventId
+                + " generation=" + generation
+                + " owner=" + (ownerId == null ? "none" : ownerId)
+                + " duel=" + (duelId == null ? "none" : duelId)
+                + " reason=" + reason);
+        return false;
     }
 
     private World worldFor(Location location) {
@@ -23057,25 +23097,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         int brutes;
         int channelers;
         if (players <= 4) {
-            stalkers = 2;
-            brutes = 1;
+            stalkers = 4;
+            brutes = 2;
             channelers = 0;
         } else if (players <= 7) {
-            stalkers = 3;
-            brutes = 1;
+            stalkers = 6;
+            brutes = 2;
             channelers = 0;
         } else if (players <= 10) {
-            stalkers = 3;
-            brutes = 1;
-            channelers = 1;
-        } else if (players <= 15) {
-            stalkers = 4;
-            brutes = 1;
-            channelers = 1;
-        } else {
-            stalkers = 5;
+            stalkers = 6;
             brutes = 2;
-            channelers = 1;
+            channelers = 2;
+        } else if (players <= 15) {
+            stalkers = 8;
+            brutes = 2;
+            channelers = 2;
+        } else {
+            stalkers = 10;
+            brutes = 4;
+            channelers = 2;
         }
         return new WaveMechanicsPolicy.WaveCounts(brutes, stalkers, channelers, 0, 0);
     }
@@ -25611,20 +25651,32 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         restoreRitualPrisonerGravity(player);
     }
 
-    private void teleportRitualPrisoner(Player player, Location destination) {
+    private boolean teleportRitualPrisoner(Player player, Location destination) {
         if (!isRitualPrisonerBridgeReady(player)
                 || !player.getUniqueId().equals(ritualPrisonerId())
                 || destination == null) {
-            return;
+            return false;
         }
         ritualPrisonerTeleportPermits.add(player.getUniqueId());
+        boolean teleported;
         try {
-            player.teleport(destination);
+            teleported = player.teleport(destination);
         } finally {
             ritualPrisonerTeleportPermits.remove(player.getUniqueId());
         }
         player.setVelocity(new Vector());
         player.setFallDistance(0.0F);
+        if (!teleported) {
+            long now = System.currentTimeMillis();
+            if (now - ritualLastContainmentLogMillis >= 1_000L) {
+                ritualLastContainmentLogMillis = now;
+                getLogger().warning("WAVE6_RITUAL_PRISONER_TELEPORT_RETRY event=" + eventId
+                        + " generation=" + generation + " player=" + player.getUniqueId()
+                        + " destination=" + locationText(destination)
+                        + " reason=teleport-rejected-by-runtime");
+            }
+        }
+        return teleported;
     }
 
     private void retagRitualEntity(Entity entity, String role, UUID casterUuid,
@@ -26463,7 +26515,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             location.getX(), location.getZ());
                 })
                 .toList();
-        UUID captured = RitualSealCapturePolicy.select(candidates, core.getX(), core.getZ());
+        UUID captured = RitualSealCapturePolicy.selectNearestEligible(
+                candidates, core.getX(), core.getZ());
         if (captured == null) {
             return;
         }
@@ -26511,14 +26564,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         startRitualPrisonerAbilitySession(prisoner);
         getLogger().info("WAVE6_RITUAL_PRISONER_CAPTURED event=" + eventId
                 + " generation=" + generation + " player=" + captured
-                + " captured_at=" + now
-                + " radius=" + RitualSealCapturePolicy.CAPTURE_RADIUS_BLOCKS);
+                + " captured_at=" + now + " selection=nearest-eligible-immediate");
         emitDiagnostic("RITUAL_PRISONER", "CAPTURED", "INFO", 6, "seal-capture-accepted",
                 captured, null, "prisoner:" + generation + ":" + captured,
                 Map.of("playerId", captured.toString(),
                         "capturedAtMillis", now,
                         "anchor", locationText(ritualPrisonerAnchor),
-                        "captureRadius", RitualSealCapturePolicy.CAPTURE_RADIUS_BLOCKS,
+                        "capturePolicy", "NEAREST_ELIGIBLE_IMMEDIATE",
                         "health", prisoner.getHealth()));
         saveStateAsync();
     }
@@ -26583,6 +26635,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (ritualPrisonerAnchor == null) {
             return;
         }
+        tagRitualPrisoner(prisoner);
         Location current = prisoner.getLocation();
         if (current.getWorld() == null || !current.getWorld().equals(ritualPrisonerAnchor.getWorld())
                 || current.distanceSquared(ritualPrisonerAnchor) > 0.0036D) {
@@ -26596,7 +26649,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         + " player=" + prisoner.getUniqueId());
             }
         }
-        tagRitualPrisoner(prisoner);
         startRitualPrisonerAbilitySession(prisoner);
     }
 
@@ -29272,9 +29324,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             started = true;
         }
         if (started) {
+            ritualPrisonerHudLastStateMillis = 0L;
             sendClientPacket(player, "END_PRISONER_RESUME", player.getUniqueId().toString(),
                     0L, worldVfxDimension(player.getLocation()), "PRISONER_SESSION_V1", 0, 0, 0.0F, "", "");
+        }
+        long now = System.currentTimeMillis();
+        if (started || now - ritualPrisonerHudLastStateMillis >= 1_000L) {
             sendRitualPrisonerState(player);
+            ritualPrisonerHudLastStateMillis = now;
         }
     }
 
@@ -29296,6 +29353,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             sendRitualPrisonerClear(Bukkit.getPlayer(current.prisoner()));
             prisonerAbilityController.end(generation);
         }
+        ritualPrisonerHudLastStateMillis = 0L;
         getLogger().fine("WAVE6_PRISONER_INPUT_RESTORED event=" + eventId
                 + " generation=" + generation + " reason=" + reason);
     }
@@ -30065,6 +30123,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 max.setBaseValue(health);
                 skeleton.setHealth(health);
             }
+            applyEliteCombatStats(skeleton, config.skeletonEliteHealth(),
+                    config.skeletonEliteAttackDamageBonus());
         }
         registerOwnedEntity(entity);
         assignCombatTactic(entity, index);
@@ -32612,36 +32672,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             currentSafeZoneCenters.clear();
             return false;
         }
-        try {
-            for (HazardPlanner.Point point : currentSafeZoneCells) {
-                Location origin = new Location(world, point.x() + 0.5D,
-                        combatFloorY() + 1.0D, point.z() + 0.5D);
-                ItemDisplay display = world.spawn(origin, ItemDisplay.class, value -> {
-                    value.setItemStack(overlayItem(MODEL_SAFE_ZONE_FLOOR, "end_event_safe_floor"));
-                    value.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
-                    value.setBillboard(Display.Billboard.FIXED);
-                    value.setBrightness(new Display.Brightness(15, 15));
-                    value.setGravity(false);
-                    value.setInvulnerable(true);
-                    value.setPersistent(false);
-                    value.setTransformation(new Transformation(
-                            new Vector3f(0.0F, 0.015F, 0.0F), new AxisAngle4f(),
-                            new Vector3f(1.0F, 1.0F, 1.0F), new AxisAngle4f()));
-                });
-                tag(display, EVENT_KIND_DISPLAY, 5, true);
-                registerOwnedEntity(display);
-                waveObjectiveVisuals.add(display.getUniqueId());
-                currentSafeZoneVisuals.add(display.getUniqueId());
-            }
-        } catch (RuntimeException error) {
-            getLogger().log(Level.SEVERE, "END_RIFT_FOG_SAFE_VISUALS_APPLY_FAILED event=" + eventId, error);
-            clearCurrentSafeZoneVisuals();
-            return false;
-        }
         getLogger().info("END_RIFT_FOG_SAFE_VISUALS event=" + eventId
                 + " emerald_cells=" + currentSafeZoneCells.size()
-                + " barrier_cells=0 journaled=true reachable=true");
-        return !currentSafeZoneVisuals.isEmpty();
+                + " floor=emerald-block overlay_displays=0 barrier_cells=0 journaled=true reachable=true");
+        return !currentSafeZoneCells.isEmpty() && !currentSafeZoneCenters.isEmpty();
     }
 
     private boolean clearCurrentSafeZoneVisuals() {
@@ -32924,7 +32958,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 : "";
         sendClientPacket(player, "END_FOG_STATE", "wave5-black-fog",
                 active ? 8_000L : 0L, state, "WAVE5_FOG_V1",
-                0, 0, active ? 0.88F : 0.0F, "", active ? "ACTIVE" : "CLEAR");
+                0, 0, active ? 1.0F : 0.0F, "", active ? "ACTIVE" : "CLEAR");
     }
 
     private boolean isFogFrozenCombatEntity(Entity entity) {
@@ -35764,10 +35798,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         seed = seed * 31L + waveTwoMarkStartedMillis;
         WaveTwoPhantomLayoutPolicy.Position corePosition = new WaveTwoPhantomLayoutPolicy.Position(
                 anchor.getX(), anchor.getY(), anchor.getZ());
+        double phantomFieldRadius = Math.max(1.0D,
+                boundedCombatRadius(config.arenaRadius()) - 2.0D);
         List<WaveTwoPhantomLayoutPolicy.Phantom> resolved = WaveTwoPhantomLayoutPolicy.selectSafe(
-                corePosition, seed, candidate -> resolveWaveTwoPhantomPosition(anchor, candidate));
+                corePosition, seed, phantomFieldRadius,
+                candidate -> resolveWaveTwoPhantomPosition(anchor, candidate));
         waveTwoPhantomLayout = resolved.size() >= WaveTwoPhantomLayoutPolicy.MIN_PHANTOM_COUNT
                 ? resolved : List.of();
+        getLogger().info("WAVE_TWO_PHANTOM_LAYOUT event=" + eventId
+                + " generation=" + generation + " cycle=" + waveTwoMarkCycle
+                + " count=" + waveTwoPhantomLayout.size()
+                + " radius=" + phantomFieldRadius + " randomized=true");
         if (waveTwoPhantomLayout.isEmpty()) {
             getLogger().fine("WAVE_TWO_PHANTOM_LAYOUT_UNAVAILABLE event=" + eventId
                     + " generation=" + generation + " cycle=" + waveTwoMarkCycle
@@ -36647,16 +36688,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (elite) {
             EndRiftAiPolicy.MiniBossSpell miniBossSpell = configureEliteAbility(
                     enderman, wave, EliteAbilityPolicy.Role.ENDERMAN);
-            AttributeInstance max = enderman.getAttribute(Attribute.GENERIC_MAX_HEALTH);
-            if (max != null) {
-                max.setBaseValue(40.0D);
-                enderman.setHealth(40.0D);
-            }
-            AttributeInstance attack = enderman.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
-            if (attack != null) {
-                attack.setBaseValue(WaveDamagePolicy.minimumCombatDamage(
-                        attack.getBaseValue() + 2.0D, WAVE_MOB_DAMAGE_REDUCTION));
-            }
+            applyEliteCombatStats(enderman, 40.0D, 3.0D);
             enderman.setCustomName(ChatColor.LIGHT_PURPLE + (guardianWave ? "Элитный страж" : "Элитный эндермен")
                     + (miniBossSpell == null ? "" : ChatColor.DARK_PURPLE + " · " + miniBossSpell.displayName()));
             enderman.setCustomNameVisible(false);
@@ -36716,15 +36748,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         EndRiftAiPolicy.MiniBossSpell configuredSpell = null;
         if (miniBoss) {
-            AttributeInstance max = skeleton.getAttribute(Attribute.GENERIC_MAX_HEALTH);
-            if (max != null) {
-                max.setBaseValue(config.skeletonEliteHealth());
-                skeleton.setHealth(config.skeletonEliteHealth());
-            }
-            AttributeInstance attack = skeleton.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
-            if (attack != null) {
-                attack.setBaseValue(attack.getBaseValue() + config.skeletonEliteAttackDamageBonus());
-            }
+            applyEliteCombatStats(skeleton, config.skeletonEliteHealth(),
+                    config.skeletonEliteAttackDamageBonus());
             configuredSpell = configureEliteAbility(
                     skeleton, wave, EliteAbilityPolicy.Role.SKELETON);
             skeleton.setCustomName(ChatColor.GOLD + (guardianWave
@@ -36782,13 +36807,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Entity entity = spawnOwnedMob(world, core, EntityType.SPIDER, wave,
                 EVENT_KIND_ELITE, test, index);
         if (!(entity instanceof Spider spider)) return null;
-        AttributeInstance maxHealth = spider.getAttribute(Attribute.GENERIC_MAX_HEALTH);
-        if (maxHealth != null) {
-            maxHealth.setBaseValue(30.0D);
-            spider.setHealth(30.0D);
-        }
+        applyEliteCombatStats(spider, 30.0D, 0.0D);
         AttributeInstance speed = spider.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED);
-        if (speed != null) speed.setBaseValue(0.42D);
         EndRiftAiPolicy.MiniBossSpell spell = configureEliteAbility(
                 spider, wave, EliteAbilityPolicy.Role.SPIDER);
         spider.setCustomName(ChatColor.DARK_PURPLE + "Паук-сеточник Разлома"
@@ -36799,6 +36819,42 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " role=WEB_SUPPORT speed=" + (speed == null ? "default" : speed.getBaseValue())
                 + " melee=false ability=" + (spell == null ? "none" : spell.id()));
         return spider;
+    }
+
+    private void applyEliteCombatStats(LivingEntity elite, double configuredHealth,
+                                       double configuredAttackBonus) {
+        if (elite == null) return;
+        AttributeInstance attack = elite.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
+        AttributeInstance speed = elite.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED);
+        AttributeInstance armor = elite.getAttribute(Attribute.GENERIC_ARMOR);
+        AttributeInstance toughness = elite.getAttribute(Attribute.GENERIC_ARMOR_TOUGHNESS);
+        AttributeInstance knockback = elite.getAttribute(Attribute.GENERIC_KNOCKBACK_RESISTANCE);
+        double baseAttack = attack == null ? 0.0D : attack.getBaseValue() + configuredAttackBonus;
+        EliteCombatStatsPolicy.Stats stats = EliteCombatStatsPolicy.forElite(
+                configuredHealth, baseAttack,
+                speed == null ? 0.0D : speed.getBaseValue(),
+                armor == null ? 0.0D : armor.getBaseValue(),
+                toughness == null ? 0.0D : toughness.getBaseValue(),
+                knockback == null ? 0.0D : knockback.getBaseValue(),
+                Math.max(2, currentWaveScalePlayers));
+        AttributeInstance maximumHealth = elite.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+        if (maximumHealth != null && stats.health() > 0.0D) {
+            maximumHealth.setBaseValue(stats.health());
+            elite.setHealth(stats.health());
+        }
+        if (attack != null && stats.attack() > 0.0D) {
+            attack.setBaseValue(WaveDamagePolicy.minimumCombatDamage(
+                    stats.attack(), WAVE_MOB_DAMAGE_REDUCTION));
+        }
+        if (speed != null && stats.movementSpeed() > 0.0D) speed.setBaseValue(stats.movementSpeed());
+        if (armor != null) armor.setBaseValue(stats.armor());
+        if (toughness != null) toughness.setBaseValue(stats.armorToughness());
+        if (knockback != null) knockback.setBaseValue(stats.knockbackResistance());
+        getLogger().info("END_RIFT_ELITE_STATS entity=" + elite.getUniqueId()
+                + " health=" + stats.health() + " attack=" + stats.attack()
+                + " speed=" + stats.movementSpeed() + " armor=" + stats.armor()
+                + " toughness=" + stats.armorToughness()
+                + " knockback_resistance=" + stats.knockbackResistance());
     }
 
     private Entity spawnOwnedMob(World world, Location core, EntityType type, int wave,

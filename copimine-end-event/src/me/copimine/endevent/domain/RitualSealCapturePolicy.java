@@ -31,6 +31,28 @@ public final class RitualSealCapturePolicy {
         return null;
     }
 
+    /** Select the nearest eligible participant for immediate server-owned capture. */
+    public static UUID selectNearestEligible(List<Candidate> candidates, double sealX, double sealZ) {
+        if (candidates == null || !Double.isFinite(sealX) || !Double.isFinite(sealZ)) {
+            return null;
+        }
+        UUID selected = null;
+        double nearestDistanceSquared = Double.POSITIVE_INFINITY;
+        for (Candidate candidate : candidates) {
+            if (candidate == null || !candidate.eligible()) {
+                continue;
+            }
+            double dx = candidate.x() - sealX;
+            double dz = candidate.z() - sealZ;
+            double distanceSquared = dx * dx + dz * dz;
+            if (distanceSquared < nearestDistanceSquared) {
+                selected = candidate.playerId();
+                nearestDistanceSquared = distanceSquared;
+            }
+        }
+        return selected;
+    }
+
     public record Candidate(UUID playerId, boolean eligible, double x, double z) {
         public Candidate {
             if (playerId == null || !Double.isFinite(x) || !Double.isFinite(z)) {

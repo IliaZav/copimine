@@ -16,7 +16,7 @@ final class WaveTwoPhantomLayoutManager {
     private static final String VISUAL_ID = "WAVE2_HUNT_MARK_V1";
     private static final String INSTANCE_ID = "wave2-hunt-mark";
     private static final int MAX_EVENT_IDENTITIES = 129;
-    private static final Pattern PHANTOM_ID = Pattern.compile("phantom-(?:0[0-9]|[12][0-9]|3[01])");
+    private static final Pattern PHANTOM_ID = Pattern.compile("phantom-(?:0[0-9]|[12][0-9]|3[0-4])");
     private static final Pattern COORDINATE = Pattern.compile(
             "-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?");
 
@@ -30,7 +30,7 @@ final class WaveTwoPhantomLayoutManager {
     private boolean active;
     private final Map<String, Phantom> positions = new LinkedHashMap<>();
 
-    /** Apply one signed HUNT mark update or one position item within its 32-entry layout. */
+    /** Apply one signed HUNT mark update or one position item within its 35-entry layout. */
     synchronized boolean apply(EndEventBridgeBodyCodec.Body body, long nowMillis) {
         if (!valid(body, nowMillis)) return false;
         String incomingEventId = body.eventUuid().toString();

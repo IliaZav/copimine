@@ -15,18 +15,18 @@ public final class ObeliskScalingPolicy {
             return Profile.NONE;
         }
         if (livingPlayers <= 4) {
-            return new Profile(4, 3, 12, 3, ObeliskFireDirectorPolicy.fireballAdmissionSlots(4));
+            return new Profile(4, 3, 12, 6, ObeliskFireDirectorPolicy.fireballAdmissionSlots(4));
         }
         if (livingPlayers <= 7) {
-            return new Profile(4, 3, 12, 4, ObeliskFireDirectorPolicy.fireballAdmissionSlots(4));
+            return new Profile(4, 3, 12, 8, ObeliskFireDirectorPolicy.fireballAdmissionSlots(4));
         }
         if (livingPlayers <= 10) {
-            return new Profile(5, 3, 15, 5, ObeliskFireDirectorPolicy.fireballAdmissionSlots(5));
+            return new Profile(5, 3, 15, 10, ObeliskFireDirectorPolicy.fireballAdmissionSlots(5));
         }
         if (livingPlayers <= 15) {
-            return new Profile(5, 3, 15, 6, ObeliskFireDirectorPolicy.fireballAdmissionSlots(5));
+            return new Profile(5, 3, 15, 12, ObeliskFireDirectorPolicy.fireballAdmissionSlots(5));
         }
-        return new Profile(6, 3, 18, 8, ObeliskFireDirectorPolicy.fireballAdmissionSlots(6));
+        return new Profile(6, 3, 18, 16, ObeliskFireDirectorPolicy.fireballAdmissionSlots(6));
     }
 
     public static int obeliskCount(int livingPlayers) {

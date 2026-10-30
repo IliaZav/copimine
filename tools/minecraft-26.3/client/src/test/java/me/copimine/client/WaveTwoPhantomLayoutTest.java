@@ -32,12 +32,12 @@ class WaveTwoPhantomLayoutTest {
     }
 
     @Test
-    void safeSelectionSkipsRejectedColumnsAndNeverExceedsThirtyTwo() {
+    void safeSelectionSkipsRejectedColumnsAndNeverExceedsThirtyFive() {
         List<WaveTwoPhantomLayout.Position> candidates = WaveTwoPhantomLayout.candidatesAround(ANCHOR, 7L);
         List<WaveTwoPhantomLayout.Position> selected = WaveTwoPhantomLayout.selectSafe(candidates,
                 candidate -> new WaveTwoPhantomLayout.Position(candidate.x(), 65.0D, candidate.z()));
 
-        assertEquals(32, selected.size());
+        assertEquals(WaveTwoPhantomLayout.TARGET_PHANTOM_COUNT, selected.size());
         assertTrue(selected.stream().allMatch(position -> position.y() == 65.0D));
         AtomicInteger checked = new AtomicInteger();
         List<WaveTwoPhantomLayout.Position> sparse = WaveTwoPhantomLayout.selectSafe(candidates,
@@ -65,7 +65,7 @@ class WaveTwoPhantomLayoutTest {
             return List.of();
         });
 
-        assertEquals(32, first.size());
+        assertEquals(WaveTwoPhantomLayout.TARGET_PHANTOM_COUNT, first.size());
         assertEquals(first, repeated);
         assertEquals(1, creations.get());
         assertTrue(session.hasActiveMark());
@@ -80,7 +80,7 @@ class WaveTwoPhantomLayoutTest {
                     creations.incrementAndGet();
                     return layout;
                 });
-        assertEquals(32, secondMark.size());
+        assertEquals(WaveTwoPhantomLayout.TARGET_PHANTOM_COUNT, secondMark.size());
         assertEquals(2, creations.get());
 
         session.positionsFor(new WaveTwoPhantomSession.MarkKey(

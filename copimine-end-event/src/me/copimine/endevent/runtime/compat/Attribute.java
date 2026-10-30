@@ -11,6 +11,8 @@ public final class Attribute {
     public static final org.bukkit.attribute.Attribute GENERIC_MAX_HEALTH = required("max_health");
     public static final org.bukkit.attribute.Attribute GENERIC_ATTACK_DAMAGE = required("attack_damage");
     public static final org.bukkit.attribute.Attribute GENERIC_ATTACK_KNOCKBACK = required("attack_knockback");
+    public static final org.bukkit.attribute.Attribute GENERIC_ARMOR = required("armor");
+    public static final org.bukkit.attribute.Attribute GENERIC_ARMOR_TOUGHNESS = required("armor_toughness");
     public static final org.bukkit.attribute.Attribute GENERIC_KNOCKBACK_RESISTANCE = required("knockback_resistance");
     public static final org.bukkit.attribute.Attribute GENERIC_MOVEMENT_SPEED = required("movement_speed");
     public static final org.bukkit.attribute.Attribute GENERIC_SCALE = required("scale");

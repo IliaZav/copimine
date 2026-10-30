@@ -7,13 +7,13 @@ import java.util.List;
 public final class WaveTwoStagePolicy {
     public static final int OPENING_GROUP_COUNT = 2;
     public static final int LATE_REINFORCEMENT_BUDGET = 8;
-    public static final int MAX_GROUP_COUNT = OPENING_GROUP_COUNT + LATE_REINFORCEMENT_BUDGET / 2;
-    /** Compatibility name for persistence bounds; schedules contain two to six groups. */
-    public static final int STAGE_COUNT = MAX_GROUP_COUNT;
+    public static final int MAX_GROUP_COUNT = OPENING_GROUP_COUNT + 1;
+    /** Old snapshots used six stage counters; new runs stop at MAX_GROUP_COUNT. */
+    public static final int STAGE_COUNT = 6;
     public static final int FIRST_LATE_GROUP = OPENING_GROUP_COUNT + 1;
     /** Wave 2 may exceed generic pressure only inside this bounded total reserve. */
     public static final int MAX_TOTAL_MOBS = PressureBudgetController.HARD_CAP;
-    /** Two opening groups share the maximum initial reserve after late slots are reserved. */
+    /** Two opening groups share the maximum initial reserve after the final reserve is held back. */
     public static final int MAX_ACTIVE_GROUP_MOBS =
             (MAX_TOTAL_MOBS - LATE_REINFORCEMENT_BUDGET + 1) / OPENING_GROUP_COUNT;
     public static final long MARK_DURATION_MILLIS = WaveTwoHuntPolicy.MARK_ROTATION_MILLIS;
@@ -22,9 +22,9 @@ public final class WaveTwoStagePolicy {
     private WaveTwoStagePolicy() { }
 
     /**
-     * Preserve the scaled total as two large opening groups followed by at
-     * most four two-mob reinforcement groups. The late allowance is reserved
-     * from the scaled roster, so this schedule never exceeds its total budget.
+     * Preserve the scaled total as two large opening groups followed by one
+     * bounded final reserve group. The reserve is held back from the initial
+     * roster, so this schedule never exceeds its total budget.
      */
     public static List<WaveMechanicsPolicy.WaveCounts> split(
             WaveMechanicsPolicy.WaveCounts requested) {
@@ -37,15 +37,13 @@ public final class WaveTwoStagePolicy {
 
         int lateBudget = Math.min(LATE_REINFORCEMENT_BUDGET, total - OPENING_GROUP_COUNT);
         int openingBudget = total - lateBudget;
-        int lateGroupCount = (lateBudget + 1) / 2;
+        int lateGroupCount = lateBudget > 0 ? 1 : 0;
         int groupCount = OPENING_GROUP_COUNT + lateGroupCount;
         int[][] counts = new int[groupCount][3];
         int[] groupCapacity = new int[groupCount];
         groupCapacity[0] = (openingBudget + 1) / 2;
         groupCapacity[1] = openingBudget / 2;
-        for (int group = OPENING_GROUP_COUNT; group < groupCount; group++) {
-            groupCapacity[group] = Math.min(2, lateBudget - (group - OPENING_GROUP_COUNT) * 2);
-        }
+        if (lateGroupCount > 0) groupCapacity[OPENING_GROUP_COUNT] = lateBudget;
         int[] groupSize = new int[groupCount];
         int[] remaining = {
                 Math.max(0, ordinary.endermen()),
@@ -68,7 +66,7 @@ public final class WaveTwoStagePolicy {
             remaining[type] -= openingCount;
         }
 
-        // Distribute the reserved trickle evenly, with deterministic role rotation.
+        // Deliver the reserved late roster together as the third and final group.
         int lateCursor = 0;
         for (int type = 0; type < remaining.length; type++) {
             while (remaining[type] > 0) {
@@ -159,8 +157,8 @@ public final class WaveTwoStagePolicy {
 
     /**
      * Start the first pressure batch immediately. Hold the second substantial
-     * batch until the second mark begins, then gate late reinforcements by
-     * completed mark periods so the first two marks retain pressure.
+     * batch until the second mark begins, then gate the final reserve behind
+     * two completed mark periods.
      */
     public static boolean maySpawnNextGroup(int spawnedGroups,
                                             int completedMarkPeriods,
@@ -178,12 +176,7 @@ public final class WaveTwoStagePolicy {
             return completedMarkPeriods >= WaveTwoHuntPolicy.MIN_MARK_PERIODS
                     && lastLateGroupMarkPeriod == 0;
         }
-        if (lastLateGroupMarkPeriod == 0) {
-            // A pre-redesign snapshot may already have spawned the legacy
-            // final group, which now occupies the first late-group slot.
-            return completedMarkPeriods >= WaveTwoHuntPolicy.MIN_MARK_PERIODS;
-        }
-        return completedMarkPeriods > lastLateGroupMarkPeriod;
+        return false;
     }
 
     /** Reject durable counters that could skip a group or award a clear on resume. */

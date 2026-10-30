@@ -142,38 +142,38 @@ waves:
   hard-cap: 56
   wave-1:
     type: RIFT_CARRIERS
-    endermen: 7
-    spiders: 15
+    endermen: 14
+    spiders: 30
     skeletons: 0
     elite-endermen: 0
     elite-skeletons: 0
   wave-2:
     type: RIFT_HUNT
-    endermen: 14
-    spiders: 14
-    skeletons: 8
+    endermen: 36
+    spiders: 36
+    skeletons: 24
     elite-endermen: 0
     elite-skeletons: 0
   wave-3:
     type: RIFT_GATES
-    endermen: 12
-    spiders: 1
-    skeletons: 5
-    elite-endermen: 4
-    elite-skeletons: 1
+    endermen: 24
+    spiders: 2
+    skeletons: 10
+    elite-endermen: 8
+    elite-skeletons: 2
   wave-4:
     type: OBELISK_ASSAULT
-    endermen: 1
-    spiders: 2
+    endermen: 2
+    spiders: 4
     skeletons: 0
     elite-endermen: 0
     elite-skeletons: 0
   wave-5:
     type: BLACK_FOG
-    endermen: 14
-    spiders: 10
-    skeletons: 6
-    # Approved two-player exception: keep these eight elites together; no ordinary mobs are admitted.
+    endermen: 28
+    spiders: 20
+    skeletons: 12
+    # Two-player tuning keeps the elite profile and fills the doubled 16-mob roster with ordinary pressure.
     elite-endermen: 6
     elite-skeletons: 2
   wave-6:

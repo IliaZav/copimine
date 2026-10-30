@@ -548,8 +548,8 @@ public final class Waves24MechanicsHarness {
                 h.tickCurrentHuntObjective(Bukkit.now);
                 check(h.spawnedWaveGroups.size() == 3 && h.waveSpawnGroupIndex == 3,
                         "the first late reinforcement starts only after both complete marks");
-                check(h.spawnedWaveGroups.get(2).total() <= 2,
-                        "each late reinforcement stays within the two-mob limit");
+                check(h.spawnedWaveGroups.get(2).total() <= WaveTwoStagePolicy.LATE_REINFORCEMENT_BUDGET,
+                        "the single final reinforcement stays within its eight-mob budget");
             }
             case "unloaded-group-roster" -> {
                 h.startHunt(start); h.selectAt(start);
@@ -1349,10 +1349,10 @@ public final class Wave2SpawnHarness {
         Wave2SpawnHarness h = new Wave2SpawnHarness();
         String scenario = args[0];
         switch (scenario) {
-            case "two-openings-four-reinforcements" -> {
+            case "two-openings-final-reserve" -> {
                 h.initializeWaveTwoSchedule(2);
-                check(h.waveSpawnSchedule.size() == 6,
-                        "Wave 2 must prepare two opening and four separately spawnable late groups");
+                check(h.waveSpawnSchedule.size() == 3,
+                        "Wave 2 must prepare exactly three separately spawnable groups");
                 check(h.waveSpawnSchedule.stream().allMatch(group -> group.total() > 0),
                         "each Wave 2 group must be bounded and non-empty");
                 check(h.waveSpawnSchedule.get(0).eliteEndermen() == 0
@@ -1365,14 +1365,14 @@ public final class Wave2SpawnHarness {
                 check(h.waveSpawnSchedule.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).sum()
                                 == 21,
                         "all 21 configured mobs survive scaling across the finite schedule");
-                check(h.waveSpawnSchedule.subList(2, 6).stream().allMatch(group -> group.total() <= 2),
-                        "all later Wave 2 reinforcements stay at two mobs or fewer");
+                check(h.waveSpawnSchedule.get(2).total() <= WaveTwoStagePolicy.LATE_REINFORCEMENT_BUDGET,
+                        "the single final Wave 2 reserve stays within its mob budget");
             }
             case "scaled-party-rosters" -> {
                 for (int players : new int[] {2, 5, 6}) {
                     h.initializeWaveTwoSchedule(players);
                     int expected = players == 2 ? 21 : players == 5 ? 27 : 29;
-                    check(h.waveSpawnSchedule.size() == 6
+                    check(h.waveSpawnSchedule.size() == 3
                                     && h.waveSpawnSchedule.stream().mapToInt(
                                     WaveMechanicsPolicy.WaveCounts::total).sum() == expected,
                             "Wave 2 preserves bounded scaled reserves for party size " + players);
@@ -1385,7 +1385,7 @@ public final class Wave2SpawnHarness {
             case "group3-first-late-elite-only" -> {
                 var groups = WaveTwoStagePolicy.split(
                         new WaveMechanicsPolicy.WaveCounts(3, 4, 5, 9, 8));
-                check(groups.size() == 6 && groups.get(0).eliteEndermen() == 0
+                check(groups.size() == 3 && groups.get(0).eliteEndermen() == 0
                                 && groups.get(0).eliteSkeletons() == 0
                                 && groups.get(1).eliteEndermen() == 0
                                 && groups.get(1).eliteSkeletons() == 0
@@ -1459,7 +1459,7 @@ public final class Wave2SpawnHarness {
 
 
 @pytest.mark.parametrize("scenario", [
-    "two-openings-four-reinforcements", "scaled-party-rosters", "group3-first-late-elite-only", "ordinary-mobs-only-roster",
+    "two-openings-final-reserve", "scaled-party-rosters", "group3-first-late-elite-only", "ordinary-mobs-only-roster",
     "group-3-elite-roster",
     "empty-positive-spawn-fails-closed",
 ])

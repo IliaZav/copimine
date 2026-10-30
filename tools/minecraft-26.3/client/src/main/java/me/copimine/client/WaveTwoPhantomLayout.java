@@ -8,7 +8,7 @@ import java.util.function.Function;
 
 /** Deterministic world positions for the client-only Wave 2 phantom presentation. */
 final class WaveTwoPhantomLayout {
-    static final int TARGET_PHANTOM_COUNT = 32;
+    static final int TARGET_PHANTOM_COUNT = 35;
     /** Mirror of the server floor: a partly blocked ring still produces a playable layout. */
     static final int MIN_PHANTOM_COUNT = 25;
     private static final int PHANTOMS_PER_RING = 16;
@@ -34,7 +34,7 @@ final class WaveTwoPhantomLayout {
         return List.copyOf(candidates);
     }
 
-    /** Resolve candidates to safe standing locations and keep at most 32. */
+    /** Resolve candidates to safe standing locations and keep at most 35. */
     static List<Position> selectSafe(List<Position> candidates,
                                      Function<Position, Position> safeResolver) {
         if (candidates == null || candidates.isEmpty() || safeResolver == null) return List.of();

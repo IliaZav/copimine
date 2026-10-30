@@ -116,7 +116,7 @@ public class Wave4PackRuntimeProbe {
     String eventId = UUID.randomUUID().toString(), worldName = "fixture", recoveryReason;
     boolean testWave4ObeliskMode, testWaveFrontVisualMode, currentWave4MobsStarted,
             currentWave4StartupFailed, currentWave4ObeliskAssaultComplete, waveObjectiveComplete;
-    WaveMechanicsPolicy.WaveCounts composition = new WaveMechanicsPolicy.WaveCounts(1, 1, 1, 0, 0);
+    WaveMechanicsPolicy.WaveCounts composition = new WaveMechanicsPolicy.WaveCounts(2, 4, 0, 0, 0);
     List<WaveMechanicsPolicy.WaveCounts> waveSpawnSchedule = List.of(composition);
     Set<Integer> failing = new HashSet<>(), throwAfterRegister = new HashSet<>(), refusingSpawn = new HashSet<>();
     List<Integer> spawnCalls = new ArrayList<>();
@@ -208,8 +208,10 @@ public class Wave4PackRuntimeProbe {
     void retryNow() { currentWave4PressureRetryAtMillis = 0; tickWave4ObeliskAssault(); }
     static void check(boolean condition, String message) { if (!condition) throw new AssertionError(message); }
     static void completePack(Wave4PackRuntimeProbe p) {
-        check(p.currentWave4MobsStarted && p.liveCount() == 3, "complete requires exactly three live registered roles");
-        check(p.ownedEntities.values().stream().map(e -> p.readString(e, p.keyWave4PressureSlot)).distinct().count() == 3,
+        int expected = ObeliskScalingPolicy.profileForPlayers(p.currentWaveScalePlayers).mobCount();
+        check(p.currentWave4MobsStarted && p.liveCount() == expected,
+                "complete requires every live slot in the scaled pressure pack");
+        check(p.ownedEntities.values().stream().map(e -> p.readString(e, p.keyWave4PressureSlot)).distinct().count() == expected,
                 "complete pack must have unique stable slots");
         for (Entity e : p.ownedEntities.values())
             check(p.readString(e, p.keyWave4PressureSlot).startsWith(p.inferredWave4Role(e) + ":"), "role identity changed");
@@ -261,10 +263,10 @@ public class Wave4PackRuntimeProbe {
             }
             case "pressure-matrix" -> {
                 p.currentWaveScalePlayers = 16;
-                p.composition = new WaveMechanicsPolicy.WaveCounts(2, 5, 1, 0, 0);
+                p.composition = new WaveMechanicsPolicy.WaveCounts(4, 10, 2, 0, 0);
                 check(p.pack() == Wave4PressurePackResult.COMPLETE,
                         "the max-roster pressure pack must materialize all planned replacements");
-                check(p.liveCount() == 8 && p.currentWave4PressureSpawnSlots.size() == 8,
+                check(p.liveCount() == 16 && p.currentWave4PressureSpawnSlots.size() == 16,
                         "the Zombie and Giant must replace ordinary slots without growing the pack");
                 check(p.ownedEntities.values().stream()
                                 .filter(e -> e.type == EntityType.ZOMBIE
@@ -278,28 +280,31 @@ public class Wave4PackRuntimeProbe {
             }
             case "success" -> {
                 p.retryNow(); completePack(p); p.retryNow();
-                check(p.spawnCalls.size() == 3, "completed pack must not spawn again");
+                check(p.spawnCalls.size() == 6, "completed pack must not spawn again");
                 check(p.ownedEntities.values().stream()
                                 .filter(e -> e.type == EntityType.ZOMBIE).count() == 1,
                         "normal roster should materialize one Zombie pressure mob");
             }
             case "first", "middle", "last", "all", "lost-slot", "obelisk-complete" -> {
-                int failed = scenario.equals("first") ? 0 : scenario.equals("middle") ? 1 : 2;
-                p.failing.add(failed); if (scenario.equals("all")) p.failing.addAll(List.of(0, 1, 2));
+                int failed = scenario.equals("first") ? 0 : scenario.equals("middle") ? 2 : 5;
+                p.failing.add(failed);
+                if (scenario.equals("all")) p.failing.addAll(List.of(0, 1, 2, 3, 4, 5));
                 p.retryNow();
                 check(!p.currentWave4MobsStarted && p.waveSpawnGroupIndex == 0, "partial creation accepted as started");
                 if (scenario.equals("obelisk-complete")) {
                     p.activeWave4Obelisks.clear(); p.currentWave4ObeliskAssaultComplete = true;
                     p.tickWaveCompletion();
                     check(p.announced == 1 && p.liveCount() == 0, "obelisk completion must release pending pressure schedule");
-                    check(p.spawnCalls.size() == 3, "destroyed obelisks must not trigger pressure retry");
+                    check(p.spawnCalls.size() == 6, "destroyed obelisks must not trigger pressure retry");
                     break;
                 }
                 if (scenario.equals("lost-slot")) {
                     Entity lost = p.ownedEntities.values().iterator().next();
                     p.ownedEntities.remove(lost.id); lost.remove();
                 }
-                int before = p.spawnCalls.size(); int missing = 3 - p.liveCount();
+                int before = p.spawnCalls.size();
+                int missing = ObeliskScalingPolicy.profileForPlayers(p.currentWaveScalePlayers).mobCount()
+                        - p.liveCount();
                 p.failing.clear(); p.retryNow(); completePack(p);
                 check(p.spawnCalls.size() - before == missing, "retry must attempt only missing live roles");
             }
@@ -322,11 +327,11 @@ public class Wave4PackRuntimeProbe {
                 int calls = p.spawnCalls.size(); p.tickWave4ObeliskAssault();
                 check(p.spawnCalls.size() == calls, "failed attempt must respect retry backoff");
                 p.throwAfterRegister.clear(); p.retryNow(); completePack(p);
-                check(p.spawnCalls.equals(List.of(0, 1, 0, 1, 2)),
+                check(p.spawnCalls.equals(List.of(0, 1, 0, 1, 2, 3, 4, 5)),
                         "retry after rollback must spawn each slot once without duplicate ownership");
             }
             case "throw-preserves-prior-slot" -> {
-                p.failing.addAll(List.of(1, 2)); p.retryNow();
+                p.failing.addAll(List.of(1, 2, 3, 4, 5)); p.retryNow();
                 check(p.liveCount() == 1 && p.currentWave4PressureSpawnSlots.contains("STALKER:0"),
                         "setup must retain the accepted slot from the prior attempt");
                 p.failing.clear(); p.throwAfterRegister.add(2); p.retryNow();
@@ -337,7 +342,7 @@ public class Wave4PackRuntimeProbe {
                 int calls = p.spawnCalls.size(); p.tickWave4ObeliskAssault();
                 check(p.spawnCalls.size() == calls, "failed retry must respect normal backoff");
                 p.throwAfterRegister.clear(); p.retryNow(); completePack(p);
-                check(p.spawnCalls.equals(List.of(0, 1, 2, 1, 2, 1, 2)),
+                check(p.spawnCalls.equals(List.of(0, 1, 2, 3, 4, 5, 1, 2, 1, 2, 3, 4, 5)),
                         "recovery must spawn only missing roles and keep prior ownership unique");
             }
             case "registration-refused" -> {
@@ -357,12 +362,12 @@ public class Wave4PackRuntimeProbe {
             case "synchronous-slot-loss" -> {
                 p.removeSpiderDuringSpawn = true;
                 p.retryNow();
-                check(!p.currentWave4MobsStarted && p.liveCount() == 2,
+                check(!p.currentWave4MobsStarted && p.liveCount() == 5,
                         "synchronous spawn callback must not accept a pack missing its earlier Stalker");
                 check(!p.currentWave4PressureSpawnSlots.contains("STALKER:0") && p.waveSpawnGroupIndex == 0,
                         "final slot reconciliation must leave the removed Stalker pending");
                 p.retryNow(); completePack(p);
-                check(p.spawnCalls.equals(List.of(0, 1, 2, 0)),
+                check(p.spawnCalls.equals(List.of(0, 1, 2, 3, 4, 5, 0)),
                         "retry after synchronous loss must create only the missing Stalker");
             }
             case "exhaustion", "permanent" -> {
@@ -406,7 +411,7 @@ public class Wave4PackRuntimeProbe {
                     stale.data.values.put(p.keyWave4PressureSlot, "STALKER:0");
                 }
                 var obelisk = new Wave4ObeliskRuntimeState(); p.activeWave4Obelisks.put(obelisk.id, obelisk);
-                p.retryNow(); check(p.liveCount() == 3 && p.currentWave4MobsStarted, "new generation failed to restart");
+                p.retryNow(); check(p.liveCount() == 6 && p.currentWave4MobsStarted, "new generation failed to restart");
             }
             default -> throw new AssertionError("unknown scenario " + scenario);
         }

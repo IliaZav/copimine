@@ -92,7 +92,7 @@ def test_prisoner_capture_restore_and_server_control_require_v4_readiness() -> N
                             source.index("private void restorePersistedRitualSphereObjective")]
     tag = source[source.index("private void tagRitualPrisoner"):
                  source.index("private void clearRitualPrisonerTag")]
-    teleport = source[source.index("private void teleportRitualPrisoner"):
+    teleport = source[source.index("private boolean teleportRitualPrisoner"):
                        source.index("private void retagRitualEntity")]
     join = source[source.index("public void onPlayerJoin"):
                    source.index("public void onPlayerQuit")]

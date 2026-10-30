@@ -26,6 +26,13 @@ public final class RitualSphereEncounterSnapshotTest {
         Map<String, String> withSpellCursor = RitualSphereEncounterSnapshot.encode(original, 2, 1);
         check(RitualSphereEncounterSnapshot.decode(withSpellCursor, 9L).spellCursor() == 1,
                 "the major-spell fairness cursor must persist across restart");
+        Map<String, String> completedRotation = RitualSphereEncounterSnapshot.encode(original, 5, 3);
+        check("0".equals(completedRotation.get("ritual-sphere.spell-cursor")),
+                "terminal caster death must clear the spell cursor when all spells are disabled");
+        Map<String, String> legacyTerminalCursor = new java.util.LinkedHashMap<>(completedRotation);
+        legacyTerminalCursor.put("ritual-sphere.spell-cursor", "3");
+        check(RitualSphereEncounterSnapshot.decode(legacyTerminalCursor, 9L).spellCursor() == 0,
+                "terminal checkpoints with an old rotation cursor must recover as cursor zero");
         check(!RitualSphereEncounterSnapshot.decode(encoded, 9L).migratedLegacyState(),
                 "current state must not report legacy migration");
 

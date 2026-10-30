@@ -1380,6 +1380,8 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
         'ac7962cabc1e70a7c8f647f4675285b19d9f886745efe5d03c8ea31ad973a78f',
         # Measured installed release and staged predecessors retained for safe replacement.
         'ca4c8f5f40730e5c6f7e2431ce649315403fc64a2599721a39fc68d15ca7afca',
+        'c32924bcf3283606a15b233d91214edbafcc986bb593ad7b198224107686fe7d',
+        '8430da0d8c11f4d95e6f1a123331d5361b6a3d848f8c2203de3f7dca00c2afda',
         '680a0f081e37450b38c32bc5de6451a79bdacfa511300a70c9d062b177fc8723',
         '0b4235f5d140dd02bd71e70a173ed25a5cccdd6cb1c839d0726a34ee16565f6c',
     ]

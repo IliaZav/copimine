@@ -63,7 +63,8 @@ def test_frontend_calls_only_routes_the_backend_declares():
     """A typo in a JS request path would otherwise surface as a silent 404."""
     module = _module()
     declared = {r["path"] for r in module.routes()}
-    prefixes = tuple(path.split("{")[0] for path in declared)
+    # "/{filename}.html" reduces to "/" and would match every path; drop it.
+    prefixes = tuple(p for p in (path.split("{")[0] for path in declared) if p.rstrip("/"))
     callers = module.frontend_callers()
     unknown = []
     for path, files in callers.items():
@@ -72,4 +73,20 @@ def test_frontend_calls_only_routes_the_backend_declares():
         if any(path == p.rstrip("/") for p in prefixes):
             continue
         unknown.append(f"{path} ({', '.join(sorted(files))})")
+    # Paths the bundled sources still contain but the shipped build cannot
+    # reach. Each one is listed with the reason instead of being silently
+    # allowed, and the assertion below fails if a real route ever appears.
+    unreachable = {
+        "/api/local-materials": "no such route; base-v4.js guards on !CM_SERVER_MODE, cms-v4.js sits in the content tab that cms-production-v8.js replaces, public-v4.js only after a published modUrl is missing",
+        "/api/v6/admin": "admin-v6.js saveCollection('/admin/'+kind) is in the content tab cms-production-v8.js replaces",
+        "/api/v6/admin/config": "admin-v6.js form v6-site-config is not in production.js allowedForms; /admin/site-settings replaced it",
+        "/api/v6/admin/pages": "admin-v6.js cms-* forms are not in allowedForms; /admin/content/{section} replaced them",
+        "/api/v6/admin/sanctions": "players-v6.js form v6-sanction-revoke is not in allowedForms, so the submit throws before any request",
+        "/api/v6/payments": "site-v6.js form create-payment is not in allowedForms: no payment provider is configured",
+    }
+    assert not (unreachable.keys() & declared), (
+        "a route now exists, drop it from the unreachable set: "
+        + ", ".join(sorted(unreachable.keys() & declared))
+    )
+    unknown = [item for item in unknown if item.split(" ")[0] not in unreachable]
     assert sorted(unknown) == [], "frontend requests undeclared routes: " + "; ".join(sorted(unknown))

@@ -8,6 +8,7 @@ test shows up as a failing build instead of a stale table in a document.
 from __future__ import annotations
 
 import collections
+import json
 import pathlib
 import re
 
@@ -201,15 +202,24 @@ def render():
     ids = sorted(re.findall(r'"([\w.]+)"', supported.group(1))) if supported else []
     bulk = re.search(r"BULK_ACTIONS = \{(.*?)\}", backend, re.S)
     bulk_ids = sorted(re.findall(r'"([\w.]+)"', bulk.group(1))) if bulk else []
+    # The endpoint filters the local catalogue by SUPPORTED_ACTIONS, so a
+    # supported id without a catalogue entry is not reachable in the UI.
+    catalogue = json.loads((ROOT / "private" / "admin-actions.json").read_text(encoding="utf-8"))
+    defined = {row["id"] for row in catalogue["actions"]}
+    offered = [item for item in ids if item in defined]
+    undefined = [item for item in ids if item not in defined]
 
     out += ["", "## Actions the game bridge does not implement", "",
-            "`GET /api/v6/admin/actions` returns only ids from",
-            "`backend.domain.SUPPORTED_ACTIONS`, and the player screen renders exactly that",
+            "`GET /api/v6/admin/actions` returns ids from",
+            "`backend.domain.SUPPORTED_ACTIONS` that also have an entry in",
+            "`private/admin-actions.json`, and the player screen renders exactly that",
             "list — an unimplemented action never appears as a working button.", "",
-            "- supported: " + ", ".join(f"`{i}`" for i in ids),
+            "- offered by the admin screen: " + ", ".join(f"`{i}`" for i in offered),
+            "- in `SUPPORTED_ACTIONS` but absent from the catalogue, so never offered: "
+            + (", ".join(f"`{i}`" for i in undefined) or "none"),
             "- bulk-capable: " + ", ".join(f"`{i}`" for i in bulk_ids),
             f"- game-bridge calls made by HTTP routes: **{game_ops}**",
-            "- the rest of the 117-entry admin catalogue is not offered by the UI;",
+            f"- the other {len(catalogue['actions']) - len(offered)} catalogue entries are not offered by the UI;",
             "  `unsupportedReason` says so in the API response.", ""]
     return "\n".join(out)
 

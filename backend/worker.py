@@ -1,4 +1,4 @@
-"""Single persistent systemd worker for map jobs and the transactional mail outbox."""
+"""Single persistent systemd worker for map jobs, bridge retention and the transactional mail outbox."""
 import json
 import logging
 import os
@@ -16,6 +16,33 @@ from .ops import SAMPLE_SECONDS, sample, sample_interval
 LOG = logging.getLogger('copimine.worker')
 
 
+def prune_bridge(database, settings, now=None, keep_seconds=86400):
+    """Удаляет отработавшие файлы моста; финансовые факты живут в cm_site_receipts.
+
+    Плагин принимает запрос только 120 секунд и хранит ответ ради защиты от
+    повторов, поэтому сутки — с большим запасом. Иначе каталог растёт на
+    десятки тысяч файлов в день и тормозит `is_dir`/чтение на каждом запросе.
+    """
+    root = settings.game_root / "minecraft" / "server" / "plugins" / "CopiMineWebsiteBridge"
+    horizon = (int(time.time()) if now is None else int(now)) - keep_seconds
+    removed = 0
+    for folder in ("requests", "responses"):
+        path = root / folder
+        if not path.is_dir():
+            continue
+        with os.scandir(path) as entries:
+            for entry in entries:
+                try:
+                    if entry.is_file(follow_symlinks=False) and entry.stat(follow_symlinks=False).st_mtime < horizon:
+                        os.unlink(entry.path)
+                        removed += 1
+                except OSError:
+                    continue
+    if removed:
+        LOG.info("Bridge retention removed %s files", removed)
+    return removed
+
+
 class MapWorker:
     def __init__(self, database, settings, game):
         self.database,self.settings,self.game=database,settings,game
@@ -24,6 +51,9 @@ class MapWorker:
 
     def rpc(self, operation, params=None):
         return self.game.rpc(operation,{'id':'map-worker','name':'Публикация карты'},params or {})['data']
+
+    def status(self, operation):
+        return self.game.status(operation)['data']
 
     def tick(self, now=None):
         now=int(time.time()) if now is None else now
@@ -106,10 +136,17 @@ def main():
     worker=MapWorker(database,settings,GameAdapter(settings,database))
     logging.basicConfig(level=logging.INFO)
     last_sample=0
+    last_prune=0
     interval=SAMPLE_SECONDS
     while True:
         try:
             worker.tick()
+            if time.time()-last_prune>=3600:
+                try:
+                    prune_bridge(database,settings)
+                except Exception as error:
+                    LOG.warning('Bridge retention failed type=%s',type(error).__name__)
+                last_prune=time.time()
             if settings.smtp_host and settings.mail_domain_ready:pump_outbox(database,settings)
             if time.time()-last_sample>=interval:
                 try:

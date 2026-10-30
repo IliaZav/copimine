@@ -352,8 +352,13 @@ def export_account(request: Request):
 
 
 @router.post("/api/v6/account/delete")
-async def delete_account(request: Request):
-    """Anonymises the account. Financial receipts and the audit trail stay for legal reasons."""
+async def delete_account(request: Request, response: Response):
+    """Anonymises the account. Financial receipts and the audit trail stay for legal reasons.
+
+    The anonymised row keeps its id so receipts, audit entries and legacy links stay
+    resolvable, but every identifying column is replaced. Columns declared NOT NULL
+    receive tombstones, never NULL: email_norm is UNIQUE, so each alias gets its own.
+    """
     user = current_user(request, fresh=True)
     data = await request.json()
     throttle(request.app.state.database, "account-delete:" + user["id"], 5, 3600)
@@ -369,6 +374,7 @@ async def delete_account(request: Request):
     database.audit(user, "account.deleted", user["name"], details={"alias": alias})
     from .attachments import _root as _attachment_root
     files_root = _attachment_root(request)
+    tombstone_email = alias + "@deleted.invalid"
     with database.transaction() as db:
         for row in db.execute("SELECT f.id,f.mime FROM cm_site_ticket_files f JOIN cm_site_tickets t ON t.id=f.ticket_id WHERE t.user_id=%s", (user["id"],)).fetchall():
             from .attachments import ALLOWED as _attachment_types
@@ -381,13 +387,13 @@ async def delete_account(request: Request):
         db.execute("DELETE FROM cm_site_oauth WHERE user_id=%s", (user["id"],))
         db.execute("UPDATE cm_site_sessions SET revoked_s=%s WHERE user_id=%s AND revoked_s=0", (now, user["id"]))
         db.execute(
-            "UPDATE cm_site_users SET name=%s,name_norm=%s,display_name=%s,email=NULL,email_norm=NULL,"
-            "password_hash=%s,minecraft_uuid=NULL,minecraft_name=NULL,vk_id=NULL,totp_secret=NULL,"
-            "pending_totp=NULL,preferences='{}',enabled=0,updated_s=%s,blocked_reason=%s,blocked_until_s=%s WHERE id=%s",
-            (alias, alias, "Удалённый аккаунт", hash_password(secrets.token_urlsafe(48)), now, "account.deleted", now + 315360000, user["id"]),
+            "UPDATE cm_site_users SET name=%s,name_norm=%s,display_name=%s,email=%s,email_norm=%s,"
+            "password_hash=%s,minecraft_uuid='',minecraft_name='',vk_id=NULL,totp_secret='',"
+            "pending_totp='',preferences='{}',enabled=0,updated_s=%s,blocked_reason=%s,blocked_until_s=%s WHERE id=%s",
+            (alias, alias, "Удалённый аккаунт", tombstone_email, tombstone_email,
+             hash_password(secrets.token_urlsafe(48)), now, "account.deleted", now + 315360000, user["id"]),
         )
-    response = Response()
-    response.delete_cookie(COOKIE, path="/")
+    response.delete_cookie(COOKIE, path="/", secure=request.app.state.settings.secure_cookies, httponly=True, samesite="lax")
     return {"ok": True, "alias": alias}
 
 

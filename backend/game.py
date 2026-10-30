@@ -87,6 +87,27 @@ class GameAdapter:
         except (OSError, ValueError, struct.error):
             fail(503, "game_unavailable", "Игровой сервер не ответил. Проверьте состояние операции в истории.")
 
+    def _parse_rcon(self, output):
+        """Разбирает ответ плагина `CMWEB:<base64 json>` в структуру результата."""
+        match = re.search(r"CMWEB:([A-Za-z0-9+/=]+)", output)
+        if not match:
+            fail(503, "game_unavailable", "Игровой мост не подтвердил выполнение операции.")
+        try:
+            return json.loads(base64.b64decode(match.group(1), validate=True))
+        except (ValueError, TypeError):
+            fail(503, "game_unavailable", "Получен некорректный ответ игрового сервера.")
+
+    def status(self, name="health"):
+        """Запрос без файла: плагин отвечает на `cmwebbridge health` напрямую.
+
+        Опрос состояния идёт на каждый заход на сайт, а файловый запрос остаётся
+        навсегда ради защиты от повторов — поэтому health не должен его создавать.
+        """
+        result = self._parse_rcon(self.rcon("cmwebbridge " + name))
+        if not result.get("ok"):
+            fail(503, result.get("code", "game_unavailable"), result.get("message", "Игровой сервер не ответил."))
+        return result
+
     def rpc(self, operation, actor, parameters=None, key=None):
         if not self.requests.is_dir():
             fail(503, "game_unavailable", "Защищённый мост с Minecraft ещё не подключён.")
@@ -116,14 +137,7 @@ class GameAdapter:
                 file.flush()
                 os.fsync(file.fileno())
             os.replace(temporary, request_path)
-        output = self.rcon("cmwebbridge " + request_id)
-        match = re.search(r"CMWEB:([A-Za-z0-9+/=]+)", output)
-        if not match:
-            fail(503, "game_unavailable", "Игровой мост не подтвердил выполнение операции.")
-        try:
-            result = json.loads(base64.b64decode(match.group(1), validate=True))
-        except (ValueError, TypeError):
-            fail(503, "game_unavailable", "Получен некорректный ответ игрового сервера.")
+        result = self._parse_rcon(self.rcon("cmwebbridge " + request_id))
         if not result.get("ok"):
             code = result.get("code", "game_action_failed")
             status = 409 if code in {"stale_snapshot", "player_offline", "idempotency_conflict"} else 503 if code == "identity_not_ready" else 400
@@ -138,7 +152,7 @@ class GameAdapter:
         try:
             with socket.create_connection((os.getenv("MC_HOST", "127.0.0.1"), int(os.getenv("MC_PORT", "25565"))), timeout=0.5):
                 result["online"] = True
-            proof = self.rpc("health", {"id": "system", "name": "system"})
+            proof = self.status("health")
             data = proof.get("data", {})
             result.update(data)
             result["onlinePlayers"] = data.get("players", [])

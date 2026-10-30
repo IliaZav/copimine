@@ -68,6 +68,16 @@ async def login(request: Request, response: Response):
         login_event(database, request, name, "invalid_credentials", row["id"] if row else "")
         fail(401, "invalid_credentials", "Неверный логин или пароль.")
     user = dict(row)
+    # Временная блокировка истекает сама: admin sets enabled=0 + blocked_until_s,
+    # so without this the account would stay disabled forever.
+    expired = user["blocked_until_s"] and user["blocked_until_s"] <= int(time.time())
+    if expired and not user["enabled"] and user["blocked_reason"] != "account.deleted":
+        with database.transaction() as db:
+            db.execute("UPDATE cm_site_users SET enabled=1,blocked_reason='',blocked_until_s=0,updated_s=%s WHERE id=%s",
+                       (int(time.time()), user["id"]))
+        user.update(enabled=1, blocked_reason="", blocked_until_s=0)
+        database.audit(user, "account.unblocked", user["name"], "Истёк срок временной блокировки.")
+        expired = False
     if not user["enabled"] or (user["blocked_until_s"] and user["blocked_until_s"] > time.time()):
         login_event(database, request, name, "blocked", user["id"])
         fail(403, "account_blocked", "Вход в этот аккаунт ограничен. Обратитесь в поддержку.")

@@ -12,8 +12,8 @@ let materialsPage=0,materialQuery='',catalogQuery='',auditQuery='',auditBucket='
 // Попадания на страницу-пасхалки: отдельный список, чтобы не смешивать с журналом админов.
 let easterEntries=[],easterTotal=0,easterGuests=0,easterBusy=false,easterAt=0,easterQuery='',easterOnly=false;
 function auditSessionKey(){return X.live?(can('logs.view')?X.sessionUser?.id||null:null):(X.canAdmin()?M.me()?.id||'preview':null);}
-function syncAuditOwner(){const owner=auditSessionKey();if(owner!==auditOwner){auditOwner=owner;auditEpoch++;auditAt=0;auditBusy=false;auditQuery='';auditBucket='';auditTarget='';delete X.auditEntries;delete X.auditTotal;delete X.auditHasMore;}return owner;}
-const refreshWithAPI=X.refresh;X.refresh=async function(options={}){syncAuditOwner();try{return await refreshWithAPI.call(X,options);}finally{syncAuditOwner();}};
+function syncAuditOwner(){const owner=auditSessionKey();if(owner!==auditOwner){auditOwner=owner;auditEpoch++;auditAt=0;auditBusy=false;auditQuery='';auditBucket='';if(!M.UI.params.get('target'))auditTarget='';delete X.auditEntries;delete X.auditTotal;delete X.auditHasMore;}return owner;}
+const refreshWithAPI=X.refresh;X.refresh=async function(options={}){syncAuditOwner();try{const result=await refreshWithAPI.call(X,options);if(document.getElementById('v6-audit-list'))loadAudit().catch(()=>{});return result;}finally{syncAuditOwner();}};
 const rowsTable=(headers,rows,title,description,ic='file')=>rows.length?V.table(headers,rows):M.empty(title,description,ic);
 const countOrders=rows=>new Set(rows.map(x=>x.id)).size;
 
@@ -88,13 +88,14 @@ function auditQueryString(offset){
 }
 function auditTable(){
   const rows=X.auditEntries||[],total=X.auditTotal||0;
-  if(!rows.length)return M.empty('Записей нет',auditQuery||auditBucket||auditTarget?'Под эти условия ничего не подходит. Сбрось фильтр.':'В журнале появятся выполненные операции.','file');
-  return (auditTarget?'<div class="table-toolbar mt"><p class="hint">Только объект: <code>'+E(s().players.find(p=>p.id===auditTarget)?.name||auditTarget)+'</code></p>'+M.btn('Сбросить','v6-audit-target-clear','close','small')+'</div>':'')
+  const scope=auditTarget?'<div class="table-toolbar mt"><p class="hint">Только объект: <code>'+E(s().players.find(p=>p.id===auditTarget)?.name||auditTarget)+'</code></p>'+M.btn('Сбросить','v6-audit-target-clear','close','small')+'</div>':'';
+  if(!rows.length)return scope+M.empty('Записей нет',auditQuery||auditBucket||auditTarget?'Под эти условия ничего не подходит. Сбрось фильтр.':'В журнале появятся выполненные операции.','file');
+  return scope
     +V.table(['Время','Кто','Что сделал','Объект','Основание'],rows.map(a=>[M.date(a.at),E(s().players.find(p=>p.id===a.actor_id)?.name||a.actor||a.actor_id||'Система'),'<strong>'+E(auditLabel(a))+'</strong><small>'+E(a.kind||a.action||'')+'</small>',E(a.target_id||a.target||'—'),E(a.reason||a.detail||'—')]))
     +'<div class="table-toolbar mt"><p class="hint">Показано '+rows.length+' из '+total+'</p>'+(X.auditHasMore?M.btn('Показать ещё','v6-audit-more','chevron-down','small'):'')+'</div>';
 }
 function auditView(){syncAuditOwner();if(!can('logs.view'))return denied();
-  const param=M.UI.params.get('target');auditTarget=param||auditTarget;
+  const param=M.UI.params.get('target');if(param!==auditTarget){auditAt=0;auditTarget=param||'';}
   return '<section class="panel"><div class="panel-head"><h2>Журнал администрации</h2>'+M.btn('Обновить','v6-audit-refresh','refresh','small')+'</div><div class="table-toolbar mt">'+search('v6-audit-search','Автор, действие, объект, причина')+'<label class="field v6-audit-bucket">Тип<select id="v6-audit-bucket">'+AUDIT_BUCKETS.map(([id,label])=>'<option value="'+id+'"'+(id===auditBucket?' selected':'')+'>'+label+'</option>').join('')+'</select></label>'+M.btn('Скачать CSV','v6-audit-export','download','small')+'</div><div id="v6-audit-list">'+auditTable()+'</div></section>';}
 H['v6-audit-more']=async()=>{await loadAudit(true,true);};
 H['v6-audit-target-clear']=async()=>{auditTarget='';await loadAudit(true);};

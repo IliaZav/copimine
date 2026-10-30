@@ -24,11 +24,12 @@ import me.copimine.endevent.domain.ArenaInfernoPolicy;
 public class InfernoRuntimeCadenceProbe {
     enum EventPhase { BOSS_ACTIVE, VICTORY_PROCESSING }
     enum BossPhase { OVERLOAD, LAST_SEAL }
-    enum Particle { CAMPFIRE_COSY_SMOKE, SMOKE, CLOUD }
+    enum Particle { CAMPFIRE_COSY_SMOKE, SMOKE, CLOUD, DRIPPING_LAVA }
     enum Sound { BLOCK_LAVA_AMBIENT, BLOCK_FIRE_EXTINGUISH }
     enum SoundCategory { HOSTILE }
     static class World {
-        void spawnParticle(Object... args) { }
+        int lavaWarnings;
+        void spawnParticle(Object... args) { if(args[0]==Particle.DRIPPING_LAVA)lavaWarnings++; }
         void playSound(Object... args) { }
     }
     static class Location {
@@ -61,20 +62,20 @@ public class InfernoRuntimeCadenceProbe {
     }
     static class Bukkit { static final Scheduler scheduler=new Scheduler();static Scheduler getScheduler(){return scheduler;} }
     final LivingEntity boss=new LivingEntity();final Player target=new Player();
-    final List<Block> arenaInfernoBlocks=List.of(new Block());
+    final List<Block> arenaInfernoBlocks=new ArrayList<>(List.of(new Block()));
     final long eventTickCounter=137;
     final long ARENA_INFERNO_VENT_PERIOD_TICKS=60;
     static class Registry {boolean owns(long g){return g==7;}}
     BukkitTask arenaInfernoTask;final Registry taskRegistry=null;
     String eventId="event";long generation=7,arenaInfernoSequence;
     EventPhase phase=EventPhase.BOSS_ACTIVE;BossPhase bossPhase=BossPhase.OVERLOAD;
-    int floorCalls;boolean cleared,admitted=true;
+    int floorCalls,arenaInfernoVentBudget,rosterSize=1;boolean cleared,admitted=true;
     LivingEntity liveBoss(){return boss;}
     void clearArenaInferno(){arenaInfernoSequence++;cleared=true;}
     void renderArenaInferno(LivingEntity boss){floorCalls++;}
     void registerEncounterTask(BukkitTask task){ }
     List<Player> eventAudience(){return List.of(target);}
-    List<Player> activeLivingPlayers(){return List.of(target);}
+    List<Player> activeLivingPlayers(){return Collections.nCopies(rosterSize,target);}
     boolean isActiveBossParticipant(Player p){return admitted;}
     boolean isTestBoss(LivingEntity e){return false;}
     boolean applyBossAbilityDamage(LivingEntity b,Player p,double amount){double before=p.health;p.damage(amount,b);return p.health<before;}
@@ -110,6 +111,17 @@ public class InfernoRuntimeCadenceProbe {
         Bukkit.scheduler.callback.run();check(replacement.floorCalls==1,"replacement Inferno lost its ticker");
         replacement.bossPhase=BossPhase.LAST_SEAL;Bukkit.scheduler.callback.run();
         check(replacement.cleared&&replacement.floorCalls==1,"phase change retained old magma damage");
+        var roster=new InfernoRuntimeCadenceProbe();
+        roster.arenaInfernoBlocks.add(new Block());roster.arenaInfernoBlocks.add(new Block());
+        WORLD.lavaWarnings=0;
+        roster.startArenaInfernoTicker(120);Bukkit.scheduler.callback.run();
+        check(WORLD.lavaWarnings==1,"one lava warning is sent at the start of the cycle");
+        roster.rosterSize=9;
+        for(int tick=1;tick<=16;tick++)Bukkit.scheduler.callback.run();
+        check(roster.target.hits==1,"roster growth introduced unwarned eruption points");
+        for(int tick=17;tick<=76;tick++)Bukkit.scheduler.callback.run();
+        check(roster.target.hits==4,"next warning cycle did not adopt the updated roster");
+        check(WORLD.lavaWarnings==4,"lava warnings did not match the next cycle's three vents");
     }
 }
 ''', encoding="utf-8")

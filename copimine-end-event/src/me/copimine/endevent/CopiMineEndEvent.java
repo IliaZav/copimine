@@ -728,6 +728,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<UUID> waveGuardianEntities = new HashSet<>();
     private final Set<Block> arenaInfernoBlocks = new LinkedHashSet<>();
     private int arenaInfernoArmorWear;
+    private int arenaInfernoVentBudget;
     private final Set<UUID> lootIssuedEntityUuids = new HashSet<>();
     private final Set<UUID> spellServants = new HashSet<>();
     private final Map<UUID, CombatTacticsPolicy.MobTactic> waveMobTactics = new HashMap<>();
@@ -41393,7 +41394,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         World world = boss.getWorld();
         List<Block> blocks = new ArrayList<>(arenaInfernoBlocks);
         int stride = ArenaInfernoPolicy.ventStride(blocks.size());
-        int ventBudget = ArenaInfernoPolicy.ventCountForRoster(activeLivingPlayers().size());
+        if (Math.floorMod(castTick, ARENA_INFERNO_VENT_PERIOD_TICKS) == 0) {
+            arenaInfernoVentBudget = ArenaInfernoPolicy.ventCountForRoster(activeLivingPlayers().size());
+        }
+        int ventBudget = arenaInfernoVentBudget;
         int vents = 0;
         for (int index = 0; index < blocks.size() && vents < ventBudget;
                 index += stride, vents++) {
@@ -41403,6 +41407,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     world.spawnParticle(Particle.CAMPFIRE_COSY_SMOKE, point, 8, 0.3D, 0.4D, 0.3D, 0.01D);
                     world.spawnParticle(Particle.SMOKE, point, 6, 0.25D, 0.25D, 0.25D, 0.02D);
                     if (castTick % ARENA_INFERNO_VENT_PERIOD_TICKS == 0) {
+                        world.spawnParticle(Particle.DRIPPING_LAVA, point, 3,
+                                0.2D, 0.12D, 0.2D, 0.0D);
                         world.playSound(point, Sound.BLOCK_LAVA_AMBIENT,
                                 SoundCategory.HOSTILE, 0.6F, 1.4F);
                     }
@@ -41429,7 +41435,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    /** Paints the inferno's dangerous and safe sectors without changing blocks. */
+    /** Renders the inferno floor without changing blocks. */
     private void renderArenaHazardField(LivingEntity boss) {
         if (boss == null || boss.getWorld() == null) {
             return;
@@ -41479,6 +41485,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void clearArenaInferno() {
         arenaInfernoSequence++;
         arenaInfernoArmorWear = 0;
+        arenaInfernoVentBudget = 0;
         if (arenaInfernoTask != null) {
             arenaInfernoTask.cancel();
             arenaInfernoTask = null;

@@ -24,7 +24,8 @@ SUPPORTED_ACTIONS = {"kick", "ban", "unban", "heal", "feed", "kill", "gamemode",
 
 def review_user(row):
     value = public_user(row)
-    return {**value, "username": row["name"], "display_name": row["display_name"], "email_verified": bool(row["email_verified"]), "vk_id": row["vk_id"], "blocked": not bool(row["enabled"]), "block_reason": row["blocked_reason"], "email_hint_dismissed": True}
+    blocked = not bool(row["enabled"]) or int(row["blocked_until_s"] or 0) > int(time.time())
+    return {**value, "username": row["name"], "display_name": row["display_name"], "email_verified": bool(row["email_verified"]), "vk_id": row["vk_id"], "blocked": blocked, "block_reason": row["blocked_reason"], "email_hint_dismissed": True}
 
 
 def safe_reason(value):
@@ -352,7 +353,7 @@ def export_account(request: Request):
 
 
 @router.post("/api/v6/account/delete")
-async def delete_account(request: Request):
+async def delete_account(request: Request, response: Response):
     """Anonymises the account. Financial receipts and the audit trail stay for legal reasons."""
     user = current_user(request, fresh=True)
     data = await request.json()
@@ -381,12 +382,11 @@ async def delete_account(request: Request):
         db.execute("DELETE FROM cm_site_oauth WHERE user_id=%s", (user["id"],))
         db.execute("UPDATE cm_site_sessions SET revoked_s=%s WHERE user_id=%s AND revoked_s=0", (now, user["id"]))
         db.execute(
-            "UPDATE cm_site_users SET name=%s,name_norm=%s,display_name=%s,email=NULL,email_norm=NULL,"
-            "password_hash=%s,minecraft_uuid=NULL,minecraft_name=NULL,vk_id=NULL,totp_secret=NULL,"
-            "pending_totp=NULL,preferences='{}',enabled=0,updated_s=%s,blocked_reason=%s,blocked_until_s=%s WHERE id=%s",
+            "UPDATE cm_site_users SET name=%s,name_norm=%s,display_name=%s,email='',email_norm=NULL,"
+            "password_hash=%s,minecraft_uuid='',minecraft_name='',vk_id=NULL,totp_secret='',"
+            "pending_totp='',preferences='{}',enabled=0,updated_s=%s,blocked_reason=%s,blocked_until_s=%s WHERE id=%s",
             (alias, alias, "Удалённый аккаунт", hash_password(secrets.token_urlsafe(48)), now, "account.deleted", now + 315360000, user["id"]),
         )
-    response = Response()
     response.delete_cookie(COOKIE, path="/")
     return {"ok": True, "alias": alias}
 
@@ -616,8 +616,9 @@ async def web_ban(request: Request):
     until = int(data.get("until") or 0)
     if until and not int(time.time()) < until <= int(time.time()) + 366 * 86400:
         fail(400, "invalid_duration", "Проверьте срок блокировки.")
+    enabled = int(not blocked or until > int(time.time()))
     with request.app.state.database.transaction() as db:
-        db.execute("UPDATE cm_site_users SET enabled=%s,blocked_reason=%s,blocked_until_s=%s WHERE id=%s", (int(not blocked), reason if blocked else "", until if blocked else 0, target["id"]))
+        db.execute("UPDATE cm_site_users SET enabled=%s,blocked_reason=%s,blocked_until_s=%s WHERE id=%s", (enabled, reason if blocked else "", until if blocked else 0, target["id"]))
         if blocked:
             db.execute("UPDATE cm_site_sessions SET revoked_s=%s WHERE user_id=%s", (int(time.time()), target["id"]))
     request.app.state.database.audit(actor, "account.blocked" if blocked else "account.unblocked", target["id"], reason)

@@ -50,3 +50,17 @@ def test_reference_catalog_search_aliases_are_not_blank():
         catalog = json.loads((ROOT / "frontend" / "data" / name).read_text(encoding="utf-8"))
         for item in catalog:
             assert all(isinstance(alias, str) and alias.strip() for alias in item.get("aliases", [])), item["id"]
+
+
+def test_variant_materials_have_distinguishing_localized_names():
+    materials = json.loads((ROOT / "frontend" / "data" / "materials-v6.json").read_text(encoding="utf-8"))
+    variants = (
+        lambda material_id: material_id.startswith("music_disc_"),
+        lambda material_id: material_id.endswith("_armor_trim_smithing_template"),
+        lambda material_id: material_id.endswith("_banner_pattern"),
+    )
+    for matches in variants:
+        group = [item for item in materials if matches(item["id"])]
+        assert group
+        assert len({item["ru"] for item in group}) == len(group)
+        assert len({item["en"] for item in group}) == len(group)

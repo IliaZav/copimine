@@ -115,3 +115,85 @@ def test_owner_account_cannot_be_deleted(client):
     )
     assert response.status_code == 409
     assert client.get("/api/v6/session").json()["user"]["role"] == "owner"
+
+
+def test_player_account_deletion_anonymises_not_null_fields_and_clears_session_cookie(client):
+    owner = login(client)
+    owner_headers = headers(owner)
+    created = client.post(
+        "/api/v6/admin/accounts",
+        headers=owner_headers,
+        json={"name": "DeleteMe", "password": "A-secure-delete-test-password-2026", "role": "player", "reason": "Account deletion regression"},
+    )
+    assert created.status_code == 200, created.text
+    user_id = created.json()["user"]["id"]
+
+    client.post("/api/v6/auth/logout", headers=owner_headers, json={})
+    anonymous = client.get("/api/v6/session").json()
+    player_login = client.post(
+        "/api/v6/auth/login",
+        headers=headers(anonymous),
+        json={"name": "DeleteMe", "password": "A-secure-delete-test-password-2026"},
+    )
+    assert player_login.status_code == 200, player_login.text
+    player = client.get("/api/v6/session").json()
+
+    deleted = client.post(
+        "/api/v6/account/delete",
+        headers=headers(player),
+        json={"confirm": "УДАЛИТЬ", "password": "A-secure-delete-test-password-2026"},
+    )
+    assert deleted.status_code == 200, deleted.text
+    assert "cm_site_session=\"\"" in deleted.headers.get("set-cookie", "")
+    assert client.get("/api/v6/session").json()["user"] is None
+
+    with client.app.state.database.transaction() as db:
+        account = db.execute("SELECT * FROM cm_site_users WHERE id=%s", (user_id,)).fetchone()
+    assert account["name"].startswith("deleted_")
+    assert account["email"] == ""
+    assert account["minecraft_uuid"] == ""
+    assert account["minecraft_name"] == ""
+    assert account["totp_secret"] == ""
+    assert account["pending_totp"] == ""
+
+
+def test_timed_account_block_expires_and_allows_login_again(client, monkeypatch):
+    import time
+
+    owner = login(client)
+    created = client.post(
+        "/api/v6/admin/accounts",
+        headers=headers(owner),
+        json={"name": "TimedBlock", "password": "A-secure-timed-block-password-2026", "role": "player", "reason": "Timed block regression"},
+    )
+    assert created.status_code == 200, created.text
+    user_id = created.json()["user"]["id"]
+    until = int(time.time()) + 60
+
+    blocked = client.post(
+        "/api/v7/ban",
+        headers=headers(owner),
+        json={"id": user_id, "blocked": True, "until": until, "reason": "Timed block regression"},
+    )
+    assert blocked.status_code == 200, blocked.text
+    assert blocked.json()["user"]["enabled"] is True
+    assert blocked.json()["user"]["blocked"] is True
+
+    client.post("/api/v6/auth/logout", headers=headers(owner), json={})
+    anonymous = client.get("/api/v6/session").json()
+    denied = client.post(
+        "/api/v6/auth/login",
+        headers=headers(anonymous),
+        json={"name": "TimedBlock", "password": "A-secure-timed-block-password-2026"},
+    )
+    assert denied.status_code == 403
+
+    monkeypatch.setattr(time, "time", lambda: until + 1)
+    anonymous = client.get("/api/v6/session").json()
+    allowed = client.post(
+        "/api/v6/auth/login",
+        headers=headers(anonymous),
+        json={"name": "TimedBlock", "password": "A-secure-timed-block-password-2026"},
+    )
+    assert allowed.status_code == 200, allowed.text
+    assert client.get("/api/v7/bootstrap").json()["user"]["blocked"] is False

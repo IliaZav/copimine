@@ -31,7 +31,15 @@ Evidence directory: C:/Temp/cm-audit-evidence-20261030 (not tracked).
 ## Progress
 - Specifications read, current branch and remote verified; original workspaces preserved.
 - Implemented and tested clean-checkout data packaging, public health projection, transaction preflight, atomic media publication, production settings validation, proxy limits and catalog revisions.
-- Final local full suite: 152 passed, one pre-existing deprecation warning; JavaScript syntax checks passed.
+- Original audit run: 152 passed, one pre-existing deprecation warning; JavaScript syntax checks passed.
 - Independent CodeRabbit review: two minor duplicate alias issues, corrected with regression coverage; zero major/critical issues reported for this diff.
 - Added website CI. Commits and remote CI are the remaining publication steps.
-- Account deletion, timed blocks, external bridge provenance, full PostgreSQL integration and native browser acceptance remain explicitly unaccepted; see docs/AUDIT_2026-10-30.md.
+- External bridge provenance, full PostgreSQL integration and native browser acceptance remain explicitly unaccepted; see docs/AUDIT_2026-10-30.md.
+
+## Follow-up after the original audit
+
+- Reproduced and fixed player account deletion failing on NOT NULL identity fields and failing to return its cookie-clearing response. The regression asserts the database row, HTTP response and anonymous session after deletion.
+- Reproduced and fixed timed blocks remaining disabled after their deadline. Active login is denied; the same account can log in after expiry.
+- Corrected duplicate localized labels for music discs, armor trim templates and banner patterns, with a catalog invariant test.
+- Follow-up full website suite: 155 passed, no skips, one existing Starlette/httpx deprecation warning. The 152 count above is the historical result from the original audit commit.
+- Follow-up CodeRabbit review of the integrated audit commit and these corrections: 0 issues reported across the reviewed website change.

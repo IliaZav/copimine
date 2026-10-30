@@ -267,7 +267,7 @@
         "tests/test_admin_data_contracts.py"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineWorldCore.jar",
-      "candidateSha256": "6617940e38dcc8f6211da778ed58555a0d4019eab438f0682dbc04352bdd3e0a",
+      "candidateSha256": "9d0b51fee6289c38b04fd76592d5bc2743e2f984db6db110d39be0f49c9c3755",
       "sha256": "6617940e38dcc8f6211da778ed58555a0d4019eab438f0682dbc04352bdd3e0a",
       "sourceBuild": "PASS",
       "unitContract": "PASS",

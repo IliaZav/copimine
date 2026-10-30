@@ -932,6 +932,18 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         finishRedirect(player, access, message, target, null);
     }
 
+    /** Revalidate both sides of a deferred redirect, including configuration reloads. */
+    private boolean redirectStillValid(Player player, WorldAccess requested, World target) {
+        if (!isEnabled() || player == null || !player.isOnline()
+                || !redirectInFlight.contains(player.getUniqueId())
+                || !stillBlocked(requested, player.getWorld())
+                || target == null || Bukkit.getWorld(target.getUID()) != target) {
+            return false;
+        }
+        WorldAccess current = accessFor(player.getWorld());
+        return resolveRedirectTarget(player.getWorld(), current) == target;
+    }
+
     private void finishRedirect(Player player, WorldAccess access, String message, World target, Throwable preparationError) {
         boolean retryScheduled = false;
         try {
@@ -941,10 +953,11 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
                 }
                 return;
             }
-            if (!stillBlocked(access, player.getWorld())) {
+            if (!redirectStillValid(player, access, target)) {
                 return;
             }
-            Location safe = access.redirectToSafeSpawn() ? safeSpawn(target) : findSafeLocation(target, target.getSpawnLocation());
+            WorldAccess current = accessFor(player.getWorld());
+            Location safe = current.redirectToSafeSpawn() ? safeSpawn(target) : findSafeLocation(target, target.getSpawnLocation());
             if (safe == null) {
                 getLogger().warning("WorldCore could not find a safe redirect location in world " + target.getName() + " for " + player.getName());
                 player.sendMessage(color("&cНе удалось найти безопасную точку для перемещения."));
@@ -959,8 +972,8 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
                 // cancelled redirect must not silently leave the player in a
                 // closed world: retry once on the next tick at a freshly
                 // validated spawn location, then report failure explicitly.
+                Bukkit.getScheduler().runTask(this, () -> retryRedirectTeleport(player, access, target, message));
                 retryScheduled = true;
-                Bukkit.getScheduler().runTask(this, () -> retryRedirectTeleport(player, target, message, safe));
             }
         } finally {
             if (player != null && !retryScheduled) {
@@ -969,15 +982,17 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         }
     }
 
-    private void retryRedirectTeleport(Player player, World target, String message, Location firstTarget) {
+    private void retryRedirectTeleport(Player player, WorldAccess requested, World target, String message) {
         try {
-            if (player == null || !player.isOnline()) {
+            if (!redirectStillValid(player, requested, target)) {
                 return;
             }
-            Location fallback = safeSpawn(target);
-            if (fallback == null) {
-                fallback = firstTarget;
-            }
+            WorldAccess current = accessFor(player.getWorld());
+            Location fallback = current.redirectToSafeSpawn()
+                    ? safeSpawn(target) : findSafeLocation(target, target.getSpawnLocation());
+            // Never reuse a location that was safe on the previous tick: blocks,
+            // world access and the configured destination may have changed.
+
             if (fallback != null && player.teleport(fallback)) {
                 blockedWorldWarnings.remove(player.getUniqueId());
                 player.sendMessage(message);

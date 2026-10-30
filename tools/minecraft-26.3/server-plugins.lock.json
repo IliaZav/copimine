@@ -1134,15 +1134,16 @@
       "candidate": {
         "filename": "CopiMineWorldCore-26.3.jar",
         "runtimeFilename": "CopiMineWorldCore.jar",
-        "sha256": "6617940e38dcc8f6211da778ed58555a0d4019eab438f0682dbc04352bdd3e0a",
+        "sha256": "9d0b51fee6289c38b04fd76592d5bc2743e2f984db6db110d39be0f49c9c3755",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineWorldCore-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "size": 36866,
-        "sha512": "6777e9c532690cd3ce377bc93df2aa5718316f1498f4e2b74f2a10702ac4c76f4e516ede040ece29b3222fd6e5e6a5ad45c9212c4e2d0f7ee216b1e46d44b5cd",
+        "size": 37079,
+        "sha512": "3465a5ea3f09ec32493246312556f63ab422e90c41ab8acc41ee5f1563e19627f5512e990f2db6ddbcf673beb715cb7d76bcb1addd5171ab86401ab4bc23d691",
         "runtimeEligible": true,
         "replaceSha256": [
+          "6617940e38dcc8f6211da778ed58555a0d4019eab438f0682dbc04352bdd3e0a",
           "aa4f37a7aa00fde41c6861d1355e5b668a5fd6dce155b3b9c0de52f4bf7bd067",
           "1b6822c1733b8ddc3dc12760e8319caed014f3148493bf1c826ca6f5153e3f14",
           "6fad6b8e325992330105324c1777ba583137776d1de3b8f52887b84764efc90b"

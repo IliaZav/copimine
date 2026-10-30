@@ -8836,7 +8836,7 @@ function m({ slides: e, startIndex: t = 0, asset: n, onOpen: r }) {
 				children: e.map((e, t) => {
 					let a = t - i;
 					a > u / 2 && (a -= u), a < -u / 2 && (a += u);
-					let o = Math.abs(a), c = o <= 1, l = "translate(-50%, -50%) translateX(" + a * 200 + "px) translateZ(" + -o * 180 + "px) rotateY(" + -a * 11 + "deg) rotateZ(" + a * 1.4 + "deg) scale(" + Math.max(.52, 1 - o * .14) + ")";
+					let o = Math.abs(a), c = o <= 1, l = "translate3d(" + a * 200 + "px, 0, " + -o * 180 + "px) rotateY(" + -a * 11 + "deg) rotateZ(" + a * 1.4 + "deg) scale(" + Math.max(.52, 1 - o * .14) + ")";
 					return /* @__PURE__ */ (0, p.jsxs)("button", {
 						className: "cm72-carousel-slide cm-react-carousel-slide",
 						type: "button",

@@ -77,7 +77,11 @@ export function CoverflowGallery({ slides, startIndex = 0, asset, onOpen }: Cove
             if (relative < -count / 2) relative += count;
             const depth = Math.abs(relative);
             const visible = depth <= 1;
-            const translate = "translate(-50%, -50%) translateX(" + relative * 200 + "px) translateZ(" + (-depth * 180) + "px) rotateY(" + (-relative * 11) + "deg) rotateZ(" + (relative * 1.4) + "deg) scale(" + Math.max(0.52, 1 - depth * 0.14) + ")";
+            // CSS already centres the slide (inset-block + margin-inline:auto), so the
+            // inline transform must not translate by a percentage of its own size:
+            // that shift moved the card up and left, over the hero, whenever the
+            // motion module did not run (reduced motion, motion off, first paint).
+            const translate = "translate3d(" + relative * 200 + "px, 0, " + (-depth * 180) + "px) rotateY(" + (-relative * 11) + "deg) rotateZ(" + (relative * 1.4) + "deg) scale(" + Math.max(0.52, 1 - depth * 0.14) + ")";
             return (
               <button
                 key={slide.id || slide.src || index}

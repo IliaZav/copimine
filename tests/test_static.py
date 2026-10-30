@@ -60,6 +60,20 @@ def test_react_bootstrap_replaces_the_legacy_first_render():
     assert 'copimine:react-ready' in entry
 
 
+def test_gallery_slide_is_centred_by_css_not_by_its_own_size():
+    """Слайд центрируется CSS (inset-block + margin-inline:auto).
+
+    Инлайновый translate(-50%,-50%) сдвигал кадр на половину его размера вверх
+    и влево, и карточка налезала на hero всякий раз, когда анимация не
+    запускалась (reduced motion, выключенное движение, первый кадр).
+    """
+    gallery=(ROOT/'src/coverflow-gallery.tsx').read_text(encoding='utf-8')
+    bundle=(ROOT/'assets/js/copimine-react.v1.js').read_text(encoding='utf-8')
+    assert 'translate(-50%, -50%)' not in gallery
+    assert 'translate(-50%' not in bundle
+    assert 'translate3d(' in gallery
+
+
 def test_production_react_bundle_does_not_require_a_node_process_global():
     bundle=(ROOT/'assets/js/copimine-react.v1.js').read_text(encoding='utf-8')
     assert 'process.env.NODE_ENV' not in bundle

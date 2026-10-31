@@ -9,6 +9,23 @@ public final class TabPanelLayout {
     public static final int LARGE_LOGO_LINE_HEIGHT = 52;
     private static final int SMALL_LOGO_BASELINE_OFFSET = LOGO_LINE_HEIGHT - 14;
     private static final int LARGE_LOGO_BASELINE_OFFSET = LARGE_LOGO_LINE_HEIGHT - 36;
+    /** Small gap under the top screen edge; the panel hangs from the top instead of being centred. */
+    public static final int PANEL_MARGIN = 6;
+    /** Neutral near-black plate; the previous olive tint read as green against the light End sky. */
+    public static final int PANEL_BACKGROUND_COLOR = 0xE6121416;
+    /** Neutral slate border, low saturation so it never competes with team colours. */
+    public static final int PANEL_BORDER_COLOR = 0xFF3A4048;
+    private static final int PANEL_HORIZONTAL_PADDING = 24;
+    /** Gap between the name and the ping label inside a row. */
+    public static final int NAME_GAP = 6;
+    /** Gap between the ping label and its bars. */
+    public static final int BARS_GAP = 3;
+    public static final int ROW_HEIGHT = 12;
+    public static final int BAR_AREA_WIDTH = 14;
+    /** Padding above and below the player rows inside the plate. */
+    public static final int ROW_BLOCK_PADDING = 8;
+    /** Gap between the last player row and the footer block. */
+    public static final int ROW_FOOTER_GAP = 4;
 
     private TabPanelLayout() {
     }
@@ -44,7 +61,10 @@ public final class TabPanelLayout {
         return LINE_HEIGHT;
     }
 
-    /** Keeps high-ascent resource-pack glyphs inside their reserved line boxes. */
+    /**
+     * Resource-pack glyphs use an ascent larger than vanilla's 8px text baseline.
+     * Offset their draw origin so the full bitmap sits inside its reserved line box.
+     */
     public static int textYOffset(String plainLine) {
         if (plainLine.indexOf('\uE300') >= 0) {
             return LARGE_LOGO_BASELINE_OFFSET;
@@ -55,10 +75,51 @@ public final class TabPanelLayout {
         return 0;
     }
 
+    /**
+     * Top edge of the panel. Centring made the plate drift across the screen as the roster grew,
+     * so it always hangs from the same small margin under the top edge.
+     */
+    public static int panelTop() {
+        return PANEL_MARGIN;
+    }
+
+    /** Width a single player row needs, name included. */
+    public static int playerRowWidth(int nameWidth, int pingWidth) {
+        return nameWidth + NAME_GAP + pingWidth + BARS_GAP + BAR_AREA_WIDTH;
+    }
+
     /** Left edge for the centered name, ping label, and bars row. */
     public static int playerRowLeft(int panelLeft, int panelWidth, int nameWidth, int pingWidth) {
-        int rowWidth = nameWidth + 6 + pingWidth + 3 + 14;
-        return panelLeft + (panelWidth - rowWidth) / 2;
+        return panelLeft + (panelWidth - playerRowWidth(nameWidth, pingWidth)) / 2;
+    }
+
+    /**
+     * Width budget for a player name inside a plate that is already capped at the screen width.
+     * Long rank prefixes and names are clamped instead of drawing outside the border.
+     */
+    public static int playerNameWidth(int panelWidth, int pingWidth) {
+        int available = panelWidth - PANEL_HORIZONTAL_PADDING
+                - NAME_GAP - pingWidth - BARS_GAP - BAR_AREA_WIDTH;
+        return Math.max(1, available);
+    }
+
+    /**
+     * Budget left for the visible glyphs once the truncation marker is reserved.
+     * The marker is part of the row, so it must come out of the name budget rather than
+     * overdrawing the ping label; the floor keeps a single glyph readable on tiny panels.
+     */
+    public static int clippedNameBudget(int nameBudget, int markerWidth) {
+        return Math.max(1, nameBudget - Math.max(0, markerWidth));
+    }
+
+    /**
+     * Player rows that still fit between the header and footer inside the screen.
+     * shortcut: rows beyond this are not drawn, add scrolling if a server lists more than fits
+     */
+    public static int visiblePlayerRows(int screenHeight, int headHeight, int footHeight, int playerCount) {
+        int reserved = PANEL_MARGIN + headHeight + ROW_BLOCK_PADDING + ROW_FOOTER_GAP + footHeight;
+        int fitting = Math.max(0, screenHeight - reserved) / ROW_HEIGHT;
+        return Math.min(Math.max(0, playerCount), fitting);
     }
 
     /** Preserve blank lines as deliberate vertical spacing in the server-provided layout. */

@@ -112,3 +112,22 @@ def test_borders_are_drawn_with_a_width_and_height_not_with_edges():
     source_legacy = MIXIN_LEGACY.read_text(encoding="utf-8")
     assert "context.drawBorder(left, top, panelWidth, bodyHeight, BORDER_COLOR)" in source_legacy
     assert "context.drawBorder(left, top, right, top + bodyHeight" not in source_legacy
+
+
+def test_player_names_are_clipped_as_drawn_not_only_measured():
+    # The reported defect: the name width was capped but the full styled name was still drawn,
+    # so long rank prefixes overdraw the ping label. Both trees must draw the clipped sequence
+    # produced by their own truncation helper.
+    for tree, mixin, draw_call in (
+        (CLIENT_26, MIXIN_26, "copimine$clipName(font, name, nameBudget)"),
+        (CLIENT_LEGACY, MIXIN_LEGACY, "copimine$clipName(font, name, nameBudget)"),
+    ):
+        source = mixin.read_text(encoding="utf-8")
+        layout = (tree / "src/main/java/me/copimine/client/TabPanelLayout.java").read_text(encoding="utf-8")
+        assert draw_call in source, tree
+        assert "Math.min(font.width(name), nameBudget)" not in source, tree
+        assert "Math.min(font.getWidth(name), nameBudget)" not in source, tree
+        assert "TabPanelLayout.clippedNameBudget(" in source, tree
+        assert "public static int clippedNameBudget(int nameBudget, int markerWidth)" in layout, tree
+        # The drawn argument is the clipped sequence, never the untruncated display text.
+        assert "context.text(font, drawnName," in source or "context.drawTextWithShadow(font, drawnName," in source, tree

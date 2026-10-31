@@ -52,4 +52,73 @@ class TabPanelLayoutTest {
     void playerDetailsStayCenteredAsOneGroup() {
         assertEquals(212, TabPanelLayout.playerRowLeft(45, 544, 106, 80));
     }
+
+    @Test
+    void panelHangsFromTheTopInsteadOfTheVerticalCentre() {
+        // A centred plate drifts down as the roster grows; the reference layout does not move.
+        assertEquals(6, TabPanelLayout.panelTop());
+        assertTrue(TabPanelLayout.panelTop() < 20);
+    }
+
+    @Test
+    void panelColoursAreNeutralDarkNotGreen() {
+        int background = TabPanelLayout.PANEL_BACKGROUND_COLOR;
+        int border = TabPanelLayout.PANEL_BORDER_COLOR;
+
+        // Alpha must keep the plate readable, and green must not dominate either channel.
+        assertEquals(0xE6, (background >>> 24) & 0xFF);
+        assertTrue(green(background) <= red(background) + 4);
+        assertTrue(green(background) <= blue(background) + 4);
+        assertTrue(green(border) <= red(border) + 8);
+        assertTrue(green(border) <= blue(border) + 8);
+        assertTrue(luminance(background) < 0x40);
+    }
+
+    @Test
+    void longNamesAreClampedInsideTheBorder() {
+        // Screen-capped plate: the row must stay inside it instead of pushing the ping off-panel.
+        int panelWidth = 320;
+        int pingWidth = 60;
+
+        int budget = TabPanelLayout.playerNameWidth(panelWidth, pingWidth);
+
+        assertTrue(budget > 0);
+        assertTrue(budget + TabPanelLayout.NAME_GAP + pingWidth + TabPanelLayout.BARS_GAP
+                + TabPanelLayout.BAR_AREA_WIDTH < panelWidth);
+        assertEquals(1, TabPanelLayout.playerNameWidth(40, 60));
+    }
+
+    @Test
+    void truncationMarkerComesOutOfTheNameBudget() {
+        assertEquals(40, TabPanelLayout.clippedNameBudget(46, 6));
+        assertEquals(1, TabPanelLayout.clippedNameBudget(4, 6));
+        assertEquals(46, TabPanelLayout.clippedNameBudget(46, 0));
+        assertEquals(46, TabPanelLayout.clippedNameBudget(46, -3));
+    }
+
+    @Test
+    void rosterIsClippedToTheRowsThatFitOnScreen() {
+        // 6px margin, a 30px logo line and a 9px footer line fit 20 rows at 1080p GUI scale 3
+        // but must clip at a small window instead of drawing past the bottom edge.
+        assertEquals(20, TabPanelLayout.visiblePlayerRows(365, 39, 13, 20));
+        assertEquals(5, TabPanelLayout.visiblePlayerRows(365, 39, 13, 5));
+        assertTrue(TabPanelLayout.visiblePlayerRows(90, 39, 13, 20) < 20);
+        assertEquals(0, TabPanelLayout.visiblePlayerRows(90, 39, 13, 0));
+    }
+
+    private static int red(int color) {
+        return (color >>> 16) & 0xFF;
+    }
+
+    private static int green(int color) {
+        return (color >>> 8) & 0xFF;
+    }
+
+    private static int blue(int color) {
+        return color & 0xFF;
+    }
+
+    private static int luminance(int color) {
+        return (red(color) + green(color) + blue(color)) / 3;
+    }
 }

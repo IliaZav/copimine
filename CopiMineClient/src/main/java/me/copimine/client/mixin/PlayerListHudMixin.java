@@ -9,6 +9,8 @@ import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.scoreboard.Scoreboard;
 import net.minecraft.scoreboard.ScoreboardObjective;
 import net.minecraft.text.OrderedText;
+import net.minecraft.text.StringVisitable;
+import net.minecraft.text.Style;
 import net.minecraft.text.Text;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -19,6 +21,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Replaces the vanilla player list with the CopiMine panel.
@@ -29,16 +32,14 @@ import java.util.List;
  */
 @Mixin(PlayerListHud.class)
 public abstract class PlayerListHudMixin {
-    private static final int BACKGROUND_COLOR = 0xE62A3324;
-    private static final int BORDER_COLOR = 0xFF7C8F64;
+    private static final int BACKGROUND_COLOR = TabPanelLayout.PANEL_BACKGROUND_COLOR;
+    private static final int BORDER_COLOR = TabPanelLayout.PANEL_BORDER_COLOR;
     private static final int TEXT_COLOR = 0xFFFFFFFF;
     private static final int LABEL_COLOR = 0xFFC2C9CF;
     private static final int BAR_LIT_COLOR = 0xFF3ACB4B;
     private static final int BAR_UNLIT_COLOR = 0xFF3A3F35;
-    private static final int ROW_HEIGHT = 12;
-    private static final int PANEL_MARGIN = 6;
-    private static final int BAR_AREA_WIDTH = 14;
     private static final int[] BAR_HEIGHTS = {2, 3, 5, 7, 9};
+    private static final Text NAME_ELLIPSIS = Text.literal("\u2026");
 
     @Shadow
     private Text header;
@@ -60,9 +61,18 @@ public abstract class PlayerListHudMixin {
     @Unique
     private void copimine$render(DrawContext context, int width) {
         TextRenderer font = MinecraftClient.getInstance().textRenderer;
-        List<OrderedText> headLines = copimine$lines(header, font);
-        List<OrderedText> footLines = copimine$lines(footer, font);
+        int maxContentWidth = Math.max(1, width - TabPanelLayout.PANEL_MARGIN * 2 - 24);
+        // Splitting at the panel budget keeps long server lines inside the border and preserves
+        // their colours, which a string truncation would drop.
+        List<OrderedText> headLines = copimine$lines(header, font, maxContentWidth);
+        List<OrderedText> footLines = copimine$lines(footer, font, maxContentWidth);
         List<PlayerListEntry> players = ((PlayerListHudAccessor) this).copimine$collectPlayerEntries();
+
+        int headHeight = copimine$blockHeight(headLines);
+        int footHeight = copimine$blockHeight(footLines);
+        int screenHeight = MinecraftClient.getInstance().getWindow().getScaledHeight();
+        int rows = TabPanelLayout.visiblePlayerRows(
+                screenHeight, headHeight, footHeight, players.size());
 
         int contentWidth = 0;
         for (OrderedText line : headLines) {
@@ -71,25 +81,21 @@ public abstract class PlayerListHudMixin {
         for (OrderedText line : footLines) {
             contentWidth = Math.max(contentWidth, font.getWidth(line));
         }
-        for (PlayerListEntry player : players) {
-            int rowWidth = font.getWidth(copimine$nameForDisplay(player))
-                    + 8 + font.getWidth("Ping: " + player.getLatency()) + 18;
-            contentWidth = Math.max(contentWidth, rowWidth);
+        for (int index = 0; index < rows; index++) {
+            PlayerListEntry player = players.get(index);
+            int rowWidth = TabPanelLayout.playerRowWidth(
+                    font.getWidth(copimine$nameForDisplay(player)), font.getWidth(copimine$pingLabel(player)));
+            contentWidth = Math.max(contentWidth, Math.min(rowWidth, maxContentWidth));
         }
 
         int panelWidth = Math.min(contentWidth + 24, width - 4);
         int left = (width - panelWidth) / 2;
         int right = left + panelWidth;
-        int bodyHeight = 0;
-        for (OrderedText line : headLines) {
-            bodyHeight += TabPanelLayout.lineHeight(copimine$plainText(line));
-        }
-        // shortcut: >20 rows extend past the screen, add scrolling if servers ever exceed 20 listed players
-        bodyHeight += players.size() * ROW_HEIGHT + 8;
-        for (OrderedText line : footLines) {
-            bodyHeight += TabPanelLayout.lineHeight(copimine$plainText(line));
-        }
-        int top = Math.max(2, (MinecraftClient.getInstance().getWindow().getScaledHeight() - bodyHeight) / 2);
+        int bodyHeight = headHeight
+                + rows * TabPanelLayout.ROW_HEIGHT + TabPanelLayout.ROW_BLOCK_PADDING
+                + (footLines.isEmpty() ? 0 : TabPanelLayout.ROW_FOOTER_GAP)
+                + footHeight;
+        int top = TabPanelLayout.panelTop();
 
         context.fill(left, top, right, top + bodyHeight, BACKGROUND_COLOR);
         context.drawBorder(left, top, panelWidth, bodyHeight, BORDER_COLOR);
@@ -103,19 +109,26 @@ public abstract class PlayerListHudMixin {
                     y - lineHeight + 1 + TabPanelLayout.textYOffset(plainLine), TEXT_COLOR);
         }
 
-        for (PlayerListEntry player : players) {
+        for (int index = 0; index < rows; index++) {
+            PlayerListEntry player = players.get(index);
+            String ping = copimine$pingLabel(player);
+            int pingWidth = font.getWidth(ping);
+            int nameBudget = TabPanelLayout.playerNameWidth(panelWidth, pingWidth);
             Text name = copimine$nameForDisplay(player);
-            String ping = "Ping: " + player.getLatency();
-            int nameX = TabPanelLayout.playerRowLeft(left, panelWidth, font.getWidth(name), font.getWidth(ping));
-            context.drawTextWithShadow(font, name, nameX, y + 2, TEXT_COLOR);
-            int pingX = nameX + font.getWidth(name) + 6;
+            // Clip the sequence that is actually drawn: capping only the measured width still
+            // lets the full styled name overdraw the ping label.
+            OrderedText drawnName = copimine$clipName(font, name, nameBudget);
+            int nameWidth = font.getWidth(drawnName);
+            int nameX = TabPanelLayout.playerRowLeft(left, panelWidth, nameWidth, pingWidth);
+            context.drawTextWithShadow(font, drawnName, nameX, y + 2, TEXT_COLOR);
+            int pingX = nameX + nameWidth + TabPanelLayout.NAME_GAP;
             context.drawTextWithShadow(font, ping, pingX, y + 2, LABEL_COLOR);
-            copimine$drawPingBars(context, pingX + font.getWidth(ping) + 3, y + 11,
+            copimine$drawPingBars(context, pingX + pingWidth + TabPanelLayout.BARS_GAP, y + 11,
                     TabPanelLayout.pingBars(player.getLatency()));
-            y += ROW_HEIGHT;
+            y += TabPanelLayout.ROW_HEIGHT;
         }
 
-        y += 4;
+        y += TabPanelLayout.ROW_BLOCK_PADDING / 2 + TabPanelLayout.ROW_FOOTER_GAP;
         for (OrderedText line : footLines) {
             String plainLine = copimine$plainText(line);
             int lineHeight = TabPanelLayout.lineHeight(plainLine);
@@ -123,6 +136,39 @@ public abstract class PlayerListHudMixin {
             context.drawCenteredTextWithShadow(font, line, (left + right) / 2,
                     y - lineHeight + 1 + TabPanelLayout.textYOffset(plainLine), TEXT_COLOR);
         }
+    }
+
+    @Unique
+    private static OrderedText copimine$clipName(TextRenderer font, Text name, int budget) {
+        if (font.getWidth(name) <= budget) {
+            return name.asOrderedText();
+        }
+        int markerWidth = font.getWidth(NAME_ELLIPSIS);
+        int glyphBudget = TabPanelLayout.clippedNameBudget(budget, markerWidth);
+        StringVisitable head = font.trimToWidth(name, glyphBudget);
+        List<OrderedText> parts = new ArrayList<>();
+        head.visit((style, text) -> {
+            if (!text.isEmpty()) {
+                parts.add(OrderedText.styledForwardsVisitedString(text, style));
+            }
+            return Optional.empty();
+        }, Style.EMPTY);
+        parts.add(NAME_ELLIPSIS.asOrderedText());
+        return OrderedText.concat(parts);
+    }
+
+    @Unique
+    private static int copimine$blockHeight(List<OrderedText> lines) {
+        int height = 0;
+        for (OrderedText line : lines) {
+            height += TabPanelLayout.lineHeight(copimine$plainText(line));
+        }
+        return height;
+    }
+
+    @Unique
+    private static String copimine$pingLabel(PlayerListEntry player) {
+        return "Ping: " + player.getLatency();
     }
 
     @Unique
@@ -142,12 +188,12 @@ public abstract class PlayerListHudMixin {
     }
 
     @Unique
-    private static List<OrderedText> copimine$lines(Text text, TextRenderer font) {
+    private static List<OrderedText> copimine$lines(Text text, TextRenderer font, int maxWidth) {
         if (text == null) {
             return List.of();
         }
         List<OrderedText> drawn = new ArrayList<>();
-        for (OrderedText line : font.wrapLines(text, 1000)) {
+        for (OrderedText line : font.wrapLines(text, maxWidth)) {
             if (TabPanelLayout.isDrawnLine(copimine$plainText(line))) {
                 drawn.add(line);
             }

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 import base64
@@ -704,6 +704,27 @@ class AdminAuthMePasswordResetIn(BaseModel):
 class AdminWhitelistApproveIn(BaseModel):
     request_id: str = Field(min_length=8, max_length=120)
     note: str = Field(default="", max_length=240)
+
+
+class AdminEconomyCreditIn(BaseModel):
+    """Одно начисление или списание, которое владелец проводит из админки.
+
+    visible_to_player=False оставляет операцию только в админском журнале:
+    баланс у игрока меняется, но записи в его личном кабинете не появляется.
+    Флаг хранится в details записи леджера, поэтому его видно аудитору, а
+    журнал экономики не скрывает никаких операций.
+    """
+
+    minecraft_uuid: str = Field(default="", max_length=64)
+    minecraft_name: str = Field(min_length=3, max_length=16)
+    currency: str = Field(default="AR", pattern="^(AR|DONATION)$")
+    # Начисление и списание — разные суммы, а не знак в одном поле: минус
+    # легче потерять при вводе, а списание без явной суммы опаснее начисления.
+    credit: int = Field(default=0, ge=0, le=1000000000000)
+    debit: int = Field(default=0, ge=0, le=1000000000000)
+    reason: str = Field(min_length=2, max_length=160)
+    visible_to_player: bool = True
+    idempotency_key: str = Field(min_length=8, max_length=120)
 
 
 class AdminArBalanceIn(BaseModel):
@@ -17417,6 +17438,126 @@ def admin_add_ar_balance_sync(player_uuid: str, player_name: str, amount: int, r
         conn.commit()
     audit_event(actor, "ar.balance.add", target=player_name, details={"uuid": player_uuid, "amount": safe_amount, "reason": reason})
     return {"ok": True, "txId": tx_id, "balanceBefore": before, "balanceAfter": after}
+
+
+
+def _require_owner_actor(actor: str) -> None:
+    """Начисление и списание денег проводит только владелец проекта.
+
+    Роль берётся из базы сайта, а не из заголовка запроса: иначе достаточно
+    подставить имя в заголовок, чтобы печатать себе деньги.
+    """
+    with auth_conn() as conn:
+        row = conn.execute(
+            "SELECT role,enabled FROM cm_site_users WHERE name_norm=lower(%s) LIMIT 1",
+            (str(actor or "").strip(),),
+        ).fetchone()
+    role = str(row_get(row, "role", "") or "").lower()
+    if role != "owner" or not int(row_get(row, "enabled", 0) or 0):
+        raise HTTPException(status_code=403, detail="Начисление денег доступно только владельцу проекта")
+
+
+def admin_economy_credit_sync(actor: str, data: "AdminEconomyCreditIn") -> dict[str, Any]:
+    """Начислить или списать AR либо донат-валюту одному игроку.
+
+    Одна операция — одна запись в леджере. Видимость для игрока хранится в
+    details записи (visibleToPlayer): админский журнал показывает все операции,
+    личный кабинет — только те, которые игроку разрешено видеть.
+    """
+    _require_owner_actor(actor)
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
+    credit, debit = int(data.credit or 0), int(data.debit or 0)
+    if (credit > 0) == (debit > 0):
+        raise HTTPException(status_code=400, detail="Укажи ровно одно: сумму начисления или сумму списания")
+    currency = str(data.currency or "AR").upper()
+    if currency not in {"AR", "DONATION"}:
+        raise HTTPException(status_code=400, detail="Неизвестная валюта")
+    player_uuid, player_name = normalize_donation_player_target(data.minecraft_uuid, data.minecraft_name)
+    safe_key = str(data.idempotency_key or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9-]{8,120}", safe_key):
+        raise HTTPException(status_code=400, detail="Некорректный ключ операции")
+    reason = sanitize_public_plain_text(data.reason, 160)
+    visible = bool(data.visible_to_player)
+    note = json.dumps({"reason": reason, "source": "owner-admin", "visibleToPlayer": visible}, ensure_ascii=False)
+    now = donation_now_ms()
+    delta = credit - debit
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        advisory_lock(conn, f"economy-credit:{safe_key}")
+        if currency == "AR":
+            bank = ensure_player_bank_account(conn, player_uuid, player_name)
+            ledger_key = f"admin-ar-credit-{safe_key}"
+            existing = conn.execute(
+                "SELECT tx_id,balance_after FROM cmv4_bank_ledger WHERE idempotency_key=%s LIMIT 1",
+                (ledger_key,),
+            ).fetchone()
+            if existing:
+                return {"ok": True, "currency": currency, "id": str(existing["tx_id"]),
+                        "balanceAfter": int(existing["balance_after"] or 0), "idempotent": True}
+            locked = conn.execute(
+                "SELECT * FROM cmv4_bank_accounts WHERE account_id=%s FOR UPDATE", (bank["account_id"],)
+            ).fetchone()
+            before = int(row_get(locked, "balance", 0) or 0)
+            after = before + delta
+            if after < 0:
+                raise HTTPException(status_code=409, detail="На счету игрока недостаточно средств для списания")
+            reference = f"admin-credit-{secrets.token_hex(12)}"
+            conn.execute(
+                "UPDATE cmv4_bank_accounts SET balance=%s,version=version+1,updated_at=%s,owner_name=%s WHERE account_id=%s",
+                (after, now, player_name, bank["account_id"]),
+            )
+            # amount хранит величину без знака, направление операции — в tx_type.
+            conn.execute(
+                "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details)"
+                " VALUES(%s,%s,%s,%s,%s,%s,%s,%s,'COMMITTED',%s,%s,%s)",
+                # Порядок строго по списку колонок: tx_id, account_id,
+                # counterparty_account_id, player_uuid, tx_type, amount,
+                # balance_after, idempotency_key, created_at, actor, details.
+                # tx_type обязателен: без него psycopg получит 10 значений
+                # на 11 плейсхолдеров и упадёт на первой же операции.
+                (reference, bank["account_id"], player_uuid, player_uuid,
+                 "ADMIN_AR_CREDIT" if credit else "ADMIN_AR_DEBIT",
+                 abs(delta), after, ledger_key, now, actor, note),
+            )
+        else:
+            ensure_donation_account_row(conn, player_uuid, player_name)
+            ledger_key = f"don-credit-{safe_key}"
+            existing = conn.execute(
+                "SELECT id,balance_after FROM donation_balance_ledger WHERE idempotency_key=%s LIMIT 1",
+                (ledger_key,),
+            ).fetchone()
+            if existing:
+                return {"ok": True, "currency": currency, "id": str(existing["id"]),
+                        "balanceAfter": int(existing["balance_after"] or 0), "idempotent": True}
+            locked = conn.execute(
+                "SELECT * FROM donation_accounts WHERE player_uuid=%s FOR UPDATE", (player_uuid,)
+            ).fetchone()
+            before = int(row_get(locked, "balance", 0) or 0)
+            after = before + delta
+            if after < 0:
+                raise HTTPException(status_code=409, detail="На донат-счёте игрока недостаточно средств для списания")
+            reference = f"web-don-{secrets.token_hex(12)}"
+            conn.execute(
+                "UPDATE donation_accounts SET balance=%s,updated_at=%s,player_name=%s WHERE player_uuid=%s",
+                (after, now, player_name, player_uuid),
+            )
+            conn.execute(
+                "INSERT INTO donation_balance_ledger(id,player_uuid,delta,balance_after,reason,actor,source,idempotency_key,created_at)"
+                " VALUES(%s,%s,%s,%s,%s,%s,'owner-admin',%s,%s)",
+                (reference, player_uuid, delta, after, reason, actor, ledger_key, now),
+            )
+        conn.commit()
+    audit_event(actor, "economy.credit", target=player_name, details={
+        "uuid": player_uuid, "currency": currency, "delta": delta,
+        "before": before, "after": after, "reason": reason, "visibleToPlayer": visible,
+    })
+    append_panel_event("economy", "balance_credit", actor=actor, target=player_name, metadata={
+        "currency": currency, "delta": delta, "after": after, "visibleToPlayer": visible,
+    }, tags=["economy", "admin"])
+    return {"ok": True, "currency": currency, "id": reference, "playerUuid": player_uuid,
+            "playerName": player_name, "balanceBefore": before, "balanceAfter": after,
+            "visibleToPlayer": visible, "idempotent": False}
 
 
 def admin_topup_balances_sync(

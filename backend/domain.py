@@ -88,6 +88,24 @@ def notification_feed(database, user_id):
     }
 
 
+def ledger_visible_to_player(raw_details):
+    """Показывать ли запись леджера в кабинете игрока.
+
+    Поле может быть строкой JSON, словарём или пустым. Отсутствие отметки
+    означает "видно": старые записи и обычные переводы не должны исчезнуть
+    из кабинета из-за новой проверки.
+    """
+    details = raw_details
+    if isinstance(details, str):
+        try:
+            details = json.loads(details)
+        except (TypeError, ValueError):
+            return True
+    if not isinstance(details, dict):
+        return True
+    return details.get("visibleToPlayer") is not False
+
+
 def transfer_history(database, user, value):
     with database.transaction() as db:
         linked = db.execute(
@@ -99,6 +117,11 @@ def transfer_history(database, user, value):
     for row in value.get("ledger", []):
         kind = str(row.get("tx_type") or "").upper()
         if kind not in {"TRANSFER_IN", "TRANSFER_OUT"} or (row.get("status") and row["status"] != "COMMITTED"):
+            continue
+        # Операция владельца с visibleToPlayer=False меняет баланс, но в
+        # кабинете игрока не появляется. Решение принимает только сервер:
+        # отметка лежит в details записи леджера, и клиент её не видит.
+        if not ledger_visible_to_player(row.get("details")):
             continue
         details = row.get("details") or "{}"
         try:
@@ -808,6 +831,33 @@ async def update_catalog_item(request: Request, identifier: str):
         db.execute("INSERT INTO cm_site_settings(key,value,updated_s,actor) VALUES(%s,%s,%s,%s) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_s=excluded.updated_s,actor=excluded.actor", ("catalog_overrides", json.dumps(overlays, ensure_ascii=False), now, user["name"]))
         db.execute("INSERT INTO cm_site_audit(id,actor_id,actor_name,action,target,reason,details,created_s) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)", (uuid.uuid4().hex, user["id"], user["name"], "catalog.updated", identifier, reason, json.dumps({"price": price, "limit": limit, "currency": currency}, ensure_ascii=False), now))
     return {"ok": True, "id": identifier}
+
+
+@router.post("/api/v6/admin/economy/credit")
+async def admin_economy_credit(request: Request):
+    """Начислить или списать деньги игроку от имени владельца проекта.
+
+    Права проверяются дважды: здесь — на доступ к экономике, а в самом слое
+    денег — на то, что действующий администратор действительно владелец.
+    """
+    actor = current_user(request, "economy.manage", fresh=True)
+    data = await request.json()
+    legacy = request.app.state.game.legacy()
+    payload = legacy.AdminEconomyCreditIn(
+        minecraft_uuid=str(data.get("minecraft_uuid") or ""),
+        minecraft_name=str(data.get("minecraft_name") or ""),
+        currency=str(data.get("currency") or "AR").upper(),
+        credit=int(data.get("credit") or 0),
+        debit=int(data.get("debit") or 0),
+        reason=safe_reason(data.get("reason")),
+        visible_to_player=bool(data.get("visible_to_player")),
+        idempotency_key=str(data.get("idempotency_key") or ""),
+    )
+    try:
+        result = await run_in_threadpool(legacy.admin_economy_credit_sync, actor["name"], payload)
+    except HTTPException as error:
+        fail(error.status_code, "economy_credit_rejected", str(error.detail))
+    return result
 
 
 @router.get("/api/v6/admin/actions")

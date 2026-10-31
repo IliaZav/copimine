@@ -423,6 +423,41 @@
         "amount": {
           "type": "integer",
           "required": true
+        },
+        "visibleToPlayer": {
+          "type": "boolean",
+          "required": false
+        }
+      },
+      "sourceKind": "site-extension",
+      "sourceActions": [],
+      "requiresGameAdapter": false
+    },
+    {
+      "id": "money.credit",
+      "name": "Начислить или списать деньги",
+      "scope": "player",
+      "permission": "economy.manage",
+      "params": {
+        "currency": {
+          "type": "string",
+          "required": true
+        },
+        "credit": {
+          "type": "integer",
+          "required": false
+        },
+        "debit": {
+          "type": "integer",
+          "required": false
+        },
+        "reason": {
+          "type": "string",
+          "required": true
+        },
+        "visibleToPlayer": {
+          "type": "boolean",
+          "required": false
         }
       },
       "sourceKind": "site-extension",

@@ -101,9 +101,11 @@ def test_sandbox_wave7_initializes_trials_before_starting_them():
     sandbox = _method(source, "private boolean initializeWaveGameplay(")
     compact = " ".join(sandbox.split())
 
+    # The trials are one sequential route over a shared open arena: the
+    # assignment is no longer randomised per chamber.
     initialize = (
         "realitySplitTrialController.beginNamed(UUID.fromString(eventId), generation, "
-        "realitySplitChamberController.assignment(), java.util.concurrent.ThreadLocalRandom.current());"
+        "realitySplitChamberController.assignment(), RealitySplitTrialController.sequentialRoute());"
     )
     assert initialize in compact
     assert compact.index(initialize) < compact.index("startRealitySplitTrials(world, core)")

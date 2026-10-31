@@ -163,6 +163,9 @@ public class EchoCarrierChecks {
         Pillager originalCarrier=carrier;
         carrier=proxy(Pillager.class,(p,m,a)->{if(m.getName().equals("addPotionEffect")){effects++;return true;}return m.invoke(originalCarrier,a);});
         ItemStack[] storage=new ItemStack[36];storage[0]=new ItemStack(Material.BOW);storage[1]=new ItemStack(Material.ARROW,2);
+        // GEAR-005: the replica no longer receives two hidden bonus apples, so a
+        // scenario that eats must carry real apples in the owner's inventory.
+        if(args[0].contains("eat")||args[0].contains("food")||args[0].equals("copy-cancel")||args[0].equals("copy-sequence-exhausted-tick"))storage[2]=new ItemStack(Material.GOLDEN_APPLE,3);
         boolean mainShield=args[0].equals("copy-main-shield")||args[0].equals("copy-native-main-shield")||args[0].equals("copy-shield-main-hit");
         if(mainShield)storage[0]=new ItemStack(Material.SHIELD);
         ItemStack originalBoots=new ItemStack(Material.IRON_BOOTS);originalBoots.meta.damage=99;
@@ -222,7 +225,7 @@ public class EchoCarrierChecks {
             var replica=(me.copimine.endevent.runtime.wave7.EchoReplicaInventory)replicaField.get(probe);
             sequenceField.setLong(probeState,Long.MAX_VALUE);
             if(probe.tick(owner,EVENT,7,137,true))throw new AssertionError("exhausted stream kept ticking");
-            if(effects!=0||replica.state().remaining(41)!=2)throw new AssertionError("exhausted stream completed a local food action");
+            if(effects!=0||replica.state().remaining(2)!=3)throw new AssertionError("exhausted stream completed a local food action");
             if(!removed||packets.size()!=2)throw new AssertionError("exhausted tick published a wrapped frame instead of retiring locally");
         }else if(args[0].equals("walk")){
             probe.action(EchoPresentationProbeState.Action.WALK,105);
@@ -244,7 +247,13 @@ public class EchoCarrierChecks {
             probe.tick(owner,EVENT,7,137,true);probe.tick(owner,EVENT,7,140,true);
             if(effects!=2)throw new AssertionError("completion must apply two native golden apple effects exactly once; effects="+effects);
             probe.action(EchoPresentationProbeState.Action.EAT,145);probe.tick(owner,EVENT,7,177,true);
-            if(effects!=4||probe.action(EchoPresentationProbeState.Action.EAT,180))throw new AssertionError("finite two extra apples refilled");
+            if(effects!=4)throw new AssertionError("second completion must apply exactly once more; effects="+effects);
+            // The owner carried three apples, so a third use is legitimate. The
+            // supply is finite: once exhausted, a further use must be refused.
+            if(!probe.action(EchoPresentationProbeState.Action.EAT,180))throw new AssertionError("third real apple use");
+            probe.tick(owner,EVENT,7,212,true);
+            if(effects!=6)throw new AssertionError("third completion must apply exactly once more; effects="+effects);
+            if(probe.action(EchoPresentationProbeState.Action.EAT,220))throw new AssertionError("finite real apple supply refilled");
             if(storage[0].getType()!=Material.BOW||storage[1].getAmount()!=2)throw new AssertionError("real inventory changed");
         }else if(args[0].equals("copy-eat-other-wear")||args[0].equals("copy-eat-supply-changed")){
             probe.action(EchoPresentationProbeState.Action.EAT,105);
@@ -253,11 +262,11 @@ public class EchoCarrierChecks {
             if(args[0].equals("copy-eat-other-wear")){
                 if(!copied.state().damage(40,5,copied.state().revision()))throw new AssertionError("wear fixture not accepted");
                 probe.tick(owner,EVENT,7,137,true);probe.tick(owner,EVENT,7,140,true);
-                if(effects!=2||copied.state().remaining(41)!=1)throw new AssertionError("unrelated gear wear cancelled completed food; effects="+effects);
+                if(effects!=2||copied.state().remaining(2)!=2)throw new AssertionError("unrelated gear wear cancelled completed food; effects="+effects);
             }else{
-                if(!copied.state().consume(41,1,copied.state().revision()))throw new AssertionError("supply fixture not accepted");
+                if(!copied.state().consume(2,1,copied.state().revision()))throw new AssertionError("supply fixture not accepted");
                 probe.tick(owner,EVENT,7,137,true);
-                if(effects!=0||copied.state().remaining(41)!=1)throw new AssertionError("changed food use consumed a different supply");
+                if(effects!=0||copied.state().remaining(2)!=2)throw new AssertionError("changed food use consumed a different supply");
             }
         }else if(args[0].equals("copy-cancel")){
             probe.action(EchoPresentationProbeState.Action.EAT,105);probe.action(EchoPresentationProbeState.Action.IDLE,115);
@@ -300,7 +309,8 @@ public class EchoCarrierChecks {
                 if(armored(probe,new Object(),owner,EVENT,7,110,true,12)||!removed)throw new AssertionError("overflow silently kept actor with free armor wear");
             }else if(args[0].equals("copy-armor-food")){
                 probe.tick(owner,EVENT,7,137,true);
-                if(effects!=2||armorItems.get("Boots").meta.damage!=3)throw new AssertionError("native armor wear cancelled food or repaired armor");
+                // GEAR-005: the replica preserves the owner's wear (99), so one accepted hit adds 3.
+                if(effects!=2||armorItems.get("Boots").meta.damage!=102)throw new AssertionError("native armor wear cancelled food or repaired armor");
             }else{
                 if(armored(probe,receipt,owner,EVENT,7,110,true,12))throw new AssertionError("duplicate armor receipt accepted");
                 if(armored(probe,new Object(),owner,EVENT,8,110,true,12)
@@ -309,7 +319,8 @@ public class EchoCarrierChecks {
                 online=false;if(armored(probe,new Object(),owner,EVENT,7,111,true,12))throw new AssertionError("quit owner armor admitted");online=true;
                 ownerAlive=false;if(armored(probe,new Object(),owner,EVENT,7,111,true,12))throw new AssertionError("dead owner armor admitted");ownerAlive=true;
                 probe.action(EchoPresentationProbeState.Action.CROUCH,112);probe.action(EchoPresentationProbeState.Action.IDLE,113);
-                int wanted=args[0].equals("copy-armor-unbreaking")?0:3;
+                // GEAR-005: wear is preserved from the owner (99); the observed outcome adds 3.
+                int wanted=args[0].equals("copy-armor-unbreaking")?99:102;
                 if(armorItems.get("Boots").meta.damage!=wanted)throw new AssertionError("native wear outcome lost on equipment projection");
                 if(me.copimine.endevent.runtime.wave7.EchoNativeArmorWear.calls!=1)throw new AssertionError("rejected armor hit invoked native wear");
             }

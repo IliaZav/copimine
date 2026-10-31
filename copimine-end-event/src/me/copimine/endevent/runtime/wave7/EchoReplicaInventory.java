@@ -58,9 +58,14 @@ public final class EchoReplicaInventory {
     private static Item describe(ItemStack stack) {
         if (stack==null || stack.getType().isAir() || stack.getAmount()==0) return Item.empty();
         Material material=stack.getType(); ItemMeta meta=stack.getItemMeta();
+        // hasFood()/hasTool() report a *component*, not a custom item: every
+        // vanilla apple satisfies hasFood(), so including them here classified
+        // ordinary food as BLOCKED_CUSTOM and made it inert. A copy then held
+        // golden apples it could never eat. They are only evidence of
+        // customisation together with data that vanilla items never carry.
         boolean custom=meta!=null && (!meta.getPersistentDataContainer().getKeys().isEmpty()
                 || meta.hasCustomModelData() || meta.hasAttributeModifiers() || meta.isUnbreakable()
-                || meta.hasMaxStackSize() || meta.hasFood() || meta.hasTool()
+                || meta.hasMaxStackSize()
                 || meta instanceof Damageable d && d.hasMaxDamage()
                 || meta instanceof CrossbowMeta c && c.hasChargedProjectiles() || meta instanceof BlockStateMeta);
         var enchantments=new LinkedHashMap<String,Integer>();

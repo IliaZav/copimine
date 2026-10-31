@@ -61,7 +61,12 @@ if ($compileLock.schemaVersion -ne 1 -or
     throw "Invalid Java compile dependency lock: $compileLockPath"
 }
 $migrationDependencies = @($compileLock.paper26_3Dependencies)
-$lockedDependencies = @($compileLock.dependencies)
+# The End Event compiles against Paper 26.3, and the lock carries that graph
+# separately from the 1.21.1 one. build-plugin.ps1 validates the count against
+# paper26_3Dependencies, so resolving `dependencies` here produced a classpath
+# of 1.21.1 jars that outnumbered what the build expects and every name in it
+# was wrong for the target.
+$lockedDependencies = @($compileLock.paper26_3Dependencies)
 if ($migrationDependencies.Count -eq 0) {
     throw 'The 26.3 compile dependency lock must include the Paper migration API.'
 }

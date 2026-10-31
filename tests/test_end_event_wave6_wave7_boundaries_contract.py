@@ -206,7 +206,9 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     assert "journaled=true" in root
     initializer_start = root.index("private boolean initializeWaveGameplay(")
     initializer = root[initializer_start:root.index("\n    private ", initializer_start + 10)]
-    assert "realitySplitChamberController.begin(generation," in initializer
+    # Wave 7 runs as one sequential route on an open arena, so the single
+    # chamber is opened with beginOpenArena rather than split into sectors.
+    assert "realitySplitChamberController.beginOpenArena(generation," in initializer
     assert "new ArrayList<>(roster)" in initializer
     assert "minecraft:barrier" in live_script
     assert "wall_material=barrier" in live_script

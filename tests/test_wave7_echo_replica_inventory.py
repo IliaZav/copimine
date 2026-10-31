@@ -103,11 +103,14 @@ public class EchoReplicaChecks {
             check(replica.stack(0).getType()==Material.IRON_SWORD&&replica.stack(0).meta.damage==123,"projection/owner switch changed frozen item");
             check(replica.state().remaining(1)==5&&replica.state().remaining(41)==0&&source.reads==1,"capture only once with no bonus extras");
         }else if(args[0].equals("custom")){
-            for(int flag=0;flag<7;flag++){
+            // GEAR-003: hasFood()/hasTool() only report a component that every vanilla
+            // consumable and tool also reports, so they are not evidence of
+            // custom equipment. Flags 5 and 6 are checked separately below.
+            for(int flag=0;flag<5;flag++){
                 var s=new ItemStack(Material.IRON_SWORD);source.slots[0]=s;
                 switch(flag){case 0:s.meta.pdc.keys.add(NamespacedKey.fromString("copimineartifacts:artifact_item_id"));break;
                 case 1:s.meta.attribute=true;break;case 2:s.meta.unbreakable=true;break;case 3:s.meta.custom=true;break;
-                case 4:s.meta.maximum=true;break;case 5:s.meta.food=true;break;case 6:s.meta.tool=true;break;}
+                case 4:s.meta.maximum=true;break;}
                 var r=capture(source);check(!r.state().item(0).usable()&&r.stack(0).getType()==Material.AIR,"privileged metadata created usable replica: "+flag);
             }
             var crossbow=new ItemStack(Material.CROSSBOW);crossbow.meta.charged=true;source.slots[0]=crossbow;

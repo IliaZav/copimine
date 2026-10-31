@@ -13,6 +13,9 @@ def test_selected_personal_echo_starts_without_entering_deferred_recovery(tmp_pa
     adapters = extract(source, "boolean startRealitySplitTrials(World world, Location core)")
     for signature in (
         "boolean startNamedRealitySplitTrials(World world, Location core)",
+            "java.util.List<RealitySplitTrialController.NamedTrial> completedNamedRealitySplitTrials()",
+            "RealitySplitTrialController.NamedTrial currentNamedRealitySplitTrial()",
+            "java.util.List<RealitySplitTrialController.NamedTrialState> presentableNamedRealitySplitTrials()",
         "boolean namedRealitySplitTrialImplemented(RealitySplitTrialController.NamedTrial trial)",
     ):
         if "    private " + signature in source:
@@ -54,14 +57,16 @@ public class NamedWave7StartProbe {
     static void require(boolean value,String reason){if(!value)throw new AssertionError(reason);}
     public static void main(String[] args){
         var probe=new NamedWave7StartProbe();
-        probe.realitySplitChamberController.begin(71,List.of(new UUID(0,1),new UUID(0,2)));
+        probe.realitySplitChamberController.beginOpenArena(71,List.of(new UUID(0,1),new UUID(0,2)));
         probe.realitySplitTrialController.beginNamed(UUID.fromString(probe.eventId),71,
-                probe.realitySplitChamberController.assignment(),List.of(
-                RealitySplitTrialController.NamedTrial.WARDEN,RealitySplitTrialController.NamedTrial.PERSONAL_ECHO));
+                probe.realitySplitChamberController.assignment(),
+                RealitySplitTrialController.sequentialRoute());
         var before=probe.realitySplitTrialController.namedSnapshot();
         require(probe.startRealitySplitTrials(new World(),new Location()),"implemented Echo actor must pass named-trial startup");
         require(!probe.recovery,"supported Echo selection must not enter recovery");
-        require(probe.spawned==2,"Warden and personal Echo each create their assigned room actor");
+        // Sequential route: only the first stage of the route is presented, so a
+        // single actor is created instead of one per concurrent room.
+        require(probe.spawned==1,"the sequential route creates only its current stage actor");
         require(probe.realitySplitTrialController.namedSnapshot().equals(before),"failure cannot erase or reroll selected layout");
         require(!probe.realitySplitTrialController.allComplete(71),"missing actors cannot complete the layout");
     }
@@ -72,6 +77,7 @@ public class NamedWave7StartProbe {
         "domain/Wave7AdmissionPolicy.java",
         "domain/Wave7EchoDuelCellPolicy.java", "domain/Wave7NamedTrialActorPolicy.java",
         "domain/Wave7RoomLayoutPolicy.java",
+            "domain/Wave7TrialRoutePolicy.java",
         "domain/wave7/EchoBehaviorStrategy.java",
         "domain/wave7/EchoLoadoutState.java", "runtime/RealitySplitEchoDuelState.java",
         "runtime/RealitySplitChamberController.java", "runtime/RealitySplitTrialController.java",
@@ -88,6 +94,9 @@ def test_official_named_route_starts_generated_and_restored_layouts_for_every_ro
     adapters = "\n".join(extract(source, signature) for signature in (
         "boolean startRealitySplitTrials(World world, Location core)",
         "boolean startNamedRealitySplitTrials(World world, Location core)",
+            "java.util.List<RealitySplitTrialController.NamedTrial> completedNamedRealitySplitTrials()",
+            "RealitySplitTrialController.NamedTrial currentNamedRealitySplitTrial()",
+            "java.util.List<RealitySplitTrialController.NamedTrialState> presentableNamedRealitySplitTrials()",
         "boolean namedRealitySplitTrialImplemented(RealitySplitTrialController.NamedTrial trial)",
     ))
     probe = tmp_path / "NamedWave7LayoutRouteProbe.java"
@@ -110,7 +119,7 @@ public class NamedWave7LayoutRouteProbe {
     RealitySplitTrialController realitySplitTrialController;
     static class World {} static class Location {}
     NamedWave7LayoutRouteProbe(RealitySplitTrialController controller,List<UUID> owners){
-        realitySplitTrialController=controller;realitySplitChamberController.begin(generation,owners);
+        realitySplitTrialController=controller;realitySplitChamberController.beginOpenArena(generation,owners);
     }
     Logger getLogger(){return Logger.getAnonymousLogger();}
     UUID parseUuidOrNull(String raw){try{return UUID.fromString(raw);}catch(RuntimeException ignored){return null;}}
@@ -133,66 +142,40 @@ public class NamedWave7LayoutRouteProbe {
 ''' + adapters + '''
     static void require(boolean value,String reason){if(!value)throw new AssertionError(reason);}
     static List<UUID> owners(int count){return java.util.stream.IntStream.range(1,count+1).mapToObj(i->new UUID(0,i)).toList();}
-    static Set<Set<RealitySplitTrialController.NamedTrial>> combinations(int size){
-        Set<Set<RealitySplitTrialController.NamedTrial>> result=new HashSet<>();
-        var trials=List.of(RealitySplitTrialController.NamedTrial.values());
-        for(int mask=0;mask<(1<<trials.size());mask++){
-            Set<RealitySplitTrialController.NamedTrial> selected=new LinkedHashSet<>();
-            for(int bit=0;bit<trials.size();bit++)if((mask&(1<<bit))!=0)selected.add(trials.get(bit));
-            if(selected.size()==size)result.add(Set.copyOf(selected));
-        }
-        return result;
-    }
-    static void run(int playerCount,long seed,boolean restore){
+    static void run(int playerCount,boolean restore){
         var participants=owners(playerCount);
-        var assignment=ChamberIsolationPolicy.assign(participants);
+        var assignment=ChamberIsolationPolicy.assignOpenArena(participants);
         var controller=new RealitySplitTrialController();
-        controller.beginNamed(EVENT,71,assignment,new Random(seed));
+        controller.beginNamed(EVENT,71,assignment,RealitySplitTrialController.sequentialRoute());
         var generated=controller.namedSnapshot();
-        require(generated.trials().size()==(playerCount<=3?playerCount:4),"generated room count for players="+playerCount);
-        require(generated.trials().values().stream().mapToInt(t->t.owners().size()).sum()==playerCount,
+        // The contract is a route on one open arena: Warden, then Marksman, then
+        // Archmage, then the personal Echo -- never four concurrent rooms.
+        require(generated.selectedLayout().equals(RealitySplitTrialController.sequentialRoute()),
+                "generated layout is the fixed sequential route for players="+playerCount);
+        require(generated.trials().size()==1,"one open arena hosts the active stage for players="+playerCount);
+        require(generated.trials().get(0).owners().size()==playerCount,
                 "generated roster is complete for players="+playerCount);
-        require(generated.selectedLayout().stream().distinct().count()==generated.selectedLayout().size(),
-                "generated roles are distinct for players="+playerCount);
         if(restore){
             var encoded=RealitySplitTrialSnapshot.encodeNamed(generated);
             var restored=RealitySplitTrialSnapshot.decodeNamed(encoded,EVENT,71);
             var replacement=new RealitySplitTrialController();
             replacement.restoreNamed(EVENT,71,assignment,restored);
-            require(replacement.namedSnapshot().equals(generated),"restore preserves the selected layout for players="+playerCount);
+            require(replacement.namedSnapshot().equals(generated),"restore preserves the route and stage for players="+playerCount);
             controller=replacement;
         }
         var probe=new NamedWave7LayoutRouteProbe(controller,participants);
         require(probe.startRealitySplitTrials(new World(),new Location()),
-                "official named route starts "+(restore?"restored":"generated")+" layout players="+playerCount
-                +" seed="+seed+" trials="+controller.namedSnapshot().selectedLayout());
-        require(!probe.recovery,"implemented generated layout stays out of recovery");
-        require(probe.spawned==generated.trials().size(),"every selected room starts without partial admission");
-        require(controller.namedSnapshot().equals(generated),"start never erases or rerolls the persisted layout");
-        for(var trial:controller.namedSnapshot().selectedLayout())
-            require(probe.spawnedByTrial.getOrDefault(trial,0)==1,"selected role dispatches once: "+trial);
+                "official named route starts "+(restore?"restored":"generated")+" state players="+playerCount);
+        require(!probe.recovery,"implemented route stays out of recovery");
+        require(probe.spawned==1,"exactly the current stage actor starts for players="+playerCount);
+        require(probe.spawnedByTrial.getOrDefault(RealitySplitTrialController.NamedTrial.WARDEN,0)==1,
+                "the route starts at the Warden stage: "+probe.spawnedByTrial);
+        require(controller.namedSnapshot().equals(generated),"start never erases or rewrites the persisted route");
     }
     public static void main(String[] args){
-        for(int playerCount:List.of(2,3,4,5,6,10,20)){
-            Set<Set<RealitySplitTrialController.NamedTrial>> observed=new HashSet<>();
-            Map<Set<RealitySplitTrialController.NamedTrial>,Long> representatives=new HashMap<>();
-            int targetCount=playerCount<=3?playerCount:4;
-            Set<Set<RealitySplitTrialController.NamedTrial>> expected=combinations(targetCount);
-            int seeds=10_000;
-            for(long seed=0;seed<seeds;seed++){
-                var selector=new RealitySplitTrialController();
-                var assignment=ChamberIsolationPolicy.assign(owners(playerCount));
-                selector.beginNamed(EVENT,71,assignment,new Random(seed));
-                Set<RealitySplitTrialController.NamedTrial> selected=Set.copyOf(selector.namedSnapshot().selectedLayout());
-                observed.add(selected);
-                representatives.putIfAbsent(selected,seed);
-                if(observed.equals(expected))break;
-            }
-            require(observed.equals(expected),
-                    "generated selection space is covered for players="+playerCount);
-            for(long seed:representatives.values())run(playerCount,seed,false);
-            // Every supported roster size also traverses snapshot encode/decode and the same production start route.
-            run(playerCount,37,true);
+        for(int playerCount:List.of(2,3,4,5,6,10,11,20)){
+            run(playerCount,false);
+            run(playerCount,true);
         }
     }
 }
@@ -201,6 +184,7 @@ public class NamedWave7LayoutRouteProbe {
         "domain/ChamberIsolationPolicy.java", "domain/RealitySplitBarrierPolicy.java",
         "domain/Wave7EchoDuelCellPolicy.java", "domain/Wave7NamedTrialActorPolicy.java",
         "domain/Wave7RoomLayoutPolicy.java",
+            "domain/Wave7TrialRoutePolicy.java",
         "domain/wave7/EchoBehaviorStrategy.java", "domain/wave7/EchoLoadoutState.java",
         "runtime/RealitySplitEchoDuelState.java", "runtime/RealitySplitChamberController.java",
         "runtime/RealitySplitTrialController.java", "runtime/RealitySplitTrialSnapshot.java",
@@ -251,20 +235,25 @@ def test_wave7_live_boundary_runner_waits_for_actual_objective_start_marker():
     assert "Wait-Log -AfterOffset $wave7Offset -Pattern 'WAVE_OBJECTIVE_STARTED.*wave=7\\b'" in runner
 
 
-def test_wave7_sandbox_uses_the_same_distinct_random_trial_pool_as_official_runs():
+def test_wave7_official_and_sandbox_runs_share_the_same_sequential_route():
     source = (SOURCE / "CopiMineEndEvent.java").read_text(encoding="utf-8")
     preflight = extract(source, "boolean preflightWave7StartBeforeWorldMutation(World world, Location core,")
     assert "refuseWave7Preflight(sandbox, previousActiveWave," in preflight
     assert "namedWave7TestLayout" not in source
-    assert "realitySplitTrialController.beginNamed(eventUuid, generation,\n                realitySplitChamberController.assignment(), java.util.concurrent.ThreadLocalRandom.current())" in preflight
+    # Wave 7 is one open arena with a fixed route, never a random sample of rooms,
+    # so sandbox and official runs cannot diverge on what they exercise.
+    assert "realitySplitChamberController.beginOpenArena(generation, new ArrayList<>(roster));" in preflight
+    assert ("realitySplitTrialController.beginNamed(eventUuid, generation,\n"
+            "                realitySplitChamberController.assignment(), "
+            "RealitySplitTrialController.sequentialRoute());") in preflight
+    assert "ThreadLocalRandom" not in preflight
     assert "preflightNamedEchoDuelRooms()" in preflight
     assert '"unsupported-custom-item-slot-" + slot' in source
     runner = (ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1").read_text(encoding="utf-8")
-    assert "layout=\\[([A-Z_, ]+)\\]" in runner
+    assert "route=\\[([A-Z_, ]+)\\]" in runner
     assert "Groups[1].Value -split ', '" in runner
-    assert "$wave7Layout.Count -ne 2" in runner
-    assert "@($wave7Layout | Select-Object -Unique).Count -ne 2" in runner
-    assert "@($wave7Layout | Where-Object { $_ -notin $validWave7Trials }).Count -gt 0" in runner
+    assert "$expectedWave7Route = @('WARDEN', 'MOBILE_MARKSMAN', 'RIFT_ARCHMAGE', 'PERSONAL_ECHO')" in runner
+    assert "Compare-Object -ReferenceObject $expectedWave7Route -DifferenceObject $wave7Layout -SyncWindow 0" in runner
     assert "if ($wave7Layout -contains 'WARDEN' -and $damageParts.Count -lt 1)" in runner
     assert "LIVE_WAVE7_PLAYER_DAMAGE_LEDGER_NOT_APPLICABLE" in runner
     assert "layout=\\[WARDEN, MOBILE_MARKSMAN\\]" not in runner
@@ -365,6 +354,7 @@ public class NamedWave7DeathProbe {
         "domain/ChamberIsolationPolicy.java", "domain/Wave7EchoDuelCellPolicy.java",
         "domain/Wave7NamedTrialActorPolicy.java",
         "domain/Wave7RoomLayoutPolicy.java",
+            "domain/Wave7TrialRoutePolicy.java",
         "domain/wave7/EchoBehaviorStrategy.java", "domain/wave7/EchoLoadoutState.java",
         "runtime/RealitySplitEchoDuelState.java", "runtime/RealitySplitTrialController.java",
     )]
@@ -521,6 +511,7 @@ public class Wave7PreflightProbe {
         "domain/ChamberIsolationPolicy.java", "domain/RealitySplitBarrierPolicy.java", "domain/Wave7EchoDuelCellPolicy.java",
         "domain/Wave7NamedTrialActorPolicy.java", "domain/wave7/EchoBehaviorStrategy.java",
         "domain/Wave7RoomLayoutPolicy.java",
+            "domain/Wave7TrialRoutePolicy.java",
         "domain/wave7/EchoLoadoutState.java", "runtime/RealitySplitEchoDuelState.java",
         "runtime/RealitySplitChamberController.java", "runtime/RealitySplitTrialController.java",
     )]

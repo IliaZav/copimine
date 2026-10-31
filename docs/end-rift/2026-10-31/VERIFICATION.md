@@ -62,15 +62,26 @@ Skips recorded as host/environment limits, not passes:
 - file symlink creation unavailable on Windows (2)
 - POSIX private-key permissions (1)
 
-## 4. Installed artifact baseline (to be re-measured after WP-A)
+## 4. Installed artifact baseline and its repair
 
-| Artifact | SHA-256 |
-|---|---|
-| Installed EndEvent jar | `440e081eebfdc6764c64e5f8aab3c3505862c55efd17dc5e69d51e3dde77d73a` (audit claim, unverified on this host) |
-| Staged candidate | `51b412ff0f3d72ff28128ecaccd72216b8a288b875fe528616b4f6f0d643d2f4` (rebuilt by `:endEventJar`, 2019018 B) |
+| Artifact | Before (audit claim) | Now (measured, reproducible) |
+|---|---|---|
+| Installed EndEvent jar | `440e081e…77d73a` | `d53f0997a8f555235e7484d1c733b1c7c70d5d809caf557a3f421453065b4141` (1 804 590 B) |
+| Staged candidate | `51b412ff…643d2f4` (2 019 018 B) | same digest as the installed jar |
 
-These two differ from each other and from what the lock files expect, which is
-the reproducible provenance defect.
+`build-plugin.ps1` writes `copimine-end-event/CopiMineEndEvent.jar` and copies it
+straight into the staging server, but it never refreshed
+`build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar` — the file the
+lock actually pins. Every source change therefore left the pin measuring an
+older build, and each re-pin recorded whatever stale jar happened to be on disk.
+That is the real root cause of the changing digests, not a nondeterministic
+build.
+
+Measured, not assumed: two consecutive `clean` builds of the current tree
+produce the identical artifact (1 804 590 B / `d53f0997…b4141`), so the pin is
+now reproducible from source. The superseded digest stays in `replaceSha256`
+(67 entries) so the installer can still recognise an older approved build
+instead of treating it as unknown.
 
 ## 5. Repairs verified
 

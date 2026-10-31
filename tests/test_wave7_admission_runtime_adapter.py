@@ -12,6 +12,7 @@ PRODUCTION = [
     "domain/RealitySplitBarrierPolicy.java",
     "domain/Wave7AdmissionPolicy.java",
     "domain/Wave7RoomLayoutPolicy.java",
+            "domain/Wave7TrialRoutePolicy.java",
     "domain/Wave7EchoDuelCellPolicy.java",
     "domain/wave7/EchoBehaviorStrategy.java",
     "domain/wave7/EchoLoadoutState.java",

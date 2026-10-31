@@ -111,7 +111,16 @@ $compileArgs = @('-proc:none', '-encoding', 'UTF-8', '-cp',
   '-d', ('"' + ($classes -replace '\\', '/') + '"'))
 $compileArgs += @($sources | ForEach-Object { '"' + ($_ -replace '\\', '/') + '"' })
 [IO.File]::WriteAllLines($compileArgsPath, $compileArgs, [Text.UTF8Encoding]::new($false))
-& javac ("@" + $compileArgsPath)
+# Paper 26.3 is compiled for class file version 69 (Java 25). Calling plain
+# `javac` picks up whatever is first on PATH, which on a machine with an older
+# default JDK is Java 21 and rejects every API class with "wrong version 69.0,
+# should be 65.0". Pin the compiler to the JDK that JAVA_HOME names.
+$javacCommand = 'javac'
+if ($env:JAVA_HOME) {
+  $javacInHome = Join-Path $env:JAVA_HOME 'bin/javac.exe'
+  if (Test-Path -LiteralPath $javacInHome -PathType Leaf) { $javacCommand = $javacInHome }
+}
+& $javacCommand ("@" + $compileArgsPath)
 if ($LASTEXITCODE -ne 0) { throw "javac failed for CopiMineEndEvent." }
 if ($CompileOnly) {
   Write-Host "Compiled End Event sources against the current Minecraft 26.3 plugin outputs: $classes"

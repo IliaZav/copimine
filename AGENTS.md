@@ -26,3 +26,22 @@ compaction or agent restart:
 Spec IDs: `CM-END-RIFT-WAVES-CANONICAL` and `CM-END-RIFT-RIFT-GUARDIAN-CANONICAL`.
 When writing any compaction summary, state explicitly that both canonical files
 must be re-read (and their hashes re-verified) before further spec-dependent work.
+
+<!-- BEGIN COPIMINE END RIFT ASSIGNMENT ENTRY POINT 2026-10-31 -->
+## Current assignment entry point (2026-10-31)
+
+The 30–31 October 2026 assignment supersedes parts of both canonical files. Read,
+in this order, before any End Rift change:
+
+1. `docs/end-rift/2026-10-31/APPROVED_WAVE_CONTRACT.md` — user requirements,
+   superseded rules, configurable defaults.
+2. `docs/end-rift/2026-10-31/IMPLEMENTATION_PLAN.md` — where each requirement is
+   implemented and how it is proven.
+3. `docs/end-rift/2026-10-31/VERIFICATION.md` — measured evidence and BLOCKED
+   items.
+
+Where those documents conflict with the 2026-10-27 canonical files, the
+2026-10-31 contract wins. Historical documents stay in the repository for
+traceability and are never deleted. Visual requirements cannot be satisfied by
+automated checks alone; an unavailable native check is BLOCKED, never a pass.
+<!-- END COPIMINE END RIFT ASSIGNMENT ENTRY POINT 2026-10-31 -->

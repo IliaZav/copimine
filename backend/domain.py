@@ -1006,6 +1006,11 @@ async def update_content(request: Request):
 
 def game_target(request, identifier, mutation=False):
     actor = current_user(request, "players.moderate" if mutation else "players.view", fresh=mutation)
+    # Пустой идентификатор иначе совпал бы с аккаунтом без привязки Minecraft
+    # (minecraft_uuid = ''), и действие ушло бы не тому игроку.
+    identifier = str(identifier or "").strip()
+    if not identifier:
+        fail(400, "invalid_player", "Выберите игрока или укажите его UUID.")
     with request.app.state.database.transaction() as db:
         row = db.execute("SELECT * FROM cm_site_users WHERE id=%s OR name_norm=%s OR minecraft_uuid=%s OR lower(minecraft_name)=%s", (identifier, str(identifier).lower(), identifier, str(identifier).lower())).fetchone()
     if row:

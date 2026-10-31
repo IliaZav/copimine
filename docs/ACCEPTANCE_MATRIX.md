@@ -140,8 +140,8 @@ requires a password confirmation younger than ten minutes.
 `private/admin-actions.json`, and the player screen renders exactly that
 list — an unimplemented action never appears as a working button.
 
-- offered by the admin screen: `ban`, `feed`, `freeze`, `gamemode`, `heal`, `inventory.remove`, `inventory.snapshot`, `kick`, `unfreeze`
-- in `SUPPORTED_ACTIONS` but absent from the catalogue, so never offered: `kill`, `save`, `teleport`, `time.day`, `time.night`, `unban`, `weather.clear`, `weather.rain`, `whitelist.add`, `whitelist.remove`
+- offered by the admin screen: `ban`, `feed`, `freeze`, `gamemode`, `heal`, `inventory.remove`, `inventory.snapshot`, `kick`, `kill`, `save`, `teleport`, `time.day`, `time.night`, `unban`, `unfreeze`, `weather.clear`, `weather.rain`, `whitelist.add`, `whitelist.remove`
+- in `SUPPORTED_ACTIONS` but absent from the catalogue, so never offered: none
 - bulk-capable: `ban`, `feed`, `freeze`, `gamemode`, `heal`, `kick`, `kill`, `unban`, `unfreeze`
 - game-bridge calls made by HTTP routes: **10**
 - the other 109 catalogue entries are not offered by the UI;

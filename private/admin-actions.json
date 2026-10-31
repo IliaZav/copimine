@@ -1739,6 +1739,168 @@
       "sourceActions": [],
       "requiresGameAdapter": true,
       "privateOnly": false
+    },
+    {
+      "id": "kill",
+      "name": "Убить игрока",
+      "scope": "player",
+      "permission": "players.moderate",
+      "params": {},
+      "sourceKind": "site-v6-bridge-extension",
+      "sourceActions": [],
+      "requiresGameAdapter": true
+    },
+    {
+      "id": "unban",
+      "name": "Снять блокировку",
+      "scope": "player",
+      "permission": "players.moderate",
+      "params": {},
+      "sourceKind": "site-v6-bridge-extension",
+      "sourceActions": [],
+      "requiresGameAdapter": true
+    },
+    {
+      "id": "teleport",
+      "name": "Телепортировать игрока",
+      "scope": "player",
+      "permission": "players.moderate",
+      "params": {
+        "world": {
+          "type": "string",
+          "required": true,
+          "enum": [
+            "CopiMine",
+            "CopiMine_nether",
+            "CopiMine_the_end"
+          ]
+        },
+        "x": {
+          "type": "number",
+          "required": true
+        },
+        "y": {
+          "type": "number",
+          "required": true
+        },
+        "z": {
+          "type": "number",
+          "required": true
+        }
+      },
+      "sourceKind": "site-v6-bridge-extension",
+      "sourceActions": [],
+      "requiresGameAdapter": true
+    },
+    {
+      "id": "whitelist.add",
+      "name": "Добавить в белый список",
+      "scope": "player",
+      "permission": "server.manage",
+      "params": {},
+      "sourceKind": "site-v6-bridge-extension",
+      "sourceActions": [],
+      "requiresGameAdapter": true
+    },
+    {
+      "id": "whitelist.remove",
+      "name": "Убрать из белого списка",
+      "scope": "player",
+      "permission": "server.manage",
+      "params": {},
+      "sourceKind": "site-v6-bridge-extension",
+      "sourceActions": [],
+      "requiresGameAdapter": true
+    },
+    {
+      "id": "time.day",
+      "name": "Включить день",
+      "scope": "server",
+      "permission": "server.manage",
+      "params": {
+        "world": {
+          "type": "string",
+          "required": true,
+          "enum": [
+            "CopiMine",
+            "CopiMine_nether",
+            "CopiMine_the_end"
+          ]
+        }
+      },
+      "sourceKind": "site-v6-bridge-extension",
+      "sourceActions": [],
+      "requiresGameAdapter": true
+    },
+    {
+      "id": "time.night",
+      "name": "Включить ночь",
+      "scope": "server",
+      "permission": "server.manage",
+      "params": {
+        "world": {
+          "type": "string",
+          "required": true,
+          "enum": [
+            "CopiMine",
+            "CopiMine_nether",
+            "CopiMine_the_end"
+          ]
+        }
+      },
+      "sourceKind": "site-v6-bridge-extension",
+      "sourceActions": [],
+      "requiresGameAdapter": true
+    },
+    {
+      "id": "weather.clear",
+      "name": "Ясная погода",
+      "scope": "server",
+      "permission": "server.manage",
+      "params": {
+        "world": {
+          "type": "string",
+          "required": true,
+          "enum": [
+            "CopiMine",
+            "CopiMine_nether",
+            "CopiMine_the_end"
+          ]
+        }
+      },
+      "sourceKind": "site-v6-bridge-extension",
+      "sourceActions": [],
+      "requiresGameAdapter": true
+    },
+    {
+      "id": "weather.rain",
+      "name": "Дождь",
+      "scope": "server",
+      "permission": "server.manage",
+      "params": {
+        "world": {
+          "type": "string",
+          "required": true,
+          "enum": [
+            "CopiMine",
+            "CopiMine_nether",
+            "CopiMine_the_end"
+          ]
+        }
+      },
+      "sourceKind": "site-v6-bridge-extension",
+      "sourceActions": [],
+      "requiresGameAdapter": true
+    },
+    {
+      "id": "save",
+      "name": "Сохранить все миры",
+      "scope": "server",
+      "permission": "server.manage",
+      "params": {},
+      "sourceKind": "site-v6-bridge-extension",
+      "sourceActions": [],
+      "requiresGameAdapter": true
     }
   ],
   "excluded": [

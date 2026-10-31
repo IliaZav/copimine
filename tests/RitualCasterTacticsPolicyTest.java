@@ -40,9 +40,17 @@ public final class RitualCasterTacticsPolicyTest {
         check(RitualCasterTacticsPolicy.ownsRitualAbility(
                         RitualCasterTacticsPolicy.State.EXPOSED_CASTING),
                 "exposed casters must keep their Ritual Sphere ability until first accepted hit");
-        check(!RitualCasterTacticsPolicy.ownsRitualAbility(
+        // Superseded 2026-10-31: the earlier design removed the sphere ability on
+        // the first accepted hit. The canonical contract requires the sphere to
+        // own casting for the whole encounter, so an awakened caster keeps its
+        // sphere role while ALSO gaining native AI targeting. Deaths, not damage,
+        // reduce the sphere's spell ownership.
+        check(RitualCasterTacticsPolicy.ownsRitualAbility(
                         RitualCasterTacticsPolicy.State.AWAKENED_ATTACKING),
-                "awakened casters must leave Ritual Sphere ability ownership");
+                "awakened casters keep their Ritual Sphere ability until death");
+        check(RitualCasterTacticsPolicy.castsSphere(
+                        RitualCasterTacticsPolicy.State.AWAKENED_ATTACKING),
+                "an awakened caster still feeds the sphere");
         check(!RitualCasterTacticsPolicy.contributesAmplification(
                         RitualCasterTacticsPolicy.State.GUARDED_CASTING,
                         RitualCasterTacticsPolicy.Role.FINAL_SEAL),

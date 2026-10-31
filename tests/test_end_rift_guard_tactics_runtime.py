@@ -255,7 +255,18 @@ public class GuardTacticsProbe {
 '''.replace("METHODS", methods), encoding="utf-8")
     policy = ROOT / "copimine-end-event/src/me/copimine/endevent/domain/RitualGuardAggroPolicy.java"
     ability_policy = ROOT / "copimine-end-event/src/me/copimine/endevent/domain/RitualGuardAbilityPolicy.java"
-    compiled = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(directory), str(policy), str(ability_policy), str(fixture)],
+    # Guard slots are bounded by the roster policy, so it is a compile-time
+    # dependency of the ability policy and must be compiled alongside it. The
+    # scaling policy in turn reads the Wave 6 roster and the shared pressure
+    # budget, which pulls in the wave mechanics and carrier contracts.
+    domain = ROOT / "copimine-end-event/src/me/copimine/endevent/domain"
+    transitive = [domain / (name + ".java") for name in (
+        "RitualSphereScalingPolicy", "WaveSixRosterPolicy", "MageSignaturePolicy",
+        "RitualCasterTacticsPolicy", "WaveMechanicsPolicy", "RiftCarrierPolicy",
+        "PressureBudgetController",
+    )]
+    compiled = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(directory),
+                               str(policy), str(ability_policy), *map(str, transitive), str(fixture)],
                               capture_output=True, text=True, timeout=45)
     assert compiled.returncode == 0, compiled.stdout + compiled.stderr
     return directory

@@ -1,7 +1,13 @@
 """Run the production W6 caster selection and final channel admission decisions.
 
 Only Bukkit entities and scheduling are detached.  These tests are not native
-Minecraft evidence; they prevent an awakened caster owning a sphere spell.
+Minecraft evidence; they keep the sphere owning its spell channel while mages
+are merely damaged, and they stop the channel on the fifth legitimate death.
+
+Superseded expectation: an earlier build silenced the sphere ability of every
+caster whose protection was removed (``AWAKENED_ATTACKING``).  The canonical
+contract states that deaths, not damage, retire sphere spell ownership, so an
+awakened mage keeps casting and only the fifth death ends the channel.
 """
 from pathlib import Path
 import subprocess
@@ -83,23 +89,25 @@ public class RitualChannelAdmissionProbe {
         var eligible=new Mob(RitualCasterTacticsPolicy.State.EXPOSED_CASTING);
         p.ritualCasterSlots.put(awake.id,0);p.ritualCasterSlots.put(eligible.id,1);
         switch(args[0]) {
-            case "skip-awakened-first" -> check(p.select(List.of(awake,eligible))==eligible,
-                    "awakened first caster must not hide the later channel-eligible caster");
-            case "skip-awakened-middle" -> {
+            case "awakened-first-still-casts" -> check(p.select(List.of(awake,eligible))==awake,
+                    "a damaged caster keeps its sphere channel instead of silencing the sphere");
+            case "awakened-middle-still-casts" -> {
                 p.ritualAbilityCursor=1;
-                check(p.select(List.of(eligible,awake))==eligible,
-                        "round-robin selection must skip awakened middle caster and wrap to eligible caster");
+                check(p.select(List.of(eligible,awake))==awake,
+                        "round-robin selection must not skip a damaged caster that still owns the channel");
             }
-            case "all-awakened" -> check(p.select(List.of(awake))==null,
-                    "no channel-eligible caster must leave major spell unscheduled");
+            case "all-awakened" -> check(p.select(List.of(awake))==awake,
+                    "an all-awakened roster still feeds the sphere until the fifth death");
             case "eligible" -> check(p.select(List.of(eligible))==eligible,"eligible caster must remain selectable");
-            case "execute-awakened", "execute-eligible", "execute-owner-missing" -> {
+            case "execute-awakened", "execute-eligible", "execute-owner-missing", "execute-fifth-death" -> {
                 var caster=args[0].equals("execute-eligible")?eligible:awake;
                 if(!args[0].equals("execute-owner-missing"))p.ownedEntities.put(caster.id,caster);
+                if(args[0].equals("execute-fifth-death"))p.ritualCasterDeathCount=5;
                 Bukkit.target=new Player();p.ritualSpellTargetUuid=Bukkit.target.id;
                 p.execute(new RitualSpellController.Snapshot(caster.id,RitualSpellController.Spell.RIFT_BARRAGE));
-                check(p.executed==args[0].equals("execute-eligible"),
-                        "EXECUTE must revalidate the caster still channels before applying any major spell");
+                boolean mustExecute=args[0].equals("execute-eligible")||args[0].equals("execute-awakened");
+                check(p.executed==mustExecute,
+                        "EXECUTE must revalidate the caster channel: damage keeps it, the fifth death and a lost owner stop it");
                 if(!p.executed)check(p.ritualSpellController.cleared==1,
                         "rejected EXECUTE must retire the stale scheduler");
             }
@@ -116,8 +124,9 @@ public class RitualChannelAdmissionProbe {
     return folder
 
 
-@pytest.mark.parametrize("scenario", ["skip-awakened-first", "skip-awakened-middle", "all-awakened",
-                                      "eligible", "execute-awakened", "execute-eligible", "execute-owner-missing"])
+@pytest.mark.parametrize("scenario", ["awakened-first-still-casts", "awakened-middle-still-casts", "all-awakened",
+                                      "eligible", "execute-awakened", "execute-eligible",
+                                      "execute-owner-missing", "execute-fifth-death"])
 def test_major_spell_requires_channel_eligible_owner(channel_probe, scenario):
     result = subprocess.run(["java", "-Xmx64m", "-cp", str(channel_probe),
                              "RitualChannelAdmissionProbe", scenario], capture_output=True, text=True, timeout=15)

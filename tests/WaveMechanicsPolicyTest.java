@@ -20,11 +20,17 @@ public final class WaveMechanicsPolicyTest {
         var intro = WaveMechanicsPolicy.compositionForWave(1, requested);
         check(intro.skeletons() == 0 && intro.eliteSkeletons() == 0,
                 "the canonical introduction cannot create projectile mobs from stale config");
-        check(intro.total() == requested.total() && intro.endermen() == 48
-                        && intro.spiders() == 36 && intro.eliteEndermen() == 0,
-                "intro replacement converts stale ranged slots to ordinary melee mobs");
-        check(intro.eliteEndermen() == 0 && intro.eliteSkeletons() == 0,
-                "Wave 1 must never create generic elite roles");
+        check(intro.endermen() == 0,
+                "every Wave 1 enderman slot must be an elite carrier, never an ordinary one");
+        check(intro.eliteEndermen() == WaveMechanicsPolicy.CARRIER_ELITE_SLOTS
+                        && WaveMechanicsPolicy.CARRIER_ELITE_SLOTS == 3,
+                "exactly the three charge carriers are elite");
+        check(intro.total() == requested.total(),
+                "carrier promotion must not change the configured wave size");
+        check(intro.spiders() == requested.spiders() + requested.skeletons()
+                        + requested.eliteSkeletons() + requested.endermen()
+                        + requested.eliteEndermen() - WaveMechanicsPolicy.CARRIER_ELITE_SLOTS,
+                "surplus carrier slots become ordinary melee pressure");
         var waveTwo = WaveMechanicsPolicy.compositionForWave(2, requested);
         check(waveTwo.eliteEndermen() == 0 && waveTwo.eliteSkeletons() == 0
                         && waveTwo.endermen() == 48 && waveTwo.skeletons() == 16,

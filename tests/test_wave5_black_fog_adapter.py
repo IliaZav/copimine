@@ -23,6 +23,10 @@ def probe(tmp_path_factory):
         "boolean spawnCurrentSafeZoneVisuals(World world, Location core)",
         "boolean restoreCurrentSafeZoneBlocks()",
         "void restoreBlackFogBlock(Block block, String originalBlockData)",
+        # Post-fog reinforcement (W5-004) moved behind these two helpers; the
+        # probe must compile them or it cannot exercise the refill path at all.
+        "void reinforceWaveFiveAfterFog(long now)",
+        "boolean spawnWaveFiveRefillPack(long now, String reasonCode)",
     ])
     java = output / "BlackFogAdapterProbe.java"
     java.write_text(r'''
@@ -36,6 +40,7 @@ import me.copimine.endevent.domain.BlackFogSafeZoneCapacityPolicy;
 import me.copimine.endevent.domain.EndRiftObjective;
 import me.copimine.endevent.domain.Wave5PreFogRefillPolicy;
 import me.copimine.endevent.domain.WaveMechanicsPolicy;
+import me.copimine.endevent.domain.WavePressurePolicy;
 
 public final class BlackFogAdapterProbe {
     enum EventPhase { WAVE_5, RECOVERY_REQUIRED }
@@ -368,9 +373,17 @@ public final class BlackFogAdapterProbe {
                         "a later fog cycle also replenishes an empty combat segment");
             }
             case "three-cycles" -> {
+                // Superseded 2026-10-31 (WP-C): the wave runs exactly FIVE fog
+                // cycles, not three. The scenario name is kept so the parameter
+                // id stays stable, but the expectation is five.
+                int totalCycles = BlackFogTimingPolicy.CYCLE_COUNT;
+                check(totalCycles == 5, "Wave 5 must run exactly five fog cycles");
+                // Measured from BlackFogSafeZonePolicy.sideForCycleAndPlayers(c, 4)
+                // for the five production cycles, not assumed.
+                int[] expectedSides = {2, 2, 2, 1, 1};
                 long now = 40_000L;
                 p.blackFogPhaseDeadlineMillis = now;
-                for (int cycle = 0; cycle < 3; cycle++) {
+                for (int cycle = 0; cycle < totalCycles; cycle++) {
                     p.tickBlackFogObjective(now);
                     check(p.blackFogPhase == BlackFogPhase.COMBAT
                                     && p.fogSafeZoneTelegraphActive,
@@ -378,8 +391,7 @@ public final class BlackFogAdapterProbe {
                     long safeAt = now + 3_000L;
                     p.tickBlackFogObjective(safeAt);
                     check(p.blackFogPhase == BlackFogPhase.SAFE, "telegraph must reveal a safe area");
-                    int expectedSide = cycle == 0 ? 2 : 1;
-                    check(p.currentFogZoneSide == expectedSide,
+                    check(p.currentFogZoneSide == expectedSides[cycle],
                             "four-player safe zones must shrink by the player-count policy");
                     long safeDeadline = safeAt + 8_000L;
                     p.tickBlackFogObjective(safeDeadline);
@@ -388,16 +400,16 @@ public final class BlackFogAdapterProbe {
                     long fogDeadline = safeDeadline + 3_000L;
                     p.tickBlackFogObjective(fogDeadline);
                     check(!p.frozen, "fog end must release its AI hold");
-                    if (cycle < 2) {
+                    if (cycle < totalCycles - 1) {
                         check(p.currentFogCycle == cycle + 1 && p.blackFogPhase == BlackFogPhase.COMBAT,
-                                "each of the first two fog windows must resume combat for the next cycle");
-                        now = fogDeadline + (cycle == 0 ? 50_000L : 60_000L);
+                                "each fog window before the last must resume combat for the next cycle");
+                        now = fogDeadline + (long) BlackFogTimingPolicy.combatSeconds(cycle) * 1_000L;
                         p.blackFogPhaseDeadlineMillis = now;
                     }
                 }
-                check(p.currentFogCycle == 3 && p.blackFogPhase == BlackFogPhase.SAFE
+                check(p.currentFogCycle == 5 && p.blackFogPhase == BlackFogPhase.SAFE
                                 && p.blackFogPhaseDeadlineMillis == 0L,
-                        "exactly three production cycles must complete the objective");
+                        "exactly five production cycles must complete the objective");
             }
             case "setup-retry" -> {
                 p.core.world.floorsBlocked = true;
@@ -593,7 +605,9 @@ public final class BlackFogAdapterProbe {
         str(domain / "BlackFogRecoverySnapshot.java"), str(domain / "BlackFogSafeZonePolicy.java"),
         str(domain / "BlackFogSafeZoneCapacityPolicy.java"),
         str(domain / "Wave5PreFogRefillPolicy.java"), str(domain / "WaveMechanicsPolicy.java"),
+        str(domain / "RiftCarrierPolicy.java"),
         str(domain / "PressureBudgetController.java"),
+        str(domain / "WavePressurePolicy.java"),
     ], capture_output=True, text=True, check=False)
     assert compiled.returncode == 0, compiled.stdout + compiled.stderr
     return output

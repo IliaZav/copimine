@@ -262,7 +262,15 @@ def test_wave6_guards_have_tuned_once_health_and_one_shared_cancellable_ability(
 
     assert "configureRitualGuardHealth(living)" in spawn
     assert "keyRitualGuardHealthConfigured" in root
-    assert "RitualGuardStatsPolicy.maximumHealth(" in root
+    # W6-008: a guard is an enhanced elite, i.e. the shared x3 ordinary-role
+    # contract applied ONCE. The spawn path already produced that elite value, so
+    # the tuning step must NOT multiply it again with RitualGuardStatsPolicy.
+    health_config = root[root.index("private void configureRitualGuardHealth"):
+                         root.index("private void configureRitualGuardCombatAttributes")]
+    assert "RitualGuardStatsPolicy.maximumHealth(" not in health_config, (
+        "the Wave 6 guard must not receive a second health multiplier on top of "
+        "the elite value the spawn path already applied")
+    assert "WAVE6_GUARD_HEALTH_CONFIRMED" in health_config
     assert "tickRitualGuardAbilities(now)" in group_tick
     assert "RitualGuardAbilityPolicy.roleSlot(casterSlot, guardSlot)" in ability_tick
     assert "RitualGuardAbilityPolicy.forGuardActionAtRange(" in ability_tick
@@ -310,9 +318,15 @@ def test_wave6_guard_roles_and_giant_replacements_preserve_the_selected_roster()
     assert "spawnRiftGiantEntity(world, guardLocation, 6, true, guardEntitySlot)" in spawn
     assert "RitualGuardAbilityPolicy.entityTypeForGuardRole(roleSlot)" in spawn
     assert "retagRitualEntity(guard, \"GUARD\", caster.getUniqueId(), casterSlot, guardSlot)" in spawn
-    assert "int guardsPerCaster = boundedParticipants <= 4 ? 1 : boundedParticipants <= 8 ? 2 : 3" in ability_policy
+    # The per-caster guard ceiling is owned by the roster policy (up to five),
+    # so the ability policy must read it instead of duplicating a smaller
+    # literal that would reject legitimately assigned guard slots.
+    assert "RitualSphereScalingPolicy.forPlayers(participants)" in ability_policy
+    assert "int guardsPerCaster = roster.guardsPerCaster();" in ability_policy
     assert "guardSlot >= guardsPerCaster" in ability_policy
+    assert "guardSlot >= RitualSphereScalingPolicy.GUARDS_PER_CASTER" in ability_policy
     assert "int expected = boundedParticipants <= 4 ? 1 : boundedParticipants <= 8 ? 2 : 3" in ability_policy
+    assert "boundedParticipants <= 8 ? 2 : 3;" not in ability_policy.split("isGiantReplacement")[0]
 
     recovery = method(root, "private boolean ensureRitualCasterRosterAvailableForRecovery(")
     assert "isGuardEntityTypeCompatible" in recovery

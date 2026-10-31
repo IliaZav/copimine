@@ -84,9 +84,7 @@ public final class WaveProbeAdapterHarness {
     static final String WAVE_TWO_CYCLES_PROGRESS_KEY = "wave2-hunt-cycles";
     static final String WAVE_TWO_GROUPS_SPAWNED_PROGRESS_KEY = "wave2-groups-spawned";
     static final String WAVE_TWO_GROUP_CLEARED_PROGRESS_KEY = "wave2-group-cleared";
-    static final String WAVE_TWO_MARK_PERIODS_PROGRESS_KEY = "wave2-mark-periods";
     static final String WAVE_TWO_MARK_ASSIGNMENT_ID_PROGRESS_KEY = "wave2-mark-assignment-id";
-    static final String WAVE_TWO_LAST_LATE_MARK_PROGRESS_KEY = "wave2-last-late-mark-period";
     static final String WAVE_TWO_OUTSTANDING_UUIDS_PROGRESS_KEY = "wave2-outstanding-uuids";
     static final String WAVE_TWO_ATTEMPT_LIFECYCLE_PREFIX = "wave2-attempt-lifecycle.";
     static final long OFFLINE_RECONNECT_GRACE_MILLIS = 25_000L;
@@ -97,7 +95,7 @@ public final class WaveProbeAdapterHarness {
     int creativeTestStage = 3, creativeTestStageTicks, activeWave, waveSpawnGroupIndex,
             waveSpawnEntityOffset, sharedInitializations, initializedWave, saveCalls,
             registryGeneration, sessionCancellations, scopeCloses, currentHuntCycles,
-            waveTwoGroupsSpawned, waveTwoCompletedMarkPeriods, waveTwoLastLateGroupMarkPeriod,
+            waveTwoGroupsSpawned,
             waveTwoMarkCycle, currentCarrierCharges, ritualCasterDeathCount, ritualSpellCursor;
         boolean waveTwoGroupCleared;
     Set<UUID> waveTwoOutstandingEntityUuids = Set.of();
@@ -128,6 +126,8 @@ public final class WaveProbeAdapterHarness {
     Diagnostics diagnostics = new Diagnostics();
     Controller encounterController = new Controller();
     Object ritualSphereState = new Object();
+    List<Object> wave6MageOrder = List.of();
+    List<Object> wave6DefeatedMages = List.of();
     Set<UUID> ritualCasterUuids = Set.of(), ritualGuardUuids = Set.of();
     Set<Object> realitySplitBarrierCells = Set.of();
     Chambers realitySplitChamberController = new Chambers();
@@ -211,6 +211,13 @@ public final class WaveProbeAdapterHarness {
                 return Map.of("ritual-wave", "6", "caster-deaths", Integer.toString(casterDeaths),
                         "spell-cursor", Integer.toString(spellCursor));
             }
+            static Map<String, String> encode(Object state, int casterDeaths, int spellCursor,
+                    List<Object> mageOrder, List<Object> mageDefeated) {
+                return Map.of("ritual-wave", "6", "caster-deaths", Integer.toString(casterDeaths),
+                        "spell-cursor", Integer.toString(spellCursor),
+                        "mage-order", Integer.toString(mageOrder.size()),
+                        "mage-defeated", Integer.toString(mageDefeated.size()));
+            }
     }
     static final class RealitySplitChamberSnapshot {
         static Map<String, String> encodeDisposable(Object... args) { return Map.of("chambers", "1"); }
@@ -257,7 +264,7 @@ public final class WaveProbeAdapterHarness {
     }
     static final class Controller { void restore(Object... args) { } }
     static final class EndRiftObjective {
-        static final int REQUIRED_FOG_CYCLES = 3;
+        static final int REQUIRED_FOG_CYCLES = 5;
         static boolean isNumberedWave(int wave) { return wave >= 1 && wave <= 7; }
     }
 

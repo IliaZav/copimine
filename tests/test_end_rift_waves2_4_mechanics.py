@@ -57,6 +57,13 @@ def mechanics_harness(tmp_path_factory):
         "private void applyCurrentReflectedObeliskHit(",
     )]
     methods.append(_declaration(source, "private void requireWaveTwoMarkAssignmentRecovery("))
+    for signature in (
+        "private void refreshWaveTwoMarkGlow(",
+        "private static boolean ownsWaveTwoGlow(",
+        "private void releaseWaveTwoMarkFor(",
+        "private void sendCurrentHuntMarkPacket(Player player, boolean active)",
+    ):
+        methods.append(_declaration(source, signature))
     methods.append('Map<String, String> waveObjectiveProgressSnapshot() { return Map.of('
                    + '"wave2-mark-assignment-id", Integer.toString(waveTwoMarkCycle)); }')
     methods.append(_declaration(source, "private Location spawnLocation("))
@@ -89,8 +96,26 @@ def mechanics_harness(tmp_path_factory):
     ):
         if signature in source:
             methods.append(_declaration(source, signature))
-    fields = "\n".join(re.findall(
-        r"    private (?:UUID|long|int|boolean|PotionEffect) (?:waveTwo\w*|currentHunt\w*)[^;]*;", source))
+    # The detached scenarios only need the state the extracted production
+    # methods read; the mark is collective, so there is no per-player lease.
+    fields = """
+    private int waveTwoMarkCycle;
+    private long waveTwoGroupClearedAtMillis;
+    private long waveTwoPhantomLayoutGeneration;
+    private int waveTwoPhantomLayoutCycle;
+    private UUID waveTwoPhantomActivationPlayerUuid;
+    private int waveTwoPhantomActivationCycle;
+    private int waveTwoPhantomActivationGroup;
+    private int currentHuntCycles;
+    private long waveTwoCleanupEpoch;
+    private int waveTwoGroupsSpawned;
+    private boolean waveTwoGroupCleared;
+    private boolean waveTwoStageRehydrated;
+    private final Set<UUID> waveTwoMarkedParticipants = new LinkedHashSet<>();
+    private final Map<UUID, Long> waveTwoMarkPacketAt = new LinkedHashMap<>();
+    private final Map<UUID, List<WaveTwoPhantomLayoutPolicy.Phantom>> waveTwoPhantomLayouts = new LinkedHashMap<>();
+    private final Set<String> waveTwoUsedPhantomIds = new LinkedHashSet<>();
+    """
     fields += "\n    private String waveTwoControlInstanceId = \"\";"
     fields += "\n    private Map<String, String> waveTwoRecoveryCheckpoint = Map.of();"
     fields += "\n    private int waveSpawnWave = 2, waveSpawnGroupIndex, waveSpawnEntityOffset;"
@@ -103,18 +128,15 @@ def mechanics_harness(tmp_path_factory):
     fields += "\n    private WaveTwoPhantomMaterializationPolicy.State waveTwoPhantomActivationState;"
     fields += "\n    private Location waveTwoPhantomActivationLocation;"
     fields += "\n    private BukkitTask waveTwoPhantomWarningTask;"
-    fields += "\n    private List<WaveTwoPhantomLayoutPolicy.Phantom> waveTwoPhantomLayout = List.of();"
-    fields += "\n" + "\n".join(re.findall(
-        r"    private final (?:Map<PotionEffectType, PotionEffect>|Set<PotionEffectType>) waveTwo\w*[^;]*;", source))
     cleanup = _declaration(source, "private boolean clearWaveObjectiveState(")
-    cleanup_start = cleanup.index("        clearCurrentHuntMark(") if "        clearCurrentHuntMark(" in cleanup else cleanup.index("        waveTwoMarkedPlayerUuid = null;")
+    cleanup_start = cleanup.index("        clearCurrentHuntMark(") if "        clearCurrentHuntMark(" in cleanup else cleanup.index("        currentHuntCycles = 0;")
     methods.append("void finishHunt() { " + cleanup[cleanup_start:cleanup.index("        currentCarrierCharges = 0;", cleanup_start)] + "}")
     for signature, name in (("public void onPlayerQuit(", "quitHunt"), ("public void onPlayerDeath(", "deathHunt")):
         lifecycle = _declaration(source, signature)
         calls = [line for line in lifecycle.splitlines() if "releaseCurrentHuntTarget(" in line]
         methods.append(f"void {name}(Player player) {{ UUID uuid = player.getUniqueId(); " + "\n".join(calls) + "}")
     constants = "\n".join(re.findall(
-        r"    private static final (?:int|String) (?:MAX_)?WAVE_TWO_\w+[^;]*;", source))
+        r"    private static final (?:int|long|String) WAVE_TWO_\w+[^;]*;", source))
     harness = r'''
 import java.util.*;
 import java.util.logging.*;
@@ -398,10 +420,77 @@ public final class Waves24MechanicsHarness {
         Player player = new Player(); Bukkit.players.add(player);
         String scenario = args[0]; long start = 1_000_000L;
         switch (scenario) {
-            case "immediate-initial-mark" -> {
+case "immediate-initial-mark" -> {
                 h.startHunt(start); h.selectAt(start);
-                check(player.id.equals(h.waveTwoMarkedPlayerUuid),
-                        "the first mark starts immediately without an empty lead-in");
+                check(h.waveTwoMarkedParticipants.contains(player.id),
+                        "the wave marks its participant on the very first objective tick");
+                check(h.currentHuntCycles == 0, "marking alone never credits a cleared subwave");
+            }
+            case "all-players-marked-all-wave" -> {
+                Player second = new Player(); Bukkit.players.add(second);
+                Player third = new Player(); Bukkit.players.add(third);
+                h.startHunt(start); h.selectAt(start);
+                check(h.waveTwoMarkedParticipants.size() == 3,
+                        "every active participant is marked, not a single rotating target");
+                check(player.glowing(start) && second.glowing(start) && third.glowing(start),
+                        "the observer glow covers the whole party");
+                int cycle = h.waveTwoMarkCycle;
+                for (long tick : new long[] { start + 45_000L, start + 90_000L, start + 900_000L }) {
+                    h.selectAt(tick);
+                    check(h.waveTwoMarkedParticipants.size() == 3 && h.waveTwoMarkCycle == cycle,
+                            "the whole-party mark never rotates and never needs a new packet identity");
+                    check(player.glowing(tick) && second.glowing(tick) && third.glowing(tick),
+                            "the observer glow is maintained for the whole wave");
+                }
+                check(h.currentHuntCycles == 0, "keeping the mark alive never credits a subwave");
+            }
+            case "three-second-gap" -> {
+                check(WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS == 3_000L,
+                        "the approved subwave cadence is three seconds");
+                check(WaveTwoStagePolicy.nextGroupSpawnAt(42_000L) == 45_000L,
+                        "the pause starts when the previous finite roster cleared");
+                check(WaveTwoStagePolicy.nextGroupSpawnAt(0L) == 3_000L,
+                        "a zero clear timestamp still yields an exact three-second pause");
+            }
+            case "three-subwaves-required" -> {
+                h.startHunt(start);
+                h.waveSpawnSchedule = WaveTwoStagePolicy.split(
+                        new WaveMechanicsPolicy.WaveCounts(9, 0, 0, 0, 0));
+                h.waveSpawnWave = 2;
+                h.spawnNextWaveGroup(new World(), new Location());
+                check(h.waveSpawnGroupIndex == 1, "the first subwave spawns immediately");
+                long firstClear = start + 10_000L;
+                Mob fighter = h.addWaveTwoFighter(1);
+                check(h.confirmWaveTwoFighterDeath(fighter), "confirmed death retires the subwave roster");
+                h.tickCurrentHuntObjective(firstClear);
+                check(h.currentHuntCycles == 1 && h.spawnedWaveGroups.size() == 1,
+                        "one cleared subwave alone is never the approved hunt");
+                h.tickCurrentHuntObjective(firstClear + WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS - 1L);
+                check(h.spawnedWaveGroups.size() == 1,
+                        "no subwave may start before the full three-second gap elapses");
+                h.tickCurrentHuntObjective(firstClear + WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS);
+                check(h.spawnedWaveGroups.size() == 2 && h.waveSpawnGroupIndex == 2,
+                        "the second subwave starts exactly three seconds after the roster cleared");
+                check(h.currentHuntCycles < h.waveSpawnSchedule.size(),
+                        "two cleared subwaves remain incomplete");
+                fighter = h.addWaveTwoFighter(2);
+                check(h.confirmWaveTwoFighterDeath(fighter), "second subwave roster retires on confirmed death");
+                long secondClear = firstClear + 20_000L;
+                h.tickCurrentHuntObjective(secondClear);
+                check(h.currentHuntCycles == 2 && h.spawnedWaveGroups.size() == 2,
+                        "two cleared subwaves alone are never the approved hunt");
+                h.tickCurrentHuntObjective(secondClear + WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS);
+                check(h.spawnedWaveGroups.size() == 3 && h.waveSpawnGroupIndex == 3,
+                        "the third subwave is the final reserve");
+                fighter = h.addWaveTwoFighter(3);
+                check(h.confirmWaveTwoFighterDeath(fighter), "third subwave roster retires on confirmed death");
+                h.tickCurrentHuntObjective(secondClear + 40_000L);
+                check(h.currentHuntCycles == 3 && h.spawnedWaveGroups.size() == 3,
+                        "exactly three subwaves complete the hunt");
+                check(h.currentHuntCycles >= h.waveSpawnSchedule.size(),
+                        "the third clear is the only completion path");
+                check(!WaveTwoStagePolicy.maySpawnNextGroup(h.waveSpawnGroupIndex),
+                        "a finished hunt cannot start a fourth subwave");
             }
             case "assignment-id-exhaustion" -> {
                 h.phase = EventPhase.WAVE_2;
@@ -411,36 +500,29 @@ public final class Waves24MechanicsHarness {
                                 && "WAVE_TWO_MARK_ASSIGNMENT_ID_EXHAUSTED".equals(h.recoveryReason),
                         "exhausted packet identity must leave Wave 2 for explicit recovery");
                 check(h.waveTwoMarkCycle == WaveTwoHuntPolicy.MAX_MARK_ASSIGNMENT_ID
-                                && h.waveTwoMarkedPlayerUuid == null && h.saveCalls == 1,
-                        "exhaustion must neither wrap, create another mark, nor skip its durable checkpoint");
+                                && h.waveTwoMarkedParticipants.isEmpty() && h.saveCalls == 1,
+                        "exhaustion must neither wrap, mark a participant, nor skip its durable checkpoint");
                 check(h.waveTwoRecoveryCheckpoint.get("wave2-mark-assignment-id")
                                 .equals(Integer.toString(WaveTwoHuntPolicy.MAX_MARK_ASSIGNMENT_ID)),
                         "recovery checkpoint must retain the terminal identity");
                 h.selectAt(start + 1_000L);
                 check(h.waveTwoMarkCycle == WaveTwoHuntPolicy.MAX_MARK_ASSIGNMENT_ID
-                                && h.waveTwoMarkedPlayerUuid == null,
+                                && h.waveTwoMarkedParticipants.isEmpty(),
                         "later timer ticks cannot stall in W2 or wrap into stale packet IDs");
-            }
-            case "full-window", "scaled-full-window" -> {
-                if ("scaled-full-window".equals(scenario)) h.scalePlayers = 32;
-                h.selectAt(start); long nearEnd = h.waveTwoMarkDeadlineMillis - 1L;
-                h.selectAt(nearEnd);
-                check(player.id.equals(h.waveTwoMarkedPlayerUuid), "mechanical mark must still be active near its end");
-                check(player.glowing(nearEnd), "observer glow must cover the complete mechanical hunt window");
-                int firstParticles = player.particles; h.selectAt(nearEnd);
-                check(player.particles <= firstParticles + 8, "persistent state must remain bounded");
             }
             case "leaving-roster" -> {
                 h.selectAt(start); player.wave = false; h.selectAt(start + 2_000L);
-                check(h.waveTwoMarkedPlayerUuid == null, "out-of-arena/roster target must immediately leave hunt state");
-                check(!player.glowing(start + 2_000L), "invalid target must lose event glow");
+                check(h.waveTwoMarkedParticipants.isEmpty(),
+                        "out-of-arena participant must immediately leave the mark");
+                check(!player.glowing(start + 2_000L), "invalid participant must lose the event glow");
             }
             case "cleanup" -> {
                 h.selectAt(start); h.finishHunt();
-                check(h.waveTwoMarkedPlayerUuid == null && h.waveTwoMarkDeadlineMillis == 0L,
-                        "completion/abort cleanup must release mechanical mark");
+                check(h.waveTwoMarkedParticipants.isEmpty() && h.waveTwoMarkPacketAt.isEmpty()
+                                && h.waveTwoPhantomLayouts.isEmpty(),
+                        "completion/abort cleanup must release every mechanical mark");
                 check(!player.glowing(start), "completion/abort must clear event-owned observer glow");
-                check(h.clientClears == 1, "completion/abort must explicitly clear marked player's edge state");
+                check(h.clientClears == 1, "completion/abort must explicitly clear the participant's edge state");
             }
             case "foreign-glow" -> {
                 h.selectAt(start);
@@ -448,6 +530,7 @@ public final class Waves24MechanicsHarness {
                 player.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, 1000, 1, false, false, true));
                 h.finishHunt();
                 check(player.glowing(start + 20_000L), "cleanup must preserve later unrelated glowing effect");
+                check(h.waveTwoMarkedParticipants.isEmpty(), "a foreign glow still leaves the mark behind");
             }
             case "reveal-effects-cleanup" -> {
                 h.selectAt(start);
@@ -465,7 +548,7 @@ public final class Waves24MechanicsHarness {
                 player.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, -1, 0, false, false, true));
                 h.selectAt(start); Bukkit.now = start + 100L; h.finishHunt();
                 check(player.getPotionEffect(PotionEffectType.GLOWING) != null
-                        && player.getPotionEffect(PotionEffectType.GLOWING).getDuration() < 0,
+                                && player.getPotionEffect(PotionEffectType.GLOWING).getDuration() < 0,
                         "hunt cleanup cannot remove an unrelated infinite glow lease");
             }
             case "infinite-reveal-preserved" -> {
@@ -474,7 +557,7 @@ public final class Waves24MechanicsHarness {
                 player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, -1, 0, false, true, true));
                 h.selectAt(start); Bukkit.now = start + 100L; h.finishHunt();
                 check(player.getPotionEffect(PotionEffectType.SPEED).getDuration() < 0
-                        && player.getPotionEffect(PotionEffectType.RESISTANCE).getDuration() < 0,
+                                && player.getPotionEffect(PotionEffectType.RESISTANCE).getDuration() < 0,
                         "reveal cleanup must preserve infinite foreign buff leases");
             }
             case "stronger-glow-cleanup" -> {
@@ -487,69 +570,44 @@ public final class Waves24MechanicsHarness {
             }
             case "death" -> {
                 h.selectAt(start); Bukkit.now = start + 100L; player.dead = true; h.deathHunt(player);
-                check(h.waveTwoMarkedPlayerUuid == null, "death listener must immediately release mechanical target");
-                check(!player.glowing(Bukkit.now) && h.clientClears == 1, "death must clear glow and edge packet before next tick");
+                check(h.waveTwoMarkedParticipants.isEmpty(),
+                        "death listener must immediately release the participant's mark");
+                check(!player.glowing(Bukkit.now) && h.clientClears == 1,
+                        "death must clear glow and edge packet before next tick");
             }
             case "disconnect" -> {
                 h.selectAt(start); Bukkit.now = start + 100L; h.quitHunt(player); player.online = false;
-                check(h.waveTwoMarkedPlayerUuid == null, "quit listener must immediately release mechanical target");
-                check(!player.glowing(Bukkit.now) && h.clientClears == 1, "quit must clear glow and edge packet before session removal");
+                check(h.waveTwoMarkedParticipants.isEmpty(),
+                        "quit listener must immediately release the participant's mark");
+                check(!player.glowing(Bukkit.now) && h.clientClears == 1,
+                        "quit must clear glow and edge packet before session removal");
             }
             case "replacement" -> {
                 h.selectAt(start); player.wave = false; h.selectAt(start + 100L);
+                check(h.waveTwoMarkedParticipants.isEmpty(),
+                        "a departed participant is released on the next objective tick");
                 Player second = new Player(); Bukkit.players.add(second);
-                h.selectAt(start + 1_099L);
-                check(h.waveTwoMarkedPlayerUuid == null, "replacement retains one second recovery warning");
-                h.selectAt(start + 1_100L);
-                check(second.id.equals(h.waveTwoMarkedPlayerUuid) && h.currentHuntCycles == 0,
-                        "invalid target must be replaced without crediting a completed hunt cycle");
-                check(!player.glowing(start + 1_100L) && second.glowing(start + 1_100L),
-                        "observer mark must transfer to replacement only");
+                h.selectAt(start + 200L);
+                check(h.waveTwoMarkedParticipants.equals(Set.of(second.id)) && h.currentHuntCycles == 0,
+                        "a replacement is marked on the next tick without crediting a subwave");
+                check(!player.glowing(start + 200L) && second.glowing(start + 200L),
+                        "the observer mark belongs to the replacement only");
             }
-            case "two-opening-batches-late-gate" -> {
-                h.startHunt(start);
-                h.waveSpawnSchedule = WaveTwoStagePolicy.split(
-                        new WaveMechanicsPolicy.WaveCounts(9, 0, 0, 0, 0));
-                h.waveSpawnWave = 2;
-                h.spawnNextWaveGroup(new World(), new Location());
+            case "invalid-participant-state-death", "invalid-participant-state-disconnect",
+                    "invalid-participant-state-arena" -> {
+                Player second = new Player(); Bukkit.players.add(second);
                 h.selectAt(start);
-                Mob fighter = h.addWaveTwoFighter(1);
-                long firstClear = start + 10_000L;
-                h.liveWaveEntitiesForWave2 = 0; Bukkit.now = firstClear;
-                check(h.confirmWaveTwoFighterDeath(fighter), "confirmed opening-group death retires its UUID");
-                h.tickCurrentHuntObjective(firstClear);
-                check(h.currentHuntCycles == 1 && h.spawnedWaveGroups.size() == 1
-                                && h.waveTwoGroupCleared,
-                        "the first opening group clears but the second batch waits for mark two");
-                check(h.waveTwoMarkedPlayerUuid != null,
-                        "clearing a group does not interrupt the independent 45-second mark period");
-
-                Bukkit.now = start + 45_000L;
-                h.tickCurrentHuntObjective(Bukkit.now);
-                check(h.waveTwoCompletedMarkPeriods == 1 && h.spawnedWaveGroups.size() == 1,
-                        "the first completed mark releases the second substantial batch, not late reinforcements");
-                Bukkit.now++;
-                h.tickCurrentHuntObjective(Bukkit.now);
-                check(h.spawnedWaveGroups.size() == 2 && h.waveSpawnGroupIndex == 2,
-                        "the second substantial batch starts at the beginning of mark two");
-
-                fighter = h.addWaveTwoFighter(2);
-                long secondClear = start + 55_000L;
-                Bukkit.now = secondClear;
-                check(h.confirmWaveTwoFighterDeath(fighter), "confirmed second opening-group death retires its UUID");
-                h.tickCurrentHuntObjective(secondClear);
-                check(h.currentHuntCycles == 2 && h.spawnedWaveGroups.size() == 2,
-                        "late reinforcements stay locked until two full mark periods finish");
-                Bukkit.now = start + 90_000L;
-                h.tickCurrentHuntObjective(Bukkit.now);
-                check(h.waveTwoCompletedMarkPeriods == 2 && h.spawnedWaveGroups.size() == 2,
-                        "the second period is counted without releasing a late group in the same tick");
-                Bukkit.now++;
-                h.tickCurrentHuntObjective(Bukkit.now);
-                check(h.spawnedWaveGroups.size() == 3 && h.waveSpawnGroupIndex == 3,
-                        "the first late reinforcement starts only after both complete marks");
-                check(h.spawnedWaveGroups.get(2).total() <= WaveTwoStagePolicy.LATE_REINFORCEMENT_BUDGET,
-                        "the single final reinforcement stays within its eight-mob budget");
+                check(h.waveTwoMarkedParticipants.size() == 2, "both participants start marked");
+                if (scenario.endsWith("death")) player.dead = true;
+                if (scenario.endsWith("disconnect")) player.online = false;
+                if (scenario.endsWith("arena")) player.wave = false;
+                h.selectAt(start + 1_000L);
+                check(h.waveTwoMarkedParticipants.equals(Set.of(second.id)),
+                        "an invalid participant drops out of the mark without disturbing the party");
+                check(!player.glowing(start + 1_000L) && second.glowing(start + 1_000L),
+                        "only the invalid participant loses the observer glow");
+                check(h.currentHuntCycles == 0,
+                        "an invalid participant never credits a cleared subwave");
             }
             case "unloaded-group-roster" -> {
                 h.startHunt(start); h.selectAt(start);
@@ -570,27 +628,25 @@ public final class Waves24MechanicsHarness {
                 check(!h.waveTwoGroupCleared && h.currentHuntCycles == 0,
                         "an unloaded but outstanding group UUID must not count as a cleared group");
                 check(h.spawnedWaveGroups.size() == 1,
-                        "the next group must not start its post-clear pause while any fighter is unloaded");
+                        "the next subwave must not start while any fighter is unloaded");
                 check(h.retireWaveTwoRosterAfterConfirmedDeath(confirmedDead)
                                 && h.waveTwoOutstandingEntityUuids.isEmpty() && h.saveCalls == 1,
                         "only a confirmed current-group death removes the final durable UUID");
                 check(h.retireWaveTwoRosterAfterConfirmedDeath(confirmedDead) && h.saveCalls == 1,
                         "duplicate death callbacks do not checkpoint or retire the fighter twice");
-                h.tickCurrentHuntObjective(unloadedAt + 1L);
+                long clearedAt = unloadedAt + 1L;
+                h.tickCurrentHuntObjective(clearedAt);
                 check(h.waveTwoGroupCleared && h.currentHuntCycles == 1
                                 && h.spawnedWaveGroups.size() == 1,
-                        "the group clears immediately after its final UUID dies, while mark pacing holds the next batch");
-                h.tickCurrentHuntObjective(unloadedAt + 2L);
+                        "the group clears immediately on its final UUID death and waits the approved gap");
+                h.tickCurrentHuntObjective(clearedAt + WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS - 1L);
                 check(h.spawnedWaveGroups.size() == 1,
-                        "an additional tick before mark two cannot start the second opening batch");
-                long secondMark = start + 45_000L;
-                Bukkit.now = secondMark;
-                h.tickCurrentHuntObjective(secondMark);
-                Bukkit.now++;
-                h.tickCurrentHuntObjective(Bukkit.now);
+                        "an extra tick before the three-second gap cannot start the second subwave");
+                h.tickCurrentHuntObjective(clearedAt + WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS);
                 check(h.spawnedWaveGroups.size() == 2,
-                        "the second opening batch starts after mark one completes");
+                        "the second subwave starts exactly three seconds after the clear");
             }
+
             case "sandbox-confirmed-death" -> {
                 Mob fighter = h.addWaveTwoFighter(1);
                 h.phase = EventPhase.READY_FOR_PLAYERS;
@@ -600,45 +656,7 @@ public final class Waves24MechanicsHarness {
                         "a confirmed sandbox Wave 2 death retires its current-group UUID without changing official phase");
                 check(h.waveTwoOutstandingEntityUuids.isEmpty() && h.saveCalls == 0,
                         "sandbox group retirement clears only its tracked UUID and does not persist official state");
-            }
-            case "forty-five-second-mark-retention" -> {
-                Player second = new Player(); Bukkit.players.add(second);
-                h.waveSpawnSchedule = List.of(new WaveMechanicsPolicy.WaveCounts(3, 0, 0, 0, 0));
-                h.waveSpawnGroupIndex = 1;
-                h.liveWaveEntitiesForWave2 = 1;
-                h.addWaveTwoFighter(1);
-                h.startHunt(start); h.selectAt(start);
-                UUID firstTarget = h.waveTwoMarkedPlayerUuid;
-                long firstMarkEnd = start + 45_000L;
-                h.tickCurrentHuntObjective(firstMarkEnd - 1L);
-                check(firstTarget.equals(h.waveTwoMarkedPlayerUuid) && h.currentHuntCycles == 0,
-                        "Wave 2 mark must remain on its player for the full forty-five-second period");
-            }
-            case "forty-five-second-mark-rotation" -> {
-                Player second = new Player(); Bukkit.players.add(second);
-                h.waveSpawnSchedule = List.of(new WaveMechanicsPolicy.WaveCounts(3, 0, 0, 0, 0));
-                h.waveSpawnGroupIndex = 1;
-                h.liveWaveEntitiesForWave2 = 1;
-                h.addWaveTwoFighter(1);
-                h.startHunt(start); h.selectAt(start);
-                UUID firstTarget = h.waveTwoMarkedPlayerUuid;
-                h.tickCurrentHuntObjective(start + 45_000L - 1L);
-                check(firstTarget.equals(h.waveTwoMarkedPlayerUuid) && h.currentHuntCycles == 0,
-                        "the first mark remains stable until its exact forty-five-second deadline");
-                h.tickCurrentHuntObjective(start + 45_000L);
-                UUID secondTarget = h.waveTwoMarkedPlayerUuid;
-                check(secondTarget != null && !secondTarget.equals(firstTarget)
-                                && h.waveTwoCompletedMarkPeriods == 1,
-                        "the first complete mark period rotates to a different eligible player");
-                h.tickCurrentHuntObjective(start + 90_000L - 1L);
-                check(secondTarget.equals(h.waveTwoMarkedPlayerUuid),
-                        "the second mark remains stable for its full forty-five-second period");
-                h.tickCurrentHuntObjective(start + 90_000L);
-                check(firstTarget.equals(h.waveTwoMarkedPlayerUuid)
-                                && h.waveTwoCompletedMarkPeriods == 2 && h.currentHuntCycles == 0,
-                        "the second complete period rotates fairly and is tracked separately from kills");
-            }
-            case "wave2-edge-spawns" -> {
+            }            case "wave2-edge-spawns" -> {
                 for (int index = 0; index < 3; index++) {
                     Location spawn = h.waveTwoSpawnLocation(index);
                     double radius = Math.hypot(spawn.getX(), spawn.getZ());
@@ -652,20 +670,6 @@ public final class Waves24MechanicsHarness {
                 h.arenaMinZ = -1; h.arenaMaxZ = 1;
                 check(h.waveTwoSpawnLocation(0) == null,
                         "Wave 2 must refuse an outer-ring spawn when the configured arena AABB excludes it");
-            }
-            case "invalid-at-deadline-death", "invalid-at-deadline-disconnect", "invalid-at-deadline-arena" -> {
-                h.waveSpawnGroupIndex = 1; h.liveWaveEntitiesForWave2 = 1;
-                h.addWaveTwoFighter(1);
-                h.selectAt(start); long deadline = h.waveTwoMarkDeadlineMillis;
-                if (scenario.endsWith("death")) player.dead = true;
-                if (scenario.endsWith("disconnect")) player.online = false;
-                if (scenario.endsWith("arena")) player.wave = false;
-                Bukkit.now = deadline; h.tickCurrentHuntObjective(deadline);
-                check(h.currentHuntCycles == 0, "invalid target must not be credited by expiry before roster validation");
-                check(h.waveTwoMarkedPlayerUuid == null, "invalid mark must clear even at the exact deadline");
-                Player second = new Player(); Bukkit.players.add(second);
-                Bukkit.now = deadline + 1_000L; h.tickCurrentHuntObjective(Bukkit.now);
-                check(second.id.equals(h.waveTwoMarkedPlayerUuid), "replacement must get its own full hunt window");
             }
             case "wave-roster-launch" -> {
                 var state = new Wave4ObeliskRuntimeState();
@@ -763,7 +767,7 @@ public final class Waves24MechanicsHarness {
         "WaveScalingPolicy", "WaveMechanicsPolicy", "PressureBudgetController", "ObeliskIntegrityPolicy", "ObeliskProjectilePolicy",
         "ObeliskFireDirectorPolicy", "ObeliskScalingPolicy", "RiftFireballReflectionPolicy", "WaveTwoStagePolicy",
         "WaveTwoHuntPolicy", "WaveTwoPhantomMaterializationPolicy", "WaveTwoPhantomLayoutPolicy",
-        "WaveTwoEntityRecoveryPolicy",
+        "WaveTwoEntityRecoveryPolicy", "RiftCarrierPolicy",
     )]
     dependencies.append(DOMAIN.parent / 'runtime/WaveCombatCoordinator.java')
     compiled = subprocess.run(["javac", "-proc:none", "-encoding", "UTF-8", "-d", str(output),
@@ -1183,6 +1187,7 @@ public final class WaveTwoEntityLoadHarness {
     dependencies = [DOMAIN / f"{name}.java" for name in (
             "PressureBudgetController", "WaveTwoEntityRecoveryPolicy", "WaveEliteCompositionPolicy",
             "WaveTwoStagePolicy", "WaveTwoHuntPolicy", "WaveMechanicsPolicy", "EliteAbilityPolicy", "EndRiftAiPolicy",
+            "RiftCarrierPolicy",
     )]
     dependencies.append(DOMAIN.parent / "runtime/WaveMobLifecycleRegistry.java")
     compiled = subprocess.run(["javac", "-proc:none", "-encoding", "UTF-8", "-d", str(output),
@@ -1207,9 +1212,9 @@ def test_wave2_persisted_entity_load_adapter(wave2_entity_load_harness, scenario
 
 
 @pytest.mark.parametrize("scenario", [
-    "immediate-initial-mark", "full-window", "scaled-full-window", "leaving-roster", "cleanup", "foreign-glow", "reveal-effects-cleanup",
+    "immediate-initial-mark", "all-players-marked-all-wave", "leaving-roster", "cleanup", "foreign-glow", "reveal-effects-cleanup",
     "infinite-glow-preserved", "infinite-reveal-preserved", "stronger-glow-cleanup",
-    "death", "disconnect", "replacement", "invalid-at-deadline-death", "invalid-at-deadline-disconnect", "invalid-at-deadline-arena",
+    "death", "disconnect", "replacement", "invalid-participant-state-death", "invalid-participant-state-disconnect", "invalid-participant-state-arena",
     "wave-roster-launch", "charge-disconnect", "charge-generation",
     "boss-only-excluded", "wave-reflection", "sandbox-outsider-reflection", "boss-reflection-preserved", "wave7-reflection-boundary",
     "wave-reflected-hit", "stale-hit", "wrong-source-reflected-hit",
@@ -1259,7 +1264,7 @@ public final class Wave2SpawnHarness {
     Location waveTwoPhantomActivationLocation;
     BukkitTask waveTwoPhantomWarningTask;
     int waveSpawnWave, waveSpawnGroupIndex, waveSpawnEntityOffset;
-    int waveTwoGroupsSpawned, waveTwoCompletedMarkPeriods, waveTwoLastLateGroupMarkPeriod, saveCalls;
+    int waveTwoGroupsSpawned, saveCalls;
     int waveTwoPhantomActivationCycle;
     Set<String> currentWave4PressureSpawnSlots = new HashSet<>();
     int currentWave4PressurePackAttempts;
@@ -1448,9 +1453,8 @@ public final class Wave2SpawnHarness {
     java.write_text(harness, encoding="utf-8")
     dependencies = [DOMAIN / f"{name}.java" for name in (
         "WaveScalingPolicy", "WaveMechanicsPolicy", "WavePressurePolicy", "PressureBudgetController", "WaveTwoStagePolicy",
-        "WaveTwoHuntPolicy",
         "WaveTwoHuntPolicy", "WaveTwoPhantomMaterializationPolicy",
-        "WaveTwoEntityRecoveryPolicy",
+        "WaveTwoEntityRecoveryPolicy", "RiftCarrierPolicy",
     )]
     compiled = subprocess.run(["javac", "-proc:none", "-encoding", "UTF-8", "-d", str(output),
                                str(java), *map(str, dependencies)], capture_output=True, text=True)
@@ -1470,9 +1474,8 @@ def test_wave2_bounded_group_spawn_contracts(wave2_spawn_harness, scenario):
 
 
 @pytest.mark.parametrize("scenario", [
-    "forty-five-second-mark-retention", "forty-five-second-mark-rotation", "unloaded-group-roster",
-    "sandbox-confirmed-death",
-    "two-opening-batches-late-gate", "wave2-edge-spawns", "wave2-edge-spawns-respect-bounds",
+    "three-second-gap", "three-subwaves-required", "unloaded-group-roster",
+    "sandbox-confirmed-death", "wave2-edge-spawns", "wave2-edge-spawns-respect-bounds",
     "assignment-id-exhaustion",
 ])
 def test_wave2_mark_periods_and_edge_spawn(mechanics_harness, scenario):
@@ -1519,10 +1522,10 @@ def test_wave2_restart_restores_bounded_groups_and_durable_hunt_progress():
     assert 'waveTwoOutstandingEntityUuids.addAll(restoredWaveTwoOutstanding)' in apply_snapshot
     assert 'WAVE_TWO_GROUPS_SPAWNED_PROGRESS_KEY' in wave_snapshot
     assert 'WAVE_TWO_GROUP_CLEARED_PROGRESS_KEY' in wave_snapshot
-    assert 'WAVE_TWO_MARK_PERIODS_PROGRESS_KEY' in wave_snapshot
     assert 'WAVE_TWO_MARK_ASSIGNMENT_ID_PROGRESS_KEY' in wave_snapshot
     assert 'Integer.toString(waveTwoMarkCycle)' in wave_snapshot
-    assert 'WAVE_TWO_LAST_LATE_MARK_PROGRESS_KEY' in wave_snapshot
+    assert 'WAVE_TWO_MARK_PERIODS_PROGRESS_KEY' not in wave_snapshot
+    assert 'WAVE_TWO_LAST_LATE_MARK_PROGRESS_KEY' not in wave_snapshot
     assert 'WaveTwoHuntPolicy.restoreMarkAssignmentId(' in apply_snapshot
     assert 'waveTwoMarkCycle = restoredWaveTwoMarkAssignmentId' in apply_snapshot
     assert 'waveTwoMarkCycle = WaveTwoHuntPolicy.nextMarkAssignmentId(waveTwoMarkCycle)' in mark_update
@@ -1537,8 +1540,12 @@ def test_wave2_restart_restores_bounded_groups_and_durable_hunt_progress():
     assert 'checkpointWaveTwoGroupClear()' in _declaration(source, 'private void tickCurrentHuntObjective(')
     assert 'checkpointWaveTwoGroupSpawn()' in spawn
     assert 'clearCurrentHuntMark(System.currentTimeMillis())' in disable
-    assert 'WaveTwoHuntPolicy.MARK_ROTATION_MILLIS' in _declaration(
+    assert 'WaveTwoHuntPolicy.MARK_ROTATION_MILLIS' not in _declaration(
         source, 'private void updateMarkedTargetObjective(')
+    assert 'waveTwoMarkDeadlineMillis' not in source
+    assert 'for (Player participant : activeWaveParticipants())' in mark_update
+    assert 'releaseWaveTwoMarkFor(' in mark_update
+    assert 'the_end' not in _declaration(source, 'private void sendCurrentHuntMarkPacket(Player player, boolean active)')
     assert 'END_CONTROL_START' not in source
     assert 'END_CONTROL_STOP' not in source
 

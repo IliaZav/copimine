@@ -147,6 +147,7 @@ public class Wave4SpecialProbe {
     base = ROOT / "copimine-end-event/src/me/copimine/endevent"
     production = [base / p for p in ("domain/ObeliskFireDirectorPolicy.java", "domain/ObeliskScalingPolicy.java",
                                     "domain/Wave4PressurePackPolicy.java", "domain/WaveMechanicsPolicy.java",
+                                    "domain/RiftCarrierPolicy.java",
                                     "domain/PressureBudgetController.java",
                                     "runtime/WaveCombatCoordinator.java")]
     result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path), *map(str, production),

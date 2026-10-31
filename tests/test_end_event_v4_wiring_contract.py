@@ -69,7 +69,19 @@ def test_v4_ability_adapter_rechecks_current_event_and_generation():
 
 def test_wave_two_mark_never_reverses_player_controls():
     event = EVENT_SOURCE.read_text(encoding="utf-8")
-    assert "WaveTwoHuntPolicy.MARK_ROTATION_MILLIS / 50L" in event
+    assert "MARK_ROTATION_MILLIS" not in event
+    assert "waveTwoMarkDeadlineMillis" not in event
+    assert wave_two_marks_every_participant(event)
     assert 'sendClientPacket(marked, "END_CONTROL_START"' not in event
     assert 'sendClientPacket(marked, "END_CONTROL_STOP"' not in event
     assert "waveTwoControlInstanceId" not in event
+
+
+def wave_two_marks_every_participant(source: str) -> bool:
+    """Wave 2 marks the whole active party every tick, never a single rotating target."""
+    update = method_body(source, "private void updateMarkedTargetObjective(long now)")
+    return (
+        "for (Player participant : activeWaveParticipants())" in update
+        and "refreshWaveTwoMarkGlow(participant)" in update
+        and "releaseWaveTwoMarkFor(" in update
+    )

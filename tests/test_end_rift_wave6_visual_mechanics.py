@@ -486,7 +486,9 @@ public class ScalingProbe {
     classes.mkdir()
     compile_result = subprocess.run(['javac', '-encoding', 'UTF-8', '-d', str(classes), str(fixture),
         *(str(domain / name) for name in ('RitualSphereScalingPolicy.java', 'WaveMechanicsPolicy.java',
-                                          'PressureBudgetController.java'))],
+                                          'PressureBudgetController.java', 'RiftCarrierPolicy.java',
+                                          'WaveSixRosterPolicy.java', 'MageSignaturePolicy.java',
+                                          'RitualCasterTacticsPolicy.java'))],
         capture_output=True, text=True, timeout=30)
     assert compile_result.returncode == 0, compile_result.stderr
     server = subprocess.run(['java', '-cp', str(classes), 'ScalingProbe'],
@@ -531,7 +533,7 @@ public class FreeTargetProbe {
     int activeWave=6, waveTargetCursor, executions; Object ritualSphereState=new Object(), keyWave=new Object(), keyKind=new Object();
     Registry taskRegistry=new Registry();
     long generation=1, eventTickCounter=1;
-    UUID waveTwoMarkedPlayerUuid;
+    Set<UUID> waveTwoMarkedParticipants=new HashSet<>();
     WaveCombatCoordinator waveCombatCoordinator=new WaveCombatCoordinator();
     static class Registry { boolean owns(long generation){return generation==1;} }
     static class Location { }
@@ -719,8 +721,12 @@ public class GuardWarningProbe {
 ''' + warning + '\n}', encoding='utf-8')
     compiled = subprocess.run(['javac', '-J-Xmx96m', '-encoding', 'UTF-8',
                                '-d', str(tmp_path), str(fixture),
-                               str(ROOT / 'copimine-end-event/src/me/copimine/endevent/domain/RitualGuardAbilityPolicy.java')],
-                              capture_output=True, text=True, timeout=30)
+                               *map(str, (ROOT / 'copimine-end-event/src/me/copimine/endevent/domain' / (name + '.java')
+                                          for name in ('RitualGuardAbilityPolicy', 'RitualSphereScalingPolicy',
+                                                       'WaveSixRosterPolicy', 'MageSignaturePolicy',
+                                                       'RitualCasterTacticsPolicy', 'WaveMechanicsPolicy',
+                                                       'RiftCarrierPolicy', 'PressureBudgetController')))],
+                              capture_output=True, text=True, timeout=60)
     assert compiled.returncode == 0, compiled.stderr
     executed = subprocess.run(['java', '-Xms8m', '-Xmx96m', '-XX:+UseSerialGC', '-cp', str(tmp_path),
                                'GuardWarningProbe'], capture_output=True, text=True, timeout=30)

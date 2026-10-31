@@ -27,15 +27,15 @@ public final class WaveCombatCoordinatorTest {
     c.clear(); check(c.reserve(8,a,b,171,230)==null,"cleanup fences the controller");
     var candidates=List.of(a,b,d);
     Map<UUID,Integer> loads=new HashMap<>(); loads.put(a,6); loads.put(b,1); loads.put(d,0);
-    check(WaveCombatCoordinator.chooseTarget(candidates,a,a,2,0,loads).equals(a),"hunt pursuer uses marked target");
-    check(WaveCombatCoordinator.chooseTarget(candidates,a,a,2,1,loads).equals(d),"hunt blocker must select an ally");
-    check(WaveCombatCoordinator.chooseTarget(List.of(a),null,a,2,1,loads).equals(a),"solo player must remain playable");
-    check(WaveCombatCoordinator.chooseTarget(List.of(b,d),a,a,2,0,loads).equals(d),"dead marked target cannot remain selected");
-    check(WaveCombatCoordinator.chooseTarget(candidates,a,null,5,0,loads).equals(d),"fog resumption distributes pressure");
-    check(WaveCombatCoordinator.chooseTarget(List.of(a,b),a,null,5,0,Map.of(a,3,b,2)).equals(a),
+    check(WaveCombatCoordinator.chooseTarget(candidates,a,2,0,loads).equals(d),"the least-loaded eligible player is selected");
+    check(WaveCombatCoordinator.chooseTarget(candidates,a,2,1,loads).equals(d),"the next slot selects the same least-loaded player");
+    check(WaveCombatCoordinator.chooseTarget(List.of(a),null,2,1,loads).equals(a),"solo player must remain playable");
+    check(WaveCombatCoordinator.chooseTarget(List.of(b,d),a,2,0,loads).equals(d),"an ineligible current target cannot remain selected");
+    check(WaveCombatCoordinator.chooseTarget(candidates,a,5,0,loads).equals(d),"fog resumption distributes pressure");
+    check(WaveCombatCoordinator.chooseTarget(List.of(a,b),a,5,0,Map.of(a,3,b,2)).equals(a),
         "a squad must retain its live target while the load difference is only one fighter");
-    check(WaveCombatCoordinator.chooseTarget(candidates,b,null,5,0,null).equals(b),"absent load snapshot preserves an eligible current target");
-    check(WaveCombatCoordinator.chooseTarget(candidates,null,a,2,1,null).equals(d),"absent load snapshot preserves hunter role assignment");
+    check(WaveCombatCoordinator.chooseTarget(candidates,b,5,0,null).equals(b),"absent load snapshot preserves an eligible current target");
+    check(WaveCombatCoordinator.chooseTarget(candidates,null,2,1,null).equals(b),"absent load snapshot still spreads pressure");
     check(!WaveCombatCoordinator.refreshPath(500,1000,0.1,false,true),"small movement cannot spam pathfinder");
     check(WaveCombatCoordinator.refreshPath(500,1000,9,false,true),"large destination change invalidates path");
     check(WaveCombatCoordinator.refreshPath(500,1000,0,true,true),"objective or target change invalidates path");
@@ -43,7 +43,7 @@ public final class WaveCombatCoordinatorTest {
     var tenPlayers=new ArrayList<UUID>();for(int i=10;i<20;i++)tenPlayers.add(new UUID(0,i));
     var tenLoads=new HashMap<UUID,Integer>();
     for(int i=0;i<40;i++){
-      UUID assigned=WaveCombatCoordinator.chooseTarget(tenPlayers,null,null,5,i,tenLoads);
+      UUID assigned=WaveCombatCoordinator.chooseTarget(tenPlayers,null,5,i,tenLoads);
       check(assigned!=null,"every available fighter must receive a player assignment");
       tenLoads.merge(assigned,1,Integer::sum);
     }
@@ -56,7 +56,7 @@ public final class WaveCombatCoordinatorTest {
       for (int i=0;i<playerCount;i++) players.add(new UUID(1,i));
       var fighters = new ArrayList<UUID>();
       for (int i=0;i<56;i++) fighters.add(new UUID(2,i));
-      var plan = WaveCombatCoordinator.planSquads(fighters,players,Map.of(),5,null);
+      var plan = WaveCombatCoordinator.planSquads(fighters,players,Map.of(),5);
       check(plan.targets().size()==56,"every live fighter receives one squad assignment");
       check(plan.squads().size()==12,"56 fighters form bounded 3-5 member squads");
       for (var squad : plan.squads())
@@ -74,7 +74,7 @@ public final class WaveCombatCoordinatorTest {
       check(plan.squads().stream().allMatch(s->s.fighters().stream()
               .allMatch(f->plan.targets().get(f).equals(s.target()))),
           "squad members keep one shared target");
-      var retained=WaveCombatCoordinator.planSquads(fighters,players,plan.targets(),5,null);
+      var retained=WaveCombatCoordinator.planSquads(fighters,players,plan.targets(),5);
       check(retained.targets().equals(plan.targets()),"valid squad assignments stay stable on the next tick");
     }
     for (int playerCount : List.of(2,5,6,10,20)) {
@@ -90,15 +90,14 @@ public final class WaveCombatCoordinatorTest {
       check(attacks.reserve(attackGeneration, secondOwner, victim, 12, 72) != null,
         playerCount + " players admit a queued wind-up after the prior lease releases");
     }
-    var markedPlayers=List.of(new UUID(3,1),new UUID(3,2),new UUID(3,3),new UUID(3,4));
-    var markedPlan=WaveCombatCoordinator.planSquads(
+    var w2Players=List.of(new UUID(3,1),new UUID(3,2),new UUID(3,3),new UUID(3,4));
+    var w2Plan=WaveCombatCoordinator.planSquads(
       List.of(new UUID(4,1),new UUID(4,2),new UUID(4,3),new UUID(4,4),new UUID(4,5),new UUID(4,6)),
-      markedPlayers,Map.of(),2,markedPlayers.get(0));
-    long markedSquads=markedPlan.squads().stream().filter(s->s.target().equals(markedPlayers.get(0))).count();
-    check(markedSquads==1&&markedPlan.squads().get(0).target().equals(markedPlayers.get(0))
-            &&markedPlan.squads().subList(1,markedPlan.squads().size()).stream()
-            .noneMatch(s->s.target().equals(markedPlayers.get(0))),
-        "Wave 2 assigns one focus squad to the mark and excludes the mark from other squad pools");
+      w2Players,Map.of(),2);
+    check(w2Plan.squads().size()==2&&w2Plan.squads().stream().allMatch(s->w2Players.contains(s.target())),
+        "Wave 2 spreads squads across the whole marked party instead of one focus target");
+    check(w2Plan.squads().get(0).target().equals(w2Plan.squads().get(1).target())==false,
+        "two Wave 2 squads take two different marked players");
     testPersistentSquadCoordinator();
     System.out.println("WaveCombatCoordinatorTest OK");
   }
@@ -205,7 +204,7 @@ public final class WaveCombatCoordinatorTest {
       var fighters = ids(2000L + fighterCount, fighterCount);
       var players = ids(3000L + playerCount, playerCount);
       var plan = coordinator.planSquads(generation, "wave-5|room-a|eligible",
-          fighters, players, Map.of(), 5, null);
+          fighters, players, Map.of(), 5);
       int expectedSquads = Math.max(1, (fighterCount + 4) / 5);
       check(plan.squads().size() == expectedSquads, "initial pack count covers the roster");
       check(plan.targets().size() == fighterCount, "every live fighter receives one target");
@@ -229,7 +228,7 @@ public final class WaveCombatCoordinatorTest {
       int maxLoad = loads.values().stream().mapToInt(Integer::intValue).max().orElse(0);
       check(maxLoad - minLoad <= 5, "initial target pressure stays within one full squad");
       var repeated = coordinator.planSquads(generation, "wave-5|room-a|eligible",
-          fighters, players, plan.targets(), 5, null);
+          fighters, players, plan.targets(), 5);
       checkSameSquads(plan, repeated, "repeated planning preserves identity, membership and targets");
     }
 
@@ -241,12 +240,12 @@ public final class WaveCombatCoordinatorTest {
       var originalRoster = ids(4200, 16);
       String cohort = "wave-5|room-a|eligible";
       var before = coordinator.planSquads(generation, cohort,
-          originalRoster, deathPlayers, Map.of(), 5, null);
+          originalRoster, deathPlayers, Map.of(), 5);
       check(before.squads().size() == 4, "16 fighters begin in four squads");
       var survivors = new ArrayList<>(originalRoster);
       UUID dead = survivors.remove(deadIndex);
       var after = coordinator.planSquads(generation, cohort,
-          survivors, deathPlayers, before.targets(), 5, null);
+          survivors, deathPlayers, before.targets(), 5);
       check(!after.targets().containsKey(dead), "dead fighter assignments are pruned");
       check(after.squads().size() == before.squads().size(),
           "deaths do not collapse still-live squad identities");
@@ -263,7 +262,7 @@ public final class WaveCombatCoordinatorTest {
       check(after.squads().stream().allMatch(squad -> squad.fighters().size() <= 5),
           "death leftovers remain safely bounded even when a pack is undersized");
       var repeated = coordinator.planSquads(generation, cohort,
-          survivors, deathPlayers, after.targets(), 5, null);
+          survivors, deathPlayers, after.targets(), 5);
       checkSameSquads(after, repeated, "planning after a death remains stable on later ticks");
     }
 
@@ -274,18 +273,18 @@ public final class WaveCombatCoordinatorTest {
     var sixFighters = ids(4400, 6);
     var twoPlayers = ids(4500, 2);
     var initial = rosterCoordinator.planSquads(rosterGeneration, rosterCohort,
-        sixFighters, twoPlayers, Map.of(), 5, null);
+        sixFighters, twoPlayers, Map.of(), 5);
     var fiveSurvivors = new ArrayList<>(sixFighters);
     fiveSurvivors.remove(1);
     var afterDeath = rosterCoordinator.planSquads(rosterGeneration, rosterCohort,
-        fiveSurvivors, twoPlayers, initial.targets(), 5, null);
+        fiveSurvivors, twoPlayers, initial.targets(), 5);
     check(afterDeath.squads().size() == 1 && afterDeath.squads().get(0).fighters().size() == 5,
         "a five-fighter remnant consolidates into one viable squad after a departure");
     var newFighter = new UUID(4400, 6);
     var withNewcomer = new ArrayList<>(fiveSurvivors);
     withNewcomer.add(newFighter);
     var afterJoin = rosterCoordinator.planSquads(rosterGeneration, rosterCohort,
-        withNewcomer, twoPlayers, afterDeath.targets(), 5, null);
+        withNewcomer, twoPlayers, afterDeath.targets(), 5);
     check(afterJoin.targets().size() == 6 && afterJoin.targets().containsKey(newFighter),
         "a newcomer receives exactly one assignment after a previously consolidated roster grows");
     check(afterJoin.squads().stream().anyMatch(squad -> squad.identity() == afterDeath.squads().get(0).identity()),
@@ -297,13 +296,13 @@ public final class WaveCombatCoordinatorTest {
     concurrentJoinCoordinator.begin(4301);
     var concurrentJoinFighters = ids(4410, 6);
     var beforeConcurrentJoin = concurrentJoinCoordinator.planSquads(4301, rosterCohort,
-        concurrentJoinFighters, twoPlayers, Map.of(), 5, null);
+        concurrentJoinFighters, twoPlayers, Map.of(), 5);
     var concurrentJoinRoster = new ArrayList<>(concurrentJoinFighters);
     concurrentJoinRoster.remove(1);
     var replacementFighter = new UUID(4410, 6);
     concurrentJoinRoster.add(replacementFighter);
     var afterConcurrentJoin = concurrentJoinCoordinator.planSquads(4301, rosterCohort,
-        concurrentJoinRoster, twoPlayers, beforeConcurrentJoin.targets(), 5, null);
+        concurrentJoinRoster, twoPlayers, beforeConcurrentJoin.targets(), 5);
     check(afterConcurrentJoin.squads().size() == 2
             && afterConcurrentJoin.squads().stream().allMatch(squad -> squad.fighters().size() == 3),
         "a replacement joining in the same roster update fills the undersized pack without collapsing identities");
@@ -311,14 +310,14 @@ public final class WaveCombatCoordinatorTest {
         "a replacement joins an available squad when the departure and arrival are observed together");
 
     var disconnected = rosterCoordinator.planSquads(rosterGeneration, rosterCohort,
-        withNewcomer, List.of(twoPlayers.get(1)), afterJoin.targets(), 5, null);
+        withNewcomer, List.of(twoPlayers.get(1)), afterJoin.targets(), 5);
     check(disconnected.targets().values().stream().allMatch(twoPlayers.get(1)::equals),
         "disconnected player targets are invalidated and reassigned");
     check(disconnected.squads().stream().map(WaveCombatCoordinator.Squad::identity).toList()
             .equals(afterJoin.squads().stream().map(WaveCombatCoordinator.Squad::identity).toList()),
         "a player-list change does not rebuild squad identities");
     var reconnected = rosterCoordinator.planSquads(rosterGeneration, rosterCohort,
-        withNewcomer, twoPlayers, disconnected.targets(), 5, null);
+        withNewcomer, twoPlayers, disconnected.targets(), 5);
     check(reconnected.targets().values().stream().allMatch(twoPlayers::contains),
         "reconnected roster receives only eligible targets");
     check(reconnected.squads().stream().map(WaveCombatCoordinator.Squad::identity).toList()
@@ -331,19 +330,19 @@ public final class WaveCombatCoordinatorTest {
     String unloadCohort = "wave-2|arena|eligible";
     var unloadRoster = ids(4450, 8);
     var beforeUnload = unloadCoordinator.planSquads(unloadGeneration, unloadCohort,
-        unloadRoster, twoPlayers, Map.of(), 2, twoPlayers.get(0));
+        unloadRoster, twoPlayers, Map.of(), 2);
     var partiallyLoaded = unloadRoster.subList(0, 5);
     var restoredCohort = WaveTwoEntityRecoveryPolicy.coordinatorRoster(
         partiallyLoaded, Set.copyOf(unloadRoster));
     var duringPartialUnload = unloadCoordinator.planSquads(unloadGeneration, unloadCohort,
-        restoredCohort, twoPlayers, beforeUnload.targets(), 2, twoPlayers.get(0));
+        restoredCohort, twoPlayers, beforeUnload.targets(), 2);
     checkSameSquads(beforeUnload, duringPartialUnload,
         "an unloaded W2 UUID remains in its original squad and keeps its target");
     // A fully unloaded cohort does not invoke the planner. Its coordinator
     // state remains intact until the outstanding persisted UUID roster rejoins.
     var afterRejoin = unloadCoordinator.planSquads(unloadGeneration, unloadCohort,
         WaveTwoEntityRecoveryPolicy.coordinatorRoster(List.of(), Set.copyOf(unloadRoster)),
-        twoPlayers, beforeUnload.targets(), 2, twoPlayers.get(0));
+        twoPlayers, beforeUnload.targets(), 2);
     checkSameSquads(beforeUnload, afterRejoin,
         "full chunk unload followed by rejoin preserves W2 squad membership and targets");
 
@@ -353,34 +352,34 @@ public final class WaveCombatCoordinatorTest {
     var overloadedTargets = new HashMap<UUID,UUID>();
     for (UUID fighter : pressureRoster) overloadedTargets.put(fighter, twoPlayers.get(0));
     var relieved = pressureCoordinator.planSquads(4600, "wave-5|room-a|eligible",
-        pressureRoster, twoPlayers, overloadedTargets, 5, null);
+        pressureRoster, twoPlayers, overloadedTargets, 5);
     long movedGroups = relieved.squads().stream()
         .filter(squad -> !twoPlayers.get(0).equals(squad.target())).count();
     check(movedGroups > 0, "targets may move when existing pressure exceeds one squad load");
     var stableRelief = pressureCoordinator.planSquads(4600, "wave-5|room-a|eligible",
-        pressureRoster, twoPlayers, relieved.targets(), 5, null);
+        pressureRoster, twoPlayers, relieved.targets(), 5);
     checkSameSquads(relieved, stableRelief, "pressure redistribution does not cause repeated churn");
 
     var isolation = new WaveCombatCoordinator();
     isolation.begin(4800);
     var isolationRoster = ids(4900, 6);
     var cohortA = isolation.planSquads(4800, "wave-5|room-a|eligible",
-        isolationRoster, twoPlayers, Map.of(), 5, null);
+        isolationRoster, twoPlayers, Map.of(), 5);
     var cohortB = isolation.planSquads(4800, "wave-5|room-b|eligible",
-        isolationRoster, twoPlayers, Map.of(), 5, null);
+        isolationRoster, twoPlayers, Map.of(), 5);
     check(cohortA.squads().stream().noneMatch(a -> cohortB.squads().stream()
             .anyMatch(b -> a.identity() == b.identity())),
         "room or eligibility cohort changes isolate squad state");
     var sameCohort = isolation.planSquads(4800, "wave-5|room-a|eligible",
-        isolationRoster, twoPlayers, cohortA.targets(), 5, null);
+        isolationRoster, twoPlayers, cohortA.targets(), 5);
     checkSameSquads(cohortA, sameCohort, "same generation and cohort reuse their stored squads");
     isolation.retainCohorts(4800, Set.of("wave-5|room-b|eligible"));
     var retainedCohortB = isolation.planSquads(4800, "wave-5|room-b|eligible",
-        isolationRoster, twoPlayers, cohortB.targets(), 5, null);
+        isolationRoster, twoPlayers, cohortB.targets(), 5);
     checkSameSquads(cohortB, retainedCohortB,
         "cohort reconciliation preserves state for cohorts still present");
     var recreatedCohortA = isolation.planSquads(4800, "wave-5|room-a|eligible",
-        isolationRoster, twoPlayers, cohortA.targets(), 5, null);
+        isolationRoster, twoPlayers, cohortA.targets(), 5);
     check(recreatedCohortA.squads().get(0).identity() != cohortA.squads().get(0).identity(),
         "cohort reconciliation discards state for a chamber or cohort that disappeared");
     boolean staleReconciliationRejected = false;
@@ -393,7 +392,7 @@ public final class WaveCombatCoordinatorTest {
     boolean staleGenerationRejected = false;
     try {
       isolation.planSquads(4799, "wave-5|room-a|eligible",
-          isolationRoster, twoPlayers, cohortA.targets(), 5, null);
+          isolationRoster, twoPlayers, cohortA.targets(), 5);
     } catch (IllegalStateException expected) {
       staleGenerationRejected = true;
     }
@@ -401,51 +400,49 @@ public final class WaveCombatCoordinatorTest {
     long previousIdentity = cohortA.squads().get(0).identity();
     isolation.begin(4801);
     var nextGeneration = isolation.planSquads(4801, "wave-5|room-a|eligible",
-        isolationRoster, twoPlayers, Map.of(), 5, null);
+        isolationRoster, twoPlayers, Map.of(), 5);
     check(nextGeneration.squads().get(0).identity() != previousIdentity,
         "begin with a new generation clears old squad state");
     isolation.clear();
     isolation.begin(4802);
     var afterClear = isolation.planSquads(4802, "wave-5|room-a|eligible",
-        isolationRoster, twoPlayers, Map.of(), 5, null);
+        isolationRoster, twoPlayers, Map.of(), 5);
     check(afterClear.squads().get(0).identity() != nextGeneration.squads().get(0).identity(),
         "clear removes stored squad identities");
 
     var bounded = new WaveCombatCoordinator();
     bounded.begin(5000);
     var smallRoster = ids(5100, 3);
-    var first = bounded.planSquads(5000, "cohort-0", smallRoster, twoPlayers, Map.of(), 5, null);
+    var first = bounded.planSquads(5000, "cohort-0", smallRoster, twoPlayers, Map.of(), 5);
     for (int i=1;i<=32;i++)
-      bounded.planSquads(5000, "cohort-"+i, smallRoster, twoPlayers, Map.of(), 5, null);
-    var evicted = bounded.planSquads(5000, "cohort-0", smallRoster, twoPlayers, first.targets(), 5, null);
+      bounded.planSquads(5000, "cohort-"+i, smallRoster, twoPlayers, Map.of(), 5);
+    var evicted = bounded.planSquads(5000, "cohort-0", smallRoster, twoPlayers, first.targets(), 5);
     check(evicted.squads().get(0).identity() != first.squads().get(0).identity(),
         "cohort retention stays bounded and evicts the least-recently-used state");
 
-    var markedCoordinator = new WaveCombatCoordinator();
-    markedCoordinator.begin(5200);
-    var markedFighters = ids(5300, 6);
-    UUID marked = twoPlayers.get(0);
-    var markedBefore = markedCoordinator.planSquads(5200, "wave-2|room-a|eligible",
-        markedFighters, twoPlayers, Map.of(), 2, marked);
-    long markedCount = markedBefore.squads().stream().filter(squad -> marked.equals(squad.target())).count();
-    check(markedCount == 1, "Wave 2 keeps one of two squads on the marked player");
-    var markedAfter = markedCoordinator.planSquads(5200, "wave-2|room-a|eligible",
-        markedFighters, twoPlayers, markedBefore.targets(), 2, marked);
-    checkSameSquads(markedBefore, markedAfter, "Wave 2 mark role survives repeated planning");
+    var waveTwoCoordinator = new WaveCombatCoordinator();
+    waveTwoCoordinator.begin(5200);
+    var waveTwoFighters = ids(5300, 6);
+    var waveTwoBefore = waveTwoCoordinator.planSquads(5200, "wave-2|room-a|eligible",
+        waveTwoFighters, twoPlayers, Map.of(), 2);
+    check(waveTwoBefore.squads().stream().allMatch(squad -> twoPlayers.contains(squad.target())),
+        "Wave 2 squads target only live marked participants");
+    var waveTwoAfter = waveTwoCoordinator.planSquads(5200, "wave-2|room-a|eligible",
+        waveTwoFighters, twoPlayers, waveTwoBefore.targets(), 2);
+    checkSameSquads(waveTwoBefore, waveTwoAfter, "Wave 2 squad distribution survives repeated planning");
 
     var shrinkingCoordinator = new WaveCombatCoordinator();
     shrinkingCoordinator.begin(5250);
     var shrinkingFighters = ids(5350, 16);
     var shrinkingPlayers = ids(5450, 2);
-    UUID shrinkingMark = shrinkingPlayers.get(0);
     String shrinkingCohort = "wave-2|room-a|eligible";
     var beforeShrink = shrinkingCoordinator.planSquads(5250, shrinkingCohort,
-        shrinkingFighters, shrinkingPlayers, Map.of(), 2, shrinkingMark);
+        shrinkingFighters, shrinkingPlayers, Map.of(), 2);
     var retiringSquad = beforeShrink.squads().get(3);
     var afterRosterShrink = new ArrayList<>(shrinkingFighters);
     afterRosterShrink.removeAll(retiringSquad.fighters().subList(1, retiringSquad.fighters().size()));
     var afterShrink = shrinkingCoordinator.planSquads(5250, shrinkingCohort,
-        afterRosterShrink, shrinkingPlayers, beforeShrink.targets(), 2, shrinkingMark);
+        afterRosterShrink, shrinkingPlayers, beforeShrink.targets(), 2);
     check(afterShrink.squads().size() == 3,
         "roster shrink retires a redundant squad instead of leaving a one-member pack");
     check(afterShrink.squads().stream().allMatch(squad -> squad.fighters().size() >= 3
@@ -455,11 +452,11 @@ public final class WaveCombatCoordinatorTest {
         "rebalancing assigns every surviving fighter exactly once");
     check(afterRosterShrink.stream().allMatch(fighter ->
             beforeShrink.targets().get(fighter).equals(afterShrink.targets().get(fighter))),
-        "rebalancing joins the retired marked pack to the same-target squad without target churn");
-    check(afterShrink.squads().stream().filter(squad -> shrinkingMark.equals(squad.target())).count() == 1,
-        "Wave 2 keeps one marked-player squad after pack rebalancing");
+        "rebalancing joins the retired pack to a squad without target churn");
+    check(afterShrink.squads().stream().allMatch(squad -> shrinkingPlayers.contains(squad.target())),
+        "Wave 2 squads only ever target marked participants after pack rebalancing");
     var repeatedShrink = shrinkingCoordinator.planSquads(5250, shrinkingCohort,
-        afterRosterShrink, shrinkingPlayers, afterShrink.targets(), 2, shrinkingMark);
+        afterRosterShrink, shrinkingPlayers, afterShrink.targets(), 2);
     checkSameSquads(afterShrink, repeatedShrink,
         "a rebalanced roster remains stable on the next shared decision pass");
 
@@ -468,13 +465,13 @@ public final class WaveCombatCoordinatorTest {
     var sixMergeFighters = ids(5352, 6);
     String mergeRepairCohort = "wave-5|room-a|eligible";
     var beforeMergeRepair = mergeRepairCoordinator.planSquads(5252, mergeRepairCohort,
-        sixMergeFighters, shrinkingPlayers, Map.of(), 5, null);
+        sixMergeFighters, shrinkingPlayers, Map.of(), 5);
     var afterTwoSquadDeaths = new ArrayList<>(sixMergeFighters);
     for (var squad : beforeMergeRepair.squads()) {
       afterTwoSquadDeaths.remove(squad.fighters().get(squad.fighters().size() - 1));
     }
     var afterMergeRepair = mergeRepairCoordinator.planSquads(5252, mergeRepairCohort,
-        afterTwoSquadDeaths, shrinkingPlayers, beforeMergeRepair.targets(), 5, null);
+        afterTwoSquadDeaths, shrinkingPlayers, beforeMergeRepair.targets(), 5);
     check(afterMergeRepair.squads().size() == 1
             && afterMergeRepair.squads().get(0).fighters().size() == 4,
         "merge repair combines undersized packs even when total fighters cannot fill every current squad");
@@ -486,11 +483,11 @@ public final class WaveCombatCoordinatorTest {
     var twentyW2Fighters = ids(5355, 20);
     String transferringCohort = "wave-2|room-a|eligible";
     var beforeTransfer = transferringCoordinator.planSquads(5255, transferringCohort,
-        twentyW2Fighters, shrinkingPlayers, Map.of(), 2, shrinkingMark);
+        twentyW2Fighters, shrinkingPlayers, Map.of(), 2);
     var transferringRoster = new ArrayList<>(twentyW2Fighters);
     transferringRoster.removeAll(beforeTransfer.squads().get(3).fighters().subList(2, 5));
     var afterTransfer = transferringCoordinator.planSquads(5255, transferringCohort,
-        transferringRoster, shrinkingPlayers, beforeTransfer.targets(), 2, shrinkingMark);
+        transferringRoster, shrinkingPlayers, beforeTransfer.targets(), 2);
     check(afterTransfer.squads().size() == 4
             && afterTransfer.squads().stream().allMatch(squad -> squad.fighters().size() >= 3
                 && squad.fighters().size() <= 5),
@@ -504,36 +501,36 @@ public final class WaveCombatCoordinatorTest {
     var sixW2Fighters = ids(5360, 6);
     String lostMarkedCohort = "wave-2|room-a|eligible";
     var twoW2Squads = lostMarkedSquadCoordinator.planSquads(5260, lostMarkedCohort,
-        sixW2Fighters, shrinkingPlayers, Map.of(), 2, shrinkingMark);
+        sixW2Fighters, shrinkingPlayers, Map.of(), 2);
     var survivingUnmarkedPack = new ArrayList<>(sixW2Fighters);
     survivingUnmarkedPack.removeAll(twoW2Squads.squads().get(0).fighters());
     var afterMarkedPackDeath = lostMarkedSquadCoordinator.planSquads(5260, lostMarkedCohort,
-        survivingUnmarkedPack, shrinkingPlayers, twoW2Squads.targets(), 2, shrinkingMark);
+        survivingUnmarkedPack, shrinkingPlayers, twoW2Squads.targets(), 2);
     check(afterMarkedPackDeath.squads().size() == 1
-            && shrinkingMark.equals(afterMarkedPackDeath.squads().get(0).target()),
-        "Wave 2 mark role is allocated among live squads after an earlier role disappears");
+            && shrinkingPlayers.contains(afterMarkedPackDeath.squads().get(0).target()),
+        "Wave 2 reassigns the surviving pack to a live marked participant");
     checkSameSquads(afterMarkedPackDeath,
         lostMarkedSquadCoordinator.planSquads(5260, lostMarkedCohort,
-            survivingUnmarkedPack, shrinkingPlayers, afterMarkedPackDeath.targets(), 2, shrinkingMark),
-        "reallocated Wave 2 mark role remains stable on the next pass");
+            survivingUnmarkedPack, shrinkingPlayers, afterMarkedPackDeath.targets(), 2),
+        "reassigned Wave 2 pack remains stable on the next pass");
 
     var interiorRetirementCoordinator = new WaveCombatCoordinator();
     interiorRetirementCoordinator.begin(5261);
     var twentyMarkFighters = ids(5361, 20);
     String interiorRetirementCohort = "wave-2|room-a|eligible";
     var beforeInteriorRetirement = interiorRetirementCoordinator.planSquads(5261,
-        interiorRetirementCohort, twentyMarkFighters, shrinkingPlayers, Map.of(), 2, shrinkingMark);
+        interiorRetirementCohort, twentyMarkFighters, shrinkingPlayers, Map.of(), 2);
     check(beforeInteriorRetirement.squads().size() == 4,
         "a twenty-mob Wave 2 cohort creates four persistent squads");
     var afterInteriorRetirementRoster = new ArrayList<>(twentyMarkFighters);
     afterInteriorRetirementRoster.removeAll(beforeInteriorRetirement.squads().get(1).fighters());
     var afterInteriorRetirement = interiorRetirementCoordinator.planSquads(5261,
         interiorRetirementCohort, afterInteriorRetirementRoster, shrinkingPlayers,
-        beforeInteriorRetirement.targets(), 2, shrinkingMark);
+        beforeInteriorRetirement.targets(), 2);
     check(afterInteriorRetirement.squads().size() == 3
             && afterInteriorRetirement.squads().stream()
-                .filter(squad -> shrinkingMark.equals(squad.target())).count() == 1,
-        "Wave 2 reallocates the one-in-three focus role by live squad rank after an interior squad retires");
+                .allMatch(squad -> shrinkingPlayers.contains(squad.target())),
+        "Wave 2 keeps every squad on a marked participant after an interior squad retires");
 
     var spatialCoordinator = new WaveCombatCoordinator();
     spatialCoordinator.begin(5300);
@@ -551,7 +548,7 @@ public final class WaveCombatCoordinatorTest {
     for (int i=8;i<10;i++)
       playerPositions.put(spatialPlayers.get(i), new WaveCombatCoordinator.Position(80 + i, 64, 0));
     var spatialPlan = spatialCoordinator.planSquads(5300, "wave-5|arena|eligible",
-        spatialFighters, spatialPlayers, Map.of(), 5, null, fighterPositions, playerPositions);
+        spatialFighters, spatialPlayers, Map.of(), 5, fighterPositions, playerPositions);
     for (var squad : spatialPlan.squads()) {
       boolean west = squad.fighters().stream().allMatch(fighter -> fighterPositions.get(fighter).x() < 40);
       boolean east = squad.fighters().stream().allMatch(fighter -> fighterPositions.get(fighter).x() >= 40);
@@ -574,12 +571,12 @@ public final class WaveCombatCoordinatorTest {
     var tieForwardCoordinator = new WaveCombatCoordinator();
     tieForwardCoordinator.begin(5400);
     var tieForwardPlan = tieForwardCoordinator.planSquads(5400, "wave-5|arena|tie",
-        List.of(tieFighter), List.of(tieSecond, tieFirst), Map.of(), 5, null,
+        List.of(tieFighter), List.of(tieSecond, tieFirst), Map.of(), 5,
         tieFighterPositions, tiePlayerPositions);
     var tieReverseCoordinator = new WaveCombatCoordinator();
     tieReverseCoordinator.begin(5401);
     var tieReversePlan = tieReverseCoordinator.planSquads(5401, "wave-5|arena|tie",
-        List.of(tieFighter), List.of(tieFirst, tieSecond), Map.of(), 5, null,
+        List.of(tieFighter), List.of(tieFirst, tieSecond), Map.of(), 5,
         tieFighterPositions, tiePlayerPositions);
     check(tieForwardPlan.squads().get(0).target().equals(tieFirst)
             && tieReversePlan.squads().get(0).target().equals(tieFirst),

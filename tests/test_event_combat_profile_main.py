@@ -123,7 +123,7 @@ public class CombatProfileMainProbe {
     sources = [production / "runtime/EventCombatProfileService.java", production / "runtime/AttemptLifecycleController.java",
                production / "domain/wave7/EchoBehaviorStrategy.java",
                production / "domain/EventPhase.java", production / "domain/PreBossTickSnapshotPolicy.java",
-               production / "domain/PressureBudgetController.java", production / "domain/WaveMechanicsPolicy.java",
+               production / "domain/PressureBudgetController.java", production / "domain/WaveMechanicsPolicy.java", production / "domain/RiftCarrierPolicy.java",
                production / "domain/WaveTwoStagePolicy.java", production / "domain/WaveTwoHuntPolicy.java",
                production / "domain/WaveTwoEntityRecoveryPolicy.java",
                production / "domain/TentacleGuardianPolicy.java", production / "domain/TentacleScalingPolicy.java",

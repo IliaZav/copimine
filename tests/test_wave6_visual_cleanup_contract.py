@@ -85,6 +85,12 @@ def test_bootstrap_clears_stale_wave7_walls_and_wave3_portals_outside_wave7() ->
 
 
 def test_prisoner_anchor_is_inside_the_sphere_not_three_blocks_to_the_side(tmp_path) -> None:
+    """The captive hangs at a static anchor inside the bobbing shell.
+
+    Superseded expectation: the anchor used to be derived from the animated
+    shell height, which moved it every tick and produced a teleport/correction
+    loop.  The shell may bob; the captive must not.
+    """
     import subprocess
 
     source = read(SERVER)
@@ -111,11 +117,17 @@ public class PrisonerAnchorProbe {
     public static void main(String[] args){
         var probe=new PrisonerAnchorProbe(); var core=new Location(13.5,68,-34.5);
         if(probe.ritualPrisonerLocation(null)!=null)throw new AssertionError("null anchor remains unavailable");
+        double staticFeetY=Double.NaN;
         for(int tick=0;tick<=480;tick+=15){
             probe.eventTickCounter=tick;
             var center=probe.ritualSphereCenter(core); var feet=probe.ritualPrisonerLocation(core);
-            if(feet.x!=center.x||feet.z!=center.z||Math.abs(feet.y-(center.y-.9))>1e-9)
-                throw new AssertionError("player stays centered within the bobbing sphere, tick="+tick);
+            if(feet.x!=center.x||feet.z!=center.z)
+                throw new AssertionError("player stays centred above the Core, tick="+tick);
+            if(Double.isNaN(staticFeetY)) staticFeetY=feet.y;
+            if(Math.abs(feet.y-staticFeetY)>1e-9)
+                throw new AssertionError("prisoner anchor must not follow the bobbing shell, tick="+tick);
+            if(Math.abs(feet.y-(center.y-.9))>0.13)
+                throw new AssertionError("body stays within the raised shell, tick="+tick);
             if(Math.abs(center.y-core.y-6.2)>.120000001)
                 throw new AssertionError("latest raised sphere height is retained");
             if(core.x!=13.5||core.y!=68||core.z!=-34.5)throw new AssertionError("anchor calculation cannot mutate Core");

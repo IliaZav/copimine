@@ -36,19 +36,24 @@ def test_hunt_target_does_not_emit_world_particles() -> None:
     assert "waveTwoNextVisualMillis" not in update
     assert "PotionEffectType.SPEED" not in update
     assert "PotionEffectType.RESISTANCE" not in update
+    # The mark is collective: it must cover every participant and never rotate.
+    assert "for (Player participant : activeWaveParticipants())" in update
+    assert "releaseWaveTwoMarkFor(" in update
+    assert "MARK_ROTATION_MILLIS" not in update
 
 
-def test_wave_two_spec_matches_45_second_phantom_hunt_contract() -> None:
+def test_wave_two_spec_matches_the_three_subwave_hunt_contract() -> None:
     spec = SPEC.read_text(encoding="utf-8").casefold()
     match = re.search(r"```yaml\s*(.*?)```", spec, re.DOTALL)
     assert match, "Wave 2 must publish its machine-readable gameplay invariants"
     contract = yaml.safe_load(match.group(1))
     assert contract == {
-        "minimum_mark_periods": 2,
-        "mark_rotation_seconds": 45,
+        "all_players_marked": True,
+        "subwave_count": 3,
+        "subwave_gap_seconds": 3,
+        "mark_rotation_seconds": 0,
+        "minimum_mark_periods": 0,
         "controls_inverted_while_marked": False,
-        "opening_pressure_periods": 2,
-        "late_reinforcements_per_period": "1-2",
         "phantom_requires_real_materialized_enderman": True,
     }
     assert "approved_presentation: glow_only" not in spec

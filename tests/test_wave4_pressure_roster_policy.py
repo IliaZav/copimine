@@ -66,6 +66,7 @@ public final class Wave4PressureRosterProbe {
     )
     production = [
         DOMAIN / "WaveMechanicsPolicy.java",
+        DOMAIN / "RiftCarrierPolicy.java",
         DOMAIN / "PressureBudgetController.java",
         DOMAIN / "ObeliskFireDirectorPolicy.java",
         DOMAIN / "ObeliskScalingPolicy.java",

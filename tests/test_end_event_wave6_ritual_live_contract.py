@@ -17,6 +17,7 @@ WAVE_MECHANICS = ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "ende
 PRESSURE_BUDGET = ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "endevent" / "domain" / "PressureBudgetController.java"
 ELITE_ABILITIES = ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "endevent" / "domain" / "EliteAbilityPolicy.java"
 RITUAL_SCALING_TEST = ROOT / "tests" / "RitualSphereScalingPolicyTest.java"
+DOMAIN = ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "endevent" / "domain"
 
 
 def read_script() -> str:
@@ -28,7 +29,9 @@ def test_wave6_small_party_elite_roles_stay_inside_the_pressure_roster(tmp_path)
     compiled = subprocess.run(
         ["javac", "-proc:none", "-encoding", "UTF-8", "-d", str(tmp_path),
          str(PRESSURE_BUDGET), str(WAVE_MECHANICS), str(ELITE_ABILITIES),
-         str(RITUAL_SCALING), str(RITUAL_SCALING_TEST)],
+         str(RITUAL_SCALING), str(RITUAL_SCALING_TEST),
+         str(DOMAIN / "RiftCarrierPolicy.java"), str(DOMAIN / "WaveSixRosterPolicy.java"),
+         str(DOMAIN / "MageSignaturePolicy.java"), str(DOMAIN / "RitualCasterTacticsPolicy.java")],
         capture_output=True, text=True,
     )
     assert compiled.returncode == 0, compiled.stdout + compiled.stderr

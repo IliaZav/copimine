@@ -171,10 +171,19 @@ public final class EndRiftEncounterCoordinatorTest {
         check(coordinator.advanceIntermission("w5", "w5-start").accepted(),
                 "Wave 5 must start only after its transition-rune hold");
         BlackFogEncounter fog = (BlackFogEncounter) coordinator.encounter(EndRiftObjective.Objective.BLACK_FOG);
-        for (int cycle = 1; cycle <= 3; cycle++) {
+        int requiredFogCycles = me.copimine.endevent.domain.BlackFogTimingPolicy.CYCLE_COUNT;
+        check(requiredFogCycles == 5, "wave 5 is contractually five fog cycles");
+        for (int cycle = 1; cycle < requiredFogCycles; cycle++) {
             check(fog.completeCycle(context.withObjective(EndRiftObjective.Objective.BLACK_FOG), cycle, true).accepted(),
                     "fog cycle must complete");
         }
+        check(!"COMPLETE".equals(
+                        coordinator.completeWave(EndRiftObjective.Objective.BLACK_FOG, "w5 early", "w5-early").code()),
+                "wave 5 must not complete before its fifth fog cycle");
+        check(coordinator.session().phase() == EventPhase.WAVE_5,
+                "an early wave 5 completion must not advance the phase");
+        check(fog.completeCycle(context.withObjective(EndRiftObjective.Objective.BLACK_FOG), requiredFogCycles, true).accepted(),
+                "final fog cycle must complete");
         check(coordinator.completeWave(EndRiftObjective.Objective.BLACK_FOG, "w5 done", "w5-complete").accepted(),
                 "wave 5 must complete");
         check(coordinator.advanceIntermission("w6", "w6-start").accepted(), "wave 6 must start");

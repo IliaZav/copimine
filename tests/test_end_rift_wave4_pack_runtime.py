@@ -48,7 +48,9 @@ def pack_probe(tmp_path_factory):
                 "WaveDamagePolicy", "PressureBudgetController",
                 "ObeliskScalingPolicy", "ObeliskFireDirectorPolicy",
                 "ObeliskGeometryPolicy", "Wave4ObeliskRecoverySnapshot",
-                "Wave4ObeliskRecoveryPolicy", "EventPhase"]
+                "Wave4ObeliskRecoveryPolicy", "EventPhase",
+                # WaveMechanicsPolicy reads RiftCarrierPolicy.REQUIRED_DELIVERIES.
+                "RiftCarrierPolicy"]
     result = subprocess.run(["javac", "-J-Xmx128m", "-encoding", "UTF-8", "-d", str(directory),
                              *[str(DOMAIN / (name + ".java")) for name in policies], str(java)],
                             capture_output=True, text=True)

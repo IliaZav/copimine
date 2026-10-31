@@ -1,6 +1,7 @@
 import me.copimine.endevent.domain.PressureBudgetController;
 import me.copimine.endevent.domain.WaveMechanicsPolicy;
 import me.copimine.endevent.domain.WavePressurePolicy;
+import me.copimine.endevent.domain.WaveTwoStagePolicy;
 
 public final class WavePressurePolicyTest {
     public static void main(String[] args) {
@@ -29,6 +30,27 @@ public final class WavePressurePolicyTest {
         check(waveThree.total() == 12
                         && !WavePressurePolicy.isApprovedTwoPlayerException(3, 2, waveThree),
                 "Wave 3 doubles pressure while staying within its scoped hard bound");
+
+        var configuredWaveTwo = new WaveMechanicsPolicy.WaveCounts(36, 36, 24, 0, 0);
+        var twoPlayerWaveTwo = WavePressurePolicy.clamp(2, configuredWaveTwo, 2);
+        var twoPlayerWaveTwoGroups = WaveTwoStagePolicy.split(twoPlayerWaveTwo);
+        check(twoPlayerWaveTwo.total() == 12
+                        && twoPlayerWaveTwo.total()
+                        == PressureBudgetController.profileForPlayers(2).activePressure() * 2,
+                "Wave 2 doubles the full small-party roster instead of clamping it to one live-pressure batch");
+        check(twoPlayerWaveTwoGroups.size() == 3
+                        && twoPlayerWaveTwoGroups.stream()
+                        .mapToInt(WaveMechanicsPolicy.WaveCounts::total).sum() == 12,
+                "the doubled Wave 2 reserve remains exactly three groups");
+        var fourPlayerWaveTwo = WavePressurePolicy.clamp(2, configuredWaveTwo, 4);
+        check(fourPlayerWaveTwo.total() == WavePressurePolicy.activeCap(2, 4),
+                "Wave 2 doubles the party roster while using its bounded reserve cap");
+        var maximumPartyWaveTwo = WavePressurePolicy.clamp(2,
+                new WaveMechanicsPolicy.WaveCounts(Integer.MAX_VALUE, Integer.MAX_VALUE,
+                        Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE), 20);
+        check(maximumPartyWaveTwo.total() == PressureBudgetController.HARD_CAP
+                        && WaveTwoStagePolicy.canStart(maximumPartyWaveTwo),
+                "Wave 2 stays under the total hard cap even for the largest party and request");
 
         var fivePlayers = WavePressurePolicy.clamp(5,
                 new WaveMechanicsPolicy.WaveCounts(1, 0, 0, 6, 2), 5);

@@ -69,7 +69,7 @@ public class WaveFogLifecycleProbe {
  WaveProjectileAdmissionController waveProjectileAdmission=new WaveProjectileAdmissionController();
  Map<UUID,Entity> ownedEntities=new LinkedHashMap<>();Map<UUID,Object> waveLeashReturns=new HashMap<>();
  Map<UUID,Long> waveDashGenerations=new HashMap<>(),nextWavePathRequestMillis=new HashMap<>(),lastWavePathLogMillis=new HashMap<>();
- Map<UUID,Object> waveLastPathDestinations=new HashMap<>();Set<UUID> waveTwoOutstandingEntityUuids=new HashSet<>();UUID waveTwoMarkedPlayerUuid;
+ Map<UUID,Object> waveLastPathDestinations=new HashMap<>();Set<UUID> waveTwoOutstandingEntityUuids=new HashSet<>(),waveTwoMarkedParticipants=new HashSet<>();
  Map<UUID,UUID> recentWaveTargets=new HashMap<>();Map<UUID,Location> waveLastProgressLocations=new HashMap<>();Map<UUID,Long> waveLastProgressAt=new HashMap<>(),nextWaveStuckRepositionMillis=new HashMap<>();
  Map<Long,Set<UUID>> wave3GateAssignmentMembers=new HashMap<>();Map<UUID,Integer> wave3GateMobTargets=new HashMap<>();Set<UUID> wave3GateIntentPathRefresh=new HashSet<>();
  Map<UUID,Long> activeEliteProjectileExpiresAtTick=new HashMap<>();int plannerReconciles;
@@ -312,7 +312,7 @@ public class WaveFogLifecycleProbe {
 ''', encoding="utf-8")
     sources = [java, ROOT / "copimine-end-event/src/me/copimine/endevent/runtime/WaveCombatCoordinator.java",
                    *[ROOT / ("copimine-end-event/src/me/copimine/endevent/domain/" + name + ".java")
-                     for name in ["EliteAbilityPolicy", "DragonBreathCloudPolicy", "SpiderEffectLeasePolicy", "BlackFogEffectLeasePolicy", "EliteProjectileImpactPolicy", "WaveProjectileAdmissionController", "WaveProjectileTargetPolicy", "PressureBudgetController", "RitualGuardAbilityPolicy", "RitualConversionTargetPolicy"]]]
+                     for name in ["EliteAbilityPolicy", "DragonBreathCloudPolicy", "SpiderEffectLeasePolicy", "BlackFogEffectLeasePolicy", "EliteProjectileImpactPolicy", "WaveProjectileAdmissionController", "WaveProjectileTargetPolicy", "PressureBudgetController", "RitualGuardAbilityPolicy", "RitualSphereScalingPolicy", "WaveSixRosterPolicy", "MageSignaturePolicy", "RitualCasterTacticsPolicy", "WaveMechanicsPolicy", "RiftCarrierPolicy", "RitualConversionTargetPolicy"]]]
     built = subprocess.run(["javac", "-proc:none", "-encoding", "UTF-8", "-d", str(out), *map(str, sources)], capture_output=True, text=True)
     assert built.returncode == 0, built.stdout + built.stderr
     return out

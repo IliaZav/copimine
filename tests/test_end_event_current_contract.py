@@ -266,7 +266,7 @@ def test_waves_have_current_runtime_policies() -> None:
     assert_contains(DOMAIN / "WaveVisualPolicy.java", "EndRiftObjective.Objective", "MAX_RADIUS_BLOCKS")
     assert_contains(DOMAIN / "CombatTacticsPolicy.java", "objective", "RIFT_CARRIERS", "REALITY_SPLIT")
     assert_contains(DOMAIN / "SkeletonCombatPolicy.java", "BLACK_FOG", "COLLAPSE_RINGS", "REALITY_SPLIT")
-    assert_contains(DOMAIN / "BlackFogTimingPolicy.java", "CYCLE_COUNT = 3", "SAFE_ZONE_SECONDS", "FOG_SECONDS")
+    assert_contains(DOMAIN / "BlackFogTimingPolicy.java", "CYCLE_COUNT = 5", "SAFE_ZONE_SECONDS", "FOG_SECONDS")
     assert_contains(DOMAIN / "CollapseRingEncounterPolicy.java", "BOTH_ALIVE", "FIRST_DOWN", "PAIR_DEFEATED")
     assert_contains(RUNTIME / "RealitySplitChamberController.java", "openBoundary", "allowsMobTarget", "allowsInteraction")
     assert_contains(DOMAIN / "ChamberIsolationPolicy.java", "chamberByPlayer")

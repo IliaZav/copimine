@@ -87,9 +87,17 @@ public final class RitualGuardAbilityPolicyTest {
             int expectedGiants = players <= 4 ? 1 : players <= 8 ? 2 : 3;
             int actualGiants = 0;
             var roster = RitualSphereScalingPolicy.forPlayers(players);
-            int expectedGuards = players <= 4 ? 5 : players <= 8 ? 10 : 15;
+            // W6-008: at most five assigned guards per mage, scaled by party size as
+            // 1,2,3,3,5 guards per caster for the measured rosters below.
+            int expectedGuards = players <= 4 ? 5
+                    : players <= 8 ? 10
+                    : players <= 16 ? 15
+                    : 25;
             check(roster.casterCount() * roster.guardsPerCaster() == expectedGuards,
-                    players + "-player roster retains the approved 5/10/15 guard count");
+                    players + "-player roster retains the approved 5/10/15/25 guard count");
+            check(roster.guardsPerCaster() >= 1
+                            && roster.guardsPerCaster() <= RitualSphereScalingPolicy.GUARDS_PER_CASTER,
+                    players + "-player roster must stay within one to five guards per mage");
             for (int caster = 0; caster < roster.casterCount(); caster++) {
                 for (int slot = 0; slot < roster.guardsPerCaster(); slot++) {
                     int role = RitualGuardAbilityPolicy.roleSlot(caster, slot);

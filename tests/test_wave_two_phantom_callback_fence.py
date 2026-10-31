@@ -50,7 +50,7 @@ def test_cancellation_requires_matching_event_player_cycle_and_phantom_owner() -
         "Objects.equals(waveTwoPhantomActivationPlayerUuid, playerUuid)",
         "waveTwoPhantomActivationCycle == cycle",
         "waveTwoMarkCycle == cycle",
-        "Objects.equals(waveTwoMarkedPlayerUuid, playerUuid)",
+        "waveTwoMarkedParticipants.contains(playerUuid)",
     ):
         assert owner_check in owner
 

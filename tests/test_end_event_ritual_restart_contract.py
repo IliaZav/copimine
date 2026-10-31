@@ -63,7 +63,13 @@ def test_unloaded_living_caster_is_not_counted_as_a_restart_death():
     )
     assert "ritualCasterDeathCount = recoveredProfile.casterCount() - recoveredCasters" not in start
     assert "ritualSpellCursor = wave6.spellCursor();" in EVENT
-    assert "RitualSphereEncounterSnapshot.encode(\n                            ritualSphereState, ritualCasterDeathCount, ritualSpellCursor)" in EVENT
+    # W6-016: the durable Wave 6 state now also carries the frozen mage identity
+    # run order and its defeat receipts, so a restart keeps the signatures the
+    # sphere actually earned instead of rebuilding a different order.
+    assert "RitualSphereEncounterSnapshot.encode(" in EVENT
+    assert "wave6MageOrder, wave6DefeatedMages)" in EVENT
+    assert "wave6MageOrder = wave6.mageOrder();" in EVENT
+    assert "wave6DefeatedMages = wave6.mageDefeated();" in EVENT
 
 
 def test_wave6_restart_loads_bounded_arena_and_rebuilds_unique_caster_and_guard_slots():

@@ -12,10 +12,10 @@ public final class WaveTwoStagePolicyTest {
         expandedConfiguredRosterUsesTheHardCapWithoutAddingGroups();
         waveTwoRosterScalesAcrossTheSupportedPartySizes();
         defaultTwoPlayerPlanReservesAReachablePhantomActivationSlot();
-        huntUsesFortyFiveSecondMarksAndImmediateClearAdvancement();
+        huntUsesThreeSubwavesWithAThreeSecondGap();
         restartRecoversProgressAndTheActiveSpawnBoundary();
         restartRejectsInconsistentDurableProgress();
-        lateGroupsWaitForCompletedMarkPeriods();
+        subwavesAdvanceBySpawnCountOnly();
         System.out.println("WaveTwoStagePolicyTest OK");
     }
 
@@ -188,17 +188,15 @@ public final class WaveTwoStagePolicyTest {
                 "group three keeps one explicitly requested skeleton elite as a conversion");
     }
 
-    private static void huntUsesFortyFiveSecondMarksAndImmediateClearAdvancement() {
-        check(WaveTwoStagePolicy.MARK_DURATION_MILLIS == 45_000L,
-                "the hunt target changes at forty-five-second boundaries");
-        check(WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS == 0L,
-                "the next opening group has no empty post-clear delay");
-        check(WaveTwoStagePolicy.nextGroupSpawnAt(42_000L) == 42_000L,
-                "next opening group becomes eligible as soon as its predecessor is cleared");
-        check(WaveTwoStagePolicy.markExpired(45_000L, 45_000L),
-                "the current mark expires at its exact forty-five-second boundary");
-        check(!WaveTwoStagePolicy.markExpired(44_999L, 45_000L),
-                "the current mark remains stable before the boundary");
+    private static void huntUsesThreeSubwavesWithAThreeSecondGap() {
+        check(WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS == 3_000L,
+                "the next subwave starts three seconds after the previous roster is cleared");
+        check(WaveTwoStagePolicy.nextGroupSpawnAt(42_000L) == 45_000L,
+                "the post-clear gap is exactly three seconds");
+        check(WaveTwoStagePolicy.MAX_GROUP_COUNT == 3,
+                "Wave 2 is exactly three subwaves");
+        check(WaveTwoStagePolicy.split(new WaveMechanicsPolicy.WaveCounts(30, 10, 10, 0, 0)).size() == 3,
+                "the plan always yields exactly three subwaves");
     }
 
     private static void restartRecoversProgressAndTheActiveSpawnBoundary() {
@@ -245,19 +243,17 @@ public final class WaveTwoStagePolicyTest {
                 "all three completed groups must have a cleared final group");
     }
 
-    private static void lateGroupsWaitForCompletedMarkPeriods() {
-        check(WaveTwoStagePolicy.maySpawnNextGroup(0, 0, 0),
-                "the first opening batch starts immediately");
-        check(!WaveTwoStagePolicy.maySpawnNextGroup(1, 0, 0),
-                "the second substantial batch cannot be spent during the first mark");
-        check(WaveTwoStagePolicy.maySpawnNextGroup(1, 1, 0),
-                "the second substantial batch starts when the second mark begins");
-        check(!WaveTwoStagePolicy.maySpawnNextGroup(2, 1, 0),
-                "the first late reinforcement waits for two completed marks");
-        check(WaveTwoStagePolicy.maySpawnNextGroup(2, 2, 0),
-                "the first late reinforcement starts after the second completed mark");
-        check(!WaveTwoStagePolicy.maySpawnNextGroup(3, 3, 2),
-                "Wave 2 cannot spawn a fourth group after its final reserve");
+    private static void subwavesAdvanceBySpawnCountOnly() {
+        check(WaveTwoStagePolicy.maySpawnNextGroup(0),
+                "the first subwave starts immediately");
+        check(WaveTwoStagePolicy.maySpawnNextGroup(1),
+                "the second subwave is not gated on any mark period");
+        check(WaveTwoStagePolicy.maySpawnNextGroup(2),
+                "the third subwave is not gated on any mark period");
+        check(!WaveTwoStagePolicy.maySpawnNextGroup(3),
+                "Wave 2 cannot spawn a fourth subwave");
+        check(!WaveTwoStagePolicy.maySpawnNextGroup(-1),
+                "a corrupt spawn count cannot start a subwave");
     }
 
     private static void check(boolean value, String message) {

@@ -655,7 +655,10 @@ def test_disposable_wave6_restart_state_preserves_the_ritual_snapshot() -> None:
     assert '"6".equals(snapshot.objectiveProgress().get("test-wave"))' in root
     assert "persistedDisposableWave6" in root
     assert "testWaveFrontVisualMode && activeWave == 6" in root
-    assert "RitualSphereEncounterSnapshot.encode(\n                            ritualSphereState, ritualCasterDeathCount, ritualSpellCursor)" in root
+    # W6-016: the durable ritual snapshot carries the frozen mage identity order
+    # and its defeat receipts alongside the sphere state.
+    assert "RitualSphereEncounterSnapshot.encode(" in root
+    assert "wave6MageOrder, wave6DefeatedMages)" in root
     assert "restorePersistedRitualSphereObjective();" in root
     assert "END_RIFT_WAVE6_RESTART_PRESERVED" in root
     restore_start = root.index("private void restorePersistedRitualSphereObjective()")

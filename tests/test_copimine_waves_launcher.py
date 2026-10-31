@@ -93,6 +93,65 @@ def test_starter_exempts_first_party_event_spawns_from_clearlag():
     assert call < text.index("& $java @javaArguments")
 
 
+def test_starter_silences_clearlag_broadcasts_at_the_config_source():
+    text = STARTER.read_text(encoding="utf-8")
+    assert "function Silence-MigrationClearLagBroadcasts" in text
+    call = text.index("Silence-MigrationClearLagBroadcasts -RuntimeDirectory $runtime")
+    assert call > text.index("if ($ValidateOnly) {")
+    assert call < text.index("& $java @javaArguments")
+    committed = (ROOT / "minecraft/server/plugins/ClearLag/config.yml").read_text(encoding="utf-8")
+    block = committed[committed.index("\nmessages:\n"):]
+    assert "broadcast-enabled: false" in block.split("\n\n")[0]
+
+
+def _clearlag_silence_helper(shell, tmp_path):
+    text = STARTER.read_text(encoding="utf-8")
+    start = text.index("function Silence-MigrationClearLagBroadcasts {")
+    end = text.index("function Test-MigrationPaperRuntimeListener {")
+    helper = tmp_path / "clearlag-silence-helper.ps1"
+    helper.write_text(text[start:end], encoding="utf-8")
+    config = tmp_path / "plugins/ClearLag/config.yml"
+    config.parent.mkdir(parents=True)
+    return helper, config
+
+
+def test_clearlag_broadcasts_are_disabled_without_touching_cleanup_settings(tmp_path):
+    shell = _powershell()
+    if not shell:
+        pytest.skip("PowerShell is required")
+    helper, config = _clearlag_silence_helper(shell, tmp_path)
+    original = (
+        "auto-clear:\n  interval-seconds: 300\n  clear-items: true\n"
+        "messages:\n  broadcast-enabled: true # countdown chat\n  default-location: \"CHAT\"\n"
+        "mob-spawn-limiter:\n  exempt-spawn-reasons:\n    - CUSTOM\n"
+    )
+    config.write_text(original, encoding="utf-8")
+    command = f". '{helper.as_posix()}'; Silence-MigrationClearLagBroadcasts -RuntimeDirectory '{tmp_path.as_posix()}'"
+
+    result = subprocess.run([shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+                            capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    after = config.read_text(encoding="utf-8")
+    assert "  broadcast-enabled: false # countdown chat\n" in after
+    assert "  clear-items: true\n" in after
+    assert "  default-location: \"CHAT\"\n" in after
+    assert "    - CUSTOM\n" in after
+
+    again = subprocess.run([shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+                           capture_output=True, text=True, timeout=60)
+    assert again.returncode == 0, again.stderr
+    assert config.read_text(encoding="utf-8") == after
+
+    absent = tmp_path / "no-clearlag"
+    absent.mkdir()
+    result = subprocess.run(
+        [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+         f". '{helper.as_posix()}'; Silence-MigrationClearLagBroadcasts -RuntimeDirectory '{absent.as_posix()}'"],
+        capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    assert not (absent / "plugins/ClearLag/config.yml").exists()
+
+
 def _run_clearlag_helper(shell, helper, runtime):
     command = f". '{helper}'; Protect-MigrationEventSpawnsFromClearLag -RuntimeDirectory '{runtime}'"
     return subprocess.run([shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],

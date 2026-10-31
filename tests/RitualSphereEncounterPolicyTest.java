@@ -7,7 +7,10 @@ public final class RitualSphereEncounterPolicyTest {
         UUID prisoner = UUID.randomUUID();
         RitualSphereEncounterPolicy.State initial = RitualSphereEncounterPolicy.waiting(7L, 20);
         check(initial.profile().casterCount() == 5, "20 players must use exactly five casters");
-        check(initial.profile().guardCount() == 15, "large groups use three guards per caster");
+        check(initial.profile().guardCount() == 25,
+                "large groups use five guards per caster");
+        check(initial.profile().guardsPerCaster() == RitualSphereScalingPolicy.GUARDS_PER_CASTER,
+                "guard ceiling is owned by the scaling policy");
         RitualSphereEncounterPolicy.State captured = RitualSphereEncounterPolicy.capture(initial, prisoner);
         check(RitualSphereEncounterPolicy.hasCaptured(captured), "capture persists the prisoner");
         check(captured.prisoner().equals(prisoner), "capture stores the selected prisoner");

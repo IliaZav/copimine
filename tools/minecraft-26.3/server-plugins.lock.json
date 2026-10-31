@@ -981,20 +981,22 @@
         "c32924bcf3283606a15b233d91214edbafcc986bb593ad7b198224107686fe7d",
         "8430da0d8c11f4d95e6f1a123331d5361b6a3d848f8c2203de3f7dca00c2afda",
         "680a0f081e37450b38c32bc5de6451a79bdacfa511300a70c9d062b177fc8723",
-        "0b4235f5d140dd02bd71e70a173ed25a5cccdd6cb1c839d0726a34ee16565f6c"
+        "0b4235f5d140dd02bd71e70a173ed25a5cccdd6cb1c839d0726a34ee16565f6c",
+        "db2a4e73c205b208ab27380f9d091d0689bb08422ee657ac5b503cd62fe7ba35"
       ],
       "candidate": {
         "filename": "CopiMineEndEvent-26.3.jar",
         "runtimeFilename": "CopiMineEndEvent.jar",
-        "sha256": "db2a4e73c205b208ab27380f9d091d0689bb08422ee657ac5b503cd62fe7ba35",
+        "sha256": "51b412ff0f3d72ff28128ecaccd72216b8a288b875fe528616b4f6f0d643d2f4",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "size": 1996268,
-        "sha512": "73b6039d217b0ef9985c513cffb4e61e66533f180d21a8ce38227ad6ed87e641c52b645c76326c048ca08fa3c0dea287f878ee02cf4ef3f4d17b1c7f746a4373",
+        "size": 2019018,
+        "sha512": "997d1d9459953607a029458f6be4016d16bbc1cefa6a4dff79d7469398ce8ab4da7e9475cc31aab7ce9a26de5f012475325c69883e621c732996c82837a86362",
         "runtimeEligible": true,
         "replaceSha256": [
+          "440e081eebfdc6764c64e5f8aab3c3505862c55efd17dc5e69d51e3dde77d73a",
           "8430da0d8c11f4d95e6f1a123331d5361b6a3d848f8c2203de3f7dca00c2afda",
           "c32924bcf3283606a15b233d91214edbafcc986bb593ad7b198224107686fe7d",
           "ca4c8f5f40730e5c6f7e2431ce649315403fc64a2599721a39fc68d15ca7afca",
@@ -1057,7 +1059,9 @@
           "ac7962cabc1e70a7c8f647f4675285b19d9f886745efe5d03c8ea31ad973a78f",
           "0e56ffb0971b10c5b9513ae34909bb339cec432d3f8dd1f0ddce6d7af0af1277",
           "680a0f081e37450b38c32bc5de6451a79bdacfa511300a70c9d062b177fc8723",
-          "0b4235f5d140dd02bd71e70a173ed25a5cccdd6cb1c839d0726a34ee16565f6c"
+          "0b4235f5d140dd02bd71e70a173ed25a5cccdd6cb1c839d0726a34ee16565f6c",
+          "db2a4e73c205b208ab27380f9d091d0689bb08422ee657ac5b503cd62fe7ba35",
+          "4730adaae609e8a61398b3a9f6641f33c382eee7c2fb205e4fb51d566f6bd5c3"
         ]
       },
       "nativeVerified": false
@@ -1114,17 +1118,18 @@
       "candidate": {
         "filename": "CopiMineUltimateAdminPlus-26.3.jar",
         "runtimeFilename": "CopiMineUltimateAdminPlus.jar",
-        "sha256": "8b4b7922be1aa0ce8ba1c6a856139bf8405a03239d6ea53a810386b44efbf3a2",
+        "sha256": "a8659bca857d3ea0afa2b2bdb5c02d9a89e408fafdc9bdf5c37baec525feeddc",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineUltimateAdminPlus-26.3.jar",
         "nativeVerified": false,
-        "size": 272254,
-        "sha512": "be7a42ccc89d5ebc765befde09606c55545808f31bd5c3aed5a9fda3f09536aa5308a380703c004ffd447f48d9236e2acfed7da9ef447a07a7f3acc34e213d98",
+        "size": 272534,
+        "sha512": "f78aa40659e89c76caf88346edd256b73be97bd08f4170744a8e927d91bc21d6068855677030d093bef6945b965baeccc408f2e9e0d4c09d9b7c14e1f5293335",
         "runtimeEligible": true,
         "replaceSha256": [
           "70eb0caa57ae48d918170fd9fd4f9ce853bfd8c967315f774cccc606b4abe9f0",
           "f55645d6f437ee9ff6d6f83f8ec1e150ece869dc76d72b172484ea5b46ffbdf9",
-          "41b1721f3cf9aad16619339d171dc7b33d9be81c931943c69b3fcb4253e678da"
+          "41b1721f3cf9aad16619339d171dc7b33d9be81c931943c69b3fcb4253e678da",
+          "8b4b7922be1aa0ce8ba1c6a856139bf8405a03239d6ea53a810386b44efbf3a2"
         ]
       },
       "nativeVerified": false,
@@ -1133,7 +1138,8 @@
         "8d7c19ab35886b56610a1ad8c54f73c1612ee18aa2601b3486a5e7e072e98092",
         "0995029374cde2780eb85c578d0400c54859c83891da14b323e06a787a8c9587",
         "6ef8296d397f4cfea46dd9fa137ae18cecdac71dd0c259a9e512ad86dbdcd175",
-        "41b1721f3cf9aad16619339d171dc7b33d9be81c931943c69b3fcb4253e678da"
+        "41b1721f3cf9aad16619339d171dc7b33d9be81c931943c69b3fcb4253e678da",
+        "8b4b7922be1aa0ce8ba1c6a856139bf8405a03239d6ea53a810386b44efbf3a2"
       ]
     },
     {

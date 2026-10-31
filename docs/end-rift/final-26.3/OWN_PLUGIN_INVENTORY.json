@@ -43,8 +43,8 @@
         "tests/test_economy_narcotics_audit_contract.py"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineUltimateAdminPlus.jar",
-      "candidateSha256": "8b4b7922be1aa0ce8ba1c6a856139bf8405a03239d6ea53a810386b44efbf3a2",
-      "sha256": "8b4b7922be1aa0ce8ba1c6a856139bf8405a03239d6ea53a810386b44efbf3a2",
+      "candidateSha256": "a8659bca857d3ea0afa2b2bdb5c02d9a89e408fafdc9bdf5c37baec525feeddc",
+      "sha256": "a8659bca857d3ea0afa2b2bdb5c02d9a89e408fafdc9bdf5c37baec525feeddc",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
       "realServerEnable": "BLOCKED",
@@ -203,8 +203,8 @@
         "tests/PrisonerAbilityControllerTest.java"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineEndEvent.jar",
-      "candidateSha256": "db2a4e73c205b208ab27380f9d091d0689bb08422ee657ac5b503cd62fe7ba35",
-      "sha256": "c32924bcf3283606a15b233d91214edbafcc986bb593ad7b198224107686fe7d",
+      "candidateSha256": "51b412ff0f3d72ff28128ecaccd72216b8a288b875fe528616b4f6f0d643d2f4",
+      "sha256": "51b412ff0f3d72ff28128ecaccd72216b8a288b875fe528616b4f6f0d643d2f4",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
       "realServerEnable": "BLOCKED",

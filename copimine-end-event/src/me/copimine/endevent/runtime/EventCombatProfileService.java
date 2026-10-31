@@ -84,6 +84,14 @@ public final class EventCombatProfileService {
     public boolean hasProfiles() { return !profiles.isEmpty(); }
     private final Map<UUID, Profile> profiles = new LinkedHashMap<>();
 
+    /**
+     * Size of the roster frozen at admission.
+     *
+     * <p>Scaling must use this, never a live online count: a relog, a death or
+     * a quit mid-fight must not rescale (or heal) an actor already fighting.</p>
+     */
+    public int frozenRosterSize() { return profiles.size(); }
+
     public void beginAttempt(String eventId, long attemptGeneration, long runtimeGeneration,
                              Set<UUID> roster, boolean fromEventStart) {
         if (eventId == null || eventId.isBlank() || attemptGeneration <= 0

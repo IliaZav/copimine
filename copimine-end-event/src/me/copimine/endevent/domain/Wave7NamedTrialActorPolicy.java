@@ -56,16 +56,77 @@ public final class Wave7NamedTrialActorPolicy {
             Attack.ARCHMAGE_FANGS, Attack.ARCHMAGE_SPEAR,
             Attack.ARCHMAGE_STEP, Attack.ARCHMAGE_BEAM);
 
+    /**
+     * Contractual floor for every Wave 7 miniboss, in real health points.
+     *
+     * <p>A miniboss is not an elite. The shared elite rule (3x the ordinary
+     * role) is deliberately not reused here: 3x a skeleton is still a mob, and
+     * the approved contract requires a real fight under party scaling.</p>
+     */
+    public static final double MIN_MINIBOSS_HEALTH = 1000.0D;
+
+    /** Party scaling step, applied once per admitted player above the minimum. */
+    public static final double HEALTH_PER_EXTRA_PLAYER = 0.25D;
+
+    /** Smallest supported party. */
+    public static final int MIN_PARTICIPANTS = 2;
+
+    /** Largest supported party; also the bound of the scaling basis. */
+    public static final int MAX_PARTICIPANTS = 20;
+
     private Wave7NamedTrialActorPolicy() { }
 
+    /**
+     * Miniboss health for one trial under a frozen roster.
+     *
+     * <p>{@code base * (1 + 0.25 * (admitted - 2))}, floored at
+     * {@link #MIN_MINIBOSS_HEALTH}. The basis is the roster frozen at
+     * admission, so a relog never rescales or heals a living actor.</p>
+     */
+    public static double minibossHealth(NamedTrial trial, int admittedPlayers) {
+        if (trial == null) {
+            throw new IllegalArgumentException("trial is required");
+        }
+        if (admittedPlayers < MIN_PARTICIPANTS || admittedPlayers > MAX_PARTICIPANTS) {
+            throw new IllegalArgumentException(
+                    "admitted players must be in [" + MIN_PARTICIPANTS + ", "
+                            + MAX_PARTICIPANTS + "]: " + admittedPlayers);
+        }
+        double scaled = trialBaseHealth(trial)
+                * (1.0D + HEALTH_PER_EXTRA_PLAYER * (admittedPlayers - MIN_PARTICIPANTS));
+        return Math.max(MIN_MINIBOSS_HEALTH, scaled);
+    }
+
+    /** Per-trial base health; every trial sits at or above the contractual floor. */
+    public static double trialBaseHealth(NamedTrial trial) {
+        if (trial == NamedTrial.MOBILE_MARKSMAN) {
+            return MIN_MINIBOSS_HEALTH;
+        }
+        if (trial == NamedTrial.RIFT_ARCHMAGE) {
+            return 1200.0D;
+        }
+        return MIN_MINIBOSS_HEALTH;
+    }
+
+    /**
+     * Profile for a trial under the default roster.
+     *
+     * <p>The profile carries display identity and attack set; health in a live
+     * encounter comes from {@link #minibossHealth(NamedTrial, int)}.</p>
+     */
     public static Profile profile(NamedTrial trial) {
+        return profile(trial, MIN_PARTICIPANTS);
+    }
+
+    /** Profile for a trial under an explicit frozen roster. */
+    public static Profile profile(NamedTrial trial, int admittedPlayers) {
         if (trial == NamedTrial.MOBILE_MARKSMAN) {
             return new Profile(trial, "SKELETON", "Подвижный Стрелок Разлома",
-                    120.0D, 4.0D, MARKSMAN_ATTACKS);
+                    minibossHealth(trial, admittedPlayers), 4.0D, MARKSMAN_ATTACKS);
         }
         if (trial == NamedTrial.RIFT_ARCHMAGE) {
             return new Profile(trial, "EVOKER", "Архимаг Разлома",
-                    200.0D, 5.0D, ARCHMAGE_ATTACKS);
+                    minibossHealth(trial, admittedPlayers), 5.0D, ARCHMAGE_ATTACKS);
         }
         return null;
     }

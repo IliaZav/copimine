@@ -21,6 +21,9 @@ def occluded_archmage_probe(tmp_path_factory):
     source = SOURCE.read_text(encoding="utf-8")
     signatures = (
         "private boolean tickNamedTrialActor(",
+        # Roster basis for miniboss scaling: the probe executes the real
+        # production resolution path, which reads the frozen roster.
+        "private int wave7FrozenRosterSize(",
         "private Player closestRealitySplitTrialTarget(",
         "private Player closestRealitySplitTrialParticipant(",
         "private List<Player> realitySplitTrialTargets(",
@@ -49,6 +52,10 @@ public class OccludedArchmageProbe {
     final String eventId=Wave7AdmissionRuntimeChecks.EVENT.toString();
     final RealitySplitChamberController realitySplitChamberController=Wave7AdmissionRuntimeChecks.chambers;
     final RealitySplitTrialController realitySplitTrialController=Wave7AdmissionRuntimeChecks.trials;
+    // Miniboss scaling reads the roster frozen at admission; the probe pins a
+    // two-player attempt so the health curve is deterministic.
+    final me.copimine.endevent.runtime.EventCombatProfileService combatProfiles=
+        new me.copimine.endevent.runtime.EventCombatProfileService();
     final Set<UUID> realitySplitTrialEntityUuids=new HashSet<>();
     record NamespacedKey(Object owner,String name) {}
     final NamespacedKey keyChamberId=new NamespacedKey(this,"room"),keyTrialRole=new NamespacedKey(this,"role"),
@@ -226,7 +233,11 @@ public class OccludedArchmageProbe {
     fixture = out / "Wave7AdmissionRuntimeChecks.java"
     fixture.write_text(HARNESS, encoding="utf-8")
     files = [str(BASE / rel) for rel in PRODUCTION]
-    files += [str(BASE / "domain/Wave7NamedTrialActorPolicy.java"), str(fixture), str(probe)]
+    files += [str(BASE / "domain/Wave7NamedTrialActorPolicy.java"),
+             # Miniboss health scales from the roster frozen at admission.
+             str(BASE / "runtime/EventCombatProfileService.java"),
+             str(BASE / "domain/wave7/EchoBehaviorStrategy.java"),
+             str(fixture), str(probe)]
     compiled = subprocess.run(
         ["javac", "-encoding", "UTF-8", "-d", str(out), *files],
         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,

@@ -16,12 +16,18 @@ public final class Wave7NamedTrialActorPolicyTest {
     private static void providesRoleSpecificPaperActorProfilesAndTelegraphedAttacks() {
         var marksman = Wave7NamedTrialActorPolicy.profile(NamedTrial.MOBILE_MARKSMAN);
         var archmage = Wave7NamedTrialActorPolicy.profile(NamedTrial.RIFT_ARCHMAGE);
+        // Superseded: the previous expectation was 120 HP for the Marksman and
+        // 200 for the Archmage, which are shared-elite magnitudes. The approved
+        // contract requires every Wave 7 miniboss to have at least 1000 REAL HP.
         check(marksman != null && "SKELETON".equals(marksman.entityType())
-                        && marksman.maxHealth() == 120.0D && marksman.attacks().size() == 3,
-                "Marksman uses a persistent ranged carrier with three distinct attack patterns");
+                        && marksman.maxHealth() >= Wave7NamedTrialActorPolicy.MIN_MINIBOSS_HEALTH
+                        && marksman.attacks().size() == 3,
+                "Marksman is a real miniboss with three distinct attack patterns");
         check(archmage != null && "EVOKER".equals(archmage.entityType())
-                        && archmage.maxHealth() >= 200.0D && archmage.attacks().size() == 4,
-                "Archmage uses a distinct persistent carrier with four distinct spells");
+                        && archmage.maxHealth() >= Wave7NamedTrialActorPolicy.MIN_MINIBOSS_HEALTH
+                        && archmage.attacks().size() == 4,
+                "Archmage is a real miniboss with four distinct spells");
+        checkMinibossHealthCurve();
         check(Wave7NamedTrialActorPolicy.hasActorAdapter(NamedTrial.MOBILE_MARKSMAN)
                         && Wave7NamedTrialActorPolicy.hasActorAdapter(NamedTrial.RIFT_ARCHMAGE)
                         && !Wave7NamedTrialActorPolicy.hasActorAdapter(NamedTrial.PERSONAL_ECHO),
@@ -92,6 +98,36 @@ public final class Wave7NamedTrialActorPolicyTest {
                 NamedTrial.RIFT_ARCHMAGE, actor));
         expectInvalid(() -> new Checkpoint(event, 71, 1, NamedTrial.RIFT_ARCHMAGE,
                 actor, 9, Attack.MARKSMAN_HEAVY_SHOT, 2_000L, 3_500L, target, false));
+    }
+
+    private static void checkMinibossHealthCurve() {
+        // Contract: base >= 1000, multiplied by 1 + 0.25 * (admitted - 2).
+        // The basis is the roster frozen at admission, so the curve must be a
+        // pure function of (trial, admitted) and never depend on live state.
+        for (int admitted = 2; admitted <= 20; admitted++) {
+            double scale = 1.0D + 0.25D * (admitted - 2);
+            for (NamedTrial trial : new NamedTrial[]{
+                    NamedTrial.MOBILE_MARKSMAN, NamedTrial.RIFT_ARCHMAGE}) {
+                double health = Wave7NamedTrialActorPolicy.minibossHealth(trial, admitted);
+                check(health >= Wave7NamedTrialActorPolicy.MIN_MINIBOSS_HEALTH,
+                        trial + " at " + admitted + " players must reach the miniboss floor");
+                double expected = Math.max(Wave7NamedTrialActorPolicy.MIN_MINIBOSS_HEALTH,
+                        Wave7NamedTrialActorPolicy.trialBaseHealth(trial) * scale);
+                check(Math.abs(health - expected) < 1.0E-9D,
+                        trial + " must scale linearly with the frozen roster");
+            }
+        }
+        // The floor is exact at the smallest supported party.
+        check(Wave7NamedTrialActorPolicy.minibossHealth(NamedTrial.MOBILE_MARKSMAN, 2)
+                        == Wave7NamedTrialActorPolicy.MIN_MINIBOSS_HEALTH,
+                "the two-player Marksman sits exactly on the 1000 HP floor");
+        check(Wave7NamedTrialActorPolicy.minibossHealth(NamedTrial.RIFT_ARCHMAGE, 20)
+                        > Wave7NamedTrialActorPolicy.minibossHealth(NamedTrial.RIFT_ARCHMAGE, 2),
+                "health grows with the roster");
+        // An out-of-range roster is a configuration error, never a silent clamp.
+        expectInvalid(() -> Wave7NamedTrialActorPolicy.minibossHealth(NamedTrial.RIFT_ARCHMAGE, 1));
+        expectInvalid(() -> Wave7NamedTrialActorPolicy.minibossHealth(NamedTrial.RIFT_ARCHMAGE, 21));
+        expectInvalid(() -> Wave7NamedTrialActorPolicy.minibossHealth(null, 5));
     }
 
     private static UUID id(long value) { return new UUID(0L, value); }

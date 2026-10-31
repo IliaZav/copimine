@@ -22082,6 +22082,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " generation=" + generation + " reason=" + reason);
     }
 
+    /**
+     * Roster basis for Wave 7 miniboss scaling.
+     *
+     * <p>Read from the roster frozen at admission, so a relog, death or quit
+     * never rescales or heals a miniboss mid-fight. Clamped into the supported
+     * band because a truncated save could otherwise present an impossible
+     * roster size and silently rescale the encounter.</p>
+     */
+    private int wave7FrozenRosterSize() {
+        int size = combatProfiles.frozenRosterSize();
+        if (size < me.copimine.endevent.domain.Wave7NamedTrialActorPolicy.MIN_PARTICIPANTS) {
+            return me.copimine.endevent.domain.Wave7NamedTrialActorPolicy.MIN_PARTICIPANTS;
+        }
+        return Math.min(size, me.copimine.endevent.domain.Wave7NamedTrialActorPolicy.MAX_PARTICIPANTS);
+    }
+
     private boolean ensureNamedRealitySplitTrialRoom(World world, Location core,
                                                      RealitySplitTrialController.NamedTrialState trial) {
         if (world == null || core == null || trial == null
@@ -22100,7 +22116,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return true;
         }
         Wave7NamedTrialActorPolicy.Profile profile =
-                Wave7NamedTrialActorPolicy.profile(trial.trial());
+                Wave7NamedTrialActorPolicy.profile(trial.trial(), wave7FrozenRosterSize());
         if (profile == null) {
             Entity actor = findRealitySplitTrialEntity(trial.chamber(), trial.trial().name(), -1);
             if (actor != null && !isNamedRealitySplitActor(actor)) return false;
@@ -31822,7 +31838,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !isNamedRealitySplitActor(actor)) return false;
         Wave7NamedTrialActorPolicy.Checkpoint checkpoint = readNamedTrialActorCheckpoint(actor, trial);
         if (checkpoint == null) return false;
-        Wave7NamedTrialActorPolicy.Profile profile = Wave7NamedTrialActorPolicy.profile(trial.trial());
+        Wave7NamedTrialActorPolicy.Profile profile =
+                Wave7NamedTrialActorPolicy.profile(trial.trial(), wave7FrozenRosterSize());
         if (profile == null || !profile.entityType().equals(actor.getType().name())) return false;
         if (trial.trial() == RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN
                 && eventTickCounter % 12L == 0L) moveNamedTrialMarksman(actor, trial.chamber());

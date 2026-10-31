@@ -12,9 +12,10 @@ public final class BlackFogSafeZonePolicy {
 
     /**
      * Returns the safe-zone side for a zero-based fog cycle and living player
-     * count. Later cycles always shrink the footprint, while larger groups
-     * receive a smaller maximum area. Invalid cycles or empty rosters return
-     * zero so callers can fail closed without creating a safe zone.
+     * count. The footprint shrinks monotonically across all five cycles, stays
+     * usable (at least one cell) in the last cycles, and larger groups receive
+     * a smaller maximum area. Invalid cycles or empty rosters return zero so
+     * callers can fail closed without creating a safe zone.
      */
     public static int sideForCycleAndPlayers(int cycleIndex, int livingPlayers) {
         if (cycleIndex < 0 || cycleIndex >= BlackFogTimingPolicy.CYCLE_COUNT
@@ -23,7 +24,8 @@ public final class BlackFogSafeZonePolicy {
         }
 
         int playerCap = livingPlayers <= 3 ? 3 : livingPlayers <= 5 ? 2 : 1;
-        return Math.max(1, playerCap - cycleIndex);
+        int shrinkSteps = cycleIndex * playerCap / BlackFogTimingPolicy.CYCLE_COUNT;
+        return Math.max(1, playerCap - shrinkSteps);
     }
 
     public static List<Cell> cells(int centerX, int centerZ, int side) {

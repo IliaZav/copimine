@@ -20,21 +20,25 @@ public final class WavePressurePolicy {
             return new WaveMechanicsPolicy.WaveCounts(0, 0, 0, 0, 0);
         }
         int cap = activeCap(wave, livingPlayers);
-        if (cap == 0 || wave == WAVE_TWO) {
-            return wave == WAVE_TWO ? WaveMechanicsPolicy.clampToPressure(requested, livingPlayers)
-                    : new WaveMechanicsPolicy.WaveCounts(0, 0, 0, 0, 0);
-        }
+        if (cap == 0) return new WaveMechanicsPolicy.WaveCounts(0, 0, 0, 0, 0);
         if (wave == WAVE_FIVE && livingPlayers == PressureBudgetController.MIN_PLAYERS) {
             return clampTwoPlayerWaveFive(requested, cap);
         }
-        return clampToCapacity(requested, cap);
+        WaveMechanicsPolicy.WaveCounts boundedRequest = wave == WAVE_TWO
+                ? WaveMechanicsPolicy.compositionForWave(WAVE_TWO, requested) : requested;
+        return clampToCapacity(boundedRequest, cap);
     }
 
-    /** Bounded doubled live pressure for the explicitly strengthened early event waves. */
+    /** Bounded per-wave roster cap; Wave 2 reserves twice the base party pressure. */
     public static int activeCap(int wave, int livingPlayers) {
         if (livingPlayers < PressureBudgetController.MIN_PLAYERS) return 0;
-        if (wave == WAVE_TWO || wave < WAVE_ONE || wave > WAVE_FIVE) {
+        if (wave < WAVE_ONE || wave > WAVE_FIVE) {
             return PressureBudgetController.profileForPlayers(livingPlayers).activePressure();
+        }
+        if (wave == WAVE_TWO) {
+            int partyPressure = PressureBudgetController.profileForPlayers(livingPlayers).activePressure();
+            return Math.min(PressureBudgetController.HARD_CAP,
+                    partyPressure * WAVE_PRESSURE_MULTIPLIER);
         }
         int baseline = wave == WAVE_ONE && livingPlayers <= 3
                 ? SMALL_PARTY_WAVE_ONE_PRESSURE

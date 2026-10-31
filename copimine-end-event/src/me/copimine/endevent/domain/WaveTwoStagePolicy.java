@@ -16,8 +16,8 @@ public final class WaveTwoStagePolicy {
     /** Two opening groups share the maximum initial reserve after the final reserve is held back. */
     public static final int MAX_ACTIVE_GROUP_MOBS =
             (MAX_TOTAL_MOBS - LATE_REINFORCEMENT_BUDGET + 1) / OPENING_GROUP_COUNT;
-    public static final long MARK_DURATION_MILLIS = WaveTwoHuntPolicy.MARK_ROTATION_MILLIS;
-    public static final long NEXT_GROUP_PAUSE_MILLIS = 0L;
+    /** The next subwave starts this long after the previous finite roster is cleared. */
+    public static final long NEXT_GROUP_PAUSE_MILLIS = 3_000L;
 
     private WaveTwoStagePolicy() { }
 
@@ -152,31 +152,15 @@ public final class WaveTwoStagePolicy {
         if (groupClearedAtMillis < 0L) {
             throw new IllegalArgumentException("group clear time must not be negative");
         }
-        return groupClearedAtMillis;
+        return Math.addExact(groupClearedAtMillis, NEXT_GROUP_PAUSE_MILLIS);
     }
 
     /**
-     * Start the first pressure batch immediately. Hold the second substantial
-     * batch until the second mark begins, then gate the final reserve behind
-     * two completed mark periods.
+     * Every subwave starts once the previous finite roster is cleared. The wave
+     * holds exactly {@link #MAX_GROUP_COUNT} subwaves; there is no mark gate.
      */
-    public static boolean maySpawnNextGroup(int spawnedGroups,
-                                            int completedMarkPeriods,
-                                            int lastLateGroupMarkPeriod) {
-        if (spawnedGroups < 0 || spawnedGroups >= MAX_GROUP_COUNT
-                || completedMarkPeriods < 0
-                || completedMarkPeriods > WaveTwoHuntPolicy.MAX_COMPLETED_MARK_PERIODS
-                || lastLateGroupMarkPeriod < 0 || lastLateGroupMarkPeriod > completedMarkPeriods) {
-            return false;
-        }
-        int nextGroupNumber = spawnedGroups + 1;
-        if (nextGroupNumber == 1) return true;
-        if (nextGroupNumber == 2) return completedMarkPeriods >= 1;
-        if (nextGroupNumber == FIRST_LATE_GROUP) {
-            return completedMarkPeriods >= WaveTwoHuntPolicy.MIN_MARK_PERIODS
-                    && lastLateGroupMarkPeriod == 0;
-        }
-        return false;
+    public static boolean maySpawnNextGroup(int spawnedGroups) {
+        return spawnedGroups >= 0 && spawnedGroups < MAX_GROUP_COUNT;
     }
 
     /** Reject durable counters that could skip a group or award a clear on resume. */
@@ -216,9 +200,5 @@ public final class WaveTwoStagePolicy {
         if (groups == null) return 0;
         int end = Math.max(0, Math.min(groups.size(), groupIndex));
         return groups.subList(0, end).stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).sum();
-    }
-
-    public static boolean markExpired(long nowMillis, long markDeadlineMillis) {
-        return nowMillis >= markDeadlineMillis;
     }
 }

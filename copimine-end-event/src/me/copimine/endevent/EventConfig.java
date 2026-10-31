@@ -39,7 +39,6 @@ public record EventConfig(
         double spiderAttackDamageBonus,
         double skeletonHealthBonus,
         double skeletonAttackDamageBonus,
-        double skeletonEliteHealth,
         double skeletonEliteAttackDamageBonus,
         double musicVolume,
         MusicTrack ritualWaitMusic,
@@ -182,7 +181,6 @@ public record EventConfig(
         ConfigurationSection skeleton = mobs.getConfigurationSection("skeleton");
         double skeletonHealthBonus = nonNegativeDouble(skeleton, "health-bonus");
         double skeletonAttackDamageBonus = nonNegativeDouble(skeleton, "attack-damage-bonus");
-        double skeletonEliteHealth = positiveDouble(skeleton, "elite-health");
         double skeletonEliteAttackDamageBonus = nonNegativeDouble(skeleton, "elite-attack-damage-bonus");
         double musicVolume = boundedVolume(music.getDouble("volume", 0.85D));
         MusicTrack ritualWaitMusic = musicTrack(music, "ritual-wait");
@@ -246,7 +244,6 @@ public record EventConfig(
                 spiderAttackDamageBonus,
                 skeletonHealthBonus,
                 skeletonAttackDamageBonus,
-                skeletonEliteHealth,
                 skeletonEliteAttackDamageBonus,
                 musicVolume,
                 ritualWaitMusic,

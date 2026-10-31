@@ -36,7 +36,7 @@ public final class BlackFogRecoverySnapshot {
             }
             if (stage == Stage.COMPLETE
                     && (cycle != BlackFogTimingPolicy.CYCLE_COUNT || phaseDeadlineMillis != 0L)) {
-                throw new IllegalArgumentException("completed Wave 5 checkpoint must have three cycles and no deadline");
+                throw new IllegalArgumentException("completed Wave 5 checkpoint must have five cycles and no deadline");
             }
             if (stage != Stage.COMPLETE && cycle >= BlackFogTimingPolicy.CYCLE_COUNT) {
                 throw new IllegalArgumentException("active Wave 5 checkpoint cannot exceed the cycle count");

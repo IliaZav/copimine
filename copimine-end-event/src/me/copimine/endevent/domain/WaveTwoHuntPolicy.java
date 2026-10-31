@@ -1,65 +1,19 @@
 package me.copimine.endevent.domain;
 
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.UUID;
-
-/** Pure timing, target-rotation, and reinforcement limits for the Wave 2 hunt. */
+/**
+ * Reinforcement limits and packet identity for the Wave 2 hunt.
+ *
+ * <p>Superseded: the earlier design marked one rotating player for 45 seconds
+ * and gated the wave on completed mark periods. The canonical contract marks
+ * every participant for the whole wave and completes the wave on exactly three
+ * subwaves, so there is no target rotation and no mark duration here.</p>
+ */
 public final class WaveTwoHuntPolicy {
-    public static final long MARK_ROTATION_MILLIS = 45_000L;
-    public static final int MIN_MARK_PERIODS = 2;
     public static final int MAX_LATE_REINFORCEMENTS = 2;
-    public static final int MAX_COMPLETED_MARK_PERIODS = 1_000_000;
     /** Packet identity is independent from the bounded gameplay completion counter. */
     public static final int MAX_MARK_ASSIGNMENT_ID = Integer.MAX_VALUE;
-    /** Highest identity issued by the legacy implementation before it stalled. */
-    public static final int LEGACY_MAX_MARK_ASSIGNMENT_ID = MAX_COMPLETED_MARK_PERIODS + 1;
 
     private WaveTwoHuntPolicy() { }
-
-    /**
-     * Plan the first two mark assignments in stable roster order. Duplicate or
-     * null roster entries are ignored. With one eligible player, both periods
-     * use that player; with two or more, the initial assignees are distinct.
-     */
-    public static List<UUID> initialMarkAssignments(List<UUID> eligiblePlayers, long cursor) {
-        List<UUID> eligible = distinctEligible(eligiblePlayers);
-        if (eligible.isEmpty()) return List.of();
-        int first = (int) Math.floorMod(cursor, (long) eligible.size());
-        UUID firstTarget = eligible.get(first);
-        if (eligible.size() == 1) return List.of(firstTarget, firstTarget);
-        UUID secondTarget = eligible.get((first + 1) % eligible.size());
-        return List.of(firstTarget, secondTarget);
-    }
-
-    /**
-     * Choose a target from the current eligible roster, avoiding the previous
-     * target whenever another distinct participant is available.
-     */
-    public static UUID nextMarkTarget(List<UUID> eligiblePlayers, UUID previousTarget, long cursor) {
-        List<UUID> eligible = distinctEligible(eligiblePlayers);
-        if (eligible.isEmpty()) return null;
-        int first = (int) Math.floorMod(cursor, (long) eligible.size());
-        for (int offset = 0; offset < eligible.size(); offset++) {
-            UUID candidate = eligible.get((first + offset) % eligible.size());
-            if (!candidate.equals(previousTarget)) return candidate;
-        }
-        return eligible.get(first);
-    }
-
-    /** Start of an assignment plus its full nominal rotation duration. */
-    public static long markDeadline(long startedAtMillis) {
-        if (startedAtMillis < 0L) {
-            throw new IllegalArgumentException("mark start time must not be negative");
-        }
-        return Math.addExact(startedAtMillis, MARK_ROTATION_MILLIS);
-    }
-
-    /** The exact deadline is the first instant at which the assignment expires. */
-    public static boolean markExpired(long nowMillis, long deadlineMillis) {
-        return nowMillis >= 0L && deadlineMillis > 0L && nowMillis >= deadlineMillis;
-    }
 
     /** Whether another monotonically increasing packet identity can be issued. */
     public static boolean markAssignmentIdsExhausted(int assignmentId) {
@@ -77,28 +31,18 @@ public final class WaveTwoHuntPolicy {
         return assignmentId + 1;
     }
 
-    /** Legacy snapshots lack packet identity; reserve all IDs the old code could have issued. */
-    public static int restoreMarkAssignmentId(String encoded, int completedMarkPeriods) {
-        if (completedMarkPeriods < 0 || completedMarkPeriods > MAX_COMPLETED_MARK_PERIODS) {
-            throw new IllegalArgumentException("completed Wave 2 mark periods are outside their bounded range");
-        }
-        if (encoded == null) {
-            return LEGACY_MAX_MARK_ASSIGNMENT_ID;
-        }
+    /** A snapshot without packet identity starts a fresh wave-scoped identity. */
+    public static int restoreMarkAssignmentId(String encoded) {
+        if (encoded == null) return 0;
         try {
             int assignmentId = Integer.parseInt(encoded);
-            if (assignmentId < 0 || assignmentId < completedMarkPeriods) {
+            if (assignmentId < 0) {
                 throw new IllegalArgumentException("Wave 2 mark assignment identity regressed");
             }
             return assignmentId;
         } catch (NumberFormatException malformed) {
             throw new IllegalArgumentException("Wave 2 mark assignment identity is malformed", malformed);
         }
-    }
-
-    /** A batch may clear after two mark periods, without requiring a third period. */
-    public static boolean mayCompleteBatch(boolean combatBatchCleared, int completedMarkPeriods) {
-        return combatBatchCleared && completedMarkPeriods >= MIN_MARK_PERIODS;
     }
 
     /**
@@ -119,15 +63,6 @@ public final class WaveTwoHuntPolicy {
     public static int lateReinforcementCount(int maxPressureSlots, int remainingBudget) {
         return Math.min(MAX_LATE_REINFORCEMENTS,
                 Math.min(nonNegative(maxPressureSlots), nonNegative(remainingBudget)));
-    }
-
-    private static List<UUID> distinctEligible(List<UUID> eligiblePlayers) {
-        if (eligiblePlayers == null || eligiblePlayers.isEmpty()) return List.of();
-        LinkedHashSet<UUID> distinct = new LinkedHashSet<>();
-        for (UUID player : eligiblePlayers) {
-            if (player != null) distinct.add(player);
-        }
-        return distinct.isEmpty() ? List.of() : List.copyOf(new ArrayList<>(distinct));
     }
 
     private static int nonNegative(int value) {

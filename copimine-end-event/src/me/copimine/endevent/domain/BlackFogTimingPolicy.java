@@ -1,18 +1,18 @@
 package me.copimine.endevent.domain;
 
 /**
- * Deterministic timing for the three Wave 5 black-fog cycles.
+ * Deterministic timing for the five Wave 5 black-fog cycles.
  *
  * <p>The Bukkit controller owns the wall clock.  This class only owns the
  * contract so a change to the warning window cannot silently shorten the
  * encounter in one of the adapters.</p>
  */
 public final class BlackFogTimingPolicy {
-    public static final int CYCLE_COUNT = 3;
+    public static final int CYCLE_COUNT = 5;
     /** Eight seconds gives a player a real window to read and reach the zone. */
     public static final int SAFE_ZONE_SECONDS = 8;
     public static final int FOG_SECONDS = 3;
-    private static final int[] COMBAT_SECONDS = {40, 50, 60};
+    private static final int[] COMBAT_SECONDS = {40, 50, 60, 60, 60};
 
     private BlackFogTimingPolicy() {
     }

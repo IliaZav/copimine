@@ -8,6 +8,9 @@ package me.copimine.endevent.domain;
  * to the same pressure budget.</p>
  */
 public final class WaveMechanicsPolicy {
+    /** Exactly the three charge carriers Wave 1 can consume are elite roles. */
+    public static final int CARRIER_ELITE_SLOTS = RiftCarrierPolicy.REQUIRED_DELIVERIES;
+
     private WaveMechanicsPolicy() {
     }
 
@@ -55,9 +58,15 @@ public final class WaveMechanicsPolicy {
     public static WaveCounts compositionForWave(int wave, WaveCounts requested) {
         if (requested == null) return new WaveCounts(0, 0, 0, 0, 0);
         if (wave == 1) {
-            return new WaveCounts(requested.endermen() + requested.eliteEndermen(),
-                    requested.spiders() + requested.skeletons() + requested.eliteSkeletons(),
-                    0, 0, 0);
+            // Wave 1 charge carriers are elites. Exactly the number of carriers the
+            // objective can consume is promoted to the elite role and the surplus
+            // endermen slots become ordinary melee pressure, so the wave keeps its
+            // configured size while no ranged mob is ever created.
+            int carrierSlots = requested.endermen() + requested.eliteEndermen();
+            int elites = Math.min(CARRIER_ELITE_SLOTS, Math.max(0, carrierSlots));
+            int spiders = requested.spiders() + requested.skeletons()
+                    + requested.eliteSkeletons() + (carrierSlots - elites);
+            return new WaveCounts(0, spiders, 0, elites, 0);
         }
         if (wave == 2) {
             return new WaveCounts(requested.endermen() + requested.eliteEndermen(),

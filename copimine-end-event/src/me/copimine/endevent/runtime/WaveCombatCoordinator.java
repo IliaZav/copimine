@@ -177,15 +177,17 @@ public final class WaveCombatCoordinator {
 
     private void expire(long now) { if (lease != null && now >= lease.expiresTick()) lease = null; }
 
-    /** Only one third of hunters focus the mark. Other jobs pressure its allies. */
-    public static UUID chooseTarget(List<UUID> eligible, UUID current, UUID marked,
+    /**
+     * Distribute hunters across the eligible roster.
+     *
+     * <p>Wave 2 marks every participant for the whole wave, so it has no special
+     * focus target: crowd control is spread like every other wave.</p>
+     */
+    public static UUID chooseTarget(List<UUID> eligible, UUID current,
                                     int wave, int slot, Map<UUID, Integer> loads) {
         if (eligible == null || eligible.isEmpty()) return null;
         Map<UUID, Integer> pressure = loads == null ? Map.of() : loads;
-        boolean hunt = wave == 2 && marked != null && eligible.contains(marked);
-        if (hunt && Math.floorMod(slot, 3) == 0) return marked;
-        List<UUID> pool = hunt && eligible.size() > 1
-                ? eligible.stream().filter(id -> !id.equals(marked)).toList() : eligible;
+        List<UUID> pool = eligible;
         int lowest = pool.stream().mapToInt(id -> pressure.getOrDefault(id, 0)).min().orElse(0);
         if (current != null && pool.contains(current)
                 && pressure.getOrDefault(current, 0) <= lowest + 1) return current;
@@ -202,7 +204,7 @@ public final class WaveCombatCoordinator {
      * stays within one squad.
      */
     public static SquadPlan planSquads(List<UUID> fighterIds, List<UUID> eligiblePlayerIds,
-                                       Map<UUID, UUID> currentTargets, int wave, UUID marked) {
+                                       Map<UUID, UUID> currentTargets, int wave) {
         List<UUID> fighters = fighterIds == null ? List.of() : fighterIds.stream()
                 .filter(id -> id != null).distinct().sorted().toList();
         List<UUID> players = eligiblePlayerIds == null ? List.of() : eligiblePlayerIds.stream()
@@ -221,7 +223,7 @@ public final class WaveCombatCoordinator {
             List<UUID> members = fighters.subList(offset, offset + size);
             offset += size;
 
-            List<UUID> pool = rolePool(players, wave, marked, index);
+            List<UUID> pool = players;
             int lowest = pool.stream().mapToInt(id -> playerLoads.getOrDefault(id, 0))
                     .min().orElse(0);
             UUID prior = mostCommonEligibleTarget(members, currentTargets, pool);
@@ -244,16 +246,16 @@ public final class WaveCombatCoordinator {
                                              List<UUID> fighterIds,
                                              List<UUID> eligiblePlayerIds,
                                              Map<UUID, UUID> currentTargets,
-                                             int wave, UUID marked) {
+                                             int wave) {
         return planSquads(expectedGeneration, cohort, fighterIds, eligiblePlayerIds,
-                currentTargets, wave, marked, Map.of(), Map.of());
+                currentTargets, wave, Map.of(), Map.of());
     }
 
     public synchronized SquadPlan planSquads(long expectedGeneration, String cohort,
                                              List<UUID> fighterIds,
                                              List<UUID> eligiblePlayerIds,
                                              Map<UUID, UUID> currentTargets,
-                                             int wave, UUID marked,
+                                             int wave,
                                              Map<UUID, Position> fighterPositions,
                                              Map<UUID, Position> playerPositions) {
         if (expectedGeneration != generation)
@@ -321,7 +323,7 @@ public final class WaveCombatCoordinator {
         Map<List<UUID>, List<PlayerCluster>> clusterCache = new HashMap<>();
         for (int squadIndex = 0; squadIndex < state.squads.size(); squadIndex++) {
             SquadState squad = state.squads.get(squadIndex);
-            List<UUID> pool = rolePool(players, wave, marked, squadIndex);
+            List<UUID> pool = players;
             List<PlayerCluster> clusters = clusterCache.computeIfAbsent(pool,
                     ignored -> clusterPlayers(pool, safePlayerPositions));
             int lowest = pool.stream().mapToInt(player -> playerLoads.getOrDefault(player, 0))
@@ -474,15 +476,6 @@ public final class WaveCombatCoordinator {
             remaining.remove(nearest);
         }
         return members;
-    }
-
-    private static List<UUID> rolePool(List<UUID> players, int wave, UUID marked, int roleOrdinal) {
-        boolean hasMark = wave == 2 && marked != null && players.contains(marked);
-        boolean focusMark = hasMark && Math.floorMod(roleOrdinal, 3) == 0;
-        if (focusMark) return List.of(marked);
-        if (hasMark && players.size() > 1)
-            return players.stream().filter(player -> !player.equals(marked)).toList();
-        return players;
     }
 
     private void trimSquadCohorts() {

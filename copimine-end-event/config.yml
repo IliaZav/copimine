@@ -43,8 +43,7 @@ mobs:
   skeleton:
     health-bonus: 8.0
     attack-damage-bonus: 2.0
-    elite-health: 40.0
-    elite-attack-damage-bonus: 2.0
+      elite-attack-damage-bonus: 2.0
 
 mini-bosses:
   spell-cooldown-seconds: [8, 12]

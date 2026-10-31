@@ -11,11 +11,11 @@ public final class EndRiftObjective {
     public static final int REQUIRED_CARRIER_DELIVERIES = 3;
     public static final int REQUIRED_HUNT_CYCLES = 3;
     public static final int REQUIRED_GATES = 3;
-    public static final int REQUIRED_FOG_CYCLES = 3;
+    public static final int REQUIRED_FOG_CYCLES = 5;
     public static final int REQUIRED_COLLAPSE_RINGS = 3;
     public static final int GATE_COUNT = 3;
     public static final int RING_COUNT = 3;
-    public static final int FOG_ZONE_PHASES = 3;
+    public static final int FOG_ZONE_PHASES = 5;
 
     private EndRiftObjective() {
     }
@@ -62,8 +62,8 @@ public final class EndRiftObjective {
 
     public static int fogZoneSide(int phaseIndex) {
         return switch (Math.max(0, Math.min(FOG_ZONE_PHASES - 1, phaseIndex))) {
-            case 0 -> 3;
-            case 1 -> 2;
+            case 0, 1 -> 3;
+            case 2, 3 -> 2;
             default -> 1;
         };
     }

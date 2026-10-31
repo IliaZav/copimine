@@ -32033,12 +32033,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     1.65F, 0.0F, false, false);
             case MARKSMAN_HEAVY_SHOT -> launchNamedTrialArrow(actor, target, attack,
                     1.10F, 0.0F, true, false);
-            case MARKSMAN_SPREAD_SHOT -> {
-                boolean first = launchNamedTrialArrow(actor, target, attack, 1.45F, -0.12F, false, false);
-                boolean middle = launchNamedTrialArrow(actor, target, attack, 1.45F, 0.0F, false, false);
-                boolean last = launchNamedTrialArrow(actor, target, attack, 1.45F, 0.12F, false, false);
-                yield first && middle && last;
-            }
+            case MARKSMAN_SPREAD_SHOT -> launchMarksmanFan(actor, target, attack, 1);
             case ARCHMAGE_FANGS -> spawnNamedTrialFangs(actor, target, attack);
             case ARCHMAGE_SPEAR -> launchNamedTrialArrow(actor, target, attack,
                     1.25F, 0.0F, true, true);
@@ -32049,6 +32044,62 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             case MARKSMAN_SUPPORT, NONE -> false;
         };
+    }
+
+    /**
+     * One fan of the Marksman spread burst.
+     *
+     * <p>The contract asks for three successive fans of eight arrows with
+     * readable gaps, not one wide spray. Each fan is its own sub-volley with a
+     * short delay between them, and every fan re-validates its target, so a
+     * player who dies, leaves the chamber or loses LOS mid-burst is not shot
+     * by the remaining fans.</p>
+     */
+    private boolean launchMarksmanFan(LivingEntity actor, Player target,
+            Wave7NamedTrialActorPolicy.Attack attack, int fanNumber) {
+        if (actor == null || target == null) return false;
+        if (fanNumber < 1 || fanNumber > Wave7NamedTrialActorPolicy.MARKSMAN_FAN_COUNT) return false;
+        if (fanNumber < Wave7NamedTrialActorPolicy.MARKSMAN_FAN_COUNT) {
+            scheduleMarksmanFan(actor, target, attack, fanNumber + 1,
+                    Wave7NamedTrialActorPolicy.MARKSMAN_FAN_GAP_TICKS);
+        }
+        boolean anySpawned = false;
+        for (double angleDegrees : Wave7NamedTrialActorPolicy.fanAngles()) {
+            if (!launchNamedTrialArrow(actor, target, attack, 1.45F,
+                    (float) Math.toRadians(angleDegrees), false, false)) {
+                // One rejected arrow must not abort the fan; the remaining
+                // arrows still give the player the readable pattern.
+                continue;
+            }
+            anySpawned = true;
+        }
+        return anySpawned;
+    }
+
+    /**
+     * Schedule the next fan of one Marksman burst.
+     *
+     * <p>Fenced by event, generation, chamber and both actor identities, so a
+     * reset, a stage transition, a dead actor or a departed target cancels the
+     * remaining fans instead of firing them at a stale encounter.</p>
+     */
+    private void scheduleMarksmanFan(LivingEntity actor, Player target,
+            Wave7NamedTrialActorPolicy.Attack attack, int fanNumber, long delayTicks) {
+        UUID actorId = actor.getUniqueId();
+        UUID targetId = target.getUniqueId();
+        long scheduledGeneration = generation;
+        String scheduledEventId = eventId;
+        int scheduledChamber = realitySplitChamberId(actor);
+        Bukkit.getScheduler().runTaskLater(this, () -> {
+            if (scheduledGeneration != generation || !scheduledEventId.equals(eventId)) return;
+            Entity liveActor = Bukkit.getEntity(actorId);
+            Player liveTarget = Bukkit.getPlayer(targetId);
+            if (!(liveActor instanceof LivingEntity living) || living.isDead() || !living.isValid()) return;
+            if (liveTarget == null || !liveTarget.isOnline() || liveTarget.isDead()) return;
+            if (!isCurrentRealitySplitTrialTarget(living, liveTarget)) return;
+            if (realitySplitChamberId(living) != scheduledChamber) return;
+            launchMarksmanFan(living, liveTarget, attack, fanNumber);
+        }, Math.max(1L, delayTicks));
     }
 
     private boolean launchNamedTrialArrow(LivingEntity actor, Player target,

@@ -48,6 +48,9 @@ public class ArchmageCoverProbe {
     boolean isCurrentRealitySplitTrialTarget(LivingEntity a,Player p){return eligible;}
     boolean hasNamedTrialLineOfSight(Location a,Location b){return visible;}
     boolean launchNamedTrialArrow(LivingEntity a,Player t,Wave7NamedTrialActorPolicy.Attack x,float s,float spread,boolean g,boolean spear){attacks++;return true;}
+    // One fan of the real spread burst: the production method fires
+    // MARKSMAN_ARROWS_PER_FAN arrows per fan, so the probe counts them.
+    boolean launchMarksmanFan(LivingEntity a,Player t,Wave7NamedTrialActorPolicy.Attack x,int fan){attacks+=8;return true;}
     boolean spawnNamedTrialFangs(LivingEntity a,Player t,Wave7NamedTrialActorPolicy.Attack x){attacks++;return true;}
     boolean stepNamedTrialArchmage(LivingEntity a,Player p,int c){steps++;return true;}
     void resolveNamedTrialBeam(LivingEntity a,Player p,int c){attacks++;}

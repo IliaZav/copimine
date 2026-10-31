@@ -136,6 +136,8 @@ public class OccludedArchmageProbe {
     boolean teleportCombatEntity(Entity e,Location to){if(!teleportAllowed)return false;e.location=to.clone();teleports++;return true;}
     void spawnEventParticle(Location at,Particle particle,int count,double x,double y,double z,double speed){}
     boolean launchNamedTrialArrow(LivingEntity a,Player p,Wave7NamedTrialActorPolicy.Attack attack,float speed,float spread,boolean glow,boolean spear){damageActions++;return true;}
+    // A spread burst fires its whole fan through the production method.
+    boolean launchMarksmanFan(LivingEntity a,Player p,Wave7NamedTrialActorPolicy.Attack attack,int fan){damageActions+=8;return true;}
     boolean spawnNamedTrialFangs(LivingEntity a,Player p,Wave7NamedTrialActorPolicy.Attack attack){damageActions++;return true;}
     void resolveNamedTrialBeam(LivingEntity a,Player p,int chamber){damageActions++;}
 

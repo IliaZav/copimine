@@ -28,6 +28,7 @@ public final class Wave7NamedTrialActorPolicyTest {
                         && archmage.attacks().size() == 4,
                 "Archmage is a real miniboss with four distinct spells");
         checkMinibossHealthCurve();
+        checkMarksmanFanShape();
         check(Wave7NamedTrialActorPolicy.hasActorAdapter(NamedTrial.MOBILE_MARKSMAN)
                         && Wave7NamedTrialActorPolicy.hasActorAdapter(NamedTrial.RIFT_ARCHMAGE)
                         && !Wave7NamedTrialActorPolicy.hasActorAdapter(NamedTrial.PERSONAL_ECHO),
@@ -98,6 +99,30 @@ public final class Wave7NamedTrialActorPolicyTest {
                 NamedTrial.RIFT_ARCHMAGE, actor));
         expectInvalid(() -> new Checkpoint(event, 71, 1, NamedTrial.RIFT_ARCHMAGE,
                 actor, 9, Attack.MARKSMAN_HEAVY_SHOT, 2_000L, 3_500L, target, false));
+    }
+
+    private static void checkMarksmanFanShape() {
+        // Contract: three successive fans of eight arrows, not one spray.
+        check(Wave7NamedTrialActorPolicy.MARKSMAN_FAN_COUNT == 3,
+                "a spread burst is exactly three fans");
+        check(Wave7NamedTrialActorPolicy.MARKSMAN_ARROWS_PER_FAN == 8,
+                "each fan carries eight arrows");
+        check(Wave7NamedTrialActorPolicy.MARKSMAN_ARROWS_PER_BURST == 24,
+                "a full burst is 24 arrows, matching the event-wide arrow cap");
+        java.util.List<Double> angles = Wave7NamedTrialActorPolicy.fanAngles();
+        check(angles.size() == Wave7NamedTrialActorPolicy.MARKSMAN_ARROWS_PER_FAN,
+                "one fan produces one angle per arrow");
+        check(angles.stream().distinct().count() == angles.size(),
+                "no two arrows share an angle, so a fan never double-stacks");
+        double spread = Wave7NamedTrialActorPolicy.MARKSMAN_FAN_SPREAD_DEGREES;
+        check(Math.abs((angles.get(angles.size() - 1) - angles.get(0))
+                        - spread * (Wave7NamedTrialActorPolicy.MARKSMAN_ARROWS_PER_FAN - 1)) < 1.0E-9D,
+                "the fan spans a bounded, readable arc");
+        // Even arrow counts straddle the axis rather than centring on it.
+        check(!angles.contains(0.0D) || angles.size() % 2 == 1,
+                "an even fan does not put an arrow exactly on the target line");
+        check(Wave7NamedTrialActorPolicy.MARKSMAN_FAN_GAP_TICKS >= 2,
+                "fans are separated by a readable gap, not fired in one tick");
     }
 
     private static void checkMinibossHealthCurve() {

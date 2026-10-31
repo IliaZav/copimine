@@ -141,6 +141,42 @@ public final class Wave7NamedTrialActorPolicy {
         return profile.attacks().get((int) (attackIndex % profile.attacks().size()));
     }
 
+    /**
+     * Fans in one Marksman spread burst.
+     *
+     * <p>The contract asks for an enhanced successive fan: three fans with
+     * readable gaps, not one wide spray. Each fan is fired as its own
+     * sub-volley so a target can read the sequence and take bounded hits.</p>
+     */
+    public static final int MARKSMAN_FAN_COUNT = 3;
+
+    /** Arrows in one Marksman fan. */
+    public static final int MARKSMAN_ARROWS_PER_FAN = 8;
+
+    /** Total arrows in one spread burst; the event-wide cap is 24. */
+    public static final int MARKSMAN_ARROWS_PER_BURST = MARKSMAN_FAN_COUNT * MARKSMAN_ARROWS_PER_FAN;
+
+    /** Ticks between two fans of one burst, long enough for a readable tell. */
+    public static final int MARKSMAN_FAN_GAP_TICKS = 6;
+
+    /** Angular step between adjacent arrows of one fan, in degrees. */
+    public static final double MARKSMAN_FAN_SPREAD_DEGREES = 2.2D;
+
+    /**
+     * Angled offsets of one fan, centred on the target line.
+     *
+     * <p>Odd arm counts stay symmetric; even counts offset by one half step so
+     * no arrow is exactly on the axis and the middle is never double-hit.</p>
+     */
+    public static java.util.List<Double> fanAngles() {
+        java.util.List<Double> angles = new java.util.ArrayList<>(MARKSMAN_ARROWS_PER_FAN);
+        double half = (MARKSMAN_ARROWS_PER_FAN - 1) / 2.0D;
+        for (int index = 0; index < MARKSMAN_ARROWS_PER_FAN; index++) {
+            angles.add((index - half) * MARKSMAN_FAN_SPREAD_DEGREES);
+        }
+        return java.util.List.copyOf(angles);
+    }
+
     /** Number of visible tell ticks before a real attack resolves. */
     public static int telegraphTicks(Attack attack) {
         return switch (attack) {

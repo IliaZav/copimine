@@ -14,6 +14,11 @@ public final class EndEventBlackFogManager {
     private static final int MAX_MODE_LENGTH = 32;
     private static final float MIN_INTENSITY = 0.5F;
     private static final float MAX_INTENSITY = 1.0F;
+    /**
+     * Visibility outside a safe volume while the hazard is active. The fog
+     * starts at the camera, so this is a hard blackout, not a vignette.
+     */
+    private static final float BLACKOUT_FOG_END_BLOCKS = 0.02F;
 
     private String eventId = "";
     private long generation;
@@ -123,10 +128,13 @@ public final class EndEventBlackFogManager {
         if (dimension.isBlank() || !dimension.equals(requestedDimension)) {
             return 0.0F;
         }
-        // Keep the active fog inside the arena: the server's normal 0.88
-        // intensity should obscure distant portals and arena edges, while
-        // still leaving a few blocks of visibility for safe-zone navigation.
-        return 8.0F - 4.0F * intensity;
+        // Canonical Wave 5: the whole arena is opaque black except the
+        // published safe volumes. A short fog end is the only value that
+        // obscures geometry instead of merely tinting it, so intensity no
+        // longer maps to a visible radius. Callers that can see the world
+        // (the fog mixin) subtract the safe volumes themselves; anything that
+        // cannot prove it stands in one stays black.
+        return BLACKOUT_FOG_END_BLOCKS;
     }
 
     public synchronized boolean active() {

@@ -150,7 +150,16 @@ if (-not (Test-Path -LiteralPath $bridgeClass -PathType Leaf)) {
   }
 }
 Remove-Item -LiteralPath $jar -Force -ErrorAction SilentlyContinue
-jar --create --file $jar --date=2020-01-01T00:00:00Z -C $classes .
+# `jar` stamps its own version into MANIFEST.MF as Created-By. Resolving it
+# through PATH let a Java 21 install write "Created-By: 21.0.10" into a jar
+# compiled by JDK 25, so the same sources produced a different digest on every
+# machine with a different default JDK. Pin the packer to $env:JAVA_HOME too.
+$jarCommand = 'jar'
+if ($env:JAVA_HOME) {
+  $jarInHome = Join-Path $env:JAVA_HOME 'bin/jar.exe'
+  if (Test-Path -LiteralPath $jarInHome -PathType Leaf) { $jarCommand = $jarInHome }
+}
+& $jarCommand --create --file $jar --date=2020-01-01T00:00:00Z -C $classes .
 if ($LASTEXITCODE -ne 0) { throw "jar packaging failed for CopiMineEndEvent." }
 Copy-Item -LiteralPath $jar -Destination $serverJar -Force
 # The migration lock pins build/minecraft-26.3/plugins/jars, not the staging

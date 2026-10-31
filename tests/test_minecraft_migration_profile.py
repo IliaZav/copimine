@@ -179,10 +179,13 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
 
     assert artifact['filename'] == 'CopiMineClient-0.1.3+26.3.jar'
     # Measured from the repeatable build output and recorded in the lock.
-    assert artifact['size'] == 15_028_483
+    # Re-measured after the fog-volume client sources landed: clean and
+    # incremental builds on the same tree now agree exactly, which the
+    # previous pin could not claim.
+    assert artifact['size'] == 15_029_255
     assert artifact['sha512'] == (
-        'c5973731e3070a49ba471bff7d60d1c43868e3c411d97c117e1d802b1abc7719'
-        '450ad1402448c35dd0b160dc66408794923600dde06d38379f1f5b29287de899'
+        '0a16573d1f393505f37b826bd38e7c4595a4aab302fc972f553d02780ac60dae'
+        '752c89373e4e543860ce8121fd18a3579d06034b305f76bca141d9fdcfdb465b'
     )
 
 

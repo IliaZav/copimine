@@ -127,3 +127,16 @@ def test_payment_methods_use_local_brand_marks_and_cookie_notice_stays_compact()
     assert "M.btn('Принять всё','v6-cookies-all'" in banner
     assert "M.btn('Только необходимые','v6-cookies-essential'" in banner
     assert 'href="#privacy"' in banner
+
+
+def test_server_actions_panel_survives_the_production_override():
+    """production.js загружается последним и перезаписывает вкладку «Сервер и
+    службы» целиком. Панель серверных действий живёт в bridge-v6.js, поэтому
+    без явного подключения кнопки time.*, weather.* и save не отрисовывались."""
+    bridge = (ROOT / 'assets/js/bridge-v6.js').read_text(encoding='utf-8')
+    assert 'X.serverActionsPanel=' in bridge
+    production = (ROOT / 'assets/js/production.js').read_text(encoding='utf-8')
+    system = production.split('W.adminExtensions.system=')[1]
+    assert 'X.serverActionsPanel' in system.split('H[')[0]
+    bundle = (ROOT / 'assets/js/app-bundle.js').read_text(encoding='utf-8')
+    assert bundle.count('serverActionsPanel') >= 2

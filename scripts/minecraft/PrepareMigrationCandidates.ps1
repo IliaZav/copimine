@@ -236,6 +236,28 @@ if (-not $grimCacheValid) {
 & (Join-Path $root $grim.patch) -JavaHome $GrimPatchJavaHome
 if ($LASTEXITCODE -ne 0) { throw 'Pinned GrimAC compatibility patch build failed' }
 
+# The End Event candidate jar is gitignored and is not produced by the path above.
+# Staging verifies it against the lock before installing, so it must be built here:
+# otherwise the pin can only ever match whatever stale build happened to be on disk,
+# and a clean runner fails with "Local plugin artifact SHA-256 differs from its lock".
+$endEventBuild = Join-Path $root 'copimine-end-event/build-plugin.ps1'
+if (-not (Test-Path -LiteralPath $endEventBuild -PathType Leaf)) {
+    throw "End Event plugin build script is missing: $endEventBuild"
+}
+$previousEndEventJava = $env:JAVA_HOME
+try {
+    $env:JAVA_HOME = $BuildJavaHome
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $endEventBuild
+    if ($LASTEXITCODE -ne 0) { throw 'End Event plugin build failed' }
+} finally {
+    $env:JAVA_HOME = $previousEndEventJava
+}
+$endEventCandidate = Join-Path $root 'build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar'
+Assert-AtomicFileDestination -Path $endEventCandidate -Description 'End Event pinned candidate' -StopAt $root
+if (-not (Test-Path -LiteralPath $endEventCandidate -PathType Leaf)) {
+    throw "End Event pinned candidate was not reproduced from source: $endEventCandidate"
+}
+
 & $PythonExe (Join-Path $PSScriptRoot 'install_migration_server_plugins.py') --stage-only
 if ($LASTEXITCODE -ne 0) { throw 'Pinned Paper 26.3 server plugin staging failed' }
 

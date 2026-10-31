@@ -222,6 +222,19 @@ def test_java_plugin_ci_builds_narcotics_before_end_event() -> None:
     assert build_loop.index("'copimine-narcotics'") < build_loop.index("'copimine-end-event'")
 
 
+def test_candidate_preparation_builds_the_end_event_pin_before_staging() -> None:
+    # The End Event candidate jar is gitignored and nothing else on the staging
+    # path produces it, so a clean runner can only ever fail the lock comparison
+    # unless the pin is rebuilt here first.
+    source = (ROOT / "scripts/minecraft/PrepareMigrationCandidates.ps1").read_text(encoding="utf-8")
+    build_index = source.index("copimine-end-event/build-plugin.ps1")
+    stage_index = source.index("install_migration_server_plugins.py")
+
+    assert build_index < stage_index
+    assert "$env:JAVA_HOME = $BuildJavaHome" in source[build_index:stage_index]
+    assert "build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar" in source[build_index:stage_index]
+
+
 def test_client_artifact_size_documentation_matches_the_profile_lock() -> None:
     profile = json.loads((ROOT / "tools/minecraft-26.3/profile.lock.json").read_text(encoding="utf-8"))
     readme = (ROOT / "docs/minecraft-26.3/README.md").read_text(encoding="utf-8")

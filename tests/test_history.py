@@ -1,6 +1,8 @@
 """Чат и команды игрока из CoreProtect: настоящая DuckDB, без заглушек."""
 import csv
 import io
+import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -15,10 +17,12 @@ def headers(session):
 
 
 @pytest.fixture(autouse=True)
-def fresh_copy():
-    history.COPY.update(at=0.0, dir=None)
+def no_leftover_snapshots(tmp_path):
+    """Каждый запрос снимает свою копию и обязан её убрать."""
+    before = set(Path(tempfile.gettempdir()).glob("cp-history-*"))
     yield
-    history.COPY.update(at=0.0, dir=None)
+    leftover = set(Path(tempfile.gettempdir()).glob("cp-history-*")) - before
+    assert not leftover, "временная копия базы осталась на диске"
 
 
 def build(settings, chat=(), commands=()):

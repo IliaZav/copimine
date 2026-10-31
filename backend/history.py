@@ -3,8 +3,7 @@
 CoreProtect already records every chat line and command (`player-messages`,
 `player-commands` in its config) in its own DuckDB file. The game server keeps
 that file locked, so the only safe read is a copy of `database.duckdb` plus its
-write-ahead log; the copy is cached for a minute so a paging session does not
-copy the database on every page.
+write-ahead log, made per request and deleted afterwards.
 
 The file is written by a newer DuckDB than any pip build that runs on the game
 host's CPU, but `duckdb==1.4.5` matches it, so no Java helper is needed. When
@@ -26,9 +25,6 @@ from .security import current_user, fail
 router = APIRouter()
 KINDS = ("chat", "command")
 PAGE_MAX, EXPORT_MAX = 500, 50000
-# Копия базы живёт минуту: пейджинг не должен копировать файл на каждую страницу.
-COPY_TTL = 60.0
-COPY = {"at": 0.0, "dir": None}
 NICK = re.compile(r"[A-Za-z0-9_]{1,32}")
 
 
@@ -36,61 +32,62 @@ def _source(settings):
     return Path(settings.game_root) / "minecraft" / "server" / "plugins" / "CoreProtect" / "database.duckdb"
 
 
-def _copy(settings):
-    """Private snapshot of the live database; the game keeps the original locked."""
+def _snapshot(settings):
+    """Private copy of the live database; the game keeps the original locked.
+
+    A fresh copy per request costs a few milliseconds for this file and buys
+    correctness: no shared temp directory a second request could delete while
+    the first is still reading it.
+    """
     source = _source(settings)
     if not source.is_file():
         fail(503, "history_unavailable", "CoreProtect ещё не создал базу истории.")
-    if COPY["dir"] and time.time() - COPY["at"] < COPY_TTL:
-        return COPY["dir"]
-    if COPY["dir"]:
-        shutil.rmtree(COPY["dir"], ignore_errors=True)
     target = Path(tempfile.mkdtemp(prefix="cp-history-"))
-    shutil.copy2(source, target / "database.duckdb")
-    wal = Path(str(source) + ".wal")
-    if wal.is_file():
-        shutil.copy2(wal, target / "database.duckdb.wal")
-    COPY.update(at=time.time(), dir=target)
+    try:
+        shutil.copy2(source, target / "database.duckdb")
+        wal = Path(str(source) + ".wal")
+        if wal.is_file():
+            shutil.copy2(wal, target / "database.duckdb.wal")
+    except OSError:
+        shutil.rmtree(target, ignore_errors=True)
+        fail(503, "history_unavailable", "История недоступна: не удалось снять копию базы CoreProtect.")
     return target
-
-
-def _connect(settings):
-    try:
-        import duckdb
-    except ImportError:
-        fail(503, "history_unavailable", "Модуль чтения истории не установлен на сервере.")
-    directory = _copy(settings)
-    try:
-        return duckdb.connect(str(directory / "database.duckdb"), read_only=True)
-    except Exception:
-        # Битый или недописанный снимок не должен отдавать прошлую копию молча.
-        COPY.update(at=0.0, dir=None)
-        fail(503, "history_unavailable", "История недоступна: базу CoreProtect не удалось открыть.")
 
 
 def player_history(settings, player, kind="chat", limit=100, offset=0):
     """One page of a player's messages, newest first."""
     if kind not in KINDS:
         fail(400, "invalid_kind", "Выберите чат или команды.")
-    con = _connect(settings)
     try:
-        table = "co_chat" if kind == "chat" else "co_command"
-        count = con.execute(
-            "SELECT count(*) FROM " + table + " c JOIN co_user u ON u.rowid=c.user"
-            " WHERE lower(u.user)=lower(?)", (player,)).fetchone()[0]
-        rows = con.execute(
-            "SELECT c.time,c.message,c.x,c.y,c.z,w.world FROM " + table + " c"
-            " JOIN co_user u ON u.rowid=c.user LEFT JOIN co_world w ON w.rowid=c.wid"
-            " WHERE lower(u.user)=lower(?) ORDER BY c.time DESC,c.rowid DESC LIMIT ? OFFSET ?",
-            (player, limit, offset)).fetchall()
+        import duckdb
+    except ImportError:
+        fail(503, "history_unavailable", "Модуль чтения истории не установлен на сервере.")
+    directory = _snapshot(settings)
+    snapshot_at = int(time.time())
+    try:
+        try:
+            con = duckdb.connect(str(directory / "database.duckdb"), read_only=True)
+        except Exception:
+            fail(503, "history_unavailable", "История недоступна: базу CoreProtect не удалось открыть.")
+        try:
+            table = "co_chat" if kind == "chat" else "co_command"
+            count = con.execute(
+                "SELECT count(*) FROM " + table + " c JOIN co_user u ON u.rowid=c.user"
+                " WHERE lower(u.user)=lower(?)", (player,)).fetchone()[0]
+            rows = con.execute(
+                "SELECT c.time,c.message,c.x,c.y,c.z,w.world FROM " + table + " c"
+                " JOIN co_user u ON u.rowid=c.user LEFT JOIN co_world w ON w.rowid=c.wid"
+                " WHERE lower(u.user)=lower(?) ORDER BY c.time DESC,c.rowid DESC LIMIT ? OFFSET ?",
+                (player, limit, offset)).fetchall()
+        finally:
+            con.close()
     finally:
-        con.close()
+        shutil.rmtree(directory, ignore_errors=True)
     return {
         "entries": [{"at": r[0], "message": r[1], "x": r[2], "y": r[3], "z": r[4], "world": r[5]} for r in rows],
         "total": count,
         "hasMore": offset + len(rows) < count,
-        # Снимок сделан минуту назад: подпись в интерфейсе не должна врать про «сейчас».
-        "snapshotAt": int(COPY["at"]),
+        "snapshotAt": snapshot_at,
     }
 
 

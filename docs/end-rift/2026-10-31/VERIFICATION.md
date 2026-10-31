@@ -67,7 +67,7 @@ Skips recorded as host/environment limits, not passes:
 | Artifact | SHA-256 |
 |---|---|
 | Installed EndEvent jar | `440e081eebfdc6764c64e5f8aab3c3505862c55efd17dc5e69d51e3dde77d73a` (audit claim, unverified on this host) |
-| Staged candidate | `4730adaae609e8a61398b3a9f6641f33c382eee7c2fb205e4fb51d566f6bd5c3` (audit claim, unverified) |
+| Staged candidate | `51b412ff0f3d72ff28128ecaccd72216b8a288b875fe528616b4f6f0d643d2f4` (rebuilt by `:endEventJar`, 2019018 B) |
 
 These two differ from each other and from what the lock files expect, which is
 the reproducible provenance defect.

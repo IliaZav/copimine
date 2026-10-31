@@ -1435,7 +1435,7 @@
     },
     {
       "id": "W6-02",
-      "requirement": "guards 5/10/15 на границах 2/4/5/8/9/20; giant заменяет слоты, summons не увеличивают shield owners.",
+      "requirement": "guards 5/10/15/25 на границах 2/4/5/8/9/20 (до 5 стражей на мага); giant заменяет слоты, summons не увеличивают shield owners.",
       "layers": [
         "U",
         "A",

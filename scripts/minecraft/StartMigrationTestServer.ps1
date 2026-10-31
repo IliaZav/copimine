@@ -78,6 +78,34 @@ function Protect-MigrationEventSpawnsFromClearLag {
     Write-Output 'ClearLag: exempting CUSTOM spawns so End Rift event mobs are never refused.'
 }
 
+function Silence-MigrationClearLagBroadcasts {
+    # Routine ClearLag countdown/success chat is noise during an event run.  The
+    # cleanup itself, its console diagnostics and admin commands stay untouched;
+    # only the player-facing broadcast switch is turned off at the source.
+    param([Parameter(Mandatory)][string]$RuntimeDirectory)
+    $config = Join-Path $RuntimeDirectory 'plugins/ClearLag/config.yml'
+    if (-not (Test-Path -LiteralPath $config -PathType Leaf)) { return }
+    $lines = [IO.File]::ReadAllLines($config)
+    $messagesKey = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match '^\s*messages:\s*(#.*)?$') { $messagesKey = $i; break }
+    }
+    if ($messagesKey -lt 0) { return }
+    $messagesIndent = [regex]::Match($lines[$messagesKey], '^(\s*)').Groups[1].Value.Length
+    for ($i = $messagesKey + 1; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match '^\s*(#.*)?$') { continue }
+        $indent = [regex]::Match($lines[$i], '^(\s*)').Groups[1].Value.Length
+        if ($indent -le $messagesIndent) { break }
+        if ($lines[$i] -match '^(?<lead>\s*broadcast-enabled:\s*)(?<value>[^#]*?)(?<comment>\s*#.*)?$') {
+            if ($Matches['value'].Trim() -ceq 'false') { return }
+            $lines[$i] = $Matches['lead'] + 'false' + $Matches['comment']
+            [IO.File]::WriteAllLines($config, $lines)
+            Write-Output 'ClearLag: routine cleanup broadcasts are disabled at the config source.'
+            return
+        }
+    }
+}
+
 function Test-MigrationPaperRuntimeListener {
     [CmdletBinding()]
     param(
@@ -303,6 +331,7 @@ try {
     }
 
     Protect-MigrationEventSpawnsFromClearLag -RuntimeDirectory $runtime
+    Silence-MigrationClearLagBroadcasts -RuntimeDirectory $runtime
 
     if ($LocalEndEventBuild) {
         Write-Output "Starting the full locked-plugin Minecraft 26.3 server on 127.0.0.1:$serverPort with the receipted local CopiMineEndEvent build, AuthMe and AuthEffects enabled. This server remains loopback-only."

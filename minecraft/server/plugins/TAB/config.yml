@@ -16,7 +16,7 @@ header-footer:
         - ""
         - "&8&m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         - "&#c2c9cfПрезидент: &6%copimine_president%"
-        - "&#c2c9cfОнлайн: &f%online% &#c2c9cfигроков &8┃ &#c2c9cfАдминов: &f%staffonline%"
+        - "&#c2c9cfОнлайн: &f%online% &#c2c9cf%copimine_online_word% &8┃ &#c2c9cfАдминов: &f%staffonline%"
         - "&8&m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         - ""
         footer:

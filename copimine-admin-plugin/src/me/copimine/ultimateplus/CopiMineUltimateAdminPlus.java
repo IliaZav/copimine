@@ -5662,6 +5662,19 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     private long arTotal(){try{return scalarLong("SELECT COALESCE(SUM(balance),0) FROM cmv7_ar_balances");}catch(Throwable ignored){return 0;}}
 
+    /**
+     * Russian plural for "player" so the TAB header reads "1 игрок" / "2 игрока" / "5 игроков".
+     * %online% itself stays a bare number: other server text and plugins rely on its shape.
+     */
+    static String russianPlayersWord(int online){
+        int n=Math.abs(online)%100;
+        if(n>=11&&n<=14)return "игроков";
+        int last=n%10;
+        if(last==1)return "игрок";
+        if(last>=2&&last<=4)return "игрока";
+        return "игроков";
+    }
+
     private String cleanText(String s){return ChatColor.stripColor(s==null?"":s).toLowerCase(Locale.ROOT);}
 
     private CopiMineEconomyCore economyCore(){
@@ -6644,6 +6657,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 case "active_president" -> plugin.activePresidentName();
                 case "ar_total" -> String.valueOf(plugin.arTotal());
                 case "election_system" -> "CIK";
+                case "online_word" -> russianPlayersWord(Bukkit.getOnlinePlayers().size());
                 default -> "";
             };
         }

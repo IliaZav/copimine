@@ -100,7 +100,11 @@ function Get-RitualScalingProfile {
   param([Parameter(Mandatory = $true)][int]$Participants)
 
   $count = [Math]::Max(2, [Math]::Min(20, $Participants))
-  $guards = if ($count -le 4) { 5 } elseif ($count -le 8) { 10 } else { 15 }
+  # W6-009: one guard at a 2-4 party, +1 per four players, capped at five per
+  # mage. Must stay identical to RitualSphereScalingPolicy.forPlayers.
+  $perMage = if ($count -le 4) { 1 } elseif ($count -le 8) { 2 } `
+    elseif ($count -le 12) { 3 } elseif ($count -le 16) { 4 } else { 5 }
+  $guards = 5 * $perMage
   $projectiles = if ($count -le 2) { 3 } elseif ($count -eq 3) { 4 } `
     elseif ($count -le 5) { 5 } elseif ($count -eq 6) { 6 } else { 7 }
   $zones = if ($count -le 8) { 1 } elseif ($count -le 16) { 2 } else { 3 }

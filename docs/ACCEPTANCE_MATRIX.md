@@ -6,9 +6,9 @@ so the table cannot quietly stop describing the code.
 
 - routes: **108**
 - routes that call the game bridge or the legacy economy: **10**
-- routes covered by an automated test: **83**
+- routes covered by an automated test: **89**
 - routes called from the shipped frontend: **66**
-- frontend routes without an automated test: **6**
+- frontend routes without an automated test: **0**
 
 `reauth` means the endpoint calls `current_user(..., fresh=True)` and therefore
 requires a password confirmation younger than ten minutes.
@@ -20,7 +20,7 @@ requires a password confirmation younger than ten minutes.
 | `production.js` | GET | `/api/v6/admin/health` | `server.manage` | — | `health` | — | — | `test_authorized_health_endpoint_keeps_diagnostics_without_public_leak`, `test_owner_can_create_account_but_player_cannot_read_admin_data` |
 | `inventory-v73.js`, `production.js` | GET | `/api/v6/admin/players/{identifier}/inventory` | `inventory.view` | — | `inventory.snapshot` | — | — | `test_inventory_mutation_requires_permission_and_fresh_snapshot` |
 | `production.js` | GET/POST | `/api/v6/admin/releases` | `release.manage` | yes | `health` | reason, version | — | `test_monitor_reports_cached_sample_and_release_inventory`, `test_player_cannot_read_monitor_or_releases` |
-| `production.js` | POST | `/api/v6/admin/releases/{release_id}/check` | `release.manage` | yes | `health` | — | — | `test_release_actions_need_a_confirmation_word_and_a_backup` |
+| `production.js` | POST | `/api/v6/admin/releases/{release_id}/check` | `release.manage` | yes | `health` | — | — | `test_release_actions_need_a_confirmation_word_and_a_backup`, `test_release_report_needs_release_permission` |
 | `production.js`, `site-v6.js` | POST | `/api/v6/checkout` | `session` | — | `catalog` | cart, expectedTotal, idempotencyKey, items, key, pin | yes | `test_checkout_pin_is_validated_before_reservation`, `test_checkout_rejects_malformed_rows_before_dispatch` |
 | — | GET | `/api/v6/media/{filename}` | `public` | — | `catalog` | — | — | `test_catalog_media_urls_are_limited_to_site_files` |
 | — | GET | `/api/v7/economy` | `session` | — | `wallet` | — | — | `test_economy_history_includes_incoming_and_outgoing_game_transfers` |
@@ -29,11 +29,13 @@ requires a password confirmation younger than ten minutes.
 | `account-v9.js` | POST | `/api/v6/account/delete` | `session` | yes | — | confirm, password | — | `test_account_export_returns_own_data_then_delete_anonymises`, `test_deleted_account_anonymises_not_null_columns_and_clears_cookie` |
 | — | POST | `/api/v6/account/export` | `session` | yes | — | — | — | `test_account_export_returns_own_data_then_delete_anonymises` |
 | `account-v9.js`, `production.js` | POST | `/api/v6/account/minecraft/confirm` | `session` | — | — | code | — | `test_password_and_minecraft_changes_create_account_notifications` |
+| `account-v9.js`, `production.js` | POST | `/api/v6/account/minecraft/request` | `session` | — | — | name | — | `test_minecraft_link_request_never_reaches_the_bridge_for_a_bad_nickname`, `test_minecraft_link_request_requires_a_session` |
 | — | GET | `/api/v6/account/notifications` | `session` | — | — | — | — | `test_incoming_transfer_creates_readable_account_notification`, `test_password_and_minecraft_changes_create_account_notifications` |
 | `bridge-v6.js` | POST | `/api/v6/account/password` | `session` | — | — | current, currentPassword, password | — | `test_password_change_makes_the_old_password_stop_working`, `test_password_change_requires_the_current_password` |
 | `bridge-v6.js` | PATCH | `/api/v6/account/profile` | `session` | — | — | displayName | — | `test_profile_only_changes_the_display_name` |
 | `account-v9.js` | POST | `/api/v6/account/sessions/revoke-others` | `session` | — | — | — | — | `test_session_revocation_never_touches_another_account` |
 | `account-v9.js` | POST | `/api/v6/account/sessions/{identifier}/revoke` | `session` | — | — | — | — | `test_account_can_revoke_its_other_sessions`, `test_session_revocation_never_touches_another_account` |
+| `bridge-v6.js` | POST | `/api/v6/account/transfer` | `session` | — | — | amount, expectedFee, idempotencyKey, key, note, pin | yes | `test_account_transfer_alias_moves_money_exactly_once`, `test_account_transfer_rejects_a_bad_amount_before_dispatch` |
 | `players-v6.js`, `production.js` | POST | `/api/v6/admin/accounts` | `accounts.manage` | yes | — | name, password, reason, role | — | `test_one_notification_per_admin_and_templates_on_postgres`, `test_owner_can_close_account_access_and_login_is_rejected` |
 | `players-v6.js`, `production.js` | PATCH | `/api/v6/admin/accounts/{identifier}` | `accounts.manage` | yes | — | reason, role | — | `test_login_history_records_failures_and_successes`, `test_owner_can_close_account_access_and_login_is_rejected` |
 | `players-v6.js`, `production.js` | GET | `/api/v6/admin/accounts/{identifier}/logins` | `players.view` | — | — | — | — | `test_login_history_records_failures_and_successes`, `test_owner_can_close_account_access_and_login_is_rejected` |
@@ -53,15 +55,18 @@ requires a password confirmation younger than ten minutes.
 | `admin-mapart-v1.js`, `bluemap.js` | GET | `/api/v6/admin/map` | `map.view` | — | — | — | — | `test_private_map_assets_require_current_admin_session` |
 | `bluemap.js` | POST | `/api/v6/admin/map/refresh` | `map.manage` | yes | — | — | — | `test_manual_jobs_work_with_auto_disabled_and_deduplicate` |
 | `bluemap.js` | POST | `/api/v6/admin/map/settings` | `map.manage` | yes | — | — | — | `test_manual_jobs_work_with_auto_disabled_and_deduplicate`, `test_public_view_flags_follow_admin_settings_without_republish` |
+| `admin-mapart-v1.js` | GET | `/api/v6/admin/mapart` | `content.manage` | — | — | — | — | `test_admin_mapart_lists_uploads_newest_first`, `test_admin_mapart_requires_content_permission` |
 | `production.js` | GET | `/api/v6/admin/monitor` | `server.monitor` | — | — | — | — | `test_monitor_interval_can_be_changed`, `test_monitor_reports_cached_sample_and_release_inventory` |
 | `production.js` | POST | `/api/v6/admin/monitor/interval` | `server.monitor` | — | — | reason, seconds | — | `test_monitor_interval_can_be_changed` |
 | `admin-narcotics-v1.js` | GET/PUT | `/api/v6/admin/narcotics` | `catalog.manage` | yes | — | document, reason, version | — | `test_duplicate_recipe_between_items_is_rejected`, `test_recipe_shorter_than_three_ingredients_is_rejected` |
+| `admin-narcotics-v1.js` | GET | `/api/v6/admin/narcotics/export` | `catalog.manage` | — | — | — | — | `test_narcotics_export_is_a_plugin_config_fragment` |
 | `admin-narcotics-v1.js` | GET | `/api/v6/admin/narcotics/textures` | `catalog.manage` | — | — | — | — | `test_admin_can_choose_an_existing_texture_without_uploading` |
 | `admin-narcotics-v1.js` | POST/GET | `/api/v6/admin/narcotics/{item_id}/texture` | `catalog.manage` | yes | — | image, reason, source | — | `test_admin_can_choose_an_existing_texture_without_uploading`, `test_default_texture_is_the_pack_texture_not_a_vanilla_item` |
 | `inventory-v73.js`, `production.js` | POST | `/api/v6/admin/players/{identifier}/inventory/remove` | `inventory.manage` | yes | — | expectedVersion, key, kind, quantity, reason, slot | yes | `test_inventory_mutation_requires_permission_and_fresh_snapshot` |
-| `production.js` | POST | `/api/v6/admin/releases/{release_id}/apply` | `release.manage` | yes | — | confirm, reason | — | `test_release_actions_need_a_confirmation_word_and_a_backup` |
-| `production.js` | POST | `/api/v6/admin/releases/{release_id}/backup` | `release.manage` | yes | — | — | — | `test_release_actions_need_a_confirmation_word_and_a_backup` |
-| `production.js` | POST | `/api/v6/admin/releases/{release_id}/rollback` | `release.manage` | yes | — | confirm, reason | — | `test_release_actions_need_a_confirmation_word_and_a_backup` |
+| `production.js` | POST | `/api/v6/admin/releases/report` | `release.manage` | yes | — | ci, commit, source | — | `test_release_report_needs_release_permission`, `test_release_report_records_what_the_deploy_tool_said` |
+| `production.js` | POST | `/api/v6/admin/releases/{release_id}/apply` | `release.manage` | yes | — | confirm, reason | — | `test_release_actions_need_a_confirmation_word_and_a_backup`, `test_release_report_needs_release_permission` |
+| `production.js` | POST | `/api/v6/admin/releases/{release_id}/backup` | `release.manage` | yes | — | — | — | `test_release_actions_need_a_confirmation_word_and_a_backup`, `test_release_report_needs_release_permission` |
+| `production.js` | POST | `/api/v6/admin/releases/{release_id}/rollback` | `release.manage` | yes | — | confirm, reason | — | `test_release_actions_need_a_confirmation_word_and_a_backup`, `test_release_report_needs_release_permission` |
 | `admin-v6.js` | GET | `/api/v6/admin/roles` | `players.view` | — | — | — | — | `test_roles_and_rollback_on_postgres`, `test_roles_matrix_matches_server_permissions` |
 | `cms-production-v8.js` | GET/PATCH | `/api/v6/admin/site-settings` | `settings.manage` | yes | — | expectedVersion, reason, values | — | `test_site_copy_is_versioned_and_only_public_fields_are_saved` |
 | `account-v9.js` | GET/POST | `/api/v6/admin/ticket-templates` | `tickets.manage` | — | — | body, title | — | `test_one_notification_per_admin_and_templates_on_postgres`, `test_ticket_templates_are_stored_listed_and_deleted` |
@@ -71,6 +76,7 @@ requires a password confirmation younger than ten minutes.
 | `analytics-v6.js` | POST | `/api/v6/analytics/events` | `public` | — | — | — | — | `test_analytics_collector_rejects_non_object_payloads`, `test_analytics_context_is_aggregated_and_untrusted_values_are_dropped` |
 | `bridge-v6.js` | POST | `/api/v6/auth/login` | `public` | — | — | name, password, remember, remember_me, totp, username | — | `test_account_can_revoke_its_other_sessions`, `test_deleted_account_anonymises_not_null_columns_and_clears_cookie` |
 | `bridge-v6.js` | POST | `/api/v6/auth/logout` | `public` | — | — | — | — | `test_deleted_account_anonymises_not_null_columns_and_clears_cookie`, `test_drafts_and_active_html_never_reach_public_state` |
+| `bridge-v6.js` | POST | `/api/v6/auth/reauth` | `session` | — | — | password, totp | — | `test_reauth_extends_the_fresh_window_only_with_the_right_password` |
 | `account-v9.js`, `bridge-v6.js` | POST | `/api/v6/auth/register` | `public` | — | — | displayName, name, password, remember, terms, username | — | `test_registration_keeps_profile_nickname_separate_from_login`, `test_registration_uses_only_username_and_password` |
 | `bridge-v6.js`, `production.js` | POST | `/api/v6/auth/totp/confirm` | `session` | yes | — | totp | — | `test_mfa_setup_requires_actual_totp_confirmation` |
 | `bridge-v6.js` | POST | `/api/v6/auth/totp/setup` | `session` | yes | — | password | — | `test_mfa_setup_requires_actual_totp_confirmation` |
@@ -100,13 +106,7 @@ requires a password confirmation younger than ten minutes.
 | — | GET | `/teapot` | `public` | — | — | — | — | `test_clearing_the_easter_log_keeps_the_audit_trail`, `test_teapot_records_hits_and_shows_them_in_admin` |
 | `account-v9.js`, `admin-mapart-v1.js`, `admin-narcotics-v1.js`, `admin-v6.js`, `admin-v71.js`, `analytics-v6.js`, `base-v4.js`, `bluemap.js`, `bridge-v6.js`, `catalog-v73.js`, `cms-production-v8.js`, `cms-v4.js`, `inventory-v73.js`, `players-v6.js`, `production.js`, `public-v4.js`, `site-v6.js` | GET | `/{filename}.html` | `public` | — | — | — | — | `test_account_can_revoke_its_other_sessions`, `test_account_export_returns_own_data_then_delete_anonymises` |
 | — | GET | `/api/health` | `public` | — | — | — | — | **missing** |
-| `account-v9.js`, `production.js` | POST | `/api/v6/account/minecraft/request` | `session` | — | — | name | — | **missing** |
-| `bridge-v6.js` | POST | `/api/v6/account/transfer` | `session` | — | — | amount, expectedFee, idempotencyKey, key, note, pin | yes | **missing** |
 | — | POST | `/api/v6/account/vk/start` | `public` | — | — | — | — | **missing** |
-| `admin-mapart-v1.js` | GET | `/api/v6/admin/mapart` | `content.manage` | — | — | — | — | **missing** |
-| `admin-narcotics-v1.js` | GET | `/api/v6/admin/narcotics/export` | `catalog.manage` | — | — | — | — | **missing** |
-| `production.js` | POST | `/api/v6/admin/releases/report` | `release.manage` | yes | — | ci, commit, source | — | **missing** |
-| `bridge-v6.js` | POST | `/api/v6/auth/reauth` | `session` | — | — | password, totp | — | **missing** |
 | — | POST | `/api/v6/auth/totp/disable` | `session` | yes | — | password, totp | — | **missing** |
 | — | GET | `/api/v6/gallery/{filename}` | `public` | — | — | — | — | **missing** |
 | — | POST | `/api/v6/mapart/image` | `public` | — | — | image, remote | — | **missing** |
@@ -126,12 +126,7 @@ requires a password confirmation younger than ten minutes.
 
 ## Frontend routes without an automated test
 
-- `POST /api/v6/account/minecraft/request` — `session`, called from `account-v9.js`, `production.js`
-- `POST /api/v6/account/transfer` — `session`, called from `bridge-v6.js`
-- `GET /api/v6/admin/mapart` — `content.manage`, called from `admin-mapart-v1.js`
-- `GET /api/v6/admin/narcotics/export` — `catalog.manage`, called from `admin-narcotics-v1.js`
-- `POST /api/v6/admin/releases/report` — `release.manage`, called from `production.js`
-- `POST /api/v6/auth/reauth` — `session`, called from `bridge-v6.js`
+None.
 
 ## Actions the game bridge does not implement
 

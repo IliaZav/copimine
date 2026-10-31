@@ -1684,7 +1684,7 @@ def load_install_records(root, lock=None):
             if artifact.name!=filename:
                 raise ValueError('Local plugin artifact filename differs from its lock: '+str(filename))
             if digest(artifact,'sha256')!=candidate.get('sha256'):
-                raise ValueError('Local plugin artifact SHA-256 differs from its lock: '+plugin_name)
+                raise ValueError('Local plugin artifact SHA-256 differs from its lock: '+plugin_name+' expected='+str(candidate.get('sha256'))+' actual='+digest(artifact,'sha256')+' path='+str(artifact))
             if identity(artifact)!=plugin_name:
                 raise ValueError('Local plugin artifact identity differs from its lock: '+plugin_name)
             record={

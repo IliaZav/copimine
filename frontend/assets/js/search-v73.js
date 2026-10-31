@@ -39,7 +39,46 @@ const aliases={
  maintenance:'техработы;технические работы;обслуживание;закрыть сайт;открыть сайт;ремонт сайта;maintenance;offline mode;заглушка',
  mapart:'картины;мэп-арт;mapart;картина в мире;загрузка картин;авторы картин;координаты картины;пиксель-арт'
 };
-const tabsAliases={profile:'профиль;карточка;основное;инвентари;баланс;об игроке',actions:'действия;команды;выдать;наказать;что можно сделать',sanctions:'наказания;баны;муты;ограничения;санкции;сроки',finance:'покупки;покупки и донаты;платежи;заказы;лимиты;баланс',activity:'история;активность;журнал игрока;что с ним делали',logins:'входы;история входов;логины;попытки входа;ip;устройства;кто заходил',access:'доступ;роль;права;двойная защита;сессии'};
+const tabsAliases={profile:'профиль;карточка;основное;инвентари;баланс;об игроке',actions:'действия;команды;выдать;наказать;что можно сделать',sanctions:'наказания;баны;муты;ограничения;санкции;сроки',finance:'покупки;покупки и донаты;платежи;заказы;лимиты;баланс',activity:'история;активность;журнал игрока;что с ним делали',messages:'чат;сообщения;переписка;что писал;чат игрока;история чата;логи чата;команды игрока;какие команды вводил;логи команд;чат и команды;прочитать чат;скачать сообщения',logins:'входы;история входов;логины;попытки входа;ip;устройства;кто заходил',access:'доступ;роль;права;двойная защита;сессии'};
+// Вкладки внутри разделов: [раздел, sub, название, алиасы].
+const subtabs=[
+ ['statistics','overview','Статистика · Обзор','обзор статистики;сводка аналитики;главные цифры'],
+ ['statistics','audience','Статистика · Аудитория','аудитория;посетители;уникальные;новые и вернувшиеся'],
+ ['statistics','sources','Статистика · Источники','источники трафика;откуда пришли;referrer;реферал'],
+ ['statistics','pages','Статистика · Страницы','страницы;просмотры страниц;популярные страницы'],
+ ['statistics','events','Статистика · События','события;действия на сайте;event'],
+ ['statistics','consents','Статистика · Согласия','согласия;куки;cookie consent;политика'],
+ ['statistics','economy','Статистика · Экономика','экономика сайта;продажи;выручка;доход'],
+ ['players','list','Все игроки','список игроков;каталог игроков;таблица игроков;поиск ника'],
+ ['shop','catalog','Каталог предметов','товары;список предметов;цены;витрина'],
+ ['shop','materials','Материалы Minecraft','материалы;предметы minecraft;id предметов;список материалов'],
+ ['shop','delivery','Выдача покупок','выдача;очередь выдачи;что выдать;доставка покупок'],
+ ['finance','accounts','Счета','счета;балансы игроков;кошельки;лицевые счета'],
+ ['finance','orders','Заказы','заказы;заявки на покупку;очередь заказов'],
+ ['finance','payments','Платежи','платежи;оплаты;транзакции;поступления'],
+ ['finance','ledger','Проводки','проводки;леджер;движение денег;история операций'],
+ ['world','map','Карта','карта;bluemap;миры на карте;маркеры'],
+ ['world','events','События мира','события;энд-ивент;мирные события;расписание'],
+ ['world','elections','Выборы','выборы;кандидаты;голосование;президент'],
+ ['world','laws','Законы','законы;указы;налоги;конституция'],
+ ['world','points','Точки','точки;банкоматы;лавки;метки;waypoints'],
+ ['content','pages','Страницы сайта','страницы;редактор страниц;cms;черновики'],
+ ['content','faq','Вопросы и ответы','faq;вопросы;ответы;частые вопросы'],
+ ['content','gallery','Галерея','галерея;скриншоты;фото;карусель;кадры'],
+ ['content','settings','Настройки и ссылки','настройки контента;ссылки;футер;меню'],
+ ['content','navigation','Навигация','навигация;меню сайта;пункты меню'],
+ ['content','downloads','Загрузки','загрузки;моды;лаунчер;файлы;сборка'],
+ ['admins','team','Команда','команда;сотрудники;персонал;состав'],
+ ['admins','roles','Роли и права','роли;права;матрица прав;permissions'],
+ ['admins','audit','Журнал','журнал;аудит;кто что делал;история действий'],
+ ['admins','easter','Пасхалки','пасхалки;easter eggs;секреты'],
+ ['system','status','Состояние сервера','состояние;сервер;статус;здоровье'],
+ ['system','logs','Логи','логи;логи сервера;консоль;ошибки'],
+ ['system','connections','Подключения','подключения;кто подключён;ссылки;сервисы'],
+ ['moderation','sanctions','Санкции','санкции;наказания;баны;муты'],
+ ['recipes','editor','Рецепты · Редактор','рецепты;скрытые рецепты;редактор рецептов'],
+ ['recipes','events','Рецепты · События','события рецептов;ивенты рецептов']
+];
 const special=[
  ['pin.reset','Сбросить PIN','recovery','пин;pin;сброс пин;сбросить пин;сброс pin;сбросить pin;забыл пин;банковский пин;код банка;reset pin;bank pin'],
  ['password.reset','Сбросить пароль сайта','recovery','пароль;сброс пароля;сбросить пароль;новый пароль;пароль сайта;отозвать пароль;reset password;password reset;forgot password;забыл пароль'],
@@ -176,6 +215,7 @@ function entries(){
  const rows=A.adminEntries.map(e=>({id:e[0],title:e[1],url:'#admin/'+e[0],aliases:[e[1],...(aliases[e[0]]||'').split(';')],icon:e[3]}));
  for(const [id,title,route,a]of special)rows.push({id,title,url:'#admin/'+route,aliases:[title,...a.split(';')],icon:'search'});
  for(const [id,a]of Object.entries(tabsAliases))rows.push({id:'tab.'+id,title:'Игрок · '+a.split(';')[0],url:'#admin/players?player='+encodeURIComponent(target)+'&sub='+id,aliases:['игрок '+a.split(';')[0],...a.split(';')],icon:'users'});
+ for(const [area,sub,title,a]of subtabs)rows.push({id:area+'.'+sub,title,url:'#admin/'+area+'?sub='+sub,aliases:[title,...a.split(';')],icon:'chevron-right'});
  for(const a of X.actions.filter(a=>a.scope!=='server'))rows.push({id:a.id,title:a.label,url:'#admin/players?player='+encodeURIComponent(target)+'&sub=actions',aliases:[a.label,a.name||'',a.id,...(actionAliases[a.id]||'').split(';')],icon:a.icon||'sliders'});
  for(const p of M.state.players)rows.push({id:p.id,title:p.displayName||p.name,url:'#admin/players?player='+encodeURIComponent(p.id),aliases:[p.name,p.displayName||'',p.minecraftName||'',p.minecraftUuid||'',p.id],icon:'user',avatar:W.head(p,28)});
  for(const p of M.state.catalog)rows.push({id:p.id,title:p.name,url:'#admin/shop?scope='+(p.visibility==='public'?'public':'private'),aliases:[p.name,p.id,p.adminSubtitle||'',...(p.aliases||[])],icon:'package'});

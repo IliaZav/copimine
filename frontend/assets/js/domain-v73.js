@@ -2,7 +2,32 @@
 (function(root){
 'use strict';
 const normalize=x=>String(x??'').toLowerCase().replace(/ё/g,'е').replace(/[_\-]+/g,' ').replace(/\s+/g,' ').trim();
-const keyboard=x=>{const en="qwertyuiop[]asdfghjkl;'zxcvbnm,.",ru='йцукенгшщзхъфывапролджэячсмитьбю';return String(x).toLowerCase().split('').map(c=>en.includes(c)?ru[en.indexOf(c)]:c).join('');};
+// Раскладка в обе стороны: «ntktgjhn» → «телепорт» и «телепорт» → «ntktgjhn».
+const keyboard=x=>{const en="qwertyuiop[]asdfghjkl;'zxcvbnm,.",ru='йцукенгшщзхъфывапролджэячсмитьбю';return String(x).toLowerCase().split('').map(c=>{const l=en.indexOf(c);if(l>=0)return ru[l];const r=ru.indexOf(c);return r>=0?en[r]:c;}).join('');};
+// Опечатки: не больше max правок, длинные слова прощают две. Перестановка соседних букв — одна правка.
+function edits(a,b,max){
+ if(Math.abs(a.length-b.length)>max)return max+1;
+ const rows=[[...Array(b.length+1).keys()]];
+ for(let i=1;i<=a.length;i++){
+  const cur=[i];
+  for(let j=1;j<=b.length;j++){
+   let n=Math.min(cur[j-1]+1,rows[i-1][j]+1,rows[i-1][j-1]+(a[i-1]===b[j-1]?0:1));
+   if(i>1&&j>1&&a[i-1]===b[j-2]&&a[i-2]===b[j-1])n=Math.min(n,rows[i-2][j-2]+1);
+   cur[j]=n;
+  }
+  rows.push(cur);
+ }
+ const d=rows[a.length][b.length];
+ return d>max?max+1:d;
+}
+function typo(candidate,alias){
+ if(candidate.length<4)return Infinity;
+ const max=candidate.length>=9?2:1;
+ const words=alias.split(' ').filter(Boolean),parts=[alias,...words];
+ let best=max+1;
+ for(const part of parts){const d=edits(candidate,part,max);if(d<best)best=d;}
+ return best<=max?best:Infinity;
+}
 function slots(snapshot,kind='inventory'){
  const count=kind==='ender'?27:41,result=Array(count).fill(null);
  for(const [position,raw] of (snapshot?.slots||snapshot?.items||[]).entries()){
@@ -29,10 +54,12 @@ function quote(amount,percent=0){
 }
 function rank(query,aliases){
  const q=normalize(query);if(!q)return Infinity;let score=Infinity;
+ // 0 точное, 1 начало, 2 все слова, 3+ опечатка — порядок держит быстрые совпадения выше.
  for(const candidate of [q,normalize(keyboard(q))])for(const raw of aliases){const a=normalize(raw);if(!a)continue;
   if(candidate===a)score=Math.min(score,0);
   else if(a.startsWith(candidate))score=Math.min(score,1+(a.length-candidate.length)/1000);
   else if(candidate.split(' ').every(w=>a.includes(w)))score=Math.min(score,2+a.length/1000);
+  else{const d=typo(candidate,a);if(Number.isFinite(d))score=Math.min(score,3+d);}
  }
  return score;
 }
@@ -69,5 +96,5 @@ function productSearchTerms(item={}){
  const material=String(item.material||'').replace(/^minecraft:/i,'').replace(/[_-]+/g,' ');
  return [...new Set([item.name,item.id,String(item.id||'').replace(/[_-]+/g,' '),material,item.category,item.description,...(Array.isArray(item.aliases)?item.aliases:[]),...(ITEM_SEARCH_ALIASES[item.id]||[])].filter(Boolean).map(String))];
 }
-const api={slots,fingerprint,remove,quote,rank,normalize,keyboard,productSearchTerms};root.CM73Domain=api;if(typeof module!=='undefined')module.exports=api;
+const api={slots,fingerprint,remove,quote,rank,normalize,keyboard,typo,productSearchTerms};root.CM73Domain=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

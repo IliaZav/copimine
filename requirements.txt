@@ -7,3 +7,4 @@ cryptography==50.0.2
 qrcode[pil]==8.2
 nbtlib==2.0.4
 psutil==7.2.2
+duckdb==1.4.5

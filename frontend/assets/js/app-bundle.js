@@ -1172,7 +1172,47 @@ function logins(p){return '<section class="panel" data-logins="'+E(p.id)+'"><div
 function loginRows(entries){if(!entries.length)return M.empty('Входов пока нет','Здесь появятся попытки входа в этот аккаунт.','key');return V.table(['Время','Результат','IP','Устройство'],entries.map(e=>[formatTime(e.at),M.pill({success:'Успешно',invalid_credentials:'Неверный пароль',blocked:'Заблокирован',totp_failed:'Неверный код 2FA'}[e.result]||e.result,e.result==='success'?'green':'danger'),E(e.ip||'—'),'<small class="break">'+E(e.userAgent||'—')+'</small>']));}
 X.loadLogins=async id=>{const host=document.querySelector('[data-logins="'+CSS.escape(id)+'"] .v6-logins-body');if(!host)return;try{const r=await X.request('/admin/accounts/'+encodeURIComponent(id)+'/logins');host.innerHTML=loginRows(r.entries||[]);}catch(e){host.innerHTML='<p class="hint">'+E(e.message)+'</p>';}};
 H['v6-logins-refresh']=async b=>{if(!X.live)return M.toast('История входов доступна в серверном режиме.');const host=document.querySelector('[data-logins="'+CSS.escape(b.dataset.player)+'"] .v6-logins-body');if(host)host.innerHTML='<p class="hint">Загружаем историю…</p>';await X.loadLogins(b.dataset.player);};
-W.adminExtensions.players=sub=>{if(!X.canAdmin())return M.empty('Нужны права администратора','Войди в аккаунт с доступом к управлению.','lock');const p=chosen();if(!p)return listPlayers();const tabs=[['profile','Профиль и инвентари'],['actions','Действия'],['sanctions','Наказания'],['finance','Покупки и донаты'],['activity','История'],['logins','Входы'],['access','Доступ']];sub=sub||board().sub||'profile';keep('player',p.id);if(tabs.some(t=>t[0]===sub))keep('sub',sub);return '<div class="v6-player-workspace"><div class="v6-player-picker"><a class="btn ghost small" href="#admin/players?sub=list">'+icon('users')+'Все игроки</a><label class="v6-player-select"><span class="hint">Игрок</span><select id="v6-selected-player" aria-label="Выбрать игрока">'+s().players.map(x=>'<option value="'+E(x.id)+'" '+(p.id===x.id?'selected':'')+'>'+E(x.name)+'</option>').join('')+'</select></label>'+M.btn('Обновить','v6-player-refresh','refresh','small','data-player="'+E(p.id)+'"')+'</div>'+(sub==='list'?listPlayers():'<nav class="tabs v6-player-tabs">'+tabs.map(([id,label])=>'<a href="#admin/players?player='+encodeURIComponent(p.id)+'&sub='+id+'" class="'+(id===sub?'active':'')+'">'+label+'</a>').join('')+'</nav>'+(sub==='actions'?actionView(p):sub==='sanctions'?sanctionView(p):sub==='finance'?financeView(p):sub==='activity'?activity(p):sub==='logins'?logins(p):sub==='access'?access(p):X.profile(p,true)))+'</div>';};
+// Чат и команды берутся из CoreProtect: сервер уже пишет их в co_chat и co_command.
+// Порядок (чат/команды) и поисковый запрос живут в board(), поэтому переключение
+// игрока не сбрасывает то, что админ уже настроил.
+const messagesCache={};
+const messagesKind=()=>board().messagesKind==='command'?'command':'chat';
+function messageRows(entries,kind){
+ if(!entries.length)return M.empty(kind==='chat'?'Сообщений пока нет':'Команд пока нет','CoreProtect начнёт записывать '+((kind==='chat')?'чат':'команды')+' этого игрока после следующего входа.','chat');
+ return '<ol class="v6-messages-list">'+entries.map(e=>'<li data-text="'+E(String(e.message||'').toLowerCase())+'"><time>'+E(formatTime(e.at*1000))+'</time><span class="v6-messages-world">'+E(e.world||'—')+'</span><code>'+E(e.message||'')+'</code><small>'+E([e.x,e.y,e.z].join(', '))+'</small></li>').join('')+'</ol>';
+}
+function messages(p){
+ const kind=messagesKind(),q=board().messagesQuery||'';
+ return '<section class="panel" data-messages="'+E(p.id)+'" data-kind="'+kind+'"><div class="panel-head"><div><h2>Чат и команды</h2><p class="hint">Что игрок писал в чат и какие команды вводил. Источник — CoreProtect игрового сервера.</p></div>'+M.btn('Обновить','v6-messages-refresh','refresh','small','data-player="'+E(p.id)+'"')+'</div>'
+  +'<div class="v6-messages-tools"><nav class="tabs v6-messages-kinds" aria-label="Что показать"><a href="#" data-action="v6-messages-kind" data-kind="chat" class="'+(kind==='chat'?'active':'')+'">Чат</a><a href="#" data-action="v6-messages-kind" data-kind="command" class="'+(kind==='command'?'active':'')+'">Команды</a></nav><label class="input-wrap">'+icon('search')+'<input id="v6-messages-query" type="search" value="'+E(q)+'" placeholder="Найти слово в сообщениях" aria-label="Поиск по сообщениям игрока" maxlength="100"></label><a class="btn ghost small" href="/api/v6/admin/players/'+encodeURIComponent(p.id)+'/messages/export?kind='+kind+'" download>'+icon('download')+'Скачать CSV</a></div>'
+  +'<p class="hint v6-messages-status" role="status"></p><div class="v6-messages-body"><p class="hint">Загружаем историю…</p></div>'+M.btn('Показать ещё','v6-messages-more','arrow-down','small','hidden data-player="'+E(p.id)+'"')+'</section>';
+}
+X.loadMessages=async(id,append=false)=>{
+ const host=document.querySelector('[data-messages="'+CSS.escape(id)+'"]');if(!host)return;
+ const kind=host.dataset.kind,body=host.querySelector('.v6-messages-body'),status=host.querySelector('.v6-messages-status'),more=host.querySelector('[data-action="v6-messages-more"]');
+ const cache=messagesCache[id+':'+kind]||(messagesCache[id+':'+kind]={entries:[],total:0,hasMore:false});
+ if(!append){cache.entries=[];cache.total=0;cache.hasMore=false;body.innerHTML='<p class="hint">Загружаем историю…</p>';}
+ try{
+  const r=await X.request('/admin/players/'+encodeURIComponent(id)+'/messages?kind='+kind+'&limit=100&offset='+(append?cache.entries.length:0));
+  cache.entries=cache.entries.concat(r.entries||[]);cache.total=r.total||0;cache.hasMore=!!r.hasMore;
+  body.innerHTML=messageRows(cache.entries,kind);
+  status.textContent=(r.total?r.total+' всего':'Ничего не найдено')+' · снимок базы от '+formatTime((r.snapshotAt||0)*1000);
+  if(more){more.hidden=!cache.hasMore;more.dataset.player=id;}
+  const q=host.querySelector('#v6-messages-query');
+  if(q&&q.value.trim())filterMessages(host);
+ }catch(e){body.innerHTML='<p class="hint">'+E(e.message)+'</p>';if(more)more.hidden=true;}
+};
+function filterMessages(host){
+ const q=(host.querySelector('#v6-messages-query')?.value||'').trim().toLowerCase();
+ let shown=0;host.querySelectorAll('.v6-messages-list li').forEach(li=>{const on=!q||(li.dataset.text||'').includes(q);li.hidden=!on;if(on)shown++;});
+ const status=host.querySelector('.v6-messages-status'),empty=host.querySelector('.v6-messages-filter-empty');
+ if(empty)empty.remove();
+ if(q&&!shown){const note=document.createElement('p');note.className='hint v6-messages-filter-empty';note.textContent='В загруженной части нет совпадений. Нажми «Показать ещё» или обнови.';host.querySelector('.v6-messages-body')?.append(note);}
+}
+H['v6-messages-refresh']=async b=>{const host=document.querySelector('[data-messages="'+CSS.escape(b.dataset.player)+'"]');if(host)host.querySelector('.v6-messages-body').innerHTML='<p class="hint">Загружаем историю…</p>';const id=b.dataset.player;delete messagesCache[id+':chat'];delete messagesCache[id+':command'];await X.loadMessages(id);};
+H['v6-messages-more']=b=>X.loadMessages(b.dataset.player,true);
+H['v6-messages-kind']=(b,event)=>{event?.preventDefault();const host=b.closest('[data-messages]');if(!host)return;host.dataset.kind=b.dataset.kind;keep('messagesKind',b.dataset.kind);host.querySelectorAll('[data-action="v6-messages-kind"]').forEach(a=>a.classList.toggle('active',a===b));const input=host.querySelector('#v6-messages-query');if(input)input.value='';keep('messagesQuery',null);X.loadMessages(host.dataset.messages);};
+W.adminExtensions.players=sub=>{if(!X.canAdmin())return M.empty('Нужны права администратора','Войди в аккаунт с доступом к управлению.','lock');const p=chosen();if(!p)return listPlayers();const tabs=[['profile','Профиль и инвентари'],['actions','Действия'],['sanctions','Наказания'],['finance','Покупки и донаты'],['activity','История'],['messages','Чат и команды'],['logins','Входы'],['access','Доступ']];sub=sub||board().sub||'profile';keep('player',p.id);if(tabs.some(t=>t[0]===sub))keep('sub',sub);return '<div class="v6-player-workspace"><div class="v6-player-picker"><a class="btn ghost small" href="#admin/players?sub=list">'+icon('users')+'Все игроки</a><label class="v6-player-select"><span class="hint">Игрок</span><select id="v6-selected-player" aria-label="Выбрать игрока">'+s().players.map(x=>'<option value="'+E(x.id)+'" '+(p.id===x.id?'selected':'')+'>'+E(x.name)+'</option>').join('')+'</select></label>'+M.btn('Обновить','v6-player-refresh','refresh','small','data-player="'+E(p.id)+'"')+'</div>'+(sub==='list'?listPlayers():'<nav class="tabs v6-player-tabs">'+tabs.map(([id,label])=>'<a href="#admin/players?player='+encodeURIComponent(p.id)+'&sub='+id+'" class="'+(id===sub?'active':'')+'">'+label+'</a>').join('')+'</nav>'+(sub==='actions'?actionView(p):sub==='sanctions'?sanctionView(p):sub==='finance'?financeView(p):sub==='activity'?activity(p):sub==='messages'?messages(p):sub==='logins'?logins(p):sub==='access'?access(p):X.profile(p,true)))+'</div>';};
 const durationFields=()=>'<div class="v6-form-grid">'+V.field('На сколько','duration',1,'number','min="1" step="1" max="525600"')+V.select('Единица','unit',[['minutes','Минуты'],['hours','Часы'],['days','Дни']],'hours')+'</div><label class="radio-line mb"><input type="checkbox" name="permanent">Без срока</label>';
 // Имена миров ровно такие, как они загружены на сервере (level-name=CopiMine),
 // иначе мост отвечает world_unavailable.
@@ -1234,7 +1274,7 @@ H['v6-remove-slot']=b=>{H['v6-player-action']({dataset:{id:b.dataset.kind==='end
 const oldSlot=H['slot-detail'];H['slot-detail']=b=>{const snap=W.activeSnapshot,p=s().players.find(x=>x.name===snap?.player||x.id===snap?.playerId);if(p)return H['v6-slot-detail']({dataset:{player:p.id,kind:'inventory',slot:b.dataset.slot}});return oldSlot(b);};
 F['v6-role']=async(f,d)=>{if(!X.live)throw Error('Роли назначаются владельцем в серверном режиме.');await X.request('/admin/accounts/'+encodeURIComponent(d.get('player')),{method:'PATCH',body:{role:d.get('role'),reason:d.get('reason')}});await X.refresh();M.render();};
 let timer=null;
-V.after.push((page,tab)=>{clearInterval(timer);if(page!=='admin'||tab!=='players')return;document.querySelector('[data-logins]')&&X.loadLogins(document.querySelector('[data-logins]').dataset.logins);document.querySelector('[data-history]')&&X.loadHistory(document.querySelector('[data-history]').dataset.history);document.getElementById('v6-selected-player')?.addEventListener('change',e=>{const sub=board().sub||'profile';keep('player',e.target.value);M.navTo('admin/players?player='+encodeURIComponent(e.target.value)+'&sub='+encodeURIComponent(sub));});document.getElementById('v6-player-search')?.addEventListener('input',e=>{let shown=0;document.querySelectorAll('[data-player-search]').forEach(n=>{n.hidden=!D.search(e.target.value,n.dataset.playerSearch);if(!n.hidden)shown++;});document.getElementById('v6-player-empty').hidden=shown>0;});document.getElementById('v6-action-search')?.addEventListener('input',e=>{document.querySelectorAll('[data-action-search]').forEach(n=>n.hidden=!D.search(e.target.value,n.dataset.actionSearch));document.querySelectorAll('.v6-action-group').forEach(n=>n.hidden=![...n.querySelectorAll('[data-action-search]')].some(b=>!b.hidden));});timer=setInterval(()=>{document.querySelectorAll('[data-sanction-until]').forEach(n=>{if(n.dataset.sanctionStatus!=='active')return;const until=n.dataset.sanctionUntil===''?null:Number(n.dataset.sanctionUntil);n.textContent=D.remaining(until);});if(!X.live)for(const a of s().sanctions)if(a.status==='active'&&a.expiresAt&&a.expiresAt<=Date.now())a.status='expired';},1000);});
+V.after.push((page,tab)=>{clearInterval(timer);if(page!=='admin'||tab!=='players')return;document.querySelector('[data-logins]')&&X.loadLogins(document.querySelector('[data-logins]').dataset.logins);document.querySelector('[data-history]')&&X.loadHistory(document.querySelector('[data-history]').dataset.history);const msgHost=document.querySelector('[data-messages]');if(msgHost){X.loadMessages(msgHost.dataset.messages);const q=msgHost.querySelector('#v6-messages-query');if(q)q.addEventListener('input',()=>{keep('messagesQuery',q.value.trim()||null);filterMessages(msgHost);});}document.getElementById('v6-selected-player')?.addEventListener('change',e=>{const sub=board().sub||'profile';keep('player',e.target.value);M.navTo('admin/players?player='+encodeURIComponent(e.target.value)+'&sub='+encodeURIComponent(sub));});document.getElementById('v6-player-search')?.addEventListener('input',e=>{let shown=0;document.querySelectorAll('[data-player-search]').forEach(n=>{n.hidden=!D.search(e.target.value,n.dataset.playerSearch);if(!n.hidden)shown++;});document.getElementById('v6-player-empty').hidden=shown>0;});document.getElementById('v6-action-search')?.addEventListener('input',e=>{document.querySelectorAll('[data-action-search]').forEach(n=>n.hidden=!D.search(e.target.value,n.dataset.actionSearch));document.querySelectorAll('.v6-action-group').forEach(n=>n.hidden=![...n.querySelectorAll('[data-action-search]')].some(b=>!b.hidden));});timer=setInterval(()=>{document.querySelectorAll('[data-sanction-until]').forEach(n=>{if(n.dataset.sanctionStatus!=='active')return;const until=n.dataset.sanctionUntil===''?null:Number(n.dataset.sanctionUntil);n.textContent=D.remaining(until);});if(!X.live)for(const a of s().sanctions)if(a.status==='active'&&a.expiresAt&&a.expiresAt<=Date.now())a.status='expired';},1000);});
 })();
 
 /* assets/js/map-manifest-v6.js */window.CM6_MAP_MANIFEST=null;
@@ -2383,7 +2423,32 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 (function(root){
 'use strict';
 const normalize=x=>String(x??'').toLowerCase().replace(/ё/g,'е').replace(/[_\-]+/g,' ').replace(/\s+/g,' ').trim();
-const keyboard=x=>{const en="qwertyuiop[]asdfghjkl;'zxcvbnm,.",ru='йцукенгшщзхъфывапролджэячсмитьбю';return String(x).toLowerCase().split('').map(c=>en.includes(c)?ru[en.indexOf(c)]:c).join('');};
+// Раскладка в обе стороны: «ntktgjhn» → «телепорт» и «телепорт» → «ntktgjhn».
+const keyboard=x=>{const en="qwertyuiop[]asdfghjkl;'zxcvbnm,.",ru='йцукенгшщзхъфывапролджэячсмитьбю';return String(x).toLowerCase().split('').map(c=>{const l=en.indexOf(c);if(l>=0)return ru[l];const r=ru.indexOf(c);return r>=0?en[r]:c;}).join('');};
+// Опечатки: не больше max правок, длинные слова прощают две. Перестановка соседних букв — одна правка.
+function edits(a,b,max){
+ if(Math.abs(a.length-b.length)>max)return max+1;
+ const rows=[[...Array(b.length+1).keys()]];
+ for(let i=1;i<=a.length;i++){
+  const cur=[i];
+  for(let j=1;j<=b.length;j++){
+   let n=Math.min(cur[j-1]+1,rows[i-1][j]+1,rows[i-1][j-1]+(a[i-1]===b[j-1]?0:1));
+   if(i>1&&j>1&&a[i-1]===b[j-2]&&a[i-2]===b[j-1])n=Math.min(n,rows[i-2][j-2]+1);
+   cur[j]=n;
+  }
+  rows.push(cur);
+ }
+ const d=rows[a.length][b.length];
+ return d>max?max+1:d;
+}
+function typo(candidate,alias){
+ if(candidate.length<4)return Infinity;
+ const max=candidate.length>=9?2:1;
+ const words=alias.split(' ').filter(Boolean),parts=[alias,...words];
+ let best=max+1;
+ for(const part of parts){const d=edits(candidate,part,max);if(d<best)best=d;}
+ return best<=max?best:Infinity;
+}
 function slots(snapshot,kind='inventory'){
  const count=kind==='ender'?27:41,result=Array(count).fill(null);
  for(const [position,raw] of (snapshot?.slots||snapshot?.items||[]).entries()){
@@ -2410,10 +2475,12 @@ function quote(amount,percent=0){
 }
 function rank(query,aliases){
  const q=normalize(query);if(!q)return Infinity;let score=Infinity;
+ // 0 точное, 1 начало, 2 все слова, 3+ опечатка — порядок держит быстрые совпадения выше.
  for(const candidate of [q,normalize(keyboard(q))])for(const raw of aliases){const a=normalize(raw);if(!a)continue;
   if(candidate===a)score=Math.min(score,0);
   else if(a.startsWith(candidate))score=Math.min(score,1+(a.length-candidate.length)/1000);
   else if(candidate.split(' ').every(w=>a.includes(w)))score=Math.min(score,2+a.length/1000);
+  else{const d=typo(candidate,a);if(Number.isFinite(d))score=Math.min(score,3+d);}
  }
  return score;
 }
@@ -2450,7 +2517,7 @@ function productSearchTerms(item={}){
  const material=String(item.material||'').replace(/^minecraft:/i,'').replace(/[_-]+/g,' ');
  return [...new Set([item.name,item.id,String(item.id||'').replace(/[_-]+/g,' '),material,item.category,item.description,...(Array.isArray(item.aliases)?item.aliases:[]),...(ITEM_SEARCH_ALIASES[item.id]||[])].filter(Boolean).map(String))];
 }
-const api={slots,fingerprint,remove,quote,rank,normalize,keyboard,productSearchTerms};root.CM73Domain=api;if(typeof module!=='undefined')module.exports=api;
+const api={slots,fingerprint,remove,quote,rank,normalize,keyboard,typo,productSearchTerms};root.CM73Domain=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);
 
 /* assets/js/wallet-v71.js *//* Design-review economy transport. Replace /review/economy and /review/transfer
@@ -3733,7 +3800,46 @@ const aliases={
  maintenance:'техработы;технические работы;обслуживание;закрыть сайт;открыть сайт;ремонт сайта;maintenance;offline mode;заглушка',
  mapart:'картины;мэп-арт;mapart;картина в мире;загрузка картин;авторы картин;координаты картины;пиксель-арт'
 };
-const tabsAliases={profile:'профиль;карточка;основное;инвентари;баланс;об игроке',actions:'действия;команды;выдать;наказать;что можно сделать',sanctions:'наказания;баны;муты;ограничения;санкции;сроки',finance:'покупки;покупки и донаты;платежи;заказы;лимиты;баланс',activity:'история;активность;журнал игрока;что с ним делали',logins:'входы;история входов;логины;попытки входа;ip;устройства;кто заходил',access:'доступ;роль;права;двойная защита;сессии'};
+const tabsAliases={profile:'профиль;карточка;основное;инвентари;баланс;об игроке',actions:'действия;команды;выдать;наказать;что можно сделать',sanctions:'наказания;баны;муты;ограничения;санкции;сроки',finance:'покупки;покупки и донаты;платежи;заказы;лимиты;баланс',activity:'история;активность;журнал игрока;что с ним делали',messages:'чат;сообщения;переписка;что писал;чат игрока;история чата;логи чата;команды игрока;какие команды вводил;логи команд;чат и команды;прочитать чат;скачать сообщения',logins:'входы;история входов;логины;попытки входа;ip;устройства;кто заходил',access:'доступ;роль;права;двойная защита;сессии'};
+// Вкладки внутри разделов: [раздел, sub, название, алиасы].
+const subtabs=[
+ ['statistics','overview','Статистика · Обзор','обзор статистики;сводка аналитики;главные цифры'],
+ ['statistics','audience','Статистика · Аудитория','аудитория;посетители;уникальные;новые и вернувшиеся'],
+ ['statistics','sources','Статистика · Источники','источники трафика;откуда пришли;referrer;реферал'],
+ ['statistics','pages','Статистика · Страницы','страницы;просмотры страниц;популярные страницы'],
+ ['statistics','events','Статистика · События','события;действия на сайте;event'],
+ ['statistics','consents','Статистика · Согласия','согласия;куки;cookie consent;политика'],
+ ['statistics','economy','Статистика · Экономика','экономика сайта;продажи;выручка;доход'],
+ ['players','list','Все игроки','список игроков;каталог игроков;таблица игроков;поиск ника'],
+ ['shop','catalog','Каталог предметов','товары;список предметов;цены;витрина'],
+ ['shop','materials','Материалы Minecraft','материалы;предметы minecraft;id предметов;список материалов'],
+ ['shop','delivery','Выдача покупок','выдача;очередь выдачи;что выдать;доставка покупок'],
+ ['finance','accounts','Счета','счета;балансы игроков;кошельки;лицевые счета'],
+ ['finance','orders','Заказы','заказы;заявки на покупку;очередь заказов'],
+ ['finance','payments','Платежи','платежи;оплаты;транзакции;поступления'],
+ ['finance','ledger','Проводки','проводки;леджер;движение денег;история операций'],
+ ['world','map','Карта','карта;bluemap;миры на карте;маркеры'],
+ ['world','events','События мира','события;энд-ивент;мирные события;расписание'],
+ ['world','elections','Выборы','выборы;кандидаты;голосование;президент'],
+ ['world','laws','Законы','законы;указы;налоги;конституция'],
+ ['world','points','Точки','точки;банкоматы;лавки;метки;waypoints'],
+ ['content','pages','Страницы сайта','страницы;редактор страниц;cms;черновики'],
+ ['content','faq','Вопросы и ответы','faq;вопросы;ответы;частые вопросы'],
+ ['content','gallery','Галерея','галерея;скриншоты;фото;карусель;кадры'],
+ ['content','settings','Настройки и ссылки','настройки контента;ссылки;футер;меню'],
+ ['content','navigation','Навигация','навигация;меню сайта;пункты меню'],
+ ['content','downloads','Загрузки','загрузки;моды;лаунчер;файлы;сборка'],
+ ['admins','team','Команда','команда;сотрудники;персонал;состав'],
+ ['admins','roles','Роли и права','роли;права;матрица прав;permissions'],
+ ['admins','audit','Журнал','журнал;аудит;кто что делал;история действий'],
+ ['admins','easter','Пасхалки','пасхалки;easter eggs;секреты'],
+ ['system','status','Состояние сервера','состояние;сервер;статус;здоровье'],
+ ['system','logs','Логи','логи;логи сервера;консоль;ошибки'],
+ ['system','connections','Подключения','подключения;кто подключён;ссылки;сервисы'],
+ ['moderation','sanctions','Санкции','санкции;наказания;баны;муты'],
+ ['recipes','editor','Рецепты · Редактор','рецепты;скрытые рецепты;редактор рецептов'],
+ ['recipes','events','Рецепты · События','события рецептов;ивенты рецептов']
+];
 const special=[
  ['pin.reset','Сбросить PIN','recovery','пин;pin;сброс пин;сбросить пин;сброс pin;сбросить pin;забыл пин;банковский пин;код банка;reset pin;bank pin'],
  ['password.reset','Сбросить пароль сайта','recovery','пароль;сброс пароля;сбросить пароль;новый пароль;пароль сайта;отозвать пароль;reset password;password reset;forgot password;забыл пароль'],
@@ -3870,6 +3976,7 @@ function entries(){
  const rows=A.adminEntries.map(e=>({id:e[0],title:e[1],url:'#admin/'+e[0],aliases:[e[1],...(aliases[e[0]]||'').split(';')],icon:e[3]}));
  for(const [id,title,route,a]of special)rows.push({id,title,url:'#admin/'+route,aliases:[title,...a.split(';')],icon:'search'});
  for(const [id,a]of Object.entries(tabsAliases))rows.push({id:'tab.'+id,title:'Игрок · '+a.split(';')[0],url:'#admin/players?player='+encodeURIComponent(target)+'&sub='+id,aliases:['игрок '+a.split(';')[0],...a.split(';')],icon:'users'});
+ for(const [area,sub,title,a]of subtabs)rows.push({id:area+'.'+sub,title,url:'#admin/'+area+'?sub='+sub,aliases:[title,...a.split(';')],icon:'chevron-right'});
  for(const a of X.actions.filter(a=>a.scope!=='server'))rows.push({id:a.id,title:a.label,url:'#admin/players?player='+encodeURIComponent(target)+'&sub=actions',aliases:[a.label,a.name||'',a.id,...(actionAliases[a.id]||'').split(';')],icon:a.icon||'sliders'});
  for(const p of M.state.players)rows.push({id:p.id,title:p.displayName||p.name,url:'#admin/players?player='+encodeURIComponent(p.id),aliases:[p.name,p.displayName||'',p.minecraftName||'',p.minecraftUuid||'',p.id],icon:'user',avatar:W.head(p,28)});
  for(const p of M.state.catalog)rows.push({id:p.id,title:p.name,url:'#admin/shop?scope='+(p.visibility==='public'?'public':'private'),aliases:[p.name,p.id,p.adminSubtitle||'',...(p.aliases||[])],icon:'package'});

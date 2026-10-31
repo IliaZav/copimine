@@ -62,3 +62,39 @@ def test_recovery_ui_uses_authenticated_server_identity_without_player_row():
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_search_covers_every_inner_tab_and_the_chat_tab():
+    search = (ROOT / "frontend/assets/js/search-v73.js").read_text(encoding="utf-8")
+    players = (ROOT / "frontend/assets/js/players-v6.js").read_text(encoding="utf-8")
+
+    # Вкладка чата в карточке игрока и её синонимы в поиске.
+    assert "['messages','Чат и команды']" in players
+    assert "messages:'" in search
+    assert "const subtabs=[" in search
+    # Каждый внутренний подраздел, который реально рисуется, должен иметь строку поиска.
+    for area, sub in (
+        ("statistics", "audience"), ("statistics", "economy"),
+        ("shop", "catalog"), ("shop", "materials"), ("shop", "delivery"),
+        ("finance", "accounts"), ("finance", "ledger"),
+        ("world", "elections"), ("world", "points"),
+        ("content", "pages"), ("content", "gallery"),
+        ("admins", "team"), ("admins", "easter"),
+        ("system", "logs"), ("system", "connections"),
+        ("moderation", "sanctions"), ("recipes", "editor"),
+    ):
+        assert "'" + area + "','" + sub + "'" in search, (area, sub)
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node.js is needed for the search behavior regression")
+
+    result = subprocess.run(
+        [node, "--test", str(ROOT / "tests" / "search-ui.test.mjs")],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

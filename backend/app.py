@@ -23,6 +23,7 @@ from . import easter
 from .security import ANON_COOKIE, COOKIE, anonymous_csrf, current_user, digest, fail, signed_anonymous, valid_anonymous
 from .domain import build_state, router as domain_router
 from .game import GameAdapter
+from .history import router as history_router
 from .mail import router as mail_router
 from .mfa import router as mfa_router
 from .maps import router as maps_router
@@ -163,6 +164,7 @@ def create_app(settings=None):
     app.include_router(domain_router)
     app.include_router(cms_router)
     app.include_router(easter.router)
+    app.include_router(history_router)
     app.include_router(mail_router)
     app.include_router(mfa_router)
     app.include_router(maps_router)

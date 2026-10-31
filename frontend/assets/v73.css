@@ -29,6 +29,9 @@
 .v6-messages-kinds{margin:0;flex:0 0 auto}
 .v6-messages-tools .input-wrap{flex:1 1 220px;min-width:180px;margin:0}
 .v6-messages-tools .btn{flex:0 0 auto}
+.v6-messages-export{display:flex;align-items:flex-end;gap:8px;margin:0}
+.v6-messages-export label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#9aa7b0}
+.v6-messages-export select{background:#171c1f;color:#e7edf1;border:1px solid #2c363d;border-radius:8px;padding:6px 8px;font:inherit;font-size:13px}
 .v6-messages-status{margin:0 0 8px}
 .v6-messages-list{list-style:none;margin:0;padding:0;max-height:560px;overflow:auto;display:flex;flex-direction:column;gap:6px}
 .v6-messages-list li{display:grid;grid-template-columns:148px 132px minmax(0,1fr) auto;gap:10px;align-items:baseline;padding:8px 10px;border:1px solid #2c363d;border-radius:8px;background:#171c1f}

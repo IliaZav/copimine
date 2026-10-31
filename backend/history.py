@@ -25,6 +25,9 @@ from .security import current_user, fail
 router = APIRouter()
 KINDS = ("chat", "command")
 PAGE_MAX, EXPORT_MAX = 500, 50000
+# Сколько дней назад считать началом периода. 0 — всё время, что помнит база.
+PERIODS = (1, 7, 30, 90, 365)
+DAY = 86400
 NICK = re.compile(r"[A-Za-z0-9_]{1,32}")
 
 
@@ -54,8 +57,8 @@ def _snapshot(settings):
     return target
 
 
-def player_history(settings, player, kind="chat", limit=100, offset=0):
-    """One page of a player's messages, newest first."""
+def player_history(settings, player, kind="chat", limit=100, offset=0, days=0):
+    """One page of a player's messages, newest first, optionally for the last days."""
     if kind not in KINDS:
         fail(400, "invalid_kind", "Выберите чат или команды.")
     try:
@@ -64,6 +67,11 @@ def player_history(settings, player, kind="chat", limit=100, offset=0):
         fail(503, "history_unavailable", "Модуль чтения истории не установлен на сервере.")
     directory = _snapshot(settings)
     snapshot_at = int(time.time())
+    # Одно и то же условие для счётчика и для страницы: иначе total и hasMore врут.
+    where, params = "lower(u.user)=lower(?)", [player]
+    if days:
+        where += " AND c.time>=?"
+        params.append(snapshot_at - days * DAY)
     try:
         try:
             con = duckdb.connect(str(directory / "database.duckdb"), read_only=True)
@@ -73,26 +81,30 @@ def player_history(settings, player, kind="chat", limit=100, offset=0):
             table = "co_chat" if kind == "chat" else "co_command"
             count = con.execute(
                 "SELECT count(*) FROM " + table + " c JOIN co_user u ON u.rowid=c.user"
-                " WHERE lower(u.user)=lower(?)", (player,)).fetchone()[0]
+                " WHERE " + where, params).fetchone()[0]
             rows = con.execute(
                 "SELECT c.time,c.message,c.x,c.y,c.z,w.world FROM " + table + " c"
                 " JOIN co_user u ON u.rowid=c.user LEFT JOIN co_world w ON w.rowid=c.wid"
-                " WHERE lower(u.user)=lower(?) ORDER BY c.time DESC,c.rowid DESC LIMIT ? OFFSET ?",
-                (player, limit, offset)).fetchall()
+                " WHERE " + where + " ORDER BY c.time DESC,c.rowid DESC LIMIT ? OFFSET ?",
+                [*params, limit, offset]).fetchall()
         finally:
             con.close()
     finally:
         shutil.rmtree(directory, ignore_errors=True)
+    # Хвост считаем от последней полученной строки, а не от счётчика: пока админ
+    # листает, игра дописывает новые строки, и сравнение с total расходится.
+    has_more = bool(rows) and offset + len(rows) < count
     return {
         "entries": [{"at": r[0], "message": r[1], "x": r[2], "y": r[3], "z": r[4], "world": r[5]} for r in rows],
         "total": count,
-        "hasMore": offset + len(rows) < count,
+        "hasMore": has_more,
         "snapshotAt": snapshot_at,
+        "days": days,
     }
 
 
-def history_csv(settings, player, kind="chat"):
-    data = player_history(settings, player, kind, EXPORT_MAX, 0)
+def history_csv(settings, player, kind="chat", days=0):
+    data = player_history(settings, player, kind, EXPORT_MAX, 0, days)
     out = io.StringIO()
     writer = csv.writer(out, lineterminator="\r\n")
     writer.writerow(["time", "player", "kind", "world", "x", "y", "z", "message"])
@@ -139,12 +151,27 @@ def _kind(request):
     return kind
 
 
+def _days(request):
+    """Период в днях; пустое значение — всё время."""
+    raw = (request.query_params.get("days") or "").strip()
+    if not raw:
+        return 0
+    try:
+        days = int(raw)
+    except ValueError:
+        fail(400, "invalid_period", "Выберите период: 1, 7, 30, 90, 365 дней или всё время.")
+    if days not in PERIODS:
+        fail(400, "invalid_period", "Выберите период: 1, 7, 30, 90, 365 дней или всё время.")
+    return days
+
+
 @router.get("/api/v6/admin/players/{identifier}/messages")
 def player_messages(identifier: str, request: Request):
     current_user(request, "logs.view")
     player = _name(request, identifier)
     limit, offset = _paging(request)
-    return {"player": player, **player_history(request.app.state.settings, player, _kind(request), limit, offset)}
+    days = _days(request)
+    return {"player": player, **player_history(request.app.state.settings, player, _kind(request), limit, offset, days)}
 
 
 @router.get("/api/v6/admin/players/{identifier}/messages/export")
@@ -152,8 +179,9 @@ def export_messages(identifier: str, request: Request):
     user = current_user(request, "logs.view")
     player = _name(request, identifier)
     kind = _kind(request)
-    text = history_csv(request.app.state.settings, player, kind)
-    request.app.state.database.audit(user, "player.messages_export", player, "", {"kind": kind})
+    days = _days(request)
+    text = history_csv(request.app.state.settings, player, kind, days)
+    request.app.state.database.audit(user, "player.messages_export", player, "", {"kind": kind, "days": days})
     name = re.sub(r"[^A-Za-z0-9_-]", "_", player)
     return Response(text, media_type="text/csv; charset=utf-8", headers={
         "Content-Disposition": 'attachment; filename="copimine-' + name + "-" + kind + '.csv"',

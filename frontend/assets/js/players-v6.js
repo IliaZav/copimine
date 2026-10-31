@@ -98,7 +98,7 @@ function messageRows(entries,kind){
 function messages(p){
  const kind=messagesKind(),q=board().messagesQuery||'';
  return '<section class="panel" data-messages="'+E(p.id)+'" data-kind="'+kind+'"><div class="panel-head"><div><h2>Чат и команды</h2><p class="hint">Что игрок писал в чат и какие команды вводил. Источник — CoreProtect игрового сервера.</p></div>'+M.btn('Обновить','v6-messages-refresh','refresh','small','data-player="'+E(p.id)+'"')+'</div>'
-  +'<div class="v6-messages-tools"><nav class="tabs v6-messages-kinds" aria-label="Что показать"><a href="#" data-action="v6-messages-kind" data-kind="chat" class="'+(kind==='chat'?'active':'')+'">Чат</a><a href="#" data-action="v6-messages-kind" data-kind="command" class="'+(kind==='command'?'active':'')+'">Команды</a></nav><label class="input-wrap">'+icon('search')+'<input id="v6-messages-query" type="search" value="'+E(q)+'" placeholder="Найти слово в сообщениях" aria-label="Поиск по сообщениям игрока" maxlength="100"></label><a class="btn ghost small" href="/api/v6/admin/players/'+encodeURIComponent(p.id)+'/messages/export?kind='+kind+'" download>'+icon('download')+'Скачать CSV</a></div>'
+  +'<div class="v6-messages-tools"><nav class="tabs v6-messages-kinds" aria-label="Что показать"><a href="#" data-action="v6-messages-kind" data-kind="chat" class="'+(kind==='chat'?'active':'')+'">Чат</a><a href="#" data-action="v6-messages-kind" data-kind="command" class="'+(kind==='command'?'active':'')+'">Команды</a></nav><label class="input-wrap">'+icon('search')+'<input id="v6-messages-query" type="search" value="'+E(q)+'" placeholder="Найти слово в сообщениях" aria-label="Поиск по сообщениям игрока" maxlength="100"></label><form class="v6-messages-export" data-messages-export><label class="hint">За период<select name="days" aria-label="За какой период скачать историю"><option value="">Всё время</option><option value="7">7 дней</option><option value="30">30 дней</option><option value="90">90 дней</option><option value="365">Год</option></select></label>'+M.btn('Скачать CSV','v6-messages-export','download','small')+'</form></div>'
   +'<p class="hint v6-messages-status" role="status"></p><div class="v6-messages-body"><p class="hint">Загружаем историю…</p></div>'+M.btn('Показать ещё','v6-messages-more','arrow-down','small','hidden data-player="'+E(p.id)+'"')+'</section>';
 }
 X.loadMessages=async(id,append=false)=>{
@@ -116,12 +116,25 @@ X.loadMessages=async(id,append=false)=>{
   if(q&&q.value.trim())filterMessages(host);
  }catch(e){body.innerHTML='<p class="hint">'+E(e.message)+'</p>';if(more)more.hidden=true;}
 };
+// Экспорт идёт с фильтром из формы в шапке панели, а не со строки поиска по
+// загруженной части: тот фильтр работает без запроса к серверу. Диапазон дат
+// передаётся как есть, сервер проверяет формат и отвечает 400.
+function messagesExportUrl(id,kind){
+ const form=document.querySelector('[data-messages-export]'),days=form?.querySelector('[name="days"]')?.value||'';
+ return '/api/v6/admin/players/'+encodeURIComponent(id)+'/messages/export?kind='+kind+(days?'&days='+encodeURIComponent(days):'');
+}
+H['v6-messages-export']=async b=>{
+ const host=b.closest('[data-messages]');if(!host)return;
+ const id=host.dataset.messages,kind=host.dataset.kind;
+ window.location.href=messagesExportUrl(id,kind);
+};
 function filterMessages(host){
  const q=(host.querySelector('#v6-messages-query')?.value||'').trim().toLowerCase();
  let shown=0;host.querySelectorAll('.v6-messages-list li').forEach(li=>{const on=!q||(li.dataset.text||'').includes(q);li.hidden=!on;if(on)shown++;});
  const status=host.querySelector('.v6-messages-status'),empty=host.querySelector('.v6-messages-filter-empty');
  if(empty)empty.remove();
  if(q&&!shown){const note=document.createElement('p');note.className='hint v6-messages-filter-empty';note.textContent='В загруженной части нет совпадений. Нажми «Показать ещё» или обнови.';host.querySelector('.v6-messages-body')?.append(note);}
+ return shown;
 }
 H['v6-messages-refresh']=async b=>{const host=document.querySelector('[data-messages="'+CSS.escape(b.dataset.player)+'"]');if(host)host.querySelector('.v6-messages-body').innerHTML='<p class="hint">Загружаем историю…</p>';const id=b.dataset.player;delete messagesCache[id+':chat'];delete messagesCache[id+':command'];await X.loadMessages(id);};
 H['v6-messages-more']=b=>X.loadMessages(b.dataset.player,true);

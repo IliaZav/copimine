@@ -245,12 +245,34 @@ if (-not (Test-Path -LiteralPath $endEventBuild -PathType Leaf)) {
     throw "End Event plugin build script is missing: $endEventBuild"
 }
 $previousEndEventJava = $env:JAVA_HOME
+$previousMavenRepository = $env:COPIMINE_MAVEN_REPOSITORY
+$previousCompileDeps = $env:PAPER_COMPILE_DEPS
+$previousPaperApiJar = $env:PAPER_API_JAR
+$previousVoicechatJar = $env:PAPER_VOICECHAT_API_JAR
+$compileDependencyRoot = Join-Path ([IO.Path]::GetTempPath()) ('copimine-compile-deps-' + $PID + '-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $compileDependencyRoot -ErrorAction Stop | Out-Null
 try {
+    # The plugin compiles against Paper 26.3, so the pinned compile classpath has
+    # to exist before build-plugin.ps1 runs. This is the same preparation the
+    # plugin release gate performs, kept in one shared script that also exports
+    # the environment build-plugin.ps1 reads.
+    $compileDependencies = & (Join-Path $PSScriptRoot 'ResolveJavaPluginCompileDependencies.ps1') `
+        -RepositoryRoot $root `
+        -MavenRepository (Join-Path $compileDependencyRoot 'm2-repository') `
+        -TempRoot $compileDependencyRoot
+    if ($LASTEXITCODE -ne 0 -or $null -eq $compileDependencies) {
+        throw 'Pinned Paper 26.3 compile dependency resolution failed'
+    }
     $env:JAVA_HOME = $BuildJavaHome
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $endEventBuild
     if ($LASTEXITCODE -ne 0) { throw 'End Event plugin build failed' }
 } finally {
     $env:JAVA_HOME = $previousEndEventJava
+    $env:COPIMINE_MAVEN_REPOSITORY = $previousMavenRepository
+    $env:PAPER_COMPILE_DEPS = $previousCompileDeps
+    $env:PAPER_API_JAR = $previousPaperApiJar
+    $env:PAPER_VOICECHAT_API_JAR = $previousVoicechatJar
+    Remove-Item -LiteralPath $compileDependencyRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 $endEventCandidate = Join-Path $root 'build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar'
 Assert-AtomicFileDestination -Path $endEventCandidate -Description 'End Event pinned candidate' -StopAt $root

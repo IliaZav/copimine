@@ -235,6 +235,27 @@ def test_candidate_preparation_builds_the_end_event_pin_before_staging() -> None
     assert "build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar" in source[build_index:stage_index]
 
 
+def test_candidate_preparation_resolves_the_pinned_compile_classpath() -> None:
+    # Compiling the plugin against Paper 26.3 needs the pinned compile classpath
+    # on disk. That preparation must come from the one shared script, not from a
+    # second copy that can drift out of step with the plugin release gate.
+    source = (ROOT / "scripts/minecraft/PrepareMigrationCandidates.ps1").read_text(encoding="utf-8")
+    resolver = (ROOT / "scripts/minecraft/ResolveJavaPluginCompileDependencies.ps1").read_text(encoding="utf-8")
+    # Anchor on the invocation, not the earlier existence check.
+    resolve_index = source.index("& (Join-Path $PSScriptRoot 'ResolveJavaPluginCompileDependencies.ps1')")
+    build_index = source.index("& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $endEventBuild")
+
+    assert resolve_index < build_index
+    # The resolver exports the variables build-plugin.ps1 reads, so callers do
+    # not re-declare them (a second copy is what drifts).
+    for variable in ("COPIMINE_MAVEN_REPOSITORY", "PAPER_COMPILE_DEPS", "PAPER_API_JAR",
+                     "PAPER_VOICECHAT_API_JAR"):
+        assert f"$env:{variable}" in resolver, variable
+        assert f'$env:{variable} = ' in resolver, variable
+    # The lock's Paper 26.3 dependency list is what the resolver must consume.
+    assert "paper26_3Dependencies" in resolver
+
+
 def test_client_artifact_size_documentation_matches_the_profile_lock() -> None:
     profile = json.loads((ROOT / "tools/minecraft-26.3/profile.lock.json").read_text(encoding="utf-8"))
     readme = (ROOT / "docs/minecraft-26.3/README.md").read_text(encoding="utf-8")

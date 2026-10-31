@@ -128,6 +128,27 @@ if ($CompileOnly) {
 }
 Copy-Item -LiteralPath (Join-Path $pluginDir 'plugin.yml') -Destination (Join-Path $classes 'plugin.yml') -Force
 Copy-Item -LiteralPath (Join-Path $pluginDir 'config.yml') -Destination (Join-Path $classes 'config.yml') -Force
+# tools/minecraft-26.3/build.gradle packages one extra shared class into this
+# jar: the saved-generation policy the End Rift snapshots validate with before
+# the optional Narcotics bridge is available. A plain repack of `classes` drops
+# it, and the pinned candidate then differs from the artifact Gradle produced
+# and the runtime expects. Copy it in when the Gradle output exists.
+$bridgeClass = Join-Path $classes 'me\copimine\protocol\EncounterGenerationPolicy.class'
+if (-not (Test-Path -LiteralPath $bridgeClass -PathType Leaf)) {
+  $bridgeSource = Join-Path $releaseRoot 'build\minecraft-26.3\plugins\classes\java\narcotics\me\copimine\protocol\EncounterGenerationPolicy.class'
+  $bridgeSourceAlt = Join-Path $releaseRoot 'tools\minecraft-26.3\build\classes\java\main\me\copimine\protocol\EncounterGenerationPolicy.class'
+  foreach ($candidate in @($bridgeSource, $bridgeSourceAlt)) {
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+      New-Item -ItemType Directory -Path (Split-Path -Parent $bridgeClass) -Force | Out-Null
+      Copy-Item -LiteralPath $candidate -Destination $bridgeClass -Force
+      $bridgeSource = $candidate
+      break
+    }
+  }
+  if (-not (Test-Path -LiteralPath $bridgeClass -PathType Leaf)) {
+    throw 'The shared EncounterGenerationPolicy class required by the End Rift bridge is missing from the Gradle plugin output.'
+  }
+}
 Remove-Item -LiteralPath $jar -Force -ErrorAction SilentlyContinue
 jar --create --file $jar --date=2020-01-01T00:00:00Z -C $classes .
 if ($LASTEXITCODE -ne 0) { throw "jar packaging failed for CopiMineEndEvent." }

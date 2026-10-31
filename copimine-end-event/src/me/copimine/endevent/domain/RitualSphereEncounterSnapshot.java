@@ -1,6 +1,8 @@
 package me.copimine.endevent.domain;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -13,8 +15,12 @@ public final class RitualSphereEncounterSnapshot {
     private static final String PARTICIPANTS = PREFIX + "participants";
     private static final String CASTER_DEATHS = PREFIX + "caster-deaths";
     private static final String SPELL_CURSOR = PREFIX + "spell-cursor";
+    /** W6-016: the frozen identity run order and the committed defeat receipts. */
+    private static final String MAGE_ORDER = PREFIX + "mage-order";
+    private static final String MAGE_DEFEATED = PREFIX + "mage-defeated";
     private static final Set<String> CURRENT_KEYS = Set.of(
-            GENERATION, PRISONER, PARTICIPANTS, CASTER_DEATHS, SPELL_CURSOR);
+            GENERATION, PRISONER, PARTICIPANTS, CASTER_DEATHS, SPELL_CURSOR,
+            MAGE_ORDER, MAGE_DEFEATED);
     /** Previous releases wrote these values. They are accepted and discarded during migration. */
     private static final Set<String> LEGACY_KEYS = Set.of(
             PREFIX + "successful-drains", PREFIX + "intensity", PREFIX + "last-drain-millis");
@@ -32,6 +38,20 @@ public final class RitualSphereEncounterSnapshot {
 
     public static Map<String, String> encode(RitualSphereEncounterPolicy.State state,
                                              int casterDeaths, int spellCursor) {
+        return encode(state, casterDeaths, spellCursor, List.of(), List.of());
+    }
+
+    /**
+     * Full durable Wave 6 state, including the frozen mage identity order.
+     *
+     * <p>The identity order and its defeat receipts are what let the sphere keep
+     * the signatures it actually earned across a restart. Without them a restart
+     * would rebuild a different order and hand out the wrong spells.</p>
+     */
+    public static Map<String, String> encode(RitualSphereEncounterPolicy.State state,
+                                             int casterDeaths, int spellCursor,
+                                             List<MageSignaturePolicy.MageId> mageOrder,
+                                             List<MageSignaturePolicy.MageId> mageDefeated) {
         if (state == null) {
             return Map.of();
         }
@@ -45,7 +65,31 @@ public final class RitualSphereEncounterSnapshot {
         encoded.put(PARTICIPANTS, Integer.toString(state.profile().participants()));
         encoded.put(CASTER_DEATHS, Integer.toString(casterDeaths));
         encoded.put(SPELL_CURSOR, Integer.toString(persistedSpellCursor));
+        if (mageOrder != null && !mageOrder.isEmpty()) {
+            MageSignaturePolicy.requireValidOrder(mageOrder);
+            encoded.put(MAGE_ORDER, joinIdentities(mageOrder));
+            encoded.put(MAGE_DEFEATED, joinIdentities(mageDefeated == null ? List.of() : mageDefeated));
+        }
         return Map.copyOf(encoded);
+    }
+
+    private static String joinIdentities(List<MageSignaturePolicy.MageId> values) {
+        List<String> names = new ArrayList<>(values.size());
+        for (MageSignaturePolicy.MageId value : values) {
+            names.add(value.name());
+        }
+        return String.join(",", names);
+    }
+
+    private static List<MageSignaturePolicy.MageId> splitIdentities(String raw, String key) {
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        List<MageSignaturePolicy.MageId> parsed = new ArrayList<>();
+        for (String token : raw.split(",", -1)) {
+            parsed.add(MageSignaturePolicy.parseMage(token));
+        }
+        return List.copyOf(parsed);
     }
 
     public static Data decode(Map<String, String> encoded, long expectedGeneration) {
@@ -89,9 +133,31 @@ public final class RitualSphereEncounterSnapshot {
         int spellCursor = encoded.containsKey(SPELL_CURSOR)
                 ? parseInt(encoded.get(SPELL_CURSOR), SPELL_CURSOR) : 0;
         spellCursor = normalizeSpellCursor(casterDeaths, spellCursor);
+        // Legacy snapshots predate durable mage identities. An absent order is
+        // reported as absent (empty), never silently invented, so the caller can
+        // choose to rebuild rather than resume a run with unknown signatures.
+        List<MageSignaturePolicy.MageId> mageOrder = encoded.containsKey(MAGE_ORDER)
+                ? splitIdentities(encoded.get(MAGE_ORDER), MAGE_ORDER) : List.of();
+        List<MageSignaturePolicy.MageId> mageDefeated = encoded.containsKey(MAGE_DEFEATED)
+                ? splitIdentities(encoded.get(MAGE_DEFEATED), MAGE_DEFEATED) : List.of();
+        if (!mageOrder.isEmpty()) {
+            MageSignaturePolicy.requireValidOrder(mageOrder);
+            if (!mageOrder.containsAll(mageDefeated)) {
+                throw new IllegalArgumentException(
+                        "Ritual Sphere snapshot defeated identities are outside the run order");
+            }
+            if (mageDefeated.size() != casterDeaths) {
+                throw new IllegalArgumentException(
+                        "Ritual Sphere snapshot defeat receipts disagree with the death count");
+            }
+        } else if (!mageDefeated.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Ritual Sphere snapshot has defeat receipts without a run order");
+        }
         RitualSphereEncounterPolicy.State state = new RitualSphereEncounterPolicy.State(
                 generation, prisoner, profile);
-        return new Data(state, migratedLegacyState, casterDeaths, spellCursor);
+        return new Data(state, migratedLegacyState, casterDeaths, spellCursor,
+                mageOrder, mageDefeated);
     }
 
     private static int normalizeSpellCursor(int casterDeaths, int spellCursor) {
@@ -145,7 +211,14 @@ public final class RitualSphereEncounterSnapshot {
     }
 
     public record Data(RitualSphereEncounterPolicy.State state, boolean migratedLegacyState,
-                       int casterDeaths, int spellCursor) {
+                       int casterDeaths, int spellCursor,
+                       List<MageSignaturePolicy.MageId> mageOrder,
+                       List<MageSignaturePolicy.MageId> mageDefeated) {
+        public Data(RitualSphereEncounterPolicy.State state, boolean migratedLegacyState,
+                    int casterDeaths, int spellCursor) {
+            this(state, migratedLegacyState, casterDeaths, spellCursor, List.of(), List.of());
+        }
+
         public Data(RitualSphereEncounterPolicy.State state, boolean migratedLegacyState) {
             this(state, migratedLegacyState, 0, 0);
         }
@@ -157,6 +230,16 @@ public final class RitualSphereEncounterSnapshot {
 
         public Data(RitualSphereEncounterPolicy.State state) {
             this(state, false, 0, 0);
+        }
+
+        /** Signatures the sphere owned when this snapshot was written. */
+        public List<MageSignaturePolicy.Signature> acquiredSignatures() {
+            return MageSignaturePolicy.ownedSignatures(mageDefeated);
+        }
+
+        /** True when the snapshot carries the durable identity order. */
+        public boolean hasMageIdentities() {
+            return !mageOrder.isEmpty();
         }
     }
 }

@@ -3,9 +3,19 @@ package me.copimine.endevent.domain;
 /** Small server-authored suspension motion around the stable prisoner anchor. */
 public final class RitualSpherePresentationPolicy {
     public static final double HEIGHT_OFFSET = 6.2D;
+    /** Body centre inside the raised shell; deliberately static while the shell bobs. */
+    public static final double PRISONER_HEIGHT_OFFSET = HEIGHT_OFFSET - 0.9D;
     private RitualSpherePresentationPolicy() { }
     public static double centerHeightOffset(long tick) {
         return HEIGHT_OFFSET + suspensionOffset(tick);
+    }
+    /**
+     * The captive is held at a fixed height. Deriving the anchor from the
+     * animated shell would move it every tick and teleport the prisoner in a
+     * correction loop.
+     */
+    public static double prisonerHeightOffset() {
+        return PRISONER_HEIGHT_OFFSET;
     }
     public static int channelColor(int livingGuards, int assignedGuards) {
         if (assignedGuards < 1 || assignedGuards > 3) throw new IllegalArgumentException("invalid guard count");

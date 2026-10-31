@@ -33,13 +33,25 @@ public final class RitualCasterTacticsPolicy {
         return state == State.AWAKENED_ATTACKING;
     }
 
+    /**
+     * Every surviving caster keeps feeding the sphere.
+     *
+     * <p>Superseded expectation: the earlier design made the first accepted hit
+     * remove the caster's Ritual Sphere ability. The canonical contract requires
+     * the sphere to own casting for the whole encounter, so an awakened caster
+     * keeps its sphere role while also gaining native AI targeting.</p>
+     */
     public static boolean castsSphere(State state) {
-        return state == State.GUARDED_CASTING || state == State.EXPOSED_CASTING;
+        return state == State.GUARDED_CASTING || state == State.EXPOSED_CASTING
+                || state == State.AWAKENED_ATTACKING;
     }
 
-    /** The caster owns one of the sphere's four core abilities while channeling. */
+    /**
+     * The caster owns one of the sphere's four core abilities for as long as it
+     * lives. Deaths, not damage, reduce the sphere's spell ownership.
+     */
     public static boolean ownsRitualAbility(State state) {
-        return state == State.GUARDED_CASTING || state == State.EXPOSED_CASTING;
+        return castsSphere(state);
     }
 
     /** Amplifiers contribute only while they are still channeling the sphere. */

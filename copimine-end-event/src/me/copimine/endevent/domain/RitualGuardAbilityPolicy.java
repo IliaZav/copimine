@@ -125,23 +125,31 @@ public final class RitualGuardAbilityPolicy {
         return nowTick >= 0L && burstEndsAtTick > nowTick;
     }
 
-    /** Spread four distinct guard roles across all five caster groups. */
+    /**
+     * Spread four distinct guard roles across all five caster groups.
+     *
+     * <p>The per-caster guard count is owned by {@link RitualSphereScalingPolicy}
+     * (up to {@code GUARDS_PER_CASTER}); duplicating a smaller ceiling here would
+     * reject guard slots that the roster legitimately assigns.</p>
+     */
     public static int roleSlot(int casterSlot, int guardSlot) {
-        if (casterSlot < 0 || casterSlot >= 5 || guardSlot < 0 || guardSlot >= 3)
+        if (casterSlot < 0 || casterSlot >= 5
+                || guardSlot < 0 || guardSlot >= RitualSphereScalingPolicy.GUARDS_PER_CASTER)
             throw new IllegalArgumentException("invalid caster/guard slot");
         return Math.floorMod(casterSlot + guardSlot, 4);
     }
 
     /** Replace only deterministic zombie-tank slots; never increase roster size. */
     public static boolean isGiantReplacement(int participants, int casterSlot, int guardSlot) {
-        int boundedParticipants = Math.max(2, Math.min(20, participants));
-        int casterCount = 5;
-        int guardsPerCaster = boundedParticipants <= 4 ? 1 : boundedParticipants <= 8 ? 2 : 3;
+        RitualSphereScalingPolicy.Profile roster = RitualSphereScalingPolicy.forPlayers(participants);
+        int casterCount = roster.casterCount();
+        int guardsPerCaster = roster.guardsPerCaster();
         if (casterSlot < 0 || casterSlot >= casterCount
                 || guardSlot < 0 || guardSlot >= guardsPerCaster
                 || roleSlot(casterSlot, guardSlot) != 0) {
             return false;
         }
+        int boundedParticipants = Math.max(2, Math.min(20, participants));
         int expected = boundedParticipants <= 4 ? 1 : boundedParticipants <= 8 ? 2 : 3;
         int zombieSlotOrdinal = 0;
         for (int caster = 0; caster < casterCount; caster++) {

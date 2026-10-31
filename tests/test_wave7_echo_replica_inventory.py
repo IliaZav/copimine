@@ -97,11 +97,11 @@ public class EchoReplicaChecks {
         source.slots[0]=sword;source.slots[1]=new ItemStack(Material.GOLDEN_APPLE,5);source.slots[2]=new ItemStack(Material.ARROW,2);
         if(args[0].equals("copy")){
             var replica=capture(source);var item=replica.stack(0);
-            check(item!=sword&&item.meta!=sword.meta&&item.meta.damage==0,"fresh repaired replica, never live slot handle");
+            check(item!=sword&&item.meta!=sword.meta&&item.meta.damage==123,"replica preserves snapshot wear, never live slot handle");
             check(sword.meta.damage==123&&sword.getAmount()==1&&source.off.getAmount()==1,"original inventory mutated");
             item.meta.damage=100;source.slots[0]=new ItemStack(Material.TNT);
-            check(replica.stack(0).getType()==Material.IRON_SWORD&&replica.stack(0).meta.damage==0,"projection/owner switch changed frozen item");
-            check(replica.state().remaining(1)==5&&replica.state().remaining(41)==2&&source.reads==1,"capture only once with two extras");
+            check(replica.stack(0).getType()==Material.IRON_SWORD&&replica.stack(0).meta.damage==123,"projection/owner switch changed frozen item");
+            check(replica.state().remaining(1)==5&&replica.state().remaining(41)==0&&source.reads==1,"capture only once with no bonus extras");
         }else if(args[0].equals("custom")){
             for(int flag=0;flag<7;flag++){
                 var s=new ItemStack(Material.IRON_SWORD);source.slots[0]=s;
@@ -122,13 +122,13 @@ public class EchoReplicaChecks {
             var customFood=new ItemStack(Material.GOLDEN_APPLE,99);customFood.meta.stack=true;source.slots[0]=customFood;
             var foodBlocked=capture(source);
             check(!foodBlocked.state().item(0).usable()&&foodBlocked.state().item(0).amount()==64,"oversized custom food not safely recorded");
-            check(foodBlocked.state().remaining(41)==2&&customFood.getAmount()==99,"custom mapping altered real stack or bonus");
+            check(foodBlocked.state().remaining(41)==0&&customFood.getAmount()==99,"custom mapping altered real stack or invented a bonus");
             source.slots[0]=new ItemStack(Material.IRON_SWORD,2);
             try{capture(source);throw new AssertionError("invalid ordinary vanilla stack accepted");}catch(IllegalArgumentException expected){}
         }else if(args[0].equals("restore")){
-            var replica=capture(source);replica.state().consume(41,1,0);replica.state().damage(0,17,1);
+            var replica=capture(source);replica.state().consume(1,1,0);replica.state().damage(0,17,1);
             var restored=EchoReplicaInventory.restore(replica.state().encode(),new UUID(0,1),7,new UUID(0,3),new UUID(0,2),2);
-            check(restored.stack(0).meta.damage==17&&restored.stack(41).getAmount()==1,"restored native gear repaired/refilled");
+            check(restored.stack(0).meta.damage==140&&restored.stack(1).getAmount()==4,"restored native gear repaired/refilled");
             var forged=new HashMap<>(replica.state().encode());forged.put("slot.0.maximum","9999");
             try{EchoReplicaInventory.restore(forged,new UUID(0,1),7,new UUID(0,3),new UUID(0,2),2);throw new AssertionError("forged native durability");}catch(IllegalArgumentException expected){}
         }else if(args[0].equals("native-wear")){

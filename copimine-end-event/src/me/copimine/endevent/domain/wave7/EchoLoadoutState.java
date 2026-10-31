@@ -58,6 +58,10 @@ public final class EchoLoadoutState {
                 && Set.of("SWORD", "AXE").contains(material.substring(split + 1))) return Kind.MELEE;
         if (split > 0 && ARMOR.contains(material.substring(0, split))
                 && Set.of("HELMET", "CHESTPLATE", "LEGGINGS", "BOOTS").contains(material.substring(split + 1))) return Kind.ARMOR;
+        // Charged crossbow variants share the "crossbow" weapon concept. Before
+        // this was ordered below, "charged_crossbow" fell through to INERT, so an
+        // owner holding a loaded crossbow produced a copy that could not shoot.
+        if (material.contains("crossbow")) return Kind.CROSSBOW;
         return switch (material) {
             case "BOW" -> Kind.BOW;
             case "CROSSBOW" -> Kind.CROSSBOW;
@@ -88,18 +92,24 @@ public final class EchoLoadoutState {
                 throw new IllegalArgumentException("Invalid remaining replica quantity or wear");
         }
         Item bonus=frozen.get(41);
-        if (!bonus.equals(new Item("GOLDEN_APPLE",2,0,0,Map.of(),"",false)))
-            throw new IllegalArgumentException("Replica allowance must be exactly two plain golden apples");
+        if (!bonus.equals(Item.empty()))
+            throw new IllegalArgumentException("Replica carries only what its owner actually held");
     }
     public static EchoLoadoutState create(UUID event, long attempt, UUID duel, UUID owner, List<Item> source, int selected) {
         if (source == null || source.size()!=41) throw new IllegalArgumentException("41 source slots required");
         var items=new ArrayList<Item>();
         for (Item item : source) {
             if (item==null) throw new IllegalArgumentException("Null source slot");
+            // A copy is a faithful replica: it carries the owner's real wear.
+            // Repairing every item here handed the copy free durability the
+            // owner never had, which is how a replica out-lasted its original.
             items.add(new Item(item.material(),item.amount(),item.maximumDamage(),
-                    item.usable()?0:item.damage(),item.enchantments(),item.name(),item.custom()));
+                    item.damage(),item.enchantments(),item.name(),item.custom()));
         }
-        items.add(new Item("GOLDEN_APPLE",2,0,0,Map.of(),"",false));
+        // No invented supplies. The replica starts from exactly what its owner
+        // held: injecting two golden apples per copy was free healing that the
+        // owner's inventory never contained.
+        items.add(Item.empty());
         int[] counts=new int[42],damage=new int[42];
         for (int i=0;i<42;i++) { counts[i]=items.get(i).amount(); damage[i]=items.get(i).damage(); }
         return new EchoLoadoutState(event,attempt,duel,owner,selected,items,counts,damage,0);

@@ -30,12 +30,16 @@ public record EchoBehaviorStrategy(int meleePermille, int rangedPermille,
         long attackCount = counts.meleeHits() + counts.rangedHits();
         int meleeShare = share(counts.meleeHits(), attackCount);
         int rangedShare = attackCount <= 0L ? 500 : 1_000 - meleeShare;
-        long sustainEvidence = attackCount + counts.healUses();
+        // Sustain is a share of this participant's own sustained actions, not of
+        // their attacks. Dividing by attacks made a busier attacker look like a
+        // non-healer: three heals scored 500 alongside three hits but only 10
+        // alongside three hundred, even though the healing never changed.
+        long sustainedActions = counts.healUses() + attackCount;
         return new EchoBehaviorStrategy(
                 meleeShare, rangedShare,
                 share(counts.sprintSamples(), counts.movementSamples()),
                 share(counts.shieldSamples(), counts.movementSamples()),
-                share(counts.healUses(), sustainEvidence),
+                share(counts.healUses(), sustainedActions),
                 (int) Math.round(counts.confidence() * 1_000.0D),
                 counts.observedWaveMask(), counts.fromEventStart());
     }

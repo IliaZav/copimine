@@ -34,8 +34,11 @@ public class EchoLoadoutChecks {
     case "capture":{
         var source=original();var state=EchoLoadoutState.create(EVENT,7,DUEL,OWNER,source,0);
         check(source.get(0).damage()==123&&source.get(40).damage()==45,"source gear must not be repaired");
-        check(state.item(0).damage()==0&&state.item(40).damage()==0,"only initial replica repaired");
-        check(state.remaining(1)==5&&state.remaining(41)==2,"two EXTRA apples outside a full copied inventory");
+        // GEAR-005 / AUD-13: the replica keeps the owner's real wear and holds no
+        // hidden bonus slot. Repairing it or adding apples gave the copy free
+        // durability and free healing the owner never had.
+        check(state.item(0).damage()==123&&state.item(40).damage()==45,"replica must preserve snapshot wear");
+        check(state.remaining(1)==5&&state.remaining(41)==0,"no hidden bonus apples in the 42nd slot");
         source.set(0,Item.empty());check(state.item(0).material().equals("IRON_SWORD"),"frozen snapshot aliases source");
         check(state.selectedSlot()==0&&state.item(0).enchantments().get("minecraft:sharpness")==3,"safe combat descriptors");break;}
     case "finite":{
@@ -46,11 +49,11 @@ public class EchoLoadoutChecks {
         check(!state.consume(2,1,2)&&!state.consume(1,-1,2),"cannot mint or underflow supplies");
         check(!state.consume(0,1,2),"consumption cannot erase nonconsumable gear");break;}
     case "restore":{
-        var state=state();state.consume(41,1,0);check(state.damage(0,17,1),"replica damage");
+        var state=state();state.consume(1,1,0);check(state.damage(0,17,1),"replica damage");
         var encoded=state.encode();var restored=EchoLoadoutState.restore(encoded,EVENT,7,DUEL,OWNER,2);
-        check(restored.remaining(41)==1&&restored.item(0).damage()==17,"restart refilled apples or repaired used gear");
-        check(restored.revision()==2&&!restored.consume(41,1,1),"restored stale receipt accepted");
-        check(restored.consume(41,1,2)&&restored.remaining(41)==0,"restored final apple");
+        check(restored.remaining(1)==4&&restored.item(0).damage()==140,"restart refilled supplies or repaired used gear");
+        check(restored.revision()==2&&!restored.consume(1,1,1),"restored stale receipt accepted");
+        check(restored.consume(1,1,2)&&restored.remaining(1)==3,"restored next apple");
         reject(()->EchoLoadoutState.restore(encoded,EVENT,7,DUEL,OWNER,3),"old save overwrote newer consumption");
         reject(()->EchoLoadoutState.restore(encoded,EVENT,8,DUEL,OWNER,0),"foreign attempt accepted");
         reject(()->EchoLoadoutState.restore(encoded,EVENT,7,new UUID(0,9),OWNER,0),"foreign duel accepted");break;}

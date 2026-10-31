@@ -12,6 +12,13 @@ import me.copimine.endevent.runtime.RealitySplitEchoDuelState.ActorState;
  * bounded duel replica, where a successful action atomically records its own resource cost.
  */
 public final class EchoDuelCombatPolicy {
+    /**
+     * Share of maximum health restored by a completed consumable use. A copy that
+     * remembered the owner's real regeneration does not exist: the heal is a
+     * bounded, single, late effect.
+     */
+    public static final double CONSUMABLE_HEAL_FRACTION = 0.2D;
+
     private EchoDuelCombatPolicy() {
     }
 
@@ -95,6 +102,60 @@ public final class EchoDuelCombatPolicy {
             return Optional.empty();
         }
         return updated;
+    }
+
+    /**
+     * Resolves a consumable use once its window elapsed.
+     *
+     * <p>The supply was spent when the use began, so this is the only place a
+     * heal may happen. Before this existed the food was consumed immediately and
+     * healed immediately, which let a copy heal at the start of the animation and
+     * again on reconnect. Completing an already completed snapshot fails, so a
+     * restore or a replay cannot heal twice.
+     *
+     * @param tick the current tick; the use resolves only at or after its deadline
+     */
+    public static Optional<ActorState> completeConsumable(ActorState actor, long tick,
+                                                          Cooldowns cooldowns) {
+        if (actor == null || cooldowns == null || tick < 0L
+                || tick > RealitySplitEchoDuelState.MAX_COUNTER
+                || actor.lifecycle() != ActorLifecycle.ALIVE
+                || actor.pendingUseUntilTick() <= 0L
+                || tick < actor.pendingUseUntilTick()
+                || actor.revision() >= RealitySplitEchoDuelState.MAX_COUNTER) {
+            return Optional.empty();
+        }
+        double restored = Math.min(actor.maximumHealth(),
+                actor.currentHealth() + consumableHealAmount(actor.maximumHealth()));
+        return Optional.of(new ActorState(actor.actorUuid(), restored, actor.maximumHealth(),
+                actor.lifecycle(), actor.revision() + 1L, actor.nextActionTick(),
+                actor.meleeCooldownUntilTick(), actor.rangedCooldownUntilTick(),
+                0L, actor.deathSerial(), actor.shieldActiveUntilTick(),
+                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick()));
+    }
+
+    /**
+     * Ends a use that was interrupted (the copy moved, was hit or died).
+     *
+     * <p>No heal happens and the spent supply is deliberately not refunded:
+     * returning it would let a copy farm unlimited healing by starting and
+     * cancelling uses in a loop.
+     */
+    public static ActorState cancelConsumable(ActorState actor) {
+        if (actor == null || actor.pendingUseUntilTick() <= 0L
+                || actor.revision() >= RealitySplitEchoDuelState.MAX_COUNTER) {
+            return actor;
+        }
+        return new ActorState(actor.actorUuid(), actor.currentHealth(), actor.maximumHealth(),
+                actor.lifecycle(), actor.revision() + 1L, actor.nextActionTick(),
+                actor.meleeCooldownUntilTick(), actor.rangedCooldownUntilTick(),
+                0L, actor.deathSerial(), actor.shieldActiveUntilTick(),
+                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick());
+    }
+
+    /** A healed copy restores a bounded share of its maximum health, never an unlimited amount. */
+    private static double consumableHealAmount(double maximumHealth) {
+        return Math.max(0.0D, maximumHealth) * CONSUMABLE_HEAL_FRACTION;
     }
 
     /** Starts a finite shield window without spending shield durability until a real hit is blocked. */

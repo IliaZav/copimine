@@ -39,6 +39,22 @@ public final class ChamberIsolationPolicy {
         return new Assignment(count, mapping);
     }
 
+    /**
+     * Places the whole roster in one open arena. Wave 7 runs its trials
+     * sequentially, so sectoring the party into isolated chambers would split a
+     * group that must fight the same stage together.
+     */
+    public static Assignment assignOpenArena(List<UUID> players) {
+        List<UUID> unique = new ArrayList<>(new LinkedHashSet<>(players == null ? List.of() : players));
+        unique.removeIf(value -> value == null);
+        unique.sort(java.util.Comparator.comparing(UUID::toString));
+        Map<UUID, Integer> mapping = new LinkedHashMap<>();
+        for (UUID player : unique) {
+            mapping.put(player, 0);
+        }
+        return new Assignment(unique.isEmpty() ? 0 : 1, mapping);
+    }
+
     public static boolean sameRoom(UUID first, UUID second, Assignment assignment) {
         if (first == null || second == null || assignment == null) return false;
         Integer left = assignment.chamberByPlayer().get(first);

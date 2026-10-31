@@ -14,9 +14,15 @@ import java.util.UUID;
 import java.util.random.RandomGenerator;
 
 /**
- * Immutable Wave 7 room selection snapshot. Two or three players receive the
- * same number of rooms with distinct randomly sampled trials; four or more
- * players always run all four trial types in parallel.
+ * Immutable Wave 7 room selection snapshot.
+ *
+ * <p><b>Superseded for starting a Wave 7 attempt.</b> The arena contract runs
+ * the four trials in sequence on one open arena, so
+ * {@code RealitySplitTrialController.beginNamed} no longer samples this layout;
+ * see {@link Wave7TrialRoutePolicy}. This class is retained only so that legacy
+ * persisted snapshots (which really did run rooms in parallel) can still be
+ * read, validated and migrated. Starting a new attempt from it would restore the
+ * forbidden parallel-room route.</p>
  */
 public final class Wave7RoomLayoutPolicy {
     public static final int MAX_PLAYERS = 20;

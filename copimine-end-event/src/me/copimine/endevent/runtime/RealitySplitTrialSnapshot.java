@@ -117,8 +117,11 @@ public final class RealitySplitTrialSnapshot {
         encoded.put(EVENT, data.eventId().toString());
         encoded.put(GENERATION, Long.toString(data.generation()));
         encoded.put(SELECTED, data.selectedLayout().stream().map(Enum::name).collect(Collectors.joining(",")));
+        // Only rooms that actually hold a stage are written; the route stores the
+        // whole sequence in SELECTED while TRIAL_* records the active stage.
         for (int room = 0; room < data.selectedLayout().size(); room++) {
             var state = data.trials().get(room);
+            if (state == null) continue;
             encoded.put(TRIAL_PREFIX + room, state.trial().name() + ":" + state.stage().name()
                     + ":" + encodeOwners(state.owners()) + ":" + encodeOwners(state.echoReceipts().keySet()));
             Map<UUID, DuelRecord> duels = data.personalEchoDuels().get(room);
@@ -172,12 +175,19 @@ public final class RealitySplitTrialSnapshot {
             throw new IllegalArgumentException("invalid named Wave 7 room count");
         }
         Set<String> requiredKeys = new HashSet<>(Set.of(SCHEMA, LAYOUT, EVENT, GENERATION, SELECTED));
-        for (int room = 0; room < layout.size(); room++) requiredKeys.add(TRIAL_PREFIX + room);
+        // A route records only the rooms that actually hold a stage; resulting rooms
+        // must still be a contiguous prefix of TRIAL_* keys.
+        int roomCount = 0;
+        while (encoded.containsKey(TRIAL_PREFIX + roomCount)) roomCount++;
+        for (int room = 0; room < roomCount; room++) requiredKeys.add(TRIAL_PREFIX + room);
+        if (roomCount < 1 || roomCount > 4) {
+            throw new IllegalArgumentException("named Wave 7 room count is missing or oversized");
+        }
         Map<Integer, Set<UUID>> roomOwners = new LinkedHashMap<>();
         Map<Integer, Set<UUID>> roomReceipts = new LinkedHashMap<>();
         Map<Integer, RealitySplitTrialController.NamedTrial> roomTrials = new LinkedHashMap<>();
         Map<Integer, RealitySplitTrialController.Stage> roomStages = new LinkedHashMap<>();
-        for (int room = 0; room < layout.size(); room++) {
+        for (int room = 0; room < roomCount; room++) {
             String raw = encoded.get(TRIAL_PREFIX + room);
             if (raw == null || raw.length() > 1600) {
                 throw new IllegalArgumentException("named Wave 7 room is missing or oversized");
@@ -208,7 +218,7 @@ public final class RealitySplitTrialSnapshot {
         }
         Map<Integer, Map<UUID, DuelRecord>> duels = new LinkedHashMap<>();
         Map<Integer, RealitySplitTrialController.NamedTrialState> boundTrials = new LinkedHashMap<>();
-        for (int room = 0; room < layout.size(); room++) {
+        for (int room = 0; room < roomCount; room++) {
             var trial = roomTrials.get(room);
             var stage = roomStages.get(room);
             if (trial == RealitySplitTrialController.NamedTrial.PERSONAL_ECHO) {

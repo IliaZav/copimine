@@ -60,6 +60,32 @@ public final class RealitySplitChamberController {
         this.completedChambers.clear();
     }
 
+    /**
+     * Start a single open arena: every admitted player is assigned to chamber 0
+     * and no internal boundary is created.
+     *
+     * <p>Wave 7 runs its trials in sequence on the open arena, so the party must
+     * never be split into 2-4 walled sectors. Callers that genuinely need
+     * partitions must use {@link #begin(long, List)}.</p>
+     */
+    public void beginOpenArena(long generation, List<UUID> players) {
+        if (generation <= 0L) throw new IllegalArgumentException("generation must be positive");
+        List<UUID> unique = new java.util.ArrayList<>(
+                new java.util.LinkedHashSet<>(players == null ? List.of() : players));
+        unique.removeIf(value -> value == null);
+        unique.sort(java.util.Comparator.comparing(UUID::toString));
+        Map<UUID, Integer> mapping = new LinkedHashMap<>();
+        for (UUID player : unique) mapping.put(player, 0);
+        // Assignment clamps the count into 0..MAX_CHAMBERS; an empty roster has
+        // no chamber at all, which the trial controller rejects on its own.
+        this.generation = generation;
+        this.assignment = new ChamberIsolationPolicy.Assignment(unique.isEmpty() ? 0 : 1, mapping);
+        this.chamberByEntity.clear();
+        this.openBoundaries.clear();
+        this.openingBoundaries.clear();
+        this.completedChambers.clear();
+    }
+
     public boolean owns(long generation) {
         return this.generation == generation && this.generation > 0L;
     }

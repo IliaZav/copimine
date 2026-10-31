@@ -1,7 +1,7 @@
 name: CopiMineEndEvent
 version: '0.1.0'
 main: me.copimine.endevent.CopiMineEndEvent
-api-version: '1.21'
+api-version: '26.3'
 author: CopiMine
 load: POSTWORLD
 depend:

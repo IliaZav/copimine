@@ -1,5 +1,7 @@
 package me.copimine.endevent.runtime;
 
+import me.copimine.endevent.domain.Wave7TrialRoutePolicy;
+
 import java.util.LinkedHashMap;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -34,6 +36,35 @@ public final class RealitySplitTrialController {
 
     /** New identities have their own schema; these never alias the legacy Trial enum. */
     public enum NamedTrial { WARDEN, PERSONAL_ECHO, MOBILE_MARKSMAN, RIFT_ARCHMAGE }
+
+    /** Route identity -> persisted trial identity. Order is not positional. */
+    public static Wave7TrialRoutePolicy.Stage routeStage(NamedTrial trial) {
+        if (trial == null) return null;
+        return switch (trial) {
+            case WARDEN -> Wave7TrialRoutePolicy.Stage.WARDEN;
+            case MOBILE_MARKSMAN -> Wave7TrialRoutePolicy.Stage.MOBILE_MARKSMAN;
+            case RIFT_ARCHMAGE -> Wave7TrialRoutePolicy.Stage.RIFT_ARCHMAGE;
+            case PERSONAL_ECHO -> Wave7TrialRoutePolicy.Stage.PERSONAL_ECHO;
+        };
+    }
+
+    /** Route identity -> persisted trial identity. */
+    public static NamedTrial trialForStage(Wave7TrialRoutePolicy.Stage stage) {
+        if (stage == null) return null;
+        return switch (stage) {
+            case WARDEN -> NamedTrial.WARDEN;
+            case MOBILE_MARKSMAN -> NamedTrial.MOBILE_MARKSMAN;
+            case RIFT_ARCHMAGE -> NamedTrial.RIFT_ARCHMAGE;
+            case PERSONAL_ECHO -> NamedTrial.PERSONAL_ECHO;
+        };
+    }
+
+    /** The sequential route in persisted trial identities. */
+    public static List<NamedTrial> sequentialRoute() {
+        return Wave7TrialRoutePolicy.ORDER.stream()
+                .map(RealitySplitTrialController::trialForStage)
+                .toList();
+    }
 
     /**
      * Server-side proof that a concrete actor entity reached its death event.
@@ -73,19 +104,15 @@ public final class RealitySplitTrialController {
             validateNamedOwners(assignment, named);
             return;
         }
-        List<UUID> participants = new ArrayList<>(assignment.chamberByPlayer().keySet());
-        Wave7RoomLayoutPolicy.Snapshot selectedRooms =
-                Wave7RoomLayoutPolicy.select(generation, participants, random);
-        if (!selectedRooms.roomByPlayer().equals(assignment.chamberByPlayer())) {
-            throw new IllegalArgumentException("shared Wave 7 layout changed the assigned room owners");
+        // Wave 7 is sequential on one open arena: every trial shares the single
+        // chamber and every admitted player fights every one of them. No draw
+        // from the random source is needed, which also removes the only reason
+        // the layout could differ between a live start and a restore.
+        if (assignment.chamberCount() != 1
+                || assignment.chamberByPlayer().values().stream().anyMatch(room -> room != 0)) {
+            throw new IllegalArgumentException("sequential Wave 7 requires one open arena assignment");
         }
-        List<NamedTrial> selected = selectedRooms.rooms().stream().map(room -> switch (room.trial()) {
-            case WARDEN -> NamedTrial.WARDEN;
-            case ECHO -> NamedTrial.PERSONAL_ECHO;
-            case MARKSMAN -> NamedTrial.MOBILE_MARKSMAN;
-            case ARCHMAGE -> NamedTrial.RIFT_ARCHMAGE;
-        }).toList();
-        beginNamed(eventId, generation, assignment, selected);
+        beginNamed(eventId, generation, assignment, sequentialRoute());
     }
 
     /** Starts an already selected layout. Restore must use restoreNamed, never sample again. */
@@ -93,7 +120,10 @@ public final class RealitySplitTrialController {
                                         ChamberIsolationPolicy.Assignment assignment,
                                         List<NamedTrial> selectedLayout) {
         validateNamedAssignment(assignment);
-        if (selectedLayout == null || selectedLayout.size() != assignment.chamberCount()) {
+        // The sequential route presents one stage at a time on the open arena, so
+        // the layout is a route rather than one entry per room. The historical
+        // per-room layout stays valid for restored snapshots only.
+        if (selectedLayout == null || selectedLayout.isEmpty()) {
             throw new IllegalArgumentException("selected layout must match assigned rooms");
         }
         if (ownsNamed(eventId, generation)) {
@@ -105,7 +135,7 @@ public final class RealitySplitTrialController {
         }
         Map<Integer, NamedTrialState> initial = new LinkedHashMap<>();
         Map<Integer, Map<UUID, RealitySplitEchoDuelState.DuelRecord>> echoDuels = new LinkedHashMap<>();
-        for (int room = 0; room < selectedLayout.size(); room++) {
+        for (int room = 0; room < selectedLayout.size() && room < assignment.chamberCount(); room++) {
             Set<UUID> owners = assignment.playersIn(room);
             initial.put(room, new NamedTrialState(room, selectedLayout.get(room), Stage.ACTIVE,
                     owners, Map.of()));
@@ -407,7 +437,10 @@ public final class RealitySplitTrialController {
     private static void validateNamedAssignment(ChamberIsolationPolicy.Assignment assignment) {
         if (assignment == null || assignment.chamberByPlayer().isEmpty()
                 || assignment.chamberByPlayer().size() > 20
-                || assignment.chamberCount() != ChamberIsolationPolicy.chamberCount(
+                // One open arena is the sequential-route shape; the sector
+                // count only applies to the superseded per-room layout.
+                || assignment.chamberCount() != 1
+                && assignment.chamberCount() != ChamberIsolationPolicy.chamberCount(
                         assignment.chamberByPlayer().size())) {
             throw new IllegalArgumentException("invalid named Wave 7 room allocation");
         }
@@ -707,7 +740,9 @@ public final class RealitySplitTrialController {
                     || personalEchoDuels == null
                     || selectedLayout.stream().anyMatch(value -> value == null)
                     || new HashSet<>(selectedLayout).size() != selectedLayout.size()
-                    || trials.size() != selectedLayout.size()) {
+                    // trials is the physical room state; on the open-arena route it
+                    // holds the single active stage while the layout is the route.
+                    || trials.isEmpty() || trials.size() > selectedLayout.size()) {
                 throw new IllegalArgumentException("invalid named Wave 7 snapshot layout");
             }
             selectedLayout = List.copyOf(selectedLayout);
@@ -716,7 +751,7 @@ public final class RealitySplitTrialController {
             Set<UUID> allDuels = new HashSet<>();
             Set<UUID> allActors = new HashSet<>();
             Set<UUID> allOwners = new HashSet<>();
-            for (int room = 0; room < selectedLayout.size(); room++) {
+            for (int room = 0; room < selectedLayout.size() && room < trials.size(); room++) {
                 var state = trials.get(room);
                 if (state == null || state.chamber() != room || state.trial() != selectedLayout.get(room)) {
                     throw new IllegalArgumentException("named Wave 7 room does not match selected layout");
@@ -773,7 +808,11 @@ public final class RealitySplitTrialController {
                     throw new IllegalArgumentException("Echo duel state is attached to a non-Echo or unknown room");
                 }
             }
-            if (allOwners.size() > 20 || selectedLayout.size() != Math.min(4, allOwners.size())) {
+            // The layout may be a route (one open arena) or a historical per-room
+            // snapshot; both must cover the roster with at most four rooms.
+            if (allOwners.size() > 20
+                    || selectedLayout.size() != Math.min(4, allOwners.size())
+                    && validated.size() != 1) {
                 throw new IllegalArgumentException("named Wave 7 room count does not match roster");
             }
             if (allDuels.stream().anyMatch(allOwners::contains)

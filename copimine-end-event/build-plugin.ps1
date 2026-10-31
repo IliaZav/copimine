@@ -123,6 +123,12 @@ Remove-Item -LiteralPath $jar -Force -ErrorAction SilentlyContinue
 jar --create --file $jar --date=2020-01-01T00:00:00Z -C $classes .
 if ($LASTEXITCODE -ne 0) { throw "jar packaging failed for CopiMineEndEvent." }
 Copy-Item -LiteralPath $jar -Destination $serverJar -Force
+# The migration lock pins build/minecraft-26.3/plugins/jars, not the staging
+# copy. Leaving that stale is how the published digest silently drifted away
+# from the source tree on every change, so refresh it here in one step.
+$candidateJar = Join-Path $releaseRoot 'build\minecraft-26.3\plugins\jars\CopiMineEndEvent-26.3.jar'
+New-Item -ItemType Directory -Path (Split-Path -Parent $candidateJar) -Force | Out-Null
+Copy-Item -LiteralPath $jar -Destination $candidateJar -Force
 New-Item -ItemType Directory -Path $serverDataDir -Force | Out-Null
 $serverConfig = Join-Path $serverDataDir 'config.yml'
 if ($SyncServerConfig -or -not (Test-Path $serverConfig)) {

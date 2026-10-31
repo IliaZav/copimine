@@ -21658,17 +21658,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clearWave3GateAssignments();
         if (wave == 7) {
             namedWave7RuntimeRestorePending = false;
-            realitySplitChamberController.begin(generation,
+            // Wave 7 is sequential on one open arena: every admitted player
+            // shares a single chamber and fights each trial in turn. Building
+            // the usual per-chamber assignment here would split the party into
+            // 2-4 walled sectors and restore the forbidden parallel route.
+            realitySplitChamberController.beginOpenArena(generation,
                     new ArrayList<>(roster));
-            List<RealitySplitTrialController.NamedTrial> selectedLayout = namedWave7PreflightSelectedLayout;
-            if (selectedLayout.isEmpty()) {
-                realitySplitTrialController.beginNamed(UUID.fromString(eventId), generation,
-                        realitySplitChamberController.assignment(),
-                        java.util.concurrent.ThreadLocalRandom.current());
-            } else {
-                realitySplitTrialController.beginNamed(UUID.fromString(eventId), generation,
-                        realitySplitChamberController.assignment(), selectedLayout);
-            }
+            realitySplitTrialController.beginNamed(UUID.fromString(eventId), generation,
+                    realitySplitChamberController.assignment(),
+                    RealitySplitTrialController.sequentialRoute());
             namedWave7PreflightSelectedLayout = List.of();
             wave7RecoveryCheckpoint = Map.of();
             for (RealitySplitTrialController.NamedTrialState selected
@@ -21865,9 +21863,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         activeWave = 7;
         namedWave7InitialActorCreation = false;
         namedWave7RuntimeRestorePending = false;
-        realitySplitChamberController.begin(generation, new ArrayList<>(roster));
+        realitySplitChamberController.beginOpenArena(generation, new ArrayList<>(roster));
         realitySplitTrialController.beginNamed(eventUuid, generation,
-                realitySplitChamberController.assignment(), java.util.concurrent.ThreadLocalRandom.current());
+                realitySplitChamberController.assignment(), RealitySplitTrialController.sequentialRoute());
         wave7RecoveryCheckpoint = Map.of();
 
         if (!preflightNamedTrialActorAdapters()) {
@@ -22046,16 +22044,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean startNamedRealitySplitTrials(World world, Location core) {
-        for (RealitySplitTrialController.NamedTrialState trial
-                : realitySplitTrialController.namedSnapshot().trials().values()) {
-            if (trial.stage() != RealitySplitTrialController.Stage.COMPLETE
-                    && !namedRealitySplitTrialImplemented(trial.trial())) {
-                enterNamedRealitySplitRecovery("WAVE7_NAMED_ACTOR_UNIMPLEMENTED:" + trial.trial());
-                return false;
-            }
+        if (!namedRealitySplitTrialImplemented(RealitySplitTrialController.sequentialRoute().get(0))) {
+            enterNamedRealitySplitRecovery("WAVE7_NAMED_ACTOR_UNIMPLEMENTED:"
+                    + RealitySplitTrialController.sequentialRoute().get(0));
+            return false;
         }
+        // Sequential route: exactly one trial is presented at a time, in the
+        // contract order. Trials still ahead stay persisted but are not spawned,
+        // so the party never fights two minibosses at once.
         for (RealitySplitTrialController.NamedTrialState trial
-                : realitySplitTrialController.namedSnapshot().trials().values()) {
+                : presentableNamedRealitySplitTrials()) {
             if (trial.stage() == RealitySplitTrialController.Stage.COMPLETE) {
                 finishNamedRealitySplitTrial(trial.chamber(), "snapshot-recovery");
             } else if (!ensureNamedRealitySplitTrialRoom(world, core, trial)) {
@@ -22066,9 +22064,52 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         namedWave7InitialActorCreation = false;
         namedWave7RuntimeRestorePending = false;
         getLogger().info("END_RIFT_NAMED_WAVE7_TRIALS_READY event=" + eventId
-                + " generation=" + generation + " layout="
-                + realitySplitTrialController.namedSnapshot().selectedLayout());
+                + " generation=" + generation + " route="
+                + RealitySplitTrialController.sequentialRoute()
+                + " current=" + currentNamedRealitySplitTrial());
         return true;
+    }
+
+    /** Trials whose persisted stage is COMPLETE, in route order. */
+    private java.util.List<RealitySplitTrialController.NamedTrial> completedNamedRealitySplitTrials() {
+        java.util.List<RealitySplitTrialController.NamedTrial> completed = new java.util.ArrayList<>();
+        if (!realitySplitTrialController.ownsNamed(parseUuidOrNull(eventId), generation)) return completed;
+        for (RealitySplitTrialController.NamedTrialState trial
+                : realitySplitTrialController.namedSnapshot().trials().values()) {
+            if (trial.stage() == RealitySplitTrialController.Stage.COMPLETE) completed.add(trial.trial());
+        }
+        return completed;
+    }
+
+    /** The trial the sequential route is currently running, or null when done. */
+    private RealitySplitTrialController.NamedTrial currentNamedRealitySplitTrial() {
+        return RealitySplitTrialController.trialForStage(
+                me.copimine.endevent.domain.Wave7TrialRoutePolicy.successor(
+                        me.copimine.endevent.domain.Wave7TrialRoutePolicy.ORDER.stream()
+                                .filter(stage -> completedNamedRealitySplitTrials()
+                                        .contains(RealitySplitTrialController.trialForStage(stage)))
+                                .toList()));
+    }
+
+    /**
+     * Only the current trial of the sequential route may be spawned or updated.
+     *
+     * <p>Completed trials are excluded because their cleanup is handled
+     * separately, and trials still ahead are excluded so they cannot start.
+     * This is the single place that decides "which stage is live", so no caller
+     * can accidentally present two stages at once.</p>
+     */
+    private java.util.List<RealitySplitTrialController.NamedTrialState> presentableNamedRealitySplitTrials() {
+        if (!realitySplitTrialController.ownsNamed(parseUuidOrNull(eventId), generation)) {
+            return java.util.List.of();
+        }
+        RealitySplitTrialController.NamedTrial current = currentNamedRealitySplitTrial();
+        if (current == null) return java.util.List.of();
+        for (RealitySplitTrialController.NamedTrialState trial
+                : realitySplitTrialController.namedSnapshot().trials().values()) {
+            if (trial.trial() == current) return java.util.List.of(trial);
+        }
+        return java.util.List.of();
     }
 
     private void enterNamedRealitySplitRecovery(String reason) {
@@ -31113,7 +31154,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             Location namedCore = coreCombatAnchorLocation();
             World namedWorld = namedCore == null ? null : namedCore.getWorld();
             for (RealitySplitTrialController.NamedTrialState trial
-                    : realitySplitTrialController.namedSnapshot().trials().values()) {
+                    : presentableNamedRealitySplitTrials()) {
                 if (trial.stage() == RealitySplitTrialController.Stage.COMPLETE) continue;
                 if (!ensureNamedRealitySplitTrialRoom(namedWorld, namedCore, trial)) {
                     enterNamedRealitySplitRecovery("WAVE7_NAMED_ACTOR_MISSING_DURING_TICK:" + trial.trial());

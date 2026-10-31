@@ -16,10 +16,10 @@
 | Что | Значение |
 |---|---|
 | Корень приложения | `/opt/copimine-site` |
-| Код сайта | `/opt/copimine-site/backend` (22 файла `*.py`) |
+| Код сайта | `/opt/copimine-site/backend` (21 файл `*.py` в корне) |
 | Фронтенд | `/opt/copimine-site/frontend` — это `root` в nginx |
-| Собранный бандл | `/opt/copimine-site/frontend/assets/js/app-bundle.js`, sha256 `a4279e4b…65b7`, 1 171 118 байт |
-| `index.html` | `/opt/copimine-site/frontend/index.html`, sha256 `fe15b32e…f12d` — совпадает с `frontend/index.html` в репозитории |
+| Собранный бандл | `/opt/copimine-site/frontend/assets/js/app-bundle.js`, sha256 `ea60beda…048e`, 1 176 131 байт |
+| `index.html` | `/opt/copimine-site/frontend/index.html`, sha256 `d772da35…1be8` — совпадает с `frontend/index.html` в репозитории |
 | Окружение | `/etc/copimine-site.env` (шаблон `.env.example` не используется) |
 | Backend | `uvicorn backend.app:create_app --factory --host 127.0.0.1 --port 8001` |
 | Worker | `python -m backend.worker` |
@@ -164,7 +164,7 @@ CI: `.github/workflows/site.yml`. Прогоны на текущем HEAD вет
 
 ## 12. Проверка целостности доставленного
 
-- 22 файла `backend/*.py` на проде побайтово совпадают с репозиторием (sha256 сверены через `sudo`).
+- 21 файл `backend/*.py` на проде побайтово совпадает с репозиторием (sha256 сверены через `sudo`, расхождений нет).
 - `frontend/assets/js/app-bundle.js`: локально и на проде `ea60beda…048e`, 1 176 131 байт — совпадает.
 - `frontend/index.html`: локально и на проде `d772da35…1be8` — совпадает, версия бандла в нём `?v=production-20261031-serveractions1` (это и сбрасывает кэш у браузера).
 - Бандл собран из 50 исходников, `tests/test_bundle_integrity.py` падает, если бандл отстал от источников.

@@ -83,6 +83,7 @@ def public_user(row):
         "preferences": json.loads(row["preferences"]),
         # Лицензионный ник: источник скина, которого у offline-сервера нет.
         "premiumName": (row["premium_name"] if "premium_name" in row.keys() else ""),
+        "skinSource": (row["skin_source"] if "skin_source" in row.keys() else ""),
     }
 
 

@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import csv
 from pathlib import Path
@@ -437,6 +438,22 @@ def _skin_key(value):
     return key if len(key) == 32 and all(c in "0123456789abcdef" for c in key) else ""
 
 
+def _texture_bytes(value):
+    """Привести текстуру из базы к байтам.
+
+    Колонка хранится как bytea, но psycopg отдаёт её строкой '\x89504e...':
+    без этой конвертации картинка превращается в мусор.
+    """
+    if isinstance(value, (bytes, bytearray)):
+        return bytes(value)
+    if isinstance(value, str) and value.startswith("\\x"):
+        try:
+            return bytes.fromhex(value[2:])
+        except ValueError:
+            return b""
+    return b""
+
+
 def _rate_skin(request, key):
     """Мягкий лимит на поиск скина во внешнем сервисе.
 
@@ -657,16 +674,72 @@ def skin_signing_key(db):
     return SKIN_SIGN_KEY
 
 
-MOJANG_TIMEOUT = 8.0
+SKIN_TIMEOUT = 8.0
+
+# Откуда брать скин. Лицензии Mojang у игроков чаще всего нет, зато есть
+# Ely.by или TLauncher — они отдают текстуру по нику и не требуют аккаунта.
+SKIN_SOURCES = [
+    ("ely", "Ely.by"),
+    ("mojang", "Mojang"),
+    ("tlauncher", "TLauncher"),
+]
 
 
-async def _mojang_profile(name):
-    """Профиль Mojang по нику: UUID, подписанная текстура и модель рук."""
-    if httpx is None or not name:
+async def _http_json(url):
+    if httpx is None:
         return None
-    timeout = httpx.Timeout(MOJANG_TIMEOUT, connect=4.0)
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-        try:
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(SKIN_TIMEOUT, connect=4.0),
+                                     follow_redirects=True) as client:
+            response = await client.get(url)
+            if response.status_code != 200 or not response.content:
+                return None
+            return response.json()
+    except Exception:  # noqa: BLE001 — чужая сеть не должна ронять страницу
+        return None
+
+
+def _skin_from_textures(payload):
+    """Разобрать ответ в формате {SKIN:{url, metadata}} — так отвечают все три."""
+    if not isinstance(payload, dict):
+        return None
+    skin = payload.get("SKIN") or payload.get("skin")
+    if not isinstance(skin, dict):
+        return None
+    url = skin.get("url")
+    if not url:
+        return None
+    model = ((skin.get("metadata") or {}).get("model") or "classic").lower()
+    return {"url": url, "slim": model == "slim"}
+
+
+async def _lookup_ely(name):
+    """Ely.by: текстура по нику, без своего аккаунта."""
+    payload = await _http_json(
+        f"https://skinsystem.ely.by/textures/{quote(name)}"
+    )
+    return _skin_from_textures(payload)
+
+
+async def _lookup_tlauncher(name):
+    """TLauncher отдаёт адрес картинки по нику."""
+    payload = await _http_json(
+        f"https://auth.tlauncher.org/skin/profile/texture/login/{quote(name)}"
+    )
+    found = _skin_from_textures(payload)
+    if not found:
+        return None
+    found["url"] = found["url"].replace("http://", "https://", 1)
+    return found
+
+
+async def _lookup_mojang(name):
+    """Mojang: текстура лежит в подписанном свойстве профиля."""
+    if httpx is None:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(SKIN_TIMEOUT, connect=4.0),
+                                     follow_redirects=True) as client:
             found = await client.get(
                 f"https://api.mojang.com/users/profiles/minecraft/{quote(name)}"
             )
@@ -681,114 +754,83 @@ async def _mojang_profile(name):
             if full.status_code != 200:
                 return None
             data = full.json()
-        except Exception:  # noqa: BLE001 — чужая сеть не должна ронять страницу
-            return None
-    texture = signature = None
-    for prop in data.get("properties") or []:
-        if prop.get("name") == "textures":
-            texture, signature = prop.get("value"), prop.get("signature")
-    slim = False
-    if texture:
-        try:
-            payload = json.loads(base64.b64decode(texture))
-            meta = payload.get("textures", {}).get("SKIN", {}).get("metadata") or {}
-            slim = meta.get("model") == "slim"
-        except Exception:  # noqa: BLE001
-            slim = False
-    return {"uuid": data.get("id", uuid_hex), "name": data.get("name", name),
-            "texture": texture, "signature": signature, "slim": slim}
-
-
-async def _texture_bytes(texture_value):
-    """Скачать саму картинку скина по адресу из подписанной текстуры."""
-    if httpx is None or not texture_value:
-        return None
-    try:
-        payload = json.loads(base64.b64decode(texture_value))
-        url = payload["textures"]["SKIN"]["url"]
     except Exception:  # noqa: BLE001
         return None
+    for prop in data.get("properties") or []:
+        if prop.get("name") != "textures":
+            continue
+        try:
+            payload = json.loads(base64.b64decode(prop.get("value") or ""))
+        except Exception:  # noqa: BLE001
+            continue
+        skin = (payload.get("textures") or {}).get("SKIN")
+        if not skin or not skin.get("url"):
+            continue
+        model = ((skin.get("metadata") or {}).get("model") or "classic").lower()
+        return {"url": skin["url"], "slim": model == "slim"}
+    return None
+
+
+LOOKUPS = {"ely": _lookup_ely, "mojang": _lookup_mojang, "tlauncher": _lookup_tlauncher}
+
+
+async def _find_skin(name, source=None):
+    """Найти скин по нику. Без указания источника проверяем все по порядку.
+
+    Порядок не случайный: Ely.by первым, потому что лицензии Mojang у игроков
+    чаще нет, а сменить скин там можно бесплатно.
+    """
+    order = [source] if source in LOOKUPS else [key for key, _ in SKIN_SOURCES]
+    async def bounded(key):
+        try:
+            return key, await asyncio.wait_for(LOOKUPS[key](name), timeout=SKIN_TIMEOUT)
+        except Exception:  # noqa: BLE001
+            return key, None
+    for key, found in await asyncio.gather(*(bounded(k) for k in order)):
+        if found:
+            return key, found
+    return None, None
+
+
+async def _download_texture(url):
+    """Скачать саму картинку скина."""
     body, _ = await _skin_fetch([url])
     return body
 
 
-@router.post("/api/v6/account/premium")
-async def set_premium_name(request: Request):
-    """Указать лицензионный ник: сайт возьмёт оттуда скин и отдаст его в игру.
-
-    Сервер работает без лицензии, поэтому Minecraft не присылает текстуру сам.
-    Лицензионный ник решает это: скин берётся у Mojang, копируется в аккаунт
-    сайта и дальше уже не зависит от того, займёт ли игрок этот ник в игре.
-    """
-    user = current_user(request)
-    if not user["minecraft_uuid"]:
-        fail(409, "not_linked", "Сначала привяжите аккаунт Minecraft.")
-    data = await request.json()
-    name = str(data.get("premiumName") or "").strip()
-    if not name:
-        with request.app.state.database.transaction() as db:
-            db.execute("UPDATE cm_site_users SET premium_name='', updated_s=%s WHERE id=%s",
-                       (int(time.time()), user["id"]))
-        return {"ok": True, "premiumName": "", "skin": None}
-    profile = await _mojang_profile(name)
-    if not profile or not profile["texture"]:
-        fail(404, "premium_not_found", "Minecraft-аккаунт с таким ником не найден или у него нет скина.")
-    raw = await _texture_bytes(profile["texture"])
-    if not raw:
-        fail(502, "premium_unavailable", "Mojang не отдал файл скина. Попробуйте позже.")
-    _validate_skin(raw)
-    now = int(time.time())
-    uuid_ = str(user["minecraft_uuid"])
-    with request.app.state.database.transaction() as db:
-        db.execute("UPDATE cm_site_users SET premium_name=%s, updated_s=%s WHERE id=%s",
-                   (profile["name"], now, user["id"]))
-        db.execute(
-            "INSERT INTO cm_site_skins(player_uuid,texture,slim,bytes,sha256,uploaded_s,updated_s,actor_id)"
-            " VALUES(%s,%s,%s,%s,%s,%s,%s,%s)"
-            " ON CONFLICT(player_uuid) DO UPDATE SET texture=excluded.texture,slim=excluded.slim,"
-            " bytes=excluded.bytes,sha256=excluded.sha256,updated_s=excluded.updated_s,"
-            " actor_id=excluded.actor_id",
-            (uuid_, raw, 1 if profile["slim"] else 0, len(raw),
-             hashlib.sha256(raw).hexdigest(), now, now, user["id"]),
-        )
-    key = uuid_.replace("-", "").lower()
-    for cached in list(SKIN_CACHE):
-        if cached.endswith(key):
-            SKIN_CACHE.pop(cached, None)
-    request.app.state.database.audit(user, "account.premium", profile["name"],
-                                     details={"premiumName": profile["name"]})
-    return {"ok": True, "premiumName": profile["name"], "skin": {
-        "uuid": uuid_,
-        "texture": f"/api/v6/skin/{key}/texture?v={now}",
-        "avatar": f"/api/v6/skin/{key}/avatar?v={now}",
-        "body": f"/api/v6/skin/{key}/body?v={now}",
-        "source": "premium",
-    }}
+async def detect_skin_source(name):
+    """Проверить, где у игрока есть скин: показывает это в кабинете."""
+    found = []
+    for key, title in SKIN_SOURCES:
+        try:
+            result = await asyncio.wait_for(LOOKUPS[key](name), timeout=SKIN_TIMEOUT)
+        except Exception:  # noqa: BLE001
+            result = None
+        if result:
+            found.append({"id": key, "title": title})
+    return found
 
 
-SKIN_REFRESH_AFTER = 300
+async def refresh_skin_from_source(db, user_row, force=False):
+    """Обновить скин с источника, если ник сменился или скин устарел.
 
-
-async def refresh_premium_skin(db, user_row, force=False):
-    """Перечитать скин у Mojang, если лицензионный ник сменился.
-
-    Ник меняют в лаунчере, а не здесь, поэтому сайт не узнает об этом сам.
-    Пока игрок заходит, сравниваем сохранённый ник с текущим и, если он другой
-    или скин старый, забираем свежую текстуру. Такой опрос идёт не чаще, чем
-    раз в SKIN_REFRESH_AFTER секунд, чтобы не дёргать Mojang на каждый вход.
+    Ник и скин меняют в лаунчере или на Ely.by, а не здесь, поэтому сайт
+    проверяет источник сам. Опрос идёт не чаще SKIN_REFRESH_AFTER секунд,
+    чтобы не дёргать чужой сервис на каждый вход.
     """
     uuid_ = str(user_row["minecraft_uuid"] or "")
-    premium = str(user_row["premium_name"] or "")
-    if not uuid_ or not premium:
+    nick = str(user_row.get("premium_name") or user_row["minecraft_name"] or "")
+    if not uuid_ or not nick:
         return None
     now = int(time.time())
     stored = db.execute("SELECT updated_s FROM cm_site_skins WHERE player_uuid=%s", (uuid_,)).fetchone()
     if stored and not force and now - int(stored["updated_s"]) < SKIN_REFRESH_AFTER:
         return None
-    profile = await _mojang_profile(premium)
-    if not profile or not profile["texture"]:
+    source = str(user_row.get("skin_source") or "") or None
+    key, found = await _find_skin(nick, source)
+    if not found:
         return None
-    raw = await _texture_bytes(profile["texture"])
+    raw = await _download_texture(found["url"])
     if not raw:
         return None
     try:
@@ -800,14 +842,61 @@ async def refresh_premium_skin(db, user_row, force=False):
         " VALUES(%s,%s,%s,%s,%s,%s,%s,%s)"
         " ON CONFLICT(player_uuid) DO UPDATE SET texture=excluded.texture,slim=excluded.slim,"
         " bytes=excluded.bytes,sha256=excluded.sha256,updated_s=excluded.updated_s",
-        (uuid_, raw, 1 if profile["slim"] else 0, len(raw),
-         hashlib.sha256(raw).hexdigest(), now, now, "mojang"),
+        (uuid_, raw, 1 if found["slim"] else 0, len(raw),
+         hashlib.sha256(raw).hexdigest(), now, now, key),
     )
-    key = uuid_.replace("-", "").lower()
+    db.execute("UPDATE cm_site_users SET skin_source=%s, updated_s=%s WHERE minecraft_uuid=%s",
+               (key, now, uuid_))
+    cache_key = uuid_.replace("-", "").lower()
     for cached in list(SKIN_CACHE):
-        if cached.endswith(key):
+        if cached.endswith(cache_key):
             SKIN_CACHE.pop(cached, None)
-    return {"changed": True, "name": profile["name"]}
+    return {"changed": True, "source": key}
+
+
+@router.get("/api/v6/account/skin-source")
+async def my_skin_source(request: Request):
+    """Где у игрока нашёлся скин: Ely.by, Mojang или TLauncher."""
+    user = current_user(request)
+    nick = user.get("premium_name") or user["minecraft_name"]
+    if not nick:
+        fail(409, "not_linked", "Сначала привяжите аккаунт Minecraft.")
+    found = await detect_skin_source(nick)
+    with request.app.state.database.transaction() as db:
+        row = db.execute("SELECT skin_source FROM cm_site_users WHERE id=%s", (user["id"],)).fetchone()
+    return {"name": nick, "available": found,
+            "current": (row["skin_source"] if row else "") or "",
+            "connected": bool(found)}
+
+
+@router.post("/api/v6/account/skin-source")
+async def refresh_my_skin(request: Request):
+    """Перечитать скин с источника прямо сейчас, не дожидаясь входа в игру."""
+    user = current_user(request)
+    if not user["minecraft_uuid"]:
+        fail(409, "not_linked", "Сначала привяжите аккаунт Minecraft.")
+    data = await request.json()
+    source = str(data.get("source") or "").strip() or None
+    if source and source not in LOOKUPS:
+        fail(400, "invalid_source", "Неизвестный источник скина.")
+    nick = data.get("name") or user.get("premium_name") or user["minecraft_name"]
+    now = int(time.time())
+    with request.app.state.database.transaction() as db:
+        db.execute("UPDATE cm_site_users SET premium_name=%s, updated_s=%s WHERE id=%s",
+                   (str(nick), now, user["id"]))
+        if source:
+            db.execute("UPDATE cm_site_users SET skin_source=%s WHERE id=%s", (source, user["id"]))
+        row = db.execute("SELECT * FROM cm_site_users WHERE id=%s", (user["id"],)).fetchone()
+        await refresh_skin_from_source(db, row, force=True)
+    key = str(user["minecraft_uuid"]).replace("-", "").lower()
+    stamp = f"?v={now}"
+    return {"ok": True, "skin": {
+        "uuid": user["minecraft_uuid"],
+        "texture": f"/api/v6/skin/{key}/texture{stamp}",
+        "avatar": f"/api/v6/skin/{key}/avatar{stamp}",
+        "body": f"/api/v6/skin/{key}/body{stamp}",
+        "source": "external",
+    }}
 
 
 @router.get("/api/v6/skin/{uuid}/profile")
@@ -823,15 +912,40 @@ async def skin_profile(request: Request, uuid: str):
         fail(404, "no_skin", "Скин не найден.")
     _rate_skin(request, "pr:" + key)
     uuid_full = key[:8] + "-" + key[8:12] + "-" + key[12:16] + "-" + key[16:20] + "-" + key[20:]
+    game_name = (request.query_params.get("name") or "").strip()
     with request.app.state.database.transaction() as db:
         user_row = db.execute(
-            "SELECT minecraft_uuid, premium_name FROM cm_site_users WHERE minecraft_uuid=%s",
+            "SELECT minecraft_uuid, minecraft_name, premium_name, skin_source"
+            " FROM cm_site_users WHERE minecraft_uuid=%s",
             (uuid_full,),
         ).fetchone()
-        if user_row and user_row["premium_name"]:
+        if not user_row and game_name:
+            # Игрок ещё не привязал аккаунт, но зашёл в игру: запоминаем ник,
+            # чтобы скин с Ely.by или TLauncher подтянулся и в кабинет.
+            db.execute(
+                "INSERT INTO cm_site_users(id,name,name_norm,display_name,password_hash,"
+                "minecraft_uuid,minecraft_name,created_s,updated_s)"
+                " VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(name_norm) DO NOTHING",
+                ("mc:" + key, game_name, "mc:" + game_name.lower(), game_name,
+                 "!game-only", uuid_full, game_name, int(time.time()), int(time.time())),
+            )
+            user_row = db.execute(
+                "SELECT minecraft_uuid, minecraft_name, premium_name, skin_source"
+                " FROM cm_site_users WHERE minecraft_uuid=%s",
+                (uuid_full,),
+            ).fetchone()
+        if user_row and not user_row["premium_name"] and user_row["minecraft_name"]:
+            db.execute("UPDATE cm_site_users SET premium_name=%s WHERE minecraft_uuid=%s",
+                       (user_row["minecraft_name"], uuid_full))
+            user_row = db.execute(
+                "SELECT minecraft_uuid, minecraft_name, premium_name, skin_source"
+                " FROM cm_site_users WHERE minecraft_uuid=%s",
+                (uuid_full,),
+            ).fetchone()
+        if user_row:
             try:
-                await refresh_premium_skin(db, user_row)
-            except Exception:  # noqa: BLE001 — недоступный Mojang не должен ломать вход
+                await refresh_skin_from_source(db, dict(user_row))
+            except Exception:  # noqa: BLE001 — недоступный источник не должен ломать вход
                 pass
         row = db.execute("SELECT texture, slim, updated_s FROM cm_site_skins WHERE player_uuid=%s",
                          (uuid_full,)).fetchone()
@@ -869,7 +983,7 @@ async def skin_texture(request: Request, uuid: str):
         row = db.execute("SELECT texture, slim FROM cm_site_skins WHERE player_uuid=%s",
                          (f"{key[:8]}-{key[8:12]}-{key[12:16]}-{key[16:20]}-{key[20:]}",)).fetchone()
     if row:
-        body, mime = row["texture"], "image/png"
+        body, mime = _texture_bytes(row["texture"]), "image/png"
     else:
         body, mime = await _skin_fetch([
             f"https://mc-heads.net/skin/{key}",
@@ -897,7 +1011,7 @@ async def skin_avatar(request: Request, uuid: str):
     with request.app.state.database.transaction() as db:
         row = db.execute("SELECT texture FROM cm_site_skins WHERE player_uuid=%s", (uuid_full,)).fetchone()
     # Своя текстура важнее любых сервисов: голову рисуем из неё сами.
-    texture = row["texture"] if row else None
+    texture = _texture_bytes(row["texture"]) if row else None
     if not texture:
         texture, _ = await _skin_fetch([
             f"https://mc-heads.net/skin/{key}",

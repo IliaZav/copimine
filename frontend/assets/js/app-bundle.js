@@ -5219,26 +5219,26 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   };
   function skinSettings() {
     const p = M.me();
-    const premium = p.premiumName || '';
+    const nick = p.premiumName || p.minecraftName || '';
     const source = p.skin?.source;
-    const label = source === 'premium' ? 'Скин с лицензионного аккаунта'
-      : source === 'upload' || source === 'uploaded' ? 'Загруженный скин' : 'Стандартный скин';
+    const titles = { ely: 'Ely.by', mojang: 'Mojang', tlauncher: 'TLauncher', uploaded: 'загруженный', upload: 'загруженный' };
+    const label = source && titles[source] ? 'Скин с ' + titles[source] : 'Стандартный скин';
+    const connected = p.skinSource ? titles[p.skinSource] || p.skinSource : '';
     return `<section class="v7-settings-section cm72-skin-settings" id="cm72-skin-settings">
       <div class="cm72-skin-settings-preview">${skinStage(p)}</div>
       <div class="cm72-skin-settings-copy">
         <h2>Твой скин</h2>
         <p>Он отображается в личном кабинете, в списке игроков и в игре.</p>
-        <span class="cm72-skin-source">${label}</span>
-        <div class="cm72-upload-row">
-          <label class="btn primary" tabindex="0" role="button" id="cm72-upload-trigger">${icon('upload')}Загрузить PNG<input type="file" accept="image/png" id="cm72-skin-file" hidden></label>
-          ${(source === 'upload' || source === 'uploaded' || source === 'premium') ? M.btn('Сбросить', 'cm72-skin-default', '', 'ghost') : ''}
-        </div>
+        <span class="cm72-skin-source">${label}${connected ? ' · подключено: ' + connected : ''}</span>
         <label class="field">
-          Лицензионный ник
-          <input id="cm72-premium-name" value="${E(premium)}" placeholder="Как в лаунчере" autocomplete="off">
+          Ник в лаунчере
+          <input id="cm72-premium-name" value="${E(nick)}" placeholder="Тот, под которым заходишь в игру" autocomplete="off">
         </label>
-        <div class="cm72-upload-row"><button type="button" class="btn ghost" data-action="cm72-skin-premium">Подтянуть скин с лицензии</button></div>
-        <small>Есть лицензия? Укажи ник один раз — скин подтянется с Mojang, а при следующем входе в игру сайт сам проверит, не сменил ли ты ник или скин в лаунчере. Нет лицензии — загрузи PNG или выбери готовый скин в карточке игрока.</small>
+        <div class="cm72-upload-row">
+          <button type="button" class="btn primary" data-action="cm72-skin-check">Проверить и подтянуть</button>
+        </div>
+        <p class="hint" id="cm72-skin-found"></p>
+        <small>Сайт сам ищет скин на Ely.by, Mojang и в TLauncher по твоему нику. Зайдёшь в игру — подтянется автоматически, ничего делать не нужно.</small>
         <p class="form-error" id="cm72-skin-error" role="alert"></p>
       </div>
     </section>`;
@@ -5290,19 +5290,20 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     if (X && X.live) { try { await X.request('/account/skin', { method: 'DELETE' }); } catch (err) { M.toast(err.message, true); return; } }
     saveSkin(); M.render(); M.toast('Стандартный скин восстановлен.');
   };
-  H['cm72-skin-premium'] = async b => {
+  H['cm72-skin-check'] = async b => {
     const name = (el('cm72-premium-name')?.value || '').trim();
-    const error = el('cm72-skin-error');
+    const error = el('cm72-skin-error'), found = el('cm72-skin-found');
     if (error) error.textContent = '';
-    if (!name) { if (error) error.textContent = 'Укажи лицензионный ник.'; return; }
+    if (found) found.textContent = '';
+    if (!name) { if (error) error.textContent = 'Укажи ник, под которым заходишь в игру.'; return; }
     b.disabled = true;
     try {
-      const saved = await X.request('/account/premium', { method: 'POST', body: { premiumName: name } });
+      const sources = await X.request('/account/skin-source', { method: 'POST', body: { name } });
       const me = M.me();
-      me.premiumName = saved.premiumName;
-      if (saved.skin) { me.skin = Object.assign({}, saved.skin, { source: 'premium' }); saveSkin(); }
-      M.render();
-      M.toast(saved.premiumName ? 'Скин взят с лицензии ' + saved.premiumName + '.' : 'Скин сброшен.');
+      me.premiumName = name;
+      if (sources.skin) me.skin = Object.assign({}, sources.skin, { source: 'external' });
+      saveSkin(); M.render();
+      M.toast('Скин подтянут.');
     } catch (err) {
       if (error) error.textContent = err.message; else M.toast(err.message, true);
     } finally { b.disabled = false; }

@@ -142,16 +142,26 @@ def test_profile_for_unknown_account_is_empty(client):
     assert data["texture"] is None
 
 
-def test_premium_name_requires_a_linked_account(client):
+def test_skin_source_requires_a_linked_account(client):
     """Без привязки игры брать неоткуда: скин привязан к игровому UUID."""
     session = login(client)
     response = client.post(
-        "/api/v6/account/premium",
+        "/api/v6/account/skin-source",
         headers=headers(session),
-        json={"premiumName": "Notch"},
+        json={"name": "Notch"},
     )
     assert response.status_code == 409
     assert "not_linked" in response.text
+
+
+def test_unknown_source_is_rejected(client):
+    session = login(client)
+    response = client.post(
+        "/api/v6/account/skin-source",
+        headers=headers(session),
+        json={"name": "Notch", "source": "supersteve"},
+    )
+    assert response.status_code in (400, 409)
 
 
 def test_public_user_carries_premium_name(client):

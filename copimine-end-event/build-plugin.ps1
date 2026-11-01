@@ -161,6 +161,11 @@ if ($env:JAVA_HOME) {
 }
 & $jarCommand --create --file $jar --date=2020-01-01T00:00:00Z -C $classes .
 if ($LASTEXITCODE -ne 0) { throw "jar packaging failed for CopiMineEndEvent." }
+# Provenance of the toolchain that produced the bytes, so a digest mismatch can
+# be traced to the packer instead of guessed at.
+$jarVersion = & $jarCommand --version 2>&1
+Write-Host ("Packaged with jar: {0} ({1})" -f $jarCommand, ($jarVersion -join ' '))
+Write-Host ("Compiled with javac: {0}" -f $javacCommand)
 Copy-Item -LiteralPath $jar -Destination $serverJar -Force
 # The migration lock pins build/minecraft-26.3/plugins/jars, not the staging
 # copy. Leaving that stale is how the published digest silently drifted away

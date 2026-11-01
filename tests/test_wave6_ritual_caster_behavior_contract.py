@@ -153,6 +153,28 @@ def test_guard_melee_and_cast_share_composed_controller_ownership() -> None:
     assert "guard.setAI(true)" in guard_post
 
 
+def test_wave6_capture_commits_only_after_the_prisoner_teleport_succeeds() -> None:
+    """P0: a rejected placement must not leave a committed capture behind."""
+
+    root = read(SRC / "CopiMineEndEvent.java")
+    attempt = method(root, "private void attemptRitualPrisonerCapture(")
+
+    # The transaction order is teleport first, commit second. Committing first
+    # used to strand the event with a captured prisoner standing on the floor.
+    teleport = attempt.index("boolean placed = teleportRitualPrisoner(")
+    placement_check = attempt.index(
+        "if (placement != RitualPrisonerPlacementPolicy.Outcome.PLACED) {")
+    commit = attempt.index("ritualSphereState = RitualSphereEncounterPolicy.capture(")
+    assert teleport < placement_check, "the teleport must run before its outcome is read"
+    assert placement_check < commit, "the capture must not commit before the placement is accepted"
+
+    # The failure path cannot restore a value it never changed, so it restores
+    # around the attempt instead of assigning the sphere state back.
+    failure = attempt[placement_check:commit]
+    assert "ritualPrisonerAnchor = previousAnchor;" in failure
+    assert "ritualSphereState = previousState;" not in failure
+
+
 def test_wave6_pre_capture_lock_is_rechecked_inside_the_health_transaction() -> None:
     """Listener registration order must not open pre-capture caster damage."""
 

@@ -26674,22 +26674,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             ritualSphereState = RitualSphereEncounterPolicy.waiting(
                     generation, waveScalePlayers());
         }
-        // Commit the capture only after the runtime accepted the placement inside
-        // the shell. A rejected teleport used to leave the event half-started with
-        // a captured prisoner still standing on the arena floor.
+        // W6 capture is a transaction whose first step is the teleport: nothing
+        // is committed to the encounter state until teleportRitualPrisoner has
+        // actually succeeded. Committing first used to leave the event holding a
+        // capture for a prisoner still standing on the arena floor whenever the
+        // placement was rejected.
         RitualSphereEncounterPolicy.State previousState = ritualSphereState;
-        ritualSphereState = RitualSphereEncounterPolicy.capture(previousState, captured);
+        Location previousAnchor = ritualPrisonerAnchor;
+        long previousBeamRefresh = ritualNextBeamRefreshMillis;
+        long previousAbilityMillis = ritualNextAbilityMillis;
         ritualPrisonerAnchor = ritualPrisonerLocation(core);
-        ritualNextBeamRefreshMillis = 0L;
-        ritualNextAbilityMillis = now + 2_000L;
         tagRitualPrisoner(prisoner);
         boolean placed = teleportRitualPrisoner(prisoner, ritualPrisonerAnchor);
         ritualPrisonerPlacementFailures = placed ? 0 : ritualPrisonerPlacementFailures + 1;
         RitualPrisonerPlacementPolicy.Outcome placement =
                 RitualPrisonerPlacementPolicy.afterAttempt(placed, ritualPrisonerPlacementFailures);
         if (placement != RitualPrisonerPlacementPolicy.Outcome.PLACED) {
-            ritualSphereState = previousState;
-            ritualPrisonerAnchor = null;
+            // Nothing was committed yet, so undo only what this attempt touched.
+            ritualPrisonerAnchor = previousAnchor;
+            ritualNextBeamRefreshMillis = previousBeamRefresh;
+            ritualNextAbilityMillis = previousAbilityMillis;
             releaseRitualPrisonerControl(prisoner);
             if (placement == RitualPrisonerPlacementPolicy.Outcome.ABORT) {
                 ritualPrisonerPlacementFailures = 0;
@@ -26704,6 +26708,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             return;
         }
+        // The placement is confirmed, so the capture is committed from here on.
+        ritualSphereState = RitualSphereEncounterPolicy.capture(previousState, captured);
+        ritualNextBeamRefreshMillis = 0L;
+        ritualNextAbilityMillis = now + 2_000L;
         if (isOfficialCurrentAttempt()) {
             EncounterContext context = currentEncounterContext();
             if (context == null

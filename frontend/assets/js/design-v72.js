@@ -203,7 +203,7 @@
   R.account = function (tab) {
     restoreSkin(); let html = previousAccount(tab);
     if (!M.me()) return html;
-    html = html.replace(/<img class="v71-account-skin"[^>]+>/, `<div class="cm72-account-avatar">${skinStage(M.me())}<a href="#settings/profile?skin=1">Изменить скин ${icon('arrow-up-right')}</a></div>`);
+    html = html.replace(/<img class="v71-account-skin"[^>]+>/, `<div class="cm72-account-avatar">${skinStage(M.me())}</div>`);
     html = html.replace(/src="[^\"]*assets\/img\/world.webp"/, `src="${asset(photo)}"`);
     // The full tab row already lists these destinations; avoid repeating it in the aside.
     const t = document.createElement('template'); t.innerHTML = html;

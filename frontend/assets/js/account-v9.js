@@ -235,7 +235,17 @@ async function api(path, body, method) {
 
   R.account = tab => {
     Q.hint = false;
-    if (tab === 'link' && M.me()) return A.heading('Minecraft', 'Привяжи игровой аккаунт по коду из игры.', M.link('В кабинет', '#account', 'arrow-left', 'ghost')) + M.accountTabs('link');
+    if (tab === 'link' && M.me()) {
+      const user = M.me();
+      const linked = !!user.gameLinkVerified;
+      const body = linked
+        ? '<section class="v7-settings-section"><h2>Аккаунт привязан</h2><p class="muted">Игровой профиль ' + E(user.minecraftName || '') + ' связан с этим аккаунтом. Скин и покупки подтягиваются автоматически.</p><div class="actions mt">' + M.link('Настройки скина', '#settings/profile', 'settings', 'ghost') + '</div></section>'
+        : '<section class="v7-settings-section"><h2>Привязка аккаунта</h2><p class="muted">Зайди на сервер copimine.ru, выполни <code>/link</code> и введи ник здесь — код придёт личным сообщением в игре.</p>'
+          + '<form data-form="production-mc-code"><label class="field">Ник в Minecraft<input name="name" type="text" required pattern="[A-Za-z0-9_]{3,16}" autocomplete="off" placeholder="Твой ник"></label><div class="actions mt">' + M.btn('Получить код в игре', 'v7-game-link-submit', 'arrow-right', 'primary') + '</div></form>'
+          + '<form data-form="production-mc-confirm" class="mt"><label class="field">Код из игры<input name="code" type="text" required minlength="6" maxlength="12" autocomplete="one-time-code" placeholder="000000"></label><div class="actions mt">' + M.btn('Подтвердить', 'v7-game-link-confirm', 'check', 'ghost') + '</div></form>'
+          + '<p class="hint" data-link-status></p></section>';
+      return A.heading('Minecraft', 'Связь игрового профиля с сайтом.', M.link('В кабинет', '#account', 'arrow-left', 'ghost')) + M.accountTabs('link') + body;
+    }
     if (tab !== 'support' || !M.me()) return oldAccount(tab);
     const user = M.me();
     const tickets = (state().tickets || []).filter(ticket => ticket.playerId === user.id || ticket.player === user.name);

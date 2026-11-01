@@ -50,7 +50,9 @@ R.home=()=>`<section class="hero v71-hero"><img class="hero-photo" src="${M.asse
 
 
 const inheritedAccount=R.account;
-const accountNav=[['overview','Обзор','user'],['link','Minecraft','gamepad'],['transfers','Переводы АР','transfer'],['orders','Покупки','bag'],['payments','Донаты','heart'],['elections','Выборы','vote'],['treasury','Казна','bank'],['support','Обращения','chat']];
+// Вкладок в кабинете много не нужно: всё про деньги и покупки живёт в «Кошельке»,
+// Minecraft переехал в настройки. Осталось пять осмысленных пунктов.
+const accountNav=[['overview','Обзор','user'],['wallet','Кошелёк','transfer'],['payments','Донаты','heart'],['elections','Выборы','vote'],['treasury','Казна','bank'],['support','Обращения','chat']];
 accountTabs=tab=>A.tabs('account',accountNav,tab);M.accountTabs=accountTabs;
 A.nudge=()=>Q.hint?`<div class="v7-email-nudge"><div class="v7-connection-icon">${icon('mail')}</div><div><strong>Добавь почту на всякий случай</strong><p>Ещё один способ вернуть доступ, если с входом через VK возникнут проблемы.</p></div>${M.link('Привязать почту','#settings/connections','arrow-right','small')}${M.iconBtn('x','Закрыть','v7-dismiss-hint')}</div>`:'';
 function profileSummary(){const p=M.me(),orders=s().orders.filter(x=>x.playerId===p.id||x.player===p.name),wallet=A.wallet,balance=wallet?.balance??p.AR,linked=p.gameLinkVerified||p.linked;
@@ -64,7 +66,8 @@ function profileSummary(){const p=M.me(),orders=s().orders.filter(x=>x.playerId=
 R.account=(tab='overview')=>{if(tab==='donations')tab='payments';
  if(!M.me())return R.auth('login');
  if(['','overview','profile','inventory','balance'].includes(tab))return profileSummary();
- if(['transfers','transfer','bank','history'].includes(tab))return A.transferPage();
+ // «Кошелёк» — переводы, покупки и траты на одном экране.
+ if(['transfers','transfer','bank','history','wallet'].includes(tab))return A.transferPage();
  const label=accountNav.find(x=>x[0]===tab)?.[1]||'Личный кабинет';
  return A.heading(label,'',M.link('Настройки','#settings/profile','settings','ghost'))+accountTabs(tab)+A.nudge()+`<div class="v71-account-content">${A.clean(inheritedAccount(tab))}</div>`;
 };

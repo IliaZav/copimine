@@ -53,14 +53,35 @@ if ($env:PAPER_API_JAR -and (Test-Path -LiteralPath $paperApi -PathType Leaf) -a
 Assert-LockedCompileFile -Path $paperApi -Sha256 $paperApiSha256 -Size $paperApiSize
 
 $cp = @($paperApi)
+# Compile against the pinned 26.3 candidates, not against the loose jars in each
+# module directory. Those are stale copies from earlier local builds: on this
+# checkout they no longer matched the lock (CopiMineWorldCore 040c9462 vs the
+# pinned e6a2703e), so the plugin was compiled against an older sibling API than
+# CI used, and identical sources produced different class bytes. The pinned
+# candidate is the one artifact whose digest the lock actually vouches for.
+$pinnedCandidate = {
+  param([object] $Lock, [string] $PluginName)
+  # A migration module candidate replaces the same plugin as a baseline entry,
+  # so modules are searched first; baseline rows carry the first-party plugins.
+  $rows = @($Lock.modules) + @($Lock.unchangedBaseline)
+  $row = @($rows | Where-Object { $_.pluginName -eq $PluginName }) | Select-Object -First 1
+  if (-not $row -or -not $row.candidate -or -not $row.candidate.buildArtifact) {
+    throw "No pinned build artifact is locked for $PluginName."
+  }
+  $relative = $row.candidate.buildArtifact -replace '/', [IO.Path]::DirectorySeparatorChar
+  return (Join-Path $releaseRoot $relative)
+}
+# $compileLock describes the third-party compile graph; the first-party sibling
+# plugins are pinned in the server plugin lock.
+$serverPluginLock = Get-Content -LiteralPath (Join-Path $releaseRoot 'tools/minecraft-26.3/server-plugins.lock.json') -Raw | ConvertFrom-Json
 $narcoticsDependency = if ($paperApiSha256 -eq $legacyPaperApiSha256) {
   Join-Path $releaseRoot 'copimine-narcotics\build\classes'
 } else {
-  Join-Path $releaseRoot 'build\minecraft-26.3\plugins\jars\CopiMineNarcotics-26.3.jar'
+  & $pinnedCandidate $serverPluginLock 'CopiMineNarcotics'
 }
 foreach ($dependency in @(
-  (Join-Path $releaseRoot 'copimine-world-core\CopiMineWorldCore.jar'),
-  (Join-Path $releaseRoot 'copimine-artifacts\CopiMineArtifacts.jar'),
+  (& $pinnedCandidate $serverPluginLock 'CopiMineWorldCore'),
+  (& $pinnedCandidate $serverPluginLock 'CopiMineArtifacts'),
   $narcoticsDependency
 )) {
   if (-not (Test-Path $dependency)) {
@@ -225,6 +246,24 @@ try {
   # A digest alone cannot say which entry differs, and CI keeps no workspace,
   # so the entries this script actually packed are printed for the log.
   Write-Host ("Archive entries: {0}" -f (($packagedEntries) -join ','))
+  # Names and stored attributes only, no local-time formatting: this is the part
+  # of the digest that must match everywhere, independent of the runner's zone.
+  $layoutDigest = [Security.Cryptography.SHA256]::Create()
+  try {
+    $layoutParts = foreach ($classFile in (Get-ChildItem -LiteralPath $classes -Recurse -File | Sort-Object -Property @{ Expression = { $_.FullName }; Ascending = $true })) {
+      $relative = $classFile.FullName.Substring($classes.Length + 1).Replace('\', '/')
+      '{0}:{1}:{2}' -f $relative, $classFile.Length, $classFile.LastWriteTimeUtc.Ticks
+    }
+    $layoutBytes = [Text.Encoding]::UTF8.GetBytes(($layoutParts -join "`n"))
+    Write-Host ("Payload layout digest: {0}" -f (-join ($layoutDigest.ComputeHash($layoutBytes) | ForEach-Object { $_.ToString('x2') })))
+  } finally { $layoutDigest.Dispose() }
+  # Per-entry CRC and size, which is what a differing archive actually differs in.
+  $entryCrcLines = foreach ($entry in $packagedEntries) {
+    $full = Join-Path $classes $entry.Replace('/', [IO.Path]::DirectorySeparatorChar)
+    $item = Get-Item -LiteralPath $full
+    '{0} {1}' -f $entry, $item.Length
+  }
+  Write-Host ("Entry sizes: {0}" -f (@($entryCrcLines) -join ';'))
 } finally { $archiveDumpDigest.Dispose() }
 Copy-Item -LiteralPath $jar -Destination $serverJar -Force
 # The migration lock pins build/minecraft-26.3/plugins/jars, not the staging

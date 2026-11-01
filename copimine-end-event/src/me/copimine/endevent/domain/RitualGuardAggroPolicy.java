@@ -1,16 +1,21 @@
 package me.copimine.endevent.domain;
 
-/** Local wake/leash rules for the guards assigned to one caster. */
+/**
+ * Local wake and spawn-ring rules for the guards assigned to one caster.
+ *
+ * <p>W6-013: guards freely engage legal outside participants within the arena.
+ * There is no GUARD/ENGAGE/RETURN post system, no six-block leash, no
+ * return-to-mage timer and no teleport back into formation. What used to be a
+ * "post" is only an initial spawn ring: it decides where a guard first appears
+ * around its mage and is never used again. Everything else here asks a single
+ * question -- should this guard notice that participant at all. Once it has a
+ * target it simply fights with the engine's own mob AI.</p>
+ */
 public final class RitualGuardAggroPolicy {
     public static final double AGGRO_RADIUS_BLOCKS = 6.0D;
     public static final double INTERCEPT_HOLD_RADIUS_BLOCKS = 10.0D;
-    public static final double LEASH_RADIUS_BLOCKS = 14.0D;
-    public static final double POST_RADIUS_BLOCKS = 2.4D;
-    public static final int RETURN_PATH_MAX_REQUESTS = 3;
-    public static final long RETURN_PATH_REQUEST_INTERVAL_MILLIS = 1_000L;
-    public static final long RETURN_PATH_RETRY_DELAY_MILLIS = 5_000L;
-    public enum Stance { HOLD, RETURN, INTERCEPT, CAST }
-    public record Post(double x, double z) { }
+    /** Radius of the ring a guard is spawned on; not a leash. */
+    public static final double SPAWN_RING_RADIUS_BLOCKS = 2.4D;
 
     private RitualGuardAggroPolicy() {
     }
@@ -26,28 +31,6 @@ public final class RitualGuardAggroPolicy {
                 && distanceToCaster >= 0.0D
                 && distanceToCaster <= (alreadyEngaged ? INTERCEPT_HOLD_RADIUS_BLOCKS : AGGRO_RADIUS_BLOCKS);
         return near || casterAttacked || guardAttacked || rangedAttack;
-    }
-
-    public static boolean withinLeash(double distanceFromCaster) {
-        return Double.isFinite(distanceFromCaster) && distanceFromCaster >= 0.0D
-                && distanceFromCaster <= LEASH_RADIUS_BLOCKS;
-    }
-
-    /** Saturate the failure counter; the retry policy continues after the fast request budget. */
-    public static int nextReturnPathAttempt(int previousAttempts) {
-        int attempts = Math.max(0, previousAttempts);
-        return attempts >= RETURN_PATH_MAX_REQUESTS ? RETURN_PATH_MAX_REQUESTS : attempts + 1;
-    }
-
-    /** Slow retries after the bounded fast path request budget instead of freezing the guard. */
-    public static long returnPathRetryDelayMillis(int attempts) {
-        return attempts >= RETURN_PATH_MAX_REQUESTS
-                ? RETURN_PATH_RETRY_DELAY_MILLIS
-                : RETURN_PATH_REQUEST_INTERVAL_MILLIS;
-    }
-
-    public static boolean mayRequestReturnPath(long nowMillis, long nextAllowedMillis) {
-        return nowMillis >= 0L && nowMillis >= nextAllowedMillis;
     }
 
     /** Return the closest/farthest eligible target, preserving caller order for ties. */
@@ -70,20 +53,24 @@ public final class RitualGuardAggroPolicy {
         return selected;
     }
 
-    public static Stance stance(boolean threatPresent, boolean casting, double distanceToPost) {
-        if (casting) return Stance.CAST;
-        if (threatPresent) return Stance.INTERCEPT;
-        return Double.isFinite(distanceToPost) && distanceToPost >= 0.0D
-                && distanceToPost <= 0.55D ? Stance.HOLD : Stance.RETURN;
-    }
-
-    public static Post postOffset(int slot, int count, double outwardAngle) {
-        if (count < 1 || count > 3 || slot < 0 || slot >= count || !Double.isFinite(outwardAngle)) {
-            throw new IllegalArgumentException("invalid guard post");
+    /**
+     * Spawn position of one guard on the ring around its mage.
+     *
+     * <p>Used once, when the guard is created. Nothing returns the guard here
+     * afterwards, so this is placement, not a post.</p>
+     */
+    public static RingOffset spawnRingOffset(int slot, int count, double outwardAngle) {
+        if (count < 1 || count > 5 || slot < 0 || slot >= count || !Double.isFinite(outwardAngle)) {
+            throw new IllegalArgumentException("invalid guard spawn ring slot");
         }
         double spread = count == 1 ? 0.0D
-                : (slot / (double) (count - 1) - 0.5D) * Math.PI * 2.0D / 3.0D;
+                : (slot / (double) count) * Math.PI * 2.0D;
         double angle = outwardAngle + spread;
-        return new Post(Math.cos(angle) * POST_RADIUS_BLOCKS, Math.sin(angle) * POST_RADIUS_BLOCKS);
+        return new RingOffset(Math.cos(angle) * SPAWN_RING_RADIUS_BLOCKS,
+                Math.sin(angle) * SPAWN_RING_RADIUS_BLOCKS);
+    }
+
+    /** A horizontal offset from the mage's spawn point. */
+    public record RingOffset(double x, double z) {
     }
 }

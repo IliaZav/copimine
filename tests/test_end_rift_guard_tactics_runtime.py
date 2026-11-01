@@ -43,15 +43,10 @@ public class GuardTacticsProbe {
     RitualGuardAbilityPolicy.Profile ritualGuardAbilityProfile=RitualGuardAbilityPolicy.forEntityType("ENDERMAN");
     Location ritualGuardAbilityOrigin=new Location(0,0), ritualGuardAbilityImpact=new Location(2,0);
     static final long WAVE_PATH_REQUEST_INTERVAL_MILLIS=1000;
-    static final long RITUAL_GUARD_RETURN_PATH_TIMEOUT_MILLIS=8000;
-    static final int RITUAL_GUARD_RETURN_MAX_PATH_REQUESTS=3;
     static final String EVENT_KIND_RITUAL_GUARD="RITUAL_GUARD";
     Map<UUID,Long> nextWavePathRequestMillis=new HashMap<>(), ritualCasterAlertUntil=new HashMap<>(),
         wavePlayerAggroUntil=new HashMap<>();
     Map<UUID,UUID> ritualGuardPreferredTargets=new HashMap<>();
-    Map<UUID,Integer> ritualGuardReturnPathAttempts=new HashMap<>();
-    Map<UUID,Long> ritualGuardReturnPathDeadlineMillis=new HashMap<>();
-    Map<UUID,Location> ritualGuardReturnPathDestinations=new HashMap<>();
     Map<UUID,Long> ritualGuardEndermanMeleeBurstUntilTick=new HashMap<>(),
         ritualGuardEndermanMeleeCooldownUntilTick=new HashMap<>();
     Map<UUID,UUID> ritualGuardCasters=new HashMap<>();
@@ -107,8 +102,6 @@ public class GuardTacticsProbe {
         static Map<UUID,Player> players=new HashMap<>();
         static Player getPlayer(UUID id){return players.get(id);}
     }
-    Location postLocation=new Location(2.4,0);
-    Location ritualGuardPostLocation(Mob guard,Mob caster,Location core){return postLocation.clone();}
     static double horizontalDistanceSquared(Location a,Location b){return (a.x-b.x)*(a.x-b.x)+(a.z-b.z)*(a.z-b.z);}
     void faceRitualCaster(Mob mob,Location target){ }
     void renderRitualGuardAbilityTelegraph(){ }
@@ -127,11 +120,16 @@ public class GuardTacticsProbe {
         f.ownedEntities.put(guard.id,guard);f.ownedEntities.put(caster.id,caster);
         switch(args[0]){
             case "leash" -> {
+                // W6-013: there is no leash to the mage. An alarmed caster wakes
+                // the guard and it accepts any legal participant, however far
+                // from its caster that participant stands.
                 f.ritualCasterAlertUntil.put(caster.id,Long.MAX_VALUE);
                 target.pos=new Location(15,0);
-                check(!f.ritualGuardTargetAllowed(guard,target),"alarm must not send a posted guard after a player beyond its caster leash");
-                target.pos=new Location(14,0);
-                check(f.ritualGuardTargetAllowed(guard,target),"an attacking player at the leash boundary remains eligible");
+                check(f.ritualGuardTargetAllowed(guard,target),
+                    "an alarmed caster wakes its guards for any legal participant, with no caster leash");
+                target.pos=new Location(40,0);
+                check(f.ritualGuardTargetAllowed(guard,target),
+                    "distance from the mage never makes a legal target ineligible");
             }
             case "hysteresis" -> {
                 guard.target=target; target.pos=new Location(8,0);
@@ -143,42 +141,37 @@ public class GuardTacticsProbe {
                 target.pos=new Location(6.1,0);
                 check(!f.ritualGuardTargetAllowed(guard,target),"an idle guard does not chase beyond the inner radius");
             }
-            case "return" -> {
+            case "chase" -> {
+                // A guard with a target pursues it instead of holding a post.
                 guard.pos=new Location(7,0);
-                for(long now=0;now<=1000;now+=250)f.tickRitualGuardPost(guard,caster,caster.pos,null,now);
-                check(guard.path.stops==0,"returning guard must not stop its home path on every encounter tick");
-                check(guard.path.moves==1,"an active home path must not receive repeated destination requests");
-                guard.pos=new Location(2.4,0);f.tickRitualGuardPost(guard,caster,caster.pos,null,1250);
-                check(!guard.ai&&!guard.aware&&!guard.path.active,"arrived guard holds its post without native wandering");
+                // Inside the ten-block engaged band, so the guard legitimately
+                // holds this target and must pursue it.
+                guard.target=target; target.pos=new Location(8,0);
+                f.tickRitualGuardPost(guard,caster,caster.pos,target,0);
+                check(guard.target==target&&guard.ai&&guard.aware,
+                    "a guard with a legal target stays engaged and keeps its AI on");
+                check(guard.path.moves==1,"a guard with a target pathfinds toward it once");
+                f.tickRitualGuardPost(guard,caster,caster.pos,target,100);
+                check(guard.path.moves==1,"the pursuit path is not re-requested on every tick");
+                f.tickRitualGuardPost(guard,caster,caster.pos,target,1000);
+                check(guard.path.moves==2,"the pursuit path is refreshed after the request interval");
             }
-            case "return-unreachable" -> {
-                guard.pos=new Location(7,0);guard.path.moveAccepted=false;
-                for(long now=0;now<=9000;now+=250)f.tickRitualGuardPost(guard,caster,caster.pos,null,now);
-                check(guard.path.moves==4,"an unreachable post receives a slow retry after the fast request budget");
-                check(guard.ai&&guard.aware,"a failed route stays retryable without freezing the guard AI");
-            }
-            case "return-timeout" -> {
-                guard.pos=new Location(7,0);
-                for(long now=0;now<=33000;now+=1000)f.tickRitualGuardPost(guard,caster,caster.pos,null,now);
-                check(guard.path.moves==5,"a path that never makes progress keeps receiving bounded slow retries");
-                check(guard.path.active&&guard.ai&&guard.aware,"timed-out path recovery never leaves the guard frozen");
-            }
-            case "return-target-change" -> {
-                guard.pos=new Location(7,0);
+            case "idle" -> {
+                // No target: the guard still stands with its AI on, so it keeps
+                // fighting whatever legitimately enters range.
                 f.tickRitualGuardPost(guard,caster,caster.pos,null,0);
-                f.postLocation=new Location(5,0);
-                f.tickRitualGuardPost(guard,caster,caster.pos,null,250);
-                check(guard.path.stops==1&&guard.path.moves==2,
-                    "a changed home post cancels the old route and requests its replacement immediately");
+                check(guard.target==null,"an idle guard has no target");
+                check(guard.ai&&guard.aware,
+                    "an idle guard keeps its AI and awareness on instead of freezing on a post");
+                check(guard.path.moves==0,"an idle guard does not march back to a duty position");
             }
-            case "combat-return" -> {
-                guard.pos=new Location(7,0);guard.target=target;guard.path.active=true;
-                f.nextWavePathRequestMillis.put(guard.id,1000L);
+            case "lost-target" -> {
+                // Losing the target must not start a return-to-post route.
+                guard.target=target; guard.path.active=true;
                 f.tickRitualGuardPost(guard,caster,caster.pos,null,250);
-                check(guard.target==null&&guard.path.stops==1&&guard.path.moves==1,
-                    "lost combat target must cancel the chase and start the home path immediately");
-                f.tickRitualGuardPost(guard,caster,caster.pos,null,500);
-                check(guard.path.stops==1&&guard.path.moves==1,"home path must survive the following tick");
+                check(guard.target==null,"a guard with no legal target clears it");
+                check(guard.ai&&guard.aware,"a guard that lost its target stays awake and ready");
+                check(guard.path.moves==0,"losing a target never launches a home-path route");
             }
             case "visibility" -> {
                 f.ritualGuardAbilityGuard=guard.id;f.ritualGuardAbilityTarget=target.id;
@@ -194,23 +187,28 @@ public class GuardTacticsProbe {
                 Bukkit.players.put(target.id,target);
                 check(f.ritualGuardTargetAllowed(guard,target),"acquired target remains eligible in the six-block retention band");
                 f.beginRitualGuardAbility(guard,target,RitualGuardAbilityPolicy.forEntityType("ENDERMAN"));
-                check(guard.target==null,"ability telegraph deliberately clears the native mob target");
-                check(f.isRitualGuardAbilityCastValid(),"committed target remains valid after begin clears native target");
+                check(guard.ai&&guard.aware,
+                    "a casting guard keeps fighting: the telegraph never freezes it");
+                check(f.isRitualGuardAbilityCastValid(),"committed target remains valid after begin");
                 target.pos=new Location(10.01,0);
                 check(!f.isRitualGuardAbilityCastValid(),"committed target still expires beyond the ten-block hysteresis boundary");
             }
             case "spider-support" -> {
                 var spider=new Spider(0,0); var postCaster=new Mob(0,0);
+                f.ritualGuardCasters.put(spider.id,postCaster.id);
+                f.ownedEntities.put(spider.id,spider);f.ownedEntities.put(postCaster.id,postCaster);
                 var distant=new Player(5,0);
                 f.tickRitualGuardPost(spider,postCaster,postCaster.pos,distant,0);
-                check(spider.target==null,"web support spider must not keep a melee target outside bite range");
-                check(!spider.ai&&!spider.aware,"web support spider holds position while preparing ranged support");
-                check(spider.path.moves==0,"web support spider must not chase with melee pathfinding");
+                check(spider.target==distant,"a spider guard keeps a melee target beyond bite range");
+                check(spider.ai&&spider.aware,
+                    "a spider guard chases instead of freezing outside bite range");
+                check(spider.path.moves==1,"a spider guard pathfinds toward a distant target");
                 var closeSpider=new Spider(0,0); var closeTarget=new Player(1.9,0);
+                f.ritualGuardCasters.put(closeSpider.id,postCaster.id);
+                f.ownedEntities.put(closeSpider.id,closeSpider);
                 f.tickRitualGuardPost(closeSpider,postCaster,postCaster.pos,closeTarget,0);
                 check(closeSpider.target==closeTarget&&closeSpider.ai&&closeSpider.aware,
-                    "spider may use native melee only inside its two-block bite range");
-                check(closeSpider.path.moves==0,"close spider lets vanilla attack reach resolve without a pursuit path");
+                    "spider keeps native melee when already inside bite range");
             }
             case "enderman-burst" -> {
                 var enderman=new Enderman(0,0); var ritualCaster=new Mob(0,0); var closeTarget=new Player(2,0);
@@ -224,7 +222,7 @@ public class GuardTacticsProbe {
                     +f.ritualGuardTargetAllowed(enderman,closeTarget)+" worlds="
                     +closeTarget.getWorld().equals(enderman.getWorld())+" policy="
                     +RitualGuardAbilityPolicy.mayBeginEndermanMelee(2.0D,100L,0L));
-                f.tickRitualGuardEndermanCombat(enderman,closeTarget);
+                f.tickRitualGuardEndermanCombat(enderman,closeTarget,100L);
                 check(enderman.target==closeTarget&&enderman.ai&&enderman.aware,
                     "Enderman performs a native melee burst at close range target="+enderman.target
                     +" ai="+enderman.ai+" end="+f.ritualGuardEndermanMeleeBurstUntilTick.get(enderman.id)
@@ -232,24 +230,23 @@ public class GuardTacticsProbe {
                 check(f.ritualGuardEndermanMeleeBurstUntilTick.get(enderman.id)==140L
                         && f.ritualGuardEndermanMeleeCooldownUntilTick.get(enderman.id)==220L,
                     "Enderman melee burst and next-burst cooldown are bounded in server ticks");
-                f.eventTickCounter=120;f.tickRitualGuardEndermanCombat(enderman,closeTarget);
+                f.eventTickCounter=120;f.tickRitualGuardEndermanCombat(enderman,closeTarget,120L);
                 check(enderman.target==closeTarget&&enderman.ai,
                     "Enderman remains in melee through the second pinned vanilla attack window");
-                f.eventTickCounter=139;f.tickRitualGuardEndermanCombat(enderman,closeTarget);
+                f.eventTickCounter=139;f.tickRitualGuardEndermanCombat(enderman,closeTarget,139L);
                 check(enderman.target==closeTarget&&enderman.ai,
                     "Enderman does not end its two-attack opportunity before the burst deadline");
-                f.eventTickCounter=140;f.tickRitualGuardEndermanCombat(enderman,closeTarget);
-                check(enderman.target==null&&!enderman.ai&&!enderman.aware,
-                    "Enderman stops melee after the burst and resumes its casting post");
-                f.eventTickCounter=219;f.tickRitualGuardEndermanCombat(enderman,closeTarget);
-                check(enderman.target==null&&!enderman.ai,
-                    "Enderman does not restart melee during its cooldown");
-                f.eventTickCounter=220;f.tickRitualGuardEndermanCombat(enderman,closeTarget);
+                f.eventTickCounter=140;f.tickRitualGuardEndermanCombat(enderman,closeTarget,140L);
+                check(enderman.target==closeTarget&&enderman.ai&&enderman.aware,
+                    "Enderman keeps fighting after the burst instead of freezing on a post");
+                f.eventTickCounter=219;f.tickRitualGuardEndermanCombat(enderman,closeTarget,219L);
+                check(enderman.target==closeTarget&&enderman.ai,
+                    "Enderman still pursues during its burst cooldown");
+                f.eventTickCounter=220;f.tickRitualGuardEndermanCombat(enderman,closeTarget,220L);
                 check(enderman.target==closeTarget&&enderman.ai,
                     "Enderman may begin the next melee burst when cooldown expires");
             }
-        }
-        System.out.println("GuardTacticsProbe OK "+args[0]);
+        }        System.out.println("GuardTacticsProbe OK "+args[0]);
     }
 }
 '''.replace("METHODS", methods), encoding="utf-8")
@@ -272,27 +269,33 @@ public class GuardTacticsProbe {
     return directory
 
 
-@pytest.mark.parametrize("scenario", ["leash", "hysteresis", "return", "return-unreachable", "return-timeout", "return-target-change", "combat-return", "visibility", "cast-retention", "spider-support", "enderman-burst"])
+@pytest.mark.parametrize("scenario", ["leash", "hysteresis", "chase", "idle", "lost-target", "visibility", "cast-retention", "spider-support", "enderman-burst"])
 def test_actual_guard_tactics(guard_probe, scenario):
     result = subprocess.run(["java", "-cp", str(guard_probe), "GuardTacticsProbe", scenario],
                             capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_over_leash_guard_returns_by_path_without_tactical_teleport():
+def test_guards_are_null_safe_and_never_teleported_back_to_a_post():
+    """W6-013: no post system, no leash, no return-to-mage timer."""
     source = SOURCE.read_text(encoding="utf-8")
     groups = declaration(source, "private void tickRitualGuardGroups(")
     assert "teleportCombatEntity(guard, safe)" not in groups
-    assert "tickRitualGuardPost(guard, caster, core, null, now)" in groups
-
-
-def test_guard_return_path_failures_back_off_without_disabling_the_guard():
-    source = SOURCE.read_text(encoding="utf-8")
     post = declaration(source, "private void tickRitualGuardPost(")
-    assert "RitualGuardAggroPolicy.nextReturnPathAttempt(" in post
-    assert "RitualGuardAggroPolicy.returnPathRetryDelayMillis(" in post
-    assert "RitualGuardAggroPolicy.mayRequestReturnPath(" in post
-    assert "boolean exhausted" not in post
+    # A guard outside the arena simply drops its target; nothing marches it home.
+    assert "teleportCombatEntity" not in post
+    assert "ritualGuardReturnPath" not in post
+
+
+def test_guard_combat_policy_exposes_no_post_or_leash_predicates():
+    """The retired post/leash vocabulary must not come back on the policy."""
+    policy = (ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "endevent"
+              / "domain" / "RitualGuardAggroPolicy.java").read_text(encoding="utf-8")
+    for retired in ("withinLeash", "postOffset", "mayRequestReturnPath",
+                    "nextReturnPathAttempt", "returnPathRetryDelayMillis", "Stance"):
+        assert retired not in policy, f"{retired} must not survive the post system removal"
+    # Placement is a one-off spawn ring, not a duty position.
+    assert "spawnRingOffset" in policy
 
 
 def test_guard_spider_retains_its_separate_web_target_assignment():

@@ -584,9 +584,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final double WAVE_MOB_DAMAGE_REDUCTION = 4.0D;
     private static final int SLOWNESS_DEBUFF_TICKS = 60;
     private static final long WAVE_PATH_REQUEST_INTERVAL_MILLIS = 500L;
-    private static final int RITUAL_GUARD_RETURN_MAX_PATH_REQUESTS =
-            RitualGuardAggroPolicy.RETURN_PATH_MAX_REQUESTS;
-    private static final long RITUAL_GUARD_RETURN_PATH_TIMEOUT_MILLIS = 8_000L;
     private static final long WAVE_MOB_STUCK_TIMEOUT_MILLIS = 4_000L;
     private static final long WAVE_MOB_STUCK_REPOSITION_COOLDOWN_MILLIS = 4_000L;
     private static final double WAVE_MOB_PROGRESS_DISTANCE_SQUARED = 0.5625D;
@@ -22131,6 +22128,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * band because a truncated save could otherwise present an impossible
      * roster size and silently rescale the encounter.</p>
      */
+    /**
+     * Applies the Wave 7 body scale so each miniboss reads at its contract size.
+     *
+     * <p>The scale is a vanilla attribute, so hitbox, mount point and reach all
+     * follow it. A mob that does not expose the attribute (a plugin-only entity
+     * type) is left at its natural size rather than failing the trial.</p>
+     */
+    private void applyWave7BodyScale(Entity actor, double scale) {
+        if (!(actor instanceof LivingEntity living)
+                || !Double.isFinite(scale) || scale <= 0.0D) {
+            return;
+        }
+        AttributeInstance attribute = living.getAttribute(Attribute.GENERIC_SCALE);
+        if (attribute != null) {
+            attribute.setBaseValue(scale);
+        }
+    }
+
     private int wave7FrozenRosterSize() {
         int size = combatProfiles.frozenRosterSize();
         if (size < me.copimine.endevent.domain.Wave7NamedTrialActorPolicy.MIN_PARTICIPANTS) {
@@ -22170,6 +22185,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 actor = spawnRealitySplitTrialEntity(world, spawn, EntityType.WARDEN,
                         trial.chamber(), trial.trial().name(), -1, true, true);
                 if (actor == null) return false;
+                applyWave7BodyScale(actor,
+                        Wave7NamedTrialActorPolicy.bodyScale(RealitySplitTrialController.NamedTrial.WARDEN));
                 createdActor = true;
                 actor.getPersistentDataContainer().set(new NamespacedKey(this, "end_event_named_trial_schema"),
                         PersistentDataType.STRING, "2");
@@ -22207,6 +22224,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (createdMaximum == null) return false;
             createdMaximum.setBaseValue(profile.maxHealth());
             created.setHealth(profile.maxHealth());
+            applyWave7BodyScale(created, profile.bodyScale());
             Wave7NamedTrialActorPolicy.Checkpoint initial = new Wave7NamedTrialActorPolicy.Checkpoint(
                     parseUuidOrNull(eventId), generation, trial.chamber(), trial.trial(), actor.getUniqueId(),
                     0L, Wave7NamedTrialActorPolicy.Attack.NONE, 0L, 0L, null, false);
@@ -25371,7 +25389,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             caster.setCustomNameVisible(false);
             for (int guardSlot = 0; guardSlot < profile.guardsPerCaster();
                     guardSlot++) {
-                RitualGuardAggroPolicy.Post guardPost = RitualGuardAggroPolicy.postOffset(
+                // W6-013: no post assignment. Guards are placed once around the
+                // mage as an initial spawn ring and are never marched back to it.
+                RitualGuardAggroPolicy.RingOffset guardPost = RitualGuardAggroPolicy.spawnRingOffset(
                         guardSlot, profile.guardsPerCaster(), casterAngle);
                 int guardEntitySlot = profile.casterCount()
                         + casterSlot * profile.guardsPerCaster() + guardSlot;
@@ -26877,13 +26897,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (!(guardEntity instanceof Mob guard) || !isLiveOwnedEntity(guardId)) {
                     continue;
                 }
-                double distance = horizontalDistanceSquared(guard.getLocation(), caster.getLocation());
-                if (!RitualGuardAggroPolicy.withinLeash(Math.sqrt(distance))) {
+                // W6-013: guards engage legal outside participants freely. No post
+                // assignment, leash to the mage, return timer or formation
+                // teleport -- they are fighting elites running the shared
+                // combat AI. The only bound is the arena itself: a guard that
+                // leaves the configured arena drops its target instead of being
+                // marched back to a post.
+                Location guardLocation = guard.getLocation();
+                boolean insideArena = core == null || CombatMovementPolicy.withinBounds(
+                        core.getX(), core.getY(), core.getZ(),
+                        guardLocation.getX(), guardLocation.getY(), guardLocation.getZ(),
+                        Math.max(4.0D, config.arenaRadius()), Double.MAX_VALUE, 0.0D);
+                if (!insideArena) {
                     guard.setTarget(null);
-                    // Crossing the combat leash returns the guard through its
-                    // assigned path. Routine protection duty is not a tactical
-                    // teleport, and the home-path request remains rate limited.
-                    tickRitualGuardPost(guard, caster, core, null, now);
+                    if (guard.getPathfinder().hasPath()) guard.getPathfinder().stopPathfinding();
                     continue;
                 }
                 Player target = guard.getTarget() instanceof Player current
@@ -26906,167 +26933,88 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         tickRitualGuardAbilities(now);
     }
 
-    private Location ritualGuardPostLocation(Mob guard, Mob caster, Location core) {
-        int count = ritualSphereState == null ? 1 : ritualSphereState.profile().guardsPerCaster();
-        int slot = Math.max(0, Math.min(count - 1, readInt(guard, keyRitualGuardSlot, 0)));
-        Location base = caster.getLocation();
-        double outward = Math.atan2(base.getZ() - core.getZ(), base.getX() - core.getX());
-        RitualGuardAggroPolicy.Post post = RitualGuardAggroPolicy.postOffset(slot, count, outward);
-        return safeRitualLocation(core, base.clone().add(post.x(), 0.0D, post.z()));
-    }
-
+    /**
+     * Let one Wave 6 guard fight.
+     *
+     * <p>W6-013: guards freely engage legal outside participants within the
+     * arena. There is no GUARD/ENGAGE/RETURN post system, no six-block leash, no
+     * return-to-mage timer and no teleport back into formation -- the old version
+     * of this method did all four and left guards standing still whenever no
+     * target was assigned, which is the "idle statue" behaviour the requirement
+     * forbids. A guard is an enhanced elite: it keeps a target and lets the
+     * engine's own mob AI walk and swing.
+     */
     private void tickRitualGuardPost(Mob guard, Mob caster, Location core, Player target, long now) {
-        Location post = ritualGuardPostLocation(guard, caster, core);
-        double distance = post == null ? 0.0D
-                : Math.sqrt(horizontalDistanceSquared(guard.getLocation(), post));
-        RitualGuardAggroPolicy.Stance stance = RitualGuardAggroPolicy.stance(
-                target != null, guard.getUniqueId().equals(ritualGuardAbilityGuard), distance);
-        if (guard.getUniqueId().equals(ritualGuardAbilityGuard)) {
-            guard.setTarget(null);
-            if (guard.getPathfinder().hasPath()) guard.getPathfinder().stopPathfinding();
-            nextWavePathRequestMillis.remove(guard.getUniqueId());
-            guard.setAI(false);
-            guard.setAware(false);
-            guard.setVelocity(new Vector());
+        if (guard == null) return;
+        UUID guardId = guard.getUniqueId();
+        // The guard bound to a sphere signature is mid-cast: it holds still only
+        // while the telegraph resolves, then returns to normal combat.
+        if (guardId.equals(ritualGuardAbilityGuard)) {
+            // The signature cast is a telegraph, not a freeze. The guard keeps
+            // fighting and keeps its legs while the spell resolves; only its
+            // facing is steered at the impact point so the tell reads.
+            guard.setAI(true);
+            guard.setAware(true);
+            guard.setTarget(target);
             if (ritualGuardAbilityImpact != null) {
                 faceRitualCaster(guard, ritualGuardAbilityImpact);
+            } else if (target != null) {
+                faceRitualCaster(guard, target.getEyeLocation());
             }
             return;
         }
-        if (stance == RitualGuardAggroPolicy.Stance.INTERCEPT) {
-            UUID guardId = guard.getUniqueId();
-            if (ritualGuardReturnPathDestinations.remove(guardId) != null) {
-                if (guard.getPathfinder().hasPath()) {
-                    guard.getPathfinder().stopPathfinding();
-                }
-                ritualGuardReturnPathAttempts.remove(guardId);
-                ritualGuardReturnPathDeadlineMillis.remove(guardId);
-                nextWavePathRequestMillis.remove(guardId);
-            }
-            if (guard instanceof Enderman) {
-                tickRitualGuardEndermanCombat(guard, target);
-                return;
-            }
-            if (guard instanceof Spider) {
-                boolean insideBiteRange = horizontalDistanceSquared(
-                        guard.getLocation(), target.getLocation())
-                        <= RitualGuardAbilityPolicy.SPIDER_BITE_RANGE_BLOCKS
-                        * RitualGuardAbilityPolicy.SPIDER_BITE_RANGE_BLOCKS;
-                guard.setTarget(insideBiteRange ? target : null);
-                if (guard.getPathfinder().hasPath()) {
-                    guard.getPathfinder().stopPathfinding();
-                }
-                nextWavePathRequestMillis.remove(guard.getUniqueId());
-                ritualGuardReturnPathAttempts.remove(guard.getUniqueId());
-                ritualGuardReturnPathDeadlineMillis.remove(guard.getUniqueId());
-                ritualGuardReturnPathDestinations.remove(guard.getUniqueId());
-                guard.setAI(insideBiteRange);
-                guard.setAware(insideBiteRange);
-                if (!insideBiteRange) {
-                    guard.setVelocity(new Vector());
-                }
-                faceRitualCaster(guard, target.getEyeLocation());
-                return;
-            }
+        if (target == null || !ritualGuardTargetAllowed(guard, target)) {
+            // No legal participant in reach. Stay an active fighter pointed at
+            // the arena, not a frozen post: AI stays on so the mob keeps
+            // tracking whatever legitimately enters its range.
+            guard.setTarget(null);
+            guard.setAI(true);
+            guard.setAware(true);
+            return;
+        }
+        if (guard instanceof Enderman) {
+            // Endermen run the same approach-and-hit loop as every other guard.
+            // Their former "hold a casting post, melee only inside a tiny bite
+            // radius" rule left them standing still, which is the statue
+            // behaviour W6-013 forbids.
             guard.setAI(true);
             guard.setAware(true);
             guard.setTarget(target);
             faceRitualCaster(guard, target.getEyeLocation());
-            if (guard instanceof Skeleton skeleton) {
-                maintainSkeletonCombatPosture(skeleton, target, EVENT_KIND_RITUAL_GUARD, now);
-            } else if (now >= nextWavePathRequestMillis.getOrDefault(guard.getUniqueId(), 0L)) {
+            if (now >= nextWavePathRequestMillis.getOrDefault(guardId, 0L)) {
                 guard.getPathfinder().moveTo(target, 1.05D);
-                nextWavePathRequestMillis.put(guard.getUniqueId(), now + WAVE_PATH_REQUEST_INTERVAL_MILLIS);
+                nextWavePathRequestMillis.put(guardId, now + WAVE_PATH_REQUEST_INTERVAL_MILLIS);
             }
             return;
         }
-        boolean leavingCombat = guard.getTarget() != null;
-        guard.setTarget(null);
-        if (stance == RitualGuardAggroPolicy.Stance.RETURN && post != null) {
-            UUID guardId = guard.getUniqueId();
-            if (leavingCombat) {
-                guard.getPathfinder().stopPathfinding();
-                nextWavePathRequestMillis.remove(guardId);
-                ritualGuardReturnPathAttempts.remove(guardId);
-                ritualGuardReturnPathDeadlineMillis.remove(guardId);
-                ritualGuardReturnPathDestinations.remove(guardId);
+        if (guard instanceof Spider) {
+            // Spiders chase like any other guard. The bite range no longer
+            // freezes them outside melee, so they close the distance instead of
+            // standing still waiting for the player to walk in.
+            guard.setAI(true);
+            guard.setAware(true);
+            guard.setTarget(target);
+            faceRitualCaster(guard, target.getEyeLocation());
+            if (now >= nextWavePathRequestMillis.getOrDefault(guardId, 0L)) {
+                guard.getPathfinder().moveTo(target, 1.05D);
+                nextWavePathRequestMillis.put(guardId, now + WAVE_PATH_REQUEST_INTERVAL_MILLIS);
             }
-
-            Location previousPost = ritualGuardReturnPathDestinations.get(guardId);
-            boolean destinationChanged = previousPost == null
-                    || !Objects.equals(previousPost.getWorld(), post.getWorld())
-                    || horizontalDistanceSquared(previousPost, post) > 0.25D
-                    || Math.abs(previousPost.getY() - post.getY()) > 0.5D;
-            if (destinationChanged) {
-                if (guard.getPathfinder().hasPath()) {
-                    guard.getPathfinder().stopPathfinding();
-                }
-                ritualGuardReturnPathAttempts.remove(guardId);
-                ritualGuardReturnPathDeadlineMillis.remove(guardId);
-                nextWavePathRequestMillis.remove(guardId);
-                ritualGuardReturnPathDestinations.put(guardId, post.clone());
-            }
-
-            int attempts = ritualGuardReturnPathAttempts.getOrDefault(guardId, 0);
-            boolean hasPath = guard.getPathfinder().hasPath();
-            long pathDeadline = ritualGuardReturnPathDeadlineMillis.getOrDefault(guardId, 0L);
-            if (hasPath && pathDeadline > 0L && now >= pathDeadline) {
-                guard.getPathfinder().stopPathfinding();
-                ritualGuardReturnPathDeadlineMillis.remove(guardId);
-                hasPath = false;
-            }
-
-            if (hasPath) {
-                guard.setAI(true);
-                guard.setAware(true);
-            } else if (RitualGuardAggroPolicy.mayRequestReturnPath(
-                    now, nextWavePathRequestMillis.getOrDefault(guardId, 0L))) {
-                guard.setAI(true);
-                guard.setAware(true);
-                boolean pathStarted = guard.getPathfinder().moveTo(post, 0.85D);
-                int previousAttempts = attempts;
-                attempts = RitualGuardAggroPolicy.nextReturnPathAttempt(previousAttempts);
-                ritualGuardReturnPathAttempts.put(guardId, attempts);
-                nextWavePathRequestMillis.put(guardId, now
-                        + RitualGuardAggroPolicy.returnPathRetryDelayMillis(attempts));
-                if (pathStarted) {
-                    ritualGuardReturnPathDeadlineMillis.put(
-                            guardId, now + RITUAL_GUARD_RETURN_PATH_TIMEOUT_MILLIS);
-                } else {
-                    ritualGuardReturnPathDeadlineMillis.remove(guardId);
-                    guard.setVelocity(new Vector());
-                    if (previousAttempts < RITUAL_GUARD_RETURN_MAX_PATH_REQUESTS
-                            && attempts == RITUAL_GUARD_RETURN_MAX_PATH_REQUESTS) {
-                        getLogger().warning("RITUAL_GUARD_RETURN_PATH_RETRYING reason=NO_REACHABLE_PATH entity="
-                                + guardId + " retry_delay_ms="
-                                + RitualGuardAggroPolicy.returnPathRetryDelayMillis(attempts));
-                    }
-                }
-            } else {
-                guard.setAI(true);
-                guard.setAware(true);
-                guard.setVelocity(new Vector());
-            }
-        } else {
-            guard.getPathfinder().stopPathfinding();
-            nextWavePathRequestMillis.remove(guard.getUniqueId());
-            ritualGuardReturnPathAttempts.remove(guard.getUniqueId());
-            ritualGuardReturnPathDeadlineMillis.remove(guard.getUniqueId());
-            ritualGuardReturnPathDestinations.remove(guard.getUniqueId());
-            guard.setAI(false);
-            guard.setAware(false);
-            guard.setVelocity(new Vector());
+            return;
         }
-        Player watched = ritualNearestTarget(guard.getLocation(), 28.0D);
-        Location facing = stance == RitualGuardAggroPolicy.Stance.CAST && ritualGuardAbilityImpact != null
-                ? ritualGuardAbilityImpact : watched == null
-                ? guard.getLocation().clone().add(guard.getLocation().toVector()
-                .subtract(core.toVector()).setY(0.0D)) : watched.getEyeLocation();
-        faceRitualCaster(guard, facing);
+        guard.setAI(true);
+        guard.setAware(true);
+        guard.setTarget(target);
+        faceRitualCaster(guard, target.getEyeLocation());
+        if (guard instanceof Skeleton skeleton) {
+            maintainSkeletonCombatPosture(skeleton, target, EVENT_KIND_RITUAL_GUARD, now);
+        } else if (now >= nextWavePathRequestMillis.getOrDefault(guardId, 0L)) {
+            guard.getPathfinder().moveTo(target, 1.05D);
+            nextWavePathRequestMillis.put(guardId, now + WAVE_PATH_REQUEST_INTERVAL_MILLIS);
+        }
     }
 
     /** Endermen hold a casting post and use only a short native melee burst at close range. */
-    private void tickRitualGuardEndermanCombat(Mob guard, Player target) {
+    private void tickRitualGuardEndermanCombat(Mob guard, Player target, long now) {
         if (guard == null) return;
         UUID guardId = guard.getUniqueId();
         double targetDistance = target == null || !target.getWorld().equals(guard.getWorld())
@@ -27105,12 +27053,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         ritualGuardEndermanMeleeBurstUntilTick.remove(guardId);
-        guard.setTarget(null);
-        if (guard.getPathfinder().hasPath()) guard.getPathfinder().stopPathfinding();
-        nextWavePathRequestMillis.remove(guardId);
-        guard.setAI(false);
-        guard.setAware(false);
-        guard.setVelocity(new Vector());
+        // The burst ended; the enderman goes back to ordinary pursuit instead of
+        // freezing on a post.
+        guard.setAI(true);
+        guard.setAware(true);
+        guard.setTarget(target);
+        if (target != null && now >= nextWavePathRequestMillis.getOrDefault(guardId, 0L)) {
+            guard.getPathfinder().moveTo(target, 1.05D);
+            nextWavePathRequestMillis.put(guardId, now + WAVE_PATH_REQUEST_INTERVAL_MILLIS);
+        }
         if (target != null) faceRitualCaster(guard, target.getEyeLocation());
     }
 
@@ -27218,11 +27169,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || profile.role() == RitualGuardAbilityPolicy.Role.WEB_SNARE
                 ? target.getEyeLocation().clone() : target.getLocation().clone();
         ritualGuardAbilityResolveAtTick = eventTickCounter + profile.telegraphTicks();
-        guard.setTarget(null);
-        guard.getPathfinder().stopPathfinding();
-        guard.setAI(false);
-        guard.setAware(false);
-        guard.setVelocity(new Vector());
+        // Keep the guard alive and moving: the signature is a telegraph, not a
+        // stun. Only its facing is locked onto the impact point.
+        guard.setAI(true);
+        guard.setAware(true);
         faceRitualCaster(guard, ritualGuardAbilityImpact);
         guard.swingMainHand();
         renderRitualGuardAbilityTelegraph();
@@ -27726,7 +27676,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         double targetDistance = Math.sqrt(horizontalDistanceSquared(player.getLocation(), caster.getLocation()));
-        if (!RitualGuardAggroPolicy.withinLeash(targetDistance)) return false;
+        // W6-013: guards freely engage legal outside participants within the
+        // arena. There is no leash to the mage, so a guard never refuses a
+        // target just because it is far from its caster.
+        if (!Double.isFinite(targetDistance) || targetDistance < 0.0D) return false;
         long now = System.currentTimeMillis();
         boolean committedCastTarget = guard instanceof Mob
                 && ritualGuardAbilityGeneration == generation
@@ -27742,8 +27695,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 ritualCasterAlertUntil.getOrDefault(casterId, 0L) >= now,
                 wavePlayerAggroUntil.getOrDefault(guard.getUniqueId(), 0L) >= now,
                 false, alreadyEngaged);
-        return wake && RitualGuardAggroPolicy.withinLeash(
-                Math.sqrt(horizontalDistanceSquared(guard.getLocation(), caster.getLocation())));
+        // The second leash (distance from the guard to its caster) is removed
+        // with the post system: engagement is decided by the target only.
+        return wake;
     }
 
     private boolean isRitualCombatSandbox() {
@@ -32083,7 +32037,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 resolveNamedTrialBeam(actor, target, chamber);
                 yield true;
             }
-            case MARKSMAN_SUPPORT, NONE -> false;
+            case MARKSMAN_SUPPORT, NONE, NONE_INTERNAL -> false;
         };
     }
 

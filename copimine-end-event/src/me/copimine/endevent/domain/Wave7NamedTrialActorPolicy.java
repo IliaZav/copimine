@@ -15,17 +15,21 @@ public final class Wave7NamedTrialActorPolicy {
         ARCHMAGE_FANGS,
         ARCHMAGE_SPEAR,
         ARCHMAGE_STEP,
-        ARCHMAGE_BEAM
+        ARCHMAGE_BEAM,
+        /** Plaque sentinelle: the Warden uses its native combat loop, not a scripted spell. */
+        NONE_INTERNAL
     }
 
     public record Profile(NamedTrial trial, String entityType, String displayName,
-                          double maxHealth, double contactDamage, List<Attack> attacks) {
+                          double maxHealth, double contactDamage, List<Attack> attacks,
+                          double bodyScale) {
         public Profile {
             if (trial == null || entityType == null || entityType.isBlank()
                     || displayName == null || displayName.isBlank()
                     || !Double.isFinite(maxHealth) || maxHealth <= 0.0D
                     || !Double.isFinite(contactDamage) || contactDamage < 0.0D
-                    || attacks == null || attacks.isEmpty()) {
+                    || attacks == null || attacks.isEmpty()
+                    || !Double.isFinite(bodyScale) || bodyScale <= 0.0D) {
                 throw new IllegalArgumentException("invalid named Wave 7 actor profile");
             }
             attacks = List.copyOf(attacks);
@@ -118,17 +122,52 @@ public final class Wave7NamedTrialActorPolicy {
         return profile(trial, MIN_PARTICIPANTS);
     }
 
+    /**
+     * Warden body scale relative to a vanilla Warden.
+     *
+     * <p>The Wave 7 Warden is a real boss-tier trial, so it towers over the
+     * vanilla mob rather than matching it.</p>
+     */
+    public static final double WARDEN_BODY_SCALE = 1.5D;
+
+    /**
+     * Marksman body scale relative to a vanilla Skeleton.
+     *
+     * <p>Deliberately just above an elite: it reads as an upgraded archer, not
+     * as a second boss.</p>
+     */
+    public static final double MARKSMAN_BODY_SCALE = 1.15D;
+
+    /** Archmage body scale relative to a vanilla Evoker. */
+    public static final double ARCHMAGE_BODY_SCALE = 1.5D;
+
     /** Profile for a trial under an explicit frozen roster. */
     public static Profile profile(NamedTrial trial, int admittedPlayers) {
         if (trial == NamedTrial.MOBILE_MARKSMAN) {
             return new Profile(trial, "SKELETON", "Подвижный Стрелок Разлома",
-                    minibossHealth(trial, admittedPlayers), 4.0D, MARKSMAN_ATTACKS);
+                    minibossHealth(trial, admittedPlayers), 4.0D, MARKSMAN_ATTACKS,
+                    MARKSMAN_BODY_SCALE);
         }
         if (trial == NamedTrial.RIFT_ARCHMAGE) {
             return new Profile(trial, "EVOKER", "Архимаг Разлома",
-                    minibossHealth(trial, admittedPlayers), 5.0D, ARCHMAGE_ATTACKS);
+                    minibossHealth(trial, admittedPlayers), 5.0D, ARCHMAGE_ATTACKS,
+                    ARCHMAGE_BODY_SCALE);
         }
         return null;
+    }
+
+    /** Warden trial profile; the Warden is spawned by its own branch, not by {@link #profile}. */
+    public static Profile wardenProfile(int admittedPlayers) {
+        return new Profile(NamedTrial.WARDEN, "WARDEN", "Страж Разлома",
+                minibossHealth(NamedTrial.WARDEN, admittedPlayers), 8.0D,
+                List.of(Attack.NONE_INTERNAL), WARDEN_BODY_SCALE);
+    }
+
+    /** Body scale of one trial's miniboss; 1.0 means "vanilla size". */
+    public static double bodyScale(NamedTrial trial) {
+        if (trial == NamedTrial.MOBILE_MARKSMAN) return MARKSMAN_BODY_SCALE;
+        if (trial == NamedTrial.RIFT_ARCHMAGE) return ARCHMAGE_BODY_SCALE;
+        return WARDEN_BODY_SCALE;
     }
 
     public static boolean hasActorAdapter(NamedTrial trial) {
@@ -188,7 +227,7 @@ public final class Wave7NamedTrialActorPolicy {
             case ARCHMAGE_SPEAR -> 24;
             case ARCHMAGE_STEP -> 18;
             case ARCHMAGE_BEAM -> 26;
-            case NONE -> 0;
+            case NONE, NONE_INTERNAL -> 0;
         };
     }
 
@@ -203,7 +242,7 @@ public final class Wave7NamedTrialActorPolicy {
             case ARCHMAGE_SPEAR -> 62;
             case ARCHMAGE_STEP -> 46;
             case ARCHMAGE_BEAM -> 78;
-            case NONE -> 1;
+            case NONE, NONE_INTERNAL -> 1;
         };
     }
 

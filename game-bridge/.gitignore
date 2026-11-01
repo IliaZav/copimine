@@ -1,0 +1,3 @@
+# Сборка не хранится в репозитории: jar воспроизводится build-plugin.ps1
+build/
+CopiMineWebsiteBridge.jar

@@ -166,6 +166,27 @@ if ($LASTEXITCODE -ne 0) { throw "jar packaging failed for CopiMineEndEvent." }
 $jarVersion = & $jarCommand --version 2>&1
 Write-Host ("Packaged with jar: {0} ({1})" -f $jarCommand, ($jarVersion -join ' '))
 Write-Host ("Compiled with javac: {0}" -f $javacCommand)
+# A digest that ignores packaging order and timestamps: it tells whether two
+# builds disagree about the class bytes or only about how they were zipped.
+$contentDigest = [Security.Cryptography.SHA256]::Create()
+try {
+  $classFiles = Get-ChildItem -Path $classes -Filter '*.class' -Recurse | Sort-Object FullName
+  $buffer = New-Object byte[] 65536
+  foreach ($classFile in $classFiles) {
+    $relative = $classFile.FullName.Substring($classes.Length + 1).Replace('\', '/')
+    $nameBytes = [Text.Encoding]::UTF8.GetBytes($relative)
+    [void]$contentDigest.TransformBlock($nameBytes, 0, $nameBytes.Length, $null, 0)
+    $stream = [IO.File]::OpenRead($classFile.FullName)
+    try {
+      while (($read = $stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+        [void]$contentDigest.TransformBlock($buffer, 0, $read, $null, 0)
+      }
+    } finally { $stream.Dispose() }
+  }
+  [void]$contentDigest.TransformFinalBlock([byte[]]::new(0), 0, 0)
+  $digestHex = -join ($contentDigest.Hash | ForEach-Object { $_.ToString('x2') })
+  Write-Host ("Class content digest: {0} ({1} classes)" -f $digestHex, $classFiles.Count)
+} finally { $contentDigest.Dispose() }
 Copy-Item -LiteralPath $jar -Destination $serverJar -Force
 # The migration lock pins build/minecraft-26.3/plugins/jars, not the staging
 # copy. Leaving that stale is how the published digest silently drifted away

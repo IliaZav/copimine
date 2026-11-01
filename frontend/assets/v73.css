@@ -153,7 +153,7 @@
 .bank-table tr.op:hover td{background:#151e23}
 .bank-table tr.op:focus-visible{outline:2px solid #2de39b;outline-offset:-2px}
 .bank-what{display:flex;align-items:center;gap:11px;min-width:0}
-.bank-what img{width:22px;height:44px;border-radius:5px;background:#0d1316;flex:none;object-fit:contain}
+.bank-what img{width:30px;height:30px;border-radius:5px;background:#0d1316;flex:none;object-fit:contain;image-rendering:pixelated}
 .bank-what div{display:grid;gap:1px;min-width:0}
 .bank-what b{font-weight:550;font-size:13px;color:#e2e9ee;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bank-what small{color:#5a676f;font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -195,8 +195,8 @@
 .bank-pick{position:relative}
 .bank-pick-btn{width:100%;display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid #223038;border-radius:10px;background:#0d1316;color:#e7edf1;font-size:14px;cursor:pointer;text-align:left;font-family:inherit}
 .bank-pick-btn:hover{border-color:#2d3f49}
-.bank-pick-btn img{width:26px;height:26px;border-radius:50%;object-fit:cover;flex:none;background:#0d1316}
-.bank-pick-btn .bank-pick-face{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:#18242a;color:#5f6c74;flex:none}
+.bank-pick-btn img{width:30px;height:30px;border-radius:5px;object-fit:contain;image-rendering:pixelated;flex:none;background:#0d1316}
+.bank-pick-btn .bank-pick-face{display:grid;place-items:center;width:30px;height:30px;border-radius:5px;background:#18242a;color:#5f6c74;flex:none}
 .bank-pick-caret{margin-left:auto;color:#5f6c74;transition:transform .18s;flex:none}
 .bank-pick.open .bank-pick-caret{transform:rotate(180deg)}
 .bank-pick-list{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:20;padding:6px;border:1px solid #223038;border-radius:11px;background:#111a1e;box-shadow:0 14px 34px rgba(0,0,0,.5);display:none;max-height:250px;overflow:auto}
@@ -205,7 +205,7 @@
 .bank-pick-search input{flex:1;padding:8px 11px;border:1px solid #1e2a31;border-radius:8px;background:#0d1316;color:#e7edf1;font-size:13px}
 .bank-pick-list button{width:100%;display:flex;align-items:center;gap:10px;padding:8px 10px;border:0;border-radius:8px;background:none;color:#dbe4ea;font-size:13.5px;cursor:pointer;text-align:left;font-family:inherit}
 .bank-pick-list button:hover{background:#18242a}
-.bank-pick-list button img{width:26px;height:26px;border-radius:50%;object-fit:cover;flex:none;background:#0d1316}
+.bank-pick-list button img{width:30px;height:30px;border-radius:5px;object-fit:contain;image-rendering:pixelated;flex:none;background:#0d1316}
 .bank-pick-list button small{margin-left:auto;color:#2de39b;font-size:11px}
 
 /* Итог перевода. */

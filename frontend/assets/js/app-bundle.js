@@ -4407,16 +4407,13 @@ function periodRows(){
 }
 function totals(rows){let inc=0,out=0;for(const t of rows){const n=Number(t.amount||0);if(t.incoming)inc+=n;else out+=n;}return{incoming:inc,outgoing:out,net:inc-out};}
 function opTitle(t){return t.note||(t.incoming?'Входящий перевод':'Исходящий перевод');}
-// В списке получателей — голова: узнаётся лицо. В таблице операций —
-// развёртка: там видно, что за игрок и в чём.
-function skinBody(p){
- return p?.skin?.body||M.asset('assets/skins/steve-front.png');
-}
+// Голова игрока — как .mc-head на остальном сайте: та же картинка и тот же
+// вид, чтобы лицо не выглядело по-разному в разных местах.
 function skinHead(p){
- return p?.skin?.avatar||M.asset('assets/skins/steve-head.png');
+ return p?.skin?.avatar||p?.skin?.head||M.asset('assets/skins/steve-head.png');
 }
 function opIcon(t){
- return skinBody(player(t.incoming?t.fromId:t.toId));
+ return skinHead(player(t.incoming?t.fromId:t.toId));
 }
 function opRow(t,i){
  const inc=!!t.incoming,who=inc?t.fromName:t.toName;
@@ -4457,7 +4454,7 @@ function recipientSelect(){
   +'<span>'+(cur?E(cur.name):'Выбери игрока')+'</span>'+icon('chevron-down','bank-pick-caret')+'</button>'
   +'<div class="bank-pick-list">'
   +'<label class="bank-pick-search">'+icon('search')+'<input id="bank-pick-query" placeholder="Найти игрока" autocomplete="off"></label>'
-  +list.map(p=>'<button type="button" data-action="bank-pick" data-id="'+E(p.id)+'"><img src="'+E(skinBody(p))+'" alt="" loading="lazy"><span>'+E(p.name)+'</span>'+(p.online?'<small>В сети</small>':'')+'</button>').join('')
+  +list.map(p=>'<button type="button" data-action="bank-pick" data-id="'+E(p.id)+'"><img src="'+E(skinHead(p))+'" alt="" loading="lazy"><span>'+E(p.name)+'</span>'+(p.online?'<small>В сети</small>':'')+'</button>').join('')
   +'</div></div>';
 }
 function summaryBox(){

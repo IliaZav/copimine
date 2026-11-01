@@ -1000,6 +1000,40 @@ def test_local_baseline_candidate_keeps_an_explicit_prior_candidate_replacement_
 
     assert records[0]['replaceSha256']==[baseline['sha256'],previous_sha256]
 
+def test_every_pinned_first_party_build_artifact_present_on_disk_matches_its_lock():
+    """A stale build artifact must not sit next to a fresh lock.
+
+    The plugin gate rebuilds these jars before the Python contracts run. When a
+    jar left over from an older source revision survived that step, the loader
+    refused it with "Local plugin artifact SHA-256 differs from its lock" and
+    the whole contract job failed on a file nobody had edited. Pinning and
+    rebuilding have to agree, so this asserts it explicitly instead of letting
+    the loader fail with an opaque message.
+    """
+
+    lock = json.loads((ROOT / 'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
+    module_names = {item['pluginName'] for item in lock['modules']}
+    checked = 0
+    for item in lock['unchangedBaseline']:
+        if item['pluginName'] in module_names:
+            continue
+        candidate = item.get('candidate', {})
+        if candidate.get('runtimeEligible') is not True or not candidate.get('buildArtifact'):
+            continue
+        artifact = ROOT / candidate['buildArtifact']
+        if not artifact.is_file():
+            continue
+        checked += 1
+        digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+        assert digest == candidate['sha256'], (
+            f'{item["pluginName"]} build artifact is stale: '
+            f'lock={candidate["sha256"][:12]} artifact={digest[:12]}'
+        )
+        assert artifact.stat().st_size == candidate['size'], item['pluginName']
+    # CI always has these built, so a silently-empty loop would be a green no-op.
+    assert checked == 8, checked
+
+
 def test_migration_lock_loader_includes_each_built_first_party_plugin():
     lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
     module_names={item['pluginName'] for item in lock['modules']}

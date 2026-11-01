@@ -4,7 +4,11 @@
 const M=CM,V=CMV4,X=CM6,W=CM5,E=M.esc,H=M.handlers,F=M.forms;
 // Initial view targets the explored area (-112..255, -176..191); re-tune if the world grows.
 const home=':64:0:8:'+(innerWidth<640?80:65)+':0:0:0:1:flat';
-let info=null,admin=null,scope='private',timer=null,busy=false,loaded=false,error='',dimension='overworld',camera=home;
+// У каждого измерения своя камера: Незер меньше и компактнее, общая позиция из
+// Обычного мира уводила его в пустоту — карта казалась сломанной.
+const homes={overworld:home,nether:':64:0:8:'+(innerWidth<640?80:65)+':0:0:0:1:flat',end:':64:0:8:'+(innerWidth<640?80:65)+':0:0:0:1:flat'};
+let info=null,admin=null,scope='private',timer=null,busy=false,loaded=false,error='',dimension='overworld',camera=homes.overworld;
+const cameras={overworld:homes.overworld,nether:homes.nether,end:homes.end};
 const labels={queued:'В очереди',waiting_for_resources:'Ожидаем свободных ресурсов',running:'Рендер карты',validating:'Проверка файлов',publishing:'Публикация',completed:'Новый снимок опубликован',failed:'Обновление не выполнено'};
 const errors={game_unavailable:'Minecraft не ответил.',bluemap_unavailable:'BlueMap ещё не готов.',low_disk_space:'Недостаточно свободного места.',invalid_publication:'Файлы карты не прошли проверку.',missing_map_metadata:'Нет метаданных одного из измерений.',resource_wait_timeout:'Сервер был занят более 30 минут. Повторите позже.',renderer_flush_failed:'Не удалось сохранить файлы BlueMap.'};
 const date=value=>value?new Date(value*1000).toLocaleString('ru-RU'):'Ещё не было';
@@ -14,7 +18,7 @@ function activeJob(){return admin?.job&&['queued','waiting_for_resources','runni
 // возвращает плоскую проекцию, поэтому вместе со state переключаем и его.
 function cameraMode(cam,on){const p=cam.split(':');if(p.length!==10)return cam;p[6]=on?(Number(p[6])>0.05?p[6]:'0.62'):'0';p[8]=on?'0':'1';p[9]=on?'perspective':'flat';return p.join(':');}
 function viewerUrl(isAdmin){const url=isAdmin&&scope==='private'?admin?.viewerUrl:info?.viewerUrl;if(!url)return null;const privateView=isAdmin&&scope==='private';const mode=privateView?camera:cameraMode(camera,!!info?.perspective);return url+'?v='+(info?.publishedAt||0)+(info?.perspective?'p':'f')+(info?.firstPerson?'1':'0')+'#'+(privateView?'admin_':'public_')+dimension+mode;}
-function rememberCamera(){try{const hash=document.getElementById('production-map-frame')?.contentWindow.location.hash;if(hash&&hash.includes(':'))camera=hash.slice(hash.indexOf(':'));}catch{}}
+function rememberCamera(){try{const hash=document.getElementById('production-map-frame')?.contentWindow.location.hash;if(hash&&hash.includes(':')){camera=hash.slice(hash.indexOf(':'));cameras[dimension]=camera;}}catch{}}
 function stateHtml(){const j=admin?.job;return '<div class="production-map-state" role="status" aria-live="polite">'+(j?M.pill(labels[j.status]||j.status,j.status==='completed'?'green':j.status==='failed'?'red':''):'Обновление ещё не запускалось')+(j?.error?'<span>'+E(errors[j.error]||j.error)+'</span>':'')+'</div><dl class="detail-specs"><div><dt>Последняя публикация</dt><dd>'+E(date(info?.publishedAt))+'</dd></div><div><dt>Следующее по расписанию</dt><dd>'+E(admin?.settings?.autoRefresh?date(admin.nextScheduledAt):'Расписание выключено')+'</dd></div></dl>';}
 function settingsHtml(){const c=admin?.settings||{};return '<section class="panel production-map-settings mt"><h2>Публикация и обновление</h2><p class="hint mt12">Сайт переключается на новый снимок только после успешной проверки. До этого доступна предыдущая карта.</p><form data-form="v6-map-settings"><div class="v6-form-grid three"><label class="check-row"><input type="checkbox" name="enabled" '+(c.enabled!==false?'checked':'')+'>Показывать публичную карту</label><label class="check-row"><input type="checkbox" name="autoRefresh" '+(c.autoRefresh?'checked':'')+'>Обновлять по расписанию</label><label class="check-row"><input type="checkbox" name="perspective" '+(c.perspective?'checked':'')+'>Разрешить 3D-обзор (перспектива)</label><label class="check-row"><input type="checkbox" name="firstPerson" '+(c.firstPerson?'checked':'')+'>Разрешить вид от первого лица</label><label class="check-row"><input type="checkbox" disabled>Метки игроков отключены</label>'+V.field('Интервал публикации, минуты','intervalMinutes',c.intervalMinutes||720,'number','required min="60" max="10080"')+V.field('Задержка публикации, минуты','minAgeMinutes',c.minAgeMinutes||0,'number','required min="0" max="1440"')+'</div>'+V.field('Причина изменения','reason','','text','required minlength="5" maxlength="500"')+V.actions('Сохранить настройки')+'</form><p class="hint">Метки останутся выключены до проверки приватности, vanish и задержки позиций в Minecraft.</p></section>';}
 function view(isAdmin){
@@ -33,7 +37,7 @@ async function refresh(force=false){
 M.renderers.map=()=>view(false);W.adminExtensions.world=()=>view(true);
 X.refreshMap=refresh;
 window.CMBlueMap={state:()=>({info,loaded,error,dimension,viewerUrl:viewerUrl(false)})};
-H['production-map-dimension']=b=>{rememberCamera();dimension=['overworld','nether','end'].includes(b.dataset.dimension)?b.dataset.dimension:'overworld';M.render();};
+H['production-map-dimension']=b=>{rememberCamera();dimension=['overworld','nether','end'].includes(b.dataset.dimension)?b.dataset.dimension:'overworld';camera=cameras[dimension]||homes[dimension];M.render();};
 H['production-map-scope']=b=>{rememberCamera();scope=b.dataset.scope==='private'?'private':'public';M.render();};
 H['production-map-retry']=()=>refresh(true);
 H['v6-map-fullscreen']=async()=>{const n=document.getElementById('production-map-stage');if(document.fullscreenElement)await document.exitFullscreen();else if(n?.requestFullscreen)await n.requestFullscreen();else M.toast('Этот браузер не поддерживает полноэкранный режим.');};

@@ -97,6 +97,16 @@ CREATE TABLE IF NOT EXISTS cm_site_backup_codes (
  id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES cm_site_users(id), code_hash TEXT NOT NULL,
  consumed_s BIGINT NOT NULL DEFAULT 0
 );
+-- Какие данные игрока не должны попадать в статистику. Служебные аккаунты
+-- администрации получают огромные балансы и фабрикованные регистрации, из-за чего
+-- реальные показатели проекта искажаются. Флаги хранятся отдельно, чтобы не
+-- менять схему пользователей и не дублировать их в каждой таблице.
+CREATE TABLE IF NOT EXISTS cm_site_stats_exclusions (
+ id TEXT PRIMARY KEY REFERENCES cm_site_users(id) ON DELETE CASCADE,
+ exclude_money INTEGER NOT NULL DEFAULT 0, exclude_activity INTEGER NOT NULL DEFAULT 0,
+ exclude_registration INTEGER NOT NULL DEFAULT 0, updated_s BIGINT NOT NULL DEFAULT 0,
+ actor_id TEXT NOT NULL DEFAULT '', actor_name TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS cm_site_analytics_events (
  id TEXT PRIMARY KEY, event_type TEXT NOT NULL, page TEXT NOT NULL,
  visitor_hash TEXT NOT NULL, item_id TEXT NOT NULL DEFAULT '', quantity INTEGER NOT NULL DEFAULT 0,

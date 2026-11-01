@@ -659,11 +659,124 @@ def export_players(request: Request, q: str = "", role: str = "", only: str = ""
     )
 
 
+# Какие грани аккаунта можно исключить из статистики. Каждая отвечает за свою
+# группу показателей, чтобы владелец мог скрыть баланс, но остаться в отчётах по
+# активности — и наоборот.
+STATS_EXCLUSION_KINDS = {
+    "money": "Балансы и деньги",
+    "activity": "Активность и входы",
+    "registration": "Регистрации и привязки",
+}
+
+
+def stats_exclusions(db):
+    """Карта id аккаунта -> набор исключённых граней."""
+    try:
+        rows = db.execute(
+            "SELECT id, exclude_money, exclude_activity, exclude_registration "
+            "FROM cm_site_stats_exclusions"
+        ).fetchall()
+    except Exception:  # noqa: BLE001 — старая база без таблицы не должна ронять статистику
+        return {}
+    result = {}
+    for row in rows:
+        kinds = {
+            kind for kind, column in (
+                ("money", "exclude_money"),
+                ("activity", "exclude_activity"),
+                ("registration", "exclude_registration"),
+            ) if int(row[column] or 0)
+        }
+        if kinds:
+            result[row["id"]] = kinds
+    return result
+
+
+def _exclusion_placeholders(values):
+    return ",".join(["%s"] * len(values)) if values else "''"
+
+
+@router.get("/api/v6/admin/stats/exclusions")
+def list_stats_exclusions(request: Request):
+    """Кто исключён из статистики и в каких разрезах."""
+    current_user(request, "players.view")
+    with request.app.state.database.transaction() as db:
+        rows = db.execute(
+            "SELECT e.id, e.exclude_money, e.exclude_activity, e.exclude_registration, "
+            "e.updated_s, e.actor_name, u.name, u.display_name, u.role "
+            "FROM cm_site_stats_exclusions e JOIN cm_site_users u ON u.id=e.id "
+            "WHERE e.exclude_money<>0 OR e.exclude_activity<>0 OR e.exclude_registration<>0 "
+            "ORDER BY e.updated_s DESC"
+        ).fetchall()
+    return {"kinds": STATS_EXCLUSION_KINDS, "players": [
+        {
+            "id": row["id"], "name": row["name"], "displayName": row["display_name"],
+            "role": row["role"],
+            "excludeMoney": bool(row["exclude_money"]),
+            "excludeActivity": bool(row["exclude_activity"]),
+            "excludeRegistration": bool(row["exclude_registration"]),
+            "updatedAt": int(row["updated_s"] or 0) * 1000, "actorName": row["actor_name"],
+        }
+        for row in rows
+    ]}
+
+
+@router.post("/api/v6/admin/stats/exclusions")
+async def set_stats_exclusion(request: Request):
+    """Включить или выключить исключение аккаунта из статистики.
+
+    Право аналитики плюс подтверждение пароля: подмена флагов меняет цифры,
+    которые видит руководство, поэтому действие приравнено к финансовому.
+    """
+    actor = current_user(request, "analytics.read", fresh=True)
+    if actor["role"] not in ("owner", "admin"):
+        fail(403, "forbidden", "Менять исключения может только администрация.")
+    data = await request.json()
+    player_id = str(data.get("playerId") or "").strip()
+    if not player_id:
+        fail(400, "invalid_player", "Укажите аккаунт.")
+    kinds = data.get("kinds")
+    if not isinstance(kinds, dict):
+        fail(400, "invalid_exclusion", "Укажите, какие данные исключать.")
+    unknown = set(kinds) - set(STATS_EXCLUSION_KINDS)
+    if unknown:
+        fail(400, "invalid_exclusion", "Неизвестный раздел: " + ", ".join(sorted(unknown)))
+    now = int(time.time())
+    with request.app.state.database.transaction() as db:
+        exists = db.execute("SELECT id FROM cm_site_users WHERE id=%s", (player_id,)).fetchone()
+        if not exists:
+            fail(404, "unknown_player", "Аккаунт не найден.")
+        db.execute(
+            "INSERT INTO cm_site_stats_exclusions"
+            "(id,exclude_money,exclude_activity,exclude_registration,updated_s,actor_id,actor_name)"
+            " VALUES(%s,%s,%s,%s,%s,%s,%s)"
+            " ON CONFLICT(id) DO UPDATE SET exclude_money=excluded.exclude_money,"
+            " exclude_activity=excluded.exclude_activity,"
+            " exclude_registration=excluded.exclude_registration,"
+            " updated_s=excluded.updated_s, actor_id=excluded.actor_id, actor_name=excluded.actor_name",
+            (
+                player_id,
+                1 if kinds.get("money") else 0,
+                1 if kinds.get("activity") else 0,
+                1 if kinds.get("registration") else 0,
+                now, actor["id"], actor["name"],
+            ),
+        )
+    request.app.state.database.audit(
+        actor, "stats.exclusion", player_id,
+        details={"kinds": {kind: bool(value) for kind, value in kinds.items()}},
+    )
+    return {"ok": True, "playerId": player_id,
+            "kinds": {kind: bool(kinds.get(kind)) for kind in STATS_EXCLUSION_KINDS}}
+
+
 @router.get("/api/v6/admin/analytics/business")
 def analytics_business(request: Request, days: int = 30):
     """Бизнес-показатели по дням: регистрации, привязки, покупки, обращения.
 
     Отдельно от /admin/analytics: там про визиты сайта, здесь — про игроков и деньги.
+    Аккаунты с флагами исключения не попадают в соответствующие показатели:
+    служебный баланс владельца иначе рисует несуществующий рост денег.
     """
     current_user(request, "analytics.read")
     days = max(1, min(int(days), 365))
@@ -673,29 +786,46 @@ def analytics_business(request: Request, days: int = 30):
     day = ("strftime('%Y-%m-%d', created_s, 'unixepoch')" if sqlite
            else "to_char(to_timestamp(created_s) AT TIME ZONE 'UTC', 'YYYY-MM-DD')")
     with request.app.state.database.transaction() as db:
+        exclusions = stats_exclusions(db)
+        skip_registration = [pid for pid, kinds in exclusions.items() if "registration" in kinds]
+        skip_activity = [pid for pid, kinds in exclusions.items() if "activity" in kinds]
+        skip_tickets = sorted(set(skip_registration) | set(skip_activity))
+        not_registered = (
+            f" AND id NOT IN ({_exclusion_placeholders(skip_registration)})" if skip_registration else ""
+        )
+        not_active = (
+            f" AND id NOT IN ({_exclusion_placeholders(skip_activity)})" if skip_activity else ""
+        )
+        not_tickets = (
+            f" AND user_id NOT IN ({_exclusion_placeholders(skip_tickets)})" if skip_tickets else ""
+        )
         registrations = db.execute(
             f"SELECT {day} AS day, count(*) AS n FROM cm_site_users "
-            "WHERE created_s >= %s GROUP BY 1 ORDER BY 1", (start_s,)
+            f"WHERE created_s >= %s{not_registered} GROUP BY 1 ORDER BY 1",
+            (start_s,) + tuple(skip_registration),
         ).fetchall()
         verified = db.execute(
             f"SELECT {day} AS day, count(*) AS n FROM cm_site_users "
-            "WHERE email_verified=1 AND created_s >= %s GROUP BY 1 ORDER BY 1", (start_s,)
+            f"WHERE email_verified=1 AND created_s >= %s{not_registered} GROUP BY 1 ORDER BY 1",
+            (start_s,) + tuple(skip_registration),
         ).fetchall()
         linked = db.execute(
             f"SELECT {day} AS day, count(*) AS n FROM cm_site_users "
-            "WHERE minecraft_uuid<>'' AND created_s >= %s GROUP BY 1 ORDER BY 1", (start_s,)
+            f"WHERE minecraft_uuid<>'' AND created_s >= %s{not_registered} GROUP BY 1 ORDER BY 1",
+            (start_s,) + tuple(skip_registration),
         ).fetchall()
         tickets = db.execute(
             f"SELECT {day} AS day, count(*) AS n FROM cm_site_tickets "
-            "WHERE created_s >= %s GROUP BY 1 ORDER BY 1", (start_s,)
+            f"WHERE created_s >= %s{not_tickets} GROUP BY 1 ORDER BY 1",
+            (start_s,) + tuple(skip_tickets),
         ).fetchall()
         totals = db.execute(
-            "SELECT (SELECT count(*) FROM cm_site_users) AS users, "
-            "(SELECT count(*) FROM cm_site_users WHERE email_verified=1) AS verified, "
-            "(SELECT count(*) FROM cm_site_users WHERE minecraft_uuid<>'') AS linked, "
-            "(SELECT count(*) FROM cm_site_users WHERE last_login_s>=%s) AS active, "
-            "(SELECT count(*) FROM cm_site_tickets WHERE status<>'closed') AS open_tickets",
-            (now - 7 * 86400,),
+            f"SELECT (SELECT count(*) FROM cm_site_users WHERE 1=1{not_registered}) AS users, "
+            f"(SELECT count(*) FROM cm_site_users WHERE email_verified=1{not_registered}) AS verified, "
+            f"(SELECT count(*) FROM cm_site_users WHERE minecraft_uuid<>''{not_registered}) AS linked, "
+            f"(SELECT count(*) FROM cm_site_users WHERE last_login_s>=%s{not_active}) AS active, "
+            f"(SELECT count(*) FROM cm_site_tickets WHERE status<>'closed'{not_tickets}) AS open_tickets",
+            tuple(skip_registration) * 3 + (now - 7 * 86400,) + tuple(skip_activity) + tuple(skip_tickets),
         ).fetchone()
     def series(rows):
         return [{"day": row["day"], "count": int(row["n"])} for row in rows]

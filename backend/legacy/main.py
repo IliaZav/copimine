@@ -16257,6 +16257,25 @@ def public_player_donation_session(session: Mapping[str, Any] | dict[str, Any]) 
     return item
 
 
+def _excluded_money_sql(conn) -> str:
+    """Условие «аккаунт не исключён из денежной статистики».
+
+    Пустая строка означает «никого не исключаем»; на старой базе без таблицы
+    исключений сводка продолжает работать как раньше.
+    """
+    try:
+        conn.execute("SELECT 1 FROM cm_site_stats_exclusions LIMIT 1")
+    except Exception:  # noqa: BLE001 — таблицы может не быть до миграции
+        conn.rollback() if hasattr(conn, "rollback") else None
+        return ""
+    # Счет доната адресуется MineCraft-UUID, а флаг живёт на аккаунте сайта,
+    # поэтому связываем их через cm_site_users, а не сравниваем ключи напрямую.
+    return (" AND NOT EXISTS (SELECT 1 FROM cm_site_stats_exclusions e "
+            "JOIN cm_site_users u ON u.id=e.id WHERE e.exclude_money<>0 "
+            "AND (e.id=donation_accounts.player_uuid "
+            "OR (u.minecraft_uuid<>'' AND u.minecraft_uuid=donation_accounts.player_uuid)))")
+
+
 def read_donation_admin_overview_sync(limit: int = 100) -> dict[str, Any]:
     if not pg_ready():
         return {
@@ -16270,11 +16289,16 @@ def read_donation_admin_overview_sync(limit: int = 100) -> dict[str, Any]:
     safe_now = donation_now_ms()
     catalog_by_id = dict((donation_catalog_snapshot_sync().get("byId") or {}))
     with auth_conn() as conn:
+        # Служебные балансы администрации не должны раздувать общий итог: иначе
+        # владелец видит миллиарды в обороте, которых в экономике нет.
+        skip_money = _excluded_money_sql(conn)
         summary_row = conn.execute(
             """
             SELECT
                 (SELECT COUNT(*) FROM donation_accounts) AS accounts,
-                (SELECT COALESCE(SUM(balance),0) FROM donation_accounts) AS total_balance,
+                (SELECT COALESCE(SUM(balance),0) FROM donation_accounts WHERE 1=1""" + skip_money + """) AS total_balance,
+                (SELECT COUNT(*) FROM donation_accounts WHERE 1=1""" + skip_money + """) AS counted_accounts,
+                (SELECT COALESCE(SUM(balance),0) FROM donation_accounts WHERE NOT (1=1""" + skip_money + """)) AS excluded_balance,
                 (SELECT COUNT(*) FROM donation_item_claims WHERE status IN ('UNCLAIMED','RESERVED','DELIVERING','DELIVERY_REVIEW')) AS unclaimed_items,
                 (SELECT COUNT(*) FROM donation_payment_sessions WHERE status IN ('CREATED','PENDING') AND (expires_at=0 OR expires_at>%s)) AS open_sessions,
                 (SELECT COUNT(*) FROM donation_purchases WHERE status IN ('PAID','CLAIM_PENDING','CLAIMED','DELIVERY_REVIEW')) AS paid_purchases
@@ -16330,6 +16354,8 @@ def read_donation_admin_overview_sync(limit: int = 100) -> dict[str, Any]:
         "summary": {
             "accounts": int(summary_row.get("accounts") or 0),
             "totalBalance": int(summary_row.get("total_balance") or 0),
+            "countedAccounts": int(summary_row.get("counted_accounts") or 0),
+            "excludedBalance": int(summary_row.get("excluded_balance") or 0),
             "unclaimedItems": int(summary_row.get("unclaimed_items") or 0),
             "openSessions": int(summary_row.get("open_sessions") or 0),
             "paidPurchases": int(summary_row.get("paid_purchases") or 0),

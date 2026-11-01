@@ -201,14 +201,11 @@
   }
   const previousAccount = R.account;
   R.account = function (tab) {
-    restoreSkin();
-    let html = previousAccount(tab);
+    restoreSkin(); let html = previousAccount(tab);
     if (!M.me()) return html;
-    // Без 3D-сцены и подсказок: обычная фигура игрока и ссылка на настройки.
-    // Модель с тенью и «перетащи, чтобы повернуть» — украшение, которое
-    // мешало читать кабинет.
-    html = html.replace(/<img class="v71-account-skin"[^>]+>/,
-      `<div class="cm72-account-avatar"><img src="${asset(M.me().skin?.body || 'assets/skins/steve-front.png')}" alt="Твой скин" width="96" height="192" loading="lazy"><a href="#settings/profile?skin=1">Изменить скин ${icon('arrow-up-right')}</a></div>`);
+    html = html.replace(/<img class="v71-account-skin"[^>]+>/, `<div class="cm72-account-avatar">${skinStage(M.me())}<a href="#settings/profile?skin=1">Изменить скин ${icon('arrow-up-right')}</a></div>`);
+    html = html.replace(/src="[^\"]*assets\/img\/world.webp"/, `src="${asset(photo)}"`);
+    // The full tab row already lists these destinations; avoid repeating it in the aside.
     const t = document.createElement('template'); t.innerHTML = html;
     t.content.querySelectorAll('.v71-account-aside section').forEach(section => { if (section.querySelector('h3')?.textContent === 'Игровые дела') section.remove(); });
     return t.innerHTML;

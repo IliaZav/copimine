@@ -22,12 +22,10 @@ const save=()=>{window.CMReview?.scheduleSave?.();if(window.CM_SERVER_MODE)retur
 const startSession=(id,remember=false)=>{if(window.CM_SERVER_MODE)throw Error("Вход подтверждается сервером.");state.session=Auth.begin(id,remember);save();return state.session;};
 const endSession=()=>{state.session=null;try{Auth.clear(localStorage,sessionStorage);}catch{}save();};
 const me=()=>state.players.find(p=>p.id===state.session?.id)||null;
-// AR — алмазная руда: настоящая текстура из клиента Minecraft 26.3.
-// У CM своей иконки пока нет, поэтому он остаётся подписью.
-const AR_ICON='assets/img/currency/ar-ore.png';
-const money=(n,c)=>c==='AR'
-  ?`<span class="money">${n==null?'—':`<img class="money-icon" src="${AR_ICON}" alt="" width="16" height="16" loading="lazy">${Number(n||0).toLocaleString('ru-RU')}`}</span>`
-  :`${n==null?'—':Number(n||0).toLocaleString('ru-RU')} ${c==='CM'?'CM':c}`;
+// У AR — настоящая текстура алмазной руды, у CM — алмаз: валюта читается
+// с одного взгляда, без подписи. Картинки из клиента Minecraft 26.3.
+const moneyIcon=c=>c==='AR'?'assets/img/currency/ar-ore.png':c==='CM'?'assets/img/currency/cm-diamond.png':'';
+const money=(n,c)=>{const v=Number(n||0).toLocaleString('ru-RU'),i=moneyIcon(c);return i?`<span class="money"><img class="money-icon" src="${i}" alt="" width="16" height="16" loading="lazy">${v}</span>`:`${v} ${c}`;};
 const date=(n,short=false)=>n?new Date(n).toLocaleString('ru-RU',short?{day:'2-digit',month:'short'}:{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'Не определено';
 const asset=p=>window.CM_ASSETS?.[p]||p;
 const item=id=>state.catalog.find(p=>p.id===id);

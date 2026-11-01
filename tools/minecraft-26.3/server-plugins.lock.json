@@ -987,13 +987,13 @@
       "candidate": {
         "filename": "CopiMineEndEvent-26.3.jar",
         "runtimeFilename": "CopiMineEndEvent.jar",
-        "sha256": "beedb413dfc9a32ee76193b1e2575e45e99195eb7067b8d7d8ffbdda31bfc4b4",
+        "sha256": "36fca43803fde75e7ca9abeddc71dabccc1b7ac8f04c63710e736cead0139db4",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "size": 1817586,
-        "sha512": "4b350b6422e91e419b8040b4fcc6b06026a3e1d779c554dc5e747aa4a1409bbe361aa87d01d741f1efb89e225a3950cc667dac8eb796b582d84c6c00de37077d",
+        "size": 1817578,
+        "sha512": "0e6e48b195b5f44d476f12789deefbb390d122edf66ae116c8fb393bf9b7ad3440c4851e7c4f3d4c0b7102ab8a89cf748b5d090a218168d044cc8b15d8bc2ef3",
         "runtimeEligible": true,
         "replaceSha256": [
           "440e081eebfdc6764c64e5f8aab3c3505862c55efd17dc5e69d51e3dde77d73a",
@@ -1069,6 +1069,7 @@
           "b93050e2d751366897a18333277fd7b67ad915078f5aa7b1fa4cd3c8391ad94d",
           "98e9258d2d4a5af69b443f3aaded1cb7c34597a093ff473e6b4c4b97b4791c98",
           "564236e257d69df0afcbafef4748add1eb186e8a56a6e568680fb63c5128f94d",
+          "beedb413dfc9a32ee76193b1e2575e45e99195eb7067b8d7d8ffbdda31bfc4b4",
           "25d017e0f22a5cb554887be23a5c6523141e1557fa2194da267936112017ede0"
         ]
       },

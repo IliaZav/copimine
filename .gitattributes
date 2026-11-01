@@ -1,5 +1,10 @@
 *.sh text eol=lf
 *.bash text eol=lf
+# Packaged plugin resources are hashed into the pinned candidate. A runner
+# with core.autocrlf=true must not rewrite them, or the same sources build a
+# jar 400 bytes longer (CRLF) and the pin cannot match.
+copimine-end-event/config.yml text eol=lf
+copimine-end-event/plugin.yml text eol=lf
 
 # Supplied Chameleon geometry/animations have byte-exact hash contracts.
 # Windows checkout must preserve them instead of converting LF to CRLF.

@@ -64,18 +64,17 @@ public final class EchoDuelCombatPolicyTest {
                         supplies.revision(), 130, cooldowns()).isEmpty(),
                 "empty food stack cannot be duplicated");
 
-        ActorState afterAppleOne = EchoDuelCombatPolicy.tryStartConsumable(afterFood, supplies, 41,
-                supplies.revision(), 140, cooldowns()).orElseThrow();
-        check(supplies.remaining(41) == 1, "first allowed golden apple is spent");
-        ActorState afterAppleTwo = EchoDuelCombatPolicy.tryStartConsumable(afterAppleOne, supplies, 41,
-                supplies.revision(), 150, cooldowns()).orElseThrow();
-        check(supplies.remaining(41) == 0, "the fixed allowance contains only two golden apples");
-        check(EchoDuelCombatPolicy.tryStartConsumable(afterAppleTwo, supplies, 41,
-                        supplies.revision(), 160, cooldowns()).isEmpty(),
-                "golden apples cannot be replenished after the allowance is spent");
+        // The replica carries only what its owner held: the reserved slot is
+        // never seeded with bonus golden apples (GEAR-005, AUD-13), so a
+        // consumable request there is rejected instead of granting free healing.
+        ActorState afterAppleAttempt = afterFood;
+        check(EchoDuelCombatPolicy.tryStartConsumable(afterAppleAttempt, supplies, 41,
+                        supplies.revision(), 140, cooldowns()).isEmpty(),
+                "the empty reserved slot grants no healing the owner never carried");
+        check(supplies.remaining(41) == 0, "the reserved slot holds no invented golden apples");
 
         long beforeWrongKind = supplies.revision();
-        check(EchoDuelCombatPolicy.tryStartRanged(afterAppleTwo, supplies, 0, 4,
+        check(EchoDuelCombatPolicy.tryStartRanged(afterAppleAttempt, supplies, 0, 4,
                         beforeWrongKind, 170, cooldowns()).isEmpty(),
                 "melee gear cannot act as the ranged weapon");
         check(supplies.revision() == beforeWrongKind, "wrong resource kind does not advance revision");
@@ -91,7 +90,7 @@ public final class EchoDuelCombatPolicyTest {
         check(!EchoDuelCombatPolicy.tryApplyGearWear(supplies, 5, 1, supplies.revision()),
                 "food cannot receive gear durability updates");
 
-        DuelRecord changed = persist(fixture.duel(), afterAppleTwo, supplies);
+        DuelRecord changed = persist(fixture.duel(), afterAppleAttempt, supplies);
         NamedData changedData = withDuel(fixture.data(), fixture.room(), fixture.owner(), changed);
         Map<String, String> encoded = RealitySplitTrialSnapshot.encodeNamed(changedData);
         NamedData decoded = RealitySplitTrialSnapshot.decodeNamed(encoded, EVENT, ATTEMPT, RUNTIME);
@@ -99,7 +98,7 @@ public final class EchoDuelCombatPolicyTest {
         EchoLoadoutState restoredSupplies = restoreLoadout(restored);
         check(restoredSupplies.remaining(4) == 0 && restoredSupplies.remaining(5) == 0
                         && restoredSupplies.remaining(41) == 0,
-                "snapshot restore keeps consumed ammunition, food, and apple quantities");
+                "snapshot restore keeps consumed ammunition, food, and the empty allowance slot");
         check("250".equals(restoredSupplies.encode().get("slot.0.wear"))
                         && restoredSupplies.remaining(0) == 0,
                 "snapshot restore keeps final gear wear and broken state");

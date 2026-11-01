@@ -92,8 +92,8 @@ public final class EchoLoadoutState {
                 throw new IllegalArgumentException("Invalid remaining replica quantity or wear");
         }
         Item bonus=frozen.get(41);
-        if (!bonus.equals(new Item("GOLDEN_APPLE",2,0,0,Map.of(),"",false)))
-            throw new IllegalArgumentException("Replica allowance must be exactly two plain golden apples");
+        if (!bonus.equals(Item.empty()))
+            throw new IllegalArgumentException("Replica carries only what its owner actually held");
     }
     public static EchoLoadoutState create(UUID event, long attempt, UUID duel, UUID owner, List<Item> source, int selected) {
         if (source == null || source.size()!=41) throw new IllegalArgumentException("41 source slots required");
@@ -106,11 +106,11 @@ public final class EchoLoadoutState {
             items.add(new Item(item.material(),item.amount(),item.maximumDamage(),
                     item.damage(),item.enchantments(),item.name(),item.custom()));
         }
-        // The duel hands each replica a fixed allowance of exactly two plain
-        // golden apples in the reserved slot. It is duel-local (slot 41 is
-        // never taken from the owner's inventory) and cannot be replenished
-        // once spent; the constructor rejects any other value there.
-        items.add(new Item("GOLDEN_APPLE",2,0,0,Map.of(),"",false));
+        // No invented supplies. The replica starts from exactly what its owner
+        // held. Seeding two plain golden apples into the reserved slot was free
+        // healing the owner's inventory never contained; GEAR-005 and AUD-13
+        // forbid it, and the slot stays empty.
+        items.add(Item.empty());
         int[] counts=new int[42],damage=new int[42];
         for (int i=0;i<42;i++) { counts[i]=items.get(i).amount(); damage[i]=items.get(i).damage(); }
         return new EchoLoadoutState(event,attempt,duel,owner,selected,items,counts,damage,0);

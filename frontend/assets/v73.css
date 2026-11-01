@@ -195,7 +195,7 @@
 .bank-pick{position:relative}
 .bank-pick-btn{width:100%;display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid #223038;border-radius:10px;background:#0d1316;color:#e7edf1;font-size:14px;cursor:pointer;text-align:left;font-family:inherit}
 .bank-pick-btn:hover{border-color:#2d3f49}
-.bank-pick-btn img{width:22px;height:44px;border-radius:6px;object-fit:contain;flex:none;background:#0d1316}
+.bank-pick-btn img{width:26px;height:26px;border-radius:50%;object-fit:cover;flex:none;background:#0d1316}
 .bank-pick-btn .bank-pick-face{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:#18242a;color:#5f6c74;flex:none}
 .bank-pick-caret{margin-left:auto;color:#5f6c74;transition:transform .18s;flex:none}
 .bank-pick.open .bank-pick-caret{transform:rotate(180deg)}
@@ -205,7 +205,7 @@
 .bank-pick-search input{flex:1;padding:8px 11px;border:1px solid #1e2a31;border-radius:8px;background:#0d1316;color:#e7edf1;font-size:13px}
 .bank-pick-list button{width:100%;display:flex;align-items:center;gap:10px;padding:8px 10px;border:0;border-radius:8px;background:none;color:#dbe4ea;font-size:13.5px;cursor:pointer;text-align:left;font-family:inherit}
 .bank-pick-list button:hover{background:#18242a}
-.bank-pick-list button img{width:22px;height:44px;border-radius:6px;object-fit:contain;flex:none;background:#0d1316}
+.bank-pick-list button img{width:26px;height:26px;border-radius:50%;object-fit:cover;flex:none;background:#0d1316}
 .bank-pick-list button small{margin-left:auto;color:#2de39b;font-size:11px}
 
 /* Итог перевода. */

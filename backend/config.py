@@ -24,8 +24,6 @@ class Settings:
     smtp_password: str = ""
     smtp_starttls: bool = False
     mail_domain_ready: bool = False
-    vk_client_id: str = ""
-    vk_client_secret: str = ""
     session_hours: int = 12
     map_root: Path = Path("/var/lib/copimine-site/maps")
     map_minimum_free_bytes: int = 5 * 1024**3
@@ -65,5 +63,4 @@ class Settings:
             smtp_from=os.getenv("SMTP_FROM", "CopiMine <noreply@copimine.ru>"),
             smtp_username=os.getenv("SMTP_USERNAME", ""), smtp_password=os.getenv("SMTP_PASSWORD", ""),
             smtp_starttls=truth("SMTP_STARTTLS"), mail_domain_ready=truth("MAIL_DOMAIN_READY"),
-            vk_client_id=os.getenv("VK_CLIENT_ID", ""), vk_client_secret=os.getenv("VK_CLIENT_SECRET", ""),
-        )
+                    )

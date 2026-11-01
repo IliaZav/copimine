@@ -24,7 +24,7 @@ SUPPORTED_ACTIONS = {"kick", "ban", "unban", "heal", "feed", "kill", "gamemode",
 
 def review_user(row):
     value = public_user(row)
-    return {**value, "username": row["name"], "display_name": row["display_name"], "email_verified": bool(row["email_verified"]), "vk_id": row["vk_id"], "blocked": not bool(row["enabled"]), "block_reason": row["blocked_reason"], "email_hint_dismissed": True}
+    return {**value, "username": row["name"], "display_name": row["display_name"], "email_verified": bool(row["email_verified"]), "blocked": not bool(row["enabled"]), "block_reason": row["blocked_reason"], "email_hint_dismissed": True}
 
 
 def safe_reason(value):
@@ -363,7 +363,7 @@ def export_account(request: Request):
     database.audit(user, "account.exported", user["id"])
     return {
         "exportedAt": int(time.time() * 1000),
-        "account": {key: user[key] for key in ("id", "name", "display_name", "email", "role", "created_s", "last_login_s", "minecraft_uuid", "minecraft_name", "email_verified", "vk_id") if key in user.keys()},
+        "account": {key: user[key] for key in ("id", "name", "display_name", "email", "role", "created_s", "last_login_s", "minecraft_uuid", "minecraft_name", "email_verified") if key in user.keys()},
         "preferences": user["preferences"],
         "tickets": [dict(row) for row in tickets],
         "ticketMessages": [dict(row) for row in messages],
@@ -411,7 +411,7 @@ async def delete_account(request: Request, response: Response):
         db.execute("UPDATE cm_site_sessions SET revoked_s=%s WHERE user_id=%s AND revoked_s=0", (now, user["id"]))
         db.execute(
             "UPDATE cm_site_users SET name=%s,name_norm=%s,display_name=%s,email=%s,email_norm=%s,"
-            "password_hash=%s,minecraft_uuid='',minecraft_name='',vk_id=NULL,totp_secret='',"
+            "password_hash=%s,minecraft_uuid='',minecraft_name='',totp_secret='',"
             "pending_totp='',preferences='{}',enabled=0,updated_s=%s,blocked_reason=%s,blocked_until_s=%s WHERE id=%s",
             (alias, alias, "Удалённый аккаунт", tombstone_email, tombstone_email,
              hash_password(secrets.token_urlsafe(48)), now, "account.deleted", now + 315360000, user["id"]),
@@ -430,15 +430,9 @@ def dismiss_hint(request: Request):
 async def unlink(request: Request):
     user = current_user(request, fresh=True)
     data = await request.json()
-    if data.get("kind") not in {"email", "vk"}:
+    if data.get("kind") != "email":
         fail(400, "invalid_connection", "Неизвестный способ входа.")
-    if data["kind"] == "email":
-        fail(409, "recovery_contact_required", "Сначала подтвердите новый адрес почты. Контакт для восстановления должен сохраняться.")
-    with request.app.state.database.transaction() as db:
-        db.execute("UPDATE cm_site_users SET vk_id=NULL WHERE id=%s", (user["id"],))
-    request.app.state.database.audit(user, "vk.unlinked", user["name"])
-    add_notification(request.app.state.database, user["id"], "VK ID отвязан", "Вход через VK ID отключён для аккаунта CopiMine.", f"vk-unlink:{user['id']}:{int(time.time())}", "#settings/connections")
-    return {"ok": True, "user": review_user(target_user(request.app.state.database, user["id"]))}
+    fail(409, "recovery_contact_required", "Сначала подтвердите новый адрес почты. Контакт для восстановления должен сохраняться.")
 
 
 @router.post("/api/v6/tickets")
@@ -659,7 +653,7 @@ def admin_health(request: Request):
     settings = request.app.state.settings
     with request.app.state.database.transaction() as db:
         pending = db.execute("SELECT count(*) AS n FROM cm_site_mail_outbox WHERE sent_s=0 AND expires_s>%s", (int(time.time()),)).fetchone()["n"]
-    return {"website": "ok", "database": "postgresql" if not request.app.state.database.sqlite else "sqlite-test", "game": request.app.state.game.health(detailed=True), "mail": {"configured": bool(settings.smtp_host), "ready": settings.mail_domain_ready, "pending": pending}, "vk": {"configured": bool(settings.vk_client_id)}, "payments": {"configured": False}}
+    return {"website": "ok", "database": "postgresql" if not request.app.state.database.sqlite else "sqlite-test", "game": request.app.state.game.health(detailed=True), "mail": {"configured": bool(settings.smtp_host), "ready": settings.mail_domain_ready, "pending": pending}, "payments": {"configured": False}}
 
 
 # Фильтр журнала живёт на сервере: на 5000+ записей клиентская фильтрация тормозит.
@@ -669,7 +663,7 @@ AUDIT_BUCKET_SQL = {
                    " OR action LIKE 'inventory.%%' OR action IN ('account.blocked','account.unblocked')"),
     "account": ("(action LIKE 'auth.%%' OR action LIKE 'account.%%' OR action LIKE 'password.%%'"
                 " OR action LIKE 'session%%' OR action LIKE 'mfa.%%' OR action LIKE 'email.%%'"
-                " OR action LIKE 'vk.%%' OR action LIKE 'minecraft.%%' OR action LIKE 'recovery.%%')"
+                " OR action LIKE 'minecraft.%%' OR action LIKE 'recovery.%%')"
                 " AND action NOT IN ('account.blocked','account.unblocked')"),
     "economy": ("action LIKE 'shop.%%' OR action LIKE 'catalog.%%' OR action LIKE 'bank.%%'"
                 " OR action LIKE 'game.money%%'"),

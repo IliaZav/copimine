@@ -30,7 +30,6 @@ from .maps import router as maps_router
 from .mapart import router as mapart_router
 from .narcotics import router as narcotics_router
 from .ops import router as ops_router
-from .vk import router as vk_router
 
 LOGGER = logging.getLogger("copimine.site")
 
@@ -171,8 +170,7 @@ def create_app(settings=None):
     app.include_router(mapart_router)
     app.include_router(narcotics_router)
     app.include_router(ops_router)
-    app.include_router(vk_router)
-
+    
     @app.get("/api/health")
     def health():
         with database.transaction() as db:
@@ -181,7 +179,7 @@ def create_app(settings=None):
 
     @app.get("/api/v6/providers")
     def providers():
-        return {"mail": {"configured": bool(settings.smtp_host), "ready": bool(settings.smtp_host and settings.mail_domain_ready)}, "vk": {"enabled": bool(settings.vk_client_id), "callbackUrl": settings.public_url + "/api/v6/auth/vk/callback"}, "payments": {"enabled": False}}
+        return {"mail": {"configured": bool(settings.smtp_host), "ready": bool(settings.smtp_host and settings.mail_domain_ready)}, "payments": {"enabled": False}}
 
     @app.get("/api/v6/state")
     def state(request: Request):
@@ -196,6 +194,7 @@ def create_app(settings=None):
     @app.head("/")
     def index():
         return FileResponse(settings.frontend / "index.html", headers={"Cache-Control": "no-cache"})
+
 
     # The site uses hash routing, so "/" is the only indexable URL. Keeping the
     # sitemap honest beats listing thin shells that all render the same page.
@@ -263,10 +262,20 @@ def create_app(settings=None):
             fail(404, "not_found", "Страница не найдена.")
         return FileResponse(settings.frontend / (filename + ".html"))
 
+    # Роутер сайта живёт в hash (#/account), поэтому голый путь до него не доходит.
+    # Такие адреса встречаются в переписке и автодополнении браузера — отдаём оболочку,
+    # маршрут выберет клиент. Проверка последняя: статические и служебные пути уже обслужены.
+    _SHELL_ALIASES = frozenset({
+        "account", "admin", "shop", "donate", "auth", "cart", "orders",
+        "settings", "map", "players", "inbox", "support",
+    })
+
     @app.api_route("/{path:path}", methods=["GET", "HEAD"])
     def catch_all(path: str, request: Request):
         if path.startswith(("api/", "maps/")):
             return JSONResponse({"error": {"code": "not_found", "message": "Запрос не найден."}}, status_code=404)
+        if path.lower() in _SHELL_ALIASES:
+            return FileResponse(settings.frontend / "index.html", headers={"Cache-Control": "no-cache"})
         return error_page(404)
 
     return app

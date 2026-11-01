@@ -81,9 +81,11 @@ def test_revoked_cookie_cannot_restore_session(client):
 
 def test_unconfigured_providers_do_not_simulate_success(client):
     providers = client.get("/api/v6/providers").json()
-    assert providers["vk"]["enabled"] is False
     assert providers["mail"]["ready"] is False
-    assert client.get("/api/v6/auth/vk/start").status_code == 503
+    # VK-авторизация удалена из проекта: маршрутов больше нет, а не 503.
+    assert "vk" not in providers
+    assert client.get("/api/v6/auth/vk/start").status_code == 404
+    assert client.get("/api/v6/auth/vk/callback").status_code == 404
 
 
 def test_failed_login_never_accepts_demo_credentials(client):

@@ -60,16 +60,23 @@ $cp = @($paperApi)
 # CI used, and identical sources produced different class bytes. The pinned
 # candidate is the one artifact whose digest the lock actually vouches for.
 $pinnedCandidate = {
-  param([object] $Lock, [string] $PluginName)
+  param([object] $Lock, [string] $PluginName, [string[]] $Fallbacks)
   # A migration module candidate replaces the same plugin as a baseline entry,
   # so modules are searched first; baseline rows carry the first-party plugins.
   $rows = @($Lock.modules) + @($Lock.unchangedBaseline)
   $row = @($rows | Where-Object { $_.pluginName -eq $PluginName }) | Select-Object -First 1
-  if (-not $row -or -not $row.candidate -or -not $row.candidate.buildArtifact) {
-    throw "No pinned build artifact is locked for $PluginName."
+  $relative = if ($row -and $row.candidate -and $row.candidate.buildArtifact) {
+    $row.candidate.buildArtifact -replace '/', [IO.Path]::DirectorySeparatorChar
   }
-  $relative = $row.candidate.buildArtifact -replace '/', [IO.Path]::DirectorySeparatorChar
-  return (Join-Path $releaseRoot $relative)
+  # The Java plugin gate builds these modules one by one from source, so the
+  # pinned jar may not exist yet when this plugin is compiled. Fall back to the
+  # module directory jar the gate does produce; the pinned file wins whenever it
+  # is present, which is the case the release pin checks.
+  $candidates = @()
+  if ($relative) { $candidates += (Join-Path $releaseRoot $relative) }
+  $candidates += $Fallbacks | ForEach-Object { Join-Path $releaseRoot $_ }
+  $chosen = $candidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+  return $(if ($chosen) { $chosen } else { $candidates[0] })
 }
 # $compileLock describes the third-party compile graph; the first-party sibling
 # plugins are pinned in the server plugin lock.
@@ -77,11 +84,13 @@ $serverPluginLock = Get-Content -LiteralPath (Join-Path $releaseRoot 'tools/mine
 $narcoticsDependency = if ($paperApiSha256 -eq $legacyPaperApiSha256) {
   Join-Path $releaseRoot 'copimine-narcotics\build\classes'
 } else {
-  & $pinnedCandidate $serverPluginLock 'CopiMineNarcotics'
+  & $pinnedCandidate $serverPluginLock 'CopiMineNarcotics' @(
+    'copimine-narcotics\build\libs\CopiMineNarcotics-26.3.jar',
+    'copimine-narcotics\build\classes')
 }
 foreach ($dependency in @(
-  (& $pinnedCandidate $serverPluginLock 'CopiMineWorldCore'),
-  (& $pinnedCandidate $serverPluginLock 'CopiMineArtifacts'),
+  (& $pinnedCandidate $serverPluginLock 'CopiMineWorldCore' @('copimine-world-core\CopiMineWorldCore.jar')),
+  (& $pinnedCandidate $serverPluginLock 'CopiMineArtifacts' @('copimine-artifacts\CopiMineArtifacts.jar')),
   $narcoticsDependency
 )) {
   if (-not (Test-Path $dependency)) {

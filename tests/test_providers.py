@@ -6,7 +6,7 @@ from test_auth import client, login
 
 def test_email_challenge_requires_a_ready_transport(client):
     session = client.get("/api/v6/session").json()
-    response = client.post("/api/v7/request-code", headers={"Origin": "http://testserver", "X-CSRF-Token": session["csrf"]}, json={"purpose": "register", "username": "MailPlayer", "email": "player@example.invalid", "password": "Example-new-password-long-enough"})
+    response = client.post("/api/v7/request-code", headers={"Origin": "http://testserver", "X-CSRF-Token": session["csrf"]}, json={"purpose": "register", "username": "MailPlayer", "email": "player@example.invalid", "password": "Example-new-password-long-enough", "terms": True, "consent": True})
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "mail_not_configured"
 
@@ -15,7 +15,7 @@ def test_code_is_not_returned_and_wrong_attempts_persist(client):
     client.app.state.settings = replace(client.app.state.settings, smtp_host="127.0.0.1", mail_domain_ready=True)
     session = client.get("/api/v6/session").json()
     headers = {"Origin": "http://testserver", "X-CSRF-Token": session["csrf"]}
-    response = client.post("/api/v7/request-code", headers=headers, json={"purpose": "register", "username": "MailPlayer", "email": "player@example.invalid", "password": "Example-new-password-long-enough"})
+    response = client.post("/api/v7/request-code", headers=headers, json={"purpose": "register", "username": "MailPlayer", "email": "player@example.invalid", "password": "Example-new-password-long-enough", "terms": True, "consent": True})
     assert response.status_code == 200, response.text
     assert "code" not in response.json()
     challenge = response.json()["challenge"]

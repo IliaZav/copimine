@@ -1,5 +1,7 @@
+import csv
 import hashlib
 import hmac
+import io
 import json
 import re
 import secrets
@@ -557,6 +559,261 @@ def admin_roles(request: Request):
          "accounts": counts.get(role, 0)}
         for role in sorted(RANK, key=lambda name: RANK[name], reverse=True)
     ]}
+
+
+def _player_rows(actor, query="", role="", only="", limit=500):
+    """Выборка игроков с поиском по логину, почте и нику Minecraft."""
+    where, params = [], []
+    text = str(query or "").strip()
+    if text:
+        # % и _ — спецсимволы LIKE; `_` встречается в логинах, поэтому экранируем,
+        # а не выбрасываем: иначе «_» совпадает с любым одним символом.
+        safe = text.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        like = "%" + safe + "%"
+        where.append("(lower(name) LIKE %s ESCAPE '\\' OR lower(display_name) LIKE %s ESCAPE '\\' "
+                     "OR lower(email) LIKE %s ESCAPE '\\' OR lower(minecraft_name) LIKE %s ESCAPE '\\' "
+                     "OR minecraft_uuid LIKE %s)")
+        params.extend([like] * 4 + [like])
+    if role:
+        where.append("role=%s")
+        params.append(role)
+    if only == "linked":
+        where.append("minecraft_uuid<>''")
+    elif only == "unlinked":
+        where.append("minecraft_uuid=''")
+    elif only == "verified":
+        where.append("email_verified=1")
+    elif only == "unverified":
+        where.append("email_verified=0")
+    elif only == "blocked":
+        where.append("enabled=0")
+    clause = (" WHERE " + " AND ".join(where)) if where else ""
+    return clause, params
+
+
+@router.get("/api/v6/admin/players/search")
+def search_players(request: Request, q: str = "", role: str = "", only: str = "", limit: int = 100):
+    """Поиск игроков по логину, почте, нику или UUID."""
+    current_user(request, "players.view")
+    limit = max(1, min(int(limit), 500))
+    clause, params = _player_rows(None, q, role, only)
+    with request.app.state.database.transaction() as db:
+        total = db.execute(f"SELECT count(*) AS n FROM cm_site_users{clause}", tuple(params)).fetchone()["n"]
+        rows = db.execute(
+            f"SELECT * FROM cm_site_users{clause} ORDER BY created_s DESC LIMIT %s",
+            tuple(params) + (limit,),
+        ).fetchall()
+    return {"total": int(total), "players": [public_user(dict(row)) for row in rows]}
+
+
+@router.get("/api/v6/admin/players/export")
+def export_players(request: Request, q: str = "", role: str = "", only: str = ""):
+    """Выгрузка игроков в CSV (UTF-8 BOM, чтобы Excel открывал без кракозябр)."""
+    actor = current_user(request, "players.view")
+    clause, params = _player_rows(actor, q, role, only)
+    with request.app.state.database.transaction() as db:
+        rows = db.execute(
+            f"SELECT * FROM cm_site_users{clause} ORDER BY created_s DESC", tuple(params)
+        ).fetchall()
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\r\n")
+    writer.writerow(["Логин", "Отображаемое имя", "Почта", "Почта подтверждена", "Minecraft",
+                     "UUID", "Роль", "Активен", "Создан", "Последний вход"])
+    for row in rows:
+        record = dict(row)
+        writer.writerow([
+            record["name"], record["display_name"], record["email"],
+            "да" if record["email_verified"] else "нет",
+            record["minecraft_name"], record["minecraft_uuid"], record["role"],
+            "да" if record["enabled"] else "нет",
+            time.strftime("%Y-%m-%d %H:%M", time.localtime(record["created_s"])),
+            time.strftime("%Y-%m-%d %H:%M", time.localtime(record["last_login_s"])) if record["last_login_s"] else "",
+        ])
+    request.app.state.database.audit(
+        actor, "players.export", details={"count": len(rows), "query": q, "only": only}
+    )
+    return Response(
+        "\ufeff" + buffer.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="players.csv"'},
+    )
+
+
+@router.get("/api/v6/admin/analytics/business")
+def analytics_business(request: Request, days: int = 30):
+    """Бизнес-показатели по дням: регистрации, привязки, покупки, обращения.
+
+    Отдельно от /admin/analytics: там про визиты сайта, здесь — про игроков и деньги.
+    """
+    current_user(request, "analytics.read")
+    days = max(1, min(int(days), 365))
+    now = int(time.time())
+    start_s = now - days * 86400
+    sqlite = request.app.state.database.sqlite
+    day = ("strftime('%Y-%m-%d', created_s, 'unixepoch')" if sqlite
+           else "to_char(to_timestamp(created_s) AT TIME ZONE 'UTC', 'YYYY-MM-DD')")
+    with request.app.state.database.transaction() as db:
+        registrations = db.execute(
+            f"SELECT {day} AS day, count(*) AS n FROM cm_site_users "
+            "WHERE created_s >= %s GROUP BY 1 ORDER BY 1", (start_s,)
+        ).fetchall()
+        verified = db.execute(
+            f"SELECT {day} AS day, count(*) AS n FROM cm_site_users "
+            "WHERE email_verified=1 AND created_s >= %s GROUP BY 1 ORDER BY 1", (start_s,)
+        ).fetchall()
+        linked = db.execute(
+            f"SELECT {day} AS day, count(*) AS n FROM cm_site_users "
+            "WHERE minecraft_uuid<>'' AND created_s >= %s GROUP BY 1 ORDER BY 1", (start_s,)
+        ).fetchall()
+        tickets = db.execute(
+            f"SELECT {day} AS day, count(*) AS n FROM cm_site_tickets "
+            "WHERE created_s >= %s GROUP BY 1 ORDER BY 1", (start_s,)
+        ).fetchall()
+        totals = db.execute(
+            "SELECT (SELECT count(*) FROM cm_site_users) AS users, "
+            "(SELECT count(*) FROM cm_site_users WHERE email_verified=1) AS verified, "
+            "(SELECT count(*) FROM cm_site_users WHERE minecraft_uuid<>'') AS linked, "
+            "(SELECT count(*) FROM cm_site_users WHERE last_login_s>=%s) AS active, "
+            "(SELECT count(*) FROM cm_site_tickets WHERE status<>'closed') AS open_tickets",
+            (now - 7 * 86400,),
+        ).fetchone()
+    def series(rows):
+        return [{"day": row["day"], "count": int(row["n"])} for row in rows]
+    return {
+        "days": days,
+        "totals": {key: int(totals[key]) for key in ("users", "verified", "linked", "active", "open_tickets")},
+        "series": {
+            "registrations": series(registrations),
+            "verified": series(verified),
+            "linked": series(linked),
+            "tickets": series(tickets),
+        },
+    }
+
+
+BACKUP_DIR = "/var/lib/copimine-site/backups/db"
+
+
+@router.get("/api/v6/admin/backups")
+def list_backups(request: Request):
+    """Список резервных копий базы: что есть и насколько свежее."""
+    current_user(request, "release.manage")
+    import os
+    entries = []
+    if os.path.isdir(BACKUP_DIR):
+        for name in sorted(os.listdir(BACKUP_DIR), reverse=True):
+            if not name.endswith(".dump"):
+                continue
+            path = os.path.join(BACKUP_DIR, name)
+            try:
+                stat = os.stat(path)
+            except OSError:
+                continue
+            entries.append({
+                "name": name,
+                "bytes": stat.st_size,
+                "at": int(stat.st_mtime) * 1000,
+            })
+    return {"dir": BACKUP_DIR, "backups": entries[:50], "count": len(entries)}
+
+
+@router.post("/api/v6/admin/backups")
+async def create_backup(request: Request):
+    """Запустить резервное копирование вручную (тот же скрипт, что и в таймере)."""
+    actor = current_user(request, "release.manage", fresh=True)
+    import asyncio
+    script = "/opt/copimine-site/deploy/cm-backup"
+    env_file = {}
+    try:
+        with open("/etc/copimine-site.env", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, _, value = line.partition("=")
+                    env_file[key.strip()] = value.strip()
+    except OSError as error:
+        fail(500, "backup_env_missing", f"Не удалось прочитать настройки: {error}")
+    process = await asyncio.create_subprocess_exec(
+        script,
+        env={**env_file, "PATH": "/usr/bin:/bin"},
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, errors = await asyncio.wait_for(process.communicate(), timeout=600)
+    ok = process.returncode == 0
+    request.app.state.database.audit(
+        actor, "backup.manual", details={"ok": ok, "stderr": errors.decode("utf-8", "replace")[:300]}
+    )
+    if not ok:
+        fail(500, "backup_failed", "Резервное копирование не удалось. Подробности в журнале.")
+    return {"ok": True, "message": "Резервная копия создана."}
+
+
+@router.post("/api/v6/admin/broadcast")
+async def admin_broadcast(request: Request):
+    """Рассылка писем игрокам: только подтверждённые адреса, порциями по 200.
+
+    Письма попадают в ту же очередь, что и коды подтверждения, — отдельного
+    транспорта нет. Неподтверждённые адреса пропускаем: туда писать бессмысленно
+    и так легко получить жалобы на спам.
+    """
+    actor = current_user(request, "players.view", fresh=True)
+    data = await request.json()
+    subject = str(data.get("subject", "")).strip()
+    body = str(data.get("body", "")).strip()
+    test_to = str(data.get("test", "")).strip().lower()
+    if not subject or not body:
+        fail(400, "invalid_broadcast", "Нужны тема и текст письма.")
+    if len(subject) > 140:
+        fail(400, "invalid_broadcast", "Тема длиннее 140 символов.")
+    if len(body) > 8000:
+        fail(400, "invalid_broadcast", "Текст письма длиннее 8000 символов.")
+    if re.search(r"(?i)<\s*/?\s*(script|iframe|object|embed)", body):
+        fail(400, "invalid_broadcast", "Исполняемые вставки в письме запрещены.")
+
+    def plain(text):
+        # Письмо — обычный текст: любые угловые скобки нейтрализуем, иначе
+        # рассылка станет каналом для HTML-инъекций в почтовых клиентах.
+        return text.replace("<", "&lt;").replace(">", "&gt;")
+
+    from .mail_render import INK, LOGO_URL, MUTED, PAGE, SITE, FONT
+    paragraphs = "".join(
+        f'<p style="margin:0 0 14px">{plain(line.strip())}</p>'
+        for line in body.split("\n") if line.strip()
+    )
+    markup = (
+        f'<div style="background:{PAGE};padding:32px 24px;font-family:{FONT};color:{INK}">'
+        f'<a href="{SITE}" style="text-decoration:none"><img src="{LOGO_URL}" '
+        'width="140" height="28" alt="CopiMine" style="border:0;display:block;margin:0 0 24px"></a>'
+        f'<div style="font-size:15px;line-height:1.6;max-width:520px">{paragraphs}</div>'
+        f'<p style="margin:24px 0 0;font-size:12px;color:{MUTED}">CopiMine · <a href="{SITE}" '
+        f'style="color:{MUTED}">{SITE.replace("https://", "")}</a></p></div>'
+    )
+    now = int(time.time())
+    with request.app.state.database.transaction() as db:
+        rows = db.execute(
+            "SELECT email FROM cm_site_users WHERE email_verified=1 AND enabled=1 AND email<>''"
+        ).fetchall()
+    targets = [test_to] if test_to else [row["email"] for row in rows]
+    queued = 0
+    with request.app.state.database.transaction() as db:
+        for address in targets[:200]:
+            db.execute(
+                "INSERT INTO cm_site_mail_outbox(id,recipient,subject,body,html,created_s,expires_s) "
+                "VALUES(%s,%s,%s,%s,%s,%s,%s)",
+                (uuid.uuid4().hex, address, subject + " — CopiMine", body, markup, now, now + 7 * 86400),
+            )
+            queued += 1
+    request.app.state.database.audit(
+        actor, "broadcast.queued" if not test_to else "broadcast.test",
+        details={"queued": queued, "subject": subject[:120], "test": bool(test_to)},
+    )
+    return {
+        "ok": True, "queued": queued,
+        "total": len(targets),
+        "remaining": max(0, len(targets) - queued),
+        "message": "Тестовое письмо поставлено в очередь." if test_to else f"В очередь поставлено писем: {queued}.",
+    }
 
 
 @router.post("/api/v6/admin/accounts")

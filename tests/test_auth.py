@@ -95,21 +95,21 @@ def test_failed_login_never_accepts_demo_credentials(client):
         assert response.status_code == 401
 
 
-def test_registration_uses_only_username_and_password(client):
+def test_registration_without_email_is_refused(client):
+    """Аккаунт создаётся только после подтверждения почты — ботов без адреса не пускаем."""
     session = client.get("/api/v6/session").json()
     response = client.post(
         "/api/v6/auth/register",
         headers={"Origin": "http://testserver", "X-CSRF-Token": session["csrf"]},
         json={"username": "SimplePlayer", "password": "A-simple-test-password-2026"},
     )
-    assert response.status_code == 200, response.text
-    current = client.get("/api/v6/session").json()["user"]
-    assert current["username"] == "SimplePlayer"
-    assert current["email"] == ""
-    assert current["emailVerified"] is False
+    assert response.status_code == 410
+    assert response.json()["error"]["code"] == "register_requires_email"
+    assert client.get("/api/v6/session").json()["user"] is None
 
 
-def test_registration_keeps_profile_nickname_separate_from_login(client):
+def test_registration_with_consent_still_needs_the_code(client):
+    """Даже с согласием аккаунт не появляется, пока код из письма не подтверждён."""
     session = client.get("/api/v6/session").json()
     response = client.post(
         "/api/v6/auth/register",
@@ -118,12 +118,12 @@ def test_registration_keeps_profile_nickname_separate_from_login(client):
             "username": "SiteLogin",
             "displayName": "Игровое имя",
             "password": "A-simple-test-password-2026",
+            "terms": True,
+            "consent": True,
         },
     )
-    assert response.status_code == 200, response.text
-    current = client.get("/api/v6/session").json()["user"]
-    assert current["username"] == "SiteLogin"
-    assert current["displayName"] == "Игровое имя"
+    assert response.status_code == 410
+    assert client.get("/api/v6/session").json()["user"] is None
 
 
 def test_email_cannot_be_used_as_login_name(client):

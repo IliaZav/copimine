@@ -4,6 +4,7 @@ from email.utils import formatdate
 import hashlib
 import hmac
 import json
+import logging
 import re
 import secrets
 import smtplib
@@ -17,6 +18,30 @@ from .auth import create_user, issue_session
 from .security import current_user, fail, hash_password, normalize_email, throttle, valid_name
 
 router = APIRouter(prefix="/api/v7")
+
+# Приветственный бонус донат-валюты за подтверждённую регистрацию.
+SIGNUP_BONUS = 50
+
+
+def _grant_signup_bonus(request: Request, user_id: str) -> None:
+    """Отметить приветственный бонус на аккаунте.
+
+    Донат-валюта живёт на игровом счёте, а на момент регистрации Minecraft ещё не
+    привязан. Поэтому бонус фиксируется на аккаунте и перечисляется в игру при
+    привязке (см. game.Game.link_confirm). Сбой не должен ломать регистрацию.
+    """
+    try:
+        now = int(time.time())
+        with request.app.state.database.transaction() as db:
+            db.execute(
+                "INSERT INTO cm_site_signup_bonus(id, amount, granted_s, dedup_player) VALUES(%s,%s,%s,'') "
+                "ON CONFLICT (id) DO NOTHING",
+                (user_id, SIGNUP_BONUS, now),
+            )
+    except Exception as error:  # noqa: BLE001 - регистрация важнее бонуса
+        logging.getLogger("copimine.site").warning(
+            "signup bonus failed user=%s error=%s", user_id, type(error).__name__
+        )
 
 
 def code_digest(settings, identifier, purpose, code):
@@ -37,6 +62,10 @@ def request_challenge(request, purpose, data):
     with database.transaction() as db:
         row = db.execute("SELECT * FROM cm_site_users WHERE email_norm=%s", (email,)).fetchone()
     if purpose == "register":
+        # Согласие на обработку персональных данных — обязательное условие, а не
+        # украшение формы: проверяем на сервере, а не только галочкой в браузере.
+        if data.get("consent") is not True or data.get("terms") is not True:
+            fail(400, "consent_required", "Для создания аккаунта нужно принять правила и согласие на обработку данных.")
         name = str(data.get("username", data.get("name", ""))).strip()
         if not valid_name(name):
             fail(400, "invalid_name", "Логин: 3–32 латинских буквы, цифры или символ подчёркивания.")
@@ -95,6 +124,7 @@ async def confirm_code(request: Request, response: Response):
     payload, purpose = json.loads(challenge["payload"]), challenge["purpose"]
     if purpose == "register":
         user = create_user(database, payload["name"], None, email=challenge["email"], email_verified=True, encoded=payload["password_hash"])
+        _grant_signup_bonus(request, user["id"])
     else:
         with database.transaction() as db:
             row = db.execute("SELECT * FROM cm_site_users WHERE id=%s AND enabled=1", (challenge["user_id"],)).fetchone()

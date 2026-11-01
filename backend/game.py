@@ -226,7 +226,42 @@ class GameAdapter:
                 fail(409, "identity_conflict", "Игровой профиль уже связан с другим аккаунтом.")
             db.execute("UPDATE cm_site_users SET minecraft_uuid=%s,minecraft_name=%s,updated_s=%s WHERE id=%s", (account["minecraftUuid"], account["minecraftName"], int(time.time()), user["id"]))
         self.database.audit(user, "minecraft.link", account["minecraftName"])
+        self._deliver_signup_bonus(user, account)
         return {"ok": True}
+
+    def _deliver_signup_bonus(self, user, account):
+        """Перечислить приветственный бонус на игровой счёт после привязки Minecraft.
+
+        Бонус начисляется один раз: dedup_player фиксирует выдачу. Ошибка доставки
+        не отменяет привязку — бонус просто останется на аккаунте для повтора.
+        """
+        from .legacy.main import admin_add_donation_balance_sync
+        with self.database.transaction() as db:
+            row = db.execute(
+                "SELECT amount, dedup_player FROM cm_site_signup_bonus WHERE id=%s FOR UPDATE",
+                (user["id"],),
+            ).fetchone()
+        if not row or not row["amount"] or row["dedup_player"]:
+            return
+        player_uuid = str(account["minecraftUuid"])
+        try:
+            admin_add_donation_balance_sync(
+                player_uuid, account["minecraftName"], int(row["amount"]),
+                "Приветственный бонус за регистрацию", "system",
+                "signup-bonus:" + user["id"],
+            )
+        except Exception as error:  # noqa: BLE001 - привязка важнее бонуса
+            import logging
+            logging.getLogger("copimine.site").warning(
+                "signup bonus delivery failed user=%s error=%s", user["id"], type(error).__name__
+            )
+            return
+        with self.database.transaction() as db:
+            db.execute(
+                "UPDATE cm_site_signup_bonus SET dedup_player=%s WHERE id=%s AND dedup_player=''",
+                (player_uuid, user["id"]),
+            )
+        self.database.audit(user, "signup.bonus_delivered", account["minecraftName"])
 
     def wallet(self, user):
         legacy = self.legacy()

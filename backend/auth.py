@@ -121,14 +121,14 @@ async def reauthenticate(request: Request):
 
 @router.post("/auth/register")
 async def register(request: Request, response: Response):
-    data = await request.json()
-    database = request.app.state.database
-    ip = request.client.host if request.client else "unknown"
-    name = str(data.get("name", data.get("username", ""))).strip()
-    throttle(database, "register-ip:" + ip, 8, 3600)
-    throttle(database, "register-name:" + ip + ":" + name.lower(), 3, 3600)
-    if data.get("terms") is False:
-        fail(400, "terms_required", "Для регистрации нужно принять правила проекта.")
-    user = create_user(database, name, data.get("password", ""), display_name=data.get("displayName"))
-    database.audit(user, "auth.register")
-    return issue_session(request, response, user, bool(data.get("remember", False)))
+    """Регистрация только через почтовый код.
+
+    Раньше этот маршрут создавал аккаунт сразу, без подтверждения адреса, — то есть
+    в обход проверки почты и без приветственного бонуса. Теперь он закрыт: аккаунт
+    создаётся исключительно в /api/v7/confirm-code после ввода кода из письма.
+    """
+    fail(
+        410,
+        "register_requires_email",
+        "Регистрация проходит с подтверждением почты. Запросите код на почту и подтвердите его.",
+    )

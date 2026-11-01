@@ -16,7 +16,7 @@ HEADER = ("/* CopiMine browser bundle. Source files stay in assets/js/; rebuild 
 def test_bundle_is_exactly_its_sources_in_order():
     text = BUNDLE.read_text(encoding="utf-8")
     sources = re.findall(r"/\* (assets/js/[^*]+) \*/", text)
-    assert len(sources) == len(set(sources)) == 50, "список исходников бандла изменился"
+    assert len(sources) == len(set(sources)) == 51, "список исходников бандла изменился"
 
     expected = HEADER + "".join(
         "/* %s */%s\n" % (name, (ROOT / name).read_text(encoding="utf-8")) for name in sources

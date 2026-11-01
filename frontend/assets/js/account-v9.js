@@ -190,6 +190,8 @@ async function api(path, body, method) {
   new MutationObserver(schedulePasswordEnhance).observe(document.body, { childList: true, subtree: true });
   schedulePasswordEnhance();
 
+  // Регистрация идёт только через подтверждение почты (review-v7.js), поэтому форма
+  // из этого слоя используется исключительно для входа по паролю.
   R.auth = tab => authMarkup(tab === 'register' ? 'register' : 'login');
   R.inbox = () => R.auth('login');
   F['v7-login'] = async (form, data) => {
@@ -210,17 +212,8 @@ async function api(path, body, method) {
     M.closeModal();
     M.navTo(authReturn());
   };
-  F['v7-register'] = async (form, data) => {
-    if (!data.get('terms')) throw Error('Прими правила сервера, чтобы продолжить.');
-    if (data.get('password') !== data.get('repeat')) throw Error('Пароли не совпадают.');
-    const result = await api('auth/register', { username: String(data.get('username') || '').trim(), password: data.get('password'), terms: true, remember: false });
-    Q.csrf = result.csrf || Q.csrf;
-    await Q.reload();
-    if (!Q.user) throw Error('Аккаунт создан, но войти не удалось. Попробуй выполнить вход.');
-    Q.hint = false;
-    M.closeModal();
-    M.navTo(authReturn());
-  };
+  // Регистрация проходит через почтовый код (F['v7-register'] в review-v7.js):
+  // аккаунт создаётся только после подтверждения адреса. Этот слой её не переопределяет.
   F['v7-code'] = F['v7-reset'] = F['v7-confirm-code'] = async () => { throw Error('Войди по нику и паролю.'); };
   H['v7-vk'] = undefined;
   H['v7-link-email'] = H['v7-unlink'] = H['v7-unlink-confirm'] = H['v7-recovery-help'] = undefined;

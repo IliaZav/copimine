@@ -2217,7 +2217,7 @@ R.auth=(tab='login')=>{
  if(!Q.flow){const c=linkChallenge();if(c)Q.resumeChallenge(c,'reset');}
  if(Q.flow)return authShell(verifyView());
  let content='';
- if(tab==='register')content='<span class="kicker">Новый аккаунт</span><h1>Создать аккаунт</h1><p class="v7-auth-lead">Почта, пароль и одно подтверждение.</p><form data-form="v7-register">'+field('Логин на сайте','username','','text','required minlength="3" maxlength="24" autocomplete="username" placeholder="Builder"')+field('Почта','email','','email','required autocomplete="email" placeholder="you@example.com"')+passField('Пароль','password','new-password')+'<p class="hint">Не меньше 10 символов. Можно вставить пароль из менеджера.</p>'+passField('Повтори пароль','repeat','new-password')+'<label class="check-row"><input type="checkbox" name="terms" required><span>Принимаю <a href="#rules" target="_blank">правила проекта</a> и условия обработки данных аккаунта.</span></label>'+actions('Создать аккаунт')+'</form><p class="v7-auth-bottom">Уже есть аккаунт? <a href="#auth/login">Войти</a></p>';
+ if(tab==='register')content='<span class="kicker">Новый аккаунт</span><h1>Создать аккаунт</h1><p class="v7-auth-lead">Почта, пароль и одно подтверждение.</p><form data-form="v7-register">'+field('Логин на сайте','username','','text','required minlength="3" maxlength="24" autocomplete="username" placeholder="Builder"')+field('Почта','email','','email','required autocomplete="email" placeholder="you@example.com"')+passField('Пароль','password','new-password')+'<p class="hint">Не меньше 10 символов. Можно вставить пароль из менеджера.</p>'+passField('Повтори пароль','repeat','new-password')+'<label class="check-row"><input type="checkbox" name="terms" required><span>Принимаю <a href="#rules">правила проекта</a>.</span></label>'+'<label class="check-row"><input type="checkbox" name="consent" required><span>Согласен на обработку персональных данных: почта нужна для входа и восстановления пароля. <a href="#privacy">Подробнее</a></span></label>'+actions('Создать аккаунт')+'</form><p class="v7-auth-bottom">Уже есть аккаунт? <a href="#auth/login">Войти</a></p>';
  else if(tab==='reset')content='<span class="kicker">Восстановление доступа</span><h1>Сброс пароля</h1><p class="v7-auth-lead">Укажи почту аккаунта и новый пароль. Для подтверждения понадобится код.</p><form data-form="v7-reset">'+field('Почта аккаунта','email','','email','required autocomplete="email" placeholder="you@example.com"')+passField('Новый пароль','password','new-password')+passField('Повтори новый пароль','repeat','new-password')+actions('Получить код')+'</form><div class="v7-auth-bottom"><a href="#auth/login">Вернуться ко входу</a>'+M.btn('Нет доступа к почте?','v7-recovery-help','','ghost small')+'</div>';
  else content='<span class="kicker">АККАУНТ COPIMINE</span><h1>Вход в аккаунт</h1><p class="v7-auth-lead">После входа откроются покупки, баланс и обращения.</p>'+authTabs(tab)+(tab==='code'?'<form data-form="v7-code">'+field('Привязанная почта','email','','email','required autocomplete="email" placeholder="you@example.com"')+actions('Получить код')+'</form>':'<form data-form="v7-login">'+field('Логин или почта','username','','text','required autocomplete="username" placeholder="Builder"')+passField('Пароль','password','current-password')+field('Код 2FA, если включён','totp','','text','autocomplete="one-time-code" maxlength="12"')+'<div class="v7-form-between"><span class="hint">Сеанс сохранится на этом устройстве.</span><a href="#auth/reset">Забыл пароль?</a></div>'+actions('Войти')+'</form>')+'<p class="v7-auth-bottom">Нет аккаунта? <a href="#auth/register">Создать аккаунт</a></p><div class="v7-test-hint"><span>Просмотр дизайна</span>'+M.btn('Игрок 1/1','v7-test-login','user','small','data-login="1"')+M.btn('Админ 2/2','v7-test-login','shield','small','data-login="2"')+'</div>';
  return authShell(content);
@@ -2236,7 +2236,7 @@ async function beginCode(purpose,body){if(Q.offline)throw Error('Для рабо
    if(known.indexOf(p.toLowerCase())<0)return;
    try{history.replaceState(null,'','/#'+p+location.search);}catch(e){location.hash=p;}
  })();
-F['v7-register']=async(f,d)=>{if(d.get('password')!==d.get('repeat'))throw Error('Пароли не совпадают.');await beginCode('register',{username:d.get('username'),email:d.get('email'),password:d.get('password')});};
+F['v7-register']=async(f,d)=>{if(d.get('password')!==d.get('repeat'))throw Error('Пароли не совпадают.');if(!d.get('terms')||!d.get('consent'))throw Error('Подтверди правила и согласие на обработку данных.');await beginCode('register',{username:d.get('username'),email:d.get('email'),password:d.get('password'),terms:true,consent:true});};
 F['v7-code']=async(f,d)=>beginCode('login',{email:d.get('email')});
 F['v7-reset']=async(f,d)=>{if(d.get('password')!==d.get('repeat'))throw Error('Пароли не совпадают.');await beginCode('reset',{email:d.get('email'),password:d.get('password')});};
 F['v7-confirm-code']=async(f,d)=>{if(!Q.flow)throw Error('Сначала запроси код.');const result=await request('confirm-code',{challenge:Q.flow.challenge,code:d.get('code')});const purpose=Q.flow.purpose;applyUser(result.user);Q.flow=null;M.closeModal();M.navTo(purpose==='link_email'?'settings/connections':'account');M.render();M.toast(purpose==='link_email'?'Почта подтверждена и привязана.':'Готово. Доступ подтверждён.');};
@@ -2276,13 +2276,14 @@ const adminGroups=[
  ['Проект',[ ['overview','Обзор','grid'],['statistics','Аналитика','chart'] ]],
  ['Игрокам',[ ['players','Игроки и аккаунты','users'],['moderation','Модерация','shield'],['recovery','Восстановление','key'] ]],
  ['Экономика',[ ['shop','Каталог','bag'],['finance','Покупки и балансы','wallet'] ]],
- ['Управление',[ ['world','Карты миров','map'],['content','Содержимое','file'],['system','Игровой сервер','server'],['maintenance','Технические работы','settings'],['logs','Журнал действий','history'],['access','Команда и права','lock'] ]]
+ ['Управление',[ ['world','Карты миров','map'],['content','Содержимое','file'],['system','Игровой сервер','server'],['maintenance','Технические работы','settings'],['broadcast','Рассылка','send'],['backups','Резервные копии','server'],['logs','Журнал действий','history'],['access','Команда и права','lock'] ]]
 ];
 function adminNav(tab){return '<a class="v7-admin-brand" href="#admin/overview"><img src="'+M.asset('assets/img/logo.webp')+'" alt="CopiMine"><span>Управление проектом</span></a><nav class="v7-admin-nav">'+adminGroups.map(([group,items])=>'<div><span class="v7-nav-caption">'+group+'</span>'+items.map(([id,label,ic])=>sideLink('admin/'+id,label,ic,tab===id)).join('')+'</div>').join('')+'</nav><div class="v7-admin-user">'+W.head(M.me()?.name||'DemoAdmin',32)+'<div><strong>'+E(M.me()?.displayName||M.me()?.name||'Admin')+'</strong><small>Администратор</small></div><a href="#account" title="Личный кабинет">'+icon('arrow-up-right')+'</a></div>';}
 R.admin=(tab='overview')=>{
  if(!X.canAdmin())return '<div class="admin-shell"><aside class="admin-sidebar"><a class="v7-admin-brand" href="#home">CopiMine</a></aside><div class="admin-main"><header class="admin-top"><div class="breadcrumb">Управление</div></header><main id="view" class="admin-content">'+M.empty('Нужен вход администратора','У игрока нет доступа к управлению. Для просмотра используй тестовый аккаунт.','lock')+M.btn('Войти как админ 2/2','v7-test-login','shield','primary','data-login="2"')+'</main></div></div>';
  let content,heading=adminGroups.flatMap(g=>g[1]).find(i=>i[0]===tab)?.[1]||'Управление';
- if(tab==='overview')content=overview();else if(tab==='system')content=serverView(M.UI.params.get('sub')||'status');else if(tab==='maintenance')content=maintenanceView();else if(tab==='recovery')content=recoveryView();else{
+ if(tab==='broadcast'||tab==='backups')content=(W.adminExtensions[tab]?W.adminExtensions[tab]():M.empty('Раздел недоступен','Обнови страницу и попробуй снова.'));
+ else if(tab==='overview')content=overview();else if(tab==='system')content=serverView(M.UI.params.get('sub')||'status');else if(tab==='maintenance')content=maintenanceView();else if(tab==='recovery')content=recoveryView();else{
   const dom=document.createElement('template');dom.innerHTML=originalAdmin(tab);content=dom.content.querySelector('#view')?.innerHTML||M.empty('Раздел пока недоступен','Попробуй открыть его снова.');
   const headingNode=dom.content.querySelector('.admin-heading');if(headingNode)content=content.replace(headingNode.outerHTML,'');
  }
@@ -4998,6 +4999,8 @@ async function api(path, body, method) {
   new MutationObserver(schedulePasswordEnhance).observe(document.body, { childList: true, subtree: true });
   schedulePasswordEnhance();
 
+  // Регистрация идёт только через подтверждение почты (review-v7.js), поэтому форма
+  // из этого слоя используется исключительно для входа по паролю.
   R.auth = tab => authMarkup(tab === 'register' ? 'register' : 'login');
   R.inbox = () => R.auth('login');
   F['v7-login'] = async (form, data) => {
@@ -5018,17 +5021,8 @@ async function api(path, body, method) {
     M.closeModal();
     M.navTo(authReturn());
   };
-  F['v7-register'] = async (form, data) => {
-    if (!data.get('terms')) throw Error('Прими правила сервера, чтобы продолжить.');
-    if (data.get('password') !== data.get('repeat')) throw Error('Пароли не совпадают.');
-    const result = await api('auth/register', { username: String(data.get('username') || '').trim(), password: data.get('password'), terms: true, remember: false });
-    Q.csrf = result.csrf || Q.csrf;
-    await Q.reload();
-    if (!Q.user) throw Error('Аккаунт создан, но войти не удалось. Попробуй выполнить вход.');
-    Q.hint = false;
-    M.closeModal();
-    M.navTo(authReturn());
-  };
+  // Регистрация проходит через почтовый код (F['v7-register'] в review-v7.js):
+  // аккаунт создаётся только после подтверждения адреса. Этот слой её не переопределяет.
   F['v7-code'] = F['v7-reset'] = F['v7-confirm-code'] = async () => { throw Error('Войди по нику и паролю.'); };
   H['v7-vk'] = undefined;
   H['v7-link-email'] = H['v7-unlink'] = H['v7-unlink-confirm'] = H['v7-recovery-help'] = undefined;
@@ -5376,4 +5370,189 @@ animejs/dist/modules/index.js:
    * @copyright 2026 - Julian Garnier
    *)
 */
+
+/* assets/js/admin-ops-v1.js *//* CopiMine: админка — поиск игроков, рассылка, бэкапы, бизнес-аналитика. */
+(function () {
+  'use strict';
+  if (typeof window.CM === 'undefined' || typeof window.CM5 === 'undefined' || typeof window.CM6 === 'undefined') return;
+  const M = window.CM, W = window.CM5, X = window.CM6;
+  const H = M.handlers, F = M.forms;
+  const icon = M.icon;
+  const can = permission => Boolean((M.me()?.permissions) || []).includes(permission);
+  const denied = () => M.empty('Недостаточно прав', 'Этот раздел доступен не всем ролям.', 'lock');
+
+  function sectionHead(title, note, actions) {
+    return '<div class="v7-section-label"><div><h2>' + title + '</h2>' +
+      (note ? '<p class="hint">' + note + '</p>' : '') + '</div>' + (actions || '') + '</div>';
+  }
+
+  W.adminExtensions = W.adminExtensions || {};
+
+  // ---- Поиск игроков -------------------------------------------------------
+  const search = { query: '', only: '', result: null, busy: false };
+
+  const priorPlayers = W.adminExtensions.players;
+  W.adminExtensions.players = function (sub) {
+    const base = priorPlayers ? priorPlayers(sub) : '';
+    const filters = [['', 'Все'], ['linked', 'Привязаны к Minecraft'], ['unlinked', 'Без Minecraft'],
+      ['verified', 'Почта подтверждена'], ['unverified', 'Почта не подтверждена'], ['blocked', 'Заблокированы']]
+      .map(([id, label]) => '<option value="' + id + '"' + (search.only === id ? ' selected' : '') + '>' + label + '</option>').join('');
+    const rows = (search.result?.players || []).map(p =>
+      '<tr><td><a href="#admin/players?player=' + encodeURIComponent(p.id) + '">' + M.esc(p.name) + '</a></td>' +
+      '<td>' + M.esc(p.email || '—') + '</td>' +
+      '<td>' + (p.emailVerified ? 'да' : '<span class="muted">нет</span>') + '</td>' +
+      '<td>' + M.esc(p.minecraftName || '—') + '</td>' +
+      '<td>' + M.esc(p.role) + '</td></tr>').join('');
+    const exportHref = '/api/v6/admin/players/export?q=' + encodeURIComponent(search.query) +
+      '&only=' + encodeURIComponent(search.only);
+    const panel = '<section class="v7-admin-section">' +
+      sectionHead('Найти игрока', 'Поиск по логину, почте, нику Minecraft или UUID.',
+        '<a class="btn small ghost" href="' + exportHref + '" download>' + icon('download') + 'Выгрузить в CSV</a>') +
+      '<form data-form="admin-player-search" class="v7-filter-row">' +
+      '<label class="input-wrap">' + icon('search') +
+      '<input type="search" name="q" value="' + M.esc(search.query) +
+      '" placeholder="Логин, почта или ник" aria-label="Поиск игроков"></label>' +
+      '<select name="only" aria-label="Фильтр">' + filters + '</select>' +
+      '<button class="btn small" type="submit">Найти</button></form>' +
+      (search.result
+        ? '<p class="hint">Найдено: ' + search.result.total + '</p>' +
+          (rows ? '<table class="table"><thead><tr><th>Логин</th><th>Почта</th><th>Подтверждена</th><th>Minecraft</th><th>Роль</th></tr></thead><tbody>' +
+            rows + '</tbody></table>'
+            : M.empty('Ничего не найдено', 'Попробуй другой запрос или сними фильтр.', 'search'))
+        : '<p class="hint">Введи запрос и нажми «Найти». Без запроса выгрузка вернёт всех игроков.</p>') +
+      '</section>';
+    return base + panel;
+  };
+
+  // ---- Рассылка ------------------------------------------------------------
+  W.adminExtensions.broadcast = function () {
+    if (!can('players.view')) return denied();
+    return '<section class="v7-admin-section">' +
+      sectionHead('Рассылка игрокам', 'Письмо уходит только на подтверждённые адреса. Сначала отправь тест себе.') +
+      '<form data-form="admin-broadcast">' +
+      '<label class="field">Тема<input name="subject" type="text" required maxlength="140" placeholder="Сервер открыт"></label>' +
+      '<label class="field">Текст письма<textarea name="body" required rows="10" maxlength="8000" ' +
+      'placeholder="Заходите в игру. Быстрый старт займёт пару минут."></textarea></label>' +
+      '<label class="check-row"><input type="checkbox" name="testonly"><span>Отправить только мне (тест)</span></label>' +
+      '<div class="form-error" role="alert"></div>' +
+      '<div class="actions"><button class="btn primary" type="submit">Поставить в очередь</button></div>' +
+      '</form><p class="hint">Письма уходят очередью, чтобы не упереться в лимит почтового сервиса.</p></section>';
+  };
+
+  // ---- Бэкапы --------------------------------------------------------------
+  const backups = { list: null, busy: false };
+
+  W.adminExtensions.backups = function () {
+    if (!can('release.manage')) return denied();
+    const items = (backups.list?.backups || []).map(b =>
+      '<tr><td>' + M.esc(b.name) + '</td><td>' + (b.bytes / 1048576).toFixed(1) + ' МБ</td>' +
+      '<td>' + M.date(b.at) + '</td></tr>').join('');
+    return '<section class="v7-admin-section">' +
+      sectionHead('Резервные копии базы', 'Копии создаются автоматически каждый день. Здесь можно сделать внеплановую.',
+        '<button class="btn small" type="button" data-action="admin-backup-run">Создать копию</button>') +
+      (items ? '<table class="table"><thead><tr><th>Файл</th><th>Размер</th><th>Создан</th></tr></thead><tbody>' + items + '</tbody></table>'
+        : '<p class="hint">' + (backups.list === null ? 'Открываем список…' : 'Копий пока нет.') + '</p>') +
+      '</section>';
+  };
+
+  // ---- Бизнес-аналитика ----------------------------------------------------
+  const business = { data: null, days: 30 };
+
+  function sparkline(series) {
+    if (!series || !series.length) return '<p class="hint">Нет данных за период.</p>';
+    const max = Math.max(1, ...series.map(p => p.count));
+    return '<div class="v7-bars" role="img" aria-label="График по дням">' +
+      series.map(p => '<span title="' + p.day + ': ' + p.count + '" style="height:' +
+        Math.round(6 + 36 * p.count / max) + '%"></span>').join('') + '</div>';
+  }
+
+  const priorStatistics = W.adminExtensions.statistics;
+  W.adminExtensions.statistics = function (sub) {
+    const data = business.data;
+    const base = priorStatistics ? priorStatistics(sub) : '';
+    if (!data) return base + '<section class="v7-admin-section">' + sectionHead('Аналитика проекта', 'Считаем показатели…') + '</section>';
+    const t = data.totals || {};
+    const cards = [['Аккаунты', t.users ?? 0], ['Почта подтверждена', t.verified ?? 0],
+      ['Привязаны к игре', t.linked ?? 0], ['Активны за неделю', t.active ?? 0],
+      ['Открытых обращений', t.open_tickets ?? 0]];
+    return base + '<section class="v7-admin-section">' +
+      sectionHead('Аналитика проекта', 'Период: последние ' + data.days + ' дней',
+        '<form data-form="admin-business-period" class="v7-filter-row"><select name="days" aria-label="Период">' +
+        [7, 30, 90, 365].map(d => '<option value="' + d + '"' + (business.days === d ? ' selected' : '') + '>' +
+          d + ' дней</option>').join('') + '</select>' +
+        '<button class="btn small" type="submit">Показать</button></form>') +
+      '<div class="v7-metric-strip">' + cards.map(([label, value]) =>
+        '<div><span>' + label + '</span><strong>' + value + '</strong></div>').join('') + '</div>' +
+      '<div class="v7-dashboard-grid">' +
+      '<div><h3>Регистрации</h3>' + sparkline(data.series?.registrations) + '</div>' +
+      '<div><h3>Привязки Minecraft</h3>' + sparkline(data.series?.linked) + '</div>' +
+      '<div><h3>Подтверждения почты</h3>' + sparkline(data.series?.verified) + '</div>' +
+      '<div><h3>Обращения</h3>' + sparkline(data.series?.tickets) + '</div>' +
+      '</div></section>';
+  };
+
+  // ---- Загрузка данных при открытии разделов -------------------------------
+  W.after = W.after || [];
+  W.after.push(() => {
+    if (!X.canAdmin || !X.canAdmin()) return;
+    const route = (location.hash.slice(1) || 'home').split('?')[0];
+    if (route === 'admin/players' && search.result === null && !search.busy) {
+      search.busy = true;
+      X.request('/admin/players/search?limit=200')
+        .then(data => { search.result = data; })
+        .catch(() => { search.result = { total: 0, players: [] }; })
+        .finally(() => { search.busy = false; M.render(); });
+    }
+    if (route === 'admin/backups' && backups.list === null && !backups.busy) {
+      backups.busy = true;
+      X.request('/admin/backups')
+        .then(data => { backups.list = data; })
+        .catch(() => { backups.list = { backups: [] }; })
+        .finally(() => { backups.busy = false; M.render(); });
+    }
+    if (route === 'admin/statistics' && business.data === null && !business.busy) {
+      business.busy = true;
+      X.request('/admin/analytics/business?days=' + business.days)
+        .then(data => { business.data = data; })
+        .catch(() => { business.data = { days: business.days, totals: {}, series: {} }; })
+        .finally(() => { business.busy = false; M.render(); });
+    }
+  });
+
+  // ---- Формы ---------------------------------------------------------------
+  F['admin-player-search'] = async (form, data) => {
+    search.query = String(data.get('q') || '').trim();
+    search.only = String(data.get('only') || '');
+    search.result = await X.request('/admin/players/search?limit=200&q=' + encodeURIComponent(search.query) +
+      '&only=' + encodeURIComponent(search.only));
+    M.render();
+  };
+
+  F['admin-broadcast'] = async (form, data) => {
+    const testonly = Boolean(data.get('testonly'));
+    const payload = { subject: data.get('subject'), body: data.get('body') };
+    if (testonly) {
+      payload.test = M.me()?.email || '';
+      if (!payload.test) throw Error('У твоего аккаунта нет почты — тест отправить некуда.');
+    }
+    const result = await X.request('/admin/broadcast', { method: 'POST', body: payload });
+    M.toast(result.message || 'Письма поставлены в очередь.');
+    form.reset();
+  };
+
+  F['admin-business-period'] = async (form, data) => {
+    business.days = Number(data.get('days')) || 30;
+    business.data = null;
+    business.busy = false;
+    M.render();
+  };
+
+  // ---- Кнопки --------------------------------------------------------------
+  H['admin-backup-run'] = async () => {
+    const result = await X.request('/admin/backups', { method: 'POST', body: {} });
+    M.toast(result.message || 'Копия создана.');
+    backups.list = await X.request('/admin/backups');
+    M.render();
+  };
+}());
 

@@ -24,6 +24,12 @@ CREATE TABLE IF NOT EXISTS cm_site_sessions (
  ip TEXT NOT NULL DEFAULT '', user_agent TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS cm_site_sessions_user ON cm_site_sessions(user_id, expires_s);
+-- Приветственный бонус донат-валюты: копится на аккаунте, пока не привязан Minecraft.
+-- Перечисляется на игровой счёт при привязке (dedup_player — защита от двойного зачёта).
+CREATE TABLE IF NOT EXISTS cm_site_signup_bonus (
+ id TEXT PRIMARY KEY REFERENCES cm_site_users(id), amount BIGINT NOT NULL DEFAULT 0,
+ granted_s BIGINT NOT NULL DEFAULT 0, dedup_player TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS cm_site_challenges (
  id TEXT PRIMARY KEY, purpose TEXT NOT NULL, email TEXT NOT NULL, user_id TEXT,
  code_hash TEXT NOT NULL, payload TEXT NOT NULL DEFAULT '{}', created_s BIGINT NOT NULL,

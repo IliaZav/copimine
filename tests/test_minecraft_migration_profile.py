@@ -179,12 +179,13 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
 
     assert artifact['filename'] == 'CopiMineClient-0.1.3+26.3.jar'
     # Measured from the repeatable build output and recorded in the lock.
-    # Re-measured after the Wave 7 Warden/Archmage atlases were finished: a
-    # clean build and an incremental build on this tree agree byte for byte.
-    assert artifact['size'] == 15_027_142
+    # Re-measured after the Wave 5/6 visual catalogs were repointed at their
+    # own authored textures: two clean Gradle builds on this tree agree byte
+    # for byte.
+    assert artifact['size'] == 15_027_223
     assert artifact['sha512'] == (
-        'a9e064fab3b8ed3b07dc563176487f78123170a397dc3062609ccf1c7182981d'
-        '0a44eb7179cadfd0b0c7ec3eb6435454888bcde8ba6d2250d1d2a16bf7ace9ca'
+        '96535922db2d10ac58dfbafe5586ee5d44ac12a140a6ccd8947e99c4c5cbc57f'
+        'ee5c21b04b82cb4260033f756e71d535a464774e1d458dc1ef4f3cebedd72a67'
     )
 
 

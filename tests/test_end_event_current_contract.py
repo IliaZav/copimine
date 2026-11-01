@@ -454,6 +454,49 @@ def test_spider_renderer_uses_an_adapted_custom_model() -> None:
     assert "end_rift_user_spider.png" in read(CLIENT_JAVA / "EndEventTextureCatalog.java")
 
 
+def test_wave_scoped_visuals_map_to_their_own_authored_textures() -> None:
+    """W5/W6 actors must not be repainted with another wave's skin.
+
+    The 26.3 client catalog once pointed every Wave 5 guardian and Wave 6
+    ritual actor at the Wave 1/2 user textures, so those waves rendered as
+    somebody else's mob -- the reported "textures are lost" defect. Each
+    visual now names the file that was authored for it, and that file has to
+    exist in the shipped resources.
+    """
+
+    client_26 = (
+        ROOT / "tools" / "minecraft-26.3" / "client" / "src" / "main" / "java"
+        / "me" / "copimine" / "client"
+    )
+    catalog = read(client_26 / "EndEventTextureCatalog.java")
+
+    expected = {
+        "END_RIFT_WAVE_GUARDIAN_ENDERMAN_V1": "end_rift_wave_guardian_enderman.png",
+        "END_RIFT_WAVE_GUARDIAN_SPIDER_V1": "end_rift_wave_guardian_spider.png",
+        "END_RIFT_WAVE_GUARDIAN_SKELETON_V1": "end_rift_wave_guardian_skeleton.png",
+        "END_RIFT_RITUAL_GUARD_ENDERMAN_V1": "end_rift_ritual_guard_enderman.png",
+        "END_RIFT_RITUAL_GUARD_SPIDER_V1": "end_rift_ritual_guard_spider.png",
+        "END_RIFT_RITUAL_GUARD_SKELETON_V1": "end_rift_ritual_guard_skeleton.png",
+        "END_RIFT_RITUAL_CASTER_V1": "end_rift_ritual_caster.png",
+    }
+    entity_dir = CLIENT / "src" / "main" / "resources" / "assets" / "copimineclient" / "textures" / "entity"
+    for visual, filename in expected.items():
+        line = next(
+            (row for row in catalog.splitlines() if f'"{visual}"' in row),
+            None,
+        )
+        assert line is not None, visual
+        assert f'"{filename}"' in line, (visual, line.strip())
+        # The asset has to travel with the mod, otherwise the mapping is a
+        # dangling reference that falls back to the vanilla mob at runtime.
+        assert (entity_dir / filename).is_file(), filename
+
+    # No wave-scoped visual may silently borrow a different wave's texture.
+    for visual in expected:
+        line = next(row for row in catalog.splitlines() if f'"{visual}"' in row)
+        assert "end_rift_user_" not in line, (visual, line.strip())
+
+
 def test_spider_renderer_model_selection_does_not_mutate_shared_model_state() -> None:
     mixin = read(CLIENT_JAVA / "mixin" / "LivingEntityRendererMixin.java")
     assert "@Redirect" in mixin

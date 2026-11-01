@@ -15,6 +15,18 @@ def test_logo_is_the_only_image_and_comes_from_our_site():
     assert "mail-logo.png" in images[0]
 
 
+def test_logo_has_no_transparent_pixels_so_dark_themes_cannot_invert_it():
+    """Gmail в тёмной теме инвертирует прозрачные картинки: фон должен быть запечён."""
+    from PIL import Image
+
+    path = Path(__file__).resolve().parents[1] / "frontend/assets/img/mail-logo.png"
+    logo = Image.open(path).convert("RGBA")
+    alphas = {px[3] for px in logo.get_flattened_data()}
+    assert alphas == {255}, "в логотипе остались прозрачные пиксели — Gmail покажет негатив"
+    # Угол должен совпадать с фоном письма, иначе вокруг слова будет тёмный прямоугольник.
+    assert logo.getpixel((0, 0))[:3] == (0x17, 0x1C, 0x1F)
+    assert "?v=" in mail_render.LOGO_URL, "смените версию, иначе клиенты возьмут старый файл из кеша"
+
 
 def test_only_table_is_the_logo_plate():
     """Таблица допустима только одна — служебная подложка под логотип."""

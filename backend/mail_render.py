@@ -21,7 +21,10 @@ PREHEADER = "Одноразовый код CopiMine действует 10 мин
 
 # Официальный wordmark сайта (frontend/assets/img/logo.webp, 520x104, пропорция 5:1).
 # В письме — PNG 260x52 для совместимости с почтовыми клиентами.
-LOGO_URL = SITE + "/assets/img/mail-logo.png"
+# Тёмная тема Gmail инвертирует картинки с прозрачным фоном: PNG «запечён» на цвет
+# письма (#171c1f), поэтому прозрачных пикселей в нём нет и инвертировать нечего.
+# ?v=2 сбрасывает кеш у тех, кто уже получил старый прозрачный файл.
+LOGO_URL = SITE + "/assets/img/mail-logo.png?v=2"
 
 
 def render(*, purpose, code, action_url="", action_label="", recipient="", expires_minutes=10):

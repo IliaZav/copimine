@@ -43,7 +43,8 @@ mobs:
   skeleton:
     health-bonus: 8.0
     attack-damage-bonus: 2.0
-      elite-attack-damage-bonus: 2.0
+    # Elite maximum health is exactly 3x the ordinary role under the same
+    # frozen party scaling, so it is derived rather than configured here.
 
 mini-bosses:
   spell-cooldown-seconds: [8, 12]

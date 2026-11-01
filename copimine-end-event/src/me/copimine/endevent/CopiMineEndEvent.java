@@ -22597,14 +22597,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
         AttributeInstance carrierMax = carrier.getAttribute(Attribute.GENERIC_MAX_HEALTH);
         if (carrierMax == null || ownerMaximumHealth <= 0.0D || ownerHealth <= 0.0D) return false;
+        // ECHO-011: the copy is built from the owner's stable maximum health at
+        // admission and scaled by 2.5x, so it outlasts the player it mirrors.
+        double copyMaximumHealth = me.copimine.endevent.domain.EchoScalingPolicy.copyMaxHealth(ownerMaximumHealth);
+        if (copyMaximumHealth <= 0.0D) return false;
         me.copimine.endevent.runtime.RealitySplitEchoDuelState.DuelRecord checkpoint = duel;
         long runtimeGeneration = duel.runtimeGeneration();
         me.copimine.endevent.runtime.RealitySplitEchoDuelState.ActorState actorState;
         if (planned) {
-            carrierMax.setBaseValue(ownerMaximumHealth);
-            carrier.setHealth(ownerHealth);
+            carrierMax.setBaseValue(copyMaximumHealth);
+            carrier.setHealth(copyMaximumHealth);
             actorState = new me.copimine.endevent.runtime.RealitySplitEchoDuelState.ActorState(
-                    carrier.getUniqueId(), ownerHealth, ownerMaximumHealth,
+                    carrier.getUniqueId(), copyMaximumHealth, copyMaximumHealth,
                     me.copimine.endevent.runtime.RealitySplitEchoDuelState.ActorLifecycle.ALIVE,
                     0L, eventTickCounter, 0L, 0L, 0L, 0L);
             checkpoint = duel.withActor(runtimeGeneration, ownerHealth, ownerMaximumHealth, 0L,
@@ -22614,15 +22618,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     || duel.revision() >= me.copimine.endevent.runtime.RealitySplitEchoDuelState.MAX_COUNTER
                     || duel.actor().revision() >= me.copimine.endevent.runtime.RealitySplitEchoDuelState.MAX_COUNTER) return false;
             boolean restartRebind = found == null || namedWave7RuntimeRestorePending;
+            if (duel.actor().currentHealth() > copyMaximumHealth) return false;
             if (found == null) {
-                carrierMax.setBaseValue(ownerMaximumHealth);
+                carrierMax.setBaseValue(copyMaximumHealth);
                 carrier.setHealth(duel.actor().currentHealth());
-            } else if (carrierMax.getBaseValue() != ownerMaximumHealth
+            } else if (carrierMax.getBaseValue() != copyMaximumHealth
                     || carrier.getHealth() > duel.actor().currentHealth()) return false;
             double actorHealth = carrier.getHealth();
             if (restartRebind) runtimeGeneration++;
             actorState = new me.copimine.endevent.runtime.RealitySplitEchoDuelState.ActorState(
-                    carrier.getUniqueId(), actorHealth, ownerMaximumHealth,
+                    carrier.getUniqueId(), actorHealth, copyMaximumHealth,
                     me.copimine.endevent.runtime.RealitySplitEchoDuelState.ActorLifecycle.ALIVE,
                     duel.actor().revision() + 1L, duel.actor().nextActionTick(),
                     duel.actor().meleeCooldownUntilTick(), duel.actor().rangedCooldownUntilTick(),
@@ -22632,14 +22637,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     duel.returnDeadlineMillis(), actorState, duel.revision() + 1L,
                     duel.replicaRevision(), duel.replicaState(), strategy);
         }
-        carrierMax.setBaseValue(ownerMaximumHealth);
+        carrierMax.setBaseValue(copyMaximumHealth);
         if (carrier.getHealth() > actorState.currentHealth()) return false;
         if (carrier.getHealth() < actorState.currentHealth()) carrier.setHealth(actorState.currentHealth());
         carrier.setPersistent(true);
         carrier.setCanJoinRaid(false);
         carrier.setCanPickupItems(false);
-        carrier.setAI(false);
-        carrier.setAware(false);
+        // The copy fights immediately; configureNamedEchoRuntime then owns which
+        // target it may engage. Leaving a dormant AI here froze the duel.
+        carrier.setAI(true);
+        carrier.setAware(true);
         carrier.setTarget(null);
         carrier.setInvulnerable(false);
         var replicaState = replica.state();
@@ -31681,6 +31688,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         || !listener.beginOwnerCombatAction(pair, owner.getUniqueId())) return false;
                 try {
                     double amount = attack.getValue() * (critical ? 1.5D : 1.0D);
+                    // ECHO-012: the copy hits 1.25x harder, applied once here on
+                    // the already-established legitimate hit.
+                    amount = me.copimine.endevent.domain.EchoScalingPolicy.copyDamage(amount);
                     owner.damage(Math.min(150.0D, amount), carrier);
                 } catch (RuntimeException rejectedDamage) {
                     // A monitor receipt distinguishes a partially delivered native hit from a failure.
@@ -31712,7 +31722,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     arrow.setShooter(carrier);
                     arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
                     int power = decision.actionItem().enchantments().getOrDefault("minecraft:power", 0);
-                    arrow.setDamage(Math.min(20.0D, 2.0D + (power > 0 ? 0.5D * power + 0.5D : 0.0D)));
+                    arrow.setDamage(Math.min(20.0D, me.copimine.endevent.domain.EchoScalingPolicy.copyDamage(
+                            2.0D + (power > 0 ? 0.5D * power + 0.5D : 0.0D))));
                     if (!listener.registerServerLaunchedEchoArrow(
                             arrow, carrier.getUniqueId())) {
                         listener.discardServerLaunchedEchoArrow(arrow, carrier.getUniqueId());

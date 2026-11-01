@@ -87,6 +87,12 @@ def test_inventory_tests_and_installed_hashes_are_real() -> None:
         # The migration receipt only exists after a local official install; CI checks source candidates.
         if installed is None:
             continue
+        # A plugin disabled for loopback testing has no active jar: the
+        # installer moves it into migration-backups and drops it from the
+        # runtime receipt, so neither the file nor the receipt row exists.
+        if entry["name"] not in installed:
+            assert not (ROOT / entry["installedJar"]).is_file(), entry["name"]
+            continue
         if entry["installedJar"] is None:
             assert entry["name"] not in installed
             continue

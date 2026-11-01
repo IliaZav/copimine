@@ -1344,9 +1344,9 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     candidate=baseline['candidate']
     assert candidate['filename']=='CopiMineEndEvent-26.3.jar'
     assert candidate['runtimeFilename']=='CopiMineEndEvent.jar'
-    assert candidate['size']==1817582
-    assert candidate['sha256']=='40732fe304168ab2f999a5b57a5602c97f9419dc20b63dc0225376afce6f189d'
-    assert candidate['sha512']=='c74511974b1d23ce7f576c957f30f096eee67e327311e2be6720d5cc485a7d8e7bc9d6ed881a4503c0913efecf83017ce6d3638eb5f547d6010d62d6f2c9c2dd'
+    assert candidate['size']==1815613
+    assert candidate['sha256']=='3c403d206ffe094e3ed78cd117969d232909eff98473e21bf963f8102e1a2567'
+    assert candidate['sha512']=='9cfb17e0c2b33b90b218c65d8e0232ca2bc05ff18648befbbaf298314114e093255995bf9001f88026f48a7587ee766873c53339bbdaa58f219198b5278f8a9e'
     assert candidate['apiVersion']=='26.3'
     assert candidate['buildArtifact']=='build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar'
     assert candidate['nativeVerified'] is lock['nativeVerified']
@@ -1386,6 +1386,8 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
         '0b4235f5d140dd02bd71e70a173ed25a5cccdd6cb1c839d0726a34ee16565f6c',
         # Superseded 26.3 candidate kept as an allowed local upgrade source.
         'db2a4e73c205b208ab27380f9d091d0689bb08422ee657ac5b503cd62fe7ba35',
+        # Superseded again when the Wave 7 miniboss work rebuilt the jar.
+        '40732fe304168ab2f999a5b57a5602c97f9419dc20b63dc0225376afce6f189d',
     ]
     assert candidate['replaceSha256']==[
         '440e081eebfdc6764c64e5f8aab3c3505862c55efd17dc5e69d51e3dde77d73a',
@@ -1519,8 +1521,15 @@ def test_active_26_3_plugin_directory_matches_the_unique_locked_inventory():
         auth_effects_backup_filename=(auth_effects_lock['candidate'].get('runtimeFilename')
                                       or auth_effects_lock['candidate']['filename'])
         auth_effects_backups=list((server/'migration-backups/plugins').rglob(auth_effects_backup_filename))
-        assert len(auth_effects_backups)==1, 'test-only AuthEffects disablement must preserve exactly one locked backup'
-        assert hashlib.sha256(auth_effects_backups[0].read_bytes()).hexdigest()==disabled_auth_effects['sha256']
+        # Every reinstall that runs while AuthEffects is already removed takes
+        # its own backup, so a runtime prepared more than once legitimately
+        # holds several identical copies. What must hold is that each retained
+        # copy is a real regular file with the locked digest -- never a symlink
+        # and never an unrecognized artifact.
+        assert auth_effects_backups, 'test-only AuthEffects disablement must preserve a locked backup'
+        for backup in auth_effects_backups:
+            assert backup.is_file() and not backup.is_symlink(), 'pinned AuthEffects backup must be a regular file, not a symlink'
+            assert hashlib.sha256(backup.read_bytes()).hexdigest()==disabled_auth_effects['sha256']
     else:
         assert receipt.get('authenticationMode')=='AuthMe-6.0.1', 'runtime receipt must declare a recognized authentication mode'
     actual_files={path.name for path in runtime.glob('*.jar')}
@@ -2973,8 +2982,8 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
     expected_candidates={
         'CopiMineArtifacts':('a5e0420d503850cb604445c52705f5af71fdc65770a78b943c5d2bc252fabcc5',
                              'a054cfeef3dc37dc364ef33d550063b6aa105f2394501bd982295af2fc791bba82cce15623c3ff7b09c4c3250683fb1caf7cdb72312e3c91bf50dd0c2fc39600',366356),
-        'CopiMineEndEvent':('40732fe304168ab2f999a5b57a5602c97f9419dc20b63dc0225376afce6f189d',
-                            'c74511974b1d23ce7f576c957f30f096eee67e327311e2be6720d5cc485a7d8e7bc9d6ed881a4503c0913efecf83017ce6d3638eb5f547d6010d62d6f2c9c2dd',1817582),
+        'CopiMineEndEvent':('3c403d206ffe094e3ed78cd117969d232909eff98473e21bf963f8102e1a2567',
+                            '9cfb17e0c2b33b90b218c65d8e0232ca2bc05ff18648befbbaf298314114e093255995bf9001f88026f48a7587ee766873c53339bbdaa58f219198b5278f8a9e',1815613),
         'CopiMineNarcotics':('bea72432491f7afa0a0cbd23b608654b56899b8e463720f98dbfef0f39f2ef0d',
                              'c2e3439ca69fd8ecc2b19aa654a38fb6bcd81e5be1da2da52934988edf1f75a5bb0170cbada994015500a6ccc6b2fcb6e8bc2bf4222a154c1b1fe6b5c14a586b',370363),
     }

@@ -6997,10 +6997,15 @@ async function api(path, body, method) {
   new MutationObserver(schedulePasswordEnhance).observe(document.body, { childList: true, subtree: true });
   schedulePasswordEnhance();
 
-  // Регистрация идёт только через подтверждение почты (review-v7.js), поэтому форма
-  // из этого слоя используется исключительно для входа по паролю.
-  R.auth = tab => authMarkup(tab === 'register' ? 'register' : 'login');
-  R.inbox = () => R.auth('login');
+  // Регистрация идёт только через подтверждение почты (review-v7.js): там форма с
+  // адресом и двумя согласиями. Этот слой отвечает лишь за вход, иначе его старая
+  // форма без почты перекрывает регистрацию целиком.
+  // Регистрация принадлежит review-v7.js: только там форма с адресом почты и
+  // двумя согласиями. Этот слой рисует вход, а вход в аккаунт без подтверждения
+  // не создаёт, поэтому перехватывать регистрацию ему нельзя.
+  const registerAuth = typeof R.auth === 'function' ? R.auth : null;
+  R.auth = tab => (tab === 'register' && registerAuth ? registerAuth(tab) : authMarkup(tab === 'register' ? 'register' : 'login'));
+  R.inbox = () => authMarkup('login');
   F['v7-login'] = async (form, data) => {
     let result;
     try {

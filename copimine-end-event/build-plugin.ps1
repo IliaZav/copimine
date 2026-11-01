@@ -208,6 +208,19 @@ try {
   $digestHex = -join ($contentDigest.Hash | ForEach-Object { $_.ToString('x2') })
   Write-Host ("Class content digest: {0} ({1} classes)" -f $digestHex, $classFiles.Count)
 } finally { $contentDigest.Dispose() }
+# The archive layout itself, so a digest mismatch can be pinpointed to an entry
+# instead of re-guessing at ordering, naming, or timestamps.
+$archiveDump = Join-Path $pluginDir 'build\archive-listing.txt'
+$archiveDumpDigest = [Security.Cryptography.SHA256]::Create()
+try {
+  $listing = & $jarCommand --list --verbose --file $jar 2>&1
+  [IO.File]::WriteAllLines($archiveDump, $listing, [Text.UTF8Encoding]::new($false))
+  $listingBytes = [Text.Encoding]::UTF8.GetBytes(($listing -join "`n"))
+  Write-Host ("Archive listing digest: {0} ({1} lines)" -f (-join ($archiveDumpDigest.ComputeHash($listingBytes) | ForEach-Object { $_.ToString('x2') })), $listing.Count)
+  # A digest alone cannot say which entry differs, and CI keeps no workspace,
+  # so the entries this script actually packed are printed for the log.
+  Write-Host ("Archive entries: {0}" -f (($packagedEntries) -join ','))
+} finally { $archiveDumpDigest.Dispose() }
 Copy-Item -LiteralPath $jar -Destination $serverJar -Force
 # The migration lock pins build/minecraft-26.3/plugins/jars, not the staging
 # copy. Leaving that stale is how the published digest silently drifted away

@@ -52,7 +52,8 @@ R.home=()=>`<section class="hero v71-hero"><img class="hero-photo" src="${M.asse
 const inheritedAccount=R.account;
 // Вкладок в кабинете много не нужно: всё про деньги и покупки живёт в «Кошельке»,
 // Minecraft переехал в настройки. Осталось пять осмысленных пунктов.
-const accountNav=[['overview','Обзор','user'],['wallet','Кошелёк','transfer'],['payments','Донаты','heart'],['elections','Выборы','vote'],['treasury','Казна','bank'],['support','Обращения','chat']];
+// Вкладок в кабинете немного: всё про деньги живёт в «Банке», Minecraft — в настройках.
+const accountNav=[['overview','Обзор','user'],['bank','Банк','transfer'],['elections','Выборы','vote'],['treasury','Казна','bank'],['support','Обращения','chat']];
 accountTabs=tab=>A.tabs('account',accountNav,tab);M.accountTabs=accountTabs;
 A.nudge=()=>Q.hint?`<div class="v7-email-nudge"><div class="v7-connection-icon">${icon('mail')}</div><div><strong>Добавь почту на всякий случай</strong><p>Ещё один способ вернуть доступ, если с входом через VK возникнут проблемы.</p></div>${M.link('Привязать почту','#settings/connections','arrow-right','small')}${M.iconBtn('x','Закрыть','v7-dismiss-hint')}</div>`:'';
 function profileSummary(){const p=M.me(),orders=s().orders.filter(x=>x.playerId===p.id||x.player===p.name),wallet=A.wallet,balance=wallet?.balance??p.AR,linked=p.gameLinkVerified||p.linked;
@@ -63,11 +64,11 @@ function profileSummary(){const p=M.me(),orders=s().orders.filter(x=>x.playerId=
  <aside class="v71-account-aside"><section><div class="v71-section-heading"><h3>Minecraft</h3>${icon('gamepad')}</div><div class="v71-linked-player">${W.head(p,40)}<div><strong>${E(p.name)}</strong><small>${linked?'Привязанный аккаунт':'Не привязан'}</small></div>${icon(linked?'check-circle':'link')}</div>${M.btn('Управлять привязкой','v7-game-link','link','ghost small')}</section>
  <section><h3>Игровые дела</h3><a href="#account/elections">${icon('vote')}<span>Выборы<small>Кандидаты и заявки</small></span>${icon('chevron-right')}</a><a href="#account/treasury">${icon('bank')}<span>Казна<small>Публичные доходы и расходы</small></span>${icon('chevron-right')}</a><a href="#account/support">${icon('chat')}<span>Написать в поддержку<small>Вопрос, жалоба или покупка</small></span>${icon('chevron-right')}</a></section><section class="v71-privacy-summary"><h3>${icon('shield')}Доступ под контролем</h3><p>Проверь способы восстановления и активные устройства в настройках.</p>${M.link('Безопасность','#settings/security','arrow-right','ghost small')}</section></aside></div>`;
 }
-R.account=(tab='overview')=>{if(tab==='donations')tab='payments';
+R.account=(tab='overview')=>{if(tab==='donations'||tab==='payments'||tab==='orders')tab='bank';
  if(!M.me())return R.auth('login');
  if(['','overview','profile','inventory','balance'].includes(tab))return profileSummary();
  // «Кошелёк» — переводы, покупки и траты на одном экране.
- if(['transfers','transfer','bank','history','wallet'].includes(tab))return A.transferPage();
+ if(['transfers','transfer','bank','history','wallet','bank'].includes(tab))return A.transferPage();
  const label=accountNav.find(x=>x[0]===tab)?.[1]||'Личный кабинет';
  return A.heading(label,'',M.link('Настройки','#settings/profile','settings','ghost'))+accountTabs(tab)+A.nudge()+`<div class="v71-account-content">${A.clean(inheritedAccount(tab))}</div>`;
 };

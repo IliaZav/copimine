@@ -11,6 +11,8 @@ A.wallet=null;
 // Уведомления живут отдельно от игрового счёта: они нужны и без привязки Minecraft.
 A.notices={items:[],unread:0};
 let noticesAt=0;
+let bankPeriod='week';
+let openedOp=null;
 const player=id=>s().players.find(p=>p.id===id);
 const number=n=>Number(n||0).toLocaleString('ru-RU');
 const uid=()=>CM6.uid('transfer');
@@ -61,65 +63,132 @@ function recipientList(query=''){
 }
 function selectedRecipient(){return (A.wallet?.recipients||[]).find(p=>p.id===draft.to)||s().players.filter(p=>p.id!==M.me()?.id).map(p=>({id:p.id,name:p.displayName||p.name})).find(p=>p.id===draft.to);}
 function summary(){const p=selectedRecipient();return `<span class="label">Получатель</span><div class="v71-recipient-summary">${p?W.head(player(p.id),52):`<span class="v71-placeholder-avatar">${icon('user')}</span>`}<div><strong>${p?E(p.name):'Выбери игрока'}</strong><small>${p?'Получатель увидит твой ник':'Начни с ника в форме слева'}</small></div></div><dl class="v71-transfer-totals"><div><dt>Доступно</dt><dd>${number(A.wallet?.balance??M.me()?.AR)} АР</dd></div>${feeRows(Number(draft.amount)||0,previewQuote(Number(draft.amount)||0).fee,feePercent())}<div class="v71-total"><dt>Получит игрок</dt><dd id="v71-summary-amount">${number(Number(draft.amount)||0)} АР</dd></div></dl>`;}
-A.transferRows=(rows,small=false)=>rows.length?`<div class="v71-transfer-list">${rows.map(t=>`<button type="button" class="v71-transfer-row" data-action="v71-transfer-detail" data-id="${E(t.id)}"><span class="v71-transaction-icon ${t.incoming?'incoming':''}">${icon(t.incoming?'arrow-down-left':'arrow-up-right')}</span><span class="v71-transaction-person"><strong>${E(t.incoming?t.fromName:t.toName)}</strong><small>${E(t.note|| (t.incoming?'Входящий перевод':'Исходящий перевод'))}</small></span><time>${M.date(t.at||t.created*1000,true)}</time><strong class="numeric ${t.incoming?'green':''}">${t.incoming?'+':'-'}${number(t.amount)} <small>АР</small></strong>${icon('chevron-right')}</button>`).join('')}</div>`:`<div class="v71-history-empty">${icon('transfer')}<div><strong>Переводов пока нет</strong><p>Здесь будут входящие и исходящие переводы.</p></div></div>`;
-function history(){const rows=(A.wallet?.transfers||[]).filter(t=>filter==='all'||(filter==='in'?t.incoming:!t.incoming));return A.transferRows(rows);}
-function notificationRows(){const items=A.notices?.items||[];const notices=items.filter(n=>!A.muted(n.type));return notices.length?`<div class="v71-notification-list">${notices.map(n=>`<button type="button" class="v71-notice ${n.read?'':'unread'}" data-action="v71-notification-open" data-id="${E(n.id)}"><span class="v71-notice-icon">${icon(n.type==='transfer'?'arrow-down-left':n.type==='ticket-reply'?'chat':'bell')}</span><span><strong>${E(n.title)}</strong><p>${E(n.body)}</p><time>${M.date(n.createdAt,true)}</time></span>${n.read?'':'<i aria-label="Не прочитано"></i>'}${icon('arrow-right')}</button>`).join('')}</div>`:`<div class="v71-history-empty">${icon('bell')}<div><strong>Пока всё спокойно</strong><p>Здесь появятся входящие переводы и ответы по обращениям.</p></div></div>`;}
-// Переводы как в банке: баланс, движение, круг на что ушло, история.
-// Главное — не мешать: сверху сумма и кнопка, под ними история.
-function movement(){const rows=A.wallet?.transfers||[];let inc=0,out=0;for(const t of rows){const n=Number(t.amount||0);if(t.incoming)inc+=n;else out+=n;}return{incoming:inc,outgoing:out,count:rows.length};}
-function donut(){
- const {incoming,outgoing}=movement(),total=incoming+outgoing;
- if(!total)return '<div class="v71-donut-empty"><p>Пока нет переводов</p><small>Здесь появится, куда ушли АР.</small></div>';
- const R=54,C=2*Math.PI*R,part=outgoing/total;
- return '<div class="v71-donut"><svg viewBox="0 0 140 140" role="img" aria-label="Исходящие '+Math.round(part*100)+', входящие '+Math.round((1-part)*100)+' процентов">'
-  +'<circle class="v71-donut-track" cx="70" cy="70" r="'+R+'"/>'
-  +'<circle class="v71-donut-out" cx="70" cy="70" r="'+R+'" stroke-dasharray="'+(C*part).toFixed(2)+' '+(C*(1-part)).toFixed(2)+'"/>'
-  +'</svg><dl class="v71-donut-legend">'
-  +'<div><dt><i class="dot out"></i>Ушло</dt><dd>'+number(outgoing)+'</dd></div>'
-  +'<div><dt><i class="dot in"></i>Пришло</dt><dd>'+number(incoming)+'</dd></div>'
-  +'</dl></div>';
+// Банк: слева разделы, справа круговая диаграмма. Счета AR и донат видны
+// сразу, таблица отвечает «что и когда», детали открываются по клику.
+function bankTab(){return (M.UI?.params?.get('tab'))||'overview';}
+function periodRows(){
+ const rows=A.wallet?.transfers||[];
+ if(!bankPeriod)return rows;
+ const days=bankPeriod==='week'?7:bankPeriod==='month'?30:0;
+ if(!days)return rows;
+ const edge=Date.now()-days*86400000;
+ return rows.filter(t=>Number(t.at||t.created*1000)>=edge);
 }
-function kindOf(t){
- if(t.incoming)return{key:'in',label:'Зачисление',tone:'green',sign:'+'};
- if(String(t.note||'').toLowerCase().includes('комисс'))return{key:'fee',label:'Комиссия',tone:'muted',sign:'-'};
- return{key:'out',label:'Списание',tone:'red',sign:'-'};
+function totals(rows){let inc=0,out=0;for(const t of rows){const n=Number(t.amount||0);if(t.incoming)inc+=n;else out+=n;}return{incoming:inc,outgoing:out,net:inc-out};}
+function opTitle(t){return t.note||(t.incoming?'Входящий перевод':'Исходящий перевод');}
+function opIcon(t){
+ const p=player(t.incoming?t.fromId:t.toId);
+ return p?.skin?.avatar||M.asset('assets/skins/steve.png');
 }
-A.transferRow=(t,small=false)=>{
- const k=kindOf(t),who=t.incoming?t.fromName:t.toName;
- return '<li class="v71-move '+k.tone+'"><button type="button" class="v71-move-btn" data-action="v71-transfer-detail" data-id="'+E(t.id)+'">'
-  +'<span class="v71-move-mark">'+icon(t.incoming?'arrow-down-left':'arrow-up-right')+'</span>'
-  +'<span class="v71-move-body"><strong>'+E(who||'—')+'</strong><small>'+E(t.note||k.label)+' · '+M.date(t.at||t.created*1000,true)+'</small></span>'
-  +'<span class="v71-move-sum"><strong>'+k.sign+number(t.amount)+'</strong><small>АР</small></span>'
-  +'</button></li>';
-};
-A.transferRows=(rows,small=false)=>rows.length?'<ul class="v71-move-list'+(small?' compact':'')+'">'+rows.map(t=>A.transferRow(t,small)).join('')+'</ul>':'<p class="v71-move-empty">Операций нет</p>';
+function opRow(t,i){
+ const inc=!!t.incoming,who=inc?t.fromName:t.toName;
+ return '<tr class="op" data-op="'+i+'" tabindex="0">'
+  +'<td><div class="bank-what"><img src="'+E(opIcon(t))+'" alt="" loading="lazy"><div><b>'+E(opTitle(t))+'</b><small>'+E(who||'—')+' · '+M.date(t.at||t.created*1000,true)+'</small></div></div></td>'
+  +'<td class="bank-amt '+(inc?'in':'out')+'">'+number(t.amount)+' <small>АР</small></td></tr>';
+}
+A.transferRows=(rows,small=false)=>rows.length
+ ?'<table class="bank-table"><thead><tr><th>За что</th><th class="right">Сумма</th></tr></thead><tbody>'+rows.map(opRow).join('')+'</tbody></table>'
+ :'<p class="bank-empty">Операций нет</p>';
+function history(){const rows=periodRows().filter(t=>filter==='all'||(filter==='in'?t.incoming:!t.incoming));return A.transferRows(rows);}
+
+// Круговая диаграмма: раскрывается при отрисовке, сегменты — по направлению.
+function ring(){
+ const rows=periodRows(),t=totals(rows),total=t.incoming+t.outgoing;
+ if(!total)return '<p class="bank-empty">Движений пока нет</p>';
+ const part=t.outgoing/total,R=62,C=2*Math.PI*R;
+ return '<div class="bank-ring"><svg viewBox="0 0 160 160" role="img" aria-label="Расходы '+Math.round(part*100)+'%, доходы '+Math.round((1-part)*100)+'%">'
+  +'<circle class="track" cx="80" cy="80" r="'+R+'"/>'
+  +'<circle class="out" cx="80" cy="80" r="'+R+'" stroke-dasharray="'+(C*part).toFixed(2)+' '+(C*(1-part)).toFixed(2)+'"/>'
+  +'<circle class="in" cx="80" cy="80" r="'+R+'" stroke-dasharray="'+(C*(1-part)).toFixed(2)+' '+(C*part).toFixed(2)+'" stroke-dashoffset="'+(-C*part).toFixed(2)+'"/>'
+  +'</svg><div class="bank-ring-mid"><b>−'+number(t.outgoing)+'</b><span>'+ (bankPeriod==='week'?'за неделю':bankPeriod==='month'?'за месяц':'всего') +'</span></div></div>'
+  +'<ul class="bank-legend"><li class="out"><i></i>Расходы<b>'+number(t.outgoing)+'</b></li><li class="in"><i></i>Доходы<b>'+number(t.incoming)+'</b></li></ul>';
+}
+function accounts(){
+ const ar=A.wallet?.balance??M.me()?.AR??0,cm=A.wallet?.donation??0;
+ return '<section class="bank-accounts">'
+  +'<div class="bank-acc"><div class="bank-acc-lbl"><img src="'+M.asset('assets/img/currency/ar-ore.png')+'" alt="">Игровые AR</div><div class="bank-acc-sum"><b>'+number(ar)+'</b><span>AR</span></div><small>Валюта сервера для торговли</small></div>'
+  +'<div class="bank-acc"><div class="bank-acc-lbl"><img src="'+M.asset('assets/img/currency/coin.png')+'" alt="">Донат</div><div class="bank-acc-sum"><b>'+number(cm)+'</b><span>CM</span></div><small>Для покупок в магазине</small></div>'
+ +'</section>';
+}
+function recipientSelect(){
+ const me=M.me()?.id,list=(s().players||[]).filter(p=>p.id!==me).slice(0,200);
+ return '<div class="bank-pick" id="bank-pick"><button type="button" class="bank-pick-btn" data-action="bank-pick-toggle">'
+  +(draft.to?'<img src="'+E(player(draft.to)?.skin?.avatar||M.asset('assets/skins/steve.png'))+'" alt="">':'<span class="bank-pick-face">'+icon('user')+'</span>')
+  +'<span>'+(draft.to?E(player(draft.to)?.name||''):'Выбери игрока')+'</span>'+icon('chevron-down')+'</button>'
+  +'<div class="bank-pick-list">'
+  +'<label class="bank-pick-search">'+icon('search')+'<input id="bank-pick-query" placeholder="Найти игрока" autocomplete="off"></label>'
+  +list.map(p=>'<button type="button" data-action="bank-pick" data-id="'+E(p.id)+'"><img src="'+E(p.skin?.avatar||M.asset('assets/skins/steve.png'))+'" alt="" loading="lazy"><span>'+E(p.name)+'</span>'+(p.online?'<small>В сети</small>':'')+'</button>').join('')
+  +'</div></div>';
+}
+function summaryBox(){
+ const p=selectedRecipient(),amt=Number(draft.amount)||0,q=previewQuote(amt);
+ return '<dl class="bank-sum"><div><dt>Получатель</dt><dd>'+(p?E(p.name):'—')+'</dd></div><div><dt>Сумма</dt><dd>'+number(amt)+' АР</dd></div><div><dt>Комиссия</dt><dd>'+(q.fee?number(q.fee)+' АР':'нет')+'</dd></div><div class="total"><dt>Получит</dt><dd id="v71-summary-amount">'+number(q.net??amt)+' АР</dd></div></dl>';
+}
+function overviewTab(){
+ const rows=periodRows().slice(0,8);
+ return '<div class="bank-split"><div class="bank-main"><section class="bank-card"><div class="bank-card-head"><h2>Доходы и расходы</h2></div>'+A.transferRows(rows)+'</section></div>'
+  +'<aside class="bank-side"><section class="bank-card"><div class="bank-card-head"><h2>Куда ушло</h2></div>'+ring()+'</section></aside></div>';
+}
+function transferTab(){
+ return '<div class="bank-split"><div class="bank-main"><section class="bank-card"><h2>Новый перевод</h2><form data-form="v71-transfer" id="v71-transfer-form" class="bank-form">'
+  +'<label class="field">Кому'+recipientSelect()+'</label>'
+  +'<label class="field">Сумма<span class="bank-amount"><input id="v71-transfer-amount" name="amount" inputmode="numeric" autocomplete="off" required maxlength="10" placeholder="0" value="'+E(draft.amount)+'"><span>АР</span></span></label>'
+  +'<div class="bank-presets">'+[50,100,250,500,1000].map(n=>'<button type="button" data-action="v71-amount" data-amount="'+n+'">'+n+'</button>').join('')+'</div>'
+  +'<label class="field">Сообщение <span class="quiet">Необязательно</span><input id="v71-transfer-note" name="note" maxlength="140" placeholder="За что" value="'+E(draft.note)+'"></label>'
+  +'<div class="form-error" role="alert">'+E(error)+'</div>'
+  +'<button class="btn primary large" type="submit" '+(loading?'disabled':'')+'>Перевести'+icon('arrow-right')+'</button></form>'
+  +'<p class="bank-note">Перевод необратим. Проверь получателя перед отправкой.</p></section></div>'
+  +'<aside class="bank-side"><section class="bank-card" id="v71-transfer-summary"><h2>Что получится</h2>'+summaryBox()+'</section></aside></div>';
+}
+function historyTab(){
+ return '<div class="bank-split"><div class="bank-main"><section class="bank-card"><div class="bank-card-head"><h2>История</h2>'+M.btn('Экспорт','v71-export-transfers','download','small ghost')+'</div>'
+  +'<div class="bank-filters" role="group">'+[['all','Все'],['in','Приход'],['out','Расход']].map(([k,l])=>'<button type="button" data-action="v71-history-filter" data-key="'+k+'" aria-pressed="'+(filter===k)+'" class="'+(filter===k?'active':'')+'">'+l+'</button>').join('')+'</div>'
+  +'<div id="v71-history-rows">'+history()+'</div></section></div><aside class="bank-side"></aside></div>';
+}
 A.transferPage=()=>{
- const m=movement();
- return A.heading('Переводы АР','Игровая валюта между игроками.',M.link('В кабинет','#account','arrow-left','ghost'))
- +M.accountTabs('transfers')
- +'<div class="v71-wallet">'
-  +'<section class="v71-wallet-top"><div class="v71-balance"><span>На счёте</span><strong>'+number(A.wallet?.balance??M.me()?.AR??0)+' <small>АР</small></strong></div>'
-  +'<div class="v71-stats"><div><span>Пришло</span><b class="green">'+number(m.incoming)+'</b></div><div><span>Ушло</span><b class="red">'+number(m.outgoing)+'</b></div><div><span>Операций</span><b>'+m.count+'</b></div></div></section>'
- +'<div class="v71-wallet-grid">'
-  +'<section class="v71-wallet-form"><h2>Новый перевод</h2>'
-   +'<form data-form="v71-transfer" id="v71-transfer-form">'
-   +'<label class="field">Кому<label class="input-wrap v71-recipient-search">'+icon('search')+'<input id="v71-recipient-query" autocomplete="off" placeholder="Ник игрока" aria-label="Найти получателя"></label></label>'
-   +'<div class="v71-recipient-list" id="v71-recipients">'+recipientList()+'</div>'
-   +'<label class="field">Сумма<span class="v71-amount-field"><input id="v71-transfer-amount" name="amount" inputmode="numeric" autocomplete="off" required maxlength="10" placeholder="0" value="'+E(draft.amount)+'"><span>АР</span></span></label>'
-   +'<div class="v71-amount-presets">'+[50,100,250,500].map(n=>'<button type="button" data-action="v71-amount" data-amount="'+n+'">'+n+'</button>').join('')+'</div>'
-   +'<label class="field">Сообщение <span class="quiet">Необязательно</span><input id="v71-transfer-note" name="note" maxlength="140" placeholder="За что" value="'+E(draft.note)+'"></label>'
-   +'<div class="form-error" role="alert">'+E(error)+'</div>'
-   +'<button class="btn primary large" type="submit" '+(loading?'disabled':'')+'>Перевести'+icon('arrow-right')+'</button>'
-   +'</form>'
-   +'<div class="v71-transfer-note-tip">'+W.texture('minecraft:diamond',20)+'<p>Перевод необратим.</p></div>'
-  +'</section>'
-  +'<aside class="v71-wallet-side"><section class="v71-card"><h2>Куда ушли АР</h2>'+donut()+'</section><section class="v71-card" id="v71-transfer-summary">'+summary()+'</section></aside>'
- +'</div>'
- +'<section id="transfer-history" class="v71-section v71-wallet-history">'
-  +'<div class="v71-section-heading"><div><h2>История</h2></div>'+M.btn('Экспорт','v71-export-transfers','download','small ghost')+'</div>'
-  +'<div class="v71-history-filters" role="group" aria-label="Фильтр переводов">'+[['all','Все'],['in','Зачисления'],['out','Списания']].map(([key,label])=>'<button type="button" data-action="v71-history-filter" data-key="'+key+'" aria-pressed="'+(filter===key)+'" class="'+(filter===key?'active':'')+'">'+label+'</button>').join('')+'</div>'
-  +'<div id="v71-history-rows">'+history()+'</div></section></div>';
+ const tab=bankTab();
+ const body=tab==='transfer'?transferTab():tab==='history'?historyTab():overviewTab();
+ return A.heading('Банк','Движение денег на счетах.',M.link('В кабинет','#account','arrow-left','ghost'))
+ +M.accountTabs('bank')
+ +'<div class="bank-switch">'+[['overview','Обзор'],['transfer','Перевод'],['history','История']].map(([k,l])=>'<a href="#account/bank?tab='+k+'" class="'+(tab===k?'on':'')+'">'+l+'</a>').join('')+'</div>'
+ +accounts()+body;
 };
+// Выбор получателя из списка с головами.
+H['bank-pick-toggle']=()=>document.getElementById('bank-pick')?.classList.toggle('open');
+H['bank-pick']=b=>{
+  draft.to=b.dataset.id;
+  const pick=document.getElementById('bank-pick');
+  if(pick){
+    pick.classList.remove('open');
+    const btn=pick.querySelector('.bank-pick-btn');
+    if(btn){
+      const pl=player(draft.to);
+      btn.innerHTML='<img src="'+E(pl?.skin?.avatar||M.asset('assets/skins/steve.png'))+'" alt=""><span>'+E(pl?.name||'')+'</span>'+icon('chevron-down');
+    }
+  }
+  const box=document.getElementById('v71-transfer-summary');
+  if(box){
+    const h=box.querySelector('h2');
+    box.innerHTML='<h2>'+(h?h.textContent:'Что получится')+'</h2>'+summaryBox();
+  }
+};
+// Детали операции: то, что строка не показывает — категория, точное время, комиссия.
+H['bank-op']=b=>{
+  const rows=sortedTransfers(), t=rows[Number(b.dataset.op)];
+  if(!t)return;
+  const inc=!!t.incoming, who=inc?t.fromName:t.toName, at=Number(t.at||t.created*1000);
+  M.openModal('Операция',
+    '<div class="bank-op-hero"><img src="'+E(opIcon(t))+'" alt=""><div class="bank-op-sum '+(inc?'in':'out')+'">'+number(t.amount)+' <small>АР</small></div><div class="bank-op-title">'+E(opTitle(t))+'</div></div>'
+    +'<dl class="bank-op-rows">'
+    +'<div><dt>Направление</dt><dd>'+(inc?'Зачисление':'Списание')+'</dd></div>'
+    +'<div><dt>'+(inc?'От кого':'Кому')+'</dt><dd>'+E(who||'—')+'</dd></div>'
+    +'<div><dt>Когда</dt><dd>'+new Date(at).toLocaleString('ru-RU',{day:'2-digit',month:'long',hour:'2-digit',minute:'2-digit'})+'</dd></div>'
+    +'<div><dt>Сумма</dt><dd>'+number(t.amount)+' АР</dd></div>'
+    +(t.fee?('<div><dt>Комиссия</dt><dd>'+number(t.fee)+' АР</dd></div>'):'<div><dt>Комиссия</dt><dd>Нет</dd></div>')
+    +'<div><dt>Номер</dt><dd class="mono">'+E(t.id||'—')+'</dd></div>'
+    +'</dl>');
+};
+function sortedTransfers(){return periodRows();}
 H['v71-select-recipient']=b=>{draft.to=b.dataset.id;clearTransferError();document.querySelectorAll('.v71-recipient').forEach(n=>{n.classList.toggle('selected',n.dataset.id===draft.to);n.setAttribute('aria-pressed',String(n.dataset.id===draft.to));n.querySelector(':scope>svg:last-child').outerHTML=icon(n.dataset.id===draft.to?'check-circle':'plus');});document.getElementById('v71-transfer-summary').innerHTML=summary();document.getElementById('v71-transfer-amount')?.focus({preventScroll:true});};
 H['v71-amount']=b=>{draft.amount=b.dataset.amount;const input=document.getElementById('v71-transfer-amount');input.value=draft.amount;input.dispatchEvent(new Event('input',{bubbles:true}));input.focus({preventScroll:true});};
 H['v71-history-filter']=b=>{filter=b.dataset.key;try{sessionStorage.setItem(historyFilterKey(),filter);}catch{}document.querySelectorAll('[data-action="v71-history-filter"]').forEach(n=>{n.classList.toggle('active',n.dataset.key===filter);n.setAttribute('aria-pressed',String(n.dataset.key===filter));});document.getElementById('v71-history-rows').innerHTML=history();};

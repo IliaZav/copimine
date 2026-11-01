@@ -34,7 +34,8 @@ def resolve_probe(tmp_path_factory):
 public class ArchmageCoverProbe {
     static class Wave7NamedTrialActorPolicy {
         enum Attack { NONE, MARKSMAN_QUICK_SHOT, MARKSMAN_HEAVY_SHOT, MARKSMAN_SPREAD_SHOT,
-            MARKSMAN_SUPPORT, ARCHMAGE_FANGS, ARCHMAGE_SPEAR, ARCHMAGE_STEP, ARCHMAGE_BEAM }
+            MARKSMAN_SUPPORT, ARCHMAGE_FANGS, ARCHMAGE_SPEAR, ARCHMAGE_STEP, ARCHMAGE_BEAM,
+            NONE_INTERNAL }
     }
     enum Particle { HAPPY_VILLAGER }
     static class Location { Location add(double x,double y,double z){return this;} }

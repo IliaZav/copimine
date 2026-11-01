@@ -146,8 +146,11 @@ def test_guard_melee_and_cast_share_composed_controller_ownership() -> None:
     ability_scheduler = method(root, "private void tickRitualGuardAbilities(")
     assert "RitualGuardAbilityPolicy.endermanMeleeOwnsController(" in ability_scheduler
     guard_post = method(root, "private void tickRitualGuardPost(")
-    assert "guard.getUniqueId().equals(ritualGuardAbilityGuard)" in guard_post
-    assert "guard.setAI(false)" in guard_post
+    assert "guardId.equals(ritualGuardAbilityGuard)" in guard_post
+    # The signature cast still owns its own caster's controller, but W6-013
+    # forbids freezing the guard: it keeps fighting through the telegraph.
+    assert "guard.setAI(false)" not in guard_post
+    assert "guard.setAI(true)" in guard_post
 
 
 def test_wave6_pre_capture_lock_is_rechecked_inside_the_health_transaction() -> None:

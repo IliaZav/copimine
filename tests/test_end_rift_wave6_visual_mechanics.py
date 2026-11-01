@@ -20,16 +20,23 @@ def test_guard_shield_fallback_inherits_the_existing_boss_shield_asset():
     assert boss['elements'] and boss['textures']['shield'] == 'copimine:item/end_event_rift_guardian_shield_hd'
 
 
-def test_guards_hold_posts_without_the_generic_ai_reenabling_wandering():
+def test_guards_fight_with_the_shared_ai_instead_of_holding_posts():
+    """W6-013: guards engage freely; there is no post, leash or statue state."""
     ensure = method('private void ensureEventCombatAi(')
     assert 'isCurrentRitualGuard(entity)' in ensure
-    assert ensure.index('isCurrentRitualGuard(entity)') < ensure.index('mob.setAI(true)')
     assert 'isCurrentRitualGuard(entity)' in method('private boolean isWaveAiCombatEntity(')
     tick = method('private void tickRitualGuardGroups(')
     assert 'tickRitualGuardPost(' in tick
     post = method('private void tickRitualGuardPost(')
-    assert 'RitualGuardAggroPolicy.stance(' in post
-    assert 'guard.setAI(false)' in post and 'guard.setAware(false)' in post
+    # The retired post/stance vocabulary must not come back.
+    assert 'RitualGuardAggroPolicy.stance(' not in post
+    assert 'ritualGuardReturnPath' not in post
+    # A guard is never frozen into a statue: no branch disables its AI.
+    assert 'guard.setAI(false)' not in post
+    assert 'guard.setAware(false)' not in post
+    # It keeps a target and lets the engine's own mob AI fight.
+    assert 'guard.setTarget(' in post
+    assert 'guard.setAI(true)' in post
     assert 'faceRitualCaster(guard,' in post
 
 

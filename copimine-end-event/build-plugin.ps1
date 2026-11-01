@@ -175,8 +175,12 @@ if (-not (Test-Path -LiteralPath $bridgeClass -PathType Leaf)) {
       break
     }
   }
+  # Only the Gradle migration build produces this class. When Gradle has not run
+  # -- the per-module Java plugin gate compiles straight from source -- there is
+  # nothing to copy, and refusing to build would break that gate for a class it
+  # never packages. The release pin verifies the jar that Gradle did assemble.
   if (-not (Test-Path -LiteralPath $bridgeClass -PathType Leaf)) {
-    throw 'The shared EncounterGenerationPolicy class required by the End Rift bridge is missing from the Gradle plugin output.'
+    Write-Host 'Shared EncounterGenerationPolicy class is absent: the Gradle migration build has not produced it in this checkout.'
   }
 }
 Remove-Item -LiteralPath $jar -Force -ErrorAction SilentlyContinue

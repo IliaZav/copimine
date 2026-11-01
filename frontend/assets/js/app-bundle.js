@@ -4551,9 +4551,24 @@ V.after.push((page,tab)=>{
  if(M.me()&&Q.ready&&!loading)void A.refreshWallet();
  if(M.me()&&Q.ready)void A.refreshNotices();
  setTimeout(()=>A.updateBadge(),0);
- document.getElementById('v71-recipient-query')?.addEventListener('input',e=>{document.getElementById('v71-recipients').innerHTML=recipientList(e.target.value);});
- document.getElementById('v71-transfer-amount')?.addEventListener('input',e=>{clearTransferError();draft.amount=e.target.value;const raw=draft.amount.replace(/\s/g,'');document.getElementById('v71-transfer-summary').innerHTML=summary();const quoted=previewQuote(Number(raw)||0);e.target.setAttribute('aria-invalid',String(Boolean(raw)&&(quoted.invalid||quoted.total>(A.wallet?.balance??M.me()?.AR))));});
- document.getElementById('v71-transfer-note')?.addEventListener('input',e=>{draft.note=e.target.value;document.getElementById('v71-note-counter').textContent=draft.note.length+' / 140';});
+ // Пересчёт итога при вводе суммы: считаем до отрисовки, чтобы поле не дёргалось.
+ document.getElementById('v71-transfer-amount')?.addEventListener('input',e=>{
+  clearTransferError();
+  draft.amount=e.target.value;
+  const raw=e.target.value.replace(/\s/g,'');
+  const box=document.getElementById('v71-transfer-summary');
+  if(box){const h=box.querySelector('h2');box.innerHTML='<h2>'+(h?h.textContent:'Что получится')+'</h2>'+summaryBox();}
+  const quoted=previewQuote(Number(raw)||0);
+  e.target.setAttribute('aria-invalid',String(Boolean(raw)&&(quoted.invalid||quoted.total>(A.wallet?.balance??M.me()?.AR))));
+ });
+ document.getElementById('v71-transfer-note')?.addEventListener('input',e=>{draft.note=e.target.value;});
+ // Поиск по списку получателей фильтрует кнопки, не перерисовывая поле.
+ document.getElementById('bank-pick-query')?.addEventListener('input',e=>{
+  const q=e.target.value.trim().toLowerCase();
+  document.querySelectorAll('#bank-pick .bank-pick-list button').forEach(b=>{
+   b.style.display=(b.textContent||'').toLowerCase().includes(q)?'':'none';
+  });
+ });
 });
 let openedTransferRoute='';
 V.after.push((page,tab)=>{const id=M.UI.params.get('transfer');if(page==='account'&&tab==='transfers'&&id&&A.wallet?.transfers&&openedTransferRoute!==id){const transfer=A.wallet.transfers.find(row=>row.id===id);if(transfer){openedTransferRoute=id;setTimeout(()=>H['v71-transfer-detail']?.({dataset:{id}}),0);}}if(!id)openedTransferRoute='';});

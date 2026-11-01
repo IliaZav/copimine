@@ -84,5 +84,7 @@ if(X.live){
  let lastFocusRefresh=0;window.addEventListener('focus',()=>{if(document.getElementById('modal')?.open||Date.now()-lastFocusRefresh<2500)return;lastFocusRefresh=Date.now();const current=()=>{const u=X.sessionUser;return JSON.stringify([u?.id||null,u?.role||null,u?.permissions||[],!!u?.totpEnabled]);};const before=current();X.refresh({silent:true}).then(()=>{if(before!==current())M.render();}).catch(()=>{});});
 }
 V.after.push((page,tab)=>{if(X.live){document.querySelectorAll('#view .demo-note').forEach(n=>n.hidden=true);// data-cm-upload помечает поля, у которых есть настоящий серверный приём (картины, галерея).
-document.querySelectorAll('input[type=file]:not([data-cm-gallery-upload]):not([data-cm-upload])').forEach(n=>{n.disabled=true;const label=n.closest('label');if(label){label.title='Загрузка доступна через защищённый серверный импорт.';label.classList.add('v6-unavailable');}});}if(page==='account'&&X.live&&!X.ready)document.getElementById('view').innerHTML='<div class="v6-loading">Получаем профиль…</div>';});
+document.querySelectorAll('input[type=file]:not([data-cm-gallery-upload]):not([data-cm-upload])').forEach(n=>{n.disabled=true;const label=n.closest('label');if(label){label.title='Загрузка доступна через защищённый серверный импорт.';label.classList.add('v6-unavailable');}});}// Показывать заглушку можно только в пустом контейнере: иначе она затирает
+// готовую страницу и после ошибки загрузки остаётся навсегда.
+if(page==='account'&&X.live&&!X.ready){const view=document.getElementById('view');if(view&&!view.children.length)view.innerHTML='<div class="v6-loading">Получаем профиль…</div>';}});
 })();

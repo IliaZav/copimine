@@ -239,7 +239,16 @@ def build_state(request):
     permissions = PERMISSIONS.get(user["role"], [])
     with database.transaction() as db:
         rows = db.execute("SELECT * FROM cm_site_users ORDER BY created_s DESC LIMIT 500").fetchall() if "players.view" in permissions else [user]
-        result["players"] = [{**public_user(dict(row)), "AR": None, "CM": None, "online": False, "purchaseLimits": []} for row in rows]
+        balances = player_balances(db, rows)
+        result["players"] = [
+            {**public_user(dict(row)),
+             "AR": balances.get(("AR", str(row["minecraft_uuid"] or "")), 0)
+             if row["minecraft_uuid"] else 0,
+             "CM": balances.get(("DONATION", str(row["minecraft_uuid"] or "")), 0)
+             if row["minecraft_uuid"] else 0,
+             "online": False, "purchaseLimits": []}
+            for row in rows
+        ]
         if "logs.view" in permissions:
             result["audit"] = [{"id": r["id"], "actor": r["actor_name"], "action": r["action"], "target": r["target"], "reason": r["reason"], "at": r["created_s"] * 1000} for r in db.execute("SELECT * FROM cm_site_audit ORDER BY created_s DESC LIMIT 300").fetchall()]
         ticket_rows = db.execute("SELECT t.*,u.name AS player,u.display_name AS player_name FROM cm_site_tickets t JOIN cm_site_users u ON u.id=t.user_id ORDER BY t.updated_s DESC LIMIT 200").fetchall() if "tickets.manage" in permissions else db.execute("SELECT t.*,u.name AS player,u.display_name AS player_name FROM cm_site_tickets t JOIN cm_site_users u ON u.id=t.user_id WHERE t.user_id=%s ORDER BY t.updated_s DESC LIMIT 100", (user["id"],)).fetchall()
@@ -269,6 +278,29 @@ def build_state(request):
             elif player["uuid"] not in existing:
                 result["players"].append({"id": player["uuid"], "name": player["name"], "displayName": player["name"], "role": "player", "enabled": True, "status": "active", "gameUUID": player["uuid"], "minecraftUuid": player["uuid"], "minecraftName": player["name"], "gameLinkVerified": False, "online": True, "AR": None, "CM": None, "purchaseLimits": [], "gameOnly": True})
     return result
+
+
+def player_balances(db, rows):
+    """Балансы привязанных игроков одним запросом.
+
+    AR лежит в банковских счетах по игровому UUID, донат-валюта — в счетах
+    доната. Аккаунты без привязки баланса не имеют, поэтому их не запрашиваем.
+    """
+    uuids = sorted({str(row["minecraft_uuid"]) for row in rows if row["minecraft_uuid"]})
+    if not uuids:
+        return {}
+    marks = ",".join(["%s"] * len(uuids))
+    found = {}
+    for row in db.execute(
+        f"SELECT owner_uuid, currency, balance FROM cmv4_bank_accounts "
+        f"WHERE currency='AR' AND status='ACTIVE' AND owner_uuid IN ({marks})", tuple(uuids)
+    ).fetchall():
+        found[("AR", str(row["owner_uuid"]))] = int(row["balance"] or 0)
+    for row in db.execute(
+        f"SELECT player_uuid, balance FROM donation_accounts WHERE player_uuid IN ({marks})", tuple(uuids)
+    ).fetchall():
+        found[("DONATION", str(row["player_uuid"]))] = int(row["balance"] or 0)
+    return found
 
 
 @router.get("/api/v7/bootstrap")

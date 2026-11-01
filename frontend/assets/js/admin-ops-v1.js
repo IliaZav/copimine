@@ -5,7 +5,7 @@
   const M = window.CM, W = window.CM5, X = window.CM6;
   const H = M.handlers, F = M.forms;
   const icon = M.icon;
-  const can = permission => Boolean((M.me()?.permissions) || []).includes(permission);
+  const can = permission => ((M.me()?.permissions) || []).includes(permission);
   const denied = () => M.empty('Недостаточно прав', 'Этот раздел доступен не всем ролям.', 'lock');
 
   function sectionHead(title, note, actions) {

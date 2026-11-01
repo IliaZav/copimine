@@ -1,0 +1,80 @@
+/* CopiMine: стили разделов админки — поиск игроков, рассылка, бэкапы, аналитика. */
+
+/* Строка фильтров: поиск, список, кнопка. Переносится на узких экранах. */
+.v7-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: 0 0 18px;
+}
+.v7-filter-row .input-wrap {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.v7-filter-row .input-wrap input {
+  width: 100%;
+}
+.v7-filter-row select {
+  flex: 0 1 240px;
+  min-width: 0;
+}
+.v7-filter-row .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* Таблица игроков не должна ломать разметку на телефоне. */
+.v7-admin-section .table {
+  width: 100%;
+}
+.v7-admin-section .table td,
+.v7-admin-section .table th {
+  overflow-wrap: anywhere;
+}
+
+/* Столбики графика по дням. */
+.v7-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 56px;
+  margin: 10px 0 0;
+  padding: 0 0 1px;
+  border-bottom: 1px solid rgba(231, 237, 241, .16);
+}
+.v7-bars span {
+  flex: 1 1 0;
+  min-width: 2px;
+  background: var(--accent, #2de39b);
+  border-radius: 2px 2px 0 0;
+  opacity: .82;
+}
+.v7-bars span:hover {
+  opacity: 1;
+}
+
+/* Поле «текст письма» не должно вылезать за карточку. */
+.v7-admin-section textarea {
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+  font: inherit;
+}
+
+@media (max-width: 680px) {
+  .v7-filter-row {
+    gap: 8px;
+  }
+  .v7-filter-row .input-wrap,
+  .v7-filter-row select,
+  .v7-filter-row .btn {
+    flex: 1 1 100%;
+  }
+  /* На телефоне таблицу прокручиваем, а не сжимаем в кашу. */
+  .v7-admin-section .table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+}

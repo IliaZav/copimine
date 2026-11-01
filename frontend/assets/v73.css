@@ -135,7 +135,7 @@
 .bank-acc-lbl img{width:18px;height:18px;image-rendering:pixelated;flex:none}
 .bank-acc-sum{display:flex;align-items:baseline;gap:7px;margin-top:5px}
 .bank-acc-sum b{font-size:26px;font-weight:650;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:#eef4f7}
-.bank-acc-sum span{color:#5f6c74;font-size:12px}
+.bank-acc-cur{width:26px;height:26px;image-rendering:pixelated;object-fit:contain;flex:none;align-self:center}
 .bank-acc small{display:block;color:#54616a;font-size:11.5px;margin-top:2px}
 .bank-split{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
 .bank-main,.bank-side{min-width:0}
@@ -153,7 +153,7 @@
 .bank-table tr.op:hover td{background:#151e23}
 .bank-table tr.op:focus-visible{outline:2px solid #2de39b;outline-offset:-2px}
 .bank-what{display:flex;align-items:center;gap:11px;min-width:0}
-.bank-what img{width:26px;height:26px;border-radius:50%;background:#0d1316;flex:none;object-fit:cover}
+.bank-what img{width:22px;height:44px;border-radius:5px;background:#0d1316;flex:none;object-fit:contain}
 .bank-what div{display:grid;gap:1px;min-width:0}
 .bank-what b{font-weight:550;font-size:13px;color:#e2e9ee;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bank-what small{color:#5a676f;font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -195,17 +195,17 @@
 .bank-pick{position:relative}
 .bank-pick-btn{width:100%;display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid #223038;border-radius:10px;background:#0d1316;color:#e7edf1;font-size:14px;cursor:pointer;text-align:left;font-family:inherit}
 .bank-pick-btn:hover{border-color:#2d3f49}
-.bank-pick-btn img{width:26px;height:26px;border-radius:50%;flex:none}
+.bank-pick-btn img{width:22px;height:44px;border-radius:6px;object-fit:contain;flex:none;background:#0d1316}
 .bank-pick-btn .bank-pick-face{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:#18242a;color:#5f6c74;flex:none}
-.bank-pick-btn .icon:last-child{margin-left:auto;color:#5f6c74;transition:transform .18s}
-.bank-pick.open .bank-pick-btn .icon:last-child{transform:rotate(180deg)}
+.bank-pick-caret{margin-left:auto;color:#5f6c74;transition:transform .18s;flex:none}
+.bank-pick.open .bank-pick-caret{transform:rotate(180deg)}
 .bank-pick-list{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:20;padding:6px;border:1px solid #223038;border-radius:11px;background:#111a1e;box-shadow:0 14px 34px rgba(0,0,0,.5);display:none;max-height:250px;overflow:auto}
 .bank-pick.open .bank-pick-list{display:block}
 .bank-pick-search{display:flex;align-items:center;gap:7px;padding:2px 2px 6px}
 .bank-pick-search input{flex:1;padding:8px 11px;border:1px solid #1e2a31;border-radius:8px;background:#0d1316;color:#e7edf1;font-size:13px}
 .bank-pick-list button{width:100%;display:flex;align-items:center;gap:10px;padding:8px 10px;border:0;border-radius:8px;background:none;color:#dbe4ea;font-size:13.5px;cursor:pointer;text-align:left;font-family:inherit}
 .bank-pick-list button:hover{background:#18242a}
-.bank-pick-list button img{width:26px;height:26px;border-radius:50%;flex:none}
+.bank-pick-list button img{width:22px;height:44px;border-radius:6px;object-fit:contain;flex:none;background:#0d1316}
 .bank-pick-list button small{margin-left:auto;color:#2de39b;font-size:11px}
 
 /* Итог перевода. */

@@ -76,9 +76,12 @@ function periodRows(){
 }
 function totals(rows){let inc=0,out=0;for(const t of rows){const n=Number(t.amount||0);if(t.incoming)inc+=n;else out+=n;}return{incoming:inc,outgoing:out,net:inc-out};}
 function opTitle(t){return t.note||(t.incoming?'Входящий перевод':'Исходящий перевод');}
+// Развёртка скина: узнаётся форма и одежда, голова в 26px их не передаёт.
+function skinBody(p){
+ return p?.skin?.body||M.asset('assets/skins/steve-front.png');
+}
 function opIcon(t){
- const p=player(t.incoming?t.fromId:t.toId);
- return p?.skin?.avatar||M.asset('assets/skins/steve.png');
+ return skinBody(player(t.incoming?t.fromId:t.toId));
 }
 function opRow(t,i){
  const inc=!!t.incoming,who=inc?t.fromName:t.toName;
@@ -105,19 +108,21 @@ function ring(){
 }
 function accounts(){
  const ar=A.wallet?.balance??M.me()?.AR??0,cm=A.wallet?.donation??0;
+ // Валюта читается иконкой, а не подписью: руда — AR, монета — донат.
  return '<section class="bank-accounts">'
-  +'<div class="bank-acc"><div class="bank-acc-lbl"><img src="'+M.asset('assets/img/currency/ar-ore.png')+'" alt="">Игровые AR</div><div class="bank-acc-sum"><b>'+number(ar)+'</b><span>AR</span></div><small>Валюта сервера для торговли</small></div>'
-  +'<div class="bank-acc"><div class="bank-acc-lbl"><img src="'+M.asset('assets/img/currency/coin.png')+'" alt="">Донат</div><div class="bank-acc-sum"><b>'+number(cm)+'</b><span>CM</span></div><small>Для покупок в магазине</small></div>'
+  +'<div class="bank-acc"><div class="bank-acc-lbl"><img src="'+M.asset('assets/img/currency/ar-ore.png')+'" alt="Игровые AR" title="Игровые AR">Игровые</div><div class="bank-acc-sum"><b>'+number(ar)+'</b><img class="bank-acc-cur" src="'+M.asset('assets/img/currency/ar-ore.png')+'" alt=""></div><small>Валюта сервера для торговли</small></div>'
+  +'<div class="bank-acc"><div class="bank-acc-lbl"><img src="'+M.asset('assets/img/currency/coin.png')+'" alt="Донат" title="Донат">Донат</div><div class="bank-acc-sum"><b>'+number(cm)+'</b><img class="bank-acc-cur" src="'+M.asset('assets/img/currency/coin.png')+'" alt=""></div><small>Для покупок в магазине</small></div>'
  +'</section>';
 }
 function recipientSelect(){
  const me=M.me()?.id,list=(s().players||[]).filter(p=>p.id!==me).slice(0,200);
+ const cur=draft.to?player(draft.to):null;
  return '<div class="bank-pick" id="bank-pick"><button type="button" class="bank-pick-btn" data-action="bank-pick-toggle">'
-  +(draft.to?'<img src="'+E(player(draft.to)?.skin?.avatar||M.asset('assets/skins/steve.png'))+'" alt="">':'<span class="bank-pick-face">'+icon('user')+'</span>')
-  +'<span>'+(draft.to?E(player(draft.to)?.name||''):'Выбери игрока')+'</span>'+icon('chevron-down')+'</button>'
+  +(cur?'<img src="'+E(skinBody(cur))+'" alt="">':'<span class="bank-pick-face">'+icon('user')+'</span>')
+  +'<span>'+(cur?E(cur.name):'Выбери игрока')+'</span>'+icon('chevron-down','bank-pick-caret')+'</button>'
   +'<div class="bank-pick-list">'
   +'<label class="bank-pick-search">'+icon('search')+'<input id="bank-pick-query" placeholder="Найти игрока" autocomplete="off"></label>'
-  +list.map(p=>'<button type="button" data-action="bank-pick" data-id="'+E(p.id)+'"><img src="'+E(p.skin?.avatar||M.asset('assets/skins/steve.png'))+'" alt="" loading="lazy"><span>'+E(p.name)+'</span>'+(p.online?'<small>В сети</small>':'')+'</button>').join('')
+  +list.map(p=>'<button type="button" data-action="bank-pick" data-id="'+E(p.id)+'"><img src="'+E(skinBody(p))+'" alt="" loading="lazy"><span>'+E(p.name)+'</span>'+(p.online?'<small>В сети</small>':'')+'</button>').join('')
   +'</div></div>';
 }
 function summaryBox(){
@@ -163,7 +168,7 @@ H['bank-pick']=b=>{
     const btn=pick.querySelector('.bank-pick-btn');
     if(btn){
       const pl=player(draft.to);
-      btn.innerHTML='<img src="'+E(pl?.skin?.avatar||M.asset('assets/skins/steve.png'))+'" alt=""><span>'+E(pl?.name||'')+'</span>'+icon('chevron-down');
+      btn.innerHTML='<img src="'+E(skinBody(pl))+'" alt=""><span>'+E(pl?.name||'')+'</span>'+icon('chevron-down','bank-pick-caret');
     }
   }
   const box=document.getElementById('v71-transfer-summary');

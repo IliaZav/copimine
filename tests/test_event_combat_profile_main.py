@@ -11,6 +11,8 @@ def test_profile_main_binding_preserves_attempt_and_filters_diagnostic_players(t
     assert "combatProfileContext(Player player)" in source, "Official roster has no combat-profile admission or checkpoint binding"
     methods = "\n".join(extract(source, signature) for signature in (
         "Context combatProfileContext(Player player)",
+        # Wave 7 miniboss combat is recorded too, so admission consults the stage gate.
+        "boolean isCombatProfileWave7TrainingStage()",
         "void restoreCombatProfiles(Map<String, String> progress)",
         "Map<String, String> objectiveProgressSnapshot()",
         "boolean isOfficialAttemptActive()",
@@ -60,6 +62,11 @@ public class CombatProfileMainProbe {
     UUID ritualPrisonerId(){return prisoner;}
     Logger getLogger(){return Logger.getLogger("synthetic-profile-test");}
     Map<String,String> waveObjectiveProgressSnapshot(){return Map.of("other-objective","preserved");}
+    // Wave 7 admission consults the sequential trial stage; this probe records
+    // waves 1-6, so no trial is active here.
+    me.copimine.endevent.runtime.RealitySplitTrialController realitySplitTrialController =
+            new me.copimine.endevent.runtime.RealitySplitTrialController();
+
 ''' + methods + r'''
     static void require(boolean b,String m){if(!b)throw new AssertionError(m);}
     public static void main(String[] args){
@@ -122,12 +129,19 @@ public class CombatProfileMainProbe {
     production = ROOT / "copimine-end-event/src/me/copimine/endevent"
     sources = [production / "runtime/EventCombatProfileService.java", production / "runtime/AttemptLifecycleController.java",
                production / "domain/wave7/EchoBehaviorStrategy.java",
+               production / "domain/wave7/EchoLoadoutState.java",
                production / "domain/EventPhase.java", production / "domain/PreBossTickSnapshotPolicy.java",
                production / "domain/PressureBudgetController.java", production / "domain/WaveMechanicsPolicy.java", production / "domain/RiftCarrierPolicy.java",
                production / "domain/WaveTwoStagePolicy.java", production / "domain/WaveTwoHuntPolicy.java",
                production / "domain/WaveTwoEntityRecoveryPolicy.java",
                production / "domain/TentacleGuardianPolicy.java", production / "domain/TentacleScalingPolicy.java",
                production / "domain/TentacleAnimationPolicy.java", production / "domain/BossPhase.java",
+               production / "runtime/RealitySplitTrialController.java",
+               production / "domain/Wave7TrialRoutePolicy.java",
+               production / "domain/ChamberIsolationPolicy.java",
+               production / "domain/Wave7RoomLayoutPolicy.java",
+               production / "domain/Wave7EchoDuelCellPolicy.java",
+               production / "runtime/RealitySplitEchoDuelState.java",
                listener_stub, probe]
     result = subprocess.run(["javac", str(ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/EncounterGenerationPolicy.java"), "-encoding", "UTF-8", "-d", str(tmp_path), *map(str, sources)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr

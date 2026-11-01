@@ -41,7 +41,9 @@ public class CombatProfileProbe {
             require(!p.sample(c,new Movement(3,true,0,false,0,.8)),"inactive, diagnostics, forced motion, fog freeze and prisoner confinement excluded");
         }
         require(!p.sample(new Context("attempt",72,OTHER,400,6,true,false,false,false,false),new Movement(3,true,0,false,0,.8)),"foreign player cannot acquire a profile");
-        require(!p.sample(new Context("attempt",72,OWNER,400,7,true,false,false,false,false),new Movement(3,true,0,false,0,.8)),"long-term persona freezes before W7");
+        // The copy must be trained through the Wave 7 minibosses so a returning
+        // owner already fights a well-informed copy (user decision 01.11).
+        require(p.sample(new Context("attempt",72,OWNER,400,7,true,false,false,false,false),new Movement(3,true,0,false,0,.8)),"Wave 7 miniboss combat trains the persona");
         require(!p.sample(six,new Movement(Double.NaN,false,0,false,0,.8)),"nonfinite input cannot poison aggregates");
 
         var hit=new Context("attempt",72,OWNER,10,6,true,false,false,false,false);
@@ -58,7 +60,7 @@ public class CombatProfileProbe {
         var encoded=p.encode();require(encoded.toString().length()<5000,"compact checkpoint is bounded and contains no coordinates or item/skin data");
         var restored=new EventCombatProfileService();
         require(restored.restore(encoded,"attempt",72,Set.of(OWNER)),"valid current checkpoint restored");
-        require(restored.snapshot(OWNER).count(Stat.RANGED_HITS)==1 && restored.snapshot(OWNER).observedWaves()==33,"restart retains real aggregate coverage");
+        require(restored.snapshot(OWNER).count(Stat.RANGED_HITS)==1 && restored.snapshot(OWNER).observedWaves()==97,"restart retains real aggregate coverage");
         require(!new EventCombatProfileService().restore(encoded,"other-attempt",72,Set.of(OWNER)),"foreign attempt restore rejected");
         require(!new EventCombatProfileService().restore(encoded,"attempt",73,Set.of(OWNER)),"stale snapshot cannot attach to new runtime");
         var invalid=new HashMap<>(encoded);invalid.put("combat-profile."+OWNER+".stats","-1");

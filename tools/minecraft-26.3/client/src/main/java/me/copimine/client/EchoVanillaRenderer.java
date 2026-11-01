@@ -20,6 +20,16 @@ public final class EchoVanillaRenderer {
     private static final EchoPresentationState STATE = new EchoPresentationState();
     private static final Map<UUID, CachedView> VIEWS = new HashMap<>();
 
+    /**
+     * ECHO-003: the copy reads as the owner's own body, visibly drained.
+     *
+     * <p>The user's requirement is explicit: the skin is the player's real skin,
+     * only darkened, with the eyes the only thing that stays bright. This tint is
+     * applied by {@link EchoEyesFeature} on top of the already drawn avatar, so
+     * the copy is recognisable but never mistaken for a teammate.</p>
+     */
+    static final int ECHO_BODY_TINT = 0xFF5A5268;
+
     private static final class CachedView {
         final LivingEntity carrier;
         final EchoPlayerView player;

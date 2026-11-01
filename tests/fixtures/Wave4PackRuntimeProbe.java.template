@@ -177,6 +177,13 @@ public class Wave4PackRuntimeProbe {
     void forcePhase(EventPhase next, String reason) { phase = next; }
     void cancelWaveSpawnTask() { canceled++; }
     void removeWave4Obelisk(UUID id, String reason) { activeWave4Obelisks.remove(id); }
+    // W4-009..013 close-range defence is exercised by its own policy harness;
+    // this fixture only needs the assault tick to link against it.
+    void tickWave4ObeliskRepel(Wave4ObeliskRuntimeState state) { }
+    void applyObeliskRepelImpulse(Wave4ObeliskRuntimeState state, Player player, Location target) { }
+    Location safeRepelTarget(Wave4ObeliskRuntimeState state, Player player) { return null; }
+    void aggroWave4ObeliskAttackers(Wave4ObeliskRuntimeState state, Player player) { }
+    double combatFloorY() { return 64.0D; }
     void cleanupRiftFireball(UUID id, String reason) { activeRiftFireballs.remove(id); }
     ObeliskFireDirectorPolicy.SpecialCandidate selectWave4Special() { return null; }
     void renderObeliskCollapse(Wave4ObeliskRuntimeState state) { }

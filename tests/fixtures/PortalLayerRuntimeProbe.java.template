@@ -106,6 +106,12 @@ public class PortalLayerRuntimeProbe {
     int currentWave3ActivePortal(List<PortalCapturePolicy.PortalState> states,long now){return PortalPresentationPolicy.activeIndex(states);}
     void animatePortalModelVisuals(long now){}
     java.util.logging.Logger getLogger(){return java.util.logging.Logger.getLogger("portal-test");}
+    // W3-003/W3-008 capture indicators are exercised by their own policy harness;
+    // this fixture only needs the portal lifecycle to link against them.
+    final java.util.Map<Integer,Double> portalIndicatorPreviousProgress = new java.util.LinkedHashMap<>();
+    void renderPortalCaptureIndicators(Object viewer,Location portal,Location floor,
+            PortalCapturePolicy.PortalState state,int index,boolean active,long now) { }
+    void recordParticleEmission(Object world,Object particle,double x,double y,double z,int count) { }
     // PRODUCTION_METHODS
     void spawn(){spawnPortalObjectiveVisuals(world,List.of(portal));}
     void spawnMany(){List<Location> portals=List.of(portal,new Location(world),new Location(world));

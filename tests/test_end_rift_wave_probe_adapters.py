@@ -347,8 +347,10 @@ public final class WaveProbeAdapterHarness {
             case "wave3-snapshot" -> {
                 probe.phase = EventPhase.WAVE_3;
                 probe.portalCaptureStates.put(3, List.of(
-                        new PortalCapturePolicy.PortalState(true, 5_000L, -1L, -1L),
-                        new PortalCapturePolicy.PortalState(false, 2_500L, -1L, -1L),
+                        new PortalCapturePolicy.PortalState(
+                                true, PortalCapturePolicy.CAPTURE_MILLIS, -1L, -1L),
+                        new PortalCapturePolicy.PortalState(
+                                false, PortalCapturePolicy.CAPTURE_MILLIS / 2L, -1L, -1L),
                         PortalCapturePolicy.initial()));
                 probe.wave3PortalEliteSpawned = true;
                 Map<String, String> saved = probe.waveObjectiveProgressSnapshot();
@@ -357,15 +359,19 @@ public final class WaveProbeAdapterHarness {
                                 && "3".equals(saved.get("wave3.portal.count"))
                                 && "true".equals(saved.get("wave3.portal.elite-spawned"))
                                 && "true".equals(saved.get("wave3.portal.0.completed"))
-                                && "5000".equals(saved.get("wave3.portal.0.progress"))
+                                && Long.toString(PortalCapturePolicy.CAPTURE_MILLIS)
+                                .equals(saved.get("wave3.portal.0.progress"))
                                 && "false".equals(saved.get("wave3.portal.1.completed"))
-                                && "2500".equals(saved.get("wave3.portal.1.progress")),
+                                && Long.toString(PortalCapturePolicy.CAPTURE_MILLIS / 2L)
+                                .equals(saved.get("wave3.portal.1.progress")),
                         "Wave 3 must checkpoint completed, partial and elite state");
             }
             case "wave3-restart" -> {
                 List<PortalCapturePolicy.PortalState> states = List.of(
-                        new PortalCapturePolicy.PortalState(true, 5_000L, -1L, -1L),
-                        new PortalCapturePolicy.PortalState(false, 2_500L, -1L, -1L),
+                        new PortalCapturePolicy.PortalState(
+                                true, PortalCapturePolicy.CAPTURE_MILLIS, -1L, -1L),
+                        new PortalCapturePolicy.PortalState(
+                                false, PortalCapturePolicy.CAPTURE_MILLIS / 2L, -1L, -1L),
                         PortalCapturePolicy.initial());
                 Map<String, String> saved = Wave3PortalProgressSnapshot.encode(
                         probe.eventId, probe.generation, states, true);

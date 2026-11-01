@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_pulses_cannot_starve_reflectable_shots_or_other_obelisks(tmp_path):
     source = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(encoding="utf-8")
     signatures = ["boolean tickWave4ObeliskAssault()", "void tickWave4Pulse(",
-                  "boolean prepareWave4FireCast("]
+                  "boolean prepareWave4FireCast(", "void tickWave4ObeliskRepel("]
     if "private ObeliskFireDirectorPolicy.SpecialCandidate selectWave4Special(" in source:
         signatures.append("ObeliskFireDirectorPolicy.SpecialCandidate selectWave4Special(")
     adapters = "\n".join(extract(source, s) for s in signatures)
@@ -21,12 +21,16 @@ public class Wave4SpecialProbe {
     enum EventPhase { COLLECTING,READY_FOR_PLAYERS,WAVE_4,RECOVERY_REQUIRED }
     enum Wave4PressurePackResult { COMPLETE,RETRYABLE_FAILURE,PERMANENT_FAILURE }
     enum ObeliskStage { ACTIVE,COLLAPSING }
-    enum Sound { BLOCK_BEACON_AMBIENT,BLOCK_RESPAWN_ANCHOR_CHARGE }
+    enum Sound { BLOCK_BEACON_AMBIENT,BLOCK_RESPAWN_ANCHOR_CHARGE,BLOCK_BEACON_ACTIVATE }
     enum SoundCategory { HOSTILE }
-    static class World {void playSound(Location p,Sound s,SoundCategory c,float v,float pitch){}}
+    enum GameMode { SURVIVAL,ADVENTURE,CREATIVE,SPECTATOR }
+    static class World {void playSound(Location p,Sound s,SoundCategory c,float v,float pitch){}
+        java.util.List<Player> getPlayers(){return java.util.List.of();}}
     static class Location {World getWorld(){return new World();}public Location clone(){return new Location();}}
     static class Bukkit {static World getWorld(String name){return new World();}}
-    static class Player {UUID getUniqueId(){return new UUID(0,99);}Location getEyeLocation(){return new Location();}}
+    static class Player {UUID getUniqueId(){return new UUID(0,99);}Location getEyeLocation(){return new Location();}
+        Location getLocation(){return new Location();}GameMode getGameMode(){return GameMode.SURVIVAL;}
+        boolean isDead(){return false;}World getWorld(){return new World();}}
     static class EventConfig {
         RiftObeliskTuning riftObeliskTuning(){return new RiftObeliskTuning();}
         static class RiftObeliskTuning {int maxActiveFireballs(){return 20;}int pulseIntervalTicks(){return 40;}
@@ -41,6 +45,8 @@ public class Wave4SpecialProbe {
         void scheduleNextPulse(long tick){pulse=tick;}void scheduleNextFire(long tick){fire=tick;}
         void lastFireTick(long tick){lastFire=tick;}long lastFireTick(){return lastFire;}
         UUID lastTargetUuid(){return null;}Location base(){return new Location();}
+        ObeliskRepelPolicy.Timers repelTimers = ObeliskRepelPolicy.Timers.IDLE_TIMERS;
+        boolean destroyed;int ordinal;
     }
     record SimulatedFireball(long generation,long expiresTick) { }
     long generation=43,eventTickCounter;String eventId="synthetic-attempt",worldName="configured-arena",recoveryReason;
@@ -73,6 +79,14 @@ public class Wave4SpecialProbe {
     void applyCurrentObeliskPulse(Location p,double radius){}
     void renderObeliskPulse(Wave4ObeliskRuntimeState s,double radius){pulses.merge(s.id(),1,Integer::sum);pulseReleases.add(eventTickCounter);}
     boolean isActiveArenaParticipant(Player p){return targetAlive;}
+    boolean isCombatTarget(Player p){return targetAlive;}
+    int ordinal;
+    double horizontalDistanceSquared(Location a,Location b){return 0.0D;}
+    Location safeRepelTarget(Wave4ObeliskRuntimeState s,Player p){return null;}
+    void applyObeliskRepelImpulse(Wave4ObeliskRuntimeState s,Player p,Location target){}
+    void aggroWave4ObeliskAttackers(Wave4ObeliskRuntimeState s,Player p){}
+    double combatFloorY(){return 0.0D;}
+
     boolean launchWave4Fireball(Wave4ObeliskRuntimeState state){
         if(!prepareWave4FireCast(state,new Player()))return false;
         require(eventTickCounter>=state.fireReleaseTick,"projectile released before real warning");
@@ -149,6 +163,7 @@ public class Wave4SpecialProbe {
                                     "domain/Wave4PressurePackPolicy.java", "domain/WaveMechanicsPolicy.java",
                                     "domain/RiftCarrierPolicy.java",
                                     "domain/PressureBudgetController.java",
+                                    "domain/ObeliskRepelPolicy.java",
                                     "runtime/WaveCombatCoordinator.java")]
     result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path), *map(str, production),
                              str(probe)], capture_output=True, text=True)

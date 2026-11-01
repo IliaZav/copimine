@@ -91,9 +91,11 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         Decision food = EchoDuelCombatRuntimeAdapter.tick(wounded, supplies,
                 scope(wounded, true, true, true, true), new Observation(300, 4.0D, true))
                 .orElseThrow();
-        check(food.action() == Action.CONSUMABLE, "low-health Echo selects its owner-bound finite apple allowance");
-        check(supplies.remaining(41) == 1, "the consumable decision stages one golden apple allowance");
-        check(food.nextDuel().actor().currentHealth() == 12.0D,
+        check(food.action() == Action.CONSUMABLE, "low-health Echo selects food its owner actually carried");
+        check(supplies.remaining(5) == 0, "the consumable decision stages the owner's bread, not an invented allowance");
+        // Ordinary food heals 2.0 (only a golden apple heals 4.0), so the
+        // owner's bread stages 8.0 + 2.0 in the same decision as its cost.
+        check(food.nextDuel().actor().currentHealth() == 10.0D,
                 "planned healing and its item cost are staged in the same duel snapshot");
         check(food.nextDuel().actor().pendingUseUntilTick() == 332,
                 "pending-use time scopes the item action across reconnect and restart");
@@ -101,7 +103,7 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         NamedData restoredFoodData = RealitySplitTrialSnapshot.decodeNamed(RealitySplitTrialSnapshot.encodeNamed(
                 withDuel(woundedData, fixture.room(), fixture.owner(), food.nextDuel())), EVENT, ATTEMPT, RUNTIME);
         DuelRecord restoredFood = restoredFoodData.personalEchoDuels().get(fixture.room()).get(fixture.owner());
-        check(restoredFood.actor().currentHealth() == 12.0D && restore(restoredFood).remaining(41) == 1
+        check(restoredFood.actor().currentHealth() == 10.0D && restore(restoredFood).remaining(5) == 0
                         && restoredFood.actor().pendingUseUntilTick() == 332,
                 "snapshot restore keeps the staged consumable, projected healing and pending-use state together");
     }
@@ -261,10 +263,10 @@ public final class EchoDuelCombatRuntimeAdapterTest {
                 new Observation(700, 4.0D, true)).orElseThrow();
         DuelRecord healRefund = EchoDuelCombatRuntimeAdapter.rejectedActionCheckpoint(failedHeal)
                 .orElseThrow();
-        check(restore(healRefund).remaining(41) == 2
+        check(restore(healRefund).remaining(5) == 1
                         && healRefund.actor().currentHealth() == 8.0D
                         && healRefund.actor().pendingUseUntilTick() == 0,
-                "failed health update refunds the apple, health projection and pending-use deadline");
+                "failed health update refunds the food, health projection and pending-use deadline");
     }
 
     private static void rejectForeignOrIncompleteRuntimeContexts() {

@@ -159,7 +159,28 @@ if ($env:JAVA_HOME) {
   $jarInHome = Join-Path $env:JAVA_HOME 'bin/jar.exe'
   if (Test-Path -LiteralPath $jarInHome -PathType Leaf) { $jarCommand = $jarInHome }
 }
-& $jarCommand --create --file $jar --date=2020-01-01T00:00:00Z -C $classes .
+# Pass every entry in a fixed, ordinal-sorted order instead of letting `jar`
+# walk the directory. Directory enumeration order is filesystem-dependent, so
+# two runners produced identical class bytes but a different archive layout --
+# and therefore a different digest for the same code.
+$packagedEntries = Get-ChildItem -LiteralPath $classes -Recurse -File |
+  ForEach-Object { $_.FullName.Substring($classes.Length + 1).Replace('\', '/') } |
+  Sort-Object -CaseSensitive
+# Enumerate every entry in a fixed ordinal order instead of letting `jar` walk
+# the directory: directory order is filesystem-dependent, so two runners
+# produced identical class bytes but a different archive layout and therefore a
+# different digest. The list overflows the Windows command line, so it goes
+# through an argument file as `-C <classes> <entry>` triples; that keeps each
+# name relative, so nothing but the archive-relative path is stored.
+$jarArgsPath = Join-Path $pluginDir 'build\jar.args'
+$jarArgumentParts = @('--create', '--file', ('"' + ($jar -replace '\\', '/') + '"'),
+  '--date=2020-01-01T00:00:00Z')
+$classesArgument = '"' + ($classes -replace '\\', '/') + '"'
+foreach ($entry in $packagedEntries) {
+  $jarArgumentParts += @('-C', $classesArgument, ('"' + $entry + '"'))
+}
+[IO.File]::WriteAllLines($jarArgsPath, @($jarArgumentParts -join ' '), [Text.UTF8Encoding]::new($false))
+& $jarCommand ("@" + ($jarArgsPath -replace '\\', '/'))
 if ($LASTEXITCODE -ne 0) { throw "jar packaging failed for CopiMineEndEvent." }
 # Provenance of the toolchain that produced the bytes, so a digest mismatch can
 # be traced to the packer instead of guessed at.

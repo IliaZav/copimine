@@ -166,6 +166,10 @@ def pump_outbox(database, settings, limit=20):
             value = EmailMessage()
             value["From"], value["To"], value["Subject"] = settings.smtp_from, message["recipient"], message["subject"]
             value["Date"], value["Message-ID"] = formatdate(localtime=False), f"<{message['id']}@copimine.ru>"
+            # Транзакционное письмо, а не рассылка: эти заголовки снимают у Gmail
+            # вопросы о согласии и о том, куда писать в ответ.
+            value["Reply-To"] = settings.smtp_from
+            value["X-Auto-Response-Suppress"] = "All"
             value.set_content(message["body"])
             if message.get("html"):
                 value.add_alternative(message["html"], subtype="html")

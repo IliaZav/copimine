@@ -7024,9 +7024,9 @@ async function api(path, body, method) {
     M.closeModal();
     M.navTo(authReturn());
   };
-  // Регистрация проходит через почтовый код (F['v7-register'] в review-v7.js):
-  // аккаунт создаётся только после подтверждения адреса. Этот слой её не переопределяет.
-  F['v7-code'] = F['v7-reset'] = F['v7-confirm-code'] = async () => { throw Error('Войди по нику и паролю.'); };
+  // Почтовые формы (код, сброс, подтверждение) живут в review-v7.js. Здесь их
+  // глушить нельзя: раньше эта строка подменяла обработчик ввода кода отказом,
+  // и регистрация обрывалась на шаге подтверждения при верной галочке.
   H['v7-vk'] = undefined;
   H['v7-link-email'] = H['v7-unlink'] = H['v7-unlink-confirm'] = H['v7-recovery-help'] = undefined;
 

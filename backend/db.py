@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS cm_site_mail_outbox (
  id TEXT PRIMARY KEY, recipient TEXT NOT NULL, subject TEXT NOT NULL, body TEXT NOT NULL,
  created_s BIGINT NOT NULL, expires_s BIGINT NOT NULL, sent_s BIGINT NOT NULL DEFAULT 0,
  attempts INTEGER NOT NULL DEFAULT 0, next_attempt_s BIGINT NOT NULL DEFAULT 0,
- last_error TEXT NOT NULL DEFAULT ''
+ last_error TEXT NOT NULL DEFAULT '', html TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS cm_site_attempts (
  key TEXT PRIMARY KEY, times TEXT NOT NULL DEFAULT '[]'
@@ -232,6 +232,7 @@ class Database:
                 db.execute("ALTER TABLE cm_site_server_metrics ADD COLUMN IF NOT EXISTS cpu REAL")
                 db.execute("ALTER TABLE cm_site_tickets ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'normal'")
                 db.execute("ALTER TABLE cm_site_tickets ADD COLUMN IF NOT EXISTS first_reply_s BIGINT NOT NULL DEFAULT 0")
+                db.execute("ALTER TABLE cm_site_mail_outbox ADD COLUMN IF NOT EXISTS html TEXT NOT NULL DEFAULT ''")
                 for name in ANALYTICS_COLUMNS:
                     db.execute(f"ALTER TABLE cm_site_analytics_events ADD COLUMN IF NOT EXISTS {name} TEXT NOT NULL DEFAULT ''")
             # After the column migration: older tables gain session_hash only above.

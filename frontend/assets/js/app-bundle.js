@@ -2214,6 +2214,7 @@ function authShell(content){return '<div class="v7-auth-layout"><aside class="v7
 function passField(label,name,autocomplete){return '<label class="field">'+label+'<span class="v7-password"><input type="password" name="'+name+'" required autocomplete="'+autocomplete+'"'+(autocomplete==='new-password'?' minlength="10"':'')+'><button type="button" data-action="toggle-password" aria-label="Показать пароль">'+icon('eye')+'</button></span></label>';}
 function verifyView(){const f=Q.flow;return '<div class="v7-auth-icon">'+icon('mail')+'</div><h1>Проверь почту</h1><p class="v7-auth-lead">Код для <strong>'+E(f.email)+'</strong></p><p class="hint">Проверьте входящие письма и папку «Спам».</p><form data-form="v7-confirm-code"><label class="field">Шесть цифр из письма<input class="v7-otp" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required autofocus placeholder="000000"></label><p class="hint">Код действует 10 минут и подходит только для этой операции.</p>'+actions('Подтвердить')+'</form><div class="v7-auth-bottom">'+M.btn('Изменить адрес','v7-auth-back','arrow-left','ghost small')+M.btn('Отправить ещё раз','v7-resend','refresh','ghost small')+'</div>';}
 R.auth=(tab='login')=>{
+ if(!Q.flow){const c=linkChallenge();if(c)Q.resumeChallenge(c,'reset');}
  if(Q.flow)return authShell(verifyView());
  let content='';
  if(tab==='register')content='<span class="kicker">Новый аккаунт</span><h1>Создать аккаунт</h1><p class="v7-auth-lead">Почта, пароль и одно подтверждение.</p><form data-form="v7-register">'+field('Логин на сайте','username','','text','required minlength="3" maxlength="24" autocomplete="username" placeholder="Builder"')+field('Почта','email','','email','required autocomplete="email" placeholder="you@example.com"')+passField('Пароль','password','new-password')+'<p class="hint">Не меньше 10 символов. Можно вставить пароль из менеджера.</p>'+passField('Повтори пароль','repeat','new-password')+'<label class="check-row"><input type="checkbox" name="terms" required><span>Принимаю <a href="#rules" target="_blank">правила проекта</a> и условия обработки данных аккаунта.</span></label>'+actions('Создать аккаунт')+'</form><p class="v7-auth-bottom">Уже есть аккаунт? <a href="#auth/login">Войти</a></p>';
@@ -2223,6 +2224,9 @@ R.auth=(tab='login')=>{
 };
 F['v7-login']=async(f,d)=>login(String(d.get('username')).trim(),String(d.get('password')),String(d.get('totp')||''));
 async function beginCode(purpose,body){if(Q.offline)throw Error('Для работы с почтой запусти START_SITE.bat.');const r=await request('request-code',{purpose,...body});Q.flow={...r,purpose,body};M.render();}
+ // Ссылка из письма: /#/confirm?challenge=<id>. Показываем ввод кода без повторного запроса.
+ Q.resumeChallenge=(id,purpose)=>{if(!id||!purpose)return false;if(Q.flow&&Q.flow.challenge===id)return true;Q.flow={ok:true,challenge:id,purpose,email:'',expiresAt:0,body:null};return true;};
+ function linkChallenge(){const p=new URLSearchParams((location.hash.split('?')[1]||''));return p.get('challenge')||'';}
 F['v7-register']=async(f,d)=>{if(d.get('password')!==d.get('repeat'))throw Error('Пароли не совпадают.');await beginCode('register',{username:d.get('username'),email:d.get('email'),password:d.get('password')});};
 F['v7-code']=async(f,d)=>beginCode('login',{email:d.get('email')});
 F['v7-reset']=async(f,d)=>{if(d.get('password')!==d.get('repeat'))throw Error('Пароли не совпадают.');await beginCode('reset',{email:d.get('email'),password:d.get('password')});};

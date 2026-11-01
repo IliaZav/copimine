@@ -12,6 +12,7 @@ import time
 import uuid
 
 from fastapi import APIRouter, Request, Response
+from . import mail_render
 from .auth import create_user, issue_session
 from .security import current_user, fail, hash_password, normalize_email, throttle, valid_name
 
@@ -58,8 +59,12 @@ def request_challenge(request, purpose, data):
         db.execute("UPDATE cm_site_challenges SET consumed_s=%s WHERE email=%s AND purpose=%s AND consumed_s=0", (now, email, purpose))
         db.execute("INSERT INTO cm_site_challenges(id,purpose,email,user_id,code_hash,payload,created_s,expires_s) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)", (identifier, purpose, email, user_id, code_digest(settings, identifier, purpose, code), json.dumps(payload), now, now + 600))
         if deliver:
-            body = f"Ваш код CopiMine: {code}\n\nКод действует 10 минут и подходит только для запрошенной операции.\nЕсли вы не запрашивали код, проигнорируйте письмо.\nНикому не сообщайте этот код.\n"
-            db.execute("INSERT INTO cm_site_mail_outbox(id,recipient,subject,body,created_s,expires_s) VALUES(%s,%s,%s,%s,%s,%s)", (identifier, email, "Код подтверждения CopiMine", body, now, now + 600))
+            link = f"{settings.public_url.rstrip('/')}/#/confirm?challenge={identifier}"
+            label = {"reset": "Задать новый пароль", "link_email": "Подтвердить почту"}.get(purpose, "Открыть CopiMine")
+            body = mail_render.text_version(purpose=purpose, code=code, action_url=link)
+            markup = mail_render.render(purpose=purpose, code=code, action_url=link, action_label=label, recipient=email)
+            subject = mail_render.PURPOSE_COPY.get(purpose, ("Код подтверждения CopiMine",))[0] + " — CopiMine"
+            db.execute("INSERT INTO cm_site_mail_outbox(id,recipient,subject,body,html,created_s,expires_s) VALUES(%s,%s,%s,%s,%s,%s,%s)", (identifier, email, subject, body, markup, now, now + 600))
     return {"ok": True, "challenge": identifier, "email": email, "expiresAt": now + 600, "queued": True, "message": "Если адрес подходит для этой операции, письмо будет отправлено. Проверьте также папку «Спам»."}
 
 
@@ -132,6 +137,8 @@ def pump_outbox(database, settings, limit=20):
             value["From"], value["To"], value["Subject"] = settings.smtp_from, message["recipient"], message["subject"]
             value["Date"], value["Message-ID"] = formatdate(localtime=False), f"<{message['id']}@copimine.ru>"
             value.set_content(message["body"])
+            if message.get("html"):
+                value.add_alternative(message["html"], subtype="html")
             with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as smtp:
                 smtp.ehlo()
                 if settings.smtp_starttls:
@@ -142,7 +149,7 @@ def pump_outbox(database, settings, limit=20):
                     smtp.login(settings.smtp_username, settings.smtp_password)
                 smtp.send_message(value)
             with database.transaction() as db:
-                db.execute("UPDATE cm_site_mail_outbox SET sent_s=%s,body='',last_error='' WHERE id=%s", (int(time.time()), message["id"]))
+                db.execute("UPDATE cm_site_mail_outbox SET sent_s=%s,body='',html='',last_error='' WHERE id=%s", (int(time.time()), message["id"]))
             sent += 1
         except (OSError, smtplib.SMTPException, RuntimeError) as error:
             with database.transaction() as db:

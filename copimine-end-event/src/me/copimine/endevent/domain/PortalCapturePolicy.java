@@ -2,7 +2,12 @@ package me.copimine.endevent.domain;
 
 /** Pure, immutable timing policy for a portal occupied by players. */
 public final class PortalCapturePolicy {
-    public static final long CAPTURE_MILLIS = 5_000L;
+    /**
+     * W3-004 [U]/[A]: closing must take substantially longer than the retired
+     * five seconds. Engineering default is eighteen seconds of continuous
+     * eligible occupancy.
+     */
+    public static final long CAPTURE_MILLIS = 18_000L;
     public static final long GRACE_MILLIS = 450L;
     public static final double CAPTURE_RADIUS_BLOCKS = 2.5D;
     public static final double CAPTURE_HEIGHT_TOLERANCE = 1.5D;

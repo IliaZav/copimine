@@ -202,6 +202,8 @@ import me.copimine.endevent.domain.ObeliskFireDirectorPolicy;
 import me.copimine.endevent.domain.ObeliskGeometryPolicy;
 import me.copimine.endevent.domain.ObeliskIntegrityPolicy;
 import me.copimine.endevent.domain.ObeliskProjectilePolicy;
+import me.copimine.endevent.domain.ObeliskRepelPolicy;
+import me.copimine.endevent.domain.PortalCaptureIndicatorPolicy;
 import me.copimine.endevent.domain.EndRiftObjective;
 import me.copimine.endevent.domain.BlackFogDamagePolicy;
 import me.copimine.endevent.domain.BlackFogCurtainPolicy;
@@ -781,6 +783,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<PortalVisualSlot> portalVisualSpawnsInProgress = new LinkedHashSet<>();
     private final Map<PortalVisualSlot, Long> portalVisualRebuildRetryAtMillis = new LinkedHashMap<>();
     private final Map<Integer, Long> portalClosingStartedMillis = new LinkedHashMap<>();
+    /** W3-008: last rendered progress per portal, so the stream direction reflects a real delta. */
+    private final Map<Integer, Double> portalIndicatorPreviousProgress = new LinkedHashMap<>();
     private int currentPortalAudioIndex = -1;
     private final Map<Integer, Integer> portalProgressMilestones = new LinkedHashMap<>();
     private long wave3PortalSpawnNextAtMillis;
@@ -1807,7 +1811,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private me.copimine.endevent.runtime.EventCombatProfileService.Context combatProfileContext(Player player) {
         if (player == null || !bootstrapped || testWaveFrontVisualMode || testCombatAiMode
-                || testWaveInspectionMode || !isOfficialCurrentAttempt() || activeWave < 1 || activeWave > 6
+                || testWaveInspectionMode || !isOfficialCurrentAttempt()
+                || activeWave < me.copimine.endevent.runtime.EventCombatProfileService.FIRST_OBSERVED_WAVE
+                || activeWave > me.copimine.endevent.runtime.EventCombatProfileService.LAST_OBSERVED_WAVE
                 || phase != EventPhase.valueOf("WAVE_" + activeWave)
                 || !officialRewardRoster.contains(player.getUniqueId())
                 || !attemptLifecycle.acceptsCallback(generation)
@@ -1815,6 +1821,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !isCombatTarget(player) || player.isDead()
                 || player.getGameMode() != GameMode.SURVIVAL && player.getGameMode() != GameMode.ADVENTURE
                 || player.getName().matches("EndRiftTarget[1-4]") || player.getMaxHealth() >= 1000D) return null;
+        // Wave 7 trains the copy only through the penultimate miniboss. Its own
+        // personal Echo trial must never feed the profile that produced it.
+        if (activeWave == 7 && !isCombatProfileWave7TrainingStage()) return null;
         return new me.copimine.endevent.runtime.EventCombatProfileService.Context(
                 eventId, generation, player.getUniqueId(), Integer.toUnsignedLong(Bukkit.getCurrentTick()),
                 activeWave, true, false, false,
@@ -1829,6 +1838,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && isWaveCombatKind(readString(entity, keyKind));
     }
 
+    /**
+     * Wave 7 trains a copy's profile only while the Warden, the Marksman or the
+     * Archmage is being fought.
+     *
+     * <p>The personal Echo trial is deliberately excluded: it consumes the
+     * profile, so letting it write back would let a copy train its own successor
+     * and drift from the owner's real habits. Any other Wave 7 window (transition,
+     * regroup, cleanup) is also not combat evidence.</p>
+     */
+    private boolean isCombatProfileWave7TrainingStage() {
+        if (realitySplitTrialController.activeTrialCount() <= 0) return false;
+        RealitySplitTrialController.NamedTrialState state = realitySplitTrialController.namedTrial(
+                me.copimine.endevent.domain.Wave7TrialRoutePolicy.OPEN_ARENA_CHAMBER);
+        // A missing record or a finished stage is not combat evidence either.
+        return state != null && state.trial() != RealitySplitTrialController.NamedTrial.PERSONAL_ECHO
+                && state.stage() != RealitySplitTrialController.Stage.COMPLETE;
+    }
+
     private void tickEventCombatProfiles() {
         if (combatProfileListener == null || !isOfficialCurrentAttempt()) return;
         // Flush late final hits even if their mob death already ended the wave.
@@ -1839,7 +1866,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             lastCombatProfileSaveRevision = combatProfiles.revision();
             saveStateAsync(); // plain immutable snapshot before the existing I/O worker
         }
-        if (activeWave < 1 || activeWave > 6) return;
+        if (activeWave < me.copimine.endevent.runtime.EventCombatProfileService.FIRST_OBSERVED_WAVE
+                || activeWave > me.copimine.endevent.runtime.EventCombatProfileService.LAST_OBSERVED_WAVE) return;
         // Reuse event ownership; never search all world entities or request paths/LOS.
         List<LivingEntity> targets = ownedEntities.values().stream().filter(this::isCombatProfileTarget)
                 .map(entity -> (LivingEntity) entity).limit(96L).toList();
@@ -4680,6 +4708,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         EventPhase next = encounterController.phase();
         phase = encounterController.phase();
+        // Wave 7 is the last training window. Once the attempt leaves it the
+        // compiled profiles are consumed and dropped, so a later attempt starts
+        // from observations again instead of blending two unrelated runs.
+        if (current == EventPhase.WAVE_7 && next != EventPhase.WAVE_7) {
+            discardCombatProfilesAfterWaveSeven();
+        }
         if (!rotateEncounterResourceScope(next)) {
             recoveryReason = "END_RIFT_PHASE_SCOPE_CLEANUP_FAILED";
             if (next != EventPhase.RECOVERY_REQUIRED
@@ -4707,6 +4741,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             saveStateAsync();
         }
         return true;
+    }
+
+    /**
+     * Ends profile training for this attempt.
+     *
+     * <p>BRAIN-002 requires a frozen profile for the duel that consumes it; the
+     * user additionally requires that nothing survives the attempt, so a rerun
+     * teaches the copies again from wave 1 instead of mixing two runs. Copies
+     * already admitted keep the strategy object they were created with, so
+     * clearing the service never changes a live duel mid-fight.</p>
+     */
+    private void discardCombatProfilesAfterWaveSeven() {
+        if (!combatProfiles.hasProfiles()) return;
+        getLogger().info("ECHO_PROFILE_TRAINING_CLOSED event=" + eventId
+                + " generation=" + generation
+                + " roster=" + combatProfiles.frozenRosterSize()
+                + " reason=wave7-complete");
+        combatProfiles.clear();
+        if (combatProfileListener != null) combatProfileListener.clear();
+        lastCombatProfileSaveRevision = -1L;
+        saveStateAsync();
     }
 
     private void forcePhase(EventPhase next, String reason) {
@@ -26433,6 +26488,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         portalVisualRebuildAttempts.clear();
         portalVisualRebuildRetryAtMillis.clear();
         portalClosingStartedMillis.clear();
+        portalIndicatorPreviousProgress.clear();
         portalProgressMilestones.clear();
         portalCaptureStates.remove(3);
         portalWaveKnockbackUntilMillis.clear();
@@ -30701,6 +30757,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         openCompletedRealitySplitRoom(chamber, realitySplitChamberController.assignment().chamberCount());
+        if (trial.trial() == RealitySplitTrialController.NamedTrial.PERSONAL_ECHO) {
+            releaseCompletedNamedEchoStage("personal-echo-complete");
+        }
         if (phase == EventPhase.RECOVERY_REQUIRED) return;
         if (newlyCompleted) {
             for (UUID owner : trial.owners()) {
@@ -30714,6 +30773,33 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         getLogger().info("END_RIFT_NAMED_WAVE7_TRIAL_COMPLETE event=" + eventId
                 + " generation=" + generation + " chamber=" + chamber
                 + " trial=" + trial.trial() + " source=" + source);
+    }
+
+    /**
+     * W7-004 / MARK-009: stop child scheduling and release the owned Echo
+     * presentation/combat resources of a finished personal-Echo stage.
+     *
+     * <p>The duel receipts and the validated regroup position are already
+     * durable at this point, so releasing the actors, bridge bindings and
+     * admission listeners cannot lose progression. Any late native callback is
+     * fenced by the attempt generation and simply finds no pair.</p>
+     */
+    private void releaseCompletedNamedEchoStage(String reason) {
+        int released = 0;
+        for (UUID actorId : new ArrayList<>(namedEchoCombatPairs.keySet())) {
+            removeNamedEchoRuntime(actorId, true);
+            released++;
+        }
+        namedEchoPresentationStates.clear();
+        namedEchoCombatListeners.clear();
+        namedEchoReplicas.clear();
+        namedEchoCells.clear();
+        namedEchoBridgeSessions.clear();
+        if (released > 0) {
+            getLogger().info("END_RIFT_WAVE7_ECHO_STAGE_RELEASED event=" + eventId
+                    + " generation=" + generation + " actors=" + released
+                    + " reason=" + (reason == null ? "unknown" : reason));
+        }
     }
 
     private me.copimine.endevent.domain.Wave7EchoDuelCellPolicy.Cell activeNamedEchoCell(UUID owner) {
@@ -31341,11 +31427,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         carrier.setAI(true);
         carrier.setTarget(null);
         if (!configureNamedEchoRuntime(carrier, cell, current, owner)) return false;
-        double distanceSquared = carrier.getLocation().distanceSquared(owner.getLocation());
-        if (eventTickCounter % 20L == 0L) {
-            if (distanceSquared > 16.0D) carrier.getPathfinder().moveTo(owner, 0.9D);
-            else carrier.getPathfinder().stopPathfinding();
-        }
         EchoCombatAdmissionListener listener = namedEchoCombatListeners.get(carrier.getUniqueId());
         if (listener != null) listener.tick();
         EchoCombatAdmission.Pair pair = namedEchoCombatPairs.get(carrier.getUniqueId());
@@ -31369,6 +31450,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 owner.getLocation().getZ() - core.getZ());
         boolean actorInCell = sameWorld && cell.contains(carrier.getLocation().getX() - core.getX(),
                 carrier.getLocation().getZ() - core.getZ());
+        double distanceSquared = carrier.getLocation().distanceSquared(owner.getLocation());
         EchoDuelCombatRuntimeAdapter.Scope scope;
         try {
             scope = new EchoDuelCombatRuntimeAdapter.Scope(current.eventId(), current.attemptGeneration(),
@@ -31402,6 +31484,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!commitNamedEchoCombatAction(world, core, trial, cell, owner, carrier, replica, decision.get())) {
             return false;
         }
+        driveNamedEchoMovement(carrier, owner, core, cell, decision.get().intent());
         sendNamedEchoView(carrier.getUniqueId(), "END_ECHO_STATE");
         return true;
     }
@@ -31573,7 +31656,53 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 ? shooter.getUniqueId() : entity.getUniqueId();
     }
 
-    /** Persist each accepted Echo action and its exact costs before touching native combat state. */
+    /**
+     * Moves a personal Echo according to the intent chosen by its profile.
+     *
+     * <p>The copy must stay inside its duel cell: a bounded seek toward a point
+     * derived from the owner's position keeps it inside, while the cell check
+     * rejects any step that would leave the arena. Movement is applied every
+     * tick with a short path re-issue window, not once per second, so the copy
+     * reads as a player weaving rather than a mob sliding in a straight line.</p>
+     */
+    private void driveNamedEchoMovement(Pillager carrier, Player owner, Location core,
+            me.copimine.endevent.domain.Wave7EchoDuelCellPolicy.Cell cell,
+            EchoDuelCombatRuntimeAdapter.MovementIntent intent) {
+        if (carrier == null || !carrier.isValid() || carrier.isDead() || owner == null
+                || intent == null || intent == EchoDuelCombatRuntimeAdapter.MovementIntent.HOLD) {
+            if (carrier != null && carrier.isValid() && !carrier.isDead()) {
+                carrier.getPathfinder().stopPathfinding();
+            }
+            return;
+        }
+        if (core == null || cell == null) return;
+        Vector toOwner = owner.getLocation().toVector().subtract(carrier.getLocation().toVector());
+        toOwner.setY(0.0D);
+        if (toOwner.lengthSquared() < 1.0E-4D) return;
+        toOwner.normalize();
+        // Right-hand perpendicular on the XZ plane: the copy's local right.
+        Vector lateral = new Vector(-toOwner.getZ(), 0.0D, toOwner.getX());
+        Location target;
+        switch (intent) {
+            case APPROACH -> target = carrier.getLocation().clone().add(toOwner.clone().multiply(2.5D));
+            case KITE -> target = carrier.getLocation().clone().subtract(toOwner.clone().multiply(2.5D));
+            case STRAFE_LEFT -> target = carrier.getLocation().clone().subtract(lateral.clone().multiply(2.5D));
+            case STRAFE_RIGHT -> target = carrier.getLocation().clone().add(lateral.clone().multiply(2.5D));
+            default -> {
+                return;
+            }
+        }
+        // Never steer outside the duel cell: a strafe or kite at the cell edge
+        // must fail closed instead of pushing the copy through the barrier.
+        if (!cell.contains(target.getX() - core.getX(), target.getZ() - core.getZ())) {
+            carrier.getPathfinder().stopPathfinding();
+            return;
+        }
+        if (eventTickCounter % 4L == 0L) {
+            carrier.getPathfinder().moveTo(target, 1.05D);
+        }
+    }
+
     private boolean commitNamedEchoCombatAction(World world, Location core,
             RealitySplitTrialController.NamedTrialState trial,
             me.copimine.endevent.domain.Wave7EchoDuelCellPolicy.Cell cell,
@@ -35315,6 +35444,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         portalVisualRebuildAttempts.clear();
         portalVisualRebuildRetryAtMillis.clear();
         portalClosingStartedMillis.clear();
+        portalIndicatorPreviousProgress.clear();
         portalProgressMilestones.clear();
         List<UUID> portalModelIds = new ArrayList<>();
         for (int index = 0; index < portals.size(); index++) {
@@ -35875,6 +36005,76 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     frame.gaugeSegments() + 1, Particle.DUST,
                     new Particle.DustOptions(Color.fromRGB(92, 255, 174), 1.1F));
         }
+        renderPortalCaptureIndicators(viewer, portal, floor, state, index, index == active, now);
+    }
+
+    /**
+     * W3-003 / W3-008: the three coordinated capture indicators drawn on the
+     * portal itself — a segmented seal ring, directional particle streams and a
+     * few bright surface seal veins.
+     *
+     * <p>The amount comes from the authoritative {@link PortalCapturePolicy}
+     * state, so the ring can never show a full seal while the objective is still
+     * incomplete. The direction comes from the real delta between the previous
+     * sample and this one: closing streams flow inward, recovery streams flow
+     * outward, and a repeated timestamp shows no direction at all instead of a
+     * fabricated one.</p>
+     */
+    private void renderPortalCaptureIndicators(Player viewer, Location portal, Location floor,
+                                               PortalCapturePolicy.PortalState state,
+                                               int index, boolean active, long now) {
+        if (viewer == null || portal == null || floor == null || state == null) return;
+        double previous = portalIndicatorPreviousProgress.getOrDefault(index, -1.0D);
+        long indicatorTick = now / 50L;
+        PortalCaptureIndicatorPolicy.Indicators indicators =
+                PortalCaptureIndicatorPolicy.evaluate(state, active, previous);
+        portalIndicatorPreviousProgress.put(index, Math.min(1.0D,
+                state.progressMillis() / (double) PortalCapturePolicy.CAPTURE_MILLIS));
+        if (!indicators.visible()) return;
+        // A dormant portal keeps a dim ring so the player can see where the seal
+        // is, but it never animates streams or veins it cannot justify.
+        Particle.DustOptions lit = new Particle.DustOptions(
+                active ? Color.fromRGB(120, 255, 208) : Color.fromRGB(64, 118, 104),
+                active ? 1.0F : 0.6F);
+        for (double angle : PortalCaptureIndicatorPolicy.litSegmentAngles(indicators)) {
+            Location point = floor.clone().add(
+                    Math.cos(angle) * PortalCaptureIndicatorPolicy.RING_RADIUS_BLOCKS, 0.03D,
+                    Math.sin(angle) * PortalCaptureIndicatorPolicy.RING_RADIUS_BLOCKS);
+            viewer.spawnParticle(Particle.DUST, point, 1, 0.0D, 0.0D, 0.0D, 0.0D, lit);
+        }
+        recordParticleEmission(indicators.litSegments());
+        if (indicators.flow() == PortalCaptureIndicatorPolicy.Flow.IDLE) return;
+
+        // Directional streams: inward while sealing, outward while recovering.
+        boolean inward = indicators.flow() == PortalCaptureIndicatorPolicy.Flow.INWARD;
+        double swing = 1.0D - indicators.streamStrength();
+        Location streamFloor = floor.clone().add(0.0D, 0.06D, 0.0D);
+        for (int stream = 0; stream < PortalCaptureIndicatorPolicy.STREAM_POINTS; stream++) {
+            double angle = (Math.PI * 2.0D * stream) / PortalCaptureIndicatorPolicy.STREAM_POINTS
+                    + PortalCaptureIndicatorPolicy.swirlRadians(indicators, indicatorTick);
+            double radius = inward
+                    ? PortalCapturePolicy.CAPTURE_RADIUS_BLOCKS * (0.35D + 0.65D * swing)
+                    : PortalCapturePolicy.CAPTURE_RADIUS_BLOCKS * (0.35D + 0.65D * indicators.streamStrength());
+            Location point = streamFloor.clone().add(Math.cos(angle) * radius, 0.0D, Math.sin(angle) * radius);
+            viewer.spawnParticle(Particle.END_ROD, point, 1, 0.0D, inward ? 0.02D : 0.04D, 0.0D, 0.0D);
+        }
+        recordParticleEmission(PortalCaptureIndicatorPolicy.STREAM_POINTS);
+
+        // Surface seal veins: bright marks on the real portal membrane.
+        int veins = indicators.veinCount();
+        if (veins > 0) {
+            float size = 0.55F + 0.65F * (float) indicators.veinBrightness();
+            Particle.DustOptions veinDust = new Particle.DustOptions(Color.fromRGB(196, 255, 236), size);
+            for (int vein = 0; vein < veins; vein++) {
+                double angle = (Math.PI * 2.0D * vein) / PortalCaptureIndicatorPolicy.VEIN_COUNT
+                        + PortalCaptureIndicatorPolicy.swirlRadians(indicators, now / 50L) * 0.35D;
+                Location point = portal.clone().add(
+                        Math.cos(angle) * 0.55D, 0.35D + PortalCaptureIndicatorPolicy.VEIN_HEIGHT_BLOCKS
+                                * indicators.progress(), Math.sin(angle) * 0.55D);
+                viewer.spawnParticle(Particle.DUST, point, 1, 0.0D, 0.0D, 0.0D, 0.0D, veinDust);
+            }
+            recordParticleEmission(veins);
+        }
     }
 
     private int countLiveWaveEntitiesForWave(int wave) {
@@ -36375,6 +36575,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         portalVisualRebuildAttempts.clear();
         portalVisualRebuildRetryAtMillis.clear();
         portalClosingStartedMillis.clear();
+        portalIndicatorPreviousProgress.clear();
         portalProgressMilestones.clear();
         portalCaptureStates.clear();
         wave3PortalSpawnNextAtMillis = 0L;
@@ -44080,6 +44281,31 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * controller below is not called by the official Current boss flow; this
      * method is the only official obelisk constructor.
      */
+    /**
+     * Stable seed for the Wave 4 layout of this attempt.
+     *
+     * <p>Derived from the attempt identity rather than a live random source, so
+     * a restart recomputes the same anchors and cannot reroll the arena
+     * (W4-003 / SAVE-003). A genuinely new attempt gets a new seed.</p>
+     */
+    private long obeliskLayoutSeed() {
+        return 31_337L * (long) eventId.hashCode() + 7L * generation + activeWave;
+    }
+
+    /**
+     * W4-002 [A]: the usable centre-to-boundary distance actually available.
+     *
+     * <p>Uses the configured arena radius clamped by the real combat envelope
+     * instead of assuming a fixed-size circle, so a relocated or resized arena
+     * still yields reachable obelisk sites.</p>
+     */
+    private double usableOuterRadius(Location core) {
+        double configured = config.arenaRadius();
+        if (core == null) return configured;
+        double combatBound = Math.max(1.0D, boundedCombatRadius(configured));
+        return Math.max(ObeliskPlacementPolicy.DEFAULT_RADIUS, Math.min(configured, combatBound));
+    }
+
     private void startWave4ObeliskAssault(World world, Location core, int players) {
         clearWave4Obelisks("new-wave-4");
         currentWave4ObeliskAssaultComplete = false;
@@ -44106,8 +44332,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         List<HazardMutationJournal.Entry> journalEntries = new ArrayList<>();
         List<Wave4ObeliskRuntimeState> planned = new ArrayList<>();
         Set<BlockCellKey> plannedCells = new LinkedHashSet<>();
-        List<ObeliskPlacementPolicy.Point> points = ObeliskPlacementPolicy.searchCandidates(
-                profile.obeliskCount());
+        // W4-001 [U]: obelisks stand irregularly in the outer band, not on a
+        // predictable ring. The seed is attempt-scoped so recovery replays the
+        // identical layout (W4-003) while a new attempt may draw a new one.
+        List<ObeliskPlacementPolicy.Point> points = ObeliskPlacementPolicy.scatter(
+                profile.obeliskCount(), obeliskLayoutSeed(), usableOuterRadius(core));
         for (ObeliskPlacementPolicy.Point point : points) {
             if (planned.size() >= profile.obeliskCount()) {
                 break;
@@ -44345,6 +44574,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (eventTickCounter >= state.nextFireTick() || state.fireLease != null) {
                 fireCandidates.add(state);
             }
+            tickWave4ObeliskRepel(state);
         }
         long now = System.currentTimeMillis();
         if (allActive && !currentWave4MobsStarted
@@ -44445,6 +44675,109 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     ObeliskFireDirectorPolicy.SpecialKind.PULSE, state.nextPulseTick() - 20L));
         }
         return ObeliskFireDirectorPolicy.selectSpecial(due, eventTickCounter).orElse(null);
+    }
+
+    /**
+     * W4-009/010/011: repel a player who camps an obelisk, and pull nearby mobs
+     * onto whoever is hammering it.
+     *
+     * <p>The impulse is deliberately tiny and readable: a one-second warning,
+     * then a horizontal push away from the obelisk with a slight lift. Nothing
+     * here makes the obelisk invulnerable (W4-012), so a reflected hit that lands
+     * during the warning is still accepted.</p>
+     */
+    private void tickWave4ObeliskRepel(Wave4ObeliskRuntimeState state) {
+        if (state == null) return;
+        World world = state.base().getWorld();
+        if (world == null) return;
+        Player nearby = null;
+        double closest = Double.MAX_VALUE;
+        for (Player player : world.getPlayers()) {
+            if (!isCombatTarget(player) || player.isDead() || player.getGameMode() != GameMode.SURVIVAL
+                    && player.getGameMode() != GameMode.ADVENTURE) continue;
+            double distance = Math.sqrt(Math.max(0.0D,
+                    horizontalDistanceSquared(state.base(), player.getLocation())));
+            if (distance <= ObeliskRepelPolicy.CLOSE_RADIUS_BLOCKS && distance < closest) {
+                closest = distance;
+                nearby = player;
+            }
+        }
+        Location safeTarget = nearby == null ? null : safeRepelTarget(state, nearby);
+        ObeliskRepelPolicy.Result result = ObeliskRepelPolicy.step(state.repelTimers,
+                eventTickCounter, nearby != null, safeTarget != null, !state.destroyed);
+        state.repelTimers = result.timers();
+        switch (result.decision()) {
+            case WARNING -> {
+                if (state.repelTimers.warningStartedTick() == eventTickCounter) {
+                    renderWave4ObeliskCue(state, "repel-warning", "close", state.base(), .18D);
+                    world.playSound(state.base(), Sound.BLOCK_BEACON_ACTIVATE,
+                            SoundCategory.HOSTILE, 0.7F, 0.6F);
+                }
+            }
+            case REPELLED -> {
+                if (nearby != null && safeTarget != null) {
+                    applyObeliskRepelImpulse(state, nearby, safeTarget);
+                }
+            }
+            case NO_SAFE_SPACE -> {
+                if (eventTickCounter % 40L == 0L) {
+                    getLogger().warning("END_RIFT_OBELISK_REPEL_SKIPPED event=" + eventId
+                            + " ordinal=" + state.ordinal + " reason=no-safe-free-space");
+                }
+            }
+            default -> {
+            }
+        }
+        if (nearby != null) aggroWave4ObeliskAttackers(state, nearby);
+    }
+
+    /** Displacement point for a repelled player, or null when no safe spot exists. */
+    private Location safeRepelTarget(Wave4ObeliskRuntimeState state, Player player) {
+        Vector away = player.getLocation().toVector().subtract(state.base().toVector());
+        away.setY(0.0D);
+        if (away.lengthSquared() < 1.0E-4D) {
+            away = player.getLocation().getDirection().setY(0.0D).multiply(-1.0D);
+        }
+        if (away.lengthSquared() < 1.0E-4D) return null;
+        away.normalize();
+        Location requested = player.getLocation().clone().add(away.multiply(2.5D));
+        requested.setY(combatFloorY() + 1.0D);
+        // W4-013: reuse the existing bounded resolver so the impulse can never
+        // push a player through walls, the floor or the arena edge.
+        return findSafeCombatLocation(state.base(), requested,
+                Math.max(2.0D, config.arenaRadius() - 1.0D), 2.0D);
+    }
+
+    /** Applies the accepted impulse without creating a second damage event. */
+    private void applyObeliskRepelImpulse(Wave4ObeliskRuntimeState state, Player player, Location target) {
+        Vector direction = target.toVector().subtract(player.getLocation().toVector()).setY(0.0D);
+        if (direction.lengthSquared() < 1.0E-4D) return;
+        direction.normalize();
+        player.setVelocity(direction.multiply(ObeliskRepelPolicy.HORIZONTAL_IMPULSE)
+                .setY(ObeliskRepelPolicy.VERTICAL_IMPULSE));
+        player.getWorld().playSound(player.getLocation(), Sound.ENTITY_ENDER_DRAGON_FLAP,
+                SoundCategory.HOSTILE, 0.8F, 1.35F);
+        renderWave4ObeliskCue(state, "repel", "close", state.base(), .28D);
+        getLogger().info("END_RIFT_OBELISK_REPEL event=" + eventId
+                + " ordinal=" + state.ordinal + " player=" + player.getUniqueId()
+                + " tick=" + eventTickCounter);
+    }
+
+    /**
+     * W4-011: nearby owned enemies switch to the obelisk attacker.
+     *
+     * <p>Reuses the existing combat AI and its normal target hysteresis; it does
+     * not create stationary guards or a new aggro subsystem.</p>
+     */
+    private void aggroWave4ObeliskAttackers(Wave4ObeliskRuntimeState state, Player attacker) {
+        if (eventTickCounter % 20L != 0L || attacker == null) return;
+        double radius = ObeliskRepelPolicy.CLOSE_RADIUS_BLOCKS * 4.0D;
+        for (Entity entity : state.base().getWorld().getNearbyEntities(state.base(), radius, radius, radius)) {
+            if (!(entity instanceof Mob mob) || !mob.isValid() || mob.isDead()
+                    || !ownedEntities.containsKey(mob.getUniqueId())
+                    || readEntityGeneration(mob) != generation) continue;
+            mob.setTarget(attacker);
+        }
     }
 
     private void advanceObeliskEmergence(Wave4ObeliskRuntimeState state) {
@@ -45144,6 +45477,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (state == null) {
             return;
         }
+        // W4-013: a removed/destroyed obelisk must never issue another repel impulse.
+        state.destroyed = true;
+        state.repelTimers = ObeliskRepelPolicy.Timers.IDLE_TIMERS;
         if ("destroyed".equalsIgnoreCase(reason) && state.health() == 0
                 && state.stage() == ObeliskStage.COLLAPSING) {
             currentWave4DestroyedObeliskReceipts.put(state.ordinal(),
@@ -45969,6 +46305,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         private long destroyAtTick = -1L;
         private int health;
         private boolean fractureCuePlayed;
+        /** W4-009: per-obelisk anti-camping timers (pressure, warning, cooldown). */
+        private ObeliskRepelPolicy.Timers repelTimers = ObeliskRepelPolicy.Timers.IDLE_TIMERS;
+        /** Set once the obelisk collapses, so a dead obelisk can never repel. */
+        private boolean destroyed;
 
         private Wave4ObeliskRuntimeState(UUID id, Location base, int health,
                                            List<BlockCellKey> cells,

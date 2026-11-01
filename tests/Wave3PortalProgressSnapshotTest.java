@@ -8,7 +8,7 @@ import java.util.Map;
 public final class Wave3PortalProgressSnapshotTest {
     public static void main(String[] args) {
         List<PortalCapturePolicy.PortalState> states = List.of(
-                new PortalCapturePolicy.PortalState(true, 5_000L, -1L, -1L),
+                new PortalCapturePolicy.PortalState(true, PortalCapturePolicy.CAPTURE_MILLIS, -1L, -1L),
                 new PortalCapturePolicy.PortalState(false, 2_500L, -1L, -1L),
                 PortalCapturePolicy.initial());
         Map<String, String> encoded = Wave3PortalProgressSnapshot.encode("event-3", 8L, states, true);
@@ -35,13 +35,13 @@ public final class Wave3PortalProgressSnapshotTest {
                         states.subList(0, 2), false),
                 "a partial portal list must never be encoded");
         expectFailure(() -> Wave3PortalProgressSnapshot.encode("event-3", 8L,
-                        List.of(new PortalCapturePolicy.PortalState(true, 4_999L, -1L, -1L),
+                        List.of(new PortalCapturePolicy.PortalState(true, PortalCapturePolicy.CAPTURE_MILLIS - 1L, -1L, -1L),
                                 PortalCapturePolicy.initial(), PortalCapturePolicy.initial()), false),
-                "completed must mean exactly five seconds of progress");
+                "completed must mean exactly the configured window of progress");
         expectFailure(() -> Wave3PortalProgressSnapshot.encode("event-3", 8L,
-                        List.of(new PortalCapturePolicy.PortalState(false, 5_000L, -1L, -1L),
+                        List.of(new PortalCapturePolicy.PortalState(false, PortalCapturePolicy.CAPTURE_MILLIS, -1L, -1L),
                                 PortalCapturePolicy.initial(), PortalCapturePolicy.initial()), false),
-                "five seconds of progress must be completed");
+                "a full configured window of progress must be completed");
 
         Map<String, String> missingPortal = new LinkedHashMap<>(encoded);
         missingPortal.remove(Wave3PortalProgressSnapshot.PREFIX + "1.progress");

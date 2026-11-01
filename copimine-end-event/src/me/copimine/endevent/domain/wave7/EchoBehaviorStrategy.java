@@ -4,8 +4,25 @@ package me.copimine.endevent.domain.wave7;
 public record EchoBehaviorStrategy(int meleePermille, int rangedPermille,
                                    int mobilityPermille, int defensePermille,
                                    int sustainPermille, int confidencePermille,
-                                   int observedWaveMask, boolean fromEventStart) {
+                                   int observedWaveMask, boolean fromEventStart,
+                                   int jumpAttackPermille, int holdDistancePermille,
+                                   int kitePermille, int shieldPermille,
+                                   int weaponSwitchPermille) {
     public static final long MAX_PROFILE_COUNT = 1_000_000_000L;
+    /** Encoded field count; kept in one place so old records fail closed. */
+    public static final int ENCODED_FIELDS = 14;
+    /** Strategy schema revision understood by {@link #decode(String)}. */
+    public static final String SCHEMA = "2";
+
+    /** Legacy five-feature shape, retained for callers that only know the base profile. */
+    public EchoBehaviorStrategy(int meleePermille, int rangedPermille,
+                                int mobilityPermille, int defensePermille,
+                                int sustainPermille, int confidencePermille,
+                                int observedWaveMask, boolean fromEventStart) {
+        this(meleePermille, rangedPermille, mobilityPermille, defensePermille, sustainPermille,
+                confidencePermille, observedWaveMask, fromEventStart,
+                250, 500, 300, defensePermille, 250);
+    }
 
     public EchoBehaviorStrategy {
         if (meleePermille < 0 || meleePermille > 1_000
@@ -15,7 +32,12 @@ public record EchoBehaviorStrategy(int meleePermille, int rangedPermille,
                 || defensePermille < 0 || defensePermille > 1_000
                 || sustainPermille < 0 || sustainPermille > 1_000
                 || confidencePermille < 0 || confidencePermille > 1_000
-                || observedWaveMask < 0 || observedWaveMask > 0b11_1111) {
+                || observedWaveMask < 0 || observedWaveMask > 0b111_1111
+                || jumpAttackPermille < 0 || jumpAttackPermille > 1_000
+                || holdDistancePermille < 0 || holdDistancePermille > 1_000
+                || kitePermille < 0 || kitePermille > 1_000
+                || shieldPermille < 0 || shieldPermille > 1_000
+                || weaponSwitchPermille < 0 || weaponSwitchPermille > 1_000) {
             throw new IllegalArgumentException("invalid bounded Echo behavior strategy");
         }
     }
@@ -35,36 +57,54 @@ public record EchoBehaviorStrategy(int meleePermille, int rangedPermille,
         // non-healer: three heals scored 500 alongside three hits but only 10
         // alongside three hundred, even though the healing never changed.
         long sustainedActions = counts.healUses() + attackCount;
+        // BRAIN-013: a melee/crit, a ranged/kite and a shield/heal original must
+        // differ observably. These style terms carry that difference; each one
+        // falls back to the documented baseline when its evidence is missing,
+        // so a sparse sample cannot erase a strong neighbouring signal.
+        int holdDistance = counts.holdDistancePermille();
+        int kite = counts.kitePermille();
         return new EchoBehaviorStrategy(
                 meleeShare, rangedShare,
                 share(counts.sprintSamples(), counts.movementSamples()),
                 share(counts.shieldSamples(), counts.movementSamples()),
                 share(counts.healUses(), sustainedActions),
                 (int) Math.round(counts.confidence() * 1_000.0D),
-                counts.observedWaveMask(), counts.fromEventStart());
+                counts.observedWaveMask(), counts.fromEventStart(),
+                counts.jumpAttackPermille(),
+                holdDistance < 0 ? 500 : holdDistance,
+                kite < 0 ? rangedShare : kite,
+                share(counts.shieldSamples(), counts.movementSamples()),
+                share(counts.itemSwitches(), Math.max(1L, attackCount)));
     }
 
-    /** Canonical nine-field representation; it contains weights, never raw observations. */
+    /** Canonical representation; it contains weights, never raw observations. */
     public String encode() {
-        return String.join(",", "1", Integer.toString(meleePermille), Integer.toString(rangedPermille),
+        return String.join(",", SCHEMA,
+                Integer.toString(meleePermille), Integer.toString(rangedPermille),
                 Integer.toString(mobilityPermille), Integer.toString(defensePermille),
                 Integer.toString(sustainPermille), Integer.toString(confidencePermille),
-                Integer.toString(observedWaveMask), fromEventStart ? "1" : "0");
+                Integer.toString(observedWaveMask), fromEventStart ? "1" : "0",
+                Integer.toString(jumpAttackPermille), Integer.toString(holdDistancePermille),
+                Integer.toString(kitePermille), Integer.toString(shieldPermille),
+                Integer.toString(weaponSwitchPermille));
     }
 
     public static EchoBehaviorStrategy decode(String encoded) {
-        if (encoded == null || encoded.length() > 128) {
+        if (encoded == null || encoded.length() > 192) {
             throw new IllegalArgumentException("missing or oversized Echo behavior strategy");
         }
         String[] fields = encoded.split(",", -1);
-        if (fields.length != 9 || !"1".equals(fields[0])
+        if (fields.length != ENCODED_FIELDS || !SCHEMA.equals(fields[0])
                 || !"0".equals(fields[8]) && !"1".equals(fields[8])) {
             throw new IllegalArgumentException("malformed Echo behavior strategy");
         }
         EchoBehaviorStrategy strategy = new EchoBehaviorStrategy(
                 parseCanonicalInt(fields[1]), parseCanonicalInt(fields[2]), parseCanonicalInt(fields[3]),
                 parseCanonicalInt(fields[4]), parseCanonicalInt(fields[5]), parseCanonicalInt(fields[6]),
-                parseCanonicalInt(fields[7]), "1".equals(fields[8]));
+                parseCanonicalInt(fields[7]), "1".equals(fields[8]),
+                parseCanonicalInt(fields[9]), parseCanonicalInt(fields[10]),
+                parseCanonicalInt(fields[11]), parseCanonicalInt(fields[12]),
+                parseCanonicalInt(fields[13]));
         if (!strategy.encode().equals(encoded)) {
             throw new IllegalArgumentException("non-canonical Echo behavior strategy");
         }
@@ -89,7 +129,17 @@ public record EchoBehaviorStrategy(int meleePermille, int rangedPermille,
 
     public record ProfileCounts(long meleeHits, long rangedHits, long movementSamples,
                                 long sprintSamples, long shieldSamples, long healUses,
-                                int observedWaveMask, boolean fromEventStart, double confidence) {
+                                int observedWaveMask, boolean fromEventStart, double confidence,
+                                long jumpAttacks, long itemSwitches,
+                                int holdDistancePermille, int kitePermille) {
+        /** Baseline used when a caller only recorded the five original features. */
+        public ProfileCounts(long meleeHits, long rangedHits, long movementSamples,
+                             long sprintSamples, long shieldSamples, long healUses,
+                             int observedWaveMask, boolean fromEventStart, double confidence) {
+            this(meleeHits, rangedHits, movementSamples, sprintSamples, shieldSamples, healUses,
+                    observedWaveMask, fromEventStart, confidence, 0L, 0L, -1, -1);
+        }
+
         public ProfileCounts {
             bounded(meleeHits, "melee hits");
             bounded(rangedHits, "ranged hits");
@@ -97,11 +147,21 @@ public record EchoBehaviorStrategy(int meleePermille, int rangedPermille,
             bounded(sprintSamples, "sprint samples");
             bounded(shieldSamples, "shield samples");
             bounded(healUses, "heal uses");
+            bounded(jumpAttacks, "jump attacks");
+            bounded(itemSwitches, "item switches");
             if (sprintSamples > movementSamples || shieldSamples > movementSamples
-                    || observedWaveMask < 0 || observedWaveMask > 0b11_1111
+                    || observedWaveMask < 0 || observedWaveMask > 0b111_1111
+                    || holdDistancePermille < -1 || holdDistancePermille > 1_000
+                    || kitePermille < -1 || kitePermille > 1_000
                     || !Double.isFinite(confidence) || confidence < 0.0D || confidence > 1.0D) {
                 throw new IllegalArgumentException("invalid bounded Echo profile counts");
             }
+        }
+
+        /** Jump-attack share of all attacks, with the documented 25% baseline. */
+        int jumpAttackPermille() {
+            long attacks = meleeHits + rangedHits;
+            return attacks <= 0L ? 250 : (int) Math.min(1_000L, Math.round(jumpAttacks * 1_000.0D / attacks));
         }
 
         private static void bounded(long value, String label) {

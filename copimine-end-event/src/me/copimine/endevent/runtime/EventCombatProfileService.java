@@ -16,6 +16,19 @@ public final class EventCombatProfileService {
     private static final String PREFIX = "combat-profile.";
     private static final int MAX_PARTICIPANTS = 128;
     private static final long MAX_COUNTER = 1_000_000_000L;
+    /**
+     * BRAIN-002: observation stays open through every wave that trains the Echo.
+     *
+     * <p>The user requires a copy to learn from wave 1 up to, and including, the
+     * penultimate Wave 7 miniboss (Warden, Marksman and Archmage), while the
+     * final personal Echo trial must not feed the profile it is produced from.
+     * Wave 1..6 are therefore observed as before, plus Wave 7 observations that
+     * are explicitly restricted by the runtime to the three miniboss trials.</p>
+     */
+    public static final int FIRST_OBSERVED_WAVE = 1;
+    public static final int LAST_OBSERVED_WAVE = 7;
+    /** Mask bit count used to normalise cross-wave confidence (wave 1..7). */
+    public static final int OBSERVED_WAVE_SLOTS = 7;
     public enum Weapon { NONE, SWORD, AXE, OTHER_MELEE, BOW, CROSSBOW, OTHER_RANGED }
     public enum Stat {
         MOVEMENT_SAMPLES, SPRINT_SAMPLES, STRAFE_LEFT, STRAFE_RIGHT, SHIELD_SAMPLES,
@@ -24,7 +37,12 @@ public final class EventCombatProfileService {
         BOW_HITS, CROSSBOW_HITS, ATTACK_INTERVAL_TICKS, ATTACK_INTERVAL_SAMPLES,
         SHORT_ATTACK_INTERVALS, ATTEMPTED_SWINGS, ITEM_SWITCHES, BOW_RELEASES,
         CROSSBOW_RELEASES, BOW_CHARGE_TICKS, HEAL_USES, HEAL_HEALTH_PERMILLE,
-        CROSSBOW_LOADS, CROSSBOW_CHARGE_TICKS
+        CROSSBOW_LOADS, CROSSBOW_CHARGE_TICKS,
+        // Style features: they let a copy reproduce how the owner fights rather
+        // than only how often. Left/right strafe and retreat were already counted
+        // but never compiled into tactics; the terms below close that gap.
+        PURSUIT_PREFERENCE, KITE_PREFERENCE, SHIELD_RATIO, HEAL_RATIO,
+        JUMP_ATTACK, HOLD_DISTANCE_NEAR, HOLD_DISTANCE_FAR, WEAPON_SWITCH_RATIO
     }
     public record Context(String eventId, long runtimeGeneration, UUID player, long tick,
                           int wave, boolean activeCombat, boolean diagnostic,
@@ -39,7 +57,12 @@ public final class EventCombatProfileService {
         public double confidence() {
             double evidence = Math.min(1D, (count(Stat.MOVEMENT_SAMPLES)
                     + 2D * (count(Stat.MELEE_HITS) + count(Stat.RANGED_HITS))) / 120D);
-            return evidence * Integer.bitCount(observedWaves) / 6D * (fromEventStart ? 1D : .5D);
+            return evidence * waveCoverage() * (fromEventStart ? 1D : .5D);
+        }
+        /** Share of training waves actually observed; Wave 7 now counts as well. */
+        private double waveCoverage() {
+            int seen = Integer.bitCount(observedWaves & ((1 << OBSERVED_WAVE_SLOTS) - 1));
+            return Math.min(1D, seen / (double) OBSERVED_WAVE_SLOTS);
         }
         public double confidence(Stat feature) {
             double evidence = switch (feature) {
@@ -52,9 +75,14 @@ public final class EventCombatProfileService {
                 case HEAL_USES, HEAL_HEALTH_PERMILLE -> count(Stat.HEAL_USES) / 8D;
                 case ITEM_SWITCHES -> count(Stat.ITEM_SWITCHES) / 20D;
                 case ATTEMPTED_SWINGS -> count(Stat.ATTEMPTED_SWINGS) / 60D;
+                case PURSUIT_PREFERENCE, KITE_PREFERENCE, HOLD_DISTANCE_NEAR,
+                        HOLD_DISTANCE_FAR -> count(Stat.MOVEMENT_SAMPLES) / 60D;
+                case SHIELD_RATIO, WEAPON_SWITCH_RATIO -> count(Stat.MOVEMENT_SAMPLES) / 90D;
+                case HEAL_RATIO -> count(Stat.HEAL_USES) / 6D;
+                case JUMP_ATTACK -> (count(Stat.MELEE_HITS) + count(Stat.RANGED_HITS)) / 45D;
                 default -> count(Stat.MOVEMENT_SAMPLES) / 120D;
             };
-            return Math.min(1D, evidence) * Integer.bitCount(observedWaves) / 6D * (fromEventStart ? 1D : .5D);
+            return Math.min(1D, evidence) * waveCoverage() * (fromEventStart ? 1D : .5D);
         }
     }
     private static final class Profile {
@@ -113,7 +141,8 @@ public final class EventCombatProfileService {
     private Profile eligible(Context context, boolean movement) {
         if (context == null || !eventId.equals(context.eventId())
                 || runtimeGeneration != context.runtimeGeneration() || context.tick() < 0
-                || context.wave() < 1 || context.wave() > 6 || !context.activeCombat()
+                || context.wave() < FIRST_OBSERVED_WAVE || context.wave() > LAST_OBSERVED_WAVE
+                || !context.activeCombat()
                 || context.diagnostic() || context.frozenFog() || context.confined()
                 || movement && context.forcedMotion()) return null;
         return profiles.get(context.player());
@@ -204,11 +233,45 @@ public final class EventCombatProfileService {
     public EchoBehaviorStrategy echoBehaviorStrategy(UUID owner) {
         Snapshot profile = snapshot(owner);
         if (profile == null) return null;
-        return EchoBehaviorStrategy.from(new EchoBehaviorStrategy.ProfileCounts(
+        EchoBehaviorStrategy.ProfileCounts counts = new EchoBehaviorStrategy.ProfileCounts(
                 profile.count(Stat.MELEE_HITS), profile.count(Stat.RANGED_HITS),
                 profile.count(Stat.MOVEMENT_SAMPLES), profile.count(Stat.SPRINT_SAMPLES),
                 profile.count(Stat.SHIELD_SAMPLES), profile.count(Stat.HEAL_USES),
-                profile.observedWaves(), profile.fromEventStart(), profile.confidence()));
+                profile.observedWaves(), profile.fromEventStart(), profile.confidence(),
+                profile.count(Stat.JUMP_CRITICAL_HITS), profile.count(Stat.ITEM_SWITCHES),
+                distanceHoldPermille(profile), strafeKitePermille(profile));
+        return EchoBehaviorStrategy.from(counts);
+    }
+
+    /**
+     * BRAIN-011/013: preferred engagement distance, in permille of the ranged
+     * envelope. A pure close-combat owner keeps a near hold; a ranged owner keeps
+     * a far one. Returned as -1 when there is no movement evidence so the
+     * strategy can fall back to its documented baseline instead of faking 0.
+     */
+    private static int distanceHoldPermille(Snapshot profile) {
+        long near = profile.count(Stat.DISTANCE_NEAR);
+        long mid = profile.count(Stat.DISTANCE_MID);
+        long far = profile.count(Stat.DISTANCE_FAR);
+        long total = near + mid + far;
+        if (total <= 0L) return -1;
+        // Weight each band by its position in the ranged envelope.
+        double weighted = (near * 1.0D + mid * 2.0D + far * 3.0D) / total;
+        return (int) Math.max(0L, Math.min(1_000L, Math.round((weighted - 1.0D) * 500.0D)));
+    }
+
+    /**
+     * BRAIN-011: lateral/retreat preference. Reusing the recorded strafe and
+     * retreat samples makes a weaving owner produce a weaving copy.
+     */
+    private static int strafeKitePermille(Snapshot profile) {
+        long samples = profile.count(Stat.MOVEMENT_SAMPLES);
+        if (samples <= 0L) return -1;
+        long lateral = profile.count(Stat.STRAFE_LEFT) + profile.count(Stat.STRAFE_RIGHT);
+        long total = lateral + profile.count(Stat.PURSUIT_SAMPLES) + profile.count(Stat.RETREAT_SAMPLES);
+        if (total <= 0L) return -1;
+        long kiting = lateral + profile.count(Stat.RETREAT_SAMPLES);
+        return (int) Math.max(0L, Math.min(1_000L, Math.round(kiting * 1_000.0D / total)));
     }
     public Map<String, String> encode() {
         if (profiles.isEmpty()) return Map.of();
@@ -252,7 +315,8 @@ public final class EventCombatProfileService {
                     p.stats.put(Stat.values()[i], value);
                 }
                 p.waves = Integer.parseInt(encoded.get(key + ".waves"));
-                if (p.waves < 0 || p.waves > 63) return false;
+                // Waves 1-7 are observed, so the durable mask covers seven bits.
+                if (p.waves < 0 || p.waves > (1 << OBSERVED_WAVE_SLOTS) - 1) return false;
                 restored.put(owner, p);
             }
             this.eventId = eventId; this.attemptGeneration = attempt;

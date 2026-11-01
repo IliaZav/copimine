@@ -48,8 +48,9 @@ public class PortalClockProbe {
             case "late-activation" -> {
                 s=PortalCapturePolicy.tick(PortalCapturePolicy.initial(),true,100000);
                 check(s.progressMillis()==0,"dormant lifetime must not count as occupancy");
-                s=PortalCapturePolicy.tick(s,true,104999);
-                check(!s.completed()&&s.progressMillis()==4999,"new active gate still needs five seconds");
+                long window=PortalCapturePolicy.CAPTURE_MILLIS;
+                s=PortalCapturePolicy.tick(s,true,100000+window-1);
+                check(!s.completed()&&s.progressMillis()==window-1,"new active gate still needs the full configured window: "+s.progressMillis());
             }
         }
     }

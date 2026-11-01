@@ -4,11 +4,12 @@ public final class PortalCapturePolicyTest {
     public static void main(String[] args) {
         PortalCapturePolicy.PortalState state = PortalCapturePolicy.initial();
         state = PortalCapturePolicy.tick(state, true, 0L);
-        state = PortalCapturePolicy.tick(state, true, 4_999L);
-        check(state.progressMillis() == 4_999L && !state.completed(), "capture must need five continuous seconds");
-        state = PortalCapturePolicy.tick(state, true, 5_000L);
-        check(state.completed(), "portal must complete at five seconds");
-        check(PortalCapturePolicy.tick(state, true, 5_000L).equals(state), "same timestamp must be deterministic");
+        state = PortalCapturePolicy.tick(state, true, PortalCapturePolicy.CAPTURE_MILLIS - 1L);
+        check(state.progressMillis() == PortalCapturePolicy.CAPTURE_MILLIS - 1L && !state.completed(),
+                "capture must need the full configured window of continuous occupancy");
+        state = PortalCapturePolicy.tick(state, true, PortalCapturePolicy.CAPTURE_MILLIS);
+        check(state.completed(), "portal must complete only at the configured window");
+        check(PortalCapturePolicy.tick(state, true, PortalCapturePolicy.CAPTURE_MILLIS).equals(state), "same timestamp must be deterministic");
 
         PortalCapturePolicy.PortalState grace = PortalCapturePolicy.tick(PortalCapturePolicy.initial(), true, 1_000L);
         grace = PortalCapturePolicy.tick(grace, true, 1_999L);
@@ -24,7 +25,7 @@ public final class PortalCapturePolicyTest {
 
         PortalCapturePolicy.PortalState gradual = PortalCapturePolicy.initial();
         gradual = PortalCapturePolicy.tick(gradual, true, 0L);
-        gradual = PortalCapturePolicy.tick(gradual, true, 5_000L);
+        gradual = PortalCapturePolicy.tick(gradual, true, PortalCapturePolicy.CAPTURE_MILLIS);
         check(gradual.completed(), "the occupied portal must complete before decay is tested");
         PortalCapturePolicy.PortalState partial = PortalCapturePolicy.initial();
         partial = PortalCapturePolicy.tick(partial, true, 0L);
@@ -59,6 +60,8 @@ public final class PortalCapturePolicyTest {
         try { PortalCapturePolicy.tick(PortalCapturePolicy.initial(), true, -1L); }
         catch (IllegalArgumentException expected) { invalidTime = true; }
         check(invalidTime, "negative portal timestamps must fail closed");
+        check(PortalCapturePolicy.CAPTURE_MILLIS >= 18_000L,
+                "W3-004: closing must be substantially longer than the retired five seconds");
         System.out.println("PortalCapturePolicyTest OK");
     }
 

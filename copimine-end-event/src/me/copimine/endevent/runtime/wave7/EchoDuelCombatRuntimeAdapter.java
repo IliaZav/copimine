@@ -3,6 +3,7 @@ package me.copimine.endevent.runtime.wave7;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import me.copimine.endevent.domain.wave7.EchoBehaviorStrategy;
 import me.copimine.endevent.domain.wave7.EchoDuelCombatPolicy;
 import me.copimine.endevent.domain.wave7.EchoLoadoutState;
 import me.copimine.endevent.runtime.RealitySplitEchoDuelState;
@@ -76,7 +77,15 @@ public final class EchoDuelCombatRuntimeAdapter {
     public record Decision(Scope scope, Action action, DuelRecord previousDuel, DuelRecord nextDuel,
                            EchoLoadoutState previousReplica,
                            EchoLoadoutState replica, int itemSlot, int ammoSlot,
-                           EchoLoadoutState.Item actionItem) {
+                           EchoLoadoutState.Item actionItem, MovementIntent intent) {
+        /** Action-only decision that keeps the copy where it is. */
+        public Decision(Scope scope, Action action, DuelRecord previousDuel, DuelRecord nextDuel,
+                        EchoLoadoutState previousReplica, EchoLoadoutState replica,
+                        int itemSlot, int ammoSlot, EchoLoadoutState.Item actionItem) {
+            this(scope, action, previousDuel, nextDuel, previousReplica, replica,
+                    itemSlot, ammoSlot, actionItem, MovementIntent.HOLD);
+        }
+
         public Decision {
             Objects.requireNonNull(scope, "scope");
             Objects.requireNonNull(action, "action");
@@ -84,6 +93,7 @@ public final class EchoDuelCombatRuntimeAdapter {
             Objects.requireNonNull(nextDuel, "nextDuel");
             Objects.requireNonNull(previousReplica, "previousReplica");
             Objects.requireNonNull(replica, "replica");
+            intent = intent == null ? MovementIntent.HOLD : intent;
             if (action == Action.NONE && (itemSlot != -1 || ammoSlot != -1 || actionItem != null)
                     || action == Action.MELEE && (itemSlot < 0 || ammoSlot != -1 || actionItem == null)
                     || action == Action.CRITICAL && (itemSlot < 0 || ammoSlot != -1 || actionItem == null)
@@ -94,6 +104,74 @@ public final class EchoDuelCombatRuntimeAdapter {
                 throw new IllegalArgumentException("invalid Echo combat decision");
             }
         }
+    }
+
+    /**
+     * Where the copy wants to be relative to its owner this tick.
+     *
+     * <p>BRAIN-005 keeps navigation separate from discrete action choice: the
+     * runtime asks for one intent and moves the carrier itself, while combat
+     * actions still go through the cooldown-checked policies. A copy that must
+     * reposition does no action that tick, which is what makes a ranged owner's
+     * Echo back off instead of standing in melee.</p>
+     */
+    public enum MovementIntent {
+        /** Already in the owner's preferred band. */
+        HOLD,
+        /** Owner fights close; the copy closes the gap to melee reach. */
+        APPROACH,
+        /** Owner keeps distance; the copy opens the gap toward its hold band. */
+        KITE,
+        /** Sideways weave, used to break line-of-sight camping. */
+        STRAFE_LEFT,
+        STRAFE_RIGHT
+    }
+
+    /** Inside this band the copy stops repositioning and fights. */
+    private static final double HOLD_TOLERANCE_BLOCKS = 1.5D;
+
+    /**
+     * BRAIN-006/011: pick a bounded movement intent from the compiled profile.
+     *
+     * <p>The band is derived from the owner's measured preferred distance
+     * ({@code holdDistancePermille}) rather than a fixed radius, so a player who
+     * always fights at range produces a copy that actually kites. Lateral work
+     * is only requested while a ranged hold is being kept, mirroring how a real
+     * archer strafes to stay evasive without abandoning the shot.</p>
+     */
+    static MovementIntent movementIntent(EchoBehaviorStrategy strategy, Observation observation) {
+        if (strategy == null || observation == null) return MovementIntent.HOLD;
+        double distance = Math.sqrt(observation.distanceSquared());
+        // Map 0..1000 onto a 1.5..12 block hold band inside the ranged envelope.
+        double preferred = 1.5D + 10.5D * strategy.holdDistancePermille() / 1_000.0D;
+        boolean wantsRange = strategy.rangedPermille() > strategy.meleePermille();
+        if (wantsRange) {
+            if (distance < preferred - HOLD_TOLERANCE_BLOCKS) return MovementIntent.KITE;
+            if (distance > preferred + HOLD_TOLERANCE_BLOCKS
+                    && distance > RANGED_RANGE_BLOCKS) return MovementIntent.APPROACH;
+            return lateralIntent(strategy, observation);
+        }
+        if (distance > preferred + HOLD_TOLERANCE_BLOCKS) return MovementIntent.APPROACH;
+        return lateralIntent(strategy, observation);
+    }
+
+    /**
+     * BRAIN-011: weave sideways with the owner's recorded rhythm. The choice is a
+     * pure function of the tick and the profile, so it is reproducible on replay
+     * and needs no per-copy random source.
+     */
+    private static MovementIntent lateralIntent(EchoBehaviorStrategy strategy, Observation observation) {
+        int kite = strategy.kitePermille();
+        int mobility = strategy.mobilityPermille();
+        if (kite <= 0 || mobility <= 0) return MovementIntent.HOLD;
+        // Weave in bursts: roughly every 12 ticks decide a side, weighted by how
+        // often the owner strafed at all.
+        long phase = observation.tick() / 12L;
+        long window = phase % 10L;
+        long threshold = Math.max(1L, 10L * kite / 1_000L);
+        if (window >= threshold) return MovementIntent.HOLD;
+        boolean left = (phase / 10L) % 2L == 0L;
+        return left ? MovementIntent.STRAFE_LEFT : MovementIntent.STRAFE_RIGHT;
     }
 
     /**
@@ -144,6 +222,18 @@ public final class EchoDuelCombatRuntimeAdapter {
                 }
             }
 
+            // BRAIN-005/011/013: navigation is chosen separately from the discrete
+            // action, and the two are reported together. Reporting the intent
+            // while still selecting the action keeps a ranged copy shooting while
+            // it opens the gap — the "endless retreat without firing" failure the
+            // contract forbids — and keeps a mid-jump or shielded copy visibly
+            // repositioning instead of freezing on the spot. Only a legal current
+            // action is selected here, so movement never grants range and never
+            // bypasses a cooldown.
+            MovementIntent intent = movementIntent(duel.behaviorStrategy(), observation);
+            boolean inMeleeRange = observation.distanceSquared()
+                    <= MELEE_RANGE_BLOCKS * (double) MELEE_RANGE_BLOCKS;
+
             int shieldSlot = replica.find(EchoLoadoutState.Kind.SHIELD);
             if (shieldSlot >= 0 && observation.distanceSquared() <= RANGED_RANGE_BLOCKS * (double) RANGED_RANGE_BLOCKS
                     && inProfileWindow(observation.tick(), duel.behaviorStrategy().defensePermille())) {
@@ -153,7 +243,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                         holdTicks, COOLDOWNS);
                 if (actor.isPresent()) {
                     return decision(duel, baselineReplica, replica, scope, Action.SHIELD, actor.get(),
-                            shieldSlot, -1, replica.item(shieldSlot));
+                            shieldSlot, -1, replica.item(shieldSlot), intent);
                 }
             }
 
@@ -163,12 +253,10 @@ public final class EchoDuelCombatRuntimeAdapter {
                         duel.actor(), observation.tick(), COOLDOWNS);
                 if (actor.isPresent()) {
                     return decision(duel, baselineReplica, replica, scope, Action.JUMP, actor.get(),
-                            -1, -1, null);
+                            -1, -1, null, intent);
                 }
             }
 
-            boolean inMeleeRange = observation.distanceSquared()
-                    <= MELEE_RANGE_BLOCKS * (double) MELEE_RANGE_BLOCKS;
             if (inMeleeRange && !observation.onGround() && observation.criticalWindow() && meleeSlot >= 0) {
                 EchoLoadoutState.Item item = replica.item(meleeSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartCriticalMelee(
@@ -176,7 +264,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                 if (actor.isPresent() && EchoDuelCombatPolicy.tryApplyGearWear(
                         replica, meleeSlot, 1, replica.revision())) {
                     return decision(duel, baselineReplica, replica, scope, Action.CRITICAL, actor.get(),
-                            meleeSlot, -1, item);
+                            meleeSlot, -1, item, intent);
                 }
             }
             if (inMeleeRange && meleeSlot >= 0
@@ -187,7 +275,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                 if (actor.isPresent() && EchoDuelCombatPolicy.tryApplyGearWear(
                         replica, meleeSlot, 1, replica.revision())) {
                     return decision(duel, baselineReplica, replica, scope, Action.MELEE, actor.get(),
-                            meleeSlot, -1, item);
+                            meleeSlot, -1, item, intent);
                 }
             }
 
@@ -201,7 +289,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                     if (!EchoDuelCombatPolicy.tryApplyGearWear(
                             replica, rangedSlot, 1, replica.revision())) return Optional.empty();
                     return decision(duel, baselineReplica, replica, scope, Action.RANGED, actor.get(),
-                            rangedSlot, ammoSlot, item);
+                            rangedSlot, ammoSlot, item, intent);
                 }
             }
 
@@ -212,12 +300,12 @@ public final class EchoDuelCombatRuntimeAdapter {
                 if (actor.isPresent() && EchoDuelCombatPolicy.tryApplyGearWear(
                         replica, meleeSlot, 1, replica.revision())) {
                     return decision(duel, baselineReplica, replica, scope, Action.MELEE, actor.get(),
-                            meleeSlot, -1, item);
+                            meleeSlot, -1, item, intent);
                 }
             }
 
             return Optional.of(new Decision(scope, Action.NONE, duel, duel, baselineReplica,
-                    replica, -1, -1, null));
+                    replica, -1, -1, null, intent));
         } catch (RuntimeException invalidSnapshot) {
             return Optional.empty();
         }
@@ -228,6 +316,16 @@ public final class EchoDuelCombatRuntimeAdapter {
                                                Scope scope, Action action, ActorState actor,
                                                int itemSlot, int ammoSlot,
                                                EchoLoadoutState.Item actionItem) {
+        return decision(current, baselineReplica, replica, scope, action, actor,
+                itemSlot, ammoSlot, actionItem, MovementIntent.HOLD);
+    }
+
+    private static Optional<Decision> decision(DuelRecord current, EchoLoadoutState baselineReplica,
+                                               EchoLoadoutState replica,
+                                               Scope scope, Action action, ActorState actor,
+                                               int itemSlot, int ammoSlot,
+                                               EchoLoadoutState.Item actionItem,
+                                               MovementIntent intent) {
         if (actor.revision() <= current.actor().revision()
                 || current.revision() >= RealitySplitEchoDuelState.MAX_COUNTER) return Optional.empty();
         DuelRecord next = current.withActor(current.runtimeGeneration(),
@@ -235,7 +333,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                 actor, current.revision() + 1L, replica.revision(), replica.encode(),
                 current.behaviorStrategy());
         return Optional.of(new Decision(scope, action, current, next, baselineReplica,
-                replica, itemSlot, ammoSlot, actionItem));
+                replica, itemSlot, ammoSlot, actionItem, intent));
     }
 
     /**

@@ -29,8 +29,12 @@ public final class EchoBehaviorStrategyTest {
                 "healing and sample confidence are quantized into bounded weights");
         check(strategy.observedWaveMask() == 0b001111 && strategy.fromEventStart(),
                 "strategy retains only bounded profile provenance");
-        check(strategy.encode().equals("1,750,250,750,250,38,750,15,1"),
+        // Schema 2 appends the five style features (jump attack, hold distance,
+        // kite share, shield share, weapon-switch share) after the base weights.
+        check(strategy.encode().equals("2,750,250,750,250,38,750,15,1,0,500,250,250,0"),
                 "strategy encoding persists only derived weights, not raw combat counts");
+        check(EchoBehaviorStrategy.decode(strategy.encode()).equals(strategy),
+                "the widened schema still restores exactly");
     }
 
     private static void emptyEvidenceUsesNeutralPerFeatureWeights() {
@@ -56,8 +60,13 @@ public final class EchoBehaviorStrategyTest {
         expectRejected(() -> new EchoBehaviorStrategy.ProfileCounts(
                 0, 0, 10, 11, 0, 0, 1, false, 0.0D),
                 "sample count greater than observations rejected");
+        // Waves 1-7 are observed now, so the mask covers seven bits: 64 is the
+        // Wave 7 bit and must be accepted, while 128 is outside the contract.
+        check(new EchoBehaviorStrategy.ProfileCounts(
+                0, 0, 0, 0, 0, 0, 0b111_1111, false, 0.0D).observedWaveMask() == 127,
+                "every observed wave 1-7 must fit the mask");
         expectRejected(() -> new EchoBehaviorStrategy.ProfileCounts(
-                0, 0, 0, 0, 0, 0, 64, false, 0.0D),
+                0, 0, 0, 0, 0, 0, 128, false, 0.0D),
                 "invalid wave mask rejected");
         expectRejected(() -> new EchoBehaviorStrategy.ProfileCounts(
                 0, 0, 0, 0, 0, 0, 1, false, Double.NaN),

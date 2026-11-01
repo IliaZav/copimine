@@ -43,5 +43,9 @@
 @media(max-width:760px){.v6-messages-list li{grid-template-columns:1fr auto;row-gap:4px}.v6-messages-list time{grid-column:1}.v6-messages-list small{grid-column:2;text-align:right}.v6-messages-world{grid-column:1/-1}.v6-messages-list code{grid-column:1/-1}}
 
 /* Иконки валют: текстуры из клиента Minecraft 26.3, пиксель в пиксель. */
-.money{display:inline-flex;align-items:center;gap:6px;vertical-align:middle;font-variant-numeric:tabular-nums}
-.money-icon{width:16px;height:16px;image-rendering:pixelated;flex:none}
+/* Иконка валюты: текстура алмазной руды из клиента Minecraft 26.3, пиксель в пиксель. */
+.money{display:inline-flex;align-items:center;gap:7px;vertical-align:middle;font-variant-numeric:tabular-nums}
+.money-icon{width:18px;height:18px;image-rendering:pixelated;flex:none}
+.v6-profile-kpis .money{font-size:inherit}
+.v6-profile-kpis .money-icon{width:22px;height:22px}
+input.money, .form-grid .money-icon{vertical-align:-3px}

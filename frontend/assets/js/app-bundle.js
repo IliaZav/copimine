@@ -779,7 +779,9 @@ return{normalize:norm,layout,distance,rank,redact,event,parseLogs,inventory,publ
 const M=CM,V=CMV4,D=CM5Domain,R=CM5_REGISTRY,E=M.esc,H=M.handlers,F=M.forms,s=()=>M.state;
 const materials=new Map();
 const syncMaterials=()=>{if(materials.size)return;for(const x of (window.CM5_REGISTRY?.materials||[])){const key=x.key||(String(x.id).includes(':')?x.id:'minecraft:'+x.id);materials.set(key,x);materials.set(String(x.id).toLowerCase(),x);}};
-const head=(p,size=28)=>`<img class="mc-head" width="${size}" height="${size}" src="${M.asset(p?.skin?.head||'assets/skins/steve-head.png')}" alt="" draggable="false">`;
+// Аватар берём с сервера: он работает и для пиратских аккаунтов, где
+// лицензионного скина нет. Стандартная голова остаётся запасным вариантом.
+const head=(p,size=28)=>`<img class="mc-head" width="${size}" height="${size}" src="${M.asset(p?.skin?.avatar||p?.skin?.head||'assets/skins/steve-head.png')}" alt="" draggable="false" loading="lazy">`;
 const mat=id=>{syncMaterials();return materials.get(String(id).includes(':')?id:'minecraft:'+String(id).toLowerCase());};
 const materialName=id=>{const c=s().catalog.find(x=>x.id===id||'copimine:'+x.id===id);if(c)return c.name;const m=mat(id);return m?(s().materialRu?.[m.id]||m.ru||m.en):String(id||'');};
 const texture=(id,size=24)=>{const m=mat(id),c=s().catalog.find(x=>x.id===id||'copimine:'+x.id===id);return (c?.image||m?.image)?`<img class="mc-item" width="${size}" height="${size}" src="${M.asset(c?.image||m.image)}" alt="" loading="lazy">`:`<span class="missing-material" title="${E(id)}">${icon('package')}</span>`;};
@@ -822,7 +824,7 @@ W.record=(row)=>{const event=D.event({...row,provenance:row.provenance||'local-a
 // Replace alphabetical badges with actual heads; uploaded skins use the same resolver.
 function replaceHeads(){for(const n of document.querySelectorAll('.avatar')){if(n.querySelector('img'))continue;const row=n.closest('tr,.list-row,.candidate-card');const p=n.closest('.admin-profile')?s().players.find(p=>p.id==='demo-admin'):(row?s().players.find(p=>row.textContent.includes(p.name)):null)||M.me()||W.player();n.innerHTML=head(p,40);n.classList.add('head-avatar');}}
 function slotButton(item,i){let x,y;if(i<9){x=8+i*18;y=142;}else if(i<36){x=8+((i-9)%9)*18;y=84+Math.floor((i-9)/9)*18;}else if(i<40){x=8;y=8+(39-i)*18;}else{x=77;y=62;}const title=item?materialName(item.id)+(item.qty>1?' × '+item.qty:''):'Пусто';return`<button class="inventory-slot" style="left:${x/176*100}%;top:${y/166*100}%" data-action="slot-detail" data-slot="${i}" aria-label="${E(title)}" title="${E(title)}">${item?texture(item.customId||item.id,32):''}${item?.qty>1?`<span class="slot-count">${item.qty}</span>`:''}${item?.durability!=null?`<span class="slot-durability"><i style="width:${item.durability*100}%"></i></span>`:''}</button>`;}
-function inventoryView(p){const snaps=(s().playerSnapshots||[]).filter(x=>x.player===p.name&&(x.kind||'inventory')==='inventory').sort((a,b)=>b.at-a.at),snap=snaps.find(x=>x.id===s().selectedInventory)||snaps[0];W.activeSnapshot=snap;return`<section class="inventory-panel"><div class="panel-head"><div><h2>Инвентарь</h2><p class="hint mt12">${snap?(snap.source==='demo'?'Пример для проверки':snap.source==='server'?'Снимок с сервера':'Импортированный снимок')+' · '+M.date(snap.at):'Снимок игрока не загружен'}</p></div><div class="actions"><label class="btn small">${icon('upload')}Импорт JSON<input id="inventory-import-v5" type="file" accept=".json" hidden></label>${M.btn('JSON','snapshot-export','download','small')}</div></div><div class="inventory-stage"><div class="minecraft-inventory" style="background-image:url('${M.asset('assets/gui/inventory.png')}')">${Array.from({length:41},(_,i)=>slotButton(snap?.slots[i],i)).join('')}<img class="inventory-player" src="${M.asset(p.skin?.front||'assets/skins/steve-front.png')}" alt="Скин ${E(p.name)}"><span class="craft-caption">Создание</span></div></div><div class="inventory-meta"><span>${icon('clock')}${snap?'Получено '+M.date(snap.at):'Нет данных'}</span><span>${icon('lock')}Только просмотр</span></div>${!snap?V.note('Пустые ячейки не означают, что инвентарь игрока пуст. Нужен снимок с сервера.'):''}${snaps.length>1?`<label class="field mt">История снимков<select id="inventory-version">${snaps.map(a=>`<option value="${a.id}" ${a.id===snap.id?'selected':''}>${M.date(a.at)} · ${E(a.source)}</option>`).join('')}</select></label>`:''}</section>`;}
+function inventoryView(p){const snaps=(s().playerSnapshots||[]).filter(x=>x.player===p.name&&(x.kind||'inventory')==='inventory').sort((a,b)=>b.at-a.at),snap=snaps.find(x=>x.id===s().selectedInventory)||snaps[0];W.activeSnapshot=snap;return`<section class="inventory-panel"><div class="panel-head"><div><h2>Инвентарь</h2><p class="hint mt12">${snap?(snap.source==='demo'?'Пример для проверки':snap.source==='server'?'Снимок с сервера':'Импортированный снимок')+' · '+M.date(snap.at):'Снимок игрока не загружен'}</p></div><div class="actions"><label class="btn small">${icon('upload')}Импорт JSON<input id="inventory-import-v5" type="file" accept=".json" hidden></label>${M.btn('JSON','snapshot-export','download','small')}</div></div><div class="inventory-stage"><div class="minecraft-inventory" style="background-image:url('${M.asset('assets/gui/inventory.png')}')">${Array.from({length:41},(_,i)=>slotButton(snap?.slots[i],i)).join('')}<img class="inventory-player" src="${M.asset(p.skin?.body||p.skin?.front||'assets/skins/steve-front.png')}" alt="Скин ${E(p.name)}"><span class="craft-caption">Создание</span></div></div><div class="inventory-meta"><span>${icon('clock')}${snap?'Получено '+M.date(snap.at):'Нет данных'}</span><span>${icon('lock')}Только просмотр</span></div>${!snap?V.note('Пустые ячейки не означают, что инвентарь игрока пуст. Нужен снимок с сервера.'):''}${snaps.length>1?`<label class="field mt">История снимков<select id="inventory-version">${snaps.map(a=>`<option value="${a.id}" ${a.id===snap.id?'selected':''}>${M.date(a.at)} · ${E(a.source)}</option>`).join('')}</select></label>`:''}</section>`;}
 W.inventoryView=inventoryView;
 H['slot-detail']=b=>{const p=W.activeSnapshot?.slots[+b.dataset.slot];if(!p)return;const names={efficiency:'Эффективность',unbreaking:'Прочность',mending:'Починка',sharpness:'Острота',protection:'Защита'};M.openModal(E(materialName(p.id)),`<div class="slot-detail-icon">${texture(p.customId||p.id,86)}</div><dl class="detail-specs"><div><dt>ID</dt><dd>${E(p.id)}</dd></div><div><dt>Ячейка</dt><dd>${p.slot}</dd></div><div><dt>Количество</dt><dd>${p.qty}</dd></div>${p.durability!=null?`<div><dt>Прочность</dt><dd>${Math.round(p.durability*100)}%</dd></div>`:''}</dl>${Object.entries(p.enchantments).map(([k,v])=>`<p class="enchantment">${E(names[k]||k)} ${E(v)}</p>`).join('')}`);};
 H['snapshot-export']=()=>{const snap=W.activeSnapshot;if(snap)M.downloadFile('inventory-'+snap.player+'.json',JSON.stringify({player:snap.player,at:snap.at,source:snap.source,items:snap.items},null,2));else M.downloadFile('inventory-format.json',JSON.stringify({player:W.player().name,at:Date.now(),items:[]},null,2));};
@@ -2867,7 +2869,7 @@ function actionButton(id,p,small=false){const a=X.actions.find(x=>x.id===id);if(
 function detail(label,value){return '<div><dt>'+label+'</dt><dd>'+E(value??'Нет данных')+'</dd></div>';}
 function ender(p,admin){const snap=X.snapshot(p,'ender'),list=slots(snap);return '<section class="inventory-panel v6-ender-panel"><div class="panel-head"><div><h2>Эндер-сундук</h2><p class="hint mt12">'+(snap?formatTime(snap.at):'Снимок с сервера ещё не получен')+'</p></div>'+W.texture('minecraft:ender_chest',36)+'</div><div class="v6-ender-stage"><div class="v6-ender-chest" role="group" aria-label="27 ячеек эндер-сундука">'+list.slice(0,27).map((v,i)=>'<button type="button" class="v6-chest-slot '+(v?'filled':'')+'" data-action="v6-slot-detail" data-player="'+E(p.id)+'" data-kind="ender" data-slot="'+i+'" aria-label="'+E('Ячейка '+(i+1)+(v?', '+W.materialName(v.customId||v.id)+', '+v.qty+' шт.':', нет предмета в снимке'))+'">'+(v?W.texture(v.customId||v.id,32)+(v.qty>1?'<span>'+v.qty+'</span>':''):'')+'</button>').join('')+'</div></div><div class="inventory-meta"><span>'+icon('lock')+'Личный сундук</span><span>'+icon('package')+'27 ячеек</span></div>'+(!snap?V.note('Пока нет снимка, содержимое сундука неизвестно.'):admin?'<p class="hint">Нажми на предмет, чтобы посмотреть свойства или изменить количество.</p>':'')+'</section>';}
 function inventories(p,admin){if(window.CM73Inventory&&admin)return CM73Inventory.view(p,'inventory');let inventory=W.inventoryView(p);if(X.live)inventory=inventory.replace(/<label class="btn small">[\s\S]*?Импорт JSON[\s\S]*?<\/label>/,'');return '<div class="v6-inventory-toolbar"><span class="hint">Состояние сохраняется игровым сервером.</span>'+M.btn('Обновить инвентари','v6-snapshot-refresh','refresh','small','data-player="'+E(p.id)+'"')+'</div><div class="v6-inventories">'+inventory+ender(p,admin)+'</div>';}
-X.profile=(p,admin=false)=>{const donations=playerDonations(p),paid=donations.filter(x=>['paid','succeeded','completed'].includes(x.status)),orders=playerOrders(p),location=p.location||p.position;return '<div class="v6-player-head">'+head(p)+'<div><div class="kicker">'+(admin?'Карточка игрока':'Мой аккаунт')+'</div><h2>'+E(p.displayName||p.name)+'</h2>'+(p.displayName&&p.displayName!==p.name?'<span class="hint">'+E(p.name)+'</span>':'')+'</div><div class="v6-player-state">'+M.pill(playerStatus(p),p.online?'green':'')+M.pill(p.role)+'</div>'+(admin?'<div class="actions">'+actionButton('give',p,true)+actionButton('money.adjust',p,true)+'</div>':'')+'</div><div class="v6-player-layout"><div><div class="v6-profile-kpis"><div><span>Баланс AR</span><strong>'+M.money(p.AR,'AR')+'</strong></div><div><span>Баланс CM</span><strong>'+M.money(p.CM,'CM')+'</strong></div><div><span>Покупок</span><strong>'+new Set(orders.map(o=>o.id)).size+'</strong></div><div><span>Донаты</span><strong>'+M.money(paid.reduce((n,x)=>n+Number(x.rubles||0),0),'₽')+'</strong></div></div>'+inventories(p,admin)+'<section class="panel mt"><div class="panel-head"><h2>Последние покупки</h2>'+M.link('Все покупки',admin?'#admin/players?sub=finance&player='+encodeURIComponent(p.id):'#account/orders','arrow-right','small')+'</div>'+(orders.length?M.orderRows(orders.slice(0,5)):M.empty('Покупок пока нет','Оформленные заказы появятся здесь.','bag'))+'</section></div><aside class="panel v6-player-info"><div class="v6-skin-display"><img src="'+M.asset(p.skin?.front||'assets/skins/steve-front.png')+'" alt="Скин '+E(p.name)+'" width="96" height="192"></div><h3>Об игроке</h3><dl class="detail-specs">'+detail('Ник',p.name)+detail('UUID',p.gameUuid||p.uuid)+detail('Регистрация',formatTime(p.createdAt||p.registeredAt))+detail('Последний вход',formatTime(p.lastSeen||p.lastLogin))+detail('Время в игре',p.playtimeSeconds!=null?Math.floor(p.playtimeSeconds/3600)+' ч':null)+detail('Мир',location?.world||p.world)+detail('Координаты',location?[location.x,location.y,location.z].map(Math.round).join(', '):null)+detail('Здоровье',p.health!=null?p.health+' / '+(p.maxHealth||20):null)+detail('Сытость',p.food!=null?p.food+' / 20':null)+detail('Уровень',p.level)+detail('Связь с Minecraft',p.gameLinkVerified?'Подтверждена':X.live?'Не подтверждена':'Пример')+'</dl>'+(admin?'<p class="hint">Чувствительные действия требуют подтверждения входа и записываются в журнал.</p>':'')+'</aside></div>';};
+X.profile=(p,admin=false)=>{const donations=playerDonations(p),paid=donations.filter(x=>['paid','succeeded','completed'].includes(x.status)),orders=playerOrders(p),location=p.location||p.position;return '<div class="v6-player-head">'+head(p)+'<div><div class="kicker">'+(admin?'Карточка игрока':'Мой аккаунт')+'</div><h2>'+E(p.displayName||p.name)+'</h2>'+(p.displayName&&p.displayName!==p.name?'<span class="hint">'+E(p.name)+'</span>':'')+'</div><div class="v6-player-state">'+M.pill(playerStatus(p),p.online?'green':'')+M.pill(p.role)+'</div>'+(admin?'<div class="actions">'+actionButton('give',p,true)+actionButton('money.adjust',p,true)+'</div>':'')+'</div><div class="v6-player-layout"><div><div class="v6-profile-kpis"><div><span>Баланс AR</span><strong>'+M.money(p.AR,'AR')+'</strong></div><div><span>Баланс CM</span><strong>'+M.money(p.CM,'CM')+'</strong></div><div><span>Покупок</span><strong>'+new Set(orders.map(o=>o.id)).size+'</strong></div><div><span>Донаты</span><strong>'+M.money(paid.reduce((n,x)=>n+Number(x.rubles||0),0),'₽')+'</strong></div></div>'+inventories(p,admin)+'<section class="panel mt"><div class="panel-head"><h2>Последние покупки</h2>'+M.link('Все покупки',admin?'#admin/players?sub=finance&player='+encodeURIComponent(p.id):'#account/orders','arrow-right','small')+'</div>'+(orders.length?M.orderRows(orders.slice(0,5)):M.empty('Покупок пока нет','Оформленные заказы появятся здесь.','bag'))+'</section></div><aside class="panel v6-player-info"><div class="v6-skin-display"><img src="'+M.asset(p.skin?.body||p.skin?.front||'assets/skins/steve-front.png')+'" alt="Скин '+E(p.name)+'" width="96" height="192" loading="lazy"></div>'+skinPicker(p)+'<h3>Об игроке</h3><dl class="detail-specs">'+detail('Ник',p.name)+detail('UUID',p.gameUuid||p.uuid)+detail('Регистрация',formatTime(p.createdAt||p.registeredAt))+detail('Последний вход',formatTime(p.lastSeen||p.lastLogin))+detail('Время в игре',p.playtimeSeconds!=null?Math.floor(p.playtimeSeconds/3600)+' ч':null)+detail('Мир',location?.world||p.world)+detail('Координаты',location?[location.x,location.y,location.z].map(Math.round).join(', '):null)+detail('Здоровье',p.health!=null?p.health+' / '+(p.maxHealth||20):null)+detail('Сытость',p.food!=null?p.food+' / 20':null)+detail('Уровень',p.level)+detail('Связь с Minecraft',p.gameLinkVerified?'Подтверждена':X.live?'Не подтверждена':'Пример')+'</dl>'+(admin?'<p class="hint">Чувствительные действия требуют подтверждения входа и записываются в журнал.</p>':'')+'</aside></div>';};
 function listPlayers(){return '<section class="panel"><div class="panel-head"><h2>Игроки</h2><span class="hint">'+s().players.length+'</span></div><label class="input-wrap search-box"><span>'+icon('search')+'</span><input id="v6-player-search" placeholder="Ник или UUID" aria-label="Найти игрока"></label><div class="v6-player-list">'+s().players.slice(0,300).map(p=>'<a class="v6-player-list-row" data-player-search="'+E([p.name,p.id,p.uuid].filter(Boolean).join(' ').toLowerCase())+'" href="#admin/players?player='+encodeURIComponent(p.id)+'">'+W.head(p,32)+'<span><strong>'+E(p.name)+'</strong><small>'+E(p.role)+'</small></span><span>'+E(playerStatus(p))+'</span>'+icon('chevron-right')+'</a>').join('')+'</div><p id="v6-player-empty" class="hint mt" hidden>Ничего не найдено. Попробуй ник или UUID.</p></section>';}
 function actionView(p){const groups=[...new Set(X.actions.filter(a=>a.scope!=='server').map(a=>a.group))];return X.previewNote()+'<label class="input-wrap search-box mb">'+icon('search')+'<input id="v6-action-search" aria-label="Найти действие над игроком" placeholder="Например: выдать предмет, мут, телепорт"></label><div class="v6-action-groups">'+groups.map(group=>'<section class="panel v6-action-group"><div class="panel-head"><h2>'+E(group)+'</h2></div><div class="v6-actions-grid">'+X.actions.filter(a=>a.scope!=='server'&&a.group===group).map(a=>'<button type="button" class="v6-action-card" data-action="v6-player-action" data-player="'+E(p.id)+'" data-id="'+E(a.id)+'" data-action-search="'+E(a.label+' '+a.id)+'" '+(!D.canManage(M.me(),p)||(X.live&&a.permission&&!X.can(a.permission))?'disabled':'')+'>'+icon(a.icon||'settings')+'<span>'+E(a.label)+'</span>'+icon('chevron-right')+'</button>').join('')+'</div></section>').join('')+'</div>';}
 const kindLabel=k=>({ban:'Бан','ban.ip':'Бан IP',mute:'Мут',warn:'Предупреждение',freeze:'Заморозка',jail:'Тюрьма'}[k]||k);
@@ -2891,6 +2893,34 @@ H['v6-history-refresh']=async b=>{const host=document.querySelector('[data-histo
 // балансы и фабрикованные регистрации, из-за чего реальные показатели проекта
 // перестают быть правдой. Каждая галочка убирает аккаунт из своей группы цифр.
 const STATS_KINDS=[['money','Деньги и балансы','Суммарный баланс донат-валюты, оборот и средний чек считаются без этого аккаунта.','wallet'],['activity','Активность и входы','Входы, время в игре и «были активны за неделю» не учитывают его.','activity'],['registration','Регистрации и привязки','Аккаунт не попадает в счётчики регистраций, подтверждённых почт и привязок.','user-plus']];
+// Скин: сервер без лицензии не выдаёт официальных скинов, поэтому у игрока
+// должен быть выбор прямо здесь — готовый набор или свой PNG.
+const SKIN_PRESETS=[['steve','Стив'],['alex','Алекс'],['ari','Ари'],['efe','Эфе'],['kai','Кай'],['makena','Макена'],['noor','Нур'],['sunny','Санни'],['zuri','Зури']];
+function currentSkinId(p){const t=String(p.skin?.texture||'');const m=t.match(/assets\/skins\/([a-z]+)\.png/);return m?m[1]:'';}
+function skinPicker(p){
+ const active=currentSkinId(p);
+ return '<div class="v6-skin-picker"><div class="panel-head"><h3>Скин</h3><span class="hint">'+(active?'Из набора':'Свой или стандартный')+'</span></div>'
+  +'<div class="v6-skin-grid">'+SKIN_PRESETS.map(([id,name])=>'<button type="button" class="v6-skin-tile'+(active===id?' active':'')+'" data-skin="'+id+'" data-player="'+E(p.id)+'" title="'+E(name)+'"><img src="assets/skins/'+id+'-head.png" alt="'+E(name)+'" width="40" height="40" loading="lazy"><span>'+E(name)+'</span></button>').join('')+'</div>'
+  +'<div class="actions mt12"><label class="btn ghost small" role="button" tabindex="0">Загрузить PNG<input type="file" accept="image/png" data-skin-upload="'+E(p.id)+'" hidden></label>'
+  +(active?'<button type="button" class="btn ghost small" data-skin-reset="'+E(p.id)+'">Сбросить</button>':'')+'</div>'
+  +'<p class="hint mt12">PNG 64×64 или 64×32. Скин виден в списке и в карточке.</p></div>';
+}
+async function applySkin(playerId,body){
+ const r=await X.request('/admin/players/'+encodeURIComponent(playerId)+'/skin',{method:'POST',body});
+ const player=s().players.find(x=>x.id===playerId);
+ if(player)player.skin=r.skin;
+ M.toast('Скин обновлён.');M.render();
+}
+H['v6-skin-pick']=async b=>{try{await applySkin(b.dataset.player,{preset:b.dataset.skin});}catch(e){M.toast(e.message,true);}};
+H['v6-skin-reset']=async b=>{try{await applySkin(b.dataset.player,{preset:'',reset:true});}catch(e){M.toast(e.message,true);}};
+document.addEventListener('change',async e=>{
+ const id=e.target.dataset?.skinUpload;if(!id||!e.target.files?.[0])return;
+ const file=e.target.files[0];
+ try{
+  const image=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]||'');r.onerror=()=>rej(Error('Не удалось прочитать файл.'));r.readAsDataURL(file);});
+  await applySkin(id,{image,slim:false});
+ }catch(err){M.toast(err.message,true);}
+});
 function statsView(p){
  const marks=(s().statsExclusions||{})[p.id]||{};
  const rows=STATS_KINDS.map(([id,label,note,ic])=>'<tr><td><strong>'+E(label)+'</strong><p class="hint mt12">'+E(note)+'</p></td><td><label class="check-row"><input type="checkbox" name="'+id+'" '+(marks[id]?'checked':'')+'>Не учитывать</label></td></tr>').join('');
@@ -4981,7 +5011,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
  */
 (function () {
   'use strict';
-  const M = CM, V = CMV4, A = CM71, W = CM5, Q = CMReview;
+  const M = CM, V = CMV4, A = CM71, W = CM5, Q = CMReview, X = window.CM6;
   const R = M.renderers, H = M.handlers, E = M.esc, state = () => M.state;
   const api = window.CM72 = { galleryIndex: 0, skinYaw: -25, skinPitch: -6 };
   const photo = 'assets/photos/copimine-night.webp';
@@ -5231,9 +5261,11 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   }
 
   function saveSkin() { const p = M.me(); state().reviewPersonal ||= {}; state().reviewPersonal.skin = M.clone(p.skin); state().reviewPersonal.skinOwner = p.id; M.save(); }
-  H['cm72-skin-default'] = () => {
+  // Скин хранится на сервере: иначе он виден только в этом браузере.
+  H['cm72-skin-default'] = async () => {
     const p = M.me(), name = p.id === 'demo-admin' ? 'alex' : 'steve';
     p.skin = { texture: `assets/skins/${name}.png`, head: `assets/skins/${name}-head.png`, front: `assets/skins/${name}-front.png`, back: `assets/skins/${name}-back.png`, source: 'default', model: name === 'alex' ? 'slim' : 'classic' };
+    if (X && X.live) { try { await X.request('/account/skin', { method: 'DELETE' }); } catch (err) { M.toast(err.message, true); return; } }
     saveSkin(); M.render(); M.toast('Стандартный скин восстановлен.');
   };
   H['cm72-skin-reset'] = b => { api.skinYaw = -25; api.skinPitch = -6; rotateSkin(b.closest('.cm72-skin-view')); };
@@ -5252,11 +5284,26 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       stage.addEventListener('keydown', e => { if (e.target !== stage) return; if (['ArrowRight', 'ArrowLeft', 'Home'].includes(e.key)) { e.preventDefault(); api.skinYaw = e.key === 'Home' ? -25 : api.skinYaw + (e.key === 'ArrowRight' ? 15 : -15); rotateSkin(stage); } });
     }
   }
+  // Файл читаем как data URL: сервер ждёт base64 без префикса.
+  const fileToBase64 = file => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
+    reader.onerror = () => reject(new Error('Не удалось прочитать файл скина.'));
+    reader.readAsDataURL(file);
+  });
   document.addEventListener('change', async e => {
     if (e.target.id === 'cm72-skin-file') {
       const file = e.target.files?.[0]; if (!file || !M.me()) return;
       const oldModel = el('cm72-skin-kind')?.value || 'classic';
-      try { const skin = await readSkin(file, oldModel); M.me().skin = skin; saveSkin(); M.render(); M.toast('Скин обновлён.'); }
+      try {
+        const skin = await readSkin(file, oldModel);
+        if (X && X.live) {
+          const image = await fileToBase64(file);
+          const saved = await X.request('/account/skin', { method: 'POST', body: { image, slim: oldModel === 'slim' } });
+          Object.assign(skin, saved.skin || {});
+        }
+        M.me().skin = skin; saveSkin(); M.render(); M.toast('Скин обновлён.');
+      }
       catch (err) { if (el('cm72-skin-error')) el('cm72-skin-error').textContent = err.message; else M.toast(err.message, true); }
     }
     if (e.target.id === 'cm72-skin-kind' && M.me()) { M.me().skin ||= { texture: 'assets/skins/steve.png' }; M.me().skin.model = e.target.value; saveSkin(); M.render(); }

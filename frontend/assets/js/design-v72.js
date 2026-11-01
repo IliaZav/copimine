@@ -4,7 +4,7 @@
  */
 (function () {
   'use strict';
-  const M = CM, V = CMV4, A = CM71, W = CM5, Q = CMReview;
+  const M = CM, V = CMV4, A = CM71, W = CM5, Q = CMReview, X = window.CM6;
   const R = M.renderers, H = M.handlers, E = M.esc, state = () => M.state;
   const api = window.CM72 = { galleryIndex: 0, skinYaw: -25, skinPitch: -6 };
   const photo = 'assets/photos/copimine-night.webp';
@@ -254,9 +254,11 @@
   }
 
   function saveSkin() { const p = M.me(); state().reviewPersonal ||= {}; state().reviewPersonal.skin = M.clone(p.skin); state().reviewPersonal.skinOwner = p.id; M.save(); }
-  H['cm72-skin-default'] = () => {
+  // Скин хранится на сервере: иначе он виден только в этом браузере.
+  H['cm72-skin-default'] = async () => {
     const p = M.me(), name = p.id === 'demo-admin' ? 'alex' : 'steve';
     p.skin = { texture: `assets/skins/${name}.png`, head: `assets/skins/${name}-head.png`, front: `assets/skins/${name}-front.png`, back: `assets/skins/${name}-back.png`, source: 'default', model: name === 'alex' ? 'slim' : 'classic' };
+    if (X && X.live) { try { await X.request('/account/skin', { method: 'DELETE' }); } catch (err) { M.toast(err.message, true); return; } }
     saveSkin(); M.render(); M.toast('Стандартный скин восстановлен.');
   };
   H['cm72-skin-reset'] = b => { api.skinYaw = -25; api.skinPitch = -6; rotateSkin(b.closest('.cm72-skin-view')); };
@@ -275,11 +277,26 @@
       stage.addEventListener('keydown', e => { if (e.target !== stage) return; if (['ArrowRight', 'ArrowLeft', 'Home'].includes(e.key)) { e.preventDefault(); api.skinYaw = e.key === 'Home' ? -25 : api.skinYaw + (e.key === 'ArrowRight' ? 15 : -15); rotateSkin(stage); } });
     }
   }
+  // Файл читаем как data URL: сервер ждёт base64 без префикса.
+  const fileToBase64 = file => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
+    reader.onerror = () => reject(new Error('Не удалось прочитать файл скина.'));
+    reader.readAsDataURL(file);
+  });
   document.addEventListener('change', async e => {
     if (e.target.id === 'cm72-skin-file') {
       const file = e.target.files?.[0]; if (!file || !M.me()) return;
       const oldModel = el('cm72-skin-kind')?.value || 'classic';
-      try { const skin = await readSkin(file, oldModel); M.me().skin = skin; saveSkin(); M.render(); M.toast('Скин обновлён.'); }
+      try {
+        const skin = await readSkin(file, oldModel);
+        if (X && X.live) {
+          const image = await fileToBase64(file);
+          const saved = await X.request('/account/skin', { method: 'POST', body: { image, slim: oldModel === 'slim' } });
+          Object.assign(skin, saved.skin || {});
+        }
+        M.me().skin = skin; saveSkin(); M.render(); M.toast('Скин обновлён.');
+      }
       catch (err) { if (el('cm72-skin-error')) el('cm72-skin-error').textContent = err.message; else M.toast(err.message, true); }
     }
     if (e.target.id === 'cm72-skin-kind' && M.me()) { M.me().skin ||= { texture: 'assets/skins/steve.png' }; M.me().skin.model = e.target.value; saveSkin(); M.render(); }

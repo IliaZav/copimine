@@ -107,6 +107,13 @@ CREATE TABLE IF NOT EXISTS cm_site_stats_exclusions (
  exclude_registration INTEGER NOT NULL DEFAULT 0, updated_s BIGINT NOT NULL DEFAULT 0,
  actor_id TEXT NOT NULL DEFAULT '', actor_name TEXT NOT NULL DEFAULT ''
 );
+-- Скины игроков. Сервер без лицензии не выдаёт официальные скины, поэтому
+-- игрок загружает текстуру на сайт, а сайт отдаёт её как обычную картинку.
+CREATE TABLE IF NOT EXISTS cm_site_skins (
+ player_uuid TEXT PRIMARY KEY, texture TEXT NOT NULL, slim INTEGER NOT NULL DEFAULT 0,
+ bytes BIGINT NOT NULL DEFAULT 0, sha256 TEXT NOT NULL DEFAULT '',
+ uploaded_s BIGINT NOT NULL, updated_s BIGINT NOT NULL, actor_id TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS cm_site_analytics_events (
  id TEXT PRIMARY KEY, event_type TEXT NOT NULL, page TEXT NOT NULL,
  visitor_hash TEXT NOT NULL, item_id TEXT NOT NULL DEFAULT '', quantity INTEGER NOT NULL DEFAULT 0,

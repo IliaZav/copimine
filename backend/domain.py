@@ -1,4 +1,5 @@
 import csv
+from pathlib import Path
 import hashlib
 import hmac
 import io
@@ -8,6 +9,11 @@ import secrets
 import time
 import uuid
 from urllib.parse import quote, urlparse
+
+try:
+    import httpx
+except ImportError:  # httpx нужен только для прокси скинов
+    httpx = None
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from starlette.concurrency import run_in_threadpool
@@ -240,12 +246,14 @@ def build_state(request):
     with database.transaction() as db:
         rows = db.execute("SELECT * FROM cm_site_users ORDER BY created_s DESC LIMIT 500").fetchall() if "players.view" in permissions else [user]
         balances = player_balances(db, rows)
+        skins = skins_for(db, rows)
         result["players"] = [
             {**public_user(dict(row)),
              "AR": balances.get(("AR", str(row["minecraft_uuid"] or "")), 0)
              if row["minecraft_uuid"] else 0,
              "CM": balances.get(("DONATION", str(row["minecraft_uuid"] or "")), 0)
              if row["minecraft_uuid"] else 0,
+             "skin": skins.get(str(row["id"])) or None,
              "online": False, "purchaseLimits": []}
             for row in rows
         ]
@@ -278,6 +286,427 @@ def build_state(request):
             elif player["uuid"] not in existing:
                 result["players"].append({"id": player["uuid"], "name": player["name"], "displayName": player["name"], "role": "player", "enabled": True, "status": "active", "gameUUID": player["uuid"], "minecraftUuid": player["uuid"], "minecraftName": player["name"], "gameLinkVerified": False, "online": True, "AR": None, "CM": None, "purchaseLimits": [], "gameOnly": True})
     return result
+
+
+SKIN_PLACEHOLDER_BYTES = 900  # меньше — это стандартный Стив от сервиса, а не скин игрока
+
+
+def _offline_uuid(name):
+    """UUID пиратского аккаунта: тот же алгоритм, что у Bukkit OfflinePlayer."""
+    digest = bytearray(hashlib.md5(("OfflinePlayer:" + str(name or "")).encode()).digest())
+    digest[6] = (digest[6] & 0x0F) | 0x30
+    digest[8] = (digest[8] & 0x3F) | 0x80
+    return str(uuid.UUID(bytes=bytes(digest)))
+
+
+def skins_for(db, rows):
+    """Ссылки на скин и аватар для каждого аккаунта.
+
+    Сервер работает без лицензии, поэтому у игроков нет официальных скинов.
+    Текстуру всё равно пробуем: её мог задать SkinRestorer или загрузить сам
+    игрок на сайт. Когда скина нет, отдаём силуэт по нику, а не битую картинку.
+    """
+    uuids = [str(row["minecraft_uuid"]) for row in rows if row["minecraft_uuid"]]
+    uploaded = {}
+    if uuids:
+        try:
+            marks = ",".join(["%s"] * len(uuids))
+            for row in db.execute(
+                f"SELECT player_uuid, slim FROM cm_site_skins WHERE player_uuid IN ({marks})",
+                tuple(uuids),
+            ).fetchall():
+                uploaded[str(row["player_uuid"])] = bool(row["slim"])
+        except Exception:  # noqa: BLE001 — таблицы может не быть до миграции
+            uploaded = {}
+    found = {}
+    for row in rows:
+        name = str(row["minecraft_name"] or "")
+        uuid_ = str(row["minecraft_uuid"] or "")
+        if not uuid_ and name:
+            uuid_ = _offline_uuid(name)
+        if not uuid_:
+            continue
+        key = uuid_.replace("-", "").lower()
+        found[str(row["id"])] = {
+            "uuid": uuid_,
+            "texture": f"/api/v6/skin/{key}/texture",
+            "avatar": f"/api/v6/skin/{key}/avatar",
+            "body": f"/api/v6/skin/{key}/body",
+            "source": "uploaded" if uuid_ in uploaded else "lookup",
+            "slim": uploaded.get(uuid_, False),
+        }
+    return found
+
+
+SKIN_CACHE = {}
+SKIN_CACHE_TTL = 900
+SKIN_CACHE_MAX = 512
+SKIN_RATE = {}
+
+
+def _skin_cache_get(key):
+    hit = SKIN_CACHE.get(key)
+    if hit and time.time() - hit[0] < SKIN_CACHE_TTL:
+        return hit[1], hit[2]
+    return None, None
+
+
+def _skin_cache_put(key, body, mime):
+    if len(SKIN_CACHE) >= SKIN_CACHE_MAX:
+        SKIN_CACHE.pop(min(SKIN_CACHE, key=lambda k: SKIN_CACHE[k][0]), None)
+    SKIN_CACHE[key] = (time.time(), body, mime)
+
+
+def _render_head(texture, scale=8):
+    """Собрать голову 8×8 из текстуры скина — тот же кроп, что у клиента.
+
+    Голова и слой шапки лежат в известных местах атласа 64×64. Рисуем сами,
+    чтобы аватар не зависел от чужих сервисов и не ждал сеть.
+    """
+    try:
+        import io as _io
+        from PIL import Image
+    except ImportError:
+        return None
+    try:
+        source = Image.open(_io.BytesIO(texture)).convert("RGBA")
+    except Exception:  # noqa: BLE001 — битая текстура не должна ронять страницу
+        return None
+    if source.size not in ((64, 64), (64, 32)):
+        return None
+    face = source.crop((8, 8, 16, 16))
+    head = Image.new("RGBA", (8, 8))
+    head.paste(face, (0, 0))
+    if source.size == (64, 64):
+        hat = source.crop((40, 8, 48, 16))
+        head = Image.alpha_composite(head, hat)
+    enlarged = head.resize((8 * scale, 8 * scale), Image.NEAREST)
+    buffer = _io.BytesIO()
+    enlarged.save(buffer, "PNG")
+    return buffer.getvalue()
+
+
+def _skin_letter_avatar(key):
+    """Аватар-заглушка без внешних сервисов: инициал на цвете из UUID.
+
+    Рисуем SVG, чтобы балансировщик не мог отдать чужую картинку и чтобы
+    страница не ждала сеть ради иконки.
+    """
+    import hashlib as _hash
+    digest = _hash.sha256(key.encode()).hexdigest()
+    hue = int(digest[:4], 16) % 360
+    letter = (digest[4:6].upper() or "?")[0]
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">'
+        f'<rect width="64" height="64" rx="14" fill="hsl({hue} 42% 24%)"/>'
+        f'<text x="32" y="43" font-family="system-ui,sans-serif" font-size="30" font-weight="600"'
+        f' fill="hsl({hue} 60% 72%)" text-anchor="middle">{letter}</text></svg>'
+    )
+    return svg.encode(), "image/svg+xml"
+
+
+async def _skin_fetch(urls):
+    if httpx is None:
+        return None, None
+    timeout = httpx.Timeout(6.0, connect=3.0)
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        for url in urls:
+            try:
+                remote = await client.get(url)
+            except Exception:  # noqa: BLE001 — сеть до чужого сервиса не должна ронять страницу
+                continue
+            if remote.status_code != 200:
+                continue
+            mime = remote.headers.get("content-type", "")
+            if "image" not in mime or len(remote.content) > 2 * 1024 * 1024:
+                continue
+            # Сервисы иногда отвечают 200 и HTML вместо картинки: проверяем
+            # сигнатуру, иначе браузер получит мусор вместо аватара.
+            magic = remote.content[:12]
+            if not (magic.startswith(b"\x89PNG\r\n\x1a\n") or magic[:4] == b"RIFF"
+                    or magic[:6] in (b"GIF87a", b"GIF89a")):
+                continue
+            return remote.content, mime
+    return None, None
+
+
+def _skin_key(value):
+    key = str(value or "").strip().lower().replace("-", "")
+    return key if len(key) == 32 and all(c in "0123456789abcdef" for c in key) else ""
+
+
+def _rate_skin(request, key):
+    """Мягкий лимит на поиск скина во внешнем сервисе.
+
+    Отдача аватарки — обычная загрузка картинки, и каждая страница со списком
+    игроков сразу тянет десятки штук, поэтому запас щедрый.
+    """
+    now = time.time()
+    bucket = SKIN_RATE.setdefault(key, [])
+    while bucket and now - bucket[0] > 60:
+        bucket.pop(0)
+    if len(bucket) >= 600:
+        fail(429, "too_many_requests", "Слишком много запросов. Подождите минуту.")
+    bucket.append(now)
+
+
+SKIN_MAX_BYTES = 64 * 1024
+
+
+def _validate_skin(raw):
+    """Проверить PNG-текстуру скина: размер 64×64 или 64×32, формат PNG."""
+    import struct
+    if not raw or len(raw) < 24:
+        fail(400, "invalid_skin", "Файл пустой или повреждён.")
+    if len(raw) > SKIN_MAX_BYTES:
+        fail(400, "skin_too_large", "Скин больше 64 КБ.")
+    if raw[:8] != b"\x89PNG\r\n\x1a\n":
+        fail(400, "invalid_skin", "Нужен файл PNG. Пересохраните картинку в PNG и попробуйте снова.")
+    width, height = struct.unpack(">II", raw[16:24])
+    if (width, height) not in ((64, 64), (64, 32)):
+        fail(400, "invalid_skin", f"Размер скина должен быть 64×64 или 64×32, а не {width}×{height}.")
+    return width, height
+
+
+@router.post("/api/v6/account/skin")
+async def upload_skin(request: Request):
+    """Загрузить свой скин. Нужен пиратским аккаунтам: лицензионного скина у них нет."""
+    user = current_user(request)
+    if not user["minecraft_uuid"]:
+        fail(409, "not_linked", "Сначала привяжите аккаунт Minecraft — скин привязан к игровому профилю.")
+    data = await request.json()
+    import base64
+    try:
+        raw = base64.b64decode(str(data.get("image") or ""), validate=True)
+    except Exception:  # noqa: BLE001 — битый base64 не должен приводить к 500
+        fail(400, "invalid_skin", "Не удалось прочитать файл скина.")
+    width, height = _validate_skin(raw)
+    slim = bool(data.get("slim"))
+    now = int(time.time())
+    uuid_ = str(user["minecraft_uuid"])
+    with request.app.state.database.transaction() as db:
+        db.execute(
+            "INSERT INTO cm_site_skins(player_uuid,texture,slim,bytes,sha256,uploaded_s,updated_s,actor_id)"
+            " VALUES(%s,%s,%s,%s,%s,%s,%s,%s)"
+            " ON CONFLICT(player_uuid) DO UPDATE SET texture=excluded.texture,slim=excluded.slim,"
+            " bytes=excluded.bytes,sha256=excluded.sha256,updated_s=excluded.updated_s,"
+            " actor_id=excluded.actor_id",
+            (uuid_, raw, 1 if slim else 0, len(raw), hashlib.sha256(raw).hexdigest(), now, now, user["id"]),
+        )
+    for key in list(SKIN_CACHE):
+        if key.endswith(uuid_.replace("-", "").lower()):
+            SKIN_CACHE.pop(key, None)
+    request.app.state.database.audit(
+        user, "account.skin", user["name"],
+        details={"bytes": len(raw), "size": f"{width}x{height}", "slim": slim},
+    )
+    key = uuid_.replace("-", "").lower()
+    return {"ok": True, "skin": {"texture": f"/api/v6/skin/{key}/texture?v={now}",
+                                 "avatar": f"/api/v6/skin/{key}/avatar?v={now}",
+                                 "body": f"/api/v6/skin/{key}/body?v={now}",
+                                 "slim": slim}}
+
+
+@router.delete("/api/v6/account/skin")
+async def delete_skin(request: Request):
+    """Вернуть стандартный вид: удалить загруженный скин."""
+    user = current_user(request)
+    if not user["minecraft_uuid"]:
+        fail(409, "not_linked", "Аккаунт Minecraft не привязан.")
+    with request.app.state.database.transaction() as db:
+        db.execute("DELETE FROM cm_site_skins WHERE player_uuid=%s", (str(user["minecraft_uuid"]),))
+    key = str(user["minecraft_uuid"]).replace("-", "").lower()
+    for cached in list(SKIN_CACHE):
+        if cached.endswith(key):
+            SKIN_CACHE.pop(cached, None)
+    request.app.state.database.audit(user, "account.skin.reset", user["name"])
+    return {"ok": True}
+
+
+# Набор готовых скинов: у аккаунта без лицензии нет своего официального скина,
+# поэтому выбор должен быть прямо на сайте. Файлы — из стандартного набора
+# Minecraft, они уже лежат в frontend/assets/skins.
+SKIN_PRESETS = [
+    {"id": "steve", "name": "Стив", "slim": False},
+    {"id": "alex", "name": "Алекс", "slim": True},
+    {"id": "ari", "name": "Ари", "slim": True},
+    {"id": "efe", "name": "Эфе", "slim": True},
+    {"id": "kai", "name": "Кай", "slim": False},
+    {"id": "makena", "name": "Макена", "slim": True},
+    {"id": "noor", "name": "Нур", "slim": True},
+    {"id": "sunny", "name": "Санни", "slim": True},
+    {"id": "zuri", "name": "Зури", "slim": False},
+]
+
+
+@router.get("/api/v6/skins/presets")
+def skin_presets():
+    """Готовые скины на выбор."""
+    return {"presets": [
+        {**item,
+         "texture": f"/assets/skins/{item['id']}.png",
+         "avatar": f"/assets/skins/{item['id']}-head.png"}
+        for item in SKIN_PRESETS
+    ]}
+
+
+@router.post("/api/v6/admin/players/{player_id}/skin")
+async def admin_set_player_skin(request: Request, player_id: str):
+    """Сменить скин игроку: готовый из набора или свой PNG.
+
+    Право players.moderate: скин — внешний вид, но всё равно действие над
+    чужим аккаунтом, поэтому пишется в журнал.
+    """
+    actor = current_user(request, "players.moderate")
+    data = await request.json()
+    with request.app.state.database.transaction() as db:
+        target = db.execute("SELECT id, name, minecraft_uuid FROM cm_site_users WHERE id=%s"
+                            , (player_id,)).fetchone()
+        if not target:
+            fail(404, "unknown_player", "Аккаунт не найден.")
+        uuid_ = str(target["minecraft_uuid"] or "")
+        if not uuid_:
+            fail(409, "not_linked", "У игрока нет привязанного аккаунта Minecraft.")
+        preset = str(data.get("preset") or "").strip()
+        image = data.get("image")
+        now = int(time.time())
+        if data.get("reset") or (not preset and not image):
+            db.execute("DELETE FROM cm_site_skins WHERE player_uuid=%s", (uuid_,))
+            action = "admin.skin.reset"
+        elif image:
+            import base64
+            try:
+                raw = base64.b64decode(str(image), validate=True)
+            except Exception:  # noqa: BLE001
+                fail(400, "invalid_skin", "Не удалось прочитать файл скина.")
+            width, height = _validate_skin(raw)
+            db.execute(
+                "INSERT INTO cm_site_skins(player_uuid,texture,slim,bytes,sha256,uploaded_s,updated_s,actor_id)"
+                " VALUES(%s,%s,%s,%s,%s,%s,%s,%s)"
+                " ON CONFLICT(player_uuid) DO UPDATE SET texture=excluded.texture,slim=excluded.slim,"
+                " bytes=excluded.bytes,sha256=excluded.sha256,updated_s=excluded.updated_s,"
+                " actor_id=excluded.actor_id",
+                (uuid_, raw, 1 if data.get("slim") else 0, len(raw),
+                 hashlib.sha256(raw).hexdigest(), now, now, actor["id"]),
+            )
+            action = "admin.skin.upload"
+        else:
+            known = {item["id"]: item for item in SKIN_PRESETS}
+            if preset not in known:
+                fail(400, "invalid_skin", "Неизвестный скин из набора.")
+            path = Path(__file__).resolve().parent.parent / "frontend" / "assets" / "skins" / f"{preset}.png"
+            try:
+                raw = path.read_bytes()
+            except OSError:
+                fail(404, "invalid_skin", "Файл набора не найден.")
+            db.execute(
+                "INSERT INTO cm_site_skins(player_uuid,texture,slim,bytes,sha256,uploaded_s,updated_s,actor_id)"
+                " VALUES(%s,%s,%s,%s,%s,%s,%s,%s)"
+                " ON CONFLICT(player_uuid) DO UPDATE SET texture=excluded.texture,slim=excluded.slim,"
+                " bytes=excluded.bytes,sha256=excluded.sha256,updated_s=excluded.updated_s,"
+                " actor_id=excluded.actor_id",
+                (uuid_, raw, 1 if known[preset]["slim"] else 0, len(raw),
+                 hashlib.sha256(raw).hexdigest(), now, now, actor["id"]),
+            )
+            action = "admin.skin.preset"
+    key = uuid_.replace("-", "").lower()
+    for cached in list(SKIN_CACHE):
+        if cached.endswith(key):
+            SKIN_CACHE.pop(cached, None)
+    request.app.state.database.audit(actor, action, target["name"],
+                                     details={"preset": preset, "playerId": player_id})
+    stamp = f"?v={now}"
+    return {"ok": True, "skin": None if action == "admin.skin.reset" else {
+        "uuid": uuid_,
+        "texture": f"/api/v6/skin/{key}/texture{stamp}",
+        "avatar": f"/api/v6/skin/{key}/avatar{stamp}",
+        "body": f"/api/v6/skin/{key}/body{stamp}",
+        "source": "uploaded",
+    }}
+
+
+@router.get("/api/v6/skin/{uuid}/texture")
+async def skin_texture(request: Request, uuid: str):
+    """Текстура скина 64×64: сначала загруженная игроком, иначе из сервиса."""
+    key = _skin_key(uuid)
+    if not key:
+        fail(404, "no_skin", "Скин не найден.")
+    _rate_skin(request, "tex:" + key)
+    cached, mime = _skin_cache_get("t:" + key)
+    if cached:
+        return Response(cached, media_type=mime, headers={"Cache-Control": "public, max-age=600"})
+    with request.app.state.database.transaction() as db:
+        row = db.execute("SELECT texture, slim FROM cm_site_skins WHERE player_uuid=%s",
+                         (f"{key[:8]}-{key[8:12]}-{key[12:16]}-{key[16:20]}-{key[20:]}",)).fetchone()
+    if row:
+        body, mime = row["texture"], "image/png"
+    else:
+        body, mime = await _skin_fetch([
+            f"https://mc-heads.net/skin/{key}",
+            f"https://minotar.net/skin/{key}",
+        ])
+    if not body:
+        fail(404, "no_skin", "Для этого аккаунта нет скина.")
+    _skin_cache_put("t:" + key, body, mime)
+    return Response(body, media_type=mime,
+                    headers={"Cache-Control": "public, max-age=600",
+                             "X-Skin-Source": "uploaded" if row else "remote"})
+
+
+@router.get("/api/v6/skin/{uuid}/avatar")
+async def skin_avatar(request: Request, uuid: str):
+    """Аватар для списков и карточек: работает и без лицензии, и без сети."""
+    key = _skin_key(uuid)
+    if not key:
+        fail(404, "no_skin", "Скин не найден.")
+    _rate_skin(request, "av:" + key)
+    cached, mime = _skin_cache_get("a:" + key)
+    if cached:
+        return Response(cached, media_type=mime, headers={"Cache-Control": "public, max-age=600"})
+    uuid_full = key[:8] + "-" + key[8:12] + "-" + key[12:16] + "-" + key[16:20] + "-" + key[20:]
+    with request.app.state.database.transaction() as db:
+        row = db.execute("SELECT texture FROM cm_site_skins WHERE player_uuid=%s", (uuid_full,)).fetchone()
+    # Своя текстура важнее любых сервисов: голову рисуем из неё сами.
+    texture = row["texture"] if row else None
+    if not texture:
+        texture, _ = await _skin_fetch([
+            f"https://mc-heads.net/skin/{key}",
+            f"https://minotar.net/skin/{key}",
+        ])
+    head = _render_head(texture) if texture and len(texture) >= SKIN_PLACEHOLDER_BYTES else None
+    if head:
+        _skin_cache_put("a:" + key, head, "image/png")
+        return Response(head, media_type="image/png",
+                        headers={"Cache-Control": "public, max-age=600", "X-Skin-Source": "rendered"})
+    body, mime = await _skin_fetch([
+        f"https://mc-heads.net/avatar/{key}/64",
+        f"https://minotar.net/helm/{key}/64",
+    ])
+    # Короткий ответ сервиса — стандартная голова, а не скин игрока.
+    if not body or len(body) < SKIN_PLACEHOLDER_BYTES:
+        body, mime = _skin_letter_avatar(key)
+    _skin_cache_put("a:" + key, body, mime)
+    return Response(body, media_type=mime, headers={"Cache-Control": "public, max-age=600"})
+
+
+@router.get("/api/v6/skin/{uuid}/body")
+async def skin_body(request: Request, uuid: str):
+    """Полное тело игрока для витрины и карточки."""
+    key = _skin_key(uuid)
+    if not key:
+        fail(404, "no_skin", "Скин не найден.")
+    _rate_skin(request, "bd:" + key)
+    cached, mime = _skin_cache_get("b:" + key)
+    if cached:
+        return Response(cached, media_type=mime, headers={"Cache-Control": "public, max-age=600"})
+    body, mime = await _skin_fetch([
+        f"https://mc-heads.net/body/{key}/right",
+        f"https://minotar.net/armor/body/{key}/192",
+    ])
+    if not body:
+        fail(404, "no_skin", "Для этого аккаунта нет скина.")
+    _skin_cache_put("b:" + key, body, mime)
+    return Response(body, media_type=mime, headers={"Cache-Control": "public, max-age=600"})
 
 
 def player_balances(db, rows):

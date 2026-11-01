@@ -140,10 +140,10 @@ requires a password confirmation younger than ten minutes.
 `private/admin-actions.json`, and the player screen renders exactly that
 list — an unimplemented action never appears as a working button.
 
-- offered by the admin screen: `ban`, `feed`, `freeze`, `gamemode`, `heal`, `inventory.remove`, `inventory.snapshot`, `kick`, `kill`, `save`, `teleport`, `time.day`, `time.night`, `unban`, `unfreeze`, `weather.clear`, `weather.rain`, `whitelist.add`, `whitelist.remove`
+- offered by the admin screen: `ban`, `ban.ip`, `effect.clear`, `effects.burn5`, `effects.god10`, `effects.slow10`, `extinguish`, `feed`, `fly`, `freeze`, `fun.blind`, `fun.knockback`, `fun.launch`, `fun.lightning`, `fun.pumpkin`, `fun.title`, `gamemode`, `give`, `god`, `heal`, `inventory.clear`, `inventory.remove`, `inventory.snapshot`, `jail`, `kick`, `kill`, `mute`, `save`, `teleport`, `time.day`, `time.night`, `tp.bed`, `tp.random`, `tp.spawn`, `tp.up10`, `unban`, `unfreeze`, `unjail`, `warn`, `weather.clear`, `weather.rain`, `whitelist.add`, `whitelist.remove`
 - in `SUPPORTED_ACTIONS` but absent from the catalogue, so never offered: none
 - bulk-capable: `ban`, `feed`, `freeze`, `gamemode`, `heal`, `kick`, `kill`, `unban`, `unfreeze`
 - game-bridge calls made by HTTP routes: **10**
-- the other 110 catalogue entries are not offered by the UI;
+- the other 86 catalogue entries are not offered by the UI;
   `unsupportedReason` says so in the API response.
 

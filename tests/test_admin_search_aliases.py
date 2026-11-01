@@ -82,11 +82,10 @@ def test_action_aliases_cover_russian_names():
 
 def test_hidden_actions_are_marked_unavailable():
     """Действие без поддержки моста помечается available=False и не попадает в интерфейс."""
-    bridge = {
-        "kick", "ban", "unban", "heal", "feed", "kill", "gamemode", "teleport",
-        "freeze", "unfreeze", "inventory.snapshot", "inventory.remove",
-        "whitelist.add", "whitelist.remove", "time.day", "time.night",
-        "weather.clear", "weather.rain", "save",
-    }
+    source = (ROOT / "backend" / "domain.py").read_text(encoding="utf-8")
+    block = re.search(r"SUPPORTED_ACTIONS = \{(.*?)\n\}", source, re.S)
+    assert block, "список поддерживаемых операций не найден"
+    bridge = set(re.findall(r'"([\w.-]+)"', block.group(1)))
+    assert bridge, "список поддерживаемых операций пуст"
     wrong = [a["id"] for a in _actions() if a.get("available") is not (a["id"] in bridge)]
     assert not wrong, f"неверная пометка доступности: {wrong}"

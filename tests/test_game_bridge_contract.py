@@ -5,6 +5,7 @@
 которые предлагает админка.
 """
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
@@ -23,16 +24,16 @@ def test_every_website_action_has_a_bridge_handler():
     # Мост обрабатывает операции двумя путями: отдельные if (снимки/карта/привязка)
     # и общий switch действий. Учитываем оба, иначе тест ложно падает.
     handled = set()
-    for marker in ('operation.equals("', "case "):
-        for part in source.split(marker)[1:]:
-            if marker == 'operation.equals("':
-                name = part.split('"')[0]
+    # Стрелочные ветки: switch (x) { case "a" -> ...; }
+    for part in source.split("->")[0:]:
+        for name in part.rsplit("case ", 1)[-1].split(","):
+            name = name.strip().strip('"').strip()
+            if name and all(c.isalnum() or c in "._-" for c in name):
                 handled.add(name)
-                continue
-            for name in part.split("->")[0].split(","):
-                name = name.strip().strip('"')
-                if name and all(c.isalnum() or c in "._" for c in name):
-                    handled.add(name)
+    # Блочные ветки: case "a": case "b": ... break;
+    for match in re.finditer(r"case\s+((?:\s*\"[\w.-]+\"\s*:?\s*)+)", source):
+        for name in re.findall(r'"([\w.-]+)"', match.group(1)):
+            handled.add(name)
 
     missing = sorted(SUPPORTED_ACTIONS - handled)
     assert not missing, "сайт предлагает действия без обработчика в мосту: " + ", ".join(missing)

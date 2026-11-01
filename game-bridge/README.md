@@ -31,25 +31,36 @@ the file protocol entirely — the website polls it, so it must not allocate fil
 
 ## Operations
 
-Player: `kick`, `ban`, `unban`, `heal`, `feed`, `kill`, `gamemode`, `freeze`,
-`unfreeze`, `teleport`, `whitelist.add`, `whitelist.remove`.
+Punishment: `kick`, `ban` (with `expiresAt`), `ban.ip`, `unban`, `mute`, `warn`,
+`jail`, `unjail`.
+Access: `whitelist.add`, `whitelist.remove`.
+State: `heal`, `feed`, `kill`, `extinguish`, `effect.clear`, `fly`, `god`, `gamemode`,
+`freeze`, `unfreeze`.
+Movement: `teleport`, `tp.spawn`, `tp.bed`, `tp.up10`, `tp.random`.
+Items: `give`, `inventory.snapshot`, `inventory.remove` (version-fingerprinted),
+`inventory.clear`, `inventory.armor-off`, `inventory.repair-hand`.
+Effects: `fun.title`, `fun.lightning`, `fun.launch`, `fun.knockback`, `fun.blind`,
+`fun.pumpkin`, `effects.burn5`, `effects.slow10`, `effects.god10`.
 Server: `time.day`, `time.night`, `weather.clear`, `weather.rain`, `save`.
-Snapshots: `inventory.snapshot`, `inventory.remove` (version-fingerprinted).
 Bridge: `health`, `link.send`, `map.health`, `map.control`, `map.update`, `map.flush`.
+
+Effects are capped at amplifier 4, `give` at 64 items, teleports refuse ungenerated
+chunks, and `jail` only applies a slowness effect — it never moves the player or
+touches their inventory.
 
 `backend.domain.SUPPORTED_ACTIONS` must stay a subset of what is handled here.
 
 ## Build
 
-The plugin needs the Paper API jar for Minecraft 26.3 plus the server's
-`libraries/` jars on the classpath. Example on a machine with a Paper server:
-
-```bash
-javac -encoding UTF-8 -cp "$PAPER_API_JAR:$(find "$SERVER/libraries" -name '*.jar' | paste -sd:)" \
-  -d build/classes src/me/copimine/website/CopiMineWebsiteBridge.java
-cp plugin.yml build/classes/
-jar --create --file CopiMineWebsiteBridge.jar -C build/classes .
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File game-bridge/build-plugin.ps1
 ```
+
+Paper API 26.3 is compiled for Java 25 (class file 69), so the build must use a
+Java 25 toolchain — a Java 21 `javac` fails with `wrong version 69.0, should be 65.0`.
+`build-plugin.ps1` verifies the Paper API against `profile.lock.json`, pulls the
+transitive dependencies from `java-plugin-compile-dependencies.lock.json` and produces
+a reproducible jar (`--date=2020-01-01T00:00:00Z`).
 
 Install the jar as `plugins/CopiMineWebsiteBridge.jar` and set `PLUGIN_API_KEY`
 in the game server environment to the same value the website uses.

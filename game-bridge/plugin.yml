@@ -1,8 +1,8 @@
 name: CopiMineWebsiteBridge
-version: 1.0.0
+version: 1.1.0
 main: me.copimine.website.CopiMineWebsiteBridge
 api-version: '26.3'
-softdepend: [AuthMe, BlueMap]
+softdepend: [AuthMe, BlueMap, CoreProtect]
 commands:
   cmwebbridge:
     description: Signed console-only website bridge

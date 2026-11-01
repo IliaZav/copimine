@@ -43,7 +43,7 @@ def catalogue():
 def supported():
     source = (ROOT / "backend" / "domain.py").read_text(encoding="utf-8")
     block = re.search(r"SUPPORTED_ACTIONS\s*=\s*\{(.*?)\}", source, re.S).group(1)
-    return {item for item in re.findall(r'"([\w.]+)"', block)}
+    return {item for item in re.findall(r'"([\w.-]+)"', block)}
 
 
 def test_every_supported_action_is_offered_by_the_admin_screen():
@@ -73,6 +73,9 @@ def test_world_parameters_offer_only_loaded_worlds():
             continue
         for name, spec in row["params"].items():
             if name == "world":
+                # Мир необязателен: tp.spawn и tp.bed берут его из текущего мира игрока.
+                if not spec.get("required"):
+                    continue
                 assert set(spec.get("enum", [])) == WORLDS, (row["id"], spec)
 
 

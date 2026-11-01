@@ -21,7 +21,27 @@ router = APIRouter()
 # Карточка товара показывает либо файл из репозитория, либо загруженное фото.
 _CATALOG_IMAGE = re.compile(r"^assets/[A-Za-z0-9_./-]+\.(?:png|jpe?g|webp|avif|gif)$", re.I)
 _CATALOG_MEDIA = re.compile(r"^/api/v6/media/[a-f0-9]{24}\.(?:webp|mp4|webm)$")
-SUPPORTED_ACTIONS = {"kick", "ban", "unban", "heal", "feed", "kill", "gamemode", "teleport", "freeze", "unfreeze", "inventory.snapshot", "inventory.remove", "whitelist.add", "whitelist.remove", "time.day", "time.night", "weather.clear", "weather.rain", "save"}
+# Операции, которые подтверждённо исполняет игровой плагин CopiMineWebsiteBridge.
+# Список должен совпадать с его switch в action(): иначе сайт предлагает действие,
+# а сервер отвечает «не подключено».
+SUPPORTED_ACTIONS = {
+    # наказания и доступ
+    "kick", "ban", "ban.ip", "unban", "mute", "warn", "jail", "unjail",
+    "whitelist.add", "whitelist.remove",
+    # состояние игрока
+    "heal", "feed", "kill", "extinguish", "effect.clear", "fly", "god", "gamemode",
+    "freeze", "unfreeze",
+    # перемещение
+    "teleport", "tp.spawn", "tp.bed", "tp.up10", "tp.random",
+    # предметы
+    "give", "inventory.snapshot", "inventory.remove", "inventory.clear",
+    "inventory.armor-off", "inventory.repair-hand",
+    # эффекты и развлечения
+    "fun.title", "fun.lightning", "fun.launch", "fun.knockback", "fun.blind",
+    "fun.pumpkin", "effects.burn5", "effects.slow10", "effects.god10",
+    # мир
+    "time.day", "time.night", "weather.clear", "weather.rain", "save",
+}
 
 
 def review_user(row):
@@ -1424,7 +1444,10 @@ async def execute_action(request: Request):
     params = data.get("params", {})
     if not isinstance(params, dict):
         fail(400, "invalid_parameters", "Проверьте параметры действия.")
-    allowed = {"player", "uuid", "target", "mode", "x", "y", "z", "world", "durationMs"}
+    allowed = {
+        "player", "uuid", "target", "mode", "x", "y", "z", "world", "durationMs", "expiresAt",
+        "itemId", "quantity", "title", "subtitle", "enabled", "ip",
+    }
     params = {key: value for key, value in params.items() if key in allowed}
     if not server:
         identifier = str(data.get("player", params.get("player", params.get("uuid", ""))))

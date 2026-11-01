@@ -5219,7 +5219,29 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   };
   function skinSettings() {
     const p = M.me();
-    return `<section class="v7-settings-section cm72-skin-settings" id="cm72-skin-settings"><div class="cm72-skin-settings-preview">${skinStage(p)}</div><div class="cm72-skin-settings-copy"><h2>Твой скин</h2><p>Он отображается в личном кабинете и рядом с твоим именем.</p><span class="cm72-skin-source">${p.skin?.source === 'upload' ? 'Загруженный скин' : 'Стандартный скин'}</span><div class="cm72-upload-row"><label class="btn primary" tabindex="0" role="button" id="cm72-upload-trigger">${icon('upload')}Загрузить PNG<input type="file" accept="image/png" id="cm72-skin-file" hidden></label>${p.skin?.source === 'upload' ? M.btn('Сбросить', 'cm72-skin-default', '', 'ghost') : ''}</div><label class="field cm72-skin-model-field">Модель<select id="cm72-skin-kind"><option value="classic" ${p.skin?.model !== 'slim' ? 'selected' : ''}>Обычная — широкие руки</option><option value="slim" ${p.skin?.model === 'slim' ? 'selected' : ''}>Тонкие руки</option></select></label><small>PNG 64×64 или 64×32, до 2 МБ. Скин виден в кабинете и рядом с ником.</small><p class="form-error" id="cm72-skin-error" role="alert"></p></div></section>`;
+    const premium = p.premiumName || '';
+    const source = p.skin?.source;
+    const label = source === 'premium' ? 'Скин с лицензионного аккаунта'
+      : source === 'upload' || source === 'uploaded' ? 'Загруженный скин' : 'Стандартный скин';
+    return `<section class="v7-settings-section cm72-skin-settings" id="cm72-skin-settings">
+      <div class="cm72-skin-settings-preview">${skinStage(p)}</div>
+      <div class="cm72-skin-settings-copy">
+        <h2>Твой скин</h2>
+        <p>Он отображается в личном кабинете, в списке игроков и в игре.</p>
+        <span class="cm72-skin-source">${label}</span>
+        <div class="cm72-upload-row">
+          <label class="btn primary" tabindex="0" role="button" id="cm72-upload-trigger">${icon('upload')}Загрузить PNG<input type="file" accept="image/png" id="cm72-skin-file" hidden></label>
+          ${(source === 'upload' || source === 'uploaded' || source === 'premium') ? M.btn('Сбросить', 'cm72-skin-default', '', 'ghost') : ''}
+        </div>
+        <label class="field">
+          Лицензионный ник
+          <input id="cm72-premium-name" value="${E(premium)}" placeholder="Как в лаунчере" autocomplete="off">
+        </label>
+        <div class="cm72-upload-row"><button type="button" class="btn ghost" data-action="cm72-skin-premium">Подтянуть скин с лицензии</button></div>
+        <small>Есть лицензия? Укажи ник один раз — скин подтянется с Mojang, а при следующем входе в игру сайт сам проверит, не сменил ли ты ник или скин в лаунчере. Нет лицензии — загрузи PNG или выбери готовый скин в карточке игрока.</small>
+        <p class="form-error" id="cm72-skin-error" role="alert"></p>
+      </div>
+    </section>`;
   }
   const previousSettings = R.settings;
   R.settings = function (tab = 'profile') {
@@ -5267,6 +5289,23 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     p.skin = { texture: `assets/skins/${name}.png`, head: `assets/skins/${name}-head.png`, front: `assets/skins/${name}-front.png`, back: `assets/skins/${name}-back.png`, source: 'default', model: name === 'alex' ? 'slim' : 'classic' };
     if (X && X.live) { try { await X.request('/account/skin', { method: 'DELETE' }); } catch (err) { M.toast(err.message, true); return; } }
     saveSkin(); M.render(); M.toast('Стандартный скин восстановлен.');
+  };
+  H['cm72-skin-premium'] = async b => {
+    const name = (el('cm72-premium-name')?.value || '').trim();
+    const error = el('cm72-skin-error');
+    if (error) error.textContent = '';
+    if (!name) { if (error) error.textContent = 'Укажи лицензионный ник.'; return; }
+    b.disabled = true;
+    try {
+      const saved = await X.request('/account/premium', { method: 'POST', body: { premiumName: name } });
+      const me = M.me();
+      me.premiumName = saved.premiumName;
+      if (saved.skin) { me.skin = Object.assign({}, saved.skin, { source: 'premium' }); saveSkin(); }
+      M.render();
+      M.toast(saved.premiumName ? 'Скин взят с лицензии ' + saved.premiumName + '.' : 'Скин сброшен.');
+    } catch (err) {
+      if (error) error.textContent = err.message; else M.toast(err.message, true);
+    } finally { b.disabled = false; }
   };
   H['cm72-skin-reset'] = b => { api.skinYaw = -25; api.skinPitch = -6; rotateSkin(b.closest('.cm72-skin-view')); };
   function rotateSkin(stage) { const model = stage?.querySelector('.cm72-skin-model'); if (model) model.style.transform = `rotateX(${api.skinPitch}deg) rotateY(${api.skinYaw}deg)`; }

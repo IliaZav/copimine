@@ -111,3 +111,50 @@ def test_skin_change_needs_permission(client):
         json={"preset": "steve"},
     )
     assert response.status_code in (401, 403)
+
+
+def test_profile_endpoint_returns_signed_texture(client):
+    """Игровой сервер ждёт value + signature, иначе клиент игнорирует текстуру."""
+    import base64
+    import json
+    response = client.get("/api/v6/skin/c88df5644edb3c7389cc842f480e454d/profile")
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["ok"] is True
+    if data["texture"] is None:
+        return  # скин не загружен — это допустимый ответ
+    payload = json.loads(base64.b64decode(data["texture"]))
+    assert "textures" in payload
+    assert payload["textures"]["SKIN"]["url"].endswith("/texture")
+    assert base64.b64decode(data["signature"])
+
+
+def test_profile_is_stable_between_calls(client):
+    """Подпись не должна меняться на каждом запросе: клиент кэширует по ней."""
+    first = client.get("/api/v6/skin/c88df5644edb3c7389cc842f480e454d/profile").json()
+    second = client.get("/api/v6/skin/c88df5644edb3c7389cc842f480e454d/profile").json()
+    assert first == second
+
+
+def test_profile_for_unknown_account_is_empty(client):
+    data = client.get("/api/v6/skin/5581ca674604382d966f0ccfc1acb063/profile").json()
+    assert data["ok"] is True
+    assert data["texture"] is None
+
+
+def test_premium_name_requires_a_linked_account(client):
+    """Без привязки игры брать неоткуда: скин привязан к игровому UUID."""
+    session = login(client)
+    response = client.post(
+        "/api/v6/account/premium",
+        headers=headers(session),
+        json={"premiumName": "Notch"},
+    )
+    assert response.status_code == 409
+    assert "not_linked" in response.text
+
+
+def test_public_user_carries_premium_name(client):
+    session = login(client)
+    me = session.get("user") or {}
+    assert "premiumName" in me

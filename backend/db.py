@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS cm_site_users (
  pending_totp TEXT NOT NULL DEFAULT '', blocked_reason TEXT NOT NULL DEFAULT '',
  blocked_until_s BIGINT NOT NULL DEFAULT 0, vk_id TEXT UNIQUE, preferences TEXT NOT NULL DEFAULT '{}'
 );
+
 CREATE TABLE IF NOT EXISTS cm_site_sessions (
  token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES cm_site_users(id),
  csrf TEXT NOT NULL, created_s BIGINT NOT NULL, expires_s BIGINT NOT NULL,
@@ -238,6 +239,9 @@ class Database:
                 columns = {row["name"] for row in db.execute("PRAGMA table_info(cm_site_notifications)").fetchall()}
                 if "href" not in columns:
                     db.execute("ALTER TABLE cm_site_notifications ADD COLUMN href TEXT NOT NULL DEFAULT ''")
+                user_columns = {row["name"] for row in db.execute("PRAGMA table_info(cm_site_users)").fetchall()}
+                if "premium_name" not in user_columns:
+                    db.execute("ALTER TABLE cm_site_users ADD COLUMN premium_name TEXT NOT NULL DEFAULT ''")
                 ticket_columns = {row["name"] for row in db.execute("PRAGMA table_info(cm_site_tickets)").fetchall()}
                 if "priority" not in ticket_columns:
                     db.execute("ALTER TABLE cm_site_tickets ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal'")
@@ -251,6 +255,7 @@ class Database:
                     if name not in analytics_columns:
                         db.execute(f"ALTER TABLE cm_site_analytics_events ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
             else:
+                db.execute("ALTER TABLE cm_site_users ADD COLUMN IF NOT EXISTS premium_name TEXT NOT NULL DEFAULT ''")
                 db.execute("ALTER TABLE cm_site_notifications ADD COLUMN IF NOT EXISTS href TEXT NOT NULL DEFAULT ''")
                 db.execute("ALTER TABLE cm_site_server_metrics ADD COLUMN IF NOT EXISTS cpu REAL")
                 db.execute("ALTER TABLE cm_site_tickets ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'normal'")

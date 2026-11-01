@@ -81,6 +81,8 @@ def public_user(row):
         "minecraftName": row["minecraft_name"], "gameLinkVerified": bool(row["minecraft_uuid"]),
         "totpEnabled": bool(row["totp_secret"]), "mfaEnabled": bool(row["totp_secret"]),
         "preferences": json.loads(row["preferences"]),
+        # Лицензионный ник: источник скина, которого у offline-сервера нет.
+        "premiumName": (row["premium_name"] if "premium_name" in row.keys() else ""),
     }
 
 

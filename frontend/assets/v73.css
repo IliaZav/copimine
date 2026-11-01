@@ -126,17 +126,17 @@
 @media(max-width:900px){.v71-wallet-grid{grid-template-columns:1fr}.v71-wallet-top{flex-direction:column;align-items:flex-start}}
 /* Банк: счета, таблица движения и круг долей. Всё в одной сетке. */
 .bank-switch{display:flex;gap:2px;padding:3px;border-radius:10px;background:#0d1316;border:1px solid #1b262c;margin-bottom:16px;width:fit-content}
-.bank-switch a{padding:6px 16px;border-radius:8px;color:#7f8c95;font-size:13px;text-decoration:none;transition:background .14s,color .14s}
+.bank-switch a{padding:6px 16px;border-radius:8px;color:#8fa0a9;font-size:13px;text-decoration:none;transition:background .14s,color .14s}
 .bank-switch a:hover{color:#c9d5db}
 .bank-switch a.on{background:#1d2b33;color:#eaf1f5;font-weight:550}
 .bank-accounts{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
 .bank-acc{border:1px solid #1e2a31;border-radius:13px;background:#131b1f;padding:15px 17px}
-.bank-acc-lbl{display:flex;align-items:center;gap:8px;color:#7f8c95;font-size:12px}
+.bank-acc-lbl{display:flex;align-items:center;gap:8px;color:#8fa0a9;font-size:12px}
 .bank-acc-lbl img{width:18px;height:18px;image-rendering:pixelated;flex:none}
 .bank-acc-sum{display:flex;align-items:baseline;gap:7px;margin-top:5px}
 .bank-acc-sum b{font-size:26px;font-weight:650;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:#eef4f7}
 .bank-acc-cur{width:26px;height:26px;image-rendering:pixelated;object-fit:contain;flex:none;align-self:center}
-.bank-acc small{display:block;color:#54616a;font-size:11.5px;margin-top:2px}
+.bank-acc small{display:block;color:#8fa0a9;font-size:11.5px;margin-top:2px}
 .bank-split{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
 .bank-main,.bank-side{min-width:0}
 .bank-card{border:1px solid #1e2a31;border-radius:13px;background:#131b1f;overflow:hidden}
@@ -146,7 +146,7 @@
 
 /* Таблица движения: без знаков, направление читается цветом. */
 .bank-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}
-.bank-table th{text-align:left;font-weight:500;color:#5f6c74;font-size:11px;letter-spacing:.05em;text-transform:uppercase;padding:0 16px 9px}
+.bank-table th{text-align:left;font-weight:500;color:#8fa0a9;font-size:11px;letter-spacing:.05em;text-transform:uppercase;padding:0 16px 9px}
 .bank-table th.right,.bank-table td.right{text-align:right}
 .bank-table td{padding:10px 16px;border-top:1px solid #182228}
 .bank-table tr.op{cursor:pointer}
@@ -156,7 +156,7 @@
 .bank-what img{width:30px;height:30px;border-radius:5px;background:#0d1316;flex:none;object-fit:contain;image-rendering:pixelated}
 .bank-what div{display:grid;gap:1px;min-width:0}
 .bank-what b{font-weight:550;font-size:13px;color:#e2e9ee;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bank-what small{color:#5a676f;font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bank-what small{color:#8fa0a9;font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bank-amt{text-align:right;white-space:nowrap;font-weight:600;font-size:13.5px;font-variant-numeric:tabular-nums}
 .bank-amt.in{color:#2de39b}
 .bank-amt.out{color:#ff6b72}
@@ -171,7 +171,7 @@
 .bank-ring .in{stroke:#2de39b}
 .bank-ring-mid{position:absolute;text-align:center}
 .bank-ring-mid b{display:block;font-size:19px;font-weight:650;font-variant-numeric:tabular-nums;color:#eef4f7}
-.bank-ring-mid span{color:#5f6c74;font-size:11px}
+.bank-ring-mid span{color:#8fa0a9;font-size:11px}
 .bank-legend{list-style:none;margin:0;padding:0 16px 16px;display:grid;gap:8px}
 .bank-legend li{display:flex;align-items:center;gap:9px;font-size:12.5px;color:#8fa0a9}
 .bank-legend i{width:8px;height:8px;border-radius:2px;flex:none}
@@ -185,11 +185,11 @@
 .bank-form input{width:100%}
 .bank-amount{display:flex;align-items:center;gap:9px}
 .bank-amount input{font-size:24px;font-weight:650;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-.bank-amount span{color:#5f6c74;font-size:13px}
+.bank-amount span{color:#8fa0a9;font-size:13px}
 .bank-presets{display:flex;gap:6px;flex-wrap:wrap}
 .bank-presets button{padding:5px 14px;border:1px solid #223038;border-radius:999px;background:none;color:#8fa0a9;font-size:12px;cursor:pointer}
 .bank-presets button:hover{border-color:#2de39b;color:#2de39b}
-.bank-note{margin:0;padding:0 16px 16px;color:#5a676f;font-size:11.5px;line-height:1.5}
+.bank-note{margin:0;padding:0 16px 16px;color:#8fa0a9;font-size:11.5px;line-height:1.5}
 
 /* Выбор получателя: кнопка с головой и список с поиском. */
 .bank-pick{position:relative}
@@ -211,13 +211,13 @@
 /* Итог перевода. */
 .bank-sum{margin:12px 16px 16px;display:grid}
 .bank-sum>div{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-top:1px solid #182228;font-size:13px}
-.bank-sum dt{color:#5f6c74;margin:0}
+.bank-sum dt{color:#8fa0a9;margin:0}
 .bank-sum dd{margin:0;color:#dbe4ea;font-weight:500;text-align:right;font-variant-numeric:tabular-nums}
 .bank-sum .total dd{color:#2de39b;font-weight:650}
 .bank-filters{display:flex;gap:6px;padding:12px 16px 0}
 .bank-filters button{padding:5px 14px;border:1px solid #223038;border-radius:999px;background:none;color:#8a97a0;font-size:12px;cursor:pointer}
 .bank-filters button.active{border-color:#2de39b;color:#2de39b}
-.bank-empty{color:#5a676f;font-size:13px;padding:20px 16px;margin:0;text-align:center}
+.bank-empty{color:#8fa0a9;font-size:13px;padding:20px 16px;margin:0;text-align:center}
 
 /* Детали операции в модалке. */
 .bank-op-hero{display:grid;justify-items:center;gap:8px;margin-bottom:18px}
@@ -229,7 +229,9 @@
 .bank-op-title{color:#9fb0b9;font-size:13px}
 .bank-op-rows{margin:0;display:grid}
 .bank-op-rows>div{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-top:1px solid #182228;font-size:13px}
-.bank-op-rows dt{color:#5f6c74;margin:0}
+.bank-op-rows dt{color:#8fa0a9;margin:0}
 .bank-op-rows dd{margin:0;color:#dbe4ea;text-align:right;font-weight:500}
 @media(prefers-reduced-motion:reduce){.bank-ring circle{transition:none}}
 @media(max-width:900px){.bank-split{grid-template-columns:1fr}.bank-accounts{grid-template-columns:1fr}}
+/* На телефоне таблица жмётся: подписи мельче, отступы уже, сумма не переносится. */
+@media(max-width:600px){.bank-table th,.bank-table td{padding-left:12px;padding-right:12px}.bank-table td{padding-top:9px;padding-bottom:9px}.bank-what{gap:9px}.bank-what img{width:26px;height:26px}.bank-amount input{font-size:20px}.bank-switch{width:100%}.bank-switch a{flex:1;text-align:center;padding:7px 8px}.bank-presets button{padding:5px 11px}}

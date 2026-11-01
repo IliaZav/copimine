@@ -3971,7 +3971,7 @@ async function login(username,password,totp=''){
 }
 H['logout-commit']=async()=>{await Q.flush();if(!Q.offline)await request('logout',{});applyUser(null);M.endSession();M.closeModal();M.navTo('home');M.render();};
 H['v7-menu']=()=>M.openModal('Меню','<nav class="v7-mobile-menu">'+[ ['home','Главная','home'],['shop','Магазин','bag'],['donate','Донат','wallet'],['map','Карта','map'],['rules','Правила','shield'],[M.me()?'account':'auth/login',M.me()?'Личный кабинет':'Войти','user'] ].map(([href,label,ic])=>sideLink(href,label,ic,false)).join('')+'</nav>');
-header=function(active){const p=M.me(),count=s().cart.reduce((n,x)=>n+x.qty,0);return '<div class="container"><header class="site-header"><a class="brand" href="#home" aria-label="CopiMine"><img class="wordmark" src="'+M.asset('assets/img/logo.webp')+'" alt="CopiMine" width="166" height="34"></a><nav class="site-nav" aria-label="Основное меню">'+[ ['home','Главная'],['shop','Магазин'],['map','Карта'],['event','Событие'] ].map(([id,name])=>'<a href="#'+id+'" class="'+(active===id?'active':'')+'">'+name+'</a>').join('')+'</nav><div class="header-actions"><a href="#donate" class="btn ghost v7-donate-link">Поддержать</a><a href="#cart" class="v7-cart-link" aria-label="Корзина">'+icon('bag')+(count?'<span data-cart-count>'+count+'</span>':'')+'</a>'+(p?'<a class="btn ghost v7-account-entry" href="#account">'+W.head(p.name,26)+'<span>'+E(p.displayName||p.name)+'</span></a>':'<a class="btn ghost login-link" href="#auth/login">Войти</a>')+M.btn('Играть','play','play','primary')+'<button class="icon-btn v7-menu-toggle" type="button" data-action="v7-menu" aria-label="Открыть меню">'+icon('menu')+'</button>'+'</div></header></div>';};
+header=function(active){const p=M.me(),count=s().cart.reduce((n,x)=>n+x.qty,0);return '<div class="container"><header class="site-header"><a class="brand" href="#home" aria-label="CopiMine"><img class="wordmark" src="'+M.asset('assets/img/logo.webp')+'" alt="CopiMine" width="166" height="34"></a><nav class="site-nav" aria-label="Основное меню">'+[ ['home','Главная'],['shop','Магазин'],['map','Карта'] ].map(([id,name])=>'<a href="#'+id+'" class="'+(active===id?'active':'')+'">'+name+'</a>').join('')+'</nav><div class="header-actions"><a href="#donate" class="btn ghost v7-donate-link">Поддержать</a><a href="#cart" class="v7-cart-link" aria-label="Корзина">'+icon('bag')+(count?'<span data-cart-count>'+count+'</span>':'')+'</a>'+(p?'<a class="btn ghost v7-account-entry" href="#account">'+W.head(p.name,26)+'<span>'+E(p.displayName||p.name)+'</span></a>':'<a class="btn ghost login-link" href="#auth/login">Войти</a>')+M.btn('Играть','play','play','primary')+'<button class="icon-btn v7-menu-toggle" type="button" data-action="v7-menu" aria-label="Открыть меню">'+icon('menu')+'</button>'+'</div></header></div>';};
 dock=function(){return '';};
 footer=function(){return '<footer class="site-footer"><a class="v7-footer-brand" href="#home">CopiMine<span>Minecraft в своей компании.</span></a><div class="links"><a href="#rules">Правила</a><a href="#account/support">Помощь</a><button type="button" data-action="discord">Discord</button><button type="button" data-action="v6-cookies">Cookies</button></div><small>Не связан с Mojang и Microsoft.</small></footer>';};
 const previousHome=R.home;
@@ -4463,7 +4463,9 @@ function summaryBox(){
 }
 function overviewTab(){
  const rows=periodRows().slice(0,8);
- return '<div class="bank-split"><div class="bank-main"><section class="bank-card"><div class="bank-card-head"><h2>Доходы и расходы</h2></div>'+A.transferRows(rows)+'</section></div>'
+ const periods=[['week','Неделя'],['month','Месяц'],['all','Всё время']];
+ return '<div class="bank-split"><div class="bank-main"><section class="bank-card"><div class="bank-card-head"><h2>Доходы и расходы</h2>'
+  +'<div class="bank-filters" role="group" aria-label="Период">'+periods.map(([k,l])=>'<button type="button" data-action="bank-period" data-key="'+k+'" aria-pressed="'+(bankPeriod===k)+'" class="'+(bankPeriod===k?'active':'')+'">'+l+'</button>').join('')+'</div></div>'+A.transferRows(rows)+'</section></div>'
   +'<aside class="bank-side"><section class="bank-card"><div class="bank-card-head"><h2>Куда ушло</h2></div>'+ring()+'</section></aside></div>';
 }
 function transferTab(){
@@ -4491,6 +4493,8 @@ A.transferPage=()=>{
  +accounts()+body;
 };
 // Выбор получателя из списка с головами.
+// Период меняет и таблицу, и круг: это одно и то же окно времени.
+H['bank-period']=b=>{bankPeriod=b.dataset.key||'week';M.render();};
 H['bank-pick-toggle']=()=>document.getElementById('bank-pick')?.classList.toggle('open');
 H['bank-pick']=b=>{
   draft.to=b.dataset.id;

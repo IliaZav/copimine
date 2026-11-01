@@ -1848,7 +1848,11 @@ async def web_ban(request: Request):
     check_hierarchy(actor, target)
     reason = safe_reason(data.get("reason"))
     blocked = data.get("blocked") is True
-    until = int(data.get("until") or 0)
+    # Срок приходит из формы: строка, список или None не должны ронять обработчик.
+    try:
+        until = int(data.get("until") or 0)
+    except (TypeError, ValueError):
+        fail(400, "invalid_duration", "Проверьте срок блокировки.")
     if until and not int(time.time()) < until <= int(time.time()) + 366 * 86400:
         fail(400, "invalid_duration", "Проверьте срок блокировки.")
     with request.app.state.database.transaction() as db:
@@ -2039,6 +2043,14 @@ async def update_catalog_item(request: Request, identifier: str):
     return {"ok": True, "id": identifier}
 
 
+def _safe_int(value) -> int:
+    """Число из тела запроса: мусор превращается в 0, а не в 500."""
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 @router.post("/api/v6/admin/economy/credit")
 async def admin_economy_credit(request: Request):
     """Начислить или списать деньги игроку от имени владельца проекта.
@@ -2053,8 +2065,8 @@ async def admin_economy_credit(request: Request):
         minecraft_uuid=str(data.get("minecraft_uuid") or ""),
         minecraft_name=str(data.get("minecraft_name") or ""),
         currency=str(data.get("currency") or "AR").upper(),
-        credit=int(data.get("credit") or 0),
-        debit=int(data.get("debit") or 0),
+        credit=_safe_int(data.get("credit")),
+        debit=_safe_int(data.get("debit")),
         reason=safe_reason(data.get("reason")),
         visible_to_player=bool(data.get("visible_to_player")),
         idempotency_key=str(data.get("idempotency_key") or ""),

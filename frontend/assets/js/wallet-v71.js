@@ -132,7 +132,9 @@ function summaryBox(){
 }
 function overviewTab(){
  const rows=periodRows().slice(0,8);
- return '<div class="bank-split"><div class="bank-main"><section class="bank-card"><div class="bank-card-head"><h2>Доходы и расходы</h2></div>'+A.transferRows(rows)+'</section></div>'
+ const periods=[['week','Неделя'],['month','Месяц'],['all','Всё время']];
+ return '<div class="bank-split"><div class="bank-main"><section class="bank-card"><div class="bank-card-head"><h2>Доходы и расходы</h2>'
+  +'<div class="bank-filters" role="group" aria-label="Период">'+periods.map(([k,l])=>'<button type="button" data-action="bank-period" data-key="'+k+'" aria-pressed="'+(bankPeriod===k)+'" class="'+(bankPeriod===k?'active':'')+'">'+l+'</button>').join('')+'</div></div>'+A.transferRows(rows)+'</section></div>'
   +'<aside class="bank-side"><section class="bank-card"><div class="bank-card-head"><h2>Куда ушло</h2></div>'+ring()+'</section></aside></div>';
 }
 function transferTab(){
@@ -160,6 +162,8 @@ A.transferPage=()=>{
  +accounts()+body;
 };
 // Выбор получателя из списка с головами.
+// Период меняет и таблицу, и круг: это одно и то же окно времени.
+H['bank-period']=b=>{bankPeriod=b.dataset.key||'week';M.render();};
 H['bank-pick-toggle']=()=>document.getElementById('bank-pick')?.classList.toggle('open');
 H['bank-pick']=b=>{
   draft.to=b.dataset.id;

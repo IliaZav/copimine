@@ -121,58 +121,43 @@ public final class RealitySplitTrialControllerTest {
     }
 
     private static void namedTrials() {
-        // This tests immutable named room allocation and actor-bound personal Echo completion.
+        // Wave 7 runs sequentially on one open arena: every admitted player
+        // fights every trial in a fixed order, so the layout no longer depends
+        // on a random draw and cannot differ between a live start and a restore.
         UUID event = player("named-event");
         for (int size : new int[] {2, 3, 4, 5, 6, 10, 20}) {
             List<UUID> roster = java.util.stream.IntStream.range(0, size)
                     .mapToObj(i -> player("named-owner-" + i)).toList();
-            var assignment = ChamberIsolationPolicy.assign(roster);
-            var sampled = new java.util.HashSet<RealitySplitTrialController.NamedTrial>();
-            for (int seed = 0; seed < 64; seed++) {
-                long sampleSeed = seed * 1_000_000_007L;
-                var controller = new RealitySplitTrialController();
-                var expectedLayout = Wave7RoomLayoutPolicy.select(71L, roster, new java.util.Random(sampleSeed));
-                check(expectedLayout.roomByPlayer().equals(assignment.chamberByPlayer()),
-                        "shared layout policy preserves the authoritative chamber assignment");
-                controller.beginNamed(event, 71L, assignment, new java.util.Random(sampleSeed));
-                var data = controller.namedSnapshot();
-                var expectedTrials = expectedLayout.rooms().stream().map(room -> switch (room.trial()) {
-                    case WARDEN -> RealitySplitTrialController.NamedTrial.WARDEN;
-                    case ECHO -> RealitySplitTrialController.NamedTrial.PERSONAL_ECHO;
-                    case MARKSMAN -> RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN;
-                    case ARCHMAGE -> RealitySplitTrialController.NamedTrial.RIFT_ARCHMAGE;
-                }).toList();
-                check(data.selectedLayout().equals(expectedTrials),
-                        "production room roles use the shared Wave 7 layout policy");
-                check(data.trials().size() == Math.min(4, size), "roster chooses same count of parallel rooms");
-                check(new java.util.HashSet<>(data.selectedLayout()).size() == data.selectedLayout().size(),
-                        "selection is without replacement");
-                sampled.addAll(data.selectedLayout());
-                if (size >= 4) check(data.selectedLayout().containsAll(
-                        List.of(RealitySplitTrialController.NamedTrial.values())), "four-plus runs all trials");
-                var restored = new RealitySplitTrialController();
-                restored.restoreNamed(event, 71L, assignment, data);
-                check(restored.namedSnapshot().equals(data), "restore keeps sampled layout exactly");
-                for (int room = 0; room < data.selectedLayout().size(); room++) {
-                    if (data.selectedLayout().get(room) == RealitySplitTrialController.NamedTrial.PERSONAL_ECHO) {
-                        var cells = controller.echoDuelCells(room);
-                        check(cells.size() == assignment.playersIn(room).size(),
-                                "each Echo owner receives one logical cell");
-                        check(restored.echoDuelCells(room).equals(cells),
-                                "restored Echo derives the same owner cells without reroll");
-                        check(cells.stream().map(cell -> cell.owner()).collect(java.util.stream.Collectors.toSet())
-                                        .equals(assignment.playersIn(room)),
-                                "cell owners match the immutable chamber assignment");
-                    } else {
-                        check(controller.echoDuelCells(room).isEmpty(),
-                                "non-Echo rooms do not expose personal duel cells");
-                    }
+            var assignment = ChamberIsolationPolicy.assignOpenArena(roster);
+            var controller = new RealitySplitTrialController();
+            controller.beginNamed(event, 71L, assignment, new java.util.Random(1L));
+            var data = controller.namedSnapshot();
+            check(data.selectedLayout().equals(RealitySplitTrialController.sequentialRoute()),
+                    "Wave 7 always runs the fixed sequential route on one arena");
+            check(data.trials().size() == 1, "sequential Wave 7 uses the single open arena");
+            check(assignment.chamberByPlayer().values().stream().allMatch(room -> room == 0),
+                    "every admitted player shares the one open arena");
+            var restored = new RealitySplitTrialController();
+            restored.restoreNamed(event, 71L, assignment, data);
+            check(restored.namedSnapshot().equals(data), "restore keeps the sequential layout exactly");
+            for (int room = 0; room < data.selectedLayout().size(); room++) {
+                if (data.selectedLayout().get(room) == RealitySplitTrialController.NamedTrial.PERSONAL_ECHO) {
+                    var cells = controller.echoDuelCells(room);
+                    check(cells.size() == assignment.playersIn(room).size(),
+                            "each Echo owner receives one logical cell");
+                    check(restored.echoDuelCells(room).equals(cells),
+                            "restored Echo derives the same owner cells without reroll");
+                    check(cells.stream().map(cell -> cell.owner()).collect(java.util.stream.Collectors.toSet())
+                                    .equals(assignment.playersIn(room)),
+                            "cell owners match the immutable chamber assignment");
+                } else {
+                    check(controller.echoDuelCells(room).isEmpty(),
+                            "non-Echo trials do not expose personal duel cells");
                 }
-                check(restored.snapshot().isEmpty() && restored.trial(0) == null,
-                        "named identities never appear as legacy room state");
-                check(!restored.restoreCompleted(71L, 0), "legacy room-graph receipt cannot complete a named trial");
             }
-            check(sampled.size() == 4, "small rosters can sample every approved archetype");
+            check(restored.snapshot().isEmpty() && restored.trial(0) == null,
+                    "named identities never appear as legacy room state");
+            check(!restored.restoreCompleted(71L, 0), "legacy room-graph receipt cannot complete a named trial");
         }
 
         // Six sorted owners put two owners in room 1. Each gets an independent personal Echo.

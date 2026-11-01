@@ -1345,8 +1345,8 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     assert candidate['filename']=='CopiMineEndEvent-26.3.jar'
     assert candidate['runtimeFilename']=='CopiMineEndEvent.jar'
     assert candidate['size']==1817586
-    assert candidate['sha256']=='564236e257d69df0afcbafef4748add1eb186e8a56a6e568680fb63c5128f94d'
-    assert candidate['sha512']=='c461d9213aec6b1d0b593bca614128e8dbb92502087c8023d21d2b41612eb8c5f1e3256f17df766f6a3df245f210aa99584c96cae417c3ba131da9d801c3483b'
+    assert candidate['sha256']=='beedb413dfc9a32ee76193b1e2575e45e99195eb7067b8d7d8ffbdda31bfc4b4'
+    assert candidate['sha512']=='4b350b6422e91e419b8040b4fcc6b06026a3e1d779c554dc5e747aa4a1409bbe361aa87d01d741f1efb89e225a3950cc667dac8eb796b582d84c6c00de37077d'
     assert candidate['apiVersion']=='26.3'
     assert candidate['buildArtifact']=='build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar'
     assert candidate['nativeVerified'] is lock['nativeVerified']
@@ -1460,6 +1460,7 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
         '83b48af374ffa142daa627c8863cb7aa6bc20e73bba9e2a884758423cb0fb94c',
         'b93050e2d751366897a18333277fd7b67ad915078f5aa7b1fa4cd3c8391ad94d',
         '98e9258d2d4a5af69b443f3aaded1cb7c34597a093ff473e6b4c4b97b4791c98',
+        '564236e257d69df0afcbafef4748add1eb186e8a56a6e568680fb63c5128f94d',
         '25d017e0f22a5cb554887be23a5c6523141e1557fa2194da267936112017ede0',
     ]
 
@@ -2969,8 +2970,8 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
     expected_candidates={
         'CopiMineArtifacts':('a5e0420d503850cb604445c52705f5af71fdc65770a78b943c5d2bc252fabcc5',
                              'a054cfeef3dc37dc364ef33d550063b6aa105f2394501bd982295af2fc791bba82cce15623c3ff7b09c4c3250683fb1caf7cdb72312e3c91bf50dd0c2fc39600',366356),
-        'CopiMineEndEvent':('564236e257d69df0afcbafef4748add1eb186e8a56a6e568680fb63c5128f94d',
-                            'c461d9213aec6b1d0b593bca614128e8dbb92502087c8023d21d2b41612eb8c5f1e3256f17df766f6a3df245f210aa99584c96cae417c3ba131da9d801c3483b',1817586),
+        'CopiMineEndEvent':('beedb413dfc9a32ee76193b1e2575e45e99195eb7067b8d7d8ffbdda31bfc4b4',
+                            '4b350b6422e91e419b8040b4fcc6b06026a3e1d779c554dc5e747aa4a1409bbe361aa87d01d741f1efb89e225a3950cc667dac8eb796b582d84c6c00de37077d',1817586),
         'CopiMineNarcotics':('bea72432491f7afa0a0cbd23b608654b56899b8e463720f98dbfef0f39f2ef0d',
                              'c2e3439ca69fd8ecc2b19aa654a38fb6bcd81e5be1da2da52934988edf1f75a5bb0170cbada994015500a6ccc6b2fcb6e8bc2bf4222a154c1b1fe6b5c14a586b',370363),
     }

@@ -163,9 +163,14 @@ if ($env:JAVA_HOME) {
 # walk the directory. Directory enumeration order is filesystem-dependent, so
 # two runners produced identical class bytes but a different archive layout --
 # and therefore a different digest for the same code.
-$packagedEntries = Get-ChildItem -LiteralPath $classes -Recurse -File |
-  ForEach-Object { $_.FullName.Substring($classes.Length + 1).Replace('\', '/') } |
-  Sort-Object -CaseSensitive
+$packagedEntries = @(Get-ChildItem -LiteralPath $classes -Recurse -File |
+  ForEach-Object { $_.FullName.Substring($classes.Length + 1).Replace('\', '/') })
+# Ordinal sort, not Sort-Object: PowerShell sorts with the current culture, so
+# `bridge/...` landed before `CopiMineEndEvent$1.class` on one host and after it
+# on another. 729 of 735 positions differed between culture-aware and ordinal
+# order, which made the archive layout -- and therefore the digest -- depend on
+# the runner's locale rather than on the code.
+[Array]::Sort($packagedEntries, [StringComparer]::Ordinal)
 # Enumerate every entry in a fixed ordinal order instead of letting `jar` walk
 # the directory: directory order is filesystem-dependent, so two runners
 # produced identical class bytes but a different archive layout and therefore a

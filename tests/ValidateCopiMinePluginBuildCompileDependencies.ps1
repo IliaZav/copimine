@@ -86,6 +86,10 @@ function Invoke-DependencyProbe {
     }
     throw 'DEPENDENCY_PROBE_COMPILER_REACHED'
   }
+  # The build script pins javac to $env:JAVA_HOME\bin\javac.exe when it is set,
+  # which would bypass the javac function above and run a real compiler against
+  # these plain-text fixture jars. Ask it to use the shadowed name instead.
+  $env:COPIMINE_DEPENDENCY_PROBE = '1'
   try { & (Join-Path $FixtureRoot $BuildScript) | Out-Null }
   catch { $probe.Failure = $_.Exception.Message }
   return $probe
@@ -99,7 +103,7 @@ function Write-FixtureArtifact {
 
 $fixtureRoot = Join-Path ([IO.Path]::GetTempPath()) ('copimine-compile-dependency-test-' + [guid]::NewGuid().ToString('N'))
 $savedEnvironment = @{}
-foreach ($name in @('COPIMINE_MAVEN_REPOSITORY', 'PAPER_API_JAR', 'PAPER_COMPILE_DEPS', 'PAPER_PLACEHOLDER_API_JAR', 'PAPER_VOICECHAT_API_JAR')) {
+foreach ($name in @('COPIMINE_MAVEN_REPOSITORY', 'COPIMINE_DEPENDENCY_PROBE', 'PAPER_API_JAR', 'PAPER_COMPILE_DEPS', 'PAPER_PLACEHOLDER_API_JAR', 'PAPER_VOICECHAT_API_JAR')) {
   $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
 try {

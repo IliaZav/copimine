@@ -59,8 +59,14 @@ $cp = @($paperApi)
 # pinned e6a2703e), so the plugin was compiled against an older sibling API than
 # CI used, and identical sources produced different class bytes. The pinned
 # candidate is the one artifact whose digest the lock actually vouches for.
+$isLegacyPaper = $paperApiSha256 -eq $legacyPaperApiSha256
 $pinnedCandidate = {
   param([object] $Lock, [string] $PluginName, [string[]] $Fallbacks)
+  $plainFallbacks = @($Fallbacks | ForEach-Object { Join-Path $releaseRoot $_ })
+  # The legacy 1.21.1 branch keeps its literal module paths: the dependency probe
+  # builds a fixture checkout and asserts that exact classpath, so resolving it
+  # through the lock would look for files the fixture never creates.
+  if ($isLegacyPaper) { return $plainFallbacks[0] }
   # A migration module candidate replaces the same plugin as a baseline entry,
   # so modules are searched first; baseline rows carry the first-party plugins.
   $rows = @($Lock.modules) + @($Lock.unchangedBaseline)
@@ -74,17 +80,24 @@ $pinnedCandidate = {
   # is present, which is the case the release pin checks.
   $candidates = @()
   if ($relative) { $candidates += (Join-Path $releaseRoot $relative) }
-  $candidates += $Fallbacks | ForEach-Object { Join-Path $releaseRoot $_ }
+  $candidates += $plainFallbacks
   $chosen = $candidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
   return $(if ($chosen) { $chosen } else { $candidates[0] })
 }
 # $compileLock describes the third-party compile graph; the first-party sibling
-# plugins are pinned in the server plugin lock.
-$serverPluginLock = Get-Content -LiteralPath (Join-Path $releaseRoot 'tools/minecraft-26.3/server-plugins.lock.json') -Raw | ConvertFrom-Json
-$narcoticsDependency = if ($paperApiSha256 -eq $legacyPaperApiSha256) {
+# plugins are pinned in the server plugin lock. The dependency probe compiles a
+# fixture checkout that contains neither the lock nor the pinned candidates, so
+# a missing lock leaves this empty and every lookup falls through to the module
+# directory jars the probe does create.
+$serverPluginLockPath = Join-Path $releaseRoot 'tools/minecraft-26.3/server-plugins.lock.json'
+$serverPluginLock = if (Test-Path -LiteralPath $serverPluginLockPath -PathType Leaf) {
+  Get-Content -LiteralPath $serverPluginLockPath -Raw | ConvertFrom-Json
+} else { $null }
+$narcoticsDependency = if ($isLegacyPaper) {
   Join-Path $releaseRoot 'copimine-narcotics\build\classes'
 } else {
   & $pinnedCandidate $serverPluginLock 'CopiMineNarcotics' @(
+    'build\minecraft-26.3\plugins\jars\CopiMineNarcotics-26.3.jar',
     'copimine-narcotics\build\libs\CopiMineNarcotics-26.3.jar',
     'copimine-narcotics\build\classes')
 }
@@ -145,8 +158,11 @@ $compileArgs += @($sources | ForEach-Object { '"' + ($_ -replace '\\', '/') + '"
 # `javac` picks up whatever is first on PATH, which on a machine with an older
 # default JDK is Java 21 and rejects every API class with "wrong version 69.0,
 # should be 65.0". Pin the compiler to the JDK that JAVA_HOME names.
+# COPIMINE_DEPENDENCY_PROBE lets the compile-dependency validator shadow `javac`
+# with a function to inspect the classpath; an absolute path would bypass that
+# shadow and run a real compiler against its fixture jars.
 $javacCommand = 'javac'
-if ($env:JAVA_HOME) {
+if ($env:JAVA_HOME -and -not $env:COPIMINE_DEPENDENCY_PROBE) {
   $javacInHome = Join-Path $env:JAVA_HOME 'bin/javac.exe'
   if (Test-Path -LiteralPath $javacInHome -PathType Leaf) { $javacCommand = $javacInHome }
 }

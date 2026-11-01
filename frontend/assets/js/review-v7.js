@@ -129,9 +129,15 @@ const adminGroups=[
  ['Проект',[ ['overview','Обзор','grid'],['statistics','Аналитика','chart'] ]],
  ['Игрокам',[ ['players','Игроки и аккаунты','users'],['moderation','Модерация','shield'],['recovery','Восстановление','key'] ]],
  ['Экономика',[ ['shop','Каталог','bag'],['finance','Покупки и балансы','wallet'] ]],
- ['Управление',[ ['world','Карты миров','map'],['content','Содержимое','file'],['system','Игровой сервер','server'],['maintenance','Технические работы','settings'],['broadcast','Рассылка','send'],['backups','Резервные копии','server'],['logs','Журнал действий','history'],['access','Команда и права','lock'] ]]
+ ['Управление',[ ['world','Карты миров','map'],['content','Содержимое','file'],['system','Игровой сервер','server'],['maintenance','Технические работы','settings'],['broadcast','Рассылка','send'],['backups','Резервные копии','server'],['logs','Журнал действий','history'] ]]
 ];
-function adminNav(tab){return '<a class="v7-admin-brand" href="#admin/overview"><img src="'+M.asset('assets/img/logo.webp')+'" alt="CopiMine"><span>Управление проектом</span></a><nav class="v7-admin-nav">'+adminGroups.map(([group,items])=>'<div><span class="v7-nav-caption">'+group+'</span>'+items.map(([id,label,ic])=>sideLink('admin/'+id,label,ic,tab===id)).join('')+'</div>').join('')+'</nav><div class="v7-admin-user">'+W.head(M.me()?.name||'DemoAdmin',32)+'<div><strong>'+E(M.me()?.displayName||M.me()?.name||'Admin')+'</strong><small>Администратор</small></div><a href="#account" title="Личный кабинет">'+icon('arrow-up-right')+'</a></div>';}
+// Счётчик на пункте меню: сколько ждёт реакции. Пустой — не показываем, чтобы не шуметь.
+function navCount(id){const st=M.state||{},now=Math.floor(Date.now()/1000);
+ if(id==='requests'){const n=(st.requests||st.tickets||[]).filter(t=>['open','new','pending'].includes(String(t.status||'')).length);return n||0;}
+ if(id==='finance'){const n=(st.deliveries||[]).filter(d=>['queued','pending','waiting'].includes(String(d.status||''))).length;return n||0;}
+ if(id==='moderation'){const n=(st.sanctions||[]).filter(x=>x.active||(x.expiresAt&&x.expiresAt>now)).length;return n||0;}
+ return 0;}
+function adminNav(tab){return '<a class="v7-admin-brand" href="#admin/overview"><img src="'+M.asset('assets/img/logo.webp')+'" alt="CopiMine"><span>Управление проектом</span></a><nav class="v7-admin-nav">'+adminGroups.map(([group,items])=>'<div><span class="v7-nav-caption">'+group+'</span>'+items.map(([id,label,ic])=>{const n=navCount(id);return sideLink('admin/'+id,label,ic,tab===id).replace('</a>','<b class="v7-nav-count">'+n+'</b></a>').replace(/<b class="v7-nav-count">0<\/b>/,'')}).join('')+'</div>').join('')+'</nav><div class="v7-admin-user">'+W.head(M.me()?.name||'DemoAdmin',32)+'<div><strong>'+E(M.me()?.displayName||M.me()?.name||'Admin')+'</strong><small>Администратор</small></div><a href="#account" title="Личный кабинет">'+icon('arrow-up-right')+'</a></div>';}
 R.admin=(tab='overview')=>{
  if(!X.canAdmin())return '<div class="admin-shell"><aside class="admin-sidebar"><a class="v7-admin-brand" href="#home">CopiMine</a></aside><div class="admin-main"><header class="admin-top"><div class="breadcrumb">Управление</div></header><main id="view" class="admin-content">'+M.empty('Нужен вход администратора','У игрока нет доступа к управлению. Для просмотра используй тестовый аккаунт.','lock')+M.btn('Войти как админ 2/2','v7-test-login','shield','primary','data-login="2"')+'</main></div></div>';
  let content,heading=adminGroups.flatMap(g=>g[1]).find(i=>i[0]===tab)?.[1]||'Управление';

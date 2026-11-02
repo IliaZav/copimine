@@ -197,29 +197,38 @@ the available rendering API**, and it is reported as such rather than claimed as
 implemented. Native visual confirmation of the new boundary is still required
 (section 6).
 
-### 5.4 Wave 7 Echo still divides owners into physical wedge cells (ECHO-005) — OPEN
+### 5.4 Wave 7 Echo — owners now share one region (ECHO-005) — CLOSED in code
 
-**Reproduced on the current tree, not yet fixed.** `ECHO-005` requires a shared
-combat region with server-enforced owner-pair rules and *no individual walls*.
-The shipped Wave 7 Echo stage does the opposite and is live, not dead code:
+**Fixed on this tree.** `ECHO-005` requires a shared combat region with
+server-enforced owner-pair rules and *no individual walls*. The Wave 7 Echo stage
+used to build owner-local lanes with physical separators, opened only after two
+adjacent duels had both completed. That geometry is gone:
 
-| Evidence | Location |
+| Change | Location |
 |---|---|
-| Owners are planned into exclusive angular lanes | `Wave7EchoDuelCellPolicy.plan` |
-| Radial separators are planned between adjacent lanes | `Wave7EchoDuelCellBarrierPolicy.plan` |
-| Movement is gated by those separators | `CopiMineEndEvent` `allowsOwnerLocation` / `allowsOwnerTransition` (~30805-30867) |
-| Barriers are built as real world geometry | `CopiMineEndEvent` ~31010, ~33642-34441 |
+| One shared region plan; lanes are starting points, not cells | `Wave7EchoDuelCellPolicy.sharedRegionPlan` |
+| Region access for every admitted owner, Core column and outside excluded | `Wave7EchoDuelCellPolicy.allowsSharedRegionAccess` |
+| Movement/teleport gates use the shared region, not per-owner lanes | `CopiMineEndEvent` `isNamedEchoCellLocationAllowed` / `...TransitionAllowed` |
+| Owner and copy health checkpoints regroup only on leaving the region | `CopiMineEndEvent` `checkpointNamedEchoHealthChanges` |
+| No separator geometry, no per-owner world mutation, no rollback tickets | `CopiMineEndEvent` `namedEchoDuelBarrierPlan` / `spawnRealitySplitBarriers` |
+| `Wave7EchoDuelCellBarrierPolicy` deleted | `domain/` |
 
-The duel bookkeeping itself already satisfies ECHO-001: every admitted owner
-gets exactly one `DuelRecord` simultaneously (validated at ~770-798), so this is
-a confinement/presentation problem, not a "only five copies fight" problem.
+Isolation is unchanged where it already worked: `EchoCombatAdmission` admits
+damage and effects only between a copy and its own original, and every admitted
+owner still gets exactly one `DuelRecord` simultaneously (ECHO-001/ECHO-002).
 
-This is deliberately **not** half-fixed. Removing the wedges means redesigning
-Wave 7 Echo confinement, its passage/commit logic and the ~54 assertions across
-nine test files that encode the cell model, then re-verifying that pair rules
-still keep duels apart without walls. Doing that in the same pass as the fog
-repair would have produced an unreviewable change, so it is recorded here as an
-open contract gap instead of a silent partial edit.
+Regression coverage: `tests/test_echo_realms_and_pairs.py` executes the
+production policy over 1-20 owners (one lane per owner, adjacent lanes share an
+exact edge, the ring is covered, invalid rosters rejected, neighbouring-lane
+movement admitted, Core column and outside rejected);
+`tests/test_wave7_echo_cell_barrier_runtime.py` asserts no separator is ever
+planned, built or restored; the legacy cell tests in
+`test_wave7_named_runtime.py`, `test_wave7_passage_commit.py` and
+`test_wave7_single_room_hazard_journal_recovery.py` were updated with a written
+reason (`ECHO-005` supersession) rather than deleted.
+
+Still open for this item: native two-client evidence that the two groups cannot
+see or interfere with each other (section 6).
 
 ## 6. Native visual verification
 

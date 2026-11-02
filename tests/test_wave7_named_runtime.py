@@ -386,10 +386,15 @@ def test_official_echo_cell_blocks_player_movement_and_teleports_between_duels()
     assert "isNamedEchoCellTransitionAllowed(player.getUniqueId(), from, to, echoAnchor)" in move
     assert "activeNamedEchoCell(playerId)" in teleport
     assert "isNamedEchoCellLocationAllowed(playerId, target, anchor)" in teleport
+    # ECHO-005: the region is shared. A move is refused only when it leaves the
+    # authored Echo region; crossing into a neighbour's lane stays legal and no
+    # per-owner separator policy may be consulted again.
     transition_start = source.index("private boolean isNamedEchoCellTransitionAllowed(")
     transition_end = source.index("private Set<UUID> completedNamedEchoOwners(", transition_start)
-    assert "Wave7EchoDuelCellBarrierPolicy.allowsOwnerTransition(" in source[transition_start:transition_end]
-    assert "completedNamedEchoOwners(trial)" in source[transition_start:transition_end]
+    transition = source[transition_start:transition_end]
+    assert "Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(" in transition
+    assert "Wave7EchoDuelCellBarrierPolicy" not in transition
+    assert "allowsOwnerTransition(" not in transition
 
 
 def test_official_wave7_preflight_runs_before_cleanup_teleport_and_actor_spawn(tmp_path):
@@ -527,7 +532,9 @@ def test_wave7_barrier_world_preflight_reads_planned_blocks_without_mutating_wor
     source = (SOURCE / "CopiMineEndEvent.java").read_text(encoding="utf-8")
     preflight = extract(source, "boolean preflightWave7BarrierCells(World world, Location core)")
     assert "RealitySplitBarrierPolicy.cellsExcludingBoundaries(" in preflight
-    assert "echoPlan.closedCells()" in preflight
+    # ECHO-005: the Echo adds no owner separators, so the preflight inspects
+    # only the shared radial geometry it actually builds.
+    assert "closedCells()" not in preflight
     assert "inspectWave7BarrierCell(world, core, floorY, cell)" in preflight
     for mutating_call in ("setType(", "spawn(", "spawnEntity(", ".remove(", "prepare("):
         assert mutating_call not in preflight

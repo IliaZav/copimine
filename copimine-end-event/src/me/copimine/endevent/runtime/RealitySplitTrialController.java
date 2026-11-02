@@ -199,12 +199,19 @@ public final class RealitySplitTrialController {
         return named == null ? null : named.trials().get(chamber);
     }
 
-    /** Deterministic logical cells for an Echo room; world adapters still own physical barriers. */
+    /**
+     * Deterministic owner identities for the ONE shared Echo combat region.
+     *
+     * <p>ECHO-005: owners are not confined to individual walled cells. Each
+     * cell is a stable starting point and the spawn/cell-owner lookup key for
+     * one duel; any admitted owner may use the whole region, and pair
+     * isolation comes from the server owner-pair rule.</p>
+     */
     public synchronized List<Wave7EchoDuelCellPolicy.Cell> echoDuelCells(int chamber) {
         if (named == null) return List.of();
         NamedTrialState state = named.trials().get(chamber);
         if (state == null || state.trial() != NamedTrial.PERSONAL_ECHO) return List.of();
-        return Wave7EchoDuelCellPolicy.plan(chamber, named.selectedLayout().size(), state.owners());
+        return Wave7EchoDuelCellPolicy.sharedRegionPlan(chamber, state.owners().size(), state.owners());
     }
 
     public synchronized NamedData namedSnapshot() {

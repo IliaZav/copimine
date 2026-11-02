@@ -8,7 +8,15 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Deterministic owner-local geometry inside a shared Wave 7 Echo chamber. */
+/**
+ * Deterministic owner geometry inside the Wave 7 personal-Echo region.
+ *
+ * <p>ECHO-005: the region is SHARED. A lane is a starting position and a
+ * stable identity for one owner's duel, not a walled cell: owners may cross
+ * into a neighbouring lane because isolation is enforced by the server
+ * owner-pair rule ({@code EchoCombatAdmission}), not by physical separators.
+ * The radial-room helpers remain for legacy chamber layouts only.</p>
+ */
 public final class Wave7EchoDuelCellPolicy {
     public static final int MAX_OWNERS = 20;
     private static final double CHAMBER_EDGE_BUFFER_RADIANS = Math.toRadians(8.0D);
@@ -62,6 +70,59 @@ public final class Wave7EchoDuelCellPolicy {
             return new Boundary(innerRadius * Math.cos(angle), innerRadius * Math.sin(angle),
                     outerRadius * Math.cos(angle), outerRadius * Math.sin(angle));
         }
+    }
+
+    /**
+     * Spread the starting positions of one shared Echo region.
+     *
+     * <p>Owners are placed around the authored ring at evenly spaced angles.
+     * Adjacent lanes share exactly one angular edge, so the union of the lanes
+     * covers the whole usable ring instead of leaving gaps that a duel could
+     * not reach. Owners are ordered by their UUID string so a restart or a
+     * differently iterated roster yields identical positions.</p>
+     */
+    public static List<Cell> sharedRegionPlan(int chamber, int ownerCount, Collection<UUID> owners) {
+        if (chamber < 0 || chamber >= ChamberIsolationPolicy.MAX_CHAMBERS
+                || ownerCount <= 0 || ownerCount > MAX_OWNERS
+                || owners == null || owners.size() != ownerCount
+                || owners.stream().anyMatch(Objects::isNull)
+                || new HashSet<>(owners).size() != owners.size()) {
+            throw new IllegalArgumentException("valid shared Echo region roster required");
+        }
+        List<UUID> ordered = new ArrayList<>(owners);
+        ordered.sort(Comparator.comparing(UUID::toString));
+        double halfWidth = Math.PI / ownerCount;
+        List<Cell> cells = new ArrayList<>(ownerCount);
+        for (int ordinal = 0; ordinal < ownerCount; ordinal++) {
+            double center = -Math.PI + (2.0D * Math.PI * (ordinal + 0.5D) / ownerCount);
+            cells.add(new Cell(chamber, ordered.get(ordinal), ordinal, ownerCount, center, halfWidth,
+                    ChamberIsolationPolicy.INNER_RADIUS, ChamberIsolationPolicy.OUTER_RADIUS));
+        }
+        return List.copyOf(cells);
+    }
+
+    /**
+     * Whether {@code owner} may occupy a horizontal point of the shared region.
+     *
+     * <p>Every admitted owner may use the whole authored ring; the Core column
+     * and everything outside the ring stay closed. Non-admitted players have no
+     * region access at all.</p>
+     */
+    public static boolean allowsSharedRegionAccess(List<Cell> cells, UUID owner, double xOffset, double zOffset) {
+        if (cells == null || cells.isEmpty() || cells.size() > MAX_OWNERS || owner == null
+                || !Double.isFinite(xOffset) || !Double.isFinite(zOffset)) {
+            return false;
+        }
+        boolean admitted = false;
+        for (Cell cell : cells) {
+            if (cell == null || cell.owner() == null) return false;
+            if (cell.allowsOwner(owner)) admitted = true;
+        }
+        if (!admitted) return false;
+        for (Cell cell : cells) {
+            if (cell.contains(xOffset, zOffset)) return true;
+        }
+        return false;
     }
 
     /** Build stable owner lanes without depending on collection iteration order. */

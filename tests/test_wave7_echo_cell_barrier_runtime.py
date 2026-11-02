@@ -1,8 +1,19 @@
+"""ECHO-005: one shared Echo region instead of individual owner cells.
+
+The personal Echo used to receive owner-local lanes with physical separators,
+opened only after two adjacent duels had both completed. The contract forbids
+those walls: owners fight their copies inside one shared combat region and the
+server owner-pair rule (EchoCombatAdmission) does the isolation. These tests
+keep the replacement honest - no separator geometry, no per-owner world
+mutation, and the barrier plan still refuses an invalid persisted Echo state.
+"""
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 EVENT = ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java"
+TRIALS = ROOT / "copimine-end-event/src/me/copimine/endevent/runtime/RealitySplitTrialController.java"
+DOMAIN = ROOT / "copimine-end-event/src/me/copimine/endevent/domain"
 
 
 def _method(source: str, signature: str) -> str:
@@ -19,68 +30,62 @@ def _method(source: str, signature: str) -> str:
     raise AssertionError(f"unterminated method: {signature}")
 
 
-def test_echo_owner_walls_join_the_owned_world_plan_and_restart_geometry() -> None:
+def test_echo_stage_adds_no_owner_separators_to_the_wave7_world_plan() -> None:
     source = EVENT.read_text(encoding="utf-8")
-    plan = _method(source, "private boolean spawnRealitySplitBarriers(")
-    echo_plan = _method(source, "private Wave7EchoDuelBarrierPlan namedEchoDuelBarrierPlan(")
-
-    assert "namedEchoDuelBarrierPlan()" in plan
-    assert "plannedCells.addAll(echoBarrierPlan.closedCells())" in plan
-    assert "geometryCells.addAll(echoBarrierPlan.geometryCells())" in plan
-    assert "Wave7EchoDuelCellBarrierPolicy.cells(" in echo_plan
-    assert "duel.lifecycle() == me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.COMPLETE" in echo_plan
-    assert "realitySplitEchoBarrierByPair" in plan
-
-
-def test_invalid_echo_geometry_is_refused_before_rebuild_or_world_mutation() -> None:
-    source = EVENT.read_text(encoding="utf-8")
-    plan = _method(source, "private boolean spawnRealitySplitBarriers(")
-
-    assert plan.index("if (!echoBarrierPlan.valid())") < plan.index("clearRealitySplitBarriers(")
-    assert plan.index("for (RealitySplitBarrierPolicy.Cell cell : echoBarrierPlan.closedCells())") \
-        < plan.index("clearRealitySplitBarriers(")
-    preflight = plan[:plan.index("clearRealitySplitBarriers(")]
-    assert "!floor.getType().isSolid()" in preflight
-    assert "floor.isLiquid()" in preflight
-    assert "instanceof org.bukkit.block.TileState" in preflight
-    assert "!fullExistingWall" in preflight
-
-
-def test_echo_cell_open_is_derived_from_persisted_completion_before_mutating_world() -> None:
-    source = EVENT.read_text(encoding="utf-8")
-    death = _method(source, "private void handleNamedRealitySplitTrialBossDeath(")
-    opener = _method(source, "private boolean openCompletedNamedEchoCellBarriers(")
-
-    persist = death.index("saveStateSync()")
-    open_cells = death.index("openCompletedNamedEchoCellBarriers(")
-    assert persist < open_cells, "durable Echo completion must precede opening physical cell walls"
-    assert "openRealitySplitEchoCellBoundary(" in opener
-    assert "Wave7EchoDuelCellBarrierPolicy.plan(" in opener
+    preflight = _method(source, "private boolean preflightWave7BarrierCells(")
     plan = _method(source, "private Wave7EchoDuelBarrierPlan namedEchoDuelBarrierPlan(")
-    assert "Wave7EchoDuelCellBarrierPolicy.remaining(" in plan
+    spawn = _method(source, "private boolean spawnRealitySplitBarriers(")
+
+    for body in (preflight, plan, spawn):
+        assert "Wave7EchoDuelCellBarrierPolicy" not in body
+        assert "closedCells()" not in body
+        assert "geometryCells()" not in body
+    assert "realitySplitEchoBarrierByPair" not in source
+    assert "realitySplitEchoBoundaryCellsPendingRollback" not in source
+    assert "openRealitySplitEchoCellBoundary" not in source
 
 
-def test_echo_cell_wall_mutation_uses_originals_and_rolls_back_on_failure() -> None:
+def test_invalid_persisted_echo_state_still_blocks_the_barrier_build() -> None:
     source = EVENT.read_text(encoding="utf-8")
-    opener = _method(source, "private boolean openRealitySplitEchoCellBoundary(")
+    plan = _method(source, "private Wave7EchoDuelBarrierPlan namedEchoDuelBarrierPlan(")
 
-    assert "hazardJournal.load()" in opener
-    assert "HazardMutationJournal.Entry::isRealitySplitBarrierMutation" in opener
-    assert "RealitySplitBarrierMutationPolicy.applyAtomically" in opener
-    assert "barrier.setType(Material.AIR, false)" in opener
-    assert "restoreRealitySplitBoundaryClosed" in opener
-    assert "enterNamedRealitySplitRecovery" in opener
-    assert "rememberUncommittedRealitySplitEchoBoundaryRollback" in opener
+    # A broken persisted duel state exits as invalid before the final empty()
+    # success, so an unfinished Echo can never be treated as a valid plan.
+    assert plan.index("duels == null || trial.owners().isEmpty()") < plan.rindex(
+        "return Wave7EchoDuelBarrierPlan.empty();")
+    assert "return Wave7EchoDuelBarrierPlan.invalid();" in plan[plan.index(
+        "duels == null || trial.owners().isEmpty()"):]
+    spawn = _method(source, "private boolean spawnRealitySplitBarriers(")
+    assert "if (!echoBarrierPlan.valid())" in spawn
+    assert spawn.index("!echoBarrierPlan.valid()") < spawn.index("clearRealitySplitBarriers(")
+    assert spawn.index("namedEchoDuelBarrierPlan()") < spawn.index("clearRealitySplitBarriers(")
 
 
-def test_failed_echo_wall_open_retries_collision_restore_and_cleanup_clears_ownership() -> None:
+def test_echo_runtime_keeps_every_owner_inside_one_shared_region() -> None:
     source = EVENT.read_text(encoding="utf-8")
-    retry = _method(source, "private boolean recloseUncommittedRealitySplitEchoBoundary(")
-    cleanup = _method(source, "private boolean clearRealitySplitBarriers(")
+    checkpoint = _method(source, "private boolean checkpointNamedEchoHealthChanges(")
+    relocate = _method(source, "private boolean moveNamedEchoOwnerToCell(")
 
-    assert "restoreRealitySplitBoundaryCollisionClosed" in retry
-    assert "restoreRealitySplitBoundaryVisuals" in retry
-    assert "realitySplitEchoBarrierByPair.put(boundary" in retry
-    assert "realitySplitEchoBoundaryCellsPendingRollback.remove(boundary)" in retry
-    assert "entry.webOriginal()" in cleanup
-    assert "realitySplitEchoBarrierByPair.clear()" in cleanup
+    assert "Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(cells, cell.owner()," in checkpoint
+    # The relocation keeps its single public shape and delegates to the
+    # shared-region overload with the plan it already loaded.
+    assert "echoDuelCells(cell.chamber())" in relocate
+    # No per-owner corridor gate may come back into the movement checks.
+    for body in (checkpoint, relocate):
+        assert "Wave7EchoDuelCellBarrierPolicy" not in body
+
+
+def test_echo_duel_identities_come_from_the_shared_region_plan() -> None:
+    source = TRIALS.read_text(encoding="utf-8")
+    method = _method(source, "public synchronized List<Wave7EchoDuelCellPolicy.Cell> echoDuelCells(")
+
+    assert "Wave7EchoDuelCellPolicy.sharedRegionPlan(" in method
+    assert "Wave7EchoDuelCellPolicy.plan(" not in method.replace("sharedRegionPlan(", "")
+
+
+def test_shared_region_policy_exposes_lane_and_access_helpers() -> None:
+    policy = (DOMAIN / "Wave7EchoDuelCellPolicy.java").read_text(encoding="utf-8")
+
+    assert "public static List<Cell> sharedRegionPlan(" in policy
+    assert "public static boolean allowsSharedRegionAccess(" in policy
+    assert "one shared combat region" in policy or "SHARED" in policy

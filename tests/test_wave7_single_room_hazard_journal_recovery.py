@@ -31,7 +31,9 @@ def test_one_room_recovery_validates_barrier_journal_before_solo_shortcut() -> N
     )
     invalid_solo_guard = plan.index("if (soloRoomWithoutOuterDivider && !journal.valid())")
     invalid_solo_branch = _method(plan, "if (soloRoomWithoutOuterDivider && !journal.valid())")
-    solo_condition = "if (soloRoomWithoutOuterDivider && echoBarrierPlan.closedCells().isEmpty())"
+    # ECHO-005: the Echo contributes no separators, so a divider-free layout is
+    # decided by the chamber count alone - but still only after the journal.
+    solo_condition = "if (soloRoomWithoutOuterDivider) {"
     solo_shortcut = plan.index(solo_condition)
     solo_branch = _method(plan, solo_condition)
 

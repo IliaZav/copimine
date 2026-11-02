@@ -161,7 +161,6 @@ import me.copimine.endevent.domain.Wave4PressurePackPolicy;
 import me.copimine.endevent.domain.Wave7WardenCombatPolicy;
 import me.copimine.endevent.domain.Wave7NamedTrialActorPolicy;
 import me.copimine.endevent.domain.Wave7EchoDuelCellPolicy;
-import me.copimine.endevent.domain.Wave7EchoDuelCellBarrierPolicy;
 import me.copimine.endevent.domain.Wave7BarrierPreflightPolicy;
 import me.copimine.endevent.domain.IntermissionWatchdogPolicy;
 import me.copimine.endevent.domain.Wave3SquadIntentPolicy;
@@ -405,26 +404,21 @@ import org.joml.Quaternionf;
 public final class CopiMineEndEvent extends JavaPlugin implements Listener, CommandExecutor, TabCompleter,
         PluginMessageListener {
     private record RealitySplitBarrierRestoreTarget(int x, int y, int z, String originalBlockData) { }
-    private record Wave7EchoDuelBarrierPlan(boolean valid,
-                                            Set<RealitySplitBarrierPolicy.Cell> closedCells,
-                                            Set<RealitySplitBarrierPolicy.Cell> geometryCells,
-                                            Map<Wave7EchoDuelCellBarrierPolicy.SharedBarrier,
-                                                    Set<RealitySplitBarrierPolicy.Cell>> closedByPair) {
-        private Wave7EchoDuelBarrierPlan {
-            closedCells = Set.copyOf(closedCells);
-            geometryCells = Set.copyOf(geometryCells);
-            Map<Wave7EchoDuelCellBarrierPolicy.SharedBarrier,
-                    Set<RealitySplitBarrierPolicy.Cell>> copy = new LinkedHashMap<>();
-            closedByPair.forEach((barrier, cells) -> copy.put(barrier, Set.copyOf(cells)));
-            closedByPair = Map.copyOf(copy);
-        }
-
+    /**
+     * Echo share of the Wave 7 barrier plan: a validity flag only.
+     *
+     * <p>ECHO-005: the personal Echo is one shared combat region, so there are
+     * no per-owner separators to plan. The record stays so the barrier
+     * preflight keeps refusing an invalid Echo state before it mutates the
+     * world.</p>
+     */
+    private record Wave7EchoDuelBarrierPlan(boolean valid) {
         private static Wave7EchoDuelBarrierPlan empty() {
-            return new Wave7EchoDuelBarrierPlan(true, Set.of(), Set.of(), Map.of());
+            return new Wave7EchoDuelBarrierPlan(true);
         }
 
         private static Wave7EchoDuelBarrierPlan invalid() {
-            return new Wave7EchoDuelBarrierPlan(false, Set.of(), Set.of(), Map.of());
+            return new Wave7EchoDuelBarrierPlan(false);
         }
     }
 
@@ -893,17 +887,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<RealitySplitBarrierPolicy.Cell> realitySplitBarrierCells = new LinkedHashSet<>();
     private final Map<RealitySplitBarrierPolicy.Cell, String> realitySplitBarrierOriginals = new LinkedHashMap<>();
     private final Map<Integer, Set<RealitySplitBarrierPolicy.Cell>> realitySplitBarrierByBoundary = new LinkedHashMap<>();
-    /** Active owner-to-owner Echo separators share the same journaled physical cell set. */
-    private final Map<Wave7EchoDuelCellBarrierPolicy.SharedBarrier,
-            Set<RealitySplitBarrierPolicy.Cell>> realitySplitEchoBarrierByPair = new LinkedHashMap<>();
     /** In-memory rollback tickets until each OPEN passage checkpoint is durable. */
     private final Map<Integer, Set<RealitySplitBarrierPolicy.Cell>> realitySplitBoundaryCellsPendingCommit = new LinkedHashMap<>();
     private final Map<Integer, List<RealitySplitBarrierPolicy.Cell>> realitySplitOpenedCellsPendingCommit = new LinkedHashMap<>();
-    /** Echo OPEN intent is the already-durable completion of both adjacent owner duels. */
-    private final Map<Wave7EchoDuelCellBarrierPolicy.SharedBarrier,
-            Set<RealitySplitBarrierPolicy.Cell>> realitySplitEchoBoundaryCellsPendingRollback = new LinkedHashMap<>();
-    private final Map<Wave7EchoDuelCellBarrierPolicy.SharedBarrier,
-            List<RealitySplitBarrierPolicy.Cell>> realitySplitEchoOpenedCellsPendingRollback = new LinkedHashMap<>();
+    /** Tick at which the pending radial-boundary rollback is retried. */
     private long realitySplitBoundaryRollbackRetryAtTick;
     private final Map<RealitySplitBarrierPolicy.Cell, UUID> realitySplitBarrierVisuals = new LinkedHashMap<>();
     private final Map<UUID, Long> currentFogLastImpactAt = new HashMap<>();
@@ -22051,18 +22038,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 ? RealitySplitBarrierPolicy.finalSealCells(barrierChamberCount)
                 : RealitySplitBarrierPolicy.cellsExcludingBoundaries(
                         barrierChamberCount, openBoundaryIndexes));
-        plannedCells.addAll(echoPlan.closedCells());
-        Set<RealitySplitBarrierPolicy.Cell> echoClosedCells = echoPlan.closedCells();
         int floorY = combatFloorY();
         try {
-            // Echo separators are mandatory for owner isolation; unlike clipped
-            // outer geometry, any unsafe cell invalidates the whole start.
-            for (RealitySplitBarrierPolicy.Cell cell : echoClosedCells) {
-                if (!Wave7BarrierPreflightPolicy.accepts(
-                        inspectWave7BarrierCell(world, core, floorY, cell))) return false;
-            }
+            // ECHO-005: the personal Echo adds no owner separators, so only the
+            // shared radial geometry below needs a placement preflight.
             for (RealitySplitBarrierPolicy.Cell cell : plannedCells) {
-                if (echoClosedCells.contains(cell)) continue;
                 boolean coreClearance = finalSeal
                         && core.getBlockX() + cell.xOffset() == coreX
                         && core.getBlockZ() + cell.zOffset() == coreZ
@@ -22633,7 +22613,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             Location spawn = findSafeCombatLocation(core, actorPoint,
                     boundedCombatRadius(config.arenaRadius()) - 1.0D,
                     MIN_WAVE_CORE_DISTANCE_BLOCKS, trial.chamber(), owner);
-            if (spawn == null || !cell.contains(spawn.getX() - core.getX(), spawn.getZ() - core.getZ())) return false;
+            if (spawn == null || !Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(
+                    realitySplitTrialController.echoDuelCells(cell.chamber()), cell.owner(),
+                    spawn.getX() - core.getX(), spawn.getZ() - core.getZ())) return false;
             Entity created = spawnRealitySplitTrialEntity(world, spawn, EntityType.PILLAGER,
                     trial.chamber(), RealitySplitTrialController.NamedTrial.PERSONAL_ECHO.name(), index, true, false);
             if (!(created instanceof Pillager pillager)) return false;
@@ -22740,12 +22722,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private boolean moveNamedEchoOwnerToCell(Player owner, Location destination,
             me.copimine.endevent.domain.Wave7EchoDuelCellPolicy.Cell cell, Location core) {
+        return moveNamedEchoOwnerToCell(owner, destination, cell, core,
+                realitySplitTrialController.echoDuelCells(cell.chamber()));
+    }
+
+    private boolean moveNamedEchoOwnerToCell(Player owner, Location destination,
+            me.copimine.endevent.domain.Wave7EchoDuelCellPolicy.Cell cell, Location core,
+            List<me.copimine.endevent.domain.Wave7EchoDuelCellPolicy.Cell> sharedRegion) {
         if (owner == null || destination == null || cell == null || core == null) return false;
-        if (cell.contains(owner.getLocation().getX() - core.getX(), owner.getLocation().getZ() - core.getZ())) return true;
+        if (Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(sharedRegion, cell.owner(),
+                owner.getLocation().getX() - core.getX(), owner.getLocation().getZ() - core.getZ())) return true;
         Location safe = findSafeCombatLocation(core, destination,
                 boundedCombatRadius(config.arenaRadius()) - 1.0D,
                 MIN_WAVE_CORE_DISTANCE_BLOCKS, cell.chamber(), owner);
-        if (safe == null || !cell.contains(safe.getX() - core.getX(), safe.getZ() - core.getZ())) return false;
+        if (safe == null || !Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(
+                sharedRegion, cell.owner(),
+                safe.getX() - core.getX(), safe.getZ() - core.getZ())) return false;
         UUID ownerId = owner.getUniqueId();
         issueRealitySplitPlayerTeleportPermit(ownerId, safe);
         try { return owner.teleport(safe); }
@@ -30832,15 +30824,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (trial == null || completedOwners == null) return false;
         List<Wave7EchoDuelCellPolicy.Cell> cells =
                 realitySplitTrialController.echoDuelCells(cell.chamber());
-        try {
-            List<Wave7EchoDuelCellBarrierPolicy.SharedBarrier> barriers =
-                    Wave7EchoDuelCellBarrierPolicy.plan(cell.chamber(),
-                            realitySplitChamberController.assignment().chamberCount(), trial.owners());
-            return Wave7EchoDuelCellBarrierPolicy.allowsOwnerLocation(cells, barriers,
-                    completedOwners, owner, target.getX() - anchor.getX(), target.getZ() - anchor.getZ());
-        } catch (RuntimeException invalidCellState) {
-            return false;
-        }
+        // ECHO-005: one shared region. Owners may cross lanes; isolation is
+        // the server owner-pair rule, not a wall between individual cells.
+        return Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(cells, owner,
+                target.getX() - anchor.getX(), target.getZ() - anchor.getZ());
     }
 
     private boolean isNamedEchoCellTransitionAllowed(UUID owner, Location from, Location to,
@@ -30860,17 +30847,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (trial == null || completedOwners == null) return false;
         List<Wave7EchoDuelCellPolicy.Cell> cells =
                 realitySplitTrialController.echoDuelCells(cell.chamber());
-        try {
-            List<Wave7EchoDuelCellBarrierPolicy.SharedBarrier> barriers =
-                    Wave7EchoDuelCellBarrierPolicy.plan(cell.chamber(),
-                            realitySplitChamberController.assignment().chamberCount(), trial.owners());
-            return Wave7EchoDuelCellBarrierPolicy.allowsOwnerTransition(cells, barriers,
-                    completedOwners, owner,
-                    from.getX() - anchor.getX(), from.getZ() - anchor.getZ(),
-                    to.getX() - anchor.getX(), to.getZ() - anchor.getZ());
-        } catch (RuntimeException invalidCellState) {
-            return false;
-        }
+        return Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(cells, owner,
+                from.getX() - anchor.getX(), from.getZ() - anchor.getZ())
+                && Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(cells, owner,
+                to.getX() - anchor.getX(), to.getZ() - anchor.getZ());
     }
 
     private Set<UUID> completedNamedEchoOwners(RealitySplitTrialController.NamedTrialState trial) {
@@ -30986,158 +30966,31 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && listener.consumeOwnerLethalDeath(pair, living.getLastDamageCause());
     }
 
+    /**
+     * ECHO-005: a completed duel receipt must be durable before the stage can
+     * read it as completed. The shared region has no per-owner separator to
+     * open, so this is a receipt check, not a world mutation.
+     */
     private boolean openCompletedNamedEchoCellBarriers(int chamber) {
         if (!realitySplitTrialController.ownsNamed(parseUuidOrNull(eventId), generation)) return false;
         RealitySplitTrialController.NamedTrialState trial = realitySplitTrialController.namedTrial(chamber);
         if (trial == null || trial.trial() != RealitySplitTrialController.NamedTrial.PERSONAL_ECHO) {
             return true;
         }
-        var snapshot = realitySplitTrialController.namedSnapshot();
         Map<UUID, me.copimine.endevent.runtime.RealitySplitEchoDuelState.DuelRecord> duels =
-                snapshot.personalEchoDuels().get(chamber);
+                realitySplitTrialController.namedSnapshot().personalEchoDuels().get(chamber);
         if (duels == null) return false;
-        Set<UUID> completedOwners = new LinkedHashSet<>();
         for (UUID owner : trial.owners()) {
             var duel = duels.get(owner);
             if (duel == null || !duel.ownerUuid().equals(owner)
                     || !duel.eventId().equals(parseUuidOrNull(eventId))
                     || duel.attemptGeneration() != generation || duel.room() != chamber) return false;
             if (duel.lifecycle()
-                    == me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.COMPLETE) {
-                completedOwners.add(owner);
-            }
-        }
-        List<Wave7EchoDuelCellBarrierPolicy.SharedBarrier> barriers =
-                Wave7EchoDuelCellBarrierPolicy.plan(chamber,
-                        realitySplitChamberController.assignment().chamberCount(), trial.owners());
-        for (Wave7EchoDuelCellBarrierPolicy.SharedBarrier barrier : barriers) {
-            if (completedOwners.contains(barrier.lowerOwner())
-                    && completedOwners.contains(barrier.upperOwner())
-                    && realitySplitEchoBarrierByPair.containsKey(barrier)
-                    && !openRealitySplitEchoCellBoundary(barrier)) {
-                return false;
-            }
+                    != me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.COMPLETE
+                    && !duels.values().stream().anyMatch(other -> owner.equals(other.ownerUuid())
+                    && other.lifecycle() == me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.COMPLETE)) return false;
         }
         return true;
-    }
-
-    /** Open one owner separator after the two adjacent duel completions are durable. */
-    private boolean openRealitySplitEchoCellBoundary(
-            Wave7EchoDuelCellBarrierPolicy.SharedBarrier boundary) {
-        Set<RealitySplitBarrierPolicy.Cell> ownedCells = realitySplitEchoBarrierByPair.get(boundary);
-        if (ownedCells == null) return true;
-        if (ownedCells.isEmpty()) return false;
-        World world = Bukkit.getWorld(worldName);
-        if (world == null) return false;
-        HazardMutationJournal.Snapshot journal = hazardJournal == null
-                ? HazardMutationJournal.Snapshot.empty() : hazardJournal.load();
-        boolean journalOwnsCells = journal.valid()
-                && journal.status() == HazardMutationJournal.Status.APPLIED
-                && journal.eventId().equals(eventId) && journal.generation() == generation
-                && journal.world().equals(world.getName())
-                && journal.entries().stream().allMatch(
-                HazardMutationJournal.Entry::isRealitySplitBarrierMutation)
-                && journal.entries().stream().allMatch(entry -> entry.eventId().equals(eventId)
-                && entry.generation() == generation
-                && entry.worldId().equalsIgnoreCase(world.getUID().toString()));
-        if (!journalOwnsCells) {
-            enterNamedRealitySplitRecovery("WAVE7_ECHO_CELL_JOURNAL_SCOPE_INVALID");
-            return false;
-        }
-
-        List<RealitySplitBarrierPolicy.Cell> toOpen = ownedCells.stream()
-                .filter(cell -> !realitySplitEchoBarrierStillNeeded(cell, boundary))
-                .toList();
-        for (RealitySplitBarrierPolicy.Cell cell : toOpen) {
-            String original = realitySplitBarrierOriginals.get(cell);
-            int x = coreX + cell.xOffset();
-            int y = combatFloorY() + cell.level();
-            int z = coreZ + cell.zOffset();
-            Block barrier = world.getBlockAt(x, y, z);
-            if (original == null || original.isBlank() || !isRealitySplitBarrierBlock(barrier)
-                    || journal.entries().stream().noneMatch(entry -> entry.x() == x
-                    && entry.floorY() + 1 == y && entry.z() == z
-                    && original.equals(entry.webOriginal()))) {
-                enterNamedRealitySplitRecovery("WAVE7_ECHO_CELL_OWNERSHIP_MISMATCH");
-                return false;
-            }
-        }
-
-        RuntimeException[] visualRemovalError = new RuntimeException[1];
-        RealitySplitBarrierMutationPolicy.Result<RealitySplitBarrierPolicy.Cell> result =
-                RealitySplitBarrierMutationPolicy.applyAtomically(toOpen,
-                        cell -> world.getBlockAt(coreX + cell.xOffset(),
-                                        combatFloorY() + cell.level(), coreZ + cell.zOffset())
-                                .getBlockData().getAsString(),
-                        cell -> {
-                            Block barrier = world.getBlockAt(coreX + cell.xOffset(),
-                                    combatFloorY() + cell.level(), coreZ + cell.zOffset());
-                            barrier.setType(Material.AIR, false);
-                            return barrier.getType() == Material.AIR;
-                        },
-                        (cell, before) -> restoreRealitySplitBlock(world.getBlockAt(
-                                coreX + cell.xOffset(), combatFloorY() + cell.level(),
-                                coreZ + cell.zOffset()), before),
-                        () -> {
-                            try {
-                                for (RealitySplitBarrierPolicy.Cell cell : toOpen) {
-                                    removeRealitySplitBarrierVisual(cell);
-                                }
-                                return true;
-                            } catch (RuntimeException error) {
-                                visualRemovalError[0] = error;
-                                return false;
-                            }
-                        });
-        if (!result.committed()) {
-            boolean closed = result.rollbackComplete()
-                    && restoreRealitySplitBoundaryClosed(world, toOpen);
-            if (!closed) {
-                rememberUncommittedRealitySplitEchoBoundaryRollback(boundary, ownedCells, toOpen);
-                enterNamedRealitySplitRecovery("WAVE7_ECHO_CELL_OPEN_ROLLBACK_FAILED");
-            } else if (visualRemovalError[0] != null) {
-                getLogger().log(Level.WARNING, "END_RIFT_WAVE7_ECHO_CELL_VISUAL_OPEN_FAILED event="
-                        + eventId + " pair=" + boundary, visualRemovalError[0]);
-            }
-            return false;
-        }
-        for (RealitySplitBarrierPolicy.Cell cell : toOpen) {
-            Block barrier = world.getBlockAt(coreX + cell.xOffset(),
-                    combatFloorY() + cell.level(), coreZ + cell.zOffset());
-            if (barrier.getType() != Material.AIR) {
-                if (!restoreRealitySplitBoundaryClosed(world, toOpen)) {
-                    rememberUncommittedRealitySplitEchoBoundaryRollback(boundary, ownedCells, toOpen);
-                    enterNamedRealitySplitRecovery("WAVE7_ECHO_CELL_OPEN_POSTCONDITION_ROLLBACK_FAILED");
-                }
-                return false;
-            }
-        }
-        realitySplitEchoBarrierByPair.remove(boundary);
-        for (RealitySplitBarrierPolicy.Cell cell : toOpen) {
-            realitySplitBarrierCells.remove(cell);
-        }
-        getLogger().info("END_RIFT_WAVE7_ECHO_CELL_BOUNDARY_OPENED event=" + eventId
-                + " generation=" + generation + " lower_owner=" + boundary.lowerOwner()
-                + " upper_owner=" + boundary.upperOwner() + " opened=" + toOpen.size());
-        return true;
-    }
-
-    private boolean realitySplitEchoBarrierStillNeeded(
-            RealitySplitBarrierPolicy.Cell cell,
-            Wave7EchoDuelCellBarrierPolicy.SharedBarrier boundaryBeingOpened) {
-        return realitySplitBarrierByBoundary.values().stream().anyMatch(cells -> cells.contains(cell))
-                || realitySplitEchoBarrierByPair.entrySet().stream()
-                .anyMatch(entry -> !entry.getKey().equals(boundaryBeingOpened)
-                        && entry.getValue().contains(cell));
-    }
-
-    private void rememberUncommittedRealitySplitEchoBoundaryRollback(
-            Wave7EchoDuelCellBarrierPolicy.SharedBarrier boundary,
-            Set<RealitySplitBarrierPolicy.Cell> ownedCells,
-            List<RealitySplitBarrierPolicy.Cell> openedCells) {
-        realitySplitEchoBoundaryCellsPendingRollback.put(boundary, Set.copyOf(ownedCells));
-        realitySplitEchoOpenedCellsPendingRollback.put(boundary, List.copyOf(openedCells));
-        scheduleRealitySplitBoundaryRollbackRetry();
     }
 
     private void clearCompletedRealitySplitTrialObjectives(int chamber) {
@@ -31310,14 +31163,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (duel.lifecycle()
                     == me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.OWNER_OFFLINE
                     && System.currentTimeMillis() >= duel.returnDeadlineMillis()) return false;
-            if (!cell.contains(owner.getLocation().getX() - core.getX(),
-                    owner.getLocation().getZ() - core.getZ())) {
+            // ECHO-005: a shared region admits the owner anywhere inside the
+            // authored ring, so only leaving the region triggers a regroup.
+            if (!Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(cells, cell.owner(),
+                    owner.getLocation().getX() - core.getX(), owner.getLocation().getZ() - core.getZ())) {
                 Location ownerPoint = echoDuelCellPoint(core, cell, ChamberIsolationPolicy.INNER_RADIUS + 2.0D);
-                if (!moveNamedEchoOwnerToCell(owner, ownerPoint, cell, core)) return false;
+                if (!moveNamedEchoOwnerToCell(owner, ownerPoint, cell, core, cells)) return false;
             }
             if (!carrier.getWorld().equals(world)
-                    || !cell.contains(carrier.getLocation().getX() - core.getX(),
-                    carrier.getLocation().getZ() - core.getZ())) return false;
+                    || !Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(cells, cell.owner(),
+                    carrier.getLocation().getX() - core.getX(), carrier.getLocation().getZ() - core.getZ())) return false;
 
             // Rebinding owns its own synchronous checkpoint and captures carrier health there.
             if (duel.lifecycle()
@@ -33637,10 +33492,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return Wave7EchoDuelBarrierPlan.empty();
         }
         var snapshot = realitySplitTrialController.namedSnapshot();
-        Set<RealitySplitBarrierPolicy.Cell> closedCells = new LinkedHashSet<>();
-        Set<RealitySplitBarrierPolicy.Cell> geometryCells = new LinkedHashSet<>();
-        Map<Wave7EchoDuelCellBarrierPolicy.SharedBarrier,
-                Set<RealitySplitBarrierPolicy.Cell>> closedByPair = new LinkedHashMap<>();
         for (RealitySplitTrialController.NamedTrialState trial : snapshot.trials().values().stream()
                 .sorted(Comparator.comparingInt(RealitySplitTrialController.NamedTrialState::chamber))
                 .toList()) {
@@ -33648,11 +33499,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             Map<UUID, me.copimine.endevent.runtime.RealitySplitEchoDuelState.DuelRecord> duels =
                     snapshot.personalEchoDuels().get(trial.chamber());
             if (duels == null || trial.owners().isEmpty()) return Wave7EchoDuelBarrierPlan.invalid();
-            List<Wave7EchoDuelCellBarrierPolicy.SharedBarrier> barriers =
-                    Wave7EchoDuelCellBarrierPolicy.plan(trial.chamber(),
-                            realitySplitChamberController.assignment().chamberCount(),
-                            trial.owners());
-            Set<UUID> completedOwners = new LinkedHashSet<>();
             for (UUID owner : trial.owners()) {
                 var duel = duels.get(owner);
                 if (duel == null || !duel.ownerUuid().equals(owner)
@@ -33660,21 +33506,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         || duel.attemptGeneration() != generation || duel.room() != trial.chamber()) {
                     return Wave7EchoDuelBarrierPlan.invalid();
                 }
-                if (duel.lifecycle() == me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.COMPLETE) {
-                    completedOwners.add(owner);
-                }
             }
-            geometryCells.addAll(Wave7EchoDuelCellBarrierPolicy.cells(
-                    barriers, Set.of(), RealitySplitBarrierPolicy.HEIGHT));
-            for (Wave7EchoDuelCellBarrierPolicy.SharedBarrier barrier
-                    : Wave7EchoDuelCellBarrierPolicy.remaining(barriers, completedOwners)) {
-                Set<RealitySplitBarrierPolicy.Cell> cells = new LinkedHashSet<>(
-                        Wave7EchoDuelCellBarrierPolicy.cells(barrier, RealitySplitBarrierPolicy.HEIGHT));
-                closedByPair.put(barrier, Set.copyOf(cells));
-                closedCells.addAll(cells);
-            }
+            // ECHO-005: the personal Echo is ONE shared combat region. There are
+            // no per-owner separators to build, open after completion or restore
+            // on restart; only the persisted duel state is validated here.
         }
-        return new Wave7EchoDuelBarrierPlan(true, closedCells, geometryCells, closedByPair);
+        return Wave7EchoDuelBarrierPlan.empty();
     }
 
     /**
@@ -33734,7 +33571,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         boolean soloRoomWithoutOuterDivider = chamberCount == 1 && !finalSealBarrierContext();
         int barrierChamberCount = Math.max(2, chamberCount);
         int floorY = combatFloorY();
-        for (RealitySplitBarrierPolicy.Cell cell : echoBarrierPlan.closedCells()) {
+        for (RealitySplitBarrierPolicy.Cell cell : List.<RealitySplitBarrierPolicy.Cell>of()) {
             Location location = new Location(world, core.getBlockX() + cell.xOffset(),
                     floorY + cell.level(), core.getBlockZ() + cell.zOffset());
             Block floor = world.getBlockAt(core.getBlockX() + cell.xOffset(), floorY,
@@ -33792,7 +33629,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " journal_world=" + journal.world());
             return false;
         }
-        if (soloRoomWithoutOuterDivider && echoBarrierPlan.closedCells().isEmpty()) {
+        if (soloRoomWithoutOuterDivider) {
             getLogger().info("END_RIFT_WAVE7_SOLO_TRIAL_NO_DIVIDER event=" + eventId
                     + " generation=" + generation + " one_room=true");
             return true;
@@ -33802,22 +33639,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 ? RealitySplitBarrierPolicy.finalSealCells(barrierChamberCount)
                 : RealitySplitBarrierPolicy.cellsExcludingBoundaries(
                         barrierChamberCount, openBoundaryIndexes));
-        plannedCells.addAll(echoBarrierPlan.closedCells());
         Set<RealitySplitBarrierPolicy.Cell> plannedCellSet = new LinkedHashSet<>(plannedCells);
         Set<RealitySplitBarrierPolicy.Cell> geometryCells = new LinkedHashSet<>(soloRoomWithoutOuterDivider
                 ? Set.of() : finalSealBarrierContext()
                 ? RealitySplitBarrierPolicy.finalSealCells(barrierChamberCount)
                 : RealitySplitBarrierPolicy.cells(barrierChamberCount));
-        geometryCells.addAll(echoBarrierPlan.geometryCells());
-        for (RealitySplitBarrierPolicy.Cell cell : echoBarrierPlan.closedCells()) {
-            Location location = new Location(world, core.getBlockX() + cell.xOffset(),
-                    floorY + cell.level(), core.getBlockZ() + cell.zOffset());
-            if (!isRealitySplitBarrierPlacementLocation(location) || isGateLocation(location)) {
-                getLogger().severe("END_RIFT_WAVE7_ECHO_BARRIERS_REFUSED event=" + eventId
-                        + " generation=" + generation + " reason=cell-wall-outside-safe-arena cell=" + cell);
-                return false;
-            }
-        }
+
         Map<RealitySplitBarrierPolicy.Cell, HazardMutationJournal.Entry> retainedOpenEntries =
                 new LinkedHashMap<>();
         for (HazardMutationJournal.Entry entry : journal.entries()) {
@@ -34029,21 +33856,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
             }
         }
-        realitySplitEchoBarrierByPair.clear();
-        for (Map.Entry<Wave7EchoDuelCellBarrierPolicy.SharedBarrier,
-                Set<RealitySplitBarrierPolicy.Cell>> entry : echoBarrierPlan.closedByPair().entrySet()) {
-            Set<RealitySplitBarrierPolicy.Cell> owned = new LinkedHashSet<>(entry.getValue());
-            owned.retainAll(realitySplitBarrierCells);
-            if (!owned.containsAll(entry.getValue())) {
-                getLogger().severe("END_RIFT_WAVE7_ECHO_BARRIERS_REFUSED event=" + eventId
-                        + " generation=" + generation + " reason=owner-wall-not-fully-owned pair="
-                        + entry.getKey());
-                recoveryReason = "END_RIFT_WAVE7_ECHO_BARRIER_OWNERSHIP_INCOMPLETE";
-                forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
-                return false;
-            }
-            realitySplitEchoBarrierByPair.put(entry.getKey(), Set.copyOf(owned));
-        }
         Set<RealitySplitBarrierPolicy.Cell> visualCells = new LinkedHashSet<>(realitySplitBarrierCells);
         Set<RealitySplitBarrierPolicy.Cell> visualColumns = visualCells.stream()
                 .filter(cell -> cell.level() == 1)
@@ -34104,7 +33916,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 realitySplitBarrierCells.clear();
                 realitySplitBarrierOriginals.clear();
                 realitySplitBarrierByBoundary.clear();
-                realitySplitEchoBarrierByPair.clear();
                 realitySplitBarrierVisuals.clear();
             } else {
                 recoveryReason = "END_RIFT_WAVE7_BARRIER_VISUAL_ROLLBACK_FAILED";
@@ -34339,8 +34150,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean realitySplitBarrierStillNeeded(
             RealitySplitBarrierPolicy.Cell cell, int boundaryBeingOpened) {
         return RealitySplitBarrierOwnershipPolicy.isNeededByOtherBoundary(
-                realitySplitBarrierByBoundary, boundaryBeingOpened, cell)
-                || realitySplitEchoBarrierByPair.values().stream().anyMatch(cells -> cells.contains(cell));
+                realitySplitBarrierByBoundary, boundaryBeingOpened, cell);
     }
 
     private void rememberRealitySplitBoundaryRollback(int boundary,
@@ -34383,51 +34193,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void clearRealitySplitBoundaryRollback(int boundary) {
         realitySplitBoundaryCellsPendingCommit.remove(boundary);
         realitySplitOpenedCellsPendingCommit.remove(boundary);
-        if (realitySplitBoundaryCellsPendingCommit.isEmpty()
-                && realitySplitEchoBoundaryCellsPendingRollback.isEmpty()) {
-            realitySplitBoundaryRollbackRetryAtTick = 0L;
+        if (realitySplitBoundaryCellsPendingCommit.isEmpty()) {
+            realitySplitBoundaryRollbackRetryAtTick = eventTickCounter + 20L;
         }
     }
 
-    /** Retry closing Echo collision cells after an interrupted OPEN rollback. */
-    private boolean recloseUncommittedRealitySplitEchoBoundary(
-            Wave7EchoDuelCellBarrierPolicy.SharedBarrier boundary) {
-        Set<RealitySplitBarrierPolicy.Cell> ownedCells =
-                realitySplitEchoBoundaryCellsPendingRollback.get(boundary);
-        List<RealitySplitBarrierPolicy.Cell> openedCells =
-                realitySplitEchoOpenedCellsPendingRollback.get(boundary);
-        if (ownedCells == null || openedCells == null) return false;
-        World world = Bukkit.getWorld(worldName);
-        if (world == null || !openedCells.isEmpty()
-                && !restoreRealitySplitBoundaryCollisionClosed(world, openedCells)) {
-            scheduleRealitySplitBoundaryRollbackRetry();
-            return false;
-        }
-        realitySplitBarrierCells.addAll(ownedCells);
-        realitySplitEchoBarrierByPair.put(boundary, Set.copyOf(ownedCells));
-        if (!openedCells.isEmpty() && !restoreRealitySplitBoundaryVisuals(world, openedCells)) {
-            scheduleRealitySplitBoundaryRollbackRetry();
-            return false;
-        }
-        realitySplitEchoBoundaryCellsPendingRollback.remove(boundary);
-        realitySplitEchoOpenedCellsPendingRollback.remove(boundary);
-        if (realitySplitBoundaryCellsPendingCommit.isEmpty()
-                && realitySplitEchoBoundaryCellsPendingRollback.isEmpty()) {
-            realitySplitBoundaryRollbackRetryAtTick = 0L;
-        }
-        getLogger().warning("END_RIFT_WAVE7_ECHO_CELL_OPEN_ROLLED_BACK event=" + eventId
-                + " lower_owner=" + boundary.lowerOwner() + " upper_owner=" + boundary.upperOwner()
-                + " cells=" + openedCells.size());
-        return true;
-    }
-
-    private void scheduleRealitySplitBoundaryRollbackRetry() {
-        realitySplitBoundaryRollbackRetryAtTick = eventTickCounter + 20L;
-    }
-
+    /**
+     * Retry radial passage rollbacks after an interrupted OPEN.
+     *
+     * <p>ECHO-005: the personal Echo owns no separators any more, so only the
+     * shared radial boundary tickets are retried here.</p>
+     */
     private void tickUncommittedRealitySplitBoundaryRollbacks() {
-        if (realitySplitBoundaryCellsPendingCommit.isEmpty()
-                && realitySplitEchoBoundaryCellsPendingRollback.isEmpty()) {
+        if (realitySplitBoundaryCellsPendingCommit.isEmpty()) {
             realitySplitBoundaryRollbackRetryAtTick = 0L;
             return;
         }
@@ -34438,10 +34216,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (int boundary : List.copyOf(realitySplitBoundaryCellsPendingCommit.keySet())) {
             recloseUncommittedRealitySplitBoundary(boundary);
         }
-        for (Wave7EchoDuelCellBarrierPolicy.SharedBarrier boundary
-                : List.copyOf(realitySplitEchoBoundaryCellsPendingRollback.keySet())) {
-            recloseUncommittedRealitySplitEchoBoundary(boundary);
-        }
+    }
+
+    private void scheduleRealitySplitBoundaryRollbackRetry() {
+        realitySplitBoundaryRollbackRetryAtTick = eventTickCounter + 20L;
     }
 
     private boolean restoreRealitySplitBoundaryClosed(
@@ -34674,17 +34452,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (journal.status() == HazardMutationJournal.Status.RESTORED
                 && realitySplitBarrierCells.isEmpty()
                 && realitySplitBarrierOriginals.isEmpty()
-                && realitySplitBarrierVisuals.isEmpty()
-                && realitySplitEchoBarrierByPair.isEmpty()
-                && realitySplitEchoBoundaryCellsPendingRollback.isEmpty()
-                && realitySplitEchoOpenedCellsPendingRollback.isEmpty()) {
+                && realitySplitBarrierVisuals.isEmpty()) {
             return true;
         }
         if (realitySplitBarrierCells.isEmpty() && realitySplitBarrierOriginals.isEmpty()
                 && realitySplitBarrierVisuals.isEmpty()
-                && realitySplitEchoBarrierByPair.isEmpty()
-                && realitySplitEchoBoundaryCellsPendingRollback.isEmpty()
-                && realitySplitEchoOpenedCellsPendingRollback.isEmpty()
                 && !hasPersistedRealitySplitEntries) {
             // Do not mark an unrelated active hazard journal RESTORED merely
             // because this Wave 7 map is already empty.
@@ -34797,11 +34569,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         realitySplitBarrierCells.clear();
         realitySplitBarrierOriginals.clear();
         realitySplitBarrierByBoundary.clear();
-        realitySplitEchoBarrierByPair.clear();
         realitySplitBoundaryCellsPendingCommit.clear();
         realitySplitOpenedCellsPendingCommit.clear();
-        realitySplitEchoBoundaryCellsPendingRollback.clear();
-        realitySplitEchoOpenedCellsPendingRollback.clear();
         realitySplitBoundaryRollbackRetryAtTick = 0L;
         realitySplitBarrierVisuals.clear();
         getLogger().info("END_RIFT_WAVE7_BARRIERS_CLEANUP event=" + eventId
@@ -34815,9 +34584,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         endRiftDiagnosticsInvariant("WAVE7_BARRIER_STATE_EMPTY", realitySplitBarrierCells.isEmpty()
                         && realitySplitBarrierOriginals.isEmpty()
                         && realitySplitBarrierByBoundary.isEmpty()
-                        && realitySplitEchoBarrierByPair.isEmpty()
-                        && realitySplitEchoBoundaryCellsPendingRollback.isEmpty()
-                        && realitySplitEchoOpenedCellsPendingRollback.isEmpty()
                         && realitySplitBarrierVisuals.isEmpty(),
                 "wave7:" + eventId + ":" + generation,
                 Map.of("restored", restored));

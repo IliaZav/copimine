@@ -197,6 +197,30 @@ the available rendering API**, and it is reported as such rather than claimed as
 implemented. Native visual confirmation of the new boundary is still required
 (section 6).
 
+### 5.4 Wave 7 Echo still divides owners into physical wedge cells (ECHO-005) — OPEN
+
+**Reproduced on the current tree, not yet fixed.** `ECHO-005` requires a shared
+combat region with server-enforced owner-pair rules and *no individual walls*.
+The shipped Wave 7 Echo stage does the opposite and is live, not dead code:
+
+| Evidence | Location |
+|---|---|
+| Owners are planned into exclusive angular lanes | `Wave7EchoDuelCellPolicy.plan` |
+| Radial separators are planned between adjacent lanes | `Wave7EchoDuelCellBarrierPolicy.plan` |
+| Movement is gated by those separators | `CopiMineEndEvent` `allowsOwnerLocation` / `allowsOwnerTransition` (~30805-30867) |
+| Barriers are built as real world geometry | `CopiMineEndEvent` ~31010, ~33642-34441 |
+
+The duel bookkeeping itself already satisfies ECHO-001: every admitted owner
+gets exactly one `DuelRecord` simultaneously (validated at ~770-798), so this is
+a confinement/presentation problem, not a "only five copies fight" problem.
+
+This is deliberately **not** half-fixed. Removing the wedges means redesigning
+Wave 7 Echo confinement, its passage/commit logic and the ~54 assertions across
+nine test files that encode the cell model, then re-verifying that pair rules
+still keep duels apart without walls. Doing that in the same pass as the fog
+repair would have produced an unreviewable change, so it is recorded here as an
+open contract gap instead of a silent partial edit.
+
 ## 6. Native visual verification
 
 BLOCKED. No authorised Minecraft client session was driven during this pass, so

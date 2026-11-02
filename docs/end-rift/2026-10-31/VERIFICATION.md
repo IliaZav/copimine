@@ -137,6 +137,17 @@ uses) produces the full 356-entry, 13 035 666-byte jar. Always verify the
 **entry count** of a client jar, never just the exit code, and never build the
 1.21.1 client with the 26.3 Gradle.
 
+**Third trap — the one that actually kept CI red.** Three contracts compare
+`thirdparty/client-mods/CopiMineClient-0.1.1.jar` to a fresh `remapJar` output
+**byte for byte**. The legacy build never set `preserveFileTimestamps = false`,
+so Gradle stamped every entry with the wall-clock mtime; each CI rebuild
+differed at the first entry and the artifact could never match a committed
+copy, no matter how carefully it was staged. The 26.3 client already had both
+flags. Adding them to the 1.21.1 build makes the jar reproducible: two
+independent clean builds on this tree produce the same 13 035 588 bytes and the
+same SHA-256 `bc67cd22…`, and an independent fresh build matches the staged
+jar exactly.
+
 **Second trap.** `build_modpack.ps1` only re-stages the client jar when passed
 `-SyncBuiltClient`; without it, it rebuilds the archive from whatever stale jar
 is already staged and still prints matching hashes. Passing that switch alone

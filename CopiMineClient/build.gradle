@@ -129,6 +129,16 @@ tasks.named("check") {
     dependsOn(tasks.named("validateShaderpacks"))
 }
 
+// The release contract pins this JAR by digest, so a rebuild from unchanged
+// sources has to produce unchanged bytes. Gradle stamps every entry with the
+// wall-clock mtime by default, which makes two identical builds differ at the
+// first entry and turns every CI rebuild into a digest mismatch. The 26.3
+// client sets the same two flags for the same reason.
+tasks.withType(AbstractArchiveTask).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
+
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
     maxParallelForks = 1

@@ -77,13 +77,30 @@ class EndEventBlackFogDensityTest {
     void safeVolumeNeverRestoresVanillaFog() {
         assertEquals(0.02F, BlackFogSafeVolumePolicy.fogEndBlocks(false, 0.02F), 0.0001F,
                 "outside a safe volume the arena is opaque black");
-        assertEquals(BlackFogSafeVolumePolicy.SAFE_VIEW_RADIUS_BLOCKS,
+        assertEquals(BlackFogSafeVolumePolicy.SAFE_READ_DISTANCE_BLOCKS,
                 BlackFogSafeVolumePolicy.fogEndBlocks(true, 0.02F), 0.0001F,
                 "inside a safe volume the view is shortened, not cleared");
-        assertTrue(BlackFogSafeVolumePolicy.SAFE_VIEW_RADIUS_BLOCKS > 0.02F,
+        assertTrue(BlackFogSafeVolumePolicy.SAFE_READ_DISTANCE_BLOCKS > 0.02F,
                 "the safe volume has to stay readable");
         assertThrows(IllegalArgumentException.class,
                 () -> BlackFogSafeVolumePolicy.fogEndBlocks(true, Float.NaN));
+    }
+
+    /**
+     * W5-017 supersedes the uniform four-block radius. The readable distance is
+     * now derived from the widest published footprint instead of being an
+     * independent view radius, so it can never swallow the arena.
+     */
+    @Test
+    void theReadableDistanceIsBoundedByTheWidestPublishedFootprint() {
+        double halfDiagonal = Math.sqrt(2.0D) * (BlackFogSafeVolumePolicy.MAX_FOOTPRINT_SIDE / 2.0D
+                + BlackFogSafeVolumePolicy.SAFE_MARGIN_BLOCKS);
+        assertEquals(halfDiagonal, BlackFogSafeVolumePolicy.SAFE_READ_DISTANCE_BLOCKS, 1.0E-4D,
+                "the read distance is exactly the far corner of the widest footprint plus margin");
+        assertTrue(BlackFogSafeVolumePolicy.SAFE_READ_DISTANCE_BLOCKS < halfDiagonal + 2.0D,
+                "the wall has to close immediately past the footprint, not 4 blocks out");
+        assertTrue(BlackFogSafeVolumePolicy.SAFE_READ_DISTANCE_BLOCKS < 4.0F,
+                "the superseded uniform 4-block radius is gone");
     }
 
     @Test

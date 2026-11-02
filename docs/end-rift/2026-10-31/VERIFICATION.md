@@ -93,6 +93,7 @@ Filled in as commits land. Each row names the command actually run.
 | Wave 5: server wire cycle reaches 5 | `pytest tests/test_wave5_black_fog_adapter.py` | 16 passed, exit 0 |
 | Active 26.3 client suite | `gradle -p tools/minecraft-26.3/client test` | BUILD SUCCESSFUL, exit 0 |
 | Release pin / modpack provenance | `pytest tests/test_minecraft_migration_profile.py tests/test_ci_release_job_contract.py tests/test_minecraft_26_3_pack.py` | 111 passed, 2 skipped, exit 0 |
+| Wave 5: safe-volume radius replaced by footprint mask (W5-017) | `gradle -p tools/minecraft-26.3/client test` | BUILD SUCCESSFUL, exit 0 |
 
 ### 5.1 Wave 5 cycles 4 and 5 were silently invisible (AUD-04)
 
@@ -153,11 +154,48 @@ jar exactly.
 is already staged and still prints matching hashes. Passing that switch alone
 does not prove freshness either — read back the staged jar.
 
-Still **not** fixed and still a documented shortcut: the safe volume keeps a
-4-block readable radius (`BlackFogSafeVolumePolicy.SAFE_VIEW_RADIUS_BLOCKS`)
-instead of an exact per-pixel volume mask (contract W5-017). Geometry and
-vertical slack are correct; only the "see your own island, not past its
-boundary" occlusion is approximate.
+### 5.3 Wave 5 safe-volume occlusion (W5-017): radius removed, per-pixel mask still blocked
+
+**Superseded.** The safe volume used to keep a uniform
+`SAFE_VIEW_RADIUS_BLOCKS = 4.0` readable radius. That is exactly what W5-017
+rejects: from safety a player read terrain well outside the safe footprint,
+could look over the fog wall, and could see a second emerald island across the
+fog. The radius constant is gone.
+
+**What replaced it.** `BlackFogSafeVolumePolicy.maskFor(...)` now builds the
+readable region from the exact published safe cells, expanded by a bounded
+`SAFE_MARGIN_BLOCKS = 0.5` so an occupant standing on the footprint boundary
+still reads the floor under their feet. Two properties follow:
+
+- `SAFE_READ_DISTANCE_BLOCKS` is **derived** from the widest footprint the
+  server can publish (`sqrt(2) * (3/2 + 0.5)` ≈ 2.83 blocks), not an independent
+  view radius, and is asserted to stay **below** the old 4-block value;
+- `SafeMask.aroundCamera(...)` narrows readability to the island the camera
+  actually occupies via a bounded 4-neighbour flood fill. A second safe island
+  is emerald too, so a mask that accepted any published cell would have cleared
+  the view straight through the wall.
+
+`EndEventBlackFogMixin` now resolves the current island from the published
+emerald floors (bounded flood fill, `MAX_ISLAND_CELLS = 64`) instead of testing
+one block column, and feeds that mask to `fogEndBlocks`.
+
+**Still NOT a per-pixel world mask, and this cannot be closed by local effort.**
+Measured against the pinned 26.3 client jar, not assumed:
+
+| Fact | Evidence |
+|---|---|
+| Post-chain uniforms are resolved at `PostChain.load` from the JSON and the frame only receives effect **ids** | `GameRenderer.preparePostEffects(List<Identifier>)` |
+| Only `minecraft:main` and `minecraft:entity_outline` are offered as external targets | `LevelTargetBundle.MAIN_TARGETS` |
+| No depth target is exposed to post chains | `MAIN_TARGETS` contains no depth id; depth lives on `RenderTarget.getDepthTexture()` |
+| Shaders get `ProjMat` (no inverse, no view matrix) and `Globals` (camera block pos/offset) | `shaders/include/projection.glsl`, `globals.glsl` |
+
+Without a depth sampler and an inverse view-projection a fragment cannot
+reconstruct the world-space point of its ray, so an exact per-pixel volume mask
+is not reachable through the pinned post-effect pipeline. The honest status is:
+**the W5-017 radius shortcut is closed; the per-pixel mask remains BLOCKED by
+the available rendering API**, and it is reported as such rather than claimed as
+implemented. Native visual confirmation of the new boundary is still required
+(section 6).
 
 ## 6. Native visual verification
 

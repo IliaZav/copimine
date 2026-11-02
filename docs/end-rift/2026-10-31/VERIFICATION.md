@@ -89,7 +89,39 @@ Filled in as commits land. Each row names the command actually run.
 
 | Repair | Command | Result |
 |---|---|---|
-| _pending_ | | |
+| Wave 5: client accepts all five fog cycles | `gradle -p tools/minecraft-26.3/client test --tests '*EndEventBlackFog*'` | BUILD SUCCESSFUL, 11 tests, exit 0 |
+| Wave 5: server wire cycle reaches 5 | `pytest tests/test_wave5_black_fog_adapter.py` | 16 passed, exit 0 |
+| Active 26.3 client suite | `gradle -p tools/minecraft-26.3/client test` | BUILD SUCCESSFUL, exit 0 |
+| Release pin / modpack provenance | `pytest tests/test_minecraft_migration_profile.py tests/test_ci_release_job_contract.py tests/test_minecraft_26_3_pack.py` | 111 passed, 2 skipped, exit 0 |
+
+### 5.1 Wave 5 cycles 4 and 5 were silently invisible (AUD-04)
+
+**Reproduced on the current tree.** `BlackFogTimingPolicy.CYCLE_COUNT` is 5 and
+the server emits `<dimension>|wave5|<cycle+1>`, so a full run sends
+`wave5|1` … `wave5|5`. `EndEventBlackFogManager.validCycle` accepted only
+`"1"`, `"2"` and `"3"`, and `apply` rejects a packet whose mode is invalid.
+The client therefore dropped cycle four and five: the arena rendered fully lit
+while the server had already applied Blindness/Wither and the safe-volume
+damage rule. That is the "weak/missing fog" symptom from the user reports, and
+it is a protocol-range bug, not a rendering-density one.
+
+The stale expectation was pinned by its own test
+(`acceptsOnlyTheOneBasedThreeCycleRangeInTheRuntimeManager`, which asserted
+`wave5|4` must be rejected). Both the production check and that expectation are
+now aligned with the five-cycle contract, and the wire test asserts the server
+really reaches protocol cycle 5.
+
+While fixing it, the new `rejectsNonNumericCycleWithoutThrowing` test failed
+against the first draft: `Integer.parseInt` threw `NumberFormatException` on a
+capability-invalid string, which would escape into the client tick loop. The
+validator now rejects non-digits explicitly, so a foreign or corrupted bridge
+payload is a refused packet rather than a client crash.
+
+Still **not** fixed and still a documented shortcut: the safe volume keeps a
+4-block readable radius (`BlackFogSafeVolumePolicy.SAFE_VIEW_RADIUS_BLOCKS`)
+instead of an exact per-pixel volume mask (contract W5-017). Geometry and
+vertical slack are correct; only the "see your own island, not past its
+boundary" occlusion is approximate.
 
 ## 6. Native visual verification
 
@@ -101,9 +133,14 @@ every visual requirement is **unverified**, not passed.
 
 | Gate | Status |
 |---|---|
-| `python -m pytest -q -ra tests` | see §5 final row |
-| `tests/RunEndRiftEventChecks.ps1 -JavaHome <pinned>` | NOT RUN yet |
+| `python -m pytest -q -ra tests` | **2928 passed, 15 skipped, 0 failed** (573.49 s, exit 0) |
+| `tests/RunEndRiftEventChecks.ps1 -JavaHome <pinned> -LegacyClientJavaHome <jdk-21>` | **passed**, exit 0 — "End Rift current local checks passed." |
 | `scripts/minecraft/RunJavaPluginCi.ps1` | NOT RUN yet |
-| Active 26.3 client tests/build | NOT RUN yet |
+| Active 26.3 client tests/build | **BUILD SUCCESSFUL**, exit 0 |
 | PostgreSQL migration/integration | BLOCKED (`COPIMINE_TEST_POSTGRES_DSN` unset) |
-| `git diff --check` | pending |
+| `git diff --check` | checked before commit |
+
+The 15 skips are host/environment limits, not passes: no `pwsh` on this host,
+no `COPIMINE_TEST_POSTGRES_DSN`, no Windows symlink privilege, POSIX archive
+mode bits and private-key permissions, the intentionally-ignored GrimAC
+fixture, and the two deliberately inert boss-projectile cover scenarios.

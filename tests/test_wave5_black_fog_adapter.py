@@ -346,7 +346,13 @@ public final class BlackFogAdapterProbe {
                 p.currentFogCycle = 2;
                 p.sendCurrentBlackFogPacket(new Player(), true, null);
                 check("the_end|wave5|3".equals(p.sentPacketSubject),
-                        "last internal zero-based fog cycle must be sent as protocol cycle 3");
+                        "third internal zero-based fog cycle must be sent as protocol cycle 3");
+                // Wave 5 runs FIVE cycles, so the wire must reach protocol cycle 5
+                // and the client must accept it instead of dropping the blackout.
+                p.currentFogCycle = 4;
+                p.sendCurrentBlackFogPacket(new Player(), true, null);
+                check("the_end|wave5|5".equals(p.sentPacketSubject),
+                        "last internal zero-based fog cycle must be sent as protocol cycle 5");
                 p.sendCurrentBlackFogPacket(new Player(), false, null);
                 check(p.sentPacketSubject.isEmpty() && "CLEAR".equals(p.sentPacketStatus)
                                 && p.sentPacketDuration == 0L && p.sentPacketIntensity == 0.0F,

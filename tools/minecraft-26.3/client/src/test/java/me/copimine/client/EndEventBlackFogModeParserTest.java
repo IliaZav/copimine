@@ -11,18 +11,33 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class EndEventBlackFogModeParserTest {
     @Test
     void acceptsTheLongestSupportedFogStateMode() {
-        assertArrayEquals(new String[]{"the_nether", "wave5", "3"},
-                EndEventBlackFogManager.parseMode("the_nether|wave5|3"));
+        assertArrayEquals(new String[]{"the_nether", "wave5", "5"},
+                EndEventBlackFogManager.parseMode("the_nether|wave5|5"));
     }
 
     @Test
-    void acceptsOnlyTheOneBasedThreeCycleRangeInTheRuntimeManager() {
+    void acceptsTheOneBasedFiveCycleRangeInTheRuntimeManager() {
         EndEventBlackFogManager manager = new EndEventBlackFogManager();
 
+        // Wave 5 runs exactly five cycles server-side, so the client must accept
+        // every one of them; rejecting four and five hid the hazard entirely.
         assertFalse(manager.apply(packet(1L, 1L, "the_end|wave5|0"), 1L));
         assertTrue(manager.apply(packet(2L, 2L, "the_end|wave5|1"), 2L));
-        assertTrue(manager.apply(packet(3L, 3L, "the_end|wave5|3"), 3L));
-        assertFalse(manager.apply(packet(4L, 4L, "the_end|wave5|4"), 4L));
+        assertTrue(manager.apply(packet(3L, 3L, "the_end|wave5|2"), 3L));
+        assertTrue(manager.apply(packet(4L, 4L, "the_end|wave5|3"), 4L));
+        assertTrue(manager.apply(packet(5L, 5L, "the_end|wave5|4"), 5L));
+        assertTrue(manager.apply(packet(6L, 6L, "the_end|wave5|5"), 6L));
+        assertFalse(manager.apply(packet(7L, 7L, "the_end|wave5|6"), 7L),
+                "a sixth cycle is not part of the five-cycle wave");
+    }
+
+    @Test
+    void rejectsNonNumericCycleWithoutThrowing() {
+        EndEventBlackFogManager manager = new EndEventBlackFogManager();
+
+        assertFalse(manager.apply(packet(1L, 1L, "the_end|wave5|abc"), 1L));
+        assertFalse(manager.apply(packet(2L, 2L, "the_end|wave5||"), 2L));
+        assertFalse(manager.apply(packet(3L, 3L, "the_end|wave5| 1"), 3L));
     }
 
     @Test

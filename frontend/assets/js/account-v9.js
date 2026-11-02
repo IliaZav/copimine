@@ -156,7 +156,9 @@ async function api(path, body, method) {
   // settings, recovery and admin forms that are rendered outside this file.
   function enhancePasswordFields(root = document) {
     root.querySelectorAll('input[type="password"]').forEach(input => {
-      if (input.closest('.v7-pass-wrap') || input.dataset.cmPassReady) return;
+      // Формы входа и регистрации рисуют свой переключатель (.v7-password).
+      // Второй глаз поверх него — дубль, поэтому такие поля не трогаем.
+      if (input.closest('.v7-pass-wrap') || input.closest('.v7-password') || input.dataset.cmPassReady) return;
       input.dataset.cmPassReady = '1';
       const wrap = document.createElement('span');
       wrap.className = 'v7-pass-wrap';

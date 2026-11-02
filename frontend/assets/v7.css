@@ -43,3 +43,8 @@ html[data-motion=off] *,html[data-motion=off] *:before,html[data-motion=off] *:a
 /* Decorative entry transforms must not create a page-wide horizontal scrollbar.
    Tables retain their own overflow container and keyboard scrolling. */
 #page-root{overflow-x:clip}
+
+/* Edge и Chrome рисуют свой глаз поверх поля пароля — он дублирует наш.
+   Свой переключатель уже есть, чужой убираем. */
+.v7-password input::-ms-reveal,.v7-password input::-ms-clear{display:none}
+input[type=password]::-webkit-credentials-auto-fill-button{visibility:hidden;display:none!important;pointer-events:none;position:absolute;right:0}

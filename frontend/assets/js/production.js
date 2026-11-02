@@ -18,7 +18,16 @@ Q.request=(function(original){return async(path,body)=>{
 H['v7-vk']=undefined;
 H['v7-totp']=()=>H['v6-totp-setup']();
 H['v7-game-link']=()=>M.openModal('Связать Minecraft','<p>Зайдите на сервер и войдите через AuthMe. Код появится в личном сообщении в игре.</p><form data-form="production-mc-code">'+field('Ник Minecraft','name','','text','required pattern="[A-Za-z0-9_]{3,16}" autocomplete="off"')+V.actions('Получить код в игре')+'</form>');
-F['production-mc-code']=async(f,d)=>{await X.request('/account/minecraft/request',{method:'POST',body:{name:d.get('name')}});M.openModal('Введите код из Minecraft','<form data-form="production-mc-confirm">'+field('Код из личного сообщения','code','','text','required minlength="6" maxlength="12" autocomplete="one-time-code"')+V.actions('Подтвердить привязку')+'</form>');};
+F['production-mc-code']=async(f,d)=>{
+ const name=String(d.get('name')||'').trim();
+ try{await X.request('/account/minecraft/request',{method:'POST',body:{name}});}
+ catch(error){
+  // Код уходит в чат живой игры: без зашедшего игрока доставлять некуда.
+  if(error&&error.code==='player_offline')throw Error('Игрок '+name+' не на сервере. Зайди в игру под этим ником и повтори — код придёт в чат.');
+  throw error;
+ }
+ M.openModal('Введите код из Minecraft','<p>Код отправлен в игровой чат для <strong>'+E(name)+'</strong>. Не выходя с сервера, открой чат и введи код здесь.</p><form data-form="production-mc-confirm">'+field('Код из личного сообщения','code','','text','required minlength="6" maxlength="12" autocomplete="one-time-code"')+V.actions('Подтвердить привязку')+'</form>');
+};
 F['production-mc-confirm']=async(f,d)=>{
  const code=String(d.get('code')||'').trim();
  const pin=String(d.get('pin')||'').trim();

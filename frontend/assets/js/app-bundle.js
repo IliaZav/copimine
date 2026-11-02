@@ -3637,7 +3637,7 @@ X.request=async function(path,options={},attempt=0){
  let response,data;
  try{response=await fetch('/api/v6'+path,{method,headers,credentials:'same-origin',body:options.body===undefined?undefined:JSON.stringify(options.body),signal:abort.signal,cache:'no-store'});data=await response.json();}catch(error){if(error.name==='AbortError')throw Error('Сервер отвечает слишком долго. Состояние операции можно проверить в истории.');throw Error('Не удалось связаться с сервером. Проверь подключение.');}finally{clearTimeout(timeout);}
  if(data?.csrf)csrf=data.csrf;
- if(!response.ok){if(data?.error?.code==='reauth_required'&&!attempt&&path!=='/auth/reauth'){await requireStepup();return X.request(path,options,1);}if(data?.error?.code==='csrf'&&!attempt){csrf='';await X.request('/session');return X.request(path,options,1);}const error=new Error(message(data,response.status));error.code=data?.error?.code;error.status=response.status;throw error;}
+ if(!response.ok){if(data?.error?.code==='reauth_required'&&!attempt&&path!=='/auth/reauth'){await requireStepup();return X.request(path,options,1);}if(data?.error?.code==='csrf'&&!attempt){csrf='';const fresh=await X.request('/session');csrf=fresh?.csrf||'';return X.request(path,options,1);}const error=new Error(message(data,response.status));error.code=data?.error?.code;error.status=response.status;throw error;}
  return data;
 };
 function normalizePlayer(raw){const p={...raw,serverRole:raw.role,role:roleNames[raw.role]||raw.role,status:raw.enabled===false?'banned':raw.status||'active',gameUuid:raw.gameUUID||raw.gameUuid,mfaEnabled:raw.totpEnabled||raw.mfaEnabled,createdAt:raw.createdAt||raw.created_at,skin:raw.skin||{head:'assets/skins/steve-head.png',front:'assets/skins/steve-front.png',back:'assets/skins/steve-back.png'}};return p;}
@@ -3888,7 +3888,7 @@ const previewCmsSave=F['cms-save'],previewCmsNew=H['cms-new'],previewCmsCreate=F
 function settingsView(){const c=s().config;return '<section class="panel"><h2>Сайт и подключения</h2><form data-form="v6-site-config" class="mt"><input type="hidden" name="version" value="'+(c.version||1)+'">'+V.field('Название сайта','siteTitle',c.siteTitle||'CopiMine','text','required maxlength="100"')+V.area('Главный заголовок','headline',c.headline,3,'required maxlength="80"')+V.area('Описание','description',c.description,3,'required maxlength="220"')+'<div class="v6-form-grid">'+V.field('Адрес игрового сервера','serverIp',c.serverIp,'text','required maxlength="100"')+V.field('Версия Minecraft','gameVersion',c.gameVersion,'text','required maxlength="30"')+'</div>'+V.field('Приглашение Discord','discordInvite',c.discordInvite||'','url','placeholder="https://discord.gg/…"')+V.field('ID сообщества Discord','discordGuild',c.discordGuild||'','text','maxlength="24"')+V.field('Ссылка на моды','modUrl',c.modUrl||'','url','placeholder="https://…"')+V.field('Ссылка на лаунчер','launcherUrl',c.launcherUrl||'','url','placeholder="https://…"')+V.field('Рекомендуемая память, ГБ','minMemory',c.minMemory||4,'number','required min="1" max="128"')+reason()+V.actions('Сохранить настройки')+'</form><p class="hint mt">Кнопки скачивания становятся доступны после добавления ссылки. Ключи оплаты и игрового адаптера хранятся в серверной конфигурации.</p></section>';}
 function faqView(){return '<section class="panel"><div class="panel-head"><h2>Вопросы на главной</h2>'+M.btn('Добавить вопрос','v6-faq-edit','plus','primary small')+'</div>'+rowsTable(['Вопрос','Ответ','Публикация',''],s().faq.map(q=>[E(q.question),E(q.answer),M.pill(q.published?'На сайте':'Скрыт',q.published?'green':''),M.btn('Изменить','v6-faq-edit','edit','small','data-id="'+E(q.id)+'"')]),'Вопросов пока нет','Добавь ответы, которые помогут новым игрокам.','chat')+'</section>';}
 function galleryView(){if(!X.live)return CMCMS.render('gallery').replace(/^<div class="tabs">[\s\S]*?<\/div>/,'');return '<section class="panel"><h2>Галерея</h2><p class="hint mt12 mb">Подписи и порядок изображений на сайте.</p><div class="cms-media-grid">'+s().gallery.map(g=>'<article class="media-tile"><img src="'+M.asset(g.src)+'" alt="'+E(g.alt)+'" loading="lazy"><div class="media-meta"><h3>'+E(g.title)+'</h3><p>'+E(g.caption)+'</p><div class="actions mt">'+M.pill(g.published?'На сайте':'Скрыто',g.published?'green':'')+M.btn('Изменить','v6-gallery-edit','edit','small','data-id="'+E(g.id)+'"')+'</div></div></article>').join('')+'</div></section>';}
-W.adminExtensions.content=sub=>{if(!can('server.manage'))return denied();normalizePreviewPages();sub=['settings','faq','gallery'].includes(sub)?sub:'pages';const tabs=nav('content',[['pages','Страницы'],['settings','Главная и ссылки'],['faq','Вопросы'],['gallery','Галерея']],sub);return tabs+(sub==='settings'?settingsView():sub==='faq'?faqView():sub==='gallery'?galleryView():s().pages.length?CMCMS.render('pages').replace(/^<div class="tabs">[\s\S]*?<\/div>/,''):'<section class="panel">'+M.empty('Страниц пока нет','Создай первую страницу сайта.','file')+M.btn('Создать страницу','cms-new','plus','primary')+'</section>');};
+W.adminExtensions.content=sub=>{if(!can('content.manage'))return denied();normalizePreviewPages();sub=['settings','faq','gallery'].includes(sub)?sub:'pages';const tabs=nav('content',[['pages','Страницы'],['settings','Главная и ссылки'],['faq','Вопросы'],['gallery','Галерея']],sub);return tabs+(sub==='settings'?settingsView():sub==='faq'?faqView():sub==='gallery'?galleryView():s().pages.length?CMCMS.render('pages').replace(/^<div class="tabs">[\s\S]*?<\/div>/,''):'<section class="panel">'+M.empty('Страниц пока нет','Создай первую страницу сайта.','file')+M.btn('Создать страницу','cms-new','plus','primary')+'</section>');};
 F['v6-site-config']=async(f,d)=>{const body={version:Number(d.get('version')),reason:d.get('reason'),minMemory:Number(d.get('minMemory'))};for(const key of ['siteTitle','headline','description','serverIp','gameVersion','discordGuild','discordInvite','modUrl','launcherUrl'])body[key]=d.get(key)||'';if(X.live){const r=await X.request('/admin/config',{method:'PATCH',body});s().config={...s().config,...r.config};await X.refresh();}else{Object.assign(s().config,body);delete s().config.reason;M.audit('Настройки сайта','Сайт',body.reason);M.save();M.render();}M.toast('Настройки сохранены.');};
 async function savePage(form){if(!form.reportValidity())throw Error('Заполни обязательные поля.');const d=new FormData(form),body={revision:Number(d.get('revision')),title:d.get('title'),body:d.get('body'),description:d.get('description')||'',nav:!!d.get('nav'),reason:d.get('reason')};const r=await X.request('/admin/pages/'+encodeURIComponent(d.get('id')),{method:'PATCH',body});return r.page;}
 F['cms-save']=async(f,d)=>{if(!X.live)return previewCmsSave(f,d);await savePage(f);await X.refresh();M.toast('Черновик сохранён.');};
@@ -3940,11 +3940,15 @@ const actions=(label)=>'<div class="form-error" role="alert"></div><button type=
 const title=(eyebrow,heading,copy='',extra='')=>'<div class="v7-page-heading"><div><div class="kicker">'+eyebrow+'</div><h1>'+heading+'</h1>'+(copy?'<p>'+copy+'</p>':'')+'</div>'+extra+'</div>';
 const sideLink=(path,label,ic,active)=>'<a href="#'+path+'" aria-label="'+E(label)+'" title="'+E(label)+'" class="'+(active?'active':'')+'">'+icon(ic)+'<span>'+label+'</span></a>';
 function saveStatus(value){Q.status=value;const n=document.getElementById('v7-save-status');if(n){n.textContent={loading:'Загружаем базу',saving:'Сохраняем',saved:'Сохранено в базе',error:'Не сохранено',offline:'Автономный просмотр'}[value]||value;n.dataset.status=value;}}
-async function request(path,body){
- const opts={credentials:'same-origin',headers:{Accept:'application/json'}};
+async function request(path,body,retried){
+ const opts={credentials:'same-origin',headers:{Accept:'application/json'},cache:'no-store'};
  if(body!==undefined){opts.method='POST';opts.headers['Content-Type']='application/json';opts.headers['X-Review-CSRF']=Q.csrf;opts.body=JSON.stringify(body);}
  const controller=new AbortController();opts.signal=controller.signal;const t=setTimeout(()=>controller.abort(),8000);
- try{const r=await fetch('/api/v7/'+path,opts);const result=await r.json();if(!r.ok)throw Error(result.error?.message||result.message||'Не удалось выполнить запрос.');return result;}
+ try{const r=await fetch('/api/v7/'+path,opts);const result=await r.json();if(result&&result.csrf)Q.csrf=result.csrf;
+  // Токен привязан к сеансу: после перезагрузки в другой вкладке он устаревает.
+  // Забираем свежий и повторяем ровно один раз.
+  if(!r.ok&&result&&result.error&&result.error.code==='csrf'&&!retried){const boot=await fetch('/api/v7/bootstrap',{credentials:'same-origin',cache:'no-store'}).then(x=>x.json()).catch(()=>null);if(boot&&boot.csrf){Q.csrf=boot.csrf;return request(path,body,true);}}
+  if(!r.ok)throw Error(result.error?.message||result.message||'Не удалось выполнить запрос.');return result;}
  catch(err){if(err.name==='AbortError')throw Error('Сервер не ответил. Повторите запрос через несколько секунд.');throw err;}finally{clearTimeout(t);}
 }
 Q.request=request;
@@ -4692,7 +4696,7 @@ M.renderers.admin=(key='overview')=>{
  case 'admins':body=ext.access(sub||'team');break;
  case 'settings':body=siteSettings();break;
  case 'statistics':body=(ext.statistics||prior)(sub||'overview');break;
- case 'content':body=prior('content');break;
+ case 'content':body=ext.content(sub||'pages');break;
  case 'world':body=ext.world(sub);break;
  case 'monitor':body=ext.monitor(sub);break;
  case 'releases':body=ext.releases(sub);break;
@@ -6127,7 +6131,16 @@ Q.request=(function(original){return async(path,body)=>{
 H['v7-vk']=undefined;
 H['v7-totp']=()=>H['v6-totp-setup']();
 H['v7-game-link']=()=>M.openModal('Связать Minecraft','<p>Зайдите на сервер и войдите через AuthMe. Код появится в личном сообщении в игре.</p><form data-form="production-mc-code">'+field('Ник Minecraft','name','','text','required pattern="[A-Za-z0-9_]{3,16}" autocomplete="off"')+V.actions('Получить код в игре')+'</form>');
-F['production-mc-code']=async(f,d)=>{await X.request('/account/minecraft/request',{method:'POST',body:{name:d.get('name')}});M.openModal('Введите код из Minecraft','<form data-form="production-mc-confirm">'+field('Код из личного сообщения','code','','text','required minlength="6" maxlength="12" autocomplete="one-time-code"')+V.actions('Подтвердить привязку')+'</form>');};
+F['production-mc-code']=async(f,d)=>{
+ const name=String(d.get('name')||'').trim();
+ try{await X.request('/account/minecraft/request',{method:'POST',body:{name}});}
+ catch(error){
+  // Код уходит в чат живой игры: без зашедшего игрока доставлять некуда.
+  if(error&&error.code==='player_offline')throw Error('Игрок '+name+' не на сервере. Зайди в игру под этим ником и повтори — код придёт в чат.');
+  throw error;
+ }
+ M.openModal('Введите код из Minecraft','<p>Код отправлен в игровой чат для <strong>'+E(name)+'</strong>. Не выходя с сервера, открой чат и введи код здесь.</p><form data-form="production-mc-confirm">'+field('Код из личного сообщения','code','','text','required minlength="6" maxlength="12" autocomplete="one-time-code"')+V.actions('Подтвердить привязку')+'</form>');
+};
 F['production-mc-confirm']=async(f,d)=>{
  const code=String(d.get('code')||'').trim();
  const pin=String(d.get('pin')||'').trim();
@@ -6462,26 +6475,36 @@ const reasonField=()=>V.field('Причина изменения','reason','','t
 const note=(copy)=>`<div class="cm-cms-note">${icon('info')}<p>${copy}</p></div>`;
 const failPanel=()=>`<section class="panel cm-cms-state"><h2>Не удалось загрузить содержимое</h2><p>${E(cache.error||'Проверь подключение и права на контент.')}</p>${M.btn('Повторить','cm-cms-retry','refresh','small')}</section>`;
 function reload(){cache.loadedAt=0;cache.error='';M.render();}
+function currentUser(){return Q.user||X.sessionUser||null;}
+function userPerms(){
+ // Права приходят двумя путями: CMReview.user из bootstrap и CM6.sessionUser из
+ // /session. Любой из них достаточен — падение одного не должно закрывать раздел.
+ const out=new Set();
+ for(const list of [X.sessionUser?.permissions,Q.user?.permissions]) if(Array.isArray(list)) for(const p of list) out.add(p);
+ return [...out];
+}
 async function load(force=false){
- const owner=Q.user?.id||'';if(owner!==cache.owner){cache.owner=owner;cache.data=null;cache.versions=null;cache.settings=null;cache.settingsVersion='';cache.loadedAt=0;}
- if(cache.loading||(!force&&cache.loadedAt&&Date.now()-cache.loadedAt<30000))return;
+ const owner=currentUser()?.id||'';if(owner!==cache.owner){cache.owner=owner;cache.data=null;cache.versions=null;cache.settings=null;cache.settingsVersion='';cache.loadedAt=0;}
+ // Повторный вход запрещён ещё и при ошибке: иначе каждый M.render() снова
+ // просит содержимое и страница входит в бесконечный цикл запросов.
+ if(cache.loading||cache.error||(!force&&cache.loadedAt&&Date.now()-cache.loadedAt<30000))return;
  cache.loading=true;cache.error='';
- try{const result=await X.request('/admin/content');if(owner!==Q.user?.id)return;cache.data=result.data;cache.versions=result.versions;cache.loadedAt=Date.now();}
+ try{const result=await X.request('/admin/content');if(owner!==currentUser()?.id)return;cache.data=result.data;cache.versions=result.versions;cache.loadedAt=Date.now();}
  catch(error){cache.error=error.message;}
  finally{cache.loading=false;M.render();}
 }
 async function loadSettings(){
- const owner=Q.user?.id||'';if(owner!==cache.owner){cache.owner=owner;cache.data=null;cache.versions=null;cache.settings=null;cache.settingsVersion='';cache.loadedAt=0;}
+ const owner=currentUser()?.id||'';if(owner!==cache.owner){cache.owner=owner;cache.data=null;cache.versions=null;cache.settings=null;cache.settingsVersion='';cache.loadedAt=0;}
  if(cache.settings||cache.loading)return;
  cache.loading=true;cache.error='';
- try{const result=await X.request('/admin/site-settings');if(owner!==Q.user?.id)return;cache.settings=result.data;cache.settingsVersion=result.version;}
+ try{const result=await X.request('/admin/site-settings');if(owner!==currentUser()?.id)return;cache.settings=result.data;cache.settingsVersion=result.version;}
  catch(error){cache.error=error.message;}
  finally{cache.loading=false;M.render();}
 }
 function publicPage(p){return typeof p.published==='object'?p.published:(p.publishedContent||null);}
 function isPublished(p){return p.published===true||typeof p.published==='object'||!!p.publishedContent;}
 function draftPage(p){return p.draft||publicPage(p)||{title:'',body:'',description:'',nav:false};}
-function pageTabs(active=M.UI.params.get('sub')||'pages'){const settings=Q.user?.permissions?.includes('settings.manage');return `<div class="cm-cms-tabs" role="tablist" aria-label="Материалы сайта"><a href="#admin/content?sub=pages" class="${active==='pages'?'active':''}">Страницы</a><a href="#admin/content?sub=faq" class="${active==='faq'?'active':''}">Вопросы</a><a href="#admin/content?sub=gallery" class="${active==='gallery'?'active':''}">Галерея</a>${settings?`<a href="#admin/content?sub=settings" class="${active==='settings'?'active':''}">Главная и ссылки</a>`:''}</div>`;}
+function pageTabs(active=M.UI.params.get('sub')||'pages'){const settings=userPerms().includes('settings.manage');return `<div class="cm-cms-tabs" role="tablist" aria-label="Материалы сайта"><a href="#admin/content?sub=pages" class="${active==='pages'?'active':''}">Страницы</a><a href="#admin/content?sub=faq" class="${active==='faq'?'active':''}">Вопросы</a><a href="#admin/content?sub=gallery" class="${active==='gallery'?'active':''}">Галерея</a>${settings?`<a href="#admin/content?sub=settings" class="${active==='settings'?'active':''}">Главная и ссылки</a>`:''}</div>`;}
 function pagesView(){
  const list=cache.data.pages||[],id=M.UI.params.get('id'),selected=list.find(p=>p.id===id)||list[0];
  if(!selected)return pageTabs()+`<section class="panel cm-cms-state"><h2>Страниц пока нет</h2><p>Создай первую страницу или проверь настройки содержимого.</p>${M.btn('Создать страницу','cm-cms-new-page','plus','primary')}</section>`;
@@ -6501,15 +6524,17 @@ function galleryView(){
  return pageTabs()+`<section class="panel cm-cms-collection"><div class="cm-cms-collection-head"><div><h2>Галерея</h2><p>Подписи и публикация снимков на главной странице.</p></div>${M.btn('Загрузить изображение','cm-cms-upload-gallery','upload','primary')}</div>${note('Загруженные снимки хранятся закрыто, пока ты не опубликуешь их. Поддерживаются PNG, JPEG, WebP и GIF до 4 МБ.')}${list.length?`<div class="cm-cms-gallery">${list.map(g=>`<article><img src="${E(galleryImageSrc(g))}" alt="${E(g.alt)}" loading="lazy"><div><span class="cm-cms-status ${g.published?'is-live':''}">${g.published?'На сайте':'Скрыто'}</span><h3>${E(g.title)}</h3><p>${E(g.caption)}</p><span class="cm-cms-file">${E(g.src)}</span><div class="cm-cms-card-actions">${M.btn('Подпись','cm-cms-edit-gallery','edit','small','data-id="'+E(g.id)+'"')}${M.btn(g.published?'Скрыть':'Опубликовать','cm-cms-toggle-gallery','eye',g.published?'ghost small':'primary small','data-id="'+E(g.id)+'"')}</div></div></article>`).join('')}</div>`:M.empty('Изображений пока нет','Загрузи первый снимок в галерею.','image')}</section>`;
 }
 function settingsView(active='settings'){
- if(!Q.user?.permissions?.includes('settings.manage'))return pageTabs(active)+`<section class="panel cm-cms-state"><h2>Настройки сайта недоступны</h2><p>Изменять заголовок и ссылки может только владелец сайта.</p></section>`;
+ if(!userPerms().includes('settings.manage'))return pageTabs(active)+`<section class="panel cm-cms-state"><h2>Настройки сайта недоступны</h2><p>Изменять заголовок и ссылки может только владелец сайта.</p></section>`;
  if(!cache.settings){if(!cache.loading&&!cache.error)loadSettings();return cache.error?failPanel():pageTabs(active)+`<section class="panel cm-cms-state"><span class="cm-cms-spinner" aria-hidden="true"></span><p>Загружаем текст главной страницы…</p></section>`;}
  const c=cache.settings;
  return pageTabs(active)+`<div class="cm-cms-settings-grid"><section class="panel"><div class="cm-cms-collection-head"><div><h2>Первый экран</h2><p>Заголовок, короткое описание и данные для входа в игру.</p></div></div><form id="cm-cms-settings-form">${textField('Название сайта','siteTitle',c.siteTitle||'CopiMine','required maxlength="50"')}${V.area('Заголовок','headline',c.headline||'',3,'required maxlength="80"')}${V.area('Описание','description',c.description||'',3,'required maxlength="220"')}<div class="cm-cms-fields">${textField('Адрес сервера','serverIp',c.serverIp||'copimine.ru','required maxlength="253"')}${textField('Версия Minecraft','gameVersion',c.gameVersion||'26.3','required maxlength="24"')}</div>${V.field('Приглашение Discord','discordInvite',c.discordInvite||'','url','placeholder="https://discord.gg/…" maxlength="180"')}${reasonField()}<div class="form-error cm-cms-error" role="alert"></div><div class="cm-cms-actions">${M.btn('Сохранить','cm-cms-save-settings','save','primary')}<span class="cm-cms-actions-note">Параметры сохраняются на сервере.</span></div></form></section><aside class="panel cm-cms-settings-note"><h2>Как это увидят игроки</h2><div class="cm-cms-copy-preview"><span class="cm-cms-overline">Minecraft · ${E(c.siteTitle||'CopiMine')}</span><strong>${E(c.headline||'')}</strong><p>${E(c.description||'')}</p><span>${E(c.serverIp||'')}</span><small>Minecraft ${E(c.gameVersion||'')}</small></div><p>Проверь адрес сервера перед сохранением. Платёжные данные и секреты здесь не нужны.</p></aside></div>`;
 }
 function render(sub='pages'){
  if(!X.live)return previous(sub);
- if(!Q.user?.permissions?.includes('content.manage'))return cache.error?failPanel():`<section class="panel cm-cms-state"><h2>Нет доступа к содержимому</h2><p>Обратись к владельцу сайта, чтобы проверить свою роль.</p></section>`;
- if(cache.owner!==Q.user.id||!cache.data){if(!cache.loading&&!cache.error)load();return cache.error?failPanel():`<section class="panel cm-cms-state"><span class="cm-cms-spinner" aria-hidden="true"></span><p>Загружаем сохранённые материалы…</p></section>`;}
+ // Права приходят двумя путями: CMReview.user из bootstrap и CM6.sessionUser из
+ // /session. Падение первого не должно выдавать владельцу отказ.
+ if(!userPerms().includes('content.manage'))return cache.error?failPanel():`<section class="panel cm-cms-state"><h2>Нет доступа к содержимому</h2><p>Обратись к владельцу сайта, чтобы проверить свою роль.</p></section>`;
+ if(cache.owner!==currentUser()?.id||!cache.data){if(!cache.loading&&!cache.error)load();return cache.error?failPanel():`<section class="panel cm-cms-state"><span class="cm-cms-spinner" aria-hidden="true"></span><p>Загружаем сохранённые материалы…</p></section>`;}
  return sub==='faq'?faqView():sub==='gallery'?galleryView():sub==='settings'?settingsView():pagesView();
 }
 window.CMCMS.render=render;
@@ -6990,7 +7015,9 @@ async function api(path, body, method) {
   // settings, recovery and admin forms that are rendered outside this file.
   function enhancePasswordFields(root = document) {
     root.querySelectorAll('input[type="password"]').forEach(input => {
-      if (input.closest('.v7-pass-wrap') || input.dataset.cmPassReady) return;
+      // Формы входа и регистрации рисуют свой переключатель (.v7-password).
+      // Второй глаз поверх него — дубль, поэтому такие поля не трогаем.
+      if (input.closest('.v7-pass-wrap') || input.closest('.v7-password') || input.dataset.cmPassReady) return;
       input.dataset.cmPassReady = '1';
       const wrap = document.createElement('span');
       wrap.className = 'v7-pass-wrap';

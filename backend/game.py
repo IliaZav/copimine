@@ -214,7 +214,9 @@ class GameAdapter:
             db.execute("UPDATE one_time_link_codes SET status='EXPIRED' WHERE site_account_id=%s AND status='PENDING'", (user["id"],))
             db.execute("INSERT INTO one_time_link_codes(id,site_account_id,minecraft_name,minecraft_uuid,code_hash,status,created_at,expires_at) VALUES(%s,%s,%s,%s,%s,'PENDING',%s,%s)", (uuid.uuid4().hex, user["id"], identity["name"], identity["uuid"], legacy.sha256_hex(code), now, now + LINK_TTL_MS))
             db.commit()
-        return {"ok": True, "deliveredInGame": True, "expiresAt": now + LINK_TTL_MS}
+        # Мост уже подтвердил доставку: off-line игрок приходит ошибкой player_offline
+        # выше, так что здесь код действительно в чате.
+        return {"ok": True, "deliveredInGame": bool(result.get("ok")), "expiresAt": now + LINK_TTL_MS}
 
     def link_confirm(self, user, code):
         legacy = self.legacy()

@@ -23,11 +23,15 @@ const actions=(label)=>'<div class="form-error" role="alert"></div><button type=
 const title=(eyebrow,heading,copy='',extra='')=>'<div class="v7-page-heading"><div><div class="kicker">'+eyebrow+'</div><h1>'+heading+'</h1>'+(copy?'<p>'+copy+'</p>':'')+'</div>'+extra+'</div>';
 const sideLink=(path,label,ic,active)=>'<a href="#'+path+'" aria-label="'+E(label)+'" title="'+E(label)+'" class="'+(active?'active':'')+'">'+icon(ic)+'<span>'+label+'</span></a>';
 function saveStatus(value){Q.status=value;const n=document.getElementById('v7-save-status');if(n){n.textContent={loading:'Загружаем базу',saving:'Сохраняем',saved:'Сохранено в базе',error:'Не сохранено',offline:'Автономный просмотр'}[value]||value;n.dataset.status=value;}}
-async function request(path,body){
- const opts={credentials:'same-origin',headers:{Accept:'application/json'}};
+async function request(path,body,retried){
+ const opts={credentials:'same-origin',headers:{Accept:'application/json'},cache:'no-store'};
  if(body!==undefined){opts.method='POST';opts.headers['Content-Type']='application/json';opts.headers['X-Review-CSRF']=Q.csrf;opts.body=JSON.stringify(body);}
  const controller=new AbortController();opts.signal=controller.signal;const t=setTimeout(()=>controller.abort(),8000);
- try{const r=await fetch('/api/v7/'+path,opts);const result=await r.json();if(!r.ok)throw Error(result.error?.message||result.message||'Не удалось выполнить запрос.');return result;}
+ try{const r=await fetch('/api/v7/'+path,opts);const result=await r.json();if(result&&result.csrf)Q.csrf=result.csrf;
+  // Токен привязан к сеансу: после перезагрузки в другой вкладке он устаревает.
+  // Забираем свежий и повторяем ровно один раз.
+  if(!r.ok&&result&&result.error&&result.error.code==='csrf'&&!retried){const boot=await fetch('/api/v7/bootstrap',{credentials:'same-origin',cache:'no-store'}).then(x=>x.json()).catch(()=>null);if(boot&&boot.csrf){Q.csrf=boot.csrf;return request(path,body,true);}}
+  if(!r.ok)throw Error(result.error?.message||result.message||'Не удалось выполнить запрос.');return result;}
  catch(err){if(err.name==='AbortError')throw Error('Сервер не ответил. Повторите запрос через несколько секунд.');throw err;}finally{clearTimeout(t);}
 }
 Q.request=request;

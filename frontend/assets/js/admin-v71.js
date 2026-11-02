@@ -100,7 +100,7 @@ M.renderers.admin=(key='overview')=>{
  case 'admins':body=ext.access(sub||'team');break;
  case 'settings':body=siteSettings();break;
  case 'statistics':body=(ext.statistics||prior)(sub||'overview');break;
- case 'content':body=prior('content');break;
+ case 'content':body=ext.content(sub||'pages');break;
  case 'world':body=ext.world(sub);break;
  case 'monitor':body=ext.monitor(sub);break;
  case 'releases':body=ext.releases(sub);break;

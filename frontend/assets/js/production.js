@@ -19,7 +19,20 @@ H['v7-vk']=undefined;
 H['v7-totp']=()=>H['v6-totp-setup']();
 H['v7-game-link']=()=>M.openModal('Связать Minecraft','<p>Зайдите на сервер и войдите через AuthMe. Код появится в личном сообщении в игре.</p><form data-form="production-mc-code">'+field('Ник Minecraft','name','','text','required pattern="[A-Za-z0-9_]{3,16}" autocomplete="off"')+V.actions('Получить код в игре')+'</form>');
 F['production-mc-code']=async(f,d)=>{await X.request('/account/minecraft/request',{method:'POST',body:{name:d.get('name')}});M.openModal('Введите код из Minecraft','<form data-form="production-mc-confirm">'+field('Код из личного сообщения','code','','text','required minlength="6" maxlength="12" autocomplete="one-time-code"')+V.actions('Подтвердить привязку')+'</form>');};
-F['production-mc-confirm']=async(f,d)=>{await X.request('/account/minecraft/confirm',{method:'POST',body:{code:d.get('code')}});await Q.reload();M.closeModal();M.toast('Профиль Minecraft подтверждён.');};
+F['production-mc-confirm']=async(f,d)=>{
+ const code=String(d.get('code')||'').trim();
+ const pin=String(d.get('pin')||'').trim();
+ const repeat=String(d.get('pinRepeat')||'').trim();
+ if(!/^[0-9]{4,8}$/.test(pin))throw Error('PIN состоит из 4–8 цифр.');
+ if(pin!==repeat)throw Error('PIN не совпадает: введи одинаково в оба поля.');
+ if(new Set(pin).size===1)throw Error('PIN из одинаковых цифр слишком простой.');
+ // Сначала ник: без привязанного аккаунта банковский PIN привязать не к чему.
+ await X.request('/account/minecraft/confirm',{method:'POST',body:{code}});
+ await Q.reload();
+ try{const r=await fetch('/api/v7/bank/pin',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Review-CSRF':Q.csrf},body:JSON.stringify({pin})});const j=await r.json();if(!r.ok)throw Error((j&&j.error&&j.error.message)||'PIN не сохранён.');}
+ catch(err){M.closeModal();M.toast('Ник привязан, но PIN не сохранился: '+((err&&err.message)||'повтори в настройках банка'),true);M.navTo('account');return;}
+ M.closeModal();M.toast('Ник привязан, PIN сохранён. Кабинет открыт.');M.navTo('account');
+};
 
 P.refreshInventory=async id=>{
  const r=await X.request('/admin/players/'+encodeURIComponent(id)+'/inventory'),p=M.state.players.find(p=>p.id===id),snap=r.snapshot;

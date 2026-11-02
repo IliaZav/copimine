@@ -235,3 +235,9 @@
 @media(max-width:900px){.bank-split{grid-template-columns:1fr}.bank-accounts{grid-template-columns:1fr}}
 /* На телефоне таблица жмётся: подписи мельче, отступы уже, сумма не переносится. */
 @media(max-width:600px){.bank-table th,.bank-table td{padding-left:12px;padding-right:12px}.bank-table td{padding-top:9px;padding-bottom:9px}.bank-what{gap:9px}.bank-what img{width:26px;height:26px}.bank-amount input{font-size:20px}.bank-switch{width:100%}.bank-switch a{flex:1;text-align:center;padding:7px 8px}.bank-presets button{padding:5px 11px}}
+
+/* Шаг PIN в привязке ника: это задание, поэтому рамка отдельная, а не просто поле. */
+.cm-link-pin{margin:18px 0 0;padding:16px 18px 6px;border:1px solid #2de39b40;border-radius:13px;background:#2de39b0d}
+.cm-link-pin legend{padding:0 8px;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#2de39b}
+.cm-link-pin-note{margin:-2px 0 14px;font-size:12.5px;line-height:1.5;color:#8fa0a9}
+.cm-link-pin .field:last-of-type{margin-bottom:10px}

@@ -55,7 +55,7 @@ function donationUpdate(){
  document.querySelectorAll('[data-action="donate-pack"]').forEach(b=>{const active=Number(b.dataset.value)===donationAmount;b.classList.toggle('selected',active);b.setAttribute('aria-pressed',String(active));});
  document.querySelectorAll('[data-action="payment-method"]').forEach(b=>{const active=b.dataset.method===donationMethod;b.classList.toggle('selected',active);b.setAttribute('aria-pressed',String(active));});
  const valid=validDonation(),cm=document.getElementById('donate-total-cm'),rub=document.getElementById('donate-total-rub'),method=document.getElementById('donate-method'),input=document.getElementById('donation-amount');
- if(cm)cm.textContent=valid?M.money(donationAmount,'CM'):'—';if(rub)rub.textContent=valid?M.money(donationAmount*Number(s().config.cmRate||1),'₽'):'—';if(method)method.textContent=donationMethod==='sbp'?'СБП':'Банковская карта';if(input)input.setAttribute('aria-invalid',String(!valid));
+ if(cm)cm.innerHTML=valid?M.money(donationAmount,'CM'):'—';if(rub)rub.innerHTML=valid?M.money(donationAmount*Number(s().config.cmRate||1),'₽'):'—';if(method)method.textContent=donationMethod==='sbp'?'СБП':'Банковская карта';if(input)input.setAttribute('aria-invalid',String(!valid));
  const submit=document.querySelector('[data-form="create-payment"] [type="submit"]');if(submit)submit.disabled=!valid;
 }
 function payBrand(id){return '<img class="payment-brand payment-brand-'+id+'" src="'+M.asset('assets/img/brands/'+(id==='sbp'?'sbp.webp':'mir.webp'))+'" alt="" aria-hidden="true">';}

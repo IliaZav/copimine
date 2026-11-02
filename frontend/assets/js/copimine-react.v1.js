@@ -9969,7 +9969,7 @@ function ue() {
 		children: [
 			/* @__PURE__ */ (0, p.jsxs)("div", {
 				className: "cm-link-progress",
-				"aria-label": t ? "Шаг 2 из 2: код" : "Шаг 1 из 2: ник",
+				"aria-label": t ? "Шаг 3 из 3: PIN" : "Шаг 2 из 3: код",
 				children: [
 					/* @__PURE__ */ (0, p.jsxs)("span", {
 						className: t ? "is-done" : "is-current",
@@ -9978,9 +9978,14 @@ function ue() {
 					}),
 					/* @__PURE__ */ (0, p.jsx)("i", {}),
 					/* @__PURE__ */ (0, p.jsxs)("span", {
+						className: t ? "is-done" : "",
+						children: [/* @__PURE__ */ (0, p.jsx)("b", { children: "02" }), /* @__PURE__ */ (0, p.jsx)("small", { children: "Код" })]
+					}),
+					/* @__PURE__ */ (0, p.jsx)("i", {}),
+					/* @__PURE__ */ (0, p.jsxs)("span", {
 						className: t ? "is-current" : "",
 						"aria-current": t ? "step" : void 0,
-						children: [/* @__PURE__ */ (0, p.jsx)("b", { children: "02" }), /* @__PURE__ */ (0, p.jsx)("small", { children: "Код" })]
+						children: [/* @__PURE__ */ (0, p.jsx)("b", { children: "03" }), /* @__PURE__ */ (0, p.jsx)("small", { children: "PIN" })]
 					})
 				]
 			}),
@@ -9990,7 +9995,7 @@ function ue() {
 			}),
 			/* @__PURE__ */ (0, p.jsx)("h1", {
 				id: "cm-link-title",
-				children: t ? "Подтверди ник в игре" : "Укажи ник Minecraft"
+				children: t ? "Подтверди ник и придумай PIN" : "Укажи ник Minecraft"
 			}),
 			t ? /* @__PURE__ */ (0, p.jsxs)(p.Fragment, { children: [
 				/* @__PURE__ */ (0, p.jsxs)("p", { children: [
@@ -10022,10 +10027,47 @@ function ue() {
 							className: "form-error",
 							role: "alert"
 						}),
+						/* @__PURE__ */ (0, p.jsxs)("fieldset", {
+							className: "cm-link-pin",
+							children: [
+								/* @__PURE__ */ (0, p.jsx)("legend", { children: "Банковский PIN" }),
+								/* @__PURE__ */ (0, p.jsx)("p", { className: "cm-link-pin-note", children: "4–8 цифр. Он подтверждает переводы и покупки — как PIN у банковской карты. Не называй его никому." }),
+								/* @__PURE__ */ (0, p.jsxs)("label", {
+									className: "field",
+									children: ["Придумай PIN", /* @__PURE__ */ (0, p.jsx)("input", {
+										name: "pin",
+										type: "password",
+										required: !0,
+										pattern: "[0-9]{4,8}",
+										minLength: 4,
+										maxLength: 8,
+										inputMode: "numeric",
+										autoComplete: "new-password",
+										autoCorrect: "off",
+										spellCheck: !1
+									})]
+								}),
+								/* @__PURE__ */ (0, p.jsxs)("label", {
+									className: "field",
+									children: ["Повтори PIN", /* @__PURE__ */ (0, p.jsx)("input", {
+										name: "pinRepeat",
+										type: "password",
+										required: !0,
+										pattern: "[0-9]{4,8}",
+										minLength: 4,
+										maxLength: 8,
+										inputMode: "numeric",
+										autoComplete: "new-password",
+										autoCorrect: "off",
+										spellCheck: !1
+									})]
+								})
+							]
+						}),
 						/* @__PURE__ */ (0, p.jsxs)("button", {
 							className: "btn primary",
 							type: "submit",
-							children: ["Подтвердить и открыть кабинет ", h("arrow-right")]
+							children: ["Сохранить PIN и открыть кабинет ", h("arrow-right")]
 						})
 					]
 				}),

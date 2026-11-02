@@ -2165,6 +2165,48 @@ def save_receipt(database, user, key, operation, fingerprint, result):
         if updated.rowcount!=1:raise RuntimeError('Operation reservation changed')
 
 
+@router.get("/api/v7/bank/pin")
+def bank_pin_state(request: Request):
+    """Есть ли у игрока банковский PIN: привязка ника ведёт к нему третьим шагом."""
+    user = current_user(request)
+    if not user["minecraft_uuid"]:
+        return {"minecraft": False, "pin": False}
+    with request.app.state.database.transaction() as db:
+        row = db.execute("SELECT pin_hash FROM bank_pin_hashes WHERE minecraft_uuid=%s", (user["minecraft_uuid"],)).fetchone()
+    return {"minecraft": True, "pin": bool(row and str(row["pin_hash"] or "").strip())}
+
+
+@router.post("/api/v7/bank/pin")
+async def bank_pin_set(request: Request):
+    """Первый PIN создаётся без старого: его ещё нет. Смена — только со старым."""
+    user = current_user(request)
+    if not user["minecraft_uuid"]:
+        fail(409, "game_link_required", "Сначала привяжите ник Minecraft.")
+    data = await request.json()
+    new_pin = str(data.get("pin") or "").strip()
+    if not re.fullmatch(r"[0-9]{4,8}", new_pin):
+        fail(400, "pin_required", "PIN состоит из 4–8 цифр.")
+    if len(set(new_pin)) == 1:
+        fail(400, "pin_weak", "PIN из одинаковых цифр слишком простой.")
+    legacy = request.app.state.game.legacy()
+    old_pin = str(data.get("oldPin") or "").strip()
+    with request.app.state.database.transaction() as db:
+        row = db.execute("SELECT pin_hash FROM bank_pin_hashes WHERE minecraft_uuid=%s", (user["minecraft_uuid"],)).fetchone()
+    has_pin = bool(row and str(row["pin_hash"] or "").strip())
+    if has_pin and not old_pin:
+        fail(400, "old_pin_required", "Введите текущий PIN, чтобы задать новый.")
+    payload = legacy.PlayerPinSetIn(new_pin=new_pin, old_pin=old_pin, account_scope="PERSONAL")
+    account = {"minecraft_uuid": user["minecraft_uuid"], "minecraft_name": user.get("minecraft_name") or user["name"], "id": user["id"], "name": user["name"]}
+    try:
+        await run_in_threadpool(legacy.set_player_pin_sync, account, payload)
+    except HTTPException:
+        raise
+    except Exception as error:
+        fail(400, "pin_rejected", str(getattr(error, "detail", error)) or "PIN не принят.")
+    request.app.state.database.audit(user, "bank.pin_set", details={"changed": has_pin})
+    return {"ok": True, "pin": True, "changed": has_pin}
+
+
 @router.post("/api/v7/transfer")
 @router.post("/api/v6/account/transfer")
 async def transfer(request: Request):

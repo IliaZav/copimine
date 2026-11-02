@@ -167,8 +167,7 @@ const endSession=()=>{state.session=null;try{Auth.clear(localStorage,sessionStor
 const me=()=>state.players.find(p=>p.id===state.session?.id)||null;
 // У AR — настоящая текстура алмазной руды, у CM — алмаз: валюта читается
 // с одного взгляда, без подписи. Картинки из клиента Minecraft 26.3.
-const moneyIcon=c=>c==='AR'?'assets/img/currency/ar-ore.png':c==='CM'?'assets/img/currency/cm-diamond.png':'';
-const money=(n,c)=>{const v=Number(n||0).toLocaleString('ru-RU'),i=moneyIcon(c);return i?`<span class="money"><img class="money-icon" src="${i}" alt="" width="16" height="16" loading="lazy">${v}</span>`:`${v} ${c}`;};
+const money=(n,c)=>`${Number(n||0).toLocaleString('ru-RU')} ${c}`;
 const date=(n,short=false)=>n?new Date(n).toLocaleString('ru-RU',short?{day:'2-digit',month:'short'}:{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'Не определено';
 const asset=p=>window.CM_ASSETS?.[p]||p;
 const item=id=>state.catalog.find(p=>p.id===id);
@@ -2781,7 +2780,7 @@ function donationUpdate(){
  document.querySelectorAll('[data-action="donate-pack"]').forEach(b=>{const active=Number(b.dataset.value)===donationAmount;b.classList.toggle('selected',active);b.setAttribute('aria-pressed',String(active));});
  document.querySelectorAll('[data-action="payment-method"]').forEach(b=>{const active=b.dataset.method===donationMethod;b.classList.toggle('selected',active);b.setAttribute('aria-pressed',String(active));});
  const valid=validDonation(),cm=document.getElementById('donate-total-cm'),rub=document.getElementById('donate-total-rub'),method=document.getElementById('donate-method'),input=document.getElementById('donation-amount');
- if(cm)cm.textContent=valid?M.money(donationAmount,'CM'):'—';if(rub)rub.textContent=valid?M.money(donationAmount*Number(s().config.cmRate||1),'₽'):'—';if(method)method.textContent=donationMethod==='sbp'?'СБП':'Банковская карта';if(input)input.setAttribute('aria-invalid',String(!valid));
+ if(cm)cm.innerHTML=valid?M.money(donationAmount,'CM'):'—';if(rub)rub.innerHTML=valid?M.money(donationAmount*Number(s().config.cmRate||1),'₽'):'—';if(method)method.textContent=donationMethod==='sbp'?'СБП':'Банковская карта';if(input)input.setAttribute('aria-invalid',String(!valid));
  const submit=document.querySelector('[data-form="create-payment"] [type="submit"]');if(submit)submit.disabled=!valid;
 }
 function payBrand(id){return '<img class="payment-brand payment-brand-'+id+'" src="'+M.asset('assets/img/brands/'+(id==='sbp'?'sbp.webp':'mir.webp'))+'" alt="" aria-hidden="true">';}
@@ -4442,8 +4441,8 @@ function accounts(){
  const ar=A.wallet?.balance??M.me()?.AR??0,cm=A.wallet?.donation??0;
  // Валюта читается иконкой, а не подписью: руда — AR, монета — донат.
  return '<section class="bank-accounts">'
-  +'<div class="bank-acc"><div class="bank-acc-lbl"><img src="'+M.asset('assets/img/currency/ar-ore.png')+'" alt="Игровые AR" title="Игровые AR">Игровые</div><div class="bank-acc-sum"><b>'+number(ar)+'</b><img class="bank-acc-cur" src="'+M.asset('assets/img/currency/ar-ore.png')+'" alt=""></div><small>Валюта сервера для торговли</small></div>'
-  +'<div class="bank-acc"><div class="bank-acc-lbl"><img src="'+M.asset('assets/img/currency/coin.png')+'" alt="Донат" title="Донат">Донат</div><div class="bank-acc-sum"><b>'+number(cm)+'</b><img class="bank-acc-cur" src="'+M.asset('assets/img/currency/coin.png')+'" alt=""></div><small>Для покупок в магазине</small></div>'
+  +'<div class="bank-acc"><div class="bank-acc-lbl">Игровые</div><div class="bank-acc-sum"><b>'+number(ar)+'</b></div><small>Валюта сервера для торговли</small></div>'
+  +'<div class="bank-acc"><div class="bank-acc-lbl">Донат</div><div class="bank-acc-sum"><b>'+number(cm)+'</b></div><small>Для покупок в магазине</small></div>'
  +'</section>';
 }
 function recipientSelect(){
@@ -6118,7 +6117,20 @@ H['v7-vk']=undefined;
 H['v7-totp']=()=>H['v6-totp-setup']();
 H['v7-game-link']=()=>M.openModal('Связать Minecraft','<p>Зайдите на сервер и войдите через AuthMe. Код появится в личном сообщении в игре.</p><form data-form="production-mc-code">'+field('Ник Minecraft','name','','text','required pattern="[A-Za-z0-9_]{3,16}" autocomplete="off"')+V.actions('Получить код в игре')+'</form>');
 F['production-mc-code']=async(f,d)=>{await X.request('/account/minecraft/request',{method:'POST',body:{name:d.get('name')}});M.openModal('Введите код из Minecraft','<form data-form="production-mc-confirm">'+field('Код из личного сообщения','code','','text','required minlength="6" maxlength="12" autocomplete="one-time-code"')+V.actions('Подтвердить привязку')+'</form>');};
-F['production-mc-confirm']=async(f,d)=>{await X.request('/account/minecraft/confirm',{method:'POST',body:{code:d.get('code')}});await Q.reload();M.closeModal();M.toast('Профиль Minecraft подтверждён.');};
+F['production-mc-confirm']=async(f,d)=>{
+ const code=String(d.get('code')||'').trim();
+ const pin=String(d.get('pin')||'').trim();
+ const repeat=String(d.get('pinRepeat')||'').trim();
+ if(!/^[0-9]{4,8}$/.test(pin))throw Error('PIN состоит из 4–8 цифр.');
+ if(pin!==repeat)throw Error('PIN не совпадает: введи одинаково в оба поля.');
+ if(new Set(pin).size===1)throw Error('PIN из одинаковых цифр слишком простой.');
+ // Сначала ник: без привязанного аккаунта банковский PIN привязать не к чему.
+ await X.request('/account/minecraft/confirm',{method:'POST',body:{code}});
+ await Q.reload();
+ try{const r=await fetch('/api/v7/bank/pin',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Review-CSRF':Q.csrf},body:JSON.stringify({pin})});const j=await r.json();if(!r.ok)throw Error((j&&j.error&&j.error.message)||'PIN не сохранён.');}
+ catch(err){M.closeModal();M.toast('Ник привязан, но PIN не сохранился: '+((err&&err.message)||'повтори в настройках банка'),true);M.navTo('account');return;}
+ M.closeModal();M.toast('Ник привязан, PIN сохранён. Кабинет открыт.');M.navTo('account');
+};
 
 P.refreshInventory=async id=>{
  const r=await X.request('/admin/players/'+encodeURIComponent(id)+'/inventory'),p=M.state.players.find(p=>p.id===id),snap=r.snapshot;

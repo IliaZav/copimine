@@ -111,8 +111,8 @@ function accounts(){
  const ar=A.wallet?.balance??M.me()?.AR??0,cm=A.wallet?.donation??0;
  // Валюта читается иконкой, а не подписью: руда — AR, монета — донат.
  return '<section class="bank-accounts">'
-  +'<div class="bank-acc"><div class="bank-acc-lbl"><img src="'+M.asset('assets/img/currency/ar-ore.png')+'" alt="Игровые AR" title="Игровые AR">Игровые</div><div class="bank-acc-sum"><b>'+number(ar)+'</b><img class="bank-acc-cur" src="'+M.asset('assets/img/currency/ar-ore.png')+'" alt=""></div><small>Валюта сервера для торговли</small></div>'
-  +'<div class="bank-acc"><div class="bank-acc-lbl"><img src="'+M.asset('assets/img/currency/coin.png')+'" alt="Донат" title="Донат">Донат</div><div class="bank-acc-sum"><b>'+number(cm)+'</b><img class="bank-acc-cur" src="'+M.asset('assets/img/currency/coin.png')+'" alt=""></div><small>Для покупок в магазине</small></div>'
+  +'<div class="bank-acc"><div class="bank-acc-lbl">Игровые</div><div class="bank-acc-sum"><b>'+number(ar)+'</b></div><small>Валюта сервера для торговли</small></div>'
+  +'<div class="bank-acc"><div class="bank-acc-lbl">Донат</div><div class="bank-acc-sum"><b>'+number(cm)+'</b></div><small>Для покупок в магазине</small></div>'
  +'</section>';
 }
 function recipientSelect(){

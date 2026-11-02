@@ -4560,6 +4560,21 @@ H['v71-send']=async b=>{
 H['v71-transfer-detail']=b=>{const t=A.wallet?.transfers.find(t=>t.id===b.dataset.id);if(!t)return;M.openModal('Детали перевода',`<div class="v71-transfer-success"><span class="v71-transaction-icon ${t.incoming?'incoming':''}">${icon(t.incoming?'arrow-down-left':'arrow-up-right')}</span><h2>${t.incoming?'+':'-'}${number(t.amount)} АР</h2><p>${t.incoming?'Входящий перевод':'Исходящий перевод'}</p></div><dl class="v71-transfer-totals">${t.incoming?'':feeRows(t.amount,t.fee||0,t.fee_percent||0)}<div><dt>Отправитель</dt><dd>${E(t.fromName)}</dd></div><div><dt>Получатель</dt><dd>${E(t.toName)}</dd></div><div><dt>Дата</dt><dd>${M.date(t.at||t.created*1000)}</dd></div><div><dt>Квитанция</dt><dd><code>${E(t.id)}</code></dd></div><div><dt>Статус</dt><dd class="green">Выполнен</dd></div></dl>${t.note?`<blockquote class="v71-transfer-comment">${E(t.note)}</blockquote>`:''}<div class="v71-dialog-actions">${M.btn('Закрыть','close','','ghost')}${M.btn(t.incoming?'Ответный перевод':'Повторить перевод','v71-repeat-transfer','transfer','primary',`data-id="${E(t.id)}"`)}</div>`,'v71-transfer-dialog');};
 H['v71-repeat-transfer']=b=>{const t=A.wallet?.transfers.find(t=>t.id===b.dataset.id);if(!t)return;draft={to:t.incoming?t.sender:t.recipient,amount:String(t.amount),note:''};M.closeModal();M.navTo('account/bank?tab=transfer');M.render();document.getElementById('v71-transfer-amount')?.focus();};
 H['v71-export-transfers']=()=>M.downloadFile('CopiMine-transfers.json',JSON.stringify({review_only:true,transfers:A.wallet?.transfers||[]},null,2));
+// Список уведомлений в окне «Уведомления». Каждая строка ведёт туда, куда
+// указывает href: переводы — в историю, ответы и системные записи — в свой раздел.
+function notificationRows(){
+ const items=(A.notices?.items||[]).filter(n=>!A.muted(n.type));
+ if(!items.length)return M.empty('Новых уведомлений нет','Здесь появятся переводы, ответы и важные записи.','check');
+ return '<ul class="v71-notification-list">'+items.slice(0,40).map(n=>{
+  const href=String(n.href||'').trim();
+  const where=href.startsWith('#')?M.link('Открыть',href,'arrow-right','ghost small'):'';
+  return '<li class="v71-notification-row '+(n.read?'is-read':'is-new')+'">'
+   +'<div class="v71-notification-text"><strong>'+(n.read?'':icon('check'))+E(n.title||'Уведомление')+'</strong>'
+   +'<span>'+E(n.body||'')+'</span>'
+   +'<small>'+(n.createdAt?new Date(n.createdAt).toLocaleString('ru-RU',{day:'2-digit',month:'long',hour:'2-digit',minute:'2-digit'}):'')+'</small></div>'
+   +where+'</li>';
+ }).join('')+'</ul>';
+}
 H['v71-notifications']=async()=>{await A.refreshNotices(true);const isOff=s().reviewPersonal?.notifyTransfers===false,unread=A.unreadCount();
  M.openModal('Уведомления',`<div class="v71-notification-head"><span>${unread} непрочитанных</span>${M.link('Настройки','#settings/notifications','settings','ghost small')}</div>${isOff||s().reviewPersonal?.notifyReplies===false?`<p class="v71-inline-info">Часть уведомлений отключена в настройках.</p>`:''}${notificationRows()}<div class="v71-dialog-actions">${M.btn('Прочитать всё','v71-notifications-read','check','ghost small')}${M.link('История переводов','#account/transfers?history=1','arrow-right','small')}</div>`,'v71-notification-dialog');};
 H['v71-notification-open']=b=>{const n=(A.notices?.items||[]).find(item=>item.id===b.dataset.id);if(!n){H['v71-transfer-detail']?.(b);return;}if(!n.read&&!Q.offline){n.read=true;A.updateBadge();void Q.request('notifications/'+encodeURIComponent(n.id)+'/read',{}).catch(()=>{n.read=false;A.updateBadge();});}const href=String(n.href||'');if(/^#(?:account|settings|admin)\/[a-z0-9-]+(?:\?[a-z0-9_=&%.-]*)?$/i.test(href)){M.closeModal();M.navTo(href.slice(1));return;}M.openModal(n.title,`<p>${E(n.body)}</p><p class="hint mt">${M.date(n.createdAt)}</p><div class="v71-dialog-actions">${M.btn('Закрыть','close','','primary small')}</div>`);};

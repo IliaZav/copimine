@@ -66,6 +66,12 @@ function summary(){const p=selectedRecipient();return `<span class="label">По�
 // Банк: слева разделы, справа круговая диаграмма. Счета AR и донат видны
 // сразу, таблица отвечает «что и когда», детали открываются по клику.
 function bankTab(){return (M.UI?.params?.get('tab'))||'overview';}
+// Иконка есть только у АР: донат переводят счётом, а не предметом, и в
+// переводе он не участвует вовсе.
+function currencyIcon(kind){
+ if(kind!=='ar')return '';
+ return '<img class="money-icon" src="'+M.asset('assets/img/currency/ar-ore.png')+'" alt="" width="14" height="14" loading="lazy">';
+}
 function periodRows(){
  const rows=A.wallet?.transfers||[];
  if(!bankPeriod)return rows;
@@ -88,7 +94,7 @@ function opRow(t,i){
  const inc=!!t.incoming,who=inc?t.fromName:t.toName;
  return '<tr class="op" data-op="'+i+'" tabindex="0">'
   +'<td><div class="bank-what"><img src="'+E(opIcon(t))+'" alt="" loading="lazy"><div><b>'+E(opTitle(t))+'</b><small>'+E(who||'—')+' · '+M.date(t.at||t.created*1000,true)+'</small></div></div></td>'
-  +'<td class="bank-amt '+(inc?'in':'out')+'">'+number(t.amount)+' <small>АР</small></td></tr>';
+  +'<td class="bank-amt '+(inc?'in':'out')+'">'+number(t.amount)+' <small>'+currencyIcon('ar')+'АР</small></td></tr>';
 }
 A.transferRows=(rows,small=false)=>rows.length
  ?'<table class="bank-table"><thead><tr><th>За что</th><th class="right">Сумма</th></tr></thead><tbody>'+rows.map(opRow).join('')+'</tbody></table>'
@@ -107,12 +113,16 @@ function ring(){
   +'</svg><div class="bank-ring-mid"><b>−'+number(t.outgoing)+'</b><span>'+ (bankPeriod==='week'?'за неделю':bankPeriod==='month'?'за месяц':'всего') +'</span></div></div>'
   +'<ul class="bank-legend"><li class="out"><i></i>Расходы<b>'+number(t.outgoing)+'</b></li><li class="in"><i></i>Доходы<b>'+number(t.incoming)+'</b></li></ul>';
 }
+// Донат показывается только там, где им можно распорядиться. На вкладке
+// перевода его нет: донат не переводится, и число вводило людей в заблуждение.
 function accounts(){
  const ar=A.wallet?.balance??M.me()?.AR??0,cm=A.wallet?.donation??0;
- // Валюта читается иконкой, а не подписью: руда — AR, монета — донат.
+ const onlyAr=bankTab()==='transfer';
  return '<section class="bank-accounts">'
   +'<div class="bank-acc"><div class="bank-acc-lbl">Игровые</div><div class="bank-acc-sum"><b>'+number(ar)+'</b></div><small>Валюта сервера для торговли</small></div>'
-  +'<div class="bank-acc"><div class="bank-acc-lbl">Донат</div><div class="bank-acc-sum"><b>'+number(cm)+'</b></div><small>Для покупок в магазине</small></div>'
+  +(onlyAr
+    ?'<div class="bank-acc"><div class="bank-acc-lbl">Доступно к переводу</div><div class="bank-acc-sum"><b>'+number(ar)+'</b></div><small>Донат в переводах не участвует</small></div>'
+    :'<div class="bank-acc"><div class="bank-acc-lbl">Донат</div><div class="bank-acc-sum"><b>'+number(cm)+'</b></div><small>Для покупок в магазине, не для перевода</small></div>')
  +'</section>';
 }
 function recipientSelect(){
@@ -128,7 +138,7 @@ function recipientSelect(){
 }
 function summaryBox(){
  const p=selectedRecipient(),amt=Number(draft.amount)||0,q=previewQuote(amt);
- return '<dl class="bank-sum"><div><dt>Получатель</dt><dd>'+(p?E(p.name):'—')+'</dd></div><div><dt>Сумма</dt><dd>'+number(amt)+' АР</dd></div><div><dt>Комиссия</dt><dd>'+(q.fee?number(q.fee)+' АР':'нет')+'</dd></div><div class="total"><dt>Получит</dt><dd id="v71-summary-amount">'+number(q.net??amt)+' АР</dd></div></dl>';
+ return '<dl class="bank-sum"><div><dt>Получатель</dt><dd>'+(p?E(p.name):'—')+'</dd></div><div><dt>Сумма</dt><dd>'+number(amt)+' '+currencyIcon('ar')+'АР</dd></div><div><dt>Комиссия</dt><dd>'+(q.fee?number(q.fee)+' '+currencyIcon('ar')+'АР':'нет')+'</dd></div><div class="total"><dt>Получит</dt><dd id="v71-summary-amount">'+number(q.net??amt)+' '+currencyIcon('ar')+'АР</dd></div></dl>';
 }
 function overviewTab(){
  const rows=periodRows().slice(0,8);
@@ -140,7 +150,7 @@ function overviewTab(){
 function transferTab(){
  return '<div class="bank-split"><div class="bank-main"><section class="bank-card"><h2>Новый перевод</h2><form data-form="v71-transfer" id="v71-transfer-form" class="bank-form">'
   +'<label class="field">Кому'+recipientSelect()+'</label>'
-  +'<label class="field">Сумма<span class="bank-amount"><input id="v71-transfer-amount" name="amount" inputmode="numeric" autocomplete="off" required maxlength="10" placeholder="0" value="'+E(draft.amount)+'"><span>АР</span></span></label>'
+  +'<label class="field">Сумма<span class="bank-amount"><input id="v71-transfer-amount" name="amount" inputmode="numeric" autocomplete="off" required maxlength="10" placeholder="0" value="'+E(draft.amount)+'"><span>'+currencyIcon('ar')+'АР</span></span></label>'
   +'<div class="bank-presets">'+[50,100,250,500,1000].map(n=>'<button type="button" data-action="v71-amount" data-amount="'+n+'">'+n+'</button>').join('')+'</div>'
   +'<label class="field">Сообщение <span class="quiet">Необязательно</span><input id="v71-transfer-note" name="note" maxlength="140" placeholder="За что" value="'+E(draft.note)+'"></label>'
   +'<div class="form-error" role="alert">'+E(error)+'</div>'
@@ -213,7 +223,7 @@ H['v71-send']=async b=>{
  catch(err){document.getElementById('v71-send-error').textContent=err.message;b.disabled=false;b.classList.remove('is-loading');b.setAttribute('aria-busy','false');}
 };
 H['v71-transfer-detail']=b=>{const t=A.wallet?.transfers.find(t=>t.id===b.dataset.id);if(!t)return;M.openModal('Детали перевода',`<div class="v71-transfer-success"><span class="v71-transaction-icon ${t.incoming?'incoming':''}">${icon(t.incoming?'arrow-down-left':'arrow-up-right')}</span><h2>${t.incoming?'+':'-'}${number(t.amount)} АР</h2><p>${t.incoming?'Входящий перевод':'Исходящий перевод'}</p></div><dl class="v71-transfer-totals">${t.incoming?'':feeRows(t.amount,t.fee||0,t.fee_percent||0)}<div><dt>Отправитель</dt><dd>${E(t.fromName)}</dd></div><div><dt>Получатель</dt><dd>${E(t.toName)}</dd></div><div><dt>Дата</dt><dd>${M.date(t.at||t.created*1000)}</dd></div><div><dt>Квитанция</dt><dd><code>${E(t.id)}</code></dd></div><div><dt>Статус</dt><dd class="green">Выполнен</dd></div></dl>${t.note?`<blockquote class="v71-transfer-comment">${E(t.note)}</blockquote>`:''}<div class="v71-dialog-actions">${M.btn('Закрыть','close','','ghost')}${M.btn(t.incoming?'Ответный перевод':'Повторить перевод','v71-repeat-transfer','transfer','primary',`data-id="${E(t.id)}"`)}</div>`,'v71-transfer-dialog');};
-H['v71-repeat-transfer']=b=>{const t=A.wallet?.transfers.find(t=>t.id===b.dataset.id);if(!t)return;draft={to:t.incoming?t.sender:t.recipient,amount:String(t.amount),note:''};M.closeModal();M.navTo('account/transfers');M.render();document.getElementById('v71-transfer-amount')?.focus();};
+H['v71-repeat-transfer']=b=>{const t=A.wallet?.transfers.find(t=>t.id===b.dataset.id);if(!t)return;draft={to:t.incoming?t.sender:t.recipient,amount:String(t.amount),note:''};M.closeModal();M.navTo('account/bank?tab=transfer');M.render();document.getElementById('v71-transfer-amount')?.focus();};
 H['v71-export-transfers']=()=>M.downloadFile('CopiMine-transfers.json',JSON.stringify({review_only:true,transfers:A.wallet?.transfers||[]},null,2));
 H['v71-notifications']=async()=>{await A.refreshNotices(true);const isOff=s().reviewPersonal?.notifyTransfers===false,unread=A.unreadCount();
  M.openModal('Уведомления',`<div class="v71-notification-head"><span>${unread} непрочитанных</span>${M.link('Настройки','#settings/notifications','settings','ghost small')}</div>${isOff||s().reviewPersonal?.notifyReplies===false?`<p class="v71-inline-info">Часть уведомлений отключена в настройках.</p>`:''}${notificationRows()}<div class="v71-dialog-actions">${M.btn('Прочитать всё','v71-notifications-read','check','ghost small')}${M.link('История переводов','#account/transfers?history=1','arrow-right','small')}</div>`,'v71-notification-dialog');};

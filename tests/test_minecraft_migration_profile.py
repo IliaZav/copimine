@@ -179,13 +179,13 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
 
     assert artifact['filename'] == 'CopiMineClient-0.1.3+26.3.jar'
     # Measured from the repeatable build output and recorded in the lock.
-    # Re-measured after the Echo presentation pass started tinting the copy's
-    # eyes violet and darkening its body: two clean Gradle builds on this tree
-    # agree byte for byte.
-    assert artifact['size'] == 15_027_500
+    # Re-measured after Wave 5 stopped dropping fog cycles four and five, which
+    # changed validCycle and therefore the compiled bytes: two clean Gradle
+    # builds on this tree agree byte for byte.
+    assert artifact['size'] == 15_027_641
     assert artifact['sha512'] == (
-        '624dee52f2e9941547f4dda4523f366f952a2454de4bc1d6a60b37623134'
-        '2c932a78bfb595b999fbc830b5ea8e956f6b8d897982f1ca4c381c9d2c0c9e2504d7'
+        'f972b6e687f64202ddd3fdc9b25baf055d7c8b1350422406300e7c741eeabfaa'
+        '3e794d58446b1c0596a8c58ec3499a9b3bc59022804327087de98cc892fa824b'
     )
 
 

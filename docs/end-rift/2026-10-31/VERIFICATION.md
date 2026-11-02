@@ -117,6 +117,31 @@ capability-invalid string, which would escape into the client tick loop. The
 validator now rejects non-digits explicitly, so a foreign or corrupted bridge
 payload is a refused packet rather than a client crash.
 
+### 5.2 The legacy 1.21.1 client carried the identical defect
+
+`CopiMineClient/src` ships a second `EndEventBlackFogManager` with its own
+`validCycle`, and it had the same three-cycle range, so the 1.21.1 line hid fog
+cycles four and five exactly like the 26.3 line. Its test
+(`acceptsOnlyTheOneBasedThreeCycleProtocolRange`) even asserted that `wave5|4`
+"must" be rejected. Both were corrected the same way, and the staged
+`thirdparty/client-mods/CopiMineClient-0.1.1.jar` was rebuilt so the modpack no
+longer ships the old behaviour.
+
+**Trap found while rebuilding it (cost three builds).** Running the legacy
+project with this repo's pinned Gradle 9.8.1 makes Fabric Loom 1.8.13 resolve to
+"Finished remapping", exit 0, and then write a **261-byte jar containing only
+`META-INF/MANIFEST.MF`** — no error, no warning, `BUILD SUCCESSFUL`. Every
+class silently disappears. The same project on its own isolated Gradle 8.10.2
+(`CopiMineClient/.gradle-dist/gradle-8.10.2`, the one `RunJavaPluginCi.ps1`
+uses) produces the full 356-entry, 13 035 666-byte jar. Always verify the
+**entry count** of a client jar, never just the exit code, and never build the
+1.21.1 client with the 26.3 Gradle.
+
+**Second trap.** `build_modpack.ps1` only re-stages the client jar when passed
+`-SyncBuiltClient`; without it, it rebuilds the archive from whatever stale jar
+is already staged and still prints matching hashes. Passing that switch alone
+does not prove freshness either — read back the staged jar.
+
 Still **not** fixed and still a documented shortcut: the safe volume keeps a
 4-block readable radius (`BlackFogSafeVolumePolicy.SAFE_VIEW_RADIUS_BLOCKS`)
 instead of an exact per-pixel volume mask (contract W5-017). Geometry and

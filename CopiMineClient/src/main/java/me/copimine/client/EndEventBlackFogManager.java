@@ -13,6 +13,13 @@ public final class EndEventBlackFogManager {
     private static final int MAX_EVENT_ID_LENGTH = 128;
     private static final float MIN_INTENSITY = 0.5F;
     private static final float MAX_INTENSITY = 1.0F;
+    /**
+     * Protocol cycles are one-based and Wave 5 runs exactly five of them
+     * ({@code BlackFogTimingPolicy.CYCLE_COUNT} on the server). Accepting only
+     * the first three silently dropped cycles four and five: the client showed
+     * a clear arena while the server already applied the hazard.
+     */
+    private static final int MAX_CYCLE = 5;
 
     private String eventId = "";
     private long generation;
@@ -171,6 +178,13 @@ public final class EndEventBlackFogManager {
     }
 
     private static boolean validCycle(String value) {
-        return "1".equals(value) || "2".equals(value) || "3".equals(value);
+        // Malformed input is a rejected packet, never an exception: a foreign or
+        // corrupted bridge payload must not tear down the client tick loop.
+        if (value == null || value.isEmpty() || value.length() > 2) return false;
+        for (int index = 0; index < value.length(); index++) {
+            char digit = value.charAt(index);
+            if (digit < '0' || digit > '9') return false;
+        }
+        return Integer.parseInt(value) >= 1 && Integer.parseInt(value) <= MAX_CYCLE;
     }
 }

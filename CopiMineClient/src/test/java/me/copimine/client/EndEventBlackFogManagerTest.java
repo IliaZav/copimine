@@ -10,9 +10,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EndEventBlackFogManagerTest {
     @Test
-    void acceptsOnlyTheOneBasedThreeCycleProtocolRange() {
+    void acceptsTheOneBasedFiveCycleProtocolRange() {
         EndEventBlackFogManager manager = new EndEventBlackFogManager();
 
+        // Wave 5 runs exactly five cycles server-side, so the client must accept
+        // every one of them; rejecting four and five hid the hazard entirely.
         assertFalse(manager.apply(packet("event-1", 4L, 100L,
                 "the_end|wave5|0", .8F, "ACTIVE"), 100L));
         assertTrue(manager.apply(packet("event-1", 4L, 200L,
@@ -21,8 +23,23 @@ class EndEventBlackFogManagerTest {
                 "", 0F, "CLEAR"), 300L));
         assertTrue(manager.apply(packet("event-1", 4L, 400L,
                 "the_end|wave5|3", .8F, "ACTIVE"), 400L));
-        assertFalse(manager.apply(packet("event-1", 4L, 500L,
+        assertTrue(manager.apply(packet("event-1", 4L, 500L,
                 "the_end|wave5|4", .8F, "ACTIVE"), 500L));
+        assertTrue(manager.apply(packet("event-1", 4L, 600L,
+                "the_end|wave5|5", .8F, "ACTIVE"), 600L));
+        assertFalse(manager.apply(packet("event-1", 4L, 700L,
+                "the_end|wave5|6", .8F, "ACTIVE"), 700L),
+                "a sixth cycle is not part of the five-cycle wave");
+    }
+
+    @Test
+    void rejectsNonNumericCycleWithoutThrowing() {
+        EndEventBlackFogManager manager = new EndEventBlackFogManager();
+
+        assertFalse(manager.apply(packet("event-1", 4L, 100L,
+                "the_end|wave5|abc", .8F, "ACTIVE"), 100L));
+        assertFalse(manager.apply(packet("event-1", 4L, 200L,
+                "the_end|wave5||", .8F, "ACTIVE"), 200L));
     }
 
     @Test

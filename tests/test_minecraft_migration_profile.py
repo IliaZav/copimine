@@ -180,12 +180,14 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     assert artifact['filename'] == 'CopiMineClient-0.1.3+26.3.jar'
     # Measured from the repeatable build output and recorded in the lock.
     # Re-measured after Wave 5 stopped dropping fog cycles four and five, which
-    # changed validCycle and therefore the compiled bytes: two clean Gradle
-    # builds on this tree agree byte for byte.
-    assert artifact['size'] == 15_027_641
+    # changed validCycle and therefore the compiled bytes, and again after
+    # d2c6628b replaced the safe-volume radius with a footprint mask without
+    # refreshing the lock. Two clean Gradle builds on this tree agree byte for
+    # byte, so the lock tracks the source rather than one lucky build.
+    assert artifact['size'] == 15_032_281
     assert artifact['sha512'] == (
-        'f972b6e687f64202ddd3fdc9b25baf055d7c8b1350422406300e7c741eeabfaa'
-        '3e794d58446b1c0596a8c58ec3499a9b3bc59022804327087de98cc892fa824b'
+        'c65971b6a8e82d6ff1005d52f1ec0f31b1416f649f0fc1f52f9055a6a16d41'
+        '5d7787d034b3ac2a10ee2cc6fd7f9f403a081643052ac26f73cf1a968650b6be7f'
     )
 
 

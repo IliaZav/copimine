@@ -298,3 +298,36 @@ Plugin jar **1 933 303 B / `183b5911…`**; client **13 545 820 B / `f8830f80…
 
 **Still BLOCKED:** native visual verification (section 6). The user verifies the
 look himself; nothing in this pass claims a visual requirement as passed.
+
+## 9. CI red after the pass: the pinned client jar, measured instead of guessed
+
+Five CI runs failed on "Build and verify pinned Minecraft 26.3 candidates". Every
+one of them was the same client digest pin, and every local build agreed with
+itself, so the pin looked stale while the build looked reproducible. It was
+neither: the diagnostic added in `66ddeb49` printed the built size and digest,
+and `938011c4` printed a per-entry fingerprint of the archive, which settled it.
+
+**Measured cause.** CI and this machine built the same 494 entries, but sixteen
+resource files were longer on CI by exactly the number of their line breaks.
+Git checked them out with CRLF on the runner because no `.gitattributes` rule
+decided their endings, while the same files sat in this worktree with LF. The
+first delta was 110 bytes; after pinning `post_effect`, `shaders/post` and the
+26.3 mixin config to LF, nine files that were awkwardly committed with CRLF in
+the repository flipped the other way, for -23 bytes.
+
+**Fix.** Those nine files were normalised to LF in the repository, which is what
+they were always supposed to be, and `.gitattributes` now states the endings of
+every resource that ships inside the pinned jar: this project's own files are
+LF, the third-party shader sources under `shaders/program` stay CRLF because
+that is how they are authored. The compiler output is pinned too — debug
+information is fixed at `lines,source` instead of whichever level a machine's
+Gradle metadata happened to leave behind.
+
+**Result.** A clean local build now produces the same bytes as CI:
+**13 473 841 B / `a863f980…`**. CI run 41725291218 on `a6be5193` is fully green
+(`static-and-contract`, `migration-postgres-contract`, `java-plugins`).
+
+**Deployed.** Plugin `1 933 303 B / 183b5911…` installed on production, backup
+`/opt/copimine-backups/endrift-20261104T013959Z/`, service active,
+`Done (44.177s)!`, 0 SEVERE/ERROR, phase=COLLECTING. The client mod in the Prism
+instance is the CI-matched `13 473 841 B` jar and is the only client mod there.

@@ -193,10 +193,10 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # SUPERSEDED (2026-11-03): repinned for the Wave 5 fog presence ramp
     # (EndEventBlackFogPresenceTest), and again for the boss animation clip
     # blending (UserEndBossAnimationBlendTest).
-    assert artifact['size'] == 13_419_644
+    assert artifact['size'] == 13_473_864
     assert artifact['sha512'] == (
-        '25841223e9f685cca8ebdd44c09627af4e7a88665faa3be409b5f2204ac56ffc1'
-        '5fa844df058c07b76dd4370954019bc81c2896693604d7b3310b51657df37e0'
+        '63ecf6cd345c27099bd328ba54c975e20df2f4eadd3d13fb9cefbcf188db8f45'
+        '73d302b19dd63de99be816753a087387587c47c616b692801f276e75095fc89f'
     )
 
 

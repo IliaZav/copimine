@@ -214,6 +214,17 @@ try {
         $observed = if (Test-Path -LiteralPath $clientJar -PathType Leaf) {
             '{0} B / {1}' -f (Get-Item -LiteralPath $clientJar).Length, (Get-FileHash -LiteralPath $clientJar -Algorithm SHA512).Hash.ToLowerInvariant()
         } else { 'missing' }
+        # A mismatch that reproduces on one machine and not another can only be
+        # located by comparing the archive entry by entry, so print a fingerprint
+        # of every entry the build produced before giving up.
+        if (Test-Path -LiteralPath $clientJar -PathType Leaf) {
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            $archive = [System.IO.Compression.ZipFile]::OpenRead($clientJar)
+            try {
+                Write-Output ('client-entry-fingerprint ' + ($archive.Entries |
+                    ForEach-Object { '{0}:{1}:{2}' -f $_.FullName, $_.Length, $_.CompressedLength }) -join ',')
+            } finally { $archive.Dispose() }
+        }
         throw ('CopiMineClient build output differs from its pinned artifact digest and size: pinned ' +
             (($clientArtifactPin.size, $clientArtifactPin.sha512) -join ' / ') + '; built ' + $observed)
     }

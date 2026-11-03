@@ -60,6 +60,9 @@ tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
     options.compilerArgs += ['-Xmaxerrs', '1500']
 }
+// A digest pin is only meaningful if the archive is a pure function of the
+// sources: pinned entry order and pinned timestamps are what make an
+// unchanged tree produce an unchanged jar on every machine.
 tasks.withType(AbstractArchiveTask).configureEach {
     preserveFileTimestamps = false
     reproducibleFileOrder = true

@@ -186,10 +186,12 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # tickCount and tick-project equipment) changed the compiled bytes again.
     # Two clean Gradle builds on this tree agree byte for byte, so the lock
     # tracks the source rather than one lucky build.
-    assert artifact['size'] == 15_042_874
+    # Repinned for the Kagune grab fix: HOLD is now driven as a loop and its
+    # progress is rescaled to the authored keyframe extent.
+    assert artifact['size'] == 15_043_699
     assert artifact['sha512'] == (
-        '0b57057f805702a73e336e527b087a49990c3e1c2c47c03f76b48ef19dbb8bee'
-        '21c1981ccd0405165fce77af76abcb7ea46ad354791333f0f4de9e0fb229afc2'
+        '8b60ecbc1749ae73321c8509a7ba505c1d66b426c2dd61c4696e62bbd29cd16b'
+        '5947b21e59e648b8911268ae8c316945d30a3fcf59b5dbc0ca83925d5cdab4b2'
     )
 
 

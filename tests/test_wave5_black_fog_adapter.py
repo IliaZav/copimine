@@ -26,6 +26,7 @@ def probe(tmp_path_factory):
         # Post-fog reinforcement (W5-004) moved behind these two helpers; the
         # probe must compile them or it cannot exercise the refill path at all.
         "void reinforceWaveFiveAfterFog(long now)",
+        "boolean spawnWaveFivePostFogPack(long now)",
         "boolean spawnWaveFiveRefillPack(long now, String reasonCode)",
     ])
     java = output / "BlackFogAdapterProbe.java"
@@ -38,6 +39,7 @@ import me.copimine.endevent.domain.BlackFogTimingPolicy;
 import me.copimine.endevent.domain.BlackFogSafeZonePolicy;
 import me.copimine.endevent.domain.BlackFogSafeZoneCapacityPolicy;
 import me.copimine.endevent.domain.EndRiftObjective;
+import me.copimine.endevent.domain.Wave5PostFogPackPolicy;
 import me.copimine.endevent.domain.Wave5PreFogRefillPolicy;
 import me.copimine.endevent.domain.WaveMechanicsPolicy;
 import me.copimine.endevent.domain.WavePressurePolicy;
@@ -241,7 +243,9 @@ public final class BlackFogAdapterProbe {
     long generation = 4L, blackFogPhaseDeadlineMillis, currentFogZoneSetupRetryAtMillis;
     int activeWave = 5, currentFogCycle, currentFogZoneCount, currentFogZoneSide, currentFogZoneSetupAttempts;
     int waveSpawnGroupIndex = 1, waveSpawnEntityOffset, liveWaveMobCount, refillPacks;
-    long wave5PreFogRefillAtMillis;
+    // W5-004 bookkeeping: real post-fog packs spawned and the retry deadline.
+    int wave5PostFogPacksSpawned;
+    long wave5PreFogRefillAtMillis, wave5PostFogPackRetryAtMillis;
     boolean testWaveFrontVisualMode;
     String worldName = "world";
     List<WaveMechanicsPolicy.WaveCounts> waveSpawnSchedule = List.of(
@@ -377,6 +381,34 @@ public final class BlackFogAdapterProbe {
                 p.tickBlackFogObjective(15_001L);
                 check(p.refillPacks == 3,
                         "a later fog cycle also replenishes an empty combat segment");
+            }
+            case "post-fog-pack" -> {
+                // W5-004 regression: "After EACH fog, including the fifth, spawn
+                // one finite pack of 10-15 enemies." The shipped code called the
+                // reinforcement only in the "more cycles remain" branch, so the
+                // fifth fog produced nothing at all.
+                check(Wave5PostFogPackPolicy.packsOwed(5, 0) == 5,
+                        "all five fog cycles owe a pack, including the fifth");
+                int size = Wave5PostFogPackPolicy.packSize(2);
+                check(size >= 10 && size <= 15, "the pack must be ten to fifteen actors");
+                p.wave5PostFogPacksSpawned = 0;
+                p.liveWaveMobCount = 0;
+                p.currentSafeZoneCells.clear();
+                // Walking the whole wave the way the server does: five combat,
+                // fog, telegraph and safe phases. The fifth fog is the one that
+                // used to be skipped.
+                long packNow = 40_000L;
+                p.blackFogPhaseDeadlineMillis = packNow;
+                for (int step = 0; step < 400 && p.wave5PostFogPacksSpawned < 1; step++) {
+                    p.tickBlackFogObjective(packNow);
+                    packNow += 1_000L;
+                }
+                check(p.wave5PostFogPacksSpawned == 1,
+                        "the fifth fog must spawn a mandatory pack");
+                check(p.liveWaveMobCount >= 10 && p.liveWaveMobCount <= 15,
+                        "the fifth pack must be ten to fifteen actors, was " + p.liveWaveMobCount);
+                check(Wave5PostFogPackPolicy.packsOwed(5, p.wave5PostFogPacksSpawned) == 4,
+                        "the spawned pack resolves exactly one owed cycle");
             }
             case "three-cycles" -> {
                 // Superseded 2026-10-31 (WP-C): the wave runs exactly FIVE fog
@@ -611,6 +643,7 @@ public final class BlackFogAdapterProbe {
         str(domain / "BlackFogRecoverySnapshot.java"), str(domain / "BlackFogSafeZonePolicy.java"),
         str(domain / "BlackFogSafeZoneCapacityPolicy.java"),
         str(domain / "Wave5PreFogRefillPolicy.java"), str(domain / "WaveMechanicsPolicy.java"),
+        str(domain / "Wave5PostFogPackPolicy.java"), str(domain / "WaveScalingPolicy.java"),
         str(domain / "RiftCarrierPolicy.java"),
         str(domain / "PressureBudgetController.java"),
         str(domain / "WavePressurePolicy.java"),
@@ -620,7 +653,7 @@ public final class BlackFogAdapterProbe {
 
 
 @pytest.mark.parametrize("scenario", [
-    "three-cycles", "pre-fog-refill", "setup-retry", "invalid-journal", "mark-restored-failure",
+    "three-cycles", "pre-fog-refill", "post-fog-pack", "setup-retry", "invalid-journal", "mark-restored-failure",
     "restore-failure-does-not-advance", "invalid-original-data",
 ])
 def test_wave5_black_fog_adapter(probe, scenario):

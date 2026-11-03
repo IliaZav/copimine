@@ -138,6 +138,7 @@ import me.copimine.endevent.domain.Wave4ObeliskRecoverySnapshot;
 import me.copimine.endevent.domain.Wave4ObeliskRecoveryPolicy;
 import me.copimine.endevent.domain.RiftGiantPolicy;
 import me.copimine.endevent.domain.RiftGiantAuraEffectPolicy;
+import me.copimine.endevent.domain.Wave5PostFogPackPolicy;
 import me.copimine.endevent.domain.Wave5PreFogRefillPolicy;
 import me.copimine.endevent.domain.ExplosiveVolleyPolicy;
 import me.copimine.endevent.domain.WaveTwoPhantomLayoutPolicy;
@@ -913,6 +914,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private int currentFogZoneSetupAttempts;
     private long currentFogZoneSetupRetryAtMillis;
     private long wave5PreFogRefillAtMillis;
+    // W5-004: every fog cycle owes one finite 10-15 pack, including the fifth.
+    // The count of REAL packs spawned lets an owed pack stay owed when the live
+    // cap defers it, instead of being silently dropped.
+    private int wave5PostFogPacksSpawned;
+    private long wave5PostFogPackRetryAtMillis;
     private final Map<UUID, Long> currentFogLastPacketAt = new HashMap<>();
     private int currentCollapsedRings;
     private final Set<UUID> currentRingVisuals = new LinkedHashSet<>();
@@ -25349,13 +25355,65 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         spawnWaveFiveRefillPack(now, "END_RIFT_WAVE5_PRE_FOG_REFILL");
     }
 
-    /** Bounded reinforcement after every fog removal so combat resumes with real pressure. */
+    /**
+     * W5-004: EVERY fog cycle, including the fifth, owes one finite pack of ten
+     * to fifteen enemies.
+     *
+     * <p>The audit found three separate violations of that sentence in the
+     * shipped code, and all three are fixed here rather than papered over:</p>
+     * <ul>
+     *   <li>the fifth cycle never reached this method at all, so the last fog
+     *       spawned nothing;</li>
+     *   <li>a full live cap made the pack vanish instead of leaving it owed;</li>
+     *   <li>the size came from the first row of the old spawn schedule, not from
+     *       the required ten to fifteen.</li>
+     * </ul>
+     *
+     * <p>W5-005 still holds: this is the only post-fog pressure owner and it
+     * never bypasses the live cap. A cap-deferred pack stays owed and is retried
+     * after {@link Wave5PostFogPackPolicy#RETRY_MILLIS}.</p>
+     */
     private void reinforceWaveFiveAfterFog(long now) {
-        if (activeWave != 5 || blackFogPhase != BlackFogPhase.COMBAT) return;
+        if (activeWave != 5) return;
+        if (Wave5PostFogPackPolicy.packsOwed(currentFogCycle, wave5PostFogPacksSpawned) <= 0) return;
+        if (now < wave5PostFogPackRetryAtMillis) return;
         if (countLiveWaveEntitiesForWave(5) >= WavePressurePolicy.activeCap(5, waveScalePlayers())) {
+            // Defer, do not drop: the pack is still owed and W5-004 says it is
+            // mandatory, so remember when to try again.
+            wave5PostFogPackRetryAtMillis = now + Wave5PostFogPackPolicy.RETRY_MILLIS;
+            getLogger().info("END_RIFT_WAVE5_POST_FOG_PACK_DEFERRED event=" + eventId
+                    + " cycle=" + currentFogCycle
+                    + " owed=" + Wave5PostFogPackPolicy.packsOwed(
+                            currentFogCycle, wave5PostFogPacksSpawned)
+                    + " live=" + countLiveWaveEntitiesForWave(5)
+                    + " retry_at=" + wave5PostFogPackRetryAtMillis);
             return;
         }
-        if (!spawnWaveFiveRefillPack(now, "END_RIFT_WAVE5_POST_FOG_REINFORCEMENT")) return;
+        spawnWaveFivePostFogPack(now);
+    }
+
+    /** Spawns one contract-sized post-fog pack and records the intent as resolved. */
+    private boolean spawnWaveFivePostFogPack(long now) {
+        World world = Bukkit.getWorld(worldName);
+        Location core = coreCombatAnchorLocation();
+        if (world == null || core == null || core.getWorld() == null
+                || !world.equals(core.getWorld())) return false;
+        int size = Wave5PostFogPackPolicy.packSize(waveScalePlayers());
+        WaveMechanicsPolicy.WaveCounts pack = Wave5PostFogPackPolicy.compose(size);
+        if (pack.total() <= 0) return false;
+        spawnWaveGroup(world, core, 5, false, testWaveFrontVisualMode,
+                pack, waveSpawnEntityOffset);
+        waveSpawnEntityOffset += pack.total();
+        wave5PostFogPacksSpawned++;
+        wave5PostFogPackRetryAtMillis = 0L;
+        wave5PreFogRefillAtMillis = now + Wave5PreFogRefillPolicy.REFILL_DELAY_MILLIS;
+        getLogger().info("END_RIFT_WAVE5_POST_FOG_PACK event=" + eventId
+                + " generation=" + generation
+                + " cycle=" + currentFogCycle
+                + " planned_mobs=" + pack.total()
+                + " owed_left=" + Wave5PostFogPackPolicy.packsOwed(
+                        currentFogCycle, wave5PostFogPacksSpawned));
+        return true;
     }
 
     private boolean spawnWaveFiveRefillPack(long now, String reasonCode) {
@@ -25394,6 +25452,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 clearCurrentBlackFogPackets();
                 if (!clearCurrentSafeZoneVisuals()) return;
             }
+            // W5-004: an owed pack stays owed after the last fog. Retry it here
+            // so a cap-deferred final pack still materialises instead of ending
+            // the wave with a missing pack.
+            reinforceWaveFiveAfterFog(now);
             return;
         }
         Location core = coreCombatAnchorLocation();
@@ -25401,6 +25463,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if (blackFogPhase == BlackFogPhase.COMBAT) {
+            // One pressure owner per phase: the pre-fog replenisher owns
+            // COMBAT, the post-fog pack owns the fog transition and the final
+            // SAFE stretch. Running both here would double the pressure and
+            // starve the pre-fog refill of its own slot.
             replenishWaveFiveCombatIfNeeded(now);
         }
         if (blackFogPhaseDeadlineMillis <= 0L) {
@@ -25541,6 +25607,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     blackFogPhase = BlackFogPhase.SAFE;
                     getLogger().info("END_RIFT_FOG_COMPLETE event=" + eventId
                             + " cycles=" + currentFogCycle);
+                    // W5-004: the fifth fog owes a pack too. This call used to
+                    // live only in the "more cycles remain" branch, which is
+                    // exactly how the final pack went missing.
+                    reinforceWaveFiveAfterFog(now);
                 } else {
                     blackFogPhase = BlackFogPhase.COMBAT;
                     blackFogPhaseDeadlineMillis = now
@@ -37356,6 +37426,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         currentFogZoneSetupAttempts = 0;
         currentFogZoneSetupRetryAtMillis = 0L;
         wave5PreFogRefillAtMillis = 0L;
+        wave5PostFogPacksSpawned = 0;
+        wave5PostFogPackRetryAtMillis = 0L;
         currentCollapsedRings = 0;
         currentTemporaryBlockOriginals.clear();
         currentSafeZoneCells.clear();

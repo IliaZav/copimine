@@ -115,8 +115,19 @@ public final class CombatSequence {
             String[] fields = part.split(":", 3);
             if (fields.length != 3) continue;
             try {
-                sequence.record(Integer.parseInt(fields[0]), decodeToken(fields[1]),
-                        (int) Math.min(Integer.MAX_VALUE, Long.parseLong(fields[2])));
+                // SUPERSEDED: this used to call record(wave, action, count).
+                // record() IGNORES the value as a magnitude -- it only uses it to
+                // decide whether the observation is non-zero, then increments the
+                // previous run by exactly one. So a stored run "1:SWING:9" came
+                // back as "1:SWING:1": the copy lost its whole behavioural shape
+                // on every restart, and a player who swung nine times looked
+                // identical to one who swung once. Counts are restored verbatim.
+                int wave = Integer.parseInt(fields[0]);
+                int count = (int) Math.min(Integer.MAX_VALUE, Long.parseLong(fields[2]));
+                String action = decodeToken(fields[1]);
+                if (action.isBlank() || count < 1) continue;
+                sequence.appendAll(List.of(new Run(wave, action,
+                        (int) Math.min(MAX_RUN_COUNT, count))));
             } catch (RuntimeException malformed) {
                 // A damaged payload must not fail the whole restore.
             }

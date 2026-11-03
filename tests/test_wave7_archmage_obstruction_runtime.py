@@ -79,8 +79,13 @@ def test_cover_blocks_damage_but_not_safe_tactical_step(resolve_probe, attack):
 def fangs_probe(tmp_path_factory):
     directory = tmp_path_factory.mktemp("archmage-fangs-runtime")
     source = SOURCE.read_text(encoding="utf-8")
+    # The fang cast became a GROUP cast (user request: minibosses work the group),
+    # so the probe must also slice the per-victim line painter. The victim
+    # chooser stays out of the probe: the test's subject is the spawn/rollback
+    # transaction, not target selection, and the probe supplies one victim.
     method = "\n".join(extract_method(source, signature) for signature in (
-        "private boolean spawnNamedTrialFangs(", "private boolean tagNamedTrialProjectile("))
+        "private boolean spawnNamedTrialFangs(", "private FangLineOutcome spawnFangLine(",
+        "private boolean tagNamedTrialProjectile("))
     # Replace only the API type's qualification, not any production branch.
     method = method.replace("org.bukkit.entity.EvokerFangs", "EvokerFangs")
     method = method.replace("me.copimine.endevent.runtime.wave7.Wave7AdmissionRuntimeAdapter.Decision", "Decision")
@@ -143,6 +148,13 @@ public class ArchmageFangsProbe {
     boolean hasNamedTrialLineOfSight(Location a,Location b){return true;}
     Vector horizontalDirection(Location a,Location b){return new Vector(1,0,0);}
     boolean isSafeCombatEntityLocation(Location l,LivingEntity a){return ++checks!=blockedAt;}
+    // Copied verbatim from production: the probe compiles a slice of the real
+    // method bodies, so every type they mention must exist here.
+    enum FangLineOutcome { PAINTED, MISSED, BROKEN_OWNERSHIP }
+    static final double ARCHMAGE_FANG_RANGE=14.0D;
+    static final int ARCHMAGE_FANG_MAX_TARGETS=6;
+    // Deterministic single victim: the group-selection policy has its own test.
+    List<Player> namedTrialGroupVictims(LivingEntity a,Player primary,double range,int max){return List.of(primary);}
     void removeRealitySplitTrialEntity(UUID id,String reason){Entity e=world.spawned.get(id);if(e!=null)e.remove();realitySplitTrialEntityUuids.remove(id);}
 ''' + method + r'''
     public static void main(String[] args){
@@ -158,6 +170,8 @@ public class ArchmageFangsProbe {
         }else if(mode.equals("broken-ownership")){
             if(handled||live!=0||!p.realitySplitTrialEntityUuids.isEmpty())throw new AssertionError("Failed actor ownership must still fail closed and roll back");
         }else if(!handled||live!=3||p.realitySplitTrialEntityUuids.size()!=3)throw new AssertionError("Unobstructed cast must create exactly three owned fangs");
+        // The cast became a GROUP cast, so a successful line is painted once per
+        // reachable victim; the probe supplies exactly one victim.
     }
 }
 ''')

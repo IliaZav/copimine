@@ -165,6 +165,8 @@ import me.copimine.endevent.domain.WaveProjectileAdmissionController;
 import me.copimine.endevent.domain.WaveProjectileTargetPolicy;
 import me.copimine.endevent.domain.Wave4PressurePackPolicy;
 import me.copimine.endevent.domain.Wave7WardenCombatPolicy;
+import me.copimine.endevent.domain.WardenSlamTriggerPolicy;
+import me.copimine.endevent.domain.MinibossGroupSpellPolicy;
 import me.copimine.endevent.domain.Wave7NamedTrialActorPolicy;
 import me.copimine.endevent.domain.Wave7EchoDuelCellPolicy;
 import me.copimine.endevent.domain.Wave7ArchmageVexPolicy;
@@ -221,6 +223,7 @@ import me.copimine.endevent.domain.BossHitboxProfile;
 import me.copimine.endevent.domain.BossHitboxTransformPolicy;
 import me.copimine.endevent.domain.RitualSphereEncounterPolicy;
 import me.copimine.endevent.domain.RitualSphereEncounterSnapshot;
+import me.copimine.endevent.domain.WaveSixDurableState;
 import me.copimine.endevent.domain.RitualSphereScalingPolicy;
 import me.copimine.endevent.domain.RitualSpherePresentationPolicy;
 import me.copimine.endevent.domain.RitualSphereProjectilePolicy;
@@ -492,6 +495,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int NAMED_TRIAL_DEFENDER_SLOT = 900;
     private static final String CLIENT_VISUAL_WAVE7_WARDEN = "END_RIFT_WAVE7_WARDEN_V1";
     private static final String CLIENT_VISUAL_WAVE7_ARCHMAGE = "END_RIFT_WAVE7_ARCHMAGE_V1";
+    /** Authored skin for the Archmage's summoned Vex ("вредины"). */
+    private static final String CLIENT_VISUAL_WAVE7_VEX_SERVANT = "END_RIFT_WAVE7_VEX_SERVANT_V1";
     private static final String CLIENT_VISUAL_WAVE7_MARKSMAN = "END_RIFT_WAVE7_MARKSMAN_V1";
     private static final String CLIENT_VISUAL_OBELISK_FULL = "END_RIFT_OBELISK_FULL_V1";
     private static final String CLIENT_VISUAL_OBELISK_DAMAGED = "END_RIFT_OBELISK_DAMAGED_V1";
@@ -693,6 +698,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final double RITUAL_PROJECTILE_BASE_DAMAGE = 6.0D;
     private static final int MINIBOSS_NARCOTIC_DURATION_TICKS = 10 * 20;
     private static final int MINIBOSS_WITHER_DURATION_TICKS = 10 * 20;
+    /** Fog exposure is seven seconds longer; the per-tick bite grows with it. */
+    private static final double BLACK_FOG_DAMAGE_MULTIPLIER = 1.6D;
     private static final long COMMANDER_AURA_REFRESH_MILLIS = 1_000L;
     private static final long WAVE_MOB_AGGRO_MILLIS = 4_000L;
     private static final double WAVE_MOB_ALERT_RADIUS = 8.0D;
@@ -1282,6 +1289,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private Map<String, String> wave7RecoveryCheckpoint = Map.of();
     private boolean namedWave7InitialActorCreation;
     private boolean namedWave7RuntimeRestorePending;
+    /**
+     * Test-only override of the Echo limbo threshold.
+     *
+     * <p>{@code 0} means "use the spec value of ten players". An operator can
+     * force the split on a two-player party to look at it, which is otherwise
+     * impossible without gathering ten people. It never changes the geometry,
+     * only which party size is big enough to be cut in half.</p>
+     */
+    private int echoLimboThresholdOverride;
+
     /** ECHO-002: the frozen ordinary/limbo split of the running Echo stage. */
     private me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.Split namedEchoRealmSplit;
     private java.util.Set<UUID> namedEchoRealmSplitOwners;
@@ -3863,6 +3880,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ritualSphereStateRehydrated = false;
         wave7RecoveryCheckpoint = phase == EventPhase.RECOVERY_REQUIRED && persistedWave7Recovery
                 ? Map.copyOf(snapshot.objectiveProgress()) : Map.of();
+        // The Wave 1 debt lives beside the carrier charges, so it is restored on
+        // every resume; a wave that is not 1 simply has zeros in the record.
+        restoreWaveOneReinforcementDebt(snapshot.objectiveProgress());
         boolean hasRitualSphereCheckpoint = snapshot.objectiveProgress().keySet().stream()
                 .anyMatch(key -> key.startsWith("ritual-sphere."));
         if (phase == EventPhase.WAVE_6 || persistedDisposableWave6
@@ -3879,6 +3899,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 wave6MageOrder = wave6.mageOrder();
                 wave6DefeatedMages = wave6.mageDefeated();
                 wave6CasterIdentities.clear();
+                // Restore the stage sequence and the reinforcement debt BEFORE
+                // any body is respawned, so the wave continues instead of
+                // replaying stages it already cleared.
+                restoreWaveSixDurableState(wave6, snapshot.objectiveProgress());
                 if (!wave6.hasMageIdentities() && wave6.casterDeaths() > 0) {
                     getLogger().warning("WAVE6_MAGE_ORDER_MISSING event=" + eventId
                             + " generation=" + generation
@@ -4301,11 +4325,63 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /** Progress record key for the committed Wave 1 reinforcement debt. */
+    private static final String WAVE_ONE_REINFORCEMENT_OWED_KEY = "wave1.reinforcement-owed";
+    /** Progress record key for the Wave 1 reinforcement packs really released. */
+    private static final String WAVE_ONE_REINFORCEMENT_SPAWNED_KEY = "wave1.reinforcement-spawned";
+
     private Map<String, String> captureWave1CarrierCheckpoint() {
         RiftCarrierPolicy.State state = currentCarrierState;
         if (state == null || state.generation() != generation) state = RiftCarrierPolicy.initial(generation);
-        return RiftCarrierRecoverySnapshot.encode(eventId, generation, state,
-                currentCarrierInventoryToken, eventTickCounter, System.currentTimeMillis());
+        Map<String, String> encoded = new LinkedHashMap<>(RiftCarrierRecoverySnapshot.encode(
+                eventId, generation, state, currentCarrierInventoryToken, eventTickCounter,
+                System.currentTimeMillis()));
+        // The carrier snapshot only knows about charges and the inventory token.
+        // The reinforcement debt lived purely in memory, so a restart decided it
+        // had no packs outstanding and every committed pack that had not been
+        // released yet was lost without a trace.
+        encoded.put(WAVE_ONE_REINFORCEMENT_OWED_KEY, Integer.toString(wave1ReinforcementOwed));
+        encoded.put(WAVE_ONE_REINFORCEMENT_SPAWNED_KEY, Integer.toString(wave1ReinforcementSpawned));
+        return Map.copyOf(encoded);
+    }
+
+    /**
+     * Restore the Wave 1 reinforcement debt from the same record the carrier
+     * charges come from, clamping rather than trusting the file.
+     */
+    private void restoreWaveOneReinforcementDebt(Map<String, String> persisted) {
+        wave1ReinforcementOwed = 0;
+        wave1ReinforcementSpawned = 0;
+        if (persisted == null) return;
+        int owed = readProgressCounter(persisted, WAVE_ONE_REINFORCEMENT_OWED_KEY);
+        int spawned = readProgressCounter(persisted, WAVE_ONE_REINFORCEMENT_SPAWNED_KEY);
+        if (owed < 0 || spawned < 0 || spawned > owed) {
+            getLogger().severe("WAVE1_REINFORCEMENT_STATE_REJECTED event=" + eventId
+                    + " generation=" + generation + " owed=" + owed + " spawned=" + spawned
+                    + " reason=inconsistent-debt");
+            emitDiagnostic("OBJECTIVE", "RECOVERY_REJECT", "WARN", 1,
+                    "wave1-reinforcement-inconsistent", null, null,
+                    "wave1-reinforce:" + generation,
+                    Map.of("owed", owed, "spawned", spawned));
+            return;
+        }
+        wave1ReinforcementOwed = owed;
+        wave1ReinforcementSpawned = spawned;
+        if (owed > 0) {
+            getLogger().info("WAVE1_REINFORCEMENT_STATE_RESTORED event=" + eventId
+                    + " generation=" + generation + " owed=" + owed + " spawned=" + spawned);
+        }
+    }
+
+    /** Read one non-negative integer progress record entry, {@code 0} when absent. */
+    private int readProgressCounter(Map<String, String> persisted, String key) {
+        String raw = persisted.get(key);
+        if (raw == null || raw.isBlank()) return 0;
+        try {
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException malformed) {
+            return -1;
+        }
     }
 
     /** Wave 5 mobs and active zone effects are transient; retain evidence and refuse a blind resume. */
@@ -4586,6 +4662,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     RitualSphereEncounterSnapshot.encode(
                             ritualSphereState, ritualCasterDeathCount, ritualSpellCursor,
                             wave6MageOrder, wave6DefeatedMages));
+            // The stage sequence and the reinforcement debt are not derivable
+            // from the roster after a restart: the guards that were already up
+            // would be counted as debt never paid, and the final clear could
+            // fire while a mandatory pack was still owed.
+            if (wave6Sequence != null) {
+                encoded.putAll(WaveSixDurableState.encode(
+                        wave6Sequence.stageIndex(),
+                        wave6Sequence.guardSlotsFilled().size(),
+                        wave6ReinforcementOwed, wave6ReinforcementSpawned,
+                        wave6FinalClearCommitted));
+            }
             if (testWaveFrontVisualMode && activeWave == 6) {
                 encoded.put("test-wave", "6");
                 encoded.put("test-wave-generation", Long.toString(generation));
@@ -8517,7 +8604,62 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /** Disposable local presentation/item-use probe; no official roster, profile or trial outcome. */
+    /**
+     * {@code /cmend test echo limbo on|off|auto|status} — the Echo realm switch.
+     *
+     * <p>Limbo is not a second arena: both groups fight their own copies at the
+     * same time, an ordinary group simply cannot see or hear the limbo group. The
+     * spec cuts the party at ten players, which makes the effect untestable for
+     * anyone without ten accounts, so the switch forces it on a small party.
+     * {@code on} spawns no phantoms and changes nothing but placement.</p>
+     */
+    private void handleTestEchoLimbo(CommandSender sender, String[] args) {
+        String mode = args.length > 3 ? args[3].toLowerCase(Locale.ROOT) : "status";
+        switch (mode) {
+            case "on" -> {
+                echoLimboThresholdOverride = 2;
+                // A new threshold must re-freeze the split; keeping the cached one
+                // would make the command look broken until the next stage.
+                namedEchoRealmSplit = null;
+                namedEchoRealmSplitOwners = null;
+                message(sender, "&aEcho limbo forced ON: the party is cut in half from 2 players.");
+                message(sender, "&7Both groups still fight their own copy; neither sees the other.");
+            }
+            case "off" -> {
+                echoLimboThresholdOverride = -1;
+                namedEchoRealmSplit = null;
+                namedEchoRealmSplitOwners = null;
+                message(sender, "&eEcho limbo forced OFF: everyone fights in the ordinary arena.");
+            }
+            case "auto" -> {
+                echoLimboThresholdOverride = 0;
+                namedEchoRealmSplit = null;
+                namedEchoRealmSplitOwners = null;
+                message(sender, "&aEcho limbo back to the authored threshold ("
+                        + me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.LIMBO_THRESHOLD
+                        + " players).");
+            }
+            case "status" -> {
+                String state = echoLimboThresholdOverride > 0 ? "ON (from 2 players)"
+                        : echoLimboThresholdOverride < 0 ? "OFF" : "AUTO (from "
+                        + me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.LIMBO_THRESHOLD
+                        + " players)";
+                message(sender, "&7Echo limbo: &f" + state
+                        + " &7split=" + (namedEchoRealmSplit == null
+                        ? "not frozen" : namedEchoRealmSplit.count(
+                        me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.Realm.LIMBO)
+                        + " in limbo"));
+                message(sender, "&7/cmend test echo limbo on|off|auto|status");
+            }
+            default -> message(sender, "&e/cmend test echo limbo on|off|auto|status");
+        }
+    }
+
     private void handleTestEchoPresentation(CommandSender sender, String[] args) {
+        if (args.length > 2 && "limbo".equalsIgnoreCase(args[2])) {
+            handleTestEchoLimbo(sender, args);
+            return;
+        }
         if (config == null || !"local".equalsIgnoreCase(config.environment())) {
             message(sender, "&cEcho presentation probe доступен только в local environment."); return;
         }
@@ -22893,8 +23035,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return namedEchoRealmSplit;
         }
         try {
-            namedEchoRealmSplit = me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.assign(owners);
+            namedEchoRealmSplit = echoLimboThresholdOverride > 0
+                    ? me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.assign(
+                            owners, echoLimboThresholdOverride)
+                    : me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.assign(owners);
             namedEchoRealmSplitOwners = java.util.Set.copyOf(owners);
+            // The limbo mirror is measured from the arena core AS IT IS WHEN THE
+            // SPLIT IS FROZEN. Capturing it here (admission) rather than on
+            // completion is what actually places the second group.
+            if (namedEchoOrdinaryCore == null) {
+                Location configured = coreCombatAnchorLocation();
+                namedEchoOrdinaryCore = configured == null ? null : configured.clone();
+            }
             return namedEchoRealmSplit;
         } catch (RuntimeException invalidRoster) {
             // Fail closed: without a frozen split no duel is placed at all, rather
@@ -22941,9 +23093,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && owner.teleport(limbo);
     }
 
-    /** The standable anchor of the limbo mirror plane for one Echo chamber. */
+    /**
+     * The standable anchor of the limbo mirror plane for one Echo chamber.
+     *
+     * <p>The anchor is the authored arena core captured when the split is frozen,
+     * which happens at ADMISSION. It used to be stamped only when the stage
+     * finished, so during the very tick the second group had to be moved the
+     * anchor was still null and the whole group stayed in the ordinary room --
+     * the reported 10/11/20-player limbo defect. The fallback below covers the
+     * restart case, where the core is already configured long before any duel
+     * is rehydrated.</p>
+     */
     private Location namedEchoLimboAnchor(World world, int chamber) {
-        if (world == null || namedEchoOrdinaryCore == null) return null;
+        if (world == null) return null;
+        if (namedEchoOrdinaryCore == null) {
+            Location configured = coreCombatAnchorLocation();
+            if (configured == null) return null;
+            namedEchoOrdinaryCore = configured.clone();
+        }
         Location core = namedEchoOrdinaryCore;
         if (core.getWorld() == null || !core.getWorld().equals(world)) return null;
         Location anchor = core.clone().add(0.0D, ECHO_LIMBO_LIFT_BLOCKS, 0.0D);
@@ -24830,7 +24997,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case RIFT_HUNT -> currentHuntCycles >= waveSpawnSchedule.size();
             case RIFT_GATES -> waveObjectiveComplete;
             case OBELISK_ASSAULT -> waveObjectiveComplete;
-            case BLACK_FOG -> currentFogCycle >= EndRiftObjective.REQUIRED_FOG_CYCLES;
+            // W5-004: finishing the fifth fog is not finishing the wave. The
+            // mandatory post-fog pack is part of the objective, so the gate waits
+            // for every cycle's pack to be REALLY released. This used to be a
+            // bare cycle count, which let the wave end while a pack was still
+            // owed and dropped it silently.
+            case BLACK_FOG -> currentFogCycle >= EndRiftObjective.REQUIRED_FOG_CYCLES
+                    && !Wave5PostFogPackPolicy.blocksCompletion(
+                            currentFogCycle, wave5PostFogPacksSpawned);
             case COLLAPSE_RINGS -> false;
             case RITUAL_SPHERE -> wave6Complete
                     && RitualCasterProgressionPolicy.mayComplete(
@@ -25411,8 +25585,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         int size = Wave5PostFogPackPolicy.packSize(waveScalePlayers());
         WaveMechanicsPolicy.WaveCounts pack = Wave5PostFogPackPolicy.compose(size);
         if (pack.total() <= 0) return false;
+        int before = countLiveWaveEntitiesForWave(5);
         spawnWaveGroup(world, core, 5, false, testWaveFrontVisualMode,
                 pack, waveSpawnEntityOffset);
+        // An earlier version incremented the counter unconditionally. A pack that
+        // Bukkit refused to place was therefore counted as released, the debt
+        // looked settled, and the post-fog reinforcement simply never appeared --
+        // while the completion gate that waits for it (Wave5PostFogPackPolicy)
+        // had already been satisfied.
+        int spawned = Math.max(0, countLiveWaveEntitiesForWave(5) - before);
+        if (spawned != pack.total()) {
+            getLogger().severe("END_RIFT_WAVE5_POST_FOG_PACK_FAILED event=" + eventId
+                    + " generation=" + generation + " cycle=" + currentFogCycle
+                    + " planned=" + pack.total() + " spawned=" + spawned);
+            wave5PostFogPackRetryAtMillis = now + Wave5PostFogPackPolicy.RETRY_MILLIS;
+            return false;
+        }
         waveSpawnEntityOffset += pack.total();
         wave5PostFogPacksSpawned++;
         wave5PostFogPackRetryAtMillis = 0L;
@@ -26642,6 +26830,85 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         return true;
+    }
+
+    /**
+     * Rebuild the Wave 6 stage sequence and its reinforcement receipts.
+     *
+     * <p>Two cases, both important:</p>
+     * <ul>
+     *   <li><b>Receipt present.</b> The stage index, the filled guard posts and
+     *       the owed/released pack counts come back exactly as they were. This is
+     *       what stops the wave from re-spawning guards it already had and from
+     *       completing while a mandatory pack is still outstanding.</li>
+     *   <li><b>Receipt absent.</b> A snapshot written by an older build has the
+     *       roster but no sequence. The stage index is then unambiguous (it
+     *       equals the defeat count), so the sequence is re-opened at that point
+     *       with no filled posts, and the debt is inferred as one pack per death
+     *       -- which is the authored rule, not a guess -- clamped so it can never
+     *       claim more releases than commits.</li>
+     * </ul>
+     */
+    private void restoreWaveSixDurableState(RitualSphereEncounterSnapshot.Data wave6,
+                                            Map<String, String> persisted) {
+        if (wave6 == null || wave6.state() == null || wave6.mageOrder().isEmpty()) {
+            wave6Sequence = null;
+            return;
+        }
+        int guardSlots = wave6.state().profile().guardsPerCaster();
+        try {
+            WaveSixDurableState.Data durable = WaveSixDurableState.decode(
+                    persisted, wave6.mageDefeated(), guardSlots);
+            if (durable.present()) {
+                WaveSixDurableState.State state = durable.requireState();
+                wave6Sequence = WaveSixSequencePolicy.restore(wave6.mageOrder(),
+                        state.stageIndex(), wave6.mageDefeated(),
+                        state.stageIndex() == WaveSixSequencePolicy.STAGE_COUNT,
+                        guardSlots, restoredGuardSlots(state.guardSlotsFilled(), guardSlots));
+                wave6ReinforcementOwed = state.reinforcementOwed();
+                wave6ReinforcementSpawned = state.reinforcementSpawned();
+                wave6FinalClearCommitted = state.finalClearCommitted();
+                getLogger().info("WAVE6_DURABLE_STATE_RESTORED event=" + eventId
+                        + " generation=" + generation + " stage=" + state.stageIndex()
+                        + " guard_slots_filled=" + state.guardSlotsFilled()
+                        + " owed=" + state.reinforcementOwed()
+                        + " spawned=" + state.reinforcementSpawned()
+                        + " final_clear=" + state.finalClearCommitted());
+                return;
+            }
+            int stageIndex = wave6.casterDeaths();
+            wave6Sequence = WaveSixSequencePolicy.restore(wave6.mageOrder(), stageIndex,
+                    wave6.mageDefeated(), stageIndex == WaveSixSequencePolicy.STAGE_COUNT,
+                    guardSlots, java.util.Set.of());
+            // Authored rule: every death, including the fifth, owes one pack. An
+            // old snapshot cannot say how many were already released, so the debt
+            // is reconstructed from the deaths and capped at what was owed.
+            wave6ReinforcementOwed = Math.max(wave6ReinforcementOwed, stageIndex);
+            wave6ReinforcementSpawned = Math.min(wave6ReinforcementSpawned,
+                    wave6ReinforcementOwed);
+            getLogger().warning("WAVE6_DURABLE_STATE_MIGRATED event=" + eventId
+                    + " generation=" + generation + " stage=" + stageIndex
+                    + " owed=" + wave6ReinforcementOwed
+                    + " spawned=" + wave6ReinforcementSpawned
+                    + " action=rebuilt-from-defeat-receipts");
+        } catch (RuntimeException invalid) {
+            // Fail closed to the recovery phase rather than resume a wave whose
+            // two receipts contradict each other.
+            wave6Sequence = null;
+            getLogger().log(Level.SEVERE, "WAVE6_DURABLE_STATE_REJECTED event=" + eventId
+                    + " generation=" + generation, invalid);
+            markWave6RecoveryRequired("WAVE6_DURABLE_STATE_INVALID");
+        }
+    }
+
+    /** Guard posts 0..filled-1 of the current stage, in ring order. */
+    private static java.util.Set<Integer> restoredGuardSlots(int filled, int guardSlots) {
+        if (filled <= 0 || guardSlots <= 0) return java.util.Set.of();
+        java.util.Set<Integer> slots = new java.util.LinkedHashSet<>();
+        for (int slot = 0; slot < Math.min(filled, guardSlots); slot++) {
+            slots.add(slot);
+        }
+        return java.util.Set.copyOf(slots);
     }
 
     private void markWave6RecoveryRequired(String reason) {
@@ -32448,6 +32715,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             Wave7NamedTrialActorPolicy.Checkpoint vanished = beginMarksmanVanish(actor, checkpoint, now);
             if (vanished != null && !writeNamedTrialActorCheckpoint(actor, vanished)) return false;
         }
+        // MARK-005 durability: the vanish lives in the receipt as an absolute
+        // deadline, but a restart recreates the mob WITHOUT potion effects. The
+        // receipt said "invisible until T" while the recreated Marksman stood in
+        // plain sight, so the party could simply shoot it during its own vanish.
+        // Reconcile the mob with the receipt on every tick that is inside the
+        // window; a refresh of the same effect is free.
+        enforceNamedTrialVanish(actor, checkpoint, now);
         // A vanishing Marksman never fires from cover.
         if (!checkpoint.mayAttackNow(now)) return true;
         target = realitySplitTrialTarget(actor, trial.chamber(), null,
@@ -32669,6 +32943,31 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * @return the checkpoint carrying the new window, or {@code null} when the
      *         vanish is refused (a refusal is a normal outcome)
      */
+    /**
+     * Make the actor's actual visibility agree with its durable receipt.
+     *
+     * <p>Idempotent by design: inside the vanish window the effect is refreshed,
+     * outside it is removed. That makes it safe to call every tick and correct
+     * after any restart, any chunk reload and any {@code removePotionEffect}
+     * performed by another subsystem.</p>
+     */
+    private void enforceNamedTrialVanish(LivingEntity actor,
+                                         Wave7NamedTrialActorPolicy.Checkpoint checkpoint,
+                                         long now) {
+        if (actor == null || checkpoint == null) return;
+        boolean shouldHide = checkpoint.vanishUntilMillis() > now;
+        boolean hidden = actor.hasPotionEffect(PotionEffectType.INVISIBILITY);
+        if (shouldHide && !hidden) {
+            actor.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY,
+                    (int) Wave7MarksmanInvisibilityPolicy.INVISIBLE_TICKS, 0, false, false, false), true);
+            getLogger().info("WAVE7_MARKSMAN_VANISH_RESTORED event=" + eventId
+                    + " generation=" + generation + " actor=" + actor.getUniqueId()
+                    + " remaining_ms=" + (checkpoint.vanishUntilMillis() - now));
+        } else if (!shouldHide && hidden) {
+            actor.removePotionEffect(PotionEffectType.INVISIBILITY);
+        }
+    }
+
     private Wave7NamedTrialActorPolicy.Checkpoint beginMarksmanVanish(LivingEntity actor,
             Wave7NamedTrialActorPolicy.Checkpoint checkpoint, long now) {
         if (actor == null || checkpoint == null || !(actor instanceof Mob mob)
@@ -32838,8 +33137,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case MARKSMAN_SUPPORT, NONE, NONE_INTERNAL -> false;
         };
         // Authored signature for every cast, fired only after the cast really
-        // started, so a refused line of sight stays visually silent.
-        if (landed) renderWave7AbilityEffect(actor, target, "WAVE7_" + attack.name());
+        // started, so a refused line of sight stays visually silent. The fang
+        // cast is a group spell now and gets the wider "the floor is unsafe"
+        // signature instead of the single-target one.
+        if (landed) {
+            renderWave7AbilityEffect(actor, target, attack
+                    == Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_FANGS
+                    ? "WAVE7_ARCHMAGE_FANGS_GROUP" : "WAVE7_" + attack.name());
+        }
         // A Step with no legal destination is a COMPLETED, refused action: the
         // actor keeps its checkpoint and the caller moves it into cooldown. It is
         // not a failure, and it must never be reported as if a blink happened.
@@ -32975,42 +33280,149 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return true;
     }
 
+    /**
+     * Archmage fangs, now a GROUP cast.
+     *
+     * <p>The authored fang line was three fangs under one player. Against a party
+     * that is a single-target attack dressed as an area: whoever is marked gets
+     * hit and everyone else keeps hitting the Archmage for free. The cast now
+     * paints a fang line under every player it can reach, so the pile eats it
+     * together and the spread party only loses the members actually standing on
+     * a line. Victims are chosen by {@link MinibossGroupSpellPolicy}, which also
+     * stops the same players being caught twice in a row.</p>
+     */
     private boolean spawnNamedTrialFangs(LivingEntity actor, Player target,
             Wave7NamedTrialActorPolicy.Attack attack) {
         if (actor == null || target == null || !isCurrentRealitySplitTrialTarget(actor, target)
                 || !hasNamedTrialLineOfSight(actor.getEyeLocation(), target.getEyeLocation())) return false;
-        Vector direction = horizontalDirection(actor.getLocation(), target.getLocation());
-        Vector side = new Vector(-direction.getZ(), 0.0D, direction.getX());
-        Location base = target.getLocation().clone();
-        base.setY(Math.floor(base.getY()));
+        List<Player> victims = namedTrialGroupVictims(actor, target,
+                ARCHMAGE_FANG_RANGE, ARCHMAGE_FANG_MAX_TARGETS);
         List<UUID> createdFangs = new ArrayList<>();
+        for (Player victim : victims) {
+            FangLineOutcome outcome = spawnFangLine(actor, attack, victim, createdFangs);
+            if (outcome == FangLineOutcome.BROKEN_OWNERSHIP) {
+                // Only a fang that exists without an owner may fail the actor.
+                createdFangs.forEach(id -> removeRealitySplitTrialEntity(
+                        id, "named-trial-fangs-rollback"));
+                return false;
+            }
+            if (outcome == FangLineOutcome.MISSED) {
+                // An ordinary miss: roll the whole cast back and let the actor
+                // keep its slot, because a legal group cast must never be killed
+                // by one solid cell.
+                createdFangs.forEach(id -> removeRealitySplitTrialEntity(
+                        id, "named-trial-fangs-rollback"));
+                return true;
+            }
+        }
+        return !createdFangs.isEmpty();
+    }
+
+    /** How one fang line ended. */
+    private enum FangLineOutcome {
+        /** Three owned fangs were created. */
+        PAINTED,
+        /**
+         * The line could not be completed, but nothing is broken: a solid cell,
+         * a cancelled spawn, a refused teleport. This is an ordinary missed cast
+         * and the encounter continues.
+         */
+        MISSED,
+        /**
+         * The cast created actors it could not OWN. This is the only case that
+         * may fail the named actor, and the caller must report it.
+         */
+        BROKEN_OWNERSHIP
+    }
+
+    /** Three fangs forming one line under a single victim. */
+    private FangLineOutcome spawnFangLine(LivingEntity actor,
+                                          Wave7NamedTrialActorPolicy.Attack attack,
+                                          Player victim, List<UUID> createdFangs) {
+        if (victim == null || !isCurrentRealitySplitTrialTarget(actor, victim)) {
+            return FangLineOutcome.MISSED;
+        }
+        Vector direction = horizontalDirection(actor.getLocation(), victim.getLocation());
+        Vector side = new Vector(-direction.getZ(), 0.0D, direction.getX());
+        Location base = victim.getLocation().clone();
+        base.setY(Math.floor(base.getY()));
+        List<UUID> lineFangs = new ArrayList<>(3);
         for (double offset : new double[]{-1.25D, 0.0D, 1.25D}) {
             Location location = base.clone().add(side.clone().multiply(offset));
             if (!isSafeCombatEntityLocation(location, actor)) {
-                createdFangs.forEach(id -> removeRealitySplitTrialEntity(id, "named-trial-fangs-rollback"));
-                // A blocked formation is a normal missed cast, not a lost trial actor.
-                // Resolve into the usual cooldown without aborting the whole wave.
-                return true;
+                // A blocked formation is a normal missed cast, not a lost trial
+                // actor: roll back only THIS line and keep the other victims.
+                lineFangs.forEach(id -> removeRealitySplitTrialEntity(
+                        id, "named-trial-fangs-line-rollback"));
+                return FangLineOutcome.MISSED;
             }
             Entity raw = actor.getWorld().spawnEntity(location, EntityType.EVOKER_FANGS);
             if (!(raw instanceof org.bukkit.entity.EvokerFangs fangs)) {
-                createdFangs.forEach(id -> removeRealitySplitTrialEntity(id, "named-trial-fangs-rollback"));
-                return false;
+                // The world handed back something that is not a fang. Nothing was
+                // created and nothing is mis-owned, so this is a miss too.
+                lineFangs.forEach(id -> removeRealitySplitTrialEntity(
+                        id, "named-trial-fangs-line-rollback"));
+                return FangLineOutcome.MISSED;
             }
             if (!fangs.isValid()) {
-                createdFangs.forEach(id -> removeRealitySplitTrialEntity(id, "named-trial-fangs-rollback"));
+                lineFangs.forEach(id -> removeRealitySplitTrialEntity(
+                        id, "named-trial-fangs-line-rollback"));
                 // A cancelled spawn is a missed cast, just like arrows/spears.
-                return true;
+                return FangLineOutcome.MISSED;
             }
             fangs.setOwner(actor);
             if (!tagNamedTrialProjectile(fangs, actor, attack)) {
+                // The fang EXISTS and belongs to nobody: that is the one broken
+                // state the caller must fail closed on.
                 fangs.remove();
-                createdFangs.forEach(id -> removeRealitySplitTrialEntity(id, "named-trial-fangs-rollback"));
-                return false;
+                lineFangs.forEach(id -> removeRealitySplitTrialEntity(
+                        id, "named-trial-fangs-line-rollback"));
+                return FangLineOutcome.BROKEN_OWNERSHIP;
             }
-            createdFangs.add(fangs.getUniqueId());
+            lineFangs.add(fangs.getUniqueId());
         }
-        return createdFangs.size() == 3;
+        createdFangs.addAll(lineFangs);
+        return lineFangs.size() == 3 ? FangLineOutcome.PAINTED : FangLineOutcome.MISSED;
+    }
+
+    /** Reach of the Archmage fang cast, in blocks. */
+    private static final double ARCHMAGE_FANG_RANGE = 14.0D;
+    /** The fang cast paints a line under at most this many players. */
+    private static final int ARCHMAGE_FANG_MAX_TARGETS = 6;
+
+    /**
+     * The players one miniboss group spell lands on.
+     *
+     * <p>Always includes the primary target, because the cast has already been
+     * telegraphed against them: dropping them for a "fairer" pick would make the
+     * warning a lie. The remaining slots come from the group policy, so a pile
+     * is answered as a pile and nobody is caught twice in a row.</p>
+     */
+    private List<Player> namedTrialGroupVictims(LivingEntity actor, Player primary,
+                                                double rangeBlocks, int maxTargets) {
+        List<Player> chosen = new ArrayList<>();
+        if (primary != null) chosen.add(primary);
+        if (actor == null) return chosen;
+        Location origin = actor.getLocation();
+        List<MinibossGroupSpellPolicy.Candidate> candidates = new ArrayList<>();
+        for (Player player : realitySplitTrialTargets(actor)) {
+            if (!isCurrentRealitySplitTrialTarget(actor, player)
+                    || player.getUniqueId().equals(primary == null ? null : primary.getUniqueId())) {
+                continue;
+            }
+            candidates.add(new MinibossGroupSpellPolicy.Candidate(player.getUniqueId(),
+                    player.getLocation().getX() - origin.getX(),
+                    player.getLocation().getZ() - origin.getZ(),
+                    hasNamedTrialLineOfSight(actor.getEyeLocation(), player.getEyeLocation()),
+                    0));
+        }
+        MinibossGroupSpellPolicy.Spell spell = new MinibossGroupSpellPolicy.Spell(
+                rangeBlocks, Math.max(1, maxTargets - chosen.size()), 0.0D, 0.0D);
+        for (UUID id : MinibossGroupSpellPolicy.chooseVictims(candidates, spell)) {
+            Player player = Bukkit.getPlayer(id);
+            if (player != null) chosen.add(player);
+        }
+        return chosen;
     }
 
     private boolean stepNamedTrialArchmage(LivingEntity actor, Player target, int chamber) {
@@ -33066,6 +33478,122 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         renderWave7AbilityEffect(actor, markedTarget, "WAVE7_ARCHMAGE_BEAM");
     }
 
+    /** Attack pattern id reserved for the radial slam (the authored cycle uses 0-2). */
+    private static final int WARDEN_SLAM_PATTERN = 3;
+    /** How long the slam telegraph runs before the shockwave lands. */
+    private static final long WARDEN_SLAM_TELEGRAPH_TICKS = 30L;
+    /** Gap between two Warden ground slams, in ticks. */
+    private static final long WARDEN_SLAM_COOLDOWN_TICKS = 160L;
+    /** Radius of the slam shockwave, in blocks. */
+    private static final double WARDEN_SLAM_RADIUS = 6.0D;
+    /** Damage the slam deals before the group split. */
+    private static final double WARDEN_SLAM_DAMAGE = 7.5D;
+    /** The slam reaches through a pile but never through the floor. */
+    private static final double WARDEN_SLAM_VERTICAL_REACH = 3.0D;
+
+    /**
+     * Warden answers a cluster or an encirclement with a radial ground slam.
+     *
+     * @return true when the slam was started and this tick's normal attack must
+     *         be skipped
+     */
+    private boolean beginWardenSlamIfWarranted(LivingEntity warden,
+                                               RealitySplitTrialRuntimeState state) {
+        if (warden == null || state == null || state.action != 0) return false;
+        boolean ready = state.lastSlamTick == Long.MIN_VALUE / 2L
+                || eventTickCounter - state.lastSlamTick >= WARDEN_SLAM_COOLDOWN_TICKS;
+        List<WardenSlamTriggerPolicy.Around> around = new ArrayList<>();
+        Location origin = warden.getLocation();
+        for (Player player : realitySplitTrialTargets(warden)) {
+            if (!isCurrentRealitySplitTrialTarget(warden, player)) continue;
+            around.add(new WardenSlamTriggerPolicy.Around(player.getUniqueId(),
+                    player.getLocation().getX() - origin.getX(),
+                    player.getLocation().getZ() - origin.getZ()));
+        }
+        WardenSlamTriggerPolicy.Decision decision =
+                WardenSlamTriggerPolicy.evaluate(around, ready);
+        if (!decision.slam()) return false;
+        state.lastSlamTick = eventTickCounter;
+        state.attackCount++;
+        state.action = 1;
+        state.attackPattern = WARDEN_SLAM_PATTERN;
+        state.phaseUntilTick = eventTickCounter + WARDEN_SLAM_TELEGRAPH_TICKS;
+        state.hitPlayers.clear();
+        renderWardenSlamTelegraph(warden.getLocation());
+        warden.getWorld().playSound(warden.getLocation(), Sound.ENTITY_WARDEN_ROAR,
+                SoundCategory.HOSTILE, 0.85F, 0.55F);
+        getLogger().info("WAVE7_WARDEN_SLAM event=" + eventId + " generation=" + generation
+                + " reason=" + decision.reason() + " pile=" + decision.pileSize()
+                + " coverage=" + String.format(java.util.Locale.ROOT, "%.2f", decision.coverage())
+                + " players=" + around.size());
+        emitDiagnostic("BOSS_ABILITY", "SLAM", "INFO", 7,
+                "warden-group-slam:" + decision.reason(), null, warden.getUniqueId(),
+                "wave7-warden-slam:" + generation + ":" + state.attackCount,
+                Map.of("reason", decision.reason().name(),
+                        "pile", decision.pileSize(),
+                        "players", around.size()));
+        return true;
+    }
+
+    /** The radial shockwave warning: a full ground ring plus a rising crown. */
+    private void renderWardenSlamTelegraph(Location center) {
+        if (center == null || center.getWorld() == null) return;
+        Vector axisA = new Vector(1.0D, 0.0D, 0.0D);
+        Vector axisB = new Vector(0.0D, 0.0D, 1.0D);
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, center)) continue;
+            spawnPatternRing(viewer, center.clone().add(0.0D, 0.12D, 0.0D),
+                    axisA, axisB, WARDEN_SLAM_RADIUS, 40, 0.0D, Particle.SOUL);
+            spawnPatternRing(viewer, center.clone().add(0.0D, 0.55D, 0.0D),
+                    axisA, axisB, WARDEN_SLAM_RADIUS * 0.62D, 28,
+                    eventTickCounter * 0.08D, Particle.SCULK_SOUL);
+            viewer.spawnParticle(Particle.SONIC_BOOM, center.clone().add(0.0D, 1.4D, 0.0D),
+                    1, 0.0D, 0.0D, 0.0D, 0.0D);
+        }
+    }
+
+    /** The slam itself: one radial hit, damage split across everyone caught. */
+    private void finishWardenSlam(LivingEntity warden, RealitySplitTrialRuntimeState state) {
+        Location center = warden.getLocation();
+        List<Player> caught = new ArrayList<>();
+        for (Player player : realitySplitTrialTargets(warden)) {
+            if (!isCurrentRealitySplitTrialTarget(warden, player)) continue;
+            if (state.hitPlayers.contains(player.getUniqueId())) continue;
+            Location at = player.getLocation();
+            if (Math.abs(at.getY() - center.getY()) > WARDEN_SLAM_VERTICAL_REACH) continue;
+            if (at.distanceSquared(center) > WARDEN_SLAM_RADIUS * WARDEN_SLAM_RADIUS) continue;
+            caught.add(player);
+        }
+        // A slam that catches nobody still has to be visible, or it reads as the
+        // Warden freezing in place.
+        double damage = caught.isEmpty() ? WARDEN_SLAM_DAMAGE
+                : WARDEN_SLAM_DAMAGE / Math.sqrt(caught.size());
+        for (Player player : caught) {
+            if (!applyWaveAbilityDamage(warden, player, damage)) continue;
+            state.hitPlayers.add(player.getUniqueId());
+            Vector push = player.getLocation().toVector().subtract(center.toVector());
+            push.setY(0.0D);
+            if (push.lengthSquared() < 1.0E-4D) push = new Vector(0.0D, 0.0D, 1.0D);
+            player.setVelocity(push.normalize().multiply(0.55D).setY(0.34D));
+        }
+        renderWave7AbilityEffect(warden, null, "WAVE7_WARDEN_SLAM");
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, center)) continue;
+            for (int i = 1; i <= 4; i++) {
+                spawnPatternRing(viewer, center.clone().add(0.0D, 0.18D, 0.0D),
+                        new Vector(1.0D, 0.0D, 0.0D), new Vector(0.0D, 0.0D, 1.0D),
+                        WARDEN_SLAM_RADIUS * i / 4.0D, 30, i * 0.2D, Particle.SOUL_FIRE_FLAME);
+            }
+            viewer.spawnParticle(Particle.EXPLOSION, center.clone().add(0.0D, 0.4D, 0.0D),
+                    1, 0.0D, 0.0D, 0.0D, 0.0D);
+        }
+        warden.getWorld().playSound(center, Sound.ENTITY_WARDEN_SONIC_BOOM,
+                SoundCategory.HOSTILE, 1.0F, 0.75F);
+        getLogger().info("WAVE7_WARDEN_SLAM_IMPACT event=" + eventId
+                + " generation=" + generation + " caught=" + caught.size()
+                + " damage_each=" + String.format(java.util.Locale.ROOT, "%.2f", damage));
+    }
+
     private void tickRealitySplitWarden(LivingEntity warden, RealitySplitTrialRuntimeState state) {
         if (!warden.isValid() || warden.isDead()) return;
         Wave7WardenCombatPolicy.AttackProfile attack =
@@ -33099,6 +33627,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if (state.action == 1) {
+            // The slam is radial: it has no facing, so it gets its own telegraph
+            // and its own resolution instead of the directional warning cone.
+            if (state.attackPattern == WARDEN_SLAM_PATTERN) {
+                if (eventTickCounter < state.phaseUntilTick) {
+                    renderWardenSlamTelegraph(warden.getLocation());
+                    return;
+                }
+                warden.setVelocity(new Vector());
+                finishWardenSlam(warden, state);
+                finishTrialAttack(state, 44L);
+                return;
+            }
             Particle warningParticle = attack.warning()
                     == Wave7WardenCombatPolicy.Warning.SONIC_LUNGE
                     ? Particle.SONIC_BOOM : Particle.SOUL_FIRE_FLAME;
@@ -33122,6 +33662,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if (eventTickCounter < state.nextActionTick) return;
+        // A party that surrounds the Warden or piles up on it cannot be answered
+        // by a line-shaped swing: every authored attack only covers one facing.
+        // The slam is radial and needs no facing, so it is the correct reply to
+        // exactly those two formations.
+        if (beginWardenSlamIfWarranted(warden, state)) return;
         Player target = realitySplitTrialTarget(warden, state.chamber, state.target,
                 state.attackCount);
         if (target == null) {
@@ -33715,8 +34260,53 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             for (Player viewer : eventAudience()) if (isEventParticleViewer(viewer, base))
                 sendWorldBeamPacket(viewer, key, base, base.clone().add(0, 5.5D, 0),
                         0x42FF66, .14F);
+            // The floor tiles alone were easy to lose inside the fog. Draw the
+            // PERIMETER of each zone as glowing emerald particles, so the edge is
+            // readable from anywhere in the arena and from inside the blackout.
+            renderSafeZonePerimeter(core.getWorld(), point);
         }
         clearWorldVfxBeamsOutside("wave5-safe-zone-", desired);
+    }
+
+    /**
+     * Glowing emerald outline around one safe zone.
+     *
+     * <p>Two rings: a bright one on the floor at the exact footprint edge and a
+     * fainter one a block up, so the boundary survives a crouched camera and a
+     * player standing on the far side of the island. The phase drifts per tick,
+     * which reads as a living barrier rather than a static decal.</p>
+     */
+    private void renderSafeZonePerimeter(World world, HazardPlanner.Point center) {
+        if (world == null || center == null) return;
+        double y = combatFloorY() + 0.15D;
+        Vector axisA = new Vector(1.0D, 0.0D, 0.0D);
+        Vector axisB = new Vector(0.0D, 0.0D, 1.0D);
+        double ringRadius = currentFogZoneSide <= 1 ? 0.75D
+                : currentFogZoneSide * 0.5D + 0.35D;
+        double phase = (eventTickCounter % 80L) * 0.045D;
+        for (BlackFogSafeZonePolicy.Cell cell : BlackFogSafeZonePolicy.perimeter(
+                center.x(), center.z(), currentFogZoneSide)) {
+            Location corner = new Location(world, cell.x() + 0.5D, y, cell.z() + 0.5D);
+            for (Player viewer : eventAudience()) {
+                if (!isEventParticleViewer(viewer, corner)) continue;
+                // A bright spark at every perimeter cell corner...
+                viewer.spawnParticle(Particle.HAPPY_VILLAGER, corner, 2,
+                        0.22D, 0.06D, 0.22D, 0.0D);
+                viewer.spawnParticle(Particle.END_ROD, corner.clone().add(0.0D, 0.35D, 0.0D),
+                        1, 0.05D, 0.25D, 0.05D, 0.0D);
+            }
+        }
+        for (Player viewer : eventAudience()) {
+            Location base = new Location(world, center.x() + 0.5D, y, center.z() + 0.5D);
+            if (!isEventParticleViewer(viewer, base)) continue;
+            // ...and a pulsing emerald ring so the zone reads as a whole.
+            spawnPatternRing(viewer, base, axisA, axisB, ringRadius, 20, phase,
+                    Particle.DUST, new Particle.DustOptions(
+                            Color.fromRGB(66, 255, 102), 1.35F));
+            spawnPatternRing(viewer, base.clone().add(0.0D, 1.0D, 0.0D), axisA, axisB,
+                    ringRadius, 12, -phase, Particle.DUST, new Particle.DustOptions(
+                            Color.fromRGB(128, 255, 170), 1.0F));
+        }
     }
 
     private boolean spawnCurrentSafeZoneVisuals(World world, Location core) {
@@ -33961,14 +34551,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             currentFogLastImpactAt.put(player.getUniqueId(), now);
             double fogDamage = BlackFogDamagePolicy.damageFor(player.getHealth());
-            if (fogDamage > 0.0D) player.damage(fogDamage);
+            // The fog lasts seven seconds longer now, so a single tick of damage
+            // would have been stretched over a much longer exposure and read as a
+            // harmless light show. The punishment scales with the new exposure.
+            if (fogDamage > 0.0D) player.damage(fogDamage * BLACK_FOG_DAMAGE_MULTIPLIER);
             player.playSound(player.getLocation(), Sound.BLOCK_SCULK_SENSOR_CLICKING,
                     SoundCategory.AMBIENT, .25F, .7F);
             applyOwnedBlackFogEffect(player, PotionEffectType.BLINDNESS, 0);
             applyOwnedBlackFogEffect(player, PotionEffectType.SLOWNESS, 2);
+            // Added hazard: standing in the fog now also drains health over time,
+            // so ignoring the safe zone costs more than a walk back.
+            applyOwnedBlackFogEffect(player, PotionEffectType.WITHER, 1);
+            applyOwnedBlackFogEffect(player, PotionEffectType.DARKNESS, 0);
             player.spawnParticle(Particle.SQUID_INK,
-                    player.getLocation().add(0.0D, 1.0D, 0.0D), 12,
+                    player.getLocation().add(0.0D, 1.0D, 0.0D), 18,
                     0.5D, 0.8D, 0.5D, 0.01D);
+            player.spawnParticle(Particle.SCULK_SOUL,
+                    player.getLocation().add(0.0D, 0.6D, 0.0D), 6,
+                    0.35D, 0.6D, 0.35D, 0.02D);
         }
         for (Player viewer : eventAudience()) {
             if (!isEventParticleViewer(viewer, core)) {
@@ -40364,10 +40964,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Player current = rawTarget instanceof Player player && isActiveBossParticipant(player)
                 ? player : null;
         // A running lock that already names a live member of the party is left
-        // strictly alone. The rotation routine runs on a timer far shorter than
-        // the authored lock (spec 3.1, 10-12 s); re-deriving the deadline here
-        // is exactly what silently truncated every focus.
-        if (current != null && now < bossTargetLockUntilMillis) {
+        // strictly alone -- unless the party is actually carving into the boss.
+        // The early return used to run BEFORE the aggro policy, so the boss never
+        // answered anyone who hit it while a lock was up: retaliation was
+        // unreachable for the whole 10-12 s window and the fight read as a boss
+        // that ignores the group. Now only a lock with no outstanding attacker
+        // short-circuits.
+        if (current != null && now < bossTargetLockUntilMillis
+                && !hasOutstandingBossAttacker(current, now)) {
             return;
         }
         // Group aggro first: answer whoever is actually hitting the boss, and
@@ -40458,6 +41062,31 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         getLogger().info("BOSS_AI_TARGET boss=" + boss.getUniqueId() + " target=" + target.getUniqueId()
                 + " changed=" + changed + " lock_until=" + bossTargetLockUntilMillis
                 + " recent=" + recentBossTargets.size());
+    }
+
+    /**
+     * True when somebody other than the current focus hit the boss recently
+     * enough to be answered, and retaliation is off cooldown.
+     *
+     * <p>This is the cheap gate in front of the aggro policy: while it is false a
+     * live lock stays untouched, and while it is true the boss is allowed to cut
+     * the back half of the lock to swing back at the last attacker.</p>
+     */
+    private boolean hasOutstandingBossAttacker(Player current, long now) {
+        if (now - bossLastRetaliationMillis < BossGroupAggroPolicy.RETALIATION_COOLDOWN_MILLIS) {
+            return false;
+        }
+        long window = Math.max(1L, config.bossTargetLockSeconds() * 1000L);
+        UUID currentId = current == null ? null : current.getUniqueId();
+        for (Map.Entry<UUID, Long> entry : bossRecentAttackers.entrySet()) {
+            if (entry.getKey().equals(currentId)) continue;
+            if (now - entry.getValue() > window) continue;
+            Player attacker = Bukkit.getPlayer(entry.getKey());
+            if (attacker != null && isActiveBossParticipant(attacker)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void maintainBossTeleport(LivingEntity boss, long now) {
@@ -47482,6 +48111,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         private Vector direction = new Vector(0.0D, 0.0D, 1.0D);
         private Location previousLocation;
         private final Set<UUID> hitPlayers = new LinkedHashSet<>();
+        /** Tick of the last ground slam, so the pile answer stays rate limited. */
+        private long lastSlamTick = Long.MIN_VALUE / 2L;
+        /** Players caught by the previous group spell, so nobody is re-targeted twice. */
+        private final Map<UUID, Integer> lastSpellCastByPlayer = new java.util.HashMap<>();
 
         private RealitySplitTrialRuntimeState(int chamber,
                                               RealitySplitTrialController.Trial trial) {
@@ -50382,6 +51015,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /** A Vex that belongs to one of this event's Archmages. */
+    private boolean isWave7ArchmageVex(Entity entity) {
+        if (entity == null || entity.getType() != EntityType.VEX) return false;
+        if (!EVENT_KIND_REALITY_SPLIT_OBJECTIVE.equals(readString(entity, keyKind))) return false;
+        return parseUuidOrNull(readString(entity, keyWave7MarksmanDefenderOwner)) != null;
+    }
+
     private String namedWave7ClientVisualId(Entity entity) {
         if (entity == null || !EVENT_KIND_REALITY_SPLIT_TRIAL.equals(readString(entity, keyKind))
                 || !isNamedRealitySplitActor(entity)) {
@@ -50403,6 +51043,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         String namedTrialVisual = namedWave7ClientVisualId(entity);
         if (!namedTrialVisual.isBlank()) return namedTrialVisual;
+        // The Archmage's summoned Vex keeps the vanilla mesh but wears the
+        // authored servant skin. It is an objective actor, not a trial actor, so
+        // it is resolved before the generic visual gate.
+        if (isWave7ArchmageVex(entity)) return CLIENT_VISUAL_WAVE7_VEX_SERVANT;
         if (!isVisualEventMob(entity)) return "";
         String kind = readString(entity, keyKind);
         if (EVENT_KIND_TENTACLE.equals(kind)) {
@@ -51316,6 +51960,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (args.length == 4 && "test".equalsIgnoreCase(args[0])
                 && "wave".equalsIgnoreCase(args[1]) && "6".equals(args[2])) {
             return List.of("capture", "combat");
+        }
+        if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "echo".equalsIgnoreCase(args[1])) {
+            return List.of("start", "loadout", "stop", "limbo");
+        }
+        if (args.length == 4 && "test".equalsIgnoreCase(args[0])
+                && "echo".equalsIgnoreCase(args[1]) && "limbo".equalsIgnoreCase(args[2])) {
+            return List.of("on", "off", "auto", "status");
         }
         if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "scene".equalsIgnoreCase(args[1])) {
             return List.of("clear");

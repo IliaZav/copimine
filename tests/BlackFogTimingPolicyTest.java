@@ -6,8 +6,15 @@ public final class BlackFogTimingPolicyTest {
         check(BlackFogTimingPolicy.CYCLE_COUNT == 5, "Wave 5 must run exactly five fog cycles");
         check(BlackFogTimingPolicy.safeZoneSeconds() == 8,
                 "safe zone must remain visible long enough to reach it");
-        check(BlackFogTimingPolicy.fogSeconds() == 3,
-                "fog penalty window must remain bounded");
+        // SUPERSEDED 2026-11-03 (user request): the fog penalty window was 3 s
+        // and the user asked for exactly +7 s on top of it, i.e. 10 s. The old
+        // assertion pinned the OLD value, so it is restated against the new one
+        // rather than deleted. The window is still bounded: the assertion now
+        // states the new bound explicitly.
+        check(BlackFogTimingPolicy.fogSeconds() == 10,
+                "fog penalty window must be the requested 10 s (3 s + 7 s)");
+        check(BlackFogTimingPolicy.fogSeconds() > BlackFogTimingPolicy.safeZoneSeconds(),
+                "the fog must outlast the safe zone or the penalty is cosmetic");
         check(BlackFogTimingPolicy.combatSeconds(0) == 40
                         && BlackFogTimingPolicy.combatSeconds(1) == 50
                         && BlackFogTimingPolicy.combatSeconds(2) == 60

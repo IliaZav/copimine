@@ -95,6 +95,11 @@ public final class EndEventTextureCatalog {
                 entityTexture("end_rift_wave7_archmage.png"));
         textures.put(Wave7NamedTrialVisualPolicy.MARKSMAN_VISUAL,
                 entityTexture("end_rift_wave7_marksman.png"));
+        // The Archmage's summoned servants had NO authored skin at all: they
+        // rendered with the washed-out vanilla Vex sheet and read as background
+        // noise next to the trial actors they belong to.
+        textures.put(Wave7NamedTrialVisualPolicy.VEX_SERVANT_VISUAL,
+                entityTexture("end_rift_wave7_vex_servant.png"));
         textures.put("END_RIFT_OBELISK_FULL_V1", entityTexture("end_event_rift_obelisk_full_hd.png"));
         textures.put("END_RIFT_OBELISK_DAMAGED_V1", entityTexture("end_event_rift_obelisk_damaged_hd.png"));
         textures.put("END_RIFT_OBELISK_CRITICAL_V1", entityTexture("end_event_rift_obelisk_critical_hd.png"));

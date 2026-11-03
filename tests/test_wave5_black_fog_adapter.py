@@ -435,7 +435,12 @@ public final class BlackFogAdapterProbe {
                     p.tickBlackFogObjective(safeDeadline);
                     check(p.blackFogPhase == BlackFogPhase.FOG && p.frozen,
                             "safe-zone deadline must enter fog and hold mob AI");
-                    long fogDeadline = safeDeadline + 3_000L;
+                    // SUPERSEDED 2026-11-03 (user request): the fog window was
+                    // 3 s and the user asked for +7 s, i.e. 10 s. The deadline is
+                    // now read from the policy instead of being hard-coded, so the
+                    // probe cannot disagree with the authored duration again.
+                    long fogDeadline = safeDeadline
+                            + BlackFogTimingPolicy.fogSeconds() * 1_000L;
                     p.tickBlackFogObjective(fogDeadline);
                     check(!p.frozen, "fog end must release its AI hold");
                     if (cycle < totalCycles - 1) {

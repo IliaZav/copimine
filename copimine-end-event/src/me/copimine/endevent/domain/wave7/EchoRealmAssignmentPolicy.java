@@ -91,6 +91,23 @@ public final class EchoRealmAssignmentPolicy {
      * authored cover).</p>
      */
     public static Split assign(Collection<UUID> admitted) {
+        return assign(admitted, LIMBO_THRESHOLD);
+    }
+
+    /**
+     * Cut the roster at an explicit threshold.
+     *
+     * <p>Production always calls {@link #assign(Collection)} with the spec value
+     * of ten. The explicit overload exists so an operator can force the split on
+     * a small test party without shipping a second code path: the geometry,
+     * the balancing rule and the determinism are the same code, only the
+     * admission threshold moves. A threshold below 2 is refused, because a
+     * one-player "second half" is not a group.</p>
+     */
+    public static Split assign(Collection<UUID> admitted, int limboThreshold) {
+        if (limboThreshold < 2 || limboThreshold > MAX_PARTY) {
+            throw new IllegalArgumentException("Echo limbo threshold must be in [2, " + MAX_PARTY + "]");
+        }
         if (admitted == null || admitted.isEmpty()) {
             throw new IllegalArgumentException("admitted Echo roster required");
         }
@@ -106,7 +123,7 @@ public final class EchoRealmAssignmentPolicy {
         }
         ordered.sort(Comparator.comparing(UUID::toString));
 
-        int limboCount = ordered.size() < LIMBO_THRESHOLD ? 0 : ordered.size() / 2;
+        int limboCount = ordered.size() < limboThreshold ? 0 : ordered.size() / 2;
         List<Assignment> assignments = new ArrayList<>(ordered.size());
         for (int ordinal = 0; ordinal < ordered.size(); ordinal++) {
             // The tail of the ordered roster goes to limbo, so the ordinary half

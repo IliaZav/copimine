@@ -42,6 +42,10 @@ def occluded_archmage_probe(tmp_path_factory):
         "private boolean finishNamedTrialAttack(",
         "private boolean resolveNamedTrialAttack(",
         "private boolean stepNamedTrialArchmage(",
+        # MARK-005 durability: the tick path now reconciles the actor's real
+        # visibility with its durable vanish receipt, so the probe must execute
+        # that method too.
+        "private void enforceNamedTrialVanish(",
     )
     methods = "\n".join(extract_method(source, signature) for signature in signatures)
     code = r'''
@@ -119,7 +123,21 @@ public class OccludedArchmageProbe {
         double getHealth(){return hp;}double getMaxHealth(){return 200.0;}void setHealth(double hp){this.hp=hp;}
         Location getEyeLocation(){return location.clone().add(0,1.6,0);}
         double getEyeHeight(){return 1.6;}World getWorld(){return world;}
+        // MARK-005 durability: the real tick path reconciles the actor's effect
+        // list with its durable vanish receipt, so the probe needs an effect bag.
+        final Set<Object> effects=new HashSet<>();
+        boolean hasPotionEffect(Object type){return effects.contains(type);}
+        boolean addPotionEffect(Object effect,boolean force){return effects.add(effectType(effect));}
+        boolean removePotionEffect(Object type){return effects.remove(type);}
+        static Object effectType(Object effect){return ((PotionEffect)effect).type;}
     }
+    enum PotionEffectType { INVISIBILITY }
+    static class PotionEffect {
+        final PotionEffectType type;
+        PotionEffect(PotionEffectType type,int duration,int amplifier,boolean ambient,boolean particles,boolean icon){this.type=type;}
+    }
+    static class Wave7MarksmanInvisibilityPolicy { static final int INVISIBLE_TICKS=100; }
+    java.util.logging.Logger getLogger(){return java.util.logging.Logger.getLogger("probe");}
     static class Player extends LivingEntity {
         boolean online=true;
         Player(UUID id){super(id,EntityType.EVOKER,new Location(5,70,0));}

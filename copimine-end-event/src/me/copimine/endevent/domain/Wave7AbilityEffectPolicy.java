@@ -54,6 +54,7 @@ public final class Wave7AbilityEffectPolicy {
     public static final String DUST_WHITE = "DUST_WHITE";
     public static final String DUST_GREEN = "DUST_GREEN";
     public static final String DUST_MAGENTA = "DUST_MAGENTA";
+    public static final String DUST_VIOLET = "DUST_VIOLET";
 
     private static final List<Pass> MARKSMAN_QUICK = List.of(
             new Pass(Shape.AIM_LANCE, 6, 9.0D, 0.22D, 0.0D, 0.0D,
@@ -119,6 +120,45 @@ public final class Wave7AbilityEffectPolicy {
             new Pass(Shape.AIM_LANCE, 20, 9.0D, 0.9D, 0.0D, 0.0D,
                     "SONIC_BOOM", DUST_CYAN, true));
 
+    /**
+     * The radial ground slam.
+     *
+     * <p>Built to be unmissable from inside the pile it punishes: a hard cyan
+     * shockwave ring on the floor, a second violet ring half a block up, a
+     * rising crown of sculk so the Warden reads as inhaling, and a soul burst at
+     * chest height. The old Warden signatures were two thin passes each, which
+     * at arena distance read as nothing.</p>
+     */
+    private static final List<Pass> WARDEN_SLAM = List.of(
+            new Pass(Shape.GROUND_RING, 42, 0.0D, 6.0D, 0.0D, 0.0D,
+                    "SONIC_BOOM", DUST_CYAN, true),
+            new Pass(Shape.GROUND_RING, 34, 0.0D, 3.7D, 0.0D, 0.0D,
+                    "SOUL_FIRE_FLAME", DUST_PURPLE, false),
+            new Pass(Shape.HELIX, 26, 2.6D, 1.1D, 2.6D, 0.0D,
+                    "SCULK_SOUL", DUST_VIOLET, false),
+            new Pass(Shape.SELF_AURA, 16, 0.0D, 1.5D, 1.9D, 0.06D,
+                    "SOUL", DUST_CYAN, false),
+            new Pass(Shape.IMPACT_BURST, 20, 0.0D, 4.4D, 1.2D, 0.04D,
+                    "SCULK_SOUL", DUST_CYAN, false));
+
+    /**
+     * Archmage fang cast, now that it paints a line under every victim.
+     *
+     * <p>The signature has to tell the group HOW MANY lines are coming: a single
+     * ground ring would read as a single-target cast and invite the party to
+     * stand still. The wide crimson ring plus the violet crown says "the floor
+     * is unsafe" before the fangs arrive.</p>
+     */
+    private static final List<Pass> ARCHMAGE_FANGS_GROUP = List.of(
+            new Pass(Shape.TARGET_OUTLINE, 24, 2.2D, 2.4D, 0.05D, 0.0D,
+                    "SOUL_FIRE_FLAME", DUST_RED, false),
+            new Pass(Shape.GROUND_RING, 34, 0.0D, 5.2D, 0.0D, 0.0D,
+                    "SOUL_FIRE_FLAME", DUST_MAGENTA, false),
+            new Pass(Shape.HELIX, 22, 1.6D, 0.65D, 2.0D, 0.0D,
+                    "SOUL", DUST_VIOLET, false),
+            new Pass(Shape.IMPACT_BURST, 18, 0.0D, 2.0D, 0.9D, 0.05D,
+                    "SOUL_FIRE_FLAME", DUST_PURPLE, false));
+
     private Wave7AbilityEffectPolicy() {
     }
 
@@ -139,6 +179,8 @@ public final class Wave7AbilityEffectPolicy {
             case "WARDEN_NARROW_STRIKE" -> WARDEN_NARROW;
             case "WARDEN_WIDE_STRIKE" -> WARDEN_WIDE;
             case "WARDEN_SONIC_LUNGE" -> WARDEN_LUNGE;
+            case "WARDEN_SLAM" -> WARDEN_SLAM;
+            case "ARCHMAGE_FANGS_GROUP" -> ARCHMAGE_FANGS_GROUP;
             default -> List.of();
         };
     }
@@ -163,6 +205,8 @@ public final class Wave7AbilityEffectPolicy {
             case "WARDEN_NARROW_STRIKE" -> "ENTITY_WARDEN_ATTACK_IMPACT";
             case "WARDEN_WIDE_STRIKE" -> "ENTITY_WARDEN_ATTACK_IMPACT";
             case "WARDEN_SONIC_LUNGE" -> "ENTITY_WARDEN_SONIC_BOOM";
+            case "WARDEN_SLAM" -> "ENTITY_WARDEN_SONIC_BOOM";
+            case "ARCHMAGE_FANGS_GROUP" -> "ENTITY_EVOKER_CAST_SPELL";
             default -> "";
         };
     }
@@ -176,6 +220,8 @@ public final class Wave7AbilityEffectPolicy {
             case "ARCHMAGE_SPEAR" -> "ENTITY_EVOKER_PREPARE_ATTACK";
             case "ARCHMAGE_STEP" -> "ENTITY_ILLUSIONER_PREPARE_MIRROR";
             case "ARCHMAGE_BEAM" -> "BLOCK_BEACON_ACTIVATE";
+            case "WARDEN_SLAM" -> "ENTITY_WARDEN_ROAR";
+            case "ARCHMAGE_FANGS_GROUP" -> "BLOCK_RESPAWN_ANCHOR_CHARGE";
             case "WARDEN_NARROW_STRIKE", "WARDEN_WIDE_STRIKE" -> "ENTITY_WARDEN_HEARTBEAT";
             case "WARDEN_SONIC_LUNGE" -> "ENTITY_WARDEN_ROAR";
             default -> "";

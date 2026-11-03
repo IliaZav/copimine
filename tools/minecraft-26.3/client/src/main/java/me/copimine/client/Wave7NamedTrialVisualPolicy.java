@@ -17,6 +17,15 @@ public final class Wave7NamedTrialVisualPolicy {
     public static final String WARDEN_VISUAL = "END_RIFT_WAVE7_WARDEN_V1";
     public static final String ARCHMAGE_VISUAL = "END_RIFT_WAVE7_ARCHMAGE_V1";
     public static final String MARKSMAN_VISUAL = "END_RIFT_WAVE7_MARKSMAN_V1";
+    /**
+     * The Archmage's summoned Vex.
+     *
+     * <p>Not a named trial actor and not a fourth model: it keeps the vanilla Vex
+     * mesh and only replaces the surface. It lives in this policy because it
+     * belongs to the same authored family and must never be dispatched to
+     * another actor's renderer.</p>
+     */
+    public static final String VEX_SERVANT_VISUAL = "END_RIFT_WAVE7_VEX_SERVANT_V1";
 
     private Wave7NamedTrialVisualPolicy() {
     }

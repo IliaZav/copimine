@@ -128,6 +128,23 @@ public final class WaveProbeAdapterHarness {
     Object ritualSphereState = new Object();
     List<Object> wave6MageOrder = List.of();
     List<Object> wave6DefeatedMages = List.of();
+    // W6 durable receipt source fields: the stage sequence plus the reinforcement
+    // debt. Null sequence means "no sequence started yet", which is exactly the
+    // production shape the snapshot guards on.
+    Sequence wave6Sequence;
+    int wave6ReinforcementOwed, wave6ReinforcementSpawned;
+    boolean wave6FinalClearCommitted;
+    static final class Sequence {
+        private final int stageIndex;private final java.util.Set<Integer> guardSlotsFilled;
+        Sequence(int stageIndex,java.util.Set<Integer> guardSlotsFilled){
+            this.stageIndex=stageIndex;this.guardSlotsFilled=guardSlotsFilled;}
+        int stageIndex(){return stageIndex;}
+        java.util.Set<Integer> guardSlotsFilled(){return guardSlotsFilled;}
+    }
+    // Wave 1 reinforcement debt, now part of the carrier checkpoint.
+    static final String WAVE_ONE_REINFORCEMENT_OWED_KEY = "wave1.reinforcement-owed";
+    static final String WAVE_ONE_REINFORCEMENT_SPAWNED_KEY = "wave1.reinforcement-spawned";
+    int wave1ReinforcementOwed, wave1ReinforcementSpawned;
     Set<UUID> ritualCasterUuids = Set.of(), ritualGuardUuids = Set.of();
     Set<Object> realitySplitBarrierCells = Set.of();
     Chambers realitySplitChamberController = new Chambers();
@@ -218,6 +235,18 @@ public final class WaveProbeAdapterHarness {
                         "mage-order", Integer.toString(mageOrder.size()),
                         "mage-defeated", Integer.toString(mageDefeated.size()));
             }
+    }
+    // W6 durable receipt: the snapshot now records the stage sequence and the
+    // reinforcement debt, which are not derivable from the mage roster after a
+    // restart. The probe only needs the codec to compile and stay pass-through.
+    static final class WaveSixDurableState {
+        static Map<String, String> encode(int stage, int filled, int owed, int spawned,
+                                         boolean clearCommitted) {
+            return Map.of("wave6.stage", Integer.toString(stage),
+                    "wave6.reinforcement-owed", Integer.toString(owed),
+                    "wave6.reinforcement-spawned", Integer.toString(spawned),
+                    "wave6.final-clear-committed", Boolean.toString(clearCommitted));
+        }
     }
     static final class RealitySplitChamberSnapshot {
         static Map<String, String> encodeDisposable(Object... args) { return Map.of("chambers", "1"); }

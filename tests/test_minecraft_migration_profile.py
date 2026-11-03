@@ -187,10 +187,11 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # Two clean Gradle builds on this tree agree byte for byte, so the lock
     # tracks the source rather than one lucky build.
     # Repinned for the boss bar damage chip and low-health pulse.
-    assert artifact['size'] == 15_044_630
+    assert artifact['size'] == 13_542_647
+    # Repinned again for the Wave 7 Vex servant skin and the redrawn obelisk shot.
     assert artifact['sha512'] == (
-        'ec0b58d2464e47778bd6b71d6bfc23cb109f0cdb1b896be68fd9afde109ef84b'
-        'be77536ae18dcd65c5920d9d45a37141babe8f4b7f1306991c89314c41e96ed9'
+        '823e805c1fcee25bccfb8f8a5e42008c14459c90c73f190ccb3073c517c6dfe'
+        'cb52a953f103b11ec62a1e815328610cf1ecd51b80da4cf0c88664df4572dc117'
     )
 
 

@@ -155,6 +155,56 @@ def fireball_texture() -> Image.Image:
     return image
 
 
+def fireball_texture_v2() -> Image.Image:
+    """The obelisk's rift bolt, redrawn.
+
+    <p>The shipped bolt was a flat eight-sided blob: an outer polygon, an inner
+    polygon, one bright core. Up close it read as a purple sticker rather than as
+    something the obelisk threw at you. The redraw keeps the same 32x32 canvas
+    and the same read-at-distance rule, but builds the bolt out of concentric
+    energy shells with a torn silhouette, a cyan heart and violet arcs running
+    back along it, so the spin direction is visible in flight.</p>
+    """
+    image = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+
+    # 1. Torn outer corona: an eight-point star, deliberately asymmetric so it
+    #    never looks like a rotating sprite sheet cell.
+    star = [
+        (15, 0), (19, 5), (26, 3), (27, 10), (31, 15), (26, 20), (29, 26),
+        (21, 25), (15, 31), (10, 25), (3, 27), (5, 19), (0, 14), (6, 10), (4, 4), (10, 6),
+    ]
+    draw.polygon(star, fill=(26, 4, 42, 170))
+
+    # 2. Mid shell.
+    draw.polygon([(15, 4), (22, 9), (25, 15), (22, 22), (15, 27), (9, 22), (6, 15), (9, 9)],
+                 fill=(74, 10, 128, 225))
+
+    # 3. Hot shell.
+    draw.polygon([(15, 8), (21, 12), (23, 16), (20, 21), (15, 24), (10, 21), (8, 16), (10, 12)],
+                 fill=(146, 30, 214, 240))
+
+    # 4. Cyan heart: the part that keeps the bolt readable against the dark
+    #    obsidian obelisk it leaves from.
+    draw.polygon([(15, 11), (19, 14), (20, 16), (18, 20), (15, 22), (12, 20), (10, 16), (11, 14)],
+                 fill=(52, 231, 255, 255))
+    draw.rectangle((14, 14, 17, 17), fill=(214, 255, 255, 255))
+    draw.point((15, 15), fill=(255, 255, 255, 255))
+    draw.point((16, 16), fill=(255, 255, 255, 255))
+
+    # 5. Arcs: two mirrored violet streams that read as a tail in flight.
+    mirrored_line(draw, [(6, 12), (10, 13), (12, 16)], (247, 32, 226, 255), 1)
+    mirrored_line(draw, [(7, 20), (10, 19), (13, 17)], (86, 240, 255, 255), 1)
+    mirrored_line(draw, [(4, 15), (7, 15)], (176, 96, 255, 200), 1)
+
+    # 6. Charges along the rim, so the silhouette pulses rather than sits still.
+    for cx, cy in ((15, 2), (15, 29), (2, 15), (29, 15)):
+        draw.point((cx, cy), fill=(255, 255, 255, 235))
+        draw.point((cx, cy - 1), fill=(140, 240, 255, 180))
+        draw.point((cx, cy + 1), fill=(140, 240, 255, 180))
+    return image
+
+
 def save_pair(name: str, image: Image.Image) -> None:
     SERVER_TEXTURES.mkdir(parents=True, exist_ok=True)
     CLIENT_TEXTURES.mkdir(parents=True, exist_ok=True)
@@ -165,7 +215,7 @@ def save_pair(name: str, image: Image.Image) -> None:
 def main() -> None:
     for variant in ("full", "damaged", "critical"):
         save_pair(f"end_event_rift_obelisk_{variant}", obelisk_texture(variant))
-    save_pair("end_event_rift_fireball", fireball_texture())
+    save_pair("end_event_rift_fireball", fireball_texture_v2())
 
 
 if __name__ == "__main__":

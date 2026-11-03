@@ -43,6 +43,36 @@ public final class BlackFogSafeZonePolicy {
         return List.copyOf(cells);
     }
 
+    /**
+     * The perimeter ring of a safe-zone footprint, in authoring order.
+     *
+     * <p>The floor tiles already mark the zone, but from inside the black fog a
+     * player reads the EDGE of the safe area, not its centre. This ring is what
+     * the runtime draws as glowing emerald particles so the boundary is visible
+     * from anywhere in the arena. A one-cell footprint is its own perimeter.</p>
+     *
+     * @return the outermost cells of the footprint, never the interior
+     */
+    public static List<Cell> perimeter(int centerX, int centerZ, int side) {
+        if (side < 1 || side > MAX_SIDE) {
+            return List.of();
+        }
+        int firstOffset = -(side / 2);
+        int lastOffset = firstOffset + side - 1;
+        List<Cell> ring = new ArrayList<>(side * 4);
+        for (int dx = firstOffset; dx <= lastOffset; dx++) {
+            for (int dz = firstOffset; dz <= lastOffset; dz++) {
+                boolean onEdge = dx == firstOffset || dx == lastOffset
+                        || dz == firstOffset || dz == lastOffset;
+                if (!onEdge) {
+                    continue;
+                }
+                ring.add(new Cell(centerX + dx, centerZ + dz));
+            }
+        }
+        return List.copyOf(ring);
+    }
+
     public record Cell(int x, int z) {
     }
 }

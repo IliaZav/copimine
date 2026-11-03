@@ -101,7 +101,14 @@ public final class BossGroupAggroPolicy {
             long authored = Math.max(1L, lockUntilMillis - focusSinceMillis);
             long cutAllowance = (long) Math.ceil(authored * MAX_LOCK_CUT);
             if (remaining <= cutAllowance) {
-                return new Outcome(Decision.RETALIATE, attacker.id(), nowMillis);
+                // The retaliation cut the back half of the lock we inherited.
+                // Reporting "now" as the new deadline handed the fresh focus a
+                // lock that was already expired on the very next tick, so the
+                // answer was immediately re-spread and the boss never actually
+                // turned on the attacker. The new focus gets the same authored
+                // length as any other focus, measured from now.
+                return new Outcome(Decision.RETALIATE, attacker.id(),
+                        nowMillis + lockLengthMillis(lockUntilMillis, focusSinceMillis));
             }
         }
         if (!locked) {

@@ -372,9 +372,13 @@ $domainSources = @(Get-ChildItem (Join-Path $root 'copimine-end-event\src\me\cop
 $domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain\wave7\EchoBehaviorStrategy.java')
 $domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain\wave7\EchoLoadoutState.java')
 $domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain\wave7\EchoDuelCombatPolicy.java')
+# W7 limbo split: the assignment policy is now threshold-driven, and its test
+# compiles against the real class.
+$domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain\wave7\EchoRealmAssignmentPolicy.java')
 $runtimeSources = @(
   (Join-Path $root 'tools\minecraft-26.3\protocol\src\main\java\me\copimine\protocol\EncounterGenerationPolicy.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\EventSnapshot.java'),
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\CombatSequence.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\WaveCombatCoordinator.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\RiftGiantOwnerLocationRegistry.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\WaveMobLifecycleRegistry.java'),
@@ -435,6 +439,11 @@ $pureTests = @(
   'BlackFogTimingPolicyTest',
   'BlackFogEffectLeasePolicyTest',
   'Wave5PreFogRefillPolicyTest',
+  'me.copimine.endevent.domain.WaveSixDurableStateTest',
+  'me.copimine.endevent.domain.wave7.EchoLimboThresholdTest',
+  'CombatSequenceRestoreTest',
+  'me.copimine.endevent.domain.WardenSlamTriggerPolicyTest',
+  'me.copimine.endevent.domain.MinibossGroupSpellPolicyTest',
   'CollapseRingGeometryPolicyTest',
   'BossDefeatCinematicPolicyTest',
   'BossHitboxDedupePolicyTest',

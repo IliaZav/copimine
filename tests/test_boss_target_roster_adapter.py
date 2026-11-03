@@ -36,6 +36,10 @@ public class BossTargetRosterProbe {
     // Group-aggro bookkeeping read by rotateBossTarget.
     final java.util.Map<UUID,Long> bossRecentAttackers=new java.util.HashMap<>();
     long bossLastRetaliationMillis,bossFocusSinceMillis;
+    // The lock is no longer absolute: a group that keeps hitting the boss during
+    // the lock forces a re-target. The probe has no live attackers, so the lock
+    // behaves exactly as before for this scenario.
+    boolean hasOutstandingBossAttacker(Player current,long now){return false;}
     boolean isCombatTarget(Player p){return p!=null;}
     boolean isActiveBossParticipant(Player p){return p!=null&&p.admitted;}
     java.util.logging.Logger getLogger(){return java.util.logging.Logger.getAnonymousLogger();}

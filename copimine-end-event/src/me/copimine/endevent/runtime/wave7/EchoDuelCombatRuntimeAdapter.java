@@ -283,6 +283,24 @@ public final class EchoDuelCombatRuntimeAdapter {
             boolean inMeleeRange = observation.distanceSquared()
                     <= MELEE_RANGE_BLOCKS * (double) MELEE_RANGE_BLOCKS;
 
+            // Potions: a copy drinks what its owner actually carried. The buff
+            // window is derived from the actor's own pending-use deadline, so a
+            // restart can neither extend it nor grant a second application.
+            boolean potionWindowLive = observation.tick()
+                    < lastPotionTick(duel.actor()) + EchoDuelCombatPolicy.POTION_BUFF_TICKS;
+            int potionSlot = replica.find(EchoLoadoutState.Kind.POTION);
+            if (potionSlot >= 0 && EchoDuelCombatPolicy.wantsPotionBuff(duel.actor(), potionWindowLive,
+                    wounded, observation.distanceSquared())) {
+                EchoLoadoutState.Item item = replica.item(potionSlot);
+                Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartPotion(
+                        duel.actor(), replica, potionSlot, replica.revision(),
+                        observation.tick(), COOLDOWNS);
+                if (actor.isPresent()) {
+                    return decision(duel, baselineReplica, replica, scope, Action.CONSUMABLE, actor.get(),
+                            potionSlot, -1, item, intent);
+                }
+            }
+
             int shieldSlot = replica.find(EchoLoadoutState.Kind.SHIELD);
             if (shieldSlot >= 0 && observation.distanceSquared() <= RANGED_RANGE_BLOCKS * (double) RANGED_RANGE_BLOCKS
                     && inProfileWindow(observation.tick(), duel.behaviorStrategy().defensePermille())) {
@@ -358,6 +376,18 @@ public final class EchoDuelCombatRuntimeAdapter {
         } catch (RuntimeException invalidSnapshot) {
             return Optional.empty();
         }
+    }
+
+    /**
+     * When the last buff potion was drunk, or zero if it never was.
+     *
+     * <p>Derived rather than stored: the actor already records the tick its use
+     * started through {@code pendingUseUntilTick}, and a buff window that
+     * outlives a reconnect must not be inventable.</p>
+     */
+    private static long lastPotionTick(ActorState actor) {
+        return actor == null ? 0L : Math.max(0L, actor.pendingUseUntilTick()
+                - COOLDOWNS.consumableUseTicks());
     }
 
     private static Optional<Decision> decision(DuelRecord current, EchoLoadoutState baselineReplica,

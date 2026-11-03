@@ -186,12 +186,14 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # tickCount and tick-project equipment) changed the compiled bytes again.
     # Two clean Gradle builds on this tree agree byte for byte, so the lock
     # tracks the source rather than one lucky build.
-    # Repinned for the boss bar damage chip and low-health pulse.
-    assert artifact['size'] == 13_542_647
-    # Repinned again for the Wave 7 Vex servant skin and the redrawn obelisk shot.
+    # Repinned for the boss bar damage chip and low-health pulse, again for the
+    # Wave 7 Vex servant skin and the redrawn obelisk shot, and again for the
+    # Wave 7 pair crossfire, the Marksman/Archmage rigs and the Echo clone test
+    # command (client-side presentation only).
+    assert artifact['size'] == 13_544_252
     assert artifact['sha512'] == (
-        '823e805c1fcee25bccfb8f8a5e42008c14459c90c73f190ccb3073c517c6dfe'
-        'cb52a953f103b11ec62a1e815328610cf1ecd51b80da4cf0c88664df4572dc117'
+        '198edf097fad29e783f9769fc2fc37d85aa48fa25d9fde60ba629680e4e1c1bb'
+        '7cb1bf2c0d1ca90b0b61af38911036a3d36594a19c80552168d9cef22abfdecc'
     )
 
 

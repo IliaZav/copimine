@@ -11,7 +11,16 @@ import java.util.UUID;
 
 /** Private, bounded replica supplies. Never contains Bukkit stacks or executable metadata. */
 public final class EchoLoadoutState {
-    public enum Kind { EMPTY, MELEE, ARMOR, BOW, CROSSBOW, SHIELD, FOOD, GOLDEN_APPLE, AMMO, INERT, BLOCKED_CUSTOM }
+    /**
+     * POTION is a drinkable potion, SPLASH_POTION a thrown one.
+     *
+     * <p>Split deliberately: a player drinking Swiftness and a player throwing
+     * one are doing different things, and a copy that treats them alike throws
+     * its only healing potion at the floor. The ordinal order is frozen because
+     * {@link #classify(String, boolean)} results are persisted indirectly.</p>
+     */
+    public enum Kind { EMPTY, MELEE, ARMOR, BOW, CROSSBOW, SHIELD, FOOD, GOLDEN_APPLE, AMMO, INERT, BLOCKED_CUSTOM,
+        POTION, SPLASH_POTION, LINGERING_POTION }
     private static final Set<String> TIERS = Set.of("WOODEN", "STONE", "IRON", "GOLDEN", "DIAMOND", "NETHERITE");
     private static final Set<String> ARMOR = Set.of("LEATHER", "CHAINMAIL", "IRON", "GOLDEN", "DIAMOND", "NETHERITE", "TURTLE");
     private static final Set<String> FOODS = Set.of("APPLE", "BREAD", "COOKED_BEEF", "COOKED_PORKCHOP", "COOKED_CHICKEN",
@@ -68,6 +77,12 @@ public final class EchoLoadoutState {
             case "SHIELD" -> Kind.SHIELD;
             case "GOLDEN_APPLE" -> Kind.GOLDEN_APPLE;
             case "ARROW" -> Kind.AMMO;
+            // Potions were the largest single gap in "behaves like a real
+            // player": a copy whose owner always buffed with Swiftness and
+            // Strength carried those bottles around as INERT loot.
+            case "POTION" -> Kind.POTION;
+            case "SPLASH_POTION" -> Kind.SPLASH_POTION;
+            case "LINGERING_POTION" -> Kind.LINGERING_POTION;
             default -> FOODS.contains(material) ? Kind.FOOD : Kind.INERT;
         };
     }
@@ -141,7 +156,10 @@ public final class EchoLoadoutState {
         if (slot<0 || slot>=42 || amount<=0 || remaining[slot]<amount || revision!=expectedRevision
                 || revision>=Long.MAX_VALUE-1) return false;
         Kind kind=frozen.get(slot).kind();
-        if (kind!=Kind.FOOD && kind!=Kind.GOLDEN_APPLE && kind!=Kind.AMMO) return false;
+        // A potion bottle leaves no residue on the stack: drinking consumes one
+        // whole bottle, so the kind is spendable exactly like a food item.
+        if (kind!=Kind.FOOD && kind!=Kind.GOLDEN_APPLE && kind!=Kind.AMMO
+                && kind!=Kind.POTION && kind!=Kind.SPLASH_POTION && kind!=Kind.LINGERING_POTION) return false;
         remaining[slot]-=amount; revision++; return true;
     }
     /** Caller supplies the durability outcome after native enchantment handling. */

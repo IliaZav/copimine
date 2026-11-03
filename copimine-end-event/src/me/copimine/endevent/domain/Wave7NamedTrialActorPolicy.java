@@ -12,6 +12,15 @@ public final class Wave7NamedTrialActorPolicy {
         MARKSMAN_HEAVY_SHOT,
         MARKSMAN_SPREAD_SHOT,
         MARKSMAN_SUPPORT,
+        /**
+         * The pair's joint attack: both skeletons loose one narrow crossfire.
+         *
+         * <p>This is the "совместная атака" the user asked to invent: it is only
+         * legal when BOTH members of a pair are free, in range and charged, and
+         * it fires a single readable cross instead of two separate volleys.
+         * See {@link me.copimine.endevent.domain.Wave7SkeletonPairPolicy}.</p>
+         */
+        MARKSMAN_PAIRED_CROSSFIRE,
         ARCHMAGE_FANGS,
         ARCHMAGE_SPEAR,
         ARCHMAGE_STEP,
@@ -56,6 +65,10 @@ public final class Wave7NamedTrialActorPolicy {
                     || profile == null || actorId == null || attackIndex < 0L || attackIndex > 1_000_000L
                     || attack == null || attack != Attack.NONE && !profile.attacks().contains(attack)
                     && !(trial == NamedTrial.MOBILE_MARKSMAN && attack == Attack.MARKSMAN_SUPPORT)
+                    // The joint attack belongs to the PAIR, not to one actor's
+                    // rotation, so it is legal exactly where support is.
+                    && !(trial == NamedTrial.MOBILE_MARKSMAN
+                            && attack == Attack.MARKSMAN_PAIRED_CROSSFIRE)
                     || phaseDeadlineMillis < 0L || cooldownUntilMillis < 0L
                     || vanishUntilMillis < 0L
                     || vanishUntilMillis > 0L && trial != NamedTrial.MOBILE_MARKSMAN
@@ -250,6 +263,9 @@ public final class Wave7NamedTrialActorPolicy {
             case MARKSMAN_HEAVY_SHOT -> 22;
             case MARKSMAN_SPREAD_SHOT -> 18;
             case MARKSMAN_SUPPORT -> 20;
+            // A longer tell than any solo shot: the party must be able to read
+            // the cross forming and pick a side to leave.
+            case MARKSMAN_PAIRED_CROSSFIRE -> 30;
             case ARCHMAGE_FANGS -> 20;
             case ARCHMAGE_SPEAR -> 24;
             case ARCHMAGE_STEP -> 18;
@@ -265,6 +281,7 @@ public final class Wave7NamedTrialActorPolicy {
             case MARKSMAN_HEAVY_SHOT -> 58;
             case MARKSMAN_SPREAD_SHOT -> 48;
             case MARKSMAN_SUPPORT -> 90;
+            case MARKSMAN_PAIRED_CROSSFIRE -> 140;
             case ARCHMAGE_FANGS -> 58;
             case ARCHMAGE_SPEAR -> 62;
             case ARCHMAGE_STEP -> 46;

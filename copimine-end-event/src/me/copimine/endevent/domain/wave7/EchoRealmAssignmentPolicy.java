@@ -15,16 +15,23 @@ import java.util.UUID;
  * time; the split only separates what two groups of players SEE and hear, it
  * never reduces the number of copies the server runs. Up to nine participants
  * the whole party shares the ordinary region, because splitting four duels into
- * two half-empty rooms buys nothing. From ten participants the roster is cut in
- * half with a difference of at most one, ordinary taking the larger half.</p>
+ * two half-empty rooms buys nothing. From fifteen participants the roster is cut
+ * in half with a difference of at most one, ordinary taking the larger half.</p>
  *
  * <p>The allocation is deterministic: the roster is ordered by UUID string, so a
  * restart recomputes the identical split and a rejoin cannot move anybody into
  * the "easier" realm.</p>
  */
 public final class EchoRealmAssignmentPolicy {
-    /** Below this party size both realms are pointless; everyone fights ordinary. */
-    public static final int LIMBO_THRESHOLD = 10;
+    /**
+     * Below this party size both realms are pointless; everyone fights ordinary.
+     *
+     * <p>Raised from 10 to 15 on the user's request: at ten to fourteen the
+     * arena still reads as one fight, and cutting it in half only made both
+     * halves empty. From fifteen the crowd is genuinely cluttered, which is
+     * exactly the "каша" the split exists to prevent.</p>
+     */
+    public static final int LIMBO_THRESHOLD = 15;
     public static final int MAX_PARTY = 20;
 
     private EchoRealmAssignmentPolicy() { }

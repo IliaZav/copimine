@@ -34,10 +34,18 @@ public final class EchoRealmAssignmentPolicyTest {
         }
     }
 
-    /** ECHO-002 table: 2-9 all ordinary, then an even split taking the larger half. */
+    /**
+     * ECHO-002 table, superseded 2026-11-03: 2-14 all ordinary, then an even
+     * split taking the larger half.
+     *
+     * <p>The user raised the authored threshold from ten to fifteen. The old rows
+     * for ten and eleven asserted a split that the product no longer wants, so
+     * they are kept visible with their new expectation rather than deleted.</p>
+     */
     private void specTable() {
         int[][] table = {
-                {2, 2, 0}, {9, 9, 0}, {10, 5, 5}, {11, 6, 5}, {15, 8, 7}, {20, 10, 10}
+                {2, 2, 0}, {9, 9, 0}, {10, 10, 0}, {11, 11, 0}, {14, 14, 0},
+                {15, 8, 7}, {16, 8, 8}, {20, 10, 10}
         };
         for (int[] row : table) {
             int party = row[0];

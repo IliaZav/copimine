@@ -35,8 +35,8 @@ public class ArchmageCoverProbe {
 void renderWave7AbilityEffect(Object a,Object b,String c){}
     static class Wave7NamedTrialActorPolicy {
         enum Attack { NONE, MARKSMAN_QUICK_SHOT, MARKSMAN_HEAVY_SHOT, MARKSMAN_SPREAD_SHOT,
-            MARKSMAN_SUPPORT, ARCHMAGE_FANGS, ARCHMAGE_SPEAR, ARCHMAGE_STEP, ARCHMAGE_BEAM,
-            NONE_INTERNAL }
+            MARKSMAN_SUPPORT, MARKSMAN_PAIRED_CROSSFIRE, ARCHMAGE_FANGS, ARCHMAGE_SPEAR,
+            ARCHMAGE_STEP, ARCHMAGE_BEAM, NONE_INTERNAL }
     }
     enum Particle { HAPPY_VILLAGER }
     static class Location { Location add(double x,double y,double z){return this;} }

@@ -79,6 +79,80 @@ public final class Wave7ArchmageVexPolicy {
         return false;
     }
 
+    /**
+     * The Archmage's Vex spell: it spends its own minions as ammunition.
+     *
+     * <p>Until now the Vexes were scenery — they floated around and bit whoever
+     * stood close, and the party could ignore them entirely. The Archmage now
+     * has a spell that <b>consumes</b> them: every live Vex is detonated on its
+     * nearest target and the Archmage recovers health per Vex spent. That
+     * creates the decision the wave was missing — kill the Vexes early and
+     * deny the Archmage its burst and its healing, or ignore them and eat both.
+     * Killing them is strictly better for the party, so the spell rewards
+     * reaction rather than luck.</p>
+     *
+     * <p>Every bound is explicit: the spell needs at least
+     * {@link #SWARM_MIN_VEXES} live Vexes, it never detonates more than the
+     * live cap can produce, its damage and healing are per-Vex constants, and
+     * its cooldown is long enough that a wiped swarm cannot be re-farmed
+     * instantly.</p>
+     */
+    public static final int SWARM_MIN_VEXES = 2;
+
+    /** Ticks between two swarm casts, counted from the previous resolution. */
+    public static final long SWARM_COOLDOWN_TICKS = 320L;
+
+    /** Ticks of visible telegraph before the swarm detonates. */
+    public static final int SWARM_TELEGRAPH_TICKS = 26;
+
+    /** Damage of one detonating Vex. */
+    public static final double SWARM_DAMAGE_PER_VEX = 4.0D;
+
+    /** Hard per-cast damage ceiling, so a large roster cannot be one-shot. */
+    public static final double SWARM_MAX_DAMAGE = 16.0D;
+
+    /** Health the Archmage recovers per Vex spent; refused when its HP is full. */
+    public static final double SWARM_HEAL_PER_VEX = 6.0D;
+
+    /** Hard per-cast healing ceiling. */
+    public static final double SWARM_MAX_HEAL = 24.0D;
+
+    /** Radius around the Archmage in which a Vex can find a target; beyond it the cast is refused. */
+    public static final double SWARM_RADIUS_BLOCKS = 18.0D;
+
+    /** Whether the Archmage may cast the swarm spell right now. */
+    public static boolean swarmReady(int liveVexes, long ticksSinceSwarm, boolean archmageAlive,
+                                     boolean archmageBusy) {
+        if (!archmageAlive || archmageBusy) return false;
+        if (liveVexes < SWARM_MIN_VEXES) return false;
+        return ticksSinceSwarm < 0L || ticksSinceSwarm >= SWARM_COOLDOWN_TICKS;
+    }
+
+    /** Total damage of a detonation of {@code vexCount} Vexes, capped. */
+    public static double swarmDamage(int vexCount) {
+        if (vexCount <= 0) return 0.0D;
+        return Math.min(SWARM_MAX_DAMAGE, SWARM_DAMAGE_PER_VEX * vexCount);
+    }
+
+    /**
+     * Total healing of a detonation, capped and refused at full health.
+     *
+     * <p>A full-health Archmage gains nothing, so the spell is never a free
+     * reset; the caller must still spend the Vexes, because that is the cost
+     * the party paid attention for.</p>
+     */
+    public static double swarmHeal(int vexCount, double currentHealth, double maximumHealth) {
+        if (vexCount <= 0 || currentHealth >= maximumHealth) return 0.0D;
+        double heal = Math.min(SWARM_MAX_HEAL, SWARM_HEAL_PER_VEX * vexCount);
+        return Math.min(heal, maximumHealth - currentHealth);
+    }
+
+    /** How many Vexes the spell may actually consume, bounded by the live cap. */
+    public static int swarmVexSpent(int liveVexes, int cap) {
+        if (liveVexes <= 0 || cap <= 0) return 0;
+        return Math.min(liveVexes, cap);
+    }
+
     public static boolean confinedToArena() {
         return true;
     }

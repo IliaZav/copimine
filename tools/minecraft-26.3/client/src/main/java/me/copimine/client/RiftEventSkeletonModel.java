@@ -264,14 +264,60 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
             leftArm.xRot=.2F; rightArm.xRot=.2F; head.xRot+=.15F;
         }
         if (variant == Variant.WAVE7_MARKSMAN) {
-            // Keep the named marksman in an unmistakable drawn-bow pose.
-            leftArm.xRot = -1.24F;
-            rightArm.xRot = -0.94F;
-            leftArm.yRot = -0.16F;
-            rightArm.yRot = 0.22F;
-            head.xRot += 0.06F;
-            marksmanSight.yRot = Mth.sin(animationProgress * 0.07F) * 0.025F;
+            poseMarksman(state, animationProgress, walkSpeed);
         }
+    }
+
+    /**
+     * Marksman rig: a real archer, not a mannequin holding a drawn bow.
+     *
+     * <p>The previous version wrote the draw pose with {@code =} on every frame
+     * of every animation state, so the copy of the arms never moved: the
+     * Marksman slid across the arena frozen in a firing stance and its shots
+     * had no wind-up at all. The pose is now blended by intent — walk cycles
+     * while running, a visible draw while loosing, and an idle sway otherwise —
+     * and the marker it shoots at rides with the aim.</p>
+     */
+    private void poseMarksman(SkeletonRenderState state, float animationProgress, float walkSpeed) {
+        EndRiftRenderStateAccess access = (EndRiftRenderStateAccess) state;
+        String wavePose = access.copimine$wavePose();
+        boolean drawing = "WAVE_WINDUP".equals(wavePose) || "WAVE_FROZEN".equals(wavePose);
+        boolean recovering = "WAVE_RECOVER".equals(wavePose);
+        // The gait that super.setupAnim produced is the base layer; the draw is
+        // added on top of it so a moving Marksman still visibly walks.
+        float stride = Mth.clamp(walkSpeed, 0.0F, 1.0F);
+        if (drawing) {
+            leftArm.xRot = -1.42F + Mth.sin(animationProgress * 0.22F) * 0.03F;
+            rightArm.xRot = -1.06F + Mth.cos(animationProgress * 0.31F) * 0.02F;
+            leftArm.yRot = -0.14F;
+            rightArm.yRot = 0.30F;
+            // The bow hand steadies, the string hand trembles: that asymmetry is
+            // what reads as strain rather than as a static model.
+            rightArm.zRot = Mth.sin(animationProgress * 0.45F) * 0.035F;
+            head.xRot += 0.05F;
+            body.yRot = 0.06F;
+        } else if (recovering) {
+            // Follow-through: the draw releases and the arms drop past neutral.
+            leftArm.xRot = -0.55F + stride * Mth.cos(animationProgress * 0.5F) * 0.25F;
+            rightArm.xRot = -0.15F - stride * Mth.sin(animationProgress * 0.5F) * 0.25F;
+            leftArm.yRot = -0.05F;
+            rightArm.yRot = 0.10F;
+            head.xRot += 0.02F;
+            body.yRot = 0.0F;
+        } else {
+            // Idle and moving: keep whatever gait vanilla built, add only the
+            // archer's habitual lean and a slow aim scan.
+            float scan = Mth.sin(animationProgress * 0.045F);
+            leftArm.xRot -= 0.10F;
+            rightArm.xRot -= 0.06F;
+            leftArm.yRot += scan * 0.03F;
+            rightArm.yRot += scan * 0.02F;
+            head.yRot += scan * 0.06F;
+            body.yRot += scan * 0.02F;
+        }
+        marksmanSight.yRot = Mth.sin(animationProgress * 0.07F) * 0.025F;
+        marksmanSight.xRot = drawing ? -0.10F : 0.0F;
+        marksmanQuiver.xRot = Mth.sin(animationProgress * 0.09F) * 0.03F + stride * 0.08F;
     }
 
     public boolean isElite() {

@@ -65,6 +65,15 @@ public class OccludedArchmageProbe {
     void tickWave7ArchmageVexes(Object a,int b){}
     Wave7NamedTrialActorPolicy.Checkpoint beginMarksmanVanish(Object a,
             Wave7NamedTrialActorPolicy.Checkpoint c,long now){return null;}
+    // W7 pair symbiosis: the Marksman tick now also maintains the skeleton pair
+    // and can commit the pair's joint crossfire. Both belong to the sibling
+    // actor, so the probe stubs them out; the pair rules themselves are covered
+    // by Wave7SkeletonPairPolicyTest.
+    boolean maintainNamedMarksmanPair(Object a,int b){return true;}
+    boolean isPairedCrossfireLeader(Object a,int b){return false;}
+    boolean pairedCrossfireReady(Object a,Object b,int c){return false;}
+    boolean fireNamedMarksmanPairedCrossfire(Object a,Object b,
+            Wave7NamedTrialActorPolicy.Checkpoint c,long d,int e){return true;}
     long generation=Wave7AdmissionRuntimeChecks.GEN, eventTickCounter=1L;
     final String eventId=Wave7AdmissionRuntimeChecks.EVENT.toString();
     final RealitySplitChamberController realitySplitChamberController=Wave7AdmissionRuntimeChecks.chambers;

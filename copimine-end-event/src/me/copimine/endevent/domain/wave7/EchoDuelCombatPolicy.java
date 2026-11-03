@@ -54,6 +54,71 @@ public final class EchoDuelCombatPolicy {
                 actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick());
     }
 
+    /**
+     * Bottle share of an owner's potions that a copy may actually reach.
+     *
+     * <p>A copy is not entitled to the whole vial rack: without a bound a
+     * potion-stocked player would produce an Echo that out-buffs every real duel.
+     * Half, rounded down with a floor of one, keeps the copy recognisably the
+     * owner's habit while leaving the fight winnable.</p>
+     */
+    public static final int POTION_COPY_DIVISOR = 2;
+
+    /** How many bottles of one stack the copy is allowed to burn during the duel. */
+    public static int potionAllotment(int ownerBottles) {
+        if (ownerBottles <= 0) return 0;
+        return Math.max(1, ownerBottles / POTION_COPY_DIVISOR);
+    }
+
+    /**
+     * Longest a self-buff stays live before the copy will not reapply it.
+     *
+     * <p>Measured in ticks like every other duel deadline. Twenty seconds is
+     * shorter than a vanilla potion so a fight cannot be won by stacking
+     * buffs, and long enough that a buff is worth spending a bottle on.</p>
+     */
+    public static final long POTION_BUFF_TICKS = 400L;
+
+    /**
+     * Starts drinking a buff potion.
+     *
+     * <p>Shares the {@code CONSUMABLE} action shape with food on purpose: the
+     * client already animates a main-hand use for that pose, so drinking looks
+     * exactly like eating — which is what a player does. The copy has no
+     * independent potion-withdrawn state, so the allotment is enforced by
+     * consuming the bottle here, exactly like a food ration.</p>
+     */
+    public static Optional<ActorState> tryStartPotion(ActorState actor, EchoLoadoutState replica,
+                                                      int potionSlot, long expectedReplicaRevision,
+                                                      long tick, Cooldowns cooldowns) {
+        if (!ready(actor, tick, cooldowns)
+                || !hasPotion(replica, potionSlot, expectedReplicaRevision)) {
+            return Optional.empty();
+        }
+        Optional<ActorState> updated = advance(actor, tick, cooldowns.sharedActionTicks(),
+                actor.meleeCooldownUntilTick(), actor.rangedCooldownUntilTick(),
+                deadline(tick, cooldowns.consumableUseTicks()), actor.shieldActiveUntilTick(),
+                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick());
+        if (updated.isEmpty() || !replica.consume(potionSlot, 1, expectedReplicaRevision)) {
+            return Optional.empty();
+        }
+        return updated;
+    }
+
+    /**
+     * A copy only drinks when it is actually hurt or actually preparing to fight.
+     *
+     * <p>Without this a buffed owner produced a copy that re-drank Swiftness on
+     * cooldown from the first tick, burning its whole allotment before contact.</p>
+     */
+    public static boolean wantsPotionBuff(ActorState actor, boolean buffLive, boolean ownHealthLow,
+                                          double distanceSquared) {
+        if (actor == null || actor.lifecycle() != ActorLifecycle.ALIVE || buffLive) return false;
+        if (ownHealthLow) return true;
+        return Double.isFinite(distanceSquared) && distanceSquared >= 0.0D
+                && distanceSquared <= 64.0D;
+    }
+
     /** A falling attack shares melee wear/cooldown but is separately admitted by the runtime. */
     public static Optional<ActorState> tryStartCriticalMelee(ActorState actor, long tick,
                                                               Cooldowns cooldowns) {
@@ -241,6 +306,20 @@ public final class EchoDuelCombatPolicy {
         if (!validReplicaSlot(replica, slot, expectedRevision)) return false;
         EchoLoadoutState.Kind kind = replica.item(slot).kind();
         return (kind == EchoLoadoutState.Kind.FOOD || kind == EchoLoadoutState.Kind.GOLDEN_APPLE)
+                && replica.remaining(slot) > 0;
+    }
+
+    /**
+     * The drink gate is strict on purpose: only a drinkable POTION passes.
+     *
+     * <p>A thrown bottle is a weapon, not a ration. Admitting SPLASH_POTION
+     * here made the copy "drink" its own splash bottle — the animation plays,
+     * the bottle is spent, and nothing lands anywhere. An earlier version of
+     * this gate accepted all three potion kinds and only the test caught it.</p>
+     */
+    public static boolean hasPotion(EchoLoadoutState replica, int slot, long expectedRevision) {
+        if (!validReplicaSlot(replica, slot, expectedRevision)) return false;
+        return replica.item(slot).kind() == EchoLoadoutState.Kind.POTION
                 && replica.remaining(slot) > 0;
     }
 

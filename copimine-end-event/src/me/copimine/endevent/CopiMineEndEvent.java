@@ -172,6 +172,7 @@ import me.copimine.endevent.domain.Wave7EchoDuelCellPolicy;
 import me.copimine.endevent.domain.Wave7ArchmageVexPolicy;
 import me.copimine.endevent.domain.Wave7MarksmanInvisibilityPolicy;
 import me.copimine.endevent.domain.Wave7BarrierPreflightPolicy;
+import me.copimine.endevent.domain.Wave7SkeletonPairPolicy;
 import me.copimine.endevent.domain.IntermissionWatchdogPolicy;
 import me.copimine.endevent.domain.Wave3SquadIntentPolicy;
 import me.copimine.endevent.domain.SpiderEffectLeasePolicy;
@@ -1323,6 +1324,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, EchoCombatAdmissionListener> namedEchoCombatListeners = new LinkedHashMap<>();
     private final Map<UUID, me.copimine.endevent.domain.Wave7EchoDuelCellPolicy.Cell> namedEchoCells = new LinkedHashMap<>();
     private final Map<UUID, String> namedEchoBridgeSessions = new LinkedHashMap<>();
+    /**
+     * Marksman partners: actor id to the OTHER marksman of the same trial.
+     *
+     * <p>Both skeletons of the Wave 7 marksman trial are scored together as one
+     * encounter. They are separate actors with separate checkpoints, but they
+     * share lanes, alternate their casts and charge one joint crossfire; see
+     * {@link me.copimine.endevent.domain.Wave7SkeletonPairPolicy}.</p>
+     */
+    private final Map<UUID, UUID> wave7MarksmanPartners = new LinkedHashMap<>();
+    /** Tick of the pair's last joint crossfire, or -1 when it has never fired. */
+    private final Map<String, Long> wave7PairedCrossfireTicks = new LinkedHashMap<>();
+    /**
+     * Local clone duels started through {@code /cmend test echo clone}. Never
+     * part of a wave, a roster or a reward; see {@code EchoCloneSession}.
+     */
+    private final Map<UUID, me.copimine.endevent.runtime.wave7.EchoCloneSession> echoCloneSessions = new LinkedHashMap<>();
+    private final Map<UUID, EchoPresentationProbeState> echoClonePresentationStates = new LinkedHashMap<>();
+    private final Map<UUID, me.copimine.endevent.runtime.wave7.EchoReplicaInventory> echoCloneReplicas = new LinkedHashMap<>();
+    private long echoCloneEpoch;
     private final Map<Integer, Long> realitySplitTrialNextFireballTick = new LinkedHashMap<>();
     private final Map<Integer, Long> realitySplitOrphanedSinceMillis = new LinkedHashMap<>();
     /** Scoped destinations for the event's own deterministic Wave 7 placement. */
@@ -1553,6 +1573,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private NamespacedKey keyWave7MarksmanDefenderReceipt;
     private NamespacedKey keyWave7ArchmageVexLastSummon;
     private NamespacedKey keyWave7MarksmanDefenderOwner;
+    private NamespacedKey keyWave7ArchmageSwarmAt;
+    private NamespacedKey keyWave7ArchmageSwarmDeadline;
     private NamespacedKey keyRitualShieldGuard;
     private NamespacedKey keyRitualPrisonerGravity;
     private NamespacedKey keyKind;
@@ -1708,6 +1730,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             keyWave7ArchmageVexLastSummon = new NamespacedKey(this,
                     "end_event_wave7_archmage_vex_last_summon");
             keyWave7MarksmanDefenderOwner = new NamespacedKey(this, "end_event_wave7_defender_owner");
+        keyWave7ArchmageSwarmAt = new NamespacedKey(this, "end_event_wave7_swarm_at");
+        keyWave7ArchmageSwarmDeadline = new NamespacedKey(this, "end_event_wave7_swarm_deadline");
             keyRitualShieldGuard = new NamespacedKey(this, "end_event_ritual_shield_guard");
             keyRitualPrisonerGravity = new NamespacedKey(this, "end_event_prisoner_original_gravity");
             keyKind = new NamespacedKey(this, "end_event_kind");
@@ -8655,9 +8679,302 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /**
+     * Starts, inspects and stops local clone duels.
+     *
+     * <p>Written for the actual use case: an operator and a friend, on one
+     * server, each wanting to fight their own copy right now without starting
+     * a full Wave 7 attempt. {@code me}/{@code <player>} spawns a copy owned by
+     * that player, {@code both} arms the pair in one go, {@code list} shows
+     * each duel with its live pose, and {@code stop} removes everything. The
+     * limbo switch is included because the split is exactly what a two-player
+     * test cannot otherwise exercise.</p>
+     */
+    private void handleTestEchoClone(CommandSender sender, String[] args) {
+        String action = args.length > 3 ? args[3].toLowerCase(Locale.ROOT) : "list";
+        switch (action) {
+            case "me", "player", "both" -> {
+                if (!mayRunEchoCloneTest()) {
+                    message(sender, "&cClone-двойники доступны только в local environment и вне активной волны.");
+                    return;
+                }
+                java.util.List<Player> owners = new java.util.ArrayList<>(2);
+                if ("both".equals(action)) {
+                    for (Player online : Bukkit.getOnlinePlayers()) {
+                        if (!online.getWorld().getName().equals(worldName)) continue;
+                        if (!isNamedEchoClientReady(online)) continue;
+                        owners.add(online);
+                        if (owners.size() == 2) break;
+                    }
+                    if (owners.size() < 2) {
+                        message(sender, "&cНужно двое живых игроков арены с актуальным CopiMineClient.");
+                        return;
+                    }
+                } else {
+                    Player owner = args.length > 4 ? Bukkit.getPlayerExact(args[4])
+                            : sender instanceof Player player ? player : null;
+                    if (owner == null || !owner.isOnline() || owner.isDead()) {
+                        message(sender, "&cНужен живой игрок: /cmend test echo clone me [player].");
+                        return;
+                    }
+                    if (!isNamedEchoClientReady(owner)) {
+                        message(sender, "&cКлиент не готов: нужен CopiMineClient 26.3 из этой сборки.");
+                        return;
+                    }
+                    owners.add(owner);
+                }
+                for (Player owner : owners) {
+                    if (!spawnEchoClone(owner, sender)) return;
+                }
+                message(sender, "&aClone запущен: " + owners.stream().map(Player::getName)
+                        .collect(Collectors.joining(", ")) + ". &7/cmend test echo clone list");
+                message(sender, "&7Двойник повторяет вашу экипировку, приёмы, щит, еду и зелья.");
+            }
+            case "stop" -> {
+                int removed = clearEchoClones();
+                message(sender, removed == 0
+                        ? "&eАктивных клонов не было."
+                        : "&aОстановлено клонов: " + removed + ".");
+            }
+            case "limbo" -> {
+                // The clone command owns the split switch so a two-player pair can
+                // observe Limbo without editing the authored threshold.
+                if (args.length > 4) {
+                    echoLimboThresholdOverride = switch (args[4].toLowerCase(Locale.ROOT)) {
+                        case "on", "2" -> 2;
+                        case "off" -> -1;
+                        default -> 0;
+                    };
+                    namedEchoRealmSplit = null;
+                    namedEchoRealmSplitOwners = null;
+                }
+                String state = echoLimboThresholdOverride > 0 ? "ON (с 2 игроков)"
+                        : echoLimboThresholdOverride < 0 ? "OFF" : "AUTO (с "
+                        + me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.LIMBO_THRESHOLD
+                        + " игроков)";
+                message(sender, "&7Echo limbo: &f" + state);
+                message(sender, "&7/cmend test echo clone limbo <on|off|auto>");
+            }
+            case "list" -> {
+                if (echoCloneSessions.isEmpty()) {
+                    message(sender, "&7Активных клонов нет. Запуск: &f/cmend test echo clone me|both [player]");
+                    return;
+                }
+                echoCloneSessions.values().forEach(session -> {
+                    Player owner = Bukkit.getPlayer(session.ownerId());
+                    Entity carrier = Bukkit.getEntity(session.carrierId());
+                    EchoPresentationProbeState view = echoClonePresentationStates.get(session.carrierId());
+                    int remaining = (int) Math.max(0L,
+                            me.copimine.endevent.runtime.wave7.EchoCloneSession.LIFETIME_TICKS
+                                    - (eventTickCounter - session.startedTick()));
+                    message(sender, "&7- &f" + session.ownerName()
+                            + "&7: pose=&f" + (view == null ? "none" : view.action().name())
+                            + "&7, дуэль=&f" + (session.active() && carrier != null && carrier.isValid() ? "живая" : "закрыта")
+                            + "&7, владелец=&f" + (owner != null && owner.isOnline() ? "в игре" : "нет")
+                            + "&7, осталось &f" + (remaining / 20) + "&7 с");
+                });
+                message(sender, "&7/cmend test echo clone me|both [player] | list | stop | limbo <on|off|auto>");
+            }
+            default -> message(sender,
+                    "&e/cmend test echo clone me|both [player] | list | stop | limbo <on|off|auto>");
+        }
+    }
+
+    /** Clone duels are a local test affordance; they must never share an official attempt. */
+    private boolean mayRunEchoCloneTest() {
+        return config != null && "local".equalsIgnoreCase(config.environment())
+                && bootstrapped && !isOfficialAttemptActive() && activeWave == 0
+                && creativeTestTask == null;
+    }
+
+    /**
+     * Spawns one copy of {@code owner} and registers it as a live clone duel.
+     *
+     * <p>The copy is a real Pillager body driven by the same duel policies as an
+     * official Echo, so what the operator tests here is the shipped combat loop
+     * and not a special debug path.</p>
+     */
+    private boolean spawnEchoClone(Player owner, CommandSender sender) {
+        if (owner == null || !owner.isOnline() || owner.isDead()) return false;
+        if (echoCloneSessions.size() >= me.copimine.endevent.runtime.wave7.EchoCloneSession.MAX_CONCURRENT_CLONES) {
+            message(sender, "&cСлишком много клонов; сначала /cmend test echo clone stop.");
+            return false;
+        }
+        for (var existing : echoCloneSessions.values()) {
+            if (existing.ownerId().equals(owner.getUniqueId())) {
+                message(sender, "&eУ " + owner.getName() + " уже есть клон; сначала остановите его.");
+                return false;
+            }
+        }
+        Location anchor = coreCombatAnchorLocation();
+        Location preferred = owner.getLocation().clone().add(
+                owner.getLocation().getDirection().setY(0.0D).multiply(4.0D));
+        Location spawn = findSafeCombatLocation(anchor, preferred, waveMovementRadius(),
+                MIN_WAVE_CORE_DISTANCE_BLOCKS, -1, owner);
+        if (spawn == null || spawn.distanceSquared(owner.getLocation()) > 400.0D) {
+            message(sender, "&cНе найден безопасный пол рядом с " + owner.getName() + ".");
+            return false;
+        }
+        double maximumHealth = Math.max(1.0D, owner.getMaxHealth());
+        me.copimine.endevent.runtime.wave7.EchoReplicaInventory replica;
+        try {
+            replica = me.copimine.endevent.runtime.wave7.EchoReplicaInventory.capture(
+                    owner.getInventory(), UUID.randomUUID(), 1L, UUID.randomUUID(), owner.getUniqueId());
+        } catch (RuntimeException invalidLoadout) {
+            message(sender, "&cЭкипировку скопировать не удалось: " + invalidLoadout.getMessage());
+            return false;
+        }
+        Pillager carrier;
+        try {
+            carrier = spawn.getWorld().spawn(spawn, Pillager.class, clone -> {
+                clone.setPersistent(false);
+                clone.setCanJoinRaid(false);
+                clone.setCanPickupItems(false);
+                AttributeInstance cloneMax = clone.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+                if (cloneMax != null) cloneMax.setBaseValue(maximumHealth);
+                clone.setHealth(maximumHealth);
+            });
+        } catch (RuntimeException spawnFailure) {
+            getLogger().log(Level.WARNING, "Local Echo clone could not spawn", spawnFailure);
+            return false;
+        }
+        if (carrier == null) return false;
+        try {
+            echoCloneEpoch = EchoPresentationEpochPolicy.next(echoCloneEpoch, System.currentTimeMillis());
+            // One throwaway event id per clone: it can never collide with an
+            // official duel receipt or with another clone's presentation.
+            UUID cloneEvent = UUID.randomUUID();
+            EchoPresentationProbeState view = new EchoPresentationProbeState(cloneEvent, 1L,
+                    echoCloneEpoch, UUID.randomUUID(), carrier.getUniqueId(), owner.getUniqueId(),
+                    carrier.getWorld().getKey().toString(), eventTickCounter,
+                    me.copimine.endevent.runtime.wave7.EchoCloneSession.LIFETIME_TICKS);
+            me.copimine.endevent.runtime.wave7.EchoCloneSession session =
+                    new me.copimine.endevent.runtime.wave7.EchoCloneSession(cloneEvent,
+                            1L, view.epoch(), view.duel(), owner.getUniqueId(),
+                            carrier.getUniqueId(), carrier.getWorld().getUID(), eventTickCounter,
+                            owner.getName(), true);
+            carrier.setCustomName(ChatColor.DARK_PURPLE + "Clone " + owner.getName());
+            carrier.setCustomNameVisible(false);
+            carrier.setAI(true);
+            carrier.setAware(true);
+            Bukkit.getMobGoals().removeAllGoals(carrier);
+            echoClonePresentationStates.put(carrier.getUniqueId(), view);
+            echoCloneReplicas.put(carrier.getUniqueId(), replica);
+            echoCloneSessions.put(carrier.getUniqueId(), session);
+            getLogger().info("ECHO_CLONE_START owner=" + owner.getName() + " carrier=" + carrier.getUniqueId()
+                    + " active=" + echoCloneSessions.size());
+            return true;
+        } catch (RuntimeException setupFailure) {
+            getLogger().log(Level.WARNING, "Local Echo clone setup failed", setupFailure);
+            unregisterOwnedEntity(carrier.getUniqueId(), "echo-clone-setup-failed");
+            return false;
+        }
+    }
+
+    /** Removes every clone body and its presentation state; returns how many were stopped. */
+    private int clearEchoClones() {
+        int removed = 0;
+        for (UUID carrierId : new java.util.ArrayList<>(echoCloneSessions.keySet())) {
+            unregisterOwnedEntity(carrierId, "echo-clone-stop");
+            echoClonePresentationStates.remove(carrierId);
+            echoCloneReplicas.remove(carrierId);
+            var session = echoCloneSessions.remove(carrierId);
+            if (session != null) {
+                session.deactivate();
+                removed++;
+            }
+        }
+        echoCloneEpoch = 0L;
+        return removed;
+    }
+
+    /**
+     * Drives one clone per tick: pose, supplies and native action choice.
+     *
+     * <p>Deliberately the same shape as an official duel tick, minus everything
+     * that only a wave owns (chamber, region, persistence, rewards).</p>
+     */
+    private void tickEchoClones() {
+        if (echoCloneSessions.isEmpty()) return;
+        for (UUID carrierId : new java.util.ArrayList<>(echoCloneSessions.keySet())) {
+            var session = echoCloneSessions.get(carrierId);
+            if (session == null) continue;
+            if (session.expired(eventTickCounter) || !mayRunEchoCloneTest()) {
+                unregisterOwnedEntity(carrierId, "echo-clone-expired");
+                echoClonePresentationStates.remove(carrierId);
+                echoCloneReplicas.remove(carrierId);
+                echoCloneSessions.remove(carrierId);
+                session.deactivate();
+                continue;
+            }
+            Player owner = Bukkit.getPlayer(session.ownerId());
+            Entity raw = Bukkit.getEntity(carrierId);
+            boolean alive = owner != null && owner.isOnline() && !owner.isDead()
+                    && raw instanceof Pillager && raw.isValid() && !raw.isDead()
+                    && raw.getWorld().equals(owner.getWorld());
+            if (!alive) {
+                unregisterOwnedEntity(carrierId, "echo-clone-owner-lost");
+                echoClonePresentationStates.remove(carrierId);
+                echoCloneReplicas.remove(carrierId);
+                echoCloneSessions.remove(carrierId);
+                session.deactivate();
+                continue;
+            }
+            tickOneEchoClone(session, owner, (Pillager) raw);
+        }
+    }
+
+    private void tickOneEchoClone(me.copimine.endevent.runtime.wave7.EchoCloneSession session,
+            Player owner, Pillager carrier) {
+        EchoPresentationProbeState view = echoClonePresentationStates.get(carrier.getUniqueId());
+        me.copimine.endevent.runtime.wave7.EchoReplicaInventory replica =
+                echoCloneReplicas.get(carrier.getUniqueId());
+        if (view == null || replica == null) return;
+        double distanceSquared = carrier.getLocation().distanceSquared(owner.getLocation());
+        if (!Double.isFinite(distanceSquared)) return;
+        // A clone must never be the reason the two players cannot see each other:
+        // it keeps distance like an official copy and stops at the same band.
+        boolean inMeleeRange = distanceSquared <= 4.0D;
+        EchoPresentationProbeState.Action pose;
+        if (inMeleeRange && carrier.hasLineOfSight(owner)) {
+            pose = EchoPresentationProbeState.Action.SWING;
+            carrier.swingMainHand();
+            owner.damage(me.copimine.endevent.domain.EchoScalingPolicy.copyDamage(
+                    Math.min(20.0D, Math.max(1.0D, carrier.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE) != null
+                            ? carrier.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).getValue() * 0.5D : 1.0D))),
+                    carrier);
+        } else if (distanceSquared > 9.0D) {
+            pose = EchoPresentationProbeState.Action.SPRINT;
+            if (eventTickCounter % 4L == 0L) carrier.getPathfinder().moveTo(owner.getLocation(), 1.05D);
+        } else {
+            pose = EchoPresentationProbeState.Action.IDLE;
+            carrier.getPathfinder().stopPathfinding();
+        }
+        if (view.action() != pose) view.begin(pose, eventTickCounter);
+        sendEchoCloneView(session, view, owner);
+    }
+
+    private void sendEchoCloneView(me.copimine.endevent.runtime.wave7.EchoCloneSession session,
+            EchoPresentationProbeState view, Player owner) {
+        if (session == null || view == null || owner == null || !owner.isOnline()) return;
+        EchoPresentationProbeState.Frame frame = view.nextFrame(eventTickCounter);
+        if (frame == null) return;
+        for (Player viewer : owner.getWorld().getPlayers()) {
+            if (!echoPresentationCapablePlayers.contains(viewer.getUniqueId())) continue;
+            if (viewer.getLocation().distanceSquared(owner.getLocation()) > 64.0D * 64.0D) continue;
+            sendClientPacket(viewer, "END_ECHO_STATE", frame.duel().toString(), 2_000L,
+                    frame.actor().toString(), "END_RIFT_ECHO_V1", 0, 0, 0,
+                    frame.fields(), frame.dimension());
+        }
+    }
+
     private void handleTestEchoPresentation(CommandSender sender, String[] args) {
         if (args.length > 2 && "limbo".equalsIgnoreCase(args[2])) {
             handleTestEchoLimbo(sender, args);
+            return;
+        }
+        if (args.length > 2 && "clone".equalsIgnoreCase(args[2])) {
+            handleTestEchoClone(sender, args);
             return;
         }
         if (config == null || !"local".equalsIgnoreCase(config.environment())) {
@@ -8743,6 +9060,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void tickEchoPresentationProbe() {
+        // Local clones are independent of the single official probe: they must
+        // keep ticking even when no official probe is running.
+        tickEchoClones();
         if (echoPresentationProbe == null) {
             tickEchoCombatSources(); return;
         }
@@ -31587,6 +31907,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         namedEchoPresentationStates.clear();
         namedEchoCombatListeners.clear();
         namedEchoReplicas.clear();
+        clearEchoClones();
         namedEchoCells.clear();
         namedEchoBridgeSessions.clear();
         // ECHO-002/ECHO-004: the realm split dies with the stage, and the limbo
@@ -32160,6 +32481,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         driveNamedEchoMovement(carrier, owner, core, cell, decision.get().intent());
+        driveNamedEchoGait(carrier, decision.get());
         sendNamedEchoView(carrier.getUniqueId(), "END_ECHO_STATE");
         return true;
     }
@@ -32346,6 +32668,50 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * tick with a short path re-issue window, not once per second, so the copy
      * reads as a player weaving rather than a mob sliding in a straight line.</p>
      */
+    /**
+     * Projects the copy's own movement into its presentation pose.
+     *
+     * <p>The copy has always moved, but the client only ever received
+     * IDLE/SWING/BOW/SHIELD, so a running Echo slid across the floor with frozen
+     * legs. Vanilla gait animation is driven by {@code walkAnimation}, which the
+     * client advances from the projected view's real horizontal speed — that
+     * only works if the pose says the body is actually walking.</p>
+     *
+     * <p>A copy that starts an item use keeps its use pose: eating, drawing a
+     * bow or blocking with a shield are handled by the action branch, and
+     * overwriting them mid-animation would cancel the visible use a player
+     * just saw start.</p>
+     */
+    private void driveNamedEchoGait(Pillager carrier,
+            EchoDuelCombatRuntimeAdapter.Decision decision) {
+        if (carrier == null || !carrier.isValid() || carrier.isDead() || decision == null) return;
+        EchoPresentationProbeState view = namedEchoPresentationStates.get(carrier.getUniqueId());
+        if (view == null) return;
+        EchoPresentationProbeState.Action current = view.action();
+        // Any pose that owns the hands or the whole body outranks a gait change.
+        if (current == EchoPresentationProbeState.Action.SWING
+                || current == EchoPresentationProbeState.Action.BOW
+                || current == EchoPresentationProbeState.Action.CROSSBOW
+                || current == EchoPresentationProbeState.Action.SHIELD
+                || current == EchoPresentationProbeState.Action.EAT
+                || current == EchoPresentationProbeState.Action.JUMP
+                || current == EchoPresentationProbeState.Action.HURT
+                || current == EchoPresentationProbeState.Action.DEATH) return;
+        if (decision.action() == EchoDuelCombatRuntimeAdapter.Action.MELEE
+                || decision.action() == EchoDuelCombatRuntimeAdapter.Action.CRITICAL
+                || decision.action() == EchoDuelCombatRuntimeAdapter.Action.RANGED
+                || decision.action() == EchoDuelCombatRuntimeAdapter.Action.CONSUMABLE
+                || decision.action() == EchoDuelCombatRuntimeAdapter.Action.SHIELD
+                || decision.action() == EchoDuelCombatRuntimeAdapter.Action.JUMP) return;
+        boolean moving = decision.intent() != EchoDuelCombatRuntimeAdapter.MovementIntent.HOLD;
+        boolean chasing = decision.intent() == EchoDuelCombatRuntimeAdapter.MovementIntent.APPROACH;
+        EchoPresentationProbeState.Action wanted = moving
+                ? (chasing ? EchoPresentationProbeState.Action.SPRINT : EchoPresentationProbeState.Action.WALK)
+                : EchoPresentationProbeState.Action.IDLE;
+        if (wanted == current) return;
+        view.begin(wanted, eventTickCounter);
+    }
+
     private void driveNamedEchoMovement(Pillager carrier, Player owner, Location core,
             me.copimine.endevent.domain.Wave7EchoDuelCellPolicy.Cell cell,
             EchoDuelCombatRuntimeAdapter.MovementIntent intent) {
@@ -32481,6 +32847,92 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /** Execute only the persisted owner-bound action with its pre-cost item projection. */
+    /**
+     * Plays the visible drink and applies the copy's own buff.
+     *
+     * <p>The buff is derived from the potion's own type, never from a fixed
+     * table, so a copy of a Swiftness drinker gets Swiftness and a copy of a
+     * Strength drinker gets Strength — that is what "behaves like a real
+     * player" means. Amplifier and duration come from the native potion type,
+     * so an upgraded brew cannot hand the copy a stronger edge than the owner
+     * had.</p>
+     */
+    private boolean executeNamedEchoPotionDrink(Player owner, Pillager carrier,
+            EchoDuelCombatRuntimeAdapter.Decision decision) {
+        int slot = decision.itemSlot();
+        if (slot < 0 || !carrier.isValid() || carrier.isDead()) return false;
+        me.copimine.endevent.runtime.wave7.EchoReplicaInventory replica = namedEchoReplicas.get(carrier.getUniqueId());
+        if (replica == null) return false;
+        // The bottle is already gone from the supplies; project the spent slot so
+        // the copy never visually holds a bottle it no longer has.
+        try {
+            replica.equip(carrier.getEquipment(), replica.state().selectedSlot(), 40);
+        } catch (RuntimeException equipmentProjectionFailure) {
+            getLogger().log(Level.WARNING, "Echo potion projection needs a tick repair", equipmentProjectionFailure);
+        }
+        try {
+            carrier.getWorld().playSound(carrier.getLocation(), Sound.ENTITY_GENERIC_DRINK, 0.6F, 1.0F);
+        } catch (RuntimeException ignoredSoundFailure) {
+            // Sound is cosmetic; the buff below is the accepted effect.
+        }
+        for (PotionEffect granted : namedEchoPotionEffects(decision.actionItem())) {
+            if (granted == null) continue;
+            // A copy must never grant itself an effect the modality forbids, such
+            // as instant health on an undead carrier — the carrier refuses it,
+            // which is exactly the behaviour a real undead body would show.
+            carrier.addPotionEffect(granted);
+        }
+        return true;
+    }
+
+    /**
+     * Reads the owner's potion type and mirrors its own effect onto the copy.
+     *
+     * <p>Only the base potion resolves here. A custom or unrecognised brew
+     * contributes nothing rather than inventing an effect, so a modded bottle
+     * cannot smuggle in a buff the duel never allowed.</p>
+     */
+    private java.util.List<PotionEffect> namedEchoPotionEffects(
+            me.copimine.endevent.domain.wave7.EchoLoadoutState.Item item) {
+        if (item == null || item.kind() != me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.POTION) {
+            return java.util.List.of();
+        }
+        PotionType type = namedEchoPotionType(item);
+        if (type == null) return java.util.List.of();
+        java.util.List<PotionEffect> effects = new java.util.ArrayList<>(2);
+        for (PotionEffect nativeEffect : type.getPotionEffects()) {
+            if (nativeEffect == null || nativeEffect.getType() == null) continue;
+            // Instant brews are not buffs: drinking one is a one-shot heal or a
+            // one-shot hit, and neither may be granted by this path at all.
+            if (type.isInstant()) continue;
+            // Bounded: the amplifier never exceeds the vanilla upgrade cap and the
+            // duration never outlasts the duel buff window by a refresh.
+            effects.add(new PotionEffect(nativeEffect.getType(),
+                    (int) Math.min(Integer.MAX_VALUE,
+                            me.copimine.endevent.domain.wave7.EchoDuelCombatPolicy.POTION_BUFF_TICKS),
+                    Math.min(MAX_POTION_AMPLIFIER, Math.max(0, nativeEffect.getAmplifier())),
+                    false, true, true));
+        }
+        return effects;
+    }
+
+    /**
+     * Resolves the potion type of a copied bottle.
+     *
+     * <p>The replica stores the material name only, so the type is recovered
+     * from the copy's own carried evidence: a bottle whose descriptor named a
+     * known potion keeps that name, otherwise the plain base brew is used. An
+     * unnamed bottle resolves to nothing, which fails closed.</p>
+     */
+    private PotionType namedEchoPotionType(me.copimine.endevent.domain.wave7.EchoLoadoutState.Item item) {
+        String name = item.name() == null ? "" : item.name().trim().toUpperCase(Locale.ROOT);
+        if (name.isEmpty()) return null;
+        for (PotionType candidate : PotionType.values()) {
+            if (candidate.name().equals(name)) return candidate;
+        }
+        return null;
+    }
+
     private boolean executeNamedEchoCombatAction(World world, Player owner, Pillager carrier,
             me.copimine.endevent.runtime.wave7.EchoReplicaInventory replica,
             EchoDuelCombatRuntimeAdapter.Decision decision) {
@@ -32569,6 +33021,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
             }
             case CONSUMABLE -> {
+                if (decision.actionItem().kind()
+                        == me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.POTION) {
+                    // Drinking is an animation, not a heal: food carries the
+                    // health transition, a buff bottle carries its effect. The
+                    // bottle was already spent by the policy, so the only thing
+                    // left native is the visible drink and the buff itself.
+                    if (owner.isDead() || carrier.isDead() || !carrier.isValid()) return false;
+                    return executeNamedEchoPotionDrink(owner, carrier, decision);
+                }
                 double expectedHealth = decision.nextDuel().actor().currentHealth();
                 if (!Double.isFinite(expectedHealth) || expectedHealth <= carrier.getHealth()
                         || expectedHealth > carrier.getMaxHealth()) return false;
@@ -32672,6 +33133,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (profile == null || !profile.entityType().equals(actor.getType().name())) return false;
         if (trial.trial() == RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN
                 && eventTickCounter % 12L == 0L) moveNamedTrialMarksman(actor, trial.chamber());
+        // Pair symbiosis: a partner is never allowed to be in the other's line of
+        // fire, and the two never start a cast on the same tick. When the pair is
+        // charged and both are free they fire one joint crossfire instead.
+        if (trial.trial() == RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN) {
+            if (!maintainNamedMarksmanPair(actor, trial.chamber())) return false;
+        }
         // MARK-007: the one support actor, triggered once around 50% HP. It uses
         // shared Giant AI, shields nothing and grants no reward.
         if (trial.trial() == RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN) {
@@ -32693,6 +33160,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             if (checkpoint.attack() == Wave7NamedTrialActorPolicy.Attack.MARKSMAN_SUPPORT) {
                 return finishNamedTrialAttack(actor, checkpoint, now);
+            }
+            if (checkpoint.attack() == Wave7NamedTrialActorPolicy.Attack.MARKSMAN_PAIRED_CROSSFIRE) {
+                // The joint attack is resolved once, by the LEFT member, so the
+                // two halves of the cross cannot double-fire a single charge.
+                if (!isPairedCrossfireLeader(actor, trial.chamber())) {
+                    return finishNamedTrialAttack(actor, checkpoint, now);
+                }
+                return fireNamedMarksmanPairedCrossfire(actor, target, checkpoint, now, trial.chamber());
             }
             if (target == null || !isCurrentRealitySplitTrialTarget(actor, target)) {
                 return finishNamedTrialAttack(actor, checkpoint, now);
@@ -32738,6 +33213,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     .orElse(null);
         }
         if (target == null) return true;
+
+        // The joint crossfire outranks any solo shot: check the pair before the
+        // rotation so the strongest move wins when it is available.
+        if (trial.trial() == RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN
+                && pairedCrossfireReady(actor, target, trial.chamber())) {
+            if (!isPairedCrossfireLeader(actor, trial.chamber())) {
+                // The follower waits in its lane; only the leader commits the pair.
+                return true;
+            }
+            long jointDeadline = now + Wave7NamedTrialActorPolicy.telegraphTicks(
+                    Wave7NamedTrialActorPolicy.Attack.MARKSMAN_PAIRED_CROSSFIRE) * 50L;
+            if (!writeNamedTrialActorCheckpoint(actor, new Wave7NamedTrialActorPolicy.Checkpoint(
+                    checkpoint.eventId(), checkpoint.generation(), checkpoint.chamber(), checkpoint.trial(),
+                    checkpoint.actorId(), checkpoint.attackIndex() + 1L,
+                    Wave7NamedTrialActorPolicy.Attack.MARKSMAN_PAIRED_CROSSFIRE, jointDeadline,
+                    checkpoint.cooldownUntilMillis(), target.getUniqueId(), checkpoint.supportUsed(),
+                    checkpoint.vanishUntilMillis()))) return false;
+            renderNamedTrialTelegraph(actor, target,
+                    Wave7NamedTrialActorPolicy.Attack.MARKSMAN_PAIRED_CROSSFIRE, true);
+            return true;
+        }
 
         Wave7NamedTrialActorPolicy.Attack attack;
         boolean supportUsed = checkpoint.supportUsed();
@@ -32844,6 +33340,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 : (now - lastSummon) / 50L;
         int cap = Wave7ArchmageVexPolicy.cap(wave7FrozenRosterSize());
         List<LivingEntity> live = liveWave7ArchmageVexes(archmage, now);
+        // The swarm spell outranks summoning: an Archmage with a ready swarm
+        // spends its minions instead of adding more. Checked here so the
+        // cadence timer is untouched while the spell is charging.
+        if (tickWave7ArchmageSwarm(archmage, chamber, now, live)) return;
         int wanted = Wave7ArchmageVexPolicy.summonCount(cap, live.size(), sinceTicks);
         if (wanted <= 0) return;
         for (int index = 0; index < wanted; index++) {
@@ -32851,6 +33351,143 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         archmage.getPersistentDataContainer().set(keyWave7ArchmageVexLastSummon,
                 PersistentDataType.LONG, now);
+    }
+
+    /**
+     * The Archmage's swarm spell: it detonates its own Vexes on the party.
+     *
+     * <p>One spell, one decision for the party: every live Vex flies to its
+     * nearest target, bursts for a bounded amount of damage, and heals the
+     * Archmage per Vex spent. Ignoring the minions now costs real health in
+     * both directions; clearing them denies both the burst and the healing.
+     * The cast has a telegraph, a cooldown, an explicit radius and hard per-cast
+     * caps, so it can never one-shot a group or reset the encounter.</p>
+     *
+     * @return true when this tick was consumed by the swarm cycle
+     */
+    private boolean tickWave7ArchmageSwarm(LivingEntity archmage, int chamber, long now,
+                                          List<LivingEntity> live) {
+        long lastSwarm = archmage.getPersistentDataContainer().getOrDefault(
+                keyWave7ArchmageSwarmAt, PersistentDataType.LONG, 0L);
+        long sinceTicks = lastSwarm <= 0L ? -1L : (now - lastSwarm) / 50L;
+        Player target = realitySplitTrialTarget(archmage, chamber, null, 0L);
+        if (target == null) return false;
+        boolean ready = Wave7ArchmageVexPolicy.swarmReady(live.size(), sinceTicks,
+                !archmage.isDead(), false);
+        // A pending telegraph is stored as the absolute deadline; while it is in
+        // the future the actor holds still and the party sees the swarm forming.
+        long pending = archmage.getPersistentDataContainer().getOrDefault(
+                keyWave7ArchmageSwarmDeadline, PersistentDataType.LONG, 0L);
+        if (pending > now) {
+            spawnWave7SwarmTelegraph(archmage, live);
+            return true;
+        }
+        if (pending > 0L) {
+            resolveWave7ArchmageSwarm(archmage, target, live, chamber);
+            archmage.getPersistentDataContainer().set(keyWave7ArchmageSwarmAt,
+                    PersistentDataType.LONG, now);
+            archmage.getPersistentDataContainer().set(keyWave7ArchmageSwarmDeadline,
+                    PersistentDataType.LONG, 0L);
+            return true;
+        }
+        if (!ready) return false;
+        if (archmage.getLocation().distanceSquared(target.getLocation())
+                > Wave7ArchmageVexPolicy.SWARM_RADIUS_BLOCKS * Wave7ArchmageVexPolicy.SWARM_RADIUS_BLOCKS) {
+            return false;
+        }
+        archmage.getPersistentDataContainer().set(keyWave7ArchmageSwarmDeadline,
+                PersistentDataType.LONG,
+                now + Wave7ArchmageVexPolicy.SWARM_TELEGRAPH_TICKS * 50L);
+        spawnWave7SwarmTelegraph(archmage, live);
+        return true;
+    }
+
+    /** The tell: every owned Vex is pulled into a ring around the Archmage. */
+    private void spawnWave7SwarmTelegraph(LivingEntity archmage, List<LivingEntity> live) {
+        if (archmage == null || archmage.getWorld() == null) return;
+        Location center = archmage.getLocation().clone().add(0.0D, 1.6D, 0.0D);
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, center)) continue;
+            viewer.spawnParticle(Particle.WITCH, center, 18, 2.4D, 1.6D, 2.4D, 0.02D);
+            viewer.spawnParticle(Particle.CRIT, center, 10, 1.8D, 1.2D, 1.8D, 0.05D);
+        }
+        for (LivingEntity vex : live) {
+            if (vex == null || vex.isDead()) continue;
+            Vector pull = archmage.getLocation().toVector().subtract(vex.getLocation().toVector());
+            if (pull.lengthSquared() < 0.01D) continue;
+            vex.setVelocity(pull.normalize().multiply(0.32D));
+        }
+        archmage.getWorld().playSound(archmage.getLocation(), Sound.ENTITY_EVOKER_PREPARE_SUMMON,
+                1.0F, 0.7F);
+    }
+
+    /**
+     * Detonates the swarm.
+     *
+     * <p>Each Vex hits the nearest admitted participant within its own reach,
+     * then dies. Damage and healing are computed from the number actually spent,
+     * never from the number requested, so a party that killed the swarm early
+     * gets exactly the weaker burst it earned.</p>
+     */
+    private void resolveWave7ArchmageSwarm(LivingEntity archmage, Player fallbackTarget,
+                                           List<LivingEntity> live, int chamber) {
+        int cap = Wave7ArchmageVexPolicy.cap(wave7FrozenRosterSize());
+        int spent = Wave7ArchmageVexPolicy.swarmVexSpent(live.size(), Math.max(cap, live.size()));
+        if (spent <= 0) return;
+        int detonated = 0;
+        for (LivingEntity vex : live) {
+            if (vex == null || vex.isDead() || !vex.isValid()) continue;
+            Player victim = closestParticipantTo(vex, chamber);
+            if (victim == null) victim = fallbackTarget;
+            Location burst = vex.getLocation().clone().add(0.0D, 0.8D, 0.0D);
+            for (Player viewer : eventAudience()) {
+                if (!isEventParticleViewer(viewer, burst)) continue;
+                viewer.spawnParticle(Particle.SOUL_FIRE_FLAME, burst, 12, 0.35D, 0.35D, 0.35D, 0.03D);
+            }
+            if (victim != null && isCurrentRealitySplitTrialTarget(archmage, victim)
+                    && vex.getLocation().distanceSquared(victim.getLocation()) <= 64.0D) {
+                victim.damage(Wave7ArchmageVexPolicy.SWARM_DAMAGE_PER_VEX, archmage);
+            }
+            vex.getWorld().playSound(burst, Sound.ENTITY_VEX_HURT, 0.9F, 1.4F);
+            vex.remove();
+            detonated++;
+        }
+        if (detonated == 0) return;
+        double heal = Wave7ArchmageVexPolicy.swarmHeal(detonated, archmage.getHealth(),
+                archmage.getMaxHealth());
+        if (heal > 0.0D) {
+            archmage.setHealth(Math.min(archmage.getMaxHealth(), archmage.getHealth() + heal));
+            for (Player viewer : eventAudience()) {
+                if (!isEventParticleViewer(viewer, archmage.getLocation())) continue;
+                viewer.spawnParticle(Particle.HEART, archmage.getLocation().clone()
+                        .add(0.0D, 2.2D, 0.0D), 4, 0.35D, 0.25D, 0.35D, 0.0D);
+            }
+        }
+        archmage.getWorld().playSound(archmage.getLocation(), Sound.ENTITY_EVOKER_CAST_SPELL,
+                1.0F, 1.3F);
+    }
+
+    /**
+     * Nearest admitted participant to a Vex, ignoring owners who already left.
+     *
+     * <p>The chamber comes from the caller rather than being guessed from the
+     * Vex: a swarm child carries no trial state of its own, and inferring it
+     * would let a stray Vex target players outside the trial.</p>
+     */
+    private Player closestParticipantTo(LivingEntity source, int chamber) {
+        if (source == null || source.getWorld() == null || chamber < 0) return null;
+        Player best = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (Player player : source.getWorld().getPlayers()) {
+            if (player.isDead() || !player.isOnline()) continue;
+            if (!isRealitySplitTrialParticipant(player, chamber)) continue;
+            double distance = player.getLocation().distanceSquared(source.getLocation());
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = player;
+            }
+        }
+        return best;
     }
 
     /** Live Vexes owned by this Archmage, expiring any that outlived their lifetime. */
@@ -32989,6 +33626,162 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 checkpoint.actorId(), checkpoint.attackIndex(), checkpoint.attack(),
                 checkpoint.phaseDeadlineMillis(), checkpoint.cooldownUntilMillis(), null,
                 checkpoint.supportUsed(), hiddenUntil);
+    }
+
+    /**
+     * Finds and remembers the other Marksman of one trial.
+     *
+     * <p>The pair is rebuilt from the live world every tick rather than from a
+     * saved id: a restart recreates both skeletons, and a stale id would either
+     * point at nothing or, worse, at a different trial's actor.</p>
+     */
+    private UUID namedMarksmanPartnerId(LivingEntity actor, int chamber) {
+        if (actor == null) return null;
+        UUID cached = wave7MarksmanPartners.get(actor.getUniqueId());
+        if (cached != null) {
+            Entity partner = Bukkit.getEntity(cached);
+            if (partner instanceof LivingEntity living && partner.isValid() && !partner.isDead()
+                    && living.getType() == EntityType.SKELETON
+                    && isNamedRealitySplitActor(living)) return cached;
+        }
+        for (UUID candidate : new java.util.ArrayList<>(realitySplitTrialEntityUuids)) {
+            Entity other = Bukkit.getEntity(candidate);
+            if (!(other instanceof LivingEntity living) || other.getUniqueId().equals(actor.getUniqueId())
+                    || !other.isValid() || other.isDead()
+                    || living.getType() != EntityType.SKELETON
+                    || !isNamedRealitySplitActor(living)) continue;
+            RealitySplitTrialController.NamedTrialState otherTrial =
+                    realitySplitTrialController.namedTrial(chamber);
+            if (otherTrial == null
+                    || otherTrial.trial() != RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN) continue;
+            wave7MarksmanPartners.put(actor.getUniqueId(), candidate);
+            wave7MarksmanPartners.put(candidate, actor.getUniqueId());
+            return candidate;
+        }
+        return null;
+    }
+
+    /** Key of one pair's joint cooldown, stable regardless of which member is checked first. */
+    private String pairedCrossfireKey(UUID first, UUID second) {
+        return first.compareTo(second) <= 0 ? first + "|" + second : second + "|" + first;
+    }
+
+    /**
+     * The leader of a pair owns the joint attack.
+     *
+     * <p>Deterministic from the two ids, so the two halves never both believe
+     * they are in charge and fire the cross twice from one charge.</p>
+     */
+    private boolean isPairedCrossfireLeader(LivingEntity actor, int chamber) {
+        UUID partnerId = namedMarksmanPartnerId(actor, chamber);
+        if (partnerId == null) return false;
+        return actor.getUniqueId().compareTo(partnerId) <= 0;
+    }
+
+    /**
+     * Keeps the partners in their lanes and stops them casting on the same tick.
+     *
+     * <p>Returns false only on a genuine bookkeeping failure.</p>
+     */
+    private boolean maintainNamedMarksmanPair(LivingEntity actor, int chamber) {
+        UUID partnerId = namedMarksmanPartnerId(actor, chamber);
+        if (partnerId == null) return true;
+        Entity rawPartner = Bukkit.getEntity(partnerId);
+        if (!(rawPartner instanceof LivingEntity partner) || partner.isDead()) return true;
+        Player target = closestRealitySplitTrialParticipant(actor);
+        if (target == null) return true;
+        Wave7SkeletonPairPolicy.Flank flank =
+                Wave7SkeletonPairPolicy.flankOf(actor.getUniqueId());
+        double offset = Wave7SkeletonPairPolicy.laneOffsetBlocks(flank);
+        Vector toward = horizontalDirection(actor.getLocation(), target.getLocation());
+        Vector lane = new Vector(-toward.getZ(), 0.0D, toward.getX()).multiply(offset);
+        Location desired = target.getLocation().clone().add(lane);
+        Location projected = actor.getLocation().clone();
+        Vector delta = desired.toVector().subtract(projected.toVector()).setY(0.0D);
+        if (delta.lengthSquared() > 1.0D) {
+            Vector step = delta.normalize().multiply(0.18D).setY(0.10D);
+            actor.setVelocity(step);
+        }
+        // Separation guard: if the partner drifted into this actor's lane, this
+        // actor steps out rather than both standing on the same spot.
+        double separation = actor.getLocation().distanceSquared(partner.getLocation());
+        if (separation < 4.0D) {
+            Vector push = horizontalDirection(partner.getLocation(), actor.getLocation());
+            if (push.lengthSquared() < 1.0E-4D) push = toward.clone().multiply(-1.0D);
+            actor.setVelocity(push.normalize().multiply(0.22D).setY(0.08D));
+        }
+        return true;
+    }
+
+    /** Whether this pair may commit its joint crossfire right now. */
+    private boolean pairedCrossfireReady(LivingEntity actor, Player target, int chamber) {
+        UUID partnerId = namedMarksmanPartnerId(actor, chamber);
+        if (partnerId == null || target == null) return false;
+        Entity rawPartner = Bukkit.getEntity(partnerId);
+        if (!(rawPartner instanceof LivingEntity partner) || partner.isDead()) return false;
+        RealitySplitTrialController.NamedTrialState trial = realitySplitTrialController.namedTrial(chamber);
+        if (trial == null) return false;
+        Wave7NamedTrialActorPolicy.Checkpoint mine = readNamedTrialActorCheckpoint(actor, trial);
+        Wave7NamedTrialActorPolicy.Checkpoint theirs = readNamedTrialActorCheckpoint(partner, trial);
+        if (mine == null || theirs == null) return false;
+        long now = System.currentTimeMillis();
+        Wave7SkeletonPairPolicy.Member first = new Wave7SkeletonPairPolicy.Member(actor.getUniqueId(),
+                Wave7SkeletonPairPolicy.flankOf(actor.getUniqueId()),
+                actor.getLocation().distanceSquared(target.getLocation()),
+                hasNamedTrialLineOfSight(actor.getEyeLocation(), target.getEyeLocation()),
+                mine.attack() != Wave7NamedTrialActorPolicy.Attack.NONE, mine.hiddenNow(now), 0L);
+        Wave7SkeletonPairPolicy.Member second = new Wave7SkeletonPairPolicy.Member(partner.getUniqueId(),
+                Wave7SkeletonPairPolicy.flankOf(partner.getUniqueId()),
+                partner.getLocation().distanceSquared(target.getLocation()),
+                hasNamedTrialLineOfSight(partner.getEyeLocation(), target.getEyeLocation()),
+                theirs.attack() != Wave7NamedTrialActorPolicy.Attack.NONE, theirs.hiddenNow(now), 0L);
+        long last = wave7PairedCrossfireTicks.getOrDefault(
+                pairedCrossfireKey(actor.getUniqueId(), partnerId), -1L);
+        return Wave7SkeletonPairPolicy.jointReadiness(first, second, eventTickCounter, last).ready();
+    }
+
+    /**
+     * Fires the pair's joint attack: one narrow cross from both wings.
+     *
+     * <p>Each member looses its own fan angled outward by
+     * {@link Wave7SkeletonPairPolicy#crossfireOffsetDegrees}, so the two lines
+     * cross in front of the target. A player standing between the beams takes
+     * both; a player who committed to one side takes one. That is the whole
+     * point: the pair is stronger together than apart, but never unavoidable.</p>
+     */
+    private boolean fireNamedMarksmanPairedCrossfire(LivingEntity actor, Player target,
+            Wave7NamedTrialActorPolicy.Checkpoint checkpoint, long now, int chamber) {
+        if (target == null || !isCurrentRealitySplitTrialTarget(actor, target)) {
+            return finishNamedTrialAttack(actor, checkpoint, now);
+        }
+        UUID partnerId = namedMarksmanPartnerId(actor, chamber);
+        if (partnerId == null) return finishNamedTrialAttack(actor, checkpoint, now);
+        Entity rawPartner = Bukkit.getEntity(partnerId);
+        if (!(rawPartner instanceof LivingEntity partner) || partner.isDead()) {
+            return finishNamedTrialAttack(actor, checkpoint, now);
+        }
+        boolean fired = launchPairedCrossfireVolley(actor, target,
+                Wave7SkeletonPairPolicy.flankOf(actor.getUniqueId()));
+        boolean partnerFired = launchPairedCrossfireVolley(partner, target,
+                Wave7SkeletonPairPolicy.flankOf(partner.getUniqueId()));
+        // Even a half-fired cross keeps the pair's cooldown: the charge is spent.
+        wave7PairedCrossfireTicks.put(pairedCrossfireKey(actor.getUniqueId(), partnerId), eventTickCounter);
+        if (!fired && !partnerFired) return finishNamedTrialAttack(actor, checkpoint, now);
+        // The partner's own receipt is cleared too, so both leave the tell state.
+        RealitySplitTrialController.NamedTrialState trial = realitySplitTrialController.namedTrial(chamber);
+        if (trial != null) {
+            Wave7NamedTrialActorPolicy.Checkpoint theirs = readNamedTrialActorCheckpoint(partner, trial);
+            if (theirs != null) {
+                writeNamedTrialActorCheckpoint(partner, new Wave7NamedTrialActorPolicy.Checkpoint(
+                        theirs.eventId(), theirs.generation(), theirs.chamber(), theirs.trial(),
+                        theirs.actorId(), theirs.attackIndex(),
+                        Wave7NamedTrialActorPolicy.Attack.NONE, 0L,
+                        now + Wave7NamedTrialActorPolicy.cooldownTicks(
+                                Wave7NamedTrialActorPolicy.Attack.MARKSMAN_PAIRED_CROSSFIRE) * 50L,
+                        null, theirs.supportUsed(), theirs.vanishUntilMillis()));
+            }
+        }
+        return finishNamedTrialAttack(actor, checkpoint, now);
     }
 
     private void moveNamedTrialMarksman(LivingEntity actor, int chamber) {
@@ -33135,6 +33928,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 yield true;
             }
             case MARKSMAN_SUPPORT, NONE, NONE_INTERNAL -> false;
+            // Resolved by the pair's leader only, through
+            // fireNamedMarksmanPairedCrossfire; a single actor never looses it.
+            case MARKSMAN_PAIRED_CROSSFIRE -> false;
         };
         // Authored signature for every cast, fired only after the cast really
         // started, so a refused line of sight stays visually silent. The fang
@@ -33194,6 +33990,31 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * player who dies, leaves the chamber or loses LOS mid-burst is not shot
      * by the remaining fans.</p>
      */
+    /**
+     * One wing of the pair's joint crossfire.
+     *
+     * <p>Each wing fires a compressed fan tilted onto its side of the target
+     * line. The tilt is what makes the two wings cross in front of the player
+     * instead of running parallel, and it is what a player reads to pick which
+     * side to escape.</p>
+     */
+    private boolean launchPairedCrossfireVolley(LivingEntity actor, Player target,
+            Wave7SkeletonPairPolicy.Flank flank) {
+        if (actor == null || target == null || flank == null) return false;
+        double base = Wave7SkeletonPairPolicy.crossfireOffsetDegrees(flank);
+        boolean anySpawned = false;
+        for (double angleDegrees : Wave7NamedTrialActorPolicy.fanAngles()) {
+            // The solo fan spread is narrow and symmetric; the crossfire needs a
+            // tight wing, so the fan offset is scaled down and pushed to the side.
+            double wingAngle = base + angleDegrees * 0.5D;
+            if (!launchNamedTrialArrow(actor, target,
+                    Wave7NamedTrialActorPolicy.Attack.MARKSMAN_PAIRED_CROSSFIRE, 1.55F,
+                    (float) Math.toRadians(wingAngle), false, false)) continue;
+            anySpawned = true;
+        }
+        return anySpawned;
+    }
+
     private boolean launchMarksmanFan(LivingEntity actor, Player target,
             Wave7NamedTrialActorPolicy.Attack attack, int fanNumber) {
         if (actor == null || target == null) return false;
@@ -51962,11 +52783,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return List.of("capture", "combat");
         }
         if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "echo".equalsIgnoreCase(args[1])) {
-            return List.of("start", "loadout", "stop", "limbo");
+            return List.of("start", "loadout", "stop", "limbo", "clone");
         }
         if (args.length == 4 && "test".equalsIgnoreCase(args[0])
                 && "echo".equalsIgnoreCase(args[1]) && "limbo".equalsIgnoreCase(args[2])) {
             return List.of("on", "off", "auto", "status");
+        }
+        if (args.length == 4 && "test".equalsIgnoreCase(args[0])
+                && "echo".equalsIgnoreCase(args[1]) && "clone".equalsIgnoreCase(args[2])) {
+            return List.of("me", "both", "list", "stop", "limbo");
+        }
+        if (args.length == 5 && "test".equalsIgnoreCase(args[0])
+                && "echo".equalsIgnoreCase(args[1]) && "clone".equalsIgnoreCase(args[2])
+                && "limbo".equalsIgnoreCase(args[3])) {
+            return List.of("on", "off", "auto");
         }
         if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "scene".equalsIgnoreCase(args[1])) {
             return List.of("clear");

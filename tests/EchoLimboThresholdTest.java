@@ -6,13 +6,14 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-/** Proves the Echo split cuts at ten by default and at any size when forced. */
+/** Proves the Echo split cuts at fifteen by default and at any size when forced. */
 public final class EchoLimboThresholdTest {
     private static int failures;
 
     public static void main(String[] args) {
-        theSpecThresholdIsTen();
-        fromTenThePartyIsCutInHalf();
+        theSpecThresholdIsFifteen();
+        fromFifteenThePartyIsCutInHalf();
+        tenToFourteenPlayersStayInOneArena();
         theForcedThresholdCutsASmallParty();
         aOnePlayerSecondHalfIsRefused();
         theSplitIsStableForTheSameRoster();
@@ -22,14 +23,32 @@ public final class EchoLimboThresholdTest {
         if (failures > 0) System.exit(1);
     }
 
-    private static void theSpecThresholdIsTen() {
-        check("spec threshold is ten", EchoRealmAssignmentPolicy.LIMBO_THRESHOLD == 10);
-        check("nine players stay together",
-                !EchoRealmAssignmentPolicy.assign(roster(9)).limboUsed());
+    /**
+     * SUPERSEDED 2026-11-03 (user request): the split started at ten players.
+     * The user asked for fifteen, because ten to fourteen still reads as one
+     * fight and halving it only produced two half-empty arenas.
+     */
+    private static void theSpecThresholdIsFifteen() {
+        check("spec threshold is fifteen", EchoRealmAssignmentPolicy.LIMBO_THRESHOLD == 15);
+        check("fourteen players stay together",
+                !EchoRealmAssignmentPolicy.assign(roster(14)).limboUsed());
     }
 
-    private static void fromTenThePartyIsCutInHalf() {
-        for (int size : new int[]{10, 11, 20}) {
+    /**
+     * The band the user explicitly named: ten, eleven and fourteen are the
+     * sizes that used to split and must now fight as a single party.
+     */
+    private static void tenToFourteenPlayersStayInOneArena() {
+        for (int size = 10; size <= 14; size++) {
+            var split = EchoRealmAssignmentPolicy.assign(roster(size));
+            check("party " + size + " stays in one arena", !split.limboUsed());
+            check("party " + size + " is all ordinary",
+                    split.count(EchoRealmAssignmentPolicy.Realm.LIMBO) == 0);
+        }
+    }
+
+    private static void fromFifteenThePartyIsCutInHalf() {
+        for (int size : new int[]{15, 16, 20}) {
             var split = EchoRealmAssignmentPolicy.assign(roster(size));
             long ordinary = split.count(EchoRealmAssignmentPolicy.Realm.ORDINARY);
             long limbo = split.count(EchoRealmAssignmentPolicy.Realm.LIMBO);

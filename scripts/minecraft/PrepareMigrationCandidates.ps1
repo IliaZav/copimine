@@ -209,7 +209,13 @@ try {
         [long]$clientArtifactPin.size -le 0 -or -not (Test-Path -LiteralPath $clientJar -PathType Leaf) -or
         (Get-Item -LiteralPath $clientJar).Length -ne [long]$clientArtifactPin.size -or
         (Get-FileHash -LiteralPath $clientJar -Algorithm SHA512).Hash.ToLowerInvariant() -ne $clientArtifactPin.sha512) {
-        throw 'CopiMineClient build output differs from its pinned artifact digest and size'
+        # A bare throw leaves a runner with no idea WHICH side moved, and the pinned
+        # value is the one thing a reader needs to tell a stale pin from a broken build.
+        $observed = if (Test-Path -LiteralPath $clientJar -PathType Leaf) {
+            '{0} B / {1}' -f (Get-Item -LiteralPath $clientJar).Length, (Get-FileHash -LiteralPath $clientJar -Algorithm SHA512).Hash.ToLowerInvariant()
+        } else { 'missing' }
+        throw ('CopiMineClient build output differs from its pinned artifact digest and size: pinned ' +
+            (($clientArtifactPin.size, $clientArtifactPin.sha512) -join ' / ') + '; built ' + $observed)
     }
 } finally {
     $env:JAVA_HOME = $previousJava

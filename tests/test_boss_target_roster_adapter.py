@@ -13,11 +13,16 @@ def test_boss_pursuit_never_admits_a_late_nonparticipant(tmp_path):
     java.write_text(r'''
 import java.util.*;
 import me.copimine.endevent.domain.BossTargetPolicy;
+import me.copimine.endevent.domain.BossGroupAggroPolicy;
 public class BossTargetRosterProbe {
     static class Player {
         final UUID id;boolean admitted;
         Player(String id,boolean admitted){this.id=UUID.fromString(id);this.admitted=admitted;}
         UUID getUniqueId(){return id;}
+        // Group-aggro probes: an admitted party member is online, alive and hurt-costable.
+        boolean isOnline(){return true;}
+        boolean isDead(){return false;}
+        double getHealth(){return 20.0D;}
     }
     static class Mob {Object target;Object getTarget(){return target;}void setTarget(Object p){target=p;}UUID getUniqueId(){return new UUID(0,9);}}
     static class Bukkit {
@@ -28,6 +33,9 @@ public class BossTargetRosterProbe {
     final Config config=new Config();long bossTargetLockUntilMillis,nextBossTacticMillis;
     int bossTargetCursor,bossTacticCycle;final LinkedList<UUID> recentBossTargets=new LinkedList<>();
     final Set<UUID> combatHelpers=new HashSet<>();
+    // Group-aggro bookkeeping read by rotateBossTarget.
+    final java.util.Map<UUID,Long> bossRecentAttackers=new java.util.HashMap<>();
+    long bossLastRetaliationMillis,bossFocusSinceMillis;
     boolean isCombatTarget(Player p){return p!=null;}
     boolean isActiveBossParticipant(Player p){return p!=null&&p.admitted;}
     java.util.logging.Logger getLogger(){return java.util.logging.Logger.getAnonymousLogger();}

@@ -64,6 +64,7 @@ import me.copimine.endevent.domain.BossContactStrikePolicy;
 import me.copimine.endevent.domain.BossDamagePolicy;
 import me.copimine.endevent.domain.BossDefeatCinematicPolicy;
 import me.copimine.endevent.domain.BossFinalStrikePolicy;
+import me.copimine.endevent.domain.BossGroupAggroPolicy;
 import me.copimine.endevent.domain.BossHealthPolicy;
 import me.copimine.endevent.domain.BossHazardBudget;
 import me.copimine.endevent.domain.BossIntent;
@@ -1456,6 +1457,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private long transitionRuneDeadlineMillis;
     private int bossTargetCursor;
     private long bossTargetLockUntilMillis;
+    // Group-fight reactions: who last damaged the boss, when the boss last
+    // answered damage by switching focus, and when the current focus began.
+    private final Map<UUID, Long> bossRecentAttackers = new HashMap<>();
+    private long bossLastRetaliationMillis;
+    private long bossFocusSinceMillis;
     private int bossSpellCursor;
     private int waveTargetCursor;
     private UUID bossProgressEntity;
@@ -40320,18 +40326,88 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         long now = System.currentTimeMillis();
-        Player current = boss.getTarget() instanceof Player player && isActiveBossParticipant(player)
+        Object rawTarget = boss.getTarget();
+        Player current = rawTarget instanceof Player player && isActiveBossParticipant(player)
                 ? player : null;
-        BossTargetPolicy.TargetDecision decision = BossTargetPolicy.chooseTarget(
-                candidates.stream().map(Player::getUniqueId).toList(),
-                current == null ? null : current.getUniqueId(),
-                new ArrayList<>(recentBossTargets), now, bossTargetLockUntilMillis,
-                bossTargetCursor++, config.bossTargetLockSeconds() * 1000L);
+        // A running lock that already names a live member of the party is left
+        // strictly alone. The rotation routine runs on a timer far shorter than
+        // the authored lock (spec 3.1, 10-12 s); re-deriving the deadline here
+        // is exactly what silently truncated every focus.
+        if (current != null && now < bossTargetLockUntilMillis) {
+            return;
+        }
+        // Group aggro first: answer whoever is actually hitting the boss, and
+        // never leave one player holding focus for an entire phase.
+        List<BossGroupAggroPolicy.Candidate> aggroCandidates = new ArrayList<>();
+        for (Player candidate : candidates) {
+            long lastHit = bossRecentAttackers.getOrDefault(candidate.getUniqueId(), 0L);
+            aggroCandidates.add(new BossGroupAggroPolicy.Candidate(candidate.getUniqueId(),
+                    candidate.isOnline() && !candidate.isDead() && candidate.getHealth() > 0.0D,
+                    isActiveBossParticipant(candidate), lastHit));
+        }
+        // A zero focus stamp means the lock was never observed starting (first
+        // tick, or state restored from disk). Back-date it by one authored lock
+        // so the deadline stays exactly what the previous tick left behind.
+        long effectiveFocusSince = bossFocusSinceMillis > 0L ? bossFocusSinceMillis
+                : bossTargetLockUntilMillis - Math.max(1L, config.bossTargetLockSeconds() * 1000L);
+        BossGroupAggroPolicy.Outcome aggro = BossGroupAggroPolicy.evaluate(aggroCandidates,
+                current == null ? null : current.getUniqueId(), now,
+                bossLastRetaliationMillis, bossTargetLockUntilMillis, effectiveFocusSince);
+        if (aggro.decision() == BossGroupAggroPolicy.Decision.CLEAR) {
+            boss.setTarget(null);
+            bossTargetLockUntilMillis = 0L;
+            bossFocusSinceMillis = 0L;
+            return;
+        }
+        UUID chosen = aggro.target();
+        if (chosen == null && aggro.decision() == BossGroupAggroPolicy.Decision.HOLD
+                && current != null) {
+            chosen = current.getUniqueId();
+        }
+        BossTargetPolicy.TargetDecision decision;
+        if (aggro.decision() == BossGroupAggroPolicy.Decision.HOLD && chosen == null) {
+            // The policy holds a focus it cannot name (usually a restored or
+            // freshly assigned lock). Nothing to rotate: leave the boss's own
+            // target and deadline untouched instead of resetting them.
+            return;
+        }
+        if (aggro.decision() == BossGroupAggroPolicy.Decision.HOLD) {
+            // Holding must not refresh the lock: extending it every tick would
+            // let one player keep focus forever, which is the opposite of the
+            // group behaviour this policy exists for. An expired or missing
+            // deadline gets the authored lock installed once, here.
+            long authoredLock = Math.max(1L, config.bossTargetLockSeconds() * 1000L);
+            long held = bossTargetLockUntilMillis > now ? bossTargetLockUntilMillis
+                    : now + authoredLock;
+            decision = new BossTargetPolicy.TargetDecision(chosen, held);
+        } else if (chosen == null) {
+            decision = BossTargetPolicy.chooseTarget(
+                    candidates.stream().map(Player::getUniqueId).toList(),
+                    current == null ? null : current.getUniqueId(),
+                    new ArrayList<>(recentBossTargets), now, bossTargetLockUntilMillis,
+                    bossTargetCursor++, config.bossTargetLockSeconds() * 1000L);
+        } else {
+            decision = new BossTargetPolicy.TargetDecision(chosen,
+                    Math.max(aggro.newLockUntilMillis(), bossTargetLockUntilMillis));
+        }
+        if (aggro.decision() == BossGroupAggroPolicy.Decision.RETALIATE
+                || aggro.decision() == BossGroupAggroPolicy.Decision.SPREAD) {
+            bossLastRetaliationMillis = now;
+        }
         Player target = decision.target() == null ? null : Bukkit.getPlayer(decision.target());
         if (target == null || !isActiveBossParticipant(target)) {
             boss.setTarget(null);
             bossTargetLockUntilMillis = 0L;
             return;
+        }
+        // The focus stamp is the START of the authored lock, not the moment the
+        // routine happened to run. Stamping it with "now" on a held focus made
+        // the policy read a fresh lock as already expired on the very next tick.
+        if (decision.newLockUntilMillis() != bossTargetLockUntilMillis) {
+            bossFocusSinceMillis = now;
+        } else if (bossFocusSinceMillis <= 0L) {
+            bossFocusSinceMillis = Math.max(0L, decision.newLockUntilMillis()
+                    - Math.max(1L, config.bossTargetLockSeconds() * 1000L));
         }
         bossTargetLockUntilMillis = decision.newLockUntilMillis();
         boss.setTarget(target);
@@ -40699,6 +40775,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             event.setCancelled(true);
             return;
         }
+        // Record the hit so the boss can answer it. Without this the boss only
+        // ever rotated targets on its own timer and ignored a party member
+        // attacking from behind, which read as a boss that does not fight the
+        // group. Recording is presentation/AI only: it never changes damage.
+        rememberBossAttacker(damageOwner);
         if (phase != EventPhase.BOSS_ACTIVE) {
             event.setCancelled(true);
             applyBossHitFeedback(boss, source,
@@ -41319,6 +41400,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /** Admission is required before HP, phase, hit feedback or finisher credit changes. */
+    /** Remembers that {@code attacker} just damaged the boss, for group aggro. */
+    private void rememberBossAttacker(Player attacker) {
+        if (attacker == null) return;
+        long now = System.currentTimeMillis();
+        bossRecentAttackers.put(attacker.getUniqueId(), now);
+        // Keep the map to the frozen roster so a long fight cannot grow it.
+        if (bossRecentAttackers.size() > 32) {
+            bossRecentAttackers.entrySet().removeIf(entry ->
+                    now - entry.getValue() > BossGroupAggroPolicy.RETALIATION_COOLDOWN_MILLIS * 4L);
+        }
+    }
+
     private Player activeBossDamageOwner(EntityDamageEvent event, LivingEntity boss, Entity source) {
         if (boss == null || !boss.isValid() || boss.isDead() || !isCurrentBossCarrier(boss)
                 || event != null && event.isCancelled()) return null;

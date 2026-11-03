@@ -42285,6 +42285,42 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * animation commits. The chest strike resolves earlier, on the authored
      * release pose, and then travels as a swept probe until it reaches its range.
      */
+    /**
+     * Visible signature of a contact move landing on a player.
+     *
+     * <p>Both contact abilities previously resolved with no particle at all, so
+     * from the player's side a swipe was an unexplained health drop. The burst
+     * is anchored at the victim's chest and pushes outward from the boss, which
+     * is also the direction the knockback takes.</p>
+     */
+    private void renderBossContactImpact(LivingEntity boss, Player victim,
+                                         EndRiftAiPolicy.BossSpell spell) {
+        if (boss == null || victim == null || spell == null) return;
+        Location at = victim.getLocation().clone().add(0.0D, 1.0D, 0.0D);
+        boolean slam = spell == EndRiftAiPolicy.BossSpell.GROUND_SLAM;
+        Particle main = slam ? Particle.EXPLOSION : Particle.SWEEP_ATTACK;
+        Particle accent = slam ? Particle.BLOCK : Particle.CRIT;
+        spawnEventParticle(at, main, slam ? 4 : 2, slam ? 0.6D : 0.2D,
+                slam ? 0.4D : 0.2D, slam ? 0.6D : 0.2D, slam ? 0.12D : 0.0D);
+        spawnEventParticle(at, accent, slam ? 30 : 14, 0.7D, 0.5D, 0.7D, 0.15D);
+        if (slam) {
+            spawnEventParticle(boss.getLocation().clone().add(0.0D, 0.15D, 0.0D),
+                    Particle.BLOCK, 40, 3.0D, 0.15D, 3.0D, 0.35D);
+        }
+        victim.getWorld().playSound(at, slam ? Sound.ENTITY_GENERIC_EXPLODE
+                : Sound.ENTITY_PLAYER_ATTACK_SWEEP, 0.8F, slam ? 0.6F : 1.1F);
+    }
+
+    /** Visible follow-through for a contact move that hit nobody. */
+    private void renderBossContactMiss(LivingEntity boss, EndRiftAiPolicy.BossSpell spell) {
+        if (boss == null || spell == null) return;
+        boolean slam = spell == EndRiftAiPolicy.BossSpell.GROUND_SLAM;
+        Location at = boss.getLocation().clone().add(0.0D, slam ? 0.2D : 1.4D, 0.0D);
+        spawnEventParticle(at, slam ? Particle.POOF : Particle.SWEEP_ATTACK,
+                slam ? 12 : 3, slam ? 2.4D : 0.8D, slam ? 0.1D : 0.4D,
+                slam ? 2.4D : 0.8D, 0.05D);
+    }
+
     private void executeContactBossAbility(LivingEntity boss, Player target,
                                            EndRiftAiPolicy.BossSpell spell,
                                            long callbackGeneration) {
@@ -42323,7 +42359,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             push.setY(BossContactStrikePolicy.lift(spell));
             if (applyContactHit(player, boss, BossContactStrikePolicy.damage(spell), push)) {
                 hits++;
+                // A contact move used to resolve invisibly: the player took
+                // damage and a knockback with no visible cause. Mark the point
+                // of contact so the hit reads as the boss's swing landing.
+                renderBossContactImpact(boss, player, spell);
             }
+        }
+        if (hits == 0) {
+            // A whiffed swing must still be visible, otherwise the boss looks
+            // like it committed to nothing.
+            renderBossContactMiss(boss, spell);
         }
         if (generation != callbackGeneration || bossCastSequence != castSequence
                 || !Objects.equals(eventId, callbackEvent) || !isCurrentBossCarrier(boss)) return;

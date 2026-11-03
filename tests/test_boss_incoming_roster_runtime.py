@@ -19,6 +19,10 @@ def _compile_probe(source_path, out):
         "private boolean applyCurrentBossProjectileDamage(",
         "private BossHealthCommit commitCurrentBossHealth(",
         "private Player playerDamageOwner(",
+        # Added with group aggro: a damage event now records the attacker so the
+        # boss can answer it, so the probe needs the recorder alongside the
+        # admission path it exercises.
+        "private void rememberBossAttacker(",
     ]
     if "private Player activeBossDamageOwner(" in source:
         signatures.append("private Player activeBossDamageOwner(")
@@ -30,6 +34,8 @@ import java.util.*;
 import java.util.logging.*;
 import me.copimine.endevent.domain.*;
 public class BossIncomingRosterProbe {
+    // Group-aggro ledger read by rememberBossAttacker.
+    final Map<UUID,Long> bossRecentAttackers=new HashMap<>();
     enum EventPhase {BOSS_ACTIVE,BOSS_FINISH}
     static class World {}
     static final World WORLD=new World();

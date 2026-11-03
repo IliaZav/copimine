@@ -17,6 +17,11 @@ def boss_attack_probe(tmp_path_factory):
         "private static final class PendingPlayerDamageOutcome",
         "void onPendingPlayerDamageOutcome(EntityDamageEvent event)",
         "boolean applyContactHit(", "void voidBlast(",
+        # Added with the contact-move signature: a landing swipe/slam now draws a
+        # visible burst, and a whiff draws a follow-through, so the probe needs
+        # both renderers alongside the resolution it exercises.
+        "void renderBossContactImpact(",
+        "void renderBossContactMiss(",
         "void executeBossFinalStrikeImpact(",
         "void executeContactBossAbility(", "Vector contactFacing(",
         "void onRiftProjectileHit(", "void voidMark(",
@@ -40,7 +45,8 @@ public class BossAttackAdmissionProbe {
     static final int SLOWNESS_DEBUFF_TICKS=40, MINI_VOID_SNARE_DEBUFF_TICKS=40, MINI_ECHO_PULSE_DEBUFF_TICKS=40;
     static final double WAVE_MOB_DAMAGE_REDUCTION=0.75;
     enum PotionEffectType {SLOWNESS,WEAKNESS,BLINDNESS,WITHER}
-    enum Particle {REVERSE_PORTAL,END_ROD,PORTAL,DRAGON_BREATH,SWEEP_ATTACK,EXPLOSION,SOUL_FIRE_FLAME}
+    // BLOCK/CRIT/POOF added for the contact-move impact burst.
+    enum Particle {REVERSE_PORTAL,END_ROD,PORTAL,DRAGON_BREATH,SWEEP_ATTACK,EXPLOSION,SOUL_FIRE_FLAME,BLOCK,CRIT,POOF}
     enum FluidCollisionMode {NEVER}
     static class World {void playSound(Object... args){} void spawnParticle(Object... args){} boolean blocked;Object rayTraceBlocks(Location l,Vector v,double d,FluidCollisionMode f,boolean b){return blocked?new Object():null;}}
     static final World WORLD=new World();

@@ -14,7 +14,10 @@ def test_wave7_wall_gate_is_used_by_fangs_targets_and_step():
     fangs = extract(source, "boolean spawnNamedTrialFangs(LivingEntity actor, Player target,")
     damage = extract(source, "boolean namedTrialProjectileMayHit(Entity projectile, Player target)")
     resolve = extract(source, "boolean resolveNamedTrialAttack(LivingEntity actor, Player target,")
-    targets = extract(source, "Player closestRealitySplitTrialTarget(Entity source, int chamber)")
+    # SUPERSEDED: the closest-player picker was replaced by the party-sweeping
+    # realitySplitTrialTarget(...), which keeps the same line-of-sight gate as a
+    # hard filter before any fairness ordering is applied.
+    targets = extract(source, "Player realitySplitTrialTarget(Entity source, int chamber, UUID previousTarget,")
     step = extract(source, "boolean stepNamedTrialArchmage(LivingEntity actor, Player target, int chamber)")
     assert "hasNamedTrialLineOfSight(actor.getEyeLocation(), target.getEyeLocation())" in fangs
     assert "Attack.ARCHMAGE_FANGS.name()" in damage

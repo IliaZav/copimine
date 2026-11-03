@@ -121,7 +121,9 @@ public class Wave7WarningAudioProbe {
 
 def test_named_trial_audio_cue_is_tied_to_successful_cast_reservation():
     source = SOURCE.read_text(encoding="utf-8")
-    tick = extract_method(source, "private boolean tickNamedTrialActor(")
+    # SUPERSEDED: the method's parameter list wraps onto a second line, so the
+    # single-line signature stopped matching. Anchor on the name only.
+    tick = extract_method(source, "private boolean tickNamedTrialActor(LivingEntity actor,")
     assert "if (!writeNamedTrialActorCheckpoint(actor, started)) return false;" in tick
     assert "renderNamedTrialTelegraph(actor, target, attack, true);" in tick
     assert "renderNamedTrialTelegraph(actor, target, checkpoint.attack(), false);" in tick

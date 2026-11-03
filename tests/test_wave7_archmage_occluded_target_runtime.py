@@ -20,11 +20,14 @@ def occluded_archmage_probe(tmp_path_factory):
     out = tmp_path_factory.mktemp("wave7-archmage-occluded")
     source = SOURCE.read_text(encoding="utf-8")
     signatures = (
-        "private boolean tickNamedTrialActor(",
+        "private boolean tickNamedTrialActor(LivingEntity actor,",
         # Roster basis for miniboss scaling: the probe executes the real
         # production resolution path, which reads the frozen roster.
         "private int wave7FrozenRosterSize(",
-        "private Player closestRealitySplitTrialTarget(",
+        # SUPERSEDED: the closest-player picker was replaced by the
+        # party-sweeping realitySplitTrialTarget(...), which the probe must now
+        # execute to exercise real target selection.
+        "private Player realitySplitTrialTarget(",
         "private Player closestRealitySplitTrialParticipant(",
         "private List<Player> realitySplitTrialTargets(",
         "private boolean isCurrentRealitySplitTrialTarget(",
@@ -44,6 +47,7 @@ def occluded_archmage_probe(tmp_path_factory):
     code = r'''
 import java.util.*;
 import me.copimine.endevent.domain.*;
+import me.copimine.endevent.domain.Wave7TrialTargetPolicy;
 import me.copimine.endevent.runtime.*;
 import me.copimine.endevent.runtime.wave7.Wave7AdmissionRuntimeAdapter.Decision;
 
@@ -66,6 +70,8 @@ public class OccludedArchmageProbe {
     final me.copimine.endevent.runtime.EventCombatProfileService combatProfiles=
         new me.copimine.endevent.runtime.EventCombatProfileService();
     final Set<UUID> realitySplitTrialEntityUuids=new HashSet<>();
+    // Party-sweeping target selection reads this fairness ledger.
+    final Map<UUID,Long> realitySplitLastHitOrdinal=new HashMap<>();
     record NamespacedKey(Object owner,String name) {}
     final NamespacedKey keyChamberId=new NamespacedKey(this,"room"),keyTrialRole=new NamespacedKey(this,"role"),
         keyWave=new NamespacedKey(this,"wave"),keyGeneration=new NamespacedKey(this,"generation"),
@@ -250,6 +256,8 @@ public class OccludedArchmageProbe {
              # The service owns a durable ordered combat history (audit ECHO 10).
              str(BASE / "runtime/CombatSequence.java"),
              str(BASE / "domain/wave7/EchoBehaviorStrategy.java"),
+             # Party-sweeping target selection for Wave 7 minibosses.
+             str(BASE / "domain/Wave7TrialTargetPolicy.java"),
              str(fixture), str(probe)]
     compiled = subprocess.run(
         ["javac", "-encoding", "UTF-8", "-d", str(out), *files],

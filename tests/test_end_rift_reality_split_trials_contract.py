@@ -276,14 +276,17 @@ def test_disposable_local_wave_seven_uses_assigned_players_instead_of_stale_rewa
         "private List<Player> realitySplitTrialTargets",
         "private boolean isCurrentRealitySplitTrialTarget",
     )
+    # SUPERSEDED: the closest-player picker was replaced by the party-sweeping
+    # realitySplitTrialTarget(...). It still draws from the same roster filter,
+    # but orders candidates fairly instead of always taking the nearest player.
     directional = section(
         source,
         "private void applyRealitySplitDirectionalDamage",
-        "private Player closestRealitySplitTrialTarget",
+        "private Player realitySplitTrialTarget",
     )
     closest = section(
         source,
-        "private Player closestRealitySplitTrialTarget",
+        "private Player realitySplitTrialTarget",
         "private boolean isCurrentRealitySplitTrialTarget",
     )
 
@@ -293,7 +296,9 @@ def test_disposable_local_wave_seven_uses_assigned_players_instead_of_stale_rewa
     assert "Bukkit.getOnlinePlayers().stream()" in targets
     assert "isCurrentRealitySplitTrialTarget(source, player)" in targets
     assert "realitySplitTrialTargets(attacker)" in directional
-    assert "realitySplitTrialTargets(source).stream()" in closest
+    # SUPERSEDED: the picker now iterates the roster to gather candidates for
+    # Wave7TrialTargetPolicy instead of streaming straight into a min-distance.
+    assert "for (Player player : realitySplitTrialTargets(source))" in closest
     assert "activeBossParticipants()" not in directional + closest
 
 

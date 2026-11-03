@@ -65,6 +65,7 @@ import me.copimine.endevent.domain.BossDamagePolicy;
 import me.copimine.endevent.domain.BossDefeatCinematicPolicy;
 import me.copimine.endevent.domain.BossFinalStrikePolicy;
 import me.copimine.endevent.domain.BossGroupAggroPolicy;
+import me.copimine.endevent.domain.Wave7TrialTargetPolicy;
 import me.copimine.endevent.domain.BossHealthPolicy;
 import me.copimine.endevent.domain.BossHazardBudget;
 import me.copimine.endevent.domain.BossIntent;
@@ -1460,6 +1461,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     // Group-fight reactions: who last damaged the boss, when the boss last
     // answered damage by switching focus, and when the current focus began.
     private final Map<UUID, Long> bossRecentAttackers = new HashMap<>();
+    // Which attack ordinal last hit each player, so Wave 7 minibosses sweep the
+    // party instead of focusing whoever happens to stand closest.
+    private final Map<UUID, Long> realitySplitLastHitOrdinal = new HashMap<>();
     private long bossLastRetaliationMillis;
     private long bossFocusSinceMillis;
     private int bossSpellCursor;
@@ -32446,7 +32450,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         // A vanishing Marksman never fires from cover.
         if (!checkpoint.mayAttackNow(now)) return true;
-        target = closestRealitySplitTrialTarget(actor, trial.chamber());
+        target = realitySplitTrialTarget(actor, trial.chamber(), null,
+                eventTickCounter / 10L);
         boolean repositionForCover = target == null
                 && trial.trial() == RealitySplitTrialController.NamedTrial.RIFT_ARCHMAGE;
         if (repositionForCover) {
@@ -32535,7 +32540,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (defender instanceof Mob mob) {
             mob.setAware(true);
             mob.setAI(true);
-            Player target = closestRealitySplitTrialTarget(marksman, 0);
+            Player target = realitySplitTrialTarget(marksman, 0, null, eventTickCounter / 10L);
             if (target != null) mob.setTarget(target);
         }
         if (defender instanceof LivingEntity living) {
@@ -32625,7 +32630,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (vex instanceof Mob vexMob) {
                 vexMob.setAware(true);
                 vexMob.setAI(true);
-                Player target = closestRealitySplitTrialTarget(archmage, chamber);
+                Player target = realitySplitTrialTarget(archmage, chamber, null,
+                        eventTickCounter / 10L);
                 if (target != null) vexMob.setTarget(target);
                 if (vexMob.getEquipment() != null) {
                     vexMob.getEquipment().setItemInMainHand(
@@ -33116,7 +33122,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if (eventTickCounter < state.nextActionTick) return;
-        Player target = closestRealitySplitTrialTarget(warden, state.chamber);
+        Player target = realitySplitTrialTarget(warden, state.chamber, state.target,
+                state.attackCount);
         if (target == null) {
             state.nextActionTick = eventTickCounter + 20L;
             return;
@@ -33171,7 +33178,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         long next = realitySplitTrialNextFireballTick.computeIfAbsent(
                 state.chamber, ignored -> eventTickCounter + 24L);
         if (eventTickCounter >= next) {
-            Player target = closestRealitySplitTrialTarget(eye, state.chamber);
+            Player target = realitySplitTrialTarget(eye, state.chamber, state.target,
+                state.attackCount);
             if (target != null) {
                 launchRealitySplitReflectionFireball(eye, target, state.chamber);
                 realitySplitTrialNextFireballTick.put(state.chamber,
@@ -33239,7 +33247,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if (eventTickCounter < state.nextActionTick) return;
-        Player target = closestRealitySplitTrialTarget(juggernaut, state.chamber);
+        Player target = realitySplitTrialTarget(juggernaut, state.chamber, state.target,
+                state.attackCount);
         if (target == null) {
             state.nextActionTick = eventTickCounter + 20L;
             return;
@@ -33302,7 +33311,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             return;
         }
-        Player target = closestRealitySplitTrialTarget(hunter, state.chamber);
+        Player target = realitySplitTrialTarget(hunter, state.chamber, state.target,
+                state.attackCount);
         if (target == null) {
             hunter.setVelocity(new Vector());
             state.nextActionTick = eventTickCounter + 20L;
@@ -33404,13 +33414,33 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 .orElse(null);
     }
 
-    private Player closestRealitySplitTrialTarget(Entity source, int chamber) {
+    /**
+     * Named-trial target that sweeps the party instead of camping the closest
+     * player for a whole trial. Sight is a hard filter: a miniboss never swings
+     * through a wall just because that player has waited longest.
+     *
+     * @param previousTarget the previous attack's target, may be null
+     * @param attackOrdinal  this actor's attack counter, used for fairness
+     */
+    private Player realitySplitTrialTarget(Entity source, int chamber, UUID previousTarget,
+                                           long attackOrdinal) {
         if (!(source instanceof LivingEntity living)) return null;
-        return realitySplitTrialTargets(source).stream()
-                .filter(player -> hasNamedTrialLineOfSight(living.getEyeLocation(), player.getEyeLocation()))
-                .min(Comparator.comparingDouble(player ->
-                        player.getLocation().distanceSquared(source.getLocation())))
-                .orElse(null);
+        Map<UUID, Player> visible = new LinkedHashMap<>();
+        for (Player player : realitySplitTrialTargets(source)) {
+            if (hasNamedTrialLineOfSight(living.getEyeLocation(), player.getEyeLocation())) {
+                visible.put(player.getUniqueId(), player);
+            }
+        }
+        if (visible.isEmpty()) return null;
+        List<Wave7TrialTargetPolicy.Candidate> candidates = new ArrayList<>();
+        for (Player player : visible.values()) {
+            long lastHit = realitySplitLastHitOrdinal.getOrDefault(player.getUniqueId(),
+                    Wave7TrialTargetPolicy.NEVER);
+            candidates.add(new Wave7TrialTargetPolicy.Candidate(player.getUniqueId(),
+                    player.getLocation().distanceSquared(source.getLocation()), lastHit));
+        }
+        UUID chosen = Wave7TrialTargetPolicy.choose(candidates, previousTarget, attackOrdinal);
+        return chosen == null ? null : visible.get(chosen);
     }
 
     /**
@@ -33468,6 +33498,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void lockRealitySplitTrialAction(RealitySplitTrialRuntimeState state, Player target) {
         state.target = target.getUniqueId();
+        // Record the sweep position so the next attack prefers someone this
+        // actor has not already focused.
+        realitySplitLastHitOrdinal.put(target.getUniqueId(),
+                (long) state.attackCount);
         Map<UUID, Long> launch = new LinkedHashMap<>();
         if (isOfficialWave7ReturnContext()) {
             for (UUID owner : officialRewardRoster) {

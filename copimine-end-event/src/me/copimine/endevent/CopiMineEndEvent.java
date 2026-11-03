@@ -294,6 +294,7 @@ import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.boss.BarColor;
+import org.bukkit.boss.BarFlag;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
 import org.bukkit.command.Command;
@@ -39956,6 +39957,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossBar.setProgress(progress);
         bossBar.setTitle(renderedTitle);
         bossBar.setColor(color);
+        // The final two phases darken the whole screen, which is the vanilla
+        // signal for a boss that has turned lethal.  It is presentation only:
+        // no damage, immunity or check is derived from it.
+        boolean darken = bossPhase == BossPhase.RAGE || bossPhase == BossPhase.LAST_SEAL;
+        if (darken != bossBar.hasFlag(BarFlag.DARKEN_SKY)) {
+            if (darken) bossBar.addFlag(BarFlag.DARKEN_SKY);
+            else bossBar.removeFlag(BarFlag.DARKEN_SKY);
+        }
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (desiredAudience.contains(player.getUniqueId()) && !bossBar.getPlayers().contains(player)) {
                 bossBar.addPlayer(player);

@@ -91,7 +91,9 @@ def portal_membrane():
                (13.6, 15.5, -0.8, 18.5)]
     elements = []
     for index, (x1, x2, y1, y2) in enumerate(columns):
-        e = cuboid(f"void_membrane_{index}", [x1, y1, 7.5], [x2, y2, 8.5],
+        # 1.6 blocks of depth (was 1.0): from a rear or oblique camera the old
+        # membrane collapsed to a paper-thin sheet and the gate lost all volume.
+        e = cuboid(f"void_membrane_{index}", [x1, y1, 7.2], [x2, y2, 8.8],
                    "rift", uv=[0, 0, 16, 16])
         # Every strip samples its own portion of one coherent square animation
         # instead of stretching the same frame separately onto every strip.

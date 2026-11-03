@@ -45,7 +45,51 @@ public final class EndRiftBossBarHud {
         }
     }
 
+    /** Envelope of the trailing damage chip, in milliseconds. */
+    private static final long DAMAGE_CHIP_MILLIS = 700L;
+    /** Below this fraction the bar itself pulses, matching the boss's rage. */
+    private static final float CRITICAL_FRACTION = 0.25F;
+    private static float lastProgress = Float.NaN;
+    private static long lastProgressChangeMillis;
+    private static float trailingProgress = Float.NaN;
+
     private EndRiftBossBarHud() {
+    }
+
+    /** Wall clock independent of the world tick, so the HUD never drifts on pause. */
+    private static long nowMillis() {
+        return System.currentTimeMillis();
+    }
+
+    /**
+     * Remember the previous health so a drop can be shown as a fading chip.
+     *
+     * <p>A boss bar that only ever shows the current value gives the party no
+     * feedback that their burst connected. The chip is the difference between
+     * the last drawn value and the current one, and it decays on its own
+     * clock; it is presentation only and never feeds back into the server
+     * authority.</p>
+     */
+    private static void trackProgress(float progress) {
+        long now = nowMillis();
+        if (Float.isNaN(lastProgress)) {
+            lastProgress = progress;
+            trailingProgress = progress;
+            lastProgressChangeMillis = now;
+            return;
+        }
+        if (progress < lastProgress - 0.0005F) {
+            // The chip spans the whole burst: once a drop starts, the trailing
+            // value is pinned to the highest health seen since the chip began,
+            // so a second hit does not shrink the visible lost slice.
+            trailingProgress = Float.isNaN(trailingProgress)
+                    ? lastProgress : Math.max(trailingProgress, lastProgress);
+            lastProgressChangeMillis = now;
+        }
+        lastProgress = progress;
+        if (now - lastProgressChangeMillis > DAMAGE_CHIP_MILLIS) {
+            trailingProgress = progress;
+        }
     }
 
     public static void render(GuiGraphicsExtractor context) {
@@ -78,7 +122,21 @@ public final class EndRiftBossBarHud {
                 x + WIDTH - 22 - client.font.width(formatHealth(state.health(), state.maxHealth())),
                 y + DETAIL_Y, 0xFFE7E8F2);
 
+        trackProgress(progress);
         int filled = Math.round((INNER_RIGHT - INNER_LEFT) * progress);
+        // Fading chip over the health the boss just lost: the party sees its
+        // damage register even when the bar is already past a phase marker.
+        int chipFilled = Math.round((INNER_RIGHT - INNER_LEFT) * trailingProgress);
+        if (chipFilled > filled) {
+            long age = nowMillis() - lastProgressChangeMillis;
+            float fade = 1.0F - Math.min(1.0F, age / (float) DAMAGE_CHIP_MILLIS);
+            if (fade > 0.0F) {
+                int alpha = (int) (fade * 130.0F) & 0xFF;
+                context.fill(x + INNER_LEFT + filled, y + INNER_TOP,
+                        x + INNER_LEFT + chipFilled, y + INNER_BOTTOM,
+                        (alpha << 24) | 0x00FF6B7A);
+            }
+        }
         if (filled > 0) {
             context.fill(x + INNER_LEFT, y + INNER_TOP,
                     x + INNER_LEFT + filled, y + INNER_BOTTOM, 0xFF171526);
@@ -87,6 +145,18 @@ public final class EndRiftBossBarHud {
             // particles or adding per-frame allocations.
             context.fill(x + INNER_LEFT, y + INNER_TOP,
                     x + INNER_LEFT + filled, y + INNER_TOP + 2, brighten(phaseColor));
+        }
+        // Past the critical threshold the fill breathes, which is the one cue
+        // that survives a player watching the boss instead of the bar.
+        if (progress > 0.0F && progress <= CRITICAL_FRACTION && filled > 0) {
+            float pulse = 0.5F + 0.5F * (float) Math.sin(nowMillis() / 620.0D);
+            int glowAlpha = (int) (30.0F + 70.0F * pulse) & 0xFF;
+            context.fill(x + INNER_LEFT, y + INNER_TOP - 1,
+                    x + INNER_LEFT + filled, y + INNER_TOP,
+                    (glowAlpha << 24) | 0x00FF4F61);
+            context.fill(x + INNER_LEFT, y + INNER_BOTTOM,
+                    x + INNER_LEFT + filled, y + INNER_BOTTOM + 1,
+                    (glowAlpha << 24) | 0x00FF4F61);
         }
         for (int notch = 1; notch < SEGMENT_COUNT; notch++) {
             int notchX = x + INNER_LEFT + Math.round(
@@ -188,6 +258,31 @@ public final class EndRiftBossBarHud {
             case "LAST_SEAL" -> 0xFFF4F4FF;
             default -> 0xFFB56CFF;
         };
+    }
+
+    // Test seams: the renderer itself needs a live GuiGraphics context, but the
+    // chip arithmetic and the phase thresholds are plain numbers and are the
+    // parts that can actually regress unnoticed.
+    static void resetTrackingForTest() {
+        lastProgress = Float.NaN;
+        trailingProgress = Float.NaN;
+        lastProgressChangeMillis = 0L;
+    }
+
+    static void trackProgressForTest(float progress) {
+        trackProgress(progress);
+    }
+
+    static float trailingProgressForTest() {
+        return trailingProgress;
+    }
+
+    static float clampProgressForTest(double value) {
+        return clampProgress(value);
+    }
+
+    static float[] phaseMarkersForTest() {
+        return PHASE_MARKERS.clone();
     }
 
     private static int brighten(int color) {

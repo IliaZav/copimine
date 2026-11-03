@@ -30,8 +30,15 @@ public final class WaveTwoStagePolicyTest {
                 "the first two Wave 2 groups stay free of elites");
         check(groups.get(2).eliteEndermen() == 0 && groups.get(2).eliteSkeletons() == 1,
                 "the first late Wave 2 group converts one skeleton into an elite");
-        check(groups.get(2).total() == WaveTwoStagePolicy.LATE_REINFORCEMENT_BUDGET,
-                "the final reserve is delivered as one bounded subwave");
+        // SUPERSEDED (audit wave 2, W2-011): the final subwave is no longer pinned
+        // to the flat legacy reserve of eight. The budget is distributed by the
+        // authored 25%/33%/42% shares, so the last group is the largest share but
+        // still bounded.
+        check(groups.get(2).total() > groups.get(1).total()
+                        && groups.get(1).total() >= groups.get(0).total(),
+                "subwaves escalate: the final reserve is the strongest");
+        check(groups.get(2).total() <= (int) Math.ceil(20 * 0.42D) + 1,
+                "the final reserve stays bounded by its authored share");
         check(groups.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).sum() == total.total(),
                 "the first late elite replaces a skeleton without increasing pressure");
         check(groups.equals(WaveTwoStagePolicy.split(total)), "group plan is deterministic");
@@ -42,9 +49,15 @@ public final class WaveTwoStagePolicyTest {
                 new WaveMechanicsPolicy.WaveCounts(7, 2, 0, 0, 0));
         check(groups.stream().allMatch(group -> group.total() > 0),
                 "a sufficiently large ordinary roster fills every planned group");
-        check(groups.size() == 3 && groups.get(0).total() == 1 && groups.get(1).total() == 1
-                        && groups.get(2).total() == 7,
-                "two balanced opening groups lead into one consolidated final reserve");
+        // SUPERSEDED (audit wave 2, W2-003/W2-011): the two opening groups used to
+        // be equal halves. Escalation requires each later subwave to be strictly
+        // stronger, so the split now follows the authored 25/33/42 shares.
+        check(groups.size() == 3, "Wave 2 keeps exactly three subwaves");
+        check(groups.get(0).total() <= groups.get(1).total()
+                        && groups.get(1).total() <= groups.get(2).total(),
+                "later subwaves are never weaker than earlier ones");
+        check(groups.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).sum() == 9,
+                "the whole roster is distributed across the three subwaves");
     }
 
     private static void waveTwoPressureExceptionIsBoundedToThreeGroups() {
@@ -53,9 +66,12 @@ public final class WaveTwoStagePolicyTest {
         check(defaultGroups.size() == 3
                         && defaultGroups.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).sum() == 48,
                 "the Wave 2 exception preserves the complete default reserve");
-        check(defaultGroups.get(0).total() == 20 && defaultGroups.get(1).total() == 20
-                        && defaultGroups.get(2).total() == 8,
-                "the default reserve uses two larger openings and one eight-mob final subwave");
+        // SUPERSEDED (audit wave 2, W2-011): 20/20/8 was the flat even split the
+        // audit called out as "no escalation". The default 48-actor reserve now
+        // lands exactly on the authored shares: 12 / 16 / 20 = 25% / 33% / 42%.
+        check(defaultGroups.get(0).total() == 12 && defaultGroups.get(1).total() == 16
+                        && defaultGroups.get(2).total() == 20,
+                "the default reserve splits 12/16/20 by the authored 25/33/42 shares");
 
         var maximum = WaveTwoStagePolicy.split(new WaveMechanicsPolicy.WaveCounts(56, 0, 0, 0, 0));
         check(maximum.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).sum()
@@ -81,10 +97,13 @@ public final class WaveTwoStagePolicyTest {
         List<WaveMechanicsPolicy.WaveCounts> groups = WaveTwoStagePolicy.split(scaled);
         check(scaled.total() == WaveTwoStagePolicy.MAX_TOTAL_MOBS,
                 "the doubled Wave 2 configuration fills but never exceeds the global 56-mob reserve");
+        // SUPERSEDED (audit wave 2, W2-011): 24/24/8 was the flat even split. The
+        // 56-actor reservation now follows the authored shares and lands on
+        // 14 / 19 / 23, staying inside exactly three bounded subwaves.
         check(groups.size() == 3
-                        && groups.get(0).total() == 24
-                        && groups.get(1).total() == 24
-                        && groups.get(2).total() == 8,
+                        && groups.get(0).total() == 14
+                        && groups.get(1).total() == 19
+                        && groups.get(2).total() == 23,
                 "the larger Wave 2 reserve stays in exactly three bounded subwaves");
     }
 
@@ -93,8 +112,11 @@ public final class WaveTwoStagePolicyTest {
         int[] playerCounts = {2, 5, 6, 10, 20};
         int[] expectedTotals = {48, 49, 50, 52, 56};
         int[] expectedFirstLateElites = {1, 1, 1, 1, 1};
-        int[][] expectedGroupSizes = {{20, 20, 8}, {21, 20, 8},
-                {21, 21, 8}, {22, 22, 8}, {24, 24, 8}};
+        // SUPERSEDED (audit wave 2, W2-011): these were the flat even splits
+        // ({20,20,8}, {21,20,8}, ...), where the middle group was not even stronger
+        // than the first. The authored 25/33/42 shares escalate every roster.
+        int[][] expectedGroupSizes = {{12, 16, 20}, {13, 16, 20},
+                {13, 16, 21}, {13, 18, 21}, {14, 19, 23}};
         for (int index = 0; index < playerCounts.length; index++) {
             int players = playerCounts[index];
             var scaled = WaveScalingPolicy.scale(2, configured, players,
@@ -155,7 +177,10 @@ public final class WaveTwoStagePolicyTest {
         var firstLate = groups.get(WaveTwoStagePolicy.FIRST_LATE_GROUP - 1);
 
         check(WaveTwoStagePolicy.canStart(scaled), "the normal two-player plan remains launchable");
-        check(groups.get(0).total() == 20 && groups.get(1).total() == 20,
+        // SUPERSEDED (audit wave 2, W2-011): two equal 20s are the flat split that
+        // removed escalation. The 48-actor reserve now lands on the authored
+        // 12/16/20, and both opening batches stay substantial.
+        check(groups.get(0).total() == 12 && groups.get(1).total() == 16,
                 "the larger two-player roster preserves two substantial opening batches");
         check(firstLate.endermen() > 0,
                 "the first late group reserves a real Enderman slot for deterministic phantom activation");

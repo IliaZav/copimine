@@ -247,6 +247,8 @@ public class OccludedArchmageProbe {
     files += [str(BASE / "domain/Wave7NamedTrialActorPolicy.java"),
              # Miniboss health scales from the roster frozen at admission.
              str(BASE / "runtime/EventCombatProfileService.java"),
+             # The service owns a durable ordered combat history (audit ECHO 10).
+             str(BASE / "runtime/CombatSequence.java"),
              str(BASE / "domain/wave7/EchoBehaviorStrategy.java"),
              str(fixture), str(probe)]
     compiled = subprocess.run(

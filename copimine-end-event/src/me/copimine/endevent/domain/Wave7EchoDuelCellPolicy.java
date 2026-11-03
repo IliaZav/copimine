@@ -152,11 +152,29 @@ public final class Wave7EchoDuelCellPolicy {
         return cell != null && owner != null && cell.allowsOwner(owner);
     }
 
-    /** Both endpoints must remain inside the same owner-bound cell for one move. */
-    public static boolean allowsTransition(Cell cell, UUID owner,
+    /**
+     * Both endpoints of one move must stay inside the shared region.
+     *
+     * <p>Audit ECHO error 6: this used to require both endpoints inside the
+     * owner's own radial wedge, so a copy stopped dead and an owner was teleported
+     * back the moment either body crossed a lane border — an invisible wall even
+     * though ECHO-005 removed the physical barriers. The boundary that matters is
+     * the region as a whole; keeping owner and copy paired is the job of
+     * {@code EchoCombatAdmission}, not of this geometry.</p>
+     */
+    public static boolean allowsTransition(List<Cell> cells, UUID owner,
                                            double fromX, double fromZ,
                                            double toX, double toZ) {
-        return allowsOwnerAccess(cell, owner) && cell.contains(fromX, fromZ)
-                && cell.contains(toX, toZ);
+        return allowsSharedRegionAccess(cells, owner, fromX, fromZ)
+                && allowsSharedRegionAccess(cells, owner, toX, toZ);
+    }
+
+    /**
+     * The angle to put a strayed owner back on: the centre of their own lane.
+     * Used only when the owner has left the shared region entirely, never as a
+     * lane border enforcement.
+     */
+    public static double restoreAngle(Cell cell) {
+        return cell == null ? 0.0D : cell.centerAngleRadians();
     }
 }

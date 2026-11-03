@@ -35,35 +35,35 @@ public final class WaveTwoStagePolicy {
         }
         if (total < OPENING_GROUP_COUNT) return List.of();
 
-        int lateBudget = Math.min(LATE_REINFORCEMENT_BUDGET, total - OPENING_GROUP_COUNT);
-        int openingBudget = total - lateBudget;
+        // Audit wave 2 / W2-011: the ordinary budget is distributed by the
+        // authored 25% / 33% / 42% shares instead of two equal halves plus a
+        // flat reserve, so later subwaves really awaken more actors (W2-003).
+        // Largest-remainder rounding keeps the parts summing to the party and
+        // makes the split deterministic for every roster size.
+        int lateBudget = Math.min(LATE_REINFORCEMENT_BUDGET,
+                Math.max(1, total / 5));
         int lateGroupCount = lateBudget > 0 ? 1 : 0;
         int groupCount = OPENING_GROUP_COUNT + lateGroupCount;
+        int[] shares = distributeByAuthoredShares(total, groupCount);
         int[][] counts = new int[groupCount][3];
         int[] groupCapacity = new int[groupCount];
-        groupCapacity[0] = (openingBudget + 1) / 2;
-        groupCapacity[1] = openingBudget / 2;
-        if (lateGroupCount > 0) groupCapacity[OPENING_GROUP_COUNT] = lateBudget;
+        for (int group = 0; group < groupCount; group++) groupCapacity[group] = shares[group];
         int[] groupSize = new int[groupCount];
         int[] remaining = {
                 Math.max(0, ordinary.endermen()),
                 Math.max(0, ordinary.spiders()),
                 Math.max(0, ordinary.skeletons())};
 
-        // Balance the two opening groups while preserving each ordinary role.
+        // Fill the opening subwaves in share order while preserving each ordinary
+        // role, then let the final subwave take whatever is left.
         for (int type = 0; type < remaining.length; type++) {
-            int openingSlots = openingBudget - groupSize[0] - groupSize[1];
-            int openingCount = Math.min(remaining[type], openingSlots);
-            for (int index = 0; index < openingCount; index++) {
-                int selected = groupSize[0] <= groupSize[1] ? 0 : 1;
-                if (groupSize[selected] >= groupCapacity[selected]) selected = 1 - selected;
-                if (groupSize[selected] >= groupCapacity[selected]) {
-                    throw new IllegalStateException("Wave 2 opening reserve allocation is inconsistent");
-                }
-                counts[selected][type]++;
-                groupSize[selected]++;
+            for (int group = 0; group < OPENING_GROUP_COUNT; group++) {
+                int available = groupCapacity[group] - groupSize[group];
+                int take = Math.min(remaining[type], Math.max(0, available));
+                counts[group][type] += take;
+                groupSize[group] += take;
+                remaining[type] -= take;
             }
-            remaining[type] -= openingCount;
         }
 
         // Deliver the reserved late roster together as the third and final group.
@@ -100,6 +100,82 @@ public final class WaveTwoStagePolicy {
                     group == FIRST_LATE_GROUP - 1 ? firstLateElite : 0));
         }
         return List.copyOf(groups);
+    }
+
+    /**
+     * Authored share of the ordinary budget per subwave, in per-mille (W2-011).
+     *
+     * <p>Kept here so the pacing policy has no dependency on the roster policy;
+     * the sum is the budget and the parts always sum to the party.</p>
+     */
+    public static final int[] SUBWAVE_SHARES_PERMILLE = {250, 330, 420};
+
+    /**
+     * Split {@code total} into {@code subwaves} parts by the authored shares.
+     *
+     * <p>Largest-remainder rounding keeps the parts summing to the party, and a
+     * final pass makes later subwaves at least as strong as earlier ones, which
+     * is the W2-003 escalation rule.</p>
+     */
+    public static int[] distributeByAuthoredShares(int total, int subwaves) {
+        int safeSubwaves = Math.max(1, subwaves);
+        int safeTotal = Math.max(0, total);
+        int[] parts = new int[safeSubwaves];
+        if (safeSubwaves != SUBWAVE_SHARES_PERMILLE.length) {
+            int each = safeTotal / safeSubwaves;
+            java.util.Arrays.fill(parts, each);
+            for (int index = 0; index < safeTotal - each * safeSubwaves; index++) parts[index]++;
+            return parts;
+        }
+        int shareSum = 0;
+        for (int share : SUBWAVE_SHARES_PERMILLE) shareSum += share;
+        long[] remainders = new long[safeSubwaves];
+        int assigned = 0;
+        for (int index = 0; index < safeSubwaves; index++) {
+            long scaled = (long) safeTotal * SUBWAVE_SHARES_PERMILLE[index];
+            parts[index] = (int) (scaled / shareSum);
+            remainders[index] = scaled % shareSum;
+            assigned += parts[index];
+        }
+        // Largest remainder first; ties go to the earlier subwave, so the split is
+        // fully deterministic. The final reserve honours its own bounded budget
+        // straight away, so a small party never overfills the last subwave and
+        // strands the remainder on an opening group.
+        int finalCapAllocation = LATE_REINFORCEMENT_BUDGET;
+        while (assigned < safeTotal) {
+            int best = -1;
+            for (int index = 0; index < safeSubwaves; index++) {
+                if (remainders[index] < 0L) continue;
+                if (index == safeSubwaves - 1 && parts[index] >= finalCapAllocation) continue;
+                if (best < 0 || remainders[index] > remainders[best]) best = index;
+            }
+            if (best < 0) {
+                // The bounded reserve is full; the surplus belongs to the opening
+                // subwaves, never to the capped one.
+                for (int index = 0; index < safeSubwaves - 1 && assigned < safeTotal; index++) {
+                    parts[index]++;
+                    assigned++;
+                }
+                if (assigned < safeTotal) return parts;
+                break;
+            }
+            parts[best]++;
+            remainders[best] = -1L;
+            assigned++;
+        }
+        // W2-003: a later subwave is never weaker than an earlier one when the
+        // total permits it — but the final reserve also stays inside its own
+        // bounded budget, so escalation must not move actors into the last group
+        // past that ceiling.
+        int finalCap = LATE_REINFORCEMENT_BUDGET;
+        for (int index = 1; index < safeSubwaves; index++) {
+            int ceiling = index == safeSubwaves - 1 ? finalCap : Integer.MAX_VALUE;
+            if (parts[index] < parts[index - 1] && parts[index - 1] > 1 && parts[index] < ceiling) {
+                parts[index - 1]--;
+                parts[index]++;
+            }
+        }
+        return parts;
     }
 
     /** Keep one existing Enderman slot in the first late group for the server-owned phantom activation. */

@@ -25,6 +25,7 @@ public final class EndRiftEchoSharedRegionTest {
         EndRiftEchoSharedRegionTest test = new EndRiftEchoSharedRegionTest();
         test.runs();
         test.planIsCompleteAndStable();
+        test.transitionsUseTheSharedRegionNotTheOwnLane();
         test.planRejectsInvalidRosters();
         test.sharedRegionReplacesOwnerCells();
         if (test.strict == 1) throw new IllegalStateException("assertion failed");
@@ -96,6 +97,46 @@ public final class EndRiftEchoSharedRegionTest {
             // Lanes stay narrower than the authored ring by the room buffer, so
             // a small share near the far side of the circle may fall outside.
             check(covered >= 600, "lanes leave a large dead region at " + owners + ": " + covered);
+        }
+    }
+
+    /**
+     * Audit ECHO error 6: crossing a lane border inside the shared region is
+     * ordinary movement. Only leaving the region fails closed.
+     */
+    private void transitionsUseTheSharedRegionNotTheOwnLane() {
+        for (int owners = 2; owners <= Wave7EchoDuelCellPolicy.MAX_OWNERS; owners++) {
+            List<UUID> roster = roster(owners);
+            List<Wave7EchoDuelCellPolicy.Cell> cells =
+                    Wave7EchoDuelCellPolicy.sharedRegionPlan(2, owners, roster);
+            Wave7EchoDuelCellPolicy.Cell first = cells.get(0);
+            Wave7EchoDuelCellPolicy.Cell last = cells.get(owners - 1);
+            double radius = (ChamberIsolationPolicy.INNER_RADIUS
+                    + ChamberIsolationPolicy.OUTER_RADIUS) / 2.0D;
+            double startX = Math.cos(first.centerAngleRadians()) * radius;
+            double startZ = Math.sin(first.centerAngleRadians()) * radius;
+            // A step that lands squarely inside the LAST owner's lane.
+            double endX = Math.cos(last.centerAngleRadians()) * radius;
+            double endZ = Math.sin(last.centerAngleRadians()) * radius;
+
+            check(!first.contains(endX, endZ), "sample point unexpectedly inside the own lane");
+            check(Wave7EchoDuelCellPolicy.allowsTransition(
+                            cells, first.owner(), startX, startZ, endX, endZ),
+                    "movement across lane borders was refused at " + owners);
+
+            // Leaving the ring entirely still fails closed.
+            double outside = ChamberIsolationPolicy.OUTER_RADIUS + 1.0D;
+            check(!Wave7EchoDuelCellPolicy.allowsTransition(
+                            cells, first.owner(), startX, startZ, outside, 0.0D),
+                    "movement outside the region was allowed at " + owners);
+            // The Core column stays closed for everyone.
+            check(!Wave7EchoDuelCellPolicy.allowsTransition(
+                            cells, first.owner(), startX, startZ, 0.0D, 0.0D),
+                    "movement into the Core column was allowed at " + owners);
+            // A stranger has no region access at all.
+            check(!Wave7EchoDuelCellPolicy.allowsTransition(
+                            cells, new UUID(0L, 999L), startX, startZ, endX, endZ),
+                    "a non-admitted owner could move in the region at " + owners);
         }
     }
 

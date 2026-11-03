@@ -19,9 +19,28 @@ public final class SkeletonCombatPolicyTest {
         require(common.particlePattern().equals("bone_tracer"),
                 "common skeletons need a distinct arrow trail");
 
+        // SUPERSEDED (audit elite gap, contract: triple volley): the elite
+        // skeleton used to fire a single fan of three arrows and the record
+        // capped arrowCount at 3, so the "triple volley" the tactic string
+        // promised never existed. The authored volley is THREE fans of SIX.
         SkeletonCombatPolicy.ArrowProfile elite = SkeletonCombatPolicy.arrowProfile(true);
-        require(elite.arrowCount() == 3 && elite.damage() == 3.5D,
-                "elite skeletons fire exactly three physical arrows with bounded per-arrow damage");
+        require(elite.arrowsPerFan() == 6 && elite.volleys() == 3,
+                "elite skeletons fire three fans of six arrows");
+        require(elite.totalArrows() == 18,
+                "the whole elite volley is eighteen physical arrows");
+        require(elite.damage() == 3.5D,
+                "elite skeletons keep bounded per-arrow damage");
+        // A caller may not smuggle in a larger fan or more fans than authored.
+        SkeletonCombatPolicy.ArrowProfile oversized =
+                new SkeletonCombatPolicy.ArrowProfile(40, 3.5D, 70, "rift_salvo", 9);
+        require(oversized.arrowsPerFan() == SkeletonCombatPolicy.MINI_BOSS_ARROWS_PER_FAN
+                        && oversized.volleys() == SkeletonCombatPolicy.MINI_BOSS_VOLLEYS,
+                "the elite volley is hard bounded to three fans of six");
+        // A single-fan caller keeps exactly the old three-arrow shape.
+        SkeletonCombatPolicy.ArrowProfile singleFan =
+                new SkeletonCombatPolicy.ArrowProfile(3, 3.5D, 70, "rift_salvo");
+        require(singleFan.totalArrows() == 3 && singleFan.volleys() == 1,
+                "a single-fan profile stays one fan of its own arrow count");
         require(elite.cooldownTicks() >= 50 && elite.cooldownTicks() <= 100,
                 "elite salvo cooldown must be bounded");
         require(elite.particlePattern().equals("rift_salvo"),

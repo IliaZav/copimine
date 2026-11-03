@@ -16,10 +16,22 @@ public final class SkeletonCombatPolicy {
                 targetType == null ? "" : targetType.trim());
     }
 
+    /**
+     * Audit elite gap: the mini-boss volley is THREE sequential fans of SIX
+     * arrows, not a single three-arrow burst.
+     *
+     * <p>The old profile capped the count at three, so the "triple volley" the
+     * tactic string promised never existed. {@link #MINI_BOSS_VOLLEYS} carries
+     * the number of fans and {@link ArrowProfile#arrowsPerFan()} the size of
+     * each one; the runtime fires the fans on a stagger instead of one blob.</p>
+     */
+    public static final int MINI_BOSS_VOLLEYS = 3;
+    public static final int MINI_BOSS_ARROWS_PER_FAN = 6;
+
     public static ArrowProfile arrowProfile(boolean miniBoss) {
         return miniBoss
-                ? new ArrowProfile(3, 3.5D, 70, "rift_salvo")
-                : new ArrowProfile(1, 5.0D, 50, "bone_tracer");
+                ? new ArrowProfile(MINI_BOSS_ARROWS_PER_FAN, 3.5D, 70, "rift_salvo", MINI_BOSS_VOLLEYS)
+                : new ArrowProfile(1, 5.0D, 50, "bone_tracer", 1);
     }
 
     public static boolean hasArrowSpell(EndRiftObjective.Objective objective,
@@ -113,9 +125,17 @@ public final class SkeletonCombatPolicy {
     }
 
     public record ArrowProfile(int arrowCount, double damage, int cooldownTicks,
-                               String particlePattern) {
+                               String particlePattern, int volleys) {
+        /** Backwards-compatible single-fan profile. */
+        public ArrowProfile(int arrowCount, double damage, int cooldownTicks, String particlePattern) {
+            this(arrowCount, damage, cooldownTicks, particlePattern, 1);
+        }
+
         public ArrowProfile {
-            arrowCount = Math.max(1, Math.min(3, arrowCount));
+            // Six arrows per fan is the authored elite volley, so the bound has to
+            // admit it; anything larger is still rejected.
+            arrowCount = Math.max(1, Math.min(MINI_BOSS_ARROWS_PER_FAN, arrowCount));
+            volleys = Math.max(1, Math.min(MINI_BOSS_VOLLEYS, volleys));
             damage = finite(damage) ? Math.max(0.0D, Math.min(20.0D, damage)) : 0.0D;
             cooldownTicks = Math.max(20, Math.min(200, cooldownTicks));
             particlePattern = particlePattern == null ? "bone_tracer"
@@ -124,6 +144,12 @@ public final class SkeletonCombatPolicy {
                 particlePattern = "bone_tracer";
             }
         }
+
+        /** How many arrows each fan carries. */
+        public int arrowsPerFan() { return arrowCount; }
+
+        /** The whole volley: fans multiplied by their arrows. */
+        public int totalArrows() { return arrowCount * volleys; }
     }
 
     private static boolean finite(double value) {

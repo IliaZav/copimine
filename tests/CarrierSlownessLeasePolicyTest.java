@@ -19,7 +19,11 @@ public final class CarrierSlownessLeasePolicyTest {
                         == CarrierSlownessLeasePolicy.Action.NONE,
                 "do nothing when no event-owned modifier exists");
         check(Math.abs(CarrierSlownessLeasePolicy.MOVEMENT_SPEED_MULTIPLIER + 0.30D) < 0.000001D,
-                "preserve Slowness II's 30 percent movement-speed reduction");
+                // SUPERSEDED (audit wave 1): the retired keyed modifier half was
+                // documented as Slowness II's 30 percent. It is only the legacy
+                // speed-modifier value kept for retiring that old key; the live
+                // debuff is now Slow III (amplifier 2) applied as a potion effect.
+                "retire the legacy keyed modifier at the same 30 percent it used");
 
         Map<String, Double> modifiers = new HashMap<>();
         modifiers.put("minecraft:generic_slowdown", -0.10D);

@@ -179,6 +179,12 @@ public class CarrierInventoryAcceptanceProbe {
     List<UUID> syncedHolders=new ArrayList<>();
     void syncCurrentCarrierFields(){syncedHolders.add(currentCarrierState.holder());}
     void saveStateAsync(){}
+    // Audit wave 1: a real delivery now commits one reinforcement pack, so the
+    // detached probe must resolve that collaborator instead of failing to compile.
+    int committedReinforcements;
+    void commitWaveOneReinforcement(String reasonCode){committedReinforcements++;}
+    // Audit wave 1: the carrier debuff is Slow III (zero-based amplifier 2).
+    static final int CARRIER_SLOWNESS_AMPLIFIER=2;
     java.util.logging.Logger getLogger(){return java.util.logging.Logger.getLogger("carrier-test");}
     void spawnCurrentCarrierCharge(Location position){}
     void renderCurrentCarrierCharge(Entity entity){}
@@ -286,7 +292,10 @@ public class CarrierInventoryAcceptanceProbe {
                 }
                 p.tickCarried(1000);
                 var effect=p.holder.getPotionEffect(PotionEffectType.SLOWNESS);
-                check(effect!=null&&effect.getAmplifier()==1,"legal charge must apply actual Slowness II");
+                // SUPERSEDED (audit wave 1): the carrier debuff used to be Slowness II
+                // (amplifier 1). The spec requires Slow III, which is amplifier 2 in
+                // Minecraft's zero-based scale.
+                check(effect!=null&&effect.getAmplifier()==2,"legal charge must apply actual Slow III");
                 check(p.other.effects.isEmpty(),"only legal holder is slowed");
                 check(p.holder.movementSpeed.modifiers.isEmpty(),"Slowness must not also double-apply a separate speed modifier");
             }
@@ -307,8 +316,15 @@ public class CarrierInventoryAcceptanceProbe {
                 check(p.other.id.toString().equals(carried.meta.data.get(p.keyCarrierChargeOwner,PersistentDataType.STRING)),"token owner PDC must follow legal custody");
                 check(p.holder.getPotionEffect(PotionEffectType.SLOWNESS)==null&&p.other.getPotionEffect(PotionEffectType.SLOWNESS)!=null,"transfer must move the effect");
                 p.other.pos=new Location(0,64,0);
+                // Audit wave 1: every real delivery owes exactly one ordinary
+                // reinforcement pack. Before this, the arena emptied out while the
+                // objective advanced, because a delivery scored and moved on.
+                check(p.committedReinforcements==0,"an undelivered charge owes no pack");
                 check(p.deliverCurrentCarrierCharge(p.other),"new holder must deliver once");
+                check(p.committedReinforcements==1,"a real delivery must owe exactly one pack");
+                // A refused repeat must not owe a second pack: the score did not move.
                 check(!p.deliverCurrentCarrierCharge(p.other)&&p.currentCarrierCharges==1,"repeated delivery must not score twice");
+                check(p.committedReinforcements==1,"a refused repeat must not owe a pack");
                 check(p.other.inventory.contents.stream().allMatch(Objects::isNull)&&p.other.inventory.offHand==null,"delivered token must be consumed");
             }
             case "duplicate-rejected", "stacked-rejected" -> {
@@ -339,7 +355,11 @@ public class CarrierInventoryAcceptanceProbe {
             case "weaker-restored" -> {
                 p.holder.effects.put(PotionEffectType.SLOWNESS,new PotionEffect(PotionEffectType.SLOWNESS,100,0,true,true,false));
                 p.pickUpCurrentCarrierCharge(p.holder);p.tickCarried(1000);
-                Bukkit.tick+=6;p.holder.effects.put(PotionEffectType.SLOWNESS,new PotionEffect(PotionEffectType.SLOWNESS,24,1,false,false,true));
+                // SUPERSEDED (audit wave 1): the event-owned debuff is Slow III
+                // (amplifier 2), so the owned replacement below must use 2. The
+                // unrelated pre-existing effect (amplifier 0, 100 ticks) still has
+                // to come back on release.
+                Bukkit.tick+=6;p.holder.effects.put(PotionEffectType.SLOWNESS,new PotionEffect(PotionEffectType.SLOWNESS,24,2,false,false,true));
                 p.releaseCurrentCarrierHolder(p.holder.id,"test");
                 var restored=p.holder.getPotionEffect(PotionEffectType.SLOWNESS);
                 check(restored!=null&&restored.getAmplifier()==0&&restored.getDuration()==94&&restored.isAmbient(),"release must restore the remaining unrelated weaker effect");

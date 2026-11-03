@@ -22,7 +22,14 @@ public class CombatProfileProbe {
         require(p.sample(context(5,1),new Movement(3,true,-.2,false,.4,.8)),"real official W1 observation accepted");
         require(!p.sample(context(6,1),new Movement(3,true,-.2,false,.4,.8)),"movement is bounded to one sample per five ticks");
         for(int t=10;t<=300;t+=5)p.sample(context(t,1),new Movement(3,true,.2,false,.4,.8));
-        require(p.snapshot(OWNER).recent().size()==32,"only 32 recent observations retained; no full trajectory");
+        // SUPERSEDED (audit ECHO error 10, full six-wave history): the old
+        // contract pinned a 32-observation window, which is exactly the defect --
+        // two players with clearly different fights produced the same copy and a
+        // restart erased what shaped it. The window now spans a whole attempt and
+        // the ordered history is durable.
+        require(p.snapshot(OWNER).recent().size()>32,"regressed to the truncated history the audit rejected");
+        require(p.snapshot(OWNER).recent().size()==p.snapshot(OWNER).count(Stat.MOVEMENT_SAMPLES),
+                "every accepted movement sample must stay in the trajectory");
         long before=p.snapshot(OWNER).count(Stat.MOVEMENT_SAMPLES);
         p.rotateRuntime("attempt",72);
         var six=new Context("attempt",72,OWNER,5,6,true,false,false,false,false);
@@ -79,7 +86,11 @@ public class CombatProfileProbe {
 }
 ''', encoding="utf-8")
     strategy = ROOT / "copimine-end-event/src/me/copimine/endevent/domain/wave7/EchoBehaviorStrategy.java"
-    result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path), str(strategy), str(service), str(probe)], capture_output=True, text=True)
+    # Audit ECHO error 10: the service now owns a durable ordered history, so the
+    # probe must compile that collaborator alongside the profile service.
+    sequence = ROOT / "copimine-end-event/src/me/copimine/endevent/runtime/CombatSequence.java"
+    result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path), str(strategy),
+                             str(service), str(sequence), str(probe)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     result = subprocess.run(["java", "-cp", str(tmp_path), "CombatProfileProbe"], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr

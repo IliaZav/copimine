@@ -17,6 +17,13 @@ public final class EventCombatProfileService {
     private static final int MAX_PARTICIPANTS = 128;
     private static final long MAX_COUNTER = 1_000_000_000L;
     /**
+     * Audit ECHO error 10: how many raw observations stay addressable.
+     *
+     * <p>512 covers a realistic six-wave attempt; the compressed
+     * {@link CombatSequence} keeps the ORDER of significant actions beyond it.</p>
+     */
+    static final int OBSERVATION_WINDOW = 512;
+    /**
      * BRAIN-002: observation stays open through every wave that trains the Echo.
      *
      * <p>The user requires a copy to learn from wave 1 up to, and including, the
@@ -88,6 +95,7 @@ public final class EventCombatProfileService {
     private static final class Profile {
         final EnumMap<Stat, Long> stats = new EnumMap<>(Stat.class);
         final ArrayDeque<Observation> recent = new ArrayDeque<>();
+        final CombatSequence sequence = new CombatSequence();
         final LinkedHashSet<String> acceptedReceipts = new LinkedHashSet<>();
         int waves;
         long lastMovementTick = Long.MIN_VALUE, lastAttackTick = Long.MIN_VALUE;
@@ -96,8 +104,14 @@ public final class EventCombatProfileService {
         }
         void observe(Context context, String action, int value) {
             waves |= 1 << (context.wave() - 1);
-            if (recent.size() == 32) recent.removeFirst();
+            // Audit ECHO error 10: a 32-observation window forgot almost the whole
+            // six-wave fight, so two players with clearly different histories produced
+            // the same copy. The window now spans a full attempt (bounded so a long
+            // night cannot grow it without limit), and the significant actions are
+            // also folded into a compressed sequence that survives a restart.
+            if (recent.size() == OBSERVATION_WINDOW) recent.removeFirst();
             recent.addLast(new Observation(context.tick(), context.wave(), action, value));
+            sequence.record(context.wave(), action, value);
         }
         void resetTransient() {
             recent.clear(); acceptedReceipts.clear();
@@ -287,6 +301,9 @@ public final class EventCombatProfileService {
             for (Stat stat : Stat.values()) values.add(Long.toString(p.stats.getOrDefault(stat, 0L)));
             encoded.put(key + ".stats", String.join(",", values));
             encoded.put(key + ".waves", Integer.toString(p.waves));
+            // Audit ECHO error 10: the ordered history is durable, so a restart
+            // cannot erase the sequence the copy was shaped from.
+            encoded.put(key + ".sequence", p.sequence.encode());
         });
         return Map.copyOf(encoded);
     }
@@ -317,6 +334,7 @@ public final class EventCombatProfileService {
                 p.waves = Integer.parseInt(encoded.get(key + ".waves"));
                 // Waves 1-7 are observed, so the durable mask covers seven bits.
                 if (p.waves < 0 || p.waves > (1 << OBSERVED_WAVE_SLOTS) - 1) return false;
+                p.sequence.appendAll(CombatSequence.decode(encoded.get(key + ".sequence")).runs());
                 restored.put(owner, p);
             }
             this.eventId = eventId; this.attemptGeneration = attempt;

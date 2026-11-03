@@ -152,6 +152,7 @@ import me.copimine.endevent.domain.ShieldOrbitPolicy;
 import me.copimine.endevent.runtime.EncounterResourceScope;
 import me.copimine.endevent.runtime.WaveMobLifecycleRegistry;
 import me.copimine.endevent.domain.WaveMechanicsPolicy;
+import me.copimine.endevent.domain.WaveTwoRosterPolicy;
 import me.copimine.endevent.domain.WaveEliteCompositionPolicy;
 import me.copimine.endevent.domain.WaveTwoStagePolicy;
 import me.copimine.endevent.domain.WaveTwoEntityRecoveryPolicy;
@@ -606,6 +607,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int EVENT_ENTITY_MAX_NO_DAMAGE_TICKS = 3;
     private static final double WAVE_MOB_DAMAGE_REDUCTION = 4.0D;
     private static final int SLOWNESS_DEBUFF_TICKS = 60;
+    /**
+     * Audit wave 1: the carrier is slowed to Slow III. Minecraft amplifiers are
+     * zero-based, so Slow III is 2 (Slow I = 0).
+     */
+    private static final int CARRIER_SLOWNESS_AMPLIFIER = 2;
     private static final long WAVE_PATH_REQUEST_INTERVAL_MILLIS = 500L;
     private static final long WAVE_MOB_STUCK_TIMEOUT_MILLIS = 4_000L;
     private static final long WAVE_MOB_STUCK_REPOSITION_COOLDOWN_MILLIS = 4_000L;
@@ -818,6 +824,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** One scaled, resource-pack gate model; the configured blocks remain authoritative. */
     private final Set<UUID> gateModelVisuals = new LinkedHashSet<>();
     private final Map<Integer, List<PortalCapturePolicy.PortalState>> portalCaptureStates = new LinkedHashMap<>();
+    /**
+     * Audit wave 3: one progress sample per portal and update. The direction is
+     * advanced once, then re-read, so two observers never disagree about it.
+     */
+    private final Map<Integer, Long> portalIndicatorPreviousSampleTick = new LinkedHashMap<>();
+    /** Monotonic counter of portal indicator updates within one server tick. */
+    private long indicatorSampleTick;
     private Wave3PortalProgressSnapshot.Data wave3RestoredPortalCheckpoint;
     /** Spec 11: Wave 4 obelisk HP receipts, scoped to one generation. */
     private Wave4ObeliskRecoverySnapshot.Data wave4RestoredObeliskCheckpoint;
@@ -989,6 +1002,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private int wave6ReinforcementOwed;
     private int wave6ReinforcementSpawned;
     private long wave6NextReinforcementAtMillis;
+    /**
+     * Audit wave 1: every one of the three carrier deliveries owes exactly one
+     * ordinary reinforcement pack.
+     *
+     * <p>The wave used to accept a charge into the Core and simply move on, so
+     * the arena emptied out while the objective advanced. The pack is committed
+     * here and released by the stage gate; a full live cap postpones it instead
+     * of dropping it.</p>
+     */
+    private int wave1ReinforcementOwed;
+    private int wave1ReinforcementSpawned;
+    private long wave1NextReinforcementAtMillis;
     /** W6-004 [U]: the fifth (final) pack must be fully resolved before completion. */
     private boolean wave6FinalClearCommitted;
     /** Identities with a committed legitimate defeat receipt. */
@@ -1248,6 +1273,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private Map<String, String> wave7RecoveryCheckpoint = Map.of();
     private boolean namedWave7InitialActorCreation;
     private boolean namedWave7RuntimeRestorePending;
+    /** ECHO-002: the frozen ordinary/limbo split of the running Echo stage. */
+    private me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.Split namedEchoRealmSplit;
+    private java.util.Set<UUID> namedEchoRealmSplitOwners;
+    private UUID namedEchoRealmSplitStage;
+    /** ECHO-004: the authored core of the ordinary arena, mirrored into limbo. */
+    private Location namedEchoOrdinaryCore;
+    /** Vertical separation of the limbo mirror plane from the ordinary floor. */
+    private static final int ECHO_LIMBO_LIFT_BLOCKS = 64;
+    /** ECHO-004: original blocks under the limbo mirror, restored on cleanup. */
+    private final Map<Location, Material> namedEchoLimboBlocks = new LinkedHashMap<>();
     private List<RealitySplitTrialController.NamedTrial> namedWave7PreflightSelectedLayout = List.of();
     private final Map<UUID, Location> wave7ReturnStagingLocations = new LinkedHashMap<>();
     private final Map<UUID, Long> wave7ReturnActionNextTicks = new LinkedHashMap<>();
@@ -3255,9 +3290,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         } else if (wave == 6) {
             scaled = ritualWaveCounts(players);
         } else {
-            scaled = WaveScalingPolicy.scale(wave, new WaveMechanicsPolicy.WaveCounts(
+            WaveMechanicsPolicy.WaveCounts configured = new WaveMechanicsPolicy.WaveCounts(
                     definition.endermen(), definition.spiders(), definition.skeletons(),
-                    definition.eliteEndermen(), definition.eliteSkeletons()), players,
+                    definition.eliteEndermen(), definition.eliteSkeletons());
+            if (wave == 2) {
+                // Audit wave 2: the RIFT_HUNT roster escalates (16/16/8 at two
+                // players, 25/33/42 as the party grows) instead of staying flat.
+                configured = WaveTwoRosterPolicy.compose(configured, players);
+            }
+            scaled = WaveScalingPolicy.scale(wave, configured, players,
                     Math.min(Math.max(1, config.waveHardCap()),
                             PressureBudgetController.HARD_CAP));
             if (wave != 2) {
@@ -14807,6 +14848,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             getLogger().info("END_RIFT_CARRIER_DELIVERED event=" + eventId
                     + " charge=" + currentCarrierCharges + "/3 player=" + holder.getUniqueId()
                     + " interaction=RIGHT_CLICK_CORE");
+            // Audit wave 1: a real delivery commits one reinforcement pack. It is
+            // owed from here and released by resolveWaveOneReinforcements().
+            commitWaveOneReinforcement("carrier-delivery-" + currentCarrierCharges);
         }
         syncCurrentCarrierFields();
         saveStateAsync();
@@ -21694,6 +21738,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             WaveMechanicsPolicy.WaveCounts configured = new WaveMechanicsPolicy.WaveCounts(
                     definition.endermen(), definition.spiders(), definition.skeletons(),
                     definition.eliteEndermen(), definition.eliteSkeletons());
+            if (wave == 2) {
+                // Audit wave 2: the diagnostics estimate must match the live roster.
+                configured = WaveTwoRosterPolicy.compose(configured, players);
+            }
             int hardCap = Math.min(Math.max(1, config.waveHardCap()),
                     PressureBudgetController.HARD_CAP);
             scaled = WaveScalingPolicy.scale(wave, configured, players, hardCap);
@@ -21834,6 +21882,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             WaveMechanicsPolicy.WaveCounts configured = new WaveMechanicsPolicy.WaveCounts(
                     definition.endermen(), definition.spiders(), definition.skeletons(),
                     definition.eliteEndermen(), definition.eliteSkeletons());
+            if (wave == 2) {
+                // Audit wave 2: the RIFT_HUNT roster escalates (16/16/8 at two
+                // players, 25/33/42 as the party grows) instead of staying flat.
+                configured = WaveTwoRosterPolicy.compose(configured, players);
+            }
             int hardCap = Math.min(Math.max(1, config.waveHardCap()),
                     PressureBudgetController.HARD_CAP);
             scaled = WaveScalingPolicy.scale(wave, configured, players, hardCap);
@@ -22665,6 +22718,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (planned && (owner == null || !owner.isOnline() || owner.isDead()
                 || owner.getWorld() != world || !isNamedEchoClientReady(owner)
                 || combatProfiles.echoBehaviorStrategy(cell.owner()) == null)) return false;
+        // ECHO-002: the realm is frozen once, at admission. A duel that cannot be
+        // placed in its own realm never falls back into the other group's room.
+        me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.Realm echoRealm =
+                namedEchoRealmOf(trial.owners(), cell.owner());
+        if (echoRealm == null) return false;
+        if (planned && !placeEchoOwnerInRealm(owner, echoRealm, trial.chamber())) return false;
 
         me.copimine.endevent.runtime.wave7.EchoReplicaInventory replica;
         me.copimine.endevent.domain.wave7.EchoBehaviorStrategy strategy;
@@ -22802,6 +22861,123 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return player == null ? owner.toString().substring(0, 8) : player.getName();
     }
 
+    /**
+     * ECHO-002: the frozen ordinary/limbo split of the running Echo stage.
+     *
+     * <p>Computed once from the admitted roster and cached for the lifetime of
+     * the stage, so a rejoin or a restart cannot move a participant into the
+     * other realm. Returns an empty spread below the limbo threshold, which is
+     * exactly the spec's "limbo unused" row.</p>
+     */
+    private me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.Split namedEchoRealmSplit(
+            java.util.Set<UUID> owners) {
+        if (owners == null || owners.isEmpty()) return null;
+        if (namedEchoRealmSplit != null && owners.equals(namedEchoRealmSplitOwners)) {
+            return namedEchoRealmSplit;
+        }
+        try {
+            namedEchoRealmSplit = me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.assign(owners);
+            namedEchoRealmSplitOwners = java.util.Set.copyOf(owners);
+            return namedEchoRealmSplit;
+        } catch (RuntimeException invalidRoster) {
+            // Fail closed: without a frozen split no duel is placed at all, rather
+            // than silently piling every participant into the ordinary arena.
+            namedEchoRealmSplit = null;
+            namedEchoRealmSplitOwners = null;
+            return null;
+        }
+    }
+
+    private me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.Realm namedEchoRealmOf(
+            java.util.Set<UUID> owners, UUID owner) {
+        me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.Split split =
+                namedEchoRealmSplit(owners);
+        return split == null ? null : split.realmOf(owner);
+    }
+
+    /** ECHO-003: two owners share perception only inside one realm. */
+    private boolean namedEchoRealmMatches(UUID viewer, UUID subject) {
+        me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.Split split = namedEchoRealmSplit;
+        if (split == null) return true;
+        me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.Realm viewerRealm = split.realmOf(viewer);
+        me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.Realm subjectRealm = split.realmOf(subject);
+        if (viewerRealm == null || subjectRealm == null) return false;
+        return viewerRealm == subjectRealm;
+    }
+
+    /**
+     * ECHO-004: put one group of owners in the limbo presentation area.
+     *
+     * <p>The limbo area is a lifted mirror of the authored arena ring, so it
+     * carries the same traversal and cover affordances as the ordinary floor
+     * instead of a bare box. It is raised far enough that neither group sees the
+     * other's blocks, and it is proven standable before any owner is moved.</p>
+     */
+    private boolean placeEchoOwnerInRealm(Player owner,
+            me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.Realm realm, int chamber) {
+        if (owner == null || realm == null) return false;
+        if (realm == me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.Realm.ORDINARY) {
+            return true;
+        }
+        Location limbo = namedEchoLimboAnchor(owner.getWorld(), chamber);
+        return limbo != null && owner.getLocation().getWorld() != null
+                && owner.teleport(limbo);
+    }
+
+    /** The standable anchor of the limbo mirror plane for one Echo chamber. */
+    private Location namedEchoLimboAnchor(World world, int chamber) {
+        if (world == null || namedEchoOrdinaryCore == null) return null;
+        Location core = namedEchoOrdinaryCore;
+        if (core.getWorld() == null || !core.getWorld().equals(world)) return null;
+        Location anchor = core.clone().add(0.0D, ECHO_LIMBO_LIFT_BLOCKS, 0.0D);
+        int inset = (int) Math.ceil(ChamberIsolationPolicy.INNER_RADIUS);
+        int outset = (int) Math.floor(ChamberIsolationPolicy.OUTER_RADIUS);
+        int floorY = anchor.getBlockY();
+        // ECHO-004: the limbo floor mirrors the authored ring, radius for radius,
+        // so the second group gets the same usable traversal and cover footprint
+        // instead of a tiny box. Every block is journalled for exact restoration.
+        for (int dx = -outset; dx <= outset; dx++) {
+            for (int dz = -outset; dz <= outset; dz++) {
+                double radius = Math.hypot(dx, dz);
+                if (radius < inset || radius > outset) continue;
+                for (int dy = -1; dy <= 1; dy++) {
+                    Block block = anchor.clone().add(dx, dy, dz).getBlock();
+                    if (block.getType() == Material.END_STONE_BRICKS) continue;
+                    if (!namedEchoLimboBlocks.containsKey(block.getLocation())) {
+                        namedEchoLimboBlocks.put(block.getLocation().clone(), block.getType());
+                    }
+                    block.setType(dy == 0 ? Material.END_STONE_BRICKS : Material.AIR, false);
+                }
+            }
+        }
+        return anchor;
+    }
+
+    /** ECHO-004: put the limbo mirror back exactly as it was authored. */
+    private void restoreNamedEchoLimboBlocks() {
+        for (Map.Entry<Location, Material> entry : namedEchoLimboBlocks.entrySet()) {
+            try {
+                entry.getKey().getBlock().setType(entry.getValue(), false);
+            } catch (RuntimeException ignored) {
+                // A missing world must not abort the remaining restoration.
+            }
+        }
+        namedEchoLimboBlocks.clear();
+    }
+
+    /**
+     * The shared region of one Echo chamber, as planned by the trial controller.
+     *
+     * <p>Audit ECHO error 6: every movement, admission and commit check now asks
+     * this one question — "is the body inside the shared region?" — instead of
+     * "is the body inside MY radial lane?", which re-created invisible walls that
+     * ECHO-005 had explicitly removed.</p>
+     */
+    private List<me.copimine.endevent.domain.Wave7EchoDuelCellPolicy.Cell> sharedEchoCells(
+            me.copimine.endevent.domain.Wave7EchoDuelCellPolicy.Cell cell) {
+        return cell == null ? List.of() : realitySplitTrialController.echoDuelCells(cell.chamber());
+    }
+
     private Location echoDuelCellPoint(Location core,
             me.copimine.endevent.domain.Wave7EchoDuelCellPolicy.Cell cell, double radius) {
         if (core == null || core.getWorld() == null || cell == null
@@ -22892,8 +23068,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         isNamedEchoClientReady(owner),
                         attemptLifecycle.isCombatAdmitted(pair.owner(), pair.generation()))
                 && cell != null && core != null && core.getWorld() != null
-                && cell.contains(owner.getLocation().getX() - core.getX(), owner.getLocation().getZ() - core.getZ())
-                && cell.contains(carrier.getLocation().getX() - core.getX(), carrier.getLocation().getZ() - core.getZ());
+                // ECHO-003/ECHO-008: the observer only takes part in duels of its
+                // own realm; the other group's fight stays invisible and silent.
+                && namedEchoRealmMatches(pair.owner(), cell.owner())
+                // Audit ECHO error 6: admission is a shared-region question, never
+                // "is the body in its own radial wedge". The old per-lane check
+                // silently refused every duel the moment either body crossed a
+                // lane border that no longer exists as a physical wall.
+                && Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(sharedEchoCells(cell),
+                        cell.owner(), owner.getLocation().getX() - core.getX(),
+                        owner.getLocation().getZ() - core.getZ())
+                && Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(sharedEchoCells(cell),
+                        cell.owner(), carrier.getLocation().getX() - core.getX(),
+                        carrier.getLocation().getZ() - core.getZ());
         return new EchoCombatAdmission.Context(pair, eventTickCounter, active);
     }
 
@@ -24922,18 +25109,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             } finally { currentCarrierPotionMutations.remove(owner); }
             return;
         }
-        if (lease == null && current != null && current.getAmplifier() >= 1) return;
+        // Audit wave 1: the carrier debuff is Slow III (amplifier 2), not Slow II.
+        // A foreign effect at least that strong already does the job.
+        if (lease == null && current != null && current.getAmplifier() >= CARRIER_SLOWNESS_AMPLIFIER) return;
         CarrierPotionLease next = new CarrierPotionLease(lease == null ? current : lease.original(),
                 lease == null ? now : lease.capturedAtTick(), now);
         currentCarrierPotionMutations.add(owner);
         try {
-            if (player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 30, 1, false, false, true)))
+            if (player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 30,
+                    CARRIER_SLOWNESS_AMPLIFIER, false, false, true)))
                 currentCarrierPotionLeases.put(owner, next);
         } finally { currentCarrierPotionMutations.remove(owner); }
     }
 
     private boolean isOwnedCarrierSlowness(PotionEffect effect, CarrierPotionLease lease, long now) {
-        return effect != null && lease != null && effect.getAmplifier() == 1
+        return effect != null && lease != null && effect.getAmplifier() == CARRIER_SLOWNESS_AMPLIFIER
                 && !effect.isAmbient() && !effect.hasParticles() && effect.hasIcon()
                 && effect.getDuration() >= 0 && effect.getDuration() <= 30
                 && Math.abs(effect.getDuration() - Math.max(0L, 30L - Math.max(0L, now - lease.refreshedAtTick()))) <= 2L;
@@ -25587,6 +25777,47 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * intent stays outstanding and is retried on a later tick rather than being
      * silently dropped.</p>
      */
+    /** Audit wave 1: commit one owed reinforcement pack for a real delivery. */
+    private void commitWaveOneReinforcement(String reasonCode) {
+        wave1ReinforcementOwed++;
+        getLogger().info("WAVE1_REINFORCEMENT_COMMITTED event=" + eventId + " generation=" + generation
+                + " owed=" + wave1ReinforcementOwed + " spawned=" + wave1ReinforcementSpawned
+                + " reason=" + reasonCode);
+        saveStateAsync();
+    }
+
+    /** Release every outstanding wave 1 pack within the live cap. */
+    private void resolveWaveOneReinforcements(long now) {
+        if (phase != EventPhase.WAVE_1 || wave1ReinforcementOwed <= wave1ReinforcementSpawned) return;
+        if (now < wave1NextReinforcementAtMillis) return;
+        Location core = coreCombatAnchorLocation();
+        World world = core == null ? null : core.getWorld();
+        if (world == null) return;
+        wave1NextReinforcementAtMillis = now + WAVE6_REINFORCEMENT_RETRY_MILLIS;
+        int players = waveScalePlayers();
+        WaveMechanicsPolicy.WaveCounts pressure = ritualPressureCounts(players);
+        if (pressure.total() <= 0) return;
+        // Defer rather than drop: a full live cap must not lose a committed pack.
+        if (countLiveWaveEntitiesForWave(1) >= PressureBudgetController.HARD_CAP) {
+            emitDiagnostic("OBJECTIVE", "REINFORCE_WAIT", "INFO", 1, "wave1-reinforcement-backpressure",
+                    null, null, "wave1-reinforce:" + generation,
+                    Map.of("owed", wave1ReinforcementOwed, "spawned", wave1ReinforcementSpawned,
+                            "live", countLiveWaveEntitiesForWave(1)));
+            return;
+        }
+        int before = countLiveWaveEntitiesForWave(1);
+        spawnWaveGroup(world, core, 1, false, testWaveFrontVisualMode, pressure, before);
+        int spawned = Math.max(0, countLiveWaveEntitiesForWave(1) - before);
+        getLogger().info("WAVE1_REINFORCEMENT_PACK event=" + eventId + " generation=" + generation
+                + " players=" + players + " planned=" + pressure.total()
+                + " spawned=" + spawned + " test=" + testWaveFrontVisualMode);
+        if (spawned <= 0) return;
+        wave1ReinforcementSpawned++;
+        getLogger().info("WAVE1_REINFORCEMENT_RELEASED event=" + eventId + " generation=" + generation
+                + " owed=" + wave1ReinforcementOwed + " spawned=" + wave1ReinforcementSpawned);
+        saveStateAsync();
+    }
+
     private void commitWaveSixReinforcement(String reasonCode) {
         wave6ReinforcementOwed++;
         getLogger().info("WAVE6_REINFORCEMENT_COMMITTED event=" + eventId + " generation=" + generation
@@ -30970,6 +31201,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         openCompletedRealitySplitRoom(chamber, realitySplitChamberController.assignment().chamberCount());
         if (trial.trial() == RealitySplitTrialController.NamedTrial.PERSONAL_ECHO) {
+            // The split is frozen against the authored arena core captured when
+            // the stage started; losing it would silently merge both groups.
+            namedEchoOrdinaryCore = coreCombatAnchorLocation();
             releaseCompletedNamedEchoStage("personal-echo-complete");
         }
         if (phase == EventPhase.RECOVERY_REQUIRED) return;
@@ -31007,6 +31241,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         namedEchoReplicas.clear();
         namedEchoCells.clear();
         namedEchoBridgeSessions.clear();
+        // ECHO-002/ECHO-004: the realm split dies with the stage, and the limbo
+        // mirror is put back exactly as it was authored.
+        namedEchoRealmSplit = null;
+        namedEchoRealmSplitOwners = null;
+        namedEchoRealmSplitStage = null;
+        restoreNamedEchoLimboBlocks();
         if (released > 0) {
             getLogger().info("END_RIFT_WAVE7_ECHO_STAGE_RELEASED event=" + eventId
                     + " generation=" + generation + " actors=" + released
@@ -31464,12 +31704,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (duel.lifecycle() == me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.OWNER_OFFLINE
                 && System.currentTimeMillis() >= duel.returnDeadlineMillis()) return false;
-        if (core == null || !cell.contains(owner.getLocation().getX() - core.getX(),
+        if (core == null || !Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(sharedEchoCells(cell),
+                cell.owner(), owner.getLocation().getX() - core.getX(),
                 owner.getLocation().getZ() - core.getZ())) {
+            // Only a body that left the shared region entirely is pulled back;
+            // crossing a lane border inside the region is ordinary movement.
             Location ownerPoint = echoDuelCellPoint(core, cell, ChamberIsolationPolicy.INNER_RADIUS + 2.0D);
             if (!moveNamedEchoOwnerToCell(owner, ownerPoint, cell, core)) return false;
         }
-        if (!cell.contains(carrier.getLocation().getX() - core.getX(),
+        if (!Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(sharedEchoCells(cell),
+                cell.owner(), carrier.getLocation().getX() - core.getX(),
                 carrier.getLocation().getZ() - core.getZ())) return false;
 
         me.copimine.endevent.runtime.RealitySplitEchoDuelState.DuelRecord current = duel;
@@ -31781,9 +32025,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 return;
             }
         }
-        // Never steer outside the duel cell: a strafe or kite at the cell edge
-        // must fail closed instead of pushing the copy through the barrier.
-        if (!cell.contains(target.getX() - core.getX(), target.getZ() - core.getZ())) {
+        // Never steer outside the shared duel region. A strafe or kite across a
+        // lane border is legal; only leaving the region fails closed.
+        if (!Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(sharedEchoCells(cell), cell.owner(),
+                target.getX() - core.getX(), target.getZ() - core.getZ())) {
             carrier.getPathfinder().stopPathfinding();
             return;
         }
@@ -31819,8 +32064,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || next.replicaRevision() != replica.state().revision()
                 || !scope.combatAdmitted() || !scope.sameWorld() || !scope.ownerInCell() || !scope.actorInCell()
                 || !world.equals(owner.getWorld()) || !world.equals(carrier.getWorld())
-                || !cell.contains(owner.getLocation().getX() - core.getX(), owner.getLocation().getZ() - core.getZ())
-                || !cell.contains(carrier.getLocation().getX() - core.getX(), carrier.getLocation().getZ() - core.getZ())
+                || !Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(sharedEchoCells(cell),
+                        cell.owner(), owner.getLocation().getX() - core.getX(),
+                        owner.getLocation().getZ() - core.getZ())
+                || !Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(sharedEchoCells(cell),
+                        cell.owner(), carrier.getLocation().getX() - core.getX(),
+                        carrier.getLocation().getZ() - core.getZ())
                 || pair == null || !pair.event().equals(next.eventId()) || pair.generation() != next.attemptGeneration()
                 || pair.epoch() != next.runtimeGeneration() || !pair.duel().equals(next.duelId())
                 || !pair.owner().equals(next.ownerUuid()) || !pair.actor().equals(next.actor().actorUuid())
@@ -36474,12 +36723,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                                PortalCapturePolicy.PortalState state,
                                                int index, boolean active, long now) {
         if (viewer == null || portal == null || floor == null || state == null) return;
-        double previous = portalIndicatorPreviousProgress.getOrDefault(index, -1.0D);
         long indicatorTick = now / 50L;
-        PortalCaptureIndicatorPolicy.Indicators indicators =
-                PortalCaptureIndicatorPolicy.evaluate(state, active, previous);
-        portalIndicatorPreviousProgress.put(index, Math.min(1.0D,
-                state.progressMillis() / (double) PortalCapturePolicy.CAPTURE_MILLIS));
+        // Audit wave 3: every viewer must be told the SAME direction.
+        //
+        // This method runs once per viewer, but the "previous sample" was read
+        // and overwritten here, so the first observer saw INWARD (progress really
+        // moved) and every later observer compared the new value with itself and
+        // got IDLE — one player watched the seal close while the next saw no
+        // streams at all. The sample is now advanced exactly once per portal and
+        // update, then reused, so every viewer reads one authoritative delta.
+        double previous;
+        PortalCaptureIndicatorPolicy.Indicators indicators;
+        if (portalIndicatorPreviousSampleTick.getOrDefault(index, Long.MIN_VALUE)
+                == indicatorSampleTick) {
+            previous = portalIndicatorPreviousProgress.getOrDefault(index, -1.0D);
+            indicators = PortalCaptureIndicatorPolicy.evaluate(state, active, previous);
+        } else {
+            double prior = portalIndicatorPreviousProgress.getOrDefault(index, -1.0D);
+            indicators = PortalCaptureIndicatorPolicy.evaluate(state, active, prior);
+            portalIndicatorPreviousProgress.put(index, Math.min(1.0D,
+                    state.progressMillis() / (double) PortalCapturePolicy.CAPTURE_MILLIS));
+            portalIndicatorPreviousSampleTick.put(index, indicatorSampleTick);
+        }
         if (!indicators.visible()) return;
         // A dormant portal keeps a dim ring so the player can see where the seal
         // is, but it never animates streams or veins it cannot justify.
@@ -36927,12 +37192,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 portalClosingStartedMillis.putIfAbsent(index, now);
                 completed++;
             }
+            // Audit wave 3: advance the portal's progress sample ONCE, then render
+            // it for every viewer. Advancing it inside the per-viewer method made
+            // the first observer see INWARD and everyone after them see IDLE.
+            indicatorSampleTick++;
             for (Player player : eventAudience()) {
                 if (player.getWorld().equals(portal.getWorld())) {
                     renderPortalObjective(player, portal, state, index, portals.size(), now);
 
                 }
             }
+            // Audit wave 1: release any reinforcement pack owed by a delivery.
+            resolveWaveOneReinforcements(now);
         }
         portalCaptureStates.put(3, updated);
         // Capture progress is continuous, so a crash must never lose more than
@@ -37063,6 +37334,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         currentCarrierState = null;
         currentCarrierChargeLocation = null;
         currentCarrierReplacementCount = 0;
+        // Audit wave 1: a cleared wave owes no reinforcement any more.
+        wave1ReinforcementOwed = 0;
+        wave1ReinforcementSpawned = 0;
+        wave1NextReinforcementAtMillis = 0L;
         currentHuntCycles = 0;
         waveTwoMarkCycle = 0;
         waveTwoPhantomLayouts.clear();
@@ -42608,7 +42883,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             side = new Vector(1.0D, 0.0D, 0.0D);
         }
         side.normalize();
-        int count = profile.arrowCount();
+        // Audit elite gap: the mini-boss volley is THREE fans of SIX, so the whole
+        // fan set is one projectile group with a per-fan lateral and forward
+        // stagger. A single-fan profile keeps the original behaviour exactly.
+        int count = profile.totalArrows();
         if (count <= 0 || activeEventArrowAges.size() + count > MAX_ACTIVE_EVENT_ARROWS) return;
         UUID groupId = UUID.randomUUID();
         if (!reserveWaveProjectileGroup(groupId, count)) return;
@@ -42616,12 +42894,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 ? ARROW_SPELL_EXPLOSIVE : spellId;
         List<Arrow> spawned = new ArrayList<>();
         try {
+            int perFan = profile.arrowsPerFan();
+            int fans = profile.volleys();
             for (int index = 0; index < count; index++) {
-                double lateral = (index - (count - 1) / 2.0D) * 0.12D;
-                double vertical = (index - (count - 1) / 2.0D) * 0.035D;
+                int fan = index / perFan;
+                int withinFan = index % perFan;
+                double lateral = (withinFan - (perFan - 1) / 2.0D) * 0.12D;
+                double vertical = (withinFan - (perFan - 1) / 2.0D) * 0.035D;
+                // Each later fan leaves wider and higher than the one before it,
+                // so the three fans read as a spreading salvo, not one wall.
+                double fanSpread = fan * 0.16D;
+                double fanRise = fan * 0.05D;
                 Vector direction = base.clone()
-                        .add(side.clone().multiply(lateral))
-                        .add(new Vector(0.0D, vertical, 0.0D))
+                        .add(side.clone().multiply(lateral + (fan - (fans - 1) / 2.0D) * fanSpread))
+                        .add(new Vector(0.0D, vertical + fanRise, 0.0D))
                         .normalize();
                 Arrow arrow = caster.getWorld().spawn(start, Arrow.class);
                 spawned.add(arrow);

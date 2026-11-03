@@ -1453,6 +1453,8 @@ public final class Wave2SpawnHarness {
     java.write_text(harness, encoding="utf-8")
     dependencies = [DOMAIN / f"{name}.java" for name in (
         "WaveScalingPolicy", "WaveMechanicsPolicy", "WavePressurePolicy", "PressureBudgetController", "WaveTwoStagePolicy",
+        # Audit wave 2: the subwave split now uses the authored 25/33/42% shares.
+        "WaveTwoRosterPolicy",
         "WaveTwoHuntPolicy", "WaveTwoPhantomMaterializationPolicy",
         "WaveTwoEntityRecoveryPolicy", "RiftCarrierPolicy",
     )]

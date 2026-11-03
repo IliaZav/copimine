@@ -70,12 +70,15 @@ def portal_frame():
     elements = []
     for name, low, high, rotation in pieces:
         elements.append(cuboid(name, low, high, rotation=rotation))
-        # Front/back energy inlays are independent solid strips with a small
-        # separation from the structural face, so neither side z-fights.
+        # Energy veins run THROUGH the frame instead of being 0.05-thick decals
+        # on its faces: at gameplay distance the old inlays collapsed to a
+        # hairline and the gate read as plain stone. Each vein is now a 0.5-deep
+        # channel inset 0.02 from both faces, so it stays coplanar-free while
+        # carrying visible thickness from any angle.
         cx = (low[0] + high[0]) / 2
         seam_bottom, seam_top = low[1] + 0.3, high[1] - 0.3
-        for side, z1, z2 in (("front", low[2] - 0.08, low[2] - 0.025),
-                             ("back", high[2] + 0.025, high[2] + 0.08)):
+        for side, z1, z2 in (("front", low[2] + 0.02, low[2] + 0.52),
+                             ("back", high[2] - 0.52, high[2] - 0.02)):
             elements.append(cuboid(name + "_seam_" + side,
                                    [cx - 0.17, seam_bottom, z1],
                                    [cx + 0.17, seam_top, z2], "energy", rotation))

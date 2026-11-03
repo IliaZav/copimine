@@ -102,8 +102,14 @@ def test_wave6_legacy_collapse_rings_are_not_a_live_execution_path() -> None:
 
 def test_wave6_ritual_spawn_failure_is_transactional_and_diagnostic() -> None:
     root = read(SRC / "CopiMineEndEvent.java")
-    start = root.index("private boolean startRitualSphereObjective")
-    end = root.index("private Location ritualSphereCenter", start)
+    # SUPERSEDED (spec W6-002 / audit W6 error 1): entities are no longer placed
+    # up-front by startRitualSphereObjective. Each stage spawns its own mage and
+    # guards through spawnWaveSixStage, so that is where placement must be
+    # transactional and diagnostic.
+    start = root.index("private boolean spawnWaveSixStage(")
+    # The per-stage spawner is the last Wave 6 method in the file, so the safe
+    # bound is the next top-level declaration after it.
+    end = root.index("\n    private ", start + 1)
     body = root[start:end]
     assert "placeRitualEntity(caster, casterLocation, \"CASTER\", casterSlot, -1)" in body
     assert "placeRitualEntity(guard, guardLocation, \"GUARD\", casterSlot, guardSlot)" in body
@@ -116,10 +122,16 @@ def test_wave6_ritual_spawn_failure_is_transactional_and_diagnostic() -> None:
     assert "reason=no-safe-destination" in placement_body
     assert '" reason=" + failureReason' in placement_body
     assert '"bukkit-teleport-rejected"' in placement_body
-    assert "ritualSphereVisualUuid == null" in body
-    assert "!isLiveOwnedEntity(ritualSphereVisualUuid)" in body
-    assert "waveObjectiveStartedMillis = 0L;" in body
-    assert "waveObjectiveLastSecond = -1;" in body
+    # The sphere visual and the objective clock belong to the STARTUP path, which
+    # still lives in startRitualSphereObjective. Stage spawns only place bodies,
+    # so their rollback is checked on the spawner and the visual rollback on the
+    # starter.
+    objective_start = root.index("private boolean startRitualSphereObjective")
+    objective_body = root[objective_start:root.index("\n    private ", objective_start + 1)]
+    assert "ritualSphereVisualUuid == null" in objective_body
+    assert "!isLiveOwnedEntity(ritualSphereVisualUuid)" in objective_body
+    assert "waveObjectiveStartedMillis = 0L;" in objective_body
+    assert "waveObjectiveLastSecond = -1;" in objective_body
 
     capture_start = root.index("private void attemptRitualPrisonerCapture")
     capture_end = root.index("private void ensureRitualPrisoner", capture_start)

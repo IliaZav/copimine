@@ -1378,9 +1378,9 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     candidate=baseline['candidate']
     assert candidate['filename']=='CopiMineEndEvent-26.3.jar'
     assert candidate['runtimeFilename']=='CopiMineEndEvent.jar'
-    assert candidate['size']==1818436
-    assert candidate['sha256']=='a31e99d5949d13243bec5ad5e3e0276a28004437ca787242c4317589d0c21e7e'
-    assert candidate['sha512']=='6dd55a0c54c088db22727fc9e5ba7ffa1c7c061762d1d7e8928ad3a9e8c9ede565477e85e898acb0b08f2c3d403e69c5c3efba5c40b9822aef1a3f764bd87196'
+    assert candidate['size']==1844957
+    assert candidate['sha256']=='d6b352e5e7da23e563477e896fa13e616f5b926e97b0ef59b148e31cdbdc0961'
+    assert candidate['sha512']=='7e8c43db8edc342e2f9b5f4545a2ea6cc22380ff18c8b43710f02b1dfb63215a1d4fea4dacb632bd3eb3bd915c19dba3060841daf0ad4c95aea8a58f9de2896b'
     assert candidate['apiVersion']=='26.3'
     assert candidate['buildArtifact']=='build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar'
     assert candidate['nativeVerified'] is lock['nativeVerified']
@@ -1430,6 +1430,15 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
         'dcee3f59ab5a5114757def7ecd1ce4fa09495f462dd06c85c19610a3b4e7e150',
     ]
     assert candidate['replaceSha256']==[
+        # Superseded by the Echo consumable-completion build (rebuilt with the
+        # gate's own canonical JDK).
+        '787302a8247127468e9480b002e0a70c42417106564d33e3d9a1696ec66ad5b0',
+        # Superseded by the boss hazard and nameplate-contract build.
+        '6d91fdadfd4a8a8684e091cbe6c96595bd9034d4110ddbe2a60dcca09ebf371c',
+        # Superseded by the Wave 7 miniboss support and boss hazard build.
+        '0a2d6c1194590da0206d49587fdfa929b38040405ca34f11259f10445b106c00',
+        # Superseded by the Wave 6 stage ownership / Echo grooming build.
+        'a31e99d5949d13243bec5ad5e3e0276a28004437ca787242c4317589d0c21e7e',
         # Superseded by the ECHO-005 shared-region build; kept so an older jar
         # never silently passes the inventory check.
         'e54159bd2b14aafabf2a746c84197d3fb859c1356c04db65d340ec9916b6e44a',
@@ -3029,8 +3038,8 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
     expected_candidates={
         'CopiMineArtifacts':('a5e0420d503850cb604445c52705f5af71fdc65770a78b943c5d2bc252fabcc5',
                              'a054cfeef3dc37dc364ef33d550063b6aa105f2394501bd982295af2fc791bba82cce15623c3ff7b09c4c3250683fb1caf7cdb72312e3c91bf50dd0c2fc39600',366356),
-        'CopiMineEndEvent':('a31e99d5949d13243bec5ad5e3e0276a28004437ca787242c4317589d0c21e7e',
-                            '6dd55a0c54c088db22727fc9e5ba7ffa1c7c061762d1d7e8928ad3a9e8c9ede565477e85e898acb0b08f2c3d403e69c5c3efba5c40b9822aef1a3f764bd87196',1818436),
+        'CopiMineEndEvent':('d6b352e5e7da23e563477e896fa13e616f5b926e97b0ef59b148e31cdbdc0961',
+                            '7e8c43db8edc342e2f9b5f4545a2ea6cc22380ff18c8b43710f02b1dfb63215a1d4fea4dacb632bd3eb3bd915c19dba3060841daf0ad4c95aea8a58f9de2896b',1844957),
         'CopiMineNarcotics':('bea72432491f7afa0a0cbd23b608654b56899b8e463720f98dbfef0f39f2ef0d',
                              'c2e3439ca69fd8ecc2b19aa654a38fb6bcd81e5be1da2da52934988edf1f75a5bb0170cbada994015500a6ccc6b2fcb6e8bc2bf4222a154c1b1fe6b5c14a586b',370363),
     }

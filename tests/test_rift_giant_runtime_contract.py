@@ -33,12 +33,25 @@ def test_giant_aura_refresh_and_cleanup_preserve_unowned_effects():
     refresh = method(source, "private void refreshRiftGiantAuraEffect(")
     remove = method(source, "private void removeOwnedRiftGiantAuraEffect(")
 
-    assert "refreshRiftGiantAuraEffect(ally, PotionEffectType.REGENERATION" in aura
-    assert "refreshRiftGiantAuraEffect(ally, PotionEffectType.RESISTANCE" in aura
+    # SUPERSEDED (EZM-003, audit elites): the aura is Strength I + Speed I +
+    # Resistance I. Regeneration is explicitly excluded by the spec, and a
+    # superseded lease still strips any Regeneration an older build granted.
+    for auraType in ("STRENGTH", "SPEED", "RESISTANCE"):
+        assert f"PotionEffectType.{auraType}" in source
+    assert "refreshRiftGiantAuraEffect(ally, type" in aura
+    # A superseded lease still strips the legacy Regeneration explicitly, so an
+    # upgraded world never keeps healing that the spec forbids.
+    assert "removeOwnedRiftGiantAuraEffect(ally, PotionEffectType.REGENERATION" in aura
+    # SUPERSEDED (EZM-003): the live types come from the shared set, so the
+    # refresh loop iterates RIFT_GIANT_AURA_TYPES instead of naming RESISTANCE.
+    assert "refreshRiftGiantAuraEffect(ally, type" in aura
+    assert "RIFT_GIANT_AURA_TYPES" in aura
     assert "RiftGiantAuraEffectPolicy.mayApply(" in refresh
     assert "RiftGiantAuraEffectPolicy.mayRemove(" in remove
     assert "removeOwnedRiftGiantAuraEffect(living, PotionEffectType.REGENERATION, sourceId)" in cleanup
-    assert "removeOwnedRiftGiantAuraEffect(living, PotionEffectType.RESISTANCE, sourceId)" in cleanup
+    # SUPERSEDED (EZM-003): Strength/Speed/Resistance are each revoked from the
+    # shared set; Regeneration is still revoked separately as legacy cleanup.
+    assert "RIFT_GIANT_AURA_TYPES" in cleanup
     assert "living.removePotionEffect(PotionEffectType.REGENERATION)" not in cleanup
     assert "living.removePotionEffect(PotionEffectType.RESISTANCE)" not in cleanup
 

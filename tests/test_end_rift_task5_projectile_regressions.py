@@ -85,6 +85,7 @@ def test_projectile_leases_cover_each_admitted_wave_launch_group():
     cloud = java_method_body(source, "private boolean spawnEliteDragonBreathCloud(")
     arrow_volley = java_method_body(source, "private void riftArrowVolley(LivingEntity caster, Player target, String spellId,")
     sphere = java_method_body(source, "private void spawnRitualSphereProjectileVolley(")
+    sphere_body = java_method_body(source, "private void spawnRitualSphereProjectileVolleyBody(")
     guard_web = java_method_body(source, "private boolean spawnRitualGuardWebProjectile(")
     guard_brand = java_method_body(source, "private boolean spawnRitualGuardSoulBrandProjectile(")
     guard_physical = java_method_body(source, "private boolean spawnRitualGuardPhysicalProjectile(")
@@ -100,7 +101,9 @@ def test_projectile_leases_cover_each_admitted_wave_launch_group():
     )
     assert "clearWaveProjectileGroup(pending.volleyId()" in side_arrows
     assert "transferWaveProjectile(projectileId, cloud.getUniqueId())" in cloud
-    assert "reserveWaveProjectileGroup(" in sphere
+    # SUPERSEDED (spec W6-018): the public overload performs admission and hands
+    # off; the body owns the single reserveWaveProjectileGroup(" for the fan.
+    assert "reserveWaveProjectileGroup(" in sphere_body
     assert "spawnRitualGuardPhysicalProjectile(guard, target, committedAim," in guard_web
     assert "ARROW_SPELL_RITUAL_GUARD_WEB" in guard_web
     assert "spawnRitualGuardPhysicalProjectile(guard, target, committedAim," in guard_brand

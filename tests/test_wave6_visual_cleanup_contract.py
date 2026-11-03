@@ -162,5 +162,9 @@ def test_wave6_sphere_keeps_outside_layers_without_obscuring_the_prisoner() -> N
 
 def test_wave6_caster_display_name_is_plain_zaklinatel() -> None:
     source = read(SERVER)
-    assert 'ChatColor.LIGHT_PURPLE + "Заклинатель"' in source
+    # SUPERSEDED (spec W6-009): the nameplate names the current mage identity
+    # ("Заклинатель <имя>") so the team can read which signature is at stake.
+    # The bare word remains the base and the old invented title is still absent.
+    assert 'ChatColor.LIGHT_PURPLE + "Заклинатель "' in source
+    assert "mageName(mage)" in source
     assert "Кастёр Сферы" not in source

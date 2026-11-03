@@ -74,6 +74,9 @@ public record EchoBehaviorStrategy(int meleePermille, int rangedPermille,
                 holdDistance < 0 ? 500 : holdDistance,
                 kite < 0 ? rangedShare : kite,
                 share(counts.shieldSamples(), counts.movementSamples()),
+                // Audit ECHO error: switches are counted against recorded attacks, but a
+                // player can switch weapons more often than they land hits. The share
+                // saturates at 1000 per mille instead of rejecting the profile.
                 share(counts.itemSwitches(), Math.max(1L, attackCount)));
     }
 
@@ -111,8 +114,20 @@ public record EchoBehaviorStrategy(int meleePermille, int rangedPermille,
         return strategy;
     }
 
+    /**
+     * A thousandth share, clamped to the closed interval [0, 1000].
+     *
+     * <p>Audit ECHO error: a single observation category can legitimately exceed
+     * its denominator. Twelve item switches across four recorded hits produced
+     * 3000 and the strict strategy constructor threw, which silently dropped a
+     * whole real player's signature. A share above one simply means "always",
+     * so it saturates instead of failing.</p>
+     */
     private static int share(long numerator, long denominator) {
-        return denominator <= 0L ? 500 : (int) Math.round(numerator * 1_000.0D / denominator);
+        if (denominator <= 0L) return 500;
+        double ratio = numerator * 1_000.0D / denominator;
+        if (!Double.isFinite(ratio)) return 1_000;
+        return (int) Math.max(0L, Math.min(1_000L, Math.round(ratio)));
     }
 
     private static int parseCanonicalInt(String value) {

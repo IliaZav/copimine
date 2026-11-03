@@ -44,15 +44,18 @@ def test_wave6_barrage_uses_a_dedicated_sphere_origin_path() -> None:
     assert "spawnRitualSphereProjectileVolley" in barrage
     assert "riftArrowVolley(" not in barrage
 
+    # SUPERSEDED (audit W6 error 3, spec W6-018): the sphere, not a mage body,
+    # is the caster. Admission is the live-target check, provenance is the
+    # sphere identity, and no shooter entity is installed on the arrow.
     adapter = method_body(source, "private void spawnRitualSphereProjectileVolley")
+    body = method_body(source, "private void spawnRitualSphereProjectileVolleyBody")
     for required in (
-        "ritualTargetAllowed(caster, target)",
+        "isFreeRitualTarget(target)",
         "RitualSphereProjectilePolicy.direction",
         "RitualSphereProjectilePolicy.MAX_INITIAL_SPEED",
         "tagRitualProjectile(arrow)",
         "tagRitualProjectileOrigin(arrow, sphereOrigin)",
-        "tagRitualProjectileTarget(arrow, caster, target)",
-        "arrow.setShooter(caster)",
+        "tagRitualSphereProjectileTarget(arrow, target)",
         "arrow.setGravity(false)",
         "arrow.setDamage(0.0D)",
         "trackEventArrow(arrow)",
@@ -62,7 +65,7 @@ def test_wave6_barrage_uses_a_dedicated_sphere_origin_path() -> None:
         "projectile_spawn=",
         "cleanupEventArrow(arrow.getUniqueId())",
     ):
-        assert required in adapter
+        assert required in body
 
 
 def test_sphere_projectile_provenance_persists_origin_owner_target_and_lifetime() -> None:

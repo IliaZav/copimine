@@ -21,6 +21,10 @@ def boss_attack_probe(tmp_path_factory):
         "void executeContactBossAbility(", "Vector contactFacing(",
         "void onRiftProjectileHit(", "void voidMark(",
         "void startChestStrike(",
+        # Added with the stop-at-first-block fix: the sweep now finishes through
+        # one shared helper so both the natural end and a blocked end land in
+        # the same observable state.
+        "void finishBossChestStrike(",
         "void abortBossChestStrike(",
         "boolean applyBossActorAbilityDamage(",
         "void reconcileBossCastProjection(",
@@ -53,6 +57,11 @@ public class BossAttackAdmissionProbe {
         public Vector clone(){return new Vector(x,y,z);}
         double dot(Vector v){return x*v.x+y*v.y+z*v.z;} double getX(){return x;}double getY(){return y;}double getZ(){return z;}
     }
+    // Audit boss fix: the chest sweep stops at the first solid block. Every
+    // probe block is air by default, so no sweep is truncated unless a test
+    // explicitly solidifies one.
+    static class BlockType { boolean solid; boolean isSolid(){return solid;} }
+    static class Block { final BlockType type=new BlockType(); BlockType getType(){return type;} }
     static class Location {
         double x,y,z; Location(World w,double x,double y,double z){this(x,y,z);} Location(double x,double y,double z){this.x=x;this.y=y;this.z=z;}
         World getWorld(){return WORLD;} double distanceSquared(Location p){return (x-p.x)*(x-p.x)+(y-p.y)*(y-p.y)+(z-p.z)*(z-p.z);}
@@ -62,6 +71,7 @@ public class BossAttackAdmissionProbe {
         Location add(Vector v){return add(v.x,v.y,v.z);}
         double distance(Location p){return Math.sqrt(distanceSquared(p));}
         public Location clone(){return new Location(x,y,z);}
+        Block getBlock(){return new Block();}
     }
     static class Entity { final UUID id=UUID.randomUUID();UUID getUniqueId(){return id;} }
     static class LivingEntity extends Entity {

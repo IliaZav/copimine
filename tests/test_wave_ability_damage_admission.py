@@ -31,6 +31,9 @@ def ability_probe(tmp_path_factory):
 import java.util.*;
 import me.copimine.endevent.domain.WaveDamagePolicy;
 public class WaveAbilityAdmissionProbe {
+    // Presentation seam: the probed methods fire the authored signature after a
+    // landed cast. Visual output is not what this probe asserts.
+    void renderWave7AbilityEffect(Object a,Object b,String c){}
     static final int SLOWNESS_DEBUFF_TICKS=40, MINI_VOID_SNARE_DEBUFF_TICKS=40, MINI_ECHO_PULSE_DEBUFF_TICKS=40;
     static final double WAVE_MOB_DAMAGE_REDUCTION=0.75;
     enum PotionEffectType {SLOWNESS,WEAKNESS,BLINDNESS}

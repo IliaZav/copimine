@@ -11,7 +11,14 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.item.ItemStack;
 
-/** Unregistered renderer view. Never tick vanilla physics, item effects or networking. */
+/**
+ * Unregistered renderer view. Never tick vanilla physics, item effects or networking.
+ *
+ * <p>Everything the vanilla {@code AvatarRenderer} reads about the copy's body —
+ * pose, gait, swing, item use, hurt flash, death — is projected here from the
+ * server's authoritative semantic frame, so the copy animates with the real
+ * vanilla player animation code rather than an authored substitute.</p>
+ */
 public final class EchoPlayerView extends RemotePlayer {
     private static final EquipmentSlot[] VISIBLE_SLOTS = {EquipmentSlot.HEAD, EquipmentSlot.CHEST,
             EquipmentSlot.LEGS, EquipmentSlot.FEET, EquipmentSlot.MAINHAND, EquipmentSlot.OFFHAND};
@@ -52,22 +59,21 @@ public final class EchoPlayerView extends RemotePlayer {
         setBoundingBox(carrier.getBoundingBox());
         projectEquipment(carrier, frame.equipmentVersion(), animationTick);
         if (animationTick) {
-            // Reuse vanilla gait and swing evaluation without super.tick(),
-            // which would simulate a second actor and could consume items.
+            // Reuse vanilla gait evaluation without super.tick(), which would
+            // simulate a second actor and could consume items. Swing, use and
+            // hurt timelines are driven by EchoVanillaRenderer from receipts.
             calculateEntityAnimation(false);
         }
     }
 
     private void projectEquipment(LivingEntity carrier, int version, boolean animationTick) {
         if (equipmentVersion != version || animationTick) {
-            for (var slot : VISIBLE_SLOTS) {
-                ItemStack nativeStack = carrier.getItemBySlot(slot);
-                if (!ItemStack.matches(getItemBySlot(slot), nativeStack))
-                    setItemSlot(slot, nativeStack.copy());
-            }
-            equipmentVersion = version;
+            EchoVanillaRenderer.projectEquipment(this, carrier, version, equipmentVersion != version);
         }
     }
+
+    /** Used by {@link EchoVanillaRenderer#projectEquipment} to write the projected version. */
+    void setEquipmentVersion(int version) { equipmentVersion = version; }
 
     @Override public PlayerSkin getSkin() { return skin == null ? super.getSkin() : skin; }
     @Override public boolean isUsingItem() {

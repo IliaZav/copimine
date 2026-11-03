@@ -175,7 +175,11 @@ def test_ritual_guard_volley_uses_its_bounded_debuff_profile() -> None:
 
 def test_sphere_barrage_requires_live_caster_and_still_enabled_spell():
     check = method_body(read_source(), "private boolean ritualSphereProjectileProvenanceAllowed(")
-    assert "!isLiveOwnedEntity(owner)" in check
+    # SUPERSEDED (audit W6 errors 2-3, spec W6-018): the sphere owns the Barrage and
+    # keeps casting after the last mage dies, so "the owner must be a live owned
+    # entity" became "the owner is either the sphere identity or a legacy live mage".
+    assert "sphereOwner" in check
+    assert "wave6PrisonBroken" in check
+    assert "sphereAcquiredSpells()" in check
     assert "ritualCasterUuids.contains(owner)" in check
-    assert "RitualCasterProgressionPolicy.isSpellEnabled" in check
     assert "MajorSpell.RIFT_BARRAGE" in check

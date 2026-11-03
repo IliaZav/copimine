@@ -85,11 +85,13 @@ def test_wave6_caster_runtime_keeps_casters_passive_until_guard_death_and_first_
 def test_wave6_spell_dispatch_uses_accumulated_unlocks_independently_of_caster_slot() -> None:
     root = read(SRC / "CopiMineEndEvent.java")
     body = method(root, "private void castNextRitualAbility(")
-    assert "RitualCasterTacticsPolicy.Role role" in body
-    assert "RitualCasterTacticsPolicy.roleForSlot(" in body
-    # Roles identify the surviving caster in logs. The sphere retains spells
-    # unlocked by deaths, even if the original role's caster was the first to die.
-    assert "RitualCasterProgressionPolicy.availableSpells(ritualCasterDeathCount)" in body
+    # SUPERSEDED (audit W6 errors 2-3, spec W6-016/W6-018): the sphere casts the
+    # signatures it acquired by mage identity and needs no living channeler.
+    assert "RitualCasterTacticsPolicy.Role role" not in body
+    assert "RitualCasterTacticsPolicy.roleForSlot(" not in body
+    assert "sphereAcquiredSpells()" in body
+    assert "availableSpells(ritualCasterDeathCount)" not in body
+    assert "ritualSphereCasterId()" in body
     assert "availableSpells.isEmpty()" in body
     normalized_body = " ".join(body.split())
     assert "availableSpells.get( Math.floorMod(ritualSpellCursor, availableSpells.size()))" in normalized_body
@@ -208,7 +210,8 @@ def test_wave6_scheduler_retains_unlocked_spells_and_uses_only_live_owners() -> 
 
     root = read(SRC / "CopiMineEndEvent.java")
     body = method(root, "private void castNextRitualAbility(")
-    assert "isLiveOwnedEntity(entity.getUniqueId())" in body
+    # The sphere owns the cast; no living mage body is consulted.
+    assert "ritualCasterUuids.stream()" not in body
     assert "ritualSpellForMajor(" in body
     assert "RitualCasterTacticsPolicy.ownsRitualAbility(" not in body
     assert "wave6PrisonBroken" in body
@@ -216,7 +219,11 @@ def test_wave6_scheduler_retains_unlocked_spells_and_uses_only_live_owners() -> 
     assert "source=NATURAL" not in body
     assert "source=SHARED_SCHEDULER" in body
     assert "cooldown_ms=" in body
-    assert "RitualCasterProgressionPolicy.isSpellEnabled(" in body
+    # SUPERSEDED (spec W6-017/018): availability is membership in the sphere's
+    # acquired signature pool, not a death-count predicate.
+    assert "availableSpells.contains(selectedMajor)" in body
+    assert "RitualCasterProgressionPolicy.isSpellEnabled(" not in body
+    assert "ritualSphereCasterId()" in body
     assert "RitualAmplifierPolicy" not in body
     assert "ritualGuardAbilityGuard != null" in body
 
@@ -245,7 +252,13 @@ def test_wave6_caster_pose_tracks_channel_windup_release_and_server_facing() -> 
     assert "enderman.setScreaming(" in guard_tick
     assert "faceRitualCaster(" in guard_tick
     assert "faceRitualCaster(" in execute_tick
-    assert "livingCaster.swingMainHand()" in execute_tick
+    # SUPERSEDED (spec W6-018): the sphere owns the cast, so EXECUTE renders a
+    # sphere pulse from its own centre instead of making a mage body swing.
+    assert "castRitualSpherePulse(castOrigin" in execute_tick
+    # The TELEGRAPH block may still pose a surviving mage; the EXECUTE admission
+    # itself must not require a living body.
+    execute_admission = execute_tick[execute_tick.index("Stage.EXECUTE"):execute_tick.index("boolean applied")]
+    assert "livingCaster" not in execute_admission
     assert "if (isChannelingPhase(phase, entity.isAngry())) {\n                applyChannelingPose(pulse);" in model
     assert 'case "RITUAL_CHANNEL", "RITUAL_WINDUP", "RITUAL_RELEASE" -> true' in model
     assert 'case "RITUAL_COMBAT" -> false' in model
@@ -266,7 +279,12 @@ def test_wave6_pressure_pack_is_bounded_and_never_gates_ritual_progression() -> 
     scaling = read(DOMAIN / "RitualSphereScalingPolicy.java")
 
     assert "boolean noMobs = activeWave == 6 || countLiveWaveEntitiesForWave(activeWave) == 0;" in objective_tick
-    assert "clearRitualPressureMobs(" in ritual_tick
+    assert "clearRitualPressureMobs(" not in ritual_tick
+    # SUPERSEDED (audit W6 error 5, spec W6-004/005): every mage death, including
+    # the fifth, owes exactly one ordinary pack; a full live cap postpones it.
+    assert "commitWaveSixReinforcement(\"mage-death-\"" in root
+    assert "private void resolveWaveSixReinforcements(long now)" in root
+    assert "resolveWaveSixReinforcements(now)" in ritual_tick
     assert "Math.min(8, activePressure / 4)" in scaling
     assert "spawnWave6PressurePack(world, core, players, sandbox)" in root
     assert "initializeWaveGameplay(wave, world, core, roster, true, combatMode, false)" in root
@@ -276,8 +294,11 @@ def test_wave6_pressure_pack_is_bounded_and_never_gates_ritual_progression() -> 
 def test_wave6_guards_have_tuned_once_health_and_one_shared_cancellable_ability() -> None:
     root = read(SRC / "CopiMineEndEvent.java")
     assert "private void tickRitualGuardAbilities" in root
-    spawn = root[root.index("private boolean startRitualSphereObjective"):
-                 root.index("private boolean placeRitualEntity")]
+    # SUPERSEDED (spec W6-002 / audit W6 error 1): the guard bodies are created
+    # by the per-stage spawner, which is no longer adjacent to the objective
+    # starter, so the slice is taken from the spawner itself.
+    spawn_start = root.index("private boolean spawnWaveSixStage(")
+    spawn = root[spawn_start:root.index("\n    private ", spawn_start + 1)]
     group_tick = root[root.index("private void tickRitualGuardGroups"):
                       root.index("private void faceRitualCaster")]
     ability_tick = root[root.index("private void tickRitualGuardAbilities"):
@@ -285,6 +306,10 @@ def test_wave6_guards_have_tuned_once_health_and_one_shared_cancellable_ability(
     clear = root[root.index("private void clearRitualSphereObjective"):
                  root.index("private void removeRitualEntity")]
 
+    # SUPERSEDED (spec W6-002 / audit W6 error 1): guards are no longer spawned
+    # up-front. The slice below still ends before placeRitualEntity, so it spans
+    # startRitualSphereObjective() AND the per-stage spawner that now owns the
+    # guard bodies; the guard health setup lives in that spawner.
     assert "configureRitualGuardHealth(living)" in spawn
     assert "keyRitualGuardHealthConfigured" in root
     # W6-008: a guard is an enhanced elite, i.e. the shared x3 ordinary-role
@@ -335,9 +360,18 @@ def test_wave6_shield_stage_uses_the_selected_profiles_guard_total() -> None:
 def test_wave6_guard_roles_and_giant_replacements_preserve_the_selected_roster() -> None:
     root = read(SRC / "CopiMineEndEvent.java")
     ability_policy = read(DOMAIN / "RitualGuardAbilityPolicy.java")
-    spawn = method(root, "private boolean startRitualSphereObjective(")
+    # SUPERSEDED (audit W6 error 1, spec W6-002): the five squads are no longer
+    # spawned together at start. The start path spawns only the current stage;
+    # spawnWaveSixStage() owns one mage plus its assigned guards.
+    start_body = method(root, "private boolean startRitualSphereObjective(")
+    assert "for (int casterSlot = 0; casterSlot < profile.casterCount(); casterSlot++)" not in start_body
+    assert "spawnWaveSixStage(world, core, profile)" in start_body
+    spawn = method(root, "private boolean spawnWaveSixStage(")
 
-    assert "int roleSlot = RitualGuardAbilityPolicy.roleSlot(casterSlot, guardSlot)" in spawn
+    assert "int roleSlot = RitualGuardAbilityPolicy.roleSlot(stage, guardSlot)" in spawn
+    # SUPERSEDED (audit W6 error 4, spec W6-008): an ELITE tag never applied elite
+    # combat stats. The shared elite profile is applied exactly once at spawn.
+    assert "applyEliteCombatStats(living, 0.0D)" in spawn
     assert "RitualGuardAbilityPolicy.isGiantReplacement(" in spawn
     assert "if (roleSlot == 0 && giantReplacement)" in spawn
     assert "spawnRiftGiantEntity(world, guardLocation, 6, true, guardEntitySlot)" in spawn

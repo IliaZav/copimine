@@ -20,6 +20,12 @@ public final class EchoDuelCombatRuntimeAdapter {
     private static final int MELEE_RANGE_BLOCKS = 4;
     private static final int RANGED_RANGE_BLOCKS = 30;
     private static final int HEAL_THRESHOLD_PERMILLE = 550;
+    /**
+     * The "never heals" floor for the recorded sustain share. Any player who
+     * healed at least once while acting clears it; a profile with no healing at
+     * all stays at zero and the copy never invents the habit.
+     */
+    private static final int SUSTAIN_FLOOR_PERMILLE = 1;
     private static final EchoDuelCombatPolicy.Cooldowns COOLDOWNS =
             new EchoDuelCombatPolicy.Cooldowns(10, 20, 40, 32, 20, 100, 60);
 
@@ -199,6 +205,23 @@ public final class EchoDuelCombatRuntimeAdapter {
                     ? firstUsable(crossbowSlot, bowSlot) : firstUsable(bowSlot, crossbowSlot);
             int ammoSlot = replica.find(EchoLoadoutState.Kind.AMMO);
 
+            // Audit ECHO error: an in-flight consumable resolves HERE, at its own
+            // deadline, and this is the only place its health is granted. Starting
+            // the use only spends the item.
+            if (duel.actor().pendingUseUntilTick() > 0L
+                    && observation.tick() >= duel.actor().pendingUseUntilTick()) {
+                Optional<ActorState> completed = EchoDuelCombatPolicy.completeConsumable(
+                        duel.actor(), observation.tick(), COOLDOWNS);
+                if (completed.isPresent()) {
+                    // The supply was spent when the use STARTED, so by now the slot is
+                    // empty and there is no item to report. The resolution is a state
+                    // change, not a new item action, so it is reported as NONE with
+                    // the healed actor: reporting CONSUMABLE without an item is the
+                    // shape Decision rejects, and it silently swallowed this tick.
+                    return decision(duel, baselineReplica, replica, scope, Action.NONE,
+                            completed.get(), -1, -1, null);
+                }
+            }
             int consumableSlot = replica.find(EchoLoadoutState.Kind.GOLDEN_APPLE);
             if (consumableSlot < 0) consumableSlot = replica.find(EchoLoadoutState.Kind.FOOD);
             if (duel.actor().shieldActiveUntilTick() > observation.tick()) {
@@ -207,17 +230,25 @@ public final class EchoDuelCombatRuntimeAdapter {
             }
             boolean needsHealing = duel.actor().currentHealth() * 1_000.0D
                     <= duel.actor().maximumHealth() * HEAL_THRESHOLD_PERMILLE;
-            if (needsHealing && duel.behaviorStrategy().sustainPermille() >= 250
+            // Audit ECHO error: sustain is the share of sustained actions that were
+            // heals. A player who genuinely heals while fighting lands far below
+            // 250 per mille (three heals beside two hundred hits is 15), so the old
+            // hard gate rejected real healers. Any recorded heal tendency above the
+            // "never heals" floor now allows the copy to keep its own habit.
+            if (needsHealing && duel.behaviorStrategy().sustainPermille() >= SUSTAIN_FLOOR_PERMILLE
                     && consumableSlot >= 0) {
                 EchoLoadoutState.Item item = replica.item(consumableSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartConsumable(
                         duel.actor(), replica, consumableSlot, replica.revision(),
                         observation.tick(), COOLDOWNS);
                 if (actor.isPresent()) {
-                    double healing = item.kind() == EchoLoadoutState.Kind.GOLDEN_APPLE ? 4.0D : 2.0D;
-                    ActorState healed = withHealth(actor.get(), Math.min(
-                            actor.get().maximumHealth(), actor.get().currentHealth() + healing));
-                    return decision(duel, baselineReplica, replica, scope, Action.CONSUMABLE, healed,
+                    // Audit ECHO error: the copy used to regain health on the very
+                    // tick it STARTED eating, so a visible apple never had to finish
+                    // and the health pool was never actually spent. Starting the use
+                    // costs the item now; the health itself is applied when the use
+                    // duration resolves at the top of the next tick via
+                    // EchoDuelCombatPolicy.completeConsumable().
+                    return decision(duel, baselineReplica, replica, scope, Action.CONSUMABLE, actor.get(),
                             consumableSlot, -1, item);
                 }
             }

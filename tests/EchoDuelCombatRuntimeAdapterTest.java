@@ -93,19 +93,48 @@ public final class EchoDuelCombatRuntimeAdapterTest {
                 .orElseThrow();
         check(food.action() == Action.CONSUMABLE, "low-health Echo selects food its owner actually carried");
         check(supplies.remaining(5) == 0, "the consumable decision stages the owner's bread, not an invented allowance");
-        // Ordinary food heals 2.0 (only a golden apple heals 4.0), so the
-        // owner's bread stages 8.0 + 2.0 in the same decision as its cost.
-        check(food.nextDuel().actor().currentHealth() == 10.0D,
-                "planned healing and its item cost are staged in the same duel snapshot");
+        // SUPERSEDED (ECHO-007 / spec MARK-005 "never immunity, never firing from
+        // cover" family; found by the overnight audit): the decision used to
+        // stage 8.0 + 2.0 immediately, so an Echo healed at the START of the
+        // eating animation and a disconnect-and-reconnect during the window
+        // healed it a second time. Healing now resolves only when the use
+        // window elapses; the decision stages the cost and the deadline.
+        check(food.nextDuel().actor().currentHealth() == 8.0D,
+                "the consumable decision stages the item cost without an early heal");
         check(food.nextDuel().actor().pendingUseUntilTick() == 332,
                 "pending-use time scopes the item action across reconnect and restart");
+
+        // The heal lands exactly at the deadline, and only then.
+        DuelRecord beforeDeadline = food.nextDuel();
+        check(EchoDuelCombatRuntimeAdapter.tick(beforeDeadline, restore(beforeDeadline),
+                scope(beforeDeadline, true, true, true, true), new Observation(331, 4.0D, true))
+                .orElseThrow().nextDuel().actor().currentHealth() == 8.0D,
+                "nothing heals one tick before the use window elapses");
+        Decision resolution = EchoDuelCombatRuntimeAdapter.tick(beforeDeadline, restore(beforeDeadline),
+                scope(beforeDeadline, true, true, true, true), new Observation(332, 4.0D, true))
+                .orElseThrow();
+        // The supply is spent at the START, so the resolving tick has no item to
+        // report; it publishes the healed actor as a plain state change.
+        check(resolution.action() == Action.NONE,
+                "a resolving consumable is a state change, not a second item action");
+        DuelRecord atDeadline = resolution.nextDuel();
+        // The heal is a bounded share of MAXIMUM health (CONSUMABLE_HEAL_FRACTION),
+        // not a flat food value, and it is clamped to the maximum.
+        double expectedHealed = Math.min(atDeadline.actor().maximumHealth(),
+                beforeDeadline.actor().currentHealth()
+                        + beforeDeadline.actor().maximumHealth() * 0.2D);
+        check(Math.abs(atDeadline.actor().currentHealth() - expectedHealed) < 1.0E-9D,
+                "the bounded heal lands exactly when the use window elapses");
+        check(atDeadline.actor().pendingUseUntilTick() == 0L,
+                "a completed use clears its deadline so a replay cannot heal twice");
         NamedData woundedData = withDuel(fixture.data(), fixture.room(), fixture.owner(), wounded);
         NamedData restoredFoodData = RealitySplitTrialSnapshot.decodeNamed(RealitySplitTrialSnapshot.encodeNamed(
                 withDuel(woundedData, fixture.room(), fixture.owner(), food.nextDuel())), EVENT, ATTEMPT, RUNTIME);
         DuelRecord restoredFood = restoredFoodData.personalEchoDuels().get(fixture.room()).get(fixture.owner());
-        check(restoredFood.actor().currentHealth() == 10.0D && restore(restoredFood).remaining(5) == 0
+        check(restoredFood.actor().currentHealth() == 8.0D && restore(restoredFood).remaining(5) == 0
                         && restoredFood.actor().pendingUseUntilTick() == 332,
-                "snapshot restore keeps the staged consumable, projected healing and pending-use state together");
+                "snapshot restore keeps the staged consumable, its deadline and the not-yet-applied "
+                        + "heal together, so a restart cannot double-heal");
     }
 
     private static void profileDrivenMobilitySchedulesBoundedJumpActions() {

@@ -109,12 +109,17 @@ def test_player_projectile_impact_on_a_shield_has_its_own_feedback_path():
 
 def test_sphere_spell_choice_uses_accumulated_unlocks_not_the_dead_casters_role():
     cast = method('private void castNextRitualAbility(')
-    assert 'RitualCasterProgressionPolicy.availableSpells(ritualCasterDeathCount)' in cast
+    # SUPERSEDED (audit W6 errors 2-3, spec W6-016/W6-018): the sphere owns the
+    # acquired signatures, so the pool is not keyed on the death count.
+    assert 'sphereAcquiredSpells()' in cast
+    assert 'availableSpells(ritualCasterDeathCount)' not in cast
     assert 'ritualSpellForRole(candidateRole)' not in cast
     assert 'Role.FINAL_SEAL' not in cast
     death = method('private void handleRitualCasterDeath(')
     assert 'progression.disabledSpell()' not in death
-    assert 'progression.addedSpell()' in death
+    # SUPERSEDED (spec W6-002/W6-016): progression is a committed sequence step in
+    # the shared state machine, which records the acquired signature by identity.
+    assert 'wave6Sequence.defeatCurrent(' in death
 
 
 def test_ritual_beams_start_at_both_raised_hands_and_floating_carrier_uses_owned_teleport():
@@ -130,14 +135,19 @@ def test_ritual_beams_start_at_both_raised_hands_and_floating_carrier_uses_owned
     assert '-2.62' in model and '-2.62' in policy
     assert '0.035' in model and '0.035' in policy
     assert '0.18' in model and '0.18' in policy
+    # SUPERSEDED (audit W6 error 3, spec W6-018): the pulse belongs to the sphere
+    # and is emitted around its own centre, so there is no caster hand origin.
     pulse = method('private void castRitualSpherePulse(')
-    assert 'RitualCasterHandPolicy.hands(' in pulse
-    assert 'Location start = caster.getEyeLocation()' not in pulse
+    assert 'Location sphereOrigin' in pulse
+    assert 'center.clone().add(hand)' in pulse
+    assert 'caster.getEyeLocation()' not in pulse
 
 
 def test_solo_guard_roster_includes_all_roles_and_spider_snare_is_an_owned_projectile():
-    spawn = method('private boolean startRitualSphereObjective(')
-    assert 'RitualGuardAbilityPolicy.roleSlot(casterSlot, guardSlot)' in spawn
+    # SUPERSEDED (audit W6 error 1, spec W6-002): guards are spawned per stage by
+    # spawnWaveSixStage(), not up-front by the objective start.
+    spawn = method('private boolean spawnWaveSixStage(')
+    assert 'RitualGuardAbilityPolicy.roleSlot(stage, guardSlot)' in spawn
     tick = method('private void tickRitualGuardAbilities(')
     assert 'RitualGuardAbilityPolicy.roleSlot(' in tick
     release = method('private void resolveRitualGuardAbility(')

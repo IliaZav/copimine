@@ -197,17 +197,39 @@ def test_official_wave_flow_does_not_start_a_wave_front_animation():
     assert "testWaveFrontVisualMode && activeWave >= 1" in event
 
 
+def method_body(source: str, declaration: str) -> str:
+    """Return exactly one method body, brace matched from its declaration.
+
+    The old assertions sliced the file from one declaration to the NEXT
+    declaration of another method, which silently swallowed every method that
+    happened to sit between the two. Adding a legitimate Wave 6 helper anywhere
+    in that gap made the "no routine title" rules fail for code they never
+    meant to cover. Matching the real body keeps the rule strict and local.
+    """
+    start = source.index(declaration)
+    brace = source.index("{", start)
+    depth = 0
+    for index in range(brace, len(source)):
+        char = source[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start:index + 1]
+    raise AssertionError(f"unbalanced body for {declaration}")
+
+
 def test_wave_objective_and_spell_names_are_not_sent_as_routine_system_titles():
     event = read(PLUGIN / "CopiMineEndEvent.java")
-    objective_start = event.index("private WaveObjectiveStartResult startCanonicalObjective")
-    objective_end = event.index("private WaveObjectiveStartResult startWaveObjective", objective_start)
-    fog_start = event.index("private void tickBlackFogObjective")
-    fog_end = event.index("private void applyBlackFogEffects", fog_start)
-    wave_intermission_start = event.index("private void tickCurrentIntermission")
-    wave_intermission_end = event.index("private EventPhase wavePhase", wave_intermission_start)
-    assert "announceEventTitle" not in event[objective_start:objective_end]
-    assert "announceEventTitle" not in event[fog_start:fog_end]
-    assert "announceEventTitle" not in event[wave_intermission_start:wave_intermission_end]
+    # Wave/stage progress belongs on the HUD. These three tick bodies are the
+    # ones that run continuously, so they must never raise a system title.
+    for declaration in (
+        "private WaveObjectiveStartResult startCanonicalObjective",
+        "private void tickBlackFogObjective",
+        "private void tickCurrentIntermission",
+    ):
+        assert "announceEventTitle" not in method_body(event, declaration), declaration
     assert 'announceEventTitle(Integer.toString(countdown), "", false)' in event
 
 

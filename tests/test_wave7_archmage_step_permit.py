@@ -21,6 +21,7 @@ def test_archmage_step_uses_the_single_use_event_owned_teleport_permit(tmp_path)
 import java.util.*;
 import me.copimine.endevent.domain.BossTeleportPermitPolicy;
 public class ArchmageStepPermitProbe {
+    void renderWave7AbilityBurst(Object point, String id) {}
     static final long COMBAT_TELEPORT_PERMIT_MILLIS=1000L;
     static final UUID ACTOR_ID=UUID.fromString("00000000-0000-0000-0000-000000000071");
     final String eventId="00000000-0000-0000-0000-000000000072";

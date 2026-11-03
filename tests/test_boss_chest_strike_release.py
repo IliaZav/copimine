@@ -22,6 +22,10 @@ def chest_strike_probe(tmp_path_factory):
     source = SOURCE.read_text(encoding="utf-8")
     signatures = [
         "void startChestStrike(",
+        # Added with the stop-at-first-block fix: the sweep now finishes through
+        # one shared helper so both the natural end and a blocked end land in
+        # the same observable state.
+        "void finishBossChestStrike(",
         "void abortBossChestStrike(",
         "void cancelBossCastTask(",
         "void reconcileBossCastProjection(",
@@ -49,8 +53,19 @@ public class BossChestStrikeReleaseProbe {
         double getX(){return x;} double getY(){return y;} double getZ(){return z;}
         World getWorld(){return world;}
         Vector toVector(){return new Vector(x,y,z);}
+        Block getBlock(){return new Block();}
         public Location clone(){return new Location(x,y,z,world);}
         Vector getDirection(){return new Vector(0,0,1);}
+    }
+    // Audit boss fix: the chest sweep stops at the first solid block, so the
+    // probe needs a block view. The default is air: no sweep is truncated.
+    static final class BlockType {
+        boolean solid;
+        boolean isSolid(){return solid;}
+    }
+    static final class Block {
+        final BlockType type = new BlockType();
+        BlockType getType(){return type;}
     }
     static final class Vector {
         double x,y,z;

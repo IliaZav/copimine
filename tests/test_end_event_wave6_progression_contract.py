@@ -23,7 +23,10 @@ def test_live_wave6_uses_the_shared_spell_controller_without_drain_or_control_sw
     assert "tickRitualControls(now)" not in tick
     assert "applyRitualSphereDrain(now)" not in tick
     assert "RitualSpellController.StartResult" in cast
-    assert "RitualCasterProgressionPolicy.isSpellEnabled" in cast
+    # SUPERSEDED (spec W6-016/017): the sphere casts its acquired signatures by
+    # mage identity; a death-count predicate is no longer consulted.
+    assert "sphereAcquiredSpells()" in cast
+    assert "RitualCasterProgressionPolicy.isSpellEnabled" not in cast
     assert "startRitualReverse(" not in cast
     assert "startRitualControlSwap(" not in cast
 
@@ -81,7 +84,11 @@ def test_caster_progression_requires_the_fifth_death_and_cleanup_before_completi
                         "private RitualCasterProgressionPolicy.MajorSpell majorSpell")
     completion = method_body(source, "private boolean currentObjectiveProgressComplete",
                              "private void tickCurrentCarrierObjective")
-    assert "afterCasterDeath(ritualCasterDeathCount)" in death
+    # SUPERSEDED (audit W6 errors 1-5): progression is committed by the sequence
+    # owner, which validates identity, current stage and roster completeness.
+    assert "wave6Sequence.defeatCurrent(defeatedIdentity)" in death
+    assert "result.blocker()" in death
+    assert "afterCasterDeath(deathCount - 1)" in death
     assert "breakRitualPrison()" in death
     assert "removeRitualEntity(id)" in source[source.index("private void breakRitualPrison"):]
     assert "RitualCasterProgressionPolicy.mayComplete" in completion
@@ -111,9 +118,14 @@ def test_repeated_completion_check_after_prison_break_still_requires_capture() -
     tick = method_body(source, "private void tickCurrentRitualSphereObjective",
                        "private void renderRitualSphereChanneling")
     broken_branch = tick[tick.index("if (wave6PrisonBroken)"):tick.index("ensureRitualSphereVisual")]
-    assert "ritualPrisonerId() != null || testRitualCombatMode" in broken_branch
-    assert "RitualCasterProgressionPolicy.mayComplete" in broken_branch
-
+    # The capture gate still applies after the prison breaks.
+    assert "releaseRitualPrisoner(" in broken_branch
+    assert "finishBrokenRitualPrison(" in broken_branch
+    # SUPERSEDED (spec W6-004/005): completion is owned by the sequence policy and
+    # additionally requires the fifth (final) reinforcement pack resolved.
+    assert "wave6Sequence.mayComplete(" in broken_branch
+    assert "waveSixFinalPackResolved()" in broken_branch
+    assert "RitualCasterProgressionPolicy.mayComplete" not in broken_branch
 
 def test_scheduler_has_generation_fenced_single_telegraph_execute_active_recovery_flow() -> None:
     source = SPELL_CONTROLLER.read_text(encoding="utf-8")

@@ -32,6 +32,7 @@ def resolve_probe(tmp_path_factory):
     method = extract_method(SOURCE.read_text(encoding="utf-8"), "private boolean resolveNamedTrialAttack(")
     return compile_probe(directory, "ArchmageCoverProbe", r'''
 public class ArchmageCoverProbe {
+void renderWave7AbilityEffect(Object a,Object b,String c){}
     static class Wave7NamedTrialActorPolicy {
         enum Attack { NONE, MARKSMAN_QUICK_SHOT, MARKSMAN_HEAVY_SHOT, MARKSMAN_SPREAD_SHOT,
             MARKSMAN_SUPPORT, ARCHMAGE_FANGS, ARCHMAGE_SPEAR, ARCHMAGE_STEP, ARCHMAGE_BEAM,

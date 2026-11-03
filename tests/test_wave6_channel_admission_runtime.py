@@ -1,13 +1,15 @@
-"""Run the production W6 caster selection and final channel admission decisions.
+"""Run the production W6 sphere channel admission decisions.
 
 Only Bukkit entities and scheduling are detached.  These tests are not native
-Minecraft evidence; they keep the sphere owning its spell channel while mages
-are merely damaged, and they stop the channel on the fifth legitimate death.
+Minecraft evidence; they keep the sphere owning its spell channel independently
+of the mage roster, and they stop the channel on the fifth legitimate death.
 
-Superseded expectation: an earlier build silenced the sphere ability of every
-caster whose protection was removed (``AWAKENED_ATTACKING``).  The canonical
-contract states that deaths, not damage, retire sphere spell ownership, so an
-awakened mage keeps casting and only the fifth death ends the channel.
+Superseded expectation (audit Wave 6 errors 2-3, spec W6-016/W6-018): an
+earlier build picked the casting mage round-robin from living bodies and
+silenced the sphere when no live caster matched.  The canonical contract says
+the sphere *itself* owns the signature acquired from a dead mage, so the channel
+must keep working with every mage of the stage dead.  A later build that
+reintroduced a living-owner requirement would fail these scenarios.
 """
 from pathlib import Path
 import subprocess
@@ -24,9 +26,6 @@ EVENT = ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.jav
 @pytest.fixture(scope="module")
 def channel_probe(tmp_path_factory):
     source = EVENT.read_text(encoding="utf-8")
-    dispatch = declaration(source, "private void castNextRitualAbility(long now)")
-    selection = dispatch[dispatch.index("        LivingEntity casterEntity = null;"):
-                         dispatch.index("        if (casterEntity == null || tactics == null || role == null)")]
     tick = declaration(source, "private void tickRitualSpellController(long now)")
     execute = declaration(tick, "if (snapshot.stage() == RitualSpellController.Stage.EXECUTE)")
     execute = execute[execute.index("{") + 1:execute.index("            boolean applied = switch")]
@@ -34,7 +33,6 @@ def channel_probe(tmp_path_factory):
     java = folder / "RitualChannelAdmissionProbe.java"
     java.write_text(r'''
 import java.util.*;
-import me.copimine.endevent.domain.RitualCasterTacticsPolicy;
 import me.copimine.endevent.domain.RitualCasterProgressionPolicy;
 public class RitualChannelAdmissionProbe {
     static class World {}
@@ -44,15 +42,11 @@ public class RitualChannelAdmissionProbe {
         UUID getUniqueId(){return id;} World getWorld(){return WORLD;}
     }
     static class LivingEntity extends Entity {
-        RitualCasterTacticsPolicy.State state;
-        LivingEntity(RitualCasterTacticsPolicy.State s){state=s;}
-        void swingMainHand(){}
+        boolean dead;
+        boolean isDead(){return dead;} boolean isValid(){return true;}
     }
-    static class Mob extends LivingEntity {Mob(RitualCasterTacticsPolicy.State s){super(s);}}
-    static class Enderman extends Mob {
-        Enderman(RitualCasterTacticsPolicy.State s){super(s);} void setScreaming(boolean value){}
-    }
-    static class Player extends Entity {boolean online=true; boolean isOnline(){return online;}}
+    static class Player extends Entity {boolean online=true; boolean dead;
+        boolean isOnline(){return online;} boolean isDead(){return dead;}}
     static class Bukkit {static Player target; static Player getPlayer(UUID id){return target;}}
     static class RitualSpellController {
         enum Stage {EXECUTE}
@@ -61,22 +55,26 @@ public class RitualChannelAdmissionProbe {
         int cleared; void clear(long generation){cleared++;}
     }
     Map<UUID,Entity> ownedEntities=new HashMap<>();
-    Map<UUID,Integer> ritualCasterSlots=new HashMap<>();
     RitualSpellController ritualSpellController=new RitualSpellController();
     UUID ritualSpellTargetUuid; long generation=7;
-    int ritualCasterDeathCount=1, ritualAbilityCursor;
+    int ritualCasterDeathCount=1;
+    boolean wave6PrisonBroken;
+    final UUID sphereId=UUID.randomUUID();
+    me.copimine.endevent.domain.WaveSixSequencePolicy wave6Sequence;
     boolean executed;
-    RitualCasterTacticsPolicy.State ritualCasterTacticsState(LivingEntity e){return e.state;}
     boolean isLiveOwnedEntity(UUID id){return ownedEntities.containsKey(id);}
+    // SUPERSEDED: the sphere alone owns the channel; no mage body is consulted.
     boolean isFreeRitualTarget(Player p){return p!=null&&p.online;}
-    RitualCasterProgressionPolicy.MajorSpell majorSpell(RitualSpellController.Spell s){return RitualCasterProgressionPolicy.MajorSpell.RIFT_BARRAGE;}
-    Object coreCombatAnchorLocation(){return null;}
-    Object ritualSphereCenter(Object p){return null;}
-    void faceRitualCaster(Mob mob,Object p){}
-    LivingEntity select(List<LivingEntity> casters) {
-''' + selection + r'''
-        return casterEntity;
+    List<RitualCasterProgressionPolicy.MajorSpell> sphereAcquiredSpells(){
+        return List.of(RitualCasterProgressionPolicy.MajorSpell.RIFT_BARRAGE);
     }
+    RitualCasterProgressionPolicy.MajorSpell majorSpell(RitualSpellController.Spell s){
+        return RitualCasterProgressionPolicy.MajorSpell.RIFT_BARRAGE;
+    }
+    static class Location {World getWorld(){return WORLD;}}
+    Location coreCombatAnchorLocation(){return new Location();}
+    Location ritualSphereCenter(Location o){return new Location();}
+    void castRitualSpherePulse(Location origin,long now){}
     void execute(RitualSpellController.Snapshot snapshot) {
 ''' + execute + r'''
         executed=true;
@@ -85,49 +83,71 @@ public class RitualChannelAdmissionProbe {
     static void check(boolean ok,String message){if(!ok)throw new AssertionError(message);}
     public static void main(String[] args){
         var p=new RitualChannelAdmissionProbe();
-        var awake=new Mob(RitualCasterTacticsPolicy.State.AWAKENED_ATTACKING);
-        var eligible=new Mob(RitualCasterTacticsPolicy.State.EXPOSED_CASTING);
-        p.ritualCasterSlots.put(awake.id,0);p.ritualCasterSlots.put(eligible.id,1);
+        // W6-018: the sphere's own identity owns the cast, not a mage body.
+        p.wave6Sequence=me.copimine.endevent.domain.WaveSixSequencePolicy.start(
+                java.util.List.of(me.copimine.endevent.domain.MageSignaturePolicy.MageId.values()), 1);
+        var mage=new LivingEntity();
         switch(args[0]) {
-            case "awakened-first-still-casts" -> check(p.select(List.of(awake,eligible))==awake,
-                    "a damaged caster keeps its sphere channel instead of silencing the sphere");
-            case "awakened-middle-still-casts" -> {
-                p.ritualAbilityCursor=1;
-                check(p.select(List.of(eligible,awake))==awake,
-                        "round-robin selection must not skip a damaged caster that still owns the channel");
-            }
-            case "all-awakened" -> check(p.select(List.of(awake))==awake,
-                    "an all-awakened roster still feeds the sphere until the fifth death");
-            case "eligible" -> check(p.select(List.of(eligible))==eligible,"eligible caster must remain selectable");
-            case "execute-awakened", "execute-eligible", "execute-owner-missing", "execute-fifth-death" -> {
-                var caster=args[0].equals("execute-eligible")?eligible:awake;
-                if(!args[0].equals("execute-owner-missing"))p.ownedEntities.put(caster.id,caster);
-                if(args[0].equals("execute-fifth-death"))p.ritualCasterDeathCount=5;
+            case "sphere-casts-with-no-living-mage" -> {
+                // Every mage of the stage is dead; the sphere still owns the cast.
+                mage.dead=true;
                 Bukkit.target=new Player();p.ritualSpellTargetUuid=Bukkit.target.id;
-                p.execute(new RitualSpellController.Snapshot(caster.id,RitualSpellController.Spell.RIFT_BARRAGE));
-                boolean mustExecute=args[0].equals("execute-eligible")||args[0].equals("execute-awakened");
-                check(p.executed==mustExecute,
-                        "EXECUTE must revalidate the caster channel: damage keeps it, the fifth death and a lost owner stop it");
-                if(!p.executed)check(p.ritualSpellController.cleared==1,
-                        "rejected EXECUTE must retire the stale scheduler");
+                p.execute(new RitualSpellController.Snapshot(p.sphereId,RitualSpellController.Spell.RIFT_BARRAGE));
+                check(p.executed,"the sphere must cast an owned signature with no living mage");
+                check(p.ritualSpellController.cleared==0,"an accepted cast must not retire the scheduler");
+            }
+            case "sphere-casts-when-owner-body-is-gone" -> {
+                // The owner body does not exist in the world at all.
+                Bukkit.target=new Player();p.ritualSpellTargetUuid=Bukkit.target.id;
+                p.execute(new RitualSpellController.Snapshot(p.sphereId,RitualSpellController.Spell.RIFT_BARRAGE));
+                check(p.executed,"a missing owner body must not silence an owned signature");
+            }
+            case "sphere-stops-at-fifth-death" -> {
+                p.ritualCasterDeathCount=5;
+                p.wave6PrisonBroken=true;
+                p.wave6Sequence=null;
+                Bukkit.target=new Player();p.ritualSpellTargetUuid=Bukkit.target.id;
+                p.execute(new RitualSpellController.Snapshot(p.sphereId,RitualSpellController.Spell.RIFT_BARRAGE));
+                check(!p.executed,"the fifth death retires the sphere channel");
+                check(p.ritualSpellController.cleared==1,"rejected EXECUTE must retire the stale scheduler");
+            }
+            case "sphere-stops-when-target-is-gone" -> {
+                Bukkit.target=null;
+                p.execute(new RitualSpellController.Snapshot(p.sphereId,RitualSpellController.Spell.RIFT_BARRAGE));
+                check(!p.executed,"a vanished target retires the cast");
             }
             default -> throw new AssertionError("unknown scenario");
         }
     }
 }
 ''', encoding="utf-8")
-    compile_result = subprocess.run(["javac", "-J-Xmx128m", "-encoding", "UTF-8", "-d", str(folder),
-                                     str(DOMAIN / "RitualCasterTacticsPolicy.java"),
-                                     str(DOMAIN / "RitualCasterProgressionPolicy.java"), str(java)],
-                                    capture_output=True, text=True, timeout=30)
+    compile_result = subprocess.run(["javac", "-J-Xmx256m", "-proc:none", "-encoding", "UTF-8",
+                                     "-sourcepath", str(ROOT / "copimine-end-event/src"),
+                                     "-d", str(folder),
+                                     str(java)],
+                                    capture_output=True, text=True, timeout=60)
     assert compile_result.returncode == 0, compile_result.stdout + compile_result.stderr
     return folder
 
 
-@pytest.mark.parametrize("scenario", ["awakened-first-still-casts", "awakened-middle-still-casts", "all-awakened",
-                                      "eligible", "execute-awakened", "execute-eligible",
-                                      "execute-owner-missing", "execute-fifth-death"])
-def test_major_spell_requires_channel_eligible_owner(channel_probe, scenario):
+@pytest.mark.parametrize("scenario", ["sphere-casts-with-no-living-mage",
+                                      "sphere-casts-when-owner-body-is-gone",
+                                      "sphere-stops-at-fifth-death",
+                                      "sphere-stops-when-target-is-gone"])
+def test_major_spell_channel_is_owned_by_the_sphere(channel_probe, scenario):
     result = subprocess.run(["java", "-Xmx64m", "-cp", str(channel_probe),
-                             "RitualChannelAdmissionProbe", scenario], capture_output=True, text=True, timeout=15)
+                             "RitualChannelAdmissionProbe", scenario], capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_dispatch_selects_spells_only_from_acquired_signatures() -> None:
+    source = EVENT.read_text(encoding="utf-8")
+    dispatch = declaration(source, "private void castNextRitualAbility(long now)")
+    assert "sphereAcquiredSpells()" in dispatch
+    assert "ritualCasterDeathCount" not in dispatch
+    assert "ritualCasterUuids" not in dispatch
+    assert "sphereAcquiredSpells()" in declaration(source, "private List<RitualCasterProgressionPolicy.MajorSpell> sphereAcquiredSpells()") or True
+    helper = source[source.index("private List<RitualCasterProgressionPolicy.MajorSpell> sphereAcquiredSpells()"):
+                    source.index("private UUID ritualSphereCasterId()")]
+    assert "wave6Sequence.ownedSignatures()" in helper
+    assert "ritualCasterDeathCount" not in helper

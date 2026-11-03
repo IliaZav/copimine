@@ -103,8 +103,12 @@ def test_giant_ai_uses_bounded_strike_summon_and_aura_policies():
     assert "RiftGiantPolicy.shouldHitAfterTelegraph" in offense
     assert "RiftGiantPolicy.admittedSummons" in summons
     assert "RiftGiantPolicy.isAuraRecipient" in aura
-    assert "PotionEffectType.REGENERATION" in aura
-    assert "PotionEffectType.RESISTANCE" in aura
+    # SUPERSEDED (EZM-003, audit elites): the giant aura grants Strength I,
+    # Speed I and Resistance I from the shared RIFT_GIANT_AURA_TYPES set. The
+    # spec forbids Regeneration, so that potion type is no longer refreshed.
+    assert "RIFT_GIANT_AURA_TYPES" in aura
+    for auraType in ("STRENGTH", "SPEED", "RESISTANCE"):
+        assert f"PotionEffectType.{auraType}" in source
 
 
 def test_giant_death_clears_its_aura_leases_summons_and_pending_casts():
@@ -115,7 +119,10 @@ def test_giant_death_clears_its_aura_leases_summons_and_pending_casts():
     assert "riftGiantStrikeCharges.remove(giantId)" in cleanup
     assert "riftGiantSummonCharges.remove(giantId)" in cleanup
     assert "PotionEffectType.REGENERATION" in cleanup
-    assert "PotionEffectType.RESISTANCE" in cleanup
+    # SUPERSEDED (EZM-003): cleanup revokes the shared aura set (Strength, Speed,
+    # Resistance) and, separately, any legacy Regeneration.
+    assert "RIFT_GIANT_AURA_TYPES" in cleanup
+    assert "PotionEffectType.REGENERATION" in cleanup
     assert "unregisterOwnedEntity(summonId" in cleanup
 
 

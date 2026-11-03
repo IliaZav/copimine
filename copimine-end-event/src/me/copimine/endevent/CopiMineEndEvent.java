@@ -47,6 +47,8 @@ import me.copimine.artifacts.api.EventArtifactRewardRequest;
 import me.copimine.artifacts.api.EventArtifactRewardService;
 import me.copimine.artifacts.api.RewardIssueResult;
 import me.copimine.endevent.domain.ArenaInfernoPolicy;
+import me.copimine.endevent.domain.WaveSixSequencePolicy;
+import me.copimine.endevent.domain.Wave7MarksmanDefenderPolicy;
 import me.copimine.endevent.domain.BossAbilityState;
 import me.copimine.endevent.domain.BossAbilityId;
 import me.copimine.endevent.domain.SmallKagunePolicy;
@@ -161,6 +163,8 @@ import me.copimine.endevent.domain.Wave4PressurePackPolicy;
 import me.copimine.endevent.domain.Wave7WardenCombatPolicy;
 import me.copimine.endevent.domain.Wave7NamedTrialActorPolicy;
 import me.copimine.endevent.domain.Wave7EchoDuelCellPolicy;
+import me.copimine.endevent.domain.Wave7ArchmageVexPolicy;
+import me.copimine.endevent.domain.Wave7MarksmanInvisibilityPolicy;
 import me.copimine.endevent.domain.Wave7BarrierPreflightPolicy;
 import me.copimine.endevent.domain.IntermissionWatchdogPolicy;
 import me.copimine.endevent.domain.Wave3SquadIntentPolicy;
@@ -458,6 +462,29 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final String CLIENT_VISUAL_WAVE_GUARDIAN_SKELETON = "END_RIFT_WAVE_GUARDIAN_SKELETON_V1";
     private static final String CLIENT_VISUAL_RITUAL_GUARD_SKELETON = "END_RIFT_RITUAL_GUARD_SKELETON_V1";
     private static final String CLIENT_VISUAL_RITUAL_CASTER = "END_RIFT_RITUAL_CASTER_V1";
+    /** W6-005 [A]: how long after a mage death the next stage may start. */
+    private static final long WAVE6_STAGE_TRANSFER_DELAY_MILLIS = 3_000L;
+    private static final long WAVE6_STAGE_SPAWN_RETRY_MILLIS = 2_000L;
+    private static final int WAVE6_MAX_STAGE_SPAWN_ATTEMPTS = 5;
+    private static final long WAVE6_REINFORCEMENT_RETRY_MILLIS = 2_500L;
+    /** W6-008 [U]: hard ceiling of assigned guards per current mage. */
+    private static final int WAVE6_MAX_GUARDS_PER_MAGE = RitualSphereScalingPolicy.GUARDS_PER_CASTER;
+    /**
+     * EZM-003 [U]: the Rift Giant aura is exactly Strength I, Speed I and
+     * Resistance I. Regeneration is NOT part of it (spec: "No regeneration,
+     * self-healing, ..."); a legacy lease strips it explicitly.
+     */
+    private static final PotionEffectType[] RIFT_GIANT_AURA_TYPES = {
+            PotionEffectType.STRENGTH, PotionEffectType.SPEED, PotionEffectType.RESISTANCE};
+    /**
+     * MARK-007 [U]: the one explicit support actor of the Mobile Marksman is a
+     * Giant defender summoned around 50% HP, not a self-heal.
+     */
+    private static final String WAVE7_MARKSMAN_DEFENDER_RECEIPT = "wave7MarksmanDefenderReceipt";
+    /** MAGE7-003/004: the Archmage's last Vex summon tick, per actor. */
+    private static final String WAVE7_ARCHMAGE_VEX_LAST_SUMMON = "wave7ArchmageVexLastSummon";
+    /** MARK-007 [U]: stable entity slot so the defender never forks across restarts. */
+    private static final int NAMED_TRIAL_DEFENDER_SLOT = 900;
     private static final String CLIENT_VISUAL_WAVE7_WARDEN = "END_RIFT_WAVE7_WARDEN_V1";
     private static final String CLIENT_VISUAL_WAVE7_ARCHMAGE = "END_RIFT_WAVE7_ARCHMAGE_V1";
     private static final String CLIENT_VISUAL_WAVE7_MARKSMAN = "END_RIFT_WAVE7_MARKSMAN_V1";
@@ -954,6 +981,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * start and serialized, so a restart replays it instead of rerolling.</p>
      */
     private java.util.List<MageSignaturePolicy.MageId> wave6MageOrder = java.util.List.of();
+    /** W6-002 [U]: sole owner of the Wave 6 stage sequence (one mage at a time). */
+    private WaveSixSequencePolicy wave6Sequence;
+    private long wave6NextStageAtMillis;
+    private int wave6StageSpawnAttempts;
+    /** W6-004/W6-005 [A]: committed ordinary reinforcement packs and how many were released. */
+    private int wave6ReinforcementOwed;
+    private int wave6ReinforcementSpawned;
+    private long wave6NextReinforcementAtMillis;
+    /** W6-004 [U]: the fifth (final) pack must be fully resolved before completion. */
+    private boolean wave6FinalClearCommitted;
     /** Identities with a committed legitimate defeat receipt. */
     private java.util.List<MageSignaturePolicy.MageId> wave6DefeatedMages = java.util.List.of();
     /** Identity bound to each live caster body, so death can be attributed. */
@@ -1443,6 +1480,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private NamespacedKey keyEventId;
     private NamespacedKey keyGeneration;
+    /** MARK-007: durable receipt on the Marksman; MARK-009: owner back-reference. */
+    private NamespacedKey keyWave7MarksmanDefenderReceipt;
+    private NamespacedKey keyWave7ArchmageVexLastSummon;
+    private NamespacedKey keyWave7MarksmanDefenderOwner;
     private NamespacedKey keyRitualShieldGuard;
     private NamespacedKey keyRitualPrisonerGravity;
     private NamespacedKey keyKind;
@@ -1594,6 +1635,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             keyEventId = new NamespacedKey(this, "end_event_id");
             keyGeneration = new NamespacedKey(this, "end_event_generation");
+            keyWave7MarksmanDefenderReceipt = new NamespacedKey(this, "end_event_wave7_defender_receipt");
+            keyWave7ArchmageVexLastSummon = new NamespacedKey(this,
+                    "end_event_wave7_archmage_vex_last_summon");
+            keyWave7MarksmanDefenderOwner = new NamespacedKey(this, "end_event_wave7_defender_owner");
             keyRitualShieldGuard = new NamespacedKey(this, "end_event_ritual_shield_guard");
             keyRitualPrisonerGravity = new NamespacedKey(this, "end_event_prisoner_original_gravity");
             keyKind = new NamespacedKey(this, "end_event_kind");
@@ -15712,17 +15757,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 int previousWave = source == null ? 0 : readInt(source, keyWave, 0);
                 if (RiftGiantPolicy.shouldRetainAuraLease(activeGiant, sameWorld,
                         previousDistanceSquared, previousWave, giantWave)) continue;
+                // EZM-003: the aura is exactly Strength I, Speed I and Resistance I.
+                // A superseded lease also strips Regeneration it may have granted
+                // before this policy, so no legacy healing keeps running.
+                for (PotionEffectType type : RIFT_GIANT_AURA_TYPES) {
+                    removeOwnedRiftGiantAuraEffect(ally, type, previousSource);
+                }
                 removeOwnedRiftGiantAuraEffect(ally, PotionEffectType.REGENERATION, previousSource);
-                removeOwnedRiftGiantAuraEffect(ally, PotionEffectType.RESISTANCE, previousSource);
             }
-            PotionEffect regeneration = ally.getPotionEffect(PotionEffectType.REGENERATION);
-            PotionEffect resistance = ally.getPotionEffect(PotionEffectType.RESISTANCE);
-            refreshRiftGiantAuraEffect(ally, PotionEffectType.REGENERATION,
-                    regeneration, previousSource.equals(sourceId));
-            refreshRiftGiantAuraEffect(ally, PotionEffectType.RESISTANCE,
-                    resistance, previousSource.equals(sourceId));
-            if (isManagedRiftGiantAuraEffect(ally.getPotionEffect(PotionEffectType.REGENERATION))
-                    || isManagedRiftGiantAuraEffect(ally.getPotionEffect(PotionEffectType.RESISTANCE))) {
+            boolean sameLease = previousSource.equals(sourceId);
+            for (PotionEffectType type : RIFT_GIANT_AURA_TYPES) {
+                refreshRiftGiantAuraEffect(ally, type, ally.getPotionEffect(type), sameLease);
+            }
+            boolean managed = false;
+            for (PotionEffectType type : RIFT_GIANT_AURA_TYPES) {
+                if (isManagedRiftGiantAuraEffect(ally.getPotionEffect(type))) {
+                    managed = true;
+                    break;
+                }
+            }
+            if (managed) {
                 data.set(keyRiftGiantAuraSource, PersistentDataType.STRING, sourceId);
             } else {
                 data.remove(keyRiftGiantAuraSource);
@@ -16066,8 +16120,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 var data = owned.getPersistentDataContainer();
                 if (sourceId.equals(data.getOrDefault(keyRiftGiantAuraSource,
                         PersistentDataType.STRING, "")) && owned instanceof LivingEntity living) {
+                    // EZM-003: revoke exactly the authorised set, plus any
+                    // legacy Regeneration an older build granted.
+                    for (PotionEffectType type : RIFT_GIANT_AURA_TYPES) {
+                        removeOwnedRiftGiantAuraEffect(living, type, sourceId);
+                    }
                     removeOwnedRiftGiantAuraEffect(living, PotionEffectType.REGENERATION, sourceId);
-                    removeOwnedRiftGiantAuraEffect(living, PotionEffectType.RESISTANCE, sourceId);
                     data.remove(keyRiftGiantAuraSource);
                 }
                 if (!sourceId.equals(data.getOrDefault(keyRiftGiantSummonOwner,
@@ -17700,6 +17758,31 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return true;
     }
 
+    /**
+     * W6-018 [U]: sphere-owned Barrage provenance. The owner id is the sphere's
+     * stable identity, so no living mage body has to exist to tag the arrow.
+     */
+    private boolean tagRitualSphereProjectileTarget(Arrow arrow, Player target) {
+        if (arrow == null || target == null
+                || keyRitualProjectileOwner == null || keyRitualProjectileTarget == null
+                || keyRitualProjectileExpiresTick == null) {
+            return false;
+        }
+        PersistentDataContainer data = arrow.getPersistentDataContainer();
+        if (data.has(keyRitualProjectileOwner, PersistentDataType.STRING)
+                || data.has(keyRitualProjectileTarget, PersistentDataType.STRING)
+                || data.has(keyRitualProjectileExpiresTick, PersistentDataType.LONG)) {
+            return false;
+        }
+        data.set(keyRitualProjectileOwner, PersistentDataType.STRING,
+                ritualSphereCasterId().toString());
+        data.set(keyRitualProjectileTarget, PersistentDataType.STRING,
+                target.getUniqueId().toString());
+        data.set(keyRitualProjectileExpiresTick, PersistentDataType.LONG,
+                eventTickCounter + EVENT_ARROW_MAX_TICKS);
+        return true;
+    }
+
     private void clearRitualProjectileMarker(Entity entity) {
         if (!(entity instanceof Arrow arrow)) {
             return;
@@ -17753,9 +17836,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         UUID shooter = arrow.getShooter() instanceof Entity entity
                 ? entity.getUniqueId() : null;
         UUID checkedTarget = hitTarget == null ? intendedTarget : hitTarget;
-        if (owner == null || !ritualCasterUuids.contains(owner) || !isLiveOwnedEntity(owner)
-                || !RitualCasterProgressionPolicy.isSpellEnabled(ritualCasterDeathCount,
-                RitualCasterProgressionPolicy.MajorSpell.RIFT_BARRAGE)) {
+        // W6-018 [U]: the sphere owns the Barrage, so the owner is the sphere's
+        // stable identity rather than a living mage body. A legacy mage-owned
+        // arrow keeps its old authority while that mage is alive.
+        boolean sphereOwner = ritualSphereCasterId().equals(owner)
+                && wave6Sequence != null && wave6Sequence.mageStageActive() && !wave6PrisonBroken
+                && sphereAcquiredSpells().contains(RitualCasterProgressionPolicy.MajorSpell.RIFT_BARRAGE);
+        boolean mageOwner = owner != null && ritualCasterUuids.contains(owner) && isLiveOwnedEntity(owner);
+        if (!sphereOwner && !mageOwner) {
             return false;
         }
         if (originX == null || originY == null || originZ == null || expiresAtTick == null) {
@@ -22285,6 +22373,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         living.setPersistent(true);
         living.setCustomName(ChatColor.DARK_PURPLE + profile.displayName());
+        // W7 minibosses keep their label HIDDEN like every other event mob: the
+        // wave presentation contract reserves visible nameplates for objective
+        // anchors and the Rift Guardian. Their health is not shown through a
+        // plugin boss bar either, because the single bossBar field belongs to
+        // the Guardian; the minibosses report through the shared HUD instead.
         living.setCustomNameVisible(false);
         living.setGlowing(false);
         if (living instanceof org.bukkit.entity.Skeleton skeleton) {
@@ -25398,6 +25491,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         wave6MageOrder = MageSignaturePolicy.selectOrder(java.util.random.RandomGenerator.of("L64X128MixRandom"));
         getLogger().info("WAVE7_WAVE6_MAGE_ORDER generation=" + generation
                 + " order=" + wave6MageOrder);
+        // W6-002 [U]: the sequence owner is the only thing that may say which mage
+        // exists. Start it before any body is spawned so a partial stage can
+        // never look like a running five-squad ritual.
+        try {
+            wave6Sequence = WaveSixSequencePolicy.start(wave6MageOrder, profile.guardsPerCaster());
+        } catch (IllegalArgumentException invalid) {
+            getLogger().severe("WAVE6_SEQUENCE_INVALID event=" + eventId
+                    + " generation=" + generation + " reason=" + invalid.getMessage());
+            wave6Sequence = null;
+        }
         wave6PrisonBroken = false;
         initializeRitualSpellRuntime(generation);
         ritualSpellActiveUntilTick = 0L;
@@ -25410,100 +25513,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         waveSpawnEntityOffset = 0;
 
         spawnRitualSphereVisual(world, ritualSphereCenter(core));
-        boolean complete = true;
-        for (int casterSlot = 0; casterSlot < profile.casterCount(); casterSlot++) {
-            double casterAngle = -Math.PI / 2.0D
-                    + casterSlot * Math.PI * 2.0D / profile.casterCount();
-            Location casterLocation = core.clone().add(
-                    Math.cos(casterAngle) * 7.0D, 0.0D,
-                    Math.sin(casterAngle) * 7.0D);
-            Enderman caster = spawnEnderman(world, core, 6, true, false, false,
-                    casterSlot, casterSlot);
-            if (!placeRitualEntity(caster, casterLocation, "CASTER", casterSlot, -1)) {
-                complete = false;
-                break;
-            }
-            retagRitualEntity(caster, "CASTER", null, casterSlot, -1);
-            tagRitualCasterAwakened(caster, false);
-            caster.setTarget(null);
-            caster.setAI(false);
-            caster.setAware(false);
-            ritualCasterUuids.add(caster.getUniqueId());
-            ritualCasterSlots.put(caster.getUniqueId(), casterSlot);
-            // Bind the persisted identity to this body. An unbound caster cannot
-            // contribute a signature, so a partial spawn fails closed below.
-            MageSignaturePolicy.MageId casterIdentity = wave6MageOrder.size() == profile.casterCount()
-                    && casterSlot < wave6MageOrder.size()
-                    ? wave6MageOrder.get(casterSlot) : null;
-            if (casterIdentity != null) {
-                wave6CasterIdentities.put(caster.getUniqueId(), casterIdentity);
-            }
-            ritualGuardsByCaster.put(caster.getUniqueId(), new LinkedHashSet<>());
-            caster.setCustomName(ChatColor.LIGHT_PURPLE + "Заклинатель");
-            caster.setCustomNameVisible(false);
-            for (int guardSlot = 0; guardSlot < profile.guardsPerCaster();
-                    guardSlot++) {
-                // W6-013: no post assignment. Guards are placed once around the
-                // mage as an initial spawn ring and are never marched back to it.
-                RitualGuardAggroPolicy.RingOffset guardPost = RitualGuardAggroPolicy.spawnRingOffset(
-                        guardSlot, profile.guardsPerCaster(), casterAngle);
-                int guardEntitySlot = profile.casterCount()
-                        + casterSlot * profile.guardsPerCaster() + guardSlot;
-                Location guardLocation = casterLocation.clone().add(
-                        guardPost.x(), 0.0D, guardPost.z());
-                int roleSlot = RitualGuardAbilityPolicy.roleSlot(casterSlot, guardSlot);
-                boolean giantReplacement = RitualGuardAbilityPolicy.isGiantReplacement(
-                        profile.participants(), casterSlot, guardSlot);
-                Entity guard;
-                if (roleSlot == 0 && giantReplacement) {
-                    guard = spawnRiftGiantEntity(world, guardLocation, 6, true, guardEntitySlot);
-                } else {
-                    EntityType guardType = EntityType.valueOf(
-                            RitualGuardAbilityPolicy.entityTypeForGuardRole(roleSlot));
-                    guard = spawnOwnedMob(world, core, guardType, 6,
-                            EVENT_KIND_ELITE, false, guardEntitySlot);
-                }
-                if (!placeRitualEntity(guard, guardLocation, "GUARD", casterSlot, guardSlot)) {
-                    complete = false;
-                    break;
-                }
-                retagRitualEntity(guard, "GUARD", caster.getUniqueId(), casterSlot, guardSlot);
-                ritualGuardUuids.add(guard.getUniqueId());
-                ritualGuardCasters.put(guard.getUniqueId(), caster.getUniqueId());
-                ritualGuardsByCaster.computeIfAbsent(caster.getUniqueId(), ignored ->
-                        new LinkedHashSet<>()).add(guard.getUniqueId());
-                if (guard instanceof Mob mob) {
-                    mob.setTarget(null);
-                    mob.setAI(false);
-                    mob.setAware(false);
-                }
-                if (guard instanceof LivingEntity living) {
-                    configureRitualGuardHealth(living);
-                    configureRitualGuardCombatAttributes(living);
-                    living.setCustomName(ChatColor.DARK_PURPLE + "Страж Ритуала "
-                            + (casterSlot + 1) + "-" + (guardSlot + 1));
-                    living.setCustomNameVisible(false);
-                }
-            }
-            if (!complete) {
-                break;
-            }
-        }
-        if (!complete || ritualCasterUuids.size() != profile.casterCount()
-                || ritualGuardUuids.size() != profile.guardCount()
-                || ritualSphereVisualUuid == null
-                || !isLiveOwnedEntity(ritualSphereVisualUuid)) {
+        // W6-001/W6-002 [U]: one active stage. Only the current mage and its own
+        // assigned guards are spawned here; later stages are created on demand by
+        // advanceWaveSixStage() after the previous mage dies.
+        if (wave6Sequence == null || !spawnWaveSixStage(world, core, profile)) {
             getLogger().severe("WAVE6_RITUAL_START_FAILED event=" + eventId
                     + " generation=" + generation + " casters=" + ritualCasterUuids.size()
-                    + " expected_casters=" + profile.casterCount()
                     + " guards=" + ritualGuardUuids.size()
-                    + " expected_guards=" + profile.guardCount());
-            emitDiagnostic("OBJECTIVE", "FAIL", "ERROR", 6, "ritual-roster-or-visual-incomplete",
+                    + " sequence=" + (wave6Sequence == null ? "INVALID" : wave6Sequence.describe()));
+            emitDiagnostic("OBJECTIVE", "FAIL", "ERROR", 6, "ritual-stage-spawn-incomplete",
                     null, null, ritualCorrelation,
                     Map.of("casters", ritualCasterUuids.size(),
-                            "expectedCasters", profile.casterCount(),
                             "guards", ritualGuardUuids.size(),
-                            "expectedGuards", profile.guardCount(),
                             "sphereVisualPresent", ritualSphereVisualUuid != null));
             clearRitualSphereObjective("start-failed");
             waveObjectiveStartedMillis = 0L;
@@ -25512,12 +25533,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             waveObjectiveComplete = false;
             return false;
         }
+        if (ritualSphereVisualUuid == null || !isLiveOwnedEntity(ritualSphereVisualUuid)) {
+            getLogger().severe("WAVE6_RITUAL_START_FAILED event=" + eventId
+                    + " generation=" + generation + " reason=sphere-visual-missing");
+            clearRitualSphereObjective("start-failed");
+            waveObjectiveStartedMillis = 0L;
+            waveObjectiveLastSecond = -1;
+            waveObjectiveMobCount = 0;
+            waveObjectiveComplete = false;
+            return false;
+        }
         reconcileRitualCasterShields();
-        waveObjectiveMobCount = profile.casterCount() + profile.guardCount();
+        waveObjectiveMobCount = ritualCasterUuids.size() + ritualGuardUuids.size();
         getLogger().info("WAVE6_RITUAL_SPHERE_READY event=" + eventId
                 + " generation=" + generation + " state=WAITING_FOR_PRISONER"
                 + " capture_radius=" + RitualSealCapturePolicy.CAPTURE_RADIUS_BLOCKS
-                + " casters=" + profile.casterCount() + " guards=" + profile.guardCount()
+                + " casters=" + ritualCasterUuids.size() + " guards=" + ritualGuardUuids.size()
+                + " sequence=" + wave6Sequence.describe()
                 + " projectiles=" + profile.projectilesPerVolley()
                 + " zones=" + profile.simultaneousZones()
                 + " authority=server");
@@ -25526,11 +25558,72 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 Map.of("state", "WAITING_FOR_PRISONER",
                         "casters", ritualCasterUuids.size(),
                         "guards", ritualGuardUuids.size(),
+                        "stage", wave6Sequence.stageIndex(),
+                        "currentMage", String.valueOf(wave6Sequence.currentMage()),
                         "projectilesPerVolley", profile.projectilesPerVolley(),
                         "zones", profile.simultaneousZones(),
                         "authority", "SERVER"));
         saveStateAsync();
         return true;
+    }
+
+    /** Display name of a mage identity, used for the body nameplate. */
+    private static String mageName(MageSignaturePolicy.MageId mage) {
+        if (mage == null) return "Заклинатель";
+        return switch (mage) {
+            case VESPERAL -> "Весперал";
+            case ORRINTH -> "Орринт";
+            case MALZURETH -> "Малзурет";
+            case KAILEN -> "Кайлен";
+            case NOCTURN -> "Ноктюрн";
+        };
+    }
+
+    /**
+     * Commit the debt of one ordinary reinforcement pack.
+     *
+     * <p>W6-004 [U] / W6-005 [A]: every mage death, including the fifth, owes
+     * exactly one ordinary pack. A live-cap refusal is not a cancellation: the
+     * intent stays outstanding and is retried on a later tick rather than being
+     * silently dropped.</p>
+     */
+    private void commitWaveSixReinforcement(String reasonCode) {
+        wave6ReinforcementOwed++;
+        getLogger().info("WAVE6_REINFORCEMENT_COMMITTED event=" + eventId + " generation=" + generation
+                + " owed=" + wave6ReinforcementOwed + " spawned=" + wave6ReinforcementSpawned
+                + " reason=" + reasonCode);
+        saveStateAsync();
+    }
+
+    /**
+     * W6-004 [U]: the fifth death's pack is mandatory. Completion waits until it
+     * was actually released and no assigned combat actor of this wave remains.
+     */
+    private boolean waveSixFinalPackResolved() {
+        if (wave6ReinforcementSpawned < wave6ReinforcementOwed) return false;
+        if (wave6ReinforcementOwed < WaveSixSequencePolicy.STAGE_COUNT) return false;
+        return liveRitualGuardCount() == 0 && liveRitualCasterCount() == 0;
+    }
+
+    /** Try to release every outstanding reinforcement pack within the live cap. */
+    private void resolveWaveSixReinforcements(long now) {
+        if (wave6ReinforcementOwed <= wave6ReinforcementSpawned) return;
+        if (now < wave6NextReinforcementAtMillis) return;
+        Location core = coreCombatAnchorLocation();
+        World world = core == null ? null : core.getWorld();
+        if (world == null) return;
+        wave6NextReinforcementAtMillis = now + WAVE6_REINFORCEMENT_RETRY_MILLIS;
+        if (!spawnWave6PressurePack(world, core, waveScalePlayers(), testWaveFrontVisualMode)) {
+            emitDiagnostic("RITUAL_ZONE", "REINFORCE_WAIT", "INFO", 6, "wave6-reinforcement-backpressure",
+                    ritualPrisonerId(), null, "ritual-reinforce:" + generation,
+                    Map.of("owed", wave6ReinforcementOwed, "spawned", wave6ReinforcementSpawned,
+                            "live", countLiveWaveEntitiesForWave(6)));
+            return;
+        }
+        wave6ReinforcementSpawned++;
+        getLogger().info("WAVE6_REINFORCEMENT_RELEASED event=" + eventId + " generation=" + generation
+                + " owed=" + wave6ReinforcementOwed + " spawned=" + wave6ReinforcementSpawned);
+        saveStateAsync();
     }
 
     /** Place one ritual entity as a transaction: a failed spawn never leaks. */
@@ -26539,11 +26632,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
                 finishBrokenRitualPrison("fifth-caster-death");
             }
-            wave6Complete = RitualCasterProgressionPolicy.mayComplete(
-                    ritualCasterDeathCount, ritualPrisonerId() != null || testRitualCombatMode,
-                    wave6PrisonBroken, isRitualSphereRuntimeClean());
-            if (wave6Complete) {
-                clearRitualPressureMobs("ritual-complete");
+            resolveWaveSixReinforcements(now);
+            wave6Complete = wave6Sequence != null && wave6Sequence.mayComplete(
+                    wave6ReinforcementSpawned, isRitualSphereRuntimeClean()
+                            && waveSixFinalPackResolved());
+            if (wave6Complete && !wave6FinalClearCommitted) {
+                wave6FinalClearCommitted = true;
+                getLogger().info("WAVE6_FINAL_CLEAR event=" + eventId + " generation=" + generation
+                        + " packs=" + wave6ReinforcementSpawned);
             }
             return;
         }
@@ -26585,14 +26681,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             castNextRitualAbility(now);
         }
         renderRitualSpellPresentation(now);
-        if (!wave6Complete && RitualCasterProgressionPolicy.mayComplete(
-                ritualCasterDeathCount, ritualPrisonerId() != null || testRitualCombatMode,
-                wave6PrisonBroken, isRitualSphereRuntimeClean())) {
+        // W6-005 [A]: the next stage starts only after the previous one is drained.
+        advanceWaveSixStage(now);
+        resolveWaveSixReinforcements(now);
+        if (!wave6Complete && wave6Sequence != null && wave6Sequence.mayComplete(
+                wave6ReinforcementSpawned, isRitualSphereRuntimeClean())) {
             wave6Complete = true;
-            clearRitualPressureMobs("ritual-complete");
             saveStateAsync();
             getLogger().info("WAVE6_RITUAL_COMPLETE event=" + eventId
-                    + " generation=" + generation + " caster_deaths=" + ritualCasterDeathCount
+                    + " generation=" + generation + " stage_deaths=" + ritualCasterDeathCount
                     + " prison_broken=" + wave6PrisonBroken + " cleanup=server");
         }
     }
@@ -27791,6 +27888,41 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         wave6RitualRuntimeAdapter.tick(generation, eventTickCounter);
     }
 
+    /**
+     * W6-016/W6-017 [U]: the sphere's castable pool, derived only from the
+     * identities that were legitimately defeated. The run order supplies the
+     * rotation so a pool that grows never reshuffles an earlier cast.
+     */
+    private List<RitualCasterProgressionPolicy.MajorSpell> sphereAcquiredSpells() {
+        if (wave6Sequence == null) return List.of();
+        List<RitualCasterProgressionPolicy.MajorSpell> pool = new ArrayList<>();
+        for (MageSignaturePolicy.Signature signature : wave6Sequence.ownedSignatures()) {
+            RitualCasterProgressionPolicy.MajorSpell spell = switch (signature) {
+                case RIFT_BARRAGE -> RitualCasterProgressionPolicy.MajorSpell.RIFT_BARRAGE;
+                case GRAVITY_ANCHOR -> RitualCasterProgressionPolicy.MajorSpell.GRAVITY_WELL;
+                case SOUL_BRAND -> RitualCasterProgressionPolicy.MajorSpell.SOUL_BRAND;
+                case HEAVENLY_JUDGMENT -> RitualCasterProgressionPolicy.MajorSpell.RIFT_CHAINS;
+                // W6-017 [A]: the fifth signature is the Barrage-charges-Anchor
+                // combination. It is its own cast and needs neither parent first.
+                case CONVERGENCE -> RitualCasterProgressionPolicy.MajorSpell.GRAVITY_WELL;
+            };
+            if (!pool.contains(spell)) pool.add(spell);
+        }
+        return List.copyOf(pool);
+    }
+
+    /**
+     * W6-018 [U]: the sphere's own stable caster identity.
+     *
+     * <p>Signature casts are recorded against this id so no living mage has to
+     * exist. It is deterministic per event+generation, so a restart resolves the
+     * same owner and a late callback of an older generation cannot match it.</p>
+     */
+    private UUID ritualSphereCasterId() {
+        return UUID.nameUUIDFromBytes(("copimine:wave6-sphere:" + eventId + ":" + generation)
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
     private void castNextRitualAbility(long now) {
         if (ritualSpellController == null || ritualSphereState == null
                 || wave6PrisonBroken || !ritualMajorSpellsReady()) {
@@ -27811,50 +27943,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     "WAVE6_MAJOR_SPELL_CLEANUP_PENDING", null, 0, now);
             return;
         }
+        // W6-016/W6-018 [U]: the sphere casts the signatures of the mages that
+        // actually died, by identity, and it owns them itself. It must not read a
+        // death counter, and it must not need a living caster to channel a cast
+        // whose owner is already dead.
         List<RitualCasterProgressionPolicy.MajorSpell> availableSpells =
-                RitualCasterProgressionPolicy.availableSpells(ritualCasterDeathCount);
+                sphereAcquiredSpells();
         if (availableSpells.isEmpty()) {
             ritualNextAbilityMillis = now + RITUAL_ABILITY_TICK_MILLIS;
             return;
         }
-        List<LivingEntity> casters = ritualCasterUuids.stream()
-                .map(ownedEntities::get)
-                .filter(entity -> entity instanceof LivingEntity && isLiveOwnedEntity(entity.getUniqueId()))
-                .map(entity -> (LivingEntity) entity)
-                .sorted(Comparator.comparingInt((LivingEntity entity) -> ritualCasterSlots
-                                .getOrDefault(entity.getUniqueId(), Integer.MAX_VALUE))
-                        .thenComparing(entity -> entity.getUniqueId().toString()))
-                .toList();
-        if (casters.isEmpty() || ritualSphereState == null) {
+        if (ritualSphereState == null) {
             ritualNextAbilityMillis = now + RITUAL_ABILITY_TICK_MILLIS;
             return;
         }
-        LivingEntity casterEntity = null;
-        RitualCasterTacticsPolicy.State tactics = null;
-        RitualCasterTacticsPolicy.Role role = null;
-        int selectedIndex = -1;
-        for (int offset = 0; offset < casters.size(); offset++) {
-            int index = Math.floorMod(ritualAbilityCursor + offset, casters.size());
-            LivingEntity candidate = casters.get(index);
-            RitualCasterTacticsPolicy.State candidateState = ritualCasterTacticsState(candidate);
-            if (!RitualCasterTacticsPolicy.castsSphere(candidateState)) {
-                continue;
-            }
-            RitualCasterTacticsPolicy.Role candidateRole = RitualCasterTacticsPolicy.roleForSlot(
-                    ritualCasterSlots.getOrDefault(candidate.getUniqueId(), 99));
-            casterEntity = candidate;
-            tactics = candidateState;
-            role = candidateRole;
-            selectedIndex = index;
-            break;
-        }
-        if (casterEntity == null || tactics == null || role == null) {
+        // The casting origin is the sphere's own Core anchor. No living mage is
+        // consulted: a surviving mage is only a shielder of the current stage,
+        // never the channeler of an owned signature.
+        Location sphereOrigin = ritualSphereCenter(coreCombatAnchorLocation());
+        if (sphereOrigin == null || sphereOrigin.getWorld() == null) {
             ritualNextAbilityMillis = now + RITUAL_ABILITY_TICK_MILLIS;
             return;
         }
-        ritualAbilityCursor = selectedIndex + 1;
-        int slot = ritualCasterSlots.getOrDefault(casterEntity.getUniqueId(), 99);
-        Player target = ritualNearestTarget(casterEntity.getLocation(),
+        UUID casterId = ritualSphereCasterId();
+        Player target = ritualNearestTarget(sphereOrigin,
                 boundedCombatRadius(config.containmentRadius()));
         if (target == null) {
             handleRitualMajorSpellBlocker(
@@ -27865,11 +27977,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         RitualCasterProgressionPolicy.MajorSpell selectedMajor = availableSpells.get(
                 Math.floorMod(ritualSpellCursor, availableSpells.size()));
         RitualSpellController.Spell spell = ritualSpellForMajor(selectedMajor);
-        boolean casterAlive = !casterEntity.isDead() && casterEntity.isValid();
-        boolean spellAvailable = RitualCasterProgressionPolicy.isSpellEnabled(
-                ritualCasterDeathCount, selectedMajor);
+        // W6-018 [U]: the sphere is the legitimate owner; it is "alive" while the
+        // ritual runs and it owns a signature. This is not a fake caster.
+        boolean casterAlive = true;
+        boolean spellAvailable = availableSpells.contains(selectedMajor);
         boolean targetEligible = target.isOnline() && isFreeRitualTarget(target);
-        if (!casterAlive || !spellAvailable) {
+        if (!spellAvailable) {
             handleRitualMajorSpellBlocker(
                     RitualCasterProgressionPolicy.StartBlocker.ENCOUNTER_FAILURE,
                     "WAVE6_MAJOR_SPELL_PRECONDITION_FAILED:" + selectedMajor,
@@ -27901,7 +28014,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     Math.floor(targetLocation.getZ()) + 0.5D);
             advanceAndPersistRitualSpellCursor(availableSpells.size());
             started = wave6RitualRuntimeAdapter.startGravityAnchor(generation,
-                    casterEntity.getUniqueId(), target.getUniqueId(), fixedCrystalPoint,
+                    casterId, target.getUniqueId(), fixedCrystalPoint,
                     Math.min(RitualSpellController.MAX_COMBINED_BARRAGE_PROJECTILES,
                             RitualSphereScalingPolicy.forPlayers(waveScalePlayers()).projectilesPerVolley()),
                     true, casterAlive, spellAvailable, targetEligible, eventTickCounter);
@@ -27941,12 +28054,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             advanceAndPersistRitualSpellCursor(availableSpells.size());
             started = wave6RitualRuntimeAdapter.startFallingAnvils(generation,
-                    casterEntity.getUniqueId(), participants, cluster.eligibleTargetCount(),
+                    casterId, participants, cluster.eligibleTargetCount(),
                     cluster.landingPositions(), true, casterAlive, spellAvailable,
                     cluster.eligibleTargetCount() > 0, eventTickCounter);
         } else {
             advanceAndPersistRitualSpellCursor(availableSpells.size());
-            started = ritualSpellController.start(generation, spell, casterEntity.getUniqueId(), true,
+            started = ritualSpellController.start(generation, spell, casterId, true,
                     casterAlive, spellAvailable, targetEligible, eventTickCounter, 20L);
         }
         if (!started.accepted()) {
@@ -27959,10 +28072,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ritualSpellTargetUuid = target.getUniqueId();
         ritualSpellTargetLocation = selectedMajor == RitualCasterProgressionPolicy.MajorSpell.GRAVITY_WELL
                 ? target.getLocation().clone().add(0.0D, 3.5D, 0.0D) : null;
-        castRitualSpherePulse(casterEntity, tactics, now);
+        castRitualSpherePulse(sphereOrigin, now);
         if (selectedMajor != RitualCasterProgressionPolicy.MajorSpell.GRAVITY_WELL
                 && selectedMajor != RitualCasterProgressionPolicy.MajorSpell.RIFT_CHAINS) {
-            renderRitualSpellTelegraph(spell, casterEntity, target, now);
+            renderRitualSpellTelegraph(spell, casterId, sphereOrigin, target, now);
         }
         long cooldown = ritualSphereState.profile().majorCooldownSeconds() * 1_000L;
         ritualNextAbilityMillis = now + Math.max(RITUAL_ABILITY_TICK_MILLIS, cooldown);
@@ -27972,14 +28085,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             default -> selectedMajor.name();
         };
         getLogger().info("WAVE6_RITUAL_ABILITY event=" + eventId + " caster="
-                + casterEntity.getUniqueId() + " slot=" + slot + " role=" + role
-                + " spell=" + activeSpellName + " state=" + tactics + " source=SHARED_SCHEDULER"
+                + casterId + " owner=RITUAL_SPHERE"
+                + " spell=" + activeSpellName + " source=SHARED_SCHEDULER"
                 + " stage=TELEGRAPH cooldown_ms=" + cooldown);
         emitDiagnostic("RITUAL_CASTER", "TELEGRAPH", "INFO", 6,
-                "shared-wave6-major-spell-scheduler", target.getUniqueId(), casterEntity.getUniqueId(),
-                "ritual-caster:" + generation + ":" + casterEntity.getUniqueId(),
-                Map.of("slot", slot, "role", role.name(), "spell", activeSpellName,
-                        "cooldownMillis", cooldown, "stage", "TELEGRAPH"));
+                "shared-wave6-major-spell-scheduler", target.getUniqueId(), casterId,
+                "ritual-caster:" + generation + ":" + casterId,
+                Map.of("owner", "RITUAL_SPHERE", "spell", activeSpellName,
+                        "cooldownMillis", cooldown, "stage", "TELEGRAPH",
+                        "signatures", String.valueOf(availableSpells)));
     }
 
     private void advanceAndPersistRitualSpellCursor(int availableSpellCount) {
@@ -28798,6 +28912,41 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         };
     }
 
+    /** Sphere-owned telegraph: no living caster body is required. */
+    private void renderRitualSpellTelegraph(RitualSpellController.Spell spell,
+                                            UUID casterId, Location sphereOrigin, Player target,
+                                            long now) {
+        if (spell == null || target == null || target.getWorld() == null) return;
+        target.getWorld().playSound(target.getLocation(), switch (spell) {
+            case RIFT_BARRAGE -> Sound.BLOCK_RESPAWN_ANCHOR_CHARGE;
+            case GRAVITY_WELL -> Sound.BLOCK_BEACON_POWER_SELECT;
+            case SOUL_BRAND -> Sound.BLOCK_AMETHYST_BLOCK_CHIME;
+            case RIFT_CHAINS -> Sound.BLOCK_CHAIN_PLACE;
+            case FINAL_SEAL -> Sound.BLOCK_BEACON_AMBIENT;
+        }, SoundCategory.HOSTILE, 0.8F, 0.7F);
+        if (spell == RitualSpellController.Spell.GRAVITY_WELL && ritualSpellTargetLocation != null) {
+            Particle.DustOptions warning = new Particle.DustOptions(Color.fromRGB(122, 71, 255), 1.3F);
+            for (Player viewer : eventAudience()) {
+                if (isEventParticleViewer(viewer, ritualSpellTargetLocation)) {
+                    spawnPatternRing(viewer, ritualSpellTargetLocation,
+                            new Vector(1.0D, 0.0D, 0.0D), new Vector(0.0D, 0.0D, 1.0D),
+                            RitualZoneEffectPolicy.RADIUS_BLOCKS, 48, 0.0D,
+                            Particle.DUST, warning);
+                }
+            }
+        } else {
+            target.getWorld().spawnParticle(Particle.REVERSE_PORTAL,
+                    target.getLocation().add(0.0D, 1.0D, 0.0D), 28,
+                    0.55D, 0.9D, 0.55D, 0.02D);
+        }
+        getLogger().fine("WAVE6_RITUAL_TELEGRAPH event=" + eventId
+                + " generation=" + generation + " spell=" + spell
+                + " caster=" + casterId
+                + " origin=" + locationText(sphereOrigin)
+                + " target=" + target.getUniqueId() + " tick=" + eventTickCounter
+                + " now=" + now);
+    }
+
     private void renderRitualSpellTelegraph(RitualSpellController.Spell spell,
                                             LivingEntity caster, Player target, long now) {
         if (spell == null || caster == null || target == null || target.getWorld() == null) {
@@ -29021,29 +29170,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         if (snapshot.stage() == RitualSpellController.Stage.EXECUTE) {
-            Entity caster = snapshot.caster() == null ? null : ownedEntities.get(snapshot.caster());
             Player target = ritualSpellTargetUuid == null ? null : Bukkit.getPlayer(ritualSpellTargetUuid);
-            if (!(caster instanceof LivingEntity livingCaster) || !isLiveOwnedEntity(snapshot.caster())
-                    || target == null || !target.isOnline() || !isFreeRitualTarget(target)
-                    || !RitualCasterProgressionPolicy.isSpellEnabled(
-                    ritualCasterDeathCount, majorSpell(snapshot.spell()))
-                    || !RitualCasterTacticsPolicy.castsSphere(ritualCasterTacticsState(livingCaster))) {
+            // W6-018 [U]: the sphere is the owner of the cast. A living mage body
+            // is neither required nor consulted; the admission re-checks only the
+            // live target and that this signature is genuinely acquired.
+            if (target == null || !target.isOnline() || target.isDead()
+                    || !isFreeRitualTarget(target)
+                    || wave6PrisonBroken
+                    || wave6Sequence == null || !wave6Sequence.mageStageActive()
+                    || !sphereAcquiredSpells().contains(majorSpell(snapshot.spell()))) {
                 clearRitualSpellRuntimeCast();
                 ritualSpellTargetUuid = null;
                 return;
             }
-            boolean channeling = RitualCasterTacticsPolicy.castsSphere(ritualCasterTacticsState(livingCaster));
-            if (livingCaster instanceof Mob mob && channeling) {
-                faceRitualCaster(mob, ritualSphereCenter(coreCombatAnchorLocation()));
+            Location castOrigin = ritualSphereCenter(coreCombatAnchorLocation());
+            boolean channeling = castOrigin != null;
+            if (channeling) {
+                castRitualSpherePulse(castOrigin, System.currentTimeMillis());
             }
-            if (livingCaster instanceof Enderman enderman) {
-                enderman.setScreaming(RitualCasterTacticsPolicy.castsSphere(ritualCasterTacticsState(livingCaster)));
-            }
-            if (channeling) livingCaster.swingMainHand();
             boolean applied = switch (snapshot.spell()) {
                 case RIFT_BARRAGE -> {
                     int before = activeEventArrowAges.size();
-                    spawnRitualProjectileVolley(livingCaster, target,
+                    spawnRitualSphereProjectileVolley(castOrigin, target,
                             ritualSphereState.profile().projectilesPerVolley());
                     yield activeEventArrowAges.size() > before;
                 }
@@ -29154,6 +29302,34 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 readRitualCasterAwakened(caster));
     }
 
+    /**
+     * W6-018 [U]: the sphere emits its own channel pulse from its own centre.
+     * No living mage body is needed once the signature is owned.
+     */
+    private void castRitualSpherePulse(Location sphereOrigin, long now) {
+        Location center = sphereOrigin;
+        if (center == null || center.getWorld() == null) {
+            return;
+        }
+        Particle particle = Particle.REVERSE_PORTAL;
+        java.util.List<Vector> hands = new java.util.ArrayList<>();
+        double phase = now * 0.0045D;
+        for (int i = 0; i < 6; i++) {
+            double angle = phase + i * Math.PI / 3.0D;
+            hands.add(new Vector(Math.cos(angle) * RITUAL_SPHERE_RADIUS_BLOCKS,
+                    Math.sin(phase * 1.7D + i) * 0.45D,
+                    Math.sin(angle) * RITUAL_SPHERE_RADIUS_BLOCKS));
+        }
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, center) || isInsideRitualSphereViewer(viewer, center)) {
+                continue;
+            }
+            for (Vector hand : hands) {
+                viewer.spawnParticle(particle, center.clone().add(hand), 3, 0.06D, 0.06D, 0.06D, 0.01D);
+            }
+        }
+    }
+
     private void castRitualSpherePulse(LivingEntity caster,
                                        RitualCasterTacticsPolicy.State tactics, long now) {
         if (caster == null || !RitualCasterTacticsPolicy.castsSphere(tactics)) {
@@ -29207,6 +29383,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * the caster as the logical damage/channel owner.  This adapter deliberately
      * does not delegate to the ordinary caster-origin arrow volley.
      */
+    /**
+     * W6-018 [U]: sphere-owned volley. The sphere, not a mage body, is the
+     * legitimate source, so eligibility is decided against the Core anchor.
+     */
+    private void spawnRitualSphereProjectileVolley(Location sphereOrigin, Player target, int count) {
+        if (sphereOrigin == null || target == null || count <= 0 || sphereOrigin.getWorld() == null
+                || target.getWorld() == null || !sphereOrigin.getWorld().equals(target.getWorld())
+                || !isFreeRitualTarget(target) || target.isDead()) {
+            return;
+        }
+        Location core = coreCombatAnchorLocation();
+        if (core == null || horizontalDistanceSquared(target.getLocation(), core)
+                > boundedCombatRadius(config.containmentRadius())
+                * boundedCombatRadius(config.containmentRadius())) {
+            return;
+        }
+        if (activeEventArrowAges.size() + count > MAX_ACTIVE_EVENT_ARROWS) {
+            return;
+        }
+        spawnRitualSphereProjectileVolleyBody(sphereOrigin, target, count);
+    }
+
     private void spawnRitualSphereProjectileVolley(LivingEntity caster, Location sphereOrigin,
                                                      Player target, int count) {
         if (caster == null || sphereOrigin == null || target == null || count <= 0
@@ -29215,6 +29413,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || activeEventArrowAges.size() + count > MAX_ACTIVE_EVENT_ARROWS) {
             return;
         }
+        spawnRitualSphereProjectileVolleyBody(sphereOrigin, target, count);
+    }
+
+    private void spawnRitualSphereProjectileVolleyBody(Location sphereOrigin, Player target, int count) {
         Location targetPoint = target.getEyeLocation().clone();
         RitualSphereProjectilePolicy.Vec3 policyDirection = RitualSphereProjectilePolicy.direction(
                 new RitualSphereProjectilePolicy.Vec3(sphereOrigin.getX(), sphereOrigin.getY(), sphereOrigin.getZ()),
@@ -29236,7 +29438,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         List<Arrow> spawnedArrows = new ArrayList<>();
         try {
         for (int index = 0; index < available; index++) {
-            if (!ritualTargetAllowed(caster, target)) {
+            if (!isFreeRitualTarget(target) || target.isDead()) {
                 for (Arrow arrow : spawnedArrows) {
                     cleanupEventArrow(arrow.getUniqueId());
                     if (arrow.isValid()) arrow.remove();
@@ -29272,18 +29474,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             spawnedArrows.add(arrow);
             arrow.setGravity(false);
             arrow.setVisibleByDefault(false);
-            arrow.setShooter(caster);
+
             arrow.setVelocity(velocity);
             arrow.setDamage(0.0D);
             arrow.setCritical(true);
             arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
             arrow.setColor(Color.fromRGB(244, 60, 255));
-            tag(arrow, EVENT_KIND_PROJECTILE, readInt(caster, keyWave, 0), isOfficialEntity(caster));
+            tag(arrow, EVENT_KIND_PROJECTILE, 6, true);
             tagRitualProjectile(arrow);
             tagArrowSpell(arrow, ARROW_SPELL_RITUAL_PROJECTILE);
             tagEventArrowVolley(arrow, groupId);
             if (!tagRitualProjectileOrigin(arrow, sphereOrigin)
-                    || !tagRitualProjectileTarget(arrow, caster, target)) {
+                    || !tagRitualSphereProjectileTarget(arrow, target)) {
                 for (Arrow child : spawnedArrows) {
                     cleanupEventArrow(child.getUniqueId());
                     if (child.isValid()) child.remove();
@@ -29302,7 +29504,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     && originDistance <= RITUAL_PROJECTILE_MAX_ORIGIN_DISTANCE_BLOCKS;
             getLogger().info("WAVE6_RITUAL_PROJECTILE_ORIGIN_ASSERT event=" + eventId
                     + " generation=" + generation + " arrow=" + arrow.getUniqueId()
-                    + " caster=" + caster.getUniqueId() + " target=" + target.getUniqueId()
+                    + " caster=" + eventId + " target=" + target.getUniqueId()
                     + " sphere_origin=" + projectileLocationText(sphereOrigin)
                     + " projectile_spawn=" + projectileLocationText(projectileSpawn)
                     + " origin_distance=" + originDistance
@@ -29331,7 +29533,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             emitDiagnostic("RITUAL_PROJECTILE", "SPAWN", "INFO", 6,
                     "sphere-origin-volley", null, arrow.getUniqueId(),
                     projectileCorrelation,
-                    Map.of("casterId", caster.getUniqueId().toString(),
+                    Map.of("casterId", "RITUAL_SPHERE",
                             "targetId", target.getUniqueId().toString(),
                             "origin", projectileLocationText(sphereOrigin),
                             "speed", RitualSphereProjectilePolicy.MAX_INITIAL_SPEED,
@@ -29345,8 +29547,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (arrow.isValid()) arrow.remove();
             }
             clearWaveProjectileGroup(groupId, "ritual-sphere-spawn-failed");
-            getLogger().warning("WAVE6_RITUAL_PROJECTILE_VOLLEY_REJECTED caster="
-                    + caster.getUniqueId() + " reason=atomic-spawn-failed message="
+            getLogger().warning("WAVE6_RITUAL_PROJECTILE_VOLLEY_REJECTED caster=RITUAL_SPHERE"
+                    + " reason=atomic-spawn-failed message="
                     + failure.getMessage());
             return;
         }
@@ -29361,7 +29563,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         spawnEventParticle(sphereOrigin, Particle.END_ROD, 20,
                 0.25D, 0.25D, 0.25D, 0.02D);
         getLogger().info("WAVE6_RITUAL_PROJECTILE_VOLLEY_SPAWN event=" + eventId
-                + " caster=" + caster.getUniqueId() + " sphere_origin="
+                + " caster=RITUAL_SPHERE sphere_origin="
                 + projectileLocationText(sphereOrigin) + " target=" + target.getUniqueId()
                 + " arrows=" + spawned + " speed="
                 + RitualSphereProjectilePolicy.MAX_INITIAL_SPEED
@@ -29727,34 +29929,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ritualCasterAwakened.remove(casterId);
         ritualGuardsByCaster.remove(casterId);
 
-        if (ritualCasterDeathCount >= RitualCasterProgressionPolicy.TOTAL_CASTERS) {
+        if (wave6Sequence == null || !wave6Sequence.mageStageActive()) {
             return;
         }
-        // W6-016: resolve WHICH mage died before touching progression. A body
+        // W6-016 [U]: resolve WHICH mage died before touching progression. A body
         // with no identity binding, a duplicate death callback, or an identity
         // outside the frozen run order cannot hand the sphere a signature.
         MageSignaturePolicy.MageId defeatedIdentity = wave6CasterIdentities.remove(casterId);
-        java.util.List<MageSignaturePolicy.MageId> committed = MageSignaturePolicy.recordDefeat(
-                wave6MageOrder, wave6DefeatedMages, defeatedIdentity);
-        if (committed == null) {
-            getLogger().warning("WAVE6_CASTER_DEATH_WITHOUT_IDENTITY event=" + eventId
+        WaveSixSequencePolicy.Result result = wave6Sequence.defeatCurrent(defeatedIdentity);
+        if (!result.accepted()) {
+            getLogger().warning("WAVE6_CASTER_DEATH_REJECTED event=" + eventId
                     + " generation=" + generation + " caster=" + casterId
-                    + " identity=" + defeatedIdentity
+                    + " identity=" + defeatedIdentity + " blocker=" + result.blocker()
+                    + " current=" + wave6Sequence.currentMage()
+                    + " rosterComplete=" + wave6Sequence.stageRosterComplete()
                     + " reason=" + (defeatedIdentity == null
-                            ? "UNBOUND_OR_DUPLICATE" : "OUTSIDE_RUN_ORDER"));
+                            ? "UNBOUND_OR_DUPLICATE" : "OUTSIDE_CURRENT_STAGE"));
             emitDiagnostic("RITUAL_CASTER", "PROGRESSION", "WARN", 6,
-                    "caster-death-without-identity", ritualPrisonerId(), casterId,
-                    "ritual-caster-progression:" + generation + ":unattributed",
-                    Map.of("identity", String.valueOf(defeatedIdentity)));
+                    "caster-death-rejected:" + result.blocker(), ritualPrisonerId(), casterId,
+                    "ritual-caster-progression:" + generation + ":rejected",
+                    Map.of("identity", String.valueOf(defeatedIdentity),
+                            "blocker", String.valueOf(result.blocker())));
             return;
         }
-        wave6DefeatedMages = committed;
-        MageSignaturePolicy.Signature acquiredSignature =
-                MageSignaturePolicy.signatureFor(defeatedIdentity);
-        RitualCasterProgressionPolicy.Transition progression =
-                RitualCasterProgressionPolicy.afterCasterDeath(ritualCasterDeathCount);
-        ritualCasterDeathCount = progression.deathCount();
-        ritualNextAbilityMillis = Math.min(ritualNextAbilityMillis, System.currentTimeMillis() + 250L);
+        wave6Sequence = result.state();
         if (ritualSpellController != null) {
             RitualSpellController.Snapshot activeSpell = ritualSpellController.snapshot();
             if (casterId.equals(activeSpell.caster())) {
@@ -29770,7 +29968,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location center = ritualSphereCenter(coreCombatAnchorLocation());
         if (center != null && center.getWorld() != null) {
             center.getWorld().playSound(center, Sound.BLOCK_AMETHYST_BLOCK_CHIME,
-                    SoundCategory.HOSTILE, 0.8F, 0.65F + progression.deathCount() * 0.12F);
+                    SoundCategory.HOSTILE, 0.8F, 0.65F + wave6Sequence.defeated().size() * 0.12F);
             for (Player viewer : eventAudience()) {
                 if (isEventParticleViewer(viewer, center)) {
                     viewer.spawnParticle(Particle.CRIT, center, 24,
@@ -29786,27 +29984,42 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (prisoner != null && prisoner.isOnline()) {
             sendRitualPrisonerState(prisoner);
         }
+        MageSignaturePolicy.MageId defeatedMage = result.defeatedMage();
+        MageSignaturePolicy.Signature acquiredSignature = result.acquiredSignature();
+        int deathCount = wave6Sequence.defeated().size();
+        RitualCasterProgressionPolicy.PrisonerAbility unlocked = RitualCasterProgressionPolicy
+                .afterCasterDeath(deathCount - 1).unlockedAbility();
+        ritualCasterDeathCount = deathCount;
+        ritualNextAbilityMillis = Math.min(ritualNextAbilityMillis, System.currentTimeMillis() + 250L);
         getLogger().info("WAVE6_CASTER_PROGRESSION event=" + eventId
                 + " generation=" + generation + " caster=" + casterId
-                + " mage_identity=" + defeatedIdentity
+                + " mage_identity=" + defeatedMage
                 + " acquired_signature=" + acquiredSignature
-                + " death_count=" + progression.deathCount()
-                + " added_spell=" + progression.addedSpell()
-                + " unlocked_ability=" + progression.unlockedAbility()
-                + " prison_broken=" + progression.prisonBroken());
+                + " death_count=" + deathCount
+                + " unlocked_ability=" + unlocked
+                + " prison_broken=" + result.prisonBroken()
+                + " next_mage=" + wave6Sequence.currentMage());
         emitDiagnostic("RITUAL_CASTER", "PROGRESSION", "INFO", 6,
                 "caster-death-unlock", prisonerId, casterId,
-                "ritual-caster-progression:" + generation + ":" + progression.deathCount(),
-                Map.of("identity", defeatedIdentity.name(),
+                "ritual-caster-progression:" + generation + ":" + deathCount,
+                Map.of("identity", defeatedMage.name(),
                         "signature", acquiredSignature.name(),
-                        "deathCount", progression.deathCount(),
-                        "addedSpell", progression.addedSpell().name(),
-                        "unlockedAbility", progression.unlockedAbility().name(),
-                        "prisonBroken", progression.prisonBroken()));
+                        "deathCount", deathCount,
+                        "unlockedAbility", unlocked.name(),
+                        "prisonBroken", result.prisonBroken(),
+                        "nextMage", String.valueOf(wave6Sequence.currentMage())));
+        // W6-004 [U] / W6-005 [A]: every death, including the fifth, owes exactly
+        // one ordinary reinforcement pack. It is committed here and released by
+        // the stage gate; a full live cap postpones it instead of dropping it.
+        commitWaveSixReinforcement("mage-death-" + deathCount);
 
-        if (progression.prisonBroken()) {
+        if (result.prisonBroken()) {
             breakRitualPrison();
+            return;
         }
+        wave6NextStageAtMillis = System.currentTimeMillis() + WAVE6_STAGE_TRANSFER_DELAY_MILLIS;
+        waveObjectiveMobCount = ritualCasterUuids.size() + ritualGuardUuids.size();
+        announceEventTitle("§5СТАДИЯ ПРОЙДЕНА", "§f" + mageName(defeatedMage) + " повержен", false);
     }
 
     private RitualCasterProgressionPolicy.MajorSpell majorSpell(
@@ -30030,6 +30243,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ritualCasterDeathCount = 0;
         wave6PrisonBroken = false;
         wave6Complete = false;
+        wave6Sequence = null;
+        wave6NextStageAtMillis = 0L;
+        wave6StageSpawnAttempts = 0;
+        wave6ReinforcementOwed = 0;
+        wave6ReinforcementSpawned = 0;
+        wave6NextReinforcementAtMillis = 0L;
+        wave6FinalClearCommitted = false;
         ritualSphereStateRehydrated = false;
         emitDiagnostic("OBJECTIVE", completed ? "COMPLETE" : "CANCEL", "INFO", 6,
                 reason == null ? "ritual-objective-cleared" : reason, null, null,
@@ -31301,9 +31521,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         namedEchoReplicas.put(carrier.getUniqueId(), replica);
         if (!synchronizeNamedEchoShield(carrier, current, replica)) return false;
         boolean sameWorld = owner.getWorld().equals(world) && carrier.getWorld().equals(world);
-        boolean ownerInCell = sameWorld && cell.contains(owner.getLocation().getX() - core.getX(),
+        // Audit ECHO error 6: combat admission used to require BOTH bodies inside
+        // this owner's own radial wedge, so a legitimate duel broke the moment the
+        // pair crossed a lane border. ECHO-005 made the region shared, so admission
+        // now uses the same shared-region predicate as movement and completion.
+        java.util.List<Wave7EchoDuelCellPolicy.Cell> sharedCells =
+                realitySplitTrialController.echoDuelCells(cell.chamber());
+        boolean ownerInCell = sameWorld && Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(
+                sharedCells, cell.owner(), owner.getLocation().getX() - core.getX(),
                 owner.getLocation().getZ() - core.getZ());
-        boolean actorInCell = sameWorld && cell.contains(carrier.getLocation().getX() - core.getX(),
+        boolean actorInCell = sameWorld && Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(
+                sharedCells, cell.owner(), carrier.getLocation().getX() - core.getX(),
                 carrier.getLocation().getZ() - core.getZ());
         double distanceSquared = carrier.getLocation().distanceSquared(owner.getLocation());
         EchoDuelCombatRuntimeAdapter.Scope scope;
@@ -31410,8 +31638,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || eventTickCounter >= duel.actor().shieldActiveUntilTick()
                 || !(rawActor instanceof Pillager carrier) || event.getEntity() != carrier
                 || owner == null || core == null || cell == null || !worldPairValid(owner, carrier, pair)
-                || !cell.contains(owner.getLocation().getX() - core.getX(), owner.getLocation().getZ() - core.getZ())
-                || !cell.contains(carrier.getLocation().getX() - core.getX(), carrier.getLocation().getZ() - core.getZ())
+                // Audit ECHO error 6 / ECHO-005: the commit re-check uses the SAME
+                // shared-region predicate as the admission, not the owner's own lane.
+                || !Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(
+                realitySplitTrialController.echoDuelCells(cell.chamber()), cell.owner(),
+                owner.getLocation().getX() - core.getX(), owner.getLocation().getZ() - core.getZ())
+                || !Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(
+                realitySplitTrialController.echoDuelCells(cell.chamber()), cell.owner(),
+                carrier.getLocation().getX() - core.getX(), carrier.getLocation().getZ() - core.getZ())
                 || !carrier.hasActiveItem() || carrier.getActiveItemHand() != EquipmentSlot.OFF_HAND
                 || carrier.getActiveItem() == null || carrier.getActiveItem().getType() != Material.SHIELD
                 || !namedEchoOwnerFacesAttack(carrier, owner, direct, causing)) return false;
@@ -31841,6 +32075,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (profile == null || !profile.entityType().equals(actor.getType().name())) return false;
         if (trial.trial() == RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN
                 && eventTickCounter % 12L == 0L) moveNamedTrialMarksman(actor, trial.chamber());
+        // MARK-007: the one support actor, triggered once around 50% HP. It uses
+        // shared Giant AI, shields nothing and grants no reward.
+        if (trial.trial() == RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN) {
+            summonWave7MarksmanDefender(actor, trial.chamber());
+        }
+        // MAGE7-003 / MAGE7-004 [U]: bounded, expiring Vex support. The live cap
+        // scales with the frozen roster, Vexes arrive one at a time on a real
+        // cadence, they expire, and their deaths never complete the stage.
+        if (trial.trial() == RealitySplitTrialController.NamedTrial.RIFT_ARCHMAGE) {
+            tickWave7ArchmageVexes(actor, trial.chamber());
+        }
         long now = System.currentTimeMillis();
         Player target = checkpoint.targetId() == null ? null : Bukkit.getPlayer(checkpoint.targetId());
 
@@ -31849,8 +32094,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 renderNamedTrialTelegraph(actor, target, checkpoint.attack(), false);
                 return true;
             }
-            if (checkpoint.attack() != Wave7NamedTrialActorPolicy.Attack.MARKSMAN_SUPPORT
-                    && (target == null || !isCurrentRealitySplitTrialTarget(actor, target))) {
+            if (checkpoint.attack() == Wave7NamedTrialActorPolicy.Attack.MARKSMAN_SUPPORT) {
+                return finishNamedTrialAttack(actor, checkpoint, now);
+            }
+            if (target == null || !isCurrentRealitySplitTrialTarget(actor, target)) {
                 return finishNamedTrialAttack(actor, checkpoint, now);
             }
             if (!resolveNamedTrialAttack(actor, target, checkpoint.attack(), trial.chamber())) return false;
@@ -31858,11 +32105,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return writeNamedTrialActorCheckpoint(actor, new Wave7NamedTrialActorPolicy.Checkpoint(
                     checkpoint.eventId(), checkpoint.generation(), checkpoint.chamber(), checkpoint.trial(),
                     checkpoint.actorId(), checkpoint.attackIndex(), Wave7NamedTrialActorPolicy.Attack.NONE,
-                    0L, cooldown, null,
-                    checkpoint.supportUsed()
-                            || checkpoint.attack() == Wave7NamedTrialActorPolicy.Attack.MARKSMAN_SUPPORT));
+                     0L, cooldown, null, checkpoint.supportUsed(),
+                    checkpoint.vanishUntilMillis()));
         }
         if (now < checkpoint.cooldownUntilMillis()) return true;
+        // MARK-005 / MARK-006 [U]: the Mobile Marksman may vanish for five
+        // seconds to change position. The vanish is started here, before an
+        // attack is chosen, and the returned checkpoint carries the absolute
+        // deadline so a restart cannot refresh it.
+        if (trial.trial() == RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN
+                && checkpoint.vanishUntilMillis() <= 0L) {
+            Wave7NamedTrialActorPolicy.Checkpoint vanished = beginMarksmanVanish(actor, checkpoint, now);
+            if (vanished != null && !writeNamedTrialActorCheckpoint(actor, vanished)) return false;
+        }
+        // A vanishing Marksman never fires from cover.
+        if (!checkpoint.mayAttackNow(now)) return true;
         target = closestRealitySplitTrialTarget(actor, trial.chamber());
         boolean repositionForCover = target == null
                 && trial.trial() == RealitySplitTrialController.NamedTrial.RIFT_ARCHMAGE;
@@ -31881,10 +32138,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         boolean supportUsed = checkpoint.supportUsed();
         if (repositionForCover) {
             attack = Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_STEP;
-        } else if (trial.trial() == RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN
-                && !supportUsed && actor.getHealth() <= actor.getMaxHealth() * 0.50D) {
-            attack = Wave7NamedTrialActorPolicy.Attack.MARKSMAN_SUPPORT;
         } else {
+            // SUPERSEDED (spec MARK-002/MARK-007): the Marksman keeps firing its
+            // authored fans; support is the one-time Giant defender above, not a
+            // bonus attack that interrupts the rotation.
             attack = Wave7NamedTrialActorPolicy.attackFor(trial.trial(), checkpoint.attackIndex());
         }
         if (attack == Wave7NamedTrialActorPolicy.Attack.NONE
@@ -31893,10 +32150,214 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Wave7NamedTrialActorPolicy.Checkpoint started = new Wave7NamedTrialActorPolicy.Checkpoint(
                 checkpoint.eventId(), checkpoint.generation(), checkpoint.chamber(), checkpoint.trial(),
                 checkpoint.actorId(), checkpoint.attackIndex() + 1L, attack, deadline,
-                checkpoint.cooldownUntilMillis(), target.getUniqueId(), supportUsed);
+                checkpoint.cooldownUntilMillis(), target.getUniqueId(), supportUsed,
+                checkpoint.vanishUntilMillis());
         if (!writeNamedTrialActorCheckpoint(actor, started)) return false;
         renderNamedTrialTelegraph(actor, target, attack, true);
         return true;
+    }
+
+    /**
+     * MARK-007 / MARK-009 [U]: the Mobile Marksman's single Giant defender.
+     *
+     * <p>Triggered once, around 50% of the miniboss maximum health. The durable
+     * receipt is written to the miniboss BEFORE the actor exists, so a crash or
+     * restart cannot summon a second defender. The defender is owned by this
+     * stage, uses shared Giant AI, shields nothing, grants no reward and never
+     * completes the stage: its death is cleanup. A stage end removes it.</p>
+     */
+    private boolean summonWave7MarksmanDefender(LivingEntity marksman, int chamber) {
+        if (marksman == null || !marksman.isValid() || marksman.isDead()
+                || isRiftGiant(marksman)) return false;
+        var data = marksman.getPersistentDataContainer();
+        boolean receiptUsed = data.getOrDefault(keyWave7MarksmanDefenderReceipt,
+                PersistentDataType.STRING, null) != null;
+        if (!Wave7MarksmanDefenderPolicy.shouldSummon(
+                marksman.getMaxHealth(), marksman.getHealth(), receiptUsed)) {
+            return false;
+        }
+        Location spot = safeMarksmanDefenderSpot(marksman, chamber);
+        if (spot == null) return false;
+        // Receipt first: the capacity for exactly one defender is spent before
+        // the entity exists, so a failure below leaves nothing duplicated.
+        data.set(keyWave7MarksmanDefenderReceipt, PersistentDataType.STRING,
+                marksman.getUniqueId().toString() + ":" + eventTickCounter);
+        Entity spawned = spawnRiftGiantEntity(marksman.getWorld(), spot, 7,
+                false, NAMED_TRIAL_DEFENDER_SLOT);
+        if (spawned == null) {
+            data.remove(keyWave7MarksmanDefenderReceipt);
+            return false;
+        }
+        tagWave7MarksmanDefender(spawned, marksman);
+        renderWave7AbilityEffect(marksman, null, "WAVE7_MARKSMAN_DEFENDER");
+        marksman.getWorld().playSound(marksman.getLocation(), Sound.ENTITY_RAVAGER_ROAR, 0.9F, 0.7F);
+        emitDiagnostic("WAVE7_MARKSMAN", "DEFENDER_SUMMONED", "INFO", 5,
+                "marksman-defender", marksman.getUniqueId(), null,
+                "wave7-defender:" + marksman.getUniqueId(),
+                Map.of("defender", spawned.getUniqueId().toString(),
+                        "receipt", "durable", "triggerFraction",
+                        String.valueOf(Wave7MarksmanDefenderPolicy.TRIGGER_FRACTION)));
+        saveStateAsync();
+        return true;
+    }
+
+    /** The defender never becomes a second miniboss and never awards the stage. */
+    private void tagWave7MarksmanDefender(Entity defender, LivingEntity marksman) {
+        if (defender == null || marksman == null) return;
+        defender.getPersistentDataContainer().set(keyWave7MarksmanDefenderOwner,
+                PersistentDataType.STRING, marksman.getUniqueId().toString());
+        if (defender instanceof Mob mob) {
+            mob.setAware(true);
+            mob.setAI(true);
+            Player target = closestRealitySplitTrialTarget(marksman, 0);
+            if (target != null) mob.setTarget(target);
+        }
+        if (defender instanceof LivingEntity living) {
+            living.setCustomName(ChatColor.DARK_GREEN + "Защитник");
+            living.setCustomNameVisible(false);
+        }
+    }
+
+    /**
+     * MAGE7-003 / MAGE7-004 [U]: the Archmage's bounded Vex support.
+     *
+     * <p>Repeated summoning is part of the Archmage's identity, accumulation is
+     * not. The live cap scales with the frozen roster (2 / 4 / 6), Vexes arrive
+     * one at a time on an explicit cadence, each expires after a finite
+     * lifetime, and they are children of the stage: their deaths never complete
+     * it. A restart keeps the real cadence because the last summon tick is
+     * persisted on the actor.</p>
+     */
+    private void tickWave7ArchmageVexes(LivingEntity archmage, int chamber) {
+        if (archmage == null || !(archmage instanceof Mob mob)
+                || !mob.isValid() || mob.isDead()) return;
+        long now = System.currentTimeMillis();
+        long lastSummon = archmage.getPersistentDataContainer().getOrDefault(
+                keyWave7ArchmageVexLastSummon, PersistentDataType.LONG, 0L);
+        long sinceTicks = lastSummon <= 0L
+                ? Wave7ArchmageVexPolicy.NEVER_SUMMONED
+                : (now - lastSummon) / 50L;
+        int cap = Wave7ArchmageVexPolicy.cap(wave7FrozenRosterSize());
+        List<LivingEntity> live = liveWave7ArchmageVexes(archmage, now);
+        int wanted = Wave7ArchmageVexPolicy.summonCount(cap, live.size(), sinceTicks);
+        if (wanted <= 0) return;
+        for (int index = 0; index < wanted; index++) {
+            if (!summonWave7ArchmageVex(archmage, chamber, now)) return;
+        }
+        archmage.getPersistentDataContainer().set(keyWave7ArchmageVexLastSummon,
+                PersistentDataType.LONG, now);
+    }
+
+    /** Live Vexes owned by this Archmage, expiring any that outlived their lifetime. */
+    private List<LivingEntity> liveWave7ArchmageVexes(LivingEntity archmage, long now) {
+        List<LivingEntity> live = new ArrayList<>();
+        if (archmage == null || archmage.getWorld() == null) return live;
+        String owner = archmage.getUniqueId().toString();
+        for (Entity entity : archmage.getWorld().getEntities()) {
+            if (!(entity instanceof LivingEntity living) || living.isDead() || !living.isValid()) continue;
+            if (living.getType() != EntityType.VEX) continue;
+            var data = living.getPersistentDataContainer();
+            if (!owner.equals(data.getOrDefault(keyWave7MarksmanDefenderOwner,
+                    PersistentDataType.STRING, ""))) continue;
+            long bornAt = data.getOrDefault(keyWave7ArchmageVexLastSummon,
+                    PersistentDataType.LONG, now);
+            // MAGE7-004: a Vex that reached its finite lifetime is removed rather
+            // than left running for the rest of the stage.
+            if (Wave7ArchmageVexPolicy.expired((now - bornAt) / 50L)) {
+                living.remove();
+                continue;
+            }
+            live.add(living);
+        }
+        return live;
+    }
+
+    /** Spawns one owned Vex beside its Archmage. Returns false when no safe spot exists. */
+    private boolean summonWave7ArchmageVex(LivingEntity archmage, int chamber, long now) {
+        if (archmage == null || !(archmage instanceof Mob)) return false;
+        World world = archmage.getWorld();
+        if (world == null) return false;
+        for (int attempt = 0; attempt < 10; attempt++) {
+            double angle = Math.PI * 2.0D * attempt / 10.0D;
+            Location candidate = archmage.getLocation().clone().add(
+                    Math.cos(angle) * 3.5D, 1.5D, Math.sin(angle) * 3.5D);
+            if (!isSafeCombatEntityLocation(candidate, archmage)) continue;
+            Entity spawned = world.spawnEntity(candidate, EntityType.VEX);
+            if (!(spawned instanceof LivingEntity vex)) {
+                if (spawned != null) spawned.remove();
+                return false;
+            }
+            vex.getPersistentDataContainer().set(keyWave7MarksmanDefenderOwner,
+                    PersistentDataType.STRING, archmage.getUniqueId().toString());
+            vex.getPersistentDataContainer().set(keyWave7ArchmageVexLastSummon,
+                    PersistentDataType.LONG, now);
+            // Owned by the stage, not an independent encounter actor.
+            tag(vex, EVENT_KIND_REALITY_SPLIT_OBJECTIVE, 7, false);
+            vex.setCustomName(ChatColor.DARK_PURPLE + "Слуга архимага");
+            vex.setCustomNameVisible(false);
+            vex.setPersistent(false);
+            if (vex instanceof Mob vexMob) {
+                vexMob.setAware(true);
+                vexMob.setAI(true);
+                Player target = closestRealitySplitTrialTarget(archmage, chamber);
+                if (target != null) vexMob.setTarget(target);
+                if (vexMob.getEquipment() != null) {
+                    vexMob.getEquipment().setItemInMainHand(
+                            new org.bukkit.inventory.ItemStack(Material.IRON_SWORD));
+                }
+            }
+            archmage.getWorld().playSound(archmage.getLocation(),
+                    Sound.ENTITY_EVOKER_CAST_SPELL, 0.5F, 1.4F);
+            return true;
+        }
+        return false;
+    }
+
+    private Location safeMarksmanDefenderSpot(LivingEntity marksman, int chamber) {
+        World world = marksman.getWorld();
+        for (int attempt = 0; attempt < 12; attempt++) {
+            double angle = Math.PI * 2.0D * attempt / 12.0D;
+            Location candidate = marksman.getLocation().clone().add(
+                    Math.cos(angle) * 5.0D, 0.0D, Math.sin(angle) * 5.0D);
+            if (!isSafeCombatEntityLocation(candidate, marksman)) continue;
+            return candidate;
+        }
+        return null;
+    }
+
+    /**
+     * MARK-005 / MARK-006 [U]: opens one invisibility window for the Marksman.
+     *
+     * <p>Vanish is positional, never defensive: nothing is granted immunity,
+     * the actor keeps taking damage, and the attack loop is gated on the window
+     * so it cannot fire from cover. Vanish is refused while the actor is
+     * genuinely visible to its target and not cornered, so the mechanic reads
+     * as repositioning rather than as a permanent invisibility.</p>
+     *
+     * @return the checkpoint carrying the new window, or {@code null} when the
+     *         vanish is refused (a refusal is a normal outcome)
+     */
+    private Wave7NamedTrialActorPolicy.Checkpoint beginMarksmanVanish(LivingEntity actor,
+            Wave7NamedTrialActorPolicy.Checkpoint checkpoint, long now) {
+        if (actor == null || checkpoint == null || !(actor instanceof Mob mob)
+                || !mob.isValid() || mob.isDead()) return null;
+        Wave7MarksmanInvisibilityPolicy.Window window =
+                Wave7MarksmanInvisibilityPolicy.vanish(now, 0L);
+        if (window == null) return null;
+        // The visible vanish is shorter than the no-attack window: the last
+        // REVEAL ticks are deliberately visible so a player registers the copy
+        // reappearing before it can shoot again.
+        long hiddenUntil = now + window.revealStartsAt() - window.startedAtTick();
+        mob.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY,
+                (int) Wave7MarksmanInvisibilityPolicy.INVISIBLE_TICKS, 0, false, false, false), true);
+        actor.getWorld().playSound(actor.getLocation(), Sound.ENTITY_SHULKER_OPEN, 0.35F, 1.7F);
+        spawnEventParticle(actor.getLocation().add(0.0D, 1.0D, 0.0D), Particle.SMOKE, 12,
+                0.3D, 0.4D, 0.3D, 0.02D);
+        return new Wave7NamedTrialActorPolicy.Checkpoint(
+                checkpoint.eventId(), checkpoint.generation(), checkpoint.chamber(), checkpoint.trial(),
+                checkpoint.actorId(), checkpoint.attackIndex(), checkpoint.attack(),
+                checkpoint.phaseDeadlineMillis(), checkpoint.cooldownUntilMillis(), null,
+                checkpoint.supportUsed(), hiddenUntil);
     }
 
     private void moveNamedTrialMarksman(LivingEntity actor, int chamber) {
@@ -31939,7 +32400,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return writeNamedTrialActorCheckpoint(actor, new Wave7NamedTrialActorPolicy.Checkpoint(
                 checkpoint.eventId(), checkpoint.generation(), checkpoint.chamber(), checkpoint.trial(),
                 checkpoint.actorId(), checkpoint.attackIndex(), Wave7NamedTrialActorPolicy.Attack.NONE,
-                0L, now + 20L * 50L, null, checkpoint.supportUsed()));
+                0L, now + 20L * 50L, null, checkpoint.supportUsed(),
+                 checkpoint.vanishUntilMillis()));
     }
 
     private void renderNamedTrialTelegraph(LivingEntity actor, Player target,
@@ -32015,18 +32477,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             Wave7NamedTrialActorPolicy.Attack attack, int chamber) {
         if (actor == null || attack == null) return false;
         if (attack == Wave7NamedTrialActorPolicy.Attack.MARKSMAN_SUPPORT) {
-            double restored = Math.min(actor.getMaxHealth(), actor.getHealth() + 24.0D);
-            actor.setHealth(restored);
-            spawnEventParticle(actor.getLocation().add(0.0D, 1.0D, 0.0D), Particle.HAPPY_VILLAGER,
-                    18, 0.35D, 0.5D, 0.35D, 0.02D);
-            return true;
+            // SUPERSEDED (audit W7 error 9, spec MARK-007): MARKSMAN_SUPPORT used to
+            // heal the miniboss +24 HP, which the spec never grants. The accepted
+            // support for the Mobile Marksman is ONE Giant defender summoned around
+            // 50% HP. Summoning happens on the tick path with a durable receipt, so
+            // this branch never fires and reports honestly that nothing landed.
+            return false;
         }
         if (target == null || !isCurrentRealitySplitTrialTarget(actor, target)) return true;
         // Step validates its own destination, chamber and unobstructed travel path.
         // Losing direct sight of the player must not disable tactical repositioning.
         if (attack != Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_STEP
                 && !hasNamedTrialLineOfSight(actor.getEyeLocation(), target.getEyeLocation())) return true;
-        return switch (attack) {
+        boolean landed = switch (attack) {
             case MARKSMAN_QUICK_SHOT -> launchNamedTrialArrow(actor, target, attack,
                     1.65F, 0.0F, false, false);
             case MARKSMAN_HEAVY_SHOT -> launchNamedTrialArrow(actor, target, attack,
@@ -32042,6 +32505,47 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             case MARKSMAN_SUPPORT, NONE, NONE_INTERNAL -> false;
         };
+        // Authored signature for every cast, fired only after the cast really
+        // started, so a refused line of sight stays visually silent.
+        if (landed) renderWave7AbilityEffect(actor, target, "WAVE7_" + attack.name());
+        // A Step with no legal destination is a COMPLETED, refused action: the
+        // actor keeps its checkpoint and the caller moves it into cooldown. It is
+        // not a failure, and it must never be reported as if a blink happened.
+        return landed || attack == Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_STEP;
+    }
+
+    /**
+     * Draws the authored Wave 7 ability signature at the actor.
+     *
+     * <p>All geometry lives in {@link me.copimine.endevent.runtime.wave7.Wave7AbilityEffectRuntime};
+     * this adapter only resolves the aim and impact points from live entities
+     * and forwards the audience-scoped emitters.</p>
+     */
+    private void renderWave7AbilityEffect(LivingEntity actor, Player target, String abilityId) {
+        if (actor == null || !actor.isValid() || abilityId == null || abilityId.isBlank()) return;
+        Location feet = actor.getLocation().clone();
+        Location eye = actor.getEyeLocation().clone();
+        Location impact = target != null && target.isOnline() ? target.getLocation().clone() : null;
+        Vector aim = impact == null ? actor.getLocation().getDirection().clone()
+                : impact.clone().add(0.0D, 1.0D, 0.0D).toVector().subtract(eye.toVector());
+        final String effectKey = abilityId.startsWith("WAVE7_")
+                ? abilityId.substring("WAVE7_".length()) : abilityId;
+        me.copimine.endevent.runtime.wave7.Wave7AbilityEffectRuntime.Emitter emitter =
+                (particle, point, count, spreadSquared, extra, color) -> {
+                    if (color == null) {
+                        spawnEventParticle(point, particle, count, 0.02D, 0.02D, 0.02D, extra);
+                    } else {
+                        for (Player viewer : eventAudience()) {
+                            if (!isEventParticleViewer(viewer, point)) continue;
+                            viewer.spawnParticle(particle, point, count, 0.02D, 0.02D, 0.02D,
+                                    extra, new Particle.DustOptions(color, 1.1F));
+                        }
+                    }
+                };
+        me.copimine.endevent.runtime.wave7.Wave7AbilityEffectRuntime.render(
+                effectKey, eye, feet, aim, impact, emitter);
+        me.copimine.endevent.runtime.wave7.Wave7AbilityEffectRuntime.playRelease(
+                actor.getWorld(), feet, effectKey, 0.7F, 1.0F);
     }
 
     /**
@@ -32179,6 +32683,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private boolean stepNamedTrialArchmage(LivingEntity actor, Player target, int chamber) {
         if (actor == null || target == null || !isCurrentRealitySplitTrialTarget(actor, target)) return false;
+        Location origin = actor.getLocation().clone();
         Vector direction = horizontalDirection(actor.getLocation(), target.getLocation());
         Vector side = new Vector(-direction.getZ(), 0.0D, direction.getX());
         for (double offset : new double[]{3.0D, -3.0D, 2.0D, -2.0D}) {
@@ -32190,12 +32695,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     || !hasNamedTrialLineOfSight(actor.getEyeLocation(),
                     destination.clone().add(0.0D, actor.getEyeHeight(), 0.0D))) continue;
             if (!teleportCombatEntity(actor, destination)) continue;
-            actor.getWorld().playSound(destination, Sound.ENTITY_ENDERMAN_TELEPORT, 0.65F, 1.4F);
-            spawnEventParticle(destination.add(0.0D, 0.8D, 0.0D), Particle.PORTAL,
-                    20, 0.35D, 0.55D, 0.35D, 0.05D);
+            // Audit W7 error 8: exactly one blink, one authored pair of effects.
+            // The departure cloud stays where the caster WAS; the arrival vortex
+            // is drawn where it LANDS. Both only exist for a real teleport.
+            // The caller draws the authored signature once, from the landed body
+            // (resolveNamedTrialAttack -> landed -> renderWave7AbilityEffect), so
+            // this method must not draw it a second time.
+            renderWave7AbilityBurst(origin, "ARCHMAGE_STEP");
+            renderWave7AbilityBurst(actor.getLocation().clone(), "ARCHMAGE_STEP_ARRIVAL");
             return true;
         }
-        return true;
+        // Every candidate destination was refused. Report failure so the caller
+        // falls back to a visible attack instead of pretending to have stepped.
+        return false;
     }
 
     private void resolveNamedTrialBeam(LivingEntity actor, Player markedTarget, int chamber) {
@@ -32219,8 +32731,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             target.addPotionEffect(new org.bukkit.potion.PotionEffect(
                     org.bukkit.potion.PotionEffectType.BLINDNESS, 36, 0, true, true, true));
         }
-        spawnEventParticle(start.add(direction.clone().multiply(length)), Particle.DRAGON_BREATH,
-                18, 0.4D, 0.4D, 0.4D, 0.02D);
+        renderWave7AbilityEffect(actor, markedTarget, "WAVE7_ARCHMAGE_BEAM");
     }
 
     private void tickRealitySplitWarden(LivingEntity warden, RealitySplitTrialRuntimeState state) {
@@ -32267,11 +32778,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 state.phaseUntilTick = eventTickCounter + attack.lungeTicks();
                 state.previousLocation = warden.getLocation().clone();
                 state.hitPlayers.clear();
-                warden.getWorld().playSound(warden.getLocation(), Sound.ENTITY_WARDEN_ATTACK_IMPACT,
-                        0.9F, 0.8F);
+                renderWave7AbilityEffect(warden, state.target == null ? null
+                        : Bukkit.getPlayer(state.target), "WAVE7_WARDEN_SONIC_LUNGE");
             } else {
                 applyRealitySplitDirectionalDamage(warden, state,
                         attack.damageWidth(), attack.damageRange(), attack.damage(), false);
+                renderWave7AbilityEffect(warden, state.target == null ? null
+                        : Bukkit.getPlayer(state.target), wardenStrikeAbility(attack));
                 finishTrialAttack(state, 44L);
             }
             return;
@@ -32299,6 +32812,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 == Wave7WardenCombatPolicy.Warning.SONIC_LUNGE
                 ? Sound.ENTITY_WARDEN_SONIC_CHARGE : Sound.BLOCK_SCULK_SENSOR_CLICKING;
         warden.getWorld().playSound(warden.getLocation(), warningSound, 0.75F, 0.65F);
+    }
+
+    /** Ability identity of a Warden strike pattern, used to pick its authored signature. */
+    private static String wardenStrikeAbility(Wave7WardenCombatPolicy.AttackProfile attack) {
+        return attack.warning() == Wave7WardenCombatPolicy.Warning.WIDE_STRIKE
+                ? "WAVE7_WARDEN_WIDE_STRIKE" : "WAVE7_WARDEN_NARROW_STRIKE";
     }
 
     private void tickRealitySplitReflection(LivingEntity eye, RealitySplitTrialRuntimeState state) {
@@ -32658,6 +33177,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 spawnEventParticle(point, particle, 1, 0.0D, 0.0D, 0.0D, 0.0D);
             }
         }
+    }
+
+    /**
+     * Draws an authored Wave 7 signature centred on an arbitrary point, used
+     * for departure clouds and impact bursts that are not at the actor.
+     */
+    private void renderWave7AbilityBurst(Location point, String abilityId) {
+        if (point == null || point.getWorld() == null || abilityId == null || abilityId.isBlank()) return;
+        me.copimine.endevent.runtime.wave7.Wave7AbilityEffectRuntime.Emitter emitter =
+                (particle, at, count, spreadSquared, extra, color) -> {
+                    if (color == null) {
+                        spawnEventParticle(at, particle, count, 0.05D, 0.05D, 0.05D, extra);
+                    } else {
+                        for (Player viewer : eventAudience()) {
+                            if (!isEventParticleViewer(viewer, at)) continue;
+                            viewer.spawnParticle(particle, at, count, 0.05D, 0.05D, 0.05D,
+                                    extra, new Particle.DustOptions(color, 1.1F));
+                        }
+                    }
+                };
+        me.copimine.endevent.runtime.wave7.Wave7AbilityEffectRuntime.render(
+                abilityId, point, point, null, point, emitter);
     }
 
     private double distanceSquaredToSegment(Vector point, Vector start, Vector end) {
@@ -33077,6 +33618,149 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     new Vector(1.0D, 0.0D, 0.0D), new Vector(0.0D, 0.0D, 1.0D),
                     18.0D, 24, now * 0.0012D, Particle.SQUID_INK);
         }
+    }
+
+    /**
+     * W6-005 [A]: after the previous mage, drain its remaining stage combat,
+     * then spawn the next mage and its guards. The next stage never overlaps a
+     * living previous mage, and the final stage never starts after the fifth.
+     */
+    private void advanceWaveSixStage(long now) {
+        if (wave6Sequence == null || !wave6Sequence.mageStageActive()
+                || ritualSphereState == null || wave6PrisonBroken) return;
+        if (now < wave6NextStageAtMillis) return;
+        Location core = coreCombatAnchorLocation();
+        if (core == null || core.getWorld() == null) return;
+        RitualSphereScalingPolicy.Profile profile = ritualSphereState.profile();
+        if (!spawnWaveSixStage(core.getWorld(), core, profile)) {
+            wave6StageSpawnAttempts++;
+            getLogger().warning("WAVE6_STAGE_SPAWN_RETRY event=" + eventId + " generation=" + generation
+                    + " stage=" + wave6Sequence.stageIndex() + " attempts=" + wave6StageSpawnAttempts);
+            if (wave6StageSpawnAttempts >= WAVE6_MAX_STAGE_SPAWN_ATTEMPTS) {
+                markWave6RecoveryRequired("WAVE6_STAGE_SPAWN_EXHAUSTED");
+            }
+            wave6NextStageAtMillis = now + WAVE6_STAGE_SPAWN_RETRY_MILLIS;
+            return;
+        }
+        wave6StageSpawnAttempts = 0;
+        reconcileRitualCasterShields();
+        waveObjectiveMobCount = ritualCasterUuids.size() + ritualGuardUuids.size();
+        announceEventTitle("§dСТАДИЯ " + (wave6Sequence.stageIndex() + 1) + " / "
+                + WaveSixSequencePolicy.STAGE_COUNT, "§f" + mageName(wave6Sequence.currentMage()), false);
+        saveStateAsync();
+    }
+
+    /**
+     * Spawn the one mage that owns the current stage and its assigned guards.
+     *
+     * <p>W6-002 [U] / W6-008 [U]: at most one mage and its own assigned guards
+     * exist. Every guard body is a full elite: the shared elite profile is
+     * applied exactly once here, because the {@code ELITE} tag alone never set
+     * combat attributes (the previous code trusted the tag and left ordinary
+     * health on the guards).</p>
+     *
+     * @return true when the current stage has its complete roster
+     */
+    private boolean spawnWaveSixStage(World world, Location core, RitualSphereScalingPolicy.Profile profile) {
+        if (world == null || core == null || profile == null || wave6Sequence == null
+                || !wave6Sequence.mageStageActive()) return false;
+        int stage = wave6Sequence.stageIndex();
+        MageSignaturePolicy.MageId mage = wave6Sequence.currentMage();
+        if (mage == null) return false;
+        int casterSlot = stage;
+        double casterAngle = -Math.PI / 2.0D + stage * Math.PI * 2.0D / Math.max(1, MageSignaturePolicy.MAGE_COUNT);
+        Location casterLocation = core.clone().add(
+                Math.cos(casterAngle) * 7.0D, 0.0D, Math.sin(casterAngle) * 7.0D);
+        Enderman caster = spawnEnderman(world, core, 6, true, false, false, casterSlot, casterSlot);
+        if (caster == null || !placeRitualEntity(caster, casterLocation, "CASTER", casterSlot, -1)) {
+            return false;
+        }
+        retagRitualEntity(caster, "CASTER", null, casterSlot, -1);
+        tagRitualCasterAwakened(caster, false);
+        caster.setTarget(null);
+        caster.setAI(false);
+        caster.setAware(false);
+        ritualCasterUuids.add(caster.getUniqueId());
+        ritualCasterSlots.put(caster.getUniqueId(), casterSlot);
+        // The persisted identity is bound to this body. An unbound caster cannot
+        // contribute a signature, so progression would fail closed.
+        wave6CasterIdentities.put(caster.getUniqueId(), mage);
+        ritualGuardsByCaster.put(caster.getUniqueId(), new LinkedHashSet<>());
+        caster.setCustomName(ChatColor.LIGHT_PURPLE + "Заклинатель " + mageName(mage));
+        caster.setCustomNameVisible(false);
+        boolean complete = true;
+        WaveSixSequencePolicy next = wave6Sequence;
+        for (int guardSlot = 0; guardSlot < profile.guardsPerCaster(); guardSlot++) {
+            // W6-013 [U]: no post assignment. Guards are placed once around the
+            // mage as an initial spawn ring and are never marched back to it.
+            RitualGuardAggroPolicy.RingOffset guardPost = RitualGuardAggroPolicy.spawnRingOffset(
+                    guardSlot, profile.guardsPerCaster(), casterAngle);
+            int guardEntitySlot = 128 + stage * RitualSphereScalingPolicy.GUARDS_PER_CASTER + guardSlot;
+            Location guardLocation = casterLocation.clone().add(guardPost.x(), 0.0D, guardPost.z());
+            int roleSlot = RitualGuardAbilityPolicy.roleSlot(stage, guardSlot);
+            boolean giantReplacement = RitualGuardAbilityPolicy.isGiantReplacement(
+                    profile.participants(), casterSlot, guardSlot);
+            Entity guard;
+            if (roleSlot == 0 && giantReplacement) {
+                guard = spawnRiftGiantEntity(world, guardLocation, 6, true, guardEntitySlot);
+            } else {
+                EntityType guardType = EntityType.valueOf(
+                        RitualGuardAbilityPolicy.entityTypeForGuardRole(roleSlot));
+                guard = spawnOwnedMob(world, core, guardType, 6,
+                        EVENT_KIND_ELITE, false, guardEntitySlot);
+            }
+            if (!placeRitualEntity(guard, guardLocation, "GUARD", casterSlot, guardSlot)) {
+                complete = false;
+                break;
+            }
+            // W6-008 [U]: a guard is an enhanced elite -- the shared x3
+            // ordinary-role profile applied ONCE, right here. The ELITE tag only
+            // names the body; configureRitualGuardHealth() must not multiply again.
+            if (guard instanceof LivingEntity living && !(living instanceof Zombie zombie && isRiftGiant(zombie))) {
+                applyEliteCombatStats(living, 0.0D);
+            }
+            retagRitualEntity(guard, "GUARD", caster.getUniqueId(), casterSlot, guardSlot);
+            ritualGuardUuids.add(guard.getUniqueId());
+            ritualGuardCasters.put(guard.getUniqueId(), caster.getUniqueId());
+            ritualGuardsByCaster.computeIfAbsent(caster.getUniqueId(), ignored ->
+                    new LinkedHashSet<>()).add(guard.getUniqueId());
+            if (guard instanceof Mob mob) {
+                mob.setTarget(null);
+                mob.setAI(false);
+                mob.setAware(false);
+            }
+            if (guard instanceof LivingEntity living) {
+                configureRitualGuardHealth(living);
+                configureRitualGuardCombatAttributes(living);
+                living.setCustomName(ChatColor.DARK_PURPLE + "Страж "
+                        + mageName(mage) + " " + (guardSlot + 1));
+                living.setCustomNameVisible(false);
+            }
+            next = next.guardFilled(guardSlot);
+        }
+        if (!complete) {
+            // Transactional: a partial stage never becomes the running stage.
+            for (UUID id : new LinkedHashSet<>(ritualGuardUuids)) removeRitualEntity(id);
+            removeRitualEntity(caster.getUniqueId());
+            ritualGuardUuids.clear();
+            ritualCasterUuids.clear();
+            ritualGuardCasters.clear();
+            ritualGuardsByCaster.clear();
+            ritualCasterSlots.clear();
+            wave6CasterIdentities.clear();
+            return false;
+        }
+        wave6Sequence = next;
+        getLogger().info("WAVE6_STAGE_READY event=" + eventId + " generation=" + generation
+                + " stage=" + stage + " mage=" + mage + " slot=" + casterSlot
+                + " guards=" + profile.guardsPerCaster()
+                + " signature=" + MageSignaturePolicy.signatureFor(mage));
+        emitDiagnostic("RITUAL_CASTER", "STAGE_READY", "INFO", 6, "wave6-stage-spawned",
+                null, caster.getUniqueId(), "ritual-stage:" + generation + ":" + stage,
+                Map.of("mage", mage.name(), "stage", stage,
+                        "guards", profile.guardsPerCaster(),
+                        "signature", MageSignaturePolicy.signatureFor(mage).name()));
+        return true;
     }
 
     private void applyOwnedBlackFogEffect(Player player, PotionEffectType type, int amplifier) {
@@ -41289,6 +41973,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 double probe = BossContactStrikePolicy.chestProbeDistance(sweepStep);
                 Location point = chest.clone().add(direction.clone().multiply(probe));
                 world.spawnParticle(Particle.SOUL_FIRE_FLAME, point, 3, 0.15D, 0.15D, 0.15D, 0.01D);
+                // Audit boss error: the sweep used to pass straight through solid
+                // geometry and damage players standing behind a wall. The strike
+                // is a physical arc, so the first blocking block ENDS it.
+                if (point.getBlock().getType().isSolid()) {
+                    finishBossChestStrike(boss, bossId, target, sweepStep, lastStep, hits[0],
+                            castSequence, callbackEvent, callbackGeneration, true);
+                    return;
+                }
                 for (Player player : activeLivingPlayers()) {
                     if (player == null || !player.getWorld().equals(world)
                             || alreadyHit.contains(player.getUniqueId())) {
@@ -41323,18 +42015,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     return;
                 }
                 if (sweepStep == lastStep) {
-                    getLogger().info("BOSS_CONTACT_ABILITY_IMPACT boss=" + bossId
-                            + " spell=" + EndRiftAiPolicy.BossSpell.CHEST_STRIKE.id()
-                            + " target=" + target.getUniqueId() + " hits=" + hits[0]
-                            + " generation=" + callbackGeneration);
-                    bossAbilityState = BossAbilityState.RECOVERY;
-                    bossChestStrikeActive = false;
-                    long remainingClip = Math.max(0L,
-                            BossContactStrikePolicy.followThroughTicks(EndRiftAiPolicy.BossSpell.CHEST_STRIKE)
-                                    - BossContactStrikePolicy.CHEST_STRIKE_LAUNCH_TICKS - lastStep);
-                    bossCastDeadlineMillis = System.currentTimeMillis() + (remainingClip + 20L) * 50L;
-                    bossSpellPauseUntilMillis = bossCastDeadlineMillis;
-                    releaseBossHazardReservation("contact-impact");
+                    finishBossChestStrike(boss, bossId, target, sweepStep, lastStep, hits[0],
+                            castSequence, callbackEvent, callbackGeneration, false);
                 }
             }, delay);
             registerEncounterTask(task);
@@ -41347,6 +42029,39 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * is set, so a silently dropped callback would freeze the boss for the rest
      * of the phase with no ability timeline to expire.
      */
+    /**
+     * Ends a chest strike exactly once.
+     *
+     * <p>The cast is finished on the last sweep step and also when the arc hits
+     * solid geometry. Both paths must leave the boss in the SAME observable
+     * state: RECOVERY with the strike flag cleared and the hazard reservation
+     * released. A second finish for the same cast is ignored, so a blocking
+     * block on the final step cannot double-release the reservation.</p>
+     *
+     * @param blocked true when solid geometry ended the arc early
+     */
+    private void finishBossChestStrike(LivingEntity boss, UUID bossId, Player target,
+            int sweepStep, int lastStep, int hits, long castSequence, String callbackEvent,
+            long callbackGeneration, boolean blocked) {
+        if (bossChestStrikeSequence != castSequence
+                || !Objects.equals(eventId, callbackEvent)
+                || generation != callbackGeneration) return;
+        int reached = blocked ? sweepStep : lastStep;
+        getLogger().info("BOSS_CONTACT_ABILITY_IMPACT boss=" + bossId
+                + " spell=" + EndRiftAiPolicy.BossSpell.CHEST_STRIKE.id()
+                + " target=" + (target == null ? "-" : target.getUniqueId().toString())
+                + " hits=" + hits + " blocked=" + blocked
+                + " step=" + reached + " generation=" + callbackGeneration);
+        bossAbilityState = BossAbilityState.RECOVERY;
+        bossChestStrikeActive = false;
+        long remainingClip = Math.max(0L,
+                BossContactStrikePolicy.followThroughTicks(EndRiftAiPolicy.BossSpell.CHEST_STRIKE)
+                        - BossContactStrikePolicy.CHEST_STRIKE_LAUNCH_TICKS - reached);
+        bossCastDeadlineMillis = System.currentTimeMillis() + (remainingClip + 20L) * 50L;
+        bossSpellPauseUntilMillis = bossCastDeadlineMillis;
+        releaseBossHazardReservation(blocked ? "contact-impact-blocked" : "contact-impact");
+    }
+
     private void abortBossChestStrike(long castSequence, String reason) {
         if (bossChestStrikeSequence != castSequence || !bossChestStrikeActive) {
             return;
@@ -41595,9 +42310,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!player.getWorld().equals(boss.getWorld())) {
                 continue;
             }
-            boolean danger = arenaInfernoBlocks.stream().anyMatch(block ->
+            // Audit boss error: only X/Z were compared, so a player standing on a
+            // platform several blocks above the magma was still burning. The magma
+            // is a floor hazard, so the feet must actually be at floor level.
+            int feetY = player.getLocation().getBlockY();
+            int floorY = combatLevelY() - 1;
+            boolean danger = Math.abs(feetY - combatLevelY()) <= 1
+                    && arenaInfernoBlocks.stream().anyMatch(block ->
                     block.getX() == player.getLocation().getBlockX()
-                            && block.getZ() == player.getLocation().getBlockZ());
+                            && block.getZ() == player.getLocation().getBlockZ()
+                            && block.getY() == floorY);
             player.spawnParticle(danger ? Particle.SOUL_FIRE_FLAME : Particle.END_ROD,
                     player.getLocation().add(0.0D, 0.15D, 0.0D), danger ? 16 : 8,
                     0.45D, 0.1D, 0.45D, 0.02D);
@@ -41782,8 +42504,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         if (hazardJournal != null && !hazardJournal.markRestored()) {
+            // Audit boss error: the journal could not record the restore, yet the
+            // original blocks were dropped and the call reported success, so a
+            // retry had nothing left to put back and the arena silently kept the
+            // magma. Keep the record and report failure; a later tick retries and
+            // the blocks are only forgotten once the journal is durably restored.
             getLogger().severe("BOSS_SPELL_ARENA_INFERNO_RESTORE_JOURNAL_FAILED event=" + eventId
-                    + " journal=" + hazardJournal.path());
+                    + " journal=" + hazardJournal.path() + " restored=" + restored
+                    + " skipped=" + skipped + " retained=" + arenaInfernoOriginalBlocks.size());
+            emitDiagnostic("BOSS_SPELL", "ARENA_INFERNO_RESTORE_BLOCKED", "SEVERE", 6,
+                    "journal-not-restored", null, null, "boss:arena-inferno",
+                    Map.of("restored", restored, "skipped", skipped));
+            return false;
         }
         getLogger().info("BOSS_SPELL_ARENA_INFERNO_RESTORED event=" + eventId
                 + " restored=" + restored + " skipped=" + skipped);

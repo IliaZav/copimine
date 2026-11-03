@@ -48,6 +48,15 @@ import me.copimine.endevent.runtime.*;
 import me.copimine.endevent.runtime.wave7.Wave7AdmissionRuntimeAdapter.Decision;
 
 public class OccludedArchmageProbe {
+    // Production visual/audio seams the probed methods call. They are pure
+    // presentation, so the probe stubs them and asserts only server semantics.
+    void renderWave7AbilityEffect(Object a,Object b,String c){}
+    void renderWave7AbilityBurst(Object a,String b){}
+    boolean summonWave7MarksmanDefender(Object a,int b){return false;}
+    // MARK-005 / MAGE7-004 seams added with the invisibility and Vex support.
+    void tickWave7ArchmageVexes(Object a,int b){}
+    Wave7NamedTrialActorPolicy.Checkpoint beginMarksmanVanish(Object a,
+            Wave7NamedTrialActorPolicy.Checkpoint c,long now){return null;}
     long generation=Wave7AdmissionRuntimeChecks.GEN, eventTickCounter=1L;
     final String eventId=Wave7AdmissionRuntimeChecks.EVENT.toString();
     final RealitySplitChamberController realitySplitChamberController=Wave7AdmissionRuntimeChecks.chambers;

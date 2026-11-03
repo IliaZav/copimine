@@ -40,7 +40,16 @@ public final class Wave7NamedTrialActorPolicy {
     public record Checkpoint(UUID eventId, long generation, int chamber, NamedTrial trial,
                              UUID actorId, long attackIndex, Attack attack,
                              long phaseDeadlineMillis, long cooldownUntilMillis,
-                             UUID targetId, boolean supportUsed) {
+                             UUID targetId, boolean supportUsed, long vanishUntilMillis) {
+        /** Schema 1: no invisibility window recorded yet. */
+        public Checkpoint(UUID eventId, long generation, int chamber, NamedTrial trial,
+                          UUID actorId, long attackIndex, Attack attack,
+                          long phaseDeadlineMillis, long cooldownUntilMillis,
+                          UUID targetId, boolean supportUsed) {
+            this(eventId, generation, chamber, trial, actorId, attackIndex, attack,
+                    phaseDeadlineMillis, cooldownUntilMillis, targetId, supportUsed, 0L);
+        }
+
         public Checkpoint {
             Profile profile = profile(trial);
             if (eventId == null || generation <= 0L || chamber < 0 || chamber >= 4
@@ -48,9 +57,27 @@ public final class Wave7NamedTrialActorPolicy {
                     || attack == null || attack != Attack.NONE && !profile.attacks().contains(attack)
                     && !(trial == NamedTrial.MOBILE_MARKSMAN && attack == Attack.MARKSMAN_SUPPORT)
                     || phaseDeadlineMillis < 0L || cooldownUntilMillis < 0L
+                    || vanishUntilMillis < 0L
+                    || vanishUntilMillis > 0L && trial != NamedTrial.MOBILE_MARKSMAN
                     || attack != Attack.NONE && phaseDeadlineMillis == 0L) {
                 throw new IllegalArgumentException("invalid named Wave 7 actor checkpoint");
             }
+        }
+
+        /**
+         * MARK-005: the actor is hidden until this deadline.
+         *
+         * <p>The deadline is absolute, so a restart never refreshes the vanish,
+         * and {@link #mayAttackNow(long)} keeps a hidden Marksman from shooting
+         * from cover.
+         */
+        public boolean hiddenNow(long nowMillis) {
+            return vanishUntilMillis > 0L && nowMillis < vanishUntilMillis;
+        }
+
+        /** MARK-006: hidden is not invulnerable, and it is never a legal firing window. */
+        public boolean mayAttackNow(long nowMillis) {
+            return !hiddenNow(nowMillis);
         }
     }
 
@@ -257,14 +284,15 @@ public final class Wave7NamedTrialActorPolicy {
 
     public static String encode(Checkpoint checkpoint) {
         if (checkpoint == null) throw new IllegalArgumentException("missing named actor checkpoint");
-        return String.join("|", "1", checkpoint.eventId().toString(),
+        return String.join("|", "2", checkpoint.eventId().toString(),
                 Long.toString(checkpoint.generation()), Integer.toString(checkpoint.chamber()),
                 checkpoint.trial().name(), checkpoint.actorId().toString(),
                 Long.toString(checkpoint.attackIndex()), checkpoint.attack().name(),
                 Long.toString(checkpoint.phaseDeadlineMillis()),
                 Long.toString(checkpoint.cooldownUntilMillis()),
                 checkpoint.targetId() == null ? "-" : checkpoint.targetId().toString(),
-                checkpoint.supportUsed() ? "1" : "0");
+                checkpoint.supportUsed() ? "1" : "0",
+                Long.toString(checkpoint.vanishUntilMillis()));
     }
 
     public static Checkpoint decode(String encoded, UUID expectedEvent, long expectedGeneration,
@@ -273,7 +301,13 @@ public final class Wave7NamedTrialActorPolicy {
             throw new IllegalArgumentException("missing or oversized named actor checkpoint");
         }
         String[] parts = encoded.split("\\|", -1);
-        if (parts.length != 12 || !"1".equals(parts[0])) {
+        // SUPERSEDED (MARK-005): schema 1 had no invisibility window. It still
+        // decodes so a stage in progress across the upgrade is not lost, and a
+        // schema 1 record simply has no active vanish.
+        if (parts.length != 12 && parts.length != 13
+                || !"1".equals(parts[0]) && !"2".equals(parts[0])
+                || "2".equals(parts[0]) && parts.length != 13
+                || "1".equals(parts[0]) && parts.length != 12) {
             throw new IllegalArgumentException("unsupported named actor checkpoint schema");
         }
         try {
@@ -292,8 +326,9 @@ public final class Wave7NamedTrialActorPolicy {
                 case "1" -> true;
                 default -> throw new IllegalArgumentException("non-canonical support flag");
             };
+            long vanishUntil = parts.length == 13 ? Long.parseLong(parts[12]) : 0L;
             Checkpoint checkpoint = new Checkpoint(event, generation, chamber, trial, actor,
-                    attackIndex, attack, phaseDeadline, cooldown, target, supportUsed);
+                    attackIndex, attack, phaseDeadline, cooldown, target, supportUsed, vanishUntil);
             if (!event.equals(expectedEvent) || generation != expectedGeneration
                     || chamber != expectedChamber || trial != expectedTrial
                     || !actor.equals(expectedActor) || !encode(checkpoint).equals(encoded)) {

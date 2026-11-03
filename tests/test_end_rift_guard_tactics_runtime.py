@@ -328,7 +328,9 @@ def test_ranged_guard_targets_are_far_first_sticky_visible_and_range_bounded():
 def test_wave6_zombie_tanks_keep_their_melee_knockback_profile_after_recovery():
     source = SOURCE.read_text(encoding="utf-8")
     configure = declaration(source, "private void configureRitualGuardCombatAttributes(")
-    spawn = declaration(source, "private boolean startRitualSphereObjective(")
+    # SUPERSEDED (audit W6 error 1, spec W6-002): guards spawn per stage from
+    # spawnWaveSixStage(), not up-front from the objective start.
+    spawn = declaration(source, "private boolean spawnWaveSixStage(")
     reindex = declaration(source, "private void reindexRitualEntity(")
 
     assert "Attribute.GENERIC_KNOCKBACK_RESISTANCE" in configure

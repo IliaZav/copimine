@@ -182,12 +182,14 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # Re-measured after Wave 5 stopped dropping fog cycles four and five, which
     # changed validCycle and therefore the compiled bytes, and again after
     # d2c6628b replaced the safe-volume radius with a footprint mask without
-    # refreshing the lock. Two clean Gradle builds on this tree agree byte for
-    # byte, so the lock tracks the source rather than one lucky build.
-    assert artifact['size'] == 15_032_281
+    # refreshing the lock. The Echo client work (vanilla animation driven by
+    # tickCount and tick-project equipment) changed the compiled bytes again.
+    # Two clean Gradle builds on this tree agree byte for byte, so the lock
+    # tracks the source rather than one lucky build.
+    assert artifact['size'] == 15_042_874
     assert artifact['sha512'] == (
-        'c65971b6a8e82d6ff1005d52f1ec0f31b1416f649f0fc1f52f9055a6a16d41'
-        '5d7787d034b3ac2a10ee2cc6fd7f9f403a081643052ac26f73cf1a968650b6be7f'
+        '0b57057f805702a73e336e527b087a49990c3e1c2c47c03f76b48ef19dbb8bee'
+        '21c1981ccd0405165fce77af76abcb7ea46ad354791333f0f4de9e0fb229afc2'
     )
 
 

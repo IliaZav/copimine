@@ -64,6 +64,16 @@ tasks.withType(AbstractArchiveTask).configureEach {
     preserveFileTimestamps = false
     reproducibleFileOrder = true
 }
+tasks.withType(JavaCompile).configureEach {
+    // The digest pin must describe the SOURCE, so the pin is taken on a
+    // reproducible build: no debug information whose presence depends on
+    // whether a Gradle metadata file happened to be cached on the runner.
+    // Without this a cold CI runner compiles with javac's default debug
+    // attributes, a warm local one does not, and the pinned jar can never
+    // match both.
+    options.debug = false
+}
+
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
     maxParallelForks = 1

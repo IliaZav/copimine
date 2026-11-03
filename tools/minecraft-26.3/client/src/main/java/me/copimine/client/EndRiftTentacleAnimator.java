@@ -9,6 +9,7 @@ public final class EndRiftTentacleAnimator {
     private static final KaguneModelImporter.ImportedModel MODEL = KaguneModelImporter.load();
     private static final Map<String, String> CLIP_BY_STATE = clipsByState();
     private static final float SOCKET_Y = 6.3125F;
+    private static final java.util.Set<String> HOLD_CLIPS = java.util.Set.of("hold");
 
     private EndRiftTentacleAnimator() {
     }
@@ -23,10 +24,14 @@ public final class EndRiftTentacleAnimator {
             return false;
         }
         KaguneModelImporter.Animation clip = MODEL.animation(clipName);
-        // The supplied idle and shield clips return to their initial pose at
-        // their authored endpoint, so they can safely cycle for long states.
+        // The supplied clips are all authored with loop=once, including the
+        // 4-second idle. HOLD is the one state that genuinely must cycle: it is
+        // a sustained grab, and the server keeps the player locked in the socket
+        // for the whole window. Driving it with a once-clip froze the rig on its
+        // final keyframe. See HOLD_CLIPS for how that clip is closed cleanly.
         return "loop".equalsIgnoreCase(clip.loop())
-                || clipName.equals("idle") || clipName.equals("shield_channel");
+                || clipName.equals("idle") || clipName.equals("shield_channel")
+                || HOLD_CLIPS.contains(clipName);
     }
 
     public static int durationTicks(String animationId) {
@@ -54,7 +59,7 @@ public final class EndRiftTentacleAnimator {
         String state = normalize(animationId);
         String clipName = CLIP_BY_STATE.getOrDefault(state, "idle");
         KaguneModelImporter.Animation clip = MODEL.animation(clipName);
-        float sampleProgress = clamp(progress);
+        float sampleProgress = clipProgress(animationId, progress);
         EndRiftTentaclePose.BoneTransform base = transform(clip, "1layer", sampleProgress);
         EndRiftTentaclePose.BoneTransform seg01 = transform(clip, "1layer2", sampleProgress);
         EndRiftTentaclePose.BoneTransform seg02 = transform(clip, "2layer", sampleProgress);
@@ -69,6 +74,54 @@ public final class EndRiftTentacleAnimator {
         return new EndRiftTentaclePose.TentaclePose(identity, base, seg01, seg02, seg03,
                 seg04, seg05, identity, identity, identity, identity, identity, identity,
                 socket, 1.0F);
+    }
+
+    /**
+     * Sample progress inside an authored clip, rescaled when the clip runs short.
+     *
+     * <p>The supplied HOLD clip carries its last keyframe at 0.50 s but declares
+     * a 1.208 s length. Sampling it against the declared length meant the rig
+     * spent the final 58 percent of every hold frozen on the endpoint, and then
+     * snapped when the transition to THROW re-based its own clock back to zero.
+     * For a clip that is actually driven as a loop the sample must span the
+     * keyframed extent, not the declared one.</p>
+     */
+    public static float clipProgress(String animationId, float progress) {
+        String state = normalize(animationId);
+        String clipName = CLIP_BY_STATE.get(state);
+        if (clipName == null) {
+            return clamp(progress);
+        }
+        float sample = clamp(progress);
+        if (!HOLD_CLIPS.contains(clipName)) {
+            return sample;
+        }
+        KaguneModelImporter.Animation clip = MODEL.animation(clipName);
+        double authored = keyframedExtent(clip);
+        double declared = clip == null ? 0.0D : clip.lengthSeconds();
+        if (!(authored > 0.0D) || !(declared > authored)) {
+            return sample;
+        }
+        return clamp((float) (sample * declared / authored));
+    }
+
+    /** Latest keyframe time of a clip across every bone and channel. */
+    static double keyframedExtent(KaguneModelImporter.Animation clip) {
+        if (clip == null) {
+            return 0.0D;
+        }
+        double latest = 0.0D;
+        for (java.util.Map<String, java.util.List<KaguneModelImporter.Keyframe>> channels
+                : clip.tracks().values()) {
+            for (java.util.List<KaguneModelImporter.Keyframe> frames : channels.values()) {
+                for (KaguneModelImporter.Keyframe frame : frames) {
+                    if (Double.isFinite(frame.timeSeconds()) && frame.timeSeconds() > latest) {
+                        latest = frame.timeSeconds();
+                    }
+                }
+            }
+        }
+        return latest;
     }
 
     public static float normalizedProgress(String animationId, long elapsedTicks) {

@@ -6,6 +6,20 @@
 copimine-end-event/config.yml text eol=lf
 copimine-end-event/plugin.yml text eol=lf
 
+# The client jar is pinned by digest and these resources are packaged verbatim,
+# so their line endings are stated here instead of being taken from each
+# machine's core.autocrlf. Left implicit, the same sources produced a jar 110
+# bytes longer on a runner with autocrlf=true, and no single pin could match.
+tools/minecraft-26.3/client/src/main/resources/copimineclient-26.3.mixins.json text eol=lf
+tools/minecraft-26.3/client/src/main/resources/assets/copimineclient/post_effect/** text eol=lf
+tools/minecraft-26.3/client/src/main/resources/assets/copimineclient/shaders/post/*.fsh text eol=lf
+# The legacy client tree shares these asset paths with the 26.3 build.
+CopiMineClient/src/main/resources/assets/copimineclient/shaders/post/*.json text eol=lf
+CopiMineClient/src/main/resources/assets/copimineclient/shaders/post/*.fsh text eol=lf
+CopiMineClient/src/main/resources/copimineclient.mixins.json text eol=lf
+# Shader sources that are authored outside this repo and ship byte-identical.
+CopiMineClient/src/main/resources/assets/copimineclient/shaders/program/* text eol=crlf
+
 # Supplied Chameleon geometry/animations have byte-exact hash contracts.
 # Windows checkout must preserve them instead of converting LF to CRLF.
 CopiMineClient/src/main/resources/assets/copimineclient/models/entity/end_rift_guardian/** -text

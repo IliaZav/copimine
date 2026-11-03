@@ -48,7 +48,15 @@ public abstract class EndEventBlackFogMixin {
         fog.renderDistanceEnd = fogEnd;
         fog.skyEnd = fogEnd;
         fog.cloudEnd = fogEnd;
-        fog.color.set(0.0F, 0.0F, 0.0F, 1.0F);
+        // A pure black read as "the screen is off" rather than as a place. The
+        // faintest possible blue-black tint keeps depth cues (the sky behind
+        // the wall, the player's own torch falloff) while staying effectively
+        // opaque — "чёрный густой", not grey.
+        fog.color.set(0.008F, 0.010F, 0.016F, 1.0F);
+        // Start the density ramp at the eye instead of a block away, so the
+        // wall has no visible "edge" the player can look at.
+        fog.environmentalStart = -1.0F;
+        fog.renderDistanceStart = -1.0F;
     }
 
     /**

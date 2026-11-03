@@ -368,6 +368,8 @@ Invoke-GateStep 'Acceptance evidence matrices and plugin inventory' {
 }
 
 $domainSources = @(Get-ChildItem (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain') -Filter '*.java' |
+    # The top-level glob already covers BossScalingPolicy, BossHealthPolicy,
+    # Wave7SkeletonElusivenessPolicy and Wave7MarksmanInvisibilityPolicy.
   ForEach-Object FullName)
 $domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain\wave7\EchoBehaviorStrategy.java')
 $domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain\wave7\EchoLoadoutState.java')
@@ -375,6 +377,7 @@ $domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\
 # W7 limbo split: the assignment policy is now threshold-driven, and its test
 # compiles against the real class.
 $domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain\wave7\EchoRealmAssignmentPolicy.java')
+$domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain\wave7\LimboDummyPolicy.java')
 $runtimeSources = @(
   (Join-Path $root 'tools\minecraft-26.3\protocol\src\main\java\me\copimine\protocol\EncounterGenerationPolicy.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\EventSnapshot.java'),
@@ -596,6 +599,9 @@ $pureTests = @(
   'Wave7SkeletonPairPolicyTest',
   'Wave7ArchmageSwarmPolicyTest',
   'EchoPotionPolicyTest',
+  'LimboDummyPolicyTest',
+  'BossScalingPolicyTest',
+  'Wave7SkeletonElusivenessPolicyTest',
   'WaveScalingPolicyTest',
   'WaveVisualPolicyTest',
   'ZoneVisualPolicyTest',

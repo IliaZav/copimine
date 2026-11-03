@@ -118,7 +118,8 @@ public class BossHealthCommitProbe {
 }
 ''', encoding="utf-8")
     files = [DOMAIN / (name + ".java") for name in (
-        "BossPhase", "BossPhasePolicy", "BossHealthPolicy", "BossRealHealthDamagePolicy",
+        "BossPhase", "BossPhasePolicy", "BossHealthPolicy", "BossScalingPolicy",
+        "BossRealHealthDamagePolicy",
         "BossDamagePolicy", "EndRiftAiPolicy",
     )]
     result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path),

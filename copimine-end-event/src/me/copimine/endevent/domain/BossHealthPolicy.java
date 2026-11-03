@@ -9,28 +9,22 @@ public final class BossHealthPolicy {
     public static final int MAX_PLAYERS = 20;
     public static final double MIN_HEALTH = 5_000.0D;
     public static final double MAX_HEALTH = 20_000.0D;
-    private static final int[] PLAYERS = {
-            2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
-            16, 17, 18, 19, 20
-    };
-    private static final double[] HEALTH = {
-            5_000.0D, 6_000.0D, 7_000.0D, 8_500.0D, 9_500.0D,
-            10_500.0D, 11_500.0D, 12_500.0D, 13_500.0D, 14_500.0D,
-            15_250.0D, 16_000.0D, 16_750.0D, 17_500.0D, 18_000.0D,
-            18_500.0D, 19_000.0D, 19_500.0D, 20_000.0D
-    };
-
     private BossHealthPolicy() {
     }
 
+    /**
+     * Boss maximum health for a party size.
+     *
+     * <p>SUPERSEDED (2026-11-03): this used to walk a hand-written ladder that
+     * reached twenty thousand health. The user's rule is now a proportional
+     * curve capped at five thousand — see
+     * {@link BossScalingPolicy#maxHealthForPlayers(int)}. The old
+     * {@code MIN_HEALTH}/{@code MAX_HEALTH} constants are kept because persisted
+     * bosses are clamped against them on load, but neither is authored balance
+     * any more.</p>
+     */
     public static double maxHealthFor(int players) {
-        int safePlayers = Math.max(MIN_PLAYERS, Math.min(MAX_PLAYERS, players));
-        for (int index = 0; index < PLAYERS.length; index++) {
-            if (safePlayers <= PLAYERS[index]) {
-                return HEALTH[index];
-            }
-        }
-        return MAX_HEALTH;
+        return BossScalingPolicy.maxHealthForPlayers(players);
     }
 
     public static double maxHealthForPlayers(int players) {

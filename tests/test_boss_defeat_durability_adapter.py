@@ -272,7 +272,7 @@ public class BossLethalDefeatProbe {
                 "environment or cleanup damage must never win the encounter");
     }
 }
-''', ("BossPhase", "BossHealthPolicy", "BossPhasePolicy",
+''', ("BossPhase", "BossHealthPolicy", "BossScalingPolicy", "BossPhasePolicy",
       "EndRiftAiPolicy", "BossHitFeedbackPolicy"))
 
 

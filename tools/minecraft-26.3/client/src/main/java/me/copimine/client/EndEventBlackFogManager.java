@@ -148,6 +148,31 @@ public final class EndEventBlackFogManager {
         return expiresAtMillis > 0L;
     }
 
+    /**
+     * How far into the current cycle the hazard is, 0..1.
+     *
+     * <p>The user asked for a fog that is "страшный ... чёрный густой". A hard
+     * blackout is black already; what it cannot do is feel like it is closing
+     * in. The vignette uses this ramp so the darkness thickens over the cycle
+     * and is at its worst right before it lifts — which is also the most
+     * punishing moment, so it is a readability-safe choice rather than a
+     * cosmetic one.</p>
+     */
+    public synchronized float cycleProgress(long nowMillis) {
+        if (expiresAtMillis <= 0L || nowMillis < 0L) return 0.0F;
+        long remaining = expiresAtMillis - nowMillis;
+        if (remaining <= 0L) return 1.0F;
+        // The manager does not keep the start, only the deadline, so progress
+        // is measured against the protocol's maximum lifetime and clamped.
+        float elapsed = (float) (MAX_LIFETIME_MILLIS - remaining) / (float) MAX_LIFETIME_MILLIS;
+        return Math.max(0.0F, Math.min(1.0F, elapsed));
+    }
+
+    /** Normalised alert strength the server sent for this cycle (0.5..1.0). */
+    public synchronized float intensity() {
+        return expiresAtMillis > 0L ? intensity : 0.0F;
+    }
+
     public synchronized String eventId() { return eventId; }
     public synchronized long generation() { return generation; }
     public synchronized String dimension() { return dimension; }

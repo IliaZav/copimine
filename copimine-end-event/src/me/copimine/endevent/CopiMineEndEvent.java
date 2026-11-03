@@ -67,6 +67,7 @@ import me.copimine.endevent.domain.BossFinalStrikePolicy;
 import me.copimine.endevent.domain.BossGroupAggroPolicy;
 import me.copimine.endevent.domain.Wave7TrialTargetPolicy;
 import me.copimine.endevent.domain.BossHealthPolicy;
+import me.copimine.endevent.domain.BossScalingPolicy;
 import me.copimine.endevent.domain.BossHazardBudget;
 import me.copimine.endevent.domain.BossIntent;
 import me.copimine.endevent.domain.BossMovementPolicy;
@@ -320,6 +321,7 @@ import org.bukkit.entity.EnderCrystal;
 import org.bukkit.entity.AbstractArrow;
 import org.bukkit.entity.Arrow;
 import org.bukkit.entity.ArmorStand;
+import org.bukkit.entity.Villager;
 import org.bukkit.entity.BlockDisplay;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Giant;
@@ -1335,6 +1337,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, UUID> wave7MarksmanPartners = new LinkedHashMap<>();
     /** Tick of the pair's last joint crossfire, or -1 when it has never fired. */
     private final Map<String, Long> wave7PairedCrossfireTicks = new LinkedHashMap<>();
+    // Per-actor cooldown of the pair's provoked target swap (SkeletonElusivenessPolicy).
+    private final Map<UUID, Long> wave7PairedGallTicks = new HashMap<>();
     /**
      * Local clone duels started through {@code /cmend test echo clone}. Never
      * part of a wave, a roster or a reward; see {@code EchoCloneSession}.
@@ -8690,6 +8694,230 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * limbo switch is included because the split is exactly what a two-player
      * test cannot otherwise exercise.</p>
      */
+    // ------------------------------------------------------------------
+    // Limbo rehearsal dummies.
+    //
+    // The user asked for a way to check whether some players are invisible in
+    // Limbo without having fifteen friends at hand. These bodies are not
+    // players: they only need to count as occupants of the start runes so the
+    // authored threshold is reached and the ordinary/Limbo split really
+    // happens. They never join the reward roster, never fight, and are torn
+    // down with the event.
+    // ------------------------------------------------------------------
+    private final List<UUID> limboDummyIds = new ArrayList<>();
+
+    private static final String LIMBO_DUMMY_KIND = "LIMBO_DUMMY";
+
+    private void handleTestLimboDummies(CommandSender sender, String[] args) {
+        String action = args.length > 2 ? args[2].toLowerCase(Locale.ROOT) : "spawn";
+        switch (action) {
+            case "clear", "stop", "remove" -> {
+                int removed = clearLimboDummies();
+                message(sender, removed == 0
+                        ? "&eБолванчиков не было."
+                        : "&aУбрано болванчиков: &f" + removed + "&a.");
+            }
+            case "spawn", "start", "fill" -> spawnLimboDummies(sender, args);
+            case "status", "list" -> reportLimboDummies(sender);
+            default -> {
+                message(sender, "&6/cmend test limbo <spawn|status|clear> [сколько]");
+                message(sender, "&7Болванчики для проверки лимбо: тела на рунах, чтобы порог в "
+                        + me.copimine.endevent.domain.wave7.LimboDummyPolicy.limboCount()
+                        + " играющих был достигнут без реальных людей.");
+            }
+        }
+    }
+
+    private void spawnLimboDummies(CommandSender sender, String[] args) {
+        if (phase != EventPhase.COLLECTING && phase != EventPhase.READY_FOR_PLAYERS) {
+            message(sender, "&cБолванчиков можно ставить только до старта: сейчас phase=" + phase + ".");
+            return;
+        }
+        if (pads.isEmpty()) {
+            message(sender, "&cРуны не расставлены: сначала настройте ядро события.");
+            return;
+        }
+        List<Player> present = new ArrayList<>();
+        for (Player online : Bukkit.getOnlinePlayers()) {
+            if (!worldName.equals(online.getWorld().getName())) continue;
+            if (online.getGameMode() == GameMode.SPECTATOR) continue;
+            if (online.getGameMode() == GameMode.CREATIVE) continue;
+            if (online.isDead() || online.getHealth() <= 0.0D) continue;
+            if (!isArenaLocation(online.getLocation())) continue;
+            present.add(online);
+        }
+        present.sort(Comparator.comparing(player -> player.getUniqueId().toString()));
+        int needed = me.copimine.endevent.domain.wave7.LimboDummyPolicy.dummiesNeeded(present.size());
+        int requested;
+        if (args.length > 3) {
+            try {
+                requested = Integer.parseInt(args[3]);
+            } catch (NumberFormatException invalid) {
+                message(sender, "&cНужно число: /cmend test limbo spawn <сколько>.");
+                return;
+            }
+        } else {
+            // The default is the arithmetic of the whole feature: enough bodies
+            // that the party crosses the authored Limbo threshold.
+            requested = Math.max(1, needed);
+        }
+        int count = Math.min(me.copimine.endevent.domain.wave7.LimboDummyPolicy.clampCount(requested),
+                pads.size());
+        int existing = countLimboDummies();
+        if (existing + count + present.size() > pads.size()) {
+            count = Math.max(0, pads.size() - existing - present.size());
+        }
+        if (count <= 0) {
+            message(sender, "&eРуны уже заняты: болванчиков больше не нужно (игроков="
+                    + present.size() + ", болванчиков=" + existing + ", рун=" + pads.size() + ").");
+            return;
+        }
+        // Seat the REAL players first: the occupancy scan gives a rune to
+        // whoever is closest, so a body placed before them would steal it.
+        for (Player player : present) {
+            settleLimboPlayerOnPad(player);
+        }
+        Set<Integer> taken = new HashSet<>();
+        for (Map.Entry<String, UUID> entry : padOccupants.entrySet()) {
+            for (int index = 0; index < pads.size(); index++) {
+                if (padKey(pads.get(index)).equals(entry.getKey())) taken.add(index);
+            }
+        }
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            message(sender, "&cМир события недоступен.");
+            return;
+        }
+        int spawned = 0;
+        for (int index = 0; index < pads.size() && spawned < count; index++) {
+            if (taken.contains(index)) continue;
+            EventSnapshot.PadSnapshot pad = pads.get(index);
+            Location seat = new Location(world, pad.x() + 0.5D, pad.y() + 0.05D, pad.z() + 0.5D);
+            if (!world.isChunkLoaded(seat.getBlockX() >> 4, seat.getBlockZ() >> 4)) {
+                world.getChunkAt(seat.getBlockX() >> 4, seat.getBlockZ() >> 4);
+            }
+            Villager dummy = world.spawn(seat, Villager.class);
+            dummy.setAI(false);
+            dummy.setSilent(true);
+            dummy.setInvulnerable(true);
+            dummy.setCollidable(false);
+            dummy.setPersistent(false);
+            dummy.setRemoveWhenFarAway(false);
+            dummy.setProfession(Villager.Profession.NONE);
+            dummy.setVillagerType(Villager.Type.PLAINS);
+            dummy.setCustomName(ChatColor.GRAY + "Двойник лимбо #" + (index + 1));
+            dummy.setCustomNameVisible(false);
+            if (keyKind != null) {
+                dummy.getPersistentDataContainer().set(keyKind, PersistentDataType.STRING, LIMBO_DUMMY_KIND);
+            }
+            if (keyEventId != null && eventId != null && !eventId.isBlank()) {
+                dummy.getPersistentDataContainer().set(keyEventId, PersistentDataType.STRING, eventId);
+            }
+            registerOwnedEntity(dummy);
+            limboDummyIds.add(dummy.getUniqueId());
+            taken.add(index);
+            spawned++;
+        }
+        refreshRuneOverlayVisuals();
+        int real = present.size();
+        message(sender, "&aПоставлено болванчиков: &f" + spawned + "&a. "
+                + me.copimine.endevent.domain.wave7.LimboDummyPolicy.describe(real, existing + spawned));
+        if (!me.copimine.endevent.domain.wave7.LimboDummyPolicy.reachesLimbo(real, existing + spawned)) {
+            message(sender, "&eПорога ещё нет. Повторите &f/cmend test limbo spawn&e.");
+        }
+        message(sender, "&7" + me.copimine.endevent.domain.wave7.LimboDummyPolicy.expectation());
+        message(sender, "&7Проверить: &f/cmend test limbo status &7| убрать: &f/cmend test limbo clear");
+        getLogger().info("LIMBO_DUMMIES event=" + eventId + " spawned=" + spawned
+                + " real=" + real + " total=" + (real + existing + spawned)
+                + " required=" + requiredPlayers + " pads=" + pads.size());
+    }
+
+    /** Park a real player exactly on the closest rune so seating is stable. */
+    private void settleLimboPlayerOnPad(Player player) {
+        if (player == null || pads.isEmpty()) return;
+        EventSnapshot.PadSnapshot nearest = null;
+        double best = Double.MAX_VALUE;
+        for (EventSnapshot.PadSnapshot pad : pads) {
+            double dx = player.getLocation().getX() - (pad.x() + 0.5D);
+            double dz = player.getLocation().getZ() - (pad.z() + 0.5D);
+            double distance = dx * dx + dz * dz;
+            if (distance < best) {
+                best = distance;
+                nearest = pad;
+            }
+        }
+        if (nearest == null) return;
+        Location target = new Location(player.getWorld(), nearest.x() + 0.5D,
+                nearest.y() + 0.05D, nearest.z() + 0.5D,
+                player.getLocation().getYaw(), player.getLocation().getPitch());
+        player.teleport(target);
+    }
+
+    private int countLimboDummies() {
+        return limboDummyIds.size();
+    }
+
+    /**
+     * Remove every rehearsal body and forget its seat.
+     *
+     * <p>Returns how many were removed. The rune bookkeeping is cleared too, so
+     * the occupancy scan of the next tick cannot keep a ghost seat alive and
+     * block the real start ritual.</p>
+     */
+    private int clearLimboDummies() {
+        int removed = 0;
+        for (UUID id : new ArrayList<>(limboDummyIds)) {
+            Entity entity = ownedEntities.getOrDefault(id, Bukkit.getEntity(id));
+            if (entity != null) {
+                entity.remove();
+                removed++;
+            }
+            ownedEntities.remove(id);
+        }
+        boolean hadAny = removed > 0 || !limboDummyIds.isEmpty();
+        limboDummyIds.clear();
+        if (hadAny) {
+            padOccupants.clear();
+            runeVisualOccupants.clear();
+            if (transitionRuneController != null) transitionRuneController.reset();
+            transitionRuneRenderStates.clear();
+            refreshRuneOverlayVisuals();
+        }
+        return removed;
+    }
+
+    private void reportLimboDummies(CommandSender sender) {
+        int alive = 0;
+        for (UUID id : limboDummyIds) {
+            Entity entity = ownedEntities.getOrDefault(id, Bukkit.getEntity(id));
+            if (entity != null && entity.isValid()) alive++;
+        }
+        int real = 0;
+        for (Player online : Bukkit.getOnlinePlayers()) {
+            if (worldName.equals(online.getWorld().getName())
+                    && online.getGameMode() != GameMode.SPECTATOR
+                    && online.getGameMode() != GameMode.CREATIVE
+                    && !online.isDead()) {
+                real++;
+            }
+        }
+        message(sender, "&7Лимбо-репетиция: &f"
+                + me.copimine.endevent.domain.wave7.LimboDummyPolicy.describe(real, alive));
+        message(sender, "&7Руны: &f" + padOccupants.size() + "/" + requiredPlayers
+                + "&7, всего рун &f" + pads.size()
+                + "&7, phase=&f" + phase
+                + "&7, порог лимбо &f"
+                + me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.LIMBO_THRESHOLD);
+        message(sender, me.copimine.endevent.domain.wave7.LimboDummyPolicy.reachesLimbo(real, alive)
+                ? "&aПорог достигнут: лимбо включится в Echo."
+                : "&eПорога не хватает.");
+    }
+
+    private boolean isLimboDummy(Entity entity) {
+        return entity != null && keyKind != null
+                && LIMBO_DUMMY_KIND.equals(readString(entity, keyKind));
+    }
+
     private void handleTestEchoClone(CommandSender sender, String[] args) {
         String action = args.length > 3 ? args[3].toLowerCase(Locale.ROOT) : "list";
         switch (action) {
@@ -9189,6 +9417,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if ("echo".equalsIgnoreCase(args[1])) {
             handleTestEchoPresentation(sender, args);
+            return;
+        }
+        if ("limbo".equalsIgnoreCase(args[1])) {
+            handleTestLimboDummies(sender, args);
             return;
         }
         if ("run".equalsIgnoreCase(args[1])) {
@@ -13866,7 +14098,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (entity instanceof LivingEntity living) living.setInvulnerable(true);
             getLogger().fine("END_RIFT_WAVE7_JUGGERNAUT_ARMORED_DAMAGE_BLOCKED event="
                     + eventId + " chamber=" + chamber + " cause=" + event.getCause());
+            return;
         }
+        // Provoked pair: a Markman that takes damage answers through its partner
+        // (target swap, ash, one line of chat). Refused while the hit is
+        // cancelled, and only for damage a player actually caused.
+        if (event.isCancelled() || !(entity instanceof LivingEntity living)) return;
+        if (!"MOBILE_MARKSMAN".equals(readString(entity, keyTrialRole))) return;
+        Player attacker = event instanceof EntityDamageByEntityEvent byEntity
+                ? playerDamageAttacker(byEntity.getDamager()) : null;
+        if (attacker != null) provokeMarksmanPair(living, attacker, chamber);
     }
 
     private Player playerDamageAttacker(Entity source) {
@@ -15803,7 +16044,35 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Set<UUID> assigned = new HashSet<>();
         List<Player> players = new ArrayList<>(Bukkit.getOnlinePlayers());
         players.sort(Comparator.comparing(player -> player.getUniqueId().toString()));
+        Set<String> reserved = new HashSet<>();
+        // Limbo rehearsal bodies claim their seats first, in index order, so a
+        // human standing between two runes can never displace the body the
+        // operator just placed to reach the split threshold.
+        for (UUID dummyId : new ArrayList<>(limboDummyIds)) {
+            Entity dummy = ownedEntities.getOrDefault(dummyId, Bukkit.getEntity(dummyId));
+            if (!(dummy instanceof Villager seated) || !seated.isValid()
+                    || !seated.getWorld().equals(world)) {
+                continue;
+            }
+            EventSnapshot.PadSnapshot host = null;
+            double bestDummy = Double.MAX_VALUE;
+            for (EventSnapshot.PadSnapshot pad : pads) {
+                if (reserved.contains(padKey(pad))) continue;
+                double dx = seated.getLocation().getX() - (pad.x() + 0.5D);
+                double dz = seated.getLocation().getZ() - (pad.z() + 0.5D);
+                double distance = dx * dx + dz * dz;
+                if (distance < bestDummy && distance <= config.padOccupancyRadius() * config.padOccupancyRadius()) {
+                    bestDummy = distance;
+                    host = pad;
+                }
+            }
+            if (host != null) {
+                occupants.put(padKey(host), dummyId);
+                reserved.add(padKey(host));
+            }
+        }
         for (EventSnapshot.PadSnapshot pad : pads) {
+            if (reserved.contains(padKey(pad))) continue;
             Location padLocation = new Location(world, pad.x() + 0.5D, pad.y(), pad.z() + 0.5D);
             Player closest = players.stream()
                     .filter(player -> player.getWorld().equals(world) && !player.isDead()
@@ -31908,6 +32177,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         namedEchoCombatListeners.clear();
         namedEchoReplicas.clear();
         clearEchoClones();
+        clearLimboDummies();
         namedEchoCells.clear();
         namedEchoBridgeSessions.clear();
         // ECHO-002/ECHO-004: the realm split dies with the stage, and the limbo
@@ -33621,6 +33891,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         actor.getWorld().playSound(actor.getLocation(), Sound.ENTITY_SHULKER_OPEN, 0.35F, 1.7F);
         spawnEventParticle(actor.getLocation().add(0.0D, 1.0D, 0.0D), Particle.SMOKE, 12,
                 0.3D, 0.4D, 0.3D, 0.02D);
+        // A hide that cannot be seen is not a hide, it is a despawn. The ash
+        // column and the low hiss are the only contract the party gets, so they
+        // are loud enough to read from across the arena.
+        spawnEventParticle(actor.getLocation().add(0.0D, 0.4D, 0.0D), Particle.ASH, 18,
+                0.35D, 0.25D, 0.35D, 0.01D);
+        spawnEventParticle(actor.getLocation().add(0.0D, 1.4D, 0.0D), Particle.CAMPFIRE_COSY_SMOKE, 6,
+                0.15D, 0.5D, 0.15D, 0.0D);
+        actor.getWorld().playSound(actor.getLocation(), Sound.ENTITY_SKELETON_AMBIENT, 0.5F, 1.9F);
         return new Wave7NamedTrialActorPolicy.Checkpoint(
                 checkpoint.eventId(), checkpoint.generation(), checkpoint.chamber(), checkpoint.trial(),
                 checkpoint.actorId(), checkpoint.attackIndex(), checkpoint.attack(),
@@ -33749,6 +34027,57 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * both; a player who committed to one side takes one. That is the whole
      * point: the pair is stronger together than apart, but never unavoidable.</p>
      */
+    /**
+     * The pair's provoked answer: when one of them is damaged while its partner
+     * lives, both kick up ash and the pair swaps focus.
+     *
+     * <p>"Очень противные" in the user's words: not more damage, but the party
+     * cannot settle on a target. Bounded by the policy's cooldown, refused when
+     * the partner is down — an alone skeleton has no symbiosis to lean on —
+     * and it never hides the skeleton, so the player always sees who answered.</p>
+     */
+    private void provokeMarksmanPair(LivingEntity actor, Player attacker, int chamber) {
+        if (actor == null || chamber < 0) return;
+        UUID partnerId = namedMarksmanPartnerId(actor, chamber);
+        LivingEntity partner = partnerId == null ? null
+                : Bukkit.getEntity(partnerId) instanceof LivingEntity living ? living : null;
+        if (partner == null || partner.isDead() || !partner.isValid()) return;
+        long now = eventTickCounter;
+        UUID actorId = actor.getUniqueId();
+        if (!me.copimine.endevent.domain.Wave7SkeletonElusivenessPolicy.mayProvoke(
+                now, wave7PairedGallTicks.getOrDefault(actorId, -1L), true)) {
+            return;
+        }
+        wave7PairedGallTicks.put(actorId, now);
+        for (LivingEntity member : List.of(actor, partner)) {
+            spawnEventParticle(member.getLocation().add(0.0D, 1.1D, 0.0D), Particle.CRIT, 10,
+                    0.35D, 0.35D, 0.35D, 0.05D);
+            member.getWorld().playSound(member.getLocation(), Sound.ENTITY_SKELETON_HURT, 0.45F, 0.8F);
+            // Both turn on the player who had the nerve to hit them, so the
+            // party cannot farm one half of the pair in isolation.
+            Player focus = attacker != null && !attacker.isDead() ? attacker : null;
+            if (focus != null) {
+                if (member instanceof Mob mobMember) mobMember.setTarget(focus);
+                // Turn towards the attacker by hand: the skeleton AI is off, so
+                // nothing else would ever rotate the model.
+                Vector facing = horizontalDirection(member.getLocation(), focus.getLocation());
+                if (facing.lengthSquared() > 0.0D) {
+                    Location eyes = member.getLocation();
+                    double dx = focus.getLocation().getX() - eyes.getX();
+                    double dz = focus.getLocation().getZ() - eyes.getZ();
+                    float yaw = (float) (Math.toDegrees(Math.atan2(-dx, dz)));
+                    member.setRotation(yaw, 0.0F);
+                }
+            }
+        }
+        if (attacker != null) {
+            // Say it out loud: the swap is the whole point of the move, and an
+            // unexplained target change reads as a bug to the party.
+            attacker.sendMessage(ChatColor.GRAY + "Скелеты переглянулись: " + ChatColor.WHITE
+                    + "пара переключилась на вас.");
+        }
+    }
+
     private boolean fireNamedMarksmanPairedCrossfire(LivingEntity actor, Player target,
             Wave7NamedTrialActorPolicy.Checkpoint checkpoint, long now, int chamber) {
         if (target == null || !isCurrentRealitySplitTrialTarget(actor, target)) {
@@ -33815,7 +34144,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (selected == null) selected = safeFallback;
         if (selected == null) return;
-        mob.setVelocity(selected.clone().normalize().multiply(seekCover ? 0.22D : 0.26D).setY(0.12D));
+        // The user asked for skeletons that are "быстрыми ... и очень
+        // противными": the pair now moves at the elusiveness policy's sprint
+        // speed instead of a slow drift, and seeks cover much earlier so it is
+        // constantly breaking the party's line of fire.
+        boolean vanished = mob.hasPotionEffect(PotionEffectType.INVISIBILITY);
+        boolean coverNeeded = seekCover || vanished
+                || mob.getHealth() <= mob.getMaxHealth() * 0.80D;
+        double speed = me.copimine.endevent.domain.Wave7SkeletonElusivenessPolicy.speed(
+                true, vanished);
+        mob.setVelocity(selected.clone().normalize().multiply(speed).setY(0.12D));
     }
 
     private boolean finishNamedTrialAttack(Entity actor,
@@ -40678,13 +41016,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         boss.setHealth(configuredMaxHealth);
         AttributeInstance attack = boss.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
         if (attack != null) {
+            // Party scaling: health follows the roster proportionally under the
+            // five-thousand cap, damage follows it far more gently so a larger
+            // party is a longer fight rather than a faster wipe. See
+            // BossScalingPolicy for the exact curve.
+            double partyDamage = BossScalingPolicy.damageMultiplierForPlayers(eventScalePlayers());
             double totalAttack = BossStatsPolicy.attackDamage(attack.getBaseValue(),
-                    config.bossAttackDamageBonus());
+                    config.bossAttackDamageBonus() * partyDamage);
             attack.setBaseValue(totalAttack);
             getLogger().info("BOSS_STATS boss=" + boss.getUniqueId()
-                    + " vanilla_base=" + (totalAttack - config.bossAttackDamageBonus())
-                    + " configured_bonus=" + config.bossAttackDamageBonus()
-                    + " total_attack=" + totalAttack);
+                    + " vanilla_base=" + (totalAttack - config.bossAttackDamageBonus() * partyDamage)
+                    + " configured_bonus=" + config.bossAttackDamageBonus() * partyDamage
+                    + " total_attack=" + totalAttack
+                    + " " + BossScalingPolicy.describe(eventScalePlayers()));
         }
         boss.setInvulnerable(false);
         registerOwnedEntity(boss);
@@ -52797,6 +53141,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && "echo".equalsIgnoreCase(args[1]) && "clone".equalsIgnoreCase(args[2])
                 && "limbo".equalsIgnoreCase(args[3])) {
             return List.of("on", "off", "auto");
+        }
+        if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "limbo".equalsIgnoreCase(args[1])) {
+            return List.of("spawn", "status", "clear");
         }
         if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "scene".equalsIgnoreCase(args[1])) {
             return List.of("clear");

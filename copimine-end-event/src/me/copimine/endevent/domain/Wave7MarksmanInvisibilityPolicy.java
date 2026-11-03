@@ -10,18 +10,34 @@ package me.copimine.endevent.domain;
  * attacking rather than silently doing nothing.
  */
 public final class Wave7MarksmanInvisibilityPolicy {
-    /** Five seconds at the server's twenty ticks per second. */
-    public static final long INVISIBLE_TICKS = 100L;
+    /**
+     * REPINNED (2026-11-03): three seconds four at twenty ticks per second.
+     *
+     * <p>SUPERSEDED the five-second window. The user asked for skeletons that
+     * are "реально неуловимыми ... и очень противными": a shorter, more
+     * frequent hide reads as slippery instead of a long boring walk in the
+     * dark. Together with the shorter cooldown below the pair is genuinely hard
+     * to pin, while every window still ends and every window still shows a
+     * reveal.</p>
+     */
+    public static final long INVISIBLE_TICKS = 34L;
     /** The same window expressed as a recorded wall-clock deadline. */
-    public static final long INVISIBLE_MILLIS = 5_000L;
+    public static final long INVISIBLE_MILLIS = 1_700L;
     /**
      * Readable reveal before the attack resumes. Ten ticks is half a second:
      * long enough for a player to register it, far short of a whole second of
      * free repositioning.
      */
     public static final long REVEAL_TICKS = 10L;
-    /** A real finite cooldown so vanish cannot be chained back to back. */
-    public static final long COOLDOWN_TICKS = 200L;
+    /**
+     * A real finite cooldown so vanish cannot be chained back to back.
+     *
+     * <p>REPINNED (2026-11-03): 110 ticks instead of 200. Two hides in a short
+     * fight are what makes the pair feel evasive; the grace window in
+     * {@code Wave7SkeletonElusivenessPolicy} is what stops that from becoming
+     * an unkillable stun-lock.</p>
+     */
+    public static final long COOLDOWN_TICKS = 110L;
 
     private Wave7MarksmanInvisibilityPolicy() {
     }

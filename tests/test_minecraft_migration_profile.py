@@ -190,10 +190,12 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # Wave 7 Vex servant skin and the redrawn obelisk shot, and again for the
     # Wave 7 pair crossfire, the Marksman/Archmage rigs and the Echo clone test
     # command (client-side presentation only).
-    assert artifact['size'] == 13_544_252
+    # SUPERSEDED (2026-11-03): repinned for the Wave 5 fog presence ramp
+    # (EndEventBlackFogPresenceTest).
+    assert artifact['size'] == 13_544_480
     assert artifact['sha512'] == (
-        '198edf097fad29e783f9769fc2fc37d85aa48fa25d9fde60ba629680e4e1c1bb'
-        '7cb1bf2c0d1ca90b0b61af38911036a3d36594a19c80552168d9cef22abfdecc'
+        'b2c4d903fb6e36109554d7ab2c0bc928ae7fda802ca9e1a9905c7f5e28aeb61'
+        '8ce5a05d1bf068d62d1301cefd0052a47b63d7ce9c126e8d8ec8b1be5c47b04e7'
     )
 
 

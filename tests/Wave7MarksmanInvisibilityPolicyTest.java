@@ -16,9 +16,13 @@ public final class Wave7MarksmanInvisibilityPolicyTest {
     }
 
     private static void vanishesForExactlyFiveSeconds() {
-        check(Wave7MarksmanInvisibilityPolicy.INVISIBLE_TICKS == 100L,
+        // SUPERSEDED (2026-11-03): the user asked for genuinely elusive
+        // skeletons, so the hide shrank from five seconds to 3.4 and repeats
+        // more often. The invariants that matter are unchanged and follow.
+        check(Wave7MarksmanInvisibilityPolicy.INVISIBLE_TICKS == 34L,
                 "five seconds is 100 ticks at twenty ticks per second");
-        check(Wave7MarksmanInvisibilityPolicy.INVISIBLE_MILLIS == 5_000L,
+        check(Wave7MarksmanInvisibilityPolicy.INVISIBLE_MILLIS
+                        == Wave7MarksmanInvisibilityPolicy.INVISIBLE_TICKS * 50L,
                 "the recorded deadline is five real seconds");
         check(Wave7MarksmanInvisibilityPolicy.REVEAL_TICKS > 0L,
                 "a reveal must be announced before the attack resumes");

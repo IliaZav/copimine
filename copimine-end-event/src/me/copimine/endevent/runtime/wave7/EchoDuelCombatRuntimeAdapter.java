@@ -146,11 +146,27 @@ public final class EchoDuelCombatRuntimeAdapter {
      * archer strafes to stay evasive without abandoning the shot.</p>
      */
     static MovementIntent movementIntent(EchoBehaviorStrategy strategy, Observation observation) {
+        return movementIntent(strategy, observation, false);
+    }
+
+    /**
+     * @param wounded the copy is below its healing threshold. A wounded melee
+     *                copy used to keep trading blows on the spot and simply
+     *                died: healing only engaged when it still carried food.
+     *                Breaking contact is the one retreat a real player makes,
+     *                and it still cannot outrun a ranged owner because the
+     *                ranged branch kites into the hold band as before.
+     */
+    static MovementIntent movementIntent(EchoBehaviorStrategy strategy, Observation observation,
+                                         boolean wounded) {
         if (strategy == null || observation == null) return MovementIntent.HOLD;
         double distance = Math.sqrt(observation.distanceSquared());
         // Map 0..1000 onto a 1.5..12 block hold band inside the ranged envelope.
         double preferred = 1.5D + 10.5D * strategy.holdDistancePermille() / 1_000.0D;
         boolean wantsRange = strategy.rangedPermille() > strategy.meleePermille();
+        // A wounded brawler breaks contact instead of trading blows it cannot
+        // win. A ranged copy already kites, so this only changes melee copies.
+        if (wounded && !wantsRange) return MovementIntent.KITE;
         if (wantsRange) {
             if (distance < preferred - HOLD_TOLERANCE_BLOCKS) return MovementIntent.KITE;
             if (distance > preferred + HOLD_TOLERANCE_BLOCKS
@@ -261,7 +277,9 @@ public final class EchoDuelCombatRuntimeAdapter {
             // repositioning instead of freezing on the spot. Only a legal current
             // action is selected here, so movement never grants range and never
             // bypasses a cooldown.
-            MovementIntent intent = movementIntent(duel.behaviorStrategy(), observation);
+            boolean wounded = duel.actor().currentHealth() * 1_000.0D
+                    <= duel.actor().maximumHealth() * HEAL_THRESHOLD_PERMILLE;
+            MovementIntent intent = movementIntent(duel.behaviorStrategy(), observation, wounded);
             boolean inMeleeRange = observation.distanceSquared()
                     <= MELEE_RANGE_BLOCKS * (double) MELEE_RANGE_BLOCKS;
 

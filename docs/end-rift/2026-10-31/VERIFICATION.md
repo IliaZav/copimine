@@ -251,3 +251,50 @@ The 15 skips are host/environment limits, not passes: no `pwsh` on this host,
 no `COPIMINE_TEST_POSTGRES_DSN`, no Windows symlink privilege, POSIX archive
 mode bits and private-key permissions, the intentionally-ignored GrimAC
 fixture, and the two deliberately inert boss-projectile cover scenarios.
+
+## 8. Pass of 2026-11-03 (evening): visuals, minibosses, clones, Limbo switch
+
+Everything in this pass follows one rule the user stated directly: the mechanics
+must be readable from the screen, without a chat message explaining them.
+
+**Boss spell visuals.** `BossSpellVisualCompositionPolicy` gives every authored
+spell its own signature (hue, primary and accent particle, vortex turns,
+telegraph sound, impact shape) instead of the previous index arithmetic that
+produced arbitrary particle arrays. `renderAuthoredBossTelegraph` builds a
+contracting three-strand vortex or a flat sigil, ignites a core in the last 20 %
+and lets a hot colour bleed through after 55 %; `renderAuthoredBossImpact`
+expands three shells with a vertical ring and eight radial spokes. Contact
+strikes keep the precise animation-marker timing the probe in
+`tests/test_boss_telegraph_runtime.py` pins.
+
+**Boss animation.** `UserEndBossAnimationPlayer.blendTicks` plus
+`RiftGuardianModel` clip blending replace the hard pose snap between clips
+(eased weight, per-pair durations: dying 8 ticks, contacts 5, hurt 2, locomotion 6).
+
+**Clones.** Echo clones now crouch and hop on a deterministic per-actor rhythm
+while they approach and hold, using the same pose vocabulary as a real player,
+so a copy reads as a player and not as a sliding statue.
+
+**Minibosses.** `Wave7MinibossSteadinessPolicy` commits a heading for 14 ticks
+and caps turning at 9 degrees per tick, so a miniboss no longer vibrates between
+its own pathing decisions; hops only fire on the ground, one tick in four.
+`Wave7MinibossScalingPolicy` makes health and damage grow with the frozen
+admission roster: 1000 HP at the two-player floor, +260 per extra player, capped
+at 6000, damage up to x1.90 — the old ladder gave a ten-player party the same
+1000 HP skeleton as a two-player one.
+
+**Waves.** Teaching hints were removed (charge pickup/drop, core refusal, fog
+approach and return to trial). Wave announcements and attack warnings stay,
+because the user asked to keep them.
+
+**Limbo test switch.** `/cmend test limbo on|off|spawn|status`. `off` clears and
+discards every dummy immediately and refuses new ones until `on`; the mode
+defaults to off so a test affordance can never leak into a real attempt.
+
+**Gates for this pass.** pytest **2938 passed, 14 skipped, 0 failed**;
+`RunEndRiftEventChecks.ps1` passed; `RunJavaPluginCi.ps1` passed; client
+`test` + `jar` BUILD SUCCESSFUL, two clean builds byte-identical.
+Plugin jar **1 933 303 B / `183b5911…`**; client **13 545 820 B / `f8830f80…`**.
+
+**Still BLOCKED:** native visual verification (section 6). The user verifies the
+look himself; nothing in this pass claims a visual requirement as passed.

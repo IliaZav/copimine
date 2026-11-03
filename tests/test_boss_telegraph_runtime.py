@@ -11,23 +11,48 @@ ROOT = Path(__file__).resolve().parents[1]
 def telegraph_probe(tmp_path_factory):
     out = tmp_path_factory.mktemp("boss-telegraph")
     source = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(encoding="utf-8")
-    methods = "\n".join(extract(source, sig) for sig in ["boolean telegraphBossSpell(", "int spellTelegraphTicks("])
+    methods = "\n".join(extract(source, sig) for sig in ["boolean telegraphBossSpell(",
+                                             "int spellTelegraphTicks(",
+                                             # The authored boss signature is spliced in with the
+                                             # telegraph it belongs to, so the probe exercises the
+                                             # real code path and not a stand-in.
+                                             "void renderAuthoredBossTelegraph(Player viewer,"])
     java = out / "BossTelegraphRuntimeProbe.java"
     java.write_text(r'''
 import java.util.*;
 import me.copimine.endevent.domain.*;
 public class BossTelegraphRuntimeProbe {
     enum EventPhase {BOSS_ACTIVE,VICTORY_PROCESSING}
-    enum Particle {DRAGON_BREATH,CRIT,REVERSE_PORTAL}
-    static class Location {public Location clone(){return new Location();}float getYaw(){return 0;}Location add(double x,double y,double z){return this;}}
-    static class LivingEntity {final UUID id=UUID.randomUUID();UUID getUniqueId(){return id;}boolean isValid(){return true;}boolean isDead(){return false;}Location getLocation(){return new Location();}}
-    static class Player {final UUID id=UUID.randomUUID();UUID getUniqueId(){return id;}Location getLocation(){return new Location();}}
+    enum Particle {DRAGON_BREATH,CRIT,REVERSE_PORTAL,DUST,END_ROD;
+        static class DustOptions {DustOptions(Color c,float size){}}}
+    static class Vector {double x,y,z;Vector(double x,double y,double z){this.x=x;this.y=y;this.z=z;}
+        public Vector clone(){return new Vector(x,y,z);}Vector normalize(){double l=Math.sqrt(x*x+y*y+z*z);if(l>0){x/=l;y/=l;z/=l;}return this;}
+        double length(){return Math.sqrt(x*x+y*y+z*z);}double lengthSquared(){return x*x+y*y+z*z;}
+        Vector multiply(double k){x*=k;y*=k;z*=k;return this;}Vector add(Vector o){x+=o.x;y+=o.y;z+=o.z;return this;}
+        Vector subtract(Vector o){x-=o.x;y-=o.y;z-=o.z;return this;}void setY(double v){y=v;}double getX(){return x;}double getZ(){return z;}}
+    static class Color {int rgb;Color(int r,int g,int b){rgb=(r<<16)|(g<<8)|b;}static Color fromRGB(int v){return new Color((v>>16)&0xFF,(v>>8)&0xFF,v&0xFF);}}
+    static class Location {double x,y,z;final World world=new World();World getWorld(){return world;}Location(){}Location(double x,double y,double z){this.x=x;this.y=y;this.z=z;}
+        public Location clone(){return new Location(x,y,z);}float getYaw(){return 0;}
+        Location add(double dx,double dy,double dz){x+=dx;y+=dy;z+=dz;return this;}
+        Location add(Vector v){x+=v.x;y+=v.y;z+=v.z;return this;}
+        Vector toVector(){return new Vector(x,y,z);}}
+    static class LivingEntity {final UUID id=UUID.randomUUID();UUID getUniqueId(){return id;}boolean isValid(){return true;}boolean isDead(){return false;}Location getLocation(){return new Location();}
+        final World world=new World();World getWorld(){return world;}}
+    static class Player {final UUID id=UUID.randomUUID();UUID getUniqueId(){return id;}Location getLocation(){return new Location();}
+        final World world=new World();World getWorld(){return world;}boolean isOnline(){return true;}
+        void playSound(Location l,Sound s,SoundCategory c,float v,float pitch){}
+        Player p(){return this;}
+        void spawnParticle(Particle p,Location l,int count,double x,double y,double z,double extra){}
+        void spawnParticle(Particle p,Location l,int count,double x,double y,double z,double extra,Particle.DustOptions dust){}}
     static class BukkitTask {boolean cancelled;final Runnable callback;final long delay,period;
         BukkitTask(Runnable r,long d,long p){callback=r;delay=d;period=p;}void cancel(){cancelled=true;}boolean isCancelled(){return cancelled;}}
     static class Scheduler {int tick;BukkitTask task;
         BukkitTask runTaskTimer(Object plugin,Runnable r,long delay,long period){task=new BukkitTask(r,delay,period);return task;}
         void advance(){tick++;long first=Math.max(1,task.delay);if(!task.cancelled&&tick>=first&&(tick-first)%task.period==0)task.callback.run();}}
     static class Bukkit {static Scheduler scheduler;static Scheduler getScheduler(){return scheduler;}}
+    static class World {}
+    enum Sound {ENTITY_WARDEN_NEARBY_CLOSE,ENTITY_EVOKER_PREPARE_ATTACK}
+    enum SoundCategory {HOSTILE}
     static class Registry {boolean owns(long g){return g==7;}}
     record Config(){int bossSpellTelegraphTicks(){return 20;}}
     final Config config=new Config();final Registry taskRegistry=new Registry();
@@ -45,6 +70,14 @@ public class BossTelegraphRuntimeProbe {
     void playBossVisualCue(LivingEntity b,String s,Location l,boolean f){}
     void spawnEventParticle(Object... args){particles++;}
     void renderSpellTelegraphVisual(LivingEntity b,Location l,String s,int tick,int duration){}
+    java.util.List<Player> eventAudience(){return java.util.List.of();}
+    boolean isEventParticleViewer(Player p,Location l){return false;}
+    void spawnPatternRing(Player p,Location c,Vector a,Vector b,double r,int points,double phase,Particle particle){}
+    void spawnPatternRing(Player p,Location c,Vector a,Vector b,double r,int points,double phase,Particle particle,Particle.DustOptions dust){}
+    void spawnPatternSegment(Player p,Location s,Location e,Particle particle,Particle.DustOptions dust){}
+    void spawnBossCueParticle(Player p,Location l,String id,int count,double sx,double sy,double sz,double extra){}
+    Particle bossCueParticle(String id){return Particle.END_ROD;}
+    Sound bossCueSound(String id){return Sound.ENTITY_WARDEN_NEARBY_CLOSE;}
     void executeBossSpell(LivingEntity b,Player t,Location l,EndRiftAiPolicy.BossSpell s,boolean f,long g){impacts++;impactTick=Bukkit.scheduler.tick;}
     void registerEncounterTask(BukkitTask t){}
     java.util.logging.Logger getLogger(){return java.util.logging.Logger.getAnonymousLogger();}

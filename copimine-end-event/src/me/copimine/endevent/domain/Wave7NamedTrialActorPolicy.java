@@ -136,9 +136,12 @@ public final class Wave7NamedTrialActorPolicy {
                     "admitted players must be in [" + MIN_PARTICIPANTS + ", "
                             + MAX_PARTICIPANTS + "]: " + admittedPlayers);
         }
-        double scaled = trialBaseHealth(trial)
-                * (1.0D + HEALTH_PER_EXTRA_PLAYER * (admittedPlayers - MIN_PARTICIPANTS));
-        return Math.max(MIN_MINIBOSS_HEALTH, scaled);
+        // SUPERSEDED (2026-11-03): the old ladder (base * (1 + 0.25 * extra))
+        // made a ten-player party fight the same 1000 HP skeleton as a
+        // two-player party. Scaling now lives in Wave7MinibossScalingPolicy so
+        // health and damage grow together and both are covered by their own
+        // tests.
+        return Wave7MinibossScalingPolicy.health(trialBaseHealth(trial), admittedPlayers);
     }
 
     /** Per-trial base health; every trial sits at or above the contractual floor. */
@@ -185,13 +188,13 @@ public final class Wave7NamedTrialActorPolicy {
     public static Profile profile(NamedTrial trial, int admittedPlayers) {
         if (trial == NamedTrial.MOBILE_MARKSMAN) {
             return new Profile(trial, "SKELETON", "Подвижный Стрелок Разлома",
-                    minibossHealth(trial, admittedPlayers), 4.0D, MARKSMAN_ATTACKS,
-                    MARKSMAN_BODY_SCALE);
+                    minibossHealth(trial, admittedPlayers), scaledDamage(4.0D, admittedPlayers),
+                    MARKSMAN_ATTACKS, MARKSMAN_BODY_SCALE);
         }
         if (trial == NamedTrial.RIFT_ARCHMAGE) {
             return new Profile(trial, "EVOKER", "Архимаг Разлома",
-                    minibossHealth(trial, admittedPlayers), 5.0D, ARCHMAGE_ATTACKS,
-                    ARCHMAGE_BODY_SCALE);
+                    minibossHealth(trial, admittedPlayers), scaledDamage(5.0D, admittedPlayers),
+                    ARCHMAGE_ATTACKS, ARCHMAGE_BODY_SCALE);
         }
         return null;
     }
@@ -199,8 +202,23 @@ public final class Wave7NamedTrialActorPolicy {
     /** Warden trial profile; the Warden is spawned by its own branch, not by {@link #profile}. */
     public static Profile wardenProfile(int admittedPlayers) {
         return new Profile(NamedTrial.WARDEN, "WARDEN", "Страж Разлома",
-                minibossHealth(NamedTrial.WARDEN, admittedPlayers), 8.0D,
+                minibossHealth(NamedTrial.WARDEN, admittedPlayers),
+                scaledDamage(8.0D, admittedPlayers),
                 List.of(Attack.NONE_INTERNAL), WARDEN_BODY_SCALE);
+    }
+
+    /**
+     * Authored damage scaled for the party size.
+     *
+     * <p>The user asked for health and damage to grow together with the number
+     * of players. Health grows in {@link #minibossHealth}; this applies the
+     * damage half of the same curve, so a ten-player fight is not merely four
+     * times longer for no extra risk.</p>
+     */
+    public static double scaledDamage(double authoredDamage, int admittedPlayers) {
+        if (!Double.isFinite(authoredDamage) || authoredDamage <= 0.0D) return 0.0D;
+        return Math.round(authoredDamage
+                * Wave7MinibossScalingPolicy.damageMultiplier(admittedPlayers) * 100.0D) / 100.0D;
     }
 
     /** Body scale of one trial's miniboss; 1.0 means "vanilla size". */

@@ -79,6 +79,7 @@ import me.copimine.endevent.domain.BossStatsPolicy;
 import me.copimine.endevent.domain.BossTargetPolicy;
 import me.copimine.endevent.domain.BossTargetSelector;
 import me.copimine.endevent.domain.BossTeleportPermitPolicy;
+import me.copimine.endevent.domain.BossSpellVisualCompositionPolicy;
 import me.copimine.endevent.domain.BossVisualCuePolicy;
 import me.copimine.endevent.domain.BossRealHealthDamagePolicy;
 import me.copimine.endevent.domain.BossEdgeVolleyPolicy;
@@ -1337,6 +1338,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, UUID> wave7MarksmanPartners = new LinkedHashMap<>();
     /** Tick of the pair's last joint crossfire, or -1 when it has never fired. */
     private final Map<String, Long> wave7PairedCrossfireTicks = new LinkedHashMap<>();
+    // Miniboss steering memory: which way each actor is currently heading, and
+    // when it committed to that heading. Without it the trial actors re-picked
+    // a direction every tick and vibrated instead of moving.
+    private final Map<String, Vector> namedTrialSteadyHeadings = new HashMap<>();
+    private final Map<String, Long> namedTrialSteadyDecided = new HashMap<>();
+    private final Map<String, Long> namedTrialSteadyMoved = new HashMap<>();
     // Per-actor cooldown of the pair's provoked target swap (SkeletonElusivenessPolicy).
     private final Map<UUID, Long> wave7PairedGallTicks = new HashMap<>();
     /**
@@ -8705,22 +8712,41 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     // down with the event.
     // ------------------------------------------------------------------
     private final List<UUID> limboDummyIds = new ArrayList<>();
+    /**
+     * Whether test dummies may occupy limbo seats at all.
+     *
+     * <p>The user asked for a mode he can switch on to evaluate limbo and switch
+     * off again for acceptance, so this is a hard switch: {@code off} clears
+     * every dummy immediately and refuses new ones until it is turned back on.
+     * It defaults to {@code false}, because a test affordance must never leak
+     * into a real attempt.</p>
+     */
+    private boolean limboDummyModeEnabled;
 
     private static final String LIMBO_DUMMY_KIND = "LIMBO_DUMMY";
 
     private void handleTestLimboDummies(CommandSender sender, String[] args) {
         String action = args.length > 2 ? args[2].toLowerCase(Locale.ROOT) : "spawn";
         switch (action) {
-            case "clear", "stop", "remove" -> {
+            case "off", "disable", "clear", "stop", "remove" -> {
+                boolean wasEnabled = limboDummyModeEnabled;
+                limboDummyModeEnabled = false;
                 int removed = clearLimboDummies();
-                message(sender, removed == 0
-                        ? "&eБолванчиков не было."
-                        : "&aУбрано болванчиков: &f" + removed + "&a.");
+                // "off" is the acceptance switch: it must disconnect every
+                // dummy without asking anything else, whatever state the
+                // event is in.
+                message(sender, "&7Режим болванчиков: &fOFF&7. Отключено тел: &f" + removed
+                        + (wasEnabled ? "" : "&7 (режим и не был включён)") + "&7.");
             }
-            case "spawn", "start", "fill" -> spawnLimboDummies(sender, args);
+            case "on", "enable", "start" -> {
+                limboDummyModeEnabled = true;
+                message(sender, "&7Режим болванчиков: &fON&7. Поставить тела: &f/cmend test limbo spawn");
+                spawnLimboDummies(sender, args);
+            }
+            case "spawn", "fill" -> spawnLimboDummies(sender, args);
             case "status", "list" -> reportLimboDummies(sender);
             default -> {
-                message(sender, "&6/cmend test limbo <spawn|status|clear> [сколько]");
+                message(sender, "&6/cmend test limbo <on|off|spawn|status> [сколько]");
                 message(sender, "&7Болванчики для проверки лимбо: тела на рунах, чтобы порог в "
                         + me.copimine.endevent.domain.wave7.LimboDummyPolicy.limboCount()
                         + " играющих был достигнут без реальных людей.");
@@ -8729,6 +8755,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void spawnLimboDummies(CommandSender sender, String[] args) {
+        if (!limboDummyModeEnabled) {
+            // Explicit opt-in only: a bare "spawn" in a live attempt must not
+            // quietly fill limbo seats with fake players.
+            message(sender, "&cРежим болванчиков выключен: сначала /cmend test limbo on.");
+            return;
+        }
         if (phase != EventPhase.COLLECTING && phase != EventPhase.READY_FOR_PLAYERS) {
             message(sender, "&cБолванчиков можно ставить только до старта: сейчас phase=" + phase + ".");
             return;
@@ -9163,6 +9195,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // A clone must never be the reason the two players cannot see each other:
         // it keeps distance like an official copy and stops at the same band.
         boolean inMeleeRange = distanceSquared <= 4.0D;
+        // The user asked for copies that move "как игрок" including crouching
+        // and jumping. Those are not combat states, so they are chosen by a
+        // small deterministic rhythm rather than at random: the copy must look
+        // alive without ever becoming unpredictable in a duel.
+        long rhythm = Math.floorMod(carrier.getUniqueId().hashCode() * 31L + eventTickCounter, 160L);
         EchoPresentationProbeState.Action pose;
         if (inMeleeRange && carrier.hasLineOfSight(owner)) {
             pose = EchoPresentationProbeState.Action.SWING;
@@ -9172,10 +9209,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             ? carrier.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).getValue() * 0.5D : 1.0D))),
                     carrier);
         } else if (distanceSquared > 9.0D) {
-            pose = EchoPresentationProbeState.Action.SPRINT;
+            // Closing the gap is a sprint, and a sprint occasionally hops.
+            pose = rhythm % 80L < 6L
+                    ? EchoPresentationProbeState.Action.JUMP
+                    : EchoPresentationProbeState.Action.SPRINT;
+            if (pose == EchoPresentationProbeState.Action.JUMP && carrier.isOnGround()) {
+                carrier.setVelocity(carrier.getVelocity().setY(0.42D));
+            }
             if (eventTickCounter % 4L == 0L) carrier.getPathfinder().moveTo(owner.getLocation(), 1.05D);
         } else {
-            pose = EchoPresentationProbeState.Action.IDLE;
+            // Holding position: the copy shifts its stance instead of standing
+            // frozen, which is what made it read as a statue.
+            pose = rhythm % 100L < 18L
+                    ? EchoPresentationProbeState.Action.CROUCH
+                    : EchoPresentationProbeState.Action.IDLE;
             carrier.getPathfinder().stopPathfinding();
         }
         if (view.action() != pose) view.begin(pose, eventTickCounter);
@@ -15498,8 +15545,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         player.playSound(player.getLocation(), Sound.BLOCK_RESPAWN_ANCHOR_CHARGE,
                 0.8F, 1.35F);
+        // SUPERSEDED (2026-11-03): the user's rule is that a mechanic must be
+        // legible on its own and not taught in chat. The charge is already
+        // visible in hand, the core already glows as its target, so the
+        // instruction "take it to the core with RMB" is removed; the action bar
+        // keeps only where things stand.
         player.sendActionBar(Component.text(
-                "Заряд Разлома взят. Доставьте его к ядру ПКМ", NamedTextColor.AQUA));
+                "Заряд Разлома взят", NamedTextColor.AQUA));
         getLogger().info("END_RIFT_CARRIER_PICKED_UP event=" + eventId
                 + " player=" + player.getUniqueId()
                 + " player_name=" + player.getName()
@@ -15524,7 +15576,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         event.setCancelled(true);
         releaseCurrentCarrierHolder(player.getUniqueId(), "player-dropped-charge");
         player.sendActionBar(Component.text(
-                "Заряд вернулся на арену — подберите его заново.", NamedTextColor.AQUA));
+                "Заряд вернулся на арену", NamedTextColor.AQUA));
     }
 
     private boolean deliverCurrentCarrierCharge(Player holder) {
@@ -15545,8 +15597,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         RiftCarrierPolicy.State next = RiftCarrierPolicy.deliver(before, generation,
                 holder.getUniqueId(), atCore, eventTickCounter);
         if (next == before) {
+            // SUPERSEDED (2026-11-03): instruction removed; see the pickup
+            // note above. The refusal is still reported, just without the
+            // tutorial sentence.
             holder.sendActionBar(Component.text(
-                    "Подойдите к ядру и нажмите ПКМ по нему", NamedTextColor.YELLOW));
+                    "Ядро не приняло заряд: подойдите ближе", NamedTextColor.YELLOW));
             return false;
         }
         currentCarrierState = next;
@@ -19750,6 +19805,147 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * pulse.  The effect is audience-scoped and particle-only, so it never
      * replaces a vanilla texture or creates a hidden gameplay entity.
      */
+    /**
+     * Authored telegraph: a vortex that closes on the target.
+     *
+     * <p>The user's complaint was that the spells "look like garbage". The old
+     * telegraph drew a flat ring of one colour with no motion, so a windup and
+     * a landed hit looked the same. This composition makes the direction of
+     * travel the tell: the spiral contracts as the cast completes, the radius
+     * shrinks with {@code progress}, and the last fifth of the windup snaps to
+     * a bright core — the moment to move.</p>
+     */
+    /**
+     * Authored impact: the same signature, expanding instead of contracting.
+     *
+     * <p>Telegraph in, impact out. That single rule means a player never has to
+     * read a colour to know whether the spell is coming or has landed: the
+     * motion is the answer. The hot colour of the composition is used here, so
+     * the hit is unmistakably the same spell as the windup.</p>
+     */
+    private void renderAuthoredBossImpact(Location mark,
+                                          BossSpellVisualCompositionPolicy.Composition composition) {
+        if (mark == null || mark.getWorld() == null || composition == null
+                || composition.spellId().isEmpty()) {
+            return;
+        }
+        Location center = mark.clone().add(0.0D, 0.12D, 0.0D);
+        Color hot = Color.fromRGB(composition.impactHue());
+        Color cold = Color.fromRGB(composition.telegraphHue());
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, center)) continue;
+            Vector horizontal = new Vector(1.0D, 0.0D, 0.0D);
+            Vector side = new Vector(0.0D, 0.0D, 1.0D);
+            Vector up = new Vector(0.0D, 1.0D, 0.0D);
+            // Three expanding shells, each slightly wider and thinner, give the
+            // hit depth instead of a single flat disc.
+            double[] radii = {1.0D, 1.9D, 2.8D};
+            for (int shell = 0; shell < radii.length; shell++) {
+                double radius = radii[shell];
+                spawnPatternRing(viewer, center, side, horizontal, radius,
+                        shell == 0 ? 26 : 20, shell * 0.35D, Particle.DUST,
+                        new Particle.DustOptions(shell == 0 ? hot : cold, 1.25F - shell * 0.2F));
+            }
+            spawnPatternRing(viewer, center, side, up, 0.9D, 18, 0.0D, Particle.DUST,
+                    new Particle.DustOptions(hot, 1.4F));
+            // Radial spokes: the blast has a direction, it is not a puffball.
+            for (int spoke = 0; spoke < 8; spoke++) {
+                double angle = spoke * Math.PI / 4.0D;
+                Vector direction = horizontal.clone().multiply(Math.cos(angle))
+                        .add(side.clone().multiply(Math.sin(angle)));
+                spawnPatternSegment(viewer, center,
+                        center.clone().add(direction.multiply(2.4D)), Particle.DUST,
+                        new Particle.DustOptions(cold, 1.0F));
+            }
+            spawnBossCueParticle(viewer, center, composition.primaryParticle(), 14,
+                    1.1D, 0.35D, 1.1D, 0.05D);
+            spawnBossCueParticle(viewer, center.clone().add(0.0D, 0.6D, 0.0D),
+                    composition.accentParticle(), 10, 0.6D, 0.5D, 0.6D, 0.02D);
+            viewer.spawnParticle(Particle.END_ROD, center, 6, 0.3D, 0.4D, 0.3D, 0.02D);
+        }
+    }
+
+    private void renderAuthoredBossTelegraph(Player viewer, Location origin, Location destination,
+                                             BossSpellVisualCompositionPolicy.Composition composition,
+                                             int elapsedTicks, int totalTelegraphTicks) {
+        if (viewer == null || origin == null || destination == null || composition == null
+                || composition.spellId().isEmpty()) {
+            return;
+        }
+        double progress = Math.max(0.0D, Math.min(1.0D,
+                elapsedTicks / (double) Math.max(1, totalTelegraphTicks)));
+        Vector axis = destination.toVector().subtract(origin.toVector());
+        double travel = Math.max(0.6D, axis.length());
+        axis.normalize();
+        Vector horizontal = axis.clone();
+        horizontal.setY(0.0D);
+        if (horizontal.lengthSquared() < 0.0001D) horizontal = new Vector(1.0D, 0.0D, 0.0D);
+        horizontal.normalize();
+        Vector side = new Vector(-horizontal.getZ(), 0.0D, horizontal.getX());
+        Vector up = new Vector(0.0D, 1.0D, 0.0D);
+        Location center = destination.clone().add(0.0D, 0.06D, 0.0D);
+        Color cold = Color.fromRGB(composition.telegraphHue());
+        Color hot = Color.fromRGB(composition.impactHue());
+        // The vortex contracts: it starts wide and arrives at the core exactly
+        // when the cast resolves.
+        double startRadius = Math.min(2.6D, travel * 0.5D);
+        double radius = Math.max(0.18D, startRadius * (1.0D - progress));
+        float turns = Math.max(0.0F, composition.vortexTurns());
+        if (turns > 0.0F) {
+            int strands = 3;
+            int points = 14;
+            for (int strand = 0; strand < strands; strand++) {
+                double strandPhase = strand * (Math.PI * 2.0D / strands)
+                        + elapsedTicks * 0.18D;
+                for (int point = 0; point < points; point++) {
+                    double t = point / (double) points;
+                    double angle = strandPhase + t * turns * Math.PI * 2.0D;
+                    double r = radius * (0.35D + 0.65D * t);
+                    double y = 0.05D + t * Math.min(1.6D, travel * 0.35D) * (1.0D - progress * 0.6D);
+                    Location spark = center.clone()
+                            .add(side.clone().multiply(Math.cos(angle) * r))
+                            .add(horizontal.clone().multiply(Math.sin(angle) * r))
+                            .add(0.0D, y, 0.0D);
+                    viewer.spawnParticle(Particle.DUST, spark, 1, 0.0D, 0.0D, 0.0D, 0.0D,
+                            new Particle.DustOptions(cold, 0.9F));
+                }
+            }
+        } else {
+            // No vortex authoring: a flat sigil that tightens instead.
+            spawnPatternRing(viewer, center, side, horizontal, radius, 20, elapsedTicks * 0.12D,
+                    Particle.DUST, new Particle.DustOptions(cold, 1.1F));
+        }
+        // The core ignites over the last fifth of the windup: this is the cue
+        // that separates "the boss is thinking" from "move now".
+        if (progress > 0.8D) {
+            double heat = (progress - 0.8D) / 0.2D;
+            int corePoints = 6 + (int) Math.round(heat * 10.0D);
+            spawnPatternRing(viewer, center, side, horizontal, 0.12D + heat * 0.28D,
+                    corePoints, -elapsedTicks * 0.3D, Particle.END_ROD);
+            viewer.spawnParticle(Particle.CRIT, center, Math.max(1, (int) Math.round(heat * 4.0D)),
+                    0.1D, 0.1D, 0.1D, 0.0D);
+        }
+        // The line from the chest is drawn only while the cast is actually
+        // aiming, and thins out as it closes: a shrinking tether reads better
+        // than a constant beam glued to the floor.
+        double tetherLength = Math.max(0.25D, 1.0D - progress);
+        spawnPatternSegment(viewer, origin.clone(),
+                origin.clone().add(axis.clone().multiply(travel * tetherLength)),
+                Particle.DUST, new Particle.DustOptions(cold, 0.85F));
+        if (composition.primaryParticle() != null && elapsedTicks % 10 == 0) {
+            spawnBossCueParticle(viewer, center, composition.primaryParticle(), 4,
+                    0.25D, 0.15D, 0.25D, 0.01D);
+            spawnBossCueParticle(viewer, center, composition.accentParticle(), 3,
+                    0.35D, 0.25D, 0.35D, 0.02D);
+        }
+        if (progress > 0.55D) {
+            // A hint of the hot colour bleeds in before the hit, so the release
+            // is a continuation and not a surprise colour change.
+            viewer.spawnParticle(Particle.DUST, center.clone().add(0.0D, 0.25D, 0.0D), 2,
+                    0.2D, 0.2D, 0.2D, 0.0D, new Particle.DustOptions(hot, 1.0F));
+        }
+    }
+
     private void renderSpellTelegraphVisual(LivingEntity caster, Location mark,
                                             String spellId, int elapsedTicks,
                                             int totalTelegraphTicks) {
@@ -26318,7 +26514,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 currentFogZoneSetupRetryAtMillis = 0L;
                 fogSafeZoneTelegraphActive = true;
                 blackFogPhaseDeadlineMillis = now + FOG_SAFE_ZONE_TELEGRAPH_MILLIS;
-                renderWaveMilestone(5, core, "Туман приближается — займите защитный круг",
+                renderWaveMilestone(5, core, "Туман приближается",
                         Sound.BLOCK_BEACON_POWER_SELECT);
                 getLogger().info("END_RIFT_FOG_SAFE_TELEGRAPH event=" + eventId + " cycle="
                         + (currentFogCycle + 1) + "/" + EndRiftObjective.REQUIRED_FOG_CYCLES
@@ -26365,7 +26561,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     currentFogZoneSetupRetryAtMillis = 0L;
                     blackFogPhaseDeadlineMillis = now
                             + BlackFogTimingPolicy.safeZoneSeconds() * 1_000L;
-                    renderWaveMilestone(5, core, "Туман приближается — займите защитный круг",
+                    renderWaveMilestone(5, core, "Туман приближается",
                             Sound.BLOCK_BEACON_POWER_SELECT);
                     getLogger().info("END_RIFT_FOG_SAFE_CAPACITY_REFRESHED event=" + eventId
                             + " cycle=" + (currentFogCycle + 1)
@@ -26408,7 +26604,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                 ? "Все " + EndRiftObjective.REQUIRED_FOG_CYCLES
                                 + " цикла тумана завершены"
                                 : "Туман рассеялся: " + currentFogCycle + "/"
-                                + EndRiftObjective.REQUIRED_FOG_CYCLES + ". Продолжайте бой",
+                                + EndRiftObjective.REQUIRED_FOG_CYCLES,
                         Sound.BLOCK_AMETHYST_BLOCK_CHIME);
                 saveStateAsync();
             }
@@ -34144,16 +34340,50 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (selected == null) selected = safeFallback;
         if (selected == null) return;
-        // The user asked for skeletons that are "быстрыми ... и очень
-        // противными": the pair now moves at the elusiveness policy's sprint
-        // speed instead of a slow drift, and seeks cover much earlier so it is
-        // constantly breaking the party's line of fire.
         boolean vanished = mob.hasPotionEffect(PotionEffectType.INVISIBILITY);
-        boolean coverNeeded = seekCover || vanished
-                || mob.getHealth() <= mob.getMaxHealth() * 0.80D;
         double speed = me.copimine.endevent.domain.Wave7SkeletonElusivenessPolicy.speed(
                 true, vanished);
-        mob.setVelocity(selected.clone().normalize().multiply(speed).setY(0.12D));
+        applySteadyMinibossMove(actor, mob, selected, speed);
+    }
+
+    /**
+     * Applies a miniboss heading without letting it vibrate.
+     *
+     * <p>The old routine picked a fresh vector from a fixed list every tick and
+     * never looked at what it chose last time, so left and right alternated and
+     * the actor shook in place instead of moving. Here the heading is committed
+     * for {@code COMMIT_TICKS}, the turn per tick is bounded, and the input
+     * velocity is only re-applied when it would actually change.</p>
+     */
+    private void applySteadyMinibossMove(LivingEntity actor, Mob mob, Vector desired, double speed) {
+        if (actor == null || mob == null || desired == null) return;
+        String stateKey = actor.getUniqueId() + ":stead";
+        long now = eventTickCounter;
+        Vector committed = namedTrialSteadyHeadings.get(stateKey);
+        long decidedTick = namedTrialSteadyDecided.getOrDefault(stateKey, Long.MIN_VALUE / 2);
+        long lastTick = namedTrialSteadyMoved.getOrDefault(stateKey, Long.MIN_VALUE / 2);
+        Vector velocity = mob.getVelocity();
+        boolean blocked = (velocity.getX() * velocity.getX() + velocity.getZ() * velocity.getZ()) < 0.0015D
+                && decidedTick != Long.MIN_VALUE / 2;
+        boolean rethink = committed == null
+                || me.copimine.endevent.domain.Wave7MinibossSteadinessPolicy.mayRethink(
+                        now, decidedTick, lastTick, blocked);
+        if (rethink) {
+            committed = desired.clone().setY(0.0D).normalize();
+            decidedTick = now;
+        }
+        double[] steady = me.copimine.endevent.domain.Wave7MinibossSteadinessPolicy.steadyHeading(
+                committed.getX(), committed.getZ(), desired.getX(), desired.getZ());
+        if (steady[0] == 0.0D && steady[1] == 0.0D) return;
+        Vector heading = new Vector(steady[0], 0.0D, steady[1]).normalize();
+        namedTrialSteadyHeadings.put(stateKey, heading);
+        namedTrialSteadyDecided.put(stateKey, decidedTick);
+        namedTrialSteadyMoved.put(stateKey, now);
+        // The hop is only given when the actor is actually on the ground, so
+        // the skeleton does not get re-launched every tick into a shaking
+        // hover — the other half of the old jitter.
+        double vertical = mob.isOnGround() && (now & 3L) == 0L ? 0.12D : mob.getVelocity().getY();
+        mob.setVelocity(heading.multiply(speed).setY(vertical));
     }
 
     private boolean finishNamedTrialAttack(Entity actor,
@@ -34275,6 +34505,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // cast is a group spell now and gets the wider "the floor is unsafe"
         // signature instead of the single-target one.
         if (landed) {
+            // Only the impact signature fires here: it expands outward, so it
+            // reads as "this landed". The windup is drawn separately, drawn
+            // inward; keeping those two apart is what makes the tell legible
+            // without a single word in chat.
             renderWave7AbilityEffect(actor, target, attack
                     == Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_FANGS
                     ? "WAVE7_ARCHMAGE_FANGS_GROUP" : "WAVE7_" + attack.name());
@@ -35229,18 +35463,38 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         entity.setRotation(yaw, 0.0F);
     }
 
+    /**
+     * Miniboss attack tell: a lane that closes on the target while charging.
+     *
+     * <p>SUPERSEDED (2026-11-03): the old tell was three static parallel lines
+     * of one particle at full length from the first tick — it announced the
+     * aim but not the timing, so a player could not tell how close the hit was,
+     * and every miniboss attack looked identical. The lane now fills from the
+     * caster outward and the edges pinch inward as it completes, so the width
+     * itself is the countdown: wide means early, narrow means move now.</p>
+     */
     private void renderRealitySplitTrialTelegraph(Location start, Vector direction,
                                                   double distance, double width,
                                                   Particle particle) {
         if (start == null || start.getWorld() == null || direction == null || particle == null) return;
         Vector side = new Vector(-direction.getZ(), 0.0D, direction.getX());
-        for (int step = 1; step <= Math.min(10, (int) Math.ceil(distance)); step++) {
+        int length = Math.max(4, Math.min(14, (int) Math.ceil(distance)));
+        // The charge phase is driven by the wall clock so the lane fills over
+        // roughly the same time for a quick shot and a heavy one.
+        double progress = Math.min(1.0D, (eventTickCounter % 24L) / 20.0D);
+        int filled = Math.max(1, (int) Math.round(length * progress));
+        double pinch = 1.0D - 0.75D * progress;
+        for (int step = 1; step <= filled; step++) {
             Location center = start.clone().add(direction.clone().multiply(step));
-            for (double offset : new double[]{-width, 0.0D, width}) {
+            for (double offset : new double[]{-width * pinch, 0.0D, width * pinch}) {
                 Location point = center.clone().add(side.clone().multiply(offset));
                 spawnEventParticle(point, particle, 1, 0.0D, 0.0D, 0.0D, 0.0D);
             }
         }
+        // A dot on the far end of the lane marks where the shot will land, so
+        // the whole corridor is readable from the moment the cast begins.
+        Location far = start.clone().add(direction.clone().multiply(length));
+        spawnEventParticle(far, Particle.END_ROD, 1, 0.0D, 0.0D, 0.0D, 0.0D);
     }
 
     /**
@@ -43992,6 +44246,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " state=TELEGRAPHING ticks=" + telegraphTicks
                 + " deadline=" + bossCastDeadlineMillis);
         sendBossAnimationVisualUpdate(boss, bossTelegraphAnimation(spell));
+        BossSpellVisualCompositionPolicy.Composition telegraphSignature =
+                BossSpellVisualCompositionPolicy.composition(spell.id());
+        if (BossSpellVisualCompositionPolicy.isAuthored(spell.id())) {
+            Sound signatureSound = bossCueSound(telegraphSignature.telegraphSound());
+            if (signatureSound != null) {
+                for (Player viewer : eventAudience()) {
+                    if (viewer != null && viewer.isOnline() && viewer.getWorld().equals(boss.getWorld())
+                            && isEventParticleViewer(viewer, boss.getLocation())) {
+                        viewer.playSound(boss.getLocation(), signatureSound, SoundCategory.HOSTILE, 0.9F, 0.8F);
+                    }
+                }
+            }
+        }
         playBossVisualCue(boss,
                 bossCueId(spell.id(), BossVisualCuePolicy.CueStage.TELEGRAPH),
                 mark, forced);
@@ -44016,15 +44283,35 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             ticks[0]++;
             if (ticks[0] % 5 == 0 || ticks[0] >= telegraphTicks) {
-                Particle particle = switch (spell) {
-                    case VOID_BLAST -> Particle.DRAGON_BREATH;
-                    case RIFT_ARROWS -> Particle.CRIT;
-                    default -> Particle.REVERSE_PORTAL;
-                };
+                // The authored signature decides the particles; the old switch
+                // is only the fallback for a spell with no composition yet.
+                BossSpellVisualCompositionPolicy.Composition composition =
+                        BossSpellVisualCompositionPolicy.composition(spell.id());
+                Particle particle = BossSpellVisualCompositionPolicy.isAuthored(spell.id())
+                        ? bossCueParticle(composition.primaryParticle())
+                        : switch (spell) {
+                            case VOID_BLAST -> Particle.DRAGON_BREATH;
+                            case RIFT_ARROWS -> Particle.CRIT;
+                            default -> Particle.REVERSE_PORTAL;
+                        };
                 Location effect = spell == EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS
                         ? boss.getLocation().add(0.0D, 1.0D, 0.0D) : mark;
                 spawnEventParticle(effect, particle, 12, 0.9D, 0.2D, 0.9D, 0.02D);
-                renderSpellTelegraphVisual(boss, mark, spell.id(), ticks[0], telegraphTicks);
+                if (BossSpellVisualCompositionPolicy.isAuthored(spell.id())) {
+                    // The user-facing boss signature: authored per spell, not
+                    // shared with the minibosses so the two never look alike.
+                    Location chestOrigin = boss.getLocation().clone().add(0.0D, 1.6D, 0.0D);
+                    Location signatureTarget = spell == EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS
+                            ? boss.getLocation().clone().add(0.0D, 0.2D, 0.0D) : mark;
+                    for (Player viewer : eventAudience()) {
+                        if (!isEventParticleViewer(viewer, signatureTarget)
+                                && !isEventParticleViewer(viewer, chestOrigin)) continue;
+                        renderAuthoredBossTelegraph(viewer, chestOrigin, signatureTarget, composition,
+                                ticks[0], telegraphTicks);
+                    }
+                } else {
+                    renderSpellTelegraphVisual(boss, mark, spell.id(), ticks[0], telegraphTicks);
+                }
             }
             if (ticks[0] >= telegraphTicks) {
                 holder[0].cancel();
@@ -44436,7 +44723,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                              + " target=" + target.getUniqueId() + " generation=" + callbackGeneration);
                      Location impactOrigin = spell == EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS
                              ? boss.getLocation() : mark;
-                     renderSpellImpactVisual(boss, impactOrigin, spell.id());
+                     if (BossSpellVisualCompositionPolicy.isAuthored(spell.id())) {
+                         renderAuthoredBossImpact(impactOrigin,
+                                 BossSpellVisualCompositionPolicy.composition(spell.id()));
+                     } else {
+                         renderSpellImpactVisual(boss, impactOrigin, spell.id());
+                     }
                      String impactCueId = bossCueId(spell.id(), BossVisualCuePolicy.CueStage.IMPACT);
                      playBossVisualCue(boss, impactCueId, impactOrigin, forced);
                      BossVisualCuePolicy.CueToken acceptedImpactCue = new BossVisualCuePolicy.CueToken(
@@ -50780,7 +51072,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     || !me.copimine.endevent.runtime.ArenaEntranceResolver.safe(entrance, this::isTemporaryMovementHazard)) {
                 attemptLifecycle.cancelReturn(token); wave7ReturnStagingLocations.remove(owner); saveStateAsync(); continue;
             }
-            player.sendActionBar(Component.text("Возврат в своё испытание… не двигайтесь и не атакуйте", NamedTextColor.AQUA));
+            player.sendActionBar(Component.text("Возврат в своё испытание…", NamedTextColor.AQUA));
             if (!attemptLifecycle.returnReady(token, eventTickCounter)) continue;
             var assignment = realitySplitChamberController.assignment();
             int claim = assignment.chamberByPlayer().getOrDefault(owner, -1);
@@ -53143,7 +53435,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return List.of("on", "off", "auto");
         }
         if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "limbo".equalsIgnoreCase(args[1])) {
-            return List.of("spawn", "status", "clear");
+            return List.of("on", "off", "spawn", "status");
         }
         if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "scene".equalsIgnoreCase(args[1])) {
             return List.of("clear");

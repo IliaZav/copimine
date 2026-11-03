@@ -191,11 +191,12 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # Wave 7 pair crossfire, the Marksman/Archmage rigs and the Echo clone test
     # command (client-side presentation only).
     # SUPERSEDED (2026-11-03): repinned for the Wave 5 fog presence ramp
-    # (EndEventBlackFogPresenceTest).
-    assert artifact['size'] == 13_544_480
+    # (EndEventBlackFogPresenceTest), and again for the boss animation clip
+    # blending (UserEndBossAnimationBlendTest).
+    assert artifact['size'] == 13_545_820
     assert artifact['sha512'] == (
-        'b2c4d903fb6e36109554d7ab2c0bc928ae7fda802ca9e1a9905c7f5e28aeb61'
-        '8ce5a05d1bf068d62d1301cefd0052a47b63d7ce9c126e8d8ec8b1be5c47b04e7'
+        'f8830f8036161f2fa8e7a25c5d6589660bc374985d3f34bdcea128601ebc5cfe54'
+        '445f6bbbd4f6bf4df211efe231e070562f2afaca98ebc2fec3ae0d54d8ff18'
     )
 
 

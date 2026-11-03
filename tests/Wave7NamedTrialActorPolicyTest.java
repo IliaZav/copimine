@@ -126,20 +126,25 @@ public final class Wave7NamedTrialActorPolicyTest {
     }
 
     private static void checkMinibossHealthCurve() {
-        // Contract: base >= 1000, multiplied by 1 + 0.25 * (admitted - 2).
-        // The basis is the roster frozen at admission, so the curve must be a
-        // pure function of (trial, admitted) and never depend on live state.
+        // SUPERSEDED (2026-11-03): this used to pin the removed frozen-roster
+        // ladder base * (1 + 0.25 * (admitted - 2)), which the user rejected —
+        // a ten-player party fought the same 1000 HP skeleton as a two-player
+        // one. The basis is still the frozen roster (a relog must never heal a
+        // living actor); the curve now comes from Wave7MinibossScalingPolicy and
+        // is checked across the whole supported band instead of one formula.
         for (int admitted = 2; admitted <= 20; admitted++) {
-            double scale = 1.0D + 0.25D * (admitted - 2);
             for (NamedTrial trial : new NamedTrial[]{
                     NamedTrial.MOBILE_MARKSMAN, NamedTrial.RIFT_ARCHMAGE}) {
                 double health = Wave7NamedTrialActorPolicy.minibossHealth(trial, admitted);
                 check(health >= Wave7NamedTrialActorPolicy.MIN_MINIBOSS_HEALTH,
                         trial + " at " + admitted + " players must reach the miniboss floor");
-                double expected = Math.max(Wave7NamedTrialActorPolicy.MIN_MINIBOSS_HEALTH,
-                        Wave7NamedTrialActorPolicy.trialBaseHealth(trial) * scale);
-                check(Math.abs(health - expected) < 1.0E-9D,
-                        trial + " must scale linearly with the frozen roster");
+                check(health <= me.copimine.endevent.domain.Wave7MinibossScalingPolicy.HEALTH_CAP,
+                        trial + " at " + admitted + " players must stay under the miniboss cap");
+                if (admitted > 2) {
+                    double previous = Wave7NamedTrialActorPolicy.minibossHealth(trial, admitted - 1);
+                    check(health > previous,
+                            trial + " health must grow at every extra player (" + admitted + ")");
+                }
             }
         }
         // The floor is exact at the smallest supported party.
@@ -149,6 +154,10 @@ public final class Wave7NamedTrialActorPolicyTest {
         check(Wave7NamedTrialActorPolicy.minibossHealth(NamedTrial.RIFT_ARCHMAGE, 20)
                         > Wave7NamedTrialActorPolicy.minibossHealth(NamedTrial.RIFT_ARCHMAGE, 2),
                 "health grows with the roster");
+        // Damage has to move with the party too, not just health.
+        check(Wave7NamedTrialActorPolicy.profile(NamedTrial.MOBILE_MARKSMAN, 2).contactDamage()
+                        < Wave7NamedTrialActorPolicy.profile(NamedTrial.MOBILE_MARKSMAN, 10).contactDamage(),
+                "miniboss damage must grow with the party, not stay at the solo value");
         // An out-of-range roster is a configuration error, never a silent clamp.
         expectInvalid(() -> Wave7NamedTrialActorPolicy.minibossHealth(NamedTrial.RIFT_ARCHMAGE, 1));
         expectInvalid(() -> Wave7NamedTrialActorPolicy.minibossHealth(NamedTrial.RIFT_ARCHMAGE, 21));

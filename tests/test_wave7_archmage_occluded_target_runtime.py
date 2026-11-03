@@ -278,6 +278,7 @@ public class OccludedArchmageProbe {
     fixture.write_text(HARNESS, encoding="utf-8")
     files = [str(BASE / rel) for rel in PRODUCTION]
     files += [str(BASE / "domain/Wave7NamedTrialActorPolicy.java"),
+             str(BASE / "domain/Wave7MinibossScalingPolicy.java"),
              # Miniboss health scales from the roster frozen at admission.
              str(BASE / "runtime/EventCombatProfileService.java"),
              # The service owns a durable ordered combat history (audit ECHO 10).

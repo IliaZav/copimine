@@ -141,7 +141,7 @@ public class ScriptedLaunchProbe {
 '''
     path=out/"ScriptedLaunchProbe.java";path.write_text(code,encoding="utf-8")
     fixture=out/"Wave7AdmissionRuntimeChecks.java";fixture.write_text(HARNESS,encoding="utf-8")
-    files=[str(BASE/rel) for rel in PRODUCTION]+[str(BASE/"domain/Wave7NamedTrialActorPolicy.java"),str(fixture),str(path)]
+    files=[str(BASE/rel) for rel in PRODUCTION]+[str(BASE/"domain/Wave7NamedTrialActorPolicy.java"),str(BASE/"domain/Wave7MinibossScalingPolicy.java"),str(fixture),str(path)]
     result=subprocess.run(["javac","-encoding","UTF-8","-d",str(out),*files],capture_output=True,text=True,encoding="utf-8",errors="replace",timeout=30)
     assert result.returncode==0,result.stdout+result.stderr
     return out

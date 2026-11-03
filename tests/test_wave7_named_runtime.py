@@ -75,7 +75,7 @@ public class NamedWave7StartProbe {
     paths = [SOURCE / item for item in (
         "domain/ChamberIsolationPolicy.java", "domain/RealitySplitBarrierPolicy.java",
         "domain/Wave7AdmissionPolicy.java",
-        "domain/Wave7EchoDuelCellPolicy.java", "domain/Wave7NamedTrialActorPolicy.java",
+        "domain/Wave7EchoDuelCellPolicy.java", "domain/Wave7NamedTrialActorPolicy.java", "domain/Wave7MinibossScalingPolicy.java",
         "domain/Wave7RoomLayoutPolicy.java",
             "domain/Wave7TrialRoutePolicy.java",
         "domain/wave7/EchoBehaviorStrategy.java",
@@ -182,7 +182,7 @@ public class NamedWave7LayoutRouteProbe {
 ''', encoding="utf-8")
     paths = [SOURCE / item for item in (
         "domain/ChamberIsolationPolicy.java", "domain/RealitySplitBarrierPolicy.java",
-        "domain/Wave7EchoDuelCellPolicy.java", "domain/Wave7NamedTrialActorPolicy.java",
+        "domain/Wave7EchoDuelCellPolicy.java", "domain/Wave7NamedTrialActorPolicy.java", "domain/Wave7MinibossScalingPolicy.java",
         "domain/Wave7RoomLayoutPolicy.java",
             "domain/Wave7TrialRoutePolicy.java",
         "domain/wave7/EchoBehaviorStrategy.java", "domain/wave7/EchoLoadoutState.java",
@@ -352,7 +352,7 @@ public class NamedWave7DeathProbe {
 ''', encoding="utf-8")
     paths = [SOURCE / item for item in (
         "domain/ChamberIsolationPolicy.java", "domain/Wave7EchoDuelCellPolicy.java",
-        "domain/Wave7NamedTrialActorPolicy.java",
+        "domain/Wave7NamedTrialActorPolicy.java", "domain/Wave7MinibossScalingPolicy.java",
         "domain/Wave7RoomLayoutPolicy.java",
             "domain/Wave7TrialRoutePolicy.java",
         "domain/wave7/EchoBehaviorStrategy.java", "domain/wave7/EchoLoadoutState.java",
@@ -514,7 +514,7 @@ public class Wave7PreflightProbe {
 ''', encoding="utf-8")
     paths = [SOURCE / item for item in (
         "domain/ChamberIsolationPolicy.java", "domain/RealitySplitBarrierPolicy.java", "domain/Wave7EchoDuelCellPolicy.java",
-        "domain/Wave7NamedTrialActorPolicy.java", "domain/wave7/EchoBehaviorStrategy.java",
+        "domain/Wave7NamedTrialActorPolicy.java", "domain/Wave7MinibossScalingPolicy.java", "domain/wave7/EchoBehaviorStrategy.java",
         "domain/Wave7RoomLayoutPolicy.java",
             "domain/Wave7TrialRoutePolicy.java",
         "domain/wave7/EchoLoadoutState.java", "runtime/RealitySplitEchoDuelState.java",

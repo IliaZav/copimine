@@ -30,6 +30,66 @@ final class UserEndBossAnimationPlayer {
         return CLIPS.containsKey(canonical(animationId));
     }
 
+    /**
+     * How long a switch into {@code toAnimation} should blend, in ticks.
+     *
+     * <p>A blend is only worth it where a snap would be seen: into a contact
+     * move or a defeat the rig would otherwise jump. Looping locomotion
+     * (idle/run) and the short hurt flinch blend faster so input never feels
+     * laggy, and a switch into the same clip is not a switch at all.</p>
+     */
+    static float blendTicks(String fromAnimation, String toAnimation) {
+        String to = canonical(toAnimation);
+        if (to.equals(canonical(fromAnimation))) return 0.0F;
+        return switch (to) {
+            case "DYING", "DEFEAT_COLLAPSE" -> 8.0F;
+            case "MELEE_SWIPE", "CHEST_STRIKE", "GROUND_SLAM" -> 5.0F;
+            case "HURT" -> 2.0F;
+            case "IDLE_BREATH", "RUN" -> 6.0F;
+            default -> 4.0F;
+        };
+    }
+
+    /**
+     * Linear blend between two sampled poses.
+     *
+     * <p>Bone sets may differ between clips — {@code hurt.json} only animates
+     * the head — so a bone missing from one side falls back to the other
+     * side's value rather than to zero: snapping an unanimated bone to the
+     * rest pose is exactly the invisible-but-wrong pop this exists to avoid.</p>
+     */
+    static ChameleonGuardianGeometry.GuardianPose blend(
+            ChameleonGuardianGeometry.GuardianPose from,
+            ChameleonGuardianGeometry.GuardianPose to, float weight) {
+        if (from == null || to == null) return to == null ? from : to;
+        float w = Math.max(0.0F, Math.min(1.0F, Float.isFinite(weight) ? weight : 1.0F));
+        if (w <= 0.0F) return from;
+        if (w >= 1.0F) return to;
+        Map<String, ChameleonGuardianGeometry.BoneDelta> merged = new HashMap<>();
+        Set<String> bones = new HashSet<>();
+        bones.addAll(from.deltas().keySet());
+        bones.addAll(to.deltas().keySet());
+        for (String bone : bones) {
+            ChameleonGuardianGeometry.BoneDelta a = from.deltas().get(bone);
+            ChameleonGuardianGeometry.BoneDelta b = to.deltas().get(bone);
+            if (a == null) { merged.put(bone, b); continue; }
+            if (b == null) { merged.put(bone, a); continue; }
+            merged.put(bone, new ChameleonGuardianGeometry.BoneDelta(
+                    lerp(a.translation(), b.translation(), w),
+                    lerp(a.rotation(), b.rotation(), w),
+                    lerp(a.scale(), b.scale(), w)));
+        }
+        return ChameleonGuardianGeometry.GuardianPose.of(merged);
+    }
+
+    private static ChameleonGuardianGeometry.Point lerp(ChameleonGuardianGeometry.Point a,
+                                                        ChameleonGuardianGeometry.Point b, float w) {
+        return new ChameleonGuardianGeometry.Point(
+                a.x() + (b.x() - a.x()) * w,
+                a.y() + (b.y() - a.y()) * w,
+                a.z() + (b.z() - a.z()) * w);
+    }
+
     static float clipLengthSeconds(String animationId) {
         Clip clip = CLIPS.get(canonical(animationId));
         return clip == null ? 0.0F : clip.lengthSeconds();

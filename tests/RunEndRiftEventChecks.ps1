@@ -378,6 +378,10 @@ $domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\
 # compiles against the real class.
 $domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain\wave7\EchoRealmAssignmentPolicy.java')
 $domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain\wave7\LimboDummyPolicy.java')
+# GEAR-007/009: the copy's totem policy is pure arithmetic and its test compiles
+# against the real class, so it belongs in the bundle rather than in the
+# documented exemptions.
+$domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain\wave7\EchoTotemPolicy.java')
 $runtimeSources = @(
   (Join-Path $root 'tools\minecraft-26.3\protocol\src\main\java\me\copimine\protocol\EncounterGenerationPolicy.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\EventSnapshot.java'),
@@ -612,7 +616,38 @@ $pureTests = @(
   'EndRiftDiagnosticSinkTest',
   'EndRiftDiagnosticInvariantMonitorTest',
   'EndRiftDiagnosticSnapshotTest',
-  'EndRiftDiagnosticServiceTest'
+  'EndRiftDiagnosticServiceTest',
+  'CollapseRingPlayerPairPolicyTest',
+  'EchoBehaviorStrategyNormalizationTest',
+  'EchoConsumableTimingTest',
+  'EchoScalingPolicyTest',
+  'EchoTotemPolicyTest',
+  'FallingAnvilVolleyPolicyTest',
+  'GravityAnchorPolicyTest',
+  'GroundedBossMotionPolicyTest',
+  'MageSignaturePolicyTest',
+  'PortalCaptureIndicatorViewerTest',
+  'ShieldOrbitPolicyTest',
+  'TentacleGuardianLayoutPolicyTest',
+  'TentacleThrowPolicyTest',
+  'Wave7ArchmagePunishPolicyTest',
+  'Wave7ArchmageVexPolicyTest',
+  'Wave7MarksmanDefenderPolicyTest',
+  'Wave7MarksmanInvisibilityPolicyTest',
+  'Wave7TrialTargetPolicyTest',
+  'WaveSixRosterPolicyTest',
+  'BlackFogCurtainPolicyTest',
+  'BlackFogRecoverySnapshotTest',
+  'BlackFogSafeZoneCapacityPolicyTest',
+  'BossFinalSealBarrierPolicyTest',
+  'BossHitFeedbackPolicyTest',
+  'BossAnimationPriorityPolicyTest',
+  'BossGroupAggroPolicyTest',
+  'BossFireballPolicyTest',
+  'Wave3SquadIntentPolicyTest',
+  'Wave5PostFogPackPolicyTest',
+  'WaveTwoRosterPolicyTest',
+  'WaveSixStageStateTest'
 )
 $pureSources = @($domainSources + $runtimeSources + $diagnosticSources + ($pureTests | ForEach-Object {
   $sourceName = $_.Split('.')[-1]
@@ -628,7 +663,20 @@ Invoke-GateStep 'Current pure Java policies' {
   & $script:javacExecutable -proc:none -encoding UTF-8 -d $testBuild ('@' + $pureSourceList)
   if ($LASTEXITCODE -ne 0) { throw 'Current pure Java compilation failed.' }
   foreach ($name in $pureTests) {
-    Invoke-JavaTest -Classpath $testBuild -MainClass $name
+    # A test that declares a package is only reachable by its qualified name;
+    # running it by simple name fails with ClassNotFoundException, which is why
+    # these tests were quietly left out of the list instead of made to pass.
+    # Entries already carrying a package have no "tests\<qualified>.java"
+    # file; resolving the path from the qualified name would look for a file
+    # that cannot exist.
+    $qualifiedName = $name
+    $simpleName = $name.Split('.')[-1]
+    $declaredPackage = Select-String -LiteralPath (Join-Path $root ("tests\{0}.java" -f $simpleName)) -Pattern '^package ([A-Za-z0-9_.]+);' |
+      Select-Object -First 1
+    # Qualify by the SIMPLE name: an entry that already names its package must
+    # not get a second one prepended.
+    if ($declaredPackage) { $qualifiedName = $declaredPackage.Matches[0].Groups[1].Value + '.' + $simpleName }
+    Invoke-JavaTest -Classpath $testBuild -MainClass $qualifiedName
   }
 }
 

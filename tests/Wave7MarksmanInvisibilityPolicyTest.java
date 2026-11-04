@@ -16,10 +16,12 @@ public final class Wave7MarksmanInvisibilityPolicyTest {
     }
 
     private static void vanishesForExactlyFiveSeconds() {
-        // SUPERSEDED (2026-11-03): the user asked for genuinely elusive
-        // skeletons, so the hide shrank from five seconds to 3.4 and repeats
-        // more often. The invariants that matter are unchanged and follow.
-        check(Wave7MarksmanInvisibilityPolicy.INVISIBLE_TICKS == 34L,
+        // SUPERSEDED (2026-11-04): an interim pass shrank the window to 3.4 s
+        // on the strength of the same request that produced it. The contract
+        // (MARK-005/006) and this class's own documentation both say five
+        // seconds, so the window is back to five; what keeps the pair slippery
+        // is the shorter cooldown, not a window shorter than the contract's.
+        check(Wave7MarksmanInvisibilityPolicy.INVISIBLE_TICKS == 100L,
                 "five seconds is 100 ticks at twenty ticks per second");
         check(Wave7MarksmanInvisibilityPolicy.INVISIBLE_MILLIS
                         == Wave7MarksmanInvisibilityPolicy.INVISIBLE_TICKS * 50L,

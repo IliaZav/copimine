@@ -1,7 +1,5 @@
 package me.copimine.endevent.domain;
 
-import java.util.Locale;
-
 /**
  * Steady, readable movement for the W7 minibosses.
  *
@@ -24,35 +22,12 @@ public final class Wave7MinibossSteadinessPolicy {
     public static final int COMMIT_TICKS = 14;
     /** Hard cap on the turn rate, degrees per tick. */
     public static final double MAX_TURN_DEGREES_PER_TICK = 9.0D;
-    /** Below this cosine change a new heading is treated as a reversal. */
-    private static final double REVERSAL_COS = -0.6D;
     /** Minimum fair standoff: the actor does not crowd the target. */
     public static final double STANDOFF_BLOCKS = 3.2D;
     /** Distance at which an actor stops closing entirely. */
     public static final double ENGAGE_BLOCKS = 11.0D;
 
     private Wave7MinibossSteadinessPolicy() {
-    }
-
-    /** What the actor should do this tick. */
-    public enum Intent {
-        /** Close the distance to the target. */
-        APPROACH,
-        /** Hold a fair standoff and strafe. */
-        STRAFE,
-        /** Break contact toward cover. */
-        RETREAT
-    }
-
-    public static Intent intentFor(double distanceBlocks, double healthFraction, boolean hasCover,
-                                   boolean vanished) {
-        if (vanished || hasCover && healthFraction <= 0.55D) {
-            return Intent.RETREAT;
-        }
-        if (!Double.isFinite(distanceBlocks)) return Intent.STRAFE;
-        if (distanceBlocks > ENGAGE_BLOCKS) return Intent.APPROACH;
-        if (distanceBlocks < STANDOFF_BLOCKS) return Intent.RETREAT;
-        return healthFraction <= 0.80D ? Intent.STRAFE : Intent.APPROACH;
     }
 
     /**
@@ -100,23 +75,5 @@ public final class Wave7MinibossSteadinessPolicy {
         double base = Math.atan2(cz, cx);
         double step = base + sign * Math.toRadians(Math.min(MAX_TURN_DEGREES_PER_TICK, angle));
         return new double[]{Math.cos(step), Math.sin(step)};
-    }
-
-    /** True when a proposed heading reverses the committed one sharply. */
-    public static boolean isReversal(double committedX, double committedZ,
-                                     double proposedX, double proposedZ) {
-        double cl = Math.hypot(committedX, committedZ);
-        double pl = Math.hypot(proposedX, proposedZ);
-        if (cl < 1.0E-6D || pl < 1.0E-6D) return false;
-        double dot = (committedX * proposedX + committedZ * proposedZ) / (cl * pl);
-        return dot <= REVERSAL_COS;
-    }
-
-    public static String describe(Intent intent) {
-        return switch (intent) {
-            case APPROACH -> "approaching";
-            case STRAFE -> "holding a standoff";
-            case RETREAT -> "breaking contact";
-        };
     }
 }

@@ -279,9 +279,13 @@ so a copy reads as a player and not as a sliding statue.
 and caps turning at 9 degrees per tick, so a miniboss no longer vibrates between
 its own pathing decisions; hops only fire on the ground, one tick in four.
 `Wave7MinibossScalingPolicy` makes health and damage grow with the frozen
-admission roster: 1000 HP at the two-player floor, +260 per extra player, capped
-at 6000, damage up to x1.90 — the old ladder gave a ten-player party the same
-1000 HP skeleton as a two-player one.
+admission roster. The curve is the register's own — `baseHP * (1 + 0.25 *
+(players - 2))` — so a heavier body stays proportionally heavier instead of
+every miniboss flattening to one flat step; a full twenty-player party still
+stops at the 6000 ceiling, and damage stops at x1.90. The old ladder gave a
+ten-player party the same 1000 HP skeleton as a two-player one. An interim pass
+used a flat +260 per player, which the register does not allow: it grows the
+body by a fixed amount rather than by a fraction of that body.
 
 **Waves.** Teaching hints were removed (charge pickup/drop, core refusal, fog
 approach and return to trial). Wave announcements and attack warnings stay,

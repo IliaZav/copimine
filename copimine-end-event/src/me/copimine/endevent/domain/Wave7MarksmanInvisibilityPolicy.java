@@ -11,18 +11,18 @@ package me.copimine.endevent.domain;
  */
 public final class Wave7MarksmanInvisibilityPolicy {
     /**
-     * REPINNED (2026-11-03): three seconds four at twenty ticks per second.
+     * Five seconds at twenty ticks per second.
      *
-     * <p>SUPERSEDED the five-second window. The user asked for skeletons that
-     * are "реально неуловимыми ... и очень противными": a shorter, more
-     * frequent hide reads as slippery instead of a long boring walk in the
-     * dark. Together with the shorter cooldown below the pair is genuinely hard
-     * to pin, while every window still ends and every window still shows a
-     * reveal.</p>
+     * <p>The class contract and the specification register (MARK-005/006) both
+     * state five seconds. The constant had drifted to three and a half while
+     * this comment still claimed five, so the code and its own documentation
+     * disagreed. The five-second window is restored: what makes the pair
+     * slippery is the short cooldown below, not a window shorter than the one
+     * the contract grants.</p>
      */
-    public static final long INVISIBLE_TICKS = 34L;
+    public static final long INVISIBLE_TICKS = 100L;
     /** The same window expressed as a recorded wall-clock deadline. */
-    public static final long INVISIBLE_MILLIS = 1_700L;
+    public static final long INVISIBLE_MILLIS = 5_000L;
     /**
      * Readable reveal before the attack resumes. Ten ticks is half a second:
      * long enough for a player to register it, far short of a whole second of

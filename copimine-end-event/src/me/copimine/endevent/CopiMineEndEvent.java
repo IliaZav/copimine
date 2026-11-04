@@ -794,7 +794,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, WaveLeashReturn> waveLeashReturns = new HashMap<>();
     private final Map<UUID, Long> waveDashGenerations = new HashMap<>();
     private final Map<UUID, UUID> waveChannelerObelisks = new HashMap<>();
+    /** How many wave combat cues may be alive at once before the oldest is retired. */
+    private static final int MAX_WAVE_COMBAT_CUES = 32;
     private final Map<UUID, String> waveCombatCueKeys = new HashMap<>();
+    /** Creation order of {@link #waveCombatCueKeys}, oldest first. */
+    private final java.util.ArrayDeque<UUID> waveCombatCueOrder = new java.util.ArrayDeque<>();
     private final Map<UUID, Long> waveFrozenCueRefreshTicks = new HashMap<>();
     private record WaveFogAiLease(long generation, boolean ai, boolean aware) { }
     private final Map<UUID, WaveFogAiLease> waveFogAiLeases = new HashMap<>();
@@ -16592,7 +16596,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 Entity source = null;
                 try {
                     source = Bukkit.getEntity(UUID.fromString(previousSource));
-                } catch (IllegalArgumentException ignored) { }
+                } catch (IllegalArgumentException corruptSourceId) {
+                    // A scribbled aura source id must not abort the sweep, but it
+                    // does mean the stored link is gone: treating it as "no source"
+                    // is the correct reading, and it is silent by design.
+                    source = null;
+                }
                 boolean sameWorld = source != null && source.getWorld().equals(world);
                 boolean activeGiant = source instanceof Zombie previousGiant
                         && isRiftGiant(previousGiant)
@@ -19800,20 +19809,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /**
-     * Render the readable wind-up for both boss and elite spells.  Every
-     * spell has a different silhouette: rings, glyphs, lanes, chains or a
-     * pulse.  The effect is audience-scoped and particle-only, so it never
-     * replaces a vanilla texture or creates a hidden gameplay entity.
-     */
-    /**
-     * Authored telegraph: a vortex that closes on the target.
-     *
-     * <p>The user's complaint was that the spells "look like garbage". The old
-     * telegraph drew a flat ring of one colour with no motion, so a windup and
-     * a landed hit looked the same. This composition makes the direction of
-     * travel the tell: the spiral contracts as the cast completes, the radius
-     * shrinks with {@code progress}, and the last fifth of the windup snaps to
-     * a bright core — the moment to move.</p>
+     * Render the readable wind-up for both boss and elite spells. Every spell has
+     * a different silhouette: rings, glyphs, lanes, chains or a pulse. The effect
+     * is audience-scoped and particle-only, so it never replaces a vanilla texture
+     * or creates a hidden gameplay entity.
      */
     /**
      * Authored impact: the same signature, expanding instead of contracting.
@@ -23240,14 +23239,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " generation=" + generation + " reason=" + reason);
     }
 
-    /**
-     * Roster basis for Wave 7 miniboss scaling.
-     *
-     * <p>Read from the roster frozen at admission, so a relog, death or quit
-     * never rescales or heals a miniboss mid-fight. Clamped into the supported
-     * band because a truncated save could otherwise present an impossible
-     * roster size and silently rescale the encounter.</p>
-     */
     /**
      * Applies the Wave 7 body scale so each miniboss reads at its contract size.
      *
@@ -30743,11 +30734,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /**
-     * Spawn the Wave 6 barrage from the visible Ritual Sphere while retaining
-     * the caster as the logical damage/channel owner.  This adapter deliberately
-     * does not delegate to the ordinary caster-origin arrow volley.
-     */
-    /**
      * W6-018 [U]: sphere-owned volley. The sphere, not a mage body, is the
      * legitimate source, so eligibility is decided against the Core anchor.
      */
@@ -33089,7 +33075,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             carrier.getWorld().playSound(carrier.getLocation(),
                     activeUntil > eventTickCounter ? Sound.ITEM_SHIELD_BLOCK : Sound.ITEM_SHIELD_BREAK,
                     0.65F, 1.0F);
-        } catch (RuntimeException ignoredSoundFailure) { }
+        } catch (RuntimeException soundFailure) {
+            // The shield is already projected; a missing sound is cosmetic and
+            // must never roll the shield back or fail the stage.
+            getLogger().fine("W7 echo shield sound failed: " + soundFailure.getMessage());
+        }
         return true;
     }
 
@@ -33125,15 +33115,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 ? shooter.getUniqueId() : entity.getUniqueId();
     }
 
-    /**
-     * Moves a personal Echo according to the intent chosen by its profile.
-     *
-     * <p>The copy must stay inside its duel cell: a bounded seek toward a point
-     * derived from the owner's position keeps it inside, while the cell check
-     * rejects any step that would leave the arena. Movement is applied every
-     * tick with a short path re-issue window, not once per second, so the copy
-     * reads as a player weaving rather than a mob sliding in a straight line.</p>
-     */
     /**
      * Projects the copy's own movement into its presentation pose.
      *
@@ -34035,18 +34016,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /**
-     * MARK-005 / MARK-006 [U]: opens one invisibility window for the Marksman.
-     *
-     * <p>Vanish is positional, never defensive: nothing is granted immunity,
-     * the actor keeps taking damage, and the attack loop is gated on the window
-     * so it cannot fire from cover. Vanish is refused while the actor is
-     * genuinely visible to its target and not cornered, so the mechanic reads
-     * as repositioning rather than as a permanent invisibility.</p>
-     *
-     * @return the checkpoint carrying the new window, or {@code null} when the
-     *         vanish is refused (a refusal is a normal outcome)
-     */
-    /**
      * Make the actor's actual visibility agree with its durable receipt.
      *
      * <p>Idempotent by design: inside the vanish window the effect is refreshed,
@@ -34214,15 +34183,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return Wave7SkeletonPairPolicy.jointReadiness(first, second, eventTickCounter, last).ready();
     }
 
-    /**
-     * Fires the pair's joint attack: one narrow cross from both wings.
-     *
-     * <p>Each member looses its own fan angled outward by
-     * {@link Wave7SkeletonPairPolicy#crossfireOffsetDegrees}, so the two lines
-     * cross in front of the target. A player standing between the beams takes
-     * both; a player who committed to one side takes one. That is the whole
-     * point: the pair is stronger together than apart, but never unavoidable.</p>
-     */
     /**
      * The pair's provoked answer: when one of them is damaged while its partner
      * lives, both kick up ash and the pair swaps focus.
@@ -34553,15 +34513,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 actor.getWorld(), feet, effectKey, 0.7F, 1.0F);
     }
 
-    /**
-     * One fan of the Marksman spread burst.
-     *
-     * <p>The contract asks for three successive fans of eight arrows with
-     * readable gaps, not one wide spray. Each fan is its own sub-volley with a
-     * short delay between them, and every fan re-validates its target, so a
-     * player who dies, leaves the chamber or loses LOS mid-burst is not shot
-     * by the remaining fans.</p>
-     */
     /**
      * One wing of the pair's joint crossfire.
      *
@@ -36248,7 +36199,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void sendCurrentBlackFogPacket(Player player, boolean active, Location core) {
-        String dimension = core == null ? "the_end" : worldVfxDimension(core);
+        // The arena may live in any Overworld; there is no world this event may
+        // silently fall back to. With no anchor there is no honest dimension to
+        // name, so the packet carries the CLEAR state instead of guessing.
+        if (core == null) {
+            active = false;
+        }
+        String dimension = core == null ? "" : worldVfxDimension(core);
         String state = active
                 ? dimension + "|wave5|" + (currentFogCycle + 1)
                 : "";
@@ -36384,12 +36341,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             default -> "reflect";
         };
         UUID owner = actor.getUniqueId();
+        // The recovery tell is drawn five ticks after the impact, so its key has
+        // to name the spell too: keyed by stage alone, the next spell's recovery
+        // cleared the previous spell's beam instead of replacing its own.
         String key = "wave-ai-" + owner.toString().substring(0, 8) + "-" + stage + "-" + glyph;
         String previous = waveCombatCueKeys.get(owner);
         if (!key.equals(previous)) {
             clearWaveCombatCue(owner);
-            if (waveCombatCueKeys.size() >= 32) return;
+            if (waveCombatCueKeys.size() >= MAX_WAVE_COMBAT_CUES) {
+                // A crowded wave used to stop drawing every cue for everyone.
+                // Give the slot back to the actor that has been quiet longest.
+                retireOldestWaveCombatCue();
+            }
             waveCombatCueKeys.put(owner, key);
+            waveCombatCueOrder.remove(owner);
+            waveCombatCueOrder.addLast(owner);
         }
         boolean floating = stage.equals("frozen") || stage.equals("recover");
         Location from = floating ? actor.getEyeLocation() : stage.equals("release") ? mark : actor.getLocation();
@@ -36414,6 +36380,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void clearWaveCombatCue(UUID owner) {
         String key = waveCombatCueKeys.remove(owner);
+        waveCombatCueOrder.remove(owner);
+        if (key != null) clearWorldVfxBeamsByPrefix(key);
+    }
+
+    /** Frees one slot for a new cue by retiring the one created longest ago. */
+    private void retireOldestWaveCombatCue() {
+        UUID oldest = waveCombatCueOrder.pollFirst();
+        if (oldest == null) return;
+        String key = waveCombatCueKeys.remove(oldest);
         if (key != null) clearWorldVfxBeamsByPrefix(key);
     }
 
@@ -41905,10 +41880,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /**
-     * The single 50% repel: a 5-6 block push plus a short blind and slow window.
-     * Committed before the effect so a restart can never replay it.
-     */
-    /**
      * Durable exactly-once gate for the 50% repel.  The completion marker is
      * persisted BEFORE any velocity, blind or slow is applied, and a failed
      * save releases the flag without effects so a later tick can retry; an
@@ -44287,19 +44258,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 // is only the fallback for a spell with no composition yet.
                 BossSpellVisualCompositionPolicy.Composition composition =
                         BossSpellVisualCompositionPolicy.composition(spell.id());
-                Particle particle = BossSpellVisualCompositionPolicy.isAuthored(spell.id())
-                        ? bossCueParticle(composition.primaryParticle())
-                        : switch (spell) {
-                            case VOID_BLAST -> Particle.DRAGON_BREATH;
-                            case RIFT_ARROWS -> Particle.CRIT;
-                            default -> Particle.REVERSE_PORTAL;
-                        };
-                Location effect = spell == EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS
-                        ? boss.getLocation().add(0.0D, 1.0D, 0.0D) : mark;
-                spawnEventParticle(effect, particle, 12, 0.9D, 0.2D, 0.9D, 0.02D);
                 if (BossSpellVisualCompositionPolicy.isAuthored(spell.id())) {
-                    // The user-facing boss signature: authored per spell, not
-                    // shared with the minibosses so the two never look alike.
+                    // The composition owns the whole wind-up for these spells. The
+                    // generic burst used to fire here as well, on top of the authored
+                    // signature, so two different tells drew the same cast and the
+                    // authored shape read as noise. One spell, one tell: the
+                    // signature is authored per spell and never shared with the
+                    // minibosses, so the two can never look alike.
                     Location chestOrigin = boss.getLocation().clone().add(0.0D, 1.6D, 0.0D);
                     Location signatureTarget = spell == EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS
                             ? boss.getLocation().clone().add(0.0D, 0.2D, 0.0D) : mark;
@@ -44310,6 +44275,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                 ticks[0], telegraphTicks);
                     }
                 } else {
+                    Particle particle = switch (spell) {
+                        case VOID_BLAST -> Particle.DRAGON_BREATH;
+                        case RIFT_ARROWS -> Particle.CRIT;
+                        default -> Particle.REVERSE_PORTAL;
+                    };
+                    Location effect = spell == EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS
+                            ? boss.getLocation().add(0.0D, 1.0D, 0.0D) : mark;
+                    spawnEventParticle(effect, particle, 12, 0.9D, 0.2D, 0.9D, 0.02D);
                     renderSpellTelegraphVisual(boss, mark, spell.id(), ticks[0], telegraphTicks);
                 }
             }
@@ -44361,11 +44334,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || spell == EndRiftAiPolicy.BossSpell.GROUND_SLAM;
     }
 
-    /**
-     * The melee swipe and the ground slam resolve against the boss body when the
-     * animation commits. The chest strike resolves earlier, on the authored
-     * release pose, and then travels as a swept probe until it reaches its range.
-     */
     /**
      * Visible signature of a contact move landing on a player.
      *
@@ -44632,12 +44600,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    /**
-     * A sweep that cannot run its remaining steps must still hand the cast back.
-     * {@code reconcileBossCastProjection} parks while {@code bossChestStrikeActive}
-     * is set, so a silently dropped callback would freeze the boss for the rest
-     * of the phase with no ability timeline to expire.
-     */
     /**
      * Ends a chest strike exactly once.
      *
@@ -47400,11 +47362,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /**
-     * Current Wave 4 uses real, journaled blocks. The old boss-phase display
-     * controller below is not called by the official Current boss flow; this
-     * method is the only official obelisk constructor.
-     */
-    /**
      * Stable seed for the Wave 4 layout of this attempt.
      *
      * <p>Derived from the attempt identity rather than a live random source, so
@@ -48261,8 +48218,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         String previous = waveCombatCueKeys.get(state.id());
         if (!key.equals(previous)) {
             clearWaveCombatCue(state.id());
-            if (waveCombatCueKeys.size() >= 32) return;
+            if (waveCombatCueKeys.size() >= MAX_WAVE_COMBAT_CUES) retireOldestWaveCombatCue();
             waveCombatCueKeys.put(state.id(), key);
+            waveCombatCueOrder.remove(state.id());
+            waveCombatCueOrder.addLast(state.id());
         }
         Location crown = state.base().clone().add(0, Math.max(1, currentObeliskIntegrityHighestLayer(state) + 1) + .8D, 0);
         Location from = ability.equals("pulse") ? state.base().clone().add(0, .05D, 0) : crown;

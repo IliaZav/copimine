@@ -11,7 +11,6 @@ public final class Wave7MinibossSteadinessPolicyTest {
         headingIsHeldBeforeItMayChange();
         turningIsBoundedPerTick();
         oppositeInputsDoNotFlipInstantly();
-        intentFollowsDistanceAndHealth();
         aHeldHeadingOnlyChangesAfterTheWindow();
         System.out.println("Wave7MinibossSteadinessPolicyTest: PASS (" + checks + " checks)");
     }
@@ -68,34 +67,11 @@ public final class Wave7MinibossSteadinessPolicyTest {
             z = next[1];
         }
         check("a sustained opposite input does eventually reverse direction", x < -0.5D);
-        check("a reversal is recognised",
-                Wave7MinibossSteadinessPolicy.isReversal(1.0D, 0.0D, -1.0D, 0.0D));
-        check("a small correction is not a reversal",
-                !Wave7MinibossSteadinessPolicy.isReversal(1.0D, 0.0D, 0.9D, 0.2D));
+        check("the arc never leaves the unit circle",
+                Math.abs(Math.hypot(x, z) - 1.0D) < 1.0E-6D);
     }
 
-    private static void intentFollowsDistanceAndHealth() {
-        check("far away means approach", Wave7MinibossSteadinessPolicy.intentFor(30.0D, 1.0D, false, false)
-                == Wave7MinibossSteadinessPolicy.Intent.APPROACH);
-        check("too close means retreat", Wave7MinibossSteadinessPolicy.intentFor(1.0D, 1.0D, false, false)
-                == Wave7MinibossSteadinessPolicy.Intent.RETREAT);
-        check("a healthy actor at range holds its line",
-                Wave7MinibossSteadinessPolicy.intentFor(6.0D, 1.0D, false, false)
-                        == Wave7MinibossSteadinessPolicy.Intent.APPROACH);
-        check("a hurt actor at range strafes",
-                Wave7MinibossSteadinessPolicy.intentFor(6.0D, 0.6D, false, false)
-                        == Wave7MinibossSteadinessPolicy.Intent.STRAFE);
-        check("a vanished actor breaks contact",
-                Wave7MinibossSteadinessPolicy.intentFor(6.0D, 1.0D, false, true)
-                        == Wave7MinibossSteadinessPolicy.Intent.RETREAT);
-        check("a hurt actor with cover breaks contact",
-                Wave7MinibossSteadinessPolicy.intentFor(6.0D, 0.4D, true, false)
-                        == Wave7MinibossSteadinessPolicy.Intent.RETREAT);
-        check("every intent has a description",
-                !Wave7MinibossSteadinessPolicy.describe(Wave7MinibossSteadinessPolicy.Intent.APPROACH).isBlank());
-    }
-
-private static void aHeldHeadingOnlyChangesAfterTheWindow() {
+    private static void aHeldHeadingOnlyChangesAfterTheWindow() {
         // End-to-end simulation of the old defect: alternate the requested
         // direction every tick, exactly as the old routine did, and prove the
         // committed heading does not follow it tick for tick.

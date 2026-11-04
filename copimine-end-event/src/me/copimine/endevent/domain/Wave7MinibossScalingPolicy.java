@@ -35,17 +35,29 @@ public final class Wave7MinibossScalingPolicy {
     public static final int MAX_PLAYERS = 20;
     /** Nobody in the encounter can be squishier than this, whatever the trial. */
     public static final double HEALTH_FLOOR = 1_000.0D;
-    /** Ceiling for a miniboss body; the main boss is still the biggest number. */
-    public static final double HEALTH_CAP = 6_000.0D;
     /**
-     * Extra health per player above one.
+     * Ceiling for a miniboss body; the main boss is still the biggest number.
      *
-     * <p>Sized so the ceiling is reached by a full twenty-player party and not
-     * before: the first draft used 420 and the curve flattened at fourteen,
-     * which is the same "it stopped mattering" defect this policy exists to
-     * remove. The test pins monotonic growth across the whole supported band.</p>
+     * <p>Sized so no authored body is truncated before a full twenty-player party.
+     * The heaviest trial is the Archmage at a 1200 base, which reaches 6600 at
+     * twenty (verified: 1200 * (1 + 0.25 * 18) = 6600); an earlier 6000 ceiling
+     * flattened it at eighteen and the last two players changed nothing, which
+     * is the same "it stopped mattering" defect this policy exists to remove.
+     * The lighter bodies stay under the ceiling on their own curve (the 1000
+     * base ends at 5500), so the cap is a genuine guard rather than the shape
+     * of the curve.</p>
      */
-    public static final double HEALTH_PER_PLAYER = 260.0D;
+    public static final double HEALTH_CAP = 6_900.0D;
+    /**
+     * Health growth per extra player, as a fraction of the authored body.
+     *
+     * <p>The register fixes this curve — {@code baseHP * (1 + 0.25 * (players - 2))}
+     * — so the growth has to follow the body rather than a flat step: a heavier
+     * miniboss stays proportionally heavier instead of flattening into the same
+     * number as a light one. The ceiling still applies, so a full party cannot
+     * turn the fight into a sponge.</p>
+     */
+    public static final double HEALTH_GROWTH_PER_PLAYER = 0.25D;
     /** Extra damage, as a fraction of the solo value, per step of the sqrt curve. */
     public static final double DAMAGE_GROWTH = 0.22D;
     /** Damage never exceeds this multiple of the solo value. */
@@ -64,7 +76,7 @@ public final class Wave7MinibossScalingPolicy {
         int count = clampPlayers(players);
         double base = Math.max(HEALTH_FLOOR, Double.isFinite(baseHealth) ? baseHealth : HEALTH_FLOOR);
         if (count <= MIN_PLAYERS) return round1(Math.max(HEALTH_FLOOR, base));
-        double grown = base + HEALTH_PER_PLAYER * (count - MIN_PLAYERS);
+        double grown = base * (1.0D + HEALTH_GROWTH_PER_PLAYER * (count - MIN_PLAYERS));
         return round1(Math.min(HEALTH_CAP, Math.max(HEALTH_FLOOR, grown)));
     }
 

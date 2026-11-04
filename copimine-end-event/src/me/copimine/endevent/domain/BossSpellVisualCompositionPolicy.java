@@ -68,11 +68,23 @@ public final class BossSpellVisualCompositionPolicy {
 
         /** The impact colour: the telegraph hue pushed towards white-hot red. */
         public int impactHue() {
-            int r = Math.min(255, ((telegraphHue >> 16) & 0xFF) + 90);
-            int g = Math.min(255, ((telegraphHue >> 8) & 0xFF) / 2);
-            int b = Math.min(255, (telegraphHue & 0xFF) / 3);
-            return (r << 16) | (g << 8) | b;
+            return impactColor(telegraphHue);
         }
+    }
+
+    /**
+     * The hit colour for any telegraph hue.
+     *
+     * <p>Exposed so a cue that is not one of the authored spells (a phase
+     * shift, the final strike, the defeat collapse) still reaches the same hot
+     * end of the palette as the real impacts do, instead of a hard-coded hex
+     * that happened to match nothing.</p>
+     */
+    public static int impactColor(int telegraphHue) {
+        int r = Math.min(255, ((telegraphHue >> 16) & 0xFF) + 90);
+        int g = Math.min(255, ((telegraphHue >> 8) & 0xFF) / 2);
+        int b = Math.min(255, (telegraphHue & 0xFF) / 3);
+        return (r << 16) | (g << 8) | b;
     }
 
     public static Composition composition(String spellId) {

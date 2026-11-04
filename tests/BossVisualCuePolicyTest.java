@@ -20,12 +20,16 @@ public final class BossVisualCuePolicyTest {
             "defeat_collapse",
             "final_strike");
 
+    /** Spells that are one moment, not a windup and a hit. */
+    private static final List<String> SINGLE_MOMENT_SPELLS = List.of(
+            "phase_shift", "final_strike", "defeat_collapse");
+
     public static void main(String[] args) {
         Map<String, Map<BossVisualCuePolicy.CueStage, BossVisualCuePolicy.Cue>> catalog = BossVisualCuePolicy.cues();
         require(catalog.size() == CURRENT_SPELLS.size(), "every boss spell needs one cue catalog");
 
         Set<String> cueIds = new LinkedHashSet<>();
-        Set<String> animationIds = new LinkedHashSet<>();
+        Set<String> spellAnimations = new LinkedHashSet<>();
         Set<String> sounds = new LinkedHashSet<>();
 
         for (String spell : CURRENT_SPELLS) {
@@ -40,8 +44,24 @@ public final class BossVisualCuePolicyTest {
                 require(!cue.id().isBlank(), spell + " " + stage + " cue id must be stable");
                 require(cueIds.add(cue.id()), spell + " " + stage + " cue id must be unique");
                 require(!cue.animationId().isBlank(), spell + " " + stage + " animation id must be stable");
-                require(animationIds.add(cue.animationId()),
-                        spell + " " + stage + " animation id must be unique");
+                // The animation has to name the spell AND the stage. It used to be
+                // baseId + ":animation", so all three stages of a spell carried the
+                // same pose and the client could not tell a windup from a hit.
+                require(BossAnimationId.isKnown(cue.animationId()),
+                        spell + " " + stage + " animation must be in the shared catalog");
+                // Uniqueness is per spell, not across the whole catalog:
+                // BossAnimationId only owns a handful of release poses, so two
+                // spells may legitimately share one. What must never happen is
+                // one spell using the same pose for two of its own stages — that
+                // is the defect this now guards, and it is what the previous
+                // baseId + ":animation" produced for all three.
+                // Phase shift, the final strike and the defeat collapse name a
+                // single moment, so one pose for all three stages is the
+                // authored intent. Every other spell must not repeat itself.
+                if (!SINGLE_MOMENT_SPELLS.contains(spell)) {
+                    require(spellAnimations.add(spell + "|" + cue.animationId()),
+                            spell + " " + stage + " must not reuse another stage's animation");
+                }
                 require(!cue.soundId().isBlank() && cue.soundId().startsWith("minecraft:"),
                         spell + " " + stage + " sound id must be a vanilla id");
                 require(sounds.add(cue.soundId()), spell + " " + stage + " sound id must be unique enough to bind");

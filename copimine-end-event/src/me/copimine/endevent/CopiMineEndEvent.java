@@ -20536,6 +20536,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         };
     }
 
+    /**
+     * Colour of a cue: the authored spell palette where the spell has one,
+     * otherwise the legacy per-spell colour map.
+     */
+    private int bossCueRgb(BossVisualCuePolicy.Cue cue) {
+        if (cue == null) {
+            return 0xFFFFFF;
+        }
+        String spell = bossCueBaseId(cue.id());
+        if (BossSpellVisualCompositionPolicy.isAuthored(spell)) {
+            return BossSpellVisualCompositionPolicy.composition(spell).telegraphHue();
+        }
+        return spellVisualColor(spell).asRGB();
+    }
+
     private String bossCueId(String cueBaseId, BossVisualCuePolicy.CueStage stage) {
         if (cueBaseId == null || cueBaseId.isBlank() || stage == null) {
             return "";
@@ -47782,7 +47797,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 nearby = player;
             }
         }
-        Location safeTarget = nearby == null ? null : safeRepelTarget(state, nearby);
+        // The safe-space proof walks up to 48 candidate columns and reads the
+        // block, the block above and the block below for each one — roughly
+        // 150 block lookups per obelisk per tick, every tick, for the whole
+        // wave, and every obelisk runs this. It is only ever consumed on the
+        // tick a warning completes or an impulse is decided, so it is now
+        // computed only when this tick can actually use it:
+        //   - nobody close            -> nothing to displace;
+        //   - a warning is still running -> the target may have moved anyway,
+        //                                  and the combat resolver re-proves
+        //                                  the spot when the impulse lands.
+        // A closed policy with COOLDOWN/IDLE keeps its own cheap branch and
+        // never reaches the resolver either.
+        boolean warningDue = state.repelTimers != null
+                && state.repelTimers.warningStartedTick() >= 0L
+                && eventTickCounter - state.repelTimers.warningStartedTick()
+                >= ObeliskRepelPolicy.WARNING_TICKS;
+        boolean pressureDue = state.repelTimers == null || state.repelTimers.warningStartedTick() < 0L;
+        boolean needsSafeTarget = nearby != null && (warningDue || pressureDue);
+        Location safeTarget = needsSafeTarget ? safeRepelTarget(state, nearby) : null;
         ObeliskRepelPolicy.Result result = ObeliskRepelPolicy.step(state.repelTimers,
                 eventTickCounter, nearby != null, safeTarget != null, !state.destroyed);
         state.repelTimers = result.timers();
@@ -47851,11 +47884,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      */
     private void aggroWave4ObeliskAttackers(Wave4ObeliskRuntimeState state, Player attacker) {
         if (eventTickCounter % 20L != 0L || attacker == null) return;
+        // Only the wave's own actors may be retargeted, and the wave keeps an
+        // exact list of them. The previous version asked the world for every
+        // entity in a twelve-block box around the obelisk and then discarded
+        // everything that was not one of ours — the box was mostly players,
+        // dropped items and spectacle entities, so the scan did work it could
+        // never use. Iterating the roster bounds the cost by the wave, not by
+        // whatever happens to be standing nearby.
         double radius = ObeliskRepelPolicy.CLOSE_RADIUS_BLOCKS * 4.0D;
-        for (Entity entity : state.base().getWorld().getNearbyEntities(state.base(), radius, radius, radius)) {
-            if (!(entity instanceof Mob mob) || !mob.isValid() || mob.isDead()
-                    || !ownedEntities.containsKey(mob.getUniqueId())
-                    || readEntityGeneration(mob) != generation) continue;
+        double radiusSquared = radius * radius;
+        for (UUID id : new ArrayList<>(ownedEntities.keySet())) {
+            Entity owned = Bukkit.getEntity(id);
+            if (!(owned instanceof Mob mob) || !mob.isValid() || mob.isDead()
+                    || !mob.getWorld().equals(state.base().getWorld())
+                    || readEntityGeneration(mob) != generation) {
+                continue;
+            }
+            if (mob.getLocation().distanceSquared(state.base()) > radiusSquared) continue;
             mob.setTarget(attacker);
         }
     }
@@ -52691,6 +52736,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         registerEncounterTask(reset);
     }
 
+    /**
+     * True when the spell pipeline owns the animation pose for this cue.
+     *
+     * <p>The five spells below are the ones the boss actually casts through
+     * {@code executeBossSpell}; each one is animated there. Phase shifts,
+     * the final strike and the defeat collapse are orchestrated outside that
+     * pipeline and still need the cue to set their pose.</p>
+     */
+    private boolean isSpellDrivenBossCue(String cueId) {
+        String base = bossCueBaseId(cueId);
+        return "void_blast".equals(base) || "rift_projectile".equals(base)
+                || "rift_arrows".equals(base) || "void_mark".equals(base)
+                || "summon_servants".equals(base);
+    }
+
     private void playBossVisualCue(LivingEntity boss, String cueId, Location origin, boolean forced) {
         if (taskRegistry == null || boss == null || cueId == null || cueId.isBlank()
                 || origin == null || origin.getWorld() == null || boss.getWorld() == null
@@ -52729,14 +52789,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case RELEASE -> 1.0F;
             case IMPACT -> 0.7F;
         };
-        sendBossAnimationVisualUpdate(boss, bossCueAnimationId(cueId));
+        // The animation belongs to the cast, not to the cue: the spell pipeline
+        // already sent the pose for this stage (CAST_CHARGE on telegraph,
+        // CAST_RELEASE on release, an authored spell pose where one exists).
+        // Sending a second animation id here overwrote exactly the authored
+        // pose with a generic CAST_IMPACT/CastCharge, so every spell's release
+        // animation was cancelled a tick after it started.
+        if (!isSpellDrivenBossCue(cueId)) {
+            sendBossAnimationVisualUpdate(boss, bossCueAnimationId(cueId));
+        }
+        boolean authoredSpell = BossSpellVisualCompositionPolicy.isAuthored(bossCueBaseId(cueId));
         for (Player viewer : eventAudience()) {
             if (viewer == null || !viewer.isOnline() || !viewer.getWorld().equals(cueOrigin.getWorld())
                     || !isEventParticleViewer(viewer, cueOrigin)) {
                 continue;
             }
             viewer.playSound(cueOrigin, sound, SoundCategory.HOSTILE, 0.85F, pitch);
-            renderBossVisualCue(viewer, boss, cue, cueOrigin, 0);
+            if (authoredSpell) {
+                continue;
+            }
+            renderBossVisualCue(viewer, boss, cue, cueOrigin, 0, stage, sound, pitch);
         }
         getLogger().info("BOSS_VISUAL_CUE event=" + eventId
                 + " boss=" + boss.getUniqueId()
@@ -52745,9 +52817,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " generation=" + generation);
     }
 
-    private void renderBossVisualCue(Player viewer, LivingEntity boss, BossVisualCuePolicy.Cue cue, Location origin, int elapsedTicks) {
+    /**
+     * Draws one cue for one viewer.
+     *
+     * <p>The signature used to be read back out of the cue id with
+     * {@code bossCueStage(cue.id())}, which lowercases the id before splitting
+     * it and then upper-cases the tail, so it happened to work — but it also
+     * meant the caller could pass a stage it did not mean. The stage, the
+     * sound and its pitch now come in directly.</p>
+     */
+    private void renderBossVisualCue(Player viewer, LivingEntity boss, BossVisualCuePolicy.Cue cue,
+                                     Location origin, int elapsedTicks,
+                                     BossVisualCuePolicy.CueStage stage, Sound sound, float pitch) {
         if (viewer == null || boss == null || cue == null || origin == null || origin.getWorld() == null
-                || !viewer.isOnline() || !viewer.getWorld().equals(origin.getWorld())) {
+                || stage == null || !viewer.isOnline() || !viewer.getWorld().equals(origin.getWorld())) {
             return;
         }
         Location center = origin.clone().add(0.0D, 0.12D, 0.0D);
@@ -52767,32 +52850,40 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         int accentCount = Math.max(4, cue.particleBudget() - primaryCount);
         String primaryParticleId = cue.primaryParticle();
         String accentParticleId = cue.accentParticle();
-        viewer.spawnParticle(Particle.END_ROD, center, 1,
-                0.0D, 0.0D, 0.0D, 0.0D);
-        spawnBossCueParticle(viewer, center, cue.primaryParticle(), primaryCount,
-                0.32D, 0.18D, 0.32D, 0.01D);
-        spawnBossCueParticle(viewer, center.clone().add(0.0D, 0.35D, 0.0D), cue.accentParticle(), accentCount,
-                0.22D, 0.22D, 0.22D, 0.0D);
-        Particle accentParticle = bossCueParticle(accentParticleId);
-        Particle.DustOptions accentDust = bossCueDust(accentParticleId);
-        switch (bossCueStage(cue.id())) {
+        // The cue colour is the one drawn on the aim line, so a player reading
+        // the line never has to guess which spell is being prepared.
+        int cueHue = bossCueRgb(cue);
+        String cueKey = "boss-cue-" + cue.id();
+        switch (stage) {
             case TELEGRAPH -> {
-                sendWorldBeamPacket(viewer, "boss-cue", chest, center,
-                        0xF43CFF, 0.10F);
+                // Converging: sparks fall from the chest onto the mark, the
+                // beam thins as it closes. The tell is "look here, it is aimed".
+                double pull = 0.35D + Math.min(0.65D, elapsedTicks * 0.02D);
+                spawnBossCueParticle(viewer, center, primaryParticleId, primaryCount,
+                        0.32D * (1.0D - pull * 0.5D), 0.18D, 0.32D * (1.0D - pull * 0.5D), 0.01D);
+                spawnBossCueParticle(viewer, center.clone().add(0.0D, 0.35D, 0.0D), accentParticleId,
+                        accentCount, 0.22D, 0.22D, 0.22D, 0.0D);
+                sendWorldBeamPacket(viewer, cueKey, chest, center,
+                        cueHue, 0.09F - (float) (0.04D * pull));
             }
             case RELEASE -> {
+                // Thrown: a short burst leaves the chest and the colour jumps
+                // to the hot end of the spell's own palette.
+                spawnBossCueParticle(viewer, center, primaryParticleId, primaryCount,
+                        0.24D, 0.12D, 0.24D, 0.02D);
                 Location releaseTip = chest.clone().add(forward.clone().multiply(0.85D));
-                sendWorldBeamPacket(viewer, "boss-cue", chest, releaseTip,
-                        0x45DAFF, 0.14F);
+                sendWorldBeamPacket(viewer, cueKey, chest, releaseTip,
+                        BossSpellVisualCompositionPolicy.impactColor(cueHue), 0.14F);
                 spawnBossCueParticle(viewer, releaseTip, primaryParticleId, Math.max(4, primaryCount / 2),
                         0.15D, 0.15D, 0.15D, 0.01D);
             }
             case IMPACT -> {
-                clearWorldVfxBeam("boss-cue");
-                spawnPatternRing(viewer, center, side, up, 0.85D, Math.min(18, primaryCount),
-                        elapsedTicks * 0.12D, Particle.END_ROD);
+                // Landed: the beam is gone and the ground answers.
+                clearWorldVfxBeam(cueKey);
                 spawnBossCueParticle(viewer, center, accentParticleId, Math.max(6, accentCount / 2),
                         0.45D, 0.12D, 0.45D, 0.0D);
+                spawnPatternRing(viewer, center, side, up, 0.85D, Math.min(18, primaryCount),
+                        elapsedTicks * 0.12D, Particle.END_ROD);
             }
         }
     }
@@ -52818,7 +52909,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 taskRegistry.owns(callbackGeneration), bossLive, officialBossDeathCommitted)) {
             return;
         }
-        clearWorldVfxBeam("boss-cue");
+        // Cue beams are keyed per cue id, so a reset has to sweep the family.
+        clearWorldVfxBeamsByPrefix("boss-cue-");
         sendBossAnimationVisualUpdate(boss, "IDLE_BREATH");
     }
 

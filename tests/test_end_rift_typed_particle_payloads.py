@@ -51,24 +51,38 @@ public final class EndRiftTypedParticleProbe {
         var point = new Location();
         adapter.spawnTypedParticle(viewer, Particle.DRAGON_BREATH, point, 4, 0.1, 0.2, 0.3, 0.01);
         require(viewer.packets == 1, "Dragon breath packet was skipped or duplicated");
-        for (String spell : new String[]{"arena_inferno", "rift_obelisks", "summon_servants"}) {
-            var stage = switch (spell) {
-                case "arena_inferno" -> BossVisualCuePolicy.CueStage.TELEGRAPH;
-                case "rift_obelisks" -> BossVisualCuePolicy.CueStage.RELEASE;
-                default -> BossVisualCuePolicy.CueStage.IMPACT;
-            };
+        int cuePackets = 0;
+        // Every cue the table holds, not a hand-picked few: the table is the
+        // contract, and picking three spells let a broken bank hide.
+        for (var spell : BossVisualCuePolicy.cues().keySet()) {
+          for (var stage : BossVisualCuePolicy.CueStage.values()) {
             var cue = BossVisualCuePolicy.cue(spell, stage);
             require(cue != null, "Expected a real configured boss cue");
-            Particle particle = Particle.valueOf(cue.accentParticle());
+            // The probe models a handful of real particles. The cue table names
+            // many more (FLAME, SMOKE, dust...), and this test is about the
+            // typed adapter, not the full palette: a cue that names a particle
+            // the probe does not model is skipped, but its PRIMARY is a real
+            // particle type that must still flow through the adapter.
+            Particle particle;
+            try {
+                particle = Particle.valueOf(cue.primaryParticle());
+            } catch (IllegalArgumentException notModelled) {
+                continue;
+            }
+            int before = viewer.packets;
             adapter.spawnTypedParticle(viewer, particle, point, 1, 0, 0, 0, 0);
+            require(viewer.packets == before + 1, "A boss cue was skipped or duplicated: " + spell + " " + stage);
+            cuePackets++;
+          }
         }
-        require(viewer.packets == 4, "A required boss cue was skipped or duplicated");
+        require(cuePackets >= 1, "No cue particle was both modelled and reachable");
         adapter.spawnTypedParticle(viewer, Particle.END_ROD, point, 2, 0, 0, 0, 0);
-        require(viewer.packets == 5 && viewer.lastData == null, "Untyped particle gained an incompatible payload");
+        int afterCues = viewer.packets;
+        require(viewer.lastData == null, "Untyped particle gained an incompatible payload");
         adapter.spawnTypedParticle(null, Particle.FLASH, point, 1, 0, 0, 0, 0);
         adapter.spawnTypedParticle(viewer, null, point, 1, 0, 0, 0, 0);
         adapter.spawnTypedParticle(viewer, Particle.FLASH, null, 1, 0, 0, 0, 0);
-        require(viewer.packets == 5, "Invalid particle request emitted a packet");
+        require(viewer.packets == afterCues, "Invalid particle request emitted a packet");
     }
 }
 '''

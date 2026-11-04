@@ -17,7 +17,7 @@ public final class BlackFogRecoverySnapshotTest {
             BlackFogRecoverySnapshot.Data original = new BlackFogRecoverySnapshot.Data(
                     "event", 4L, 1, stage, 123_456L,
                     2, 2,
-                    1, 124_000L);
+                    1, 124_000L, 1);
             Map<String, String> encoded = original.encode();
             BlackFogRecoverySnapshot.Data restored = BlackFogRecoverySnapshot.decode(encoded, "event", 4L);
             check(original.equals(restored), "restart checkpoint must preserve " + stage + " exactly");
@@ -28,7 +28,12 @@ public final class BlackFogRecoverySnapshotTest {
 
     private static void refusesWrongEventGenerationAndMalformedStage() {
         var checkpoint = new BlackFogRecoverySnapshot.Data("event", 4L, 1,
-                BlackFogRecoverySnapshot.Stage.SAFE, 123_456L, 2, 2, 0, 0L).encode();
+                BlackFogRecoverySnapshot.Stage.SAFE, 123_456L, 2, 2, 0, 0L, 1).encode();
+        var legacy = new java.util.LinkedHashMap<>(checkpoint);
+        legacy.put("wave5-fog.version", "1");
+        legacy.remove("wave5-fog.packs-spawned");
+        check(BlackFogRecoverySnapshot.decode(legacy, "event", 4L).packsSpawned() == 0,
+                "legacy checkpoints without a pack count must decode conservatively");
         expectRejected(() -> BlackFogRecoverySnapshot.decode(checkpoint, "other-event", 4L),
                 "another event must not adopt a Wave 5 checkpoint");
         expectRejected(() -> BlackFogRecoverySnapshot.decode(checkpoint, "event", 5L),

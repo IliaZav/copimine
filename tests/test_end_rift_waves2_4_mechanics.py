@@ -245,6 +245,8 @@ public final class Waves24MechanicsHarness {
                         Location reservedPhantomSpawn) {
         spawnedWaveGroups.add(group);
     }
+    void renderWaveTwoEndermanVeil(Player player) {}
+    void syncWaveTwoPrivateViewers(Player player) {}
     void renderWave4ObeliskCue(Wave4ObeliskRuntimeState state, String stage, String ability, Location mark, double radius) {}
     void spawnEventParticle(Object... values) {
         for (Player player : Bukkit.players) player.particles++;

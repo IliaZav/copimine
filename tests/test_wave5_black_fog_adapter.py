@@ -243,6 +243,9 @@ public final class BlackFogAdapterProbe {
     long generation = 4L, blackFogPhaseDeadlineMillis, currentFogZoneSetupRetryAtMillis;
     int activeWave = 5, currentFogCycle, currentFogZoneCount, currentFogZoneSide, currentFogZoneSetupAttempts;
     int waveSpawnGroupIndex = 1, waveSpawnEntityOffset, liveWaveMobCount, refillPacks;
+    int spawnLimit = Integer.MAX_VALUE;
+    final Object keyWave = new Object();
+    final Map<UUID, Entity> ownedEntities = new LinkedHashMap<>();
     // W5-004 bookkeeping: real post-fog packs spawned and the retry deadline.
     int wave5PostFogPacksSpawned;
     long wave5PreFogRefillAtMillis, wave5PostFogPackRetryAtMillis;
@@ -316,11 +319,20 @@ public final class BlackFogAdapterProbe {
     void registerOwnedEntity(Entity entity) { }
     Logger getLogger() { return Logger.getAnonymousLogger(); }
     int countLiveWaveEntitiesForWave(int wave) { return wave == 5 ? liveWaveMobCount : 0; }
+    int readInt(Entity entity, Object key, int fallback) { return 5; }
+    void removeRitualEntity(UUID id) {
+        if (ownedEntities.remove(id) != null) liveWaveMobCount--;
+    }
     void spawnWaveGroup(World world, Location location, int wave, boolean guardian,
                         boolean test, WaveMechanicsPolicy.WaveCounts group, int offset) {
         check(wave == 5 && !guardian, "pre-fog refill uses the Wave 5 normal mob roster");
         refillPacks++;
-        liveWaveMobCount += group.total();
+        int count = Math.min(spawnLimit, group.total());
+        for (int i = 0; i < count; i++) {
+            Entity entity = new Entity();
+            ownedEntities.put(entity.getUniqueId(), entity);
+        }
+        liveWaveMobCount += count;
     }
     void markBlackFogRecoveryRequired(String reason) {
         recoveryReason = reason;
@@ -409,6 +421,16 @@ public final class BlackFogAdapterProbe {
                         "the fifth pack must be ten to fifteen actors, was " + p.liveWaveMobCount);
                 check(Wave5PostFogPackPolicy.packsOwed(5, p.wave5PostFogPacksSpawned) == 4,
                         "the spawned pack resolves exactly one owed cycle");
+            }
+            case "post-fog-partial-rollback" -> {
+                p.spawnLimit = 2;
+                check(!p.spawnWaveFivePostFogPack(40_000L), "partial pack must fail");
+                check(p.ownedEntities.isEmpty() && p.liveWaveMobCount == 0,
+                        "partial pack must be removed before retry");
+                check(p.wave5PostFogPacksSpawned == 0, "partial pack must not consume its receipt");
+                p.spawnLimit = Integer.MAX_VALUE;
+                check(p.spawnWaveFivePostFogPack(50_000L), "complete retry must succeed");
+                check(p.wave5PostFogPacksSpawned == 1, "complete retry commits once");
             }
             case "three-cycles" -> {
                 // Superseded 2026-10-31 (WP-C): the wave runs exactly FIVE fog
@@ -658,7 +680,7 @@ public final class BlackFogAdapterProbe {
 
 
 @pytest.mark.parametrize("scenario", [
-    "three-cycles", "pre-fog-refill", "post-fog-pack", "setup-retry", "invalid-journal", "mark-restored-failure",
+    "three-cycles", "pre-fog-refill", "post-fog-pack", "post-fog-partial-rollback", "setup-retry", "invalid-journal", "mark-restored-failure",
     "restore-failure-does-not-advance", "invalid-original-data",
 ])
 def test_wave5_black_fog_adapter(probe, scenario):

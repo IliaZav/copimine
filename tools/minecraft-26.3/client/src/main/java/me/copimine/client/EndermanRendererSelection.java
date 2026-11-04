@@ -36,7 +36,17 @@ public final class EndermanRendererSelection {
         if (entityUuid == null || entityUuid.isBlank()) {
             return vanilla();
         }
-        if (boundBossUuid != null && !boundBossUuid.isBlank()) {
+        // The server now binds the Rift Guardian with its own visual id. Honouring
+        // that id FIRST is what makes the authored god-body render; the legacy
+        // "entity is the bound boss uuid" fallback stays for older servers.
+        if (visualId != null && "END_RIFT_GUARDIAN_V1".equals(
+                visualId.trim().toUpperCase(java.util.Locale.ROOT))
+                && textureAvailable && isValidGuardianTexture(texture)) {
+            return new Decision(Kind.GUARDIAN, texture,
+                    "END_RIFT_GUARDIAN_V1", "end_rift_guardian", "END_RIFT_GUARDIAN");
+        }
+        if (boundBossUuid != null && !boundBossUuid.isBlank()
+                && textureAvailable && isValidGuardianTexture(texture)) {
             return select(entityUuid, boundBossUuid, texture, textureAvailable);
         }
         if (visualId == null || visualId.isBlank() || !textureAvailable

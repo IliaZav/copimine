@@ -136,6 +136,8 @@ public class ArchmageFangsProbe {
         boolean assignEntity(long generation,UUID entity,int chamber){return !(tagFailure&&++assignments==2);}
     }
     final World world=new World();int checks,assignments;int blockedAt;boolean tagFailure;
+    final UUID eventId=UUID.randomUUID();
+    java.util.logging.Logger getLogger(){return java.util.logging.Logger.getLogger("ArchmageFangsProbe");}
     final long generation=7L;final Chambers realitySplitChamberController=new Chambers();
     final Admission wave7Admission=new Admission();final Set<UUID> realitySplitTrialEntityUuids=new HashSet<>();
     final Object keyTrialRole="role",keyTrialIndex="index",keyChamberId="chamber";

@@ -192,11 +192,13 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # command (client-side presentation only).
     # SUPERSEDED (2026-11-03): repinned for the Wave 5 fog presence ramp
     # (EndEventBlackFogPresenceTest), and again for the boss animation clip
-    # blending (UserEndBossAnimationBlendTest).
-    assert artifact['size'] == 13_473_841
+    # blending (UserEndBossAnimationBlendTest). Repinned again for the
+    # November 4 playtest repair pass: the Wave 2 Enderman veil overlay and the
+    # Rift Guardian visual id now render on this client.
+    assert artifact['size'] == 13_474_105
     assert artifact['sha512'] == (
-        'a863f980cced04ef8dbba8a13d25a0b3ac1231ccbf19cd747b9d11083389537f'
-        '939079007b2c5fd79912085284b7119a0d72715462e7313feac87996e6ae4c70'
+        'e2683bd044a4c658e4e00a5e20445b6a72147777133073d14f1277c877c53f75'
+        '23e6ca1614a7075b7e2519fc5d262d2f15317644a8a58e7cde8f1510fff1ddf7'
     )
 
 

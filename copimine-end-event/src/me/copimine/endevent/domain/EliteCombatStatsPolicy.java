@@ -11,7 +11,11 @@ package me.copimine.endevent.domain;
  */
 public final class EliteCombatStatsPolicy {
     public static final double HEALTH_MULTIPLIER = 3.0D;
-    public static final double ATTACK_MULTIPLIER = 1.25D;
+    // The player reported elites as "weak". A 1.25x attack on top of the same
+    // health an ordinary body carries made an elite a bigger target that hit
+    // barely harder, so it always lost the trade. The damage multiplier is now
+    // a real threat jump; the HP ratio above stays exactly 3x by contract.
+    public static final double ATTACK_MULTIPLIER = 1.75D;
     public static final double MOVEMENT_SPEED_MULTIPLIER = 1.12D;
     public static final double ARMOR_BONUS = 3.0D;
     public static final double ARMOR_TOUGHNESS_BONUS = 1.0D;

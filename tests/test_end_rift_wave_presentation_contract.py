@@ -46,4 +46,8 @@ def test_wave_mob_names_are_hidden_without_changing_objective_or_boss_labels():
 
     # The remaining visible labels belong to the existing objective anchors and
     # the explicitly out-of-scope Rift Guardian boss. Event mobs stay hidden.
-    assert visible_calls == ["entity", "boss"]
+    #
+    # "body" is the Wave 6 ritual circle: the five mages are visible from the
+    # start of the wave by explicit player decision, and the active one is the
+    # only body that changes colour -- an illegible circle was the defect.
+    assert visible_calls == ["entity", "body", "boss"]

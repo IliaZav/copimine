@@ -52,6 +52,7 @@ def target_probe(converted_probe, tmp_path_factory):
     boolean currentCollapseTargetAllowed(Entity entity,Player player){return false;}
     boolean isWaveTargetAllowed(Entity entity,Player player){return isCombatTarget(player);}
     boolean isCurrentRealitySplitTrialTarget(Mob entity,Player player){return false;}
+    Player waveOneChargeHolderTarget(Mob mob){return null;}
     UUID parseUuidOrNull(String raw){try{return UUID.fromString(raw);}catch(Exception ignored){return null;}}
 ''' + methods + r'''
     void dispatchNativeTarget(EntityTargetLivingEntityEvent event,boolean reverse){

@@ -6,15 +6,15 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-/** Proves the Echo split cuts at fifteen by default and at any size when forced. */
+/** The retired limbo threshold must never move Echo owners out of the arena. */
 public final class EchoLimboThresholdTest {
     private static int failures;
 
     public static void main(String[] args) {
         theSpecThresholdIsFifteen();
-        fromFifteenThePartyIsCutInHalf();
+        largePartiesStayInTheArena();
         tenToFourteenPlayersStayInOneArena();
-        theForcedThresholdCutsASmallParty();
+        theForcedThresholdCannotEnableLimbo();
         aOnePlayerSecondHalfIsRefused();
         theSplitIsStableForTheSameRoster();
         nobodyIsLostAndNobodyIsDuplicated();
@@ -47,21 +47,19 @@ public final class EchoLimboThresholdTest {
         }
     }
 
-    private static void fromFifteenThePartyIsCutInHalf() {
+    private static void largePartiesStayInTheArena() {
         for (int size : new int[]{15, 16, 20}) {
             var split = EchoRealmAssignmentPolicy.assign(roster(size));
             long ordinary = split.count(EchoRealmAssignmentPolicy.Realm.ORDINARY);
-            long limbo = split.count(EchoRealmAssignmentPolicy.Realm.LIMBO);
-            check("party " + size + " uses limbo", split.limboUsed());
-            check("party " + size + " differs by at most one", Math.abs(ordinary - limbo) <= 1);
-            check("party " + size + " keeps the arena larger", ordinary >= limbo);
+            check("party " + size + " does not use limbo", !split.limboUsed());
+            check("party " + size + " remains in the arena", ordinary == size);
         }
     }
 
-    private static void theForcedThresholdCutsASmallParty() {
+    private static void theForcedThresholdCannotEnableLimbo() {
         var split = EchoRealmAssignmentPolicy.assign(roster(4), 2);
-        check("forced split used", split.limboUsed());
-        check("forced split divides four", split.count(EchoRealmAssignmentPolicy.Realm.LIMBO) == 2);
+        check("forced split disabled", !split.limboUsed());
+        check("all four remain in the arena", split.count(EchoRealmAssignmentPolicy.Realm.ORDINARY) == 4);
     }
 
     private static void aOnePlayerSecondHalfIsRefused() {

@@ -9,28 +9,14 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * ECHO-002: freeze a balanced ordinary/limbo split when the Echo stage is admitted.
- *
- * <p>Every admitted participant still fights a real personal copy at the same
- * time; the split only separates what two groups of players SEE and hear, it
- * never reduces the number of copies the server runs. Up to nine participants
- * the whole party shares the ordinary region, because splitting four duels into
- * two half-empty rooms buys nothing. From fifteen participants the roster is cut
- * in half with a difference of at most one, ordinary taking the larger half.</p>
+ * Assign every admitted Echo owner to the ordinary arena.
  *
  * <p>The allocation is deterministic: the roster is ordered by UUID string, so a
  * restart recomputes the identical split and a rejoin cannot move anybody into
  * the "easier" realm.</p>
  */
 public final class EchoRealmAssignmentPolicy {
-    /**
-     * Below this party size both realms are pointless; everyone fights ordinary.
-     *
-     * <p>Raised from 10 to 15 on the user's request: at ten to fourteen the
-     * arena still reads as one fight, and cutting it in half only made both
-     * halves empty. From fifteen the crowd is genuinely cluttered, which is
-     * exactly the "каша" the split exists to prevent.</p>
-     */
+    /** Legacy diagnostic value retained for compatibility; it cannot enable limbo. */
     public static final int LIMBO_THRESHOLD = 15;
     public static final int MAX_PARTY = 20;
 
@@ -40,7 +26,10 @@ public final class EchoRealmAssignmentPolicy {
     public enum Realm {
         /** The authored arena, visible to everyone standing in it. */
         ORDINARY,
-        /** The mirrored play area where the second half fights, hidden from the first. */
+        /**
+         * Removed from the active design. Kept only so persisted snapshots from
+         * before the removal still parse; nothing may ever assign it again.
+         */
         LIMBO
     }
 
@@ -90,27 +79,19 @@ public final class EchoRealmAssignmentPolicy {
     }
 
     /**
-     * Cut the admitted roster in half at admission time.
-     *
-     * <p>The result is stable for a given roster: ordinary keeps the larger half
-     * so the authored arena is never the emptier room (ECHO-004 asks for equal
-     * affordances, not for equal head counts, and the arena is the room with the
-     * authored cover).</p>
+     * The one supported assignment now that Limbo is removed from the design:
+     * every admitted owner is placed in the ordinary arena.
      */
+    public static Split ordinaryOnly(Collection<UUID> admitted) {
+        return assign(admitted);
+    }
+
+    /** Assign all admitted owners to the arena in deterministic order. */
     public static Split assign(Collection<UUID> admitted) {
         return assign(admitted, LIMBO_THRESHOLD);
     }
 
-    /**
-     * Cut the roster at an explicit threshold.
-     *
-     * <p>Production always calls {@link #assign(Collection)} with the spec value
-     * of ten. The explicit overload exists so an operator can force the split on
-     * a small test party without shipping a second code path: the geometry,
-     * the balancing rule and the determinism are the same code, only the
-     * admission threshold moves. A threshold below 2 is refused, because a
-     * one-player "second half" is not a group.</p>
-     */
+    /** Retain the legacy threshold argument for callers; it no longer enables limbo. */
     public static Split assign(Collection<UUID> admitted, int limboThreshold) {
         if (limboThreshold < 2 || limboThreshold > MAX_PARTY) {
             throw new IllegalArgumentException("Echo limbo threshold must be in [2, " + MAX_PARTY + "]");
@@ -130,14 +111,11 @@ public final class EchoRealmAssignmentPolicy {
         }
         ordered.sort(Comparator.comparing(UUID::toString));
 
-        int limboCount = ordered.size() < limboThreshold ? 0 : ordered.size() / 2;
         List<Assignment> assignments = new ArrayList<>(ordered.size());
         for (int ordinal = 0; ordinal < ordered.size(); ordinal++) {
-            // The tail of the ordered roster goes to limbo, so the ordinary half
-            // is exactly the first (size - limboCount) owners and no seat moves
-            // when one more participant is admitted mid-stage.
-            Realm realm = ordinal < ordered.size() - limboCount ? Realm.ORDINARY : Realm.LIMBO;
-            assignments.add(new Assignment(ordered.get(ordinal), realm, ordinal));
+            // Every owner fights their own copy on the arena, regardless of
+            // roster size or the legacy diagnostic threshold override.
+            assignments.add(new Assignment(ordered.get(ordinal), Realm.ORDINARY, ordinal));
         }
         return new Split(assignments);
     }

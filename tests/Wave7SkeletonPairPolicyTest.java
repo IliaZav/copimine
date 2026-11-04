@@ -24,6 +24,7 @@ public final class Wave7SkeletonPairPolicyTest {
         aCoveringPartnerNeverCasts();
         jointAttackNeedsTheWholePair();
         jointAttackRespectsItsCooldown();
+        theFirstJointAttackMustCharge();
         aHiddenPartnerBlocksTheJointAttack();
         crossfireLinesCrossInFrontOfTheTarget();
         refusalReasonsAreReported();
@@ -105,6 +106,33 @@ public final class Wave7SkeletonPairPolicyTest {
                 Wave7SkeletonPairPolicy.orderFor(first, second,
                         Wave7SkeletonPairPolicy.jointReadiness(first, second,
                                 Wave7SkeletonPairPolicy.JOINT_COOLDOWN_TICKS, -1L)) == Order.JOINT_CROSSFIRE);
+    }
+
+    /**
+     * MEANING CHANGED: a pair that has never fired must still charge.
+     *
+     * <p>The old reading treated "no previous joint attack" as "already
+     * charged", so the first crossfire unlocked on the pair's first tick. The
+     * party met a two-archer trap before seeing either archer work, and the
+     * charge the policy documents never actually happened for the first cast.
+     * The window is now counted from the pair's first observed tick.</p>
+     */
+    private static void theFirstJointAttackMustCharge() {
+        Member first = member("a", Flank.LEFT, false, true, 0L);
+        Member second = member("b", Flank.RIGHT, false, true, 0L);
+        check("a fresh pair is not charged on its first tick",
+                !Wave7SkeletonPairPolicy.jointReadiness(first, second, 0L, -1L).ready());
+        check("a fresh pair is still charging one tick short",
+                !Wave7SkeletonPairPolicy.jointReadiness(first, second,
+                        Wave7SkeletonPairPolicy.JOINT_CHARGE_TICKS - 1L, -1L).ready());
+        check("a fresh pair is ready once the charge completes",
+                Wave7SkeletonPairPolicy.jointReadiness(first, second,
+                        Wave7SkeletonPairPolicy.JOINT_CHARGE_TICKS, -1L).ready());
+        check("the reported charge is the elapsed one",
+                Wave7SkeletonPairPolicy.jointReadiness(first, second, 30L, -1L).chargeTicks() == 30L);
+        check("refusal names the charge",
+                Wave7SkeletonPairPolicy.refusalReason(Wave7SkeletonPairPolicy.jointReadiness(
+                        first, second, 10L, -1L)).orElse("").equals("charging"));
     }
 
     private static void jointAttackRespectsItsCooldown() {

@@ -5,12 +5,13 @@ import java.util.Objects;
 /**
  * Boss statistics as a function of the admitted party, rescaled on request.
  *
- * <p>The user's rule, verbatim: "если игроков от 10 то хп босса растёт
- * пропорционально игрокам макс 5к хп и урон соответственно тоже но не
- * сильно". That replaces the old authored ladder, whose minimum was already
- * five thousand: a party of ten now meets a 5000 HP boss, every extra player
- * adds a proportional slice, and the pool is hard-capped at 5000. A smaller
- * party keeps the same floor, so the boss never becomes free.</p>
+ * <p>The user's rule, verbatim: "у босса минимум 20к хп должно быть" and,
+ * for growth, "если игроков от 10 то хп босса растёт пропорционально игрокам
+ * ... и урон соответственно тоже но не сильно". The old numbers were
+ * self-defeating: the floor and the cap were BOTH five thousand, so the pool
+ * was a constant in disguise and no party size ever changed it. The floor is
+ * now twenty thousand, the pool grows proportionally above ten players and
+ * stops at forty thousand, and every party keeps at least the floor.</p>
  *
  * <p>Damage follows health but far more gently. Scaling damage one-to-one with
  * health would turn a twenty-player raid into a one-shot arena; the damage
@@ -18,11 +19,14 @@ import java.util.Objects;
  * asks for.</p>
  */
 public final class BossScalingPolicy {
-    /** The pool stops growing here; the user's explicit ceiling. */
-    public static final double HP_CAP = 5_000.0D;
+    /** The pool stops growing here. */
+    public static final double HP_CAP = 40_000.0D;
 
-    /** The floor every party gets, independent of size. */
-    public static final double HP_FLOOR = 5_000.0D;
+    /**
+     * The floor every party gets, independent of size: the user's explicit
+     * minimum. A smaller party must never meet a weaker boss.
+     */
+    public static final double HP_FLOOR = 20_000.0D;
 
     /** Proportional growth starts here: below ten players nothing is added. */
     public static final int GROWTH_START_PLAYERS = 10;
@@ -37,7 +41,7 @@ public final class BossScalingPolicy {
      * enough that the pool reaches it at the top of the roster; it is expressed
      * per head so the curve is readable.</p>
      */
-    public static final double HP_PER_EXTRA_PLAYER = 500.0D;
+    public static final double HP_PER_EXTRA_PLAYER = 2_000.0D;
 
     /**
      * Damage never exceeds this multiple of a solo-party boss.
@@ -62,16 +66,15 @@ public final class BossScalingPolicy {
      * Boss maximum health for a party size.
      *
      * <p>Exactly {@link #HP_FLOOR} at ten players and below, then proportional
-     * growth, never above {@link #HP_CAP}. Because the floor equals the cap the
-     * pool is constant today; it is written as a curve rather than a constant so
-     * raising the cap is a one-line change and never silently reintroduces the
-     * old fifteen-thousand-health ladder.</p>
+     * growth of {@link #HP_PER_EXTRA_PLAYER} per head, never above
+     * {@link #HP_CAP}. Ten players meet twenty thousand health, twenty meet
+     * forty thousand, and neither the floor nor the cap can drift into each
+     * other the way the old five-thousand pair did.</p>
      */
     public static double maxHealthForPlayers(int players) {
         int safe = clampPlayers(players);
         double extra = Math.max(0, safe - GROWTH_START_PLAYERS) * HP_PER_EXTRA_PLAYER;
-        double scaled = HP_FLOOR + extra * (HP_CAP / Math.max(1.0D,
-                (MAX_PLAYERS - GROWTH_START_PLAYERS) * HP_PER_EXTRA_PLAYER));
+        double scaled = HP_FLOOR + extra;
         return Math.min(HP_CAP, Math.max(HP_FLOOR, scaled));
     }
 
@@ -101,8 +104,8 @@ public final class BossScalingPolicy {
     /** Clamp a live health value into a pool, used by every damage path. */
     public static double clampCurrent(double health, double maxHealth) {
         // A broken or negative pool must fall back to the AUTHORED ceiling, not
-        // to the floor: falling back to five thousand would let a corrupted
-        // read silently authorise more health than the cap allows.
+        // to the floor: a corrupted read must never authorise more health than
+        // the cap allows.
         double safeMax = Double.isFinite(maxHealth) && maxHealth > 0.0D ? maxHealth : HP_CAP;
         double safeHealth = Double.isFinite(health) ? health : 0.0D;
         return Math.max(0.0D, Math.min(safeMax, safeHealth));

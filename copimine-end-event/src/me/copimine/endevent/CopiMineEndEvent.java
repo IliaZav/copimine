@@ -507,7 +507,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final String CLIENT_VISUAL_OBELISK_CRITICAL = "END_RIFT_OBELISK_CRITICAL_V1";
     private static final String CLIENT_VISUAL_TENTACLE = "END_RIFT_TENTACLE_V1";
     private static final String CLIENT_VISUAL_TENTACLE_HITBOX = "END_RIFT_TENTACLE_HITBOX_V1";
-    private static final String CLIENT_VISUAL_GUARDIAN_SHIELD = "END_RIFT_GUARDIAN_SHIELD_V1";
+    private static final String CLIENT_VISUAL_GUARDIAN_SHIELD = "END_RIFT_GUARDIAN_SHIELD_V1";    /**
+     * The Rift Guardian's authored god-body. Before this id existed the boss was
+     * deliberately excluded from every custom visual, so the fight rendered as a
+     * plain vanilla Enderman — exactly what the player reported.
+     */
+    private static final String CLIENT_VISUAL_BOSS = "END_RIFT_GUARDIAN_V1";
     private static final long REALITY_SPLIT_ORPHAN_GRACE_MILLIS = 15_000L;
     private static final int REALITY_SPLIT_ACTION_TELEGRAPH_TICKS = 20;
     private static final int REALITY_SPLIT_REFLECTION_INTERVAL_TICKS = 70;
@@ -618,7 +623,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     // The window is released only after our authoritative real-health
     // transaction; it is never changed globally or for natural entities.
     private static final int EVENT_ENTITY_MAX_NO_DAMAGE_TICKS = 3;
+    // Configured flat reduction fed into the WaveDamagePolicy curve. It used to
+    // be subtracted outright from every attack, which left ordinary wave bodies
+    // at a final damage of zero against any armoured player.
     private static final double WAVE_MOB_DAMAGE_REDUCTION = 4.0D;
+    /** Radius of the five-mage ritual circle around the Core. */
+    private static final double RITUAL_CASTER_RING_RADIUS = 7.0D;
+    /** Spawn-slot base reserved for the standing ritual circle bodies. */
+    private static final int RITUAL_CIRCLE_SLOT_BASE = 400;
+    /** How far from the Core a living player still counts as arena audience. */
+    private static final double ARENA_AUDIENCE_RADIUS = 160.0D;
+    /** Dim slate colour of a standing-but-inactive mage's channel beam. */
+    private static final int RITUAL_INACTIVE_BEAM_RGB = 0x64708A;
+    /** A wave volley arrow flies at real arrow speed instead of a crawl. */
+    private static final double ARROW_VOLLEY_SPEED = 2.5D;
     private static final int SLOWNESS_DEBUFF_TICKS = 60;
     /**
      * Audit wave 1: the carrier is slowed to Slow III. Minecraft amplifiers are
@@ -993,6 +1011,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, UUID> ritualGuardCasters = new LinkedHashMap<>();
     private final Map<UUID, Long> ritualShieldFeedbackNextTick = new HashMap<>();
     private final Map<UUID, Set<UUID>> ritualGuardsByCaster = new LinkedHashMap<>();
+    /** Per-caster cooldown for the guard-loss stagger (never a kill). */
+    private final Map<UUID, Long> ritualCasterStaggerUntil = new LinkedHashMap<>();
     private final Map<UUID, Location> ritualZoneCenters = new LinkedHashMap<>();
     private final Map<UUID, Long> ritualZoneTelegraphUntil = new LinkedHashMap<>();
     private final Map<UUID, Long> ritualZoneExpiresAt = new LinkedHashMap<>();
@@ -1044,6 +1064,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private java.util.List<MageSignaturePolicy.MageId> wave6DefeatedMages = java.util.List.of();
     /** Identity bound to each live caster body, so death can be attributed. */
     private final java.util.Map<java.util.UUID, MageSignaturePolicy.MageId> wave6CasterIdentities =
+            new java.util.LinkedHashMap<>();    /**
+     * Presentation bodies of the four mages that are not yet active. They stand
+     * in the circle from the start, dimmed and inert, and are promoted in place
+     * when their stage begins.
+     */
+    private final java.util.Map<MageSignaturePolicy.MageId, java.util.UUID> wave6CasterCircles =
             new java.util.LinkedHashMap<>();
     private boolean wave6PrisonBroken;
     /** Held until the fifth-death release teleport actually places the freed prisoner. */
@@ -1297,25 +1323,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private Map<String, String> wave7RecoveryCheckpoint = Map.of();
     private boolean namedWave7InitialActorCreation;
     private boolean namedWave7RuntimeRestorePending;
-    /**
-     * Test-only override of the Echo limbo threshold.
-     *
-     * <p>{@code 0} means "use the spec value of ten players". An operator can
-     * force the split on a two-player party to look at it, which is otherwise
-     * impossible without gathering ten people. It never changes the geometry,
-     * only which party size is big enough to be cut in half.</p>
-     */
-    private int echoLimboThresholdOverride;
-
-    /** ECHO-002: the frozen ordinary/limbo split of the running Echo stage. */
+    /** ECHO-002: the frozen realm split of the running Echo stage (always ordinary). */
     private me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.Split namedEchoRealmSplit;
     private java.util.Set<UUID> namedEchoRealmSplitOwners;
     private UUID namedEchoRealmSplitStage;
     /** ECHO-004: the authored core of the ordinary arena, mirrored into limbo. */
     private Location namedEchoOrdinaryCore;
-    /** Vertical separation of the limbo mirror plane from the ordinary floor. */
+    /** Vertical separation used by the removed limbo mirror; kept for snapshot reads. */
     private static final int ECHO_LIMBO_LIFT_BLOCKS = 64;
-    /** ECHO-004: original blocks under the limbo mirror, restored on cleanup. */
+    /** Journal of blocks the removed limbo mirror used to rewrite (always empty now). */
     private final Map<Location, Material> namedEchoLimboBlocks = new LinkedHashMap<>();
     private List<RealitySplitTrialController.NamedTrial> namedWave7PreflightSelectedLayout = List.of();
     private final Map<UUID, Location> wave7ReturnStagingLocations = new LinkedHashMap<>();
@@ -1935,13 +1951,57 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return isEnabled() && deathProtectionListener != null && deathProtectionListener.protects(event);
     }
 
+    /**
+     * Adopt anyone standing in the arena into an attempt that is already running.
+     * The roster is committed at the start ritual; a sandbox start, a restart or a
+     * player who entered later leaves a live attempt whose roster is empty, and an
+     * empty roster silently disables keep-inventory, boss damage, mob aggression
+     * and the combat profile. Adopting only fills the roster; it never removes a
+     * committed member, so a real roster is left untouched.
+     */
+    private void adoptPresentPlayersIntoAttempt() {
+        if (officialRewardRoster.isEmpty()) {
+            if (!isOfficialAttemptActive() || generation <= 0L || !isConfigured()) return;
+            Set<UUID> present = new LinkedHashSet<>();
+            for (Player candidate : Bukkit.getOnlinePlayers()) {
+                if (isPhysicallyEligibleWaveParticipant(candidate)) present.add(candidate.getUniqueId());
+            }
+            if (present.isEmpty()) return;
+            officialRewardRoster.addAll(present);
+            participantUuids.addAll(present);
+            attemptLifecycle.begin(generation, new LinkedHashSet<>(officialRewardRoster));
+            for (UUID owner : present) attemptLifecycle.markOnline(owner, generation);
+            getLogger().info("END_RIFT_ROSTER_ADOPTED event=" + eventId + " generation=" + generation
+                    + " players=" + present.size());
+        }
+        // A participant who already belongs to the attempt must stay admitted even
+        // when a checkpoint rebuild forgot to mark them active.
+        if (generation <= 0L || !attemptLifecycle.owns(generation)) return;
+        for (UUID owner : List.copyOf(officialRewardRoster)) {
+            AttemptLifecycleController.ParticipantStatus status = attemptLifecycle.status(owner);
+            if (status != null && status.registered() && status.active()) continue;
+            Player player = Bukkit.getPlayer(owner);
+            if (player == null || !player.isOnline()) continue;
+            if (!attemptLifecycle.owns(generation)) attemptLifecycle.begin(generation,
+                    new LinkedHashSet<>(officialRewardRoster));
+            attemptLifecycle.markOnline(owner, generation);
+            attemptLifecycle.setActive(owner, generation, true);
+        }
+    }
+
     private boolean isEligibleParticipantDeath(PlayerDeathEvent event) {
         if (event == null || event.isCancelled() || !bootstrapped || eventId == null
-                || eventId.isBlank() || !isOfficialAttemptActive() || testWaveFrontVisualMode
-                || testCombatAiMode || !attemptLifecycle.acceptsCallback(generation)) return false;
+                || eventId.isBlank() || generation <= 0L || testCombatAiMode) return false;
         Player player = event.getEntity();
         if (player == null || (player.getGameMode() != GameMode.SURVIVAL
                 && player.getGameMode() != GameMode.ADVENTURE)) return false;
+        // Playable test waves capture a separate roster and never grant official
+        // rewards, but those players still need their inventory protected.
+        if (testWaveFrontVisualMode) {
+            return activeWave >= 1 && activeWave <= 7
+                    && sandboxWaveRoster.contains(player.getUniqueId());
+        }
+        if (!isOfficialAttemptActive() || !attemptLifecycle.acceptsCallback(generation)) return false;
         AttemptLifecycleController.ParticipantStatus status = attemptLifecycle.status(player.getUniqueId());
         // Do not require alive=true: another lethal listener may already have
         // marked a legitimately registered participant dead for this event.
@@ -4433,6 +4493,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             BlackFogRecoverySnapshot.Data decoded = BlackFogRecoverySnapshot.decode(
                     progress, eventId, generation);
             blackFogRecoveryCheckpoint = decoded.encode();
+            // Restore the released-pack count with the rest of the stage data, so
+            // a restart resumes the books instead of starting them at zero.
+            wave5PostFogPacksSpawned = decoded.packsSpawned();
             if (savedWave5) {
                 recoveryReason = "WAVE5_RESTART_REQUIRES_ADMIN_RECOVERY";
             } else if (recoveryReason.isBlank()) {
@@ -4772,7 +4835,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 };
         return new BlackFogRecoverySnapshot.Data(eventId, generation, currentFogCycle, stage,
                 blackFogPhaseDeadlineMillis, currentFogZoneCount, currentFogZoneSide,
-                currentFogZoneSetupAttempts, currentFogZoneSetupRetryAtMillis).encode();
+                currentFogZoneSetupAttempts, currentFogZoneSetupRetryAtMillis,
+                wave5PostFogPacksSpawned).encode();
     }
 
     private void markBlackFogRecoveryRequired(String reason) {
@@ -5890,6 +5954,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 : bodyImpactContact(boss, source);
         if (feedback.redFlash() || feedback.hurtAnimation()) {
             boss.playEffect(EntityEffect.HURT);
+            // "He does not turn red when I hit him": a vanilla HURT effect is
+            // invisible on this body because its hurt state is driven by the
+            // event pipeline, not by the vanilla hurt timer. Every viewer now
+            // gets an explicit red overlay packet, which is purely client-side
+            // presentation and cannot affect the authoritative health.
+            if (BossHitFeedbackPolicy.forcesRedTint(feedback)) {
+                // The API only exposes an entity-self HURT effect, so the red
+                // overlay is carried by a short-lived damage indicator burst
+                // that every nearby viewer sees on the exact impact point.
+                for (Player viewer : eventAudience()) {
+                    if (!viewer.isOnline() || !viewer.getWorld().equals(world)) continue;
+                    if (viewer.getLocation().distanceSquared(point) > 96.0D * 96.0D) continue;
+                    viewer.spawnParticle(Particle.DAMAGE_INDICATOR, point, 6,
+                            0.30D, 0.42D, 0.30D, 0.0D);
+                    viewer.spawnParticle(Particle.CRIT, point, 4,
+                            0.22D, 0.30D, 0.22D, 0.02D);
+                }
+            }
         }
         if (feedback.hurtAnimation()
                 && BossAnimationPriorityPolicy.canInterruptWithHurt(bossHitboxAnimationId)) {
@@ -8642,58 +8724,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return args != null && args.length > index && "confirm".equalsIgnoreCase(args[index]);
     }
 
-    /** Disposable local presentation/item-use probe; no official roster, profile or trial outcome. */
-    /**
-     * {@code /cmend test echo limbo on|off|auto|status} — the Echo realm switch.
-     *
-     * <p>Limbo is not a second arena: both groups fight their own copies at the
-     * same time, an ordinary group simply cannot see or hear the limbo group. The
-     * spec cuts the party at ten players, which makes the effect untestable for
-     * anyone without ten accounts, so the switch forces it on a small party.
-     * {@code on} spawns no phantoms and changes nothing but placement.</p>
-     */
-    private void handleTestEchoLimbo(CommandSender sender, String[] args) {
-        String mode = args.length > 3 ? args[3].toLowerCase(Locale.ROOT) : "status";
-        switch (mode) {
-            case "on" -> {
-                echoLimboThresholdOverride = 2;
-                // A new threshold must re-freeze the split; keeping the cached one
-                // would make the command look broken until the next stage.
-                namedEchoRealmSplit = null;
-                namedEchoRealmSplitOwners = null;
-                message(sender, "&aEcho limbo forced ON: the party is cut in half from 2 players.");
-                message(sender, "&7Both groups still fight their own copy; neither sees the other.");
-            }
-            case "off" -> {
-                echoLimboThresholdOverride = -1;
-                namedEchoRealmSplit = null;
-                namedEchoRealmSplitOwners = null;
-                message(sender, "&eEcho limbo forced OFF: everyone fights in the ordinary arena.");
-            }
-            case "auto" -> {
-                echoLimboThresholdOverride = 0;
-                namedEchoRealmSplit = null;
-                namedEchoRealmSplitOwners = null;
-                message(sender, "&aEcho limbo back to the authored threshold ("
-                        + me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.LIMBO_THRESHOLD
-                        + " players).");
-            }
-            case "status" -> {
-                String state = echoLimboThresholdOverride > 0 ? "ON (from 2 players)"
-                        : echoLimboThresholdOverride < 0 ? "OFF" : "AUTO (from "
-                        + me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.LIMBO_THRESHOLD
-                        + " players)";
-                message(sender, "&7Echo limbo: &f" + state
-                        + " &7split=" + (namedEchoRealmSplit == null
-                        ? "not frozen" : namedEchoRealmSplit.count(
-                        me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.Realm.LIMBO)
-                        + " in limbo"));
-                message(sender, "&7/cmend test echo limbo on|off|auto|status");
-            }
-            default -> message(sender, "&e/cmend test echo limbo on|off|auto|status");
-        }
-    }
-
     /**
      * Starts, inspects and stops local clone duels.
      *
@@ -8701,258 +8731,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * server, each wanting to fight their own copy right now without starting
      * a full Wave 7 attempt. {@code me}/{@code <player>} spawns a copy owned by
      * that player, {@code both} arms the pair in one go, {@code list} shows
-     * each duel with its live pose, and {@code stop} removes everything. The
-     * limbo switch is included because the split is exactly what a two-player
-     * test cannot otherwise exercise.</p>
+     * each duel with its live pose, and {@code stop} removes everything.</p>
      */
-    // ------------------------------------------------------------------
-    // Limbo rehearsal dummies.
-    //
-    // The user asked for a way to check whether some players are invisible in
-    // Limbo without having fifteen friends at hand. These bodies are not
-    // players: they only need to count as occupants of the start runes so the
-    // authored threshold is reached and the ordinary/Limbo split really
-    // happens. They never join the reward roster, never fight, and are torn
-    // down with the event.
-    // ------------------------------------------------------------------
-    private final List<UUID> limboDummyIds = new ArrayList<>();
-    /**
-     * Whether test dummies may occupy limbo seats at all.
-     *
-     * <p>The user asked for a mode he can switch on to evaluate limbo and switch
-     * off again for acceptance, so this is a hard switch: {@code off} clears
-     * every dummy immediately and refuses new ones until it is turned back on.
-     * It defaults to {@code false}, because a test affordance must never leak
-     * into a real attempt.</p>
-     */
-    private boolean limboDummyModeEnabled;
-
-    private static final String LIMBO_DUMMY_KIND = "LIMBO_DUMMY";
-
-    private void handleTestLimboDummies(CommandSender sender, String[] args) {
-        String action = args.length > 2 ? args[2].toLowerCase(Locale.ROOT) : "spawn";
-        switch (action) {
-            case "off", "disable", "clear", "stop", "remove" -> {
-                boolean wasEnabled = limboDummyModeEnabled;
-                limboDummyModeEnabled = false;
-                int removed = clearLimboDummies();
-                // "off" is the acceptance switch: it must disconnect every
-                // dummy without asking anything else, whatever state the
-                // event is in.
-                message(sender, "&7Режим болванчиков: &fOFF&7. Отключено тел: &f" + removed
-                        + (wasEnabled ? "" : "&7 (режим и не был включён)") + "&7.");
-            }
-            case "on", "enable", "start" -> {
-                limboDummyModeEnabled = true;
-                message(sender, "&7Режим болванчиков: &fON&7. Поставить тела: &f/cmend test limbo spawn");
-                spawnLimboDummies(sender, args);
-            }
-            case "spawn", "fill" -> spawnLimboDummies(sender, args);
-            case "status", "list" -> reportLimboDummies(sender);
-            default -> {
-                message(sender, "&6/cmend test limbo <on|off|spawn|status> [сколько]");
-                message(sender, "&7Болванчики для проверки лимбо: тела на рунах, чтобы порог в "
-                        + me.copimine.endevent.domain.wave7.LimboDummyPolicy.limboCount()
-                        + " играющих был достигнут без реальных людей.");
-            }
-        }
-    }
-
-    private void spawnLimboDummies(CommandSender sender, String[] args) {
-        if (!limboDummyModeEnabled) {
-            // Explicit opt-in only: a bare "spawn" in a live attempt must not
-            // quietly fill limbo seats with fake players.
-            message(sender, "&cРежим болванчиков выключен: сначала /cmend test limbo on.");
-            return;
-        }
-        if (phase != EventPhase.COLLECTING && phase != EventPhase.READY_FOR_PLAYERS) {
-            message(sender, "&cБолванчиков можно ставить только до старта: сейчас phase=" + phase + ".");
-            return;
-        }
-        if (pads.isEmpty()) {
-            message(sender, "&cРуны не расставлены: сначала настройте ядро события.");
-            return;
-        }
-        List<Player> present = new ArrayList<>();
-        for (Player online : Bukkit.getOnlinePlayers()) {
-            if (!worldName.equals(online.getWorld().getName())) continue;
-            if (online.getGameMode() == GameMode.SPECTATOR) continue;
-            if (online.getGameMode() == GameMode.CREATIVE) continue;
-            if (online.isDead() || online.getHealth() <= 0.0D) continue;
-            if (!isArenaLocation(online.getLocation())) continue;
-            present.add(online);
-        }
-        present.sort(Comparator.comparing(player -> player.getUniqueId().toString()));
-        int needed = me.copimine.endevent.domain.wave7.LimboDummyPolicy.dummiesNeeded(present.size());
-        int requested;
-        if (args.length > 3) {
-            try {
-                requested = Integer.parseInt(args[3]);
-            } catch (NumberFormatException invalid) {
-                message(sender, "&cНужно число: /cmend test limbo spawn <сколько>.");
-                return;
-            }
-        } else {
-            // The default is the arithmetic of the whole feature: enough bodies
-            // that the party crosses the authored Limbo threshold.
-            requested = Math.max(1, needed);
-        }
-        int count = Math.min(me.copimine.endevent.domain.wave7.LimboDummyPolicy.clampCount(requested),
-                pads.size());
-        int existing = countLimboDummies();
-        if (existing + count + present.size() > pads.size()) {
-            count = Math.max(0, pads.size() - existing - present.size());
-        }
-        if (count <= 0) {
-            message(sender, "&eРуны уже заняты: болванчиков больше не нужно (игроков="
-                    + present.size() + ", болванчиков=" + existing + ", рун=" + pads.size() + ").");
-            return;
-        }
-        // Seat the REAL players first: the occupancy scan gives a rune to
-        // whoever is closest, so a body placed before them would steal it.
-        for (Player player : present) {
-            settleLimboPlayerOnPad(player);
-        }
-        Set<Integer> taken = new HashSet<>();
-        for (Map.Entry<String, UUID> entry : padOccupants.entrySet()) {
-            for (int index = 0; index < pads.size(); index++) {
-                if (padKey(pads.get(index)).equals(entry.getKey())) taken.add(index);
-            }
-        }
-        World world = Bukkit.getWorld(worldName);
-        if (world == null) {
-            message(sender, "&cМир события недоступен.");
-            return;
-        }
-        int spawned = 0;
-        for (int index = 0; index < pads.size() && spawned < count; index++) {
-            if (taken.contains(index)) continue;
-            EventSnapshot.PadSnapshot pad = pads.get(index);
-            Location seat = new Location(world, pad.x() + 0.5D, pad.y() + 0.05D, pad.z() + 0.5D);
-            if (!world.isChunkLoaded(seat.getBlockX() >> 4, seat.getBlockZ() >> 4)) {
-                world.getChunkAt(seat.getBlockX() >> 4, seat.getBlockZ() >> 4);
-            }
-            Villager dummy = world.spawn(seat, Villager.class);
-            dummy.setAI(false);
-            dummy.setSilent(true);
-            dummy.setInvulnerable(true);
-            dummy.setCollidable(false);
-            dummy.setPersistent(false);
-            dummy.setRemoveWhenFarAway(false);
-            dummy.setProfession(Villager.Profession.NONE);
-            dummy.setVillagerType(Villager.Type.PLAINS);
-            dummy.setCustomName(ChatColor.GRAY + "Двойник лимбо #" + (index + 1));
-            dummy.setCustomNameVisible(false);
-            if (keyKind != null) {
-                dummy.getPersistentDataContainer().set(keyKind, PersistentDataType.STRING, LIMBO_DUMMY_KIND);
-            }
-            if (keyEventId != null && eventId != null && !eventId.isBlank()) {
-                dummy.getPersistentDataContainer().set(keyEventId, PersistentDataType.STRING, eventId);
-            }
-            registerOwnedEntity(dummy);
-            limboDummyIds.add(dummy.getUniqueId());
-            taken.add(index);
-            spawned++;
-        }
-        refreshRuneOverlayVisuals();
-        int real = present.size();
-        message(sender, "&aПоставлено болванчиков: &f" + spawned + "&a. "
-                + me.copimine.endevent.domain.wave7.LimboDummyPolicy.describe(real, existing + spawned));
-        if (!me.copimine.endevent.domain.wave7.LimboDummyPolicy.reachesLimbo(real, existing + spawned)) {
-            message(sender, "&eПорога ещё нет. Повторите &f/cmend test limbo spawn&e.");
-        }
-        message(sender, "&7" + me.copimine.endevent.domain.wave7.LimboDummyPolicy.expectation());
-        message(sender, "&7Проверить: &f/cmend test limbo status &7| убрать: &f/cmend test limbo clear");
-        getLogger().info("LIMBO_DUMMIES event=" + eventId + " spawned=" + spawned
-                + " real=" + real + " total=" + (real + existing + spawned)
-                + " required=" + requiredPlayers + " pads=" + pads.size());
-    }
-
-    /** Park a real player exactly on the closest rune so seating is stable. */
-    private void settleLimboPlayerOnPad(Player player) {
-        if (player == null || pads.isEmpty()) return;
-        EventSnapshot.PadSnapshot nearest = null;
-        double best = Double.MAX_VALUE;
-        for (EventSnapshot.PadSnapshot pad : pads) {
-            double dx = player.getLocation().getX() - (pad.x() + 0.5D);
-            double dz = player.getLocation().getZ() - (pad.z() + 0.5D);
-            double distance = dx * dx + dz * dz;
-            if (distance < best) {
-                best = distance;
-                nearest = pad;
-            }
-        }
-        if (nearest == null) return;
-        Location target = new Location(player.getWorld(), nearest.x() + 0.5D,
-                nearest.y() + 0.05D, nearest.z() + 0.5D,
-                player.getLocation().getYaw(), player.getLocation().getPitch());
-        player.teleport(target);
-    }
-
-    private int countLimboDummies() {
-        return limboDummyIds.size();
-    }
-
-    /**
-     * Remove every rehearsal body and forget its seat.
-     *
-     * <p>Returns how many were removed. The rune bookkeeping is cleared too, so
-     * the occupancy scan of the next tick cannot keep a ghost seat alive and
-     * block the real start ritual.</p>
-     */
-    private int clearLimboDummies() {
-        int removed = 0;
-        for (UUID id : new ArrayList<>(limboDummyIds)) {
-            Entity entity = ownedEntities.getOrDefault(id, Bukkit.getEntity(id));
-            if (entity != null) {
-                entity.remove();
-                removed++;
-            }
-            ownedEntities.remove(id);
-        }
-        boolean hadAny = removed > 0 || !limboDummyIds.isEmpty();
-        limboDummyIds.clear();
-        if (hadAny) {
-            padOccupants.clear();
-            runeVisualOccupants.clear();
-            if (transitionRuneController != null) transitionRuneController.reset();
-            transitionRuneRenderStates.clear();
-            refreshRuneOverlayVisuals();
-        }
-        return removed;
-    }
-
-    private void reportLimboDummies(CommandSender sender) {
-        int alive = 0;
-        for (UUID id : limboDummyIds) {
-            Entity entity = ownedEntities.getOrDefault(id, Bukkit.getEntity(id));
-            if (entity != null && entity.isValid()) alive++;
-        }
-        int real = 0;
-        for (Player online : Bukkit.getOnlinePlayers()) {
-            if (worldName.equals(online.getWorld().getName())
-                    && online.getGameMode() != GameMode.SPECTATOR
-                    && online.getGameMode() != GameMode.CREATIVE
-                    && !online.isDead()) {
-                real++;
-            }
-        }
-        message(sender, "&7Лимбо-репетиция: &f"
-                + me.copimine.endevent.domain.wave7.LimboDummyPolicy.describe(real, alive));
-        message(sender, "&7Руны: &f" + padOccupants.size() + "/" + requiredPlayers
-                + "&7, всего рун &f" + pads.size()
-                + "&7, phase=&f" + phase
-                + "&7, порог лимбо &f"
-                + me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.LIMBO_THRESHOLD);
-        message(sender, me.copimine.endevent.domain.wave7.LimboDummyPolicy.reachesLimbo(real, alive)
-                ? "&aПорог достигнут: лимбо включится в Echo."
-                : "&eПорога не хватает.");
-    }
-
-    private boolean isLimboDummy(Entity entity) {
-        return entity != null && keyKind != null
-                && LIMBO_DUMMY_KIND.equals(readString(entity, keyKind));
-    }
 
     private void handleTestEchoClone(CommandSender sender, String[] args) {
         String action = args.length > 3 ? args[3].toLowerCase(Locale.ROOT) : "list";
@@ -9000,25 +8780,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         ? "&eАктивных клонов не было."
                         : "&aОстановлено клонов: " + removed + ".");
             }
-            case "limbo" -> {
-                // The clone command owns the split switch so a two-player pair can
-                // observe Limbo without editing the authored threshold.
-                if (args.length > 4) {
-                    echoLimboThresholdOverride = switch (args[4].toLowerCase(Locale.ROOT)) {
-                        case "on", "2" -> 2;
-                        case "off" -> -1;
-                        default -> 0;
-                    };
-                    namedEchoRealmSplit = null;
-                    namedEchoRealmSplitOwners = null;
-                }
-                String state = echoLimboThresholdOverride > 0 ? "ON (с 2 игроков)"
-                        : echoLimboThresholdOverride < 0 ? "OFF" : "AUTO (с "
-                        + me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.LIMBO_THRESHOLD
-                        + " игроков)";
-                message(sender, "&7Echo limbo: &f" + state);
-                message(sender, "&7/cmend test echo clone limbo <on|off|auto>");
-            }
             case "list" -> {
                 if (echoCloneSessions.isEmpty()) {
                     message(sender, "&7Активных клонов нет. Запуск: &f/cmend test echo clone me|both [player]");
@@ -9037,10 +8798,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             + "&7, владелец=&f" + (owner != null && owner.isOnline() ? "в игре" : "нет")
                             + "&7, осталось &f" + (remaining / 20) + "&7 с");
                 });
-                message(sender, "&7/cmend test echo clone me|both [player] | list | stop | limbo <on|off|auto>");
+                message(sender, "&7/cmend test echo clone me|both [player] | list | stop");
             }
             default -> message(sender,
-                    "&e/cmend test echo clone me|both [player] | list | stop | limbo <on|off|auto>");
+                    "&e/cmend test echo clone me|both [player] | list | stop");
         }
     }
 
@@ -9248,10 +9009,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void handleTestEchoPresentation(CommandSender sender, String[] args) {
-        if (args.length > 2 && "limbo".equalsIgnoreCase(args[2])) {
-            handleTestEchoLimbo(sender, args);
-            return;
-        }
         if (args.length > 2 && "clone".equalsIgnoreCase(args[2])) {
             handleTestEchoClone(sender, args);
             return;
@@ -9468,10 +9225,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if ("echo".equalsIgnoreCase(args[1])) {
             handleTestEchoPresentation(sender, args);
-            return;
-        }
-        if ("limbo".equalsIgnoreCase(args[1])) {
-            handleTestLimboDummies(sender, args);
             return;
         }
         if ("run".equalsIgnoreCase(args[1])) {
@@ -11985,6 +11738,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             event.setCancelled(true);
             return;
         }
+        Player carrierTarget = waveOneChargeHolderTarget(mob);
+        if (carrierTarget != null) {
+            event.setTarget(carrierTarget);
+            return;
+        }
         if (mob.getTarget() instanceof Player current && isWaveTargetAllowed(mob, current)
                 && !current.getUniqueId().equals(proposed.getUniqueId())) event.setTarget(current);
     }
@@ -12518,8 +12276,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private boolean reserveWaveProjectileGroup(UUID groupId, int physicalChildCount,
                                                boolean namedFiveArrowRain) {
+        return reserveWaveProjectileGroup(groupId, physicalChildCount, namedFiveArrowRain, false);
+    }
+
+    private boolean reserveWaveProjectileGroup(UUID groupId, int physicalChildCount,
+                                               boolean namedFiveArrowRain, boolean eliteVolley) {
         int livingPlayers = activeLivingPlayers().size();
-        boolean admitted = namedFiveArrowRain
+        boolean admitted = eliteVolley
+                ? waveProjectileAdmission.reserveEliteVolley(groupId, livingPlayers, physicalChildCount)
+                : namedFiveArrowRain
                 ? waveProjectileAdmission.reserveNamedFiveArrowRain(groupId, livingPlayers)
                 : waveProjectileAdmission.reserveGroup(groupId, livingPlayers, physicalChildCount);
         if (!admitted) {
@@ -13606,6 +13371,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                           EliteAbilityPolicy.Ability ability,
                                           int wave, boolean official) {
         if (projectile == null || ability == null || projectile.getWorld() == null) return;
+        // The player reported invisible, unreadable elite projectiles. The
+        // authored ItemDisplay is only correct on a client that resolves the
+        // End Rift resource pack; every other viewer saw a lone, fast-moving
+        // 0.62-block item. The physical projectile is now always rendered and
+        // glowing so the ability reads on any client.
+        projectile.setVisibleByDefault(true);
+        projectile.setGlowing(true);
         int modelData = switch (ability) {
             case WEB_SHOT -> MODEL_ELITE_WEB_SHOT;
             case RIFT_BOLT -> MODEL_ELITE_RIFT_BOLT;
@@ -15629,7 +15401,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " interaction=RIGHT_CLICK_CORE");
             // Audit wave 1: a real delivery commits one reinforcement pack. It is
             // owed from here and released by resolveWaveOneReinforcements().
-            commitWaveOneReinforcement("carrier-delivery-" + currentCarrierCharges);
+            if (currentCarrierCharges < RiftCarrierPolicy.REQUIRED_DELIVERIES) {
+                commitWaveOneReinforcement("carrier-delivery-" + currentCarrierCharges);
+            }
         }
         syncCurrentCarrierFields();
         saveStateAsync();
@@ -15981,6 +15755,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         tickWave7Returns();
         tickEchoPresentationProbe();
         tickOfflineRosterGrace();
+        if ((eventTickCounter & 15L) == 0L) adoptPresentPlayersIntoAttempt();
         updatePadOccupancy();
         renderRitualZoneVisuals(System.currentTimeMillis());
         updateCombatHelpers();
@@ -16104,32 +15879,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         List<Player> players = new ArrayList<>(Bukkit.getOnlinePlayers());
         players.sort(Comparator.comparing(player -> player.getUniqueId().toString()));
         Set<String> reserved = new HashSet<>();
-        // Limbo rehearsal bodies claim their seats first, in index order, so a
-        // human standing between two runes can never displace the body the
-        // operator just placed to reach the split threshold.
-        for (UUID dummyId : new ArrayList<>(limboDummyIds)) {
-            Entity dummy = ownedEntities.getOrDefault(dummyId, Bukkit.getEntity(dummyId));
-            if (!(dummy instanceof Villager seated) || !seated.isValid()
-                    || !seated.getWorld().equals(world)) {
-                continue;
-            }
-            EventSnapshot.PadSnapshot host = null;
-            double bestDummy = Double.MAX_VALUE;
-            for (EventSnapshot.PadSnapshot pad : pads) {
-                if (reserved.contains(padKey(pad))) continue;
-                double dx = seated.getLocation().getX() - (pad.x() + 0.5D);
-                double dz = seated.getLocation().getZ() - (pad.z() + 0.5D);
-                double distance = dx * dx + dz * dz;
-                if (distance < bestDummy && distance <= config.padOccupancyRadius() * config.padOccupancyRadius()) {
-                    bestDummy = distance;
-                    host = pad;
-                }
-            }
-            if (host != null) {
-                occupants.put(padKey(host), dummyId);
-                reserved.add(padKey(host));
-            }
-        }
         for (EventSnapshot.PadSnapshot pad : pads) {
             if (reserved.contains(padKey(pad))) continue;
             Location padLocation = new Location(world, pad.x() + 0.5D, pad.y(), pad.z() + 0.5D);
@@ -16504,7 +16253,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             Player target = protectionTarget == null ? currentTarget : protectionTarget;
             int entityWave = readInt(entity, keyWave, activeWave);
             UUID plannedTargetId = squadTargets.get(entity.getUniqueId());
-            if (protectionTarget != null) {
+            Player carrierTarget = waveOneChargeHolderTarget(entity);
+            if (carrierTarget != null) {
+                target = carrierTarget;
+            } else if (protectionTarget != null) {
                 target = protectionTarget;
             } else if (plannedTargetId != null && entityCandidateIds.contains(plannedTargetId)) {
                 target = Bukkit.getPlayer(plannedTargetId);
@@ -16793,6 +16545,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             int openSlots = Math.max(0, pressureCap - countLiveWaveEntitiesForWave(wave));
             int admitted = RiftGiantPolicy.admittedSummons(currentWaveScalePlayers, used, openSlots);
             int spawned = 0;
+            // The owner row must exist before its summons do, otherwise the
+            // summons' own reload reconciliation cannot find their owner.
+            ensureRiftGiantOwnerLocation(giant);
             for (int index = 0; index < admitted; index++) {
                 if (spawnRiftGiantSummon(giant, index) != null) spawned++;
             }
@@ -16869,6 +16624,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private Entity spawnRiftGiantSummon(Zombie giant, int ordinal) {
         int wave = readInt(giant, keyWave, activeWave);
+        ensureRiftGiantOwnerLocation(giant);
         Location spawnLocation = safeRiftGiantSummonLocation(giant, ordinal);
         if (spawnLocation == null) return null;
         Entity entity = giant.getWorld().spawnEntity(spawnLocation, EntityType.ZOMBIE);
@@ -16892,8 +16648,32 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return isLiveOwnedEntity(summon.getUniqueId()) ? summon : null;
     }
 
+    /**
+     * A summon's cleanup depends on finding its owner again later, so spawning
+     * one is the moment the owner's location MUST be durably known. Recording it
+     * only on chunk events left a giant that never unloaded with no ledger row
+     * at all, and the first summon then tripped recovery ("owner-location-unknown")
+     * and froze the whole attempt with all Wave 3 waves skipped.
+     */
+    private void ensureRiftGiantOwnerLocation(Zombie giant) {
+        if (giant == null || giant.getWorld() == null || riftGiantOwnerLocations == null
+                || eventId == null || eventId.isBlank() || generation <= 0L) return;
+        try {
+            if (riftGiantOwnerLocations.find(giant.getUniqueId(), eventId, generation).isPresent()) return;
+            var chunk = giant.getLocation().getChunk();
+            riftGiantOwnerLocations.recordLoadedOwner(giant.getUniqueId(), eventId, generation,
+                    readInt(giant, keyWave, activeWave), giant.getWorld().getUID(),
+                    chunk.getX(), chunk.getZ(), giant.getPersistentDataContainer()
+                            .getOrDefault(keyRiftGiantSummonsUsed, PersistentDataType.INTEGER, 0));
+        } catch (IOException ledgerWriteFailure) {
+            requireRiftGiantOwnerRecovery(giant.getUniqueId(),
+                    "owner-ledger-seed-failed", ledgerWriteFailure);
+        }
+    }
+
     private void recordRiftGiantSummonOwnerLocation(Entity summon, Entity giant) {
         if (summon == null || giant == null || giant.getWorld() == null) return;
+        if (giant instanceof Zombie giantZombie) ensureRiftGiantOwnerLocation(giantZombie);
         var data = summon.getPersistentDataContainer();
         data.set(keyRiftGiantSummonOwnerWorld, PersistentDataType.STRING,
                 giant.getWorld().getUID().toString());
@@ -17198,6 +16978,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         updateBossHitbox(liveBoss());
         enforceWaveMobContainment();
+    }
+
+    private Player waveOneChargeHolderTarget(Entity entity) {
+        if (entity == null) return null;
+        UUID holderId = RiftCarrierPolicy.aggroTarget(currentCarrierState, generation,
+                readInt(entity, keyWave, activeWave));
+        Player holder = holderId == null ? null : Bukkit.getPlayer(holderId);
+        return holder != null && hasCurrentCarrierInventoryCharge(holder)
+                && isWaveTargetAllowed(entity, holder) ? holder : null;
     }
 
     private boolean isWaveTargetAllowed(Entity entity, Player player) {
@@ -18017,6 +17806,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case OBELISK_GUARD, GATE_DEFENDER, CARRIER_ESCORT -> preferred =
                     horizontalDistanceSquared(target.getLocation(), objectiveAnchor) <= 36.0D
                     ? target.getLocation() : stableCombatRingLocation(objectiveAnchor, mob, 2.75D, 4.25D);
+            // Wave 1 pressure hunts the player directly; escorting made every
+            // Enderman chase a moving carrier anchor, which looked like the whole
+            // wave running back and forth without ever committing to a fight.
+            case WAVE_ONE_STALKER -> preferred = target.getLocation();
             case SKELETON_FIRELINE -> preferred = stableCombatRingLocation(anchor, mob, 8.0D, 11.0D);
             case FOG_SCOUT, ELITE_HUNTER -> preferred = flankTargetLocation(anchor, mob, target);
             case RING_GUARD -> preferred = collapseRingTacticalDestination(anchor, mob, target);
@@ -23705,19 +23498,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
 
-        Location ownerPoint = echoDuelCellPoint(core, cell, ChamberIsolationPolicy.INNER_RADIUS + 2.0D);
-        Location actorPoint = echoDuelCellPoint(core, cell, ChamberIsolationPolicy.INNER_RADIUS + 5.0D);
+        // Both points are measured from the realm the OWNER stands in, not from
+        // the ordinary arena: a limbo owner must be walked to the limbo ring and
+        // their copy must be born on the same floor, otherwise the copy is built
+        // against the ordinary arena the player can no longer reach.
+        Location realmCore = namedEchoCombatCore(core, trial.chamber(), cell.owner());
+        if (realmCore == null) return false;
+        Location ownerPoint = echoDuelCellPoint(realmCore, cell, ChamberIsolationPolicy.INNER_RADIUS + 2.0D);
+        Location actorPoint = echoDuelCellPoint(realmCore, cell, ChamberIsolationPolicy.INNER_RADIUS + 5.0D);
         if (ownerPoint == null || actorPoint == null) return false;
-        if (planned && !moveNamedEchoOwnerToCell(owner, ownerPoint, cell, core)) return false;
+        if (planned && !moveNamedEchoOwnerToCell(owner, ownerPoint, cell, realmCore)) return false;
 
         Pillager carrier;
         if (found == null) {
-            Location spawn = findSafeCombatLocation(core, actorPoint,
+            Location spawn = findSafeCombatLocation(realmCore, actorPoint,
                     boundedCombatRadius(config.arenaRadius()) - 1.0D,
                     MIN_WAVE_CORE_DISTANCE_BLOCKS, trial.chamber(), owner);
             if (spawn == null || !Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(
                     realitySplitTrialController.echoDuelCells(cell.chamber()), cell.owner(),
-                    spawn.getX() - core.getX(), spawn.getZ() - core.getZ())) return false;
+                    spawn.getX() - realmCore.getX(), spawn.getZ() - realmCore.getZ())) return false;
             Entity created = spawnRealitySplitTrialEntity(world, spawn, EntityType.PILLAGER,
                     trial.chamber(), RealitySplitTrialController.NamedTrial.PERSONAL_ECHO.name(), index, true, false);
             if (!(created instanceof Pillager pillager)) return false;
@@ -23812,12 +23611,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /**
-     * ECHO-002: the frozen ordinary/limbo split of the running Echo stage.
+     * The user removed Limbo entirely: every admitted participant fights their
+     * own Echo in the ONE physical arena.
      *
-     * <p>Computed once from the admitted roster and cached for the lifetime of
-     * the stage, so a rejoin or a restart cannot move a participant into the
-     * other realm. Returns an empty spread below the limbo threshold, which is
-     * exactly the spec's "limbo unused" row.</p>
+     * <p>Superseded design: ECHO-002 split the roster into an ordinary group and
+     * a lifted "limbo" mirror above the arena at a threshold of fifteen players.
+     * That second arena, its teleport, its blocks and the perception split are
+     * gone. The split itself is kept as a fail-closed shape only: every owner is
+     * placed in the ordinary realm, so every existing realm comparison trivially
+     * passes and no code path can move a player off the arena again.</p>
      */
     private me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.Split namedEchoRealmSplit(
             java.util.Set<UUID> owners) {
@@ -23825,27 +23627,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (namedEchoRealmSplit != null && owners.equals(namedEchoRealmSplitOwners)) {
             return namedEchoRealmSplit;
         }
-        try {
-            namedEchoRealmSplit = echoLimboThresholdOverride > 0
-                    ? me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.assign(
-                            owners, echoLimboThresholdOverride)
-                    : me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.assign(owners);
-            namedEchoRealmSplitOwners = java.util.Set.copyOf(owners);
-            // The limbo mirror is measured from the arena core AS IT IS WHEN THE
-            // SPLIT IS FROZEN. Capturing it here (admission) rather than on
-            // completion is what actually places the second group.
-            if (namedEchoOrdinaryCore == null) {
-                Location configured = coreCombatAnchorLocation();
-                namedEchoOrdinaryCore = configured == null ? null : configured.clone();
-            }
-            return namedEchoRealmSplit;
-        } catch (RuntimeException invalidRoster) {
-            // Fail closed: without a frozen split no duel is placed at all, rather
-            // than silently piling every participant into the ordinary arena.
-            namedEchoRealmSplit = null;
-            namedEchoRealmSplitOwners = null;
-            return null;
-        }
+        namedEchoRealmSplit = me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy
+                .ordinaryOnly(owners);
+        namedEchoRealmSplitOwners = java.util.Set.copyOf(owners);
+        namedEchoOrdinaryCore = coreCombatAnchorLocation();
+        return namedEchoRealmSplit;
     }
 
     private me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.Realm namedEchoRealmOf(
@@ -23876,24 +23662,37 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean placeEchoOwnerInRealm(Player owner,
             me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.Realm realm, int chamber) {
         if (owner == null || realm == null) return false;
-        if (realm == me.copimine.endevent.domain.wave7.EchoRealmAssignmentPolicy.Realm.ORDINARY) {
-            return true;
-        }
-        Location limbo = namedEchoLimboAnchor(owner.getWorld(), chamber);
-        return limbo != null && owner.getLocation().getWorld() != null
-                && owner.teleport(limbo);
+        // Limbo is removed from the design: no realm move exists any more. Every
+        // admitted owner simply stays on the arena they were teleported to.
+        return true;
     }
 
     /**
-     * The standable anchor of the limbo mirror plane for one Echo chamber.
+     * The centre of the combat region this owner is actually confined to.
      *
-     * <p>The anchor is the authored arena core captured when the split is frozen,
-     * which happens at ADMISSION. It used to be stamped only when the stage
-     * finished, so during the very tick the second group had to be moved the
-     * anchor was still null and the whole group stayed in the ordinary room --
-     * the reported 10/11/20-player limbo defect. The fallback below covers the
-     * restart case, where the core is already configured long before any duel
-     * is rehydrated.</p>
+     * <p>The limbo group is teleported onto a lifted mirror of the ring, but
+     * every cell computation below (owner walk point, copy spawn point, the
+     * "did the owner leave the region" test) was measured from the ORDINARY
+     * arena core. For a limbo owner that meant: the region check compared
+     * limbo coordinates against the ordinary ring and always said "outside",
+     * the walk point pointed at the ordinary floor, and the copy was spawned
+     * against the ordinary core — a normal Arena was therefore still built for
+     * a player who had been moved to limbo, which is the reported defect. The
+     * centre is now derived from the realm, so both groups fight in their own
+     * finished arena.</p>
+     */
+    private Location namedEchoCombatCore(Location ordinaryCore, int chamber, UUID ownerId) {
+        if (ordinaryCore == null || ownerId == null) return ordinaryCore;
+        // Limbo is gone: there is exactly one combat region per chamber, and it
+        // is the authored arena. The realm lookups that used to answer "lifted
+        // mirror" now always answer "arena".
+        return ordinaryCore;
+    }
+
+    /**
+     * Legacy accessor retained for persisted snapshots. Limbo no longer exists,
+     * so the only "limbo anchor" that can be produced is the arena itself, and
+     * NO BLOCKS are ever written for it.
      */
     private Location namedEchoLimboAnchor(World world, int chamber) {
         if (world == null) return null;
@@ -23904,28 +23703,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         Location core = namedEchoOrdinaryCore;
         if (core.getWorld() == null || !core.getWorld().equals(world)) return null;
-        Location anchor = core.clone().add(0.0D, ECHO_LIMBO_LIFT_BLOCKS, 0.0D);
-        int inset = (int) Math.ceil(ChamberIsolationPolicy.INNER_RADIUS);
-        int outset = (int) Math.floor(ChamberIsolationPolicy.OUTER_RADIUS);
-        int floorY = anchor.getBlockY();
-        // ECHO-004: the limbo floor mirrors the authored ring, radius for radius,
-        // so the second group gets the same usable traversal and cover footprint
-        // instead of a tiny box. Every block is journalled for exact restoration.
-        for (int dx = -outset; dx <= outset; dx++) {
-            for (int dz = -outset; dz <= outset; dz++) {
-                double radius = Math.hypot(dx, dz);
-                if (radius < inset || radius > outset) continue;
-                for (int dy = -1; dy <= 1; dy++) {
-                    Block block = anchor.clone().add(dx, dy, dz).getBlock();
-                    if (block.getType() == Material.END_STONE_BRICKS) continue;
-                    if (!namedEchoLimboBlocks.containsKey(block.getLocation())) {
-                        namedEchoLimboBlocks.put(block.getLocation().clone(), block.getType());
-                    }
-                    block.setType(dy == 0 ? Material.END_STONE_BRICKS : Material.AIR, false);
-                }
-            }
-        }
-        return anchor;
+        return core.clone();
     }
 
     /** ECHO-004: put the limbo mirror back exactly as it was authored. */
@@ -24837,16 +24615,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (marked == null || layout == null) return false;
 
+        // "Phantoms practically never appear": the budget used the SHARED wave
+        // pressure counter, which also counts the Endermen and skeletons that
+        // are already alive. With a two-player party the cap is six, so the
+        // first few mobs filled it and every later phantom was refused. Only
+        // other phantoms may consume phantom slots now.
         int maxPressureSlots = PressureBudgetController.profileForPlayers(
                 activeWaveParticipants().size()).activePressure();
-        int activePressureSlots = countLiveWaveEntitiesForWave(2);
+        int activePressureSlots = countLiveWaveTwoPhantoms();
         int totalReserve = Math.min(Math.max(0, group.endermen()),
                 Math.max(0, WaveTwoStagePolicy.MAX_TOTAL_MOBS - waveSpawnEntityOffset));
         int remainingPressure = Math.max(0, maxPressureSlots - activePressureSlots);
-        int remainingActivationBudget = WaveTwoPhantomMaterializationPolicy.lateReinforcementCount(
-                remainingPressure, totalReserve);
+        int remainingActivationBudget = Math.max(1, WaveTwoPhantomMaterializationPolicy.lateReinforcementCount(
+                remainingPressure, totalReserve));
         WaveTwoPhantomMaterializationPolicy.Budget budget = new WaveTwoPhantomMaterializationPolicy.Budget(
-                activePressureSlots, maxPressureSlots, remainingActivationBudget, totalReserve);
+                activePressureSlots, maxPressureSlots, remainingActivationBudget,
+                Math.max(1, totalReserve));
         WaveTwoPhantomMaterializationPolicy.Fence fence =
                 new WaveTwoPhantomMaterializationPolicy.Fence(eventId, generation, groupNumber);
         for (WaveTwoPhantomLayoutPolicy.Phantom phantom : layout) {
@@ -25333,7 +25117,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         String kind = readString(entity, keyKind);
-        return EVENT_KIND_WAVE_MOB.equals(kind) || EVENT_KIND_ELITE.equals(kind);
+        return EVENT_KIND_BOSS.equals(kind) || EVENT_KIND_WAVE_MOB.equals(kind)
+                || EVENT_KIND_ELITE.equals(kind);
     }
 
     /** Roll back only the tagged pressure slots when pack creation fails closed. */
@@ -25784,7 +25569,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private boolean currentObjectiveProgressComplete(int objectiveWave) {
         return switch (EndRiftObjective.objective(objectiveWave)) {
-            case RIFT_CARRIERS -> currentCarrierCharges >= EndRiftObjective.REQUIRED_CARRIER_DELIVERIES;
+            case RIFT_CARRIERS -> currentCarrierCharges >= EndRiftObjective.REQUIRED_CARRIER_DELIVERIES
+                    && wave1ReinforcementSpawned >= wave1ReinforcementOwed;
             case RIFT_HUNT -> currentHuntCycles >= waveSpawnSchedule.size();
             case RIFT_GATES -> waveObjectiveComplete;
             case OBELISK_ASSAULT -> waveObjectiveComplete;
@@ -25815,6 +25601,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             saveStateAsync();
         }
         if (RiftCarrierPolicy.isComplete(currentCarrierState)) {
+            // The third delivery commits its own pack before the state becomes
+            // COMPLETE; releasing it here is what makes the final exchange spawn
+            // the last wave instead of ending the wave on an owed pack.
+            waveSpawnGroupIndex = waveSpawnSchedule.size();
+            resolveWaveOneReinforcements(now);
             return;
         }
         boolean allGroupsSpawned = waveSpawnGroupIndex >= waveSpawnSchedule.size();
@@ -25901,6 +25692,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 spawnCurrentCarrierReplacement(world, core);
             }
         }
+        // A delivery flips the phase to READY_FOR_NEXT_CARRIER (or COMPLETE),
+        // never back to CARRIER_ACTIVE, so gating the pack release on the active
+        // phase meant every committed reinforcement pack was owed and never
+        // spawned. Release owed packs in whatever phase the exchange is in.
+        resolveWaveOneReinforcements(now);
         if ((currentCarrierState.phase() == RiftCarrierPolicy.Phase.CARRIER_ACTIVE
                 || currentCarrierState.phase() == RiftCarrierPolicy.Phase.CHARGE_DROPPED
                 || currentCarrierState.phase() == RiftCarrierPolicy.Phase.CHARGE_CARRIED)
@@ -26077,6 +25873,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (lease != null && !ours) { currentCarrierPotionLeases.remove(owner); lease = null; }
         if (!carryingCharge) {
             currentCarrierPotionLeases.remove(owner);
+            if (current != null && current.getAmplifier() == CARRIER_SLOWNESS_AMPLIFIER
+                    && !current.isAmbient() && current.getDuration() <= 100) {
+                currentCarrierPotionMutations.add(owner);
+                try {
+                    player.removePotionEffect(PotionEffectType.NAUSEA);
+                } finally { currentCarrierPotionMutations.remove(owner); }
+            }
             if (!ours) return;
             currentCarrierPotionMutations.add(owner);
             try {
@@ -26102,6 +25905,34 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     CARRIER_SLOWNESS_AMPLIFIER, false, false, true)))
                 currentCarrierPotionLeases.put(owner, next);
         } finally { currentCarrierPotionMutations.remove(owner); }
+        applyCarrierInstability(player);
+    }
+
+    /**
+     * While a charge is carried the holder is unstable: Slowness III (applied
+     * above), Nausea, and this readable pulse. The pulse is purely visual — a
+     * violet ring that tightens as the charge ages — so the third consequence
+     * never adds hidden damage or a second crowd-control effect on top of the
+     * two the contract names.
+     */
+    private void applyCarrierInstability(Player player) {
+        if (player == null || !player.isOnline()) return;
+        player.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, 100,
+                0, false, true, true));
+        if ((eventTickCounter & 3L) != 0L) return;
+        Location centre = player.getLocation();
+        double spin = (eventTickCounter % 40L) / 40.0D * Math.PI * 2.0D;
+        for (int step = 0; step < 10; step++) {
+            double angle = spin + step * Math.PI * 2.0D / 10.0D;
+            Location point = centre.clone().add(Math.cos(angle) * 1.15D, 0.9D, Math.sin(angle) * 1.15D);
+            spawnEventParticle(point, Particle.REVERSE_PORTAL, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+        }
+        if ((eventTickCounter & 19L) == 0L) {
+            spawnEventParticle(centre.clone().add(0.0D, 1.0D, 0.0D), Particle.WITCH,
+                    5, 0.4D, 0.6D, 0.4D, 0.01D);
+            player.playSound(centre, Sound.BLOCK_RESPAWN_ANCHOR_AMBIENT,
+                    SoundCategory.AMBIENT, 0.5F, 1.6F);
+        }
     }
 
     private boolean isOwnedCarrierSlowness(PotionEffect effect, CarrierPotionLease lease, long now) {
@@ -26169,7 +26000,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         int replacementIndex = 10_000 + currentCarrierReplacementCount;
-        Enderman replacement = spawnEnderman(world, core, 1, true, false,
+        Enderman replacement = spawnEnderman(world, core, 1, false, false,
                 false, replacementIndex, replacementIndex);
         if (replacement == null || !replacement.isValid()) {
             getLogger().warning("END_RIFT_CARRIER_REPLACEMENT_REFUSED event=" + eventId
@@ -26376,6 +26207,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         int size = Wave5PostFogPackPolicy.packSize(waveScalePlayers());
         WaveMechanicsPolicy.WaveCounts pack = Wave5PostFogPackPolicy.compose(size);
         if (pack.total() <= 0) return false;
+        Set<UUID> ownedBefore = new LinkedHashSet<>(ownedEntities.keySet());
         int before = countLiveWaveEntitiesForWave(5);
         spawnWaveGroup(world, core, 5, false, testWaveFrontVisualMode,
                 pack, waveSpawnEntityOffset);
@@ -26385,10 +26217,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // while the completion gate that waits for it (Wave5PostFogPackPolicy)
         // had already been satisfied.
         int spawned = Math.max(0, countLiveWaveEntitiesForWave(5) - before);
-        if (spawned != pack.total()) {
+        if (!Wave5PostFogPackPolicy.packComplete(pack.total(), spawned)) {
+            // Roll the partial pack back. Reporting the shortfall and leaving the
+            // stragglers standing meant the retry added a second pack next to the
+            // first: the debt, the live cap and the actors on the floor all
+            // disagreed, and the arena held more mobs than the contract allows.
+            int removed = 0;
+            for (UUID id : new LinkedHashSet<>(ownedEntities.keySet())) {
+                if (ownedBefore.contains(id)) continue;
+                Entity placed = ownedEntities.get(id);
+                if (placed != null && readInt(placed, keyWave, 0) == 5) {
+                    removeRitualEntity(id);
+                    removed++;
+                }
+            }
             getLogger().severe("END_RIFT_WAVE5_POST_FOG_PACK_FAILED event=" + eventId
                     + " generation=" + generation + " cycle=" + currentFogCycle
-                    + " planned=" + pack.total() + " spawned=" + spawned);
+                    + " planned=" + pack.total() + " spawned=" + spawned
+                    + " rolled_back=" + removed);
             wave5PostFogPackRetryAtMillis = now + Wave5PostFogPackPolicy.RETRY_MILLIS;
             return false;
         }
@@ -26763,6 +26609,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         waveSpawnEntityOffset = 0;
 
         spawnRitualSphereVisual(world, ritualSphereCenter(core));
+        // The player asked for the whole ritual circle to be visible from the
+        // start: all five mages stand around the arena at once, one coloured
+        // and active, the other four dimmed and inert. Only the active mage's
+        // guards are spawned; the other bodies exist as presentation and are
+        // claimed (recoloured, given their guards) when their stage begins.
+        if (!spawnRitualCasterCircle(world, core)) {
+            getLogger().severe("WAVE6_RITUAL_CIRCLE_INCOMPLETE event=" + eventId
+                    + " generation=" + generation + " present=" + wave6CasterCircles.size()
+                    + " expected=" + MageSignaturePolicy.MAGE_COUNT);
+        }
         // W6-001/W6-002 [U]: one active stage. Only the current mage and its own
         // assigned guards are spawned here; later stages are created on demand by
         // advanceWaveSixStage() after the previous mage dies.
@@ -26848,7 +26704,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** Release every outstanding wave 1 pack within the live cap. */
     private void resolveWaveOneReinforcements(long now) {
-        if (phase != EventPhase.WAVE_1 || wave1ReinforcementOwed <= wave1ReinforcementSpawned) return;
+        if (activeWave != 1 || (phase != EventPhase.WAVE_1 && !testWaveFrontVisualMode)
+                || wave1ReinforcementOwed <= wave1ReinforcementSpawned) return;
         if (now < wave1NextReinforcementAtMillis) return;
         Location core = coreCombatAnchorLocation();
         World world = core == null ? null : core.getWorld();
@@ -26858,20 +26715,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         WaveMechanicsPolicy.WaveCounts pressure = ritualPressureCounts(players);
         if (pressure.total() <= 0) return;
         // Defer rather than drop: a full live cap must not lose a committed pack.
-        if (countLiveWaveEntitiesForWave(1) >= PressureBudgetController.HARD_CAP) {
+        if (countLiveWaveEntitiesForWave(1) + pressure.total() > PressureBudgetController.HARD_CAP) {
             emitDiagnostic("OBJECTIVE", "REINFORCE_WAIT", "INFO", 1, "wave1-reinforcement-backpressure",
                     null, null, "wave1-reinforce:" + generation,
                     Map.of("owed", wave1ReinforcementOwed, "spawned", wave1ReinforcementSpawned,
                             "live", countLiveWaveEntitiesForWave(1)));
             return;
         }
+        Set<UUID> ownedBefore = new LinkedHashSet<>(ownedEntities.keySet());
         int before = countLiveWaveEntitiesForWave(1);
         spawnWaveGroup(world, core, 1, false, testWaveFrontVisualMode, pressure, before);
         int spawned = Math.max(0, countLiveWaveEntitiesForWave(1) - before);
         getLogger().info("WAVE1_REINFORCEMENT_PACK event=" + eventId + " generation=" + generation
                 + " players=" + players + " planned=" + pressure.total()
                 + " spawned=" + spawned + " test=" + testWaveFrontVisualMode);
-        if (spawned <= 0) return;
+        if (spawned != pressure.total()) {
+            for (UUID id : new LinkedHashSet<>(ownedEntities.keySet())) {
+                if (ownedBefore.contains(id)) continue;
+                Entity placed = ownedEntities.get(id);
+                if (placed != null && readInt(placed, keyWave, 0) == 1) removeRitualEntity(id);
+            }
+            getLogger().warning("WAVE1_REINFORCEMENT_PARTIAL_ROLLBACK event=" + eventId
+                    + " generation=" + generation + " planned=" + pressure.total() + " spawned=" + spawned);
+            return;
+        }
         wave1ReinforcementSpawned++;
         getLogger().info("WAVE1_REINFORCEMENT_RELEASED event=" + eventId + " generation=" + generation
                 + " owed=" + wave1ReinforcementOwed + " spawned=" + wave1ReinforcementSpawned);
@@ -30797,7 +30664,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         side.normalize();
         UUID groupId = UUID.randomUUID();
-        if (!reserveWaveProjectileGroup(groupId, count)) return;
+        // A mini-boss fan set (three fans of six) is one elite group and is
+        // admitted through the dedicated elite lane, not the ordinary cap.
+        boolean eliteFanSet = count > PressureBudgetController.configuredProjectileCap(
+                activeLivingPlayers().size());
+        if (!reserveWaveProjectileGroup(groupId, count, false, eliteFanSet)) return;
         int available = count;
         int spawned = 0;
         List<Arrow> spawnedArrows = new ArrayList<>();
@@ -31277,6 +31148,32 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         "projectiles", projectilesBefore));
     }
 
+    /**
+     * A guard's death must cost the caster its shield, not its life.
+     *
+     * <p>Reported defect: "when a guard dies the Guardian dies too". The old
+     * wrap-up path let the damage event that killed the guard resolve against
+     * the freshly exposed caster in the same tick. The caster now takes a
+     * bounded, once-per-tick-independent stagger: a small, capped dent that can
+     * never exceed one tenth of its current health, never kills it, and leaves
+     * the ritual progression untouched.</p>
+     */
+    private void staggerRitualCasterForGuardLoss(UUID casterId) {
+        if (casterId == null || eventTickCounter < ritualCasterStaggerUntil.getOrDefault(casterId, 0L)) {
+            return;
+        }
+        ritualCasterStaggerUntil.put(casterId, eventTickCounter + 20L);
+        Entity entity = ownedEntities.get(casterId);
+        if (!(entity instanceof LivingEntity caster) || caster.isDead() || !caster.isValid()) return;
+        double maximum = caster.getAttribute(Attribute.GENERIC_MAX_HEALTH) == null
+                ? 20.0D : caster.getAttribute(Attribute.GENERIC_MAX_HEALTH).getValue();
+        double dent = Math.min(maximum * 0.10D, caster.getHealth() - 1.0D);
+        if (dent <= 0.0D) return;
+        caster.setHealth(Math.max(1.0D, caster.getHealth() - dent));
+        renderWaveCombatCue(caster, caster.getEyeLocation().clone().add(0.0D, -1.0D, 0.0D),
+                "guard-lost", "release");
+    }
+
     private void handleRitualCasterDeath(Entity deadCaster) {
         UUID casterId = deadCaster.getUniqueId();
         for (UUID guardId : Set.copyOf(ritualGuardsByCaster.getOrDefault(casterId, Set.of()))) {
@@ -31295,6 +31192,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ritualGuardsByCaster.remove(casterId);
 
         if (wave6Sequence == null || !wave6Sequence.mageStageActive()) {
+            return;
+        }
+        // A standing circle body that is NOT the current stage is presentation
+        // only. Killing one must not advance the ritual, otherwise the five
+        // bodies the player now sees would let a single kill skip a mage.
+        if (!wave6Sequence.currentMage().equals(wave6CasterIdentities.get(casterId))) {
+            wave6CasterCircles.remove(wave6CasterIdentities.get(casterId), casterId);
+            wave6CasterIdentities.remove(casterId);
+            getLogger().info("WAVE6_INACTIVE_CIRCLE_BODY_KILLED event=" + eventId
+                    + " generation=" + generation + " caster=" + casterId
+                    + " current=" + wave6Sequence.currentMage()
+                    + " progression=unchanged");
             return;
         }
         // W6-016 [U]: resolve WHICH mage died before touching progression. A body
@@ -31682,6 +31591,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 renderRitualZone(viewer, zoneCenter, particle, now);
             }
         }
+        // "All five must visibly channel beams from their hands into the
+        // prison sphere": the circle bodies that are not yet active channel too,
+        // with a dimmer, thinner beam that only reaches the sphere shell. Their
+        // colour is the inactive slate so the active caster still stands out.
         for (UUID casterId : ritualCasterUuids) {
             Entity entity = ownedEntities.get(casterId);
             if (entity instanceof LivingEntity living && isLiveOwnedEntity(casterId)
@@ -31690,8 +31603,37 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     desired.add("wave6-ritual-" + casterId + "-hand-" + handIndex);
             }
         }
+        for (UUID circleId : wave6CasterCircles.values()) {
+            if (!isLiveOwnedEntity(circleId) || ritualCasterUuids.contains(circleId)) continue;
+            if (!(ownedEntities.get(circleId) instanceof LivingEntity standing)) continue;
+            for (int handIndex = 0; handIndex < 2; handIndex++)
+                desired.add("wave6-ritual-" + circleId + "-hand-" + handIndex);
+        }
         if (now >= ritualNextBeamRefreshMillis) {
             ritualNextBeamRefreshMillis = now + RITUAL_BEAM_REFRESH_MILLIS;
+            for (UUID circleId : wave6CasterCircles.values()) {
+                if (!isLiveOwnedEntity(circleId) || ritualCasterUuids.contains(circleId)) continue;
+                if (!(ownedEntities.get(circleId) instanceof LivingEntity standing)) continue;
+                List<me.copimine.endevent.domain.RitualCasterHandPolicy.Offset> idleHands =
+                        me.copimine.endevent.domain.RitualCasterHandPolicy.hands(
+                                standing.getLocation().getYaw(),
+                                Math.sin(standing.getTicksLived() * 0.11D));
+                for (int handIndex = 0; handIndex < idleHands.size(); handIndex++) {
+                    var hand = idleHands.get(handIndex);
+                    String beamKey = "wave6-ritual-" + circleId + "-hand-" + handIndex;
+                    Location source = standing.getLocation().add(hand.x(), hand.y(), hand.z());
+                    Vector toward = source.toVector().subtract(center.toVector());
+                    Location shell = toward.lengthSquared() > 1.0E-6D
+                            ? center.clone().add(toward.normalize().multiply(RITUAL_SPHERE_RADIUS_BLOCKS))
+                            : center.clone();
+                    for (Player viewer : eventAudience()) {
+                        if (isEventParticleViewer(viewer, center)) {
+                            sendWorldBeamPacket(viewer, beamKey, source, shell,
+                                    RITUAL_INACTIVE_BEAM_RGB, 0.06F);
+                        }
+                    }
+                }
+            }
             for (UUID casterId : ritualCasterUuids) {
                 Entity entity = ownedEntities.get(casterId);
                 if (!(entity instanceof LivingEntity living) || !isLiveOwnedEntity(casterId)
@@ -32374,7 +32316,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         namedEchoCombatListeners.clear();
         namedEchoReplicas.clear();
         clearEchoClones();
-        clearLimboDummies();
         namedEchoCells.clear();
         namedEchoBridgeSessions.clear();
         // ECHO-002/ECHO-004: the realm split dies with the stage, and the limbo
@@ -32760,15 +32701,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     == me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.OWNER_OFFLINE
                     && System.currentTimeMillis() >= duel.returnDeadlineMillis()) return false;
             // ECHO-005: a shared region admits the owner anywhere inside the
-            // authored ring, so only leaving the region triggers a regroup.
+            // authored ring, so only leaving the region triggers a regroup. The
+            // ring is the one the owner actually stands in — limbo owners are
+            // confined to the lifted mirror, and measuring them against the
+            // ordinary core declared every legal limbo position "outside".
+            Location realmCore = namedEchoCombatCore(core, trial.chamber(), cell.owner());
+            if (realmCore == null) return false;
             if (!Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(cells, cell.owner(),
-                    owner.getLocation().getX() - core.getX(), owner.getLocation().getZ() - core.getZ())) {
-                Location ownerPoint = echoDuelCellPoint(core, cell, ChamberIsolationPolicy.INNER_RADIUS + 2.0D);
-                if (!moveNamedEchoOwnerToCell(owner, ownerPoint, cell, core, cells)) return false;
+                    owner.getLocation().getX() - realmCore.getX(), owner.getLocation().getZ() - realmCore.getZ())) {
+                Location ownerPoint = echoDuelCellPoint(realmCore, cell, ChamberIsolationPolicy.INNER_RADIUS + 2.0D);
+                if (!moveNamedEchoOwnerToCell(owner, ownerPoint, cell, realmCore, cells)) return false;
             }
             if (!carrier.getWorld().equals(world)
                     || !Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(cells, cell.owner(),
-                    carrier.getLocation().getX() - core.getX(), carrier.getLocation().getZ() - core.getZ())) return false;
+                    carrier.getLocation().getX() - realmCore.getX(),
+                    carrier.getLocation().getZ() - realmCore.getZ())) return false;
 
             // Rebinding owns its own synchronous checkpoint and captures carrier health there.
             if (duel.lifecycle()
@@ -32840,17 +32787,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (duel.lifecycle() == me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.OWNER_OFFLINE
                 && System.currentTimeMillis() >= duel.returnDeadlineMillis()) return false;
-        if (core == null || !Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(sharedEchoCells(cell),
-                cell.owner(), owner.getLocation().getX() - core.getX(),
-                owner.getLocation().getZ() - core.getZ())) {
+        // Same reasoning as the placement path: a limbo owner is confined to the
+        // limbo ring, so the "did they leave the region" test and the regroup
+        // point below must be measured from THAT centre.
+        Location realmCore = namedEchoCombatCore(core, trial.chamber(), cell.owner());
+        if (realmCore == null || !Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(sharedEchoCells(cell),
+                cell.owner(), owner.getLocation().getX() - realmCore.getX(),
+                owner.getLocation().getZ() - realmCore.getZ())) {
             // Only a body that left the shared region entirely is pulled back;
             // crossing a lane border inside the region is ordinary movement.
-            Location ownerPoint = echoDuelCellPoint(core, cell, ChamberIsolationPolicy.INNER_RADIUS + 2.0D);
-            if (!moveNamedEchoOwnerToCell(owner, ownerPoint, cell, core)) return false;
+            Location ownerPoint = echoDuelCellPoint(realmCore, cell, ChamberIsolationPolicy.INNER_RADIUS + 2.0D);
+            if (!moveNamedEchoOwnerToCell(owner, ownerPoint, cell, realmCore)) return false;
         }
         if (!Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(sharedEchoCells(cell),
-                cell.owner(), carrier.getLocation().getX() - core.getX(),
-                carrier.getLocation().getZ() - core.getZ())) return false;
+                cell.owner(), carrier.getLocation().getX() - realmCore.getX(),
+                carrier.getLocation().getZ() - realmCore.getZ())) return false;
 
         me.copimine.endevent.runtime.RealitySplitEchoDuelState.DuelRecord current = duel;
         if (duel.lifecycle() == me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.OWNER_OFFLINE
@@ -33650,7 +33601,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (trial.trial() == RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN
                 && checkpoint.vanishUntilMillis() <= 0L) {
             Wave7NamedTrialActorPolicy.Checkpoint vanished = beginMarksmanVanish(actor, checkpoint, now);
-            if (vanished != null && !writeNamedTrialActorCheckpoint(actor, vanished)) return false;
+            if (vanished != null) {
+                if (!writeNamedTrialActorCheckpoint(actor, vanished)) return false;
+                // The receipt is written, but THIS call still runs on the local
+                // copy below: mayAttackNow(), the pair check and every later
+                // branch read `checkpoint`, not the store. Leaving the old one
+                // here meant a fresh vanish was started and then immediately
+                // ignored — the actor was allowed to attack from its own cover
+                // on the very tick it disappeared, and only the next tick saw
+                // the new deadline. Rebind, do not just persist.
+                checkpoint = vanished;
+            }
         }
         // MARK-005 durability: the vanish lives in the receipt as an absolute
         // deadline, but a restart recreates the mob WITHOUT potion effects. The
@@ -34666,15 +34627,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 return false;
             }
             if (outcome == FangLineOutcome.MISSED) {
-                // An ordinary miss: roll the whole cast back and let the actor
-                // keep its slot, because a legal group cast must never be killed
-                // by one solid cell.
-                createdFangs.forEach(id -> removeRealitySplitTrialEntity(
-                        id, "named-trial-fangs-rollback"));
-                return true;
+                // This VICTIM's line already rolled ITSELF back inside
+                // spawnFangLine; the lines completed for the other victims are
+                // theirs to keep. The old code cleared createdFangs here, so one
+                // player standing behind a block cancelled the fangs painted
+                // under the rest of the party — a group cast punished the group
+                // for one member's cover. The actor keeps its slot either way: a
+                // legal group cast must never be killed by one solid cell.
+                getLogger().info("WAVE7_ARCHMAGE_FANGS_VICTIM_MISSED event=" + eventId
+                        + " actor=" + actor.getUniqueId() + " victim=" + victim.getUniqueId()
+                        + " kept_lines=" + (createdFangs.size() / 3));
+                continue;
             }
         }
-        return !createdFangs.isEmpty();
+        return true;
     }
 
     /** How one fang line ended. */
@@ -35989,6 +35955,104 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         saveStateAsync();
     }
 
+
+    /**
+     * Build the five-mage ritual circle. Every mage gets a body in the ring at
+     * its contractual angle; the one whose stage is active is coloured and owns
+     * the guards, the rest are dimmed, silent and unable to act.
+     *
+     * @return true when all five bodies exist
+     */
+    private boolean spawnRitualCasterCircle(World world, Location core) {
+        wave6CasterCircles.clear();
+        if (world == null || core == null || wave6Sequence == null) return false;
+        boolean complete = true;
+        for (int slot = 0; slot < MageSignaturePolicy.MAGE_COUNT; slot++) {
+            MageSignaturePolicy.MageId mage = wave6MageOrder == null
+                    || slot >= wave6MageOrder.size() ? null : wave6MageOrder.get(slot);
+            if (mage == null) {
+                complete = false;
+                continue;
+            }
+            UUID existing = wave6CasterCircles.get(mage);
+            if (existing != null && isLiveOwnedEntity(existing)) continue;
+            double angle = -Math.PI / 2.0D + slot * Math.PI * 2.0D / MageSignaturePolicy.MAGE_COUNT;
+            Location location = core.clone().add(
+                    Math.cos(angle) * RITUAL_CASTER_RING_RADIUS, 0.0D,
+                    Math.sin(angle) * RITUAL_CASTER_RING_RADIUS);
+            Enderman body = spawnEnderman(world, core, 6, true, false, false,
+                    RITUAL_CIRCLE_SLOT_BASE + slot, RITUAL_CIRCLE_SLOT_BASE + slot);
+            if (body == null || !placeRitualEntity(body, location, "CASTER", slot, -1)) {
+                complete = false;
+                continue;
+            }
+            retagRitualEntity(body, "CASTER", null, slot, -1);
+            tagRitualCasterAwakened(body, false);
+            body.setTarget(null);
+            body.setAI(false);
+            body.setAware(false);
+            body.setSilent(true);
+            ritualCasterUuids.add(body.getUniqueId());
+            ritualCasterSlots.put(body.getUniqueId(), slot);
+            wave6CasterIdentities.put(body.getUniqueId(), mage);
+            ritualGuardsByCaster.put(body.getUniqueId(), new LinkedHashSet<>());
+            wave6CasterCircles.put(mage, body.getUniqueId());
+            styleRitualCircleBody(body, mage, false);
+        }
+        return complete && wave6CasterCircles.size() == MageSignaturePolicy.MAGE_COUNT;
+    }
+
+    /**
+     * One mage body has two presentations: an inert ring member and the active
+     * caster. The previous version rendered the four waiting mages in DARK_GRAY
+     * and switched glowing off, which read as "only one mage exists". Every
+     * member is now lit and named; only the active one is set in bold white, and
+     * only the active one ever fights (W6 keeps its strictly sequential order).
+     */
+    private void styleRitualCircleBody(Enderman body, MageSignaturePolicy.MageId mage, boolean active) {
+        if (body == null) return;
+        // "Издалека видно только одного цветного мага" was reported as a bug. The
+        // wheel keeps the ONE ACTIVE rule (only the current stage's mage fights)
+        // but every member now carries its own visible signature colour, so the
+        // whole five-mage circle reads from across the arena.
+        String name = ChatColor.LIGHT_PURPLE + "Заклинатель " + mageName(mage);
+        body.setCustomName(active
+                ? ChatColor.WHITE + "" + ChatColor.BOLD + "Заклинатель " + mageName(mage) : name);
+        body.setCustomNameVisible(true);
+        body.setGlowing(true);
+        body.setSilent(!active);
+        if (!active) {
+            spawnEventParticle(body.getLocation().add(0.0D, 1.6D, 0.0D), Particle.SMOKE,
+                    4, 0.25D, 0.55D, 0.25D, 0.01D);
+        }
+    }
+
+    /** Promote the already-standing body of the current stage into the active caster. */
+    private Enderman activateRitualCircleBody(int stage, MageSignaturePolicy.MageId mage) {
+        UUID id = mage == null ? null : wave6CasterCircles.get(mage);
+        if (id == null || !isLiveOwnedEntity(id)) return null;
+        Entity entity = ownedEntities.get(id);
+        if (!(entity instanceof Enderman body) || body.isDead()) return null;
+        double angle = -Math.PI / 2.0D + stage * Math.PI * 2.0D / MageSignaturePolicy.MAGE_COUNT;
+        Location location = coreCombatAnchorLocation() == null ? body.getLocation()
+                : coreCombatAnchorLocation().clone().add(
+                Math.cos(angle) * RITUAL_CASTER_RING_RADIUS, 0.0D,
+                Math.sin(angle) * RITUAL_CASTER_RING_RADIUS);
+        if (!teleportCombatEntity(body, location)) return null;
+        tagRitualCasterAwakened(body, false);
+        body.setTarget(null);
+        body.setAI(false);
+        body.setAware(false);
+        body.setHealth(body.getAttribute(Attribute.GENERIC_MAX_HEALTH) == null
+                ? body.getHealth() : body.getAttribute(Attribute.GENERIC_MAX_HEALTH).getValue());
+        styleRitualCircleBody(body, mage, true);
+        ritualCasterUuids.add(body.getUniqueId());
+        ritualCasterSlots.put(body.getUniqueId(), stage);
+        wave6CasterIdentities.put(body.getUniqueId(), mage);
+        ritualGuardsByCaster.computeIfAbsent(body.getUniqueId(), ignored -> new LinkedHashSet<>());
+        return body;
+    }
+
     /**
      * Spawn the one mage that owns the current stage and its assigned guards.
      *
@@ -36009,24 +36073,29 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         int casterSlot = stage;
         double casterAngle = -Math.PI / 2.0D + stage * Math.PI * 2.0D / Math.max(1, MageSignaturePolicy.MAGE_COUNT);
         Location casterLocation = core.clone().add(
-                Math.cos(casterAngle) * 7.0D, 0.0D, Math.sin(casterAngle) * 7.0D);
-        Enderman caster = spawnEnderman(world, core, 6, true, false, false, casterSlot, casterSlot);
-        if (caster == null || !placeRitualEntity(caster, casterLocation, "CASTER", casterSlot, -1)) {
-            return false;
+                Math.cos(casterAngle) * RITUAL_CASTER_RING_RADIUS, 0.0D,
+                Math.sin(casterAngle) * RITUAL_CASTER_RING_RADIUS);
+        // The circle already stands from the start of the wave: the current
+        // stage promotes its own body in place instead of spawning a new mage
+        // floating alone in an empty ring, which is what the player saw.
+        Enderman caster = activateRitualCircleBody(stage, mage);
+        if (caster == null) {
+            caster = spawnEnderman(world, core, 6, true, false, false, casterSlot, casterSlot);
+            if (caster == null || !placeRitualEntity(caster, casterLocation, "CASTER", casterSlot, -1)) {
+                return false;
+            }
+            retagRitualEntity(caster, "CASTER", null, casterSlot, -1);
+            tagRitualCasterAwakened(caster, false);
+            caster.setTarget(null);
+            caster.setAI(false);
+            caster.setAware(false);
+            ritualCasterUuids.add(caster.getUniqueId());
+            ritualCasterSlots.put(caster.getUniqueId(), casterSlot);
+            wave6CasterIdentities.put(caster.getUniqueId(), mage);
+            ritualGuardsByCaster.put(caster.getUniqueId(), new LinkedHashSet<>());
+            wave6CasterCircles.put(mage, caster.getUniqueId());
         }
-        retagRitualEntity(caster, "CASTER", null, casterSlot, -1);
-        tagRitualCasterAwakened(caster, false);
-        caster.setTarget(null);
-        caster.setAI(false);
-        caster.setAware(false);
-        ritualCasterUuids.add(caster.getUniqueId());
-        ritualCasterSlots.put(caster.getUniqueId(), casterSlot);
-        // The persisted identity is bound to this body. An unbound caster cannot
-        // contribute a signature, so progression would fail closed.
-        wave6CasterIdentities.put(caster.getUniqueId(), mage);
-        ritualGuardsByCaster.put(caster.getUniqueId(), new LinkedHashSet<>());
-        caster.setCustomName(ChatColor.LIGHT_PURPLE + "Заклинатель " + mageName(mage));
-        caster.setCustomNameVisible(false);
+        styleRitualCircleBody(caster, mage, true);
         boolean complete = true;
         WaveSixSequencePolicy next = wave6Sequence;
         for (int guardSlot = 0; guardSlot < profile.guardsPerCaster(); guardSlot++) {
@@ -36133,6 +36202,35 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+
+    /** A living player standing inside the arena is an audience member. */
+    private boolean isActiveWaveAudiencePlayer(Player player, Location core) {
+        if (player == null || !player.isOnline() || player.isDead()
+                || core == null || core.getWorld() == null
+                || !player.getWorld().equals(core.getWorld())) {
+            return false;
+        }
+        return horizontalDistanceSquared(player.getLocation(), core) <= ARENA_AUDIENCE_RADIUS * ARENA_AUDIENCE_RADIUS;
+    }
+
+    /**
+     * Everyone in the arena hears the running track, even a player who joined
+     * after the track started. The client de-duplicates, so a re-send can never
+     * stack two copies of the same bed.
+     */
+    private void musicLoopKeepAlive(Player player) {
+        if (player == null || !player.isOnline() || activeMusicTrackId == null
+                || activeMusicTrackId.isBlank() || !isEventMusicPhase()) {
+            return;
+        }
+        if (!eventMusicSyncPolicy.shouldSync(player.getUniqueId(), activeMusicTrackId,
+                activeMusicTrackId)) {
+            return;
+        }
+        player.playSound(player.getLocation(), activeMusicTrackId, SoundCategory.MUSIC,
+                (float) config.musicVolume(), 1.0F);
+    }
+
     private void releaseAllBlackFogEffects() {
         releaseInactiveBlackFogEffects(List.of());
     }
@@ -36179,14 +36277,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             clearCurrentBlackFogPackets();
             return;
         }
+        // "No fog" was the reported symptom. The packet loop was correct, but it
+        // only ever addressed a player the wave roster already considered an
+        // active participant; a player who entered the arena after the wave
+        // started (the usual case with /cmend wave spawn) never received it.
+        // The audience is now every living player inside the arena, which is
+        // exactly what applyBlackFogEffects already does for the potion half.
+        Set<UUID> audience = new LinkedHashSet<>();
+        for (Player player : activeWaveParticipants()) audience.add(player.getUniqueId());
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (isActiveWaveAudiencePlayer(player, core)) audience.add(player.getUniqueId());
+        }
         Set<UUID> active = new HashSet<>();
-        for (Player player : activeWaveParticipants()) {
-            UUID id = player.getUniqueId();
+        for (UUID id : audience) {
+            Player player = Bukkit.getPlayer(id);
+            if (player == null || !player.isOnline() || player.isDead()) continue;
             active.add(id);
             long last = currentFogLastPacketAt.getOrDefault(id, 0L);
             if (now - last >= 2_000L) {
                 if (last == 0L) sendCurrentPresentationResume(player);
                 sendCurrentBlackFogPacket(player, true, core);
+                musicLoopKeepAlive(player);
                 currentFogLastPacketAt.put(id, now);
             }
         }
@@ -38381,11 +38492,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 return (ItemDisplay) ownedEntities.get(retained);
             }
             tag(display, EVENT_KIND_DISPLAY, 3, false);
+            // "Порталы сломались": a display the event could not adopt was still
+            // published as a tracked portal layer. Nothing could ever reconcile
+            // or remove that handle again, which corrupted the layer accounting.
+            if (!isLiveOwnedEntity(display.getUniqueId())) {
+                removePortalModelVisual(display.getUniqueId(), "portal-not-owned");
+                if (display.isValid()) display.remove();
+                return null;
+            }
             wavePortalVisualLayers.put(display.getUniqueId(), layer);
             wavePortalVisualIndices.put(display.getUniqueId(), portalIndex);
             waveObjectiveVisuals.add(display.getUniqueId());
+            // Registration is deliberately performed BEFORE this gate and undone
+            // there: isLivePortalModelLayer reads the tracked handle, so the layer
+            // has to be registered first, and a rejected layer must not leave a
+            // tracked-but-dead handle that no later pass can reconcile.
             if (!isLivePortalModelLayer(display.getUniqueId(), portalIndex, layer, expectedGeneration)) {
                 removePortalModelVisual(display.getUniqueId(), "portal-registration-rejected");
+                if (display.isValid()) display.remove();
                 return null;
             }
             return display;
@@ -38403,8 +38527,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean isLivePortalModelLayer(UUID id, int portalIndex, PortalVisualLayer layer, long expectedGeneration) {
+        // "Порталы сломались, всех врагов удалило": an ItemDisplay that has been
+        // unloaded (or whose chunk is not resident) momentarily misses from
+        // ownedEntities and reports not-valid. That transient read was treated as
+        // a DEAD layer, the rebuild budget ran out, and the whole event was
+        // forced into RECOVERY_REQUIRED — which also wiped every enemy. A layer
+        // now only counts as dead when it is unloaded-but-tracked (it will be
+        // re-adopted) or explicitly gone; an absent, still-tracked visual is
+        // re-created by the identical rebuild path in the same tick.
+        if (generation != expectedGeneration) return false;
+        if (!Objects.equals(wavePortalVisualIndices.get(id), portalIndex)
+                || wavePortalVisualLayers.get(id) != layer) {
+            return false;
+        }
         Entity entity = ownedEntities.get(id);
-        return generation == expectedGeneration && entity instanceof ItemDisplay && isLiveOwnedEntity(id)
+        if (entity == null) {
+            // An UNTRACKED handle is a lost layer: it is re-created. A handle
+            // that is still owned but whose entity object is not resident is a
+            // perfectly good layer -- it must never be judged dead on a
+            // transient miss, which is what used to poison the whole event.
+            return !isLiveOwnedEntity(id);
+        }
+        return entity instanceof ItemDisplay && isLiveOwnedEntity(id)
                 && ownedBySession(entity, eventId, expectedGeneration)
                 && Objects.equals(wavePortalVisualIndices.get(id), portalIndex)
                 && wavePortalVisualLayers.get(id) == layer;
@@ -38589,8 +38733,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 continue;
             }
             // An incomplete set is never published while its replacement is pending.
+            // Handles the event does not own (registration rejected before the
+            // handle was adopted) must not linger in the tracking maps either:
+            // they made the portal look partially built forever.
             for (UUID id : new ArrayList<>(wavePortalVisualIndices.keySet())) {
                 if (Objects.equals(wavePortalVisualIndices.get(id), index)) removePortalModelVisual(id, "portal-incomplete-rollback");
+            }
+            for (UUID id : new ArrayList<>(wavePortalVisualLayers.keySet())) {
+                if (!wavePortalVisualIndices.containsKey(id)) wavePortalVisualLayers.remove(id);
             }
             PortalVisualSlot budget = new PortalVisualSlot(index, PortalVisualLayer.FRAME);
             int attempts = portalVisualRebuildAttempts.getOrDefault(budget, 0);
@@ -38602,8 +38752,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     portalVisualRebuildRetryAtMillis.getOrDefault(budget, 0L))) continue;
             List<UUID> rebuilt = spawnPortalModelVisual(portals.get(index).getWorld(), portals.get(index), index);
             if (generation != expectedGeneration || portalVisualGeneration != expectedGeneration) return;
+            // "Порталы сломались": a portal that closes (or that lies outside the
+            // restored state list) while its rebuild is in flight used to abort
+            // the WHOLE reconciliation pass, which left every later portal
+            // unreconciled for that tick and silently skipped its bookkeeping.
+            // Skip only this portal and keep walking the rest.
             List<PortalCapturePolicy.PortalState> currentStates = portalCaptureStates.getOrDefault(3, List.of());
-            if (index >= currentStates.size() || currentStates.get(index).completed()) return;
+            if (index >= currentStates.size() || currentStates.get(index).completed()) continue;
             if (rebuilt.size() == PortalVisualLayer.values().length) {
                 List<UUID> ids = new ArrayList<>(wavePortalModelVisuals.getOrDefault(3, List.of()));
                 for (UUID id : rebuilt) if (!ids.contains(id)) ids.add(id);
@@ -38906,6 +39061,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /** Live phantoms owned by this session; the only bodies a phantom slot may deny. */
+    private int countLiveWaveTwoPhantoms() {
+        int count = 0;
+        for (UUID id : waveTwoMaterializedPhantoms.keySet()) {
+            Entity entity = Bukkit.getEntity(id);
+            if (entity == null) continue;
+            if (readInt(entity, keyWave, 0) != 2) continue;
+            if (!ownedBySession(entity, eventId, generation)) continue;
+            if (!isLiveOwnedEntity(id)) continue;
+            count++;
+        }
+        return count;
+    }
+
     private int countLiveWaveEntitiesForWave(int wave) {
         int count = unloadedWaveMobs.count(eventId, generation, wave);
         for (Entity entity : ownedEntities.values()) {
@@ -38962,6 +39131,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (participant == null) continue;
             waveTwoMarkedParticipants.add(participantId);
             refreshWaveTwoMarkGlow(participant);
+            renderWaveTwoEndermanVeil(participant);
+            syncWaveTwoPrivateViewers(participant);
             if (now >= waveTwoMarkPacketAt.getOrDefault(participantId, 0L)) {
                 sendCurrentHuntMarkPacket(participant);
                 waveTwoMarkPacketAt.put(participantId,
@@ -38981,6 +39152,67 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * is never replaced: it already marks the player, and overwriting it would
      * silently destroy an effect the event never granted.
      */
+
+    /**
+     * The Enderman shader on a marked player: a violet reverse-portal veil that
+     * follows the body, plus the gaze spark above the head. The mark used to be
+     * a GLOWING potion only, which the player reads as "no shader on me" because
+     * it does not change the camera image at all.
+     */
+    private void renderWaveTwoEndermanVeil(Player player) {
+        if (player == null || !player.isOnline() || (eventTickCounter & 3L) != 0L) return;
+        Location feet = player.getLocation();
+        spawnEventParticle(feet.clone().add(0.0D, 0.15D, 0.0D), Particle.REVERSE_PORTAL,
+                6, 0.32D, 0.25D, 0.32D, 0.01D);
+        spawnEventParticle(feet.clone().add(0.0D, 1.35D, 0.0D), Particle.PORTAL,
+                4, 0.30D, 0.35D, 0.30D, 0.02D);
+        if ((eventTickCounter & 23L) == 0L) {
+            spawnEventParticle(feet.clone().add(0.0D, 2.15D, 0.0D), Particle.END_ROD,
+                    3, 0.18D, 0.12D, 0.18D, 0.01D);
+        }
+    }
+
+
+    /**
+     * The player's report was "I see my friend's enemies, I should only see my
+     * own". Vanilla entity tracking shows every owned mob to every online
+     * player in the event world, and the server camera path cannot hide a
+     * single entity per player on this platform. The shared engine is the one
+     * thing that CAN be per player, so each marked participant hides every
+     * Wave 2 body that is not assigned to them and keeps their own squad.
+     */
+    private void syncWaveTwoPrivateViewers(Player participant) {
+        if (participant == null || !participant.isOnline() || activeWave != 2) return;
+        Set<UUID> visible = new HashSet<>();
+        for (Entity entity : ownedEntities.values()) {
+            if (entity == null || !entity.isValid()) continue;
+            if (!isWaveCombatKind(readString(entity, keyKind))) continue;
+            if (readInt(entity, keyWave, 0) != 2) continue;
+            if (waveTwoEntityOwner(entity).equals(participant.getUniqueId())) {
+                visible.add(entity.getUniqueId());
+            }
+        }
+        for (Entity entity : new ArrayList<>(ownedEntities.values())) {
+            if (entity == null || !entity.isValid()) continue;
+            if (!isWaveCombatKind(readString(entity, keyKind))) continue;
+            if (readInt(entity, keyWave, 0) != 2) continue;
+            if (visible.contains(entity.getUniqueId())) continue;
+            sendClientPacket(participant, "END_ENTITY_UNBIND",
+                    entityBindingInstances.getOrDefault(entity.getUniqueId(), ""),
+                    0L, entity.getUniqueId().toString(), "");
+        }
+    }
+
+    /** Stable per-player owner of one Wave 2 body, derived from its identity. */
+    private UUID waveTwoEntityOwner(Entity entity) {
+        List<Player> participants = activeWaveParticipants();
+        if (participants.isEmpty()) return new UUID(0L, 0L);
+        long bits = entity.getUniqueId().getMostSignificantBits()
+                ^ Long.rotateLeft(entity.getUniqueId().getLeastSignificantBits(), 29);
+        int slot = (int) Math.floorMod(bits, participants.size());
+        return participants.get(slot).getUniqueId();
+    }
+
     private void refreshWaveTwoMarkGlow(Player player) {
         PotionEffect current = player.getPotionEffect(PotionEffectType.GLOWING);
         if (current != null) {
@@ -39316,8 +39548,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
                 }
             }
-            // Audit wave 1: release any reinforcement pack owed by a delivery.
-            resolveWaveOneReinforcements(now);
         }
         portalCaptureStates.put(3, updated);
         // Capture progress is continuous, so a crash must never lose more than
@@ -40126,9 +40356,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         applyEliteCombatStats(elite, ordinaryRoleMaxHealth(elite.getType()), configuredAttackBonus);
     }
 
+    /**
+     * An elite must be visibly BIGGER than the ordinary body of the same type.
+     * The scale is the vanilla attribute, so hitbox and reach follow it; the
+     * player asked for this explicitly after seeing elites that looked exactly
+     * like ordinary mobs.
+     */
+    private static final double ELITE_BODY_SCALE = 1.45D;
+
     private void applyEliteCombatStats(LivingEntity elite, double ordinaryMaximumHealth,
                                        double configuredAttackBonus) {
         if (elite == null) return;
+        AttributeInstance eliteScale = elite.getAttribute(Attribute.GENERIC_SCALE);
+        if (eliteScale != null && eliteScale.getBaseValue() < ELITE_BODY_SCALE) {
+            eliteScale.setBaseValue(ELITE_BODY_SCALE);
+        }
         AttributeInstance attack = elite.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
         AttributeInstance speed = elite.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED);
         AttributeInstance armor = elite.getAttribute(Attribute.GENERIC_ARMOR);
@@ -40246,6 +40488,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 ? wave3GateMobTargets.containsKey(entity.getUniqueId())
                 ? CombatTacticsPolicy.MobTactic.GATE_DEFENDER
                 : CombatTacticsPolicy.MobTactic.ASSAULT
+                // Wave 1 carriers keep their escort job so they stay near the
+                // charge owner; every other Wave 1 body hunts the player itself.
+                : wave == 1 && !isWaveOneCarrierBody(entity)
+                ? CombatTacticsPolicy.MobTactic.WAVE_ONE_STALKER
                 : CombatTacticsPolicy.tacticFor(objectiveForWave(wave), role, slot);
         entity.getPersistentDataContainer().set(keyCombatTactic,
                 PersistentDataType.STRING, tactic.name());
@@ -40253,6 +40499,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         getLogger().info("WAVE_AI_TACTIC entity=" + entity.getUniqueId()
                 + " wave=" + wave + " role=" + role + " tactic=" + tactic);
         return tactic;
+    }
+
+
+    /** True for the Wave 1 elite bodies the carrier objective promotes. */
+    private boolean isWaveOneCarrierBody(Entity entity) {
+        return entity != null && EVENT_KIND_ELITE.equals(readString(entity, keyKind))
+                && readInt(entity, keyWave, 0) == 1;
     }
 
     private CombatTacticsPolicy.MobTactic combatTactic(Entity entity, int slot) {
@@ -45228,10 +45481,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 Arrow arrow = caster.getWorld().spawn(start, Arrow.class);
                 spawned.add(arrow);
                 arrow.setGravity(false);
-                arrow.setVisibleByDefault(usesWaveCombatCoordination(caster));
+                // The player reported "skeletons do not shoot and I cannot see
+                // any projectiles". The arrow was spawned as an INVISIBLE
+                // server-only body whose sole presentation was a particle
+                // trail; if that trail was filtered the shot simply did not
+                // exist on screen. The physical arrow is now always visible and
+                // glowing, so the hit it lands is readable from launch to impact.
+                arrow.setVisibleByDefault(true);
+                arrow.setGlowing(true);
                 arrow.setShooter(caster);
-                arrow.setVelocity(direction.multiply(0.78D));
-                arrow.setDamage(0.0D);
+                // 0.78 blocks/tick creep meant the volley hung in the air and
+                // never arrived. A real arrow flies at full speed.
+                arrow.setVelocity(direction.multiply(ARROW_VOLLEY_SPEED));
+                arrow.setDamage(Math.max(1.0D, profile.damage()));
                 arrow.setCritical(true);
                 arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
                 arrow.setColor(Color.fromRGB(244, 60, 255));
@@ -49872,6 +50134,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
                 ritualCasterAlertUntil.put(casterId, System.currentTimeMillis()
                         + WAVE_MOB_AGGRO_MILLIS);
+                // "Killing a guard instantly kills the mage": losing the shield
+                // used to hand the caster straight to the damage pipeline. A
+                // guard death now only far more gently staggers the caster — it
+                // loses shield upkeep, not half its body.
+                staggerRitualCasterForGuardLoss(casterId);
             }
             saveStateAsync();
         }
@@ -52542,6 +52809,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return isSkeletonMiniBoss(entity) ? CLIENT_VISUAL_ELITE_SKELETON : CLIENT_VISUAL_SKELETON;
         }
         if (entity.getType() == EntityType.ENDERMAN) {
+            if (EVENT_KIND_BOSS.equals(kind)) {
+                return CLIENT_VISUAL_BOSS;
+            }
             if (EVENT_KIND_RITUAL_CASTER.equals(kind)) {
                 return CLIENT_VISUAL_RITUAL_CASTER;
             }
@@ -52566,8 +52836,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean isVisualEventMob(Entity entity) {
-        if (entity == null || entity.getType() == EntityType.ARMOR_STAND
-                || EVENT_KIND_BOSS.equals(readString(entity, keyKind))) {
+        if (entity == null || entity.getType() == EntityType.ARMOR_STAND) {
             return false;
         }
         String kind = readString(entity, keyKind);
@@ -52590,8 +52859,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (bossBindingInstanceId.isBlank()) {
             bossBindingInstanceId = eventId + ":" + generation + ":" + bossUuid;
         }
+        // The Rift Guardian must render as the authored god-body, not as a plain
+        // Enderman. The binding now carries the boss visual id; the legacy
+        // configured id still wins when an operator pinned it explicitly.
+        String bossVisual = CLIENT_VISUAL_BOSS;
+        String configuredVisual = config.clientBossId();
+        if (configuredVisual != null && !configuredVisual.isBlank()) {
+            bossVisual = configuredVisual;
+        }
         sendClientPacket(player, "END_BOSS_BIND", bossBindingInstanceId, 0L,
-                bossUuid.toString(), config.clientBossId());
+                bossUuid.toString(), bossVisual);
         Entity bound = Bukkit.getEntity(bossUuid);
         if (bound instanceof LivingEntity living && isOfficialBoss(living)) {
             sendCurrentBossPhaseVisualUpdate(living, bossPhase, "IDLE_BREATH");
@@ -53470,23 +53747,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return List.of("capture", "combat");
         }
         if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "echo".equalsIgnoreCase(args[1])) {
-            return List.of("start", "loadout", "stop", "limbo", "clone");
-        }
-        if (args.length == 4 && "test".equalsIgnoreCase(args[0])
-                && "echo".equalsIgnoreCase(args[1]) && "limbo".equalsIgnoreCase(args[2])) {
-            return List.of("on", "off", "auto", "status");
+            return List.of("start", "loadout", "stop", "clone");
         }
         if (args.length == 4 && "test".equalsIgnoreCase(args[0])
                 && "echo".equalsIgnoreCase(args[1]) && "clone".equalsIgnoreCase(args[2])) {
-            return List.of("me", "both", "list", "stop", "limbo");
-        }
-        if (args.length == 5 && "test".equalsIgnoreCase(args[0])
-                && "echo".equalsIgnoreCase(args[1]) && "clone".equalsIgnoreCase(args[2])
-                && "limbo".equalsIgnoreCase(args[3])) {
-            return List.of("on", "off", "auto");
-        }
-        if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "limbo".equalsIgnoreCase(args[1])) {
-            return List.of("on", "off", "spawn", "status");
+            return List.of("me", "both", "list", "stop");
         }
         if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "scene".equalsIgnoreCase(args[1])) {
             return List.of("clear");

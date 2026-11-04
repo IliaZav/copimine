@@ -18,6 +18,13 @@ public final class WaveProjectileAdmissionController {
     private int occupiedProjectileSlots;
     private int occupiedOrdinaryProjectileSlots;
     private UUID activeNamedArrowRainGroup;
+    /**
+     * Elite casts get their own lane. A two-player ordinary cap is four
+     * children, while the mini-boss fan set is six, so every elite volley was
+     * refused outright ("elite projectiles never appear"). The lane admits ONE
+     * complete elite group at a time and never widens the ordinary cap.
+     */
+    private UUID activeEliteVolleyGroup;
 
     public boolean reserveGroup(UUID groupId, int livingPlayers, int projectileCount) {
         return reserveGroup(groupId, livingPlayers, projectileCount, false);
@@ -27,6 +34,30 @@ public final class WaveProjectileAdmissionController {
     public boolean reserveNamedFiveArrowRain(UUID groupId, int livingPlayers) {
         return reserveGroup(groupId, livingPlayers,
                 PressureBudgetController.MIN_NAMED_VOLLEY_PROJECTILE_COUNT, true);
+    }
+
+    /**
+     * Reserve one complete ELITE fan set (three fans of six) outside the
+     * ordinary cap. It is bounded by the elite lane size and by the absolute
+     * hard cap, and only one elite group may be in flight.
+     */
+    public boolean reserveEliteVolley(UUID groupId, int livingPlayers, int projectileCount) {
+        if (groupId == null || projectileCount <= 0 || groups.containsKey(groupId)) {
+            return false;
+        }
+        if (PressureBudgetController.profileForPlayers(livingPlayers).players()
+                < PressureBudgetController.MIN_PLAYERS) {
+            return false;
+        }
+        if (activeEliteVolleyGroup != null
+                || projectileCount > PressureBudgetController.eliteVolleySlotCount()
+                || occupiedProjectileSlots > PressureBudgetController.HARD_CAP - projectileCount) {
+            return false;
+        }
+        activeEliteVolleyGroup = groupId;
+        groups.put(groupId, new GroupLease(projectileCount, false, true));
+        occupiedProjectileSlots += projectileCount;
+        return true;
     }
 
     private boolean reserveGroup(UUID groupId, int livingPlayers, int projectileCount,
@@ -102,7 +133,7 @@ public final class WaveProjectileAdmissionController {
             return false;
         }
         occupiedProjectileSlots = Math.max(0, occupiedProjectileSlots - 1);
-        if (!group.namedArrowRain) {
+        if (!group.namedArrowRain && !group.eliteVolley) {
             occupiedOrdinaryProjectileSlots = Math.max(0, occupiedOrdinaryProjectileSlots - 1);
         }
         discardEmptyGroup(groupId, group);
@@ -121,7 +152,7 @@ public final class WaveProjectileAdmissionController {
         int released = group.unmaterializedChildren;
         group.unmaterializedChildren = 0;
         occupiedProjectileSlots = Math.max(0, occupiedProjectileSlots - released);
-        if (!group.namedArrowRain) {
+        if (!group.namedArrowRain && !group.eliteVolley) {
             occupiedOrdinaryProjectileSlots = Math.max(0, occupiedOrdinaryProjectileSlots - released);
         }
         discardEmptyGroup(groupId, group);
@@ -136,11 +167,12 @@ public final class WaveProjectileAdmissionController {
         }
         occupiedProjectileSlots = Math.max(0, occupiedProjectileSlots
                 - group.projectileIds.size() - group.unmaterializedChildren);
-        if (!group.namedArrowRain) {
+        if (!group.namedArrowRain && !group.eliteVolley) {
             occupiedOrdinaryProjectileSlots = Math.max(0, occupiedOrdinaryProjectileSlots
                     - group.projectileIds.size() - group.unmaterializedChildren);
         }
         if (group.namedArrowRain) activeNamedArrowRainGroup = null;
+        if (group.eliteVolley) activeEliteVolleyGroup = null;
         Set<UUID> children = Set.copyOf(group.projectileIds);
         for (UUID projectileId : children) {
             groupByProjectile.remove(projectileId, groupId);
@@ -180,23 +212,31 @@ public final class WaveProjectileAdmissionController {
         occupiedProjectileSlots = 0;
         occupiedOrdinaryProjectileSlots = 0;
         activeNamedArrowRainGroup = null;
+        activeEliteVolleyGroup = null;
     }
 
     private void discardEmptyGroup(UUID groupId, GroupLease group) {
         if (group.projectileIds.isEmpty() && group.unmaterializedChildren == 0) {
             groups.remove(groupId, group);
             if (group.namedArrowRain) activeNamedArrowRainGroup = null;
+            if (group.eliteVolley) activeEliteVolleyGroup = null;
         }
     }
 
     private static final class GroupLease {
         private final Set<UUID> projectileIds = new LinkedHashSet<>();
         private final boolean namedArrowRain;
+        private final boolean eliteVolley;
         private int unmaterializedChildren;
 
         private GroupLease(int projectileCount, boolean namedArrowRain) {
+            this(projectileCount, namedArrowRain, false);
+        }
+
+        private GroupLease(int projectileCount, boolean namedArrowRain, boolean eliteVolley) {
             this.unmaterializedChildren = projectileCount;
             this.namedArrowRain = namedArrowRain;
+            this.eliteVolley = eliteVolley;
         }
     }
 }

@@ -54,6 +54,21 @@ public final class BossHitFeedbackPolicy {
         };
     }
 
+    /**
+     * A hit whose red flash the client actually renders.
+     *
+     * <p>The player reported "he does not turn red when I hit him". A vanilla
+     * mob only flickers while its hurt timer runs, and the boss's hurt state is
+     * suppressed by its own damage pipeline, so the accepted-hit flash is forced
+     * explicitly: no damage-immunity window is opened and no extra damage is
+     * applied, the body is merely respawned with the red overlay.</p>
+     */
+    public static boolean forcesRedTint(Feedback feedback) {
+        return feedback != null && feedback.redFlash()
+                && (feedback.outcome() == Outcome.ACCEPTED_MELEE
+                || feedback.outcome() == Outcome.ACCEPTED_PROJECTILE);
+    }
+
     private static Feedback silent(Outcome outcome) {
         return new Feedback(outcome, false, false, 0.0D, 0.0D,
                 false, false, "", 0, false);

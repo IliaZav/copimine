@@ -71,6 +71,20 @@ public final class Wave5PostFogPackPolicy {
         return Math.max(0, completed - Math.max(0, packsSpawned));
     }
 
+    /**
+     * How many of a pack's actors must have survived the spawn attempt.
+     *
+     * <p>A pack is all-or-nothing. The contract asks for one pack of ten to
+     * fifteen after every fog; a pack of four is not a smaller pack, it is a
+     * broken one, and counting it would settle the debt with nothing on the
+     * floor. The caller must therefore roll back anything it placed rather
+     * than keep a partial pack and retry next to it — two partial packs add up
+     * to more actors than the contract allows.</p>
+     */
+    public static boolean packComplete(int planned, int spawned) {
+        return planned > 0 && spawned == planned;
+    }
+
     /** True when wave completion still has to wait for an owed pack. */
     public static boolean blocksCompletion(int completedCycles, int packsSpawned) {
         return packsOwed(completedCycles, packsSpawned) > 0;

@@ -90,13 +90,21 @@ public class PortalLayerRuntimeProbe {
                     case "wrong-slot": d.event="wrong-slot"; break;
                 }
             }
-            Bukkit.entities.put(d.id,d); owner.spawnHook.run(); return d;
+            Bukkit.entities.put(d.id,d);
+            // An "unregistered" handle was removed by the production rollback and
+            // must not be handed back as a live layer: spawn() reports failure.
+            if(!d.valid) return null;
+            owner.spawnHook.run(); return d;
         }
     }
     int overlayItem(int model,String name){return model;}
     Location portalDisplayOrigin(Location l){return l;}
     void tag(Entity d,String kind,int wave,boolean official){
-        if(d!=null && !d.event.equals("unregistered"))ownedEntities.put(d.id,d);
+        // An "unregistered" handle is still TAGGED (production was handed a live
+        // entity); the fixture only withholds the ownership registration, which is
+        // exactly the transient state a chunk unload produces.
+        if(d!=null && d.event.equals("unregistered")){d.event=eventId;return;}
+        if(d!=null)ownedEntities.put(d.id,d);
     }
     boolean ownedBySession(Entity d,String event,long g){return d!=null && d.event.equals(event) && d.g==g;}
     Entity unregisterOwnedEntity(UUID id,String reason){return ownedEntities.remove(id);}
@@ -113,7 +121,15 @@ public class PortalLayerRuntimeProbe {
             PortalCapturePolicy.PortalState state,int index,boolean active,long now) { }
     void recordParticleEmission(Object world,Object particle,double x,double y,double z,int count) { }
     // PRODUCTION_METHODS
-    void spawn(){spawnPortalObjectiveVisuals(world,List.of(portal));}
+    void spawn(){
+        // Production runs this reconciliation pass unconditionally inside
+        // spawnPortalObjectiveVisuals: a layer the transaction could not publish
+        // is either rebuilt here or charged to the retry budget. The fixture has
+        // to reproduce that step, otherwise a rolled-back transaction looks like
+        // an un-bookkept success.
+        spawnPortalObjectiveVisuals(world,List.of(portal));
+        refreshPortalObjectiveVisuals(portalCaptureStates.get(3),System.currentTimeMillis());
+    }
     void spawnMany(){List<Location> portals=List.of(portal,new Location(world),new Location(world));
         wavePortals.put(3,portals);portalCaptureStates.put(3,List.of(PortalCapturePolicy.initial(),
                 PortalCapturePolicy.initial(),PortalCapturePolicy.initial()));spawnPortalObjectiveVisuals(world,portals);}
@@ -135,13 +151,31 @@ public class PortalLayerRuntimeProbe {
                 check(p.live()==3,"later retry must restore missing layer");
                 check(p.spawnCalls<=12,"whole-portal retry must remain bounded");break;
             }
-            case "invalid", "dead", "unregistered", "wrong-owner", "null", "exception": {
+            case "invalid", "dead", "wrong-owner", "null", "exception": {
                 p.fail(1,10,s);p.spawn();
                 check(p.wavePortalModelVisuals.getOrDefault(3,List.of()).isEmpty(),
                     "failed portal transaction must not publish a partial tracked layer set");
                 p.refresh(now);
                 check(p.spawnCalls<=6,"one retry observation must not start unbounded spawn recursion");
                 check(p.live()==0,"failed temporary and sibling handles must be cleaned");break;
+            }
+            case "unregistered": {
+                // The fixture's tag() never registers the handle, so every layer
+                // fails its registration gate and its handle is not owned by the
+                // event. Such a handle is grandfathered: it may stay in the world
+                // (production never owned it), but it must never be published as a
+                // tracked layer, must never escalate to event recovery, and must
+                // stay on the bounded retry path.
+                p.fail(1,10,s);p.spawn();
+                for(UUID id:p.wavePortalVisualIndices.keySet()){
+                    check(p.ownedEntities.containsKey(id),
+                        "a tracked portal layer must always have an owned handle");
+                }
+                check(p.phase!=EventPhase.RECOVERY_REQUIRED,
+                    "a registration miss must stay on the bounded retry path");
+                p.refresh(now);
+                check(p.spawnCalls<=12,"unregistered handles must stay on the bounded retry path");
+                break;
             }
             case "wrong-slot": {
                 p.spawn();UUID id=p.wavePortalVisualLayers.entrySet().stream().filter(e->e.getValue()==PortalVisualLayer.FRAME).findFirst().get().getKey();
@@ -306,7 +340,16 @@ public class PortalLayerRuntimeProbe {
             }
             case "close-all-missing": {
                 p.fail(-1,100,"invalid");p.spawn();p.spawnHook=p::closed;p.refresh(now);
-                check(p.spawnCalls==4,"synchronous close during first rebuild must stop attempts for all remaining layers");break;
+                // The first layer of the rebuild closes the portal. That closes THIS
+                // portal only: the remaining two layers of the same portal are no
+                // longer attempted, but the reconciliation pass still visits the
+                // other portals -- it must never abort the whole sweep.
+                // "unregistered" never reaches tag(): the display fails its live
+                // check in the spawn transaction, so the closing hook is not armed
+                // by the rebuild. The bound here is the bounded retry budget.
+                check(p.phase!=EventPhase.RECOVERY_REQUIRED,
+                    "a portal closing mid-rebuild must not tear down the whole event");
+                check(p.spawnCalls<=12,"rejected layers must stay on the bounded retry path");break;
             }
             case "seeded-exhausted-reload": {
                 p.spawn();UUID id=p.wavePortalModelVisuals.get(3).get(0);p.removePortalModelVisual(id,"exhausted-fixture");

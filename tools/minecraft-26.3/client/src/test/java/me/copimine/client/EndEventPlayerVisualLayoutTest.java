@@ -9,24 +9,29 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EndEventPlayerVisualLayoutTest {
     /**
-     * Superseded expectation: an earlier revision drew a purple Wave 2 gaze
-     * band along the screen edges. That overlay covered the combat centre and
-     * was removed by "keep hunt mark glow-only"; the HUNT mark is communicated
-     * through the target glow. Carrier feedback keeps its screen edges.
+     * The player reported "no Enderman shader on me" during Wave 2. The mark used
+     * to be glow-only and drew nothing at all, so the hunt was completely
+     * invisible. It now paints a violet Enderman pulse at the screen edges; the
+     * combat centre must still stay clear and the mark must still end with its
+     * server lifetime.
      */
     @Test
-    void waveTwoHuntMarkIsGlowOnlyAndNeverDrawsAScreenOverlay() {
+    void waveTwoHuntMarkShowsAnEndermanTintAtTheScreenEdgesOnly() {
         var hunt = new EndEventPlayerVisualManager.VisualState(
                 EndEventPlayerVisualManager.Kind.HUNT, 1_000L, 9_000L);
         var carrier = new EndEventPlayerVisualManager.VisualState(
                 EndEventPlayerVisualManager.Kind.CARRIER, 1_000L, 9_000L);
 
-        assertTrue(EndEventPlayerVisualLayout.edges(800, 450, hunt, 5_000L).isEmpty(),
-                "the Wave 2 hunt mark must not cover the screen; only the target glow shows it");
-        assertFalse(EndEventPlayerVisualLayout.edges(800, 450, carrier, 5_000L).isEmpty(),
+        List<EndEventPlayerVisualLayout.Edge> huntEdges = EndEventPlayerVisualLayout.edges(800, 450, hunt, 5_000L);
+        assertFalse(huntEdges.isEmpty(),
+                "the Wave 2 hunt mark must be visible; glow alone left the player with no shader");
+        assertTrue(huntEdges.stream().allMatch(edge -> edge.top() < 32 || edge.bottom() > 418
+                        || edge.left() < 23 || edge.right() > 777),
+                "the hunt tint stays at the screen edges and leaves the combat centre clear");
+        assertTrue(EndEventPlayerVisualLayout.edges(800, 450, carrier, 5_000L).size() > 0,
                 "carrier feedback keeps its unobstructed screen edges");
         assertTrue(EndEventPlayerVisualLayout.edges(800, 450, hunt, 9_000L).isEmpty(),
-                "the hunt presentation also stays empty after the server mark expires");
+                "the hunt presentation ends with the server mark");
     }
 
     @Test

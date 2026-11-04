@@ -20,17 +20,12 @@ public final class WaveMechanicsPolicyTest {
         var intro = WaveMechanicsPolicy.compositionForWave(1, requested);
         check(intro.skeletons() == 0 && intro.eliteSkeletons() == 0,
                 "the canonical introduction cannot create projectile mobs from stale config");
-        check(intro.endermen() == 0,
-                "every Wave 1 enderman slot must be an elite carrier, never an ordinary one");
-        check(intro.eliteEndermen() == WaveMechanicsPolicy.CARRIER_ELITE_SLOTS
-                        && WaveMechanicsPolicy.CARRIER_ELITE_SLOTS == 3,
-                "exactly the three charge carriers are elite");
+        check(intro.eliteEndermen() == 0 && intro.eliteSkeletons() == 0,
+                "Wave 1 must contain no elites, including charge carriers");
         check(intro.total() == requested.total(),
-                "carrier promotion must not change the configured wave size");
-        check(intro.spiders() == requested.spiders() + requested.skeletons()
-                        + requested.eliteSkeletons() + requested.endermen()
-                        + requested.eliteEndermen() - WaveMechanicsPolicy.CARRIER_ELITE_SLOTS,
-                "surplus carrier slots become ordinary melee pressure");
+                "Wave 1 adaptation must preserve the configured wave size");
+        check(intro.endermen() == requested.total() && intro.spiders() == 0,
+                "Wave 1 slots become ordinary endermen without losing pressure");
         var waveTwo = WaveMechanicsPolicy.compositionForWave(2, requested);
         check(waveTwo.eliteEndermen() == 0 && waveTwo.eliteSkeletons() == 0
                         && waveTwo.endermen() == 48 && waveTwo.skeletons() == 16,

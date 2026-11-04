@@ -27,6 +27,8 @@ public class DeathEligibilityProbe {
         boolean isCancelled(){return cancelled;}
     }
     boolean bootstrapped=true,testWaveFrontVisualMode,testCombatAiMode;
+    int activeWave=1;
+    Set<UUID> sandboxWaveRoster=new HashSet<>();
     String eventId="synthetic-attempt";
     long generation=71;
     EventPhase phase=EventPhase.WAVE_1;
@@ -63,6 +65,13 @@ public class DeathEligibilityProbe {
         require(!p.isEligibleParticipantDeath(death),"stale attempt generation rejected");
         p.generation=71;p.testWaveFrontVisualMode=true;
         require(!p.isEligibleParticipantDeath(death),"test wave roster does not grant official inventory retention");
+        p.sandboxWaveRoster.add(id);
+        require(p.isEligibleParticipantDeath(death),"registered sandbox participant keeps items");
+        require(!p.isEligibleParticipantDeath(new PlayerDeathEvent(new Player(foreign,GameMode.SURVIVAL),false)),
+                "sandbox does not protect unrelated players");
+        p.activeWave=0;
+        require(!p.isEligibleParticipantDeath(death),"inactive sandbox does not protect items");
+        p.activeWave=1;
         p.testWaveFrontVisualMode=false;p.testCombatAiMode=true;
         require(!p.isEligibleParticipantDeath(death),"diagnostic AI session rejected");
         p.testCombatAiMode=false;p.bootstrapped=false;

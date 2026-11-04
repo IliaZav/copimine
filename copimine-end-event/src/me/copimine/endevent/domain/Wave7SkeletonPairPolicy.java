@@ -138,9 +138,16 @@ public final class Wave7SkeletonPairPolicy {
         if (first.actorId().equals(second.actorId())) {
             return new JointReadiness(false, false, false, false, 0L);
         }
-        long since = tick - lastJointTick;
-        boolean charged = lastJointTick < 0L || since >= JOINT_COOLDOWN_TICKS;
-        long charge = lastJointTick < 0L ? tick : Math.max(0L, since);
+        // A pair that has never fired still has to CHARGE. This used to read
+        // "no previous joint attack" as "fully charged", so the first crossfire
+        // was available on the tick the pair spawned and the party met a
+        // two-archer trap before it had seen the archers work. The charge is
+        // measured from the pair's first observed tick, exactly like the
+        // interval after a fired one, so both limits are the same number.
+        boolean fired = lastJointTick >= 0L;
+        long since = fired ? tick - lastJointTick : Math.max(0L, tick);
+        boolean charged = since >= (fired ? JOINT_COOLDOWN_TICKS : JOINT_CHARGE_TICKS);
+        long charge = since;
         double maxDistance = JOINT_MAX_DISTANCE_BLOCKS * JOINT_MAX_DISTANCE_BLOCKS;
         boolean inRange = first.distanceToTargetSquared() <= maxDistance
                 && second.distanceToTargetSquared() <= maxDistance;

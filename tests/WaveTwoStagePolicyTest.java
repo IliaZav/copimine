@@ -208,9 +208,17 @@ public final class WaveTwoStagePolicyTest {
                 new WaveMechanicsPolicy.WaveCounts(2, 1, 3, 0, 1));
         check(earlier.eliteEndermen() == 0 && earlier.eliteSkeletons() == 0,
                 "stale elite slots are normalized in groups one and two");
-        check(firstLateGroup.eliteEndermen() == 0 && firstLateGroup.eliteSkeletons() == 1
-                        && firstLateGroup.skeletons() == 3 && firstLateGroup.total() == 7,
+        // The late group is the mixed archer wave: ordinary Endermen pressure plus
+        // archers. The requested 3 skeletons become 1 ordinary archer + 1 elite
+        // archer, and the bodies moved to Endermen are counted in the total.
+        check(firstLateGroup.eliteEndermen() == 0 && firstLateGroup.eliteSkeletons() == 1,
                 "group three keeps one explicitly requested skeleton elite as a conversion");
+        check(firstLateGroup.total()
+                        == firstLateGroup.endermen() + firstLateGroup.skeletons()
+                        + firstLateGroup.spiders() + firstLateGroup.eliteSkeletons(),
+                "the late group total must count every body it will spawn");
+        check(firstLateGroup.endermen() >= 1,
+                "the late group must still mix ordinary Endermen with the archers");
     }
 
     private static void huntUsesThreeSubwavesWithAThreeSecondGap() {

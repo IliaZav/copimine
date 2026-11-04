@@ -27,6 +27,12 @@ public final class CombatTacticsPolicy {
     public enum MobTactic {
         ASSAULT,
         CARRIER_ESCORT,
+        /**
+         * Wave 1 pressure body. It hunts the player directly instead of holding a
+         * ring around the carrier: escorting made the whole wave orbit a moving
+         * anchor, which is what the player saw as Endermen running back and forth.
+         */
+        WAVE_ONE_STALKER,
         MARKED_HUNTER,
         GATE_DEFENDER,
         OBELISK_GUARD,

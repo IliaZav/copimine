@@ -23,7 +23,7 @@ def dispatch_probe(tmp_path_factory):
     tmp_path = tmp_path_factory.mktemp("wave4-objective-dispatch")
     source = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(encoding="utf-8")
     ordinary = [
-        "sampleRuntimeDiagnostics", "emitDiagnosticSnapshot", "tickOfflineRosterGrace",
+        "sampleRuntimeDiagnostics", "emitDiagnosticSnapshot", "tickOfflineRosterGrace", "adoptPresentPlayersIntoAttempt",
         "updatePadOccupancy", "updateCombatHelpers", "tickWaveCommanderAura",
         "tickMiniBosses", "tickEliteAbilityState", "tickEventArrowProjectiles",
         "refreshClientBindingsForOnlinePlayers", "tickUncommittedRealitySplitBoundaryRollbacks",

@@ -6,6 +6,8 @@ import java.util.List;
 /** Thin, soft screen edges with a permanently unobstructed combat center. */
 public final class EndEventPlayerVisualLayout {
     private static final int MAX_EDGE_PIXELS = 20;
+    /** Enderman-violet tint of the Wave 2 hunt mark. */
+    private static final int HUNT_TINT = 0x3D1F63;
 
     public record Edge(int left, int top, int right, int bottom, int colorFrom, int colorTo) {
         public int alphaFrom() { return colorFrom >>> 24; }
@@ -17,17 +19,23 @@ public final class EndEventPlayerVisualLayout {
     public static List<Edge> edges(int width, int height, EndEventPlayerVisualManager.VisualState state, long nowMillis) {
         if (state == null || state.kind() == null || width <= 0 || height <= 0
                 || nowMillis < state.startedAtMillis() || nowMillis >= state.expiresAtMillis()) return List.of();
-        if (state.kind() == EndEventPlayerVisualManager.Kind.HUNT) return List.of();
         int thickness = Math.min(MAX_EDGE_PIXELS, Math.min(width, height) / 20);
         if (thickness == 0) return List.of();
         long age = nowMillis - state.startedAtMillis();
         float fadeIn = Math.min(1.0F, age / 120.0F);
-        // Carrier feedback stays steady after a short fade-in. The HUNT mark
-        // is communicated through the target's glow, without covering the HUD.
-        float strength = 28.0F;
-        int alpha = Math.min(40, Math.round(strength * fadeIn));
+        // Carrier feedback stays steady after a short fade-in. The HUNT mark is
+        // the Enderman shader tint: a slow violet pulse at the screen edges, the
+        // same hue family as the marked player's particle veil, so the player
+        // can read "an Enderman is hunting me" without any HUD text. It used to
+        // return an empty list, which is why the mark was invisible in game.
+        boolean hunt = state.kind() == EndEventPlayerVisualManager.Kind.HUNT;
+        float pulse = hunt
+                ? 0.72F + 0.28F * (float) Math.sin(age / 260.0D)
+                : 1.0F;
+        float strength = hunt ? 34.0F : 28.0F;
+        int alpha = Math.min(46, Math.round(strength * fadeIn * pulse));
         if (alpha <= 0) return List.of();
-        int color = 0x74E6E8;
+        int color = hunt ? HUNT_TINT : 0x74E6E8;
         int opaqueEdge = (alpha << 24) | color;
         List<Edge> edges = new ArrayList<>(2 + 2 * thickness);
         edges.add(new Edge(0, 0, width, thickness, opaqueEdge, color));

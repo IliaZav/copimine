@@ -95,6 +95,18 @@ public final class PressureBudgetController {
         return profile.projectileCap() + MIN_NAMED_VOLLEY_PROJECTILE_COUNT;
     }
 
+    /**
+     * Physical children reserved for ONE complete elite fan set (three fans of
+     * six). Kept out of the ordinary cap so a full elite salvo is never sliced
+     * into a fraction of itself.
+     */
+    public static final int ELITE_VOLLEY_CHILD_COUNT = 18;
+
+    /** The elite lane admits exactly one complete fan set at a time. */
+    public static int eliteVolleySlotCount() {
+        return ELITE_VOLLEY_CHILD_COUNT;
+    }
+
     /** Return the ordinary projectile cap, excluding the named five-arrow exception. */
     public static int configuredProjectileCap(int livingPlayers) {
         Profile profile = profileForPlayers(livingPlayers);

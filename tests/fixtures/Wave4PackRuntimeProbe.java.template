@@ -101,6 +101,7 @@ public class Wave4PackRuntimeProbe {
 
     final Object keyWave4PressureSlot = "slot", keyObeliskWave4Role = "role", keyWave = "wave", keyKind = "kind";
     final String EVENT_KIND_WAVE_MOB = "mob", EVENT_KIND_ELITE = "elite";
+    final String EVENT_KIND_BOSS = "boss";
     Set<String> currentWave4PressureSpawnSlots = new LinkedHashSet<>();
     Map<UUID, Entity> ownedEntities = new LinkedHashMap<>();
     Map<UUID, Wave4ObeliskRuntimeState> activeWave4Obelisks = new LinkedHashMap<>();

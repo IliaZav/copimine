@@ -106,6 +106,7 @@ public final class WaveProbeAdapterHarness {
             testWave4ObeliskMode, testRitualCombatMode, testWaveInspectionMode, preserveRequested,
             officialAttempt;
     int currentFogCycle, currentFogZoneCount, currentFogZoneSide, currentFogZoneSetupAttempts;
+    int wave5PostFogPacksSpawned;
     long blackFogPhaseDeadlineMillis, currentFogZoneSetupRetryAtMillis;
     BlackFogPhase blackFogPhase = BlackFogPhase.COMBAT;
     Map<String, String> blackFogRecoveryCheckpoint = Map.of();
@@ -424,6 +425,7 @@ public final class WaveProbeAdapterHarness {
                 probe.phase = EventPhase.WAVE_5;
                 probe.activeWave = 5;
                 probe.currentFogCycle = 1;
+                probe.wave5PostFogPacksSpawned = 1;
                 probe.blackFogPhase = args[2].equals("TELEGRAPH")
                         ? BlackFogPhase.COMBAT : BlackFogPhase.valueOf(args[2]);
                 probe.blackFogPhaseDeadlineMillis = 123_456L;
@@ -432,7 +434,7 @@ public final class WaveProbeAdapterHarness {
                 probe.currentFogZoneSetupAttempts = 1;
                 probe.currentFogZoneSetupRetryAtMillis = 124_000L;
                 Map<String, String> saved = probe.waveObjectiveProgressSnapshot();
-                check("1".equals(saved.get("wave5-fog.version"))
+                check("2".equals(saved.get("wave5-fog.version"))
                                 && "event".equals(saved.get("wave5-fog.event"))
                                 && Long.toString(probe.generation).equals(saved.get("wave5-fog.generation"))
                                 && "1".equals(saved.get("wave5-fog.cycle"))
@@ -441,7 +443,8 @@ public final class WaveProbeAdapterHarness {
                                 && "2".equals(saved.get("wave5-fog.zone-count"))
                                 && "2".equals(saved.get("wave5-fog.zone-side"))
                                 && "1".equals(saved.get("wave5-fog.setup-attempts"))
-                                && "124000".equals(saved.get("wave5-fog.retry-at-millis")),
+                                && "124000".equals(saved.get("wave5-fog.retry-at-millis"))
+                                && "1".equals(saved.get("wave5-fog.packs-spawned")),
                         "Wave 5 must checkpoint its exact cycle, stage, deadline and zone retry state");
             }
             case "wave5-shutdown-capture" -> {
@@ -465,13 +468,15 @@ public final class WaveProbeAdapterHarness {
             case "wave5-restart" -> {
                 BlackFogRecoverySnapshot.Stage stage = BlackFogRecoverySnapshot.Stage.valueOf(args[2]);
                 Map<String, String> saved = new BlackFogRecoverySnapshot.Data(
-                        "event", probe.generation, 1, stage, 123_456L, 2, 2, 1, 124_000L).encode();
+                        "event", probe.generation, 1, stage, 123_456L, 2, 2, 1, 124_000L, 1).encode();
                 probe.restoreBlackFogRecoveryCheckpoint(EventPhase.WAVE_5, saved);
                 check(probe.phase == EventPhase.RECOVERY_REQUIRED
                                 && "WAVE5_RESTART_REQUIRES_ADMIN_RECOVERY".equals(probe.recoveryReason),
                         "restart must retain evidence but fence transient Wave 5 combat for admin recovery");
                 check(saved.equals(probe.blackFogRecoveryCheckpoint),
                         "restart must preserve the exact saved Wave 5 phase checkpoint");
+                check(probe.wave5PostFogPacksSpawned == 1,
+                        "restart must restore the released pack count");
             }
             case "wave5-invalid-restart" -> {
                 Map<String, String> saved = Map.of("wave5-fog.stage", "FOG");

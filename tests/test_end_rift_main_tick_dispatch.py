@@ -22,7 +22,7 @@ def tick_probe(tmp_path_factory):
     source = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(encoding="utf-8")
     directory = tmp_path_factory.mktemp("main-tick-wave-dispatch")
     java = directory / "MainTickWaveDispatch.java"
-    ordinary = ["sampleRuntimeDiagnostics", "emitDiagnosticSnapshot", "tickOfflineRosterGrace",
+    ordinary = ["sampleRuntimeDiagnostics", "emitDiagnosticSnapshot", "tickOfflineRosterGrace", "adoptPresentPlayersIntoAttempt",
                 "updatePadOccupancy", "updateCombatHelpers", "tickWaveMobAi", "tickWaveCommanderAura",
                     "tickMiniBosses", "tickEliteAbilityState", "tickEventArrowProjectiles",
                     "refreshClientBindingsForOnlinePlayers",

@@ -59,7 +59,10 @@ def test_wave_two_spec_matches_the_three_subwave_hunt_contract() -> None:
     assert "approved_presentation: glow_only" not in spec
 
 
-def test_hunt_screen_layout_is_empty_but_carrier_layout_is_kept(tmp_path: Path) -> None:
+def test_hunt_screen_layout_paints_enderman_edges_but_carrier_layout_is_kept(tmp_path: Path) -> None:
+    """The user overrode the glow-only mark: a marked player must SEE an
+    Enderman-themed effect, so HUNT now paints violet screen edges. The carrier
+    overlay stays exactly as authored."""
     javac = shutil.which("javac")
     java = shutil.which("java")
     if not javac or not java:
@@ -84,8 +87,8 @@ public final class HuntLayoutCheck {
   public static void main(String[] args) {
     var hunt = new EndEventPlayerVisualManager.VisualState(
         EndEventPlayerVisualManager.Kind.HUNT, 1000L, 11000L);
-    if (!EndEventPlayerVisualLayout.edges(1920, 1080, hunt, 2000L).isEmpty())
-      throw new AssertionError("HUNT mark must not draw a screen overlay");
+    if (EndEventPlayerVisualLayout.edges(1920, 1080, hunt, 2000L).isEmpty())
+      throw new AssertionError("HUNT mark must draw the Enderman edge effect");
     var carrier = new EndEventPlayerVisualManager.VisualState(
         EndEventPlayerVisualManager.Kind.CARRIER, 1000L, 2500L);
     if (EndEventPlayerVisualLayout.edges(1920, 1080, carrier, 1500L).isEmpty())

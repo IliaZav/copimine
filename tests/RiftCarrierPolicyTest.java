@@ -24,8 +24,15 @@ public final class RiftCarrierPolicyTest {
         check(RiftCarrierPolicy.pickUp(state, generation, player, charge, 100_000L).holder() != null,
                 "a dropped charge must remain available without a timeout");
         state = RiftCarrierPolicy.pickUp(state, generation, player, charge, 120L);
+        check(player.equals(RiftCarrierPolicy.aggroTarget(state, generation, 1)),
+                "the current charge holder must be the Wave 1 priority target");
+        check(RiftCarrierPolicy.aggroTarget(state, generation + 1, 1) == null
+                        && RiftCarrierPolicy.aggroTarget(state, generation, 2) == null,
+                "stale generations and other waves cannot inherit carrier aggression");
         UUID recipient = UUID.randomUUID();
         RiftCarrierPolicy.State transferred = RiftCarrierPolicy.transferHolder(state, generation, player, recipient, 121L);
+        check(recipient.equals(RiftCarrierPolicy.aggroTarget(transferred, generation, 1)),
+                "the priority target follows actual charge custody");
         check(recipient.equals(transferred.holder()) && transferred.deadlineTick() == state.deadlineTick()
                         && transferred.delivered() == state.delivered() && transferred.charge().equals(state.charge()),
                 "inventory transfer must preserve charge identity and progress");
@@ -47,6 +54,8 @@ public final class RiftCarrierPolicyTest {
         state = RiftCarrierPolicy.pickUp(state, generation, player, state.charge(), 201L);
         RiftCarrierPolicy.State released = RiftCarrierPolicy.releaseHolder(
                 state, generation, player, 202L);
+        check(RiftCarrierPolicy.aggroTarget(released, generation, 1) == null,
+                "dropping the charge releases the priority target");
         check(released.phase() == RiftCarrierPolicy.Phase.CHARGE_DROPPED
                         && released.holder() == null && released.charge() != null,
                 "holder death or disconnect must immediately drop the same charge");

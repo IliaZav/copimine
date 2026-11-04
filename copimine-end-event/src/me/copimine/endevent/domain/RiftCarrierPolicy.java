@@ -20,6 +20,11 @@ public final class RiftCarrierPolicy {
         return new State(generation, 0, null, null, null, 0L, Phase.WAITING_FOR_CARRIER);
     }
 
+    public static UUID aggroTarget(State state, long generation, int wave) {
+        return wave == 1 && valid(state, generation) && state.phase() == Phase.CHARGE_CARRIED
+                ? state.holder() : null;
+    }
+
     public static State selectCarrier(State state, long generation, UUID carrier) {
         if (!valid(state, generation) || carrier == null || isComplete(state)) {
             return state;

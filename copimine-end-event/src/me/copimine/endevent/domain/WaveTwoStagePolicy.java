@@ -218,10 +218,27 @@ public final class WaveTwoStagePolicy {
     public static WaveMechanicsPolicy.WaveCounts sanitizeForSpawn(
             int groupNumber, WaveMechanicsPolicy.WaveCounts requested) {
         WaveMechanicsPolicy.WaveCounts ordinary = WaveMechanicsPolicy.compositionForWave(2, requested);
-        if (groupNumber != FIRST_LATE_GROUP || requested == null) return ordinary;
+        if (requested == null) return ordinary;
+        // The third subwave is the late hunt: it must mix skeleton archers with
+        // ordinary Endermen pressure. It used to come out as skeletons only,
+        // which is exactly what the player reported. At least a third of the
+        // bodies stay ordinary Endermen so the marked player still has to move.
+        int endermen = ordinary.endermen();
+        int skeletons = ordinary.skeletons();
+        int total = endermen + skeletons + ordinary.spiders();
+        int minimumEndermen = Math.max(1, (total + 2) / 3);
+        if (endermen < minimumEndermen) {
+            int moved = Math.min(minimumEndermen - endermen, skeletons);
+            endermen += moved;
+            skeletons -= moved;
+        }
+        if (groupNumber != FIRST_LATE_GROUP) {
+            return new WaveMechanicsPolicy.WaveCounts(endermen, ordinary.spiders(), skeletons,
+                    ordinary.eliteEndermen(), 0);
+        }
         int eliteSkeletons = Math.min(1, Math.max(0, requested.eliteSkeletons()));
-        return new WaveMechanicsPolicy.WaveCounts(ordinary.endermen(), ordinary.spiders(),
-                Math.max(0, ordinary.skeletons() - eliteSkeletons), 0, eliteSkeletons);
+        return new WaveMechanicsPolicy.WaveCounts(endermen, ordinary.spiders(),
+                Math.max(0, skeletons - eliteSkeletons), ordinary.eliteEndermen(), eliteSkeletons);
     }
 
     public static long nextGroupSpawnAt(long groupClearedAtMillis) {

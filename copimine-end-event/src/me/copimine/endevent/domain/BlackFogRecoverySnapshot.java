@@ -7,7 +7,7 @@ import java.util.Objects;
 /** Durable Wave 5 stage data retained when a server restart interrupts its live combat. */
 public final class BlackFogRecoverySnapshot {
     public static final String PREFIX = "wave5-fog.";
-    private static final String VERSION = "1";
+    private static final String VERSION = "2";
 
     private BlackFogRecoverySnapshot() { }
 
@@ -20,14 +20,18 @@ public final class BlackFogRecoverySnapshot {
 
     public record Data(String eventId, long generation, int cycle, Stage stage,
                        long phaseDeadlineMillis, int zoneCount, int zoneSide,
-                       int setupAttempts, long setupRetryAtMillis) {
+                       int setupAttempts, long setupRetryAtMillis, int packsSpawned) {
         public Data {
             if (eventId == null || eventId.isBlank() || generation <= 0L
                     || cycle < 0 || cycle > BlackFogTimingPolicy.CYCLE_COUNT
                     || stage == null || phaseDeadlineMillis < 0L
                     || zoneCount < 0 || zoneCount > 20
                     || zoneSide < 0 || zoneSide > 3
-                    || setupAttempts < 0 || setupAttempts > 3 || setupRetryAtMillis < 0L) {
+                    || setupAttempts < 0 || setupAttempts > 3 || setupRetryAtMillis < 0L
+                    // Wave 5 owes exactly one pack per completed fog, so the
+                    // count can never exceed the cycle count; a receipt claiming
+                    // more would silently satisfy a debt that is still owed.
+                    || packsSpawned < 0 || packsSpawned > cycle) {
                 throw new IllegalArgumentException("Wave 5 recovery checkpoint is outside its bounds");
             }
             if ((stage == Stage.SAFE || stage == Stage.FOG)
@@ -55,6 +59,11 @@ public final class BlackFogRecoverySnapshot {
             encoded.put(PREFIX + "zone-side", Integer.toString(zoneSide));
             encoded.put(PREFIX + "setup-attempts", Integer.toString(setupAttempts));
             encoded.put(PREFIX + "retry-at-millis", Long.toString(setupRetryAtMillis));
+            // W5-004: the post-fog packs are mandatory pressure, and a restart
+            // used to forget how many of them had already been released — the
+            // wave then either waited forever for a pack it had already spawned
+            // or spawned a second one.
+            encoded.put(PREFIX + "packs-spawned", Integer.toString(packsSpawned));
             return Map.copyOf(encoded);
         }
     }
@@ -71,7 +80,8 @@ public final class BlackFogRecoverySnapshot {
         if (!Objects.equals(event, expectedEventId) || generation != expectedGeneration) {
             throw new IllegalArgumentException("Wave 5 recovery checkpoint belongs to another event generation");
         }
-        if (!VERSION.equals(required(progress, "version"))) {
+        String version = required(progress, "version");
+        if (!VERSION.equals(version) && !"1".equals(version)) {
             throw new IllegalArgumentException("Unsupported Wave 5 recovery checkpoint version");
         }
         Stage stage;
@@ -80,10 +90,14 @@ public final class BlackFogRecoverySnapshot {
         } catch (IllegalArgumentException invalidStage) {
             throw new IllegalArgumentException("Invalid Wave 5 recovery checkpoint stage", invalidStage);
         }
+        // Version 1 carried no pack counter. Those checkpoints predate the
+        // field, so the honest reading of one is "no pack was recorded as
+        // released"; refusing it would strand a live wave over a missing key.
+        int packsSpawned = "1".equals(version) ? 0 : parseInt(progress, "packs-spawned");
         return new Data(event, generation, parseInt(progress, "cycle"), stage,
                 parseLong(progress, "deadline-millis"), parseInt(progress, "zone-count"),
                 parseInt(progress, "zone-side"), parseInt(progress, "setup-attempts"),
-                parseLong(progress, "retry-at-millis"));
+                parseLong(progress, "retry-at-millis"), packsSpawned);
     }
 
     public static boolean hasCheckpoint(Map<String, String> progress) {

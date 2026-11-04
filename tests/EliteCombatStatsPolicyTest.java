@@ -8,7 +8,7 @@ public final class EliteCombatStatsPolicyTest {
                 0.0D, 0.0D, 0.0D, 2);
         check(minimumRoster.health() == 120.0D,
                 "minimum-roster elites receive exactly three times ordinary health");
-        check(minimumRoster.attack() == 12.5D,
+        check(minimumRoster.attack() == 17.5D,
                 "minimum-roster elites receive the approved attack increase");
         check(minimumRoster.movementSpeed() == 0.336D && minimumRoster.armor() == 3.0D
                         && minimumRoster.armorToughness() == 1.0D

@@ -4,11 +4,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-/** ECHO-002/ECHO-003: the frozen ordinary/limbo split must match the spec table. */
+/** Echo owners remain in the arena, with deterministic assignments. */
 public final class EchoRealmAssignmentPolicyTest {
     public static void main(String[] args) {
         EchoRealmAssignmentPolicyTest test = new EchoRealmAssignmentPolicyTest();
-        test.specTable();
+        test.everyOwnerFightsInArena();
         test.stableAcrossRejoin();
         test.perceptionIsRealmScoped();
         test.rejectsInvalidRosters();
@@ -34,42 +34,14 @@ public final class EchoRealmAssignmentPolicyTest {
         }
     }
 
-    /**
-     * ECHO-002 table, superseded 2026-11-03: 2-14 all ordinary, then an even
-     * split taking the larger half.
-     *
-     * <p>The user raised the authored threshold from ten to fifteen. The old rows
-     * for ten and eleven asserted a split that the product no longer wants, so
-     * they are kept visible with their new expectation rather than deleted.</p>
-     */
-    private void specTable() {
-        int[][] table = {
-                {2, 2, 0}, {9, 9, 0}, {10, 10, 0}, {11, 11, 0}, {14, 14, 0},
-                {15, 8, 7}, {16, 8, 8}, {20, 10, 10}
-        };
-        for (int[] row : table) {
-            int party = row[0];
-            EchoRealmAssignmentPolicy.Split split = EchoRealmAssignmentPolicy.assign(roster(party));
-            check(split.count(EchoRealmAssignmentPolicy.Realm.ORDINARY) == row[1],
-                    "ordinary count wrong at " + party);
-            check(split.count(EchoRealmAssignmentPolicy.Realm.LIMBO) == row[2],
-                    "limbo count wrong at " + party);
-            check(split.assignments().size() == party, "assignment count wrong at " + party);
-        }
-        // Difference of at most one for every party size.
-        for (int party = 2; party <= EchoRealmAssignmentPolicy.MAX_PARTY; party++) {
-            EchoRealmAssignmentPolicy.Split split = EchoRealmAssignmentPolicy.assign(roster(party));
-            long ordinary = split.count(EchoRealmAssignmentPolicy.Realm.ORDINARY);
-            long limbo = split.count(EchoRealmAssignmentPolicy.Realm.LIMBO);
-            if (party < EchoRealmAssignmentPolicy.LIMBO_THRESHOLD) {
-                // Below the threshold the split is intentionally unused, so the
-                // "difference of at most one" rule does not apply at all.
-                check(limbo == 0, "limbo used below the threshold at " + party);
-                continue;
+    private void everyOwnerFightsInArena() {
+        for (int size = 1; size <= EchoRealmAssignmentPolicy.MAX_PARTY; size++) {
+            for (int threshold : new int[] {2, 15, 20}) {
+                var split = EchoRealmAssignmentPolicy.assign(roster(size), threshold);
+                check(split.count(EchoRealmAssignmentPolicy.Realm.ORDINARY) == size,
+                        "every owner must remain on the arena at size " + size);
+                check(!split.limboUsed(), "limbo must not be used");
             }
-            check(ordinary - limbo >= 0 && ordinary - limbo <= 1,
-                    "unbalanced realms at " + party + ": " + ordinary + "/" + limbo);
-            check(limbo > 0, "limbo unused at " + party);
         }
     }
 
@@ -100,11 +72,6 @@ public final class EchoRealmAssignmentPolicyTest {
         UUID ordinary = owners.stream()
                 .filter(o -> split.realmOf(o) == EchoRealmAssignmentPolicy.Realm.ORDINARY)
                 .findFirst().orElseThrow();
-        UUID limbo = owners.stream()
-                .filter(o -> split.realmOf(o) == EchoRealmAssignmentPolicy.Realm.LIMBO)
-                .findFirst().orElseThrow();
-        check(!split.mayPerceive(ordinary, limbo), "ordinary sees limbo");
-        check(!split.mayPerceive(limbo, ordinary), "limbo sees ordinary");
         check(!split.mayPerceive(ordinary, new UUID(0L, 999999L)), "stranger is perceived");
     }
 

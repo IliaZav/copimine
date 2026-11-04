@@ -22,7 +22,9 @@ public final class BossScalingPolicyTest {
     }
 
     private static void theCapIsTheUsersCeiling() {
-        check("cap is five thousand", BossScalingPolicy.HP_CAP == 5_000.0D);
+        // The user's minimum is twenty thousand; the pool grows from there.
+        check("the floor is the user's minimum", BossScalingPolicy.HP_FLOOR == 20_000.0D);
+        check("the cap is above the floor", BossScalingPolicy.HP_CAP > BossScalingPolicy.HP_FLOOR);
         check("growth starts at ten", BossScalingPolicy.GROWTH_START_PLAYERS == 10);
     }
 
@@ -33,6 +35,10 @@ public final class BossScalingPolicyTest {
             check("over the floor at " + players, health >= BossScalingPolicy.HP_FLOOR);
         }
         check("twenty is exactly the cap", BossScalingPolicy.maxHealthForPlayers(20) == BossScalingPolicy.HP_CAP);
+        for (int players = 1; players <= 30; players++) {
+            check("at least twenty thousand at " + players,
+                    BossScalingPolicy.maxHealthForPlayers(players) >= 20_000.0D);
+        }
         check("a crowd of fifty is still the cap",
                 BossScalingPolicy.maxHealthForPlayers(50) == BossScalingPolicy.HP_CAP);
     }
@@ -78,18 +84,19 @@ public final class BossScalingPolicyTest {
     }
 
     private static void clampingAndDescription() {
+        check("fifteen players have proportional health", BossScalingPolicy.maxHealthForPlayers(15) == 30_000.0D);
         check("health clamps down", BossScalingPolicy.clampCurrent(9_000.0D, 5_000.0D) == 5_000.0D);
         check("health clamps up to zero", BossScalingPolicy.clampCurrent(-5.0D, 5_000.0D) == 0.0D);
         check("NaN health becomes zero", BossScalingPolicy.clampCurrent(Double.NaN, 5_000.0D) == 0.0D);
         // A corrupted pool must fall back to the authored ceiling, never to a
-        // larger value: 100 health survives, 9000 is cut to the cap.
+        // larger value: 100 health survives, an above-cap value is cut to the cap.
         check("a broken max falls back to the cap",
                 BossScalingPolicy.clampCurrent(100.0D, -1.0D) == 100.0D);
         check("a broken max cannot authorise more than the cap",
-                BossScalingPolicy.clampCurrent(9_000.0D, Double.NaN) == BossScalingPolicy.HP_CAP);
+                BossScalingPolicy.clampCurrent(BossScalingPolicy.HP_CAP + 4_000.0D, Double.NaN) == BossScalingPolicy.HP_CAP);
         String described = BossScalingPolicy.describe(15);
         check("description carries the party size", described.contains("players=15"));
-        check("description carries the health", described.contains("5000"));
+        check("description carries the health", described.contains("30000"));
     }
 
     private static void statsAreValidated() {

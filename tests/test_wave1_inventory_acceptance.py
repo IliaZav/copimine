@@ -108,7 +108,7 @@ public class CarrierInventoryAcceptanceProbe {
         boolean setItemMeta(ItemMeta value){if(rejectMeta)return false;meta=value;return true;}
         ItemStack copy(){var copy=new ItemStack(type,amount);copy.meta.data.values.putAll(meta.data.values);return copy;}
     }
-    enum PotionEffectType {SLOWNESS}
+    enum PotionEffectType {SLOWNESS,NAUSEA}
     record PotionEffect(PotionEffectType type,int duration,int amplifier,boolean ambient,boolean particles,boolean icon) {
         PotionEffectType getType(){return type;} int getDuration(){return duration;} int getAmplifier(){return amplifier;}
         boolean isAmbient(){return ambient;} boolean hasParticles(){return particles;} boolean hasIcon(){return icon;}
@@ -131,6 +131,7 @@ public class CarrierInventoryAcceptanceProbe {
         boolean addPotionEffect(PotionEffect effect){effects.put(effect.type(),effect);return true;}
         PotionEffect getPotionEffect(PotionEffectType type){return effects.get(type);}
         void removePotionEffect(PotionEffectType type){effects.remove(type);}
+        void addPotionEffect(Object effect,int duration,int amplifier,boolean ambient,boolean particles,boolean icon){}
     }
     enum Attribute {GENERIC_MOVEMENT_SPEED}
     static final class AttributeModifier {
@@ -208,6 +209,13 @@ public class CarrierInventoryAcceptanceProbe {
     void markWave1RecoveryRequired(String reason){throw new AssertionError("unexpected recovery requirement: "+reason);}
     void tickCarried(long now){
 ''' + carried + r'''
+    }
+    void applyCarrierInstability(Player player){
+        if(player==null||!player.isOnline())return;
+        player.addPotionEffect(PotionEffectType.NAUSEA,100,0,false,true,true);
+        if((eventTickCounter&3L)!=0L)return;
+        Location centre=player.getLocation();
+        for(int step=0;step<10;step++){spawnEventParticle(centre.clone().add(0.0D,0.9D,0.0D),"REVERSE_PORTAL",1,0.0D,0.0D,0.0D,0.0D);}
     }
     void tickBeam(long now){
 ''' + beam + r'''

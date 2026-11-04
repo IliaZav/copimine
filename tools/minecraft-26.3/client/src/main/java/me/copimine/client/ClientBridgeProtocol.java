@@ -165,6 +165,16 @@ public final class ClientBridgeProtocol {
 
     public static void registerNetworking(ClientVisualManager manager) {
         registeredVisualManager = manager;
+        // A channel that is registered on the client appears in the player's
+        // ADVERTISE payload, which is what the server checks when it says
+        // "client-mod-channel-not-registered". If the client ever registers
+        // LATE (or not at all) the only evidence used to be a server-side
+        // disconnect with no local counterpart, so record both halves here:
+        // the moment receivers are actually installed, and whether the
+        // connection advertises them. Without this line a rejection is
+        // indistinguishable from a missing mod on the player's side.
+        CopiMineClientLogger.info("CopiMineClient receivers registering: channel=" + MOD_CHANNEL
+                + ", v4=" + MOD_CHANNEL_V4 + ", version=" + clientVersion);
         PayloadTypeRegistry.serverboundPlay().register(BridgePayload.ID, BridgePayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(BridgePayload.ID, BridgePayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(BridgeV4Payload.ID, BridgeV4Payload.CODEC);
@@ -492,7 +502,13 @@ public final class ClientBridgeProtocol {
         irisShaderPackActive = false;
         lastReportedIrisShaderPackActive = false;
         irisDetectionFailureLogged = false;
-        CopiMineClientLogger.info("Bridge session opened: " + sessionId);
+        // Evidence for the server's "client-mod-channel-not-registered" verdict.
+        // canSend() is true only when the active connection advertised this
+        // channel to the server, so it answers "is the mod visible from the
+        // server's side" at the exact moment the session opens.
+        CopiMineClientLogger.info("Bridge session opened: " + sessionId + ", version=" + clientVersion
+                + ", registered=" + ClientPlayNetworking.canSend(BridgePayload.ID)
+                + ", v4registered=" + ClientPlayNetworking.canSend(BridgeV4Payload.ID));
     }
 
     public static void onDisconnect() {

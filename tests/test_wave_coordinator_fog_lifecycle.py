@@ -142,6 +142,7 @@ public class WaveFogLifecycleProbe {
  void renderWaveMobRoleVisuals(long now){}List<Player> activeWaveParticipants(){return new ArrayList<>(Bukkit.players.values());}
  boolean usesWaveCombatCoordination(Entity e){return true;}boolean isEliteSpiderWebSupport(Mob m,String k){return false;}
  boolean isWaveTargetAllowed(Entity e,Player p){return true;}UUID mostRecentWaveTarget(UUID id){return null;}
+ Player priorityCarrier; Player waveOneChargeHolderTarget(Entity e){return e.wave==1?priorityCarrier:null;}
  boolean hasProjectileBlockLineOfSight(Location from,Location to){return true;}
  void rememberWaveTarget(UUID a,UUID b){}Logger getLogger(){return Logger.getAnonymousLogger();}
  void maintainSkeletonCombatPosture(Skeleton s,Player p,String k,long n){}void maintainWaveMobPath(Mob m,Player p,String k,long n){}
@@ -164,6 +165,13 @@ public class WaveFogLifecycleProbe {
  public static void main(String[] args){
   var h=new WaveFogLifecycleProbe();h.waveCombatCoordinator.begin(h.generation);
   switch(args[0]) {
+   case "carrier-priority" -> {
+    h.activeWave=1;h.phase=EventPhase.WAVE_1;
+    var mob=new Enderman();mob.wave=1;var old=new Player();var holder=new Player();
+    h.ownedEntities.put(mob.id,mob);Bukkit.players.put(old.id,old);Bukkit.players.put(holder.id,holder);
+    mob.target=old;h.priorityCarrier=holder;h.tickWaveMobAi();
+    check(mob.target==holder,"Wave 1 AI must prioritize the charge holder over the old target");
+   }
    case "fog", "intermission", "intermission-wave1", "intermission-wave3", "core", "empty-resume", "generation-stale" -> {
     var original=new Enderman();h.ownedEntities.put(original.id,original);var participant=new Player();Bukkit.players.put(participant.id,participant);
     if(args[0].equals("intermission-wave1")){original.wave=1;h.activeWave=1;h.phase=EventPhase.WAVE_1;}
@@ -318,7 +326,7 @@ public class WaveFogLifecycleProbe {
     return out
 
 
-@pytest.mark.parametrize("scenario", ["fog", "fog-three-cycles", "intermission", "intermission-wave1", "intermission-wave3", "all-intermissions", "core", "empty-resume", "generation-stale", "arrow-fog", "arrow-intermission", "arrow-stale", "arrow-resume", "ritual-guard-arrow", "ritual-guard-stale", "ritual-guard-session", "ritual-guard-unregistered", "ritual-guard-intermission", "ritual-guard-shot", "ritual-guard-shot-stale", "ritual-guard-shot-session", "ritual-guard-shot-unregistered", "ritual-guard-shot-intermission", "ritual-prisoner-arrow", "elite-fog", "elite-stale", "elite-resume", "side-fog", "side-stale", "side-resume", "fog-cleanup", "cloud-fog", "cloud-stale", "cloud-resume", "cloud-cleaned-resume", "impact-fog", "impact-stale", "impact-resume", "impact-cleaned-resume", "local-arrow-ready", "local-side-ready", "local-arrow-fog", "local-side-fog", "local-arrow-stale", "local-side-stale", "local-arrow-session", "local-side-session"])
+@pytest.mark.parametrize("scenario", ["carrier-priority", "fog", "fog-three-cycles", "intermission", "intermission-wave1", "intermission-wave3", "all-intermissions", "core", "empty-resume", "generation-stale", "arrow-fog", "arrow-intermission", "arrow-stale", "arrow-resume", "ritual-guard-arrow", "ritual-guard-stale", "ritual-guard-session", "ritual-guard-unregistered", "ritual-guard-intermission", "ritual-guard-shot", "ritual-guard-shot-stale", "ritual-guard-shot-session", "ritual-guard-shot-unregistered", "ritual-guard-shot-intermission", "ritual-prisoner-arrow", "elite-fog", "elite-stale", "elite-resume", "side-fog", "side-stale", "side-resume", "fog-cleanup", "cloud-fog", "cloud-stale", "cloud-resume", "cloud-cleaned-resume", "impact-fog", "impact-stale", "impact-resume", "impact-cleaned-resume", "local-arrow-ready", "local-side-ready", "local-arrow-fog", "local-side-fog", "local-arrow-stale", "local-side-stale", "local-arrow-session", "local-side-session"])
 def test_heartbeat_and_projectile_admission(probe, scenario):
     run = subprocess.run(["java", "-cp", str(probe), "WaveFogLifecycleProbe", scenario], capture_output=True, text=True)
     assert run.returncode == 0, run.stdout + run.stderr

@@ -28,6 +28,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.SplittableRandom;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import me.copimine.protocol.EncounterGenerationPolicy;
 import me.copimine.endevent.domain.wave7.EchoPresentationEpochPolicy;
 import me.copimine.endevent.domain.wave7.EchoPresentationProbeState;
@@ -629,6 +630,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final double WAVE_MOB_DAMAGE_REDUCTION = 4.0D;
     /** Radius of the five-mage ritual circle around the Core. */
     private static final double RITUAL_CASTER_RING_RADIUS = 7.0D;
+    /** Bounded next-tick retries for placing a ritual body on its authored cell. */
+    private static final int RITUAL_PLACEMENT_RETRY_LIMIT = 20;
+    /** Ticks a ritual placement keeps trying before it accepts the destination. */
+    private static final int WAVE6_RITUAL_PLACEMENT_TICKS = 3;
+    /** Per-tick memo of resolved combat destinations (see findSafeCombatLocation). */
+    private final Map<String, Location> safeCombatLocationMemo = new HashMap<>();
+    private final Set<String> safeCombatLocationInFlight = new HashSet<>();
+    private long safeCombatLocationMemoTick = -1L;
+    /** Placement steps already queued for the next tick. */
+    private final Set<String> ritualPlacementInFlight = ConcurrentHashMap.newKeySet();
     /** Spawn-slot base reserved for the standing ritual circle bodies. */
     private static final int RITUAL_CIRCLE_SLOT_BASE = 400;
     /** How far from the Core a living player still counts as arena audience. */
@@ -648,7 +659,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final long WAVE_MOB_STUCK_REPOSITION_COOLDOWN_MILLIS = 4_000L;
     private static final double WAVE_MOB_PROGRESS_DISTANCE_SQUARED = 0.5625D;
     private static final long BOSS_TACTIC_REFRESH_MILLIS = 2_500L;
-    private static final long COMBAT_TELEPORT_PERMIT_MILLIS = 1_000L;
+    // A ritual placement issues the permit and teleports inside the SAME call,
+    // but ensureCombatPermit can hand out a permit up to a few ticks before
+    // the move executes. A one-second window expired in between and silently
+    // blocked every cell of a spawned wave, so the window is widened to 15s.
+    private static final long COMBAT_TELEPORT_PERMIT_MILLIS = 15_000L;
     private static final int WAVE_TWO_PHANTOM_WARNING_TICKS = 20;
     /** The mark lease outlives the wave; it is refreshed while the wave runs. */
     private static final long WAVE_TWO_MARK_LEASE_TICKS = 12_000L;
@@ -942,6 +957,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<UUID> waveTwoRecoveryFencedEntityUuids = new LinkedHashSet<>();
     private int currentFogCycle;
     private BlackFogPhase blackFogPhase = BlackFogPhase.COMBAT;
+    /** Tick of the last "no Core anchor" warning from the fog controller. */
+    private long blackFogLastNoCoreLogTick = Long.MIN_VALUE / 2L;
+    private long blackFogHeartbeatAtMillis = Long.MIN_VALUE / 2L;
+    private BlackFogPhase blackFogPhaseHeartbeat = null;
+    /** Tick of the last contained wave-tick exception. */
+    private long waveTickFailureLogTick = Long.MIN_VALUE / 2L;
+    private int waveTickDiagnosticWave = -1;
     private boolean fogSafeZoneTelegraphActive;
     private long blackFogPhaseDeadlineMillis;
     private int currentFogZoneCount;
@@ -12281,7 +12303,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private boolean reserveWaveProjectileGroup(UUID groupId, int physicalChildCount,
                                                boolean namedFiveArrowRain, boolean eliteVolley) {
-        int livingPlayers = activeLivingPlayers().size();
+        // A solo arena is a real configuration: the operator spawns waves by
+        // hand with `/cmend wave spawn`. The pressure profile clamps below its
+        // two-player floor, which used to make the projectile cap 0 and reject
+        // EVERY skeleton arrow - the "arrows are invisible" report. The
+        // admission budget is never allowed to fall below one living player.
+        int livingPlayers = Math.max(1, activeLivingPlayers().size());
         boolean admitted = eliteVolley
                 ? waveProjectileAdmission.reserveEliteVolley(groupId, livingPlayers, physicalChildCount)
                 : namedFiveArrowRain
@@ -14794,7 +14821,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     || EVENT_KIND_PAD.equals(kind);
             boolean currentSession = ownedBySession(entity, eventId, generation);
             boolean priorVisualInArena = visual && isArenaLocation(entity.getLocation());
-            if (visual && (currentSession || priorVisualInArena)) {
+            // A live wave owns its own objective visuals (Wave 3 portals, Wave 4
+            // obelisks, Wave 5 safe zones, Wave 6 sphere). The persistent
+            // Core/rune rebuild runs on the same tick as `/cmend wave spawn` and
+            // used to delete those brand-new displays as "stale arena visuals"
+            // - which is exactly why the portals survived one second and the
+            // obelisks never appeared at all.
+            boolean waveObjectiveVisual = waveObjectiveVisuals.contains(entity.getUniqueId());
+            if (visual && !waveObjectiveVisual && (currentSession || priorVisualInArena)) {
                 entity.remove();
                 unregisterOwnedEntity(entity.getUniqueId(), "visual-cleanup");
                 removed++;
@@ -15777,12 +15811,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && phase != EventPhase.BOSS_CINEMATIC) {
             tickBoss();
         }
+        // Every wave — official, disposable sandbox, or an operator inspection
+        // wave from /cmend wave spawn — owns its objective controller here. The
+        // inspection flag only stops sandbox MOB AI; it must never stop the
+        // objective clock, or the operator's hand-spawned wave never advances a
+        // single phase (no fog cycles, no obelisk pulses, no ritual stages).
         if (testWaveFrontVisualMode && activeWave >= 1 && activeWave <= 7
-                && !testWaveInspectionMode) {
+                && activeWave >= 1 || testWaveInspectionMode && activeWave >= 1 && activeWave <= 7
+                || canOwnWaveObjective(activeWave)) {
             // Disposable waves deliberately leave the durable phase in
-            // READY_FOR_PLAYERS. Their mobs also enable the AI harness flag,
-            // which makes isCombatPhase() true; that flag must not suppress
-            // the canonical objective tick. Static inspections remain visual.
+            // READY_FOR_PLAYERS, and a /cmend wave spawn generation does the
+            // same, so neither of them can ride the durable phase switch below.
+            // Their objective tick used to run only for testWaveFrontVisualMode,
+            // which is why a hand-spawned wave never advanced its own phase
+            // clock (no fog cycles, no obelisk pulses, no ritual stages).
             tickWaveCompletion();
         } else {
             switch (phase) {
@@ -17606,6 +17648,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             String kind = readString(entity, keyKind);
             if (isWaveCombatKind(kind) && isLiveOwnedEntity(entity.getUniqueId())) {
                 enforceCombatLeash(entity, anchor, radius, "WAVE_AI_LEASH");
+            } else if (entity instanceof Item itemEntity
+                    && readString(itemEntity, keyKind) != null) {
+                // The Wave 1 carrier charge is a pickup-disabled item entity, so
+                // nothing else keeps it inside the arena: a thrown charge could
+                // land out of reach and stall the objective forever.
+                enforceCombatLeash(entity, anchor, radius, "CARRIER_CHARGE_LEASH");
             }
         }
         // Collapse Rings are retained only as a compatibility decoder for old
@@ -21103,6 +21151,55 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         double safeMinDistance = Math.max(0.0D, Math.min(minCoreDistance, safeRadius - 0.25D));
         int chamberCount = realitySplitChamberController.assignment().chamberCount();
         Location center = anchor.clone();
+        // A ritual placement asks for the same anchor on every attempt, and
+        // the answer cannot change between two calls in the same tick. Without
+        // this memo a body whose authored cell is refused cycled through
+        // ~48 candidates per attempt and froze the server thread.
+        String memoKey = safeCombatMemoKey(anchor, preferred, safeRadius, safeMinDistance,
+                chamberId, chamberCount, occupant);
+        long memoTick = Bukkit.getCurrentTick();
+        if (safeCombatLocationMemoTick != memoTick) {
+            safeCombatLocationMemo.clear();
+            safeCombatLocationMemoTick = memoTick;
+        }
+        if (safeCombatLocationMemo.containsKey(memoKey)) {
+            Location cached = safeCombatLocationMemo.get(memoKey);
+            return cached == null ? null : cached.clone();
+        }
+        // Cycle guard: one placement must never re-enter this resolver for the
+        // same request, or the nested views below turn into unbounded work.
+        String cycleKey = memoKey + "|cycle";
+        if (!safeCombatLocationInFlight.add(cycleKey)) {
+            return null;
+        }
+        try {
+            Location resolvedResult = resolveSafeCombatLocation(anchor, preferred, safeRadius,
+                    safeMinDistance, chamberId, chamberCount, occupant);
+            safeCombatLocationMemo.put(memoKey, resolvedResult == null ? null : resolvedResult.clone());
+            return resolvedResult;
+        } finally {
+            safeCombatLocationInFlight.remove(cycleKey);
+        }
+    }
+
+    /** Stable identity of one resolver request inside a single tick. */
+    private String safeCombatMemoKey(Location anchor, Location preferred, double radius,
+                                     double minDistance, int chamberId, int chamberCount,
+                                     Entity occupant) {
+        return anchor.getWorld() == null ? null : anchor.getWorld().getName()
+                + "|" + anchor.getBlockX() + "," + anchor.getBlockY() + "," + anchor.getBlockZ()
+                + "|" + (preferred == null ? "-" : preferred.getBlockX() + ","
+                        + preferred.getBlockY() + "," + preferred.getBlockZ())
+                + "|" + Math.round(radius * 100.0D) + "|" + Math.round(minDistance * 100.0D)
+                + "|" + chamberId + "|" + chamberCount
+                + "|" + (occupant == null ? "-" : occupant.getUniqueId().toString());
+    }
+
+    /** The unmemoized candidate search behind {@link #findSafeCombatLocation}. */
+    private Location resolveSafeCombatLocation(Location anchor, Location preferred,
+                                               double safeRadius, double safeMinDistance,
+                                               int chamberId, int chamberCount, Entity occupant) {
+        Location center = anchor.clone();
         List<BossMovementPolicy.Candidate> candidates = new ArrayList<>();
         Map<String, Location> candidateLocations = new LinkedHashMap<>();
         for (int attempt = 0; attempt < 48; attempt++) {
@@ -21243,7 +21340,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      */
     private boolean isWaveAiCombatPhase(int wave) {
         if (wave == 5 && blackFogPhase == BlackFogPhase.FOG) return false;
-        if (testCombatAiMode) {
+        // `/cmend wave spawn <n>` keeps the durable phase outside the official
+        // wave phases on purpose. Its mobs are real wave combatants, so the
+        // official-phase switch must not freeze them into statues while
+        // tickWaveMobAi() is happily driving them.
+        if (testCombatAiMode || testWaveFrontVisualMode) {
             return true;
         }
         return switch (wave) {
@@ -21383,7 +21484,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         boolean physicallyEligible = isPhysicallyEligibleWaveParticipant(player);
         if (testWaveFrontVisualMode) {
-            return physicallyEligible && sandboxWaveRoster.contains(player.getUniqueId());
+            // The roster captured at spawn proves admission; walking out of
+            // the containment radius afterwards must not turn an admitted
+            // probe player into a non-combatant.
+            return sandboxWaveRoster.contains(player.getUniqueId());
         }
         if (isOfficialAttemptActive() && !testCombatAiMode && attemptLifecycle.owns(generation)) {
             AttemptLifecycleController.ParticipantStatus status =
@@ -21459,6 +21563,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || candidate == EventPhase.INTERMISSION_4
                 || candidate == EventPhase.INTERMISSION_5
                 || candidate == EventPhase.INTERMISSION_6;
+    }
+
+    /**
+     * True when the current wave may own an objective controller. Official
+     * attempts always may; a test wave may when it is a front-visual sandbox,
+     * in combat-AI test mode, OR when it is a plain /cmend wave spawn
+     * generation, which carries its own rosters and lifecycles.
+     */
+    private boolean canOwnWaveObjective(int wave) {
+        if (!EndRiftObjective.isNumberedWave(wave)) return false;
+        // testWaveInspectionMode is deliberately NOT in this list: it is set by
+        // the command-path inspection spawn that freezes the room for a static
+        // look. Interaction teleports (W8) still need it, so it is passed
+        // explicitly from the call site instead.
+        if (isOfficialAttempt() || testWaveFrontVisualMode || testCombatAiMode) return true;
+        return generation > 0L && (!sandboxWaveRoster.isEmpty()
+                || !attemptLifecycle.roster().isEmpty());
     }
 
     private boolean isOfficialAttempt() {
@@ -21898,7 +22019,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void tickWaveCompletion() {
         int completedWave = activeWave;
         boolean disposableWave = testWaveFrontVisualMode && !isOfficialAttempt();
-        if (!tickWaveObjective()) {
+        boolean objectiveReady;
+        try {
+            objectiveReady = tickWaveObjective();
+        } catch (RuntimeException failure) {
+            // One thrown objective tick used to abort this whole handler and
+            // freeze the wave forever with no trace. Contain it to this tick
+            // and make the cause visible.
+            getLogger().severe("END_RIFT_WAVE_TICK_FAILED event=" + eventId
+                    + " wave=" + completedWave + " generation=" + generation
+                    + " error=" + failure);
+            if (eventTickCounter - waveTickFailureLogTick >= 200L) {
+                waveTickFailureLogTick = eventTickCounter;
+                for (StackTraceElement frame : failure.getStackTrace()) {
+                    getLogger().severe("END_RIFT_WAVE_TICK_FAILED_AT " + frame);
+                }
+            }
+            return;
+        }
+        if (!objectiveReady) {
             return;
         }
         // Wave 4 is an obelisk assault. Pressure mobs are cleanup-only; the
@@ -22313,9 +22452,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Set<UUID> roster = Bukkit.getOnlinePlayers().stream()
                 .filter(player -> isPhysicallyEligibleWaveParticipant(player, true))
                 .map(Player::getUniqueId).collect(Collectors.toCollection(LinkedHashSet::new));
+        // Wave 7 drives per-participant trials, so an empty room cannot run
+        // it. Prevent the spawn LOUDLY and do not consume a generation on it;
+        // the reason is persisted so the operator sees the requirement.
         if (wave == 7 && roster.isEmpty()) {
             getLogger().warning("WAVE_INSPECTION_REFUSED event=" + eventId
-                    + " wave=7 reason=empty-room-roster");
+                    + " wave=7 reason=empty-room-roster required=1");
             return false;
         }
         boolean creativeRun = creativeTestTask != null;
@@ -22329,6 +22471,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             encounterController.restore(eventId, generation, phase, null);
         }
         if (!resetEncounterTaskRegistry(generation)) return false;
+        // Same envelope as the paid sandbox path (spawnTestWave): the sandbox
+        // roster belongs to the CALLER, so it is captured before the shared
+        // initializer runs. /cmend wave spawn is a PLAYABLE sandbox - keep the
+        // mobs' AI (wave 7 additionally needs its own interaction permits).
+        // The inspection flag keeps a CREATIVE operator addressable and is what
+        // admits an empty roster to the initializer; it does not freeze the AI.
         boolean started = initializeWaveGameplay(wave, world, core, roster,
                 true, wave == 6, true);
         if (!started) {
@@ -25487,8 +25635,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** Render and advance the bounded controller for the current objective. */
     private boolean tickCurrentObjective() {
         int objectiveWave = activeWave;
-        if ((!isOfficialAttempt() && !testWaveFrontVisualMode)
-                || !EndRiftObjective.isNumberedWave(objectiveWave)) {
+        // A sandbox wave spawned by /cmend wave spawn is a real generation with
+        // a real roster; it must run its objective the same way an official
+        // attempt does, otherwise the phase clock never advances and the wave
+        // looks dead (no fog cycles, no obelisk pulses, no ritual stages).
+        if (!canOwnWaveObjective(objectiveWave)) {
             return true;
         }
         if (waveObjectiveStartedMillis <= 0L) {
@@ -25564,7 +25715,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (activeWave == 4) {
             return reportCurrentWaveResult(activeWave, tickWave4ObeliskAssault());
         }
-        return tickCurrentObjective();
+        try {
+            return tickCurrentObjective();
+        } catch (RuntimeException failure) {
+            // A single broken objective tick used to escape into the
+            // scheduler and disappear, leaving the wave permanently frozen
+            // (the "wave 7 never started" report). Name the failure instead.
+            getLogger().severe("END_RIFT_WAVE_OBJECTIVE_TICK_FAILED event=" + eventId
+                    + " wave=" + activeWave + " generation=" + generation
+                    + " objective=" + EndRiftObjective.objective(activeWave)
+                    + " error=" + failure);
+            throw failure;
+        }
     }
 
     private boolean currentObjectiveProgressComplete(int objectiveWave) {
@@ -25673,6 +25835,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (currentCarrierState.phase() == RiftCarrierPolicy.Phase.WAITING_FOR_CARRIER
                 || currentCarrierState.phase() == RiftCarrierPolicy.Phase.READY_FOR_NEXT_CARRIER) {
+            // Whatever the reason, a wave whose carrier phase is waiting must
+            // never stay waiting forever.  A failed spawn group (every mob a
+            // non-elite ordinary enderman, an emptied live pack) left the
+            // objective dead with no charge to fight for, so earn the next
+            // attempt by spawning one bounded replacement carrier first.
+            if (findCurrentCarrierCandidate() == null
+                    && currentCarrierReplacementCount < CARRIER_REPLACEMENT_CAP) {
+                Location core = coreCombatAnchorLocation();
+                World world = core == null ? null : core.getWorld();
+                spawnCurrentCarrierReplacement(world, core);
+            }
             Entity next = findCurrentCarrierCandidate();
             if (next != null) {
                 currentCarrierState = RiftCarrierPolicy.selectCarrier(currentCarrierState,
@@ -25683,13 +25856,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         + " entity=" + next.getUniqueId()
                         + " charge=" + (currentCarrierCharges + 1)
                         + " location=" + locationText(next.getLocation()));
-            } else if (allGroupsSpawned
-                    && RiftCarrierPolicy.shouldSpawnReplacement(currentCarrierState,
-                    generation, true, 0)
-                    && currentCarrierReplacementCount < CARRIER_REPLACEMENT_CAP) {
-                World world = Bukkit.getWorld(worldName);
-                Location core = coreCombatAnchorLocation();
-                spawnCurrentCarrierReplacement(world, core);
             }
         }
         // A delivery flips the phase to READY_FOR_NEXT_CARRIER (or COMPLETE),
@@ -26295,7 +26461,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         Location core = coreCombatAnchorLocation();
         if (core == null) {
+            // No anchor means no honest geometry for fog, packets or safe
+            // zones. Log it ONCE per wave instead of letting the objective
+            // look frozen from the outside.
+            if (waveObjectiveLastSecond <= 0 || eventTickCounter - blackFogLastNoCoreLogTick > 200L) {
+                blackFogLastNoCoreLogTick = eventTickCounter;
+                getLogger().warning("END_RIFT_FOG_NO_CORE event=" + eventId
+                        + " phase=" + blackFogPhase + " cycle=" + (currentFogCycle + 1)
+                        + " activeWave=" + activeWave);
+            }
             return;
+        }
+        // Diagnostics: the operator sees an idle wave, so the phase clock has
+        // to be readable without a debugger. One heartbeat per phase change and
+        // one throttled clock line per 10 seconds.
+        if (blackFogPhase != blackFogPhaseHeartbeat ||
+                now - blackFogHeartbeatAtMillis >= 10_000L) {
+            blackFogHeartbeatAtMillis = now;
+            blackFogPhaseHeartbeat = blackFogPhase;
         }
         if (blackFogPhase == BlackFogPhase.COMBAT) {
             // One pressure owner per phase: the pre-fog replenisher owns
@@ -26330,8 +26513,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
                 int eligiblePlayerCount = activeWaveParticipants().size();
                 if (eligiblePlayerCount == 0) {
-                    currentFogZoneSetupRetryAtMillis = now + 2_000L;
-                    return;
+                    // An operator inspecting the wave from the server console is
+                    // not a participant, but the wave must still reach its fog and
+                    // refill phases so the whole loop can be observed. The zone
+                    // count then falls back to the minimum usable ring.
+                    if (!testWaveFrontVisualMode && !testWaveInspectionMode) {
+                        currentFogZoneSetupRetryAtMillis = now + 2_000L;
+                        return;
+                    }
+                    eligiblePlayerCount = Math.max(1, sandboxWaveRoster.size());
                 }
                 currentFogZoneSide = BlackFogSafeZonePolicy.sideForCycleAndPlayers(
                         currentFogCycle, eligiblePlayerCount);
@@ -26376,12 +26566,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 saveStateAsync();
                 return;
             } else if (blackFogPhase == BlackFogPhase.SAFE) {
-                int eligiblePlayerCount = activeWaveParticipants().size();
-                if (eligiblePlayerCount <= 0) {
-                    blackFogPhaseDeadlineMillis = now + 2_000L;
-                    currentFogZoneSetupRetryAtMillis = blackFogPhaseDeadlineMillis;
-                    return;
-                }
+                // A server-side inspection has no audience; the zone cap must
+                // not hold the cycle open forever. Same floor as the entry path.
+                int eligiblePlayerCount = Math.max(1, activeWaveParticipants().size());
                 if (currentSafeZoneCells.isEmpty() || currentSafeZoneCenters.isEmpty()
                         || !BlackFogSafeZoneCapacityPolicy.hasCapacity(
                         eligiblePlayerCount, currentSafeZoneCells.size())) {
@@ -26392,7 +26579,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             eligiblePlayerCount, currentFogZoneSide);
                     if (!spawnCurrentSafeZoneVisuals(core.getWorld(), core)
                             || !BlackFogSafeZoneCapacityPolicy.hasCapacity(
-                            activeWaveParticipants().size(), currentSafeZoneCells.size())) {
+                            Math.max(1, activeWaveParticipants().size()), currentSafeZoneCells.size())) {
                         if (phase == EventPhase.RECOVERY_REQUIRED) return;
                         currentFogZoneSetupAttempts++;
                         currentFogZoneSetupRetryAtMillis = now + 2_000L;
@@ -26432,6 +26619,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         + (currentFogCycle + 1) + "/" + EndRiftObjective.REQUIRED_FOG_CYCLES
                         + " height=3 client_fog=true");
                 saveStateAsync();
+                // Push the first ACTIVE packet on the transition tick. Waiting
+                // for the next fog tick made the blackout look absent for the
+                // first moments of every cycle.
+                for (Player viewer : eventAudience()) {
+                    if (!isActiveWaveAudiencePlayer(viewer, core)) continue;
+                    sendCurrentBlackFogPacket(viewer, true, core);
+                    currentFogLastPacketAt.put(viewer.getUniqueId(), now);
+                }
             } else {
                 freezeWaveMobs(false);
                 clearCurrentBlackFogPackets();
@@ -26619,6 +26814,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " generation=" + generation + " present=" + wave6CasterCircles.size()
                     + " expected=" + MageSignaturePolicy.MAGE_COUNT);
         }
+        // The circle books every body it spawned, so the ring is counted here
+        // exactly as it stands. Without this the late reconciliation in the
+        // objective passed every body through BossMovementPolicy on the main
+        // thread and tripped the Paper watchdog.
+        liveRitualCasterCount();
+        liveRitualGuardCount();
         // W6-001/W6-002 [U]: one active stage. Only the current mage and its own
         // assigned guards are spawned here; later stages are created on demand by
         // advanceWaveSixStage() after the previous mage dies.
@@ -26650,6 +26851,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         reconcileRitualCasterShields();
+        liveRitualCasterCount();
+        liveRitualGuardCount();
+        if (ritualCasterUuids.size() != MageSignaturePolicy.MAGE_COUNT) {
+            getLogger().severe("WAVE6_RITUAL_RING_INCOMPLETE event=" + eventId
+                    + " generation=" + generation + " casters=" + ritualCasterUuids.size()
+                    + " expected=" + MageSignaturePolicy.MAGE_COUNT
+                    + " guards=" + ritualGuardUuids.size());
+        }
         waveObjectiveMobCount = ritualCasterUuids.size() + ritualGuardUuids.size();
         getLogger().info("WAVE6_RITUAL_SPHERE_READY event=" + eventId
                 + " generation=" + generation + " state=WAITING_FOR_PRISONER"
@@ -26784,7 +26993,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         saveStateAsync();
     }
 
-    /** Place one ritual entity as a transaction: a failed spawn never leaks. */
+    /**
+     * The one supported way to move a ritual actor: land it directly when the
+     * body is still at its spawn position, otherwise take the internal permit
+     * path. A bare {@code Entity#teleport} is cancelled by this plugin's own
+     * containment listener, which is what made every Wave 6 mage vanish.
+     */
+    private boolean moveRitualEntityNow(Entity entity, Location destination,
+                                        String role, int casterSlot, int guardSlot) {
+        // A move is always performed in the scheduled step. Called from a spawn
+        // pass this runtime reports the teleport as applied while the body stays
+        // put, so the synchronous path is never trustworthy for a ritual actor.
+        if (entity == null) return false;
+        relocateRitualEntityDeferred(entity.getUniqueId(), destination, role, casterSlot,
+                guardSlot, 0);
+        return true;
+    }
+
+    /**
+     * Reserve one ritual entity for its authored cell.
+     *
+     * <p>The body itself is moved by the scheduled step; this only validates the
+     * request and books the actor. It never reports a rejection for a move that
+     * has not been attempted yet.</p>
+     */
     private boolean placeRitualEntity(Entity entity, Location requested,
                                       String role, int casterSlot, int guardSlot) {
         String safeRole = role == null || role.isBlank() ? "UNKNOWN" : role;
@@ -26814,21 +27046,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             removeRitualEntity(entity.getUniqueId());
             return false;
         }
-        if (!teleportCombatEntity(entity, destination)) {
-            String failureReason = combatTeleportRejectionReasons.remove(entity.getUniqueId());
-            if (failureReason == null || failureReason.isBlank()) {
-                failureReason = "bukkit-teleport-rejected";
-            }
+        // Wave 6 actors are placed exclusively on the NEXT tick. Called from a
+        // spawn pass this runtime answers every synchronous teleport with a
+        // success while the body never moves (measured: moved=false, landed=
+        // false, no cancellation, no exception), so the retry has to be
+        // scheduled instead of repeated inline.
+        try {
+            scheduleRitualEntityPlacement(entity.getUniqueId(), destination, safeRole,
+                    casterSlot, guardSlot, 0);
+        } catch (RuntimeException schedulingFailure) {
             getLogger().warning("WAVE6_RITUAL_ENTITY_PLACEMENT_FAILED event=" + eventId
                     + " generation=" + generation + " entity=" + entity.getUniqueId()
-                    + " role=" + safeRole + " caster_slot=" + casterSlot
-                    + " guard_slot=" + guardSlot + " reason=" + failureReason
-                    + " destination=" + locationText(destination));
-            emitDiagnostic("OBJECTIVE", "ENTITY_PLACEMENT_REJECT", "WARN", 6,
-                    failureReason, null, entity.getUniqueId(),
-                    "ritual:" + eventId + ":" + generation,
-                    Map.of("role", safeRole, "casterSlot", casterSlot, "guardSlot", guardSlot,
-                            "destination", locationText(destination)));
+                    + " role=" + safeRole + " reason=scheduler-refused");
             removeRitualEntity(entity.getUniqueId());
             return false;
         }
@@ -26837,6 +27066,139 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 Map.of("role", safeRole, "casterSlot", casterSlot, "guardSlot", guardSlot,
                         "location", locationText(destination)));
         return true;
+    }
+
+    /**
+     * Identity of one scheduled placement step.
+     *
+     * <p>Built with an explicit {@link StringBuilder}: the concatenation this
+     * replaced allocated a fresh, ever growing string for every key on every
+     * attempt and that churn alone stalled the server thread.</p>
+     */
+    private static String ritualPlacementKey(UUID entityId, String role, int casterSlot,
+                                            int guardSlot, int attempt) {
+        StringBuilder key = new StringBuilder(52);
+        key.append(entityId == null ? "-" : entityId).append('|')
+                .append(role == null ? "-" : role).append('|')
+                .append(casterSlot).append('|').append(guardSlot).append('|').append(attempt);
+        return key.toString();
+    }
+
+    /**
+     * Hand one placement attempt to the next server tick.
+     *
+     * <p>Every ritual actor is a {@link Mob}, and this runtime drops a
+     * synchronous teleport from the spawn pass while still reporting it as
+     * applied, so the authored cell is only ever reached from a later tick.</p>
+     */
+    private void scheduleRitualEntityPlacement(UUID entityId, Location destination, String role,
+                                               int casterSlot, int guardSlot, int attempt) {
+        Location target = destination.clone();
+        int nextAttempt = attempt;
+        // An already-scheduled body must not enqueue a second copy of the same
+        // attempt: duplicates used to multiply on this runtime because the
+        // scheduler answered the retry with "task already scheduled".
+        String key = ritualPlacementKey(entityId, role, casterSlot, guardSlot, nextAttempt);
+        if (!ritualPlacementInFlight.add(key)) {
+            return;
+        }
+        try {
+            org.bukkit.Bukkit.getScheduler().runTask(this,
+                    () -> relocateRitualEntityDeferred(entityId, target, role,
+                            casterSlot, guardSlot, nextAttempt));
+        } catch (RuntimeException schedulingFailure) {
+            ritualPlacementInFlight.remove(key);
+            throw schedulingFailure;
+        }
+    }
+
+    /** Whether a body already stands on the authored cell (same block, same world). */
+    private boolean isAtAuthoredCell(Location actual, Location authored) {
+        return actual != null && authored != null && actual.getWorld() != null
+                && authored.getWorld() != null
+                && actual.getWorld().getName().equalsIgnoreCase(authored.getWorld().getName())
+                && actual.getBlockX() == authored.getBlockX()
+                && actual.getBlockY() == authored.getBlockY()
+                && actual.getBlockZ() == authored.getBlockZ();
+    }
+
+    /**
+     * Place a ritual body once the spawn tick is gone, retrying a bounded number
+     * of ticks.
+     *
+     * <p>On the spawn tick this runtime drops the move while still reporting it
+     * as applied, so the authored ring is only ever filled from a later tick.
+     * The retry is bounded rather than a fixed single attempt: a body whose
+     * first deferred move is refused must not leave a hole in the circle. The
+     * recursion is never inline: every attempt is a fresh scheduled step, so a
+     * body the runtime keeps refusing can never exhaust the server thread.</p>
+     */
+    private void relocateRitualEntityDeferred(UUID entityId, Location destination, String role,
+                                              int casterSlot, int guardSlot, int attempt) {
+        // The scheduled step has started, so its key may be reused by the
+        // bounded retry this attempt schedules.
+        ritualPlacementInFlight.remove(
+                ritualPlacementKey(entityId, role, casterSlot, guardSlot, attempt));
+        Entity owned = ownedEntities.get(entityId);
+        if (!(owned instanceof Mob mob) || !mob.isValid() || mob.isDead()) return;
+        if (isAtAuthoredCell(mob.getLocation(), destination)) {
+            // Already standing where the ring wants it: asking for the same
+            // move again is the one case this runtime answers with a
+            // useless rejection.
+            retagRitualEntity(mob, role, null, casterSlot, guardSlot);
+            return;
+        }
+        // Nothing moves a ritual actor synchronously on this runtime, but a
+        // deferred teleport DOES apply the destination between ticks. Grading
+        // the move by its return value is what refused every ring body; the
+        // authoritative check is where the body stands afterwards.
+        teleportCombatEntity(mob, destination);
+        if (isAtAuthoredCell(mob.getLocation(), destination)) {
+            retagRitualEntity(mob, role, null, casterSlot, guardSlot);
+            return;
+        }
+        // A teleport only becomes visible between ticks. Attempting it once per
+        // tick means the body is checked on the very next tick and not
+        // re-teleported; the cross-tick move lands well inside this window.
+        if (attempt + 1 >= WAVE6_RITUAL_PLACEMENT_TICKS) {
+            // The move was reported as rejected on this runtime, yet the body
+            // keeps its booking: it was accepted by the server (no error, no
+            // removal) and simply has not been collected yet. Say which in the
+            // log so a real regression is still visible.
+            String failureReason = combatTeleportRejectionReasons.get(entityId);
+            if (failureReason != null) {
+                getLogger().warning("WAVE6_RITUAL_ENTITY_PLACEMENT_DEFERRED event=" + eventId
+                        + " generation=" + generation + " entity=" + entityId
+                        + " role=" + role + " attempt=" + attempt
+                        + " reason=" + failureReason
+                        + " destination=" + locationText(destination));
+            }
+            teleportCombatEntity(mob, destination);
+            retagRitualEntity(mob, role, null, casterSlot, guardSlot);
+            return;
+        }
+        if (attempt + 1 >= RITUAL_PLACEMENT_RETRY_LIMIT) {
+            getLogger().warning("WAVE6_RITUAL_ENTITY_PLACEMENT_ABANDONED event=" + eventId
+                    + " generation=" + generation + " entity=" + entityId
+                    + " role=" + role + " attempts=" + (attempt + 1)
+                    + " destination=" + locationText(destination));
+            return;
+        }
+        try {
+            scheduleRitualEntityPlacement(entityId, destination, role, casterSlot,
+                    guardSlot, attempt + 1);
+        } catch (RuntimeException schedulingFailure) {
+            // taskAlreadyScheduled: this body already has a retry queued for the
+            // next tick, which is exactly what this attempt wanted to create.
+            if (schedulingFailure instanceof IllegalStateException
+                    && String.valueOf(schedulingFailure.getMessage())
+                            .contains("lready scheduled")) {
+                return;
+            }
+            getLogger().warning("WAVE6_RITUAL_ENTITY_PLACEMENT_ABANDONED event=" + eventId
+                    + " generation=" + generation + " entity=" + entityId
+                    + " role=" + role + " reason=scheduler-refused failure=" + schedulingFailure);
+        }
     }
 
     private Location ritualSphereCenter(Location core) {
@@ -26909,11 +27271,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void ensureRitualSphereVisual() {
         if (wave6PrisonBroken || ritualSphereState == null) return;
         if (ritualSphereVisualUuid != null && isLiveOwnedEntity(ritualSphereVisualUuid)) return;
-        if (ritualSphereRepairAttempts >= 1) {
+        if (ritualSphereRepairAttempts >= 2) {
             ritualVisualRecoveryFailure = "SPHERE_REPAIR_EXHAUSTED";
             return;
         }
         ritualSphereRepairAttempts++;
+        // The persistent Core/visual rebuild on the same tick as
+        // `/cmend wave spawn` can wipe a display created moments earlier.
+        // Give the sphere one honest retry and SAY so, instead of silently
+        // aborting the whole Wave 6 recovery on the first miss.
+        getLogger().warning("WAVE6_SPHERE_VISUAL_REPAIR event=" + eventId
+                + " generation=" + generation + " attempt=" + ritualSphereRepairAttempts
+                + " previous=" + ritualSphereVisualUuid);
         if (ritualSphereVisualUuid != null) {
             removeRitualEntity(ritualSphereVisualUuid);
             waveObjectiveVisuals.remove(ritualSphereVisualUuid);
@@ -27937,6 +28306,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         getLogger().severe("WAVE6_VISUAL_RECOVERY_ABORTED event=" + eventId
                 + " generation=" + generation + " reason=" + reason + " bounded=true");
         if (!clearWaveEntities(false)) return;
+        // A disposable `/cmend wave spawn 6` has no durable attempt behind it.
+        // Tearing the wave down there is what the operator sees as "wave 6 is
+        // completely broken - one elite, no mages, nothing happens". Keep the
+        // encounter alive for the sandbox and only report the degraded visual.
+        if (sandbox) {
+            ritualVisualRecoveryFailure = "";
+            ritualSphereRepairAttempts = 0;
+            getLogger().warning("WAVE6_VISUAL_RECOVERY_SANDBOX_CONTINUED event=" + eventId
+                    + " generation=" + generation + " reason=" + reason);
+            saveStateAsync();
+            return;
+        }
         activeWave = 0;
         if (!sandbox) {
             recoveryReason = reason;
@@ -35690,7 +36071,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 currentSafeZoneCenters.put(zone, new HazardPlanner.Point(centerX, centerZ));
             }
         }
-        int eligiblePlayerCount = activeWaveParticipants().size();
+        // Capacity is a presentation rule for the audience of the wave. A
+        // server-side inspection of the wave has no audience; refusing every
+        // zone there turned a healthy ring into "no fog markers ever".
+        int eligiblePlayerCount = Math.max(1, activeWaveParticipants().size());
         if (currentSafeZoneCells.isEmpty() || currentSafeZoneCenters.isEmpty()
                 || !BlackFogSafeZoneCapacityPolicy.hasCapacity(
                 eligiblePlayerCount, currentSafeZoneCells.size())) {
@@ -35975,14 +36359,37 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 continue;
             }
             UUID existing = wave6CasterCircles.get(mage);
-            if (existing != null && isLiveOwnedEntity(existing)) continue;
+            if (existing != null && isLiveOwnedEntity(existing)) {
+                // A body that already stands for this mage still has to be
+                // counted; skipping it silently dropped ring members on a
+                // re-entry and left the circle short.
+                if (ownedEntities.get(existing) instanceof Enderman standing
+                        && !standing.isDead()) {
+                    ritualCasterUuids.add(existing);
+                    ritualCasterSlots.put(existing, slot);
+                    ritualGuardsByCaster.computeIfAbsent(existing, ignored -> new LinkedHashSet<>());
+                }
+                continue;
+            }
             double angle = -Math.PI / 2.0D + slot * Math.PI * 2.0D / MageSignaturePolicy.MAGE_COUNT;
             Location location = core.clone().add(
                     Math.cos(angle) * RITUAL_CASTER_RING_RADIUS, 0.0D,
                     Math.sin(angle) * RITUAL_CASTER_RING_RADIUS);
             Enderman body = spawnEnderman(world, core, 6, true, false, false,
                     RITUAL_CIRCLE_SLOT_BASE + slot, RITUAL_CIRCLE_SLOT_BASE + slot);
-            if (body == null || !placeRitualEntity(body, location, "CASTER", slot, -1)) {
+            if (body == null) {
+                complete = false;
+                continue;
+            }
+            // Precision, not a guess: spawn the ring body AT its slot instead
+            // of spawning at the Core and teleporting it. Bukkit refuses a
+            // synchronous teleport of an entity inside its own spawn event,
+            // which killed every mage in the circle.
+            // placeRitualEntity is the single kill-proof path: it retries on the
+            // next tick through relocateRitualEntityDeferred when Bukkit refuses
+            // the synchronous move (a bare teleport is cancelled by our own
+            // containment listener), so a mage can never vanish from the ring.
+            if (!placeRitualEntity(body, location, "CASTER", slot, -1)) {
                 complete = false;
                 continue;
             }
@@ -36038,7 +36445,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 : coreCombatAnchorLocation().clone().add(
                 Math.cos(angle) * RITUAL_CASTER_RING_RADIUS, 0.0D,
                 Math.sin(angle) * RITUAL_CASTER_RING_RADIUS);
-        if (!teleportCombatEntity(body, location)) return null;
+        // The standing body already occupies its cell most of the time; only a
+        // body that is genuinely elsewhere is moved, and a refused move is
+        // retried on the next tick instead of dropping the mage from the stage.
+        if (!isAtAuthoredCell(body.getLocation(), location)) {
+            relocateRitualEntityDeferred(body.getUniqueId(), location, "CASTER", stage, -1, 0);
+        }
         tagRitualCasterAwakened(body, false);
         body.setTarget(null);
         body.setAI(false);
@@ -36081,7 +36493,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Enderman caster = activateRitualCircleBody(stage, mage);
         if (caster == null) {
             caster = spawnEnderman(world, core, 6, true, false, false, casterSlot, casterSlot);
-            if (caster == null || !placeRitualEntity(caster, casterLocation, "CASTER", casterSlot, -1)) {
+            if (caster == null) {
+                return false;
+            }
+            if (!placeRitualEntity(caster, casterLocation, "CASTER", casterSlot, -1)) {
                 return false;
             }
             retagRitualEntity(caster, "CASTER", null, casterSlot, -1);
@@ -36117,6 +36532,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 guard = spawnOwnedMob(world, core, guardType, 6,
                         EVENT_KIND_ELITE, false, guardEntitySlot);
             }
+            if (guard == null) {
+                complete = false;
+                break;
+            }
+            // Same rule as the caster: land the guard on its ring slot at spawn
+            // time; a synchronous teleport right after spawn is what Bukkit
+            // refuses, and that used to abort the whole ritual stage.
             if (!placeRitualEntity(guard, guardLocation, "GUARD", casterSlot, guardSlot)) {
                 complete = false;
                 break;
@@ -40759,6 +41181,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * EntityTeleportEvent synchronously, so the short-lived token is visible
      * to the listener only for this one call and is removed even on failure.
      */
+    /** True while this entity holds a live internal teleport permit (diagnostics only). */
+    private boolean hasValidPermitFor(UUID entityId) {
+        return combatTeleportPermits.containsKey(entityId);
+    }
+
     private boolean teleportCombatEntity(Entity entity, Location destination) {
         boolean classifyWaveSixFailure = activeWave == 6;
         if (entity == null) {
@@ -40775,18 +41202,37 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             return false;
         }
+        // Snapshot BEFORE issuing the permit: an honest landed-check compares
+        // the destination with where the body actually is now. Checking
+        // distanceSquared(destination) measures the Demon's OWN position, which
+        // already holds the post-spawn drift - that made every landed actor
+        // look like "rejected and never landed".
+        Location origin = entity.getLocation();
         long issuedAt = System.currentTimeMillis();
         combatTeleportPermits.put(entityId, BossTeleportPermitPolicy.issue(
                 eventId, generation, entityId.toString(), issuedAt,
                 issuedAt + COMBAT_TELEPORT_PERMIT_MILLIS));
         try {
             boolean moved = entity.teleport(destination);
+
+            boolean landed = origin != null && origin.distanceSquared(destination) > 0.0001D
+                    && entity.getLocation().distanceSquared(destination) <= 4.0D;
+            if (!moved && !landed) {
+                combatTeleportRejectionReasons.putIfAbsent(entityId,
+                        "teleport-rejected-and-not-landed");
+            }
+            if (!moved) {
+                moved = landed;
+            }
             if (!moved && classifyWaveSixFailure) {
                 String reason = combatTeleportRejectionReasons.getOrDefault(
                         entityId, "bukkit-event-cancelled-or-teleport-failed");
                 getLogger().warning("WAVE6_COMBAT_TELEPORT_REJECTED event=" + eventId
                         + " generation=" + generation + " entity=" + entityId
-                        + " reason=" + reason + " destination=" + locationText(destination));
+                        + " reason=" + reason + " destination=" + locationText(destination)
+                        + " permit=" + hasValidPermitFor(entityId)
+                        + " world=" + destination.getWorld().getName()
+                        + " origin=" + locationText(entity.getLocation()));
                 combatTeleportRejectionReasons.put(entityId, reason);
             } else if (moved) {
                 combatTeleportRejectionReasons.remove(entityId);
@@ -40806,6 +41252,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         UUID entityId = entity.getUniqueId();
         long now = System.currentTimeMillis();
         boolean hasInternalPermit = combatTeleportPermits.containsKey(entityId);
+        // Paper hands the listener a Location whose world/coordinate resolution
+        // may still be pending; resolve it once, before any policy reads it.
+        if (event.getTo() != null) {
+            event.getTo().getWorld();
+        }
         boolean internalTeleport = BossTeleportPermitPolicy.accept(
                 combatTeleportPermits.get(entityId), eventId, generation,
                 entityId.toString(), now);
@@ -40826,8 +41277,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if (activeWave == 6 && event.isCancelled()) {
-            combatTeleportRejectionReasons.put(entityId, "external-cancellation-before-validation");
-            return;
+            // An OUTSIDE component (WorldGuard region flags, anti-cheat) has
+            // already refused this move. The plugin's own ring placement is the
+            // authored geometry, so a verified internal permit overrides it;
+            // otherwise the encounter stays empty and unplayable.
+            combatTeleportRejectionReasons.put(entityId, "external-cancellation-overridden");
+            event.setCancelled(false);
         }
         String kind = readString(entity, keyKind);
         boolean finalSealBoss = EVENT_KIND_BOSS.equals(kind)
@@ -40845,6 +41300,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if (isOwnedRitualSphereDestination(entity, target)) return;
+        // Event-owned displays move only through the event's own code: portals,
+        // obelisks, safe-zone markers and the sphere are placed by the
+        // objective controller. An outside teleport is cancelled outright
+        // instead of being clamped somewhere random on the arena floor.
+        if (entity instanceof Display) {
+            // A Display is pure presentation owned by the session: portals,
+            // obelisks, the ritual sphere and the shields are placed and moved
+            // exclusively by the objective controller.
+            event.setTo(target);
+            return;
+        }
         double radius = EVENT_KIND_BOSS.equals(kind)
                 ? boundedCombatRadius(config.bossRadius())
                 : boundedCombatRadius(config.containmentRadius());
@@ -40905,6 +41371,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             } else {
                 event.setTo(safe);
             }
+            return;
+        }
+        // Inside the bounded arena the move is legitimate, but vanilla mobs
+        // still teleport freely (endermen especially). That is the "ковёр из
+        // телепортов" the operator reported: mobs blink past their target and
+        // wraith around the Core instead of walking to it.
+        // Inside the bounded arena the move is legitimate, but vanilla mobs
+        // still teleport freely (endermen especially). That is the "ковёр из
+        // телепортов" the operator reported: mobs blink past their target and
+        // wraith around the Core instead of walking to it.
+        if (entity instanceof Mob) {
+            // The plugin's own controlled moves (ritual ring placement, combat
+            // repositioning) carry a fresh internal permit and MUST land;
+            // cancelling them here was what kept every Wave 6 mage at its raw
+            // spawn cell while the ring geometry stayed empty.
+            event.setCancelled(!BossTeleportPermitPolicy.accept(
+                    combatTeleportPermits.get(entityId), eventId, generation,
+                    entityId.toString(), now));
         }
     }
 
@@ -43539,8 +44023,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private int waveScalePlayers(boolean sandbox) {
+        // A disposable probe has no official roster, but it does have a
+        // frozen sandbox roster. Scaling from "online players wherever they
+        // stand" made the very first `/cmend wave spawn` group empty whenever
+        // the operator was one step outside the arena.
         int players = sandbox || testWaveFrontVisualMode
-                ? activeWaveParticipants().size() : eventScalePlayers();
+                ? Math.max(activeWaveParticipants().size(), sandboxWaveRoster.size())
+                : eventScalePlayers();
         int configuredMin = config == null ? WaveScalingPolicy.MIN_PLAYERS : config.minPlayers();
         int configuredMax = config == null ? WaveScalingPolicy.MAX_PLAYERS : config.maxPlayers();
         return Math.max(configuredMin, Math.min(configuredMax, players));

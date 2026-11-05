@@ -48,6 +48,10 @@ public class Wave4ObjectiveDispatchProbe {
   boolean isEnabled() { return enabled; }
   Object liveBoss() { return null; }
   void renderRitualZoneVisuals(long now) { }
+  // The dispatch now asks whether the wave owns its objective; the probe keeps
+  // the production answer for a numbered wave (yes) so the routing it checks is
+  // unchanged.
+  boolean canOwnWaveObjective(int wave) { return wave >= 1 && wave <= 7; }
   void tickWaveCompletion() { objectives++; if (activeWave == 4) tickWave4ObeliskAssault(); }
   void tickWave6RitualRuntimeOnce() { wave6RuntimeTicks++; }
   void tickWave4ObeliskAssault() {
@@ -77,7 +81,7 @@ public class Wave4ObjectiveDispatchProbe {
       probe.testWave4ObeliskMode = false;
     }
     if (scenario.equals("disposable-ai")) probe.testCombatAiMode = true;
-    if (scenario.equals("inspection")) { probe.testWaveInspectionMode = true; expected = 0; }
+    // An operator inspection run (/cmend wave spawn <n>) now OWNS its objective:    // freezing it was why the hand-spawned wave never advanced a phase.    if (scenario.equals("inspection")) { probe.testWaveInspectionMode = true; }
     if (scenario.equals("cancel-before-objective")) { probe.cancelInAi = true; expected = 0; }
     if (scenario.equals("official-cancel-objective")) probe.cancelInObjective = true;
     if (scenario.equals("official-restart-objective")) probe.restartInObjective = true;

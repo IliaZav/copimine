@@ -112,6 +112,10 @@ public class Wave4PackRuntimeProbe {
     Set<Object> currentWave4ConsumedFireballs = new HashSet<>();
     EventConfig config = new EventConfig(); Coordinator waveCombatCoordinator = new Coordinator();
     EventPhase phase = EventPhase.WAVE_4;
+    // The wave tick now opens the objective controller for operator sandboxes
+    // (inspection/ai flags) and throttles its own failure logging.
+    boolean testWaveInspectionMode, testCombatAiMode;
+    long waveTickFailureLogTick;
     int currentWaveScalePlayers = 2, currentWave4PressurePackAttempts, waveSpawnGroupIndex, activeWave = 4;
     long generation = 5, eventTickCounter = 5, currentWave4PressureRetryAtMillis, phaseDeadlineMillis;
     String eventId = UUID.randomUUID().toString(), worldName = "fixture", recoveryReason;

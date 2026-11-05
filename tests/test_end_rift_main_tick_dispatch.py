@@ -45,6 +45,9 @@ public class MainTickWaveDispatch {
   boolean isEnabled() { return enabled; }
   Object liveBoss() { return boss; }
   void renderRitualZoneVisuals(long now) { }
+  // The dispatch asks whether the wave owns its objective; a numbered wave
+  // always does, so the routing under test is unchanged.
+  boolean canOwnWaveObjective(int wave) { return wave >= 1 && wave <= 7; }
   void tickWaveCompletion() { objectives++; }
   void tickBoss() { bosses++; }
   void tickWave6RitualRuntimeOnce() { wave6RuntimeTicks++; }
@@ -92,8 +95,11 @@ SCENARIOS += [(5, True, True, "READY_FOR_PLAYERS", False, False, 0, 0, False),
               (0, False, True, "READY_FOR_PLAYERS", True, True, 0, 1, False),
               (0, False, False, "READY_FOR_PLAYERS", True, False, 0, 0, False),
               (0, False, False, "BOSS_ACTIVE", True, True, 0, 1, False),
-              (5, True, True, "READY_FOR_PLAYERS", True, False, 0, 0, True),
-              (7, True, False, "READY_FOR_PLAYERS", True, False, 0, 0, True)]
+              # An operator inspection wave is a PLAYABLE sandbox now: its
+              # objective controller runs exactly like the AI sandbox, which
+              # is what makes /cmend wave spawn advance through its phases.
+              (5, True, True, "READY_FOR_PLAYERS", True, False, 1, 0, True),
+              (7, True, False, "READY_FOR_PLAYERS", True, False, 1, 0, True)]
 
 
 @pytest.mark.parametrize("wave,sandbox,ai,phase,ready,boss,objectives,boss_ticks,inspection", SCENARIOS)

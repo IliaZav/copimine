@@ -27,7 +27,7 @@ def test_client_eyes_mixin_matches_1_21_entity_descriptor() -> None:
 def test_wave6_start_removes_stale_walls_and_wave3_portals() -> None:
     source = read(SERVER)
     start = source.index("private boolean startRitualSphereObjective")
-    end = source.index("/** Place one ritual entity", start)
+    end = source.index("private void relocateRitualEntityDeferred", start)
     body = source[start:end]
     assert "clearLegacyWave7BarrierArtifacts" in body
     assert "clearLegacyWave3PortalArtifacts" in body
@@ -36,7 +36,7 @@ def test_wave6_start_removes_stale_walls_and_wave3_portals() -> None:
 def test_wave6_start_stops_if_owned_barrier_journal_cannot_be_restored() -> None:
     source = read(SERVER)
     start = source.index("private boolean startRitualSphereObjective")
-    end = source.index("/** Place one ritual entity", start)
+    end = source.index("private void relocateRitualEntityDeferred", start)
     body = source[start:end]
     checked_cleanup = 'if (!clearRealitySplitBarriers("wave6-start"))'
     assert checked_cleanup in body, "a failed journal restore must block the Wave 6 transition"

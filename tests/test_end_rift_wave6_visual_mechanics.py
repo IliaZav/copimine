@@ -792,6 +792,7 @@ public class VisualAbortProbe {
     }
     enum EventPhase { ACTIVE, RECOVERY_REQUIRED }
     String eventId="this-event", ritualVisualRecoveryFailure="SHIELD_REPAIR_EXHAUSTED", recoveryReason="";
+    int ritualSphereRepairAttempts;
     long generation=42, nextWaveRoleVisualMillis, nextCommanderAuraMillis;
     int activeWave=6, objectiveClears, saves, arrowsCleared, spiderEffectsCleared;
     boolean testWaveFrontVisualMode;
@@ -848,7 +849,7 @@ public class VisualAbortProbe {
             require(probe.objectiveClears==1&&probe.arrowsCleared==1,"objective/projectile cleanup runs exactly once");
             require(probe.spiderEffectsCleared==1,"wave cleanup releases temporary spider effects exactly once");
             require(probe.eliteAbilityCleanupCalls==1,"elite projectiles and player roots are cleared with wave state");
-            require(probe.activeWave==0,"aborted wave is inactive");
+            // Sandbox aborts keep the encounter playable (the operator's /cmend            // wave spawn 6 continues with a degraded visual), so only the            // official path may retire the wave number here.            require(probe.activeWave==(sandbox?6:0),"official abort retires the wave, sandbox keeps playing");
             require(probe.saves==(sandbox?1:0),"sandbox save and official recovery remain separate");
             require(probe.phase==(sandbox?EventPhase.ACTIVE:EventPhase.RECOVERY_REQUIRED),"official failure remains fail-closed");
         }

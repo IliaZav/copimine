@@ -88,11 +88,17 @@ public final class PressureBudgetController {
      * has a separate reserved lane and may coexist with ordinary projectiles.
      */
     public static int effectiveProjectileCap(int livingPlayers) {
-        Profile profile = profileForPlayers(livingPlayers);
-        if (profile.players() < MIN_PLAYERS) {
+        // The profile clamps its player count up to MIN_PLAYERS for waves that
+        // are already running. The allowance itself still follows the official
+        // minimum: below it the contract grants nothing, so an under-populated
+        // arena cannot quietly admit projectile traffic at all.
+        if (livingPlayers < MIN_PLAYERS) {
+            // Below the official minimum the contract is explicit: no
+            // projectile allowance at all, so nothing is silently admitted.
             return 0;
         }
-        return profile.projectileCap() + MIN_NAMED_VOLLEY_PROJECTILE_COUNT;
+        return profileForPlayers(livingPlayers).projectileCap()
+                + MIN_NAMED_VOLLEY_PROJECTILE_COUNT;
     }
 
     /**

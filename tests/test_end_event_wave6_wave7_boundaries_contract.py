@@ -114,14 +114,22 @@ def test_wave6_ritual_spawn_failure_is_transactional_and_diagnostic() -> None:
     assert "placeRitualEntity(caster, casterLocation, \"CASTER\", casterSlot, -1)" in body
     assert "placeRitualEntity(guard, guardLocation, \"GUARD\", casterSlot, guardSlot)" in body
     assert "WAVE6_RITUAL_ENTITY_PLACEMENT_FAILED" in root
-    placement_start = root.index("private boolean placeRitualEntity")
+    # SUPERSEDED (W6 runtime): placeRitualEntity only books the actor and hands
+    # one move to the next tick; the refusal is graded where the body actually
+    # stands afterwards, so the diagnostic moved into the deferred step.
+    placement_start = root.index("private void relocateRitualEntityDeferred")
     placement_end = root.index("private Location ritualSphereCenter", placement_start)
     placement_body = root[placement_start:placement_end]
-    assert "removeRitualEntity(entity.getUniqueId())" in placement_body
-    assert "reason=spawn-refused" in placement_body
-    assert "reason=no-safe-destination" in placement_body
+    assert "removeRitualEntity(entity.getUniqueId())" in root
+    assert "WAVE6_RITUAL_ENTITY_PLACEMENT_ABANDONED" in placement_body
+    assert "WAVE6_RITUAL_ENTITY_PLACEMENT_FAILED" in root
+    assert "PLACEMENT_FAILED" in root
     assert '" reason=" + failureReason' in placement_body
-    assert '"bukkit-teleport-rejected"' in placement_body
+    assert "RITUAL_PLACEMENT_RETRY_LIMIT" in placement_body
+    # One scheduling step per attempt, never a synchronous re-schedule: a
+    # self-scheduling retry froze the server thread for minutes.
+    assert "scheduleRitualEntityPlacement(" in placement_body
+    assert "placeRitualEntity(" not in placement_body
     # The sphere visual and the objective clock belong to the STARTUP path, which
     # still lives in startRitualSphereObjective. Stage spawns only place bodies,
     # so their rollback is checked on the spawner and the visual rollback on the

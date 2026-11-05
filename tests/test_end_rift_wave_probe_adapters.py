@@ -43,9 +43,13 @@ def probe_harness(tmp_path_factory):
         _declaration(source, "private void restoreWave3PortalCheckpoint(EventPhase persistedPhase,"),
     ]
     if "private boolean spawnInspectionWave(" in source:
+        # spawnInspectionWave delegates to the extracted real initializeWaveGameplay.
         methods.append(_declaration(source, "private boolean spawnInspectionWave("))
     # Keep the real initializer's admission and session-flag writes. Deep
     # objective/entity creation is the external boundary of this routing test.
+    # The production body now derives inspectionMode from the roster (a live
+    # operator wave keeps its AI, only an empty roster is frozen); the fixture
+    # keeps the CALLER's value so the extracted copy stays idempotent.
     initializer = _declaration(source, "private boolean initializeWaveGameplay(")
     initializer = initializer[:initializer.index("        Location floorCore =")]
     methods.append(initializer + """

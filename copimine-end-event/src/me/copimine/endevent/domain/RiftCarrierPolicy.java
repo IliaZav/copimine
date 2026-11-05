@@ -117,10 +117,8 @@ public final class RiftCarrierPolicy {
      * replacement cap and spawn mechanics.
      */
     public static boolean shouldSpawnReplacement(State state, long generation,
-                                                 boolean allGroupsSpawned,
                                                  int liveCandidates) {
-        if (!valid(state, generation) || isComplete(state) || !allGroupsSpawned
-                || liveCandidates > 0) {
+        if (!valid(state, generation) || isComplete(state) || liveCandidates > 0) {
             return false;
         }
         return state.phase() == Phase.WAITING_FOR_CARRIER

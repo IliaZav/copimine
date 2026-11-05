@@ -174,6 +174,9 @@ public final class BlackFogAdapterProbe {
     static final String MODEL_SAFE_ZONE_FLOOR = "safe-floor";
     static final String EVENT_KIND_DISPLAY = "display";
     static final class Player {
+        // The fog audience adapters address players by id, so the stub needs one.
+        private final UUID id = UUID.randomUUID();
+        UUID getUniqueId() { return id; }
         void addPotionEffect(PotionEffect effect) { }
     }
     static final class Bukkit {
@@ -243,6 +246,10 @@ public final class BlackFogAdapterProbe {
     long generation = 4L, blackFogPhaseDeadlineMillis, currentFogZoneSetupRetryAtMillis;
     int activeWave = 5, currentFogCycle, currentFogZoneCount, currentFogZoneSide, currentFogZoneSetupAttempts;
     int waveSpawnGroupIndex = 1, waveSpawnEntityOffset, liveWaveMobCount, refillPacks;
+    int waveObjectiveLastSecond = -1;
+    long eventTickCounter, blackFogLastNoCoreLogTick;
+    long blackFogHeartbeatAtMillis;
+    BlackFogPhase blackFogPhaseHeartbeat;
     int spawnLimit = Integer.MAX_VALUE;
     final Object keyWave = new Object();
     final Map<UUID, Entity> ownedEntities = new LinkedHashMap<>();
@@ -277,6 +284,12 @@ public final class BlackFogAdapterProbe {
     Location coreCombatAnchorLocation() { return core; }
     String worldVfxDimension(Location location) { return "the_end"; }
     int waveScalePlayers() { return 4; }
+    // The fog objective now allows a server-side inspection to advance without
+    // a player audience; the probe models the ordinary (non-inspection) run.
+    boolean testWaveInspectionMode;
+    Set<UUID> sandboxWaveRoster = Set.of();
+    Set<Player> eventAudience() { return Set.of(); }
+    boolean isActiveWaveAudiencePlayer(Player player, Location at) { return false; }
     boolean clearCurrentSafeZoneVisuals() {
         setupCalls++;
         cleanupCalls++;

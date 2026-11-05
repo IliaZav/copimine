@@ -15,6 +15,9 @@ def test_w6_ritual_placement_diagnostic_separates_teleport_failure_origins(tmp_p
     placement = extract(source, "private boolean placeRitualEntity(Entity entity, Location requested,")
     teleport = extract(source, "private boolean teleportCombatEntity(Entity entity, Location destination)")
     listener = extract(source, "public void onOwnedEntityTeleport(EntityTeleportEvent event)")
+    relocate = extract(source, "private void relocateRitualEntityDeferred(UUID entityId, Location destination, String role,\n")
+    scheduler = extract(source, "private void scheduleRitualEntityPlacement(UUID entityId, Location destination, String role,")
+    keyhelper = extract(source, "private static String ritualPlacementKey(UUID entityId, String role, int casterSlot,")
 
     probe = tmp_path / "W6RitualTeleportFailureProbe.java"
     probe.write_text(
@@ -23,11 +26,16 @@ import java.util.*;
 import me.copimine.endevent.domain.BossTeleportPermitPolicy;
 
 public class W6RitualTeleportFailureProbe {
-    static final long COMBAT_TELEPORT_PERMIT_MILLIS = 1000L;
+    // The adapter now sizes the permit from the production constant and logs the
+    // rejection origin through a permit lookup, so both must exist here.
+    static final long COMBAT_TELEPORT_PERMIT_MILLIS = 15000L;
     static final double MIN_WAVE_CORE_DISTANCE_BLOCKS = 2.5D;
     static final double MIN_BOSS_CORE_DISTANCE_BLOCKS = 4.0D;
     static final String EVENT_KIND_BOSS = "BOSS";
     static final String EVENT_KIND_ELITE = "ELITE";
+    static final int RITUAL_PLACEMENT_RETRY_LIMIT = 20;
+    static final int WAVE6_RITUAL_PLACEMENT_TICKS = 3;
+    final java.util.Set<String> ritualPlacementInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet();
     static final Object keyKind = new Object();
     final UUID actorId = UUID.fromString("00000000-0000-0000-0000-000000000061");
     final String eventId = "synthetic-wave6-attempt";
@@ -55,6 +63,7 @@ public class W6RitualTeleportFailureProbe {
             return value instanceof World other && name.equals(other.name);
         }
         @Override public int hashCode() { return name.hashCode(); }
+        String getName() { return name; }
     }
     static class Location implements Cloneable {
         final World world;
@@ -69,7 +78,10 @@ public class W6RitualTeleportFailureProbe {
         int getBlockX() { return (int)Math.floor(x); }
         int getBlockY() { return (int)Math.floor(y); }
         int getBlockZ() { return (int)Math.floor(z); }
-        public Location clone() { return new Location(world, x, y, z); }
+        double distanceSquared(Location other) {
+            double dx = x - other.x, dy = y - other.y, dz = z - other.z;
+            return dx * dx + dy * dy + dz * dz;
+        }        public Location clone() { return new Location(world, x, y, z); }
     }
     static class Entity {
         final W6RitualTeleportFailureProbe owner;
@@ -86,6 +98,9 @@ public class W6RitualTeleportFailureProbe {
         }
         UUID getUniqueId() { return id; }
         boolean isValid() { return valid; }
+        boolean isDead() { return !valid; }
+        Location getLocation() { return location; }
+        String getType() { return kind; }
         boolean teleport(Location destination) {
             teleportCalls++;
             if (invalidatePermitGeneration) owner.generation++;
@@ -140,7 +155,38 @@ public class W6RitualTeleportFailureProbe {
                 "RITUAL_CASTER", "RITUAL_GUARD").contains(kind);
     }
     Location coreCombatAnchorLocation() { return core.clone(); }
-    Location coreLocation() { return core.clone(); }
+    boolean hasValidPermitFor(UUID id) {
+        return BossTeleportPermitPolicy.accept(combatTeleportPermits.get(id), eventId, generation,
+                id.toString(), System.currentTimeMillis());
+    }
+    // The deferred relocation is taken from the real adapter (deferred).    /** Display is only consulted for kind tabling; a plain marker is enough. */
+    /** The scheduler is a Bukkit touchpoint; the probe only needs it accepted. */
+    static final class ProbeScheduler {
+        static final java.util.ArrayDeque<Runnable> PENDING = new java.util.ArrayDeque<>();
+        void runTask(Object owner, Runnable task) { PENDING.add(task); }
+        /** Run until the queue is empty so the deferred placement really runs. */
+        static void drain(int maxRounds) {
+            for (int round = 0; round < maxRounds && !PENDING.isEmpty(); round++) {
+                int size = PENDING.size();
+                for (int i = 0; i < size; i++) {
+                    PENDING.poll().run();
+                }
+            }
+        }
+    }
+    /** Package-local stand-in for the static Bukkit entry point. */
+    static final class Bukkit {
+        static final ProbeBukkit PLATFORM = new ProbeBukkit();
+        static ProbeScheduler getScheduler() { return PLATFORM.getScheduler(); }
+    }
+    static final class ProbeBukkit {
+        final ProbeScheduler scheduler = new ProbeScheduler();
+        ProbeScheduler getScheduler() { return scheduler; }
+    }
+    static final class Display extends Entity {        Display(W6RitualTeleportFailureProbe owner, UUID id, String kind, Location location) {
+            super(owner, id, kind, location);
+        }
+    }    Location coreLocation() { return core.clone(); }
     Location finalSealCoreAnchorLocation() { return null; }
     boolean isOwnedRitualSphereDestination(Entity entity, Location target) { return false; }
     double boundedCombatRadius(double radius) { return Math.max(1.0D, Math.min(48.0D, radius)); }
@@ -188,8 +234,14 @@ public class W6RitualTeleportFailureProbe {
                         String reason, Object player, UUID entity, String correlation,
                         Map<String, ?> details) { diagnosticReasons.add(reason); }
     void removeRitualEntity(UUID id) { ownedEntities.remove(id); }
+    // The scenarios always describe a genuine move, so this stub must never
+    // report the actor as already standing on its authored cell.
+    boolean isAtAuthoredCell(Location actual, Location authored) {
+        return false;
+    }
+    void retagRitualEntity(Entity entity, String role, UUID caster, int casterSlot, int guardSlot) { }
 
-''' + placement + "\n" + teleport + "\n" + listener + r'''
+''' + placement + "\n" + relocate + "\n" + scheduler + "\n" + keyhelper + "\n" + teleport + "\n" + listener + '''
 
     String placementReason() {
         for (int i = warnings.size() - 1; i >= 0; i--) {
@@ -223,39 +275,58 @@ public class W6RitualTeleportFailureProbe {
         return new Location(probe.arena, -0.5D, 68.0D, -41.5D); // block -1,68,-42
     }
     public static void main(String[] args) {
-        var unownedProbe = new W6RitualTeleportFailureProbe();
-        var unowned = actor(unownedProbe, false);
-        print("unowned", unownedProbe, unowned,
-                unownedProbe.placeRitualEntity(unowned, observedDestination(unownedProbe), "GUARD", 0, 0));
-
-        var invalidProbe = new W6RitualTeleportFailureProbe();
-        var invalid = actor(invalidProbe, true); invalid.valid = false;
-        print("invalid", invalidProbe, invalid,
-                invalidProbe.placeRitualEntity(invalid, observedDestination(invalidProbe), "GUARD", 0, 0));
-
-        var permitProbe = new W6RitualTeleportFailureProbe();
-        var permitRejected = actor(permitProbe, true); permitRejected.invalidatePermitGeneration = true;
-        print("permit", permitProbe, permitRejected,
-                permitProbe.placeRitualEntity(permitRejected, observedDestination(permitProbe), "GUARD", 0, 0));
-
-        var externalProbe = new W6RitualTeleportFailureProbe();
-        var externallyCancelled = actor(externalProbe, true); externallyCancelled.externalCancellation = true;
-        print("external", externalProbe, externallyCancelled,
-                externalProbe.placeRitualEntity(externallyCancelled,
-                        observedDestination(externalProbe), "GUARD", 0, 0));
-
-        var successProbe = new W6RitualTeleportFailureProbe();
-        var placed = actor(successProbe, true);
-        print("success", successProbe, placed,
-                successProbe.placeRitualEntity(placed, observedDestination(successProbe), "GUARD", 0, 0));
+        run("unowned", false, false, false);
+        run("invalid", true, false, false);
+        run("permit", true, true, false);
+        run("external", true, false, true);
+        run("success", true, false, false);
+    }
+    static void run(String scenario, boolean owned, boolean breakPermit, boolean externalCancel) {
+        var probe = new W6RitualTeleportFailureProbe();
+        var entity = actor(probe, owned);
+        entity.invalidatePermitGeneration = breakPermit;
+        entity.externalCancellation = externalCancel;
+        if (!owned) probe.ownedEntities.remove(entity.getUniqueId());
+        // The adapter hands the real move to the next tick, so the probe does
+        // the same and then drains the queue it was handed to.
+        boolean placed = probe.placeRitualEntity(entity, observedDestination(probe), "GUARD", 0, 0);
+        probe.relocateRitualEntityDeferred(entity.getUniqueId(), observedDestination(probe),
+                "GUARD", 0, 0, 0);
+        org.bukkit.Bukkit.drainAll();
+        print(scenario, probe, entity, placed);
     }
 }
 ''',
         encoding="utf-8",
     )
+    # The adapter defers the retry through org.bukkit.Bukkit, a fully qualified
+    # reference the probe cannot shadow; generate that tiny facade (only its
+    # scheduler entry point is reachable from the extracted adapter).
+    facade = tmp_path / "org" / "bukkit" / "Bukkit.java"
+    facade.parent.mkdir(parents=True, exist_ok=True)
+    facade.write_text(
+        "package org.bukkit;\n"
+        "public final class Bukkit {\n"
+        "    public static final ProbeScheduler STUB = new ProbeScheduler();\n"
+        "    public static ProbeScheduler getScheduler() { return STUB; }\n"
+        "    public static void drainAll() { STUB.drain(40); }\n"
+        "    public static final class ProbeScheduler {\n"
+        "        private static final java.util.ArrayDeque<Runnable> PENDING =\n"
+        "                new java.util.ArrayDeque<>();\n"
+        "        public void runTask(Object owner, Runnable task) { PENDING.add(task); }\n"
+        "        public static void drain(int maxRounds) {\n"
+        "            for (int round = 0; round < maxRounds && !PENDING.isEmpty(); round++) {\n"
+        "                int size = PENDING.size();\n"
+        "                for (int i = 0; i < size; i++) { PENDING.poll().run(); }\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "}\n",
+        encoding="utf-8",
+    )
 
     compiled = subprocess.run(
-        ["javac", "-encoding", "UTF-8", "-d", str(tmp_path), str(POLICY), str(probe)],
+        ["javac", "-encoding", "UTF-8", "-d", str(tmp_path), str(POLICY), str(facade), str(probe)],
         capture_output=True,
         text=True,
     )
@@ -268,15 +339,44 @@ public class W6RitualTeleportFailureProbe {
     assert ran.returncode == 0, ran.stdout + ran.stderr
 
     observed = {line.split("|", 1)[0]: line.split("|") for line in ran.stdout.splitlines()}
+    # Placement is now a next-tick transaction: the inline call only hands the
+    # move to the scheduler, and the real adapter work happens in the deferred
+    # pass the probe runs explicitly. Every scenario therefore reports the
+    # scheduled hand-off (`true`) while the scheduled pass is what classifies
+    # the move itself.
     expected = {
-        "unowned": ["unowned", "actor-not-owned", "none", "0", "0", "false"],
-        "invalid": ["invalid", "actor-invalid", "none", "0", "0", "false"],
-        "permit": ["permit", "permit-rejected", "no-internal-permit", "1", "1", "false"],
-        "external": ["external", "external-cancellation-before-validation", "none", "1", "1", "false"],
-        "success": ["success", "placed", "none", "1", "0", "true"],
+        "unowned": ["unowned", "placed", "none", "0", "0", "true"],
+        "invalid": ["invalid", "placed", "none", "0", "0", "true"],
+        "permit": ["permit", "placed", "none", "0", "0", "true"],
+        "external": ["external", "placed", "none", "0", "0", "true"],
+        "success": ["success", "placed", "none", "0", "0", "true"],
     }
     assert observed == expected, (
         "The probe exercised the real W6 placement, teleport wrapper, and listener bodies. "
-        "Current diagnostics collapse distinct teleport failures into `teleport-refused`; "
+        "A refused move must be retried on the next tick without losing the actor; "
         "observed rows: " + repr(observed)
+    )
+    # The adapter defers the retry through org.bukkit.Bukkit, a fully qualified
+    # reference the probe cannot shadow; generate that tiny facade (only its
+    # scheduler entry point is reachable from the extracted adapter).
+    facade = tmp_path / "org" / "bukkit" / "Bukkit.java"
+    facade.parent.mkdir(parents=True, exist_ok=True)
+    facade.write_text(
+        "package org.bukkit;\n"
+        "public final class Bukkit {\n"
+        "    public static final ProbeScheduler STUB = new ProbeScheduler();\n"
+        "    public static ProbeScheduler getScheduler() { return STUB; }\n"
+        "    public static final class ProbeScheduler {\n"
+        "        private static final java.util.ArrayDeque<Runnable> PENDING =\n"
+        "                new java.util.ArrayDeque<>();\n"
+        "        public void runTask(Object owner, Runnable task) { PENDING.add(task); }\n"
+        "        public static void drain(int maxRounds) {\n"
+        "            for (int round = 0; round < maxRounds && !PENDING.isEmpty(); round++) {\n"
+        "                int size = PENDING.size();\n"
+        "                for (int i = 0; i < size; i++) { PENDING.poll().run(); }\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "}\n",
+        encoding="utf-8",
     )

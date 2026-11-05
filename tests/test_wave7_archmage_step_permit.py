@@ -58,11 +58,18 @@ public class ArchmageStepPermitProbe {
         Location add(Vector v){x+=v.x;y+=v.y;z+=v.z;return this;}
         Location add(double x,double y,double z){this.x+=x;this.y+=y;this.z+=z;return this;}
         Location setY(double value){y=value;return this;}
+        // Production records the mover's origin and verifies the landing point,
+        // so the stub needs a squared distance between two locations.
+        double distanceSquared(Location other){
+            double dx=x-other.x,dy=y-other.y,dz=z-other.z;return dx*dx+dy*dy+dz*dz;
+        }
+        double getX(){return x;} double getZ(){return z;}
         double getY(){return y;} World getWorld(){return world;}
         Vector toVector(){return new Vector(x,y,z);}
         public Location clone(){return new Location(world,x,y,z);}
     }
     static final class World {
+        String getName(){return "world";}
         void playSound(Location at,Sound sound,float volume,float pitch){}
     }
     static class Entity {
@@ -86,6 +93,10 @@ public class ArchmageStepPermitProbe {
     boolean isSafeCombatEntityLocation(Location destination,Entity actor){return true;}
     boolean hasNamedTrialLineOfSight(Location from,Location to){return true;}
     void spawnEventParticle(Location at,Particle particle,int count,double x,double y,double z,double speed){}
+    boolean hasValidPermitFor(UUID id){
+        return BossTeleportPermitPolicy.accept(combatTeleportPermits.get(id),eventId,generation,
+                id.toString(),System.currentTimeMillis());
+    }
     boolean onOwnedEntityTeleport(Entity actor){
         UUID id=actor.getUniqueId();
         return BossTeleportPermitPolicy.accept(combatTeleportPermits.get(id),eventId,generation,

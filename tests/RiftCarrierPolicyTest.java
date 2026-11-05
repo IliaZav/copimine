@@ -65,10 +65,13 @@ public final class RiftCarrierPolicyTest {
         state = RiftCarrierPolicy.pickUp(state, generation, player, state.charge(), 204L);
         state = RiftCarrierPolicy.deliver(state, generation, player, true, 205L);
         check(state.delivered() == 2, "released charge must remain deliverable exactly once");
-        check(RiftCarrierPolicy.shouldSpawnReplacement(state, generation, true, 0),
-                "an unfinished objective with no remaining candidates must request a bounded replacement carrier");
-        check(!RiftCarrierPolicy.shouldSpawnReplacement(state, generation, false, 0),
-                "replacement carriers must not be spawned while scheduled groups can still provide candidates");
+        // SUPERSEDED: the policy now takes the LIVE CANDIDATE COUNT instead of a
+        // "groups exhausted" flag, because scheduled groups are only one of the
+        // sources of carriers. Zero live candidates is the actual condition.
+        check(RiftCarrierPolicy.shouldSpawnReplacement(state, generation, 0),
+                "an unfinished objective with no live candidates must request a bounded replacement carrier");
+        check(!RiftCarrierPolicy.shouldSpawnReplacement(state, generation, 2),
+                "replacement carriers must not be spawned while candidates are still alive");
         state = RiftCarrierPolicy.selectCarrier(state, generation, carrier);
         state = RiftCarrierPolicy.carrierDied(state, generation, carrier, UUID.randomUUID(), 200L);
         check(RiftCarrierPolicy.expireForReplacement(state, generation, 100_000L) == state,

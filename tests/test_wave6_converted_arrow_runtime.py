@@ -148,6 +148,7 @@ public class ConvertedArrowProbe {
     static final int MAX_ACTIVE_EVENT_ARROWS=64,EVENT_ARROW_MAX_TICKS=100,EVENT_ARROW_TRAIL_INTERVAL_TICKS=4;
     EventPhase phase=EventPhase.WAVE_6;BlackFogPhase blackFogPhase=BlackFogPhase.CLEAR;
     boolean testCombatAiMode,budget=true,waveActive=true;
+    boolean testWaveFrontVisualMode;
     record Config(String environment){}final Config config=new Config("production");
     Logger getLogger(){return Logger.getAnonymousLogger();}
     boolean isLiveOwnedEntity(UUID id){Entity e=ownedEntities.get(id);return e!=null&&e.valid&&!e.dead;}

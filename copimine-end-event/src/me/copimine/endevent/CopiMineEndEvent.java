@@ -27743,15 +27743,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /**
+     * Count the ring members that still stand.
+     *
+     * <p>The wheel keeps all five mages from wave start, so this only drops a
+     * body that is gone.  It used to also require {@link #isCurrentRitualCaster},
+     * which pruned the four waiting members out of the roster on the first tick
+     * and left the ritual with one caster and one guard -- the exact "no guards
+     * for anyone but the active mage" report.</p>
+     */
     private int liveRitualCasterCount() {
         ritualCasterUuids.removeIf(id -> !isLiveOwnedEntity(id)
-                || !isCurrentRitualCaster(ownedEntities.get(id)));
+                || !EVENT_KIND_RITUAL_CASTER.equals(readString(ownedEntities.get(id), keyKind)));
         return ritualCasterUuids.size();
     }
 
+    /** Same rule for guards: a body leaves the count only when it is gone. */
     private int liveRitualGuardCount() {
         ritualGuardUuids.removeIf(id -> !isLiveOwnedEntity(id)
-                || !isCurrentRitualGuard(ownedEntities.get(id)));
+                || !EVENT_KIND_RITUAL_GUARD.equals(readString(ownedEntities.get(id), keyKind)));
         return ritualGuardUuids.size();
     }
 
@@ -28411,6 +28421,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // capture gates the major attacks, not the initial guarded-casting pose or
         // the per-caster guard ownership watchdog.
         tickRitualGuardGroups(now);
+        // Stage transfer is progress, not casting: it must run even while the
+        // prisoner is not captured yet, otherwise the wave stops after the first
+        // mage dies. It is idempotent and self-gated on wave6NextStageAtMillis.
+        advanceWaveSixStage(now);
         if (!ritualMajorSpellsReady()) {
             return;
         }
@@ -28432,8 +28446,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             castNextRitualAbility(now);
         }
         renderRitualSpellPresentation(now);
-        // W6-005 [A]: the next stage starts only after the previous one is drained.
-        advanceWaveSixStage(now);
         resolveWaveSixReinforcements(now);
         if (!wave6Complete && wave6Sequence != null && wave6Sequence.mayComplete(
                 wave6ReinforcementSpawned, isRitualSphereRuntimeClean())) {
@@ -28773,6 +28785,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             RitualCasterShieldPolicy.State shield = RitualCasterShieldPolicy.state(
                     isLiveOwnedEntity(casterId), livingGuards,
                     ritualExpectedGuardsPerCaster());
+            if (eventTickCounter % 200L == 0L) {
+                getLogger().info("WAVE6_CASTER_GUARDS event=" + eventId
+                        + " caster=" + casterId + " assigned=" + guards.size()
+                        + " living=" + livingGuards + " expected=" + ritualExpectedGuardsPerCaster()
+                        + " shield=" + shield);
+            }
             RitualCasterTacticsPolicy.State tactics = RitualCasterTacticsPolicy.state(
                     livingGuards > 0, readRitualCasterAwakened(caster));
             // The wheel already names every member with its own mage name and
@@ -36495,6 +36513,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (wave6Sequence == null || !wave6Sequence.mageStageActive()
                 || ritualSphereState == null || wave6PrisonBroken) return;
         if (now < wave6NextStageAtMillis) return;
+        // This gate is the one-shot ticket for a stage.  Without clearing it a
+        // stage that spawned successfully kept being spawned again on every
+        // tick, stacking duplicate mage bodies and guard rings.
+        wave6NextStageAtMillis = Long.MAX_VALUE;
         Location core = coreCombatAnchorLocation();
         if (core == null || core.getWorld() == null) return;
         RitualSphereScalingPolicy.Profile profile = ritualSphereState.profile();
@@ -36577,7 +36599,133 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             wave6CasterCircles.put(mage, body.getUniqueId());
             styleRitualCircleBody(body, mage, false);
         }
+        int liveCasters = 0;
+        int liveGuards = 0;
+        for (UUID id : new LinkedHashSet<>(ritualCasterUuids)) {
+            if (isLiveOwnedEntity(id)) liveCasters++;
+        }
+        for (UUID id : new LinkedHashSet<>(ritualGuardUuids)) {
+            if (isLiveOwnedEntity(id)) liveGuards++;
+        }
+        getLogger().info("WAVE6_RITUAL_CIRCLE event=" + eventId + " generation=" + generation
+                + " casters=" + wave6CasterCircles.size() + " complete=" + complete
+                + " liveCasters=" + liveCasters + " liveGuards=" + liveGuards
+                + " order=" + wave6MageOrder);
+        // Every mage of the wheel is born guarded, not only the active one.
+        // Without this the four waiting mages read as "(РАЗРУШЕН)" with no
+        // troops in the ring, which is exactly what the player reported.
+        for (MageSignaturePolicy.MageId mage : new ArrayList<>(wave6CasterCircles.keySet())) {
+            UUID casterId = wave6CasterCircles.get(mage);
+            if (casterId == null || !isLiveOwnedEntity(casterId)) continue;
+            if (!ritualCasterSlots.containsKey(casterId)) continue;
+            if (!ownedEntities.containsKey(casterId)) continue;
+            // Count what stands, not what the map believes: a body that already
+            // vanished still occupies its slot in the assignment set, and that
+            // false entry is what left one mage defended by nothing.
+            ritualGuardsByCaster.put(casterId, liveGuardsOf(casterId));
+            spawnRitualGuardsForCaster(world, core, mage, casterId);
+        }
         return complete && wave6CasterCircles.size() == MageSignaturePolicy.MAGE_COUNT;
+    }
+
+    /** Guards of one caster that still stand, dropped from the assignment if gone. */
+    private Set<UUID> liveGuardsOf(UUID casterId) {
+        Set<UUID> assigned = ritualGuardsByCaster.get(casterId);
+        if (assigned == null || assigned.isEmpty()) return new LinkedHashSet<>();
+        Set<UUID> live = new LinkedHashSet<>();
+        for (UUID id : new LinkedHashSet<>(assigned)) {
+            if (isLiveOwnedEntity(id)) live.add(id);
+        }
+        return live;
+    }
+
+    /**
+     * Spawn the guard ring of one caster.  Called both when a stage claims its
+     * mage and for every member of the wheel at wave start, so the arena never
+     * shows a five-mage circle defended by a single guard.
+     */
+    private void spawnRitualGuardsForCaster(World world, Location core,
+                                            MageSignaturePolicy.MageId mage, UUID casterId) {
+        if (world == null || core == null || mage == null || casterId == null) return;
+        if (!(ownedEntities.get(casterId) instanceof Mob caster) || !isLiveOwnedEntity(casterId)) return;
+        Set<UUID> existingGuards = liveGuardsOf(casterId);
+        ritualGuardsByCaster.put(casterId, existingGuards);
+        // Full ring already standing: nothing to do.  Guards legitimately stack
+        // only up to the roster size; the old "any living guard" test let a
+        // partially spawned ring be topped up again on every call, which is how
+        // one caster ended up with three guards.
+        int required = (ritualSphereState == null
+                ? RitualSphereScalingPolicy.forPlayers(2)
+                : ritualSphereState.profile()).guardsPerCaster();
+        if (existingGuards.size() >= required) return;
+        RitualSphereScalingPolicy.Profile profile = ritualSphereState == null
+                ? RitualSphereScalingPolicy.forPlayers(2) : ritualSphereState.profile();
+        Integer slot = ritualCasterSlots.get(casterId);
+        int casterSlot = slot == null ? 0 : slot;
+        double casterAngle = -Math.PI / 2.0D
+                + casterSlot * Math.PI * 2.0D / Math.max(1, MageSignaturePolicy.MAGE_COUNT);
+        Location casterLocation = caster.getLocation() == null
+                ? core.clone() : caster.getLocation().clone();
+        Set<UUID> assigned = ritualGuardsByCaster.computeIfAbsent(casterId,
+                ignored -> new LinkedHashSet<>());
+        // Slots already taken are read from the assignment itself.  Deriving the
+        // next slot from set.size() re-used slot 0 whenever the freshly spawned
+        // guard was still unregistered, which stacked duplicate guards on one
+        // caster and left the others with none.
+        Set<Integer> takenSlots = new LinkedHashSet<>();
+        for (UUID guardId : assigned) {
+            Entity assignedGuard = ownedEntities.get(guardId);
+            if (assignedGuard == null) continue;
+            takenSlots.add(readInt(assignedGuard, keyRitualGuardSlot, 0));
+        }
+        for (int guardSlot = 0; guardSlot < profile.guardsPerCaster(); guardSlot++) {
+            if (takenSlots.contains(guardSlot)) continue;
+            RitualGuardAggroPolicy.RingOffset guardPost = RitualGuardAggroPolicy.spawnRingOffset(
+                    guardSlot, profile.guardsPerCaster(), casterAngle);
+            int guardEntitySlot = 128 + casterSlot * RitualSphereScalingPolicy.GUARDS_PER_CASTER + guardSlot;
+            Location guardLocation = casterLocation.clone().add(guardPost.x(), 0.0D, guardPost.z());
+            int roleSlot = RitualGuardAbilityPolicy.roleSlot(casterSlot, guardSlot);
+            Entity guard;
+            if (roleSlot == 0 && RitualGuardAbilityPolicy.isGiantReplacement(
+                    profile.participants(), casterSlot, guardSlot)) {
+                guard = spawnRiftGiantEntity(world, guardLocation, 6, true, guardEntitySlot);
+            } else {
+                EntityType guardType = EntityType.valueOf(
+                        RitualGuardAbilityPolicy.entityTypeForGuardRole(roleSlot));
+                guard = spawnOwnedMobAtLocation(world, guardLocation, guardType, 6,
+                        EVENT_KIND_ELITE, testWaveFrontVisualMode, guardEntitySlot);
+            }
+            if (guard == null) {
+                // A silent skip used to leave a mage standing with no visible
+                // reason, so report the exact slot that could not be placed.
+                getLogger().warning("WAVE6_GUARD_SPAWN_SKIPPED event=" + eventId
+                        + " caster=" + casterId + " slot=" + guardSlot
+                        + " role=" + roleSlot + " location=" + guardLocation.getBlockX()
+                        + "," + guardLocation.getBlockY() + "," + guardLocation.getBlockZ());
+                continue;
+            }
+            if (guard instanceof LivingEntity living
+                    && !(living instanceof Zombie zombie && isRiftGiant(zombie))) {
+                applyEliteCombatStats(living, 0.0D);
+            }
+            placeRitualEntity(guard, guardLocation, "GUARD", casterSlot, guardSlot);
+            retagRitualEntity(guard, "GUARD", casterId, casterSlot, guardSlot);
+            ritualGuardUuids.add(guard.getUniqueId());
+            ritualGuardCasters.put(guard.getUniqueId(), casterId);
+            assigned.add(guard.getUniqueId());
+            if (guard instanceof Mob mob) {
+                mob.setTarget(null);
+                mob.setAI(false);
+                mob.setAware(false);
+            }
+            if (guard instanceof LivingEntity living) {
+                configureRitualGuardHealth(living);
+                configureRitualGuardCombatAttributes(living);
+                living.setCustomName(ChatColor.DARK_PURPLE + "Страж "
+                        + mageName(mage) + " " + (guardSlot + 1));
+                living.setCustomNameVisible(false);
+            }
+        }
     }
 
     /**
@@ -36691,58 +36839,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         placeRitualEntity(caster, casterLocation, "CASTER", casterSlot, -1);
         boolean complete = true;
         WaveSixSequencePolicy next = wave6Sequence;
+        // Reuse the shared ring filler: it is the one owner of guard slots, so a
+        // stage never adds a second guard beside the one the wheel already gave
+        // this mage. Previously the stage spawned its own guard on top of the
+        // ring's guard, which is where the "one caster has three guards" came from.
+        spawnRitualGuardsForCaster(world, core, mage, caster.getUniqueId());
         for (int guardSlot = 0; guardSlot < profile.guardsPerCaster(); guardSlot++) {
-            // W6-013 [U]: no post assignment. Guards are placed once around the
-            // mage as an initial spawn ring and are never marched back to it.
-            RitualGuardAggroPolicy.RingOffset guardPost = RitualGuardAggroPolicy.spawnRingOffset(
-                    guardSlot, profile.guardsPerCaster(), casterAngle);
-            int guardEntitySlot = 128 + stage * RitualSphereScalingPolicy.GUARDS_PER_CASTER + guardSlot;
-            Location guardLocation = casterLocation.clone().add(guardPost.x(), 0.0D, guardPost.z());
-            int roleSlot = RitualGuardAbilityPolicy.roleSlot(stage, guardSlot);
-            boolean giantReplacement = RitualGuardAbilityPolicy.isGiantReplacement(
-                    profile.participants(), casterSlot, guardSlot);
-            Entity guard;
-            if (roleSlot == 0 && giantReplacement) {
-                // Same signature as a guard body: the giant replacement is the
-                // stage's tank, not a test-mode exception.
-                guard = spawnRiftGiantEntity(world, guardLocation, 6, true, guardEntitySlot);
-            } else {
-                EntityType guardType = EntityType.valueOf(
-                        RitualGuardAbilityPolicy.entityTypeForGuardRole(roleSlot));
-                guard = spawnOwnedMobAtLocation(world, guardLocation, guardType, 6,
-                        EVENT_KIND_ELITE, testWaveFrontVisualMode, guardEntitySlot);
-            }
-            if (guard == null) {
-                complete = false;
-                break;
-            }
-            // Same rule as the caster: land the guard on its ring slot at spawn
-            // time; a synchronous teleport right after spawn is what Bukkit
-            // refuses, and that used to abort the whole ritual stage.
-            // W6-008 [U]: a guard is an enhanced elite -- the shared x3
-            // ordinary-role profile applied ONCE, right here. The ELITE tag only
-            // names the body; configureRitualGuardHealth() must not multiply again.
-            if (guard instanceof LivingEntity living && !(living instanceof Zombie zombie && isRiftGiant(zombie))) {
-                applyEliteCombatStats(living, 0.0D);
-            }
-            placeRitualEntity(guard, guardLocation, "GUARD", casterSlot, guardSlot);
-            retagRitualEntity(guard, "GUARD", caster.getUniqueId(), casterSlot, guardSlot);
-            ritualGuardUuids.add(guard.getUniqueId());
-            ritualGuardCasters.put(guard.getUniqueId(), caster.getUniqueId());
-            ritualGuardsByCaster.computeIfAbsent(caster.getUniqueId(), ignored ->
-                    new LinkedHashSet<>()).add(guard.getUniqueId());
-            if (guard instanceof Mob mob) {
-                mob.setTarget(null);
-                mob.setAI(false);
-                mob.setAware(false);
-            }
-            if (guard instanceof LivingEntity living) {
-                configureRitualGuardHealth(living);
-                configureRitualGuardCombatAttributes(living);
-                living.setCustomName(ChatColor.DARK_PURPLE + "Страж "
-                        + mageName(mage) + " " + (guardSlot + 1));
-                living.setCustomNameVisible(false);
-            }
             next = next.guardFilled(guardSlot);
         }
         if (!complete) {

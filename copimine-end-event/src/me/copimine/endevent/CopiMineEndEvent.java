@@ -857,6 +857,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, Integer> wavePortalVisualIndices = new LinkedHashMap<>();
     private final Map<PortalVisualSlot, Integer> portalVisualRebuildAttempts = new LinkedHashMap<>();
     private long portalVisualGeneration = Long.MIN_VALUE;
+/** True while the plugin itself is tearing an entity down, so owner evidence
+     *  is not rewritten once per removed body. */
+    private boolean waveEntityTeardownActive;
     private long portalVisualFailedGeneration = Long.MIN_VALUE;
     private final Set<Integer> portalVisualTransactionsInProgress = new LinkedHashSet<>();
     private final Set<PortalVisualSlot> portalVisualSpawnsInProgress = new LinkedHashSet<>();
@@ -19053,7 +19056,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (entity != null && isWaveCombatKind(readString(entity, keyKind))) {
                 unbindEventEntityClient(entityId);
                 if (entity.isValid() && !entity.isDead()) {
-                    entity.remove();
+                    removeOwnedWaveEntity(entity);
                     removed++;
                 }
             }
@@ -41416,6 +41419,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return isWaveCleanupKind(kind) && (includeRewards || !EVENT_KIND_WAVE_REWARD.equals(kind));
     }
 
+    private void removeOwnedWaveEntity(Entity entity) {
+        waveEntityTeardownActive = true;
+        try {
+            entity.remove();
+        } finally {
+            waveEntityTeardownActive = false;
+        }
+    }
+
     private boolean clearWaveEntities() {
         return clearWaveEntities(true);
     }
@@ -52771,7 +52783,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             WaveMobRemovalPolicy.Disposition giantDisposition = WaveMobRemovalPolicy.classify(
                     ownedBySession(entity, eventId, generation), !trackedAtRemoval,
                     event.getCause().name());
-            if (giantDisposition == WaveMobRemovalPolicy.Disposition.UNLOAD
+            // A wiped wave is NOT a Giant lifecycle event: rewriting the ledger
+            // once per removed body spun the server thread (10 s and 15 s
+            // watchdog dumps) and a failing write there must never abort a
+            // cleanup the operator asked for.
+            if (waveEntityTeardownActive) {
+                cleanupRiftGiantRuntime(entity, false);
+            } else if (giantDisposition == WaveMobRemovalPolicy.Disposition.UNLOAD
                     && entity instanceof Zombie giant) {
                 recordRiftGiantOwnerUnload(giant);
             } else if ((giantDisposition == WaveMobRemovalPolicy.Disposition.CONFIRMED_DEATH
@@ -52782,11 +52800,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 requireRiftGiantOwnerRecovery(entity.getUniqueId(),
                         "unexpected-owner-removal-" + event.getCause(), null);
             }
-            if (giantDisposition != WaveMobRemovalPolicy.Disposition.IGNORE) {
-                cleanupRiftGiantRuntime(entity,
-                        giantDisposition == WaveMobRemovalPolicy.Disposition.CONFIRMED_DEATH
-                                || giantDisposition == WaveMobRemovalPolicy.Disposition.AUTHORIZED_CLEANUP);
-            }
+            cleanupRiftGiantRuntime(entity,
+                    giantDisposition == WaveMobRemovalPolicy.Disposition.CONFIRMED_DEATH
+                            || giantDisposition == WaveMobRemovalPolicy.Disposition.AUTHORIZED_CLEANUP);
         }
         if (isProtectedWave6Actor(entity)) {
             requireProtectedActorRemovalEvidence(entity, "WAVE6_RITUAL_ACTOR",

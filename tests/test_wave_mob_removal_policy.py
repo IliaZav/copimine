@@ -33,11 +33,16 @@ def test_numbered_wave_counter_requires_death_unload_or_owned_cleanup():
 def test_giant_owner_external_removal_preserves_summons_and_requires_recovery():
     source = SOURCE.read_text(encoding="utf-8")
     handler = method_body(source, "public void onOwnedEntityRemove(EntityRemoveEvent event)")
-    unexpected = handler[handler.index('requireRiftGiantOwnerRecovery(entity.getUniqueId(),'):
-                         handler.index("if (giantDisposition != WaveMobRemovalPolicy.Disposition.IGNORE)")]
+    # The branch used to end at a separate IGNORE guard; that guard is now the
+    # single unconditional cleanupRiftGiantRuntime call, so the slice ends there.
+    recovery = handler.index('requireRiftGiantOwnerRecovery(entity.getUniqueId(),')
+    unexpected = handler[recovery:handler.index("cleanupRiftGiantRuntime(entity,", recovery)]
 
     assert '"unexpected-owner-removal-" + event.getCause()' in unexpected
     assert "giantDisposition == WaveMobRemovalPolicy.Disposition.CONFIRMED_DEATH" in handler
+    # A wipe the plugin performs itself must not rewrite the owner ledger for
+    # every removed body; that stalled the server thread for 10-15 seconds.
+    assert "if (waveEntityTeardownActive) {" in handler
 
 
 def test_wave6_guards_and_named_wave7_actors_cannot_disappear_as_a_successful_clear():

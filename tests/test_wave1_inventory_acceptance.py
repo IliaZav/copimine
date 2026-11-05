@@ -508,3 +508,15 @@ def test_live_carrier_never_leaves_the_pack_without_a_visible_charge():
     )
     assert 'spawnCurrentCarrierCharge' in window
     assert 'currentCarrierChargeEntity()' in window
+    # The invariant is the CHARGE, not the carrier: gating the drop on the
+    # carrier alone left the pack empty whenever a carrier read alive while its
+    # drop was gone (removed, never persisted, or a fresh carrier chosen in the
+    # same tick its predecessor died).
+    assert 'liveCharge == null || !liveCharge.isValid()' in window, (
+        'the drop must be restored whenever the world holds no live charge'
+    )
+    guard_call = window.index('spawnCurrentCarrierCharge(fallback);')
+    charge_guard = window.index('liveCharge == null || !liveCharge.isValid()')
+    assert charge_guard < guard_call, (
+        'the charge presence check has to gate the spawn, not follow it'
+    )

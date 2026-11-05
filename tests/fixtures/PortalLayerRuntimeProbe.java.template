@@ -7,7 +7,9 @@ public class PortalLayerRuntimeProbe {
     enum PortalVisualLayer {FRAME, INNER, SHARD}
     record PortalVisualSlot(int portalIndex, PortalVisualLayer layer) {}
     enum EventPhase {WAVE_3, CANCELLED, RECOVERY_REQUIRED}
-    static final int MODEL_RIFT_GATE=1, MODEL_PORTAL_INNER_OVERLAY=2, MODEL_PORTAL_SHARD_OVERLAY=3;
+    // The production layer refuses geometry that would render as the missing-model
+    // placeholder, so the probe speaks the same authored numbers the plugin publishes.
+    static final int MODEL_RIFT_GATE=830018, MODEL_PORTAL_INNER_OVERLAY=830008, MODEL_PORTAL_SHARD_OVERLAY=830009;
     static final String EVENT_KIND_DISPLAY="display";
     String eventId="event";
     long generation=7;
@@ -79,7 +81,7 @@ public class PortalLayerRuntimeProbe {
         ItemDisplay spawn(Location l,Class<ItemDisplay> c,Consumer<ItemDisplay> init){
             owner.spawnCalls++;
             ItemDisplay d=new ItemDisplay();owner.lastTemporary=d;init.accept(d);
-            if((d.model==owner.failedModel || owner.failedModel==-1) && owner.remainingFailures-->0){
+            if((d.model==(owner.failedModel==1?MODEL_RIFT_GATE:owner.failedModel==2?MODEL_PORTAL_INNER_OVERLAY:owner.failedModel==3?MODEL_PORTAL_SHARD_OVERLAY:owner.failedModel) || owner.failedModel==-1) && owner.remainingFailures-->0){
                 switch(owner.failure){
                     case "null": return null;
                     case "exception": throw new IllegalArgumentException("invalid resource");

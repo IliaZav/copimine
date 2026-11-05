@@ -47,7 +47,8 @@ def portal_probe(tmp_path_factory):
     java.write_text(template.replace("// PRODUCTION_METHODS", "\n".join(methods)), encoding="utf-8")
     result = subprocess.run(["javac", "-J-Xmx128m", "-encoding", "UTF-8", "-d", str(directory),
                              str(DOMAIN / "PortalCapturePolicy.java"),
-                             str(DOMAIN / "PortalPresentationPolicy.java"), str(java)], capture_output=True, text=True)
+                             str(DOMAIN / "PortalPresentationPolicy.java"),
+                             str(DOMAIN / "EndEventDisplayItems.java"), str(java)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     return directory
 

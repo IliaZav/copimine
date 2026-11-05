@@ -38870,7 +38870,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || beforeSpawn.get(portalIndex).completed()) return null;
         // A tofu cube IS the invisible-portals report: the display exists, but its
         // resolved item geometry is the missing-model placeholder. Refuse it.
-        if (!EndEventDisplayItems.hasResolvableModel(modelData)) {
+        if (!me.copimine.endevent.domain.EndEventDisplayItems.hasResolvableModel(modelData)) {
             getLogger().severe("END_RIFT_PORTAL_MODEL_UNRESOLVED event=" + eventId
                     + " portal=" + portalIndex + " layer=" + layer
                     + " modelData=" + modelData + " model=" + modelId);

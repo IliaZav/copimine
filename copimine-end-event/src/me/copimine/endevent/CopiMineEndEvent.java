@@ -6433,7 +6433,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " portalLayers=" + portalVisualLayerObservationText()
                     + " marked=" + waveTwoMarkedParticipantCount()
                     + " safeCells=" + currentSafeZoneCells.size()
-                    + " collapseRings=" + currentCollapsedRings);
+                    + " collapseRings=" + currentCollapsedRings
+                    + " carrier=" + carrierDiagnosticText());
         }
         if ("all".equals(section) || "hazards".equals(section)) {
             HazardMutationJournal.Snapshot journal = hazardJournal == null
@@ -25758,6 +25759,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         };
     }
 
+    /**
+     * One line that says what the wave-one exchange is actually waiting for.
+     * Without it a stuck carrier phase is indistinguishable from a wave that
+     * simply has nothing to fight: the player reports "there is no charge"
+     * and the log only says CARRIER_SELECTED.
+     */
+    private String carrierDiagnosticText() {
+        if (currentCarrierState == null) return "none";
+        boolean chargeLive = false;
+        Entity charge = currentCarrierChargeEntity();
+        if (charge != null) chargeLive = charge.isValid();
+        Entity carrier = currentCarrierState.carrier() == null ? null
+                : ownedEntities.get(currentCarrierState.carrier());
+        boolean carrierLive = carrier != null && carrier.isValid() && !carrier.isDead();
+        return currentCarrierState.phase().name()
+                + " delivered=" + currentCarrierCharges
+                + " carrierLive=" + carrierLive
+                + " chargeLive=" + chargeLive
+                + " holder=" + (currentCarrierState.holder() == null ? "-"
+                : currentCarrierState.holder());
+    }
+
     private void tickCurrentCarrierObjective(long now) {
         if (currentCarrierState == null || currentCarrierState.generation() != generation) {
             currentCarrierState = RiftCarrierPolicy.initial(generation);
@@ -26227,6 +26250,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     value.setGlowing(true);
                     value.setVelocity(new Vector(0.0D, 0.24D, 0.0D));
                 });
+        // A dropped charge is a 0.25-block item that expires after five minutes.
+        // The player hunting for it in a dark arena has to be able to see it
+        // from range, so the carrier drop glows: a glinting hitbox, a visible
+        // outline through blocks and a beam for the whole attempt roster.
+        charge.setGlowing(true);
         tag(charge, EVENT_KIND_DISPLAY, 1, true);
         if (keyCurrentCarrierCharge != null) {
             charge.getPersistentDataContainer().set(keyCurrentCarrierCharge,

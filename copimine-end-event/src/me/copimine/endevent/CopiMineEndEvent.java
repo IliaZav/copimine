@@ -25820,16 +25820,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     ? coreCombatAnchorLocation() : currentCarrierChargeLocation.clone();
             boolean carrierAlive = isLiveOwnedEntity(currentCarrierState.carrier());
             Entity liveCharge = currentCarrierChargeEntity();
-            if (!carrierAlive) {
-                // The chosen carrier is gone: the pack drops the charge right here.
-                if (fallback != null) {
-                    spawnCurrentCarrierCharge(fallback);
-                }
-            } else if (fallback != null && (liveCharge == null || !liveCharge.isValid())) {
-                // The carrier is still standing, but the pack has no charge to
-                // fight for: the drop was removed, never persisted, or the
-                // world was rebuilt underneath it. A player who clears this
-                // pack is owed a charge on the floor, not a silent dead end.
+            if (fallback != null && (liveCharge == null || !liveCharge.isValid())) {
+                // The exchange must never lose its charge. Either the chosen
+                // carrier is gone, or it is still standing while the drop was
+                // removed, unpersisted, or rebuilt underneath it; both ends the
+                // same way for the player, whose pack is now empty. Dropping
+                // the charge here also hands it back when a carrier that was
+                // reclaimed during one tick reads as alive again on the next.
                 spawnCurrentCarrierCharge(fallback);
             }
         }

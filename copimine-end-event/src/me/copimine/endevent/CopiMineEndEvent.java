@@ -6829,8 +6829,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     .sorted(Comparator.comparing(UUID::toString))
                     .toList();
             int livingGuards = liveGuards.size();
-            RitualCasterTacticsPolicy.State tactics = RitualCasterTacticsPolicy.state(
-                    livingGuards > 0, readRitualCasterAwakened(caster));
+            RitualCasterTacticsPolicy.State tactics = ritualCasterTacticsState(casterId);
             if (!mobHasAi(caster)) {
                 ritualCastersPassive++;
             }
@@ -32041,6 +32040,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         Location center = ritualSphereCenter(core);
         Set<String> desired = new LinkedHashSet<>();
+        // Membership is declared before the refresh gate on purpose.  A player who
+        // re-synchronises between two refreshes used to receive an empty set and
+        // lose the beams that were still supposed to be attached to the mages.
+        for (Map.Entry<MageSignaturePolicy.MageId, UUID> entry : wave6CasterCircles.entrySet()) {
+            UUID casterId = entry.getValue();
+            if (!isLiveOwnedEntity(casterId)) continue;
+            if (!RitualCasterTacticsPolicy.castsSphere(ritualCasterTacticsState(casterId))) continue;
+            for (int handIndex = 0; handIndex < 2; handIndex++) {
+                desired.add("wave6-ritual-" + casterId + "-hand-" + handIndex);
+            }
+        }
         int intensity = Math.max(0, Math.min(5, ritualCasterDeathCount));
         for (Player viewer : eventAudience()) {
             if (!isEventParticleViewer(viewer, center) || isInsideRitualSphereViewer(viewer, center)) continue;
@@ -32070,6 +32080,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (!isLiveOwnedEntity(casterId)
                         || !(ownedEntities.get(casterId) instanceof LivingEntity caster)) continue;
                 boolean active = entry.getKey() == activeMage;
+                // A mage only ever draws a beam while it actually casts: the
+                // tactics state owns that decision, so a passive or guarded body
+                // is never painted as if it were channelling.
+                if (!RitualCasterTacticsPolicy.castsSphere(ritualCasterTacticsState(casterId))) continue;
                 List<me.copimine.endevent.domain.RitualCasterHandPolicy.Offset> hands;
                 int guards = ritualGuardsByCaster.getOrDefault(casterId, Set.of()).stream()
                         .filter(this::isLiveOwnedEntity).toList().size();
@@ -32097,6 +32111,45 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         clearWorldVfxBeamsOutside("wave6-ritual-", desired);
+    }
+
+    /**
+     * Every hand beam the sphere currently wants, for one viewer.
+     *
+     * <p>The render pass above can only afford to recompute the beams on its own
+     * refresh boundary, so a client that re-synchronises in between saw an empty
+     * set and dropped the members it already owned -- the reported "луч из рук
+     * пропадает". This answers the same question without touching the visuals.</p>
+     */
+    private Set<String> desiredRitualSphereBeamKeysFor(Player viewer) {
+        Set<String> desired = new LinkedHashSet<>();
+        if (ritualWaveActive()) {
+            for (Map.Entry<MageSignaturePolicy.MageId, UUID> entry : wave6CasterCircles.entrySet()) {
+                UUID casterId = entry.getValue();
+                if (!isLiveOwnedEntity(casterId)) continue;
+                int hands = me.copimine.endevent.domain.RitualCasterHandPolicy.hands(
+                        0.0F, 0.0D).size();
+                for (int handIndex = 0; handIndex < hands; handIndex++) {
+                    desired.add("wave6-ritual-" + casterId + "-hand-" + handIndex);
+                }
+            }
+        }
+        return desired;
+    }
+
+    /**
+     * The tactics state of one mage, read from its live guards and its own gate.
+     *
+     * <p>Both the render pass and the diagnostics need it, and the state must be
+     * the single source of truth for "does this mage raise its arms and hold a
+     * beam", otherwise a passive body could still be drawn as casting.</p>
+     */
+    private RitualCasterTacticsPolicy.State ritualCasterTacticsState(UUID casterId) {
+        int livingGuards = ritualGuardsByCaster.getOrDefault(casterId, Set.of()).stream()
+                .filter(this::isLiveOwnedEntity).toList().size();
+        boolean awakened = ownedEntities.get(casterId) instanceof Mob body
+                && readRitualCasterAwakened(body);
+        return RitualCasterTacticsPolicy.state(livingGuards > 0, awakened);
     }
 
     private void renderRitualZone(Player viewer, Location center, Particle particle, long now) {
@@ -36553,6 +36606,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             wave6CasterCircles.put(mage, caster.getUniqueId());
         }
         styleRitualCircleBody(caster, mage, true);
+        placeRitualEntity(caster, casterLocation, "CASTER", casterSlot, -1);
         boolean complete = true;
         WaveSixSequencePolicy next = wave6Sequence;
         for (int guardSlot = 0; guardSlot < profile.guardsPerCaster(); guardSlot++) {
@@ -36567,8 +36621,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     profile.participants(), casterSlot, guardSlot);
             Entity guard;
             if (roleSlot == 0 && giantReplacement) {
-                guard = spawnRiftGiantEntity(world, guardLocation, 6,
-                        !testWaveFrontVisualMode, guardEntitySlot);
+                // Same signature as a guard body: the giant replacement is the
+                // stage's tank, not a test-mode exception.
+                guard = spawnRiftGiantEntity(world, guardLocation, 6, true, guardEntitySlot);
             } else {
                 EntityType guardType = EntityType.valueOf(
                         RitualGuardAbilityPolicy.entityTypeForGuardRole(roleSlot));
@@ -36588,6 +36643,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (guard instanceof LivingEntity living && !(living instanceof Zombie zombie && isRiftGiant(zombie))) {
                 applyEliteCombatStats(living, 0.0D);
             }
+            placeRitualEntity(guard, guardLocation, "GUARD", casterSlot, guardSlot);
             retagRitualEntity(guard, "GUARD", caster.getUniqueId(), casterSlot, guardSlot);
             ritualGuardUuids.add(guard.getUniqueId());
             ritualGuardCasters.put(guard.getUniqueId(), caster.getUniqueId());
@@ -39251,10 +39307,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void failPortalVisualRecovery(int portalIndex) {
         if (portalVisualFailedGeneration == generation) return;
         portalVisualFailedGeneration = generation;
-        getLogger().warning("WAVE3_PORTAL_MODEL_FALLBACK event=" + eventId
+        // "Порталы появились на секунду и потом пропали": the previous action
+        // here was keep-wave-running, so every rebuilt layer was deleted and the
+        // slot was left with nothing to show while the objective still asked the
+        // player to walk into it.  WAVE_03.md is explicit that an unrepairable
+        // reconstruction is RECOVERY_REQUIRED, so the exhausted slot is recorded
+        // and the wave stops instead of playing invisible.
+        getLogger().severe("WAVE3_PORTAL_MODEL_EXHAUSTED event=" + eventId
                 + " generation=" + generation + " portal=" + portalIndex
-                + " fallback=live-capture-rings action=keep-wave-running");
+                + " attempts=" + PortalPresentationPolicy.MAX_REBUILD_ATTEMPTS
+                + " action=recovery-required");
         clearPortalModelVisuals("portal-visual-recovery-exhausted");
+        if (activeWave == 3) {
+            recoveryReason = "WAVE3_PORTAL_MODEL_EXHAUSTED:" + portalIndex;
+            forcePhase(EventPhase.RECOVERY_REQUIRED,
+                    "Wave 3 portal model layers exhausted their rebuild attempts");
+        }
     }
 
     /** Describe only portal layers that are currently live, owned, and attached to their indexed slot. */
@@ -41367,9 +41435,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (event.getTo() != null) {
             event.getTo().getWorld();
         }
+        Location target = event.getTo();
         boolean internalTeleport = BossTeleportPermitPolicy.accept(
                 combatTeleportPermits.get(entityId), eventId, generation,
                 entityId.toString(), now);
+        if (!internalTeleport) {
+            // The authored sphere anchor overrides an outside cancellation, but
+            // it is NOT an internal permit: the move still has to pass the
+            // permit check right below exactly like any other owned body, so a
+            // sphere teleport can never be used as a general escape hatch.
+            if (isOwnedRitualSphereDestination(entity, target)) event.setCancelled(false);
+        }
         String kind = readString(entity, keyKind);
         boolean allowedNativeEndermanBlink = !internalTeleport
                 && entity instanceof Enderman && isWaveCombatKind(kind);
@@ -41402,7 +41478,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 ? finalSealCoreAnchorLocation()
                 : (isWaveCombatKind(kind) || EVENT_KIND_BOSS.equals(kind))
                 ? coreCombatAnchorLocation() : coreLocation();
-        Location target = event.getTo();
         if (anchor == null || target == null || !anchor.getWorld().equals(target.getWorld())) {
             if (activeWave == 6) {
                 combatTeleportRejectionReasons.put(entityId, "anchor-target-world-invalid");
@@ -41410,7 +41485,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             event.setCancelled(true);
             return;
         }
-        if (isOwnedRitualSphereDestination(entity, target)) return;
         // Event-owned displays move only through the event's own code: portals,
         // obelisks, safe-zone markers and the sphere are placed by the
         // objective controller. An outside teleport is cancelled outright

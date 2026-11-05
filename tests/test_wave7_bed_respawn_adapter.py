@@ -30,6 +30,7 @@ public class BedRespawnProbe {
     Map<UUID,Long> offlineRosterGraceUntilMillis = new HashMap<>();
     long generation=43; int activeWave=7, teleports, bindings;
     boolean testCombatAiMode;
+    boolean testWaveFrontVisualMode;
     Registry taskRegistry = new Registry(); Chambers realitySplitChamberController = new Chambers();
     boolean isOfficialAttemptActive(){return true;} boolean isCombatPhase(){return true;}
     boolean isOfficialWave7ReturnContext(){return activeWave==7;}

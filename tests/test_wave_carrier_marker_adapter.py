@@ -15,7 +15,7 @@ def test_carrier_has_one_authored_marker_following_it_and_cleanup_removes_it(tmp
 import java.util.*;
 import java.util.function.Consumer;
 public class CarrierMarkerProbe {
-  long eventTickCounter; UUID currentCarrierMarkerUuid; int spawns, moves, removed;
+  long eventTickCounter; UUID currentCarrierMarkerUuid; int spawns, moves, removed; boolean testWaveFrontVisualMode;
   static final int MODEL_CARRIER_CHARGE=830029; static final String EVENT_KIND_DISPLAY="DISPLAY";
   Map<UUID,Entity> ownedEntities=new HashMap<>(); Set<UUID> waveObjectiveVisuals=new HashSet<>();
   class Location { double x,y,z; float yaw; Location(double x,double y,double z){this.x=x;this.y=y;this.z=z;}

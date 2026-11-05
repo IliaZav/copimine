@@ -26,6 +26,7 @@ public class WaveOneReinforcementProbe {
  static class World{} static class Location { World getWorld(){return new World();} }
  Location coreCombatAnchorLocation(){return new Location();} int waveScalePlayers(){return 2;}
  WaveMechanicsPolicy.WaveCounts ritualPressureCounts(int p){return new WaveMechanicsPolicy.WaveCounts(3);}
+ WaveMechanicsPolicy.WaveCounts waveOneReinforcementCounts(int p){return new WaveMechanicsPolicy.WaveCounts(3);}
  int countLiveWaveEntitiesForWave(int w){return live;}
  int readInt(Entity e,Object key,int fallback){return 1;}
  void removeRitualEntity(UUID id){if(ownedEntities.remove(id)!=null)live--;}

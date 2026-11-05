@@ -50,4 +50,8 @@ def test_wave_mob_names_are_hidden_without_changing_objective_or_boss_labels():
     # "body" is the Wave 6 ritual circle: the five mages are visible from the
     # start of the wave by explicit player decision, and the active one is the
     # only body that changes colour -- an illegible circle was the defect.
-    assert visible_calls == ["entity", "body", "boss"]
+    #
+    # "carrier" is the Wave 1 charge carrier. The player reported a wave with
+    # nothing to chase, so the one enderman that owns the charge has to be
+    # findable by name; ordinary wave mobs stay hidden.
+    assert visible_calls == ["entity", "carrier", "body", "boss"]

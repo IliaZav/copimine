@@ -55,6 +55,11 @@ public class W6RitualTeleportFailureProbe {
     Object bossPhase;
     UUID ritualSphereVisualUuid;
     boolean wave6PrisonBroken;
+    // The teleport guard now also admits the owned sphere display through
+    // isOwnedRitualSphereDestination, which asks for the entity class.
+    class Enderman extends Entity {
+        Enderman(UUID id, String kind, Location at) { super(W6RitualTeleportFailureProbe.this, id, kind, at); }
+    }
 
     static final class World {
         final String name;

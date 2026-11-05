@@ -41,10 +41,10 @@ def test_wave5_config_match_does_not_capture_elites_from_later_waves():
     assert "elite-endermen" not in match.group("body")
 
 
-def test_wave5_default_config_keeps_the_user_approved_eight_elites():
+def test_wave5_default_config_keeps_one_elite_and_bounded_ordinary_pressure():
     config = (ROOT / "copimine-end-event/config.yml").read_text(encoding="utf-8")
     match = re.search(r"(?m)^  wave-5:\s*\n(?P<body>(?:^    .*\n)+)", config)
     assert match, "Wave 5 composition must remain explicit in config.yml"
     body = match.group("body")
-    assert re.search(r"^    elite-endermen:\s*6\s*$", body, re.M)
-    assert re.search(r"^    elite-skeletons:\s*2\s*$", body, re.M)
+    assert re.search(r"^    elite-endermen:\s*1\s*$", body, re.M)
+    assert re.search(r"^    elite-skeletons:\s*0\s*$", body, re.M)

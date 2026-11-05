@@ -8,22 +8,22 @@ public final class WavePressurePolicyTest {
         var configuredWaveFive = new WaveMechanicsPolicy.WaveCounts(14, 10, 6, 6, 2);
         var twoPlayerWaveFive = WavePressurePolicy.clamp(5, configuredWaveFive, 2);
         check(twoPlayerWaveFive.total() == 16
-                        && twoPlayerWaveFive.eliteEndermen() == 6
-                        && twoPlayerWaveFive.eliteSkeletons() == 2
+                        && twoPlayerWaveFive.eliteEndermen() == 1
+                        && twoPlayerWaveFive.eliteSkeletons() == 0
                         && twoPlayerWaveFive.endermen() + twoPlayerWaveFive.spiders()
-                        + twoPlayerWaveFive.skeletons() == 8,
-                "two-player Wave 5 doubles the eight-elite roster with eight bounded ordinary mobs");
+                        + twoPlayerWaveFive.skeletons() == 15,
+                "two-player Wave 5 fills its bounded roster with one elite and ordinary pressure");
         check(WavePressurePolicy.isApprovedTwoPlayerException(5, 2, twoPlayerWaveFive),
-                "the doubled two-player roster is explicitly diagnosed as a scoped exception");
+                "the two-player roster is explicitly diagnosed as a scoped exception");
         check(twoPlayerWaveFive.total() == 16
                         && twoPlayerWaveFive.total() <= PressureBudgetController.HARD_CAP,
                 "the scoped exception remains under the absolute entity hard cap");
 
         var wrongComposition = WavePressurePolicy.clamp(5,
                 new WaveMechanicsPolicy.WaveCounts(5, 0, 0, 9, 4), 2);
-        check(wrongComposition.eliteEndermen() == 6 && wrongComposition.eliteSkeletons() == 2
-                        && wrongComposition.endermen() == 5 && wrongComposition.total() == 13,
-                "the two-player exception bounds elite slots and preserves available ordinary mobs");
+        check(wrongComposition.eliteEndermen() == 1 && wrongComposition.eliteSkeletons() == 0
+                        && wrongComposition.endermen() == 5 && wrongComposition.total() == 6,
+                "the two-player exception limits elites and preserves ordinary mobs");
 
         var waveThree = WavePressurePolicy.clamp(3,
                 new WaveMechanicsPolicy.WaveCounts(24, 2, 10, 8, 2), 2);

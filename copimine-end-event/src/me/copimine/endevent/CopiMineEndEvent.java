@@ -542,6 +542,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int MODEL_RIFT_OBELISK_CRITICAL = 830012;
     private static final int MODEL_RIFT_FIREBALL = 830013;
     private static final int MODEL_RIFT_OBELISK_PULSE = 830014;
+    /** A display further than this from its base is a leftover, not the live model. */
+    private static final double OBELISK_VISUAL_BASE_TOLERANCE_SQUARED = 6.25D;
+    private static final double OBELISK_VISUAL_SWEEP_RADIUS = 6.0D;
     private static final int MODEL_RIFT_TENTACLE = 830017;
     private static final int MODEL_ELITE_WEB_SHOT = 830030;
     private static final int MODEL_ELITE_RIFT_BOLT = 830031;
@@ -49045,8 +49048,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         UUID visualId = state.visualIds().get(ObeliskGeometryPolicy.VISUAL_DISPLAY_KEY);
         Entity existing = visualId == null ? null : Bukkit.getEntity(visualId);
+        // A stale id survived a restart or a rebuild: the display it names is not
+        // the one standing on this base any more.  Leaving it alone spawns a second
+        // model a few blocks away, so the player sees one obelisk duplicated and
+        // another one missing entirely.
+        if (existing != null && !displayStandsOnObeliskBase(existing, state)) {
+            if (isOurObeliskDisplay(existing)) {
+                existing.remove();
+            }
+            existing = null;
+            state.visualIds().remove(ObeliskGeometryPolicy.VISUAL_DISPLAY_KEY, visualId);
+        }
         if (!(existing instanceof ItemDisplay display) || !display.isValid()
                 || display.isDead()) {
+            removeStrayObeliskDisplays(state);
             Location location = state.base().clone().add(0.0D, 0.02D, 0.0D);
             ItemDisplay display = state.base().getWorld().spawn(location, ItemDisplay.class,
                     value -> {
@@ -49065,6 +49080,83 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     display.getUniqueId());
         }
         updateObeliskVisuals(state, highestLayer);
+    }
+
+    /** True when the tagged display still sits on this obelisk's own base. */
+    private boolean displayStandsOnObeliskBase(Entity entity, Wave4ObeliskRuntimeState state) {
+        if (entity == null || state == null || state.base() == null || entity.getLocation() == null) {
+            return false;
+        }
+        if (entity.getWorld() == null || state.base().getWorld() == null
+                || !entity.getWorld().equals(state.base().getWorld())) {
+            return false;
+        }
+        return entity.getLocation().distanceSquared(state.base()) <= OBELISK_VISUAL_BASE_TOLERANCE_SQUARED;
+    }
+
+    /** Only entities this plugin authored for a Wave 4 obelisk may be reclaimed. */
+    private boolean isOurObeliskDisplay(Entity entity) {
+        if (!(entity instanceof ItemDisplay display)) {
+            return false;
+        }
+        try {
+            String kind = display.getPersistentDataContainer()
+                    .get(keyKind, PersistentDataType.STRING);
+            return EVENT_KIND_WAVE4_OBELISK.equals(kind);
+        } catch (RuntimeException unreadable) {
+            return false;
+        }
+    }
+
+    /**
+     * Sweep authored obelisk displays that no live obelisk claims any more.
+     * Without this a rebuilding wave leaves one orphaned model per restart on
+     * the same spot, and the arena shows a tower duplicated instead of the
+     * missing one.
+     */
+    private void removeStrayObeliskDisplays(Wave4ObeliskRuntimeState state) {
+        if (state == null || state.base() == null) {
+            return;
+        }
+        World world = state.base().getWorld();
+        if (world == null) {
+            return;
+        }
+        Set<UUID> claimed = new HashSet<>();
+        for (Wave4ObeliskRuntimeState other : activeWave4Obelisks.values()) {
+            if (other == null) {
+                continue;
+            }
+            UUID id = other.visualIds().get(ObeliskGeometryPolicy.VISUAL_DISPLAY_KEY);
+            if (id != null) {
+                claimed.add(id);
+            }
+        }
+        try {
+            for (Entity nearby : world.getNearbyEntities(state.base(),
+                    OBELISK_VISUAL_SWEEP_RADIUS, OBELISK_VISUAL_SWEEP_RADIUS,
+                    OBELISK_VISUAL_SWEEP_RADIUS)) {
+                if (nearby == null || claimed.contains(nearby.getUniqueId())
+                        || !isOurObeliskDisplay(nearby)
+                        || displayStandsOnObeliskBase(nearby, state)) {
+                    continue;
+                }
+                // Only entities parked on our own pad are strays; a display sitting
+                // on a live base belongs to that base and is reclaimed there.
+                boolean parkedOnAnyBase = activeWave4Obelisks.values().stream()
+                        .anyMatch(other -> other != null && displayStandsOnObeliskBase(nearby, other));
+                if (!parkedOnAnyBase) {
+                    continue;
+                }
+                nearby.remove();
+            }
+        } catch (RuntimeException sweepFailure) {
+            try {
+                getLogger().warning("END_RIFT_OBELISK_VISUAL_SWEEP_FAILED obelisk="
+                        + state.id() + " error=" + sweepFailure.getMessage());
+            } catch (RuntimeException ignoredLogFailure) {
+            }
+        }
     }
 
     private void updateObeliskVisuals(Wave4ObeliskRuntimeState state, int highestLayer) {

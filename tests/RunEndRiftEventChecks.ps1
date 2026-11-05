@@ -488,6 +488,7 @@ $pureTests = @(
   'RealitySplitEchoDuelSnapshotTest',
   'RealitySplitTrialControllerTest',
   'Wave7WardenCombatPolicyTest',
+  'Wave7WardenEmergePolicyTest',
   'RealitySplitRuntimePolicyTest',
   'RealitySplitTrialSnapshotTest',
   'Wave7TrialMigrationTest',

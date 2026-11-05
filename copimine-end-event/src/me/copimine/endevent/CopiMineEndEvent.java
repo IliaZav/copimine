@@ -25950,6 +25950,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 currentCarrierState = RiftCarrierPolicy.selectCarrier(currentCarrierState,
                         generation, next.getUniqueId());
                 syncCurrentCarrierFields();
+                // Selecting a carrier drops its charge in the SAME tick: the player
+                // must never be told the exchange started while asking every viewer
+                // of the log where the pack went.
+                Location carrierChargeSpot = next.getLocation() == null
+                        ? coreCombatAnchorLocation() : next.getLocation().clone();
+                spawnCurrentCarrierCharge(carrierChargeSpot);
                 saveStateAsync();
                 getLogger().info("END_RIFT_CARRIER_SELECTED event=" + eventId
                         + " entity=" + next.getUniqueId()

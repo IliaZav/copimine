@@ -14656,10 +14656,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         // Repair, do not rebuild. removeOwnedVisuals() followed by a fresh spawn
         // left a window in which the Core genuinely did not exist, and the repair
-        // tick ran on the same tick as every `/cmend wave spawn`: the player saw
-        // the objective blink out and the log filled with
-        // END_EVENT_CORE_VISUAL_REBUILD held together only by the next repair.
-        // A Core/rune display that is still owned and standing is left alone.
+        // tick runs on the same tick as every `/cmend wave spawn`: the player saw
+        // the objective blink out on every wave.
+        //
+        // The deeper cause was the generation stamp. A wave spawn advances the
+        // generation, so a display created a moment earlier stopped reporting as
+        // "owned by this session" and was rebuilt anyway. The Core, its label and
+        // the runes are pegged world fixtures, not wave actors: they are adopted
+        // onto the current session and left standing.
+        adoptAdoptableRuneOverlays(world);
+        ItemDisplay adoptableCore = findAdoptableCoreOverlay(world, core);
+        if (adoptableCore != null) {
+            adoptEntityIntoCurrentSession(adoptableCore);
+        }
         boolean corePresent = hasCoreOverlay(world, core);
         removeOwnedVisualsPreserving(corePresent ? core : null);
         if (!corePresent) {
@@ -14862,8 +14871,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     && ownedBySession(entity, eventId, generation)) {
                 continue;
             }
+            // Adoption above already moved every standing fixture onto the
+            // current generation, so anything still owned by this event belongs
+            // here and anything that is not owned at all is a leftover from an
+            // older plugin generation. Deleting by "inside the arena" also
+            // removed the Core and the runes that were just adopted.
             boolean currentSession = ownedBySession(entity, eventId, generation);
-            if (currentSession || isArenaLocation(entity.getLocation())) {
+            if (currentSession) {
+                continue;
+            }
+            if (isArenaLocation(entity.getLocation())) {
                 entity.remove();
                 unregisterOwnedEntity(entity.getUniqueId(), "visual-cleanup");
                 removed++;
@@ -15043,6 +15060,52 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return findCoreOverlay(world, core) != null;
     }
 
+    /**
+     * Find a Core display that is already standing on this block, regardless of
+     * which generation created it.
+     *
+     * <p>Every `/cmend wave spawn` advances the generation, so the overlay that
+     * was spawned a moment earlier no longer reports as "owned by this session"
+     * and the repair tick rebuilt it — which is what made the Core blink out on
+     * every wave. The Core is a pegged world fixture, not a wave actor: a display
+     * standing on the configured Core block belongs to the event, and the repair
+     * adopts it instead of deleting it.</p>
+     */
+    /**
+     * Adopt every rune overlay already standing on this pad, for the same reason
+     * the Core is adopted: a wave spawn advances the generation, and a pegged
+     * floor fixture must not be torn down just because the session moved on.
+     */
+    private int adoptAdoptableRuneOverlays(World world) {
+        if (world == null) {
+            return 0;
+        }
+        int adopted = 0;
+        for (Entity entity : world.getEntities()) {
+            if (!(entity instanceof ItemDisplay display)) continue;
+            if (!EVENT_KIND_PAD.equals(readString(entity, keyKind))) continue;
+            if (!ownedByEvent(entity, eventId)) continue;
+            adoptEntityIntoCurrentSession(display);
+            adopted++;
+        }
+        return adopted;
+    }
+
+    private ItemDisplay findAdoptableCoreOverlay(World world, Block core) {
+        if (world == null || core == null) {
+            return null;
+        }
+        for (Entity entity : world.getEntities()) {
+            if (entity instanceof ItemDisplay display
+                    && EVENT_KIND_CORE.equals(readString(entity, keyKind))
+                    && ownedByEvent(entity, eventId)
+                    && sameCoreOverlayBlock(display, core)) {
+                return display;
+            }
+        }
+        return null;
+    }
+
     private ItemDisplay findCoreOverlay(World world, Block core) {
         if (world == null || core == null) {
             return null;
@@ -15193,14 +15256,48 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void spawnCoreText(World world) {
         Location location = new Location(world, coreX + 0.5D, coreY + 2.25D, coreZ + 0.5D);
+        String text = coreCharged ? "§5РАЗЛОМ ЗАРЯЖЕН\n§7Соберите игроков на рунах"
+                : "§5РАЗЛОМ\n§7" + resourceProgressText().replace(", ", "\n§7");
+        // The label is a pegged fixture: repairing the visuals must refresh its
+        // text, not delete and respawn it. Respawning every repair tick was what
+        // the player saw as the Core flickering.
+        TextDisplay existing = findCoreLabel(world, location);
+        if (existing != null) {
+            adoptEntityIntoCurrentSession(existing);
+            existing.setText(text);
+            existing.setBillboard(TextDisplay.Billboard.CENTER);
+            existing.setLineWidth(180);
+            existing.setTransformation(new Transformation(
+                    new Vector3f(), new AxisAngle4f(), new Vector3f(0.45F, 0.45F, 0.45F), new AxisAngle4f()));
+            return;
+        }
         TextDisplay display = world.spawn(location, TextDisplay.class);
         tag(display, EVENT_KIND_DISPLAY, 0, false);
-        display.setText(coreCharged ? "§5РАЗЛОМ ЗАРЯЖЕН\n§7Соберите игроков на рунах" : "§5РАЗЛОМ\n§7" + resourceProgressText().replace(", ", "\n§7"));
+        display.setText(text);
         display.setBillboard(TextDisplay.Billboard.CENTER);
         display.setLineWidth(180);
         display.setTransformation(new Transformation(
                 new Vector3f(), new AxisAngle4f(), new Vector3f(0.45F, 0.45F, 0.45F), new AxisAngle4f()));
         registerOwnedEntity(display);
+    }
+
+    /** The Core label already standing above the Core block, regardless of generation. */
+    private TextDisplay findCoreLabel(World world, Location location) {
+        if (world == null || location == null) {
+            return null;
+        }
+        for (Entity entity : world.getEntities()) {
+            if (!(entity instanceof TextDisplay display)) continue;
+            if (!EVENT_KIND_DISPLAY.equals(readString(entity, keyKind))) continue;
+            if (!ownedByEvent(entity, eventId)) continue;
+            Location at = display.getLocation();
+            if (at.getBlockX() == location.getBlockX()
+                    && at.getBlockZ() == location.getBlockZ()
+                    && Math.abs(at.getY() - location.getY()) < 2.5D) {
+                return display;
+            }
+        }
+        return null;
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -16021,7 +16118,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         Block core = world.getBlockAt(coreX, coreY, coreZ);
-        if (!hasCoreOverlay(world, core)) {
+        // A pegged fixture outlives the session: every wave spawn advances the
+        // generation, so asking "does a display owned by THIS generation stand
+        // here" rebuilt the Core on every wave. Ask whether the Core block has a
+        // display at all; rebuildPersistedVisuals then adopts it.
+        if (findAdoptableCoreOverlay(world, core) == null) {
             if (System.currentTimeMillis() >= nextRitualVisualRepairMillis) {
                 nextRitualVisualRepairMillis = System.currentTimeMillis() + 1_000L;
                 getLogger().warning("END_EVENT_CORE_VISUAL_REBUILD event=" + eventId
@@ -41014,6 +41115,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return 0;
         }
         return Math.max(1, (int) Math.round(base * scale));
+    }
+
+    /**
+     * Re-tag a standing visual with the current generation so it keeps being
+     * recognised after a wave spawn advanced the session.
+     *
+     * <p>The entity is not respawned: only its owner stamp moves forward. That
+     * is what lets a pegged fixture such as the Core overlay stay in place while
+     * waves come and go.</p>
+     */
+    private void adoptEntityIntoCurrentSession(Entity entity) {
+        if (entity == null || keyGeneration == null || generation <= 0L) {
+            return;
+        }
+        entity.getPersistentDataContainer().set(keyGeneration, PersistentDataType.LONG, generation);
+        if (keyEventGeneration != null) {
+            entity.getPersistentDataContainer().set(keyEventGeneration, PersistentDataType.LONG, generation);
+        }
+        if (keyEventId != null && eventId != null && !eventId.isBlank()) {
+            entity.getPersistentDataContainer().set(keyEventId, PersistentDataType.STRING, eventId);
+        }
+        registerOwnedEntity(entity);
     }
 
     private void registerOwnedEntity(Entity entity) {

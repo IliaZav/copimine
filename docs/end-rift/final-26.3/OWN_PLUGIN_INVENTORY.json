@@ -203,8 +203,8 @@
         "tests/PrisonerAbilityControllerTest.java"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineEndEvent.jar",
-      "candidateSha256": "fd07c437e16604ed17e12c69ccfb745558f180a45e096c9180ed64bb76c62fb5",
-      "sha256": "fd07c437e16604ed17e12c69ccfb745558f180a45e096c9180ed64bb76c62fb5",
+      "candidateSha256": "537a662aa9b70f7339b9b7af9169a89f7f6ed5f073f884e9e0a44c4a04de234f",
+      "sha256": "537a662aa9b70f7339b9b7af9169a89f7f6ed5f073f884e9e0a44c4a04de234f",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
       "realServerEnable": "BLOCKED",

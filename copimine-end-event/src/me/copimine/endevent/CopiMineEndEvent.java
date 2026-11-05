@@ -28748,11 +28748,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (core == null) {
             return;
         }
+        // Only a member that truly left the roster is pruned here.  Removing a
+        // guard entry merely because its body died erased the assignment, so the
+        // caster fell back to zero living guards and read as "(РАЗРУШЕН)" even
+        // while its guards were still standing on the ring.
         ritualGuardPreferredTargets.entrySet().removeIf(entry -> {
             Entity guard = ownedEntities.get(entry.getKey());
             Player target = Bukkit.getPlayer(entry.getValue());
-            return !(guard instanceof Mob mob) || !isCurrentRitualGuard(mob)
-                    || !ritualGuardCasters.containsKey(entry.getKey())
+            return guard == null || !ritualGuardCasters.containsKey(entry.getKey())
                     || target == null || !target.isOnline() || target.isDead()
                     || !isFreeRitualTarget(target);
         });
@@ -28764,15 +28767,29 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 continue;
             }
             Set<UUID> guards = ritualGuardsByCaster.getOrDefault(casterId, Set.of());
-            int livingGuards = (int) guards.stream().filter(this::isLiveOwnedEntity).count();
+            int livingGuards = (int) guards.stream()
+                    .filter(id -> ownedEntities.get(id) != null)
+                    .filter(this::isLiveOwnedEntity).count();
             RitualCasterShieldPolicy.State shield = RitualCasterShieldPolicy.state(
                     isLiveOwnedEntity(casterId), livingGuards,
                     ritualExpectedGuardsPerCaster());
             RitualCasterTacticsPolicy.State tactics = RitualCasterTacticsPolicy.state(
                     livingGuards > 0, readRitualCasterAwakened(caster));
-            caster.setCustomName(ChatColor.LIGHT_PURPLE + "Заклинатель "
-                    + ChatColor.GRAY + "(" + ritualShieldName(shield) + ")");
-            caster.setCustomNameVisible(false);
+            // The wheel already names every member with its own mage name and
+            // signature colour.  Overwriting it here with a bare "Заклинатель"
+            // erased that identity and left four of five mages reading as one
+            // anonymous "(РАЗРУШЕН)" body.
+            MageSignaturePolicy.MageId casterMage = wave6CasterIdentities.get(casterId);
+            if (casterMage == null) {
+                caster.setCustomName(ChatColor.LIGHT_PURPLE + "Заклинатель "
+                        + ChatColor.GRAY + "(" + ritualShieldName(shield) + ")");
+                caster.setCustomNameVisible(true);
+            } else {
+                boolean activeCaster = spellSnapshot != null
+                        && casterId.equals(spellSnapshot.caster());
+                styleRitualCircleBody(caster instanceof Enderman circleBody ? circleBody : null,
+                        casterMage, activeCaster, ritualShieldName(shield));
+            }
             boolean selectedCaster = spellSnapshot != null
                     && casterId.equals(spellSnapshot.caster());
             boolean spellReleasing = selectedCaster
@@ -36527,7 +36544,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         && !standing.isDead()) {
                     ritualCasterUuids.add(existing);
                     ritualCasterSlots.put(existing, slot);
-                    ritualGuardsByCaster.computeIfAbsent(existing, ignored -> new LinkedHashSet<>());
+                    // computeIfAbsent only fills an EMPTY slot; it never restores
+                    // the guards of a caster that was already bound, so keep the
+                    // existing assignment instead of silently dropping it.
+                    ritualGuardsByCaster.putIfAbsent(existing, new LinkedHashSet<>());
                 }
                 continue;
             }
@@ -36568,14 +36588,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * only the active one ever fights (W6 keeps its strictly sequential order).
      */
     private void styleRitualCircleBody(Enderman body, MageSignaturePolicy.MageId mage, boolean active) {
+        styleRitualCircleBody(body, mage, active, null);
+    }
+
+    private void styleRitualCircleBody(Enderman body, MageSignaturePolicy.MageId mage, boolean active,
+                                       String shieldLabel) {
         if (body == null) return;
         // "Издалека видно только одного цветного мага" was reported as a bug. The
         // wheel keeps the ONE ACTIVE rule (only the current stage's mage fights)
         // but every member now carries its own visible signature colour, so the
         // whole five-mage circle reads from across the arena.
-        String name = ChatColor.LIGHT_PURPLE + "Заклинатель " + mageName(mage);
+        String suffix = shieldLabel == null ? "" : ChatColor.GRAY + " (" + shieldLabel + ")";
+        String name = ChatColor.LIGHT_PURPLE + "Заклинатель " + mageName(mage) + suffix;
         body.setCustomName(active
-                ? ChatColor.WHITE + "" + ChatColor.BOLD + "Заклинатель " + mageName(mage) : name);
+                ? ChatColor.WHITE + "" + ChatColor.BOLD + "Заклинатель " + mageName(mage) + suffix : name);
         body.setCustomNameVisible(true);
         body.setGlowing(active);
         body.setSilent(!active);

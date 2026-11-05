@@ -240,6 +240,7 @@ import me.copimine.endevent.domain.RitualZoneEffectPolicy;
 import me.copimine.endevent.domain.RitualCasterShieldPolicy;
 import me.copimine.endevent.domain.RitualCasterTacticsPolicy;
 import me.copimine.endevent.domain.RitualCasterHealthPolicy;
+import me.copimine.endevent.domain.Wave7WardenEmergePolicy;
 import me.copimine.endevent.domain.RitualCasterProgressionPolicy;
 import me.copimine.endevent.domain.RitualConversionTargetPolicy;
 import me.copimine.endevent.domain.RitualGuardAggroPolicy;
@@ -23283,6 +23284,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (actor == null) return false;
                 applyWave7BodyScale(actor,
                         Wave7NamedTrialActorPolicy.bodyScale(RealitySplitTrialController.NamedTrial.WARDEN));
+                // The Warden ARRIVES: it rises out of the floor with its own
+                // emergence, then roars. Spawning it in place read as a mob that
+                // simply blinked into existence.
+                beginWardenEmerge(actor, spawn);
                 createdActor = true;
                 actor.getPersistentDataContainer().set(new NamespacedKey(this, "end_event_named_trial_schema"),
                         PersistentDataType.STRING, "2");
@@ -24090,6 +24095,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 logRealitySplitTrialComponentFailure(state, "root", -1,
                         "entity-spawn-failed", spawn);
                 return false;
+            }
+            // The Warden arrives out of the ground, exactly like the named path:
+            // one spawn path must not pop in while the other rises.
+            if (state.trial() == RealitySplitTrialController.Trial.WARDEN) {
+                beginWardenEmerge(root, spawn);
             }
         }
         if (!(root instanceof LivingEntity living)) {
@@ -36810,6 +36820,93 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * 800 with a floor of 350; the ramp follows the mage's place in the wheel, so
      * the last mage is the toughest and no mage is trivial.
      */
+    /** Per-body emergence clock, keyed by actor. */
+    private final Map<UUID, Integer> wardenEmergeStartedAt = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * Start the authored emergence of a Wave 7 Warden.
+     *
+     * <p>The body is sunk under the floor and invulnerable while the sequence
+     * runs; a repeating step lifts it, throws sculk dust, shakes the ground and
+     * lands one roar as it breaks the surface. Until then it cannot be damaged or
+     * acquired, so the player watches it arrive instead of fighting a buried mob.</p>
+     */
+    private void beginWardenEmerge(Entity actor, Location anchor) {
+        if (!(actor instanceof LivingEntity warden) || anchor == null
+                || anchor.getWorld() == null) {
+            return;
+        }
+        warden.setInvulnerable(true);
+        if (warden instanceof Mob mob) {
+            mob.setAI(false);
+            mob.setAware(false);
+            mob.setTarget(null);
+        }
+        Location buried = anchor.clone().add(0.0D,
+                Wave7WardenEmergePolicy.verticalOffset(0), 0.0D);
+        warden.teleport(buried);
+        wardenEmergeStartedAt.put(warden.getUniqueId(), 0);
+        // The ground answers before the body does.
+        anchor.getWorld().playSound(anchor, Sound.ENTITY_WARDEN_EMERGE,
+                SoundCategory.HOSTILE, 1.0F, 1.0F);
+        new org.bukkit.scheduler.BukkitRunnable() {
+            private int elapsed;
+
+            @Override
+            public void run() {
+                if (!warden.isValid() || warden.isDead()) {
+                    wardenEmergeStartedAt.remove(warden.getUniqueId());
+                    cancel();
+                    return;
+                }
+                elapsed++;
+                if (!Wave7WardenEmergePolicy.emerging(elapsed)) {
+                    // Hand the body back to combat exactly where it stands.
+                    warden.setInvulnerable(false);
+                    if (warden instanceof Mob mob) {
+                        mob.setAI(true);
+                        mob.setAware(true);
+                    }
+                    wardenEmergeStartedAt.remove(warden.getUniqueId());
+                    cancel();
+                    return;
+                }
+                Location current = anchor.clone().add(0.0D,
+                        Wave7WardenEmergePolicy.verticalOffset(elapsed), 0.0D);
+                warden.teleport(current);
+                float rumble = Wave7WardenEmergePolicy.rumbleVolume(elapsed);
+                if (elapsed % 4 == 0 && rumble > 0.0F) {
+                    current.getWorld().playSound(current, Sound.BLOCK_SCULK_SENSOR_CLICKING,
+                            SoundCategory.HOSTILE, rumble * 0.8F, 0.55F);
+                }
+                if (Wave7WardenEmergePolicy.roarsAt(elapsed)) {
+                    current.getWorld().playSound(current, Sound.ENTITY_WARDEN_ROAR,
+                            SoundCategory.HOSTILE, 1.0F, 0.9F);
+                }
+                for (Player viewer : eventAudience()) {
+                    if (!isEventParticleViewer(viewer, anchor)) continue;
+                    if (elapsed % 2 == 0) {
+                        viewer.spawnParticle(Particle.SCULK_SOUL, current, 6,
+                                0.45D, 0.25D, 0.45D, 0.01D);
+                        viewer.spawnParticle(Particle.SCULK_CHARGE_POP, current, 3,
+                                0.5D, 0.1D, 0.5D, 0.0D);
+                    }
+                    if (elapsed % 3 == 0) {
+                        double radius = 1.4D + (elapsed / 6.0D);
+                        for (int spoke = 0; spoke < 7; spoke++) {
+                            double angle = spoke * Math.PI * 2.0D / 7.0D + elapsed * 0.06D;
+                            Location from = anchor.clone().add(
+                                    Math.cos(angle) * radius, 0.06D, Math.sin(angle) * radius);
+                            spawnPatternSegment(viewer, from,
+                                    from.clone().add(0.0D, 1.1D, 0.0D), Particle.SOUL,
+                                    null);
+                        }
+                    }
+                }
+            }
+        }.runTaskTimer(this, 1L, 1L);
+    }
+
     private void applyRitualCasterHealth(LivingEntity caster, int stage) {
         if (caster == null) return;
         AttributeInstance maximum = caster.getAttribute(Attribute.GENERIC_MAX_HEALTH);

@@ -48,6 +48,7 @@ import me.copimine.artifacts.api.EventArtifactRewardRequest;
 import me.copimine.artifacts.api.EventArtifactRewardService;
 import me.copimine.artifacts.api.RewardIssueResult;
 import me.copimine.endevent.domain.ArenaInfernoPolicy;
+import me.copimine.endevent.domain.EndEventDisplayItems;
 import me.copimine.endevent.domain.WaveSixSequencePolicy;
 import me.copimine.endevent.domain.Wave7MarksmanDefenderPolicy;
 import me.copimine.endevent.domain.BossAbilityState;
@@ -25858,6 +25859,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 getLogger().info("END_RIFT_CARRIER_SELECTED event=" + eventId
                         + " entity=" + next.getUniqueId()
                         + " charge=" + (currentCarrierCharges + 1)
+                        + " phase=" + currentCarrierState.phase()
+                        + " delivered=" + currentCarrierCharges
                         + " location=" + locationText(next.getLocation()));
             }
         }
@@ -38865,6 +38868,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         List<PortalCapturePolicy.PortalState> beforeSpawn = portalCaptureStates.getOrDefault(3, List.of());
         if (portalVisualGeneration != generation || portalIndex < 0 || portalIndex >= beforeSpawn.size()
                 || beforeSpawn.get(portalIndex).completed()) return null;
+        // A tofu cube IS the invisible-portals report: the display exists, but its
+        // resolved item geometry is the missing-model placeholder. Refuse it.
+        if (!EndEventDisplayItems.hasResolvableModel(modelData)) {
+            getLogger().severe("END_RIFT_PORTAL_MODEL_UNRESOLVED event=" + eventId
+                    + " portal=" + portalIndex + " layer=" + layer
+                    + " modelData=" + modelData + " model=" + modelId);
+            return null;
+        }
         Location origin = portalDisplayOrigin(portal);
         if (origin == null) {
             return null;

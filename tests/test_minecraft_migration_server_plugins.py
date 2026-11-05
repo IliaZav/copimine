@@ -1378,9 +1378,9 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     candidate=baseline['candidate']
     assert candidate['filename']=='CopiMineEndEvent-26.3.jar'
     assert candidate['runtimeFilename']=='CopiMineEndEvent.jar'
-    assert candidate['size']==1939127
-    assert candidate['sha256']=='dd0cc1e4fa09262dbb13a51b476f94257ef3c958beb9fb2bd49d3dec0d1d18cb'
-    assert candidate['sha512']=='243774dcad43e7724dd12c8bbf0dbf4c6d08548206410d4ed37994461b4dc690fb0f852ba22fd4ceaef4785f111efac704584ebe8eb2ef664495eaa44c7f7013'
+    assert candidate['size']==1939783
+    assert candidate['sha256']=='4d43943767c3fdc0755c0122be75fb78b1f816ea33e9ac1035b29fd88664da60'
+    assert candidate['sha512']=='cc3dc88b0912716ab9526c88a30708ad9a0a46e6d21a1537d730fe1464577b2297881a42efbb4cd952606a96834f026d5ac7edc8ed93859ce3a276391f181685'
     assert candidate['apiVersion']=='26.3'
     assert candidate['buildArtifact']=='build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar'
     assert candidate['nativeVerified'] is lock['nativeVerified']
@@ -1435,6 +1435,8 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     assert candidate['replaceSha256']==[
     # Superseded by the November 4 playtest repair pass: carriers, arrows, elites, ritual circle.
     '2aa43ea5aed6f622b116c5894bde179b230e9f8fb8ce5a1ffd8bde1023f2583f',
+    # Superseded by the wave teardown ledger fix.
+    'dd0cc1e4fa09262dbb13a51b476f94257ef3c958beb9fb2bd49d3dec0d1d18cb',
     '96990b0527536a8da2e25dacf03e12fd582e65caf3c192d7e83fae6e76b40a42',
     # Superseded by the boss spell visuals, miniboss scaling and steadiness,
     # the clone gait and the Limbo dummy switch.
@@ -3049,8 +3051,8 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
     expected_candidates={
         'CopiMineArtifacts':('a5e0420d503850cb604445c52705f5af71fdc65770a78b943c5d2bc252fabcc5',
                              'a054cfeef3dc37dc364ef33d550063b6aa105f2394501bd982295af2fc791bba82cce15623c3ff7b09c4c3250683fb1caf7cdb72312e3c91bf50dd0c2fc39600',366356),
-        'CopiMineEndEvent':('dd0cc1e4fa09262dbb13a51b476f94257ef3c958beb9fb2bd49d3dec0d1d18cb',
-                            '243774dcad43e7724dd12c8bbf0dbf4c6d08548206410d4ed37994461b4dc690fb0f852ba22fd4ceaef4785f111efac704584ebe8eb2ef664495eaa44c7f7013',1939127),
+        'CopiMineEndEvent':('4d43943767c3fdc0755c0122be75fb78b1f816ea33e9ac1035b29fd88664da60',
+                            'cc3dc88b0912716ab9526c88a30708ad9a0a46e6d21a1537d730fe1464577b2297881a42efbb4cd952606a96834f026d5ac7edc8ed93859ce3a276391f181685',1939783),
         'CopiMineNarcotics':('bea72432491f7afa0a0cbd23b608654b56899b8e463720f98dbfef0f39f2ef0d',
                              'c2e3439ca69fd8ecc2b19aa654a38fb6bcd81e5be1da2da52934988edf1f75a5bb0170cbada994015500a6ccc6b2fcb6e8bc2bf4222a154c1b1fe6b5c14a586b',370363),
     }

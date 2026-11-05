@@ -4,48 +4,63 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class EndEventPlayerVisualLayoutTest {
-    /**
-     * The player reported "no Enderman shader on me" during Wave 2. The mark used
-     * to be glow-only and drew nothing at all, so the hunt was completely
-     * invisible. It now paints a violet Enderman pulse at the screen edges; the
-     * combat centre must still stay clear and the mark must still end with its
-     * server lifetime.
-     */
     @Test
-    void waveTwoHuntMarkShowsAnEndermanTintAtTheScreenEdgesOnly() {
-        var hunt = new EndEventPlayerVisualManager.VisualState(
-                EndEventPlayerVisualManager.Kind.HUNT, 1_000L, 9_000L);
-        var carrier = new EndEventPlayerVisualManager.VisualState(
-                EndEventPlayerVisualManager.Kind.CARRIER, 1_000L, 9_000L);
-
-        List<EndEventPlayerVisualLayout.Edge> huntEdges = EndEventPlayerVisualLayout.edges(800, 450, hunt, 5_000L);
-        assertFalse(huntEdges.isEmpty(),
-                "the Wave 2 hunt mark must be visible; glow alone left the player with no shader");
-        assertTrue(huntEdges.stream().allMatch(edge -> edge.top() < 32 || edge.bottom() > 418
-                        || edge.left() < 23 || edge.right() > 777),
-                "the hunt tint stays at the screen edges and leaves the combat centre clear");
-        assertTrue(EndEventPlayerVisualLayout.edges(800, 450, carrier, 5_000L).size() > 0,
-                "carrier feedback keeps its unobstructed screen edges");
-        assertTrue(EndEventPlayerVisualLayout.edges(800, 450, hunt, 9_000L).isEmpty(),
-                "the hunt presentation ends with the server mark");
+    void theRenderedFootprintLeavesTheCombatCenterClearAtSeveralGuiScales() {
+        var state = new EndEventPlayerVisualManager.VisualState(EndEventPlayerVisualManager.Kind.CARRIER, 1_000, 16_000);
+        for (int[] size : new int[][]{{1_920, 1_080}, {640, 360}, {427, 240}, {320, 180}, {160, 90}}) {
+            int width = size[0], height = size[1];
+            var edges = EndEventPlayerVisualLayout.edges(width, height, state, 2_000);
+            assertFalse(edges.isEmpty());
+            assertTrue(edges.size() <= 42, "draw calls remain bounded at all GUI scales");
+            for (var edge : edges) {
+                assertTrue(edge.left() >= 0 && edge.top() >= 0 && edge.right() <= width && edge.bottom() <= height);
+                assertTrue(edge.left() < edge.right() && edge.top() < edge.bottom());
+                assertTrue(edge.right() <= height / 20 || edge.left() >= width - height / 20
+                        || edge.bottom() <= height / 20 || edge.top() >= height - height / 20,
+                        "every pixel belongs to the outer five percent of screen height");
+                assertFalse(edge.left() <= width / 2 && edge.right() > width / 2
+                        && edge.top() <= height / 2 && edge.bottom() > height / 2);
+                assertTrue(edge.alphaFrom() <= 40 && edge.alphaTo() <= 40);
+            }
+        }
     }
 
     @Test
-    void carrierEdgesStayThinAndTranslucentAroundAnOpenCombatCentre() {
-        var carrier = new EndEventPlayerVisualManager.VisualState(
-                EndEventPlayerVisualManager.Kind.CARRIER, 1_000L, 9_000L);
+    void theHuntMarkUsesGlowAndRestrainedVioletScreenEdges() {
+        var hunt = new EndEventPlayerVisualManager.VisualState(EndEventPlayerVisualManager.Kind.HUNT, 1_000, 12_000);
+        List<EndEventPlayerVisualLayout.Edge> early = EndEventPlayerVisualLayout.edges(640, 360, hunt, 1_200);
+        List<EndEventPlayerVisualLayout.Edge> persistent = EndEventPlayerVisualLayout.edges(640, 360, hunt, 2_000);
+        assertFalse(early.isEmpty());
+        assertFalse(persistent.isEmpty());
+        assertEquals(0x9D56FF, persistent.getFirst().colorFrom() & 0xFFFFFF);
+        assertTrue(persistent.stream().allMatch(edge -> edge.alphaFrom() <= 40 && edge.alphaTo() <= 40));
+        // The state expires at 12_000, so the instant before expiry still paints;
+        // the expired instant is the one that must draw nothing.
+        assertFalse(EndEventPlayerVisualLayout.edges(640, 360, hunt, 11_999).isEmpty());
+        assertTrue(EndEventPlayerVisualLayout.edges(640, 360, hunt, 12_000).isEmpty());
+    }
 
-        List<EndEventPlayerVisualLayout.Edge> edges = EndEventPlayerVisualLayout.edges(
-                800, 450, carrier, 5_000L);
+    @Test
+    void noPixelsAreDrawnForExpiredMissingOrInvalidPresentation() {
+        var state = new EndEventPlayerVisualManager.VisualState(EndEventPlayerVisualManager.Kind.CARRIER, 1_000, 2_500);
+        assertTrue(EndEventPlayerVisualLayout.edges(640, 360, null, 1_200).isEmpty());
+        assertTrue(EndEventPlayerVisualLayout.edges(640, 360, state, 999).isEmpty());
+        assertTrue(EndEventPlayerVisualLayout.edges(640, 360, state, 2_500).isEmpty());
+        assertTrue(EndEventPlayerVisualLayout.edges(0, 360, state, 1_200).isEmpty());
+        assertTrue(EndEventPlayerVisualLayout.edges(640, 0, state, 1_200).isEmpty());
+    }
 
-        assertTrue(edges.stream().allMatch(edge -> edge.alphaFrom() <= 40 && edge.alphaTo() <= 40),
-                "the carrier overlay stays translucent");
-        assertTrue(edges.stream().allMatch(edge -> edge.top() < 32 || edge.bottom() > 418
-                        || edge.left() < 23 || edge.right() > 777),
-                "the carrier overlay remains at the screen edges and leaves the combat centre clear");
+    @Test
+    void sidesSoftenInwardAndCarrierFeedbackStaysCalm() {
+        var state = new EndEventPlayerVisualManager.VisualState(EndEventPlayerVisualManager.Kind.CARRIER, 1_000, 16_000);
+        var edges = EndEventPlayerVisualLayout.edges(640, 360, state, 1_500);
+        assertFalse(edges.isEmpty());
+        assertEquals(0x74E6E8, edges.getFirst().colorFrom() & 0xFFFFFF);
+        assertEquals(0, edges.getFirst().alphaTo());
+        assertTrue(edges.get(2).alphaFrom() > edges.get(edges.size() - 2).alphaFrom());
+        assertEquals(edges, EndEventPlayerVisualLayout.edges(640, 360, state, 15_999));
     }
 }

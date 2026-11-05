@@ -29,13 +29,18 @@ class EndEventPlayerVisualLayoutTest {
     }
 
     @Test
-    void theHuntMarkUsesGlowWithoutDrawingScreenEdges() {
+    void theHuntMarkUsesGlowAndRestrainedVioletScreenEdges() {
         var hunt = new EndEventPlayerVisualManager.VisualState(EndEventPlayerVisualManager.Kind.HUNT, 1_000, 12_000);
         List<EndEventPlayerVisualLayout.Edge> early = EndEventPlayerVisualLayout.edges(640, 360, hunt, 1_200);
         List<EndEventPlayerVisualLayout.Edge> persistent = EndEventPlayerVisualLayout.edges(640, 360, hunt, 2_000);
-        assertTrue(early.isEmpty());
-        assertTrue(persistent.isEmpty());
-        assertTrue(EndEventPlayerVisualLayout.edges(640, 360, hunt, 11_999).isEmpty());
+        assertFalse(early.isEmpty());
+        assertFalse(persistent.isEmpty());
+        assertEquals(0x9D56FF, persistent.getFirst().colorFrom() & 0xFFFFFF);
+        assertTrue(persistent.stream().allMatch(edge -> edge.alphaFrom() <= 40 && edge.alphaTo() <= 40));
+        // The state expires at 12_000; 26.3 was aligned with the legacy
+        // client here, so an instant before expiry still has to paint.
+        assertFalse(EndEventPlayerVisualLayout.edges(640, 360, hunt, 11_999).isEmpty());
+        assertTrue(EndEventPlayerVisualLayout.edges(640, 360, hunt, 12_000).isEmpty());
     }
 
     @Test

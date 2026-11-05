@@ -17,17 +17,16 @@ public final class EndEventPlayerVisualLayout {
     public static List<Edge> edges(int width, int height, EndEventPlayerVisualManager.VisualState state, long nowMillis) {
         if (state == null || state.kind() == null || width <= 0 || height <= 0
                 || nowMillis < state.startedAtMillis() || nowMillis >= state.expiresAtMillis()) return List.of();
-        if (state.kind() == EndEventPlayerVisualManager.Kind.HUNT) return List.of();
         int thickness = Math.min(MAX_EDGE_PIXELS, Math.min(width, height) / 20);
         if (thickness == 0) return List.of();
         long age = nowMillis - state.startedAtMillis();
         float fadeIn = Math.min(1.0F, age / 120.0F);
-        // Carrier feedback stays steady after a short fade-in. The HUNT mark
-        // is communicated through the target's glow, without covering the HUD.
-        float strength = 28.0F;
+        // Carrier feedback stays cyan; the hunt mark adds a restrained violet
+        // edge so it remains visible without covering the combat center.
+        float strength = state.kind() == EndEventPlayerVisualManager.Kind.HUNT ? 34.0F : 28.0F;
         int alpha = Math.min(40, Math.round(strength * fadeIn));
         if (alpha <= 0) return List.of();
-        int color = 0x74E6E8;
+        int color = state.kind() == EndEventPlayerVisualManager.Kind.HUNT ? 0x9D56FF : 0x74E6E8;
         int opaqueEdge = (alpha << 24) | color;
         List<Edge> edges = new ArrayList<>(2 + 2 * thickness);
         edges.add(new Edge(0, 0, width, thickness, opaqueEdge, color));

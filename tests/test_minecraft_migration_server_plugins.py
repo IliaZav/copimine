@@ -1433,6 +1433,8 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
         'dcee3f59ab5a5114757def7ecd1ce4fa09495f462dd06c85c19610a3b4e7e150',
     ]
     assert candidate['replaceSha256']==[
+    # Superseded by the wave-one charge guarantee.
+    '84400f60d8ff504155539d0d22df5965065c2e8d799a1e3008aa25b36e81c515',
     # Superseded by the November 4 playtest repair pass: carriers, arrows, elites, ritual circle.
     '2aa43ea5aed6f622b116c5894bde179b230e9f8fb8ce5a1ffd8bde1023f2583f',
     # Superseded by the wave teardown ledger fix.

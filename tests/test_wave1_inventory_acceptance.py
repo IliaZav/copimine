@@ -488,3 +488,23 @@ def test_hoppers_cannot_move_or_collect_wave1_charge_tokens_into_unobserved_stor
             "charge custody must be enforced even when both inventories are outside observed arena storage"
         )
         assert "event.setCancelled(true)" in method
+
+
+
+def test_live_carrier_never_leaves_the_pack_without_a_visible_charge():
+    """W305: a live carrier in CARRIER_ACTIVE must not be the only place the charge exists.
+
+    The player clears the pack, sees no charge anywhere, and reads the wave as
+    broken, because the drop only ever appeared after that one carrier died.
+    A charge the server believes in but the world does not hold is not a
+    hidden clue: it is a defect. The tick has to keep the two in agreement.
+    """
+    tick = declaration(EVENT.read_text(encoding="utf-8"), 'private void tickCurrentCarrierObjective(')
+    guard = tick.index('if (currentCarrierState.phase() == RiftCarrierPolicy.Phase.CARRIER_ACTIVE')
+    end = tick.index('currentCarrierState.phase() == RiftCarrierPolicy.Phase.CHARGE_DROPPED', guard)
+    window = tick[guard:end]
+    assert 'Entity liveCharge = currentCarrierChargeEntity();' in window, (
+        'an active carrier must guarantee a present charge even while it lives'
+    )
+    assert 'spawnCurrentCarrierCharge' in window
+    assert 'currentCarrierChargeEntity()' in window

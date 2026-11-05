@@ -239,6 +239,7 @@ import me.copimine.endevent.domain.RitualTargetPolicy;
 import me.copimine.endevent.domain.RitualZoneEffectPolicy;
 import me.copimine.endevent.domain.RitualCasterShieldPolicy;
 import me.copimine.endevent.domain.RitualCasterTacticsPolicy;
+import me.copimine.endevent.domain.RitualCasterHealthPolicy;
 import me.copimine.endevent.domain.RitualCasterProgressionPolicy;
 import me.copimine.endevent.domain.RitualConversionTargetPolicy;
 import me.copimine.endevent.domain.RitualGuardAggroPolicy;
@@ -27372,6 +27373,35 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 Math.max(4.0D, waveMovementRadius()), MIN_WAVE_CORE_DISTANCE_BLOCKS, -1);
     }
 
+    /**
+     * Publish the sphere's damage presentation: body colour plus one crack band
+     * per destroyed mage. It is a viewer-scoped particle draw on the shell, so a
+     * prisoner inside keeps a clear view of the arena.
+     */
+    private void sendRitualSphereDamageState(int deaths) {
+        Location center = ritualSphereVisualUuid != null
+                ? ritualSphereCenter(coreCombatAnchorLocation())
+                : null;
+        if (center == null || center.getWorld() == null) return;
+        int bodyColor = RitualSpherePresentationPolicy.sphereBodyColor(deaths);
+        int cracks = RitualSpherePresentationPolicy.crackStage(deaths);
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, center)) continue;
+            viewer.spawnParticle(Particle.DUST, center, 10,
+                    RITUAL_SPHERE_RADIUS_BLOCKS * 0.6D, RITUAL_SPHERE_RADIUS_BLOCKS * 0.6D,
+                    RITUAL_SPHERE_RADIUS_BLOCKS * 0.6D, 0.0D,
+                    new Particle.DustOptions(Color.fromRGB(bodyColor), 1.6F));
+            for (int band = 0; band < cracks; band++) {
+                double bandAngle = Math.PI * 2.0D * band / RitualSpherePresentationPolicy.MAX_CRACK_STAGE;
+                double radius = RITUAL_SPHERE_RADIUS_BLOCKS;
+                Location crackPoint = center.clone().add(
+                        Math.cos(bandAngle) * radius, (band - cracks / 2.0D) * 0.45D,
+                        Math.sin(bandAngle) * radius);
+                viewer.spawnParticle(Particle.SQUID_INK, crackPoint, 4, 0.16D, 0.24D, 0.16D, 0.0D);
+            }
+        }
+    }
+
     private void spawnRitualSphereVisual(World world, Location center) {
         if (world == null || center == null || ritualSphereVisualUuid != null) {
             return;
@@ -28542,6 +28572,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** Capture the first eligible participant physically inside the visible seal. */
     private void attemptRitualPrisonerCapture(long now) {
+        // A combat sandbox runs the sphere WITHOUT a prisoner on purpose: the
+        // operator wants to test the casters. Every other sandbox is the real
+        // playable encounter and must capture a player exactly like the official
+        // run, otherwise the sphere sits in WAITING_FOR_PRISONER forever and the
+        // player never receives the in-sphere HUD or the abilities.
         if (isRitualCombatSandbox()) return;
         if (ritualSphereVisualUuid == null
                 || !isLiveOwnedEntity(ritualSphereVisualUuid)) {
@@ -28551,6 +28586,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (core == null || core.getWorld() == null) {
             return;
         }
+        // A sandbox wave admits its roster itself; demanding the protected V4
+        // bridge receipt here made capture impossible outside an official run
+        // and left the sphere waiting for a prisoner that could never arrive.
+        // The bridge gate is the single readiness authority; the visual test mode
+        // runs on the same contract, so the filter stays one method reference.
         List<Player> participants = activeWaveParticipants().stream()
                 .filter(this::isRitualPrisonerBridgeReady)
                 .toList();
@@ -28587,7 +28627,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (prisoner == null) {
             return;
         }
-        if (!isRitualPrisonerBridgeReady(prisoner)) {
+        if (!isRitualPrisonerBridgeReady(prisoner) && !testWaveFrontVisualMode) {
             return;
         }
         if (ritualSphereState == null) {
@@ -28801,7 +28841,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (casterMage == null) {
                 caster.setCustomName(ChatColor.LIGHT_PURPLE + "Заклинатель "
                         + ChatColor.GRAY + "(" + ritualShieldName(shield) + ")");
-                caster.setCustomNameVisible(true);
+                caster.setCustomNameVisible(false);
             } else {
                 boolean activeCaster = spellSnapshot != null
                         && casterId.equals(spellSnapshot.caster());
@@ -29748,8 +29788,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         List<RitualCasterProgressionPolicy.MajorSpell> availableSpells =
                 sphereAcquiredSpells();
         if (availableSpells.isEmpty()) {
-            ritualNextAbilityMillis = now + RITUAL_ABILITY_TICK_MILLIS;
-            return;
+            // The sphere is an active combatant from the first tick of the wave,
+            // not a waiting shell: until a mage dies and donates their signature
+            // it casts its own baseline barrage. The player reported a sphere
+            // that never cast anything because every cast was gated on a death.
+            availableSpells = List.of(
+                    RitualCasterProgressionPolicy.MajorSpell.RIFT_BARRAGE);
         }
         if (ritualSphereState == null) {
             ritualNextAbilityMillis = now + RITUAL_ABILITY_TICK_MILLIS;
@@ -31138,6 +31182,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !caster.getWorld().equals(center.getWorld())) {
             return;
         }
+        // An awakened mage never stops channeling: it keeps the sphere spell and
+        // the player must be able to read that it got stronger, so the pulse
+        // switches to the hostile font and adds a soul-fire crown.
+        boolean awakened = tactics == RitualCasterTacticsPolicy.State.AWAKENED_ATTACKING;
         Particle particle = tactics == RitualCasterTacticsPolicy.State.GUARDED_CASTING
                 ? Particle.END_ROD : Particle.REVERSE_PORTAL;
         var hands = me.copimine.endevent.domain.RitualCasterHandPolicy.hands(
@@ -31148,7 +31196,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             for (var hand : hands) {
                 Location palm = caster.getLocation().add(hand.x(), hand.y(), hand.z());
-                viewer.spawnParticle(particle, palm, 3, 0.06D, 0.06D, 0.06D, 0.01D);
+                viewer.spawnParticle(particle, palm, awakened ? 6 : 3,
+                        0.06D, 0.06D, 0.06D, 0.01D);
+                if (awakened) {
+                    viewer.spawnParticle(Particle.SOUL_FIRE_FLAME, palm, 1, 0.03D, 0.03D, 0.03D, 0.0D);
+                }
             }
         }
         if (now % 1_000L < 50L) {
@@ -32162,6 +32214,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 renderRitualZone(viewer, zoneCenter, particle, now);
             }
         }
+        // The sphere itself reports progress: every destroyed mage changes its
+        // colour and adds a crack band, which is how the player inside reads the
+        // sequence without any text.
+        int sphereDeaths = Math.max(0, ritualCasterDeathCount);
+        sendRitualSphereDamageState(sphereDeaths);
         if (now >= ritualNextBeamRefreshMillis) {
             ritualNextBeamRefreshMillis = now + RITUAL_BEAM_REFRESH_MILLIS;
             MageSignaturePolicy.MageId activeMage = wave6Sequence == null
@@ -32175,6 +32232,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 // tactics state owns that decision, so a passive or guarded body
                 // is never painted as if it were channelling.
                 if (!RitualCasterTacticsPolicy.castsSphere(ritualCasterTacticsState(casterId))) continue;
+                // A casting mage looks at the sphere it channels: the player saw
+                // mages with their hands pointing "somewhere", so the body is
+                // turned toward the shell on every beam refresh, and both palms
+                // hang off that facing.
+                Location aimed = caster.getLocation().clone();
+                Vector toSphere = center.toVector().subtract(aimed.toVector());
+                if (toSphere.lengthSquared() > 1.0E-6D) {
+                    aimed.setDirection(toSphere);
+                    caster.setRotation(aimed.getYaw(), 0.0F);
+                }
                 List<me.copimine.endevent.domain.RitualCasterHandPolicy.Offset> hands;
                 int guards = ritualGuardsByCaster.getOrDefault(casterId, Set.of()).stream()
                         .filter(this::isLiveOwnedEntity).toList().size();
@@ -36597,6 +36664,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             wave6CasterIdentities.put(body.getUniqueId(), mage);
             ritualGuardsByCaster.put(body.getUniqueId(), new LinkedHashSet<>());
             wave6CasterCircles.put(mage, body.getUniqueId());
+            applyRitualCasterHealth(body, Math.max(0, slot));
             styleRitualCircleBody(body, mage, false);
         }
         int liveCasters = 0;
@@ -36685,9 +36753,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             int guardEntitySlot = 128 + casterSlot * RitualSphereScalingPolicy.GUARDS_PER_CASTER + guardSlot;
             Location guardLocation = casterLocation.clone().add(guardPost.x(), 0.0D, guardPost.z());
             int roleSlot = RitualGuardAbilityPolicy.roleSlot(casterSlot, guardSlot);
+            boolean giantReplacement = RitualGuardAbilityPolicy.isGiantReplacement(
+                    profile.participants(), casterSlot, guardSlot);
             Entity guard;
-            if (roleSlot == 0 && RitualGuardAbilityPolicy.isGiantReplacement(
-                    profile.participants(), casterSlot, guardSlot)) {
+            if (roleSlot == 0 && giantReplacement) {
                 guard = spawnRiftGiantEntity(world, guardLocation, 6, true, guardEntitySlot);
             } else {
                 EntityType guardType = EntityType.valueOf(
@@ -36735,6 +36804,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * member is now lit and named; only the active one is set in bold white, and
      * only the active one ever fights (W6 keeps its strictly sequential order).
      */
+    /**
+     * Wave 6 mage health: the encounter is a sequence of five real fights, so a
+     * mage must survive long enough to matter. The player asked for a ceiling of
+     * 800 with a floor of 350; the ramp follows the mage's place in the wheel, so
+     * the last mage is the toughest and no mage is trivial.
+     */
+    private void applyRitualCasterHealth(LivingEntity caster, int stage) {
+        if (caster == null) return;
+        AttributeInstance maximum = caster.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+        if (maximum == null) return;
+        double health = RitualCasterHealthPolicy.maxHealthFor(stage,
+                Math.max(1, currentWaveScalePlayers));
+        maximum.setBaseValue(health);
+        caster.setHealth(health);
+    }
+
     private void styleRitualCircleBody(Enderman body, MageSignaturePolicy.MageId mage, boolean active) {
         styleRitualCircleBody(body, mage, active, null);
     }
@@ -36801,6 +36886,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      *
      * @return true when the current stage has its complete roster
      */
+    /** Guard slots that already hold a live body for one caster. */
+    private Set<Integer> slotsAlreadyAssignedTo(UUID casterId) {
+        Set<Integer> slots = new LinkedHashSet<>();
+        for (UUID guardId : ritualGuardsByCaster.getOrDefault(casterId, Set.of())) {
+            if (!isLiveOwnedEntity(guardId)) continue;
+            Entity guard = ownedEntities.get(guardId);
+            if (guard == null) continue;
+            slots.add(readInt(guard, keyRitualGuardSlot, 0));
+        }
+        return slots;
+    }
+
     private boolean spawnWaveSixStage(World world, Location core, RitualSphereScalingPolicy.Profile profile) {
         if (world == null || core == null || profile == null || wave6Sequence == null
                 || !wave6Sequence.mageStageActive()) return false;
@@ -36834,6 +36931,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             wave6CasterIdentities.put(caster.getUniqueId(), mage);
             ritualGuardsByCaster.put(caster.getUniqueId(), new LinkedHashSet<>());
             wave6CasterCircles.put(mage, caster.getUniqueId());
+            applyRitualCasterHealth(caster, stage);
         }
         styleRitualCircleBody(caster, mage, true);
         placeRitualEntity(caster, casterLocation, "CASTER", casterSlot, -1);
@@ -36843,8 +36941,63 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // stage never adds a second guard beside the one the wheel already gave
         // this mage. Previously the stage spawned its own guard on top of the
         // ring's guard, which is where the "one caster has three guards" came from.
-        spawnRitualGuardsForCaster(world, core, mage, caster.getUniqueId());
+        // W6-002: the stage owns its own roster and places it transactionally.
+        // The ring may already have given this mage a guard, so an existing body
+        // for the same slot is reused instead of stacking a second one.
+        Set<Integer> stageTakenSlots = slotsAlreadyAssignedTo(caster.getUniqueId());
         for (int guardSlot = 0; guardSlot < profile.guardsPerCaster(); guardSlot++) {
+            if (stageTakenSlots.contains(guardSlot)) {
+                next = next.guardFilled(guardSlot);
+                continue;
+            }
+            int roleSlot = RitualGuardAbilityPolicy.roleSlot(stage, guardSlot);
+            RitualGuardAggroPolicy.RingOffset guardPost = RitualGuardAggroPolicy.spawnRingOffset(
+                    guardSlot, profile.guardsPerCaster(), casterAngle);
+            int guardEntitySlot = 128 + casterSlot
+                    * RitualSphereScalingPolicy.GUARDS_PER_CASTER + guardSlot;
+            Location guardLocation = casterLocation.clone()
+                    .add(guardPost.x(), 0.0D, guardPost.z());
+            boolean giantReplacement = RitualGuardAbilityPolicy.isGiantReplacement(
+                    profile.participants(), casterSlot, guardSlot);
+            Entity guard;
+            if (roleSlot == 0 && giantReplacement) {
+                guard = spawnRiftGiantEntity(world, guardLocation, 6, true, guardEntitySlot);
+            } else {
+                EntityType guardType = EntityType.valueOf(
+                        RitualGuardAbilityPolicy.entityTypeForGuardRole(roleSlot));
+                guard = spawnOwnedMobAtLocation(world, guardLocation, guardType, 6,
+                        EVENT_KIND_ELITE, testWaveFrontVisualMode, guardEntitySlot);
+            }
+            if (guard == null) {
+                complete = false;
+                getLogger().warning("WAVE6_GUARD_SPAWN_SKIPPED event=" + eventId
+                        + " generation=" + generation + " stage=" + stage
+                        + " caster=" + caster.getUniqueId() + " slot=" + guardSlot
+                        + " role=" + roleSlot);
+                continue;
+            }
+            if (guard instanceof LivingEntity living
+                    && !(living instanceof Zombie zombie && isRiftGiant(zombie))) {
+                applyEliteCombatStats(living, 0.0D);
+            }
+            placeRitualEntity(guard, guardLocation, "GUARD", casterSlot, guardSlot);
+            retagRitualEntity(guard, "GUARD", caster.getUniqueId(), casterSlot, guardSlot);
+            ritualGuardUuids.add(guard.getUniqueId());
+            ritualGuardCasters.put(guard.getUniqueId(), caster.getUniqueId());
+            ritualGuardsByCaster.computeIfAbsent(caster.getUniqueId(),
+                    ignored -> new LinkedHashSet<>()).add(guard.getUniqueId());
+            if (guard instanceof Mob mob) {
+                mob.setTarget(null);
+                mob.setAI(false);
+                mob.setAware(false);
+            }
+            if (guard instanceof LivingEntity living) {
+                configureRitualGuardHealth(living);
+                configureRitualGuardCombatAttributes(living);
+                living.setCustomName(ChatColor.DARK_PURPLE + "Страж "
+                        + mageName(mage) + " " + (guardSlot + 1));
+                living.setCustomNameVisible(false);
+            }
             next = next.guardFilled(guardSlot);
         }
         if (!complete) {

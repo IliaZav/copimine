@@ -65,7 +65,7 @@ public final class RitualGuardAbilityPolicy {
 
     public static boolean mayBeginSpiderWeb(double distanceBlocks) {
         return Double.isFinite(distanceBlocks)
-                && distanceBlocks > SPIDER_BITE_RANGE_BLOCKS
+                && distanceBlocks > 0.0D
                 && distanceBlocks <= WEB_SNARE.maximumRangeBlocks();
     }
 

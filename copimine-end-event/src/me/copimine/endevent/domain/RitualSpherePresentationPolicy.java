@@ -23,6 +23,31 @@ public final class RitualSpherePresentationPolicy {
         if (livingGuards >= assignedGuards) return 0xD04BFF;
         return livingGuards * 3 <= assignedGuards ? 0xA36BFF : 0xA55BFF;
     }
+    /**
+     * The sphere shows its own damage. Each mage death drains it visibly: the
+     * hue cools from violet toward a deep angry crimson and the shell grows a
+     * crack stage, so a player inside the sphere can read progress at a glance
+     * without any label. Deaths beyond the wheel clamp to the final stage.
+     */
+    public static final int MAX_CRACK_STAGE = 5;
+
+    /** Body colour of the sphere for {@code deaths} mages already destroyed. */
+    public static int sphereBodyColor(int deaths) {
+        return switch (Math.max(0, Math.min(MAX_CRACK_STAGE, deaths))) {
+            case 0 -> 0xD04BFF;
+            case 1 -> 0xC13BE8;
+            case 2 -> 0xA82BD1;
+            case 3 -> 0x8E1FB0;
+            case 4 -> 0x74158C;
+            default -> 0x5A0C6B;
+        };
+    }
+
+    /** How many crack bands the shell publishes for {@code deaths} mages destroyed. */
+    public static int crackStage(int deaths) {
+        return Math.max(0, Math.min(MAX_CRACK_STAGE, deaths));
+    }
+
     public static boolean insidePrisonerAnchor(double x, double y, double z) {
         return Double.isFinite(x) && Double.isFinite(y) && Double.isFinite(z)
                 && x*x + y*y + z*z <= 0.25D;

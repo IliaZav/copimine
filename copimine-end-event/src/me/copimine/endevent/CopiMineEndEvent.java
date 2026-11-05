@@ -26264,6 +26264,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 ? null : ownedEntities.get(currentCarrierState.charge());
     }
 
+    /** Pickup delay that keeps a drop from being grabbed by walking into it. */
+    private static final int CARRIER_CHARGE_PICKUP_DELAY_TICKS = 600;
+
     private void spawnCurrentCarrierCharge(Location requested) {
         if (currentCarrierState == null
                 || (currentCarrierState.phase() != RiftCarrierPolicy.Phase.CARRIER_ACTIVE
@@ -26277,7 +26280,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Item charge = requested.getWorld().spawn(
                 requested.clone().add(0.0D, 0.55D, 0.0D), Item.class, value -> {
                     value.setItemStack(new ItemStack(Material.NETHER_STAR));
-                    value.setPickupDelay(Integer.MAX_VALUE);
+                    // Walking pickup is refused by its OWN event handler; the
+                    // item still has to tick like any other drop, so the
+                    // pickup delay cannot be MAX_VALUE.  An item whose age
+                    // never advances neither falls, merges nor can be
+                    // reconciled by the charge recovery code.
+                    value.setPickupDelay(CARRIER_CHARGE_PICKUP_DELAY_TICKS);
                     value.setGravity(true);
                     value.setInvulnerable(true);
                     value.setPersistent(false);

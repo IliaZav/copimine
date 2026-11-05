@@ -6,14 +6,22 @@ public final class WavePressurePolicy {
     private static final int WAVE_TWO = 2;
     private static final int WAVE_FIVE = 5;
     private static final int SMALL_PARTY_WAVE_ONE_PRESSURE = 12;
-    private static final int TWO_PLAYER_WAVE_FIVE_BASE_PRESSURE = 8;
+    /** Ordinary pressure in the two-player Wave 5 exception: the doubled cap minus its single elite. */
+    private static final int TWO_PLAYER_WAVE_FIVE_BASE_PRESSURE = 15;
     private static final int WAVE_PRESSURE_MULTIPLIER = 2;
     private static final int APPROVED_WAVE_FIVE_ELITE_ENDERMEN = 1;
     private static final int APPROVED_WAVE_FIVE_ELITE_SKELETONS = 0;
 
     private WavePressurePolicy() { }
 
-    /** Double the live roster for Waves 1 and 3-5 while retaining bounded profiles. */
+    /**
+     * Double the live roster for Waves 1 and 3-5 while retaining bounded profiles.
+     *
+     * <p>The two-player Wave 5 exception is capped at the base pressure of its
+     * own authored exception (elite plus ordinary bodies), not at twice the
+     * live roster: doubling the tail made a one-elite roster balloon into
+     * thirty bodies, which is exactly the elite wall the player reported.</p>
+     */
     public static WaveMechanicsPolicy.WaveCounts clamp(
             int wave, WaveMechanicsPolicy.WaveCounts requested, int livingPlayers) {
         if (requested == null) {
@@ -22,7 +30,11 @@ public final class WavePressurePolicy {
         int cap = activeCap(wave, livingPlayers);
         if (cap == 0) return new WaveMechanicsPolicy.WaveCounts(0, 0, 0, 0, 0);
         if (wave == WAVE_FIVE && livingPlayers == PressureBudgetController.MIN_PLAYERS) {
-            return clampTwoPlayerWaveFive(requested, cap);
+            int twoPlayerCap = Math.min(cap,
+                    TWO_PLAYER_WAVE_FIVE_BASE_PRESSURE
+                            + APPROVED_WAVE_FIVE_ELITE_ENDERMEN
+                            + APPROVED_WAVE_FIVE_ELITE_SKELETONS);
+            return clampTwoPlayerWaveFive(requested, twoPlayerCap);
         }
         WaveMechanicsPolicy.WaveCounts boundedRequest = wave == WAVE_TWO
                 ? WaveMechanicsPolicy.compositionForWave(WAVE_TWO, requested) : requested;
@@ -132,7 +144,10 @@ public final class WavePressurePolicy {
                 && active.eliteSkeletons() == APPROVED_WAVE_FIVE_ELITE_SKELETONS
                 && active.endermen() + active.spiders() + active.skeletons()
                 == TWO_PLAYER_WAVE_FIVE_BASE_PRESSURE
-                && active.total() == activeCap(WAVE_FIVE, livingPlayers)
+                && active.total() == Math.min(activeCap(WAVE_FIVE, livingPlayers),
+                        TWO_PLAYER_WAVE_FIVE_BASE_PRESSURE
+                                + APPROVED_WAVE_FIVE_ELITE_ENDERMEN
+                                + APPROVED_WAVE_FIVE_ELITE_SKELETONS)
                 && active.total() <= PressureBudgetController.HARD_CAP;
     }
 }

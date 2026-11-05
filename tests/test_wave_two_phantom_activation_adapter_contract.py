@@ -29,6 +29,7 @@ def test_late_enderman_group_defers_when_no_warning_can_be_started() -> None:
     after_call = body[call:call + 120]
 
     assert re.match(
-        r"tryBeginWaveTwoPhantomActivation\(world, core, group, groupNumber\);\s*return false;",
+        r"tryBeginWaveTwoPhantomActivation\(world, core, group, groupNumber\)\) \{",
         after_call,
-    ), "an unavailable mark, layout, or slot must defer the group instead of spawning its Enderman directly"
+    ), "a refused phantom activation must be handled instead of spawning the Enderman silently"
+    assert "action=spawn-without-phantom" in body[call:call + 1200], "the fallback must be logged loudly"

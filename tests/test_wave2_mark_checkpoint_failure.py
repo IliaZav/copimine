@@ -34,7 +34,7 @@ public class WaveTwoClearCheckpointProbe {
         phase=EventPhase.RECOVERY_REQUIRED;
         return false;
     }
-    void spawnNextWaveGroup(World w,Location l){spawns++;waveSpawnGroupIndex++;}
+    boolean spawnNextWaveGroup(World w,Location l){spawns++;waveSpawnGroupIndex++;return true;}
     void updateMarkedTargetObjective(long now){newMarks++;}
     void forcePhase(EventPhase next,String reason){phase=next;}
     Location coreCombatAnchorLocation(){return new Location();}

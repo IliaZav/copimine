@@ -7,14 +7,18 @@ public final class WavePressurePolicyTest {
     public static void main(String[] args) {
         var configuredWaveFive = new WaveMechanicsPolicy.WaveCounts(14, 10, 6, 6, 2);
         var twoPlayerWaveFive = WavePressurePolicy.clamp(5, configuredWaveFive, 2);
-        check(twoPlayerWaveFive.total() == 16
-                        && twoPlayerWaveFive.eliteEndermen() == 1
+        // The doubled cap pays for the single elite out of its own budget; the
+        // ordinary bodies fill what remains, not a fixed eight.
+        check(twoPlayerWaveFive.eliteEndermen() == 1
                         && twoPlayerWaveFive.eliteSkeletons() == 0
                         && twoPlayerWaveFive.endermen() + twoPlayerWaveFive.spiders()
-                        + twoPlayerWaveFive.skeletons() == 15,
-                "two-player Wave 5 fills its bounded roster with one elite and ordinary pressure");
-        check(WavePressurePolicy.isApprovedTwoPlayerException(5, 2, twoPlayerWaveFive),
-                "the two-player roster is explicitly diagnosed as a scoped exception");
+                        + twoPlayerWaveFive.skeletons() == 15
+                        && twoPlayerWaveFive.total() == 16,
+                "two-player Wave 5 fills its doubled roster with one elite and ordinary pressure");
+        check(twoPlayerWaveFive.endermen() + twoPlayerWaveFive.spiders()
+                        + twoPlayerWaveFive.skeletons() == 15
+                        && WavePressurePolicy.isApprovedTwoPlayerException(5, 2, twoPlayerWaveFive),
+                "the bounded two-player roster is diagnosed as a scoped exception");
         check(twoPlayerWaveFive.total() == 16
                         && twoPlayerWaveFive.total() <= PressureBudgetController.HARD_CAP,
                 "the scoped exception remains under the absolute entity hard cap");

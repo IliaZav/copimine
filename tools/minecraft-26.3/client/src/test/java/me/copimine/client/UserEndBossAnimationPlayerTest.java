@@ -3,6 +3,7 @@ package me.copimine.client;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -19,10 +20,23 @@ class UserEndBossAnimationPlayerTest {
         assertFalse(pose.hasBoneDelta("right_leg_low"));
     }
 
+    /**
+     * A name that is not in the catalogue still animates: the renderer resolves
+     * every wire id through clipFor(), because the supplied asset ships seven
+     * clips for twenty-five animations and returning the identity pose left the
+     * boss visibly frozen during every spell and cast beat. Identity is now
+     * reserved for a name that resolves to no clip at all — the test asserts the
+     * pose carries authored bone deltas, never invented geometry.
+     */
     @Test
-    void unknownClipSamplesTheIdentityPoseInsteadOfMutatingModelParts() {
-        assertEquals(ChameleonGuardianGeometry.GuardianPose.identity(),
-                UserEndBossAnimationPlayer.sample("NOT_A_SUPPLIED_CLIP", 20.0F));
+    void unknownClipStillAnimatesThroughTheNearestAuthoredClip() {
+        ChameleonGuardianGeometry.GuardianPose pose =
+                UserEndBossAnimationPlayer.sample("NOT_A_SUPPLIED_CLIP", 20.0F);
+
+        assertNotEquals(ChameleonGuardianGeometry.GuardianPose.identity(), pose,
+                "an unmapped animation must not freeze on the identity pose");
+        assertTrue(pose.hasBoneDelta("head"),
+                "the pose must come from an authored clip, not from invented geometry");
     }
 
     @Test

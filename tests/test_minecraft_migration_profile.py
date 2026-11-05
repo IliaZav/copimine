@@ -195,10 +195,10 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # blending (UserEndBossAnimationBlendTest). Repinned again for the
     # November 4 playtest repair pass: the Wave 2 Enderman veil overlay and the
     # Rift Guardian visual id now render on this client.
-    assert artifact['size'] == 13_474_105
+    assert artifact['size'] == 13_474_746
     assert artifact['sha512'] == (
-        'e2683bd044a4c658e4e00a5e20445b6a72147777133073d14f1277c877c53f75'
-        '23e6ca1614a7075b7e2519fc5d262d2f15317644a8a58e7cde8f1510fff1ddf7'
+        '2e4d729e0852297c9238541065db05091ad814ee375af0ad9814d6048af5a0cf'
+        '94dd582fb58f3dba6640e59e1cdaaa664770c9919231c09d13410361d7066b3c'
     )
 
 

@@ -14654,10 +14654,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             getLogger().warning("Configured Core target is no longer a solid block; refusing to create a floating overlay.");
             return;
         }
-        removeOwnedVisuals();
-        spawnCoreOverlay(world, core);
+        // Repair, do not rebuild. removeOwnedVisuals() followed by a fresh spawn
+        // left a window in which the Core genuinely did not exist, and the repair
+        // tick ran on the same tick as every `/cmend wave spawn`: the player saw
+        // the objective blink out and the log filled with
+        // END_EVENT_CORE_VISUAL_REBUILD held together only by the next repair.
+        // A Core/rune display that is still owned and standing is left alone.
+        boolean corePresent = hasCoreOverlay(world, core);
+        removeOwnedVisualsPreserving(corePresent ? core : null);
+        if (!corePresent) {
+            spawnCoreOverlay(world, core);
+        }
         for (EventSnapshot.PadSnapshot pad : pads) {
-            spawnRuneOverlay(world, pad);
+            Block floor = world.getBlockAt(pad.x(), pad.y() - 1, pad.z());
+            if (findRuneOverlay(world, floor) == null) {
+                spawnRuneOverlay(world, pad);
+            }
         }
         spawnCoreText(world);
         ensureGateModelVisual();
@@ -14822,6 +14834,45 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (World world : Bukkit.getWorlds()) {
             world.removePluginChunkTickets(this);
         }
+    }
+
+    /**
+     * Remove stale arena visuals while keeping one display that is still valid.
+     *
+     * <p>A repair pass must never delete the thing it is repairing: the Core
+     * overlay is removed here only when a replacement is being created in the
+     * same tick, so the objective is never absent even for one tick.</p>
+     */
+    private void removeOwnedVisualsPreserving(Block keepCoreBlock) {
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            return;
+        }
+        int removed = 0;
+        for (Entity entity : new ArrayList<>(world.getEntities())) {
+            String kind = readString(entity, keyKind);
+            boolean visual = EVENT_KIND_DISPLAY.equals(kind) || EVENT_KIND_MEMORIAL.equals(kind)
+                    || EVENT_KIND_CORE.equals(kind)
+                    || EVENT_KIND_PAD.equals(kind);
+            if (!visual) continue;
+            if (waveObjectiveVisuals.contains(entity.getUniqueId())) continue;
+            if (EVENT_KIND_CORE.equals(kind) && keepCoreBlock != null
+                    && entity instanceof ItemDisplay display
+                    && sameCoreOverlayBlock(display, keepCoreBlock)
+                    && ownedBySession(entity, eventId, generation)) {
+                continue;
+            }
+            boolean currentSession = ownedBySession(entity, eventId, generation);
+            if (currentSession || isArenaLocation(entity.getLocation())) {
+                entity.remove();
+                unregisterOwnedEntity(entity.getUniqueId(), "visual-cleanup");
+                removed++;
+            }
+        }
+        if (removed > 0) {
+            getLogger().info("END_EVENT_VISUAL_CLEANUP removed=" + removed + " scope=event-arena");
+        }
+        gateModelVisuals.removeIf(id -> !ownedEntities.containsKey(id));
     }
 
     private void removeOwnedVisuals() {

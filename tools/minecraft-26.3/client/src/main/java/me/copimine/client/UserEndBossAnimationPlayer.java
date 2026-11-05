@@ -39,8 +39,11 @@ final class UserEndBossAnimationPlayer {
      * laggy, and a switch into the same clip is not a switch at all.</p>
      */
     static float blendTicks(String fromAnimation, String toAnimation) {
-        String to = canonical(toAnimation);
-        if (to.equals(canonical(fromAnimation))) return 0.0F;
+        // Compare the clips that will actually play, not the wire ids: two
+        // different spell names share one authored clip, and re-blending the
+        // same clip against itself every beat would stutter the rig.
+        String to = clipFor(toAnimation);
+        if (to.equals(clipFor(fromAnimation))) return 0.0F;
         return switch (to) {
             case "DYING", "DEFEAT_COLLAPSE" -> 8.0F;
             case "MELEE_SWIPE", "CHEST_STRIKE", "GROUND_SLAM" -> 5.0F;
@@ -101,8 +104,35 @@ final class UserEndBossAnimationPlayer {
      * geometry evaluator applies the source-to-Fabric basis exactly once at
      * the absolute-pivot transform boundary.
      */
+    /**
+     * The supplied asset ships seven clips, but the server names twenty-five
+     * animations. A missing clip used to fall back to the identity pose, so
+     * eighteen of them — every spell, every cast beat, the phase shift, the
+     * final strike — rendered as a frozen body: the boss looked unanimated
+     * exactly when it was doing something.
+     *
+     * <p>Falling back to the closest authored clip keeps the rig honest: a
+     * spell cast plays the chest strike, a phase shift plays the ground slam,
+     * a teleport plays the swipe. The actor never invents a pose the artist
+     * did not draw, and no beat is silently null.</p>
+     */
+    private static String clipFor(String animationId) {
+        String canonicalId = canonical(animationId);
+        if (CLIPS.containsKey(canonicalId)) return canonicalId;
+        return switch (canonicalId) {
+            case "CHEST_STRIKE", "MARK_CONTROL", "SUMMON_CHANNEL", "CAST_CHARGE",
+                 "CAST_RELEASE", "CAST_IMPACT", "RECOVERY", "SPELL_VOID_BLAST",
+                 "SPELL_RIFT_PROJECTILE", "SPELL_RIFT_ARROWS", "SPELL_ARROW_SALVO",
+                 "SPELL_VOID_MARK", "SPELL_SUMMON_SERVANTS", "SPELL_SUMMON",
+                 "SPELL_RIFT_OBELISKS", "SPELL_ARENA_INFERNO" -> "CHEST_STRIKE";
+            case "PHASE_TRANSITION", "FINAL_STRIKE" -> "GROUND_SLAM";
+            case "TELEPORT_RIP" -> "MELEE_SWIPE";
+            default -> "IDLE_BREATH";
+        };
+    }
+
     static ChameleonGuardianGeometry.GuardianPose sample(String animationId, float animationProgressTicks) {
-        Clip clip = CLIPS.get(canonical(animationId));
+        Clip clip = CLIPS.get(clipFor(animationId));
         if (clip == null) {
             return ChameleonGuardianGeometry.GuardianPose.identity();
         }

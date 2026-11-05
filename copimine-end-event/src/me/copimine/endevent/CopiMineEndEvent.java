@@ -3503,7 +3503,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             waveSpawnGroupIndex = WaveTwoStagePolicy.recoveryNextGroupIndex(
                     currentHuntCycles, waveTwoGroupsSpawned, highestEntityGroup,
                     restoredWaveTwoGroupCleared);
-            waveTwoGroupsSpawned = Math.max(waveTwoGroupsSpawned, waveSpawnGroupIndex);
+            // The index is ZERO-BASED; the battle roster counter is the ONE-BASED
+            // number of the group that was actually tagged on its entities.
+            // Clamping the roster up to the index made the retire path wait for a
+            // group number one higher than the fighters carried, so their
+            // confirmed deaths were ignored and the final reserve never started.
+            waveTwoGroupsSpawned = Math.max(waveTwoGroupsSpawned, highestEntityGroup);
             waveTwoGroupCleared = restoredWaveTwoGroupCleared
                     && waveTwoGroupsSpawned == currentHuntCycles;
             waveTwoGroupClearedAtMillis = waveTwoGroupCleared ? System.currentTimeMillis() : 0L;
@@ -24672,6 +24677,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         waveFrontGuardian = false;
     }
 
+    /**
+     * True when a previously booked Wave 2 body is still unpublished.
+     *
+     * <p>The outstanding set is booked at spawn and cleared when the group is
+     * cleared. A UUID that never actually hid anything is not an outstanding
+     * roster: treating the whole set as one refused the third subwave and broke
+     * the exactly-three-subwaves contract.</p>
+     */
+    private boolean hasUnpublishedWaveTwoRoster() {
+        if (waveTwoOutstandingEntityUuids.isEmpty()) return false;
+        Set<UUID> hidden = new LinkedHashSet<>();
+        for (Set<UUID> perViewer : waveTwoHiddenEntitiesByViewer.values()) hidden.addAll(perViewer);
+        for (UUID id : waveTwoOutstandingEntityUuids) {
+            if (hidden.contains(id) && ownedEntities.containsKey(id)) return true;
+        }
+        return false;
+    }
+
     /** Spawn the next bounded group for the canonical numbered-wave flow. */
     /**
      * @return true only when the group really materialised; Wave 2 uses this to
@@ -24681,18 +24704,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (world == null || core == null || waveSpawnGroupIndex >= waveSpawnSchedule.size()) {
             return false;
         }
+        // Only the count of subwaves is bounded here. Size per group is bounded by
+        // the authored shares inside WaveTwoStagePolicy.split(); the old
+        // MAX_ACTIVE_GROUP_MOBS ceiling assumed equal halves and rejected the
+        // larger final reserve, so the third subwave could never start.
         if (waveSpawnWave == 2
                 && (waveSpawnSchedule.size() < WaveTwoStagePolicy.OPENING_GROUP_COUNT
-                || waveSpawnSchedule.size() > WaveTwoStagePolicy.MAX_GROUP_COUNT
-                || waveSpawnSchedule.get(waveSpawnGroupIndex).total()
-                > WaveTwoStagePolicy.MAX_ACTIVE_GROUP_MOBS)) {
-            recoveryReason = "WAVE_TWO_GROUP_EXCEEDS_BOUNDED_PRESSURE_ALLOWANCE";
+                || waveSpawnSchedule.size() > WaveTwoStagePolicy.MAX_GROUP_COUNT)) {
+            recoveryReason = "WAVE_TWO_SUBWAVE_COUNT_OUT_OF_BOUNDS";
             forcePhase(EventPhase.RECOVERY_REQUIRED,
-                    "Wave 2 group exceeds its bounded simultaneous pressure allowance");
+                    "Wave 2 subwave count is outside its bounded allowance");
             if (isOfficialCurrentAttempt()) saveStateSync();
             return false;
         }
-        if (waveSpawnWave == 2 && !waveTwoOutstandingEntityUuids.isEmpty()) {
+        if (waveSpawnWave == 2 && hasUnpublishedWaveTwoRoster()) {
+            // Only a body that really is still unpublished blocks the next
+            // subwave. A UUID that was booked but never hid anything is not an
+            // outstanding roster, and treating it as one refused the third
+            // subwave outright.
             forcePhase(EventPhase.RECOVERY_REQUIRED,
                     "Wave 2 attempted to spawn a group while the prior UUID roster was outstanding");
             return false;
@@ -24715,8 +24744,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     && (activation.phase() == WaveTwoPhantomMaterializationPolicy.Phase.WARNING
                     || activation.phase() == WaveTwoPhantomMaterializationPolicy.Phase.TARGETABLE)) {
                 return false;
+            } else if (!tryBeginWaveTwoPhantomActivation(world, core, group, groupNumber)) {
+                try {
+                    getLogger().info("WAVE_TWO_PHANTOM_ACTIVATION_UNAVAILABLE event=" + eventId
+                            + " group=" + groupNumber + " act=" + waveTwoPhantomActivationState
+                            + " marked=" + waveTwoMarkedParticipants.size()
+                            + " action=spawn-without-phantom");
+                } catch (RuntimeException ignoredLogFailure) {
+                    // Logging must never hold a subwave back.
+                }
             } else {
-                tryBeginWaveTwoPhantomActivation(world, core, group, groupNumber);
                 return false;
             }
         }
@@ -24751,6 +24788,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         waveSpawnEntityOffset += group.total();
+        // The booking index moves with the group, but the Wave 2 combat roster
+        // follows the group that was actually tag on entities.  Without this the
+        // third subwave tagged its fighters with group 3 while the retire path
+        // still expected group 4 and every confirmed death was ignored, so the
+        // subwave could never clear.
+        waveTwoGroupsSpawned = waveSpawnWave == 2 ? groupNumber : waveTwoGroupsSpawned;
         waveSpawnGroupIndex++;
         waveNextSpawnAtMillis = waveSpawnWave == 2 ? 0L
                 : waveSpawnGroupIndex < waveSpawnSchedule.size()
@@ -26389,7 +26432,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     && now >= WaveTwoStagePolicy.nextGroupSpawnAt(waveTwoGroupClearedAtMillis)) {
                 Location core = coreCombatAnchorLocation();
                 if (core != null && core.getWorld() != null) {
-                    spawnNextWaveGroup(core.getWorld(), core);
+                    if (spawnNextWaveGroup(core.getWorld(), core)) {
+                        // The roster only advances on a real materialisation;
+                        // a deferred group must stay owed for the next tick.
+                        waveTwoGroupsSpawned = waveSpawnGroupIndex;
+                    }
                 }
             }
         }

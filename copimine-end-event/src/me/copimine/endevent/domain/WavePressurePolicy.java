@@ -8,8 +8,8 @@ public final class WavePressurePolicy {
     private static final int SMALL_PARTY_WAVE_ONE_PRESSURE = 12;
     private static final int TWO_PLAYER_WAVE_FIVE_BASE_PRESSURE = 8;
     private static final int WAVE_PRESSURE_MULTIPLIER = 2;
-    private static final int APPROVED_WAVE_FIVE_ELITE_ENDERMEN = 6;
-    private static final int APPROVED_WAVE_FIVE_ELITE_SKELETONS = 2;
+    private static final int APPROVED_WAVE_FIVE_ELITE_ENDERMEN = 1;
+    private static final int APPROVED_WAVE_FIVE_ELITE_SKELETONS = 0;
 
     private WavePressurePolicy() { }
 
@@ -124,7 +124,7 @@ public final class WavePressurePolicy {
         return total;
     }
 
-    /** True only for the doubled two-player Wave 5 roster: eight elites and eight ordinary mobs. */
+    /** True only for the bounded two-player Wave 5 roster with one elite and ordinary pressure. */
     public static boolean isApprovedTwoPlayerException(
             int wave, int livingPlayers, WaveMechanicsPolicy.WaveCounts active) {
         return wave == WAVE_FIVE && livingPlayers == 2 && active != null

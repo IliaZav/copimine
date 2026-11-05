@@ -226,11 +226,15 @@ public final class WaveTwoStagePolicy {
         int endermen = ordinary.endermen();
         int skeletons = ordinary.skeletons();
         int total = endermen + skeletons + ordinary.spiders();
-        int minimumEndermen = Math.max(1, (total + 2) / 3);
+        int minimumEndermen = total == 0 ? 0 : Math.min(total, Math.max(1, (total + 2) / 3));
         if (endermen < minimumEndermen) {
-            int moved = Math.min(minimumEndermen - endermen, skeletons);
-            endermen += moved;
-            skeletons -= moved;
+            int needed = minimumEndermen - endermen;
+            int fromSkeletons = Math.min(needed, skeletons);
+            endermen += fromSkeletons;
+            skeletons -= fromSkeletons;
+            needed -= fromSkeletons;
+            int fromSpiders = Math.min(needed, ordinary.spiders());
+            endermen += fromSpiders;
         }
         if (groupNumber != FIRST_LATE_GROUP) {
             return new WaveMechanicsPolicy.WaveCounts(endermen, ordinary.spiders(), skeletons,

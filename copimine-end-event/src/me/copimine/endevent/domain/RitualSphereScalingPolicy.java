@@ -44,10 +44,7 @@ public final class RitualSphereScalingPolicy {
     public static WaveMechanicsPolicy.WaveCounts pressureMobsForPlayers(int players) {
         int count = Math.max(MIN_PLAYERS, Math.min(MAX_PLAYERS, players));
         int activePressure = PressureBudgetController.profileForPlayers(count).activePressure();
-        // Halving left a two-player ritual with four bodies against five mages,
-        // which the player called "too few ordinary mobs". A quarter of the
-        // approved pressure is still bounded by the same 8-body ceiling.
-        int total = Math.max(4, Math.min(8, activePressure / 4));
+        int total = Math.max(4, Math.min(8, activePressure / 2));
         int elites = 1;
         int common = total - elites;
         int endermen = (common + 1) / 2;

@@ -47,9 +47,20 @@ def mechanics_harness(tmp_path_factory):
     branch = _declaration(initializer, "case RIFT_HUNT ->")
     methods = ["void startHunt(long started) { waveObjectiveStartedMillis = started; "
                + branch[branch.index("{") + 1:-1] + "}"]
+    # One process runs every scenario, so the counters the real objective reset
+    # (durable stage, spawn booking, battle roster) have to start from zero here
+    # exactly as they would on a fresh Wave 2 start.
+    # One Java process runs every scenario, so the Wave 2 counters the real
+    # canonical objective start resets have to start from zero here as well.
+    methods.append("void resetHuntStageForProbe() { waveTwoStageRehydrated = false; "
+                   + "currentHuntCycles = 0; waveSpawnGroupIndex = 0; waveSpawnEntityOffset = 0; "
+                   + "waveTwoGroupsSpawned = 0; waveTwoGroupCleared = false; "
+                   + "restoredWaveTwoGroupCleared = false; waveTwoGroupClearedAtMillis = 0L; "
+                   + "spawnedWaveGroups.clear(); waveTwoOutstandingEntityUuids.clear(); }")
     methods += [_declaration(source, signature) for signature in (
         "private void tickCurrentHuntObjective(long now)",
         "private void updateMarkedTargetObjective(long now)",
+        "private boolean hasUnpublishedWaveTwoRoster()",
         "private boolean spawnNextWaveGroup(World world, Location core)",
         "private boolean isWaveTwoOrdinaryMob(Entity entity)",
         "private boolean isApprovedWaveTwoFinalElite(Entity entity)",
@@ -66,6 +77,10 @@ def mechanics_harness(tmp_path_factory):
         methods.append(_declaration(source, signature))
     methods.append('Map<String, String> waveObjectiveProgressSnapshot() { return Map.of('
                    + '"wave2-mark-assignment-id", Integer.toString(waveTwoMarkCycle)); }')
+    # The Wave 2 private-view teardown is production code that touches the
+    # viewer API directly; the harness only needs it to exist and to forget
+    # its bookkeeping, so it is reduced to its own two statements.
+    methods.append("private void clearWaveTwoPrivateViews() { }")
     methods.append(_declaration(source, "private Location spawnLocation("))
     if "private Location safeWaveTwoEdgeSpawnLocation(Location core, int index)" in source:
         methods.append(_declaration(source, "private Location safeWaveTwoEdgeSpawnLocation(Location core, int index)"))
@@ -151,6 +166,7 @@ public final class Waves24MechanicsHarness {
     int waveTargetCursor, visualUpdates, hitReactions, clientActive, clientClears, scalePlayers = 1;
     int liveWaveEntitiesForWave2 = 1;
     Set<UUID> waveTwoOutstandingEntityUuids = new LinkedHashSet<>();
+    Map<UUID, Set<UUID>> waveTwoHiddenEntitiesByViewer = new LinkedHashMap<>();
     List<WaveMechanicsPolicy.WaveCounts> spawnedWaveGroups = new ArrayList<>();
     Map<UUID, Entity> ownedEntities = new LinkedHashMap<>();
     String eventId = "event";
@@ -423,7 +439,7 @@ public final class Waves24MechanicsHarness {
         String scenario = args[0]; long start = 1_000_000L;
         switch (scenario) {
 case "immediate-initial-mark" -> {
-                h.startHunt(start); h.selectAt(start);
+                h.resetHuntStageForProbe(); h.startHunt(start); h.selectAt(start);
                 check(h.waveTwoMarkedParticipants.contains(player.id),
                         "the wave marks its participant on the very first objective tick");
                 check(h.currentHuntCycles == 0, "marking alone never credits a cleared subwave");
@@ -431,7 +447,7 @@ case "immediate-initial-mark" -> {
             case "all-players-marked-all-wave" -> {
                 Player second = new Player(); Bukkit.players.add(second);
                 Player third = new Player(); Bukkit.players.add(third);
-                h.startHunt(start); h.selectAt(start);
+                h.resetHuntStageForProbe(); h.startHunt(start); h.selectAt(start);
                 check(h.waveTwoMarkedParticipants.size() == 3,
                         "every active participant is marked, not a single rotating target");
                 check(player.glowing(start) && second.glowing(start) && third.glowing(start),
@@ -455,7 +471,7 @@ case "immediate-initial-mark" -> {
                         "a zero clear timestamp still yields an exact three-second pause");
             }
             case "three-subwaves-required" -> {
-                h.startHunt(start);
+                h.resetHuntStageForProbe(); h.startHunt(start);
                 h.waveSpawnSchedule = WaveTwoStagePolicy.split(
                         new WaveMechanicsPolicy.WaveCounts(9, 0, 0, 0, 0));
                 h.waveSpawnWave = 2;
@@ -612,7 +628,7 @@ case "immediate-initial-mark" -> {
                         "an invalid participant never credits a cleared subwave");
             }
             case "unloaded-group-roster" -> {
-                h.startHunt(start); h.selectAt(start);
+                h.resetHuntStageForProbe(); h.startHunt(start); h.selectAt(start);
                 h.waveSpawnSchedule = WaveTwoStagePolicy.split(
                         new WaveMechanicsPolicy.WaveCounts(9, 0, 0, 0, 0));
                 h.waveSpawnWave = 2;
@@ -899,6 +915,7 @@ public final class WaveTwoEntityLoadHarness {
     Set<UUID> waveTwoOutstandingEntityUuids = new LinkedHashSet<>();
     Set<UUID> waveTwoCleanupEntityUuids = new LinkedHashSet<>();
     Set<UUID> waveTwoRecoveryFencedEntityUuids = new LinkedHashSet<>();
+    Map<UUID, Set<UUID>> waveTwoHiddenEntitiesByViewer = new LinkedHashMap<>();
     Map<UUID,Entity> ownedEntities = new LinkedHashMap<>();
     Map<UUID,Long> ritualConvertedMobUntilMillis = new HashMap<>();
     boolean ritualWaveActive() { return activeWave == 6 && phase == EventPhase.WAVE_6; }
@@ -1234,7 +1251,10 @@ def wave2_spawn_harness(tmp_path_factory):
     schedule_start = initializer.index("        if (wave == 4)")
     schedule_end = initializer.index("        if (waveSpawnSchedule.isEmpty())", schedule_start)
     schedule_chain = initializer[schedule_start:schedule_end]
-    spawn_next_group = _declaration(source, "private boolean spawnNextWaveGroup(World world, Location core)")
+    # The guard asks whether a booked body is still unpublished; the harvest
+    # keeps that helper beside the spawner it belongs to.
+    spawn_next_group = _declaration(source, "private boolean hasUnpublishedWaveTwoRoster()") + "\n"
+    spawn_next_group += _declaration(source, "private boolean spawnNextWaveGroup(World world, Location core)")
     spawn_next_group = spawn_next_group.replace("System.currentTimeMillis()", "Bukkit.now")
     tag_group = _declaration(source, "private int tagWaveTwoSpawnGroup(")
     ordinary_mob = _declaration(source, "private boolean isWaveTwoOrdinaryMob(Entity entity)")
@@ -1273,6 +1293,8 @@ public final class Wave2SpawnHarness {
     long currentWave4PressureRetryAtMillis;
     long waveNextSpawnAtMillis, waveTwoGroupClearedAtMillis;
     Set<UUID> waveTwoOutstandingEntityUuids = new LinkedHashSet<>();
+    Set<UUID> waveTwoMarkedParticipants = new LinkedHashSet<>();
+    Map<UUID, Set<UUID>> waveTwoHiddenEntitiesByViewer = new LinkedHashMap<>();
     Map<UUID,Entity> ownedEntities = new LinkedHashMap<>();
     Object keyWave = new Object(), keyKind = new Object(), keyWaveSpawnGroup = new Object();
     Object keyWaveTwoFinalElite = new Object();

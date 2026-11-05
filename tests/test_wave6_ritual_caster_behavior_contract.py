@@ -285,7 +285,10 @@ def test_wave6_pressure_pack_is_bounded_and_never_gates_ritual_progression() -> 
     assert "commitWaveSixReinforcement(\"mage-death-\"" in root
     assert "private void resolveWaveSixReinforcements(long now)" in root
     assert "resolveWaveSixReinforcements(now)" in ritual_tick
-    assert "Math.min(8, activePressure / 4)" in scaling
+    # The approved pressure table halves into four bodies at a two-player party;
+    # quartering it starved the ritual of ordinary mobs and contradicted
+    # RitualSphereScalingPolicyTest, which owns the same number.
+    assert "Math.min(8, activePressure / 2)" in scaling
     assert "spawnWave6PressurePack(world, core, players, sandbox)" in root
     assert "initializeWaveGameplay(wave, world, core, roster, true, combatMode, false)" in root
     assert "initializeWaveGameplay(wave, world, core, authoritativeAttemptRoster(), false, false, false)" in root

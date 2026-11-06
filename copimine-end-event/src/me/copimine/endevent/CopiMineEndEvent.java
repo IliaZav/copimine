@@ -51540,6 +51540,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // mistaken for a delivery by the objective tick.
             spawnCurrentCarrierCharge(entity.getLocation());
         }
+        if ((isOfficialCurrentAttempt() || testWaveFrontVisualMode) && activeWave == 1) {
+            // "Killing the mobs does nothing": wave 1 used to advance ONLY on a
+            // carrier delivery, so a party that cleared every pack was left in a
+            // silent room with no charge to fight for and no way to continue.
+            // A dead ordinary wave-1 mob now owes one replacement pack, which
+            // resolveWaveOneReinforcements() releases within the live cap. Each
+            // wave-1 objective completion still requires three real deliveries,
+            // so this feeds the fight without shortening the wave.
+            boolean carrierItself = currentCarrierState != null
+                    && currentCarrierState.phase() == RiftCarrierPolicy.Phase.CARRIER_ACTIVE
+                    && currentCarrierState.carrier() != null
+                    && currentCarrierState.carrier().equals(entity.getUniqueId());
+            if (!carrierItself && countLiveWaveEntitiesForWave(1) <= 0) {
+                // Only the last body of a pack opens a debt; otherwise a cleared
+                // room would queue a replacement per corpse.
+                commitWaveOneReinforcement("wave-one-pack-cleared");
+            }
+        }
         if ((isOfficialCurrentAttempt() || testWaveFrontVisualMode) && activeWave == 6
                 && isCurrentRitualGuard(entity)) {
             UUID guardId = entity.getUniqueId();

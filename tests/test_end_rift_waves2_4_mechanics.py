@@ -56,7 +56,9 @@ def mechanics_harness(tmp_path_factory):
                    + "currentHuntCycles = 0; waveSpawnGroupIndex = 0; waveSpawnEntityOffset = 0; "
                    + "waveTwoGroupsSpawned = 0; waveTwoGroupCleared = false; "
                    + "restoredWaveTwoGroupCleared = false; waveTwoGroupClearedAtMillis = 0L; "
-                   + "spawnedWaveGroups.clear(); waveTwoOutstandingEntityUuids.clear(); }")
+                   + "spawnedWaveGroups.clear(); waveTwoOutstandingEntityUuids.clear(); "
+                   + "waveTwoAssignmentRoster.clear(); waveTwoAssignmentRoster.addAll(activeWaveParticipants()"
+                   + ".stream().map(Player::getUniqueId).toList()); }")
     methods += [_declaration(source, signature) for signature in (
         "private void tickCurrentHuntObjective(long now)",
         "private void updateMarkedTargetObjective(long now)",
@@ -126,6 +128,7 @@ def mechanics_harness(tmp_path_factory):
     private int waveTwoGroupsSpawned;
     private boolean waveTwoGroupCleared;
     private boolean waveTwoStageRehydrated;
+    private final List<UUID> waveTwoAssignmentRoster = new ArrayList<>();
     private final Set<UUID> waveTwoMarkedParticipants = new LinkedHashSet<>();
     private final Map<UUID, Long> waveTwoMarkPacketAt = new LinkedHashMap<>();
     private final Map<UUID, List<WaveTwoPhantomLayoutPolicy.Phantom>> waveTwoPhantomLayouts = new LinkedHashMap<>();
@@ -166,6 +169,7 @@ public final class Waves24MechanicsHarness {
     int waveTargetCursor, visualUpdates, hitReactions, clientActive, clientClears, scalePlayers = 1;
     int liveWaveEntitiesForWave2 = 1;
     Set<UUID> waveTwoOutstandingEntityUuids = new LinkedHashSet<>();
+    Set<UUID> waveTwoRecoveryFencedEntityUuids = new LinkedHashSet<>();
     Map<UUID, Set<UUID>> waveTwoHiddenEntitiesByViewer = new LinkedHashMap<>();
     List<WaveMechanicsPolicy.WaveCounts> spawnedWaveGroups = new ArrayList<>();
     Map<UUID, Entity> ownedEntities = new LinkedHashMap<>();
@@ -181,6 +185,7 @@ public final class Waves24MechanicsHarness {
     }
     void checkpointWaveTwoGroupSpawn() { }
     boolean checkpointWaveTwoGroupClear() { return true; }
+    void requireWaveTwoOwnershipRecovery(Entity entity, String reason) { }
     boolean testWave4ObeliskMode;
     EventPhase phase = EventPhase.WAVE_4;
     Set<UUID> currentWave4ConsumedFireballs = new HashSet<>();
@@ -436,6 +441,7 @@ public final class Waves24MechanicsHarness {
     public static void main(String[] args) {
         Waves24MechanicsHarness h = new Waves24MechanicsHarness();
         Player player = new Player(); Bukkit.players.add(player);
+        h.waveTwoAssignmentRoster.add(player.id);
         String scenario = args[0]; long start = 1_000_000L;
         switch (scenario) {
 case "immediate-initial-mark" -> {
@@ -601,19 +607,21 @@ case "immediate-initial-mark" -> {
                         "quit must clear glow and edge packet before session removal");
             }
             case "replacement" -> {
-                h.selectAt(start); player.wave = false; h.selectAt(start + 100L);
-                check(h.waveTwoMarkedParticipants.isEmpty(),
-                        "a departed participant is released on the next objective tick");
                 Player second = new Player(); Bukkit.players.add(second);
+                h.resetHuntStageForProbe(); h.startHunt(start); h.selectAt(start);
+                player.wave = false; h.selectAt(start + 100L);
+                check(h.waveTwoMarkedParticipants.equals(Set.of(second.id)),
+                        "a disconnected original owner is released while the surviving owner remains marked");
                 h.selectAt(start + 200L);
                 check(h.waveTwoMarkedParticipants.equals(Set.of(second.id)) && h.currentHuntCycles == 0,
-                        "a replacement is marked on the next tick without crediting a subwave");
+                        "the surviving frozen-roster player remains marked");
                 check(!player.glowing(start + 200L) && second.glowing(start + 200L),
-                        "the observer mark belongs to the replacement only");
+                        "the observer mark remains with the surviving original player");
             }
             case "invalid-participant-state-death", "invalid-participant-state-disconnect",
                     "invalid-participant-state-arena" -> {
                 Player second = new Player(); Bukkit.players.add(second);
+                h.waveTwoAssignmentRoster.add(second.id);
                 h.selectAt(start);
                 check(h.waveTwoMarkedParticipants.size() == 2, "both participants start marked");
                 if (scenario.endsWith("death")) player.dead = true;
@@ -626,6 +634,23 @@ case "immediate-initial-mark" -> {
                         "only the invalid participant loses the observer glow");
                 check(h.currentHuntCycles == 0,
                         "an invalid participant never credits a cleared subwave");
+            }
+            case "late-join-does-not-expand-frozen-mark-roster" -> {
+                h.resetHuntStageForProbe(); h.startHunt(start);
+                Player late = new Player(); Bukkit.players.add(late);
+                h.selectAt(start);
+                check(h.waveTwoMarkedParticipants.equals(Set.of(player.id)),
+                        "a player joining after Wave 2 starts cannot change its frozen assignment roster");
+            }
+            case "privacy-hide-not-unpublished" -> {
+                UUID body = UUID.randomUUID();
+                h.waveTwoOutstandingEntityUuids.add(body);
+                h.waveTwoHiddenEntitiesByViewer.put(player.id, Set.of(body));
+                check(!h.hasUnpublishedWaveTwoRoster(),
+                        "an intentional privacy hide cannot be mistaken for an unreconciled roster");
+                h.waveTwoRecoveryFencedEntityUuids.add(body);
+                check(h.hasUnpublishedWaveTwoRoster(),
+                        "an entity fenced by roster recovery remains unpublished");
             }
             case "unloaded-group-roster" -> {
                 h.resetHuntStageForProbe(); h.startHunt(start); h.selectAt(start);
@@ -786,6 +811,7 @@ case "immediate-initial-mark" -> {
         "ObeliskFireDirectorPolicy", "ObeliskScalingPolicy", "RiftFireballReflectionPolicy", "WaveTwoStagePolicy",
         "WaveTwoHuntPolicy", "WaveTwoPhantomMaterializationPolicy", "WaveTwoPhantomLayoutPolicy",
         "WaveTwoEntityRecoveryPolicy", "RiftCarrierPolicy",
+        "WaveTwoOwnershipPolicy",
     )]
     dependencies.append(DOMAIN.parent / 'runtime/WaveCombatCoordinator.java')
     compiled = subprocess.run(["javac", "-proc:none", "-encoding", "UTF-8", "-d", str(output),
@@ -1234,6 +1260,7 @@ def test_wave2_persisted_entity_load_adapter(wave2_entity_load_harness, scenario
     "immediate-initial-mark", "all-players-marked-all-wave", "leaving-roster", "cleanup", "foreign-glow", "reveal-effects-cleanup",
     "infinite-glow-preserved", "infinite-reveal-preserved", "stronger-glow-cleanup",
     "death", "disconnect", "replacement", "invalid-participant-state-death", "invalid-participant-state-disconnect", "invalid-participant-state-arena",
+    "late-join-does-not-expand-frozen-mark-roster", "privacy-hide-not-unpublished",
     "wave-roster-launch", "charge-disconnect", "charge-generation",
     "boss-only-excluded", "wave-reflection", "sandbox-outsider-reflection", "boss-reflection-preserved", "wave7-reflection-boundary",
     "wave-reflected-hit", "stale-hit", "wrong-source-reflected-hit",
@@ -1251,8 +1278,8 @@ def wave2_spawn_harness(tmp_path_factory):
     schedule_start = initializer.index("        if (wave == 4)")
     schedule_end = initializer.index("        if (waveSpawnSchedule.isEmpty())", schedule_start)
     schedule_chain = initializer[schedule_start:schedule_end]
-    # The guard asks whether a booked body is still unpublished; the harvest
-    # keeps that helper beside the spawner it belongs to.
+    # The guard checks recovery-fenced roster members; visibility hides never
+    # count as failed publication.
     spawn_next_group = _declaration(source, "private boolean hasUnpublishedWaveTwoRoster()") + "\n"
     spawn_next_group += _declaration(source, "private boolean spawnNextWaveGroup(World world, Location core)")
     spawn_next_group = spawn_next_group.replace("System.currentTimeMillis()", "Bukkit.now")
@@ -1293,6 +1320,7 @@ public final class Wave2SpawnHarness {
     long currentWave4PressureRetryAtMillis;
     long waveNextSpawnAtMillis, waveTwoGroupClearedAtMillis;
     Set<UUID> waveTwoOutstandingEntityUuids = new LinkedHashSet<>();
+    Set<UUID> waveTwoRecoveryFencedEntityUuids = new LinkedHashSet<>();
     Set<UUID> waveTwoMarkedParticipants = new LinkedHashSet<>();
     Map<UUID, Set<UUID>> waveTwoHiddenEntitiesByViewer = new LinkedHashMap<>();
     Map<UUID,Entity> ownedEntities = new LinkedHashMap<>();
@@ -1357,6 +1385,8 @@ public final class Wave2SpawnHarness {
         WaveMechanicsPolicy.WaveCounts scaled;
         __SCHEDULE_CHAIN__
     }
+    UUID waveTwoEntityOwner(Entity entity) { return new UUID(1L, 1L); }
+    void requireWaveTwoOwnershipRecovery(Entity entity, String reason) { }
     boolean tryBeginWaveTwoPhantomActivation(World world, Location core,
             WaveMechanicsPolicy.WaveCounts group, int groupNumber) { return false; }
     void clearWaveTwoPhantomActivationPresentation() { waveTwoPhantomWarningTask = null; }
@@ -1503,6 +1533,7 @@ def test_wave2_bounded_group_spawn_contracts(wave2_spawn_harness, scenario):
     "three-second-gap", "three-subwaves-required", "unloaded-group-roster",
     "sandbox-confirmed-death", "wave2-edge-spawns", "wave2-edge-spawns-respect-bounds",
     "assignment-id-exhaustion",
+    "privacy-hide-not-unpublished", "late-join-does-not-expand-frozen-mark-roster",
 ])
 def test_wave2_mark_periods_and_edge_spawn(mechanics_harness, scenario):
     if scenario.startswith("wave2-edge-spawns"):
@@ -1569,8 +1600,15 @@ def test_wave2_restart_restores_bounded_groups_and_durable_hunt_progress():
     assert 'WaveTwoHuntPolicy.MARK_ROTATION_MILLIS' not in _declaration(
         source, 'private void updateMarkedTargetObjective(')
     assert 'waveTwoMarkDeadlineMillis' not in source
-    assert 'for (Player participant : activeWaveParticipants())' in mark_update
+    assert 'waveTwoAssignmentRoster' in mark_update
+    assert 'frozenOwners.contains(participant.getUniqueId())' in mark_update
     assert 'releaseWaveTwoMarkFor(' in mark_update
+    owner_lookup = _declaration(source, 'private UUID waveTwoEntityOwner(')
+    target_gate = _declaration(source, 'private boolean isWaveTargetAllowed(')
+    assert 'keyWaveTwoSquadOwner' in owner_lookup
+    assert 'WaveTwoOwnershipPolicy.initialOwner' in owner_lookup
+    assert 'WaveTwoOwnershipPolicy.allowsTarget' in target_gate
+    assert 'wave2-squad-owner-roster' in source
     assert 'the_end' not in _declaration(source, 'private void sendCurrentHuntMarkPacket(Player player, boolean active)')
     assert 'END_CONTROL_START' not in source
     assert 'END_CONTROL_STOP' not in source

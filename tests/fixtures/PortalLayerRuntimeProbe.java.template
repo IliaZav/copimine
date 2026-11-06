@@ -78,6 +78,8 @@ public class PortalLayerRuntimeProbe {
     static class ChunkLoadEvent extends EntitiesLoadEvent {ChunkLoadEvent(World w){super(w);}}
     static class World {
         PortalLayerRuntimeProbe owner;
+        boolean chunkLoaded=true;
+        boolean isChunkLoaded(int x,int z){return chunkLoaded;}
         ItemDisplay spawn(Location l,Class<ItemDisplay> c,Consumer<ItemDisplay> init){
             owner.spawnCalls++;
             ItemDisplay d=new ItemDisplay();owner.lastTemporary=d;init.accept(d);
@@ -339,6 +341,30 @@ public class PortalLayerRuntimeProbe {
                         "portals=3 observed=8/9 slots=0:GATE+INNER+SHARD,1:GATE+SHARD,2:GATE+INNER+SHARD"),
                         "snapshot must expose a missing live layer instead of relying on aggregate visuals");
                 break;
+            }
+            case "missing-loaded-layer-rebuilds": {
+                p.spawn();
+                UUID missing=p.wavePortalModelVisuals.get(3).get(1);
+                p.ownedEntities.remove(missing);Bukkit.entities.remove(missing);
+                p.refresh(now);
+                check(p.spawnCalls==6 && p.live()==3,
+                    "a missing entity in a loaded portal chunk must be rebuilt and observed");
+                check(p.portalVisualLayerObservationText().equals(
+                    "portals=1 observed=3/3 slots=0:GATE+INNER+SHARD"),
+                    "a replacement restores the complete observed layer set");break;
+            }
+            case "unloaded-layer-defers-rebuild": {
+                p.spawn();
+                UUID unloaded=p.wavePortalModelVisuals.get(3).get(1);
+                ItemDisplay persisted=(ItemDisplay)p.ownedEntities.remove(unloaded);
+                Bukkit.entities.remove(unloaded);p.world.chunkLoaded=false;
+                p.refresh(now);
+                check(p.spawnCalls==3,"an unloaded portal chunk must not spend its rebuild budget");
+                p.world.chunkLoaded=true;Bukkit.entities.put(unloaded,persisted);
+                p.onPortalVisualEntitiesLoad(new EntitiesLoadEvent(p.world,List.of(persisted)));
+                p.refresh(now+1000);
+                check(p.spawnCalls==3 && p.live()==3,
+                    "a loaded persisted layer must be adopted without duplication");break;
             }
             case "close-all-missing": {
                 p.fail(-1,100,"invalid");p.spawn();p.spawnHook=p::closed;p.refresh(now);

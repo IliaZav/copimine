@@ -47,6 +47,8 @@ public class W6RitualTeleportFailureProbe {
     final Map<UUID, Long> blockedTeleportLogAt = new HashMap<>();
     final List<String> warnings = new ArrayList<>();
     final List<String> diagnosticReasons = new ArrayList<>();
+    final List<String> diagnosticActions = new ArrayList<>();
+    int ritualRetags;
     final World arena = new World("world-arena-recovered-20261019");
     final Location core = new Location(arena, 8.5D, 68.0D, -38.5D);
     final Config config = new Config();
@@ -55,6 +57,8 @@ public class W6RitualTeleportFailureProbe {
     Object bossPhase;
     UUID ritualSphereVisualUuid;
     boolean wave6PrisonBroken;
+    boolean recoveryRequired;
+    String recoveryReason;
     // The teleport guard now also admits the owned sphere display through
     // isOwnedRitualSphereDestination, which asks for the entity class.
     class Enderman extends Entity {
@@ -96,6 +100,7 @@ public class W6RitualTeleportFailureProbe {
         boolean valid = true;
         boolean externalCancellation;
         boolean invalidatePermitGeneration;
+        boolean refuseMovement;
         int teleportCalls;
         int lastEventCancelled;
         Entity(W6RitualTeleportFailureProbe owner, UUID id, String kind, Location location) {
@@ -114,6 +119,7 @@ public class W6RitualTeleportFailureProbe {
             owner.onOwnedEntityTeleport(event);
             lastEventCancelled = event.isCancelled() ? 1 : 0;
             if (event.isCancelled()) return false;
+            if (refuseMovement) return false;
             location = event.getTo().clone();
             return true;
         }
@@ -137,6 +143,7 @@ public class W6RitualTeleportFailureProbe {
         final List<String> warnings;
         ProbeLogger(List<String> warnings) { this.warnings = warnings; }
         void warning(String text) { warnings.add(text); }
+        void severe(String text) { warnings.add(text); }
     }
     static final class ChamberController {
         ChamberAssignment assignment() { return new ChamberAssignment(); }
@@ -237,27 +244,43 @@ public class W6RitualTeleportFailureProbe {
     }
     void emitDiagnostic(String category, String action, String severity, int wave,
                         String reason, Object player, UUID entity, String correlation,
-                        Map<String, ?> details) { diagnosticReasons.add(reason); }
-    void removeRitualEntity(UUID id) { ownedEntities.remove(id); }
-    // The scenarios always describe a genuine move, so this stub must never
-    // report the actor as already standing on its authored cell.
-    boolean isAtAuthoredCell(Location actual, Location authored) {
-        return false;
+                        Map<String, ?> details) {
+        diagnosticActions.add(action);
+        diagnosticReasons.add(reason);
     }
-    void retagRitualEntity(Entity entity, String role, UUID caster, int casterSlot, int guardSlot) { }
+    void markWave6RecoveryRequired(String reason) {
+        recoveryRequired = true;
+        recoveryReason = reason;
+    }
+    void removeRitualEntity(UUID id) { ownedEntities.remove(id); }
+    boolean isAtAuthoredCell(Location actual, Location authored) {
+        return actual != null && authored != null && actual.getWorld() != null
+                && authored.getWorld() != null && actual.getWorld().equals(authored.getWorld())
+                && actual.getBlockX() == authored.getBlockX()
+                && actual.getBlockY() == authored.getBlockY()
+                && actual.getBlockZ() == authored.getBlockZ();
+    }
+    void retagRitualEntity(Entity entity, String role, UUID caster, int casterSlot, int guardSlot) {
+        ritualRetags++;
+    }
 
 ''' + placement + "\n" + relocate + "\n" + scheduler + "\n" + keyhelper + "\n" + teleport + "\n" + listener + '''
 
     String placementReason() {
         for (int i = warnings.size() - 1; i >= 0; i--) {
             String warning = warnings.get(i);
-            if (warning.contains("WAVE6_RITUAL_ENTITY_PLACEMENT_FAILED")) {
+            if (warning.contains("WAVE6_RITUAL_ENTITY_PLACEMENT_FAILED")
+                    || warning.contains("WAVE6_RITUAL_ENTITY_PLACEMENT_ABANDONED")) {
                 int start = warning.indexOf("reason=") + "reason=".length();
                 int end = warning.indexOf(' ', start);
                 return warning.substring(start, end < 0 ? warning.length() : end);
             }
         }
-        return diagnosticReasons.contains("ritual-entity-placed") ? "placed" : "none";
+        String teleportReason = combatTeleportRejectionReasons.get(actorId);
+        if (teleportReason != null) return teleportReason;
+        if (diagnosticActions.contains("ENTITY_PLACED")) return "placed";
+        if (diagnosticActions.contains("ENTITY_PLACEMENT_SCHEDULED")) return "pending";
+        return "none";
     }
     String permitWarning() {
         for (int i = warnings.size() - 1; i >= 0; i--) {
@@ -265,14 +288,21 @@ public class W6RitualTeleportFailureProbe {
         }
         return "none";
     }
-    static void print(String name, W6RitualTeleportFailureProbe probe,
-                      Entity entity, boolean placed) {
-        System.out.println(name + "|" + probe.placementReason() + "|" + probe.permitWarning()
-                + "|" + entity.teleportCalls + "|" + entity.lastEventCancelled + "|" + placed);
+    String requestAction() {
+        return diagnosticActions.isEmpty() ? "none" : diagnosticActions.get(0);
     }
-    static Entity actor(W6RitualTeleportFailureProbe probe, boolean owned) {
-        Entity entity = new Entity(probe, probe.actorId, EVENT_KIND_ELITE,
+    static void print(String name, W6RitualTeleportFailureProbe probe,
+                      Entity entity, boolean scheduled) {
+        System.out.println(name + "|" + probe.placementReason() + "|" + probe.permitWarning()
+                + "|" + entity.teleportCalls + "|" + entity.lastEventCancelled + "|" + scheduled
+                + "|" + probe.isAtAuthoredCell(entity.getLocation(), observedDestination(probe))
+                + "|" + probe.ritualRetags + "|" + probe.requestAction()
+                + "|" + probe.recoveryRequired + "|" + String.valueOf(probe.recoveryReason));
+    }
+    static Entity actor(W6RitualTeleportFailureProbe probe, boolean owned, boolean invalid) {
+        Entity entity = new Mob(probe, probe.actorId, EVENT_KIND_ELITE,
                 new Location(probe.arena, 7.5D, 68.0D, -38.5D));
+        entity.valid = !invalid;
         if (owned) probe.ownedEntities.put(entity.getUniqueId(), entity);
         return entity;
     }
@@ -280,25 +310,28 @@ public class W6RitualTeleportFailureProbe {
         return new Location(probe.arena, -0.5D, 68.0D, -41.5D); // block -1,68,-42
     }
     public static void main(String[] args) {
-        run("unowned", false, false, false);
-        run("invalid", true, false, false);
-        run("permit", true, true, false);
-        run("external", true, false, true);
-        run("success", true, false, false);
+        run("unowned", false, false, false, false);
+        run("invalid", true, false, false, true);
+        run("permit", true, true, false, false);
+        run("external", true, false, true, false);
+        run("success", true, false, false, false);
+        run("blocked", true, false, false, false, true);
     }
-    static void run(String scenario, boolean owned, boolean breakPermit, boolean externalCancel) {
+    static void run(String scenario, boolean owned, boolean breakPermit,
+                    boolean externalCancel, boolean invalid) {
+        run(scenario, owned, breakPermit, externalCancel, invalid, false);
+    }
+    static void run(String scenario, boolean owned, boolean breakPermit,
+                    boolean externalCancel, boolean invalid, boolean refuseMovement) {
         var probe = new W6RitualTeleportFailureProbe();
-        var entity = actor(probe, owned);
+        var entity = actor(probe, owned, invalid);
         entity.invalidatePermitGeneration = breakPermit;
         entity.externalCancellation = externalCancel;
+        entity.refuseMovement = refuseMovement;
         if (!owned) probe.ownedEntities.remove(entity.getUniqueId());
-        // The adapter hands the real move to the next tick, so the probe does
-        // the same and then drains the queue it was handed to.
-        boolean placed = probe.placeRitualEntity(entity, observedDestination(probe), "GUARD", 0, 0);
-        probe.relocateRitualEntityDeferred(entity.getUniqueId(), observedDestination(probe),
-                "GUARD", 0, 0, 0);
+        boolean scheduled = probe.placeRitualEntity(entity, observedDestination(probe), "GUARD", 0, 0);
         org.bukkit.Bukkit.drainAll();
-        print(scenario, probe, entity, placed);
+        print(scenario, probe, entity, scheduled);
     }
 }
 ''',
@@ -344,17 +377,15 @@ public class W6RitualTeleportFailureProbe {
     assert ran.returncode == 0, ran.stdout + ran.stderr
 
     observed = {line.split("|", 1)[0]: line.split("|") for line in ran.stdout.splitlines()}
-    # Placement is now a next-tick transaction: the inline call only hands the
-    # move to the scheduler, and the real adapter work happens in the deferred
-    # pass the probe runs explicitly. Every scenario therefore reports the
-    # scheduled hand-off (`true`) while the scheduled pass is what classifies
-    # the move itself.
+    # A scheduled request is not proof of placement. The probe checks the
+    # entity's actual authored block and counts only verified retags.
     expected = {
-        "unowned": ["unowned", "placed", "none", "0", "0", "true"],
-        "invalid": ["invalid", "placed", "none", "0", "0", "true"],
-        "permit": ["permit", "placed", "none", "0", "0", "true"],
-        "external": ["external", "placed", "none", "0", "0", "true"],
-        "success": ["success", "placed", "none", "0", "0", "true"],
+        "unowned": ["unowned", "actor-not-owned", "none", "0", "0", "false", "false", "0", "ENTITY_PLACEMENT_REJECT", "false", "null"],
+        "invalid": ["invalid", "actor-invalid", "none", "0", "0", "false", "false", "0", "ENTITY_PLACEMENT_REJECT", "false", "null"],
+        "permit": ["permit", "permit-rejected", "no-internal-permit", "1", "1", "true", "false", "0", "ENTITY_PLACEMENT_SCHEDULED", "false", "null"],
+        "external": ["external", "placed", "none", "1", "0", "true", "true", "1", "ENTITY_PLACEMENT_SCHEDULED", "false", "null"],
+        "success": ["success", "placed", "none", "1", "0", "true", "true", "1", "ENTITY_PLACEMENT_SCHEDULED", "false", "null"],
+        "blocked": ["blocked", "teleport-rejected-and-not-landed", "none", "20", "0", "true", "false", "0", "ENTITY_PLACEMENT_SCHEDULED", "true", "WAVE6_RITUAL_ENTITY_PLACEMENT_EXHAUSTED"],
     }
     assert observed == expected, (
         "The probe exercised the real W6 placement, teleport wrapper, and listener bodies. "

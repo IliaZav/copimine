@@ -81,7 +81,8 @@ public class Wave4ObjectiveDispatchProbe {
       probe.testWave4ObeliskMode = false;
     }
     if (scenario.equals("disposable-ai")) probe.testCombatAiMode = true;
-    // An operator inspection run (/cmend wave spawn <n>) now OWNS its objective:    // freezing it was why the hand-spawned wave never advanced a phase.    if (scenario.equals("inspection")) { probe.testWaveInspectionMode = true; }
+    // Operator inspection runs own their objective and must advance the wave.
+    if (scenario.equals("inspection")) { probe.testWaveInspectionMode = true; }
     if (scenario.equals("cancel-before-objective")) { probe.cancelInAi = true; expected = 0; }
     if (scenario.equals("official-cancel-objective")) probe.cancelInObjective = true;
     if (scenario.equals("official-restart-objective")) probe.restartInObjective = true;

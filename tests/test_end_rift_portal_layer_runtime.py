@@ -35,6 +35,7 @@ def portal_probe(tmp_path_factory):
                   "private void cancelPortalVisualAnimation("]
     methods = [declaration(source, signature) for signature in signatures]
     for signature in ["private boolean isLivePortalModelLayer(",
+                      "private boolean isPortalLayerChunkLoaded(",
                       "public void onPortalVisualEntitiesLoad(",
                       "private boolean hasPendingPortalVisualRebuild("]:
         if signature in source:
@@ -65,6 +66,7 @@ def portal_probe(tmp_path_factory):
     "explicit-restart-after-exhaustion", "multi-portal-exhaustion",
     "sibling-removed-during-transaction",
     "three-portals-observed", "missing-observed-layer",
+    "missing-loaded-layer-rebuilds", "unloaded-layer-defers-rebuild",
 ])
 def test_portal_layer_lifecycle(portal_probe, scenario):
     result = subprocess.run(["java", "-Xms8m", "-Xmx64m", "-cp", str(portal_probe),

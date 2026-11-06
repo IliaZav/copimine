@@ -7,6 +7,7 @@ public final class WaveTwoStagePolicyTest {
         splitIntoTwoOpeningBatchesAndBoundedLateGroupsWithoutChangingComposition();
         rejectUnlaunchableTwoOpeningBatches();
         spawnBoundaryKeepsOnlyTheApprovedFirstLateElite();
+        sanitizationConservesEverySpawnedBody();
         everyNonEmptyGroupGetsMobsWhenEnoughExist();
         waveTwoPressureExceptionIsBoundedToThreeGroups();
         expandedConfiguredRosterUsesTheHardCapWithoutAddingGroups();
@@ -219,6 +220,54 @@ public final class WaveTwoStagePolicyTest {
                 "the late group total must count every body it will spawn");
         check(firstLateGroup.endermen() >= 1,
                 "the late group must still mix ordinary Endermen with the archers");
+    }
+
+    private static void sanitizationConservesEverySpawnedBody() {
+        var reported = new WaveMechanicsPolicy.WaveCounts(14, 12, 14, 0, 0);
+        var reportedSanitized = WaveTwoStagePolicy.sanitizeForSpawn(
+                WaveTwoStagePolicy.FIRST_LATE_GROUP, reported);
+        check(reportedSanitized.total() == 40,
+                "the reported 14/12/14 composition must remain at 40 bodies");
+
+        // The reported composition already meets the Enderman floor. This
+        // second case forces the conversion branch that had duplicated bodies:
+        // after skeletons are exhausted, converted spiders must leave the spider
+        // bucket as well as enter the Enderman bucket.
+        var spiderConversion = new WaveMechanicsPolicy.WaveCounts(8, 30, 2, 0, 0);
+        var sanitized = WaveTwoStagePolicy.sanitizeForSpawn(
+                WaveTwoStagePolicy.FIRST_LATE_GROUP, spiderConversion);
+        check(sanitized.total() == spiderConversion.total(),
+                "converting spiders to Endermen must preserve the roster total");
+        check(sanitized.spiders() == 26 && sanitized.endermen() == 14,
+                "only the required four spiders become Endermen");
+
+        var earlierGroup = WaveTwoStagePolicy.sanitizeForSpawn(
+                1, new WaveMechanicsPolicy.WaveCounts(0, 0, 6, 0, 0));
+        check(earlierGroup.endermen() == 0 && earlierGroup.skeletons() == 6,
+                "the late-group Enderman floor must not rewrite earlier subwaves");
+        var eliteOnly = new WaveMechanicsPolicy.WaveCounts(0, 0, 0, 0, 1);
+        check(WaveTwoStagePolicy.sanitizeForSpawn(
+                        WaveTwoStagePolicy.FIRST_LATE_GROUP, eliteOnly).total() == eliteOnly.total(),
+                "a one-body elite request must not gain a second Enderman body");
+
+        for (int endermen = 0; endermen <= 8; endermen++) {
+            for (int spiders = 0; spiders <= 8; spiders++) {
+                for (int skeletons = 0; skeletons <= 8; skeletons++) {
+                    for (int eliteEndermen = 0; eliteEndermen <= 1; eliteEndermen++) {
+                        for (int eliteSkeletons = 0; eliteSkeletons <= 1; eliteSkeletons++) {
+                            var requested = new WaveMechanicsPolicy.WaveCounts(
+                                    endermen, spiders, skeletons, eliteEndermen, eliteSkeletons);
+                            for (int group = 1; group <= WaveTwoStagePolicy.MAX_GROUP_COUNT; group++) {
+                                var spawn = WaveTwoStagePolicy.sanitizeForSpawn(group, requested);
+                                check(spawn.total() == requested.total(),
+                                        "sanitization must conserve bounded group " + group
+                                                + " composition " + requested + " -> " + spawn);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private static void huntUsesThreeSubwavesWithAThreeSecondGap() {

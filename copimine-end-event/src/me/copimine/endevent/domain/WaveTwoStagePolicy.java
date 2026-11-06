@@ -219,30 +219,37 @@ public final class WaveTwoStagePolicy {
             int groupNumber, WaveMechanicsPolicy.WaveCounts requested) {
         WaveMechanicsPolicy.WaveCounts ordinary = WaveMechanicsPolicy.compositionForWave(2, requested);
         if (requested == null) return ordinary;
+        int endermen = Math.max(0, ordinary.endermen());
+        int spiders = Math.max(0, ordinary.spiders());
+        int skeletons = Math.max(0, ordinary.skeletons());
+        if (groupNumber != FIRST_LATE_GROUP) {
+            return new WaveMechanicsPolicy.WaveCounts(endermen, spiders, skeletons, 0, 0);
+        }
+
         // The third subwave is the late hunt: it must mix skeleton archers with
         // ordinary Endermen pressure. It used to come out as skeletons only,
         // which is exactly what the player reported. At least a third of the
         // bodies stay ordinary Endermen so the marked player still has to move.
-        int endermen = ordinary.endermen();
-        int skeletons = ordinary.skeletons();
-        int total = endermen + skeletons + ordinary.spiders();
+        int eliteSkeletons = Math.min(1, Math.max(0, requested.eliteSkeletons()));
+        int ordinarySkeletons = Math.max(0, skeletons - eliteSkeletons);
+        int total = endermen + skeletons + spiders;
         int minimumEndermen = total == 0 ? 0 : Math.min(total, Math.max(1, (total + 2) / 3));
         if (endermen < minimumEndermen) {
             int needed = minimumEndermen - endermen;
-            int fromSkeletons = Math.min(needed, skeletons);
+            int fromSkeletons = Math.min(needed, ordinarySkeletons);
             endermen += fromSkeletons;
-            skeletons -= fromSkeletons;
+            ordinarySkeletons -= fromSkeletons;
             needed -= fromSkeletons;
-            int fromSpiders = Math.min(needed, ordinary.spiders());
+            int fromSpiders = Math.min(needed, spiders);
             endermen += fromSpiders;
+            spiders -= fromSpiders;
+            needed -= fromSpiders;
+            int fromEliteSkeletons = Math.min(needed, eliteSkeletons);
+            endermen += fromEliteSkeletons;
+            eliteSkeletons -= fromEliteSkeletons;
         }
-        if (groupNumber != FIRST_LATE_GROUP) {
-            return new WaveMechanicsPolicy.WaveCounts(endermen, ordinary.spiders(), skeletons,
-                    ordinary.eliteEndermen(), 0);
-        }
-        int eliteSkeletons = Math.min(1, Math.max(0, requested.eliteSkeletons()));
-        return new WaveMechanicsPolicy.WaveCounts(endermen, ordinary.spiders(),
-                Math.max(0, skeletons - eliteSkeletons), ordinary.eliteEndermen(), eliteSkeletons);
+        return new WaveMechanicsPolicy.WaveCounts(endermen, spiders,
+                ordinarySkeletons, 0, eliteSkeletons);
     }
 
     public static long nextGroupSpawnAt(long groupClearedAtMillis) {

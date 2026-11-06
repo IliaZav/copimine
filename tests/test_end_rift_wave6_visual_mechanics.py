@@ -566,7 +566,7 @@ public class FreeTargetProbe {
     boolean launchPhysicalEliteAbility(LivingEntity caster,Player target,Location mark,EndRiftAiPolicy.MiniBossSpell spell){return false;}
     java.util.logging.Logger getLogger(){return java.util.logging.Logger.getLogger("FreeTargetProbe");}
     record Config() { Config miniBossTuning(){return this;} int spellMinSeconds(){return 1;} int spellMaxSeconds(){return 1;} }
-    static class Entity { UUID id=UUID.randomUUID(); int wave=6; UUID getUniqueId(){return id;}
+    static class Entity { UUID id=UUID.randomUUID(); int wave=6; UUID owner; UUID getUniqueId(){return id;}
         boolean isValid(){return true;} boolean isDead(){return false;} }
     static class LivingEntity extends Entity { }
     static class Player extends LivingEntity {
@@ -602,6 +602,28 @@ public class FreeTargetProbe {
     boolean isCurrentCollapseGuard(Entity e){return false;}
     boolean currentCollapseTargetAllowed(Entity e,Player p){return true;}
     boolean isMiniBossCombatPhase(){return true;}
+    // Wave 2 gained server-owned squad assignment: targeting now consults the
+    // stable per-squad owner and the encounter generation instead of hashing the
+    // mob against the current participant list. The probe has to carry the same
+    // dependencies as the real method or it cannot compile against it.
+    String eventId = "probe-event";
+    boolean isWaveCombatKind(String kind){
+        return "wave_mob".equals(kind) || "elite".equals(kind) || "wave_guardian".equals(kind)
+                || "reality_split_trial".equals(kind) || "ritual_caster".equals(kind)
+                || "ritual_guard".equals(kind);
+    }
+    boolean ownedBySession(Entity e,String id,long gen){return e!=null;}
+    UUID waveTwoEntityOwner(Entity e){
+        if (e==null || !isWaveCombatKind(readString(e,keyKind)) || readInt(e,keyWave,0)!=2) return null;
+        return e.owner;
+    }
+    long readEntityGeneration(Entity e){return generation;}
+    static class WaveTwoOwnershipPolicy {
+        static boolean allowsTarget(UUID owner,UUID target,long entityGeneration,long currentGeneration){
+            return owner!=null && target!=null && currentGeneration>0L
+                    && entityGeneration==currentGeneration && owner.equals(target);
+        }
+    }
     boolean isLiveOwnedEntity(UUID id){return true;}
     boolean isMiniBossCombatEntity(LivingEntity e){return true;}
     boolean usesWaveCombatCoordination(Entity e){return false;}
@@ -850,7 +872,9 @@ public class VisualAbortProbe {
             require(probe.objectiveClears==1&&probe.arrowsCleared==1,"objective/projectile cleanup runs exactly once");
             require(probe.spiderEffectsCleared==1,"wave cleanup releases temporary spider effects exactly once");
             require(probe.eliteAbilityCleanupCalls==1,"elite projectiles and player roots are cleared with wave state");
-            // Sandbox aborts keep the encounter playable (the operator's /cmend            // wave spawn 6 continues with a degraded visual), so only the            // official path may retire the wave number here.            require(probe.activeWave==(sandbox?6:0),"official abort retires the wave, sandbox keeps playing");
+            // Sandbox aborts keep the encounter playable with degraded visuals;
+            // only the official path retires the wave number.
+            require(probe.activeWave==(sandbox?6:0),"official abort retires the wave, sandbox keeps playing");
             require(probe.saves==(sandbox?1:0),"sandbox save and official recovery remain separate");
             require(probe.phase==(sandbox?EventPhase.ACTIVE:EventPhase.RECOVERY_REQUIRED),"official failure remains fail-closed");
         }

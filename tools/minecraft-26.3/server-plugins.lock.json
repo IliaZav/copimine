@@ -428,7 +428,7 @@
       "compatibilityStatus": "requires-runtime-validation",
       "sha512": "62574151296066a083b05b09174bdd6c0f3d003ff3c84eb762b51c2e343ac27e958fa13680d906c36bcfbcfb9e106312e0265bf46a3504064f99923740eb2db8",
       "sha256": "a79eeeff1d628cd14aaf646b3a3fe9627efb6bc641890ef4bb71fca0ec65633c",
-      "size": 2192225,
+      "size": 4820392,
       "pluginName": "Essentials",
       "artifactVersion": "2.22.1-dev+27-e70bdb8",
       "replaceSha256": [
@@ -1267,7 +1267,9 @@
         "nativeVerified": false,
         "runtimeEligible": true
       },
-      "nativeVerified": false
+      "nativeVerified": false,
+      "size": 134954,
+      "sha512": "00a67c2ae3463517eab3a8ca929d26976676f797ac5aee1bf4fd0360ea8e48b7e6e971154e3f859f8b34bca70d6832f8ec8d653b0049af42023686fded6fded6"
     },
     {
       "pluginName": "FarmControl",
@@ -1313,7 +1315,9 @@
         "nativeVerified": false,
         "runtimeEligible": false
       },
-      "nativeVerified": false
+      "nativeVerified": false,
+      "size": 266131,
+      "sha512": "14d2c07d409e99c2068be9a20aecfb8ec00c98489e46b741c0dc103e52b6cdab1a9d3c955df91931962cf4e4768415e4f90aad1b3f3c4d794b9bb0240419c629"
     },
     {
       "pluginName": "GSit",
@@ -1356,7 +1360,9 @@
         "nativeVerified": false,
         "runtimeEligible": true
       },
-      "nativeVerified": false
+      "nativeVerified": false,
+      "size": 1160690,
+      "sha512": "f048d55b633fd816c08e2e4472bd54a75fc4d13534682e6e7745408253d2f393706efdc389d12ca2cf28d4dc035a9afdda3eed9ecde51c7e332831391d9b6479"
     },
     {
       "pluginName": "SeeMore",
@@ -1401,7 +1407,9 @@
         "nativeVerified": false,
         "runtimeEligible": false
       },
-      "nativeVerified": false
+      "nativeVerified": false,
+      "size": 107284,
+      "sha512": "5b6ad1edf059b8f78bb75b0cb7a47df39c05a1443d35e3b8a1f71ed78c4ccbc75d0422001442e6fc3bfdb9df26545600825af22bb00671135d5d206c20fc016b"
     },
     {
       "pluginName": "Vault",

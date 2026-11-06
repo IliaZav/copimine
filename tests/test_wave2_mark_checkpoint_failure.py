@@ -36,6 +36,9 @@ public class WaveTwoClearCheckpointProbe {
     }
     boolean spawnNextWaveGroup(World w,Location l){spawns++;waveSpawnGroupIndex++;return true;}
     void updateMarkedTargetObjective(long now){newMarks++;}
+    // The hunt tick also drains an owed phantom activation; this probe only
+    // exercises the checkpoint gate, so the retry is inert here.
+    void retryPendingWaveTwoPhantomActivation(long now){}
     void forcePhase(EventPhase next,String reason){phase=next;}
     Location coreCombatAnchorLocation(){return new Location();}
     void playWaveFeedback(String key,Location where){}

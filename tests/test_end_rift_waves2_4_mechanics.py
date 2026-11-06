@@ -259,6 +259,8 @@ public final class Waves24MechanicsHarness {
     int countLiveWaveEntitiesForWave(int wave) { return wave == 2 ? liveWaveEntitiesForWave2 : 0; }
     boolean tryBeginWaveTwoPhantomActivation(World world, Location core,
             WaveMechanicsPolicy.WaveCounts group, int groupNumber) { return false; }
+    int waveTwoPhantomActivationPendingGroup;
+    void retryPendingWaveTwoPhantomActivation(long now) { }
     void clearWaveTwoPhantomActivationPresentation() { waveTwoPhantomWarningTask = null; }
     void ensureWaveTwoPhantomLayout(Player player, Location core) { }
     void spawnWaveGroup(World world, Location core, int wave, boolean guardianWave,
@@ -1389,6 +1391,8 @@ public final class Wave2SpawnHarness {
     void requireWaveTwoOwnershipRecovery(Entity entity, String reason) { }
     boolean tryBeginWaveTwoPhantomActivation(World world, Location core,
             WaveMechanicsPolicy.WaveCounts group, int groupNumber) { return false; }
+    int waveTwoPhantomActivationPendingGroup;
+    void retryPendingWaveTwoPhantomActivation(long now) { }
     void clearWaveTwoPhantomActivationPresentation() { waveTwoPhantomWarningTask = null; }
     void spawnWaveGroup(World world, Location core, int wave, boolean guardianWave,
                         boolean test, WaveMechanicsPolicy.WaveCounts group, int baseIndex,

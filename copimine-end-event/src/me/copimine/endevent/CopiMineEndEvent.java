@@ -627,6 +627,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int BOSS_SPAWN_DELAY_TICKS = 200;
     private static final int BOSS_CINEMATIC_DURATION_TICKS = BOSS_SPAWN_DELAY_TICKS;
     private static final long TRANSITION_RUNE_HOLD_MILLIS = 10_000L;
+    /**
+     * Loading a carried charge into the Core is a channel, not a click.
+     *
+     * <p>The player asked for a five-second hold with a filling ring, matching
+     * the rune hold the rest of the event already teaches. Charging the Core
+     * used to commit on a single right-click, so a misclick silently spent one
+     * of the three deliveries and the wave lost a pack for it.</p>
+     */
+    private static final long CORE_CHARGE_HOLD_MILLIS = 5_000L;
+    /** Width of the progress ring drawn on the action bar while loading. */
+    private static final int CORE_CHARGE_RING_SEGMENTS = 20;
     // Paper's native hurt window is bounded for event-owned combat entities.
     // The window is released only after our authoritative real-health
     // transaction; it is never changed globally or for natural entities.
@@ -929,6 +940,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private UUID waveTwoPhantomActivationPlayerUuid;
     private int waveTwoPhantomActivationCycle;
     private int waveTwoPhantomActivationGroup;
+    /**
+     * Subwave that spawned before its phantom layout resolved.
+     *
+     * <p>Zero means nothing is owed. A non-zero value makes the hunt tick retry
+     * the activation, so a wave 2 party that cleared the opening groups early
+     * still gets phantoms and the Enderman veil later instead of finishing the
+     * wave without ever seeing them.</p>
+     */
+    private int waveTwoPhantomActivationPendingGroup;
+    /** Earliest tick at which the pending activation may be retried. */
+    private long waveTwoPhantomRetryAtMillis;
+    /** When the arena was first seen empty during a running wave; 0 when occupied. */
+    private long waveAbandonEmptySinceMillis;
+    /**
+     * How long an empty arena must stay empty before its wave is closed.
+     *
+     * <p>Long enough to survive a crash-and-relaunch, short enough that an
+     * operator testing alone does not meet leftover mobs from the last run.</p>
+     */
+    private static final long WAVE_ABANDON_GRACE_MILLIS = 180_000L;
+    /** Retry cadence for a phantom activation that lost the spawn race. */
+    private static final long WAVE_TWO_PHANTOM_RETRY_MILLIS = 2_000L;
     private Location waveTwoPhantomActivationLocation;
     private final Map<UUID, String> waveTwoMaterializedPhantoms = new LinkedHashMap<>();
     private final Map<UUID, Set<UUID>> waveTwoHiddenEntitiesByViewer = new LinkedHashMap<>();
@@ -959,6 +992,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private UUID currentCarrierMarkerUuid;
     private int currentCarrierVisualCycle;
     private long currentCarrierVisualRefreshMillis;
+    /** Player currently loading a charge into the Core, and since when. */
+    private UUID coreChargeHoldPlayer;
+    private long coreChargeHoldStartedMillis;
+    private int coreChargeHoldLastSegment = -1;
     private int currentHuntCycles;
     /** Durable checkpoint retained while a Wave 2 identity exhaustion awaits admin recovery. */
     private Map<String, String> waveTwoRecoveryCheckpoint = Map.of();
@@ -15444,8 +15481,81 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     "Этот заряд несёт другой игрок", NamedTextColor.YELLOW));
             return true;
         }
-        deliverCurrentCarrierCharge(player);
+        // Start the channel; the tick finishes it once the ring fills.
+        beginCoreChargeHold(player);
         return true;
+    }
+
+    /**
+     * Begin (or restart) a charge load.
+     *
+     * <p>A right-click is no longer the delivery itself. The player must stand
+     * at the Core and keep holding for {@link #CORE_CHARGE_HOLD_MILLIS}; letting
+     * go, walking away or losing the charge cancels the attempt without
+     * consuming one of the three deliveries.</p>
+     */
+    private void beginCoreChargeHold(Player player) {
+        if (player == null || currentCarrierState == null) {
+            return;
+        }
+        UUID id = player.getUniqueId();
+        if (id.equals(coreChargeHoldPlayer)) {
+            return;
+        }
+        coreChargeHoldPlayer = id;
+        coreChargeHoldStartedMillis = System.currentTimeMillis();
+        coreChargeHoldLastSegment = -1;
+        player.playSound(player.getLocation(), Sound.BLOCK_BEACON_ACTIVATE, 0.55F, 1.4F);
+        renderCoreChargeHoldRing(player, 0);
+    }
+
+    /** Cancel an in-flight load, telling the player why, when they can be told. */
+    private void cancelCoreChargeHold(UUID id, String reason) {
+        if (id == null || !id.equals(coreChargeHoldPlayer)) {
+            return;
+        }
+        coreChargeHoldPlayer = null;
+        coreChargeHoldStartedMillis = 0L;
+        coreChargeHoldLastSegment = -1;
+        Player player = Bukkit.getPlayer(id);
+        if (player != null && player.isOnline()) {
+            player.sendActionBar(Component.text("Загрузка прервана", NamedTextColor.RED));
+            player.playSound(player.getLocation(), Sound.BLOCK_BEACON_DEACTIVATE, 0.5F, 0.8F);
+        }
+        getLogger().info("END_RIFT_CORE_CHARGE_HOLD_CANCELLED event=" + eventId
+                + " player=" + id + " reason=" + reason);
+    }
+
+    /**
+     * Draw the filling ring on the action bar.
+     *
+     * <p>A ring, not a bar: the same shape the rune hold uses for its
+     * countdown, so the two holds in this event read as one mechanic. Only the
+     * segment that changed is redrawn, because the action bar is a packet and
+     * this runs every tick.</p>
+     */
+    private void renderCoreChargeHoldRing(Player player, int filledSegments) {
+        if (player == null || !player.isOnline()) {
+            return;
+        }
+        int filled = Math.max(0, Math.min(CORE_CHARGE_RING_SEGMENTS, filledSegments));
+        if (filled == coreChargeHoldLastSegment) {
+            return;
+        }
+        coreChargeHoldLastSegment = filled;
+        StringBuilder ring = new StringBuilder();
+        for (int index = 0; index < CORE_CHARGE_RING_SEGMENTS; index++) {
+            boolean on = index < filled;
+            ring.append(on ? '\u25CF' : '\u25CB');
+        }
+        long elapsed = Math.max(0L, System.currentTimeMillis() - coreChargeHoldStartedMillis);
+        int percent = (int) Math.min(100L,
+                Math.round(elapsed * 100.0D / CORE_CHARGE_HOLD_MILLIS));
+        player.sendActionBar(Component.text("Загрузка ядра  ", NamedTextColor.LIGHT_PURPLE)
+                .append(Component.text(ring.toString(),
+                        filled >= CORE_CHARGE_RING_SEGMENTS
+                                ? NamedTextColor.LIGHT_PURPLE : NamedTextColor.AQUA))
+                .append(Component.text("  " + percent + "%", NamedTextColor.GRAY)));
     }
 
     /** Accept a dropped charge only on an explicit right-click. */
@@ -15650,6 +15760,57 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         syncCurrentCarrierFields();
         saveStateAsync();
         return true;
+    }
+
+    /**
+     * Advance an in-flight Core charge load.
+     *
+     * <p>The channel holds only while it is still valid: the player is online,
+     * still the holder, still carrying the charge and still standing at the
+     * Core. Any of those failing cancels the attempt and keeps the charge, so a
+     * stepped-away player never loses a delivery to a timer.</p>
+     */
+    private void tickCoreChargeHold(long now) {
+        UUID id = coreChargeHoldPlayer;
+        if (id == null) {
+            return;
+        }
+        Player player = Bukkit.getPlayer(id);
+        if (player == null || !player.isOnline()) {
+            cancelCoreChargeHold(id, "offline");
+            return;
+        }
+        if (currentCarrierState == null
+                || currentCarrierState.phase() != RiftCarrierPolicy.Phase.CHARGE_CARRIED
+                || !id.equals(currentCarrierState.holder())) {
+            cancelCoreChargeHold(id, "holder-changed");
+            return;
+        }
+        if (!hasCurrentCarrierInventoryCharge(player)) {
+            cancelCoreChargeHold(id, "charge-missing");
+            return;
+        }
+        Location core = coreCombatAnchorLocation();
+        if (core == null || !sameWorld(player, core)
+                || player.getLocation().distanceSquared(core) > 6.25D) {
+            cancelCoreChargeHold(id, "left-core-range");
+            return;
+        }
+        long elapsed = Math.max(0L, now - coreChargeHoldStartedMillis);
+        if (elapsed >= CORE_CHARGE_HOLD_MILLIS) {
+            // Clear the hold BEFORE delivering: deliverCurrentCarrierCharge
+            // re-enters the state machine, and a stale hold id would try to
+            // cancel an attempt that has just succeeded.
+            coreChargeHoldPlayer = null;
+            coreChargeHoldStartedMillis = 0L;
+            coreChargeHoldLastSegment = -1;
+            player.sendActionBar(Component.text("Ядро принимает заряд…", NamedTextColor.AQUA));
+            deliverCurrentCarrierCharge(player);
+            return;
+        }
+        int filled = (int) Math.min(CORE_CHARGE_RING_SEGMENTS,
+                elapsed * CORE_CHARGE_RING_SEGMENTS / CORE_CHARGE_HOLD_MILLIS);
+        renderCoreChargeHoldRing(player, filled);
     }
 
     private boolean hasCurrentCarrierInventoryCharge(Player holder) {
@@ -25019,6 +25180,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 } catch (RuntimeException ignoredLogFailure) {
                     // Logging must never hold a subwave back.
                 }
+                // The spawn must not be held back by a layout that was not ready
+                // yet, but "spawn without phantoms" must not be permanent
+                // either. The layout only resolves once a participant is both
+                // marked AND has walked into a position that passes
+                // isCurrentWaveTwoPhantomPosition; a party that cleared the
+                // opening groups before the first layout settled would spend the
+                // whole wave with no phantoms and no veil, which is exactly what
+                // the arena showed. Remember the debt so the next tick retries.
+                waveTwoPhantomActivationPendingGroup = groupNumber;
             } else {
                 return false;
             }
@@ -25969,6 +26139,86 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         getLogger().info("END_RIFT_PORTALS_READY event=" + eventId + " count=3 sequential=true");
     }
 
+    /**
+     * End a running wave once nobody is left to fight it.
+     *
+     * <p>Production sat in {@code phase=COLLECTING wave=2 event-mobs=14} with
+     * {@code online=0} for as long as the server ran: every participant had
+     * disconnected, and the wave kept waiting for 14 kills that could never
+     * happen. Nothing ticked it forward because the objective only advances on
+     * player action, and nothing ended it either, so the arena stayed occupied
+     * and the next party had to clear a wave they had never started.</p>
+     *
+     * <p>The grace period is deliberate: a player who crashes or relogs must not
+     * come back to an abandoned wave. Only a genuinely empty arena, held empty
+     * for {@link #WAVE_ABANDON_GRACE_MILLIS}, ends the wave.</p>
+     */
+    private void abandonWaveIfArenaEmpty(long now) {
+        if (!EndRiftObjective.isNumberedWave(activeWave)) {
+            waveAbandonEmptySinceMillis = 0L;
+            return;
+        }
+        // An official attempt is owned by its roster lifecycle, which has its
+        // own offline grace and its own wipe path; this guard is only for the
+        // disposable waves an operator or a casual party runs.
+        if (isOfficialAttemptActive()) {
+            waveAbandonEmptySinceMillis = 0L;
+            return;
+        }
+        if (!activeWaveParticipants().isEmpty()) {
+            waveAbandonEmptySinceMillis = 0L;
+            return;
+        }
+        if (waveAbandonEmptySinceMillis <= 0L) {
+            waveAbandonEmptySinceMillis = now;
+            getLogger().info("END_RIFT_WAVE_ABANDON_ARMED event=" + eventId
+                    + " wave=" + activeWave + " grace_ms=" + WAVE_ABANDON_GRACE_MILLIS);
+            return;
+        }
+        if (now - waveAbandonEmptySinceMillis < WAVE_ABANDON_GRACE_MILLIS) {
+            return;
+        }
+        getLogger().info("END_RIFT_WAVE_ABANDONED event=" + eventId
+                + " wave=" + activeWave + " phase=" + phase
+                + " mobs=" + countLiveWaveEntitiesForWave(activeWave)
+                + " empty_ms=" + (now - waveAbandonEmptySinceMillis));
+        waveAbandonEmptySinceMillis = 0L;
+        abandonRunningWave(activeWave, "arena-empty");
+    }
+
+    /**
+     * Complete the running wave without a party and clear its leftover mobs.
+     *
+     * <p>Completing rather than resetting is deliberate: an abandoned wave must
+     * advance the phase exactly like a fought one, or the objective stays open
+     * and the arena keeps its mobs forever. The mob cleanup afterwards stops a
+     * hostile crowd from waiting in an empty room for the next party.</p>
+     */
+    private boolean abandonRunningWave(int waveNumber, String reason) {
+        if (!EndRiftObjective.isNumberedWave(waveNumber)) return false;
+        String idempotencyKey = "abandon-" + waveNumber + "-" + generation;
+        boolean completed;
+        try {
+            completed = completeWavePhase(waveNumber, reason, idempotencyKey, true);
+        } catch (RuntimeException failure) {
+            getLogger().warning("END_RIFT_WAVE_ABANDON_FAILED event=" + eventId
+                    + " wave=" + waveNumber + " reason=" + reason
+                    + " error=" + failure.getClass().getSimpleName() + ": " + failure.getMessage());
+            return false;
+        }
+        getLogger().info("END_RIFT_WAVE_ABANDON_COMPLETED event=" + eventId
+                + " wave=" + waveNumber + " reason=" + reason + " completed=" + completed);
+        clearWaveEntities(true, true);
+        waveTwoOutstandingEntityUuids.clear();
+        waveTwoMarkedParticipants.clear();
+        waveTwoPhantomActivationPendingGroup = 0;
+        waveTwoPhantomActivationState = null;
+        currentCarrierState = null;
+        cancelCoreChargeHold(coreChargeHoldPlayer, "wave-abandoned");
+        saveStateAsync();
+        return completed;
+    }
+
     /** Render and advance the bounded controller for the current objective. */
     private boolean tickCurrentObjective() {
         int objectiveWave = activeWave;
@@ -25996,6 +26246,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         long now = System.currentTimeMillis();
         waveObjectiveLastSecond = (int) Math.max(0L,
                 (now - waveObjectiveStartedMillis) / 1_000L);
+        abandonWaveIfArenaEmpty(now);
         switch (EndRiftObjective.objective(objectiveWave)) {
             case RIFT_CARRIERS -> tickCurrentCarrierObjective(now);
             case RIFT_HUNT -> tickCurrentHuntObjective(now);
@@ -26129,10 +26380,29 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             resolveWaveOneReinforcements(now);
             return;
         }
+        tickCoreChargeHold(now);
         boolean allGroupsSpawned = waveSpawnGroupIndex >= waveSpawnSchedule.size();
         if (currentCarrierState.phase() == RiftCarrierPolicy.Phase.CARRIER_ACTIVE) {
             Location fallback = currentCarrierChargeLocation == null
                     ? coreCombatAnchorLocation() : currentCarrierChargeLocation.clone();
+            // Hold the charge on the living carrier. The drop has gravity off
+            // so it does not settle, but something still has to carry it: the
+            // player must see which Enderman owns the charge, and a charge left
+            // at the spot where the pack was first created tells them nothing
+            // once the carrier walks away.
+            Entity activeCarrier = ownedEntities.get(currentCarrierState.carrier());
+            Entity liveChargeOnCarrier = currentCarrierChargeEntity();
+            if (activeCarrier != null && activeCarrier.isValid()
+                    && liveChargeOnCarrier != null && liveChargeOnCarrier.isValid()
+                    && activeCarrier.getWorld() != null
+                    && activeCarrier.getWorld().equals(liveChargeOnCarrier.getWorld())) {
+                Location carrierAnchor = activeCarrier.getLocation().clone()
+                        .add(0.0D, 1.35D, 0.0D);
+                if (liveChargeOnCarrier.getLocation().distanceSquared(carrierAnchor) > 0.0625D) {
+                    teleportCombatEntity(liveChargeOnCarrier, carrierAnchor);
+                    currentCarrierChargeLocation = liveChargeOnCarrier.getLocation().clone();
+                }
+            }
             boolean carrierAlive = isLiveOwnedEntity(currentCarrierState.carrier());
             Entity liveCharge = currentCarrierChargeEntity();
             if (fallback != null && (liveCharge == null || !liveCharge.isValid())) {
@@ -26600,14 +26870,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         removeCurrentCarrierChargeVisual();
         Item charge = requested.getWorld().spawn(
                 requested.clone().add(0.0D, 0.55D, 0.0D), Item.class, value -> {
-                    value.setItemStack(new ItemStack(Material.NETHER_STAR));
+                    // The dropped charge has to look like the charge the
+                    // player later carries, not like a raw Nether Star. The
+                    // inventory charge already renders the custom shell, but
+                    // this ground item was built from a bare Material, so the
+                    // arena showed an untranslated vanilla star on the floor
+                    // and the pickup looked like it generated a second object.
+                    value.setItemStack(overlayItem(MODEL_CARRIER_CHARGE,
+                            "end_event_carrier_charge"));
                     // Walking pickup is refused by its OWN event handler; the
                     // item still has to tick like any other drop, so the
                     // pickup delay cannot be MAX_VALUE.  An item whose age
                     // never advances neither falls, merges nor can be
                     // reconciled by the charge recovery code.
                     value.setPickupDelay(CARRIER_CHARGE_PICKUP_DELAY_TICKS);
-                    value.setGravity(true);
+                    // The charge belongs to the carrier, not to the floor. With
+                    // gravity on, the drop slid off the mob and lay flat in the
+                    // arena, so the exchange read as an item someone had thrown
+                    // away rather than a charge bound to a living carrier. The
+                    // carrier tick repositions it above the mob every tick, so
+                    // it must not fall in between those updates.
+                    value.setGravity(false);
                     value.setInvulnerable(true);
                     value.setPersistent(false);
                     value.setGlowing(true);
@@ -26723,6 +27006,51 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // The mark is collective and continuous: every participant stays marked
         // for the whole wave, so there is no rotation and no mark deadline.
         updateMarkedTargetObjective(now);
+        retryPendingWaveTwoPhantomActivation(now);
+    }
+
+    /**
+     * Retry a phantom activation that lost the race with the subwave spawn.
+     *
+     * <p>The retry is bounded by the wave itself: it stops the moment the wave
+     * leaves WAVE_2, and it never touches a group that has no Endermen left to
+     * reserve a phantom slot against. Both guards matter because the pending
+     * group id outlives the subwave that set it.</p>
+     */
+    private void retryPendingWaveTwoPhantomActivation(long now) {
+        int pendingGroup = waveTwoPhantomActivationPendingGroup;
+        if (pendingGroup <= 0) return;
+        if (activeWave != 2 || phase != EventPhase.WAVE_2) {
+            waveTwoPhantomActivationPendingGroup = 0;
+            return;
+        }
+        if (waveTwoPhantomWarningTask != null || waveTwoPhantomActivationState != null
+                && (waveTwoPhantomActivationState.phase()
+                        == WaveTwoPhantomMaterializationPolicy.Phase.WARNING
+                || waveTwoPhantomActivationState.phase()
+                        == WaveTwoPhantomMaterializationPolicy.Phase.TARGETABLE)) {
+            // An activation is already in flight for this or a later group.
+            return;
+        }
+        if (now < waveTwoPhantomRetryAtMillis) return;
+        waveTwoPhantomRetryAtMillis = now + WAVE_TWO_PHANTOM_RETRY_MILLIS;
+        if (waveTwoMarkedParticipants.isEmpty()) {
+            // Nobody is marked yet, so no layout can exist; keep the debt.
+            return;
+        }
+        Location core = coreCombatAnchorLocation();
+        if (core == null || core.getWorld() == null) return;
+        if (pendingGroup > waveSpawnSchedule.size()) {
+            waveTwoPhantomActivationPendingGroup = 0;
+            return;
+        }
+        WaveMechanicsPolicy.WaveCounts group = waveSpawnSchedule.get(pendingGroup - 1);
+        if (tryBeginWaveTwoPhantomActivation(core.getWorld(), core, group, pendingGroup)) {
+            getLogger().info("WAVE_TWO_PHANTOM_ACTIVATION_RECOVERED event=" + eventId
+                    + " group=" + pendingGroup + " cycle=" + waveTwoMarkCycle
+                    + " marked=" + waveTwoMarkedParticipants.size());
+            waveTwoPhantomActivationPendingGroup = 0;
+        }
     }
 
     private void replenishWaveFiveCombatIfNeeded(long now) {
@@ -41451,6 +41779,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (keyEventId != null && eventId != null && !eventId.isBlank()) {
             entity.getPersistentDataContainer().set(keyEventId, PersistentDataType.STRING, eventId);
         }
+        // Restamp the session tag too. ownedByEvent() reads event_session_id
+        // first and only falls back to end_event_id when it is blank, so an
+        // adopted fixture that kept its old session stamp stayed invisible to
+        // every ownership probe - including cleanup. A Core display restarted
+        // into generation 371 with a 369 session tag survived
+        // /cmend cleanup confirm and hung over the arena forever.
+        if (keyEventSessionId != null && eventId != null && !eventId.isBlank()) {
+            entity.getPersistentDataContainer().set(keyEventSessionId, PersistentDataType.STRING, eventId);
+        }
         registerOwnedEntity(entity);
     }
 
@@ -52569,6 +52906,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         resetTransitionRuneHoldForParticipant(uuid);
         restoreRitualPrisonerGravity(event.getPlayer());
         releaseCurrentCarrierHolder(uuid, "disconnect");
+        cancelCoreChargeHold(uuid, "disconnect");
         releaseCurrentHuntTarget(uuid, "disconnect");
         endRitualPrisonerAbilitySessionForPlayer(uuid, "disconnect");
         if (endEventBridgeV4 != null) {

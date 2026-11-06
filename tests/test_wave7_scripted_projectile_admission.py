@@ -82,7 +82,7 @@ public class ScriptedLaunchProbe {
         enum PickupStatus {DISALLOWED}AbstractArrow(UUID id){super(id);}
         void setPickupStatus(PickupStatus status){}void setCritical(boolean value){}
     }
-    static class Arrow extends AbstractArrow {Arrow(UUID id){super(id);}}
+    static class Arrow extends AbstractArrow {Arrow(UUID id){super(id);}void setVisibleByDefault(boolean v){}}
     static class Snowball extends Projectile {Snowball(UUID id){super(id);}void setItem(ItemStack item){}}
     static class World {
         final ScriptedLaunchProbe p;boolean cancel;Projectile spawned;int earlyLaunches;

@@ -12226,6 +12226,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 Arrow extra = world.spawnArrow(origin,
                         direction.clone().rotateAroundY(lane * 0.095D), speed, 0.0F);
                 spawnedSideArrows.add(extra);
+                // "Arrows are invisible": a spawned arrow stays hidden until it
+                // is marked visible by default. These side volley arrows are the
+                // ones a player actually sees, so the flag belongs here.
+                extra.setVisibleByDefault(true);
                 extra.setShooter(skeleton);
                 tagEventArrowVolley(extra, pending.volleyId());
                 if (!configureEventSkeletonArrow(extra, skeleton, pending.wave(), pending.arrowKind(),
@@ -13313,6 +13317,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             .multiply(1.55D);
                     Arrow arrow = skeleton.getWorld().spawnArrow(origin, velocity, 1.0F, 0.0F);
                     spawned.add(arrow);
+                    arrow.setVisibleByDefault(true);
                     arrow.setShooter(skeleton);
                     arrow.setDamage(EliteAbilityPolicy.directDamage(EliteAbilityPolicy.Ability.ARROW_RAIN));
                     arrow.setCritical(false);
@@ -35432,6 +35437,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         org.bukkit.entity.Arrow arrow = actor.getWorld().spawnArrow(origin, direction, speed, 0.0F);
         if (!arrow.isValid()) return true; // Respect launch cancellation without losing the trial actor.
+        // The Warden trial fan is the shot the player has to dodge, so it must
+        // be rendered from the first tick like every other event arrow.
+        arrow.setVisibleByDefault(true);
         arrow.setShooter(actor);
         arrow.setPickupStatus(org.bukkit.entity.AbstractArrow.PickupStatus.DISALLOWED);
         arrow.setGlowing(glowing);

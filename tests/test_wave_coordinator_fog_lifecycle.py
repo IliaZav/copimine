@@ -99,7 +99,7 @@ public class WaveFogLifecycleProbe {
  static class Skeleton extends Mob {}static class Spider extends Mob {}static class Enderman extends Mob {}static class Zombie extends Mob {}
  boolean isRiftGiant(Entity entity){return false;}void tickRiftGiantAura(Zombie giant,long now){}boolean tickRiftGiantOffense(Zombie giant,Player target,long now){return false;}
  static class Projectile extends Entity {Object shooter;Object getShooter(){return shooter;}}
- static class Arrow extends Projectile {UUID volleyId;Vector velocity=new Vector();void setShooter(Entity e){shooter=e;}Vector getVelocity(){return velocity.clone();}}
+ static class Arrow extends Projectile {UUID volleyId;Vector velocity=new Vector();boolean visibleByDefault;void setVisibleByDefault(boolean v){visibleByDefault=v;}void setShooter(Entity e){shooter=e;}Vector getVelocity(){return velocity.clone();}}
  static class AreaEffectCloud extends Entity {double getRadius(){return 3;}}
  static class BukkitTask {}static class Scheduler {List<Runnable> tasks=new ArrayList<>();BukkitTask runTaskLater(Object owner,Runnable r,long delay){tasks.add(r);return new BukkitTask();}void drain(){for(var r:new ArrayList<>(tasks))r.run();tasks.clear();}}
  static class Bukkit {static Scheduler scheduler=new Scheduler();static Scheduler getScheduler(){return scheduler;}static Map<UUID,Player> players=new HashMap<>();static Map<UUID,Entity> entities=new HashMap<>();static Player getPlayer(UUID id){return players.get(id);}static World getWorld(UUID id){return WORLD;}static Entity getEntity(UUID id){return entities.get(id);}}

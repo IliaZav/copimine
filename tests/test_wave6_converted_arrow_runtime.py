@@ -88,7 +88,7 @@ public class ConvertedArrowProbe {
     }
     static class Arrow extends AbstractArrow {
         double damage;UUID group;boolean ritual;
-        Arrow(World w){super(w);}void setDamage(double v){damage=v;}void setCritical(boolean v){}
+        Arrow(World w){super(w);}void setVisibleByDefault(boolean v){}void setDamage(double v){damage=v;}void setCritical(boolean v){}
         void setPickupStatus(PickupStatus s){}void setColor(Color c){}Vector getVelocity(){return new Vector();}
     }
     static class LargeFireball extends Projectile {LargeFireball(World w){super(w);}}

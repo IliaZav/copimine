@@ -426,9 +426,9 @@
       "url": "https://ci.ender.zone/job/EssentialsX/1832/artifact/jars/EssentialsX-2.22.1-dev+27-e70bdb8.jar",
       "sourceCommit": "e70bdb817c758474acb3a23a37cf961b2f716a50",
       "compatibilityStatus": "requires-runtime-validation",
-      "sha512": "4173473a85b6c4a14b1d41e1c21044eda66bfc01983ba8a06405284233985b8517b8598f9455341b79a16a546f66314785dae4a0a81221c8ea2f4a2860bb010f",
+      "sha512": "62574151296066a083b05b09174bdd6c0f3d003ff3c84eb762b51c2e343ac27e958fa13680d906c36bcfbcfb9e106312e0265bf46a3504064f99923740eb2db8",
       "sha256": "a79eeeff1d628cd14aaf646b3a3fe9627efb6bc641890ef4bb71fca0ec65633c",
-      "size": 1957161,
+      "size": 2192225,
       "pluginName": "Essentials",
       "artifactVersion": "2.22.1-dev+27-e70bdb8",
       "replaceSha256": [

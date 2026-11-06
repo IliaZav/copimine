@@ -12,6 +12,8 @@ bone or a cuboid on a missing bone produces a rig that renders in the wrong plac
 """
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 import textwrap
 from pathlib import Path
@@ -263,10 +265,31 @@ PROBE = textwrap.dedent(
 )
 
 
+def _jdk_bin(name: str) -> Path:
+    """Find a JDK tool on CI as well as in this checkout.
+
+    CI installs Temurin into the runner's tool cache and exposes it through
+    JAVA_HOME; only this workstation keeps a JDK under local-runtime/toolchains.
+    Searching that directory alone made this probe fail on CI with
+    "no local JDK found".
+    """
+    executable = name + (".exe" if os.name == "nt" else "")
+    for variable in ("JAVA_HOME", "JAVA_HOME_25_X64", "JAVA_HOME_21_X64"):
+        configured = os.environ.get(variable)
+        if configured:
+            candidate = Path(configured) / "bin" / executable
+            if candidate.is_file():
+                return candidate
+    candidates = sorted(ROOT.glob("local-runtime/toolchains/temurin-*/jdk-*/bin/" + executable))
+    if candidates:
+        return candidates[0]
+    found = shutil.which(name)
+    assert found, f"{name} is required to compile this probe but was not found"
+    return Path(found)
+
+
 def _toolchain() -> tuple[Path, Path, Path]:
-    candidates = sorted(ROOT.glob("local-runtime/toolchains/temurin-*/jdk-*/bin/javac.exe"))
-    assert candidates, "no local JDK found under local-runtime/toolchains"
-    javac = candidates[0]
+    javac = _jdk_bin("javac")
     gson = sorted(ROOT.glob("local-runtime/end-rift-server-26.3/libraries/com/google/code/gson/**/gson-*.jar"))
     assert gson, "no gson jar found under the server libraries"
     return javac, javac.with_name("java.exe"), gson[-1]

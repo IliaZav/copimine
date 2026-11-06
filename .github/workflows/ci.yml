@@ -94,14 +94,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Pinned plugin fixture preparation failed.' }
           & powershell -NoProfile -ExecutionPolicy Bypass -File .\thirdparty\grim-creative-patch\build-grim-creative-patch.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Grim Creative fixture build failed.' }
-      - name: Build client artifact required by contract tests
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          & powershell -NoProfile -ExecutionPolicy Bypass -File .\CopiMineClient\build-client.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'CopiMineClient build failed.' }
-          $clientJar = Join-Path $env:GITHUB_WORKSPACE 'CopiMineClient\build\libs\CopiMineClient-0.1.1.jar'
-          if (-not (Test-Path -LiteralPath $clientJar -PathType Leaf)) { throw "CopiMineClient artifact was not created: $clientJar" }
       - name: Record Java 21 for the pinned Grim patch build
         shell: pwsh
         run: |
@@ -127,6 +119,20 @@ jobs:
           distribution: jdkfile
           java-version: '25.0.4.1'
           jdk-file: ${{ runner.temp }}/temurin-25.0.4.1+1.zip
+      # This step runs after the Temurin 25 setup on purpose. The client jar is
+      # pinned by digest, and javac 21 and javac 25 disagree on the bytecode of
+      # 26 classes in it - the same sources compiled under each produce jars
+      # that can never match one another. The pinned artifact was built with
+      # Temurin 25, so it has to be rebuilt with Temurin 25 too. Running this
+      # before the setup step silently built it with 21 and compared the two.
+      - name: Build client artifact required by contract tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell -NoProfile -ExecutionPolicy Bypass -File .\CopiMineClient\build-client.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'CopiMineClient build failed.' }
+          $clientJar = Join-Path $env:GITHUB_WORKSPACE 'CopiMineClient\build\libs\CopiMineClient-0.1.1.jar'
+          if (-not (Test-Path -LiteralPath $clientJar -PathType Leaf)) { throw "CopiMineClient artifact was not created: $clientJar" }
       - name: Build and verify pinned Minecraft 26.3 candidates
         shell: pwsh
         run: |

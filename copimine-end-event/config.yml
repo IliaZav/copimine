@@ -43,6 +43,11 @@ mobs:
   skeleton:
     health-bonus: 8.0
     attack-damage-bonus: 2.0
+    # Additional melee damage an elite skeleton deals on top of the ordinary
+    # role. Zero keeps elites dangerous through health and abilities rather
+    # than raw swing damage. The key is required: EventConfig reads it with a
+    # -1 default so a missing key fails loudly instead of silently disabling it.
+    elite-attack-damage-bonus: 0.0
     # Elite maximum health is exactly 3x the ordinary role under the same
     # frozen party scaling, so it is derived rather than configured here.
 

@@ -16504,6 +16504,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 continue;
             }
             if (target == null || !isWaveTargetAllowed(entity, target)) {
+                // No legal target: hold position. Restoring vanilla AI without
+                // this makes an Enderman pick its own random wander goal, which
+                // is exactly the "mobs pace back and forth" the player reported:
+                // a wave would look alive but never commit to a fight.
+                holdWaveMobWithoutTarget(mob);
                 continue;
             }
             if (mob instanceof Skeleton skeleton) {
@@ -18261,6 +18266,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * intent. Skeletons use the ranged posture below and never receive a mob
      * target.
      */
+    /**
+     * Keep a wave mob that has no legal target from wandering on its own.
+     *
+     * <p>Restoring native AI is what lets a mob walk, attack and take knockback,
+     * but it also re-installs the vanilla random-stroll goal. With nothing to
+     * chase, an Enderman then picks its own destination and walks away from the
+     * arena centre - the behaviour the player described as "running back and
+     * forth". A mob with no target stands still; the next tick that produces a
+     * target puts it back on a real path.</p>
+     */
+    private void holdWaveMobWithoutTarget(Mob mob) {
+        if (mob == null) return;
+        if (mob.getPathfinder().hasPath()) {
+            mob.getPathfinder().stopPathfinding();
+        }
+        if (!mob.getVelocity().isZero() && mob.isOnGround()) {
+            mob.setVelocity(new Vector());
+        }
+        waveLastPathDestinations.remove(mob.getUniqueId());
+    }
+
     private void maintainWaveMobPath(Mob mob, Player target, String kind, long now) {
         if (mob != null) refreshWave3GateIntentPath(mob);
         if (mob == null || target == null || !isCombatTarget(target)

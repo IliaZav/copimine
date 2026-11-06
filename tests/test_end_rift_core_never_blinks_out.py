@@ -57,3 +57,31 @@ def test_rune_overlays_are_only_spawned_when_missing():
     assert 'findRuneOverlay(world, floor) == null' in rebuild, (
         'a rune that is already standing must not be respawned'
     )
+
+
+def test_a_core_display_from_a_previous_generation_is_adopted_not_deleted():
+    # Every /cmend wave spawn advances the generation, so the Core overlay that
+    # was standing a moment earlier no longer reported as "owned by this
+    # session" and the repair tick rebuilt it. That is what made the objective
+    # blink out on every wave: the fix has to adopt the standing fixture.
+    root = SRC.read_text(encoding='utf-8')
+
+    adopt = method(root, 'private ItemDisplay findAdoptableCoreOverlay(')
+    assert 'ownedByEvent(entity, eventId)' in adopt, (
+        'adoption must not depend on the generation that created the display'
+    )
+    assert 'sameCoreOverlayBlock(display, core)' in adopt, (
+        'only a display standing on the configured Core block may be adopted'
+    )
+
+    rebuild = method(root, 'private void rebuildPersistedVisuals(')
+    assert 'findAdoptableCoreOverlay(world, core)' in rebuild
+    assert rebuild.index('findAdoptableCoreOverlay(') < rebuild.index('hasCoreOverlay(world, core)'), (
+        'the adoption must happen before the presence probe'
+    )
+
+    adopt_method = method(root, 'private void adoptEntityIntoCurrentSession(')
+    assert 'keyGeneration, PersistentDataType.LONG, generation' in adopt_method, (
+        'adoption moves the owner stamp forward; it must never respawn the entity'
+    )
+    assert 'registerOwnedEntity(entity)' in adopt_method

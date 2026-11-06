@@ -30,6 +30,19 @@ public final class WaveTwoPhantomLayoutPolicy {
         double innerRadius = Math.min(radius * 0.35D, Math.max(1.0D, radius * 0.18D));
         double innerRadiusSquared = innerRadius * innerRadius;
         double radiusSquared = radius * radius;
+        // Phantom positions must look scattered across the whole arena, so the angle and the
+        // radius are both drawn uniformly - no rings, no spokes. Uniform sampling alone still
+        // lets two candidates land almost on top of each other, and a pair standing shoulder to
+        // shoulder reads as a "cluster" instead of a field of separated figures. Enforce a
+        // floor on the horizontal separation and simply reject candidates that violate it.
+        //
+        // The floor scales with the field: a ring of this area holds TARGET_PHANTOM_COUNT
+        // points at roughly sqrt(area / TARGET_PHANTOM_COUNT) spacing, so half of that is the
+        // tightest gap that still leaves the field looking evenly scattered. The attempt cap is
+        // generous because rejection sampling can retry, and the layout is allowed to fall back
+        // to MIN_PHANTOM_COUNT when the arena is cramped.
+        double minSeparation = minimumSeparation(radius, innerRadius);
+        double minSeparationSquared = minSeparation * minSeparation;
         SplittableRandom random = new SplittableRandom(mixSeed(seed));
         Set<Position> distinct = new LinkedHashSet<>(TARGET_PHANTOM_COUNT);
         for (int attempt = 0; attempt < MAX_CANDIDATE_ATTEMPTS
@@ -43,7 +56,9 @@ public final class WaveTwoPhantomLayoutPolicy {
                     anchor.z() + StrictMath.sin(angle) * distance);
             if (!finiteWorldPosition(candidate)) continue;
             Position resolved = safeResolver.apply(candidate);
-            if (finiteWorldPosition(resolved)) distinct.add(resolved);
+            if (!finiteWorldPosition(resolved)) continue;
+            if (tooClose(resolved, distinct, minSeparationSquared)) continue;
+            distinct.add(resolved);
         }
         if (distinct.isEmpty()) return List.of();
         List<Phantom> result = new ArrayList<>(distinct.size());
@@ -52,6 +67,31 @@ public final class WaveTwoPhantomLayoutPolicy {
             result.add(new Phantom(String.format(Locale.ROOT, "phantom-%02d", index++), position));
         }
         return List.copyOf(result);
+    }
+
+    /**
+     * Tightest allowed horizontal gap between two phantom figures.
+     *
+     * A ring of this area holds {@link #TARGET_PHANTOM_COUNT} points at roughly
+     * {@code sqrt(area / count)} spacing; half of that leaves the field looking scattered while
+     * still leaving room to place every figure. The result is clamped so a crowded arena does not
+     * end up demanding more separation than it can provide.
+     */
+    static double minimumSeparation(double radius, double innerRadius) {
+        double area = StrictMath.PI * (radius * radius - innerRadius * innerRadius);
+        if (!(area > 0.0D)) return 0.0D;
+        double evenSpacing = StrictMath.sqrt(area / TARGET_PHANTOM_COUNT);
+        return evenSpacing * 0.5D;
+    }
+
+    private static boolean tooClose(Position candidate, Set<Position> accepted, double minSquared) {
+        if (minSquared <= 0.0D) return false;
+        for (Position taken : accepted) {
+            double dx = candidate.x() - taken.x();
+            double dz = candidate.z() - taken.z();
+            if (dx * dx + dz * dz < minSquared) return true;
+        }
+        return false;
     }
 
     private static long mixSeed(long value) {

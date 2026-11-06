@@ -29,10 +29,19 @@ public final class EndRiftTentacleWorldScalePolicy {
         return safe * BASE_LENGTH_RENDER_SCALE;
     }
 
+    /**
+     * Converts an authored rig height to world blocks.
+     *
+     * <p>The importer leaves source dimensions in raw Blockbench units and the
+     * renderer applies {@link #rendererLengthScaleForRig(float)} directly, so
+     * the authored height is multiplied by the same length scale - it is NOT
+     * divided by {@link #MODEL_UNITS_PER_BLOCK}. Dividing here reported the
+     * 7.8681-unit rig as 0.30 blocks while the comment above and the renderer
+     * both put it at about 4.9. Kept consistent with the two methods above.
+     */
     public static float worldHeightForAuthoredUnits(float authoredUnits,
                                                     float rigScale) {
         float safeUnits = Float.isFinite(authoredUnits) ? Math.max(0.0F, authoredUnits) : 0.0F;
-        float safe = Float.isFinite(rigScale) && rigScale > 0.0F ? rigScale : 1.0F;
-        return safeUnits / MODEL_UNITS_PER_BLOCK * safe * BASE_LENGTH_RENDER_SCALE;
+        return safeUnits * rendererLengthScaleForRig(rigScale);
     }
 }

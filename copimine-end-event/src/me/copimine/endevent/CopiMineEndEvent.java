@@ -21704,7 +21704,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean isCombatTarget(Player player) {
+        // A prisoner sealed inside the sphere is a participant for roster and
+        // reward purposes, but it is not a target: the player inside the sphere
+        // is suspended and cannot fight back, and mobs turning on it made the
+        // prison a damage race instead of a rescue.
+        if (isSealedRitualPrisoner(player)) {
+            return false;
+        }
         return isActiveArenaParticipant(player) || isCreativeTestTarget(player);
+    }
+
+    /** The player held inside the sphere, while the prison is still unbroken. */
+    private boolean isSealedRitualPrisoner(Player player) {
+        return player != null && !wave6PrisonBroken && isCurrentRitualPrisoner(player);
     }
 
     private void renderTransitionRuneCountdown(TransitionRuneController.Observation observation,

@@ -505,7 +505,7 @@ public class ScalingProbe {
         *(str(domain / name) for name in ('RitualSphereScalingPolicy.java', 'WaveMechanicsPolicy.java',
                                           'PressureBudgetController.java', 'RiftCarrierPolicy.java',
                                           'WaveSixRosterPolicy.java', 'MageSignaturePolicy.java',
-                                          'RitualCasterTacticsPolicy.java'))],
+                                          'RitualCasterTacticsPolicy.java', 'RitualCasterHealthPolicy.java'))],
         capture_output=True, text=True, timeout=30)
     assert compile_result.returncode == 0, compile_result.stderr
     server = subprocess.run(['java', '-cp', str(classes), 'ScalingProbe'],
@@ -740,9 +740,10 @@ public class GuardWarningProbe {
                                '-d', str(tmp_path), str(fixture),
                                *map(str, (ROOT / 'copimine-end-event/src/me/copimine/endevent/domain' / (name + '.java')
                                           for name in ('RitualGuardAbilityPolicy', 'RitualSphereScalingPolicy',
-                                                       'WaveSixRosterPolicy', 'MageSignaturePolicy',
+                                                       'WaveSixRosterPolicy', 'MageSignaturePolicy', "RitualCasterHealthPolicy",
                                                        'RitualCasterTacticsPolicy', 'WaveMechanicsPolicy',
-                                                       'RiftCarrierPolicy', 'PressureBudgetController')))],
+                                                       'RiftCarrierPolicy', 'PressureBudgetController',
+                                                       'RitualCasterHealthPolicy')))],
                               capture_output=True, text=True, timeout=60)
     assert compiled.returncode == 0, compiled.stderr
     executed = subprocess.run(['java', '-Xms8m', '-Xmx96m', '-XX:+UseSerialGC', '-cp', str(tmp_path),

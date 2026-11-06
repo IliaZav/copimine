@@ -1,5 +1,6 @@
 import java.util.List;
 
+import me.copimine.endevent.domain.RitualCasterHealthPolicy;
 import me.copimine.endevent.domain.EliteCombatStatsPolicy;
 import me.copimine.endevent.domain.MageSignaturePolicy;
 import me.copimine.endevent.domain.WaveSixRosterPolicy;
@@ -99,8 +100,14 @@ public final class WaveSixRosterPolicyTest {
         check(Math.abs(smallest - WaveSixRosterPolicy.MAGE_BASE_HEALTH) < 1.0e-9,
                 "smallest party uses the base profile, got " + smallest);
         check(largest > smallest, "a larger party faces a tougher mage");
-        check(largest > WaveSixRosterPolicy.MAGE_BASE_HEALTH * 2.0D,
-                "the largest party meaningfully exceeds the base profile");
+        // The player named the envelope explicitly: 350 HP floor, 800 HP ceiling.
+        // This used to assert an arbitrary "more than twice the base" growth while
+        // its own curve returned 320 at the bottom and 896 at the top.
+        check(smallest >= RitualCasterHealthPolicy.MIN_HEALTH,
+                "no mage may fall below the named 350 HP floor, got " + smallest);
+        check(largest <= RitualCasterHealthPolicy.MAX_HEALTH,
+                "no mage may exceed the named 800 HP ceiling, got " + largest);
+        check(largest > smallest, "extra players must still raise the wheel");
 
         // It must not be the generic elite formula and must not borrow the
         // Wave 7 thousand-HP floor.

@@ -320,7 +320,8 @@ public class WaveFogLifecycleProbe {
 ''', encoding="utf-8")
     sources = [java, ROOT / "copimine-end-event/src/me/copimine/endevent/runtime/WaveCombatCoordinator.java",
                    *[ROOT / ("copimine-end-event/src/me/copimine/endevent/domain/" + name + ".java")
-                     for name in ["EliteAbilityPolicy", "DragonBreathCloudPolicy", "SpiderEffectLeasePolicy", "BlackFogEffectLeasePolicy", "EliteProjectileImpactPolicy", "WaveProjectileAdmissionController", "WaveProjectileTargetPolicy", "PressureBudgetController", "RitualGuardAbilityPolicy", "RitualSphereScalingPolicy", "WaveSixRosterPolicy", "MageSignaturePolicy", "RitualCasterTacticsPolicy", "WaveMechanicsPolicy", "RiftCarrierPolicy", "RitualConversionTargetPolicy"]]]
+                     for name in ["EliteAbilityPolicy", "DragonBreathCloudPolicy", "SpiderEffectLeasePolicy", "BlackFogEffectLeasePolicy", "EliteProjectileImpactPolicy", "WaveProjectileAdmissionController", "WaveProjectileTargetPolicy", "PressureBudgetController", "RitualGuardAbilityPolicy", "RitualSphereScalingPolicy", "RitualCasterHealthPolicy",
+                         "WaveSixRosterPolicy", "MageSignaturePolicy", "RitualCasterHealthPolicy", "RitualCasterTacticsPolicy", "WaveMechanicsPolicy", "RiftCarrierPolicy", "RitualConversionTargetPolicy"]]]
     built = subprocess.run(["javac", "-proc:none", "-encoding", "UTF-8", "-d", str(out), *map(str, sources)], capture_output=True, text=True)
     assert built.returncode == 0, built.stdout + built.stderr
     return out

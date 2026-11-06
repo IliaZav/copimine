@@ -258,7 +258,7 @@ public class GuardTacticsProbe {
     # budget, which pulls in the wave mechanics and carrier contracts.
     domain = ROOT / "copimine-end-event/src/me/copimine/endevent/domain"
     transitive = [domain / (name + ".java") for name in (
-        "RitualSphereScalingPolicy", "WaveSixRosterPolicy", "MageSignaturePolicy",
+        "RitualSphereScalingPolicy", "WaveSixRosterPolicy", "MageSignaturePolicy", "RitualCasterHealthPolicy",
         "RitualCasterTacticsPolicy", "WaveMechanicsPolicy", "RiftCarrierPolicy",
         "PressureBudgetController",
     )]

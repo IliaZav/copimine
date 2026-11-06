@@ -31,7 +31,10 @@ def test_wave6_small_party_elite_roles_stay_inside_the_pressure_roster(tmp_path)
          str(PRESSURE_BUDGET), str(WAVE_MECHANICS), str(ELITE_ABILITIES),
          str(RITUAL_SCALING), str(RITUAL_SCALING_TEST),
          str(DOMAIN / "RiftCarrierPolicy.java"), str(DOMAIN / "WaveSixRosterPolicy.java"),
-         str(DOMAIN / "MageSignaturePolicy.java"), str(DOMAIN / "RitualCasterTacticsPolicy.java")],
+         str(DOMAIN / "MageSignaturePolicy.java"), str(DOMAIN / "RitualCasterTacticsPolicy.java"),
+         # WaveSixRosterPolicy delegates its health curve to this class, so the
+         # probe must compile it too.
+         str(DOMAIN / "RitualCasterHealthPolicy.java")],
         capture_output=True, text=True,
     )
     assert compiled.returncode == 0, compiled.stdout + compiled.stderr

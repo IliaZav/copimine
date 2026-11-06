@@ -58,14 +58,22 @@ public final class WaveSixRosterPolicy {
      */
     public static double mageHealth(int admittedPlayers) {
         int roster = clampRoster(admittedPlayers);
-        return MAGE_BASE_HEALTH * (1.0D + MAGE_HEALTH_PER_PLAYER * (roster - MIN_PARTICIPANTS));
+        // Delegate to the one curve that owns the envelope. A second local
+        // formula used to live here and disagreed with it: it returned 320 HP
+        // at the smallest party (the player named 350 as the floor) and 896 at
+        // the largest (the player named 800 as the ceiling). The live spawn path
+        // always called RitualCasterHealthPolicy, so the stale numbers were
+        // invisible — and exactly the kind of trap that becomes a real bug the
+        // moment somebody wires this method up.
+        return RitualCasterHealthPolicy.maxHealthFor(0, roster);
     }
 
     /** Base health of one mage at the smallest supported party. */
-    public static final double MAGE_BASE_HEALTH = 320.0D;
+    public static final double MAGE_BASE_HEALTH =
+            RitualCasterHealthPolicy.MIN_HEALTH;
 
     /** Increment per additional admitted player above the minimum. */
-    public static final double MAGE_HEALTH_PER_PLAYER = 0.10D;
+    public static final double MAGE_HEALTH_PER_PLAYER = 0.0D;
 
     /**
      * The shared elite health contract, restated here as a local constant.

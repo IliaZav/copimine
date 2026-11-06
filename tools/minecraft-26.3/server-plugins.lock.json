@@ -362,7 +362,6 @@
       "artifactVersion": "2.3.75-1299a2a",
       "replaceSha256": [
         "55951173f16d23bc4c263309bacdd6c81db0d32c3816700f202f4dff94066f20",
-        "10a905ee82fcc35130fcacd9a2f51b1e3b253d043466458f3be36b1319bd6279",
         "7f1df9c02b52c1d2f69949a0c465781ed8c53dd0c52234feec01785e675ff5d1",
         "074c3421d99b42ad189c5eafb038dc8e41569b0c36283efada3cc07637e006ab"
       ],
@@ -399,7 +398,6 @@
       "artifactVersion": "24.1",
       "replaceSha256": [
         "402075d0eca6c3748d67d5b580bc5faf78b1b5ba91446ac15ccc7c7225457a81",
-        "a2acef7c06ef201355cef07d591a6055dfed358ad768faaaaaf4e276865ecc97",
         "467f16bc133b1fe93b2785e16a512f1a277637ee700b0abd7436fb2263a50cef",
         "48b9db1a9784190c7b5c295d5ebf1433cc4c8bbbd2c3a991aa54c975dde9a7d0"
       ],
@@ -428,9 +426,9 @@
       "url": "https://ci.ender.zone/job/EssentialsX/1832/artifact/jars/EssentialsX-2.22.1-dev+27-e70bdb8.jar",
       "sourceCommit": "e70bdb817c758474acb3a23a37cf961b2f716a50",
       "compatibilityStatus": "requires-runtime-validation",
-      "sha512": "62574151296066a083b05b09174bdd6c0f3d003ff3c84eb762b51c2e343ac27e958fa13680d906c36bcfbcfb9e106312e0265bf46a3504064f99923740eb2db8",
+      "sha512": "4173473a85b6c4a14b1d41e1c21044eda66bfc01983ba8a06405284233985b8517b8598f9455341b79a16a546f66314785dae4a0a81221c8ea2f4a2860bb010f",
       "sha256": "a79eeeff1d628cd14aaf646b3a3fe9627efb6bc641890ef4bb71fca0ec65633c",
-      "size": 2192225,
+      "size": 1957161,
       "pluginName": "Essentials",
       "artifactVersion": "2.22.1-dev+27-e70bdb8",
       "replaceSha256": [
@@ -998,23 +996,19 @@
       "candidate": {
         "filename": "CopiMineEndEvent-26.3.jar",
         "runtimeFilename": "CopiMineEndEvent.jar",
-        "sha256": "2d1a007716700fb2e992f5b2169a49857fe79e9c066d316d2c00eb6501ebe936",
+        "sha256": "f1ba0594d9edb7332d594e805bc95aa6674f81ac003d3468e3fcd8acfc0a70d4",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "size": 2192225,
-        "sha512": "62574151296066a083b05b09174bdd6c0f3d003ff3c84eb762b51c2e343ac27e958fa13680d906c36bcfbcfb9e106312e0265bf46a3504064f99923740eb2db8",
+        "size": 1957663,
+        "sha512": "ea1cec3b0536a353e28ab736fb5475853ee12511380596e60cbe39909d8dc1deb527d33906ec1caed9d3564db9338b7833ada823280d8289deb0e07d525d9611",
         "runtimeEligible": true,
         "replaceSha256": [
-          "2d1a007716700fb2e992f5b2169a49857fe79e9c066d316d2c00eb6501ebe936",
-          "2d1a007716700fb2e992f5b2169a49857fe79e9c066d316d2c00eb6501ebe936",
+          "8784fb3c81a43a7ad2aa325623c7d81f50dc6fe74d1a0b7f20fa070799c30dc7",
           "ed0c583b92e326604059389c7b2c9e5bd83826493ed8038d676ad166a1b0f483",
-          "2d1a007716700fb2e992f5b2169a49857fe79e9c066d316d2c00eb6501ebe936",
           "8dd50d84a7d227ac813b58bf682a3734b9b48828bbce2f2deb7fd5f9799db130",
-          "2d1a007716700fb2e992f5b2169a49857fe79e9c066d316d2c00eb6501ebe936",
           "8357ddf721fc19687644fc24c02e7b2a0a472fc278e202623a233399fc159a05",
-          "2d1a007716700fb2e992f5b2169a49857fe79e9c066d316d2c00eb6501ebe936",
           "97becd98d0c7da3657c1950d42f0328ef37e72a58d4eba04c0b3a0fe75a9fb82",
           "31d9d83c6f9685f2f6501615789ce3b13c6d0b4f62d86649b5516e8dd4b07542",
           "4cd9f3a4d8c0973dabd4b6a79d5041efe6e8fbdc5f6ef5f0e373c7d47870931a",

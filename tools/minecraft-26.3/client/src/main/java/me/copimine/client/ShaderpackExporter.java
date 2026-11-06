@@ -274,15 +274,47 @@ public final class ShaderpackExporter {
      * that folder to build the shaderpack menu, so every event effect showed up there by name and
      * could be switched on by hand, outside any wave. Those files are still on disk for anyone who
      * ran an older build, so removing them only from now on would leave the menu dirty forever.
-     * Delete a stale copy when its bytes no longer match the current bundle, which is exactly the
-     * stale case, and leave anything the player put there by hand untouched.
+     *
+     * <p>The file is only removed when it is provably one of our own exports. The file name alone
+     * is not provenance: the player may have dropped their own pack under that name, and deleting
+     * it would destroy data the event has no claim to. So the bytes must match a CopiMine export
+     * (the current bundle, or the copy this build left in the private folder), otherwise the file
+     * is left exactly as it is. Anything removed is backed up first, so an unexpected deletion can
+     * still be undone by hand.</p>
      */
     private Path removeIfDifferent(Path target, byte[] bytes) throws Exception {
         if (target == null || !Files.isRegularFile(target)) {
             return null;
         }
-        Files.deleteIfExists(target);
-        return target;
+        byte[] existing;
+        try {
+            existing = Files.readAllBytes(target);
+        } catch (java.io.IOException unreadable) {
+            // An unreadable file cannot be proven to be ours, so it stays.
+            CopiMineClientLogger.warn("Left an unreadable shaderpack file in place: " + target);
+            return null;
+        }
+        if (isOurExport(target, existing, bytes)) {
+            Path backup = writeIfChanged(target, bytes);
+            Files.deleteIfExists(target);
+            return backup != null ? backup : target;
+        }
+        return null;
+    }
+
+    /** True when {@code existing} is byte-for-byte a CopiMine export rather than foreign content. */
+    private boolean isOurExport(Path target, byte[] existing, byte[] currentBundle) throws Exception {
+        if (MessageDigest.isEqual(sha256(existing), sha256(currentBundle))) {
+            return true;
+        }
+        // A copy published by an earlier build differs from today's bundle but was still written
+        // by us, and that build left the identical bytes in the private folder. Matching that file
+        // proves provenance; a pack the player dropped under the same name will not match it.
+        Path privateCopy = runtimeShaderpackDir.resolve(target.getFileName());
+        if (Files.isRegularFile(privateCopy)) {
+            return MessageDigest.isEqual(sha256(existing), sha256(Files.readAllBytes(privateCopy)));
+        }
+        return false;
     }
 
     private ValidationResult validateZip(ShaderpackRegistry.ShaderpackProfile profile, byte[] bytes) throws Exception {

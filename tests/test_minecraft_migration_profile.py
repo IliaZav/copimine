@@ -202,10 +202,10 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # Repinned again for the Wave 2 Enderman screen effect: the mark now applies the vanilla
     # minecraft:invert post shader, so it works on a client with no Iris, and the narcotics
     # shaderpacks are withdrawn from the shaderpacks folder that Iris lists.
-    assert artifact['size'] == 13_476_411
+    assert artifact['size'] == 13_476_701
     assert artifact['sha512'] == (
-        'b7ef7cd8d270f96a63727dad7f2fbce97ad24b6d4e378fdab99c47b646e856bb'
-        '2cdc74e3cecaacd2f33ce5fd6978509afff3909325075cafba565fb0dba7f6a3'
+        'cdd5bba3c95d8256596e815f26c70722a637a77a4fd92810743a2fd293080d48'
+        '66249609c2362dff7b38c45568b8b1d66d5ef682083fc0aa54a92a4370378247'
     )
 
 

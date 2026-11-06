@@ -89,6 +89,18 @@ public final class WaveProbeAdapterHarness {
     static final String WAVE_TWO_GROUPS_SPAWNED_PROGRESS_KEY = "wave2-groups-spawned";
     static final String WAVE_TWO_GROUP_CLEARED_PROGRESS_KEY = "wave2-group-cleared";
     static final String WAVE_TWO_MARK_ASSIGNMENT_ID_PROGRESS_KEY = "wave2-mark-assignment-id";
+    // Wave 2 squad ownership is server-owned and persisted under its own progress
+    // key now, so restart recovery reads and rewrites the owner roster.
+    static final String WAVE_TWO_OWNER_ROSTER_PROGRESS_KEY = "wave2-squad-owner-roster";
+    List<UUID> waveTwoAssignmentRoster = List.of();
+    final Set<UUID> waveTwoOwnershipFaultsLogged = new java.util.LinkedHashSet<>();
+    static class WaveTwoOwnershipPolicy {
+        static String encodeRoster(java.util.Collection<UUID> roster){return String.join(",", roster.stream().map(UUID::toString).toList());}
+        static List<UUID> decodeRoster(String text){
+            return text == null || text.isBlank() ? List.of()
+                    : java.util.Arrays.stream(text.split(",")).map(UUID::fromString).toList();
+        }
+    }
     static final String WAVE_TWO_OUTSTANDING_UUIDS_PROGRESS_KEY = "wave2-outstanding-uuids";
     static final String WAVE_TWO_ATTEMPT_LIFECYCLE_PREFIX = "wave2-attempt-lifecycle.";
     static final long OFFLINE_RECONNECT_GRACE_MILLIS = 25_000L;

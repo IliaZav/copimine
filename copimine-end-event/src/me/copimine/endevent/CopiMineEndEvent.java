@@ -164,6 +164,7 @@ import me.copimine.endevent.domain.WaveEliteCompositionPolicy;
 import me.copimine.endevent.domain.WaveTwoStagePolicy;
 import me.copimine.endevent.domain.WaveTwoEntityRecoveryPolicy;
 import me.copimine.endevent.domain.WaveTwoHuntPolicy;
+import me.copimine.endevent.domain.WaveTwoOwnershipPolicy;
 import me.copimine.endevent.domain.WavePressurePolicy;
 import me.copimine.endevent.domain.WaveProjectileAdmissionController;
 import me.copimine.endevent.domain.WaveProjectileTargetPolicy;
@@ -683,6 +684,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final String WAVE_TWO_OUTSTANDING_UUIDS_PROGRESS_KEY = "wave2-outstanding-uuids";
     private static final String WAVE_TWO_CLEANUP_UUIDS_PROGRESS_KEY = "wave2-cleanup-uuids";
     private static final String WAVE_TWO_CLEANUP_EPOCH_PROGRESS_KEY = "wave2-cleanup-epoch";
+    private static final String WAVE_TWO_OWNER_ROSTER_PROGRESS_KEY = "wave2-squad-owner-roster";
     /** A lost W1 carrier must be recoverable without an unbounded spawn loop. */
     private static final int CARRIER_REPLACEMENT_CAP = 12;
     private static final long WAVE_REWARD_OWNER_WINDOW_MILLIS = 30_000L;
@@ -930,6 +932,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private Location waveTwoPhantomActivationLocation;
     private final Map<UUID, String> waveTwoMaterializedPhantoms = new LinkedHashMap<>();
     private final Map<UUID, Set<UUID>> waveTwoHiddenEntitiesByViewer = new LinkedHashMap<>();
+    private List<UUID> waveTwoAssignmentRoster = List.of();
+    private final Set<UUID> waveTwoOwnershipFaultsLogged = new LinkedHashSet<>();
     /** Every participant the wave currently marks; the whole party, all wave. */
     private final Set<UUID> waveTwoMarkedParticipants = new LinkedHashSet<>();
     private record SpiderEffectLeaseKey(UUID playerId, PotionEffectType effectType) { }
@@ -1645,6 +1649,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private NamespacedKey keyWaveSpawnGroup;
     private NamespacedKey keyWaveTwoFinalElite;
     private NamespacedKey keyWaveTwoCleanupEpoch;
+    private NamespacedKey keyWaveTwoSquadOwner;
     private NamespacedKey keyEventSessionId;
     private NamespacedKey keyEventRole;
     private NamespacedKey keyEventWave;
@@ -1802,6 +1807,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             keyWaveSpawnGroup = new NamespacedKey(this, "end_event_wave_spawn_group");
             keyWaveTwoFinalElite = new NamespacedKey(this, "end_event_wave2_final_elite");
             keyWaveTwoCleanupEpoch = new NamespacedKey(this, "end_event_wave2_cleanup_epoch");
+            keyWaveTwoSquadOwner = new NamespacedKey(this, "end_event_wave2_squad_owner");
             keyEventSessionId = new NamespacedKey(this, "event_session_id");
             keyEventRole = new NamespacedKey(this, "event_role");
             keyEventWave = new NamespacedKey(this, "event_wave");
@@ -3860,12 +3866,34 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         boolean restoredWaveTwoCleared = false;
         Set<UUID> restoredWaveTwoOutstanding = Set.of();
         Set<UUID> restoredWaveTwoCleanup = Set.of();
+        List<UUID> restoredWaveTwoAssignmentRoster = List.of();
         boolean validWaveTwoRecoveryState = true;
         String invalidWaveTwoRecoveryReason = "";
         boolean waveTwoAssignmentRecoverySnapshot = snapshot.eventPhase() == EventPhase.RECOVERY_REQUIRED
                 && ("WAVE_TWO_MARK_ASSIGNMENT_ID_EXHAUSTED".equals(snapshot.recoveryReason())
                 || "WAVE_TWO_MARK_ASSIGNMENT_CHECKPOINT_FAILED".equals(snapshot.recoveryReason()));
+        boolean waveTwoOwnerSnapshot = snapshot.eventPhase() == EventPhase.WAVE_2
+                || snapshot.eventPhase() == EventPhase.RECOVERY_REQUIRED
+                && (waveTwoAssignmentRecoverySnapshot
+                || snapshot.objectiveProgress().containsKey(WAVE_TWO_OWNER_ROSTER_PROGRESS_KEY)
+                || snapshot.recoveryReason().startsWith("WAVE_TWO_"));
         try {
+            if (waveTwoOwnerSnapshot) {
+                String encodedOwners = waveTwoProgress.get(WAVE_TWO_OWNER_ROSTER_PROGRESS_KEY);
+                if (encodedOwners != null) {
+                    restoredWaveTwoAssignmentRoster = WaveTwoOwnershipPolicy.decodeRoster(encodedOwners);
+                } else {
+                    Set<UUID> legacyOwners = !snapshot.officialRewardRoster().isEmpty()
+                            ? snapshot.officialRewardRoster() : snapshot.participants();
+                    if (!legacyOwners.isEmpty()) {
+                        restoredWaveTwoAssignmentRoster = WaveTwoOwnershipPolicy.decodeRoster(
+                                WaveTwoOwnershipPolicy.encodeRoster(legacyOwners));
+                    }
+                }
+                if (restoredWaveTwoAssignmentRoster.isEmpty()) {
+                    throw new IllegalArgumentException("Wave 2 snapshot has no frozen squad owner roster");
+                }
+            }
             String cleanupEpoch = waveTwoProgress.get(WAVE_TWO_CLEANUP_EPOCH_PROGRESS_KEY);
             restoredWaveTwoCleanupEpoch = cleanupEpoch == null ? 0L : Long.parseLong(cleanupEpoch);
             if (restoredWaveTwoCleanupEpoch < 0L) {
@@ -3933,9 +3961,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             waveTwoOutstandingEntityUuids.addAll(restoredWaveTwoOutstanding);
             waveTwoCleanupEntityUuids.clear();
             waveTwoCleanupEntityUuids.addAll(restoredWaveTwoCleanup);
+            waveTwoAssignmentRoster = restoredWaveTwoAssignmentRoster;
+            waveTwoOwnershipFaultsLogged.clear();
         } else {
             phase = EventPhase.RECOVERY_REQUIRED;
             recoveryReason = invalidWaveTwoRecoveryReason;
+            waveTwoAssignmentRoster = List.of();
         }
         waveTwoRecoveryCheckpoint = waveTwoAssignmentRecoverySnapshot && validWaveTwoRecoveryState
                 ? Map.copyOf(snapshot.objectiveProgress()) : Map.of();
@@ -4698,6 +4729,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private Map<String, String> objectiveProgressSnapshot() {
         Map<String, String> encoded = new LinkedHashMap<>(waveObjectiveProgressSnapshot());
+        if (!waveTwoAssignmentRoster.isEmpty()
+                && (phase == EventPhase.WAVE_2
+                || phase == EventPhase.RECOVERY_REQUIRED && recoveryReason.startsWith("WAVE_TWO_"))) {
+            encoded.put(WAVE_TWO_OWNER_ROSTER_PROGRESS_KEY,
+                    WaveTwoOwnershipPolicy.encodeRoster(waveTwoAssignmentRoster));
+        }
         encoded.put(WAVE_TWO_CLEANUP_EPOCH_PROGRESS_KEY, Long.toString(waveTwoCleanupEpoch));
         if (!waveTwoCleanupEntityUuids.isEmpty()) {
             encoded.put(WAVE_TWO_CLEANUP_UUIDS_PROGRESS_KEY, WaveTwoEntityRecoveryPolicy.encode(
@@ -4786,6 +4823,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             encoded.put(WAVE_TWO_GROUPS_SPAWNED_PROGRESS_KEY, Integer.toString(waveTwoGroupsSpawned));
             encoded.put(WAVE_TWO_GROUP_CLEARED_PROGRESS_KEY, Boolean.toString(waveTwoGroupCleared));
             encoded.put(WAVE_TWO_MARK_ASSIGNMENT_ID_PROGRESS_KEY, Integer.toString(waveTwoMarkCycle));
+            encoded.put(WAVE_TWO_OWNER_ROSTER_PROGRESS_KEY,
+                    WaveTwoOwnershipPolicy.encodeRoster(waveTwoAssignmentRoster));
             encoded.put(WAVE_TWO_OUTSTANDING_UUIDS_PROGRESS_KEY, WaveTwoEntityRecoveryPolicy.encode(
                     waveTwoOutstandingEntityUuids, WaveTwoEntityRecoveryPolicy.MAX_OUTSTANDING_UUIDS));
             if (attemptLifecycle.owns(generation)) {
@@ -17215,6 +17254,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || readInt(entity, keyWave, activeWave) == 5 && isCurrentSafeZonePlayer(player)) {
             return false;
         }
+        if (readInt(entity, keyWave, 0) == 2
+                && isWaveCombatKind(readString(entity, keyKind))) {
+            if (activeWave != 2 || !ownedBySession(entity, eventId, generation)) return false;
+            UUID owner = waveTwoEntityOwner(entity);
+            if (!WaveTwoOwnershipPolicy.allowsTarget(owner, player.getUniqueId(),
+                    readEntityGeneration(entity), generation)) return false;
+        }
         if (isCurrentRitualGuard(entity)) {
             return ritualGuardTargetAllowed(entity, player);
         }
@@ -22885,6 +22931,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " reason=invalid-wave-context");
             return false;
         }
+        List<UUID> waveTwoOwners = List.of();
+        if (wave == 2 && !roster.isEmpty()) {
+            try {
+                waveTwoOwners = WaveTwoOwnershipPolicy.decodeRoster(
+                        WaveTwoOwnershipPolicy.encodeRoster(roster));
+            } catch (IllegalArgumentException invalidOwnerRoster) {
+                getLogger().log(Level.SEVERE, "END_RIFT_WAVE2_START_REFUSED event=" + eventId
+                        + " generation=" + generation + " reason=invalid-squad-owner-roster",
+                        invalidOwnerRoster);
+                return false;
+            }
+        }
         Location wave7Core = null;
         if (wave == 7) {
             wave7Core = coreCombatAnchorLocation();
@@ -22899,6 +22957,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (!clearWaveEntities(sandbox)) return false;
         sandboxWaveRoster = sandbox ? Set.copyOf(roster) : Set.of();
+        waveTwoAssignmentRoster = wave == 2 ? waveTwoOwners : List.of();
+        waveTwoOwnershipFaultsLogged.clear();
         testWaveFrontVisualMode = sandbox;
         testWaveInspectionMode = sandbox && inspectionMode;
         testPortalVisualMode = sandbox && wave == 3;
@@ -24895,13 +24955,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * the exactly-three-subwaves contract.</p>
      */
     private boolean hasUnpublishedWaveTwoRoster() {
-        if (waveTwoOutstandingEntityUuids.isEmpty()) return false;
-        Set<UUID> hidden = new LinkedHashSet<>();
-        for (Set<UUID> perViewer : waveTwoHiddenEntitiesByViewer.values()) hidden.addAll(perViewer);
-        for (UUID id : waveTwoOutstandingEntityUuids) {
-            if (hidden.contains(id) && ownedEntities.containsKey(id)) return true;
-        }
-        return false;
+        // Only an entity suspended because its durable roster could not be
+        // reconciled is unpublished. Per-viewer privacy hides are expected.
+        return waveTwoOutstandingEntityUuids.stream()
+                .anyMatch(waveTwoRecoveryFencedEntityUuids::contains);
     }
 
     /** Spawn the next bounded group for the canonical numbered-wave flow. */
@@ -25236,16 +25293,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private int tagWaveTwoSpawnGroup(int groupNumber, Set<UUID> entitiesBeforeSpawn) {
         LinkedHashSet<UUID> roster = new LinkedHashSet<>();
         List<Entity> entitiesToTag = new ArrayList<>();
+        boolean ownerAssignmentValid = true;
         for (Entity entity : ownedEntities.values()) {
             if (!(entity instanceof Mob) || !isWaveTwoOrdinaryMob(entity)) continue;
             int existingGroup = readInt(entity, keyWaveSpawnGroup, 0);
             if (existingGroup == groupNumber) {
                 roster.add(entity.getUniqueId());
+                if (waveTwoEntityOwner(entity) == null) ownerAssignmentValid = false;
             } else if (existingGroup == 0
                     && (entitiesBeforeSpawn == null || !entitiesBeforeSpawn.contains(entity.getUniqueId()))) {
                 roster.add(entity.getUniqueId());
                 entitiesToTag.add(entity);
+                if (waveTwoEntityOwner(entity) == null) ownerAssignmentValid = false;
             }
+        }
+        if (!ownerAssignmentValid) {
+            requireWaveTwoOwnershipRecovery(null, "spawn-group-owner-assignment-invalid");
+            return 0;
         }
         try {
             String encoded = WaveTwoEntityRecoveryPolicy.encode(
@@ -27357,7 +27421,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // put, so the synchronous path is never trustworthy for a ritual actor.
         if (entity == null) return false;
         relocateRitualEntityDeferred(entity.getUniqueId(), destination, role, casterSlot,
-                guardSlot, 0);
+                guardSlot, 0, generation);
         return true;
     }
 
@@ -27382,6 +27446,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     Map.of("role", safeRole, "casterSlot", casterSlot, "guardSlot", guardSlot));
             return false;
         }
+        UUID entityId = entity.getUniqueId();
+        String invalidActorReason = !entity.isValid() || entity.isDead() ? "actor-invalid"
+                : !ownedEntities.containsKey(entityId) ? "actor-not-owned"
+                : !(entity instanceof Mob) ? "actor-not-mob" : null;
+        if (invalidActorReason != null) {
+            getLogger().warning("WAVE6_RITUAL_ENTITY_PLACEMENT_FAILED event=" + eventId
+                    + " generation=" + generation + " entity=" + entityId
+                    + " role=" + safeRole + " caster_slot=" + casterSlot
+                    + " guard_slot=" + guardSlot + " reason=" + invalidActorReason);
+            emitDiagnostic("OBJECTIVE", "ENTITY_PLACEMENT_REJECT", "WARN", 6,
+                    invalidActorReason, null, entityId,
+                    "ritual:" + eventId + ":" + generation,
+                    Map.of("role", safeRole, "casterSlot", casterSlot, "guardSlot", guardSlot));
+            return false;
+        }
         Location destination = safeRitualLocation(coreCombatAnchorLocation(), requested);
         if (destination == null) {
             getLogger().warning("WAVE6_RITUAL_ENTITY_PLACEMENT_FAILED event=" + eventId
@@ -27402,9 +27481,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // success while the body never moves (measured: moved=false, landed=
         // false, no cancellation, no exception), so the retry has to be
         // scheduled instead of repeated inline.
+        long expectedGeneration = generation;
         try {
             scheduleRitualEntityPlacement(entity.getUniqueId(), destination, safeRole,
-                    casterSlot, guardSlot, 0);
+                    casterSlot, guardSlot, 0, expectedGeneration);
         } catch (RuntimeException schedulingFailure) {
             getLogger().warning("WAVE6_RITUAL_ENTITY_PLACEMENT_FAILED event=" + eventId
                     + " generation=" + generation + " entity=" + entity.getUniqueId()
@@ -27412,7 +27492,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             removeRitualEntity(entity.getUniqueId());
             return false;
         }
-        emitDiagnostic("OBJECTIVE", "ENTITY_PLACED", "INFO", 6, "ritual-entity-placed",
+        emitDiagnostic("OBJECTIVE", "ENTITY_PLACEMENT_SCHEDULED", "INFO", 6,
+                "ritual-entity-placement-pending",
                 null, entity.getUniqueId(), "ritual:" + eventId + ":" + generation,
                 Map.of("role", safeRole, "casterSlot", casterSlot, "guardSlot", guardSlot,
                         "location", locationText(destination)));
@@ -27427,11 +27508,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * attempt and that churn alone stalled the server thread.</p>
      */
     private static String ritualPlacementKey(UUID entityId, String role, int casterSlot,
-                                            int guardSlot, int attempt) {
-        StringBuilder key = new StringBuilder(52);
+                                            int guardSlot, int attempt, long expectedGeneration) {
+        StringBuilder key = new StringBuilder(72);
         key.append(entityId == null ? "-" : entityId).append('|')
                 .append(role == null ? "-" : role).append('|')
-                .append(casterSlot).append('|').append(guardSlot).append('|').append(attempt);
+                .append(casterSlot).append('|').append(guardSlot).append('|').append(attempt)
+                .append('|').append(expectedGeneration);
         return key.toString();
     }
 
@@ -27443,20 +27525,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * applied, so the authored cell is only ever reached from a later tick.</p>
      */
     private void scheduleRitualEntityPlacement(UUID entityId, Location destination, String role,
-                                               int casterSlot, int guardSlot, int attempt) {
+                                               int casterSlot, int guardSlot, int attempt,
+                                               long expectedGeneration) {
         Location target = destination.clone();
         int nextAttempt = attempt;
         // An already-scheduled body must not enqueue a second copy of the same
         // attempt: duplicates used to multiply on this runtime because the
         // scheduler answered the retry with "task already scheduled".
-        String key = ritualPlacementKey(entityId, role, casterSlot, guardSlot, nextAttempt);
+        String key = ritualPlacementKey(entityId, role, casterSlot, guardSlot,
+                nextAttempt, expectedGeneration);
         if (!ritualPlacementInFlight.add(key)) {
             return;
         }
         try {
-            org.bukkit.Bukkit.getScheduler().runTask(this,
-                    () -> relocateRitualEntityDeferred(entityId, target, role,
-                            casterSlot, guardSlot, nextAttempt));
+            org.bukkit.Bukkit.getScheduler().runTask(this, () -> {
+                if (generation != expectedGeneration || activeWave != 6) {
+                    ritualPlacementInFlight.remove(key);
+                    return;
+                }
+                relocateRitualEntityDeferred(entityId, target, role,
+                        casterSlot, guardSlot, nextAttempt, expectedGeneration);
+            });
         } catch (RuntimeException schedulingFailure) {
             ritualPlacementInFlight.remove(key);
             throw schedulingFailure;
@@ -27485,18 +27574,44 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * body the runtime keeps refusing can never exhaust the server thread.</p>
      */
     private void relocateRitualEntityDeferred(UUID entityId, Location destination, String role,
-                                              int casterSlot, int guardSlot, int attempt) {
+                                              int casterSlot, int guardSlot, int attempt,
+                                              long expectedGeneration) {
         // The scheduled step has started, so its key may be reused by the
         // bounded retry this attempt schedules.
         ritualPlacementInFlight.remove(
-                ritualPlacementKey(entityId, role, casterSlot, guardSlot, attempt));
+                ritualPlacementKey(entityId, role, casterSlot, guardSlot,
+                        attempt, expectedGeneration));
+        if (generation != expectedGeneration || activeWave != 6) return;
         Entity owned = ownedEntities.get(entityId);
-        if (!(owned instanceof Mob mob) || !mob.isValid() || mob.isDead()) return;
+        if (!(owned instanceof Mob mob)) {
+            String reason = owned == null ? "actor-not-owned" : "actor-not-mob";
+            getLogger().warning("WAVE6_RITUAL_ENTITY_PLACEMENT_FAILED event=" + eventId
+                    + " generation=" + generation + " entity=" + entityId
+                    + " role=" + role + " attempt=" + attempt + " reason=" + reason);
+            emitDiagnostic("OBJECTIVE", "ENTITY_PLACEMENT_REJECT", "WARN", 6,
+                    reason, null, entityId, "ritual:" + eventId + ":" + generation,
+                    Map.of("role", role, "attempt", attempt));
+            return;
+        }
+        if (!mob.isValid() || mob.isDead()) {
+            String reason = "actor-invalid";
+            getLogger().warning("WAVE6_RITUAL_ENTITY_PLACEMENT_FAILED event=" + eventId
+                    + " generation=" + generation + " entity=" + entityId
+                    + " role=" + role + " attempt=" + attempt + " reason=" + reason);
+            emitDiagnostic("OBJECTIVE", "ENTITY_PLACEMENT_REJECT", "WARN", 6,
+                    reason, null, entityId, "ritual:" + eventId + ":" + generation,
+                    Map.of("role", role, "attempt", attempt));
+            return;
+        }
         if (isAtAuthoredCell(mob.getLocation(), destination)) {
             // Already standing where the ring wants it: asking for the same
             // move again is the one case this runtime answers with a
             // useless rejection.
             retagRitualEntity(mob, role, null, casterSlot, guardSlot);
+            emitDiagnostic("OBJECTIVE", "ENTITY_PLACED", "INFO", 6, "ritual-entity-placed",
+                    null, entityId, "ritual:" + eventId + ":" + generation,
+                    Map.of("role", role, "casterSlot", casterSlot, "guardSlot", guardSlot,
+                            "location", locationText(destination)));
             return;
         }
         // Nothing moves a ritual actor synchronously on this runtime, but a
@@ -27504,40 +27619,38 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // the move by its return value is what refused every ring body; the
         // authoritative check is where the body stands afterwards.
         teleportCombatEntity(mob, destination);
+        // A reset can fence the request while the teleport event is running.
+        // The old generation must not tag or retry an actor in the new session.
+        if (generation != expectedGeneration || activeWave != 6) return;
         if (isAtAuthoredCell(mob.getLocation(), destination)) {
             retagRitualEntity(mob, role, null, casterSlot, guardSlot);
+            emitDiagnostic("OBJECTIVE", "ENTITY_PLACED", "INFO", 6, "ritual-entity-placed",
+                    null, entityId, "ritual:" + eventId + ":" + generation,
+                    Map.of("role", role, "casterSlot", casterSlot, "guardSlot", guardSlot,
+                            "location", locationText(destination)));
             return;
         }
-        // A teleport only becomes visible between ticks. Attempting it once per
-        // tick means the body is checked on the very next tick and not
-        // re-teleported; the cross-tick move lands well inside this window.
-        if (attempt + 1 >= WAVE6_RITUAL_PLACEMENT_TICKS) {
-            // The move was reported as rejected on this runtime, yet the body
-            // keeps its booking: it was accepted by the server (no error, no
-            // removal) and simply has not been collected yet. Say which in the
-            // log so a real regression is still visible.
-            String failureReason = combatTeleportRejectionReasons.get(entityId);
-            if (failureReason != null) {
-                getLogger().warning("WAVE6_RITUAL_ENTITY_PLACEMENT_DEFERRED event=" + eventId
-                        + " generation=" + generation + " entity=" + entityId
-                        + " role=" + role + " attempt=" + attempt
-                        + " reason=" + failureReason
-                        + " destination=" + locationText(destination));
-            }
-            teleportCombatEntity(mob, destination);
-            retagRitualEntity(mob, role, null, casterSlot, guardSlot);
-            return;
+        String failureReason = combatTeleportRejectionReasons.getOrDefault(
+                entityId, "authored-cell-not-reached");
+        if (attempt + 1 == WAVE6_RITUAL_PLACEMENT_TICKS) {
+            getLogger().warning("WAVE6_RITUAL_ENTITY_PLACEMENT_DEFERRED event=" + eventId
+                    + " generation=" + generation + " entity=" + entityId
+                    + " role=" + role + " attempt=" + (attempt + 1)
+                    + " reason=" + failureReason
+                    + " destination=" + locationText(destination));
         }
         if (attempt + 1 >= RITUAL_PLACEMENT_RETRY_LIMIT) {
-            getLogger().warning("WAVE6_RITUAL_ENTITY_PLACEMENT_ABANDONED event=" + eventId
+            getLogger().severe("WAVE6_RITUAL_ENTITY_PLACEMENT_ABANDONED event=" + eventId
                     + " generation=" + generation + " entity=" + entityId
                     + " role=" + role + " attempts=" + (attempt + 1)
+                    + " reason=" + failureReason
                     + " destination=" + locationText(destination));
+            markWave6RecoveryRequired("WAVE6_RITUAL_ENTITY_PLACEMENT_EXHAUSTED");
             return;
         }
         try {
             scheduleRitualEntityPlacement(entityId, destination, role, casterSlot,
-                    guardSlot, attempt + 1);
+                    guardSlot, attempt + 1, expectedGeneration);
         } catch (RuntimeException schedulingFailure) {
             // taskAlreadyScheduled: this body already has a retry queued for the
             // next tick, which is exactly what this attempt wanted to create.
@@ -27546,9 +27659,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             .contains("lready scheduled")) {
                 return;
             }
-            getLogger().warning("WAVE6_RITUAL_ENTITY_PLACEMENT_ABANDONED event=" + eventId
+            getLogger().severe("WAVE6_RITUAL_ENTITY_PLACEMENT_ABANDONED event=" + eventId
                     + " generation=" + generation + " entity=" + entityId
                     + " role=" + role + " reason=scheduler-refused failure=" + schedulingFailure);
+            markWave6RecoveryRequired("WAVE6_RITUAL_PLACEMENT_SCHEDULER_FAILED");
         }
     }
 
@@ -36788,19 +36902,39 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (wave6Sequence == null || !wave6Sequence.mageStageActive()
                 || ritualSphereState == null || wave6PrisonBroken) return;
         if (now < wave6NextStageAtMillis) return;
+        Location core = coreCombatAnchorLocation();
+        if (core == null || core.getWorld() == null) {
+            wave6StageSpawnAttempts++;
+            if (wave6StageSpawnAttempts >= WAVE6_MAX_STAGE_SPAWN_ATTEMPTS) {
+                wave6NextStageAtMillis = Long.MAX_VALUE;
+                getLogger().severe("WAVE6_STAGE_SPAWN_EXHAUSTED event=" + eventId
+                        + " generation=" + generation + " stage=" + wave6Sequence.stageIndex()
+                        + " attempts=" + wave6StageSpawnAttempts + " reason=core-unavailable");
+                markWave6RecoveryRequired("WAVE6_STAGE_SPAWN_EXHAUSTED");
+                return;
+            }
+            wave6NextStageAtMillis = now + WAVE6_STAGE_SPAWN_RETRY_MILLIS;
+            getLogger().warning("WAVE6_STAGE_SPAWN_RETRY event=" + eventId + " generation=" + generation
+                    + " stage=" + wave6Sequence.stageIndex() + " attempts=" + wave6StageSpawnAttempts
+                    + " reason=core-unavailable next_retry_at=" + wave6NextStageAtMillis);
+            return;
+        }
         // This gate is the one-shot ticket for a stage.  Without clearing it a
         // stage that spawned successfully kept being spawned again on every
-        // tick, stacking duplicate mage bodies and guard rings.
+        // tick, stacking duplicate mage bodies and guard rings. The ticket is
+        // consumed only after the combat core prerequisite is known to exist.
         wave6NextStageAtMillis = Long.MAX_VALUE;
-        Location core = coreCombatAnchorLocation();
-        if (core == null || core.getWorld() == null) return;
         RitualSphereScalingPolicy.Profile profile = ritualSphereState.profile();
         if (!spawnWaveSixStage(core.getWorld(), core, profile)) {
             wave6StageSpawnAttempts++;
             getLogger().warning("WAVE6_STAGE_SPAWN_RETRY event=" + eventId + " generation=" + generation
                     + " stage=" + wave6Sequence.stageIndex() + " attempts=" + wave6StageSpawnAttempts);
             if (wave6StageSpawnAttempts >= WAVE6_MAX_STAGE_SPAWN_ATTEMPTS) {
+                getLogger().severe("WAVE6_STAGE_SPAWN_EXHAUSTED event=" + eventId
+                        + " generation=" + generation + " stage=" + wave6Sequence.stageIndex()
+                        + " attempts=" + wave6StageSpawnAttempts + " reason=stage-spawn-failed");
                 markWave6RecoveryRequired("WAVE6_STAGE_SPAWN_EXHAUSTED");
+                return;
             }
             wave6NextStageAtMillis = now + WAVE6_STAGE_SPAWN_RETRY_MILLIS;
             return;
@@ -37154,7 +37288,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // body that is genuinely elsewhere is moved, and a refused move is
         // retried on the next tick instead of dropping the mage from the stage.
         if (!isAtAuthoredCell(body.getLocation(), location)) {
-            relocateRitualEntityDeferred(body.getUniqueId(), location, "CASTER", stage, -1, 0);
+            relocateRitualEntityDeferred(body.getUniqueId(), location, "CASTER", stage, -1, 0,
+                    generation);
         }
         tagRitualCasterAwakened(body, false);
         body.setTarget(null);
@@ -39684,31 +39819,39 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean isLivePortalModelLayer(UUID id, int portalIndex, PortalVisualLayer layer, long expectedGeneration) {
-        // "Порталы сломались, всех врагов удалило": an ItemDisplay that has been
-        // unloaded (or whose chunk is not resident) momentarily misses from
-        // ownedEntities and reports not-valid. That transient read was treated as
-        // a DEAD layer, the rebuild budget ran out, and the whole event was
-        // forced into RECOVERY_REQUIRED — which also wiped every enemy. A layer
-        // now only counts as dead when it is unloaded-but-tracked (it will be
-        // re-adopted) or explicitly gone; an absent, still-tracked visual is
-        // re-created by the identical rebuild path in the same tick.
         if (generation != expectedGeneration) return false;
         if (!Objects.equals(wavePortalVisualIndices.get(id), portalIndex)
                 || wavePortalVisualLayers.get(id) != layer) {
             return false;
         }
+        // An unloaded chunk is deferred until its entity-load callback. A loaded
+        // chunk with no matching entity is a genuinely missing layer and may be
+        // rebuilt without invalidating the combat roster.
+        if (!isPortalLayerChunkLoaded(portalIndex)) return false;
         Entity entity = ownedEntities.get(id);
         if (entity == null) {
-            // An UNTRACKED handle is a lost layer: it is re-created. A handle
-            // that is still owned but whose entity object is not resident is a
-            // perfectly good layer -- it must never be judged dead on a
-            // transient miss, which is what used to poison the whole event.
-            return !isLiveOwnedEntity(id);
+            Entity loaded = Bukkit.getEntity(id);
+            String expectedTag = "copimine_portal:" + portalIndex + ":" + layer.name();
+            if (!(loaded instanceof ItemDisplay) || loaded.isDead() || !loaded.isValid()
+                    || !ownedBySession(loaded, eventId, expectedGeneration)
+                    || !loaded.getScoreboardTags().contains(expectedTag)) return false;
+            registerOwnedEntity(loaded);
+            entity = loaded;
         }
         return entity instanceof ItemDisplay && isLiveOwnedEntity(id)
                 && ownedBySession(entity, eventId, expectedGeneration)
+                && entity.getScoreboardTags().contains(
+                "copimine_portal:" + portalIndex + ":" + layer.name())
                 && Objects.equals(wavePortalVisualIndices.get(id), portalIndex)
                 && wavePortalVisualLayers.get(id) == layer;
+    }
+
+    private boolean isPortalLayerChunkLoaded(int portalIndex) {
+        List<Location> portals = wavePortals.getOrDefault(3, List.of());
+        if (portalIndex < 0 || portalIndex >= portals.size()) return false;
+        Location portal = portals.get(portalIndex);
+        World world = portal == null ? null : portal.getWorld();
+        return world != null && world.isChunkLoaded(portal.getBlockX() >> 4, portal.getBlockZ() >> 4);
     }
 
     /** Adopt persisted layers without granting a new retry budget to a chunk callback. */
@@ -39866,7 +40009,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         for (int index = 0; index < Math.min(states.size(), portals.size()); index++) {
             if (generation != expectedGeneration || portalVisualGeneration != expectedGeneration) return;
-            if (states.get(index).completed() || portalVisualTransactionsInProgress.contains(index)) continue;
+            if (states.get(index).completed() || portalVisualTransactionsInProgress.contains(index)
+                    || !isPortalLayerChunkLoaded(index)) continue;
             final int portalIndex = index;
             boolean complete = true;
             for (PortalVisualLayer layer : PortalVisualLayer.values()) {
@@ -40280,8 +40424,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void updateMarkedTargetObjective(long now) {
         Set<UUID> marked = new LinkedHashSet<>();
+        if (waveTwoAssignmentRoster.isEmpty()) {
+            if (phase == EventPhase.WAVE_2) {
+                requireWaveTwoOwnershipRecovery(null, "frozen-roster-missing");
+            }
+            return;
+        }
+        Set<UUID> frozenOwners = Set.copyOf(waveTwoAssignmentRoster);
         for (Player participant : activeWaveParticipants()) {
-            if (participant == null || !participant.isOnline()) continue;
+            if (participant == null || !participant.isOnline()
+                    || !frozenOwners.contains(participant.getUniqueId())) continue;
             marked.add(participant.getUniqueId());
         }
         // One packet identity for the whole wave: every mark and every CLEAR of
@@ -40357,7 +40509,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (entity == null || !entity.isValid()) continue;
             if (!isWaveCombatKind(readString(entity, keyKind))) continue;
             if (readInt(entity, keyWave, 0) != 2) continue;
-            if (!waveTwoEntityOwner(entity).equals(participant.getUniqueId()))
+            UUID owner = waveTwoEntityOwner(entity);
+            if (!participant.getUniqueId().equals(owner))
                 desiredHidden.add(entity.getUniqueId());
         }
         Set<UUID> hidden = waveTwoHiddenEntitiesByViewer.computeIfAbsent(
@@ -40394,14 +40547,126 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         waveTwoHiddenEntitiesByViewer.clear();
     }
 
-    /** Stable per-player owner of one Wave 2 body, derived from its identity. */
+    /** Persisted per-player owner of one Wave 2 body; reconstruct only legacy missing tags. */
     private UUID waveTwoEntityOwner(Entity entity) {
-        List<Player> participants = activeWaveParticipants();
-        if (participants.isEmpty()) return new UUID(0L, 0L);
-        long bits = entity.getUniqueId().getMostSignificantBits()
-                ^ Long.rotateLeft(entity.getUniqueId().getLeastSignificantBits(), 29);
-        int slot = (int) Math.floorMod(bits, participants.size());
-        return participants.get(slot).getUniqueId();
+        if (entity == null || !isWaveCombatKind(readString(entity, keyKind))
+                || readInt(entity, keyWave, 0) != 2
+                || !ownedBySession(entity, eventId, generation)) return null;
+        if (keyWaveTwoSquadOwner == null) {
+            requireWaveTwoOwnershipRecovery(entity, "owner-key-unavailable");
+            return null;
+        }
+        String encodedOwner = readString(entity, keyWaveTwoSquadOwner);
+        if (!encodedOwner.isBlank()) {
+            try {
+                UUID owner = UUID.fromString(encodedOwner);
+                if (!owner.toString().equals(encodedOwner.toLowerCase(Locale.ROOT))
+                        || !waveTwoAssignmentRoster.contains(owner)) {
+                    requireWaveTwoOwnershipRecovery(entity, "persisted-owner-outside-frozen-roster");
+                    return null;
+                }
+                return owner;
+            } catch (IllegalArgumentException malformedOwner) {
+                requireWaveTwoOwnershipRecovery(entity, "persisted-owner-malformed");
+                return null;
+            }
+        }
+        if (waveTwoAssignmentRoster.isEmpty()) {
+            requireWaveTwoOwnershipRecovery(entity, "frozen-roster-missing");
+            return null;
+        }
+        try {
+            UUID owner = WaveTwoOwnershipPolicy.initialOwner(UUID.fromString(eventId), generation,
+                    entity.getUniqueId(), waveTwoAssignmentRoster);
+            entity.getPersistentDataContainer().set(keyWaveTwoSquadOwner,
+                    PersistentDataType.STRING, owner.toString());
+            return owner;
+        } catch (IllegalArgumentException invalidIdentity) {
+            requireWaveTwoOwnershipRecovery(entity, "owner-identity-invalid");
+            return null;
+        }
+    }
+
+    private void reassignWaveTwoEntitiesFor(UUID departedOwner, String cause) {
+        if (departedOwner == null || waveTwoAssignmentRoster.isEmpty()
+                || activeWave != 2 || phase != EventPhase.WAVE_2
+                && !testWaveFrontVisualMode) return;
+        List<UUID> survivors = activeWaveParticipants().stream()
+                .map(Player::getUniqueId)
+                .filter(waveTwoAssignmentRoster::contains)
+                .filter(owner -> !owner.equals(departedOwner))
+                .distinct()
+                .sorted(Comparator.comparing(UUID::toString))
+                .toList();
+        if (survivors.isEmpty()) return;
+        UUID eventUuid;
+        try {
+            eventUuid = UUID.fromString(eventId);
+        } catch (IllegalArgumentException invalidEventId) {
+            requireWaveTwoOwnershipRecovery(null, "event-id-invalid-during-reassignment");
+            return;
+        }
+        int reassigned = 0;
+        for (Entity entity : new ArrayList<>(ownedEntities.values())) {
+            if (entity == null || readInt(entity, keyWave, 0) != 2
+                    || !isWaveCombatKind(readString(entity, keyKind))
+                    || !ownedBySession(entity, eventId, generation)) continue;
+            UUID currentOwner = waveTwoEntityOwner(entity);
+            if (!departedOwner.equals(currentOwner)) continue;
+            UUID replacement = WaveTwoOwnershipPolicy.replacementOwner(eventUuid, generation,
+                    entity.getUniqueId(), currentOwner, survivors);
+            if (replacement.equals(currentOwner)) continue;
+            entity.getPersistentDataContainer().set(keyWaveTwoSquadOwner,
+                    PersistentDataType.STRING, replacement.toString());
+            if (entity instanceof Mob mob) mob.setTarget(null);
+            reassigned++;
+        }
+        if (reassigned == 0) return;
+        for (Player viewer : Bukkit.getOnlinePlayers()) syncWaveTwoPrivateViewers(viewer);
+        getLogger().info("WAVE_TWO_SQUAD_OWNER_REASSIGNED event=" + eventId
+                + " generation=" + generation + " departed=" + departedOwner
+                + " entities=" + reassigned + " cause=" + cause);
+        if (isOfficialCurrentAttempt() && !saveStateSync()) {
+            recoveryReason = "WAVE_TWO_SQUAD_OWNER_REASSIGNMENT_CHECKPOINT_FAILED";
+            forcePhase(EventPhase.RECOVERY_REQUIRED,
+                    "Wave 2 squad owner reassignment could not be checkpointed");
+        }
+    }
+
+    private void requireWaveTwoOwnershipRecovery(Entity entity, String reason) {
+        UUID entityId = entity == null ? null : entity.getUniqueId();
+        UUID faultKey = entityId == null ? new UUID(0L, 0L) : entityId;
+        if (!waveTwoOwnershipFaultsLogged.add(faultKey)) return;
+        getLogger().severe("WAVE_TWO_SQUAD_OWNER_INVALID event=" + eventId
+                + " generation=" + generation + " entity=" + entityId
+                + " reason=" + reason + " action=recovery-required");
+        if (phase != EventPhase.WAVE_2) return;
+        if (phase == EventPhase.WAVE_2) {
+            try {
+                waveTwoRecoveryCheckpoint = Map.copyOf(waveObjectiveProgressSnapshot());
+            } catch (RuntimeException checkpointFailure) {
+                Map<String, String> fallback = new LinkedHashMap<>();
+                fallback.put(WAVE_TWO_CYCLES_PROGRESS_KEY, Integer.toString(currentHuntCycles));
+                fallback.put(WAVE_TWO_GROUPS_SPAWNED_PROGRESS_KEY,
+                        Integer.toString(waveTwoGroupsSpawned));
+                fallback.put(WAVE_TWO_GROUP_CLEARED_PROGRESS_KEY,
+                        Boolean.toString(waveTwoGroupCleared));
+                fallback.put(WAVE_TWO_MARK_ASSIGNMENT_ID_PROGRESS_KEY,
+                        Integer.toString(waveTwoMarkCycle));
+                if (!waveTwoAssignmentRoster.isEmpty()) {
+                    fallback.put(WAVE_TWO_OWNER_ROSTER_PROGRESS_KEY,
+                            WaveTwoOwnershipPolicy.encodeRoster(waveTwoAssignmentRoster));
+                }
+                waveTwoRecoveryCheckpoint = Map.copyOf(fallback);
+            }
+        }
+        recoveryReason = "WAVE_TWO_SQUAD_OWNER_INVALID:" + reason;
+        forcePhase(EventPhase.RECOVERY_REQUIRED,
+                "Wave 2 squad ownership could not be validated");
+        if (isOfficialCurrentAttempt() && !saveStateSync()) {
+            getLogger().severe("WAVE_TWO_SQUAD_OWNER_RECOVERY_CHECKPOINT_FAILED event=" + eventId
+                    + " generation=" + generation);
+        }
     }
 
     private void refreshWaveTwoMarkGlow(Player player) {
@@ -40459,7 +40724,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     WAVE_TWO_CYCLES_PROGRESS_KEY, Integer.toString(currentHuntCycles),
                     WAVE_TWO_GROUPS_SPAWNED_PROGRESS_KEY, Integer.toString(waveTwoGroupsSpawned),
                     WAVE_TWO_GROUP_CLEARED_PROGRESS_KEY, Boolean.toString(waveTwoGroupCleared),
-                    WAVE_TWO_MARK_ASSIGNMENT_ID_PROGRESS_KEY, Integer.toString(waveTwoMarkCycle));
+                    WAVE_TWO_MARK_ASSIGNMENT_ID_PROGRESS_KEY, Integer.toString(waveTwoMarkCycle),
+                    WAVE_TWO_OWNER_ROSTER_PROGRESS_KEY,
+                    WaveTwoOwnershipPolicy.encodeRoster(waveTwoAssignmentRoster));
         }
         getLogger().severe(recoveryReason + " event=" + eventId
                 + " generation=" + generation + " assignment_id=" + waveTwoMarkCycle
@@ -40906,6 +41173,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         currentHuntCycles = 0;
         waveTwoMarkCycle = 0;
         waveTwoRecoveryCheckpoint = Map.of();
+        waveTwoAssignmentRoster = List.of();
+        waveTwoOwnershipFaultsLogged.clear();
         waveTwoGroupsSpawned = 0;
         waveTwoGroupCleared = false;
         restoredWaveTwoGroupCleared = false;
@@ -52291,6 +52560,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         releaseBlackFogEffects(event.getPlayer());
         updateCurrentCarrierSlowness(event.getPlayer(), false);
         UUID uuid = event.getPlayer().getUniqueId();
+        reassignWaveTwoEntitiesFor(uuid, "disconnect");
         releaseSpiderPotionLeases(event.getPlayer());
         SpiderRootControlPolicy.clearPlayerState(uuid, rootedPlayersUntilTick,
                 rootedPlayerNextApplyTick, rootedPlayerOwners);
@@ -52347,6 +52617,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (event.isCancelled()) return;
         releaseBlackFogEffects(event.getEntity());
         UUID uuid = event.getEntity().getUniqueId();
+        reassignWaveTwoEntitiesFor(uuid, "death");
         releaseSpiderPotionLeases(event.getEntity());
         SpiderRootControlPolicy.clearPlayerState(uuid, rootedPlayersUntilTick,
                 rootedPlayerNextApplyTick, rootedPlayerOwners);
@@ -53480,6 +53751,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         data.set(keyGeneration, PersistentDataType.LONG, generation);
         data.set(keyKind, PersistentDataType.STRING, kind);
         data.set(keyWave, PersistentDataType.INTEGER, wave);
+        if (wave == 2 && isWaveCombatKind(kind) && waveTwoEntityOwner(entity) == null) {
+            requireWaveTwoOwnershipRecovery(entity, "spawned-entity-owner-assignment-failed");
+        }
         if (wave == 2 && EVENT_KIND_WAVE_MOB.equals(kind) && keyWaveTwoCleanupEpoch != null) {
             data.set(keyWaveTwoCleanupEpoch, PersistentDataType.LONG, waveTwoCleanupEpoch);
         }

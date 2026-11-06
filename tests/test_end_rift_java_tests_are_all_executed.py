@@ -65,6 +65,7 @@ NOT_IN_GATE_BUNDLE = {
     "WardenSlamTriggerPolicyTest": "package me.copimine.endevent.domain;",
     "WaveSixDurableStateTest": "package me.copimine.endevent.domain;",
     "WaveTwoStagePolicyTest": "package me.copimine.endevent.domain;",
+    "WaveTwoOwnershipPolicyTest": "package me.copimine.endevent.domain;",
 }
 
 

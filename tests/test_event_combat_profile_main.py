@@ -60,6 +60,20 @@ public class CombatProfileMainProbe {
     boolean isOfficialCurrentAttempt(){return isOfficialAttemptActive()&&!testWaveFrontVisualMode&&!testCombatAiMode;}
     boolean isCombatTarget(Player player){return player!=null&&player.isOnline()&&!player.isDead();}
     UUID ritualPrisonerId(){return prisoner;}
+    // Wave 2 ownership is now server-owned and persisted: the roster of squad
+    // owners, the recovery reason recorded when it cannot be restored, and the
+    // progress key it is saved under. The probe mirrors the real fields so the
+    // persisted-state code compiles against it unchanged.
+    List<UUID> waveTwoAssignmentRoster = List.of();
+    String recoveryReason = "";
+    static final String WAVE_TWO_OWNER_ROSTER_PROGRESS_KEY = "wave2-squad-owner-roster";
+    static class WaveTwoOwnershipPolicy {
+        static String encodeRoster(java.util.Collection<UUID> roster){return String.join(",", roster.stream().map(UUID::toString).toList());}
+        static List<UUID> decodeRoster(String text){
+            return text == null || text.isBlank() ? List.of()
+                    : java.util.Arrays.stream(text.split(",")).map(UUID::fromString).toList();
+        }
+    }
     Logger getLogger(){return Logger.getLogger("synthetic-profile-test");}
     Map<String,String> waveObjectiveProgressSnapshot(){return Map.of("other-objective","preserved");}
     // Wave 7 admission consults the sequential trial stage; this probe records

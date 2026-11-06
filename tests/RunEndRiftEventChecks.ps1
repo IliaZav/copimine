@@ -597,6 +597,7 @@ $pureTests = @(
   'WavePressurePolicyTest',
   'WaveTwoPhantomLayoutPolicyTest',
   'me.copimine.endevent.domain.WaveTwoStagePolicyTest',
+  'me.copimine.endevent.domain.WaveTwoOwnershipPolicyTest',
   'WaveTwoHuntPolicyTest',
   'WaveTwoPhantomMaterializationPolicyTest',
   'WaveTwoEntityRecoveryPolicyTest',

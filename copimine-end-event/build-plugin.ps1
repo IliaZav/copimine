@@ -178,26 +178,26 @@ Copy-Item -LiteralPath (Join-Path $pluginDir 'config.yml') -Destination (Join-Pa
 # jar: the saved-generation policy the End Rift snapshots validate with before
 # the optional Narcotics bridge is available. A plain repack of `classes` drops
 # it, and the pinned candidate then differs from the artifact Gradle produced
-# and the runtime expects. Copy it in when the Gradle output exists.
+# and the runtime expects.
+#
+# This class is compiled here from its source rather than copied out of a
+# previous Gradle run. Copying made the jar depend on build history: a checkout
+# where Gradle had already run got the class and a clean checkout did not, so
+# the same sources produced two different digests and the pinned lock could only
+# ever match one of them. Compiling always is what makes the candidate
+# reproducible.
 $bridgeClass = Join-Path $classes 'me\copimine\protocol\EncounterGenerationPolicy.class'
+$bridgeSourceRoot = Join-Path $releaseRoot 'tools\minecraft-26.3\protocol\src\main\java'
+$bridgeSourceFile = Join-Path $bridgeSourceRoot 'me\copimine\protocol\EncounterGenerationPolicy.java'
+if (Test-Path -LiteralPath $bridgeSourceFile -PathType Leaf) {
+  New-Item -ItemType Directory -Path (Split-Path -Parent $bridgeClass) -Force | Out-Null
+  & $javacCommand ('-proc:none', '-encoding', 'UTF-8', '-cp',
+    ($cp -join [IO.Path]::PathSeparator), '-sourcepath', $bridgeSourceRoot,
+    '-d', $classes, $bridgeSourceFile)
+  if ($LASTEXITCODE -ne 0) { throw 'Failed to compile the shared EncounterGenerationPolicy class.' }
+}
 if (-not (Test-Path -LiteralPath $bridgeClass -PathType Leaf)) {
-  $bridgeSource = Join-Path $releaseRoot 'build\minecraft-26.3\plugins\classes\java\narcotics\me\copimine\protocol\EncounterGenerationPolicy.class'
-  $bridgeSourceAlt = Join-Path $releaseRoot 'tools\minecraft-26.3\build\classes\java\main\me\copimine\protocol\EncounterGenerationPolicy.class'
-  foreach ($candidate in @($bridgeSource, $bridgeSourceAlt)) {
-    if (Test-Path -LiteralPath $candidate -PathType Leaf) {
-      New-Item -ItemType Directory -Path (Split-Path -Parent $bridgeClass) -Force | Out-Null
-      Copy-Item -LiteralPath $candidate -Destination $bridgeClass -Force
-      $bridgeSource = $candidate
-      break
-    }
-  }
-  # Only the Gradle migration build produces this class. When Gradle has not run
-  # -- the per-module Java plugin gate compiles straight from source -- there is
-  # nothing to copy, and refusing to build would break that gate for a class it
-  # never packages. The release pin verifies the jar that Gradle did assemble.
-  if (-not (Test-Path -LiteralPath $bridgeClass -PathType Leaf)) {
-    Write-Host 'Shared EncounterGenerationPolicy class is absent: the Gradle migration build has not produced it in this checkout.'
-  }
+  throw "Shared EncounterGenerationPolicy class could not be compiled from source: $bridgeSourceFile"
 }
 Remove-Item -LiteralPath $jar -Force -ErrorAction SilentlyContinue
 # `jar` stamps its own version into MANIFEST.MF as Created-By. Resolving it

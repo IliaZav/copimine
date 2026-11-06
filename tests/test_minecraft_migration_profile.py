@@ -195,10 +195,14 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # blending (UserEndBossAnimationBlendTest). Repinned again for the
     # November 4 playtest repair pass: the Wave 2 Enderman veil overlay and the
     # Rift Guardian visual id now render on this client.
-    assert artifact['size'] == 13_474_746
+    # Repinned again for the tentacle world-height fix: worldHeightForAuthoredUnits divided
+    # an already-scaled height by the model-units constant, so the 7.8681-unit rig reported
+    # about 0.3 blocks instead of about 4.9. The class file is now a pure function of the
+    # corrected source.
+    assert artifact['size'] == 13_474_725
     assert artifact['sha512'] == (
-        '2e4d729e0852297c9238541065db05091ad814ee375af0ad9814d6048af5a0cf'
-        '94dd582fb58f3dba6640e59e1cdaaa664770c9919231c09d13410361d7066b3c'
+        '6da5f04be713f3ece92ef7910238da13344ca059a442a13cbce51041cfd4c893'
+        'e74ca509b25873d246e3ccc74c4ac46bdc2ec5e5e53a8f2217f451b4e5dbc54f'
     )
 
 

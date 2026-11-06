@@ -199,10 +199,13 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # an already-scaled height by the model-units constant, so the 7.8681-unit rig reported
     # about 0.3 blocks instead of about 4.9. The class file is now a pure function of the
     # corrected source.
-    assert artifact['size'] == 13_474_725
+    # Repinned again for the Wave 2 Enderman screen effect: the mark now applies the vanilla
+    # minecraft:invert post shader, so it works on a client with no Iris, and the narcotics
+    # shaderpacks are withdrawn from the shaderpacks folder that Iris lists.
+    assert artifact['size'] == 13_476_411
     assert artifact['sha512'] == (
-        '6da5f04be713f3ece92ef7910238da13344ca059a442a13cbce51041cfd4c893'
-        'e74ca509b25873d246e3ccc74c4ac46bdc2ec5e5e53a8f2217f451b4e5dbc54f'
+        'b7ef7cd8d270f96a63727dad7f2fbce97ad24b6d4e378fdab99c47b646e856bb'
+        '2cdc74e3cecaacd2f33ce5fd6978509afff3909325075cafba565fb0dba7f6a3'
     )
 
 

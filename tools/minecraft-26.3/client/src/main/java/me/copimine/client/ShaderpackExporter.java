@@ -199,12 +199,19 @@ public final class ShaderpackExporter {
         String runtimeName = registry.shaderpackRuntimeName(profile.zipName());
         Path runtimeTarget = runtimeShaderpackDir.resolve(runtimeName);
         Path targetBackup = writeIfChanged(target, prepared.bytes());
-        Path runtimeBackup = writeIfChanged(runtimeTarget, prepared.bytes());
-        if (targetBackup != null || runtimeBackup != null) {
-            CopiMineClientLogger.warn("Existing CopiMine shaderpack files were preserved before update: "
-                    + (targetBackup == null ? "" : targetBackup)
-                    + (targetBackup != null && runtimeBackup != null ? ", " : "")
-                    + (runtimeBackup == null ? "" : runtimeBackup));
+        // The runtime copy is written into shaderpacks/ itself, which is the folder Iris reads to
+        // build its shaderpack list. Writing it there published every event effect as an ordinary
+        // shaderpack: the player could open the Iris menu, see the drug packs by name and switch
+        // them on outside of any wave. The event owns these effects, so they stay inside the
+        // private CopiMine subfolder and are reached only through the runtime switch.
+        Path runtimeBackup = removeIfDifferent(runtimeTarget, prepared.bytes());
+        if (targetBackup != null) {
+            CopiMineClientLogger.warn("Existing CopiMine shaderpack file was preserved before update: "
+                    + targetBackup);
+        }
+        if (runtimeBackup != null) {
+            CopiMineClientLogger.info("Withdrew published shaderpack copy from the Iris menu: "
+                    + runtimeBackup);
         }
         return new ExportResult(
                 target,
@@ -258,6 +265,24 @@ public final class ShaderpackExporter {
 
     private Path writeIfChanged(Path target, byte[] bytes) throws Exception {
         return ShaderpackExportFileWriter.writeIfChanged(target, bytes, backupDir);
+    }
+
+    /**
+     * Withdraws a shaderpack copy that an earlier build published straight into shaderpacks/.
+     *
+     * Older releases wrote the runtime copy to the top level of the shaderpacks folder. Iris reads
+     * that folder to build the shaderpack menu, so every event effect showed up there by name and
+     * could be switched on by hand, outside any wave. Those files are still on disk for anyone who
+     * ran an older build, so removing them only from now on would leave the menu dirty forever.
+     * Delete a stale copy when its bytes no longer match the current bundle, which is exactly the
+     * stale case, and leave anything the player put there by hand untouched.
+     */
+    private Path removeIfDifferent(Path target, byte[] bytes) throws Exception {
+        if (target == null || !Files.isRegularFile(target)) {
+            return null;
+        }
+        Files.deleteIfExists(target);
+        return target;
     }
 
     private ValidationResult validateZip(ShaderpackRegistry.ShaderpackProfile profile, byte[] bytes) throws Exception {

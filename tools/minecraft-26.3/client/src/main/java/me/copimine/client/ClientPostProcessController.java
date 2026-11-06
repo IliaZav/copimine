@@ -10,6 +10,12 @@ public final class ClientPostProcessController {
             Map.entry("COLOR_CONVOLVE", Identifier.fromNamespaceAndPath("copimineclient", "copimine_color_convolve")),
             Map.entry("SCAN_PINCUSHION", Identifier.fromNamespaceAndPath("copimineclient", "copimine_scan_pincushion")),
             Map.entry("GREEN_NOISE", Identifier.fromNamespaceAndPath("copimineclient", "copimine_green_noise")),
+            // The vanilla Enderman screen effect. The player sees it when standing inside an
+            // Enderman in spectator mode; GameRenderer.checkEntityPostEffect applies exactly this
+            // identifier for an Enderman. Wave 2 uses it directly so the marked player gets the
+            // real in-game shader rather than an imitation, and it needs no Iris, OptiFine or
+            // Sodium: requestedPostEffects is vanilla render state.
+            Map.entry("ENDERMAN", Identifier.withDefaultNamespace("invert")),
             Map.entry("INVERT", Identifier.withDefaultNamespace("invert")),
             Map.entry("WOBBLE", Identifier.fromNamespaceAndPath("copimineclient", "copimine_wobble")),
             Map.entry("BLOBS", Identifier.fromNamespaceAndPath("copimineclient", "copimine_blobs")),

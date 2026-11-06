@@ -154,6 +154,11 @@ public final class ClientBridgeProtocol {
     private static final EndEventWorldVfxManager END_EVENT_WORLD_VFX = new EndEventWorldVfxManager();
     private static final EndEventBlackFogManager END_EVENT_BLACK_FOG = new EndEventBlackFogManager();
     private static final EndEventPlayerVisualManager END_EVENT_PLAYER_VISUALS = new EndEventPlayerVisualManager();
+    // The Wave 2 hunt mark drives the vanilla Enderman screen effect. It owns its own
+    // ClientPostProcessController so it can never collide with a narcotics effect, which uses the
+    // same controller slot for a different visual channel.
+    private static final EndermanMarkShaderController ENDERMAN_MARK_SHADER =
+            new EndermanMarkShaderController(new ClientPostProcessController());
     private static final WaveTwoPhantomActivationManager END_EVENT_WAVE_TWO_PHANTOM_ACTIVATIONS =
             new WaveTwoPhantomActivationManager();
     private static final WaveTwoPhantomLayoutManager END_EVENT_WAVE_TWO_PHANTOM_LAYOUTS =
@@ -789,6 +794,10 @@ public final class ClientBridgeProtocol {
 
     public static EndEventPlayerVisualManager endEventPlayerVisuals() {
         return END_EVENT_PLAYER_VISUALS;
+    }
+
+    public static EndermanMarkShaderController endermanMarkShader() {
+        return ENDERMAN_MARK_SHADER;
     }
 
     static WaveTwoPhantomActivationManager waveTwoPhantomActivations() {

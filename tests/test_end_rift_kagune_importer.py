@@ -288,11 +288,29 @@ def _jdk_bin(name: str) -> Path:
     return Path(found)
 
 
+def _gson_jar() -> Path:
+    """Find a gson jar on CI as well as in this checkout.
+
+    local-runtime holds the server's own libraries, but that directory is
+    machine-local and absent on the runner. The toolchains that CI does stage
+    for the migration carry their own gson, which is enough to compile a probe.
+    """
+    patterns = (
+        "local-runtime/end-rift-server-26.3/libraries/com/google/code/gson/**/gson-*.jar",
+        "build/minecraft-26.3/toolchain/gradle-*/lib/gson-*.jar",
+        "build/minecraft-26.3/toolchain/apache-maven-*/lib/gson-*.jar",
+        "CopiMineClient/.gradle-dist/gradle-*/lib/gson-*.jar",
+    )
+    for pattern in patterns:
+        found = sorted(ROOT.glob(pattern))
+        if found:
+            return found[-1]
+    raise AssertionError("no gson jar found in the server libraries or the staged toolchains")
+
+
 def _toolchain() -> tuple[Path, Path, Path]:
     javac = _jdk_bin("javac")
-    gson = sorted(ROOT.glob("local-runtime/end-rift-server-26.3/libraries/com/google/code/gson/**/gson-*.jar"))
-    assert gson, "no gson jar found under the server libraries"
-    return javac, javac.with_name("java.exe"), gson[-1]
+    return javac, javac.with_name("java.exe"), _gson_jar()
 
 
 def test_kagune_importer_parses_and_samples(tmp_path: Path) -> None:

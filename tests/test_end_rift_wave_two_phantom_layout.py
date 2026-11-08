@@ -45,7 +45,8 @@ PROBE = textwrap.dedent(
 
             check("same seed is deterministic", first.equals(second));
             check("different seed rotates the ring", !first.equals(other));
-            check("four rings of sixteen", first.size() == 64);
+            // Six rings of sixteen: 96 candidates so 70 can survive blocked spots.
+            check("six rings of sixteen", first.size() == 96);
 
             // Every candidate is finite, keeps the anchor height, and sits on one of the rings.
             boolean allFinite = true;
@@ -58,7 +59,7 @@ PROBE = textwrap.dedent(
                 double dz = p.z() - anchor.z();
                 double radius = Math.sqrt(dx * dx + dz * dz);
                 boolean ring = false;
-                for (double expected : new double[]{6.0, 8.0, 10.0, 12.0}) {
+                for (double expected : new double[]{6.0, 8.0, 10.0, 12.0, 14.0, 16.0}) {
                     if (Math.abs(radius - expected) < 1.0E-6) ring = true;
                 }
                 if (!ring) onRing = false;

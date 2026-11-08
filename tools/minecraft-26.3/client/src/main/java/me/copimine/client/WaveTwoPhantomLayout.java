@@ -8,11 +8,20 @@ import java.util.function.Function;
 
 /** Deterministic world positions for the client-only Wave 2 phantom presentation. */
 final class WaveTwoPhantomLayout {
-    static final int TARGET_PHANTOM_COUNT = 35;
+    /**
+     * Wave 2 shows twice as many observers as before.
+     *
+     * <p>The approved contract asks for about 70 client-only spectral Endermen
+     * per marked player. They are pure client presentation, so the server still
+     * spawns nothing extra; only this layout budget grew. Six rings of sixteen
+     * keep 96 candidates, which leaves room for blocked spots to be dropped
+     * without falling short of the target.</p>
+     */
+    static final int TARGET_PHANTOM_COUNT = 70;
     /** Mirror of the server floor: a partly blocked ring still produces a playable layout. */
-    static final int MIN_PHANTOM_COUNT = 25;
+    static final int MIN_PHANTOM_COUNT = 50;
     private static final int PHANTOMS_PER_RING = 16;
-    private static final double[] RING_RADII = {6.0D, 8.0D, 10.0D, 12.0D};
+    private static final double[] RING_RADII = {6.0D, 8.0D, 10.0D, 12.0D, 14.0D, 16.0D};
 
     private WaveTwoPhantomLayout() { }
 
@@ -34,7 +43,7 @@ final class WaveTwoPhantomLayout {
         return List.copyOf(candidates);
     }
 
-    /** Resolve candidates to safe standing locations and keep at most 35. */
+    /** Resolve candidates to safe standing locations and keep at most the target. */
     static List<Position> selectSafe(List<Position> candidates,
                                      Function<Position, Position> safeResolver) {
         if (candidates == null || candidates.isEmpty() || safeResolver == null) return List.of();

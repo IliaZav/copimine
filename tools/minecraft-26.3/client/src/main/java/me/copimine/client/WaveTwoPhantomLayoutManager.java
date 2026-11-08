@@ -16,7 +16,15 @@ final class WaveTwoPhantomLayoutManager {
     private static final String VISUAL_ID = "WAVE2_HUNT_MARK_V1";
     private static final String INSTANCE_ID = "wave2-hunt-mark";
     private static final int MAX_EVENT_IDENTITIES = 129;
-    private static final Pattern PHANTOM_ID = Pattern.compile("phantom-(?:0[0-9]|[12][0-9]|3[0-4])");
+    /**
+     * Phantom ids are two digits, 00..69.
+     *
+     * <p>Wave 2 now presents 70 observers per marked player, so the ceiling moved
+     * from 34 to 69. This pattern is the client's admission fence: a payload for
+     * an id it does not match is dropped silently, which is why widening the
+     * layout without widening the pattern shows nothing at all.</p>
+     */
+    private static final Pattern PHANTOM_ID = Pattern.compile("phantom-(?:0[0-9]|[1-6][0-9])");
     private static final Pattern COORDINATE = Pattern.compile(
             "-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?");
 

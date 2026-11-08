@@ -78,7 +78,7 @@ PROBE = textwrap.dedent(
                     reservedOne, reservedTwo, status);
         }
 
-        /** Phantom ids are two digits: the server regex accepts phantom-00 through phantom-34. */
+        /** Phantom ids are two digits: the server regex accepts phantom-00 through phantom-69. */
         private static String phantomId(int index) {
             return "phantom-" + (index < 10 ? "0" + index : Integer.toString(index));
         }
@@ -179,7 +179,7 @@ PROBE = textwrap.dedent(
                     !rejects.apply(body(EVENT, 1L, 1_000L, "ACTIVE", 8_000L, 0.25F,
                             "overworld|wave2|1", "0,0,0", "", ""), NOW));
             check("an out-of-range phantom id is refused",
-                    !rejects.apply(position(EVENT, 1L, 1, 1_000L, "overworld", "phantom-35", "0,0,0"), NOW));
+                    !rejects.apply(position(EVENT, 1L, 1, 1_000L, "overworld", "phantom-70", "0,0,0"), NOW));
             check("a non-numeric phantom id is refused",
                     !rejects.apply(position(EVENT, 1L, 1, 1_000L, "overworld", "phantom-x", "0,0,0"), NOW));
             check("coordinates with the wrong arity are refused",

@@ -23,16 +23,18 @@ class WaveTwoPhantomLayoutTest {
         List<WaveTwoPhantomLayout.Position> repeated = WaveTwoPhantomLayout.candidatesAround(ANCHOR, 1234L);
         List<WaveTwoPhantomLayout.Position> nextMark = WaveTwoPhantomLayout.candidatesAround(ANCHOR, 1235L);
 
-        assertEquals(64, first.size());
+        // Six rings of sixteen: 96 candidates so the 70-strong layout can survive
+        // blocked spots without falling below its target.
+        assertEquals(96, first.size());
         assertEquals(first, repeated);
         assertNotEquals(first, nextMark);
         assertTrue(first.stream().allMatch(WaveTwoPhantomLayout::finite));
         assertTrue(first.stream().allMatch(position ->
-                Math.hypot(position.x() - ANCHOR.x(), position.z() - ANCHOR.z()) <= 12.0D + 1.0E-9D));
+                Math.hypot(position.x() - ANCHOR.x(), position.z() - ANCHOR.z()) <= 16.0D + 1.0E-9D));
     }
 
     @Test
-    void safeSelectionSkipsRejectedColumnsAndNeverExceedsThirtyFive() {
+    void safeSelectionSkipsRejectedColumnsAndNeverExceedsTheTarget() {
         List<WaveTwoPhantomLayout.Position> candidates = WaveTwoPhantomLayout.candidatesAround(ANCHOR, 7L);
         List<WaveTwoPhantomLayout.Position> selected = WaveTwoPhantomLayout.selectSafe(candidates,
                 candidate -> new WaveTwoPhantomLayout.Position(candidate.x(), 65.0D, candidate.z()));

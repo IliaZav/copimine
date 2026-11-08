@@ -2776,6 +2776,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 continue;
             }
             if (EVENT_KIND_BOSS.equals(kind) && isTestBoss(entity)) {
+                // A live harness boss must survive a chunk reload. Deleting it
+                // here is what made the boss vanish mid-fight and, on the next
+                // reload, leave the operator staring at a vanilla Enderman.
+                // Only a boss whose owning session is genuinely gone is stale.
+                if (ownedBySession(entity, eventId, generation)) {
+                    registerOwnedEntity(entity);
+                    continue;
+                }
                 emitUntrackedEntityRemovalDiagnostic(entity, "stale-test-boss-recovery");
                 entity.remove();
                 continue;
@@ -22077,7 +22085,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 // the arena when the client first renders the test boss.
                 // Extend scope to the event world only for that temporary test;
                 // production fights remain roster/arena-scoped.
-                && (testCombatAiMode || isCombatTarget(player)
+                && (isBossHarnessViewer(player)
+                || isCombatTarget(player)
                 || testWaveFrontVisualMode && sandboxWaveRoster.contains(player.getUniqueId())
                 || isArenaLocation(player.getLocation()));
     }
@@ -54205,6 +54214,31 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean isTestBoss(Entity entity) {
         return entity != null && entity.getPersistentDataContainer().has(keyBossTest, PersistentDataType.BYTE)
                 && entity.getPersistentDataContainer().get(keyBossTest, PersistentDataType.BYTE) == (byte) 1;
+    }
+
+    /**
+     * The local boss harness exists so an operator can see the authored Guardian
+     * without replaying seven waves. Its player is almost never a combat
+     * participant and is frequently standing outside the arena cuboid, so the
+     * ordinary viewer rules reject it and {@link #bindBossClient} returns before
+     * sending END_BOSS_BIND. The client then never learns this Enderman is the
+     * boss and renders the vanilla model — exactly the "boss looks like a plain
+     * Enderman" report.
+     *
+     * <p>This widens ONLY the visual-viewer decision for a live test boss; it
+     * does not make the operator a combat target, does not touch production
+     * fights, and does not bypass the roster rules.</p>
+     */
+    private boolean isBossHarnessViewer(Player player) {
+        if (player == null || !player.isOnline() || !testCombatAiMode) {
+            return false;
+        }
+        Entity boss = liveBoss();
+        if (boss == null || !isTestBoss(boss)) {
+            return false;
+        }
+        World world = boss.getWorld();
+        return world != null && world.equals(player.getWorld());
     }
 
     private boolean isOfficialEntity(Entity entity) {

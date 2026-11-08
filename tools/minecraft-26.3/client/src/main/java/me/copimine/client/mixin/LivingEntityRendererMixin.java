@@ -168,11 +168,27 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity,
             at = @At("HEAD"), cancellable = true)
     private void copimine$scaleImportedGuardian(LivingEntityRenderState state, PoseStack matrices,
                                                  CallbackInfo ci) {
-        if (state instanceof EndRiftRenderStateAccess bound && bound.copimine$endBoss()) {
+        if (state instanceof EndRiftRenderStateAccess bound && copimine$isGuardianState(bound)) {
             float scale = EndRiftBossWorldScalePolicy.renderScale();
             matrices.scale(scale, scale, scale);
             ci.cancel();
         }
+    }
+
+    /**
+     * True when this render state is the Rift Guardian — either because the
+     * server set the bound-boss flag, or because it bound the Guardian visual
+     * id. Both routes mean the same thing to the renderer, and treating only
+     * the flag as authoritative is what let a visual-bound boss draw with the
+     * vanilla Enderman model at vanilla scale.
+     */
+    @Unique
+    private static boolean copimine$isGuardianState(EndRiftRenderStateAccess bound) {
+        if (bound == null) return false;
+        if (bound.copimine$endBoss()) return true;
+        String visual = bound.copimine$visual();
+        return visual != null
+                && "END_RIFT_GUARDIAN_V1".equals(visual.trim().toUpperCase(java.util.Locale.ROOT));
     }
 
     @Unique
@@ -206,7 +222,19 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity,
                 Identifier texture = EndEventTextureCatalog.textureForVisual(visual);
                 decision = EndermanRendererSelection.selectVisual(uuid, visual, null, texture,
                         EndEventTextureCatalog.isAvailable(texture));
-                if (decision.usesCustomModel()) selected = copimine$eventRenderer.modelFor(decision.kind());
+                if (decision.usesGuardianModel()) {
+                    // The server can bind the Guardian by VISUAL ID without the
+                    // endBoss flag (the disposable boss harness does exactly
+                    // that). Handling only the flag left this branch routing a
+                    // Guardian to the ordinary event Enderman model, so the boss
+                    // rendering as "just an Enderman" was a client-side defect,
+                    // not a server one. The guardian branch must win here too.
+                    selected = copimine$guardianRenderer.modelForPhase(bound.copimine$bossPhase(),
+                            bound.copimine$bossPhaseTransitionMillis(), bound.copimine$bossAnimation(),
+                            ClientBridgeProtocol.bossAnimationElapsedTicksForEntity(uuid, System.currentTimeMillis()));
+                } else if (decision.usesCustomModel()) {
+                    selected = copimine$eventRenderer.modelFor(decision.kind());
+                }
             }
         } else if (state instanceof SkeletonRenderState && getModel() instanceof SkeletonModel<?>) {
             selected = copimine$skeletonRenderer.modelFor(visual);

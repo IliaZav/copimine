@@ -38,7 +38,14 @@ public abstract class EndermanEntityRendererMixin extends MobRenderer<Enderman, 
         if (uuid == null || uuid.isBlank()) return;
         String visual = bound.copimine$visual();
         Identifier texture;
-        if (bound.copimine$endBoss()) {
+        // The Guardian can be bound by flag OR by visual id; the visual-bound
+        // route is what the local boss harness uses. Checking only the flag
+        // sent that case to the ordinary event texture lookup, which has no
+        // Guardian entry, so the mixin declined and vanilla drew the Enderman.
+        boolean guardian = bound.copimine$endBoss()
+                || visual != null
+                && "END_RIFT_GUARDIAN_V1".equals(visual.trim().toUpperCase(java.util.Locale.ROOT));
+        if (guardian) {
             texture = copimine$guardianRenderer.textureForState(
                     bound.copimine$bossPhase(), bound.copimine$bossAnimation());
         } else {

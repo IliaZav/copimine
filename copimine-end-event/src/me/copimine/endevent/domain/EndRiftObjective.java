@@ -28,7 +28,7 @@ public final class EndRiftObjective {
             case 3 -> Objective.RIFT_GATES;
             case 4 -> Objective.OBELISK_ASSAULT;
             case 5 -> Objective.BLACK_FOG;
-            case 6 -> Objective.RITUAL_SPHERE;
+            case 6 -> Objective.RIFT_RAM;
             case 7 -> Objective.REALITY_SPLIT;
             default -> throw new IllegalArgumentException("unknown wave: " + wave);
         };
@@ -89,8 +89,24 @@ public final class EndRiftObjective {
         BLACK_FOG("Чёрный Туман"),
         /** Legacy compatibility id for snapshots/tests; never selected for live Wave 6. */
         COLLAPSE_RINGS("Кольца Коллапса"),
+        /**
+         * Wave 6 as designed before the Rift Ram replacement: a ritual sphere,
+         * casters and a prisoner. It is kept ONLY so an old persisted snapshot
+         * can still be parsed and migrated; {@link #isLegacy()} lets the
+         * migration reader recognise it and no live path selects it.
+         */
         RITUAL_SPHERE("Ритуальная Сфера"),
+        /** Wave 6 today: one oversized Ravager lured into the Core. */
+        RIFT_RAM("Таран Разлома"),
         REALITY_SPLIT("Раскол Реальности");
+
+        /**
+         * True for objectives that exist only to read an old snapshot.
+         * A legacy objective must never be treated as playable.
+         */
+        public boolean isLegacy() {
+            return this == RITUAL_SPHERE || this == COLLAPSE_RINGS;
+        }
 
         private final String title;
 

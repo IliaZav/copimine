@@ -67,30 +67,35 @@ def test_an_official_attempt_is_never_abandoned_by_this_guard():
     )
 
 
-def test_abandoning_completes_the_wave_instead_of_just_clearing_mobs():
-    # Clearing mobs alone would leave the objective open, so the phase would
-    # never advance and the arena would sit on a wave nobody can finish.
+def test_abandoning_resets_the_wave_and_never_awards_the_objective():
+    # An earlier version of this fix called completeWavePhase here. That
+    # advanced the phase and recorded the objective as completed for a wave
+    # nobody fought, which is a victory — and a reward — the players never
+    # earned. Discarding the wave is the honest outcome.
     root = SRC.read_text(encoding='utf-8')
     abandon = method(root, 'private boolean abandonRunningWave(')
 
-    assert 'completeWavePhase(waveNumber, reason, idempotencyKey, true)' in abandon, (
-        'an abandoned wave must advance the phase like a fought one'
+    assert 'completeWavePhase' not in abandon, (
+        'an abandoned wave must not record an objective completion'
     )
-    assert abandon.index('completeWavePhase(') < abandon.index('clearWaveEntities('), (
-        'mobs are cleared after the phase moves, never before'
+    assert 'clearWaveEntities(' in abandon, (
+        'the leftover mobs still have to be removed'
+    )
+    assert 'activeWave = 0' in abandon, (
+        'the arena has to go back to having no active wave'
     )
     assert 'EndRiftObjective.isNumberedWave(waveNumber)' in abandon, (
-        'only a numbered wave may be completed this way'
+        'only a numbered wave may be discarded this way'
     )
 
 
-def test_abandoning_does_not_double_complete_on_a_repeated_tick():
-    # completeWavePhase is idempotent by key, and the clock reset plus the
-    # phase move both stop a second run; the key must still be stable.
+def test_abandoning_clears_victory_state_so_it_cannot_leak():
     root = SRC.read_text(encoding='utf-8')
     abandon = method(root, 'private boolean abandonRunningWave(')
 
-    assert '"abandon-" + waveNumber + "-" + generation' in abandon, (
-        'the idempotency key must be derived, not random, or a retry would '
-        'complete the same wave twice'
+    assert 'waveObjectiveComplete = false' in abandon, (
+        'a discarded wave must not leak its completion flag into the next run'
+    )
+    assert 'saveStateAsync()' in abandon, (
+        'the reset has to be persisted or a restart resurrects the old wave'
     )

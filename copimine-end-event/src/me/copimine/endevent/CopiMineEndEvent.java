@@ -15796,6 +15796,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             cancelCoreChargeHold(id, "left-core-range");
             return;
         }
+        // A released hold is not a hold. If the charge is no longer presented,
+        // stop the attempt instead of letting a single click run the timer to
+        // the end while the player stands still.
+        if (!isCarrierPresentingCharge(player)) {
+            cancelCoreChargeHold(id, "released");
+            return;
+        }
         long elapsed = Math.max(0L, now - coreChargeHoldStartedMillis);
         if (elapsed >= CORE_CHARGE_HOLD_MILLIS) {
             // Clear the hold BEFORE delivering: deliverCurrentCarrierCharge
@@ -15832,6 +15839,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ItemStack cursor = holder.getItemOnCursor();
         return cursor != null && cursor.getAmount() == 1
                 && isCurrentCarrierInventoryChargeItem(holder, cursor);
+    }
+
+    /**
+     * Is the carrier actively presenting the charge — the item in a hand, not
+     * merely somewhere in the inventory.
+     *
+     * <p>Bukkit cannot see the physical mouse button. What the server CAN see
+     * is which hand is raised and which item sits in it, so the hold is bound
+     * to "the charge is in the hand the player is using". A single click that
+     * is then released leaves the item in the slot but stops the hold: the
+     * player must keep the charge presented for the whole
+     * {@link #CORE_CHARGE_HOLD_MILLIS}. This is the closest server-authoritative
+     * reading of "hold the button"; anything looser is a timer, not a hold.</p>
+     */
+    private boolean isCarrierPresentingCharge(Player holder) {
+        if (holder == null || !holder.isOnline()) return false;
+        ItemStack main = holder.getInventory().getItemInMainHand();
+        if (main != null && main.getAmount() == 1 && isCurrentCarrierInventoryChargeItem(holder, main)) {
+            return true;
+        }
+        ItemStack off = holder.getInventory().getItemInOffHand();
+        return off != null && off.getAmount() == 1 && isCurrentCarrierInventoryChargeItem(holder, off);
     }
 
     private boolean isCurrentCarrierInventoryChargeItem(Player holder, ItemStack stack) {
@@ -26187,27 +26216,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /**
-     * Complete the running wave without a party and clear its leftover mobs.
+     * End the running wave without a party and clear its leftover mobs.
      *
-     * <p>Completing rather than resetting is deliberate: an abandoned wave must
-     * advance the phase exactly like a fought one, or the objective stays open
-     * and the arena keeps its mobs forever. The mob cleanup afterwards stops a
-     * hostile crowd from waiting in an empty room for the next party.</p>
+     * <p>An abandoned wave is NOT a won wave, so this must never call
+     * {@code completeWavePhase}: that path records an objective completion and
+     * hands out the next phase, which is a victory the players never earned and
+     * a reward the economy can cash. Dropping the wave back to the state that
+     * spawned it is the honest outcome — no progression, no reward, and no mobs
+     * left standing in an empty room for the next party.</p>
      */
     private boolean abandonRunningWave(int waveNumber, String reason) {
         if (!EndRiftObjective.isNumberedWave(waveNumber)) return false;
-        String idempotencyKey = "abandon-" + waveNumber + "-" + generation;
-        boolean completed;
-        try {
-            completed = completeWavePhase(waveNumber, reason, idempotencyKey, true);
-        } catch (RuntimeException failure) {
-            getLogger().warning("END_RIFT_WAVE_ABANDON_FAILED event=" + eventId
-                    + " wave=" + waveNumber + " reason=" + reason
-                    + " error=" + failure.getClass().getSimpleName() + ": " + failure.getMessage());
-            return false;
-        }
-        getLogger().info("END_RIFT_WAVE_ABANDON_COMPLETED event=" + eventId
-                + " wave=" + waveNumber + " reason=" + reason + " completed=" + completed);
+        // The wave is being discarded, so the victory bookkeeping goes with it.
+        // waveObjectiveComplete in particular must not leak into the next run.
+        waveObjectiveComplete = false;
+        getLogger().info("END_RIFT_WAVE_ABANDONED_STATE_RESET event=" + eventId
+                + " wave=" + waveNumber + " reason=" + reason + " awarded=false");
         clearWaveEntities(true, true);
         waveTwoOutstandingEntityUuids.clear();
         waveTwoMarkedParticipants.clear();
@@ -26215,8 +26239,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         waveTwoPhantomActivationState = null;
         currentCarrierState = null;
         cancelCoreChargeHold(coreChargeHoldPlayer, "wave-abandoned");
+        // Hand the arena back exactly where the spawn found it: no active wave,
+        // no assignments, so the next party starts clean and nobody collects a
+        // victory or a reward for a wave that was never fought.
+        activeWave = 0;
+        waveSpawnSchedule = List.of();
+        waveSpawnGroupIndex = 0;
+        waveSpawnEntityOffset = 0;
+        waveObjectiveStartedMillis = 0L;
         saveStateAsync();
-        return completed;
+        return true;
     }
 
     /** Render and advance the bounded controller for the current objective. */

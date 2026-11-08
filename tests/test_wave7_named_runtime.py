@@ -431,6 +431,7 @@ public class Wave7PreflightProbe {
     boolean namedWave7InitialActorCreation,namedWave7RuntimeRestorePending;
     List<RealitySplitTrialController.NamedTrial> namedWave7PreflightSelectedLayout=List.of();
     int activeWave,saves,cleanups,teleports,spawns;
+    EventPhase phase=EventPhase.RECOVERY_REQUIRED;
     Map<String,String> wave7RecoveryCheckpoint=Map.of();
     RealitySplitChamberController realitySplitChamberController=new RealitySplitChamberController();
     RealitySplitTrialController realitySplitTrialController=new RealitySplitTrialController();
@@ -461,8 +462,7 @@ public class Wave7PreflightProbe {
         var soloWorld=new World();
         require(!solo.initializeAfterPreflight(soloWorld,new Location(soloWorld),List.of(new UUID(0,1)),false),
                 "Wave 7 must refuse a one-player roster during preflight");
-        require(solo.lastWarning.contains("reason=minimum-roster-size")
-                        &&solo.lastWarning.contains("players=1")&&solo.lastWarning.contains("minimum=2"),
+        require(solo.lastWarning.contains("code=WAVE7_PREFLIGHT_MINIMUM_ROSTER")&&solo.lastWarning.contains("stage=roster-size")&&solo.lastWarning.contains("eligible_players=1")&&solo.lastWarning.contains("minimum=2"),
                 "single-player refusal must report the Wave 7 minimum clearly");
         require(!solo.realitySplitChamberController.owns(71)&&!solo.realitySplitTrialController.owns(71)
                         &&solo.activeWave==0&&solo.saves==0&&solo.cleanups==0

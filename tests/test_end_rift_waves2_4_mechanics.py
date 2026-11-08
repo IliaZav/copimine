@@ -1373,6 +1373,12 @@ public final class Wave2SpawnHarness {
     WaveMechanicsPolicy.WaveCounts ritualPressureCounts(int players) {
         return new WaveMechanicsPolicy.WaveCounts(0, 1, 0, 0, 0);
     }
+    // Wave 6 now calls startRiftRam(world, core) from the schedule chain. The
+    // harness carries the chain inside its own class, so the locals it names
+    // have to exist there too, not just the method.
+    Object world = new Object();
+    Object core = new Object();
+    void startRiftRam(Object worldArg, Object coreArg) { }
     WaveMechanicsPolicy.WaveCounts combineWaveCounts(WaveMechanicsPolicy.WaveCounts left,
                                                       WaveMechanicsPolicy.WaveCounts right) {
         return new WaveMechanicsPolicy.WaveCounts(left.endermen() + right.endermen(),

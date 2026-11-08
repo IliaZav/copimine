@@ -205,10 +205,10 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # Repinned for the Guardian render fix: the client now routes the
     # END_RIFT_GUARDIAN_V1 visual to the Guardian model and texture on the
     # non-flag path, so a visual-bound boss stops drawing as a vanilla Enderman.
-    assert artifact['size'] == 13_477_112
+    assert artifact['size'] == 13_553_285
     assert artifact['sha512'] == (
-        'fa2e9cc3b31db8b2744bf74012b6ddd28567084a6ae751a5231d81a585c160c2'
-        '7c7f292837c7dfb9c05f67f6749dc7807789f68b5cef5db0edca12a32aa7354b'
+        '9c2ae21dc7419ef9b6aeb9069343c20ab40fad28e8209d6f58f955eaff26596a'
+        'a1f6bbaa9138b47e9614435feac22e7b9b2d7f9a81a93229d0d2dec2c0b3d022'
     )
 
 

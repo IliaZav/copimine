@@ -21,6 +21,7 @@ def _run_probe(tmp_path: Path, name: str, body: str) -> str:
         PLUGIN / "runtime/BossStartGateway.java",
         PLUGIN / "domain/ServerTickClock.java",
         PLUGIN / "domain/EventPhase.java",
+        PLUGIN / "domain/BlackFogTimingPolicy.java",
         PLUGIN / "domain/EndRiftObjective.java",
     ]
     result = subprocess.run(

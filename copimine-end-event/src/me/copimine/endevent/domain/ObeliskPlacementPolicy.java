@@ -30,6 +30,8 @@ public final class ObeliskPlacementPolicy {
     /** Radial jitter inside the band, so no two obelisks share a ring. */
     private static final double JITTER_DEGREES = 26.0D;
     private static final int PLACEMENT_ATTEMPTS = 48;
+    /** How many substitute anchors a caller may reserve for rejected sites. */
+    public static final int MAX_SPARE_CANDIDATES = 12;
 
     private ObeliskPlacementPolicy() {
     }
@@ -86,6 +88,61 @@ public final class ObeliskPlacementPolicy {
             }
         }
         return List.copyOf(points);
+    }
+
+    /**
+     * Extra anchors for the caller's placement fallback.
+     *
+     * <p>{@link #scatter} returns exactly {@code count} points, so a wave that
+     * rejects one on safety grounds has nothing left to try and aborts with
+     * "planned fewer obelisks than the roster requires" — the arena then plays
+     * music with no objectives. This returns additional deterministic anchors
+     * from the same seeded stream, spaced by the same rule, so the caller can
+     * substitute a rejected site instead of failing the whole wave.</p>
+     *
+     * @param count  how many spare anchors the caller wants
+     * @param seed   the SAME attempt-scoped seed as the primary scatter
+     * @param usableRadius the same usable radius as the primary scatter
+     * @param taken  anchors already in use; spares keep MIN_DISTANCE from them
+     */
+    public static List<Point> spareCandidates(int count, long seed, double usableRadius,
+                                              List<Point> taken) {
+        int wanted = Math.max(0, Math.min(ObeliskScalingPolicy.MAX_OBELISKS, count));
+        if (wanted == 0) return List.of();
+        double minRadius = usableRadius * MIN_RADIUS_FRACTION;
+        double maxRadius = usableRadius * MAX_RADIUS_FRACTION;
+        // An unusable band still has the legacy ring available, exactly as the
+        // primary path falls back, so a spare list is never empty by accident.
+        double usableMin = Double.isFinite(minRadius) && minRadius >= MIN_DISTANCE
+                ? minRadius : DEFAULT_RADIUS * MIN_RADIUS_FRACTION;
+        double usableMax = Double.isFinite(maxRadius) && maxRadius >= usableMin
+                ? maxRadius : DEFAULT_RADIUS;
+        List<Point> occupied = taken == null ? List.of() : taken;
+        List<Point> spares = new ArrayList<>(wanted);
+        Random random = new Random(seed ^ 0x5DEECE66DL);
+        int attempts = 0;
+        while (spares.size() < wanted && attempts < PLACEMENT_ATTEMPTS * wanted * 4) {
+            attempts++;
+            double angle = random.nextDouble() * Math.PI * 2.0D;
+            double radius = usableMin + random.nextDouble() * (usableMax - usableMin);
+            Point candidate = new Point((int) Math.round(Math.cos(angle) * radius),
+                    (int) Math.round(Math.sin(angle) * radius));
+            if (occupied.contains(candidate) || spares.contains(candidate)) continue;
+            boolean tooClose = occupied.stream().anyMatch(other ->
+                    Math.hypot(candidate.x() - other.x(), candidate.z() - other.z()) < MIN_DISTANCE)
+                    || spares.stream().anyMatch(other ->
+                    Math.hypot(candidate.x() - other.x(), candidate.z() - other.z()) < MIN_DISTANCE);
+            if (!tooClose) spares.add(candidate);
+        }
+        // The ring is the deterministic last resort, same as the primary path.
+        if (spares.size() < wanted) {
+            for (Point ring : candidates(ObeliskScalingPolicy.MAX_OBELISKS)) {
+                if (spares.size() >= wanted) break;
+                if (occupied.contains(ring) || spares.contains(ring)) continue;
+                spares.add(ring);
+            }
+        }
+        return List.copyOf(spares);
     }
 
     /** Fixed-seed scatter used when the caller cannot measure the arena. */

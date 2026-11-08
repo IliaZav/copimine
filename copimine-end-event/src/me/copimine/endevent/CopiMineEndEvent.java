@@ -49842,9 +49842,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // W4-001 [U]: obelisks stand irregularly in the outer band, not on a
         // predictable ring. The seed is attempt-scoped so recovery replays the
         // identical layout (W4-003) while a new attempt may draw a new one.
+        long layoutSeed = obeliskLayoutSeed();
+        double usableRadius = usableOuterRadius(core);
         List<ObeliskPlacementPolicy.Point> points = ObeliskPlacementPolicy.scatter(
-                profile.obeliskCount(), obeliskLayoutSeed(), usableOuterRadius(core));
-        for (ObeliskPlacementPolicy.Point point : points) {
+                profile.obeliskCount(), layoutSeed, usableRadius);
+        // The primary scatter returns exactly the roster count, so a single
+        // rejected site used to abort the whole wave: the arena played its
+        // music and stood empty because "planned != required" failed below.
+        // Spare deterministic anchors let a refused site be substituted instead
+        // of ending the encounter. The spares come from the same seeded stream,
+        // so recovery replays the identical substitute layout.
+        List<ObeliskPlacementPolicy.Point> spares = ObeliskPlacementPolicy.spareCandidates(
+                Math.max(profile.obeliskCount(), ObeliskPlacementPolicy.MAX_SPARE_CANDIDATES),
+                layoutSeed, usableRadius, points);
+        List<ObeliskPlacementPolicy.Point> candidates =
+                new ArrayList<>(points.size() + spares.size());
+        candidates.addAll(points);
+        candidates.addAll(spares);
+        for (ObeliskPlacementPolicy.Point point : candidates) {
             if (planned.size() >= profile.obeliskCount()) {
                 break;
             }

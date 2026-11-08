@@ -30,6 +30,7 @@ public class PortalLayerRuntimeProbe {
     Set<UUID> waveObjectiveVisuals=new LinkedHashSet<>();
     Map<UUID,Object> waveObjectiveVisualTexts=new HashMap<>();
     Map<Integer,Long> portalClosingStartedMillis=new HashMap<>();
+    Set<Integer> portalShockwaveReleased=new LinkedHashSet<>();
     Map<Integer,Integer> portalProgressMilestones=new HashMap<>();
     Map<Integer,List<Location>> wavePortals=new HashMap<>();
     Map<Integer,List<PortalCapturePolicy.PortalState>> portalCaptureStates=new HashMap<>();

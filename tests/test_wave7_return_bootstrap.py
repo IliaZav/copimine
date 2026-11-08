@@ -170,6 +170,7 @@ public class Wave7ReturnBootstrapProbe {
 ''', encoding="utf-8")
     paths = (
         "domain/EventPhase.java", "domain/EndEventStateMachine.java",
+        "domain/BlackFogTimingPolicy.java",
         "domain/EndRiftObjective.java", "domain/ChamberIsolationPolicy.java",
         "domain/RiftCarrierPolicy.java",
         "domain/RealitySplitBarrierPolicy.java", "domain/Wave7EchoDuelCellPolicy.java",

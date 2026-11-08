@@ -928,6 +928,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * presentation from that wave.
      */
     private int waveTwoMarkCycle;
+    /** Elites this Wave 2 attempted to produce; capped by the materialization policy. */
+    private int waveTwoEliteMaterializations;
+    /**
+     * One server-authored elite roll per materialized phantom, keyed by phantom
+     * id. Storing the roll (instead of drawing per tick) is what makes the 30%
+     * chance apply EXACTLY ONCE per materialization: a repeated completion
+     * callback re-reads the same roll instead of rerolling into an elite.
+     */
+    private final Map<String, Integer> waveTwoPhantomEliteRolls = new LinkedHashMap<>();
     private long waveTwoGroupClearedAtMillis;
     private final Map<UUID, Long> waveTwoMarkPacketAt = new LinkedHashMap<>();
     private final Map<UUID, List<WaveTwoPhantomLayoutPolicy.Phantom>> waveTwoPhantomLayouts =
@@ -1683,6 +1692,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private NamespacedKey keyRitualPrisonerGravity;
     private NamespacedKey keyKind;
     private NamespacedKey keyWave;
+    /** Remembers which Wave 2 phantom produced this real mob, for the elite roll. */
+    private NamespacedKey keyWaveTwoPhantomSource;
     private NamespacedKey keyWaveSpawnGroup;
     private NamespacedKey keyWaveTwoFinalElite;
     private NamespacedKey keyWaveTwoCleanupEpoch;
@@ -1845,6 +1856,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             keyWaveTwoFinalElite = new NamespacedKey(this, "end_event_wave2_final_elite");
             keyWaveTwoCleanupEpoch = new NamespacedKey(this, "end_event_wave2_cleanup_epoch");
             keyWaveTwoSquadOwner = new NamespacedKey(this, "end_event_wave2_squad_owner");
+            keyWaveTwoPhantomSource = new NamespacedKey(this, "end_event_wave2_phantom_source");
             keyEventSessionId = new NamespacedKey(this, "event_session_id");
             keyEventRole = new NamespacedKey(this, "event_role");
             keyEventWave = new NamespacedKey(this, "event_wave");
@@ -25438,12 +25450,56 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " phantom=" + phantomId + " group=" + fence.groupNumber());
             return;
         }
+        promoteMaterializedWaveTwoEndermanToElite(phantomId);
         if (marked != null) {
             sendWaveTwoPhantomActivation(marked, false, callbackCycle, phantomId, location);
             marked.playSound(location, Sound.ENTITY_ENDERMAN_TELEPORT,
                     SoundCategory.HOSTILE, 0.65F, 1.4F);
         }
         waveTwoPhantomActivationPlayerUuid = null;
+    }
+
+    /**
+     * Applies the single approved 30% elite roll to the real Enderman that was
+     * just materialized from a Wave 2 phantom.
+     *
+     * <p>The roll is drawn ONCE and remembered per phantom id, so a repeated
+     * completion callback for the same phantom re-reads its stored roll instead
+     * of rerolling — otherwise "30% per materialization" would silently become
+     * "until it is elite". Elites are additionally capped per wave.</p>
+     */
+    private void promoteMaterializedWaveTwoEndermanToElite(String phantomId) {
+        if (phantomId == null || phantomId.isBlank() || activeWave != 2) return;
+        int roll = waveTwoPhantomEliteRolls.computeIfAbsent(phantomId,
+                ignored -> java.util.concurrent.ThreadLocalRandom.current().nextInt(100));
+        if (!WaveTwoPhantomMaterializationPolicy.becomesElite(roll, waveTwoEliteMaterializations)) {
+            return;
+        }
+        Enderman target = null;
+        for (Entity entity : ownedEntities.values()) {
+            if (!(entity instanceof Enderman candidate) || !candidate.isValid()) continue;
+            if (readInt(candidate, keyWave, 0) != 2) continue;
+            if (phantomId.equals(readString(candidate, keyWaveTwoPhantomSource))) {
+                target = candidate;
+                break;
+            }
+        }
+        if (target == null) return;
+        if (EVENT_KIND_ELITE.equals(readString(target, keyKind))) return;
+        tag(target, EVENT_KIND_ELITE, 2, isOfficialCurrentAttempt());
+        setLootProfile(target, isTestBoss(target) ? "test" : "elite-enderman");
+        EndRiftAiPolicy.MiniBossSpell miniBossSpell = configureEliteAbility(
+                target, 2, EliteAbilityPolicy.Role.ENDERMAN);
+        applyEliteCombatStats(target, 3.0D);
+        target.setCustomName(ChatColor.LIGHT_PURPLE + "Элитный эндермен"
+                + (miniBossSpell == null ? "" : ChatColor.DARK_PURPLE + " · " + miniBossSpell.displayName()));
+        target.setCustomNameVisible(false);
+        spawnEventParticle(target.getLocation().add(0.0D, 1.0D, 0.0D), Particle.REVERSE_PORTAL,
+                10, 0.35D, 0.55D, 0.35D, 0.02D);
+        waveTwoEliteMaterializations++;
+        getLogger().info("WAVE_TWO_MATERIALIZED_ELITE event=" + eventId
+                + " generation=" + generation + " phantom=" + phantomId
+                + " roll=" + roll + " elites=" + waveTwoEliteMaterializations);
     }
 
     private WaveTwoPhantomMaterializationPolicy.Budget currentWaveTwoPhantomBudget(
@@ -25622,8 +25678,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     : spawnEnderman(world, core, wave, false, guardianWave, test, nextIndex, nextIndex);
             if (index == 0 && reservedPhantomSpawn != null && enderman != null
                     && waveTwoPhantomActivationState != null) {
-                waveTwoMaterializedPhantoms.put(enderman.getUniqueId(),
-                        waveTwoPhantomActivationState.phantomId());
+                String sourcePhantomId = waveTwoPhantomActivationState.phantomId();
+                waveTwoMaterializedPhantoms.put(enderman.getUniqueId(), sourcePhantomId);
+                // Persistent proof of which phantom produced this mob, so the
+                // elite roll survives a reload and cannot be re-attributed.
+                enderman.getPersistentDataContainer().set(keyWaveTwoPhantomSource,
+                        PersistentDataType.STRING, sourcePhantomId);
             }
             portalPackSlot = tagWaveThreePusher(
                     enderman,
@@ -41526,6 +41586,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         waveTwoUsedPhantomIds.clear();
         waveTwoPhantomActivationState = null;
         waveTwoMaterializedPhantoms.clear();
+        waveTwoPhantomEliteRolls.clear();
+        waveTwoEliteMaterializations = 0;
         currentFogCycle = 0;
         blackFogPhase = BlackFogPhase.COMBAT;
         fogSafeZoneTelegraphActive = false;

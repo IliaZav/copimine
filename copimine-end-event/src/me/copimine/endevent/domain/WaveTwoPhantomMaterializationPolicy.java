@@ -31,6 +31,36 @@ public final class WaveTwoPhantomMaterializationPolicy {
     /** Event generation and active group that own the candidate. */
     public record Fence(String eventId, long generation, int groupNumber) { }
 
+    /** Chance that one confirmed materialization becomes an elite Enderman. */
+    public static final int ELITE_PERCENT = 30;
+    /**
+     * A full Wave 2 may promote at most this many materializations to elite.
+     * Balance cap: an unbounded 30% roll over many materializations would
+     * eventually staff the whole wave with elites.
+     */
+    public static final int MAX_ELITE_MATERIALIZATIONS = 2;
+
+    /**
+     * Decides whether one phantom that is about to become a real Enderman
+     * should become an ELITE instead.
+     *
+     * <p>The roll is taken EXACTLY ONCE per confirmed materialization, from a
+     * server-authoritative value, so a repeated callback for the same phantom
+     * cannot reroll into an elite. The caller must pass the same
+     * {@code rollPercent} it stored with the materialization, not a fresh
+     * random number per tick.</p>
+     *
+     * @param rollPercent server-issued roll in {@code [0, 100)}
+     * @param elitesAlreadyMaterialized how many elites this wave already produced
+     * @return {@code true} when this materialization becomes an elite
+     */
+    public static boolean becomesElite(int rollPercent, int elitesAlreadyMaterialized) {
+        if (rollPercent < 0 || rollPercent >= 100) return false;
+        if (elitesAlreadyMaterialized < 0
+                || elitesAlreadyMaterialized >= MAX_ELITE_MATERIALIZATIONS) return false;
+        return rollPercent < ELITE_PERCENT;
+    }
+
     /**
      * The server supplies one selected phantom and its arena-position validation result.
      * The client must not author this identity, position decision, or activation.

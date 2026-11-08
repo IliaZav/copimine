@@ -40885,21 +40885,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * thing that CAN be per player, so each marked participant hides every
      * Wave 2 body that is not assigned to them and keeps their own squad.
      */
+    /**
+     * Wave 2 assigns each combat mob to one owner for targeting, but ownership
+     * is NOT visibility. The previous implementation hid every mob from every
+     * player who was not its owner, so a party of ten saw a mostly empty arena
+     * while their teammates fought invisible Endermen. Ownership decides who a
+     * mob chases; every eligible participant must still SEE and hit it.
+     *
+     * <p>This now only RELEASES hides left over from an older session, so a
+     * player who reconnects or inherits a stale viewer map is resynchronised
+     * without ever hiding a shared combat enemy.</p>
+     */
     private void syncWaveTwoPrivateViewers(Player participant) {
-        if (participant == null || !participant.isOnline() || activeWave != 2) return;
-        Set<UUID> desiredHidden = new LinkedHashSet<>();
-        for (Entity entity : ownedEntities.values()) {
-            if (entity == null || !entity.isValid()) continue;
-            if (!isWaveCombatKind(readString(entity, keyKind))) continue;
-            if (readInt(entity, keyWave, 0) != 2) continue;
-            UUID owner = waveTwoEntityOwner(entity);
-            if (!participant.getUniqueId().equals(owner))
-                desiredHidden.add(entity.getUniqueId());
-        }
-        Set<UUID> hidden = waveTwoHiddenEntitiesByViewer.computeIfAbsent(
-                participant.getUniqueId(), ignored -> new LinkedHashSet<>());
+        if (participant == null || !participant.isOnline()) return;
+        Set<UUID> hidden = waveTwoHiddenEntitiesByViewer.get(participant.getUniqueId());
+        if (hidden == null || hidden.isEmpty()) return;
         for (UUID entityId : new LinkedHashSet<>(hidden)) {
-            if (desiredHidden.contains(entityId)) continue;
             Entity entity = ownedEntities.get(entityId);
             if (entity != null && entity.isValid()) {
                 participant.showEntity(this, entity);
@@ -40907,14 +40908,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             hidden.remove(entityId);
         }
-        for (UUID entityId : desiredHidden) {
-            Entity entity = ownedEntities.get(entityId);
-            if (entity == null || !entity.isValid() || !hidden.add(entityId)) continue;
-            participant.hideEntity(this, entity);
-            sendClientPacket(participant, "END_ENTITY_UNBIND",
-                    entityBindingInstances.getOrDefault(entityId, ""), 0L,
-                    entityId.toString(), "");
-        }
+        if (hidden.isEmpty()) waveTwoHiddenEntitiesByViewer.remove(participant.getUniqueId());
     }
 
     private void clearWaveTwoPrivateViews() {

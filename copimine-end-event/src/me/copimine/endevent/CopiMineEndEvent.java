@@ -893,6 +893,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<PortalVisualSlot> portalVisualSpawnsInProgress = new LinkedHashSet<>();
     private final Map<PortalVisualSlot, Long> portalVisualRebuildRetryAtMillis = new LinkedHashMap<>();
     private final Map<Integer, Long> portalClosingStartedMillis = new LinkedHashMap<>();
+    /** Portal indexes that already emitted their one collapse shockwave. */
+    private final java.util.Set<Integer> portalShockwaveReleased = new java.util.HashSet<>();
+    /** Radius, horizontal impulse and lift of the Wave 3 collapse shockwave. */
+    private static final double PORTAL_SHOCKWAVE_RADIUS = 9.0D;
+    private static final double PORTAL_SHOCKWAVE_STRENGTH = 1.35D;
+    private static final double PORTAL_SHOCKWAVE_LIFT = 0.42D;
     /** W3-008: last rendered progress per portal, so the stream direction reflects a real delta. */
     private final Map<Integer, Double> portalIndicatorPreviousProgress = new LinkedHashMap<>();
     private int currentPortalAudioIndex = -1;
@@ -17794,6 +17800,65 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return PortalPresentationPolicy.collapseFinished(previousClose, now) ? next : -1;
     }
 
+    /**
+     * One magical implosion when a Wave 3 gate is finally sealed.
+     *
+     * <p>Capture used to end with a sound and an action bar only: the gate
+     * simply stopped being drawn. The approved contract asks for a readable
+     * physical collapse, so the closure now plays an inward-pulling flash and
+     * throws eligible players back from the rift.</p>
+     *
+     * <p>The shockwave fires at most once per portal index per generation. The
+     * completion callback can run again after a restart or a repeated tick, and
+     * a second kick would silently turn a one-time collapse into a hazard.</p>
+     */
+    private void releasePortalCollapseShockwave(int index, Location portal) {
+        if (portal == null || portal.getWorld() == null) return;
+        if (!portalShockwaveReleased.add(index)) return;
+        World world = portal.getWorld();
+        Location center = portal.clone().add(0.0D, 1.0D, 0.0D);
+        // Inward pull, then a bright flash: the gate is swallowing its own
+        // energy rather than exploding like TNT.
+        for (Player viewer : eventAudience()) {
+            if (!viewer.getWorld().equals(world)) continue;
+            if (!isEventParticleViewer(viewer, center)) continue;
+            viewer.spawnParticle(Particle.REVERSE_PORTAL, center, 90, 2.4D, 2.0D, 2.4D, 0.05D);
+            viewer.spawnParticle(Particle.PORTAL, center, 60, 1.6D, 1.6D, 1.6D, 0.35D);
+            viewer.spawnParticle(Particle.FLASH, center, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            viewer.spawnParticle(Particle.END_ROD, center, 24, 1.2D, 1.2D, 1.2D, 0.12D);
+        }
+        world.playSound(center, Sound.ENTITY_ENDER_DRAGON_HURT, SoundCategory.HOSTILE, 1.1F, 0.65F);
+        world.playSound(center, Sound.BLOCK_RESPAWN_ANCHOR_DEPLETE, SoundCategory.BLOCKS, 1.2F, 0.7F);
+        world.playSound(center, Sound.ENTITY_GENERIC_EXPLODE, SoundCategory.HOSTILE, 0.9F, 1.35F);
+        // Radial knockback for players standing near the gate. The impulse is
+        // capped and never vertical-dominant, so nobody is launched out of the
+        // arena or into the void; distance falls off to zero at the edge.
+        int pushed = 0;
+        for (Player player : eventAudience()) {
+            if (!player.getWorld().equals(world)) continue;
+            if (!player.isOnline() || player.isDead()) continue;
+            Location at = player.getLocation();
+            double dx = at.getX() - center.getX();
+            double dz = at.getZ() - center.getZ();
+            double distance = Math.sqrt(dx * dx + dz * dz);
+
+            double falloff = 1.0D - (distance / PORTAL_SHOCKWAVE_RADIUS);
+            if (distance > PORTAL_SHOCKWAVE_RADIUS) continue;
+            double length = Math.max(distance, 0.001D);
+            double strength = PORTAL_SHOCKWAVE_STRENGTH * falloff;
+            Vector impulse = new Vector(dx / length * strength, PORTAL_SHOCKWAVE_LIFT * falloff,
+                    dz / length * strength);
+            player.setVelocity(player.getVelocity().multiply(0.25D).add(impulse));
+            player.playSound(player.getLocation(), Sound.ENTITY_ENDERMAN_SCREAM,
+                    SoundCategory.HOSTILE, 0.8F, 0.6F);
+            pushed++;
+        }
+        getLogger().info("WAVE3_PORTAL_COLLAPSED event=" + eventId
+                + " generation=" + generation + " index=" + index
+                + " pushed=" + pushed
+                + " location=" + locationText(portal));
+    }
+
     /** The currently active gate emits a steady, bounded stream of event-owned mobs. */
     private void tickWave3PortalSpawns(long now) {
         if (activeWave != 3 || (!isOfficialAttempt() && !testWaveFrontVisualMode)) return;
@@ -29157,6 +29222,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         portalVisualRebuildAttempts.clear();
         portalVisualRebuildRetryAtMillis.clear();
         portalClosingStartedMillis.clear();
+        portalShockwaveReleased.clear();
         portalIndicatorPreviousProgress.clear();
         portalProgressMilestones.clear();
         portalCaptureStates.remove(3);
@@ -40126,6 +40192,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         portalVisualRebuildAttempts.clear();
         portalVisualRebuildRetryAtMillis.clear();
         portalClosingStartedMillis.clear();
+        portalShockwaveReleased.clear();
         portalIndicatorPreviousProgress.clear();
         portalProgressMilestones.clear();
         List<UUID> portalModelIds = new ArrayList<>();
@@ -41461,6 +41528,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     playWaveFeedback("portal-close", portal);
                     renderWaveMilestone(3, portal, "Разлом закрывается: " + (index + 1)
                             + "/" + portals.size(), Sound.BLOCK_RESPAWN_ANCHOR_DEPLETE);
+                    releasePortalCollapseShockwave(index, portal);
                 }
                 portalClosingStartedMillis.putIfAbsent(index, now);
                 completed++;
@@ -41567,6 +41635,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         portalVisualRebuildAttempts.clear();
         portalVisualRebuildRetryAtMillis.clear();
         portalClosingStartedMillis.clear();
+        portalShockwaveReleased.clear();
         portalIndicatorPreviousProgress.clear();
         portalProgressMilestones.clear();
         portalCaptureStates.clear();

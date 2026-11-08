@@ -23532,13 +23532,40 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (world == null || core == null || core.getWorld() == null || !core.getWorld().equals(world)
                 || eventUuid == null
                 || generation <= 0L || roster == null || roster.isEmpty()) {
+            // This used to return false SILENTLY, which is exactly the reported
+            // "wave 7 did not start" with nothing in the log to act on. Every
+            // refusal now names the stage and the offending input.
+            String stage = world == null ? "world-null"
+                    : core == null ? "core-null"
+                    : core.getWorld() == null ? "core-world-null"
+                    : !core.getWorld().equals(world) ? "core-wrong-world"
+                    : eventUuid == null ? "event-id-not-a-uuid"
+                    : generation <= 0L ? "generation-not-positive"
+                    : roster == null ? "roster-null"
+                    : "roster-empty";
+            getLogger().severe("END_RIFT_WAVE7_PREFLIGHT_REFUSED event=" + eventId
+                    + " generation=" + generation
+                    + " phase=" + phase
+                    + " requested_wave=7"
+                    + " active_wave=" + activeWave
+                    + " eligible_players=" + (roster == null ? 0 : roster.size())
+                    + " stage=" + stage
+                    + " code=WAVE7_PREFLIGHT_INPUT_INVALID"
+                    + " recovery=none journal=none");
             return false;
         }
         long playerCount = roster.stream().filter(playerId -> playerId != null).count();
         if (!sandbox && playerCount < 2L) {
             getLogger().warning("END_RIFT_WAVE7_PREFLIGHT_REFUSED event=" + eventId
-                    + " generation=" + generation + " reason=minimum-roster-size players=" + playerCount
-                    + " minimum=2");
+                    + " generation=" + generation
+                    + " phase=" + phase
+                    + " requested_wave=7"
+                    + " active_wave=" + activeWave
+                    + " eligible_players=" + playerCount
+                    + " stage=roster-size"
+                    + " code=WAVE7_PREFLIGHT_MINIMUM_ROSTER"
+                    + " minimum=2"
+                    + " recovery=waiting-for-players journal=none");
             return false;
         }
 

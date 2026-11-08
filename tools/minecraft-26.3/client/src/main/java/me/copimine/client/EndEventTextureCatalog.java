@@ -106,6 +106,14 @@ public final class EndEventTextureCatalog {
         textures.put("END_RIFT_FIREBALL_V1", entityTexture("end_event_rift_fireball_hd.png"));
         textures.put("END_RIFT_TENTACLE_V1", entityTexture("end_rift_tentacle_hd.png"));
         textures.put("END_RIFT_GUARDIAN_SHIELD_V1", entityTexture("end_rift_guardian_shield_hd.png"));
+        // Wave 6 rivet ram: four armour stages of ONE beast. The stage is chosen
+        // by the server's accepted Core impact count, not by the client, so every
+        // player sees the same stage at the same moment. A natural Ravager has no
+        // binding and therefore keeps its vanilla sheet.
+        textures.put(RiftRamVisualPolicy.ARMOR0_VISUAL, entityTexture("end_rift_ram_armor0.png"));
+        textures.put(RiftRamVisualPolicy.ARMOR1_VISUAL, entityTexture("end_rift_ram_armor1.png"));
+        textures.put(RiftRamVisualPolicy.ARMOR2_VISUAL, entityTexture("end_rift_ram_armor2.png"));
+        textures.put(RiftRamVisualPolicy.ARMOR3_VISUAL, entityTexture("end_rift_ram_armor3.png"));
         return Map.copyOf(textures);
     }
 

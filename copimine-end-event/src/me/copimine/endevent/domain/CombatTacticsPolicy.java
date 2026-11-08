@@ -121,6 +121,9 @@ public final class CombatTacticsPolicy {
             case OBELISK_ASSAULT -> MobTactic.OBELISK_GUARD;
             case BLACK_FOG -> MobTactic.FOG_SCOUT;
             case COLLAPSE_RINGS, RITUAL_SPHERE -> MobTactic.RING_GUARD;
+            // Wave 6 mobs support the ram: they keep their distance from the
+            // charge line instead of holding a ring the ram does not use.
+            case RIFT_RAM -> MobTactic.FOG_SCOUT;
             case REALITY_SPLIT -> MobTactic.CHAMBER_BLADE;
         };
     }

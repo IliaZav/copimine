@@ -356,7 +356,7 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
             case WAVE_3 -> EndRiftObjective.Objective.RIFT_GATES;
             case WAVE_4 -> EndRiftObjective.Objective.OBELISK_ASSAULT;
             case WAVE_5 -> EndRiftObjective.Objective.BLACK_FOG;
-            case WAVE_6 -> EndRiftObjective.Objective.RITUAL_SPHERE;
+            case WAVE_6 -> EndRiftObjective.Objective.RIFT_RAM;
             case WAVE_7 -> EndRiftObjective.Objective.REALITY_SPLIT;
             default -> null;
         };

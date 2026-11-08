@@ -156,7 +156,7 @@ public final class EndRiftEncounterController {
             case RIFT_GATES -> 3;
             case OBELISK_ASSAULT -> 4;
             case BLACK_FOG -> 5;
-            case COLLAPSE_RINGS, RITUAL_SPHERE -> 6;
+            case COLLAPSE_RINGS, RITUAL_SPHERE, RIFT_RAM -> 6;
             case REALITY_SPLIT -> 7;
         };
     }

@@ -123,6 +123,7 @@ import me.copimine.endevent.domain.RiftFireballReflectionPolicy;
 import me.copimine.endevent.domain.RiftFracturePolicy;
 import me.copimine.endevent.domain.RiftObeliskTimingPolicy;
 import me.copimine.endevent.domain.RiftCarrierPolicy;
+import me.copimine.endevent.domain.RiftRamPolicy;
 import me.copimine.endevent.domain.RiftCarrierCustodyPolicy;
 import me.copimine.endevent.domain.RiftCarrierRecoverySnapshot;
 import me.copimine.endevent.domain.Wave3PortalPolicy;
@@ -322,6 +323,7 @@ import org.bukkit.entity.Enderman;
 import org.bukkit.entity.AreaEffectCloud;
 import org.bukkit.entity.EnderPearl;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Ravager;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.EnderCrystal;
 import org.bukkit.entity.AbstractArrow;
@@ -1238,6 +1240,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean wave6Complete;
     /** Prevents objective bootstrap from replacing a valid post-restart ritual snapshot. */
     private boolean ritualSphereStateRehydrated;
+    // --- Wave 6 Rift Ram ----------------------------------------------------
+    /**
+     * The one event-owned Ravager. A single field is the whole spawn guard: the
+     * legacy encounter could field mages, guards and a sphere independently, so a
+     * retried tick could produce a second encounter. Here a second Ravager is
+     * impossible by construction.
+     */
+    private UUID riftRamId;
+    /** Accepted Core impacts, 0..3. Only this counter may crack the Core. */
+    private int riftRamImpacts;
+    /** Authoritative combat state; everything the client draws derives from it. */
+    private RiftRamPolicy.State riftRamState = RiftRamPolicy.State.SPAWNING;
+    private long riftRamStateSinceMillis;
+    private UUID riftRamTargetId;
+    /** Unit vector locked at the end of the warning; null until then. */
+    private double riftRamChargeDirX;
+    private double riftRamChargeDirZ;
+    private long riftRamChargeStartMillis;
+    /** The charge whose impact has already been banked, so duplicates are inert. */
+    private boolean riftRamChargeBanked;
+    private long riftRamLastChargeMillis;
+    private final Set<UUID> riftRamChargeHitPlayers = new LinkedHashSet<>();
+    /** Set once exactly three impacts have been committed and the blade is still up. */
+    private boolean riftRamComplete;
     private int waveSpawnWave;
     private int waveSpawnGroupIndex;
     private int waveSpawnEntityOffset;
@@ -23328,9 +23354,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // assault contract.
             waveSpawnSchedule = List.of(scaled);
         } else if (wave == 6) {
-            scaled = combineWaveCounts(
-                    ritualWaveCounts(players), ritualPressureCounts(players));
-            waveSpawnSchedule = List.of(scaled);
+            // Wave 6 is ONE Ravager. It is deliberately not expressed as a wave
+            // spawn schedule: the legacy encounter fielded mages, guards and
+            // pressure packs on separate schedules, so a schedule-driven roster
+            // is exactly what allows a second encounter to appear. An empty
+            // schedule plus a single ram id keeps that impossible.
+            scaled = new WaveMechanicsPolicy.WaveCounts(0, 0, 0, 0, 0);
+            waveSpawnSchedule = List.of();
+            startRiftRam(world, core);
         } else if (wave == 7) {
             // Wave 7 creates one distinct trial per assigned room. Its generic
             // mob counts are intentionally ignored by the runtime scheduler.
@@ -26418,6 +26449,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!canOwnWaveObjective(objectiveWave)) {
             return true;
         }
+        // Wave 6 drives its own state machine: the ram needs a tick even before
+        // the objective clock starts, otherwise the warning never expires and the
+        // first charge never happens.
+        if (objectiveWave == 6) {
+            tickRiftRam();
+        }
         if (waveObjectiveStartedMillis <= 0L) {
             World world = Bukkit.getWorld(worldName);
             Location core = coreCombatAnchorLocation();
@@ -26521,12 +26558,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case BLACK_FOG -> currentFogCycle >= EndRiftObjective.REQUIRED_FOG_CYCLES
                     && !Wave5PostFogPackPolicy.blocksCompletion(
                             currentFogCycle, wave5PostFogPacksSpawned);
-            case COLLAPSE_RINGS -> false;
-            case RITUAL_SPHERE -> wave6Complete
-                    && RitualCasterProgressionPolicy.mayComplete(
-                    ritualCasterDeathCount, ritualPrisonerId() != null || testRitualCombatMode,
-                    wave6PrisonBroken,
-                    isRitualSphereRuntimeClean());
+            case COLLAPSE_RINGS, RITUAL_SPHERE -> false;
+            // Wave 6 completes on the Rift Ram's own terms: three committed Core
+            // impacts and a dead Ravager. The old ritual completion required the
+            // mage death count, a broken prison and a clean sphere to ALL be true
+            // at the same instant, which is why the wave never finished and Wave 7
+            // therefore never started. None of those are consulted any more.
+            case RIFT_RAM -> riftRamComplete
+                    && RiftRamPolicy.isComplete(riftRamImpacts, isRiftRamAlive());
             case REALITY_SPLIT -> waveObjectiveComplete;
         };
     }
@@ -26537,6 +26576,396 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * simply has nothing to fight: the player reports "there is no charge"
      * and the log only says CARRIER_SELECTED.
      */
+    // =====================================================================
+    // Wave 6 -- RIFT RAM
+    // =====================================================================
+
+    /**
+     * Spawns the single event-owned Ravager for Wave 6.
+     *
+     * <p>Everything the encounter needs lives on the entity plus the handful of
+     * fields above, so a restart can rebuild the fight from the snapshot instead
+     * of re-running a scene script. A failed spawn is reported loudly: a wave
+     * that plays music over an empty arena is the exact complaint this wave
+     * exists to remove.</p>
+     */
+    private void startRiftRam(World world, Location core) {
+        riftRamId = null;
+        riftRamImpacts = 0;
+        riftRamState = RiftRamPolicy.State.SPAWNING;
+        riftRamStateSinceMillis = System.currentTimeMillis();
+        riftRamTargetId = null;
+        riftRamChargeDirX = 0.0D;
+        riftRamChargeDirZ = 0.0D;
+        riftRamChargeStartMillis = 0L;
+        riftRamChargeBanked = false;
+        riftRamLastChargeMillis = 0L;
+        riftRamChargeHitPlayers.clear();
+        riftRamComplete = false;
+        if (world == null || core == null) {
+            getLogger().severe("END_RIFT_RAM_SPAWN_FAILED event=" + eventId
+                    + " generation=" + generation + " reason=no-anchor");
+            return;
+        }
+        Location spawn = riftRamSpawnLocation(world, core);
+        if (spawn == null) {
+            getLogger().severe("END_RIFT_RAM_SPAWN_FAILED event=" + eventId
+                    + " generation=" + generation + " reason=no-safe-site");
+            return;
+        }
+        Ravager ram = world.spawn(spawn, Ravager.class, entity -> {
+            entity.setPersistent(true);
+            entity.setRemoveWhenFarAway(false);
+            entity.setCustomName("Таран Разлома");
+            entity.setCustomNameVisible(true);
+            entity.getPersistentDataContainer().set(keyKind, PersistentDataType.STRING, EVENT_KIND_WAVE_MOB);
+            entity.getPersistentDataContainer().set(keyWave, PersistentDataType.INTEGER, 6);
+            entity.getPersistentDataContainer().set(keyGeneration, PersistentDataType.INTEGER, (int) generation);
+            entity.getPersistentDataContainer().set(keyEventId, PersistentDataType.STRING, eventId);
+        });
+        if (ram == null) {
+            getLogger().severe("END_RIFT_RAM_SPAWN_FAILED event=" + eventId
+                    + " generation=" + generation + " reason=world-refused");
+            return;
+        }
+        riftRamId = ram.getUniqueId();
+        double health = RiftRamPolicy.healthForPlayers(currentWaveScalePlayers);
+        AttributeInstance maxHealth = ram.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+        if (maxHealth != null) {
+            maxHealth.setBaseValue(health);
+        }
+        ram.setHealth(health);
+        // The scale attribute drives the HITBOX, not just the model. Setting
+        // only the visual would leave a 1.5x beast with a vanilla-sized body
+        // that players could walk through.
+        AttributeInstance scale = ram.getAttribute(Attribute.GENERIC_SCALE);
+        if (scale != null) {
+            scale.setBaseValue(RiftRamPolicy.SCALE);
+        }
+        ram.setAI(true);
+        riftRamState = RiftRamPolicy.State.CHASING;
+        riftRamStateSinceMillis = System.currentTimeMillis();
+        applyRiftRamVisual(ram);
+        getLogger().info("END_RIFT_RAM_SPAWNED event=" + eventId + " generation=" + generation
+                + " hp=" + Math.round(health) + " scale=" + RiftRamPolicy.SCALE
+                + " required_impacts=" + RiftRamPolicy.REQUIRED_IMPACTS
+                + " players=" + currentWaveScalePlayers);
+    }
+
+    /** A readable spawn site: on the floor, away from the Core, never inside a block. */
+    private Location riftRamSpawnLocation(World world, Location core) {
+        int floorY = combatFloorY();
+        for (int attempts = 0; attempts < 24; attempts++) {
+            double angle = Math.random() * Math.PI * 2.0D;
+            double radius = 14.0D + Math.random() * 5.0D;
+            int x = core.getBlockX() + (int) Math.round(Math.cos(angle) * radius);
+            int z = core.getBlockZ() + (int) Math.round(Math.sin(angle) * radius);
+            world.getChunkAt(x >> 4, z >> 4);
+            Block feet = world.getBlockAt(x, floorY + 1, z);
+            Block head = world.getBlockAt(x, floorY + 2, z);
+            Block below = world.getBlockAt(x, floorY, z);
+            if (!feet.getType().isAir() || !head.getType().isAir()) continue;
+            if (below.getType().isAir()) continue;
+            return new Location(world, x + 0.5D, floorY + 1.0D, z + 0.5D);
+        }
+        Location fallback = core.clone().add(16.0D, 0.0D, 0.0D);
+        fallback.setY(floorY + 1.0D);
+        return fallback;
+    }
+
+    /** True while the ram entity still exists and is event-owned. */
+    private boolean isRiftRamAlive() {
+        if (riftRamId == null) return false;
+        Entity entity = Bukkit.getEntity(riftRamId);
+        return entity instanceof Ravager ram && ram.isValid() && !ram.isDead();
+    }
+
+    /** Push the current armour stage to every eligible client. */
+    private void applyRiftRamVisual(Ravager ram) {
+        if (ram == null) return;
+        // The armour stage is published as the entity's visual id; the client
+        // catalog maps it to one of the four authored sheets.
+        String visual = "END_RIFT_RAM_ARMOR" + Math.max(0, Math.min(3, riftRamImpacts)) + "_V1";
+        for (Player viewer : activeWaveParticipants()) {
+            refreshClientBindingsForPlayer(viewer);
+        }
+        getLogger().info("END_RIFT_RAM_ARMOR event=" + eventId + " generation=" + generation
+                + " stage=" + riftRamImpacts + " visual=" + visual
+                + " state=" + riftRamState);
+    }
+
+    /** One authoritative tick for the wave 6 encounter. */
+    private void tickRiftRam() {
+        if (activeWave != 6) return;
+        if (!isRiftRamAlive()) {
+            if (riftRamId != null && riftRamState != RiftRamPolicy.State.COMPLETED) {
+                // The ram died. Only an exposed ram may finish the wave; a ram
+                // that vanished early is an owned-entity loss, not a victory.
+                if (riftRamImpacts >= RiftRamPolicy.REQUIRED_IMPACTS) {
+                    riftRamState = RiftRamPolicy.State.COMPLETED;
+                    riftRamComplete = true;
+                    restoreRiftCore();
+                    getLogger().info("END_RIFT_RAM_COMPLETED event=" + eventId
+                            + " generation=" + generation + " impacts=" + riftRamImpacts);
+                } else {
+                    getLogger().warning("END_RIFT_RAM_LOST event=" + eventId
+                            + " generation=" + generation + " impacts=" + riftRamImpacts
+                            + " state=" + riftRamState);
+                }
+            }
+            return;
+        }
+        Ravager ram = (Ravager) Bukkit.getEntity(riftRamId);
+        long now = System.currentTimeMillis();
+        switch (riftRamState) {
+            case SPAWNING -> {
+                riftRamState = RiftRamPolicy.State.CHASING;
+                riftRamStateSinceMillis = now;
+            }
+            case CHASING -> {
+                Player target = resolveRiftRamTarget(ram);
+                if (target == null) {
+                    // Nobody to lure it: hold position rather than wander off.
+                    holdRiftRamInPlace(ram);
+                    return;
+                }
+                riftRamTargetId = target.getUniqueId();
+                ram.setTarget(target);
+                if (RiftRamPolicy.mayStartCharge(RiftRamPolicy.State.CHASING, riftRamImpacts,
+                        now, riftRamLastChargeMillis)) {
+                    beginRiftRamWarning(ram, target, now);
+                }
+            }
+            case WARNING -> {
+                if (now - riftRamStateSinceMillis >= RiftRamPolicy.WARNING_TICKS * 50L) {
+                    commitRiftRamCharge(ram, now);
+                }
+            }
+            case CHARGING -> {
+                advanceRiftRamCharge(ram, now);
+            }
+            case STUNNED -> {
+                if (now - riftRamStateSinceMillis >= RiftRamPolicy.IMPACT_STUN_TICKS * 50L) {
+                    riftRamState = RiftRamPolicy.stateAfterStun(riftRamImpacts);
+                    riftRamStateSinceMillis = now;
+                    getLogger().info("END_RIFT_RAM_STUN_ENDED event=" + eventId
+                            + " generation=" + generation + " state=" + riftRamState);
+                }
+            }
+            case EXPOSED -> {
+                Player target = resolveRiftRamTarget(ram);
+                if (target != null) {
+                    ram.setTarget(target);
+                }
+            }
+            case COMPLETED -> {
+            }
+        }
+        // The damage gate runs on every tick, not only on hit, because a ram with
+        // reduced damage can still be killed by a lucky burst inside one tick.
+        protectRiftRam(ram);
+    }
+
+    /** Closest eligible participant, so the ram always prefers the party that is actually near. */
+    private Player resolveRiftRamTarget(Ravager ram) {
+        Player best = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (Player player : activeWaveParticipants()) {
+            double distance = player.getLocation().distanceSquared(ram.getLocation());
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = player;
+            }
+        }
+        return best;
+    }
+
+    /** Stop the ram where it stands, so the warning is readable and the line honest. */
+    private void holdRiftRamInPlace(Ravager ram) {
+        ram.setTarget(null);
+        ram.setVelocity(new Vector(0.0D, 0.0D, 0.0D));
+    }
+
+    /** Turn the ram's body toward a point without teleporting it. */
+    private void faceRiftRam(Ravager ram, Location target) {
+        if (target == null) return;
+        Location at = ram.getLocation();
+        double dx = target.getX() - at.getX();
+        double dz = target.getZ() - at.getZ();
+        if (Math.abs(dx) < 1.0E-6D && Math.abs(dz) < 1.0E-6D) return;
+        float yaw = (float) (StrictMath.toDegrees(StrictMath.atan2(dz, dx)) - 90.0D);
+        ram.setRotation(yaw, 0.0F);
+    }
+
+    private void beginRiftRamWarning(Ravager ram, Player target, long now) {
+        riftRamState = RiftRamPolicy.State.WARNING;
+        riftRamStateSinceMillis = now;
+        riftRamTargetId = target.getUniqueId();
+        holdRiftRamInPlace(ram);
+        ram.getWorld().playSound(ram.getLocation(), Sound.ENTITY_RAVAGER_ROAR, 2.0F, 0.85F);
+        faceRiftRam(ram, target.getLocation());
+        getLogger().info("END_RIFT_RAM_WARNING event=" + eventId + " generation=" + generation
+                + " target=" + target.getName());
+    }
+
+    /** Freeze the direction once and start sprinting. The ram never homes again. */
+    private void commitRiftRamCharge(Ravager ram, long now) {
+        Player target = riftRamTargetId == null ? null : Bukkit.getPlayer(riftRamTargetId);
+        if (target == null || !target.isOnline()) {
+            riftRamState = RiftRamPolicy.State.CHASING;
+            riftRamStateSinceMillis = now;
+            return;
+        }
+        double[] direction = RiftRamPolicy.lockChargeDirection(
+                ram.getX(), ram.getY(), ram.getZ(),
+                target.getX(), target.getY(), target.getZ());
+        if (direction == null) {
+            riftRamState = RiftRamPolicy.State.CHASING;
+            riftRamStateSinceMillis = now;
+            return;
+        }
+        riftRamChargeDirX = direction[0];
+        riftRamChargeDirZ = direction[1];
+        riftRamChargeStartMillis = now;
+        riftRamChargeBanked = false;
+        riftRamChargeHitPlayers.clear();
+        riftRamState = RiftRamPolicy.State.CHARGING;
+        riftRamStateSinceMillis = now;
+        riftRamTargetId = null;
+        ram.setTarget(null);
+        getLogger().info("END_RIFT_RAM_CHARGE_STARTED event=" + eventId + " generation=" + generation
+                + " dir=" + String.format(java.util.Locale.ROOT, "%.3f,%.3f",
+                riftRamChargeDirX, riftRamChargeDirZ));
+    }
+
+    /** Move the ram one step and resolve contact with players and with the Core. */
+    private void advanceRiftRamCharge(Ravager ram, long now) {
+        Location from = ram.getLocation();
+        double toX = from.getX() + riftRamChargeDirX * RiftRamPolicy.CHARGE_SPEED;
+        double toZ = from.getZ() + riftRamChargeDirZ * RiftRamPolicy.CHARGE_SPEED;
+        double toY = from.getY();
+        // Swept collision against the Core BEFORE moving: a single step can be
+        // longer than the Core's radius, so a point test would tunnel through.
+        Location core = coreCombatAnchorLocation();
+        boolean hitsCore = core != null && RiftRamPolicy.segmentHitsCore(
+                from.getX(), from.getY(), from.getZ(), toX, toY, toZ,
+                core.getX(), core.getY(), core.getZ());
+        // Players on the line take one hit each per charge.
+        for (Player player : activeWaveParticipants()) {
+            if (riftRamChargeHitPlayers.contains(player.getUniqueId())) continue;
+            if (!RiftRamPolicy.chargeHitsPlayer(from.getX(), from.getZ(), toX, toZ,
+                    player.getX(), player.getZ(), false)) continue;
+            riftRamChargeHitPlayers.add(player.getUniqueId());
+            player.damage(RiftRamPolicy.CHARGE_DAMAGE, ram);
+            player.getWorld().playSound(player.getLocation(), Sound.ENTITY_RAVAGER_ATTACK, 1.2F, 1.0F);
+        }
+        Location next = new Location(ram.getWorld(), toX, toY, toZ,
+                endpointYaw(from.getX(), from.getZ(), toX, toZ), 0.0F);
+        ram.teleport(next);
+        if (hitsCore) {
+            bankRiftRamImpact(ram, now);
+            return;
+        }
+        if (now - riftRamChargeStartMillis >= RiftRamPolicy.CHARGE_TIMEOUT_TICKS * 50L) {
+            // A miss costs the ram its charge but not the wave.
+            riftRamState = RiftRamPolicy.State.CHASING;
+            riftRamStateSinceMillis = now;
+            riftRamLastChargeMillis = now;
+            getLogger().info("END_RIFT_RAM_CHARGE_MISSED event=" + eventId
+                    + " generation=" + generation);
+        }
+    }
+
+    private static float endpointYaw(double fromX, double fromZ, double toX, double toZ) {
+        double dx = toX - fromX;
+        double dz = toZ - fromZ;
+        if (Math.abs(dx) < 1.0E-6D && Math.abs(dz) < 1.0E-6D) return 0.0F;
+        return (float) (StrictMath.toDegrees(StrictMath.atan2(dz, dx)) - 90.0D);
+    }
+
+    /** Commit ONE accepted Core impact: crack the Core, break armour, stun the ram. */
+    private void bankRiftRamImpact(Ravager ram, long now) {
+        if (!RiftRamPolicy.mayAcceptImpact(riftRamState, riftRamImpacts, riftRamChargeBanked)) {
+            return;
+        }
+        // Set BEFORE any effect so a duplicate collision callback this tick sees
+        // a banked charge and bails out at the guard above.
+        riftRamChargeBanked = true;
+        riftRamImpacts++;
+        riftRamLastChargeMillis = now;
+        Location core = coreCombatAnchorLocation();
+        World world = ram.getWorld();
+        if (core != null) {
+            world.playSound(core, Sound.BLOCK_ANVIL_LAND, 2.0F, 0.55F);
+            world.playSound(core, Sound.ENTITY_GENERIC_EXPLODE, 1.4F, 0.7F);
+            world.spawnParticle(Particle.PORTAL, core.clone().add(0.0D, 1.5D, 0.0D), 140, 2.0D, 2.0D, 2.0D, 0.4D);
+            world.spawnParticle(Particle.END_ROD, core.clone().add(0.0D, 2.0D, 0.0D), 40, 1.4D, 1.4D, 1.4D, 0.05D);
+            spawnRiftRamFragments(world, ram.getLocation());
+        }
+        riftRamState = RiftRamPolicy.stateAfterImpact(riftRamImpacts);
+        riftRamStateSinceMillis = now;
+        holdRiftRamInPlace(ram);
+        applyRiftRamVisual(ram);
+        getLogger().info("END_RIFT_RAM_IMPACT event=" + eventId + " generation=" + generation
+                + " impacts=" + riftRamImpacts + " state=" + riftRamState
+                + " multiplier=" + RiftRamPolicy.damageMultiplier(riftRamImpacts));
+    }
+
+    /** A few short-lived armour shards. Never lootable, never collidable, never persistent. */
+    private void spawnRiftRamFragments(World world, Location origin) {
+        for (int index = 0; index < 8; index++) {
+            final int fragment = index;
+            ItemDisplay display = world.spawn(origin.clone().add(0.0D, 1.0D, 0.0D), ItemDisplay.class, entity -> {
+                ItemStack stack = new ItemStack(Material.OBSIDIAN);
+                ItemMeta meta = stack.getItemMeta();
+                if (meta != null) {
+                    meta.setCustomModelData(830099);
+                    stack.setItemMeta(meta);
+                }
+                entity.setItemStack(stack);
+                entity.setPersistent(false);
+                entity.getPersistentDataContainer().set(keyGeneration, PersistentDataType.INTEGER, (int) generation);
+            });
+            if (display == null) continue;
+            double angle = (Math.PI * 2.0D * fragment) / 8.0D;
+            display.setVelocity(new Vector(Math.cos(angle) * 0.55D, 0.42D, Math.sin(angle) * 0.55D));
+            Bukkit.getScheduler().runTaskLater(this, () -> {
+                if (display.isValid()) display.remove();
+            }, 40L);
+        }
+    }
+
+    /**
+     * Reduce incoming damage while the armour holds.
+     *
+     * <p>This is not invulnerability: the hit lands, the health bar moves, and the
+     * hurt animation plays. Without it a party can burst the ram down before the
+     * first Core impact and the encounter has no mechanic at all.</p>
+     */
+    private void protectRiftRam(Ravager ram) {
+        if (riftRamImpacts >= RiftRamPolicy.REQUIRED_IMPACTS) return;
+        double current = ram.getHealth();
+        AttributeInstance maxHealth = ram.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+        double maximum = maxHealth == null ? RiftRamPolicy.healthForPlayers(currentWaveScalePlayers)
+                : maxHealth.getValue();
+        // Convert the damage this tick would have taken into the gated amount by
+        // topping the ram back up to the damage actually allowed.
+        double multiplier = RiftRamPolicy.damageMultiplier(riftRamImpacts);
+        double allowedLoss = (maximum - current) * multiplier;
+        double target = Math.max(1.0D, maximum - allowedLoss);
+        if (current < target) {
+            ram.setHealth(Math.min(maximum, target));
+        }
+    }
+
+    /** Wave 6 is over: put the Core back and let the standard rune path continue. */
+    private void restoreRiftCore() {
+        for (Player viewer : activeWaveParticipants()) {
+            refreshClientBindingsForPlayer(viewer);
+        }
+        getLogger().info("END_RIFT_RAM_CORE_RESTORED event=" + eventId + " generation=" + generation);
+    }
+
     private String carrierDiagnosticText() {
         if (currentCarrierState == null) return "none";
         boolean chargeLive = false;

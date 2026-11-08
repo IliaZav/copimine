@@ -78,7 +78,8 @@ public final class SkeletonCombatPolicy {
             case OBELISK_ASSAULT -> beat % 2 == 0 ? Maneuver.ROTATE_COVER : Maneuver.CROSS_FIRE;
             case BLACK_FOG -> miniBoss ? Maneuver.CROSS_FIRE
                     : beat % 2 == 0 ? Maneuver.SIDE_STEP : Maneuver.FALLBACK;
-            case COLLAPSE_RINGS, RITUAL_SPHERE -> beat % 2 == 0 ? Maneuver.SIDE_STEP : Maneuver.FALLBACK;
+            case COLLAPSE_RINGS, RITUAL_SPHERE, RIFT_RAM ->
+                    beat % 2 == 0 ? Maneuver.SIDE_STEP : Maneuver.FALLBACK;
             case REALITY_SPLIT -> miniBoss ? Maneuver.CHAMBER_STEP : Maneuver.HOLD_LINE;
         };
     }
@@ -100,6 +101,10 @@ public final class SkeletonCombatPolicy {
                     false, false, true, "отступает из чёрного тумана");
             case COLLAPSE_RINGS, RITUAL_SPHERE -> new WaveBehavior("ring_guard", 9.0D, 15.0D,
                     false, true, true, "держит разрыв между кольцами");
+            // Wave 6 is one ram, not a ring: the skeleton keeps a wide berth so a
+            // charge does not delete it, and it still backs away from the Core.
+            case RIFT_RAM -> new WaveBehavior("ram_flank", 11.0D, 17.0D,
+                    false, true, true, "обходит тарана с фланга");
             case REALITY_SPLIT -> new WaveBehavior("chamber_fireline", 8.0D, 14.0D,
                     false, true, true, "не выходит из своей комнаты");
         };

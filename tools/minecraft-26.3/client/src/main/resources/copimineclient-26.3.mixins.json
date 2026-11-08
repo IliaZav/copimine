@@ -12,6 +12,7 @@
     "PrisonerTargetOutlineColorMixin",
     "ClientPlayerInteractionManagerPrisonerMixin",
     "EndermanEntityRendererMixin",
+    "RavagerEntityRendererMixin",
     "EndermanEyesFeatureRendererMixin",
     "EvokerEntityRendererMixin",
     "LivingEntityRendererMixin",

@@ -11,7 +11,8 @@ public final class EndRiftObjective {
     public static final int REQUIRED_CARRIER_DELIVERIES = 3;
     public static final int REQUIRED_HUNT_CYCLES = 3;
     public static final int REQUIRED_GATES = 3;
-    public static final int REQUIRED_FOG_CYCLES = 5;
+    /** Three approved fog cycles; kept in step with BlackFogTimingPolicy.CYCLE_COUNT. */
+    public static final int REQUIRED_FOG_CYCLES = BlackFogTimingPolicy.CYCLE_COUNT;
     public static final int REQUIRED_COLLAPSE_RINGS = 3;
     public static final int GATE_COUNT = 3;
     public static final int RING_COUNT = 3;

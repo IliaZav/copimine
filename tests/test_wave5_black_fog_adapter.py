@@ -450,10 +450,11 @@ public final class BlackFogAdapterProbe {
                 // cycles, not three. The scenario name is kept so the parameter
                 // id stays stable, but the expectation is five.
                 int totalCycles = BlackFogTimingPolicy.CYCLE_COUNT;
-                check(totalCycles == 5, "Wave 5 must run exactly five fog cycles");
-                // Measured from BlackFogSafeZonePolicy.sideForCycleAndPlayers(c, 4)
-                // for the five production cycles, not assumed.
-                int[] expectedSides = {2, 2, 2, 1, 1};
+                check(totalCycles == 3, "Wave 5 must run exactly three fog cycles");
+                // Derived from BlackFogSafeZonePolicy.sideForCycleAndPlayers(c, 4)
+                // for the THREE production cycles: playerCap is 2 for a group of
+                // four, shrinkSteps is c*2/3, so 2-0=2, 2-0=2, 2-1=1.
+                int[] expectedSides = {2, 2, 1};
                 long now = 40_000L;
                 p.blackFogPhaseDeadlineMillis = now;
                 for (int cycle = 0; cycle < totalCycles; cycle++) {
@@ -485,9 +486,9 @@ public final class BlackFogAdapterProbe {
                         p.blackFogPhaseDeadlineMillis = now;
                     }
                 }
-                check(p.currentFogCycle == 5 && p.blackFogPhase == BlackFogPhase.SAFE
+                check(p.currentFogCycle == totalCycles && p.blackFogPhase == BlackFogPhase.SAFE
                                 && p.blackFogPhaseDeadlineMillis == 0L,
-                        "exactly five production cycles must complete the objective");
+                        "exactly the production cycles must complete the objective");
             }
             case "setup-retry" -> {
                 p.core.world.floorsBlocked = true;

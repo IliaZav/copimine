@@ -310,7 +310,7 @@ public final class WaveProbeAdapterHarness {
     }
     static final class Controller { void restore(Object... args) { } }
     static final class EndRiftObjective {
-        static final int REQUIRED_FOG_CYCLES = 5;
+        static final int REQUIRED_FOG_CYCLES = 3;
         static boolean isNumberedWave(int wave) { return wave >= 1 && wave <= 7; }
     }
 

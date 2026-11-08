@@ -3,7 +3,7 @@ import me.copimine.endevent.domain.BlackFogTimingPolicy;
 public final class BlackFogTimingPolicyTest {
     public static void main(String[] args) {
         // Superseded 2026-10-31 (WP-C): Wave 5 runs exactly FIVE fog cycles.
-        check(BlackFogTimingPolicy.CYCLE_COUNT == 5, "Wave 5 must run exactly five fog cycles");
+        check(BlackFogTimingPolicy.CYCLE_COUNT == 3, "Wave 5 must run exactly three fog cycles");
         check(BlackFogTimingPolicy.safeZoneSeconds() == 8,
                 "safe zone must remain visible long enough to reach it");
         // SUPERSEDED 2026-11-03 (user request): the fog penalty window was 3 s

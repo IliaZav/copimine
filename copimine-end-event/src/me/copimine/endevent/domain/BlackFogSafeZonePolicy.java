@@ -12,7 +12,7 @@ public final class BlackFogSafeZonePolicy {
 
     /**
      * Returns the safe-zone side for a zero-based fog cycle and living player
-     * count. The footprint shrinks monotonically across all five cycles, stays
+     * count. The footprint shrinks monotonically across every cycle, stays
      * usable (at least one cell) in the last cycles, and larger groups receive
      * a smaller maximum area. Invalid cycles or empty rosters return zero so
      * callers can fail closed without creating a safe zone.

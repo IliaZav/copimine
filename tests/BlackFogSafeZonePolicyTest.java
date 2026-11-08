@@ -4,7 +4,7 @@ import java.util.List;
 
 public final class BlackFogSafeZonePolicyTest {
     public static void main(String[] args) {
-        // Superseded 2026-10-31 (WP-C): five fog cycles. Every expectation below is
+        // Superseded by the approved three-cycle contract. Every expectation below is
         // the value the policy really returns for that roster and cycle.
         check(BlackFogSafeZonePolicy.sideForCycleAndPlayers(0, 2) == 3,
                 "first cycle must preserve a 3x3 footprint for two players");
@@ -30,7 +30,7 @@ public final class BlackFogSafeZonePolicyTest {
                         && BlackFogSafeZonePolicy.sideForCycleAndPlayers(2, 2) == 2
                         && BlackFogSafeZonePolicy.sideForCycleAndPlayers(3, 2) == 2
                         && BlackFogSafeZonePolicy.sideForCycleAndPlayers(4, 2) == 1,
-                "the footprint must continue shrinking across all five fog cycles");
+                "the footprint must keep shrinking across the cycles");
         // Measured table for a 1-3 player group: 3,3,2,2,1.
         check(BlackFogSafeZonePolicy.sideForCycleAndPlayers(0, 1) == 3
                         && BlackFogSafeZonePolicy.sideForCycleAndPlayers(1, 1) == 3

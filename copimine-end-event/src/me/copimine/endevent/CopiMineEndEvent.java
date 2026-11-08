@@ -635,7 +635,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * used to commit on a single right-click, so a misclick silently spent one
      * of the three deliveries and the wave lost a pack for it.</p>
      */
-    private static final long CORE_CHARGE_HOLD_MILLIS = 5_000L;
+    /**
+     * How long a player must channel the Rift Charge into the Core.
+     *
+     * <p>The approved contract raised this from 5 s to 15 s: at 5 seconds the
+     * delivery was a formality — a player could stand still, sneeze and be
+     * done, so the "hold the line while the elites close in" beat never
+     * existed. The value is a production default, overridable through
+     * {@code wave-one.charge-hold-seconds}.</p>
+     */
+    private static final long CORE_CHARGE_HOLD_MILLIS = 15_000L;
     /** Width of the progress ring drawn on the action bar while loading. */
     private static final int CORE_CHARGE_RING_SEGMENTS = 20;
     // Paper's native hurt window is bounded for event-owned combat entities.
@@ -26936,7 +26945,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         int replacementIndex = 10_000 + currentCarrierReplacementCount;
-        Enderman replacement = spawnEnderman(world, core, 1, false, false,
+        // The replacement is a MUST be elite: the recovered carrier has to look
+        // and fight like the one the wave promised, otherwise a single unlucky
+        // death silently downgrades Wave 1 to "chase an ordinary enderman".
+        Enderman replacement = spawnEnderman(world, core, 1, true, false,
                 testWaveFrontVisualMode, replacementIndex, replacementIndex);
         if (replacement == null || !replacement.isValid()) {
             getLogger().warning("END_RIFT_CARRIER_REPLACEMENT_REFUSED event=" + eventId
@@ -26954,9 +26966,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return true;
     }
 
+    /**
+     * Selects the Wave 1 charge carrier.
+     *
+     * <p>The contract is explicit: the charge belongs to one living ELITE
+     * Enderman. The previous filter accepted any combat mob of the wave, so a
+     * randomly-sorted ordinary Enderman could win the role — the player then
+     * fought a plain mob to get the charge, and the elite pressure the wave is
+     * built around never mattered.</p>
+     */
     private Entity findCurrentCarrierCandidate() {
         return ownedEntities.values().stream()
-                .filter(entity -> isWaveCombatKind(readString(entity, keyKind)))
+                .filter(entity -> EVENT_KIND_ELITE.equals(readString(entity, keyKind)))
+                .filter(entity -> entity instanceof Enderman)
                 .filter(entity -> readInt(entity, keyWave, 0) == activeWave)
                 .filter(entity -> isLiveOwnedEntity(entity.getUniqueId()))
                 .filter(entity -> currentCarrierState == null
@@ -27024,7 +27046,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         registerOwnedEntity(charge);
         waveObjectiveVisuals.add(charge.getUniqueId());
         currentCarrierChargeLocation = charge.getLocation().clone();
+        // The charge is created for a LIVING carrier too: the selection path
+        // spawns it in the same tick to attach it above the mob. Routing that
+        // through carrierDied() told the policy the carrier had just died, so
+        // the objective flipped to CHARGE_DROPPED while the elite was still
+        // walking around, and the pickup could be claimed out from under it.
+        // Death is signalled explicitly by onOwnedEntityDeath(); a creation
+        // with a live carrier is a plain attachment.
         RiftCarrierPolicy.State next = currentCarrierState.phase() == RiftCarrierPolicy.Phase.CARRIER_ACTIVE
+                && currentCarrierState.carrier() != null
+                && !isLiveOwnedEntity(currentCarrierState.carrier())
                 ? RiftCarrierPolicy.carrierDied(currentCarrierState,
                 generation, currentCarrierState.carrier(), charge.getUniqueId(), eventTickCounter)
                 : RiftCarrierPolicy.replaceMissingCharge(currentCarrierState,

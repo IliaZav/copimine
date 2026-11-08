@@ -150,7 +150,10 @@ waves:
     endermen: 30
     spiders: 14
     skeletons: 0
-    elite-endermen: 0
+    # Wave 1's charge belongs to an ELITE Enderman, so the wave must actually
+    # field one. With 0 the carrier candidate set was empty and the wave
+    # silently fell back to an ordinary mob (or to the recovery replacement).
+    elite-endermen: 2
     elite-skeletons: 0
   wave-2:
     type: RIFT_HUNT

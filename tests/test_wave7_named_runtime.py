@@ -48,7 +48,7 @@ public class NamedWave7StartProbe {
     void clearRealitySplitTrialEntities(String reason){}
     void finishRealitySplitTrial(int room,String source){}
     void finishNamedRealitySplitTrial(int room,String source){}
-    boolean preflightNamedEchoDuelRooms(){return echoReady;}
+    boolean preflightNamedEchoDuelRooms(boolean sandbox){return sandbox || echoReady;}
     boolean ensureRealitySplitTrialRoom(World world,Location core,RealitySplitTrialController.TrialState state){
         throw new AssertionError("new named trial entered a historical actor adapter");
     }
@@ -132,7 +132,7 @@ public class NamedWave7LayoutRouteProbe {
     void clearRealitySplitTrialEntities(String reason){}
     void finishRealitySplitTrial(int room,String source){throw new AssertionError("named route entered historical completion");}
     void finishNamedRealitySplitTrial(int room,String source){}
-    boolean preflightNamedEchoDuelRooms(){return echoReady;}
+    boolean preflightNamedEchoDuelRooms(boolean sandbox){return sandbox || echoReady;}
     boolean ensureRealitySplitTrialRoom(World world,Location core,RealitySplitTrialController.TrialState state){
         throw new AssertionError("named route entered a historical actor adapter");
     }
@@ -247,7 +247,7 @@ def test_wave7_official_and_sandbox_runs_share_the_same_sequential_route():
             "                realitySplitChamberController.assignment(), "
             "RealitySplitTrialController.sequentialRoute());") in preflight
     assert "ThreadLocalRandom" not in preflight
-    assert "preflightNamedEchoDuelRooms()" in preflight
+    assert "preflightNamedEchoDuelRooms(sandbox)" in preflight
     assert '"unsupported-custom-item-slot-" + slot' in source
     runner = (ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1").read_text(encoding="utf-8")
     assert "route=\\[([A-Z_, ]+)\\]" in runner
@@ -409,8 +409,8 @@ def test_official_wave7_preflight_runs_before_cleanup_teleport_and_actor_spawn(t
     preflight = extract(source, "boolean preflightWave7StartBeforeWorldMutation(")
     refusal = extract(source, "boolean refuseWave7Preflight(")
     assert preflight.index("preflightNamedTrialActorAdapters()") < preflight.index(
-        "preflightNamedEchoDuelRooms()")
-    assert preflight.index("preflightNamedEchoDuelRooms()") < preflight.index(
+        "preflightNamedEchoDuelRooms(sandbox)")
+    assert preflight.index("preflightNamedEchoDuelRooms(sandbox)") < preflight.index(
         "preflightWave7BarrierJournal(world)")
     assert preflight.index("preflightWave7BarrierJournal(world)") < preflight.index(
         "preflightWave7BarrierCells(world, core)")
@@ -443,7 +443,7 @@ public class Wave7PreflightProbe {
     };}
     UUID parseUuidOrNull(String raw){return UUID.fromString(raw);}
     boolean preflightNamedTrialActorAdapters(){return adaptersReady;}
-    boolean preflightNamedEchoDuelRooms(){return echoReady;}
+    boolean preflightNamedEchoDuelRooms(boolean sandbox){return sandbox || echoReady;}
     boolean preflightNamedEchoDuelBarrierPlan(){return true;}
     boolean preflightWave7BarrierJournal(World world){return journalReady;}
     boolean preflightWave7BarrierCells(World world,Location core){return barrierCellsReady;}
@@ -501,14 +501,20 @@ public class Wave7PreflightProbe {
         require(ready.namedWave7PreflightSelectedLayout.equals(
                         ready.realitySplitTrialController.namedSnapshot().selectedLayout()),
                 "preflight retains the exact sampled room selection for startup");
-        var sandboxRefused=new Wave7PreflightProbe();sandboxRefused.echoReady=false;sandboxRefused.activeWave=6;
+        // A sandbox has no replicated Echo loadout and no modded client, so the
+        // Personal Echo readiness rules cannot be satisfied there. The sandbox
+        // must still START; only the official path may refuse on echoReady.
+        var sandboxStart=new Wave7PreflightProbe();sandboxStart.echoReady=false;sandboxStart.activeWave=6;
         var sandboxWorld=new World();
-        require(!sandboxRefused.initializeAfterPreflight(sandboxWorld,new Location(sandboxWorld),
-                List.of(new UUID(0,1),new UUID(0,2)),true),"sandbox preflight refusal must stop before world work");
-        require(sandboxRefused.activeWave==6&&!sandboxRefused.recovery&&sandboxRefused.saves==0
-                        &&!sandboxRefused.realitySplitChamberController.owns(71)
-                        &&!sandboxRefused.realitySplitTrialController.owns(71),
-                "a failed Wave 7 test must restore prior state and never poison the official event");
+        require(sandboxStart.initializeAfterPreflight(sandboxWorld,new Location(sandboxWorld),
+                List.of(new UUID(0,1),new UUID(0,2)),true),
+                "a sandbox Wave 7 must start even without an Echo-capable client");
+        // The official path keeps every guard untouched.
+        var officialRefused=new Wave7PreflightProbe();officialRefused.echoReady=false;officialRefused.activeWave=6;
+        var officialWorld=new World();
+        require(!officialRefused.initializeAfterPreflight(officialWorld,new Location(officialWorld),
+                List.of(new UUID(0,1),new UUID(0,2)),false),
+                "an official Wave 7 must still refuse without a ready Echo client");
     }
 }
 ''', encoding="utf-8")

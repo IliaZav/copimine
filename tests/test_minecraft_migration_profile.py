@@ -202,10 +202,13 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # Repinned again for the Wave 2 Enderman screen effect: the mark now applies the vanilla
     # minecraft:invert post shader, so it works on a client with no Iris, and the narcotics
     # shaderpacks are withdrawn from the shaderpacks folder that Iris lists.
-    assert artifact['size'] == 13_476_701
+    # Repinned for the Guardian render fix: the client now routes the
+    # END_RIFT_GUARDIAN_V1 visual to the Guardian model and texture on the
+    # non-flag path, so a visual-bound boss stops drawing as a vanilla Enderman.
+    assert artifact['size'] == 13_477_112
     assert artifact['sha512'] == (
-        'cdd5bba3c95d8256596e815f26c70722a637a77a4fd92810743a2fd293080d48'
-        '66249609c2362dff7b38c45568b8b1d66d5ef682083fc0aa54a92a4370378247'
+        'fa2e9cc3b31db8b2744bf74012b6ddd28567084a6ae751a5231d81a585c160c2'
+        '7c7f292837c7dfb9c05f67f6749dc7807789f68b5cef5db0edca12a32aa7354b'
     )
 
 

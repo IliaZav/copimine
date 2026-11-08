@@ -22948,7 +22948,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             waveSpawnGroupIndex = 0;
             waveSpawnEntityOffset = 0;
             getLogger().warning("WAVE_INSPECTION_REFUSED event=" + eventId
-                    + " wave=" + wave + " reason=wave-mechanics-initialization-failed");
+                    + " wave=" + wave + " reason=wave-mechanics-initialization-failed"
+                    + " roster=" + roster.size()
+                    + " hint=see the preceding END_RIFT_WAVE7* or WAVE7_* line for the exact stage");
         }
         return started;
     }
@@ -23435,7 +23437,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return refuseWave7Preflight(sandbox, previousActiveWave,
                     "WAVE7_NAMED_ACTOR_ADAPTER_PREFLIGHT_FAILED");
         }
-        if (!preflightNamedEchoDuelRooms()) {
+        if (!preflightNamedEchoDuelRooms(sandbox)) {
             return refuseWave7Preflight(sandbox, previousActiveWave,
                     "WAVE7_NAMED_ECHO_PREFLIGHT_FAILED");
         }
@@ -23976,9 +23978,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    private boolean preflightNamedEchoDuelRooms() {
+    private boolean preflightNamedEchoDuelRooms(boolean sandbox) {
         if (!realitySplitTrialController.ownsNamed(parseUuidOrNull(eventId), generation)) {
             return refuseNamedEchoDuelPreflight(null, null, "named-controller-not-owned");
+        }
+        // The Personal Echo trial replicates a real player's inventory and
+        // needs the CopiMine client bridge to render the replica. A disposable
+        // sandbox has no enrolled loadout and its operator may be running the
+        // plain client, so these per-owner readiness rules cannot be satisfied
+        // there. Refusing on them made /cmend wave spawn 7 fail with the
+        // generic reason=wave-mechanics-initialization-failed, which reads as
+        // "wave 7 is broken" when in fact only the official path has the data.
+        // The sandbox still runs the trial sequence; it simply cannot promise a
+        // faithful Echo replica.
+        if (sandbox) {
+            return true;
         }
         for (var trial : realitySplitTrialController.namedSnapshot().trials().values()) {
             if (trial.trial() != RealitySplitTrialController.NamedTrial.PERSONAL_ECHO

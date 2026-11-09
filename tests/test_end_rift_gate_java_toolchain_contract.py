@@ -156,3 +156,44 @@ def test_pinned_jdk_resolver_accepts_hosted_explicit_path_and_local_fallback(tmp
         assert result.returncode == 0, result.stdout + result.stderr
     finally:
         subprocess.run(["cmd", "/c", "rmdir", str(spaced_jdk)], capture_output=True, text=True)
+
+
+def test_the_plugin_is_compiled_for_the_java_25_class_version() -> None:
+    """The plugin build must target the JDK Paper 26.3 is compiled with.
+
+    copimine-end-event/build-plugin.ps1 pins javac to $env:JAVA_HOME. Paper 26.3
+    ships class-file version 69 (Java 25), so a build that inherits a Java 21
+    JAVA_HOME fails with "class file has wrong version 69.0, should be 65.0" --
+    and, more insidiously, a build that succeeds under a different JDK produces
+    different artifact bytes, which is exactly how the pinned plugin digest
+    stopped matching CI while the sources were unchanged.
+
+    Behaviour, not wording: the script must resolve javac from JAVA_HOME, and the
+    pinned toolchain that the gate installs must be Temurin 25.
+    """
+    build = ROOT / "copimine-end-event" / "build-plugin.ps1"
+    script = build.read_text(encoding="utf-8")
+    assert "$env:JAVA_HOME" in script, (
+        "build-plugin.ps1 must honour JAVA_HOME so the compiler matches the API level")
+    # Reading the assignment is not enough: a guard that is mentioned but never
+    # takes effect still leaves javac coming from PATH. Take the live branch and
+    # assert the assignment actually happens inside it.
+    javac_home = script[script.index("$javacCommand = 'javac'") :]
+    assert "Join-Path $env:JAVA_HOME 'bin/javac.exe'" in javac_home, (
+        "javac must be resolved from JAVA_HOME, not from PATH")
+    guard = javac_home[javac_home.index("if ($env:JAVA_HOME") :]
+    guard = guard[: guard.index("\n}")]
+    assert "if (Test-Path -LiteralPath $javacInHome -PathType Leaf) { $javacCommand = $javacInHome }" in guard, (
+        "the JAVA_HOME javac must be selected inside the live guard, not a dead branch")
+    assert "if ($false)" not in guard and "if (false)" not in guard, (
+        "the JAVA_HOME guard must not be short-circuited away")
+    assert "Temurin 25" in script or "Java 25" in script, (
+        "the comment must record which JDK the class version belongs to")
+    # The gate validates the migration JDK against the profile's pinned version
+    # rather than trusting a directory name, so the build JDK is pinned by
+    # `buildJavaVersion` in the profile lock.
+    runner = (ROOT / "scripts" / "minecraft" / "RunJavaPluginCi.ps1").read_text(encoding="utf-8")
+    assert "profileLock.buildJavaVersion" in runner, (
+        "the gate must validate the migration JDK against the pinned build version")
+    profile = (ROOT / "tools" / "minecraft-26.3" / "profile.lock.json").read_text(encoding="utf-8")
+    assert '"buildJavaVersion"' in profile, "the profile lock must pin the build JDK version"

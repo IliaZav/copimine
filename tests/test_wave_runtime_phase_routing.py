@@ -34,3 +34,13 @@ def test_disposable_runtime_survives_saved_recovery_phase_without_stealing_offic
  assert 'isDisposableWaveRuntimeActive(activeWave)' not in code_only(heartbeat)
  assert '|| canOwnWaveObjective(activeWave)' not in code_only(heartbeat)
  assert '-> tickCurrentIntermission();' in heartbeat
+
+
+def test_sandbox_initializer_cannot_rewrite_the_durable_wave_phase():
+ s=(ROOT/'copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java').read_text('utf-8')
+ initializer=extract(s,'boolean initializeWaveGameplay(')
+ # Reproduced on Paper: spawn 4 -> clear left phase=WAVE_4, activeWave=0,
+ # and spawn 5 refused official-attempt-active. Disposable ownership already
+ # admits obelisk geometry without changing the saved event's phase.
+ import re
+ assert not re.search(r'(?<![\w.])phase\s*=(?!=)', initializer)

@@ -10976,6 +10976,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             message(sender, "&cСброс остановлен: wave runtime не очищен; состояние сохранено для восстановления.");
             return;
         }
+        // An explicit successful reset discards the old recovery intent too.
+        // Keeping a decoded Wave 4 receipt here makes the next fresh generation
+        // reconcile against the old obelisk count and fail forever after reset.
+        wave3RestoredPortalCheckpoint = null;
+        wave4RestoredObeliskCheckpoint = null;
+        wave4InvalidObeliskCheckpointFields = Map.of();
         realitySplitChamberController.clear();
         wave7RecoveryCheckpoint = Map.of();
         blackFogRecoveryCheckpoint = Map.of();
@@ -23531,13 +23537,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " elite_skeletons=0 total=" + scaled.total() + " profile=6 hard_cap="
                     + PressureBudgetController.HARD_CAP);
         }
-        if (sandbox && wave == 4) {
-            // A /cmend wave spawn 4 keeps the durable phase outside WAVE_4 (see
-            // the scheduler gate in the main tick). Restore it for the lifetime
-            // of this disposable run so the whole wave-4 runtime agrees on it;
-            // wave-objective-reset puts it back afterwards.
-            phase = EventPhase.WAVE_4;
-        }
+        // Disposable objectives use ownsDisposableWaveRuntime; assigning a
+        // durable WAVE_4 phase here strands the event after wave clear.
         if (wave == 2) stopEventMusic();
         else playEventMusic(config.phaseMusic("wave-" + wave));
         spawnWaveArrivalEffect(world, core, wave, false);

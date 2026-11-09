@@ -1378,9 +1378,9 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     candidate=baseline['candidate']
     assert candidate['filename']=='CopiMineEndEvent-26.3.jar'
     assert candidate['runtimeFilename']=='CopiMineEndEvent.jar'
-    assert candidate['size']==1999896
-    assert candidate['sha256']=='5a09c7366d203e65490c538a8b90f91c42583bb8ba2b41940eba1ee25a1f6ce0'
-    assert candidate['sha512']=='f37f697373a9e2d842745bdaf2746147b9da24f4d56f6cc8928eaac361ca7dea81e66d73df7256ce169b4ad38deda682e78486d12ab94b55bf0a9de6052d63b1'
+    assert candidate['size']==2246184
+    assert candidate['sha256']=='650832a642d5f9223ffba60d3d8f165a88c172bc9962e6f2c76bf4e736f99ba2'
+    assert candidate['sha512']=='ea739a1adbc99d3e721a109782c3616f92977aabd389b7dd5a2c0ca911149d7f4e3b04d210b42c9209ef41c168c33627dc6f0bc1198adcb0ade89103c2b74ff4'
     assert candidate['apiVersion']=='26.3'
     assert candidate['buildArtifact']=='build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar'
     assert candidate['nativeVerified'] is lock['nativeVerified']
@@ -1415,29 +1415,22 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
         '7f4c4cafa2a6aca85bea236337b6a200dec8761559a88ee4740c84db9a6204b0',
         '82e8de1318a39c527c072a963ef01b7838fe430c7fc7b6ead3e85dfe40337b9f',
         'ac7962cabc1e70a7c8f647f4675285b19d9f886745efe5d03c8ea31ad973a78f',
-        # Measured installed release and staged predecessors retained for safe replacement.
         'ca4c8f5f40730e5c6f7e2431ce649315403fc64a2599721a39fc68d15ca7afca',
         'c32924bcf3283606a15b233d91214edbafcc986bb593ad7b198224107686fe7d',
         '8430da0d8c11f4d95e6f1a123331d5361b6a3d848f8c2203de3f7dca00c2afda',
         '680a0f081e37450b38c32bc5de6451a79bdacfa511300a70c9d062b177fc8723',
         '0b4235f5d140dd02bd71e70a173ed25a5cccdd6cb1c839d0726a34ee16565f6c',
-        # Superseded 26.3 candidate kept as an allowed local upgrade source.
         'db2a4e73c205b208ab27380f9d091d0689bb08422ee657ac5b503cd62fe7ba35',
-        # Superseded again when the Wave 7 miniboss work rebuilt the jar.
         '40732fe304168ab2f999a5b57a5602c97f9419dc20b63dc0225376afce6f189d',
-        # Superseded once more by the Wave 6 prisoner capture fix.
         '3c403d206ffe094e3ed78cd117969d232909eff98473e21bf963f8102e1a2567',
-        # Superseded by the Wave 3 capture window and Echo-personalisation work.
         'dbd029b6fd337dd09cabeac901cbd50994cce226d3b78a481c76a3db034fa78d',
-        # Superseded by the elite-stat config fix.
         'dcee3f59ab5a5114757def7ecd1ce4fa09495f462dd06c85c19610a3b4e7e150',
-        # Superseded by the Guardian render and Wave 2 visibility/elite fixes.
         'bf479808c9d81f6c664fcba7b1466b60683a2ca216748d9ae0ae9eee4222d0ac',
-        # Superseded while the wave 1-7 fixes rebuilt the jar.
         'a450162ce7709fab55c0c994ee02aeaada8fd340d6b7b830b714fe8c28e642c2',
-        # Superseded by the wave 4 obelisk ownership fix and the wave 5 fog lease.
         '91b8d8161a3d72040737fe500d75b27bbd3956ebc7b935b671c601d1f7a53e38',
         '5a09c7366d203e65490c538a8b90f91c42583bb8ba2b41940eba1ee25a1f6ce0',
+        'f400b3a965b8be08d24128485d6bcad71d1b555c597e86af91923c9dbf1324b2',
+        '0de44962f36bd0dee3682a68f821f3a3bc28e0deb18d378749d8ddd543e7ea9b',
     ]
     assert candidate['replaceSha256']==[
         'f1ba0594d9edb7332d594e805bc95aa6674f81ac003d3468e3fcd8acfc0a70d4',
@@ -1566,19 +1559,14 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
         '25d017e0f22a5cb554887be23a5c6523141e1557fa2194da267936112017ede0',
         'dbd029b6fd337dd09cabeac901cbd50994cce226d3b78a481c76a3db034fa78d',
         'dcee3f59ab5a5114757def7ecd1ce4fa09495f462dd06c85c19610a3b4e7e150',
-        # Superseded by the phantom-recovery and empty-arena abandonment work.
         '8784fb3c81a43a7ad2aa325623c7d81f50dc6fe74d1a0b7f20fa070799c30dc7',
-        # Superseded when the Core adoption restamp, the charge model and
-        # the five-second Core hold landed.
         '6da70a4b392760e458f451c25d06a0d450a718098d67a620dfee85e08fdbbbc3',
-        # Superseded by the phantom-recovery and empty-arena abandonment work.
         '90fce09cf69f197a568f641af00ce0b942f9777f88851f44b8ebb4b27c857470',
-        # Superseded when the honest charge hold and the non-awarding wave
-        # abandonment replaced the click-to-deliver and complete-on-abandon
-        # behaviour.
         '63639b164b1335ef24ed783425a32e1b2b6944234ed08c1533ac1a20c0b3164f',
-        # Superseded by the Guardian render and Wave 2 visibility/elite fixes.
         'bf479808c9d81f6c664fcba7b1466b60683a2ca216748d9ae0ae9eee4222d0ac',
+        '5a09c7366d203e65490c538a8b90f91c42583bb8ba2b41940eba1ee25a1f6ce0',
+        'f400b3a965b8be08d24128485d6bcad71d1b555c597e86af91923c9dbf1324b2',
+        '0de44962f36bd0dee3682a68f821f3a3bc28e0deb18d378749d8ddd543e7ea9b',
     ]
 
     built=ROOT/candidate['buildArtifact']
@@ -3094,8 +3082,8 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
     expected_candidates={
         'CopiMineArtifacts':('a5e0420d503850cb604445c52705f5af71fdc65770a78b943c5d2bc252fabcc5',
                              'a054cfeef3dc37dc364ef33d550063b6aa105f2394501bd982295af2fc791bba82cce15623c3ff7b09c4c3250683fb1caf7cdb72312e3c91bf50dd0c2fc39600',366356),
-        'CopiMineEndEvent':('5a09c7366d203e65490c538a8b90f91c42583bb8ba2b41940eba1ee25a1f6ce0',
-                            'f37f697373a9e2d842745bdaf2746147b9da24f4d56f6cc8928eaac361ca7dea81e66d73df7256ce169b4ad38deda682e78486d12ab94b55bf0a9de6052d63b1',1999896),
+        'CopiMineEndEvent':('650832a642d5f9223ffba60d3d8f165a88c172bc9962e6f2c76bf4e736f99ba2',
+                            'ea739a1adbc99d3e721a109782c3616f92977aabd389b7dd5a2c0ca911149d7f4e3b04d210b42c9209ef41c168c33627dc6f0bc1198adcb0ade89103c2b74ff4',2246184),
         'CopiMineNarcotics':('026787808eac784f1e0c2f48952c625c98a914e41f650d1b7e54521774835fb1',
                              '1fcee36f304c13c627fae86ac42f94def64efab85b93832fcc865f0f88dea73e529eb49031dd10e80d281c9df197760efd46dd684902aa0a57db607753964bc4',370499),
     }

@@ -32,4 +32,12 @@ def test_late_enderman_group_defers_when_no_warning_can_be_started() -> None:
         r"tryBeginWaveTwoPhantomActivation\(world, core, group, groupNumber\)\) \{",
         after_call,
     ), "a refused phantom activation must be handled instead of spawning the Enderman silently"
-    assert "action=spawn-without-phantom" in body[call:call + 1200], "the fallback must be logged loudly"
+    # The fallback is a DEFERRAL, not a silent spawn and not a permanent skip:
+    # the diagnostic names the shortfall and the group id is recorded so the
+    # hunt tick can retry it once a phantom layout resolves.
+    assert "WAVE_TWO_PHANTOM_ACTIVATION_UNAVAILABLE" in body[call:call + 1600], (
+        "the fallback must be logged loudly"
+    )
+    assert "action=defer-until-hunt-tick" in body[call:call + 1600], (
+        "the fallback must say what it does instead of spawning the Enderman"
+    )

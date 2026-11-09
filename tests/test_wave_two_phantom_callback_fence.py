@@ -36,8 +36,10 @@ def test_cancellation_requires_matching_event_player_cycle_and_phantom_owner() -
     source = EVENT.read_text(encoding="utf-8")
     cancellation = method(source, "private void cancelWaveTwoPhantomActivation(")
 
+    # The clear is sent through the typed channel ("CANCEL" + the fence parts),
+    # not the older boolean form, so anchor on the ownership guard and the send.
     assert cancellation.index("if (!ownsCurrentWaveTwoPhantomActivation(") < cancellation.index(
-        "sendWaveTwoPhantomActivation(player, false"
+        'sendWaveTwoPhantomActivation(player, "CANCEL"'
     ), "a stale callback must not send CLEAR in the current bridge context"
     assert "waveTwoPhantomActivationPlayerUuid = null;" in cancellation
 

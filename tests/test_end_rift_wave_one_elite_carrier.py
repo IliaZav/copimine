@@ -53,12 +53,18 @@ def test_selecting_a_living_carrier_attaches_the_charge_instead_of_dropping_it()
     body = extract(
         "private void spawnCurrentCarrierCharge(Location requested)",
         "private void renderCurrentCarrierCharge(Entity charge)")
-    assert "!isLiveOwnedEntity(currentCarrierState.carrier())" in body, (
-        "carrierDied() may only run for a carrier that is actually gone; otherwise "
-        "a living carrier's charge is reported as dropped")
+    # The live path is written as a positive liveness test that attaches and an
+    # else-branch that reports the death, which is the same guard read the other
+    # way round. Assert the behaviour, not one spelling of it: a live carrier
+    # must reach attachCarrierCharge/reattachCarrierCharge, and only a carrier
+    # that is gone may reach carrierDied.
+    live = body.index(
+        "currentCarrierState.carrier() != null && isLiveOwnedEntity(currentCarrierState.carrier())")
+    attach = body.index("RiftCarrierPolicy.attachCarrierCharge(")
     drop = body.index("RiftCarrierPolicy.carrierDied(")
-    guard = body.index("!isLiveOwnedEntity(currentCarrierState.carrier())")
-    assert guard < drop, "the liveness guard must gate the death transition"
+    assert live < attach < drop, (
+        "a living carrier's charge must attach, and only a carrier that is actually "
+        "gone may be reported as dropped")
 
 
 def test_a_recovered_carrier_is_still_elite():

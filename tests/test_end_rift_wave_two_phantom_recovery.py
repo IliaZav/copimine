@@ -18,7 +18,10 @@ def method(root: str, signature: str) -> str:
 
 
 def spawn_block(root: str) -> str:
-    start = root.index('if (waveSpawnWave == 2 && groupNumber >= WaveTwoStagePolicy.FIRST_LATE_GROUP')
+    # The phantom reservation runs for EVERY wave 2 subwave that actually fields
+    # Endermen, not only the late one: the layout can be unresolved for the
+    # opening groups too, and that is exactly when the debt has to be recorded.
+    start = root.index('Location reservedPhantomSpawn = null;\n        if (waveSpawnWave == 2 && group.endermen() > 0)')
     return root[start:start + 2600]
 
 

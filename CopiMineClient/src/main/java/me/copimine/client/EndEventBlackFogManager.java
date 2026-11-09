@@ -13,13 +13,8 @@ public final class EndEventBlackFogManager {
     private static final int MAX_EVENT_ID_LENGTH = 128;
     private static final float MIN_INTENSITY = 0.5F;
     private static final float MAX_INTENSITY = 1.0F;
-    /**
-     * Protocol cycles are one-based and Wave 5 runs exactly five of them
-     * ({@code BlackFogTimingPolicy.CYCLE_COUNT} on the server). Accepting only
-     * the first three silently dropped cycles four and five: the client showed
-     * a clear arena while the server already applied the hazard.
-     */
-    private static final int MAX_CYCLE = 5;
+    /** Latest Wave 5 protocol has exactly three cycles. */
+    private static final int MAX_CYCLE = 3;
 
     private String eventId = "";
     private long generation;
@@ -29,6 +24,14 @@ public final class EndEventBlackFogManager {
     private int currentCycle = -1;
     private int clearedCycle = -1;
     private boolean terminal;
+    /** True once this generation has already reported a close-out. */
+    private boolean cleared;
+    /**
+     * Set when a local exit (death, dimension change) was already resolved for
+     * this generation. The viewer is re-synchronised from that point on, so a
+     * CLEAR describing the pre-exit cycle no longer matches anything on screen.
+     */
+    private boolean resynchronized;
     private long expiresAtMillis;
     private String dimension = "";
     private float intensity;
@@ -63,8 +66,23 @@ public final class EndEventBlackFogManager {
         if (!acceptEnvelope(payload.sessionId(), payload.seq(), payload.timestampMillis(), clear, suspend, nextCycle)) {
             return false;
         }
+
         if (clear) {
+            // A bare CLEAR acknowledges that a live hazard is over. Once this
+            // generation has already reported a close-out, repeating the packet
+            // must stay a successful no-op (replay is idempotent); before any
+            // cycle ever ran there is nothing to acknowledge and reporting
+            // success would let the caller believe it ended a hazard it never
+            // showed. SUSPEND is the server withdrawing the fog and stays
+            // accepted in every state.
+            if (!suspend && cleared) {
+                return true;
+            }
+            if (!suspend && (resynchronized || currentCycle < 0)) {
+                return false;
+            }
             if (suspend) terminal = true;
+            cleared = true;
             clearActiveState();
             return true;
         }
@@ -105,6 +123,7 @@ public final class EndEventBlackFogManager {
                 currentCycle = -1;
                 clearedCycle = -1;
                 terminal = false;
+                cleared = false;
                 clearActiveState();
             }
             if (timestampMillis <= lastTimestampMillis || nextCycle < currentCycle
@@ -112,6 +131,9 @@ public final class EndEventBlackFogManager {
                 return false;
             }
             currentCycle = nextCycle;
+            // The close-out is per cycle: a fresh ACTIVE cycle reopens the
+            // acknowledgement so its own CLEAR is recognised again.
+            cleared = false;
         }
         lastTimestampMillis = timestampMillis;
         sessionTimestampHighWatermark = Math.max(sessionTimestampHighWatermark, timestampMillis);
@@ -150,6 +172,7 @@ public final class EndEventBlackFogManager {
         if (!terminal || !Objects.equals(expectedEventId, eventId) || expectedGeneration != generation
                 || timestamp <= lastTimestampMillis || timestamp <= sessionTimestampHighWatermark) return false;
         terminal = false;
+        resynchronized = true;
         lastTimestampMillis = timestamp - 1L;
         sessionTimestampHighWatermark = timestamp;
         return true;
@@ -164,6 +187,8 @@ public final class EndEventBlackFogManager {
         currentCycle = -1;
         clearedCycle = -1;
         terminal = false;
+        cleared = false;
+        resynchronized = false;
         clearActiveState();
     }
 

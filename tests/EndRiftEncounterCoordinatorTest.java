@@ -21,6 +21,7 @@ import me.copimine.endevent.runtime.encounter.RitualSphereEncounter;
 import me.copimine.endevent.runtime.encounter.RiftCarriersEncounter;
 import me.copimine.endevent.runtime.encounter.RiftGatesEncounter;
 import me.copimine.endevent.runtime.encounter.RiftHuntEncounter;
+import me.copimine.endevent.runtime.encounter.RiftRamWaveEncounter;
 import me.copimine.endevent.runtime.encounter.WaveEncounter;
 
 public final class EndRiftEncounterCoordinatorTest {
@@ -187,29 +188,37 @@ public final class EndRiftEncounterCoordinatorTest {
         check(coordinator.completeWave(EndRiftObjective.Objective.BLACK_FOG, "w5 done", "w5-complete").accepted(),
                 "wave 5 must complete");
         check(coordinator.advanceIntermission("w6", "w6-start").accepted(), "wave 6 must start");
-        RitualSphereEncounter ritual = (RitualSphereEncounter) coordinator.encounter(
-                EndRiftObjective.Objective.RITUAL_SPHERE);
-        check(ritual.state() != null && !me.copimine.endevent.domain.RitualSphereEncounterPolicy
-                        .hasCaptured(ritual.state()),
-                "ritual sphere must start in an explicit waiting state before physical seal capture");
-        EndRiftEncounterCoordinator.Result beforeCapture = coordinator.completeWave(
-                EndRiftObjective.Objective.RITUAL_SPHERE,
-                "w6 before capture", "w6-before-capture");
-        check(!beforeCapture.accepted(),
-                "wave 6 completion must be rejected before ritual seal capture");
+        // Wave 6 is the Rift Ram: ONE armoured Ravager and FIVE pillars. The
+        // objective advances only on pillar impacts, so an early completion while
+        // pillars still stand must be refused, exactly like the sphere used to.
+        RiftRamWaveEncounter ram = (RiftRamWaveEncounter) coordinator.encounter(
+                EndRiftObjective.Objective.RIFT_RAM);
+        EncounterContext rampContext = context.withObjective(EndRiftObjective.Objective.RIFT_RAM);
+        check(ram.start(rampContext).accepted(), "the ram objective must start");
+        check(ram.required() == EndRiftObjective.REQUIRED_PILLAR_IMPACTS,
+                "the ram requires one impact per pillar");
+        check(ram.recordPillarImpact(rampContext, 1).accepted(), "one pillar must be recordable");
+        // Standing pillars must leave wave 6 in place: the coordinator refuses the
+        // transition instead of closing a wave whose work is not done.
+        EndRiftEncounterCoordinator.Result early = coordinator.completeWave(
+                EndRiftObjective.Objective.RIFT_RAM, "w6 early", "w6-early");
+        check(!early.accepted() && "OBJECTIVE_INCOMPLETE".equals(early.code()),
+                "wave 6 must refuse to close while pillars still stand");
         check(coordinator.phase() == EventPhase.WAVE_6,
-                "rejected pre-capture completion must keep wave 6 active");
-        check(ritual.capture(context.withObjective(EndRiftObjective.Objective.RITUAL_SPHERE),
-                List.of(new RitualSealCapturePolicy.Candidate(first, true, 0.0D, 0.0D)),
-                0.0D, 0.0D).accepted(),
-                "wave 6 must capture a participant before caster completion");
-        check(ritual.state() != null, "wave 6 capture must initialize ritual state");
-        for (int caster = 0; caster < 5; caster++) {
-            check(ritual.casterDefeated(context.withObjective(EndRiftObjective.Objective.RITUAL_SPHERE)).accepted(),
-                    "ritual caster defeat must count");
-        }
-        check(coordinator.completeWave(EndRiftObjective.Objective.RITUAL_SPHERE,
-                "w6 done", "w6-complete").accepted(), "wave 6 must complete");
+                "an early completion must keep wave 6 active");
+        // The live runtime is authoritative: a repeated callback must not inflate
+        // progress, and a five-pillar report must land exactly on the requirement.
+        check(ram.recordPillarImpact(rampContext, 1).progress() == 1,
+                "a repeated pillar report must not add progress");
+        check(ram.recordPillarImpact(rampContext, 5).progress() == 5,
+                "five destroyed pillars must satisfy the objective");
+        check(ram.recordPillarImpact(rampContext, 99).status()
+                        == WaveEncounter.Status.REJECTED,
+                "an impossible pillar count must be rejected");
+        EndRiftEncounterCoordinator.Result ramDone = coordinator.completeWave(
+                EndRiftObjective.Objective.RIFT_RAM, "w6 done", "w6-complete");
+        check(ramDone.accepted() && coordinator.phase() == EventPhase.INTERMISSION_6,
+                "five destroyed pillars must complete wave 6");
         check(coordinator.advanceIntermission("w7", "w7-start").accepted(), "wave 7 must start");
         RealitySplitEncounter split = (RealitySplitEncounter) coordinator.encounter(
                 EndRiftObjective.Objective.REALITY_SPLIT);

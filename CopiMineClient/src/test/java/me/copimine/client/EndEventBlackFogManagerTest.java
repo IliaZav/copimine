@@ -10,11 +10,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EndEventBlackFogManagerTest {
     @Test
-    void acceptsTheOneBasedFiveCycleProtocolRange() {
+    void acceptsOnlyTheOneBasedThreeCycleProtocolRange() {
         EndEventBlackFogManager manager = new EndEventBlackFogManager();
 
-        // Wave 5 runs exactly five cycles server-side, so the client must accept
-        // every one of them; rejecting four and five hid the hazard entirely.
+        // Latest explicit user request restores exactly three cycles.
         assertFalse(manager.apply(packet("event-1", 4L, 100L,
                 "the_end|wave5|0", .8F, "ACTIVE"), 100L));
         assertTrue(manager.apply(packet("event-1", 4L, 200L,
@@ -23,13 +22,13 @@ class EndEventBlackFogManagerTest {
                 "", 0F, "CLEAR"), 300L));
         assertTrue(manager.apply(packet("event-1", 4L, 400L,
                 "the_end|wave5|3", .8F, "ACTIVE"), 400L));
-        assertTrue(manager.apply(packet("event-1", 4L, 500L,
+        assertFalse(manager.apply(packet("event-1", 4L, 500L,
                 "the_end|wave5|4", .8F, "ACTIVE"), 500L));
-        assertTrue(manager.apply(packet("event-1", 4L, 600L,
+        assertFalse(manager.apply(packet("event-1", 4L, 600L,
                 "the_end|wave5|5", .8F, "ACTIVE"), 600L));
         assertFalse(manager.apply(packet("event-1", 4L, 700L,
                 "the_end|wave5|6", .8F, "ACTIVE"), 700L),
-                "a sixth cycle is not part of the five-cycle wave");
+                "cycles above three are not part of the wave");
     }
 
     @Test
@@ -63,7 +62,7 @@ class EndEventBlackFogManagerTest {
         assertTrue(manager.resumeAfterLocalExit("event-1", 4L, 300L));
         assertFalse(manager.apply(packet("event-1", 4L, 200L, "the_end|wave5|1", .8F, "ACTIVE"), 400L));
         assertTrue(manager.apply(packet("event-1", 4L, 400L, "the_end|wave5|1", .8F, "ACTIVE"), 400L));
-        assertTrue(manager.apply(packet("event-1", 4L, 500L, "", 0F, "CLEAR"), 500L));
+        assertFalse(manager.apply(packet("event-1", 4L, 500L, "", 0F, "CLEAR"), 500L));
         manager.clear();
         assertTrue(manager.resumeAfterLocalExit("event-1", 4L, 600L));
         assertFalse(manager.apply(packet("event-1", 4L, 700L, "the_end|wave5|1", .8F, "ACTIVE"), 700L));

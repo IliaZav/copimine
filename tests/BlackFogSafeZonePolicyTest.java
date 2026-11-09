@@ -14,38 +14,37 @@ public final class BlackFogSafeZonePolicyTest {
                 "four players must cap the first-cycle footprint at 2x2");
         check(BlackFogSafeZonePolicy.sideForCycleAndPlayers(0, 5) == 2,
                 "five players must cap the first-cycle footprint at 2x2");
+        // The approved contract is THREE cycles, so a fourth or fifth index is
+        // out of range and must fail closed rather than report a stale footprint
+        // from the superseded five-cycle design.
         check(BlackFogSafeZonePolicy.sideForCycleAndPlayers(0, 6) == 1
                         && BlackFogSafeZonePolicy.sideForCycleAndPlayers(1, 6) == 1
                         && BlackFogSafeZonePolicy.sideForCycleAndPlayers(2, 6) == 1
-                        && BlackFogSafeZonePolicy.sideForCycleAndPlayers(3, 6) == 1
-                        && BlackFogSafeZonePolicy.sideForCycleAndPlayers(4, 6) == 1
                         && BlackFogSafeZonePolicy.sideForCycleAndPlayers(0, 10) == 1
-                        && BlackFogSafeZonePolicy.sideForCycleAndPlayers(4, 10) == 1,
+                        && BlackFogSafeZonePolicy.sideForCycleAndPlayers(2, 10) == 1,
                 "six or more players must retain only a 1x1 footprint in every cycle");
         check(BlackFogSafeZonePolicy.sideForCycleAndPlayers(1, 4) == 2,
                 "the 4-5 player footprint must hold 2x2 through the second cycle");
-        check(BlackFogSafeZonePolicy.sideForCycleAndPlayers(3, 4) == 1,
-                "the 4-5 player footprint must shrink to 1x1 in the fourth cycle");
-        check(BlackFogSafeZonePolicy.sideForCycleAndPlayers(1, 2) == 3
-                        && BlackFogSafeZonePolicy.sideForCycleAndPlayers(2, 2) == 2
-                        && BlackFogSafeZonePolicy.sideForCycleAndPlayers(3, 2) == 2
-                        && BlackFogSafeZonePolicy.sideForCycleAndPlayers(4, 2) == 1,
-                "the footprint must keep shrinking across the cycles");
-        // Measured table for a 1-3 player group: 3,3,2,2,1.
+        // Measured table over the three approved cycles.
+        //   1-3 players: 3,2,1     4-5 players: 2,2,1     6+ players: 1,1,1
+        check(BlackFogSafeZonePolicy.sideForCycleAndPlayers(2, 4) == 1,
+                "the 4-5 player footprint must shrink to 1x1 in the last cycle");
+        check(BlackFogSafeZonePolicy.sideForCycleAndPlayers(0, 2) == 3
+                        && BlackFogSafeZonePolicy.sideForCycleAndPlayers(1, 2) == 2
+                        && BlackFogSafeZonePolicy.sideForCycleAndPlayers(2, 2) == 1,
+                "the footprint must shrink once per cycle for a small group");
         check(BlackFogSafeZonePolicy.sideForCycleAndPlayers(0, 1) == 3
-                        && BlackFogSafeZonePolicy.sideForCycleAndPlayers(1, 1) == 3
-                        && BlackFogSafeZonePolicy.sideForCycleAndPlayers(2, 1) == 2
-                        && BlackFogSafeZonePolicy.sideForCycleAndPlayers(3, 1) == 2
-                        && BlackFogSafeZonePolicy.sideForCycleAndPlayers(4, 1) == 1,
+                        && BlackFogSafeZonePolicy.sideForCycleAndPlayers(1, 1) == 2
+                        && BlackFogSafeZonePolicy.sideForCycleAndPlayers(2, 1) == 1,
                 "single-player testing must retain the same staged shrink as the smallest group");
         check(BlackFogSafeZonePolicy.sideForCycleAndPlayers(-1, 2) == 0
-                        && BlackFogSafeZonePolicy.sideForCycleAndPlayers(5, 2) == 0
+                        && BlackFogSafeZonePolicy.sideForCycleAndPlayers(3, 2) == 0
                         && BlackFogSafeZonePolicy.sideForCycleAndPlayers(0, 0) == 0
                         && BlackFogSafeZonePolicy.sideForCycleAndPlayers(0, -1) == 0,
                 "invalid cycles or player counts must fail closed with no safe footprint");
         // Every cycle of every supported roster must still leave a usable footprint.
         for (int players = 1; players <= 20; players++) {
-            for (int cycle = 0; cycle < 5; cycle++) {
+            for (int cycle = 0; cycle < 3; cycle++) {
                 int side = BlackFogSafeZonePolicy.sideForCycleAndPlayers(cycle, players);
                 check(side >= 1, "every cycle must leave at least one safe cell");
                 check(BlackFogSafeZonePolicy.cells(10, 20, side).size() == side * side,

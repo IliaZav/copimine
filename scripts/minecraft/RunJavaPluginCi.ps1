@@ -13,6 +13,36 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+
+# Docs: a nested powershell.exe child script that merely LOGS reaches us on
+# stderr, and under ErrorActionPreference = Stop PowerShell converts that into a
+# terminating NativeCommandError. A clean build therefore looked broken. Every
+# child script goes through this helper: both streams are captured, the child's
+# own output is echoed, and only its exit code decides success.
+$script:childScriptCounter = 0
+function Invoke-ChildScript {
+    param(
+        [Parameter(Mandatory = $true)][string]$ScriptPath,
+        [string[]]$ScriptArguments = @(),
+        [Parameter(Mandatory = $true)][string]$FailureMessage
+    )
+    $script:childScriptCounter++
+    $logDirectory = Join-Path ([IO.Path]::GetTempPath()) ("copimine-ci-child-{0}" -f $PID)
+    if (-not (Test-Path -LiteralPath $logDirectory -PathType Container)) {
+        New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
+    }
+    $base = Join-Path $logDirectory ("child-{0}" -f $script:childScriptCounter)
+    $stdoutPath = "$base.out"
+    $stderrPath = "$base.err"
+    $argumentList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath) + $ScriptArguments
+    $child = Start-Process -FilePath 'powershell.exe' -ArgumentList $argumentList -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+    if (Test-Path -LiteralPath $stdoutPath) { Get-Content -LiteralPath $stdoutPath | Write-Host }
+    if (Test-Path -LiteralPath $stderrPath) { Get-Content -LiteralPath $stderrPath | Write-Host }
+    Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+    if ($child.ExitCode -ne 0) {
+        throw "$FailureMessage (exit $($child.ExitCode))"
+    }
+}
 . (Join-Path $PSScriptRoot 'DownloadPinnedArtifact.ps1')
 . (Join-Path $PSScriptRoot 'MigrationOutputSnapshot.ps1')
 
@@ -344,8 +374,7 @@ $snapshotPaths = @(
     'minecraft/server/plugins/CopiMineEndEvent', 'minecraft/server/plugins/CopiMineNarcotics'
 )
 
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'tests/TestMigrationOutputSnapshot.ps1')
-if ($LASTEXITCODE -ne 0) { throw 'Migration output snapshot behavior test failed.' }
+Invoke-ChildScript -ScriptPath (Join-Path $repo 'tests/TestMigrationOutputSnapshot.ps1') -FailureMessage 'Migration output snapshot behavior test failed.'
 
 $previousRecovery = Read-MigrationRecoveryRecord -RecoveryRecordPath $recoveryRecordPath -WorkspaceRoot $repo `
     -WorkspaceRevision $workspaceRevision -ExpectedRelativePaths $snapshotPaths
@@ -513,8 +542,19 @@ foreach ($relativeDirectory in @(
     'minecraft/server/plugins/AuthEffects'
 )) {
     $buildScript = Join-Path (Join-Path $repo $relativeDirectory) 'build-plugin.ps1'
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $buildScript
-    if ($LASTEXITCODE -ne 0) { throw "Build failed: $relativeDirectory" }
+    # javac reports 'uses or overrides a deprecated API' as a Note on stderr.
+    # This script runs with ErrorActionPreference = Stop, where PowerShell turns
+    # ANY stderr line from a native command into a terminating NativeCommandError
+    # -- so a CLEAN build looked like a failure. Redirect both streams to files and
+    # judge the build solely by its exit code.
+    $buildOut = Join-Path $tempRoot ('build-{0}.out' -f $relativeDirectory.Replace('/', '-'))
+    $buildErr = "$buildOut.err"
+    $buildArguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $buildScript)
+    $buildProcess = Start-Process -FilePath 'powershell.exe' -ArgumentList $buildArguments -NoNewWindow -Wait -PassThru -RedirectStandardOutput $buildOut -RedirectStandardError $buildErr
+    if ($buildProcess.ExitCode -ne 0) {
+        if (Test-Path -LiteralPath $buildErr) { Get-Content -LiteralPath $buildErr | Write-Host }
+        throw "Build failed: $relativeDirectory (exit $($buildProcess.ExitCode))"
+    }
 }
 
 $javac = Join-Path $jdk 'bin\javac.exe'
@@ -598,38 +638,41 @@ $revenuePolicyTestClasspath = @($revenuePolicyTestBuild, $artifactsPluginClasses
 & $java -cp $revenuePolicyTestClasspath ArtifactRevenuePayoutPolicyTest
 if ($LASTEXITCODE -ne 0) { throw 'Artifacts revenue payout policy test failed.' }
 
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'CopiMineClient/build-client.ps1')
-if ($LASTEXITCODE -ne 0) { throw 'CopiMineClient build failed.' }
+Invoke-ChildScript -ScriptPath (Join-Path $repo 'CopiMineClient/build-client.ps1') -FailureMessage 'CopiMineClient build failed.'
 
 # Keep the canonical resource-pack URI and its generated digest synchronized while
 # validators run; minecraft/server/server.properties is restored from the snapshot.
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'resourcepacks/build-resourcepack.ps1')
-if ($LASTEXITCODE -ne 0) { throw 'Resource pack build failed.' }
+Invoke-ChildScript -ScriptPath (Join-Path $repo 'resourcepacks/build-resourcepack.ps1') -FailureMessage 'Resource pack build failed.'
 $resourcePack = Join-Path $repo 'resourcepacks/build/CopiMineResourcePack.zip'
 $resourcePackSha1 = Join-Path $repo 'resourcepacks/build/CopiMineResourcePack.sha1'
 if (-not (Test-Path -LiteralPath $resourcePack -PathType Leaf)) { throw "Resource pack archive was not created: $resourcePack" }
 if (-not (Test-Path -LiteralPath $resourcePackSha1 -PathType Leaf)) { throw "Resource-pack digest sidecar was not created: $resourcePackSha1" }
 
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'tests/PrepareCopiMinePluginFixtures.ps1')
-if ($LASTEXITCODE -ne 0) { throw 'Pinned third-party plugin fixtures failed verification.' }
+Invoke-ChildScript -ScriptPath (Join-Path $repo 'tests/PrepareCopiMinePluginFixtures.ps1') -FailureMessage 'Pinned third-party plugin fixtures failed verification.'
+$validatorStdout = Join-Path $tempRoot 'copimine-validators.out'
+$validatorStderr = Join-Path $tempRoot 'copimine-validators.err'
+# A validator that merely LOGS reaches stderr, and ErrorActionPreference = Stop
+# would escalate that to a terminating NativeCommandError on a clean run. Keep
+# the plain invocation (its arguments are the documented contract) and send the
+# two streams to files instead of the pipeline.
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'tests/RunCopiMineValidators.ps1') `
     -MigrationJavaHome $migrationJdk `
     -MigrationGradleExecutable $MigrationGradleExecutable `
     -MavenRepository $mavenRepository `
-    -PaperApiJar $paper263ApiJar
-if ($LASTEXITCODE -ne 0) { throw 'CopiMine source and release validators failed.' }
+    -PaperApiJar $paper263ApiJar 1> $validatorStdout 2> $validatorStderr
+$validatorExit = $LASTEXITCODE
+if (Test-Path -LiteralPath $validatorStdout) { Get-Content -LiteralPath $validatorStdout | Write-Host }
+if (Test-Path -LiteralPath $validatorStderr) { Get-Content -LiteralPath $validatorStderr | Write-Host }
+if ($validatorExit -ne 0) { throw "CopiMine source and release validators failed. (exit $validatorExit)" }
 
 $poseGeneratorCheck = Join-Path $repo 'copimine-end-event/tools/GenerateBossAnimationPoses.ps1'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $poseGeneratorCheck -Check
-if ($LASTEXITCODE -ne 0) { throw 'Authored boss pose generator parity check failed.' }
+Invoke-ChildScript -ScriptPath $poseGeneratorCheck -ScriptArguments @('-Check') -FailureMessage 'Authored boss pose generator parity check failed.'
 
 $modpackBuild = Join-Path $repo 'scripts/thirdparty/build_modpack.ps1'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $modpackBuild -SyncBuiltClient
-if ($LASTEXITCODE -ne 0) { throw 'Modpack build with the migrated client failed.' }
+Invoke-ChildScript -ScriptPath $modpackBuild -ScriptArguments @('-SyncBuiltClient') -FailureMessage 'Modpack build with the migrated client failed.'
 
 $endEventBuild = Join-Path $repo 'copimine-end-event/build-plugin.ps1'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $endEventBuild -SyncServerConfig
-if ($LASTEXITCODE -ne 0) { throw 'End Event server configuration synchronization failed.' }
+Invoke-ChildScript -ScriptPath $endEventBuild -ScriptArguments @('-SyncServerConfig') -FailureMessage 'End Event server configuration synchronization failed.'
 
 $eventLog = Join-Path $diagnosticDirectory 'end-rift-event-gate.log'
 $eventStdoutLog = $eventLog + '.stdout'

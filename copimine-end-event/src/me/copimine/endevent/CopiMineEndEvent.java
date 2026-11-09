@@ -1240,30 +1240,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean wave6Complete;
     /** Prevents objective bootstrap from replacing a valid post-restart ritual snapshot. */
     private boolean ritualSphereStateRehydrated;
-    // --- Wave 6 Rift Ram ----------------------------------------------------
-    /**
-     * The one event-owned Ravager. A single field is the whole spawn guard: the
-     * legacy encounter could field mages, guards and a sphere independently, so a
-     * retried tick could produce a second encounter. Here a second Ravager is
-     * impossible by construction.
-     */
-    private UUID riftRamId;
-    /** Accepted Core impacts, 0..3. Only this counter may crack the Core. */
-    private int riftRamImpacts;
-    /** Authoritative combat state; everything the client draws derives from it. */
-    private RiftRamPolicy.State riftRamState = RiftRamPolicy.State.SPAWNING;
-    private long riftRamStateSinceMillis;
-    private UUID riftRamTargetId;
-    /** Unit vector locked at the end of the warning; null until then. */
-    private double riftRamChargeDirX;
-    private double riftRamChargeDirZ;
-    private long riftRamChargeStartMillis;
-    /** The charge whose impact has already been banked, so duplicates are inert. */
-    private boolean riftRamChargeBanked;
-    private long riftRamLastChargeMillis;
-    private final Set<UUID> riftRamChargeHitPlayers = new LinkedHashSet<>();
-    /** Set once exactly three impacts have been committed and the blade is still up. */
-    private boolean riftRamComplete;
+    private me.copimine.endevent.runtime.RiftRamEncounter riftRam;
+    private Map<String,String> riftRamCheckpoint = Map.of();
     private int waveSpawnWave;
     private int waveSpawnGroupIndex;
     private int waveSpawnEntityOffset;
@@ -2380,7 +2358,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         World world = Bukkit.getWorld(worldName);
-        if (world != null && shouldRetainWave7ActorChunksLoaded()) {
+        if (world != null && (shouldRetainWave7ActorChunksLoaded() || phase == EventPhase.WAVE_6)) {
             // Paper does not restore arbitrary entity chunks on startup. Load
             // the bounded Wave 7 arena before reindexing so a persisted trial
             // actor is not mistaken for a lost actor merely because its chunk
@@ -2398,7 +2376,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (persistedWave == 1) {
             restorePersistedWave1Objective();
         } else if (persistedWave == 6) {
-            restorePersistedRitualSphereObjective();
+            if (!"2".equals(riftRamCheckpoint.get("ram.schema"))) {
+                cleanupLegacyWave6Entities();
+                markWave6RecoveryRequired("RIFT_RAM_LEGACY_CHECKPOINT_REQUIRES_RESET");
+                return;
+            }
+            startRiftRam(world, coreCombatAnchorLocation());
         } else if (persistedWave > 0) {
             restorePersistedCollapseRingEncounter();
         }
@@ -3557,7 +3540,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (wave == 4) {
             scaled = currentWave4MobCounts(players);
         } else if (wave == 6) {
-            scaled = ritualWaveCounts(players);
+            scaled = new WaveMechanicsPolicy.WaveCounts(0, 0, 0, 0, 0);
         } else {
             WaveMechanicsPolicy.WaveCounts configured = new WaveMechanicsPolicy.WaveCounts(
                     definition.endermen(), definition.spiders(), definition.skeletons(),
@@ -3586,7 +3569,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         waveSpawnWave = wave;
-        waveSpawnSchedule = wave == 2 ? WaveTwoStagePolicy.split(scaled) : List.of(scaled);
+        waveSpawnSchedule = wave == 6 ? List.of()
+                : wave == 2 ? WaveTwoStagePolicy.split(scaled) : List.of(scaled);
         // The persisted entity scan is authoritative for what already
         // spawned. A restart must not replay the delayed group on top of it.
         if (wave == 2) {
@@ -4150,38 +4134,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         restoreWaveOneReinforcementDebt(snapshot.objectiveProgress());
         boolean hasRitualSphereCheckpoint = snapshot.objectiveProgress().keySet().stream()
                 .anyMatch(key -> key.startsWith("ritual-sphere."));
+        boolean hasRiftRamCheckpoint = snapshot.objectiveProgress().containsKey("ram.schema");
+        riftRamCheckpoint = Map.of();
         if (phase == EventPhase.WAVE_6 || persistedDisposableWave6
-                || phase == EventPhase.RECOVERY_REQUIRED && hasRitualSphereCheckpoint) {
-            if (hasRitualSphereCheckpoint) {
-                RitualSphereEncounterSnapshot.Data wave6 = RitualSphereEncounterSnapshot.decode(
-                        snapshot.objectiveProgress(), generation);
-                ritualSphereState = wave6.state();
-                ritualCasterDeathCount = wave6.casterDeaths();
-                ritualSpellCursor = wave6.spellCursor();
-                // W6-016: restore the frozen identity order with its receipts, so
-                // the sphere keeps the signatures it actually earned instead of
-                // rebuilding a different order after a restart.
-                wave6MageOrder = wave6.mageOrder();
-                wave6DefeatedMages = wave6.mageDefeated();
-                wave6CasterIdentities.clear();
-                // Restore the stage sequence and the reinforcement debt BEFORE
-                // any body is respawned, so the wave continues instead of
-                // replaying stages it already cleared.
-                restoreWaveSixDurableState(wave6, snapshot.objectiveProgress());
-                if (!wave6.hasMageIdentities() && wave6.casterDeaths() > 0) {
-                    getLogger().warning("WAVE6_MAGE_ORDER_MISSING event=" + eventId
-                            + " generation=" + generation
-                            + " deaths=" + wave6.casterDeaths()
-                            + " action=wait-for-runtime-rebuild");
-                }
-                if (phase == EventPhase.RECOVERY_REQUIRED) {
-                    ritualSphereRecoveryCheckpoint = Map.copyOf(snapshot.objectiveProgress());
-                }
-            } else if (phase != EventPhase.RECOVERY_REQUIRED) {
-                getLogger().warning("WAVE6_RITUAL_SNAPSHOT_MISSING event=" + eventId
-                        + " generation=" + generation
-                        + " action=wait-for-runtime-rebuild");
-            }
+                || phase == EventPhase.RECOVERY_REQUIRED && (hasRitualSphereCheckpoint || hasRiftRamCheckpoint)) {
+            // The legacy format is deliberately not decoded into live Ram state.
+            riftRamCheckpoint = Map.copyOf(snapshot.objectiveProgress());
         } else if (phase == EventPhase.WAVE_7 || persistedDisposableWave7
                 || persistedFinalSeal || persistedWave7Recovery) {
             restoreWave7Checkpoint(snapshot, persistedDisposableWave7);
@@ -4863,6 +4821,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private Map<String, String> waveObjectiveProgressSnapshot() {
+        if (phase == EventPhase.RECOVERY_REQUIRED && !riftRamCheckpoint.isEmpty()) {
+            return riftRamCheckpoint;
+        }
         if (phase == EventPhase.RECOVERY_REQUIRED && !waveTwoRecoveryCheckpoint.isEmpty()) {
             return waveTwoRecoveryCheckpoint;
         }
@@ -4932,28 +4893,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             return Map.copyOf(encoded);
         }
-        if (phase == EventPhase.WAVE_6
-                || testWaveFrontVisualMode && activeWave == 6) {
-            Map<String, String> encoded = new LinkedHashMap<>(
-                    RitualSphereEncounterSnapshot.encode(
-                            ritualSphereState, ritualCasterDeathCount, ritualSpellCursor,
-                            wave6MageOrder, wave6DefeatedMages));
-            // The stage sequence and the reinforcement debt are not derivable
-            // from the roster after a restart: the guards that were already up
-            // would be counted as debt never paid, and the final clear could
-            // fire while a mandatory pack was still owed.
-            if (wave6Sequence != null) {
-                encoded.putAll(WaveSixDurableState.encode(
-                        wave6Sequence.stageIndex(),
-                        wave6Sequence.guardSlotsFilled().size(),
-                        wave6ReinforcementOwed, wave6ReinforcementSpawned,
-                        wave6FinalClearCommitted));
-            }
+        if (phase == EventPhase.WAVE_6 || testWaveFrontVisualMode && activeWave == 6) {
+            Map<String,String> encoded = new LinkedHashMap<>(riftRam == null ? riftRamCheckpoint : riftRam.snapshot());
+            encoded.put("ram.event", eventId);
+            encoded.put("ram.generation", Long.toString(generation));
             if (testWaveFrontVisualMode && activeWave == 6) {
                 encoded.put("test-wave", "6");
                 encoded.put("test-wave-generation", Long.toString(generation));
-                encoded.putAll(SandboxWaveSessionSnapshot.encode(
-                        generation, 6, sandboxWaveRoster, testRitualCombatMode));
+                encoded.putAll(SandboxWaveSessionSnapshot.encode(generation, 6, sandboxWaveRoster, false));
             }
             return Map.copyOf(encoded);
         }
@@ -5848,6 +5795,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     @Override
     public void onDisable() {
+        if (riftRam != null) {
+            riftRamCheckpoint = riftRam.snapshot();
+            saveStateSync();
+            riftRam.suspend(); riftRam = null;
+        }
         for (Player player : Bukkit.getOnlinePlayers()) {
             updateCurrentCarrierSlowness(player, false);
         }
@@ -16687,6 +16639,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         long now = System.currentTimeMillis();
         boolean hasTestWave = false;
         for (Entity entity : new ArrayList<>(ownedEntities.values())) {
+            if (riftRam != null && entity.getUniqueId().equals(riftRam.id())) continue;
             String kind = readString(entity, keyKind);
             if (!isWaveCombatKind(kind) || !isLiveOwnedEntity(entity.getUniqueId())) {
                 continue;
@@ -16708,6 +16661,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (Entity entity : new ArrayList<>(ownedEntities.values())) {
             String kind = readString(entity, keyKind);
             if (!(entity instanceof Mob mob) || !isWaveCombatKind(kind)
+                    || riftRam != null && entity.getUniqueId().equals(riftRam.id())
                     || !isLiveOwnedEntity(entity.getUniqueId())
                     || isWaveTwoRecoveryFenced(entity)
                     || !isWaveAiCombatEntity(entity)) {
@@ -17482,6 +17436,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * normal AI controller.
      */
     private void tickWaveMobContainment() {
+        if (riftRam != null) tickRiftRam();
         if (localTextureShowcase || !bootstrapped || !isEnabled()
                 || (!isCombatPhase() && !hasLiveTestWaveEntities())) {
             return;
@@ -23386,7 +23341,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             waveSpawnSchedule = wave == 2
                     ? WaveTwoStagePolicy.split(scaled) : List.of(scaled);
         }
-        if (waveSpawnSchedule.isEmpty()) {
+        // A ram that failed to spawn must abort the wave here, while nothing has
+        // been committed. Kept outside the schedule chain so the branch stays a
+        // pure assignment list.
+        if (wave == 6 && (riftRam == null || !riftRam.ready())) return false;
+        if (waveSpawnSchedule.isEmpty() && wave != 6) {
             throw new IllegalStateException("Current wave has no bounded spawn groups");
         }
         if (wave == 2 && !WaveTwoStagePolicy.canStart(scaled)) {
@@ -23447,11 +23406,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             waveSpawnGroupIndex = waveSpawnSchedule.size();
             waveSpawnEntityOffset = realitySplitTrialController.activeTrialCount();
         } else if (wave == 6) {
-            if (!spawnWave6PressurePack(world, core, players, sandbox)) {
-                clearWaveObjectiveState();
-                clearWaveEntities();
-                return false;
-            }
             waveSpawnGroupIndex = waveSpawnSchedule.size();
             waveSpawnEntityOffset = countLiveWaveEntitiesForWave(wave);
         } else {
@@ -26328,9 +26282,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case COLLAPSE_RINGS -> getLogger().warning("WAVE6_LEGACY_COLLAPSE_RING_REFUSED event="
                     + eventId + " generation=" + generation);
             case RITUAL_SPHERE -> {
-                clearLegacyCollapseRingState("ritual-sphere-start");
-                started = startRitualSphereObjective(world, core);
+                started = false;
             }
+            case RIFT_RAM -> started = riftRam != null && (riftRam.ready() || riftRam.complete());
             case REALITY_SPLIT -> {
                 wave6Complete = false;
                 started = spawnRealitySplitBarriers(world, core);
@@ -26479,9 +26433,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // Wave 6 drives its own state machine: the ram needs a tick even before
         // the objective clock starts, otherwise the warning never expires and the
         // first charge never happens.
-        if (objectiveWave == 6) {
-            tickRiftRam();
-        }
         if (waveObjectiveStartedMillis <= 0L) {
             World world = Bukkit.getWorld(worldName);
             Location core = coreCombatAnchorLocation();
@@ -26495,6 +26446,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (waveObjectiveStartedMillis <= 0L) {
                 return false;
             }
+        }
+        if (objectiveWave == 6 && riftRam == null) {
+            markWave6RecoveryRequired("RIFT_RAM_RUNTIME_MISSING_AFTER_RESTART");
+            return false;
         }
         long now = System.currentTimeMillis();
         waveObjectiveLastSecond = (int) Math.max(0L,
@@ -26513,7 +26468,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             case BLACK_FOG -> tickBlackFogObjective(now);
             case COLLAPSE_RINGS -> getLogger().fine("WAVE6_LEGACY_COLLAPSE_RING_NOT_TICKED event=" + eventId);
-            case RITUAL_SPHERE -> tickCurrentRitualSphereObjective(now);
+            case RITUAL_SPHERE -> getLogger().warning("WAVE6_LEGACY_RITUAL_NOT_TICKED event=" + eventId);
             case REALITY_SPLIT -> tickCurrentChamberObjective(now);
         }
         renderWaveObjective(now);
@@ -26591,8 +26546,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // mage death count, a broken prison and a clean sphere to ALL be true
             // at the same instant, which is why the wave never finished and Wave 7
             // therefore never started. None of those are consulted any more.
-            case RIFT_RAM -> riftRamComplete
-                    && RiftRamPolicy.isComplete(riftRamImpacts, isRiftRamAlive());
+            case RIFT_RAM -> riftRam != null && riftRam.complete();
             case REALITY_SPLIT -> waveObjectiveComplete;
         };
     }
@@ -26607,390 +26561,97 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     // Wave 6 -- RIFT RAM
     // =====================================================================
 
-    /**
-     * Spawns the single event-owned Ravager for Wave 6.
-     *
-     * <p>Everything the encounter needs lives on the entity plus the handful of
-     * fields above, so a restart can rebuild the fight from the snapshot instead
-     * of re-running a scene script. A failed spawn is reported loudly: a wave
-     * that plays music over an empty arena is the exact complaint this wave
-     * exists to remove.</p>
-     */
+    /** Generation-scoped runtime; all callbacks retain the originating attempt identity. */
     private void startRiftRam(World world, Location core) {
-        riftRamId = null;
-        riftRamImpacts = 0;
-        riftRamState = RiftRamPolicy.State.SPAWNING;
-        riftRamStateSinceMillis = System.currentTimeMillis();
-        riftRamTargetId = null;
-        riftRamChargeDirX = 0.0D;
-        riftRamChargeDirZ = 0.0D;
-        riftRamChargeStartMillis = 0L;
-        riftRamChargeBanked = false;
-        riftRamLastChargeMillis = 0L;
-        riftRamChargeHitPlayers.clear();
-        riftRamComplete = false;
-        if (world == null || core == null) {
-            getLogger().severe("END_RIFT_RAM_SPAWN_FAILED event=" + eventId
-                    + " generation=" + generation + " reason=no-anchor");
-            return;
-        }
-        Location spawn = riftRamSpawnLocation(world, core);
-        if (spawn == null) {
-            getLogger().severe("END_RIFT_RAM_SPAWN_FAILED event=" + eventId
-                    + " generation=" + generation + " reason=no-safe-site");
-            return;
-        }
-        Ravager ram = world.spawn(spawn, Ravager.class, entity -> {
-            entity.setPersistent(true);
-            entity.setRemoveWhenFarAway(false);
-            entity.setCustomName("Таран Разлома");
-            entity.setCustomNameVisible(true);
-            entity.getPersistentDataContainer().set(keyKind, PersistentDataType.STRING, EVENT_KIND_WAVE_MOB);
-            entity.getPersistentDataContainer().set(keyWave, PersistentDataType.INTEGER, 6);
-            entity.getPersistentDataContainer().set(keyGeneration, PersistentDataType.INTEGER, (int) generation);
-            entity.getPersistentDataContainer().set(keyEventId, PersistentDataType.STRING, eventId);
+        if (riftRam != null) return;
+        final String ownerEvent = eventId;
+        final long ownerGeneration = generation;
+        riftRam = new me.copimine.endevent.runtime.RiftRamEncounter(
+                new me.copimine.endevent.runtime.RiftRamEncounter.Host() {
+            public boolean active() {
+                return activeWave == 6 && ownerGeneration == generation
+                        && java.util.Objects.equals(ownerEvent, eventId)
+                        && canOwnWaveObjective(6);
+            }
+            public List<Player> players() { return new ArrayList<>(activeWaveParticipants()); }
+            public Location core() { return coreCombatAnchorLocation(); }
+            public int floorY() { return combatFloorY(); }
+            public boolean inArena(Location at) { return isArenaLocation(at); }
+            public void own(Entity entity, boolean combat) {
+                tag(entity, combat ? EVENT_KIND_WAVE_MOB : EVENT_KIND_DISPLAY, 6, isOfficialCurrentAttempt());
+                entity.addScoreboardTag("clearlag_exclude");
+            }
+            public void remove(Entity entity) {
+                unregisterOwnedEntity(entity.getUniqueId(), "rift-ram-cleanup");
+                if (entity.isValid()) entity.remove();
+            }
+            public void fail(String reason) {
+                getLogger().severe("END_RIFT_RAM_RECOVERY event=" + ownerEvent
+                        + " generation=" + ownerGeneration + " reason=" + reason);
+                markWave6RecoveryRequired(reason);
+            }
+            public boolean owns(Entity entity) {
+                return isLiveOwnedEntity(entity.getUniqueId());
+            }
+            public boolean damage(Ravager source, Player player, double amount) {
+                return applyWaveAbilityDamage(source, player, amount);
+            }
+            public int particleBudget() {
+                return Math.max(96, Math.min(512, getConfig().getInt("wave6.rift-ram.stomp-particles-per-viewer", 256)));
+            }
+            public boolean checkpoint() {
+                Map<String,String> durable = new LinkedHashMap<>(riftRam.snapshot());
+                durable.put("ram.event", ownerEvent);
+                durable.put("ram.generation", Long.toString(ownerGeneration));
+                riftRamCheckpoint = Map.copyOf(durable);
+                return saveStateSync();
+            }
+            public void visualsChanged() {
+                for (Player viewer : activeWaveParticipants()) refreshClientBindingsForPlayer(viewer);
+            }
         });
-        if (ram == null) {
-            getLogger().severe("END_RIFT_RAM_SPAWN_FAILED event=" + eventId
-                    + " generation=" + generation + " reason=world-refused");
-            return;
-        }
-        riftRamId = ram.getUniqueId();
-        double health = RiftRamPolicy.healthForPlayers(currentWaveScalePlayers);
-        AttributeInstance maxHealth = ram.getAttribute(Attribute.GENERIC_MAX_HEALTH);
-        if (maxHealth != null) {
-            maxHealth.setBaseValue(health);
-        }
-        ram.setHealth(health);
-        // The scale attribute drives the HITBOX, not just the model. Setting
-        // only the visual would leave a 1.5x beast with a vanilla-sized body
-        // that players could walk through.
-        AttributeInstance scale = ram.getAttribute(Attribute.GENERIC_SCALE);
-        if (scale != null) {
-            scale.setBaseValue(RiftRamPolicy.SCALE);
-        }
-        ram.setAI(true);
-        riftRamState = RiftRamPolicy.State.CHASING;
-        riftRamStateSinceMillis = System.currentTimeMillis();
-        applyRiftRamVisual(ram);
-        getLogger().info("END_RIFT_RAM_SPAWNED event=" + eventId + " generation=" + generation
-                + " hp=" + Math.round(health) + " scale=" + RiftRamPolicy.SCALE
-                + " required_impacts=" + RiftRamPolicy.REQUIRED_IMPACTS
-                + " players=" + currentWaveScalePlayers);
+        if (!riftRamCheckpoint.isEmpty()) {
+            if (!ownerEvent.equals(riftRamCheckpoint.get("ram.event"))
+                    || !Long.toString(ownerGeneration).equals(riftRamCheckpoint.get("ram.generation"))) {
+                markWave6RecoveryRequired("RIFT_RAM_CHECKPOINT_SCOPE_MISMATCH");
+                return;
+            }
+            // Transient displays and adds are rebuilt from the minimum checkpoint.
+            for (Entity entity : new ArrayList<>(ownedEntities.values())) {
+                if (readInt(entity, keyWave, 0) == 6 && !(entity instanceof Ravager)) {
+                    unregisterOwnedEntity(entity.getUniqueId(), "rift-ram-restart-transient-cleanup");
+                    if (entity.isValid()) entity.remove();
+                }
+            }
+            riftRam.restore(riftRamCheckpoint);
+        } else riftRam.start(currentWaveScalePlayers);
     }
 
-    /** A readable spawn site: on the floor, away from the Core, never inside a block. */
-    private Location riftRamSpawnLocation(World world, Location core) {
-        int floorY = combatFloorY();
-        for (int attempts = 0; attempts < 24; attempts++) {
-            double angle = Math.random() * Math.PI * 2.0D;
-            double radius = 14.0D + Math.random() * 5.0D;
-            int x = core.getBlockX() + (int) Math.round(Math.cos(angle) * radius);
-            int z = core.getBlockZ() + (int) Math.round(Math.sin(angle) * radius);
-            world.getChunkAt(x >> 4, z >> 4);
-            Block feet = world.getBlockAt(x, floorY + 1, z);
-            Block head = world.getBlockAt(x, floorY + 2, z);
-            Block below = world.getBlockAt(x, floorY, z);
-            if (!feet.getType().isAir() || !head.getType().isAir()) continue;
-            if (below.getType().isAir()) continue;
-            return new Location(world, x + 0.5D, floorY + 1.0D, z + 0.5D);
-        }
-        Location fallback = core.clone().add(16.0D, 0.0D, 0.0D);
-        fallback.setY(floorY + 1.0D);
-        return fallback;
-    }
-
-    /** True while the ram entity still exists and is event-owned. */
-    private boolean isRiftRamAlive() {
-        if (riftRamId == null) return false;
-        Entity entity = Bukkit.getEntity(riftRamId);
-        return entity instanceof Ravager ram && ram.isValid() && !ram.isDead();
-    }
-
-    /** Push the current armour stage to every eligible client. */
-    private void applyRiftRamVisual(Ravager ram) {
-        if (ram == null) return;
-        // The armour stage is published as the entity's visual id; the client
-        // catalog maps it to one of the four authored sheets.
-        String visual = "END_RIFT_RAM_ARMOR" + Math.max(0, Math.min(3, riftRamImpacts)) + "_V1";
-        for (Player viewer : activeWaveParticipants()) {
-            refreshClientBindingsForPlayer(viewer);
-        }
-        getLogger().info("END_RIFT_RAM_ARMOR event=" + eventId + " generation=" + generation
-                + " stage=" + riftRamImpacts + " visual=" + visual
-                + " state=" + riftRamState);
-    }
-
-    /** One authoritative tick for the wave 6 encounter. */
     private void tickRiftRam() {
-        if (activeWave != 6) return;
-        if (!isRiftRamAlive()) {
-            if (riftRamId != null && riftRamState != RiftRamPolicy.State.COMPLETED) {
-                // The ram died. Only an exposed ram may finish the wave; a ram
-                // that vanished early is an owned-entity loss, not a victory.
-                if (riftRamImpacts >= RiftRamPolicy.REQUIRED_IMPACTS) {
-                    riftRamState = RiftRamPolicy.State.COMPLETED;
-                    riftRamComplete = true;
-                    restoreRiftCore();
-                    getLogger().info("END_RIFT_RAM_COMPLETED event=" + eventId
-                            + " generation=" + generation + " impacts=" + riftRamImpacts);
-                } else {
-                    getLogger().warning("END_RIFT_RAM_LOST event=" + eventId
-                            + " generation=" + generation + " impacts=" + riftRamImpacts
-                            + " state=" + riftRamState);
-                }
-            }
+        if (riftRam == null) {
+            markWave6RecoveryRequired("RIFT_RAM_RUNTIME_MISSING_AFTER_RESTART");
             return;
         }
-        Ravager ram = (Ravager) Bukkit.getEntity(riftRamId);
-        long now = System.currentTimeMillis();
-        switch (riftRamState) {
-            case SPAWNING -> {
-                riftRamState = RiftRamPolicy.State.CHASING;
-                riftRamStateSinceMillis = now;
+        riftRam.tick();
+    }
+
+    /** Environmental and player hits share one armor gate, before health is committed. */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onRiftRamArmorDamage(EntityDamageEvent event) {
+        if (riftRam == null || activeWave != 6
+                || !event.getEntity().getUniqueId().equals(riftRam.id())) return;
+        if (riftRam.complete()) { event.setCancelled(true); return; }
+        double multiplier = RiftRamPolicy.damageMultiplier(riftRam.impacts());
+        event.setDamage(event.getDamage() * multiplier);
+        if (riftRam.impacts() < RiftRamPolicy.REQUIRED_IMPACTS) {
+            LivingEntity ram = (LivingEntity) event.getEntity();
+            double finalDamage = event.getFinalDamage();
+            if (finalDamage >= ram.getHealth()) {
+                event.setDamage(event.getDamage() * Math.max(0, ram.getHealth() - 1.0D) / Math.max(.00001D, finalDamage));
             }
-            case CHASING -> {
-                Player target = resolveRiftRamTarget(ram);
-                if (target == null) {
-                    // Nobody to lure it: hold position rather than wander off.
-                    holdRiftRamInPlace(ram);
-                    return;
-                }
-                riftRamTargetId = target.getUniqueId();
-                ram.setTarget(target);
-                if (RiftRamPolicy.mayStartCharge(RiftRamPolicy.State.CHASING, riftRamImpacts,
-                        now, riftRamLastChargeMillis)) {
-                    beginRiftRamWarning(ram, target, now);
-                }
-            }
-            case WARNING -> {
-                if (now - riftRamStateSinceMillis >= RiftRamPolicy.WARNING_TICKS * 50L) {
-                    commitRiftRamCharge(ram, now);
-                }
-            }
-            case CHARGING -> {
-                advanceRiftRamCharge(ram, now);
-            }
-            case STUNNED -> {
-                if (now - riftRamStateSinceMillis >= RiftRamPolicy.IMPACT_STUN_TICKS * 50L) {
-                    riftRamState = RiftRamPolicy.stateAfterStun(riftRamImpacts);
-                    riftRamStateSinceMillis = now;
-                    getLogger().info("END_RIFT_RAM_STUN_ENDED event=" + eventId
-                            + " generation=" + generation + " state=" + riftRamState);
-                }
-            }
-            case EXPOSED -> {
-                Player target = resolveRiftRamTarget(ram);
-                if (target != null) {
-                    ram.setTarget(target);
-                }
-            }
-            case COMPLETED -> {
-            }
+            ram.getWorld().playSound(ram.getLocation(), Sound.BLOCK_ANVIL_HIT, .6F, 1.5F);
+            ram.getWorld().spawnParticle(Particle.CRIT, ram.getLocation().add(0, 1.5, 0), 4, .5, .5, .5, .03);
         }
-        // The damage gate runs on every tick, not only on hit, because a ram with
-        // reduced damage can still be killed by a lucky burst inside one tick.
-        protectRiftRam(ram);
-    }
-
-    /** Closest eligible participant, so the ram always prefers the party that is actually near. */
-    private Player resolveRiftRamTarget(Ravager ram) {
-        Player best = null;
-        double bestDistance = Double.MAX_VALUE;
-        for (Player player : activeWaveParticipants()) {
-            double distance = player.getLocation().distanceSquared(ram.getLocation());
-            if (distance < bestDistance) {
-                bestDistance = distance;
-                best = player;
-            }
-        }
-        return best;
-    }
-
-    /** Stop the ram where it stands, so the warning is readable and the line honest. */
-    private void holdRiftRamInPlace(Ravager ram) {
-        ram.setTarget(null);
-        ram.setVelocity(new Vector(0.0D, 0.0D, 0.0D));
-    }
-
-    /** Turn the ram's body toward a point without teleporting it. */
-    private void faceRiftRam(Ravager ram, Location target) {
-        if (target == null) return;
-        Location at = ram.getLocation();
-        double dx = target.getX() - at.getX();
-        double dz = target.getZ() - at.getZ();
-        if (Math.abs(dx) < 1.0E-6D && Math.abs(dz) < 1.0E-6D) return;
-        float yaw = (float) (StrictMath.toDegrees(StrictMath.atan2(dz, dx)) - 90.0D);
-        ram.setRotation(yaw, 0.0F);
-    }
-
-    private void beginRiftRamWarning(Ravager ram, Player target, long now) {
-        riftRamState = RiftRamPolicy.State.WARNING;
-        riftRamStateSinceMillis = now;
-        riftRamTargetId = target.getUniqueId();
-        holdRiftRamInPlace(ram);
-        ram.getWorld().playSound(ram.getLocation(), Sound.ENTITY_RAVAGER_ROAR, 2.0F, 0.85F);
-        faceRiftRam(ram, target.getLocation());
-        getLogger().info("END_RIFT_RAM_WARNING event=" + eventId + " generation=" + generation
-                + " target=" + target.getName());
-    }
-
-    /** Freeze the direction once and start sprinting. The ram never homes again. */
-    private void commitRiftRamCharge(Ravager ram, long now) {
-        Player target = riftRamTargetId == null ? null : Bukkit.getPlayer(riftRamTargetId);
-        if (target == null || !target.isOnline()) {
-            riftRamState = RiftRamPolicy.State.CHASING;
-            riftRamStateSinceMillis = now;
-            return;
-        }
-        double[] direction = RiftRamPolicy.lockChargeDirection(
-                ram.getX(), ram.getY(), ram.getZ(),
-                target.getX(), target.getY(), target.getZ());
-        if (direction == null) {
-            riftRamState = RiftRamPolicy.State.CHASING;
-            riftRamStateSinceMillis = now;
-            return;
-        }
-        riftRamChargeDirX = direction[0];
-        riftRamChargeDirZ = direction[1];
-        riftRamChargeStartMillis = now;
-        riftRamChargeBanked = false;
-        riftRamChargeHitPlayers.clear();
-        riftRamState = RiftRamPolicy.State.CHARGING;
-        riftRamStateSinceMillis = now;
-        riftRamTargetId = null;
-        ram.setTarget(null);
-        getLogger().info("END_RIFT_RAM_CHARGE_STARTED event=" + eventId + " generation=" + generation
-                + " dir=" + String.format(java.util.Locale.ROOT, "%.3f,%.3f",
-                riftRamChargeDirX, riftRamChargeDirZ));
-    }
-
-    /** Move the ram one step and resolve contact with players and with the Core. */
-    private void advanceRiftRamCharge(Ravager ram, long now) {
-        Location from = ram.getLocation();
-        double toX = from.getX() + riftRamChargeDirX * RiftRamPolicy.CHARGE_SPEED;
-        double toZ = from.getZ() + riftRamChargeDirZ * RiftRamPolicy.CHARGE_SPEED;
-        double toY = from.getY();
-        // Swept collision against the Core BEFORE moving: a single step can be
-        // longer than the Core's radius, so a point test would tunnel through.
-        Location core = coreCombatAnchorLocation();
-        boolean hitsCore = core != null && RiftRamPolicy.segmentHitsCore(
-                from.getX(), from.getY(), from.getZ(), toX, toY, toZ,
-                core.getX(), core.getY(), core.getZ());
-        // Players on the line take one hit each per charge.
-        for (Player player : activeWaveParticipants()) {
-            if (riftRamChargeHitPlayers.contains(player.getUniqueId())) continue;
-            if (!RiftRamPolicy.chargeHitsPlayer(from.getX(), from.getZ(), toX, toZ,
-                    player.getX(), player.getZ(), false)) continue;
-            riftRamChargeHitPlayers.add(player.getUniqueId());
-            player.damage(RiftRamPolicy.CHARGE_DAMAGE, ram);
-            player.getWorld().playSound(player.getLocation(), Sound.ENTITY_RAVAGER_ATTACK, 1.2F, 1.0F);
-        }
-        Location next = new Location(ram.getWorld(), toX, toY, toZ,
-                endpointYaw(from.getX(), from.getZ(), toX, toZ), 0.0F);
-        ram.teleport(next);
-        if (hitsCore) {
-            bankRiftRamImpact(ram, now);
-            return;
-        }
-        if (now - riftRamChargeStartMillis >= RiftRamPolicy.CHARGE_TIMEOUT_TICKS * 50L) {
-            // A miss costs the ram its charge but not the wave.
-            riftRamState = RiftRamPolicy.State.CHASING;
-            riftRamStateSinceMillis = now;
-            riftRamLastChargeMillis = now;
-            getLogger().info("END_RIFT_RAM_CHARGE_MISSED event=" + eventId
-                    + " generation=" + generation);
-        }
-    }
-
-    private static float endpointYaw(double fromX, double fromZ, double toX, double toZ) {
-        double dx = toX - fromX;
-        double dz = toZ - fromZ;
-        if (Math.abs(dx) < 1.0E-6D && Math.abs(dz) < 1.0E-6D) return 0.0F;
-        return (float) (StrictMath.toDegrees(StrictMath.atan2(dz, dx)) - 90.0D);
-    }
-
-    /** Commit ONE accepted Core impact: crack the Core, break armour, stun the ram. */
-    private void bankRiftRamImpact(Ravager ram, long now) {
-        if (!RiftRamPolicy.mayAcceptImpact(riftRamState, riftRamImpacts, riftRamChargeBanked)) {
-            return;
-        }
-        // Set BEFORE any effect so a duplicate collision callback this tick sees
-        // a banked charge and bails out at the guard above.
-        riftRamChargeBanked = true;
-        riftRamImpacts++;
-        riftRamLastChargeMillis = now;
-        Location core = coreCombatAnchorLocation();
-        World world = ram.getWorld();
-        if (core != null) {
-            world.playSound(core, Sound.BLOCK_ANVIL_LAND, 2.0F, 0.55F);
-            world.playSound(core, Sound.ENTITY_GENERIC_EXPLODE, 1.4F, 0.7F);
-            world.spawnParticle(Particle.PORTAL, core.clone().add(0.0D, 1.5D, 0.0D), 140, 2.0D, 2.0D, 2.0D, 0.4D);
-            world.spawnParticle(Particle.END_ROD, core.clone().add(0.0D, 2.0D, 0.0D), 40, 1.4D, 1.4D, 1.4D, 0.05D);
-            spawnRiftRamFragments(world, ram.getLocation());
-        }
-        riftRamState = RiftRamPolicy.stateAfterImpact(riftRamImpacts);
-        riftRamStateSinceMillis = now;
-        holdRiftRamInPlace(ram);
-        applyRiftRamVisual(ram);
-        getLogger().info("END_RIFT_RAM_IMPACT event=" + eventId + " generation=" + generation
-                + " impacts=" + riftRamImpacts + " state=" + riftRamState
-                + " multiplier=" + RiftRamPolicy.damageMultiplier(riftRamImpacts));
-    }
-
-    /** A few short-lived armour shards. Never lootable, never collidable, never persistent. */
-    private void spawnRiftRamFragments(World world, Location origin) {
-        for (int index = 0; index < 8; index++) {
-            final int fragment = index;
-            ItemDisplay display = world.spawn(origin.clone().add(0.0D, 1.0D, 0.0D), ItemDisplay.class, entity -> {
-                ItemStack stack = new ItemStack(Material.OBSIDIAN);
-                ItemMeta meta = stack.getItemMeta();
-                if (meta != null) {
-                    meta.setCustomModelData(830099);
-                    stack.setItemMeta(meta);
-                }
-                entity.setItemStack(stack);
-                entity.setPersistent(false);
-                entity.getPersistentDataContainer().set(keyGeneration, PersistentDataType.INTEGER, (int) generation);
-            });
-            if (display == null) continue;
-            double angle = (Math.PI * 2.0D * fragment) / 8.0D;
-            display.setVelocity(new Vector(Math.cos(angle) * 0.55D, 0.42D, Math.sin(angle) * 0.55D));
-            Bukkit.getScheduler().runTaskLater(this, () -> {
-                if (display.isValid()) display.remove();
-            }, 40L);
-        }
-    }
-
-    /**
-     * Reduce incoming damage while the armour holds.
-     *
-     * <p>This is not invulnerability: the hit lands, the health bar moves, and the
-     * hurt animation plays. Without it a party can burst the ram down before the
-     * first Core impact and the encounter has no mechanic at all.</p>
-     */
-    private void protectRiftRam(Ravager ram) {
-        if (riftRamImpacts >= RiftRamPolicy.REQUIRED_IMPACTS) return;
-        double current = ram.getHealth();
-        AttributeInstance maxHealth = ram.getAttribute(Attribute.GENERIC_MAX_HEALTH);
-        double maximum = maxHealth == null ? RiftRamPolicy.healthForPlayers(currentWaveScalePlayers)
-                : maxHealth.getValue();
-        // Convert the damage this tick would have taken into the gated amount by
-        // topping the ram back up to the damage actually allowed.
-        double multiplier = RiftRamPolicy.damageMultiplier(riftRamImpacts);
-        double allowedLoss = (maximum - current) * multiplier;
-        double target = Math.max(1.0D, maximum - allowedLoss);
-        if (current < target) {
-            ram.setHealth(Math.min(maximum, target));
-        }
-    }
-
-    /** Wave 6 is over: put the Core back and let the standard rune path continue. */
-    private void restoreRiftCore() {
-        for (Player viewer : activeWaveParticipants()) {
-            refreshClientBindingsForPlayer(viewer);
-        }
-        getLogger().info("END_RIFT_RAM_CORE_RESTORED event=" + eventId + " generation=" + generation);
     }
 
     private String carrierDiagnosticText() {
@@ -28073,6 +27734,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /** Start the fixed, server-owned Wave 6 Ritual Sphere encounter. */
+    /**
+     * The durable Wave 6 checkpoint as a decoded snapshot, or {@code null} when
+     * nothing usable was ever written. A restart replays the rotation and the
+     * mage order from here instead of inventing new ones.
+     */
+    private RitualSphereEncounterSnapshot.Data ritualSphereSnapshot() {
+        if (ritualSphereRecoveryCheckpoint == null || ritualSphereRecoveryCheckpoint.isEmpty()) {
+            return null;
+        }
+        try {
+            return RitualSphereEncounterSnapshot.decode(ritualSphereRecoveryCheckpoint, generation);
+        } catch (IllegalArgumentException invalid) {
+            getLogger().warning("WAVE6_RITUAL_SNAPSHOT_UNREADABLE event=" + eventId
+                    + " generation=" + generation + " reason=" + invalid.getMessage());
+            return null;
+        }
+    }
+
     private boolean startRitualSphereObjective(World world, Location core) {
         // startWaveObjective receives the Core's top location, while all
         // combat geometry (floor, sphere, prisoner and safe mob destinations)
@@ -28130,6 +27809,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     && recoveredGuards <= recoveredProfile.guardCount()) {
                 wave6PrisonBroken = false;
                 initializeRitualSpellRuntime(generation);
+                // initializeRitualSpellRuntime resets the rotation, so the persisted
+                // cursor is re-applied here, and the frozen mage order and defeat
+                // receipts come from the same checkpoint: rebuilding either would
+                // give the party a different sequence of signatures than the one it
+                // actually earned. All three live in the snapshot, not in State.
+                RitualSphereEncounterSnapshot.Data wave6 = ritualSphereSnapshot();
+                if (wave6 != null && wave6.state() != null) {
+                    ritualSpellCursor = wave6.spellCursor();
+                    if (!wave6.mageOrder().isEmpty()) {
+                        wave6MageOrder = wave6.mageOrder();
+                        wave6DefeatedMages = wave6.mageDefeated();
+                    }
+                }
                 ritualSpellActiveUntilTick = 0L;
                 ritualSpellTargetUuid = null;
                 String recoveredState = RitualSphereEncounterPolicy.hasCaptured(ritualSphereState)
@@ -42023,6 +41715,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean clearWaveObjectiveState() {
+        if (riftRam != null) { riftRam.close(); riftRam = null; }
+        riftRamCheckpoint = Map.of();
         if (!clearRealitySplitBarriers("wave-objective-reset")) return false;
         if (!archiveWaveTwoRosterForCleanup("wave-objective-state-clear")) return false;
         releaseAllSpiderEffects();
@@ -43753,7 +43447,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         Enderman boss = (Enderman) world.spawnEntity(spawn, EntityType.ENDERMAN);
-        configureBoss(boss, true);
+        if (!configureBoss(boss, true)) {
+            testCombatAiMode = false;
+            message(sender, "&cTest boss не создан: проверь BOSS_* диагностические причины в журнале.");
+            return;
+        }
         ensureBossBar();
         bindBossClientForOnlinePlayers();
         message(sender, "&aTest boss создан: он не открывает End и не выдаёт official rewards.");
@@ -44187,7 +43885,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         bossBar.setVisible(true);
         for (Player player : Bukkit.getOnlinePlayers()) {
-            if (isCombatTarget(player) && !bossBar.getPlayers().contains(player)) {
+            if ((isCombatTarget(player) || isBossHarnessViewer(player)) && !bossBar.getPlayers().contains(player)) {
                 bossBar.addPlayer(player);
             }
         }
@@ -44373,6 +44071,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         tickCurrentBoss(boss);
     }
 
+    /** A test actor owns combat locally without advancing the official encounter phase. */
+    private boolean isBossCombatRuntimeActive(LivingEntity boss) {
+        return boss != null && boss.isValid() && !boss.isDead()
+                && Objects.equals(bossUuid, boss.getUniqueId())
+                && ownedBySession(boss, eventId, generation)
+                && (phase == EventPhase.BOSS_ACTIVE || testCombatAiMode && isTestBoss(boss));
+    }
+
     /**
      * Server-side fallback for projectile paths that Paper does not report as
      * a hit on an Interaction entity. It intersects the finite previous-to-
@@ -44381,7 +44087,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * ProjectileHitEvent path.
      */
     private void tickBossHitboxProjectiles(LivingEntity boss) {
-        if (bossHitboxController == null || phase != EventPhase.BOSS_ACTIVE
+        if (bossHitboxController == null || !isBossCombatRuntimeActive(boss)
                 || boss == null || !boss.isValid() || boss.isDead()) {
             return;
         }
@@ -44452,7 +44158,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         synchronizeBossPhase(boss);
         // Spec 3.2: sample the formation every tick so the 2-3 s dwell is real,
         // not a sampling artefact of the spell cooldown.
-        if (phase == EventPhase.BOSS_ACTIVE && BossEdgeVolleyPolicy.allowsPhase(bossPhase)) {
+        if (isBossCombatRuntimeActive(boss) && BossEdgeVolleyPolicy.allowsPhase(bossPhase)) {
             trackBossEdgeVolleyClusterDwell(boss);
         } else {
             bossEdgeVolleyClusterDwell.reset();
@@ -44477,7 +44183,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // packets.  The production Current path never sets this flag.
             return;
         }
-        if (phase != EventPhase.BOSS_ACTIVE || bossAbilityState != BossAbilityState.NONE) {
+        if (!isBossCombatRuntimeActive(boss) || bossAbilityState != BossAbilityState.NONE) {
             return;
         }
         if (nextTargetMillis <= now) {
@@ -44917,7 +44623,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case RAGE -> BarColor.RED;
             case LAST_SEAL -> BarColor.WHITE;
         };
-        Set<UUID> desiredAudience = activeBossParticipants().stream()
+        Set<UUID> desiredAudience = Bukkit.getOnlinePlayers().stream()
+                .filter(player -> isActiveBossParticipant(player) || isBossHarnessViewer(player))
                 .map(Player::getUniqueId).collect(Collectors.toCollection(LinkedHashSet::new));
         Set<UUID> currentAudience = bossBar.getPlayers().stream()
                 .map(Player::getUniqueId).collect(Collectors.toSet());
@@ -45704,7 +45411,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // attacking from behind, which read as a boss that does not fight the
         // group. Recording is presentation/AI only: it never changes damage.
         rememberBossAttacker(damageOwner);
-        if (phase != EventPhase.BOSS_ACTIVE) {
+        if (!isBossCombatRuntimeActive(boss)) {
             event.setCancelled(true);
             applyBossHitFeedback(boss, source,
                     BossHitFeedbackPolicy.forOutcome(BossHitFeedbackPolicy.Outcome.PHASE_IMMUNE));
@@ -45830,7 +45537,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             event.setCancelled(true);
             return;
         }
-        if (phase != EventPhase.BOSS_ACTIVE) {
+        if (!isBossCombatRuntimeActive(boss)) {
             event.setCancelled(true);
             applyBossHitFeedback(boss, projectile,
                     BossHitFeedbackPolicy.forOutcome(BossHitFeedbackPolicy.Outcome.PHASE_IMMUNE));
@@ -45946,7 +45653,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         Player damageOwner = activeBossDamageOwner(null, boss, projectile);
         if (damageOwner == null) return false;
-        if (phase != EventPhase.BOSS_ACTIVE) {
+        if (!isBossCombatRuntimeActive(boss)) {
             applyBossHitFeedback(boss, projectile,
                     BossHitFeedbackPolicy.forOutcome(BossHitFeedbackPolicy.Outcome.PHASE_IMMUNE));
             emitBossDamageDiagnostic("DAMAGE_REJECT", "INFO", boss, projectile,
@@ -46563,7 +46270,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean castCurrentBossSpell(LivingEntity boss, boolean forced) {
-        if (boss == null || phase != EventPhase.BOSS_ACTIVE && !forced
+        if (boss == null || !isBossCombatRuntimeActive(boss) && !forced
                 || bossAbilityState != BossAbilityState.NONE) {
             return false;
         }
@@ -46692,7 +46399,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean castCurrentBossSpell(LivingEntity boss, EndRiftAiPolicy.BossSpell spell,
                                          boolean forced) {
         if (boss == null || spell == null
-                || phase != EventPhase.BOSS_ACTIVE && !forced
+                || !isBossCombatRuntimeActive(boss) && !forced
                 || !forced && bossAbilityState != BossAbilityState.NONE
                 || !arenaInfernoBlocks.isEmpty() && !ArenaInfernoPolicy.allowsConcurrent(spell)
                 || !BossPhasePolicy.spellPool(bossPhase).contains(spell)) {
@@ -52802,6 +52509,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!ownedEntities.containsKey(entity.getUniqueId())) {
             return;
         }
+        if (riftRam != null && entity.getUniqueId().equals(riftRam.id())) {
+            riftRam.died(entity.getUniqueId());
+        }
         if (suppressEchoProbeDrops(event)) return;
         boolean namedEcho = RealitySplitTrialController.NamedTrial.PERSONAL_ECHO.name()
                 .equals(readString(entity, keyTrialRole)) && isNamedRealitySplitActor(entity);
@@ -55539,6 +55249,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (entity == null) {
             return "";
         }
+        if (riftRam != null && entity.getUniqueId().equals(riftRam.id()))
+            return "END_RIFT_RAM_ARMOR" + riftRam.impacts() + "_V1";
         String namedTrialVisual = namedWave7ClientVisualId(entity);
         if (!namedTrialVisual.isBlank()) return namedTrialVisual;
         // The Archmage's summoned Vex keeps the vanilla mesh but wears the

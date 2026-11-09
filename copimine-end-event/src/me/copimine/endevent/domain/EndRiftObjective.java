@@ -14,6 +14,8 @@ public final class EndRiftObjective {
     /** Three approved fog cycles; kept in step with BlackFogTimingPolicy.CYCLE_COUNT. */
     public static final int REQUIRED_FOG_CYCLES = BlackFogTimingPolicy.CYCLE_COUNT;
     public static final int REQUIRED_COLLAPSE_RINGS = 3;
+    /** Wave 6 is the five-pillar Rift Ram: one impact per destroyed pillar. */
+    public static final int REQUIRED_PILLAR_IMPACTS = 5;
     public static final int GATE_COUNT = 3;
     public static final int RING_COUNT = 3;
     public static final int FOG_ZONE_PHASES = 5;

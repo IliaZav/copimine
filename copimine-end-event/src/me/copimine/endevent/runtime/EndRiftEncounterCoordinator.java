@@ -16,6 +16,7 @@ import me.copimine.endevent.runtime.encounter.RitualSphereEncounter;
 import me.copimine.endevent.runtime.encounter.RiftCarriersEncounter;
 import me.copimine.endevent.runtime.encounter.RiftGatesEncounter;
 import me.copimine.endevent.runtime.encounter.RiftHuntEncounter;
+import me.copimine.endevent.runtime.encounter.RiftRamWaveEncounter;
 import me.copimine.endevent.runtime.encounter.WaveEncounter;
 
 /**
@@ -61,6 +62,9 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
         register(new ObeliskAssaultEncounter());
         register(new BlackFogEncounter());
         register(new CollapseRingsEncounter());
+        // Wave 6 is the Rift Ram. The ritual sphere stays registered so a legacy
+        // snapshot naming it can still be read, but nothing advances it.
+        register(new RiftRamWaveEncounter());
         register(new RitualSphereEncounter());
         register(new RealitySplitEncounter());
         if (overrides != null) overrides.values().forEach(this::register);
@@ -169,7 +173,7 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
     public synchronized Result tickCurrentWave(EncounterContext liveContext,
                                                boolean objectiveComplete) {
         if (closed) return rejected("COORDINATOR_CLOSED");
-        EndRiftObjective.Objective objective = objectiveForWavePhase(session.phase());
+        EndRiftObjective.Objective objective = activeObjective();
         if (objective == null) return rejected("NOT_IN_WAVE");
         if (liveContext == null || !session.accepts(liveContext.eventId(), liveContext.generation())) {
             return rejected("STALE_OR_MISSING_CONTEXT");
@@ -213,6 +217,14 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
         if (replay != null) return replay;
         if (session.phase() != wavePhase(objective)) {
             return rejected("WAVE_PHASE_REQUIRED");
+        }
+        // Completing an objective is NOT the proof that its work is done: the
+        // five-pillar ram dies to destroyed pillars, not to a caller asking the
+        // coordinator to close the wave. Ask the encounter whether it can be
+        // closed BEFORE the transition preview mutates anything, so an
+        // incomplete objective can never reach the phase transition.
+        if (encounter.progress() < encounter.required()) {
+            return rejected("OBJECTIVE_INCOMPLETE");
         }
         EventPhase current = session.phase();
         int wave = EndRiftEncounterController.waveNumber(objective);
@@ -337,6 +349,25 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
 
     private static WaveEncounter.Result rejectedWave(String reason) {
         return new WaveEncounter.Result(WaveEncounter.Status.REJECTED, 0, 0, reason);
+    }
+
+    /**
+     * The objective the CURRENT wave is actually running.
+     *
+     * <p>Wave 6 now starts as {@link RiftRamWaveEncounter}, but a snapshot taken
+     * by the former ritual-sphere design still names {@code RITUAL_SPHERE}. When
+     * that adapter is the one that has been started, it stays authoritative so a
+     * resumed encounter is not silently swapped for an unstarted ram and then
+     * report "not started".</p>
+     */
+    private EndRiftObjective.Objective activeObjective() {
+        EndRiftObjective.Objective objective = objectiveForWavePhase(session.phase());
+        if (objective == EndRiftObjective.Objective.RIFT_RAM
+                && session.context() != null
+                && session.context().objective() == EndRiftObjective.Objective.RITUAL_SPHERE) {
+            return EndRiftObjective.Objective.RITUAL_SPHERE;
+        }
+        return objective;
     }
 
     public static EventPhase wavePhase(EndRiftObjective.Objective objective) {

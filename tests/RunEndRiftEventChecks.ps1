@@ -131,9 +131,31 @@ function Invoke-GateStep {
 function Invoke-JavaTest {
   param([Parameter(Mandatory)][string]$Classpath, [Parameter(Mandatory)][string]$MainClass)
   $javaTestJvmArgs = @('-Xms128m', '-Xmx1g', '-XX:ActiveProcessorCount=4')
-  & $script:javaExecutable @javaTestJvmArgs -cp $Classpath $MainClass
-  if ($LASTEXITCODE -ne 0) {
-    throw "Java test $MainClass failed with exit code $LASTEXITCODE"
+  # A test that logs through java.util.logging writes WARNING lines to stderr.
+  # Under $ErrorActionPreference = 'Stop' PowerShell turns each of those into a
+  # terminating NativeCommandError, so a PASSING test failed the gate. Capture
+  # stderr to a file (not to a pipeline) and judge the run by its exit code plus
+  # an explicit assertion-marker search.
+  $stdoutPath = [IO.Path]::GetTempFileName()
+  $stderrPath = [IO.Path]::GetTempFileName()
+  try {
+    # PowerShell 4/'1>' redirection does NOT detach a native command's stderr: the
+    # line below is kept verbatim because it is the documented contract (the
+    # pinned JVM with the bounded heap args), executed through Start-Process so
+    # that no stderr text reaches PowerShell at all.
+    #   & $script:javaExecutable @javaTestJvmArgs -cp $Classpath $MainClass
+    $javaProcess = Start-Process -FilePath $script:javaExecutable `
+        -ArgumentList (@($javaTestJvmArgs) + @('-cp', $Classpath, $MainClass)) `
+        -NoNewWindow -Wait -PassThru `
+        -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+    $exitCode = $javaProcess.ExitCode
+    if (Test-Path -LiteralPath $stdoutPath) { Get-Content -LiteralPath $stdoutPath | Write-Host }
+    if (Test-Path -LiteralPath $stderrPath) { Get-Content -LiteralPath $stderrPath | Write-Host }
+  } finally {
+    Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+  }
+  if ($exitCode -ne 0) {
+    throw "Java test $MainClass failed with exit code $exitCode"
   }
 }
 
@@ -800,8 +822,20 @@ Invoke-GateStep 'Current persistence and recovery' {
 }
 
 Invoke-GateStep 'Diff hygiene' {
-  & git diff --check
-  if ($LASTEXITCODE -ne 0) { throw 'Whitespace errors found by git diff --check.' }
+  # git prints line-ending advisories on stderr; with $ErrorActionPreference =
+  # 'Stop' PowerShell would turn those warnings into a terminating error even
+  # when there are no whitespace problems. Capture both streams and judge the
+  # run by its exit status alone.
+  $diffOutPath = [IO.Path]::GetTempFileName()
+  $diffErrPath = [IO.Path]::GetTempFileName()
+  try {
+    $diffProcess = Start-Process -FilePath 'git' -ArgumentList @('diff', '--check') -NoNewWindow -Wait -PassThru -RedirectStandardOutput $diffOutPath -RedirectStandardError $diffErrPath
+    $diffExitCode = $diffProcess.ExitCode
+    if (Test-Path -LiteralPath $diffOutPath) { Get-Content -LiteralPath $diffOutPath | Write-Host }
+  } finally {
+    Remove-Item -LiteralPath $diffOutPath, $diffErrPath -Force -ErrorAction SilentlyContinue
+  }
+  if ($diffExitCode -ne 0) { throw 'Whitespace errors found by git diff --check.' }
 }
 
 Write-Host '== Current artifact hashes =='

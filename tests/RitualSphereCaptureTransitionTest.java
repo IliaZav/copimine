@@ -16,6 +16,11 @@ public final class RitualSphereCaptureTransitionTest {
                 "ritual-capture-test", 7L, "CopiMine", 0, 64, 0,
                 new EncounterContext.ArenaBounds(-20, 0, -20, 20, 100, 20),
                 Set.of(prisoner, outsideLowest), Set.of(prisoner, outsideLowest), 6);
+        // Wave 6 now runs as the Rift Ram, so a context built with forWave(..., 6)
+        // names RIFT_RAM. This test exercises the retained ritual-sphere adapter
+        // directly, so it must ask for THAT objective explicitly.
+        context = context.withObjective(
+                me.copimine.endevent.domain.EndRiftObjective.Objective.RITUAL_SPHERE);
         RitualSphereEncounter encounter = new RitualSphereEncounter();
 
         check(encounter.start(context).status() ==

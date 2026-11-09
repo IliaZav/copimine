@@ -26599,7 +26599,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 // looked correct in isolation and was cancelled by the wave
                 // teleport guard on every single tick, which left the armour and
                 // the pillar parked at their spawn frame.
-                teleportCombatEntity(entity, destination);
+                return teleportCombatEntity(entity, destination);
             }
             public void fail(String reason) {
                 getLogger().severe("END_RIFT_RAM_RECOVERY event=" + ownerEvent

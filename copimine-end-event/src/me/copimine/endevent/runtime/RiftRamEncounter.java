@@ -25,6 +25,8 @@ public final class RiftRamEncounter {
         boolean damage(Ravager source, Player player, double amount);
         int particleBudget();
         void remove(Entity entity);
+        /** Moves an owned presentation entity through the internal permit path. */
+        void move(Entity entity, Location destination);
         void fail(String reason);
         void visualsChanged();
         boolean checkpoint();
@@ -362,7 +364,7 @@ public final class RiftRamEncounter {
         for(Piece piece:armor) {
             Vector v=piece.offset();
             Location at=ram.getLocation().clone().add(v.getX()*Math.cos(yaw)-v.getZ()*Math.sin(yaw),v.getY(),v.getX()*Math.sin(yaw)+v.getZ()*Math.cos(yaw));
-            at.setYaw(ram.getLocation().getYaw()); piece.display().teleport(at);
+            at.setYaw(ram.getLocation().getYaw()); host.move(piece.display(), at);
         }
         if(pillar!=null && tick-nextPillarTick<=20) {
             float progress=Math.min(1,(tick-nextPillarTick)/20f);
@@ -370,14 +372,14 @@ public final class RiftRamEncounter {
                 BlockDisplay d=pillarDisplays.get(i);
                 double offset=i==0?-3:i==1?-.2:.3;
                 Location at=pillar.clone().add(i==0?-.9:i==1?-1.1:-1.05,offset+3*progress,i==0?-.9:i==1?-1.1:-1.05);
-                d.teleport(at);
+                host.move(d, at);
             }
         }
         for(Iterator<Debris> it=debris.iterator();it.hasNext();) {
             Debris d=it.next(); int age=tick-d.born();
             if(age>=30) { host.remove(d.display()); it.remove(); continue; }
             Location at=d.start().clone().add(d.velocity().clone().multiply(age)).add(0,-.012*age*age,0);
-            d.display().teleport(at);
+            host.move(d.display(), at);
             Transformation t=d.display().getTransformation();
             d.display().setTransformation(new Transformation(t.getTranslation(),new Quaternionf().rotateXYZ(age*.18f,age*.12f,age*.09f),t.getScale(),t.getRightRotation()));
         }

@@ -117,6 +117,10 @@ def mechanics_harness(tmp_path_factory):
     # methods read; the mark is collective, so there is no per-player lease.
     fields = """
     private int waveTwoMarkCycle;
+    private long waveTwoIntroStartedMillis;
+    private int waveTwoPhantomAdmissionFailures;
+    void saveStateAsync() {}
+    void playEventMusic(Object track) {}
     private long waveTwoGroupClearedAtMillis;
     private long waveTwoPhantomLayoutGeneration;
     private int waveTwoPhantomLayoutCycle;
@@ -353,7 +357,10 @@ public final class Waves24MechanicsHarness {
         void spawnParticle(Object... values) { particles++; }
         boolean glowing(long now) { return effects.getOrDefault(PotionEffectType.GLOWING, 0L) > now; }
     }
-    static final class Config { double arenaRadius() { return 20.0D; } }
+    static final class Config {
+        double arenaRadius() { return 20.0D; }
+        Object phaseMusic(String phase) { return phase; }
+    }
     enum BlockFace { UP, DOWN }
     static final class Material { boolean isSolid() { return true; } }
     static final class Block {
@@ -813,7 +820,7 @@ case "immediate-initial-mark" -> {
         "ObeliskFireDirectorPolicy", "ObeliskScalingPolicy", "RiftFireballReflectionPolicy", "WaveTwoStagePolicy",
         "WaveTwoHuntPolicy", "WaveTwoPhantomMaterializationPolicy", "WaveTwoPhantomLayoutPolicy",
         "WaveTwoEntityRecoveryPolicy", "RiftCarrierPolicy",
-        "WaveTwoOwnershipPolicy",
+        "WaveTwoOwnershipPolicy", "WaveTwoCinematicPolicy",
     )]
     dependencies.append(DOMAIN.parent / 'runtime/WaveCombatCoordinator.java')
     compiled = subprocess.run(["javac", "-proc:none", "-encoding", "UTF-8", "-d", str(output),
@@ -1278,7 +1285,9 @@ def wave2_spawn_harness(tmp_path_factory):
     source = EVENT.read_text(encoding="utf-8")
     initializer = _declaration(source, "private boolean initializeWaveGameplay(")
     schedule_start = initializer.index("        if (wave == 4)")
-    schedule_end = initializer.index("        if (waveSpawnSchedule.isEmpty())", schedule_start)
+    # The slice must stop at the ram readiness guard too: that guard returns a
+    # boolean, and the harness pastes the chain into a void helper.
+    schedule_end = initializer.index("        // A ram that failed to spawn", schedule_start)
     schedule_chain = initializer[schedule_start:schedule_end]
     # The guard checks recovery-fenced roster members; visibility hides never
     # count as failed publication.
@@ -1317,6 +1326,13 @@ public final class Wave2SpawnHarness {
     int waveSpawnWave, waveSpawnGroupIndex, waveSpawnEntityOffset;
     int waveTwoGroupsSpawned, saveCalls;
     int waveTwoPhantomActivationCycle;
+    // The deferred-phantom fallback now names the shortfall in the log and
+    // counts the consecutive refusals before it escalates to recovery, so the
+    // harness has to carry both the counter and the save entry point.
+    int waveTwoPhantomAdmissionFailures;
+    long waveTwoPhantomRetryAtMillis;
+    void saveStateAsync() { saveCalls++; }
+    void forcePhase(Object phase, String reason) {}
     Set<String> currentWave4PressureSpawnSlots = new HashSet<>();
     int currentWave4PressurePackAttempts;
     long currentWave4PressureRetryAtMillis;
@@ -1378,7 +1394,11 @@ public final class Wave2SpawnHarness {
     // have to exist there too, not just the method.
     Object world = new Object();
     Object core = new Object();
-    void startRiftRam(Object worldArg, Object coreArg) { }
+    boolean startRiftRam(Object worldArg, Object coreArg) { riftRam = new RiftRamStub(); return true; }
+    // Wave 6 aborts its own start when the ram is not ready, so the harness needs
+    // something that can answer ready().
+    static final class RiftRamStub { boolean ready() { return true; } }
+    RiftRamStub riftRam;
     WaveMechanicsPolicy.WaveCounts combineWaveCounts(WaveMechanicsPolicy.WaveCounts left,
                                                       WaveMechanicsPolicy.WaveCounts right) {
         return new WaveMechanicsPolicy.WaveCounts(left.endermen() + right.endermen(),
@@ -1573,10 +1593,12 @@ def test_wave2_restart_restores_bounded_groups_and_durable_hunt_progress():
     assert 'snapshot.eventPhase() == EventPhase.WAVE_2' in apply_snapshot
     assert 'WAVE_TWO_CYCLES_PROGRESS_KEY' in apply_snapshot
     assert 'WaveTwoStagePolicy.hasConsistentProgress(restoredHuntCycles,' in apply_snapshot
-    assert 'waveSpawnSchedule = wave == 2 ? WaveTwoStagePolicy.split(scaled) : List.of(scaled)' in restore
+    # Wave 6 now owns no schedule at all, so the assignment is a three-way
+    # ternary. Match the assignment site and assert the wave-2 arm explicitly.
+    schedule_build = restore.index('waveSpawnSchedule = wave == 6 ? List.of()')
+    assert 'WaveTwoStagePolicy.split(scaled)' in restore[schedule_build:schedule_build + 160]
     pressure_gate = restore.index('if (wave != 2)')
     pressure_clamp = restore.index('WavePressurePolicy.clamp(wave, scaled, players)')
-    schedule_build = restore.index('waveSpawnSchedule = wave == 2 ? WaveTwoStagePolicy.split(scaled)')
     assert pressure_gate < pressure_clamp < schedule_build
     assert 'WaveTwoStagePolicy.recoveryNextGroupIndex(' in restore
     assert 'waveTwoStageRehydrated = true' in restore

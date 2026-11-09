@@ -261,8 +261,39 @@ public final class Waves24MechanicsHarness {
     void playWaveFeedback(String cue,Location point) {}
     void clearWaveCombatCue(UUID owner) {}
     int countLiveWaveEntitiesForWave(int wave) { return wave == 2 ? liveWaveEntitiesForWave2 : 0; }
+    // The real method warns FIRST and books the group on a LATER call, so a
+    // stub that answers a flat false leaves waveSpawnGroupIndex frozen at 0
+    // and no wave 2 subwave can ever be booked. Model both halves instead:
+    // the first call starts the warning and reports \"started\", and every
+    // call after the warning resolves sees a TARGETABLE activation whose
+    // fence matches the group being booked. spawnNextWaveGroup reads exactly
+    // that state (phase TARGETABLE + matching fence + matching group + a
+    // non-null reserved location) to take the reserved spawn location.
     boolean tryBeginWaveTwoPhantomActivation(World world, Location core,
-            WaveMechanicsPolicy.WaveCounts group, int groupNumber) { return false; }
+            WaveMechanicsPolicy.WaveCounts group, int groupNumber) {
+        if (phantomWarningOutstanding) return false;
+        phantomWarningOutstanding = true;
+        phantomWarningGroup = groupNumber;
+        waveTwoPhantomWarningTask = new BukkitTask();
+        return true;
+    }
+    // The scheduler-equivalent: the observer finished warning, so the
+    // activation becomes TARGETABLE at a live reserved location and the
+    // outstanding warning task is cleared.
+    void finishPhantomWarning() {
+        phantomWarningOutstanding = false;
+        waveTwoPhantomWarningTask = null;
+        waveTwoPhantomActivationGroup = phantomWarningGroup;
+        waveTwoPhantomActivationLocation = new Location();
+        waveTwoPhantomActivationState = new WaveTwoPhantomMaterializationPolicy.State(
+                new WaveTwoPhantomMaterializationPolicy.Fence(eventId, generation,
+                        phantomWarningGroup),
+                "phantom-00",
+                WaveTwoPhantomMaterializationPolicy.Phase.TARGETABLE,
+                Set.of("phantom-00"));
+    }
+    boolean phantomWarningOutstanding;
+    int phantomWarningGroup;
     int waveTwoPhantomActivationPendingGroup;
     void retryPendingWaveTwoPhantomActivation(long now) { }
     void clearWaveTwoPhantomActivationPresentation() { waveTwoPhantomWarningTask = null; }
@@ -490,8 +521,16 @@ case "immediate-initial-mark" -> {
                 h.waveSpawnSchedule = WaveTwoStagePolicy.split(
                         new WaveMechanicsPolicy.WaveCounts(9, 0, 0, 0, 0));
                 h.waveSpawnWave = 2;
+                // The opening call only starts the phantom warning: the
+                // production path refuses to book a subwave whose observers
+                // have not appeared yet.
                 h.spawnNextWaveGroup(new World(), new Location());
-                check(h.waveSpawnGroupIndex == 1, "the first subwave spawns immediately");
+                check(h.waveSpawnGroupIndex == 0,
+                        "a subwave stays unbooked while its warning is outstanding");
+                h.finishPhantomWarning();
+                h.spawnNextWaveGroup(new World(), new Location());
+                check(h.waveSpawnGroupIndex == 1,
+                        "the first subwave books once its warning resolves");
                 long firstClear = start + 10_000L;
                 Mob fighter = h.addWaveTwoFighter(1);
                 check(h.confirmWaveTwoFighterDeath(fighter), "confirmed death retires the subwave roster");
@@ -502,6 +541,12 @@ case "immediate-initial-mark" -> {
                 check(h.spawnedWaveGroups.size() == 1,
                         "no subwave may start before the full three-second gap elapses");
                 h.tickCurrentHuntObjective(firstClear + WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS);
+                // The group that owns Endermen runs its own warning first,
+                // so the booking lands on the tick after the warning ends.
+                if (h.waveSpawnGroupIndex == 1) {
+                    h.finishPhantomWarning();
+                    h.tickCurrentHuntObjective(firstClear + WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS);
+                }
                 check(h.spawnedWaveGroups.size() == 2 && h.waveSpawnGroupIndex == 2,
                         "the second subwave starts exactly three seconds after the roster cleared");
                 check(h.currentHuntCycles < h.waveSpawnSchedule.size(),
@@ -513,6 +558,10 @@ case "immediate-initial-mark" -> {
                 check(h.currentHuntCycles == 2 && h.spawnedWaveGroups.size() == 2,
                         "two cleared subwaves alone are never the approved hunt");
                 h.tickCurrentHuntObjective(secondClear + WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS);
+                if (h.waveSpawnGroupIndex == 2) {
+                    h.finishPhantomWarning();
+                    h.tickCurrentHuntObjective(secondClear + WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS);
+                }
                 check(h.spawnedWaveGroups.size() == 3 && h.waveSpawnGroupIndex == 3,
                         "the third subwave is the final reserve");
                 fighter = h.addWaveTwoFighter(3);
@@ -667,6 +716,8 @@ case "immediate-initial-mark" -> {
                         new WaveMechanicsPolicy.WaveCounts(9, 0, 0, 0, 0));
                 h.waveSpawnWave = 2;
                 h.spawnNextWaveGroup(new World(), new Location());
+                h.finishPhantomWarning();
+                h.spawnNextWaveGroup(new World(), new Location());
                 UUID outstandingId = UUID.randomUUID();
                 h.waveTwoOutstandingEntityUuids.add(outstandingId);
                 h.phase = EventPhase.WAVE_2; h.waveTwoGroupsSpawned = 1; h.officialAttempt = true;
@@ -695,6 +746,12 @@ case "immediate-initial-mark" -> {
                 check(h.spawnedWaveGroups.size() == 1,
                         "an extra tick before the three-second gap cannot start the second subwave");
                 h.tickCurrentHuntObjective(clearedAt + WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS);
+                // The next group owns Endermen, so it runs its own warning
+                // before the booking lands on the following tick.
+                if (h.waveSpawnGroupIndex == 1) {
+                    h.finishPhantomWarning();
+                    h.tickCurrentHuntObjective(clearedAt + WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS);
+                }
                 check(h.spawnedWaveGroups.size() == 2,
                         "the second subwave starts exactly three seconds after the clear");
             }
@@ -1415,8 +1472,39 @@ public final class Wave2SpawnHarness {
     }
     UUID waveTwoEntityOwner(Entity entity) { return new UUID(1L, 1L); }
     void requireWaveTwoOwnershipRecovery(Entity entity, String reason) { }
+    // The real method warns FIRST and books the group on a LATER call, so a
+    // stub that answers a flat false leaves waveSpawnGroupIndex frozen at 0
+    // and no wave 2 subwave can ever be booked. Model both halves instead:
+    // the first call starts the warning and reports \"started\", and every
+    // call after the warning resolves sees a TARGETABLE activation whose
+    // fence matches the group being booked. spawnNextWaveGroup reads exactly
+    // that state (phase TARGETABLE + matching fence + matching group + a
+    // non-null reserved location) to take the reserved spawn location.
     boolean tryBeginWaveTwoPhantomActivation(World world, Location core,
-            WaveMechanicsPolicy.WaveCounts group, int groupNumber) { return false; }
+            WaveMechanicsPolicy.WaveCounts group, int groupNumber) {
+        if (phantomWarningOutstanding) return false;
+        phantomWarningOutstanding = true;
+        phantomWarningGroup = groupNumber;
+        waveTwoPhantomWarningTask = new BukkitTask();
+        return true;
+    }
+    // The scheduler-equivalent: the observer finished warning, so the
+    // activation becomes TARGETABLE at a live reserved location and the
+    // outstanding warning task is cleared.
+    void finishPhantomWarning() {
+        phantomWarningOutstanding = false;
+        waveTwoPhantomWarningTask = null;
+        waveTwoPhantomActivationGroup = phantomWarningGroup;
+        waveTwoPhantomActivationLocation = new Location();
+        waveTwoPhantomActivationState = new WaveTwoPhantomMaterializationPolicy.State(
+                new WaveTwoPhantomMaterializationPolicy.Fence(eventId, generation,
+                        phantomWarningGroup),
+                "phantom-00",
+                WaveTwoPhantomMaterializationPolicy.Phase.TARGETABLE,
+                Set.of("phantom-00"));
+    }
+    boolean phantomWarningOutstanding;
+    int phantomWarningGroup;
     int waveTwoPhantomActivationPendingGroup;
     void retryPendingWaveTwoPhantomActivation(long now) { }
     void clearWaveTwoPhantomActivationPresentation() { waveTwoPhantomWarningTask = null; }

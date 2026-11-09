@@ -25357,6 +25357,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             waveTwoPhantomActivationLocation = null;
             waveTwoPhantomActivationGroup = 0;
             waveTwoPhantomActivationCycle = 0;
+            // Retire the WHOLE activation, not just its reservation. Leaving the
+            // state behind left it TARGETABLE for the group that just booked, which
+            // then matched neither the next group's fence nor its own reservation:
+            // both the booking path and the deferred-retry path read a lingering
+            // TARGETABLE as "an activation is already in flight" and refused every
+            // later Endermen subwave, so Wave 2 stopped after its first group.
+            waveTwoPhantomActivationState = null;
         }
         if (waveSpawnWave == 2) {
             int rosterSize = tagWaveTwoSpawnGroup(groupNumber, waveTwoEntitiesBeforeSpawn);

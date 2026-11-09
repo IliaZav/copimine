@@ -36,7 +36,8 @@ public class NamedWave7StartProbe {
     RealitySplitChamberController realitySplitChamberController=new RealitySplitChamberController();
     RealitySplitTrialController realitySplitTrialController=new RealitySplitTrialController();
     static class World {} static class Location {}
-    enum EventPhase {RECOVERY_REQUIRED}
+    enum EventPhase {WAVE_7, RECOVERY_REQUIRED}
+    EventPhase phase=EventPhase.WAVE_7;
     Logger getLogger(){Logger value=Logger.getAnonymousLogger();value.setLevel(Level.OFF);return value;}
     UUID parseUuidOrNull(String raw){return UUID.fromString(raw);}
     boolean isRealitySplitTrialRuntimeActive(){return !recovery;}
@@ -108,7 +109,8 @@ import me.copimine.endevent.domain.*;
 import me.copimine.endevent.runtime.*;
 public class NamedWave7LayoutRouteProbe {
     static final UUID EVENT=UUID.fromString("00000000-0000-0000-0000-000000000071");
-    enum EventPhase { RECOVERY_REQUIRED }
+    enum EventPhase { WAVE_7, RECOVERY_REQUIRED }
+    EventPhase phase=EventPhase.WAVE_7;
     String eventId=EVENT.toString(),recoveryReason="";
     long generation=71;
     boolean recovery,echoReady=true;

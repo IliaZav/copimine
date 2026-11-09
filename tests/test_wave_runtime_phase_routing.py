@@ -19,9 +19,18 @@ def test_disposable_runtime_survives_saved_recovery_phase_without_stealing_offic
  path=tmp_path/'RuntimeRouteProbe.java';path.write_text(code,encoding='utf-8')
  r=subprocess.run(['javac','-d',str(tmp_path),str(path)],capture_output=True,text=True);assert r.returncode==0,r.stderr
  r=subprocess.run(['java','-cp',str(tmp_path),'RuntimeRouteProbe'],capture_output=True,text=True);assert r.returncode==0,r.stderr
+ def code_only(text):
+   # Comments may legitimately narrate the defect this routing replaced, so the
+   # contract is asserted against executable lines only.
+   return '\n'.join(line.split('//')[0] for line in text.splitlines())
  tick=extract(s,'boolean tickWave4ObeliskAssault()')
- assert 'isDisposableWaveRuntimeActive(4)' in tick
+ # The assault and the heartbeat now ask the shared ownership helper: a plain
+ # /cmend wave spawn 4 never sets testWaveFrontVisualMode, so the front-visual
+ # probe went false one tick after the obelisks were built.
+ assert 'ownsDisposableWaveRuntime(4)' in code_only(tick)
+ assert 'isDisposableWaveRuntimeActive(4)' not in code_only(tick)
  heartbeat=s[s.index('// Every wave — official'):s.index('if (endUnlocked && (phase == EventPhase.VICTORY_PROCESSING',s.index('// Every wave — official'))]
- assert 'if (isDisposableWaveRuntimeActive(activeWave))' in heartbeat
- assert '|| canOwnWaveObjective(activeWave)' not in heartbeat
+ assert 'if (ownsDisposableWaveRuntime(activeWave))' in code_only(heartbeat)
+ assert 'isDisposableWaveRuntimeActive(activeWave)' not in code_only(heartbeat)
+ assert '|| canOwnWaveObjective(activeWave)' not in code_only(heartbeat)
  assert '-> tickCurrentIntermission();' in heartbeat

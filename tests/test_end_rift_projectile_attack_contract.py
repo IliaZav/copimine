@@ -165,7 +165,9 @@ def test_wave4_reflected_fireball_entity_hit_does_not_consume_objective_shot():
     guard = impact.index("RiftFireballCollisionPolicy.shouldPassThroughNonParticipantCollision(")
     assert "hitEntity != null" in impact
     assert "state.isWave4Obelisk()" in impact
-    assert "activeWave == 4 && phase == EventPhase.WAVE_4" in impact
+    # A live disposable run owns the obelisk obstacle regardless of the durable
+    # phase, so the impact gate now asks the shared ownership helper.
+    assert "activeWave == 4 && (phase == EventPhase.WAVE_4 || ownsDisposableWaveRuntime(4))" in impact
     assert "state.generation() == generation" in impact
     assert "ownedBySession(fireball, eventId, generation)" in impact
     assert "isActiveArenaParticipant(player)" in impact

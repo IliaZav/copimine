@@ -12,7 +12,7 @@ def test_production_fog_packets_pass_actual_v4_codec_for_all_cycles_and_clear(tm
  var body=new EndEventBridgeBodyCodec.Body(EndEventBridgeBodyCodec.Type.valueOf(type),7,1000,new UUID(1,2),instance,"",visual,duration,intensity,hp,max,mode,clear,"","",status);
  if(!EndEventBridgeBodyCodec.decode(EndEventBridgeBodyCodec.encode(body)).equals(body))throw new AssertionError("roundtrip");sent++;
  }
- """+method+"""public static void main(String[] args){var p=new FogWireProbe();for(int cycle=0;cycle<3;cycle++){p.currentFogCycle=cycle;p.sendCurrentBlackFogPacket(new Player(),true,new Location());p.sendCurrentBlackFogPacket(new Player(),false,new Location());}p.sendCurrentBlackFogPacket(new Player(),true,null);if(p.sent!=7)throw new AssertionError();}}"""
+ """+method+"""public static void main(String[] args){var p=new FogWireProbe();for(int cycle=0;cycle<10;cycle++){p.currentFogCycle=cycle;p.sendCurrentBlackFogPacket(new Player(),true,new Location());p.sendCurrentBlackFogPacket(new Player(),false,new Location());}p.sendCurrentBlackFogPacket(new Player(),true,null);if(p.sent!=21)throw new AssertionError();}}"""
  path=tmp_path/'FogWireProbe.java';path.write_text(code,encoding='utf-8')
  r=subprocess.run(['javac','-sourcepath',str(ROOT/'tools/minecraft-26.3/protocol/src/main/java'),'-d',str(tmp_path),str(path)],capture_output=True,text=True);assert r.returncode==0,r.stderr
  r=subprocess.run(['java','-cp',str(tmp_path),'FogWireProbe'],capture_output=True,text=True);assert r.returncode==0,r.stderr

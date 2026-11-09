@@ -9,7 +9,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_pulses_cannot_starve_reflectable_shots_or_other_obelisks(tmp_path):
     source = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(encoding="utf-8")
-    signatures = ["boolean tickWave4ObeliskAssault()", "void tickWave4Pulse(",
+    # The assault tick now gate-keeps through the shared ownership helper, so the
+    # probe compiles that real chain (see the matching stubs below).
+    signatures = ["boolean isDisposableWaveRuntimeActive(int wave)",
+                  "boolean ownsDisposableWaveRuntime(int wave)",
+                  "boolean tickWave4ObeliskAssault()", "void tickWave4Pulse(",
                   "boolean prepareWave4FireCast(", "void tickWave4ObeliskRepel("]
     if "private ObeliskFireDirectorPolicy.SpecialCandidate selectWave4Special(" in source:
         signatures.append("ObeliskFireDirectorPolicy.SpecialCandidate selectWave4Special(")
@@ -50,6 +54,7 @@ public class Wave4SpecialProbe {
     }
     record SimulatedFireball(long generation,long expiresTick) { }
     long generation=43,eventTickCounter;String eventId="synthetic-attempt",worldName="configured-arena",recoveryReason;
+    int activeWave=4; boolean testWaveFrontVisualMode,testWaveInspectionMode;
     boolean testWave4ObeliskMode,currentWave4StartupFailed,currentWave4MobsStarted=true,currentWave4ObeliskAssaultComplete,waveObjectiveComplete;
     EventPhase phase=EventPhase.WAVE_4;EventConfig config=new EventConfig();int currentWaveScalePlayers=2,waveSpawnGroupIndex;
     int currentWave4PressurePackAttempts;long currentWave4PressureRetryAtMillis;
@@ -66,6 +71,10 @@ public class Wave4SpecialProbe {
     int reservedFireSequences(){return (int)activeWave4Obelisks.values().stream().filter(state->
             ObeliskFireDirectorPolicy.validFireSequence(state.fireLease,eventId,generation,state.id(),eventTickCounter)).count();}
     boolean isOfficialCurrentAttempt(){return true;}void clearWave4Obelisks(String reason){}
+    // The assault tick keeps the shared ownership gate; production answers it from
+    // the same flags this probe models, and its official side is the stub above.
+    boolean testWaveRuntimeOwnship(){return testWave4ObeliskMode||testWaveFrontVisualMode||testWaveInspectionMode;}
+    boolean phaseDrivesOfficialWave(){return isOfficialCurrentAttempt();}
     void forcePhase(EventPhase p,String reason){phase=p;}Location coreCombatAnchorLocation(){return new Location();}
     Wave4PressurePackResult spawnWave4PressurePack(World w,Location p,ObeliskScalingPolicy.Profile profile,boolean probe){return Wave4PressurePackResult.COMPLETE;}
         void cancelWaveSpawnTask(){} int clearWave4PressurePackEntities(String reason){return 0;}

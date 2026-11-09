@@ -48,6 +48,13 @@ public class MainTickWaveDispatch {
   // The dispatch asks whether the wave owns its objective; a numbered wave
   // always does, so the routing under test is unchanged.
   boolean canOwnWaveObjective(int wave) { return wave >= 1 && wave <= 7; }
+  // This probe models no official reward roster at all, so the durable phase
+  // never drives gameplay here: every scenario it runs is a disposable or
+  // inspection spawn, which is exactly what the routing under test covers.
+  java.util.Set<java.util.UUID> officialRewardRoster = java.util.Set.of();
+  boolean isOfficialAttempt() { return !testCombatAiMode && !testWaveFrontVisualMode
+      && generation > 0L && !officialRewardRoster.isEmpty(); }
+  boolean isOfficialCurrentAttempt() { return isOfficialAttempt(); }
   void tickWaveCompletion() { objectives++; }
   void tickBoss() { bosses++; }
   void tickWave6RitualRuntimeOnce() { wave6RuntimeTicks++; }
@@ -79,7 +86,11 @@ public class MainTickWaveDispatch {
       throw new AssertionError("End Event Bridge V4 ticker must share the existing five-tick loop and boot fence");
   }
 ''' + "\n".join("void " + name + "() { }" for name in ordinary) + "\n"
-                    + method(source, "void tick()") + "\n" + method(source, "boolean isCombatPhase()")
+                    + method(source, "boolean isDisposableWaveRuntimeActive(int wave)")
+                    + method(source, "boolean ownsDisposableWaveRuntime(int wave)")
+                    + method(source, "boolean testWaveRuntimeOwnship()")
+                    + method(source, "boolean phaseDrivesOfficialWave()")
+                    + "\n" + method(source, "void tick()") + "\n" + method(source, "boolean isCombatPhase()")
                     + "\n}", encoding="utf-8")
     phase = ROOT / "copimine-end-event/src/me/copimine/endevent/domain/EventPhase.java"
     result = subprocess.run(["javac", "-J-Xmx128m", "-d", str(directory), str(phase), str(java)],

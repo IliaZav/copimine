@@ -10,25 +10,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EndEventBlackFogManagerTest {
     @Test
-    void acceptsOnlyTheOneBasedThreeCycleProtocolRange() {
+    void acceptsOneBasedCyclesThroughTen() {
         EndEventBlackFogManager manager = new EndEventBlackFogManager();
-
-        // Latest explicit user request restores exactly three cycles.
-        assertFalse(manager.apply(packet("event-1", 4L, 100L,
-                "the_end|wave5|0", .8F, "ACTIVE"), 100L));
-        assertTrue(manager.apply(packet("event-1", 4L, 200L,
-                "the_end|wave5|1", .8F, "ACTIVE"), 200L));
-        assertTrue(manager.apply(packet("event-1", 4L, 300L,
-                "", 0F, "CLEAR"), 300L));
-        assertTrue(manager.apply(packet("event-1", 4L, 400L,
-                "the_end|wave5|3", .8F, "ACTIVE"), 400L));
-        assertFalse(manager.apply(packet("event-1", 4L, 500L,
-                "the_end|wave5|4", .8F, "ACTIVE"), 500L));
-        assertFalse(manager.apply(packet("event-1", 4L, 600L,
-                "the_end|wave5|5", .8F, "ACTIVE"), 600L));
-        assertFalse(manager.apply(packet("event-1", 4L, 700L,
-                "the_end|wave5|6", .8F, "ACTIVE"), 700L),
-                "cycles above three are not part of the wave");
+        assertFalse(manager.apply(packet("event-1", 4L, 100L, "the_end|wave5|0", .8F, "ACTIVE"), 100L));
+        for (int cycle = 1; cycle <= 10; cycle++) {
+            assertTrue(manager.apply(packet("event-1", 4L, 100L + cycle,
+                    "the_end|wave5|" + cycle, .8F, "ACTIVE"), 100L + cycle));
+        }
+        assertFalse(manager.apply(packet("event-1", 4L, 200L, "the_end|wave5|11", .8F, "ACTIVE"), 200L));
     }
 
     @Test

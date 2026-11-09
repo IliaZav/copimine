@@ -172,8 +172,8 @@ public final class EndRiftEncounterCoordinatorTest {
         check(coordinator.advanceIntermission("w5", "w5-start").accepted(),
                 "Wave 5 must start only after its transition-rune hold");
         BlackFogEncounter fog = (BlackFogEncounter) coordinator.encounter(EndRiftObjective.Objective.BLACK_FOG);
-        int requiredFogCycles = me.copimine.endevent.domain.BlackFogTimingPolicy.CYCLE_COUNT;
-        check(requiredFogCycles == 3, "wave 5 is contractually three fog cycles");
+        int requiredFogCycles = fog.required();
+        check(requiredFogCycles == 5, "two-player fog target is frozen at five cycles");
         for (int cycle = 1; cycle < requiredFogCycles; cycle++) {
             check(fog.completeCycle(context.withObjective(EndRiftObjective.Objective.BLACK_FOG), cycle, true).accepted(),
                     "fog cycle must complete");

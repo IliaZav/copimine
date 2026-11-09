@@ -2,8 +2,9 @@ import me.copimine.endevent.domain.Wave5PostFogPackPolicy;
 import me.copimine.endevent.domain.WaveMechanicsPolicy;
 
 /**
- * W5-004: "After EACH fog, including the fifth, spawn one finite pack of 10-15
- * enemies. Do not end immediately on clearing an early pack."
+ * W5-004: "After EACH fog, including the last one, spawn one finite pack of 10-15
+ * enemies. Do not end immediately on clearing an early pack." The November 9 rules
+ * allow five to ten fog activations, so the pack contract follows that ceiling.
  */
 public final class Wave5PostFogPackPolicyTest {
     private static int failures;
@@ -11,7 +12,7 @@ public final class Wave5PostFogPackPolicyTest {
     public static void main(String[] args) {
         packAlwaysInsideTheContractWindow();
         packGrowsWithTheParty();
-        everyCycleOwesAPackIncludingTheFifth();
+        everyCycleOwesAPackIncludingTheLast();
         packsAreTrackedAndNeverGoIntoDebt();
         completionWaitsForOwedPacks();
         composedPackKeepsBothRoles();
@@ -44,14 +45,22 @@ public final class Wave5PostFogPackPolicyTest {
         }
     }
 
-    private static void everyCycleOwesAPackIncludingTheFifth() {
+    private static void everyCycleOwesAPackIncludingTheLast() {
+        // The November 9 rules replaced the old three-cycle model with five to ten fog
+        // activations, so the pack contract runs to the policy's own ceiling instead of
+        // stopping at five. A sixth, seventh, eighth, ninth and tenth cycle are all part
+        // of the contract; only a cycle beyond that ceiling owes nothing.
+        int ceiling = Wave5PostFogPackPolicy.REQUIRED_CYCLES;
+        check(ceiling >= 5 && ceiling <= 10,
+                "the pack ceiling must follow the 5-10 fog contract, was " + ceiling);
         check(!Wave5PostFogPackPolicy.cycleOwesPack(0),
                 "no pack is owed before the first fog resolves");
-        for (int cycle = 1; cycle <= 5; cycle++) {
+        for (int cycle = 1; cycle <= ceiling; cycle++) {
             check(Wave5PostFogPackPolicy.cycleOwesPack(cycle),
-                    "cycle " + cycle + " must owe a pack, including the fifth");
+                    "cycle " + cycle + " must owe a pack, including the final one");
         }
-        check(!Wave5PostFogPackPolicy.cycleOwesPack(6), "a sixth cycle is not part of the contract");
+        check(!Wave5PostFogPackPolicy.cycleOwesPack(ceiling + 1),
+                "a cycle past the " + ceiling + "-cycle ceiling is not part of the contract");
     }
 
     private static void packsAreTrackedAndNeverGoIntoDebt() {

@@ -51,6 +51,7 @@ import me.copimine.endevent.domain.WaveProjectileAdmissionController;
 import me.copimine.endevent.domain.WaveProjectileTargetPolicy;
 import me.copimine.endevent.domain.RitualGuardAbilityPolicy;
 import me.copimine.endevent.domain.RitualConversionTargetPolicy;
+import me.copimine.endevent.domain.Wave5FogLeasePolicy;
 public class WaveFogLifecycleProbe {
  record Ram(UUID id) {} Ram riftRam;
  enum EventPhase { WAVE_1,WAVE_2,WAVE_3,WAVE_4,WAVE_5,WAVE_6,WAVE_7,INTERMISSION_1,INTERMISSION_2,INTERMISSION_3,INTERMISSION_4,INTERMISSION_5,INTERMISSION_6,CORE_RESTORATION,RECOVERY_REQUIRED,BOSS_ACTIVE,READY_FOR_PLAYERS }
@@ -333,7 +334,9 @@ public class WaveFogLifecycleProbe {
     sources = [java, ROOT / "copimine-end-event/src/me/copimine/endevent/runtime/WaveCombatCoordinator.java",
                    *[ROOT / ("copimine-end-event/src/me/copimine/endevent/domain/" + name + ".java")
                      for name in ["EliteAbilityPolicy", "DragonBreathCloudPolicy", "SpiderEffectLeasePolicy", "BlackFogEffectLeasePolicy", "EliteProjectileImpactPolicy", "WaveProjectileAdmissionController", "WaveProjectileTargetPolicy", "PressureBudgetController", "RitualGuardAbilityPolicy", "RitualSphereScalingPolicy", "RitualCasterHealthPolicy",
-                         "WaveSixRosterPolicy", "MageSignaturePolicy", "RitualCasterHealthPolicy", "RitualCasterTacticsPolicy", "WaveMechanicsPolicy", "RiftCarrierPolicy", "RitualConversionTargetPolicy"]]]
+                         "WaveSixRosterPolicy", "MageSignaturePolicy", "RitualCasterHealthPolicy", "RitualCasterTacticsPolicy", "WaveMechanicsPolicy", "RiftCarrierPolicy", "RitualConversionTargetPolicy",
+                          # freezeFogCombatMob stamps its frozen pose lease from this policy.
+                          "Wave5FogLeasePolicy"]]]
     built = subprocess.run(["javac", "-proc:none", "-encoding", "UTF-8", "-d", str(out), *map(str, sources)], capture_output=True, text=True)
     assert built.returncode == 0, built.stdout + built.stderr
     return out

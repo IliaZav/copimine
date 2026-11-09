@@ -14,7 +14,7 @@ public final class EndEventBlackFogManager {
     private static final float MIN_INTENSITY = 0.5F;
     private static final float MAX_INTENSITY = 1.0F;
     /** Latest Wave 5 protocol has exactly three cycles. */
-    private static final int MAX_CYCLE = 3;
+    private static final int MAX_CYCLE = 10;
 
     private String eventId = "";
     private long generation;

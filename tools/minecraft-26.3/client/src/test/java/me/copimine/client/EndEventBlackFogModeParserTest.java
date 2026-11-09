@@ -16,18 +16,14 @@ class EndEventBlackFogModeParserTest {
     }
 
     @Test
-    void acceptsOnlyTheOneBasedThreeCycleRangeInTheRuntimeManager() {
+    void acceptsUpToTenCyclesAndRefusesOutOfRange() {
         EndEventBlackFogManager manager = new EndEventBlackFogManager();
-
-        // Latest explicit user request restores exactly three cycles.
         assertFalse(manager.apply(packet(1L, 1L, "the_end|wave5|0"), 1L));
-        assertTrue(manager.apply(packet(2L, 2L, "the_end|wave5|1"), 2L));
-        assertTrue(manager.apply(packet(3L, 3L, "the_end|wave5|2"), 3L));
-        assertTrue(manager.apply(packet(4L, 4L, "the_end|wave5|3"), 4L));
-        assertFalse(manager.apply(packet(5L, 5L, "the_end|wave5|4"), 5L));
-        assertFalse(manager.apply(packet(6L, 6L, "the_end|wave5|5"), 6L));
-        assertFalse(manager.apply(packet(7L, 7L, "the_end|wave5|6"), 7L),
-                "cycles above three are not part of the wave");
+        for (int cycle = 1; cycle <= 10; cycle++) {
+            assertTrue(manager.apply(packet(cycle + 1L, cycle + 1L,
+                    "the_end|wave5|" + cycle), cycle + 1L));
+        }
+        assertFalse(manager.apply(packet(12L, 12L, "the_end|wave5|11"), 12L));
     }
 
     @Test

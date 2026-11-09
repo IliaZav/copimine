@@ -80,9 +80,9 @@ def test_echo_duel_region_matches_the_actual_room_layout(tmp_path) -> None:
     # placed in that one shared region rather than scattered across the four
     # walled sectors an older contract used. Exercise the controller and the
     # snapshot rather than forbidding a helper name.
-    from tests.test_wave7_roster_routes import test_one_sequential_route_for_every_roster_size
+    from tests.test_wave7_roster_routes import test_roster_selects_sequential_or_four_isolated_trials
 
-    test_one_sequential_route_for_every_roster_size(tmp_path)
+    test_roster_selects_sequential_or_four_isolated_trials(tmp_path)
 
 
 def test_shared_region_policy_exposes_lane_and_access_helpers() -> None:

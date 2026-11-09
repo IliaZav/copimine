@@ -126,7 +126,7 @@ public final class WaveProbeAdapterHarness {
             testWave4ObeliskMode, testRitualCombatMode, testWaveInspectionMode, preserveRequested,
             officialAttempt;
     int currentFogCycle, currentFogZoneCount, currentFogZoneSide, currentFogZoneSetupAttempts;
-    int wave5PostFogPacksSpawned;
+    int wave5PostFogPacksSpawned, currentFogTargetCycles = 5;
     long blackFogPhaseDeadlineMillis, currentFogZoneSetupRetryAtMillis;
     BlackFogPhase blackFogPhase = BlackFogPhase.COMBAT;
     Map<String, String> blackFogRecoveryCheckpoint = Map.of();
@@ -316,7 +316,7 @@ public final class WaveProbeAdapterHarness {
     }
     static final class Controller { void restore(Object... args) { } }
     static final class EndRiftObjective {
-        static final int REQUIRED_FOG_CYCLES = 3;
+        static final int REQUIRED_FOG_CYCLES = 10;
         static boolean isNumberedWave(int wave) { return wave >= 1 && wave <= 7; }
     }
 
@@ -456,7 +456,8 @@ public final class WaveProbeAdapterHarness {
                 probe.currentFogZoneSetupAttempts = 1;
                 probe.currentFogZoneSetupRetryAtMillis = 124_000L;
                 Map<String, String> saved = probe.waveObjectiveProgressSnapshot();
-                check("2".equals(saved.get("wave5-fog.version"))
+                check("3".equals(saved.get("wave5-fog.version"))
+                                && "5".equals(saved.get("wave5-fog.target-cycles"))
                                 && "event".equals(saved.get("wave5-fog.event"))
                                 && Long.toString(probe.generation).equals(saved.get("wave5-fog.generation"))
                                 && "1".equals(saved.get("wave5-fog.cycle"))

@@ -2,31 +2,21 @@ import me.copimine.endevent.domain.BlackFogTimingPolicy;
 
 public final class BlackFogTimingPolicyTest {
     public static void main(String[] args) {
-        // The approved contract is THREE fog cycles. Every expectation below is
-        // written against that count, not the superseded five-cycle design.
-        check(BlackFogTimingPolicy.CYCLE_COUNT == 3, "Wave 5 must run exactly three fog cycles");
-        check(BlackFogTimingPolicy.safeZoneSeconds() == 8,
-                "safe zone must remain visible long enough to reach it");
-        // SUPERSEDED 2026-11-03 (user request): the fog penalty window was 3 s
-        // and the user asked for exactly +7 s on top of it, i.e. 10 s. The old
-        // assertion pinned the OLD value, so it is restated against the new one
-        // rather than deleted. The window is still bounded: the assertion now
-        // states the new bound explicitly.
-        check(BlackFogTimingPolicy.fogSeconds() == 10,
-                "fog penalty window must be the requested 10 s (3 s + 7 s)");
-        check(BlackFogTimingPolicy.fogSeconds() > BlackFogTimingPolicy.safeZoneSeconds(),
-                "the fog must outlast the safe zone or the penalty is cosmetic");
-        check(BlackFogTimingPolicy.combatSeconds(0) == 40
-                        && BlackFogTimingPolicy.combatSeconds(1) == 50
-                        && BlackFogTimingPolicy.combatSeconds(2) == 60,
-                "combat windows must keep their staged 40/50/60 s timings");
-        check(BlackFogTimingPolicy.complete(3), "three cycles must complete the objective");
-        check(!BlackFogTimingPolicy.complete(2), "two cycles must not complete the objective");
-        check(BlackFogTimingPolicy.hasRemainingCycles(0)
-                        && BlackFogTimingPolicy.hasRemainingCycles(2)
-                        && !BlackFogTimingPolicy.hasRemainingCycles(3)
-                        && !BlackFogTimingPolicy.hasRemainingCycles(-1),
-                "completed or invalid fog cycles must not start another safe-zone cycle");
+        // November 9 supersedes fixed three-cycle timing with roster profiles.
+        int[] parties = {2, 5, 10, 11, 20}, targets = {5, 6, 7, 8, 10};
+        for (int i = 0; i < parties.length; i++) {
+            int target = BlackFogTimingPolicy.cycleCount(parties[i]);
+            check(target == targets[i], "roster target");
+            check(BlackFogTimingPolicy.safeZoneSeconds(0, target) == 4
+                    && BlackFogTimingPolicy.safeZoneSeconds(target - 1, target) == 1, "shrinking reach window");
+            check(BlackFogTimingPolicy.fogSeconds(0, target) == 18
+                    && BlackFogTimingPolicy.fogSeconds(target - 1, target) == 26, "longer fog exposure");
+            check(BlackFogTimingPolicy.hasRemainingCycles(target - 1, target)
+                    && !BlackFogTimingPolicy.hasRemainingCycles(target, target), "exact completion");
+        }
+        check(BlackFogTimingPolicy.combatSeconds(0) == 25
+                && BlackFogTimingPolicy.combatSeconds(9) == 35, "bounded combat segments");
+        check(!BlackFogTimingPolicy.hasRemainingCycles(-1, 5), "invalid cycle rejected");
         System.out.println("BlackFogTimingPolicyTest OK");
     }
 

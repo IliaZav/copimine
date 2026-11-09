@@ -208,10 +208,10 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # Repinned for the Wave 6 six-stage armour set: three more armour textures are
     # packaged, so the client jar grew. The size assertion carries the digits, so a
     # repin here must update BOTH this literal and the split half below.
-    assert artifact['size'] == 13_583_335
+    assert artifact['size'] == 13_584_022
     assert artifact['sha512'] == (
-        'b8745acdc6df6f02f35298b5792696e493249e9e66eafee265bdd74ebe2e99ad'
-        'bded2bd5f273ce62acc95d7b5f49e3ff79a5cdbb1e5ccd841c410c0251bf3049'
+        '4e8d5da3d6013872b0fbd5d0412198a87262f5dc9564dc99e133110d138ebfef'
+        '9dd404f34df6c92f1216ac1d947296349e02a360326051767427b3856e0e8240'
     )
 
 

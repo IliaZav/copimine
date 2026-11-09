@@ -52,6 +52,13 @@ public class Wave4ObjectiveDispatchProbe {
   // the production answer for a numbered wave (yes) so the routing it checks is
   // unchanged.
   boolean canOwnWaveObjective(int wave) { return wave >= 1 && wave <= 7; }
+  // Same rule as production: only a live official attempt lets the durable
+  // phase be the authority. This probe models no official roster, so an
+  // official-flagged scenario is recognised through the test-mode flags.
+  java.util.Set<java.util.UUID> officialRewardRoster = java.util.Set.of();
+  boolean isOfficialAttempt() { return !testCombatAiMode && !testWaveFrontVisualMode
+      && generation > 0L && !officialRewardRoster.isEmpty(); }
+  boolean isOfficialCurrentAttempt() { return isOfficialAttempt(); }
   void tickWaveCompletion() { objectives++; if (activeWave == 4) tickWave4ObeliskAssault(); }
   void tickWave6RitualRuntimeOnce() { wave6RuntimeTicks++; }
   void tickWave4ObeliskAssault() {
@@ -104,7 +111,11 @@ public class Wave4ObjectiveDispatchProbe {
 """
         + "\n".join(f"  void {name}() {{ }}" for name in ordinary)
         + "\n"
-        + method(source, "void tick()")
+        + method(source, "boolean isDisposableWaveRuntimeActive(int wave)")
+        + method(source, "boolean ownsDisposableWaveRuntime(int wave)")
+        + method(source, "boolean testWaveRuntimeOwnship()")
+        + method(source, "boolean phaseDrivesOfficialWave()")
+        + "\n" + method(source, "void tick()")
         + "\n}\n",
         encoding="utf-8",
     )

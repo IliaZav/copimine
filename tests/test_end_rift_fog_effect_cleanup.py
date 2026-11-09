@@ -10,11 +10,15 @@ def method(source, name, next_name):
 
 def test_safe_zone_and_roster_exit_release_owned_effects_before_damage_cadence():
     source = SOURCE.read_text(encoding='utf-8')
-    body = method(source, 'private void applyBlackFogEffects(', 'private void refreshCurrentBlackFogPackets(')
+    from tests.test_wave_navigation_adapter import extract
+    body = extract(source, 'void applyBlackFogEffects(long now, Location core)')
     assert 'releaseBlackFogEffects(player)' in body
     assert body.index('releaseBlackFogEffects(player)') < body.index('now - last < 1_000L')
     assert 'releaseInactiveBlackFogEffects(' in body
-    assert 'applyOwnedBlackFogEffect(player, PotionEffectType.BLINDNESS, 0)' in body
+    assert 'applyOwnedBlackFogEffect(player, PotionEffectType.SLOWNESS, 1)' in body
+    assert 'PotionEffectType.BLINDNESS' not in body
+    assert 'PotionEffectType.DARKNESS' not in body
+    assert 'PotionEffectType.WITHER' not in body
     assert '15 * 20' not in body
 
 

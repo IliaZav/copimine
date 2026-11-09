@@ -15,6 +15,13 @@ def converted_arrow_probe(tmp_path_factory):
     out = tmp_path_factory.mktemp("converted-arrow")
     source = SOURCE.read_text(encoding="utf-8")
     signatures = [
+        # The projectile-collision provenance gate now asks the shared ownership
+        # helper, so the probe compiles that real chain instead of guessing its
+        # answer; the harness below declares the same flags production reads.
+        "private boolean ownsDisposableWaveRuntime(int wave)",
+        "private boolean testWaveRuntimeOwnship()",
+        "private boolean phaseDrivesOfficialWave()",
+        "private boolean isDisposableWaveRuntimeActive(int wave)",
         "public void onEventSkeletonShootBow(", "public void onEventSkeletonShootBowOutcome(",
         "private void spawnPendingSkeletonSideArrows(", "private void prepareEventSkeletonArrow(",
         "private boolean isWaveProjectileShooterAllowed(", "private boolean isEventArrowPhaseAllowed(",
@@ -148,7 +155,13 @@ public class ConvertedArrowProbe {
     static final int MAX_ACTIVE_EVENT_ARROWS=64,EVENT_ARROW_MAX_TICKS=100,EVENT_ARROW_TRAIL_INTERVAL_TICKS=4;
     EventPhase phase=EventPhase.WAVE_6;BlackFogPhase blackFogPhase=BlackFogPhase.CLEAR;
     boolean testCombatAiMode,budget=true,waveActive=true;
-    boolean testWaveFrontVisualMode;
+    boolean testWaveFrontVisualMode, testWaveInspectionMode, testWave4ObeliskMode;
+    // No official reward roster exists in these detached scenarios, so the
+    // durable phase never drives gameplay here — matching production's rule.
+    java.util.Set<java.util.UUID> officialRewardRoster = java.util.Set.of();
+    boolean isOfficialAttempt() { return !testCombatAiMode && !testWaveFrontVisualMode
+            && generation > 0L && !officialRewardRoster.isEmpty(); }
+    boolean isOfficialCurrentAttempt() { return isOfficialAttempt(); }
     record Config(String environment){}final Config config=new Config("production");
     Logger getLogger(){return Logger.getAnonymousLogger();}
     boolean isLiveOwnedEntity(UUID id){Entity e=ownedEntities.get(id);return e!=null&&e.valid&&!e.dead;}

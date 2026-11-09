@@ -35,7 +35,10 @@ def pack_probe(tmp_path_factory):
         "void tagWave4Role(", "void tagWave4PressureSlot(",
         "boolean tickWave4ObeliskAssault()", "void applyRestoredObeliskReceipt(",
         "void clearWave4Obelisks(",
-        "boolean isLiveOwnedEntity(",
+        "boolean isLiveOwnedEntity(", "boolean isDisposableWaveRuntimeActive(int wave)",
+        # The assault tick and the teardown now ask the shared ownership helper
+        # instead of the front-visual flag, so the probe compiles that too.
+        "boolean ownsDisposableWaveRuntime(int wave)",
     ]
     # Exercise the exact completion gate; later Wave 7 / phase-transition services
     # are outside this fixture. announceWaveComplete records reaching this gate.
@@ -51,6 +54,8 @@ def pack_probe(tmp_path_factory):
                 "Wave4ObeliskRecoveryPolicy", "EventPhase",
                 # WaveMechanicsPolicy reads RiftCarrierPolicy.REQUIRED_DELIVERIES.
                 "RiftCarrierPolicy"]
+    # The production methods injected into the probe carry their original
+    # comments, including non-ASCII dashes, so the charset must be explicit.
     result = subprocess.run(["javac", "-J-Xmx128m", "-encoding", "UTF-8", "-d", str(directory),
                              *[str(DOMAIN / (name + ".java")) for name in policies], str(java)],
                             capture_output=True, text=True)

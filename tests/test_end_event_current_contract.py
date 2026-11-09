@@ -266,7 +266,7 @@ def test_waves_have_current_runtime_policies() -> None:
     assert_contains(DOMAIN / "WaveVisualPolicy.java", "EndRiftObjective.Objective", "MAX_RADIUS_BLOCKS")
     assert_contains(DOMAIN / "CombatTacticsPolicy.java", "objective", "RIFT_CARRIERS", "REALITY_SPLIT")
     assert_contains(DOMAIN / "SkeletonCombatPolicy.java", "BLACK_FOG", "COLLAPSE_RINGS", "REALITY_SPLIT")
-    assert_contains(DOMAIN / "BlackFogTimingPolicy.java", "CYCLE_COUNT = 3", "SAFE_ZONE_SECONDS", "FOG_SECONDS")
+    assert_contains(DOMAIN / "BlackFogTimingPolicy.java", "MIN_CYCLES = 5", "CYCLE_COUNT = 10", "SAFE_ZONE_SECONDS", "FOG_SECONDS")
     assert_contains(DOMAIN / "CollapseRingEncounterPolicy.java", "BOTH_ALIVE", "FIRST_DOWN", "PAIR_DEFEATED")
     assert_contains(RUNTIME / "RealitySplitChamberController.java", "openBoundary", "allowsMobTarget", "allowsInteraction")
     assert_contains(DOMAIN / "ChamberIsolationPolicy.java", "chamberByPlayer")
@@ -359,10 +359,10 @@ def test_disposable_wave_natural_completion_restores_phase_without_advancing_eve
     root = read(PLUGIN_SRC / "CopiMineEndEvent.java")
     assert "boolean disposableWave = testWaveFrontVisualMode && !isOfficialAttempt();" in root
     assert "DISPOSABLE_WAVE_NATURAL_COMPLETE" in root
-    assert re.search(
-        r"if \(testWaveFrontVisualMode && activeWave >= 1 && activeWave <= 7\s*&&",
-        root,
-    )
+    # The heartbeat now routes through the shared ownership helper, which is the
+    # single answer for "the live generation owns this wave" (a plain
+    # /cmend wave spawn never sets the front-visual flag the old probe needed).
+    assert "if (ownsDisposableWaveRuntime(activeWave))" in root
     assert "activeWave = 0;" in root
 
 

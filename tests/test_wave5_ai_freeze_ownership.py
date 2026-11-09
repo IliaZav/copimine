@@ -18,6 +18,7 @@ def freeze_probe(tmp_path_factory):
     java = out / "FogAiOwnerProbe.java"
     java.write_text('''
 import java.util.*;import me.copimine.endevent.runtime.WaveCombatCoordinator;
+import me.copimine.endevent.domain.Wave5FogLeasePolicy;
 public class FogAiOwnerProbe {
     long generation=3,eventTickCounter=40,nextWaveTargetMillis;
     int activeWave=5,audioCalls;boolean waveFogFreezeAudible;Object keyWave,keyKind;
@@ -73,7 +74,11 @@ public class FogAiOwnerProbe {
 }
 ''', encoding="utf-8")
     coordinator = ROOT / "copimine-end-event/src/me/copimine/endevent/runtime/WaveCombatCoordinator.java"
-    built = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(out), str(java), str(coordinator)], capture_output=True, text=True)
+    # The fog freeze now stamps its pose lease from the real policy, so the probe
+    # compiles that class rather than mirroring its constants.
+    lease_policy = ROOT / "copimine-end-event/src/me/copimine/endevent/domain/Wave5FogLeasePolicy.java"
+    built = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(out), str(java), str(coordinator),
+                            str(lease_policy)], capture_output=True, text=True)
     assert built.returncode == 0, built.stdout + built.stderr
     return out
 

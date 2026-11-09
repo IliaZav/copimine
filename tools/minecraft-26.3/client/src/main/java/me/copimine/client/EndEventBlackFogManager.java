@@ -17,7 +17,7 @@ public final class EndEventBlackFogManager {
     /** Initial visual tuning: nearby silhouettes survive, distant geometry is obscured. */
     private static final float DENSE_FOG_END_BLOCKS = 4.0F;
     public static final long FADE_MILLIS = 1_250L;
-    private static final int MAX_CYCLE = 3;
+    private static final int MAX_CYCLE = 10;
 
     private String eventId = "";
     private long generation;

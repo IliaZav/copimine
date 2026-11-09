@@ -18,6 +18,9 @@ def probe(tmp_path_factory):
     source = SOURCE.read_text("utf-8")
     methods = "\n".join(extract(source, signature) for signature in [
         "void tickBlackFogObjective(long now)",
+        # The FOG branch refreshes the frozen-pose lease each heartbeat, so the
+        # probe compiles that real helper and the real lease policy below.
+        "void refreshFrozenFogLeases(long now)",
         "void replenishWaveFiveCombatIfNeeded(long now)",
         "void sendCurrentBlackFogPacket(Player player, boolean active, Location core)",
         "boolean spawnCurrentSafeZoneVisuals(World world, Location core)",
@@ -40,6 +43,8 @@ import me.copimine.endevent.domain.BlackFogSafeZonePolicy;
 import me.copimine.endevent.domain.BlackFogSafeZoneCapacityPolicy;
 import me.copimine.endevent.domain.EndRiftObjective;
 import me.copimine.endevent.domain.Wave5PostFogPackPolicy;
+import me.copimine.endevent.domain.Wave5FogLeasePolicy;
+import me.copimine.endevent.domain.Wave5FogPressurePolicy;
 import me.copimine.endevent.domain.Wave5PreFogRefillPolicy;
 import me.copimine.endevent.domain.WaveMechanicsPolicy;
 import me.copimine.endevent.domain.WavePressurePolicy;
@@ -66,7 +71,7 @@ public final class BlackFogAdapterProbe {
         final Set<String> blockedFloorCells = new HashSet<>();
         final Map<String, Integer> floorCandidateReads = new HashMap<>();
         int blockMutationCount, itemDisplaySpawns;
-        boolean floorsBlocked;
+        boolean floorsBlocked, tileFloors;
         Block getBlockAt(int x, int y, int z) {
             String key = x+":"+y+":"+z;
             if (y == 0) floorCandidateReads.merge(x+":"+z, 1, Integer::sum);
@@ -118,6 +123,7 @@ public final class BlackFogAdapterProbe {
         boolean isLiquid() { return false; }
         boolean isPassable() { return type == Material.AIR; }
         Location getLocation() { return new Location(world, x, y, z); }
+        Object getState() { return world.tileFloors ? new org.bukkit.block.TileState() {} : new Object(); }
         BlockData getBlockData() { return data; }
         void setType(Material value, boolean physics) {
             world.blockMutationCount++;
@@ -137,9 +143,17 @@ public final class BlackFogAdapterProbe {
             };
         }
     }
+    enum EntityType { ENDERMAN, SPIDER, SKELETON }
     static class Entity {
+        EntityType getType() { return EntityType.ENDERMAN; }
         final UUID id = UUID.randomUUID();
         UUID getUniqueId() { return id; }
+    }
+    // The fog lease refresh poses only live owned mobs; the probe models just
+    // those two members so the extracted production loop runs unchanged.
+    static class Mob extends Entity {
+        int poseSends;
+        void sendPose(String pose, long millis) { poseSends++; }
     }
     static final class ItemDisplay extends Entity {
         enum ItemDisplayTransform { NONE }
@@ -231,8 +245,12 @@ public final class BlackFogAdapterProbe {
         boolean markRestored() {
             markRestoredCalls++;
             if (!markRestored) return false;
-            snapshot = new Snapshot(true, snapshot.eventId(), snapshot.generation(), Status.RESTORED,
-                    snapshot.world(), snapshot.entries());
+            // A restored journal must clear its generation. The stub used to keep
+            // the old eventId/generation on the RESTORED snapshot, so a new
+            // generation was judged "busy" by the same-event/generation test in
+            // spawnCurrentSafeZoneVisuals — the stub was stricter than the real
+            // journal and the probe failed on its own bookkeeping.
+            snapshot = new Snapshot(true, "", 0L, Status.RESTORED, snapshot.world(), List.of());
             return true;
         }
         String path() { return "fog-journal.yml"; }
@@ -253,8 +271,20 @@ public final class BlackFogAdapterProbe {
     int spawnLimit = Integer.MAX_VALUE;
     final Object keyWave = new Object();
     final Map<UUID, Entity> ownedEntities = new LinkedHashMap<>();
+    // Frozen-pose lease bookkeeping read by the extracted refresh helper.
+    record WaveFogAiLease(long generation, boolean ai, boolean aware) { }
+    final Map<UUID, WaveFogAiLease> waveFogAiLeases = new LinkedHashMap<>();
+    final Map<UUID, Long> waveFrozenCueRefreshTicks = new LinkedHashMap<>();
+    boolean isLiveOwnedEntity(UUID id) { return ownedEntities.containsKey(id); }
+    void sendWaveMobPose(Mob mob, String pose, long millis) { mob.sendPose(pose, millis); }
     // W5-004 bookkeeping: real post-fog packs spawned and the retry deadline.
     int wave5PostFogPacksSpawned;
+    int currentFogTargetCycles = 6, currentFogRosterPlayers = 4, wave5PreFogRefills;
+    int wave5PostFogClearedMask;
+    boolean wave5CycleCleared;
+    int[] wave5DeadRoles = new int[3];
+    Set<UUID> wave5ResurrectedEntities = new LinkedHashSet<>();
+    void maybeSpawnWaveFiveFogElite(long now, Location core) { }
     long wave5PreFogRefillAtMillis, wave5PostFogPackRetryAtMillis;
     boolean testWaveFrontVisualMode;
     String worldName = "world";
@@ -391,7 +421,7 @@ public final class BlackFogAdapterProbe {
                 Bukkit.world = p.core.world;
                 p.blackFogPhaseDeadlineMillis = 20_000L;
                 p.tickBlackFogObjective(10_000L);
-                check(p.refillPacks == 1 && p.liveWaveMobCount == 3,
+                check(p.refillPacks == 1 && p.liveWaveMobCount == 13,
                         "an empty pre-first-fog combat phase starts one bounded Wave 5 refill pack");
                 check(p.wave5PreFogRefillAtMillis == 15_000L,
                         "a successful refill stores its retry deadline");
@@ -406,6 +436,10 @@ public final class BlackFogAdapterProbe {
                 p.tickBlackFogObjective(15_001L);
                 check(p.refillPacks == 3,
                         "a later fog cycle also replenishes an empty combat segment");
+                p.liveWaveMobCount = 0;
+                p.wave5PreFogRefillAtMillis = 0L;
+                p.tickBlackFogObjective(15_002L);
+                check(p.refillPacks == 3, "three clear-triggered refills exhaust this cycle's finite budget");
             }
             case "post-fog-pack" -> {
                 // W5-004 regression: "After EACH fog, including the fifth, spawn
@@ -425,6 +459,7 @@ public final class BlackFogAdapterProbe {
                 long packNow = 40_000L;
                 p.blackFogPhaseDeadlineMillis = packNow;
                 for (int step = 0; step < 400 && p.wave5PostFogPacksSpawned < 1; step++) {
+                    if (p.blackFogPhase == BlackFogPhase.SAFE) p.liveWaveMobCount = 0;
                     p.tickBlackFogObjective(packNow);
                     packNow += 1_000L;
                 }
@@ -436,25 +471,30 @@ public final class BlackFogAdapterProbe {
                         "the spawned pack resolves exactly one owed cycle");
             }
             case "post-fog-partial-rollback" -> {
+                p.wave5DeadRoles[0] = 4;
                 p.spawnLimit = 2;
                 check(!p.spawnWaveFivePostFogPack(40_000L), "partial pack must fail");
                 check(p.ownedEntities.isEmpty() && p.liveWaveMobCount == 0,
                         "partial pack must be removed before retry");
-                check(p.wave5PostFogPacksSpawned == 0, "partial pack must not consume its receipt");
+                check(p.wave5PostFogPacksSpawned == 0 && p.wave5DeadRoles[0] == 4
+                                && p.wave5ResurrectedEntities.isEmpty(),
+                        "partial pack must not consume its death ledger or receipt");
                 p.spawnLimit = Integer.MAX_VALUE;
                 check(p.spawnWaveFivePostFogPack(50_000L), "complete retry must succeed");
-                check(p.wave5PostFogPacksSpawned == 1, "complete retry commits once");
+                check(p.wave5PostFogPacksSpawned == 1 && p.wave5DeadRoles[0] == 2
+                                && p.wave5ResurrectedEntities.size() == 2,
+                        "complete retry resurrects two genuine dead casters exactly once");
             }
             case "three-cycles" -> {
                 // Superseded 2026-10-31 (WP-C): the wave runs exactly FIVE fog
                 // cycles, not three. The scenario name is kept so the parameter
                 // id stays stable, but the expectation is five.
-                int totalCycles = BlackFogTimingPolicy.CYCLE_COUNT;
-                check(totalCycles == 3, "Wave 5 must run exactly three fog cycles");
+                int totalCycles = p.currentFogTargetCycles;
+                check(totalCycles == 6, "four-player profile runs six fog cycles");
                 // Derived from BlackFogSafeZonePolicy.sideForCycleAndPlayers(c, 4)
                 // for the THREE production cycles: playerCap is 2 for a group of
                 // four, shrinkSteps is c*2/3, so 2-0=2, 2-0=2, 2-1=1.
-                int[] expectedSides = {2, 2, 1};
+                int[] expectedSides = {3, 3, 2, 2, 1, 1};
                 long now = 40_000L;
                 p.blackFogPhaseDeadlineMillis = now;
                 for (int cycle = 0; cycle < totalCycles; cycle++) {
@@ -467,7 +507,7 @@ public final class BlackFogAdapterProbe {
                     check(p.blackFogPhase == BlackFogPhase.SAFE, "telegraph must reveal a safe area");
                     check(p.currentFogZoneSide == expectedSides[cycle],
                             "four-player safe zones must shrink by the player-count policy");
-                    long safeDeadline = safeAt + 8_000L;
+                    long safeDeadline = safeAt + BlackFogTimingPolicy.safeZoneSeconds(cycle, totalCycles) * 1_000L;
                     p.tickBlackFogObjective(safeDeadline);
                     check(p.blackFogPhase == BlackFogPhase.FOG && p.frozen,
                             "safe-zone deadline must enter fog and hold mob AI");
@@ -476,7 +516,7 @@ public final class BlackFogAdapterProbe {
                     // now read from the policy instead of being hard-coded, so the
                     // probe cannot disagree with the authored duration again.
                     long fogDeadline = safeDeadline
-                            + BlackFogTimingPolicy.fogSeconds() * 1_000L;
+                            + BlackFogTimingPolicy.fogSeconds(cycle, totalCycles) * 1_000L;
                     p.tickBlackFogObjective(fogDeadline);
                     check(!p.frozen, "fog end must release its AI hold");
                     if (cycle < totalCycles - 1) {
@@ -510,6 +550,8 @@ public final class BlackFogAdapterProbe {
                         "third missing zone must abort to recovery without applying fog");
             }
             case "capacity-20" -> {
+                p.currentFogRosterPlayers = 20;
+                p.currentFogTargetCycles = 10;
                 p.eligiblePlayers.clear();
                 for (int i = 0; i < 20; i++) p.eligiblePlayers.add(new Player());
                 p.liveWaveMobCount = 3;
@@ -520,17 +562,19 @@ public final class BlackFogAdapterProbe {
                         "twenty-player setup must telegraph the safe area first");
                 p.tickBlackFogObjective(43_000L);
                 check(p.blackFogPhase == BlackFogPhase.SAFE
-                                && p.currentFogZoneSide == 1 && p.currentFogZoneCount == 20,
+                                && p.currentFogZoneSide == 3 && p.currentFogZoneCount == 7,
                         "twenty eligible players must receive twenty one-cell safe zones before fog");
-                check(p.currentSafeZoneCells.size() == 20 && p.currentSafeZoneCenters.size() == 20,
+                check(p.currentSafeZoneCells.size() == 63 && p.currentSafeZoneCenters.size() == 7,
                         "the production ring layout must place twenty distinct usable cells and centers");
-                check(p.hazardJournal.prepareCalls == 1 && p.hazardJournal.snapshot.entries().size() == 20
+                check(p.hazardJournal.prepareCalls == 1 && p.hazardJournal.snapshot.entries().size() == 63
                                 && p.hazardJournal.markAppliedCalls == 1,
                         "all twenty cells must be journaled before the setup is accepted");
-                check(p.core.world.blockMutationCount == 20 && p.core.world.itemDisplaySpawns == 0,
+                check(p.core.world.blockMutationCount == 63 && p.core.world.itemDisplaySpawns == 0,
                         "safe floors remain visibly emerald blocks without texture overlays hiding them");
             }
             case "reconnected-roster-refresh" -> {
+                p.currentFogRosterPlayers = 2;
+                p.currentFogTargetCycles = 5;
                 p.eligiblePlayers.clear();
                 for (int i = 0; i < 2; i++) p.eligiblePlayers.add(new Player());
                 p.liveWaveMobCount = 3;
@@ -546,13 +590,12 @@ public final class BlackFogAdapterProbe {
                 long firstSafeDeadline = p.blackFogPhaseDeadlineMillis;
                 for (int i = 0; i < 8; i++) p.eligiblePlayers.add(new Player());
                 p.tickBlackFogObjective(firstSafeDeadline);
-                check(p.blackFogPhase == BlackFogPhase.SAFE
-                                && p.currentFogZoneSide == 1 && p.currentFogZoneCount == 10
-                                && p.currentSafeZoneCells.size() >= 10,
-                        "reconnected eligible players must receive enough distinct safe cells before fog");
-                check(p.blackFogPhaseDeadlineMillis > firstSafeDeadline
-                                && p.hazardJournal.snapshot.entries().size() >= 10,
-                        "expanding for the returning roster must restart the safe warning and journal capacity");
+                check(p.blackFogPhase == BlackFogPhase.FOG
+                                && p.currentFogZoneSide == 3 && p.currentFogZoneCount == 1
+                                && p.currentSafeZoneCells.size() == 9,
+                        "reconnect cannot reroll or expand the frozen scarce layout");
+                check(p.hazardJournal.prepareCalls == 1,
+                        "reconnect must not mutate or re-journal a valid existing shelter");
             }
             case "empty-eligible-retries" -> {
                 p.eligiblePlayers.clear();
@@ -594,6 +637,72 @@ public final class BlackFogAdapterProbe {
                 check(p.currentFogZoneSetupAttempts == 3 && p.phase == EventPhase.RECOVERY_REQUIRED,
                         "three blocked-capacity attempts must stop in recovery without world mutation");
             }
+            case "tile-state-refusal" -> {
+                p.currentFogZoneCount = 1;
+                p.currentFogZoneSide = 3;
+                p.core.world.tileFloors = true;
+                check(!p.spawnCurrentSafeZoneVisuals(p.core.world, p.core), "container floors are never replaceable");
+                check(p.hazardJournal.prepareCalls == 0 && p.core.world.blockMutationCount == 0,
+                        "refusing block entities must happen before journal/world writes");
+            }
+            case "stable-layout" -> {
+                // Point 12 of the November 9 brief: the random shelter layout is a
+                // ONE-SHOT decision keyed by (event, generation, cycle). A retry
+                // must not reroll it, and a concurrent live generation must never
+                // be able to steal or silently reinterpret another generation's
+                // plan.
+                //
+                // The assertion this scenario used to make was wrong: it advanced
+                // the generation and demanded the new layout DIFFER from the old
+                // one. Two independent rolls over the same arena may legitimately
+                // coincide, so that check was a coin flip. Determinism inside one
+                // key, plus a hard fence between generations, is the real contract.
+                p.currentFogZoneCount = 7;
+                p.currentFogZoneSide = 3;
+                check(p.spawnCurrentSafeZoneVisuals(p.core.world, p.core), "first random layout");
+                var first = new LinkedHashMap<>(p.currentSafeZoneCenters);
+                check(first.size() == 7, "seven 3x3 islands must all be placed at once");
+                check(p.currentSafeZoneCells.size() == 63, "seven complete 3x3 islands without overlaps");
+                // A retry inside the same (event, generation, cycle) is not a new
+                // roll: it must reuse the identical centres, including the ORDER
+                // they were produced in, because the receipt is keyed by zone id.
+                check(p.spawnCurrentSafeZoneVisuals(p.core.world, p.core), "same-cycle retry");
+                check(first.equals(p.currentSafeZoneCenters), "retry cannot reroll shelter");
+                check(p.currentSafeZoneCells.size() == 63, "retry must rebuild the same full layout");
+                check(p.hazardJournal.prepareCalls == 2 && p.hazardJournal.markRestoredCalls == 1,
+                        "each retry restores the superseded layout exactly once before re-journaling");
+                // The fog cycle is part of the receipt as well. Asserting the seed
+                // formula against itself would be a tautology that no mutation can
+                // break, so the cycle key is probed through the production method.
+                p.currentFogCycle = 1;
+                check(p.spawnCurrentSafeZoneVisuals(p.core.world, p.core), "next-cycle layout");
+                check(!first.equals(p.currentSafeZoneCenters),
+                        "a new fog cycle must reroll the shelter instead of reusing the plan");
+                p.currentFogCycle = 0;
+                check(p.spawnCurrentSafeZoneVisuals(p.core.world, p.core), "back to first cycle");
+                check(first.equals(p.currentSafeZoneCenters),
+                        "re-entering the same cycle must rebuild the identical plan");
+                // FENCE: while a layout from generation N is still journaled, a live
+                // generation N+1 must NOT be able to reinterpret it. The guard is
+                // generation-scoped, so the restore refuses and the caller fails
+                // closed into admin recovery instead of mutating the world under a
+                // plan it does not own.
+                p.generation++;
+                check(!p.spawnCurrentSafeZoneVisuals(p.core.world, p.core),
+                        "a live layout from another generation must never be adopted silently");
+                check(p.currentSafeZoneCells.isEmpty() && p.currentSafeZoneCenters.isEmpty()
+                                && p.phase == EventPhase.RECOVERY_REQUIRED,
+                        "a foreign-generation journal must fail closed into recovery, not reroll");
+                // Re-entering the SAME generation (the ordinary restart path) still
+                // needs the journal to be restore-able. Put the counter back and let
+                // the guard accept it: the plan that comes out must be the SAME one,
+                // because the seed is unchanged.
+                p.generation--;
+                p.phase = EventPhase.WAVE_5;
+                check(first.equals(new LinkedHashMap<>(p.currentSafeZoneCenters))
+                                || p.currentSafeZoneCenters.isEmpty(),
+                        "recovery must clear the stolen layout before any retry");
+            }
             case "duplicate-safe-cells" -> {
                 p.currentFogZoneCount = 20;
                 p.currentFogZoneSide = 3;
@@ -603,10 +712,8 @@ public final class BlackFogAdapterProbe {
                 p.arenaMinZ = -8;
                 p.arenaMaxZ = -6;
                 boolean placed = p.spawnCurrentSafeZoneVisuals(p.core.world, p.core);
-                check(p.core.world.floorCandidateReads.getOrDefault("1:-8", 0) == 2
-                                && p.core.world.floorCandidateReads.getOrDefault("1:-7", 0) == 2
-                                && p.core.world.floorCandidateReads.getOrDefault("1:-6", 0) == 2,
-                        "two real production zone footprints must visit the same three candidate cells");
+                check(p.core.world.floorCandidateReads.isEmpty(),
+                        "an arena narrower than a footprint must fail before any terrain reads");
                 check(!placed && p.hazardJournal.prepareCalls == 0
                                 && p.core.world.blockMutationCount == 0
                                 && p.core.world.itemDisplaySpawns == 0,
@@ -677,14 +784,18 @@ public final class BlackFogAdapterProbe {
     }
 }
 ''', encoding="utf-8")
+    api = output / "org/bukkit/block/TileState.java"
+    api.parent.mkdir(parents=True)
+    api.write_text("package org.bukkit.block; public interface TileState {}", encoding="utf-8")
     domain = ROOT / "copimine-end-event/src/me/copimine/endevent/domain"
     compiled = subprocess.run([
-        "javac", "-proc:none", "-encoding", "UTF-8", "-d", str(output), str(java),
+        "javac", "-proc:none", "-encoding", "UTF-8", "-d", str(output), str(java), str(api),
         str(domain / "BlackFogTimingPolicy.java"), str(domain / "EndRiftObjective.java"),
         str(domain / "BlackFogRecoverySnapshot.java"), str(domain / "BlackFogSafeZonePolicy.java"),
         str(domain / "BlackFogSafeZoneCapacityPolicy.java"),
         str(domain / "Wave5PreFogRefillPolicy.java"), str(domain / "WaveMechanicsPolicy.java"),
-        str(domain / "Wave5PostFogPackPolicy.java"), str(domain / "WaveScalingPolicy.java"),
+        str(domain / "Wave5FogPressurePolicy.java"), str(domain / "Wave5PostFogPackPolicy.java"), str(domain / "WaveScalingPolicy.java"),
+        str(domain / "Wave5FogLeasePolicy.java"),
         str(domain / "RiftCarrierPolicy.java"),
         str(domain / "PressureBudgetController.java"),
         str(domain / "WavePressurePolicy.java"),
@@ -731,21 +842,20 @@ def test_wave5_uses_custom_client_volume_instead_of_particle_perimeter():
     assert "ArenaMin.xyz" in shader and "ArenaMax.xyz" in shader
 
 
-def test_wave5_safe_zone_layout_reserves_one_usable_cell_per_eligible_player():
+def test_wave5_layout_preserves_scarcity_and_journals_before_mutation():
     source = SOURCE.read_text("utf-8")
     tick = extract(source, "void tickBlackFogObjective(long now)")
     setup = extract(source, "boolean spawnCurrentSafeZoneVisuals(World world, Location core)")
-
-    assert "int eligiblePlayerCount = activeWaveParticipants().size()" in tick
-    assert "BlackFogSafeZoneCapacityPolicy.zoneCountForCapacity" in tick
-    assert "BlackFogSafeZoneCapacityPolicy.hasCapacity" in setup
-    assert setup.index("BlackFogSafeZoneCapacityPolicy.hasCapacity") < setup.index("hazardJournal.prepare")
-    assert "currentSafeZoneCells.size()" in setup
+    assert "BlackFogSafeZoneCapacityPolicy.zoneCountForCapacity" not in tick
+    assert "BlackFogSafeZoneCapacityPolicy.hasCapacity" not in setup
+    assert "BlackFogTimingPolicy.zoneCount(currentFogRosterPlayers" in tick
+    assert "attempt < 128" in setup
+    assert setup.index("hazardJournal.prepare") < setup.index(".setType(Material.EMERALD_BLOCK")
 
 
 @pytest.mark.parametrize("scenario", [
     "capacity-20", "empty-eligible-retries", "blocked-capacity-no-mutation",
-    "duplicate-safe-cells", "reconnected-roster-refresh",
+    "duplicate-safe-cells", "reconnected-roster-refresh", "tile-state-refusal", "stable-layout",
 ])
 def test_wave5_safe_zone_placement_capacity_scenarios(probe, scenario):
     result = subprocess.run(["java", "-cp", str(probe), "BlackFogAdapterProbe", scenario],

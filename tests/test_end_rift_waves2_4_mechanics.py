@@ -60,6 +60,14 @@ def mechanics_harness(tmp_path_factory):
                    + "waveTwoAssignmentRoster.clear(); waveTwoAssignmentRoster.addAll(activeWaveParticipants()"
                    + ".stream().map(Player::getUniqueId).toList()); }")
     methods += [_declaration(source, signature) for signature in (
+        # The W2/W4 adapters now ask the shared ownership helper, which in turn
+        # asks the test-mode and official-attempt gates. The harness already
+        # answers the official-attempt question itself (see isOfficialCurrentAttempt
+        # below), so only the ownership chain is extracted here.
+        "private boolean ownsDisposableWaveRuntime(int wave)",
+        "private boolean testWaveRuntimeOwnship()",
+        "private boolean phaseDrivesOfficialWave()",
+        "private boolean isDisposableWaveRuntimeActive(int wave)",
         "private void tickCurrentHuntObjective(long now)",
         "private void updateMarkedTargetObjective(long now)",
         "private boolean hasUnpublishedWaveTwoRoster()",
@@ -190,7 +198,7 @@ public final class Waves24MechanicsHarness {
     void checkpointWaveTwoGroupSpawn() { }
     boolean checkpointWaveTwoGroupClear() { return true; }
     void requireWaveTwoOwnershipRecovery(Entity entity, String reason) { }
-    boolean testWave4ObeliskMode;
+    boolean testWave4ObeliskMode, testWaveInspectionMode;
     EventPhase phase = EventPhase.WAVE_4;
     Set<UUID> currentWave4ConsumedFireballs = new HashSet<>();
     Map<UUID, RiftFireballRuntimeState> activeRiftFireballs = new HashMap<>();

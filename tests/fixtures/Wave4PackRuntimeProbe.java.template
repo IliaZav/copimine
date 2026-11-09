@@ -114,12 +114,19 @@ public class Wave4PackRuntimeProbe {
     EventPhase phase = EventPhase.WAVE_4;
     // The wave tick now opens the objective controller for operator sandboxes
     // (inspection/ai flags) and throttles its own failure logging.
-    boolean testWaveInspectionMode, testCombatAiMode;
+    boolean testCombatAiMode;
     long waveTickFailureLogTick;
     int currentWaveScalePlayers = 2, currentWave4PressurePackAttempts, waveSpawnGroupIndex, activeWave = 4;
     long generation = 5, eventTickCounter = 5, currentWave4PressureRetryAtMillis, phaseDeadlineMillis;
     String eventId = UUID.randomUUID().toString(), worldName = "fixture", recoveryReason;
-    boolean testWave4ObeliskMode, testWaveFrontVisualMode, currentWave4MobsStarted,
+    // Default scenario is an operator-spawned wave 4 (/cmend wave spawn 4):
+    // testWave4ObeliskMode and testWaveInspectionMode are on, while
+    // testWaveFrontVisualMode stays OFF because that flag belongs to the paid
+    // sandbox path. This is exactly the combination that shipped the defect.
+    // testWaveFrontVisualMode is declared here (not with the other flags) so
+    // the default is explicit and the old front-visual-only gate cannot pass.
+    boolean testWaveFrontVisualMode;
+    boolean testWave4ObeliskMode = true, testWaveInspectionMode = true, currentWave4MobsStarted,
             currentWave4StartupFailed, currentWave4ObeliskAssaultComplete, waveObjectiveComplete;
     WaveMechanicsPolicy.WaveCounts composition = new WaveMechanicsPolicy.WaveCounts(2, 4, 0, 0, 0);
     List<WaveMechanicsPolicy.WaveCounts> waveSpawnSchedule = List.of(composition);
@@ -179,9 +186,28 @@ public class Wave4PackRuntimeProbe {
     double boundedCombatRadius(double radius) { return radius; }
     boolean isOfficialCurrentAttempt() { return phase == EventPhase.WAVE_4; }
     boolean isOfficialAttempt() { return !testWaveFrontVisualMode; }
+    // ownsDisposableWaveRuntime() is injected verbatim from production, so its
+    // real body -- including the deliberate ABSENCE of any durable-phase check
+    // -- is what this probe exercises. Only its two collaborators need stubs:
+    // the fixture is an operator-spawned wave-4 run, so test mode is on and no
+    // official attempt owns the durable phase.
+    // Must mirror production: the wave-4 abort path CLEARS testWave4ObeliskMode,
+    // and ownership has to go false right after that or the exhausted attempt
+    // would keep retrying instead of entering recovery.
+    boolean testWaveRuntimeOwnship() { return testWave4ObeliskMode || testWaveFrontVisualMode
+            || testWaveInspectionMode; }
+    boolean phaseDrivesOfficialWave() { return false; }
+    HazardMutationJournal hazardJournal = new HazardMutationJournal();
+    static class HazardMutationJournal {
+        boolean restored;
+        boolean markRestored() { restored = true; return true; }
+    }
     void forcePhase(EventPhase next, String reason) { phase = next; }
     void cancelWaveSpawnTask() { canceled++; }
     void removeWave4Obelisk(UUID id, String reason) { activeWave4Obelisks.remove(id); }
+    // addRestoredObeliskReceipt is injected from production; it is the only other
+    // member of the recovery path this fixture needs to link against.
+    void addRestoredObeliskReceipt(int ordinal, Object receipt) { }
     // W4-009..013 close-range defence is exercised by its own policy harness;
     // this fixture only needs the assault tick to link against it.
     void tickWave4ObeliskRepel(Wave4ObeliskRuntimeState state) { }
@@ -383,6 +409,15 @@ public class Wave4PackRuntimeProbe {
                         "retry after synchronous loss must create only the missing Stalker");
             }
             case "exhaustion", "permanent" -> {
+                // This scenario is the OFFICIAL wave-4 failure contract: an attempt
+                // that cannot field its pressure pack must fail closed into
+                // RECOVERY_REQUIRED, which is the official branch
+                // (forcePhase + recoveryReason). An operator-spawned test run has
+                // no durable phase to fail into -- it just aborts and clears its
+                // own probe. The fixture default carries test flags, so drop them
+                // here to model the official attempt the assertions describe.
+                p.testWave4ObeliskMode = false;
+                p.testWaveInspectionMode = false;
                 Entity unrelated = p.spawn(EntityType.OTHER, 99); unrelated.data.values.put(p.keyWave, "3");
                 p.spawnCalls.clear(); p.failing.add(1);
                 if (scenario.equals("permanent")) p.composition = new WaveMechanicsPolicy.WaveCounts(0, 0, 0, 0, 0);

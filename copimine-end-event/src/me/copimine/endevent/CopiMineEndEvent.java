@@ -26592,7 +26592,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 unregisterOwnedEntity(entity.getUniqueId(), "rift-ram-cleanup");
                 if (entity.isValid()) entity.remove();
             }
-            public void move(Entity entity, Location destination) {
+            public boolean move(Entity entity, Location destination) {
                 // Armour sections, the pillar and the debris are owned displays,
                 // so every position update has to travel the same internal-permit
                 // path as a combat body. Calling teleport() straight on the entity

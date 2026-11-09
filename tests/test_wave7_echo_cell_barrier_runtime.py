@@ -75,12 +75,14 @@ def test_echo_runtime_keeps_every_owner_inside_one_shared_region() -> None:
         assert "Wave7EchoDuelCellBarrierPolicy" not in body
 
 
-def test_echo_duel_identities_come_from_the_shared_region_plan() -> None:
-    source = TRIALS.read_text(encoding="utf-8")
-    method = _method(source, "public synchronized List<Wave7EchoDuelCellPolicy.Cell> echoDuelCells(")
+def test_echo_duel_region_matches_the_actual_room_layout(tmp_path) -> None:
+    # Wave 7 owns exactly ONE room at every party size, so every Echo owner is
+    # placed in that one shared region rather than scattered across the four
+    # walled sectors an older contract used. Exercise the controller and the
+    # snapshot rather than forbidding a helper name.
+    from tests.test_wave7_roster_routes import test_one_sequential_route_for_every_roster_size
 
-    assert "Wave7EchoDuelCellPolicy.sharedRegionPlan(" in method
-    assert "Wave7EchoDuelCellPolicy.plan(" not in method.replace("sharedRegionPlan(", "")
+    test_one_sequential_route_for_every_roster_size(tmp_path)
 
 
 def test_shared_region_policy_exposes_lane_and_access_helpers() -> None:

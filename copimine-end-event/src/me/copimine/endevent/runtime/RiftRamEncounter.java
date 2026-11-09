@@ -25,8 +25,8 @@ public final class RiftRamEncounter {
         boolean damage(Ravager source, Player player, double amount);
         int particleBudget();
         void remove(Entity entity);
-        /** Moves an owned presentation entity through the internal permit path. */
-        void move(Entity entity, Location destination);
+        /** Moves an owned entity through the internal permit path; reports refusal. */
+        boolean move(Entity entity, Location destination);
         void fail(String reason);
         void visualsChanged();
         boolean checkpoint();
@@ -240,7 +240,16 @@ public final class RiftRamEncounter {
     }
 
     private void begin(Action next) { action=next; actionTick=tick; }
-    private void hold() { ram.setAI(false); ram.setTarget(null); ram.setVelocity(new Vector()); }
+    private void hold() {
+        ram.setAI(false);
+        ram.setTarget(null);
+        // Do NOT zero the velocity here. Bukkit turns a zeroed velocity on a body
+        // whose position is already stale into a server-side teleport, and that
+        // teleport arrives WITHOUT an internal permit, so the wave teleport guard
+        // cancelled it and logged WAVE_TELEPORT_BLOCKED every ~11 seconds. The
+        // AI is already off and the target already cleared, which is what "hold"
+        // means; the residual velocity decays on its own without a position write.
+    }
     private void recover() { lastCharge=tick; begin(Action.RECOVER); }
     private Player nearest(Location origin,List<Player> players) {
         return players.stream().filter(p->p.getWorld().equals(origin.getWorld()) && !p.isDead())
@@ -265,7 +274,7 @@ public final class RiftRamEncounter {
                 from.getX(),from.getY(),from.getZ(),to.getX(),to.getY(),to.getZ(),pillar.getX(),pillar.getY(),pillar.getZ())) {
             impact(); return;
         }
-        if(!ram.teleport(to)) { recover(); return; }
+        if(!host.move(ram, to)) { recover(); return; }
         for(Player player:players) {
             if(Math.abs(player.getY()-from.getY())>3 || !RiftRamPolicy.chargeHitsPlayer(from.getX(),from.getZ(),to.getX(),to.getZ(),
                     player.getX(),player.getZ(),chargeHits.contains(player.getUniqueId()))) continue;
@@ -303,7 +312,8 @@ public final class RiftRamEncounter {
         // The cap is on the WHOLE encounter, so a pillar that finds the room
         // already full releases nothing. That is legal and must not fail the
         // wave, otherwise the fifth pillar would look broken.
-        int budget = RiftRamPolicy.endermitesToRelease(mites.size(), 2 + (impacts % 3));
+        int budget = impacts < RiftRamPolicy.REQUIRED_IMPACTS
+                ? RiftRamPolicy.endermitesToRelease(mites.size(), 2 + (impacts % 3)) : 0;
         for(int i=0;i<budget;i++) {
             Endermite mite=broken.getWorld().spawn(broken,Endermite.class);
             host.own(mite,true); mite.setPersistent(true); mite.setRemoveWhenFarAway(false);

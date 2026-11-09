@@ -4,6 +4,13 @@ param(
   [int]$TimeoutSeconds = 180
 )
 
+# OBSOLETE: this probe drives the RETIRED Ritual Sphere encounter. Wave 6 is
+# now the Rift Ram (one Ravager, five sequential destructible pillars, six
+# armour stages, particle-only seismic stomp), and the markers asserted below
+# (WAVE6_RITUAL_SPHERE_READY, casters=5) can never appear again. It is kept only
+# so the historical probe is not silently deleted. Use
+# tests\RunEndRiftWave6RiftRamLive.ps1 instead.
+#
 # Local-only Wave 6 smoke probe. Two players must connect and operate the
 # encounter manually; the probe never creates accounts or stores credentials.
 $ErrorActionPreference = 'Stop'

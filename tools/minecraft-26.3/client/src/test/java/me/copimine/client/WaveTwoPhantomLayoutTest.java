@@ -113,13 +113,16 @@ class WaveTwoPhantomLayoutTest {
         WaveTwoPhantomLayout.LookPose southward = WaveTwoPhantomLayout.lookAt(
                 phantom, new WaveTwoPhantomLayout.Position(0.0D, 65.5D, 4.0D));
 
-        assertEquals(0.0F, eastward.bodyYawDegrees());
-        assertEquals(-90.0F, eastward.headYawDegrees(), 1.0E-5F);
-        assertEquals(0.0F, northward.bodyYawDegrees());
-        assertEquals(-180.0F, northward.headYawDegrees(), 1.0E-5F);
-        assertEquals(0.0F, westward.bodyYawDegrees());
-        assertEquals(90.0F, westward.headYawDegrees(), 1.0E-5F);
-        assertEquals(0.0F, southward.bodyYawDegrees());
+        // The whole BODY turns toward the viewer and the head adds no extra
+        // offset. That is what "rotates its body, not just its head" means: a
+        // phantom tracking with head-only yaw looks like a swivel-necked doll.
+        assertEquals(-90.0F, eastward.bodyYawDegrees(), 1.0E-5F);
+        assertEquals(0.0F, eastward.headYawDegrees(), 1.0E-5F);
+        assertEquals(-180.0F, northward.bodyYawDegrees(), 1.0E-5F);
+        assertEquals(0.0F, northward.headYawDegrees(), 1.0E-5F);
+        assertEquals(90.0F, westward.bodyYawDegrees(), 1.0E-5F);
+        assertEquals(0.0F, westward.headYawDegrees(), 1.0E-5F);
+        assertEquals(0.0F, southward.bodyYawDegrees(), 1.0E-5F);
         assertEquals(0.0F, southward.headYawDegrees(), 1.0E-5F);
     }
 

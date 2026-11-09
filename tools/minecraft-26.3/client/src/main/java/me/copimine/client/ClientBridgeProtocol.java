@@ -792,6 +792,10 @@ public final class ClientBridgeProtocol {
         return END_EVENT_BLACK_FOG;
     }
 
+    public static EndEventBridgeBodyCodec.ArenaBounds endEventArenaBounds(String eventId, long generation) {
+        return BRIDGE_V4.arenaBounds(eventId, generation);
+    }
+
     public static EndEventPlayerVisualManager endEventPlayerVisuals() {
         return END_EVENT_PLAYER_VISUALS;
     }

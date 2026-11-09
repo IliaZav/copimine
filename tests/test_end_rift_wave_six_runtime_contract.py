@@ -26,10 +26,7 @@ def test_wave_six_completion_no_longer_consults_the_deleted_encounter():
     # when another term is ANDed in later, which is how the legacy flags could
     # creep back -- so normalise whitespace and compare the whole expression.
     branch = " ".join(wave6[len("case RIFT_RAM -> "):].split())
-    assert branch.startswith("riftRamComplete && RiftRamPolicy.isComplete("), branch
-    assert branch.endswith(");"), branch
-    assert "RiftRamPolicy.isComplete(riftRamImpacts, isRiftRamAlive())" in wave6, (
-        "wave 6 must complete on its own three-impacts-then-kill condition")
+    assert branch == "riftRam != null && riftRam.complete();", branch
     for legacy in ("ritualCasterDeathCount", "wave6PrisonBroken",
                    "isRitualSphereRuntimeClean", "RitualCasterProgressionPolicy"):
         assert legacy not in wave6, (
@@ -44,25 +41,23 @@ def test_the_ritual_objective_can_never_report_completion():
         "a legacy objective must stay inert, so an old snapshot cannot look complete")
 
 
+RUNTIME = ROOT / "copimine-end-event/src/me/copimine/endevent/runtime/RiftRamEncounter.java"
+
+
+def runtime_body(start, end):
+    text = RUNTIME.read_text(encoding="utf-8")
+    return text[text.index(start):text.index(end, text.index(start))]
+
+
 def test_the_impacts_are_banked_before_any_effect_runs():
-    impact = body("private void bankRiftRamImpact(", "private void spawnRiftRamFragments(")
-    guard = impact.index("mayAcceptImpact(")
-    banked = impact.index("riftRamChargeBanked = true;")
-    increment = impact.index("riftRamImpacts++;")
-    first_effect = impact.index("world.playSound(")
-    assert guard < banked < increment < first_effect, (
-        "the guard must run before the bank flag, and the flag before any effect, "
-        "so a duplicate collision callback in the same tick cannot crack the Core twice")
+    impact = runtime_body("private void impact()", "private void stomp(")
+    assert impact.index("banked=true; impacts++;") < impact.index("clearPillar();")
 
 
 def test_one_ram_is_the_whole_spawn_guard():
-    spawn = body("private void startRiftRam(", "private Location riftRamSpawnLocation(")
-    assert "riftRamId = ram.getUniqueId();" in spawn
-    assert spawn.count("world.spawn(") == 1, (
-        "exactly one entity is created; the legacy wave spawned casters and guards "
-        "on independent schedules, which is what allowed a second encounter")
-    # A retried start must not adopt the previous ram.
-    assert spawn.index("riftRamId = null;") < spawn.index("world.spawn(")
+    spawn = runtime_body("public void start(", "private Location findSite(")
+    assert "if (ram != null || closed)" in spawn
+    assert spawn.count("spawn(site, Ravager.class") == 1
 
 
 def test_the_wave_schedule_is_empty_so_nothing_else_spawns():
@@ -75,39 +70,30 @@ def test_the_wave_schedule_is_empty_so_nothing_else_spawns():
 
 
 def test_scale_drives_the_hitbox_not_only_the_modelsheet():
-    spawn = body("private void startRiftRam(", "private Location riftRamSpawnLocation(")
-    assert "Attribute.GENERIC_SCALE" in spawn, (
-        "Paper's scale attribute is what resizes the collision box; setting only a "
-        "visual would leave a vanilla-sized body around a 1.5x model")
+    spawn = runtime_body("public void start(", "private Location findSite(")
+    assert "Attribute.GENERIC_SCALE" in spawn
     assert "RiftRamPolicy.SCALE" in spawn
 
 
 def test_the_charge_locks_its_direction_and_never_homes():
-    commit = body("private void commitRiftRamCharge(", "private void advanceRiftRamCharge(")
-    assert "RiftRamPolicy.lockChargeDirection(" in commit
-    assert "riftRamTargetId = null;" in commit, (
-        "the target is forgotten at commit time; a homing charge makes the dodge unwinnable")
-    advance = body("private void advanceRiftRamCharge(", "private static float endpointYaw(")
-    assert "riftRamChargeDirX" in advance and "getTarget()" not in advance
+    charge = runtime_body("private void charge(", "private void impact()")
+    assert "direction.clone()" in charge and "getTarget()" not in charge
 
 
-def test_the_charge_uses_swept_core_collision():
-    advance = body("private void advanceRiftRamCharge(", "private static float endpointYaw(")
-    assert "RiftRamPolicy.segmentHitsCore(" in advance, (
-        "a 1.1-block step per tick can cross the Core entirely, so a point test tunnels")
+def test_the_charge_uses_swept_pillar_collision():
+    charge = runtime_body("private void charge(", "private void impact()")
+    assert "RiftRamPolicy.segmentHitsPillar(" in charge
+    assert "host.core()" not in charge and "segmentHitsCore" not in charge
 
 
 def test_armour_fragments_are_temporary_and_lootless():
-    fragments = body("private void spawnRiftRamFragments(", "private void protectRiftRam(")
-    assert "entity.setPersistent(false);" in fragments, (
-        "a fragment that persists would leak into wave 7")
-    assert "dropItem" not in fragments and "setDropChance" not in fragments
-    assert "display.remove()" in fragments, "fragments must clean themselves up"
+    text = RUNTIME.read_text(encoding="utf-8")
+    assert "entity.setPersistent(false);" in text
+    assert "dropItem" not in text and "FallingBlock" not in text
+    assert "if(age>=30) { host.remove(d.display());" in text
 
 
-def test_the_core_is_restored_when_the_ram_finishes():
-    complete = body("private void restoreRiftCore(", "}")
-    assert "refreshClientBindingsForPlayer(" in complete
-    text = SOURCE.read_text(encoding="utf-8")
-    assert "riftRamComplete = true;" in text
-    assert "restoreRiftCore();" in text
+def test_the_core_is_untouched_when_the_ram_finishes():
+    complete = runtime_body("public void died(", "private void clearPillar()")
+    assert "completed=true;" in complete and "cleanupDisplays();" in complete
+    assert "getBlock().set" not in RUNTIME.read_text(encoding="utf-8")

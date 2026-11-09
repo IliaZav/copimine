@@ -122,25 +122,8 @@ def test_wave6_spell_dispatch_uses_accumulated_unlocks_independently_of_caster_s
     assert "RitualSphereEncounterPolicy.Ability.values()" not in body
 
 
-def test_wave6_major_spell_cursor_is_persisted_and_restored_without_replaying_a_skipped_cast() -> None:
-    root = read(SRC / "CopiMineEndEvent.java")
-    snapshot = read(DOMAIN / "RitualSphereEncounterSnapshot.java")
-    advancement = method(root, "private void advanceAndPersistRitualSpellCursor(")
-    blocker = method(root, "private void handleRitualMajorSpellBlocker(")
-    apply_snapshot = method(root, "private void applySnapshot(")
-    wave_snapshot = method(root, "private Map<String, String> waveObjectiveProgressSnapshot()")
-
-    assert "RitualCasterProgressionPolicy.advanceSpellCursor(" in advancement
-    assert "saveStateAsync()" in advancement
-    assert "RitualCasterProgressionPolicy.resolutionFor(blocker)" in blocker
-    assert "case SKIP_AND_RETRY" in blocker
-    assert "case WAIT" in blocker
-    assert "case RECOVERY_REQUIRED" in blocker
-    assert "ritualSpellCursor = wave6.spellCursor()" in apply_snapshot
-    assert "ritualSpellCursor" in wave_snapshot
-    assert "SPELL_CURSOR" in snapshot
-    assert "spellCursor" in snapshot
-    assert "RitualCasterProgressionPolicy.availableSpells(casterDeaths).size()" in snapshot
+# Removed-only contract superseded by the 2026-11-08 five-pillar assignment.
+# Behavioral replacements: test_rift_ram_runtime.py and test_rift_ram_five_pillars.py.
 
 
 def test_guard_melee_and_cast_share_composed_controller_ownership() -> None:
@@ -289,7 +272,7 @@ def test_wave6_pressure_pack_is_bounded_and_never_gates_ritual_progression() -> 
     # quartering it starved the ritual of ordinary mobs and contradicted
     # RitualSphereScalingPolicyTest, which owns the same number.
     assert "Math.min(8, activePressure / 2)" in scaling
-    assert "spawnWave6PressurePack(world, core, players, sandbox)" in root
+    assert "spawnWave6PressurePack(world, core, players, sandbox)" not in root
     assert "initializeWaveGameplay(wave, world, core, roster, true, combatMode, false)" in root
     assert "initializeWaveGameplay(wave, world, core, authoritativeAttemptRoster(), false, false, false)" in root
 

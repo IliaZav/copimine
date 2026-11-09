@@ -52,6 +52,7 @@ import me.copimine.endevent.domain.WaveProjectileTargetPolicy;
 import me.copimine.endevent.domain.RitualGuardAbilityPolicy;
 import me.copimine.endevent.domain.RitualConversionTargetPolicy;
 public class WaveFogLifecycleProbe {
+ record Ram(UUID id) {} Ram riftRam;
  enum EventPhase { WAVE_1,WAVE_2,WAVE_3,WAVE_4,WAVE_5,WAVE_6,WAVE_7,INTERMISSION_1,INTERMISSION_2,INTERMISSION_3,INTERMISSION_4,INTERMISSION_5,INTERMISSION_6,CORE_RESTORATION,RECOVERY_REQUIRED,BOSS_ACTIVE,READY_FOR_PLAYERS }
  enum BlackFogPhase { COMBAT,FOG }
  EventPhase phase=EventPhase.WAVE_5;BlackFogPhase blackFogPhase=BlackFogPhase.COMBAT;
@@ -112,8 +113,8 @@ public class WaveFogLifecycleProbe {
  void registerEncounterTask(BukkitTask t){}void applySpiderPotionLease(Player p,PotionEffectType type,int ticks,int amp,SpiderEffectLeasePolicy.Owner owner){}
  static class WaveTwoEntityRecoveryPolicy {static List<UUID> coordinatorRoster(List<UUID> a,Set<UUID>b){return a;}}
  String readString(Entity e,Object key){return key==keyKind?e.kind:key==keyEventId?e.session:key==keyEliteProjectileAbility?"DRAGON_BREATH":"";}int readInt(Entity e,Object key,int fallback){return e.wave;}
- void clearWaveCombatCue(UUID id){}void sendWaveMobPose(Entity e,String s,long d){}void finishWaveMobDash(Mob m,long g){waveDashGenerations.remove(m.id);}
- void renderWaveCombatCue(Mob m,Location l,String a,String b){}Location coreCombatAnchorLocation(){return new Location();}void playWaveFeedback(String s,Location l){}
+ int posePackets, cuePackets; void clearWaveCombatCue(UUID id){}void sendWaveMobPose(Entity e,String s,long d){posePackets++;}void finishWaveMobDash(Mob m,long g){waveDashGenerations.remove(m.id);}
+ void renderWaveCombatCue(Mob m,Location l,String a,String b){cuePackets++;}Location coreCombatAnchorLocation(){return new Location();}void playWaveFeedback(String s,Location l){}
  boolean isSkeletonMiniBoss(Skeleton s){return true;}boolean configureEventSkeletonArrow(Arrow a,Skeleton s,int w,Object k,String spell,double damage){a.kind=EVENT_KIND_PROJECTILE;a.gen=generation;a.session=eventId;if(!trackEventArrow(a))return false;sideArrows++;return true;}void tagEventArrowVolley(Arrow a,UUID id){a.volleyId=id;}
  boolean trackEventArrow(Arrow arrow){if(arrow==null||!arrow.isValid()||arrow.isDead())return false;UUID groupId=arrow.volleyId==null?arrow.id:arrow.volleyId;if(!waveProjectileAdmission.hasGroup(groupId)&&!waveProjectileAdmission.reserveGroup(groupId,2,1)){arrow.remove();return false;}if(!waveProjectileAdmission.trackProjectile(groupId,arrow.id))return false;activeEventArrowAges.put(arrow.id,0);return true;}
  Arrow acceptedSkeletonShot(Skeleton shooter,int arrowCount){Arrow arrow=new Arrow();arrow.shooter=shooter;arrow.gen=generation;arrow.session=eventId;arrow.kind=EVENT_KIND_PROJECTILE;arrow.official=shooter.official;arrow.velocity=new Vector(0,0,1);tagEventArrowVolley(arrow,arrow.id);waveProjectileAdmission.reserveGroup(arrow.volleyId,2,arrowCount);Bukkit.entities.put(arrow.id,arrow);return arrow;}
@@ -167,6 +168,15 @@ public class WaveFogLifecycleProbe {
  public static void main(String[] args){
   var h=new WaveFogLifecycleProbe();h.waveCombatCoordinator.begin(h.generation);
   switch(args[0]) {
+   case "fog-visual-budget" -> {
+    h.blackFogPhase=BlackFogPhase.FOG;
+    for(int n=0;n<56;n++){var mob=new Enderman();h.ownedEntities.put(mob.id,mob);}
+    for(int tick=0;tick<200;tick++){h.eventTickCounter=tick;for(Entity mob:h.ownedEntities.values())h.freezeFogCombatMob(mob);}
+    check(h.cuePackets==0,"frozen mobs must not flood signed world-VFX stream");
+    check(h.posePackets<=56,"one frozen pose lease per actor, not 112+ packets/second");
+    h.blackFogPhase=BlackFogPhase.COMBAT;h.freezeWaveMobs(false);
+    check(h.posePackets<=112,"resume must stay bounded to one pose per actor");
+   }
    case "carrier-priority" -> {
     h.activeWave=1;h.phase=EventPhase.WAVE_1;
     var mob=new Enderman();mob.wave=1;var old=new Player();var holder=new Player();
@@ -329,7 +339,7 @@ public class WaveFogLifecycleProbe {
     return out
 
 
-@pytest.mark.parametrize("scenario", ["carrier-priority", "fog", "fog-three-cycles", "intermission", "intermission-wave1", "intermission-wave3", "all-intermissions", "core", "empty-resume", "generation-stale", "arrow-fog", "arrow-intermission", "arrow-stale", "arrow-resume", "ritual-guard-arrow", "ritual-guard-stale", "ritual-guard-session", "ritual-guard-unregistered", "ritual-guard-intermission", "ritual-guard-shot", "ritual-guard-shot-stale", "ritual-guard-shot-session", "ritual-guard-shot-unregistered", "ritual-guard-shot-intermission", "ritual-prisoner-arrow", "elite-fog", "elite-stale", "elite-resume", "side-fog", "side-stale", "side-resume", "fog-cleanup", "cloud-fog", "cloud-stale", "cloud-resume", "cloud-cleaned-resume", "impact-fog", "impact-stale", "impact-resume", "impact-cleaned-resume", "local-arrow-ready", "local-side-ready", "local-arrow-fog", "local-side-fog", "local-arrow-stale", "local-side-stale", "local-arrow-session", "local-side-session"])
+@pytest.mark.parametrize("scenario", ["fog-visual-budget", "carrier-priority", "fog", "fog-three-cycles", "intermission", "intermission-wave1", "intermission-wave3", "all-intermissions", "core", "empty-resume", "generation-stale", "arrow-fog", "arrow-intermission", "arrow-stale", "arrow-resume", "ritual-guard-arrow", "ritual-guard-stale", "ritual-guard-session", "ritual-guard-unregistered", "ritual-guard-intermission", "ritual-guard-shot", "ritual-guard-shot-stale", "ritual-guard-shot-session", "ritual-guard-shot-unregistered", "ritual-guard-shot-intermission", "ritual-prisoner-arrow", "elite-fog", "elite-stale", "elite-resume", "side-fog", "side-stale", "side-resume", "fog-cleanup", "cloud-fog", "cloud-stale", "cloud-resume", "cloud-cleaned-resume", "impact-fog", "impact-stale", "impact-resume", "impact-cleaned-resume", "local-arrow-ready", "local-side-ready", "local-arrow-fog", "local-side-fog", "local-arrow-stale", "local-side-stale", "local-arrow-session", "local-side-session"])
 def test_heartbeat_and_projectile_admission(probe, scenario):
     run = subprocess.run(["java", "-cp", str(probe), "WaveFogLifecycleProbe", scenario], capture_output=True, text=True)
     assert run.returncode == 0, run.stdout + run.stderr

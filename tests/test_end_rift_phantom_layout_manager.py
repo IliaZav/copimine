@@ -74,7 +74,8 @@ PROBE = textwrap.dedent(
             return new EndEventBridgeBodyCodec.Body(
                     EndEventBridgeBodyCodec.Type.END_PLAYER_STATE,
                     generation, timestamp, event, "wave2-hunt-mark", controlId,
-                    "WAVE2_HUNT_MARK_V1", duration, progress, 0L, 0L, mode, "",
+                    "WAVE2_HUNT_MARK_V1", duration, progress, 0L, 0L, mode,
+                    "ACTIVE".equals(status) ? "intro-age=3000" : "",
                     reservedOne, reservedTwo, status);
         }
 
@@ -111,6 +112,20 @@ PROBE = textwrap.dedent(
         }
 
         public static void main(String[] args) {
+            // Exercise the real codec with the root's signed intro-age metadata
+            // on BOTH the base mark and all seventy coordinate packets.
+            WaveTwoPhantomLayoutManager wire = new WaveTwoPhantomLayoutManager();
+            check("age-bearing mark survives actual codec and client cache", wire.apply(
+                    EndEventBridgeBodyCodec.decode(EndEventBridgeBodyCodec.encode(
+                            mark(EVENT, 1L, 1, 1_000L, "overworld"))), NOW));
+            for (int index = 0; index < WaveTwoPhantomLayout.TARGET_PHANTOM_COUNT; index++) {
+                var item = position(EVENT, 1L, 1, 1_100L + index, "overworld",
+                        phantomId(index), coords(index));
+                check("age-bearing coordinate survives codec " + index,
+                        wire.apply(EndEventBridgeBodyCodec.decode(EndEventBridgeBodyCodec.encode(item)), NOW));
+            }
+            check("all seventy wire positions are available", wire.layout(
+                    "overworld", EVENT.toString(), 1L, 1).size() == 70);
             // --- A fresh manager exposes nothing -------------------------------------------
             WaveTwoPhantomLayoutManager fresh = new WaveTwoPhantomLayoutManager();
             check("a fresh manager has no layout",
@@ -327,6 +342,7 @@ def test_phantom_layout_manager_fences_and_caps(tmp_path: Path) -> None:
         str(package_dir / "PhantomManagerProbe.java"),
         str(MANAGER),
         str(LAYOUT),
+        str(CLIENT_SRC / "me/copimine/client/WaveTwoCinematicTimeline.java"),
         str(codec_src / "me" / "copimine" / "protocol" / "EndEventBridgeBodyCodec.java"),
         str(codec_src / "me" / "copimine" / "protocol" / "BridgeSigningPolicy.java"),
         str(codec_src / "me" / "copimine" / "protocol" / "BridgeEnvelope.java"),

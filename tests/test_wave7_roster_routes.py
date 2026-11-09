@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "copimine-end-event/src/me/copimine/endevent"
 
 
-def test_one_sequential_route_for_every_roster_size(tmp_path):
+def test_roster_selects_sequential_or_four_isolated_trials(tmp_path):
     probe = tmp_path / "RosterRoutesProbe.java"
     probe.write_text('''
 import java.util.*;
@@ -23,13 +23,13 @@ public class RosterRoutesProbe {
     // specification forbids.
     for(int size:new int[]{1,2,3,4,5,10,11,20}){
       var rooms=new RealitySplitChamberController();rooms.beginWave7(7,roster(size));
-      check(rooms.assignment().chamberCount()==1,"every party size shares one arena");
+      int roomCount=size<=3?1:4;check(rooms.assignment().chamberCount()==roomCount,"roster selects topology");
       var trials=new RealitySplitTrialController();
       trials.beginNamed(event,7,rooms.assignment(),RealitySplitTrialController.sequentialRoute());
-      check(trials.namedSnapshot().trials().size()==1,"one room means exactly one live trial");
-      check(trials.presentableNamedTrials().size()==1,"only the current stage is presentable");
+      check(trials.namedSnapshot().trials().size()==roomCount,"one trial per room");
+      check(trials.presentableNamedTrials().size()==roomCount,"all incomplete rooms presentable");
       var owners=trials.namedTrial(0).owners();
-      check(owners.size()==size,"every admitted player owns the current stage");
+      check(owners.size()==(size+roomCount-1)/roomCount,"balanced room owner count");
       UUID actor=new UUID(10,1);
       check(rooms.assignEntity(7,actor,0),"assign actor");
       for(UUID player:roster(size))
@@ -43,11 +43,11 @@ public class RosterRoutesProbe {
     }
     // The four trials still run in order, and a parallel room may never advance.
     {
-      var rooms=new RealitySplitChamberController();rooms.beginWave7(7,roster(6));
+      var rooms=new RealitySplitChamberController();rooms.beginWave7(7,roster(3));
       var trials=new RealitySplitTrialController();
       trials.beginNamed(event,7,rooms.assignment(),RealitySplitTrialController.sequentialRoute());
-      check(trials.namedSnapshot().trials().size()==1,"a six-player party is still one room");
-      check(rooms.allowsMobTarget(7,new UUID(10,0),roster(6).get(5))==false,
+      check(trials.namedSnapshot().trials().size()==1,"a small party has one room");
+      check(rooms.allowsMobTarget(7,new UUID(10,0),roster(3).get(2))==false,
             "an unassigned actor is not yet a legal target");
       check(trials.completeNamedActor(event,7,0,RealitySplitTrialController.NamedTrial.WARDEN),"real Warden death");
       check(!trials.allComplete(7),"one Warden must not complete all four sequential trials");

@@ -24,6 +24,9 @@ final class WaveTwoPhantomActivationManager {
     private static final class EventFence {
         private final long generation;
         private final Set<String> usedPhantomIds = new LinkedHashSet<>();
+        // Keep exact reservations past warning expiry so a late confirmed spawn can retire
+        // only its own phantom. Cancellation removes the reservation; expiry does not.
+        private final Map<String, WaveTwoPhantomLayout.Position> reservations = new LinkedHashMap<>();
         private String dimension = "";
         private int cycle = -1;
         private long timestamp;
@@ -60,17 +63,26 @@ final class WaveTwoPhantomActivationManager {
 
         String phantomId = body.reservedOne();
         boolean newCycle = cycle > fence.cycle;
+        WaveTwoPhantomLayout.Position position = parsePosition(body.controlId());
+        if (!active && (newCycle || !position.equals(fence.reservations.get(phantomId)))) return false;
+        WaveTwoPhantomLayout.Position reserved = newCycle ? null : fence.reservations.get(phantomId);
+        if (active && !newCycle && (fence.usedPhantomIds.contains(phantomId)
+                || reserved != null && !reserved.equals(position))) return false;
+        if (fence.activation != null && fence.activation.expiresAtMillis() <= nowMillis) {
+            fence.activation = null;
+        }
         Activation priorActivation = fence.activation;
         boolean sameActiveWarning = active && !newCycle && priorActivation != null
                 && priorActivation.cycle() == cycle && priorActivation.phantomId().equals(phantomId);
-        if (active && !newCycle && !sameActiveWarning && (fence.usedPhantomIds.contains(phantomId)
-                || fence.usedPhantomIds.size() >= MAX_USED_PHANTOM_IDS
-                || priorActivation != null)) {
+        if (active && !newCycle && !sameActiveWarning && (priorActivation != null
+                || reserved == null && fence.usedPhantomIds.size() + fence.reservations.size()
+                        >= MAX_USED_PHANTOM_IDS)) {
             return false;
         }
 
         if (newCycle) {
             fence.usedPhantomIds.clear();
+            fence.reservations.clear();
             fence.activation = null;
             fence.cycle = cycle;
             priorActivation = null;
@@ -80,8 +92,10 @@ final class WaveTwoPhantomActivationManager {
                 && fence.activation.phantomId().equals(phantomId)) {
             fence.activation = null;
         }
-        if (!fence.usedPhantomIds.contains(phantomId)) {
-            if (fence.usedPhantomIds.size() >= MAX_USED_PHANTOM_IDS) return false;
+        if (!active) {
+            fence.reservations.remove(phantomId);
+        }
+        if ("CLEAR".equals(body.status())) {
             fence.usedPhantomIds.add(phantomId);
         }
 
@@ -101,7 +115,7 @@ final class WaveTwoPhantomActivationManager {
         fence.timestamp = body.bodyTimestampMillis();
 
         if (active) {
-            WaveTwoPhantomLayout.Position position = parsePosition(body.controlId());
+            fence.reservations.putIfAbsent(phantomId, position);
             long startedAt = sameActiveWarning ? priorActivation.warningTimestampMillis()
                     : body.bodyTimestampMillis();
             fence.activation = new Activation(incomingEventId, body.generation(), mode[0], cycle,
@@ -154,7 +168,8 @@ final class WaveTwoPhantomActivationManager {
                 || body.durationMillis() > MAX_LIFETIME_MILLIS || body.health() != 0L || body.maxHealth() != 0L
                 || Float.floatToIntBits(body.progressOrIntensity()) != Float.floatToIntBits(0.0F)
                 || !body.clearPolicy().isEmpty() || !body.reservedTwo().isEmpty()
-                || !"ACTIVE".equals(body.status()) && !"CLEAR".equals(body.status())) {
+                || !"ACTIVE".equals(body.status()) && !"CLEAR".equals(body.status())
+                    && !"CANCEL".equals(body.status())) {
             return false;
         }
         String[] mode = body.subjectOrMode().split("\\|", -1);

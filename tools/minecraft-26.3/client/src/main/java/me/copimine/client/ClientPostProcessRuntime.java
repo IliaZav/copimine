@@ -31,5 +31,6 @@ public final class ClientPostProcessRuntime {
             frameEffects.add(desired);
         }
         lastSubmittedEffect = desired;
+        BlackFogVolumeRuntime.extract(renderer);
     }
 }

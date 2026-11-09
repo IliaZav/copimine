@@ -11,10 +11,13 @@ import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 
 import java.util.List;
 import java.util.Set;
-import java.util.UUID;
+import java.util.HashMap;
+import java.util.Map;
 
 /** Renders local-only grey Enderman phantoms while the local player is marked in Wave 2. */
 public final class WaveTwoPhantomRenderer {
@@ -27,6 +30,12 @@ public final class WaveTwoPhantomRenderer {
     private static final RiftEventEndermanModel MODEL = createModel();
     private static final EndermanRenderState MODEL_STATE = stationaryModelState();
     private static ClientLevel currentWorld;
+    private static final Map<String, WaveTwoPhantomLayout.LookPose> LOOKS = new HashMap<>();
+    private static String presentationKey = "";
+    private static long lastFrameMillis;
+    private static long lastAge;
+    private static int lastVisibleCount;
+    private static int firstObserverIndex;
 
     private WaveTwoPhantomRenderer() { }
 
@@ -99,25 +108,69 @@ public final class WaveTwoPhantomRenderer {
         WaveTwoPhantomLayout.Position target = new WaveTwoPhantomLayout.Position(
                 playerPosition.x, playerPosition.y + client.player.getBbHeight() * 0.82D,
                 playerPosition.z);
+        long age = Math.max(0L, nowMillis - visual.startedAtMillis());
+        String key = manager.eventId() + '|' + manager.generation() + '|' + layoutCycle;
+        int visibleCount = WaveTwoCinematicTimeline.visibleCount(age, phantoms.size());
+        boolean fresh = !key.equals(presentationKey);
+        if (fresh) {
+            LOOKS.clear();
+            presentationKey = key;
+            firstObserverIndex = openingObserver(phantoms, target, client.player.getYRot());
+            lastFrameMillis = nowMillis;
+            lastAge = age;
+            lastVisibleCount = visibleCount;
+        }
+        float turnStep = Math.min(100L, Math.max(0L, nowMillis - lastFrameMillis)) * 0.065F;
+        lastFrameMillis = nowMillis;
+        // Private cinematic sounds follow only this living marked viewer. The server owns
+        // materialization warnings; these cues never repeat that combat scream.
+        if (!fresh && WaveTwoCinematicTimeline.screamCue(lastAge, age) && !phantoms.isEmpty()) {
+            var position = phantoms.get(firstObserverIndex).position();
+            world.playLocalSound(position.x(), position.y() + 2.0D, position.z(),
+                    SoundEvents.ENDERMAN_SCREAM, SoundSource.HOSTILE, 0.65F, 0.85F, false);
+        }
+        if (!fresh && age < WaveTwoCinematicTimeline.INTRO_MILLIS) {
+            for (int index = WaveTwoCinematicTimeline.firstAudibleAppearance(lastVisibleCount, visibleCount);
+                    index < visibleCount; index++) {
+                var phantom = phantoms.get(index);
+                if (materializedPhantomIds.contains(phantom.id())) continue;
+                var position = phantom.position();
+                world.playLocalSound(position.x(), position.y() + 1.5D, position.z(),
+                        SoundEvents.ENDERMAN_TELEPORT, SoundSource.HOSTILE, 0.16F,
+                        0.9F + (index % 5) * 0.04F, false);
+            }
+        }
+        lastVisibleCount = visibleCount;
+        lastAge = age;
+        final int openingIndex = firstObserverIndex;
+        final boolean opening = WaveTwoCinematicTimeline.firstObserverVisible(age);
         EndRiftRenderSubmission.submit(context, cameraPosition,
                 RenderTypes.entityTranslucent(TEXTURE), (matrices, buffer) -> {
                     for (int index = 0; index < phantoms.size(); index++) {
                         WaveTwoPhantomLayoutManager.Phantom phantom = phantoms.get(index);
+                        if (opening ? index != openingIndex : index >= visibleCount) continue;
                         if (isRetiredPhantom(index, selectedActivationIndex, phantom.id(),
                                 materializedPhantomIds)) continue;
                         WaveTwoPhantomLayout.Position position = phantom.position();
                         Vec3 phantomPosition = new Vec3(position.x(), position.y(), position.z());
                         if (cameraPosition.distanceToSqr(phantomPosition) > MAX_RENDER_DISTANCE_SQUARED) continue;
-                        WaveTwoPhantomLayout.LookPose lookPose = WaveTwoPhantomLayout.lookAt(position, target);
+                        WaveTwoPhantomLayout.LookPose desired = WaveTwoPhantomLayout.lookAt(position, target);
+                        WaveTwoPhantomLayout.LookPose previous = LOOKS.get(phantom.id());
+                        if (previous == null) previous = new WaveTwoPhantomLayout.LookPose(
+                                desired.bodyYawDegrees() + (opening ? 100.0F : 65.0F), 0.0F);
+                        WaveTwoPhantomLayout.LookPose lookPose = WaveTwoPhantomLayout.turnToward(
+                                position, target, previous.bodyYawDegrees(), previous.headYawDegrees(), turnStep);
+                        LOOKS.put(phantom.id(), lookPose);
                         applyHeadLook(MODEL_STATE, lookPose);
+                        MODEL_STATE.xRot = opening && WaveTwoCinematicTimeline.screaming(age) ? -18.0F : 0.0F;
                         matrices.pushPose();
                         // Match LivingEntityRenderer's feet-anchored model transform:
-                        // keep the body at its fixed forward yaw, invert model Y, and offset by
-                        // 1.501 blocks before drawing. setupAnim applies lookPose only to the head.
+                        // Rotate the body in world space; model yRot is bounded relative head yaw.
                         matrices.translate(position.x(), position.y() + 1.501D, position.z());
                         matrices.rotateDegrees(Axis.YP, 180.0F - lookPose.bodyYawDegrees());
                         matrices.scale(-1.0F, -1.0F, 1.0F);
-                        MODEL_STATE.isCreepy = index == selectedActivationIndex;
+                        MODEL_STATE.isCreepy = index == selectedActivationIndex
+                                || opening && WaveTwoCinematicTimeline.screaming(age);
                         MODEL.setupAnim(MODEL_STATE);
                         MODEL.renderToBuffer(matrices, buffer, FULL_BRIGHT,
                                 OverlayTexture.NO_OVERLAY, PHANTOM_TINT);
@@ -125,6 +178,24 @@ public final class WaveTwoPhantomRenderer {
                     }
                     MODEL_STATE.isCreepy = false;
                 });
+    }
+
+    /** Select only from server-validated safe positions, favouring the near forward field. */
+    private static int openingObserver(List<WaveTwoPhantomLayoutManager.Phantom> phantoms,
+                                       WaveTwoPhantomLayout.Position viewer, float viewerYaw) {
+        double forwardX = -Math.sin(Math.toRadians(viewerYaw));
+        double forwardZ = Math.cos(Math.toRadians(viewerYaw));
+        int best = 0;
+        double bestScore = Double.POSITIVE_INFINITY;
+        for (int index = 0; index < phantoms.size(); index++) {
+            var position = phantoms.get(index).position();
+            double dx = position.x() - viewer.x(), dz = position.z() - viewer.z();
+            double distance = Math.hypot(dx, dz);
+            double dot = distance < 0.001 ? -1 : (dx * forwardX + dz * forwardZ) / distance;
+            double score = distance + (1.0 - dot) * 24.0;
+            if (score < bestScore) { best = index; bestScore = score; }
+        }
+        return best;
     }
 
     /** A materialized phantom is replaced by its real entity, except during its own warning. */
@@ -160,6 +231,9 @@ public final class WaveTwoPhantomRenderer {
     }
 
     private static void clearActivationPresentation() {
+        LOOKS.clear();
+        presentationKey = "";
+        lastFrameMillis = 0L;
         ClientBridgeProtocol.waveTwoPhantomActivations().clearPresentation();
         ClientBridgeProtocol.waveTwoPhantomLayouts().clearPresentation();
     }

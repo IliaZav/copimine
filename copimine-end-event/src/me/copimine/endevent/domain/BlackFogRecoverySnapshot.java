@@ -7,7 +7,7 @@ import java.util.Objects;
 /** Durable Wave 5 stage data retained when a server restart interrupts its live combat. */
 public final class BlackFogRecoverySnapshot {
     public static final String PREFIX = "wave5-fog.";
-    private static final String VERSION = "2";
+    private static final String VERSION = "3";
 
     private BlackFogRecoverySnapshot() { }
 
@@ -20,10 +20,19 @@ public final class BlackFogRecoverySnapshot {
 
     public record Data(String eventId, long generation, int cycle, Stage stage,
                        long phaseDeadlineMillis, int zoneCount, int zoneSide,
-                       int setupAttempts, long setupRetryAtMillis, int packsSpawned) {
+                       int setupAttempts, long setupRetryAtMillis, int packsSpawned, int targetCycles) {
+        /** Compatibility constructor for tools; new runtime always supplies its frozen target. */
+        public Data(String eventId, long generation, int cycle, Stage stage,
+                    long phaseDeadlineMillis, int zoneCount, int zoneSide,
+                    int setupAttempts, long setupRetryAtMillis, int packsSpawned) {
+            this(eventId, generation, cycle, stage, phaseDeadlineMillis, zoneCount, zoneSide,
+                    setupAttempts, setupRetryAtMillis, packsSpawned, BlackFogTimingPolicy.CYCLE_COUNT);
+        }
         public Data {
             if (eventId == null || eventId.isBlank() || generation <= 0L
-                    || cycle < 0 || cycle > BlackFogTimingPolicy.CYCLE_COUNT
+                    || targetCycles < BlackFogTimingPolicy.MIN_CYCLES
+                    || targetCycles > BlackFogTimingPolicy.CYCLE_COUNT
+                    || cycle < 0 || cycle > targetCycles
                     || stage == null || phaseDeadlineMillis < 0L
                     || zoneCount < 0 || zoneCount > 20
                     || zoneSide < 0 || zoneSide > 3
@@ -35,14 +44,14 @@ public final class BlackFogRecoverySnapshot {
                 throw new IllegalArgumentException("Wave 5 recovery checkpoint is outside its bounds");
             }
             if ((stage == Stage.SAFE || stage == Stage.FOG)
-                    && (cycle >= BlackFogTimingPolicy.CYCLE_COUNT || zoneCount < 1 || zoneSide < 1)) {
+                    && (cycle >= targetCycles || zoneCount < 1 || zoneSide < 1)) {
                 throw new IllegalArgumentException("active Wave 5 safe/fog stage requires its live zone geometry");
             }
             if (stage == Stage.COMPLETE
-                    && (cycle != BlackFogTimingPolicy.CYCLE_COUNT || phaseDeadlineMillis != 0L)) {
-                throw new IllegalArgumentException("completed Wave 5 checkpoint must have five cycles and no deadline");
+                    && (cycle != targetCycles || phaseDeadlineMillis != 0L)) {
+                throw new IllegalArgumentException("completed Wave 5 checkpoint must reach its frozen target with no deadline");
             }
-            if (stage != Stage.COMPLETE && cycle >= BlackFogTimingPolicy.CYCLE_COUNT) {
+            if (stage != Stage.COMPLETE && cycle >= targetCycles) {
                 throw new IllegalArgumentException("active Wave 5 checkpoint cannot exceed the cycle count");
             }
         }
@@ -50,6 +59,7 @@ public final class BlackFogRecoverySnapshot {
         public Map<String, String> encode() {
             Map<String, String> encoded = new LinkedHashMap<>();
             encoded.put(PREFIX + "version", VERSION);
+            encoded.put(PREFIX + "target-cycles", Integer.toString(targetCycles));
             encoded.put(PREFIX + "event", eventId);
             encoded.put(PREFIX + "generation", Long.toString(generation));
             encoded.put(PREFIX + "cycle", Integer.toString(cycle));
@@ -71,6 +81,26 @@ public final class BlackFogRecoverySnapshot {
     /** Decode only a checkpoint bound to the already-loaded event generation. */
     public static Data decode(Map<String, String> progress, String expectedEventId,
                               long expectedGeneration) {
+        return decode(progress, expectedEventId, expectedGeneration, 0);
+    }
+
+    /**
+     * Decode a checkpoint bound to one event generation AND one roster-frozen
+     * cycle target.
+     *
+     * <p>Point 12 of the November 9 brief: an interrupted decision must not be
+     * replayed as a different one on resume. A Wave 5 checkpoint carries the
+     * cycle target it was frozen at, but a party that reconnects with a
+     * different roster legitimately asks for a different target. Accepting such
+     * a checkpoint would silently reinterpret a five-cycle fight that was
+     * already half played as a ten-cycle fight (or the reverse), exactly the
+     * "old checkpoint silently becomes a new mode" failure the brief names.</p>
+     *
+     * <p>{@code expectedTargetCycles <= 0} means "the caller has no frozen
+     * opinion yet" and keeps the stored target; any positive value must match.</p>
+     */
+    public static Data decode(Map<String, String> progress, String expectedEventId,
+                              long expectedGeneration, int expectedTargetCycles) {
         Objects.requireNonNull(progress, "progress");
         if (!hasCheckpoint(progress)) {
             throw new IllegalArgumentException("Wave 5 recovery checkpoint is missing");
@@ -81,7 +111,9 @@ public final class BlackFogRecoverySnapshot {
             throw new IllegalArgumentException("Wave 5 recovery checkpoint belongs to another event generation");
         }
         String version = required(progress, "version");
-        if (!VERSION.equals(version) && !"1".equals(version)) {
+        // Old three/five-cycle layouts must not silently become ten-cycle fights.
+        // The caller retains raw checkpoint bytes and enters explicit recovery.
+        if (!VERSION.equals(version)) {
             throw new IllegalArgumentException("Unsupported Wave 5 recovery checkpoint version");
         }
         Stage stage;
@@ -90,14 +122,19 @@ public final class BlackFogRecoverySnapshot {
         } catch (IllegalArgumentException invalidStage) {
             throw new IllegalArgumentException("Invalid Wave 5 recovery checkpoint stage", invalidStage);
         }
-        // Version 1 carried no pack counter. Those checkpoints predate the
-        // field, so the honest reading of one is "no pack was recorded as
-        // released"; refusing it would strand a live wave over a missing key.
-        int packsSpawned = "1".equals(version) ? 0 : parseInt(progress, "packs-spawned");
+        int packsSpawned = parseInt(progress, "packs-spawned");
+        int targetCycles = parseInt(progress, "target-cycles");
+        if (expectedTargetCycles > 0 && expectedTargetCycles != targetCycles) {
+            // Fence BEFORE the Data constructor runs, so the caller cannot catch a
+            // half-built snapshot: the record's own bounds already accept a
+            // five-cycle layout, and only this comparison knows the live target.
+            throw new IllegalArgumentException(
+                    "Wave 5 recovery checkpoint was frozen for a different cycle target");
+        }
         return new Data(event, generation, parseInt(progress, "cycle"), stage,
                 parseLong(progress, "deadline-millis"), parseInt(progress, "zone-count"),
                 parseInt(progress, "zone-side"), parseInt(progress, "setup-attempts"),
-                parseLong(progress, "retry-at-millis"), packsSpawned);
+                parseLong(progress, "retry-at-millis"), packsSpawned, targetCycles);
     }
 
     public static boolean hasCheckpoint(Map<String, String> progress) {

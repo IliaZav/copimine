@@ -22,8 +22,11 @@ public final class EndEventPlayerVisualRenderer {
         // mark is live and withdrawn as soon as the mark expires, clears or the player leaves the
         // wave 2 dimension. The player asked for the in-game Enderman effect, so this is the
         // vanilla post shader rather than a shaderpack.
-        ClientBridgeProtocol.endermanMarkShader()
-                .update(state != null && state.kind() == EndEventPlayerVisualManager.Kind.HUNT);
+        if (state != null && state.kind() == EndEventPlayerVisualManager.Kind.HUNT) {
+            ClientBridgeProtocol.endermanMarkShader().updateIntro(nowMillis - state.startedAtMillis());
+        } else {
+            ClientBridgeProtocol.endermanMarkShader().update(false);
+        }
         for (var edge : EndEventPlayerVisualLayout.edges(context.guiWidth(),
                 context.guiHeight(), state, nowMillis)) {
             context.fillGradient(edge.left(), edge.top(), edge.right(), edge.bottom(), edge.colorFrom(), edge.colorTo());

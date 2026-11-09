@@ -37,7 +37,7 @@ class WaveTwoPhantomActivationManagerTest {
         WaveTwoPhantomActivationManager manager = new WaveTwoPhantomActivationManager();
         assertTrue(manager.apply(packet(EVENT, 4, 10_000, 8, "phantom-14", "12.5,64,-3.25", "ACTIVE", 1_500), 500));
 
-        assertTrue(manager.apply(packet(EVENT, 4, 10_100, 8, "phantom-other", "14.5,64,-3.25", "CLEAR", 0), 600));
+        assertFalse(manager.apply(packet(EVENT, 4, 10_100, 8, "phantom-other", "14.5,64,-3.25", "CLEAR", 0), 600));
         assertNotNull(manager.active("the_end", 700));
         assertTrue(manager.apply(packet(EVENT, 4, 10_200, 8, "phantom-14", "12.5,64,-3.25", "CLEAR", 0), 800));
         assertNull(manager.active("the_end", 801));
@@ -63,7 +63,7 @@ class WaveTwoPhantomActivationManagerTest {
     }
 
     @Test
-    void newCycleReplacesThePreviousWarningAndLocalClearDoesNotReopenItsPhantom() {
+    void newCycleReplacesThePreviousWarningAndLocalClearDoesNotPretendItMaterialized() {
         WaveTwoPhantomActivationManager manager = new WaveTwoPhantomActivationManager();
         assertTrue(manager.apply(packet(EVENT, 4, 10_000, 8, "phantom-14", "12.5,64,-3.25", "ACTIVE", 1_500), 500));
 
@@ -76,7 +76,8 @@ class WaveTwoPhantomActivationManagerTest {
 
         manager.clearPresentation();
         assertNull(manager.active("the_end", 901));
-        assertFalse(manager.apply(packet(EVENT, 4, 10_400, 9, "phantom-15", "13.5,64,-3.25", "ACTIVE", 1_500), 1_000));
+        assertTrue(manager.apply(packet(EVENT, 4, 10_400, 9, "phantom-15", "13.5,64,-3.25", "ACTIVE", 1_500), 1_000));
+        assertTrue(manager.apply(packet(EVENT, 4, 10_450, 9, "phantom-15", "13.5,64,-3.25", "CANCEL", 0), 1_050));
         assertTrue(manager.apply(packet(EVENT, 4, 10_500, 9, "phantom-16", "15.5,64,-3.25", "ACTIVE", 1_500), 1_100));
         assertEquals("phantom-16", manager.active("the_end", 1_101).phantomId());
     }
@@ -86,7 +87,7 @@ class WaveTwoPhantomActivationManagerTest {
         WaveTwoPhantomActivationManager manager = new WaveTwoPhantomActivationManager();
         assertTrue(manager.apply(packet(EVENT, 4, 10_000, 8, "phantom-14",
                 "12.5,64,-3.25", "ACTIVE", 1_500), 500));
-        assertEquals(Set.of("phantom-14"),
+        assertEquals(Set.of(),
                 manager.usedPhantomIds("the_end", EVENT.toString(), 4, 8));
 
         assertTrue(manager.apply(packet(EVENT, 4, 10_100, 8, "phantom-14",
@@ -99,14 +100,14 @@ class WaveTwoPhantomActivationManagerTest {
 
         assertTrue(manager.apply(packet(EVENT, 4, 10_200, 8, "phantom-15",
                 "13.5,64,-3.25", "ACTIVE", 1_500), 800));
-        assertEquals(Set.of("phantom-14", "phantom-15"),
+        assertEquals(Set.of("phantom-14"),
                 manager.usedPhantomIds("the_end", EVENT.toString(), 4, 8));
         assertFalse(WaveTwoPhantomRenderer.isRetiredPhantom(0, 0, "phantom-15",
                 manager.usedPhantomIds("the_end", EVENT.toString(), 4, 8)),
                 "the phantom currently warning must stay visible");
 
         manager.clearPresentation();
-        assertEquals(Set.of("phantom-14", "phantom-15"),
+        assertEquals(Set.of("phantom-14"),
                 manager.usedPhantomIds("the_end", EVENT.toString(), 4, 8));
     }
 
@@ -124,7 +125,7 @@ class WaveTwoPhantomActivationManagerTest {
 
         assertTrue(manager.apply(packet(EVENT, 4, 10_100, 9, "phantom-15",
                 "13.5,64,-3.25", "ACTIVE", 1_500), 600));
-        assertEquals(Set.of("phantom-15"),
+        assertEquals(Set.of(),
                 manager.usedPhantomIds("the_end", EVENT.toString(), 4, 9),
                 "each mark cycle starts with a fresh retirement set");
     }

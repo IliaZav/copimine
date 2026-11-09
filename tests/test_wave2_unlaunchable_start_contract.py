@@ -67,7 +67,8 @@ def test_wave2_restart_rejects_unlaunchable_scaled_roster_before_replaying_a_gro
     gate = "if (wave == 2 && !WaveTwoStagePolicy.canStart(scaled))"
     rejection = _block(restore, gate)
 
-    schedule = restore.index("waveSpawnSchedule = wave == 2 ? WaveTwoStagePolicy.split(scaled)")
+    # Wave 6 contributes no schedule, so the assignment is a three-way ternary.
+    schedule = restore.index("waveSpawnSchedule = wave == 6 ? List.of()")
     first_possible_spawn = restore.index("if (world != null && core != null) spawnNextWaveGroup(world, core)")
     assert restore.index(gate) < schedule < first_possible_spawn
     assert 'recoveryReason = "WAVE_TWO_RESTORE_UNLAUNCHABLE"' in rejection

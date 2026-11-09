@@ -65,8 +65,8 @@ def test_enderman_shader_needs_no_iris_or_shaderpack() -> None:
     assert re.search(r'EFFECT_ID\s*=\s*"ENDERMAN"', controller), (
         'the controller must request the ENDERMAN effect, not some other visual'
     )
-    assert 'postProcess.apply(EFFECT_ID' in controller, (
-        'the controller must apply its own effect id, not a hard-coded foreign id'
+    assert 'postProcess.apply(effectId' in controller, (
+        'the controller must apply the selected vanilla effect or introductory fade stage'
     )
     runtime = read(POST_PROCESS_RUNTIME)
     assert 'requestedPostEffects' in runtime, (

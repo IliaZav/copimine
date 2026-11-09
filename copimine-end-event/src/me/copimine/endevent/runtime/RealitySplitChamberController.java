@@ -23,23 +23,13 @@ public final class RealitySplitChamberController {
     private final Set<Passage> openingBoundaries = new LinkedHashSet<>();
     private final Set<Integer> completedChambers = new LinkedHashSet<>();
 
-    /**
-     * Wave 7 always uses ONE open arena, whatever the party size.
-     *
-     * <p>The trials are a sequential route: each roster member fights the
-     * Warden, then the Player Echo, then the Mobile Marksman, then the Rift
-     * Archmage, in that order. Splitting four or more players into four walled
-     * sectors produced the parallel route the specification forbids, and it did
-     * so exactly when the party was large enough for the split to matter. Party
-     * size now only changes how many entities the single room must hold.</p>
-     */
+    /** Small parties share one sequential arena; four or more use four isolated trials. */
     public void beginWave7(long generation, List<UUID> players) {
         int count = players == null ? 0 : (int) players.stream().filter(java.util.Objects::nonNull)
                 .distinct().count();
         if (count < 1 || count > 20) throw new IllegalArgumentException("Wave 7 requires 1-20 unique players");
-        // Never partition here. Wave 7's route is sequential for every party size;
-        // see the note above for why the old `count >= 4` split was wrong.
-        beginOpenArena(generation, players);
+        if (count <= 3) beginOpenArena(generation, players);
+        else begin(generation, players);
     }
 
     public void begin(long generation, List<UUID> players) {

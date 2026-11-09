@@ -34,7 +34,7 @@ function Invoke-ChildScript {
     $base = Join-Path $logDirectory ("child-{0}" -f $script:childScriptCounter)
     $stdoutPath = "$base.out"
     $stderrPath = "$base.err"
-    $argumentList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath) + $ScriptArguments
+    $argumentList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $ScriptPath)) + $ScriptArguments
     $child = Start-Process -FilePath 'powershell.exe' -ArgumentList $argumentList -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
     if (Test-Path -LiteralPath $stdoutPath) { Get-Content -LiteralPath $stdoutPath | Write-Host }
     if (Test-Path -LiteralPath $stderrPath) { Get-Content -LiteralPath $stderrPath | Write-Host }
@@ -549,7 +549,7 @@ foreach ($relativeDirectory in @(
     # judge the build solely by its exit code.
     $buildOut = Join-Path $tempRoot ('build-{0}.out' -f $relativeDirectory.Replace('/', '-'))
     $buildErr = "$buildOut.err"
-    $buildArguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $buildScript)
+    $buildArguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $buildScript))
     $buildProcess = Start-Process -FilePath 'powershell.exe' -ArgumentList $buildArguments -NoNewWindow -Wait -PassThru -RedirectStandardOutput $buildOut -RedirectStandardError $buildErr
     if ($buildProcess.ExitCode -ne 0) {
         if (Test-Path -LiteralPath $buildErr) { Get-Content -LiteralPath $buildErr | Write-Host }

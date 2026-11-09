@@ -78,20 +78,8 @@ def test_wave6_no_longer_changes_prisoner_health_for_drain_or_health_floor() -> 
     assert "RitualPrisonerHealthPolicy.DRAIN_HEALTH" not in source
 
 
-def test_caster_progression_requires_the_fifth_death_and_cleanup_before_completion() -> None:
-    source = EVENT.read_text(encoding="utf-8")
-    death = method_body(source, "private void handleRitualCasterDeath",
-                        "private RitualCasterProgressionPolicy.MajorSpell majorSpell")
-    completion = method_body(source, "private boolean currentObjectiveProgressComplete",
-                             "private void tickCurrentCarrierObjective")
-    # SUPERSEDED (audit W6 errors 1-5): progression is committed by the sequence
-    # owner, which validates identity, current stage and roster completeness.
-    assert "wave6Sequence.defeatCurrent(defeatedIdentity)" in death
-    assert "result.blocker()" in death
-    assert "afterCasterDeath(deathCount - 1)" in death
-    assert "breakRitualPrison()" in death
-    assert "removeRitualEntity(id)" in source[source.index("private void breakRitualPrison"):]
-    assert "RitualCasterProgressionPolicy.mayComplete" in completion
+# Removed-only contract superseded by the 2026-11-08 five-pillar assignment.
+# Behavioral replacements: test_rift_ram_runtime.py and test_rift_ram_five_pillars.py.
 
 
 def test_official_caster_damage_waits_for_prisoner_capture_and_combat_sandbox_is_explicit() -> None:
@@ -105,12 +93,8 @@ def test_official_caster_damage_waits_for_prisoner_capture_and_combat_sandbox_is
     assert "event.setCancelled(true)" in admission
 
 
-def test_wave6_completion_requires_capture_outside_the_combat_sandbox() -> None:
-    source = EVENT.read_text(encoding="utf-8")
-    completion = method_body(source, "private boolean currentObjectiveProgressComplete",
-                             "private void tickCurrentCarrierObjective")
-    assert "ritualPrisonerId() != null || testRitualCombatMode" in completion
-    assert "RitualCasterProgressionPolicy.mayComplete" in completion
+# Removed-only contract superseded by the 2026-11-08 five-pillar assignment.
+# Behavioral replacements: test_rift_ram_runtime.py and test_rift_ram_five_pillars.py.
 
 
 def test_repeated_completion_check_after_prison_break_still_requires_capture() -> None:

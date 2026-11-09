@@ -14,18 +14,10 @@ public final class EndEventBlackFogManager {
     private static final int MAX_MODE_LENGTH = 32;
     private static final float MIN_INTENSITY = 0.5F;
     private static final float MAX_INTENSITY = 1.0F;
-    /**
-     * Visibility outside a safe volume while the hazard is active. The fog
-     * starts at the camera, so this is a hard blackout, not a vignette.
-     */
-    private static final float BLACKOUT_FOG_END_BLOCKS = 0.02F;
-    /**
-     * Protocol cycles are one-based and Wave 5 runs exactly five of them
-     * ({@code BlackFogTimingPolicy.CYCLE_COUNT} on the server). Accepting only
-     * the first three silently dropped cycles four and five: the client showed
-     * a clear arena while the server already applied the hazard.
-     */
-    private static final int MAX_CYCLE = 5;
+    /** Initial visual tuning: nearby silhouettes survive, distant geometry is obscured. */
+    private static final float DENSE_FOG_END_BLOCKS = 4.0F;
+    public static final long FADE_MILLIS = 1_250L;
+    private static final int MAX_CYCLE = 3;
 
     private String eventId = "";
     private long generation;
@@ -38,6 +30,13 @@ public final class EndEventBlackFogManager {
     private long expiresAtMillis;
     private String dimension = "";
     private float intensity;
+    private long startedAtMillis;
+    private long fadeInAtMillis;
+    private float fadeInFrom;
+    private long initialLifetimeMillis;
+    private long fadeOutAtMillis = -1L;
+    private float fadeOutFrom;
+
 
     public synchronized boolean apply(BridgePayload payload, long nowMillis) {
         if (payload == null || nowMillis < 0L || !Objects.equals(payload.messageType(), EVENT_TYPE)
@@ -66,13 +65,33 @@ public final class EndEventBlackFogManager {
             }
         }
         int nextCycle = clear ? -1 : Integer.parseInt(state[2]);
+        tick(nowMillis);
+        int previousCycle = currentCycle;
         if (!acceptEnvelope(payload.sessionId(), payload.seq(), payload.timestampMillis(), clear, suspend, nextCycle)) {
             return false;
         }
         if (clear) {
-            if (suspend) terminal = true;
-            clearActiveState();
+            if (suspend) {
+                terminal = true;
+                clearActiveState();
+            } else {
+                beginFadeOut(nowMillis);
+            }
             return true;
+        }
+        // A refresh extends the lease, never the onset animation or cycle progress.
+        if (expiresAtMillis == 0L || previousCycle != nextCycle) {
+            boolean continuingCycle = previousCycle == nextCycle && !dimension.isBlank();
+            // A late refresh can arrive during the expiry fade. Continue from
+            // its current opacity instead of flashing back to vanilla visibility.
+            fadeInFrom = continuingCycle ? currentStrength(nowMillis) : 0.0F;
+            fadeInAtMillis = nowMillis;
+            if (!continuingCycle) {
+                startedAtMillis = nowMillis;
+                initialLifetimeMillis = payload.durationMillis();
+            }
+            fadeOutAtMillis = -1L;
+            fadeOutFrom = 0.0F;
         }
         dimension = state[0];
         intensity = payload.intensity();
@@ -125,47 +144,58 @@ public final class EndEventBlackFogManager {
     }
 
     public synchronized void tick(long nowMillis) {
-        if (nowMillis >= 0L && expiresAtMillis > 0L && expiresAtMillis <= nowMillis) {
+        if (nowMillis < 0L) return;
+        if (expiresAtMillis > 0L && expiresAtMillis <= nowMillis) {
+            beginFadeOut(expiresAtMillis);
+        }
+        if (fadeOutAtMillis >= 0L && nowMillis - fadeOutAtMillis >= FADE_MILLIS) {
             clearActiveState();
         }
     }
 
+    /** Target distance; rendering blends vanilla FogData using fadeStrength. */
     public synchronized float fogEndBlocks(String requestedDimension, long nowMillis) {
         tick(nowMillis);
-        if (dimension.isBlank() || !dimension.equals(requestedDimension)) {
-            return 0.0F;
+        return !dimension.isBlank() && dimension.equals(requestedDimension) ? DENSE_FOG_END_BLOCKS : 0.0F;
+    }
+
+    public synchronized float fadeStrength(String requestedDimension, long nowMillis) {
+        tick(nowMillis);
+        if (dimension.isBlank() || !dimension.equals(requestedDimension)) return 0.0F;
+        return currentStrength(nowMillis);
+    }
+
+    private float currentStrength(long nowMillis) {
+        if (fadeOutAtMillis >= 0L) {
+            return fadeOutFrom * (1.0F - smooth((float) (nowMillis - fadeOutAtMillis) / FADE_MILLIS));
         }
-        // Canonical Wave 5: the whole arena is opaque black except the
-        // published safe volumes. A short fog end is the only value that
-        // obscures geometry instead of merely tinting it, so intensity no
-        // longer maps to a visible radius. Callers that can see the world
-        // (the fog mixin) subtract the safe volumes themselves; anything that
-        // cannot prove it stands in one stays black.
-        return BLACKOUT_FOG_END_BLOCKS;
+        return expiresAtMillis > 0L
+                ? fadeInFrom + (1.0F - fadeInFrom) * smooth((float) (nowMillis - fadeInAtMillis) / FADE_MILLIS)
+                : 0.0F;
+    }
+
+    private static float smooth(float value) {
+        float t = Math.max(0.0F, Math.min(1.0F, value));
+        return t * t * (3.0F - 2.0F * t);
+    }
+
+    private void beginFadeOut(long nowMillis) {
+        // Duplicate CLEAR cannot restart or lengthen an existing fade.
+        if (expiresAtMillis <= 0L) return;
+        fadeOutFrom = currentStrength(nowMillis);
+        fadeOutAtMillis = nowMillis;
+        expiresAtMillis = 0L;
     }
 
     public synchronized boolean active() {
         return expiresAtMillis > 0L;
     }
 
-    /**
-     * How far into the current cycle the hazard is, 0..1.
-     *
-     * <p>The user asked for a fog that is "страшный ... чёрный густой". A hard
-     * blackout is black already; what it cannot do is feel like it is closing
-     * in. The vignette uses this ramp so the darkness thickens over the cycle
-     * and is at its worst right before it lifts — which is also the most
-     * punishing moment, so it is a readability-safe choice rather than a
-     * cosmetic one.</p>
-     */
+    /** Progress uses the first lease, so repeated refreshes cannot rewind it. */
     public synchronized float cycleProgress(long nowMillis) {
-        if (expiresAtMillis <= 0L || nowMillis < 0L) return 0.0F;
-        long remaining = expiresAtMillis - nowMillis;
-        if (remaining <= 0L) return 1.0F;
-        // The manager does not keep the start, only the deadline, so progress
-        // is measured against the protocol's maximum lifetime and clamped.
-        float elapsed = (float) (MAX_LIFETIME_MILLIS - remaining) / (float) MAX_LIFETIME_MILLIS;
-        return Math.max(0.0F, Math.min(1.0F, elapsed));
+        if (dimension.isBlank() || nowMillis < 0L || initialLifetimeMillis <= 0L) return 0.0F;
+        return Math.max(0.0F, Math.min(1.0F,
+                (float) (nowMillis - startedAtMillis) / initialLifetimeMillis));
     }
 
     /** Normalised alert strength the server sent for this cycle (0.5..1.0). */
@@ -208,6 +238,12 @@ public final class EndEventBlackFogManager {
         expiresAtMillis = 0L;
         dimension = "";
         intensity = 0.0F;
+        startedAtMillis = 0L;
+        fadeInAtMillis = 0L;
+        fadeInFrom = 0.0F;
+        initialLifetimeMillis = 0L;
+        fadeOutAtMillis = -1L;
+        fadeOutFrom = 0.0F;
     }
 
     private static boolean validDimension(String value) {

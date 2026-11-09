@@ -17,10 +17,11 @@ import java.util.Set;
  * any player within 2.0 blocks of the combat floor. A wider client volume
  * would let a player read the arena while the server is already damaging them.
  *
- * <p>Horizontal readability is the safe footprint itself, not a uniform
- * radius: see {@link #maskFor}. Contract W5-017 explicitly rejects the old
- * four-block circle, which let a player standing in safety read terrain well
- * outside the footprint and even a second island across the fog.
+ * <p>The active renderer follows the latest distance-fog requirement: nearby
+ * shapes remain readable and distant geometry disappears. Membership changes
+ * the near fade distance without clearing the surrounding fog. The older
+ * per-point {@link #maskFor} utility is retained for geometry callers; it is
+ * not a per-pixel mask installed in the world renderer.
  */
 public final class BlackFogSafeVolumePolicy {
     /** Camera height above the block the player stands on. */
@@ -59,16 +60,15 @@ public final class BlackFogSafeVolumePolicy {
             (float) (Math.sqrt(2.0D) * (MAX_FOOTPRINT_SIDE / 2.0D + SAFE_MARGIN_BLOCKS));
 
     /**
-     * Fog distance for the current frame. Being inside a safe volume neither
-     * clears the blackout nor restores vanilla fog: it only shortens the view,
-     * so the safe floor and its occupants are readable while the rest of the
-     * arena stays black.
+     * Fog distance for the current frame. Being inside a safe volume never
+     * restores vanilla visibility. Keep at least the bounded footprint read
+     * distance and retain the current dense-fog distance when it is larger.
      */
     public static float fogEndBlocks(boolean insideSafeVolume, float blackoutEnd) {
         if (!Float.isFinite(blackoutEnd) || blackoutEnd < 0.0F) {
             throw new IllegalArgumentException("blackout fog end must be finite and non-negative");
         }
-        return insideSafeVolume ? SAFE_READ_DISTANCE_BLOCKS : blackoutEnd;
+        return insideSafeVolume ? Math.max(SAFE_READ_DISTANCE_BLOCKS, blackoutEnd) : blackoutEnd;
     }
     /** Feet height implied by a camera at {@code cameraY}. */
     public static double feetY(double cameraY) {
@@ -133,6 +133,62 @@ public final class BlackFogSafeVolumePolicy {
             if (cell != null) snapshot.add(cell);
         }
         return new SafeMask(List.copyOf(snapshot), floorBlockY);
+    }
+
+    @FunctionalInterface
+    public interface SafeFloor {
+        boolean at(int x, int y, int z);
+    }
+
+    /**
+     * Bounded published-floor snapshot. Refresh at most every 100ms for a
+     * stationary player; camera bob, crouching and third-person offsets never
+     * change membership. The source reads at most five cells in the player's
+     * occupied column per refresh; neighbouring columns cannot grant safety.
+     * Membership uses exact feet coordinates, matching server damage safety.
+     */
+    public static final class SafeFloorCache {
+        private final boolean[] cells = new boolean[5];
+        private Object world;
+        private String event = "";
+        private long generation;
+        private long sampledAt = -1L;
+        private int anchorX, anchorZ, firstY;
+
+        public boolean contains(Object nextWorld, String nextEvent, long nextGeneration,
+                                long now, double x, double feetY, double z, SafeFloor source) {
+            if (nextWorld == null || source == null || !Double.isFinite(x)
+                    || !Double.isFinite(feetY) || !Double.isFinite(z)) return false;
+            int columnX = blockX(x), columnZ = blockZ(z);
+            if (world != nextWorld || !java.util.Objects.equals(event, nextEvent)
+                    || generation != nextGeneration || sampledAt < 0L || now < sampledAt
+                    || now - sampledAt >= 100L || columnX != anchorX || columnZ != anchorZ
+                    || feetY < firstY || feetY > firstY + 6.0D) {
+                world = nextWorld;
+                event = nextEvent;
+                generation = nextGeneration;
+                sampledAt = now;
+                anchorX = columnX;
+                anchorZ = columnZ;
+                firstY = (int) Math.floor(feetY) - 3;
+                for (int dy = 0; dy < 5; dy++) {
+                    cells[dy] = source.at(anchorX, firstY + dy, anchorZ);
+                }
+            }
+            for (int dy = 0; dy < 5; dy++) {
+                if (cells[dy]
+                        && Math.abs(feetY - (firstY + dy + 1.0D)) <= SAFE_VERTICAL_SLACK_BLOCKS) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public void clear() {
+            world = null;
+            event = "";
+            sampledAt = -1L;
+        }
     }
 
     /** One published safe column, in block coordinates. */

@@ -96,7 +96,10 @@ public final class RiftCarrierRecoverySnapshot {
                     && carrier == null && charge == null && holder == null && inventoryToken == null
                     && remainingTicks == 0L;
             case CARRIER_ACTIVE -> delivered < RiftCarrierPolicy.REQUIRED_DELIVERIES
-                    && carrier != null && charge == null && holder == null && inventoryToken == null
+                    // An attached charge is presentation owned by the living
+                    // carrier. Old checkpoints may omit it; neither form is a
+                    // dropped or carried inventory charge.
+                    && carrier != null && holder == null && inventoryToken == null
                     && remainingTicks == 0L;
             case CHARGE_DROPPED -> delivered < RiftCarrierPolicy.REQUIRED_DELIVERIES
                     && carrier == null && charge != null && holder == null && inventoryToken == null;

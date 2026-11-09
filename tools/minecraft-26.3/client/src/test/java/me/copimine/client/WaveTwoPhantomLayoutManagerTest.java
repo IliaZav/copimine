@@ -87,6 +87,7 @@ class WaveTwoPhantomLayoutManagerTest {
                 EndEventBridgeBodyCodec.Type.END_PLAYER_STATE, 4, timestamp, eventUuid,
                 "wave2-hunt-mark", source, "WAVE2_HUNT_MARK_V1", "ACTIVE".equals(status) ? 8_000 : 0,
                 "ACTIVE".equals(status) ? 0.25F : 0.0F, 0, 0,
-                "the_end|wave2|" + cycle, "", phantomId, "", status);
+                "the_end|wave2|" + cycle, "ACTIVE".equals(status) ? "intro-age=10000" : "",
+                phantomId, "", status);
     }
 }

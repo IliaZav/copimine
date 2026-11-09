@@ -77,6 +77,9 @@ public final class EndEventPlayerVisualManager {
         }
         Kind kind = Kind.from(payload);
         boolean active = "ACTIVE".equalsIgnoreCase(payload.status());
+        int introAge = active && kind == Kind.HUNT
+                ? WaveTwoCinematicTimeline.parseIntroAge(payload.clearPolicy()) : 0;
+        if (introAge < 0) return false;
         boolean suspend = "SUSPEND".equalsIgnoreCase(payload.status());
         boolean clear = suspend || "CLEAR".equalsIgnoreCase(payload.status());
         if (kind == null || !active && !clear || active && (payload.durationMillis() <= 0
@@ -122,7 +125,9 @@ public final class EndEventPlayerVisualManager {
         channel.cycle = cycle;
         channel.timestamp = payload.timestampMillis();
         if (active) {
-            if (!keepStart) channel.startedAtMillis = nowMillis;
+            long authoredStart = nowMillis - introAge;
+            if (!keepStart) channel.startedAtMillis = authoredStart;
+            else if (kind == Kind.HUNT) channel.startedAtMillis = Math.min(channel.startedAtMillis, authoredStart);
             channel.expiresAtMillis = nowMillis + payload.durationMillis();
         } else {
             channel.expiresAtMillis = 0L;

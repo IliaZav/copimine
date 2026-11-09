@@ -5,14 +5,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * The user asked for the Wave 5 fog to be "страшным", "чёрным" and "густым".
- *
- * <p>Black is already guaranteed by the blackout distance, so these tests cover
- * the parts that make it read as a place rather than a switched-off screen:
- * the haze thickens over the cycle, it reports the server's alert strength, and
- * it never leaks back in once the hazard is over.</p>
- */
+/** Server lease progress remains separate from the smooth rendering fade. */
 class EndEventBlackFogPresenceTest {
     private static BridgePayload packet(long seq, long timestamp, float intensity) {
         return new BridgePayload("END_EVENT:END_FOG_STATE", ClientBridgeProtocol.PROTOCOL_VERSION,
@@ -55,5 +48,46 @@ class EndEventBlackFogPresenceTest {
         assertTrue(manager.apply(packet(1L, 1_000L, 1.0F), 1_000L));
         float progress = manager.cycleProgress(1_000_000L);
         assertTrue(progress >= 0.0F && progress <= 1.0F);
+    }
+
+    @Test
+    void repeatedLeaseDoesNotRestartOnsetOrProgress() {
+        EndEventBlackFogManager manager = new EndEventBlackFogManager();
+        assertTrue(manager.apply(packet(4L, 1_000L, 0.9F), 1_000L));
+        assertEquals(0.0F, manager.fadeStrength("the_end", 1_000L));
+        float quarter = manager.fadeStrength("the_end", 1_312L);
+        assertTrue(quarter > 0.0F && quarter < 0.5F);
+        assertEquals(1.0F, manager.fadeStrength("the_end", 2_250L));
+        float progress = manager.cycleProgress(3_000L);
+        assertTrue(manager.apply(packet(4L, 3_000L, 0.9F), 3_000L));
+        assertEquals(1.0F, manager.fadeStrength("the_end", 3_000L));
+        assertEquals(progress, manager.cycleProgress(3_000L));
+    }
+
+    @Test
+    void lateRefreshPreservesTheExpiryFadeWithoutAFlash() {
+        EndEventBlackFogManager manager = new EndEventBlackFogManager();
+        assertTrue(manager.apply(packet(4L, 1_000L, 0.9F), 1_000L));
+        float tail = manager.fadeStrength("the_end", 9_250L);
+        assertTrue(tail > 0.8F && tail < 1.0F);
+        assertTrue(manager.apply(packet(4L, 9_250L, 0.9F), 9_250L));
+        assertEquals(tail, manager.fadeStrength("the_end", 9_250L));
+        assertTrue(manager.fadeStrength("the_end", 9_500L) >= tail);
+        assertEquals(1.0F, manager.cycleProgress(9_500L));
+    }
+
+    @Test
+    void localExitClearsImmediatelyAndRequiresAuthoritativeResume() {
+        EndEventBlackFogManager manager = new EndEventBlackFogManager();
+        assertTrue(manager.apply(packet(4L, 1_000L, 0.9F), 1_000L));
+        manager.clear();
+        assertEquals(0.0F, manager.fadeStrength("the_end", 2_500L));
+        org.junit.jupiter.api.Assertions.assertFalse(manager.apply(packet(4L, 3_000L, 0.9F), 3_000L));
+        assertTrue(manager.resumeAfterLocalExit("session-fog", 4L, 4_000L));
+        assertTrue(manager.apply(packet(4L, 4_000L, 0.9F), 4_000L));
+        assertEquals(0.0F, manager.fadeStrength("the_end", 4_000L));
+        assertEquals(1.0F, manager.fadeStrength("the_end", 5_250L));
+        manager.reset();
+        assertEquals(0.0F, manager.fadeStrength("the_end", 5_500L));
     }
 }

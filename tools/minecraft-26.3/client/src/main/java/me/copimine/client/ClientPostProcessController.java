@@ -30,6 +30,9 @@ public final class ClientPostProcessController {
     public boolean apply(String effectId, float intensity) {
         String normalized = normalize(effectId);
         Identifier identifier = EFFECT_POST_PROCESSORS.get(normalized);
+        if (normalized.matches("WAVE2_INTRO_(?:[0-9]|1[0-9]|2[0-3])")) {
+            identifier = Identifier.fromNamespaceAndPath("copimineclient", normalized.toLowerCase(Locale.ROOT));
+        }
         if (identifier == null) {
             clear();
             status = "unknown post effect " + normalized;

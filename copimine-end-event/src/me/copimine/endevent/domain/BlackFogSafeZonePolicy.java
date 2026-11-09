@@ -23,9 +23,9 @@ public final class BlackFogSafeZonePolicy {
             return 0;
         }
 
-        int playerCap = livingPlayers <= 3 ? 3 : livingPlayers <= 5 ? 2 : 1;
-        int shrinkSteps = cycleIndex * playerCap / BlackFogTimingPolicy.CYCLE_COUNT;
-        return Math.max(1, playerCap - shrinkSteps);
+        double progress = BlackFogTimingPolicy.progress(cycleIndex,
+                BlackFogTimingPolicy.cycleCount(livingPlayers));
+        return progress < 1.0D / 3.0D ? 3 : progress < 2.0D / 3.0D ? 2 : 1;
     }
 
     public static List<Cell> cells(int centerX, int centerZ, int side) {

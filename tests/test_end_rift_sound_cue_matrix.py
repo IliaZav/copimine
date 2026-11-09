@@ -150,7 +150,11 @@ def test_no_client_duplicate_and_no_owned_loop() -> None:
 def test_wave_two_warning_is_emitted_only_by_the_server() -> None:
     renderer = (ROOT / "tools/minecraft-26.3/client/src/main/java/me/copimine/client/"
                 "WaveTwoPhantomRenderer.java").read_text(encoding="utf-8")
-    assert "playLocalSound" not in renderer
+    # Latest cinematic contract adds private opening/appearance cues. Combat
+    # materialization remains a distinct server-owned STARE warning.
+    assert "WaveTwoCinematicTimeline.screamCue(lastAge, age)" in renderer
+    assert "WaveTwoCinematicTimeline.firstAudibleAppearance" in renderer
+    assert "SoundSource.HOSTILE" in renderer
     assert "SoundEvents.ENDERMAN_STARE" not in renderer
     assert "lastPlayedWarningToken" not in renderer
 

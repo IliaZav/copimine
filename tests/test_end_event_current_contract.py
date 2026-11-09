@@ -370,10 +370,15 @@ def test_wave6_ritual_sphere_uses_fixed_server_owned_roster_without_prisoner_dra
     source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
     scaling = read(DOMAIN / "RitualSphereScalingPolicy.java")
     snapshot = read(DOMAIN / "RitualSphereEncounterSnapshot.java")
+    # Wave 6 is declared as RIFT_RAM; the sphere survives only as a legacy
+    # objective that a historical snapshot may still name.
+    objective = read(DOMAIN / "EndRiftObjective.java")
+    assert "case 6 -> Objective.RIFT_RAM;" in objective
+    assert "case RIFT_RAM -> started = riftRam != null" in source
     assert "case RITUAL_SPHERE ->" in source
-    assert "startRitualSphereObjective(world, core);" in source
-    assert "tickCurrentRitualSphereObjective(now);" in source
-    assert "WAVE6_RITUAL_SPHERE_READY" in source
+    # The legacy sphere is entered only from the restart continuation, which is
+    # itself unreachable from a live tick -- the wave-6 dispatch below proves that.
+    assert "startRitualSphereObjective(Bukkit.getWorld(worldName)" in source
     assert "authority=server" in source
     assert "applyRitualSphereDrain" not in source
     assert "onRitualPrisonerDamage" not in source
@@ -391,7 +396,8 @@ def test_wave6_ritual_sphere_visuals_keep_wave_ownership_and_rehydrate() -> None
     assert "setPersistent(true)" in body
     assert "end_event_ritual_sphere" in body
     assert "restorePersistedRitualSphereObjective" in source
-    assert "restorePersistedRitualSphereObjective();" in source
+    assert "restorePersistedRitualSphereObjective();" not in source
+    assert "riftRam.restore(riftRamCheckpoint)" in source
     assert "RITUAL_SPHERE_HEIGHT_OFFSET" in source
 
 
@@ -413,8 +419,13 @@ def test_wave6_legacy_rings_are_not_rendered_or_ticked_live() -> None:
     tick_start = source.index("private boolean tickCurrentObjective")
     tick_end = source.index("private boolean tickWaveObjective", tick_start)
     tick_body = source[tick_start:tick_end]
-    assert "case RITUAL_SPHERE -> tickCurrentRitualSphereObjective(now);" in tick_body
-    assert "case COLLAPSE_RINGS -> getLogger().fine(\"WAVE6_LEGACY_COLLAPSE_RING_NOT_TICKED" in tick_body
+    # Wave 6 is the Rift Ram now. The spheres and collapse rings are reachable
+    # only through a legacy objective value, and they must NOT be ticked: a
+    # legacy encounter that still ticked would run a second Wave 6 alongside the
+    # ram. Both arms must therefore be inert, and the ram must be the live one.
+    assert "WAVE6_LEGACY_RITUAL_NOT_TICKED" in tick_body
+    assert "WAVE6_LEGACY_COLLAPSE_RING_NOT_TICKED" in tick_body
+    assert "tickCurrentRitualSphereObjective(now);" not in tick_body
 
     render_start = source.index("private void renderWaveObjective")
     render_end = source.index("/** Render the same three radii", render_start)

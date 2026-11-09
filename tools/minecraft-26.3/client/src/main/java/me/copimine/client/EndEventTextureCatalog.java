@@ -106,14 +106,21 @@ public final class EndEventTextureCatalog {
         textures.put("END_RIFT_FIREBALL_V1", entityTexture("end_event_rift_fireball_hd.png"));
         textures.put("END_RIFT_TENTACLE_V1", entityTexture("end_rift_tentacle_hd.png"));
         textures.put("END_RIFT_GUARDIAN_SHIELD_V1", entityTexture("end_rift_guardian_shield_hd.png"));
-        // Wave 6 rivet ram: four armour stages of ONE beast. The stage is chosen
-        // by the server's accepted Core impact count, not by the client, so every
-        // player sees the same stage at the same moment. A natural Ravager has no
-        // binding and therefore keeps its vanilla sheet.
-        textures.put(RiftRamVisualPolicy.ARMOR0_VISUAL, entityTexture("end_rift_ram_armor0.png"));
-        textures.put(RiftRamVisualPolicy.ARMOR1_VISUAL, entityTexture("end_rift_ram_armor1.png"));
-        textures.put(RiftRamVisualPolicy.ARMOR2_VISUAL, entityTexture("end_rift_ram_armor2.png"));
-        textures.put(RiftRamVisualPolicy.ARMOR3_VISUAL, entityTexture("end_rift_ram_armor3.png"));
+        // Wave 6 Rift Ram: SIX armour stages (0 intact .. 5 exposed) of ONE beast.
+        // The stage is chosen by the server's destroyed-pillar count, never by the
+        // client, so every player sees the same stage at the same moment.
+        //
+        // Every stage deliberately resolves to the SAME vanilla ravager sheet.
+        // The armour is not painted on: it is carried by server-owned 3D displays
+        // that break away as pillars fall, and the exposed animal underneath must
+        // stay the vanilla ravager all the way through. Emitting six distinct PNGs
+        // here would imply the hides differ, and they must not.
+        //
+        // A natural (unbound) Ravager therefore keeps its vanilla sheet too.
+        for (int stage = 0; stage <= 5; stage++) {
+            textures.put(RiftRamVisualPolicy.visualForArmorStage(stage),
+                    Identifier.fromNamespaceAndPath("minecraft", "textures/entity/illager/ravager.png"));
+        }
         return Map.copyOf(textures);
     }
 

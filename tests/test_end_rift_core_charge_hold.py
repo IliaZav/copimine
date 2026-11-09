@@ -17,13 +17,13 @@ def method(root: str, signature: str) -> str:
     raise AssertionError('unbalanced body for ' + signature)
 
 
-def test_loading_a_charge_is_a_five_second_hold_not_a_click():
-    # The player asked for the Core charge to be loaded by holding for five
+def test_loading_a_charge_is_a_fifteen_second_hold_not_a_click():
+    # The player asked for the Core charge to be loaded by holding for fifteen
     # seconds. A single right-click used to spend one of the three deliveries,
     # so a misclick cost the wave a pack with no way back.
     root = SRC.read_text(encoding='utf-8')
 
-    assert 'CORE_CHARGE_HOLD_MILLIS = 5_000L' in root, (
+    assert 'CORE_CHARGE_HOLD_MILLIS = 15_000L' in root, (
         'the hold duration is part of the requested mechanic'
     )
     interact = method(root, 'private boolean onCarrierChargeCoreDelivery(')

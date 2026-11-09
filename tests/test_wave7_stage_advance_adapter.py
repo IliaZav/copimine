@@ -67,31 +67,14 @@ public class Wave7AdvanceAdapterProbe {
   var failed=new Wave7AdvanceAdapterProbe();failed.begin(2);failed.durable=false;
   failed.defeat(0,RealitySplitTrialController.NamedTrial.WARDEN);
   check(failed.phase==EventPhase.RECOVERY_REQUIRED&&failed.starts==0&&failed.opens==0,"failed checkpoint blocks access and next actor");
-  // A large party still walks ONE sequential route: the four trials are
-  // stages of a single arena, never four rooms running side by side. The old
-  // expectation here ("parallel peers remain active") described the split
-  // route the specification forbids.
-  for(int size:new int[]{5,10,11,20}){
+  for(int size:new int[]{4,5,10,11,20}){
    var p=new Wave7AdvanceAdapterProbe();p.begin(size);
-   check(p.realitySplitChamberController.assignment().chamberCount()==1,"a large party still shares one arena");
-   check(p.realitySplitTrialController.presentableNamedTrials().size()==1,"exactly one stage is live");
-   // The first three stages are ordinary actor deaths; each one advances the
-   // same room and starts its successor. PERSONAL_ECHO is reached last and is
-   // resolved through its own duel receipts, so it is asserted by position
-   // only here - the Echo duel path has its own coverage.
-   int starts=0;
-   for(var stage:java.util.List.of(RealitySplitTrialController.NamedTrial.WARDEN,
-       RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN,
-       RealitySplitTrialController.NamedTrial.RIFT_ARCHMAGE)){
-    check(p.realitySplitTrialController.namedTrial(0).trial()==stage,"stages run in order");
-    p.defeat(0,stage);
-    starts=p.starts;
-    check(!p.realitySplitTrialController.allComplete(7),"the route is not complete yet");
-   }
-   check(starts==3,"each of the first three stages starts its successor");
-   check(p.realitySplitTrialController.namedTrial(0).trial()==RealitySplitTrialController.NamedTrial.PERSONAL_ECHO,
-       "Echo is last, not skipped");
-   check(!p.realitySplitTrialController.allComplete(7),"the Echo stage still has to be fought");
+   check(p.realitySplitChamberController.assignment().chamberCount()==4,"large party uses four rooms");
+   check(p.realitySplitTrialController.presentableNamedTrials().size()==4,"four named trials are live");
+   p.defeat(0,RealitySplitTrialController.NamedTrial.WARDEN);
+   check(p.opens==1&&p.starts==0,"completed room opens without advancing parallel peers");
+   check(p.realitySplitTrialController.presentableNamedTrials().size()==3,"three peers remain active");
+   check(!p.realitySplitTrialController.allComplete(7),"one room cannot finish the encounter");
   }
  }
 '''

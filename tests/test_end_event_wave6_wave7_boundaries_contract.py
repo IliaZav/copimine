@@ -11,28 +11,8 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_wave6_live_objective_is_ritual_sphere_with_exact_server_policy() -> None:
-    config = read(PLUGIN / "config.yml")
-    objective = read(DOMAIN / "EndRiftObjective.java")
-    root = read(SRC / "CopiMineEndEvent.java")
-    scaling = read(DOMAIN / "RitualSphereScalingPolicy.java")
-    assert "  wave-6:\n    type: RITUAL_SPHERE" in config
-    assert "case 6 -> Objective.RITUAL_SPHERE" in objective
-    assert "WAVE6_RITUAL_SPHERE_READY" in root
-    assert "startRitualSphereObjective(world, core);" in root
-    assert "tickCurrentRitualSphereObjective(now);" in root
-    assert "RitualSphereEncounterSnapshot" in root
-    assert "applyRitualSphereDrain" not in root
-    assert "onRitualPrisonerDamage" not in root
-    assert "TOTAL_CASTERS = 5" in read(DOMAIN / "RitualCasterProgressionPolicy.java")
-    ritual_start = root.index("private boolean startRitualSphereObjective")
-    ritual_end = root.index("private void restorePersistedRitualSphereObjective", ritual_start)
-    ritual_body = root[ritual_start:ritual_end]
-    assert "Location combatCore = coreCombatAnchorLocation();" in ritual_body
-    assert "if (combatCore != null) {" in ritual_body
-    assert "core = combatCore;" in ritual_body
-    assert "casterCount != 5" in scaling
-    assert "MAX_PROJECTILES_PER_VOLLEY = 7" in scaling
+# Removed-only contract superseded by the 2026-11-08 five-pillar assignment.
+# Behavioral replacements: test_rift_ram_runtime.py and test_rift_ram_five_pillars.py.
 
 
 def test_wave6_elite_spider_conversion_is_not_gated_by_six_participants() -> None:
@@ -72,32 +52,16 @@ def test_spell_matrix_runs_wave6_combat_and_publishes_assignment_marker() -> Non
     assert "Stop-SpellMatrixBots" in runner[runner.index("} finally {"):]
 
 
-def test_wave6_legacy_collapse_rings_are_not_a_live_execution_path() -> None:
+def test_wave6_legacy_encounters_are_not_live_execution_paths() -> None:
     root = read(SRC / "CopiMineEndEvent.java")
     start = root.index("private WaveObjectiveStartResult startCanonicalObjective")
     end = root.index("private WaveObjectiveStartResult startWaveObjective", start)
-    start_body = root[start:end]
-    assert "case COLLAPSE_RINGS -> getLogger().warning(\"WAVE6_LEGACY_COLLAPSE_RING_REFUSED" in start_body
-    assert "case RITUAL_SPHERE ->" in start_body
-    assert "startRitualSphereObjective(world, core);" in start_body
-
-    tick_start = root.index("private boolean tickCurrentObjective")
-    tick_end = root.index("private boolean tickWaveObjective", tick_start)
-    tick_body = root[tick_start:tick_end]
-    assert "case RITUAL_SPHERE -> tickCurrentRitualSphereObjective(now);" in tick_body
-    assert "WAVE6_LEGACY_COLLAPSE_RING_NOT_TICKED" in tick_body
-
-    render_start = root.index("private void renderWaveObjective")
-    render_end = root.index("/** Render the same three radii", render_start)
-    render_body = root[render_start:render_end]
-    assert "renderCurrentRitualSphere(core, now);" in render_body
-    assert "renderCurrentCollapseRings(core, now);" not in render_body
-
-    containment_start = root.index("private CollapseRingEncounterPolicy.State activeCollapseRingForContainment")
-    containment_end = root.index("private boolean collapseRingPlayerAssigned", containment_start)
-    containment_body = root[containment_start:containment_end]
-    assert "Objective.COLLAPSE_RINGS" in containment_body
-    assert "activeWave == 6" in containment_body
+    dispatch = root[start:end]
+    assert "case RIFT_RAM -> started = riftRam != null" in dispatch
+    assert "startRitualSphereObjective(world, core);" not in dispatch
+    assert "restorePersistedRitualSphereObjective();" not in root
+    assert "waveSpawnSchedule.isEmpty() && wave != 6" in root
+    assert "spawnWave6PressurePack(world, core, players, sandbox)" not in root
 
 
 def test_wave6_ritual_spawn_failure_is_transactional_and_diagnostic() -> None:
@@ -159,7 +123,7 @@ def test_wave6_failed_start_cannot_emit_started_marker_or_advance_objective() ->
     canonical_body = root[canonical_start:canonical_end]
     marker = 'getLogger().info("WAVE_OBJECTIVE_STARTED'
     failure_guard = "if (!started) {"
-    assert "started = startRitualSphereObjective(world, core);" in canonical_body
+    assert "case RIFT_RAM -> started = riftRam != null" in canonical_body
     assert failure_guard in canonical_body
     assert canonical_body.index(failure_guard) < canonical_body.index(marker)
     assert "return WaveObjectiveStartResult.rejected(" in canonical_body[
@@ -228,7 +192,7 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     initializer = root[initializer_start:root.index("\n    private ", initializer_start + 10)]
     # Wave 7 runs as one sequential route on an open arena, so the single
     # chamber is opened with beginOpenArena rather than split into sectors.
-    assert "realitySplitChamberController.beginOpenArena(generation," in initializer
+    assert "realitySplitChamberController.beginWave7(generation," in initializer
     assert "new ArrayList<>(roster)" in initializer
     assert "minecraft:barrier" in live_script
     assert "wall_material=barrier" in live_script
@@ -672,24 +636,16 @@ def test_disposable_wave7_restart_state_is_explicitly_generation_bound() -> None
     assert "wave7.assignment().chamberByPlayer().keySet()" in root
 
 
-def test_disposable_wave6_restart_state_preserves_the_ritual_snapshot() -> None:
+def test_disposable_wave6_restart_state_preserves_the_ram_snapshot() -> None:
     root = read(SRC / "CopiMineEndEvent.java")
     assert '"6".equals(snapshot.objectiveProgress().get("test-wave"))' in root
     assert "persistedDisposableWave6" in root
     assert "testWaveFrontVisualMode && activeWave == 6" in root
-    # W6-016: the durable ritual snapshot carries the frozen mage identity order
-    # and its defeat receipts alongside the sphere state.
-    assert "RitualSphereEncounterSnapshot.encode(" in root
-    assert "wave6MageOrder, wave6DefeatedMages)" in root
-    assert "restorePersistedRitualSphereObjective();" in root
-    assert "END_RIFT_WAVE6_RESTART_PRESERVED" in root
-    restore_start = root.index("private void restorePersistedRitualSphereObjective()")
-    restore_end = root.index("private void cleanupLegacyWave6Entities()", restore_start)
-    restore_body = root[restore_start:restore_end]
-    assert "testWaveFrontVisualMode && activeWave == 6" in restore_body
-    assert "WAVE6_RITUAL_REHYDRATED" in restore_body
-    assert "WAVE6_RITUAL_RESTART_CONTINUED" in root
-    assert "ritualSphereStateRehydrated" in root
+    assert "riftRam.snapshot()" in root
+    assert "riftRam.restore(riftRamCheckpoint)" in root
+    assert '"ram.event"' in root and '"ram.generation"' in root
+    assert "restorePersistedRitualSphereObjective();" not in root
+    assert "RIFT_RAM_LEGACY_CHECKPOINT_REQUIRES_RESET" in root
 
 
 def test_wave7_mini_boss_weakness_does_not_zero_normal_weapon_damage() -> None:

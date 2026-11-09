@@ -36,6 +36,32 @@ public final class RiftCarrierPolicy {
         return state.withCarrier(carrier, Phase.CARRIER_ACTIVE);
     }
 
+    /** Attach one presentation entity without making a living carrier collectible. */
+    public static State attachCarrierCharge(State state, long generation, UUID charge) {
+        if (!valid(state, generation) || charge == null
+                || state.phase() != Phase.CARRIER_ACTIVE || state.carrier() == null
+                || state.charge() != null) {
+            return state;
+        }
+        return new State(state.generation(), state.delivered(), state.carrier(), charge, null,
+                0L, Phase.CARRIER_ACTIVE);
+    }
+
+    /**
+     * Replace a presentation the adapter has confirmed missing, preserving the
+     * living carrier. The expected old UUID fences delayed recovery callbacks.
+     */
+    public static State reattachCarrierCharge(State state, long generation,
+                                              UUID expectedOldCharge, UUID charge) {
+        if (!valid(state, generation) || expectedOldCharge == null || charge == null
+                || state.phase() != Phase.CARRIER_ACTIVE || state.carrier() == null
+                || !expectedOldCharge.equals(state.charge()) || charge.equals(expectedOldCharge)) {
+            return state;
+        }
+        return new State(state.generation(), state.delivered(), state.carrier(), charge, null,
+                0L, Phase.CARRIER_ACTIVE);
+    }
+
     public static State carrierDied(State state, long generation, UUID carrier,
                                     UUID charge, long nowTick) {
         if (!valid(state, generation) || carrier == null || charge == null

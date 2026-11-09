@@ -79,6 +79,8 @@ public class BossIncomingRosterProbe {
     boolean isOfficialBoss(LivingEntity boss){return boss==currentBoss;}
     boolean isTestBoss(LivingEntity boss){return diagnostic;}
     boolean isOfficialAttempt(){return !diagnostic;}
+    UUID bossUuid;
+    boolean isBossCombatRuntimeActive(LivingEntity boss){return boss==currentBoss&&phase==EventPhase.BOSS_ACTIVE;}
     Set<UUID> authoritativeAttemptRoster(){return roster;}
     boolean isActiveBossParticipant(Player p){return p!=null&&(p.admitted||localFallback)&&p.online&&!p.dead&&!p.spectator&&p.world==WORLD;}
     double bossMaxHealth(LivingEntity boss){return 5000;}

@@ -189,6 +189,23 @@ public final class ObeliskPlacementPolicy {
         return List.copyOf(points);
     }
 
+    /** Extra choices cover the approved band; spacing is checked against accepted sites. */
+    public static List<Point> searchCandidates(long seed, double usableRadius) {
+        double radius = Double.isFinite(usableRadius) && usableRadius >= MIN_DISTANCE / MIN_RADIUS_FRACTION
+                ? Math.min(usableRadius, 128.0D) : DEFAULT_RADIUS / MIN_RADIUS_FRACTION;
+        double min = radius * MIN_RADIUS_FRACTION, max = radius * MAX_RADIUS_FRACTION;
+        List<Point> points = new ArrayList<>();
+        int extent = (int) Math.ceil(max);
+        for (int x = -extent; x <= extent; x++) {
+            for (int z = -extent; z <= extent; z++) {
+                double distance = Math.hypot(x, z);
+                if (distance >= min && distance <= max) points.add(new Point(x, z));
+            }
+        }
+        java.util.Collections.shuffle(points, new Random(seed ^ 0x4F42454C49534BL));
+        return List.copyOf(points.subList(0, Math.min(512, points.size())));
+    }
+
     public static boolean hasReasonableSpacing(List<Point> points) {
         if (points == null) {
             return false;

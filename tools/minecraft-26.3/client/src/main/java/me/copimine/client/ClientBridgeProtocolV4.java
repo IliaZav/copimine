@@ -668,6 +668,14 @@ public final class ClientBridgeProtocolV4 {
         mutationHandler.apply(sender, mutation);
     }
 
+    /** Read-only arena geometry from the authenticated current-generation context. */
+    public synchronized EndEventBridgeBodyCodec.ArenaBounds arenaBounds(String eventId, long generation) {
+        if (activeEventContext == null || !isReady(BridgeRequestCodec.Sender.END_EVENT)
+                || activeEventContext.generation() != generation
+                || !activeEventContext.eventUuid().toString().equals(eventId)) return null;
+        return activeEventContext.bounds();
+    }
+
     private Object validateEndEventBody(BridgeRequestCodec.Sender sender, SenderFlow flow,
             EndEventBridgeBodyCodec.Body body) {
         if (body.type() == EndEventBridgeBodyCodec.Type.CONTEXT_BIND) {

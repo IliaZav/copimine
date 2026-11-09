@@ -145,7 +145,7 @@ function Invoke-JavaTest {
     # that no stderr text reaches PowerShell at all.
     #   & $script:javaExecutable @javaTestJvmArgs -cp $Classpath $MainClass
     $javaProcess = Start-Process -FilePath $script:javaExecutable `
-        -ArgumentList (@($javaTestJvmArgs) + @('-cp', $Classpath, $MainClass)) `
+        -ArgumentList (@($javaTestJvmArgs) + @('-cp', ('"{0}"' -f $Classpath), $MainClass)) `
         -NoNewWindow -Wait -PassThru `
         -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
     $exitCode = $javaProcess.ExitCode

@@ -19,7 +19,6 @@
     "LivingEntityRenderStateMixin",
     "EchoPlayerRendererMixin",
     "EchoCarrierUnloadMixin",
-    "EndEventBlackFogMixin",
     "WaveMusicMixMixin",
     "EntityBoundingBoxMixin",
     "LivingEntityHealthProjectionMixin",
@@ -32,7 +31,8 @@
     "WardenEntityRendererMixin",
     "PlayerTabOverlayMixin",
     "PlayerTabOverlayAccessor",
-    "GameRendererPostProcessMixin"
+    "GameRendererPostProcessMixin",
+    "BlackFogPostPassMixin"
   ],
   "injectors": {
     "defaultRequire": 1

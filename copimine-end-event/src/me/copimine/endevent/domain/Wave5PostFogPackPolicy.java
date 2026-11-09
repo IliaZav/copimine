@@ -1,5 +1,7 @@
 package me.copimine.endevent.domain;
 
+import java.util.Objects;
+
 /**
  * Audit wave 5 / W5-004: one finite pack of 10-15 enemies after EVERY fog.
  *
@@ -29,7 +31,7 @@ public final class Wave5PostFogPackPolicy {
     /** Largest mandatory pack, W5-004. */
     public static final int MAX_PACK = 15;
     /** Total fog cycles that each owe exactly one pack. */
-    public static final int REQUIRED_CYCLES = 5;
+    public static final int REQUIRED_CYCLES = BlackFogTimingPolicy.CYCLE_COUNT;
     /** Background delay before an owed pack that hit the cap is retried. */
     public static final long RETRY_MILLIS = 3_000L;
 
@@ -57,6 +59,50 @@ public final class Wave5PostFogPackPolicy {
     /** True when the cycle just completed owes a pack (every cycle does). */
     public static boolean cycleOwesPack(int completedCycles) {
         return completedCycles > 0 && completedCycles <= REQUIRED_CYCLES;
+    }
+
+    /**
+     * One cycle's pack receipt: which generation and cycle the pack belonged to.
+     *
+     * <p>Point 12 of the November 9 brief: randomness and one-shot actions must
+     * survive a retry without executing twice. "How many packs were spawned" is
+     * not enough to prove that. If the counter is read back after a restart that
+     * began a NEW generation, a stale count silently licenses the new fight with
+     * a debt it never incurred — or cancels one it did. A receipt carries the
+     * identity of what it paid for, so a count from another fight cannot be
+     * mistaken for this one's.</p>
+     */
+    public record Receipt(String eventId, long generation, int targetCycles, int cycle) {
+        public Receipt {
+            if (eventId == null || eventId.isBlank() || generation <= 0L
+                    || targetCycles < BlackFogTimingPolicy.MIN_CYCLES
+                    || targetCycles > BlackFogTimingPolicy.CYCLE_COUNT
+                    || cycle < 1 || cycle > targetCycles) {
+                throw new IllegalArgumentException("Wave 5 pack receipt is outside its bounds");
+            }
+        }
+
+        /** True when this receipt really belongs to the supplied live fight. */
+        public boolean matches(String liveEventId, long liveGeneration, int liveTargetCycles) {
+            return Objects.equals(eventId, liveEventId) && generation == liveGeneration
+                    && targetCycles == liveTargetCycles;
+        }
+    }
+
+    /**
+     * How many packs a checkpoint that was frozen for {@code frozenTargetCycles}
+     * may legitimately claim inside a fight that now runs {@code liveTargetCycles}.
+     *
+     * <p>A count above the live target cannot be spent: it would settle debts
+     * that this smaller fight never ran. Clamping is deliberate rather than
+     * refusing outright, because shrinking the target on a reconnected roster is
+     * legal, and the already-delivered packs are real.</p>
+     */
+    public static int schedulablePacks(int frozenTargetCycles, int liveTargetCycles, int packsSpawned) {
+        int frozen = Math.max(0, Math.min(REQUIRED_CYCLES, frozenTargetCycles));
+        int live = Math.max(0, Math.min(REQUIRED_CYCLES, liveTargetCycles));
+        int delivered = Math.max(0, Math.min(frozen, packsSpawned));
+        return Math.min(delivered, live);
     }
 
     /**

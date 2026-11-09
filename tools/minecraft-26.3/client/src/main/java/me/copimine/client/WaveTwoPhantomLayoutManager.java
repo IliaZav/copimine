@@ -38,7 +38,7 @@ final class WaveTwoPhantomLayoutManager {
     private boolean active;
     private final Map<String, Phantom> positions = new LinkedHashMap<>();
 
-    /** Apply one signed HUNT mark update or one position item within its 35-entry layout. */
+    /** Apply one signed HUNT mark update or one position item within its bounded layout. */
     synchronized boolean apply(EndEventBridgeBodyCodec.Body body, long nowMillis) {
         if (!valid(body, nowMillis)) return false;
         String incomingEventId = body.eventUuid().toString();
@@ -153,7 +153,9 @@ final class WaveTwoPhantomLayoutManager {
                 || body.durationMillis() > 15_000L || body.health() != 0L || body.maxHealth() != 0L
                 || Float.floatToIntBits(body.progressOrIntensity())
                 != Float.floatToIntBits("ACTIVE".equals(body.status()) ? 0.25F : 0.0F)
-                || !body.clearPolicy().isEmpty() || !body.reservedTwo().isEmpty()
+                || ("ACTIVE".equals(body.status())
+                    ? WaveTwoCinematicTimeline.parseIntroAge(body.clearPolicy()) < 0
+                    : !body.clearPolicy().isEmpty()) || !body.reservedTwo().isEmpty()
                 || !"ACTIVE".equals(body.status()) && !"CLEAR".equals(body.status())) return false;
         String[] mode = body.subjectOrMode().split("\\|", -1);
         if (mode.length != 3 || !validDimension(mode[0]) || !"wave2".equals(mode[1])

@@ -205,10 +205,13 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # Repinned for the Guardian render fix: the client now routes the
     # END_RIFT_GUARDIAN_V1 visual to the Guardian model and texture on the
     # non-flag path, so a visual-bound boss stops drawing as a vanilla Enderman.
-    assert artifact['size'] == 13_553_285
+    # Repinned for the Wave 6 six-stage armour set: three more armour textures are
+    # packaged, so the client jar grew. The size assertion carries the digits, so a
+    # repin here must update BOTH this literal and the split half below.
+    assert artifact['size'] == 13_583_335
     assert artifact['sha512'] == (
-        '9c2ae21dc7419ef9b6aeb9069343c20ab40fad28e8209d6f58f955eaff26596a'
-        'a1f6bbaa9138b47e9614435feac22e7b9b2d7f9a81a93229d0d2dec2c0b3d022'
+        'b8745acdc6df6f02f35298b5792696e493249e9e66eafee265bdd74ebe2e99ad'
+        'bded2bd5f273ce62acc95d7b5f49e3ff79a5cdbb1e5ccd841c410c0251bf3049'
     )
 
 

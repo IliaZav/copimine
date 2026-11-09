@@ -721,17 +721,14 @@ def test_wave5_recovery_checkpoint_codec_is_executable(probe):
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_wave5_fog_renders_a_bounded_arena_perimeter_curtain():
+def test_wave5_uses_custom_client_volume_instead_of_particle_perimeter():
     source = SOURCE.read_text("utf-8")
     body = extract(source, "void renderWaveObjective(long now)")
-
-    assert "BlackFogCurtainPolicy.perimeter(18.0D, 5.0D)" in body
-    policy = (SOURCE.parent / "domain/BlackFogCurtainPolicy.java").read_text(encoding="utf-8")
-    assert "POINTS_PER_RING = 96" in policy
-    assert "VERTICAL_LAYERS = 8" in policy
-    assert "MAX_PARTICLE_POINTS = POINTS_PER_RING * VERTICAL_LAYERS" in policy
-    assert "spawnTypedParticle(viewer, Particle.SQUID_INK" in body
-    assert "eventTickCounter % 20L == 0L" in body
+    assert "BlackFogCurtainPolicy.perimeter" not in body
+    shader = (ROOT / "tools/minecraft-26.3/client/src/main/resources/assets/copimineclient/shaders/post/wave5_volume.fsh").read_text("utf-8")
+    assert "DepthSampler" in shader and "cloudNoise(point" in shader
+    assert "safeExit(EyeTime.xyz, direction)" in shader
+    assert "ArenaMin.xyz" in shader and "ArenaMax.xyz" in shader
 
 
 def test_wave5_safe_zone_layout_reserves_one_usable_cell_per_eligible_player():

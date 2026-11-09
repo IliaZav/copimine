@@ -100,11 +100,17 @@ PROBE = textwrap.dedent(
             check("yaw of a coincident point is zero",
                     WaveTwoPhantomLayout.targetYaw(phantom, phantom) == 0.0F);
 
+            // A settled observer faces the viewer with its WHOLE body: a phantom
+            // that only turns its head reads as a swivel-necked doll, which is the
+            // exact defect the cinematic was asked to avoid.
             WaveTwoPhantomLayout.LookPose pose = WaveTwoPhantomLayout.lookAt(phantom, east);
-            check("body never turns", pose.bodyYawDegrees() == 0.0F);
-            check("head turns toward the player", pose.headYawDegrees() != 0.0F);
+            check("body turns toward the player",
+                    Math.abs(pose.bodyYawDegrees() + 90.0F) < 1.0E-4F);
+            check("the head adds no offset on top of the body",
+                    pose.headYawDegrees() == 0.0F);
             check("lookAt of a non-finite target is neutral",
-                    WaveTwoPhantomLayout.lookAt(phantom, null).headYawDegrees() == 0.0F);
+                    WaveTwoPhantomLayout.lookAt(phantom, null).headYawDegrees() == 0.0F
+                    && WaveTwoPhantomLayout.lookAt(phantom, null).bodyYawDegrees() == 0.0F);
 
             // Lookup only accepts the exact server-authored position.
             int index = WaveTwoPhantomLayout.indexOfExactPosition(first, first.get(7));

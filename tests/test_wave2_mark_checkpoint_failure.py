@@ -19,7 +19,10 @@ public class WaveTwoClearCheckpointProbe {
     static class World {}
     static class Location {World getWorld(){return new World();}}
     int waveSpawnGroupIndex=1,currentHuntCycles,waveTwoGroupsSpawned=1,newMarks,spawns,saves;
-    long waveTwoGroupClearedAtMillis;
+    // This fixture starts after the opening, with combat group one already spawned.
+    long waveTwoGroupClearedAtMillis, waveTwoIntroStartedMillis=1L;
+    static class Config { Object phaseMusic(String phase){return phase;} }
+    Config config=new Config();void playEventMusic(Object track){}
     boolean waveTwoGroupCleared,official=true,saveSucceeds;
     final Set<UUID> waveTwoOutstandingEntityUuids=new HashSet<>();
     final List<WaveMechanicsPolicy.WaveCounts> waveSpawnSchedule=List.of(
@@ -47,7 +50,7 @@ public class WaveTwoClearCheckpointProbe {
     static void check(boolean b,String reason){if(!b)throw new AssertionError(reason);}
     public static void main(String[] args){
         var failed=new WaveTwoClearCheckpointProbe();
-        failed.tickCurrentHuntObjective(10_000L);
+        failed.tickCurrentHuntObjective(11_000L);
         check(failed.saves==1,"an official cleared subwave must attempt one durable checkpoint");
         check(failed.phase==EventPhase.RECOVERY_REQUIRED,
                 "a failed clear checkpoint must fail closed instead of publishing uncommitted progress");
@@ -55,20 +58,20 @@ public class WaveTwoClearCheckpointProbe {
                 "the tick must stop before the next subwave or another mark packet");
         check(failed.currentHuntCycles==1,"the clear itself is still counted for the log line");
         var passed=new WaveTwoClearCheckpointProbe();passed.saveSucceeds=true;
-        passed.tickCurrentHuntObjective(10_000L);
+        passed.tickCurrentHuntObjective(11_000L);
         check(passed.phase==EventPhase.WAVE_2&&passed.newMarks==1&&passed.currentHuntCycles==1,
                 "a durable clear keeps normal progression and the collective mark");
         check(passed.spawns==0,"the next subwave waits for the three-second post-clear pause");
-        passed.tickCurrentHuntObjective(13_000L);
+        passed.tickCurrentHuntObjective(14_000L);
         check(passed.spawns==1&&passed.waveSpawnGroupIndex==2,
                 "the follow-up tick starts the next subwave once the pause elapses");
         var diagnostic=new WaveTwoClearCheckpointProbe();diagnostic.official=false;
-        diagnostic.tickCurrentHuntObjective(10_000L);
+        diagnostic.tickCurrentHuntObjective(11_000L);
         check(diagnostic.saves==0&&diagnostic.newMarks==1,
                 "a disposable probe must not require official persistence");
         var unloaded=new WaveTwoClearCheckpointProbe();
         unloaded.waveTwoOutstandingEntityUuids.add(UUID.randomUUID());
-        unloaded.tickCurrentHuntObjective(10_000L);
+        unloaded.tickCurrentHuntObjective(11_000L);
         check(unloaded.saves==0&&unloaded.currentHuntCycles==0&&unloaded.newMarks==1,
                 "an outstanding fighter cannot be checkpointed as a cleared subwave");
     }

@@ -254,13 +254,13 @@ def test_owned_displays_move_through_the_internal_permit_path() -> None:
             f"owned displays must not be moved with {raw!r}; the wave guard cancels it")
     assert "host.move(piece.display(), at)" in encounter
     assert "host.move(d.display(), at)" in encounter
-    assert "void move(Entity entity, Location destination);" in encounter, (
+    assert "boolean move(Entity entity, Location destination);" in encounter, (
         "the encounter must ask the host to move a display")
 
     # The adapter's implementation is the permit path, not a bare teleport.
-    move = server[server.index("public void move(Entity entity, Location destination)"):]
+    move = server[server.index("public boolean move(Entity entity, Location destination)"):]
     move = move[: move.index("\n            }")]
-    assert "teleportCombatEntity(entity, destination)" in move, (
-        "the host move must use the internal teleport permit path")
+    assert "return teleportCombatEntity(entity, destination)" in move, (
+        "the host move must preserve acceptance or refusal from the permit path")
     assert ".teleport(" not in move, (
         "the host move must not bypass the permit with a raw teleport")

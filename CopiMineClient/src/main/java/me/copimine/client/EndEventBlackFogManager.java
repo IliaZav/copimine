@@ -123,6 +123,7 @@ public final class EndEventBlackFogManager {
                 currentCycle = -1;
                 clearedCycle = -1;
                 terminal = false;
+                resynchronized = false;
                 cleared = false;
                 clearActiveState();
             }
@@ -130,6 +131,7 @@ public final class EndEventBlackFogManager {
                     || nextCycle <= clearedCycle) {
                 return false;
             }
+            if (nextCycle > currentCycle) resynchronized = false;
             currentCycle = nextCycle;
             // The close-out is per cycle: a fresh ACTIVE cycle reopens the
             // acknowledgement so its own CLEAR is recognised again.

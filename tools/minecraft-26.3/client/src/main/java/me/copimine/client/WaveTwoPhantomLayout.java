@@ -65,10 +65,25 @@ final class WaveTwoPhantomLayout {
         return (float) StrictMath.atan2(dx, dz);
     }
 
-    /** Keep the phantom's body facing forward and aim only its head at the marked player. */
+    /** A settled observer faces the viewer with its whole body. */
     static LookPose lookAt(Position phantom, Position markedPlayer) {
         if (!finite(phantom) || !finite(markedPlayer)) return new LookPose(0.0F, 0.0F);
-        return new LookPose(0.0F, (float) -Math.toDegrees(targetYaw(phantom, markedPlayer)));
+        return new LookPose((float) -Math.toDegrees(targetYaw(phantom, markedPlayer)), 0.0F);
+    }
+
+    static float shortestAngle(float from, float to) {
+        return ((to - from) % 360.0F + 540.0F) % 360.0F - 180.0F;
+    }
+
+    /** Both speeds are per rendered step; callers bound elapsed time after a pause. */
+    static LookPose turnToward(Position phantom, Position viewer, float body, float head,
+                               float maxStep) {
+        float desired = lookAt(phantom, viewer).bodyYawDegrees();
+        float step = Math.max(0.0F, Math.min(45.0F, maxStep));
+        float nextBody = body + Math.max(-step, Math.min(step, shortestAngle(body, desired)));
+        float desiredHead = Math.max(-55.0F, Math.min(55.0F, shortestAngle(nextBody, desired)));
+        float nextHead = head + Math.max(-step * 1.8F, Math.min(step * 1.8F, desiredHead - head));
+        return new LookPose(shortestAngle(0, nextBody), Math.max(-55.0F, Math.min(55.0F, nextHead)));
     }
 
     static boolean finite(Position position) {

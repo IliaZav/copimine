@@ -41,6 +41,7 @@ def probe_harness(tmp_path_factory):
         _declaration(source, "private void captureBlackFogShutdownCheckpoint()"),
         _declaration(source, "private void restoreBlackFogRecoveryCheckpoint(EventPhase persistedPhase,"),
         _declaration(source, "private void restoreWave3PortalCheckpoint(EventPhase persistedPhase,"),
+        _declaration(source, "private int readProgressCounter(Map<String, String> persisted, String key)"),
     ]
     if "private boolean spawnInspectionWave(" in source:
         # spawnInspectionWave delegates to the extracted real initializeWaveGameplay.
@@ -105,6 +106,9 @@ public final class WaveProbeAdapterHarness {
     static final String WAVE_TWO_ATTEMPT_LIFECYCLE_PREFIX = "wave2-attempt-lifecycle.";
     static final long OFFLINE_RECONNECT_GRACE_MILLIS = 25_000L;
     Map<String, String> wave7RecoveryCheckpoint = Map.of();
+    Map<String,String> riftRamCheckpoint = Map.of("ram.schema","2");
+    static class Ram { Map<String,String> snapshot(){return Map.of("ram.schema","2");} }
+    Ram riftRam;
     String recoveryReason = "";
     long generation = 4L, creativeTestGeneration = 4L, phaseDeadlineMillis, eventTickCounter;
     UUID creativeTestPlayerUuid;
@@ -132,6 +136,8 @@ public final class WaveProbeAdapterHarness {
     Wave4ObeliskRecoverySnapshot.Data wave4RestoredObeliskCheckpoint;
     Map<String, String> captureWave4ObeliskCheckpoint() { return Map.of(); }
     boolean wave3PortalEliteSpawned;
+    int portalShockwaveReceiptMask, wave1ClearReinforcementMask;
+    long waveTwoIntroStartedMillis;
     RiftCarrierPolicy.State currentCarrierState;
     UUID currentCarrierInventoryToken;
     boolean wave1CarrierCheckpointRestored;
@@ -511,8 +517,9 @@ public final class WaveProbeAdapterHarness {
                 Map<String, String> saved = probe.waveObjectiveProgressSnapshot();
                 check("6".equals(saved.get("test-wave"))
                         && survivor.getUniqueId().toString().equals(saved.get("test-wave-roster"))
-                        && "combat".equals(saved.get("test-wave-mode")),
-                        "playable sandbox must retain its durable frozen roster and mode");
+                        && "capture".equals(saved.get("test-wave-mode"))
+                        && "2".equals(saved.get("ram.schema")),
+                        "Ram sandbox retains its roster and schema without the retired ritual combat flag");
             }
             case "empty-playable-snapshot" -> {
                 probe.activeWave = 6;

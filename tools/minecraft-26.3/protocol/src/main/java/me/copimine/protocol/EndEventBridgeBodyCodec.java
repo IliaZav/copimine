@@ -412,12 +412,15 @@ public final class EndEventBridgeBodyCodec {
         requireIdentifier(body.instanceId(), "player-state instance");
         requireWaveSubject(body.subjectOrMode(), body.visualId().equals("WAVE1_CARRIER_V1") ? 1 : 2);
         boolean waveTwo = body.visualId().equals("WAVE2_HUNT_MARK_V1");
+        boolean introAge = waveTwo && body.status().equals("ACTIVE")
+                && body.clearPolicy().matches("intro-age=[0-9]{1,5}")
+                && Integer.parseInt(body.clearPolicy().substring(10)) <= 10_000;
         boolean hasLayoutEntry = !body.controlId().isEmpty() || !body.reservedOne().isEmpty();
         if ((!waveTwo && (!body.controlId().isEmpty() || !body.reservedOne().isEmpty()))
                 || waveTwo && hasLayoutEntry
                 && (body.controlId().isEmpty() || body.reservedOne().isEmpty()
                 || !body.status().equals("ACTIVE"))
-                || !body.clearPolicy().isEmpty()
+                || !body.clearPolicy().isEmpty() && !introAge
                 || body.health() != 0 || body.maxHealth() != 0
                 || (!body.status().equals("ACTIVE") && !body.status().equals("CLEAR"))) {
             throw new IllegalArgumentException("Invalid End Event player-state fields");
@@ -444,7 +447,7 @@ public final class EndEventBridgeBodyCodec {
                     || body.durationMillis() % 50L != 0L) {
                 throw new IllegalArgumentException("Wave 2 phantom warning duration is outside its bounds");
             }
-        } else if ("CLEAR".equals(body.status())) {
+        } else if ("CLEAR".equals(body.status()) || "CANCEL".equals(body.status())) {
             if (body.durationMillis() != 0L) {
                 throw new IllegalArgumentException("Wave 2 phantom clear carries an active duration");
             }

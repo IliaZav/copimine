@@ -244,7 +244,7 @@ def test_wave7_official_and_sandbox_runs_share_the_same_sequential_route():
     assert "namedWave7TestLayout" not in source
     # Wave 7 is one open arena with a fixed route, never a random sample of rooms,
     # so sandbox and official runs cannot diverge on what they exercise.
-    assert "realitySplitChamberController.beginOpenArena(generation, new ArrayList<>(roster));" in preflight
+    assert "realitySplitChamberController.beginWave7(generation, new ArrayList<>(roster));" in preflight
     assert ("realitySplitTrialController.beginNamed(eventUuid, generation,\n"
             "                realitySplitChamberController.assignment(), "
             "RealitySplitTrialController.sequentialRoute());") in preflight

@@ -39,13 +39,30 @@ public final class EndermanMarkShaderController {
      * call from re-submitting the post chain on every frame.
      */
     public void update(boolean marked) {
+        updateEffect(marked ? EFFECT_ID : null);
+    }
+
+    /** The pinned post-chain API has static uniforms; 24 bounded 125ms stages provide the fade. */
+    public void updateIntro(long waveAgeMillis) {
+        if (waveAgeMillis < WaveTwoCinematicTimeline.SCREAM_MILLIS) {
+            updateEffect(null);
+        } else if (waveAgeMillis < 4_500L) {
+            int stage = (int) ((waveAgeMillis - WaveTwoCinematicTimeline.SCREAM_MILLIS) / 125L);
+            updateEffect("WAVE2_INTRO_" + stage);
+        } else {
+            updateEffect(EFFECT_ID);
+        }
+    }
+
+    private void updateEffect(String effectId) {
         if (postProcess == null) {
             status = "post-process-controller-not-wired";
             lastFailureReason = "client-post-process-unavailable";
             return;
         }
-        if (marked) {
-            if (postProcess.apply(EFFECT_ID, 1.0F)) {
+        if (effectId != null) {
+            // Only this controller selects the vanilla effect or its bounded intro stages.
+            if (postProcess.apply(effectId, 1.0F)) {
                 active = true;
                 status = "enderman-shader-active";
                 lastFailureReason = "";

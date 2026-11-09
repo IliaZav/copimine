@@ -295,12 +295,9 @@ try {
   Write-Host ("Entry sizes: {0}" -f (@($entryCrcLines) -join ';'))
 } finally { $archiveDumpDigest.Dispose() }
 Copy-Item -LiteralPath $jar -Destination $serverJar -Force
-# The migration lock pins build/minecraft-26.3/plugins/jars, not the staging
-# copy. Leaving that stale is how the published digest silently drifted away
-# from the source tree on every change, so refresh it here in one step.
-$candidateJar = Join-Path $releaseRoot 'build\minecraft-26.3\plugins\jars\CopiMineEndEvent-26.3.jar'
-New-Item -ItemType Directory -Path (Split-Path -Parent $candidateJar) -Force | Out-Null
-Copy-Item -LiteralPath $jar -Destination $candidateJar -Force
+# The pinned 26.3 candidate belongs exclusively to migrationPlugins in the
+# target Gradle build. This direct packager also runs with the legacy Java 21
+# API in CI; copying its output there corrupts a verified Java 25 candidate.
 New-Item -ItemType Directory -Path $serverDataDir -Force | Out-Null
 $serverConfig = Join-Path $serverDataDir 'config.yml'
 if ($SyncServerConfig -or -not (Test-Path $serverConfig)) {

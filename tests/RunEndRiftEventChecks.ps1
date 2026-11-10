@@ -586,6 +586,7 @@ $pureTests = @(
   'RiftFireballScalingPolicyTest',
   'RiftFracturePolicyTest',
   'ObeliskIntegrityPolicyTest',
+  'ObeliskFireCadencePolicyTest',
   'RiftObeliskScalingPolicyTest',
   'RiftObeliskTimingPolicyTest',
   'ShardPassivePolicyTest',

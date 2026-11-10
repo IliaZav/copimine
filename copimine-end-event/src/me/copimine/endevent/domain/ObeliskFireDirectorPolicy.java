@@ -91,6 +91,68 @@ public final class ObeliskFireDirectorPolicy {
         return Math.max(minimum, (int) Math.round(base * 0.75D));
     }
 
+    /**
+     * Party-scaled fire cadence, W4-02.
+     *
+     * <p>The towers fired on the same fixed cadence for two players as for
+     * twenty, so a small squad standing in front of four obelisks ate the same
+     * barrage a full raid needs to stay busy. The cadence now stretches for a
+     * small party and tightens for a large one. The telegraph floor is never
+     * crossed: a slower tower is still a readable tower, and the ceiling keeps
+     * the release gap inside {@link #MAX_BASE_FIRE_INTERVAL_TICKS} so projectile
+     * admission math stays valid.</p>
+     */
+    public static int fireInterval(int baseIntervalTicks, boolean channelerAccelerated,
+                                   int minimumTelegraphTicks, int livingPlayers) {
+        int minimum = Math.min(MAX_BASE_FIRE_INTERVAL_TICKS,
+                Math.max(MIN_TELEGRAPH_TICKS, minimumTelegraphTicks));
+        int base = Math.min(MAX_BASE_FIRE_INTERVAL_TICKS, Math.max(minimum, baseIntervalTicks));
+        int scaled = (int) Math.round(base * intervalMultiplier(livingPlayers));
+        scaled = Math.min(MAX_BASE_FIRE_INTERVAL_TICKS, Math.max(minimum, scaled));
+        if (!channelerAccelerated) {
+            return scaled;
+        }
+        return Math.max(minimum, (int) Math.round(scaled * 0.75D));
+    }
+
+    /**
+     * Cadence multiplier for a living party, W4-02.
+     *
+     * <p>{@code 1.0} is the tuned full-raid cadence. A two-player squad gets
+     * roughly half the incoming fire; a large raid gets somewhat more pressure
+     * than the old flat value rather than the same absolute amount.</p>
+     */
+    public static double intervalMultiplier(int livingPlayers) {
+        int players = Math.max(1, livingPlayers);
+        if (players <= 2) return 2.0D;
+        if (players <= 4) return 1.65D;
+        if (players <= 7) return 1.3D;
+        if (players <= 10) return 1.0D;
+        if (players <= 15) return 0.85D;
+        return 0.72D;
+    }
+
+    /**
+     * How many towers may hold a live sequence at once, W4-02.
+     *
+     * <p>The old bound let every obelisk fire simultaneously regardless of
+     * party size. A two-player squad facing four towers saw four overlapping
+     * warnings and four projectiles for two dodges. The limit grows with the
+     * room it has to threaten, never below one, so the assault still reads as
+     * incoming fire instead of a silent arena.</p>
+     */
+    public static int simultaneousSequenceLimit(int livingPlayers, int obeliskCount) {
+        int towers = Math.max(1, obeliskCount);
+        int players = Math.max(1, livingPlayers);
+        int limit;
+        if (players <= 2) limit = 1;
+        else if (players <= 4) limit = 2;
+        else if (players <= 7) limit = 3;
+        else if (players <= 10) limit = 4;
+        else limit = ObeliskScalingPolicy.MAX_OBELISKS;
+        return Math.min(towers, Math.min(limit, ObeliskScalingPolicy.MAX_OBELISKS));
+    }
+
     /** A ready candidate is already filtered for phase, health and charge state by the adapter. */
     public record Candidate(UUID obeliskId, boolean ready, boolean charging,
                             boolean firing, boolean alive, UUID recentTarget,

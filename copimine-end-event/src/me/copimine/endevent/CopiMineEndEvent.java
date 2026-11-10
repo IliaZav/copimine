@@ -50941,6 +50941,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 .count();
         int availableSequences = Math.max(0,
                 fireCap - activeWave4FireballCount() - reservedSequences);
+        // W4-02: a small party must not face every tower at once. The sequence
+        // limit is the loudest part of the "too many projectiles for a tiny
+        // group" report, because simultaneous warnings are what actually
+        // overwhelms two players; the per-tower cadence below then keeps the
+        // remaining fire readable instead of merely rarer.
+        int partySequenceLimit = ObeliskFireDirectorPolicy.simultaneousSequenceLimit(
+                currentWaveScalePlayers, activeWave4Obelisks.size());
+        availableSequences = Math.max(0,
+                Math.min(availableSequences, partySequenceLimit - reservedSequences));
         for (Wave4ObeliskRuntimeState state : continuingFire) {
             boolean released = launchWave4Fireball(state);
             if (released) {
@@ -50949,7 +50958,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         tuning.fireIntervalTicks(), waveChannelerObelisks.entrySet().stream().anyMatch(entry ->
                                 entry.getValue().equals(state.id()) && isLiveOwnedEntity(entry.getKey())
                                 && "CHANNELER".equals(readString(ownedEntities.get(entry.getKey()), keyObeliskWave4Role))),
-                        ObeliskFireDirectorPolicy.MIN_TELEGRAPH_TICKS));
+                        ObeliskFireDirectorPolicy.MIN_TELEGRAPH_TICKS, currentWaveScalePlayers));
             }
         }
         for (ObeliskFireDirectorPolicy.Candidate candidate
@@ -50964,7 +50973,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     tuning.fireIntervalTicks(), waveChannelerObelisks.entrySet().stream().anyMatch(entry ->
                             entry.getValue().equals(state.id()) && isLiveOwnedEntity(entry.getKey())
                             && "CHANNELER".equals(readString(ownedEntities.get(entry.getKey()), keyObeliskWave4Role))),
-                    ObeliskFireDirectorPolicy.MIN_TELEGRAPH_TICKS));
+                    ObeliskFireDirectorPolicy.MIN_TELEGRAPH_TICKS, currentWaveScalePlayers));
         }
         tickRiftFireballs();
         // Destroying all planned obelisks is the Wave 4 objective.  Remaining
@@ -51696,8 +51705,52 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    private boolean launchWave4Fireball(Wave4ObeliskRuntimeState obelisk) {
-        if (obelisk == null || config == null || obelisk.stage() != ObeliskStage.ACTIVE) {
+    /**
+     * W4-01: the non-destructive death burst of a destroyed obelisk.
+     *
+     * <p>Purely presentational. It spawns audience-scoped particles and plays
+     * sounds at the tower's base; it never creates an explosion entity, never
+     * damages blocks and never damages players. World mutation stays with the
+     * hazard journal so the arena is restored exactly as it was.</p>
+     */
+    private void renderObeliskDestruction(Wave4ObeliskRuntimeState state) {
+        if (state == null || state.base() == null || state.base().getWorld() == null) {
+            return;
+        }
+        Location base = state.base().clone().add(0.0D, 1.1D, 0.0D);
+        World world = base.getWorld();
+        // A bright core flash, then a purple/cyan shockwave ring that reads even
+        // at arena distance, then collapsing debris.
+        spawnEventParticle(base, Particle.EXPLOSION_EMITTER, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+        spawnEventParticle(base, Particle.FLASH, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+        for (int ring = 0; ring < 3; ring++) {
+            double radius = 1.4D + ring * 1.1D;
+            int points = 18 + ring * 6;
+            for (int i = 0; i < points; i++) {
+                double angle = Math.PI * 2.0D * i / points;
+                Location point = base.clone().add(Math.cos(angle) * radius,
+                        -0.9D + ring * 0.12D, Math.sin(angle) * radius);
+                spawnEventParticle(point, Particle.DUST, 1, 0.0D, 0.0D, 0.0D, 0.02D,
+                        new Particle.DustOptions(ring == 1
+                                ? Color.fromRGB(67, 230, 255) : Color.fromRGB(151, 61, 255),
+                                1.3F - ring * 0.15F));
+            }
+        }
+        spawnEventParticle(base, Particle.END_ROD, 40, 0.9D, 1.2D, 0.9D, 0.22D);
+        spawnEventParticle(base, Particle.REVERSE_PORTAL, 30, 0.8D, 1.0D, 0.8D, 0.06D);
+        spawnEventParticle(base, Particle.SOUL_FIRE_FLAME, 24, 0.7D, 0.9D, 0.7D, 0.08D);
+        // Debris falls rather than hovers, so the tower reads as having come apart.
+        spawnEventParticle(base.clone().add(0.0D, 1.2D, 0.0D), Particle.CRIT, 36,
+                1.1D, 0.4D, 1.1D, 0.18D);
+        world.playSound(base, Sound.ENTITY_ENDER_DRAGON_HURT, SoundCategory.HOSTILE, 0.9F, 0.55F);
+        world.playSound(base, Sound.BLOCK_AMETHYST_BLOCK_BREAK, SoundCategory.BLOCKS, 1.0F, 0.6F);
+        world.playSound(base, Sound.ENTITY_GENERIC_EXPLODE, SoundCategory.BLOCKS, 0.7F, 1.45F);
+        world.playSound(base, Sound.ENTITY_ENDERMAN_DEATH, SoundCategory.HOSTILE, 0.55F, 1.3F);
+        getLogger().info("END_RIFT_OBELISK_DESTRUCTION_BURST event=" + eventId
+                + " ordinal=" + state.ordinal + " destructive=false");
+    }
+
+    private boolean launchWave4Fireball(Wave4ObeliskRuntimeState obelisk) {        if (obelisk == null || config == null || obelisk.stage() != ObeliskStage.ACTIVE) {
             return false;
         }
         List<Player> targets = activeWaveParticipants().stream()
@@ -51986,6 +52039,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // W4-013: a removed/destroyed obelisk must never issue another repel impulse.
         state.destroyed = true;
         state.repelTimers = ObeliskRepelPolicy.Timers.IDLE_TIMERS;
+        // W4-01: the tower's death has to READ as a death. The collapse animation
+        // shrank the display and then the tower simply vanished, so players
+        // reported that destroyed obelisks "never explode". The burst is
+        // non-destructive by design: it is particles and sound only, it never
+        // calls world.createExplosion, and the block restore below still owns
+        // every cell it touches.
+        if ("destroyed".equalsIgnoreCase(reason)) {
+            renderObeliskDestruction(state);
+        }
         if ("destroyed".equalsIgnoreCase(reason) && state.health() == 0
                 && state.stage() == ObeliskStage.COLLAPSING) {
             currentWave4DestroyedObeliskReceipts.put(state.ordinal(),

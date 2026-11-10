@@ -332,6 +332,7 @@ public final class ClientBridgeProtocol {
             }
             if ("END_FOG_STATE".equals(eventType)) {
                 boolean applied = END_EVENT_BLACK_FOG.apply(payload, nowMillis);
+                if (applied) BlackFogSmokeRuntime.tick(Minecraft.getInstance());
                 logWorldVfxResult(eventType, payload, applied);
                 return;
             }

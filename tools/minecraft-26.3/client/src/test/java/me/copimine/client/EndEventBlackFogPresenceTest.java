@@ -54,9 +54,9 @@ class EndEventBlackFogPresenceTest {
     void repeatedLeaseDoesNotRestartOnsetOrProgress() {
         EndEventBlackFogManager manager = new EndEventBlackFogManager();
         assertTrue(manager.apply(packet(4L, 1_000L, 0.9F), 1_000L));
-        assertEquals(0.0F, manager.fadeStrength("the_end", 1_000L));
+        assertEquals(1.0F, manager.fadeStrength("the_end", 1_000L));
         float quarter = manager.fadeStrength("the_end", 1_312L);
-        assertTrue(quarter > 0.0F && quarter < 0.5F);
+        assertEquals(1.0F, quarter);
         assertEquals(1.0F, manager.fadeStrength("the_end", 2_250L));
         float progress = manager.cycleProgress(3_000L);
         assertTrue(manager.apply(packet(4L, 3_000L, 0.9F), 3_000L));
@@ -71,7 +71,7 @@ class EndEventBlackFogPresenceTest {
         float tail = manager.fadeStrength("the_end", 9_250L);
         assertTrue(tail > 0.8F && tail < 1.0F);
         assertTrue(manager.apply(packet(4L, 9_250L, 0.9F), 9_250L));
-        assertEquals(tail, manager.fadeStrength("the_end", 9_250L));
+        assertEquals(1.0F, manager.fadeStrength("the_end", 9_250L));
         assertTrue(manager.fadeStrength("the_end", 9_500L) >= tail);
         assertEquals(1.0F, manager.cycleProgress(9_500L));
     }
@@ -85,7 +85,7 @@ class EndEventBlackFogPresenceTest {
         org.junit.jupiter.api.Assertions.assertFalse(manager.apply(packet(4L, 3_000L, 0.9F), 3_000L));
         assertTrue(manager.resumeAfterLocalExit("session-fog", 4L, 4_000L));
         assertTrue(manager.apply(packet(4L, 4_000L, 0.9F), 4_000L));
-        assertEquals(0.0F, manager.fadeStrength("the_end", 4_000L));
+        assertEquals(1.0F, manager.fadeStrength("the_end", 4_000L));
         assertEquals(1.0F, manager.fadeStrength("the_end", 5_250L));
         manager.reset();
         assertEquals(0.0F, manager.fadeStrength("the_end", 5_500L));

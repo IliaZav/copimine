@@ -35,6 +35,54 @@ final class EndEventBridgeV4SenderTest {
     private static final String NONCE = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
     @Test
+    void criticalReserveCannotFloodOrConsumeCountersForRejectedMessages() throws Exception {
+        Fixture fixture = readyFixture();
+        int before = fixture.outbound.size(), accepted = 0;
+        for (int i = 0; i < 100; i++) {
+            if (fixture.sender.send(fixture.playerUuid,"END_FOG_STATE","",8000,
+                    "the_end|wave5|1","WAVE5_FOG_V1",0,0,1,"","ACTIVE")) accepted++;
+        }
+        assertTrue(accepted > 0 && accepted <= 8);
+        assertEquals(before + accepted, fixture.outbound.size());
+        fixture.now.addAndGet(1000);
+        assertTrue(fixture.sender.send(fixture.playerUuid,"END_FOG_STATE","",0,
+                "","WAVE5_FOG_V1",0,0,0,"","CLEAR"));
+        for (int i=0;i<fixture.outbound.size();i++) fixture.verify(fixture.outbound.get(i),i+1L);
+    }
+
+    @Test
+    void fogLifecycleBypassesUnsignedCosmeticsAndKeepsCountersContiguous() throws Exception {
+        Fixture fixture = readyFixture();
+        for (int i = 0; i < 168; i++) assertTrue(fixture.sendValidState());
+        for (String status : List.of("ACTIVE", "CLEAR")) {
+            int before = fixture.outbound.size();
+            boolean active = status.equals("ACTIVE");
+            assertTrue(fixture.sender.send(fixture.playerUuid, "END_FOG_STATE", "",
+                    active ? 8_000 : 0, active ? "the_end|wave5|1" : "", "WAVE5_FOG_V1",
+                    0, 0, active ? 1.0F : 0, "", status));
+            assertEquals(before + 1, fixture.outbound.size(), "fog must arrive in the requesting tick");
+            var body = EndEventBridgeBodyCodec.decode(fixture.verify(fixture.outbound.getLast(), before + 1L).bodyBytes());
+            assertEquals(EndEventBridgeBodyCodec.Type.END_FOG_STATE, body.type());
+            assertEquals(status, body.status());
+        }
+        for (int i = 0; i < 40; i++) { fixture.now.addAndGet(250); fixture.sender.tick(); }
+        for (int i = 0; i < fixture.outbound.size(); i++) fixture.verify(fixture.outbound.get(i), i + 1L);
+    }
+
+    @Test
+    void unbindImmediatelyDiscardsCosmeticBacklog() throws Exception {
+        Fixture fixture = readyFixture();
+        for (int i = 0; i < 168; i++) assertTrue(fixture.sendValidState());
+        int before = fixture.outbound.size();
+        fixture.sender.unbindContext(fixture.playerUuid);
+        assertEquals(before + 1, fixture.outbound.size());
+        assertEquals(EndEventBridgeBodyCodec.Type.CONTEXT_UNBIND,
+                EndEventBridgeBodyCodec.decode(fixture.verify(fixture.outbound.getLast(), before + 1L).bodyBytes()).type());
+        fixture.now.addAndGet(250); fixture.sender.tick();
+        assertEquals(before + 1, fixture.outbound.size(), "nothing queued may reappear after unbind");
+    }
+
+    @Test
     void clockRollbackDoesNotStarveThePendingPresentationQueue() throws Exception {
         Fixture fixture = readyFixture();
         for (int i = 0; i < 60; i++) assertTrue(fixture.sendValidState());

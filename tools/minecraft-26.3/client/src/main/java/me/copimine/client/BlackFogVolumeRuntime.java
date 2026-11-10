@@ -21,6 +21,9 @@ public final class BlackFogVolumeRuntime {
     private static long cachedGeneration, sampledAt = -1;
     private static int cachedX, cachedZ, cachedY;
     private static final float[] safe = new float[8];
+    public record Chamber(float minX, float minZ, float maxX, float maxZ, float floor, float strength) {}
+    private static volatile Chamber chamber;
+    public static Chamber chamber() { return chamber; }
 
     private BlackFogVolumeRuntime() {}
 
@@ -40,6 +43,7 @@ public final class BlackFogVolumeRuntime {
             effects.remove(EFFECT);
             snapshot = new float[56];
             cachedWorld = null;
+            chamber = null;
             return;
         }
         var camera = renderer.gameRenderState().levelRenderState.cameraRenderState;
@@ -47,6 +51,21 @@ public final class BlackFogVolumeRuntime {
                 || camera.viewRotationMatrix == null) return;
         if (!effects.contains(EFFECT)) effects.add(EFFECT);
         refreshSafeVolume(client, manager, now);
+        double floorTop = BlackFogChamberRuntime.floorTop(client, manager, now);
+        if (safe[3] > 0) {
+            // Safe occupants receive NO event post effect. Their surrounding
+            // smoke is actual world geometry; user-selected shaders stay alone.
+            chamber = new Chamber(safe[0], safe[2], safe[4], safe[6], safe[1] + 0.15F, strength);
+            if (camera.pos.x >= safe[0] && camera.pos.x <= safe[4]
+                    && camera.pos.z >= safe[2] && camera.pos.z <= safe[6]
+                    && camera.pos.y >= safe[1] && camera.pos.y <= safe[5]) {
+                effects.remove(EFFECT);
+                snapshot = new float[56];
+                return;
+            }
+        } else {
+            chamber = null;
+        }
         float[] data = new float[56];
         new Matrix4f(camera.projectionMatrix).invert().get(data);
         float[] rotation = new float[16];
@@ -59,8 +78,10 @@ public final class BlackFogVolumeRuntime {
         data[45] = BlackFogVolumePolicy.EXTINCTION_PER_BLOCK;
         data[46] = safe[3];
         data[47] = 12.0F;
-        data[48] = arena.minX(); data[49] = arena.minY(); data[50] = arena.minZ();
-        data[52] = arena.maxX() + 1; data[53] = arena.maxY() + 1; data[54] = arena.maxZ() + 1;
+        data[48] = arena.minX(); data[49] = Double.isFinite(floorTop) ? (float) floorTop : arena.minY(); data[50] = arena.minZ();
+        data[52] = arena.maxX() + 1;
+        data[53] = Double.isFinite(floorTop) ? (float) floorTop + BlackFogVolumePolicy.FOG_HEIGHT : arena.maxY() + 1;
+        data[54] = arena.maxZ() + 1;
         snapshot = data;
     }
 
@@ -94,6 +115,6 @@ public final class BlackFogVolumeRuntime {
             return client.level.hasChunkAt(p) && client.level.getBlockState(p).is(Blocks.EMERALD_BLOCK);
         });
         safe[0] = box.minX(); safe[1] = floor + 0.85F; safe[2] = box.minZ(); safe[3] = box.cells() > 0 ? 1 : 0;
-        safe[4] = box.maxX(); safe[5] = floor + 4.5F; safe[6] = box.maxZ();
+        safe[4] = box.maxX(); safe[5] = floor + 1.0F + BlackFogVolumePolicy.CHAMBER_HEIGHT; safe[6] = box.maxZ();
     }
 }

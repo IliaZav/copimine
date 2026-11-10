@@ -59,6 +59,7 @@ public final class CopiMineClient implements ClientModInitializer {
             EndRiftGuardianShieldRenderer.render(context);
             RitualSphereRenderer.render(context);
             WaveTwoPhantomRenderer.render(context);
+            BlackFogChamberRenderer.render(context);
         });
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             visualManager.tick(ClientBridgeProtocol::sendVisualFinished);
@@ -69,6 +70,7 @@ public final class CopiMineClient implements ClientModInitializer {
                 ClientBridgeProtocol.clearEndEventState();
             }
             ClientBridgeProtocol.tickNetwork(client);
+            BlackFogSmokeRuntime.tick(client);
         });
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
             PrisonerTargetSelector.invalidatePreview();
@@ -77,12 +79,14 @@ public final class CopiMineClient implements ClientModInitializer {
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             PrisonerTargetSelector.invalidatePreview();
             ClientBridgeProtocol.onDisconnect();
+            BlackFogSmokeRuntime.clear();
             visualManager.clearAll("disconnect", true);
         });
         ClientLevelEvents.AFTER_CLIENT_LEVEL_CHANGE.register((client, level) -> {
             PrisonerTargetSelector.invalidatePreview();
             visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "world_change", true);
             ClientBridgeProtocol.clearEndEventState();
+            BlackFogSmokeRuntime.clear();
         });
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> registerCommands(dispatcher));
         CopiMineClientLogger.info("CopiMineClient bootstrap finished");

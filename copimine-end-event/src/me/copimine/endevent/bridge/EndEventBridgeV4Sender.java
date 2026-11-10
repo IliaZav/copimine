@@ -50,6 +50,7 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
     private static final int APPLICATION_BURST = 16;
     private static final int APPLICATIONS_PER_SECOND = 24;
     private static final int MAX_PENDING_APPLICATIONS = 256;
+    private static final int CRITICAL_BURST = 8;
 
     private final ClientModSessionRegistry registry;
     private final BridgeSigner signer;
@@ -799,11 +800,33 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
         }
         StreamState stream = state.stream;
         long now = clock.getAsLong();
+        // Lifecycle messages cannot wait behind model/beam fanout. Queued bodies
+        // are still unsigned, so this preserves contiguous authenticated counters.
+        if (body.type() == EndEventBridgeBodyCodec.Type.CONTEXT_BIND
+                || body.type() == EndEventBridgeBodyCodec.Type.CONTEXT_UNBIND
+                || body.type() == EndEventBridgeBodyCodec.Type.END_FOG_STATE
+                || body.type() == EndEventBridgeBodyCodec.Type.END_PRESENTATION_RESUME) {
+            if (body.type() == EndEventBridgeBodyCodec.Type.CONTEXT_UNBIND) stream.pendingApplications.clear();
+            if (!acquireCriticalSlot(stream, now)) return false;
+            return sendApplicationNow(player, state, body);
+        }
         if (stream.pendingApplications.isEmpty() && acquireApplicationSlot(stream, now)) {
             return sendApplicationNow(player, state, body);
         }
         if (stream.pendingApplications.size() >= MAX_PENDING_APPLICATIONS) return false;
         stream.pendingApplications.addLast(body);
+        return true;
+    }
+
+    private boolean acquireCriticalSlot(StreamState stream, long now) {
+        if (stream.criticalRefillAt == 0L || now < stream.criticalRefillAt) stream.criticalRefillAt = now;
+        if (now > stream.criticalRefillAt) {
+            stream.criticalTokens = Math.min(CRITICAL_BURST, stream.criticalTokens
+                    + (now - stream.criticalRefillAt) * (CRITICAL_BURST / 1000.0));
+            stream.criticalRefillAt = now;
+        }
+        if (stream.criticalTokens < 1.0) return false;
+        stream.criticalTokens -= 1.0;
         return true;
     }
 
@@ -1147,6 +1170,8 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
         final ArrayDeque<EndEventBridgeBodyCodec.Body> pendingApplications = new ArrayDeque<>();
         double applicationTokens = APPLICATION_BURST;
         long applicationRefillAt;
+        double criticalTokens = CRITICAL_BURST;
+        long criticalRefillAt;
         long nextHeartbeatAtMillis;
         final String streamId;
         int helloAckRequestKind;

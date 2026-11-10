@@ -35,6 +35,19 @@ float safeExit(vec3 origin, vec3 direction) {
     vec3 travel = (edge - origin) / denominator;
     return max(0.0, min(travel.x, min(travel.y, travel.z)));
 }
+vec2 axisSpan(float origin, float direction, float low, float high) {
+    if (abs(direction) < 0.00001) return origin < low || origin > high
+            ? vec2(1.0, -1.0) : vec2(-100000.0, 100000.0);
+    float a = (low - origin) / direction;
+    float b = (high - origin) / direction;
+    return vec2(min(a, b), max(a, b));
+}
+vec2 arenaSpan(vec3 origin, vec3 direction) {
+    vec2 x = axisSpan(origin.x, direction.x, ArenaMin.x, ArenaMax.x);
+    vec2 y = axisSpan(origin.y, direction.y, ArenaMin.y, ArenaMax.y);
+    vec2 z = axisSpan(origin.z, direction.z, ArenaMin.z, ArenaMax.z);
+    return vec2(max(0.0, max(x.x, max(y.x, z.x))), min(x.y, min(y.y, z.y)));
+}
 void main() {
     vec4 source = texture(InSampler, texCoord);
     float depth = texture(DepthSampler, texCoord).r;
@@ -47,8 +60,9 @@ void main() {
     // The player's close hands/held item remain readable; this is world fog, not a GUI overlay.
     if (sceneDistance < 0.55 || VolumeState.x <= 0.0) { fragColor = source; return; }
     vec3 direction = normalize((inverseView * vec4(normalize(viewPosition), 0.0)).xyz);
-    float begin = safeExit(EyeTime.xyz, direction);
-    float end = min(sceneDistance, begin + 4.5);
+    vec2 arena = arenaSpan(EyeTime.xyz, direction);
+    float begin = max(arena.x, safeExit(EyeTime.xyz, direction));
+    float end = min(arena.y, min(sceneDistance, begin + 4.5));
     if (end <= begin) { fragColor = source; return; }
     float stride = (end - begin) / 12.0;
     float transmittance = 1.0;
@@ -59,7 +73,8 @@ void main() {
         if (any(lessThan(point, ArenaMin.xyz)) || any(greaterThan(point, ArenaMax.xyz))) continue;
         // World-locked three-dimensional rolling eddies, not screen-space grain or particles.
         vec3 drift = vec3(EyeTime.w * 0.065, -EyeTime.w * 0.025, EyeTime.w * 0.04);
-        float eddy = cloudNoise(point * 0.68 + drift);
+        float eddy = 0.72 * cloudNoise(point * 0.54 + drift)
+                + 0.28 * cloudNoise(point * 1.47 - drift * 1.6);
         float density = VolumeState.y * mix(0.72, 1.38, eddy);
         float extinction = 1.0 - exp(-density * stride);
         vec3 ink = mix(vec3(0.004,0.006,0.011), vec3(0.021,0.028,0.039), eddy * eddy);

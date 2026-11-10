@@ -31,8 +31,6 @@ public final class EndEventBlackFogManager {
     private String dimension = "";
     private float intensity;
     private long startedAtMillis;
-    private long fadeInAtMillis;
-    private float fadeInFrom;
     private long initialLifetimeMillis;
     private long fadeOutAtMillis = -1L;
     private float fadeOutFrom;
@@ -79,13 +77,10 @@ public final class EndEventBlackFogManager {
             }
             return true;
         }
-        // A refresh extends the lease, never the onset animation or cycle progress.
+        // A refresh extends the lease without resetting cycle progress.
         if (expiresAtMillis == 0L || previousCycle != nextCycle) {
             boolean continuingCycle = previousCycle == nextCycle && !dimension.isBlank();
-            // A late refresh can arrive during the expiry fade. Continue from
-            // its current opacity instead of flashing back to vanilla visibility.
-            fadeInFrom = continuingCycle ? currentStrength(nowMillis) : 0.0F;
-            fadeInAtMillis = nowMillis;
+            // A late refresh immediately restores full density, without rewinding motion.
             if (!continuingCycle) {
                 startedAtMillis = nowMillis;
                 initialLifetimeMillis = payload.durationMillis();
@@ -169,9 +164,8 @@ public final class EndEventBlackFogManager {
         if (fadeOutAtMillis >= 0L) {
             return fadeOutFrom * (1.0F - smooth((float) (nowMillis - fadeOutAtMillis) / FADE_MILLIS));
         }
-        return expiresAtMillis > 0L
-                ? fadeInFrom + (1.0F - fadeInFrom) * smooth((float) (nowMillis - fadeInAtMillis) / FADE_MILLIS)
-                : 0.0F;
+        // The authoritative ACTIVE frame is opaque immediately, including lease recovery.
+        return expiresAtMillis > 0L ? 1.0F : 0.0F;
     }
 
     private static float smooth(float value) {
@@ -239,8 +233,6 @@ public final class EndEventBlackFogManager {
         dimension = "";
         intensity = 0.0F;
         startedAtMillis = 0L;
-        fadeInAtMillis = 0L;
-        fadeInFrom = 0.0F;
         initialLifetimeMillis = 0L;
         fadeOutAtMillis = -1L;
         fadeOutFrom = 0.0F;

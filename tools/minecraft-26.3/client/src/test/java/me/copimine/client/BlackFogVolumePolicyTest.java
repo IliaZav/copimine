@@ -5,9 +5,12 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BlackFogVolumePolicyTest {
-    @Test void evenTheThinnestEddyObscuresTheWorldWithinTwoBlocks() {
-        double transmission = Math.exp(-BlackFogVolumePolicy.EXTINCTION_PER_BLOCK * 0.72 * 2.0);
-        assertTrue(transmission < 0.002, "at least 99.8 percent extinction beyond the safe boundary");
+    @Test void evenTheThinnestEddyObscuresTheWorldWithinOneBlock() {
+        double transmission = Math.exp(-BlackFogVolumePolicy.EXTINCTION_PER_BLOCK * 0.72);
+        assertTrue(transmission < 0.0002, "at least 99.98 percent extinction within one block");
+        assertEquals(4.0F, BlackFogVolumePolicy.FOG_HEIGHT);
+        assertTrue(BlackFogVolumePolicy.CHAMBER_HEIGHT < BlackFogVolumePolicy.FOG_HEIGHT,
+                "opaque smoke must cap the chamber above the clear headroom");
     }
     @Test void everyPositionOnPlatformFindsItsExactClearBox() {
         for (int x = 0; x < 3; x++) for (int z = 0; z < 3; z++) {

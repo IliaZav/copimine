@@ -5,6 +5,10 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BlackFogVolumePolicyTest {
+    @Test void evenTheThinnestEddyObscuresTheWorldWithinTwoBlocks() {
+        double transmission = Math.exp(-BlackFogVolumePolicy.EXTINCTION_PER_BLOCK * 0.72 * 2.0);
+        assertTrue(transmission < 0.002, "at least 99.8 percent extinction beyond the safe boundary");
+    }
     @Test void everyPositionOnPlatformFindsItsExactClearBox() {
         for (int x = 0; x < 3; x++) for (int z = 0; z < 3; z++) {
             AtomicInteger reads = new AtomicInteger();

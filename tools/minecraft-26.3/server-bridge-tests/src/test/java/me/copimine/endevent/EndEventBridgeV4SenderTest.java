@@ -35,6 +35,85 @@ final class EndEventBridgeV4SenderTest {
     private static final String NONCE = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
     @Test
+    void clockRollbackDoesNotStarveThePendingPresentationQueue() throws Exception {
+        Fixture fixture = readyFixture();
+        for (int i = 0; i < 60; i++) assertTrue(fixture.sendValidState());
+        int before = fixture.outbound.size();
+        fixture.now.addAndGet(-120_000);
+        fixture.sender.tick();
+        assertEquals(before, fixture.outbound.size(), "backward time grants no free burst");
+        fixture.now.addAndGet(250);
+        fixture.sender.tick();
+        assertTrue(fixture.outbound.size() > before, "refill must recover without waiting for the old wall clock");
+    }
+
+    @Test
+    void oldGenerationBacklogIsDiscardedBeforeTheNewContextIsSigned() throws Exception {
+        Fixture fixture = readyFixture();
+        for (int i = 0; i < 100; i++) assertTrue(fixture.sendValidState());
+        int boundary = fixture.outbound.size();
+        fixture.event = new EndEventBridgeV4Access.EventContext(fixture.eventUuid, 2L,
+                "the_end", -8, 0, -8, 8, 128, 8);
+        assertTrue(fixture.sendValidState());
+        for (int i = 0; i < 20; i++) {
+            fixture.now.addAndGet(250);
+            fixture.sender.tick();
+        }
+        int newBodies = 0;
+        for (int i = boundary; i < fixture.outbound.size(); i++) {
+            var envelope = fixture.verify(fixture.outbound.get(i), i + 1L);
+            try {
+                var body = EndEventBridgeBodyCodec.decode(envelope.bodyBytes());
+                assertEquals(2L, body.generation(), "retired queued bodies cannot leak into a new wave");
+                newBodies++;
+            } catch (IllegalArgumentException controlBody) { }
+        }
+        assertEquals(2, newBodies, "new context followed by its presentation");
+    }
+
+    @Test
+    void boundedQueueRefusesOverflowWithoutConsumingSignedCounters() throws Exception {
+        Fixture fixture = readyFixture();
+        int accepted = 0;
+        for (int i = 0; i < 400; i++) if (fixture.sendValidState()) accepted++;
+        assertTrue(accepted > 100 && accepted < 400, "queue has a real finite bound");
+        for (int i = 0; i < 60; i++) {
+            fixture.now.addAndGet(250);
+            fixture.sender.tick();
+        }
+        assertTrue(fixture.sendValidState(), "drain frees admission again");
+        for (int i = 0; i < fixture.outbound.size(); i++) fixture.verify(fixture.outbound.get(i), i + 1L);
+        assertTrue(fixture.sender.isReady(fixture.playerUuid));
+    }
+
+    @Test
+    void fogTransitionBurstIsPacedBeforeSigningWithoutCounterGaps() throws Exception {
+        Fixture fixture = readyFixture();
+        int initial = fixture.outbound.size();
+        for (int i = 0; i < 168; i++) assertTrue(fixture.sendValidState());
+        assertTrue(fixture.outbound.size() - initial <= 24,
+                "freeze/beam/restore fanout must not exhaust the client's 96-envelope burst");
+        for (int tick = 0; tick < 200; tick++) {
+            fixture.now.addAndGet(50);
+            int before = fixture.outbound.size();
+            fixture.sender.tick();
+            assertTrue(fixture.outbound.size() - before <= 3, "one tick cannot flush a delayed storm");
+        }
+        // Three handshake envelopes, one context bind, all 168 application bodies,
+        // and independently scheduled heartbeats. Every emitted counter is contiguous.
+        int application = 0;
+        for (int i = 0; i < fixture.outbound.size(); i++) {
+            BridgeEnvelope envelope = fixture.verify(fixture.outbound.get(i), i + 1L);
+            try {
+                if (EndEventBridgeBodyCodec.decode(envelope.bodyBytes()).type()
+                        == EndEventBridgeBodyCodec.Type.END_PLAYER_STATE) application++;
+            } catch (IllegalArgumentException controlBody) { }
+        }
+        assertEquals(168, application, "accepted bodies must arrive without breaking the signed stream");
+        assertTrue(fixture.sender.isReady(fixture.playerUuid));
+    }
+
+    @Test
     void exactReadyConfirmRetryReplaysItsOriginalSignedReceipt() throws Exception {
         Fixture fixture = new Fixture(true, true);
         fixture.request(new BridgeRequestCodec.ControlHello(NONCE, fixture.playerUuid,
@@ -892,7 +971,7 @@ final class EndEventBridgeV4SenderTest {
         final UUID playerUuid = UUID.randomUUID();
         final UUID eventUuid = UUID.randomUUID();
         final ClientModSessionRegistry.VerifiedClientSession session;
-        final EndEventBridgeV4Access.EventContext event = new EndEventBridgeV4Access.EventContext(
+        EndEventBridgeV4Access.EventContext event = new EndEventBridgeV4Access.EventContext(
                 eventUuid, 1L, "the_end", -8, 0, -8, 8, 128, 8);
         final AtomicLong now = new AtomicLong(1_700_000_000_000L);
         final AtomicLong requestNanos = new AtomicLong();

@@ -51198,12 +51198,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (hazardJournal == null) {
             return false;
         }
-        if (!isOfficialCurrentAttempt()) {
-            return true;
-        }
         HazardMutationJournal.Snapshot status = hazardJournal.load();
         return status.valid()
-                && status.status() == HazardMutationJournal.Status.PREPARED;
+                && eventId.equals(status.eventId()) && generation == status.generation()
+                && worldName.equals(status.world())
+                && (status.status() == HazardMutationJournal.Status.PREPARED
+                || status.status() == HazardMutationJournal.Status.APPLIED);
     }
 
     private Material currentObeliskMaterial(int layer) {

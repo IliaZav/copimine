@@ -5,6 +5,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.HashMap;
@@ -44,6 +45,11 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
     private static final long REOPEN_INTERVAL_MILLIS = 1_000L;
     private static final long CONTROL_HELLO_ACK_REPLAY_INTERVAL_MILLIS = 1_000L;
     private static final SecureRandom RANDOM = new SecureRandom();
+    // Below the shared client's 48/s receive budget, leaving room for the other
+    // sender and control traffic. Queue bodies BEFORE allocating signed counters.
+    private static final int APPLICATION_BURST = 16;
+    private static final int APPLICATIONS_PER_SECOND = 24;
+    private static final int MAX_PENDING_APPLICATIONS = 256;
 
     private final ClientModSessionRegistry registry;
     private final BridgeSigner signer;
@@ -107,9 +113,11 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
         long now = clock.getAsLong();
         for (Player player : new ArrayList<>(playerHandles.values())) {
             PlayerState state = currentReadyState(player);
-            if (state == null || !ClientModHandshakePolicy.isHeartbeatCapableVersion(state.sessionVersion)) {
+            if (state == null) {
                 continue;
             }
+            drainApplications(player, state, now);
+            if (state.stream == null || !ClientModHandshakePolicy.isHeartbeatCapableVersion(state.sessionVersion)) continue;
             StreamState stream = state.stream;
             if (now <= 0L || now < stream.nextHeartbeatAtMillis) {
                 continue;
@@ -758,6 +766,9 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
     }
 
     private boolean sendContextBind(Player player, PlayerState state, EventContext context) {
+        if (state.stream != null && !context.equals(state.stream.boundContext)) {
+            state.stream.pendingApplications.clear();
+        }
         if (!validContext(context) || state.stream == null || !state.stream.readyConfirmed) {
             return false;
         }
@@ -779,6 +790,63 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
     }
 
     private boolean sendApplication(Player player, PlayerState state, EndEventBridgeBodyCodec.Body body) {
+        if (player == null || !player.isOnline() || currentReadyState(player) != state
+                || state.stream == null || !state.stream.readyConfirmed || body == null) return false;
+        try {
+            EndEventBridgeBodyCodec.encode(body, player.getUniqueId());
+        } catch (IllegalArgumentException invalidBody) {
+            return false;
+        }
+        StreamState stream = state.stream;
+        long now = clock.getAsLong();
+        if (stream.pendingApplications.isEmpty() && acquireApplicationSlot(stream, now)) {
+            return sendApplicationNow(player, state, body);
+        }
+        if (stream.pendingApplications.size() >= MAX_PENDING_APPLICATIONS) return false;
+        stream.pendingApplications.addLast(body);
+        return true;
+    }
+
+    private boolean acquireApplicationSlot(StreamState stream, long now) {
+        if (stream.applicationRefillAt == 0L || now < stream.applicationRefillAt) {
+            stream.applicationRefillAt = now;
+        }
+        if (now > stream.applicationRefillAt) {
+            stream.applicationTokens = Math.min(APPLICATION_BURST, stream.applicationTokens
+                    + (now - stream.applicationRefillAt) * (APPLICATIONS_PER_SECOND / 1000.0));
+            stream.applicationRefillAt = now;
+        }
+        if (stream.applicationTokens < 1.0) return false;
+        stream.applicationTokens -= 1.0;
+        return true;
+    }
+
+    private void drainApplications(Player player, PlayerState state, long now) {
+        StreamState stream = state.stream;
+        if (stream == null) return;
+        EventContext context = currentEventContext(player.getUniqueId());
+        while (!stream.pendingApplications.isEmpty()) {
+            EndEventBridgeBodyCodec.Body queued = stream.pendingApplications.peekFirst();
+            if (queued.type() != EndEventBridgeBodyCodec.Type.CONTEXT_UNBIND
+                    && (context == null || !context.eventUuid().equals(queued.eventUuid())
+                    || context.generation() != queued.generation())) {
+                stream.pendingApplications.removeFirst();
+                continue;
+            }
+            if (!acquireApplicationSlot(stream, now)) return;
+            stream.pendingApplications.removeFirst();
+            // A queued presentation starts on delivery. Its envelope must never
+            // expire in a backlog or disagree with the authenticated body clock.
+            EndEventBridgeBodyCodec.Body body = new EndEventBridgeBodyCodec.Body(queued.type(),
+                    queued.generation(), now, queued.eventUuid(), queued.instanceId(), queued.controlId(),
+                    queued.visualId(), queued.durationMillis(), queued.progressOrIntensity(), queued.health(),
+                    queued.maxHealth(), queued.subjectOrMode(), queued.clearPolicy(), queued.reservedOne(),
+                    queued.reservedTwo(), queued.status());
+            if (!sendApplicationNow(player, state, body) || state.stream != stream) return;
+        }
+    }
+
+    private boolean sendApplicationNow(Player player, PlayerState state, EndEventBridgeBodyCodec.Body body) {
         if (player == null || !player.isOnline() || state.stream == null || !state.stream.readyConfirmed
                 || currentReadyState(player) != state || body == null) {
             return false;
@@ -1076,6 +1144,9 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
     }
 
     private static final class StreamState {
+        final ArrayDeque<EndEventBridgeBodyCodec.Body> pendingApplications = new ArrayDeque<>();
+        double applicationTokens = APPLICATION_BURST;
+        long applicationRefillAt;
         long nextHeartbeatAtMillis;
         final String streamId;
         int helloAckRequestKind;

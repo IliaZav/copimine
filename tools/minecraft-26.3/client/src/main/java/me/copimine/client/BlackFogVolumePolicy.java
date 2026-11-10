@@ -6,6 +6,7 @@ import java.util.Set;
 
 /** Bounded discovery of only the occupied server-published emerald platform. */
 public final class BlackFogVolumePolicy {
+    public static final float EXTINCTION_PER_BLOCK = 4.8F;
     private BlackFogVolumePolicy() {}
     public record Cell(int x, int z) {}
     public record Box(int minX, int minZ, int maxX, int maxZ, int cells) {}

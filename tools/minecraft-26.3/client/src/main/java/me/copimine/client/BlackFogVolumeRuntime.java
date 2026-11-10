@@ -56,7 +56,7 @@ public final class BlackFogVolumeRuntime {
         data[35] = (now % 1_000_000L) / 1000.0F;
         System.arraycopy(safe, 0, data, 36, 8);
         data[44] = strength;
-        data[45] = 2.8F; // extinction / metre: near-opaque within roughly two metres of the volume
+        data[45] = BlackFogVolumePolicy.EXTINCTION_PER_BLOCK;
         data[46] = safe[3];
         data[47] = 12.0F;
         data[48] = arena.minX(); data[49] = arena.minY(); data[50] = arena.minZ();

@@ -8,7 +8,65 @@ public final class PortalPresentationPolicy {
     public static final int MAX_REBUILD_ATTEMPTS = 3;
     public static final long REBUILD_RETRY_BASE_MILLIS = 250L;
     public static final int GAUGE_SEGMENTS = 24;
+    /** How many shards the closing gate throws toward its own centre. */
+    public static final int COLLAPSE_SHARD_COUNT = 14;
+    /** Full turns the shard ring travels while the gate folds shut. */
+    public static final double COLLAPSE_SPIN_TURNS = 1.35D;
+    /** Continuous idle orbit of the shard layer, in turns per second. */
+    public static final double IDLE_SPIN_TURNS_PER_SECOND = 0.11D;
     private PortalPresentationPolicy() {}
+
+    /**
+     * Fraction of the collapse window already spent, {@code 0..1}.
+     *
+     * <p>W3-01: the gate used to shrink on a single linear factor and then
+     * vanish. The closing sequence now needs a real timeline — the fold, the
+     * inward shard rush and the final burst all read this one fraction, so they
+     * can never disagree about when the gate is closed. A missing or future
+     * deadline reports {@code 0}, never a negative or NaN value.</p>
+     */
+    public static double collapseProgress(long closingAt, long now) {
+        if (closingAt < 0L || now <= closingAt) return 0.0D;
+        return Math.min(1.0D, (now - closingAt) / (double) COLLAPSE_MILLIS);
+    }
+
+    /**
+     * How far the membrane has folded inward, {@code 1..0}.
+     *
+     * <p>Ease-out: the gate rushes in at once and then hangs for a beat before
+     * it is gone, which reads as a fold rather than a linear scale-down.</p>
+     */
+    public static double collapseFoldScale(double progress) {
+        double clamped = clamp01(progress);
+        double eased = 1.0D - Math.pow(1.0D - clamped, 2.0D);
+        return Math.max(0.0D, 1.0D - 0.85D * eased);
+    }
+
+    /** Radians the shard ring has rotated around the gate axis. */
+    public static double collapseSpinRadians(double progress) {
+        return Math.PI * 2.0D * COLLAPSE_SPIN_TURNS * clamp01(progress);
+    }
+
+    /**
+     * Implosion intensity, {@code 0..1}, peaking mid-collapse.
+     *
+     * <p>Zero on both ends keeps the burst a discrete event: the shaft of
+     * inward streams is only visible while the gate is actually folding.</p>
+     */
+    public static double collapseImplosionIntensity(double progress) {
+        return Math.sin(clamp01(progress) * Math.PI);
+    }
+
+    /** Slow orbit that keeps the standing gate reading as a solid 3D object. */
+    public static double idleSpinRadians(long nowMillis) {
+        return Math.PI * 2.0D * IDLE_SPIN_TURNS_PER_SECOND
+                * (Math.max(0L, nowMillis) / 1000.0D);
+    }
+
+    private static double clamp01(double value) {
+        if (!Double.isFinite(value)) return 0.0D;
+        return Math.max(0.0D, Math.min(1.0D, value));
+    }
 
     public static Frame frame(PortalCapturePolicy.PortalState state, boolean active, long closingAt, long now) {
         if (state == null || now < 0) return new Frame(0, 0, 0, 0, false);

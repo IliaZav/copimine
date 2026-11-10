@@ -910,6 +910,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<Integer, Long> portalClosingStartedMillis = new LinkedHashMap<>();
     /** Portal indexes that already emitted their one collapse shockwave. */
     private final java.util.Set<Integer> portalShockwaveReleased = new java.util.HashSet<>();
+    /** Portal indexes that already played their finished-collapse burst. */
+    private final java.util.Set<Integer> portalCollapseBurstReleased = new java.util.LinkedHashSet<>();
     private int portalShockwaveReceiptMask;
     /** Radius, horizontal impulse and lift of the Wave 3 collapse shockwave. */
     private static final double PORTAL_SHOCKWAVE_RADIUS = 9.0D;
@@ -18034,6 +18036,68 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " location=" + locationText(portal));
     }
 
+    /**
+     * W3-01: the visible end of a closed gate.
+     *
+     * <p>The collapse shockwave fires on the completion edge, but the gate then
+     * spends 600&nbsp;ms folding shut and simply stopped being drawn. Players read
+     * that as "the portal blinks out". This burst fires once, on the frame the
+     * fold deadline elapses, and gives the closure a physical end: a bright core
+     * flash, two expanding rings, an outward shard spray and a layered sound.</p>
+     *
+     * <p>Non-destructive by design: particles and sound only. No block is
+     * touched, no explosion entity is created and no player is damaged, so the
+     * arena and its hazard journal stay exactly as they were.</p>
+     */
+    private void releasePortalCollapseBurst(int index, Location portal) {
+        if (index < 0 || portal == null || portal.getWorld() == null) return;
+        if (!portalCollapseBurstReleased.add(index)) return;
+        World world = portal.getWorld();
+        Location center = portal.clone().add(0.0D, 1.2D, 0.0D);
+        int viewers = 0;
+        for (Player viewer : eventAudience()) {
+            if (!viewer.getWorld().equals(world) || !isEventParticleViewer(viewer, center)) continue;
+            viewers++;
+            viewer.spawnParticle(Particle.EXPLOSION_EMITTER, center, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            viewer.spawnParticle(Particle.FLASH, center, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            // Two rings expanding outward: the gate's stored energy leaving.
+            for (int ring = 0; ring < 2; ring++) {
+                double radius = 1.3D + ring * 1.05D;
+                int points = 20 + ring * 8;
+                for (int i = 0; i < points; i++) {
+                    double angle = Math.PI * 2.0D * i / points;
+                    Location point = center.clone().add(Math.cos(angle) * radius,
+                            -0.85D + ring * 0.1D, Math.sin(angle) * radius);
+                    viewer.spawnParticle(Particle.DUST, point, 1, 0.0D, 0.0D, 0.0D, 0.0D,
+                            new Particle.DustOptions(ring == 0
+                                    ? Color.fromRGB(120, 255, 208) : Color.fromRGB(190, 76, 255),
+                                    1.25F - ring * 0.2F));
+                }
+            }
+            // Shards thrown outward, not upward: the gate comes apart in-plane.
+            for (int shard = 0; shard < PortalPresentationPolicy.COLLAPSE_SHARD_COUNT; shard++) {
+                double angle = Math.PI * 2.0D * shard / PortalPresentationPolicy.COLLAPSE_SHARD_COUNT;
+                double speed = 0.9D;
+                viewer.spawnParticle(Particle.END_ROD, center, 1,
+                        Math.cos(angle) * speed, 0.35D, Math.sin(angle) * speed, 0.12D);
+                viewer.spawnParticle(Particle.REVERSE_PORTAL, center, 2,
+                        Math.cos(angle) * speed * 0.7D, 0.5D, Math.sin(angle) * speed * 0.7D, 0.02D);
+            }
+            viewer.spawnParticle(Particle.SOUL_FIRE_FLAME, center, 18, 0.9D, 0.8D, 0.9D, 0.06D);
+            viewer.spawnParticle(Particle.CRIT, center, 26, 1.1D, 0.5D, 1.1D, 0.18D);
+            viewer.playSound(center, Sound.ENTITY_ENDER_DRAGON_HURT,
+                    SoundCategory.HOSTILE, 0.75F, 0.5F);
+            viewer.playSound(center, Sound.BLOCK_RESPAWN_ANCHOR_DEPLETE,
+                    SoundCategory.BLOCKS, 1.0F, 0.55F);
+            viewer.playSound(center, Sound.ENTITY_GENERIC_EXPLODE,
+                    SoundCategory.BLOCKS, 0.6F, 1.6F);
+        }
+        recordParticleEmission(120);
+        getLogger().info("WAVE3_PORTAL_COLLAPSE_BURST event=" + eventId
+                + " generation=" + generation + " index=" + index
+                + " viewers=" + viewers + " destructive=false");
+    }
+
     /** Check the whole conservative landing corridor; no teleport or terrain mutation. */
     private Vector safePortalShockwaveVelocity(Player player, Vector requested) {
         Location core = coreCombatAnchorLocation();
@@ -29818,6 +29882,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         portalVisualRebuildRetryAtMillis.clear();
         portalClosingStartedMillis.clear();
         portalShockwaveReleased.clear();
+        portalCollapseBurstReleased.clear();
         portalIndicatorPreviousProgress.clear();
         portalProgressMilestones.clear();
         portalCaptureStates.remove(3);
@@ -40810,6 +40875,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         portalVisualRebuildRetryAtMillis.clear();
         portalClosingStartedMillis.clear();
         portalShockwaveReleased.clear();
+        portalCollapseBurstReleased.clear();
         portalIndicatorPreviousProgress.clear();
         portalProgressMilestones.clear();
         List<UUID> portalModelIds = new ArrayList<>();
@@ -41133,24 +41199,56 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    /** Gives the layered 3D portal a restrained pulse; the floor ring supplies the faster motion. */
+    /**
+     * Gives the layered 3D portal a restrained pulse; the floor ring supplies
+     * the faster motion.
+     *
+     * <p>W3-01: the gate is a stack of three real 3D layers, and each one now
+     * moves on its own axis. The outer frame stays grounded and slow, the
+     * membrane breathes with capture progress, and the shard layer orbits the
+     * gate axis — including a spin-up while the gate folds shut. Before this the
+     * whole stack shrank monotonically and read as a flat sprite: nothing in the
+     * silhouette ever turned, so the "layered 3D portal" was only true in the
+     * asset list.</p>
+     */
     private void animatePortalModelVisuals(long now) {
         List<PortalCapturePolicy.PortalState> states = portalCaptureStates.getOrDefault(3, List.of());
         int active = currentWave3ActivePortal(states, now);
+        double idleSpin = PortalPresentationPolicy.idleSpinRadians(now);
         for (UUID modelId : new ArrayList<>(wavePortalModelVisuals.getOrDefault(3, List.of()))) {
             Entity entity = ownedEntities.get(modelId);
             if (!(entity instanceof ItemDisplay display) || !display.isValid()) continue;
             int index = wavePortalVisualIndices.getOrDefault(modelId, -1);
             if (index < 0 || index >= states.size()) continue;
+            boolean completed = states.get(index).completed();
+            long closingAt = portalClosingStartedMillis.getOrDefault(index, -1L);
             PortalPresentationPolicy.Frame frame = PortalPresentationPolicy.frame(states.get(index), index == active,
-                    portalClosingStartedMillis.getOrDefault(index, -1L), now);
+                    closingAt, now);
             if (!frame.visible()) { removePortalModelVisual(modelId, "portal-collapse-complete"); continue; }
             PortalVisualLayer layer = wavePortalVisualLayers.getOrDefault(modelId, PortalVisualLayer.FRAME);
             PortalPresentationPolicy.Placement placement = PortalPresentationPolicy.placement(frame,
-                    states.get(index).completed(), PortalPresentationPolicy.Layer.valueOf(layer.name()));
+                    completed, PortalPresentationPolicy.Layer.valueOf(layer.name()));
             float scale = placement.scale();
+            float translateY = placement.translateY();
+            double spin = idleSpin;
+            if (completed && closingAt >= 0L) {
+                // The collapse owns the shard motion: a hard spin-up while the
+                // membrane folds inward, then nothing once the gate is gone.
+                double progress = PortalPresentationPolicy.collapseProgress(closingAt, now);
+                spin = idleSpin + PortalPresentationPolicy.collapseSpinRadians(progress);
+                if (layer == PortalVisualLayer.INNER) {
+                    scale = (float) (scale * PortalPresentationPolicy.collapseFoldScale(progress));
+                    translateY = (float) (translateY * PortalPresentationPolicy.collapseFoldScale(progress));
+                }
+            }
+            // Only the shard and inner layers turn. The solid frame is a gate
+            // post: rotating it would make the whole portal look like debris.
+            float yaw = layer == PortalVisualLayer.FRAME
+                    ? (float) (idleSpin * 0.18D) : (float) spin;
             display.setBrightness(new Display.Brightness(frame.brightness(), frame.brightness()));
-            display.setTransformation(new Transformation(new Vector3f(0.0F, placement.translateY(), 0.0F), new AxisAngle4f(),
+            display.setTransformation(new Transformation(
+                    new Vector3f(0.0F, translateY, 0.0F),
+                    new AxisAngle4f(yaw, 0.0F, 1.0F, 0.0F),
                     new Vector3f(scale, scale, scale), new AxisAngle4f()));
         }
     }
@@ -42154,6 +42252,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     releasePortalCollapseShockwave(index, portal);
                 }
                 portalClosingStartedMillis.putIfAbsent(index, now);
+                // W3-01: the collapse has a real end. When the fold window
+                // elapses the gate is gone, and that is the moment the authored
+                // burst fires: a bright implosion with expanding dust rings and
+                // debris. It is deliberately non-destructive — particles and
+                // sound only, never a world explosion.
+                if (PortalPresentationPolicy.collapseFinished(
+                        portalClosingStartedMillis.getOrDefault(index, -1L), now)) {
+                    releasePortalCollapseBurst(index, portal);
+                }
                 completed++;
             }
             // Audit wave 3: advance the portal's progress sample ONCE, then render
@@ -42268,6 +42375,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         portalVisualRebuildRetryAtMillis.clear();
         portalClosingStartedMillis.clear();
         portalShockwaveReleased.clear();
+        portalCollapseBurstReleased.clear();
         portalIndicatorPreviousProgress.clear();
         portalProgressMilestones.clear();
         portalCaptureStates.clear();

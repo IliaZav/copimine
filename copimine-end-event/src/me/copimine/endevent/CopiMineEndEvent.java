@@ -23551,6 +23551,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         currentWaveScalePlayers = players;
         activeWave = wave;
         waveCombatCoordinator.begin(generation);
+        // A wave that starts now is not the empty arena the previous wave left
+        // behind. Without this reset a sandbox wave inherited the clock armed by
+        // its predecessor, and the very first objective tick after the new
+        // generation booked immediately abandoned the wave it had just built
+        // (observed as END_RIFT_WAVE_ABANDONED empty_ms=416487 right after
+        // WAVE_TEST_STARTED generation=383).
+        waveAbandonEmptySinceMillis = 0L;
         waveLastPathDestinations.clear();
         waveLeashReturns.clear();
         waveDashGenerations.clear();

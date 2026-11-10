@@ -89,6 +89,22 @@ def test_abandoning_resets_the_wave_and_never_awards_the_objective():
     )
 
 
+def test_a_fresh_wave_does_not_inherit_the_previous_empty_arena_clock():
+    # Production evidence: right after WAVE_TEST_STARTED generation=383 the next
+    # objective tick logged END_RIFT_WAVE_ABANDONED wave=2 empty_ms=416487 and
+    # closed the wave before its first spawn could book. The clock had been armed
+    # ~7 minutes earlier by the previous generation and was never re-armed.
+    root = SRC.read_text(encoding='utf-8')
+    start = method(root, 'private boolean initializeWaveGameplay(')
+
+    assert 'waveAbandonEmptySinceMillis = 0L' in start, (
+        'a wave that just started cannot be the empty arena its predecessor left behind'
+    )
+    assert start.index('activeWave = wave') < start.index('waveAbandonEmptySinceMillis = 0L'), (
+        'the clock must be cleared for the wave that is being activated'
+    )
+
+
 def test_abandoning_clears_victory_state_so_it_cannot_leak():
     root = SRC.read_text(encoding='utf-8')
     abandon = method(root, 'private boolean abandonRunningWave(')

@@ -25924,15 +25924,38 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private WaveTwoPhantomMaterializationPolicy.Budget currentWaveTwoPhantomBudget(
             WaveMechanicsPolicy.WaveCounts group) {
-        int maxPressureSlots = PressureBudgetController.profileForPlayers(
-                activeWaveParticipants().size()).activePressure();
-        int activePressureSlots = countLiveWaveEntitiesForWave(2);
+        int maxPressureSlots = waveTwoPhantomPressureSlots();
+        // Only other phantoms may consume phantom slots. Counting every Wave 2
+        // body here was the second half of "phantoms practically never appear":
+        // by the time the second subwave wanted its warning, the first
+        // subwave's Endermen were still alive, the shared counter was already
+        // over the profile, and every materialisation was refused.
+        int activePressureSlots = countLiveWaveTwoPhantoms();
         int totalReserve = Math.min(group == null ? 0 : Math.max(0, group.endermen()),
                 Math.max(0, WaveTwoStagePolicy.MAX_TOTAL_MOBS - waveSpawnEntityOffset));
         int remainingActivationBudget = WaveTwoPhantomMaterializationPolicy.lateReinforcementCount(
                 Math.max(0, maxPressureSlots - activePressureSlots), totalReserve);
         return new WaveTwoPhantomMaterializationPolicy.Budget(activePressureSlots, maxPressureSlots,
                 remainingActivationBudget, totalReserve);
+    }
+
+    /**
+     * Phantom slots available to the current Wave 2 party.
+     *
+     * <p>{@link PressureBudgetController#profileForPlayers} returns {@code EMPTY}
+     * below two players, so deriving the budget from the live
+     * physically-active list made {@code activePressure == 0}. The materialiser
+     * then read {@code 0 >= 0} as "no room" and refused every phantom forever —
+     * the reported "phantoms never spawn". The Wave 2 attempt has already been
+     * admitted with its own scaled roster, so that roster is the correct input,
+     * and the phantom reserve is separately bounded by
+     * {@code MAX_LATE_REINFORCEMENTS}. A floor of one keeps a solo observer
+     * legal instead of silently unlaunchable.</p>
+     */
+    private int waveTwoPhantomPressureSlots() {
+        int roster = Math.max(waveScalePlayers(), activeWaveParticipants().size());
+        int slots = PressureBudgetController.profileForPlayers(roster).activePressure();
+        return Math.max(1, slots);
     }
 
     private boolean isCurrentWaveTwoPhantomPosition(Location location, Location core) {

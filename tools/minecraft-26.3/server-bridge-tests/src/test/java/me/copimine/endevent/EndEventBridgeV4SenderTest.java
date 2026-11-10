@@ -35,6 +35,27 @@ final class EndEventBridgeV4SenderTest {
     private static final String NONCE = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
     @Test
+    void readyCallbackAndRepeatedModelRefreshDoNotRebindTheActiveGeneration() throws Exception {
+        Fixture fixture = readyFixture(true); // real ready callback refreshes models immediately
+        int before = fixture.outbound.size();
+        for (int refresh = 0; refresh < 4; refresh++) {
+            assertTrue(fixture.sender.bindContext(fixture.playerUuid, fixture.event));
+        }
+        assertEquals(before, fixture.outbound.size(), "refresh must not replay a same-generation bind");
+        assertTrue(fixture.sendValidState());
+        assertEquals(before + 1, fixture.outbound.size(), "the next presentation remains deliverable");
+        fixture.event = new EndEventBridgeV4Access.EventContext(fixture.eventUuid, 2L,
+                "the_end", -8, 0, -8, 8, 128, 8);
+        assertTrue(fixture.sender.bindContext(fixture.playerUuid, fixture.event));
+        assertTrue(fixture.sender.bindContext(fixture.playerUuid, fixture.event));
+        assertEquals(before + 2, fixture.outbound.size(), "a new generation binds exactly once");
+        fixture.sender.unbindContext(fixture.playerUuid);
+        assertTrue(fixture.sender.bindContext(fixture.playerUuid, fixture.event));
+        assertEquals(before + 4, fixture.outbound.size(), "explicit unbind permits an exact rebind");
+        for (int i = 0; i < fixture.outbound.size(); i++) fixture.verify(fixture.outbound.get(i), i + 1L);
+    }
+
+    @Test
     void outOfArenaSafeZoneBeamCannotPoisonFogAndModelStream() throws Exception {
         Fixture fixture = readyFixture();
         fixture.event = new EndEventBridgeV4Access.EventContext(fixture.eventUuid, 2L,
@@ -1004,7 +1025,12 @@ final class EndEventBridgeV4SenderTest {
     }
 
     private static Fixture readyFixture() throws Exception {
+        return readyFixture(false);
+    }
+
+    private static Fixture readyFixture(boolean refreshOnReady) throws Exception {
         Fixture fixture = new Fixture(true, true);
+        fixture.refreshOnReady = refreshOnReady;
         fixture.request(new BridgeRequestCodec.ControlHello(NONCE, fixture.playerUuid,
                 fixture.session.sessionUuid(), id(8)));
         byte[] readyId = id(9);
@@ -1049,6 +1075,7 @@ final class EndEventBridgeV4SenderTest {
         final List<EndEventBridgeV4Access.PrisonerAbilityRequest> abilities = new ArrayList<>();
         boolean online = true;
         boolean failNextSendAfterCapture;
+        boolean refreshOnReady;
         final Player player = (Player) Proxy.newProxyInstance(Player.class.getClassLoader(), new Class<?>[] {Player.class},
                 (proxy, method, args) -> switch (method.getName()) {
                     case "getUniqueId" -> playerUuid;
@@ -1088,8 +1115,12 @@ final class EndEventBridgeV4SenderTest {
                     },
                     uuid -> contextAvailable ? event : null,
                     (recipient, request) -> abilities.add(request),
-                    new InboundBridgeRequestRateLimiter(requestNanos::get));
+                    new InboundBridgeRequestRateLimiter(requestNanos::get), this::onReady);
             sender.registerPlayer(player);
+        }
+
+        void onReady(UUID recipient) {
+            if (refreshOnReady) assertTrue(sender.bindContext(recipient, event));
         }
 
         void request(BridgeRequestCodec.Request request) {

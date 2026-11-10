@@ -311,7 +311,7 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
             return false;
         }
         PlayerState state = currentReadyState(player);
-        return state != null && sendContextBind(player, state, context);
+        return state != null && ensureContextBound(player, state, context);
     }
 
     @Override

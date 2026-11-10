@@ -394,14 +394,21 @@ $lines.Add('                throw new IllegalArgumentException("invalid generate
 $lines.Add('        }')
 $lines.Add('    }')
 $lines.Add('}')
-$generated = ($lines -join [Environment]::NewLine) + [Environment]::NewLine
+# The generated resource is committed with LF endings. Joining on the platform
+# line separator would emit CRLF on Windows and make this parity gate fail on
+# every LF checkout (Actions runners check out with LF), so the line ending has
+# to be an explicit part of the generated content, not a platform detail.
+$generated = ($lines -join "`n") + "`n"
 
 if ($Check) {
   if (-not (Test-Path -LiteralPath $OutputPath -PathType Leaf)) {
     throw "Generated boss animation resource is missing: $OutputPath"
   }
   $actual = Get-Content -LiteralPath $OutputPath -Raw -Encoding UTF8
-  if ($actual -ne $generated) {
+  # Compare content, not the checkout's line endings: a CRLF working tree must
+  # not report a stale resource when the payload is identical.
+  $actualNormalized = $actual.Replace("`r`n", "`n")
+  if ($actualNormalized -ne $generated) {
     throw "Generated boss animation resource is stale: $OutputPath"
   }
   Write-Host "Boss animation pose resource is current: $OutputPath"

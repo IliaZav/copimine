@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -145,3 +150,40 @@ def test_client_source_assets_and_pose_gate_are_registered() -> None:
     assert "-Check" in runner
     assert "BossAnimationPosePolicyTest" in runner
     assert "test_end_event_boss_animation_pose_contract.py" in runner
+
+
+def test_pose_generator_emits_and_compares_platform_independent_line_endings() -> None:
+    """The parity gate must not depend on the checkout's line endings.
+
+    GitHub Actions checks this repository out with LF while Windows
+    PowerShell's platform line separator is CRLF. Emitting or comparing the
+    generated resource with that separator made ``-Check`` report a stale
+    resource on every runner even though the payload was identical.
+    """
+
+    generator = read(GENERATOR)
+    assert "[Environment]::NewLine" not in generator, (
+        "the pose generator must not emit the platform line separator"
+    )
+    assert '$generated = ($lines -join "`n") + "`n"' in generator
+    assert '$actual.Replace("`r`n", "`n")' in generator
+
+
+@pytest.mark.skipif(
+    os.name != "nt" or shutil.which("powershell.exe") is None,
+    reason="Windows PowerShell generator regression",
+)
+def test_pose_generator_output_is_lf_only(tmp_path: Path) -> None:
+    output = tmp_path / "GeneratedBossAnimationPoses.java"
+    result = subprocess.run(
+        [
+            "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
+            "-File", str(GENERATOR), "-OutputPath", str(output),
+        ],
+        capture_output=True,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = output.read_bytes()
+    assert b"\r" not in payload, "generated pose resource must be LF-only"
+    assert payload == GENERATED.read_bytes().replace(b"\r\n", b"\n")

@@ -57,8 +57,9 @@ void main() {
     vec4 viewPoint = inverseClip * vec4(texCoord * 2.0 - 1.0, max(depth, 0.000001), 1.0);
     vec3 viewPosition = viewPoint.xyz / max(abs(viewPoint.w), 0.000001);
     float sceneDistance = depth <= 0.000001 ? VolumeState.w : min(length(viewPosition), VolumeState.w);
-    // The player's close hands/held item remain readable; this is world fog, not a GUI overlay.
-    if (sceneDistance < 0.55 || VolumeState.x <= 0.0) { fragColor = source; return; }
+    // No near-camera visibility bubble: even touching geometry is attenuated
+    // by its real optical path through the smoke. Safe chambers omit this pass.
+    if (VolumeState.x <= 0.0) { fragColor = source; return; }
     vec3 direction = normalize((inverseView * vec4(normalize(viewPosition), 0.0)).xyz);
     vec2 arena = arenaSpan(EyeTime.xyz, direction);
     float begin = max(arena.x, safeExit(EyeTime.xyz, direction));

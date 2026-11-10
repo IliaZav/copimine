@@ -9,6 +9,7 @@ CLIENT = ROOT / 'tools/minecraft-26.3/client/src/main/java/me/copimine/client'
 
 def test_actual_shader_ray_intersection_and_chamber_budget(tmp_path):
     shader = (CLIENT.parents[3] / 'resources/assets/copimineclient/shaders/post/wave5_volume.fsh').read_text()
+    assert 'sceneDistance < 0.55' not in shader, 'dense smoke has no close-range clear bubble'
     functions = shader[shader.index('vec2 axisSpan('):shader.index('void main()')]
     functions = functions.replace('vec2(', 'new Vec2(').replace('vec3 ', 'Vec3 ').replace('vec2 ', 'Vec2 ')
     functions = re.sub(r'\bfloat\b', 'double', functions)

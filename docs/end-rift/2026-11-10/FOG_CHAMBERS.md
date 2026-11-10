@@ -19,6 +19,7 @@ physical wall, collision, resource reload or global particle/model clearing.
 - Outside a chamber the depth-reconstructed volume has extinction 12/block.
   Even its minimum-density eddy transmits less than 0.02% after one block.
   This is world-volume attenuation, not a Blindness potion or GUI black plate.
+  There is no near-camera visibility exemption for close entities or held items.
 - The first accepted ACTIVE lease immediately sets full density. A separate
   bounded critical transport reserve bypasses unsigned cosmetic backlogs,
   preserving signed-counter continuity and the client's existing rate checks.
@@ -40,9 +41,10 @@ sizes, bounded geometry, clear interiors, moving layers and opaque ceilings.
 Lifecycle tests retain replay, expiry, generation, death and resume checks;
 only onset expectations changed to the latest explicit instantaneous requirement.
 
-CodeRabbit rejected the new review because its free CLI allowance was exhausted;
-this is not a clean external review result. Local review and executable tests
-were used. Earlier boss patches have their own completed CodeRabbit results.
+The first CodeRabbit attempt hit its free allowance. A subsequent completed
+review covered all 26 files and returned zero findings. The final near-camera
+shader exception removal also passed shaderc compilation and the client suite.
+Earlier boss patches have their own completed CodeRabbit results.
 
 `nativeVerified=false`: no GUI, authentication or native Minecraft session was
 operated. Density arithmetic and geometry tests do not certify the rendered

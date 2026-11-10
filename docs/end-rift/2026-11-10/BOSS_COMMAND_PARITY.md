@@ -54,6 +54,13 @@ executor. Both canonical files were reread; their SHA-256 values remain
    getter was red at 22000 -> 20000, then passed for every roster 2–20,
    30000/40000 HP, changed live roster, missing/invalid data and the corruption
    ceiling. Eight health/phase/defeat/platform checks passed after this repair.
+7. Final integration caught an unsuitable helper in the new hold admission:
+   the ground-navigation clearance also required supporting floor immediately
+   below the socket. A Kagune hold is airborne. Replaced it with a bounded
+   full-player-volume check without ground support. The regression executes
+   the real block queries (air under the socket, blocked ceiling, adjacent wall,
+   liquid and non-finite position); it was red against the navigation helper.
+   All seven hold/throw/guardian/scaled-health regressions passed afterward.
 
 ## Evidence
 

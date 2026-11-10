@@ -50031,10 +50031,36 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         Location socket = display.getLocation().clone().add(0.0D, TENTACLE_GRAB_SOCKET_HEIGHT, 0.0D);
-        if (!isArenaLocation(socket) || !isSafeCombatParticipantLocation(socket, target)
+        if (!isArenaLocation(socket) || !isSafeTentacleHoldLocation(socket, target)
                 || !target.teleport(socket)) return false;
         target.setVelocity(new Vector());
         target.setFallDistance(0.0F);
+        return true;
+    }
+
+    /** An attached player is airborne: validate the whole body, without a floor requirement. */
+    private boolean isSafeTentacleHoldLocation(Location socket, Player target) {
+        if (socket == null || target == null || socket.getWorld() == null
+                || !socket.getWorld().equals(target.getWorld())) return false;
+        double x = socket.getX(), y = socket.getY(), z = socket.getZ();
+        double width = target.getWidth(), height = target.getHeight();
+        if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
+                || !Double.isFinite(width) || !Double.isFinite(height)
+                || width <= 0 || height <= 0 || width > 4 || height > 8) return false;
+        double halfWidth = width * 0.5D + 0.01D;
+        int minX = (int) Math.floor(x - halfWidth + 0.000001D);
+        int maxX = (int) Math.floor(x + halfWidth - 0.000001D);
+        int minY = (int) Math.floor(y);
+        int maxY = (int) Math.floor(y + height - 0.000001D);
+        int minZ = (int) Math.floor(z - halfWidth + 0.000001D);
+        int maxZ = (int) Math.floor(z + halfWidth - 0.000001D);
+        for (int bx = minX; bx <= maxX; bx++) for (int bz = minZ; bz <= maxZ; bz++) {
+            for (int by = minY; by <= maxY; by++) {
+                Block block = socket.getWorld().getBlockAt(bx, by, bz);
+                if (!block.isPassable() || block.isLiquid() || isFireBlock(block)
+                        || isWebBlock(block) || isTemporaryMovementHazard(block)) return false;
+            }
+        }
         return true;
     }
 

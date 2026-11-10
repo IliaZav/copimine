@@ -28,7 +28,7 @@ public class HoldProbe {
  boolean isActiveBossParticipant(Player p){return true;}
  boolean ownedBySession(ItemDisplay d,String e,long g){return d.owned;}
  boolean isArenaLocation(Location p){return arena;}
- boolean isSafeCombatParticipantLocation(Location p,Player player){return geometry;}
+ boolean isSafeTentacleHoldLocation(Location p,Player player){return geometry;}
  public static void main(String[]args){
   var p=new HoldProbe();var display=new ItemDisplay();var player=new Player();
   p.lockTentaclePlayer(display,player);

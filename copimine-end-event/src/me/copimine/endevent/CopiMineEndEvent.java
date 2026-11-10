@@ -10580,7 +10580,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     message(sender, "&cBoss отсутствует.");
                 } else if (List.of("void_blast", "rift_projectile", "rift_arrows", "void_mark", "summon", "summon_servants",
                         "arena_inferno", "final_strike", "boss_fireball",
-                        "melee_swipe", "chest_strike", "ground_slam")
+                        "melee_swipe", "chest_strike", "ground_slam", "ambush_grab", "small_kagune")
                         .contains(spell)) {
                     EndRiftAiPolicy.BossSpell requestedSpell = switch (spell) {
                         case "void_blast" -> EndRiftAiPolicy.BossSpell.VOID_BLAST;
@@ -10590,17 +10590,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         case "arena_inferno" -> EndRiftAiPolicy.BossSpell.ARENA_INFERNO;
                         case "final_strike" -> EndRiftAiPolicy.BossSpell.FINAL_STRIKE;
                         case "boss_fireball" -> EndRiftAiPolicy.BossSpell.BOSS_FIREBALL;
-                case "melee_swipe" -> EndRiftAiPolicy.BossSpell.MELEE_SWIPE;
-                case "chest_strike" -> EndRiftAiPolicy.BossSpell.CHEST_STRIKE;
-                case "ground_slam" -> EndRiftAiPolicy.BossSpell.GROUND_SLAM;
-            case "ambush_grab" -> EndRiftAiPolicy.BossSpell.AMBUSH_GRAB;
-            case "small_kagune" -> EndRiftAiPolicy.BossSpell.SMALL_KAGUNE;
+                        case "melee_swipe" -> EndRiftAiPolicy.BossSpell.MELEE_SWIPE;
+                        case "chest_strike" -> EndRiftAiPolicy.BossSpell.CHEST_STRIKE;
+                        case "ground_slam" -> EndRiftAiPolicy.BossSpell.GROUND_SLAM;
+                        case "ambush_grab" -> EndRiftAiPolicy.BossSpell.AMBUSH_GRAB;
+                        case "small_kagune" -> EndRiftAiPolicy.BossSpell.SMALL_KAGUNE;
                         default -> EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS;
                     };
-                    castCurrentBossSpell(boss, requestedSpell, true);
-                    message(sender, "&aBoss spell test requested: &f" + requestedSpell.id());
+                    if (castCurrentBossSpell(boss, requestedSpell, true)) {
+                        message(sender, "&aBoss spell test started: &f" + requestedSpell.id());
+                    } else {
+                        message(sender, "&cBoss spell не запущен: &f" + requestedSpell.id()
+                                + " &7(phase=" + bossPhase + "; проверь цель, арену и активный cast).");
+                    }
                 } else {
-                    message(sender, "&e/cmend boss spell <void_blast|rift_projectile|rift_arrows|void_mark|summon_servants|arena_inferno|final_strike|boss_fireball|melee_swipe|chest_strike|ground_slam>");
+                    message(sender, "&e/cmend boss spell <void_blast|rift_projectile|rift_arrows|void_mark|summon_servants|arena_inferno|final_strike|boss_fireball|melee_swipe|chest_strike|ground_slam|ambush_grab|small_kagune>");
                 }
             }
             default -> message(sender, "&e/cmend boss spawn [official confirm]|info|damage <n>|phase <awakening|hunt|rift|overload|rage|last_seal>|freeze|unfreeze|kill <cleanup|simulate-victory confirm>|spell <type>");
@@ -46803,9 +46807,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return castCurrentBossSpell(boss, forced);
     }
 
+    private boolean bossAmbushOwnsMajorCast() {
+        return tentacleController.owns(generation) && tentacleController.states().values().stream()
+                .anyMatch(state -> state.kind() == TentacleAnimationPolicy.Kind.UNDER_PLAYER);
+    }
+
     private boolean castCurrentBossSpell(LivingEntity boss, boolean forced) {
         if (boss == null || !isBossCombatRuntimeActive(boss) && !forced
-                || bossAbilityState != BossAbilityState.NONE) {
+                || bossAbilityState != BossAbilityState.NONE || bossAmbushOwnsMajorCast()) {
             return false;
         }
         List<EndRiftAiPolicy.BossSpell> available = new ArrayList<>(
@@ -46943,6 +46952,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                          boolean forced) {
         if (boss == null || spell == null
                 || !isBossCombatRuntimeActive(boss) && !forced
+                || bossAmbushOwnsMajorCast()
                 || !forced && bossAbilityState != BossAbilityState.NONE
                 || !arenaInfernoBlocks.isEmpty() && !ArenaInfernoPolicy.allowsConcurrent(spell)
                 || !BossPhasePolicy.spellPool(bossPhase).contains(spell)) {
@@ -48576,8 +48586,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void tickCurrentTentacles(LivingEntity boss) {
         boolean showroomBoss = localTextureShowcase && testCombatAiMode
                 && boss != null && isTestBoss(boss);
-        if (boss == null || (!isOfficialBoss(boss) && !showroomBoss) || config == null
-                || (phase != EventPhase.BOSS_ACTIVE && !showroomBoss)
+        if (boss == null || config == null
+                || (!isBossCombatRuntimeActive(boss) && !showroomBoss)
                 || !boss.isValid() || boss.isDead()) {
             if (tentacleController.count() > 0 || !tentacleGuardianHealth.isEmpty()
                     || !tentacleHitboxesByDisplay.isEmpty()) {
@@ -49734,8 +49744,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     }
                     if (tentacleContactResolved.contains(display.getUniqueId())
                             && elapsed >= holdLockTick) {
+                        if (!lockTentaclePlayer(display, target)) {
+                            setTentacleState(display, TentacleAnimationPolicy.State.RECOVERY, null);
+                            return;
+                        }
                         tentacleMarker(display, TentacleAnimationPolicy.Marker.HOLD_LOCK, target);
-                        lockTentaclePlayer(display, target);
                         setTentacleState(display, TentacleAnimationPolicy.State.HOLD,
                                 target.getUniqueId());
                     }
@@ -49746,7 +49759,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (target == null) {
                     setTentacleState(display, TentacleAnimationPolicy.State.RECOVERY, null);
                 } else {
-                    lockTentaclePlayer(display, target);
+                    if (!lockTentaclePlayer(display, target)) {
+                        setTentacleState(display, TentacleAnimationPolicy.State.RECOVERY, null);
+                        return;
+                    }
                     if (elapsed >= TentacleAnimationPolicy.durationTicks(animation)) {
                         setTentacleState(display, TentacleAnimationPolicy.State.THROW,
                                 target.getUniqueId());
@@ -49764,7 +49780,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     tentacleMarker(display, TentacleAnimationPolicy.Marker.THROW_RELEASE, target);
                     releaseTentaclePlayer(display, target);
                 } else if (target != null && !tentacleReleaseResolved.contains(display.getUniqueId())) {
-                    lockTentaclePlayer(display, target);
+                    if (!lockTentaclePlayer(display, target)) {
+                        setTentacleState(display, TentacleAnimationPolicy.State.RECOVERY, null);
+                        return;
+                    }
                 }
                 if (elapsed >= TentacleAnimationPolicy.durationTicks(animation)) {
                     tentacleMarker(display, TentacleAnimationPolicy.Marker.RECOVERY_START, null);
@@ -50002,16 +50021,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         sendTentacleAnimationVisualUpdate(display, tentacleAnimationState(display));
     }
 
-    private void lockTentaclePlayer(ItemDisplay display, Player target) {
+    private boolean lockTentaclePlayer(ItemDisplay display, Player target) {
         if (display == null || target == null || !target.isOnline()
+                || target.isDead() || target.isInvulnerable()
+                || !display.isValid() || display.isDead()
+                || !ownedBySession(display, eventId, generation)
                 || !isActiveBossParticipant(target)
                 || !display.getWorld().equals(target.getWorld())) {
-            return;
+            return false;
         }
         Location socket = display.getLocation().clone().add(0.0D, TENTACLE_GRAB_SOCKET_HEIGHT, 0.0D);
-        target.teleport(socket);
+        if (!isArenaLocation(socket) || !isSafeCombatParticipantLocation(socket, target)
+                || !target.teleport(socket)) return false;
         target.setVelocity(new Vector());
         target.setFallDistance(0.0F);
+        return true;
     }
 
     private void releaseTentaclePlayer(ItemDisplay display, Player target) {
@@ -50044,7 +50068,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && "local".equalsIgnoreCase(config.environment())
                 && localTextureShowcase && testCombatAiMode && isTestBoss(liveBoss());
         if (TentacleThrowPolicy.shouldApplyReleaseDamage(isActiveBossParticipant(target),
-                phase == EventPhase.BOSS_ACTIVE, localTestBossShowroom)) {
+                isBossCombatRuntimeActive(liveBoss()), localTestBossShowroom)) {
             double healthBefore = target.getHealth();
             if (!applyTentacleReleaseHit(display, target)) {
                 target.setFallDistance(0.0F);

@@ -21,7 +21,7 @@ import java.util.logging.Logger;
 import me.copimine.endevent.domain.TentacleThrowPolicy;
 import me.copimine.endevent.domain.GravityAnchorLandingPolicy;
 public class TentacleThrowProtectionProbe {
-    enum EventPhase { BOSS_ACTIVE }
+    enum EventPhase { COLLECTING, BOSS_ACTIVE }
     enum EntityEffect { HURT }
     record Vector(double x,double y,double z) { }
     static class Location { double getX(){return 2;} double getZ(){return 3;} }
@@ -49,8 +49,9 @@ public class TentacleThrowProtectionProbe {
     }
     record Config(String environment){ }
     final Config config=new Config("production");
-    final boolean localTextureShowcase=false,testCombatAiMode=false;
-    final EventPhase phase=EventPhase.BOSS_ACTIVE;
+    final boolean localTextureShowcase=false;
+    boolean testCombatAiMode=false;
+    EventPhase phase=EventPhase.BOSS_ACTIVE;
     final UUID eventId=UUID.randomUUID(); final long generation=9;
     final Map<UUID,TentacleThrowPolicy.Launch> tentacleThrowLaunches=new HashMap<>();
     final Map<UUID,UUID> tentacleHitboxesByDisplay=new HashMap<>();
@@ -73,7 +74,10 @@ public class TentacleThrowProtectionProbe {
     Location coreCombatAnchorLocation(){return new Location();}
     TentacleThrowPolicy.Launch safeTentacleThrowLaunch(ItemDisplay d,Player p,TentacleThrowPolicy.Launch launch){return launch;}
     boolean isActiveBossParticipant(Player p){return true;}
-    boolean isTestBoss(LivingEntity b){return false;} LivingEntity liveBoss(){return null;}
+    final LivingEntity liveBossActor=new LivingEntity();
+    boolean isTestBoss(LivingEntity b){return testCombatAiMode;} LivingEntity liveBoss(){return liveBossActor;}
+    boolean isBossCombatRuntimeActive(LivingEntity b){return b==liveBossActor
+            && (phase==EventPhase.BOSS_ACTIVE || testCombatAiMode);}
     boolean applyBossActorAbilityDamage(LivingEntity boss,LivingEntity source,Player player,double amount){
         double before=player.getHealth();player.damage(amount,source);return player.getHealth()<before;
     }
@@ -106,6 +110,12 @@ public class TentacleThrowProtectionProbe {
         target.onGround=false;
         p.ownedEntities.remove(carrier.id); p.releaseTentaclePlayer(d,target);
         check(target.hp==10 && target.impulses==2,"missing carrier inflicted invisible damage");
+        var manual=new TentacleThrowProtectionProbe();manual.phase=EventPhase.COLLECTING;manual.testCombatAiMode=true;
+        manual.ownedEntities.put(d.id,d);manual.ownedEntities.put(carrier.id,carrier);
+        manual.tentacleHitboxesByDisplay.put(d.id,carrier.id);
+        var manualTarget=new Player();manual.releaseTentaclePlayer(d,manualTarget);
+        check(manualTarget.hp==10 && manualTarget.events==1 && manualTarget.impulses==1,
+                "command-spawned boss threw without its accepted damage transaction");
     }
 }
 ''', encoding="utf-8")

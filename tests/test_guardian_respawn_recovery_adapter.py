@@ -36,7 +36,7 @@ import java.util.logging.*;
 import me.copimine.endevent.domain.*;
 import me.copimine.endevent.runtime.TentacleController;
 public class GuardianRespawnRecoveryProbe {
-    enum EventPhase { BOSS_ACTIVE, RECOVERY_REQUIRED }
+    enum EventPhase { COLLECTING, BOSS_ACTIVE, RECOVERY_REQUIRED }
     enum Particle { SCULK_SOUL }
     enum Sound { BLOCK_SCULK_SENSOR_CLICKING }
     enum SoundCategory { HOSTILE }
@@ -99,6 +99,8 @@ public class GuardianRespawnRecoveryProbe {
     boolean ownedBySession(Entity actor,UUID event,long gen){return true;}
     boolean isCurrentBossCarrier(LivingEntity entity){return entity==boss;}
     boolean isOfficialBoss(LivingEntity entity){return entity==boss;}
+    boolean isBossCombatRuntimeActive(LivingEntity entity){return entity==boss && entity.valid && !entity.dead
+            && (phase==EventPhase.BOSS_ACTIVE || testCombatAiMode);}
     boolean isOfficialEntity(Entity entity){return entity==boss;}
     boolean isTestBoss(LivingEntity entity){return false;}
     Logger getLogger(){return Logger.getAnonymousLogger();}
@@ -126,6 +128,10 @@ public class GuardianRespawnRecoveryProbe {
 ''' + methods + r'''
     static void check(boolean value,String message){if(!value)throw new AssertionError(message);}
     public static void main(String[] args){
+        var manual=new GuardianRespawnRecoveryProbe();
+        manual.phase=EventPhase.COLLECTING;manual.testCombatAiMode=true;
+        manual.tickCurrentTentacles(manual.boss);
+        check(manual.spawned>0,"command-spawned LAST_SEAL must run its real guardian controller");
         var partial=new GuardianRespawnRecoveryProbe();
         partial.tentacleGuardianHealth.put(0,37.5);
         partial.ensurePermanentTentacles(partial.boss,1);

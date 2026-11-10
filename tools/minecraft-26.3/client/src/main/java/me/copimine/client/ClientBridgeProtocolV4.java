@@ -45,6 +45,25 @@ public final class ClientBridgeProtocolV4 {
             new EnumMap<>(BridgeRequestCodec.Sender.class);
     private final LinkedHashMap<Long, NarcoticsReceipt> narcoticsReceipts = new LinkedHashMap<>();
 
+    private long receivedEnvelopes;
+    private long verifiedEnvelopes;
+    private long appliedMutations;
+    private long retiredStreams;
+    private String lastRejection = "none";
+
+    /** Bounded local diagnostics: no raw packets, nonces or signatures. */
+    public synchronized String diagnosticSummary() {
+        SenderFlow flow = senders.get(BridgeRequestCodec.Sender.END_EVENT);
+        return "v4: endEventReady=" + isReady(BridgeRequestCodec.Sender.END_EVENT)
+                + ", narcoticsReady=" + isReady(BridgeRequestCodec.Sender.NARCOTICS)
+                + ", hello=" + (flow.streamId != null) + ", readyAck=" + flow.readyAckAccepted
+                + ", confirmSent=" + flow.readyConfirmSent + ", confirmAck=" + flow.readyConfirmAckReceived
+                + ", rx=" + receivedEnvelopes + ", verified=" + verifiedEnvelopes
+                + ", applied=" + appliedMutations + ", retired=" + retiredStreams
+                + ", contextGeneration=" + (activeEventContext == null ? 0 : activeEventContext.generation())
+                + ", lastReject=" + lastRejection;
+    }
+
     private EventContext activeEventContext;
     private EventContext lastUnboundEventContext;
     private boolean endEventReassertionRequired;
@@ -76,6 +95,8 @@ public final class ClientBridgeProtocolV4 {
 
     /** Opens a fresh local binding and discards all state from an earlier play connection. */
     public synchronized ClientBridgeConnectionState.Connection openConnection(UUID playerUuid) {
+        receivedEnvelopes = verifiedEnvelopes = appliedMutations = retiredStreams = 0L;
+        lastRejection = "none";
         receiveRateLimiter.reset();
         ClientBridgeConnectionState.Connection connection = connectionState.open(playerUuid);
         clearProtocolState(true);
@@ -142,14 +163,18 @@ public final class ClientBridgeProtocolV4 {
      * verification and all body/state work on the Minecraft client thread.
      */
     synchronized boolean onEnvelope(BridgeV4Payload payload, UUID currentPlayer, long nowMillis) {
+        receivedEnvelopes++;
         if (payload == null || !receiveRateLimiter.tryAcquire(System.nanoTime())) {
+            lastRejection = "receive-rate-or-null";
             return false;
         }
         return processAdmittedEnvelope(payload.exactEnvelopeBytesForProtocol(), currentPlayer, nowMillis);
     }
 
     public synchronized boolean onEnvelope(byte[] exactEnvelopeBytes, UUID currentPlayer, long nowMillis) {
+        receivedEnvelopes++;
         if (exactEnvelopeBytes == null || !receiveRateLimiter.tryAcquire(System.nanoTime())) {
+            lastRejection = "receive-rate-or-null";
             return false;
         }
         return processAdmittedEnvelope(exactEnvelopeBytes, currentPlayer, nowMillis);
@@ -158,6 +183,7 @@ public final class ClientBridgeProtocolV4 {
     private boolean processAdmittedEnvelope(byte[] exactEnvelopeBytes, UUID currentPlayer, long nowMillis) {
         if (exactEnvelopeBytes.length == 0
                 || exactEnvelopeBytes.length > BridgeEnvelopeCodec.MAX_ENVELOPE_BYTES) {
+            lastRejection = "envelope-size";
             return false;
         }
         byte[] raw = exactEnvelopeBytes.clone();
@@ -165,13 +191,19 @@ public final class ClientBridgeProtocolV4 {
         try {
             envelope = envelopeDecoder.decode(raw);
         } catch (IllegalArgumentException malformed) {
+            lastRejection = "envelope-decode";
             return false;
         }
-        if (BridgeSigningPolicy.verifyV4(pinnedKey, envelope, nowMillis)
-                != BridgeSigningPolicy.VerificationResult.VALID
-                || !matchesReceiveBinding(envelope.metadata(), currentPlayer)) {
+        BridgeSigningPolicy.VerificationResult verification = BridgeSigningPolicy.verifyV4(pinnedKey, envelope, nowMillis);
+        if (verification != BridgeSigningPolicy.VerificationResult.VALID) {
+            lastRejection = "signature-" + verification;
             return false;
         }
+        if (!matchesReceiveBinding(envelope.metadata(), currentPlayer)) {
+            lastRejection = "receive-binding";
+            return false;
+        }
+        verifiedEnvelopes++;
 
         final ClientBridgeConnectionState.QueueTicket ticket;
         try {
@@ -600,10 +632,12 @@ public final class ClientBridgeProtocolV4 {
             return;
         }
         if (metadata.counter() != flow.lastServerCounter + 1) {
+            lastRejection = sender + ":counter-gap";
             retireMalformedStream(sender, metadata.streamId());
             return;
         }
         if (!flow.readyConfirmAckReceived || !connectionState.isReady(stateSender(sender))) {
+            lastRejection = sender + ":application-before-ready";
             retireMalformedStream(sender, metadata.streamId());
             return;
         }
@@ -625,6 +659,8 @@ public final class ClientBridgeProtocolV4 {
                 mutation = validateNarcoticsBody(body, metadata.counter());
             }
         } catch (IllegalArgumentException malformed) {
+            lastRejection = sender + ":invalid-application:" + malformed.getMessage();
+            if (lastRejection.length() > 220) lastRejection = lastRejection.substring(0, 220);
             retireMalformedStream(sender, metadata.streamId());
             return;
         }
@@ -659,6 +695,7 @@ public final class ClientBridgeProtocolV4 {
             }
             NarcoticsBridgeBodyCodec.Body body = (NarcoticsBridgeBodyCodec.Body) mutation;
             BridgePayload report = mutationHandler.applyNarcotics(body, metadata);
+            appliedMutations++;
             retainNarcoticsReport(body.commandSeq(), report);
             if (report != null) {
                 mutationHandler.reportNarcotics(report);
@@ -666,6 +703,7 @@ public final class ClientBridgeProtocolV4 {
             return;
         }
         mutationHandler.apply(sender, mutation);
+        appliedMutations++;
     }
 
     /** Read-only arena geometry from the authenticated current-generation context. */
@@ -783,6 +821,7 @@ public final class ClientBridgeProtocolV4 {
         }
         String active = connectionState.activeStream(stateSender(sender)).orElse(null);
         if (active != null) {
+            retiredStreams++;
             connectionState.retireStream(stateSender(sender));
             mutationHandler.clear(sender);
             if (sender == BridgeRequestCodec.Sender.END_EVENT && activeEventContext != null) {
@@ -795,6 +834,7 @@ public final class ClientBridgeProtocolV4 {
         try {
             requestCounter = connectionState.nextRequestCounter(stateSender(sender));
         } catch (IllegalStateException exhausted) {
+            retiredStreams++;
             connectionState.retireStream(stateSender(sender));
             mutationHandler.clear(sender);
             return false;
@@ -848,6 +888,7 @@ public final class ClientBridgeProtocolV4 {
         if (!Objects.equals(connectionState.activeStream(stateSender(sender)).orElse(null), streamId)) {
             return;
         }
+        retiredStreams++;
         connectionState.retireStream(stateSender(sender));
         senders.get(sender).clearForReopen();
         if (sender == BridgeRequestCodec.Sender.END_EVENT && activeEventContext != null) {

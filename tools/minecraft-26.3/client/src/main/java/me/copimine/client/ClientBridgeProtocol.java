@@ -517,7 +517,10 @@ public final class ClientBridgeProtocol {
                 + ", v4registered=" + ClientPlayNetworking.canSend(BridgeV4Payload.ID));
     }
 
+    private static long lastV4DiagnosticAt;
+
     public static void onDisconnect() {
+        CopiMineClientLogger.info(BRIDGE_V4.diagnosticSummary());
         BRIDGE_V4.close();
         resetEndEventConnection();
         connected = false;
@@ -539,6 +542,10 @@ public final class ClientBridgeProtocol {
     public static void tickNetwork(Minecraft client) {
         long now = System.currentTimeMillis();
         BRIDGE_V4.tick(now);
+        if (connected && now - lastV4DiagnosticAt >= 10_000L) {
+            lastV4DiagnosticAt = now;
+            CopiMineClientLogger.info(BRIDGE_V4.diagnosticSummary());
+        }
         END_EVENT_WORLD_VFX.tick(now);
         END_EVENT_BLACK_FOG.tick(now);
         WaveMusicMix.tick(client, now);
@@ -636,7 +643,8 @@ public final class ClientBridgeProtocol {
                 + ", irisShaderPackActive=" + (irisShaderPackActive ? "yes" : "no")
                 + ", shaderpackRuntimeAvailable=" + (detectShaderpackRuntimeAvailable() ? "yes" : "no")
                 + ", renderer=shaderpack-first+post-process-fallback"
-                + ", lastError=" + (lastError.isBlank() ? "-" : lastError);
+                + ", lastError=" + (lastError.isBlank() ? "-" : lastError)
+                + "; " + BRIDGE_V4.diagnosticSummary();
     }
 
     public static boolean isIrisShaderPackActive() {

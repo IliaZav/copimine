@@ -37710,7 +37710,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             String key = "wave5-safe-zone-" + entry.getKey();
             desired.add(key);
             for (Player viewer : eventAudience()) if (isEventParticleViewer(viewer, base))
-                sendWorldBeamPacket(viewer, key, base, base.clone().add(0, 5.5D, 0),
+                sendWorldBeamPacket(viewer, key, base, base.clone().add(0, Math.max(0.0D, Math.min(5.5D, arenaMaxY + 0.999D - base.getY())), 0),
                         0x42FF66, .14F);
             // The floor tiles alone were easy to lose inside the fog. Draw the
             // PERIMETER of each zone as glowing emerald particles, so the edge is

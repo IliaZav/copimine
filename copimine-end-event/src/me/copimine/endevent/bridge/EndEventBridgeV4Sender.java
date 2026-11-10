@@ -293,6 +293,14 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
                 context.generation(), timestamp, context.eventUuid(), nullToEmpty(instanceId), nullToEmpty(source),
                 nullToEmpty(visualId), duration, boundedProgress, Math.max(0, health), Math.max(0, maxHealth),
                 nullToEmpty(subjectOrMode), nullToEmpty(clearPolicy), nullToEmpty(reason), "", nullToEmpty(status));
+        // Never sign a cosmetic packet that would retire the client's entire sender stream.
+        if (bodyType == EndEventBridgeBodyCodec.Type.END_WORLD_BEAM
+                && !EndEventBridgeBodyCodec.beamWithinBounds(body,
+                        new EndEventBridgeBodyCodec.ArenaBounds(context.eventUuid(), context.generation(),
+                                context.dimension(), context.minX(), context.minY(), context.minZ(),
+                                context.maxX(), context.maxY(), context.maxZ()))) {
+            return false;
+        }
         return sendApplication(player, state, body);
     }
 

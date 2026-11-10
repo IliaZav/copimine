@@ -35,6 +35,27 @@ final class EndEventBridgeV4SenderTest {
     private static final String NONCE = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
     @Test
+    void outOfArenaSafeZoneBeamCannotPoisonFogAndModelStream() throws Exception {
+        Fixture fixture = readyFixture();
+        fixture.event = new EndEventBridgeV4Access.EventContext(fixture.eventUuid, 2L,
+                "the_end", -12, 65, -59, 28, 71, -19);
+        assertTrue(fixture.sendValidState());
+        int before = fixture.outbound.size();
+        assertFalse(fixture.sender.send(fixture.playerUuid, "END_WORLD_BEAM", fixture.eventUuid + ":2:world:safe-zone", 1000,
+                "the_end|safe-zone|0.000,69.020,-30.000", "RIFT_BEAM", 0, 0, .14F,
+                "0.000,74.520,-30.000|42FF66", ""));
+        assertEquals(before, fixture.outbound.size(), "invalid geometry never receives a signed counter");
+        assertTrue(fixture.sender.send(fixture.playerUuid, "END_WORLD_BEAM", fixture.eventUuid + ":2:world:safe-zone", 1000,
+                "the_end|safe-zone|0.000,69.020,-30.000", "RIFT_BEAM", 0, 0, .14F,
+                "0.000,71.999,-30.000|42FF66", ""));
+        assertTrue(fixture.sender.send(fixture.playerUuid, "END_FOG_STATE", "", 18000,
+                "the_end|wave5|1", "WAVE5_FOG_V1", 0, 0, 1, "", "ACTIVE"));
+        assertTrue(fixture.sendValidState(), "models remain deliverable after a rejected beam");
+        for (int i = 0; i < fixture.outbound.size(); i++) fixture.verify(fixture.outbound.get(i), i + 1L);
+        assertTrue(fixture.sender.isReady(fixture.playerUuid));
+    }
+
+    @Test
     void criticalReserveCannotFloodOrConsumeCountersForRejectedMessages() throws Exception {
         Fixture fixture = readyFixture();
         int before = fixture.outbound.size(), accepted = 0;

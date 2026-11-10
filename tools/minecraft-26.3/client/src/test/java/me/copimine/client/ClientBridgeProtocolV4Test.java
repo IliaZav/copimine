@@ -527,6 +527,39 @@ final class ClientBridgeProtocolV4Test {
     }
 
     @Test
+    void outOfBoundsSafeZoneBeamRetiresPresentationAndReportsExactCause() throws Exception {
+        String stream = establishReady(BridgeRequestCodec.Sender.END_EVENT, 117);
+        byte[] bind = endEventContextBind(EVENT, 1, NOW + 2, "the_end|-12,65,-59|28,71,-19");
+        protocol.onEnvelope(signedEnvelope(trustedKey, stream, 4, NOW + 2, bind), PLAYER, NOW + 2);
+        transport.drainClientQueue();
+        byte[] beam = EndEventBridgeBodyCodec.encode(new EndEventBridgeBodyCodec.Body(
+                EndEventBridgeBodyCodec.Type.END_WORLD_BEAM, 1, NOW + 3, EVENT,
+                EVENT + ":1:world:safe-zone", "", "RIFT_BEAM", 1000, .14F, 0, 0,
+                "the_end|safe-zone|0.000,69.020,-30.000", "0.000,74.520,-30.000|42FF66", "", "", ""));
+        protocol.onEnvelope(signedEnvelope(trustedKey, stream, 5, NOW + 3, beam), PLAYER, NOW + 3);
+        transport.drainClientQueue();
+        assertFalse(protocol.isReady(BridgeRequestCodec.Sender.END_EVENT));
+        assertEquals("clear", endEventLifecycle.getLast());
+        assertTrue(protocol.diagnosticSummary().contains("retired=1"));
+        assertTrue(protocol.diagnosticSummary().contains("beam endpoints exceed the signed arena bounds"));
+    }
+
+    @Test
+    void diagnosticsDistinguishVerifiedBindingsFromRejectedSignatures() throws Exception {
+        assertTrue(protocol.diagnosticSummary().contains("rx=0"));
+        String stream = establishReady(BridgeRequestCodec.Sender.END_EVENT, 116);
+        byte[] bind = endEventContextBind(1, NOW + 2);
+        protocol.onEnvelope(signedEnvelope(trustedKey, stream, 4, NOW + 2, bind), PLAYER, NOW + 2);
+        transport.drainClientQueue();
+        assertTrue(protocol.diagnosticSummary().contains("endEventReady=true"));
+        assertTrue(protocol.diagnosticSummary().contains("contextGeneration=1"));
+        assertTrue(protocol.diagnosticSummary().contains("applied=1"));
+        assertFalse(protocol.onEnvelope(signedEnvelope(otherKey, stream, 5, NOW + 2, bind), PLAYER, NOW + 2));
+        assertTrue(protocol.diagnosticSummary().contains("lastReject=signature-"));
+        assertTrue(protocol.isReady(BridgeRequestCodec.Sender.END_EVENT));
+    }
+
+    @Test
     void replacementContextBindClearsEndEventManagersBeforeApplyingTheNewGeneration() throws Exception {
         String stream = establishReady(BridgeRequestCodec.Sender.END_EVENT, 16);
 

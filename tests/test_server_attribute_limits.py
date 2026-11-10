@@ -1,4 +1,4 @@
-"""The Rift Guardian declares up to 20000 real HP, so the server must allow it.
+"""The server must support the current scaled Guardian's entire real-HP range.
 
 Paper/Spigot clamp an attribute base value to the configured maximum in
 `spigot.yml` (`attribute.maxHealth.max`).  With the historical 1024/2048 cap the
@@ -21,14 +21,14 @@ BOSS_HEALTH_POLICY = (
     / "copimine"
     / "endevent"
     / "domain"
-    / "BossHealthPolicy.java"
+    / "BossScalingPolicy.java"
 )
 
 MAX_HEALTH_PATTERN = re.compile(
     r"^  attribute:\s*$.*?^    maxHealth:\s*$\n^      max:\s*(?P<max>[0-9.]+)\s*$",
     re.MULTILINE | re.DOTALL,
 )
-POLICY_MAX_PATTERN = re.compile(r"MAX_HEALTH\s*=\s*([0-9]+)")
+POLICY_MAX_PATTERN = re.compile(r"HP_CAP\s*=\s*([0-9_.]+)D")
 
 
 def _configured_max_health() -> float:
@@ -40,15 +40,17 @@ def _configured_max_health() -> float:
 
 def test_server_attribute_cap_allows_the_declared_boss_health() -> None:
     match = POLICY_MAX_PATTERN.search(BOSS_HEALTH_POLICY.read_text(encoding="utf-8"))
-    assert match, "BossHealthPolicy.MAX_HEALTH must stay parseable"
-    declared = int(match.group(1))
+    assert match, "BossScalingPolicy.HP_CAP must stay parseable"
+    declared = float(match.group(1).replace("_", ""))
     configured = _configured_max_health()
     assert configured >= declared, (
-        "spigot.yml attribute.maxHealth.max must allow BossHealthPolicy.MAX_HEALTH; "
+        "spigot.yml attribute.maxHealth.max must allow BossScalingPolicy.HP_CAP; "
         f"configured={configured} declared={declared}"
     )
 
 
 def test_server_attribute_cap_allows_the_minimum_boss_health() -> None:
-    # Five thousand real HP is the smallest supported encounter profile.
-    assert _configured_max_health() >= 5000.0
+    text = BOSS_HEALTH_POLICY.read_text(encoding="utf-8")
+    match = re.search(r"HP_FLOOR\s*=\s*([0-9_.]+)D", text)
+    assert match, "BossScalingPolicy.HP_FLOOR must stay parseable"
+    assert _configured_max_health() >= float(match.group(1).replace("_", ""))

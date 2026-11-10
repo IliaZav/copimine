@@ -40,3 +40,9 @@ def test_portrait_is_rendered_from_the_actual_supplied_head():
     assert image.getchannel("A").getextrema() == (0,255)
     source = (ROOT / "tools/minecraft-26.3/client/src/main/java/me/copimine/client/EndRiftBossBarHud.java").read_text(encoding="utf-8")
     assert portrait.name in source and 'GUI_TEXTURED, PORTRAIT' in source
+
+
+def test_mouth_bossbar_renderer_is_reachable_from_the_registered_hud():
+    source = (ROOT / "tools/minecraft-26.3/client/src/main/java/me/copimine/client/CopiMineClient.java").read_text(encoding="utf-8")
+    callback = source[source.index("HudElementRegistry.addLast"):source.index("LevelRenderEvents.COLLECT_SUBMITS")]
+    assert "EndRiftBossBarHud.render(drawContext)" in callback, "an asset and an unused renderer do not draw a boss bar"

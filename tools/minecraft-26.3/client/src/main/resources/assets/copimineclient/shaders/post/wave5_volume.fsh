@@ -57,8 +57,8 @@ void main() {
     vec4 viewPoint = inverseClip * vec4(texCoord * 2.0 - 1.0, max(depth, 0.000001), 1.0);
     vec3 viewPosition = viewPoint.xyz / max(abs(viewPoint.w), 0.000001);
     float sceneDistance = depth <= 0.000001 ? VolumeState.w : min(length(viewPosition), VolumeState.w);
-    // No near-camera visibility bubble: even touching geometry is attenuated
-    // by its real optical path through the smoke. Safe chambers omit this pass.
+    // Dense at eye level; the player playtest requires a small readable patch
+    // of real ground underfoot. Safe chambers omit this pass entirely.
     if (VolumeState.x <= 0.0) { fragColor = source; return; }
     vec3 direction = normalize((inverseView * vec4(normalize(viewPosition), 0.0)).xyz);
     vec2 arena = arenaSpan(EyeTime.xyz, direction);
@@ -78,11 +78,19 @@ void main() {
                 + 0.28 * cloudNoise(point * 1.47 - drift * 1.6);
         float density = VolumeState.y * mix(0.72, 1.38, eddy);
         float extinction = 1.0 - exp(-density * stride);
-        vec3 ink = mix(vec3(0.004,0.006,0.011), vec3(0.021,0.028,0.039), eddy * eddy);
+        float soul = pow(cloudNoise(point * 1.9 - drift * 2.1), 9.0);
+        vec3 ink = mix(vec3(0.004,0.006,0.011), vec3(0.029,0.042,0.052), eddy * eddy);
+        ink += soul * vec3(0.015, 0.080, 0.090);
         scattered += transmittance * extinction * ink;
         transmittance *= 1.0 - extinction;
         if (transmittance < 0.004) break;
     }
     vec3 fogged = source.rgb * transmittance + scattered;
+    vec3 surface = EyeTime.xyz + direction * sceneDistance;
+    float ground = depth > 0.000001 && direction.y < -0.25
+            && surface.y >= ArenaMin.y - 0.25 && surface.y <= ArenaMin.y + 0.45 ? 1.0 : 0.0;
+    float nearGround = ground * (1.0 - smoothstep(0.55, 1.65, length(surface.xz - EyeTime.xz)))
+            * (1.0 - smoothstep(2.0, 2.7, sceneDistance));
+    fogged = mix(fogged, source.rgb * vec3(0.42, 0.46, 0.49), nearGround);
     fragColor = vec4(mix(source.rgb, fogged, VolumeState.x), source.a);
 }

@@ -7,8 +7,8 @@ public final class BlackFogTimingPolicyTest {
         for (int i = 0; i < parties.length; i++) {
             int target = BlackFogTimingPolicy.cycleCount(parties[i]);
             check(target == targets[i], "roster target");
-            check(BlackFogTimingPolicy.safeZoneSeconds(0, target) == 4
-                    && BlackFogTimingPolicy.safeZoneSeconds(target - 1, target) == 1, "shrinking reach window");
+            check(BlackFogTimingPolicy.safeZoneSeconds(0, target) == 7
+                    && BlackFogTimingPolicy.safeZoneSeconds(target - 1, target) == 3, "shrinking reach window");
             check(BlackFogTimingPolicy.fogSeconds(0, target) == 18
                     && BlackFogTimingPolicy.fogSeconds(target - 1, target) == 26, "longer fog exposure");
             check(BlackFogTimingPolicy.hasRemainingCycles(target - 1, target)

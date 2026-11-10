@@ -254,6 +254,8 @@ public final class EndEventWorldVfxManager {
             RenderType layer = switch (pass.kind()) {
                 case CORE_OUTLINE -> RenderTypes.lines();
                 case RIBBON -> RenderTypes.lines();
+                case BEACON -> RenderTypes.entityTranslucentEmissive(
+                        Identifier.withDefaultNamespace("textures/entity/beacon_beam.png"));
                 case CHANNEL -> RenderTypes.entityTranslucentEmissive(
                         Identifier.withDefaultNamespace("textures/entity/end_crystal/end_crystal_beam.png"));
                 case RITUAL -> RenderTypes.lightning();
@@ -267,6 +269,7 @@ public final class EndEventWorldVfxManager {
                     switch (pass.kind()) {
                         case CORE_OUTLINE -> drawCoreOutline(buffer, entryPose, beam, nowMillis);
                         case RIBBON -> drawRibbon(buffer, entryPose, beam, nowMillis);
+                        case BEACON -> drawRitualBeam(buffer, entryPose, beam, nowMillis, true);
                         case CHANNEL -> drawRitualBeam(buffer, entryPose, beam, nowMillis, true);
                         case RITUAL -> drawRitualBeam(buffer, entryPose, beam, nowMillis);
                         case GLYPH -> drawSpellGlyph(buffer, matrices, cameraPos, cameraRotation, beam, nowMillis);

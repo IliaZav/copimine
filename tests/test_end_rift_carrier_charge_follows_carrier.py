@@ -52,7 +52,7 @@ def test_the_charge_anchor_sits_above_the_carrier_body():
 
     # Above the head keeps the model clear of the mob's own body; 1.35 blocks is
     # the height the carried-charge path already uses for the player.
-    assert 'add(0.0D, 1.35D, 0.0D)' in anchor, (
+    assert 'activeCarrier.getHeight() + .65D' in anchor, (
         'the charge must float above the carrier, clear of its body'
     )
 

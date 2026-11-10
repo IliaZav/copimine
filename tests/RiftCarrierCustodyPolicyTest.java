@@ -9,8 +9,8 @@ public final class RiftCarrierCustodyPolicyTest {
         UUID holder = UUID.fromString("00000000-0000-0000-0000-000000000123");
         RiftCarrierCustodyPolicy.Decision cursor = RiftCarrierCustodyPolicy.resolve(List.of(
                 new TokenLocation(holder, Slot.CURSOR, 1, true, true)));
-        check(!cursor.valid() && cursor.copies() == 1,
-                "a cursor-held charge is not in an inventory slot and releases custody");
+        check(cursor.valid() && cursor.slot() == Slot.CURSOR && cursor.copies() == 1,
+                "an authentic cursor-held charge keeps custody during inventory movement");
 
         RiftCarrierCustodyPolicy.Decision duplicate = RiftCarrierCustodyPolicy.resolve(List.of(
                 new TokenLocation(holder, Slot.CURSOR, 1, true, true),

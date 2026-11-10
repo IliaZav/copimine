@@ -6,7 +6,7 @@ public final class BlackFogTimingPolicy {
     /** Protocol/recovery upper bound, not the target of every party. */
     public static final int CYCLE_COUNT = 10;
     /** Additional reach time after the three-second visible warning. */
-    public static final int SAFE_ZONE_SECONDS = 4;
+    public static final int SAFE_ZONE_SECONDS = 7;
     public static final int FOG_SECONDS = 18;
     private BlackFogTimingPolicy() { }
     public static int cycleCount(int rosterPlayers) {
@@ -21,7 +21,7 @@ public final class BlackFogTimingPolicy {
         return 25 + Math.min(10, Math.max(0, cycle) * 2);
     }
     public static int safeZoneSeconds(int cycle, int targetCycles) {
-        return SAFE_ZONE_SECONDS - (int) Math.floor(3 * progress(cycle, targetCycles));
+        return SAFE_ZONE_SECONDS - (int) Math.floor(4 * progress(cycle, targetCycles));
     }
     public static int fogSeconds(int cycle, int targetCycles) {
         return FOG_SECONDS + (int) Math.round(8 * progress(cycle, targetCycles));

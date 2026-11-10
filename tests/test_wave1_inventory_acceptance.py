@@ -381,7 +381,22 @@ public class CarrierInventoryAcceptanceProbe {
                 check(p.currentCarrierState.phase()==RiftCarrierPolicy.Phase.CHARGE_DROPPED,"owned token outside holder inventory makes custody ambiguous");
                 check(p.holder.inventory.contents.stream().allMatch(Objects::isNull),"ambiguous token cannot remain legal after purge");
             }
-            case "drop-loss", "container-loss", "cursor-loss", "release-token" -> {
+            case "cursor-loss" -> {
+                // Player playtest: ordinary cursor moves retain custody, never mint replacements.
+                p.pickUpCurrentCarrierCharge(p.holder);
+                var token=p.currentCarrierInventoryToken;
+                for(int move=0;move<40;move++) {
+                    var charge=p.holder.inventory.contents.remove(0);p.holder.cursor=charge;
+                    p.tickCarried(1000+move*100);
+                    check(p.currentCarrierState.phase()==RiftCarrierPolicy.Phase.CHARGE_CARRIED,
+                            "cursor movement must retain the same custody lease");
+                    check(p.currentCarrierInventoryToken.equals(token),"cursor movement must not remint charge");
+                    check(p.holder.cursor==charge&&charge.amount==1,"exactly one charge remains on cursor");
+                    p.holder.cursor=null;p.holder.inventory.contents.add(charge);p.tickCarried(1050+move*100);
+                    check(p.holder.inventory.contents.size()==1,"moving back must not duplicate the charge");
+                }
+            }
+            case "drop-loss", "container-loss", "release-token" -> {
                 p.pickUpCurrentCarrierCharge(p.holder);p.tickCarried(1000);
                 var carried=p.holder.inventory.contents.get(0);
                 var unrelated=new ItemStack(Material.AMETHYST_SHARD,2);p.other.inventory.contents.add(unrelated);

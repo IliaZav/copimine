@@ -51,6 +51,7 @@ public final class CopiMineClient implements ClientModInitializer {
             ClientBridgeProtocol.endEventWorldVfx().renderHud(drawContext);
             EndEventPlayerVisualRenderer.render(drawContext);
             PrisonerHudRenderer.render(drawContext);
+            EndRiftBossBarHud.render(drawContext);
         });
         LevelRenderEvents.COLLECT_SUBMITS.register(context -> {
             ClientBridgeProtocol.renderEndEventWorldVfx(context);

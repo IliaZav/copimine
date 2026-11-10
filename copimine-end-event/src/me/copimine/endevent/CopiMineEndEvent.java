@@ -15784,14 +15784,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** Prevent vanilla walking pickup; Wave 1 is intentionally RMB-only. */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onCarrierChargeAttemptPickup(PlayerAttemptPickupItemEvent event) {
-        if (event != null && isCurrentDroppedCarrierCharge(event.getItem())) {
+        if (event != null && isCurrentCarrierChargeVisual(event.getItem())) {
             event.setCancelled(true);
         }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onCarrierChargePickup(EntityPickupItemEvent event) {
-        if (event != null && isCurrentDroppedCarrierCharge(event.getItem())) {
+        if (event != null && isCurrentCarrierChargeVisual(event.getItem())) {
             event.setCancelled(true);
         }
     }
@@ -15800,6 +15800,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return activeWave == 1 && currentCarrierState != null
                 && (isOfficialAttempt() || testWaveFrontVisualMode)
                 && !RiftCarrierPolicy.isComplete(currentCarrierState);
+    }
+
+    /** The arena visual is never a vanilla pickup, including while its carrier is alive. */
+    private boolean isCurrentCarrierChargeVisual(Entity entity) {
+        return entity != null && currentCarrierState != null
+                && entity.getUniqueId().equals(currentCarrierState.charge())
+                && ownedEntities.containsKey(entity.getUniqueId());
     }
 
     private boolean isCurrentDroppedCarrierCharge(Entity entity) {
@@ -27049,7 +27056,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     && activeCarrier.getWorld() != null
                     && activeCarrier.getWorld().equals(liveChargeOnCarrier.getWorld())) {
                 Location carrierAnchor = activeCarrier.getLocation().clone()
-                        .add(0.0D, 1.35D, 0.0D);
+                        .add(0.0D, activeCarrier.getHeight() + .65D, 0.0D);
                 if (liveChargeOnCarrier.getLocation().distanceSquared(carrierAnchor) > 0.0625D) {
                     teleportCombatEntity(liveChargeOnCarrier, carrierAnchor);
                     currentCarrierChargeLocation = liveChargeOnCarrier.getLocation().clone();
@@ -27266,40 +27273,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** One authored three-dimensional charge crest follows only the selected carrier. */
     private void updateCurrentCarrierMarker(Entity carrier) {
-        if (!(carrier instanceof LivingEntity) || !isLiveOwnedEntity(carrier.getUniqueId())) {
-            removeCurrentCarrierMarker();
-            return;
-        }
+        // The objective's existing charge is the sole crest. A second display
+        // used to duplicate it while the real item remained at chest height.
+        removeCurrentCarrierMarker();
+        Entity charge = currentCarrierChargeEntity();
+        if (!(carrier instanceof LivingEntity) || !isLiveOwnedEntity(carrier.getUniqueId())
+                || charge == null || !charge.isValid()) return;
         Location position = carrier.getLocation().clone().add(0.0D,
-                carrier.getHeight() + .65D + Math.sin(eventTickCounter * .09D) * .10D, 0.0D);
-        position.setYaw((float) ((eventTickCounter * 3L) % 360L));
-        position.setPitch(0.0F);
-        Entity existing = currentCarrierMarkerUuid == null ? null : ownedEntities.get(currentCarrierMarkerUuid);
-        if (!(existing instanceof ItemDisplay) || !isLiveOwnedEntity(currentCarrierMarkerUuid)) {
-            removeCurrentCarrierMarker();
-            ItemDisplay marker = carrier.getWorld().spawn(position, ItemDisplay.class, value -> {
-                value.setItemStack(overlayItem(MODEL_CARRIER_CHARGE, "end_event_carrier_charge"));
-                value.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
-                value.setBillboard(Display.Billboard.FIXED);
-                value.setTransformation(new Transformation(new Vector3f(), new Quaternionf(),
-                        new Vector3f(1.35F), new Quaternionf()));
-                value.setBrightness(new Display.Brightness(15, 15));
-                value.setDisplayWidth(2.0F);
-                value.setDisplayHeight(2.0F);
-                value.setViewRange(2.0F);
-                value.setTeleportDuration(5);
-                value.setInterpolationDuration(5);
-                value.setGravity(false);
-                value.setInvulnerable(true);
-                value.setPersistent(false);
-                value.setGlowing(true);
-                value.setShadowRadius(0.0F);
-            });
-            tag(marker, EVENT_KIND_DISPLAY, 1, !testWaveFrontVisualMode);
-            registerOwnedEntity(marker);
-            waveObjectiveVisuals.add(marker.getUniqueId());
-            currentCarrierMarkerUuid = marker.getUniqueId();
-        } else teleportCombatEntity(existing, position);
+                carrier.getHeight() + .65D, 0.0D);
+        teleportCombatEntity(charge, position);
+        currentCarrierChargeLocation = charge.getLocation().clone();
     }
 
     private void removeCurrentCarrierMarker() {
@@ -37711,7 +37694,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             desired.add(key);
             for (Player viewer : eventAudience()) if (isEventParticleViewer(viewer, base))
                 sendWorldBeamPacket(viewer, key, base, base.clone().add(0, Math.max(0.0D, Math.min(5.5D, arenaMaxY + 0.999D - base.getY())), 0),
-                        0x42FF66, .14F);
+                        0x42FF66, .30F);
             // The floor tiles alone were easy to lose inside the fog. Draw the
             // PERIMETER of each zone as glowing emerald particles, so the edge is
             // readable from anywhere in the arena and from inside the blackout.

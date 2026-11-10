@@ -22,7 +22,7 @@ public final class RiftCarrierCustodyPolicy {
     /** A valid result identifies the player and inventory surface holding the single token. */
     public record Decision(boolean valid, UUID holder, Slot slot, int copies) { }
 
-    /** Rejects duplicate/stale/external custody; only storage and off-hand slots retain a charge. */
+    /** Rejects duplicate/stale/external custody; storage, off-hand and a transient cursor retain a charge. */
     public static Decision resolve(List<TokenLocation> locations) {
         if (locations == null || locations.isEmpty()) return new Decision(false, null, null, 0);
         int copies = 0;
@@ -31,7 +31,8 @@ public final class RiftCarrierCustodyPolicy {
             if (location == null || !location.currentToken()) continue;
             if (location.slot() == null) return new Decision(false, null, null, 2);
             copies = Math.min(2, copies + Math.max(1, location.amount()));
-            if (location.slot() == Slot.STORAGE || location.slot() == Slot.OFF_HAND) {
+            if (location.slot() == Slot.STORAGE || location.slot() == Slot.OFF_HAND
+                    || location.slot() == Slot.CURSOR) {
                 candidate = location;
             }
         }

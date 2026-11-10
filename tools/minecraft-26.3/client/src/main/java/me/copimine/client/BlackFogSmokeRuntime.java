@@ -77,20 +77,22 @@ public final class BlackFogSmokeRuntime {
                     + random.nextDouble() * (Math.min(arena.maxZ() - 0.3, client.player.getZ() + 22)
                     - Math.max(arena.minZ() + 1.3, client.player.getZ() - 22));
             boolean roof = random.nextInt(3) == 0;
+            boolean soul = !roof && random.nextInt(6) == 0;
             double y = base + (roof ? 3.5 : 1.25 + random.nextDouble() * 1.4);
-            if ((!roof && Math.hypot(x - client.player.getX(), z - client.player.getZ()) < 2.0)
+            if ((!roof && !soul && Math.hypot(x - client.player.getX(), z - client.player.getZ()) < 2.0)
                     || (!roof && !BlackFogSmokePolicy.clearOfSafeFloor(x, z, safeFloor))) continue;
             BlockPos position = BlockPos.containing(x, y, z);
             if (!client.level.hasChunkAt(position) || !client.level.getBlockState(position).isAir()) continue;
             // Built-in translucent sprite provider works without Iris or optional mods.
-            Particle p = client.particleEngine.createParticle(ParticleTypes.CAMPFIRE_COSY_SMOKE,
+            Particle p = client.particleEngine.createParticle(soul ? ParticleTypes.SOUL : ParticleTypes.CAMPFIRE_COSY_SMOKE,
                     x, y, z, (random.nextDouble() - 0.5) * 0.009, 0.001,
                     (random.nextDouble() - 0.5) * 0.009);
             if (p instanceof SingleQuadParticle quad) {
                 float size = quad.getQuadSize(0);
-                if (size > 0) quad.scale((roof ? 0.25F : 0.55F + random.nextFloat() * 0.3F) / size);
+                if (size > 0) quad.scale((soul ? 0.15F : roof ? 0.25F : 0.55F + random.nextFloat() * 0.3F) / size);
                 float shade = 0.035F + random.nextFloat() * 0.035F;
-                quad.setColor(shade * 0.68F, shade * 0.78F, shade);
+                if (soul) quad.setColor(0.25F, 0.75F, 0.82F);
+                else quad.setColor(shade * 0.68F, shade * 0.78F, shade);
                 p.setLifetime(55 + random.nextInt(25));
                 owned.add(p); spawned++;
             } else if (p != null) p.remove();

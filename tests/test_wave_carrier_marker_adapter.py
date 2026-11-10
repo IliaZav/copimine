@@ -15,6 +15,8 @@ def test_carrier_has_one_authored_marker_following_it_and_cleanup_removes_it(tmp
 import java.util.*;
 import java.util.function.Consumer;
 public class CarrierMarkerProbe {
+  Entity charge; Location currentCarrierChargeLocation;
+  Entity currentCarrierChargeEntity(){return charge;}
   long eventTickCounter; UUID currentCarrierMarkerUuid; int spawns, moves, removed; boolean testWaveFrontVisualMode;
   static final int MODEL_CARRIER_CHARGE=830029; static final String EVENT_KIND_DISPLAY="DISPLAY";
   Map<UUID,Entity> ownedEntities=new HashMap<>(); Set<UUID> waveObjectiveVisuals=new HashSet<>();
@@ -47,17 +49,19 @@ public class CarrierMarkerProbe {
   boolean teleportCombatEntity(Entity e,Location pos){e.pos=pos;moves++;return true;}
   public static void main(String[] args){
     var p=new CarrierMarkerProbe(); var carrier=p.new LivingEntity();p.ownedEntities.put(carrier.id,carrier);
+    p.charge=p.new Entity();p.ownedEntities.put(p.charge.id,p.charge);
+    var id=p.charge.id;
     p.updateCurrentCarrierMarker(carrier);
-    var id=p.currentCarrierMarkerUuid;var marker=(ItemDisplay)p.ownedEntities.get(id);
-    if(p.spawns!=1||marker.model!=830029||!marker.bright)throw new AssertionError("carrier has no authored charge model");
-    if(marker.pos.y<=carrier.pos.y+carrier.getHeight())throw new AssertionError("crest obscures carrier body instead of sitting above it");
-    carrier.pos.x=9;p.eventTickCounter=10;p.updateCurrentCarrierMarker(carrier);
-    if(p.spawns!=1||p.moves!=1||marker.pos.x!=9||!id.equals(p.currentCarrierMarkerUuid))
-      throw new AssertionError("moving carrier duplicates or leaves its marker behind");
+    if(p.spawns!=0||p.currentCarrierMarkerUuid!=null)throw new AssertionError("must reuse the one charge, never spawn a duplicate crest");
+    if(p.charge.pos.y<=carrier.pos.y+carrier.getHeight())throw new AssertionError("charge must sit above the carrier's head");
+    carrier.pos.x=9;p.updateCurrentCarrierMarker(carrier);
+    if(p.spawns!=0||p.charge.pos.x!=9||!id.equals(p.charge.id))throw new AssertionError("movement changed charge identity or created another model");
+    var legacy=p.new ItemDisplay();p.currentCarrierMarkerUuid=legacy.id;p.ownedEntities.put(legacy.id,legacy);p.waveObjectiveVisuals.add(legacy.id);
+    p.updateCurrentCarrierMarker(carrier);
+    if(legacy.valid||p.ownedEntities.containsKey(legacy.id)||p.removed!=1)throw new AssertionError("old duplicate marker must be removed");
     carrier.valid=false;p.updateCurrentCarrierMarker(carrier);
-    if(p.currentCarrierMarkerUuid!=null||p.ownedEntities.containsKey(id)||p.waveObjectiveVisuals.contains(id)||p.removed!=1)
-      throw new AssertionError("carrier death retains stale marker ownership");
-    p.removeCurrentCarrierMarker();if(p.removed!=1)throw new AssertionError("duplicate cleanup removed the marker twice");
+    if(!p.charge.valid||!p.ownedEntities.containsKey(id))throw new AssertionError("carrier death must retain the authentic dropped charge");
+    p.removeCurrentCarrierMarker();if(p.removed!=1)throw new AssertionError("cleanup removed the true charge or double removed a marker");
   }
 ''' + adapter + "\n}\n", encoding="utf-8")
     compiled = subprocess.run(["javac", "-J-Xmx128m", "-d", str(tmp_path), str(java)], capture_output=True, text=True)

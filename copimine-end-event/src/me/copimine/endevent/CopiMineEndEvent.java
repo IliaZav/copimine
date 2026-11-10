@@ -42502,9 +42502,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (point == null || point.getWorld() == null || particle == null || data == null) {
             return;
         }
+        // Particle#spawnParticle validates the payload against the particle's
+        // declared data type. Only DUST (and the other DustOptions carriers)
+        // accept a DustOptions; passing one to END_ROD, SOUL, SONIC_BOOM and the
+        // rest throws IllegalArgumentException. That exception used to escape a
+        // per-tick Wave 7 ability tick, so the entire trial room aborted on every
+        // tick and the minibosses stood still. Paint the accent as a DUST pass
+        // beside the authored particle instead of discarding the signature.
+        boolean acceptsDust = particle.getDataType() == Particle.DustOptions.class;
         for (Player viewer : eventAudience()) {
-            if (isEventParticleViewer(viewer, point)) {
+            if (!isEventParticleViewer(viewer, point)) {
+                continue;
+            }
+            if (acceptsDust) {
                 viewer.spawnParticle(particle, point, count, offsetX, offsetY, offsetZ, extra, data);
+            } else {
+                spawnTypedParticle(viewer, particle, point, count, offsetX, offsetY, offsetZ, extra);
+                viewer.spawnParticle(Particle.DUST, point, Math.max(1, count / 2),
+                        offsetX, offsetY, offsetZ, 0.0D, data);
             }
         }
     }

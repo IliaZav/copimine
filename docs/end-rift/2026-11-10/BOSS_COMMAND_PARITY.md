@@ -47,6 +47,14 @@ executor. Both canonical files were reread; their SHA-256 values remain
    The real TentacleController regression distinguishes defenders and small
    summons, exercises HOLD/THROW, removal and stale generations.
 
+6. A separate scaling audit found `bossMaxHealth` clamped frozen metadata
+   against the obsolete 20000 HP constant, despite real scaling to 40000 HP.
+   That desynchronised the HUD and phase thresholds for parties above ten.
+   Clamp against the active BossScalingPolicy.HP_CAP. The extracted production
+   getter was red at 22000 -> 20000, then passed for every roster 2–20,
+   30000/40000 HP, changed live roster, missing/invalid data and the corruption
+   ceiling. Eight health/phase/defeat/platform checks passed after this repair.
+
 ## Evidence
 
 - 22 focused boss/guardian/model/pose checks passed.

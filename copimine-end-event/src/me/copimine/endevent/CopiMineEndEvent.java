@@ -21823,7 +21823,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (persisted == null || !Double.isFinite(persisted) || persisted <= 0.0D) {
             return fallback;
         }
-        return BossHealthPolicy.clampCurrent(persisted, BossHealthPolicy.MAX_HEALTH);
+        return BossHealthPolicy.clampCurrent(persisted, BossScalingPolicy.HP_CAP);
     }
 
     private double configuredCombatVerticalRadius() {

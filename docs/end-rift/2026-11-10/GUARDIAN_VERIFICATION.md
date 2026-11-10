@@ -104,3 +104,14 @@ finished with **exit 0** and `End Rift current local checks passed` after actual
 plugin/client/resource builds and verified staging. Its final boss accepted-hit,
 cast-ownership and Kagune-recovery group passed **125 tests, 2 skipped**. Full
 log: `artifacts/20261110-guardian-polish-release-candidate/full-event-gate.txt`.
+
+## Final user-directed revision
+
+The user stopped DeepSeek and explicitly authorized Codex to finish and deploy.
+The previous coordination hold is resolved. See NIGHT_REVIEW.md for the actual
+nighttime delta and the cross-PowerShell encoding defect found and fixed.
+The latest HUD uses an exact head portrait rendered from the original 37 head
+cubes and skin, positioned centrally above the health track; no generated face
+substitutes the original model. Geometry and texture hashes remain canonical.
+The earlier table of prepared bundle hashes is historical; use the final
+release manifest and installation receipt for the final user revision.

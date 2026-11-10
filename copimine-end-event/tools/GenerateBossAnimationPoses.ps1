@@ -40,7 +40,7 @@ function Read-Json([string]$path) {
     Fail-Asset $path 'file is missing'
   }
   try {
-    return (Get-Content -LiteralPath $path -Raw | ConvertFrom-Json)
+    return (Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json)
   } catch {
     Fail-Asset $path ("invalid JSON: " + $_.Exception.Message)
   }
@@ -150,7 +150,7 @@ function Get-SourceDigest($inputs) {
   try {
     $bytes = [Collections.Generic.List[byte]]::new()
     foreach ($input in $inputs) {
-      $normalized = (Get-Content -LiteralPath $input.Path -Raw).Replace("`r`n", "`n").Replace("`r", "`n")
+      $normalized = (Get-Content -LiteralPath $input.Path -Raw -Encoding UTF8).Replace("`r`n", "`n").Replace("`r", "`n")
       $payload = "$($input.Name)`n$normalized`n"
       $bytes.AddRange([Text.Encoding]::UTF8.GetBytes($payload))
     }
@@ -223,7 +223,7 @@ foreach ($definition in $geometryDefinitions) {
 if (-not (Test-Path -LiteralPath $clientAnimationPlayerPath -PathType Leaf)) {
   Fail-Asset $clientAnimationPlayerPath 'client animation loop owner is missing'
 }
-$clientAnimationPlayerSource = Get-Content -LiteralPath $clientAnimationPlayerPath -Raw
+$clientAnimationPlayerSource = Get-Content -LiteralPath $clientAnimationPlayerPath -Raw -Encoding UTF8
 foreach ($clipSpec in $clips) {
   $filePattern = [regex]::Escape([string]$clipSpec.File)
   $idPattern = [regex]::Escape([string]$clipSpec.Id)
@@ -400,7 +400,7 @@ if ($Check) {
   if (-not (Test-Path -LiteralPath $OutputPath -PathType Leaf)) {
     throw "Generated boss animation resource is missing: $OutputPath"
   }
-  $actual = Get-Content -LiteralPath $OutputPath -Raw
+  $actual = Get-Content -LiteralPath $OutputPath -Raw -Encoding UTF8
   if ($actual -ne $generated) {
     throw "Generated boss animation resource is stale: $OutputPath"
   }

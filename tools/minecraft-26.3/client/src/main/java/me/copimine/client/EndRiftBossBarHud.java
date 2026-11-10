@@ -16,23 +16,25 @@ import net.minecraft.resources.Identifier;
  */
 public final class EndRiftBossBarHud {
     private static final Identifier FRAME = Identifier.fromNamespaceAndPath(
-            "copimineclient", "textures/gui/end_rift_bossbar_guardian_mouth_v2.png");
-    // Actual RGBA canvas dimensions, with an open straight track beside the
-    // authored skeletal mouth. Keep texture sampling and fill geometry paired.
+            "copimineclient", "textures/gui/end_rift_bossbar_frame_v3.png");
+    private static final Identifier PORTRAIT = Identifier.fromNamespaceAndPath(
+            "copimineclient", "textures/gui/end_rift_guardian_head_portrait.png");
+    // Actual RGBA frame dimensions; the head is separately rendered from
+    // the original supplied mesh and UV, without repainting its identity. Keep texture sampling and fill geometry paired.
     private static final int SOURCE_WIDTH = 2172;
     private static final int SOURCE_HEIGHT = 724;
     private static final int WIDTH = 360;
-    private static final int HEIGHT = 124;
-    private static final int TITLE_Y = 5;
-    private static final int DETAIL_Y = 19;
-    private static final int FRAME_Y = 0;
+    private static final int HEIGHT = 140;
+    private static final int TITLE_Y = 1;
+    private static final int DETAIL_Y = 61;
+    private static final int FRAME_Y = 30;
     private static final int FRAME_HEIGHT = 120;
-    private static final int PHASE_LABEL_OFFSET = 94;
-    private static final int CAST_LABEL_OFFSET = 111;
-    private static final int INNER_LEFT = 78;
-    private static final int INNER_RIGHT = 332;
-    private static final int INNER_TOP = 56;
-    private static final int INNER_BOTTOM = 70;
+    private static final int PHASE_LABEL_OFFSET = 112;
+    private static final int CAST_LABEL_OFFSET = 128;
+    private static final int INNER_LEFT = 30;
+    private static final int INNER_RIGHT = 330;
+    private static final int INNER_TOP = 92;
+    private static final int INNER_BOTTOM = 101;
     private static final int SEGMENT_COUNT = 20;
     /** Health thresholds for the five transitions between six boss phases. */
     private static final float[] PHASE_MARKERS = {0.20F, 0.30F, 0.45F, 0.60F, 0.80F};
@@ -124,7 +126,7 @@ public final class EndRiftBossBarHud {
 
         // Keep the ornate frame transparent over the world. The native bar
         // for this bound boss is independently suppressed by its own mixin.
-        context.fill(x + INNER_LEFT, y + 2, x + INNER_RIGHT, y + 30, 0x680A0611);
+        context.fill(x + INNER_LEFT, y + 2, x + INNER_RIGHT, y + 12, 0x680A0611);
         context.centeredText(client.font, Component.literal("СТРАЖ РАЗЛОМА"),
                 x + (INNER_LEFT + INNER_RIGHT) / 2, y + TITLE_Y, 0xFFF6E8FF);
         context.text(client.font,
@@ -179,7 +181,7 @@ public final class EndRiftBossBarHud {
         for (int marker = 0; marker < PHASE_MARKERS.length; marker++) {
             int markerX = x + INNER_LEFT + Math.round(
                     (INNER_RIGHT - INNER_LEFT) * PHASE_MARKERS[marker]);
-            drawPhaseMarker(context, client, markerX, y + FRAME_Y,
+            drawPhaseMarker(context, client, markerX, y,
                     PHASE_MARKER_LABELS[marker], progress <= PHASE_MARKERS[marker] + 0.001F,
                     phaseColor);
         }
@@ -187,6 +189,9 @@ public final class EndRiftBossBarHud {
         context.blit(RenderPipelines.GUI_TEXTURED, FRAME, x, y + FRAME_Y,
                 0F, 0F, WIDTH, FRAME_HEIGHT,
                 SOURCE_WIDTH, SOURCE_HEIGHT, SOURCE_WIDTH, SOURCE_HEIGHT);
+        // Exact UV-rendered head of the supplied 37-cube model; no replacement creature.
+        context.blit(RenderPipelines.GUI_TEXTURED, PORTRAIT, x + (WIDTH - 44) / 2, y + 14,
+                0F, 0F, 44, 44, 128, 128, 128, 128);
         context.centeredText(client.font,
                 Component.literal(castLabel(state.castState())),
                 x + (INNER_LEFT + INNER_RIGHT) / 2, y + CAST_LABEL_OFFSET, 0xFFBEB8D5);

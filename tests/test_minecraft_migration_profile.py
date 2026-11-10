@@ -211,10 +211,10 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # Repinned for the semi-transparent TAB panel background: the server tab
     # panel no longer paints an opaque black plate, so the compiled bytes moved
     # by one byte. Only presentation changed; no gameplay value moved.
-    assert artifact['size'] == 14_513_956
+    assert artifact['size'] == 14_983_311
     assert artifact['sha512'] == (
-        '739094363e334c885f02337addb12d1ae96a4f9aaf1fb542e03c966a2c5136ac0d'
-        '203feebcbcf7a3c96c78c42825f9a4a7b9c9506cfc1ae355ccddcf93665ac7'
+        'b8bf25437c62bf708a596fd98919140097571324edc1a7360eef7d4584790836'
+        '0dc2d43c2d644eb8f0b11f455f36b0c60a16cefd3298cb14364d4e7279fb0b1c'
     )
 
 

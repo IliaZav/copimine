@@ -56004,12 +56004,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             bossBindingInstanceId = eventId + ":" + generation + ":" + bossUuid;
         }
         // The Rift Guardian must render as the authored god-body, not as a plain
-        // Enderman. The binding now carries the boss visual id; the legacy
-        // configured id still wins when an operator pinned it explicitly.
+        // Enderman. Normalize the historical default stored by older configs;
+        // explicitly configured third-party visual IDs retain their meaning.
         String bossVisual = CLIENT_VISUAL_BOSS;
         String configuredVisual = config.clientBossId();
-        if (configuredVisual != null && !configuredVisual.isBlank()) {
-            bossVisual = configuredVisual;
+        if (configuredVisual != null && !configuredVisual.isBlank()
+                && !"END_RIFT_GUARDIAN".equalsIgnoreCase(configuredVisual.trim())
+                && !CLIENT_VISUAL_BOSS.equalsIgnoreCase(configuredVisual.trim())) {
+            bossVisual = configuredVisual.trim();
         }
         sendClientPacket(player, "END_BOSS_BIND", bossBindingInstanceId, 0L,
                 bossUuid.toString(), bossVisual);

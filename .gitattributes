@@ -42,3 +42,6 @@ resourcepacks/src/assets/copimine/models/block/end_event_portal_shard.json -text
 resourcepacks/src/assets/copimine/textures/item/end_event_rift_membrane.png.mcmeta -text
 resourcepacks/src/assets/copimine/manifests/waves_3_4_structure_assets.json -text
 resourcepacks/src/assets/copimine/manifests/wave5_safe_floor_asset.json -text
+
+# UV-rendered Guardian portrait provenance is a byte-identical generated resource.
+CopiMineClient/src/main/resources/assets/copimineclient/textures/gui/end_rift_guardian_head_portrait.manifest.json -text

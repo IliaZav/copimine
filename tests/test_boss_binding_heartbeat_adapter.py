@@ -15,14 +15,15 @@ import me.copimine.endevent.domain.BossPhase;
 public class BossBindingHeartbeatProbe {
  static class Entity{} static class LivingEntity extends Entity{} static class Player{}
  static class Bukkit {static Entity getEntity(UUID id){return new LivingEntity();}}
- static class Config{String clientBossId(){return "";}}
+ static class Config{String visual="";String clientBossId(){return visual;}}
  UUID bossUuid=new UUID(0,1);String bossBindingInstanceId="binding",eventId="event";
  String bossHitboxAnimationId="GROUND_SLAM",CLIENT_VISUAL_BOSS="END_RIFT_GUARDIAN_V1";
  long generation=1,BOSS_PHASE_VISUAL_TRANSITION_MILLIS=400;
  BossPhase bossPhase=BossPhase.RIFT;Config config=new Config();
- int broadcasts,phases;Player expected;String animation;
+ int broadcasts,phases;Player expected;String animation,bindingVisual;
  boolean isEventVisualViewer(Player p){return true;}boolean isOfficialBoss(LivingEntity e){return true;}
  void sendClientPacket(Player p,String type,String instance,long duration,String subject,String visual){
+  if("END_BOSS_BIND".equals(type)){bindingVisual=visual;return;}
   if(!"END_BOSS_PHASE".equals(type))return;
   if(p!=expected)throw new AssertionError("heartbeat reached another viewer");phases++;animation=visual;
  }
@@ -37,6 +38,9 @@ public class BossBindingHeartbeatProbe {
   if(probe.broadcasts!=0)throw new AssertionError("binding heartbeat rebroadcast animation to every viewer");
   if(probe.phases!=1||!probe.animation.endsWith("GROUND_SLAM"))
     throw new AssertionError("heartbeat reset or omitted the active authored clip: "+probe.animation);
+  probe.config.visual="END_RIFT_GUARDIAN";probe.bindBossClient(probe.expected);
+  if(!"END_RIFT_GUARDIAN_V1".equals(probe.bindingVisual))
+    throw new AssertionError("saved legacy boss ID did not resolve to the actual authored Guardian model");
  }
 } """, encoding="utf-8")
     result = subprocess.run(["javac", "-encoding", "UTF-8", "-sourcepath", str(ROOT / "copimine-end-event/src"),

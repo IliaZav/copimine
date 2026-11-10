@@ -16,24 +16,23 @@ import net.minecraft.resources.Identifier;
  */
 public final class EndRiftBossBarHud {
     private static final Identifier FRAME = Identifier.fromNamespaceAndPath(
-            "copimineclient", "textures/gui/end_rift_bossbar_frame.png");
-    // The supplied frame is a 256x32 transparent overlay, not a 2172x724
-    // panel.  Drawing it with the old dimensions sampled outside the image
-    // and produced the oversized flat-purple bar seen in-game.
-    private static final int SOURCE_WIDTH = 256;
-    private static final int SOURCE_HEIGHT = 32;
-    private static final int WIDTH = 320;
-    private static final int HEIGHT = 88;
-    private static final int TITLE_Y = 0;
-    private static final int DETAIL_Y = 11;
-    private static final int FRAME_Y = 22;
-    private static final int FRAME_HEIGHT = 40;
-    private static final int PHASE_LABEL_OFFSET = 40;
-    private static final int CAST_LABEL_OFFSET = 74;
-    private static final int INNER_LEFT = 21;
-    private static final int INNER_RIGHT = 299;
-    private static final int INNER_TOP = 34;
-    private static final int INNER_BOTTOM = 50;
+            "copimineclient", "textures/gui/end_rift_bossbar_guardian_mouth_v2.png");
+    // Actual RGBA canvas dimensions, with an open straight track beside the
+    // authored skeletal mouth. Keep texture sampling and fill geometry paired.
+    private static final int SOURCE_WIDTH = 2172;
+    private static final int SOURCE_HEIGHT = 724;
+    private static final int WIDTH = 360;
+    private static final int HEIGHT = 124;
+    private static final int TITLE_Y = 5;
+    private static final int DETAIL_Y = 19;
+    private static final int FRAME_Y = 0;
+    private static final int FRAME_HEIGHT = 120;
+    private static final int PHASE_LABEL_OFFSET = 94;
+    private static final int CAST_LABEL_OFFSET = 111;
+    private static final int INNER_LEFT = 78;
+    private static final int INNER_RIGHT = 332;
+    private static final int INNER_TOP = 56;
+    private static final int INNER_BOTTOM = 70;
     private static final int SEGMENT_COUNT = 20;
     /** Health thresholds for the five transitions between six boss phases. */
     private static final float[] PHASE_MARKERS = {0.20F, 0.30F, 0.45F, 0.60F, 0.80F};
@@ -49,6 +48,7 @@ public final class EndRiftBossBarHud {
     private static final long DAMAGE_CHIP_MILLIS = 700L;
     /** Below this fraction the bar itself pulses, matching the boss's rage. */
     private static final float CRITICAL_FRACTION = 0.25F;
+    private static String trackedBossIdentity = "";
     private static float lastProgress = Float.NaN;
     private static long lastProgressChangeMillis;
     private static float trailingProgress = Float.NaN;
@@ -70,6 +70,14 @@ public final class EndRiftBossBarHud {
      * clock; it is presentation only and never feeds back into the server
      * authority.</p>
      */
+    static void trackProgress(String identity, float progress) {
+        if (!java.util.Objects.equals(trackedBossIdentity, identity)) {
+            resetTrackingForTest();
+            trackedBossIdentity = identity;
+        }
+        trackProgress(progress);
+    }
+
     private static void trackProgress(float progress) {
         long now = nowMillis();
         if (Float.isNaN(lastProgress)) {
@@ -105,24 +113,28 @@ public final class EndRiftBossBarHud {
             return;
         }
 
-        int x = Math.max(0, (context.guiWidth() - WIDTH) / 2);
+        float scale = Math.min(1.0F, Math.max(1, context.guiWidth() - 8) / (float) WIDTH);
+        context.pose().pushMatrix();
+        context.pose().scale(scale, scale);
+        try {
+        int x = Math.max(0, Math.round((context.guiWidth() / scale - WIDTH) / 2.0F));
         int y = 4;
         int phaseColor = phaseColor(state.phaseId(), state.castState());
         float progress = clampProgress(state.progress());
 
-        // Opaque backing masks the vanilla bar for this one event while the
-        // mixin below cancels its draw call. Other BossBars are untouched.
-        context.fill(x + 18, y + 1, x + WIDTH - 18, y + 20, 0xD50A0D18);
+        // Keep the ornate frame transparent over the world. The native bar
+        // for this bound boss is independently suppressed by its own mixin.
+        context.fill(x + INNER_LEFT, y + 2, x + INNER_RIGHT, y + 30, 0x680A0611);
         context.centeredText(client.font, Component.literal("СТРАЖ РАЗЛОМА"),
-                context.guiWidth() / 2, y + TITLE_Y, 0xFFF6E8FF);
+                x + (INNER_LEFT + INNER_RIGHT) / 2, y + TITLE_Y, 0xFFF6E8FF);
         context.text(client.font,
-                Component.literal(phaseLabel(state.phaseId())), x + 22, y + DETAIL_Y, phaseColor);
+                Component.literal(phaseLabel(state.phaseId())), x + INNER_LEFT + 2, y + DETAIL_Y, phaseColor);
         context.text(client.font,
                 Component.literal(formatHealth(state.health(), state.maxHealth())),
-                x + WIDTH - 22 - client.font.width(formatHealth(state.health(), state.maxHealth())),
+                x + INNER_RIGHT - 2 - client.font.width(formatHealth(state.health(), state.maxHealth())),
                 y + DETAIL_Y, 0xFFE7E8F2);
 
-        trackProgress(progress);
+        trackProgress(state.instanceId() + ":" + state.bossUuid(), progress);
         int filled = Math.round((INNER_RIGHT - INNER_LEFT) * progress);
         // Fading chip over the health the boss just lost: the party sees its
         // damage register even when the bar is already past a phase marker.
@@ -177,7 +189,10 @@ public final class EndRiftBossBarHud {
                 SOURCE_WIDTH, SOURCE_HEIGHT, SOURCE_WIDTH, SOURCE_HEIGHT);
         context.centeredText(client.font,
                 Component.literal(castLabel(state.castState())),
-                context.guiWidth() / 2, y + CAST_LABEL_OFFSET, 0xFFBEB8D5);
+                x + (INNER_LEFT + INNER_RIGHT) / 2, y + CAST_LABEL_OFFSET, 0xFFBEB8D5);
+        } finally {
+            context.pose().popMatrix();
+        }
     }
 
     private static void drawSegmentedFill(GuiGraphicsExtractor context, int x, int y,
@@ -202,8 +217,8 @@ public final class EndRiftBossBarHud {
     private static void drawPhaseMarker(GuiGraphicsExtractor context, Minecraft client, int x,
                                         int frameY, String label, boolean active, int color) {
         int markerColor = active ? brighten(color) : 0xFF6D6880;
-        context.fill(x - 1, frameY + 8, x + 1, frameY + 32, markerColor);
-        context.fill(x - 3, frameY + 7, x + 3, frameY + 9, markerColor);
+        context.fill(x - 1, frameY + INNER_TOP - 2, x + 1, frameY + INNER_BOTTOM + 2, markerColor);
+        context.fill(x - 3, frameY + INNER_TOP - 3, x + 3, frameY + INNER_TOP - 1, markerColor);
         context.centeredText(client.font, Component.literal(label), x,
                 frameY + PHASE_LABEL_OFFSET, active ? 0xFFF0E8FF : 0xFF8B879B);
     }
@@ -230,7 +245,7 @@ public final class EndRiftBossBarHud {
             case "TELEGRAPHING" -> "КАНАЛИЗАЦИЯ";
             case "EXECUTING" -> "АТАКА";
             case "RECOVERY" -> "ВОССТАНОВЛЕНИЕ";
-            default -> "REAL HP · ФАЗОВЫЕ ПРЕДЕЛЫ";
+            default -> "БОЙ";
         };
     }
 
@@ -264,6 +279,7 @@ public final class EndRiftBossBarHud {
     // chip arithmetic and the phase thresholds are plain numbers and are the
     // parts that can actually regress unnoticed.
     static void resetTrackingForTest() {
+        trackedBossIdentity = "";
         lastProgress = Float.NaN;
         trailingProgress = Float.NaN;
         lastProgressChangeMillis = 0L;

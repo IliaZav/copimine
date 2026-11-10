@@ -9,6 +9,29 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EndEventClientStateTest {
     @Test
+    void signedV4BareAnimationSurvivesHeartbeatAndUsesTheBossbarPhase() {
+        EndEventClientState state = new EndEventClientState();
+        assertTrue(state.apply(new EndEventPacket("END_BOSS_BIND", "event", 1L, "boss-instance",
+                0L, "boss", "END_RIFT_GUARDIAN_V1", "", ""), 50L));
+        EndEventPacket slam = new EndEventPacket("END_BOSS_PHASE", "event", 1L, "boss-instance",
+                400L, "boss", "", "GROUND_SLAM", "");
+        assertTrue(state.apply(slam, 100L));
+        assertEquals("GROUND_SLAM", state.bossAnimationForEntity("boss"),
+                "V4 carries the canonical animation alone, without a legacy phase prefix");
+        assertTrue(state.apply(slam, 600L));
+        assertEquals(500L, state.bossAnimationElapsedMillisForEntity("boss", 600L),
+                "heartbeat must not restart a committed authored clip");
+        assertTrue(state.applyBossBar(new EndEventPacket("END_BOSS_BAR", "event", 1L,
+                "boss-instance", 1000L, "boss", "", "RIFT|TELEGRAPHING", ""),
+                0.5F, 500, 1000, 600L));
+        assertEquals("RIFT", state.bossPhaseForEntity("boss"),
+                "health phase comes from the signed bar, not the animation identifier");
+        assertTrue(state.apply(new EndEventPacket("END_BOSS_PHASE", "event", 1L, "boss-instance",
+                400L, "boss", "", "CHEST_STRIKE", ""), 700L));
+        assertEquals(0L, state.bossAnimationElapsedMillisForEntity("boss", 700L));
+    }
+
+    @Test
     void smallKaguneServerScaleReachesTheRenderedPoseAcrossAnimationChanges() {
         EndEventClientState state = new EndEventClientState();
         assertTrue(state.apply(tentacleBind("small", "small-instance"), 100L));

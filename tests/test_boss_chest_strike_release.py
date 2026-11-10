@@ -130,6 +130,7 @@ public class BossChestStrikeReleaseProbe {
     List<Player> activeLivingPlayers(){return List.of();}
     boolean hasProjectileBlockLineOfSight(Location a, Location b){return true;}
     boolean applyContactHit(Player p, LivingEntity b, double d, Vector k){return false;}
+    void playBossImpactPresentation(Object... args){}
     void registerEncounterTask(BukkitTask t){}
     void releaseBossHazardReservation(String reason){released++;}
     void clearWorldVfxBeam(String s){}

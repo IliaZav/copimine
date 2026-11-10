@@ -17,6 +17,7 @@ public final class ClientConfig {
     private static final String KEY_ALLOW_SERVER_VISUALS = "allow_server_visuals";
     private static final String KEY_ALLOW_SERVER_SHADERPACK_RUNTIME = "allow_server_shaderpack_runtime";
     private static final String KEY_ALLOW_OVERRIDE_EXISTING_SHADERPACK = "allow_override_existing_shaderpack";
+    private static final String KEY_BOSS_CAMERA_SHAKE_STRENGTH = "boss_camera_shake_strength";
 
     private final Path path;
     private boolean renderWhenHudHidden = true;
@@ -25,6 +26,7 @@ public final class ClientConfig {
     private boolean allowServerVisuals = true;
     private boolean allowServerShaderpackRuntime = true;
     private boolean allowOverrideExistingShaderpack = true;
+    private double bossCameraShakeStrength = 0.65D;
 
     private ClientConfig(Path path) {
         this.path = path;
@@ -51,6 +53,12 @@ public final class ClientConfig {
         allowServerVisuals = parseBoolean(properties.getProperty(KEY_ALLOW_SERVER_VISUALS), true);
         allowServerShaderpackRuntime = parseBoolean(properties.getProperty(KEY_ALLOW_SERVER_SHADERPACK_RUNTIME), true);
         allowOverrideExistingShaderpack = parseBoolean(properties.getProperty(KEY_ALLOW_OVERRIDE_EXISTING_SHADERPACK), true);
+        try {
+            double parsed = Double.parseDouble(properties.getProperty(KEY_BOSS_CAMERA_SHAKE_STRENGTH, "0.65"));
+            bossCameraShakeStrength = Double.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : 0;
+        } catch (NumberFormatException ignored) {
+            bossCameraShakeStrength = 0.65D;
+        }
         maxVisualDurationSeconds = clamp(parseInt(properties.getProperty(KEY_MAX_VISUAL_DURATION_SECONDS), 600), 1, 600);
         save();
     }
@@ -79,6 +87,13 @@ public final class ClientConfig {
         return allowOverrideExistingShaderpack;
     }
 
+    public double bossCameraShakeStrength() { return bossCameraShakeStrength; }
+
+    public void setBossCameraShakeStrength(double strength) {
+        bossCameraShakeStrength = Double.isFinite(strength) ? Math.max(0, Math.min(1, strength)) : 0;
+        save();
+    }
+
     public void setDebugOverlay(boolean enabled) {
         this.debugOverlay = enabled;
         save();
@@ -94,6 +109,7 @@ public final class ClientConfig {
             properties.setProperty(KEY_ALLOW_SERVER_VISUALS, Boolean.toString(allowServerVisuals));
             properties.setProperty(KEY_ALLOW_SERVER_SHADERPACK_RUNTIME, Boolean.toString(allowServerShaderpackRuntime));
             properties.setProperty(KEY_ALLOW_OVERRIDE_EXISTING_SHADERPACK, Boolean.toString(allowOverrideExistingShaderpack));
+            properties.setProperty(KEY_BOSS_CAMERA_SHAKE_STRENGTH, Double.toString(bossCameraShakeStrength));
             try (OutputStream out = Files.newOutputStream(path)) {
                 properties.store(out, "CopiMineClient settings");
             }

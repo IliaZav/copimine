@@ -266,7 +266,11 @@ public final class EndEventClientState {
             return "";
         }
         BossPhaseBinding binding = bossPhase.get(uuid);
-        return binding == null ? "" : basePhase(binding.phaseId());
+        if (binding == null) return "";
+        if (bossBar != null && Objects.equals(bossBar.bossUuid(), uuid)
+                && Objects.equals(bossBar.instanceId(), binding.instanceId())) return bossBar.phaseId();
+        String phase = basePhase(binding.phaseId());
+        return BOSS_PHASES.contains(phase) ? phase : "";
     }
 
     /** Returns the current model animation without exposing the wire suffix as a phase id. */
@@ -283,6 +287,9 @@ public final class EndEventClientState {
         if (separator >= 0) {
             return normalizeAnimation(raw.substring(separator + 1));
         }
+        // The strict V4 codec carries the canonical animation alone. Legacy
+        // adapters used PHASE|ANIMATION, but a bare GROUND_SLAM is not idle.
+        if (BossAnimationId.isKnown(raw)) return normalizeAnimation(raw);
         BossBarState bar = bossBar;
         if (bar != null && Objects.equals(bar.bossUuid(), uuid)
                 && Objects.equals(bar.instanceId(), binding.instanceId())
@@ -395,6 +402,13 @@ public final class EndEventClientState {
                 || !Objects.equals(bossUuid, packet.subjectId())
                 || !Objects.equals(bossBindingInstance, packet.instanceId())) {
             return false;
+        }
+        BossPhaseBinding previous = bossPhase.get(packet.subjectId());
+        if (previous != null && Objects.equals(previous.instanceId(), packet.instanceId())
+                && Objects.equals(previous.phaseId(), packet.phaseId())) {
+            // Per-viewer binding heartbeats reassert presentation; they do not
+            // restart a nine-second slam or its client impact timeline.
+            return true;
         }
         bossPhase.put(packet.subjectId(), new BossPhaseBinding(
                 packet.instanceId(),

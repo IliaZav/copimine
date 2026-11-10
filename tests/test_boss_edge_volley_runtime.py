@@ -54,6 +54,7 @@ public class BossEdgeVolleyRuntimeProbe {
     boolean isCombatTarget(Player p){return p!=null&&p.legal;}
     boolean isActiveBossParticipant(Player p){return isCombatTarget(p);}
     boolean isTestBoss(LivingEntity b){return false;}
+    boolean isBossCombatRuntimeActive(LivingEntity b){return phase==EventPhase.BOSS_ACTIVE && b!=null && b.isValid() && !b.isDead();}
     Location farthestBossCorner(LivingEntity b){return cornerAvailable?new Location():null;}
     boolean teleportCombatEntity(LivingEntity b,Location l){return teleportAccepted;}
     String locationText(Location l){return "corner";}

@@ -208,10 +208,13 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # Repinned for the Wave 6 six-stage armour set: three more armour textures are
     # packaged, so the client jar grew. The size assertion carries the digits, so a
     # repin here must update BOTH this literal and the split half below.
-    assert artifact['size'] == 13_584_022
+    # Repinned for the semi-transparent TAB panel background: the server tab
+    # panel no longer paints an opaque black plate, so the compiled bytes moved
+    # by one byte. Only presentation changed; no gameplay value moved.
+    assert artifact['size'] == 14_513_956
     assert artifact['sha512'] == (
-        '4e8d5da3d6013872b0fbd5d0412198a87262f5dc9564dc99e133110d138ebfef'
-        '9dd404f34df6c92f1216ac1d947296349e02a360326051767427b3856e0e8240'
+        '739094363e334c885f02337addb12d1ae96a4f9aaf1fb542e03c966a2c5136ac0d'
+        '203feebcbcf7a3c96c78c42825f9a4a7b9c9506cfc1ae355ccddcf93665ac7'
     )
 
 

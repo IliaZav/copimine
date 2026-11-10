@@ -9,6 +9,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class UserEndBossAnimationPlayerTest {
     @Test
+    void phaseShiftHasItsOwnGroundedRoarClipInsteadOfReplayingAnAttack() {
+        assertEquals(2.2F, UserEndBossAnimationPlayer.clipLengthSeconds("PHASE_TRANSITION"), 0.0001F);
+        var phase = UserEndBossAnimationPlayer.sample("PHASE_TRANSITION", 18F);
+        assertTrue(phase.hasBoneDelta("head"));
+        assertTrue(phase.hasBoneDelta("left_hand"));
+        assertNotEquals(UserEndBossAnimationPlayer.sample("GROUND_SLAM", 18F), phase);
+    }
+
+    @Test
     void samplesSuppliedIdleTracksAsNamedSourceBoneDeltas() {
         ChameleonGuardianGeometry.GuardianPose pose =
                 UserEndBossAnimationPlayer.sample("IDLE_BREATH", 20.0F);

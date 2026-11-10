@@ -70,7 +70,7 @@ public class BossIncomingRosterProbe {
     BossAbilityState bossAbilityState=BossAbilityState.NONE;
     String eventId="official";
     UUID bossKillerUuid;
-    boolean bossDefeatCinematicStarted,testCombatAiMode,localFallback,diagnostic;
+    boolean bossDefeatCinematicStarted,testCombatAiMode,localFallback,diagnostic,previousOfficialRoster;
     final Set<UUID> roster=new HashSet<>();
     int synchronizationCalls,feedback,lethalCalls;
     final Set<UUID> combatHelpers=new HashSet<>();
@@ -78,7 +78,7 @@ public class BossIncomingRosterProbe {
     boolean isCurrentBossCarrier(LivingEntity boss){return boss==currentBoss;}
     boolean isOfficialBoss(LivingEntity boss){return boss==currentBoss;}
     boolean isTestBoss(LivingEntity boss){return diagnostic;}
-    boolean isOfficialAttempt(){return !diagnostic;}
+    boolean isOfficialAttempt(){return !diagnostic||previousOfficialRoster;}
     UUID bossUuid;
     boolean isBossCombatRuntimeActive(LivingEntity boss){return boss==currentBoss&&phase==EventPhase.BOSS_ACTIVE;}
     Set<UUID> authoritativeAttemptRoster(){return roster;}
@@ -112,10 +112,11 @@ public class BossIncomingRosterProbe {
         arrow.shooter=owner;
         Entity source=owner;
         p.roster.add(owner.id);
-        boolean shouldAccept=scenario.equals("member")||scenario.equals("diagnostic-member")||scenario.startsWith("attributed-");
+        boolean shouldAccept=scenario.equals("member")||scenario.startsWith("diagnostic-")||scenario.startsWith("attributed-");
         if(scenario.equals("outsider"))owner.admitted=false;
         if(scenario.equals("local-roster-fallback")){owner.admitted=false;p.localFallback=true;p.roster.clear();p.roster.add(UUID.randomUUID());}
         if(scenario.equals("diagnostic-member")){p.diagnostic=true;p.testCombatAiMode=true;p.roster.clear();}
+        if(scenario.equals("diagnostic-old-roster")){p.diagnostic=true;p.testCombatAiMode=true;p.previousOfficialRoster=true;p.roster.clear();p.roster.add(UUID.randomUUID());}
         if(scenario.equals("offline"))owner.online=false;
         if(scenario.equals("dead"))owner.dead=true;
         if(scenario.equals("spectator"))owner.spectator=true;
@@ -161,7 +162,7 @@ def incoming_boss_damage_probe(tmp_path_factory):
 @pytest.mark.parametrize("route", ["event", "proxy", "sweep"])
 @pytest.mark.parametrize("scenario", [
     "member", "outsider", "offline", "dead", "spectator", "other-world", "ownerless",
-    "stale-boss", "removed-boss", "dead-boss", "local-roster-fallback", "diagnostic-member",
+    "stale-boss", "removed-boss", "dead-boss", "local-roster-fallback", "diagnostic-member", "diagnostic-old-roster",
 ])
 def test_boss_incoming_damage_requires_current_admitted_player(incoming_boss_damage_probe, route, scenario):
     _run(incoming_boss_damage_probe, route, scenario)

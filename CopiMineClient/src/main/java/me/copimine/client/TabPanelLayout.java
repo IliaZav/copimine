@@ -11,8 +11,13 @@ public final class TabPanelLayout {
     private static final int LARGE_LOGO_BASELINE_OFFSET = LARGE_LOGO_LINE_HEIGHT - 36;
     /** Small gap under the top screen edge; the panel hangs from the top instead of being centred. */
     public static final int PANEL_MARGIN = 6;
-    /** Neutral near-black plate; the previous olive tint read as green against the light End sky. */
-    public static final int PANEL_BACKGROUND_COLOR = 0xE6121416;
+    /**
+     * Semi-transparent dark slate plate. The user asked for a translucent backdrop rather than a
+     * black one, so the world stays visible through the panel: alpha 0x8C (55%) keeps the text
+     * readable while no longer reading as an opaque black box. Green must not dominate either
+     * channel, so the tint stays neutral instead of the old olive.
+     */
+    public static final int PANEL_BACKGROUND_COLOR = 0x8C24282C;
     /** Neutral slate border, low saturation so it never competes with team colours. */
     public static final int PANEL_BORDER_COLOR = 0xFF3A4048;
     private static final int PANEL_HORIZONTAL_PADDING = 24;

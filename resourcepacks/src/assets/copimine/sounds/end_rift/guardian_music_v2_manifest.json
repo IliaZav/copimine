@@ -1,0 +1,77 @@
+{
+  "sourceCommit": "f8ef41af7ef89a22fe807b62b3532644dfa39603",
+  "tracks": [
+    {
+      "phase": "awakening",
+      "filename": "boss_awakening.ogg",
+      "source": "boss_cinematic.ogg",
+      "sourceSha256": "787d91a6591f44da6567dabee0a68f65d8e7fefba534ca3cb7bc0691b999e4db",
+      "sha256": "781d978e2dd51f351a92fd5e54a0c0b417da3c10e424745419ac0e0f7af26a20",
+      "durationSeconds": 45,
+      "pulseBpm": 76,
+      "tempo": 0.94,
+      "peak": 0.46086612343788147,
+      "rms": 0.12391547858715057
+    },
+    {
+      "phase": "hunt",
+      "filename": "boss_hunt.ogg",
+      "source": "boss_hunt.ogg",
+      "sourceSha256": "35a7953667b820250e55ede036b1c7dc27547f49bd49931298aab971228620b1",
+      "sha256": "48a31c5ec04cff1ec47ce988b36a0ec96514b30ee4efdae4ea7354b1af523d4d",
+      "durationSeconds": 45,
+      "pulseBpm": 88,
+      "tempo": 1.0,
+      "peak": 0.6305177211761475,
+      "rms": 0.12401998788118362
+    },
+    {
+      "phase": "rift",
+      "filename": "boss_rift.ogg",
+      "source": "boss_rift.ogg",
+      "sourceSha256": "34d55fff10cab0d2b50d456d4f4f63a2b1ec60a796f27cee7e15fe9e0af181bf",
+      "sha256": "8ad25e35bc452403d72d82782608c14253471cf4815420db31050cd8f27246cc",
+      "durationSeconds": 45,
+      "pulseBpm": 100,
+      "tempo": 1.05,
+      "peak": 0.9066154956817627,
+      "rms": 0.09791639447212219
+    },
+    {
+      "phase": "overload",
+      "filename": "boss_overload.ogg",
+      "source": "boss_overload.ogg",
+      "sourceSha256": "725470fe275c2acfa53f3ece663645264729b60c57275cb16d96f747664f312f",
+      "sha256": "8e5924eb59b819dbf3dac038d571639d2306430f271979a4706807ed4fc42804",
+      "durationSeconds": 45,
+      "pulseBpm": 112,
+      "tempo": 1.1,
+      "peak": 0.8919835090637207,
+      "rms": 0.11521255970001221
+    },
+    {
+      "phase": "rage",
+      "filename": "boss_rage.ogg",
+      "source": "boss_rage.ogg",
+      "sourceSha256": "738b840518a816e3dc11ec37ca5c08c6ff7f29afd5c447a603fd720c8e82f199",
+      "sha256": "0bba8fd6a19fcaadbad7bad80828494516eedf13f6ba608ea7bd68a1536792c1",
+      "durationSeconds": 45,
+      "pulseBpm": 124,
+      "tempo": 1.16,
+      "peak": 0.8941829800605774,
+      "rms": 0.11427722871303558
+    },
+    {
+      "phase": "last_seal",
+      "filename": "boss_last_seal.ogg",
+      "source": "boss_last_seal.ogg",
+      "sourceSha256": "2729da1913ae4fed8e3c92f4e84efe58ed75562c2348d5f24d2575acbc9e43e3",
+      "sha256": "84b63b4a0b88ae6c29caa7a309352cfece47391cbaac9c8927f1446fc1b1b187",
+      "durationSeconds": 45,
+      "pulseBpm": 136,
+      "tempo": 1.21,
+      "peak": 0.7448854446411133,
+      "rms": 0.1246241107583046
+    }
+  ]
+}

@@ -106,7 +106,7 @@ public class BossAttackAdmissionProbe {
         double getHealth(){return health;}
         double getAbsorptionAmount(){return absorption;}
         void addPotionEffect(PotionEffect effect){effects++;} void addPotionEffect(PotionEffect effect,boolean force){effects++;} void playEffect(EntityEffect effect){effects++;}
-        void setVelocity(Vector v){impulses++;}
+        void setVelocity(Vector v){impulses++;} void playSound(Object... args){}
         Vector getVelocity(){return new Vector(0,0,0);}
         Location getLocation(){return new Location(x,y,0);}
     }
@@ -125,7 +125,7 @@ public class BossAttackAdmissionProbe {
     }
 
     enum EntityEffect {HURT}
-    enum Sound {ENTITY_ENDERMAN_STARE,ENTITY_GENERIC_EXPLODE,ENTITY_WITHER_HURT,ENTITY_PLAYER_ATTACK_SWEEP,ENTITY_WARDEN_SONIC_CHARGE}
+    enum Sound {ENTITY_ENDERMAN_STARE,ENTITY_GENERIC_EXPLODE,ENTITY_WITHER_HURT,ENTITY_PLAYER_ATTACK_SWEEP,ENTITY_PLAYER_ATTACK_STRONG,ENTITY_WARDEN_SONIC_CHARGE}
     enum SoundCategory {HOSTILE}
     enum EventPhase {BOSS_ACTIVE,VICTORY_PROCESSING}
     EventPhase phase=EventPhase.BOSS_ACTIVE;
@@ -170,6 +170,7 @@ public class BossAttackAdmissionProbe {
     List<Player> activeLivingPlayers(){return players;}
     List<Player> activeBossParticipants(){return players;}
     void spawnEventParticle(Object... args){}
+    void playBossImpactPresentation(Object... args){}
     void releaseBossHazardReservation(String s){}
     void registerEncounterTask(BukkitTask t){}
     void cancelVoidMark(UUID id){activeVoidMarkCenters.remove(id);}

@@ -186,6 +186,8 @@ public class BossLethalDefeatProbe {
     int livingTentacleGuardianCount() { return livingGuardians; }
     boolean tentacleGuardianShielded() { return shielded; }
     boolean isTestBoss(LivingEntity boss) { return false; }
+    boolean isBossCombatRuntimeActive(LivingEntity boss) { return phase == EventPhase.BOSS_ACTIVE; }
+    void commitDisposableBossDefeat(LivingEntity boss) { throw new AssertionError("official boss entered diagnostic defeat"); }
     enum EventPhase { BOSS_ACTIVE }
     EventPhase phase = EventPhase.BOSS_ACTIVE;
 

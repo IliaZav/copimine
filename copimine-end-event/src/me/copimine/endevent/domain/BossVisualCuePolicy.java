@@ -239,7 +239,7 @@ public final class BossVisualCuePolicy {
         banks.put("rift_projectile", new Bank("REVERSE_PORTAL", "DUST_CYAN", "FLASH",
                 "minecraft:block.respawn_anchor.charge",
                 "minecraft:entity.ender_dragon.flap",
-                "minecraft:entity.trident.throw"));
+                "minecraft:item.trident.throw"));
         // Three red lanes snap together.
         banks.put("rift_arrows", new Bank("CRIT", "DUST_RED", "DUST_WHITE",
                 "minecraft:entity.arrow.shoot",

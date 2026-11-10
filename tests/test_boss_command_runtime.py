@@ -13,7 +13,7 @@ def test_disposable_boss_combat_is_scoped_and_independent_of_official_phase(tmp_
     java='''import java.util.*;
 public class BossCommandRuntimeProbe {
  enum EventPhase { COLLECTING,WAVE_7,RECOVERY_REQUIRED,BOSS_ACTIVE,BOSS_FINISH,UNLOCKED }
- EventPhase phase=EventPhase.COLLECTING;boolean testCombatAiMode;String eventId="event";long generation=1;
+ EventPhase phase=EventPhase.COLLECTING;boolean testCombatAiMode,bossDefeatCinematicStarted;String eventId="event";long generation=1;
  UUID bossUuid=UUID.randomUUID();
  static class LivingEntity {UUID id;boolean valid=true,dead,test,scoped=true;
  LivingEntity(UUID id){this.id=id;}UUID getUniqueId(){return id;}boolean isValid(){return valid;}boolean isDead(){return dead;}}
@@ -31,6 +31,7 @@ public class BossCommandRuntimeProbe {
  actor.valid=false;check(!p.isBossCombatRuntimeActive(actor));actor.valid=true;
  p.testCombatAiMode=false;actor.test=false;p.phase=EventPhase.BOSS_ACTIVE;check(p.isBossCombatRuntimeActive(actor));
  p.phase=EventPhase.BOSS_FINISH;check(!p.isBossCombatRuntimeActive(actor));
+ p.phase=EventPhase.BOSS_ACTIVE;p.bossDefeatCinematicStarted=true;check(!p.isBossCombatRuntimeActive(actor));
  check(!p.isBossCombatRuntimeActive(null));
  }
 '''

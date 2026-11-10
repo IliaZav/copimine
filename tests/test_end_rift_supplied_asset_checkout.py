@@ -19,7 +19,9 @@ def test_supplied_guardian_json_bytes_survive_windows_checkout(tmp_path):
         target = checkout / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(supplied[relative])
-    assert len(supplied) == 8, "exercise geometry and all seven supplied animations"
+    extra = ASSETS / "animations/phase_shift.animation.json"
+    assert extra in supplied, "new authored transition must survive checkout too"
+    assert len(supplied) == 9, "exercise geometry, all seven supplied clips and the new transition"
     for arguments in (
         ["init", "-q"], ["config", "core.autocrlf", "true"],
         ["config", "core.longpaths", "true"], ["add", "."],

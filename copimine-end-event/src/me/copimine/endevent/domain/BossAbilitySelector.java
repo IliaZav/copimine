@@ -20,6 +20,13 @@ public final class BossAbilitySelector {
                                           BossHazardBudget budget,
                                           long generation,
                                           int cursor) {
+        return choose(snapshot, intent, target, previous, available, List.of(), budget, generation, cursor);
+    }
+
+    public static AbilityDecision choose(BossPerceptionSnapshot snapshot,
+                                          BossIntent intent, UUID target, BossAbilityId previous,
+                                          List<BossAbilityId> available, List<BossAbilityId> recentAccepted,
+                                          BossHazardBudget budget, long generation, int cursor) {
         if (snapshot == null || snapshot.livingPlayers().isEmpty()
                 || available == null || available.isEmpty()) {
             return new AbilityDecision(null, 0.0D, "NO_CANDIDATE");
@@ -28,29 +35,31 @@ public final class BossAbilitySelector {
         List<ScoredAbility> ranked = available.stream().filter(ability -> ability != null)
                 .distinct()
                 .map(ability -> score(snapshot, safeIntent, target, previous, ability,
-                        budget, generation))
+                        recentAccepted, budget, generation))
                 .filter(ScoredAbility::valid)
                 .sorted(Comparator.comparingDouble(ScoredAbility::score).reversed()
-                        .thenComparing(value -> value.ability().ordinal()))
+                        .thenComparingInt(value -> Math.floorMod(value.ability().ordinal() - cursor,
+                                BossAbilityId.values().length)))
                 .toList();
         if (ranked.isEmpty()) {
             return new AbilityDecision(null, 0.0D, "NO_VALID_ABILITY");
         }
-        // Rotate through the top three valid choices. The old skip-based
-        // selector clamped every cursor >= 2 to the third entry, which made
-        // the boss repeat one ability forever during longer fights.
-        int candidateCount = Math.min(3, ranked.size());
-        ScoredAbility selected = ranked.get(Math.floorMod(cursor, candidateCount));
+        // Context and accepted cast history decide the action. Rotating an
+        // index through a re-sorted top three can permanently skip a role.
+        ScoredAbility selected = ranked.getFirst();
         return new AbilityDecision(selected.ability(), selected.score(), selected.reason());
     }
 
     private static ScoredAbility score(BossPerceptionSnapshot snapshot, BossIntent intent,
                                        UUID target, BossAbilityId previous,
-                                       BossAbilityId ability, BossHazardBudget budget,
+                                       BossAbilityId ability, List<BossAbilityId> recentAccepted, BossHazardBudget budget,
                                        long generation) {
         BossPerceptionSnapshot.PlayerObservation observation = snapshot.livingPlayers().stream()
                 .filter(value -> target != null && target.equals(value.playerId()))
                 .findFirst().orElse(null);
+        if (!contactOpportunity(snapshot, observation, ability)) {
+            return new ScoredAbility(ability, Double.NEGATIVE_INFINITY, false, "NO_CONTACT_OPPORTUNITY");
+        }
         if (ability.requiresLineOfSight() && (observation == null || !observation.lineOfSight())) {
             return new ScoredAbility(ability, Double.NEGATIVE_INFINITY, false, "NO_LINE_OF_SIGHT");
         }
@@ -62,9 +71,19 @@ public final class BossAbilitySelector {
                 + geometryMatch(snapshot, ability)
                 + (observation == null ? 0.0D : observation.recentDamageThreat())
                 - (previous == ability ? 4.0D : 0.0D)
+                - historyPenalty(recentAccepted, ability)
                 - (observation != null && observation.recentlyHardControlled() && ability.hardControl()
                 ? 8.0D : 0.0D);
         return new ScoredAbility(ability, score, true, "SCORED");
+    }
+
+    private static double historyPenalty(List<BossAbilityId> history, BossAbilityId ability) {
+        if (history == null) return 0;
+        double penalty = 0;
+        for (int index = 0; index < Math.min(4, history.size()); index++) {
+            if (history.get(index) == ability) penalty += (4 - index) * 2.0;
+        }
+        return penalty;
     }
 
     private static double phaseWeight(BossPhase phase, BossAbilityId ability) {
@@ -80,9 +99,29 @@ public final class BossAbilitySelector {
             case RAGE -> ability == BossAbilityId.RIFT_ARROWS
                     || ability == BossAbilityId.ARENA_INFERNO
                     || ability == BossAbilityId.BOSS_FIREBALL ? 4.0D : 1.0D;
-            case LAST_SEAL -> ability == BossAbilityId.FINAL_STRIKE
-                    || ability == BossAbilityId.BOSS_FIREBALL ? 5.0D : 1.0D;
+            case LAST_SEAL -> switch (ability) {
+                case AMBUSH_GRAB -> 7.0D;
+                case SMALL_KAGUNE -> 6.0D;
+                case FINAL_STRIKE, BOSS_FIREBALL -> 5.0D;
+                default -> 1.0D;
+            };
         };
+    }
+
+    private static boolean contactOpportunity(BossPerceptionSnapshot snapshot,
+            BossPerceptionSnapshot.PlayerObservation target, BossAbilityId ability) {
+        double range = switch (ability) {
+            case MELEE_SWIPE -> BossContactStrikePolicy.MELEE_SWIPE_RANGE;
+            case GROUND_SLAM -> BossContactStrikePolicy.GROUND_SLAM_RANGE;
+            case CHEST_STRIKE -> BossContactStrikePolicy.CHEST_STRIKE_RANGE;
+            default -> Double.POSITIVE_INFINITY;
+        };
+        if (!Double.isFinite(range)) return true;
+        if (target == null || !target.lineOfSight() || target.distanceToBoss() > range) return false;
+        double height = Math.abs(target.y() - snapshot.bossPosition().y());
+        return height <= (ability == BossAbilityId.GROUND_SLAM
+                ? BossContactStrikePolicy.GROUND_SLAM_VERTICAL
+                : BossContactStrikePolicy.CHEST_STRIKE_VERTICAL);
     }
 
     private static double intentMatch(BossIntent intent, BossAbilityId ability) {

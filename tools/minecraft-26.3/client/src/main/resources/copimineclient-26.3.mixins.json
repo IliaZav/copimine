@@ -32,6 +32,7 @@
     "PlayerTabOverlayMixin",
     "PlayerTabOverlayAccessor",
     "GameRendererPostProcessMixin",
+    "BossCameraShakeMixin",
     "BlackFogPostPassMixin"
   ],
   "injectors": {

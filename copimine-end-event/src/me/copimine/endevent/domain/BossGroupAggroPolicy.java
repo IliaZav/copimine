@@ -28,8 +28,8 @@ import java.util.UUID;
 public final class BossGroupAggroPolicy {
     /** Minimum gap between two retaliation switches. */
     public static final long RETALIATION_COOLDOWN_MILLIS = 2_500L;
-    /** A retaliation may cut at most this much of the authored lock. */
-    public static final double MAX_LOCK_CUT = 0.5D;
+    /** Kept for diagnostics: incoming group damage never cuts a valid focus lock. */
+    public static final double MAX_LOCK_CUT = 0.0D;
     /** Below this many eligible players the boss simply duels: no juggling. */
     public static final int MIN_GROUP_SIZE_FOR_SPREAD = 3;
 
@@ -95,22 +95,10 @@ public final class BossGroupAggroPolicy {
 
         // 1. Retaliation: an attacker the boss has not answered yet.
         Candidate attacker = lastAttacker(eligible, current, nowMillis);
-        boolean retaliationReady = nowMillis - lastRetaliationMillis >= RETALIATION_COOLDOWN_MILLIS;
-        if (attacker != null && retaliationReady && locked) {
-            long remaining = lockUntilMillis - nowMillis;
-            long authored = Math.max(1L, lockUntilMillis - focusSinceMillis);
-            long cutAllowance = (long) Math.ceil(authored * MAX_LOCK_CUT);
-            if (remaining <= cutAllowance) {
-                // The retaliation cut the back half of the lock we inherited.
-                // Reporting "now" as the new deadline handed the fresh focus a
-                // lock that was already expired on the very next tick, so the
-                // answer was immediately re-spread and the boss never actually
-                // turned on the attacker. The new focus gets the same authored
-                // length as any other focus, measured from now.
-                return new Outcome(Decision.RETALIATE, attacker.id(),
-                        nowMillis + lockLengthMillis(lockUntilMillis, focusSinceMillis));
-            }
-        }
+        // Pursuit owns a full stable focus window. A different player hitting
+        // the boss may become a cast target, but must not redirect navigation
+        // halfway through its lock and make a group fight oscillate.
+        if (locked) return new Outcome(Decision.HOLD, current, lockUntilMillis);
         if (!locked) {
             // The authored lock expired: prefer the attacker, otherwise spread.
             long fresh = nowMillis + lockLengthMillis(lockUntilMillis, focusSinceMillis);

@@ -13,7 +13,7 @@ $repositoryRoot = (Resolve-Path (Join-Path $pluginRoot '..')).Path
 $clientAssetRoot = Join-Path $repositoryRoot 'CopiMineClient\src\main\resources\assets\copimineclient\models\entity\end_rift_guardian'
 $animationRoot = Join-Path $clientAssetRoot 'animations'
 $defaultOutput = Join-Path $pluginRoot 'src\me\copimine\endevent\domain\GeneratedBossAnimationPoses.java'
-$clientAnimationPlayerPath = Join-Path $repositoryRoot 'CopiMineClient\src\main\java\me\copimine\client\UserEndBossAnimationPlayer.java'
+$clientAnimationPlayerPath = Join-Path $repositoryRoot 'tools\minecraft-26.3\client\src\main\java\me\copimine\client\UserEndBossAnimationPlayer.java'
 
 if (-not $OutputPath) {
   $OutputPath = $defaultOutput
@@ -27,7 +27,8 @@ $clips = @(
   [ordered]@{ File = 'hurt.json'; Id = 'HURT'; Loop = $false },
   [ordered]@{ File = 'dying.json'; Id = 'DYING'; Loop = $false },
   [ordered]@{ File = 'udar_iz_grudi.json'; Id = 'CHEST_STRIKE'; Loop = $false },
-  [ordered]@{ File = 'udar_po_zemle.animation.json'; Id = 'GROUND_SLAM'; Loop = $false }
+  [ordered]@{ File = 'udar_po_zemle.animation.json'; Id = 'GROUND_SLAM'; Loop = $false },
+  [ordered]@{ File = 'phase_shift.animation.json'; Id = 'PHASE_TRANSITION'; Loop = $false }
 )
 
 function Fail-Asset([string]$source, [string]$message) {

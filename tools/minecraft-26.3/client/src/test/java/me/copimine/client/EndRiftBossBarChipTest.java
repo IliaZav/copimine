@@ -51,6 +51,16 @@ public final class EndRiftBossBarChipTest {
     }
 
     @Test
+    void aNewEncounterCannotInheritThePreviousDamageChip() {
+        EndRiftBossBarHud.resetTrackingForTest();
+        EndRiftBossBarHud.trackProgress("eventA:boss", 1.0F);
+        EndRiftBossBarHud.trackProgress("eventA:boss", 0.2F);
+        assertEquals(1.0F, EndRiftBossBarHud.trailingProgressForTest(), 1.0e-6F);
+        EndRiftBossBarHud.trackProgress("eventB:boss", 0.6F);
+        assertEquals(0.6F, EndRiftBossBarHud.trailingProgressForTest(), 1.0e-6F);
+    }
+
+    @Test
     void phaseMarkersStayOrdered() {
         float[] markers = EndRiftBossBarHud.phaseMarkersForTest();
         assertEquals(5, markers.length, "six phases means five thresholds");

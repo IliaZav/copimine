@@ -116,7 +116,7 @@ public final class BossSpellVisualCompositionPolicy {
                 "minecraft:block.respawn_anchor.charge", "spinning lance");
         // Three converging lanes that snap together at release.
         put(result, "rift_arrows", 0xFF4A5C, "CRIT", "DUST_RED", 0.0F,
-                "minecraft:entity.trident.throw", "three closing lanes");
+                "minecraft:item.trident.throw", "three closing lanes");
         // A rotating sigil on the ground: something is being marked, not shot.
         put(result, "void_mark", 0xBE4CFF, "ELECTRIC_SPARK", "DUST_PURPLE", 0.0F,
                 "minecraft:block.sculk_shrieker.shriek", "rotating sigil");

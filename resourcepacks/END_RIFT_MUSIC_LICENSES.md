@@ -31,3 +31,27 @@
 
 Вне активного события плагин останавливает все event-owned дорожки. Обычная
 игра и ванильные звуки не затрагиваются.
+
+## Guardian phase arrangements, 2026-11-10
+
+The six `boss_<phase>.ogg` arrangements were regenerated with
+`generate_guardian_phase_music.py` from the already credited CC0 repository
+tracks exported from commit `f8ef41af7ef89a22fe807b62b3532644dfa39603`.
+The source hashes, output hashes, actual decoded levels and durations are in
+`src/assets/copimine/sounds/end_rift/guardian_music_v2_manifest.json`.
+No additional music download or runtime dependency is required.
+
+| Phase | Pulse BPM | Source tempo ratio | Duration |
+| --- | ---: | ---: | ---: |
+| Awakening | 76 | 0.94 | 45 s |
+| Hunt | 88 | 1.00 | 45 s |
+| Rift | 100 | 1.05 | 45 s |
+| Overload | 112 | 1.10 | 45 s |
+| Rage | 124 | 1.16 | 45 s |
+| Last Seal | 136 | 1.21 | 45 s |
+
+The arrangements add deterministic low percussion and progressively denser
+high percussion, use 120 ms edge fades, and retain room for ability sounds.
+A second independent render produced identical OGG bytes. Music changes are
+measured and packaged; subjective in-game listening remains unverified.
+Python numpy/soundfile are authoring tools only. Players need no additional mod.

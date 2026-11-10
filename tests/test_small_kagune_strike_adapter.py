@@ -27,7 +27,7 @@ import me.copimine.endevent.domain.TentacleScalingPolicy;
 import me.copimine.endevent.domain.BossPhase;
 import me.copimine.endevent.runtime.TentacleController;
 public class SmallKaguneStrikeProbe {
-    enum EventPhase { BOSS_ACTIVE }
+    enum EventPhase { BOSS_ACTIVE, COLLECTING }
     enum EntityEffect { HURT }
     static class Location {
         double distanceSquared(Location other) { return 1; }
@@ -57,7 +57,9 @@ public class SmallKaguneStrikeProbe {
     record Tuning(double damage, double range, int maxActive) { boolean enabled() { return true; } }
     final Tuning tuning = new Tuning(4,3,2);
     Tuning smallKaguneTuning() { return tuning; }
-    final EventPhase phase = EventPhase.BOSS_ACTIVE;
+    EventPhase phase = EventPhase.BOSS_ACTIVE;
+    boolean disposableBoss, runtimeOwned=true;
+    boolean isBossCombatRuntimeActive(LivingEntity boss) { return runtimeOwned && (phase==EventPhase.BOSS_ACTIVE || disposableBoss); }
     BossPhase bossPhase = BossPhase.LAST_SEAL;
     int tentacleTargetCursor; long eventTickCounter;
     final int TENTACLE_SMALL_SLOT = 9;
@@ -113,8 +115,14 @@ public class SmallKaguneStrikeProbe {
         check(target.health==20, "stale event carrier inflicted damage");
         carrier.owned=true; p.applySmallKaguneStrike(display,target);
         check(target.health==16 && target.hurts==1, "accepted melee strike was lost or duplicated");
+        p.phase=EventPhase.COLLECTING; p.disposableBoss=true;
+        p.applySmallKaguneStrike(display,target);
+        check(target.health==12, "manual boss small Kagune cannot attack outside official phase");
+        p.runtimeOwned=false; p.applySmallKaguneStrike(display,target);
+        check(target.health==12, "stale manual boss bypassed runtime ownership");
+        p.runtimeOwned=true;
         p.ownedEntities.remove(carrier.id); p.applySmallKaguneStrike(display,target);
-        check(target.health==16, "missing carrier inflicted invisible damage");
+        check(target.health==12, "missing carrier inflicted invisible damage");
 
         var cast = new SmallKaguneStrikeProbe();
         cast.tentacleController.begin(cast.generation);

@@ -41,6 +41,7 @@ public final class CopiMineClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         CopiMineClientLogger.info("CopiMineClient bootstrap started");
+        BossCameraShakeRuntime.configure(config);
         shaderRuntimeManager.initialize();
         visualManager.setShaderRuntimeManager(shaderRuntimeManager);
         ClientBridgeProtocol.registerNetworking(visualManager);
@@ -90,6 +91,17 @@ public final class CopiMineClient implements ClientModInitializer {
     private void registerCommands(CommandDispatcher<FabricClientCommandSource> dispatcher) {
         dispatcher.register(
                 ClientCommands.literal("copimineclient")
+                        .then(ClientCommands.literal("camera-shake")
+                                .then(ClientCommands.literal("off").executes(context -> {
+                                    config.setBossCameraShakeStrength(0);
+                                    context.getSource().sendFeedback(Component.literal("Тряска камеры босса выключена"));
+                                    return 1;
+                                }))
+                                .then(ClientCommands.literal("on").executes(context -> {
+                                    config.setBossCameraShakeStrength(0.65D);
+                                    context.getSource().sendFeedback(Component.literal("Тряска камеры босса включена"));
+                                    return 1;
+                                })))
                         .then(ClientCommands.literal("status")
                                 .executes(context -> {
                                     context.getSource().sendFeedback(Component.literal(visualManager.statusLine()));

@@ -18,7 +18,7 @@ public final class BossGroupAggroPolicyTest {
         noCandidatesClears();
         deadAndIneligibleAreIgnored();
         heldLockIsKeptWithoutPressure();
-        recentAttackerEarnsRetaliationLateInTheLock();
+        recentAttackerWaitsForTheStableFocusLock();
         retaliationIsRateLimited();
         attackerTooOldIsNotRetaliated();
         expiredLockPrefersTheAttacker();
@@ -55,16 +55,17 @@ public final class BossGroupAggroPolicyTest {
         check(A.equals(outcome.target()), "the held target stays the focus");
     }
 
-    private static void recentAttackerEarnsRetaliationLateInTheLock() {
-        // Lock ends at 10s, so half the lock is 5s: an attack at 8s is inside
-        // the allowed cut and must be answered.
+    private static void recentAttackerWaitsForTheStableFocusLock() {
+        // Latest group-AI requirement: incoming damage may change a spell
+        // target, but pursuit must keep its full authored focus window.
         List<Candidate> pool = List.of(
                 new Candidate(A, true, true, 0L),
                 new Candidate(B, true, true, 8_000L));
         Outcome outcome = BossGroupAggroPolicy.evaluate(pool, A, 8_000L, 0L, 10_000L, 0L);
-        check(outcome.decision() == Decision.RETALIATE,
-                "a fresh attacker late in the lock must be answered, was " + outcome.decision());
-        check(B.equals(outcome.target()), "retaliation targets the attacker");
+        check(outcome.decision() == Decision.HOLD,
+                "a fresh attacker must not break the focus lock, was " + outcome.decision());
+        check(A.equals(outcome.target()), "pursuit retains its valid focus");
+        check(outcome.newLockUntilMillis() == 10_000L, "focus deadline must not be extended");
     }
 
     private static void retaliationIsRateLimited() {

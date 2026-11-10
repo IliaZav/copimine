@@ -26,12 +26,13 @@ public final class BossAiSimulationTest {
         check(stackDecision.intent() == BossIntent.PUNISH_STACK, "stacked party must trigger anti-stack intent");
         check(stackDecision.ability().ability() == BossAbilityId.VOID_BLAST,
                 "anti-stack intent must prefer Void Blast");
+        brain.recordAccepted(stackDecision.ability().ability(), 1L);
         BossBrain.Decision rotatedDecision = brain.decide(stacked,
                 List.of(BossAbilityId.RIFT_PROJECTILE, BossAbilityId.VOID_BLAST,
                         BossAbilityId.RIFT_ARROWS),
-                null, null, budget, 1L, 1);
+                stackDecision.ability().ability(), null, budget, 1L, 1);
         check(rotatedDecision.ability().ability() != stackDecision.ability().ability(),
-                "a later decision cursor must rotate instead of pinning the third-ranked ability");
+                "accepted cast history must prevent repeating the same action");
 
         BossPerceptionSnapshot spread = snapshot(
                 new BossPerceptionSnapshot.PlayerObservation(A, true, 1.0, 10, true,

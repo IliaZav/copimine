@@ -65,8 +65,9 @@ class TabPanelLayoutTest {
         int background = TabPanelLayout.PANEL_BACKGROUND_COLOR;
         int border = TabPanelLayout.PANEL_BORDER_COLOR;
 
-        // Alpha must keep the plate readable, and green must not dominate either channel.
-        assertEquals(0xE6, (background >>> 24) & 0xFF);
+        // Alpha must keep the plate readable while staying translucent, and green must not
+        // dominate either channel.
+        assertEquals(0x8C, (background >>> 24) & 0xFF);
         assertTrue(green(background) <= red(background) + 4);
         assertTrue(green(background) <= blue(background) + 4);
         assertTrue(green(border) <= red(border) + 8);

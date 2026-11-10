@@ -32,6 +32,12 @@ public record BossPerceptionSnapshot(
         return players.stream().filter(PlayerObservation::alive).toList();
     }
 
+    /** Invalid attributes must not make a healthy player look like a weak victim. */
+    public static double normalizedHealth(double health, double maximum) {
+        if (!Double.isFinite(health) || !Double.isFinite(maximum) || maximum <= 0.0D) return 1.0D;
+        return Math.max(0.0D, Math.min(1.0D, health / maximum));
+    }
+
     public List<PlayerObservation> isolatedPlayers() {
         return livingPlayers().stream().filter(PlayerObservation::isolated).toList();
     }

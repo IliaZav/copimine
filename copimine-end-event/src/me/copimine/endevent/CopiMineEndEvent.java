@@ -16024,9 +16024,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     "Ядро не приняло заряд: подойдите ближе", NamedTextColor.YELLOW));
             return false;
         }
+        UUID token = currentCarrierInventoryToken;
+        int previousDebt = wave1ReinforcementOwed;
         currentCarrierState = next;
+        currentCarrierCharges = next.delivered();
+        // Persist the completed delivery and its owed pack before consuming the real item.
+        // A READY/COMPLETE checkpoint must not retain an active inventory-token identity.
+        currentCarrierInventoryToken = null;
+        if (currentCarrierCharges < RiftCarrierPolicy.REQUIRED_DELIVERIES) {
+            commitWaveOneReinforcement("carrier-delivery-" + currentCarrierCharges, false);
+        }
+        if (!saveStateSync()) {
+            currentCarrierState = before;
+            currentCarrierCharges = before.delivered();
+            currentCarrierInventoryToken = token;
+            wave1ReinforcementOwed = previousDebt;
+            markWave1RecoveryRequired("WAVE1_DELIVERY_CHECKPOINT_FAILED");
+            return false;
+        }
         if (next.delivered() > before.delivered()) {
-            removeCurrentCarrierInventoryCharge(holder);
+            removeCurrentCarrierInventoryCharge(holder, token);
             removeCurrentCarrierChargeVisual();
             currentCarrierCharges = next.delivered();
             if (core != null) {
@@ -16043,11 +16060,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             getLogger().info("END_RIFT_CARRIER_DELIVERED event=" + eventId
                     + " charge=" + currentCarrierCharges + "/3 player=" + holder.getUniqueId()
                     + " interaction=RIGHT_CLICK_CORE");
-            // Audit wave 1: a real delivery commits one reinforcement pack. It is
-            // owed from here and released by resolveWaveOneReinforcements().
-            if (currentCarrierCharges < RiftCarrierPolicy.REQUIRED_DELIVERIES) {
-                commitWaveOneReinforcement("carrier-delivery-" + currentCarrierCharges);
-            }
         }
         syncCurrentCarrierFields();
         saveStateAsync();
@@ -16170,14 +16182,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         purgeCurrentCarrierToken();
     }
 
+    private void removeCurrentCarrierInventoryCharge(Player holder, UUID retiredToken) {
+        if (holder != null) updateCurrentCarrierSlowness(holder, false);
+        purgeCarrierToken(retiredToken);
+    }
+
     private boolean isCurrentCarrierTokenItem(ItemStack stack) {
-        if (currentCarrierInventoryToken == null || stack == null || stack.getType().isAir() || !stack.hasItemMeta()) return false;
+        return isCarrierTokenItem(stack, currentCarrierInventoryToken);
+    }
+
+    private boolean isCarrierTokenItem(ItemStack stack, UUID token) {
+        if (token == null || stack == null || stack.getType().isAir() || !stack.hasItemMeta()) return false;
         PersistentDataContainer data = stack.getItemMeta().getPersistentDataContainer();
         return data.getOrDefault(keyCurrentCarrierCharge, PersistentDataType.BYTE, (byte) 0) == 1
                 && eventId.equals(data.get(keyEventId, PersistentDataType.STRING))
                 && data.getOrDefault(keyGeneration, PersistentDataType.LONG, Long.MIN_VALUE) == generation
-                && currentCarrierInventoryToken.toString().equals(data.get(keyCarrierChargeToken, PersistentDataType.STRING));
-    }
+                && token.toString().equals(data.get(keyCarrierChargeToken, PersistentDataType.STRING));
+        }
 
     private boolean reconcileCurrentCarrierInventoryOwner() {
         if (currentCarrierState == null || currentCarrierState.phase() != RiftCarrierPolicy.Phase.CHARGE_CARRIED) return false;
@@ -16267,30 +16288,34 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void purgeCurrentCarrierToken() {
-        if (currentCarrierInventoryToken == null) return;
+        purgeCarrierToken(currentCarrierInventoryToken);
+    }
+
+    private void purgeCarrierToken(UUID token) {
+        if (token == null) return;
         for (Player player : Bukkit.getOnlinePlayers()) {
             ItemStack[] storage = player.getInventory().getStorageContents();
             boolean changed = false;
             for (int slot = 0; slot < storage.length; slot++) {
-                if (isCurrentCarrierTokenItem(storage[slot])) { storage[slot] = null; changed = true; }
+                if (isCarrierTokenItem(storage[slot], token)) { storage[slot] = null; changed = true; }
             }
             if (changed) player.getInventory().setStorageContents(storage);
-            if (isCurrentCarrierTokenItem(player.getInventory().getItemInOffHand())) player.getInventory().setItemInOffHand(null);
-            if (isCurrentCarrierTokenItem(player.getItemOnCursor())) player.setItemOnCursor(null);
+            if (isCarrierTokenItem(player.getInventory().getItemInOffHand(), token)) player.getInventory().setItemInOffHand(null);
+            if (isCarrierTokenItem(player.getItemOnCursor(), token)) player.setItemOnCursor(null);
         }
         for (Inventory inventory : currentCarrierObservedInventories) {
             for (int slot = 0; slot < inventory.getSize(); slot++) {
-                if (isCurrentCarrierTokenItem(inventory.getItem(slot))) inventory.setItem(slot, null);
+                if (isCarrierTokenItem(inventory.getItem(slot), token)) inventory.setItem(slot, null);
             }
         }
         for (World world : Bukkit.getWorlds()) {
             for (Entity entity : world.getEntities()) {
-                if (entity instanceof Item item && isCurrentCarrierTokenItem(item.getItemStack())) item.remove();
+                if (entity instanceof Item item && isCarrierTokenItem(item.getItemStack(), token)) item.remove();
             }
         }
-        currentCarrierInventoryToken = null;
+        if (Objects.equals(currentCarrierInventoryToken, token)) currentCarrierInventoryToken = null;
         currentCarrierObservedInventories.clear();
-    }
+        }
 
     private boolean isCurrentCarrierResetChargeItem(ItemStack stack) {
         if (stack == null || stack.getType().isAir() || !stack.hasItemMeta()
@@ -28840,6 +28865,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      */
     /** Audit wave 1: commit one owed reinforcement pack for a real delivery. */
     private void commitWaveOneReinforcement(String reasonCode) {
+        commitWaveOneReinforcement(reasonCode, true);
+    }
+
+    private void commitWaveOneReinforcement(String reasonCode, boolean persist) {
         if (activeWave != 1 || currentCarrierCharges >= RiftCarrierPolicy.REQUIRED_DELIVERIES
                 || RiftCarrierPolicy.isComplete(currentCarrierState)
                 || wave1ReinforcementOwed >= WAVE_ONE_MAX_REINFORCEMENT_PACKS) return;
@@ -28849,11 +28878,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             wave1ClearReinforcementMask |= stageBit;
         }
         wave1ReinforcementOwed++;
-        getLogger().info("WAVE1_REINFORCEMENT_COMMITTED event=" + eventId + " generation=" + generation
+        getLogger().info((persist ? "WAVE1_REINFORCEMENT_COMMITTED" : "WAVE1_REINFORCEMENT_RESERVED") + " event=" + eventId + " generation=" + generation
                 + " owed=" + wave1ReinforcementOwed + " spawned=" + wave1ReinforcementSpawned
                 + " reason=" + reasonCode);
-        saveStateAsync();
-    }
+        if (persist) saveStateAsync();
+        }
 
     /** Release every outstanding wave 1 pack within the live cap. */
     private void resolveWaveOneReinforcements(long now) {

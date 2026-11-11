@@ -30,7 +30,9 @@ def inventory_probe(tmp_path_factory):
     extra = "\n".join(declaration(source, signature) for signature in (
         "private boolean reconcileCurrentCarrierInventoryOwner(",
         "private boolean isCurrentCarrierTokenItem(",
+        "private boolean isCarrierTokenItem(",
         "private void purgeCurrentCarrierToken(",
+        "private void purgeCarrierToken(",
         "private boolean isCurrentCarrierResetChargeItem(",
         "private boolean isOwnedCarrierSlowness(",
     ) if signature in source)
@@ -180,10 +182,21 @@ public class CarrierInventoryAcceptanceProbe {
     List<UUID> syncedHolders=new ArrayList<>();
     void syncCurrentCarrierFields(){syncedHolders.add(currentCarrierState.holder());}
     void saveStateAsync(){}
+    boolean checkpointSucceeds=true, recoveryRequired;
+    int criticalCheckpoints, wave1ReinforcementOwed;
+    boolean saveStateSync(){
+        criticalCheckpoints++;
+        check(currentCarrierInventoryToken==null,"checkpoint retires the accepted token before next-carrier progress");
+        check(currentCarrierState.delivered()==currentCarrierCharges,"checkpoint counters agree");
+        check(java.util.stream.Stream.concat(holder.inventory.contents.stream(),other.inventory.contents.stream()).anyMatch(Objects::nonNull)
+                ||holder.inventory.offHand!=null||other.inventory.offHand!=null,"physical token is preserved until durability succeeds");
+        return checkpointSucceeds;
+    }
     // Audit wave 1: a real delivery now commits one reinforcement pack, so the
     // detached probe must resolve that collaborator instead of failing to compile.
     int committedReinforcements;
-    void commitWaveOneReinforcement(String reasonCode){committedReinforcements++;}
+    void commitWaveOneReinforcement(String reasonCode){committedReinforcements++;wave1ReinforcementOwed++;}
+    void commitWaveOneReinforcement(String reasonCode,boolean persist){commitWaveOneReinforcement(reasonCode);}
     // Audit wave 1: the carrier debuff is Slow III (zero-based amplifier 2).
     static final int CARRIER_SLOWNESS_AMPLIFIER=2;
     java.util.logging.Logger getLogger(){return java.util.logging.Logger.getLogger("carrier-test");}
@@ -206,7 +219,13 @@ public class CarrierInventoryAcceptanceProbe {
 ''' + has_charge + r'''
 ''' + matches_charge + r'''
 ''' + remove_charge + r'''
-    void markWave1RecoveryRequired(String reason){throw new AssertionError("unexpected recovery requirement: "+reason);}
+    // Audit wave 1: ending the objective retires the specific accepted token instead
+    // of whatever token is current, so a concurrent rebind cannot be purged by accident.
+    void removeCurrentCarrierInventoryCharge(Player holder,UUID retiredToken){
+        if(holder!=null)updateCurrentCarrierSlowness(holder,false);
+        purgeCarrierToken(retiredToken);
+    }
+    void markWave1RecoveryRequired(String reason){if(checkpointSucceeds)throw new AssertionError("unexpected recovery requirement: "+reason);recoveryRequired=true;}
     void tickCarried(long now){
 ''' + carried + r'''
     }
@@ -335,6 +354,17 @@ public class CarrierInventoryAcceptanceProbe {
                 check(p.committedReinforcements==1,"a refused repeat must not owe a pack");
                 check(p.other.inventory.contents.stream().allMatch(Objects::isNull)&&p.other.inventory.offHand==null,"delivered token must be consumed");
             }
+            case "delivery-save-failure" -> {
+                p.pickUpCurrentCarrierCharge(p.holder);p.tickCarried(1000);
+                p.holder.pos=new Location(0,64,0);
+                var token=p.currentCarrierInventoryToken;
+                p.checkpointSucceeds=false;
+                check(!p.deliverCurrentCarrierCharge(p.holder),"failed durable save must refuse delivery");
+                check(p.criticalCheckpoints==1&&p.recoveryRequired,"one failed commit fences recovery");
+                check(p.currentCarrierCharges==0&&p.currentCarrierState.delivered()==0,"no uncommitted score");
+                check(token.equals(p.currentCarrierInventoryToken)&&p.hasCurrentCarrierInventoryCharge(p.holder),"original token survives failure");
+                check(p.wave1ReinforcementOwed==0,"failed delivery owes no new pack");
+            }
             case "duplicate-rejected", "stacked-rejected" -> {
                 p.pickUpCurrentCarrierCharge(p.holder);
                 var carried=p.holder.inventory.contents.get(0);
@@ -434,7 +464,7 @@ public class CarrierInventoryAcceptanceProbe {
                                       "owner-core-outline", "offhand-carrier-charge", "slowness-storage", "slowness-offhand",
                                       "stronger-unrelated", "rebind-pdc-rejected", "stronger-replaces-ours", "weaker-restored", "transfer-once", "transfer-offhand",
                                       "duplicate-ground", "duplicate-container", "duplicate-rejected", "stacked-rejected",
-                                      "drop-loss", "container-loss", "cursor-loss", "release-token"])
+                                      "drop-loss", "container-loss", "cursor-loss", "release-token", "delivery-save-failure"])
 def test_charge_inventory_and_personal_presentation(inventory_probe, scenario):
     result = subprocess.run(["java", "-Xmx64m", "-cp", str(inventory_probe),
                              "CarrierInventoryAcceptanceProbe", scenario], capture_output=True, text=True, timeout=15)

@@ -53,3 +53,44 @@ def test_uniform_runtime_does_not_disable_fog_or_draw_opaque_chamber_walls():
         assert particle in smoke
     for forbidden in ('reloadResource','clearParticles(', 'setShaderPack'):
         assert forbidden not in runtime+smoke
+
+
+def test_the_fog_is_violet_black_not_a_cold_teal_screen():
+    """Contract 6.1 names the palette: charcoal, muddy brown, deep violet.
+
+    Nothing pinned this before, which is how a build that rendered the volume in
+    a cold blue-teal drifted into players' hands while the source said violet.
+    A screenshot of that build measures blue-minus-red of +15 on the upper field;
+    the corrected palette measures +5. Both are "dark", so only the hue channel
+    distinguishes a correct fog from a stale one - hence an explicit assertion.
+    """
+    shader = SHADER.read_text(encoding='utf-8')
+    match = re.search(r'vec3 ink = mix\((vec3\([^)]*\)), (vec3\([^)]*\)),', shader)
+    assert match, 'the volumetric ink palette is missing from the fog shader'
+    def triple(text):
+        # Strip the vec3( marker first, or its "3" is read as a channel value.
+        body = re.search(r'vec3\(([^)]*)\)', text).group(1)
+        return [float(v) for v in re.findall(r'[0-9.]+', body)]
+
+    inner = triple(match.group(1))
+    outer = triple(match.group(2))
+    for name, rgb in (('ink base', inner), ('ink highlight', outer)):
+        assert len(rgb) == 3, name + ' must be an rgb triple'
+        blue_minus_red = rgb[2] - rgb[0]
+        # Violet means blue and red lead green together; a cold fog lets blue
+        # alone lead, which is the teal screen this contract forbids.
+        assert blue_minus_red <= 0.06, (
+            name + ' leans cold/teal (B-R=' + str(round(blue_minus_red, 4)) +
+            '); contract 6.1 asks for charcoal, muddy brown and deep violet'
+        )
+        assert rgb[0] + rgb[2] > rgb[1], (
+            name + ' must carry red and blue above green to read as violet'
+        )
+        # Still a dark fog: nothing here may become a bright wash.
+        assert max(rgb) < 0.35, name + ' must stay dark'
+    # The soul highlight is the only bright accent, and it must stay violet.
+    soul = re.search(r'soul \* vec3\(([^)]*)\)', shader)
+    assert soul, 'the soul highlight is missing'
+    s = [float(v) for v in re.findall(r'[0-9.]+', soul.group(1))]
+    assert s[2] - s[0] <= 0.06, 'the soul highlight leans teal'
+    assert s[2] > s[1] and s[0] > s[1], 'the soul highlight must be violet'

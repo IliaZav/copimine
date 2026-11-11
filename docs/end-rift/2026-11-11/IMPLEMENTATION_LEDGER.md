@@ -317,3 +317,90 @@ Commits `d5e5767a`, `4dec80ad`.
 Not verified: the runtime half is exercised through extracted production
 methods, because no local Paper API jar is present, so a full javac of
 `RiftRamEncounter` did not run here. No native Minecraft capture was taken.
+## M5-M7 — Rift Guardian combat, phases and the Kagune finale
+
+### The freeze, and why nothing caught it
+
+`holdBossCastPosition()` stopped pathfinding and cleared AI and awareness for the
+whole of every cast, and `reconcileBossCastProjection()` closed casts without
+restoring them. One cast was survivable; a fight was not — the Guardian ended up
+permanently immobile, which is precisely the "boss just stands there" complaint.
+Mobile casts now never suppress locomotion, stationary casts lock only their own
+authored window, and `releaseBossCastMobility()` runs on BOTH terminal branches of
+reconciliation, so a dropped scheduler callback cannot strand the body. Melee
+cadence moved from a frozen 8 s with a blanket LAST_SEAL ban to 2.4 s tightening
+to 1.8 s, permitted in every real phase, with a 600 ms retry instead of forfeiting
+a full cadence. `BossHitClassificationPolicy` is now the single authority on
+damage acceptance: an accepted hit is the only source of the red flash and the
+only thing that reaches real HP; a blocked hit shows a shield impact with zero
+damage and no flesh flash.
+
+### The compile gap, closed
+
+The python probes compile EXTRACTED method bodies against hand-written stubs. They
+are blind to structure: adding two methods to the RiftRam Host interface left its
+implementation unable to compile while every probe stayed green. That is not
+hypothetical — it happened on this branch and M5 found it, not a gate.
+
+`scripts/minecraft/RunFullTreeCompile.ps1` now compiles every source the plugin
+needs against the real pinned Paper 1.21.1 API with JDK 25: 384 sources, 1057
+classes, exit 0. It judges javac by exit status and `error:` lines only, so a
+deprecation warning cannot masquerade as a pass or a failure. The earlier belief
+that only extracted methods were checkable was wrong; JDK 25 and the pinned jar
+are both present locally.
+
+### Policy layers delivered, and the gap they leave
+
+Delivered with real behavioural tests and mutation evidence:
+`RiftFractureEruptionPolicy` (14/14 mutants killed), `InfernoArenaLifecyclePolicy`
+(13 killed, 1 honestly reported equivalent), `EchoAttackReplicaPolicy` (13/13),
+`EchoDecoyPolicy` (16/16), `BossSummonAdmissionPolicy` (4 killed, 1 equivalent),
+`KaguneRingGapPolicy`/`KaguneRingCastPolicy` (2 mutants caught),
+`KaguneCocoonGuardianPolicy`, `KaguneGuardianFightPolicy`, `GuardianDeathLedger`,
+`CocoonFallPolicy`, `SmallKaguneSpawnPolicy`.
+
+**Only GuardianRegenerationPolicy of the cocoon set is actually called by the
+monolith.** The rest are pure policy with nothing invoking them, so their
+guarantees are not live in play. `test_end_rift_cocoon_contract` reports this
+rather than hiding it: it xfails with the exact list of unwired policies, and
+`STRICT_COCOON_WIRING=1` turns it into a hard failure. Verified both ways.
+
+### Probes corrected rather than accommodated
+
+Four probes broke on the unfreeze. Three needed a `releaseBossCastMobility` stub —
+the documented "new monolith method needs a stub in every probe" trap. The fourth
+is the interesting one: `test_boss_cast_position_adapter` asserted that every cast
+stops native pursuit and clears AI, which WAS the freeze. It now asserts the new
+split, and two mutations (all-spells-mobile, all-spells-stationary) fail it.
+
+`test_small_kagune_strike_adapter` pinned the retired six-tentacle summon cap that
+contract 18 replaced. Restoring it would have re-imposed removed behaviour, so it
+now checks what still holds: a valid LAST_SEAL summon produces actors, never
+exceeds thirty, and survives grab trimming.
+
+### Not verified
+
+Policies are not wired for phases 3-5 or the cocoon. Real BlockData round-trips,
+geyser collision against the rendered column, Bukkit entity lifecycle for Echoes
+and decoys, client-rendered red flash, melee feel, and freeze recovery under a
+lost scheduler tick all need a live server or a real client. None is claimed.
+### Full-suite state at this point
+
+`python -m pytest tests/ -q` — 3273 passed, 18 skipped, 1 xfailed, 4 failed.
+
+All four failures were resolved as follows rather than left as noise:
+
+- Two Wave 1 probes extracted a method that had become a delegate, and asserted
+  the pre-checkpoint call signature. Both are repaired: the probe now extracts
+  both overloads, and the delivery assertion is token-scoped, which is a
+  strictly tighter guarantee than the one it replaced.
+- Two packager tests fail ONLY because this machine has
+  `Get-ExecutionPolicy = Restricted`: they shell out to
+  `powershell -NoProfile -File <temp script>`, which the local policy blocks.
+  The test file is unmodified from HEAD, CI invokes PowerShell with
+  `-ExecutionPolicy Bypass`, and running the same tests with
+  `PSExecutionPolicyPreference=Bypass` gives 2 passed. This is an environment
+  limitation, not a defect, and it is recorded here rather than silently
+  tolerated.
+
+Full-tree compile gate: 384 sources, 1057 classes, exit 0.

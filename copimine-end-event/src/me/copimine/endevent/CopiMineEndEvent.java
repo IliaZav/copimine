@@ -6676,7 +6676,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " activeWaveProjectiles=" + waveProjectileAdmission.activeProjectileCount()
                     + " activeProjectileGroups=" + waveProjectileAdmission.activeGroupCount()
                     + " waveProjectileCap=" + waveProjectileAdmission.effectiveProjectileCap(
-                    activeLivingPlayers().size())
+                    waveProjectileBudgetPlayers(waveProjectileLivingPlayers()))
                     + " gcCollections=" + diagnostics.gcCollections()
                     + " gcPauseMs=" + diagnostics.gcPauseMillis()
                     + " serverThreadCpuPercent=" + formatRate(diagnostics.serverThreadCpuPercent())
@@ -7503,7 +7503,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " wave_projectile_children=" + waveProjectileAdmission.activeProjectileCount()
                     + " wave_projectile_groups=" + waveProjectileAdmission.activeGroupCount()
                     + " wave_projectile_cap=" + waveProjectileAdmission.effectiveProjectileCap(
-                    activeLivingPlayers().size())
+                    waveProjectileBudgetPlayers(waveProjectileLivingPlayers()))
                     + " particle_packets_sec=" + formatRate(particlePacketsPerSecond)
                     + " plugin_messages_sec=" + formatRate(pluginMessagesPerSecond)
                     + " gc_collections=" + gcDelta + " gc_pause_ms=" + gcPauseDelta
@@ -12580,12 +12580,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private boolean reserveWaveProjectileGroup(UUID groupId, int physicalChildCount,
                                                boolean namedFiveArrowRain, boolean eliteVolley) {
-        // A solo arena is a real configuration: the operator spawns waves by
-        // hand with `/cmend wave spawn`. The pressure profile clamps below its
-        // two-player floor, which used to make the projectile cap 0 and reject
-        // EVERY skeleton arrow - the "arrows are invisible" report. The
-        // admission budget is never allowed to fall below one living player.
-        int livingPlayers = Math.max(1, activeLivingPlayers().size());
+        int actualLivingPlayers = waveProjectileLivingPlayers();
+        boolean diagnostic = testCombatAiMode || testWaveFrontVisualMode;
+        int livingPlayers = waveProjectileBudgetPlayers(actualLivingPlayers);
         boolean admitted = eliteVolley
                 ? waveProjectileAdmission.reserveEliteVolley(groupId, livingPlayers, physicalChildCount)
                 : namedFiveArrowRain
@@ -12596,9 +12593,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " generation=" + generation + " wave=" + activeWave
                     + " group=" + groupId + " requested_children=" + physicalChildCount
                     + " active_children=" + waveProjectileAdmission.activeProjectileCount()
-                    + " cap=" + waveProjectileAdmission.effectiveProjectileCap(livingPlayers));
+                    + " cap=" + waveProjectileAdmission.effectiveProjectileCap(livingPlayers)
+                    + " actual_living=" + actualLivingPlayers
+                    + " admitted_roster=" + officialRewardRoster.size()
+                    + " budget_players=" + livingPlayers + " diagnostic=" + diagnostic);
         }
         return admitted;
+    }
+
+    private int waveProjectileBudgetPlayers(int actualLivingPlayers) {
+        return me.copimine.endevent.domain.WaveProjectileRosterPolicy.budgetPlayers(
+                actualLivingPlayers, officialRewardRoster.size(), testCombatAiMode || testWaveFrontVisualMode);
+    }
+
+    /** Wave diagnostics must not inherit a previous boss's reward-roster filter. */
+    private int waveProjectileLivingPlayers() {
+        LivingEntity boss = liveBoss();
+        return boss != null && isBossCombatRuntimeActive(boss)
+                ? activeBossParticipants().size() : activeWaveParticipants().size();
     }
 
     private boolean trackWaveProjectile(Entity projectile, UUID groupId) {
@@ -33110,7 +33122,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // A mini-boss fan set (three fans of six) is one elite group and is
         // admitted through the dedicated elite lane, not the ordinary cap.
         boolean eliteFanSet = count > PressureBudgetController.configuredProjectileCap(
-                activeLivingPlayers().size());
+                waveProjectileBudgetPlayers(waveProjectileLivingPlayers()));
         if (!reserveWaveProjectileGroup(groupId, count, false, eliteFanSet)) return;
         int available = count;
         int spawned = 0;

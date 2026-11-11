@@ -44,7 +44,7 @@ Historical contracts and evidence remain intact.
 | Milestone | Scope and proof | Status |
 | --- | --- | --- |
 | M0 | Preserve master request; audit repository/remote, earlier commits/assets/F2/logs and current acceptance gaps; retain exact baseline provenance | Baseline recorded; source reproduction continues per milestone |
-| M1 | Projectile roster/admission consistency, finite atomic groups/cleanup, charge custody and signed burst reconciliation | In progress: reproduced adapter count=1 versus controller cap=0; executable regression next |
+| M1 | Projectile roster/admission consistency, finite atomic groups/cleanup, charge custody and signed burst reconciliation | Source repair and focused tests passed; isolated Paper/native acceptance pending |
 | M2 | Waves 1–5, updated Wave 2 groups/layout, Wave 3/4 transitions, uniform fog/capacity/effect ownership | Pending contract-by-contract audit and implementation |
 | M3 | Five Ram pillars/seven impacts/final skeleton, custom UI/model/audio, collision and completion/recovery | Pending; current three-impact encounter is superseded |
 | M4 | Wave 7 topology ownership, 2/3 Marksmen, models/UV/animation, differentiated elite abilities | Existing repairs retained; master acceptance pending |
@@ -75,3 +75,23 @@ or AuthMe passwords are copied to documentation. Native visual review follows
 the master contract's real-frame requirements; missing access/evidence is
 explicitly incomplete. No new production install or Prism replacement is part
 of the M0/M1 implementation commits.
+
+## M1 implementation evidence
+
+The actual reservation adapter now selects the disposable wave roster or active
+boss roster, then normalizes that roster through `WaveProjectileRosterPolicy`.
+A one-player diagnostic and a legitimately admitted last survivor get the bounded
+two-player projectile profile. Empty arenas and invalid one-player official
+admission get zero. Global official admission and pressure caps remain strict.
+Diagnostics and the scripted elite fan use the same normalized budget.
+
+- Reproduced before repair: the real extracted reservation adapter rejected a
+  three-arrow diagnostic volley with `cap=0`.
+- New executable adapter regression: 9 passed, including stale official roster,
+  boss precedence, last survivor, empty arena, cancellation and parties 2/5/10/11/20.
+- Adjacent projectile/fog lifecycle tests: 120 passed (14 existing subprocess
+  encoding warnings). The final two boundary cases also passed in the nine-case run.
+- Gradle `bridgeServerTest endEventJar`: BUILD SUCCESSFUL.
+- Candidate staging and inventory provenance: 142 passed, 3 host/environment skips.
+- Isolated Paper, live model survival, native visuals and new-commit CI: NOT RUN.
+  M1 is not accepted as a complete gameplay/visual milestone.

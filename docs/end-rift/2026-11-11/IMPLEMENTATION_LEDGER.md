@@ -404,3 +404,53 @@ All four failures were resolved as follows rather than left as noise:
   tolerated.
 
 Full-tree compile gate: 384 sources, 1057 classes, exit 0.
+### Wiring the cocoon policies into play
+
+The previous ledger entry was blunt about twelve policies with zero call sites.
+Five commits now connect them, each with mutation evidence, and the process
+turned up a real gameplay defect that no policy test could have found.
+
+**Small Kagune (contract 18.1).** The batch was
+`min(policy.admission(...), MAX_TEMPORARY - temporaryCount())`. A real enemy
+spawn was being clamped by the shared six-slot budget that governs transient
+tentacle visuals, so a "real enemy type" could never exceed a cast visual's
+budget. The call site now asks `SmallKaguneSpawnPolicy.admission` directly.
+Two things were already right and are now pinned rather than assumed:
+`trimTentacles` excludes SMALL from the temporary prune, and
+`SmallKagunePolicy.expired` is hard-false so nothing retires on a timer.
+
+**Guardian death ledger (contract 17.1).** A killed defender still received a
+90-second respawn deadline, so the cocoon refilled and the final fight could
+never become permanent. Three call sites now use `GuardianDeathLedger`: a real
+kill records the slot durably; the kill drops that slot's deadline instead of
+scheduling a new one; and `ensurePermanentTentacles` refuses any slot the
+ledger reports destroyed - which is what makes "no respawn" a property of the
+arena rather than of a deadline that merely happens to be far away.
+
+**Cocoon break (contract 17.3).** Nothing recorded the break itself, so a
+restarted generation could rebuild defenders and re-shield a boss the party had
+already opened. `commitTentacleGuardianDeathWindow` marks it durably, and
+`isLivingTentacleGuardian` refuses a destroyed slot - the subtle one, because
+without it a stale display adopted after a restart counts as a living defender
+and the shield silently returns.
+
+**Regeneration (contract 17.4).** The gate asked only whether defenders exist
+RIGHT NOW. The contract asks a historical question - was the cocoon ever broken?
+`guardianDeaths.cocoonBroken()` answers that and is durable.
+
+**Cocoon count (contract 17.1) - a real defect found while wiring.** The live
+count came from the retired ladder: 2 defenders for a duo, 3 for four, 4 for
+seven, 5 for ten. The contract asks for six to eight. For every party below
+eleven players the cocoon simply did not exist, and a duo broke the seal by
+killing one pair. The count now comes from `KaguneCocoonGuardianPolicy.countFor`.
+
+One assertion had to change rather than be accommodated:
+`test_guardian_respawn_recovery_adapter` asserted
+`permanentTentacleTarget() == 5` for ten players. It was checking the right
+thing - the count follows the ADMITTED roster, not the two players still online -
+so it now asserts seven, with the reason recorded instead of the number quietly
+edited.
+
+Three more probes needed stubs and/or sources for the new field. That trap has
+now cost time four times on this branch; every probe enumerates its own sources
+by hand.

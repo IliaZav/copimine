@@ -22,6 +22,7 @@ def test_small_kagune_damage_uses_accepted_living_carrier_hit(tmp_path):
 import java.util.*;
 import java.util.logging.Logger;
 import me.copimine.endevent.domain.SmallKagunePolicy;
+import me.copimine.endevent.domain.SmallKaguneSpawnPolicy;
 import me.copimine.endevent.domain.TentacleAnimationPolicy;
 import me.copimine.endevent.domain.TentacleScalingPolicy;
 import me.copimine.endevent.domain.BossPhase;
@@ -124,14 +125,25 @@ public class SmallKaguneStrikeProbe {
         p.ownedEntities.remove(carrier.id); p.applySmallKaguneStrike(display,target);
         check(target.health==12, "missing carrier inflicted invisible damage");
 
+        // SUPERSEDED (contract 18). A small Kagune is now an independent finite
+        // enemy, not a boss cast visual spending the shared six-tentacle budget:
+        // the batch is party-scaled and each one lives until it is killed. The
+        // old assertions here pinned the RETIRED rule (a cap of 2 derived from
+        // maxActive), so asserting them again would re-impose the behaviour the
+        // contract removed. What still has to hold is the part that is genuinely
+        // about this adapter: a valid LAST_SEAL summon works, the retired
+        // six-tentacle limit no longer bounds it, and ordinary grab trimming does
+        // not delete small melee summons.
         var cast = new SmallKaguneStrikeProbe();
         cast.tentacleController.begin(cast.generation);
         check(cast.startSmallKaguneSummon(carrier), "valid final-phase summon was unreachable");
-        check(cast.tentacleController.count()==2, "configured summon cap ignored");
-        check(!cast.startSmallKaguneSummon(carrier) && cast.tentacleController.count()==2,
-                "repeated cast exceeded role concurrency");
+        int afterFirst = cast.tentacleController.count();
+        check(afterFirst > 0, "a valid summon produced no actors at all");
+        check(afterFirst <= SmallKaguneSpawnPolicy.MAX_LIVING,
+                "summon exceeded the thirty-actor arena limit");
         cast.trimTentacles(8,0);
-        check(cast.tentacleController.count()==2, "ordinary grab trim deleted small melee summons");
+        check(cast.tentacleController.count() == afterFirst,
+                "ordinary grab trim deleted small melee summons");
         var state=cast.tentacleController.states().values().iterator().next();
         var actor=(ItemDisplay)cast.ownedEntities.get(state.entityId());
         cast.eventTickCounter=0;

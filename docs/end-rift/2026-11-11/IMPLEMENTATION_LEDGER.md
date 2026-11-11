@@ -239,3 +239,27 @@ Evidence:
 GitHub run `43023667606` on M2b `cd3b81ca`: `static-and-contract` and
 `migration-postgres-contract` observed completed/success; `java-plugins` still
 in progress at this entry. This does not establish CI for subsequent commits.
+
+## Integrated M1/M2 source verification at `2ade9718`
+
+No gameplay source changed while these checks ran.
+
+| Check | Observed result |
+| --- | --- |
+| Full Python suite | 3252 passed, 14 skipped, 124 warnings, 2 subtests passed; 629.99 s, exit 0 |
+| End Rift common gate with pinned Java 25 / legacy Java 21 and `-SkipBuilds` | `End Rift current local checks passed.`, exit 0 |
+| Independent CodeRabbit CLI 0.8.2, base `3f224940` to `2ade9718` | completed, 0 issues, exit 0; receipt in `M2_REVIEW_RECEIPT.json` |
+| Exact-head GitHub CI | run `43028501404` started for `2ade9718`, incomplete at this entry |
+| Earlier M2b CI | run `43023667606`: static and PostgreSQL success, Java job still in progress |
+| Isolated Paper / real Minecraft / FPS/TPS | NOT PERFORMED; no visual/gameplay acceptance claimed |
+
+Full-suite skips are environment/platform limitations, including missing local
+isolated runtime and ProtocolLib candidate, pinned Java-21 Grim toolchain not
+selected for that Python process, Windows symlink privilege and POSIX permissions.
+No skip is counted as runtime or native success.
+
+Local Paper preparation audit: the older reference runtime has an `Arena` world
+folder but its current EndEvent config names `CopiMine`; do not blindly copy it
+and claim it represents the production arena. PostgreSQL listens only on loopback
+55434; no Minecraft client/server was active at this observation. Existing DB,
+world and private environment files remain unchanged.

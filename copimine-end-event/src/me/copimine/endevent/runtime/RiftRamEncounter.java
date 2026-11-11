@@ -1,6 +1,7 @@
 package me.copimine.endevent.runtime;
 
 import me.copimine.endevent.domain.RiftRamPolicy;
+import me.copimine.endevent.domain.WaveSixPillarSkeletonPolicy;
 import org.bukkit.*;
 import me.copimine.endevent.runtime.compat.Attribute;
 import org.bukkit.entity.*;
@@ -23,6 +24,10 @@ public final class RiftRamEncounter {
         void own(Entity entity, boolean combat);
         boolean owns(Entity entity);
         boolean damage(Ravager source, Player player, double amount);
+        /** Damages a player from an event-owned actor that is not the Ram. */
+        boolean damage(Entity source, Player player, double amount);
+        /** Spawns a visible, event-owned modelled arrow and returns its handle. */
+        Arrow spawnBoneArrow(Location origin, Vector direction, double speed, double damage);
         int particleBudget();
         void remove(Entity entity);
         /** Moves an owned entity through the internal permit path; reports refusal. */
@@ -59,6 +64,17 @@ public final class RiftRamEncounter {
     private final List<Debris> debris = new ArrayList<>();
     private final Set<UUID> chargeHits = new HashSet<>(), stompHits = new HashSet<>(), stompRoster = new HashSet<>();
     private final Set<Endermite> mites = new HashSet<>();
+    /**
+     * The elite marksman that holds the final pillar.
+     *
+     * <p>This is the only skeleton-on-a-pillar mechanic in the event. It exists
+     * for the duration of the final pillar only, and a survivor drops to the
+     * arena floor when that pillar collapses so it can never be orphaned.</p>
+     */
+    private Skeleton pillarSkeleton;
+    private UUID pillarSkeletonId;
+    private int skeletonLastTriple = -1, skeletonLastBone = -1, skeletonLastMove = -1, skeletonStep;
+    private boolean skeletonFallen;
 
     public RiftRamEncounter(Host host) { this.host = host; }
     public UUID id() { return ram == null ? persistentId : ram.getUniqueId(); }
@@ -211,6 +227,7 @@ public final class RiftRamEncounter {
             }
             nextPillarTick = tick;
             site.getWorld().playSound(site,Sound.BLOCK_DEEPSLATE_PLACE, finale?2.4f:1.6f, finale?.35f:.5f);
+            if (finale) spawnPillarSkeleton();
             return true;
         } catch(RuntimeException failure) { clearPillar(); return false; }
     }
@@ -236,6 +253,7 @@ public final class RiftRamEncounter {
         List<Player> players=host.players();
         mites.removeIf(e->!e.isValid() || e.isDead());
         for(Endermite mite:mites) if(mite.getTarget()==null) mite.setTarget(nearest(mite.getLocation(),players));
+        tickPillarSkeleton(players);
         enforceHealthFloor();
         updateDisplays();
         if (pillarId==null && RiftRamPolicy.mayRaisePillar(impacts) && tick>=nextPillarTick) {
@@ -416,6 +434,9 @@ public final class RiftRamEncounter {
         begin(Action.STUN);
         if(!host.checkpoint()) { fail("impact-checkpoint-failed"); return; }
         if (spent) {
+            // A surviving marksman rides the falling pillar down rather than
+            // being deleted with it: it lands and keeps fighting on the floor.
+            dropPillarSkeleton();
             clearPillar();
             dust(struck.clone().add(0,1.5,0),100,1.2,1.5);
             struck.getWorld().playSound(struck,Sound.BLOCK_DEEPSLATE_BREAK,2,.6f);
@@ -591,6 +612,130 @@ public final class RiftRamEncounter {
         }
     }
 
+    /**
+     * Bring up the elite marksman on top of the final pillar.
+     *
+     * <p>It is a real, killable actor with its own health so the party can choose
+     * to answer it while they line the Ram up. It deliberately does not carry a
+     * custom model here: the runtime owns gameplay, the client owns presentation,
+     * and the actor carries a stable visual id the client binds to.</p>
+     */
+    private void spawnPillarSkeleton() {
+        if (pillar == null) return;
+        Location at = pillar.clone().add(0, WaveSixPillarSkeletonPolicy.PLATFORM_HEIGHT, 0);
+        try {
+            pillarSkeleton = at.getWorld().spawn(at, Skeleton.class, entity -> {
+                entity.setPersistent(true);
+                entity.setRemoveWhenFarAway(false);
+                entity.setCustomName("Стрелок Разлома");
+                entity.setCustomNameVisible(false);
+                entity.getAttribute(Attribute.GENERIC_MAX_HEALTH)
+                        .setBaseValue(WaveSixPillarSkeletonPolicy.HEALTH);
+                entity.setHealth(WaveSixPillarSkeletonPolicy.HEALTH);
+                // The marksman never shoots a vanilla arrow: every shot is an
+                // event-owned modelled projectile released by fireBoneVolley().
+                entity.getEquipment().setItemInMainHand(new org.bukkit.inventory.ItemStack(Material.BONE));
+                entity.getEquipment().setItemInMainHandDropChance(0f);
+            });
+            host.own(pillarSkeleton, true);
+            pillarSkeletonId = pillarSkeleton.getUniqueId();
+            skeletonFallen = false;
+            skeletonStep = 0;
+            skeletonLastTriple = -1; skeletonLastBone = -1; skeletonLastMove = -1;
+            at.getWorld().playSound(at, Sound.ENTITY_SKELETON_AMBIENT, 1.6f, .8f);
+            host.visualsChanged();
+        } catch (RuntimeException failure) {
+            pillarSkeleton = null; pillarSkeletonId = null;
+        }
+    }
+
+    /** True while the marksman is alive and still our actor. */
+    private boolean skeletonAlive() {
+        return pillarSkeleton != null && pillarSkeleton.isValid() && !pillarSkeleton.isDead();
+    }
+
+    /**
+     * Drive the marksman: it repositions and fires real modelled volleys.
+     *
+     * <p>It only fires when it has a live target and the phase allows it; a dead
+     * skeleton stops firing immediately because the actor no longer answers.</p>
+     */
+    private void tickPillarSkeleton(List<Player> players) {
+        if (!skeletonAlive()) return;
+        if (pillar == null) return; // waiting to fall; handled by the collapse
+        Player target = nearest(pillarSkeleton.getLocation(), players);
+        boolean hasTarget = target != null;
+        if (hasTarget) {
+            Location look = target.getLocation().clone();
+            pillarSkeleton.setRotation(look.getYaw(), look.getPitch());
+        }
+        // Patrol across the platform so it is never a static turret.
+        if (WaveSixPillarSkeletonPolicy.shouldReposition(tick, skeletonLastMove)) {
+            skeletonLastMove = tick;
+            skeletonStep++;
+            double[] offset = WaveSixPillarSkeletonPolicy.patrolOffset(skeletonStep);
+            Location next = pillar.clone().add(offset[0], WaveSixPillarSkeletonPolicy.PLATFORM_HEIGHT, offset[1]);
+            host.move(pillarSkeleton, next);
+        }
+        WaveSixPillarSkeletonPolicy.Ability ability =
+                WaveSixPillarSkeletonPolicy.nextAbility(tick, skeletonLastTriple, skeletonLastBone, hasTarget);
+        if (ability == WaveSixPillarSkeletonPolicy.Ability.NONE) return;
+        if (ability == WaveSixPillarSkeletonPolicy.Ability.BONE_RAIN) {
+            skeletonLastBone = tick;
+            fireBoneVolley(target, WaveSixPillarSkeletonPolicy.boneRainDirections(
+                    target.getX() - pillarSkeleton.getX(), target.getZ() - pillarSkeleton.getZ()),
+                    WaveSixPillarSkeletonPolicy.BONE_RAIN_SPEED);
+            pillarSkeleton.getWorld().playSound(pillarSkeleton.getLocation(),
+                    Sound.ENTITY_SKELETON_HURT, 1.5f, .55f);
+        } else {
+            skeletonLastTriple = tick;
+            fireBoneVolley(target, WaveSixPillarSkeletonPolicy.tripleShotDirections(
+                    target.getX() - pillarSkeleton.getX(), target.getZ() - pillarSkeleton.getZ()),
+                    WaveSixPillarSkeletonPolicy.TRIPLE_SHOT_SPEED);
+            pillarSkeleton.getWorld().playSound(pillarSkeleton.getLocation(),
+                    Sound.ENTITY_SKELETON_SHOOT, 1.4f, .85f);
+        }
+        host.visualsChanged();
+    }
+
+    /** Releases one modelled volley along the given horizontal directions. */
+    private void fireBoneVolley(Player target, double[][] directions, double speed) {
+        for (double[] dir : directions) {
+            if (dir == null || dir.length < 2) continue;
+            double dy = (target.getY() + 0.9D) - (pillarSkeleton.getY() + 1.5D);
+            Vector aim = new Vector(dir[0], 0, dir[1]);
+            double horizontal = Math.hypot(target.getX() - pillarSkeleton.getX(),
+                    target.getZ() - pillarSkeleton.getZ());
+            if (horizontal > 1.0E-6D) aim.setY(dy / horizontal);
+            aim.normalize();
+            Location origin = pillarSkeleton.getLocation().clone().add(0, 1.5D, 0);
+            Arrow arrow = host.spawnBoneArrow(origin, aim, speed, WaveSixPillarSkeletonPolicy.ARROW_DAMAGE);
+            if (arrow != null) {
+                arrow.setShooter(pillarSkeleton);
+                arrow.setDamage(WaveSixPillarSkeletonPolicy.ARROW_DAMAGE);
+            }
+        }
+    }
+
+    /**
+     * Drop a surviving marksman to the floor when the final pillar collapses.
+     *
+     * <p>Without this the actor would be left standing on a pillar that no longer
+     * exists, i.e. an unreachable orphan. It lands on the arena floor and keeps
+     * fighting; a skeleton already killed on the pillar stays dead.</p>
+     */
+    private void dropPillarSkeleton() {
+        if (!WaveSixPillarSkeletonPolicy.shouldFall(impacts, skeletonAlive(), skeletonFallen)) return;
+        skeletonFallen = true;
+        Location landing = pillarSkeleton.getLocation().clone();
+        landing.setY(host.floorY() + 1.0D);
+        if (!host.inArena(landing)) landing = ram.getLocation().clone();
+        host.move(pillarSkeleton, landing);
+        pillarSkeleton.setGravity(true);
+        landing.getWorld().playSound(landing, Sound.ENTITY_SKELETON_STEP, 1.5f, .7f);
+        dust(landing, 30, .8, .5);
+    }
+
     private void clearPillar() {
         for(BlockDisplay d:pillarDisplays) host.remove(d);
         pillarDisplays.clear(); pillar=null; pillarId=null;
@@ -600,6 +745,9 @@ public final class RiftRamEncounter {
         for(Piece p:armor) host.remove(p.display()); armor.clear();
         for(Debris d:debris) host.remove(d.display()); debris.clear();
         for(Endermite e:mites) host.remove(e); mites.clear();
+        // The marksman is an owned event actor: it never survives the encounter.
+        if (pillarSkeleton != null) { if (pillarSkeleton.isValid()) host.remove(pillarSkeleton); pillarSkeleton = null; }
+        pillarSkeletonId = null;
         stompHits.clear(); stompRoster.clear(); chargeHits.clear();
     }
     public void close() {
@@ -622,6 +770,7 @@ public final class RiftRamEncounter {
         data.put("ram.action-tick",Integer.toString(actionTick));
         data.put("ram.next-pillar",Integer.toString(nextPillarTick));
         data.put("ram.pillar-impacts",Integer.toString(pillarImpacts));
+        if (pillarSkeletonId != null) data.put("ram.skeleton",pillarSkeletonId.toString());
         data.put("ram.complete",Boolean.toString(completed));
         data.put("ram.target",target==null?"":target.toString());
         if(direction!=null) data.put("ram.direction",direction.getX()+","+direction.getZ());
@@ -686,6 +835,17 @@ public final class RiftRamEncounter {
                 if(!Double.isFinite(x)||!Double.isFinite(y)||!Double.isFinite(z)) throw new IllegalArgumentException("pillar-nonfinite");
                 pillar=new Location(ram.getWorld(),x,y,z);
                 if(!safeVolume(pillar) || !buildPillar()) throw new IllegalArgumentException("pillar-site-invalid");
+            }
+            // Re-adopt a surviving marksman instead of spawning a duplicate: an
+            // interrupted encounter must not leave two skeletons behind.
+            String storedSkeleton = data.get("ram.skeleton");
+            if (storedSkeleton != null && RiftRamPolicy.eliteSkeletonAliveOn(impacts, true)) {
+                Entity marksmanEntity = Bukkit.getEntity(UUID.fromString(storedSkeleton));
+                if (marksmanEntity instanceof Skeleton marksman && marksman.isValid()
+                        && !marksman.isDead() && host.owns(marksman)) {
+                    pillarSkeleton = marksman;
+                    pillarSkeletonId = marksman.getUniqueId();
+                }
             }
             hold(); host.visualsChanged();
         } catch(RuntimeException failure) { fail("restore-refused:"+failure.getMessage()); }

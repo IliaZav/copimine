@@ -48,6 +48,14 @@ public class RamRuntimeProbe {
   static class Endermite extends Entity {
     void setPersistent(boolean b){} void setRemoveWhenFarAway(boolean b){} void setTarget(Object p){}
   }
+  static class Skeleton extends Entity {
+    UUID skeletonId=UUID.randomUUID(); boolean skeletonValid=true;
+    Skeleton(World world){new Location(world);}
+    UUID getUniqueId(){return skeletonId;} boolean isValid(){return skeletonValid;}
+    boolean isDead(){return !skeletonValid;}
+    void setPersistent(boolean b){} void setRemoveWhenFarAway(boolean b){}
+    void setRotation(float yaw,float pitch){} void setGravity(boolean g){}
+  }
   record Piece(BlockDisplay display,int section){}
   record Debris(BlockDisplay display,Location start,Vector velocity,int born){}
   static class Host {
@@ -65,6 +73,9 @@ public class RamRuntimeProbe {
   Ravager ram=new Ravager(world); Action action=Action.CHARGE;
   int tick,actionTick,impacts,pillarImpacts,lastCharge,lastStomp,nextPillarTick;
   void crackPillar(){}
+  Skeleton pillarSkeleton; UUID pillarSkeletonId; boolean skeletonFallen;
+  int skeletonLastTriple=-1,skeletonLastBone=-1,skeletonLastMove=-1,skeletonStep;
+  void dropPillarSkeleton(){}
   boolean closed,completed,banked;
   UUID pillarId,persistentId,target; Location pillar;Vector direction;
   List<BlockDisplay> pillarDisplays=new ArrayList<>(); List<Piece> armor=new ArrayList<>();

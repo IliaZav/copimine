@@ -61,6 +61,7 @@ import me.copimine.endevent.domain.KaguneCocoonGuardianPolicy;
 import me.copimine.endevent.domain.EchoDecoyPolicy;
 import me.copimine.endevent.domain.CocoonFallPolicy;
 import me.copimine.endevent.domain.BossSummonAdmissionPolicy;
+import me.copimine.endevent.domain.EchoAttackReplicaPolicy;
 import me.copimine.endevent.domain.KaguneGuardianFightPolicy;
 import me.copimine.endevent.domain.KaguneRingCastPolicy;
 import me.copimine.endevent.domain.KaguneRingGapPolicy;
@@ -1447,6 +1448,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private long kaguneRingCastEndTick = -1L;
     private final Set<UUID> kaguneRingDisplays = new LinkedHashSet<>();
     private long kaguneRingCastGeneration = Long.MIN_VALUE;
+    /**
+     * Contract 15.2 Type A: delayed spectral attack replicas. Each copy has its
+     * own policy timeline and its own damage ledger key, so the strike and the
+     * warned explosion each land exactly once per player.
+     */
+    private final Map<UUID, EchoAttackReplicaPolicy.Timeline> echoReplicaTimelines = new LinkedHashMap<>();
+    private final Map<UUID, TargetLock> echoReplicaLocks = new LinkedHashMap<>();
+    private final Map<UUID, Set<String>> echoReplicaDamageLedger = new LinkedHashMap<>();
+    private final Set<UUID> echoReplicaDisplayIds = new LinkedHashSet<>();
+
+    /** A replica's aim freezes at the telegraph tick; it never homes after that. */
+    private record TargetLock(UUID playerId, Location point) {
+    }
     /**
      * Contract 22.1: the cocoon fall is an authored ONCE-PER-GENERATION
      * sequence. These three flags are the durable memory that stops a restart
@@ -45559,6 +45573,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // Contract 20: the ring rows advance on the boss's own tick, so the
         // three rows sweep outward in order instead of all emerging at once.
         tickKaguneRingCast(boss);
+        tickEchoAttackReplicas(boss);
         Location anchor = finalSealCoreAnchorLocation();
         if (anchor == null || anchor.getWorld() == null
                 || !anchor.getWorld().equals(boss.getWorld())) {
@@ -45794,6 +45809,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // carry over into the next phase as orphaned hazards.
         if (!transition.entered().isEmpty()) {
             clearKaguneRingCast("phase-transition");
+            // Contract 15.2: copies are temporary by nature and never survive a
+            // phase change; one left behind would be an orphaned hazard.
+            clearEchoAttackReplicas("phase-transition");
+        }
+        // Contract 15.2 Type A: entering RAGE is when the boss starts echoing
+        // its own attacks back at the party.
+        if (transition.entered().contains(BossPhase.RAGE)) {
+            startEchoAttackReplicas(boss, "VOID_BLAST");
         }
         // Contract 15.5: entering the final seal stops echo generation and
         // dissolves every decoy. A surviving decoy would otherwise become a
@@ -50149,6 +50172,156 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * gap centred on a player, never three rows lining up into one lane) and
      * KaguneRingCastPolicy owns the once-per-cast damage claim.</p>
      */
+    /**
+     * Contract 15.2 Type A: summon delayed spectral copies of the boss's own
+     * attack. A copy locks ONE eligible player at the telegraph tick, strikes
+     * on the matching keyframe, warns, and detonates with a real radius.
+     */
+    private boolean startEchoAttackReplicas(LivingEntity boss, String family) {
+        if (boss == null || bossPhase != BossPhase.RAGE) {
+            return false;
+        }
+        List<Player> roster = activeBossParticipants();
+        if (roster.isEmpty()) {
+            return false;
+        }
+        int wanted = EchoAttackReplicaPolicy.replicasForAttack(roster.size());
+        int admitted = Math.min(wanted,
+                EchoAttackReplicaPolicy.MAX_REPLICAS - echoReplicaTimelines.size());
+        if (admitted <= 0) {
+            return false;
+        }
+        Set<String> eligible = new LinkedHashSet<>();
+        for (Player player : roster) {
+            eligible.add(player.getUniqueId().toString());
+        }
+        int spawned = 0;
+        for (int index = 0; index < admitted; index++) {
+            Player target = roster.get(Math.floorMod(echoReplicaCursor++, roster.size()));
+            if (target == null) {
+                continue;
+            }
+            String playerKey = target.getUniqueId().toString();
+            // The lock is the fairness guarantee: a player outside the locked
+            // set cannot be homed onto after the telegraph.
+            if (!EchoAttackReplicaPolicy.lockTarget(playerKey, eligible)) {
+                continue;
+            }
+            EchoAttackReplicaPolicy.Timeline timeline = EchoAttackReplicaPolicy.timeline(
+                    eventTickCounter, family);
+            if (timeline == null) {
+                continue;
+            }
+            UUID copyId = UUID.randomUUID();
+            echoReplicaTimelines.put(copyId, timeline);
+            echoReplicaLocks.put(copyId, new TargetLock(target.getUniqueId(),
+                    target.getLocation().clone()));
+            echoReplicaDamageLedger.put(copyId, new LinkedHashSet<>());
+            spawned++;
+        }
+        if (spawned <= 0) {
+            return false;
+        }
+        getLogger().info("ECHO_ATTACK_REPLICAS_START event=" + eventId
+                + " phase=" + bossPhase + " family=" + family
+                + " spawned=" + spawned + " alive=" + echoReplicaTimelines.size()
+                + " max=" + EchoAttackReplicaPolicy.MAX_REPLICAS);
+        return true;
+    }
+
+    private int echoReplicaCursor;
+
+    /** Advances every live copy along its own policy timeline. */
+    private void tickEchoAttackReplicas(LivingEntity boss) {
+        if (echoReplicaTimelines.isEmpty()) {
+            return;
+        }
+        for (UUID copyId : new ArrayList<>(echoReplicaTimelines.keySet())) {
+            EchoAttackReplicaPolicy.Timeline timeline = echoReplicaTimelines.get(copyId);
+            TargetLock lock = echoReplicaLocks.get(copyId);
+            if (timeline == null || lock == null) {
+                retireEchoReplica(copyId, "timeline-lost");
+                continue;
+            }
+            long tick = eventTickCounter;
+            if (tick >= timeline.expiryTick()) {
+                retireEchoReplica(copyId, "expired");
+                continue;
+            }
+            Player locked = Bukkit.getPlayer(lock.playerId());
+            Set<String> ledger = echoReplicaDamageLedger.get(copyId);
+            if (ledger == null) {
+                retireEchoReplica(copyId, "ledger-lost");
+                continue;
+            }
+            // Contract 15.2: the strike lands once, on the matching keyframe,
+            // and only on a player still inside the locked radius.
+            if (EchoAttackReplicaPolicy.strikeWindowOpen(timeline, tick)
+                    && locked != null && locked.isOnline() && !locked.isDead()) {
+                double dx = locked.getLocation().getX() - lock.point().getX();
+                double dz = locked.getLocation().getZ() - lock.point().getZ();
+                String playerKey = locked.getUniqueId().toString();
+                if (EchoAttackReplicaPolicy.strikeConnects(timeline, dx, dz)
+                        && EchoAttackReplicaPolicy.mayDamage(playerKey, ledger,
+                                timeline.replicaKey())) {
+                    ledger.add(EchoAttackReplicaPolicy.scopedKey(
+                            timeline.replicaKey(), playerKey));
+                    LivingEntity attacker = boss != null && boss.isValid() ? boss : locked;
+                    locked.damage(EchoAttackReplicaPolicy.strikeDamage(
+                            KaguneGuardianFightPolicy.BASE_STRIKE_DAMAGE), attacker);
+                }
+            }
+            // The warned explosion has its OWN ledger key, so it lands once
+            // too - and never twice for the same player.
+            if (EchoAttackReplicaPolicy.explosionWindowOpen(timeline, tick)) {
+                for (Player player : activeBossParticipants()) {
+                    if (player.isDead()) {
+                        continue;
+                    }
+                    double distance = player.getLocation().distance(lock.point());
+                    if (!EchoAttackReplicaPolicy.explosionConnects(distance)) {
+                        continue;
+                    }
+                    String playerKey = player.getUniqueId().toString();
+                    if (!EchoAttackReplicaPolicy.mayDamage(playerKey, ledger,
+                            timeline.explosionKey())) {
+                        continue;
+                    }
+                    ledger.add(EchoAttackReplicaPolicy.scopedKey(
+                            timeline.explosionKey(), playerKey));
+                    LivingEntity attacker = boss != null && boss.isValid() ? boss : player;
+                    player.damage(EchoAttackReplicaPolicy.explosionDamage(), attacker);
+                }
+            }
+        }
+    }
+
+    private void retireEchoReplica(UUID copyId, String reason) {
+        EchoAttackReplicaPolicy.Timeline timeline = echoReplicaTimelines.remove(copyId);
+        echoReplicaLocks.remove(copyId);
+        echoReplicaDamageLedger.remove(copyId);
+        if (timeline != null && EchoAttackReplicaPolicy.requiresCleanup(reason)) {
+            getLogger().info("ECHO_ATTACK_REPLICA_RETIRED event=" + eventId
+                    + " reason=" + reason + " alive=" + echoReplicaTimelines.size());
+        }
+    }
+
+    private int clearEchoAttackReplicas(String reason) {
+        int removed = echoReplicaTimelines.size();
+        for (UUID copyId : new ArrayList<>(echoReplicaTimelines.keySet())) {
+            retireEchoReplica(copyId, reason);
+        }
+        echoReplicaTimelines.clear();
+        echoReplicaLocks.clear();
+        echoReplicaDamageLedger.clear();
+        echoReplicaDisplayIds.clear();
+        if (removed > 0) {
+            getLogger().info("ECHO_ATTACK_REPLICAS_CLEARED event=" + eventId
+                    + " reason=" + reason + " removed=" + removed);
+        }
+        return removed;
+    }
+
     private boolean startKaguneRingCast(LivingEntity boss) {
         if (boss == null) {
             return false;

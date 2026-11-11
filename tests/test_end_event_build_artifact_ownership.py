@@ -35,8 +35,16 @@ def test_direct_packager_preserves_gradle_candidate(tmp_path, legacy):
         "$SyncServerConfig=$true\n" + tail,
         encoding="utf-8",
     )
+    # Windows PowerShell defaults to a Restricted policy, which refuses to run
+    # any .ps1 file. Without this flag the test reports "scripts are disabled on
+    # this system" and looks like a packaging regression when nothing is wrong.
+    # pwsh has no such policy, so only ask for the bypass where it exists.
+    launcher = [powershell, "-NoProfile", "-File", str(script)]
+    if Path(powershell).name.lower().startswith("powershell"):
+        launcher = [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass",
+                    "-File", str(script)]
     result = subprocess.run(
-        [powershell, "-NoProfile", "-File", str(script)],
+        launcher,
         capture_output=True, text=True, timeout=30,
     )
     assert result.returncode == 0, result.stdout + result.stderr

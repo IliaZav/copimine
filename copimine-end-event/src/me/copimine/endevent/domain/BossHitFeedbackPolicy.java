@@ -36,6 +36,25 @@ public final class BossHitFeedbackPolicy {
                 ? Outcome.SHIELD_BLOCKED_PROJECTILE : Outcome.SHIELD_BLOCKED_MELEE);
     }
 
+    /**
+     * Presentation for one classified hit.
+     *
+     * <p>Contract 10.6: the classification is the single authority, so the
+     * presentation is derived from it and cannot disagree with the real HP
+     * write. A blocked hit shows the shield impact and never flashes flesh
+     * red; a missed hit renders nothing at all.</p>
+     */
+    public static Feedback forClassification(BossHitClassificationPolicy.Hit hit) {
+        if (hit == null) {
+            return forOutcome(Outcome.PHASE_IMMUNE);
+        }
+        return switch (hit.outcome()) {
+            case ACCEPTED -> forAcceptedHit(false);
+            case BLOCKED -> forShieldBlockedHit(false);
+            case MISSED, REJECTED, IMMUNE -> silent(Outcome.PHASE_IMMUNE);
+        };
+    }
+
     public static Feedback forOutcome(Outcome outcome) {
         if (outcome == null) {
             return silent(Outcome.PHASE_IMMUNE);

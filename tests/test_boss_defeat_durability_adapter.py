@@ -275,7 +275,7 @@ public class BossLethalDefeatProbe {
     }
 }
 ''', ("BossPhase", "BossHealthPolicy", "BossScalingPolicy", "BossPhasePolicy",
-      "EndRiftAiPolicy", "BossHitFeedbackPolicy"))
+      "EndRiftAiPolicy", "BossHitFeedbackPolicy", "BossHitClassificationPolicy"))
 
 
 def test_two_simultaneous_lethal_hits_commit_the_defeat_exactly_once(tmp_path):

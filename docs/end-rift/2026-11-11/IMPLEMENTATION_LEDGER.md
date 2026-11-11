@@ -263,3 +263,57 @@ folder but its current EndEvent config names `CopiMine`; do not blindly copy it
 and claim it represents the production arena. PostgreSQL listens only on loopback
 55434; no Minecraft client/server was active at this observation. Existing DB,
 world and private environment files remain unchanged.
+## M1 tail — Wave 1 delivery durability (11 November, second pass)
+
+The delivery path advanced the score and owed a reinforcement pack before the
+state reached disk. A failed write therefore consumed the charge and moved the
+objective with nothing durable behind it. The accepted delivery now retires its
+inventory token, commits the owed pack, saves synchronously, and only then
+consumes the physical item; a failed checkpoint rolls holder, counters, token
+identity and owed debt back and fences recovery. Ending the objective retires
+the specific accepted token instead of whatever token is current, so a
+concurrent rebind cannot be purged by another holder's transition.
+
+Evidence: the detached inventory probe gained a `delivery-save-failure`
+scenario that fails when the rollback is removed. 31 passed. The stale probe
+stubs for the two new helpers were repaired in the same commit.
+Commit `9230e5a9`.
+
+## M3 — Wave 6 pillar roster and the final-pillar marksman
+
+The encounter was one pillar hit three times. It is now four ordinary pillars,
+each spent by a single Ram collision, followed by one oversized final pillar
+that absorbs three and cracks at each one: seven accepted impacts in total.
+
+- `MINOR_PILLARS` (4) + `FINAL_PILLAR_IMPACTS` (3) derive `REQUIRED_IMPACTS`
+  (7), `ARMOUR_PLATES`, `PILLAR_COUNT` and `ELITE_SKELETON_PILLAR`, so the
+  pillar order, plates, boss bar and damage gate cannot drift apart.
+- The runtime retires a pillar only when that pillar is spent. `pillarImpacts`
+  tracks what the standing pillar absorbed, separately from the encounter-wide
+  count, resets when a pillar rises, and round-trips through the checkpoint, so
+  a restart resumes the finale at its real damage stage.
+- A surviving collision is now visible: the pillar sinks, narrows, sheds rubble
+  and exposes a magma core from the second collision. The final pillar is built
+  at roughly double footprint and height with a glowing core band.
+- `WaveSixPillarSkeletonPolicy` is the only skeleton-on-a-pillar mechanic in the
+  event: two distinguishable volleys on independent cooldowns, normalised and
+  symmetric fan directions, no fire without a live target, a bounded patrol so
+  it never becomes a static turret, a floor drop that happens exactly once for a
+  survivor, and a refusal to complete while a skeleton is still up on a
+  destroyed pillar.
+
+Retired single-pillar assertions in `test_rift_ram_five_pillars.py`,
+`test_rift_ram_runtime.py` and `test_rift_ram_wave_six_rift_ram.py` are marked
+SUPERSEDED in place with the reasoning.
+
+Evidence: `test_rift_ram_pillar_roster.py` and `test_wave6_pillar_skeleton.py`
+are new; the Rift Ram family is 10 passed. Ten mutation checks across both
+guarantees were caught with no survivors (final pillar made one-hit, three
+ordinary pillars, pillar retired on every impact, counter never reset, firing
+without a target, dropped cooldown, never repositioning, early drop, firing from
+a degenerate aim, orphan guard ignored). Wave 6 selection: 337 passed.
+Commits `d5e5767a`, `4dec80ad`.
+
+Not verified: the runtime half is exercised through extracted production
+methods, because no local Paper API jar is present, so a full javac of
+`RiftRamEncounter` did not run here. No native Minecraft capture was taken.

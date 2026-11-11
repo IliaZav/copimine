@@ -184,6 +184,16 @@ public final class Wave7NamedTrialActorPolicy {
     /** Archmage body scale relative to a vanilla Evoker. */
     public static final double ARCHMAGE_BODY_SCALE = 1.5D;
 
+    /**
+     * Distance at which the Archmage stops repositioning toward its target.
+     *
+     * <p>The Archmage is a caster, so it deliberately fights at range instead of
+     * walking into melee. Its beam clips at roughly fourteen blocks and its
+     * fangs land inside about ten, so ten is the distance from which its whole
+     * rotation is actually usable.</p>
+     */
+    public static final double ARCHMAGE_ENGAGE_BLOCKS = 10.0D;
+
     /** Profile for a trial under an explicit frozen roster. */
     public static Profile profile(NamedTrial trial, int admittedPlayers) {
         if (trial == NamedTrial.MOBILE_MARKSMAN) {

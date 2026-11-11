@@ -36080,6 +36080,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (target == null) return true;
 
+        // W7-01: the Archmage also runs without native AI. It is a caster and
+        // wants range, but "range" is not "wherever it happened to spawn": from
+        // the far side of a room its fang and beam casts land on nothing, so the
+        // player reports a miniboss that stands still and rarely hits. Walk into
+        // its own usable band before committing a cast.
+        if (trial.trial() == RealitySplitTrialController.NamedTrial.RIFT_ARCHMAGE
+                && !repositionForCover) {
+            double gap = Math.hypot(
+                    target.getLocation().getX() - actor.getLocation().getX(),
+                    target.getLocation().getZ() - actor.getLocation().getZ());
+            if (gap > Wave7NamedTrialActorPolicy.ARCHMAGE_ENGAGE_BLOCKS) {
+                pursueNamedTrialTarget(actor, target,
+                        Wave7NamedTrialActorPolicy.ARCHMAGE_ENGAGE_BLOCKS);
+                return true;
+            }
+        }
+
         // The joint crossfire outranks any solo shot: check the pair before the
         // rotation so the strongest move wins when it is available.
         if (trial.trial() == RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN
@@ -36723,6 +36740,59 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         double speed = me.copimine.endevent.domain.Wave7SkeletonElusivenessPolicy.speed(
                 true, vanished);
         applySteadyMinibossMove(actor, mob, selected, speed);
+    }
+
+    /**
+     * Closes a named miniboss on its target when it is out of authored reach.
+     *
+     * <p>Named trial actors keep their native AI off on purpose: their attack
+     * cycle, telegraphs and damage volumes are owned by this runtime, and a
+     * vanilla pathfinder fighting that state machine was what made earlier
+     * passes incoherent. The cost of that decision is that <b>silence is
+     * movement</b> — an actor with no explicit walk routine does not walk. Only
+     * the Marksman had one, so the Warden and the Archmage spent their whole
+     * trial standing on their spawn tile.</p>
+     *
+     * <p>Returns the horizontal distance the actor still has to cover, or
+     * {@code -1} when no legal step could be found this tick.</p>
+     */
+    private double pursueNamedTrialTarget(LivingEntity actor, Player target, double reachBlocks) {
+        if (actor == null || target == null || !(actor instanceof Mob mob)
+                || !actor.isValid() || actor.isDead()) return -1.0D;
+        Vector toward = horizontalDirection(actor.getLocation(), target.getLocation());
+        if (toward.lengthSquared() < 1.0E-6D) return 0.0D;
+        double distance = Math.hypot(
+                target.getLocation().getX() - actor.getLocation().getX(),
+                target.getLocation().getZ() - actor.getLocation().getZ());
+        double fraction = me.copimine.endevent.domain.Wave7MinibossSteadinessPolicy
+                .approachSpeedFraction(distance, reachBlocks);
+        if (fraction <= 0.0D) return distance;
+        // Step short of the target rather than into it: the last half block is
+        // where the vanilla collision solver decides to shove the player, and a
+        // boss that shoves without attacking reads as broken rather than heavy.
+        Location next = actor.getLocation().clone().add(toward.clone().multiply(0.6D));
+        if (!isSafeCombatEntityLocation(next, actor)
+                || !isRealitySplitDestinationAllowed(target.getUniqueId(), next,
+                realitySplitChamberController.assignment())) {
+            // Blocked straight ahead. Try the two shoulders so the actor walks
+            // around a pillar instead of grinding into it for the whole trial.
+            Vector side = new Vector(-toward.getZ(), 0.0D, toward.getX());
+            boolean stepped = false;
+            for (double sign : new double[]{1.0D, -1.0D}) {
+                Location shoulder = actor.getLocation().clone()
+                        .add(side.clone().multiply(0.6D * sign));
+                if (!isSafeCombatEntityLocation(shoulder, actor)
+                        || !isRealitySplitDestinationAllowed(target.getUniqueId(), shoulder,
+                        realitySplitChamberController.assignment())) continue;
+                toward = side.clone().multiply(sign);
+                stepped = true;
+                break;
+            }
+            if (!stepped) return -1.0D;
+        }
+        double speed = 0.10D + 0.16D * fraction;
+        applySteadyMinibossMove(actor, mob, toward, speed);
+        return distance;
     }
 
     /**
@@ -37442,6 +37512,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 state.attackCount);
         if (target == null) {
             state.nextActionTick = eventTickCounter + 20L;
+            return;
+        }
+        // W7-01: the Warden has no native AI, so nothing else will ever close
+        // the gap. Committing a swing from beyond the longest authored reach
+        // played the full telegraph and then missed by construction, which is
+        // why the reported fight was a statue that "almost never hits". Walk in
+        // first; swing only when the strike volume can actually reach.
+        double gap = Math.hypot(
+                target.getLocation().getX() - warden.getLocation().getX(),
+                target.getLocation().getZ() - warden.getLocation().getZ());
+        if (gap > Wave7WardenCombatPolicy.MAX_ATTACK_REACH) {
+            pursueNamedTrialTarget(warden, target, Wave7WardenCombatPolicy.MAX_ATTACK_REACH);
+            state.nextActionTick = eventTickCounter + 4L;
             return;
         }
         state.direction = horizontalDirection(warden.getLocation(), target.getLocation());

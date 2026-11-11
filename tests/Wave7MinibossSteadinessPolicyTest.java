@@ -1,4 +1,5 @@
 import me.copimine.endevent.domain.Wave7MinibossSteadinessPolicy;
+import me.copimine.endevent.domain.Wave7WardenCombatPolicy;
 
 /** A miniboss must arc into a new heading, never vibrate between two. */
 public final class Wave7MinibossSteadinessPolicyTest {
@@ -12,7 +13,40 @@ public final class Wave7MinibossSteadinessPolicyTest {
         turningIsBoundedPerTick();
         oppositeInputsDoNotFlipInstantly();
         aHeldHeadingOnlyChangesAfterTheWindow();
+        anOutOfReachActorWalksIn();
+        anActorInReachHoldsItsGround();
         System.out.println("Wave7MinibossSteadinessPolicyTest: PASS (" + checks + " checks)");
+    }
+
+    /**
+     * W7-01: the reported "the minibosses do not move". A named actor has its
+     * native AI off, so this policy is the only thing that can close the gap.
+     * An actor far outside its authored reach must walk, and it must walk faster
+     * the further away it is, so the approach reads as a decision.
+     */
+    private static void anOutOfReachActorWalksIn() {
+        double near = Wave7MinibossSteadinessPolicy.approachSpeedFraction(
+                Wave7WardenCombatPolicy.MAX_ATTACK_REACH + 0.5D,
+                Wave7WardenCombatPolicy.MAX_ATTACK_REACH);
+        double far = Wave7MinibossSteadinessPolicy.approachSpeedFraction(
+                Wave7WardenCombatPolicy.MAX_ATTACK_REACH + 3.5D,
+                Wave7WardenCombatPolicy.MAX_ATTACK_REACH);
+        check("an actor past its reach moves at all", near > 0.0D);
+        check("a further actor moves harder than a near one", far > near);
+        check("the closing fraction stays bounded", far <= 1.0D && near <= 1.0D);
+    }
+
+    private static void anActorInReachHoldsItsGround() {
+        check("an actor inside its reach does not crowd the target",
+                Wave7MinibossSteadinessPolicy.approachSpeedFraction(
+                        1.0D, Wave7WardenCombatPolicy.MAX_ATTACK_REACH) == 0.0D);
+        check("a non-finite distance never produces movement",
+                Wave7MinibossSteadinessPolicy.approachSpeedFraction(
+                        Double.NaN, Wave7WardenCombatPolicy.MAX_ATTACK_REACH) == 0.0D);
+        check("an invalid reach still yields a usable stop distance",
+                Wave7MinibossSteadinessPolicy.approachSpeedFraction(20.0D, 0.0D) >= 0.0D);
+        check("the Warden's longest reach is the narrow strike distance",
+                Math.abs(Wave7WardenCombatPolicy.MAX_ATTACK_REACH - 7.0D) < 1.0E-6D);
     }
 
     private static void headingIsHeldBeforeItMayChange() {

@@ -46,6 +46,34 @@ public final class Wave7MinibossSteadinessPolicy {
     }
 
     /**
+     * How hard a miniboss should close on its target, {@code 0..1}.
+     *
+     * <p>W7-01: every named actor is spawned with its own native AI off, so the
+     * runtime is the only thing that can move it. The Marksman had a movement
+     * routine; the Warden and the Archmage had none, so they stood exactly
+     * where they spawned and only ever connected if the player happened to walk
+     * into their authored reach. That is the reported "the minibosses stand
+     * still and almost never hit".</p>
+     *
+     * <p>Inside the actor's usable reach it holds: crowding the target makes the
+     * swing volume unreadable and shoves the player around without an attack.
+     * Beyond that it closes at a walk that ramps with distance, so the approach
+     * reads as deliberate rather than as a slide.</p>
+     *
+     * @param distanceBlocks horizontal distance to the focused player
+     * @param reachBlocks    authored maximum reach of the actor's longest attack
+     */
+    public static double approachSpeedFraction(double distanceBlocks, double reachBlocks) {
+        if (!Double.isFinite(distanceBlocks)) return 0.0D;
+        double reach = Double.isFinite(reachBlocks) && reachBlocks > 0.0D
+                ? reachBlocks : STANDOFF_BLOCKS;
+        double stop = Math.max(STANDOFF_BLOCKS, reach * 0.8D);
+        if (distanceBlocks <= stop) return 0.0D;
+        double span = Math.max(1.0D, ENGAGE_BLOCKS - stop);
+        return Math.min(1.0D, (distanceBlocks - stop) / span);
+    }
+
+    /**
      * Clamps a desired direction against the committed one so the actor turns
      * instead of flipping.
      *

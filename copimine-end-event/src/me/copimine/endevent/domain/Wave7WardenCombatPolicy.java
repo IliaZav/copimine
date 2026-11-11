@@ -41,6 +41,17 @@ public final class Wave7WardenCombatPolicy {
         return MAX_HEALTH;
     }
 
+    /**
+     * Longest authored reach of any Warden strike, in blocks.
+     *
+     * <p>The narrow strike is the longest swing (7.0). Committing a swing from
+     * further away than this guarantees a whiff: the telegraph plays, the damage
+     * volume never reaches the player, and the fight reads as a boss that
+     * cannot hit anything. The runtime uses this to decide "close in" instead of
+     * "swing anyway".</p>
+     */
+    public static final double MAX_ATTACK_REACH = 7.0D;
+
     /** Preserve remaining damage on recovery, while promoting an old full-health actor. */
     public static double currentHealthAfterMaxHealthChange(
             double currentHealth, double previousMaxHealth) {

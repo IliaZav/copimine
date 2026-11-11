@@ -127,6 +127,10 @@ public class BossChestStrikeReleaseProbe {
 
     boolean isTestBoss(LivingEntity b){return false;}
     boolean isCurrentBossCarrier(LivingEntity b){return carrier && b != null && b.valid && !b.dead;}
+    // Added with the unfreeze fix: reconcileBossCastProjection now releases
+    // cast-time locomotion suppression on every terminal path, so the probe has
+    // to offer that helper. The probe counts releases instead of modelling AI.
+    void releaseBossCastMobility(LivingEntity b,String reason){released++;}
     List<Player> activeLivingPlayers(){return List.of();}
     boolean hasProjectileBlockLineOfSight(Location a, Location b){return true;}
     boolean applyContactHit(Player p, LivingEntity b, double d, Vector k){return false;}

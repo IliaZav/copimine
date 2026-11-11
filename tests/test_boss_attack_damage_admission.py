@@ -166,6 +166,10 @@ public class BossAttackAdmissionProbe {
     boolean ownedBySession(Entity e,String id,long gen){return true;}
     boolean isCurrentBossCarrier(LivingEntity b){return current && b==boss;}
     boolean isTestBoss(LivingEntity b){return false;}
+    int released;
+    // Added with the unfreeze fix: reconciliation now releases cast-time
+    // locomotion suppression on every terminal path.
+    void releaseBossCastMobility(LivingEntity b,String reason){released++;}
     boolean hasProjectileBlockLineOfSight(Location a,Location b){return boss.visible;}
     List<Player> activeLivingPlayers(){return players;}
     List<Player> activeBossParticipants(){return players;}

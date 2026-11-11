@@ -52,6 +52,13 @@ public final class BossPhaseGatingTest {
                     phase + " must offer the completed Inferno");
         }
 
+        // Contract 15.3: the decoys are summoned through summonServants, which
+        // SUMMON_SERVANTS dispatches. Rage offered every spell except that one,
+        // so the decoys it was written for could never be summoned during the
+        // only phase that owns them. This is the assertion that was missing.
+        require(BossPhasePolicy.spellPool(BossPhase.RAGE).contains(BossSpell.SUMMON_SERVANTS),
+                "Rage must offer SUMMON_SERVANTS or the Echo decoys are unreachable");
+
         for (BossPhase phase : new BossPhase[]{BossPhase.AWAKENING, BossPhase.HUNT,
                 BossPhase.RIFT, BossPhase.OVERLOAD, BossPhase.RAGE}) {
             require(!BossPhasePolicy.spellPool(phase).contains(BossSpell.FINAL_STRIKE),

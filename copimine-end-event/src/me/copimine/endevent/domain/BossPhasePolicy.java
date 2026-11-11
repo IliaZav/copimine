@@ -75,6 +75,11 @@ public final class BossPhasePolicy {
                     EndRiftAiPolicy.BossSpell.VOID_BLAST,
                     EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
                     EndRiftAiPolicy.BossSpell.RIFT_ARROWS,
+                    // Contract 15.3: summonEchoDecoys hangs off summonServants,
+                    // which only SUMMON_SERVANTS dispatches. Rage offered eight
+                    // spells and this was not one of them, so the decoys were
+                    // unreachable for the whole phase that owns them.
+                    EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS,
                     EndRiftAiPolicy.BossSpell.ARENA_INFERNO,
                     EndRiftAiPolicy.BossSpell.BOSS_FIREBALL,
                     EndRiftAiPolicy.BossSpell.MELEE_SWIPE,

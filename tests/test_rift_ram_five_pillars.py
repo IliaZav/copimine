@@ -13,10 +13,13 @@ import me.copimine.endevent.domain.RiftRamPolicy;
 public class RamRulesProbe {
   static void check(boolean ok) { if (!ok) throw new AssertionError(); }
   public static void main(String[] args) {
-    // W6-03: the playtest asked for two or three accepted impacts, so the
-    // encounter is a three-plate loop. Assert the count, then derive the whole
-    // ladder from it rather than repeating the numbers here.
-    check(RiftRamPolicy.REQUIRED_IMPACTS >= 2 && RiftRamPolicy.REQUIRED_IMPACTS <= 3);
+    // SUPERSEDED: W6-03 asked for two or three accepted impacts on a single
+    // pillar. The 2026-11-11 master rebuild replaced that with four ordinary
+    // pillars and one final pillar worth three collisions: seven in total.
+    // The full roster shape is held by test_rift_ram_pillar_roster.py; here we
+    // only assert the count is derived and then exercise the general ladder.
+    check(RiftRamPolicy.REQUIRED_IMPACTS == RiftRamPolicy.MINOR_PILLARS
+            + RiftRamPolicy.FINAL_PILLAR_IMPACTS);
     int plates = RiftRamPolicy.REQUIRED_IMPACTS;
     for (int i=0;i<=plates;i++) {
       double expected = (i + 1.0D) / (plates + 1.0D);

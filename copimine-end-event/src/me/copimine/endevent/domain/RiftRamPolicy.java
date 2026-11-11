@@ -12,18 +12,33 @@ package me.copimine.endevent.domain;
  */
 public final class RiftRamPolicy {
     /**
-     * How many times the Ravager must hit the pillar before it becomes exposed.
+     * Ordinary pillars, each destroyed by a single accepted collision.
      *
-     * <p>W6-03 (playtest 2026-11-10): "require two or three accepted column
-     * impacts to remove armour". The old five-plate loop meant a party had to
-     * line up five separate charges before the armour was gone, and the player
-     * described that phase as long and unresponsive. Three is the upper end of
-     * the requested range and keeps one plate per stage, so every impact is a
-     * visible change on the body instead of a counter ticking behind it.</p>
+     * <p>SUPERSEDES W6-03 (playtest 2026-11-10), which asked for "two or three
+     * accepted column impacts". The 2026-11-11 master rebuild replaced that
+     * single-pillar loop with a roster: "four ordinary pillars followed by one
+     * very large final pillar", the final one requiring "three distinct
+     * successful Ram collisions". The rendered arena therefore carries four
+     * readable one-hit pillars as a rhythm, and then one much larger finale.</p>
      */
-    public static final int REQUIRED_IMPACTS = 3;
+    public static final int MINOR_PILLARS = 4;
+    /** Collisions the oversized final pillar needs before it collapses. */
+    public static final int FINAL_PILLAR_IMPACTS = 3;
+    /** Total pillars in the encounter, ordinary plus final. */
+    public static final int PILLAR_COUNT = MINOR_PILLARS + 1;
+    /**
+     * Accepted collisions needed before the Ram's armour is fully gone.
+     *
+     * <p>One per ordinary pillar, three for the final one: the seventh and last
+     * collision is the one that both collapses the last pillar and strips the
+     * final plate. Deriving this keeps the roster, the armour ladder, the boss
+     * bar and the damage gate from ever disagreeing.</p>
+     */
+    public static final int REQUIRED_IMPACTS = MINOR_PILLARS + FINAL_PILLAR_IMPACTS;
     /** Plate count on the body; one plate is shed per accepted impact. */
     public static final int ARMOUR_PLATES = REQUIRED_IMPACTS;
+    /** The pillar that carries the elite marksman skeleton. */
+    public static final int ELITE_SKELETON_PILLAR = PILLAR_COUNT;
     public static final int STOMP_SLOW_TICKS = 60;
     public static final int STOMP_SLOW_AMPLIFIER = 1;
     public static final double STOMP_RADIUS = 12.0D;
@@ -169,7 +184,15 @@ public final class RiftRamPolicy {
         if (acceptedImpacts >= REQUIRED_IMPACTS) {
             return "Таран Разлома — броня сбита";
         }
-        return "Таран Разлома — плит осталось: " + remainingPlates(acceptedImpacts);
+        int ordinal = pillarOrdinal(acceptedImpacts);
+        if (isFinalPillar(ordinal)) {
+            // The finale is a different instruction from the ordinary pillars:
+            // the party has to understand that one more collision will not do.
+            return "Таран Разлома — опора треснула " + finalPillarStage(acceptedImpacts) + "/"
+                    + FINAL_PILLAR_IMPACTS;
+        }
+        return "Таран Разлома — плит осталось: " + remainingPlates(acceptedImpacts)
+                + " · опора " + ordinal + "/" + PILLAR_COUNT;
     }
 
     /**
@@ -373,13 +396,95 @@ public final class RiftRamPolicy {
     }
 
     /** True only when a further pillar may still be raised. */
-    public static boolean mayRaisePillar(int destroyedPillars) {
-        return destroyedPillars >= 0 && destroyedPillars < REQUIRED_IMPACTS;
+    public static boolean mayRaisePillar(int acceptedImpacts) {
+        return acceptedImpacts >= 0 && acceptedImpacts < REQUIRED_IMPACTS;
     }
 
     /** The 1-based pillar number currently standing, or 0 when all five are gone. */
-    public static int activePillarNumber(int destroyedPillars) {
-        return mayRaisePillar(destroyedPillars) ? destroyedPillars + 1 : 0;
+    public static int activePillarNumber(int acceptedImpacts) {
+        return mayRaisePillar(acceptedImpacts) ? pillarOrdinal(acceptedImpacts) : 0;
+    }
+
+    /**
+     * Which 1-based pillar is standing at this impact count.
+     *
+     * <p>The first four impacts each retire one ordinary pillar, so impact count
+     * and pillar number coincide there. From the fourth impact onward the final
+     * pillar absorbs three collisions, so it stays standing across impacts 4, 5
+     * and 6 and is gone at 7.</p>
+     *
+     * @return the standing pillar's ordinal, clamped into the roster
+     */
+    public static int pillarOrdinal(int acceptedImpacts) {
+        int impacts = Math.max(0, Math.min(REQUIRED_IMPACTS, acceptedImpacts));
+        if (impacts < MINOR_PILLARS) return impacts + 1;
+        if (impacts < REQUIRED_IMPACTS) return PILLAR_COUNT;
+        return PILLAR_COUNT;
+    }
+
+    /** Whether the given 1-based pillar ordinal is the oversized final pillar. */
+    public static boolean isFinalPillar(int ordinal) {
+        return ordinal == PILLAR_COUNT;
+    }
+
+    /** Collisions one pillar of this ordinal needs before it collapses. */
+    public static int impactsRequiredForPillar(int ordinal) {
+        if (ordinal < 1 || ordinal > PILLAR_COUNT) return 0;
+        return isFinalPillar(ordinal) ? FINAL_PILLAR_IMPACTS : 1;
+    }
+
+    /**
+     * Live collisions still required to bring down the pillar that is standing.
+     *
+     * <p>This is what the party watches during the finale: 3 on a fresh final
+     * pillar, 2 after the shell cracks, 1 once the core is exposed, 0 when it
+     * has collapsed.</p>
+     */
+    public static int impactsRemainingOnPillar(int acceptedImpacts) {
+        int impacts = Math.max(0, Math.min(REQUIRED_IMPACTS, acceptedImpacts));
+        if (impacts >= REQUIRED_IMPACTS) return 0;
+        if (impacts < MINOR_PILLARS) return 1;
+        return REQUIRED_IMPACTS - impacts;
+    }
+
+    /**
+     * Visual stage of the final pillar, 0..3.
+     *
+     * <p>0 = intact, 1 = outer shell cracked, 2 = a whole section broken and the
+     * glowing core exposed, 3 = collapsed. The stages are enumerated rather than
+     * inferred by the renderer so the model, the fractures and the boss bar can
+     * never show different amounts of damage.</p>
+     */
+    public static int finalPillarStage(int acceptedImpacts) {
+        int impacts = Math.max(0, Math.min(REQUIRED_IMPACTS, acceptedImpacts));
+        if (impacts <= MINOR_PILLARS) return 0;
+        return impacts - MINOR_PILLARS;
+    }
+
+    /**
+     * Whether the elite marksman skeleton is still standing at this impact count.
+     *
+     * <p>It rides the final pillar only, and it is a normal killable actor: once
+     * players have killed it, it stays dead rather than being re-summoned by a
+     * pillar. That is why the caller passes its own liveness.</p>
+     */
+    public static boolean eliteSkeletonAliveOn(int acceptedImpacts, boolean skeletonStillAlive) {
+        if (!skeletonStillAlive) return false;
+        int impacts = Math.max(0, Math.min(REQUIRED_IMPACTS, acceptedImpacts));
+        // It appears when the final pillar rises, i.e. from the fourth impact on.
+        return impacts >= MINOR_PILLARS && impacts < REQUIRED_IMPACTS
+                && pillarOrdinal(impacts) == ELITE_SKELETON_PILLAR;
+    }
+
+    /**
+     * Whether a surviving skeleton must drop from the collapsing final pillar.
+     *
+     * <p>True exactly when the final pillar is destroyed: the actor is then moved
+     * to the arena floor instead of being orphaned on a pillar that no longer
+     * exists.</p>
+     */
+    public static boolean eliteSkeletonFallsOn(int acceptedImpacts) {
+        return acceptedImpacts >= REQUIRED_IMPACTS;
     }
 
     /**
@@ -425,9 +530,11 @@ public final class RiftRamPolicy {
         if (maximumHealth <= 0.0D || !Double.isFinite(maximumHealth)) return 0.0D;
         if (acceptedImpacts >= REQUIRED_IMPACTS) return 0.0D;
         // One share of the bar per remaining plate keeps every stage visible
-        // while guaranteeing the fight survives to the last pillar.
+        // while guaranteeing the fight survives to the last pillar. The share is
+        // the fraction of the bar the whole armour phase is allowed to give up,
+        // divided across every plate, so it stays bounded when the roster grows.
         int remaining = REQUIRED_IMPACTS - Math.max(0, acceptedImpacts);
-        double sharePerPlate = 0.25D / Math.max(1, ARMOUR_PLATES);
+        double sharePerPlate = 0.5D / Math.max(1, ARMOUR_PLATES);
         return maximumHealth * sharePerPlate * remaining;
     }
 

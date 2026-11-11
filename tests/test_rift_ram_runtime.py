@@ -20,7 +20,7 @@ import java.util.*;
 import me.copimine.endevent.domain.RiftRamPolicy;
 public class RamRuntimeProbe {
   enum Action { CHARGE, CHASE, STUN, DEAD, RECOVER, STOMP, STOMP_WARNING, CHARGE_WARNING }
-  enum Sound { BLOCK_DEEPSLATE_BREAK, BLOCK_ANVIL_BREAK }
+  enum Sound { BLOCK_DEEPSLATE_BREAK, BLOCK_ANVIL_BREAK, BLOCK_DEEPSLATE_HIT, ENTITY_IRON_GOLEM_HURT }
   enum Material { NETHERITE_BLOCK }
   static class Entity { boolean valid=true; boolean isValid(){return valid;} }
   static class BlockDisplay extends Entity {}
@@ -63,7 +63,8 @@ public class RamRuntimeProbe {
   }
   final Host host=new Host(); final World world=new World();
   Ravager ram=new Ravager(world); Action action=Action.CHARGE;
-  int tick,actionTick,impacts,lastCharge,lastStomp,nextPillarTick;
+  int tick,actionTick,impacts,pillarImpacts,lastCharge,lastStomp,nextPillarTick;
+  void crackPillar(){}
   boolean closed,completed,banked;
   UUID pillarId,persistentId,target; Location pillar;Vector direction;
   List<BlockDisplay> pillarDisplays=new ArrayList<>(); List<Piece> armor=new ArrayList<>();
@@ -73,7 +74,7 @@ public class RamRuntimeProbe {
   static class Bukkit { static Entity loaded; static Entity getEntity(UUID id){return loaded;} }
   boolean safeVolume(Location at){return true;}
   boolean buildPillar(){pillarDisplays.add(new BlockDisplay());return true;}
-  void createArmor(){for(int i=impacts+1;i<=RiftRamPolicy.ARMOUR_PLATES;i++)armor.add(new Piece(new BlockDisplay(),i));}
+  void createArmor(){armor.clear();for(int i=impacts+1;i<=RiftRamPolicy.ARMOUR_PLATES;i++)armor.add(new Piece(new BlockDisplay(),i));}
   void dust(Location at,int n,double a,double b){}
   BlockDisplay block(Location at,Material m,Vector3f size){return new BlockDisplay();}
   Object nearest(Location at,List<Object> players){return null;}
@@ -81,28 +82,47 @@ public class RamRuntimeProbe {
   void raiseTestPillar(){
     if(pillarId!=null)throw new AssertionError("second active pillar");
     pillarId=UUID.randomUUID();pillar=new Location(world);pillarDisplays.add(new BlockDisplay());
+    // Mirrors production raisePillar(): a fresh pillar has absorbed nothing.
+    pillarImpacts=0;
   }
   static void check(boolean b,String m){if(!b)throw new AssertionError(m);}
   public static void main(String[] args){
     int plates=RiftRamPolicy.ARMOUR_PLATES;
     RamRuntimeProbe p=new RamRuntimeProbe(); Set<UUID> receipts=new HashSet<>();
     for(int i=1;i<=plates;i++)p.armor.add(new Piece(new BlockDisplay(),i));
+    // SUPERSEDED: the retired model gave every impact its own pillar. The roster
+    // now holds four ordinary one-hit pillars and one final pillar that absorbs
+    // three collisions, so the pillar survives impacts MINOR_PILLARS..REQUIRED-1.
     for(int i=1;i<=plates;i++){
-      p.raiseTestPillar(); check(receipts.add(p.pillarId),"unique pillar identity");
+      if(p.pillarId==null) {
+        p.raiseTestPillar(); check(receipts.add(p.pillarId),"unique pillar identity");
+      }
+      Object standing=p.pillarId;
       p.action=Action.CHASE;p.impact();check(p.impacts==i-1,"walking cannot hit");
       p.action=Action.CHARGE;p.banked=false;p.impact();
-      check(p.impacts==i,"one impact");check(p.pillarId==null,"pillar retired");
-      check(p.pillarDisplays.isEmpty(),"pillar displays removed");
+      check(p.impacts==i,"one impact");
+      boolean pillarCollapsed=RiftRamPolicy.impactsRemainingOnPillar(i)==0;
+      if(pillarCollapsed) {
+        check(p.pillarId==null,"a spent pillar retires");
+        check(p.pillarDisplays.isEmpty(),"pillar displays removed");
+      } else {
+        // The final pillar keeps standing and keeps its own displays.
+        check(Objects.equals(p.pillarId,standing),"an unfinished pillar stays standing");
+        check(!p.pillarDisplays.isEmpty(),"an unfinished pillar keeps its displays");
+      }
       check(p.armor.size()==plates-i,"one 3D armor section retired");
       check(p.mites.size()<=6,"living Endermite cap");
       p.impact();check(p.impacts==i,"duplicate callback ignored");
       if(i<plates)check(!p.completed,"impact is not completion");
       if(i<plates){
-        p.raiseTestPillar();Map<String,String> saved=p.snapshot();
+        if(p.pillarId==null) p.raiseTestPillar();
+        Map<String,String> saved=p.snapshot();
         RamRuntimeProbe restored=new RamRuntimeProbe();restored.ram=null;Bukkit.loaded=p.ram;
         restored.restore(saved);
         check(restored.impacts==i&&Objects.equals(restored.id(),p.id()),"restart preserves actor and impacts");
-        check(restored.armor.size()==plates-i&&restored.pillarId.equals(p.pillarId),"restart preserves pillar identity and armor");
+        check(restored.armor.size()==plates-i,"restart preserves the armor stage");
+        check(restored.pillarId.equals(p.pillarId),"restart preserves pillar identity");
+        check(restored.pillarImpacts==p.pillarImpacts,"restart preserves how much of the pillar is gone");
         check(restored.action==Action.RECOVER&&!restored.completed,"restart cannot replay stale action");
         p.clearPillar();
       }

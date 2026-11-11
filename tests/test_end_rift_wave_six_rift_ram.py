@@ -27,11 +27,18 @@ PROBE = textwrap.dedent("""
         }
 
         public static void main(String[] args) {
-            // --- Armour plates: two or three impacts, per the playtest -----------
-            // W6-03 asked for "two or three accepted column impacts to remove
-            // armour". The encounter keeps it as a named constant so the plate
-            // model, the boss bar and the damage gate cannot drift apart.
-            check("three impacts are required", RiftRamPolicy.REQUIRED_IMPACTS == 3);
+            // --- Armour plates: a roster, not one pillar hit repeatedly --------
+            // SUPERSEDED: W6-03 asked for "two or three accepted column impacts",
+            // which made the encounter one pillar hit three times. The 2026-11-11
+            // master rebuild specifies four ordinary pillars plus one final
+            // pillar that alone takes three collisions, so the total is seven.
+            // The roster is derived from named parts rather than a bare literal.
+            check("four ordinary pillars", RiftRamPolicy.MINOR_PILLARS == 4);
+            check("the final pillar takes three collisions", RiftRamPolicy.FINAL_PILLAR_IMPACTS == 3);
+            check("seven impacts in total", RiftRamPolicy.REQUIRED_IMPACTS == 7);
+            check("the roster adds up",
+                    RiftRamPolicy.MINOR_PILLARS * 1 + RiftRamPolicy.FINAL_PILLAR_IMPACTS
+                            == RiftRamPolicy.REQUIRED_IMPACTS);
             check("the plate count matches the impact count",
                     RiftRamPolicy.ARMOUR_PLATES == RiftRamPolicy.REQUIRED_IMPACTS);
             check("the last impact is still accepted",
@@ -77,22 +84,23 @@ PROBE = textwrap.dedent("""
                     RiftRamPolicy.healthForPlayers(5) < RiftRamPolicy.healthForPlayers(10));
 
             // --- Damage gating: always takes damage, never dies early -----------
-            // The ladder is derived from the plate count, so these are the four
-            // steps of a three-plate Ram: quarter, half, three quarters, full.
-            check("no impact means a quarter", RiftRamPolicy.damageMultiplier(0) == 0.25D);
-            check("one impact means half", RiftRamPolicy.damageMultiplier(1) == 0.50D);
-            check("two impacts mean three quarters", RiftRamPolicy.damageMultiplier(2) == 0.75D);
+            // The ladder is derived from the roster, so the number of steps follows
+            // REQUIRED_IMPACTS instead of being spelled out for a three-plate Ram.
+            final double firstStep = 1.0D / (RiftRamPolicy.REQUIRED_IMPACTS + 1.0D);
+            check("no impact means one step above zero",
+                    Math.abs(RiftRamPolicy.damageMultiplier(0) - firstStep) < 1e-12);
             check("every plate gone means full damage",
                     RiftRamPolicy.damageMultiplier(RiftRamPolicy.REQUIRED_IMPACTS) == 1.0D);
             check("the multiplier is never zero, so hits always register",
                     RiftRamPolicy.damageMultiplier(0) > 0.0D);
-            check("each impact strictly increases incoming damage",
-                    RiftRamPolicy.damageMultiplier(0) < RiftRamPolicy.damageMultiplier(1)
-                    && RiftRamPolicy.damageMultiplier(1) < RiftRamPolicy.damageMultiplier(2)
-                    && RiftRamPolicy.damageMultiplier(2)
-                            < RiftRamPolicy.damageMultiplier(RiftRamPolicy.REQUIRED_IMPACTS));
+            boolean strictlyRising = true;
+            for (int i = 0; i < RiftRamPolicy.REQUIRED_IMPACTS; i++) {
+                strictlyRising &= RiftRamPolicy.damageMultiplier(i)
+                        < RiftRamPolicy.damageMultiplier(i + 1);
+            }
+            check("each impact strictly increases incoming damage", strictlyRising);
             check("an out-of-range count clamps", RiftRamPolicy.damageMultiplier(99) == 1.0D
-                    && RiftRamPolicy.damageMultiplier(-3) == 0.25D);
+                    && Math.abs(RiftRamPolicy.damageMultiplier(-3) - firstStep) < 1e-12);
 
             // --- Charge timing ---------------------------------------------------
             long cooldown = RiftRamPolicy.cooldownMillis();
@@ -175,9 +183,14 @@ PROBE = textwrap.dedent("""
             // --- Pillar roster ----------------------------------------------------
             check("no pillar exists before the first impact",
                     RiftRamPolicy.activePillarNumber(0) == 1);
+            // SUPERSEDED: under the retired one-pillar model the pillar number
+            // tracked the plate count, so the fifth plate meant the fifth pillar.
+            // The roster now has five pillars for seven impacts: the final pillar
+            // stays standing across impacts four, five and six.
             check("the last pillar is the final one",
                     RiftRamPolicy.activePillarNumber(RiftRamPolicy.REQUIRED_IMPACTS - 1)
-                            == RiftRamPolicy.REQUIRED_IMPACTS);
+                            == RiftRamPolicy.PILLAR_COUNT
+                    && RiftRamPolicy.isFinalPillar(RiftRamPolicy.PILLAR_COUNT));
             check("after the final pillar none may be raised",
                     RiftRamPolicy.activePillarNumber(RiftRamPolicy.REQUIRED_IMPACTS) == 0
                     && !RiftRamPolicy.mayRaisePillar(RiftRamPolicy.REQUIRED_IMPACTS));

@@ -39,6 +39,15 @@ public final class RiftRamEncounter {
     private UUID persistentId;
     private Action action = Action.CHASE;
     private int tick, actionTick, lastCharge, lastStomp, impacts, nextPillarTick;
+    /**
+     * Collisions already absorbed by the pillar that is currently standing.
+     *
+     * <p>Distinct from {@link #impacts}, which is the encounter-wide total that
+     * drives the armour ladder and the boss bar. The final pillar survives two
+     * collisions, so the runtime cannot retire the pillar just because the
+     * global count moved.</p>
+     */
+    private int pillarImpacts;
     private boolean completed, closed, banked;
     private UUID target;
     private Vector direction;
@@ -170,17 +179,38 @@ public final class RiftRamEncounter {
         if (site==null) return false;
         pillar = site;
         pillarId = UUID.randomUUID();
+        pillarImpacts = 0;
         return buildPillar();
     }
 
     private boolean buildPillar() {
         Location site = pillar;
         try {
-            pillarDisplays.add(block(site.clone().add(-.9,-3,-.9),Material.OBSIDIAN,new Vector3f(1.8f,3.7f,1.8f)));
-            pillarDisplays.add(block(site.clone().add(-1.1,-.2,-1.1),Material.CRYING_OBSIDIAN,new Vector3f(2.2f,.45f,2.2f)));
-            pillarDisplays.add(block(site.clone().add(-1.05,.3,-1.05),Material.OBSIDIAN,new Vector3f(2.1f,.35f,2.1f)));
+            // The final pillar is the finale of the wave, so it is built at
+            // roughly double the footprint and height of an ordinary one and
+            // carries a glowing core seam that reads from across the arena.
+            int ordinal = RiftRamPolicy.pillarOrdinal(impacts);
+            boolean finale = RiftRamPolicy.isFinalPillar(ordinal);
+            float footprint = finale ? 3.6f : 1.8f;
+            float height    = finale ? 7.4f : 3.7f;
+            float capWidth  = finale ? 4.4f : 2.2f;
+            float bodyHalf  = footprint / 2f;
+            float capHalf   = capWidth / 2f;
+            pillarDisplays.add(block(site.clone().add(-bodyHalf,-(height-0.7f),-bodyHalf),
+                    Material.OBSIDIAN,new Vector3f(footprint,height,footprint)));
+            pillarDisplays.add(block(site.clone().add(-capHalf,-.2,-capHalf),
+                    Material.CRYING_OBSIDIAN,new Vector3f(capWidth,.45f,capWidth)));
+            pillarDisplays.add(block(site.clone().add(-(capHalf-.05f),.3,-(capHalf-.05f)),
+                    finale ? Material.MAGMA_BLOCK : Material.OBSIDIAN,
+                    new Vector3f(capWidth-.1f,.35f,capWidth-.1f)));
+            if (finale) {
+                // Exposed core band, hidden again by crackPillar() once the
+                // shell finally breaks.
+                pillarDisplays.add(block(site.clone().add(-(bodyHalf-.2f),1.1,-(bodyHalf-.2f)),
+                        Material.CRYING_OBSIDIAN,new Vector3f(footprint-.4f,1.1f,footprint-.4f)));
+            }
             nextPillarTick = tick;
-            site.getWorld().playSound(site,Sound.BLOCK_DEEPSLATE_PLACE,1.6f,.5f);
+            site.getWorld().playSound(site,Sound.BLOCK_DEEPSLATE_PLACE, finale?2.4f:1.6f, finale?.35f:.5f);
             return true;
         } catch(RuntimeException failure) { clearPillar(); return false; }
     }
@@ -373,13 +403,31 @@ public final class RiftRamEncounter {
         if(action!=Action.CHARGE || banked || pillarId==null
                 || impacts>=RiftRamPolicy.REQUIRED_IMPACTS) return;
         banked=true; impacts++; lastCharge=tick;
-        Location broken=pillar.clone(); pillarId=null; pillar=null; nextPillarTick=tick+35;
+        // The roster decides whether this collision SPENT the pillar. An ordinary
+        // pillar dies to its first hit; the final pillar absorbs three, cracking
+        // visibly on each, and only the third brings it down.
+        int pillarOrdinal = RiftRamPolicy.pillarOrdinal(impacts - 1);
+        boolean spent = RiftRamPolicy.impactsRemainingOnPillar(impacts) == 0;
+        // Per-pillar absorption, not the encounter total: an ordinary pillar is
+        // always 1, and the final one counts 1, 2, 3 and then resets with it.
+        pillarImpacts = spent ? 0 : pillarImpacts + 1;
+        Location struck = pillar.clone();
+        if (spent) { pillarId=null; pillar=null; nextPillarTick=tick+35; }
         begin(Action.STUN);
         if(!host.checkpoint()) { fail("impact-checkpoint-failed"); return; }
-        clearPillar();
-        dust(broken.clone().add(0,1.5,0),100,1.2,1.5);
-        broken.getWorld().playSound(broken,Sound.BLOCK_DEEPSLATE_BREAK,2,.6f);
-        broken.getWorld().playSound(ram.getLocation(),Sound.BLOCK_ANVIL_BREAK,2,.75f);
+        if (spent) {
+            clearPillar();
+            dust(struck.clone().add(0,1.5,0),100,1.2,1.5);
+            struck.getWorld().playSound(struck,Sound.BLOCK_DEEPSLATE_BREAK,2,.6f);
+            struck.getWorld().playSound(ram.getLocation(),Sound.BLOCK_ANVIL_BREAK,2,.75f);
+        } else {
+            // A surviving pillar must show that the collision landed on IT,
+            // not that the party hit a wall for nothing.
+            crackPillar();
+            dust(struck.clone().add(0,1.5,0),40,.7,.6);
+            struck.getWorld().playSound(struck,Sound.BLOCK_DEEPSLATE_HIT,2,.55f);
+            struck.getWorld().playSound(ram.getLocation(),Sound.ENTITY_IRON_GOLEM_HURT,1.8f,.7f);
+        }
         for(Iterator<Piece> it=armor.iterator();it.hasNext();) {
             Piece p=it.next(); if(p.section()==impacts) { host.remove(p.display()); it.remove(); }
         }
@@ -397,9 +445,9 @@ public final class RiftRamEncounter {
         int budget = impacts < RiftRamPolicy.REQUIRED_IMPACTS
                 ? RiftRamPolicy.endermitesToRelease(mites.size(), requested) : 0;
         for(int i=0;i<budget;i++) {
-            Endermite mite=broken.getWorld().spawn(broken,Endermite.class);
+            Endermite mite=struck.getWorld().spawn(struck,Endermite.class);
             host.own(mite,true); mite.setPersistent(true); mite.setRemoveWhenFarAway(false);
-            mite.setTarget(nearest(broken,host.players())); mites.add(mite);
+            mite.setTarget(nearest(struck,host.players())); mites.add(mite);
         }
         hold(); begin(Action.STUN); host.visualsChanged();
     }
@@ -508,6 +556,41 @@ public final class RiftRamEncounter {
         if(!host.checkpoint()) { completed=false; fail("completion-checkpoint-failed"); return; }
         cleanupDisplays();
     }
+    /**
+     * Show real damage on a pillar that survived the collision.
+     *
+     * <p>The final pillar absorbs three collisions, so two of them must leave a
+     * mark. Each stage re-seats the display pieces lower and narrower and drops
+     * the crown section further, so an intact pillar, a cracked one and one with
+     * its core exposed are three different silhouettes rather than one shape
+     * with a counter behind it.</p>
+     */
+    private void crackPillar() {
+        if (pillar==null || pillarDisplays.isEmpty()) return;
+        int stage = RiftRamPolicy.finalPillarStage(impacts);
+        // Stage 1 cracks the shell, stage 2 breaks a whole section away.
+        double sink = stage >= 2 ? 1.15D : 0.45D;
+        for (int i=0;i<pillarDisplays.size();i++) {
+            BlockDisplay display=pillarDisplays.get(i);
+            Location at=display.getLocation().clone();
+            at.add(0,-sink*(i==0?1.0D:0.6D),0);
+            host.move(display, at);
+            Transformation t=display.getTransformation();
+            Vector3f scale=t.getScale();
+            float shrink = stage >= 2 ? 0.82F : 0.94F;
+            display.setTransformation(new Transformation(t.getTranslation(),t.getLeftRotation(),
+                    new Vector3f(scale.x()*shrink,scale.y()*shrink,scale.z()*shrink),t.getRightRotation()));
+            if (stage >= 2 && i==0) display.setBlock(Material.MAGMA_BLOCK.createBlockData());
+        }
+        // Loose rubble reads as material that actually left the pillar.
+        for (int i=0;i<6;i++) {
+            double angle=i*Math.PI/3;
+            Location start=pillar.clone().add(Math.cos(angle)*1.1,1.4,Math.sin(angle)*1.1);
+            BlockDisplay shard=block(start,Material.OBSIDIAN,new Vector3f(.22f,.18f,.3f));
+            debris.add(new Debris(shard,start,new Vector(Math.cos(angle)*.1,.18,Math.sin(angle)*.1),tick));
+        }
+    }
+
     private void clearPillar() {
         for(BlockDisplay d:pillarDisplays) host.remove(d);
         pillarDisplays.clear(); pillar=null; pillarId=null;
@@ -538,6 +621,7 @@ public final class RiftRamEncounter {
         data.put("ram.action",action.name());
         data.put("ram.action-tick",Integer.toString(actionTick));
         data.put("ram.next-pillar",Integer.toString(nextPillarTick));
+        data.put("ram.pillar-impacts",Integer.toString(pillarImpacts));
         data.put("ram.complete",Boolean.toString(completed));
         data.put("ram.target",target==null?"":target.toString());
         if(direction!=null) data.put("ram.direction",direction.getX()+","+direction.getZ());
@@ -580,9 +664,21 @@ public final class RiftRamEncounter {
             // In-flight actions never replay after restart. Require fresh warning after recovery.
             action=Action.RECOVER; actionTick=tick; lastCharge=tick; lastStomp=tick;
             nextPillarTick=tick+35;
+            // How much of the standing pillar is already gone, so a restarted
+            // final pillar resumes at its real damage stage instead of rebuilding
+            // intact and silently refunding two collisions.
+            pillarImpacts = 0;
+            String storedPillarImpacts = data.get("ram.pillar-impacts");
+            if (storedPillarImpacts != null) {
+                try { pillarImpacts = Integer.parseInt(storedPillarImpacts); }
+                catch (NumberFormatException ignored) { pillarImpacts = 0; }
+                if (pillarImpacts < 0 || pillarImpacts > RiftRamPolicy.FINAL_PILLAR_IMPACTS)
+                    throw new IllegalArgumentException("pillar-impact-range");
+            }
             createArmor();
             if(data.containsKey("ram.pillar-id")) {
-                if(impacts==5) throw new IllegalArgumentException("pillar-after-final-impact");
+                if(impacts>=RiftRamPolicy.REQUIRED_IMPACTS)
+                    throw new IllegalArgumentException("pillar-after-final-impact");
                 pillarId=UUID.fromString(data.get("ram.pillar-id"));
                 String[] xyz=data.get("ram.pillar").split(",");
                 if(xyz.length!=3) throw new IllegalArgumentException("pillar-coordinate-count");

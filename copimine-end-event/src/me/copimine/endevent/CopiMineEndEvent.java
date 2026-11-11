@@ -60,6 +60,9 @@ import me.copimine.endevent.domain.GuardianDeathLedger;
 import me.copimine.endevent.domain.KaguneCocoonGuardianPolicy;
 import me.copimine.endevent.domain.EchoDecoyPolicy;
 import me.copimine.endevent.domain.CocoonFallPolicy;
+import me.copimine.endevent.domain.KaguneGuardianFightPolicy;
+import me.copimine.endevent.domain.KaguneRingCastPolicy;
+import me.copimine.endevent.domain.KaguneRingGapPolicy;
 import me.copimine.endevent.domain.BossAbilitySelector;
 import me.copimine.endevent.domain.BossAnimationId;
 import me.copimine.endevent.domain.BossAnimationPriorityPolicy;
@@ -1431,6 +1434,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, Long> tentacleAmbushTargetMillis = new HashMap<>();
     /** Absolute tick at which each small melee Kagune retracts. */
     private final Map<UUID, Long> smallKaguneExpiryTicks = new HashMap<>();
+    /**
+     * Contract 20: the three-row Kagune ring cast. The layout is chosen once
+     * per cast from a seed, and the claim set is what guarantees one damage
+     * event per player across ALL THREE rows rather than one per row.
+     */
+    private KaguneRingGapPolicy.Layout kaguneRingLayout;
+    private final KaguneRingCastPolicy kaguneRingCast = new KaguneRingCastPolicy();
+    private int kaguneRingRow = -1;
+    private int kaguneRingRowTick;
+    private long kaguneRingCastEndTick = -1L;
+    private final Set<UUID> kaguneRingDisplays = new LinkedHashSet<>();
+    private long kaguneRingCastGeneration = Long.MIN_VALUE;
     /**
      * Contract 22.1: the cocoon fall is an authored ONCE-PER-GENERATION
      * sequence. These three flags are the durable memory that stops a restart
@@ -45540,6 +45555,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (tickCocoonFall()) {
             return false;
         }
+        // Contract 20: the ring rows advance on the boss's own tick, so the
+        // three rows sweep outward in order instead of all emerging at once.
+        tickKaguneRingCast(boss);
         Location anchor = finalSealCoreAnchorLocation();
         if (anchor == null || anchor.getWorld() == null
                 || !anchor.getWorld().equals(boss.getWorld())) {
@@ -45770,6 +45788,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (bossPhase == BossPhase.RIFT && transition.entered().contains(BossPhase.RIFT)) {
             startCurrentRiftFractures(boss);
+        }
+        // Contract 20: a phase change ends the ring cast; its rows must not
+        // carry over into the next phase as orphaned hazards.
+        if (!transition.entered().isEmpty()) {
+            clearKaguneRingCast("phase-transition");
         }
         // Contract 15.5: entering the final seal stops echo generation and
         // dissolves every decoy. A surviving decoy would otherwise become a
@@ -47845,6 +47868,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             previousBossSpell = spell;
             return startTentacleAmbush(boss, target);
+        }
+        if (spell == EndRiftAiPolicy.BossSpell.SMALL_KAGUNE
+                && kaguneRingCastEndTick < 0L
+                && KaguneRingGapPolicy.patternPossible(
+                        Math.max(1, activeBossParticipants().size()),
+                        KaguneRingGapPolicy.ROW_EMERGE_RADIUS[0])
+                && eventTickCounter % 3 == 0) {
+            // Contract 20: in RIFT and later the Kagune answer is the three-row
+            // ring, not the small summons. The ring needs a feasible escape
+            // pattern for the current party or it refuses to fire at all.
+            Player anchor = currentBrainTarget(boss, spell);
+            if (anchor != null && reserveBossHazard(spell, anchor)) {
+                previousBossSpell = spell;
+                if (boss.getWorld().getTime() >= 0L && startKaguneRingCast(boss)) {
+                    return true;
+                }
+                releaseBossHazardReservation("kagune-ring-refused");
+            }
         }
         if (spell == EndRiftAiPolicy.BossSpell.SMALL_KAGUNE) {
             Player anchor = currentBrainTarget(boss, spell);
@@ -50099,6 +50140,152 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * encounter. The policy owns the stage order, the timing and the fury
      * profile; this method only refuses to replay it.
      */
+    /**
+     * Contract 20: three sequential expanding rows of Kagune, each a closed
+     * ring around the boss with two-block gaps the party escapes through.
+     *
+     * <p>KaguneRingGapPolicy owns the geometry (deterministic per seed, never a
+     * gap centred on a player, never three rows lining up into one lane) and
+     * KaguneRingCastPolicy owns the once-per-cast damage claim.</p>
+     */
+    private boolean startKaguneRingCast(LivingEntity boss) {
+        if (boss == null) {
+            return false;
+        }
+        if (generation != kaguneRingCastGeneration) {
+            kaguneRingCastGeneration = generation;
+            kaguneRingCast.reset();
+        }
+        List<Player> roster = activeBossParticipants();
+        if (roster.isEmpty()) {
+            return false;
+        }
+        List<Double> playerAngles = new ArrayList<>();
+        Location core = boss.getLocation();
+        for (Player player : roster) {
+            double dx = player.getLocation().getX() - core.getX();
+            double dz = player.getLocation().getZ() - core.getZ();
+            playerAngles.add(Math.atan2(dz, dx));
+        }
+        long seed = eventTickCounter * 31L + roster.size();
+        KaguneRingGapPolicy.Layout layout = KaguneRingGapPolicy.layout(
+                seed, roster.size(), playerAngles, List.of());
+        if (layout == null || !layout.feasible()) {
+            // An escape that does not exist is worse than no cast at all.
+            getLogger().info("KAGUNE_RING_REFUSED event=" + eventId
+                    + " generation=" + generation + " reason=infeasible-layout"
+                    + " players=" + roster.size());
+            return false;
+        }
+        kaguneRingLayout = layout;
+        kaguneRingRow = 0;
+        kaguneRingRowTick = 0;
+        kaguneRingCastEndTick = eventTickCounter
+                + (long) ROW_TICKS * KaguneRingGapPolicy.ROW_COUNT;
+        renderKaguneRingRow(boss, layout, 0);
+        getLogger().info("KAGUNE_RING_CAST_START event=" + eventId
+                + " generation=" + generation + " boss=" + boss.getUniqueId()
+                + " seed=" + seed + " players=" + roster.size()
+                + " rows=" + KaguneRingGapPolicy.ROW_COUNT
+                + " gaps=" + KaguneRingGapPolicy.gapCount(roster.size()));
+        return true;
+    }
+
+    /** One authored row lifetime: emerge, sweep outward, retire. */
+    private static final int ROW_TICKS = 30;
+
+    private void tickKaguneRingCast(LivingEntity boss) {
+        if (kaguneRingLayout == null || kaguneRingRow < 0 || generation != kaguneRingCastGeneration) {
+            return;
+        }
+        kaguneRingRowTick++;
+        if (kaguneRingRowTick < ROW_TICKS) {
+            return;
+        }
+        int next = kaguneRingRow + 1;
+        if (next >= KaguneRingGapPolicy.ROW_COUNT || eventTickCounter > kaguneRingCastEndTick) {
+            clearKaguneRingCast("cast-complete");
+            return;
+        }
+        kaguneRingRow = next;
+        kaguneRingRowTick = 0;
+        renderKaguneRingRow(boss, kaguneRingLayout, next);
+        damageKaguneRingRow(boss, kaguneRingLayout, next);
+    }
+
+    private void renderKaguneRingRow(LivingEntity boss, KaguneRingGapPolicy.Layout layout, int rowIndex) {
+        KaguneRingGapPolicy.Row row = layout.row(rowIndex);
+        if (row == null || boss == null) {
+            return;
+        }
+        World world = boss.getWorld();
+        Location centre = boss.getLocation();
+        int points = 72;
+        for (int step = 0; step < points; step++) {
+            double direction = KaguneRingGapPolicy.wrap(2.0D * Math.PI * step / points);
+            if (KaguneRingGapPolicy.insideGap(row, direction)) {
+                continue;
+            }
+            double x = centre.getX() + Math.cos(direction) * row.emergeRadius();
+            double z = centre.getZ() + Math.sin(direction) * row.emergeRadius();
+            world.spawnParticle(Particle.CRIMSON_SPORE,
+                    new Location(world, x, centre.getY() + 0.6D, z), 2, 0.05D, 0.3D, 0.05D, 0.0D);
+            world.spawnParticle(Particle.SOUL_FIRE_FLAME,
+                    new Location(world, x, centre.getY() + 0.9D, z), 1, 0.05D, 0.2D, 0.05D, 0.0D);
+        }
+    }
+
+    private void damageKaguneRingRow(LivingEntity boss, KaguneRingGapPolicy.Layout layout, int rowIndex) {
+        KaguneRingGapPolicy.Row row = layout.row(rowIndex);
+        if (row == null) {
+            return;
+        }
+        Location centre = boss.getLocation();
+        double damage = KaguneGuardianFightPolicy.BASE_STRIKE_DAMAGE;
+        for (Player player : activeBossParticipants()) {
+            if (!player.getWorld().equals(centre.getWorld())) {
+                continue;
+            }
+            double dx = player.getLocation().getX() - centre.getX();
+            double dz = player.getLocation().getZ() - centre.getZ();
+            double radius = Math.sqrt(dx * dx + dz * dz);
+            double direction = KaguneRingGapPolicy.wrap(Math.atan2(dz, dx));
+            if (!KaguneRingGapPolicy.rowHits(layout, rowIndex, radius, direction)) {
+                continue;
+            }
+            // Contract 20.3: one direct damage event per player per OVERALL
+            // cast - the claim is what stops three rows stacking onto one
+            // player, so it is checked here and nowhere else.
+            if (!kaguneRingCast.claim(player.getUniqueId())) {
+                continue;
+            }
+            LivingEntity attacker = boss.isValid() ? boss : player;
+            player.damage(damage, attacker);
+            Vector outward = new Vector(dx, 0.0D, dz);
+            if (outward.lengthSquared() < 0.01D) {
+                outward = new Vector(0.0D, 0.0D, 1.0D);
+            }
+            outward.normalize().multiply(KaguneGuardianFightPolicy.KNOCKBACK_MIN_BLOCKS * 0.5D);
+            player.setVelocity(player.getVelocity().add(outward));
+        }
+    }
+
+    private void clearKaguneRingCast(String reason) {
+        int cleared = kaguneRingCast.hitCount();
+        int displays = kaguneRingDisplays.size();
+        kaguneRingDisplays.clear();
+        kaguneRingLayout = null;
+        kaguneRingRow = -1;
+        kaguneRingRowTick = 0;
+        kaguneRingCastEndTick = -1L;
+        kaguneRingCast.reset();
+        if (cleared > 0 || displays > 0) {
+            getLogger().info("KAGUNE_RING_CAST_CLEARED event=" + eventId
+                    + " generation=" + generation + " reason=" + reason
+                    + " hits=" + cleared + " displays=" + displays);
+        }
+    }
+
     private void beginCocoonFall(LivingEntity boss) {
         if (generation != cocoonFallGeneration) {
             // A new generation starts the ledger clean; a stale one may not

@@ -49734,6 +49734,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (boss == null || !boss.isValid() || boss.isDead() || config == null
                 || bossPhase != BossPhase.LAST_SEAL
                 || tentacleGuardianRegenerationDisabled()
+                // Contract 17.4: "It must stop permanently after the cocoon is
+                // destroyed." The ledger flag is generation-scoped and durable,
+                // so this survives a restart where a live shield check might not.
+                || guardianDeaths.cocoonBroken()
                 || !tentacleGuardianShielded()) {
             return;
         }

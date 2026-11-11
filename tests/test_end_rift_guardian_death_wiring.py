@@ -81,3 +81,12 @@ def test_a_destroyed_slot_is_never_a_living_defender():
     assert "guardianDeaths.isDestroyed(state.slot())" in body, (
         "a destroyed slot must never count as a living defender"
     )
+
+def test_regeneration_stops_permanently_after_the_cocoon_breaks():
+    """Contract 17.4: regeneration must not resume once the cocoon is gone."""
+    text = source()
+    body = text[text.index("private void tickGuardianProtectedRegeneration("):]
+    body = body[: body.index("\n    }")]
+    assert "guardianDeaths.cocoonBroken()" in body, (
+        "a broken cocoon must gate regeneration independently of the live shield"
+    )

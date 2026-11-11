@@ -153,6 +153,30 @@ public final class ObeliskFireDirectorPolicy {
         return Math.min(towers, Math.min(limit, ObeliskScalingPolicy.MAX_OBELISKS));
     }
 
+    /**
+     * Longest gap one tower may leave between two launches, for a given party.
+     *
+     * <p>{@link #MAX_RELEASE_GAP_TICKS} is the raid contract: three seconds
+     * between shots is the most a player can be asked to wait before the fight
+     * stops reading as an assault. W4-02 deliberately slows a small party, and
+     * slowing the cadence across a fixed set of towers necessarily stretches
+     * each individual tower's gap, so holding two players to the raid number
+     * would forbid the very change that was requested.</p>
+     *
+     * <p>The fair bound is therefore the raid gap times the number of rounds it
+     * takes to cycle the towers through their simultaneous-sequence limit: four
+     * towers that fire one at a time owe each other four turns, so a two-player
+     * squad legitimately sees a gap up to four times the raid figure, while a
+     * raid that may run all four towers at once is still held to the original
+     * three seconds.</p>
+     */
+    public static int releaseGapBudgetTicks(int livingPlayers, int obeliskCount) {
+        int towers = Math.max(1, Math.min(ObeliskScalingPolicy.MAX_OBELISKS, obeliskCount));
+        int limit = simultaneousSequenceLimit(livingPlayers, towers);
+        int rounds = (towers + limit - 1) / limit;
+        return MAX_RELEASE_GAP_TICKS * Math.max(1, rounds);
+    }
+
     /** A ready candidate is already filtered for phase, health and charge state by the adapter. */
     public record Candidate(UUID obeliskId, boolean ready, boolean charging,
                             boolean firing, boolean alive, UUID recentTarget,

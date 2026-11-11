@@ -657,6 +657,7 @@ $pureTests = @(
   'ShieldOrbitPolicyTest',
   'TentacleGuardianLayoutPolicyTest',
   'TentacleThrowPolicyTest',
+  'Wave7AbilityEffectPolicyTest',
   'Wave7ArchmagePunishPolicyTest',
   'Wave7ArchmageVexPolicyTest',
   'Wave7MarksmanDefenderPolicyTest',
@@ -832,7 +833,13 @@ Invoke-GateStep 'Diff hygiene' {
   $diffOutPath = [IO.Path]::GetTempFileName()
   $diffErrPath = [IO.Path]::GetTempFileName()
   try {
-    $diffProcess = Start-Process -FilePath 'git' -ArgumentList @('diff', '--check') -NoNewWindow -Wait -PassThru -RedirectStandardOutput $diffOutPath -RedirectStandardError $diffErrPath
+    # core.autocrlf=true is the documented convention for this repository, so a
+    # Windows worktree holds CRLF while the blobs are LF. Without cr-at-eol git
+    # treats the CR of every added line as trailing whitespace, which made this
+    # step fail on any uncommitted edit locally while CI (an LF checkout) stayed
+    # green. cr-at-eol tells git the CR is part of the terminator, so real
+    # trailing spaces and tabs are still reported.
+    $diffProcess = Start-Process -FilePath 'git' -ArgumentList @('-c', 'core.whitespace=cr-at-eol', 'diff', '--check') -NoNewWindow -Wait -PassThru -RedirectStandardOutput $diffOutPath -RedirectStandardError $diffErrPath
     $diffExitCode = $diffProcess.ExitCode
     if (Test-Path -LiteralPath $diffOutPath) { Get-Content -LiteralPath $diffOutPath | Write-Host }
   } finally {

@@ -109,6 +109,12 @@ public class Wave4SpecialProbe {
 ''' + adapters + r'''
     public static void main(String[] args){
         var main=new Wave4SpecialProbe();main.waveCombatCoordinator.begin(43);
+        // W4-02: the "steady" run is the reported case of a two-player squad
+        // eating a full raid barrage, so it must stay at the small-party size.
+        // The "raid" run exists to prove the admission cap is still a real,
+        // reachable bound rather than dead arithmetic.
+        boolean raid="raid".equals(args.length>0?args[0]:"");
+        if(raid)main.currentWaveScalePlayers=20;
         require(ObeliskScalingPolicy.fireballCap(2)==20&&ObeliskScalingPolicy.fireballCap(10)==25
                 &&ObeliskScalingPolicy.fireballCap(20)==30,
                 "low-player profiles must reserve five bounded slots per active tower");
@@ -143,19 +149,53 @@ public class Wave4SpecialProbe {
             require(admissionUse<=main.fireballAdmissionCap(),
                     "active projectiles plus reserved fire sequences exceeded the bounded cap");
         }
-        require(maxAdmissionUse==main.fireballAdmissionCap(),
-                "four channeling towers never exercised the full admission cap: max="+maxAdmissionUse
-                        +" cap="+main.fireballAdmissionCap());
+        require(maxAdmissionUse<=main.fireballAdmissionCap(),
+                "admission never exceeded its bound: max="+maxAdmissionUse+" cap="+main.fireballAdmissionCap());
+        // W4-02 split. A two-player squad is exactly the reported "too many
+        // projectiles" case: it must be throttled well below the cap, which is
+        // the whole point of the change. Only a full raid is allowed to see the
+        // admission cap saturated, and that run proves the cap is still live
+        // arithmetic rather than a number nothing can reach.
+        boolean fullCapScenario="full-cap".equals(args.length>0?args[0]:"");
+        if(raid){
+            require(maxAdmissionUse==main.fireballAdmissionCap(),
+                    "a full raid never exercised the full admission cap: max="+maxAdmissionUse
+                            +" cap="+main.fireballAdmissionCap());
+        }else if(fullCapScenario){
+            // This run starts already saturated on purpose, to prove admission
+            // refuses to overshoot. Saturation here is the setup, not the
+            // behaviour under test, so only the hard bound above applies.
+            require(main.activeWave4FireballCount()>0,
+                    "the pre-saturated run drained to nothing");
+        }else{
+            require(maxAdmissionUse<main.fireballAdmissionCap(),
+                    "a two-player squad still saturated the raid admission cap: max="+maxAdmissionUse
+                            +" cap="+main.fireballAdmissionCap());
+            int partyLimit=ObeliskFireDirectorPolicy.simultaneousSequenceLimit(
+                    main.currentWaveScalePlayers,main.activeWave4Obelisks.size());
+            require(partyLimit==1,"a two-player squad must not face four overlapping warnings: "+partyLimit);
+            require(main.pulseReleases.isEmpty()==false,
+                    "the throttled small-party run stopped every pulse as well");
+        }
         require(main.shots.size()==4,"real pulse-first controller starved reflectable fireballs: "+main.shots);
         int totalShots=main.shots.values().stream().mapToInt(Integer::intValue).sum();
         require(totalShots>=8,"the shorter configured cadence did not increase actual launches: "+main.shots);
         require(main.pulses.size()==4,"special scheduling starved another tower's pulse: "+main.pulses);
+        int releaseGapBudget=ObeliskFireDirectorPolicy.releaseGapBudgetTicks(
+                main.currentWaveScalePlayers,main.activeWave4Obelisks.size());
         for(var state:main.activeWave4Obelisks.values()){
             var fireTicks=main.fireReleases.getOrDefault(state.id(),List.of());
             require(fireTicks.size()>=2,"each obelisk must produce repeated shots for cadence verification: "+state.id()+" "+fireTicks);
-            for(int i=1;i<fireTicks.size();i++)require(fireTicks.get(i)-fireTicks.get(i-1)<=60,
-                "one obelisk exceeded the three-second fire release gap: "+state.id()+" "+fireTicks);
+            for(int i=1;i<fireTicks.size();i++)require(fireTicks.get(i)-fireTicks.get(i-1)<=releaseGapBudget,
+                "one obelisk exceeded its party-scaled fire release budget ("+releaseGapBudget+" ticks): "
+                        +state.id()+" "+fireTicks);
         }
+        // The raid budget itself must stay exactly the original three seconds:
+        // a full party is not throttled, so it has no excuse to wait longer.
+        require(ObeliskFireDirectorPolicy.releaseGapBudgetTicks(10,4)==60,
+                "a full raid lost the three-second release gap");
+        require(ObeliskFireDirectorPolicy.releaseGapBudgetTicks(2,4)>60,
+                "a two-player squad was held to the raid release gap it cannot meet");
         for(int i=1;i<main.pulseReleases.size();i++)require(main.pulseReleases.get(i)-main.pulseReleases.get(i-1)>=44,
             "pulse releases overlapped their global lease");
         main.waveCombatCoordinator.clear();

@@ -159,6 +159,42 @@ public final class Wave7AbilityEffectPolicy {
             new Pass(Shape.IMPACT_BURST, 18, 0.0D, 2.0D, 0.9D, 0.05D,
                     "SOUL_FIRE_FLAME", DUST_PURPLE, false));
 
+    /**
+     * The Marksman's one-shot defender summon.
+     *
+     * <p>W7-03: this identity was dispatched to the effect runtime but had no
+     * authored passes at all, so the single most important beat of the trial —
+     * a Giant arriving because the party pushed the archer below half health —
+     * happened in silence and with no visual. It gets a rising green pillar so
+     * the arrival is read from across the room.</p>
+     */
+    private static final List<Pass> MARKSMAN_DEFENDER = List.of(
+            new Pass(Shape.GROUND_RING, 30, 0.0D, 3.2D, 0.0D, 0.0D,
+                    "HAPPY_VILLAGER", DUST_GREEN, false),
+            new Pass(Shape.HELIX, 30, 2.0D, 0.8D, 3.0D, 0.0D,
+                    "END_ROD", DUST_GREEN, true),
+            new Pass(Shape.SELF_AURA, 14, 0.0D, 1.2D, 1.8D, 0.06D,
+                    "CRIT", DUST_GREEN, true));
+
+    /**
+     * The pair's joint crossfire.
+     *
+     * <p>W7-03: this is the strongest move the Marksman trial has, and it had no
+     * authored signature at all — it was dispatched under its own id and fell
+     * through to an empty pass list, so the one moment the two archers fire
+     * together looked exactly like two ordinary shots. It gets two crossing
+     * lances so the X they form is visible from the target's own position.</p>
+     */
+    private static final List<Pass> MARKSMAN_PAIRED_CROSSFIRE = List.of(
+            new Pass(Shape.GROUND_RING, 20, 0.0D, 2.2D, 0.0D, 0.0D,
+                    "END_ROD", DUST_CYAN, true),
+            new Pass(Shape.AIM_LANCE, 18, 15.0D, 0.85D, 0.0D, 0.0D,
+                    "ELECTRIC_SPARK", DUST_CYAN, true),
+            new Pass(Shape.IMPACT_BURST, 16, 0.0D, 1.6D, 0.9D, 0.05D,
+                    "CRIT", DUST_WHITE, true),
+            new Pass(Shape.SELF_AURA, 10, 0.0D, 0.6D, 1.5D, 0.05D,
+                    "CRIT", DUST_CYAN, true));
+
     private Wave7AbilityEffectPolicy() {
     }
 
@@ -172,6 +208,8 @@ public final class Wave7AbilityEffectPolicy {
             case "MARKSMAN_HEAVY_SHOT" -> MARKSMAN_HEAVY;
             case "MARKSMAN_SPREAD_SHOT" -> MARKSMAN_SPREAD;
             case "MARKSMAN_SUPPORT" -> MARKSMAN_SUPPORT;
+            case "MARKSMAN_PAIRED_CROSSFIRE" -> MARKSMAN_PAIRED_CROSSFIRE;
+            case "MARKSMAN_DEFENDER" -> MARKSMAN_DEFENDER;
             case "ARCHMAGE_FANGS" -> ARCHMAGE_FANGS;
             case "ARCHMAGE_SPEAR" -> ARCHMAGE_SPEAR;
             case "ARCHMAGE_STEP" -> ARCHMAGE_STEP;
@@ -198,6 +236,8 @@ public final class Wave7AbilityEffectPolicy {
             case "MARKSMAN_HEAVY_SHOT" -> "ENTITY_ARROW_HIT_PLAYER";
             case "MARKSMAN_SPREAD_SHOT" -> "ENTITY_ARROW_SHOOT";
             case "MARKSMAN_SUPPORT" -> "BLOCK_AMETHYST_BLOCK_CHIME";
+            case "MARKSMAN_PAIRED_CROSSFIRE" -> "ENTITY_ARROW_SHOOT";
+            case "MARKSMAN_DEFENDER" -> "ENTITY_RAVAGER_ROAR";
             case "ARCHMAGE_FANGS" -> "ENTITY_EVOKER_CAST_SPELL";
             case "ARCHMAGE_SPEAR" -> "ITEM_TRIDENT_THROW";
             case "ARCHMAGE_STEP" -> "ENTITY_ENDERMAN_TELEPORT";
@@ -228,7 +268,17 @@ public final class Wave7AbilityEffectPolicy {
         };
     }
 
+    /**
+     * Canonical form of an ability identity.
+     *
+     * <p>The runtime hands the policy the bare attack name, while the dispatcher
+     * and the logs carry the {@code WAVE7_} prefix. Both mean the same ability,
+     * so the prefix is stripped here instead of at every call site: a policy
+     * that answers an empty pass list for one spelling is a silent, invisible
+     * ability, and that failure mode has already shipped once.</p>
+     */
     private static String normalize(String abilityId) {
-        return abilityId.trim().toUpperCase(java.util.Locale.ROOT);
+        String canonical = abilityId.trim().toUpperCase(java.util.Locale.ROOT);
+        return canonical.startsWith("WAVE7_") ? canonical.substring("WAVE7_".length()) : canonical;
     }
 }

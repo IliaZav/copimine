@@ -756,3 +756,57 @@ real slice, not a one-line unblock. Moving the tick call alone would start
 invisible damage on live players, which is worse than the current nothing.
 
 Recorded as unfinished. It is not claimed working.
+
+## What the screenshots actually contain, measured
+
+The only Minecraft screenshots in the Prism instance are eight PNGs from
+10 November, 23:28 to 23:35 — the playtest that prompted this work. Nothing
+captured since. So every visual claim in this ledger about waves, fog, spells or
+the boss stands on code and automated tests, not on a single pixel anyone has
+looked at.
+
+I sampled those eight numerically rather than describing them. Method: load the
+PNG, convert to RGB, average each of three horizontal bands on a 7-pixel stride,
+report the mean per channel and the blue-minus-red difference.
+
+```
+2026-11-10_23.31.34_3.png   1920x1080
+  top     rgb=(17, 25, 32)   blue-red  +15
+  mid     rgb=(56, 49, 46)   blue-red  -10
+  bottom  rgb=(100, 82, 66)  blue-red  -34
+
+2026-11-10_23.35.27.png     1920x1080
+  top     rgb=(16, 22, 27)   blue-red  +11
+  mid     rgb=(94, 77, 65)   blue-red  -29
+  bottom  rgb=(124, 104, 81) blue-red  -43
+```
+
+A positive blue-red at the top of frame means the fog reads blue-teal. The
+corrected palette in `wave5_volume.fsh` is a dark violet:
+
+```glsl
+vec3 ink = mix(vec3(0.015,0.009,0.017), vec3(0.052,0.032,0.046), eddy*eddy);
+ink += soul * vec3(0.055, 0.018, 0.075);
+```
+
+That soul term scores blue-red `0.075 - 0.055 = +0.020`, and the base sits at
+`0.046 - 0.052 = -0.006`. The stale teal it replaced was
+`soul * vec3(0.015, 0.080, 0.090)`, scoring `0.090 - 0.015 = +0.075` — nearly
+four times bluer. The shots measure +15/255 ≈ +0.059, which is the stale
+palette, not the corrected one.
+
+That is consistent with the independent finding that the installed Prism client
+is a different build from the pinned one: 564 entries against 565, fifteen
+entries differing, all Wave 5 fog, and `BlackFogGuidePolicy.class` absent
+entirely. The player was looking at an older client.
+
+Two conclusions worth keeping separate:
+
+1. The source now holds the violet palette, verified by reading the shader.
+2. No screenshot anywhere shows the violet palette running. Whether the fix
+   actually looks right is unverified, and this ledger does not claim otherwise.
+
+The measurement also rules out a specific failure the contract forbids: the fog
+is not "a black screen". The bottom band reads `(100, 82, 66)` — warm, bright,
+and roughly 4.4x the luminance of the top band. Near-floor geometry is plainly
+visible. That much, the screenshots do establish.

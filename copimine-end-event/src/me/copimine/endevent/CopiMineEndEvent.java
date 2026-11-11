@@ -54,6 +54,7 @@ import me.copimine.endevent.domain.Wave7MarksmanDefenderPolicy;
 import me.copimine.endevent.domain.BossAbilityState;
 import me.copimine.endevent.domain.BossAbilityId;
 import me.copimine.endevent.domain.SmallKagunePolicy;
+import me.copimine.endevent.domain.SmallKaguneSpawnPolicy;
 import me.copimine.endevent.domain.BossAbilitySelector;
 import me.copimine.endevent.domain.BossAnimationId;
 import me.copimine.endevent.domain.BossAnimationPriorityPolicy;
@@ -47865,8 +47866,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         int active = (int) tentacleController.states().values().stream()
                 .filter(state -> state.kind() == TentacleAnimationPolicy.Kind.SMALL).count();
-        int budget = Math.min(SmallKagunePolicy.budget(eventScalePlayers(), tuning.maxActive(), active),
-                Math.max(0, TentacleController.MAX_TEMPORARY - tentacleController.temporaryCount()));
+        // Contract 18.1: up to thirty LIVING small Kagune, batch-scaled by the
+        // admitted party. Deliberately NOT clamped by the retired six-temporary-
+        // tentacle budget - that budget governs transient cast visuals, and a
+        // small Kagune is a real enemy that must survive on its own count.
+        int budget = SmallKaguneSpawnPolicy.admission(eventScalePlayers(), active);
         int spawned = 0;
         for (int index = 0; index < budget; index++) {
             Player target = roster.get(Math.floorMod(tentacleTargetCursor++, roster.size()));

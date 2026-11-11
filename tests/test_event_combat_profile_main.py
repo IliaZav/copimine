@@ -23,11 +23,18 @@ def test_profile_main_binding_preserves_attempt_and_filters_diagnostic_players(t
     probe.write_text(r'''
 import java.util.*;import java.util.logging.*;
 import me.copimine.endevent.domain.EventPhase;
+import me.copimine.endevent.domain.CocoonFallPolicy;
 import me.copimine.endevent.domain.TentacleGuardianPolicy;
 import me.copimine.endevent.domain.WaveTwoEntityRecoveryPolicy;
 import me.copimine.endevent.runtime.*;
 import me.copimine.endevent.runtime.EventCombatProfileService.Context;
 public class CombatProfileMainProbe {
+    long cocoonFallGeneration=Long.MIN_VALUE;
+    boolean cocoonFallStarted,cocoonLandingPlayed;
+    int cocoonFallElapsedTicks=-1,cocoonFallMoveFailures;
+    me.copimine.endevent.domain.CocoonFallPolicy.Stage cocoonFallStage=
+            me.copimine.endevent.domain.CocoonFallPolicy.Stage.COCOONED;
+
     static final String WAVE_TWO_CLEANUP_UUIDS_PROGRESS_KEY = "wave2-cleanup-uuids";
     static final String WAVE_TWO_OUTSTANDING_UUIDS_PROGRESS_KEY = "wave2-outstanding-uuids";
     static final String WAVE_TWO_CLEANUP_EPOCH_PROGRESS_KEY = "wave2-cleanup-epoch";
@@ -149,6 +156,7 @@ public class CombatProfileMainProbe {
                production / "domain/PressureBudgetController.java", production / "domain/WaveMechanicsPolicy.java", production / "domain/RiftCarrierPolicy.java",
                production / "domain/WaveTwoStagePolicy.java", production / "domain/WaveTwoHuntPolicy.java",
                production / "domain/WaveTwoEntityRecoveryPolicy.java",
+               production / "domain/CocoonFallPolicy.java", production / "domain/EndRiftAiPolicy.java",
                production / "domain/TentacleGuardianPolicy.java", production / "domain/TentacleScalingPolicy.java",
                production / "domain/TentacleAnimationPolicy.java", production / "domain/BossPhase.java",
                production / "runtime/RealitySplitTrialController.java",

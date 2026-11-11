@@ -1471,6 +1471,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean cocoonLandingPlayed;
     private CocoonFallPolicy.Stage cocoonFallStage = CocoonFallPolicy.Stage.COCOONED;
     private int cocoonFallElapsedTicks = -1;
+    private int cocoonFallMoveFailures;
     private final Map<Integer, UUID> guardianShieldDisplayIds = new HashMap<>();
     /** Permanent guardian hitboxes are separate from the client visual carrier. */
     private final Map<UUID, UUID> tentacleHitboxesByDisplay = new HashMap<>();
@@ -4423,6 +4424,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** Restore dead-slot cooldowns and the open window instead of healing every guardian. */
     private void restoreTentacleGuardianState(Map<String, String> progress) {
+        guardianDeaths = new GuardianDeathLedger(Math.max(1L, generation));
+        cocoonFallGeneration = generation;
+        cocoonFallStarted = false;
+        cocoonLandingPlayed = false;
+        cocoonFallStage = CocoonFallPolicy.Stage.COCOONED;
+        cocoonFallElapsedTicks = -1;
+        cocoonFallMoveFailures = 0;
         tentacleGuardianHealth.clear();
         tentacleGuardianRespawnDeadlineMillis.clear();
         tentacleGuardianWarnedSlots.clear();
@@ -4454,6 +4462,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             TentacleGuardianPolicy.SnapshotStateMillis restored =
                     TentacleGuardianPolicy.decodeSnapshotMillis(progress, tentacleActiveMillis);
             if (restored == null) {
+                if (progress != null && progress.containsKey(CocoonFallPolicy.SNAPSHOT_KEY)) {
+                    throw new IllegalArgumentException("COCOON_FALL_WITHOUT_GUARDIAN_SNAPSHOT");
+                }
                 if (progress != null && progress.keySet().stream()
                         .anyMatch(key -> key.startsWith("boss-guardian-respawn-warned."))) {
                     throw new IllegalArgumentException("INVALID_GUARDIAN_WARNING_RECEIPT");
@@ -4463,6 +4474,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             tentacleGuardianHealth.putAll(restored.health());
             tentacleGuardianRespawnDeadlineMillis.putAll(restored.respawnAtMillis());
             tentacleDamageWindowEndsMillis = restored.damageWindowEndsMillis();
+            for (Map.Entry<Integer, Double> entry : restored.health().entrySet()) {
+                guardianDeaths.markAlive(entry.getKey());
+                if (entry.getValue() <= 0.0D) guardianDeaths.recordDeath(entry.getKey());
+            }
+            CocoonFallPolicy.Checkpoint fall = CocoonFallPolicy.restore(progress);
+            if (fall != null) {
+                if (tentacleDamageWindowEndsMillis < 0L || guardianDeaths.livingCount() != 0) {
+                    throw new IllegalArgumentException("COCOON_FALL_WITH_LIVE_SHIELDS");
+                }
+                guardianDeaths.markCocoonBroken();
+                cocoonFallStarted = true;
+                cocoonFallStage = fall.stage();
+                cocoonFallElapsedTicks = fall.elapsedTicks();
+                cocoonLandingPlayed = fall.stage() != CocoonFallPolicy.Stage.FALLING;
+            } else if (tentacleDamageWindowEndsMillis >= 0L && guardianDeaths.livingCount() == 0) {
+                // Old post-break snapshots cannot prove whether landing already
+                // played. Do not silently replay or recreate a shielded cocoon.
+                throw new IllegalArgumentException("COCOON_FALL_CHECKPOINT_MISSING");
+            }
             // A completed warning is active-combat progress too. Preserve its
             // receipt across restart so a save at t=89 does not move t=90 to
             // t=94. Legacy snapshots without a receipt still owe a warning.
@@ -45460,6 +45490,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         tickCurrentRiftFractures(boss);
         tickCurrentTentacles(boss);
         boolean finalSealPinned = pinBossToFinalSealCore(boss);
+        if (generation == cocoonFallGeneration && cocoonFallStarted
+                && cocoonFallStage != CocoonFallPolicy.Stage.MELEE_FURY) {
+            updateBossBar(boss);
+            updateBossHitbox(boss);
+            return;
+        }
         Location core = coreCombatAnchorLocation();
         // The final-seal pin is the stronger position authority.  Running the
         // ordinary leash after it would see the boss on the Core and resolve
@@ -45552,6 +45588,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " generation=" + generation + " reason=final-seal-wall-not-intact");
             return false;
         }
+        // The authored fall owns movement before open-shield pursuit. Returning
+        // true also suppresses the ordinary leash/cast/AI owners for this tick.
+        if (tickCocoonFall()) {
+            return true;
+        }
         // The living shield owns the hover. Once its guardians are defeated,
         // release gravity/pursuit so the exposed boss can actually be reached.
         if (tentacleVulnerabilityOpen()) {
@@ -45567,9 +45608,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // already on the floor in melee fury. Re-pinning it to the hover anchor
         // would drag it back into the air every tick and the fall would never be
         // visible, so the fall owns the boss's position from here on.
-        if (tickCocoonFall()) {
-            return false;
-        }
         // Contract 20: the ring rows advance on the boss's own tick, so the
         // three rows sweep outward in order instead of all emerging at once.
         tickKaguneRingCast(boss);
@@ -46847,7 +46885,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // Contract 10.6: one classification decides both the real HP write and
         // the presentation, so the red flash can never outlive the damage.
         BossHitClassificationPolicy.Hit hit = BossHitClassificationPolicy.classify(
-                false, false, false, true, finalDamage, 1.0D);
+                false, false, false, true, finalDamage, currentBossIncomingDamageMultiplier());
         finalDamage = hit.healthDamage();
         BossRealHealthDamagePolicy.Result result = BossRealHealthDamagePolicy.apply(
                 healthBefore, finalDamage, 1.0D, bossMaxHealth(boss));
@@ -46986,7 +47024,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         double healthBefore = boss.getHealth();
         double rawDamage = projectile instanceof AbstractArrow arrow
                 ? Math.max(0.0D, arrow.getDamage()) : 1.0D;
-        double finalDamage = BossDamagePolicy.applyIncomingDamage(rawDamage);
+        double finalDamage = BossDamagePolicy.applyIncomingDamage(rawDamage)
+                * currentBossIncomingDamageMultiplier();
         BossRealHealthDamagePolicy.Result result = BossRealHealthDamagePolicy.apply(
                 healthBefore, finalDamage, damageDecision, bossMaxHealth(boss));
         if (!result.applied()) {
@@ -47097,7 +47136,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         double healthBefore = boss.getHealth();
         double rawDamage = projectile instanceof AbstractArrow arrow
                 ? Math.max(0.0D, arrow.getDamage()) : 1.0D;
-        double finalDamage = BossDamagePolicy.applyIncomingDamage(rawDamage);
+        double finalDamage = BossDamagePolicy.applyIncomingDamage(rawDamage)
+                * currentBossIncomingDamageMultiplier();
         BossRealHealthDamagePolicy.Result result = BossRealHealthDamagePolicy.apply(
                 healthBefore, finalDamage, damageDecision, bossMaxHealth(boss));
         if (!result.applied()) {
@@ -47715,13 +47755,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 .anyMatch(state -> state.kind() == TentacleAnimationPolicy.Kind.UNDER_PLAYER);
     }
 
+    private boolean isCurrentBossMeleeFury() {
+        return bossPhase == BossPhase.LAST_SEAL && cocoonFallGeneration == generation
+                && cocoonFallStage == CocoonFallPolicy.Stage.MELEE_FURY;
+    }
+
+    private double currentBossIncomingDamageMultiplier() {
+        return isCurrentBossMeleeFury()
+                ? CocoonFallPolicy.acceptedDamageMultiplier(cocoonFallStage) : 1.0D;
+    }
+
+    private List<EndRiftAiPolicy.BossSpell> currentBossSpellPool() {
+        return isCurrentBossMeleeFury() ? CocoonFallPolicy.furySpellProfile()
+                : BossPhasePolicy.spellPool(bossPhase);
+    }
+
     private boolean castCurrentBossSpell(LivingEntity boss, boolean forced) {
         if (boss == null || !isBossCombatRuntimeActive(boss) && !forced
                 || bossAbilityState != BossAbilityState.NONE || bossAmbushOwnsMajorCast()) {
             return false;
         }
         List<EndRiftAiPolicy.BossSpell> available = new ArrayList<>(
-                BossPhasePolicy.spellPool(bossPhase));
+                currentBossSpellPool());
         BossBrain.Decision brainDecision = chooseCurrentBossDecision(boss, available);
         EndRiftAiPolicy.BossSpell spell = spellForAbility(
                 brainDecision == null || brainDecision.ability() == null
@@ -47858,7 +47913,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || bossAmbushOwnsMajorCast()
                 || !forced && bossAbilityState != BossAbilityState.NONE
                 || !arenaInfernoBlocks.isEmpty() && !ArenaInfernoPolicy.allowsConcurrent(spell)
-                || !BossPhasePolicy.spellPool(bossPhase).contains(spell)) {
+                || !currentBossSpellPool().contains(spell)) {
             return false;
         }
         if (forced && bossAbilityState != BossAbilityState.NONE) {
@@ -50123,7 +50178,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (int slot = 0; slot < desired; slot++) {
             Double health = tentacleGuardianHealth.get(slot);
             if (health == null || !Double.isFinite(health) || health > 0.0D
-                    || !tentacleGuardianRespawnDeadlineMillis.containsKey(slot)) {
+                    || !guardianDeaths.isDestroyed(slot)) {
                 return false;
             }
         }
@@ -50142,6 +50197,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         getLogger().info("RIFT_COCOON_BROKEN_PERMANENT event=" + eventId
                 + " generation=" + generation
                 + " destroyed=" + guardianDeaths.destroyedCount());
+        beginCocoonFall(boss);
         if (!saveStateSync()) {
             recoveryReason = "GUARDIAN_DEATH_WINDOW_COMMIT_FAILED";
             forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
@@ -50154,7 +50210,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // Contract 22.1: the last defender dying is the moment the Guardian
         // stops hovering. The descent is authored, not a teleport, and it may
         // happen exactly once per generation.
-        beginCocoonFall(boss);
         return true;
     }
 
@@ -50469,10 +50524,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             cocoonLandingPlayed = false;
             cocoonFallStage = CocoonFallPolicy.Stage.COCOONED;
             cocoonFallElapsedTicks = -1;
+            cocoonFallMoveFailures = 0;
         }
         if (!CocoonFallPolicy.mayStartFall(cocoonFallStarted)) {
             return;
         }
+        // The break ends the old cast generation before the descent can own
+        // position. An already launched cocoon spell must not outlive its owner.
+        cancelBossCastForPhaseChange();
+        clearKaguneRingCast("cocoon-broken");
+        clearActiveRiftProjectiles();
         cocoonFallStarted = true;
         cocoonFallElapsedTicks = 0;
         cocoonFallStage = CocoonFallPolicy.stageAfterLastDefender(
@@ -50497,38 +50558,62 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         LivingEntity boss = liveBoss();
-        if (boss == null || boss.isDead() || !boss.isValid()) {
-            return false;
-        }
         Location floor = coreBlockTopLocation();
-        if (floor == null) {
-            return false;
+        if (boss == null || boss.isDead() || !boss.isValid() || floor == null
+                || floor.getWorld() == null || !floor.getWorld().equals(boss.getWorld())) {
+            recoveryReason = "COCOON_FALL_ACTOR_OR_FLOOR_MISSING";
+            forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
+            return true;
         }
+        if (boss instanceof Mob mob) {
+            mob.getPathfinder().stopPathfinding();
+            mob.setTarget(null);
+            mob.setAI(false);
+            mob.setAware(false);
+        }
+        boss.setGravity(false);
+        boss.setVelocity(new Vector(0.0D, 0.0D, 0.0D));
         Location landing = floor.clone();
-        Location hover = landing.clone().add(0.0D, BossFinalSealAnchorPolicy.HOVER_HEIGHT, 0.0D);
-        double y = CocoonFallPolicy.heightDuringFall(
-                hover.getY(), cocoonFallElapsedTicks);
-        // heightDuringFall returns a height, not a Y: clamp the descent onto the
-        // floor so the boss lands ON the arena rather than through it.
         Location next = landing.clone();
-        next.setY(Math.max(landing.getY(), Math.min(hover.getY(), landing.getY()
-                + Math.max(0.0D, y - landing.getY()))));
-        if (CocoonFallPolicy.landingDue(cocoonFallElapsedTicks)
-                && CocoonFallPolicy.mayPlayLanding(cocoonLandingPlayed)) {
-            cocoonLandingPlayed = true;
-            next = landing.clone();
-            renderCocoonLanding(landing);
+        double height = CocoonFallPolicy.heightDuringFall(
+                BossFinalSealAnchorPolicy.HOVER_HEIGHT, cocoonFallElapsedTicks);
+        next.setY(Math.max(landing.getY(), landing.getY() + height));
+        if (!teleportCombatEntity(boss, next)
+                || !BossFinalSealAnchorPolicy.isAtCore(boss.getX(), boss.getY(), boss.getZ(),
+                        next.getX(), next.getY(), next.getZ(),
+                        BossFinalSealAnchorPolicy.DEFAULT_TOLERANCE)) {
+            if (++cocoonFallMoveFailures >= 3) {
+                recoveryReason = "COCOON_FALL_RELOCATION_REFUSED";
+                forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
+            }
+            return true;
         }
-        boss.teleport(next);
-        CocoonFallPolicy.Stage advanced = CocoonFallPolicy.advance(
-                cocoonFallStage, cocoonFallElapsedTicks);
-        if (advanced != cocoonFallStage) {
-            cocoonFallStage = advanced;
+        cocoonFallMoveFailures = 0;
+        boolean landingNow = CocoonFallPolicy.landingDue(cocoonFallElapsedTicks)
+                && CocoonFallPolicy.mayPlayLanding(cocoonLandingPlayed);
+        // advance takes time IN THIS STAGE, not the whole descent's clock.
+        int stageTicks = cocoonFallStage == CocoonFallPolicy.Stage.LANDING
+                ? Math.max(0, cocoonFallElapsedTicks - CocoonFallPolicy.FALL_TICKS)
+                : cocoonFallElapsedTicks;
+        CocoonFallPolicy.Stage advanced = CocoonFallPolicy.advance(cocoonFallStage, stageTicks);
+        boolean changed = advanced != cocoonFallStage;
+        cocoonFallStage = advanced;
+        cocoonFallElapsedTicks++;
+        if (landingNow) cocoonLandingPlayed = true;
+        // Persist boundaries before publishing impact/fury. In-between samples
+        // use the existing ordered worker, never a synchronous write per tick.
+        if (changed && !saveStateSync()) {
+            recoveryReason = "COCOON_FALL_STAGE_COMMIT_FAILED";
+            forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
+            return true;
+        }
+        if (!changed && cocoonFallElapsedTicks % 5 == 0) saveStateAsync();
+        if (landingNow) renderCocoonLanding(landing);
+        if (changed) {
             getLogger().info("RIFT_COCOON_FALL_STAGE event=" + eventId
                     + " generation=" + generation + " stage=" + cocoonFallStage
                     + " melee_fury=" + CocoonFallPolicy.isMeleeFury(cocoonFallStage));
         }
-        cocoonFallElapsedTicks++;
         return cocoonFallStage != CocoonFallPolicy.Stage.MELEE_FURY;
     }
 
@@ -50600,6 +50685,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void encodeTentacleGuardianState(Map<String, String> encoded) {
+        if (cocoonFallStarted && cocoonFallGeneration == generation) {
+            encoded.put(CocoonFallPolicy.SNAPSHOT_KEY,
+                    new CocoonFallPolicy.Checkpoint(cocoonFallStage, cocoonFallElapsedTicks).encode());
+        }
         if (!tentacleGuardianHealth.isEmpty() || !tentacleGuardianRespawnDeadlineMillis.isEmpty()
                 || tentacleDamageWindowEndsMillis >= 0L) {
             encoded.putAll(TentacleGuardianPolicy.encodeSnapshotMillis(
@@ -50921,6 +51010,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // ledger is generation-scoped, so this is the only place a kill record
         // is legitimately forgotten.
         guardianDeaths = new GuardianDeathLedger(Math.max(1L, generation));
+        cocoonFallGeneration = generation;
+        cocoonFallStarted = false;
+        cocoonLandingPlayed = false;
+        cocoonFallStage = CocoonFallPolicy.Stage.COCOONED;
+        cocoonFallElapsedTicks = -1;
+        cocoonFallMoveFailures = 0;
         tentacleGuardianHealth.clear();
         tentacleGuardianRespawnDeadlineMillis.clear();
         tentacleGuardianWarnedSlots.clear();
@@ -51188,6 +51283,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return null;
         }
         if (!temporary) {
+            guardianDeaths.markAlive(Math.max(0, slot));
             tentacleGuardianHealth.put(Math.max(0, slot), guardianMaxHealth);
             tentacleGuardianRespawnDeadlineMillis.remove(Math.max(0, slot));
             tentacleGuardianWarnedSlots.remove(Math.max(0, slot));
@@ -51685,6 +51781,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!temporary) {
             tentacleGuardianHealth.put(slot, after);
         }
+        if (!temporary && after <= 0.0D) {
+            // Contract 17.1: a destroyed defender is PERMANENT for this
+            // encounter generation. The death ledger records the kill
+            // durably, so neither a respawn timer nor a restart can bring
+            // it back.
+            guardianDeaths.recordDeath(slot);
+            tentacleGuardianRespawnDeadlineMillis.remove(slot);
+            tentacleGuardianWarnedSlots.remove(slot);
+            tentacleNextAttackTick.remove(display.getUniqueId());
+            if (!saveStateSync()) {
+                recoveryReason = "GUARDIAN_DEATH_COMMIT_FAILED";
+                forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
+                return;
+            }
+            getLogger().info("RIFT_GUARDIAN_DESTROYED event=" + eventId
+                    + " slot=" + slot + " generation=" + generation
+                    + " destroyed=" + guardianDeaths.destroyedCount()
+                    + " living=" + guardianDeaths.livingCount());
+        }
         updateTentacleGuardianHealthVisual(display, after, maximum);
         display.getWorld().playSound(display.getLocation(),
                 after <= 0.0D ? Sound.BLOCK_RESPAWN_ANCHOR_DEPLETE
@@ -51698,20 +51813,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " health_after=" + String.format(Locale.ROOT, "%.3f", after)
                 + " visual=" + readString(display, keyTentacleHealthState));
         if (after <= 0.0D) {
-            if (!temporary) {
-                // Contract 17.1: a destroyed defender is PERMANENT for this
-                // encounter generation. The death ledger records the kill
-                // durably, so neither a respawn timer nor a restart can bring
-                // it back.
-                guardianDeaths.recordDeath(slot);
-                getLogger().info("RIFT_GUARDIAN_DESTROYED event=" + eventId
-                        + " slot=" + slot + " generation=" + generation
-                        + " destroyed=" + guardianDeaths.destroyedCount()
-                        + " living=" + guardianDeaths.livingCount());
-                tentacleGuardianRespawnDeadlineMillis.remove(slot);
-                tentacleGuardianWarnedSlots.remove(slot);
-                tentacleNextAttackTick.remove(display.getUniqueId());
-            }
             setTentacleState(display, TentacleAnimationPolicy.State.DYING, null);
             return;
         }

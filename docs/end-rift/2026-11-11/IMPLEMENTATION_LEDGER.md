@@ -661,3 +661,41 @@ recognises a legitimate predecessor rather than a foreign file dropped into the
 plugins directory, and the previous candidate is exactly that.
 
 `tests/test_minecraft_migration_server_plugins.py`: 137 passed, 4 skipped.
+
+## A red run that was not our fault
+
+Run `43092554243` at `97b8e43f` finished red with two failing steps:
+
+```
+[failure] Publish Python test report
+[failure] Upload CI diagnostics
+```
+
+Neither is a test. Both are `actions/upload-artifact`, and both failed the same
+way:
+
+```
+Attempt 1 of 5 failed with error: Unexpected token '<', "<!DOCTYPE "... is not valid JSON.
+...
+##[error]Failed to CreateArtifact: Failed to make request after 5 attempts
+```
+
+The artifact API answered with an HTML error page five times running. That is
+GitHub being unavailable, not a defect in this branch.
+
+The tests in the same job passed:
+
+```
+3361 passed, 10 skipped, 124 warnings, 2 subtests passed in 521.15s
+```
+
+Recording it because a red X on a commit is the kind of thing that gets read as
+"the build is broken" a week later, and the difference between "our test failed"
+and "their upload endpoint was down" is invisible unless someone writes it down.
+The run was re-triggered with `gh run rerun --failed`, which re-executes only the
+two upload steps.
+
+Worth pairing with the earlier entry: the first two red runs on this branch were
+genuinely ours - a stale plugin lock - and this third one is not. Both looked
+identical from the run list. The way to tell them apart is to open the job and
+read which step failed, not to look at the badge.

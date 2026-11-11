@@ -52,13 +52,10 @@ def test_the_fall_cannot_replay_in_one_generation():
 
 def test_the_descent_overrides_the_hover_pin():
     """The defect this whole file exists for: pin vs fall fighting."""
-    text = source()
-    pin_site = text.index("Location anchor = finalSealCoreAnchorLocation();")
-    hook = text.rindex("if (tickCocoonFall())", 0, pin_site)
-    assert pin_site - hook < 400, (
-        "the fall must be ticked immediately before the hover anchor is applied, "
-        "otherwise the pin wins every tick and the fall is invisible"
-    )
+    pin = body("private boolean pinBossToFinalSealCore(")
+    # An earlier vulnerability return used to make this hook unreachable.
+    assert pin.index("if (tickCocoonFall())") < pin.index("if (tentacleVulnerabilityOpen())")
+    assert "if (tickCocoonFall()) {\n            return true;" in pin
 
 
 def test_the_boss_actually_moves_during_the_fall():
@@ -66,8 +63,8 @@ def test_the_boss_actually_moves_during_the_fall():
     assert "CocoonFallPolicy.heightDuringFall(" in tick, (
         "descent height must come from the policy"
     )
-    assert "teleport(" in tick, (
-        "an authored descent must move the entity, not just animate a number"
+    assert "teleportCombatEntity(boss, next)" in tick, (
+        "descent must use the owned teleport permit and honour cancellation"
     )
     # The boss must never be driven below the floor it is landing on.
     assert "Math.max(landing.getY()" in tick, (

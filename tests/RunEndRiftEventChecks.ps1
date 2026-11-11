@@ -449,6 +449,11 @@ $pureTests = @(
   'BossDamagePolicyTest',
   'ArenaInfernoPolicyTest',
   'Wave6CrystalLifecycleTest',
+  # Wave 6 pillar roster and the marksman on the final pillar. The Ram had no
+  # gate coverage before this: its rules lived only in python probes, so a
+  # regression in the roster could not fail the End Rift gate.
+  'RiftRamPillarRosterPolicyTest',
+  'WaveSixPillarSkeletonPolicyTest',
   'BossEdgeVolleyPolicyTest',
   'GuardianRegenerationPolicyTest',
   'Wave4ObeliskRecoverySnapshotTest',

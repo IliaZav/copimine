@@ -60,6 +60,7 @@ import me.copimine.endevent.domain.GuardianDeathLedger;
 import me.copimine.endevent.domain.KaguneCocoonGuardianPolicy;
 import me.copimine.endevent.domain.EchoDecoyPolicy;
 import me.copimine.endevent.domain.CocoonFallPolicy;
+import me.copimine.endevent.domain.BossSummonAdmissionPolicy;
 import me.copimine.endevent.domain.KaguneGuardianFightPolicy;
 import me.copimine.endevent.domain.KaguneRingCastPolicy;
 import me.copimine.endevent.domain.KaguneRingGapPolicy;
@@ -55169,6 +55170,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // replica of the Guardian itself - not a pair of spiders. The policy owns
         // the 50 HP, the cap of five and the ~150 s summon cooldown.
         if (bossPhase == BossPhase.RAGE && summonEchoDecoys(boss)) {
+            return;
+        }
+        // Contract 14.6: NO skeleton towers or skeleton archer turrets in any
+        // boss phase - the only approved skeleton-on-pillar mechanic is Wave 6.
+        // This gate exists because the failure mode is silent: a wave summon
+        // helper reused by the boss would put a skeleton on a pillar with
+        // nothing in the build to complain. Asked here, before anything spawns.
+        if (!BossSummonAdmissionPolicy.allowsSkeletonSummon(bossPhase, "SPIDER")) {
+            getLogger().warning("BOSS_SUMMON_REFUSED event=" + eventId
+                    + " phase=" + bossPhase + " reason="
+                    + BossSummonAdmissionPolicy.refusalReason(bossPhase, "SPIDER"));
             return;
         }
         BossPhasePolicy.CombatProfile profile = currentBossCombatProfile();

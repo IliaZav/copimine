@@ -48,6 +48,10 @@ public class GuardianWarningRestartProbe {
     final TentacleController tentacleController=new TentacleController();
     final Map<Integer,Double> tentacleGuardianHealth=new HashMap<>();
     final Map<Integer,Long> tentacleGuardianRespawnDeadlineMillis=new HashMap<>();
+    // Contract 17.1: the spawn loop consults the death ledger before rebuilding
+    // a slot, so the field has to exist even where this probe ignores it.
+    final me.copimine.endevent.domain.GuardianDeathLedger guardianDeaths=
+            new me.copimine.endevent.domain.GuardianDeathLedger(7L);
     final Set<Integer> tentacleGuardianWarnedSlots=new HashSet<>();
     final Map<Integer,Integer> tentacleGuardianSpawnFailures=new HashMap<>();
     final Map<UUID,Entity> ownedEntities=new HashMap<>();

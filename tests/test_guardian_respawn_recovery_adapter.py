@@ -61,6 +61,10 @@ public class GuardianRespawnRecoveryProbe {
     final TentacleController tentacleController=new TentacleController();
     final Map<Integer,Double> tentacleGuardianHealth=new HashMap<>();
     final Map<Integer,Long> tentacleGuardianRespawnDeadlineMillis=new HashMap<>();
+    // Contract 17.1: the death ledger is the authority that refuses a spawn for
+    // a destroyed slot, so the spawn loop reads it on every tick.
+    final me.copimine.endevent.domain.GuardianDeathLedger guardianDeaths=
+            new me.copimine.endevent.domain.GuardianDeathLedger(7L);
     final Set<Integer> tentacleGuardianWarnedSlots=new HashSet<>();
     final Map<Integer,Integer> tentacleGuardianSpawnFailures=new HashMap<>();
     final Map<UUID,Entity> ownedEntities=new HashMap<>();
@@ -251,7 +255,7 @@ public class GuardianRespawnRecoveryProbe {
     classes = [SOURCES / ("me/copimine/endevent/" + name + ".java") for name in (
         "domain/TentacleGuardianPolicy", "domain/TentacleScalingPolicy",
         "domain/TentacleAnimationPolicy", "domain/BossPhase", "runtime/TentacleController",
-        "domain/GuardianRegenerationPolicy",
+        "domain/GuardianRegenerationPolicy", "domain/GuardianDeathLedger",
     )]
     result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path),
                              *map(str, classes), str(probe)], capture_output=True, text=True)

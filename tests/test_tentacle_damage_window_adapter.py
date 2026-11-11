@@ -117,6 +117,11 @@ public class TentacleHitAdapterProbe {
     final TentacleController tentacleController = new TentacleController();
     final Map<Integer, Double> tentacleGuardianHealth = new HashMap<>();
     final Map<Integer, Long> tentacleGuardianRespawnDeadlineMillis = new HashMap<>();
+    // Contract 17.1: a real kill reaches the durable death ledger. The probe
+    // supplies a ledger; the assertions here are about the hit window, so the
+    // ledger only has to exist and accept the record.
+    final me.copimine.endevent.domain.GuardianDeathLedger guardianDeaths =
+            new me.copimine.endevent.domain.GuardianDeathLedger(17L);
     final Set<Integer> tentacleGuardianWarnedSlots = new HashSet<>();
     final Map<UUID, Long> tentacleNextAttackTick = new HashMap<>();
     final Object keyTentacleHealth = new Object(), keyTentacleHealthState = new Object();

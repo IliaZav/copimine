@@ -55,6 +55,7 @@ import me.copimine.endevent.domain.BossAbilityState;
 import me.copimine.endevent.domain.BossAbilityId;
 import me.copimine.endevent.domain.SmallKagunePolicy;
 import me.copimine.endevent.domain.SmallKaguneSpawnPolicy;
+import me.copimine.endevent.domain.GuardianDeathLedger;
 import me.copimine.endevent.domain.BossAbilitySelector;
 import me.copimine.endevent.domain.BossAnimationId;
 import me.copimine.endevent.domain.BossAnimationPriorityPolicy;
@@ -1410,6 +1411,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, UUID> tentacleDisplaysByHitbox = new HashMap<>();
     private final Map<Integer, Double> tentacleGuardianHealth = new HashMap<>();
     private final Map<Integer, Long> tentacleGuardianRespawnDeadlineMillis = new HashMap<>();
+    /**
+     * Contract 17.1: the authoritative record of which defensive Kagune were
+     * destroyed in this encounter generation. A slot in here never respawns.
+     */
+    private GuardianDeathLedger guardianDeaths = new GuardianDeathLedger(1L);
     private final Set<Integer> tentacleGuardianWarnedSlots = new HashSet<>();
     private final Map<Integer, Integer> tentacleGuardianSpawnFailures = new HashMap<>();
     /** Once all defenders die, no subsequent respawn may re-enable healing in this generation. */
@@ -49589,6 +49595,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (tentacleGuardianSpawnFailures.getOrDefault(slot, 0) >= 3) {
                 continue;
             }
+            // Contract 17.1: a defender destroyed in this generation is gone
+            // for good. Refusing the spawn here is what makes "no respawn" a
+            // property of the arena rather than of a deadline that happens to
+            // be far away.
+            if (guardianDeaths.isDestroyed(slot)) {
+                continue;
+            }
             double health = tentacleGuardianHealth.getOrDefault(slot, 0.0D);
             Long respawnAt = tentacleGuardianRespawnDeadlineMillis.get(slot);
             if (health <= 0.0D && respawnAt != null) {
@@ -50048,6 +50061,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void resetTentacleGuardianLedger() {
         clearGuardianShieldOrbit("guardian-ledger-reset");
+        // A fresh encounter generation starts with no destroyed defenders. The
+        // ledger is generation-scoped, so this is the only place a kill record
+        // is legitimately forgotten.
+        guardianDeaths = new GuardianDeathLedger(Math.max(1L, generation));
         tentacleGuardianHealth.clear();
         tentacleGuardianRespawnDeadlineMillis.clear();
         tentacleGuardianWarnedSlots.clear();
@@ -50826,9 +50843,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " visual=" + readString(display, keyTentacleHealthState));
         if (after <= 0.0D) {
             if (!temporary) {
-                tentacleGuardianRespawnDeadlineMillis.put(slot,
-                        TentacleGuardianPolicy.respawnDeadline(
-                                tentacleActiveMillis, tentacleRespawnDelayTicks()));
+                // Contract 17.1: a destroyed defender is PERMANENT for this
+                // encounter generation. The death ledger records the kill
+                // durably, so neither a respawn timer nor a restart can bring
+                // it back.
+                guardianDeaths.recordDeath(slot);
+                getLogger().info("RIFT_GUARDIAN_DESTROYED event=" + eventId
+                        + " slot=" + slot + " generation=" + generation
+                        + " destroyed=" + guardianDeaths.destroyedCount()
+                        + " living=" + guardianDeaths.livingCount());
+                tentacleGuardianRespawnDeadlineMillis.remove(slot);
                 tentacleGuardianWarnedSlots.remove(slot);
                 tentacleNextAttackTick.remove(display.getUniqueId());
             }

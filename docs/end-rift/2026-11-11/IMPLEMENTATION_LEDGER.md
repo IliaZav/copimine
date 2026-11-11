@@ -454,3 +454,52 @@ edited.
 Three more probes needed stubs and/or sources for the new field. That trap has
 now cost time four times on this branch; every probe enumerates its own sources
 by hand.
+
+### Every remaining policy now has a live call site
+
+Seven more policies were connected after the cocoon work. Each one had been
+complete, tested, and referenced by nothing - the contract described a mechanic
+that the game never performed.
+
+| Policy | What it makes happen | Where |
+| --- | --- | --- |
+| `RiftFractureEruptionPolicy` | Phase 3 fractures mutate real floor blocks through the hazard journal, erupt an 8-12 block geyser that IS the damage volume, then restore the exact original BlockData | `startCurrentRiftFractures` |
+| `InfernoArenaLifecyclePolicy` | Phase 4 becomes a real inferno: heating wave outward, cooling patches, exact restore | `arenaInferno` |
+| `EchoDecoyPolicy` | Phase 5 RAGE summons 50 HP boss decoys instead of two spiders | `summonServants` -> `summonEchoDecoys` |
+| `EchoAttackReplicaPolicy` | Phase 5 delayed spectral attack copies with a locked aim and two separate damage ledgers | `startEchoAttackReplicas` |
+| `KaguneRingGapPolicy` / `KaguneRingCastPolicy` | The three-row Kagune ring with real two-block escape gaps and one damage event per player per cast | `startKaguneRingCast` |
+| `CocoonFallPolicy` | The Guardian actually descends, lands once, and stays in melee fury | `beginCocoonFall` / `tickCocoonFall` |
+| `BossSummonAdmissionPolicy` | No skeleton tower is ever admitted in a boss phase | `summonServants` |
+
+### Two defects that only wiring could reveal
+
+**The fall was invisible.** The boss is pinned to a hover anchor above the Core
+every tick. A correctly computed descent running alongside that pin is
+overwritten immediately, so the player never sees the boss come down. The fall
+now runs BEFORE the anchor is applied and owns the position until melee fury.
+
+**The inferno cooled down early.** The stage was built as
+`duration - prepare - heat - cooling`, and `Stage.phase()` starts COOLING at
+`burningEnd()`, so a 120-tick cast began cooling at tick 81. The window now
+fills the requested duration.
+
+### Two tests that passed for the wrong reason
+
+Both were found by mutation, not by review, and both are recorded here because
+"the test exists" and "the test bites" are different claims:
+
+- The Kagune ring test asserted that `kaguneRingCast.claim(...)` appeared. A
+  mutant that called it and ignored the boolean - letting three rows stack onto
+  one player - passed. The assertion now requires an if-gate with `continue`.
+- The attack replica test asserted that `strikeConnects(...)` appeared. A mutant
+  replacing it with `true` - invisible homing, the exact failure contract 15.2
+  forbids - passed. The assertion now requires the damage to live inside the
+  branch.
+
+### Known limitation carried forward
+
+The client has still not been run. Nothing in this ledger claims a visual
+verification. The geyser's fire, the inferno's readability, the ring's wall of
+Kagune, the decoy's readability against the real boss, and the descent's timing
+are all unverified by eye.
+

@@ -581,4 +581,83 @@ The bypass is now requested only when the launcher is Windows PowerShell, since
 prevent - a direct packager copying over the verified Java 25 candidate - fails
 both parametrisations, so the test now genuinely runs and genuinely bites.
 
+## A build that failed and a shell that said it worked
 
+CI failed twice on the same assertion, at `2ade9718` and again at the tip:
+
+```
+ValueError: Local plugin artifact SHA-256 differs from its lock: CopiMineEndEvent
+expected=ca84f018a5c6629cf2956f5b9e39226d5e1310b0f27c7e944259a921c89fe4d5
+actual  =b1e95954e30c38f7e4dbee4590337fb9325b3a1c76adb19e9d5a7b95a115d891
+```
+
+The lock was last written at `2ade9718`. Everything after it — the Wave 6/7
+domain, the Guardian rebuild, five thousand lines across twenty-two files —
+changed what the plugin compiles to, and nobody re-pinned. The lock was stale.
+CI was right.
+
+What makes this worth a section is how nearly I concluded the opposite.
+
+My first local check ran `gradle :plugins:jar`. That task does not exist in this
+project; the real one is `endEventJar`. Gradle printed
+
+```
+* What went wrong:
+  Cannot locate tasks that match ':endEvent:jar' as project 'endEvent' not found
+BUILD FAILED in 818ms
+```
+
+and my loop read the jar already sitting in `build/minecraft-26.3/plugins/jars/`
+— a leftover from an earlier build — computed `ca84f018`, and compared it to a
+lock that also said `ca84f018`. Match. "The lock is fine; CI's environment must
+differ." That conclusion was wrong, and it was comfortable.
+
+The evidence that killed it was simple: I listed the classes inside the jar I
+had just "verified" and asked whether it contained the code under test.
+
+```
+KaguneRingGapPolicy         : False
+InfernoArenaLifecyclePolicy : False
+EchoDecoyPolicy             : False
+CocoonFallPolicy            : False
+SmallKaguneSpawnPolicy      : False
+GuardianDeathLedger         : False
+RiftFractureEruptionPolicy  : False
+```
+
+A jar missing every policy it is supposed to ship is not a candidate. It is a
+leftover. With the correct task the build produced exactly `b1e95954` and
+2382357 bytes — byte for byte what CI had computed, from a completely different
+machine. The build was reproducible all along; my check was not.
+
+Two rules come out of this, and both are the same rule twice:
+
+1. A hash comparison proves nothing unless you know the artifact was built from
+   the source you are testing. Assert presence of something only the new code
+   produces before trusting the digest.
+2. A failed subprocess in a shell loop does not stop the loop. Check the exit
+   code, or better, don't reason from files a failed command was supposed to
+   rewrite.
+
+There is a third, smaller one. Two jars here turned out to be *both* correct:
+the `build-plugin.ps1` output (2119437 bytes, 860 entries) and the Gradle
+candidate (2382357, 874). They differed only by fourteen directory entries —
+`me/`, `me/copimine/`, and so on — with identical class sets. Directory records
+are not content. The RC now carries the Gradle jar, because that is the one the
+lock pins and the one CI reproduces, but the earlier jar was never broken; it
+was a different packager's idea of the same bytes.
+
+## What the repin touched
+
+```
+tools/minecraft-26.3/server-plugins.lock.json   candidate sha256, sha512, size
+tests/test_minecraft_migration_server_plugins.py replaceSha256, candidate table
+artifacts/rc-0f9b69c8/manifest.json             plugin entry + sourceCommit
+artifacts/rc-0f9b69c8/README.md                 the hash table
+```
+
+The old `ca84f018` stays in `replaceSha256`. That list is how the installer
+recognises a legitimate predecessor rather than a foreign file dropped into the
+plugins directory, and the previous candidate is exactly that.
+
+`tests/test_minecraft_migration_server_plugins.py`: 137 passed, 4 skipped.

@@ -1,5 +1,5 @@
-﻿{
-    "sourceCommit":  "0f9b69c84aa3fc2daae9ac7c3ff871ca19ba8ec5",
+{
+    "sourceCommit":  "0db8a5933a4685846cf3d587828b45dda104977f",
     "sourceBranch":  "codex/rift-guardian-polish-20261110",
     "builtAt":  "2026-11-11T22:28:08.3786930+03:00",
     "nativeVerified":  false,
@@ -7,7 +7,7 @@
     "clientVisuallyVerified":  false,
     "productionInstalled":  false,
     "notes":  [
-                  "Server plugin rebuilt from this commit with copimine-end-event/build-plugin.ps1.",
+                  "Server plugin built with the canonical Gradle task endEventJar, so its sha256 equals tools/minecraft-26.3/server-plugins.lock.json (b1e95954).",
                   "Client jar is byte-reproducible: rebuilding yields the same sha512 as tools/minecraft-26.3/profile.lock.json.",
                   "Resource pack and Narcotics jar carried over unchanged from guardian-polish-final.",
                   "Nothing here has been run on a Paper server or in a Minecraft client.",
@@ -23,10 +23,10 @@
                       },
                       {
                           "filename":  "CopiMineEndEvent.jar",
-                          "size":  2119437,
-                          "sha256":  "3ec979e9e87045e7381c1652691e0d85fd5c7626c5a34c99f34dcd70aad29c9f",
-                          "sha1":  "e167d0f5f82192cda5c2b7ba400183721c25674b",
-                          "sha512":  "041336e744cff59810ac812f99854c643efcb530d804e830069a705dd7880ad03fd175652a3a487f6462599ac1b4a2b31b1c33daeb3a52f7e399762ac7f8dc70"
+                          "size":  2382357,
+                          "sha256":  "b1e95954e30c38f7e4dbee4590337fb9325b3a1c76adb19e9d5a7b95a115d891",
+                          "sha1":  "dcdaca92b3ad89d72865b24490a63de8ef54232b",
+                          "sha512":  "921d75fd379662dfe6803fb32e247d3204c141038ec74fb43b7eedfd1754ad325cd009c967e0f88552299f235c442ce2c6035a57511f8a1f7265801ebd7fc234"
                       },
                       {
                           "filename":  "CopiMineNarcotics.jar",

@@ -11,7 +11,7 @@ Paper server or in a Minecraft client, and nothing has been deployed.
 | Full Python suite green | `python -m pytest tests -q` → **3353 passed, 18 skipped, 0 failed** in 683 s |
 | Monolith compiles against the real API | `scripts/minecraft/RunFullTreeCompile.ps1` → 384 sources, 1058 classes, exit 0 |
 | Client jar is reproducible | Two independent Gradle builds produced `10b49e7b...eeed6862`, equal to `profile.lock.json → clientArtifact` |
-| Server plugin builds from this commit | `copimine-end-event/build-plugin.ps1` → 2119437 bytes, exit 0 |
+| Server plugin builds from this commit | Gradle `endEventJar` → `b1e95954`, equal to `server-plugins.lock.json`; all 10 new policy classes present in the jar |
 | RC client matches the pin | size 15013727 and sha512 equal to the lock, checked field by field |
 
 ## What was NOT verified
@@ -79,7 +79,7 @@ the database and `server.properties` are not touched by a plugin swap.
 
 | File | Size | sha256 |
 |---|---|---|
-| CopiMineEndEvent.jar | 2119437 | `3ec979e9e87045e7381c1652691e0d85fd5c7626c5a34c99f34dcd70aad29c9f` |
+| CopiMineEndEvent.jar | 2382357 | `b1e95954e30c38f7e4dbee4590337fb9325b3a1c76adb19e9d5a7b95a115d891` |
 | CopiMineClient-0.1.3+26.3.jar | 15013727 | `ac0a8e81961ba76c9f25216d8329b4addc6e5218bff461bb3dd483a30b75c829` |
 | CopiMineResourcePack-26.3.zip | 33371080 | `17aa6d3b2edf626f6d0740d2823d542500836277fbf3cecfd0de54e5e83d8eb9` |
 | CopiMineNarcotics.jar | 370499 | `026787808eac784f1e0c2f48952c625c98a914e41f650d1b7e54521774835fb1` |

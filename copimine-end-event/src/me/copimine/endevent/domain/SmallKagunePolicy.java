@@ -1,19 +1,32 @@
 package me.copimine.endevent.domain;
 
-/** Finite melee-only summon policy; numerical tuning belongs to EventConfig. */
+/**
+ * Finite melee-only summon policy; numerical tuning belongs to EventConfig.
+ *
+ * <p>SUPERSEDED by {@link SmallKaguneSpawnPolicy}. Master contract 18 states that
+ * the previous small Kagune implementation - a bounded summon that shares the
+ * six temporary tentacle slots and disappears on a lifetime timer - does not
+ * implement the specification. The compatibility answers below are kept only so
+ * historical assertions fail honestly instead of silently:</p>
+ *
+ * <ul>
+ *   <li>{@link #budget} no longer caps at the six temporary tentacles and no
+ *       longer shortens the batch by the number of visuals already on screen.</li>
+ *   <li>{@link #expired} is always false: a small Kagune now survives until it
+ *       is killed.</li>
+ * </ul>
+ */
 public final class SmallKagunePolicy {
     private SmallKagunePolicy() { }
 
-    /** Existing live summons count against both the scaled and configured cap. */
+    /** Party-scaled batch that ignores the retired six-tentacle budget. */
     public static int budget(int rosterSize, int maxActive, int activeCount) {
-        int roster = Math.max(0, Math.min(20, rosterSize));
-        int cap = Math.max(0, Math.min(TentacleScalingPolicy.MAX_TEMPORARY, maxActive));
-        int scaled = Math.min(cap, (roster + 4) / 5);
-        return Math.max(0, scaled - Math.max(0, activeCount));
+        return SmallKaguneSpawnPolicy.admission(rosterSize, Math.max(0, activeCount));
     }
 
+    /** SUPERSEDED: no short forced lifetime exists any more. */
     public static boolean expired(long nowTick, long expiresAtTick) {
-        return expiresAtTick > 0L && nowTick >= expiresAtTick;
+        return false;
     }
 
     public static boolean inStrikeRange(double distanceSquared, double range) {

@@ -25,7 +25,7 @@ public final class RiftRamEncounter {
         boolean owns(Entity entity);
         boolean damage(Ravager source, Player player, double amount);
         /** Damages a player from an event-owned actor that is not the Ram. */
-        boolean damage(Entity source, Player player, double amount);
+        boolean damage(LivingEntity source, Player player, double amount);
         /** Spawns a visible, event-owned modelled arrow and returns its handle. */
         Arrow spawnBoneArrow(Location origin, Vector direction, double speed, double damage);
         int particleBudget();

@@ -88,6 +88,8 @@ import me.copimine.endevent.domain.BossVisualCuePolicy;
 import me.copimine.endevent.domain.BossRealHealthDamagePolicy;
 import me.copimine.endevent.domain.BossEdgeVolleyPolicy;
 import me.copimine.endevent.domain.BossHitFeedbackPolicy;
+import me.copimine.endevent.domain.BossCastMobilityPolicy;
+import me.copimine.endevent.domain.BossHitClassificationPolicy;
 import me.copimine.endevent.domain.BossFinalSealAnchorPolicy;
 import me.copimine.endevent.domain.BossFinalSealBarrierPolicy;
 import me.copimine.endevent.domain.BossFireballPolicy;
@@ -27317,6 +27319,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             public boolean damage(Ravager source, Player player, double amount) {
                 return applyWaveAbilityDamage(source, player, amount);
             }
+            public boolean damage(LivingEntity source, Player player, double amount) {
+                // The final-pillar marksman damages through the same ability path
+                // as the Ram, so both obey one eligibility and accounting rule.
+                return applyWaveAbilityDamage(source, player, amount);
+            }
+            public Arrow spawnBoneArrow(Location origin, Vector direction, double speed, double damage) {
+                // A real, visible, event-owned arrow. Bukkit spawns arrows hidden,
+                // so the visibility flag is part of the contract, not a nicety.
+                Arrow arrow = origin.getWorld().spawnArrow(origin, direction, (float) speed, 0.0F);
+                arrow.setVisibleByDefault(true);
+                arrow.setDamage(damage);
+                arrow.setPersistent(false);
+                tag(arrow, EVENT_KIND_WAVE_MOB, 6, isOfficialCurrentAttempt());
+                arrow.addScoreboardTag("clearlag_exclude");
+                return arrow;
+            }
             public int particleBudget() {
                 return Math.max(96, Math.min(512, getConfig().getInt("wave6.rift-ram.stomp-particles-per-viewer", 256)));
             }
@@ -45405,12 +45423,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             currentBossBrainTarget = target.getUniqueId();
             currentBossDecisionAtMillis = now;
             if (castCurrentBossSpell(boss, EndRiftAiPolicy.BossSpell.MELEE_SWIPE, false)) {
-                nextBossCloseStrikeMillis = now
-                        + me.copimine.endevent.domain.BossCloseCombatPolicy.COOLDOWN_MILLIS;
+                // Contract 10.5: the cadence is the per-phase authored rhythm,
+                // not the old frozen eight seconds.
+                nextBossCloseStrikeMillis = me.copimine.endevent.domain.BossCloseCombatPolicy
+                        .nextStrikeMillis(bossPhase, now);
                 bossBrain.recordAccepted(currentBossBrainAbility, generation);
                 bossSpellCursor++;
                 return;
             }
+            // A refused swing must not silently wait for a full cadence: back
+            // off a short bounded retry so a real opening is not missed.
+            nextBossCloseStrikeMillis = now
+                    + me.copimine.endevent.domain.BossCloseCombatPolicy.retryMillis();
         }
         if (now >= bossSpellPauseUntilMillis && nextSpellMillis <= now
                 && !activeBossParticipants().isEmpty()) {
@@ -45604,6 +45628,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // not need a phase-specific completion side effect.
             bossAbilityState = BossAbilityState.NONE;
             bossCastDeadlineMillis = 0L;
+            // Contract 10.2: an expired cast must hand the body back. Before
+            // this, the mobility that holdBossCastPosition() suppressed was
+            // never restored here, so a lost callback froze the Guardian.
+            releaseBossCastMobility(boss, "cast-deadline-expired");
             releaseBossHazardReservation("cast-deadline-expired");
             boss.setInvulnerable(false);
             getLogger().warning("BOSS_CAST_RECONCILED event=" + eventId
@@ -45614,6 +45642,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (before == BossAbilityState.RECOVERY && projection.state() == BossAbilityState.NONE) {
             bossAbilityState = BossAbilityState.NONE;
             bossCastDeadlineMillis = 0L;
+            // Recovery always restores navigation and gravity (contract 10.2).
+            releaseBossCastMobility(boss, "recovery-complete");
             releaseBossHazardReservation("recovery-complete");
             boss.setInvulnerable(false);
             getLogger().fine("BOSS_CAST_RECOVERY_COMPLETE event=" + eventId
@@ -46670,8 +46700,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (isOfficialBoss(boss) && tentacleGuardianShielded()) {
             event.setCancelled(true);
+            // Contract 10.6: the classification is the single authority. A
+            // shielded hit is BLOCKED, so it renders a shield impact and can
+            // never flash flesh red or cost HP.
+            BossHitClassificationPolicy.Hit blocked = BossHitClassificationPolicy.classify(
+                    true, false, false, true, event.getFinalDamage(), 1.0D);
             applyBossHitFeedbackAt(boss, source, guardianShieldImpactContact(boss, source),
-                    BossHitFeedbackPolicy.forShieldBlockedHit(source instanceof Projectile));
+                    BossHitFeedbackPolicy.forClassification(blocked));
             emitBossDamageDiagnostic("DAMAGE_REJECT", "INFO", boss, source,
                     event.getDamage(), event.getFinalDamage(), 0.0D,
                     boss.getHealth(), boss.getHealth(), "permanent-guardian-shield");
@@ -46695,6 +46730,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         double healthBefore = boss.getHealth();
         double rawDamage = Math.max(0.0D, event.getDamage());
         double finalDamage = Math.max(0.0D, event.getFinalDamage());
+        // Contract 10.6: one classification decides both the real HP write and
+        // the presentation, so the red flash can never outlive the damage.
+        BossHitClassificationPolicy.Hit hit = BossHitClassificationPolicy.classify(
+                false, false, false, true, finalDamage, 1.0D);
+        finalDamage = hit.healthDamage();
         BossRealHealthDamagePolicy.Result result = BossRealHealthDamagePolicy.apply(
                 healthBefore, finalDamage, 1.0D, bossMaxHealth(boss));
         if (!result.applied()) {
@@ -46727,8 +46767,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         event.setCancelled(true);
         BossHealthCommit healthCommit = commitCurrentBossHealth(boss, result);
         result = healthCommit.result();
+        // The HP commit really happened above, so this is an accepted hit and
+        // it is the only thing allowed to raise the red flash.
         applyBossHitFeedbackAt(boss, source, bodyImpactContact(boss, source),
-                BossHitFeedbackPolicy.forAcceptedHit(source instanceof Projectile));
+                BossHitFeedbackPolicy.forClassification(hit));
         authoritativeCombatTraceEvents.put(event, Boolean.TRUE);
         emitBossDamageDiagnostic("DAMAGE_ACCEPT", "INFO", boss, source,
                 rawDamage, finalDamage, result.appliedDamage(), healthBefore,
@@ -48032,18 +48074,83 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 MIN_BOSS_CORE_DISTANCE_BLOCKS);
     }
 
-    /** Preserve the committed facing without fighting gravity in grounded phases. */
+    /**
+     * Hold the body only for the authored segment of a heavy cast.
+     *
+     * <p>SUPERSEDED (contract 10.2): this used to stop pathfinding and switch
+     * {@code setAI(false)}/{@code setAware(false)} for the whole cast. Nothing
+     * restored those flags when the cast ended, so repeated casts left the boss
+     * permanently immobile - the reported freeze. Locomotion is now owned by
+     * {@link BossCastMobilityPolicy}: a mobile cast (projectiles, beams,
+     * summons) keeps moving and keeps evaluating targets, and a stationary cast
+     * locks only its authored heavy window. The vanilla AI flag is never
+     * touched here, and gravity is always restored.</p>
+     */
     private void holdBossCastPosition(LivingEntity boss) {
+        holdBossCastPosition(boss, currentCastingSpell());
+    }
+
+    private void holdBossCastPosition(LivingEntity boss, EndRiftAiPolicy.BossSpell spell) {
         if (boss == null || !boss.isValid() || boss.isDead()) return;
-        if (boss instanceof Mob mob) {
-            mob.getPathfinder().stopPathfinding();
-            mob.setAI(false);
-            mob.setAware(false);
-        }
+        // Gravity and the committed facing are cheap and always valid: the boss
+        // must never end up floating or facing a stale direction because a cast
+        // ended.
         boss.setGravity(true);
+        boss.setRotation(bossCastLockedYaw, 0.0F);
+        if (BossCastMobilityPolicy.allowsLocomotion(spell)) {
+            // Mobile cast: the movement controller keeps this body. Clearing the
+            // path or zeroing velocity here is exactly what used to freeze the
+            // Guardian in place.
+            return;
+        }
+        if (boss instanceof Mob mob) {
+            // Stationary cast: stop the path for the authored window only. Native
+            // AI and awareness stay enabled (see forbidsNativeAi) so the body
+            // cannot inherit a disabled flag once the cast is released.
+            mob.getPathfinder().stopPathfinding();
+            if (BossCastMobilityPolicy.forbidsNativeAi(spell)) {
+                mob.setAI(false);
+                mob.setAware(false);
+            }
+        }
         double vertical = boss.getVelocity().getY();
         boss.setVelocity(new Vector(0.0D, Double.isFinite(vertical) ? Math.min(0.0D, vertical) : 0.0D, 0.0D));
-        boss.setRotation(bossCastLockedYaw, 0.0F);
+    }
+
+    /** The spell that currently owns the cast timeline, if any. */
+    private EndRiftAiPolicy.BossSpell currentCastingSpell() {
+        return previousBossSpell;
+    }
+
+    /**
+     * The single cast-release contract (contract 10.2/10.3): navigation,
+     * awareness, gravity, path and target evaluation all come back, so no stale
+     * cast flag can leave the boss stationary forever.
+     */
+    private void releaseBossCastMobility(LivingEntity boss, String reason) {
+        if (boss == null || !boss.isValid() || boss.isDead()) return;
+        BossCastMobilityPolicy.Recovery recovery = BossCastMobilityPolicy.recovery();
+        boss.setGravity(recovery.restoreGravity());
+        if (boss instanceof Mob mob) {
+            if (recovery.clearPath()) {
+                mob.getPathfinder().stopPathfinding();
+            }
+            if (recovery.restoreAi()) {
+                mob.setAI(true);
+            }
+            if (recovery.restoreAware()) {
+                mob.setAware(true);
+            }
+        }
+        if (recovery.resumeTargetEvaluation()) {
+            nextTargetMillis = 0L;
+        }
+        if (recovery.restoreNavigation()) {
+            lastBossPathRequestMillis = 0L;
+        }
+        getLogger().fine("BOSS_CAST_MOBILITY_RELEASED event=" + eventId
+                + " boss=" + boss.getUniqueId() + " reason=" + reason
+                + " ai=" + (boss instanceof Mob mob ? mob.hasAI() : true));
     }
 
     private void aimBossCastAt(LivingEntity boss, Location mark) {

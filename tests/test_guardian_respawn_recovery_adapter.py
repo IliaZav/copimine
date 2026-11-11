@@ -65,6 +65,9 @@ public class GuardianRespawnRecoveryProbe {
     // a destroyed slot, so the spawn loop reads it on every tick.
     final me.copimine.endevent.domain.GuardianDeathLedger guardianDeaths=
             new me.copimine.endevent.domain.GuardianDeathLedger(7L);
+    // Contract 22.1: committing the death window now also starts the authored
+    // cocoon fall, so the probe must accept that call.
+    void beginCocoonFall(LivingEntity boss){}
     final Set<Integer> tentacleGuardianWarnedSlots=new HashSet<>();
     final Map<Integer,Integer> tentacleGuardianSpawnFailures=new HashMap<>();
     final Map<UUID,Entity> ownedEntities=new HashMap<>();

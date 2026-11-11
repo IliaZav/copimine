@@ -59,6 +59,7 @@ import me.copimine.endevent.domain.SmallKaguneSpawnPolicy;
 import me.copimine.endevent.domain.GuardianDeathLedger;
 import me.copimine.endevent.domain.KaguneCocoonGuardianPolicy;
 import me.copimine.endevent.domain.EchoDecoyPolicy;
+import me.copimine.endevent.domain.CocoonFallPolicy;
 import me.copimine.endevent.domain.BossAbilitySelector;
 import me.copimine.endevent.domain.BossAnimationId;
 import me.copimine.endevent.domain.BossAnimationPriorityPolicy;
@@ -1430,6 +1431,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, Long> tentacleAmbushTargetMillis = new HashMap<>();
     /** Absolute tick at which each small melee Kagune retracts. */
     private final Map<UUID, Long> smallKaguneExpiryTicks = new HashMap<>();
+    /**
+     * Contract 22.1: the cocoon fall is an authored ONCE-PER-GENERATION
+     * sequence. These three flags are the durable memory that stops a restart
+     * or a repeated check from replaying the descent or the landing.
+     */
+    private long cocoonFallGeneration = Long.MIN_VALUE;
+    private boolean cocoonFallStarted;
+    private boolean cocoonLandingPlayed;
+    private CocoonFallPolicy.Stage cocoonFallStage = CocoonFallPolicy.Stage.COCOONED;
+    private int cocoonFallElapsedTicks = -1;
     private final Map<Integer, UUID> guardianShieldDisplayIds = new HashMap<>();
     /** Permanent guardian hitboxes are separate from the client visual carrier. */
     private final Map<UUID, UUID> tentacleHitboxesByDisplay = new HashMap<>();
@@ -45522,6 +45533,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             boss.setGravity(true);
             return false;
         }
+        // Contract 22.1: once the cocoon has broken the boss is descending or
+        // already on the floor in melee fury. Re-pinning it to the hover anchor
+        // would drag it back into the air every tick and the fall would never be
+        // visible, so the fall owns the boss's position from here on.
+        if (tickCocoonFall()) {
+            return false;
+        }
         Location anchor = finalSealCoreAnchorLocation();
         if (anchor == null || anchor.getWorld() == null
                 || !anchor.getWorld().equals(boss.getWorld())) {
@@ -50068,7 +50086,106 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         getLogger().info("RIFT_GUARDIAN_SHIELD_BROKEN event=" + eventId
                 + " boss=" + boss.getUniqueId() + " active_ms=" + tentacleActiveMillis
                 + " duration_ms=" + tentacleDamageWindowMillis());
+        // Contract 22.1: the last defender dying is the moment the Guardian
+        // stops hovering. The descent is authored, not a teleport, and it may
+        // happen exactly once per generation.
+        beginCocoonFall(boss);
         return true;
+    }
+
+    /**
+     * Contract 22.1: after the last cocoon defender dies the Guardian falls
+     * exactly once, lands, and stays in melee fury for the rest of the
+     * encounter. The policy owns the stage order, the timing and the fury
+     * profile; this method only refuses to replay it.
+     */
+    private void beginCocoonFall(LivingEntity boss) {
+        if (generation != cocoonFallGeneration) {
+            // A new generation starts the ledger clean; a stale one may not
+            // inherit the previous run's fall.
+            cocoonFallGeneration = generation;
+            cocoonFallStarted = false;
+            cocoonLandingPlayed = false;
+            cocoonFallStage = CocoonFallPolicy.Stage.COCOONED;
+            cocoonFallElapsedTicks = -1;
+        }
+        if (!CocoonFallPolicy.mayStartFall(cocoonFallStarted)) {
+            return;
+        }
+        cocoonFallStarted = true;
+        cocoonFallElapsedTicks = 0;
+        cocoonFallStage = CocoonFallPolicy.stageAfterLastDefender(
+                cocoonFallStarted, cocoonLandingPlayed);
+        getLogger().info("RIFT_COCOON_FALL_BEGIN event=" + eventId
+                + " generation=" + generation
+                + " boss=" + (boss == null ? "none" : boss.getUniqueId())
+                + " stage=" + cocoonFallStage
+                + " fall_ticks=" + CocoonFallPolicy.FALL_TICKS
+                + " landing_ticks=" + CocoonFallPolicy.LANDING_TICKS);
+    }
+
+    /**
+     * Drives the authored descent. Returns true while the fall owns the boss
+     * so the caller can skip its own hovering logic for this tick.
+     */
+    private boolean tickCocoonFall() {
+        if (!cocoonFallStarted || cocoonFallElapsedTicks < 0 || generation != cocoonFallGeneration) {
+            return false;
+        }
+        if (cocoonFallStage == CocoonFallPolicy.Stage.MELEE_FURY) {
+            return false;
+        }
+        LivingEntity boss = liveBoss();
+        if (boss == null || boss.isDead() || !boss.isValid()) {
+            return false;
+        }
+        Location floor = coreBlockTopLocation();
+        if (floor == null) {
+            return false;
+        }
+        Location landing = floor.clone();
+        Location hover = landing.clone().add(0.0D, BossFinalSealAnchorPolicy.HOVER_HEIGHT, 0.0D);
+        double y = CocoonFallPolicy.heightDuringFall(
+                hover.getY(), cocoonFallElapsedTicks);
+        // heightDuringFall returns a height, not a Y: clamp the descent onto the
+        // floor so the boss lands ON the arena rather than through it.
+        Location next = landing.clone();
+        next.setY(Math.max(landing.getY(), Math.min(hover.getY(), landing.getY()
+                + Math.max(0.0D, y - landing.getY()))));
+        if (CocoonFallPolicy.landingDue(cocoonFallElapsedTicks)
+                && CocoonFallPolicy.mayPlayLanding(cocoonLandingPlayed)) {
+            cocoonLandingPlayed = true;
+            next = landing.clone();
+            renderCocoonLanding(landing);
+        }
+        boss.teleport(next);
+        CocoonFallPolicy.Stage advanced = CocoonFallPolicy.advance(
+                cocoonFallStage, cocoonFallElapsedTicks);
+        if (advanced != cocoonFallStage) {
+            cocoonFallStage = advanced;
+            getLogger().info("RIFT_COCOON_FALL_STAGE event=" + eventId
+                    + " generation=" + generation + " stage=" + cocoonFallStage
+                    + " melee_fury=" + CocoonFallPolicy.isMeleeFury(cocoonFallStage));
+        }
+        cocoonFallElapsedTicks++;
+        return cocoonFallStage != CocoonFallPolicy.Stage.MELEE_FURY;
+    }
+
+    /** Contract 22.1: the landing reads as a landing - dust, shockwave, sound. */
+    private void renderCocoonLanding(Location landing) {
+        if (landing == null || landing.getWorld() == null) {
+            return;
+        }
+        landing.getWorld().spawnParticle(Particle.EXPLOSION_EMITTER, landing, 1);
+        landing.getWorld().spawnParticle(Particle.CAMPFIRE_COSY_SMOKE, landing, 40,
+                2.5D, 0.2D, 2.5D, 0.02D);
+        landing.getWorld().spawnParticle(Particle.LAVA, landing, 24, 2.2D, 0.1D, 2.2D, 0.0D);
+        landing.getWorld().playSound(landing, Sound.ENTITY_GENERIC_EXPLODE, 2.0F, 0.6F);
+        landing.getWorld().playSound(landing, Sound.BLOCK_BASALT_BREAK, 2.0F, 0.5F);
+        getLogger().info("RIFT_COCOON_LANDING event=" + eventId
+                + " generation=" + generation
+                + " x=" + landing.getBlockX() + " y=" + landing.getBlockY()
+                + " z=" + landing.getBlockZ());
     }
 
     private void recordTentacleGuardianSpawnFailure(int slot) {

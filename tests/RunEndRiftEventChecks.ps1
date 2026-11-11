@@ -575,6 +575,7 @@ $pureTests = @(
   'RiftCarrierRecoverySnapshotTest',
   'CarrierSlownessLeasePolicyTest',
   'EventMusicSyncPolicyTest',
+  'EventMusicLoopPolicyTest',
   'VisualRefreshDeadlineTest',
   'RitualShieldOrbitPolicyTest',
   'RitualCasterHandPolicyTest',

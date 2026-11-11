@@ -105,6 +105,7 @@ import me.copimine.endevent.domain.EndEventStateMachine;
 import me.copimine.endevent.domain.EndRiftAiPolicy;
 import me.copimine.endevent.domain.EventRealHealthDamagePolicy;
 import me.copimine.endevent.domain.EventPhase;
+import me.copimine.endevent.domain.EventMusicLoopPolicy;
 import me.copimine.endevent.domain.EventMusicSyncPolicy;
 import me.copimine.endevent.domain.GateOpeningPlan;
 import me.copimine.endevent.domain.HazardPlanner;
@@ -5777,13 +5778,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && !config.phaseMusic("victory").soundId().isBlank();
     }
 
+    /**
+     * Start (or confirm) the one event music bed.
+     *
+     * <p>W2-02: this is now idempotent per sound id. The bed owns the speakers
+     * or it does not; a second start of the same id is a no-op even when no
+     * loop task exists, which is what used to restart an already audible track
+     * every time a per-tick objective path asked for it. A genuinely different
+     * id stops the old bed first, so two beds can never sound together.</p>
+     */
     private void playEventMusic(EventConfig.MusicTrack track) {
         if (!isEventMusicPhase() || track == null || track.soundId().isBlank()) {
             stopEventMusic();
             return;
         }
-        if (track.soundId().equals(activeMusicTrackId)
-                && musicLoopTask != null && !musicLoopTask.isCancelled()) {
+        if (EventMusicLoopPolicy.isAlreadyPlaying(activeMusicTrackId, track.soundId())) {
+            // Already the live bed: never restart it and never re-arm a second
+            // loop task. Players who missed it are caught up by syncEventMusic,
+            // which starts the track for them once.
             return;
         }
         stopEventMusic();
@@ -5793,26 +5805,67 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             eventMusicSyncPolicy.markSynchronized(player.getUniqueId(), track.soundId());
         }
         activeMusicTrackId = track.soundId();
-        if (track.loopSeconds() > 0) {
-            boolean bossTrack = isBossHarnessMusicActive() || phase == EventPhase.BOSS_ACTIVE
-                    || phase == EventPhase.BOSS_FINISH;
-            long period = bossTrack ? 5L : Math.max(20L, track.loopSeconds() * 20L);
-            long[] nextLoopMillis = { System.currentTimeMillis() + track.loopSeconds() * 1_000L };
-            musicLoopTask = Bukkit.getScheduler().runTaskTimer(this, () -> {
-                if (!isEventMusicPhase()) {
-                    stopEventMusic();
-                    return;
-                }
-                if (bossTrack && System.currentTimeMillis() < nextLoopMillis[0]) return;
-                nextLoopMillis[0] = System.currentTimeMillis() + track.loopSeconds() * 1_000L;
-                for (Player player : eventMusicAudience()) {
-                    player.playSound(player.getLocation(), track.soundId(), SoundCategory.MUSIC,
-                            (float) config.musicVolume(), 1.0F);
-                }
-            }, period, period);
-        }
+        startEventMusicLoop(track);
         getLogger().info("END_EVENT_MUSIC track=" + track.soundId() + " phase=" + phase
                 + " loopSeconds=" + track.loopSeconds());
+    }
+
+    /**
+     * Arm the repeat for the current bed, once.
+     *
+     * <p>The task captures the sound id it was created for and refuses to act
+     * if that id is no longer the active bed: a stale task can therefore never
+     * resurrect a retired track. The period is short so a late repeat is a small
+     * gap, and the real gate is the due time, so the ogg is never re-sent before
+     * the previous instance finished.</p>
+     */
+    private void startEventMusicLoop(EventConfig.MusicTrack track) {
+        long period = EventMusicLoopPolicy.loopPeriodTicks(track.loopSeconds());
+        if (period <= 0L) return;
+        boolean bossTrack = isBossHarnessMusicActive() || phase == EventPhase.BOSS_ACTIVE
+                || phase == EventPhase.BOSS_FINISH;
+        boolean victoryBed = isVictoryTrack(track);
+        long tickPeriod = bossTrack ? 5L : Math.min(period, 20L);
+        String capturedTrackId = track.soundId();
+        long[] nextLoopMillis = {
+                System.currentTimeMillis() + EventMusicLoopPolicy.loopDelayMillis(track.loopSeconds()) };
+        BukkitTask[] self = new BukkitTask[1];
+        self[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
+            if (!EventMusicLoopPolicy.owns(capturedTrackId, activeMusicTrackId)) {
+                // A different bed owns the speakers now. Retire only this task;
+                // never touch the live one through stopEventMusic().
+                self[0].cancel();
+                if (musicLoopTask == self[0]) musicLoopTask = null;
+                return;
+            }
+            if (!isEventMusicPhase()) {
+                if (EventMusicLoopPolicy.keepTailOnPhaseExit(victoryBed, capturedTrackId,
+                        activeMusicTrackId)) {
+                    // Victory bed: stop re-arming and let the instance that is
+                    // already audible play out. Cutting it here is why the
+                    // victory track died one second after the unlock.
+                    self[0].cancel();
+                    if (musicLoopTask == self[0]) musicLoopTask = null;
+                    return;
+                }
+                stopEventMusic();
+                return;
+            }
+            long now = System.currentTimeMillis();
+            if (!EventMusicLoopPolicy.shouldRepeat(now, nextLoopMillis[0])) return;
+            nextLoopMillis[0] = now + EventMusicLoopPolicy.loopDelayMillis(track.loopSeconds());
+            for (Player player : eventMusicAudience()) {
+                player.playSound(player.getLocation(), track.soundId(), SoundCategory.MUSIC,
+                        (float) config.musicVolume(), 1.0F);
+            }
+        }, tickPeriod, tickPeriod);
+    }
+
+    /** Whether {@code track} is the configured victory bed. */
+    private boolean isVictoryTrack(EventConfig.MusicTrack track) {
+        if (track == null || config == null) return false;
+        EventConfig.MusicTrack victory = config.phaseMusic("victory");
+        return victory != null && victory.soundId().equals(track.soundId());
     }
 
     private void stopEventMusic() {
@@ -54297,15 +54350,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             player.sendMessage("§5Энд открыт. Все участники: §f" + names
                     + " §7| §5Наградный roster: §f" + rewardNames);
             player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0F, 1.0F);
-            if (victoryMusicAllowed) {
-                player.playSound(player.getLocation(), config.phaseMusic("victory").soundId(), SoundCategory.MUSIC,
-                        (float) config.musicVolume(), 1.0F);
-            }
         }
         if (victoryMusicAllowed) {
-            activeMusicTrackId = config.phaseMusic("victory").soundId();
-            getLogger().info("END_EVENT_MUSIC track=" + config.phaseMusic("victory").soundId()
-                    + " phase=" + phase);
+            // W2-02: the victory bed goes through the same single-owner start as
+            // every other bed. Setting activeMusicTrackId inline here left it
+            // "playing" with no loop task, so the repeat was never armed and a
+            // later track could not tell whether this bed was still audible.
+            playEventMusic(config.phaseMusic("victory"));
         }
     }
 

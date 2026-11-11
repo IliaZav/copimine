@@ -211,10 +211,15 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # Repinned for the semi-transparent TAB panel background: the server tab
     # panel no longer paints an opaque black plate, so the compiled bytes moved
     # by one byte. Only presentation changed; no gameplay value moved.
-    assert artifact['size'] == 15_013_169
+    # Repinned for the Ram boss bar, the articulated endermite model and the
+    # Wave 7 atlas repair. The two packaged resources that live under a
+    # `text eol=lf` rule had been edited into CRLF, so a Windows checkout built a
+    # jar 17 bytes larger than the same sources on a clean runner and no single
+    # pin could match. Both files are normalised to LF now.
+    assert artifact['size'] == 15_013_152
     assert artifact['sha512'] == (
-        '6c42497e1362c934a543911944ff5334e53876cd3627a5a9a3a93ca1aa038bd6'
-        '5f9b237af120d8b05a2b5b1df16fbebee1492089efa22f26fd02941f2f53d48b'
+        '4810de65064eb2ac528018225a845b1f1ccfbaa27c192342b9087da6a8ede8bb'
+        'e47adb106e216d4fbbe18a578ff802e177a76870af9f95c7af2e2508fb8466e0'
     )
 
 

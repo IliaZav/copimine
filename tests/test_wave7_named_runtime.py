@@ -284,6 +284,7 @@ public class NamedWave7DeathProbe {
     long generation=71;
     EventPhase phase=EventPhase.WAVE_7;
     int finished,saves,recoveries;
+    int liveSquad;
     Set<UUID> ownerLethalReceipts=new HashSet<>();
     Map<UUID,Wave7NamedTrialActorPolicy.Checkpoint> actorCheckpoints=new HashMap<>();
     Object keyChamberId=new Object(),keyTrialRole=new Object();
@@ -298,6 +299,9 @@ public class NamedWave7DeathProbe {
     }
     UUID parseUuidOrNull(String raw){try{return UUID.fromString(raw);}catch(RuntimeException ignored){return null;}}
     Logger getLogger(){return Logger.getAnonymousLogger();}
+    int wave7FrozenRosterSize(){return Wave7MarksmanSquadPolicy.MIN_SQUAD;}
+    int countLiveNamedMarksmanSquad(RealitySplitTrialController.NamedTrialState trial){return liveSquad;}
+    void saveStateAsync(){saves++;}
     boolean ownedBySession(Entity actor,String event,long gen){return true;}
     int readInt(Entity actor,Object key,int fallback){return actor.room;}
     String readString(Entity actor,Object key){return key==keyTrialRole?actor.role:actor.owner==null?"":actor.owner.toString();}
@@ -355,7 +359,7 @@ public class NamedWave7DeathProbe {
     paths = [SOURCE / item for item in (
         "domain/ChamberIsolationPolicy.java", "domain/Wave7EchoDuelCellPolicy.java",
         "domain/Wave7NamedTrialActorPolicy.java", "domain/Wave7MinibossScalingPolicy.java",
-        "domain/Wave7RoomLayoutPolicy.java",
+        "domain/Wave7RoomLayoutPolicy.java", "domain/Wave7MarksmanSquadPolicy.java",
             "domain/Wave7TrialRoutePolicy.java",
         "domain/wave7/EchoBehaviorStrategy.java", "domain/wave7/EchoLoadoutState.java",
         "runtime/RealitySplitEchoDuelState.java", "runtime/RealitySplitTrialController.java",

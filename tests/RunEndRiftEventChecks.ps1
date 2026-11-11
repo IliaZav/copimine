@@ -634,6 +634,7 @@ $pureTests = @(
   'BossSpellVisualCompositionPolicyTest',
   'Wave7MinibossScalingPolicyTest',
   'Wave7MinibossSteadinessPolicyTest',
+  'Wave7MarksmanSquadPolicyTest',
   'WaveScalingPolicyTest',
   'WaveVisualPolicyTest',
   'ZoneVisualPolicyTest',

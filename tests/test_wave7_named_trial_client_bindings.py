@@ -61,7 +61,13 @@ def test_new_named_trial_actors_bind_after_their_identity_checkpoint_is_valid():
         "private boolean ensureNamedRealitySplitTrialRoom",
         "private NamespacedKey namedTrialActorCheckpointKey",
     )
+    configure = method(
+        source,
+        "private void configureNamedTrialActor(",
+        "private boolean ensureNamedMarksmanSquad(",
+    )
     bind = "bindEventEntityClientForOnlinePlayers(actor)"
+    helper_bind = "bindEventEntityClientForOnlinePlayers(living)"
     warden_start = ensure_actor.index("if (profile == null) {")
     first_actor_declaration = ensure_actor.index("Entity actor = findRealitySplitTrialEntity", warden_start)
     profile_start = ensure_actor.index("Entity actor = findRealitySplitTrialEntity", first_actor_declaration + 1)
@@ -72,6 +78,15 @@ def test_new_named_trial_actors_bind_after_their_identity_checkpoint_is_valid():
     assert "if (createdActor) " + bind in warden
     assert warden.index('"end_event_named_trial_schema"') < warden.index(bind)
     assert "boolean createdActor = false" in profile
-    assert "if (createdActor) " + bind in profile
-    assert profile.index("writeNamedTrialActorCheckpoint(actor, initial)") < profile.index(bind)
+    # The profile branch (Warden partners, Marksman squad, Archmage) shares one
+    # body contract, and that contract binds the client only for a freshly
+    # created actor. The call must still come after the identity checkpoint, or
+    # a client would receive a binding for an actor whose signed identity is not
+    # persisted yet.
+    assert "configureNamedTrialActor(living, profile, createdActor);" in profile
+    assert profile.index("writeNamedTrialActorCheckpoint(actor, initial)") < profile.index(
+        "configureNamedTrialActor(living, profile, createdActor);"
+    )
+    assert "if (bindClient) " + helper_bind in configure
+    assert configure.index("living.setPersistent(true)") < configure.index(helper_bind)
 

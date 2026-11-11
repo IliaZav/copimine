@@ -182,6 +182,7 @@ import me.copimine.endevent.domain.Wave7NamedTrialActorPolicy;
 import me.copimine.endevent.domain.Wave7EchoDuelCellPolicy;
 import me.copimine.endevent.domain.Wave7ArchmageVexPolicy;
 import me.copimine.endevent.domain.Wave7MarksmanInvisibilityPolicy;
+import me.copimine.endevent.domain.Wave7MarksmanSquadPolicy;
 import me.copimine.endevent.domain.Wave7BarrierPreflightPolicy;
 import me.copimine.endevent.domain.Wave7SkeletonPairPolicy;
 import me.copimine.endevent.domain.IntermissionWatchdogPolicy;
@@ -3281,7 +3282,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         RealitySplitTrialController.NamedTrialState trial = realitySplitTrialController.namedTrial(chamber);
-        if (trial == null || !trial.trial().name().equals(role) || index != -1) {
+        if (trial == null || !trial.trial().name().equals(role)) {
+            return false;
+        }
+        // W7-02: the Marksman trial owns a squad. The primary keeps index -1 and
+        // every partner owns its own slot, so a chunk reload has to restore each
+        // archer into the slot it was spawned in. Accepting only -1 here silently
+        // dropped the partners from the runtime index, and the next tick saw a
+        // squad trial with a missing actor.
+        boolean legalIndex = index == -1
+                || trial.trial() == RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN
+                && Wave7MarksmanSquadPolicy.isPartnerIndex(index);
+        if (!legalIndex) {
             return false;
         }
         realitySplitTrialEntityUuids.add(entity.getUniqueId());
@@ -24274,10 +24286,35 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!(actor instanceof LivingEntity living) || !profile.entityType().equals(actor.getType().name())) return false;
         Wave7NamedTrialActorPolicy.Checkpoint checkpoint = readNamedTrialActorCheckpoint(actor, trial);
         if (checkpoint == null) return false;
+        configureNamedTrialActor(living, profile, createdActor);
+        // W7-02: the Marksman trial fields a SQUAD, not a single archer. The
+        // player report was "there is only one skeleton, there should be two or
+        // three": exactly one actor was ever spawned, and the pair logic then
+        // searched for a partner that did not exist, so every pairing call
+        // returned null and the lone archer fought as a solo.
+        if (trial.trial() == RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN
+                && !ensureNamedMarksmanSquad(world, core, trial, profile)) return false;
+        return true;
+    }
+
+    /**
+     * Apply the shared body contract to one named Wave 7 actor.
+     *
+     * <p>The primary actor used to receive all of this inline. Partners need the
+     * same body, name, AI posture, equipment and client binding, so the block is
+     * shared rather than duplicated — a partner spawned by a copy of the old
+     * inline code would drift away from the primary on the first change.</p>
+     *
+     * <p>The AI stays disabled on purpose: every Wave 7 miniboss is driven by its
+     * own validated movement and attack runtime, never by vanilla pathfinding.</p>
+     */
+    private void configureNamedTrialActor(LivingEntity living,
+                                          Wave7NamedTrialActorPolicy.Profile profile,
+                                          boolean bindClient) {
+        if (living == null || profile == null) return;
         living.setInvulnerable(false);
         AttributeInstance maximum = living.getAttribute(Attribute.GENERIC_MAX_HEALTH);
-        if (maximum == null) return false;
-        maximum.setBaseValue(profile.maxHealth());
+        if (maximum != null) maximum.setBaseValue(profile.maxHealth());
         if (living.getHealth() > profile.maxHealth()) living.setHealth(profile.maxHealth());
         if (living instanceof Mob mob) {
             mob.setAI(false);
@@ -24299,8 +24336,131 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             skeleton.getEquipment().setItemInMainHand(new org.bukkit.inventory.ItemStack(Material.BOW));
         }
         if (living instanceof org.bukkit.entity.Evoker evoker) evoker.setCanJoinRaid(false);
-        if (createdActor) bindEventEntityClientForOnlinePlayers(actor);
+        if (bindClient) bindEventEntityClientForOnlinePlayers(living);
+    }
+
+    /**
+     * W7-02: keep the declared number of Marksman archers alive in the room.
+     *
+     * <p>The squad is filled once, at initial actor creation, and afterwards the
+     * method only verifies that every declared partner is still the right kind
+     * of actor. A missing partner while the trial is live is a genuine runtime
+     * failure, not permission to respawn into a fight the party already cleared —
+     * the same rule the primary actor follows.</p>
+     */
+    private boolean ensureNamedMarksmanSquad(World world, Location core,
+                                             RealitySplitTrialController.NamedTrialState trial,
+                                             Wave7NamedTrialActorPolicy.Profile profile) {
+        if (world == null || core == null || trial == null || profile == null) return false;
+        int squadSize = Wave7MarksmanSquadPolicy.squadSize(wave7FrozenRosterSize());
+        EntityType type;
+        try {
+            type = EntityType.valueOf(profile.entityType());
+        } catch (IllegalArgumentException invalidProfile) {
+            return false;
+        }
+        List<Integer> partners = Wave7MarksmanSquadPolicy.partnerIndices(squadSize);
+        for (int index : partners) {
+            Entity existing = findRealitySplitTrialEntity(trial.chamber(), trial.trial().name(), index);
+            if (existing != null) {
+                if (!isNamedRealitySplitActor(existing)
+                        || !profile.entityType().equals(existing.getType().name())) return false;
+                continue;
+            }
+            // Partners are created only on the same pass that is allowed to create
+            // the primary actor, so a reload cannot refill the squad either.
+            if (!namedWave7InitialActorCreation) return false;
+            if (spawnNamedMarksmanPartner(world, core, trial, profile, type, index) == null) return false;
+        }
         return true;
+    }
+
+    /**
+     * Spawn, tag, scale and checkpoint one partner archer.
+     *
+     * <p>The partner is placed on the same chamber floor as the primary but
+     * offset laterally, so the squad starts in a firing line instead of a stack.
+     * Every placement goes through the same safe-floor resolver as the primary
+     * spawn: no free-floating skeleton, no body inside the wall.</p>
+     */
+    private Entity spawnNamedMarksmanPartner(World world, Location core,
+                                             RealitySplitTrialController.NamedTrialState trial,
+                                             Wave7NamedTrialActorPolicy.Profile profile,
+                                             EntityType type, int index) {
+        Entity primary = findRealitySplitTrialEntity(trial.chamber(), trial.trial().name(), -1);
+        Location origin = primary != null ? primary.getLocation() : core;
+        double angle = Math.PI * 2.0D * index / Math.max(1, Wave7MarksmanSquadPolicy.MAX_SQUAD);
+        Location preferred = origin.clone().add(Math.cos(angle) * 3.6D, 0.0D, Math.sin(angle) * 3.6D);
+        Location spawn = findSafeCombatLocation(core, preferred,
+                boundedCombatRadius(config.arenaRadius()), MIN_WAVE_CORE_DISTANCE_BLOCKS,
+                trial.chamber(), null);
+        if (spawn == null) return null;
+        Entity actor = spawnRealitySplitTrialEntity(world, spawn, type, trial.chamber(),
+                trial.trial().name(), index, true, false);
+        if (actor == null) return null;
+        actor.getPersistentDataContainer().set(new NamespacedKey(this, "end_event_named_trial_schema"),
+                PersistentDataType.STRING, "2");
+        if (!(actor instanceof LivingEntity created)) {
+            removeRealitySplitTrialEntity(actor.getUniqueId(), "named-marksman-partner-not-living");
+            return null;
+        }
+        AttributeInstance maximum = created.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+        if (maximum == null) {
+            removeRealitySplitTrialEntity(actor.getUniqueId(), "named-marksman-partner-no-health");
+            return null;
+        }
+        maximum.setBaseValue(profile.maxHealth());
+        created.setHealth(profile.maxHealth());
+        applyWave7BodyScale(created, profile.bodyScale());
+        Wave7NamedTrialActorPolicy.Checkpoint initial = new Wave7NamedTrialActorPolicy.Checkpoint(
+                parseUuidOrNull(eventId), generation, trial.chamber(), trial.trial(), actor.getUniqueId(),
+                0L, Wave7NamedTrialActorPolicy.Attack.NONE, 0L, 0L, null, false);
+        if (!writeNamedTrialActorCheckpoint(actor, initial)) {
+            removeRealitySplitTrialEntity(actor.getUniqueId(), "named-marksman-partner-checkpoint-failed");
+            return null;
+        }
+        configureNamedTrialActor(created, profile, true);
+        getLogger().info("WAVE7_MARKSMAN_PARTNER_SPAWNED event=" + eventId
+                + " generation=" + generation + " chamber=" + trial.chamber()
+                + " index=" + index
+                + " squad=" + Wave7MarksmanSquadPolicy.squadSize(wave7FrozenRosterSize())
+                + " location=" + locationText(spawn));
+        return actor;
+    }
+
+    /** Every persisted index of a live Marksman squad, primary first. */
+    private List<Integer> namedMarksmanSquadIndices() {
+        List<Integer> indices = new ArrayList<>();
+        indices.add(-1);
+        indices.addAll(Wave7MarksmanSquadPolicy.partnerIndices(
+                Wave7MarksmanSquadPolicy.squadSize(wave7FrozenRosterSize())));
+        return indices;
+    }
+
+    /**
+     * Live archers still standing in one Marksman room.
+     *
+     * <p>Counted from the persisted indexes rather than from the entity index, so
+     * a partner whose chunk is unloaded is not silently counted as already dead
+     * and used as permission to complete the trial.</p>
+     */
+    private int countLiveNamedMarksmanSquad(RealitySplitTrialController.NamedTrialState trial) {
+        if (trial == null) return 0;
+        int live = 0;
+        for (int index : namedMarksmanSquadIndices()) {
+            Entity member = findRealitySplitTrialEntity(trial.chamber(), trial.trial().name(), index);
+            if (member instanceof LivingEntity living && living.isValid() && !living.isDead()
+                    && living.getHealth() > 0.0D) {
+                live++;
+            }
+        }
+        return live;
+    }
+
+    /** Whether the Marksman trial fields more than one actor at all. */
+    private boolean isNamedMarksmanSquadTrial(RealitySplitTrialController.NamedTrialState trial) {
+        return trial != null
+                && trial.trial() == RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN;
     }
 
     private NamespacedKey namedTrialActorCheckpointKey() {
@@ -25346,6 +25506,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         realitySplitTrialRuntimeStates.clear();
         realitySplitTrialNextFireballTick.clear();
         realitySplitOrphanedSinceMillis.clear();
+        // W7-02: partner pairing and steering memory are per-encounter. A second
+        // event must not inherit a squad pairing that points at removed actors.
+        wave7MarksmanPartners.clear();
+        wave7PairedCrossfireTicks.clear();
+        wave7PairedGallTicks.clear();
+        namedTrialSteadyHeadings.clear();
+        namedTrialSteadyDecided.clear();
+        namedTrialSteadyMoved.clear();
     }
 
     private void removeRealitySplitTrialEntity(UUID entityId, String reason) {
@@ -34650,6 +34818,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     realitySplitTrialController.receiptForConfirmedActorDeath(
                             parseUuidOrNull(eventId), generation, chamber, owner, entity.getUniqueId());
             accepted = receipt != null && realitySplitTrialController.completePersonalEcho(receipt);
+        } else if (trial.trial() == RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN) {
+            // W7-02: killing one archer must not end the Marksman trial. The
+            // trial used to complete on the first skeleton death, which left the
+            // rest of the squad orphaned in a room the party had "already
+            // cleared" — and the player reported exactly that.
+            int squadSize = Wave7MarksmanSquadPolicy.squadSize(wave7FrozenRosterSize());
+            int live = countLiveNamedMarksmanSquad(trial);
+            if (!Wave7MarksmanSquadPolicy.completesTrial(squadSize, live)) {
+                getLogger().info("WAVE7_MARKSMAN_SQUAD_MEMBER_DOWN event=" + eventId
+                        + " generation=" + generation + " chamber=" + chamber
+                        + " actor=" + entity.getUniqueId()
+                        + " live_members=" + live
+                        + " squad=" + squadSize
+                        + " completes_trial=false");
+                realitySplitTrialRuntimeStates.remove(entity.getUniqueId());
+                realitySplitTrialEntityUuids.remove(entity.getUniqueId());
+                saveStateAsync();
+                return;
+            }
+            accepted = realitySplitTrialController.completeNamedActor(parseUuidOrNull(eventId), generation,
+                    chamber, trial.trial());
         } else {
             accepted = realitySplitTrialController.completeNamedActor(parseUuidOrNull(eventId), generation,
                     chamber, trial.trial());
@@ -34822,10 +35011,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
                 Entity actor = findRealitySplitTrialEntity(trial.chamber(), trial.trial().name(), -1);
                 if (Wave7NamedTrialActorPolicy.hasActorAdapter(trial.trial())) {
-                    if (!(actor instanceof LivingEntity living)
-                            || !tickNamedTrialActor(living, trial)) {
-                        enterNamedRealitySplitRecovery("WAVE7_NAMED_ACTOR_RUNTIME_FAILED:" + trial.trial());
-                        return;
+                    // W7-02: the Marksman trial is a squad. Ticking only the
+                    // primary left the partners standing as statues: they had a
+                    // body, a health bar and a targetable hitbox but no runtime,
+                    // which is exactly the reported "the minibosses do not move".
+                    List<Integer> squadIndices = isNamedMarksmanSquadTrial(trial)
+                            ? namedMarksmanSquadIndices() : List.of(-1);
+                    for (int squadIndex : squadIndices) {
+                        Entity member = squadIndex == -1 ? actor
+                                : findRealitySplitTrialEntity(trial.chamber(), trial.trial().name(), squadIndex);
+                        if (squadIndex != -1 && member == null) {
+                            // A partner that is simply dead and cleared is not a
+                            // runtime failure; the death handler removes it.
+                            continue;
+                        }
+                        if (!(member instanceof LivingEntity living)
+                                || !tickNamedTrialActor(living, trial)) {
+                            enterNamedRealitySplitRecovery("WAVE7_NAMED_ACTOR_RUNTIME_FAILED:" + trial.trial());
+                            return;
+                        }
                     }
                 } else if (actor instanceof LivingEntity living
                         && trial.trial() == RealitySplitTrialController.NamedTrial.WARDEN) {

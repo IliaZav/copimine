@@ -90,3 +90,19 @@ def test_regeneration_stops_permanently_after_the_cocoon_breaks():
     assert "guardianDeaths.cocoonBroken()" in body, (
         "a broken cocoon must gate regeneration independently of the live shield"
     )
+
+def test_cocoon_owes_six_to_eight_defenders():
+    """Contract 17.1: six for small parties, seven medium, eight large.
+
+    The retired ladder started at two, which let a duo break the seal by killing
+    a single pair - the cocoon the contract describes never existed for them.
+    """
+    text = source()
+    body = text[text.index("private int permanentTentacleTarget("):]
+    body = body[: body.index("\n    }")]
+    assert "KaguneCocoonGuardianPolicy.countFor(" in body, (
+        "the cocoon count must come from the contract policy, not the old ladder"
+    )
+    assert "TentacleScalingPolicy.permanentFor(" not in body, (
+        "the retired 2/3/4/5/6/8 ladder must not drive the cocoon"
+    )

@@ -56,6 +56,7 @@ import me.copimine.endevent.domain.BossAbilityId;
 import me.copimine.endevent.domain.SmallKagunePolicy;
 import me.copimine.endevent.domain.SmallKaguneSpawnPolicy;
 import me.copimine.endevent.domain.GuardianDeathLedger;
+import me.copimine.endevent.domain.KaguneCocoonGuardianPolicy;
 import me.copimine.endevent.domain.BossAbilitySelector;
 import me.copimine.endevent.domain.BossAnimationId;
 import me.copimine.endevent.domain.BossAnimationPriorityPolicy;
@@ -49672,7 +49673,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private int permanentTentacleTarget(boolean showroomBoss) {
-        return TentacleScalingPolicy.permanentFor(showroomBoss ? 2 : eventScalePlayers(), bossPhase);
+        // Contract 17.1: the cocoon is guarded by SIX TO EIGHT large defenders,
+        // party-scaled. The retired ladder started at two for a small party,
+        // which let a duo break the seal by killing a single pair while the
+        // contract's whole point - a real cocoon - never existed.
+        if (bossPhase != BossPhase.LAST_SEAL) {
+            return 0;
+        }
+        int cocoon = KaguneCocoonGuardianPolicy.countFor(
+                showroomBoss ? 2 : eventScalePlayers());
+        return Math.min(TentacleScalingPolicy.MAX_PERMANENT, cocoon);
     }
 
     private boolean allTentacleGuardiansDefeated(int desired) {

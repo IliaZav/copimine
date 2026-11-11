@@ -145,7 +145,11 @@ public class GuardianRespawnRecoveryProbe {
         var carrier=(LivingEntity)partial.ownedEntities.get(partial.tentacleHitboxesByDisplay.get(display));
         check(carrier.hp==37.5,"restored real carrier HP disagrees with the slot ledger");
         partial.admitted=10; partial.online=2;
-        check(partial.permanentTentacleTarget(false)==5,
+        // Master contract 17.1 replaced the retired 2-4-5 ladder with the
+        // six-to-eight cocoon. A ten-player encounter therefore owes SEVEN
+        // defenders; the point of this check is unchanged - the count follows
+        // the ADMITTED roster, not the two players currently online.
+        check(partial.permanentTentacleTarget(false)==7,
                 "disconnecting players removed slots from the admitted ten-player encounter");
 
         var deferred=new GuardianRespawnRecoveryProbe();
@@ -256,6 +260,7 @@ public class GuardianRespawnRecoveryProbe {
         "domain/TentacleGuardianPolicy", "domain/TentacleScalingPolicy",
         "domain/TentacleAnimationPolicy", "domain/BossPhase", "runtime/TentacleController",
         "domain/GuardianRegenerationPolicy", "domain/GuardianDeathLedger",
+        "domain/KaguneCocoonGuardianPolicy",
     )]
     result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path),
                              *map(str, classes), str(probe)], capture_output=True, text=True)

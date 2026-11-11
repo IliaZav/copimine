@@ -37,6 +37,9 @@ public class GuardianLiveShieldProbe {
     final long generation = 8;
     final TentacleController tentacleController = new TentacleController();
     final Map<Integer, Double> tentacleGuardianHealth = new HashMap<>();
+    // Contract 17.1: a destroyed slot is never a living defender.
+    final me.copimine.endevent.domain.GuardianDeathLedger guardianDeaths =
+            new me.copimine.endevent.domain.GuardianDeathLedger(1L);
     final Map<UUID, Entity> ownedEntities = new HashMap<>();
     final Map<UUID, UUID> tentacleHitboxesByDisplay = new HashMap<>();
     final Map<UUID, UUID> tentacleDisplaysByHitbox = new HashMap<>();
@@ -84,6 +87,8 @@ public class GuardianLiveShieldProbe {
 ''', encoding="utf-8")
     sources = [SOURCE_ROOT / ("me/copimine/endevent/" + name + ".java") for name in (
         "domain/TentacleAnimationPolicy", "runtime/TentacleController",
+        "domain/GuardianDeathLedger", "domain/KaguneCocoonGuardianPolicy",
+        "domain/TentacleScalingPolicy", "domain/BossPhase",
     )]
     result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path),
                              *map(str, sources), str(probe)], capture_output=True, text=True)

@@ -680,7 +680,16 @@ $pureTests = @(
   'Wave3SquadIntentPolicyTest',
   'Wave5PostFogPackPolicyTest',
   'WaveTwoRosterPolicyTest',
-  'WaveSixStageStateTest'
+  'WaveSixStageStateTest',
+  # M6 Rift Guardian phases 3-5 (master contract 13-15). The fracture/geyser
+  # mutation ladder, the overload inferno, both Echo systems and the
+  # no-skeleton-tower admission gate are pure policies so their guarantees can
+  # fail the build without a live server.
+  'RiftFractureEruptionPolicyTest',
+  'InfernoArenaLifecyclePolicyTest',
+  'EchoAttackReplicaPolicyTest',
+  'EchoDecoyPolicyTest',
+  'BossSummonAdmissionPolicyTest'
 )
 $pureSources = @($domainSources + $runtimeSources + $diagnosticSources + ($pureTests | ForEach-Object {
   $sourceName = $_.Split('.')[-1]

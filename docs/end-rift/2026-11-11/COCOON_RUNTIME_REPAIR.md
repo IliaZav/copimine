@@ -76,10 +76,26 @@ Both automatic and explicit spell entry points use the restricted fury pool.
   cap and no forced expiry), retaining invalid-input, HP and capacity checks.
 - `RunEndRiftEventChecks.ps1 -SkipBuilds`: **exit 0**, final message
   `End Rift current local checks passed.` Log: `C:/Temp/cm-fury-endrift-gate-complete.log`.
-- The frozen-source full regression run is still running. Earlier exploratory
-  runs exposed the stale-client-output/source-selector tests and then pin
-  expectations loaded before a candidate rebuild. These are not reported as
-  full passes; the frozen run must supply the final full-suite result.
+- Frozen-source full regression: **3392 passed, 14 skipped, 124 warnings,
+  2 subtests passed**, exit 0, 678.90 seconds. Log:
+  `C:/Temp/cm-fury-frozen-full.log`. Skips include absent isolated/native
+  runtime and database fixtures and platform-specific filesystem checks;
+  none is counted as native acceptance.
+- Final CodeRabbit review of the complete repair: **0 issues**, exit 0.
+  Receipt: `C:/Temp/cm-fury-frozen-coderabbit.ndjson`.
+- Earlier exploratory runs exposed stale-client-output/source-selector tests
+  and pin expectations loaded before a candidate rebuild. Those runs are not
+  reported as full passes; the frozen run above is the full-suite evidence.
+
+## Integration ownership
+
+An external executor committed the staged repair as `1ecd90b1` and published
+the identical tree as `171580fe` while these checks were running. Both tree
+IDs were verified as `97bf98946236e1c0a57d4bcbc96432a515752042`.
+The user then confirmed stopping that executor and assigned continuation here.
+The two histories were merged without changing source or discarding either
+commit. This record distinguishes the actual implementation and verification
+from the external commit operation.
 
 The local reviewable bundle is `artifacts/cocoon-runtime-af45b9a2/manifest.json`.
 It contains the pinned plugin, unchanged bridge, client and resource pack, with

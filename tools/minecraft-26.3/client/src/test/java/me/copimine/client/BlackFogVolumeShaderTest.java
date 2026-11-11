@@ -16,7 +16,8 @@ class BlackFogVolumeShaderTest {
             var depth = (net.minecraft.client.renderer.PostChainConfig.TargetInput) first.inputs().get(1);
             assertTrue(depth.useDepthBuffer());
             assertEquals("Depth", depth.samplerName());
-            assertEquals(14, first.uniforms().get("Wave5VolumeConfig").size());
+            assertEquals(14 + BlackFogGuidePolicy.MAX_GUIDES, first.uniforms().get("Wave5VolumeConfig").size());
+            assertEquals((14 + BlackFogGuidePolicy.MAX_GUIDES) * 16, BlackFogVolumeRuntime.UNIFORM_BYTES);
         }
     }
 

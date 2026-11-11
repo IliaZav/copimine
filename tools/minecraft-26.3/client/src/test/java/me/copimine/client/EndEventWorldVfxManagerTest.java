@@ -14,6 +14,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EndEventWorldVfxManagerTest {
     @Test
+    void fogGuidanceUsesFullInstanceIdsAndCannotBorrowAnotherEventOrGeneration() {
+        var manager = new EndEventWorldVfxManager();
+        String id = "event-1:2:world:wave5-safe-zone-0";
+        assertTrue(manager.applyBeam(at(beam("event-1", 2L, id,
+                "overworld|wave5-safe-zone-0|1,64,2", "1,67,2|42FF66", .3F, 650), 100), 100));
+        var guides = manager.snapshots("event-1", 2L, 200).stream()
+                .filter(beam -> BlackFogGuidePolicy.isGuide(beam.instanceId())).toList();
+        assertEquals(1, guides.size());
+        assertTrue(manager.snapshots("event-2", 2L, 200).isEmpty());
+        assertTrue(manager.snapshots("event-1", 3L, 200).isEmpty());
+        assertFalse(BlackFogGuidePolicy.isGuide("event-1:2:world:wave5-safe-zone-20"));
+        assertFalse(BlackFogGuidePolicy.isGuide("event-1:2:world:wave5-safe-zone-0-extra"));
+        assertFalse(BlackFogGuidePolicy.isGuide(null));
+    }
+
+    @Test
     void routesTheCarrierOnlyCoreMarkerToItsDedicatedOutlinePass() {
         String outline = "event-1:2:world:wave1-carrier-core-outline";
         var marker = new EndEventWorldVfxManager.BeamSnapshot(outline, "overworld",

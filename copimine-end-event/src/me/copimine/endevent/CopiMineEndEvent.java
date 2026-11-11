@@ -38221,6 +38221,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             clearWorldVfxBeamsByPrefix("wave5-safe-zone-");
             return;
         }
+        float guideStrength = blackFogPhase == BlackFogPhase.FOG
+                ? BlackFogTimingPolicy.guideStrength(Math.max(0L, System.currentTimeMillis()
+                        - (blackFogPhaseDeadlineMillis - BlackFogTimingPolicy.fogSeconds(
+                                currentFogCycle, currentFogTargetCycles) * 1_000L))) : 1.0F;
+        if (guideStrength <= 0.0F) {
+            clearWorldVfxBeamsByPrefix("wave5-safe-zone-");
+            return;
+        }
         Location floor = core.clone();
         floor.setY(combatFloorY() + 1.02D);
         Set<String> desired = new LinkedHashSet<>();
@@ -38240,11 +38248,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             desired.add(key);
             for (Player viewer : eventAudience()) if (isEventParticleViewer(viewer, base))
                 sendWorldBeamPacket(viewer, key, base, base.clone().add(0, Math.max(0.0D, Math.min(5.5D, arenaMaxY + 0.999D - base.getY())), 0),
-                        0x42FF66, .30F);
+                        0x42FF66, .30F * guideStrength);
             // The floor tiles alone were easy to lose inside the fog. Draw the
             // PERIMETER of each zone as glowing emerald particles, so the edge is
             // readable from anywhere in the arena and from inside the blackout.
-            renderSafeZonePerimeter(core.getWorld(), point);
+            renderSafeZonePerimeter(core.getWorld(), point, guideStrength);
         }
         clearWorldVfxBeamsOutside("wave5-safe-zone-", desired);
     }
@@ -38257,12 +38265,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * player standing on the far side of the island. The phase drifts per tick,
      * which reads as a living barrier rather than a static decal.</p>
      */
-    private void renderSafeZonePerimeter(World world, HazardPlanner.Point center) {
+    private void renderSafeZonePerimeter(World world, HazardPlanner.Point center, float strength) {
         if (world == null || center == null || eventTickCounter % 10L != 0L) return;
         double y = combatFloorY() + 1.06D;
         double minX = center.x() - currentFogZoneSide / 2;
         double minZ = center.z() - currentFogZoneSide / 2;
-        Particle.DustOptions green = new Particle.DustOptions(Color.fromRGB(66, 255, 102), 1.15F);
+        Particle.DustOptions green = new Particle.DustOptions(Color.fromRGB(66, 255, 102), Math.max(.02F, 1.15F * strength));
         // Exact square boundary, half-block spacing, at most 24 points/zone at 2 Hz.
         for (Player viewer : eventAudience()) {
             if (!isEventParticleViewer(viewer, new Location(world, minX, y, minZ))) continue;

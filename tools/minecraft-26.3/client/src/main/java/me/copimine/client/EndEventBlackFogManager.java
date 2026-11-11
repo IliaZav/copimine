@@ -201,6 +201,11 @@ public final class EndEventBlackFogManager {
         return expiresAtMillis > 0L ? intensity : 0.0F;
     }
 
+    /** First-cycle age is stable across lease refreshes; CLEAR has no guide. */
+    public synchronized long cycleAgeMillis(long nowMillis) {
+        return expiresAtMillis > 0L ? Math.max(0L, nowMillis - startedAtMillis) : Long.MAX_VALUE;
+    }
+
     public synchronized String eventId() { return eventId; }
     public synchronized long generation() { return generation; }
     public synchronized String dimension() { return dimension; }

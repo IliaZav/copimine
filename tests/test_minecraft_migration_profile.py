@@ -217,10 +217,10 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # jar 17 bytes larger than the same sources on a clean runner and no single
     # pin could match. Both files are normalised to LF now.
     # 11-November uniform volumetric fog; clean rebuild SHA-512 matched.
-    assert artifact['size'] == 15_011_288
+    assert artifact['size'] == 15_013_727
     assert artifact['sha512'] == (
-        '86c5dd5d372a121781e8cfbfb8474f4c753a04e0016c7e651f1f7001e4e6b324'
-        'ef796c10cd4dc298d01f5427e983a70b6dc91c6f789f668fe2f44d0fe02e6837'
+        '10b49e7b4f7cfc677d9d7e643676a78be5a5cd0a86250a456cbf204debbe5c63'
+        'fcbec8d74c15d991ac04fdc7f6dddc415a736c6b5ab72941a307c545eeed6862'
     )
 
 

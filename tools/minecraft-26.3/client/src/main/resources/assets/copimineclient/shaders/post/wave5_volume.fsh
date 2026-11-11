@@ -10,6 +10,8 @@ layout(std140) uniform Wave5VolumeConfig {
     vec4 InvView0; vec4 InvView1; vec4 InvView2; vec4 InvView3;
     vec4 EyeTime; vec4 SafeMin; vec4 SafeMax; vec4 VolumeState;
     vec4 ArenaMin; vec4 ArenaMax;
+    vec4 Guide0; vec4 Guide1; vec4 Guide2; vec4 Guide3;
+    vec4 Guide4; vec4 Guide5; vec4 Guide6; vec4 Guide7;
 };
 
 float hash31(vec3 p) {
@@ -28,6 +30,26 @@ float cloudNoise(vec3 p) {
 // Near silhouettes and ground remain spatially readable; dense eddies build with distance.
 float distanceDensityGain(float distanceAlongRay) {
     return smoothstep(0.5, 3.0, distanceAlongRay);
+}
+// Signed world-space guide columns are luminous through smoke, but real depth still occludes them.
+float guideGlow(vec3 origin, vec3 direction, float sceneDistance) {
+    vec4 guides[8] = vec4[8](Guide0, Guide1, Guide2, Guide3, Guide4, Guide5, Guide6, Guide7);
+    float light = 0.0;
+    float horizontalRay = dot(direction.xz, direction.xz);
+    if (horizontalRay < 0.00001) return 0.0;
+    for (int i = 0; i < 8; ++i) {
+        vec4 guide = guides[i];
+        if (guide.w <= 0.0) continue;
+        float travel = dot(guide.xz - origin.xz, direction.xz) / horizontalRay;
+        if (travel < 0.0 || travel > sceneDistance) continue;
+        vec3 nearest = origin + direction * travel;
+        float radial = 1.0 - smoothstep(0.045, 0.24, length(nearest.xz - guide.xz));
+        float vertical = smoothstep(guide.y - 0.1, guide.y + 0.12, nearest.y)
+                * (1.0 - smoothstep(guide.y + 2.6, guide.y + 3.1, nearest.y));
+        float wisps = 0.7 + 0.3 * sin(nearest.y * 11.0 - EyeTime.w * 2.1 + guide.x * 0.3);
+        light = max(light, radial * vertical * wisps * guide.w);
+    }
+    return light;
 }
 vec2 axisSpan(float origin, float direction, float low, float high) {
     if (abs(direction) < 0.00001) return origin < low || origin > high
@@ -85,5 +107,6 @@ void main() {
     float nearGround = ground * (1.0 - smoothstep(1.8, 3.1, length(surface.xz - EyeTime.xz)))
             * (1.0 - smoothstep(2.7, 3.8, sceneDistance));
     fogged = mix(fogged, source.rgb * vec3(0.60, 0.53, 0.59), nearGround);
+    fogged = mix(fogged, vec3(0.12, 0.95, 0.44), min(0.9, guideGlow(EyeTime.xyz, direction, sceneDistance)));
     fragColor = vec4(mix(source.rgb, fogged, VolumeState.x), source.a);
 }

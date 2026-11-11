@@ -216,6 +216,12 @@ public final class EndEventWorldVfxManager {
         return snapshots(Long.MAX_VALUE);
     }
 
+    /** Fog cannot borrow coordinates retained from an older event or generation. */
+    public synchronized List<BeamSnapshot> snapshots(String expectedEvent, long expectedGeneration, long nowMillis) {
+        if (!eventId.equals(expectedEvent) || generation != expectedGeneration) return List.of();
+        return snapshots(nowMillis);
+    }
+
     public synchronized List<BeamSnapshot> snapshots(long nowMillis) {
         List<BeamSnapshot> result = new ArrayList<>();
         for (Beam beam : beams.values()) {

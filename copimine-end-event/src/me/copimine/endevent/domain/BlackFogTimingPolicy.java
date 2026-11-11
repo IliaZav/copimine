@@ -32,6 +32,13 @@ public final class BlackFogTimingPolicy {
         int last = Math.max(1, (players + 7) / 8);
         return initial - (int) Math.floor((initial - last) * progress(cycle, cycleCount(players)));
     }
+    /** Three-and-a-half seconds bright, then a smooth finite fade; mirror is wire-tested. */
+    public static float guideStrength(long ageMillis) {
+        if (ageMillis < 0L || ageMillis >= 5_000L) return 0.0F;
+        if (ageMillis <= 3_500L) return 1.0F;
+        float t = (ageMillis - 3_500L) / 1_500.0F;
+        return 1.0F - t * t * (3.0F - 2.0F * t);
+    }
     public static int safeZoneSeconds() { return SAFE_ZONE_SECONDS; }
     public static int fogSeconds() { return FOG_SECONDS; }
     public static boolean complete(int completedCycles) { return completedCycles >= CYCLE_COUNT; }

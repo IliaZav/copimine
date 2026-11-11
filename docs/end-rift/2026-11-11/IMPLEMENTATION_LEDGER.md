@@ -45,7 +45,7 @@ Historical contracts and evidence remain intact.
 | --- | --- | --- |
 | M0 | Preserve master request; audit repository/remote, earlier commits/assets/F2/logs and current acceptance gaps; retain exact baseline provenance | Baseline recorded; source reproduction continues per milestone |
 | M1 | Projectile roster/admission consistency, finite atomic groups/cleanup, charge custody and signed burst reconciliation | Source repair and focused tests passed; isolated Paper/native acceptance pending |
-| M2 | Waves 1–5, updated Wave 2 groups/layout, Wave 3/4 transitions, uniform fog/capacity/effect ownership | Pending contract-by-contract audit and implementation |
+| M2 | Waves 1–5, updated Wave 2 groups/layout, Wave 3/4 transitions, uniform fog/capacity/effect ownership | In progress: M2a–d source repairs and focused automated proof recorded below; Paper/native and remaining wave audit pending |
 | M3 | Five Ram pillars/seven impacts/final skeleton, custom UI/model/audio, collision and completion/recovery | Pending; current three-impact encounter is superseded |
 | M4 | Wave 7 topology ownership, 2/3 Marksmen, models/UV/animation, differentiated elite abilities | Existing repairs retained; master acceptance pending |
 | M5 | Real accepted damage/hurt feedback/composite hitboxes, mobile/stationary cast ownership, responsive melee and group AI | Pending |
@@ -199,3 +199,43 @@ Evidence:
 GitHub CI for M2b commit `cd3b81ca`: run `43023667606` observed in progress;
 PostgreSQL contract job succeeded, other required jobs have not yet passed.
 M2c is not deployed; M2 is still incomplete, including timed luminous guidance.
+
+## M2d — Timed luminous refuge guides
+
+Guides remain bright for 3.5 seconds after activation and fade smoothly to zero
+at five seconds. Server beam/perimeter emission follows this finite window.
+The client depth-volume pass adds bounded world-space luminous guide columns:
+up to eight nearest signed, current-event/current-generation markers in the
+arena. True scene depth still occludes them; fog extinction does not erase the
+guide before players can react. The optical integration remains bounded at
+7.5 blocks, while guide visibility uses a separate 128-block scene-depth cap.
+Ordinary world beams and particles remain real arena presentation.
+
+An existing lookup used `startsWith("wave5-safe-zone-")` on full scoped instance
+IDs such as `event:2:world:wave5-safe-zone-0`. Corrected key recognition is now
+exercised through the actual world-VFX manager; old events/generations cannot
+supply floor or guide coordinates to a new fog volume. All eight guide uniforms
+are included in the parsed post-chain config and checked against buffer size.
+
+Evidence:
+- Timing/server-client compatibility, optics and lifecycle selection: 18 passed.
+- Integrated fog/profile/plugin/inventory/CI-contract selection: 353 passed,
+  4 environment skips.
+- After the guide-range adjustment, profile/CI-contract/timing rerun:
+  96 passed, 1 environment skip.
+- Active client: 370 tests, zero failures/skips; GLSL compiled with shaderc;
+  Minecraft post-chain codec accepted the 22-vector uniform block.
+- Client `test build` and subsequent `clean build` produced identical SHA-512.
+- Server `bridgeServerTest endEventJar`: BUILD SUCCESSFUL.
+- Candidate installer: 30 pinned plugin candidates verified in repository staging.
+- Current plugin: 2,291,276 B / SHA-256
+  `ca84f018a5c6629cf2956f5b9e39226d5e1310b0f27c7e944259a921c89fe4d5`.
+- Current client: 15,013,727 B / SHA-256
+  `ac0a8e81961ba76c9f25216d8329b4addc6e5218bff461bb3dd483a30b75c829`;
+  SHA-512 `10b49e7b4f7cfc677d9d7e643676a78be5a5cd0a86250a456cbf204debbe5c63fcbec8d74c15d991ac04fdc7f6dddc415a736c6b5ab72941a307c545eeed6862`.
+- Native image/audio/performance and real Paper gameplay acceptance: NOT RUN.
+  M2 remains in progress; Waves 1/3/4 and cross-wave acceptance still need review.
+
+GitHub run `43023667606` on M2b `cd3b81ca`: `static-and-contract` and
+`migration-postgres-contract` observed completed/success; `java-plugins` still
+in progress at this entry. This does not establish CI for subsequent commits.

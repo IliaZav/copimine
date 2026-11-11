@@ -10,8 +10,8 @@ import org.joml.Matrix4f;
 /** World-depth fog pass. All world reads occur during extraction, never in a GPU callback. */
 public final class BlackFogVolumeRuntime {
     public static final Identifier EFFECT = Identifier.fromNamespaceAndPath("copimineclient", "wave5_volume");
-    public static final int UNIFORM_BYTES = 224;
-    private static volatile float[] snapshot = new float[56];
+    public static final int UNIFORM_BYTES = (14 + BlackFogGuidePolicy.MAX_GUIDES) * 16;
+    private static volatile float[] snapshot = new float[UNIFORM_BYTES / Float.BYTES];
     private static final ThreadLocal<ByteBuffer> uniformBytes = ThreadLocal.withInitial(() ->
             ByteBuffer.allocateDirect(UNIFORM_BYTES).order(ByteOrder.nativeOrder()));
     /** Kept as a compatibility type for the retired chamber renderer. */
@@ -34,7 +34,7 @@ public final class BlackFogVolumeRuntime {
                 || client.player.getY() >= arena.maxY() + 1.0) strength = 0;
         if (strength <= 0) {
             effects.remove(EFFECT);
-            snapshot = new float[56];
+            snapshot = new float[UNIFORM_BYTES / Float.BYTES];
             return;
         }
         var camera = renderer.gameRenderState().levelRenderState.cameraRenderState;
@@ -43,7 +43,7 @@ public final class BlackFogVolumeRuntime {
         if (!effects.contains(EFFECT)) effects.add(EFFECT);
         // Safety is server gameplay state; every arena cell uses the same optical volume.
         double floorTop = BlackFogChamberRuntime.floorTop(client, manager, now);
-        float[] data = new float[56];
+        float[] data = new float[UNIFORM_BYTES / Float.BYTES];
         new Matrix4f(camera.projectionMatrix).invert().get(data);
         float[] rotation = new float[16];
         new Matrix4f(camera.viewRotationMatrix).invert().get(rotation);
@@ -54,11 +54,28 @@ public final class BlackFogVolumeRuntime {
         data[44] = strength;
         data[45] = BlackFogVolumePolicy.EXTINCTION_PER_BLOCK;
         data[46] = 0;
-        data[47] = 12.0F;
+        data[47] = BlackFogGuidePolicy.MAX_DISTANCE;
         data[48] = arena.minX(); data[49] = Double.isFinite(floorTop) ? (float) floorTop : arena.minY(); data[50] = arena.minZ();
         data[52] = arena.maxX() + 1;
         data[53] = Double.isFinite(floorTop) ? (float) floorTop + BlackFogVolumePolicy.FOG_HEIGHT : arena.maxY() + 1;
         data[54] = arena.maxZ() + 1;
+        float guideStrength = BlackFogGuidePolicy.strength(manager.cycleAgeMillis(now));
+        if (guideStrength > 0.0F) {
+            var guides = ClientBridgeProtocol.endEventWorldVfx().snapshots(manager.eventId(), manager.generation(), now)
+                    .stream().filter(beam -> BlackFogGuidePolicy.isGuide(beam.instanceId())
+                            && beam.dimension().equals(manager.dimension()) && beam.expiresAtMillis() > now
+                            && beam.start().x >= arena.minX() && beam.start().x <= arena.maxX() + 1.0
+                            && beam.start().z >= arena.minZ() && beam.start().z <= arena.maxZ() + 1.0
+                            && beam.start().y >= arena.minY() && beam.start().y <= arena.maxY() + 1.0)
+                    .sorted(java.util.Comparator.comparingDouble(beam -> beam.start().distanceToSqr(camera.pos)))
+                    .limit(BlackFogGuidePolicy.MAX_GUIDES).toList();
+            for (int i = 0; i < guides.size(); i++) {
+                var point = guides.get(i).start();
+                int offset = 56 + i * 4;
+                data[offset] = (float) point.x; data[offset + 1] = (float) point.y;
+                data[offset + 2] = (float) point.z; data[offset + 3] = guideStrength;
+            }
+        }
         snapshot = data;
     }
 

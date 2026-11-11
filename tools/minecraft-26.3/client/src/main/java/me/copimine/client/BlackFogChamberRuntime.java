@@ -21,8 +21,8 @@ public final class BlackFogChamberRuntime {
         var arena = ClientBridgeProtocol.endEventArenaBounds(fog.eventId(), fog.generation());
         if (client.level == null || arena == null) return Double.NaN;
         // Safe-zone beams already carry the authoritative floor during the approach window.
-        for (var beam : ClientBridgeProtocol.endEventWorldVfx().snapshots(now)) {
-            if (beam.instanceId().startsWith("wave5-safe-zone-")
+        for (var beam : ClientBridgeProtocol.endEventWorldVfx().snapshots(fog.eventId(), fog.generation(), now)) {
+            if (BlackFogGuidePolicy.isGuide(beam.instanceId())
                     && beam.dimension().equals(client.level.dimension().identifier().getPath())
                     && beam.start().y >= arena.minY() && beam.start().y <= arena.maxY() + 1) {
                 floor = Math.floor(beam.start().y);

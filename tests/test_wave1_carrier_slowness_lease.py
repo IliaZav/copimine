@@ -48,7 +48,16 @@ def test_carrier_slow_is_released_for_charge_and_holder_lifecycle():
     assert "updateCurrentCarrierSlowness(holder, false)" in inventory_removal
 
     delivery = method_body(source, "deliverCurrentCarrierCharge")
-    assert "removeCurrentCarrierInventoryCharge(holder)" in delivery
+    # The removal is now token-scoped: delivery retires the SPECIFIC token it
+    # accepted, so a concurrent rebind cannot have another holder's charge
+    # purged by this player's transition. The slow must still be released, which
+    # is what this test exists to protect.
+    assert "removeCurrentCarrierInventoryCharge(holder, token)" in delivery, (
+        "delivery must retire the accepted token, not whatever token is current"
+    )
+    assert "saveStateSync()" in delivery, (
+        "delivery must checkpoint before consuming the physical item"
+    )
     release = method_body(source, "releaseCurrentCarrierHolder")
     assert "removeCurrentCarrierInventoryCharge(Bukkit.getPlayer(holder))" in release
 

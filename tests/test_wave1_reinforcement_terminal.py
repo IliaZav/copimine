@@ -8,8 +8,13 @@ SRC=ROOT/'copimine-end-event/src'
 
 
 def test_terminal_delivery_refuses_every_late_reinforcement_callback(tmp_path):
-    method=extract((SRC/'me/copimine/endevent/CopiMineEndEvent.java').read_text('utf-8'),
-                   'void commitWaveOneReinforcement(String reasonCode)')
+    source=(SRC/'me/copimine/endevent/CopiMineEndEvent.java').read_text('utf-8')
+    # Extract BOTH overloads. The one-argument form became a delegate to the
+    # persist-aware form when delivery moved behind a durable checkpoint, so
+    # extracting only the entry point leaves a call to a method the probe does
+    # not define.
+    method=extract(source,'void commitWaveOneReinforcement(String reasonCode)')
+    method+="\n"+extract(source,'void commitWaveOneReinforcement(String reasonCode, boolean persist)')
     java='''import java.util.logging.Logger;
 import me.copimine.endevent.domain.RiftCarrierPolicy;
 public class Wave1TerminalDebtProbe {

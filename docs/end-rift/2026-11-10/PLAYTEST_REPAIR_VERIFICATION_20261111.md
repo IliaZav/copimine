@@ -74,6 +74,25 @@ larger than on a clean runner. Normalising them made the local build and the CI
 build byte-identical at 15 013 152 bytes / `4810de65…`, which is why the pin
 changed in `a60b758b` rather than the code.
 
+A second, subtler defect surfaced in CI on `a60b758b`. The Wave 6 endermite skin
+had been added to `CopiMineClient/src/main/resources`, which the 26.3 client
+sources as a second resource root but which is also the legacy 0.1.1 client's
+own source directory. CI therefore rebuilt a legacy jar that no longer matched
+the `thirdparty/client-mods` copy the release contract pins. The failure never
+printed: pytest diffed two 13 MB byte strings inside `difflib` for 46 minutes
+until the 60-minute job cap cancelled the run, which is why that run reported
+`cancelled` with 345 tests passed and no named cause.
+
+`36d34400` moves the skin into the 26.3 client's own resource tree, where
+nothing else reads it. The legacy jar rebuilds to its exact tracked digest
+(`e642a1aa…f55f0e`) and the 26.3 jar keeps `4810de65…` at 15 013 152 bytes, so
+the already-installed production client is unchanged. The three whole-jar
+equality checks now compare SHA-256 digests and raise an explicit two-digest
+message; a probe with a deliberately corrupted 13 MB payload reports in 15 ms.
+
+CI run `42987075340` on `36d34400` is green on all three jobs:
+`static-and-contract`, `migration-postgres-contract` and `java-plugins`.
+
 ## Installed runtime and public downloads
 
 Candidate `a60b758b` (`722ad4d6…`) is installed on the production service and

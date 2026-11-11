@@ -35,9 +35,9 @@ public final class FogLifecycleProbe {
         switch(args[0]) {
             case "depth" -> { float end=m.fogEndBlocks("the_end",2500); check(end>=3 && end<=5,"danger fog needs real 3-5 block depth, got "+end); }
             case "cycles" -> { check(m.apply(p(4,2000,3,"ACTIVE"),2000),"third cycle"); check(m.apply(p(4,3000,10,"ACTIVE"),3000),"tenth cycle supported"); check(!m.apply(p(4,4000,11,"ACTIVE"),4000),"eleventh rejects"); }
-            case "fade" -> { check(strength(m,"the_end",1000)==1,"instant active"); float quarter=strength(m,"the_end",1312); check(quarter==1,"no onset ramp"); check(strength(m,"the_end",2250)==1,"full at 1.25 seconds"); check(m.apply(p(4,2400,1,"ACTIVE"),2400),"refresh"); check(strength(m,"the_end",2400)==1,"refresh cannot restart fade"); }
+            case "fade" -> { check(strength(m,"the_end",1000)>0 && strength(m,"the_end",1000)<.1F,"effect admitted immediately without a black flash"); float quarter=strength(m,"the_end",1150); check(quarter>.4F && quarter<.6F,"smooth 300ms onset"); check(strength(m,"the_end",2250)==1,"full at 1.25 seconds"); check(m.apply(p(4,2400,1,"ACTIVE"),2400),"refresh"); check(strength(m,"the_end",2400)==1,"refresh cannot restart fade"); }
             case "clear" -> { check(m.apply(p(4,3000,1,"CLEAR"),3000),"clear accepted"); check(!m.active(),"server inactive immediately"); check(strength(m,"the_end",3500)>0,"smooth clear tail"); check(strength(m,"the_end",4250)==0,"tail ends"); check(!m.apply(p(4,5000,1,"ACTIVE"),5000),"cleared cycle cannot reopen"); }
-            case "expiry" -> { check(strength(m,"the_end",8999)==1,"lease valid"); check(strength(m,"the_end",9500)>0,"expiry fade tail"); check(!m.active(),"expired lease inactive"); check(strength(m,"the_end",10250)==0,"expiry fully clears"); check(m.apply(p(4,11000,1,"ACTIVE"),11000),"fresh lease resumes"); check(strength(m,"the_end",11000)==1,"fresh lease instant"); }
+            case "expiry" -> { check(strength(m,"the_end",8999)==1,"lease valid"); check(strength(m,"the_end",9500)>0,"expiry fade tail"); check(!m.active(),"expired lease inactive"); check(strength(m,"the_end",10250)==0,"expiry fully clears"); check(m.apply(p(4,11000,1,"ACTIVE"),11000),"fresh lease resumes"); check(strength(m,"the_end",11300)==1,"fresh lease reaches full strength"); }
             case "late-refresh" -> {
                 float before = strength(m,"the_end",9250);
                 check(before > .8F,"expiry tail still dense");
@@ -47,7 +47,7 @@ public final class FogLifecycleProbe {
                 check(m.cycleProgress(9500)==1,"refresh cannot rewind cycle progress");
             }
             case "suspend" -> { check(m.apply(p(4,3000,1,"SUSPEND"),3000),"suspend"); check(strength(m,"the_end",3000)==0,"suspend clears immediately"); check(!m.apply(p(4,4000,1,"ACTIVE"),4000),"suspended generation rejects"); check(m.resumeAfterLocalExit("event-a",4,5000),"authoritative resume"); check(m.apply(p(4,5000,1,"ACTIVE"),5000),"same cycle resumes"); }
-            case "generation" -> { check(m.apply(p(5,500,1,"ACTIVE"),3000),"new generation"); check(strength(m,"the_end",3000)==1,"new generation instantly opaque"); check(!m.apply(p(4,4000,1,"ACTIVE"),4000),"old generation rejects"); check(strength(m,"overworld",4000)==0,"unrelated dimension"); m.clear(); check(strength(m,"the_end",4000)==0,"local exit immediate"); m.reset(); check(strength(m,"the_end",4000)==0,"disconnect resets"); }
+            case "generation" -> { check(m.apply(p(5,500,1,"ACTIVE"),3000),"new generation"); check(strength(m,"the_end",3000)>0 && strength(m,"the_end",3000)<.1F,"new generation starts its own short fade"); check(!m.apply(p(4,4000,1,"ACTIVE"),4000),"old generation rejects"); check(strength(m,"overworld",4000)==0,"unrelated dimension"); m.clear(); check(strength(m,"the_end",4000)==0,"local exit immediate"); m.reset(); check(strength(m,"the_end",4000)==0,"disconnect resets"); }
             case "ten-complete-cycles" -> {
                 for(int cycle=1;cycle<=10;cycle++) {
                     long t=1000+(cycle-1)*10000;
@@ -73,7 +73,7 @@ public final class FogLifecycleProbe {
                 check(strength(m,"the_end",4250)==1,"rejoin fades in");
                 m.reset();
                 check(m.apply(p(4,5000,1,"ACTIVE"),5000),"reconnect receives new snapshot");
-                check(strength(m,"the_end",5000)==1,"reconnect starts instantly opaque");
+                check(strength(m,"the_end",5000)>0 && strength(m,"the_end",5300)==1,"reconnect fades in without resource reload");
             }
             case "rejected-envelopes" -> {
                 check(!m.apply(p(3,2000,1,"ACTIVE"),2000),"old generation");

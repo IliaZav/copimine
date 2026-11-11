@@ -60,7 +60,6 @@ public final class CopiMineClient implements ClientModInitializer {
             EndRiftGuardianShieldRenderer.render(context);
             RitualSphereRenderer.render(context);
             WaveTwoPhantomRenderer.render(context);
-            BlackFogChamberRenderer.render(context);
         });
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             visualManager.tick(ClientBridgeProtocol::sendVisualFinished);

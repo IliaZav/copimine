@@ -25,15 +25,9 @@ float cloudNoise(vec3 p) {
                mix(mix(hash31(cell+vec3(0,0,1)), hash31(cell+vec3(1,0,1)), f.x),
                    mix(hash31(cell+vec3(0,1,1)), hash31(cell+vec3(1,1,1)), f.x), f.y), f.z);
 }
-float safeExit(vec3 origin, vec3 direction) {
-    if (VolumeState.z < 0.5 || any(lessThan(origin, SafeMin.xyz))
-            || any(greaterThan(origin, SafeMax.xyz))) return 0.0;
-    // Starting inside our own platform: skip exactly its clear volume, not a view radius.
-    vec3 edge = mix(SafeMin.xyz, SafeMax.xyz, greaterThan(direction, vec3(0)));
-    vec3 denominator = mix(-max(abs(direction), vec3(0.00001)),
-            max(abs(direction), vec3(0.00001)), greaterThanEqual(direction, vec3(0)));
-    vec3 travel = (edge - origin) / denominator;
-    return max(0.0, min(travel.x, min(travel.y, travel.z)));
+// Near silhouettes and ground remain spatially readable; dense eddies build with distance.
+float distanceDensityGain(float distanceAlongRay) {
+    return smoothstep(0.5, 3.0, distanceAlongRay);
 }
 vec2 axisSpan(float origin, float direction, float low, float high) {
     if (abs(direction) < 0.00001) return origin < low || origin > high
@@ -57,13 +51,12 @@ void main() {
     vec4 viewPoint = inverseClip * vec4(texCoord * 2.0 - 1.0, max(depth, 0.000001), 1.0);
     vec3 viewPosition = viewPoint.xyz / max(abs(viewPoint.w), 0.000001);
     float sceneDistance = depth <= 0.000001 ? VolumeState.w : min(length(viewPosition), VolumeState.w);
-    // Dense at eye level; the player playtest requires a small readable patch
-    // of real ground underfoot. Safe chambers omit this pass entirely.
+    // Depth reconstruction preserves nearby world geometry rather than painting a screen tint.
     if (VolumeState.x <= 0.0) { fragColor = source; return; }
     vec3 direction = normalize((inverseView * vec4(normalize(viewPosition), 0.0)).xyz);
     vec2 arena = arenaSpan(EyeTime.xyz, direction);
-    float begin = max(arena.x, safeExit(EyeTime.xyz, direction));
-    float end = min(arena.y, min(sceneDistance, begin + 4.5));
+    float begin = arena.x;
+    float end = min(arena.y, min(sceneDistance, begin + 7.5));
     if (end <= begin) { fragColor = source; return; }
     float stride = (end - begin) / 12.0;
     float transmittance = 1.0;
@@ -76,11 +69,11 @@ void main() {
         vec3 drift = vec3(EyeTime.w * 0.065, -EyeTime.w * 0.025, EyeTime.w * 0.04);
         float eddy = 0.72 * cloudNoise(point * 0.54 + drift)
                 + 0.28 * cloudNoise(point * 1.47 - drift * 1.6);
-        float density = VolumeState.y * mix(0.72, 1.38, eddy);
+        float density = VolumeState.y * mix(0.72, 1.38, eddy) * distanceDensityGain(distanceAlongRay);
         float extinction = 1.0 - exp(-density * stride);
         float soul = pow(cloudNoise(point * 1.9 - drift * 2.1), 9.0);
-        vec3 ink = mix(vec3(0.004,0.006,0.011), vec3(0.029,0.042,0.052), eddy * eddy);
-        ink += soul * vec3(0.015, 0.080, 0.090);
+        vec3 ink = mix(vec3(0.015,0.009,0.017), vec3(0.052,0.032,0.046), eddy * eddy);
+        ink += soul * vec3(0.055, 0.018, 0.075);
         scattered += transmittance * extinction * ink;
         transmittance *= 1.0 - extinction;
         if (transmittance < 0.004) break;
@@ -89,8 +82,8 @@ void main() {
     vec3 surface = EyeTime.xyz + direction * sceneDistance;
     float ground = depth > 0.000001 && direction.y < -0.25
             && surface.y >= ArenaMin.y - 0.25 && surface.y <= ArenaMin.y + 0.45 ? 1.0 : 0.0;
-    float nearGround = ground * (1.0 - smoothstep(0.55, 1.65, length(surface.xz - EyeTime.xz)))
-            * (1.0 - smoothstep(2.0, 2.7, sceneDistance));
-    fogged = mix(fogged, source.rgb * vec3(0.42, 0.46, 0.49), nearGround);
+    float nearGround = ground * (1.0 - smoothstep(1.8, 3.1, length(surface.xz - EyeTime.xz)))
+            * (1.0 - smoothstep(2.7, 3.8, sceneDistance));
+    fogged = mix(fogged, source.rgb * vec3(0.60, 0.53, 0.59), nearGround);
     fragColor = vec4(mix(source.rgb, fogged, VolumeState.x), source.a);
 }

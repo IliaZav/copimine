@@ -122,3 +122,37 @@ Evidence:
   This is source/automated progress within M2, not complete M2 acceptance.
 
 M2a plugin candidate: SHA-256 `77918e4b438c4a6865553c849b54adf8ebb730e0a313bc4698d02c35402d32c7`, 2284050 bytes.
+
+## M2b — Uniform depth-based fog presentation
+
+The 11-November visual contract supersedes shader-free clear refuge chambers.
+The active 26.3 runtime now applies the same world-depth volume everywhere in
+its signed arena. It no longer samples an occupied emerald box, skips the pass
+inside it, or submits opaque chamber-wall geometry. The retired renderer's
+compatibility API returns no chamber; model, resource and user-shader state are
+untouched. The uniform-buffer layout stays compatible.
+
+The GLSL distance envelope preserves nearby silhouettes and a 2–3-block ground
+patch, with dense brown/violet extinction farther away. The actual extracted
+shader envelope is executed by a numerical optics regression; this is not native
+visual proof. Owned world particles now mix ash, smoke, soul wisps, sparse violet
+sparks and slower clusters under the existing 256-particle cap. Refuge cells
+use the same particle rules. Large smoke sprites avoid the near-camera patch.
+Activation admits the effect immediately with a 300 ms onset; repeated and late
+leases retain their original clock. The existing clear/suspend fences remain.
+
+Evidence:
+- New uniform-volume and onset regressions failed against the old runtime.
+- Focused lifecycle/optics/smoke tests: 17 passed.
+- Fog-related suites: 106 passed, one historical clear-chamber assertion found
+  and explicitly superseded; adapter/profile/CI-contract rerun: 116 passed,
+  one environment skip.
+- Active client: 369 tests, zero skips/failures; `test build` passed.
+- A clean rebuild reproduced the identical candidate SHA-512.
+- Client candidate: 15,011,288 B; SHA-256
+  `3fceed08546b15c4d41edce23619662ed62ce9fb8f41210114f988a463711430`;
+  SHA-512 `86c5dd5d372a121781e8cfbfb8474f4c753a04e0016c7e651f1f7001e4e6b324ef796c10cd4dc298d01f5427e983a70b6dc91c6f789f668fe2f44d0fe02e6837`.
+- Native Minecraft image/audio/FPS verification: NOT PERFORMED.
+- Remaining M2 fog work includes timed luminous guidance through dense fog,
+  roster-capacity/walkable-path admission, Wither II/III exposure and acceptance.
+  This commit is not a declaration that Wave 5 or M2 is complete.

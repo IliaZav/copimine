@@ -216,10 +216,11 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # `text eol=lf` rule had been edited into CRLF, so a Windows checkout built a
     # jar 17 bytes larger than the same sources on a clean runner and no single
     # pin could match. Both files are normalised to LF now.
-    assert artifact['size'] == 15_013_152
+    # 11-November uniform volumetric fog; clean rebuild SHA-512 matched.
+    assert artifact['size'] == 15_011_288
     assert artifact['sha512'] == (
-        '4810de65064eb2ac528018225a845b1f1ccfbaa27c192342b9087da6a8ede8bb'
-        'e47adb106e216d4fbbe18a578ff802e177a76870af9f95c7af2e2508fb8466e0'
+        '86c5dd5d372a121781e8cfbfb8474f4c753a04e0016c7e651f1f7001e4e6b324'
+        'ef796c10cd4dc298d01f5427e983a70b6dc91c6f789f668fe2f44d0fe02e6837'
     )
 
 

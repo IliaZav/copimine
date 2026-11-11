@@ -848,7 +848,9 @@ def test_wave5_uses_custom_client_volume_instead_of_particle_perimeter():
     assert "BlackFogCurtainPolicy.perimeter" not in body
     shader = (ROOT / "tools/minecraft-26.3/client/src/main/resources/assets/copimineclient/shaders/post/wave5_volume.fsh").read_text("utf-8")
     assert "DepthSampler" in shader and "cloudNoise(point" in shader
-    assert "safeExit(EyeTime.xyz, direction)" in shader
+    # 11-November master: refuge safety does not create a separate clear volume.
+    assert "safeExit(" not in shader
+    assert "distanceDensityGain(distanceAlongRay)" in shader
     assert "ArenaMin.xyz" in shader and "ArenaMax.xyz" in shader
 
 

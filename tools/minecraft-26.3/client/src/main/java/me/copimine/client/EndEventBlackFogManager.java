@@ -17,6 +17,7 @@ public final class EndEventBlackFogManager {
     /** Initial visual tuning: nearby silhouettes survive, distant geometry is obscured. */
     private static final float DENSE_FOG_END_BLOCKS = 4.0F;
     public static final long FADE_MILLIS = 1_250L;
+    public static final long ONSET_MILLIS = 300L;
     private static final int MAX_CYCLE = 10;
 
     private String eventId = "";
@@ -164,8 +165,11 @@ public final class EndEventBlackFogManager {
         if (fadeOutAtMillis >= 0L) {
             return fadeOutFrom * (1.0F - smooth((float) (nowMillis - fadeOutAtMillis) / FADE_MILLIS));
         }
-        // The authoritative ACTIVE frame is opaque immediately, including lease recovery.
-        return expiresAtMillis > 0L ? 1.0F : 0.0F;
+        // Admit the pass on the first frame, then roll the volume in without a black flash.
+        // Refreshes retain the original onset, including recovery of a late lease.
+        return expiresAtMillis > 0L
+                ? 0.01F + 0.99F * smooth((float) (nowMillis - startedAtMillis) / ONSET_MILLIS)
+                : 0.0F;
     }
 
     private static float smooth(float value) {

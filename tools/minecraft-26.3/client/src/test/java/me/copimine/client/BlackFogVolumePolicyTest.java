@@ -5,12 +5,11 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BlackFogVolumePolicyTest {
-    @Test void evenTheThinnestEddyObscuresTheWorldWithinOneBlock() {
-        double transmission = Math.exp(-BlackFogVolumePolicy.EXTINCTION_PER_BLOCK * 0.72);
-        assertTrue(transmission < 0.0002, "at least 99.98 percent extinction within one block");
+    @Test void extinctionUsesTheUniformDistanceEnvelopeInsteadOfOneBlockBlackout() {
+        // Actual GLSL envelope is executed in test_wave5_uniform_volume.py.
+        assertTrue(BlackFogVolumePolicy.EXTINCTION_PER_BLOCK >= 2.0F
+                && BlackFogVolumePolicy.EXTINCTION_PER_BLOCK <= 2.5F);
         assertEquals(4.0F, BlackFogVolumePolicy.FOG_HEIGHT);
-        assertTrue(BlackFogVolumePolicy.CHAMBER_HEIGHT < BlackFogVolumePolicy.FOG_HEIGHT,
-                "opaque smoke must cap the chamber above the clear headroom");
     }
     @Test void everyPositionOnPlatformFindsItsExactClearBox() {
         for (int x = 0; x < 3; x++) for (int z = 0; z < 3; z++) {

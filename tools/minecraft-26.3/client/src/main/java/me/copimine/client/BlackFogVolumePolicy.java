@@ -4,9 +4,9 @@ import java.util.ArrayDeque;
 import java.util.HashSet;
 import java.util.Set;
 
-/** Bounded discovery of only the occupied server-published emerald platform. */
+/** Uniform arena fog tuning plus legacy bounded platform geometry helpers. */
 public final class BlackFogVolumePolicy {
-    public static final float EXTINCTION_PER_BLOCK = 12.0F;
+    public static final float EXTINCTION_PER_BLOCK = 2.2F;
     public static final float FOG_HEIGHT = 4.0F;
     public static final float CHAMBER_HEIGHT = 3.0F;
     private BlackFogVolumePolicy() {}

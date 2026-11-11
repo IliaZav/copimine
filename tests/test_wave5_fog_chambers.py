@@ -61,4 +61,6 @@ def test_world_smoke_owns_its_cleanup_and_does_not_reload_model_assets():
     assert 'CAMPFIRE_COSY_SMOKE' in source
     assert 'fog.eventId()' in source and 'fog.generation()' in source
     assert 'base + BlackFogVolumePolicy.FOG_HEIGHT' in source
-    assert 'BlackFogVolumePolicy.CHAMBER_HEIGHT' in source
+    # The 11-November master replaces clear chambers with uniform refuge fog.
+    assert 'BlackFogVolumePolicy.CHAMBER_HEIGHT' not in source
+    assert 'clearOfSafeFloor(' not in source

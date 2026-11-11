@@ -1,23 +1,18 @@
 package me.copimine.client;
 
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.SingleQuadParticle;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
-import net.minecraft.world.level.block.Blocks;
 
 /** Real, depth-tested world smoke. Never reloads resources or clears other particles/models. */
 public final class BlackFogSmokeRuntime {
     private static final ArrayList<Particle> owned = new ArrayList<>();
-    private static final Map<Long, Boolean> floorCache = new HashMap<>();
     private static Object world;
     private static String event = "";
     private static long generation;
-    private static int tick, floorY;
     private static boolean primed;
     private static final java.util.Random random = new java.util.Random();
     private BlackFogSmokeRuntime() {}
@@ -41,16 +36,6 @@ public final class BlackFogSmokeRuntime {
         }
         double base = BlackFogChamberRuntime.floorTop(client, fog, now);
         if (!Double.isFinite(base)) return;
-        int nextY = (int) base;
-        if (tick++ % 10 == 0 || floorY != nextY) floorCache.clear();
-        floorY = nextY;
-        BlackFogVolumePolicy.Floor safeFloor = (x, z) -> floorCache.computeIfAbsent(BlockPos.asLong(x, 0, z), key -> {
-            for (int dy = -3; dy <= 1; dy++) {
-                BlockPos pos = new BlockPos(x, floorY + dy, z);
-                if (client.level.hasChunkAt(pos) && client.level.getBlockState(pos).is(Blocks.EMERALD_BLOCK)) return true;
-            }
-            return false;
-        });
         owned.removeIf(p -> {
             var b = p.getBoundingBox();
             double x = (b.minX + b.maxX) * 0.5, z = (b.minZ + b.maxZ) * 0.5;
@@ -59,9 +44,7 @@ public final class BlackFogSmokeRuntime {
                     || x > arena.maxX() + 1.0 - BlackFogSmokePolicy.RADIUS
                     || z < arena.minZ() + BlackFogSmokePolicy.RADIUS
                     || z > arena.maxZ() + 1.0 - BlackFogSmokePolicy.RADIUS
-                    || b.minY - radius < base || b.minY + radius > base + BlackFogVolumePolicy.FOG_HEIGHT
-                    || (b.minY - radius < base + BlackFogVolumePolicy.CHAMBER_HEIGHT
-                    && !BlackFogSmokePolicy.clearOfSafeFloor(x, z, safeFloor));
+                    || b.minY - radius < base || b.minY + radius > base + BlackFogVolumePolicy.FOG_HEIGHT;
             if (discard) p.remove();
             return discard;
         });
@@ -76,24 +59,33 @@ public final class BlackFogSmokeRuntime {
             double z = Math.max(arena.minZ() + 1.3, client.player.getZ() - 22)
                     + random.nextDouble() * (Math.min(arena.maxZ() - 0.3, client.player.getZ() + 22)
                     - Math.max(arena.minZ() + 1.3, client.player.getZ() - 22));
-            boolean roof = random.nextInt(3) == 0;
-            boolean soul = !roof && random.nextInt(6) == 0;
-            double y = base + (roof ? 3.5 : 1.25 + random.nextDouble() * 1.4);
-            if ((!roof && !soul && Math.hypot(x - client.player.getX(), z - client.player.getZ()) < 2.0)
-                    || (!roof && !BlackFogSmokePolicy.clearOfSafeFloor(x, z, safeFloor))) continue;
+            int style = random.nextInt(20);
+            boolean ash = style < 8, soul = style == 8, spark = style == 9;
+            boolean cluster = style >= 17;
+            double y = base + 0.8 + random.nextDouble() * 2.4;
+            // Large smoke sprites stay outside the readable near patch; small wisps may drift through it.
+            if (!ash && !soul && !spark
+                    && Math.hypot(x - client.player.getX(), z - client.player.getZ()) < 2.5) continue;
             BlockPos position = BlockPos.containing(x, y, z);
             if (!client.level.hasChunkAt(position) || !client.level.getBlockState(position).isAir()) continue;
-            // Built-in translucent sprite provider works without Iris or optional mods.
-            Particle p = client.particleEngine.createParticle(soul ? ParticleTypes.SOUL : ParticleTypes.CAMPFIRE_COSY_SMOKE,
-                    x, y, z, (random.nextDouble() - 0.5) * 0.009, 0.001,
-                    (random.nextDouble() - 0.5) * 0.009);
+            // Local vanilla sprite providers are bundled; no Iris or extra mod is required.
+            var type = ash ? ParticleTypes.ASH : soul ? ParticleTypes.SOUL
+                    : spark ? ParticleTypes.REVERSE_PORTAL : cluster ? ParticleTypes.CAMPFIRE_COSY_SMOKE
+                    : ParticleTypes.SMOKE;
+            double speed = ash ? 0.018 : spark ? 0.012 : 0.005;
+            Particle p = client.particleEngine.createParticle(type, x, y, z,
+                    (random.nextDouble() - 0.35) * speed,
+                    soul ? 0.009 : ash ? -0.003 : 0.001 + random.nextDouble() * 0.003,
+                    (random.nextDouble() - 0.5) * speed);
             if (p instanceof SingleQuadParticle quad) {
                 float size = quad.getQuadSize(0);
-                if (size > 0) quad.scale((soul ? 0.15F : roof ? 0.25F : 0.55F + random.nextFloat() * 0.3F) / size);
+                if (size > 0) quad.scale((ash ? 0.025F + random.nextFloat() * 0.04F : spark ? 0.06F : soul ? 0.13F
+                        : cluster ? 0.45F + random.nextFloat() * 0.18F : 0.18F + random.nextFloat() * 0.18F) / size);
                 float shade = 0.035F + random.nextFloat() * 0.035F;
                 if (soul) quad.setColor(0.25F, 0.75F, 0.82F);
-                else quad.setColor(shade * 0.68F, shade * 0.78F, shade);
-                p.setLifetime(55 + random.nextInt(25));
+                else if (spark) quad.setColor(0.48F, 0.16F, 0.68F);
+                else quad.setColor(shade, shade * 0.65F, shade * 0.85F);
+                p.setLifetime((ash ? 35 : cluster ? 70 : 45) + random.nextInt(30));
                 owned.add(p); spawned++;
             } else if (p != null) p.remove();
         }
@@ -101,6 +93,6 @@ public final class BlackFogSmokeRuntime {
 
     public static void clear() {
         for (Particle p : owned) p.remove();
-        owned.clear(); floorCache.clear(); world = null; event = ""; generation = 0; tick = 0; primed = false;
+        owned.clear(); world = null; event = ""; generation = 0; primed = false;
     }
 }

@@ -699,3 +699,60 @@ Worth pairing with the earlier entry: the first two red runs on this branch were
 genuinely ours - a stale plugin lock - and this third one is not. Both looked
 identical from the run list. The way to tell them apart is to open the job and
 read which step failed, not to look at the badge.
+
+## Phase 5 Echo: the audit is right, and checked
+
+PHASE5_RUNTIME_AUDIT lists seven findings. I re-derived the load-bearing ones
+from the source rather than taking them on trust, and three of them are real.
+
+**The decoys cannot be summoned.** `BossPhasePolicy.spellPool(RAGE)` reads:
+
+```
+case RAGE -> List.of(VOID_BLAST, RIFT_PROJECTILE, RIFT_ARROWS, ARENA_INFERNO,
+                     BOSS_FIREBALL, MELEE_SWIPE, CHEST_STRIKE, GROUND_SLAM);
+```
+
+`SUMMON_SERVANTS` appears in `RIFT` and `OVERLOAD` and nowhere else. The new
+decoy summon hangs off `summonServants`, which is dispatched by that spell. So
+`summonEchoDecoys` is unreachable for the whole of Rage - the phase it was
+written for. Eight spells, none of them the one that matters.
+
+**The attack replicas are invisible.** `startEchoAttackReplicas` puts a UUID, a
+target lock and a timeline into three maps:
+
+```
+echoReplicaTimelines.put(copyId, timeline);
+echoReplicaLocks.put(copyId, new TargetLock(...));
+echoReplicaDamageLedger.put(copyId, new LinkedHashSet<>());
+```
+
+No entity, no display, no model binding. Nothing is ever made visible. The
+ticking method then deals damage against those timings. That is invisible
+damage, which is the exact failure the contract names in 23.3.
+
+**And it cannot tick anyway.** The only caller of `tickEchoAttackReplicas` sits
+inside `pinBossToFinalSealCore`, below a LAST_SEAL gate. Replicas start at entry
+to RAGE and would never advance during it.
+
+**The entry call is refused before it begins.** Line 45857 passes `VOID_BLAST`;
+`EchoAttackReplicaPolicy` line 47 accepts only
+
+```java
+"MELEE_SWIPE", "CHEST_STRIKE", "GROUND_SLAM"
+```
+
+so `timeline(...)` returns null and the replica is discarded on the first
+iteration. Three separate reasons the feature does nothing, any one sufficient.
+
+This is worth stating plainly because the tests are green. There are policy
+tests for the replica timings, the decoy cap, the 50 HP and the cooldown, and
+they pass - as they should, the policies are correct. What no test asks is
+whether anything calls them from a phase that runs, or whether an actor exists
+to be seen. A correct policy behind an unreachable call site is indistinguishable
+from a working feature to a test suite that only reads the policy.
+
+The audit's own conclusion is the right one, and I am adopting it: this needs a
+real slice, not a one-line unblock. Moving the tick call alone would start
+invisible damage on live players, which is worse than the current nothing.
+
+Recorded as unfinished. It is not claimed working.

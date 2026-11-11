@@ -503,3 +503,82 @@ verification. The geyser's fire, the inferno's readability, the ring's wall of
 Kagune, the decoy's readability against the real boss, and the descent's timing
 are all unverified by eye.
 
+## The installed client is not the build this branch produces
+
+The one visual claim this session can make is negative, and it is a real
+finding rather than a caveat.
+
+The user's playtest screenshots of the Wave 5 fog were measured instead of
+described. `2026-11-10_23.31.34_3.png` samples `rgb=(16,24,31)` on the upper
+field: blue leads red by **+15**. The fog source in this branch renders violet,
+whose soul highlight `(0.055,0.018,0.075)` gives **+5**. The installed jar
+contains `soul * vec3(0.015,0.080,0.090)` - **+19**, a cold teal. The screenshot
+matches the installed jar, not the source.
+
+So the fog the user photographed is not the fog this branch draws, and the
+difference is exactly the 15 entries of the Wave 5 fog system:
+
+```
+DIFFERS  me/copimine/client/BlackFogVolumePolicy.class
+DIFFERS  me/copimine/client/BlackFogVolumeRuntime.class (+ \$Chamber)
+DIFFERS  me/copimine/client/BlackFogChamberRuntime.class
+DIFFERS  me/copimine/client/BlackFogSmokeRuntime.class
+DIFFERS  me/copimine/client/EndEventBlackFogManager.class
+DIFFERS  me/copimine/client/EndEventWorldVfxManager.class (+ \$1, \$Beam, \$BeamSnapshot)
+DIFFERS  me/copimine/client/mixin/BlackFogPostPassMixin.class
+DIFFERS  me/copimine/client/CopiMineClient.class
+DIFFERS  assets/copimineclient/shaders/post/wave5_volume.fsh
+DIFFERS  assets/copimineclient/post_effect/wave5_volume.json
+MISSING  me/copimine/client/BlackFogGuidePolicy.class
+```
+
+`BlackFogGuidePolicy` - the 3-5 second luminous refuge guide of contract 6.4 -
+does not exist in the installed client at all. That is not a rendering
+regression the user misread; the class is absent.
+
+### The build itself is sound
+
+Rebuilding reproduces the pin exactly, so the release candidate is internally
+consistent and only the installed copy is stale:
+
+| | bytes | sha512 |
+|---|---|---|
+| pinned, and rebuilt | 15013727 | `10b49e7b...eeed6862` |
+| installed in Prism | 15013152 | `4810de65...8fb8466e0` |
+
+`preserveFileTimestamps = false` and `reproducibleFileOrder = true` are both set,
+and two independent builds produced the same digest. The artifacts directory
+`guardian-polish-final` is older still: its manifest names `a60b758b`, five
+commits behind HEAD, and pins the 15013152 client.
+
+Replacing the installed jar was **not** done. It is the user's client, and the
+assignment forbids overwriting it without explicit authorisation. The exact
+command is in the report.
+
+### Why no test caught the drift
+
+The suite pins the fog's *structure* - uniform density, no safe-cell exemption,
+depth reconstruction - but never its *hue*. Two palettes that are both "dark"
+were therefore both acceptable, and a build carrying the wrong one shipped.
+`test_the_fog_is_violet_black_not_a_cold_teal_screen` now reads the real ink
+palette out of the shader and refuses one where blue leads red. Restoring the
+stale palette makes it fail with `assert (0.09 - 0.015) <= 0.06`.
+
+The general lesson, and the third instance this session: a test that constrains
+shape without constraining appearance cannot tell a correct build from a
+plausible wrong one.
+
+## A test that was red for a reason unrelated to its subject
+
+`test_direct_packager_preserves_gradle_candidate` launched `powershell.exe`
+without `-ExecutionPolicy Bypass`. Windows PowerShell defaults to Restricted, so
+the child refused to load the generated script and the assertion surfaced
+"scripts are disabled on this system" as a packaging failure. The guard was
+never broken; it was never executed.
+
+The bypass is now requested only when the launcher is Windows PowerShell, since
+`pwsh` has no such policy. Reintroducing the regression the guard exists to
+prevent - a direct packager copying over the verified Java 25 candidate - fails
+both parametrisations, so the test now genuinely runs and genuinely bites.
+
+

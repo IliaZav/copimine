@@ -58,6 +58,7 @@ import me.copimine.endevent.domain.SmallKagunePolicy;
 import me.copimine.endevent.domain.SmallKaguneSpawnPolicy;
 import me.copimine.endevent.domain.GuardianDeathLedger;
 import me.copimine.endevent.domain.KaguneCocoonGuardianPolicy;
+import me.copimine.endevent.domain.EchoDecoyPolicy;
 import me.copimine.endevent.domain.BossAbilitySelector;
 import me.copimine.endevent.domain.BossAnimationId;
 import me.copimine.endevent.domain.BossAnimationPriorityPolicy;
@@ -888,6 +889,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private int arenaInfernoVentBudget;
     private final Set<UUID> lootIssuedEntityUuids = new HashSet<>();
     private final Set<UUID> spellServants = new HashSet<>();
+    /** Contract 15.3: living Echo decoys of the real Guardian, this generation. */
+    private final Set<UUID> echoDecoyIds = new LinkedHashSet<>();
+    private long echoDecoyLastSummonTick = Long.MIN_VALUE;
+    private int echoDecoyCursor;
     private final Map<UUID, CombatTacticsPolicy.MobTactic> waveMobTactics = new HashMap<>();
     private final Map<Long, Integer> wave3GateAssignments = new LinkedHashMap<>();
     private final Map<Long, Set<UUID>> wave3GateAssignmentMembers = new HashMap<>();
@@ -45748,7 +45753,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (bossPhase == BossPhase.RIFT && transition.entered().contains(BossPhase.RIFT)) {
             startCurrentRiftFractures(boss);
         }
+        // Contract 15.5: entering the final seal stops echo generation and
+        // dissolves every decoy. A surviving decoy would otherwise become a
+        // permanent orphan or, worse, be mistaken for the real boss.
         if (transition.entered().contains(BossPhase.LAST_SEAL)) {
+            clearEchoDecoys("entered-last-seal");
             startCurrentLastSealVisuals(boss);
         }
     }
@@ -54852,6 +54861,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (boss == null || config == null) {
             return;
         }
+        // Contract 15.3: in RAGE the summon is the Echo DECOY - a combat-capable
+        // replica of the Guardian itself - not a pair of spiders. The policy owns
+        // the 50 HP, the cap of five and the ~150 s summon cooldown.
+        if (bossPhase == BossPhase.RAGE && summonEchoDecoys(boss)) {
+            return;
+        }
         BossPhasePolicy.CombatProfile profile = currentBossCombatProfile();
         int summonCap = Math.min(config.maxSummonedServants(), profile.summonCap());
         if (spellServants.size() >= summonCap) {
@@ -54871,6 +54886,90 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         getLogger().info("BOSS_SUMMON_CHANNEL boss=" + boss.getUniqueId()
                 + " phase=" + bossPhase + " count=" + spawned
                 + " cap=" + summonCap + " stage=" + bossPhase);
+    }
+
+    /**
+     * Contract 15.3 persistent decoys. A decoy is a real combatant with exactly
+     * {@code EchoDecoyPolicy.DECOY_HEALTH} hit points, at most
+     * {@code MAX_ALIVE} alive at once and a summon cooldown of
+     * {@code SUMMON_COOLDOWN_TICKS}. It never shares the boss's authoritative
+     * health or boss bar, and its death never counts as the boss defeat.
+     */
+    private boolean summonEchoDecoys(LivingEntity boss) {
+        if (boss == null || bossPhase != BossPhase.RAGE) {
+            return false;
+        }
+        List<Player> roster = activeBossParticipants();
+        if (roster.isEmpty()
+                || !EchoDecoyPolicy.maySummon(echoDecoyLastSummonTick, eventTickCounter)) {
+            return false;
+        }
+        int alive = echoDecoyIds.size();
+        int wanted = EchoDecoyPolicy.initialDecoyCount(roster.size());
+        int admitted = EchoDecoyPolicy.resolveSummonBatch(alive, wanted);
+        if (admitted <= 0) {
+            return false;
+        }
+        double health = EchoDecoyPolicy.decoyHealth(roster.size());
+        int spawned = 0;
+        for (int index = 0; index < admitted; index++) {
+            Player anchorPlayer = roster.get(Math.floorMod(echoDecoyCursor++, roster.size()));
+            Location around = anchorPlayer == null ? boss.getLocation()
+                    : anchorPlayer.getLocation();
+            Entity decoy = spawnOwnedMob(around.getWorld(), boss.getLocation(),
+                    EntityType.PILLAGER, 0, EVENT_KIND_ELITE, false, index + alive);
+            if (decoy == null) {
+                continue;
+            }
+            if (decoy instanceof LivingEntity living) {
+                AttributeInstance maximum = living.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+                if (maximum != null) {
+                    maximum.setBaseValue(health);
+                }
+                living.setHealth(health);
+                if (living instanceof Mob mob) {
+                    mob.setAI(true);
+                    mob.setAware(true);
+                }
+            }
+            echoDecoyIds.add(decoy.getUniqueId());
+            spawned++;
+        }
+        if (spawned <= 0) {
+            return false;
+        }
+        echoDecoyLastSummonTick = eventTickCounter;
+        getLogger().info("BOSS_ECHO_DECOYS_SUMMONED event=" + eventId
+                + " boss=" + boss.getUniqueId() + " phase=" + bossPhase
+                + " spawned=" + spawned + " alive=" + echoDecoyIds.size()
+                + " health=" + health + " cooldown_ticks="
+                + EchoDecoyPolicy.SUMMON_COOLDOWN_TICKS
+                + " " + EchoDecoyPolicy.describe(roster.size(), echoDecoyIds.size()));
+        return true;
+    }
+
+    /** Contract 15.5: decoys dissolve on phase transition and never survive one. */
+    private int clearEchoDecoys(String reason) {
+        int removed = 0;
+        for (UUID id : new ArrayList<>(echoDecoyIds)) {
+            Entity entity = ownedEntities.get(id);
+            if (entity != null && !entity.isDead()) {
+                entity.remove();
+                removed++;
+            }
+            unregisterOwnedEntity(id, reason);
+        }
+        if (!echoDecoyIds.isEmpty()) {
+            getLogger().info("BOSS_ECHO_DECOYS_CLEARED event=" + eventId
+                    + " reason=" + reason + " removed=" + removed);
+        }
+        echoDecoyIds.clear();
+        return removed;
+    }
+
+    /** A decoy is not the boss: its death is bookkeeping, never a defeat. */
+    private boolean isEchoDecoy(Entity entity) {
+        return entity != null && echoDecoyIds.contains(entity.getUniqueId());
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -54893,6 +54992,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (riftRam != null && entity.getUniqueId().equals(riftRam.id())) {
             riftRam.died(entity.getUniqueId());
+        }
+        // Contract 15.3: an Echo decoy's death is bookkeeping ONLY. It must not
+        // reach defeat handling, rewards, progression or the boss bar - the
+        // policy states all four as hard questions and all four must stay false.
+        if (isEchoDecoy(entity)) {
+            echoDecoyIds.remove(entity.getUniqueId());
+            event.setDroppedExp(0);
+            event.getDrops().clear();
+            getLogger().info("BOSS_ECHO_DECOY_DIED event=" + eventId
+                    + " decoy=" + entity.getUniqueId()
+                    + " alive=" + echoDecoyIds.size()
+                    + " triggers_defeat=" + EchoDecoyPolicy.deathTriggersBossDefeat()
+                    + " drops_loot=" + EchoDecoyPolicy.dropsLoot());
+            return;
         }
         if (suppressEchoProbeDrops(event)) return;
         boolean namedEcho = RealitySplitTrialController.NamedTrial.PERSONAL_ECHO.name()

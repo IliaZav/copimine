@@ -1,19 +1,18 @@
 import me.copimine.endevent.domain.GuardianRegenerationPolicy;
 
 /**
- * Canon 6.4: the final-phase conditional regeneration is small, needs living
- * shields, and is capped around 24-25% of boss maximum health per generation.
+ * Master 17.4 supersedes Canon 6.4: 0.2% per second and a 5% total cap.
+ * Living shields are required; cocoon destruction disables it permanently.
  */
 public final class GuardianRegenerationPolicyTest {
     public static void main(String[] args) {
         double max = 20_000.0D;
-        require(Math.abs(GuardianRegenerationPolicy.cap(max) - 5_000.0D) < 0.001D,
-                "the generation cap must be 25% of boss maximum health");
-        require(GuardianRegenerationPolicy.CAP_FRACTION >= 0.24D
-                        && GuardianRegenerationPolicy.CAP_FRACTION <= 0.25D,
-                "the cap stays inside the spec's 24-25% band");
-        require(Math.abs(GuardianRegenerationPolicy.stepBudget(max) - 200.0D) < 0.001D,
-                "one step restores 1% of maximum health");
+        require(Math.abs(GuardianRegenerationPolicy.cap(max) - 1_000.0D) < 0.001D,
+                "the generation cap must be 5% of boss maximum health");
+        require(GuardianRegenerationPolicy.CAP_FRACTION == 0.05D,
+                "the master contract requires the exact five-times-reduced cap");
+        require(Math.abs(GuardianRegenerationPolicy.stepBudget(max) - 40.0D) < 0.001D,
+                "one step restores 0.2% of maximum health");
         require(GuardianRegenerationPolicy.STEP_INTERVAL_MILLIS >= 500L
                         && GuardianRegenerationPolicy.STEP_INTERVAL_MILLIS <= 2_000L,
                 "a step is slow enough to read in combat");
@@ -24,7 +23,7 @@ public final class GuardianRegenerationPolicyTest {
                 "a zero maximum must offer no healing at all");
 
         // Missing health limits the step, not the budget.
-        require(Math.abs(GuardianRegenerationPolicy.step(max, max - 50.0D, 0.0D) - 50.0D) < 0.001D,
+        require(Math.abs(GuardianRegenerationPolicy.step(max, max - 20.0D, 0.0D) - 20.0D) < 0.001D,
                 "a nearly full boss can only regain its missing health");
         require(GuardianRegenerationPolicy.step(max, max, 0.0D) == 0.0D,
                 "a full-health boss never regenerates");
@@ -51,7 +50,7 @@ public final class GuardianRegenerationPolicyTest {
         }
         require(Math.abs(granted - GuardianRegenerationPolicy.cap(max)) < 0.001D,
                 "repeated steps must land exactly on the generation cap");
-        require(steps == 25, "1% steps reach the 25% cap in 25 seconds of protection");
+        require(steps == 25, "0.2% steps reach the 5% cap in 25 seconds of protection");
         require(health <= max + 0.001D, "regeneration must never exceed the boss maximum");
 
         // Rejected inputs heal nothing instead of throwing inside a combat tick.

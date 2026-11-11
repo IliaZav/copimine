@@ -1,6 +1,7 @@
 package me.copimine.endevent.domain;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Master contract 22.1: after the last cocoon defender dies the Guardian falls
@@ -30,6 +31,36 @@ public final class CocoonFallPolicy {
     public static final int FALL_TICKS = 40;
     /** Landing impact window, dust and shockwave synchronise with it. */
     public static final int LANDING_TICKS = 20;
+    public static final String SNAPSHOT_KEY = "boss-cocoon-fall-v1";
+
+    /** Next sample to execute; landed records never replay the impact cue. */
+    public record Checkpoint(Stage stage, int elapsedTicks) {
+        public Checkpoint {
+            if (stage == null || elapsedTicks < 0
+                    || elapsedTicks > FALL_TICKS + LANDING_TICKS + 1
+                    || stage == Stage.FALLING && elapsedTicks > FALL_TICKS
+                    || stage == Stage.LANDING && (elapsedTicks <= FALL_TICKS
+                        || elapsedTicks > FALL_TICKS + LANDING_TICKS)
+                    || stage == Stage.MELEE_FURY && elapsedTicks <= FALL_TICKS + LANDING_TICKS
+                    || stage == Stage.COCOONED || stage == Stage.ANCHORS_BROKEN) {
+                throw new IllegalArgumentException("INVALID_COCOON_FALL_CHECKPOINT");
+            }
+        }
+
+        public String encode() { return stage.name() + ":" + elapsedTicks; }
+    }
+
+    public static Checkpoint restore(Map<String, String> progress) {
+        if (progress == null || !progress.containsKey(SNAPSHOT_KEY)) return null;
+        String value = progress.get(SNAPSHOT_KEY);
+        try {
+            String[] fields = value.split(":", -1);
+            if (fields.length != 2) throw new IllegalArgumentException();
+            return new Checkpoint(Stage.valueOf(fields[0]), Integer.parseInt(fields[1]));
+        } catch (RuntimeException invalid) {
+            throw new IllegalArgumentException("INVALID_COCOON_FALL_CHECKPOINT", invalid);
+        }
+    }
 
     private CocoonFallPolicy() {
     }
@@ -114,7 +145,6 @@ public final class CocoonFallPolicy {
     public static List<EndRiftAiPolicy.BossSpell> furySpellProfile() {
         return List.of(
                 EndRiftAiPolicy.BossSpell.MELEE_SWIPE,
-                EndRiftAiPolicy.BossSpell.CHEST_STRIKE,
                 EndRiftAiPolicy.BossSpell.GROUND_SLAM,
                 EndRiftAiPolicy.BossSpell.FINAL_STRIKE);
     }
@@ -122,7 +152,8 @@ public final class CocoonFallPolicy {
     /** The fury profile must contain no long-range channel spell. */
     public static boolean furyProfileIsMeleeOnly() {
         for (EndRiftAiPolicy.BossSpell spell : furySpellProfile()) {
-            if (spell == EndRiftAiPolicy.BossSpell.SMALL_KAGUNE
+            if (spell == EndRiftAiPolicy.BossSpell.CHEST_STRIKE
+                    || spell == EndRiftAiPolicy.BossSpell.SMALL_KAGUNE
                     || spell == EndRiftAiPolicy.BossSpell.AMBUSH_GRAB
                     || spell == EndRiftAiPolicy.BossSpell.VOID_BLAST
                     || spell == EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE

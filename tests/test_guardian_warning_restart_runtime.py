@@ -26,6 +26,12 @@ import java.util.logging.*;
 import me.copimine.endevent.domain.*;
 import me.copimine.endevent.runtime.TentacleController;
 public class GuardianWarningRestartProbe {
+    long cocoonFallGeneration=Long.MIN_VALUE;
+    boolean cocoonFallStarted,cocoonLandingPlayed;
+    int cocoonFallElapsedTicks=-1,cocoonFallMoveFailures;
+    me.copimine.endevent.domain.CocoonFallPolicy.Stage cocoonFallStage=
+            me.copimine.endevent.domain.CocoonFallPolicy.Stage.COCOONED;
+
     enum EventPhase {BOSS_ACTIVE,RECOVERY_REQUIRED}
     enum Particle {SCULK_SOUL}
     enum Sound {BLOCK_SCULK_SENSOR_CLICKING}
@@ -50,7 +56,7 @@ public class GuardianWarningRestartProbe {
     final Map<Integer,Long> tentacleGuardianRespawnDeadlineMillis=new HashMap<>();
     // Contract 17.1: the spawn loop consults the death ledger before rebuilding
     // a slot, so the field has to exist even where this probe ignores it.
-    final me.copimine.endevent.domain.GuardianDeathLedger guardianDeaths=
+    me.copimine.endevent.domain.GuardianDeathLedger guardianDeaths=
             new me.copimine.endevent.domain.GuardianDeathLedger(7L);
     final Set<Integer> tentacleGuardianWarnedSlots=new HashSet<>();
     final Map<Integer,Integer> tentacleGuardianSpawnFailures=new HashMap<>();
@@ -91,63 +97,55 @@ public class GuardianWarningRestartProbe {
     }
     public static void main(String[] args){
         String scenario=args[0];
-        if(scenario.startsWith("restart-")){
-            long savedAt=Long.parseLong(scenario.substring(8));
-            var original=dead();original.tentacleActiveMillis=85_000L;
-            original.ensurePermanentTentacles(original.boss,1);
-            check(original.position.world.warnings==1 && original.spawned==0,"initial full warning missing");
-            original.tentacleActiveMillis=savedAt;
+        if(scenario.startsWith("fall-")) {
+            var original=dead();original.tentacleDamageWindowEndsMillis=15_000L;
+            original.cocoonFallStarted=true;original.cocoonFallGeneration=original.generation;
+            int elapsed=Integer.parseInt(scenario.substring(5));
+            original.cocoonFallElapsedTicks=elapsed;
+            original.cocoonFallStage=elapsed<=40?CocoonFallPolicy.Stage.FALLING:
+                    elapsed<=60?CocoonFallPolicy.Stage.LANDING:CocoonFallPolicy.Stage.MELEE_FURY;
             var saved=new HashMap<String,String>();original.encodeTentacleGuardianState(saved);
             var restored=new GuardianWarningRestartProbe();restored.restoreTentacleGuardianState(saved);
-            restored.ensurePermanentTentacles(restored.boss,1);
-            long remaining=90_000L-savedAt;
-            check(restored.tentacleGuardianRespawnDeadlineMillis.get(0)==remaining,
-                    "restart discarded elapsed warning; expected "+remaining+"ms but got "+restored.tentacleGuardianRespawnDeadlineMillis.get(0));
-            check(restored.position.world.warnings==0,"already warned slot replayed its warning on restart");
-            restored.tentacleActiveMillis=remaining-1;restored.ensurePermanentTentacles(restored.boss,1);
-            check(restored.spawned==0,"respawn preceded its exact remaining active time");
-            restored.tentacleActiveMillis=remaining;restored.ensurePermanentTentacles(restored.boss,1);
-            restored.ensurePermanentTentacles(restored.boss,1);
-            check(restored.spawned==1,"restored slot did not respawn once at its preserved deadline");
-        }else if(scenario.equals("legacy-unwarned")){
-            var original=dead();original.tentacleActiveMillis=89_000;
+            check(restored.phase!=EventPhase.RECOVERY_REQUIRED,"valid fall refused");
+            check(restored.cocoonFallGeneration==restored.generation && restored.cocoonFallStarted,
+                    "restart lost fall ownership");
+            check(restored.cocoonFallStage==original.cocoonFallStage
+                    && restored.cocoonFallElapsedTicks==elapsed,"restart replayed fall stage/time");
+            check(restored.cocoonLandingPlayed==(elapsed>40),"restart replayed landing cue");
+            check(restored.guardianDeaths.cocoonBroken() && restored.guardianDeaths.isDestroyed(0),
+                    "fall restore rebuilt a cocoon");
+            restored.tentacleActiveMillis=9_000_000;restored.ensurePermanentTentacles(restored.boss,1);
+            check(restored.spawned==0 && restored.position.world.warnings==0,"fallen boss regained guardians");
+        }else if(scenario.startsWith("bad-fall-")) {
+            var original=dead();original.tentacleDamageWindowEndsMillis=15_000L;
+            var saved=new HashMap<String,String>();original.encodeTentacleGuardianState(saved);
+            if(scenario.equals("bad-fall-orphan")) {
+                saved.clear();saved.put(CocoonFallPolicy.SNAPSHOT_KEY,"MELEE_FURY:61");
+            }else if(!scenario.equals("bad-fall-missing")) saved.put(CocoonFallPolicy.SNAPSHOT_KEY,
+                    scenario.substring("bad-fall-".length()));
+            var restored=new GuardianWarningRestartProbe();restored.restoreTentacleGuardianState(saved);
+            check(restored.phase==EventPhase.RECOVERY_REQUIRED,"malformed/missing fall receipt accepted");
+        }else if(!scenario.startsWith("invalid-")) {
+            // Master 17.1 supersedes the old 90-second return assertions.
+            // Reconstruct the actual permanent death ledger from saved HP.
+            var original=dead();
+            original.tentacleActiveMillis=scenario.startsWith("restart-")
+                    ?Long.parseLong(scenario.substring(8)):89_000L;
+            if(scenario.equals("independent-slots")) {
+                original.tentacleGuardianHealth.put(1,60.0);
+            }
             var saved=new HashMap<String,String>();original.encodeTentacleGuardianState(saved);
             var restored=new GuardianWarningRestartProbe();restored.restoreTentacleGuardianState(saved);
-            restored.ensurePermanentTentacles(restored.boss,1);
-            check(restored.position.world.warnings==1 && restored.spawned==0
-                    && restored.tentacleGuardianRespawnDeadlineMillis.get(0)==5_000L,
-                    "legacy snapshot invented a warning receipt or spawned without full warning");
-        }else if(scenario.equals("independent-slots")){
-            var original=dead();original.tentacleGuardianHealth.put(1,0.0);
-            original.tentacleGuardianRespawnDeadlineMillis.put(1,120_000L);
-            original.tentacleActiveMillis=85_000;original.ensurePermanentTentacles(original.boss,2);
-            original.tentacleActiveMillis=89_000;
-            var saved=new HashMap<String,String>();original.encodeTentacleGuardianState(saved);
-            var restored=new GuardianWarningRestartProbe();restored.restoreTentacleGuardianState(saved);
-            restored.ensurePermanentTentacles(restored.boss,2);
-            check(restored.tentacleGuardianRespawnDeadlineMillis.get(0)==1_000L
-                    && restored.tentacleGuardianRespawnDeadlineMillis.get(1)==31_000L,
-                    "restart coupled the independent slot clocks");
-            restored.tentacleActiveMillis=1_000;restored.ensurePermanentTentacles(restored.boss,2);
-            check(restored.spawned==1 && restored.position.world.warnings==0,"slot B shared slot A warning or spawn");
-            restored.tentacleActiveMillis=26_000;restored.ensurePermanentTentacles(restored.boss,2);
-            check(restored.position.world.warnings==1 && restored.spawned==1,"slot B warning deadline changed");
-            restored.tentacleActiveMillis=31_000;restored.ensurePermanentTentacles(restored.boss,2);
-            check(restored.spawned==2,"slot B lost its independent respawn");
-        }else if(scenario.equals("deferred-again")){
-            var original=dead();original.tentacleActiveMillis=85_000;original.ensurePermanentTentacles(original.boss,1);
-            original.tentacleActiveMillis=89_000;
-            var saved=new HashMap<String,String>();original.encodeTentacleGuardianState(saved);
-            var restored=new GuardianWarningRestartProbe();restored.restoreTentacleGuardianState(saved);
-            restored.tentacleDamageWindowEndsMillis=15_000;
-            restored.ensurePermanentTentacles(restored.boss,1);
-            check(!restored.tentacleGuardianWarnedSlots.contains(0)
-                    && restored.tentacleGuardianRespawnDeadlineMillis.get(0)==15_000L,
-                    "new vulnerability grace did not invalidate the old appearance warning");
-            restored.tentacleActiveMillis=10_000;restored.ensurePermanentTentacles(restored.boss,1);
-            check(restored.position.world.warnings==1 && restored.spawned==0,"deferred appearance needs fresh full warning");
-            restored.tentacleActiveMillis=15_000;restored.ensurePermanentTentacles(restored.boss,1);
-            check(restored.spawned==1,"deferred warned guardian failed to return");
+            check(restored.phase!=EventPhase.RECOVERY_REQUIRED,"legal partial guardian snapshot refused");
+            check(restored.guardianDeaths.isDestroyed(0),"restart lost permanent death");
+            if(scenario.equals("independent-slots"))
+                check(restored.guardianDeaths.isLiving(1),"living slot was marked destroyed");
+            for(long elapsed:new long[]{0,1_000,90_000,180_000,9_000_000}) {
+                restored.tentacleActiveMillis=elapsed;
+                restored.ensurePermanentTentacles(restored.boss,1);
+            }
+            check(restored.spawned==0 && restored.position.world.warnings==0,
+                    "destroyed guardian warned or respawned after restart");
         }else{
             var original=dead();var saved=new HashMap<String,String>();original.encodeTentacleGuardianState(saved);
             if(scenario.equals("invalid-orphan"))saved.clear();
@@ -175,7 +173,19 @@ def guardian_warning_probe(tmp_path_factory):
     "restart-85000", "restart-89000", "restart-89999", "legacy-unwarned",
     "independent-slots", "deferred-again", "invalid-value", "invalid-live", "invalid-too-early", "invalid-orphan",
 ])
-def test_guardian_warning_restart_keeps_earned_active_time(guardian_warning_probe, scenario):
+def test_guardian_restart_preserves_permanent_deaths_and_rejects_invalid_receipts(guardian_warning_probe, scenario):
+    result = subprocess.run(["java", "-cp", str(guardian_warning_probe), "GuardianWarningRestartProbe", scenario],
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("scenario", [
+    "fall-0", "fall-20", "fall-40", "fall-41", "fall-60", "fall-61",
+    "bad-fall-missing", "bad-fall-orphan", "bad-fall-MELEE_FURY:0", "bad-fall-FALLING:61",
+    "bad-fall-LANDING:1", "bad-fall-LANDING:40", "bad-fall-MELEE_FURY:60",
+    "bad-fall-COCOONED:0", "bad-fall-unknown:5",
+])
+def test_actual_guardian_snapshot_resumes_fall_without_new_cocoon(guardian_warning_probe, scenario):
     result = subprocess.run(["java", "-cp", str(guardian_warning_probe), "GuardianWarningRestartProbe", scenario],
                             capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr

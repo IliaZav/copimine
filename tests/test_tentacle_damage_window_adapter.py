@@ -50,7 +50,7 @@ import me.copimine.endevent.domain.SmallKagunePolicy;
 import me.copimine.endevent.runtime.TentacleController;
 
 public class TentacleHitAdapterProbe {
-    enum EventPhase { BOSS_ACTIVE }
+    enum EventPhase { BOSS_ACTIVE, RECOVERY_REQUIRED }
     enum Sound { BLOCK_RESPAWN_ANCHOR_DEPLETE, BLOCK_AMETHYST_BLOCK_RESONATE }
     enum SoundCategory { HOSTILE }
     static final class World {
@@ -129,7 +129,10 @@ public class TentacleHitAdapterProbe {
     final String eventId = "hit-window-probe";
     final long generation = 17, tentacleActiveMillis = 0;
     long eventTickCounter = 100;
-    final EventPhase phase = EventPhase.BOSS_ACTIVE;
+    EventPhase phase = EventPhase.BOSS_ACTIVE;
+    String recoveryReason;boolean saveFails;int saves;
+    boolean saveStateSync(){saves++;require(tentacleGuardianHealth.get(0)==0.0 && guardianDeaths.isDestroyed(0),"death checkpoint omitted receipt");return !saveFails;}
+    void forcePhase(EventPhase p,String reason){phase=p;}
     BossPhase bossPhase = BossPhase.LAST_SEAL;
     int visualUpdates, stateChanges;
 
@@ -139,6 +142,7 @@ public class TentacleHitAdapterProbe {
                 TentacleAnimationPolicy.Kind.PERMANENT, 0, 0,
                 TentacleAnimationPolicy.State.SHIELD_CHANNEL), "registration failed");
         tentacleGuardianHealth.put(0, 60.0);
+        guardianDeaths.markAlive(0);
     }
     ItemDisplay tentacleDisplayForHitbox(ItemDisplay hitbox) { return hitbox; }
     boolean isActiveBossParticipant(Player attacker) { return attacker == player; }
@@ -182,6 +186,18 @@ public class TentacleHitAdapterProbe {
     public static void main(String[] args) {
         var probe = new TentacleHitAdapterProbe();
         switch (args[0]) {
+            case "lethal", "lethal-save-failed" -> {
+                probe.saveFails=args[0].equals("lethal-save-failed");
+                var hit=new EntityDamageByEntityEvent(probe.display,probe.player,false);hit.finalDamage=60;
+                probe.onTentacleGuardianDamage(hit);
+                require(probe.saves==1 && probe.guardianDeaths.isDestroyed(0)
+                        && probe.tentacleGuardianRespawnDeadlineMillis.isEmpty(),"kill receipt was not committed without a respawn timer");
+                if(probe.saveFails) require(probe.phase==EventPhase.RECOVERY_REQUIRED
+                        && probe.visualUpdates==0 && probe.stateChanges==0 && probe.display.world.sounds==0,
+                        "failed death commit published a kill");
+                else require(probe.tentacleController.state(probe.display.id).state()==TentacleAnimationPolicy.State.DYING,
+                        "committed death did not animate");
+            }
             case "due-attack" -> {
                 probe.tentacleNextAttackTick.put(probe.display.id, 100L);
                 probe.onTentacleGuardianDamage(new EntityDamageByEntityEvent(probe.display, probe.player, false));
@@ -268,3 +284,10 @@ def test_authoritative_hit_window_and_prior_cancellation(tentacle_hit_probe, sce
         capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+@pytest.mark.parametrize("scenario", ["lethal", "lethal-save-failed"])
+def test_guardian_death_commits_before_presentation(tentacle_hit_probe, scenario):
+    result = subprocess.run(["java", "-cp", str(tentacle_hit_probe), "TentacleHitAdapterProbe", scenario],
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr

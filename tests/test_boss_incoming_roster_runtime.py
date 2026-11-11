@@ -23,6 +23,8 @@ def _compile_probe(source_path, out):
         # boss can answer it, so the probe needs the recorder alongside the
         # admission path it exercises.
         "private void rememberBossAttacker(",
+        "private boolean isCurrentBossMeleeFury(",
+        "private double currentBossIncomingDamageMultiplier(",
     ]
     if "private Player activeBossDamageOwner(" in source:
         signatures.append("private Player activeBossDamageOwner(")
@@ -66,6 +68,8 @@ public class BossIncomingRosterProbe {
     record BossHealthCommit(BossRealHealthDamagePolicy.Result result,double shieldBlockedDamage){}
     final LivingEntity currentBoss=new LivingEntity();
     EventPhase phase=EventPhase.BOSS_ACTIVE;
+    long generation=4, cocoonFallGeneration=Long.MIN_VALUE;
+    CocoonFallPolicy.Stage cocoonFallStage=CocoonFallPolicy.Stage.COCOONED;
     BossPhase bossPhase=BossPhase.AWAKENING;
     BossAbilityState bossAbilityState=BossAbilityState.NONE;
     String eventId="official";
@@ -113,6 +117,13 @@ public class BossIncomingRosterProbe {
         Entity source=owner;
         p.roster.add(owner.id);
         boolean shouldAccept=scenario.equals("member")||scenario.startsWith("diagnostic-")||scenario.startsWith("attributed-");
+        if(scenario.startsWith("fury-")) {
+            p.bossPhase=BossPhase.LAST_SEAL;p.cocoonFallGeneration=p.generation;
+            p.cocoonFallStage=CocoonFallPolicy.Stage.MELEE_FURY;
+            if(scenario.equals("fury-stale"))p.cocoonFallGeneration--;
+            if(scenario.equals("fury-falling"))p.cocoonFallStage=CocoonFallPolicy.Stage.FALLING;
+            if(scenario.equals("fury-landing"))p.cocoonFallStage=CocoonFallPolicy.Stage.LANDING;
+        }
         if(scenario.equals("outsider"))owner.admitted=false;
         if(scenario.equals("local-roster-fallback")){owner.admitted=false;p.localFallback=true;p.roster.clear();p.roster.add(UUID.randomUUID());}
         if(scenario.equals("diagnostic-member")){p.diagnostic=true;p.testCombatAiMode=true;p.roster.clear();}
@@ -135,6 +146,11 @@ public class BossIncomingRosterProbe {
         if(route.equals("event"))p.handleCurrentBossDamage(event,boss,source);
         else if(route.equals("proxy"))p.handleCurrentBossProjectileDamage(impact,boss,arrow);
         else p.applyCurrentBossProjectileDamage(boss,arrow);
+        if(scenario.startsWith("fury-")) {
+            check(boss.hp==4500-(scenario.equals("fury-active")?18:6),
+                    "fury multiplier missing/repeated/leaked via "+route+": "+boss.hp);
+            return;
+        }
         if(shouldAccept){
             if(scenario.endsWith("lethal"))check(p.lethalCalls==1,"legitimate lethal attribution was rejected");
             else check(boss.hp<4500&&p.feedback==1,"eligible hit stopped dealing real damage once");
@@ -184,3 +200,9 @@ def _run(out, route, scenario):
     result = subprocess.run(["java", "-cp", str(out), "BossIncomingRosterProbe", route, scenario],
                             capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("route", ["event", "proxy", "sweep"])
+@pytest.mark.parametrize("scenario", ["fury-active", "fury-stale", "fury-falling", "fury-landing"])
+def test_fury_triples_real_hp_damage_only_after_landing(incoming_boss_damage_probe, route, scenario):
+    _run(incoming_boss_damage_probe, route, scenario)

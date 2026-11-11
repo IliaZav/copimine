@@ -65,6 +65,7 @@ def test_ledger_field_exists_and_is_not_a_collection_of_timers():
 def test_cocoon_break_is_recorded_permanently():
     """Contract 17.3: once the cocoon fails it never shields the boss again."""
     text = source()
+    text = text[text.index("private boolean commitTentacleGuardianDeathWindow("):]
     marker = "guardianDeaths.markCocoonBroken()"
     assert marker in text, "the cocoon break must reach the durable ledger"
     # It has to happen where the shield actually breaks, next to the window commit.

@@ -36,6 +36,12 @@ import java.util.logging.*;
 import me.copimine.endevent.domain.*;
 import me.copimine.endevent.runtime.TentacleController;
 public class GuardianRespawnRecoveryProbe {
+    long cocoonFallGeneration=Long.MIN_VALUE;
+    boolean cocoonFallStarted,cocoonLandingPlayed;
+    int cocoonFallElapsedTicks=-1,cocoonFallMoveFailures;
+    me.copimine.endevent.domain.CocoonFallPolicy.Stage cocoonFallStage=
+            me.copimine.endevent.domain.CocoonFallPolicy.Stage.COCOONED;
+
     enum EventPhase { COLLECTING, BOSS_ACTIVE, RECOVERY_REQUIRED }
     enum Particle { SCULK_SOUL }
     enum Sound { BLOCK_SCULK_SENSOR_CLICKING }
@@ -63,11 +69,14 @@ public class GuardianRespawnRecoveryProbe {
     final Map<Integer,Long> tentacleGuardianRespawnDeadlineMillis=new HashMap<>();
     // Contract 17.1: the death ledger is the authority that refuses a spawn for
     // a destroyed slot, so the spawn loop reads it on every tick.
-    final me.copimine.endevent.domain.GuardianDeathLedger guardianDeaths=
+    me.copimine.endevent.domain.GuardianDeathLedger guardianDeaths=
             new me.copimine.endevent.domain.GuardianDeathLedger(7L);
     // Contract 22.1: committing the death window now also starts the authored
     // cocoon fall, so the probe must accept that call.
-    void beginCocoonFall(LivingEntity boss){}
+    void beginCocoonFall(LivingEntity boss){
+        cocoonFallStarted=true;cocoonFallGeneration=generation;
+        cocoonFallStage=CocoonFallPolicy.Stage.FALLING;cocoonFallElapsedTicks=0;
+    }
     final Set<Integer> tentacleGuardianWarnedSlots=new HashSet<>();
     final Map<Integer,Integer> tentacleGuardianSpawnFailures=new HashMap<>();
     final Map<UUID,Entity> ownedEntities=new HashMap<>();
@@ -185,12 +194,14 @@ public class GuardianRespawnRecoveryProbe {
 
         var deaths=new GuardianRespawnRecoveryProbe();
         deaths.tentacleGuardianHealth.put(0,0.0); deaths.tentacleGuardianHealth.put(1,12.0);
-        deaths.tentacleGuardianRespawnDeadlineMillis.put(0,90_000L);
+        deaths.guardianDeaths.markAlive(0);deaths.guardianDeaths.markAlive(1);
+        deaths.guardianDeaths.recordDeath(0);
         check(!deaths.allTentacleGuardiansDefeated(2),"missing live actor was counted as killed");
         deaths.tentacleGuardianHealth.put(1,0.0);
         check(!deaths.allTentacleGuardiansDefeated(2),"zero HP without a legal death receipt counted");
-        deaths.tentacleGuardianRespawnDeadlineMillis.put(1,175_000L);
-        check(deaths.allTentacleGuardiansDefeated(2),"all legal per-slot deaths were not recognized");
+        deaths.guardianDeaths.recordDeath(1);
+        check(deaths.tentacleGuardianRespawnDeadlineMillis.isEmpty(),"permanent death needs no timer");
+        check(deaths.allTentacleGuardiansDefeated(2),"permanent legal kills failed to break the cocoon without respawn deadlines");
         check(!deaths.allTentacleGuardiansDefeated(3),"missing initial slot was counted as dead");
         check(deaths.commitTentacleGuardianDeathWindow(deaths.boss,2)
                         && deaths.saves==1 && deaths.breaks==1,
@@ -200,7 +211,8 @@ public class GuardianRespawnRecoveryProbe {
                 "the same death set committed or played the break twice");
         var saveFailure=new GuardianRespawnRecoveryProbe();
         saveFailure.tentacleGuardianHealth.put(0,0.0);
-        saveFailure.tentacleGuardianRespawnDeadlineMillis.put(0,90_000L); saveFailure.saveFails=true;
+        saveFailure.guardianDeaths.markAlive(0);saveFailure.guardianDeaths.recordDeath(0);
+        saveFailure.saveFails=true;
         check(!saveFailure.commitTentacleGuardianDeathWindow(saveFailure.boss,1)
                         && saveFailure.phase==EventPhase.RECOVERY_REQUIRED && saveFailure.breaks==0,
                 "failed durable commit published successful shield-break effects");
@@ -263,7 +275,7 @@ public class GuardianRespawnRecoveryProbe {
         "domain/TentacleGuardianPolicy", "domain/TentacleScalingPolicy",
         "domain/TentacleAnimationPolicy", "domain/BossPhase", "runtime/TentacleController",
         "domain/GuardianRegenerationPolicy", "domain/GuardianDeathLedger",
-        "domain/KaguneCocoonGuardianPolicy",
+        "domain/KaguneCocoonGuardianPolicy", "domain/CocoonFallPolicy", "domain/EndRiftAiPolicy",
     )]
     result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path),
                              *map(str, classes), str(probe)], capture_output=True, text=True)

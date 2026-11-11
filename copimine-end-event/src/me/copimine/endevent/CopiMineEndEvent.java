@@ -49692,6 +49692,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || tentacleDamageWindowEndsMillis >= 0L) return true;
         tentacleDamageWindowEndsMillis = tentacleActiveMillis + tentacleDamageWindowMillis();
         tentacleGuardianRegenerationDisabledGeneration = generation;
+        // Contract 17.3: the cocoon fails permanently. Recording it in the
+        // ledger is what makes the break durable across a restart, so the boss
+        // can never be re-shielded or re-guarded by a rebuilt generation.
+        guardianDeaths.markCocoonBroken();
+        getLogger().info("RIFT_COCOON_BROKEN_PERMANENT event=" + eventId
+                + " generation=" + generation
+                + " destroyed=" + guardianDeaths.destroyedCount());
         if (!saveStateSync()) {
             recoveryReason = "GUARDIAN_DEATH_WINDOW_COMMIT_FAILED";
             forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
@@ -49787,6 +49794,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean isLivingTentacleGuardian(TentacleController.VisualState state) {
         if (state.temporary()
                 || tentacleGuardianHealth.getOrDefault(state.slot(), 0.0D) <= 0.0D) {
+            return false;
+        }
+        // Contract 17.1: a slot the ledger reports destroyed is never living,
+        // even if a stale display or health entry survives a restart. This is
+        // what keeps the cocoon broken for good instead of re-shielding the
+        // boss the moment a leftover actor is adopted.
+        if (guardianDeaths.isDestroyed(state.slot())) {
             return false;
         }
         TentacleAnimationPolicy.State animation = TentacleAnimationPolicy.canonical(state.state());

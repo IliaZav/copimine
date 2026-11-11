@@ -61,3 +61,23 @@ def test_ledger_is_generation_scoped_on_reset():
 def test_ledger_field_exists_and_is_not_a_collection_of_timers():
     text = source()
     assert "private GuardianDeathLedger guardianDeaths" in text
+
+def test_cocoon_break_is_recorded_permanently():
+    """Contract 17.3: once the cocoon fails it never shields the boss again."""
+    text = source()
+    marker = "guardianDeaths.markCocoonBroken()"
+    assert marker in text, "the cocoon break must reach the durable ledger"
+    # It has to happen where the shield actually breaks, next to the window commit.
+    index = text.index(marker)
+    window = text.rindex("tentacleDamageWindowEndsMillis = tentacleActiveMillis", 0, index)
+    assert index - window < 400, "cocoon break must be recorded at the shield break"
+
+
+def test_a_destroyed_slot_is_never_a_living_defender():
+    """A stale display must not re-shield the boss after a restart."""
+    text = source()
+    body = text[text.index("private boolean isLivingTentacleGuardian("):]
+    body = body[: body.index("\n    }")]
+    assert "guardianDeaths.isDestroyed(state.slot())" in body, (
+        "a destroyed slot must never count as a living defender"
+    )

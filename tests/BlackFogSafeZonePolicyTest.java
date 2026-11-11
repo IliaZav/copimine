@@ -4,11 +4,13 @@ import java.util.List;
 
 public final class BlackFogSafeZonePolicyTest {
     public static void main(String[] args) {
-        // November 9: all rosters start at 3x3 and finish at 1x1.
+        // November 11: shrink monotonically without stranding the frozen party.
         for (int players = 1; players <= 20; players++) {
             int target = me.copimine.endevent.domain.BlackFogTimingPolicy.cycleCount(players);
             check(BlackFogSafeZonePolicy.sideForCycleAndPlayers(0, players) == 3, "maximum footprint");
-            check(BlackFogSafeZonePolicy.sideForCycleAndPlayers(target - 1, players) == 1, "minimum footprint");
+            int finalSide=BlackFogSafeZonePolicy.sideForCycleAndPlayers(target-1,players);
+            int finalZones=me.copimine.endevent.domain.BlackFogTimingPolicy.zoneCount(players,target-1);
+            check(finalSide*finalSide*finalZones>=players,"late refuge capacity");
             int previous = 3;
             for (int cycle = 0; cycle < target; cycle++) {
                 int side = BlackFogSafeZonePolicy.sideForCycleAndPlayers(cycle, players);

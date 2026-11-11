@@ -228,10 +228,10 @@ import me.copimine.endevent.domain.ObeliskProjectilePolicy;
 import me.copimine.endevent.domain.ObeliskRepelPolicy;
 import me.copimine.endevent.domain.PortalCaptureIndicatorPolicy;
 import me.copimine.endevent.domain.EndRiftObjective;
-import me.copimine.endevent.domain.BlackFogDamagePolicy;
 import me.copimine.endevent.domain.BlackFogSafeZonePolicy;
 import me.copimine.endevent.domain.BlackFogSafeZoneCapacityPolicy;
 import me.copimine.endevent.domain.BlackFogTimingPolicy;
+import me.copimine.endevent.domain.BlackFogRefugeAccessPolicy;
 import me.copimine.endevent.domain.BossHitboxProfile;
 import me.copimine.endevent.domain.BossHitboxTransformPolicy;
 import me.copimine.endevent.domain.RitualSphereEncounterPolicy;
@@ -1075,6 +1075,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private int currentFogZoneSide;
     private int currentFogZoneSetupAttempts;
     private long currentFogZoneSetupRetryAtMillis;
+    private long currentFogRequiredTravelMillis;
     private long wave5PreFogRefillAtMillis;
     private int currentFogTargetCycles = BlackFogTimingPolicy.MIN_CYCLES;
     private int currentFogRosterPlayers = 2;
@@ -28387,10 +28388,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (now >= blackFogPhaseDeadlineMillis) {
             if (blackFogPhase == BlackFogPhase.COMBAT) {
                 if (fogSafeZoneTelegraphActive) {
+                    BlackFogRefugeAccessPolicy.Admission access = planCurrentFogRefugeAccess(core.getWorld());
+                    if (!access.admitted()) {
+                        markBlackFogRecoveryRequired("WAVE5_SAFE_ROUTE_UNAVAILABLE");
+                        return;
+                    }
+                    currentFogRequiredTravelMillis = access.requiredLeadMillis();
                     fogSafeZoneTelegraphActive = false;
                     blackFogPhase = BlackFogPhase.SAFE;
                     blackFogPhaseDeadlineMillis = now
-                            + BlackFogTimingPolicy.safeZoneSeconds(currentFogCycle, currentFogTargetCycles) * 1_000L;
+                            + Math.max(BlackFogTimingPolicy.safeZoneSeconds(currentFogCycle, currentFogTargetCycles) * 1_000L,
+                                    currentFogRequiredTravelMillis);
                     renderWaveMilestone(5, core,
                             "Зона безопасности активна.", Sound.BLOCK_BEACON_POWER_SELECT);
                     getLogger().info("END_RIFT_FOG_SAFE_START event=" + eventId
@@ -28418,7 +28426,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
                 currentFogZoneSide = BlackFogSafeZonePolicy.sideForCycleAndPlayers(
                         currentFogCycle, currentFogRosterPlayers);
-                currentFogZoneCount = BlackFogTimingPolicy.zoneCount(currentFogRosterPlayers, currentFogCycle);
+                currentFogZoneCount = BlackFogSafeZoneCapacityPolicy.zoneCountForCapacity(
+                        BlackFogTimingPolicy.zoneCount(currentFogRosterPlayers, currentFogCycle),
+                        Math.max(currentFogRosterPlayers, eligiblePlayerCount), currentFogZoneSide);
                 currentFogZoneSetupAttempts++;
                 if (!spawnCurrentSafeZoneVisuals(core.getWorld(), core)) {
                     if (phase == EventPhase.RECOVERY_REQUIRED) return;
@@ -28460,10 +28470,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 // A server-side inspection has no audience; the zone cap must
                 // not hold the cycle open forever. Same floor as the entry path.
                 int eligiblePlayerCount = Math.max(1, activeWaveParticipants().size());
-                if (currentSafeZoneCells.isEmpty() || currentSafeZoneCenters.isEmpty()) {
+                if (!BlackFogSafeZoneCapacityPolicy.hasCapacity(eligiblePlayerCount, currentSafeZoneCells.size())
+                        || currentSafeZoneCenters.isEmpty()) {
                     currentFogZoneSide = BlackFogSafeZonePolicy.sideForCycleAndPlayers(
                             currentFogCycle, currentFogRosterPlayers);
-                    currentFogZoneCount = BlackFogTimingPolicy.zoneCount(currentFogRosterPlayers, currentFogCycle);
+                    currentFogZoneCount = BlackFogSafeZoneCapacityPolicy.zoneCountForCapacity(
+                        BlackFogTimingPolicy.zoneCount(currentFogRosterPlayers, currentFogCycle),
+                        Math.max(currentFogRosterPlayers, eligiblePlayerCount), currentFogZoneSide);
                     if (!spawnCurrentSafeZoneVisuals(core.getWorld(), core)) {
                         if (phase == EventPhase.RECOVERY_REQUIRED) return;
                         currentFogZoneSetupAttempts++;
@@ -28484,7 +28497,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     currentFogZoneSetupAttempts = 0;
                     currentFogZoneSetupRetryAtMillis = 0L;
                     blackFogPhaseDeadlineMillis = now
-                            + BlackFogTimingPolicy.safeZoneSeconds(currentFogCycle, currentFogTargetCycles) * 1_000L;
+                            + Math.max(BlackFogTimingPolicy.safeZoneSeconds(currentFogCycle, currentFogTargetCycles) * 1_000L,
+                                    currentFogRequiredTravelMillis);
                     renderWaveMilestone(5, core, "Туман приближается",
                             Sound.BLOCK_BEACON_POWER_SELECT);
                     getLogger().info("END_RIFT_FOG_SAFE_CAPACITY_REFRESHED event=" + eventId
@@ -38262,6 +38276,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    private BlackFogRefugeAccessPolicy.Admission planCurrentFogRefugeAccess(World world) {
+        if (world == null) return BlackFogRefugeAccessPolicy.Admission.refused();
+        List<BlackFogRefugeAccessPolicy.Cell> starts = activeWaveParticipants().stream()
+                .map(player -> new BlackFogRefugeAccessPolicy.Cell(
+                        player.getLocation().getBlockX(), player.getLocation().getBlockZ())).toList();
+        if (starts.isEmpty() && (testWaveFrontVisualMode || testWaveInspectionMode)) {
+            return new BlackFogRefugeAccessPolicy.Admission(true, 0, 0L);
+        }
+        Set<BlackFogRefugeAccessPolicy.Cell> cells = currentSafeZoneCells.stream()
+                .map(point -> new BlackFogRefugeAccessPolicy.Cell(point.x(), point.z()))
+                .collect(Collectors.toSet());
+        return BlackFogRefugeAccessPolicy.plan(arenaMinX, arenaMinZ, arenaMaxX, arenaMaxZ,
+                starts, cells, point -> {
+                    if (!world.isChunkLoaded(point.x() >> 4, point.z() >> 4)) return false;
+                    Block floor = world.getBlockAt(point.x(), combatFloorY(), point.z());
+                    return floor.getType().isSolid() && !floor.isLiquid()
+                            && world.getBlockAt(point.x(), combatFloorY() + 1, point.z()).isPassable()
+                            && world.getBlockAt(point.x(), combatFloorY() + 2, point.z()).isPassable();
+                });
+    }
+
     private boolean spawnCurrentSafeZoneVisuals(World world, Location core) {
         if (!clearCurrentSafeZoneVisuals()) return false;
         if (world == null || core == null || currentFogZoneCount <= 0 || currentFogZoneSide <= 0
@@ -38308,14 +38343,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 break;
             }
         }
-        // Scarce shelter is intentional; terrain validity, not roster capacity,
-        // gates the hazard. Never start with a partial or empty layout.
-        if (currentSafeZoneCells.isEmpty() || currentSafeZoneCenters.size() != currentFogZoneCount) {
+        // The 11-November contract requires capacity and real routes, before any mutation.
+        BlackFogRefugeAccessPolicy.Admission access = planCurrentFogRefugeAccess(world);
+        if (!BlackFogSafeZoneCapacityPolicy.hasCapacity(
+                    Math.max(currentFogRosterPlayers, Math.max(1, activeWaveParticipants().size())), currentSafeZoneCells.size())
+                || currentSafeZoneCenters.size() != currentFogZoneCount || !access.admitted()) {
             currentSafeZoneCells.clear();
             currentSafeZoneCenters.clear();
             currentTemporaryBlockOriginals.clear();
             return false;
         }
+        currentFogRequiredTravelMillis = access.requiredLeadMillis();
         List<HazardMutationJournal.Entry> journalEntries = new ArrayList<>();
         for (HazardPlanner.Point point : currentSafeZoneCells) {
             String original = currentTemporaryBlockOriginals.get(point);
@@ -38533,10 +38571,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 continue;
             }
             currentFogLastImpactAt.put(player.getUniqueId(), now);
-            double fogDamage = BlackFogDamagePolicy.damageFor(player.getHealth());
-            // Long exposure remains bounded and non-lethal. Visibility comes
-            // from the arena volume in our client, never vanilla blindness.
-            if (fogDamage > 0.0D) player.damage(fogDamage);
+            // Only native owned Wither causes exposure damage: no second direct-hit path.
+            int witherAmplifier = currentFogRosterPlayers >= 11 ? 2 : 1;
+            applyOwnedBlackFogEffect(player, PotionEffectType.WITHER, witherAmplifier);
             player.playSound(player.getLocation(), Sound.BLOCK_SCULK_SENSOR_CLICKING,
                     SoundCategory.AMBIENT, .18F, .7F);
             applyOwnedBlackFogEffect(player, PotionEffectType.SLOWNESS, 1);
@@ -39171,10 +39208,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void releaseBlackFogEffects(Player player) {
         if (player == null) return;
-        // Black fog owns SLOWNESS only. Blindness and darkness are forbidden substitutes for
-        // the fog volume (they are not what the arena is meant to feel like), so listing one
-        // here would advertise an effect this code can never grant or hold a lease for.
-        for (PotionEffectType type : List.of(PotionEffectType.SLOWNESS)) {
+        // Release only the short Wither/Slowness leases this fog actually granted.
+        // Visibility stays in the client volume; no blindness/darkness lease exists.
+        for (PotionEffectType type : List.of(PotionEffectType.SLOWNESS, PotionEffectType.WITHER)) {
             FogEffectKey key = new FogEffectKey(player.getUniqueId(), type);
             FogEffectLease lease = currentFogEffectLeases.remove(key);
             if (lease == null) continue;

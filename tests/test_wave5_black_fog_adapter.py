@@ -24,6 +24,7 @@ def probe(tmp_path_factory):
         "void replenishWaveFiveCombatIfNeeded(long now)",
         "void sendCurrentBlackFogPacket(Player player, boolean active, Location core)",
         "boolean spawnCurrentSafeZoneVisuals(World world, Location core)",
+        "BlackFogRefugeAccessPolicy.Admission planCurrentFogRefugeAccess(World world)",
         "boolean restoreCurrentSafeZoneBlocks()",
         "void restoreBlackFogBlock(Block block, String originalBlockData)",
         # Post-fog reinforcement (W5-004) moved behind these two helpers; the
@@ -39,6 +40,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.function.Consumer;
 import me.copimine.endevent.domain.BlackFogTimingPolicy;
+import me.copimine.endevent.domain.BlackFogRefugeAccessPolicy;
+import java.util.stream.Collectors;
 import me.copimine.endevent.domain.BlackFogSafeZonePolicy;
 import me.copimine.endevent.domain.BlackFogSafeZoneCapacityPolicy;
 import me.copimine.endevent.domain.EndRiftObjective;
@@ -83,6 +86,7 @@ public final class BlackFogAdapterProbe {
             floor.type = Material.EMERALD_BLOCK;
             floor.data = new BlockData("minecraft:emerald_block");
         }
+        boolean isChunkLoaded(int x,int z) { return true; }
         String getName() { return "world"; }
         UUID getUID() { return UUID.fromString("00000000-0000-0000-0000-000000000001"); }
         <T extends Entity> T spawn(Location location, Class<T> type, Consumer<T> initializer) {
@@ -105,6 +109,8 @@ public final class BlackFogAdapterProbe {
         World getWorld() { return world; }
         double getX() { return x; }
         double getZ() { return z; }
+        int getBlockX() { return (int)Math.floor(x); }
+        int getBlockZ() { return (int)Math.floor(z); }
     }
     static final class Block {
         final World world;
@@ -192,6 +198,7 @@ public final class BlackFogAdapterProbe {
         private final UUID id = UUID.randomUUID();
         UUID getUniqueId() { return id; }
         void addPotionEffect(PotionEffect effect) { }
+        Location getLocation() { return new Location(Bukkit.world,0,1,0); }
     }
     static final class Bukkit {
         static World world;
@@ -297,7 +304,8 @@ public final class BlackFogAdapterProbe {
     float sentPacketIntensity;
     Location core = new Location();
     Config config = new Config();
-    int arenaMinX = -100, arenaMaxX = 100, arenaMinZ = -100, arenaMaxZ = 100;
+    int arenaMinX = -20, arenaMaxX = 20, arenaMinZ = -20, arenaMaxZ = 20;
+    long currentFogRequiredTravelMillis;
     HazardMutationJournal hazardJournal = new HazardMutationJournal();
     final List<Player> eligiblePlayers = new ArrayList<>(List.of(
             new Player(), new Player(), new Player(), new Player()));
@@ -504,7 +512,7 @@ public final class BlackFogAdapterProbe {
                 // Derived from BlackFogSafeZonePolicy.sideForCycleAndPlayers(c, 4)
                 // for the THREE production cycles: playerCap is 2 for a group of
                 // four, shrinkSteps is c*2/3, so 2-0=2, 2-0=2, 2-1=1.
-                int[] expectedSides = {3, 3, 2, 2, 1, 1};
+                int[] expectedSides = {3, 3, 2, 2, 2, 2};
                 long now = 40_000L;
                 p.blackFogPhaseDeadlineMillis = now;
                 for (int cycle = 0; cycle < totalCycles; cycle++) {
@@ -517,7 +525,7 @@ public final class BlackFogAdapterProbe {
                     check(p.blackFogPhase == BlackFogPhase.SAFE, "telegraph must reveal a safe area");
                     check(p.currentFogZoneSide == expectedSides[cycle],
                             "four-player safe zones must shrink by the player-count policy");
-                    long safeDeadline = safeAt + BlackFogTimingPolicy.safeZoneSeconds(cycle, totalCycles) * 1_000L;
+                    long safeDeadline = p.blackFogPhaseDeadlineMillis;
                     p.tickBlackFogObjective(safeDeadline);
                     check(p.blackFogPhase == BlackFogPhase.FOG && p.frozen,
                             "safe-zone deadline must enter fog and hold mob AI");
@@ -600,12 +608,14 @@ public final class BlackFogAdapterProbe {
                 long firstSafeDeadline = p.blackFogPhaseDeadlineMillis;
                 for (int i = 0; i < 8; i++) p.eligiblePlayers.add(new Player());
                 p.tickBlackFogObjective(firstSafeDeadline);
-                check(p.blackFogPhase == BlackFogPhase.FOG
-                                && p.currentFogZoneSide == 3 && p.currentFogZoneCount == 1
-                                && p.currentSafeZoneCells.size() == 9,
-                        "reconnect cannot reroll or expand the frozen scarce layout");
-                check(p.hazardJournal.prepareCalls == 1,
-                        "reconnect must not mutate or re-journal a valid existing shelter");
+                check(p.blackFogPhase == BlackFogPhase.SAFE
+                                && p.currentFogZoneSide == 3 && p.currentFogZoneCount == 2
+                                && p.currentSafeZoneCells.size() == 18,
+                        "returned eligible owners receive sufficient capacity before fog");
+                check(p.hazardJournal.prepareCalls == 2,
+                        "capacity refresh restores and re-journals owned floor changes");
+                p.tickBlackFogObjective(p.blackFogPhaseDeadlineMillis);
+                check(p.blackFogPhase==BlackFogPhase.FOG,"validated refreshed refuge can activate");
             }
             case "empty-eligible-retries" -> {
                 p.eligiblePlayers.clear();
@@ -803,6 +813,7 @@ public final class BlackFogAdapterProbe {
         str(domain / "BlackFogTimingPolicy.java"), str(domain / "EndRiftObjective.java"),
         str(domain / "BlackFogRecoverySnapshot.java"), str(domain / "BlackFogSafeZonePolicy.java"),
         str(domain / "BlackFogSafeZoneCapacityPolicy.java"),
+        str(domain / "BlackFogRefugeAccessPolicy.java"),
         str(domain / "Wave5PreFogRefillPolicy.java"), str(domain / "WaveMechanicsPolicy.java"),
         str(domain / "Wave5FogPressurePolicy.java"), str(domain / "Wave5PostFogPackPolicy.java"), str(domain / "WaveScalingPolicy.java"),
         str(domain / "Wave5FogLeasePolicy.java"),
@@ -854,12 +865,13 @@ def test_wave5_uses_custom_client_volume_instead_of_particle_perimeter():
     assert "ArenaMin.xyz" in shader and "ArenaMax.xyz" in shader
 
 
-def test_wave5_layout_preserves_scarcity_and_journals_before_mutation():
+def test_wave5_layout_admits_capacity_and_routes_before_journaled_mutation():
     source = SOURCE.read_text("utf-8")
     tick = extract(source, "void tickBlackFogObjective(long now)")
     setup = extract(source, "boolean spawnCurrentSafeZoneVisuals(World world, Location core)")
-    assert "BlackFogSafeZoneCapacityPolicy.zoneCountForCapacity" not in tick
-    assert "BlackFogSafeZoneCapacityPolicy.hasCapacity" not in setup
+    assert "BlackFogSafeZoneCapacityPolicy.zoneCountForCapacity" in tick
+    assert "BlackFogSafeZoneCapacityPolicy.hasCapacity" in setup
+    assert setup.index("planCurrentFogRefugeAccess(world)") < setup.index("hazardJournal.prepare")
     assert "BlackFogTimingPolicy.zoneCount(currentFogRosterPlayers" in tick
     assert "attempt < 128" in setup
     assert setup.index("hazardJournal.prepare") < setup.index(".setType(Material.EMERALD_BLOCK")

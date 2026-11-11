@@ -18,7 +18,8 @@ def test_safe_zone_and_roster_exit_release_owned_effects_before_damage_cadence()
     assert 'applyOwnedBlackFogEffect(player, PotionEffectType.SLOWNESS, 1)' in body
     assert 'PotionEffectType.BLINDNESS' not in body
     assert 'PotionEffectType.DARKNESS' not in body
-    assert 'PotionEffectType.WITHER' not in body
+    assert 'applyOwnedBlackFogEffect(player, PotionEffectType.WITHER, witherAmplifier)' in body
+    assert 'player.damage(' not in body
     assert '15 * 20' not in body
 
 

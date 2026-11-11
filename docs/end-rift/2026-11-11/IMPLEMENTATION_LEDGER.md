@@ -92,7 +92,9 @@ Diagnostics and the scripted elite fan use the same normalized budget.
 - Adjacent projectile/fog lifecycle tests: 120 passed (14 existing subprocess
   encoding warnings). The final two boundary cases also passed in the nine-case run.
 - Gradle `bridgeServerTest endEventJar`: BUILD SUCCESSFUL.
-- Candidate staging and inventory provenance: 142 passed, 3 host/environment skips.
+- Inventory provenance: 142 passed, 3 host/environment skips. The early staging
+  command used an incorrect script path; actual staging was performed and
+  verified during M2c below, not claimed for this older artifact.
 - Isolated Paper, live model survival, native visuals and new-commit CI: NOT RUN.
   M1 is not accepted as a complete gameplay/visual milestone.
 
@@ -156,3 +158,44 @@ Evidence:
 - Remaining M2 fog work includes timed luminous guidance through dense fog,
   roster-capacity/walkable-path admission, Wither II/III exposure and acceptance.
   This commit is not a declaration that Wave 5 or M2 is complete.
+
+## M2c — Refuge admission, walking time and owned Wither
+
+Reproduced the old two-player late cycle: one zone of one cell for two owners.
+Footprints now have a frozen-party capacity floor, so side and zone count still
+shrink monotonically without leaving fewer cells than players. An eligible-roster
+increase during SAFE refreshes insufficient capacity before the hazard starts.
+
+`BlackFogRefugeAccessPolicy` samples a bounded walkable ground grid once, finds
+real routes around obstacles and uses minimax matching to allocate distinct
+reachable cells. The resulting lead includes slowed travel at a conservative
+2.8 blocks/s and 1.2 s reaction margin, capped at 20 s. Disconnected routes,
+insufficient reachable capacity and excessive paths refuse activation before
+journal preparation or block mutation. The adapter rechecks routes after the
+initial telegraph and extends the SAFE deadline when the route needs more time.
+This conservative flat-floor graph does not promise access across unverified
+vertical steps; actual arena gameplay acceptance remains pending.
+
+Exposure now grants short owned Wither II (up to ten players) or III (11–20),
+plus Slowness II. The old direct-damage path is removed. Refuge entry releases
+both owned leases before the next one-second cadence; stronger/unrelated effects
+retain the existing lease and restoration protections.
+
+Evidence:
+- Actual capacity and exposure regressions failed before repair.
+- Actual adapter, walking/matching, exposure and lease-boundary selection: 32 passed.
+- Full fog/Wave-5 Python selection after superseding old exclusion assertions:
+  115 passed, zero failures.
+- Three Java mains passed: footprint, capacity and effect-lease policies.
+- Gradle `bridgeServerTest endEventJar`: BUILD SUCCESSFUL.
+- Correct staging command: `python scripts/minecraft/install_migration_server_plugins.py --stage-only`:
+  `Verified 30 pinned plugin candidates`, exit 0. Only repository candidate staging.
+- Inventory/provenance after staging: 142 passed, 3 skips (Windows symlink privilege;
+  isolated 26.3 runtime absent; ProtocolLib runtime candidate absent).
+- Plugin candidate: 2,290,935 B; SHA-256
+  `9cf214801ad156c797eb97b9a3e2cd5fdbbf2f9e804eb2232f9e7f696faecad2`.
+- Real Paper survivability, native visuals, FPS/TPS and player acceptance: NOT RUN.
+
+GitHub CI for M2b commit `cd3b81ca`: run `43023667606` observed in progress;
+PostgreSQL contract job succeeded, other required jobs have not yet passed.
+M2c is not deployed; M2 is still incomplete, including timed luminous guidance.

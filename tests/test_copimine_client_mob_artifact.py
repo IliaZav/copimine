@@ -2,11 +2,32 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import os
 from pathlib import Path
 from zipfile import ZipFile
+
+
+def assert_same_bytes(expected: bytes, actual: bytes, message: str) -> None:
+    """Compare two artifacts without letting pytest diff megabytes of binary.
+
+    A 13 MB client JAR mismatch used to reach pytest's assertion rewriting,
+    which builds a character-level diff of both operands. That diff ran for
+    more than 45 minutes inside `difflib` and was killed by the job timeout,
+    hiding the real failure. Comparing digests keeps the report small and
+    immediate.
+    """
+    if expected == actual:
+        return
+    expected_digest = hashlib.sha256(expected).hexdigest()
+    actual_digest = hashlib.sha256(actual).hexdigest()
+    raise AssertionError(
+        f"{message}\n"
+        f"  expected {len(expected)} bytes sha256={expected_digest}\n"
+        f"  actual   {len(actual)} bytes sha256={actual_digest}"
+    )
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -157,8 +178,10 @@ def test_built_client_jar_contains_current_mob_classes_and_textures() -> None:
 
 def test_staged_client_jar_contains_current_mob_classes_and_textures() -> None:
     assert STAGED_JAR.is_file(), f"staged client JAR is missing: {STAGED_JAR}"
-    assert BUILD_JAR.read_bytes() == STAGED_JAR.read_bytes(), (
-        "thirdparty client JAR must be byte-identical to the Gradle remapJar output"
+    assert_same_bytes(
+        BUILD_JAR.read_bytes(),
+        STAGED_JAR.read_bytes(),
+        "thirdparty client JAR must be byte-identical to the Gradle remapJar output",
     )
     assert_current_mob_payload(str(STAGED_JAR), STAGED_JAR.read_bytes())
 
@@ -167,8 +190,10 @@ def test_installable_modpack_contains_current_client_jar() -> None:
     assert MODPACK.is_file(), f"installable modpack is missing: {MODPACK}"
     with ZipFile(MODPACK) as archive:
         payload = archive.read(MODPACK_CLIENT_ENTRY)
-    assert payload == BUILD_JAR.read_bytes(), (
-        "installable modpack client JAR must be byte-identical to the Gradle remapJar output"
+    assert_same_bytes(
+        payload,
+        BUILD_JAR.read_bytes(),
+        "installable modpack client JAR must be byte-identical to the Gradle remapJar output",
     )
     assert_current_mob_payload(f"{MODPACK}!/{MODPACK_CLIENT_ENTRY}", payload)
 
@@ -182,8 +207,10 @@ def test_configured_live_profile_jar_matches_the_gradle_remap_output() -> None:
     profile_jar = Path(configured_path)
     assert profile_jar.is_file(), f"configured live-profile client JAR is missing: {profile_jar}"
     assert MIGRATION_BUILD_JAR.is_file(), f"26.3 migration client JAR is missing: {MIGRATION_BUILD_JAR}"
-    assert profile_jar.read_bytes() == MIGRATION_BUILD_JAR.read_bytes(), (
-        f"live-profile client JAR {profile_jar} is stale relative to the locked Minecraft 26.3 build"
+    assert_same_bytes(
+        profile_jar.read_bytes(),
+        MIGRATION_BUILD_JAR.read_bytes(),
+        f"live-profile client JAR {profile_jar} is stale relative to the locked Minecraft 26.3 build",
     )
     assert_current_mob_payload(str(profile_jar), profile_jar.read_bytes(), MIGRATION_CLASSES)
 

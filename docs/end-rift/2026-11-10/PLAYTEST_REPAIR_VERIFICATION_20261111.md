@@ -52,17 +52,60 @@ projectile is not, by itself, proof that no web cast was attempted.
 
 ## Evidence boundaries
 
-Client: 368 tests passed, including baked atlas coverage, unchanged mesh geometry,
+Client: 369 tests passed, including baked atlas coverage, unchanged mesh geometry,
 Kagune role scale/HP flashes, Ram HUD armour parsing and Endermite articulation.
-Server bridge: 111 tests, zero failures/errors, one explicitly skipped test.
+Server bridge: 112 tests, zero failures/errors, one explicitly skipped test.
 Focused repaired adapter/contract suite: 114 passed. The real admin-death adapter
 and accepted/cancelled Kagune damage adapters were executed in Java probes.
 
 The first full pytest run exposed stale adapter stubs, superseded fog timing/HUD
 assertions, an out-of-date legacy refmap build, and old release pins. Those
 failures are retained in `C:/Temp/cm-playtest-all-20261111.log`; they are not a
-passing result. Final full-suite, Java CI, install and public-download evidence
-must be appended after those checks actually finish.
+passing result. After repair the full local suite reports 3224 passed, 18 skipped
+and 2 failures that only occur on this workstation: `pwsh` is absent there and
+the machine-wide execution policy is `Restricted`, so the two tests that shell
+out to the real packaging tail cannot start PowerShell at all. CI runs on
+`windows-latest` with `pwsh`, where those two execute.
+
+The `End Rift current local checks passed` gate is green, and the client jar is
+now reproducible: two packaged resources under a `text eol=lf` rule had been
+edited into CRLF on a Windows checkout, so the same sources built a jar 17 bytes
+larger than on a clean runner. Normalising them made the local build and the CI
+build byte-identical at 15 013 152 bytes / `4810de65…`, which is why the pin
+changed in `a60b758b` rather than the code.
+
+## Installed runtime and public downloads
+
+Candidate `a60b758b` (`722ad4d6…`) is installed on the production service and
+reports healthy. The three other artifacts reproduce their pins byte for byte
+from a clean rebuild.
+
+| Artifact | Size | SHA-256 |
+|---|---|---|
+| `CopiMineEndEvent.jar` | 2 282 005 | `722ad4d617…878dc7` |
+| `CopiMineClient-0.1.3+26.3.jar` | 15 013 152 | `30e9c1aac3…d2f123` |
+| `CopiMineNarcotics.jar` | 370 499 | `026787808e…835fb1` |
+| `CopiMineResourcePack-26.3.zip` | 33 371 080 | `17aa6d3b2e…d8eb9` |
+
+Measured after the restart:
+
+- `systemctl is-active copimine-game.service` → `active`;
+- `[CopiMineEndEvent] Enabling CopiMineEndEvent v0.1.0` present once;
+- `END_EVENT_RUNTIME_DIAGNOSTICS … phase=COLLECTING`, `owned_living=0`;
+- `grep -cE 'SEVERE|ERROR' logs/latest.log` → `0`;
+- installed plugin digest equals the pinned candidate;
+- `/assets/downloads/CopiMineClient-0.1.3+26.3.jar` and
+  `/assets/CopiMineResourcePack-26.3-17aa6d3b2edf626f.zip` were fetched back
+  over HTTPS through the site's own vhost and hash-matched the stage inputs.
+
+Old client jars were removed from public downloads, leaving only the current
+immutable URL and the mutable `CopiMineClient-0.1.3+26.3.jar` alias.
+
+The first deploy attempt died when the SSH session dropped during the
+multi-minute backup tar step, after `systemctl stop` but before any file was
+replaced. The service was restarted on the unchanged predecessor, the completed
+backup was verified (`SHA256.json`), and the retry ran detached so a disconnect
+could not interrupt it. Nothing was left half-installed.
 
 `nativeVerified=false` for this candidate. The player's earlier F2 captures
 establish the reported defects and prior transport acceptance. They do not

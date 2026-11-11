@@ -71,17 +71,19 @@ def test_wave_two_mark_never_reverses_player_controls():
     event = EVENT_SOURCE.read_text(encoding="utf-8")
     assert "MARK_ROTATION_MILLIS" not in event
     assert "waveTwoMarkDeadlineMillis" not in event
-    assert wave_two_marks_every_participant(event)
+    assert wave_two_selects_one_frozen_roster_owner(event)
     assert 'sendClientPacket(marked, "END_CONTROL_START"' not in event
     assert 'sendClientPacket(marked, "END_CONTROL_STOP"' not in event
     assert "waveTwoControlInstanceId" not in event
 
 
-def wave_two_marks_every_participant(source: str) -> bool:
-    """Wave 2 marks the whole active party every tick, never a single rotating target."""
+def wave_two_selects_one_frozen_roster_owner(source: str) -> bool:
+    """The November master selects one owner from the eligible frozen roster."""
     update = method_body(source, "private void updateMarkedTargetObjective(long now)")
     return (
-        "for (Player participant : activeWaveParticipants())" in update
+        "WaveTwoHuntPolicy.markedParticipant(" in update
+        and "marked.clear();" in update
+        and "if (selected != null) marked.add(selected);" in update
         and "refreshWaveTwoMarkGlow(participant)" in update
         and "releaseWaveTwoMarkFor(" in update
     )

@@ -15,9 +15,9 @@ public final class WaveTwoPhantomLayoutPolicyTest {
                 candidate -> new Position(Math.floor(candidate.x()) + 0.5D,
                         anchor.y(), Math.floor(candidate.z()) + 0.5D));
 
-        check(first.size() == 35 && first.equals(repeated),
-                "the server layout selects 35 stable safe positions for one mark seed");
-        check(first.get(0).id().equals("phantom-00") && first.get(34).id().equals("phantom-34"),
+        check(first.size() == 70 && first.equals(repeated),
+                "the server layout selects 70 stable safe positions for one mark seed");
+        check(first.get(0).id().equals("phantom-00") && first.get(69).id().equals("phantom-69"),
                 "server IDs are canonical, bounded, and stable in layout order");
         Set<Position> positions = new HashSet<>();
         for (Phantom phantom : first) {

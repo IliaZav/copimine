@@ -1,19 +1,35 @@
 package me.copimine.endevent.domain;
 
-/**
- * Reinforcement limits and packet identity for the Wave 2 hunt.
- *
- * <p>Superseded: the earlier design marked one rotating player for 45 seconds
- * and gated the wave on completed mark periods. The canonical contract marks
- * every participant for the whole wave and completes the wave on exactly three
- * subwaves, so there is no target rotation and no mark duration here.</p>
- */
+/** Finite hunt budgets and the 11-November single-owner mark rotation. */
 public final class WaveTwoHuntPolicy {
     public static final int MAX_LATE_REINFORCEMENTS = 2;
     /** Packet identity is independent from the bounded gameplay completion counter. */
     public static final int MAX_MARK_ASSIGNMENT_ID = Integer.MAX_VALUE;
 
     private WaveTwoHuntPolicy() { }
+
+    public static final long MARK_ROTATION_MILLIS = 20_000L;
+
+    /** Uses the persisted intro origin: reconnect/restart never renews a full period. */
+    public static long markEpoch(long introStartedMillis, long nowMillis) {
+        if (introStartedMillis < 0L || nowMillis < introStartedMillis) return 0L;
+        return (nowMillis - introStartedMillis) / MARK_ROTATION_MILLIS;
+    }
+
+    /** Stable frozen order, skipping unavailable owners without admitting foreign players. */
+    public static java.util.UUID markedParticipant(java.util.List<java.util.UUID> frozenRoster,
+            java.util.Set<java.util.UUID> eligible, long epoch, int spawnedGroup) {
+        if (frozenRoster == null || frozenRoster.isEmpty() || eligible == null
+                || eligible.isEmpty() || epoch < 0L) return null;
+        int start = (int) ((epoch % frozenRoster.size()
+                + Math.max(0, spawnedGroup - 1)) % frozenRoster.size());
+        for (int offset = 0; offset < frozenRoster.size(); offset++) {
+            java.util.UUID candidate = frozenRoster.get((start + offset) % frozenRoster.size());
+            if (candidate != null && eligible.contains(candidate)) return candidate;
+        }
+        return null;
+    }
+
 
     /** Whether another monotonically increasing packet identity can be issued. */
     public static boolean markAssignmentIdsExhausted(int assignmentId) {

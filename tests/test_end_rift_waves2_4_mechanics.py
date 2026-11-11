@@ -125,6 +125,8 @@ def mechanics_harness(tmp_path_factory):
     # methods read; the mark is collective, so there is no per-player lease.
     fields = """
     private int waveTwoMarkCycle;
+    private long waveTwoMarkEpoch = -1L;
+    private int waveTwoMarkGroup = -1;
     private long waveTwoIntroStartedMillis;
     private int waveTwoPhantomAdmissionFailures;
     void saveStateAsync() {}
@@ -498,31 +500,53 @@ case "immediate-initial-mark" -> {
                         "the wave marks its participant on the very first objective tick");
                 check(h.currentHuntCycles == 0, "marking alone never credits a cleared subwave");
             }
-            case "all-players-marked-all-wave" -> {
+            // 11-Nov master supersedes the collective mark with a rotating owner.
+            case "one-mark-rotates-every-twenty-seconds" -> {
                 Player second = new Player(); Bukkit.players.add(second);
                 Player third = new Player(); Bukkit.players.add(third);
                 h.resetHuntStageForProbe(); h.startHunt(start); h.selectAt(start);
-                check(h.waveTwoMarkedParticipants.size() == 3,
-                        "every active participant is marked, not a single rotating target");
-                check(player.glowing(start) && second.glowing(start) && third.glowing(start),
-                        "the observer glow covers the whole party");
+                check(h.waveTwoMarkedParticipants.equals(Set.of(player.id)), "one initial owner");
+                check(player.glowing(start) && !second.glowing(start), "only owner glows");
                 int cycle = h.waveTwoMarkCycle;
-                for (long tick : new long[] { start + 45_000L, start + 90_000L, start + 900_000L }) {
-                    h.selectAt(tick);
-                    check(h.waveTwoMarkedParticipants.size() == 3 && h.waveTwoMarkCycle == cycle,
-                            "the whole-party mark never rotates and never needs a new packet identity");
-                    check(player.glowing(tick) && second.glowing(tick) && third.glowing(tick),
-                            "the observer glow is maintained for the whole wave");
-                }
-                check(h.currentHuntCycles == 0, "keeping the mark alive never credits a subwave");
+                h.selectAt(start+19_999L);
+                check(h.waveTwoMarkedParticipants.equals(Set.of(player.id)) && h.waveTwoMarkCycle==cycle,
+                        "stable owner until full twenty seconds");
+                h.selectAt(start+20_000L);
+                check(h.waveTwoMarkedParticipants.equals(Set.of(second.id)) && h.waveTwoMarkCycle>cycle,
+                        "new target and packet identity at twenty seconds");
+                check(!player.glowing(start+20_000L) && second.glowing(start+20_000L),
+                        "previous owner's glow is released");
+                h.selectAt(start+40_000L);
+                check(h.waveTwoMarkedParticipants.equals(Set.of(third.id)), "fair next owner");
+                check(h.currentHuntCycles == 0, "rotation never credits a defeated group");
             }
-            case "three-second-gap" -> {
-                check(WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS == 3_000L,
-                        "the approved subwave cadence is three seconds");
-                check(WaveTwoStagePolicy.nextGroupSpawnAt(42_000L) == 45_000L,
+            case "rotation-respects-warning-and-group" -> {
+                Player second = new Player(); Bukkit.players.add(second);
+                Player third = new Player(); Bukkit.players.add(third);
+                h.resetHuntStageForProbe(); h.startHunt(start); h.selectAt(start);
+                int initial=h.waveTwoMarkCycle;
+                h.waveTwoPhantomWarningTask=new BukkitTask();
+                h.selectAt(start+20_000L);
+                check(h.waveTwoMarkedParticipants.equals(Set.of(player.id)) && h.waveTwoMarkCycle==initial,
+                        "committed phantom warning keeps its valid owner and cycle");
+                h.waveTwoPhantomWarningTask=null;
+                h.selectAt(start+20_001L);
+                check(h.waveTwoMarkedParticipants.equals(Set.of(second.id)) && h.waveTwoMarkCycle>initial,
+                        "rotation resumes immediately after warning resolves");
+                int rotated=h.waveTwoMarkCycle;
+                h.waveSpawnGroupIndex=2;
+                h.selectAt(start+20_002L);
+                check(h.waveTwoMarkedParticipants.equals(Set.of(third.id)) && h.waveTwoMarkCycle>rotated,
+                        "next group receives a new target, field and identity");
+                check(h.currentHuntCycles==0,"presentation cannot complete a group");
+            }
+            case "five-second-gap" -> {
+                check(WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS == 5_000L,
+                        "the approved subwave cadence is five seconds");
+                check(WaveTwoStagePolicy.nextGroupSpawnAt(42_000L) == 47_000L,
                         "the pause starts when the previous finite roster cleared");
-                check(WaveTwoStagePolicy.nextGroupSpawnAt(0L) == 3_000L,
-                        "a zero clear timestamp still yields an exact three-second pause");
+                check(WaveTwoStagePolicy.nextGroupSpawnAt(0L) == 5_000L,
+                        "a zero clear timestamp still yields an exact five-second pause");
             }
             case "three-subwaves-required" -> {
                 h.resetHuntStageForProbe(); h.startHunt(start);
@@ -547,7 +571,7 @@ case "immediate-initial-mark" -> {
                         "one cleared subwave alone is never the approved hunt");
                 h.tickCurrentHuntObjective(firstClear + WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS - 1L);
                 check(h.spawnedWaveGroups.size() == 1,
-                        "no subwave may start before the full three-second gap elapses");
+                        "no subwave may start before the full five-second gap elapses");
                 h.tickCurrentHuntObjective(firstClear + WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS);
                 // The group that owns Endermen runs its own warning first,
                 // so the booking lands on the tick after the warning ends.
@@ -556,7 +580,7 @@ case "immediate-initial-mark" -> {
                     h.tickCurrentHuntObjective(firstClear + WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS);
                 }
                 check(h.spawnedWaveGroups.size() == 2 && h.waveSpawnGroupIndex == 2,
-                        "the second subwave starts exactly three seconds after the roster cleared");
+                        "the second subwave starts exactly five seconds after the roster cleared");
                 check(h.currentHuntCycles < h.waveSpawnSchedule.size(),
                         "two cleared subwaves remain incomplete");
                 fighter = h.addWaveTwoFighter(2);
@@ -689,7 +713,7 @@ case "immediate-initial-mark" -> {
                 Player second = new Player(); Bukkit.players.add(second);
                 h.waveTwoAssignmentRoster.add(second.id);
                 h.selectAt(start);
-                check(h.waveTwoMarkedParticipants.size() == 2, "both participants start marked");
+                check(h.waveTwoMarkedParticipants.equals(Set.of(player.id)), "one frozen-roster owner starts marked");
                 if (scenario.endsWith("death")) player.dead = true;
                 if (scenario.endsWith("disconnect")) player.online = false;
                 if (scenario.endsWith("arena")) player.wave = false;
@@ -752,7 +776,7 @@ case "immediate-initial-mark" -> {
                         "the group clears immediately on its final UUID death and waits the approved gap");
                 h.tickCurrentHuntObjective(clearedAt + WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS - 1L);
                 check(h.spawnedWaveGroups.size() == 1,
-                        "an extra tick before the three-second gap cannot start the second subwave");
+                        "an extra tick before the five-second gap cannot start the second subwave");
                 h.tickCurrentHuntObjective(clearedAt + WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS);
                 // The next group owns Endermen, so it runs its own warning
                 // before the booking lands on the following tick.
@@ -761,7 +785,7 @@ case "immediate-initial-mark" -> {
                     h.tickCurrentHuntObjective(clearedAt + WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS);
                 }
                 check(h.spawnedWaveGroups.size() == 2,
-                        "the second subwave starts exactly three seconds after the clear");
+                        "the second subwave starts exactly five seconds after the clear");
             }
 
             case "sandbox-confirmed-death" -> {
@@ -1331,7 +1355,7 @@ def test_wave2_persisted_entity_load_adapter(wave2_entity_load_harness, scenario
 
 
 @pytest.mark.parametrize("scenario", [
-    "immediate-initial-mark", "all-players-marked-all-wave", "leaving-roster", "cleanup", "foreign-glow", "reveal-effects-cleanup",
+    "immediate-initial-mark", "one-mark-rotates-every-twenty-seconds", "leaving-roster", "cleanup", "foreign-glow", "reveal-effects-cleanup",
     "infinite-glow-preserved", "infinite-reveal-preserved", "stronger-glow-cleanup",
     "death", "disconnect", "replacement", "invalid-participant-state-death", "invalid-participant-state-disconnect", "invalid-participant-state-arena",
     "late-join-does-not-expand-frozen-mark-roster", "privacy-hide-not-unpublished",
@@ -1656,7 +1680,7 @@ def test_wave2_bounded_group_spawn_contracts(wave2_spawn_harness, scenario):
 
 
 @pytest.mark.parametrize("scenario", [
-    "three-second-gap", "three-subwaves-required", "unloaded-group-roster",
+    "rotation-respects-warning-and-group", "five-second-gap", "three-subwaves-required", "unloaded-group-roster",
     "sandbox-confirmed-death", "wave2-edge-spawns", "wave2-edge-spawns-respect-bounds",
     "assignment-id-exhaustion",
     "privacy-hide-not-unpublished", "late-join-does-not-expand-frozen-mark-roster",

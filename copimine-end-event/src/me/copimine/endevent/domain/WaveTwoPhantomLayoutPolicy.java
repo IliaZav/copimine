@@ -10,9 +10,9 @@ import java.util.function.Function;
 
 /** Stable randomized positions for the server-owned Wave 2 phantom presentation. */
 public final class WaveTwoPhantomLayoutPolicy {
-    public static final int TARGET_PHANTOM_COUNT = 35;
-    /** The spec allows 25–35 phantom slots, so a partly blocked ring must not void the layout. */
-    public static final int MIN_PHANTOM_COUNT = 25;
+    public static final int TARGET_PHANTOM_COUNT = 70;
+    /** The 11-November contract matches the client: seventy preferred, fifty safe fallback. */
+    public static final int MIN_PHANTOM_COUNT = 50;
     private static final int MAX_CANDIDATE_ATTEMPTS = TARGET_PHANTOM_COUNT * 10;
     private static final double MAX_FIELD_RADIUS = 96.0D;
 
@@ -57,6 +57,9 @@ public final class WaveTwoPhantomLayoutPolicy {
             if (!finiteWorldPosition(candidate)) continue;
             Position resolved = safeResolver.apply(candidate);
             if (!finiteWorldPosition(resolved)) continue;
+            double resolvedX = resolved.x() - anchor.x();
+            double resolvedZ = resolved.z() - anchor.z();
+            if (resolvedX * resolvedX + resolvedZ * resolvedZ > radiusSquared) continue;
             if (tooClose(resolved, distinct, minSeparationSquared)) continue;
             distinct.add(resolved);
         }

@@ -17,7 +17,7 @@ public final class WaveTwoStagePolicy {
     public static final int MAX_ACTIVE_GROUP_MOBS =
             (MAX_TOTAL_MOBS - LATE_REINFORCEMENT_BUDGET + 1) / OPENING_GROUP_COUNT;
     /** The next subwave starts this long after the previous finite roster is cleared. */
-    public static final long NEXT_GROUP_PAUSE_MILLIS = 3_000L;
+    public static final long NEXT_GROUP_PAUSE_MILLIS = 5_000L;
 
     private WaveTwoStagePolicy() { }
 
@@ -164,7 +164,7 @@ public final class WaveTwoStagePolicy {
             assigned++;
         }
         // W2-003: a later subwave is never weaker than an earlier one when the
-        // total permits it — but the final reserve also stays inside its own
+        // total permits it вЂ” but the final reserve also stays inside its own
         // bounded budget, so escalation must not move actors into the last group
         // past that ceiling.
         int finalCap = LATE_REINFORCEMENT_BUDGET;

@@ -967,11 +967,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private long portalCaptureTraceAtMillis;
     private final Map<UUID, Long> objectiveActionBarAt = new HashMap<>();
     /**
-     * Packet identity for the whole Wave 2 mark, shared by every marked
-     * participant so a delayed CLEAR from an older wave cannot revive a
-     * presentation from that wave.
+     * Monotonic identity for each Wave 2 mark assignment; a rotation or group
+     * change cannot revive an earlier owner's phantom presentation.
      */
     private int waveTwoMarkCycle;
+    private long waveTwoMarkEpoch = -1L;
+    private int waveTwoMarkGroup = -1;
     /** Elites this Wave 2 attempted to produce; capped by the materialization policy. */
     private int waveTwoEliteMaterializations;
     /**
@@ -26920,6 +26921,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (!waveTwoStageRehydrated) {
                     waveTwoIntroStartedMillis = waveObjectiveStartedMillis;
                     waveTwoMarkCycle = 0;
+                    waveTwoMarkEpoch = -1L;
+                    waveTwoMarkGroup = -1;
                     waveTwoRecoveryCheckpoint = Map.of();
                     currentHuntCycles = 0;
                     waveTwoGroupsSpawned = 0;
@@ -28089,8 +28092,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
 
-        // The mark is collective and continuous: every participant stays marked
-        // for the whole wave, so there is no rotation and no mark deadline.
+        // A single owner rotates on the persisted hunt clock without crediting kills.
         updateMarkedTargetObjective(now);
         retryPendingWaveTwoPhantomActivation(now);
     }
@@ -42161,13 +42163,32 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     || !frozenOwners.contains(participant.getUniqueId())) continue;
             marked.add(participant.getUniqueId());
         }
-        // One packet identity for the whole wave: every mark and every CLEAR of
-        // this wave shares it, so clients can fence stale presentations.
+        long epoch = WaveTwoHuntPolicy.markEpoch(waveTwoIntroStartedMillis, now);
+        UUID selected = WaveTwoHuntPolicy.markedParticipant(
+                waveTwoAssignmentRoster, marked, epoch, waveSpawnGroupIndex);
+        // Finish an already committed materialisation before changing its owner.
+        boolean committedWarning = waveTwoPhantomWarningTask != null
+                && waveTwoMarkedParticipants.size() == 1;
+        if (committedWarning) {
+            UUID committed = waveTwoMarkedParticipants.iterator().next();
+            if (marked.contains(committed)) selected = committed;
+        }
+        marked.clear();
+        if (selected != null) marked.add(selected);
+        boolean changed = !marked.equals(waveTwoMarkedParticipants)
+                || !committedWarning && (epoch != waveTwoMarkEpoch
+                        || waveSpawnGroupIndex != waveTwoMarkGroup);
         if (!marked.isEmpty() && WaveTwoHuntPolicy.markAssignmentIdsExhausted(waveTwoMarkCycle)) {
             requireWaveTwoMarkAssignmentRecovery(now);
             return;
         }
-        if (!marked.isEmpty() && waveTwoMarkCycle == 0) {
+        if (!marked.isEmpty() && (waveTwoMarkCycle == 0 || changed)) {
+            // Send CLEAR with the old identity before publishing a newer cycle.
+            for (UUID released : new ArrayList<>(waveTwoMarkedParticipants)) {
+                releaseWaveTwoMarkFor(released, now);
+            }
+            waveTwoMarkEpoch = epoch;
+            waveTwoMarkGroup = waveSpawnGroupIndex;
             waveTwoMarkCycle = WaveTwoHuntPolicy.nextMarkAssignmentId(waveTwoMarkCycle);
             waveTwoPhantomLayoutCycle = 0;
             waveTwoPhantomLayouts.clear();
@@ -42501,7 +42522,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 waveTwoPhantomLayouts.get(player.getUniqueId());
         if (cached != null && waveTwoPhantomLayoutGeneration == generation
                 && waveTwoPhantomLayoutCycle == waveTwoMarkCycle
-                && cached.size() == WaveTwoPhantomLayoutPolicy.TARGET_PHANTOM_COUNT) {
+                && cached.size() >= WaveTwoPhantomLayoutPolicy.MIN_PHANTOM_COUNT
+                && cached.size() <= WaveTwoPhantomLayoutPolicy.TARGET_PHANTOM_COUNT) {
             return;
         }
 
@@ -42891,6 +42913,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         wave1NextReinforcementAtMillis = 0L;
         currentHuntCycles = 0;
         waveTwoMarkCycle = 0;
+        waveTwoMarkEpoch = -1L;
+        waveTwoMarkGroup = -1;
         waveTwoPhantomLayouts.clear();
         waveTwoPhantomLayoutGeneration = 0L;
         waveTwoPhantomLayoutCycle = 0;
@@ -42928,6 +42952,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         realitySplitPlayerTeleportPermits.clear();
         currentHuntCycles = 0;
         waveTwoMarkCycle = 0;
+        waveTwoMarkEpoch = -1L;
+        waveTwoMarkGroup = -1;
         waveTwoRecoveryCheckpoint = Map.of();
         waveTwoAssignmentRoster = List.of();
         waveTwoOwnershipFaultsLogged.clear();

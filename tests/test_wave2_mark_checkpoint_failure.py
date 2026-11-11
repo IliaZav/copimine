@@ -60,9 +60,9 @@ public class WaveTwoClearCheckpointProbe {
         var passed=new WaveTwoClearCheckpointProbe();passed.saveSucceeds=true;
         passed.tickCurrentHuntObjective(11_000L);
         check(passed.phase==EventPhase.WAVE_2&&passed.newMarks==1&&passed.currentHuntCycles==1,
-                "a durable clear keeps normal progression and the collective mark");
-        check(passed.spawns==0,"the next subwave waits for the three-second post-clear pause");
-        passed.tickCurrentHuntObjective(14_000L);
+                "a durable clear keeps normal progression and the current mark");
+        check(passed.spawns==0,"the next subwave waits for the five-second post-clear pause");
+        passed.tickCurrentHuntObjective(16_000L);
         check(passed.spawns==1&&passed.waveSpawnGroupIndex==2,
                 "the follow-up tick starts the next subwave once the pause elapses");
         var diagnostic=new WaveTwoClearCheckpointProbe();diagnostic.official=false;

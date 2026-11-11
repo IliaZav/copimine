@@ -95,3 +95,30 @@ Diagnostics and the scripted elite fan use the same normalized budget.
 - Candidate staging and inventory provenance: 142 passed, 3 host/environment skips.
 - Isolated Paper, live model survival, native visuals and new-commit CI: NOT RUN.
   M1 is not accepted as a complete gameplay/visual milestone.
+
+## M2a — Wave 2 hunt and observer compatibility
+
+11-November requirements supersede the 31-October collective mark and three-second
+group gap. One eligible frozen-roster owner now rotates on the persisted hunt
+origin every 20 seconds; each new group updates its target and field. A committed
+phantom warning holds its valid owner until its callback resolves. Owner death,
+quit and leaving the arena release owned glow and private packets; outsiders
+never expand the roster. Every assignment has a newer fenced packet identity.
+
+Server and client now support the same 70-observer target and 50-position safe
+fallback. Resolved positions are checked again against the field radius after
+block-centre adjustment; fallback layouts remain cached within that identity.
+No physical phantom entity population was added. Group gap is five seconds.
+
+Evidence:
+- Actual codec/cache integration failed before repair: server emitted 35.
+- Extracted production adapter failed before repair: all players were marked.
+- Wave 2-specific suites: 67 passed.
+- Wave 2/4 adapters plus wire/scatter: 67 passed after final fixes.
+- Three executable Java mains passed: hunt policy (1/2/5/10/11/20 parties),
+  stage policy and server placement policy.
+- Gradle `bridgeServerTest endEventJar`: BUILD SUCCESSFUL.
+- Native phantom/materialisation/music appearance and isolated Paper: NOT RUN.
+  This is source/automated progress within M2, not complete M2 acceptance.
+
+M2a plugin candidate: SHA-256 `77918e4b438c4a6865553c849b54adf8ebb730e0a313bc4698d02c35402d32c7`, 2284050 bytes.

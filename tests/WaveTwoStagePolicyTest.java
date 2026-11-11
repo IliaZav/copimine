@@ -13,7 +13,7 @@ public final class WaveTwoStagePolicyTest {
         expandedConfiguredRosterUsesTheHardCapWithoutAddingGroups();
         waveTwoRosterScalesAcrossTheSupportedPartySizes();
         defaultTwoPlayerPlanReservesAReachablePhantomActivationSlot();
-        huntUsesThreeSubwavesWithAThreeSecondGap();
+        huntUsesThreeSubwavesWithAFiveSecondGap();
         restartRecoversProgressAndTheActiveSpawnBoundary();
         restartRejectsInconsistentDurableProgress();
         subwavesAdvanceBySpawnCountOnly();
@@ -270,11 +270,11 @@ public final class WaveTwoStagePolicyTest {
         }
     }
 
-    private static void huntUsesThreeSubwavesWithAThreeSecondGap() {
-        check(WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS == 3_000L,
-                "the next subwave starts three seconds after the previous roster is cleared");
-        check(WaveTwoStagePolicy.nextGroupSpawnAt(42_000L) == 45_000L,
-                "the post-clear gap is exactly three seconds");
+    private static void huntUsesThreeSubwavesWithAFiveSecondGap() {
+        check(WaveTwoStagePolicy.NEXT_GROUP_PAUSE_MILLIS == 5_000L,
+                "the next subwave starts five seconds after the previous roster is cleared");
+        check(WaveTwoStagePolicy.nextGroupSpawnAt(42_000L) == 47_000L,
+                "the post-clear gap is exactly five seconds");
         check(WaveTwoStagePolicy.MAX_GROUP_COUNT == 3,
                 "Wave 2 is exactly three subwaves");
         check(WaveTwoStagePolicy.split(new WaveMechanicsPolicy.WaveCounts(30, 10, 10, 0, 0)).size() == 3,

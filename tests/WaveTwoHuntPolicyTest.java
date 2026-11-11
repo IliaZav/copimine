@@ -2,17 +2,35 @@ import me.copimine.endevent.domain.WaveTwoHuntPolicy;
 
 public final class WaveTwoHuntPolicyTest {
     public static void main(String[] args) {
-        noRotatingTargetSurvives();
+        twentySecondOwnerRotation();
         packetAssignmentIdentityIsIndependentAndCannotWrap();
         initialAndLateReinforcementsRespectBothBudgets();
         System.out.println("WaveTwoHuntPolicyTest OK");
     }
 
-    private static void noRotatingTargetSurvives() {
-        // Superseded: a rotating forty-five second mark with a minimum number of
-        // completed periods. The whole party is marked for the whole wave, so
-        // none of that API may survive in the policy.
-        for (String removed : new String[]{"MARK_ROTATION_MILLIS", "MIN_MARK_PERIODS",
+    private static void twentySecondOwnerRotation() {
+        // The 11-November master restores one rotating owner; completed periods
+        // remain presentation, never a second group-completion condition.
+        check(WaveTwoHuntPolicy.MARK_ROTATION_MILLIS == 20_000L, "twenty-second mark");
+        check(WaveTwoHuntPolicy.markEpoch(1_000L, 20_999L)==0L
+                && WaveTwoHuntPolicy.markEpoch(1_000L, 21_000L)==1L, "exact persisted boundary");
+        check(WaveTwoHuntPolicy.markEpoch(1_000L, 0L)==0L, "clock rewind is bounded");
+        for(int count : new int[]{1,2,5,10,11,20}) {
+            var roster=new java.util.ArrayList<java.util.UUID>();
+            for(int i=0;i<count;i++) roster.add(new java.util.UUID(0,i+1));
+            var eligible=new java.util.LinkedHashSet<>(roster);
+            for(int group=1;group<=3;group++) for(int epoch=0;epoch<count*2;epoch++) {
+                var expected=roster.get((epoch+group-1)%count);
+                check(expected.equals(WaveTwoHuntPolicy.markedParticipant(roster,eligible,epoch,group)),
+                        "stable fair rotation for every party and group");
+            }
+            eligible.remove(roster.get(0));
+            var survivor=WaveTwoHuntPolicy.markedParticipant(roster,eligible,0,1);
+            check(count==1?survivor==null:survivor.equals(roster.get(1)), "invalid owner is skipped");
+            check(WaveTwoHuntPolicy.markedParticipant(roster,java.util.Set.of(java.util.UUID.randomUUID()),0,1)==null,
+                    "a late foreign participant cannot inherit the mark");
+        }
+        for (String removed : new String[]{"MIN_MARK_PERIODS",
                 "MAX_COMPLETED_MARK_PERIODS", "markDeadline", "markExpired",
                 "nextMarkTarget", "initialMarkAssignments", "mayCompleteBatch"}) {
             boolean declared;

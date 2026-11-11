@@ -72,7 +72,10 @@ def test_the_wave_schedule_is_empty_so_nothing_else_spawns():
 def test_scale_drives_the_hitbox_not_only_the_modelsheet():
     spawn = runtime_body("public void start(", "private Location findSite(")
     assert "Attribute.GENERIC_SCALE" in spawn
-    assert "RiftRamPolicy.SCALE" in spawn
+    # W6-01 asked for a visibly bigger Ram. The authoritative constant is
+    # BOSS_SCALE (1.7); scale must be driven by the policy, never inlined, so the
+    # hitbox, the client model and the armour offsets cannot drift apart.
+    assert "RiftRamPolicy.BOSS_SCALE" in spawn
 
 
 def test_the_charge_locks_its_direction_and_never_homes():

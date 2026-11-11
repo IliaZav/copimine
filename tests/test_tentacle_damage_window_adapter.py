@@ -123,6 +123,7 @@ public class TentacleHitAdapterProbe {
     final double TENTACLE_TEMPORARY_MAX_HEALTH = 20;
     final String eventId = "hit-window-probe";
     final long generation = 17, tentacleActiveMillis = 0;
+    long eventTickCounter = 100;
     final EventPhase phase = EventPhase.BOSS_ACTIVE;
     BossPhase bossPhase = BossPhase.LAST_SEAL;
     int visualUpdates, stateChanges;
@@ -176,6 +177,13 @@ public class TentacleHitAdapterProbe {
     public static void main(String[] args) {
         var probe = new TentacleHitAdapterProbe();
         switch (args[0]) {
+            case "due-attack" -> {
+                probe.tentacleNextAttackTick.put(probe.display.id, 100L);
+                probe.onTentacleGuardianDamage(new EntityDamageByEntityEvent(probe.display, probe.player, false));
+                require(probe.tentacleGuardianHealth.get(0) == 50.0, "due attack must not make the guardian invulnerable");
+                require(probe.stateChanges == 0 && probe.tentacleNextAttackTick.get(probe.display.id) == 100L,
+                        "accepted hit must not cancel or postpone the due attack");
+            }
             case "reduced-final-damage" -> {
                 var hit = new EntityDamageByEntityEvent(probe.display, probe.player, false);
                 hit.finalDamage = 2;
@@ -247,7 +255,7 @@ public class TentacleHitAdapterProbe {
 @pytest.mark.parametrize(
     "scenario",
     ["melee-recovery", "projectile-recovery", "cancelled-melee", "cancelled-projectile",
-     "reduced-final-damage", "zero-final-damage", "projectile-transaction"],
+     "reduced-final-damage", "zero-final-damage", "projectile-transaction", "due-attack"],
 )
 def test_authoritative_hit_window_and_prior_cancellation(tentacle_hit_probe, scenario):
     executed = subprocess.run(

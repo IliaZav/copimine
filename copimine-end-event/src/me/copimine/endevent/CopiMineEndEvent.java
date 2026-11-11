@@ -487,6 +487,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final String CLIENT_VISUAL_WAVE_GUARDIAN_SKELETON = "END_RIFT_WAVE_GUARDIAN_SKELETON_V1";
     private static final String CLIENT_VISUAL_RITUAL_GUARD_SKELETON = "END_RIFT_RITUAL_GUARD_SKELETON_V1";
     private static final String CLIENT_VISUAL_RITUAL_CASTER = "END_RIFT_RITUAL_CASTER_V1";
+    /**
+     * Wave 6 Rift Ram adds.
+     *
+     * <p>The authored endermite skin existed once and was deleted with the old
+     * wave implementation, which quietly reverted every Ram add to a vanilla
+     * silverfish-coloured bug. The visual id is restored here so the client can
+     * bind the recovered sheet by UUID, exactly like every other event mob.</p>
+     */
+    private static final String CLIENT_VISUAL_ENDERMITE = "END_RIFT_ENDERMITE_V1";
     /** W6-005 [A]: how long after a mage death the next stage may start. */
     private static final long WAVE6_STAGE_TRANSFER_DELAY_MILLIS = 3_000L;
     private static final long WAVE6_STAGE_SPAWN_RETRY_MILLIS = 2_000L;
@@ -1646,6 +1655,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private long phaseDeadlineMillis;
     private long nextTargetMillis;
     private long nextSpellMillis;
+    private long nextBossCloseStrikeMillis;
     private long nextWaveTargetMillis;
     private long bossSpellPauseUntilMillis;
     /** One global repel per attempt, fired as the boss crosses 50% health. */
@@ -1725,6 +1735,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private String bossBarLastTitle = "";
     private BarColor bossBarLastColor;
     private BossBar bossBar;
+    /** Wave 6 Rift Ram armour bar; separate from the Guardian's phase bar. */
+    private BossBar riftRamBossBar;
     private UUID bossVisualCueOwner;
     private long bossVisualCueGeneration = Long.MIN_VALUE;
     private long bossVisualCueSequence;
@@ -5655,6 +5667,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         nextBossTacticMillis = 0L;
         nextTargetMillis = 0L;
         nextSpellMillis = 0L;
+        nextBossCloseStrikeMillis = 0L;
         nextWaveTargetMillis = 0L;
         bossSpellPauseUntilMillis = 0L;
         bossHalfRepelCommitted = false;
@@ -20035,7 +20048,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 return;
             }
             if (EVENT_KIND_BOSS.equals(kind) && isOfficialBoss(mob)
-                    && BossFinalSealAnchorPolicy.shouldPin(bossPhase)) {
+                    && BossFinalSealAnchorPolicy.shouldPin(bossPhase)
+                    && !tentacleVulnerabilityOpen()) {
                 // LAST_SEAL movement is owned by the event controller. The
                 // combat-AI invariant must not re-enable vanilla Enderman AI
                 // after the phase controller pins the boss to the core.
@@ -27294,6 +27308,81 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         riftRam.tick();
+        updateRiftRamBossBar();
+    }
+
+    /**
+     * Wave 6 boss bar, W6-03.
+     *
+     * <p>The playtest asked for the Ram's current armour to be visible, not just
+     * inferred from how many cubes are left on its back. The bar is driven only
+     * by the runtime's authoritative impact count and the live entity's real
+     * health, so the number on screen cannot disagree with the plate model, the
+     * damage gate or the client's armour rendering.</p>
+     *
+     * <p>This is a separate bar from the Guardian's because the two can never be
+     * alive at once, and reusing the Guardian bar would leak the Guardian's
+     * phase colours and darken-sky flags into a wave that has no phases.</p>
+     */
+    private void updateRiftRamBossBar() {
+        if (riftRam == null) {
+            if (riftRamBossBar != null) {
+                riftRamBossBar.removeAll();
+                riftRamBossBar.setVisible(false);
+            }
+            return;
+        }
+        if (riftRamBossBar == null) {
+            riftRamBossBar = Bukkit.createBossBar(
+                    RiftRamPolicy.bossBarTitle(riftRam.impacts()), BarColor.WHITE, BarStyle.SEGMENTED_10);
+        }
+        int impacts = riftRam.impacts();
+        String title = RiftRamPolicy.bossBarTitle(impacts);
+        double progress = RiftRamPolicy.bossBarProgress(
+                riftRam.health(), riftRam.maximumHealth(), impacts);
+        BarColor color = RiftRamPolicy.armourBroken(impacts) ? BarColor.RED : BarColor.WHITE;
+        Set<UUID> audience = activeWaveParticipants().stream()
+                .filter(player -> player != null && player.isOnline())
+                .map(Player::getUniqueId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        updateEventBossBar(riftRamBossBar, title, progress, color, audience, true);
+    }
+
+    /**
+     * Shared, bounded boss-bar presentation for a wave boss that is not the
+     * Guardian.
+     *
+     * <p>Every bar in this plugin goes through one place that owns visibility and
+     * audience, so a bar can never be left on screen after its wave ends -- the
+     * exact failure the playtest reported for the old ritual sphere. A caller
+     * that passes an empty audience therefore hides the bar instead of leaving
+     * it attached to whoever was last in the list.</p>
+     */
+    private void updateEventBossBar(BossBar bar, String title, double progress,
+                                    BarColor color, Set<UUID> audience, boolean visible) {
+        if (bar == null) return;
+        boolean show = visible && !audience.isEmpty();
+        if (!show) {
+            bar.removeAll();
+            bar.setVisible(false);
+            return;
+        }
+        bar.setTitle(title);
+        bar.setProgress(Math.max(0.0D, Math.min(1.0D, progress)));
+        bar.setColor(color);
+        if (!bar.isVisible()) bar.setVisible(true);
+        Set<UUID> current = bar.getPlayers().stream().map(Player::getUniqueId)
+                .collect(Collectors.toCollection(HashSet::new));
+        for (UUID wanted : audience) {
+            if (current.contains(wanted)) continue;
+            Player player = Bukkit.getPlayer(wanted);
+            if (player != null) bar.addPlayer(player);
+        }
+        for (UUID present : current) {
+            if (audience.contains(present)) continue;
+            Player player = Bukkit.getPlayer(present);
+            if (player != null) bar.removePlayer(player);
+        }
     }
 
     /** Environmental and player hits share one armor gate, before health is committed. */
@@ -28447,6 +28536,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             maybeSpawnWaveFiveFogElite(now, core);
             refreshCurrentBlackFogPackets(now, core);
         } else if (blackFogPhase == BlackFogPhase.SAFE) {
+            if (!evacuateBlackFogShelters()) return;
             clearCurrentBlackFogPackets();
             for (Player player : activeWaveParticipants()) {
                 if (isCurrentSafeZonePlayer(player)) {
@@ -38382,7 +38472,34 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && Math.abs(player.getLocation().getY() - combatFloorY()) <= 2.0D;
     }
 
+    private boolean evacuateBlackFogShelters() {
+        if (currentSafeZoneCells.isEmpty()) return true;
+        var cells = currentSafeZoneCells.stream().map(p ->
+                new me.copimine.endevent.domain.BlackFogShelterMobPolicy.Cell(p.x(), p.z())).toList();
+        for (Entity entity : new ArrayList<>(ownedEntities.values())) {
+            if (!(entity instanceof Mob mob) || !isLiveOwnedEntity(entity.getUniqueId())
+                    || readInt(entity, keyWave, 0) != 5 || !isWaveCombatKind(readString(entity, keyKind))) continue;
+            Location from = entity.getLocation();
+            if (!me.copimine.endevent.domain.BlackFogShelterMobPolicy.overlaps(
+                    from.getX(), from.getZ(), entity.getWidth(), cells)) continue;
+            var exit = me.copimine.endevent.domain.BlackFogShelterMobPolicy.exit(
+                    from.getX(), from.getZ(), entity.getWidth(), cells,
+                    (x, z) -> isSafeCombatEntityLocation(new Location(from.getWorld(),
+                            x + .5D, combatFloorY(), z + .5D), entity));
+            if (exit == null || !teleportCombatEntity(entity, new Location(from.getWorld(),
+                    exit.x() + .5D, combatFloorY(), exit.z() + .5D, from.getYaw(), from.getPitch()))) {
+                markBlackFogRecoveryRequired("WAVE5_SAFE_CHAMBER_MOB_NO_EXIT");
+                return false;
+            }
+            mob.setTarget(null);
+            mob.getPathfinder().stopPathfinding();
+            mob.setVelocity(new Vector());
+        }
+        return true;
+    }
+
     private void applyBlackFogEffects(long now, Location core) {
+        if (!evacuateBlackFogShelters()) return;
         List<Player> participants = activeWaveParticipants();
         releaseInactiveBlackFogEffects(participants);
         for (Player player : participants) {
@@ -42641,6 +42758,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         waveTwoIntroStartedMillis = 0L;
         waveTwoPhantomAdmissionFailures = 0;
         if (riftRam != null) { riftRam.close(); riftRam = null; }
+        if (riftRamBossBar != null) { riftRamBossBar.removeAll(); riftRamBossBar.setVisible(false); }
         riftRamCheckpoint = Map.of();
         if (!clearRealitySplitBarriers("wave-objective-reset")) return false;
         if (!archiveWaveTwoRosterForCleanup("wave-objective-state-clear")) return false;
@@ -44823,6 +44941,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             playEventMusic(musicForPhase());
             nextTargetMillis = 0L;
             nextSpellMillis = 0L;
+        nextBossCloseStrikeMillis = 0L;
             recentBossTargets.clear();
             previousBossSpell = null;
             bossTargetCursor = 0;
@@ -44966,6 +45085,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         nextBossTacticMillis = 0L;
         nextTargetMillis = 0L;
         nextSpellMillis = 0L;
+        nextBossCloseStrikeMillis = 0L;
         bossSpellPauseUntilMillis = 0L;
         bossVisualCueOwner = null;
         bossVisualCueGeneration = Long.MIN_VALUE;
@@ -45162,6 +45282,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             maintainBossTeleport(boss, now);
             detectBossStuck(boss, now);
         }
+        // Use the committed animation/contact timeline for nearby melee too.
+        // This runs only between major casts, never as a second damage source.
+        if (!finalSealPinned && boss instanceof Mob mob
+                && mob.getTarget() instanceof Player target && isCombatTarget(target)
+                && me.copimine.endevent.domain.BossCloseCombatPolicy.canStrike(
+                        bossPhase, now, nextBossCloseStrikeMillis, bossSpellPauseUntilMillis,
+                        nextSpellMillis, boss.getLocation().distance(target.getLocation()),
+                        boss.hasLineOfSight(target), isPlayerUnderTentacleControl(target))) {
+            currentBossBrainAbility = BossAbilityId.fromSpell(EndRiftAiPolicy.BossSpell.MELEE_SWIPE);
+            currentBossBrainTarget = target.getUniqueId();
+            currentBossDecisionAtMillis = now;
+            if (castCurrentBossSpell(boss, EndRiftAiPolicy.BossSpell.MELEE_SWIPE, false)) {
+                nextBossCloseStrikeMillis = now
+                        + me.copimine.endevent.domain.BossCloseCombatPolicy.COOLDOWN_MILLIS;
+                bossBrain.recordAccepted(currentBossBrainAbility, generation);
+                bossSpellCursor++;
+                return;
+            }
+        }
         if (now >= bossSpellPauseUntilMillis && nextSpellMillis <= now
                 && !activeBossParticipants().isEmpty()) {
             boolean accepted = castBossSpell(boss, false);
@@ -45190,6 +45329,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!ensureFinalSealBarriersIntact()) {
             getLogger().severe("BOSS_LAST_SEAL_CORE_PIN_BLOCKED event=" + eventId
                     + " generation=" + generation + " reason=final-seal-wall-not-intact");
+            return false;
+        }
+        // The living shield owns the hover. Once its guardians are defeated,
+        // release gravity/pursuit so the exposed boss can actually be reached.
+        if (tentacleVulnerabilityOpen()) {
+            if (boss instanceof Mob mob) {
+                if (!mob.hasAI()) nextTargetMillis = 0L;
+                mob.setAI(true);
+                mob.setAware(true);
+            }
+            boss.setGravity(true);
             return false;
         }
         Location anchor = finalSealCoreAnchorLocation();
@@ -46777,12 +46927,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * deterministic health band without reintroducing a virtual projection.
      */
     private void applyCurrentAdministrativeDamage(LivingEntity boss, double damage, Entity source) {
-        if (boss == null || !boss.isValid() || boss.isDead()) {
+        if (boss == null || !boss.isValid() || boss.isDead() || bossDefeatCinematicStarted) {
             return;
         }
         double before = Math.max(0.0D, boss.getHealth());
         double requested = Math.max(0.0D, Double.isFinite(damage) ? damage : 0.0D);
         double after = Math.max(0.0D, before - requested);
+        if (requested <= 0.0D) return;
+        if (after <= 0.0D) {
+            if (testCombatAiMode && isTestBoss(boss)) {
+                commitDisposableBossDefeat(boss);
+            } else {
+                getLogger().warning("BOSS_ADMIN_LETHAL_REJECTED event=" + eventId
+                        + " boss=" + boss.getUniqueId() + " reason=official-victory-requires-combat");
+            }
+            return;
+        }
         boss.setHealth(after);
         if (!boss.isDead()) {
             synchronizeBossPhase(boss);
@@ -47680,7 +47840,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         double distance = horizontalDistanceSquared(boss.getLocation(), destination);
-        if (distance <= 9.0D) {
+        if (distance <= 0.64D) {
+            mob.getPathfinder().stopPathfinding();
             applyGroundedBossPursuitMotion(mob, 0.0D);
             return;
         }
@@ -49160,8 +49321,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!damageWindowOpen && !state.temporary()
                     && tentacleGuardianHealth.getOrDefault(state.slot(), 0.0D) > 0.0D
                     && TentacleGuardianPolicy.canBeginAttack(state.kind(), state.state())) {
-                long nextAttack = tentacleNextAttackTick.getOrDefault(state.entityId(),
-                        eventTickCounter + 60L + Math.max(0, state.slot())
+                long nextAttack = tentacleNextAttackTick.computeIfAbsent(state.entityId(),
+                        ignored -> eventTickCounter + 60L + Math.max(0, state.slot())
                                 * tentacleAttackStaggerTicks());
                 if (TentacleGuardianPolicy.attackDue(eventTickCounter, nextAttack, false)) {
                     Player target = chooseTentacleTarget(participants, display.getLocation());
@@ -50452,7 +50613,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             setTentacleState(display, TentacleAnimationPolicy.State.DYING, null);
             return;
         }
-        if (TentacleAnimationPolicy.shouldEnterHitRecovery(state.state())) {
+        // A ready attack keeps priority over another flinch. Damage remains real,
+        // but repeated clicks cannot postpone a committed grab forever.
+        if (TentacleAnimationPolicy.shouldEnterHitRecovery(state.state())
+                && (temporary || TentacleGuardianPolicy.shouldFlinchBeforeAttack(
+                        eventTickCounter, tentacleNextAttackTick.getOrDefault(
+                                display.getUniqueId(), -1L)))) {
             setTentacleState(display, TentacleAnimationPolicy.State.HIT_RECOVERY,
                     attacker.getUniqueId());
         }
@@ -56401,9 +56567,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         String targetSuffix = targetId.isBlank() ? "" : "|target=" + targetId;
         TentacleController.VisualState visual = tentacleController.state(entity.getUniqueId());
         String role = visual == null ? "PERMANENT" : visual.kind().name();
-        double roleScale = visual != null && visual.kind() == TentacleAnimationPolicy.Kind.SMALL
-                ? config.smallKaguneTuning().scale() : 1.0D;
-        String roleSuffix = "|role=" + role + "|scale=" + roleScale;
+        double roleScale = visual == null ? 1.0D : switch (visual.kind()) {
+            case SMALL -> config.smallKaguneTuning().scale();
+            case UNDER_PLAYER -> 0.55D;
+            case TEMPORARY -> 0.75D;
+            default -> 1.0D;
+        };
+        String roleSuffix = "|role=" + role + "|scale=" + roleScale
+                + "|hp=" + Math.max(0.0D, readDouble(entity, keyTentacleHealth, 0.0D));
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (isEventVisualViewer(player)) {
                 sendClientPacket(player, "END_ENTITY_PHASE", instance, durationMillis,
@@ -56561,6 +56732,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (entity.getType() == EntityType.ZOMBIE) {
             // Vanilla zombies never carry an event kind, so they keep the vanilla skin.
             return EVENT_KIND_ELITE.equals(kind) ? CLIENT_VISUAL_ELITE_ZOMBIE : CLIENT_VISUAL_ZOMBIE;
+        }
+        if (entity.getType() == EntityType.ENDERMITE) {
+            // Only the Ram's own adds, never a natural Endermite a player brought in.
+            return CLIENT_VISUAL_ENDERMITE;
         }
         return "";
     }

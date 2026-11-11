@@ -26,6 +26,8 @@
     "DisplayEntityRenderStateMixin",
     "ClientWorldAccessor",
     "SpiderEntityRendererMixin",
+    "EndermiteEntityRendererMixin",
+    "EndRiftBossBarHudMixin",
     "ZombieEntityRendererMixin",
     "SkeletonEntityRendererMixin",
     "WardenEntityRendererMixin",

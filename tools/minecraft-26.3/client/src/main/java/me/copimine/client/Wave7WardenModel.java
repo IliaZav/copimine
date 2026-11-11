@@ -28,6 +28,7 @@ public final class Wave7WardenModel extends WardenModel {
 
     public Wave7WardenModel(ModelPart root) {
         super(root);
+        EndRiftAtlasUvLayout.fit(root, "end_rift_wave7_warden.png");
         ModelPart body = root.getChild("bone").getChild("body");
         this.riftCrown = body.getChild("head").getChild("rift_crown");
         this.chestPlate = body.getChild("rift_chest_plate");

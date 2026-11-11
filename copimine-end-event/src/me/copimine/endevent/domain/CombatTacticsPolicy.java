@@ -61,6 +61,12 @@ public final class CombatTacticsPolicy {
         if (targetOnCore) {
             return new BossPlan(BossTactic.CREATE_SPACE, 8.0D, true, true, direction);
         }
+        // Alternate a deliberate close approach with the phase's ranged job.
+        // Previously every early-phase destination stayed beyond swipe range.
+        if (safe != BossPhase.LAST_SEAL && (beat == 0 || beat == 2)) {
+            return new BossPlan(BossTactic.CROSSCUT, MIN_BOSS_DISTANCE,
+                    true, false, direction);
+        }
         return switch (safe) {
             case AWAKENING -> new BossPlan(BossTactic.RING_ORBIT, 6.5D,
                     true, true, direction);

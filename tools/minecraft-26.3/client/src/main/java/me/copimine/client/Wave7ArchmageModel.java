@@ -35,6 +35,7 @@ public final class Wave7ArchmageModel extends EntityModel<EvokerRenderState> {
 
     public Wave7ArchmageModel(ModelPart root) {
         super(root);
+        EndRiftAtlasUvLayout.fit(root, "end_rift_wave7_archmage.png");
         this.head = root.getChild("head");
         this.body = root.getChild("body");
         this.rightArm = root.getChild("right_arm");

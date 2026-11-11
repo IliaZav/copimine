@@ -28,6 +28,8 @@ public final class EndEventClientState {
     private final Map<String, BossPhaseBinding> bossPhase = new HashMap<>();
     private final Map<String, EntityVisualBinding> entityVisuals = new HashMap<>();
     private final Map<String, EntityAnimationBinding> entityAnimations = new HashMap<>();
+    private record TentacleHealthPulse(double health, long untilMillis) {}
+    private final Map<String, TentacleHealthPulse> tentacleHealthPulses = new HashMap<>();
     private final LinkedHashSet<String> suppressedEntityRenders = new LinkedHashSet<>();
     private String controlInstance = "";
     private String controlMode = "";
@@ -172,6 +174,32 @@ public final class EndEventClientState {
      * Server-selected target used only to turn the local visual toward the
      * current victim.  The server still owns contact, locking and damage.
      */
+    /** Accepted server HP changes flash the mesh without restarting its attack clip. */
+    public synchronized boolean tentacleHurtFlashAt(String uuid, long nowMillis) {
+        TentacleHealthPulse pulse = tentacleHealthPulses.get(uuid);
+        return pulse != null && nowMillis >= 0L && nowMillis < pulse.untilMillis();
+    }
+
+    private void updateTentacleHealthPulse(String uuid, String phase, long nowMillis) {
+        for (String part : phase.split("\\|", -1)) {
+            if (!part.startsWith("hp=")) continue;
+            try {
+                double health = Double.parseDouble(part.substring(3));
+                if (!Double.isFinite(health) || health < 0.0D || health > 100_000.0D) return;
+                TentacleHealthPulse previous = tentacleHealthPulses.get(uuid);
+                long until = previous == null ? 0L : health < previous.health()
+                        ? nowMillis + 200L : previous.untilMillis();
+                tentacleHealthPulses.put(uuid, new TentacleHealthPulse(health, until));
+            } catch (NumberFormatException ignored) { /* Optional visual-only field. */ }
+            return;
+        }
+    }
+
+    public synchronized String tentacleRoleForEntity(String uuid) {
+        EntityAnimationBinding binding = entityAnimations.get(uuid);
+        return binding == null ? "LEGACY" : binding.role();
+    }
+
     public synchronized String tentacleTargetForEntity(String uuid) {
         if (uuid == null || uuid.isBlank()) {
             return "";
@@ -434,6 +462,7 @@ public final class EndEventClientState {
         if (current == null && entityVisuals.size() >= MAX_ENTITY_BINDINGS) {
             return false;
         }
+        tentacleHealthPulses.remove(packet.subjectId());
         entityVisuals.put(packet.subjectId(), new EntityVisualBinding(packet.instanceId(), packet.visualId()));
         entityAnimations.put(packet.subjectId(), new EntityAnimationBinding(
                 packet.instanceId(), "READY", -1L, nowMillis, 60_000L, "FULL", "",
@@ -451,6 +480,7 @@ public final class EndEventClientState {
         }
         entityVisuals.remove(packet.subjectId());
         entityAnimations.remove(packet.subjectId());
+        tentacleHealthPulses.remove(packet.subjectId());
         suppressedEntityRenders.add(packet.subjectId());
         while (suppressedEntityRenders.size() > MAX_RENDER_SUPPRESSIONS) {
             suppressedEntityRenders.remove(suppressedEntityRenders.iterator().next());
@@ -491,6 +521,7 @@ public final class EndEventClientState {
                 ? binding.blendFromPose()
                 : resolveTentaclePose(binding, visual.visualId(), nowMillis,
                         stableSeed(packet.subjectId()));
+        if (tentacleVisual) updateTentacleHealthPulse(packet.subjectId(), packet.phaseId(), nowMillis);
         entityAnimations.put(packet.subjectId(), new EntityAnimationBinding(
                 packet.instanceId(), animation,
                 sameClip ? binding.stateStartServerTick() : cue.stateStartServerTick(),
@@ -592,7 +623,7 @@ public final class EndEventClientState {
                 }
             }
         }
-        if (!"SMALL".equals(role)) {
+        if (!Set.of("SMALL", "UNDER_PLAYER", "TEMPORARY").contains(role)) {
             roleScale = 1.0F;
         }
         return new AnimationCue(animation, stateStartServerTick, healthState, targetId, role, roleScale);
@@ -708,6 +739,7 @@ public final class EndEventClientState {
         bossPhase.clear();
         entityVisuals.clear();
         entityAnimations.clear();
+        tentacleHealthPulses.clear();
         controlInstance = "";
         controlMode = "";
         controlTargetUuid = "";

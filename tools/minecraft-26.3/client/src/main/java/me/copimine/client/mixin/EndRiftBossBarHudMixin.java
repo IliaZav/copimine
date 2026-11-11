@@ -1,29 +1,51 @@
 package me.copimine.client.mixin;
 
 import me.copimine.client.ClientBridgeProtocol;
+import me.copimine.client.RiftRamBossBarHud;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.BossHealthOverlay;
+import net.minecraft.client.gui.components.LerpingBossEvent;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.BossEvent;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /** Hides only the server bar that belongs to the End Rift Guardian. */
 @Mixin(BossHealthOverlay.class)
 public abstract class EndRiftBossBarHudMixin {
-    /** Minecraft 26.3 extracts each complete bar, including its title, here. */
+    @Unique private BossEvent copimine$customBarRendered;
+
+    /** Bar body; the calling method extracts its title separately. */
     @Inject(
             method = "extractBar(Lnet/minecraft/client/gui/GuiGraphicsExtractor;IILnet/minecraft/world/BossEvent;)V",
             at = @At("HEAD"),
             cancellable = true)
     private void copimine$hideVanillaEndRiftBar(GuiGraphicsExtractor context, int x, int y,
                                                  BossEvent bossBar, CallbackInfo callback) {
+        copimine$customBarRendered = null;
+        if (RiftRamBossBarHud.render(context, x, y, bossBar)) {
+            copimine$customBarRendered = bossBar;
+            callback.cancel();
+            return;
+        }
         if (copimine$isEndRiftBossBar(bossBar)) {
+            copimine$customBarRendered = bossBar;
             callback.cancel();
         }
+    }
+
+    /** Suppress only the title whose body we just replaced, preserving other bosses. */
+    @Redirect(method = "extractRenderState", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/gui/components/LerpingBossEvent;getName()Lnet/minecraft/network/chat/Component;"))
+    private Component copimine$customBarTitle(LerpingBossEvent bar) {
+        boolean replaced = copimine$customBarRendered == bar;
+        copimine$customBarRendered = null;
+        return replaced ? Component.empty() : bar.getName();
     }
 
     /** Covers progress/notch bars, whose extraction uses the textured overload. */

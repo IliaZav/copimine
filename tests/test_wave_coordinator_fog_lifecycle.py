@@ -136,6 +136,7 @@ public class WaveFogLifecycleProbe {
  boolean testBossMovementFrozen,officialAttempt=true;Object bossPhase;static final String EVENT_KIND_REALITY_SPLIT_TRIAL="trial",EVENT_KIND_RITUAL_CASTER="caster",EVENT_KIND_RITUAL_GUARD="guard";
  Map<UUID,Set<UUID>> ritualGuardsByCaster=new HashMap<>();
  Set<UUID> ritualGuardUuids=new HashSet<>();boolean testWaveFrontVisualMode;
+ boolean tentacleVulnerabilityOpen(){return false;}
  static class BossFinalSealAnchorPolicy {static boolean shouldPin(Object p){return false;}}
  static class RitualCasterTacticsPolicy {static class State {}static State state(boolean a,boolean b){return new State();}static boolean nativeAiEnabled(State s){return true;}}
  boolean readRitualCasterAwakened(Entity e){return true;}boolean isOfficialBoss(Entity e){return false;}

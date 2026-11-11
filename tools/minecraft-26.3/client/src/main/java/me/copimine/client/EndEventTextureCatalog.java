@@ -89,6 +89,10 @@ public final class EndEventTextureCatalog {
         textures.put("END_RIFT_WAVE_GUARDIAN_SKELETON_V1", entityTexture("end_rift_wave_guardian_skeleton.png"));
         textures.put("END_RIFT_RITUAL_GUARD_SKELETON_V1", entityTexture("end_rift_ritual_guard_skeleton.png"));
         textures.put("END_RIFT_RITUAL_CASTER_V1", entityTexture("end_rift_ritual_caster.png"));
+        // Wave 6 Rift Ram adds. This sheet existed in the pre-26.3 client and
+        // was dropped with the old wave implementation, which silently reverted
+        // every Ram add to an unbranded vanilla bug. Restored verbatim.
+        textures.put("END_RIFT_ENDERMITE_V1", entityTexture("end_rift_endermite.png"));
         textures.put(Wave7NamedTrialVisualPolicy.WARDEN_VISUAL,
                 entityTexture("end_rift_wave7_warden.png"));
         textures.put(Wave7NamedTrialVisualPolicy.ARCHMAGE_VISUAL,

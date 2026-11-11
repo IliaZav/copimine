@@ -2,18 +2,19 @@ import me.copimine.endevent.domain.TentacleGuardianLayoutPolicy;
 
 public final class TentacleGuardianLayoutPolicyTest {
     public static void main(String[] args) {
+        // Nov 10 playtest: main guardians move closer, retaining separated roots.
         var north = TentacleGuardianLayoutPolicy.permanentOffset(0, 4);
         var east = TentacleGuardianLayoutPolicy.permanentOffset(1, 4);
         var south = TentacleGuardianLayoutPolicy.permanentOffset(2, 4);
         var west = TentacleGuardianLayoutPolicy.permanentOffset(3, 4);
 
-        requireClose(9.0D, Math.hypot(north.x(), north.z()), "north root clears the guardian");
-        requireClose(9.0D, Math.hypot(east.x(), east.z()), "east root clears the guardian");
-        requireClose(9.0D, Math.hypot(south.x(), south.z()), "south root clears the guardian");
-        requireClose(9.0D, Math.hypot(west.x(), west.z()), "west root clears the guardian");
-        require(Math.hypot(north.x() - east.x(), north.z() - east.z()) > 12.0D,
+        requireClose(5.5D, Math.hypot(north.x(), north.z()), "north root clears the guardian");
+        requireClose(5.5D, Math.hypot(east.x(), east.z()), "east root clears the guardian");
+        requireClose(5.5D, Math.hypot(south.x(), south.z()), "south root clears the guardian");
+        requireClose(5.5D, Math.hypot(west.x(), west.z()), "west root clears the guardian");
+        require(Math.hypot(north.x() - east.x(), north.z() - east.z()) > 7.0D,
                 "neighboring roots remain visibly separated");
-        require(Math.hypot(south.x() - west.x(), south.z() - west.z()) > 12.0D,
+        require(Math.hypot(south.x() - west.x(), south.z() - west.z()) > 7.0D,
                 "opposite roots remain evenly spaced");
         var invalid = TentacleGuardianLayoutPolicy.permanentOffset(0, 0);
         requireClose(0.0D, Math.hypot(invalid.x(), invalid.z()),

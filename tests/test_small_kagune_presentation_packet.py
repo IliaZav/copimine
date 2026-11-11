@@ -37,9 +37,10 @@ public class SmallKagunePresentationPacketProbe {
     final Map<UUID, String> entityBindingInstances = new HashMap<>();
     final String eventId = "presentation-probe";
     final long generation = 9, eventTickCounter = 34;
-    final Object keyTentacleHealthState = new Object(), keyTentacleTarget = new Object();
+    final Object keyTentacleHealthState = new Object(), keyTentacleTarget = new Object(), keyTentacleHealth = new Object();
     Config config = new Config(new Tuning(0.4));
     String received;
+    double readDouble(Entity actor,Object key,double fallback){return 17.0;}
     String readString(Entity actor, Object key) { return key == keyTentacleHealthState ? "DAMAGED" : "target-id"; }
     boolean isEventVisualViewer(Player ignored) { return true; }
     void sendClientPacket(Player player, String type, String instance, long duration,
@@ -54,13 +55,13 @@ public class SmallKagunePresentationPacketProbe {
         for (Kind kind : Kind.values()) {
             p.tentacleController.visual = new TentacleController.VisualState(kind);
             p.sendTentacleAnimationVisualUpdate(actor, TentacleAnimationPolicy.State.READY);
-            String suffix = "|role=" + kind + "|scale=" + (kind == Kind.SMALL ? "0.4" : "1.0");
-            if (!p.received.equals("READY|t=34|health=DAMAGED|target=target-id" + suffix))
+            String suffix = "|role=" + kind + "|scale=" + (switch(kind){case SMALL -> "0.4";case UNDER_PLAYER -> "0.55";case TEMPORARY -> "0.75";default -> "1.0";});
+            if (!p.received.equals("READY|t=34|health=DAMAGED|target=target-id" + suffix + "|hp=17.0"))
                 throw new AssertionError("role or config scale lost: " + p.received);
         }
         p.tentacleController.visual = null;
         p.sendTentacleAnimationVisualUpdate(actor, TentacleAnimationPolicy.State.READY);
-        if (!p.received.endsWith("|role=PERMANENT|scale=1.0"))
+        if (!p.received.endsWith("|role=PERMANENT|scale=1.0|hp=17.0"))
             throw new AssertionError("missing role binding must retain full-size compatibility");
     }
 }

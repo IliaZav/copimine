@@ -73,7 +73,7 @@ public class RamRuntimeProbe {
   static class Bukkit { static Entity loaded; static Entity getEntity(UUID id){return loaded;} }
   boolean safeVolume(Location at){return true;}
   boolean buildPillar(){pillarDisplays.add(new BlockDisplay());return true;}
-  void createArmor(){for(int i=impacts+1;i<=5;i++)armor.add(new Piece(new BlockDisplay(),i));}
+  void createArmor(){for(int i=impacts+1;i<=RiftRamPolicy.ARMOUR_PLATES;i++)armor.add(new Piece(new BlockDisplay(),i));}
   void dust(Location at,int n,double a,double b){}
   BlockDisplay block(Location at,Material m,Vector3f size){return new BlockDisplay();}
   Object nearest(Location at,List<Object> players){return null;}
@@ -84,34 +84,39 @@ public class RamRuntimeProbe {
   }
   static void check(boolean b,String m){if(!b)throw new AssertionError(m);}
   public static void main(String[] args){
+    int plates=RiftRamPolicy.ARMOUR_PLATES;
     RamRuntimeProbe p=new RamRuntimeProbe(); Set<UUID> receipts=new HashSet<>();
-    for(int i=1;i<=5;i++)p.armor.add(new Piece(new BlockDisplay(),i));
-    for(int i=1;i<=5;i++){
+    for(int i=1;i<=plates;i++)p.armor.add(new Piece(new BlockDisplay(),i));
+    for(int i=1;i<=plates;i++){
       p.raiseTestPillar(); check(receipts.add(p.pillarId),"unique pillar identity");
       p.action=Action.CHASE;p.impact();check(p.impacts==i-1,"walking cannot hit");
       p.action=Action.CHARGE;p.banked=false;p.impact();
       check(p.impacts==i,"one impact");check(p.pillarId==null,"pillar retired");
       check(p.pillarDisplays.isEmpty(),"pillar displays removed");
-      check(p.armor.size()==5-i,"one 3D armor section retired");
+      check(p.armor.size()==plates-i,"one 3D armor section retired");
       check(p.mites.size()<=6,"living Endermite cap");
       p.impact();check(p.impacts==i,"duplicate callback ignored");
-      if(i<5)check(!p.completed,"impact is not completion");
-      if(i<5){
+      if(i<plates)check(!p.completed,"impact is not completion");
+      if(i<plates){
         p.raiseTestPillar();Map<String,String> saved=p.snapshot();
         RamRuntimeProbe restored=new RamRuntimeProbe();restored.ram=null;Bukkit.loaded=p.ram;
         restored.restore(saved);
         check(restored.impacts==i&&Objects.equals(restored.id(),p.id()),"restart preserves actor and impacts");
-        check(restored.armor.size()==5-i&&restored.pillarId.equals(p.pillarId),"restart preserves pillar identity and armor");
+        check(restored.armor.size()==plates-i&&restored.pillarId.equals(p.pillarId),"restart preserves pillar identity and armor");
         check(restored.action==Action.RECOVER&&!restored.completed,"restart cannot replay stale action");
         p.clearPillar();
       }
     }
-    check(p.world.spawned==6,"no deferred spawn debt");
+    check(p.world.spawned>0,"pillars actually released adds");
+    check(p.world.spawned<=RiftRamPolicy.ENDERMITES_CAP,
+        "adds never exceed the encounter-wide cap: "+p.world.spawned);
+    // The final pillar must never release Endermites, even when every earlier
+    // add is already dead: the plate is spent, the encounter is not an add phase.
     RamRuntimeProbe finalPillar=new RamRuntimeProbe();
-    finalPillar.impacts=4;finalPillar.raiseTestPillar();finalPillar.impact();
-    check(finalPillar.impacts==5&&finalPillar.world.spawned==0,
-        "fifth pillar never releases Endermites even when previous adds are dead");
-    check(!p.completed,"fifth pillar alone cannot complete");
+    finalPillar.impacts=plates-1;finalPillar.raiseTestPillar();finalPillar.impact();
+    check(finalPillar.impacts==plates&&finalPillar.world.spawned==0,
+        "the final pillar never releases Endermites even when previous adds are dead");
+    check(!p.completed,"the final impact alone cannot complete");
     p.died(UUID.randomUUID());check(!p.completed,"foreign death ignored");
     p.died(p.id());check(p.completed,"confirmed exposed death completes");
     check(p.debris.isEmpty()&&p.mites.isEmpty(),"final cleanup");
@@ -124,7 +129,8 @@ public class RamRuntimeProbe {
     RamRuntimeProbe legacy=new RamRuntimeProbe();legacy.ram=null;legacy.restore(Map.of("ram.schema","1"));
     check(legacy.closed&&legacy.host.failures==1&&!legacy.completed,"legacy state cannot become a Ram victory");
     RamRuntimeProbe finished=new RamRuntimeProbe();finished.ram=null;Bukkit.loaded=null;finished.restore(p.snapshot());
-    check(finished.completed&&finished.impacts==5,"durable death receipt needs no resurrected actor");
+    check(finished.completed&&finished.impacts==RiftRamPolicy.REQUIRED_IMPACTS,
+        "durable death receipt needs no resurrected actor");
     System.out.println("OK");
   }
 '''

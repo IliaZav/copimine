@@ -11,8 +11,19 @@ package me.copimine.endevent.domain;
  * without a server, and the runtime only has to hold the state.</p>
  */
 public final class RiftRamPolicy {
-    /** How many times the Ravager must hit the pillar before it becomes exposed. */
-    public static final int REQUIRED_IMPACTS = 5;
+    /**
+     * How many times the Ravager must hit the pillar before it becomes exposed.
+     *
+     * <p>W6-03 (playtest 2026-11-10): "require two or three accepted column
+     * impacts to remove armour". The old five-plate loop meant a party had to
+     * line up five separate charges before the armour was gone, and the player
+     * described that phase as long and unresponsive. Three is the upper end of
+     * the requested range and keeps one plate per stage, so every impact is a
+     * visible change on the body instead of a counter ticking behind it.</p>
+     */
+    public static final int REQUIRED_IMPACTS = 3;
+    /** Plate count on the body; one plate is shed per accepted impact. */
+    public static final int ARMOUR_PLATES = REQUIRED_IMPACTS;
     public static final int STOMP_SLOW_TICKS = 60;
     public static final int STOMP_SLOW_AMPLIFIER = 1;
     public static final double STOMP_RADIUS = 12.0D;
@@ -21,6 +32,15 @@ public final class RiftRamPolicy {
     public static final int STOMP_COOLDOWN_TICKS = 400;
     /** Vanilla Ravager is roughly 1.95 blocks tall; 1.5x keeps the hitbox honest. */
     public static final double SCALE = 1.5D;
+    /**
+     * Final body scale, W6-01.
+     *
+     * <p>The playtest asked for the Ram to be "a bit bigger". 1.5 was only
+     * marginally taller than a vanilla Ravager and disappeared next to a
+     * Netherite-armoured crowd; 1.7 reads as a boss while keeping the hitbox
+     * inside the arena's authored clearance.</p>
+     */
+    public static final double BOSS_SCALE = 1.7D;
     public static final double MIN_HEALTH = 180.0D;
     public static final double MAX_HEALTH = 400.0D;
     /** Players supported before the health curve saturates. */
@@ -29,6 +49,16 @@ public final class RiftRamPolicy {
     public static final double CHARGE_DAMAGE = 8.0D;
     /** The Ravager stands still and roars for this long before it commits. */
     public static final int WARNING_TICKS = 40;
+    /**
+     * Charge windup, W6-02.
+     *
+     * <p>The playtest wanted a longer, more readable tell: "red eyes and smoke
+     * from the nostrils during the run-up". A tell that ends in less than a
+     * second is not a tell, it is a surprise. This is the window in which the
+     * eyes glow, the nostrils smoke and the roar plays, and it is deliberately
+     * long enough to be read from the far side of the arena.</p>
+     */
+    public static final int CHARGE_WINDUP_TICKS = 46;
     /** Minimum gap between two accepted charges. */
     public static final int CHARGE_COOLDOWN_TICKS = 180;
     /** How long the Ravager lies stunned after cracking the pillar. */
@@ -37,6 +67,15 @@ public final class RiftRamPolicy {
     public static final int CHARGE_TIMEOUT_TICKS = 60;
     /** Blocks per tick during a charge. Fast, but a walking player can dodge. */
     public static final double CHARGE_SPEED = 1.1D;
+    /**
+     * Charge speed once the armour starts coming off, W6-02.
+     *
+     * <p>"Runs further and with effects" was the ask. A Ram that sprints faster
+     * the more plates it has lost turns the fight around: the armour phase is
+     * the tutorial and the exposed phase is the punishment. It is still under
+     * two blocks per tick, so a player who reacts can sidestep.</p>
+     */
+    public static final double CHARGE_SPEED_EXPOSED = 1.45D;
     /** How close the Ravager must come to a player to hit during a charge. */
     public static final double CHARGE_HIT_RADIUS = 1.6D;
     /** Horizontal distance at which a charging Ravager counts as hitting the pillar. */
@@ -59,7 +98,7 @@ public final class RiftRamPolicy {
         CHARGING,
         /** Recovering from a pillar impact. */
         STUNNED,
-        /** All five impacts landed: armour gone, full damage. */
+        /** Every plate is gone: armour broken, full damage. */
         EXPOSED,
         /** Encounter is over; the Ravager is dead or the wave was abandoned. */
         COMPLETED
@@ -83,20 +122,68 @@ public final class RiftRamPolicy {
     /**
      * Incoming damage multiplier by accepted pillar impacts.
      *
-     * <p>The Ravager must survive until the fifth impact, but a hard immunity
+     * <p>The Ravager must survive until the last impact, but a hard immunity
      * makes players believe their hits are broken. Instead it takes real damage
      * that is heavily reduced early and reaches normal only once the armour is
      * gone, so attacks always register and always show a hit.</p>
+     *
+     * <p>The ladder is derived from {@link #REQUIRED_IMPACTS} rather than
+     * spelled out, so changing the number of plates cannot leave a stale table
+     * behind: every stage is an equal step from the first-hit reduction to full
+     * damage.</p>
      */
     public static double damageMultiplier(int acceptedImpacts) {
-        return switch (Math.max(0, Math.min(REQUIRED_IMPACTS, acceptedImpacts))) {
-            case 0 -> 0.20D;
-            case 1 -> 0.35D;
-            case 2 -> 0.50D;
-            case 3 -> 0.65D;
-            case 4 -> 0.80D;
-            default -> 1.0D;
-        };
+        int impacts = Math.max(0, Math.min(REQUIRED_IMPACTS, acceptedImpacts));
+        double step = 1.0D / (REQUIRED_IMPACTS + 1.0D);
+        return step * (impacts + 1.0D);
+    }
+
+    /**
+     * Sprint speed for a charge at the current plate state, W6-02.
+     *
+     * <p>The Ram starts heavy and slow while the armour is bolted on and gets
+     * faster with every plate it sheds, so losing the armour is a real change in
+     * the fight rather than a buff to the party alone.</p>
+     */
+    public static double chargeSpeed(int acceptedImpacts) {
+        if (acceptedImpacts <= 0) return CHARGE_SPEED;
+        int impacts = Math.min(REQUIRED_IMPACTS, acceptedImpacts);
+        double share = (double) impacts / (double) REQUIRED_IMPACTS;
+        return CHARGE_SPEED + (CHARGE_SPEED_EXPOSED - CHARGE_SPEED) * share;
+    }
+
+    /** Charge windup in ticks; the red-eye and nostril-smoke window. */
+    public static int chargeWindupTicks() {
+        return CHARGE_WINDUP_TICKS;
+    }
+
+    /**
+     * Boss-bar name for the current stage, W6-03.
+     *
+     * <p>The bar has to say what the fight is asking of the party right now, not
+     * just how much health is left: "break the plates" and "he is open, burn him"
+     * are different instructions and the player should not have to infer which
+     * one applies.</p>
+     */
+    public static String bossBarTitle(int acceptedImpacts) {
+        if (acceptedImpacts >= REQUIRED_IMPACTS) {
+            return "Таран Разлома — броня сбита";
+        }
+        return "Таран Разлома — плит осталось: " + remainingPlates(acceptedImpacts);
+    }
+
+    /**
+     * Boss-bar fill, W6-03.
+     *
+     * <p>The bar tracks authoritative health. Armour is a separate visible
+     * plate count; breaking a plate must not fabricate HP loss.</p>
+     */
+    public static double bossBarProgress(double health, double maximumHealth, int acceptedImpacts) {
+        if (!Double.isFinite(health) || !Double.isFinite(maximumHealth) || maximumHealth <= 0.0D) {
+            return 0.0D;
+        }
+        double healthShare = Math.max(0.0D, Math.min(1.0D, health / maximumHealth));
+        return healthShare;
     }
 
     /**
@@ -303,9 +390,21 @@ public final class RiftRamPolicy {
      * is still reading the charge line. Only ordinary combat qualifies.</p>
      */
     public static boolean mayStartStomp(State state, long nowMillis, long lastStompMillis) {
+        return mayStartStomp(state, nowMillis, lastStompMillis, STOMP_COOLDOWN_TICKS);
+    }
+
+    /**
+     * As {@link #mayStartStomp(State, long, long)}, with a party-scaled cooldown.
+     *
+     * <p>The runtime passes {@link #stompCooldownTicks(int)}, so a full raid
+     * cannot chain stomps while a small squad keeps the base rhythm.</p>
+     */
+    public static boolean mayStartStomp(State state, long nowMillis, long lastStompMillis,
+                                        int cooldownTicks) {
         if (state != State.CHASING && state != State.EXPOSED) return false;
         if (nowMillis < 0L || lastStompMillis < 0L) return false;
-        return nowMillis - lastStompMillis >= STOMP_COOLDOWN_TICKS * 50L;
+        int cooldown = Math.max(0, cooldownTicks);
+        return nowMillis - lastStompMillis >= cooldown * 50L;
     }
 
     /** Slowness duration in ticks; three seconds is the authored value. */
@@ -325,10 +424,86 @@ public final class RiftRamPolicy {
     public static double healthFloor(int acceptedImpacts, double maximumHealth) {
         if (maximumHealth <= 0.0D || !Double.isFinite(maximumHealth)) return 0.0D;
         if (acceptedImpacts >= REQUIRED_IMPACTS) return 0.0D;
-        // A quarter of the bar per remaining stage keeps every stage visible
-        // while guaranteeing the fight survives to the fifth pillar.
+        // One share of the bar per remaining plate keeps every stage visible
+        // while guaranteeing the fight survives to the last pillar.
         int remaining = REQUIRED_IMPACTS - Math.max(0, acceptedImpacts);
-        return maximumHealth * 0.05D * remaining;
+        double sharePerPlate = 0.25D / Math.max(1, ARMOUR_PLATES);
+        return maximumHealth * sharePerPlate * remaining;
+    }
+
+    /**
+     * Armour plates still bolted to the body, W6-03.
+     *
+     * <p>This is the number the custom boss bar shows and the number the client
+     * uses to decide how many Netherite sections to draw. It is derived from the
+     * authoritative impact count, so the bar, the model and the damage gate can
+     * never disagree about how much armour is left.</p>
+     */
+    public static int remainingPlates(int acceptedImpacts) {
+        return Math.max(0, ARMOUR_PLATES - Math.max(0, Math.min(ARMOUR_PLATES, acceptedImpacts)));
+    }
+
+    /** Whether the armour is fully gone and the Ram takes normal damage. */
+    public static boolean armourBroken(int acceptedImpacts) {
+        return acceptedImpacts >= REQUIRED_IMPACTS;
+    }
+
+    // ------------------------------------------------------------------
+    // Bounded encounter difficulty, W6-03
+    // ------------------------------------------------------------------
+
+    /**
+     * Extra Endermites a plate release may call in, by party size.
+     *
+     * <p>W6-03 asked to "increase encounter challenge with bounded scaling".
+     * Unbounded scaling is what makes a raid wave unplayable: the adds double
+     * with every extra player and the party drowns. This adds at most one extra
+     * body per plate, and only once the party is big enough to actually split
+     * damage, so a two-player run is exactly the fight it was and a full raid
+     * feels denser without becoming a spawn flood.</p>
+     *
+     * <p>The hard {@link #ENDERMITES_CAP} still applies on top, so this can
+     * never raise the ceiling -- it only decides whether the release asks for
+     * the top of its existing roll.</p>
+     */
+    public static int releasePressureBonus(int livingPlayers) {
+        int players = Math.max(1, livingPlayers);
+        if (players < 4) return 0;
+        if (players < 8) return 1;
+        return 2;
+    }
+
+    /**
+     * Charge cooldown for the current party, in ticks.
+     *
+     * <p>The base cooldown is pitched at a small squad. A large party surrounds
+     * the Ram and can otherwise bait a charge every three seconds, which turns
+     * the fight into a metronome. The cooldown only ever grows, and it is capped
+     * so the beast never stands around long enough for the party to forget it
+     * exists.</p>
+     */
+    public static int chargeCooldownTicks(int livingPlayers) {
+        int players = Math.max(1, livingPlayers);
+        int extra = Math.min(2, Math.max(0, (players - 2) / 3));
+        return CHARGE_COOLDOWN_TICKS + extra * 40;
+    }
+
+    /**
+     * Stomp cooldown for the current party, in ticks.
+     *
+     * <p>Same reasoning as the charge: a big party can bait stomps back to back.
+     * The ceiling keeps the stomp a real period in the fight rather than a
+     * one-off.</p>
+     */
+    public static int stompCooldownTicks(int livingPlayers) {
+        int players = Math.max(1, livingPlayers);
+        int extra = Math.min(2, Math.max(0, (players - 3) / 4));
+        return STOMP_COOLDOWN_TICKS + extra * 60;
+    }
+
+    /** Maximum health for a party, including the armour-phase buffer. */
+    public static double scaledMaximumHealth(int livingPlayers) {
+        return healthForPlayers(livingPlayers);
     }
 
     private static boolean allFinite(double... values) {

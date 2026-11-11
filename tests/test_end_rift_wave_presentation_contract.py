@@ -37,7 +37,8 @@ def test_wave5_safe_zones_use_emerald_blocks_and_a_central_green_locator_beam():
     assert re.search(r"new Location\(core\.getWorld\(\),\s*point\.x\(\)\s*\+\s*\.5D", beams)
     assert "point.z() + .5D" in beams
     assert "0x42FF66" in beams
-    assert re.search(r"base\.clone\(\)\.add\(0,\s*5\.5D,\s*0\)", beams)
+    # Locator may reach 5.5 blocks, but must stay inside the signed arena bounds.
+    assert "Math.min(5.5D, arenaMaxY + 0.999D - base.getY())" in beams
 
 
 def test_wave_mob_names_are_hidden_without_changing_objective_or_boss_labels():

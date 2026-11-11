@@ -338,6 +338,8 @@ public final class BlackFogAdapterProbe {
     boolean clearWaveEntities() { return true; }
     void saveStateAsync() { }
     void renderWaveMilestone(int wave, Location location, String text, Sound sound) { }
+    int shelterEvacuations;
+    boolean evacuateBlackFogShelters(){shelterEvacuations++;return true;}
     void applyBlackFogEffects(long now, Location location) { fogEffects++; }
     void refreshCurrentBlackFogPackets(long now, Location location) { packetRefreshes++; }
     void sendClientPacket(Player player, String type, String instanceId, long durationMillis,
@@ -395,6 +397,14 @@ public final class BlackFogAdapterProbe {
     public static void main(String[] args) {
         var p = new BlackFogAdapterProbe();
         switch (args[0]) {
+            case "safe-room-evacuation" -> {
+                p.blackFogPhase = BlackFogPhase.SAFE;
+                p.blackFogPhaseDeadlineMillis = 10_000L;
+                p.currentSafeZoneCells.add(new HazardPlanner.Point(1, 1));
+                p.currentSafeZoneCenters.put(0, new HazardPlanner.Point(1, 1));
+                p.tickBlackFogObjective(100L);
+                check(p.shelterEvacuations == 1, "safe rooms must evict mobs during the approach window too");
+            }
             case "wire-cycle" -> {
                 p.sendCurrentBlackFogPacket(new Player(), true, p.core);
                 check("the_end|wave5|1".equals(p.sentPacketSubject),
@@ -799,24 +809,24 @@ public final class BlackFogAdapterProbe {
         str(domain / "RiftCarrierPolicy.java"),
         str(domain / "PressureBudgetController.java"),
         str(domain / "WavePressurePolicy.java"),
-    ], capture_output=True, text=True, check=False)
+    ], capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
     assert compiled.returncode == 0, compiled.stdout + compiled.stderr
     return output
 
 
 @pytest.mark.parametrize("scenario", [
-    "three-cycles", "pre-fog-refill", "post-fog-pack", "post-fog-partial-rollback", "setup-retry", "invalid-journal", "mark-restored-failure",
+    "safe-room-evacuation", "three-cycles", "pre-fog-refill", "post-fog-pack", "post-fog-partial-rollback", "setup-retry", "invalid-journal", "mark-restored-failure",
     "restore-failure-does-not-advance", "invalid-original-data",
 ])
 def test_wave5_black_fog_adapter(probe, scenario):
     result = subprocess.run(["java", "-cp", str(probe), "BlackFogAdapterProbe", scenario],
-                            capture_output=True, text=True, check=False)
+                            capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
     assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_wave5_fog_packet_uses_one_based_protocol_cycles(probe):
     result = subprocess.run(["java", "-cp", str(probe), "BlackFogAdapterProbe", "wire-cycle"],
-                            capture_output=True, text=True, check=False)
+                            capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
     assert result.returncode == 0, result.stdout + result.stderr
 
 
@@ -825,10 +835,10 @@ def test_wave5_recovery_checkpoint_codec_is_executable(probe):
     compiled = subprocess.run([
         "javac", "-proc:none", "-encoding", "UTF-8", "-cp", str(probe),
         "-d", str(probe), str(root),
-    ], capture_output=True, text=True, check=False)
+    ], capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
     assert compiled.returncode == 0, compiled.stdout + compiled.stderr
     result = subprocess.run(["java", "-cp", str(probe), "BlackFogRecoverySnapshotTest"],
-                            capture_output=True, text=True, check=False)
+                            capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
     assert result.returncode == 0, result.stdout + result.stderr
 
 
@@ -859,5 +869,5 @@ def test_wave5_layout_preserves_scarcity_and_journals_before_mutation():
 ])
 def test_wave5_safe_zone_placement_capacity_scenarios(probe, scenario):
     result = subprocess.run(["java", "-cp", str(probe), "BlackFogAdapterProbe", scenario],
-                            capture_output=True, text=True, check=False)
+                            capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
     assert result.returncode == 0, result.stdout + result.stderr

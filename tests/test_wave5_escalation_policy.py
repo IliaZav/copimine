@@ -1,4 +1,4 @@
-"""Execute the roster-scaled fog contract approved on November 9."""
+"""Roster-scaled fog with the Nov 10 playable 7-to-3 second reach window."""
 from pathlib import Path
 import subprocess
 
@@ -24,11 +24,11 @@ public class FogEscalationProbe {
         int w=BlackFogTimingPolicy.safeZoneSeconds(c,n);
         int f=BlackFogTimingPolicy.fogSeconds(c,n);
         check(z>=1 && z<=zones && s>=1 && s<=3 && s<=side);
-        check(w>=1 && w<=warning && w<=4 && f>=18 && f<=26 && f>=fog);
+        check(w>=3 && w<=warning && w<=7 && f>=18 && f<=26 && f>=fog);
         zones=z; side=s; warning=w; fog=f;
         check(BlackFogTimingPolicy.hasRemainingCycles(c,n));
       }
-      check(side==1 && warning==1 && fog==26);
+      check(side==1 && warning==3 && fog==26);
       check(!BlackFogTimingPolicy.hasRemainingCycles(n,n));
       check(zones < BlackFogTimingPolicy.zoneCount(p,0) || zones==1);
       if(p>=5) check(zones < p); // Late shelter deliberately cannot fit everyone.

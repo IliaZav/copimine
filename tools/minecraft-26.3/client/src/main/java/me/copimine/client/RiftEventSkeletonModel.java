@@ -59,6 +59,7 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
     public RiftEventSkeletonModel(ModelPart root, Variant variant) {
         super(root);
         this.root = root;
+        if (variant == Variant.WAVE7_MARKSMAN) EndRiftAtlasUvLayout.fit(root, "end_rift_wave7_marksman.png");
         this.head = root.getChild("head");
         this.leftForearm = root.getChild("left_arm").getChild("left_forearm");
         this.rightForearm = root.getChild("right_arm").getChild("right_forearm");

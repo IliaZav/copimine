@@ -5,7 +5,7 @@ import me.copimine.endevent.domain.RiftRamPolicy;
 import me.copimine.endevent.runtime.EncounterContext;
 
 /**
- * Wave 6 objective: the Rift Ram shatters five pillars, one at a time.
+ * Wave 6 objective: the Rift Ram shatters three pillars, one at a time.
  *
  * <p>The Bukkit {@code RiftRamEncounter} owns the entity, the pillars and the
  * presentation; this adapter owns only the canonical objective contract the

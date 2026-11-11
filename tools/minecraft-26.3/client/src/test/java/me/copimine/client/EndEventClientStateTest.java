@@ -49,9 +49,9 @@ class EndEventClientStateTest {
     }
 
     @Test
-    void guardianAmbushAndLegacyPacketsKeepFullScaleAndMalformedScaleIsSafe() {
+    void guardianAndLegacyPacketsKeepFullScaleAndMalformedScaleIsSafe() {
         for (String cue : new String[]{"READY", "READY|role=PERMANENT|scale=0.5",
-                "READY|role=UNDER_PLAYER|scale=0.5", "READY|role=SMALL|scale=NaN",
+                "READY|role=SMALL|scale=NaN",
                 "READY|role=SMALL|scale=Infinity", "READY|role=SMALL|scale=0",
                 "READY|role=SMALL|scale=5", "READY|role=SMALL|scale=-1"}) {
             EndEventClientState state = new EndEventClientState();
@@ -59,6 +59,34 @@ class EndEventClientStateTest {
             assertTrue(state.apply(tentaclePhase("actor", "instance", cue), 101L));
             assertEquals(1.0F, state.tentaclePoseForEntityAt("actor", 200L).rigScale(), 0.0001F, cue);
         }
+    }
+
+    @Test
+    void ambushAndTemporaryRolesRetainTheirSmallerScaleAcrossClipBlending() {
+        for (String role : new String[]{"UNDER_PLAYER", "TEMPORARY"}) {
+            EndEventClientState state = new EndEventClientState();
+            assertTrue(state.apply(tentacleBind("actor", "instance"), 100L));
+            assertTrue(state.apply(tentaclePhase("actor", "instance", "READY|role=" + role + "|scale=0.55"), 101L));
+            assertTrue(state.apply(tentaclePhase("actor", "instance", "TELEGRAPH_GRAB|role=" + role + "|scale=0.55"), 300L));
+            assertEquals(0.55F, state.tentaclePoseForEntityAt("actor", 350L).rigScale(), 0.0001F);
+            assertEquals(role, state.tentacleRoleForEntity("actor"));
+        }
+    }
+
+    @Test
+    void acceptedHealthChangeFlashesWithoutInterruptingAnAttackOrRenewingOnHeartbeat() {
+        EndEventClientState state = new EndEventClientState();
+        assertTrue(state.apply(tentacleBind("actor", "instance"), 100L));
+        assertTrue(state.apply(tentaclePhase("actor", "instance", "READY|t=2|hp=60"), 101L));
+        assertFalse(state.tentacleHurtFlashAt("actor", 110L));
+        assertTrue(state.apply(tentaclePhase("actor", "instance", "READY|t=2|hp=50"), 200L));
+        assertTrue(state.tentacleHurtFlashAt("actor", 250L));
+        assertTrue(state.apply(tentaclePhase("actor", "instance", "READY|t=2|hp=50"), 350L));
+        assertFalse(state.tentacleHurtFlashAt("actor", 401L));
+        assertTrue(state.apply(tentaclePhase("actor", "instance", "READY|hp=NaN"), 410L));
+        assertFalse(state.tentacleHurtFlashAt("actor", 411L));
+        state.clear();
+        assertFalse(state.tentacleHurtFlashAt("actor", 250L));
     }
 
     private static EndEventPacket tentacleBind(String subject, String instance) {

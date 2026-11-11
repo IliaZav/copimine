@@ -15,10 +15,14 @@ import me.copimine.endevent.domain.RiftRamPolicy;
 public class StompRuntimeProbe {
   enum Action { RECOVER }
   enum Particle { BLOCK }
-  enum Material { DEEPSLATE,OBSIDIAN; Object createBlockData(){return this;} }
+  enum Material { DEEPSLATE,OBSIDIAN,CRYING_OBSIDIAN; Object createBlockData(){return this;} }
   enum PotionEffectType { SLOWNESS }
+  enum Sound { ENTITY_RAVAGER_STEP, BLOCK_ANVIL_LAND }
   record PotionEffect(PotionEffectType type,int ticks,int amp) {}
-  static class World {}
+  static class World {
+    int sounds;
+    void playSound(Location at,Sound sound,float volume,float pitch){sounds++;}
+  }
   static class Location {
     double x,y,z;World world;
     Location(World w,double x,double y,double z){world=w;this.x=x;this.y=y;this.z=z;}
@@ -32,15 +36,17 @@ public class StompRuntimeProbe {
     UUID getUniqueId(){return id;}World getWorld(){return at.world;}Location getLocation(){return at;}
     double getX(){return at.x;}double getY(){return at.y;}double getZ(){return at.z;}
     boolean isOnGround(){return grounded;}
-    void spawnParticle(Particle p,double x,double y,double z,int count,double dx,double dy,double dz,int speed,Object data){packets++;}
+    void spawnParticle(Particle p,double x,double y,double z,int count,double dx,double dy,double dz,double speed,Object data){packets++;}
     void addPotionEffect(PotionEffect e){
       if(e.type()!=PotionEffectType.SLOWNESS||e.ticks()!=60||e.amp()!=1)throw new AssertionError("wrong effect");
       applications++;
     }
     // No damage method: any production damage call makes this probe fail compilation.
   }
+  static class Ram { World world; Ram(World w){world=w;} World getWorld(){return world;} }
   static class Host { int floorY(){return 64;} int particleBudget(){return 256;} }
   final Host host=new Host(); int tick,actionTick;double lastRadius;
+  Ram ram=new Ram(new World());
   Location stompOrigin;Set<UUID> stompHits=new HashSet<>(),stompRoster=new HashSet<>();
   boolean recovered; void hold(){}void begin(Action a){recovered=true;}
   static void check(boolean b,String m){if(!b)throw new AssertionError(m);}

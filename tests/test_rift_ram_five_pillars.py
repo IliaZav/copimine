@@ -6,20 +6,29 @@ ROOT = Path(__file__).resolve().parents[1]
 DOMAIN = ROOT / 'copimine-end-event/src/me/copimine/endevent/domain'
 
 
-def test_five_pillars_and_traveling_stomp(tmp_path):
-    probe = tmp_path / 'FivePillarProbe.java'
+def test_pillars_and_traveling_stomp(tmp_path):
+    probe = tmp_path / 'RamRulesProbe.java'
     probe.write_text('''
 import me.copimine.endevent.domain.RiftRamPolicy;
-public class FivePillarProbe {
+public class RamRulesProbe {
   static void check(boolean ok) { if (!ok) throw new AssertionError(); }
   public static void main(String[] args) {
-    check(RiftRamPolicy.REQUIRED_IMPACTS == 5);
-    double[] damage = {.20, .35, .50, .65, .80, 1.0};
-    for (int i=0;i<6;i++) {
-      check(Math.abs(RiftRamPolicy.damageMultiplier(i)-damage[i]) < 1e-9);
+    // W6-03: the playtest asked for two or three accepted impacts, so the
+    // encounter is a three-plate loop. Assert the count, then derive the whole
+    // ladder from it rather than repeating the numbers here.
+    check(RiftRamPolicy.REQUIRED_IMPACTS >= 2 && RiftRamPolicy.REQUIRED_IMPACTS <= 3);
+    int plates = RiftRamPolicy.REQUIRED_IMPACTS;
+    for (int i=0;i<=plates;i++) {
+      double expected = (i + 1.0D) / (plates + 1.0D);
+      check(Math.abs(RiftRamPolicy.damageMultiplier(i)-expected) < 1e-9);
+      check(RiftRamPolicy.damageMultiplier(i) > 0.0D);
+      if (i > 0) check(RiftRamPolicy.damageMultiplier(i) > RiftRamPolicy.damageMultiplier(i-1));
       check(!RiftRamPolicy.isComplete(i, true));
-      check(RiftRamPolicy.isComplete(i, false) == (i==5));
+      check(RiftRamPolicy.isComplete(i, false) == (i == plates));
+      check(RiftRamPolicy.remainingPlates(i) == plates - i);
+      check(RiftRamPolicy.armourBroken(i) == (i == plates));
     }
+    check(RiftRamPolicy.damageMultiplier(plates) == 1.0D);
     check(RiftRamPolicy.segmentHitsPillar(-5,64,0, 5,64,0, 0,64,0));
     check(!RiftRamPolicy.segmentHitsPillar(-5,80,0, 5,80,0, 0,64,0));
     // Crossing the vertical band elsewhere along the segment must not hit.
@@ -44,5 +53,5 @@ public class FivePillarProbe {
     built = subprocess.run(['javac','-encoding','UTF-8','-d',str(tmp_path),
                             str(DOMAIN/'RiftRamPolicy.java'),str(probe)], capture_output=True,text=True)
     assert built.returncode == 0, built.stderr
-    result = subprocess.run(['java','-cp',str(tmp_path),'FivePillarProbe'],capture_output=True,text=True)
+    result = subprocess.run(['java','-cp',str(tmp_path),'RamRulesProbe'],capture_output=True,text=True)
     assert result.returncode == 0, result.stderr

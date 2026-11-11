@@ -27,16 +27,45 @@ PROBE = textwrap.dedent("""
         }
 
         public static void main(String[] args) {
-            // --- The encounter needs exactly five pillar impacts -----------------
-            check("five impacts are required", RiftRamPolicy.REQUIRED_IMPACTS == 5);
-            check("impact five is still accepted", RiftRamPolicy.mayAcceptImpact(State.CHARGING, 4, false));
-            check("impact four is refused", !RiftRamPolicy.mayAcceptImpact(State.CHARGING, 5, false));
+            // --- Armour plates: two or three impacts, per the playtest -----------
+            // W6-03 asked for "two or three accepted column impacts to remove
+            // armour". The encounter keeps it as a named constant so the plate
+            // model, the boss bar and the damage gate cannot drift apart.
+            check("three impacts are required", RiftRamPolicy.REQUIRED_IMPACTS == 3);
+            check("the plate count matches the impact count",
+                    RiftRamPolicy.ARMOUR_PLATES == RiftRamPolicy.REQUIRED_IMPACTS);
+            check("the last impact is still accepted",
+                    RiftRamPolicy.mayAcceptImpact(State.CHARGING, RiftRamPolicy.REQUIRED_IMPACTS - 1, false));
+            check("an extra impact is refused",
+                    !RiftRamPolicy.mayAcceptImpact(State.CHARGING, RiftRamPolicy.REQUIRED_IMPACTS, false));
             check("a banked charge cannot bank again",
                     !RiftRamPolicy.mayAcceptImpact(State.CHARGING, 1, true));
             check("only a charging ram can crack the pillar",
                     !RiftRamPolicy.mayAcceptImpact(State.CHASING, 0, false)
                     && !RiftRamPolicy.mayAcceptImpact(State.WARNING, 0, false)
                     && !RiftRamPolicy.mayAcceptImpact(State.STUNNED, 0, false));
+
+            // --- Plate accounting is authoritative -------------------------------
+            for (int i = 0; i < RiftRamPolicy.REQUIRED_IMPACTS; i++) {
+                check("plate " + (i + 1) + " is still bolted on",
+                        RiftRamPolicy.remainingPlates(i) == RiftRamPolicy.ARMOUR_PLATES - i);
+                check("plate " + (i + 1) + " is not yet the broken state",
+                        !RiftRamPolicy.armourBroken(i));
+                // Only the impacts BEFORE the last one leave the Ram armoured.
+                if (i + 1 < RiftRamPolicy.REQUIRED_IMPACTS) {
+                    check("state after impact " + (i + 1) + " is not exposed",
+                            RiftRamPolicy.stateAfterImpact(i + 1) == State.STUNNED);
+                }
+            }
+            check("every plate is gone at the required count",
+                    RiftRamPolicy.remainingPlates(RiftRamPolicy.REQUIRED_IMPACTS) == 0);
+            check("the last impact breaks the armour",
+                    RiftRamPolicy.armourBroken(RiftRamPolicy.REQUIRED_IMPACTS));
+            check("the last impact exposes the ram",
+                    RiftRamPolicy.stateAfterImpact(RiftRamPolicy.REQUIRED_IMPACTS) == State.EXPOSED);
+            check("plate counts never go negative",
+                    RiftRamPolicy.remainingPlates(-4) == RiftRamPolicy.ARMOUR_PLATES
+                    && RiftRamPolicy.remainingPlates(99) == 0);
 
             // --- Health curve: floor at a solo party, ceiling at 20 --------------
             check("one player gets the floor", RiftRamPolicy.healthForPlayers(1) == 180.0D);
@@ -48,14 +77,22 @@ PROBE = textwrap.dedent("""
                     RiftRamPolicy.healthForPlayers(5) < RiftRamPolicy.healthForPlayers(10));
 
             // --- Damage gating: always takes damage, never dies early -----------
-            check("no impact means a fifth", RiftRamPolicy.damageMultiplier(0) == 0.20D);
-            check("one impact means two fifths", RiftRamPolicy.damageMultiplier(1) == 0.35D);
-            check("two impacts mean 65 percent", RiftRamPolicy.damageMultiplier(2) == 0.50D);
-            check("five impacts mean full damage", RiftRamPolicy.damageMultiplier(5) == 1.0D);
+            // The ladder is derived from the plate count, so these are the four
+            // steps of a three-plate Ram: quarter, half, three quarters, full.
+            check("no impact means a quarter", RiftRamPolicy.damageMultiplier(0) == 0.25D);
+            check("one impact means half", RiftRamPolicy.damageMultiplier(1) == 0.50D);
+            check("two impacts mean three quarters", RiftRamPolicy.damageMultiplier(2) == 0.75D);
+            check("every plate gone means full damage",
+                    RiftRamPolicy.damageMultiplier(RiftRamPolicy.REQUIRED_IMPACTS) == 1.0D);
             check("the multiplier is never zero, so hits always register",
                     RiftRamPolicy.damageMultiplier(0) > 0.0D);
+            check("each impact strictly increases incoming damage",
+                    RiftRamPolicy.damageMultiplier(0) < RiftRamPolicy.damageMultiplier(1)
+                    && RiftRamPolicy.damageMultiplier(1) < RiftRamPolicy.damageMultiplier(2)
+                    && RiftRamPolicy.damageMultiplier(2)
+                            < RiftRamPolicy.damageMultiplier(RiftRamPolicy.REQUIRED_IMPACTS));
             check("an out-of-range count clamps", RiftRamPolicy.damageMultiplier(99) == 1.0D
-                    && RiftRamPolicy.damageMultiplier(-3) == 0.20D);
+                    && RiftRamPolicy.damageMultiplier(-3) == 0.25D);
 
             // --- Charge timing ---------------------------------------------------
             long cooldown = RiftRamPolicy.cooldownMillis();
@@ -67,18 +104,20 @@ PROBE = textwrap.dedent("""
             check("a stunning ram cannot charge",
                     !RiftRamPolicy.mayStartCharge(State.STUNNED, 0, 999999L, 0L));
             check("an exposed ram cannot charge",
-                    !RiftRamPolicy.mayStartCharge(State.EXPOSED, 3, 999999L, 0L));
+                    !RiftRamPolicy.mayStartCharge(State.EXPOSED, RiftRamPolicy.REQUIRED_IMPACTS, 999999L, 0L));
             check("a completed encounter cannot charge",
                     !RiftRamPolicy.mayStartCharge(State.COMPLETED, 0, 999999L, 0L));
 
             // --- State machine ---------------------------------------------------
-            check("the first four impacts stun", RiftRamPolicy.stateAfterImpact(1) == State.STUNNED
-                    && RiftRamPolicy.stateAfterImpact(2) == State.STUNNED);
-            check("the fifth impact exposes", RiftRamPolicy.stateAfterImpact(5) == State.EXPOSED);
+            check("a non-final impact stuns",
+                    RiftRamPolicy.stateAfterImpact(1) == State.STUNNED
+                    && RiftRamPolicy.stateAfterImpact(RiftRamPolicy.REQUIRED_IMPACTS - 1) == State.STUNNED);
+            check("the final impact exposes",
+                    RiftRamPolicy.stateAfterImpact(RiftRamPolicy.REQUIRED_IMPACTS) == State.EXPOSED);
             check("after a stun the ram hunts again",
                     RiftRamPolicy.stateAfterStun(2) == State.CHASING);
             check("after the final stun it stays exposed",
-                    RiftRamPolicy.stateAfterStun(5) == State.EXPOSED);
+                    RiftRamPolicy.stateAfterStun(RiftRamPolicy.REQUIRED_IMPACTS) == State.EXPOSED);
 
             // --- Locked charge direction ----------------------------------------
             double[] locked = RiftRamPolicy.lockChargeDirection(0.0D, 64.0D, 0.0D,
@@ -136,16 +175,17 @@ PROBE = textwrap.dedent("""
             // --- Pillar roster ----------------------------------------------------
             check("no pillar exists before the first impact",
                     RiftRamPolicy.activePillarNumber(0) == 1);
-            check("the fifth pillar is the last one",
-                    RiftRamPolicy.activePillarNumber(4) == 5);
-            check("after five pillars none may be raised",
-                    RiftRamPolicy.activePillarNumber(5) == 0
-                    && !RiftRamPolicy.mayRaisePillar(5));
+            check("the last pillar is the final one",
+                    RiftRamPolicy.activePillarNumber(RiftRamPolicy.REQUIRED_IMPACTS - 1)
+                            == RiftRamPolicy.REQUIRED_IMPACTS);
+            check("after the final pillar none may be raised",
+                    RiftRamPolicy.activePillarNumber(RiftRamPolicy.REQUIRED_IMPACTS) == 0
+                    && !RiftRamPolicy.mayRaisePillar(RiftRamPolicy.REQUIRED_IMPACTS));
             check("a negative count never raises a pillar",
                     !RiftRamPolicy.mayRaisePillar(-1));
-            check("four pillars become the exposed state",
-                    RiftRamPolicy.activePillarNumber(4) > 0
-                    && RiftRamPolicy.damageMultiplier(4) == 0.80D);
+            check("one plate left is still a live pillar",
+                    RiftRamPolicy.activePillarNumber(RiftRamPolicy.REQUIRED_IMPACTS - 1) > 0
+                    && RiftRamPolicy.damageMultiplier(RiftRamPolicy.REQUIRED_IMPACTS - 1) < 1.0D);
 
             // --- Endermite cap ----------------------------------------------------
             check("an empty arena releases the full roll",
@@ -184,10 +224,11 @@ PROBE = textwrap.dedent("""
             check("the armoured ram cannot be finished early",
                     RiftRamPolicy.healthFloor(0, 400.0D) > 0.0D);
             check("the floor shrinks with each impact",
-                    RiftRamPolicy.healthFloor(0, 400.0D) > RiftRamPolicy.healthFloor(2, 400.0D)
-                    && RiftRamPolicy.healthFloor(2, 400.0D) > RiftRamPolicy.healthFloor(4, 400.0D));
+                    RiftRamPolicy.healthFloor(0, 400.0D) > RiftRamPolicy.healthFloor(1, 400.0D)
+                    && RiftRamPolicy.healthFloor(1, 400.0D)
+                            > RiftRamPolicy.healthFloor(RiftRamPolicy.REQUIRED_IMPACTS - 1, 400.0D));
             check("the exposed ram has no floor",
-                    RiftRamPolicy.healthFloor(5, 400.0D) == 0.0D);
+                    RiftRamPolicy.healthFloor(RiftRamPolicy.REQUIRED_IMPACTS, 400.0D) == 0.0D);
             check("a zero maximum yields no floor",
                     RiftRamPolicy.healthFloor(1, 0.0D) == 0.0D);
             check("a non-finite maximum yields no floor",
@@ -195,12 +236,12 @@ PROBE = textwrap.dedent("""
 
 
             // --- Completion ------------------------------------------------------
-            check("five impacts alone do not finish the wave",
-                    !RiftRamPolicy.isComplete(5, true));
-            check("a dead ram without five impacts does not finish the wave",
+            check("the final impact alone does not finish the wave",
+                    !RiftRamPolicy.isComplete(RiftRamPolicy.REQUIRED_IMPACTS, true));
+            check("a dead ram without every impact does not finish the wave",
                     !RiftRamPolicy.isComplete(2, false));
-            check("five impacts and a dead ram finish the wave",
-                    RiftRamPolicy.isComplete(5, false));
+            check("every impact and a dead ram finish the wave",
+                    RiftRamPolicy.isComplete(RiftRamPolicy.REQUIRED_IMPACTS, false));
 
             System.out.println("OK " + checks);
         }

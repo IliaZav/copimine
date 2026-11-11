@@ -2,7 +2,7 @@ package me.copimine.endevent.domain;
 
 /** Deterministic rings for guardian-owned visuals and cast fallback roots. */
 public final class TentacleGuardianLayoutPolicy {
-    public static final double PERMANENT_RING_RADIUS = 9.0D;
+    public static final double PERMANENT_RING_RADIUS = 5.5D;
     public static final double TEMPORARY_FALLBACK_RING_RADIUS = 6.5D;
 
     private TentacleGuardianLayoutPolicy() {

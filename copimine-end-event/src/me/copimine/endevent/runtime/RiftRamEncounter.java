@@ -56,6 +56,15 @@ public final class RiftRamEncounter {
     public int impacts() { return impacts; }
     public boolean complete() { return completed; }
     public boolean ready() { return !closed && ram != null && ram.isValid() && !ram.isDead(); }
+    /** Live body health, or zero when the actor is gone. Presentation only. */
+    public double health() {
+        return ram != null && ram.isValid() && !ram.isDead() ? Math.max(0.0D, ram.getHealth()) : 0.0D;
+    }
+    /** Authored maximum health, so the bar's fill is a true share of the real bar. */
+    public double maximumHealth() {
+        if (ram == null || !ram.isValid()) return 0.0D;
+        return Math.max(1.0D, ram.getAttribute(Attribute.GENERIC_MAX_HEALTH).getValue());
+    }
 
     public void start(int players) {
         if (ram != null || closed) throw new IllegalStateException("Rift Ram already started");
@@ -70,13 +79,15 @@ public final class RiftRamEncounter {
                 entity.setCustomName("Таран Разлома");
                 entity.setCustomNameVisible(false);
                 entity.getAttribute(Attribute.GENERIC_MAX_HEALTH).setBaseValue(RiftRamPolicy.healthForPlayers(players));
-                entity.getAttribute(Attribute.GENERIC_SCALE).setBaseValue(RiftRamPolicy.SCALE);
+                entity.getAttribute(Attribute.GENERIC_SCALE).setBaseValue(RiftRamPolicy.BOSS_SCALE);
                 entity.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(RiftRamPolicy.MELEE_DAMAGE);
                 entity.setHealth(RiftRamPolicy.healthForPlayers(players));
             });
             host.own(ram, true);
             persistentId=ram.getUniqueId();
-            // Five real 3D sections, attached in local body space. No collectible equipment.
+            // One 3D section per remaining plate, attached in local body space.
+            // No collectible equipment: the plates are display geometry, so they
+            // cannot be picked up, dropped or found in a chest.
             createArmor();
             if (!raisePillar()) { fail("no-safe-first-pillar"); return; }
             lastCharge = 0;
@@ -86,12 +97,21 @@ public final class RiftRamEncounter {
         } catch (RuntimeException failure) { fail("spawn-failed:" + failure.getClass().getSimpleName()); }
     }
 
+    /**
+     * Bolts the armour onto the body, W6-01.
+     *
+     * <p>Three heavy sections instead of five thin ones: a shoulder pauldron, a
+     * flank plate and a head casing. Fewer, larger plates read as fitted armour
+     * at boss scale instead of as a stack of floating cubes, and each one is a
+     * whole visible stage that the party can watch come off.</p>
+     *
+     * <p>Sections already shed are skipped, so a restored encounter rebuilds
+     * exactly the plates its checkpoint says are still bolted on.</p>
+     */
     private void createArmor() {
-            addArmor(-1.22,1.25,-.9, .35f,1.45f,2.1f, 1);
-            addArmor(.87,1.25,-.9, .35f,1.45f,2.1f, 2);
-            addArmor(-.95,2.65,-.9, 1.9f,.3f,2.0f, 3);
-            addArmor(-.8,1.5,-1.4, 1.6f,1.1f,.3f, 4);
-            addArmor(-.75,2.65,-1.65, 1.5f,.45f,.8f, 5);
+            addArmor(-1.35,1.35,-.85, .55f,1.75f,2.35f, 1);
+            addArmor( 1.05,1.35,-.85, .55f,1.75f,2.35f, 2);
+            addArmor(-.95,2.85,-.95, 2.15f,.55f,2.15f, 3);
     }
 
     /** Deterministic, bounded search; all occupied volume and floor cells must be safe. */
@@ -201,10 +221,12 @@ public final class RiftRamEncounter {
                 // A stomp is refused during a charge, a stun, the spawn frame and
                 // the completion transition: firing it there would either cancel a
                 // committed charge or hit a party still reading the charge line.
-                if(RiftRamPolicy.mayStartStomp(RiftRamPolicy.State.CHASING, (long)tick*50L, (long)lastStomp*50L)) {
+                if(RiftRamPolicy.mayStartStomp(RiftRamPolicy.State.CHASING, (long)tick*50L,
+                        (long)lastStomp*50L, RiftRamPolicy.stompCooldownTicks(players.size()))) {
                     begin(Action.STOMP_WARNING); hold();
                     ram.getWorld().playSound(ram.getLocation(),Sound.ENTITY_RAVAGER_STUNNED,1.6f,.6f);
-                } else if(pillarId!=null && tick-nextPillarTick>=20 && tick-lastCharge>=RiftRamPolicy.CHARGE_COOLDOWN_TICKS) {
+                } else if(pillarId!=null && tick-nextPillarTick>=20
+                        && tick-lastCharge>=RiftRamPolicy.chargeCooldownTicks(players.size())) {
                     target=focus.getUniqueId(); face(focus.getLocation()); begin(Action.CHARGE_WARNING); hold();
                     ram.getWorld().playSound(ram.getLocation(),Sound.ENTITY_RAVAGER_ROAR,1.7f,.8f);
                 } else avoidPillar();
@@ -214,7 +236,8 @@ public final class RiftRamEncounter {
                 Player focus=players.stream().filter(p->p.getUniqueId().equals(target)).findFirst().orElse(null);
                 if(focus==null) { recover(); return; }
                 face(focus.getLocation());
-                if(tick-actionTick>=RiftRamPolicy.WARNING_TICKS) {
+                chargeTell(focus, tick-actionTick);
+                if(tick-actionTick>=RiftRamPolicy.chargeWindupTicks()) {
                     double[] locked=RiftRamPolicy.lockChargeDirection(ram.getX(),ram.getY(),ram.getZ(),focus.getX(),focus.getY(),focus.getZ());
                     if(locked==null) { recover(); return; }
                     direction=new Vector(locked[0],0,locked[1]); banked=false; chargeHits.clear(); begin(Action.CHARGE);
@@ -266,8 +289,65 @@ public final class RiftRamEncounter {
         Vector tangent=new Vector(-away.getZ(),0,away.getX()).normalize().multiply(.25);
         ram.setVelocity(tangent.setY(ram.getVelocity().getY()));
     }
+    /**
+     * The run-up tell, W6-02.
+     *
+     * <p>The playtest asked for "red eyes and smoke from the nostrils while it
+     * winds up", because the old warning was a roar and a stationary body: from
+     * across the arena a charging Ravager looked exactly like an idle one until
+     * it was already moving. The tell is deliberately three separate channels so
+     * a player who has lost one of them (fog, darkness, a bad camera angle) still
+     * reads the others:</p>
+     *
+     * <ul>
+     *   <li>a red glow at the eye line that grows as the commit approaches;</li>
+     *   <li>smoke that pours forward from the snout along the locked heading;</li>
+     *   <li>deepslate dust kicked up under the hooves, faster each second.</li>
+     * </ul>
+     *
+     * <p>All three are viewer-local and bounded, so a large arena does not pay
+     * for players who cannot see the Ram anyway.</p>
+     */
+    private void chargeTell(Player focus, int elapsed) {
+        int windup = Math.max(1, RiftRamPolicy.chargeWindupTicks());
+        double progress = Math.min(1.0D, (double) elapsed / (double) windup);
+        double bodyScale = RiftRamPolicy.BOSS_SCALE;
+        Vector heading = new Vector(focus.getX() - ram.getX(), 0, focus.getZ() - ram.getZ());
+        if (heading.lengthSquared() < 1.0E-4D) heading = new Vector(0, 0, 1);
+        heading.normalize();
+        Location eyes = ram.getLocation().clone().add(heading.clone().multiply(1.05D * bodyScale))
+                .add(0, 1.75D * bodyScale, 0);
+        Vector eyeSide = new Vector(-heading.getZ(), 0, heading.getX()).multiply(0.3D * bodyScale);
+        Location snout = ram.getLocation().clone()
+                .add(heading.clone().multiply(1.35D * bodyScale)).add(0, 1.55D * bodyScale, 0);
+        Location hooves = ram.getLocation().clone().add(0, 0.12D, 0);
+        // Eyes brighten in discrete steps rather than continuously: a visible
+        // jump each second reads as "it is getting angrier", where a smooth ramp
+        // just looks like static.
+        int eyeCount = 2 + (int) Math.round(progress * 6.0D);
+        int smokeCount = 3 + (int) Math.round(progress * 9.0D);
+        int hoofCount = 4 + (elapsed % 6 == 0 ? 6 : 0);
+        for (Player viewer : host.players()) {
+            if (!viewer.getWorld().equals(ram.getWorld())) continue;
+            if (viewer.getLocation().distanceSquared(eyes) > 48 * 48) continue;
+            for (int side : new int[]{-1, 1}) {
+                viewer.spawnParticle(Particle.DUST, eyes.clone().add(eyeSide.clone().multiply(side)),
+                        Math.max(1, eyeCount / 2), 0.035D, 0.035D, 0.035D, 0.0D,
+                        new Particle.DustOptions(Color.fromRGB(255, 26, 18), 0.75F));
+            }
+            viewer.spawnParticle(Particle.SMOKE, snout, smokeCount, 0.18D, 0.12D, 0.18D, 0.02D);
+            if (progress > 0.5D) {
+                // Late in the windup the snout smoke turns into the hot,
+                // suppressed charge that precedes the launch.
+                viewer.spawnParticle(Particle.CAMPFIRE_COSY_SMOKE, snout, 1, 0.12D, 0.08D, 0.12D, 0.0D);
+            }
+            viewer.spawnParticle(Particle.BLOCK, hooves, hoofCount, 0.7D, 0.02D, 0.7D, 0.0D,
+                    Material.DEEPSLATE.createBlockData());
+        }
+    }
+
     private void charge(List<Player> players) {
-        Location from=ram.getLocation(), to=from.clone().add(direction.clone().multiply(RiftRamPolicy.CHARGE_SPEED));
+        Location from=ram.getLocation(), to=from.clone().add(direction.clone().multiply(RiftRamPolicy.chargeSpeed(impacts)));
         if(tick-actionTick>=RiftRamPolicy.CHARGE_TIMEOUT_TICKS || !safeVolume(to)) { recover(); return; }
         // The objective is the active uniquely-owned pillar. Core never participates.
         if(pillarId!=null && !banked && tick-nextPillarTick>=20 && RiftRamPolicy.segmentHitsPillar(
@@ -290,7 +370,8 @@ public final class RiftRamEncounter {
     }
 
     private void impact() {
-        if(action!=Action.CHARGE || banked || pillarId==null || impacts>=5) return;
+        if(action!=Action.CHARGE || banked || pillarId==null
+                || impacts>=RiftRamPolicy.REQUIRED_IMPACTS) return;
         banked=true; impacts++; lastCharge=tick;
         Location broken=pillar.clone(); pillarId=null; pillar=null; nextPillarTick=tick+35;
         begin(Action.STUN);
@@ -312,8 +393,9 @@ public final class RiftRamEncounter {
         // The cap is on the WHOLE encounter, so a pillar that finds the room
         // already full releases nothing. That is legal and must not fail the
         // wave, otherwise the fifth pillar would look broken.
+        int requested = 2 + (impacts % 3) + RiftRamPolicy.releasePressureBonus(host.players().size());
         int budget = impacts < RiftRamPolicy.REQUIRED_IMPACTS
-                ? RiftRamPolicy.endermitesToRelease(mites.size(), 2 + (impacts % 3)) : 0;
+                ? RiftRamPolicy.endermitesToRelease(mites.size(), requested) : 0;
         for(int i=0;i<budget;i++) {
             Endermite mite=broken.getWorld().spawn(broken,Endermite.class);
             host.own(mite,true); mite.setPersistent(true); mite.setRemoveWhenFarAway(false);
@@ -328,14 +410,35 @@ public final class RiftRamEncounter {
         double radius=Math.min(RiftRamPolicy.STOMP_RADIUS, RiftRamPolicy.STOMP_RADIUS*elapsed/RiftRamPolicy.STOMP_EXPANSION_TICKS);
         // 192 samples/update maximum, independent of roster size; nearby viewers only.
         int samples=Math.max(32,Math.min(Math.min(96,host.particleBudget()/3),(int)Math.ceil(2*Math.PI*radius/.65)));
+        // W6-02: the stomp was a flat dust ring that read as a texture on the
+        // floor. Three channels now share one fast-moving front so the party can
+        // read where it is and when to jump: the ground ring, a lifted lip of
+        // debris above it, and a thin obsidian seam at the leading edge.
+        double lipY = host.floorY() + 1.35D;
         for(Player viewer:players) {
             if(!viewer.getWorld().equals(stompOrigin.getWorld()) || viewer.getLocation().distanceSquared(stompOrigin)>48*48) continue;
             for(int i=0;i<samples;i++) {
                 double angle=2*Math.PI*i/samples;
-                double x=stompOrigin.getX()+Math.cos(angle)*radius, z=stompOrigin.getZ()+Math.sin(angle)*radius;
+                double cos=Math.cos(angle), sin=Math.sin(angle);
+                double x=stompOrigin.getX()+cos*radius, z=stompOrigin.getZ()+sin*radius;
                 viewer.spawnParticle(Particle.BLOCK,x,host.floorY()+1.12,z,2,.25,.1,.25,0,Material.DEEPSLATE.createBlockData());
                 if((i&1)==0) viewer.spawnParticle(Particle.BLOCK,x,host.floorY()+1.5,z,1,.3,.2,.3,0,Material.OBSIDIAN.createBlockData());
+                // Leading edge: a single lit seam per sample, so the front has a
+                // crisp boundary instead of a soft haze.
+                viewer.spawnParticle(Particle.BLOCK,x,lipY,z,1,.12,.16,.12,0,Material.CRYING_OBSIDIAN.createBlockData());
+                // Every eighth sample throws real debris upward. Sparse enough
+                // that it never becomes confetti, dense enough to sell weight.
+                if((i&7)==0) {
+                    viewer.spawnParticle(Particle.BLOCK,x,host.floorY()+1.05D,z,1,.2,.5,.2,0.06,
+                            Material.DEEPSLATE.createBlockData());
+                }
             }
+        }
+        // A slow, heavy thud on every fifth tick keeps the stomp audible for the
+        // whole expansion instead of one opening hit.
+        if(elapsed % 5 == 0) {
+            float pitch = 0.55F + Math.min(0.35F, elapsed * 0.012F);
+            ram.getWorld().playSound(stompOrigin, Sound.ENTITY_RAVAGER_STEP, 1.9F, pitch);
         }
         Set<UUID> eligible=new HashSet<>();
         for(Player p:players) {
@@ -346,6 +449,9 @@ public final class RiftRamEncounter {
                 stompHits.add(p.getUniqueId());
                 p.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
                         RiftRamPolicy.stompSlowTicks(),RiftRamPolicy.STOMP_SLOW_AMPLIFIER));
+                // The hit is the moment the player needs feedback: impact sound at
+                // their feet, not at the Ram. Distance already limited the ring.
+                p.getWorld().playSound(p.getLocation(), Sound.BLOCK_ANVIL_LAND, 0.9F, 0.55F);
             }
         }
         stompRoster.retainAll(eligible);
@@ -397,7 +503,7 @@ public final class RiftRamEncounter {
     /** Only the real owned entity's death event can commit completion. */
     public void died(UUID entity) {
         if(closed || completed || !Objects.equals(id(),entity)) return;
-        if(impacts!=5) { fail("premature-ravager-death"); return; }
+        if(impacts!=RiftRamPolicy.REQUIRED_IMPACTS) { fail("premature-ravager-death"); return; }
         completed=true; action=Action.DEAD;
         if(!host.checkpoint()) { completed=false; fail("completion-checkpoint-failed"); return; }
         cleanupDisplays();
@@ -446,12 +552,18 @@ public final class RiftRamEncounter {
         try {
             if(!"2".equals(data.get("ram.schema"))) throw new IllegalArgumentException("legacy-schema");
             impacts=Integer.parseInt(data.get("ram.impacts"));
-            if(impacts<0 || impacts>5) throw new IllegalArgumentException("impact-range");
+            // A schema-2 receipt was written under the old five-plate model, so
+            // an impact count above the current plate count belongs to a build
+            // that no longer exists. Refusing it fails closed into recovery
+            // instead of silently reinterpreting plate state.
+            if(impacts<0 || impacts>RiftRamPolicy.REQUIRED_IMPACTS)
+                throw new IllegalArgumentException("impact-range");
             persistentId=UUID.fromString(data.get("ram.uuid"));
             String receipt=data.get("ram.complete");
             if(!"true".equals(receipt) && !"false".equals(receipt)) throw new IllegalArgumentException("invalid-completion-receipt");
             if("true".equals(receipt)) {
-                if(impacts!=5) throw new IllegalArgumentException("premature-completion-receipt");
+                if(impacts!=RiftRamPolicy.REQUIRED_IMPACTS)
+                    throw new IllegalArgumentException("premature-completion-receipt");
                 completed=true; action=Action.DEAD; return;
             }
             tick=Integer.parseInt(data.get("ram.tick"));

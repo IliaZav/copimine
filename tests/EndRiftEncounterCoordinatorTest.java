@@ -207,18 +207,19 @@ public final class EndRiftEncounterCoordinatorTest {
         check(coordinator.phase() == EventPhase.WAVE_6,
                 "an early completion must keep wave 6 active");
         // The live runtime is authoritative: a repeated callback must not inflate
-        // progress, and a five-pillar report must land exactly on the requirement.
+        // progress, and the final plate report must land exactly on the requirement.
         check(ram.recordPillarImpact(rampContext, 1).progress() == 1,
                 "a repeated pillar report must not add progress");
-        check(ram.recordPillarImpact(rampContext, 5).progress() == 5,
-                "five destroyed pillars must satisfy the objective");
+        check(ram.recordPillarImpact(rampContext, EndRiftObjective.REQUIRED_PILLAR_IMPACTS).progress()
+                        == EndRiftObjective.REQUIRED_PILLAR_IMPACTS,
+                "three destroyed pillars must satisfy the objective");
         check(ram.recordPillarImpact(rampContext, 99).status()
                         == WaveEncounter.Status.REJECTED,
                 "an impossible pillar count must be rejected");
         EndRiftEncounterCoordinator.Result ramDone = coordinator.completeWave(
                 EndRiftObjective.Objective.RIFT_RAM, "w6 done", "w6-complete");
         check(ramDone.accepted() && coordinator.phase() == EventPhase.INTERMISSION_6,
-                "five destroyed pillars must complete wave 6");
+                "three destroyed pillars must complete wave 6");
         check(coordinator.advanceIntermission("w7", "w7-start").accepted(), "wave 7 must start");
         RealitySplitEncounter split = (RealitySplitEncounter) coordinator.encounter(
                 EndRiftObjective.Objective.REALITY_SPLIT);

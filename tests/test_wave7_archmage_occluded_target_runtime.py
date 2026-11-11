@@ -114,7 +114,7 @@ public class OccludedArchmageProbe {
         public Location clone(){return new Location(x,y,z);}
         Location add(Vector v){return add(v.x,v.y,v.z);}
         Location add(double x,double y,double z){this.x+=x;this.y+=y;this.z+=z;return this;}
-        double getY(){return y;}void setY(double y){this.y=y;}
+        double getX(){return x;}double getZ(){return z;}double getY(){return y;}void setY(double y){this.y=y;}
         double distanceSquared(Location other){double dx=x-other.x,dy=y-other.y,dz=z-other.z;return dx*dx+dy*dy+dz*dz;}
     }
     static class World {void playSound(Location at,Sound sound,float volume,float pitch){}}
@@ -168,6 +168,7 @@ public class OccludedArchmageProbe {
     boolean realitySplitTargetAllowed(Entity source,Player p){
         return realitySplitChamberController.allowsMobTarget(generation,source.id,p.id)
             &&realitySplitChamberController.allowsPlayerInChamber(generation,p.id,wave7PlayerRoom(p.id));}
+    double pursueNamedTrialTarget(LivingEntity actor,Player target,double reach){return 0.0;}
     void moveNamedTrialMarksman(LivingEntity actor,int chamber){}
     void renderNamedTrialTelegraph(LivingEntity a,Player p,Wave7NamedTrialActorPolicy.Attack attack,boolean sound){warnings++;}
     boolean hasNamedTrialLineOfSight(Location from,Location to){return Math.abs(to.z)<0.01?visible:pathClear;}

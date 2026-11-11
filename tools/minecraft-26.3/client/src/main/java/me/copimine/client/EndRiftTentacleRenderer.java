@@ -153,7 +153,8 @@ public final class EndRiftTentacleRenderer {
                 Vec3 position = entity.getPosition(tickDelta);
                 if (position == null || !finite(position)) continue;
                 String animation = ClientBridgeProtocol.endEventAnimationForEntity(uuid);
-                boolean hurtFlash = showsHurtFlash(animation);
+                boolean hurtFlash = showsHurtFlash(animation)
+                        || ClientBridgeProtocol.endEventState().tentacleHurtFlashAt(uuid, nowMillis);
                 matrices.pushPose();
                 matrices.translate(position.x, position.y, position.z);
                 Entity target = targetEntity(world, uuid);
@@ -164,7 +165,8 @@ public final class EndRiftTentacleRenderer {
                         EndRiftTentacleWorldScalePolicy.rendererScaleForRig(pose.rigScale()));
                 int packedLight = net.minecraft.util.LightCoordsUtil.getLightCoords(world, entity.blockPosition());
                 RIG.render(matrices, buffer, pose, packedLight,
-                        OverlayTexture.pack(0.0F, hurtFlash), 0xFFFFFFFF);
+                        OverlayTexture.pack(0.0F, hurtFlash), tintForRole(
+                                ClientBridgeProtocol.endEventState().tentacleRoleForEntity(uuid), hurtFlash));
                 matrices.popPose();
             }
         });
@@ -239,6 +241,16 @@ public final class EndRiftTentacleRenderer {
             return 0.0F;
         }
         return (float) Math.atan2(target.x - origin.x, target.z - origin.z);
+    }
+
+    static int tintForRole(String role, boolean hurt) {
+        if (hurt) return 0xFFFF6868;
+        return switch (role == null ? "" : role) {
+            case "UNDER_PLAYER" -> 0xFFFFA080;
+            case "TEMPORARY" -> 0xFFD0B0FF;
+            case "SMALL" -> 0xFFA0D8FF;
+            default -> 0xFFFFFFFF;
+        };
     }
 
     static boolean showsHurtFlash(String animation) {

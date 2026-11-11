@@ -47,7 +47,7 @@ def test_the_safe_zones_shrink_as_the_wave_progresses():
     text = read("BlackFogTimingPolicy.java")
     # Fewer shelters and less time to reach them, both driven by progress. A wave
     # that kept its opening grace to the last cycle would not escalate at all.
-    assert "SAFE_ZONE_SECONDS - (int) Math.floor(3 * progress(cycle, targetCycles))" in text, (
+    assert "SAFE_ZONE_SECONDS - (int) Math.floor(4 * progress(cycle, targetCycles))" in text, (
         "the run window has to shorten across the wave")
     assert "initial - (int) Math.floor((initial - last) * progress(cycle, cycleCount(players)))" in text, (
         "the number of shelters has to fall as the wave progresses")

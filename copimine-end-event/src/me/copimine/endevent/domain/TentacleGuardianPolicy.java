@@ -130,6 +130,11 @@ public final class TentacleGuardianPolicy {
                 + Math.max(0, slot) * ATTACK_STAGGER_TICKS;
     }
 
+    /** Hit recovery is allowed only before an already scheduled attack is due. */
+    public static boolean shouldFlinchBeforeAttack(long nowTick, long nextAttackTick) {
+        return nextAttackTick < 0L || nowTick < nextAttackTick;
+    }
+
     public static boolean attackDue(long nowTick, long nextAttackTick,
                                     boolean busy) {
         return !busy && nextAttackTick >= 0L && nowTick >= nextAttackTick;

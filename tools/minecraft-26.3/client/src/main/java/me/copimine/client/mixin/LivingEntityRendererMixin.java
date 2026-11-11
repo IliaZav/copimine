@@ -62,6 +62,7 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity,
     @Unique private final RiftEventEndermanModelRenderer copimine$eventRenderer = new RiftEventEndermanModelRenderer();
     @Unique private final RiftEventSkeletonModelRenderer copimine$skeletonRenderer = new RiftEventSkeletonModelRenderer();
     @Unique private final Wave7NamedTrialModelRenderer copimine$wave7Renderer = new Wave7NamedTrialModelRenderer();
+    @Unique private me.copimine.client.RiftEndermiteModel copimine$endermiteModel;
     @Unique private EntityModel<?> copimine$activeModel;
 
     @Inject(method = "extractRenderState(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;F)V",
@@ -238,6 +239,12 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity,
             }
         } else if (state instanceof SkeletonRenderState && getModel() instanceof SkeletonModel<?>) {
             selected = copimine$skeletonRenderer.modelFor(visual);
+        } else if ("END_RIFT_ENDERMITE_V1".equals(visual)
+                && getModel() instanceof net.minecraft.client.model.monster.endermite.EndermiteModel
+                && EndEventTextureCatalog.isAvailable(EndEventTextureCatalog.textureForVisual(visual))) {
+            if (copimine$endermiteModel == null) copimine$endermiteModel = new me.copimine.client.RiftEndermiteModel(
+                    me.copimine.client.RiftEndermiteModel.createLayer().bakeRoot());
+            selected = copimine$endermiteModel;
         } else if (state instanceof LivingEntityRenderState && getModel() instanceof SpiderModel) {
             selected = copimine$spiderRenderer.modelFor(visual);
         }

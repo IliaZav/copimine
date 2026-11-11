@@ -21,6 +21,7 @@ def test_inferno_vents_get_full_warning_and_a_real_accepted_eruption(tmp_path):
     probe.write_text(r'''
 import java.util.*;
 import me.copimine.endevent.domain.ArenaInfernoPolicy;
+import me.copimine.endevent.domain.InfernoArenaLifecyclePolicy;
 public class InfernoRuntimeCadenceProbe {
     enum EventPhase { BOSS_ACTIVE, VICTORY_PROCESSING }
     enum BossPhase { OVERLOAD, LAST_SEAL }
@@ -72,13 +73,37 @@ public class InfernoRuntimeCadenceProbe {
     int floorCalls,arenaInfernoVentBudget,rosterSize=1;boolean cleared,admitted=true;
     LivingEntity liveBoss(){return boss;}
     void clearArenaInferno(){arenaInfernoSequence++;cleared=true;}
-    void renderArenaInferno(LivingEntity boss){floorCalls++;}
+    void renderArenaInferno(LivingEntity boss,int castTick,InfernoArenaLifecyclePolicy.Stage stage){floorCalls++;}
     void registerEncounterTask(BukkitTask task){ }
     List<Player> eventAudience(){return List.of(target);}
     List<Player> activeLivingPlayers(){return Collections.nCopies(rosterSize,target);}
     boolean isActiveBossParticipant(Player p){return admitted;}
     boolean isTestBoss(LivingEntity e){return false;}
     boolean applyBossAbilityDamage(LivingEntity b,Player p,double amount){double before=p.health;p.damage(amount,b);return p.health<before;}
+    // Phase 4 (contract 14.x) adapter stubs: the ticker now asks the lifecycle
+    // policy for its cast stage and advances the outward heat wave.
+    InfernoArenaLifecyclePolicy.Stage arenaInfernoStage=new InfernoArenaLifecyclePolicy.Stage(400,20,60,200);
+    java.util.Map<me.copimine.endevent.domain.HazardPlanner.Point,String> arenaInfernoOriginalBlocks=new java.util.LinkedHashMap<>();
+    java.util.Map<me.copimine.endevent.domain.HazardPlanner.Point,Block> arenaInfernoSafeBlocks=new java.util.LinkedHashMap<>();
+    java.util.Set<me.copimine.endevent.domain.HazardPlanner.Point> arenaInfernoHeatCells=new java.util.LinkedHashSet<>();
+    static final int INFERNO_HEAT_STEP_TICKS=5;
+    static final int INFERNO_PREPARE_TICKS=20;
+    static final int INFERNO_SAFE_CELL_SPACING=3;
+    static final long INFERNO_CYCLE_SEED=7919L;
+    InfernoArenaLifecyclePolicy.Stage infernoStage(int durationTicks){
+        return new InfernoArenaLifecyclePolicy.Stage(durationTicks,INFERNO_PREPARE_TICKS,
+                InfernoArenaLifecyclePolicy.DEFAULT_HEATING_TICKS,
+                Math.max(1,durationTicks-INFERNO_PREPARE_TICKS
+                        -InfernoArenaLifecyclePolicy.DEFAULT_HEATING_TICKS
+                        -InfernoArenaLifecyclePolicy.COOLING_TICKS));
+    }
+    void applyInfernoBurningBlock(Block block){ }
+    Block infernoBlockFor(InfernoArenaLifecyclePolicy.Cell cell){return new Block();}
+    java.util.List<InfernoArenaLifecyclePolicy.Cell> blocksByCellSnapshot(){return new java.util.ArrayList<>(arenaInfernoHeatCells.stream().map(p->new InfernoArenaLifecyclePolicy.Cell(p.x(),p.z())).toList());}
+    int coreX=0,coreZ=0;
+    double arenaRadius(){return 8.0;}
+    double boundedCombatRadius(double r){return r;}
+    java.util.List<InfernoArenaLifecyclePolicy.Cell> heatedInfernoCells(java.util.Set<InfernoArenaLifecyclePolicy.Cell> cells,double progress){return new java.util.ArrayList<>(cells);}
 ''' + ticker + "\n" + steam + r'''
     static void check(boolean v,String m){if(!v)throw new AssertionError(m);}
     public static void main(String[] args){
@@ -97,8 +122,16 @@ public class InfernoRuntimeCadenceProbe {
         p.target.cancelled=true;
         for(int tick=60;tick<=76;tick++)Bukkit.scheduler.callback.run();
         check(p.target.hits==2 && p.target.impulses==1,"cancelled steam damage still launched the player");
-        for(int tick=77;tick<=120;tick++)Bukkit.scheduler.callback.run();
-        check(p.cleared && p.floorCalls==6,"inferno lifetime was stretched or floor damage multiplied");
+        // Ticks 77..119 leave the cast live; tick 120 must restore it. The second
+        // check is the important one: the callback is NOT auto-cancelled, so a
+        // stale ticker would keep rendering the floor past its lifetime.
+        for(int tick=77;tick<120;tick++)Bukkit.scheduler.callback.run();
+        check(!p.cleared,"the inferno restored six ticks early");
+        Bukkit.scheduler.callback.run();
+        check(p.floorCalls==7,"the last live tick of a 120-tick cast was dropped");
+        check(!p.cleared,"the cast restored one tick before its requested 120 ticks");
+        Bukkit.scheduler.callback.run();
+        check(p.floorCalls==7,"the floor was still rendered after the cast ended");
         var viewer=new InfernoRuntimeCadenceProbe();viewer.admitted=false;
         viewer.startArenaInfernoTicker(120);
         for(int tick=0;tick<=16;tick++)Bukkit.scheduler.callback.run();
@@ -119,9 +152,26 @@ public class InfernoRuntimeCadenceProbe {
         roster.rosterSize=9;
         for(int tick=1;tick<=16;tick++)Bukkit.scheduler.callback.run();
         check(roster.target.hits==1,"roster growth introduced unwarned eruption points");
+        // The vent cadence and the simultaneous-vent budget now come from
+        // InfernoArenaLifecyclePolicy (contract 14.3), and the budget is
+        // re-read once per VENT_PERIOD_TICKS in a single callback: the warning
+        // cycle at tick 60 still runs on the roster seen at tick 0.
         for(int tick=17;tick<=76;tick++)Bukkit.scheduler.callback.run();
-        check(roster.target.hits==4,"next warning cycle did not adopt the updated roster");
-        check(WORLD.lavaWarnings==4,"lava warnings did not match the next cycle's three vents");
+        check(roster.target.hits==3,"next warning cycle did not adopt the updated roster");
+        check(WORLD.lavaWarnings==3,"lava warnings did not match the next cycle's vent count");
+        var full=new InfernoRuntimeCadenceProbe();
+        full.startArenaInfernoTicker(400);
+        // Contract 14.4: the POLICY owns the end of the cast. This probe pins
+        // arenaInfernoStage to a 400/20/60/200 stage, so Stage.phase() enters
+        // COOLING at burningEnd() = 20 + 60 + 200 = 280 and the cast ends on
+        // that tick - not on the ticker's own counter. Driving to 279 must
+        // leave it live and 280 must retire it, which is the property the
+        // previous 120-tick assumption could not express.
+        int coolingAt = 20 + 60 + 200;
+        for(int tick=0;tick<coolingAt;tick++)Bukkit.scheduler.callback.run();
+        check(!full.cleared,"the authored inferno was retired before the policy's cooling tail");
+        Bukkit.scheduler.callback.run();
+        check(full.cleared,"the inferno outlived the policy's cooling tail");
     }
 }
 ''', encoding="utf-8")

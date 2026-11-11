@@ -48,6 +48,7 @@ import me.copimine.artifacts.api.EventArtifactRewardRequest;
 import me.copimine.artifacts.api.EventArtifactRewardService;
 import me.copimine.artifacts.api.RewardIssueResult;
 import me.copimine.endevent.domain.ArenaInfernoPolicy;
+import me.copimine.endevent.domain.InfernoArenaLifecyclePolicy;
 import me.copimine.endevent.domain.EndEventDisplayItems;
 import me.copimine.endevent.domain.WaveSixSequencePolicy;
 import me.copimine.endevent.domain.Wave7MarksmanDefenderPolicy;
@@ -756,6 +757,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final long ARENA_INFERNO_VENT_PERIOD_TICKS = ArenaInfernoPolicy.VENT_PERIOD_TICKS;
     private static final int ARENA_INFERNO_IGNITE_TICKS = ArenaInfernoPolicy.IGNITE_TICKS;
     private static final int ARENA_INFERNO_MAX_ARMOR_WEAR = ArenaInfernoPolicy.MAX_ARMOR_WEAR;
+    /** 14.2: authored ground-impact tell before the heat wave starts sweeping. */
+    private static final int INFERNO_PREPARE_TICKS = 20;
+    /** How often the outward flame front is advanced. */
+    private static final int INFERNO_HEAT_STEP_TICKS = 5;
+    /** Chessboard spacing two cold patches must keep, so routes stay passable. */
+    private static final int INFERNO_SAFE_CELL_SPACING = 3;
+    /** Cycle-scoped seed base; the cast seed mixes in event, generation and time. */
+    private static final long INFERNO_CYCLE_SEED = 7_919L;
     private static final int MAX_ACTIVE_WORLD_VFX = 64;
     private static final long WORLD_VFX_BEAM_DURATION_MILLIS = 650L;
     private static final float WORLD_VFX_BEAM_DEFAULT_WIDTH = 0.12F;
@@ -868,6 +877,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<UUID> commanderAuraEntities = new LinkedHashSet<>();
     private final Set<UUID> waveGuardianEntities = new HashSet<>();
     private final Set<Block> arenaInfernoBlocks = new LinkedHashSet<>();
+    /** 14.3: the cold patches of the live cast, by floor column. */
+    private final Map<HazardPlanner.Point, Block> arenaInfernoSafeBlocks = new LinkedHashMap<>();
+    private final Map<HazardPlanner.Point, String> arenaInfernoSafeSurface = new LinkedHashMap<>();
+    /** The authored cast stage, so the ticker asks the policy, never itself. */
+    private InfernoArenaLifecyclePolicy.Stage arenaInfernoStage;
+    /** Per-player last damage tick: the ledger that makes a hit single. */
+    private final Map<UUID, Long> arenaInfernoLastDamageTick = new HashMap<>();
     private int arenaInfernoArmorWear;
     private int arenaInfernoVentBudget;
     private final Set<UUID> lootIssuedEntityUuids = new HashSet<>();
@@ -1570,6 +1586,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private BukkitTask bossSpawnTask;
     private BukkitTask arenaInfernoTask;
     private long arenaInfernoSequence;
+    private long arenaInfernoLastCastEndTick = -1L;
     private BukkitTask bossCastTask;
     private long bossChestStrikeSequence;
     private boolean bossChestStrikeActive;
@@ -5640,6 +5657,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clearRiftObelisks("combat AI reset");
         clearCurrentRiftFractures("combat AI reset");
         clearTentacles("combat AI reset");
+        clearArenaInferno();
         clearActiveEventArrows();
         releaseAllSpiderEffects();
         clearEliteAbilityEntities();
@@ -5981,6 +5999,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (deathDropIntegration != null) deathDropIntegration.close();
         if (deathProtectionListener != null) deathProtectionListener.clear();
         clearWave7Admission();
+        // Contract 14.4: a disabled plugin must not leave magma behind either;
+        // the inferno puts its exact originals back before the scheduler stops.
+        clearArenaInferno();
         // Contract 13.2: a disabled plugin must not leave a cracked floor or
         // magma behind. The teardown restores the exact original BlockData and
         // retires the journal entry before the scheduler stops ticking.
@@ -45076,6 +45097,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // controller. Tentacles are rebuilt by the central boss tick and
             // never inherit stale displays from a prior attempt.
             clearTentacles("new official boss generation");
+            // A new boss generation starts on the restored floor.
+            clearArenaInferno();
             tentacleController.begin(generation);
             nextTentacleTemporaryTick = TentacleScalingPolicy.initialTemporaryAttemptTick(
                     eventTickCounter);
@@ -45256,6 +45279,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clearVoidMarkZones();
         clearActiveRiftProjectiles();
         clearRiftObelisks("boss cleanup");
+        // A Phase 4 firestorm ends with its boss; the floor must not keep magma.
+        clearArenaInferno();
         clearActiveEventArrows();
         combatTeleportPermits.clear();
         combatTeleportRejectionReasons.clear();
@@ -48725,7 +48750,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         }
                         case VOID_MARK -> voidMark(boss, target);
                          case SUMMON_SERVANTS -> summonServants(boss);
-                         case ARENA_INFERNO -> arenaInferno(boss);
+                         case ARENA_INFERNO -> arenaInferno(boss, target);
                          case BOSS_FIREBALL -> launchBossFireball(boss, target);
                          case FINAL_STRIKE -> startBossFinalStrike(boss, target, forced);
                        }
@@ -48768,48 +48793,144 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    private void arenaInferno(LivingEntity boss) {
+    /**
+     * Phase 4 (OVERLOAD) inferno - master contract 14.x.
+     *
+     * <p>The cast is driven by {@link InfernoArenaLifecyclePolicy}: the policy
+     * owns the cast length, the outward heating wave, the ventilated cold
+     * patches, the damage cadence, the geyser cadence and the moment the floor
+     * must be put back. This adapter only executes its decisions.</p>
+     *
+     * <p>The mutation reuses the SAME durable hazard journal the fracture code
+     * writes, with the same discipline: prepare the exact original BlockData
+     * before the first block changes, markApplied after it, and markRestored
+     * only once the originals are back. Nothing here invents a second journal.</p>
+     */
+    private void arenaInferno(LivingEntity boss, Player target) {
         if (boss == null || boss.getWorld() == null || coreCombatAnchorLocation() == null) {
+            return;
+        }
+        // 14.4: a re-cast needs a real cooldown, measured from the end of the
+        // previous firestorm. Refusing here leaves the floor untouched.
+        if (!InfernoArenaLifecyclePolicy.mayRestart(eventTickCounter, arenaInfernoLastCastEndTick,
+                arenaInfernoLastCastEndTick)) {
+            getLogger().info("BOSS_SPELL_ARENA_INFERNO_REFUSED event=" + eventId
+                    + " reason=restart-cooldown tick=" + eventTickCounter
+                    + " cooldown_ticks=" + InfernoArenaLifecyclePolicy.RESTART_COOLDOWN_TICKS);
             return;
         }
         clearArenaInferno();
         World world = boss.getWorld();
-        int minX = Math.max(arenaMinX, coreX - (int) Math.floor(config.arenaRadius()));
-        int maxX = Math.min(arenaMaxX, coreX + (int) Math.floor(config.arenaRadius()));
-        int minZ = Math.max(arenaMinZ, coreZ - (int) Math.floor(config.arenaRadius()));
-        int maxZ = Math.min(arenaMaxZ, coreZ + (int) Math.floor(config.arenaRadius()));
+        // 14.3: the floor is the same disc the other Phase hazards mutate, and
+        // the rune pads / Core are handed to the policy as protected cells.
+        int radius = (int) Math.floor(Math.max(2.0D, Math.min(config.arenaRadius(),
+                boundedCombatRadius(config.arenaRadius()))));
         int fireY = combatLevelY();
-        List<HazardMutationJournal.Entry> journalEntries = new ArrayList<>();
-        for (int x = minX; x <= maxX; x++) {
-            for (int z = minZ; z <= maxZ; z++) {
-                Block floor = world.getBlockAt(x, fireY - 1, z);
-                boolean protectedCell = isProtectedInfernoCell(x, z);
-                if (ArenaInfernoPolicy.igniteCell(protectedCell, floor.getType().isSolid(),
-                        floor.isLiquid(), floor.getType() == Material.MAGMA_BLOCK)
-                        && isArenaLocation(floor.getLocation())) {
-                    arenaInfernoBlocks.add(floor);
-                    HazardPlanner.Point point = new HazardPlanner.Point(x, z);
-                    String original = floor.getBlockData().getAsString();
-                    arenaInfernoOriginalBlocks.put(point, original);
-                    journalEntries.add(new HazardMutationJournal.Entry(
-                            x, fireY - 1, z, original, "", "MAGMA",
-                            world.getUID().toString(), eventId, generation));
+        int players = Math.max(1, activeLivingPlayers().size());
+        List<InfernoArenaLifecyclePolicy.Cell> arena = new ArrayList<>();
+        Set<InfernoArenaLifecyclePolicy.Cell> protectedCells = new HashSet<>();
+        Map<InfernoArenaLifecyclePolicy.Cell, Block> blocksByCell = new LinkedHashMap<>();
+        Map<InfernoArenaLifecyclePolicy.Cell, String> originalsByCell = new LinkedHashMap<>();
+        for (int x = coreX - radius; x <= coreX + radius; x++) {
+            for (int z = coreZ - radius; z <= coreZ + radius; z++) {
+                if ((long) (x - coreX) * (x - coreX) + (long) (z - coreZ) * (z - coreZ)
+                        > (long) radius * radius) {
+                    continue;
                 }
+                Block floor = world.getBlockAt(x, fireY - 1, z);
+                boolean solid = floor.getType().isSolid();
+                boolean liquid = floor.isLiquid();
+                boolean reserved = isProtectedInfernoCell(x, z)
+                        || isGateLocation(floor.getLocation())
+                        || isCoreBlockPosition(floor.getLocation());
+                InfernoArenaLifecyclePolicy.Cell cell = new InfernoArenaLifecyclePolicy.Cell(
+                        x, z, solid, liquid, reserved, false, x == coreX && z == coreZ);
+                arena.add(cell);
+                if (reserved) {
+                    protectedCells.add(cell);
+                    continue;
+                }
+                if (!solid || liquid || !isArenaLocation(floor.getLocation())
+                        || floor.getType() == Material.MAGMA_BLOCK) {
+                    continue;
+                }
+                blocksByCell.put(cell, floor);
+                originalsByCell.put(cell, floor.getBlockData().getAsString());
             }
         }
+        // 14.3: visibly cold patches, relocated per cycle, spaced apart so the
+        // party can actually walk between them.
+        List<InfernoArenaLifecyclePolicy.Cell> safeCells = InfernoArenaLifecyclePolicy.safeCells(
+                arena, protectedCells, InfernoArenaLifecyclePolicy.MAX_SAFE_CELLS,
+                InfernoArenaLifecyclePolicy.safeCellCountForPlayers(players),
+                INFERNO_SAFE_CELL_SPACING, INFERNO_CYCLE_SEED * (long) eventId.hashCode()
+                        + 31L * generation + eventTickCounter / 20L);
+        int safeIndex = 0;
+        for (InfernoArenaLifecyclePolicy.Cell safe : safeCells) {
+            Block block = blocksByCell.get(safe);
+            if (block == null) {
+                continue;
+            }
+            arenaInfernoSafeBlocks.put(new HazardPlanner.Point(safe.x(), safe.z()), block);
+            arenaInfernoSafeSurface.put(new HazardPlanner.Point(safe.x(), safe.z()),
+                    InfernoArenaLifecyclePolicy.safeSurfaceFor(safeIndex++));
+        }
+        if (blocksByCell.isEmpty()) {
+            arenaInfernoSafeBlocks.clear();
+            arenaInfernoSafeSurface.clear();
+            return;
+        }
+        // The journal is shared with the Wave 4 obelisks and the Phase 3
+        // fracture batches. A busy journal means another live mutation owns the
+        // floor; skip this cast and let the next attempt retry, rather than
+        // preparing over someone else's unresolved entries.
+        if (!hazardJournalIsIdle("phase-4-inferno")) {
+            arenaInfernoSafeBlocks.clear();
+            arenaInfernoSafeSurface.clear();
+            getLogger().info("BOSS_SPELL_ARENA_INFERNO_REFUSED event=" + eventId
+                    + " reason=journal-busy");
+            return;
+        }
+        List<HazardMutationJournal.Entry> journalEntries = new ArrayList<>();
+        for (Map.Entry<InfernoArenaLifecyclePolicy.Cell, Block> entry : blocksByCell.entrySet()) {
+            InfernoArenaLifecyclePolicy.Cell cell = entry.getKey();
+            String original = originalsByCell.get(cell);
+            HazardPlanner.Point point = new HazardPlanner.Point(cell.x(), cell.z());
+            arenaInfernoOriginalBlocks.put(point, original);
+            journalEntries.add(new HazardMutationJournal.Entry(
+                    cell.x(), fireY - 1, cell.z(), original, "", "MAGMA",
+                    world.getUID().toString(), eventId, generation));
+        }
         if (journalEntries.isEmpty()) {
+            arenaInfernoOriginalBlocks.clear();
+            arenaInfernoSafeBlocks.clear();
+            arenaInfernoSafeSurface.clear();
             return;
         }
         if (hazardJournal == null || !hazardJournal.prepare(eventId, generation, world.getName(), journalEntries)) {
             arenaInfernoBlocks.clear();
             arenaInfernoOriginalBlocks.clear();
+            arenaInfernoSafeBlocks.clear();
+            arenaInfernoSafeSurface.clear();
             getLogger().severe("BOSS_SPELL_ARENA_INFERNO_REFUSED event=" + eventId
                     + " reason=journal-prepare-failed");
             return;
         }
         try {
-            for (HazardMutationJournal.Entry entry : journalEntries) {
-                world.getBlockAt(entry.x(), entry.floorY(), entry.z()).setType(Material.MAGMA_BLOCK, false);
+            // The wave starts at the centre: the inner cells burn immediately,
+            // the rim follows with the policy's outward sweep.
+            for (InfernoArenaLifecyclePolicy.Cell cell : safeCells) {
+                Block block = blocksByCell.get(cell);
+                if (block != null) {
+                    block.setBlockData(infernoSafeBlockData(cell), false);
+                }
+            }
+            for (InfernoArenaLifecyclePolicy.Cell cell : heatedInfernoCells(blocksByCell.keySet(), 1.0D)) {
+                Block block = blocksByCell.get(cell);
+                if (block != null) {
+                    applyInfernoBurningBlock(block);
+                    arenaInfernoBlocks.add(block);
+                }
             }
             if (!hazardJournal.markApplied()) {
                 getLogger().severe("BOSS_SPELL_ARENA_INFERNO_JOURNAL_FAILED event=" + eventId
@@ -48820,24 +48941,117 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             restoreArenaInfernoBlocks();
             return;
         }
-        int durationTicks = BossHazardBudget.arenaInfernoDurationTicks(
-                getConfig().getInt("boss.arena-inferno.duration-ticks", 400));
+        int durationTicks = InfernoArenaLifecyclePolicy.durationTicks(Math.max(1,
+                (getConfig().getInt("boss.arena-inferno.duration-ticks", 400) + 19) / 20), players);
+        arenaInfernoStage = infernoStage(durationTicks);
+        arenaInfernoLastDamageTick.clear();
         int durationSeconds = Math.max(1, (durationTicks + 19) / 20);
         Location center = coreCombatAnchorLocation().add(0.0D, 0.8D, 0.0D);
         world.playSound(center, Sound.ENTITY_ENDERMAN_SCREAM, 1.0F, 0.5F);
         announceEventTitle("§4ПЛАМЯ РАЗЛОМА",
                 "§cПол под ногами горит — " + durationSeconds + " секунд", true);
         getLogger().info("BOSS_SPELL_ARENA_INFERNO event=" + eventId
+                + " " + InfernoArenaLifecyclePolicy.describe(players)
                 + " logical_hazards=" + arenaInfernoBlocks.size()
+                + " safe_cells=" + arenaInfernoSafeBlocks.size()
                 + " burning_floor=all-protected-core-and-pads"
                 + " real_fire=ignition-bounded steam_vents="
-                + ArenaInfernoPolicy.ventCountForRoster(activeLivingPlayers().size())
-                + " vent_warning_ticks=" + ArenaInfernoPolicy.VENT_WARNING_TICKS
+                + InfernoArenaLifecyclePolicy.ventCountForPlayers(players)
+                + " vent_warning_ticks=" + InfernoArenaLifecyclePolicy.VENT_WARNING_TICKS
                 + " armor_wear_cap=" + ARENA_INFERNO_MAX_ARMOR_WEAR
-                + " damage_interval_ticks=20"
+                + " damage_interval_ticks=" + InfernoArenaLifecyclePolicy.DAMAGE_INTERVAL_TICKS
                 + " journal_entries=" + journalEntries.size()
                 + " duration_ticks=" + durationTicks);
         startArenaInfernoTicker(durationTicks);
+    }
+
+    /** The authored cast: the prepare tell, then the outward heating sweep. */
+    private InfernoArenaLifecyclePolicy.Stage infernoStage(int durationTicks) {
+        // The burning window must FILL the requested duration, not end early.
+        // Stage.phase() starts COOLING at burningEnd(), and burningEnd() is
+        // min(durationTicks, burningStart + burningTicks), so subtracting the
+        // cooling tail here made the floor start going back at tick 81 of a
+        // 120-tick cast - the rest of the phase looked cooled down while the
+        // boss was still meant to be burning the arena.
+        int burning = Math.max(1, durationTicks
+                - INFERNO_PREPARE_TICKS
+                - InfernoArenaLifecyclePolicy.DEFAULT_HEATING_TICKS);
+        return new InfernoArenaLifecyclePolicy.Stage(durationTicks,
+                INFERNO_PREPARE_TICKS, InfernoArenaLifecyclePolicy.DEFAULT_HEATING_TICKS,
+                burning);
+    }
+
+    /**
+     * 14.2: heating-wave membership. {@code progress} is the normalised radius
+     * the wave has already reached, so a cell joins the fire only once the
+     * wave arrives - the centre burns from the first tick.
+     */
+    private List<InfernoArenaLifecyclePolicy.Cell> heatedInfernoCells(
+            Set<InfernoArenaLifecyclePolicy.Cell> cells, double progress) {
+        List<InfernoArenaLifecyclePolicy.Cell> heated = new ArrayList<>();
+        if (cells == null || cells.isEmpty()) {
+            return heated;
+        }
+        double reach = Math.max(0.0D, Math.min(1.0D, progress));
+        for (InfernoArenaLifecyclePolicy.Cell cell : cells) {
+            if (infernoNormalisedRadius(cell) <= reach + 1.0E-9D) {
+                heated.add(cell);
+            }
+        }
+        return heated;
+    }
+
+    /** Distance from the Core, normalised to the mutated disc. */
+    private double infernoNormalisedRadius(InfernoArenaLifecyclePolicy.Cell cell) {
+        if (cell == null) {
+            return 1.0D;
+        }
+        int radius = (int) Math.floor(Math.max(2.0D, Math.min(config.arenaRadius(),
+                boundedCombatRadius(config.arenaRadius()))));
+        double dx = cell.x() - coreX;
+        double dz = cell.z() - coreZ;
+        return Math.min(1.0D, Math.sqrt(dx * dx + dz * dz) / Math.max(1, radius));
+    }
+
+    /**
+     * The 14.3 safe cell. Kept in one place so the burning pass and the restore
+     * agree on which point is cold; its block comes from the policy, never from
+     * a literal here.
+     */
+    private BlockData infernoSafeBlockData(InfernoArenaLifecyclePolicy.Cell cell) {
+        String surface = cell == null ? null
+                : arenaInfernoSafeSurface.get(new HazardPlanner.Point(cell.x(), cell.z()));
+        if (surface == null) {
+            surface = InfernoArenaLifecyclePolicy.safeSurfaceBlock();
+        }
+        try {
+            return Bukkit.createBlockData(surface);
+        } catch (IllegalArgumentException invalid) {
+            getLogger().warning("BOSS_SPELL_ARENA_INFERNO_SAFE_REFUSED event=" + eventId
+                    + " reason=invalid-safe-block-data block_data=" + surface);
+            return Bukkit.createBlockData(InfernoArenaLifecyclePolicy.safeSurfaceBlock());
+        }
+    }
+
+    /**
+     * A burning cell is a visibly hot material, never the safe surface. The
+     * two surfaces are checked against the policy's own visible-safety rule
+     * before either is written, so a safe cell can never hide inside an
+     * identical burning texture.
+     */
+    private void applyInfernoBurningBlock(Block block) {
+        String burning = InfernoArenaLifecyclePolicy.burningSurfaceBlock();
+        String safe = InfernoArenaLifecyclePolicy.safeSurfaceBlock();
+        if (block == null
+                || InfernoArenaLifecyclePolicy.isVisiblySafe(burning, burning)
+                || !InfernoArenaLifecyclePolicy.isVisiblySafe(safe, burning)) {
+            // The contract surfaces disagree: write nothing rather than light a
+            // floor hundreds of cells deep with an unverifiable texture.
+            getLogger().warning("BOSS_SPELL_ARENA_INFERNO_SURFACE_REFUSED event=" + eventId
+                    + " burning=" + burning + " safe=" + safe);
+            return;
+        }
+        block.setBlockData(Bukkit.createBlockData(burning), false);
     }
 
     private void startArenaInfernoTicker(int durationTicks) {
@@ -48857,14 +49071,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 return;
             }
             LivingEntity live = liveBoss();
-            if (live == null || !live.isValid() || live.isDead() || !ownerId.equals(live.getUniqueId())
+            int castTick = elapsedTicks[0];
+            boolean bossMobile = live != null && live.isValid() && !live.isDead()
+                    && ownerId.equals(live.getUniqueId());
+            if (!bossMobile
                     || bossPhase != BossPhase.OVERLOAD
-                    || (phase != EventPhase.BOSS_ACTIVE && !isTestBoss(live))
-                    || elapsedTicks[0] >= durationTicks) {
+                    || (phase != EventPhase.BOSS_ACTIVE && !isTestBoss(live))) {
+                // Phase change, abandoned encounter or a dead boss: the floor
+                // goes back exactly as it was, whatever ended the cast.
                 clearArenaInferno();
                 return;
             }
-            tickArenaInferno(live, elapsedTicks[0]++);
+            InfernoArenaLifecyclePolicy.Stage currentStage = arenaInfernoStage != null
+                    ? arenaInfernoStage : infernoStage(durationTicks);
+            // 14.4: the policy, not the ticker, decides when the cast is over.
+            if (currentStage.shouldRestore(castTick)) {
+                clearArenaInferno();
+                return;
+            }
+            elapsedTicks[0] = castTick + 1;
+            tickArenaInferno(live, castTick, currentStage);
         }, 0L, 1L);
         arenaInfernoTask = holder[0];
         if (taskRegistry != null) {
@@ -48872,17 +49098,59 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    private void tickArenaInferno(LivingEntity boss, int castTick) {
-        if (castTick % 20 == 0) {
-            renderArenaInferno(boss);
+    private void tickArenaInferno(LivingEntity boss, int castTick,
+                                  InfernoArenaLifecyclePolicy.Stage stage) {
+        if (stage == null) {
+            return;
         }
-        spawnArenaInfernoSteamVents(boss, castTick);
+        // 14.2: the flame front moves outward once per authored heat step; a
+        // cell joins the fire only after the wave reaches it.
+        int heatingTicks = Math.max(1, InfernoArenaLifecyclePolicy.DEFAULT_HEATING_TICKS);
+        if (castTick % INFERNO_HEAT_STEP_TICKS == 0) {
+            double progress = stage.heatProgress(0.0D, castTick, heatingTicks);
+            for (InfernoArenaLifecyclePolicy.Cell cell : heatedInfernoCells(
+                    new LinkedHashSet<>(blocksByCellSnapshot()), progress)) {
+                Block block = infernoBlockFor(cell);
+                if (block != null && !arenaInfernoBlocks.contains(block)) {
+                    applyInfernoBurningBlock(block);
+                    arenaInfernoBlocks.add(block);
+                }
+            }
+        }
+        if (castTick % 20 == 0) {
+            renderArenaInferno(boss, castTick, stage);
+        }
+        // 14.3: geysers erupt on the policy cadence and, while cooling, the
+        // floor is already going back.
+        if (!stage.shouldRestore(castTick)) {
+            spawnArenaInfernoSteamVents(boss, castTick);
+        }
     }
 
-    private void renderArenaInferno(LivingEntity boss) {
+    /** The mutated cells this cast owns, in stable order. */
+    private List<InfernoArenaLifecyclePolicy.Cell> blocksByCellSnapshot() {
+        List<InfernoArenaLifecyclePolicy.Cell> cells = new ArrayList<>();
+        for (HazardPlanner.Point point : arenaInfernoOriginalBlocks.keySet()) {
+            cells.add(new InfernoArenaLifecyclePolicy.Cell(point.x(), point.z()));
+        }
+        return cells;
+    }
+
+    /** The real block of a mutated cell, or null when the world moved. */
+    private Block infernoBlockFor(InfernoArenaLifecyclePolicy.Cell cell) {
+        if (cell == null) {
+            return null;
+        }
+        World world = Bukkit.getWorld(worldName);
+        return world == null ? null : world.getBlockAt(cell.x(), combatLevelY() - 1, cell.z());
+    }
+
+    private void renderArenaInferno(LivingEntity boss, int castTick,
+                                    InfernoArenaLifecyclePolicy.Stage stage) {
         if (boss == null) {
             return;
         }
+        try (java.io.FileWriter diag = new java.io.FileWriter("C:/Users/zavod/AppData/Local/Temp/diag_out.txt", true)) { diag.write("TICK " + castTick + " " + stage.phase(castTick) + " " + stage.durationTicks() + "\n"); } catch (Exception ignored) { }
         renderArenaHazardField(boss);
         for (Player player : eventAudience()) {
             if (!player.getWorld().equals(boss.getWorld())) {
@@ -48893,24 +49161,56 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // is a floor hazard, so the feet must actually be at floor level.
             int feetY = player.getLocation().getBlockY();
             int floorY = combatLevelY() - 1;
-            boolean danger = Math.abs(feetY - combatLevelY()) <= 1
+            HazardPlanner.Point feet = new HazardPlanner.Point(
+                    player.getLocation().getBlockX(), player.getLocation().getBlockZ());
+            boolean atFloor = Math.abs(feetY - combatLevelY()) <= 1;
+            boolean onSafeCell = atFloor && arenaInfernoSafeBlocks.containsKey(feet);
+            boolean onBurningCell = atFloor && !onSafeCell
                     && arenaInfernoBlocks.stream().anyMatch(block ->
-                    block.getX() == player.getLocation().getBlockX()
-                            && block.getZ() == player.getLocation().getBlockZ()
+                    block.getX() == feet.x() && block.getZ() == feet.z()
                             && block.getY() == floorY);
-            player.spawnParticle(danger ? Particle.SOUL_FIRE_FLAME : Particle.END_ROD,
-                    player.getLocation().add(0.0D, 0.15D, 0.0D), danger ? 16 : 8,
+            player.spawnParticle(onBurningCell ? Particle.SOUL_FIRE_FLAME : Particle.END_ROD,
+                    player.getLocation().add(0.0D, 0.15D, 0.0D), onBurningCell ? 16 : 8,
                     0.45D, 0.1D, 0.45D, 0.02D);
-            if (danger && isActiveBossParticipant(player)) {
-                if (!applyBossAbilityDamage(boss, player, 6.0D)) {
-                    continue;
-                }
-                player.setFireTicks(Math.max(player.getFireTicks(), ARENA_INFERNO_IGNITE_TICKS));
-                player.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS,
-                        ARENA_INFERNO_DEBUFF_TICKS, abilityDebuffAmplifier("boss-arena-inferno"), false, true, true));
-                wearArenaInfernoArmor(player);
+            if (onBurningCell && isActiveBossParticipant(player)) {
+                applyArenaInfernoDamage(boss, player, castTick, stage, true, false);
             }
         }
+    }
+
+    /**
+     * 14.3: the ONE place the inferno damages a player.
+     *
+     * <p>The amount is the policy's: zero unless the player is physically on a
+     * burning cell, never on a safe cell, and only on the authored cadence. The
+     * per-player last-hit tick is written after a hit is really dealt, so a
+     * re-entrant call inside the same interval cannot deal the same hit twice
+     * and the environment can never apply an unavoidable every-tick burn.</p>
+     */
+    private boolean applyArenaInfernoDamage(LivingEntity boss, Player player, long castTick,
+                                            InfernoArenaLifecyclePolicy.Stage stage,
+                                            boolean onBurningCell, boolean onSafeCell) {
+        if (boss == null || player == null || stage == null) {
+            return false;
+        }
+        UUID playerId = player.getUniqueId();
+        long lastHitTick = arenaInfernoLastDamageTick.getOrDefault(playerId, -1L);
+        long scopedTick = Math.max(0L, castTick);
+        double damage = InfernoArenaLifecyclePolicy.environmentDamage(
+                scopedTick, onBurningCell, onSafeCell, lastHitTick);
+        // 14.3: only the live inferno may burn the floor.
+        if (damage <= 0.0D || !stage.damages(scopedTick)) {
+            return false;
+        }
+        if (!applyBossAbilityDamage(boss, player, damage)) {
+            return false;
+        }
+        arenaInfernoLastDamageTick.put(playerId, scopedTick);
+        player.setFireTicks(Math.max(player.getFireTicks(), ArenaInfernoPolicy.IGNITE_TICKS));
+        player.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS,
+                ARENA_INFERNO_DEBUFF_TICKS, abilityDebuffAmplifier("boss-arena-inferno"), false, true, true));
+        wearArenaInfernoArmor(player);
+        return true;
     }
 
     /** One point of wear per danger tick, hard-capped for the whole cast. */
@@ -48937,16 +49237,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (boss == null || boss.getWorld() == null || arenaInfernoBlocks.isEmpty()) {
             return;
         }
-        ArenaInfernoPolicy.VentPhase phase = ArenaInfernoPolicy.ventPhase(
-                (int) Math.floorMod(castTick, ARENA_INFERNO_VENT_PERIOD_TICKS));
-        if (phase == ArenaInfernoPolicy.VentPhase.REMOVE) {
+        InfernoArenaLifecyclePolicy.VentPhase phase = InfernoArenaLifecyclePolicy.ventPhase(castTick);
+        if (phase == InfernoArenaLifecyclePolicy.VentPhase.REMOVE) {
             return;
         }
         World world = boss.getWorld();
         List<Block> blocks = new ArrayList<>(arenaInfernoBlocks);
-        int stride = ArenaInfernoPolicy.ventStride(blocks.size());
-        if (Math.floorMod(castTick, ARENA_INFERNO_VENT_PERIOD_TICKS) == 0) {
-            arenaInfernoVentBudget = ArenaInfernoPolicy.ventCountForRoster(activeLivingPlayers().size());
+        if (blocks.isEmpty()) {
+            return;
+        }
+        int stride = Math.max(1, blocks.size()
+                / Math.max(1, InfernoArenaLifecyclePolicy.ventCountForPlayers(
+                Math.max(1, activeLivingPlayers().size()))));
+        if (Math.floorMod(castTick, InfernoArenaLifecyclePolicy.VENT_PERIOD_TICKS) == 0) {
+            arenaInfernoVentBudget = InfernoArenaLifecyclePolicy.ventCountForPlayers(
+                    Math.max(1, activeLivingPlayers().size()));
         }
         int ventBudget = arenaInfernoVentBudget;
         int vents = 0;
@@ -48957,7 +49262,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 case WARN -> {
                     world.spawnParticle(Particle.CAMPFIRE_COSY_SMOKE, point, 8, 0.3D, 0.4D, 0.3D, 0.01D);
                     world.spawnParticle(Particle.SMOKE, point, 6, 0.25D, 0.25D, 0.25D, 0.02D);
-                    if (castTick % ARENA_INFERNO_VENT_PERIOD_TICKS == 0) {
+                    if (castTick % InfernoArenaLifecyclePolicy.VENT_PERIOD_TICKS == 0) {
                         world.spawnParticle(Particle.DRIPPING_LAVA, point, 3,
                                 0.2D, 0.12D, 0.2D, 0.0D);
                         world.playSound(point, Sound.BLOCK_LAVA_AMBIENT,
@@ -49033,6 +49338,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /**
+     * The single teardown: phase change, wave end, plugin disable, a dead boss
+     * and encounter abandonment all land here. It is idempotent and it only
+     * forgets the cast once the exact originals are back.
+     */
     private void clearArenaInferno() {
         arenaInfernoSequence++;
         arenaInfernoArmorWear = 0;
@@ -49043,7 +49353,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (restoreArenaInfernoBlocks()) {
             arenaInfernoBlocks.clear();
+            arenaInfernoSafeBlocks.clear();
+            arenaInfernoSafeSurface.clear();
         }
+        arenaInfernoStage = null;
+        arenaInfernoLastDamageTick.clear();
+    }
+
+    /**
+     * Every material this cast may have written: the policy's burning surface,
+     * the cold patches and the legacy inferno magma. Used only by the restore so
+     * it never clobbers a block a player or another plugin changed.
+     */
+    private boolean isArenaInfernoSurface(Material type) {
+        if (type == null || type == Material.MAGMA_BLOCK) {
+            return true;
+        }
+        String name = type.getKey().getKey();
+        String burning = InfernoArenaLifecyclePolicy.burningSurfaceBlock();
+        String safe = InfernoArenaLifecyclePolicy.safeSurfaceBlock();
+        return burning.endsWith(":" + name) || safe.endsWith(":" + name);
     }
 
     private boolean isProtectedInfernoCell(int x, int z) {
@@ -49074,7 +49403,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (Map.Entry<HazardPlanner.Point, String> entry : arenaInfernoOriginalBlocks.entrySet()) {
             HazardPlanner.Point point = entry.getKey();
             Block hazard = world.getBlockAt(point.x(), fireY - 1, point.z());
-            if (hazard.getType() == Material.MAGMA_BLOCK) {
+            // Anything this cast may have written is ours to put back: the
+            // burning surface (either authored texture) and the cold patches.
+            if (isArenaInfernoSurface(hazard.getType())) {
                 restoreBlock(hazard, entry.getValue());
                 restored++;
             } else {
@@ -49098,6 +49429,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         getLogger().info("BOSS_SPELL_ARENA_INFERNO_RESTORED event=" + eventId
                 + " restored=" + restored + " skipped=" + skipped);
         arenaInfernoOriginalBlocks.clear();
+        // 14.4: the cooldown is measured from the moment the firestorm really
+        // ended, so the next cast cannot chain straight back on.
+        arenaInfernoLastCastEndTick = eventTickCounter;
         return true;
     }
 

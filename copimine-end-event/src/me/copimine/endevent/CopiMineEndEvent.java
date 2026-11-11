@@ -129,6 +129,7 @@ import me.copimine.endevent.domain.RiftFireballPolicy;
 import me.copimine.endevent.domain.RiftFireballCollisionPolicy;
 import me.copimine.endevent.domain.RiftFireballReflectionPolicy;
 import me.copimine.endevent.domain.RiftFracturePolicy;
+import me.copimine.endevent.domain.RiftFractureEruptionPolicy;
 import me.copimine.endevent.domain.RiftObeliskTimingPolicy;
 import me.copimine.endevent.domain.RiftCarrierPolicy;
 import me.copimine.endevent.domain.RiftRamPolicy;
@@ -1376,6 +1377,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, RiftFireballRuntimeState> activeRiftFireballs = new LinkedHashMap<>();
     /** Non-persistent boss RIFT hazards; unlike Wave 4 these never mutate blocks. */
     private final Map<UUID, RiftFractureRuntimeState> activeCurrentRiftFractures = new LinkedHashMap<>();
+    /** Cells a live fracture currently owns, so no second batch can collide with it. */
+    private final Map<BlockCellKey, UUID> currentRiftFractureCells = new LinkedHashMap<>();
     private long nextCurrentRiftFractureBatchTick;
     private int currentRiftFractureCursor;
     /** Real-block Wave 4 obelisks; boss-phase display obelisks remain separate. */
@@ -5978,6 +5981,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (deathDropIntegration != null) deathDropIntegration.close();
         if (deathProtectionListener != null) deathProtectionListener.clear();
         clearWave7Admission();
+        // Contract 13.2: a disabled plugin must not leave a cracked floor or
+        // magma behind. The teardown restores the exact original BlockData and
+        // retires the journal entry before the scheduler stops ticking.
+        clearCurrentRiftFractures("plugin disable");
         releaseAllBlackFogEffects();
         clearShardPassiveEffects();
         clearClientEffects();
@@ -51267,10 +51274,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /**
-     * Official Current Phase 3 hazard.  Fractures are deliberately runtime-only:
-     * they use no entities, no block mutations and no projectile reflection.
-     * Their short lifetime and central tick keep the boss arena bounded even
-     * when the server is under load.
+     * Official Current Phase 3 hazard - master contract 13.2.
+     *
+     * <p>A fracture is real, reversible world mutation, not a particle ring.
+     * Every batch is planned by {@link RiftFractureEruptionPolicy} against the
+     * live arena floor, written to the durable hazard journal BEFORE the first
+     * block changes, widened through the prepare and warning stages, turned into
+     * an erupting column that IS the damage volume, and finally put back to the
+     * exact original BlockData the journal captured.</p>
      */
     private void startCurrentRiftFractures(LivingEntity boss) {
         if (!isBossCombatRuntimeActive(boss)
@@ -51279,9 +51290,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         List<Player> participants = activeBossParticipants();
-        RiftFracturePolicy.Profile profile = RiftFracturePolicy.profileForPlayers(
-                participants.size());
-        if (profile.count() < 1) {
+        int wanted = RiftFractureEruptionPolicy.batchSizeForPlayers(participants.size());
+        if (wanted < 1) {
             nextCurrentRiftFractureBatchTick = eventTickCounter + 20L;
             return;
         }
@@ -51292,57 +51302,303 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             nextCurrentRiftFractureBatchTick = eventTickCounter + 20L;
             return;
         }
-        double safeRadius = Math.min(config.arenaRadius(), config.bossRadius()) - 1.0D;
-        List<ObeliskPlacementPolicy.Point> candidates = ObeliskPlacementPolicy
-                .searchCandidates(profile.count());
-        int spawned = 0;
-        for (ObeliskPlacementPolicy.Point point : candidates) {
-            Location requested = anchor.clone().add(point.x(), 0.0D, point.z());
-            requested.setY(combatFloorY() + 1.0D);
-            Location location = findSafeCombatLocation(anchor, requested, safeRadius,
-                    MIN_BOSS_CORE_DISTANCE_BLOCKS);
-            if (location == null || activeCurrentRiftFractures.values().stream().anyMatch(existing ->
-                    horizontalDistanceSquared(existing.center(), location) < 9.0D)) {
-                continue;
-            }
-            long activeAt = eventTickCounter + RiftFracturePolicy.TELEGRAPH_TICKS;
-            long expiresAt = activeAt + RiftFracturePolicy.ACTIVE_TICKS;
-            RiftFractureRuntimeState state = new RiftFractureRuntimeState(
-                    UUID.randomUUID(), location, activeAt, expiresAt);
-            activeCurrentRiftFractures.put(state.id(), state);
-            renderCurrentRiftFracture(state);
-            spawned++;
-            if (spawned >= profile.count()
-                    || activeCurrentRiftFractures.size() >= RiftFracturePolicy.MAX_ACTIVE) {
-                break;
-            }
-        }
-        if (spawned == 0) {
-            getLogger().warning("RIFT_FRACTURES_SKIPPED event=" + eventId
-                    + " reason=no-safe-locations participants=" + participants.size());
+        World world = anchor.getWorld();
+        // The journal is shared with the Wave 4 obelisks and the Phase 4 inferno.
+        // It rejects a second prepare until it is RESTORED, so this batch waits
+        // instead of forcing the arena into an unrecorded mutation.
+        if (!hazardJournalIsIdle("rift-fracture-batch")) {
             nextCurrentRiftFractureBatchTick = eventTickCounter + 20L;
             return;
         }
-        nextCurrentRiftFractureBatchTick = eventTickCounter + RiftFracturePolicy.TELEGRAPH_TICKS
-                + RiftFracturePolicy.ACTIVE_TICKS + RiftFracturePolicy.BATCH_COOLDOWN_TICKS;
+        long seed = riftFractureBatchSeed(participants.size());
+        Map<BlockCellKey, String> originals = new LinkedHashMap<>();
+        List<RiftFractureEruptionPolicy.Cell> cells = selectRiftFractureCells(
+                world, anchor, wanted, seed, originals);
+        if (cells.isEmpty()) {
+            getLogger().warning("RIFT_FRACTURES_SKIPPED event=" + eventId
+                    + " reason=no-eligible-floor-cells participants=" + participants.size());
+            nextCurrentRiftFractureBatchTick = eventTickCounter + 20L;
+            return;
+        }
+        List<HazardMutationJournal.Entry> journalEntries = new ArrayList<>();
+        for (RiftFractureEruptionPolicy.Cell cell : cells) {
+            BlockCellKey key = new BlockCellKey(world.getUID(), cell.x(),
+                    combatFloorY(), cell.z());
+            journalEntries.add(new HazardMutationJournal.Entry(
+                    key.x(), key.y(), key.z(), originals.get(key), "", "MAGMA",
+                    world.getUID().toString(), eventId, generation));
+        }
+        // Save-before-mutate: nothing is written to the world until the exact
+        // original BlockData of every cell is durable on disk.
+        if (hazardJournal == null
+                || !hazardJournal.prepare(eventId, generation, world.getName(), journalEntries)) {
+            getLogger().warning("RIFT_FRACTURES_SKIPPED event=" + eventId
+                    + " reason=journal-prepare-failed journal="
+                    + (hazardJournal == null ? "none" : hazardJournal.lastFailure()));
+            nextCurrentRiftFractureBatchTick = eventTickCounter + 20L;
+            return;
+        }
+        RiftFractureEruptionPolicy.Stage stage = RiftFractureEruptionPolicy.Stage.forBatch(
+                eventTickCounter, seed);
+        // The warning length of the stage is derived from the same seed, so the
+        // batch gap is clamped onto the contract floor rather than invented.
+        int warningTicks = stage.warningTicks(eventTickCounter);
+        int batchGapTicks = Math.max(RiftFractureEruptionPolicy.batchGapTicks(participants.size()),
+                warningTicks + RiftFractureEruptionPolicy.ERUPT_TICKS);
+        RiftFractureRuntimeState state = new RiftFractureRuntimeState(
+                UUID.randomUUID(), anchor.clone(), cells, originals, stage, batchGapTicks);
+        activeCurrentRiftFractures.put(state.id(), state);
+        for (RiftFractureEruptionPolicy.Cell cell : cells) {
+            currentRiftFractureCells.put(new BlockCellKey(world.getUID(), cell.x(),
+                    combatFloorY(), cell.z()), state.id());
+        }
+        boolean applied = applyRiftFractureSurface(state, 0.0D, false);
+        if (applied) {
+            applied = hazardJournal.markApplied();
+        }
+        if (!applied) {
+            getLogger().severe("RIFT_FRACTURE_APPLY_FAILED event=" + eventId
+                    + " fracture=" + state.id() + " journal="
+                    + (hazardJournal == null ? "none" : hazardJournal.path()));
+            restoreCurrentRiftFractureBlocks(state);
+            hazardJournal.markRestored();
+            activeCurrentRiftFractures.remove(state.id(), state);
+            for (RiftFractureEruptionPolicy.Cell cell : cells) {
+                currentRiftFractureCells.remove(new BlockCellKey(world.getUID(), cell.x(),
+                        combatFloorY(), cell.z()), state.id());
+            }
+            nextCurrentRiftFractureBatchTick = eventTickCounter + 20L;
+            return;
+        }
+        state.surfaceProgress = stage.width(eventTickCounter);
+        renderCurrentRiftFracture(state);
+        nextCurrentRiftFractureBatchTick = eventTickCounter + batchGapTicks;
         getLogger().info("RIFT_FRACTURES_STARTED event=" + eventId
                 + " boss=" + boss.getUniqueId() + " phase=RIFT"
-                + " count=" + spawned + " max_active=" + RiftFracturePolicy.MAX_ACTIVE
-                + " telegraph_ticks=" + RiftFracturePolicy.TELEGRAPH_TICKS
-                + " active_ticks=" + RiftFracturePolicy.ACTIVE_TICKS
-                + " radius=" + RiftFracturePolicy.RADIUS_BLOCKS
-                + " damage=" + RiftFracturePolicy.DAMAGE);
+                + " generation=" + generation
+                + " " + RiftFractureEruptionPolicy.describe(participants.size(), cells)
+                + " max_simultaneous=" + RiftFractureEruptionPolicy.MAX_SIMULTANEOUS
+                + " warning_ticks=" + warningTicks
+                + " batch_gap_ticks=" + batchGapTicks
+                + " journal_entries=" + journalEntries.size()
+                + " real_blocks=true");
+    }
+
+    /**
+     * True when the durable hazard journal holds nothing this phase must respect.
+     *
+     * <p>The journal is deliberately shared with the Wave 4 obelisks and the
+     * Phase 4 inferno. A batch that prepared over a live mutation would make the
+     * crash recovery restore the wrong originals, so the phase waits instead.
+     * </p>
+     */
+    private boolean hazardJournalIsIdle(String reason) {
+        if (hazardJournal == null) {
+            return false;
+        }
+        HazardMutationJournal.Snapshot snapshot = hazardJournal.load();
+        boolean idle = snapshot.valid() && (snapshot.status() == HazardMutationJournal.Status.EMPTY
+                || snapshot.status() == HazardMutationJournal.Status.RESTORED);
+        if (!idle) {
+            getLogger().info("RIFT_FRACTURE_JOURNAL_BUSY event=" + eventId
+                    + " reason=" + reason
+                    + " status=" + snapshot.status() + " valid=" + snapshot.valid()
+                    + " entries=" + snapshot.entries().size());
+        }
+        return idle;
+    }
+
+    /** Attempt-scoped batch seed: a restart replays the same cells. */
+    private long riftFractureBatchSeed(int players) {
+        return 65_537L * (long) eventId.hashCode() + 17L * generation
+                + activeWave + players * 1_009L + eventTickCounter / 20L;
+    }
+
+    /**
+     * Contract 13.2 stage 1: real floor cells, chosen by the eruption policy.
+     *
+     * <p>The arena list is the live combat floor disc around the Core. Core,
+     * runes and gates are handed to the policy as protected cells; cells already
+     * mutated by a live fracture or by the inferno are handed to it as occupied.
+     * </p>
+     */
+    private List<RiftFractureEruptionPolicy.Cell> selectRiftFractureCells(
+            World world, Location anchor, int wanted, long seed,
+            Map<BlockCellKey, String> originals) {
+        if (world == null || anchor == null) {
+            return List.of();
+        }
+        int floorY = combatFloorY();
+        int radius = (int) Math.floor(Math.max(2.0D, Math.min(config.arenaRadius(),
+                boundedCombatRadius(config.arenaRadius()))));
+        int centerX = anchor.getBlockX();
+        int centerZ = anchor.getBlockZ();
+        List<RiftFractureEruptionPolicy.Cell> arena = new ArrayList<>();
+        Set<RiftFractureEruptionPolicy.Cell> protectedCells = new HashSet<>();
+        Set<RiftFractureEruptionPolicy.Cell> occupied = new HashSet<>();
+        for (int x = centerX - radius; x <= centerX + radius; x++) {
+            for (int z = centerZ - radius; z <= centerZ + radius; z++) {
+                if ((long) (x - centerX) * (x - centerX) + (long) (z - centerZ) * (z - centerZ)
+                        > (long) radius * radius) {
+                    continue;
+                }
+                BlockCellKey key = new BlockCellKey(world.getUID(), x, floorY, z);
+                boolean reserved = isRiftFractureReservedCell(world, x, floorY, z);
+                Block floor = world.getBlockAt(x, floorY, z);
+                boolean solid = floor.getType().isSolid();
+                boolean liquid = floor.isLiquid();
+                RiftFractureEruptionPolicy.Cell cell = new RiftFractureEruptionPolicy.Cell(
+                        x, z, solid, liquid, reserved, false, false, false);
+                arena.add(cell);
+                if (reserved) {
+                    protectedCells.add(cell);
+                    continue;
+                }
+                if (currentRiftFractureCells.containsKey(key)
+                        || isLiveInfernoCell(x, floorY, z)) {
+                    occupied.add(cell);
+                    continue;
+                }
+                if (solid && !liquid && isArenaLocation(floor.getLocation())) {
+                    originals.putIfAbsent(key, floor.getBlockData().getAsString());
+                }
+            }
+        }
+        List<RiftFractureEruptionPolicy.Cell> chosen = RiftFractureEruptionPolicy.selectCells(
+                arena, protectedCells, occupied, wanted, RiftFractureEruptionPolicy.MAX_SIMULTANEOUS,
+                RiftFractureEruptionPolicy.MIN_CELL_SPACING,
+                RiftFractureEruptionPolicy.MINIMUM_SAFE_RATIO, seed);
+        // Never hand a cell to the journal whose original data was not captured.
+        List<RiftFractureEruptionPolicy.Cell> prepared = new ArrayList<>(chosen.size());
+        for (RiftFractureEruptionPolicy.Cell cell : chosen) {
+            BlockCellKey key = new BlockCellKey(world.getUID(), cell.x(), floorY, cell.z());
+            if (originals.containsKey(key)) {
+                prepared.add(cell);
+            }
+        }
+        return List.copyOf(prepared);
+    }
+
+    /** Core, runes, gates and the rune footprint are never fractured. */
+    private boolean isRiftFractureReservedCell(World world, int x, int floorY, int z) {
+        if (Math.abs(x - coreX) <= 2 && Math.abs(z - coreZ) <= 2) {
+            return true;
+        }
+        for (EventSnapshot.PadSnapshot pad : pads) {
+            if (pad != null && Math.abs(x - pad.x()) <= 2 && Math.abs(z - pad.z()) <= 2) {
+                return true;
+            }
+        }
+        Location at = new Location(world, x + 0.5D, floorY, z + 0.5D);
+        return isGateLocation(at) || isObeliskReserved(at);
+    }
+
+    /** A cell the Phase 4 inferno currently holds as burning magma. */
+    private boolean isLiveInfernoCell(int x, int floorY, int z) {
+        if (arenaInfernoOriginalBlocks.isEmpty()) {
+            return false;
+        }
+        return arenaInfernoOriginalBlocks.containsKey(new HazardPlanner.Point(x, z))
+                || floorY != combatLevelY() - 1;
+    }
+
+    /**
+     * Writes the widened crack of one stage.
+     *
+     * <p>Only cells whose original data is still in the journal entry are
+     * touched; the block data comes from the policy, never from a literal here.
+     * </p>
+     */
+    private boolean applyRiftFractureSurface(RiftFractureRuntimeState state,
+                                             double progress, boolean exploded) {
+        if (state == null || state.world() == null) {
+            return false;
+        }
+        String blockData = RiftFractureEruptionPolicy.surfaceBlockDataFor(progress, exploded);
+        BlockData data;
+        try {
+            data = Bukkit.createBlockData(blockData);
+        } catch (IllegalArgumentException invalid) {
+            getLogger().warning("RIFT_FRACTURE_SURFACE_REFUSED event=" + eventId
+                    + " reason=invalid-polled-block-data block_data=" + blockData);
+            return false;
+        }
+        for (BlockCellKey cell : state.cells()) {
+            if (!state.originals().containsKey(cell)) {
+                continue;
+            }
+            Block block = state.world().getBlockAt(cell.x(), cell.y(), cell.z());
+            block.setBlockData(data, false);
+        }
+        return true;
+    }
+
+    /**
+     * Puts the exact original BlockData back and only then retires the journal.
+     *
+     * <p>Nothing is forgotten while the restore is unproven: a failed journal
+     * commit keeps the entries so a later recovery can still put the arena back.
+     * </p>
+     */
+    private boolean restoreCurrentRiftFractureBlocks(RiftFractureRuntimeState state) {
+        if (state == null) {
+            return false;
+        }
+        World world = state.world();
+        int restored = 0;
+        int skipped = 0;
+        if (world != null) {
+            for (Map.Entry<BlockCellKey, String> entry : state.originals().entrySet()) {
+                BlockCellKey cell = entry.getKey();
+                Block block = world.getBlockAt(cell.x(), cell.y(), cell.z());
+                if (isRiftFractureSurface(block.getType())) {
+                    restoreBlock(block, entry.getValue());
+                    restored++;
+                } else {
+                    // A player or another plugin changed the cell; the original
+                    // data is still recorded, so recovery must not overwrite it.
+                    skipped++;
+                }
+            }
+        }
+        boolean committed = hazardJournal == null || hazardJournal.markRestored();
+        getLogger().info("RIFT_FRACTURE_RESTORED event=" + eventId
+                + " fracture=" + state.id() + " generation=" + generation
+                + " restored=" + restored + " skipped=" + skipped
+                + " journal_restored=" + committed);
+        if (!committed) {
+            getLogger().severe("RIFT_FRACTURE_RESTORE_JOURNAL_FAILED event=" + eventId
+                    + " fracture=" + state.id() + " journal=" + hazardJournal.path()
+                    + " restored=" + restored + " skipped=" + skipped);
+            return false;
+        }
+        for (BlockCellKey cell : state.cells()) {
+            currentRiftFractureCells.remove(cell, state.id());
+        }
+        return true;
+    }
+
+    /** Materials this phase may have written; used to avoid clobbering edits. */
+    private boolean isRiftFractureSurface(Material type) {
+        return type == Material.CRACKED_POLISHED_BLACKSTONE_BRICKS
+                || type == Material.CRACKED_DEEPSLATE_TILES
+                || type == Material.CRACKED_NETHER_BRICKS
+                || type == Material.MAGMA_BLOCK;
     }
 
     private void tickCurrentRiftFractures(LivingEntity boss) {
-        boolean valid = isBossCombatRuntimeActive(boss)
-                && bossPhase == BossPhase.RIFT;
-        if (!valid) {
-            clearCurrentRiftFractures("boss-stage-boundary");
+        if (bossPhase != BossPhase.RIFT) {
+            // Generation- and phase-guarded: leaving RIFT can never leave a
+            // crack or magma behind, whatever ended the phase.
+            if (!activeCurrentRiftFractures.isEmpty()) {
+                clearCurrentRiftFractures("rift-phase-exit");
+            }
             return;
         }
-        RiftFracturePolicy.Profile profile = RiftFracturePolicy.profileForPlayers(
-                activeBossParticipants().size());
+        if (!isBossCombatRuntimeActive(boss)) {
+            clearCurrentRiftFractures("boss-runtime-inactive");
+            return;
+        }
         if (activeCurrentRiftFractures.isEmpty()) {
             if (eventTickCounter >= nextCurrentRiftFractureBatchTick) {
                 startCurrentRiftFractures(boss);
@@ -51352,41 +51608,108 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         List<Player> participants = activeBossParticipants();
         for (RiftFractureRuntimeState state
                 : new ArrayList<>(activeCurrentRiftFractures.values())) {
-            if (eventTickCounter >= state.expiresAtTick()) {
-                removeCurrentRiftFracture(state, "expired");
+            RiftFractureEruptionPolicy.Stage stage = state.stage();
+            RiftFractureEruptionPolicy.Phase phase = stage.phase(eventTickCounter);
+            if (phase == RiftFractureEruptionPolicy.Phase.RESTORE) {
+                if (restoreCurrentRiftFractureBlocks(state)) {
+                    removeCurrentRiftFracture(state, "restored");
+                }
                 continue;
             }
-            if (!state.activated() && eventTickCounter >= state.activeAtTick()) {
-                state.activate();
-                state.center().getWorld().playSound(state.center(),
-                        Sound.BLOCK_RESPAWN_ANCHOR_DEPLETE, SoundCategory.HOSTILE,
-                        0.65F, 0.7F);
-                getLogger().info("RIFT_FRACTURE_ACTIVE event=" + eventId
-                        + " fracture=" + state.id() + " phase=RIFT radius=" + profile.radius()
-                        + " duration_ticks=" + profile.activeTicks());
+            if (phase == RiftFractureEruptionPolicy.Phase.DONE) {
+                removeCurrentRiftFracture(state, "done");
+                continue;
+            }
+            if (phase == RiftFractureEruptionPolicy.Phase.COLLAPSE) {
+                // The column is collapsing: the crack stops widening but the
+                // floor stays mutated until the restore stage owns it.
+                applyRiftFractureSurface(state, 1.0D, false);
+                state.surfaceProgress = 1.0D;
+            } else if (phase == RiftFractureEruptionPolicy.Phase.ERUPTION) {
+                applyRiftFractureSurface(state, 1.0D, true);
+                state.surfaceProgress = 1.0D;
+                if (!state.erupted()) {
+                    state.markErupted();
+                    Location center = state.center();
+                    if (center != null && center.getWorld() != null) {
+                        center.getWorld().playSound(center,
+                                Sound.BLOCK_RESPAWN_ANCHOR_DEPLETE, SoundCategory.HOSTILE,
+                                0.9F, 0.7F);
+                    }
+                    getLogger().info("RIFT_FRACTURE_ERUPTION event=" + eventId
+                            + " fracture=" + state.id() + " phase=RIFT"
+                            + " geyser_height=" + (int) stage.geyserHeight(eventTickCounter)
+                            + " radius=" + RiftFractureEruptionPolicy.GEYSER_RADIUS_BLOCKS
+                            + " eruption_tick=" + stage.eruptionTick());
+                }
+                damageRiftFractureColumn(state, stage, participants);
+            } else if (phase == RiftFractureEruptionPolicy.Phase.WARNING) {
+                double progress = stage.width(eventTickCounter);
+                if (progress > state.surfaceProgress) {
+                    applyRiftFractureSurface(state, progress, false);
+                    state.surfaceProgress = progress;
+                }
             }
             renderCurrentRiftFracture(state);
-            if (!state.activated()) {
+        }
+    }
+
+    /**
+     * Contract 13.2 stage 3: the column IS the damage volume.
+     *
+     * <p>One eruption may hurt a given player exactly once. The ledger key is
+     * the policy's {@code eruptionTick}, so a player who walks in halfway still
+     * takes their single hit instead of being skipped or hit twice.</p>
+     */
+    private void damageRiftFractureColumn(RiftFractureRuntimeState state,
+                                          RiftFractureEruptionPolicy.Stage stage,
+                                          List<Player> participants) {
+        Location center = state.center();
+        if (center == null || center.getWorld() == null || participants.isEmpty()) {
+            return;
+        }
+        double radius = RiftFractureEruptionPolicy.GEYSER_RADIUS_BLOCKS;
+        double height = Math.max(RiftFractureEruptionPolicy.MIN_GEYSER_HEIGHT,
+                Math.min(RiftFractureEruptionPolicy.MAX_GEYSER_HEIGHT,
+                        stage.geyserHeight(eventTickCounter)));
+        long eruptionTick = stage.eruptionTick();
+        double damage = RiftFractureEruptionPolicy.eruptionDamage(participants.size());
+        for (Player player : participants) {
+            if (!player.getWorld().equals(center.getWorld())) {
                 continue;
             }
-            for (Player player : participants) {
-                if (player.getLocation().distanceSquared(state.center())
-                        > profile.radius() * profile.radius()
-                        || !RiftFracturePolicy.canDamage(eventTickCounter,
-                        state.activeAtTick(), state.expiresAtTick(),
-                        state.damagedPlayers().contains(player.getUniqueId()))) {
-                    continue;
-                }
-                state.damagedPlayers().add(player.getUniqueId());
-                player.damage(profile.damage(), boss);
-                player.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS,
-                        60, 0, false, true, true), true);
-                player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
-                        60, 0, false, true, true), true);
-                getLogger().info("RIFT_FRACTURE_HIT event=" + eventId
-                        + " fracture=" + state.id() + " player=" + player.getUniqueId()
-                        + " damage=" + profile.damage() + " effects_ticks=60");
+            Location at = player.getLocation();
+            double dy = at.getY() - center.getY();
+            if (dy < -1.0D || dy > height) {
+                continue;
             }
+            double dx = at.getX() - center.getX();
+            double dz = at.getZ() - center.getZ();
+            if (dx * dx + dz * dz > radius * radius) {
+                continue;
+            }
+            String playerKey = player.getUniqueId().toString();
+            if (!RiftFractureEruptionPolicy.mayDamagePlayer(playerKey,
+                    state.damagedPlayers(), eruptionTick)) {
+                continue;
+            }
+            state.damagedPlayers().add(RiftFractureEruptionPolicy.scopedKey(
+                    eruptionTick, playerKey));
+            LivingEntity attacker = liveBoss();
+            player.damage(damage, attacker == null ? player : attacker);
+            Vector launch = player.getLocation().toVector().subtract(center.toVector());
+            launch.setY(0.0D);
+            if (launch.lengthSquared() < 0.01D) {
+                launch = new Vector(0.0D, 0.0D, 1.0D);
+            }
+            launch = launch.normalize()
+                    .multiply(RiftFractureEruptionPolicy.eruptionLaunchVelocity());
+            player.setVelocity(launch.setY(0.7D));
+            getLogger().info("RIFT_FRACTURE_HIT event=" + eventId
+                    + " fracture=" + state.id() + " player=" + player.getUniqueId()
+                    + " damage=" + damage + " eruption_tick=" + eruptionTick
+                    + " geyser_height=" + (int) height
+                    + " radius=" + radius);
         }
     }
 
@@ -51394,35 +51717,36 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (state == null || state.center() == null || state.center().getWorld() == null) {
             return;
         }
-        boolean active = state.activated();
-        double progress = RiftFracturePolicy.TELEGRAPH_TICKS <= 0 ? 1.0D
-                : Math.max(0.0D, Math.min(1.0D,
-                (eventTickCounter - (state.activeAtTick()
-                        - RiftFracturePolicy.TELEGRAPH_TICKS))
-                        / (double) RiftFracturePolicy.TELEGRAPH_TICKS));
-        double radius = active ? RiftFracturePolicy.RADIUS_BLOCKS
-                : 0.8D + progress * 1.7D;
+        RiftFractureEruptionPolicy.Stage stage = state.stage();
+        RiftFractureEruptionPolicy.Phase phase = stage.phase(eventTickCounter);
+        double height = stage.geyserHeight(eventTickCounter);
+        double radius = RiftFractureEruptionPolicy.GEYSER_RADIUS_BLOCKS;
         for (Player viewer : eventAudience()) {
             if (!isEventParticleViewer(viewer, state.center())) {
                 continue;
             }
-            Particle ring = active ? Particle.DRAGON_BREATH : Particle.REVERSE_PORTAL;
-            spawnPatternRing(viewer, state.center().clone().add(0.0D, 0.06D, 0.0D),
-                    new Vector(1.0D, 0.0D, 0.0D), new Vector(0.0D, 0.0D, 1.0D),
-                    radius, active ? 30 : 22,
-                    eventTickCounter * (active ? 0.08D : 0.12D), ring);
+            if (height > 0.0D) {
+                // The visible pillar is the hit volume: same radius, same height.
+                for (double y = 0.0D; y <= height; y += 1.0D) {
+                    viewer.spawnParticle(Particle.FLAME,
+                            state.center().clone().add(0.0D, y, 0.0D),
+                            3, radius * 0.35D, 0.15D, radius * 0.35D, 0.02D);
+                }
+                viewer.spawnParticle(Particle.LAVA,
+                        state.center().clone().add(0.0D, height, 0.0D),
+                        2, radius * 0.3D, 0.2D, radius * 0.3D, 0.0D);
+            }
+            if (phase != RiftFractureEruptionPolicy.Phase.PREPARE
+                    && phase != RiftFractureEruptionPolicy.Phase.WARNING) {
+                continue;
+            }
+            double progress = stage.width(eventTickCounter);
             Particle.DustOptions dust = new Particle.DustOptions(
-                    active ? Color.fromRGB(255, 58, 164) : Color.fromRGB(126, 62, 255),
-                    active ? 1.15F : 0.85F);
+                    Color.fromRGB(126, 62, 255), 0.85F);
             viewer.spawnParticle(Particle.DUST,
                     state.center().clone().add(0.0D, 0.12D, 0.0D),
-                    active ? 6 : 4, radius * 0.5D, 0.03D, radius * 0.5D,
-                    0.0D, dust);
-            if (active) {
-                viewer.spawnParticle(Particle.ELECTRIC_SPARK,
-                        state.center().clone().add(0.0D, 0.65D, 0.0D),
-                        4, 0.55D, 0.6D, 0.55D, 0.02D);
-            }
+                    3 + (int) (progress * 6.0D),
+                    progress * 1.4D, 0.03D, progress * 1.4D, 0.0D, dust);
         }
     }
 
@@ -51430,24 +51754,36 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (state == null || !activeCurrentRiftFractures.remove(state.id(), state)) {
             return;
         }
-        spawnEventParticle(state.center(), Particle.REVERSE_PORTAL, 10,
-                0.45D, 0.25D, 0.45D, 0.02D);
+        for (BlockCellKey cell : state.cells()) {
+            currentRiftFractureCells.remove(cell, state.id());
+        }
         getLogger().info("RIFT_FRACTURE_CLEANUP event=" + eventId
-                + " fracture=" + state.id() + " reason=" + reason);
+                + " fracture=" + state.id() + " generation=" + generation
+                + " reason=" + reason);
     }
 
+    /**
+     * Generation-guarded teardown used by phase change, wave end and disable.
+     *
+     * <p>Every outstanding fracture restores its exact original BlockData and
+     * commits the journal, so neither a cracked floor nor magma survives the
+     * phase that created it.</p>
+     */
     private void clearCurrentRiftFractures(String reason) {
         int count = activeCurrentRiftFractures.size();
         for (RiftFractureRuntimeState state
                 : new ArrayList<>(activeCurrentRiftFractures.values())) {
+            restoreCurrentRiftFractureBlocks(state);
             removeCurrentRiftFracture(state, reason);
         }
         activeCurrentRiftFractures.clear();
+        currentRiftFractureCells.clear();
         nextCurrentRiftFractureBatchTick = 0L;
         currentRiftFractureCursor = 0;
         if (count > 0) {
-        getLogger().info("RIFT_FRACTURES_CLEANUP event=" + eventId
-                    + " count=" + count + " reason=" + reason);
+            getLogger().info("RIFT_FRACTURES_CLEANUP event=" + eventId
+                    + " count=" + count + " generation=" + generation
+                    + " reason=" + reason);
         }
     }
 
@@ -53721,20 +54057,39 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /**
+     * One live fracture: the real cells it owns, their exact originals and the
+     * contract window it is walking through.
+     */
     private static final class RiftFractureRuntimeState {
         private final UUID id;
         private final Location center;
-        private final long activeAtTick;
-        private final long expiresAtTick;
-        private final Set<UUID> damagedPlayers = new HashSet<>();
-        private boolean activated;
+        private final List<BlockCellKey> cells;
+        private final Map<BlockCellKey, String> originals;
+        private final RiftFractureEruptionPolicy.Stage stage;
+        private final int batchGapTicks;
+        private final Set<String> damagedPlayers = new LinkedHashSet<>();
+        private boolean erupted;
+        private double surfaceProgress = -1.0D;
 
         private RiftFractureRuntimeState(UUID id, Location center,
-                                         long activeAtTick, long expiresAtTick) {
+                                         List<RiftFractureEruptionPolicy.Cell> cells,
+                                         Map<BlockCellKey, String> originals,
+                                         RiftFractureEruptionPolicy.Stage stage,
+                                         int batchGapTicks) {
             this.id = id;
             this.center = center == null ? null : center.clone();
-            this.activeAtTick = Math.max(0L, activeAtTick);
-            this.expiresAtTick = Math.max(this.activeAtTick + 1L, expiresAtTick);
+            World world = center == null ? null : center.getWorld();
+            int floorY = center == null ? 0 : center.getBlockY() - 1;
+            List<BlockCellKey> keys = new ArrayList<>();
+            for (RiftFractureEruptionPolicy.Cell cell : cells) {
+                keys.add(new BlockCellKey(world == null ? null : world.getUID(),
+                        cell.x(), floorY, cell.z()));
+            }
+            this.cells = List.copyOf(keys);
+            this.originals = Map.copyOf(originals == null ? Map.of() : originals);
+            this.stage = stage;
+            this.batchGapTicks = Math.max(1, batchGapTicks);
         }
 
         private UUID id() {
@@ -53745,24 +54100,36 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return center == null ? null : center.clone();
         }
 
-        private long activeAtTick() {
-            return activeAtTick;
+        private World world() {
+            return center == null ? null : center.getWorld();
         }
 
-        private long expiresAtTick() {
-            return expiresAtTick;
+        private List<BlockCellKey> cells() {
+            return cells;
         }
 
-        private boolean activated() {
-            return activated;
+        private Map<BlockCellKey, String> originals() {
+            return originals;
         }
 
-        private void activate() {
-            activated = true;
+        private RiftFractureEruptionPolicy.Stage stage() {
+            return stage;
         }
 
-        private Set<UUID> damagedPlayers() {
+        private int batchGapTicks() {
+            return batchGapTicks;
+        }
+
+        private Set<String> damagedPlayers() {
             return damagedPlayers;
+        }
+
+        private boolean erupted() {
+            return erupted;
+        }
+
+        private void markErupted() {
+            erupted = true;
         }
     }
 

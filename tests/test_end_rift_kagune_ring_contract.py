@@ -390,3 +390,76 @@ public class EdgeProbe {
 }
 """,
     )
+
+
+def test_no_straight_escape_lane_is_detected(tmp_path):
+    """20.2: two gap centres that line up are one lane, and must be seen as such.
+
+    This is the assertion the earlier suite was missing. Mutating
+    ``sameDirection`` to always return false, or zeroing
+    ``MIN_GAP_SEPARATION_BLOCKS``, previously left every test green.
+    """
+    run_probe(
+        tmp_path,
+        "LaneProbe",
+        """
+import me.copimine.endevent.domain.*;
+
+public final class LaneProbe {
+    static void check(boolean condition, String message) {
+        if (!condition) throw new AssertionError(message);
+    }
+
+    public static void main(String[] args) {
+        double floor = KaguneRingGapPolicy.CROSS_ROW_FLOOR_RAD;
+        check(Math.abs(floor - __FLOOR__) < 1e-9,
+                "the contract floor is 0.12 rad, found " + floor);
+
+        check(KaguneRingGapPolicy.sameDirection(0.5, 0.5),
+                "two gaps at the same angle are the same lane");
+        check(KaguneRingGapPolicy.sameDirection(0.5, 0.5 + floor * 0.5),
+                "half the floor apart is still the same lane");
+        check(!KaguneRingGapPolicy.sameDirection(0.5, 0.5 + floor * 2.0),
+                "twice the floor apart is a distinct lane");
+        check(!KaguneRingGapPolicy.sameDirection(0.5, 0.5 + Math.PI),
+                "opposite sides of the ring are distinct lanes");
+
+        double wrapped = (Math.PI * 2.0) - 0.001;
+        check(KaguneRingGapPolicy.sameDirection(0.001, wrapped),
+                "the seam must be measured the short way round");
+
+        double near = KaguneRingGapPolicy.minCentreSeparationRad(12.0);
+        double far = KaguneRingGapPolicy.minCentreSeparationRad(24.0);
+        check(near > far, "a smaller ring needs a wider angular separation");
+        check(KaguneRingGapPolicy.minCentreSeparationRad(0.0) == 2.0 * Math.PI,
+                "a zero radius is refused rather than dividing by zero");
+
+        // The separation is not decoration: on a small ring it is the only
+        // thing that keeps the gap count down. With a 2-block gap and 3-block
+        // separation a radius-2 ring fits exactly 2 gaps; drop the separation
+        // and it fits 6. That difference is what the 5.0 divisor buys.
+        check(KaguneRingGapPolicy.maxFittingGaps(2.0) == 2,
+                "a radius-2 ring fits exactly 2 separated gaps, got "
+                        + KaguneRingGapPolicy.maxFittingGaps(2.0));
+        check(KaguneRingGapPolicy.maxFittingGaps(3.0) == 3,
+                "a radius-3 ring fits exactly 3 separated gaps, got "
+                        + KaguneRingGapPolicy.maxFittingGaps(3.0));
+        check(KaguneRingGapPolicy.maxFittingGaps(4.0) == 5,
+                "a radius-4 ring fits exactly 5 separated gaps, got "
+                        + KaguneRingGapPolicy.maxFittingGaps(4.0));
+        check(KaguneRingGapPolicy.MIN_GAP_SEPARATION_BLOCKS == 3.0,
+                "the contract keeps a 3-block separation, found "
+                        + KaguneRingGapPolicy.MIN_GAP_SEPARATION_BLOCKS);
+        check(KaguneRingGapPolicy.GAP_WIDTH_BLOCKS == 2.0,
+                "the contract keeps two-block gaps, found "
+                        + KaguneRingGapPolicy.GAP_WIDTH_BLOCKS);
+        int wideFit = KaguneRingGapPolicy.maxFittingGaps(60.0);
+        int narrowFit = KaguneRingGapPolicy.maxFittingGaps(8.0);
+        check(wideFit >= narrowFit,
+                "a wider ring never fits fewer gaps than a narrow one");
+        check(KaguneRingGapPolicy.maxFittingGaps(0.0) == 0,
+                "a zero radius fits no gaps");
+    }
+}
+""".replace("__FLOOR__", repr(REQUIRED_CROSS_ROW_FLOOR_RAD)),
+    )

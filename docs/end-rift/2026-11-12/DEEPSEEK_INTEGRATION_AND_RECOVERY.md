@@ -141,3 +141,17 @@ this audit preserves it. Spawn uses the existing indexed safe arena-ring
 allocator; the boss-location argument is not a literal shared spawn point.
 Native decoy movement, animation, shape and sword/arrow interaction remain
 NOT VERIFIED.
+
+## Final Echo integration checks
+
+CodeRabbit reviewed d5ce728d against f7b7db50: zero issues. The added real
+Echo-damage probe and accepted/cancelled small-HP checkpoint cases passed
+(13 tests together with guardian damage windows). The full current source
+tree compiled again: 395 sources, 1,083 classes. The updated server candidate
+is 2,451,945 bytes, SHA-256
+`9f90c50f897f56f14fd7a360ef31b88bf57640629c1bd4d8ee10f4b2761d7995`.
+This supersedes the earlier recovery-only candidate above; the client and pack
+are unchanged. The earlier broad Python run exposed two obsolete exact-string
+assertions and two detached harnesses lacking the newly introduced boss/IO
+boundaries. They were fixed without changing gameplay acceptance rules; a
+new full run must supply the final counts.

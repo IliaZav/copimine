@@ -130,8 +130,9 @@ public class TentacleHitAdapterProbe {
     final long generation = 17, tentacleActiveMillis = 0;
     long eventTickCounter = 100;
     EventPhase phase = EventPhase.BOSS_ACTIVE;
-    String recoveryReason;boolean saveFails;int saves;
+    String recoveryReason;boolean saveFails;int saves, queuedSaves;
     boolean saveStateSync(){saves++;require(tentacleGuardianHealth.get(0)==0.0 && guardianDeaths.isDestroyed(0),"death checkpoint omitted receipt");return !saveFails;}
+    void saveStateAsync(){queuedSaves++;}
     void forcePhase(EventPhase p,String reason){phase=p;}
     BossPhase bossPhase = BossPhase.LAST_SEAL;
     int visualUpdates, stateChanges;
@@ -186,6 +187,23 @@ public class TentacleHitAdapterProbe {
     public static void main(String[] args) {
         var probe = new TentacleHitAdapterProbe();
         switch (args[0]) {
+            case "small-accepted", "small-cancelled" -> {
+                probe.tentacleController.remove(probe.display.id);
+                require(probe.tentacleController.register(probe.generation, probe.display.id,
+                        TentacleAnimationPolicy.Kind.SMALL, 0, 0,
+                        TentacleAnimationPolicy.State.SMALL_WINDUP), "small registration failed");
+                probe.display.health = 12;
+                boolean cancelled = args[0].equals("small-cancelled");
+                var hit = new EntityDamageByEntityEvent(probe.display, probe.player, cancelled);
+                hit.finalDamage = 3;
+                probe.onTentacleGuardianDamage(hit);
+                require(probe.display.health == (cancelled ? 12 : 9)
+                        && probe.queuedSaves == (cancelled ? 0 : 1),
+                        "accepted small HP must queue exactly one roster checkpoint");
+                require(probe.saves == 0 && probe.tentacleGuardianHealth.get(0) == 60.0
+                        && probe.guardianDeaths.destroyedCount() == 0,
+                        "small hit mutated permanent guardian ownership");
+            }
             case "lethal", "lethal-save-failed" -> {
                 probe.saveFails=args[0].equals("lethal-save-failed");
                 var hit=new EntityDamageByEntityEvent(probe.display,probe.player,false);hit.finalDamage=60;
@@ -276,7 +294,8 @@ public class TentacleHitAdapterProbe {
 @pytest.mark.parametrize(
     "scenario",
     ["melee-recovery", "projectile-recovery", "cancelled-melee", "cancelled-projectile",
-     "reduced-final-damage", "zero-final-damage", "projectile-transaction", "due-attack"],
+     "reduced-final-damage", "zero-final-damage", "projectile-transaction", "due-attack",
+     "small-accepted", "small-cancelled"],
 )
 def test_authoritative_hit_window_and_prior_cancellation(tentacle_hit_probe, scenario):
     executed = subprocess.run(

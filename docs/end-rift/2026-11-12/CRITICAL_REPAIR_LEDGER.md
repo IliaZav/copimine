@@ -294,9 +294,123 @@ UNCONFIGURED with no encounter started. The old ~180-second dependency shutdown
 was not observed in this fixture. Election/admin database readiness was logged.
 
 Installed and built event JARs independently hash to
-`0551f3bdb2bd92ba3d918ffb52b4552f7aa3e20e52db46e71aa69cc5a6994855`
-(2,405,592 bytes). Console: `C:/Temp/cm-critical-staging-paper-console2.log`;
+`31128f303684550f20db69999859bcdfcb679ecf4456862b7d11605f13a20b7b`
+(2,406,055 bytes) after the Phase 4 inferno and Kagune ring repairs recorded at
+the end of this file; the earlier reading of `0551f3bd…` / 2,405,592 bytes was the
+pre-repair build. Console: `C:/Temp/cm-critical-staging-paper-console2.log`;
 Paper log: `local-runtime/end-rift-server-26.3/logs/latest.log`.
 This proves bootstrap/dependency survival and command availability only:
 **no wave, boss collision, restoration, client rendering or official run has yet
 been verified on this new runtime**. AuthMe and AuthEffects remain enabled.
+
+---
+
+## Round 2026-11-12 (second): four defects reproduced and repaired
+
+Every claim below was reproduced before repair and is held by a test that was
+confirmed to fail, not by inspection. Each fix was then mutated back and the
+mutation caught, except where explicitly noted.
+
+### P0 3.3 - the three-row Kagune ring (two defects)
+
+1. **Row 0 drew but never struck.** `startKaguneRingCast` called
+   `renderKaguneRingRow(…, 0)`, while `damageKaguneRingRow` was reached only from
+   the ticker, for the row it advanced TO. A player standing in the inner band was
+   never evaluated and took nothing from the first ring.
+2. **No row swept.** `renderKaguneRingRow` ran once per row at `emergeRadius()`,
+   and `ROW_TRAVEL_BLOCKS` had no call site in the event at all, so each ring was a
+   single static frame. The hit test was fixed at the emerge radius for the same
+   reason.
+
+Repair: `KaguneRingGapPolicy.rowReachesAt(row, radius, sweepProgress)` plus a
+`rowHits` overload carrying the progress, so the band grows outward with the sweep
+and the visible gap stays the safe gap. The event passes progress to both the draw
+and the hit test and redraws every tick.
+
+**Testing note that matters.** The first version of these tests asserted call
+shapes, and two mutations survived: removing the progress term from the drawn
+radius, and ignoring progress inside the policy. They were replaced by
+`tests/test_end_rift_kagune_ring_sweep.py`, which compiles the real policy and
+asserts that 9 blocks is out of reach at emergence and in reach at half sweep, that
+12.4 is reached at full sweep, that nothing reaches past the authored travel, that
+every progress covers its own outermost point, that the gap stays safe at every
+progress, and that NaN/negative/over-unity progress clamp. All four mutations are
+now caught.
+
+### P1 4.1 - Phase 4 inferno (three defects)
+
+1. **The heat front never travelled.** Initialisation called
+   `heatedInfernoCells(…, 1.0D)`, and 1.0 means "the sweep reached the rim", so
+   every cell caught fire on tick 0 and the authored centre-to-edge heating of
+   contract 14.2 was invisible.
+2. **Safe ground could be re-lit.** Neither the initialisation pass nor the tick
+   sweep excluded the cells the policy had just painted cold.
+3. **`ARENA_INFERNO` was selectable outside `OVERLOAD`.** The pool offered it to
+   `RAGE` and `LAST_SEAL`, while the ticker's first act each tick is
+   `clearArenaInferno()` for any phase other than `OVERLOAD`: the boss paid the
+   cooldown, journaled the floor, and the next tick undid it - one tick of flame.
+   Removed from both pools; Phase 4 keeps it.
+
+Also removed a hardcoded debug `FileWriter` to
+`C:/Users/zavod/AppData/Local/Temp/diag_out.txt` that opened a handle on every
+inferno render tick.
+
+### P1 4.2 - Phase 5 echo decoy rendering (client)
+
+The server spawns a decoy as a `PILLAGER` deliberately, so it never shares the boss
+entity type, HP or defeat effects, and binds visual id `END_RIFT_ECHO_DECOY_V1`.
+The client could not honour that: Guardian model selection lived in one branch of
+`LivingEntityRendererMixin.copimine$selectWaveModel` gated on
+`state instanceof EndermanRenderState`, and a Pillager extracts an
+`IllagerRenderState`. No branch matched, `copimine$activeModel` stayed null, and
+vanilla drew a small brown illager in place of the Guardian it imitates.
+`EndermanRendererSelection` and `EndermanEntityRendererMixin` both modelled the
+decoy correctly and are simply never reached by a Pillager - policy correct,
+dispatch unreachable.
+
+Repair: one `copimine$wearsGuardianBody` predicate lists the visual ids that wear
+the Guardian body (guardian, decoy, replica) and `copimine$isGuardianState`
+delegates to it, so scale and model decisions cannot drift; an Illager route
+selects the Guardian model and is tested before the Enderman route.
+Compilation was verified, not assumed: the first attempt failed with
+`cannot find symbol: class IllagerRenderState` until the import was added.
+
+### P1 4.3 - small Kagune cadence
+
+`SmallKaguneSpawnPolicy` implements contract 18.1 completely, and its timing half
+was never called: `nextDueMillis`, `intervalMillis` and `due` had zero call sites in
+the event. The only trigger was the `SMALL_KAGUNE` boss spell, which shares a pool
+with `FINAL_STRIKE`, `AMBUSH_GRAB` and `VOID_MARK`, so "every 15-20 seconds" was
+really "whenever the die says so".
+
+Repair: `tickSmallKaguneSpawner`, driven from `tickBoss` rather than spell
+selection. The window advances whether or not a batch fitted - otherwise reaching
+the thirty-living cap would freeze the clock for the rest of the phase - and it is
+fenced by the encounter generation so a restart inside Last Seal starts a fresh
+window. `spawningAllowed` gates it, so breaking the cocoon stops new spawns while
+survivors stay killable. The forced lifetime was already retired
+(`SmallKagunePolicy.expired` is hard false) and was not disturbed.
+
+### Pin fallout, and the distinction that matters
+
+Two independent pins moved and both were repinned from locally built artifacts
+whose digests matched the values CI itself reported as `actual`, so two independent
+builds agreed on each:
+
+| artifact | size | digest |
+| --- | --- | --- |
+| `CopiMineClient-0.1.3+26.3.jar` | 15 014 117 | SHA-512 `6760934e…` |
+| `CopiMineEndEvent-26.3.jar` | 2 406 055 | SHA-256 `31128f30…`, SHA-512 `fd63c735…` |
+
+Two local-state failures during this work are **not** repository defects and are
+recorded so they are not mistaken for one: the installer refused because a local
+Paper test server from an earlier round held the named lifecycle mutex, and it then
+reported a plugin size mismatch because `build/minecraft-26.3/server-plugins` still
+held the previous staged copy while `…/plugins/jars` held the new one.
+
+### What this round does NOT establish
+
+Not one of these four repairs has been observed in a running Minecraft client.
+No wave, boss engagement, ring cast, inferno cast, decoy sighting or small-Kagune
+cadence was witnessed. Status of all four is IMPLEMENTED and AUTOMATED-TESTED
+only; LIVE-PAPER-VERIFIED and VISUALLY-VERIFIED remain unmet.

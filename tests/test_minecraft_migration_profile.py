@@ -219,10 +219,14 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # 11-November uniform volumetric fog; clean rebuild SHA-512 matched.
     # 12-November: the Phase 5 echo copies and decoys gained their own client
     # render arms, so the jar moved by 244 bytes and the pin follows it.
-    assert artifact['size'] == 15_013_971
+    # 12-November, later: the Wave 7 Archmage sigil ring was moved off a UV offset
+    # that ran past the 64-wide sheet. A one-token source change still moves the
+    # jar, because the constant pool holds the new integer - 2 bytes, verified by
+    # two independent clean builds producing the same size and digest.
+    assert artifact['size'] == 15_013_973
     assert artifact['sha512'] == (
-        'a8b505bdb49ad401e8dfb5f6533c23453cb34959699cfb7d380a1a07eb03e49a'
-        'b7ae3a2191d307f0f4e94511fc0e60d8aa149a50c186ee18cceb9d9b615fe6a4'
+        '5451518a8da05a81ea2f7d456c4e7723dd06eca8ce7885784d22bab9ccfec1'
+        '43d1602111a51f07f5a9ca7637921f842cac906ba01919f1c7d09ce9e41921edee'
     )
 
 

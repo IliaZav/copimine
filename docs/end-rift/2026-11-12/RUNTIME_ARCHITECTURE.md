@@ -112,8 +112,7 @@ defender slot during recovery.
    The active client retimes/blends sections of the original continuous rig;
    it uses the carrier's locked yaw rather than following the fleeing target.
    Living small enemies accept damage throughout their attack cycle; only
-   terminal poses reject it. Remaining small-enemy work is the authored
-   directed melee/contact controller and native pressure/visual acceptance.
+   terminal poses reject it. Remaining small-enemy work is native pressure, contact and visual acceptance.
 3. Keep wave 6 progress/death receipts in `RiftRamEncounter`; finish final-pillar
    geometry/update/restoration and route its six armour textures from receipts.
 4. Give wave 5 one authoritative safe-volume description used by placement,
@@ -186,3 +185,17 @@ cycle sequence. For 10 players the count contracts 4 to 3; for 20 it contracts
 7 to 5 while footprints contract 3x3 to 2x2. Small parties may retain their zone
 count to preserve capacity. This follows the newer master capacity requirement
 over the older request to allow players to be excluded from all shelters.
+
+## Wave 6 grounded pillar geometry
+
+Pillars now rise from their validated floor anchor; the old body extended down
+into the arena floor while its marksman stood 7.6 blocks above it. Ordinary
+pillars are 3.7 blocks high, the intact finale 7.4. Surviving impacts rebuild
+absolute dimensions from committed damage stage, so shrink/sink cannot compound
+and recovery starts at the same silhouette. The marksman platform height and
+patrol footprint follow that stage; its patrol no longer floats outside the cap.
+All display relocation failures on a surviving collision fail explicitly.
+
+Validation: modern server JAR built, existing Ram geometry/restart/roster probes
+20 passed. These probes cover geometry admission and state, not native appearance
+or a complete seven-collision player run.

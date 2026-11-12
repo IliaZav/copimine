@@ -213,22 +213,27 @@ public final class RiftRamEncounter {
             int ordinal = RiftRamPolicy.pillarOrdinal(impacts);
             boolean finale = RiftRamPolicy.isFinalPillar(ordinal);
             float footprint = finale ? 3.6f : 1.8f;
-            float height    = finale ? 7.4f : 3.7f;
-            float capWidth  = finale ? 4.4f : 2.2f;
+            int damageStage = finale ? RiftRamPolicy.finalPillarStage(impacts) : 0;
+            float shrink = damageStage >= 2 ? .82f : damageStage == 1 ? .94f : 1f;
+            float height    = (finale ? 7.4f : 3.7f)
+                    * (damageStage >= 2 ? .68f : damageStage == 1 ? .88f : 1f);
+            footprint *= shrink;
+            float capWidth  = (finale ? 4.4f : 2.2f) * shrink;
             float bodyHalf  = footprint / 2f;
             float capHalf   = capWidth / 2f;
-            pillarDisplays.add(block(site.clone().add(-bodyHalf,-(height-0.7f),-bodyHalf),
-                    Material.OBSIDIAN,new Vector3f(footprint,height,footprint)));
-            pillarDisplays.add(block(site.clone().add(-capHalf,-.2,-capHalf),
+            pillarDisplays.add(block(site.clone().add(-bodyHalf,0,-bodyHalf),
+                    damageStage >= 2 ? Material.MAGMA_BLOCK : Material.OBSIDIAN,
+                    new Vector3f(footprint,height-.65f,footprint)));
+            pillarDisplays.add(block(site.clone().add(-capHalf,height-.65f,-capHalf),
                     Material.CRYING_OBSIDIAN,new Vector3f(capWidth,.45f,capWidth)));
-            pillarDisplays.add(block(site.clone().add(-(capHalf-.05f),.3,-(capHalf-.05f)),
+            pillarDisplays.add(block(site.clone().add(-(capHalf-.05f),height-.2f,-(capHalf-.05f)),
                     finale ? Material.MAGMA_BLOCK : Material.OBSIDIAN,
-                    new Vector3f(capWidth-.1f,.35f,capWidth-.1f)));
+                    new Vector3f(capWidth-.1f,.2f,capWidth-.1f)));
             if (finale) {
                 // Exposed core band, hidden again by crackPillar() once the
                 // shell finally breaks.
-                pillarDisplays.add(block(site.clone().add(-(bodyHalf-.2f),1.1,-(bodyHalf-.2f)),
-                        Material.CRYING_OBSIDIAN,new Vector3f(footprint-.4f,1.1f,footprint-.4f)));
+                pillarDisplays.add(block(site.clone().add(-(bodyHalf+.03f),height*.45f,-(bodyHalf+.03f)),
+                        Material.CRYING_OBSIDIAN,new Vector3f(footprint+.06f,.25f,footprint+.06f)));
             }
             nextPillarTick = tick;
             site.getWorld().playSound(site,Sound.BLOCK_DEEPSLATE_PLACE, finale?2.4f:1.6f, finale?.35f:.5f);
@@ -623,20 +628,31 @@ public final class RiftRamEncounter {
     private void crackPillar() {
         if (pillar==null || pillarDisplays.isEmpty()) return;
         int stage = RiftRamPolicy.finalPillarStage(impacts);
-        // Stage 1 cracks the shell, stage 2 breaks a whole section away.
-        double sink = stage >= 2 ? 1.15D : 0.45D;
+        // Absolute geometry from the receipt, never cumulative scale/sink.
+        // Cold recovery uses the same dimensions in buildPillar().
+        float shrink = stage >= 2 ? .82F : stage == 1 ? .94F : 1F;
+        float height = 7.4F * (stage >= 2 ? .68F : stage == 1 ? .88F : 1F);
+        float footprint = 3.6F * shrink, cap = 4.4F * shrink;
+        double[][] offsets = {{-footprint/2,0,-footprint/2},
+                {-cap/2,height-.65F,-cap/2},
+                {-(cap/2-.05F),height-.2F,-(cap/2-.05F)},
+                {-(footprint/2+.03F),height*.45F,-(footprint/2+.03F)}};
+        Vector3f[] sizes = {new Vector3f(footprint,height-.65F,footprint),
+                new Vector3f(cap,.45F,cap), new Vector3f(cap-.1F,.2F,cap-.1F),
+                new Vector3f(footprint+.06F,.25F,footprint+.06F)};
         for (int i=0;i<pillarDisplays.size();i++) {
             BlockDisplay display=pillarDisplays.get(i);
-            Location at=display.getLocation().clone();
-            at.add(0,-sink*(i==0?1.0D:0.6D),0);
-            host.move(display, at);
+            double[] offset=offsets[i];
+            if (!host.move(display,pillar.clone().add(offset[0],offset[1],offset[2])))
+                throw new IllegalStateException("damaged-pillar-relocation-refused");
             Transformation t=display.getTransformation();
-            Vector3f scale=t.getScale();
-            float shrink = stage >= 2 ? 0.82F : 0.94F;
             display.setTransformation(new Transformation(t.getTranslation(),t.getLeftRotation(),
-                    new Vector3f(scale.x()*shrink,scale.y()*shrink,scale.z()*shrink),t.getRightRotation()));
-            if (stage >= 2 && i==0) display.setBlock(Material.MAGMA_BLOCK.createBlockData());
+                    sizes[i],t.getRightRotation()));
+            if (i==0) display.setBlock((stage >= 2 ? Material.MAGMA_BLOCK : Material.OBSIDIAN).createBlockData());
         }
+        if (skeletonAlive() && !skeletonFallen
+                && !host.move(pillarSkeleton,pillar.clone().add(0,standingPillarPlatformHeight(),0)))
+            throw new IllegalStateException("damaged-pillar-skeleton-relocation-refused");
         // Loose rubble reads as material that actually left the pillar.
         for (int i=0;i<6;i++) {
             double angle=i*Math.PI/3;
@@ -644,6 +660,11 @@ public final class RiftRamEncounter {
             BlockDisplay shard=block(start,Material.OBSIDIAN,new Vector3f(.22f,.18f,.3f));
             debris.add(new Debris(shard,start,new Vector(Math.cos(angle)*.1,.18,Math.sin(angle)*.1),tick));
         }
+    }
+
+    private double standingPillarPlatformHeight() {
+        int stage = RiftRamPolicy.finalPillarStage(impacts);
+        return 7.4D * (stage >= 2 ? .68D : stage == 1 ? .88D : 1D) + .2D;
     }
 
     /**
@@ -656,12 +677,12 @@ public final class RiftRamEncounter {
      */
     private void spawnPillarSkeleton() {
         if (pillar == null || pillarSkeletonSpawned) return;
-        Location at = pillar.clone().add(0, WaveSixPillarSkeletonPolicy.PLATFORM_HEIGHT, 0);
+        Location at = pillar.clone().add(0, standingPillarPlatformHeight(), 0);
         try {
             pillarSkeleton = at.getWorld().spawn(at, Skeleton.class, entity -> {
                 entity.setPersistent(true);
                 entity.setRemoveWhenFarAway(false);
-                entity.setCustomName("Стрелок Разлома");
+                entity.setCustomName("РЎС‚СЂРµР»РѕРє Р Р°Р·Р»РѕРјР°");
                 entity.setCustomNameVisible(false);
                 entity.getAttribute(Attribute.GENERIC_MAX_HEALTH)
                         .setBaseValue(WaveSixPillarSkeletonPolicy.HEALTH);
@@ -720,7 +741,12 @@ public final class RiftRamEncounter {
             skeletonLastMove = tick;
             skeletonStep++;
             double[] offset = WaveSixPillarSkeletonPolicy.patrolOffset(skeletonStep);
-            Location next = pillar.clone().add(offset[0], WaveSixPillarSkeletonPolicy.PLATFORM_HEIGHT, offset[1]);
+            int damageStage = RiftRamPolicy.finalPillarStage(impacts);
+            double cap = 4.4D * (damageStage >= 2 ? .82D : damageStage == 1 ? .94D : 1D);
+            double patrolScale = Math.max(0D, cap / 2D - .6D)
+                    / WaveSixPillarSkeletonPolicy.PATROL_RADIUS;
+            Location next = pillar.clone().add(offset[0] * patrolScale,
+                    standingPillarPlatformHeight(), offset[1] * patrolScale);
             host.move(pillarSkeleton, next);
         }
         WaveSixPillarSkeletonPolicy.Ability ability =

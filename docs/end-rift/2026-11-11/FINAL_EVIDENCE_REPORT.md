@@ -263,9 +263,50 @@ mutant and a real failure. A mutant that does not compile proves nothing.
   that `52d1448e` was the older commit's source. Repinning then would have
   pinned an artifact no build here produces.
 
----
 
+### E.3 A real geometry defect, found by auditing rather than by testing
 
+The Wave 7 Archmage's `rift_sigil_ring` was authored at `texOffs(56, 44)`. An
+8 x 0.4 x 8 cube needs 32 units of UV width - `2 * (8 + 8)` - so it ran from
+u=56 to u=88 on a **64-wide** sheet. The ring therefore sampled wrapped texture
+from the far edge of the atlas and rendered as a smear.
+
+This is the "poor UV mapping" the user reported on the Wave 7 minibosses, and it
+is a real defect rather than a style choice: the ring is the flat disc around
+the staff head that is supposed to be the readable "this is a spellcaster" cue at
+medium range, and the piece that grows while a spell winds up.
+
+It was found by parsing the model's own UV literals and comparing each box
+against the sheet the model declares - not by any existing test. Fixed by moving
+the ring to `texOffs(12, 54)`, a rectangle verified free against all fourteen
+other authored boxes. Only the UV origin changed; no part was moved, removed or
+resized, so the silhouette is byte-identical and only the texture is repaired.
+
+Two follow-ups came out of checking the fix properly:
+
+1. The audit was generalised from one model to every `*Model.java` in the client
+   (9 files, 21 boxes). All now fit, including the Warden against the vanilla
+   128x128 sheet and the Endermite against a 64x64 one. Models whose sheet
+   cannot be determined are skipped rather than passed, because treating an
+   unknown as a success is how the original bug survived.
+
+2. `EndRiftAtlasUvLayout.fit` remaps solid faces into painted atlas islands,
+   which would have made the authored offset irrelevant - **except** that it
+   returns early for any part containing `rune` or `sigil`. `rift_sigil_ring`
+   matches, so its authored UVs reach the GPU unchanged and there is no safety
+   net. That is why the fix matters. It is also a fragile invariant in a
+   non-obvious direction: removing the `sigil` skip would silently make this
+   whole audit assert something that no longer affects rendering, and it would
+   keep passing. The test therefore checks the skip itself.
+
+Reverting the one-token offset change reproduces the failure with the real
+numbers: "the sigil ring needs 32.0 units of UV width but only 8 remain after
+u=56".
+
+**Still unverified:** that the ring now looks right. The fix is proven correct
+arithmetically and the invariant is pinned, but rebuilding the client jar and
+looking at the model in game has not been done. The installed Prism client is
+unchanged and still stale.
 ### E.2 Live Paper server run — the first one this round
 
 Full write-up: [`LIVE_PAPER_RUN.md`](LIVE_PAPER_RUN.md). An isolated local Paper

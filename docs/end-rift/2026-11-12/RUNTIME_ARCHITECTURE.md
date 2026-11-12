@@ -162,3 +162,16 @@ three item definitions and both PNG textures were confirmed inside the built
 client JAR. Existing cocoon/ambush probes: 12 passed. Native visual quality,
 contact alignment and the complete encounter remain NOT VERIFIED. Production
 and the user's installed Prism profile were not replaced.
+
+## Echo commitment integration
+
+Type-A copies now originate from genuinely executing swipe, chest and slam
+attacks in RAGE. Phase entry alone no longer invents a source strike. Family
+validation maps the supported source alias before asking for a timeline and
+rejects unknown identifiers. Copies update their warning point only through the
+lock frame, then keep it fixed. Target loss includes leaving the admitted roster
+or world, and explosion distance queries reject other worlds.
+
+Validation: existing Echo presentation probes 8 passed. Modern server compilation
+passed before the final lock/world-guard adjustment; final combined build is still
+required. Actual copied animations, dodges and explosions remain NOT VERIFIED.

@@ -46000,17 +46000,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // phase change; one left behind would be an orphaned hazard.
             clearEchoAttackReplicas("phase-transition");
         }
-        // Contract 15.2 Type A: entering RAGE is when the boss starts echoing
-        // its own attacks back at the party.
-        //
-        // The opening copy repeats the boss's AUTHORED opening strike, never an
-        // arbitrary spell name. "VOID_BLAST" is not a copyable family, so the old
-        // call handed timeline() a family it refuses and every opening replica
-        // was discarded on the first iteration - the mechanic was inert.
-        if (transition.entered().contains(BossPhase.RAGE)) {
-            startEchoAttackReplicas(boss,
-                    EndRiftAiPolicy.BossSpell.MELEE_SWIPE.name());
-        }
+        // Echo replicas are committed by real contact attack releases, not by
+        // phase entry: entering RAGE alone is not an attack to copy.
         // Contract 15.5: entering the final seal stops echo generation and
         // dissolves every decoy. A surviving decoy would otherwise become a
         // permanent orphan or, worse, be mistaken for the real boss.
@@ -48709,6 +48700,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         long castSequence = bossCastSequence;
         String callbackEvent = eventId;
         bossAbilityState = BossAbilityState.EXECUTING;
+        if (bossPhase == BossPhase.RAGE && isContactBossAbility(spell)) {
+            startEchoAttackReplicas(boss, spell.name());
+        }
         if (spell == EndRiftAiPolicy.BossSpell.CHEST_STRIKE) {
             startChestStrike(boss, target, callbackGeneration);
             return;
@@ -50553,15 +50547,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             EchoReplicaPresentationPolicy.Beat beat =
                     EchoReplicaPresentationPolicy.beatAt(timeline, tick);
-            presentEchoReplicaActor(copyId, actor, timeline, lock, beat);
             Player locked = Bukkit.getPlayer(lock.playerId());
             // Contract 15.2 item 9: a dead or disconnected target cancels the
             // copy. It does not leave a swing that still hits whoever is around.
             if (EchoAttackReplicaPolicy.cancelsOnTargetLoss()
-                    && (locked == null || !locked.isOnline() || locked.isDead())) {
+                    && (locked == null || !isActiveBossParticipant(locked)
+                    || !locked.getWorld().equals(lock.point().getWorld()))) {
                 retireEchoReplica(copyId, "target-lost");
                 continue;
             }
+            if (locked != null && tick <= timeline.telegraphLockTick()) {
+                // Follow only during preparation. The last published point is
+                // frozen at the warning frame; released copies never home.
+                lock = new TargetLock(lock.playerId(), locked.getLocation().clone(),
+                        locked.getEyeLocation().clone());
+                echoReplicaLocks.put(copyId, lock);
+            }
+            presentEchoReplicaActor(copyId, actor, timeline, lock, beat);
             // Contract 15.2: the strike lands once, on the matching keyframe,
             // and only on a player still inside the LOCKED radius.
             if (EchoReplicaPresentationPolicy.damageAllowed(true, timeline, tick)
@@ -50596,6 +50598,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     if (player.isDead()) {
                         continue;
                     }
+                    if (!player.getWorld().equals(lock.point().getWorld())) continue;
                     double distance = player.getLocation().distance(lock.point());
                     if (!EchoAttackReplicaPolicy.explosionConnects(distance)) {
                         continue;

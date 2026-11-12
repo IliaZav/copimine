@@ -85,19 +85,19 @@ public final class EchoReplicaPresentationPolicy {
         if (!java.util.regex.Pattern.matches("[A-Z0-9_]{1,48}", origin)) {
             return null;
         }
-        if (origin.contains("SLAM")) {
-            return FAMILY_SLAM;
-        }
-        if (origin.contains("SWIPE") || origin.contains("MELEE") || origin.contains("KAGUNE")) {
-            return FAMILY_MELEE;
-        }
-        return FAMILY_CHEST;
+        return switch (origin) {
+            case "GROUND_SLAM", "UDAR_PO_ZEMLE", "UDAR_PO_ZEMLE2" -> FAMILY_SLAM;
+            case "MELEE_SWIPE", "SWIPE", "SWIPE2", "MELEE" -> FAMILY_MELEE;
+            case "CHEST_STRIKE", "CHEST_PROJECTILE", "UDAR_IZ_GRUDI",
+                    "VOID_BLAST" -> FAMILY_CHEST; // historical serialized alias
+            default -> null;
+        };
     }
 
     /** True when the family can be copied AND has a real timeline. */
     public static boolean isCopyable(String family, long startTick) {
-        return familyForOrigin(family) != null
-                && EchoAttackReplicaPolicy.timeline(startTick, family) != null;
+        String mapped = familyForOrigin(family);
+        return mapped != null && EchoAttackReplicaPolicy.timeline(startTick, mapped) != null;
     }
 
     // --- the visible beats ---------------------------------------------------

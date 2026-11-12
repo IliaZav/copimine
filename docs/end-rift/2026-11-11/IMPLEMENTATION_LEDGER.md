@@ -863,3 +863,48 @@ both re-run green.
 What this still does not establish: whether the result looks right. No client was
 run. The claim is that the id now resolves to the authored Guardian texture,
 geometry and animation family - not that anyone has seen it.
+
+## The plugin build is reproducible, and I nearly concluded otherwise
+
+Two CI runs came back red, both on the same step, both with the same line:
+
+```
+ValueError: Local plugin artifact SHA-256 differs from its lock:
+CopiMineEndEvent expected=af45b9a2... actual=52d1448e...
+```
+
+My first reading was "stale lock, repin again" - the same diagnosis as the
+earlier failure, and a comfortable one because I had already fixed that once.
+It was wrong. The lock was fine. The two CI runs had simply been triggered
+against commits that predated the repin.
+
+What mattered was the number `52d1448e`. That is not the old lock value
+(`af45b9a2`), and it is not what my machine builds either. It is a third
+digest, produced by CI's own build. Two machines disagreeing about a "pinned"
+artifact is a much more serious claim than a stale pin, so I stopped guessing
+and reproduced CI's path locally.
+
+The local build used Gradle `endEventJar`. CI does not: it runs
+`scripts/minecraft/PrepareMigrationCandidates.ps1`, which drives
+`copimine-end-event/build-plugin.ps1`. Running that exact script here produced
+
+```
+jar sha256: 7128fc9557a389a8f4813fb1ea5e8130b0b936ce92d003073fe5f194dfcab544
+Verified 30 pinned plugin candidates
+EXIT=0
+```
+
+which is precisely the committed lock, and which reproduces the earlier
+`endEventJar` result byte for byte. So the artifact is reproducible across the
+two build entry points after all, and `52d1448e` was the earlier commit's
+source against the earlier lock - a genuine mismatch, at a commit that was
+already superseded when I looked.
+
+The lesson is narrow and worth keeping: a red CI on a commit that is not your
+HEAD tells you about that commit. Read the `actual` digest before believing the
+`expected` one is wrong. Had I repinned to `52d1448e` on the strength of the
+CI message alone, I would have committed a lock pinning an artifact that no
+build on this machine produces, and turned a transient into a permanent defect.
+
+Reproduced on my side, so it is evidenced rather than argued: the plugin digest
+is identical under `endEventJar` and under CI's `PrepareMigrationCandidates.ps1`.

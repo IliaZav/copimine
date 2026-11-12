@@ -4,6 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import me.copimine.endevent.domain.TentacleAnimationPolicy;
+import me.copimine.endevent.domain.SmallKaguneSpawnPolicy;
 
 /**
  * Generation-scoped runtime index for server-owned tentacle displays.  It
@@ -50,9 +51,11 @@ public final class TentacleController {
                 || kind == null || initialState == null || states.containsKey(entityId)) {
             return false;
         }
-        boolean temporary = kind != TentacleAnimationPolicy.Kind.PERMANENT;
-        if (temporary && temporaryCount() >= MAX_TEMPORARY
-                || !temporary && permanentCount() >= MAX_PERMANENT) {
+        if (kind == TentacleAnimationPolicy.Kind.SMALL
+                ? smallCount() >= SmallKaguneSpawnPolicy.MAX_LIVING
+                : kind == TentacleAnimationPolicy.Kind.PERMANENT
+                    ? permanentCount() >= MAX_PERMANENT
+                    : temporaryCount() >= MAX_TEMPORARY) {
             return false;
         }
         states.put(entityId, new VisualState(entityId, kind, slot,
@@ -117,7 +120,13 @@ public final class TentacleController {
     }
 
     public synchronized int temporaryCount() {
-        return (int) states.values().stream().filter(VisualState::temporary).count();
+        return (int) states.values().stream().filter(value -> value.temporary()
+                && value.kind() != TentacleAnimationPolicy.Kind.SMALL).count();
+    }
+
+    public synchronized int smallCount() {
+        return (int) states.values().stream()
+                .filter(value -> value.kind() == TentacleAnimationPolicy.Kind.SMALL).count();
     }
 
     public synchronized Map<UUID, VisualState> states() {

@@ -99,9 +99,13 @@ defender slot during recovery.
    `rotateBossTarget`; each committed cast retains its own target. Remaining AI
    work is movement/cast recovery, faster authored contact timing and native group
    acceptance across all grounded phases.
-2. Replace the small-Kagune loose timer fields with one generation-scoped cadence
-   owner. Count living accepted actors, retain surviving enemies after collapse,
-   remove the obsolete lifetime bookkeeping and persist remaining active time.
+2. `SmallKaguneCadence` now owns remaining active nanoseconds, step and permanent
+   stop receipt, scoped by event/generation and saved through the actual boss
+   snapshot. Pauses/offline time do not consume it. A full arena advances the
+   cadence without a burst of catch-up waves. The Paper adapter counts only
+   valid living owned hitboxes/displays and confirms each spawn. Obsolete lifetime
+   maps/expiry branches are removed. Remaining small-enemy work is the authored
+   directed melee/contact controller and native pressure/visual acceptance.
 3. Keep wave 6 progress/death receipts in `RiftRamEncounter`; finish final-pillar
    geometry/update/restoration and route its six armour textures from receipts.
 4. Give wave 5 one authoritative safe-volume description used by placement,

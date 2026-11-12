@@ -1455,21 +1455,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** Last committed under-player ambush per player, for grab pressure. */
     private final Map<UUID, Long> tentacleAmbushTargetMillis = new HashMap<>();
     /** Absolute tick at which each small melee Kagune retracts. */
-    private final Map<UUID, Long> smallKaguneExpiryTicks = new HashMap<>();
-    /**
-     * Contract 18.1: the small Kagune have their own spawn clock. -1 means no
-     * window is scheduled yet, which is the state before the first tick of an
-     * encounter generation; smallKaguneCadenceGeneration fences the clock so a
-     * restart inside Last Seal cannot inherit an old window.
-     */
-    private long smallKaguneNextDueMillis = -1L;
-    private int smallKaguneCadenceStep;
-    private long smallKaguneCadenceGeneration = -1L;
-    /**
-     * Contract 20: the three-row Kagune ring cast. The layout is chosen once
-     * per cast from a seed, and the claim set is what guarantees one damage
-     * event per player across ALL THREE rows rather than one per row.
-     */
+    private final me.copimine.endevent.domain.SmallKaguneCadence smallKaguneCadence =
+            new me.copimine.endevent.domain.SmallKaguneCadence();
     private me.copimine.endevent.runtime.LastSealRingRuntime lastSealRing;
     /**
      * Contract 15.2 Type A: delayed spectral attack replicas. Each copy has its
@@ -4530,6 +4517,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (bossPhase != BossPhase.LAST_SEAL) return;
         try {
             GuardianDeathLedger recordedDeaths = GuardianDeathLedger.decode(progress, generation);
+            smallKaguneCadence.restore(progress, eventId, generation);
             if (progress != null && progress.containsKey("boss-guardian-regeneration-disabled")) {
                 if (!"DONE".equals(progress.get("boss-guardian-regeneration-disabled"))) {
                     throw new IllegalArgumentException("INVALID_GUARDIAN_REGENERATION_RECEIPT");
@@ -48197,83 +48185,58 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * <p>It never deletes survivors: breaking the cocoon only stops new spawns.</p>
      */
     private void tickSmallKaguneSpawner(LivingEntity boss) {
-        if (boss == null || boss.getWorld() == null) {
-            return;
-        }
-        var tuning = smallKaguneTuning();
-        boolean encounterActive = tuning.enabled() && bossPhase == BossPhase.LAST_SEAL
-                && isBossCombatRuntimeActive(boss);
-        // A restart inside Last Seal must start a fresh window, not resume the
-        // previous generation's deadline.
-        if (smallKaguneCadenceGeneration != generation) {
-            smallKaguneCadenceGeneration = generation;
-            smallKaguneCadenceStep = 0;
-            smallKaguneNextDueMillis = -1L;
-        }
-        boolean cocoonBroken = guardianDeaths != null && guardianDeaths.cocoonBroken();
-        if (!SmallKaguneSpawnPolicy.spawningAllowed(cocoonBroken, encounterActive)) {
-            // No new spawns. Living ones are left exactly where they are.
-            smallKaguneNextDueMillis = -1L;
-            return;
-        }
-        long now = System.currentTimeMillis();
-        if (smallKaguneNextDueMillis < 0L) {
-            smallKaguneNextDueMillis = SmallKaguneSpawnPolicy.nextDueMillis(
-                    now, smallKaguneCadenceStep, generation);
-            return;
-        }
-        if (!SmallKaguneSpawnPolicy.due(now, smallKaguneNextDueMillis)) {
-            return;
-        }
-        int spawned = startSmallKaguneSummon(boss) ? 1 : 0;
-        // Advance the cadence whenever the window elapsed, whether or not the
-        // batch fitted: a full arena must not stall the clock, or the enemy type
-        // silently stops for the rest of the phase once it reaches the cap.
-        smallKaguneCadenceStep++;
-        smallKaguneNextDueMillis = SmallKaguneSpawnPolicy.nextDueMillis(
-                now, smallKaguneCadenceStep, generation);
+        boolean active = boss != null && bossPhase == BossPhase.LAST_SEAL
+                && smallKaguneTuning().enabled() && isBossCombatRuntimeActive(boss)
+                && !activeBossParticipants().isEmpty();
+        int budget = smallKaguneCadence.poll(eventId, generation, System.nanoTime(), active,
+                guardianDeaths.cocoonBroken(), eventScalePlayers(), livingSmallKaguneCount());
+        if (budget <= 0) return;
+        int spawned = spawnSmallKaguneBatch(boss, budget);
         getLogger().info("RIFT_SMALL_KAGUNE_CADENCE event=" + eventId
-                + " generation=" + generation
-                + " step=" + smallKaguneCadenceStep
-                + " spawned=" + spawned
-                + " next_in_ms=" + (smallKaguneNextDueMillis - now));
+                + " generation=" + generation + " admitted=" + budget + " spawned=" + spawned);
+        // The remaining active-time deadline is part of the ordinary durable
+        // boss snapshot. A restart must not reset a nearly completed window.
+        saveStateAsync();
     }
 
-    /**
-     * LAST_SEAL small Kagune: a finite melee-only summon.  Their lifetime is
-     * bounded by SmallKagunePolicy.LIFETIME_TICKS and they never reserve a
-     * guardian slot, shield or 90-second respawn deadline.
-     */
-    private boolean startSmallKaguneSummon(LivingEntity boss) {
+    private int livingSmallKaguneCount() {
+        int count = 0;
+        for (TentacleController.VisualState state : tentacleController.states().values())
+            if (isLivingSmallKagune(state)) count++;
+        return count;
+    }
+
+    private boolean isLivingSmallKagune(TentacleController.VisualState state) {
+        if (state == null || state.kind() != TentacleAnimationPolicy.Kind.SMALL) return false;
+        Entity visual = ownedEntities.get(state.entityId());
+        UUID bodyId = tentacleHitboxesByDisplay.get(state.entityId());
+        Entity body = bodyId == null ? null : ownedEntities.get(bodyId);
+        return visual instanceof ItemDisplay display && display.isValid() && !display.isDead()
+                && ownedBySession(display, eventId, generation)
+                && body instanceof LivingEntity living && living.isValid() && !living.isDead()
+                && living.getHealth() > 0D && ownedBySession(living, eventId, generation)
+                && readDouble(display, keyTentacleHealth, 0D) > 0D;
+    }
+
+    /** These are living melee enemies; only the encounter/death owns retirement. */
+    private int spawnSmallKaguneBatch(LivingEntity boss, int admitted) {
         List<Player> roster = activeBossParticipants();
-        var tuning = smallKaguneTuning();
         if (boss == null || roster.isEmpty() || bossPhase != BossPhase.LAST_SEAL
-                || !tuning.enabled()) {
-            return false;
-        }
-        int active = (int) tentacleController.states().values().stream()
-                .filter(state -> state.kind() == TentacleAnimationPolicy.Kind.SMALL).count();
-        // Contract 18.1: up to thirty LIVING small Kagune, batch-scaled by the
-        // admitted party. Deliberately NOT clamped by the retired six-temporary-
-        // tentacle budget - that budget governs transient cast visuals, and a
-        // small Kagune is a real enemy that must survive on its own count.
-        int budget = SmallKaguneSpawnPolicy.admission(eventScalePlayers(), active);
+                || !smallKaguneTuning().enabled() || guardianDeaths.cocoonBroken()) return 0;
+        int budget = Math.min(admitted, SmallKaguneSpawnPolicy.admission(eventScalePlayers(), livingSmallKaguneCount()));
         int spawned = 0;
         for (int index = 0; index < budget; index++) {
+            if (livingSmallKaguneCount() >= SmallKaguneSpawnPolicy.MAX_LIVING) break;
             Player target = roster.get(Math.floorMod(tentacleTargetCursor++, roster.size()));
-            if (target == null) {
-                break;
-            }
+            if (!isActiveBossParticipant(target)) continue;
             ItemDisplay display = spawnTentacle(boss, target.getLocation().clone(),
                     TentacleAnimationPolicy.Kind.SMALL, TENTACLE_SMALL_SLOT, null);
             if (display != null) {
-                spawned++;
+                if (isLivingSmallKagune(tentacleController.state(display.getUniqueId()))) spawned++;
+                else removeTentacle(display.getUniqueId(), "small-kagune-spawn-unconfirmed");
             }
         }
-        getLogger().info("RIFT_SMALL_KAGUNE_SUMMON event=" + eventId
-                + " boss=" + boss.getUniqueId() + " budget=" + budget
-                + " spawned=" + spawned + " generation=" + generation);
-        return spawned > 0;
+        return spawned;
     }
 
     private EventConfig.SmallKaguneTuning smallKaguneTuning() {
@@ -51206,6 +51169,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void encodeTentacleGuardianState(Map<String, String> encoded) {
+        encoded.putAll(smallKaguneCadence.snapshot(eventId, generation));
         if (cocoonFallStarted && cocoonFallGeneration == generation) {
             encoded.put(CocoonFallPolicy.SNAPSHOT_KEY,
                     new CocoonFallPolicy.Checkpoint(cocoonFallStage, cocoonFallElapsedTicks).encode());
@@ -51543,7 +51507,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         tentacleGuardianWarnedSlots.clear();
         tentacleGuardianSpawnFailures.clear();
         tentacleNextAttackTick.clear();
-        smallKaguneExpiryTicks.clear();
         tentacleDamageWindowEndsMillis = -1L;
         tentacleActiveMillis = 0L;
         tentacleActiveLastNanos = 0L;
@@ -51818,10 +51781,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     TentacleAnimationPolicy.State.TELEGRAPH_GRAB,
                     eventTickCounter, target.getUniqueId());
         }
-        if (smallKagune) {
-            smallKaguneExpiryTicks.put(display.getUniqueId(),
-                    eventTickCounter + smallKaguneTuning().lifetimeTicks());
-        }
+
         bindEventEntityClientForOnlinePlayers(hitbox);
         bindEventEntityClientForOnlinePlayers(display);
         sendTentacleAnimationVisualUpdate(display,
@@ -52210,12 +52170,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             removeTentacle(displayId, "small-kagune-retract");
             return;
         }
-        if (SmallKagunePolicy.expired(eventTickCounter,
-                smallKaguneExpiryTicks.getOrDefault(displayId, 0L))) {
-            tentacleMarker(display, TentacleAnimationPolicy.Marker.RECOVERY_START, null);
-            setTentacleState(display, TentacleAnimationPolicy.State.RETRACT, null);
-            return;
-        }
+
         if (elapsed < TentacleAnimationPolicy.durationTicks(animation)) {
             return;
         }
@@ -52650,7 +52605,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void removeTentacle(UUID entityId, String reason) {
-        smallKaguneExpiryTicks.remove(entityId);
         if (entityId == null) {
             return;
         }
@@ -52695,6 +52649,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void clearTentacles(String reason) {
+        smallKaguneCadence.pause();
         clearKaguneRingCast(reason);
         int count = tentacleController.count();
         for (UUID entityId : new HashSet<>(tentacleController.states().keySet())) {

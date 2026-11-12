@@ -1671,6 +1671,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private EventLayoutState persistedLayoutState = EventLayoutState.empty();
     private DepositJournal depositJournal;
     private EventSnapshot loadedSnapshot;
+    /** Immutable pre-teardown checkpoint; cleanup cannot replace it with empty ledgers. */
+    private EventSnapshot shutdownBossCheckpoint;
     private EndRiftEncounterController encounterController =
             new EndRiftEncounterController("", 0L, EventPhase.UNCONFIGURED);
     private final EndRiftEncounterCoordinator encounterCoordinator =
@@ -1996,6 +1998,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     @Override
     public void onEnable() {
+        shutdownBossCheckpoint = null;
         saveDefaultConfig();
         try {
             config = EventConfig.load(this);
@@ -2659,6 +2662,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // pending marker on the boss so a restart cannot strand a one-heart
         // invulnerable shell in BOSS_FINISH.
         if (isOfficialBoss(boss)) {
+            if (boss.getPersistentDataContainer().has(
+                    new NamespacedKey(this, "end_event_shutdown_recovery"), PersistentDataType.STRING)) {
+                forcePhase(EventPhase.RECOVERY_REQUIRED, "boss shutdown checkpoint was not committed");
+                return;
+            }
             // Display entities are intentionally treated as transient after a
             // restart. Recreate the generation-scoped controller and let the
             // boss tick rebuild a fresh, bounded set for the current fight.
@@ -5048,6 +5056,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private EventSnapshot snapshot() {
+        if (shutdownBossCheckpoint != null) return shutdownBossCheckpoint;
         return new EventSnapshot(
                 config.schemaVersion(), eventId, generation,
                 WaveTwoEntityRecoveryPolicy.phaseForCleanupFenceSnapshot(phase.name(), recoveryReason), worldName,
@@ -5702,6 +5711,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && (phase == EventPhase.WAVE_6 || testWaveFrontVisualMode);
         boolean preserveWaveSeven = activeWave == 7 && !testWaveInspectionMode
                 && (phase == EventPhase.WAVE_7 || testWaveFrontVisualMode);
+        if (phase == EventPhase.BOSS_ACTIVE && bossUuid != null) {
+            LivingEntity boss = liveBoss();
+            if (boss != null && boss.isValid() && !boss.isDead()
+                    && isOfficialBoss(boss) && ownedBySession(boss, eventId, generation))
+                preserved.add(bossUuid);
+        }
         if (preserveWaveOne) {
             for (UUID entityId : scope.entityIds()) {
                 Entity entity = ownedEntities.get(entityId);
@@ -6194,8 +6209,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         boolean preserveWave7ForRestart = activeWave == 7 && !testWaveInspectionMode
                 && (phase == EventPhase.WAVE_7 || testWaveFrontVisualMode);
         captureBlackFogShutdownCheckpoint();
+        LivingEntity stoppingBoss = liveBoss();
+        boolean preserveBossForRestart = phase == EventPhase.BOSS_ACTIVE
+                && stoppingBoss != null && stoppingBoss.isValid() && !stoppingBoss.isDead()
+                && isOfficialBoss(stoppingBoss) && ownedBySession(stoppingBoss, eventId, generation);
+        if (preserveBossForRestart) {
+            // Hazards above have restored their journals. Freeze health, dead
+            // slots, fall stage and clocks BEFORE clearTentacles empties them.
+            updatedAt = Instant.now().getEpochSecond();
+            shutdownBossCheckpoint = snapshot();
+            if (!saveStateSync()) stoppingBoss.getPersistentDataContainer().set(
+                    new NamespacedKey(this, "end_event_shutdown_recovery"), PersistentDataType.STRING,
+                    eventId + ":" + generation);
+        }
         cancelSessionTasks(preserveWave1ForRestart || preserveWave2ForRestart
-                || preserveWave6ForRestart || preserveWave7ForRestart);
+                || preserveWave6ForRestart || preserveWave7ForRestart || preserveBossForRestart);
         if (preserveWave1ForRestart) {
             getLogger().info("END_RIFT_WAVE1_RESTART_PRESERVED event=" + eventId
                     + " generation=" + generation + " delivered=" + currentCarrierCharges
@@ -6242,7 +6270,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             bossBar.removeAll();
         }
         if (stateStore != null) {
-            saveStateSync();
+            boolean committed = saveStateSync();
+            if (preserveBossForRestart) {
+                NamespacedKey recoveryKey = new NamespacedKey(this, "end_event_shutdown_recovery");
+                if (committed) stoppingBoss.getPersistentDataContainer().remove(recoveryKey);
+                else stoppingBoss.getPersistentDataContainer().set(recoveryKey, PersistentDataType.STRING,
+                        eventId + ":" + generation);
+            }
         }
         combatProfiles.clear();
         if (combatProfileListener != null) combatProfileListener.clear();

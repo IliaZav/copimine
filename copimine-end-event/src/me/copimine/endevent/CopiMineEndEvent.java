@@ -49206,7 +49206,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     block.setBlockData(infernoSafeBlockData(cell), false);
                 }
             }
-            for (InfernoArenaLifecyclePolicy.Cell cell : heatedInfernoCells(blocksByCell.keySet(), 1.0D)) {
+            // 14.2: the front STARTS at the centre. Passing 1.0 here would mean
+            // "the sweep already reached the rim", which lit every cell on tick
+            // zero and made the authored outward heating invisible.
+            for (InfernoArenaLifecyclePolicy.Cell cell : heatedInfernoCells(blocksByCell.keySet(), 0.0D)) {
                 Block block = blocksByCell.get(cell);
                 if (block != null) {
                     applyInfernoBurningBlock(block);
@@ -49275,6 +49278,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         double reach = Math.max(0.0D, Math.min(1.0D, progress));
         for (InfernoArenaLifecyclePolicy.Cell cell : cells) {
+            // 14.3: a cell the policy painted cold is never re-lit. The exclusion
+            // lives here so the initialization pass and every later sweep share
+            // one rule; two copies would drift and the party would eventually
+            // stand on "safe" ground that burns.
+            if (cell != null && arenaInfernoSafeBlocks.containsKey(
+                    new HazardPlanner.Point(cell.x(), cell.z()))) {
+                continue;
+            }
             if (infernoNormalisedRadius(cell) <= reach + 1.0E-9D) {
                 heated.add(cell);
             }
@@ -49431,7 +49442,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (boss == null) {
             return;
         }
-        try (java.io.FileWriter diag = new java.io.FileWriter("C:/Users/zavod/AppData/Local/Temp/diag_out.txt", true)) { diag.write("TICK " + castTick + " " + stage.phase(castTick) + " " + stage.durationTicks() + "\n"); } catch (Exception ignored) { }
         renderArenaHazardField(boss);
         for (Player player : eventAudience()) {
             if (!player.getWorld().equals(boss.getWorld())) {

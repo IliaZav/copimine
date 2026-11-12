@@ -80,14 +80,17 @@ public final class BossPhasePolicy {
                     // spells and this was not one of them, so the decoys were
                     // unreachable for the whole phase that owns them.
                     EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS,
-                    EndRiftAiPolicy.BossSpell.ARENA_INFERNO,
+                    // ARENA_INFERNO is Phase 4's spell. The inferno ticker clears
+                    // the cast on its first tick for any other phase, so offering
+                    // it here burned a cooldown, journaled the floor and flared for
+                    // a single tick. Phase 4 keeps it; Rage does not need it.
                     EndRiftAiPolicy.BossSpell.BOSS_FIREBALL,
                     EndRiftAiPolicy.BossSpell.MELEE_SWIPE,
                     EndRiftAiPolicy.BossSpell.CHEST_STRIKE,
                     EndRiftAiPolicy.BossSpell.GROUND_SLAM);
             case LAST_SEAL -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_MARK,
-                    EndRiftAiPolicy.BossSpell.ARENA_INFERNO,
+                    // Same reason as Rage: the inferno belongs to OVERLOAD.
                     EndRiftAiPolicy.BossSpell.BOSS_FIREBALL,
                     EndRiftAiPolicy.BossSpell.AMBUSH_GRAB,
                     EndRiftAiPolicy.BossSpell.SMALL_KAGUNE,

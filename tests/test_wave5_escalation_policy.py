@@ -18,6 +18,7 @@ public class FogEscalationProbe {
       int p=parties[i], n=BlackFogTimingPolicy.cycleCount(p);
       check(n==targets[i]);
       int zones=100, side=4, warning=100, fog=0;
+      int initialCapacity=-1, initialZones=-1;
       for(int c=0;c<n;c++) {
         int z=BlackFogTimingPolicy.zoneCount(p,c);
         int s=BlackFogSafeZonePolicy.sideForCycleAndPlayers(c,p);
@@ -26,11 +27,21 @@ public class FogEscalationProbe {
         check(z>=1 && z<=zones && s>=1 && s<=3 && s<=side && z*s*s>=p);
         check(w>=3 && w<=warning && w<=7 && f>=18 && f<=26 && f>=fog);
         zones=z; side=s; warning=w; fog=f;
+        if(initialCapacity<0){initialCapacity=z*s*s;initialZones=z;}
         check(BlackFogTimingPolicy.hasRemainingCycles(c,n));
       }
       check(side>=1 && zones*side*side>=p && warning==3 && fog==26);
       check(!BlackFogTimingPolicy.hasRemainingCycles(n,n));
-      check(zones < BlackFogTimingPolicy.zoneCount(p,0) || zones==1);
+      // 376c7e06 decoupled the shelter COUNT from the shrink, because a small
+      // party cannot fit into fewer refuges than players. What must contract is
+      // the total refuge capacity, and it must never fall below the party.
+      check(zones*side*side < initialCapacity);
+      check(zones*side*side >= p);
+      // Shelter count must never grow mid-wave. It cannot always fall: two
+      // players need two one-cell refuges, and there is no smaller shelter to
+      // give them, so only parties above two refuges must lose one by the end.
+      check(zones <= initialZones);
+      if (initialZones > 2) check(zones < initialZones);
       check(zones*side*side>=p); // 11-November contract supersedes deliberate exclusion.
     }
     check(BlackFogTimingPolicy.cycleCount(-1)==5);

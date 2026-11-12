@@ -23,6 +23,7 @@ def _run_probe(tmp_path: Path, name: str, body: str) -> str:
         PLUGIN / "domain/EventPhase.java",
         PLUGIN / "domain/BlackFogTimingPolicy.java",
         PLUGIN / "domain/EndRiftObjective.java",
+        PLUGIN / "domain/RiftRamPolicy.java",
     ]
     result = subprocess.run(
         [

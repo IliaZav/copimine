@@ -144,7 +144,7 @@ if ($env:PAPER_COMPILE_DEPS) {
 
 Remove-Item -LiteralPath $classes -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $classes | Out-Null
-$sources = Get-ChildItem -Path $srcRoot -Filter '*.java' -Recurse | Select-Object -ExpandProperty FullName
+$sources = @(Get-ChildItem -Path $srcRoot -Filter '*.java' -Recurse | Select-Object -ExpandProperty FullName)
 if (-not $sources) { throw "No Java sources found under $srcRoot." }
 # Compile encounter-owned shared helpers in the same invocation. They are
 # deliberately absent from Narcotics.jar and must not depend on build order.

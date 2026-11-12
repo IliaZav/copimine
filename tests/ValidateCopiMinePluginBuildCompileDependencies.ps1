@@ -74,15 +74,17 @@ foreach ($marker in @('me\clip\placeholderapi', 'thirdparty\client-mods', "'voic
 # The compiler is intercepted so the test cannot package or install a plugin.
 function Invoke-DependencyProbe {
   param([string]$BuildScript, [string]$FixtureRoot)
-  $probe = @{ Classpath = $null; Failure = $null }
+  $probe = @{ Classpath = $null; Failure = $null; Sources = @() }
   function javac {
     if ($args.Count -eq 1 -and $args[0].StartsWith('@')) {
       $compilerArgs = @(Get-Content -LiteralPath $args[0].Substring(1))
       $cpIndex = [Array]::IndexOf($compilerArgs, '-cp')
       $probe.Classpath = $compilerArgs[$cpIndex + 1].Trim('"') -replace '/', [IO.Path]::DirectorySeparatorChar
+      $probe.Sources = @($compilerArgs | Where-Object { $_ -match '\.java"?$' } | ForEach-Object { $_.Trim('"').Replace('\', '/') })
     } else {
       $cpIndex = [Array]::IndexOf($args, '-cp')
       $probe.Classpath = $args[$cpIndex + 1]
+      $probe.Sources = @($args | Where-Object { $_ -match '\.java"?$' } | ForEach-Object { $_.Trim('"').Replace('\', '/') })
     }
     throw 'DEPENDENCY_PROBE_COMPILER_REACHED'
   }
@@ -110,6 +112,14 @@ try {
   $fixtureMaven = Join-Path $fixtureRoot 'maven'
   $lockDirectory = Join-Path $fixtureRoot 'tools/minecraft-26.3'
   New-Item -ItemType Directory -Path $lockDirectory -Force | Out-Null
+  $protocolRelativeRoot = 'tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol'
+  $protocolHelpers = @('EncounterGenerationPolicy', 'KaguneRingFrame', 'BossAnimationPlayback')
+  $protocolFixtureRoot = Join-Path $fixtureRoot $protocolRelativeRoot
+  New-Item -ItemType Directory -Path $protocolFixtureRoot -Force | Out-Null
+  foreach ($helper in $protocolHelpers) {
+    Copy-Item -LiteralPath (Join-Path (Join-Path $root $protocolRelativeRoot) "$helper.java") `
+      -Destination (Join-Path $protocolFixtureRoot "$helper.java")
+  }
   $paperPath = Join-Path $fixtureMaven 'io/papermc/paper/paper-api/26.3.build.169-beta/paper-api-26.3.build.169-beta.jar'
   $paperFixtureSize = 4096
   $paperContent = 'locked-paper'.PadRight($paperFixtureSize, '_')
@@ -227,6 +237,14 @@ try {
           if ($result.Failure -ne 'DEPENDENCY_PROBE_COMPILER_REACHED' -or $result.Classpath -ne $expected) {
             $errors.Add("$buildScript [$scenario] must compile with exactly the locked classpath in lock order; failure=$($result.Failure); classpath=$($result.Classpath)")
           }
+          if ($buildScript -like '*end-event*') {
+            foreach ($helper in $protocolHelpers) {
+              $requiredSource = (Join-Path $protocolFixtureRoot "$helper.java").Replace('\', '/')
+              if (@($result.Sources | Where-Object { $_ -eq $requiredSource }).Count -ne 1) {
+                $errors.Add("$buildScript [$scenario] must compile encounter protocol helper exactly once: $helper; observed=$($result.Sources -join ',')")
+              }
+            }
+          }
         } elseif ($result.Classpath -or $result.Failure -notmatch 'Locked .*(missing|verification|count)') {
           $errors.Add("$buildScript [$scenario] must reject invalid dependencies before javac; failure=$($result.Failure)")
         }
@@ -266,6 +284,12 @@ try {
   ) -join [IO.Path]::PathSeparator
   if ($legacyProbe.Failure -ne 'DEPENDENCY_PROBE_COMPILER_REACHED' -or $legacyProbe.Classpath -ne $legacyExpectedClasspath) {
     $errors.Add("copimine-end-event/build-plugin.ps1 [legacy-paper] must select the freshly compiled legacy Narcotics classes; failure=$($legacyProbe.Failure); classpath=$($legacyProbe.Classpath)")
+  }
+  foreach ($helper in $protocolHelpers) {
+    $requiredSource = (Join-Path $protocolFixtureRoot "$helper.java").Replace('\', '/')
+    if (@($legacyProbe.Sources | Where-Object { $_ -eq $requiredSource }).Count -ne 1) {
+      $errors.Add("copimine-end-event/build-plugin.ps1 [legacy-paper] must compile encounter protocol helper exactly once: $helper")
+    }
   }
 } finally {
   foreach ($name in $savedEnvironment.Keys) { [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name], 'Process') }

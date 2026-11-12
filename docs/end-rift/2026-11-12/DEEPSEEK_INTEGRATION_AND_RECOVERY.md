@@ -95,3 +95,25 @@ The real target adapter was executed with a late visitor, a second admitted
 attacker, native retaliation, cast target clearing, focus restoration and an
 already-cancelled target event. The existing roster probe passed. Native
 multi-player movement/melee acceptance is still required.
+
+## Reproducible candidate and local compile evidence
+
+Upstream run 43233200331 failed the pinned client check before its tests. The
+three item-definition JSON files had CRLF bytes in the local worktree despite
+their existing eol=lf contract; the corresponding committed bytes were LF.
+Their working bytes were normalized to the existing contract, without changing
+assets or relaxing digest checks. Two clean modern client builds then produced
+15,031,570 bytes and SHA-256
+`71fd2445d6719865ca6a596ca49e704805cb4a5bfc3b051ac1dc7c37910c1ecf`.
+All 370 client JUnit tests passed. The modern server candidate is 2,451,049 bytes,
+SHA-256 `cd762b5add35efe17aec687126ea1242af9194d77c223825b06978c32d370af0`.
+All thirty pinned plugin candidates passed staging verification. The full tree
+compiled 395 sources / 1,083 classes against verified Paper 26.3.build.205-stable.
+The focused pursuit, guardian recovery, combat profile, real ring owner and elite
+presentation checks passed: 29 tests.
+
+CodeRabbit reviewed the six implementation groups against 124fdd7e and raised
+one major issue: a successful first frozen-snapshot write must remain sufficient
+if the redundant second write fails. That confirmed issue is repaired. Full
+Python/event gates and exact-final-SHA hosted CI are recorded separately when
+they finish; this section does not claim their completion.

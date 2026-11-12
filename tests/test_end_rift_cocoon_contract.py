@@ -457,7 +457,7 @@ public class FallProbe {
         check(stage == CocoonFallPolicy.Stage.FALLING, "broken anchors start the fall");
         stage = CocoonFallPolicy.advance(stage, CocoonFallPolicy.FALL_TICKS);
         check(stage == CocoonFallPolicy.Stage.LANDING, "the fall ends in a landing");
-        stage = CocoonFallPolicy.advance(stage, CocoonFallPolicy.LANDING_TICKS);
+        stage = CocoonFallPolicy.advance(stage, CocoonFallPolicy.FALL_TICKS + CocoonFallPolicy.LANDING_TICKS);
         check(stage == CocoonFallPolicy.Stage.MELEE_FURY, "the landing ends in fury");
         stage = CocoonFallPolicy.advance(stage, CocoonFallPolicy.LANDING_TICKS * 100);
         check(stage == CocoonFallPolicy.Stage.MELEE_FURY, "fury is permanent");
@@ -574,3 +574,37 @@ def test_cocoon_guarantees_are_wired_into_the_boss_loop():
     if os.environ.get("STRICT_COCOON_WIRING") == "1":
         raise AssertionError(message)
     pytest.xfail(message)
+def test_guardian_receipts_require_the_stored_generation(tmp_path):
+    run_probe(tmp_path,"GuardianGenerationProbe",r'''
+import me.copimine.endevent.domain.*;
+import java.util.*;
+public class GuardianGenerationProbe {
+ public static void main(String[] args){
+  var original=new GuardianDeathLedger(7);original.markAlive(0);original.recordDeath(0);original.markCocoonBroken();
+  for(String saved:Arrays.asList(null,"oops","0","8")){
+   var values=new HashMap<>(original.encode());
+   if(saved==null)values.remove(GuardianDeathLedger.KEY_PREFIX+"generation");
+   else values.put(GuardianDeathLedger.KEY_PREFIX+"generation",saved);
+   boolean refused=false;try{GuardianDeathLedger.decode(values,7);}catch(IllegalArgumentException expected){refused=true;}
+   if(!refused)throw new AssertionError("foreign or invalid stored generation was accepted: "+saved);
+  }
+  var valid=GuardianDeathLedger.decode(original.encode(),7);
+  if(!valid.isDestroyed(0)||!valid.cocoonBroken())throw new AssertionError("same-generation death lost");
+ }
+}
+''')
+
+def test_cocoon_fall_uses_one_absolute_clock_across_landing(tmp_path):
+    run_probe(tmp_path,"CocoonClockProbe",r'''
+import me.copimine.endevent.domain.*;
+public class CocoonClockProbe {
+ public static void main(String[] args){
+  var stage=CocoonFallPolicy.Stage.FALLING;
+  for(int tick=0;tick<=61;tick++){
+   stage=CocoonFallPolicy.advance(stage,tick);
+   var expected=tick<40?CocoonFallPolicy.Stage.FALLING:tick<60?CocoonFallPolicy.Stage.LANDING:CocoonFallPolicy.Stage.MELEE_FURY;
+   if(stage!=expected)throw new AssertionError("incorrect stage at absolute tick "+tick+": "+stage);
+  }
+ }
+}
+''')

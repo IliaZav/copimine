@@ -54,6 +54,7 @@ public class CombatProfileMainProbe {
     AttemptLifecycleController attemptLifecycle=new AttemptLifecycleController();
     Set<UUID> officialRewardRoster=new LinkedHashSet<>();UUID prisoner;
     Set<UUID> waveTwoCleanupEntityUuids=new LinkedHashSet<>(),waveTwoOutstandingEntityUuids=new LinkedHashSet<>();
+    me.copimine.endevent.domain.GuardianDeathLedger guardianDeaths=new me.copimine.endevent.domain.GuardianDeathLedger(71L);
     Map<Integer,Double> tentacleGuardianHealth=new HashMap<>();Map<Integer,Long> tentacleGuardianRespawnDeadlineMillis=new HashMap<>();
     final Set<Integer> tentacleGuardianWarnedSlots=new HashSet<>();
     double tentacleGuardianRegenerationGranted;
@@ -156,7 +157,7 @@ public class CombatProfileMainProbe {
                production / "domain/PressureBudgetController.java", production / "domain/WaveMechanicsPolicy.java", production / "domain/RiftCarrierPolicy.java",
                production / "domain/WaveTwoStagePolicy.java", production / "domain/WaveTwoHuntPolicy.java",
                production / "domain/WaveTwoEntityRecoveryPolicy.java",
-               production / "domain/CocoonFallPolicy.java", production / "domain/EndRiftAiPolicy.java",
+               production / "domain/GuardianDeathLedger.java", production / "domain/CocoonFallPolicy.java", production / "domain/EndRiftAiPolicy.java",
                production / "domain/TentacleGuardianPolicy.java", production / "domain/TentacleScalingPolicy.java",
                production / "domain/TentacleAnimationPolicy.java", production / "domain/BossPhase.java",
                production / "runtime/RealitySplitTrialController.java",

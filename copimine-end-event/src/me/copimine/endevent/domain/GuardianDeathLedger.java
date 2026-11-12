@@ -108,9 +108,17 @@ public final class GuardianDeathLedger {
     public static GuardianDeathLedger decode(java.util.Map<String, String> progress,
                                               long generation) {
         if (progress == null || progress.keySet().stream()
-                .noneMatch(key -> key.startsWith(KEY_PREFIX))) {
+                .noneMatch(key -> key.startsWith(KEY_PREFIX)) && !progress.containsKey(COCOON_BROKEN_KEY)) {
             return null;
         }
+        long storedGeneration;
+        try {
+            storedGeneration = Long.parseLong(progress.get(KEY_PREFIX + "generation"));
+        } catch (RuntimeException malformed) {
+            throw new IllegalArgumentException("INVALID_GUARDIAN_DEATH_GENERATION", malformed);
+        }
+        if (storedGeneration != generation || storedGeneration <= 0L)
+            throw new IllegalArgumentException("FOREIGN_GUARDIAN_DEATH_GENERATION");
         GuardianDeathLedger ledger = new GuardianDeathLedger(generation);
         for (java.util.Map.Entry<String, String> entry : progress.entrySet()) {
             String key = entry.getKey();
@@ -124,13 +132,19 @@ public final class GuardianDeathLedger {
             if (!"DONE".equals(entry.getValue())) {
                 throw new IllegalArgumentException("INVALID_GUARDIAN_DEATH_RECEIPT");
             }
-            String field = suffix.substring(0, suffix.indexOf('.'));
+            int separator = suffix.indexOf('.');
+            if (separator <= 0) throw new IllegalArgumentException("UNKNOWN_GUARDIAN_DEATH_KEY");
+            String field = suffix.substring(0, separator);
             int slot;
             try {
                 slot = Integer.parseInt(suffix.substring(suffix.indexOf('.') + 1));
             } catch (NumberFormatException invalid) {
                 throw new IllegalArgumentException("INVALID_GUARDIAN_DEATH_SLOT", invalid);
             }
+            if (slot < 0) throw new IllegalArgumentException("INVALID_GUARDIAN_DEATH_SLOT");
+            if (progress.containsKey(KEY_PREFIX + "alive." + slot)
+                    && progress.containsKey(KEY_PREFIX + "destroyed." + slot))
+                throw new IllegalArgumentException("CONTRADICTORY_GUARDIAN_DEATH_RECEIPT");
             if (field.equals("destroyed")) {
                 ledger.destroyed.add(slot);
                 ledger.living.remove(slot);

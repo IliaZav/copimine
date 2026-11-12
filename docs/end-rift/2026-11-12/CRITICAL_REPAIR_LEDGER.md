@@ -160,3 +160,32 @@ respects the total simultaneous cap.
 - Paper crash/restart, native collision pictures, full official run and
   performance: **NOT VERIFIED**. Regression ports detach actual Bukkit IO;
   they do not simulate a real server restart or prove actual journal fsync IO.
+
+## P0.4 — One cocoon clock and generation-fenced death restoration
+
+Two new domain regressions failed: an absolute tick sequence transitioned from
+LANDING to MELEE_FURY at tick 41; missing/invalid/foreign stored generation was
+accepted by `GuardianDeathLedger.decode`. The fall policy and production adapter
+now share the absolute descent clock: FALLING through 39, LANDING at 40 through
+59, MELEE_FURY at 60. The real movement adapter still owns accepted descent,
+landing cue, saved next sample and AI release; there is no second clock reset.
+
+Two additional actual snapshot-adapter cases failed because the event ignored
+stored death-ledger generation and contradictory living/dead health. New saves
+include the generation-scoped ledger. Restoration decodes it before loading
+slots and checks its living/dead/broken state against the saved health and fall
+receipts. Missing legacy ledgers still reconstruct from existing health; malformed
+or foreign ledgers and contradictory receipts enter recovery. Negative slots,
+unknown keys and simultaneous living/dead receipts are rejected.
+
+- Cocoon, real fall movement, generation/health snapshot, death wiring and combat
+  profile adapter suites: **61 passed**, exit 0;
+  `C:/Temp/cm-cocoon-generation-adapter-green.log` (20.99 seconds).
+- Pin/inventory checks: **142 passed, 3 skipped**, exit 0;
+  `C:/Temp/cm-cocoon-generation-pins.log`.
+- Modern `endEventJar`: **BUILD SUCCESSFUL**, exit 0;
+  `C:/Temp/cm-cocoon-generation-build.log`. Stage-only verification: 30 candidates.
+- Candidate: **2,405,592 bytes**, SHA-256
+  `0551f3bdb2bd92ba3d918ffb52b4552f7aa3e20e52db46e71aa69cc5a6994855`.
+- Actual landing animation in Minecraft, real server restart and uninterrupted
+  official encounter: **NOT VERIFIED**. No production/client replacement.

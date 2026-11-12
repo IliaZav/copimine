@@ -4525,6 +4525,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         tentacleDamageWindowEndsMillis = -1L;
         if (bossPhase != BossPhase.LAST_SEAL) return;
         try {
+            GuardianDeathLedger recordedDeaths = GuardianDeathLedger.decode(progress, generation);
             if (progress != null && progress.containsKey("boss-guardian-regeneration-disabled")) {
                 if (!"DONE".equals(progress.get("boss-guardian-regeneration-disabled"))) {
                     throw new IllegalArgumentException("INVALID_GUARDIAN_REGENERATION_RECEIPT");
@@ -4546,6 +4547,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             TentacleGuardianPolicy.SnapshotStateMillis restored =
                     TentacleGuardianPolicy.decodeSnapshotMillis(progress, tentacleActiveMillis);
             if (restored == null) {
+                if (recordedDeaths != null) throw new IllegalArgumentException("GUARDIAN_LEDGER_WITHOUT_HEALTH");
                 if (progress != null && progress.containsKey(CocoonFallPolicy.SNAPSHOT_KEY)) {
                     throw new IllegalArgumentException("COCOON_FALL_WITHOUT_GUARDIAN_SNAPSHOT");
                 }
@@ -4576,6 +4578,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 // Old post-break snapshots cannot prove whether landing already
                 // played. Do not silently replay or recreate a shielded cocoon.
                 throw new IllegalArgumentException("COCOON_FALL_CHECKPOINT_MISSING");
+            }
+            if (recordedDeaths != null) {
+                if (!recordedDeaths.destroyedSlots().equals(guardianDeaths.destroyedSlots())
+                        || !recordedDeaths.restorableSlots().equals(guardianDeaths.restorableSlots())
+                        || recordedDeaths.cocoonBroken() != guardianDeaths.cocoonBroken())
+                    throw new IllegalArgumentException("GUARDIAN_DEATH_HEALTH_MISMATCH");
+                guardianDeaths = recordedDeaths;
             }
             // A completed warning is active-combat progress too. Preserve its
             // receipt across restart so a save at t=89 does not move t=90 to
@@ -51090,10 +51099,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         boolean landingNow = CocoonFallPolicy.landingDue(cocoonFallElapsedTicks)
                 && CocoonFallPolicy.mayPlayLanding(cocoonLandingPlayed);
         // advance takes time IN THIS STAGE, not the whole descent's clock.
-        int stageTicks = cocoonFallStage == CocoonFallPolicy.Stage.LANDING
-                ? Math.max(0, cocoonFallElapsedTicks - CocoonFallPolicy.FALL_TICKS)
-                : cocoonFallElapsedTicks;
-        CocoonFallPolicy.Stage advanced = CocoonFallPolicy.advance(cocoonFallStage, stageTicks);
+        CocoonFallPolicy.Stage advanced = CocoonFallPolicy.advance(cocoonFallStage, cocoonFallElapsedTicks);
         boolean changed = advanced != cocoonFallStage;
         cocoonFallStage = advanced;
         cocoonFallElapsedTicks++;
@@ -51189,6 +51195,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (!tentacleGuardianHealth.isEmpty() || !tentacleGuardianRespawnDeadlineMillis.isEmpty()
                 || tentacleDamageWindowEndsMillis >= 0L) {
+            encoded.putAll(guardianDeaths.encode());
             encoded.putAll(TentacleGuardianPolicy.encodeSnapshotMillis(
                     tentacleGuardianHealth, tentacleGuardianRespawnDeadlineMillis,
                     tentacleDamageWindowEndsMillis, tentacleActiveMillis));

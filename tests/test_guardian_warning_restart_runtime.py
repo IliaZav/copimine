@@ -93,13 +93,25 @@ public class GuardianWarningRestartProbe {
     static GuardianWarningRestartProbe dead(){
         var p=new GuardianWarningRestartProbe();
         p.tentacleGuardianHealth.put(0,0.0);p.tentacleGuardianRespawnDeadlineMillis.put(0,90_000L);
+        p.guardianDeaths.markAlive(0);p.guardianDeaths.recordDeath(0);
         return p;
     }
     public static void main(String[] args){
         String scenario=args[0];
-        if(scenario.startsWith("fall-")) {
+        if(scenario.startsWith("ledger-")) {
+            var original=dead();var saved=new HashMap<String,String>();original.encodeTentacleGuardianState(saved);
+            saved.putAll(original.guardianDeaths.encode());
+            if(scenario.equals("ledger-generation"))saved.put(GuardianDeathLedger.KEY_PREFIX+"generation","8");
+            if(scenario.equals("ledger-health")) {
+                saved.remove(GuardianDeathLedger.KEY_PREFIX+"destroyed.0");
+                saved.put(GuardianDeathLedger.KEY_PREFIX+"alive.0","DONE");
+            }
+            var restored=new GuardianWarningRestartProbe();restored.restoreTentacleGuardianState(saved);
+            check(restored.phase==EventPhase.RECOVERY_REQUIRED,"invalid ledger was accepted by real restore adapter");
+        }else if(scenario.startsWith("fall-")) {
             var original=dead();original.tentacleDamageWindowEndsMillis=15_000L;
             original.cocoonFallStarted=true;original.cocoonFallGeneration=original.generation;
+            original.guardianDeaths.markCocoonBroken();
             int elapsed=Integer.parseInt(scenario.substring(5));
             original.cocoonFallElapsedTicks=elapsed;
             original.cocoonFallStage=elapsed<=40?CocoonFallPolicy.Stage.FALLING:
@@ -132,7 +144,7 @@ public class GuardianWarningRestartProbe {
             original.tentacleActiveMillis=scenario.startsWith("restart-")
                     ?Long.parseLong(scenario.substring(8)):89_000L;
             if(scenario.equals("independent-slots")) {
-                original.tentacleGuardianHealth.put(1,60.0);
+                original.tentacleGuardianHealth.put(1,60.0);original.guardianDeaths.markAlive(1);
             }
             var saved=new HashMap<String,String>();original.encodeTentacleGuardianState(saved);
             var restored=new GuardianWarningRestartProbe();restored.restoreTentacleGuardianState(saved);
@@ -170,7 +182,7 @@ def guardian_warning_probe(tmp_path_factory):
 
 
 @pytest.mark.parametrize("scenario", [
-    "restart-85000", "restart-89000", "restart-89999", "legacy-unwarned",
+    "ledger-generation", "ledger-health", "restart-85000", "restart-89000", "restart-89999", "legacy-unwarned",
     "independent-slots", "deferred-again", "invalid-value", "invalid-live", "invalid-too-early", "invalid-orphan",
 ])
 def test_guardian_restart_preserves_permanent_deaths_and_rejects_invalid_receipts(guardian_warning_probe, scenario):

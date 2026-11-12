@@ -130,13 +130,13 @@ public final class CocoonFallPolicy {
         return elapsedTicks >= FALL_TICKS;
     }
 
-    /** Complete transition for one tick; the adapter only renders it. */
+    /** One absolute tick clock from descent start, including the landing window. */
     public static Stage advance(Stage current, int elapsedTicks) {
         Stage safe = current == null ? Stage.COCOONED : current;
         return switch (safe) {
             case COCOONED, ANCHORS_BROKEN -> Stage.FALLING;
             case FALLING -> landingDue(elapsedTicks) ? Stage.LANDING : Stage.FALLING;
-            case LANDING -> elapsedTicks >= LANDING_TICKS ? Stage.MELEE_FURY : Stage.LANDING;
+            case LANDING -> elapsedTicks >= FALL_TICKS + LANDING_TICKS ? Stage.MELEE_FURY : Stage.LANDING;
             case MELEE_FURY -> Stage.MELEE_FURY;
         };
     }

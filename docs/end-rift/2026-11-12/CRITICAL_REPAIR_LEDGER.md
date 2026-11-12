@@ -114,3 +114,49 @@ adapters with detached Paper ports; they do not boot Paper.
 - Remaining Wave 6 visual review: final-pillar authored height/offsets and
   damage geometry must survive rebuild/update; six client armour stages need
   actual client acceptance. No visual completion claim is made here.
+
+## P0.2 — Fracture cell centers, collision and retained restoration
+
+Actual production state/collision reproduction: two selected cells at (-8,3)
+and (8,-3) produced a hit at the unrelated shared anchor and none at their
+visible intended cells. Each journaled floor cell now supplies its own column
+center `(x+.5, floorY+1, z+.5)` to rendering and collision. Shared batch lifetime
+and one-hit ledger remain authoritative. Moving between columns cannot yield a
+second hit in the same eruption. Canceled damage now passes through the existing
+accepted-damage adapter; rejected hits produce no custom launch or hit receipt.
+This is a spatial/collision repair, not acceptance of final geyser artwork.
+
+Five actual restore/teardown cases failed before correction: missing world,
+foreign block edit, refused block write, failed journal commit and missing
+journal. Successful restoration must match every original BlockData and then
+commit the journal. Already restored cells allow an idempotent retry. Failed
+cleanup retains runtime and coordinate ownership. Failed apply stays on a
+restore-only path; DONE cannot forget unresolved entries. Restore retries during
+active ticks are bounded to once per second. Session cancellation returns a
+failure while fracture ownership remains, preventing a silent generation reset.
+
+Cold recovery previously only recognized MAGMA, although warning stages write
+cracked blocks, and marked the journal restored even after unconfirmed writes.
+The actual prior recovery branch reproduced four failures. A dedicated recovery
+adapter recognizes all owned fracture surfaces, preserves foreign edits,
+verifies exact originals (including an optional web) and enters recovery before
+journal retirement when any operation is unconfirmed.
+
+Three cell-selection assertions reproduced occupied-floor and full-record
+identity defects. Selection now keys protection/occupation by (x,z), counts
+unique arena cells, subtracts existing mutations from the safe-floor budget and
+respects the total simultaneous cap.
+
+- Focused actual state/collision/restore/cold-recovery probes plus fracture,
+  inferno/Echo policy and wiring suites: **40 passed**, exit 0;
+  `C:/Temp/cm-fracture-accepted-green.log` (17.02 seconds).
+- Modern `endEventJar`: **BUILD SUCCESSFUL**, exit 0;
+  `C:/Temp/cm-fracture-build.log`.
+- Pin/inventory checks: **142 passed, 3 skipped**, exit 0;
+  `C:/Temp/cm-fracture-pins.log`.
+- Stage-only verification: **30 pinned plugin candidates**, no installation.
+- Candidate: **2,405,303 bytes**, SHA-256
+  `b2f1ca868e1af070550b79cbcfe95fcbdd765aff3fc1005ddb14482a59f1a11a`.
+- Paper crash/restart, native collision pictures, full official run and
+  performance: **NOT VERIFIED**. Regression ports detach actual Bukkit IO;
+  they do not simulate a real server restart or prove actual journal fsync IO.

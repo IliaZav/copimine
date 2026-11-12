@@ -448,6 +448,22 @@ public final class RiftFractureEruptionPolicyTest {
         check("at least a third of the arena stays safe",
                 safe >= Math.ceil(arena.size() * 0.34D));
 
+        List<Cell> ten = new ArrayList<>();
+        for (int x = 0; x < 10; x++) ten.add(new Cell(x, 0));
+        Set<Cell> sixOccupied = new HashSet<>();
+        for (int x = 0; x < 6; x++) sixOccupied.add(new Cell(x, 0));
+        check("existing mutations consume the safe-floor budget",
+                RiftFractureEruptionPolicy.selectCells(ten, Set.of(), sixOccupied,
+                        4, 6, 1, .4D, 7).isEmpty());
+        Cell differentlyFlagged = new Cell(9, 0, true, false, true, false, false, false);
+        check("protected identity is xz rather than mutable flags",
+                RiftFractureEruptionPolicy.selectCells(List.of(new Cell(9, 0)),
+                        Set.of(differentlyFlagged), Set.of(), 1, 6, 1, 0, 7).isEmpty());
+        List<Cell> duplicated = new ArrayList<>(ten);duplicated.addAll(ten);
+        check("duplicate input cannot increase the mutation budget",
+                RiftFractureEruptionPolicy.selectCells(duplicated, Set.of(), sixOccupied,
+                        4, 6, 1, .4D, 7).isEmpty());
+
         // Degenerate input.
         check("a null arena selects nothing",
                 RiftFractureEruptionPolicy.selectCells(

@@ -199,7 +199,7 @@ def test_one_eruption_never_damages_the_same_player_twice() -> None:
            "scopedKey(" in body
     check = body.index("mayDamagePlayer(")
     add = body.index("state.damagedPlayers().add(")
-    hurt = body.index("player.damage(damage")
+    hurt = body.index("applyBossAbilityDamage(attacker, player, damage)")
     assert check < add < hurt, (
         "the ledger must be asked, then written, before the hit is dealt"
     )
@@ -262,10 +262,12 @@ def test_a_failed_journal_commit_keeps_the_originals() -> None:
 def test_teardown_restores_before_it_forgets() -> None:
     body = method("void clearCurrentRiftFractures")
     restore = body.index("restoreCurrentRiftFractureBlocks(state)")
-    forget = body.index("activeCurrentRiftFractures.clear()")
+    forget = body.index("removeCurrentRiftFracture(state, reason)")
     assert restore < forget, (
         "the teardown must restore the floor before dropping its own state"
     )
+    assert "if (restoreCurrentRiftFractureBlocks(state))" in body
+    assert "if (activeCurrentRiftFractures.isEmpty())" in body
     assert "currentRiftFractureCells.clear()" in body
 
 

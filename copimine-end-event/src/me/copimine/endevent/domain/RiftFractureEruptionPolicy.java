@@ -386,18 +386,22 @@ public final class RiftFractureEruptionPolicy {
         }
         double safeRatio = Double.isNaN(minimumSafeRatio) || Double.isInfinite(minimumSafeRatio)
                 ? MINIMUM_SAFE_RATIO : Math.max(0.0D, Math.min(1.0D, minimumSafeRatio));
-        Set<Cell> blocked = new HashSet<>();
-        if (protectedCells != null) {
-            blocked.addAll(protectedCells);
+        Set<Long> blocked = new HashSet<>();
+        if (protectedCells != null) for (Cell cell : protectedCells) {
+            if (cell != null) blocked.add(coordinate(cell));
         }
-        if (occupied != null) {
-            blocked.addAll(occupied);
+        Set<Long> occupiedCoordinates = new HashSet<>();
+        if (occupied != null) for (Cell cell : occupied) {
+            if (cell != null) occupiedCoordinates.add(coordinate(cell));
         }
-        Map<Cell, Cell> unique = new LinkedHashMap<>();
+        blocked.addAll(occupiedCoordinates);
+        Set<Long> arenaCoordinates = new HashSet<>();
+        Map<Long, Cell> unique = new LinkedHashMap<>();
         for (Cell cell : arena) {
-            if (cell != null && cell.eligible() && !blocked.contains(cell)) {
-                unique.putIfAbsent(cell, cell);
-            }
+            if (cell == null) continue;
+            long key = coordinate(cell);
+            arenaCoordinates.add(key);
+            if (cell.eligible() && !blocked.contains(key)) unique.putIfAbsent(key, cell);
         }
         List<Cell> candidates = new ArrayList<>(unique.values());
         // Deterministic order before the shuffle, so the same seed always gives
@@ -407,9 +411,11 @@ public final class RiftFractureEruptionPolicy {
         java.util.Collections.shuffle(candidates, new Random(seed));
 
         // The arena must keep enough safe floor for the party after mutation.
-        int safeRequired = (int) Math.ceil(arena.size() * safeRatio);
-        int mutableBudget = Math.max(0, arena.size() - safeRequired);
-        int allowed = Math.min(limit, mutableBudget);
+        int safeRequired = (int) Math.ceil(arenaCoordinates.size() * safeRatio);
+        occupiedCoordinates.retainAll(arenaCoordinates);
+        int existing = occupiedCoordinates.size();
+        int mutableBudget = Math.max(0, arenaCoordinates.size() - safeRequired - existing);
+        int allowed = Math.max(0, Math.min(Math.min(limit, mutableBudget), MAX_SIMULTANEOUS - existing));
 
         List<Cell> chosen = new ArrayList<>(allowed);
         for (Cell candidate : candidates) {
@@ -429,6 +435,10 @@ public final class RiftFractureEruptionPolicy {
             }
         }
         return List.copyOf(chosen);
+    }
+
+    private static long coordinate(Cell cell) {
+        return ((long) cell.x() << 32) ^ (cell.z() & 0xffffffffL);
     }
 
     /** Convenience: the surface block data of one cell at a given crack progress. */

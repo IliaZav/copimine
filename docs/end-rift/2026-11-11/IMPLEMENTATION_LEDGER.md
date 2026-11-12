@@ -908,3 +908,56 @@ build on this machine produces, and turned a transient into a permanent defect.
 
 Reproduced on my side, so it is evidenced rather than argued: the plugin digest
 is identical under `endEventJar` and under CI's `PrepareMigrationCandidates.ps1`.
+
+## A stale staged jar, and why only CI could see it
+
+After the pins were fixed, CI failed again - this time in *Run Python contract
+tests*, on a check the local suite passes:
+
+```
+AssertionError: staged CopiMineClient JAR payload is not produced from the
+current source: source_content=60c1cdf3... staged_content=0de62be8...
+```
+
+Twenty-four core client classes differed. My first instinct was that CI was
+wrong, because the suite is green here and `git status` was clean.
+
+It was not wrong. The test compares `CopiMineClient/build/libs/` (a fresh
+compile) against `thirdparty/client-mods/CopiMineClient-0.1.1.jar` (the
+committed artifact the release pins). CI compiles the legacy client from scratch
+via `CopiMineClient/build-client.ps1` before running tests, so it always holds a
+genuine compile. My machine had a **cached** build from an earlier session whose
+output happened to equal the committed jar, so the two agreed and the test
+passed without ever exercising the comparison.
+
+Deleting `CopiMineClient/build` and rebuilding reproduced CI immediately:
+`e642a1aa`, 13,008,097 bytes, against the committed `f33c8612` at 13,008,176.
+The committed jar was stale by 79 bytes.
+
+Note which way that reads. The test is correct and the *green* result was the
+misleading one. A cache that matches a stale artifact is a coincidence, not
+evidence, and it quietly converts a real regression into a passing run.
+
+Fix: re-stage the freshly built jar, update `thirdparty/checksums.txt` and
+`thirdparty/thirdparty_manifest.json` (sha256 and sha1), and rebuild
+`CopiMineMods.zip`, which the build script refuses to do while a checksum
+disagrees.
+
+This is the second time this exact file has caused this exact failure. Commit
+`36d34400` moved the Wave 6 endermite skin out of
+`CopiMineClient/src/main/resources` for the same reason and left a warning that
+the failure once burned 46 minutes inside `difflib` comparing two 13 MB byte
+strings. The lesson there was about a shared resource tree; the lesson here is
+about caching. Both reduce to: **the legacy 0.1.1 client is a separately
+published artifact, and its staged copy has to be refreshed whenever its sources
+or its resource tree move.**
+
+Two traps met on the way, both worth recording:
+
+- `git show HEAD:path > file` **mangles binary output** under CRLF translation:
+  the 13,008,176-byte jar came back as 24,791,628 bytes of shifted bytes. Hash
+  committed blobs with `git cat-file blob` into a buffer, never through a shell
+  redirect, or a CRC error will look like a content difference.
+- `Get-FileHash` on the *worktree* file was correct all along; only the
+  redirect lied. Confirm which of two disagreeing tools is actually wrong before
+  acting on either.

@@ -189,3 +189,34 @@ unknown keys and simultaneous living/dead receipts are rejected.
   `0551f3bdb2bd92ba3d918ffb52b4552f7aa3e20e52db46e71aa69cc5a6994855`.
 - Actual landing animation in Minecraft, real server restart and uninterrupted
   official encounter: **NOT VERIFIED**. No production/client replacement.
+
+## Whole-suite checkpoint c5990587 and client staging reconciliation
+
+`Python313 -m pytest -q -ra tests --basetemp=C:/Temp/cm-critical-c599-full
+-p no:cacheprovider`: **5 failed, 3521 passed, 11 skipped, 2 subtests passed**,
+exit 1, 769.15 seconds. Log: `C:/Temp/cm-critical-c599-full.log`.
+Four failures exposed mixed legacy client build/staging/remap outputs (including
+a dev refmap inconsistent with compiler output and a ZIP carrying a different
+client). The fifth was a source-string test demanding unconditional
+`completed=true` after Ram death; its assertion now requires both actual death
+receipts and conditional cleanup. Actual death-order behavior is covered by
+P0.1b, not replaced with a new unconditional completion shortcut.
+
+A fresh JDK21/Gradle8.10.2 `jar remapJar` succeeded in 26 seconds. Its remapped
+legacy client SHA-256 is `e642a1aa85e1fbfe039562035b26d1c538cb2877e7342714ef593de6f3f55f0e`,
+matching the previously staged JAR. Thus the previous staged JAR itself did not
+need replacement: the inconsistent local output and installable ZIP needed
+reconciliation. `build_modpack.ps1 -SyncBuiltClient` rebuilt the ZIP and updated
+its SHA1/SHA256 and public snapshot together. Exact pre-change copies were saved
+in `artifacts/critical-c599-client-stage-backup/`. The separate source-of-truth
+checkout, installed Prism mod and production were untouched.
+
+- Targeted artifact/current-contract/Ram-contract recheck: **143 passed,
+  1 skipped**, exit 0, 2.42 seconds;
+  `C:/Temp/cm-critical-five-failures-green.log`.
+- Legacy build: `C:/Temp/cm-critical-legacy-client-build.log`.
+- ZIP sync: `C:/Temp/cm-critical-client-stage-sync.log`.
+- ZIP: **25,187,185 bytes**, SHA-256
+  `4c183a3ea3aa7bbc931844a212d79a6a0c8abe3dc1ec89c88789a89916716ade`.
+- The failed whole run and failed event gate are retained as failures. A new
+  complete run/gate is still required; targeted success does not replace it.

@@ -1831,6 +1831,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private EndRiftAiPolicy.BossSpell previousBossSpell;
     /** Current group-combat brain state; all inputs are rebuilt from event-local players only. */
     private final BossBrain bossBrain = new BossBrain();
+    private final me.copimine.endevent.domain.BossSpellTargetSelector bossSpellTargets =
+            new me.copimine.endevent.domain.BossSpellTargetSelector();
     private BossHazardBudget bossHazardBudget = new BossHazardBudget();
     private BossIntent currentBossIntent = BossIntent.RECOVER;
     private UUID currentBossBrainTarget;
@@ -48328,29 +48330,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private Player selectBossSpellTarget(LivingEntity boss) {
-        List<Player> candidates = activeLivingPlayers();
-        if (candidates.isEmpty()) {
-            return null;
-        }
-        long now = System.currentTimeMillis();
-        Player currentPlayer = boss instanceof Mob mob && mob.getTarget() instanceof Player player
-                && isCombatTarget(player) ? player : null;
-        BossTargetPolicy.TargetDecision decision = BossTargetPolicy.chooseTarget(
-                candidates.stream().map(Player::getUniqueId)
-                        .sorted(Comparator.comparing(UUID::toString)).toList(),
-                currentPlayer == null ? null : currentPlayer.getUniqueId(),
-                new ArrayList<>(recentBossTargets), now, bossTargetLockUntilMillis,
-                bossTargetCursor++, config.bossTargetLockSeconds() * 1000L);
-        Player target = decision.target() == null ? null : Bukkit.getPlayer(decision.target());
-        if (target == null || !isCombatTarget(target)) {
-            return candidates.stream().filter(this::isCombatTarget).findFirst().orElse(null);
-        }
-        bossTargetLockUntilMillis = decision.newLockUntilMillis();
-        if (boss instanceof Mob mob && (currentPlayer == null
-                || !currentPlayer.getUniqueId().equals(target.getUniqueId()))) {
-            mob.setTarget(target);
-        }
-        return target;
+        if (boss == null || !boss.isValid() || boss.isDead()) return null;
+        List<Player> candidates = activeBossParticipants();
+        UUID selected = bossSpellTargets.choose(generation,
+                candidates.stream().map(Player::getUniqueId).toList(), config.bossRecentTargetMemory());
+        if (selected == null) return null;
+        // Spell targeting must never call setTarget or refresh the pursuit lock.
+        // The cast timeline owns this player; rotateBossTarget owns navigation.
+        return candidates.stream().filter(player -> selected.equals(player.getUniqueId()))
+                .filter(this::isActiveBossParticipant).findFirst().orElse(null);
     }
 
     /** Request role-aware pathing without ever steering the boss at Core. */

@@ -93,9 +93,12 @@ defender slot during recovery.
 
 ## Next implementation boundaries
 
-1. Separate primary pursuit focus from spell-target history. A ranged target must
-   not call `Mob.setTarget` or refresh the pursuit lock. Navigation, contact
-   commitment and cast selection must have one movement authority each.
+1. `BossSpellTargetSelector` now owns generation-scoped cast fairness/history.
+   The production spell selector no longer calls `Mob.setTarget`, increments the
+   pursuit cursor or refreshes its lock. Navigation remains owned by
+   `rotateBossTarget`; each committed cast retains its own target. Remaining AI
+   work is movement/cast recovery, faster authored contact timing and native group
+   acceptance across all grounded phases.
 2. Replace the small-Kagune loose timer fields with one generation-scoped cadence
    owner. Count living accepted actors, retain surviving enemies after collapse,
    remove the obsolete lifetime bookkeeping and persist remaining active time.

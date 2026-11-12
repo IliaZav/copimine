@@ -414,3 +414,71 @@ Not one of these four repairs has been observed in a running Minecraft client.
 No wave, boss engagement, ring cast, inferno cast, decoy sighting or small-Kagune
 cadence was witnessed. Status of all four is IMPLEMENTED and AUTOMATED-TESTED
 only; LIVE-PAPER-VERIFIED and VISUALLY-VERIFIED remain unmet.
+
+---
+
+## P0 3.1 - Wave 6 Rift Ram: the objective asked for 3 of 7 collisions
+
+**Reproduced, then repaired.** This is the same shape as the Kagune ring defect:
+the domain policy was right and the caller disagreed with it.
+
+`RiftRamPolicy` states the roster and is internally consistent:
+
+```
+MINOR_PILLARS        = 4     // four ordinary pillars, one collision each
+FINAL_PILLAR_IMPACTS = 3     // the oversized final pillar absorbs three
+PILLAR_COUNT         = 5
+REQUIRED_IMPACTS     = 7
+```
+
+`EndRiftObjective.REQUIRED_PILLAR_IMPACTS` was a flat **3**, a leftover from the
+retired single-pillar design. So the wave objective could be satisfied after
+three collisions while the boss bar (`bossBarProgress`), the armour plate model
+(`ARMOUR_PLATES = REQUIRED_IMPACTS`), the damage ladder (`damageMultiplier`),
+the health floor and the completion gate (`isComplete`) all still counted seven.
+The wave could finish with the final pillar standing.
+
+### Why the requirement alone was not the whole bug
+
+Fixing the constant would have made the objective *correct* but still
+*unreadable*: the wave adapter only ever received a completion boolean, so a
+counter-shaped objective reported zero progress right up to the last collision.
+Any display reconciling against it would have shown 0/7 then jump to done. The
+repair therefore carries the count through:
+
+- `WaveEncounter.reportRuntimeResult(context, complete, reportedProgress)`,
+  with the two-argument form still present and delegating with `0`, so no
+  existing caller changed.
+- `tickCurrentWave(context, complete, progress)` in the coordinator, same
+  backwards-compatible overload.
+- `AbstractWaveEncounter` clamps the count into `[0, required]`.
+- `CopiMineEndEvent.liveObjectiveProgress` publishes `riftRam.impacts()` for the
+  `RIFT_RAM` objective only; every other wave keeps reporting completion alone.
+
+`RiftRamWaveEncounter` deliberately adds **no** second clamp: its `required` IS
+`RiftRamPolicy.REQUIRED_IMPACTS`, so the shared clamp already bounds the count by
+the roster exactly. A duplicate guard there would be dead code that no
+behavioural test could distinguish, and it is recorded as such rather than
+claimed as a caught mutation.
+
+### Proof
+
+`tests/test_wave6_pillar_roster_objective_contract.py` compiles the real classes
+and asserts the live impact count reaches the objective. Mutating the constant
+back to a flat `3` fails it:
+
+```
+FAILED test_live_pillar_impacts_reach_the_wave_objective
+1 failed in 1.46s
+```
+
+The source was restored afterwards and the restore verified. Wave 6 suites:
+109 passed. Full plugin build: EXIT=0.
+
+### Not verified
+
+No Rift Ram run was watched in a client, so the display invariant is
+IMPLEMENTED and AUTOMATED-TESTED only. The second half of P0 3.1 - skeleton
+recovery across an interrupted encounter - is **still open**: the existing
+`tests/test_wave6_pillar_skeleton.py` passes, but I have not reproduced a
+failure of it, so I am not claiming it repaired.

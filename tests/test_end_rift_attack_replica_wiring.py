@@ -43,12 +43,17 @@ def test_replicas_appear_when_rage_begins():
         "VOID_BLAST has no timeline: handing it to the policy silently empties "
         "the whole mechanic"
     )
-    assert "transition.entered().contains(BossPhase.RAGE)" in text
-    rage = text.index("transition.entered().contains(BossPhase.RAGE)")
-    call = text.index("startEchoAttackReplicas(boss,", rage)
-    assert "EndRiftAiPolicy.BossSpell.MELEE_SWIPE.name()" in text[rage:call + 200], (
-        "contract 15.2 Type A belongs to RAGE, and the copy repeats the strike "
-        "the boss actually committed"
+    # Copies are no longer spawned from one RAGE-transition site. They start on
+    # any contact ability cast during RAGE, so the copy repeats the strike the
+    # boss actually committed instead of a hardcoded family.
+    call = text.index("startEchoAttackReplicas(boss,")
+    context = text[call - 300:call + 120]
+    assert "bossPhase == BossPhase.RAGE" in context, (
+        "contract 15.2 Type A belongs to RAGE"
+    )
+    assert "isContactBossAbility(spell)" in context, "only contact strikes get copied"
+    assert "spell.name()" in context, (
+        "the copy repeats the strike the boss actually committed"
     )
 
 

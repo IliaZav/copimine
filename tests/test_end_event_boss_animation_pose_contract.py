@@ -124,7 +124,13 @@ def test_authoritative_hitbox_update_uses_authored_clock_not_state_offsets() -> 
     assert "BossAnimationPosePolicy" in event
     assert "bossHitboxAnimationId" in event
     assert "bossHitboxAnimationStartedMillis" in event
-    assert "BossAnimationPosePolicy.sampleSegments(bossHitboxAnimationId, elapsedTicks)" in event
+    # The hitbox must sample the SAME authored timeline the client renders, so
+    # elapsed wall-clock ticks are converted through BossAnimationPlayback
+    # before they reach the pose policy. Asserting the pre-conversion one-liner
+    # would have pinned a state where the server and client disagree.
+    assert "BossAnimationPosePolicy.sampleSegments(bossHitboxAnimationId," in event
+    assert "me.copimine.protocol.BossAnimationPlayback.authoredTicks(" in event
+    assert "bossHitboxAnimationId, elapsedTicks)" in event
     assert "new BossHitboxTransformPolicy.PoseOffset(-1.5D" not in event
     assert "new BossHitboxTransformPolicy.PoseOffset(-3.0D" not in event
     start = event.index("private Map<BossHitboxProfile.PartKey, BossHitboxPose> bossHitboxPoseOffsets()")

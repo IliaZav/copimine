@@ -241,6 +241,27 @@ assumptions — that a spread radius of 4.0 is not "stacked" (it is), and that
 leaving `bossPosition` null is harmless (it silently centres the boss, making
 any nearby player look like an encirclement). Both are now comments in the tests.
 
+
+Seven more classes had no behavioural test at all, and all seven now do:
+
+- `WaveMusicMixPolicy` — the wave 5 music ducking, and the scope check that stops
+  the mod rewriting vanilla or other-mod audio;
+- `RiftRamVisualPolicy` — the six Wave 6 armour stages, including the clamp that
+  keeps a malformed payload from rendering an invisible ram;
+- `RemoteVisualCapacityPolicy` — the concurrent-visual bound, and the
+  idempotency that stops an update to a running effect being dropped;
+- `ClientVisualCommandPolicy` — STOP and CLEAR_ALL must pass even when the player
+  has disabled server visuals, or an overlay can never be cleared;
+- `EchoEyesFeature` — the violet eye tint and the draw order that keeps it
+  readable (presentation half of ECHO-003);
+- `KaguneRingGapPolicy.sameDirection`, `BlackFogShelterMobPolicy`,
+  `BossIntentSelector` — already covered above.
+
+Every one of them was mutated after the test was written, and every mutant was
+caught. The two that caught nothing on the first attempt were my own weak
+assertions, not the code: the ring test originally checked only monotonicity,
+which a zeroed separation constant leaves intact, and the music test needed an
+exact-gain assertion rather than a glide check alone.
 ### A mutation that lied
 
 My first attempt to mutate the Rage spell pool reported the gate still green,

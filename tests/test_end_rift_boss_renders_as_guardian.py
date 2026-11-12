@@ -96,7 +96,26 @@ def test_the_guardian_visual_selects_the_guardian_texture():
 
 def test_the_guardian_predicate_accepts_both_routes():
     mixin = (CLIENT / "mixin/LivingEntityRendererMixin.java").read_text(encoding="utf-8")
-    helper = mixin[mixin.index("copimine$isGuardianState(EndRiftRenderStateAccess bound)"):]
-    helper = helper[:helper.index("    }")]
-    assert "copimine$endBoss()" in helper, "the flag route must still work"
-    assert "END_RIFT_GUARDIAN_V1" in helper, "the visual id route must also work"
+
+    def method_body(signature):
+        """The body of one mixin method, stopping at its own closing brace."""
+        start = mixin.index("{", mixin.index(signature)) + 1
+        depth, cursor = 1, start
+        while depth:
+            if mixin[cursor] == "{":
+                depth += 1
+            elif mixin[cursor] == "}":
+                depth -= 1
+            cursor += 1
+        return mixin[start:cursor - 1]
+
+    predicate = method_body("copimine$isGuardianState(EndRiftRenderStateAccess bound)")
+    assert "copimine$endBoss()" in predicate, "the flag route must still work"
+    # The visual ids live in the shared list, not in the predicate, so the
+    # predicate must delegate to it. Asserting the literal itself would pin
+    # where the list is written rather than that the route is honoured.
+    assert "copimine$wearsGuardianBody" in predicate, (
+        "the predicate must delegate the visual id route to the shared list")
+    shared = method_body("copimine$wearsGuardianBody(String visual)")
+    assert "END_RIFT_GUARDIAN_V1" in shared, (
+        "the real Guardian visual must be in the shared list")

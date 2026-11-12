@@ -1,5 +1,6 @@
 """Run real javac through the gate's argument writer in a Unicode/spaced path."""
 from pathlib import Path
+import os
 import shutil
 import subprocess
 import pytest
@@ -29,8 +30,21 @@ Write-FullTreeJavaArgumentFile -Path $argfile -ClassPath $classpath -Sources $so
  ps=folder/"write.ps1"
  def quote(p):return "'"+str(p).replace("'","''")+"'"
  ps.write_text("$ErrorActionPreference='Stop'\n$source="+quote(source)+"\n$argfile="+quote(argfile)+"\n$classpath="+quote(folder)+"\n$sources=@("+quote(java)+")\n"+build,encoding="utf-8-sig")
- wrote=subprocess.run([shell,"-NoProfile","-ExecutionPolicy","Bypass","-File",str(ps)],capture_output=True,text=True)
+ # The Unicode path must never travel through a process argument list: on a
+ # host whose ANSI code page cannot represent it, Windows rewrites the
+ # characters to "?" before the child process sees them, and the test then
+ # fails on the harness rather than on the argument writer. Pass it through
+ # the environment instead, which carries Unicode end to end.
+ # -File does not expand variables, so run the Unicode-named script through
+ # an ASCII-named launcher in the same folder.
+ launcher=tmp_path/"launch.ps1"
+ launcher.write_text("& $env:COPIMINE_ARG_TEST_SCRIPT",encoding="utf-8-sig")
+ env=dict(os.environ,COPIMINE_ARG_TEST_SCRIPT=str(ps),COPIMINE_ARG_TEST_ARGFILE=str(argfile))
+ wrote=subprocess.run([shell,"-NoProfile","-ExecutionPolicy","Bypass","-File",str(launcher)],capture_output=True,text=True,env=env)
  assert wrote.returncode==0,wrote.stdout+wrote.stderr
- compiled=subprocess.run([compiler,"@"+str(argfile),"-d",str(out)],capture_output=True,text=True)
+ # javac honours a relative @file against its working directory, so the
+ # non-ASCII path reaches it through cwd rather than through argv.
+ compiled=subprocess.run([compiler,"@"+argfile.name,"-d",out.name],capture_output=True,
+  text=True,cwd=str(folder),env=env)
  assert compiled.returncode==0,compiled.stdout+compiled.stderr
  assert (out/"Probe.class").is_file()

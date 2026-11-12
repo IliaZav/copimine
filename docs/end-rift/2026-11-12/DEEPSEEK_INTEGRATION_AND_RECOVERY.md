@@ -117,3 +117,27 @@ one major issue: a successful first frozen-snapshot write must remain sufficient
 if the redundant second write fails. That confirmed issue is repaired. Full
 Python/event gates and exact-final-SHA hosted CI are recorded separately when
 they finish; this section does not claim their completion.
+
+## Echo Type B real damage transaction
+
+A further runtime audit confirmed `EchoDecoyPolicy.decoyDamage` had no production
+caller. The real Bukkit damage adapter now resolves direct and projectile
+shooters, rejects stale phase/generation, rejects removed/foreign actors and
+nonparticipant/friendly targets, and sets the native transaction's base damage
+to 45% of the current real boss melee profile. It does not issue a second hit
+or mutate HP itself; armor/shield/protection and accepted native damage remain
+owned by Paper. Existing cancellation remains untouched. The decoy PDC kind
+also identifies arrows whose shooter has already left the live roster, so they
+are refused rather than reverting to ordinary unscaled damage.
+
+Pillager arrows now have event ownership, pickup disabled, bounded admission
+and the existing event-arrow lifetime. Phase/encounter cleanup removes the
+owned arrows along with their decoys. This adds no recurring scheduler. The
+real adapter regression first failed because the hook was absent; it then
+passed direct melee, projectiles, friendly actors, outsider, prior cancellation,
+removed actor, stale generation, phase exit and inactive encounter scenarios.
+The current client already has an IllagerRenderState Guardian-model route;
+this audit preserves it. Spawn uses the existing indexed safe arena-ring
+allocator; the boss-location argument is not a literal shared spawn point.
+Native decoy movement, animation, shape and sword/arrow interaction remain
+NOT VERIFIED.

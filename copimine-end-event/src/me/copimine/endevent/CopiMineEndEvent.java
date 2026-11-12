@@ -921,6 +921,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<UUID> spellServants = new HashSet<>();
     /** Contract 15.3: living Echo decoys of the real Guardian, this generation. */
     private final Set<UUID> echoDecoyIds = new LinkedHashSet<>();
+    private final Set<UUID> echoDecoyArrowIds = new LinkedHashSet<>();
     private long echoDecoyLastSummonTick = Long.MIN_VALUE;
     private int echoDecoyCursor;
     private final Map<UUID, CombatTacticsPolicy.MobTactic> waveMobTactics = new HashMap<>();
@@ -56479,6 +56480,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** Contract 15.5: decoys dissolve on phase transition and never survive one. */
     private int clearEchoDecoys(String reason) {
+        clearEchoDecoyArrows();
         int removed = 0;
         for (UUID id : new ArrayList<>(echoDecoyIds)) {
             if (bossUuid != null && bossUuid.equals(id)) {
@@ -56514,7 +56516,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * bump or a despawned parent can never leave a permanent orphan.
      */
     private void tickEchoDecoyFence(LivingEntity boss) {
+        for (UUID id : new ArrayList<>(echoDecoyArrowIds)) {
+            Entity arrow = ownedEntities.get(id);
+            if (arrow == null || !arrow.isValid() || arrow.isDead()
+                    || arrow.getTicksLived() >= EVENT_ARROW_MAX_TICKS) {
+                if (arrow != null && arrow.isValid()) arrow.remove();
+                unregisterOwnedEntity(id, "echo-decoy-arrow-expired");
+                echoDecoyArrowIds.remove(id);
+            }
+        }
         if (echoDecoyIds.isEmpty()) {
+            clearEchoDecoyArrows();
             return;
         }
         boolean generationChanged = echoDecoyGeneration != generation;
@@ -56548,6 +56560,56 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** A decoy is not the boss: its death is bookkeeping, never a defeat. */
     private boolean isEchoDecoy(Entity entity) {
         return entity != null && echoDecoyIds.contains(entity.getUniqueId());
+    }
+
+    private void clearEchoDecoyArrows() {
+        for (UUID id : new ArrayList<>(echoDecoyArrowIds)) {
+            Entity arrow = ownedEntities.get(id);
+            if (arrow != null && arrow.isValid()) arrow.remove();
+            unregisterOwnedEntity(id, "echo-decoy-arrow-clear");
+            echoDecoyArrowIds.remove(id);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onEchoDecoyShoot(EntityShootBowEvent event) {
+        if (event.isCancelled() || !isEchoDecoy(event.getEntity())) return;
+        LivingEntity boss = liveBoss();
+        if (!(event.getProjectile() instanceof Arrow arrow)
+                || echoDecoyGeneration != generation || bossPhase != BossPhase.RAGE
+                || !ownedBySession(event.getEntity(), eventId, generation)
+                || boss == null || !isBossCombatRuntimeActive(boss)
+                || activeEventArrowAges.size() + echoDecoyArrowIds.size() >= MAX_ACTIVE_EVENT_ARROWS) {
+            event.setCancelled(true);
+            return;
+        }
+        tag(arrow, EVENT_KIND_PROJECTILE, 0, false);
+        arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
+        echoDecoyArrowIds.add(arrow.getUniqueId());
+    }
+
+    /** Scale the native damage transaction; never issue a second plugin hit. */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onEchoDecoyAttack(EntityDamageByEntityEvent event) {
+        if (event == null || event.isCancelled()) return;
+        LivingEntity source = event.getDamager() instanceof Projectile projectile
+                && projectile.getShooter() instanceof LivingEntity shooter ? shooter
+                : event.getDamager() instanceof LivingEntity living ? living : null;
+        if (source == null || !isEchoDecoy(source)
+                && !EVENT_KIND_ECHO_DECOY.equals(readString(source, keyKind))) return;
+        LivingEntity boss = liveBoss();
+        if (!isEchoDecoy(source) || echoDecoyGeneration != generation || bossPhase != BossPhase.RAGE
+                || !ownedBySession(source, eventId, generation)
+                || boss == null || !isBossCombatRuntimeActive(boss)
+                || !(event.getEntity() instanceof Player target)
+                || !isActiveBossParticipant(target)) {
+            event.setCancelled(true);
+            return;
+        }
+        AttributeInstance attack = boss.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
+        double base = attack == null ? EchoDecoyPolicy.FALLBACK_BOSS_DAMAGE : attack.getValue();
+        event.setDamage(EchoDecoyPolicy.decoyDamage(
+                base + currentBossCombatProfile().meleeDamageBonus()));
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)

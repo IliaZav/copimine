@@ -47,9 +47,14 @@ public final class BossPhaseGatingTest {
         require(!BossPhasePolicy.spellPool(BossPhase.RIFT).contains(BossSpell.ARENA_INFERNO),
                 "Inferno unlocks in Overload, not Rift");
 
-        for (BossPhase phase : new BossPhase[]{BossPhase.OVERLOAD, BossPhase.RAGE, BossPhase.LAST_SEAL}) {
-            require(BossPhasePolicy.spellPool(phase).contains(BossSpell.ARENA_INFERNO),
-                    phase + " must offer the completed Inferno");
+        require(BossPhasePolicy.spellPool(BossPhase.OVERLOAD).contains(BossSpell.ARENA_INFERNO),
+                "OVERLOAD must offer the completed Inferno");
+        // The inferno ticker clears the cast on its first tick for any other
+        // phase, so offering it in RAGE/LAST_SEAL burned a cooldown, journaled
+        // the floor and flared for a single tick. Phase 4 keeps it.
+        for (BossPhase phase : new BossPhase[]{BossPhase.RAGE, BossPhase.LAST_SEAL}) {
+            require(!BossPhasePolicy.spellPool(phase).contains(BossSpell.ARENA_INFERNO),
+                    phase + " must not offer Inferno (OVERLOAD-only)");
         }
 
         // Contract 15.3: the decoys are summoned through summonServants, which

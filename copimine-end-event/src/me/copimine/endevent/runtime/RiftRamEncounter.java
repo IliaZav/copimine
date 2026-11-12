@@ -682,7 +682,7 @@ public final class RiftRamEncounter {
             pillarSkeleton = at.getWorld().spawn(at, Skeleton.class, entity -> {
                 entity.setPersistent(true);
                 entity.setRemoveWhenFarAway(false);
-                entity.setCustomName("РЎС‚СЂРµР»РѕРє Р Р°Р·Р»РѕРјР°");
+                entity.setCustomName("Стрелок Разлома");
                 entity.setCustomNameVisible(false);
                 entity.getAttribute(Attribute.GENERIC_MAX_HEALTH)
                         .setBaseValue(WaveSixPillarSkeletonPolicy.HEALTH);

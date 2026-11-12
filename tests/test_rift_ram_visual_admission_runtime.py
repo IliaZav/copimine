@@ -41,7 +41,11 @@ public class RamVisualAdmissionProbe {
         public Location clone(){Location n=new Location(world);n.x=x;n.y=y;n.z=z;return n;}
         Location add(double dx,double dy,double dz){x+=dx;y+=dy;z+=dz;return this;}
     }
-    static class BlockDisplay {boolean valid=true;boolean isValid(){return valid;}}
+    static class BlockDisplay {
+        boolean valid=true;Location at;Vector3f size;
+        BlockDisplay(Location at,Vector3f size){this.at=at;this.size=size;}
+        boolean isValid(){return valid;}
+    }
     static class Ravager {Location at;Ravager(World w){at=new Location(w);}
         boolean isValid(){return true;}boolean isDead(){return false;}
         Location getLocation(){return at;}}
@@ -55,7 +59,7 @@ public class RamVisualAdmissionProbe {
     String failure;
     boolean skeletonAlive(){return pillarSkeletonSpawned;}
     void fail(String reason){failure=reason;}
-    BlockDisplay block(Location l,Material m,Vector3f size){return new BlockDisplay();}
+    BlockDisplay block(Location l,Material m,Vector3f size){return new BlockDisplay(l,size);}
     void clearPillar(){pillarDisplays.clear();pillar=null;pillarId=null;}
     void spawnPillarSkeleton(){skeletonSpawns++;pillarSkeletonSpawned=true;}
 ''' + methods + r'''
@@ -71,6 +75,13 @@ public class RamVisualAdmissionProbe {
         else {
             check(p.buildPillar(),"pillar builder failed");
             check(p.pillarDisplays.size()==(hit<4?3:4),"actual pillar geometry differs from its type");
+            double highest=0;
+            for(var display:p.pillarDisplays){
+                check(display.at.y>=p.pillar.y,"pillar body was buried below the floor anchor");
+                highest=Math.max(highest,display.at.y+display.size.y());
+            }
+            double expected=hit<4?3.7:hit==4?7.4:hit==5?6.512:5.032;
+            check(Math.abs(highest-expected)<.001,"restored pillar has the wrong damage-stage height");
             check(p.skeletonSpawns==(hit<4?0:1),"marksman appears on wrong pillar");
         }
         if(mode.equals("missing") && !p.pillarDisplays.isEmpty())p.pillarDisplays.removeLast();

@@ -146,6 +146,16 @@ Remove-Item -LiteralPath $classes -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $classes | Out-Null
 $sources = Get-ChildItem -Path $srcRoot -Filter '*.java' -Recurse | Select-Object -ExpandProperty FullName
 if (-not $sources) { throw "No Java sources found under $srcRoot." }
+# Compile encounter-owned shared helpers in the same invocation. They are
+# deliberately absent from Narcotics.jar and must not depend on build order.
+$bridgeSourceRoot = Join-Path $releaseRoot 'tools\minecraft-26.3\protocol\src\main\java'
+foreach ($helper in @('EncounterGenerationPolicy', 'KaguneRingFrame', 'BossAnimationPlayback')) {
+  $helperSource = Join-Path $bridgeSourceRoot ("me\copimine\protocol\$helper.java")
+  if (-not (Test-Path -LiteralPath $helperSource -PathType Leaf)) {
+    throw "Required encounter protocol source missing: $helperSource"
+  }
+  $sources += $helperSource
+}
 # Keep javac below Windows' native command-line limit in nested worktrees.
 # The dependency list and all source paths are still passed unchanged.
 $compileArgsPath = Join-Path $pluginDir 'build\javac.args'

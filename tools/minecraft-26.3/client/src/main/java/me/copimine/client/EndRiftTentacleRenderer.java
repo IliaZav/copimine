@@ -231,7 +231,7 @@ public final class EndRiftTentacleRenderer {
             double angle = frame.direction(i);
             matrices.pushPose();
             matrices.translate(origin.x + Math.cos(angle) * radius, origin.y, origin.z + Math.sin(angle) * radius);
-            matrices.rotate(Axis.YP, (float) Math.toDegrees(-angle + Math.PI / 2D));
+            matrices.rotate(Axis.YP, (float) (-angle + Math.PI / 2D));
             matrices.scale(width, height, width);
             RIG.render(matrices, vertices, pose, light, OverlayTexture.NO_OVERLAY, 0xFFFFFFFF);
             matrices.popPose();

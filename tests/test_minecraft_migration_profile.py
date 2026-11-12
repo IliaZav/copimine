@@ -223,10 +223,10 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # that ran past the 64-wide sheet. A one-token source change still moves the
     # jar, because the constant pool holds the new integer - 2 bytes, verified by
     # two independent clean builds producing the same size and digest.
-    assert artifact['size'] == 15_024_748
+    assert artifact['size'] == 15_024_731
     assert artifact['sha512'] == (
-        'c780fbd87d3119c5e9502742aa691d8f1bb8f5c43155a90881a6fe8f64096532'
-        'f2fbf940f36ed508519983d020a0a225c8f986577cde5720a1a1affad05f5b52'
+        '03bc536d34f79567d48b466b8b3f936434655931944082923a6345c5da6f15bc'
+        '4817756757f6ee9f60a65dd6ed5d28ee16ed56225c8846fc0060fcbcdcb7315f'
     )
 
 

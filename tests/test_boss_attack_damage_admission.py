@@ -24,6 +24,7 @@ def boss_attack_probe(tmp_path_factory):
         "void renderBossContactMiss(",
         "void executeBossFinalStrikeImpact(",
         "void executeContactBossAbility(", "Vector contactFacing(",
+        "boolean isContactBossAbility(",
         "void onRiftProjectileHit(", "void voidMark(",
         "void startChestStrike(",
         # Added with the stop-at-first-block fix: the sweep now finishes through
@@ -42,6 +43,12 @@ def boss_attack_probe(tmp_path_factory):
 import java.util.*;
 import me.copimine.endevent.domain.*;
 public class BossAttackAdmissionProbe {
+    // Echo actor creation is a separate adapter. Record its request here while
+    // this probe executes the real accepted-damage and contact paths.
+    final List<String> requestedEchoFamilies = new ArrayList<>();
+    boolean startEchoAttackReplicas(LivingEntity boss, String family) {
+        requestedEchoFamilies.add(family); return false;
+    }
     static final int SLOWNESS_DEBUFF_TICKS=40, MINI_VOID_SNARE_DEBUFF_TICKS=40, MINI_ECHO_PULSE_DEBUFF_TICKS=40;
     static final double WAVE_MOB_DAMAGE_REDUCTION=0.75;
     enum PotionEffectType {SLOWNESS,WEAKNESS,BLINDNESS,WITHER}
@@ -212,7 +219,10 @@ public class BossAttackAdmissionProbe {
             check(p.bossAbilityState==BossAbilityState.EXECUTING,"slow chest flight admitted another major cast");
             check(Bukkit.scheduler.releases.getFirst().delay()==1,"chest launch was delayed past its authored release marker");
             for(var release:Bukkit.scheduler.releases)release.callback().run();
-            if(s.endsWith("accepted"))check(p.bossCastDeadlineMillis-System.currentTimeMillis()>=2400,
+            long minimumRecovery = (me.copimine.protocol.BossAnimationPlayback.combatTicks(
+                    "CHEST_STRIKE", BossContactStrikePolicy.followThroughTicks(
+                    EndRiftAiPolicy.BossSpell.CHEST_STRIKE)) - BossContactStrikePolicy.chestStrikeTicks()) * 50L;
+            if(s.endsWith("accepted"))check(p.bossCastDeadlineMillis-System.currentTimeMillis()>=minimumRecovery-100L,
                     "chest recovery cut off the remaining authored animation");
         }
         else if(s.startsWith("swipe")||s.startsWith("slam"))p.executeContactBossAbility(p.boss,target,
@@ -235,7 +245,8 @@ public class BossAttackAdmissionProbe {
     }
 }
 ''', encoding="utf-8")
-    result = subprocess.run(["javac", "-encoding", "UTF-8", "-sourcepath", str(ROOT / "copimine-end-event/src"), "-d", str(out), str(java)], capture_output=True, text=True)
+    result = subprocess.run(["javac", "-encoding", "UTF-8", "-sourcepath", str(ROOT / "copimine-end-event/src"), "-d", str(out), str(java),
+        str(ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/BossAnimationPlayback.java")], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     return out
 

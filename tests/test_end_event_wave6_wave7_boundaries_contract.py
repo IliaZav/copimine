@@ -617,7 +617,9 @@ def test_disposable_wave7_restart_state_is_explicitly_generation_bound() -> None
     assert "END_RIFT_WAVE7_BARRIERS_REHYDRATED" in root
     assert "preserveWave7ForRestart" in root
     assert "cancelSessionTasks(preserveWave1ForRestart || preserveWave2ForRestart" in root
-    assert "preserveWave6ForRestart || preserveWave7ForRestart)" in root
+    # Official boss recovery now shares the preservation boundary; adding it
+    # must retain both disposable-wave owners rather than replace either one.
+    assert "preserveWave6ForRestart || preserveWave7ForRestart || preserveBossForRestart)" in root
     assert "cancelSessionTasks(boolean preserveCombatForRestart)" in root
     sandbox_start = root.index("private boolean spawnTestWave(")
     sandbox_end = root.index("private void spawnWaveForObjective(", sandbox_start)

@@ -15988,7 +15988,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (customModelData == MODEL_ELITE_RIFT_BOLT
                 || customModelData == MODEL_ELITE_VOID_BURST
                 || customModelData == MODEL_ELITE_DRAGON_BREATH) {
-            meta.setItemModel(new NamespacedKey("copimine", modelId));
+            me.copimine.endevent.presentation.ItemPresentationComponents.setItemModel(
+                    meta, new NamespacedKey("copimine", modelId));
         }
         meta.setDisplayName("§f" + modelId);
         meta.addItemFlags(ItemFlag.values());
@@ -51319,9 +51320,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             public void publish(ItemDisplay display, me.copimine.protocol.KaguneRingFrame frame) {
                 ItemStack item = display.getItemStack();
                 ItemMeta meta = item.getItemMeta();
-                var data = meta.getCustomModelDataComponent();
-                data.setFloats(frame.encode());
-                meta.setCustomModelDataComponent(data); item.setItemMeta(meta);
+                me.copimine.endevent.presentation.ItemPresentationComponents.setFloats(meta, frame.encode());
+                item.setItemMeta(meta);
                 display.setItemStack(item);
             }
             public void remove(ItemDisplay display) {

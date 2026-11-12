@@ -155,3 +155,37 @@ are unchanged. The earlier broad Python run exposed two obsolete exact-string
 assertions and two detached harnesses lacking the newly introduced boss/IO
 boundaries. They were fixed without changing gameplay acceptance rules; a
 new full run must supply the final counts.
+
+## Item API boundary exposed by the complete Java gate
+
+The legacy release compilation genuinely failed at two modern ItemMeta calls:
+`setItemModel` and `getCustomModelDataComponent`. Modern compilation alone did
+not expose that compatibility regression. `ItemPresentationComponents` now owns
+the boundary: cached reflection uses public API interfaces, without linking
+the old compiler to modern component types. Numeric custom-model identity stays
+intact for legacy APIs. On 26.3 the exact model and immutable finite float frame
+are committed. A missing float transport or failed write throws before the
+ring runtime admits collision; it never degrades to an invisible damaging rig.
+
+Both API shapes were compiled and executed in the new behavioral regression.
+The actual legacy plugin compilation then passed, and the modern plugin built.
+The exact locked Paper API signatures were inspected with javap. CodeRabbit
+reviewed this boundary and its callers/tests: zero issues.
+
+The full Python development run finished with **3568 passed, 13 skipped,
+2 subtests passed**, exit 0 (C:/Temp/cm-full-suite-echo-final.log). The two newly
+added API-boundary cases passed separately (C:/Temp/cm-modern-legacy-item-component-fixed.log).
+The full shared Java release gate is recorded separately on completion; its
+source, client, pack and unrelated-plugin checks are not replaced with a narrow
+End Rift-only pass.
+
+The next complete shared gate passed 665 of 666 release validators. The remaining
+compile-dependency probe created only one source file and omitted the three
+new protocol inputs. Supplying the real inputs exposed a genuine PowerShell
+scalar-array bug: with one source, += concatenated the helper paths into a
+single javac argument. The builder now always creates an array. The strengthened
+probe verifies all three helpers occur exactly once in default, explicit and
+legacy compiler invocations, while retaining every locked-classpath/corruption
+check. It passed after the correction. The complete shared gate is rerun rather
+than relabeled as successful. Latest modern server build: 2,454,540 bytes,
+SHA-256 `ad31e95b653cfc85200e0b335e43374ede4207fd672b4646edf6bededfa7c0d0`.

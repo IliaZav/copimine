@@ -199,3 +199,14 @@ All display relocation failures on a surviving collision fail explicitly.
 Validation: modern server JAR built, existing Ram geometry/restart/roster probes
 20 passed. These probes cover geometry admission and state, not native appearance
 or a complete seven-collision player run.
+
+## Shared boss attack playback
+
+The user's permission to accelerate supplied animations is implemented through
+one protocol class, BossAnimationPlayback. Swipe plays at 1.5x, chest/slam at
+1.25x. The Paper telegraph/contact deadline, server animated hitbox sampling,
+client original-rig sampling and follow-through use that same mapping. Original
+clips/keyframes/pivots remain unchanged. The extra one-second idle padding after
+an already complete contact clip was removed. Current tuning therefore keeps a
+swipe near two seconds while retaining a long, approximately seven-second slam.
+This needs native impact/pose and group-combat acceptance before release.

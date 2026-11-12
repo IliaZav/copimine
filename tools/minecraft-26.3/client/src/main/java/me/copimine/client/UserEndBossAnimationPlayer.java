@@ -136,7 +136,8 @@ final class UserEndBossAnimationPlayer {
         if (clip == null) {
             return ChameleonGuardianGeometry.GuardianPose.identity();
         }
-        float seconds = Math.max(0.0F, animationProgressTicks / 20.0F);
+        float seconds = (float) me.copimine.protocol.BossAnimationPlayback.authoredTicks(
+                canonical(animationId), animationProgressTicks) / 20.0F;
         float time = clip.loop()
                 ? (float) (seconds % Math.max(clip.lengthSeconds(), 0.001F))
                 : Math.min(seconds, clip.lengthSeconds());

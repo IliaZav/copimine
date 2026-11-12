@@ -45838,7 +45838,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private Map<BossHitboxProfile.PartKey, BossHitboxPose> bossHitboxPoseOffsets() {
         double elapsedTicks = Math.max(0.0D,
                 (System.currentTimeMillis() - bossHitboxAnimationStartedMillis) / 50.0D);
-        return BossAnimationPosePolicy.sampleSegments(bossHitboxAnimationId, elapsedTicks);
+        return BossAnimationPosePolicy.sampleSegments(bossHitboxAnimationId,
+                me.copimine.protocol.BossAnimationPlayback.authoredTicks(
+                        bossHitboxAnimationId, elapsedTicks));
     }
 
     private void startBossHitboxAnimation(String animationId) {
@@ -48638,11 +48640,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // Contact moves resolve on their authored keyframe, not at the last
             // frame of the clip: the boss then holds the rest of the clip as the
             // visible follow-through (see BossContactStrikePolicy.followThroughTicks).
-            case MELEE_SWIPE -> BossContactStrikePolicy.MELEE_SWIPE_CONTACT_MARKER_TICKS;
+            case MELEE_SWIPE -> me.copimine.protocol.BossAnimationPlayback.combatTicks(
+                    spell.name(), BossContactStrikePolicy.MELEE_SWIPE_CONTACT_MARKER_TICKS);
             // The chest clip is 4.04 s but its release pose is the ~2 s mark: the
             // projectile must leave the chest there and travel while the clip finishes.
-            case CHEST_STRIKE -> BossContactStrikePolicy.CHEST_STRIKE_LAUNCH_MARKER_TICKS;
-            case GROUND_SLAM -> BossContactStrikePolicy.GROUND_SLAM_CONTACT_MARKER_TICKS;
+            case CHEST_STRIKE -> me.copimine.protocol.BossAnimationPlayback.combatTicks(
+                    spell.name(), BossContactStrikePolicy.CHEST_STRIKE_LAUNCH_MARKER_TICKS);
+            case GROUND_SLAM -> me.copimine.protocol.BossAnimationPlayback.combatTicks(
+                    spell.name(), BossContactStrikePolicy.GROUND_SLAM_CONTACT_MARKER_TICKS);
             default -> Math.max(1, configured);
         };
     }
@@ -48758,7 +48763,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // The clip keeps playing after the impact, so the boss stays committed
         // for its remaining follow-through instead of snapping to a new action.
         bossCastDeadlineMillis = System.currentTimeMillis()
-                + (BossContactStrikePolicy.followThroughTicks(spell) + 20L) * 50L;
+                + me.copimine.protocol.BossAnimationPlayback.combatTicks(
+                        spell.name(), BossContactStrikePolicy.followThroughTicks(spell)) * 50L;
         bossSpellPauseUntilMillis = bossCastDeadlineMillis;
         releaseBossHazardReservation("contact-impact");
     }
@@ -48841,7 +48847,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossChestStrikeActive = true;
         bossAbilityState = BossAbilityState.EXECUTING;
         bossCastDeadlineMillis = System.currentTimeMillis()
-                + (BossContactStrikePolicy.followThroughTicks(EndRiftAiPolicy.BossSpell.CHEST_STRIKE) + 20L) * 50L;
+                + me.copimine.protocol.BossAnimationPlayback.combatTicks("CHEST_STRIKE",
+                        BossContactStrikePolicy.followThroughTicks(EndRiftAiPolicy.BossSpell.CHEST_STRIKE)) * 50L;
         Vector direction = contactFacing(origin);
         Location chest = new Location(world, origin.getX(),
                 origin.getY() + boss.getHeight() * BossContactStrikePolicy.CHEST_HEIGHT_RATIO, origin.getZ());
@@ -48951,7 +48958,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossAbilityState = BossAbilityState.RECOVERY;
         bossChestStrikeActive = false;
         long remainingClip = Math.max(0L,
-                BossContactStrikePolicy.followThroughTicks(EndRiftAiPolicy.BossSpell.CHEST_STRIKE)
+                me.copimine.protocol.BossAnimationPlayback.combatTicks("CHEST_STRIKE",
+                        BossContactStrikePolicy.followThroughTicks(EndRiftAiPolicy.BossSpell.CHEST_STRIKE))
                         - BossContactStrikePolicy.CHEST_STRIKE_LAUNCH_TICKS - reached);
         bossCastDeadlineMillis = System.currentTimeMillis() + (remainingClip + 20L) * 50L;
         bossSpellPauseUntilMillis = bossCastDeadlineMillis;

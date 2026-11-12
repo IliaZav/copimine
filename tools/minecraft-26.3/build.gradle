@@ -105,6 +105,7 @@ tasks.named('endEventJar', Jar) {
     from(sourceSets.narcotics.output) {
         include 'me/copimine/protocol/EncounterGenerationPolicy.class'
         include 'me/copimine/protocol/KaguneRingFrame.class'
+        include 'me/copimine/protocol/BossAnimationPlayback.class'
     }
 }
 

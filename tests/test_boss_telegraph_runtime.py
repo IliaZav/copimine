@@ -94,7 +94,8 @@ public class BossTelegraphRuntimeProbe {
     }
 }
 ''', encoding="utf-8")
-    result = subprocess.run(["javac", "-encoding", "UTF-8", "-sourcepath", str(ROOT / "copimine-end-event/src"), "-d", str(out), str(java)], capture_output=True, text=True)
+    result = subprocess.run(["javac", "-encoding", "UTF-8", "-sourcepath", str(ROOT / "copimine-end-event/src"), "-d", str(out), str(java),
+        str(ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/BossAnimationPlayback.java")], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     return out
 

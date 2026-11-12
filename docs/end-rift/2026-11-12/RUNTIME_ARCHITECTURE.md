@@ -144,3 +144,21 @@ preserved; this slice is developed in an isolated checkout based on `65a73688`.
   and the following gameplay fixes have been integrated and rebuilt together.
 - New ring behavior, collision, visual quality and performance in actual
   Minecraft: NOT VERIFIED. These builds are not a production deployment.
+
+## Textured projectile slice (12 November)
+
+The Rift Bolt, Void Burst and Dragon Breath item models now contain distinct
+closed 3-D geometry rather than generated flat sprites. They share the existing
+owned energy/stone textures to preserve the encounter palette. The modern client
+copies these models, namespaced item definitions and textures directly from the
+resource-pack authoring source during processResources. The server sets the
+explicit item model on these three spell items. Elite display orientation follows
+the released physical projectile velocity. The Guardian Rift Projectile carries
+the Rift Bolt model on its real snowball collision body instead of being only a
+particle trail. This does not yet cover every boss spell or impact scene.
+
+Validation: modern server and client builds passed; three model definitions,
+three item definitions and both PNG textures were confirmed inside the built
+client JAR. Existing cocoon/ambush probes: 12 passed. Native visual quality,
+contact alignment and the complete encounter remain NOT VERIFIED. Production
+and the user's installed Prism profile were not replaced.

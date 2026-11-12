@@ -14306,6 +14306,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 continue;
             }
             Location position = projectile.getLocation();
+            Vector flight = projectile.getVelocity();
+            if (flight.lengthSquared() > 0.0001D) position.setDirection(flight);
             if (!isFiniteLocation(position) || !teleportCombatEntity(display, position)) {
                 removeEliteProjectileVisual(projectileId, "elite-projectile-visual-follow-failed");
                 continue;
@@ -15775,6 +15777,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return item;
         }
         meta.setCustomModelData(customModelData);
+        if (customModelData == MODEL_ELITE_RIFT_BOLT
+                || customModelData == MODEL_ELITE_VOID_BURST
+                || customModelData == MODEL_ELITE_DRAGON_BREATH) {
+            meta.setItemModel(new NamespacedKey("copimine", modelId));
+        }
         meta.setDisplayName("§f" + modelId);
         meta.addItemFlags(ItemFlag.values());
         item.setItemMeta(meta);
@@ -49753,6 +49760,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         Snowball projectile = boss.getWorld().spawn(start, Snowball.class);
+        // A real textured 3-D core travels with the server collision body.
+        // The client embeds this item definition, so no external pack is needed.
+        projectile.setItem(overlayItem(MODEL_ELITE_RIFT_BOLT, "end_rift_rift_bolt"));
         projectile.setGravity(false);
         projectile.setShooter(boss);
         projectile.setVelocity(offset.normalize().multiply(RIFT_PROJECTILE_SPEED));
@@ -49792,7 +49802,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         riftProjectileTasks.put(projectileId, holder[0]);
         registerEncounterTask(holder[0]);
         getLogger().info("BOSS_PROJECTILE_SPAWN entity=" + projectileId
-                + " visual=particle-only pattern=rift_projectile"
+                + " visual=textured-3d-core pattern=rift_projectile"
                 + " target=" + target.getUniqueId() + " max_ticks=" + RIFT_PROJECTILE_MAX_TICKS);
     }
 

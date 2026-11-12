@@ -10,19 +10,21 @@ RUNTIME = ROOT/'copimine-end-event/src/me/copimine/endevent/runtime/RiftRamEncou
 def test_pillar_receipts_bounded_adds_and_real_death(tmp_path):
     source = RUNTIME.read_text(encoding='utf-8').replace('    public ', '    private ')
     methods = '\n'.join(extract(source, signature) for signature in [
-        'void impact()', 'void died(UUID entity)', 'void clearPillar()',
-        'void cleanupDisplays()', 'void close()', 'void fail(String reason)',
+        'void impact()', 'void died(UUID entity)', 'void clearPillar()', 'boolean skeletonAlive()', 'void suspend()',
+        'void cleanupDisplays()', 'void cleanupDisplays(boolean preserveSkeleton)', 'void close()', 'void fail(String reason)',
         'void begin(Action next)',
         'Map<String,String> snapshot()', 'void restore(Map<String,String> data)',
     ])
     probe = r'''
 import java.util.*;
 import me.copimine.endevent.domain.RiftRamPolicy;
+import me.copimine.endevent.domain.RiftRamRecoveryPolicy;
+import me.copimine.endevent.domain.WaveSixPillarSkeletonPolicy;
 public class RamRuntimeProbe {
   enum Action { CHARGE, CHASE, STUN, DEAD, RECOVER, STOMP, STOMP_WARNING, CHARGE_WARNING }
   enum Sound { BLOCK_DEEPSLATE_BREAK, BLOCK_ANVIL_BREAK, BLOCK_DEEPSLATE_HIT, ENTITY_IRON_GOLEM_HURT }
   enum Material { NETHERITE_BLOCK }
-  static class Entity { boolean valid=true; boolean isValid(){return valid;} }
+  static class Entity { boolean valid=true; boolean isValid(){return valid;}boolean isDead(){return !valid;} }
   static class BlockDisplay extends Entity {}
   static class Vector { double x,z; Vector(double x,double y,double z){this.x=x;this.z=z;} double getX(){return x;} double getZ(){return z;} }
   static class Vector3f { Vector3f(float x,float y,float z){} }
@@ -37,7 +39,7 @@ public class RamRuntimeProbe {
     public Location clone(){return new Location(world);}
     Location add(double x,double y,double z){return this;}
     World getWorld(){return world;}
-    double getX(){return 1;}double getY(){return 65;}double getZ(){return 1;}
+    void setY(double y){} double getX(){return 1;}double getY(){return 65;}double getZ(){return 1;}
   }
   static class Ravager extends Entity {
     UUID uuid=UUID.randomUUID(); Location at;
@@ -50,11 +52,13 @@ public class RamRuntimeProbe {
   }
   static class Skeleton extends Entity {
     UUID skeletonId=UUID.randomUUID(); boolean skeletonValid=true;
-    Skeleton(World world){new Location(world);}
+    Location at;Skeleton(World world){at=new Location(world);}
+    World getWorld(){return at.world;}Location getLocation(){return at;}
     UUID getUniqueId(){return skeletonId;} boolean isValid(){return skeletonValid;}
     boolean isDead(){return !skeletonValid;}
     void setPersistent(boolean b){} void setRemoveWhenFarAway(boolean b){}
     void setRotation(float yaw,float pitch){} void setGravity(boolean g){}
+    void setAI(boolean b){}void setAware(boolean b){}
   }
   record Piece(BlockDisplay display,int section){}
   record Debris(BlockDisplay display,Location start,Vector velocity,int born){}
@@ -66,14 +70,16 @@ public class RamRuntimeProbe {
     List<Object> players(){return List.of();}
     void visualsChanged(){changes++;}
     boolean checkpoint(){return storageHealthy;}
-    boolean owns(Entity entity){return true;} boolean inArena(Location at){return true;}
+    Location core(){return new Location(new World());}
+    int floorY(){return 64;} boolean owns(Entity entity){return true;} boolean inArena(Location at){return true;}
     void fail(String s){failures++;}
   }
   final Host host=new Host(); final World world=new World();
   Ravager ram=new Ravager(world); Action action=Action.CHARGE;
   int tick,actionTick,impacts,pillarImpacts,lastCharge,lastStomp,nextPillarTick;
   void crackPillar(){}
-  Skeleton pillarSkeleton; UUID pillarSkeletonId; boolean skeletonFallen;
+  Skeleton pillarSkeleton; UUID pillarSkeletonId;
+  boolean skeletonFallen,pillarSkeletonSpawned,pillarSkeletonDefeated,ramDefeated;
   int skeletonLastTriple=-1,skeletonLastBone=-1,skeletonLastMove=-1,skeletonStep;
   void dropPillarSkeleton(){}
   boolean closed,completed,banked;
@@ -82,7 +88,8 @@ public class RamRuntimeProbe {
   List<Debris> debris=new ArrayList<>(); Set<Endermite> mites=new HashSet<>();
   Set<UUID> stompHits=new HashSet<>(),stompRoster=new HashSet<>(),chargeHits=new HashSet<>();
   UUID id(){return ram==null?persistentId:ram.uuid;}
-  static class Bukkit { static Entity loaded; static Entity getEntity(UUID id){return loaded;} }
+  static class Bukkit { static Entity loaded;static Map<UUID,Entity> guards=new HashMap<>();
+    static Entity getEntity(UUID id){return loaded instanceof Ravager r && r.uuid.equals(id)?loaded:guards.get(id);} }
   boolean safeVolume(Location at){return true;}
   boolean buildPillar(){pillarDisplays.add(new BlockDisplay());return true;}
   void createArmor(){armor.clear();for(int i=impacts+1;i<=RiftRamPolicy.ARMOUR_PLATES;i++)armor.add(new Piece(new BlockDisplay(),i));}
@@ -95,6 +102,10 @@ public class RamRuntimeProbe {
     pillarId=UUID.randomUUID();pillar=new Location(world);pillarDisplays.add(new BlockDisplay());
     // Mirrors production raisePillar(): a fresh pillar has absorbed nothing.
     pillarImpacts=0;
+    if(RiftRamPolicy.isFinalPillar(RiftRamPolicy.pillarOrdinal(impacts))&&!pillarSkeletonSpawned){
+      pillarSkeleton=new Skeleton(world);pillarSkeletonId=pillarSkeleton.getUniqueId();
+      pillarSkeletonSpawned=true;Bukkit.guards.put(pillarSkeletonId,pillarSkeleton);
+    }
   }
   static void check(boolean b,String m){if(!b)throw new AssertionError(m);}
   public static void main(String[] args){
@@ -138,7 +149,7 @@ public class RamRuntimeProbe {
         check(restored.pillarId.equals(p.pillarId),"restart preserves pillar identity");
         check(restored.pillarImpacts==p.pillarImpacts,"restart preserves how much of the pillar is gone");
         check(restored.action==Action.RECOVER&&!restored.completed,"restart cannot replay stale action");
-        p.clearPillar();
+        // A surviving final pillar retains its local damage between impacts.
       }
     }
     check(p.world.spawned>0,"pillars actually released adds");
@@ -152,9 +163,25 @@ public class RamRuntimeProbe {
         "the final pillar never releases Endermites even when previous adds are dead");
     check(!p.completed,"the final impact alone cannot complete");
     p.died(UUID.randomUUID());check(!p.completed,"foreign death ignored");
-    p.died(p.id());check(p.completed,"confirmed exposed death completes");
+    p.died(p.id());check(!p.completed&&p.ramDefeated,"Ram death deleted a live elite or completed early");
+    p.pillarSkeleton.skeletonValid=false;p.died(p.pillarSkeletonId);
+    check(p.completed,"both legitimate deaths must complete");
     check(p.debris.isEmpty()&&p.mites.isEmpty(),"final cleanup");
     int removals=p.host.removed;p.died(p.id());check(p.host.removed==removals,"death once");
+    RamRuntimeProbe guardFirst=new RamRuntimeProbe();guardFirst.impacts=plates;guardFirst.raiseTestPillar();
+    guardFirst.pillarSkeleton=new Skeleton(guardFirst.world);guardFirst.pillarSkeletonId=guardFirst.pillarSkeleton.getUniqueId();
+    guardFirst.pillarSkeletonSpawned=true;guardFirst.pillarSkeleton.skeletonValid=false;
+    guardFirst.died(guardFirst.pillarSkeletonId);
+    check(!guardFirst.completed&&guardFirst.pillarSkeletonDefeated,"guard-first death completed too early");
+    guardFirst.died(guardFirst.pillarSkeletonId);guardFirst.died(guardFirst.id());
+    check(guardFirst.completed,"guard-first order did not complete");
+    RamRuntimeProbe suspended=new RamRuntimeProbe();suspended.impacts=4;suspended.raiseTestPillar();
+    Skeleton persistentGuard=suspended.pillarSkeleton;suspended.suspend();
+    check(persistentGuard.valid&&persistentGuard.skeletonValid&&suspended.ram.valid,
+        "suspend removed a persistent combat actor");
+    check(suspended.pillarDisplays.isEmpty(),"suspend kept transient displays");
+    RamRuntimeProbe deathSave=new RamRuntimeProbe();deathSave.impacts=plates;deathSave.host.storageHealthy=false;
+    deathSave.died(deathSave.id());check(deathSave.closed&&!deathSave.completed,"death save failure completed");
     RamRuntimeProbe early=new RamRuntimeProbe();early.raiseTestPillar();early.died(early.id());
     check(!early.completed&&early.closed&&early.host.failures==1,"premature death recovers");
     early.close();check(early.host.failures==1,"cleanup idempotent");
@@ -170,7 +197,8 @@ public class RamRuntimeProbe {
 '''
     java = tmp_path/'RamRuntimeProbe.java'
     java.write_text(probe+'\n'+methods+'\n}',encoding='utf-8')
-    built = subprocess.run(['javac','-d',str(tmp_path),str(ROOT/'copimine-end-event/src/me/copimine/endevent/domain/RiftRamPolicy.java'),str(java)],capture_output=True,text=True)
+    built = subprocess.run(['javac','-d',str(tmp_path),str(ROOT/'copimine-end-event/src/me/copimine/endevent/domain/RiftRamPolicy.java'),
+        str(ROOT/'copimine-end-event/src/me/copimine/endevent/domain/RiftRamRecoveryPolicy.java'),str(ROOT/'copimine-end-event/src/me/copimine/endevent/domain/WaveSixPillarSkeletonPolicy.java'),str(java)],capture_output=True,text=True)
     assert built.returncode == 0, built.stderr
     ran = subprocess.run(['java','-cp',str(tmp_path),'RamRuntimeProbe'],capture_output=True,text=True)
     assert ran.returncode == 0, ran.stderr

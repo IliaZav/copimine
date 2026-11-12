@@ -1,6 +1,7 @@
 package me.copimine.endevent.runtime;
 
 import me.copimine.endevent.domain.RiftRamPolicy;
+import me.copimine.endevent.domain.RiftRamRecoveryPolicy;
 import me.copimine.endevent.domain.WaveSixPillarSkeletonPolicy;
 import org.bukkit.*;
 import me.copimine.endevent.runtime.compat.Attribute;
@@ -74,13 +75,14 @@ public final class RiftRamEncounter {
     private Skeleton pillarSkeleton;
     private UUID pillarSkeletonId;
     private int skeletonLastTriple = -1, skeletonLastBone = -1, skeletonLastMove = -1, skeletonStep;
-    private boolean skeletonFallen;
+    private boolean skeletonFallen, pillarSkeletonSpawned, pillarSkeletonDefeated, ramDefeated;
 
     public RiftRamEncounter(Host host) { this.host = host; }
     public UUID id() { return ram == null ? persistentId : ram.getUniqueId(); }
     public int impacts() { return impacts; }
     public boolean complete() { return completed; }
-    public boolean ready() { return !closed && ram != null && ram.isValid() && !ram.isDead(); }
+    public boolean ready() { return !closed && (ramDefeated ? skeletonAlive()
+            : ram != null && ram.isValid() && !ram.isDead()); }
     /** Live body health, or zero when the actor is gone. Presentation only. */
     public double health() {
         return ram != null && ram.isValid() && !ram.isDead() ? Math.max(0.0D, ram.getHealth()) : 0.0D;
@@ -230,7 +232,10 @@ public final class RiftRamEncounter {
             }
             nextPillarTick = tick;
             site.getWorld().playSound(site,Sound.BLOCK_DEEPSLATE_PLACE, finale?2.4f:1.6f, finale?.35f:.5f);
-            if (finale) spawnPillarSkeleton();
+            if (finale && !pillarSkeletonSpawned) {
+                spawnPillarSkeleton();
+                if (!skeletonAlive()) throw new IllegalStateException("final-skeleton-spawn-failed");
+            }
             return true;
         } catch(RuntimeException failure) { clearPillar(); return false; }
     }
@@ -243,6 +248,13 @@ public final class RiftRamEncounter {
 
     private void advance() {
         tick++;
+        if (ramDefeated) {
+            if (!pillarSkeletonDefeated && !skeletonAlive()) {
+                fail("final-skeleton-lost-without-death-receipt"); return;
+            }
+            tickPillarSkeleton(host.players());
+            return;
+        }
         if (ram==null || !ram.isValid() || ram.isDead()) { fail("ravager-lost-without-death-receipt"); return; }
         if (!host.inArena(ram.getLocation())) { fail("ravager-outside-arena"); return; }
         if(armor.size()!=RiftRamPolicy.REQUIRED_IMPACTS-impacts
@@ -443,6 +455,7 @@ public final class RiftRamEncounter {
             // A surviving marksman rides the falling pillar down rather than
             // being deleted with it: it lands and keeps fighting on the floor.
             dropPillarSkeleton();
+            if (closed) return;
             clearPillar();
             dust(struck.clone().add(0,1.5,0),100,1.2,1.5);
             struck.getWorld().playSound(struck,Sound.BLOCK_DEEPSLATE_BREAK,2,.6f);
@@ -577,12 +590,27 @@ public final class RiftRamEncounter {
     }
     /** Only the real owned entity's death event can commit completion. */
     public void died(UUID entity) {
-        if(closed || completed || !Objects.equals(id(),entity)) return;
-        if(impacts!=RiftRamPolicy.REQUIRED_IMPACTS) { fail("premature-ravager-death"); return; }
-        completed=true; action=Action.DEAD;
-        if(!host.checkpoint()) { completed=false; fail("completion-checkpoint-failed"); return; }
-        cleanupDisplays();
+        if (closed || completed || entity == null) return;
+        if (Objects.equals(pillarSkeletonId, entity)) {
+            if (!pillarSkeletonSpawned || pillarSkeletonDefeated) return;
+            pillarSkeletonDefeated = true;
+        } else if (Objects.equals(id(), entity)) {
+            if (ramDefeated) return;
+            if (impacts != RiftRamPolicy.REQUIRED_IMPACTS) {
+                fail("premature-ravager-death"); return;
+            }
+            ramDefeated = true;
+        } else return;
+        completed = ramDefeated && pillarSkeletonDefeated;
+        if (ramDefeated) action = Action.DEAD;
+        if (!host.checkpoint()) {
+            completed = false; fail("actor-death-checkpoint-failed"); return;
+        }
+        // A surviving marksman remains a required combat actor after the Ram
+        // dies. Neither its removal nor the Ram's corpse is a victory receipt.
+        if (completed) cleanupDisplays();
     }
+
     /**
      * Show real damage on a pillar that survived the collision.
      *
@@ -627,7 +655,7 @@ public final class RiftRamEncounter {
      * and the actor carries a stable visual id the client binds to.</p>
      */
     private void spawnPillarSkeleton() {
-        if (pillar == null) return;
+        if (pillar == null || pillarSkeletonSpawned) return;
         Location at = pillar.clone().add(0, WaveSixPillarSkeletonPolicy.PLATFORM_HEIGHT, 0);
         try {
             pillarSkeleton = at.getWorld().spawn(at, Skeleton.class, entity -> {
@@ -645,13 +673,17 @@ public final class RiftRamEncounter {
             });
             host.own(pillarSkeleton, true);
             pillarSkeletonId = pillarSkeleton.getUniqueId();
+            pillarSkeletonSpawned = true;
+            pillarSkeletonDefeated = false;
             skeletonFallen = false;
             skeletonStep = 0;
             skeletonLastTriple = -1; skeletonLastBone = -1; skeletonLastMove = -1;
             at.getWorld().playSound(at, Sound.ENTITY_SKELETON_AMBIENT, 1.6f, .8f);
             host.visualsChanged();
         } catch (RuntimeException failure) {
+            if (pillarSkeleton != null) host.remove(pillarSkeleton);
             pillarSkeleton = null; pillarSkeletonId = null;
+            pillarSkeletonSpawned = false;
         }
     }
 
@@ -668,15 +700,23 @@ public final class RiftRamEncounter {
      */
     private void tickPillarSkeleton(List<Player> players) {
         if (!skeletonAlive()) return;
-        if (pillar == null) return; // waiting to fall; handled by the collapse
+        if (pillar == null && !skeletonFallen) return;
         Player target = nearest(pillarSkeleton.getLocation(), players);
         boolean hasTarget = target != null;
         if (hasTarget) {
             Location look = target.getLocation().clone();
             pillarSkeleton.setRotation(look.getYaw(), look.getPitch());
         }
-        // Patrol across the platform so it is never a static turret.
-        if (WaveSixPillarSkeletonPolicy.shouldReposition(tick, skeletonLastMove)) {
+        if (skeletonFallen) {
+            pillarSkeleton.setGravity(true);
+            pillarSkeleton.setAI(true);
+            pillarSkeleton.setAware(true);
+            pillarSkeleton.setTarget(target);
+            if (target != null) pillarSkeleton.getPathfinder().moveTo(target.getLocation(), 1.0D);
+        }
+        // Only a standing platform owns the elevated patrol. Once landed the
+        // same actor keeps its normal pathing and its authored ranged attacks.
+        if (!skeletonFallen && pillar != null && WaveSixPillarSkeletonPolicy.shouldReposition(tick, skeletonLastMove)) {
             skeletonLastMove = tick;
             skeletonStep++;
             double[] offset = WaveSixPillarSkeletonPolicy.patrolOffset(skeletonStep);
@@ -732,11 +772,16 @@ public final class RiftRamEncounter {
      */
     private void dropPillarSkeleton() {
         if (!WaveSixPillarSkeletonPolicy.shouldFall(impacts, skeletonAlive(), skeletonFallen)) return;
-        skeletonFallen = true;
         Location landing = pillarSkeleton.getLocation().clone();
         landing.setY(host.floorY() + 1.0D);
         if (!host.inArena(landing)) landing = ram.getLocation().clone();
-        host.move(pillarSkeleton, landing);
+        if (!host.inArena(landing) || !host.move(pillarSkeleton, landing)
+                || !landing.getWorld().equals(pillarSkeleton.getLocation().getWorld())
+                || pillarSkeleton.getLocation().distanceSquared(landing) > .25D) {
+            fail("skeleton-landing-refused"); return;
+        }
+        skeletonFallen = true;
+        if (!host.checkpoint()) { fail("skeleton-landing-checkpoint-failed"); return; }
         pillarSkeleton.setGravity(true);
         landing.getWorld().playSound(landing, Sound.ENTITY_SKELETON_STEP, 1.5f, .7f);
         dust(landing, 30, .8, .5);
@@ -746,14 +791,18 @@ public final class RiftRamEncounter {
         for(BlockDisplay d:pillarDisplays) host.remove(d);
         pillarDisplays.clear(); pillar=null; pillarId=null;
     }
-    private void cleanupDisplays() {
+    private void cleanupDisplays() { cleanupDisplays(false); }
+    private void cleanupDisplays(boolean preserveSkeleton) {
         clearPillar();
         for(Piece p:armor) host.remove(p.display()); armor.clear();
         for(Debris d:debris) host.remove(d.display()); debris.clear();
         for(Endermite e:mites) host.remove(e); mites.clear();
         // The marksman is an owned event actor: it never survives the encounter.
-        if (pillarSkeleton != null) { if (pillarSkeleton.isValid()) host.remove(pillarSkeleton); pillarSkeleton = null; }
-        pillarSkeletonId = null;
+        if (!preserveSkeleton) {
+            if (pillarSkeleton != null && pillarSkeleton.isValid()) host.remove(pillarSkeleton);
+            // The actor is gone; its UUID remains the durable death identity.
+            pillarSkeleton = null;
+        }
         stompHits.clear(); stompRoster.clear(); chargeHits.clear();
     }
     public void close() {
@@ -762,11 +811,19 @@ public final class RiftRamEncounter {
         if(ram!=null && ram.isValid()) host.remove(ram);
     }
     /** Remove transient presentation at shutdown while retaining the persistent actor. */
-    public void suspend() { closed=true; cleanupDisplays(); if(ram!=null && ram.isValid()) hold(); }
+    public void suspend() {
+        closed=true; cleanupDisplays(true);
+        if (skeletonAlive()) { pillarSkeleton.setAI(false); pillarSkeleton.setAware(false); }
+        if(ram!=null && ram.isValid()) hold();
+    }
 
     public Map<String,String> snapshot() {
         Map<String,String> data=new LinkedHashMap<>();
-        data.put("ram.schema","2");
+        data.put("ram.schema","3");
+        data.put("ram.defeated",Boolean.toString(ramDefeated));
+        data.put("ram.skeleton-spawned",Boolean.toString(pillarSkeletonSpawned));
+        data.put("ram.skeleton-defeated",Boolean.toString(pillarSkeletonDefeated));
+        data.put("ram.skeleton-fallen",Boolean.toString(skeletonFallen));
         data.put("ram.uuid",String.valueOf(id()));
         data.put("ram.impacts",Integer.toString(impacts));
         data.put("ram.tick",Integer.toString(tick));
@@ -789,7 +846,8 @@ public final class RiftRamEncounter {
 
     public void restore(Map<String,String> data) {
         try {
-            if(!"2".equals(data.get("ram.schema"))) throw new IllegalArgumentException("legacy-schema");
+            if(!"2".equals(data.get("ram.schema")) && !"3".equals(data.get("ram.schema")))
+                throw new IllegalArgumentException("legacy-schema");
             impacts=Integer.parseInt(data.get("ram.impacts"));
             // A schema-2 receipt was written under the old five-plate model, so
             // an impact count above the current plate count belongs to a build
@@ -797,6 +855,12 @@ public final class RiftRamEncounter {
             // instead of silently reinterpreting plate state.
             if(impacts<0 || impacts>RiftRamPolicy.REQUIRED_IMPACTS)
                 throw new IllegalArgumentException("impact-range");
+            RiftRamRecoveryPolicy.Actors actors = RiftRamRecoveryPolicy.decodeActors(data, impacts);
+            ramDefeated = actors.ramDefeated();
+            pillarSkeletonSpawned = actors.skeletonSpawned();
+            pillarSkeletonDefeated = actors.skeletonDefeated();
+            skeletonFallen = actors.skeletonFallen();
+            pillarSkeletonId = actors.skeletonId();
             persistentId=UUID.fromString(data.get("ram.uuid"));
             String receipt=data.get("ram.complete");
             if(!"true".equals(receipt) && !"false".equals(receipt)) throw new IllegalArgumentException("invalid-completion-receipt");
@@ -810,27 +874,54 @@ public final class RiftRamEncounter {
             lastStomp=Integer.parseInt(data.get("ram.last-stomp"));
             if(tick<0 || lastCharge<0 || lastStomp<0 || lastCharge>tick || lastStomp>tick)
                 throw new IllegalArgumentException("invalid-clock");
-            Entity entity=Bukkit.getEntity(UUID.fromString(data.get("ram.uuid")));
-            if(!(entity instanceof Ravager existing) || !existing.isValid() || existing.isDead())
-                throw new IllegalArgumentException("missing-persistent-ravager");
-            if(!host.owns(existing)) throw new IllegalArgumentException("foreign-ravager");
-            ram=existing;
-            if(!host.inArena(ram.getLocation())) throw new IllegalArgumentException("actor-outside-arena");
+            Entity entity=Bukkit.getEntity(persistentId);
+            if (!ramDefeated) {
+                if (!(entity instanceof Ravager existing) || !existing.isValid() || existing.isDead())
+                    throw new IllegalArgumentException("missing-persistent-ravager");
+                if (!host.owns(existing)) throw new IllegalArgumentException("foreign-ravager");
+                ram = existing;
+                if (!host.inArena(ram.getLocation())) throw new IllegalArgumentException("actor-outside-arena");
+            } else if (entity != null && entity.isValid() && !entity.isDead()) {
+                throw new IllegalArgumentException("dead-ravager-still-live");
+            }
+            Location core = host.core();
+            World actorWorld = ram != null ? ram.getWorld() : core == null ? null : core.getWorld();
+            if (actorWorld == null) throw new IllegalArgumentException("missing-encounter-world");
             // In-flight actions never replay after restart. Require fresh warning after recovery.
-            action=Action.RECOVER; actionTick=tick; lastCharge=tick; lastStomp=tick;
+            action=ramDefeated ? Action.DEAD : Action.RECOVER;
+            actionTick=tick; lastCharge=tick; lastStomp=tick;
             nextPillarTick=tick+35;
             // How much of the standing pillar is already gone, so a restarted
             // final pillar resumes at its real damage stage instead of rebuilding
             // intact and silently refunding two collisions.
-            pillarImpacts = 0;
-            String storedPillarImpacts = data.get("ram.pillar-impacts");
-            if (storedPillarImpacts != null) {
-                try { pillarImpacts = Integer.parseInt(storedPillarImpacts); }
-                catch (NumberFormatException ignored) { pillarImpacts = 0; }
-                if (pillarImpacts < 0 || pillarImpacts > RiftRamPolicy.FINAL_PILLAR_IMPACTS)
-                    throw new IllegalArgumentException("pillar-impact-range");
+            pillarImpacts = RiftRamRecoveryPolicy.pillarImpacts(data, impacts);
+            // Resolve and validate the saved combat actor BEFORE rebuilding
+            // presentation. Never overwrite a freshly spawned replacement.
+            if (pillarSkeletonSpawned) {
+                Entity saved = Bukkit.getEntity(pillarSkeletonId);
+                if (pillarSkeletonDefeated) {
+                    if (saved != null && saved.isValid() && !saved.isDead())
+                        throw new IllegalArgumentException("dead-skeleton-still-live");
+                } else {
+                    if (!(saved instanceof Skeleton marksman) || !marksman.isValid()
+                            || marksman.isDead() || !host.owns(marksman)
+                            || !actorWorld.equals(marksman.getWorld()))
+                        throw new IllegalArgumentException("missing-or-foreign-saved-skeleton");
+                    Location savedAt = marksman.getLocation();
+                    Location floorProjection = savedAt.clone();
+                    floorProjection.setY(host.floorY() + 1.0D);
+                    // Platform actors legitimately stand above the player's arena
+                    // ceiling. Validate their footprint and bounded role height,
+                    // without expanding the arena used for player eligibility.
+                    if (!host.inArena(floorProjection)
+                            || !Double.isFinite(savedAt.getY())
+                            || savedAt.getY() < host.floorY() + .5D
+                            || savedAt.getY() > host.floorY() + 3.0D + WaveSixPillarSkeletonPolicy.PLATFORM_HEIGHT)
+                        throw new IllegalArgumentException("saved-skeleton-outside-role-volume");
+                    pillarSkeleton = marksman;
+                }
             }
-            createArmor();
+            if (!ramDefeated) createArmor();
             if(data.containsKey("ram.pillar-id")) {
                 if(impacts>=RiftRamPolicy.REQUIRED_IMPACTS)
                     throw new IllegalArgumentException("pillar-after-final-impact");
@@ -842,18 +933,14 @@ public final class RiftRamEncounter {
                 pillar=new Location(ram.getWorld(),x,y,z);
                 if(!safeVolume(pillar) || !buildPillar()) throw new IllegalArgumentException("pillar-site-invalid");
             }
-            // Re-adopt a surviving marksman instead of spawning a duplicate: an
-            // interrupted encounter must not leave two skeletons behind.
-            String storedSkeleton = data.get("ram.skeleton");
-            if (storedSkeleton != null && RiftRamPolicy.eliteSkeletonAliveOn(impacts, true)) {
-                Entity marksmanEntity = Bukkit.getEntity(UUID.fromString(storedSkeleton));
-                if (marksmanEntity instanceof Skeleton marksman && marksman.isValid()
-                        && !marksman.isDead() && host.owns(marksman)) {
-                    pillarSkeleton = marksman;
-                    pillarSkeletonId = marksman.getUniqueId();
-                }
+            // A crash after collision commit but before the accepted landing
+            // resumes that landing, never a replacement actor or a new impact.
+            if (impacts == RiftRamPolicy.REQUIRED_IMPACTS && skeletonAlive() && !skeletonFallen) {
+                dropPillarSkeleton();
+                if (closed) return;
             }
-            hold(); host.visualsChanged();
+            if (!ramDefeated) hold();
+            host.visualsChanged();
         } catch(RuntimeException failure) { fail("restore-refused:"+failure.getMessage()); }
     }
     private void fail(String reason) {

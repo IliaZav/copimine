@@ -27541,15 +27541,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         });
         if (!riftRamCheckpoint.isEmpty()) {
-            // Transient displays and adds are rebuilt from the minimum checkpoint.
-            for (Entity entity : new ArrayList<>(ownedEntities.values())) {
-                if (readInt(entity, keyWave, 0) == 6 && !(entity instanceof Ravager)) {
-                    unregisterOwnedEntity(entity.getUniqueId(), "rift-ram-restart-transient-cleanup");
-                    if (entity.isValid()) entity.remove();
-                }
-            }
+            if (!clearRiftRamRestartPresentation()) return;
             riftRam.restore(riftRamCheckpoint);
         } else riftRam.start(currentWaveScalePlayers);
+    }
+
+    private boolean clearRiftRamRestartPresentation() {
+        final Set<UUID> persistent;
+        try {
+            persistent = me.copimine.endevent.domain.RiftRamRecoveryPolicy.persistentActorIds(riftRamCheckpoint);
+        } catch (RuntimeException invalid) {
+            markWave6RecoveryRequired("RIFT_RAM_INVALID_RESTART_IDENTITIES");
+            return false;
+        }
+        for (Entity entity : new ArrayList<>(ownedEntities.values())) {
+            if (readInt(entity, keyWave, 0) == 6 && !persistent.contains(entity.getUniqueId())) {
+                unregisterOwnedEntity(entity.getUniqueId(), "rift-ram-restart-transient-cleanup");
+                if (entity.isValid()) entity.remove();
+            }
+        }
+        return true;
     }
 
     private void tickRiftRam() {
@@ -56131,7 +56142,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!ownedEntities.containsKey(entity.getUniqueId())) {
             return;
         }
-        if (riftRam != null && entity.getUniqueId().equals(riftRam.id())) {
+        if (riftRam != null) {
+            // The encounter admits only its body or saved final marksman UUID.
             riftRam.died(entity.getUniqueId());
         }
         // Contract 15.3: an Echo decoy's death is bookkeeping ONLY. It must not

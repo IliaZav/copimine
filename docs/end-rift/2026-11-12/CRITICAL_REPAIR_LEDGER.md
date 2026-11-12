@@ -70,3 +70,47 @@ Files: `runtime/RiftRamEncounter.java`, `test_rift_ram_runtime.py`, new
 
 No production or installed-client replacement is authorized. The live acceptance
 run must use a separate correctly initialized Paper/PostgreSQL/client runtime.
+
+## P0.1b — Saved marksman, deaths and accepted landing
+
+Reproductions exposed three integration layers: `restore()` built a new guard
+before resolving the saved UUID (24 failing actor cases); the main event restart
+cleanup deleted the saved guard before runtime restoration (2 failing cases);
+and Ram death prematurely deleted a surviving guard and completed the wave.
+Additional role-height/corrupt-local-counter cases failed 12/44. The landing
+adapter published `skeletonFallen` despite canceled or misdirected movement;
+all four accepted/canceled/checkpoint scenarios failed before its correction.
+
+`RiftRamRecoveryPolicy` now validates schema-2 actor identities and schema-3
+explicit spawned/dead/fallen receipts. Exact saved body/marksman IDs survive
+restart cleanup. The runtime adopts and validates the saved guard before any
+builders, rejects missing/foreign/contradictory actors, accepts bounded platform
+height using its floor footprint, and validates local pillar damage without
+silently resetting malformed values. A confirmed dead guard never respawns.
+Schema-2 cannot prove a completed death episode; that ambiguity enters recovery.
+
+Both owned actor deaths now reach the runtime. Either death order requires both
+receipts before completion. Shutdown retains persistent actors and pauses AI;
+transient presentation is removed. A collision committed before landing resumes
+the same actor's pending landing. Landing requires successful movement, matching
+actual position and a durable save before success presentation.
+
+Files: `RiftRamEncounter.java`, main `CopiMineEndEvent.java`, new
+`domain/RiftRamRecoveryPolicy.java`, runtime/admission tests and three new
+saved-actor/restart-cleanup/accepted-landing probes. Tests execute production
+adapters with detached Paper ports; they do not boot Paper.
+
+- Focused runtime, recovery, landing, roster, skeleton, stomp, permit, plugin-pin
+  and inventory suites: **215 passed, 3 skipped**, exit 0;
+  `C:/Temp/cm-ram-recovery-verified.log` (38.18 seconds).
+- Modern `endEventJar`: **BUILD SUCCESSFUL**, exit 0;
+  `C:/Temp/cm-ram-recovery-build.log`.
+- Stage-only installer: **Verified 30 pinned plugin candidates**;
+  `C:/Temp/cm-ram-recovery-stage.log`. No installed runtime changed.
+- Candidate: **2,403,582 bytes**, SHA-256
+  `92e0a41f2b9775531969ceccff1b1909c2960c7bb8616c57287b42ed1dc12a1b`.
+- Full suite, full CI, real Paper, restart of an actual server, native pictures
+  and measured performance: **NOT VERIFIED for this slice**.
+- Remaining Wave 6 visual review: final-pillar authored height/offsets and
+  damage geometry must survive rebuild/update; six client armour stages need
+  actual client acceptance. No visual completion claim is made here.

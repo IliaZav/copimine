@@ -45,16 +45,19 @@ public class RamVisualAdmissionProbe {
     static class Ravager {Location at;Ravager(World w){at=new Location(w);}
         boolean isValid(){return true;}boolean isDead(){return false;}
         Location getLocation(){return at;}}
-    static class Host {boolean inArena(Location l){return true;}}
+    static class Host {boolean inArena(Location l){return true;}List<Object> players(){return List.of();}}
     final Host host=new Host();final World world=new World();
     Ravager ram=new Ravager(world);int tick,impacts,pillarImpacts,nextPillarTick,skeletonSpawns;
     UUID pillarId=UUID.randomUUID();Location pillar=new Location(world);
     final List<Piece> armor=new ArrayList<>();final List<BlockDisplay> pillarDisplays=new ArrayList<>();
+    boolean pillarSkeletonSpawned, pillarSkeletonDefeated, ramDefeated;
+    void tickPillarSkeleton(List<Object> players){}
     String failure;
+    boolean skeletonAlive(){return pillarSkeletonSpawned;}
     void fail(String reason){failure=reason;}
     BlockDisplay block(Location l,Material m,Vector3f size){return new BlockDisplay();}
     void clearPillar(){pillarDisplays.clear();pillar=null;pillarId=null;}
-    void spawnPillarSkeleton(){skeletonSpawns++;}
+    void spawnPillarSkeleton(){skeletonSpawns++;pillarSkeletonSpawned=true;}
 ''' + methods + r'''
     static void check(boolean value,String reason){if(!value)throw new AssertionError(reason);}
     public static void main(String[] args){

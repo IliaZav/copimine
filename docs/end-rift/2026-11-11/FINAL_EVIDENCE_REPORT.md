@@ -1,12 +1,13 @@
 # End Rift — final evidence report
 
-Branch `codex/rift-guardian-polish-20261110`, HEAD `86abedddf95b578116f69952a78989e89bf52d93`,
-83 commits ahead of the `f8ef41af` baseline.
+Branch `codex/rift-guardian-polish-20261110`. HEAD at first publication was
+`86abedddf95b578116f69952a78989e89bf52d93`; the report was later extended with
+the live-server work described in section E.2.
 
 This report separates what is **implemented**, what is **proven by automated
 test**, what is **proven by mutation**, what has been **run on a live Paper
 server**, and what has been **looked at in a Minecraft client**. Those are five
-different claims and only the first three have evidence.
+different claims. Four of them now have evidence; the fifth still does not.
 
 ---
 
@@ -14,14 +15,16 @@ different claims and only the first three have evidence.
 
 | Claim | Evidence |
 |---|---|
-| Code implements the contracts | source, 3,415 pytest + gate |
-| Behaviour is pinned by tests | 3,415 passed / 18 skipped |
+| Code implements the contracts | source, 3,415 pytest + Java gate |
+| Behaviour is pinned by tests | 3,415 passed / 18 skipped; gate "End Rift current local checks passed" (exit 0) |
 | Tests actually bite | mutation-tested, each with the failing message |
-| CI green on HEAD | **yes — all 3 jobs on `373731e3`** |
-| Runs on a live Paper server | **no — never once this round** |
+| CI green on HEAD | **yes — all 3 jobs on `373731e3`**; re-run in flight on later commits |
+| Runs on a live Paper server | **partially — boot, wave 1 and boss entity proven; see E.2** |
 | Looks right in Minecraft | **no — no screenshot of any of this work** |
 
-The last two rows are the ones that matter to the user, and they are empty.
+The last row is the one that matters most to the user and it is still empty. The
+live-server row moved from "never run" to "run, partially proven", and E.2 states
+precisely which parts of it hold.
 
 ---
 
@@ -235,12 +238,76 @@ mutant and a real failure. A mutant that does not compile proves nothing.
 
 ---
 
+
+### E.2 Live Paper server run — the first one this round
+
+Full write-up: [`LIVE_PAPER_RUN.md`](LIVE_PAPER_RUN.md). An isolated local Paper
+26.3 server (port 25566, RCON 25576, `online-mode=false`) was booted against the
+release candidate. The RC jar's sha256 (`7128fc95…cab544`, 2 398 506 B) was
+verified before boot **and** re-read from the deployed jar afterwards.
+
+**Proven:**
+
+| Claim | Evidence |
+|---|---|
+| The RC plugin loads and boots cleanly | `Enabling CopiMineEndEvent v0.1.0`, `Done (23.448s)!` |
+| Wave 1 creates real server entities | `END_RIFT_WAVE_GROUP_SPAWN wave=1 … spawned=22`; with a player present `@e[type=minecraft:enderman]` = **22** |
+| Those entities pursue and strike | six `WAVE_MOB_DAMAGE … cause=ENTITY_ATTACK final=5.599999904632568 cancelled=true`, attacker UUID matching a spawn-line UUID |
+| Event-owned damage interception works | `cancelled=true` on those hits |
+| The boss is a real, mobile entity | 20 000 HP, NBT-readable name, `~16.8 blocks` of pursuit in 3 s across three samples, two `BOSS_MELEE_ATTACK total=20.0` |
+
+The third row is the one that closes a loop: the same entity UUIDs that were
+logged at spawn are the attackers that land damage, so the mobs are not a log
+artefact.
+
+**A hypothesis of mine that this run falsified.** I theorised that
+`spawned=22` printed the *planned* group size rather than reality, and started
+patching `spawnWaveGroup` to count what it actually created. The bot-present
+retest disproved it: with a player online, exactly 22 Endermen existed in the
+world and immediately attacked. The 22 were real; `@e` had simply been blind to
+unloaded chunks. The patch was reverted uncommitted. The theory is recorded in
+`LIVE_PAPER_RUN.md` as an explicitly ruled-out cause.
+
+**Not proven, and stated as such in the live-run document:**
+
+1. The boss **phase machine** (HUNT / RIFT / OVERLOAD / LAST_SEAL as a driven
+   progression). Only one transition was observed, `AWAKENING -> RAGE`, and it
+   was induced by command rather than earned through damage.
+2. Boss **HP loss from a real player hit**. `BOSS_DAMAGE_ACCEPTED` with
+   `health_before`/`health_after` was never observed; the 20 000 → 5 800 drop came
+   from the harness transition path, not a strike.
+3. The **Phase 5 echo decoys**. Zero actors proven. No `ECHO_DECOY` or
+   `ECHO_REPLICA` line was ever emitted and no decoy entity existed. This is the
+   newest feature and it remains the least verified item in the whole round.
+4. **Waves 2–7.** Only wave 1 was exercised.
+5. **Cleanup / orphans** after stopping the event.
+6. All **client-side visuals**.
+
+**Three environment blockers, each explained rather than worked around:**
+
+- `EndRiftLocalAuthMode.ps1` refuses a `local-runtime` that is a junction. That
+  guard is deliberate and correct; the probe was driven over RCON instead.
+- The probe script pins `-Xmx512M`; on this machine that OOMs during
+  `ImageFrame` enable and TPS falls to 7.86. The server was relaunched with
+  `-Xmx2048M` and booted in 23 s.
+- The plugin **fail-closes after ~180 s**: `CopiMineArtifacts` needs PostgreSQL,
+  and this machine has none (no server, no docker, empty `end-rift.env`). End Rift
+  then logs `dependencies are unavailable; disabling to prevent partial startup`.
+  This is correct fail-closed behaviour, and it is a production-safety property
+  worth having: the event refuses to run half-initialised rather than running
+  degraded. It is also the single reason items 1–5 above could not be reached.
+
+---
 ## F. Outstanding work
 
 Stated plainly, with no softening:
 
-1. **No live Paper run.** Not one wave, phase or boss has been started on a
-   server this round. No 2/5/10/11/20-player roster has been exercised.
+1. **The live Paper run is partial.** A server was booted against the RC and
+   wave 1 was proven end to end (22 real Endermen, six real hits). The boss exists
+   and moves. But the boss **phase machine**, **player-dealt HP loss**, the
+   **Phase 5 echo decoys**, waves **2–7** and **cleanup** are all unproven, because
+   the plugin fail-closes after ~180 s for want of PostgreSQL and this machine has
+   none. No 2/5/10/11/20-player roster has been exercised.
 2. **No client verification.** No model, animation, spell, fog, geyser, Echo
    copy, Kagune ring, cocoon fall or boss death has been seen rendering. Every
    visual acceptance item in section 26 is unmet.

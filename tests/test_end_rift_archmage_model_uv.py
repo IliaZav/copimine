@@ -108,3 +108,55 @@ def test_the_model_still_has_every_authored_part():
     ]
     for part in required:
         assert f'"{part}"' in source, f"the Archmage lost its {part} part"
+
+
+CLIENT = ROOT / "tools/minecraft-26.3/client/src/main/java/me/copimine/client"
+
+# Models that inherit their cube sheet from a vanilla parent. The sizes are the
+# parent's own declared sheet. Kept explicit so a wrong number here is visible.
+INHERITED_SHEETS = {
+    "Wave7WardenModel.java": (128, 128),   # vanilla warden
+    "RiftEndermiteModel.java": (64, 64),   # vanilla endermite
+}
+
+NUMBER = re.compile(r"-?\d+(?:\.\d+)?")
+
+
+def declared_sheet(source, filename):
+    """The cube sheet size, from a literal or from the known parent model."""
+    match = re.search(r"TEXTURE_WIDTH\s*=\s*(\d+)", source)
+    if match:
+        height = re.search(r"TEXTURE_HEIGHT\s*=\s*(\d+)", source)
+        assert height, f"{filename} declares a width but no height"
+        return int(match.group(1)), int(height.group(1))
+    match = re.search(r"LayerDefinition\.create\(\w+,\s*(\d+),\s*(\d+)\)", source)
+    if match:
+        return int(match.group(1)), int(match.group(2))
+    return INHERITED_SHEETS.get(filename)
+
+
+def test_every_client_model_keeps_its_uv_inside_its_sheet():
+    """The sigil-ring bug was one instance; this holds the whole client."""
+    audited = 0
+    problems = []
+    for path in sorted(CLIENT.glob("*Model.java")):
+        source = path.read_text(encoding="utf-8")
+        sheet = declared_sheet(source, path.name)
+        if sheet is None:
+            # Not a cube model (or a parent we have not listed): the audit
+            # cannot say anything, and silently passing would be worse.
+            continue
+        width, height = sheet
+        for match in BOX.finditer(source):
+            numbers = java_floats(match.group(3))
+            if len(numbers) < 6:
+                continue
+            u, v = int(match.group(1)), int(match.group(2))
+            u1 = u + 2 * (numbers[3] + numbers[5])
+            v1 = v + (numbers[4] + numbers[5])
+            audited += 1
+            if u1 > width or v1 > height or u < 0 or v < 0:
+                problems.append((path.name, u, v, u1, v1, f"{width}x{height}"))
+
+    assert audited >= 20, f"the audit should cover the authored models, saw {audited} boxes"
+    assert not problems, f"UV regions leave their texture sheet: {problems}"

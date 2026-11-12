@@ -51,7 +51,7 @@ enemy history that was never recorded.
 
 `SmallKaguneRestoration` owns pending entries, bounded retry, rollback UUIDs and
 checkpoint admission. The Paper adapter creates the real model/hitbox pair,
-confirms position and HP, and commits the complete roster before combat resumes.
+confirms position and HP, and commits the complete roster before boss AI actions resume.
 A partial batch rolls back; rollback failures retain ownership. New summons and
 boss actions pause while recovery remains pending. Restoration does not heal
 enemies, revive defensive guardian slots, refresh the spawn timer, or delete

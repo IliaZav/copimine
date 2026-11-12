@@ -5714,7 +5714,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && (phase == EventPhase.WAVE_6 || testWaveFrontVisualMode);
         boolean preserveWaveSeven = activeWave == 7 && !testWaveInspectionMode
                 && (phase == EventPhase.WAVE_7 || testWaveFrontVisualMode);
-        if ((phase == EventPhase.BOSS_ACTIVE || phase == EventPhase.RECOVERY_REQUIRED) && bossUuid != null) {
+        if ((phase == EventPhase.BOSS_ACTIVE || phase == EventPhase.BOSS_FINISH
+                || phase == EventPhase.RECOVERY_REQUIRED) && bossUuid != null) {
             LivingEntity boss = liveBoss();
             if (boss != null && boss.isValid() && !boss.isDead()
                     && isOfficialBoss(boss) && ownedBySession(boss, eventId, generation))
@@ -6213,7 +6214,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && (phase == EventPhase.WAVE_7 || testWaveFrontVisualMode);
         captureBlackFogShutdownCheckpoint();
         LivingEntity stoppingBoss = liveBoss();
-        boolean preserveBossForRestart = (phase == EventPhase.BOSS_ACTIVE || phase == EventPhase.RECOVERY_REQUIRED)
+        boolean preserveBossForRestart = (phase == EventPhase.BOSS_ACTIVE || phase == EventPhase.BOSS_FINISH
+                || phase == EventPhase.RECOVERY_REQUIRED)
                 && stoppingBoss != null && stoppingBoss.isValid() && !stoppingBoss.isDead()
                 && isOfficialBoss(stoppingBoss) && ownedBySession(stoppingBoss, eventId, generation);
         if (preserveBossForRestart) {
@@ -45811,6 +45813,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         tickKaguneRingCast(boss);
         tickCurrentTentacles(boss);
         if (smallKaguneRecovery != null && smallKaguneRecovery.pending()) {
+            if (boss instanceof Mob mob) {
+                mob.getPathfinder().stopPathfinding();
+                mob.setTarget(null);
+            }
+            boss.setVelocity(new Vector(0D, 0D, 0D));
+            nextTargetMillis = 0L;
             updateBossBar(boss);
             return;
         }

@@ -36,6 +36,10 @@ import java.util.logging.*;
 import me.copimine.endevent.domain.*;
 import me.copimine.endevent.runtime.TentacleController;
 public class GuardianRespawnRecoveryProbe {
+    // Small-enemy restoration is a separate IO owner. This fixture has none pending.
+    static class SmallRecovery { boolean tick(UUID event,long generation,long tick){return true;} }
+    SmallRecovery smallKaguneRecovery;
+
     long cocoonFallGeneration=Long.MIN_VALUE;
     boolean cocoonFallStarted,cocoonLandingPlayed;
     int cocoonFallElapsedTicks=-1,cocoonFallMoveFailures;

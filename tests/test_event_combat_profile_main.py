@@ -29,6 +29,10 @@ import me.copimine.endevent.domain.WaveTwoEntityRecoveryPolicy;
 import me.copimine.endevent.runtime.*;
 import me.copimine.endevent.runtime.EventCombatProfileService.Context;
 public class CombatProfileMainProbe {
+    void encodeSmallKaguneState(Map<String,String> encoded){
+        encoded.putAll(me.copimine.endevent.domain.SmallKaguneRosterSnapshot.encode(eventId,generation,List.of()));
+    }
+
     long cocoonFallGeneration=Long.MIN_VALUE;
     boolean cocoonFallStarted,cocoonLandingPlayed;
     int cocoonFallElapsedTicks=-1,cocoonFallMoveFailures;
@@ -110,6 +114,7 @@ public class CombatProfileMainProbe {
         main.tentacleGuardianRespawnDeadlineMillis.put(0,90_000L);
         main.tentacleGuardianWarnedSlots.add(0);
         var checkpoint=main.objectiveProgressSnapshot();
+        require("0".equals(checkpoint.get("boss-small-roster.count")),"living-roster codec coexists with combat profile");
         require(checkpoint.containsKey("combat-profile.schema")&&checkpoint.containsKey("other-objective"),"profile and wave objective checkpoint coexist");
         require("DONE".equals(checkpoint.get("boss-guardian-respawn-warned.0")),
                 "guardian warning receipt coexists with combat profile and objective checkpoint");
@@ -153,7 +158,7 @@ public class CombatProfileMainProbe {
     listener_stub.parent.mkdir(parents=True, exist_ok=True)
     listener_stub.write_text("package me.copimine.endevent.runtime; public class EventCombatProfileListener {public void clear(){}}", encoding="utf-8")
     production = ROOT / "copimine-end-event/src/me/copimine/endevent"
-    sources = [production / "runtime/EventCombatProfileService.java", production / "runtime/CombatSequence.java",
+    sources = [production / "domain/SmallKaguneRosterSnapshot.java",production / "runtime/EventCombatProfileService.java", production / "runtime/CombatSequence.java",
                production / "runtime/AttemptLifecycleController.java",
                production / "domain/wave7/EchoBehaviorStrategy.java",
                production / "domain/wave7/EchoLoadoutState.java",

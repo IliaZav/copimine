@@ -34,6 +34,10 @@ public class CombatProfileMainProbe {
     int cocoonFallElapsedTicks=-1,cocoonFallMoveFailures;
     me.copimine.endevent.domain.CocoonFallPolicy.Stage cocoonFallStage=
             me.copimine.endevent.domain.CocoonFallPolicy.Stage.COCOONED;
+    // encodeTentacleGuardianState persists the small-Kagune clock,
+    // so the probe must own the real field the production method reads.
+    final me.copimine.endevent.domain.SmallKaguneCadence smallKaguneCadence=
+            new me.copimine.endevent.domain.SmallKaguneCadence();
 
     static final String WAVE_TWO_CLEANUP_UUIDS_PROGRESS_KEY = "wave2-cleanup-uuids";
     static final String WAVE_TWO_OUTSTANDING_UUIDS_PROGRESS_KEY = "wave2-outstanding-uuids";
@@ -159,6 +163,7 @@ public class CombatProfileMainProbe {
                production / "domain/WaveTwoEntityRecoveryPolicy.java",
                production / "domain/GuardianDeathLedger.java", production / "domain/CocoonFallPolicy.java", production / "domain/EndRiftAiPolicy.java",
                production / "domain/TentacleGuardianPolicy.java", production / "domain/TentacleScalingPolicy.java",
+               production / "domain/SmallKaguneSpawnPolicy.java", production / "domain/SmallKaguneCadence.java",
                production / "domain/TentacleAnimationPolicy.java", production / "domain/BossPhase.java",
                production / "runtime/RealitySplitTrialController.java",
                production / "domain/Wave7TrialRoutePolicy.java",

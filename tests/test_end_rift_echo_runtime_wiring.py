@@ -203,12 +203,15 @@ def test_the_entry_family_is_supported_and_the_origin_is_logged():
         "VOID_BLAST is not a copyable family; the entry handed the policy a name "
         "it refuses, so every opening replica was discarded"
     )
-    rage = text.index("transition.entered().contains(BossPhase.RAGE)")
-    call = text.index("startEchoAttackReplicas(boss,", rage)
-    assert call - rage < 600, "the RAGE entry must start the copies"
-    assert "EndRiftAiPolicy.BossSpell.MELEE_SWIPE.name()" in text[rage:call + 200], (
-        "the opening copy repeats the boss's authored opening strike"
-    )
+    # Copies are no longer spawned at a single RAGE-transition entry point. They
+    # start whenever the boss casts a contact ability during RAGE, so the copy
+    # repeats whichever strike the boss actually performed (MELEE_SWIPE, chest
+    # strike or ground slam) instead of a hardcoded family.
+    cast = text.index("startEchoAttackReplicas(boss,")
+    ctx = text[cast - 300:cast + 120]
+    assert "bossPhase == BossPhase.RAGE" in ctx, "copies must only start during RAGE"
+    assert "isContactBossAbility(spell)" in ctx, "only contact strikes get copied"
+    assert "spell.name()" in ctx, "the copy repeats the boss's real strike, not a family"
     start = method("boolean startEchoAttackReplicas(")
     assert "EchoReplicaPresentationPolicy.familyForOrigin(family)" in start
     assert "origin=" in start, "the log must state which origin was translated"

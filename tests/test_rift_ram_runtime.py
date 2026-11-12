@@ -112,7 +112,10 @@ public class RamRuntimeProbe {
       p.action=Action.CHASE;p.impact();check(p.impacts==i-1,"walking cannot hit");
       p.action=Action.CHARGE;p.banked=false;p.impact();
       check(p.impacts==i,"one impact");
-      boolean pillarCollapsed=RiftRamPolicy.impactsRemainingOnPillar(i)==0;
+      // The policy's ordinal has advanced after an ordinary collapse; asking
+      // remaining hits alone now describes the NEXT pillar, not the one hit.
+      boolean pillarCollapsed=i<=RiftRamPolicy.MINOR_PILLARS
+              || RiftRamPolicy.impactsRemainingOnPillar(i)==0;
       if(pillarCollapsed) {
         check(p.pillarId==null,"a spent pillar retires");
         check(p.pillarDisplays.isEmpty(),"pillar displays removed");

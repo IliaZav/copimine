@@ -125,10 +125,9 @@ public final class RiftRamEncounter {
     /**
      * Bolts the armour onto the body, W6-01.
      *
-     * <p>Three heavy sections instead of five thin ones: a shoulder pauldron, a
-     * flank plate and a head casing. Fewer, larger plates read as fitted armour
-     * at boss scale instead of as a stack of floating cubes, and each one is a
-     * whole visible stage that the party can watch come off.</p>
+     * <p>Seven independently shed pieces match the seven accepted collisions:
+     * two shoulder plates, a back casing and four lower guards. The fixed
+     * section identities survive a checkpoint without restoring shed pieces.</p>
      *
      * <p>Sections already shed are skipped, so a restored encounter rebuilds
      * exactly the plates its checkpoint says are still bolted on.</p>
@@ -137,6 +136,10 @@ public final class RiftRamEncounter {
             addArmor(-1.35,1.35,-.85, .55f,1.75f,2.35f, 1);
             addArmor( 1.05,1.35,-.85, .55f,1.75f,2.35f, 2);
             addArmor(-.95,2.85,-.95, 2.15f,.55f,2.15f, 3);
+            addArmor(-1.25,.55,-1.10, .55f,.95f,.75f, 4);
+            addArmor( .85,.55,-1.10, .55f,.95f,.75f, 5);
+            addArmor(-1.25,.55, .65, .55f,.95f,.75f, 6);
+            addArmor( .85,.55, .65, .55f,.95f,.75f, 7);
     }
 
     /** Deterministic, bounded search; all occupied volume and floor cells must be safe. */
@@ -246,7 +249,9 @@ public final class RiftRamEncounter {
                 || armor.stream().anyMatch(piece->!piece.display().isValid())) {
             fail("armor-visual-missing"); return;
         }
-        if(pillarId!=null && (pillarDisplays.size()!=3
+        int expectedPillarDisplays = RiftRamPolicy.isFinalPillar(
+                RiftRamPolicy.pillarOrdinal(impacts)) ? 4 : 3;
+        if(pillarId!=null && (pillarDisplays.size()!=expectedPillarDisplays
                 || pillarDisplays.stream().anyMatch(display->!display.isValid()))) {
             fail("active-pillar-visual-missing"); return;
         }
@@ -425,7 +430,8 @@ public final class RiftRamEncounter {
         // pillar dies to its first hit; the final pillar absorbs three, cracking
         // visibly on each, and only the third brings it down.
         int pillarOrdinal = RiftRamPolicy.pillarOrdinal(impacts - 1);
-        boolean spent = RiftRamPolicy.impactsRemainingOnPillar(impacts) == 0;
+        boolean spent = !RiftRamPolicy.isFinalPillar(pillarOrdinal)
+                || RiftRamPolicy.impactsRemainingOnPillar(impacts) == 0;
         // Per-pillar absorption, not the encounter total: an ordinary pillar is
         // always 1, and the final one counts 1, 2, 3 and then resets with it.
         pillarImpacts = spent ? 0 : pillarImpacts + 1;

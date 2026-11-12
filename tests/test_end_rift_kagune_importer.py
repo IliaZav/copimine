@@ -305,7 +305,10 @@ def _gson_jar() -> Path:
         found = sorted(ROOT.glob(pattern))
         if found:
             return found[-1]
-    raise AssertionError("no gson jar found in the server libraries or the staged toolchains")
+    cached = sorted((Path.home() / '.gradle/caches/modules-2/files-2.1/com.google.code.gson/gson').glob('**/gson-*.jar'))
+    if cached:
+        return cached[-1]
+    raise AssertionError("no gson jar found in server libraries, staged toolchains or Gradle dependency cache")
 
 
 def _toolchain() -> tuple[Path, Path, Path]:

@@ -27427,8 +27427,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             waveObjectiveComplete = false;
             return false;
         }
+        // A counter-shaped objective must publish its real count every tick.
+        // The Rift Ram's progress IS its accepted collision count, which the
+        // runtime owns; without it wave 6 sat at zero until the last collision.
+        int liveProgress = liveObjectiveProgress(wave);
         EndRiftEncounterCoordinator.Result result = encounterCoordinator.tickCurrentWave(
-                context.withObjective(EndRiftObjective.objective(wave)), objectiveComplete);
+                context.withObjective(EndRiftObjective.objective(wave)), objectiveComplete,
+                liveProgress);
         if (!result.accepted()) {
             waveObjectiveComplete = false;
             getLogger().warning("End Rift wave adapter refused live result wave=" + wave
@@ -27437,6 +27442,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         waveObjectiveComplete = objectiveComplete && result.progress() >= result.required();
         return waveObjectiveComplete;
+    }
+
+    /**
+     * The live objective's own step count, for waves whose progress is a counter.
+     *
+     * <p>Wave 6 counts accepted Rift Ram collisions, and that number lives in the
+     * runtime. Every other wave is driven by its own dedicated tick path and
+     * reports completion alone, so it contributes no count here.</p>
+     */
+    private int liveObjectiveProgress(int wave) {
+        if (EndRiftObjective.objective(wave) == EndRiftObjective.Objective.RIFT_RAM) {
+            return riftRam == null ? 0 : riftRam.impacts();
+        }
+        return 0;
     }
 
     private boolean tickWaveObjective() {

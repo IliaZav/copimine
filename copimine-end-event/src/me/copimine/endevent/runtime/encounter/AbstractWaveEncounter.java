@@ -62,6 +62,31 @@ abstract class AbstractWaveEncounter implements WaveEncounter {
                 objectiveComplete ? "live objective complete" : "live objective active");
     }
 
+    /**
+     * Admit the live objective's own progress count, not just its completion.
+     *
+     * <p>Waves whose objective is a counter (the Rift Ram's accepted pillar
+     * collisions, for instance) know how far they have got at every tick. The
+     * boolean bridge in {@link #reportRuntimeResult(EncounterContext, boolean)}
+     * is only a completion hint and would leave such a wave at zero progress
+     * until the very last collision, so the coordinator, the rendered progress
+     * line and the wave's own requirement could never be compared.
+     *
+     * <p>{@code reportedProgress} is clamped into {@code [0, required]}:
+     * a runtime that reports past its own requirement is not allowed to inflate
+     * the objective, and a stale or negative value cannot rewind it.</p>
+     */
+    @Override
+    public synchronized Result reportRuntimeResult(EncounterContext context,
+                                                   boolean objectiveComplete,
+                                                   int reportedProgress) {
+        if (!accepts(context)) return rejected("STALE_OR_NOT_STARTED");
+        progress = Math.max(progress, Math.max(0, Math.min(required, reportedProgress)));
+        if (objectiveComplete) progress = required;
+        return result(progress >= required ? Status.COMPLETE : Status.IN_PROGRESS,
+                objectiveComplete ? "live objective complete" : "live objective active");
+    }
+
     @Override
     public synchronized Result complete(EncounterContext context) {
         if (!accepts(context)) return rejected("STALE_OR_NOT_STARTED");

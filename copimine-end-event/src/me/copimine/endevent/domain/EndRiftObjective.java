@@ -14,8 +14,20 @@ public final class EndRiftObjective {
     /** Protocol upper bound; the live target is frozen by BlackFogTimingPolicy.cycleCount. */
     public static final int REQUIRED_FOG_CYCLES = BlackFogTimingPolicy.CYCLE_COUNT;
     public static final int REQUIRED_COLLAPSE_RINGS = 3;
-    /** Wave 6 is the five-pillar Rift Ram: one impact per destroyed pillar. */
-    public static final int REQUIRED_PILLAR_IMPACTS = 3;
+    /**
+     * Accepted Rift Ram collisions needed to finish Wave 6.
+     *
+     * <p>There is exactly one pillar roster, and it lives in
+     * {@link RiftRamPolicy}: four ordinary pillars that each take one collision
+     * plus one oversized final pillar that takes three. This constant is the
+     * objective's view of that same roster, so it is DERIVED, never spelled out.
+     * It used to be a flat {@code 3} left over from the retired single-pillar
+     * design, which gave the wave adapter a smaller requirement than the live
+     * encounter: the objective could be satisfied after three of seven
+     * collisions, while the boss bar, the plate model and the damage gate still
+     * counted seven. Deriving it here makes that disagreement impossible.</p>
+     */
+    public static final int REQUIRED_PILLAR_IMPACTS = RiftRamPolicy.REQUIRED_IMPACTS;
     public static final int GATE_COUNT = 3;
     public static final int RING_COUNT = 3;
     public static final int FOG_ZONE_PHASES = 5;

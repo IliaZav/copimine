@@ -172,6 +172,22 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
      */
     public synchronized Result tickCurrentWave(EncounterContext liveContext,
                                                boolean objectiveComplete) {
+        return tickCurrentWave(liveContext, objectiveComplete, 0);
+    }
+
+    /**
+     * As {@link #tickCurrentWave(EncounterContext, boolean)}, with the live
+     * objective's own progress count.
+     *
+     * <p>A counter-shaped objective (the Rift Ram's accepted pillar collisions)
+     * knows its progress independently of whether it is finished. Passing the
+     * count through lets the adapter, and therefore the wave display, show the
+     * same number the encounter is acting on instead of staying at zero until
+     * the final collision.</p>
+     */
+    public synchronized Result tickCurrentWave(EncounterContext liveContext,
+                                               boolean objectiveComplete,
+                                               int objectiveProgress) {
         if (closed) return rejected("COORDINATOR_CLOSED");
         EndRiftObjective.Objective objective = activeObjective();
         if (objective == null) return rejected("NOT_IN_WAVE");
@@ -184,8 +200,8 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
         session.replaceContext(objectiveContext);
         WaveEncounter.Result tick = encounter.tick(objectiveContext);
         if (!tick.accepted()) return fromEncounter(tick, session.phase());
-        return fromEncounter(encounter.reportRuntimeResult(objectiveContext, objectiveComplete),
-                session.phase());
+        return fromEncounter(encounter.reportRuntimeResult(objectiveContext, objectiveComplete,
+                objectiveProgress), session.phase());
     }
 
     /** Validate and store a terminal wave result without advancing global phase. */

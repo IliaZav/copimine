@@ -16,6 +16,16 @@ public interface WaveEncounter {
     Result tick(EncounterContext context);
     /** Accept the terminal result from the live Bukkit objective adapter. */
     Result reportRuntimeResult(EncounterContext context, boolean objectiveComplete);
+
+    /**
+     * Accept the live objective's progress AND its completion hint.
+     *
+     * <p>Wave objectives that are counters must publish their real count every
+     * tick; a wave that only reports a completion boolean stays at zero until
+     * the moment it finishes, which makes its progress unreadable.</p>
+     */
+    Result reportRuntimeResult(EncounterContext context, boolean objectiveComplete,
+                               int reportedProgress);
     Result complete(EncounterContext context);
     void reset();
 

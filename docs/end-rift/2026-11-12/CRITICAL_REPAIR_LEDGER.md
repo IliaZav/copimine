@@ -267,7 +267,7 @@ successful/nonzero launcher cases are tested, with exact owned test-child cleanu
 The old script returned success for 386 sources using the hardcoded 1.21.1 API,
 which is not acceptance against the required 26.3 platform. The real old
 argument-file writer failed a javac probe in a path containing spaces and Cyrillic
-(`error: invalid flag: ??????`): unquoted ASCII output corrupted the input.
+(`error: invalid flag: <non-ASCII path>`): unquoted ASCII output corrupted the input.
 
 The gate now resolves the actual endEvent Gradle source-set classpath, invokes
 `verifyPaperApi` (locked size and SHA-256), compiles the complete six source roots

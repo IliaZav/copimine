@@ -19,6 +19,9 @@ def daylight_probe(tmp_path_factory):
         return source[start:end]
     methods = (declaration("private void registerOwnedEntity(Entity entity)") + "\n"
                + declaration("private boolean isWaveCombatKind(String kind)") + "\n"
+               # isWaveCombatKind delegates the Phase 5 Echo kinds to this helper,
+               # so the probe must carry it or the real method cannot compile.
+               + declaration("private boolean isEchoKind(String kind)") + "\n"
                + declaration("private void rememberWave7ProjectileIncarnations(Entity entity, int wave)"))
     directory = tmp_path_factory.mktemp("wave-daylight")
     fixture = directory / "WaveDaylightProbe.java"
@@ -36,7 +39,8 @@ public class WaveDaylightProbe {
     boolean isOfficialEntity(Entity entity){return true;}
     static final String EVENT_KIND_WAVE_MOB="WAVE_MOB", EVENT_KIND_ELITE="ELITE",
         EVENT_KIND_WAVE_GUARDIAN="WAVE_GUARDIAN", EVENT_KIND_REALITY_SPLIT_TRIAL="REALITY_SPLIT_TRIAL",
-        EVENT_KIND_RITUAL_CASTER="RITUAL_CASTER", EVENT_KIND_RITUAL_GUARD="RITUAL_GUARD";
+        EVENT_KIND_RITUAL_CASTER="RITUAL_CASTER", EVENT_KIND_RITUAL_GUARD="RITUAL_GUARD",
+        EVENT_KIND_ECHO_DECOY="ECHO_DECOY", EVENT_KIND_ECHO_REPLICA="ECHO_REPLICA";
     static class Entity {
         UUID id=UUID.randomUUID(); String kind; int wave; boolean valid=true;
         Entity(String kind,int wave){this.kind=kind;this.wave=wave;}

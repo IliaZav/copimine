@@ -42,9 +42,17 @@ public abstract class EndermanEntityRendererMixin extends MobRenderer<Enderman, 
         // route is what the local boss harness uses. Checking only the flag
         // sent that case to the ordinary event texture lookup, which has no
         // Guardian entry, so the mixin declined and vanilla drew the Enderman.
-        boolean guardian = bound.copimine$endBoss()
-                || visual != null
-                && "END_RIFT_GUARDIAN_V1".equals(visual.trim().toUpperCase(java.util.Locale.ROOT));
+        // Contract 15.2/15.3: Phase 5 echoes and decoys wear the authored
+        // Guardian body on purpose. They are Endermen carrying their own visual
+        // ids, so without this they took the ordinary event-texture route, found
+        // no entry, and vanilla drew a plain Enderman - which both hides the
+        // authored model and gives the deception away instantly.
+        String normalizedVisual = visual == null ? ""
+                : visual.trim().toUpperCase(java.util.Locale.ROOT);
+        boolean echoFamily = "END_RIFT_ECHO_REPLICA_V1".equals(normalizedVisual)
+                || "END_RIFT_ECHO_DECOY_V1".equals(normalizedVisual);
+        boolean guardian = bound.copimine$endBoss() || echoFamily
+                || "END_RIFT_GUARDIAN_V1".equals(normalizedVisual);
         if (guardian) {
             texture = copimine$guardianRenderer.textureForState(
                     bound.copimine$bossPhase(), bound.copimine$bossAnimation());

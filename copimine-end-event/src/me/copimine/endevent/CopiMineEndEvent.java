@@ -62,6 +62,7 @@ import me.copimine.endevent.domain.EchoDecoyPolicy;
 import me.copimine.endevent.domain.CocoonFallPolicy;
 import me.copimine.endevent.domain.BossSummonAdmissionPolicy;
 import me.copimine.endevent.domain.EchoAttackReplicaPolicy;
+import me.copimine.endevent.domain.EchoReplicaPresentationPolicy;
 import me.copimine.endevent.domain.KaguneGuardianFightPolicy;
 import me.copimine.endevent.domain.KaguneRingCastPolicy;
 import me.copimine.endevent.domain.KaguneRingGapPolicy;
@@ -486,6 +487,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final String EVENT_KIND_TENTACLE = "RIFT_TENTACLE";
     private static final String EVENT_KIND_GUARDIAN_SHIELD = "RIFT_GUARDIAN_SHIELD";
     private static final String EVENT_KIND_WAVE_REWARD = "WAVE_REWARD";
+    /**
+     * Contract 15.3: an Echo decoy is its own actor kind. It must never be read
+     * as an elite of a numbered wave, because that classification feeds wave
+     * pressure, wave progress and the boss bar - none of which a decoy may touch.
+     */
+    private static final String EVENT_KIND_ECHO_DECOY = "ECHO_DECOY";
+    /**
+     * Contract 15.2 Type A: a delayed attack copy is its own actor kind too. It
+     * is a hazard with a lifetime, never a wave mob and never the boss.
+     */
+    private static final String EVENT_KIND_ECHO_REPLICA = "ECHO_REPLICA";
     private static final String CLIENT_VISUAL_ENDERMAN = "END_RIFT_ENDERMAN_V1";
     private static final String CLIENT_VISUAL_ELITE = "END_RIFT_ELITE_V1";
     private static final String CLIENT_VISUAL_WAVE_GUARDIAN_ENDERMAN = "END_RIFT_WAVE_GUARDIAN_ENDERMAN_V1";
@@ -549,6 +561,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * plain vanilla Enderman — exactly what the player reported.
      */
     private static final String CLIENT_VISUAL_BOSS = "END_RIFT_GUARDIAN_V1";
+    /**
+     * Contract 15.3: a decoy wears the Guardian family, so a party must be able
+     * to mistake it for the boss at a glance. It is a SEPARATE id on purpose: the
+     * real boss keeps CLIENT_VISUAL_BOSS and its own bar/clocks, and the spectral
+     * skin is where the learnable "this one is a copy" clue lives.
+     */
+    private static final String CLIENT_VISUAL_ECHO_DECOY = "END_RIFT_ECHO_DECOY_V1";
+    /** Contract 15.2: the copy of one attack, rendered as a spectral Guardian. */
+    private static final String CLIENT_VISUAL_ECHO_REPLICA = "END_RIFT_ECHO_REPLICA_V1";
     private static final long REALITY_SPLIT_ORPHAN_GRACE_MILLIS = 15_000L;
     private static final int REALITY_SPLIT_ACTION_TELEGRAPH_TICKS = 20;
     private static final int REALITY_SPLIT_REFLECTION_INTERVAL_TICKS = 70;
@@ -1456,10 +1477,49 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, EchoAttackReplicaPolicy.Timeline> echoReplicaTimelines = new LinkedHashMap<>();
     private final Map<UUID, TargetLock> echoReplicaLocks = new LinkedHashMap<>();
     private final Map<UUID, Set<String>> echoReplicaDamageLedger = new LinkedHashMap<>();
-    private final Set<UUID> echoReplicaDisplayIds = new LinkedHashSet<>();
+    /**
+     * The VISIBLE actor of each copy. It is a real Enderman, so it has a real
+     * hitbox for the party to fight AND a renderer the client already rebinds
+     * through END_ENTITY_BIND - which is how the Guardian family reaches it.
+     *
+     * <p>An Interaction marker would have been no picture at all (vanilla never
+     * renders it), and a timer with no actor is exactly the invisible damage
+     * contract 23.3 forbids, so the actor is a precondition of the copy.</p>
+     */
+    private final Map<UUID, EchoReplicaActor> echoReplicaActors = new LinkedHashMap<>();
+    /** Last numerically confirmed strike per copy: a strike lands once. */
+    private final Map<UUID, Double> echoReplicaAcceptedStrikeDamage = new LinkedHashMap<>();
+    /** Last numerically confirmed explosion per copy: a blast lands once. */
+    private final Map<UUID, Double> echoReplicaAcceptedBlastDamage = new LinkedHashMap<>();
+    /** One published copy per server tick, never two advancements in a tick. */
+    private long echoReplicaLastAdvanceTick = Long.MIN_VALUE;
+    /** One echo cast per originating family at a time, so nothing double-casts. */
+    /**
+     * The tick and family of the last committed copy batch. A plain pair, not a
+     * map: it only ever describes ONE tick, and a map keyed by tick would grow
+     * for as long as RAGE lasts.
+     */
+    private long echoReplicaLastCastTick = Long.MIN_VALUE;
+    private String echoReplicaLastCastFamily = "";
+    /** Encounter generation each copy was born in: the second fence. */
+    private final Map<UUID, Long> echoReplicaGenerations = new LinkedHashMap<>();
+
+    /** Real server health of the copy's readable hitbox. */
+    private static final double ECHO_REPLICA_ACTOR_HEALTH = 40.0D;
+
+    /**
+     * The visible actor of one copy: the owned entity the client renders as the
+     * Guardian, plus where it was spawned (that point is what the copy's
+     * telegraph and its explosion radius are anchored on).
+     */
+    private record EchoReplicaActor(UUID entityId, Location spawn) {
+    }
 
     /** A replica's aim freezes at the telegraph tick; it never homes after that. */
-    private record TargetLock(UUID playerId, Location point) {
+    private record TargetLock(UUID playerId, Location point, Location aim) {
+        TargetLock(UUID playerId, Location point) {
+            this(playerId, point, point);
+        }
     }
     /**
      * Contract 22.1: the cocoon fall is an authored ONCE-PER-GENERATION
@@ -1851,6 +1911,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private NamespacedKey keyBossPhase;
     private NamespacedKey keyBossDefeatPending;
     private NamespacedKey keyChamberId;
+    /** Contract 15.2: which authored family this attack copy repeats. */
+    private NamespacedKey keyEchoReplicaFamily;
+    /** Contract 15.2: the copy an actor entity belongs to (stand / hitbox / canopy). */
+    private NamespacedKey keyEchoReplicaCopy;
     private NamespacedKey keyTrialRole;
     private NamespacedKey keyTrialIndex;
     private NamespacedKey keyTrialProgress;
@@ -2010,6 +2074,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             keyBossPhase = new NamespacedKey(this, "end_event_boss_current_stage");
             keyBossDefeatPending = new NamespacedKey(this, "end_event_boss_current_defeat_pending");
             keyChamberId = new NamespacedKey(this, "end_event_chamber_id");
+            keyEchoReplicaFamily = new NamespacedKey(this, "end_event_echo_replica_family");
+            keyEchoReplicaCopy = new NamespacedKey(this, "end_event_echo_replica_copy");
             keyTrialRole = new NamespacedKey(this, "end_event_trial_role");
             keyTrialIndex = new NamespacedKey(this, "end_event_trial_index");
             keyTrialProgress = new NamespacedKey(this, "end_event_trial_progress");
@@ -19402,8 +19468,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || EVENT_KIND_WAVE_GUARDIAN.equals(kind)
                 || EVENT_KIND_REALITY_SPLIT_TRIAL.equals(kind)
                 || EVENT_KIND_RITUAL_CASTER.equals(kind)
-                || EVENT_KIND_RITUAL_GUARD.equals(kind);
+                || EVENT_KIND_RITUAL_GUARD.equals(kind)
+                || isEchoKind(kind);
     }
+
+    /**
+     * Contract 15.2/15.3: the two Phase 5 Echo actors both fight, so both are
+     * combat kinds - which is what keeps them persistent, keeps the mob limiter
+     * from deleting them, and puts them under the one AI invariant. They are
+     * kept apart from {@code EVENT_KIND_ELITE} so no wave packing, wave pressure
+     * or wave progress rule can ever count them.
+     */
+    private boolean isEchoKind(String kind) {
+        return EVENT_KIND_ECHO_DECOY.equals(kind) || EVENT_KIND_ECHO_REPLICA.equals(kind);
+    }
+
 
     private boolean isEventSkeleton(Entity entity) {
         return entity instanceof Skeleton
@@ -45489,6 +45568,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         reconcileBossCastProjection(boss, now);
         tickCurrentRiftFractures(boss);
         tickCurrentTentacles(boss);
+        // Contract 15.2: the general boss loop owns the Phase 5 Echo actors. The
+        // method carries its own RAGE and encounter-generation fences, and it
+        // advances a copy exactly once per server tick.
+        tickEchoAttackReplicas(boss);
+        tickEchoDecoyFence(boss);
         boolean finalSealPinned = pinBossToFinalSealCore(boss);
         if (generation == cocoonFallGeneration && cocoonFallStarted
                 && cocoonFallStage != CocoonFallPolicy.Stage.MELEE_FURY) {
@@ -45612,6 +45696,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // three rows sweep outward in order instead of all emerging at once.
         tickKaguneRingCast(boss);
         tickEchoAttackReplicas(boss);
+        // Contract 15.2: the pin used to be the ONLY owner of the replica tick,
+        // which is why a copy started at RAGE entry never advanced a single tick
+        // until the last seal. The general boss loop owns it now; the pin keeps
+        // its call for LAST_SEAL where it still adds a tick the loop cannot, and
+        // the once-per-tick fence inside the method stops a double advance.
         Location anchor = finalSealCoreAnchorLocation();
         if (anchor == null || anchor.getWorld() == null
                 || !anchor.getWorld().equals(boss.getWorld())) {
@@ -45853,8 +45942,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         // Contract 15.2 Type A: entering RAGE is when the boss starts echoing
         // its own attacks back at the party.
+        //
+        // The opening copy repeats the boss's AUTHORED opening strike, never an
+        // arbitrary spell name. "VOID_BLAST" is not a copyable family, so the old
+        // call handed timeline() a family it refuses and every opening replica
+        // was discarded on the first iteration - the mechanic was inert.
         if (transition.entered().contains(BossPhase.RAGE)) {
-            startEchoAttackReplicas(boss, "VOID_BLAST");
+            startEchoAttackReplicas(boss,
+                    EndRiftAiPolicy.BossSpell.MELEE_SWIPE.name());
         }
         // Contract 15.5: entering the final seal stops echo generation and
         // dissolves every decoy. A surviving decoy would otherwise become a
@@ -50236,6 +50331,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (boss == null || bossPhase != BossPhase.RAGE) {
             return false;
         }
+        // Contract 15.2 item 8: a copy repeats the attack the boss committed.
+        // "VOID_BLAST" is not a copyable family, so timeline() returned null for
+        // every entry and the whole mechanic cancelled itself out BEFORE it could
+        // deal its invisible damage. The origin is translated into a supported
+        // family here, and an origin that cannot be copied is refused outright.
+        String copyable = EchoReplicaPresentationPolicy.familyForOrigin(family);
+        if (copyable == null) {
+            getLogger().info("ECHO_ATTACK_REPLICAS_REFUSED event=" + eventId
+                    + " phase=" + bossPhase + " origin=" + family
+                    + " reason=unsupported-family");
+            return false;
+        }
+        // One copy batch per committed cast. A second call for the same origin
+        // in the same tick would double the damage for one readable animation.
+        if (echoReplicaLastCastTick == eventTickCounter
+                && copyable.equals(echoReplicaLastCastFamily)) {
+            // Same family twice in one tick: one readable animation, twice the
+            // damage. Refused.
+            return false;
+        }
         List<Player> roster = activeBossParticipants();
         if (roster.isEmpty()) {
             return false;
@@ -50263,24 +50378,49 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 continue;
             }
             EchoAttackReplicaPolicy.Timeline timeline = EchoAttackReplicaPolicy.timeline(
-                    eventTickCounter, family);
+                    eventTickCounter, copyable);
             if (timeline == null) {
                 continue;
             }
+            // Contract 23.3: a copy that has no visible actor may not exist.
+            // The actor is spawned BEFORE the copy is recorded, so a failed spawn
+            // is a refused copy rather than a timing that would deal invisible
+            // damage from the boss loop.
+            EchoReplicaPresentationPolicy.Placement placement =
+                    EchoReplicaPresentationPolicy.placement(index, admitted,
+                            eventTickCounter * 31L + generation,
+                            target.getLocation().getYaw() * Math.PI / 180.0D);
             UUID copyId = UUID.randomUUID();
+            EchoReplicaActor actor = spawnEchoReplicaActor(boss, copyId,
+                    target.getLocation(), placement, copyable);
+            if (actor == null) {
+                getLogger().info("ECHO_ATTACK_REPLICA_SPAWN_REFUSED event=" + eventId
+                        + " phase=" + bossPhase + " family=" + copyable
+                        + " reason=no-readable-spawn-point");
+                continue;
+            }
             echoReplicaTimelines.put(copyId, timeline);
             echoReplicaLocks.put(copyId, new TargetLock(target.getUniqueId(),
-                    target.getLocation().clone()));
+                    target.getLocation().clone(), target.getLocation().clone()));
             echoReplicaDamageLedger.put(copyId, new LinkedHashSet<>());
+            echoReplicaActors.put(copyId, actor);
+            echoReplicaGenerations.put(copyId, generation);
+            echoReplicaLastCastTick = eventTickCounter;
+            echoReplicaLastCastFamily = copyable;
+            playEchoReplicaArrival(boss, copyId, copyable);
             spawned++;
         }
         if (spawned <= 0) {
             return false;
         }
         getLogger().info("ECHO_ATTACK_REPLICAS_START event=" + eventId
-                + " phase=" + bossPhase + " family=" + family
-                + " spawned=" + spawned + " alive=" + echoReplicaTimelines.size()
-                + " max=" + EchoAttackReplicaPolicy.MAX_REPLICAS);
+                + " phase=" + bossPhase + " origin=" + family
+                + " family=" + copyable + " spawned=" + spawned
+                + " alive=" + echoReplicaTimelines.size()
+                + " max=" + EchoAttackReplicaPolicy.MAX_REPLICAS
+                + " family_beat=" + EchoReplicaPresentationPolicy.beatAt(
+                EchoAttackReplicaPolicy.timeline(eventTickCounter, copyable),
+                eventTickCounter));
         return true;
     }
 
@@ -50291,6 +50431,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (echoReplicaTimelines.isEmpty()) {
             return;
         }
+        if (tickEchoReplicaFence(boss) != null) {
+            return;
+        }
+        // A copy advances exactly once per server tick. The boss loop can reach
+        // this method from more than one owner (the final-seal pin, the general
+        // boss tick, the cocoon branch); a second call in the same tick would
+        // re-run a damage window and could land the strike twice.
+        if (echoReplicaLastAdvanceTick == eventTickCounter) {
+            return;
+        }
+        echoReplicaLastAdvanceTick = eventTickCounter;
         for (UUID copyId : new ArrayList<>(echoReplicaTimelines.keySet())) {
             EchoAttackReplicaPolicy.Timeline timeline = echoReplicaTimelines.get(copyId);
             TargetLock lock = echoReplicaLocks.get(copyId);
@@ -50299,19 +50450,47 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 continue;
             }
             long tick = eventTickCounter;
-            if (tick >= timeline.expiryTick()) {
+            if (tick > timeline.expiryTick()) {
                 retireEchoReplica(copyId, "expired");
                 continue;
             }
-            Player locked = Bukkit.getPlayer(lock.playerId());
+            EchoReplicaActor actor = echoReplicaActors.get(copyId);
+            if (actor == null) {
+                // Contract 23.3: NO actor, NO damage. A copy that lost its
+                // picture is torn down instead of becoming an invisible hazard.
+                retireEchoReplica(copyId, "actor-lost");
+                continue;
+            }
+            if (!EchoReplicaPresentationPolicy.actorShouldExist(timeline, tick)) {
+                retireEchoReplica(copyId, "before-arrival");
+                continue;
+            }
             Set<String> ledger = echoReplicaDamageLedger.get(copyId);
             if (ledger == null) {
                 retireEchoReplica(copyId, "ledger-lost");
                 continue;
             }
+            if (!echoReplicaActorIsPresent(actor)) {
+                // A vanished actor means somebody deleted the picture (a mob
+                // limiter, a chunk unload, a plugin). The copy retires at once.
+                retireEchoReplica(copyId, "actor-vanished");
+                continue;
+            }
+            EchoReplicaPresentationPolicy.Beat beat =
+                    EchoReplicaPresentationPolicy.beatAt(timeline, tick);
+            presentEchoReplicaActor(copyId, actor, timeline, lock, beat);
+            Player locked = Bukkit.getPlayer(lock.playerId());
+            // Contract 15.2 item 9: a dead or disconnected target cancels the
+            // copy. It does not leave a swing that still hits whoever is around.
+            if (EchoAttackReplicaPolicy.cancelsOnTargetLoss()
+                    && (locked == null || !locked.isOnline() || locked.isDead())) {
+                retireEchoReplica(copyId, "target-lost");
+                continue;
+            }
             // Contract 15.2: the strike lands once, on the matching keyframe,
-            // and only on a player still inside the locked radius.
-            if (EchoAttackReplicaPolicy.strikeWindowOpen(timeline, tick)
+            // and only on a player still inside the LOCKED radius.
+            if (EchoReplicaPresentationPolicy.damageAllowed(true, timeline, tick)
+                    && beat == EchoReplicaPresentationPolicy.Beat.CONTACT
                     && locked != null && locked.isOnline() && !locked.isDead()) {
                 double dx = locked.getLocation().getX() - lock.point().getX();
                 double dz = locked.getLocation().getZ() - lock.point().getZ();
@@ -50322,13 +50501,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     ledger.add(EchoAttackReplicaPolicy.scopedKey(
                             timeline.replicaKey(), playerKey));
                     LivingEntity attacker = boss != null && boss.isValid() ? boss : locked;
-                    locked.damage(EchoAttackReplicaPolicy.strikeDamage(
-                            KaguneGuardianFightPolicy.BASE_STRIKE_DAMAGE), attacker);
+                    double accepted = applyEchoReplicaDamage(locked,
+                            EchoAttackReplicaPolicy.strikeDamage(
+                                    KaguneGuardianFightPolicy.BASE_STRIKE_DAMAGE),
+                            attacker);
+                    echoReplicaAcceptedStrikeDamage.put(copyId, accepted);
+                    getLogger().info("ECHO_ATTACK_REPLICA_HIT event=" + eventId
+                            + " generation=" + generation + " copy=" + copyId
+                            + " family=" + timeline.family()
+                            + " source=strike target=" + playerKey
+                            + " tick=" + tick + " accepted=" + accepted);
                 }
             }
             // The warned explosion has its OWN ledger key, so it lands once
             // too - and never twice for the same player.
-            if (EchoAttackReplicaPolicy.explosionWindowOpen(timeline, tick)) {
+            if (EchoReplicaPresentationPolicy.damageAllowed(true, timeline, tick)
+                    && beat == EchoReplicaPresentationPolicy.Beat.EXPLOSION) {
                 for (Player player : activeBossParticipants()) {
                     if (player.isDead()) {
                         continue;
@@ -50345,20 +50533,287 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     ledger.add(EchoAttackReplicaPolicy.scopedKey(
                             timeline.explosionKey(), playerKey));
                     LivingEntity attacker = boss != null && boss.isValid() ? boss : player;
-                    player.damage(EchoAttackReplicaPolicy.explosionDamage(), attacker);
+                    double accepted = applyEchoReplicaDamage(player,
+                            EchoAttackReplicaPolicy.explosionDamage(), attacker);
+                    echoReplicaAcceptedBlastDamage.put(copyId, accepted);
+                    getLogger().info("ECHO_ATTACK_REPLICA_HIT event=" + eventId
+                            + " generation=" + generation + " copy=" + copyId
+                            + " family=" + timeline.family()
+                            + " source=explosion target=" + playerKey
+                            + " tick=" + tick + " accepted=" + accepted);
                 }
             }
         }
     }
 
+    /**
+     * The two fences every copy must pass before it may advance.
+     *
+     * <p>Contract 15.2 item 6: a copy belongs to ONE phase of ONE encounter
+     * attempt. A RAGE copy left alive by a phase change, a boss death or a new
+     * generation would be an orphaned hazard, so both fences clean instead of
+     * skipping - a bare {@code return} would leave the damage ledger armed.</p>
+     *
+     * @return {@code null} when the copies may advance, otherwise the reason they
+     *         were refused (after the copies were cleaned up)
+     */
+    private String tickEchoReplicaFence(LivingEntity boss) {
+        String refusal = null;
+        for (UUID copyId : new ArrayList<>(echoReplicaTimelines.keySet())) {
+            Long ownerGeneration = echoReplicaGenerations.get(copyId);
+            if (ownerGeneration == null || ownerGeneration.longValue() != generation) {
+                clearEchoAttackReplicas("generation-fence");
+                return "generation-fence";
+            }
+        }
+        if (bossPhase != BossPhase.RAGE) {
+            clearEchoAttackReplicas("phase-fence-" + bossPhase.name());
+            refusal = "phase-fence";
+        } else if (boss == null || !boss.isValid() || boss.isDead()
+                || bossDefeatCinematicStarted) {
+            clearEchoAttackReplicas("boss-lost");
+            refusal = "boss-lost";
+        }
+        return refusal;
+    }
+
+    /** Spawns the visible actor of one copy, or returns null and leaves nothing behind. */
+    private EchoReplicaActor spawnEchoReplicaActor(LivingEntity boss, UUID copyId,
+                                                   Location origin,
+                                                   EchoReplicaPresentationPolicy.Placement placement,
+                                                   String family) {
+        if (boss == null || origin == null || origin.getWorld() == null || placement == null) {
+            return null;
+        }
+        World world = origin.getWorld();
+        Location requested = origin.clone().add(placement.dx(), placement.dy(), placement.dz());
+        Location location = safeSpawnLocationForWave(requested, 0, 1.5D, 0);
+        double distance = location == null ? Double.NaN
+                : Math.hypot(location.getX() - origin.getX(), location.getZ() - origin.getZ());
+        int headroom = 0;
+        if (location != null) {
+            for (int step = 1; step <= EchoReplicaPresentationPolicy.MIN_SPAWN_HEADROOM_BLOCKS;
+                 step++) {
+                if (location.clone().add(0.0D, step, 0.0D).getBlock().isPassable()) {
+                    headroom++;
+                } else {
+                    break;
+                }
+            }
+        }
+        boolean inArena = location != null && isArenaLocation(location);
+        boolean insideBorder = location != null
+                && world.getWorldBorder().isInside(location);
+        if (!EchoReplicaPresentationPolicy.acceptsSpawnPoint(distance, headroom,
+                insideBorder, inArena)) {
+            return null;
+        }
+        // The copy is a real Enderman: it keeps a real hitbox for the party to
+        // fight, and its renderer is the one the client already rebinds through
+        // END_ENTITY_BIND - which is how the Guardian family reaches it.
+        Entity stand = spawnOwnedMobAtLocation(world, location, EntityType.ENDERMAN, 0,
+                EVENT_KIND_ECHO_REPLICA, false, 0);
+        if (stand == null) {
+            return null;
+        }
+        stand.getPersistentDataContainer().set(keyEchoReplicaFamily,
+                PersistentDataType.STRING, family == null ? "" : family);
+        stand.getPersistentDataContainer().set(keyEchoReplicaCopy,
+                PersistentDataType.STRING, copyId.toString());
+        if (stand instanceof Mob copyBody) {
+            // The copy does not walk: its position IS the telegraph. Vanilla AI
+            // would wander it off the arena and make the locked aim a lie.
+            copyBody.setAI(false);
+            copyBody.setAware(false);
+            copyBody.setSilent(true);
+            AttributeInstance copyHealth = copyBody.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+            if (copyHealth != null) {
+                copyHealth.setBaseValue(ECHO_REPLICA_ACTOR_HEALTH);
+            }
+            copyBody.setHealth(Math.min(ECHO_REPLICA_ACTOR_HEALTH, copyBody.getMaxHealth()));
+        }
+        for (Player viewer : Bukkit.getOnlinePlayers()) {
+            sendClientPacket(viewer, "END_ENTITY_BIND",
+                    eventId + ":" + generation + ":" + stand.getUniqueId(), 0L,
+                    stand.getUniqueId().toString(), CLIENT_VISUAL_ECHO_REPLICA);
+        }
+        getLogger().info("ECHO_REPLICA_ACTOR_SPAWNED event=" + eventId
+                + " generation=" + generation + " copy=" + copyId
+                + " family=" + family + " actor=" + stand.getUniqueId()
+                + " visual=" + CLIENT_VISUAL_ECHO_REPLICA
+                + " location=" + location.getBlockX() + "," + location.getBlockY()
+                + "," + location.getBlockZ()
+                + " distance=" + String.format(java.util.Locale.ROOT, "%.2f", distance));
+        return new EchoReplicaActor(stand.getUniqueId(), location.clone());
+    }
+
+    /** True while all three owned entities of one copy are alive. */
+    private boolean echoReplicaActorIsPresent(EchoReplicaActor actor) {
+        if (actor == null) {
+            return false;
+        }
+        Entity entity = ownedEntities.get(actor.entityId());
+        return entity != null && entity.isValid() && !entity.isDead();
+    }
+
+    /** Publishes the copy's current beat: locked aim, warn ring and phase clock. */
+    private void presentEchoReplicaActor(UUID copyId, EchoReplicaActor actor,
+                                         EchoAttackReplicaPolicy.Timeline timeline,
+                                         TargetLock lock,
+                                         EchoReplicaPresentationPolicy.Beat beat) {
+        Entity standEntity = ownedEntities.get(actor.entityId());
+        if (standEntity == null) {
+            return;
+        }
+        Location aim = lock == null ? null : lock.aim();
+        if (aim != null) {
+            lookEchoReplicaAt(standEntity, aim);
+        }
+        String phase = EchoReplicaPresentationPolicy.phaseName(beat);
+        long duration = EchoReplicaPresentationPolicy.phaseDurationMillis(timeline, beat);
+        String payload = phase + "|copy=" + copyId + "|family=" + timeline.family()
+                + "|t=" + Math.max(0L, eventTickCounter)
+                + "|die_at=" + timeline.expiryTick()
+                + "|hit_at=" + timeline.hitTick()
+                + "|boom_at=" + timeline.explosionTick();
+        for (Player viewer : Bukkit.getOnlinePlayers()) {
+            if (!isEventVisualViewer(viewer)) {
+                continue;
+            }
+            sendClientPacket(viewer, "END_ENTITY_PHASE",
+                    eventId + ":" + generation + ":" + actor.entityId(),
+                    Math.max(50L, duration), actor.entityId().toString(), payload);
+        }
+        if (beat == EchoReplicaPresentationPolicy.Beat.EXPLOSION_WARNING
+                || beat == EchoReplicaPresentationPolicy.Beat.EXPLOSION) {
+            ringEchoReplicaWarning(aim, beat == EchoReplicaPresentationPolicy.Beat.EXPLOSION);
+        }
+    }
+
+    /** Turns the copy's body toward its frozen aim point. */
+    private void lookEchoReplicaAt(Entity body, Location aim) {
+        if (body == null || aim == null || aim.getWorld() == null
+                || !aim.getWorld().equals(body.getWorld())) {
+            return;
+        }
+        Location from = body.getLocation();
+        double dx = aim.getX() - from.getX();
+        double dz = aim.getZ() - from.getZ();
+        if (!Double.isFinite(dx) || !Double.isFinite(dz)
+                || (Math.abs(dx) < 1.0E-4D && Math.abs(dz) < 1.0E-4D)) {
+            return;
+        }
+        float yaw = (float) (Math.toDegrees(Math.atan2(-dx, dz)));
+        Location aimed = from.clone();
+        aimed.setYaw(yaw);
+        aimed.setPitch(0.0F);
+        teleportCombatEntity(body, aimed);
+    }
+
+    /** The real-radius warning ring, and its detonation. */
+    private void ringEchoReplicaWarning(Location center, boolean detonate) {
+        if (center == null || center.getWorld() == null) {
+            return;
+        }
+        double radius = EchoAttackReplicaPolicy.EXPLOSION_RADIUS;
+        Particle particle = detonate ? Particle.EXPLOSION_EMITTER : Particle.END_ROD;
+        center.getWorld().spawnParticle(particle, center, detonate ? 1 : 12,
+                radius * 0.5D, 0.25D, radius * 0.5D, 0.0D);
+        if (detonate) {
+            center.getWorld().playSound(center, Sound.ENTITY_GENERIC_EXPLODE, 0.9F, 1.4F);
+            return;
+        }
+        for (int point = 0; point < 24; point++) {
+            double angle = Math.PI * 2.0D * point / 24.0D;
+            center.getWorld().spawnParticle(Particle.ELECTRIC_SPARK,
+                    center.clone().add(Math.cos(angle) * radius, 0.15D,
+                            Math.sin(angle) * radius), 1);
+        }
+    }
+
+    /** The spectral arrival: a visible effect BEFORE the first damage window. */
+    private void playEchoReplicaArrival(LivingEntity boss, UUID copyId, String family) {
+        Entity standEntity = ownedEntities.get(copyId);
+        if (standEntity == null || standEntity.getWorld() == null) {
+            return;
+        }
+        Location at = standEntity.getLocation();
+        standEntity.getWorld().spawnParticle(Particle.REVERSE_PORTAL, at, 40,
+                0.6D, 0.9D, 0.6D, 0.02D);
+        standEntity.getWorld().spawnParticle(Particle.SOUL_FIRE_FLAME, at, 24,
+                0.5D, 0.6D, 0.5D, 0.01D);
+        standEntity.getWorld().playSound(at, Sound.ENTITY_ENDERMAN_TELEPORT, 1.2F, 0.6F);
+        getLogger().info("ECHO_ATTACK_REPLICA_ARRIVED event=" + eventId
+                + " generation=" + generation + " copy=" + copyId
+                + " family=" + family + " boss="
+                + (boss == null ? "none" : boss.getUniqueId().toString()));
+    }
+
+    /**
+     * The single accepted-damage entry point of a copy.
+     *
+     * @return the damage the server actually accepted (0.0 when the target was
+     *         invulnerable, shielded or the hit was cancelled)
+     */
+    private double applyEchoReplicaDamage(Player target, double amount, LivingEntity attacker) {
+        if (target == null || target.isDead() || !target.isOnline()
+                || !Double.isFinite(amount) || amount <= 0.0D) {
+            return 0.0D;
+        }
+        double before = target.getHealth();
+        target.damage(amount, attacker);
+        double after = Math.min(target.getHealth(), before);
+        return Math.max(0.0D, before - after);
+    }
+
+    /**
+     * Removes one copy and EVERY entity it owned. Contract 15.2 item 6: a copy
+     * that retires without removing its actor would leave a frozen Guardian
+     * statue in the arena for the rest of the phase.
+     */
     private void retireEchoReplica(UUID copyId, String reason) {
         EchoAttackReplicaPolicy.Timeline timeline = echoReplicaTimelines.remove(copyId);
-        echoReplicaLocks.remove(copyId);
+        TargetLock lock = echoReplicaLocks.remove(copyId);
         echoReplicaDamageLedger.remove(copyId);
+        EchoReplicaActor actor = echoReplicaActors.remove(copyId);
+        Double strike = echoReplicaAcceptedStrikeDamage.remove(copyId);
+        Double blast = echoReplicaAcceptedBlastDamage.remove(copyId);
+        if (actor != null) {
+            removeEchoReplicaEntity(actor.entityId(), reason);
+        }
         if (timeline != null && EchoAttackReplicaPolicy.requiresCleanup(reason)) {
             getLogger().info("ECHO_ATTACK_REPLICA_RETIRED event=" + eventId
-                    + " reason=" + reason + " alive=" + echoReplicaTimelines.size());
+                    + " generation=" + generation + " copy=" + copyId
+                    + " family=" + timeline.family()
+                    + " reason=" + reason
+                    + " strike_accepted=" + (strike == null ? 0.0D : strike)
+                    + " blast_accepted=" + (blast == null ? 0.0D : blast)
+                    + " drops_loot=" + EchoAttackReplicaPolicy.dropsLoot()
+                    + " counts_progress=" + EchoAttackReplicaPolicy.countsTowardPhaseProgress()
+                    + " lock=" + (lock == null ? "none" : lock.playerId().toString())
+                    + " alive=" + echoReplicaTimelines.size());
         }
+    }
+
+    /** Removes one owned entity of a copy without ever touching the real boss. */
+    private void removeEchoReplicaEntity(UUID entityId, String reason) {
+        if (entityId == null) {
+            return;
+        }
+        if (bossUuid != null && bossUuid.equals(entityId)) {
+            // The copy owns three entities and none of them may be the boss.
+            // Refusing here is what keeps a mis-registered actor from deleting
+            // the real Guardian.
+            getLogger().severe("ECHO_REPLICA_ACTOR_REFUSED event=" + eventId
+                    + " reason=boss-identity");
+            return;
+        }
+        Entity entity = ownedEntities.get(entityId);
+        if (entity != null) {
+            unbindEventEntityClient(entityId);
+            entity.remove();
+        }
+        unregisterOwnedEntity(entityId, "echo-replica-" + reason);
     }
 
     private int clearEchoAttackReplicas(String reason) {
@@ -50366,12 +50821,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (UUID copyId : new ArrayList<>(echoReplicaTimelines.keySet())) {
             retireEchoReplica(copyId, reason);
         }
+        // Any actor whose timing already went away still has to go: an orphaned
+        // statue would outlive the copy that owned it.
+        for (UUID copyId : new ArrayList<>(echoReplicaActors.keySet())) {
+            EchoReplicaActor actor = echoReplicaActors.remove(copyId);
+            if (actor == null) {
+                continue;
+            }
+            removeEchoReplicaEntity(actor.entityId(), reason);
+        }
         echoReplicaTimelines.clear();
         echoReplicaLocks.clear();
         echoReplicaDamageLedger.clear();
-        echoReplicaDisplayIds.clear();
+        echoReplicaAcceptedStrikeDamage.clear();
+        echoReplicaAcceptedBlastDamage.clear();
+        echoReplicaLastCastTick = Long.MIN_VALUE;
+        echoReplicaLastCastFamily = "";
         if (removed > 0) {
             getLogger().info("ECHO_ATTACK_REPLICAS_CLEARED event=" + eventId
+                    + " generation=" + generation
                     + " reason=" + reason + " removed=" + removed);
         }
         return removed;
@@ -55506,8 +55974,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             Player anchorPlayer = roster.get(Math.floorMod(echoDecoyCursor++, roster.size()));
             Location around = anchorPlayer == null ? boss.getLocation()
                     : anchorPlayer.getLocation();
+            // Contract 15.3: the decoy is its OWN kind, not an elite of the
+            // numbered wave. The old EVENT_KIND_ELITE tag made a boss summon
+            // indistinguishable from a wave elite in every packing, pressure and
+            // progress rule that reads the kind.
             Entity decoy = spawnOwnedMob(around.getWorld(), boss.getLocation(),
-                    EntityType.PILLAGER, 0, EVENT_KIND_ELITE, false, index + alive);
+                    EntityType.PILLAGER, 0, EVENT_KIND_ECHO_DECOY, false, index + alive);
             if (decoy == null) {
                 continue;
             }
@@ -55520,7 +55992,36 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (living instanceof Mob mob) {
                     mob.setAI(true);
                     mob.setAware(true);
+                    // A decoy hunts the party through the event's own tick; the
+                    // vanilla random-wander goal is what made summoned fighters
+                    // drift off the arena instead of engaging.
+                    Player hunted = boss instanceof Mob bossMob
+                            && bossMob.getTarget() instanceof Player bossTarget
+                            ? bossTarget : null;
+                    if (hunted == null) {
+                        double best = Double.MAX_VALUE;
+                        for (Player candidate : roster) {
+                            if (candidate == null || !candidate.isOnline()
+                                    || candidate.isDead()
+                                    || !candidate.getWorld().equals(mob.getWorld())) {
+                                continue;
+                            }
+                            double distance = candidate.getLocation().distanceSquared(around);
+                            if (distance < best) {
+                                best = distance;
+                                hunted = candidate;
+                            }
+                        }
+                    }
+                    if (hunted != null) {
+                        mob.setTarget(hunted);
+                    }
                 }
+                // The Guardian identity is a client binding, resolved by
+                // clientVisualId() from the ECHO_DECOY kind above - never by
+                // writing the boss kind, which would hand a decoy the boss
+                // identity, bar and victory path.
+                bindEventEntityClientForOnlinePlayers(decoy);
             }
             echoDecoyIds.add(decoy.getUniqueId());
             spawned++;
@@ -55529,6 +56030,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         echoDecoyLastSummonTick = eventTickCounter;
+        echoDecoyGeneration = generation;
         getLogger().info("BOSS_ECHO_DECOYS_SUMMONED event=" + eventId
                 + " boss=" + boss.getUniqueId() + " phase=" + bossPhase
                 + " spawned=" + spawned + " alive=" + echoDecoyIds.size()
@@ -55542,13 +56044,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private int clearEchoDecoys(String reason) {
         int removed = 0;
         for (UUID id : new ArrayList<>(echoDecoyIds)) {
+            if (bossUuid != null && bossUuid.equals(id)) {
+                // A decoy never carries the boss identity, so its cleanup must
+                // never be able to delete the real Guardian either.
+                getLogger().severe("BOSS_ECHO_DECOY_CLEANUP_REFUSED event=" + eventId
+                        + " reason=boss-identity");
+                continue;
+            }
             Entity entity = ownedEntities.get(id);
-            if (entity != null && !entity.isDead()) {
-                entity.remove();
+            if (entity != null) {
+                unbindEventEntityClient(id);
+                if (!entity.isDead()) {
+                    entity.remove();
+                }
                 removed++;
             }
             unregisterOwnedEntity(id, reason);
         }
+        echoDecoyGeneration = Long.MIN_VALUE;
         if (!echoDecoyIds.isEmpty()) {
             getLogger().info("BOSS_ECHO_DECOYS_CLEARED event=" + eventId
                     + " reason=" + reason + " removed=" + removed);
@@ -55556,6 +56069,44 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         echoDecoyIds.clear();
         return removed;
     }
+
+    /**
+     * Contract 15.3: a decoy exists inside RAGE and inside one encounter
+     * generation only. The named phase exits already dissolve them; this fence
+     * is the one the boss loop owns, so a boss death, a restart, a generation
+     * bump or a despawned parent can never leave a permanent orphan.
+     */
+    private void tickEchoDecoyFence(LivingEntity boss) {
+        if (echoDecoyIds.isEmpty()) {
+            return;
+        }
+        boolean generationChanged = echoDecoyGeneration != generation;
+        boolean phaseLeft = bossPhase != BossPhase.RAGE;
+        boolean bossLost = boss == null || !boss.isValid() || boss.isDead()
+                || bossDefeatCinematicStarted;
+        int lost = 0;
+        for (UUID id : new ArrayList<>(echoDecoyIds)) {
+            Entity decoy = ownedEntities.get(id);
+            if (decoy == null || !decoy.isValid() || decoy.isDead()) {
+                echoDecoyIds.remove(id);
+                unregisterOwnedEntity(id, "echo-decoy-lost");
+                lost++;
+            }
+        }
+        if (!generationChanged && !phaseLeft && !bossLost) {
+            if (lost > 0) {
+                getLogger().info("BOSS_ECHO_DECOY_LOST event=" + eventId
+                        + " recovered=" + lost + " alive=" + echoDecoyIds.size());
+            }
+            return;
+        }
+        String reason = generationChanged ? "generation-fence"
+                : phaseLeft ? "phase-fence-" + bossPhase.name() : "boss-lost";
+        clearEchoDecoys(reason);
+    }
+
+    /** The encounter generation the current decoys were summoned in. */
+    private long echoDecoyGeneration = Long.MIN_VALUE;
 
     /** A decoy is not the boss: its death is bookkeeping, never a defeat. */
     private boolean isEchoDecoy(Entity entity) {
@@ -58354,6 +58905,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // authored servant skin. It is an objective actor, not a trial actor, so
         // it is resolved before the generic visual gate.
         if (isWave7ArchmageVex(entity)) return CLIENT_VISUAL_WAVE7_VEX_SERVANT;
+        String echoVisual = echoClientVisualId(entity);
+        if (!echoVisual.isBlank()) return echoVisual;
+        // Contract 15.2/15.3: the Phase 5 Echo actors are resolved before the
+        // generic visual gate. The gate is about wave mobs; an Echo copy must
+        // never depend on it, or a decoy silently renders as a vanilla Pillager.
+
         if (!isVisualEventMob(entity)) return "";
         String kind = readString(entity, keyKind);
         if (EVENT_KIND_TENTACLE.equals(kind)) {
@@ -58432,7 +58989,29 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || EVENT_KIND_TENTACLE.equals(kind)
                 && (entity instanceof ItemDisplay || entity instanceof Giant
                 && !readString(entity, keyTentacleDisplay).isBlank())
-                || EVENT_KIND_GUARDIAN_SHIELD.equals(kind) && entity instanceof ItemDisplay;
+                || EVENT_KIND_GUARDIAN_SHIELD.equals(kind) && entity instanceof ItemDisplay
+                || isEchoKind(kind);
+    }
+
+    /**
+     * Contract 15.2/15.3: decoys and attack copies wear the Guardian's authored
+     * model family. {@code clientVisualId} is the ONLY place that decides which
+     * model an event entity renders with, so the binding is proven here rather
+     * than assumed: the entities are spawned with the kinds above and this
+     * dispatch turns them into the boss family.
+     */
+    private String echoClientVisualId(Entity entity) {
+        if (entity == null) {
+            return "";
+        }
+        String kind = readString(entity, keyKind);
+        if (EVENT_KIND_ECHO_DECOY.equals(kind)) {
+            return EchoDecoyPolicy.usesBossModelFamily() ? CLIENT_VISUAL_ECHO_DECOY : "";
+        }
+        if (EVENT_KIND_ECHO_REPLICA.equals(kind)) {
+            return CLIENT_VISUAL_ECHO_REPLICA;
+        }
+        return "";
     }
 
     private void bindBossClient(Player player) {

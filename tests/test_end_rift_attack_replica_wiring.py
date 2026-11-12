@@ -36,10 +36,20 @@ def body(name, text=None):
 
 def test_replicas_appear_when_rage_begins():
     text = source()
-    assert 'startEchoAttackReplicas(boss, "VOID_BLAST")' in text, (
-        "contract 15.2 Type A belongs to RAGE"
+    # The entry used to pass "VOID_BLAST", a family EchoAttackReplicaPolicy
+    # refuses, so every opening copy was discarded on the first iteration. The
+    # opening copy now repeats the boss's own authored opening strike.
+    assert 'startEchoAttackReplicas(boss, "VOID_BLAST")' not in text, (
+        "VOID_BLAST has no timeline: handing it to the policy silently empties "
+        "the whole mechanic"
     )
     assert "transition.entered().contains(BossPhase.RAGE)" in text
+    rage = text.index("transition.entered().contains(BossPhase.RAGE)")
+    call = text.index("startEchoAttackReplicas(boss,", rage)
+    assert "EndRiftAiPolicy.BossSpell.MELEE_SWIPE.name()" in text[rage:call + 200], (
+        "contract 15.2 Type A belongs to RAGE, and the copy repeats the strike "
+        "the boss actually committed"
+    )
 
 
 def test_the_cap_is_the_policys_three():
@@ -72,7 +82,10 @@ def test_aim_locks_and_never_homes():
         "means every locked target is always hit"
     )
     gate = tick.index("if (EchoAttackReplicaPolicy.strikeConnects(")
-    assert tick.index(".damage(", gate) > gate, (
+    # Damage no longer goes through a raw Player.damage call: it goes through
+    # the accepted-damage adapter, but it must still live INSIDE the
+    # strikeConnects branch.
+    assert "applyEchoReplicaDamage(" in tick[gate:], (
         "the strike damage must live inside the strikeConnects branch"
     )
 

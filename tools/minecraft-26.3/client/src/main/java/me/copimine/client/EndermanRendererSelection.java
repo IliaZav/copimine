@@ -66,6 +66,18 @@ public final class EndermanRendererSelection {
                     "END_RIFT_RITUAL_CASTER_V1", "end_rift_ritual_caster_v1", "END_RIFT_RITUAL_CASTER");
             case "END_RIFT_GUARDIAN_V1" -> new Decision(Kind.GUARDIAN, texture,
                     "END_RIFT_GUARDIAN_V1", "end_rift_guardian", "END_RIFT_GUARDIAN");
+            // Contract 15.2 and 15.3: an echo copy and a decoy wear the real
+            // Guardian body, deliberately - the player is meant to struggle to
+            // tell them apart. Without these two arms the exhaustive switch
+            // falls to vanilla() and the deception renders as a plain Enderman,
+            // which shows the trick at once and hides the authored model.
+            // They keep their own visual id so server-side identity stays
+            // distinct; geometry, texture and animation family come from the
+            // Guardian.
+            case "END_RIFT_ECHO_REPLICA_V1" -> new Decision(Kind.GUARDIAN, texture,
+                    "END_RIFT_ECHO_REPLICA_V1", "end_rift_guardian", "END_RIFT_GUARDIAN");
+            case "END_RIFT_ECHO_DECOY_V1" -> new Decision(Kind.GUARDIAN, texture,
+                    "END_RIFT_ECHO_DECOY_V1", "end_rift_guardian", "END_RIFT_GUARDIAN");
             default -> vanilla();
         };
     }

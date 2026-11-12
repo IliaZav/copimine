@@ -810,3 +810,56 @@ The measurement also rules out a specific failure the contract forbids: the fog
 is not "a black screen". The bottom band reads `(100, 82, 66)` — warm, bright,
 and roughly 4.4x the luminance of the top band. Near-floor geometry is plainly
 visible. That much, the screenshots do establish.
+
+## The Echo fix was only half a fix
+
+The Phase 5 Echo mechanics were inert for four independent reasons, each enough
+on its own. They are now repaired:
+
+- `spellPool(RAGE)` did not offer `SUMMON_SERVANTS`, the only spell that
+  dispatches `summonServants`, so the decoys were unreachable in the phase that
+  owns them.
+- `tickEchoAttackReplicas` was called only inside `pinBossToFinalSealCore`,
+  below a LAST_SEAL gate, so copies started at Rage entry never advanced.
+- `startEchoAttackReplicas` recorded a UUID, a target lock and a timeline but
+  spawned no entity and published no model - while the tick dealt real damage.
+  Invisible damage, which contract 23.3 forbids outright.
+- The Rage entry passed `VOID_BLAST`, a family the policy refuses, so every
+  copy was discarded on the first iteration.
+
+The repairs are structural rather than cosmetic: separate event kinds
+(`ECHO_DECOY`, `ECHO_REPLICA`), a real Enderman actor spawned before the copy
+is registered, `damageAllowed` consulted in both the strike and the explosion
+branch, and explicit Rage and generation fences that clear rather than skip.
+
+**Then the client turned out not to know the new visual ids.** The server binds
+`END_RIFT_ECHO_REPLICA_V1` and `END_RIFT_ECHO_DECOY_V1`. The client decided what
+a visual id renders as in three separate places, and none of them had an entry:
+
+```
+EndEventTextureCatalog.textureForVisual    -> returned null
+EndermanRendererSelection.selectVisual     -> exhaustive switch, default -> vanilla()
+EndermanEntityRendererMixin                -> guardian flag false
+```
+
+So a decoy would have rendered as a plain vanilla Enderman. For a mechanic whose
+entire purpose is that the player cannot tell the copies from the real Guardian,
+that is not a cosmetic slip - it advertises the trick and hides the authored
+model at the same time.
+
+This is the shape of failure the master contract keeps warning about. The server
+side was wired, logged, mutation-tested and green. The client side had no test at
+all, because every existing client test asked whether a class was present in the
+jar rather than whether any id resolved to anything. A model that is bound,
+published, logged and never drawn passes all of that.
+
+Three files now carry the arms, and `test_end_rift_echo_renders_as_guardian.py`
+holds all three with mutations: removing the switch arms fails
+`test_the_renderer_selection_switch_has_an_arm_for_both_echo_ids`; dropping
+`echoFamily` from the guardian predicate fails
+`test_the_enderman_mixin_treats_echo_ids_as_the_guardian_family`. Both restored,
+both re-run green.
+
+What this still does not establish: whether the result looks right. No client was
+run. The claim is that the id now resolves to the authored Guardian texture,
+geometry and animation family - not that anyone has seen it.

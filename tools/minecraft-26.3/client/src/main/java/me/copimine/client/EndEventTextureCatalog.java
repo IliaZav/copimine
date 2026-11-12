@@ -31,6 +31,15 @@ public final class EndEventTextureCatalog {
         if ("END_RIFT_GUARDIAN".equals(normalized)) {
             normalized = "END_RIFT_GUARDIAN_V1";
         }
+        // Contract 15.2/15.3: the Phase 5 echoes and decoys ARE the Guardian
+        // model family - that is the whole point of the deception. They carry
+        // their own visual ids so the server can tell them apart, but they must
+        // resolve to the authored god-body rather than fall through to a
+        // vanilla Enderman.
+        if ("END_RIFT_ECHO_REPLICA_V1".equals(normalized)
+                || "END_RIFT_ECHO_DECOY_V1".equals(normalized)) {
+            normalized = "END_RIFT_GUARDIAN_V1";
+        }
         return VISUAL_TEXTURES.get(normalized);
     }
 

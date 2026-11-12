@@ -997,18 +997,20 @@
         "91b8d8161a3d72040737fe500d75b27bbd3956ebc7b935b671c601d1f7a53e38",
         "5a09c7366d203e65490c538a8b90f91c42583bb8ba2b41940eba1ee25a1f6ce0",
         "f400b3a965b8be08d24128485d6bcad71d1b555c597e86af91923c9dbf1324b2",
-        "0de44962f36bd0dee3682a68f821f3a3bc28e0deb18d378749d8ddd543e7ea9b"
+        "0de44962f36bd0dee3682a68f821f3a3bc28e0deb18d378749d8ddd543e7ea9b",
+        "af45b9a27937a6c275b0a2f0612b4b64fd222fe8ed56a3ba3557cb1746aa1b04",
+        "839ebae4196c5bbbe6d6171dea1a484e6fb021dc77a869996543a71858f4d3d4"
       ],
       "candidate": {
         "filename": "CopiMineEndEvent-26.3.jar",
         "runtimeFilename": "CopiMineEndEvent.jar",
-        "sha256": "af45b9a27937a6c275b0a2f0612b4b64fd222fe8ed56a3ba3557cb1746aa1b04",
+        "sha256": "7128fc9557a389a8f4813fb1ea5e8130b0b936ce92d003073fe5f194dfcab544",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "size": 2385635,
-        "sha512": "76f3a4eed9ec8934be198ec33de7cecc4aaa359561626dbd04233a90dc7f0c82036842c3efb78004b2cd150d5fd2f780cc3647dd39d1cbb852618c25e67ddb35",
+        "size": 2398506,
+        "sha512": "eddae188d1cfe4f34f015a81e476e88991856b64e30424bd50d7a5187a79dd80cf738cfb2a2761fa04bd10d47384f5f8532e979301a7399eb33b1e20cd8d25e9",
         "runtimeEligible": true,
         "replaceSha256": [
           "f67da4cc94c5594eee1ea32676d0ed53c4cbea2ab4cf996f97db07aa1a02fea7",
@@ -1164,7 +1166,9 @@
           "c5f93f2cb4e569e6ce1048e253f7b5108750a5f78e90057214e1462a65b16573",
           "6e157a8e1adaf3e485fac90f91da7ce4de37be94c61998b949b743de5da0cbfa",
           "86c5c6b200903adad86dc704ca2ee71a2b0c34a3b86a75ec9ccfae7a82737350",
-          "0c62fcbb20de7a6e73f8c7999d203987bdd38432f11d12cff16dacd048662016"
+          "0c62fcbb20de7a6e73f8c7999d203987bdd38432f11d12cff16dacd048662016",
+          "af45b9a27937a6c275b0a2f0612b4b64fd222fe8ed56a3ba3557cb1746aa1b04",
+          "839ebae4196c5bbbe6d6171dea1a484e6fb021dc77a869996543a71858f4d3d4"
         ]
       },
       "nativeVerified": false

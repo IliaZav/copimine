@@ -931,6 +931,9 @@ def wave2_entity_load_harness(tmp_path_factory):
         "private boolean isActiveOfficialWavePhase(int wave)",
         "private boolean isOfficialEntity(Entity entity)",
         "private boolean isWaveCombatKind(String kind)",
+        # isWaveCombatKind delegates the Phase 5 Echo kinds to this helper, so
+        # the harness must carry it or the pasted method cannot compile.
+        "private boolean isEchoKind(String kind)",
         "private long readEntityGeneration(Entity entity)",
         "private void restoreEliteSpellRuntime(Entity entity, long now)",
         "private EndRiftAiPolicy.MiniBossSpell miniBossSpellFor(EliteAbilityPolicy.Ability ability)",
@@ -959,6 +962,7 @@ public final class WaveTwoEntityLoadHarness {
     static final String EVENT_KIND_WAVE_GUARDIAN = "wave_guardian";
     static final String EVENT_KIND_REALITY_SPLIT_TRIAL = "reality_split_trial";
     static final String EVENT_KIND_RITUAL_CASTER = "ritual_caster", EVENT_KIND_RITUAL_GUARD = "ritual_guard";
+    static final String EVENT_KIND_ECHO_DECOY = "echo_decoy", EVENT_KIND_ECHO_REPLICA = "echo_replica";
     static final Object LONG = new Object(), INTEGER = new Object(), STRING = new Object(), BYTE = new Object();
     static final class PersistentDataType {
         static final Object LONG = WaveTwoEntityLoadHarness.LONG;

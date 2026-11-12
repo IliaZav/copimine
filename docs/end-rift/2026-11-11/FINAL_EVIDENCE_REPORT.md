@@ -17,6 +17,7 @@ different claims and only the first three have evidence.
 | Code implements the contracts | source, 3,415 pytest + gate |
 | Behaviour is pinned by tests | 3,415 passed / 18 skipped |
 | Tests actually bite | mutation-tested, each with the failing message |
+| CI green on HEAD | **yes — all 3 jobs on `373731e3`** |
 | Runs on a live Paper server | **no — never once this round** |
 | Looks right in Minecraft | **no — no screenshot of any of this work** |
 
@@ -48,6 +49,30 @@ agent's cocoon-repair work into a docs commit, published as `171580fe`, then
 corrected by amending the message to `1ecd90b1` so both bodies of work are
 described honestly. No source was lost; the merge `e5bf4aee` preserved both
 histories. Both tree IDs were verified identical.
+
+### Continuous integration
+
+Run `43134355604` on `373731e3`, all three jobs green — the first green run on
+this branch:
+
+```
+static-and-contract         success   (incl. pinned candidates + Python contract tests)
+migration-postgres-contract success
+java-plugins                success   (incl. the shared End Rift release gate)
+```
+
+Getting there required two separate fixes, and in both cases the *local* signal
+was misleading:
+
+- The pinned-candidates step failed with `actual=52d1448e` against
+  `expected=af45b9a2`. Those runs were on commits that predated the repin. I
+  nearly repinned to `52d1448e` on the strength of the CI message; reproducing
+  CI's own `PrepareMigrationCandidates.ps1` locally produced the committed
+  `7128fc95` and proved the lock was right.
+- The contract tests then failed on a staged client jar that no longer matched a
+  from-scratch compile. This machine had a **cached** legacy build that happened
+  to equal the stale committed jar, so the comparison passed here without ever
+  running. Deleting the build directory reproduced CI at once.
 
 ---
 

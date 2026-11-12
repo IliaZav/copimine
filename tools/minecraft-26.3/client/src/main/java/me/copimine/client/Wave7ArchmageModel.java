@@ -99,7 +99,7 @@ public final class Wave7ArchmageModel extends EntityModel<EvokerRenderState> {
         // A flat ring around the staff head: the readable "this is a spellcaster"
         // cue at medium range, and the piece that grows while a spell winds up.
         rightArm.addOrReplaceChild("rift_sigil_ring",
-                CubeListBuilder.create().texOffs(56, 44)
+                CubeListBuilder.create().texOffs(12, 54)
                         .addBox(-4.0F, 1.5F, -4.0F, 8.0F, 0.4F, 8.0F),
                 PartPose.offsetAndRotation(0.0F, 3.0F, 0.0F, 0.0F, 0.0F, 0.0F));
 

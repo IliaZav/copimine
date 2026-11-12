@@ -1458,6 +1458,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** Absolute tick at which each small melee Kagune retracts. */
     private final Map<UUID, Long> smallKaguneExpiryTicks = new HashMap<>();
     /**
+     * Contract 18.1: the small Kagune have their own spawn clock. -1 means no
+     * window is scheduled yet, which is the state before the first tick of an
+     * encounter generation; smallKaguneCadenceGeneration fences the clock so a
+     * restart inside Last Seal cannot inherit an old window.
+     */
+    private long smallKaguneNextDueMillis = -1L;
+    private int smallKaguneCadenceStep;
+    private long smallKaguneCadenceGeneration = -1L;
+    /**
      * Contract 20: the three-row Kagune ring cast. The layout is chosen once
      * per cast from a seed, and the claim set is what guarantees one damage
      * event per player across ALL THREE rows rather than one per row.
@@ -45508,6 +45517,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         updateBossHitbox(boss);
         tickBossHitboxProjectiles(boss);
+        // Contract 18.1: small Kagune run on their own clock, not on a spell roll.
+        tickSmallKaguneSpawner(boss);
         tickCurrentBoss(boss);
     }
 
@@ -48170,6 +48181,60 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " entity=" + display.getUniqueId() + " generation=" + generation
                 + " warning_ticks=" + BossAmbushPolicy.GROUND_WARNING_TICKS);
         return true;
+    }
+
+    /**
+     * Contract 18.1: the independent small-Kagune clock.
+     *
+     * <p>The retired model hung the whole enemy type off the SMALL_KAGUNE boss
+     * spell, so they appeared only when the brain happened to roll that spell
+     * out of a pool it shares with FINAL_STRIKE, AMBUSH_GRAB and VOID_MARK. The
+     * contract wants a timer, so this runs from the boss tick, ignores the spell
+     * that was or was not chosen, and stops scheduling once the cocoon breaks.</p>
+     *
+     * <p>It never deletes survivors: breaking the cocoon only stops new spawns.</p>
+     */
+    private void tickSmallKaguneSpawner(LivingEntity boss) {
+        if (boss == null || boss.getWorld() == null) {
+            return;
+        }
+        var tuning = smallKaguneTuning();
+        boolean encounterActive = tuning.enabled() && bossPhase == BossPhase.LAST_SEAL
+                && isBossCombatRuntimeActive(boss);
+        // A restart inside Last Seal must start a fresh window, not resume the
+        // previous generation's deadline.
+        if (smallKaguneCadenceGeneration != generation) {
+            smallKaguneCadenceGeneration = generation;
+            smallKaguneCadenceStep = 0;
+            smallKaguneNextDueMillis = -1L;
+        }
+        boolean cocoonBroken = guardianDeaths != null && guardianDeaths.cocoonBroken();
+        if (!SmallKaguneSpawnPolicy.spawningAllowed(cocoonBroken, encounterActive)) {
+            // No new spawns. Living ones are left exactly where they are.
+            smallKaguneNextDueMillis = -1L;
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (smallKaguneNextDueMillis < 0L) {
+            smallKaguneNextDueMillis = SmallKaguneSpawnPolicy.nextDueMillis(
+                    now, smallKaguneCadenceStep, generation);
+            return;
+        }
+        if (!SmallKaguneSpawnPolicy.due(now, smallKaguneNextDueMillis)) {
+            return;
+        }
+        int spawned = startSmallKaguneSummon(boss) ? 1 : 0;
+        // Advance the cadence whenever the window elapsed, whether or not the
+        // batch fitted: a full arena must not stall the clock, or the enemy type
+        // silently stops for the rest of the phase once it reaches the cap.
+        smallKaguneCadenceStep++;
+        smallKaguneNextDueMillis = SmallKaguneSpawnPolicy.nextDueMillis(
+                now, smallKaguneCadenceStep, generation);
+        getLogger().info("RIFT_SMALL_KAGUNE_CADENCE event=" + eventId
+                + " generation=" + generation
+                + " step=" + smallKaguneCadenceStep
+                + " spawned=" + spawned
+                + " next_in_ms=" + (smallKaguneNextDueMillis - now));
     }
 
     /**

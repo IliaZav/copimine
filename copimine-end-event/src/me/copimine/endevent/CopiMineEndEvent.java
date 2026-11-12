@@ -50993,7 +50993,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         kaguneRingRowTick = 0;
         kaguneRingCastEndTick = eventTickCounter
                 + (long) ROW_TICKS * KaguneRingGapPolicy.ROW_COUNT;
-        renderKaguneRingRow(boss, layout, 0);
+        renderKaguneRingRow(boss, layout, 0, 0.0D);
+        // Contract 20.3: the cast must damage the row it just brought out, for
+        // the same reason the ticker damages each row it advances to. Without
+        // this, row 0 was drawn and never struck, so the inner band was free to
+        // stand in and only the outer two rings could cost a hit.
+        damageKaguneRingRow(boss, layout, 0, 0.0D);
         getLogger().info("KAGUNE_RING_CAST_START event=" + eventId
                 + " generation=" + generation + " boss=" + boss.getUniqueId()
                 + " seed=" + seed + " players=" + roster.size()
@@ -51010,6 +51015,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         kaguneRingRowTick++;
+        // Contract 20.3: the out row travels outward for its whole lifetime, so
+        // redraw it every tick at its current progress. Redrawing only when a new
+        // row takes over turned each ring into one static frame.
+        double sweepProgress = Math.min(1.0D, (double) kaguneRingRowTick / (double) ROW_TICKS);
+        renderKaguneRingRow(boss, kaguneRingLayout, kaguneRingRow, sweepProgress);
+        // The band moves with the ring, so a player is judged against the radius
+        // the ring actually occupies right now, not only when it first emerged.
+        damageKaguneRingRow(boss, kaguneRingLayout, kaguneRingRow, sweepProgress);
         if (kaguneRingRowTick < ROW_TICKS) {
             return;
         }
@@ -51020,25 +51033,36 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         kaguneRingRow = next;
         kaguneRingRowTick = 0;
-        renderKaguneRingRow(boss, kaguneRingLayout, next);
-        damageKaguneRingRow(boss, kaguneRingLayout, next);
+        renderKaguneRingRow(boss, kaguneRingLayout, next, 0.0D);
+        damageKaguneRingRow(boss, kaguneRingLayout, next, 0.0D);
     }
 
-    private void renderKaguneRingRow(LivingEntity boss, KaguneRingGapPolicy.Layout layout, int rowIndex) {
+    /**
+     * Draws one row at its current sweep progress.
+     *
+     * <p>Contract 20.3 describes a row that emerges and travels outward for its
+     * authored lifetime. Drawing only at the emerge radius made each row a single
+     * static flash that appeared and vanished without moving, so the player had
+     * nothing to read and nothing to run from.</p>
+     */
+    private void renderKaguneRingRow(LivingEntity boss, KaguneRingGapPolicy.Layout layout, int rowIndex,
+                                     double sweepProgress) {
         KaguneRingGapPolicy.Row row = layout.row(rowIndex);
         if (row == null || boss == null) {
             return;
         }
         World world = boss.getWorld();
         Location centre = boss.getLocation();
+        double progress = Math.max(0.0D, Math.min(1.0D, sweepProgress));
+        double radius = row.emergeRadius() + KaguneRingGapPolicy.ROW_TRAVEL_BLOCKS * progress;
         int points = 72;
         for (int step = 0; step < points; step++) {
             double direction = KaguneRingGapPolicy.wrap(2.0D * Math.PI * step / points);
             if (KaguneRingGapPolicy.insideGap(row, direction)) {
                 continue;
             }
-            double x = centre.getX() + Math.cos(direction) * row.emergeRadius();
-            double z = centre.getZ() + Math.sin(direction) * row.emergeRadius();
+            double x = centre.getX() + Math.cos(direction) * radius;
+            double z = centre.getZ() + Math.sin(direction) * radius;
             world.spawnParticle(Particle.CRIMSON_SPORE,
                     new Location(world, x, centre.getY() + 0.6D, z), 2, 0.05D, 0.3D, 0.05D, 0.0D);
             world.spawnParticle(Particle.SOUL_FIRE_FLAME,
@@ -51046,13 +51070,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    private void damageKaguneRingRow(LivingEntity boss, KaguneRingGapPolicy.Layout layout, int rowIndex) {
+    /**
+     * Strikes the players the out row is sweeping through right now.
+     *
+     * <p>The band is not fixed at the emerge radius: the row travels outward, so
+     * the radius the player must be judged against moves with it. Using the
+     * emerge radius for the whole lifetime would hit players standing where the
+     * ring already left and spare those it is about to reach.</p>
+     */
+    private void damageKaguneRingRow(LivingEntity boss, KaguneRingGapPolicy.Layout layout, int rowIndex,
+                                     double sweepProgress) {
         KaguneRingGapPolicy.Row row = layout.row(rowIndex);
         if (row == null) {
             return;
         }
         Location centre = boss.getLocation();
         double damage = KaguneGuardianFightPolicy.BASE_STRIKE_DAMAGE;
+
         for (Player player : activeBossParticipants()) {
             if (!player.getWorld().equals(centre.getWorld())) {
                 continue;
@@ -51061,7 +51095,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             double dz = player.getLocation().getZ() - centre.getZ();
             double radius = Math.sqrt(dx * dx + dz * dz);
             double direction = KaguneRingGapPolicy.wrap(Math.atan2(dz, dx));
-            if (!KaguneRingGapPolicy.rowHits(layout, rowIndex, radius, direction)) {
+            // The hit test stays the policy's, so the visible gap IS the safe gap;
+            // it is simply asked about the radius the row occupies right now.
+            if (!KaguneRingGapPolicy.rowHits(layout, rowIndex, radius, direction, sweepProgress)) {
                 continue;
             }
             // Contract 20.3: one direct damage event per player per OVERALL

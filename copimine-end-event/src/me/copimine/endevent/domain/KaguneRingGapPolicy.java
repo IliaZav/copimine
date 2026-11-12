@@ -414,14 +414,49 @@ public final class KaguneRingGapPolicy {
      */
     public static boolean rowHits(Layout layout, int rowIndex, double playerRadius,
                                   double direction) {
+        return rowHits(layout, rowIndex, playerRadius, direction, 1.0D);
+    }
+
+    /**
+     * As {@link #rowHits(Layout, int, double, double)}, but for a row caught
+     * part-way through its outward sweep.
+     *
+     * <p>A row emerges at its radius and travels {@link #ROW_TRAVEL_BLOCKS}
+     * further over its lifetime, so the radius that must hurt the player moves.
+     * Judging every tick against the emerge radius alone would spare the players
+     * the ring is about to reach and punish those it already passed.</p>
+     *
+     * @param sweepProgress 0 at emergence through 1 at the end of the sweep
+     */
+    public static boolean rowHits(Layout layout, int rowIndex, double playerRadius,
+                                  double direction, double sweepProgress) {
         if (layout == null || !layout.feasible()) {
             return false;
         }
         Row row = layout.row(rowIndex);
-        if (row == null || !rowReaches(row, playerRadius)) {
+        if (row == null || !rowReachesAt(row, playerRadius, sweepProgress)) {
             return false;
         }
         return !insideGap(row, direction);
+    }
+
+    /**
+     * True when the row's sweep has reached that radius at this progress.
+     *
+     * <p>The covered span grows from the emerge radius outward, so a player is
+     * in the band once the sweep has arrived and until the row retires. That is
+     * what makes running outward a real escape: the band follows the player, and
+     * only the part of the row that has actually passed them can hit.</p>
+     */
+    public static boolean rowReachesAt(Row row, double playerRadius, double sweepProgress) {
+        if (row == null || !Double.isFinite(playerRadius)) {
+            return false;
+        }
+        double progress = Double.isFinite(sweepProgress)
+                ? Math.max(0.0D, Math.min(1.0D, sweepProgress)) : 0.0D;
+        double reached = row.emergeRadius() + ROW_TRAVEL_BLOCKS * progress;
+        return playerRadius >= row.emergeRadius() - LANE_SLOP_RAD
+                && playerRadius <= reached + LANE_SLOP_RAD;
     }
 
     /** True when the row's outward sweep covers that player radius. */

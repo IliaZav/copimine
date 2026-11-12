@@ -104,7 +104,15 @@ defender slot during recovery.
    snapshot. Pauses/offline time do not consume it. A full arena advances the
    cadence without a burst of catch-up waves. The Paper adapter counts only
    valid living owned hitboxes/displays and confirms each spawn. Obsolete lifetime
-   maps/expiry branches are removed. Remaining small-enemy work is the authored
+   maps/expiry branches are removed. Small enemies have a separate 30-actor
+   controller budget; temporary ambushes retain their own six-actor budget.
+   Their directed melee owns 12-tick windup, 10-tick strike (contact at tick 4)
+   and 18-tick recovery. Direction freezes at commitment, range/cone/LOS are
+   checked at contact, and the cast cannot become a grab or a fake hurt pose.
+   The active client retimes/blends sections of the original continuous rig;
+   it uses the carrier's locked yaw rather than following the fleeing target.
+   Living small enemies accept damage throughout their attack cycle; only
+   terminal poses reject it. Remaining small-enemy work is the authored
    directed melee/contact controller and native pressure/visual acceptance.
 3. Keep wave 6 progress/death receipts in `RiftRamEncounter`; finish final-pillar
    geometry/update/restoration and route its six armour textures from receipts.

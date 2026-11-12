@@ -35,6 +35,12 @@ public final class EndRiftTentacleAnimator {
     }
 
     public static int durationTicks(String animationId) {
+        switch (normalize(animationId)) {
+            case "SMALL_WINDUP": return 12;
+            case "SMALL_STRIKE": return 10;
+            case "SMALL_RECOVERY": return 18;
+            default: break;
+        }
         KaguneModelImporter.Animation clip = clipFor(animationId);
         if (clip == null || !Double.isFinite(clip.lengthSeconds()) || clip.lengthSeconds() <= 0.0D) {
             KaguneModelImporter.Animation idle = MODEL.animation("idle");
@@ -57,6 +63,21 @@ public final class EndRiftTentacleAnimator {
                                                             float progress,
                                                             long deterministicSeed) {
         String state = normalize(animationId);
+        // Retimed sections of the supplied continuous rig, never a grab/hold
+        // pose or a false hurt reaction. Match the server's tick-4 contact.
+        if (state.equals("SMALL_WINDUP")) {
+            return EndRiftTentaclePose.TentaclePose.lerp(
+                    poseFor("IDLE", 0.0F, deterministicSeed),
+                    poseFor("THROW", 0.20F, deterministicSeed), clamp(progress));
+        }
+        if (state.equals("SMALL_STRIKE")) {
+            return poseFor("THROW", 0.20F + 0.50F * clamp(progress), deterministicSeed);
+        }
+        if (state.equals("SMALL_RECOVERY")) {
+            return EndRiftTentaclePose.TentaclePose.lerp(
+                    poseFor("THROW", 0.70F, deterministicSeed),
+                    poseFor("IDLE", 0.0F, deterministicSeed), clamp(progress));
+        }
         String clipName = CLIP_BY_STATE.getOrDefault(state, "idle");
         KaguneModelImporter.Animation clip = MODEL.animation(clipName);
         float sampleProgress = clipProgress(animationId, progress);
@@ -154,6 +175,9 @@ public final class EndRiftTentacleAnimator {
     private static Map<String, String> clipsByState() {
         Map<String, String> clips = new LinkedHashMap<>();
         clips.put("EMERGING", "emerge");
+        clips.put("SMALL_WINDUP", "trow");
+        clips.put("SMALL_STRIKE", "trow");
+        clips.put("SMALL_RECOVERY", "trow");
         clips.put("READY", "idle");
         clips.put("TELEGRAPH_GRAB", "telegraph_grab");
         clips.put("GRAB_SUCCESS", "grab_success");

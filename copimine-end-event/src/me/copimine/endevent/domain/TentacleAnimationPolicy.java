@@ -34,7 +34,10 @@ public final class TentacleAnimationPolicy {
         RETRACT,
         SPAWN_UNDER_PLAYER,
         SHIELD_CHANNEL,
-        RECOVERY
+        RECOVERY,
+        SMALL_WINDUP,
+        SMALL_STRIKE,
+        SMALL_RECOVERY
     }
 
     public enum Marker {
@@ -72,6 +75,9 @@ public final class TentacleAnimationPolicy {
             case SPAWN_UNDER_PLAYER -> 9;   // 0.45 seconds
             case SHIELD_CHANNEL -> 40;      // 2.0 seconds, looping
             case RECOVERY -> 16;            // 0.8 seconds
+            case SMALL_WINDUP -> 12;
+            case SMALL_STRIKE -> 10;
+            case SMALL_RECOVERY -> 18;
         };
     }
 
@@ -109,7 +115,8 @@ public final class TentacleAnimationPolicy {
         }
         State canonical = canonical(state);
         return switch (marker) {
-            case CONTACT -> canonical == State.GRAB_SUCCESS ? 10 : -1;
+            case CONTACT -> canonical == State.GRAB_SUCCESS ? 10
+                    : canonical == State.SMALL_STRIKE ? 4 : -1;
             case HOLD_LOCK -> canonical == State.GRAB_SUCCESS ? 14 : -1;
             case THROW_RELEASE -> canonical == State.THROW ? 9 : -1;
             case RECOVERY_START -> canonical == State.RECOVERY ? 0 : -1;
@@ -141,6 +148,9 @@ public final class TentacleAnimationPolicy {
             case RETRACT -> State.RETRACT;
             case SPAWN_UNDER_PLAYER -> safeKind == Kind.UNDER_PLAYER
                     ? State.RECOVERY : State.RETRACT;
+            case SMALL_WINDUP -> State.SMALL_STRIKE;
+            case SMALL_STRIKE -> State.SMALL_RECOVERY;
+            case SMALL_RECOVERY -> State.READY;
         };
     }
 

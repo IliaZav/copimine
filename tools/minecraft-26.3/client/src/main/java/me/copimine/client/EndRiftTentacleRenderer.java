@@ -166,7 +166,11 @@ public final class EndRiftTentacleRenderer {
                 matrices.translate(position.x, position.y, position.z);
                 Entity target = targetEntity(world, uuid);
                 Vec3 targetPosition = target == null ? null : target.getPosition(tickDelta);
-                matrices.rotate(Axis.YP, facingYaw(entityUuid, animation, position, targetPosition, nowMillis));
+                float yaw = "SMALL".equals(ClientBridgeProtocol.endEventState()
+                        .tentacleRoleForEntity(uuid))
+                        ? (float) Math.toRadians(-entity.getYRot())
+                        : facingYaw(entityUuid, animation, position, targetPosition, nowMillis);
+                matrices.rotate(Axis.YP, yaw);
                 matrices.scale(EndRiftTentacleWorldScalePolicy.rendererScaleForRig(pose.rigScale()),
                         EndRiftTentacleWorldScalePolicy.rendererLengthScaleForRig(pose.rigScale()),
                         EndRiftTentacleWorldScalePolicy.rendererScaleForRig(pose.rigScale()));

@@ -52163,37 +52163,65 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (animation == TentacleAnimationPolicy.State.DYING
                 || animation == TentacleAnimationPolicy.State.RETRACT
                 || animation == TentacleAnimationPolicy.State.DEAD_RESPAWN) {
-            if (elapsed < TentacleAnimationPolicy.durationTicks(animation)) {
-                return;
-            }
+            if (elapsed < TentacleAnimationPolicy.durationTicks(animation)) return;
             tentacleMarker(display, TentacleAnimationPolicy.Marker.HIDE_BELOW_FLOOR, null);
             removeTentacle(displayId, "small-kagune-retract");
             return;
         }
-
-        if (elapsed < TentacleAnimationPolicy.durationTicks(animation)) {
-            return;
+        if (animation == TentacleAnimationPolicy.State.SMALL_STRIKE
+                && elapsed >= TentacleAnimationPolicy.markerTick(animation,
+                        TentacleAnimationPolicy.Marker.CONTACT)
+                && tentacleContactResolved.add(displayId)) {
+            Player target = playerForTentacle(state.target(), participants);
+            if (target != null && smallKaguneFaces(display, target)
+                    && applySmallKaguneStrike(display, target)) {
+                tentacleMarker(display, TentacleAnimationPolicy.Marker.CONTACT, target);
+            }
         }
+        int duration = animation == TentacleAnimationPolicy.State.READY
+                ? 10 : TentacleAnimationPolicy.durationTicks(animation);
+        if (elapsed < duration) return;
         switch (animation) {
-            case EMERGING, RECOVERY -> {
-                Player target = chooseTentacleTarget(participants, display.getLocation());
+            case EMERGING, READY, RECOVERY, SMALL_RECOVERY, HIT_RECOVERY -> {
+                UUID carrierId = tentacleHitboxesByDisplay.get(displayId);
+                Entity entity = carrierId == null ? null : ownedEntities.get(carrierId);
+                Player target = participants.stream()
+                        .filter(this::isActiveBossParticipant)
+                        .filter(player -> withinSmallKaguneRange(display, player))
+                        .filter(player -> entity instanceof LivingEntity carrier
+                                && carrier.hasLineOfSight(player))
+                        .min(Comparator.comparingDouble(player ->
+                                display.getLocation().distanceSquared(player.getLocation())))
+                        .orElse(null);
+                if (target != null) {
+                    Vector direction = target.getLocation().toVector()
+                            .subtract(display.getLocation().toVector()).setY(0.0D);
+                    if (direction.lengthSquared() > 0.0001D) {
+                        Location facing = display.getLocation().setDirection(direction);
+                        display.setRotation(facing.getYaw(), 0.0F);
+                    }
+                }
                 setTentacleState(display, target == null
-                                ? TentacleAnimationPolicy.State.RECOVERY
-                                : TentacleAnimationPolicy.State.TELEGRAPH_GRAB,
+                        ? TentacleAnimationPolicy.State.READY
+                        : TentacleAnimationPolicy.State.SMALL_WINDUP,
                         target == null ? null : target.getUniqueId());
             }
-            case TELEGRAPH_GRAB -> {
-                Player target = playerForTentacle(state.target(), participants);
-                if (target != null && applySmallKaguneStrike(display, target)) {
-                    tentacleMarker(display, TentacleAnimationPolicy.Marker.CONTACT, target);
-                    setTentacleState(display, TentacleAnimationPolicy.State.HIT_RECOVERY,
-                            target.getUniqueId());
-                } else {
-                    setTentacleState(display, TentacleAnimationPolicy.State.RECOVERY, null);
-                }
+            case SMALL_WINDUP -> {
+                tentacleContactResolved.remove(displayId);
+                setTentacleState(display, TentacleAnimationPolicy.State.SMALL_STRIKE, state.target());
             }
-            default -> setTentacleState(display, TentacleAnimationPolicy.State.RECOVERY, null);
+            case SMALL_STRIKE -> setTentacleState(display,
+                    TentacleAnimationPolicy.State.SMALL_RECOVERY, null);
+            default -> setTentacleState(display, TentacleAnimationPolicy.State.SMALL_RECOVERY, null);
         }
+    }
+
+    private boolean smallKaguneFaces(ItemDisplay display, Player target) {
+        Vector toward = target.getLocation().toVector()
+                .subtract(display.getLocation().toVector()).setY(0.0D);
+        if (toward.lengthSquared() <= 0.01D) return true;
+        Vector forward = display.getLocation().getDirection().setY(0.0D).normalize();
+        return forward.dot(toward.normalize()) >= Math.cos(Math.toRadians(30.0D));
     }
 
     private boolean withinSmallKaguneRange(ItemDisplay display, Player target) {
@@ -52241,11 +52269,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (state == null
                 // A closed animation window rejects the entire hit, not just
                 // its flinch. Both melee and projectile paths enter here.
-                || !TentacleAnimationPolicy.shouldEnterHitRecovery(state.state())
+                || (state.kind() != TentacleAnimationPolicy.Kind.SMALL
+                && !TentacleAnimationPolicy.shouldEnterHitRecovery(state.state()))
                 || (!state.temporary()
                 && tentacleGuardianHealth.getOrDefault(state.slot(), 0.0D) <= 0.0D)
                 || state.state() == TentacleAnimationPolicy.State.DYING
-                || state.state() == TentacleAnimationPolicy.State.DEAD_RESPAWN) {
+                || state.state() == TentacleAnimationPolicy.State.DEAD_RESPAWN
+                || state.state() == TentacleAnimationPolicy.State.RETRACT) {
             return;
         }
         int slot = state.slot();

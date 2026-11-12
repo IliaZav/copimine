@@ -76,3 +76,20 @@ No full current-SHA gate, production install, authenticated client run, native
 art acceptance or complete event acceptance is claimed by this document.
 `nativeVerified=false`. Earlier candidate manifests describe earlier commits;
 newly built artifacts must be repinned before publication or installation.
+
+## Pursuit ownership through real target events
+
+The pursuit lock previously read `Mob.getTarget()` as its authority. A vanilla
+retaliation target event could therefore replace the focused player between
+coordinator decisions and bypass the lock. The owned boss now keeps a separate
+pursuit UUID. Its target event adapter redirects native proposals to that focus;
+only the coordinator's guarded write may commit a new pursuit target. Null
+targets used by casts remain legal, and normal combat restores the original
+focus afterwards without extending its lock. Invalid/disconnected focus is
+released promptly. Rejected target writes respect other plugins' cancellation
+and use bounded repair/retry instead of forcing a target every tick.
+
+The real target adapter was executed with a late visitor, a second admitted
+attacker, native retaliation, cast target clearing, focus restoration and an
+already-cancelled target event. The existing roster probe passed. Native
+multi-player movement/melee acceptance is still required.

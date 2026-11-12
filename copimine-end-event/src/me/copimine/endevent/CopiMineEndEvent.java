@@ -1808,6 +1808,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private long transitionRuneDeadlineMillis;
     private int bossTargetCursor;
     private long bossTargetLockUntilMillis;
+    private UUID bossPursuitTarget;
+    private boolean bossTargetWrite;
+    private long bossFocusRepairAtMillis;
     // Group-fight reactions: who last damaged the boss, when the boss last
     // answered damage by switching focus, and when the current focus began.
     private final Map<UUID, Long> bossRecentAttackers = new HashMap<>();
@@ -5881,6 +5884,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         previousBossSpell = null;
         bossTargetCursor = 0;
         bossTargetLockUntilMillis = 0L;
+        bossPursuitTarget = null;
+        bossFocusRepairAtMillis = 0L;
         bossSpellCursor = 0;
         bossProgressEntity = null;
         bossLastProgressLocation = null;
@@ -12252,6 +12257,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /** Keep native reacquisition from overriding the controller's current movement owner. */
+    /** Vanilla retaliation may not replace the encounter coordinator's focus. */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onBossPursuitTarget(EntityTargetLivingEntityEvent event) {
+        if (event.isCancelled() || !(event.getEntity() instanceof Mob mob)
+                || !Objects.equals(bossUuid, mob.getUniqueId())
+                || !ownedBySession(mob, eventId, generation) || bossTargetWrite
+                || event.getTarget() == null) return;
+        Player focus = bossPursuitTarget == null ? null : Bukkit.getPlayer(bossPursuitTarget);
+        if (isBossCombatRuntimeActive(mob) && focus != null && isActiveBossParticipant(focus)) {
+            event.setTarget(focus);
+        } else {
+            event.setTarget(null);
+            nextTargetMillis = 0L;
+        }
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onWaveNavigationTarget(EntityTargetLivingEntityEvent event) {
         if (!(event.getEntity() instanceof Mob mob)
@@ -45509,6 +45530,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             previousBossSpell = null;
             bossTargetCursor = 0;
             bossTargetLockUntilMillis = 0L;
+            bossPursuitTarget = null;
+            bossFocusRepairAtMillis = 0L;
             bossSpellCursor = 0;
             bossSpellPauseUntilMillis = 0L;
             lastBossTeleportMillis = 0L;
@@ -45643,6 +45666,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         nextBossPerceptionMillis = 0L;
         bossTargetCursor = 0;
         bossTargetLockUntilMillis = 0L;
+        bossPursuitTarget = null;
+        bossFocusRepairAtMillis = 0L;
         bossSpellCursor = 0;
         bossTacticCycle = 0;
         nextBossTacticMillis = 0L;
@@ -45867,6 +45892,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     profile.targetRotationMultiplier(), 1_000L);
         }
         if (!finalSealPinned) {
+            if (boss instanceof Mob mob) restoreBossPursuitTarget(mob, now);
             maintainBossPath(boss, now);
             maintainBossTeleport(boss, now);
             detectBossStuck(boss, now);
@@ -46667,6 +46693,34 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return minimum >= maximum ? minimum : minimum + random.nextInt(maximum - minimum + 1);
     }
 
+    private boolean assignBossPursuitTarget(Mob boss, Player target) {
+        if (target != null && !isActiveBossParticipant(target)) return false;
+        bossTargetWrite = true;
+        try { boss.setTarget(target); }
+        finally { bossTargetWrite = false; }
+        Player actual = boss.getTarget() instanceof Player player && isActiveBossParticipant(player) ? player : null;
+        bossPursuitTarget = actual == null ? null : actual.getUniqueId();
+        return target == null ? boss.getTarget() == null
+                : actual != null && actual.getUniqueId().equals(target.getUniqueId());
+    }
+
+    private void restoreBossPursuitTarget(Mob boss, long now) {
+        Player focus = bossPursuitTarget == null ? null : Bukkit.getPlayer(bossPursuitTarget);
+        if (bossPursuitTarget != null && (focus == null || !isActiveBossParticipant(focus))) {
+            assignBossPursuitTarget(boss, null);
+            bossTargetLockUntilMillis = 0L;
+            bossPursuitTarget = null;
+            bossFocusRepairAtMillis = 0L;
+            bossFocusSinceMillis = 0L;
+            nextTargetMillis = 0L;
+            return;
+        }
+        if (focus == null || now < bossFocusRepairAtMillis) return;
+        if (boss.getTarget() instanceof Player current && current.getUniqueId().equals(focus.getUniqueId())) return;
+        bossFocusRepairAtMillis = now + 500L;
+        if (!assignBossPursuitTarget(boss, focus)) nextTargetMillis = Math.min(nextTargetMillis, now + 500L);
+    }
+
     private void rotateBossTarget(Mob boss) {
         List<Player> candidates = Bukkit.getOnlinePlayers().stream()
                 .filter(this::isActiveBossParticipant)
@@ -46674,12 +46728,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 .sorted(Comparator.comparing(player -> player.getUniqueId().toString()))
                 .toList();
         if (candidates.isEmpty()) {
-            boss.setTarget(null);
+            assignBossPursuitTarget(boss, null);
             bossTargetLockUntilMillis = 0L;
+            bossPursuitTarget = null;
+            bossFocusRepairAtMillis = 0L;
             return;
         }
         long now = System.currentTimeMillis();
-        Object rawTarget = boss.getTarget();
+        Object rawTarget = bossPursuitTarget == null ? null : Bukkit.getPlayer(bossPursuitTarget);
         Player current = rawTarget instanceof Player player && isActiveBossParticipant(player)
                 ? player : null;
         // A running lock that already names a live member of the party is left
@@ -46711,8 +46767,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 current == null ? null : current.getUniqueId(), now,
                 bossLastRetaliationMillis, bossTargetLockUntilMillis, effectiveFocusSince);
         if (aggro.decision() == BossGroupAggroPolicy.Decision.CLEAR) {
-            boss.setTarget(null);
+            assignBossPursuitTarget(boss, null);
             bossTargetLockUntilMillis = 0L;
+            bossPursuitTarget = null;
+            bossFocusRepairAtMillis = 0L;
             bossFocusSinceMillis = 0L;
             return;
         }
@@ -46753,8 +46811,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         Player target = decision.target() == null ? null : Bukkit.getPlayer(decision.target());
         if (target == null || !isActiveBossParticipant(target)) {
-            boss.setTarget(null);
+            assignBossPursuitTarget(boss, null);
             bossTargetLockUntilMillis = 0L;
+            bossPursuitTarget = null;
+            bossFocusRepairAtMillis = 0L;
             return;
         }
         // The focus stamp is the START of the authored lock, not the moment the
@@ -46767,7 +46827,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     - Math.max(1L, config.bossTargetLockSeconds() * 1000L));
         }
         bossTargetLockUntilMillis = decision.newLockUntilMillis();
-        boss.setTarget(target);
+        if (!assignBossPursuitTarget(boss, target)) {
+            bossTargetLockUntilMillis = 0L;
+            bossPursuitTarget = null;
+            bossFocusRepairAtMillis = 0L;
+            bossFocusSinceMillis = 0L;
+            return;
+        }
         boolean changed = current == null || !current.getUniqueId().equals(target.getUniqueId());
         if (changed) {
             bossTacticCycle++;

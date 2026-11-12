@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_boss_pursuit_never_admits_a_late_nonparticipant(tmp_path):
     source = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(encoding="utf-8")
-    method = extract(source, "void rotateBossTarget(")
+    method = "\n".join(extract(source, signature) for signature in ["void rotateBossTarget(", "boolean assignBossPursuitTarget(", "void restoreBossPursuitTarget(", "void onBossPursuitTarget("])
     java = tmp_path / "BossTargetRosterProbe.java"
     java.write_text(r'''
 import java.util.*;
@@ -24,7 +24,28 @@ public class BossTargetRosterProbe {
         boolean isDead(){return false;}
         double getHealth(){return 20.0D;}
     }
-    static class Mob {Object target;Object getTarget(){return target;}void setTarget(Object p){target=p;}UUID getUniqueId(){return new UUID(0,9);}}
+    static class Mob {
+        Object target; BossTargetRosterProbe owner; boolean deny;
+        Object getTarget(){return target;}
+        void setTarget(Object p){
+            if(owner==null){target=p;return;}
+            var event=new EntityTargetLivingEntityEvent(this,p);event.cancelled=deny;
+            owner.onBossPursuitTarget(event);if(!event.cancelled)target=event.target;
+        }
+        UUID getUniqueId(){return new UUID(0,9);}
+    }
+    static class EntityTargetLivingEntityEvent {
+        final Mob source;Object target;boolean cancelled;
+        EntityTargetLivingEntityEvent(Mob source,Object target){this.source=source;this.target=target;}
+        boolean isCancelled(){return cancelled;}Object getEntity(){return source;}
+        Object getTarget(){return target;}void setTarget(Object target){this.target=target;}
+    }
+    UUID bossPursuitTarget;boolean bossTargetWrite;
+    long bossFocusRepairAtMillis,nextTargetMillis,generation=7;
+    final UUID bossUuid=new UUID(0,9);final String eventId="event";
+    boolean ownedBySession(Mob mob,String event,long generation){return true;}
+    boolean isBossCombatRuntimeActive(Mob mob){return true;}
+
     static class Bukkit {
         static final List<Player> players=new ArrayList<>();static Collection<Player> getOnlinePlayers(){return players;}
         static Player getPlayer(UUID id){return players.stream().filter(p->p.id.equals(id)).findFirst().orElse(null);}
@@ -49,10 +70,20 @@ public class BossTargetRosterProbe {
         var outsider=new Player("00000000-0000-0000-0000-000000000001",false);
         var member=new Player("00000000-0000-0000-0000-000000000002",true);
         Bukkit.players.add(outsider);Bukkit.players.add(member);
-        var p=new BossTargetRosterProbe();var boss=new Mob();p.rotateBossTarget(boss);
+        var p=new BossTargetRosterProbe();var boss=new Mob();boss.owner=p;p.rotateBossTarget(boss);
         check(boss.target==member&&!p.combatHelpers.contains(outsider.id),"late visitor entered pursuit/reward participation");
         long lock=p.bossTargetLockUntilMillis;p.rotateBossTarget(boss);
         check(boss.target==member&&p.bossTargetLockUntilMillis==lock,"valid focus or its original lock was reset");
+        var attacker=new Player("00000000-0000-0000-0000-000000000003",true);
+        Bukkit.players.add(attacker);
+        boss.setTarget(attacker);
+        check(boss.target==member&&p.bossTargetLockUntilMillis==lock,"vanilla retaliation stole pursuit focus");
+        boss.setTarget(null);p.restoreBossPursuitTarget(boss,System.currentTimeMillis());
+        check(boss.target==member&&p.bossTargetLockUntilMillis==lock,"cast recovery lost focus or refreshed lock");
+        boss.target=null;boss.deny=true;
+        p.restoreBossPursuitTarget(boss,System.currentTimeMillis()+1_000L);
+        check(boss.target==null&&p.bossPursuitTarget==null,"focus repair bypassed a cancelled target event");
+        boss.deny=false;attacker.admitted=false;
         member.admitted=false;p.rotateBossTarget(boss);
         check(boss.target==null&&p.bossTargetLockUntilMillis==0,"empty official roster retained a combat target");
     }

@@ -414,6 +414,10 @@ public final class EndRiftEncounterCoordinatorTest {
         @Override public Result reportRuntimeResult(EncounterContext context, boolean complete) {
             return startResult;
         }
+        @Override public Result reportRuntimeResult(EncounterContext context, boolean complete,
+                                                    int reportedProgress) {
+            return startResult;
+        }
         @Override public Result complete(EncounterContext context) { return startResult; }
         @Override public void reset() { }
     }

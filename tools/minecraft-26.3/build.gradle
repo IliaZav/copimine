@@ -109,6 +109,14 @@ tasks.named('endEventJar', Jar) {
     }
 }
 
+// End Rift presentation helpers compile in the shared protocol source tree,
+// but only EndEvent loads them on Paper. Do not change the unrelated Narcotics
+// runtime artifact merely by adding a client/encounter presentation class.
+tasks.named('narcoticsJar', Jar) {
+    exclude 'me/copimine/protocol/KaguneRingFrame.class'
+    exclude 'me/copimine/protocol/BossAnimationPlayback.class'
+}
+
 sourceSets.create('bridgeServerTest') {
     java.srcDir(file('server-bridge-tests/src/test/java'))
     compileClasspath += sourceSets.narcotics.output + sourceSets.endEvent.output

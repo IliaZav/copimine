@@ -1,5 +1,11 @@
 *.sh text eol=lf
 *.bash text eol=lf
+resourcepacks/src/assets/copimine/items/end_rift_rift_bolt.json text eol=lf
+resourcepacks/src/assets/copimine/items/end_rift_void_burst.json text eol=lf
+resourcepacks/src/assets/copimine/items/end_rift_dragon_breath.json text eol=lf
+resourcepacks/src/assets/copimine/models/item/end_rift_rift_bolt.json text eol=lf
+resourcepacks/src/assets/copimine/models/item/end_rift_void_burst.json text eol=lf
+resourcepacks/src/assets/copimine/models/item/end_rift_dragon_breath.json text eol=lf
 # Packaged plugin resources are hashed into the pinned candidate. A runner
 # with core.autocrlf=true must not rewrite them, or the same sources build a
 # jar 400 bytes longer (CRLF) and the pin cannot match.

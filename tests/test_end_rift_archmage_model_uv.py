@@ -71,6 +71,31 @@ def test_no_uv_box_leaves_the_sheet():
     )
 
 
+def test_sigil_parts_survive_because_the_atlas_fitter_skips_them():
+    """The fix only matters because 'sigil' parts keep their authored UVs.
+
+    EndRiftAtlasUvLayout.fit remaps solid faces into painted atlas islands, and
+    it returns early for any part whose path contains 'rune' or 'sigil'. So the
+    sigil ring never gets a safety net: whatever texOffs says is what reaches the
+    GPU. If that skip were removed, the authored offset would stop mattering and
+    this whole file would be asserting the wrong invariant.
+    """
+    fitter = (CLIENT / "EndRiftAtlasUvLayout.java").read_text(encoding="utf-8")
+    assert 'path.contains("sigil")' in fitter, (
+        "the atlas fitter no longer skips sigil parts; the Archmage UV literals are "
+        "now overwritten at load time and this audit is meaningless"
+    )
+    assert 'path.contains("rune")' in fitter, "the atlas fitter no longer skips rune parts"
+
+    source = MODEL.read_text(encoding="utf-8")
+    parts = re.findall(r'addOrReplaceChild\("([a-z_]+)"', source)
+    skipped = [p for p in parts if "rune" in p or "sigil" in p]
+    assert "rift_sigil_ring" in skipped, (
+        "rift_sigil_ring must keep its authored UVs and is therefore subject to the "
+        "sheet-bounds check"
+    )
+
+
 def test_the_sigil_ring_is_inside_the_sheet():
     """The specific defect: a 32-unit-wide ring starting at u=56."""
     source = MODEL.read_text(encoding="utf-8")

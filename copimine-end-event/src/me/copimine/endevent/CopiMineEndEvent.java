@@ -6223,12 +6223,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || phase == EventPhase.RECOVERY_REQUIRED)
                 && stoppingBoss != null && stoppingBoss.isValid() && !stoppingBoss.isDead()
                 && isOfficialBoss(stoppingBoss) && ownedBySession(stoppingBoss, eventId, generation);
+        boolean bossCheckpointCommitted = false;
         if (preserveBossForRestart) {
             // Hazards above have restored their journals. Freeze health, dead
             // slots, fall stage and clocks BEFORE clearTentacles empties them.
             updatedAt = Instant.now().getEpochSecond();
             shutdownBossCheckpoint = snapshot();
-            if (!saveStateSync()) stoppingBoss.getPersistentDataContainer().set(
+            bossCheckpointCommitted = saveStateSync();
+            if (!bossCheckpointCommitted) stoppingBoss.getPersistentDataContainer().set(
                     new NamespacedKey(this, "end_event_shutdown_recovery"), PersistentDataType.STRING,
                     eventId + ":" + generation);
         }
@@ -6283,7 +6285,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             boolean committed = saveStateSync();
             if (preserveBossForRestart) {
                 NamespacedKey recoveryKey = new NamespacedKey(this, "end_event_shutdown_recovery");
-                if (committed) stoppingBoss.getPersistentDataContainer().remove(recoveryKey);
+                if (committed || bossCheckpointCommitted) stoppingBoss.getPersistentDataContainer().remove(recoveryKey);
                 else stoppingBoss.getPersistentDataContainer().set(recoveryKey, PersistentDataType.STRING,
                         eventId + ":" + generation);
             }

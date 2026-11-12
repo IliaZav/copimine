@@ -36,9 +36,11 @@ code therefore did not guarantee correct production shutdown.
 The official living boss now retains its body UUID. After hazard restoration,
 an immutable snapshot is frozen before combat teardown. All subsequent teardown
 saves use that checkpoint. This also preserves recovery evidence when the boss
-is already in RECOVERY_REQUIRED. A failed final commit marks the physical actor;
+is already in RECOVERY_REQUIRED. If both checkpoint writes fail, the physical actor retains a recovery marker;
 bootstrap refuses automatic combat resumption from that ambiguous state. A
-confirmed final write clears the marker.
+confirmed write of the same frozen snapshot at either boundary clears the marker.
+CodeRabbit identified the first-success/second-failure case; it is now preserved
+as a committed checkpoint rather than falsely quarantined.
 
 ## Living small Kagune recovery
 

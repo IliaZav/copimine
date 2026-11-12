@@ -150,6 +150,10 @@ import me.copimine.endevent.domain.ShardPassivePolicy;
 import me.copimine.endevent.domain.SkeletonCombatPolicy;
 import me.copimine.endevent.domain.SkeletonArrowPolicy;
 import me.copimine.endevent.domain.EliteAbilityPolicy;
+import me.copimine.endevent.domain.EliteSpellFlightMotionPolicy;
+import me.copimine.endevent.domain.EliteSpellVfxPolicy;
+
+import java.util.concurrent.ThreadLocalRandom;
 import me.copimine.endevent.domain.EliteCombatStatsPolicy;
 import me.copimine.endevent.domain.DragonBreathCloudPolicy;
 import me.copimine.endevent.domain.BlackFogEffectLeasePolicy;
@@ -1368,6 +1372,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, Long> activeEliteProjectileExpiresAtTick = new HashMap<>();
     private final Map<UUID, UUID> activeEliteDragonBreathCloudsByCaster = new HashMap<>();
     private final Map<UUID, UUID> activeEliteProjectileVisuals = new HashMap<>();
+    /**
+     * Spawn instant per spell projectile, so the flight animation can be driven
+     * from elapsed time instead of a per-tick frame counter.
+     */
+    private final Map<UUID, Long> activeEliteProjectileSpawnMillis = new HashMap<>();
     private final Set<UUID> eliteProjectileDamageAllowed = new HashSet<>();
     private final Set<UUID> eliteProjectileDamageBlocked = new HashSet<>();
     private final Set<UUID> eliteProjectileImpactScheduled = new HashSet<>();
@@ -3557,6 +3566,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         } else if (isTaggedEliteProjectileVisual(entity)) {
             UUID projectileId = parseEliteProjectileVisualOwner(entity);
             if (projectileId != null) activeEliteProjectileVisuals.remove(projectileId, entityId);
+            if (projectileId != null) activeEliteProjectileSpawnMillis.remove(projectileId);
             activeEliteProjectileVisuals.values().removeIf(entityId::equals);
         }
         emitUntrackedEntityRemovalDiagnostic(entity, reason);
@@ -13497,6 +13507,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     && ability == EliteAbilityPolicy.Ability.DRAGON_BREATH) {
                 spawnEliteDragonBreathCloud(shooter, impact, wave, projectileId);
             }
+            // The Void Burst path draws its own burst above; the other two
+            // spells burst here, on any accepted impact, with their own
+            // authored signature instead of the old shared vanilla puff.
+            if (ability != EliteAbilityPolicy.Ability.WEB_SHOT) {
+                spawnEliteSpellImpactBurst(impact, ability.name());
+            }
         } finally {
             removeEliteProjectileVisual(projectileId, "elite-projectile-impact-resolved");
             eliteProjectileDamageAllowed.remove(projectileId);
@@ -13547,8 +13563,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         int affected = EliteProjectileImpactPolicy.applyVoidBurst(
                 collision, candidates, radius, damage);
-        spawnEventParticle(impact, Particle.DRAGON_BREATH, 18,
-                0.25D, 0.25D, 0.25D, 0.02D);
+        // Every elite spell used to burst into this same vanilla puff, so the
+        // only thing telling one ability from another was luck. Each spell now
+        // carries its own layered signature (see EliteSpellVfxPolicy).
         world.playSound(impact, Sound.ENTITY_GENERIC_EXPLODE, 0.55F, 1.55F);
         getLogger().info("ELITE_VOID_BURST_IMPACT owner=" + shooter.getUniqueId()
                 + " radius=" + radius + " damage=" + damage
@@ -13944,6 +13961,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     PersistentDataType.STRING, projectile.getUniqueId().toString());
         }
         activeEliteProjectileVisuals.put(projectile.getUniqueId(), display.getUniqueId());
+        activeEliteProjectileSpawnMillis.put(projectile.getUniqueId(), System.currentTimeMillis());
     }
 
     /**
@@ -13973,6 +13991,101 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " reason=spawn-failed message=" + failure.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Emit one tick of the spell trail behind a flying elite projectile.
+     *
+     * A trail is what makes a projectile read as energy instead of a thrown
+     * prop. It is emitted at the projectile position with a tight spread so it
+     * hugs the mesh, and the per-spell chance gate keeps the cost tiny.
+     */
+    private void spawnEliteSpellFlightTrail(Location position, String abilityId) {
+        if (position == null || position.getWorld() == null) return;
+        for (EliteSpellVfxPolicy.Pass pass : EliteSpellVfxPolicy.flightTrail(abilityId)) {
+            if (ThreadLocalRandom.current().nextFloat() > pass.chance()) continue;
+            Particle particle = resolveSpellParticle(pass.particle());
+            if (particle == null) continue;
+            if (pass.dustHex() == null) {
+                spawnEventParticle(position, particle, pass.count(),
+                        pass.spreadX(), pass.spreadY(), pass.spreadZ(), pass.extra());
+            } else {
+                spawnEventParticle(position, particle, pass.count(),
+                        pass.spreadX(), pass.spreadY(), pass.spreadZ(), pass.extra(),
+                        spellDust(pass.dustHex()));
+            }
+        }
+    }
+
+    /**
+     * Emit the authored impact burst for an elite spell.
+     *
+     * This replaces the single shared vanilla puff that made every ability look
+     * the same on contact. Passes are resolved against the live Particle enum so
+     * a particle renamed by a platform update degrades to "skip that pass"
+     * instead of throwing out of the impact handler.
+     */
+    private void spawnEliteSpellImpactBurst(Location impact, String abilityId) {
+        if (impact == null || impact.getWorld() == null) return;
+        for (EliteSpellVfxPolicy.Pass pass : EliteSpellVfxPolicy.impactBurst(abilityId)) {
+            Particle particle = resolveSpellParticle(pass.particle());
+            if (particle == null) continue;
+            if (pass.dustHex() == null) {
+                spawnEventParticle(impact, particle, pass.count(),
+                        pass.spreadX(), pass.spreadY(), pass.spreadZ(), pass.extra());
+            } else {
+                spawnEventParticle(impact, particle, pass.count(),
+                        pass.spreadX(), pass.spreadY(), pass.spreadZ(), pass.extra(),
+                        spellDust(pass.dustHex()));
+            }
+        }
+    }
+
+    /** Resolve a policy particle name, or null when this platform lacks it. */
+    private Particle resolveSpellParticle(String name) {
+        if (name == null || name.isBlank()) return null;
+        try {
+            return Particle.valueOf(name);
+        } catch (IllegalArgumentException unknown) {
+            return null;
+        }
+    }
+
+    /** Parse a 6-digit policy colour into the DustOptions the DUST particle needs. */
+    private Particle.DustOptions spellDust(String hex) {
+        if (hex == null || hex.length() != 6) return null;
+        try {
+            int rgb = Integer.parseInt(hex, 16);
+            return new Particle.DustOptions(
+                    org.bukkit.Color.fromRGB((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF),
+                    0.9F);
+        } catch (NumberFormatException malformed) {
+            return null;
+        }
+    }
+
+    /**
+     * Apply one frame of elite spell flight motion to the authored mesh.
+     *
+     * The mesh is authored in a 16-unit block space, so the model is centred
+     * on the display origin before it is rotated: otherwise the spear would
+     * swing around a corner instead of spinning about its own axis.
+     */
+    private Transformation eliteSpellFlightTransformation(
+            EliteSpellFlightMotionPolicy.Motion motion) {
+        if (motion == null) {
+            return new Transformation(new Vector3f(), new Quaternionf(),
+                    new Vector3f(0.42F, 0.42F, 0.42F), new Quaternionf());
+        }
+        float scale = 0.42F * motion.scaleMultiplier();
+        Quaternionf rotation = new Quaternionf().rotateYXZ(
+                motion.wobbleYaw(), (float) motion.spinRadians(), motion.wobblePitch());
+        // The mesh is authored around (8,8,8) in block units; at 0.42 model
+        // scale that centre is 0.42 display units from the origin. Translating
+        // by its negative puts the spin axis through the mesh centre.
+        Vector3f centre = new Vector3f(-0.42F, -0.42F, -0.42F);
+        return new Transformation(centre, rotation,
+                new Vector3f(scale, scale, scale), new Quaternionf());
     }
 
     /**
@@ -14317,6 +14430,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (display instanceof BlockDisplay blockDisplay) {
                 blockDisplay.setTransformation(webShotBlockTransformation(
                         eventTickCounter * WEB_SHOT_TUMBLE_DEGREES_PER_TICK));
+            } else if (display instanceof ItemDisplay itemDisplay
+                    && keyEliteProjectileAbility != null) {
+                // The three authored spell meshes must fly, not slide. Each
+                // ability has its own spin, wobble and pulse signature; read
+                // the identity from the projectile itself so a rebound or a
+                // restored entity can never animate as the wrong spell.
+                String abilityId = readString(projectile, keyEliteProjectileAbility);
+                if (!abilityId.isBlank()) {
+                    long elapsed = System.currentTimeMillis()
+                            - activeEliteProjectileSpawnMillis.getOrDefault(
+                                    projectileId, System.currentTimeMillis());
+                    EliteSpellFlightMotionPolicy.Motion motion =
+                            EliteSpellFlightMotionPolicy.motionFor(abilityId, elapsed);
+                    itemDisplay.setTransformation(eliteSpellFlightTransformation(motion));
+                    spawnEliteSpellFlightTrail(position, abilityId);
+                }
             }
         }
     }
@@ -14324,6 +14453,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void removeEliteProjectileVisual(UUID projectileId, String reason) {
         if (projectileId == null) return;
         UUID visualId = activeEliteProjectileVisuals.remove(projectileId);
+        activeEliteProjectileSpawnMillis.remove(projectileId);
         if (visualId == null) return;
         Entity visual = unregisterOwnedEntity(visualId, reason);
         if (visual != null && visual.isValid()) visual.remove();
@@ -14363,6 +14493,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         activeEliteProjectileExpiresAtTick.clear();
         activeEliteDragonBreathCloudsByCaster.clear();
         activeEliteProjectileVisuals.clear();
+        activeEliteProjectileSpawnMillis.clear();
         eliteProjectileDamageAllowed.clear();
         eliteProjectileDamageBlocked.clear();
         eliteProjectileImpactScheduled.clear();
@@ -58591,6 +58722,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (isTaggedEliteProjectileVisual(entity)) {
                 UUID projectileId = parseEliteProjectileVisualOwner(entity);
                 if (projectileId != null) activeEliteProjectileVisuals.remove(projectileId, removedId);
+                if (projectileId != null) activeEliteProjectileSpawnMillis.remove(projectileId);
                 activeEliteProjectileVisuals.values().removeIf(removedId::equals);
             }
             UUID ritualCaster = ritualGuardCasters.remove(removedId);

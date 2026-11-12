@@ -72,35 +72,57 @@ def test_migration_dispatch_routes_only_the_registered_web_shot_paper_id():
     assert definition["fallback"] == native_paper
 
 
-def test_elite_projectile_assets_are_distinct_transparent_paper_models():
+def test_elite_projectile_assets_are_closed_3d_meshes_with_per_spell_atlases():
     rows = json.loads(MANIFEST.read_text(encoding="utf-8-sig"))["items"]
     by_id = {row["id"]: row for row in rows}
     paper_ids = [row["custom_model_data"] for row in rows if row["base_material"] == "paper"]
 
     for item_id, model_data, name in PROJECTILE_ASSETS:
-        model_ref = f"copimine:item/{name}"
-        texture_ref = f"copimine:item/{name}"
         assert by_id[item_id] == {
             "id": item_id,
             "custom_model_data": model_data,
             "base_material": "paper",
-            "model": model_ref,
-            "texture": texture_ref,
+            "model": f"copimine:item/{name}",
+            "texture": f"copimine:item/{name}",
         }
         assert paper_ids.count(model_data) == 1
 
+    # The three elite spells are closed 3D meshes, not flat sprites: they fly as
+    # authored projectiles and must therefore carry real geometry and a UV atlas.
+    # A shared texture pair made every ability look identical, so each spell now
+    # owns its own atlas and its own silhouette.
+    silhouettes = {}
+    for item_id, model_data, name in PROJECTILE_ASSETS:
         model_path = ROOT / "resourcepacks" / "src" / "assets" / "copimine" / "models" / "item" / f"{name}.json"
         texture_path = ROOT / "resourcepacks" / "src" / "assets" / "copimine" / "textures" / "item" / f"{name}.png"
         model = json.loads(model_path.read_text(encoding="utf-8"))
-        assert model == {
-            "parent": "minecraft:item/generated",
-            "textures": {"layer0": texture_ref},
-        }
+
+        assert model["parent"] == "minecraft:block/block"
+        assert set(model["textures"].values()) == {f"copimine:item/{name}"}
+
+        elements = model["elements"]
+        assert len(elements) >= 6
+        for element in elements:
+            assert set(element["faces"]) == {"down", "up", "north", "south", "west", "east"}
+            low, high = element["from"], element["to"]
+            assert all(0 <= value <= 16 for value in low + high)
+            assert all(a < b for a, b in zip(low, high)), "a degenerate element is invisible"
+            for face in element["faces"].values():
+                uv = face["uv"]
+                assert 0 <= uv[0] < uv[2] <= 64 and 0 <= uv[1] < uv[3] <= 64
+
+        silhouettes[name] = frozenset(
+            (tuple(element["from"]), tuple(element["to"])) for element in elements
+        )
+
         with Image.open(texture_path) as image:
             assert image.mode == "RGBA"
-            assert image.size == (32, 32)
+            assert image.size == (64, 64)
             assert image.getchannel("A").getextrema() == (0, 255)
-            assert len(image.getcolors(32 * 32) or []) <= 8
+            # A UV atlas needs more than the handful of flat colours a sprite used.
+            assert len(image.getcolors(64 * 64) or []) > 32
+
+    assert len(set(silhouettes.values())) == len(silhouettes)
 
     assert all(row["base_material"] != "snowball" for row in rows)
     assert not (ROOT / "resourcepacks" / "src" / "assets" / "minecraft" / "models" / "item" / "snowball.json").exists()

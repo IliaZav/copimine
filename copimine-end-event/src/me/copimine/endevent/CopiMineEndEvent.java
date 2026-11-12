@@ -64,7 +64,6 @@ import me.copimine.endevent.domain.BossSummonAdmissionPolicy;
 import me.copimine.endevent.domain.EchoAttackReplicaPolicy;
 import me.copimine.endevent.domain.EchoReplicaPresentationPolicy;
 import me.copimine.endevent.domain.KaguneGuardianFightPolicy;
-import me.copimine.endevent.domain.KaguneRingCastPolicy;
 import me.copimine.endevent.domain.KaguneRingGapPolicy;
 import me.copimine.endevent.domain.BossAbilitySelector;
 import me.copimine.endevent.domain.BossAnimationId;
@@ -1471,13 +1470,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * per cast from a seed, and the claim set is what guarantees one damage
      * event per player across ALL THREE rows rather than one per row.
      */
-    private KaguneRingGapPolicy.Layout kaguneRingLayout;
-    private final KaguneRingCastPolicy kaguneRingCast = new KaguneRingCastPolicy();
-    private int kaguneRingRow = -1;
-    private int kaguneRingRowTick;
-    private long kaguneRingCastEndTick = -1L;
-    private final Set<UUID> kaguneRingDisplays = new LinkedHashSet<>();
-    private long kaguneRingCastGeneration = Long.MIN_VALUE;
+    private me.copimine.endevent.runtime.LastSealRingRuntime lastSealRing;
     /**
      * Contract 15.2 Type A: delayed spectral attack replicas. Each copy has its
      * own policy timeline and its own damage ledger key, so the strike and the
@@ -45636,6 +45629,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         reconcileBossCastProjection(boss, now);
         tickCurrentRiftFractures(boss);
+        tickKaguneRingCast(boss);
         tickCurrentTentacles(boss);
         // Contract 15.2: the general boss loop owns the Phase 5 Echo actors. The
         // method carries its own RAGE and encounter-generation fences, and it
@@ -45711,6 +45705,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             nextBossCloseStrikeMillis = now
                     + me.copimine.endevent.domain.BossCloseCombatPolicy.retryMillis();
         }
+        if (isKaguneRingCastActive()) return;
         if (now >= bossSpellPauseUntilMillis && nextSpellMillis <= now
                 && !activeBossParticipants().isEmpty()) {
             boolean accepted = castBossSpell(boss, false);
@@ -45763,7 +45758,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // visible, so the fall owns the boss's position from here on.
         // Contract 20: the ring rows advance on the boss's own tick, so the
         // three rows sweep outward in order instead of all emerging at once.
-        tickKaguneRingCast(boss);
         tickEchoAttackReplicas(boss);
         // Contract 15.2: the pin used to be the ONLY owner of the replica tick,
         // which is why a copy started at RAGE entry never advanced a single tick
@@ -48080,6 +48074,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !currentBossSpellPool().contains(spell)) {
             return false;
         }
+        if (isKaguneRingCastActive()) {
+            if (!forced) return false;
+            clearKaguneRingCast("forced-spell-replaced");
+        }
         if (forced && bossAbilityState != BossAbilityState.NONE) {
             // Admin/live-harness spell probes are explicit requests. Do not
             // race an automatic telegraph or leave its reservation occupying
@@ -48112,34 +48110,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             previousBossSpell = spell;
             return startTentacleAmbush(boss, target);
         }
-        if (spell == EndRiftAiPolicy.BossSpell.SMALL_KAGUNE
-                && kaguneRingCastEndTick < 0L
-                && KaguneRingGapPolicy.patternPossible(
-                        Math.max(1, activeBossParticipants().size()),
-                        KaguneRingGapPolicy.ROW_EMERGE_RADIUS[0])
-                && eventTickCounter % 3 == 0) {
-            // Contract 20: in RIFT and later the Kagune answer is the three-row
-            // ring, not the small summons. The ring needs a feasible escape
-            // pattern for the current party or it refuses to fire at all.
-            Player anchor = currentBrainTarget(boss, spell);
-            if (anchor != null && reserveBossHazard(spell, anchor)) {
-                previousBossSpell = spell;
-                if (boss.getWorld().getTime() >= 0L && startKaguneRingCast(boss)) {
-                    return true;
-                }
-                releaseBossHazardReservation("kagune-ring-refused");
-            }
-        }
         if (spell == EndRiftAiPolicy.BossSpell.SMALL_KAGUNE) {
+            // Preserve the saved spell ID as the major ring dispatch. Small
+            // enemy batches belong exclusively to their independent cadence.
             Player anchor = currentBrainTarget(boss, spell);
-            if (anchor == null || !reserveBossHazard(spell, anchor)) {
-                return false;
+            if (anchor == null || !reserveBossHazard(spell, anchor)) return false;
+            if (startKaguneRingCast(boss)) {
+                previousBossSpell = spell;
+                return true;
             }
-            previousBossSpell = spell;
-            boolean summoned = startSmallKaguneSummon(boss);
-            releaseBossHazardReservation(summoned
-                    ? "small-kagune-summoned" : "small-kagune-refused");
-            return summoned;
+            releaseBossHazardReservation("kagune-ring-refused");
+            return false;
         }
         Player target = currentBrainTarget(boss, spell);
         if (target == null) {
@@ -50978,177 +50959,95 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return removed;
     }
 
-    private boolean startKaguneRingCast(LivingEntity boss) {
-        if (boss == null) {
-            return false;
-        }
-        if (generation != kaguneRingCastGeneration) {
-            kaguneRingCastGeneration = generation;
-            kaguneRingCast.reset();
-        }
-        List<Player> roster = activeBossParticipants();
-        if (roster.isEmpty()) {
-            return false;
-        }
-        List<Double> playerAngles = new ArrayList<>();
-        Location core = boss.getLocation();
-        for (Player player : roster) {
-            double dx = player.getLocation().getX() - core.getX();
-            double dz = player.getLocation().getZ() - core.getZ();
-            playerAngles.add(Math.atan2(dz, dx));
-        }
-        long seed = eventTickCounter * 31L + roster.size();
-        KaguneRingGapPolicy.Layout layout = KaguneRingGapPolicy.layout(
-                seed, roster.size(), playerAngles, List.of());
-        if (layout == null || !layout.feasible()) {
-            // An escape that does not exist is worse than no cast at all.
-            getLogger().info("KAGUNE_RING_REFUSED event=" + eventId
-                    + " generation=" + generation + " reason=infeasible-layout"
-                    + " players=" + roster.size());
-            return false;
-        }
-        kaguneRingLayout = layout;
-        kaguneRingRow = 0;
-        kaguneRingRowTick = 0;
-        kaguneRingCastEndTick = eventTickCounter
-                + (long) ROW_TICKS * KaguneRingGapPolicy.ROW_COUNT;
-        renderKaguneRingRow(boss, layout, 0, 0.0D);
-        // Contract 20.3: the cast must damage the row it just brought out, for
-        // the same reason the ticker damages each row it advances to. Without
-        // this, row 0 was drawn and never struck, so the inner band was free to
-        // stand in and only the outer two rings could cost a hit.
-        damageKaguneRingRow(boss, layout, 0, 0.0D);
-        getLogger().info("KAGUNE_RING_CAST_START event=" + eventId
-                + " generation=" + generation + " boss=" + boss.getUniqueId()
-                + " seed=" + seed + " players=" + roster.size()
-                + " rows=" + KaguneRingGapPolicy.ROW_COUNT
-                + " gaps=" + KaguneRingGapPolicy.gapCount(roster.size()));
-        return true;
+    private boolean isKaguneRingCastActive() {
+        return lastSealRing != null && lastSealRing.active();
     }
 
-    /** One authored row lifetime: emerge, sweep outward, retire. */
-    private static final int ROW_TICKS = 30;
+    private me.copimine.endevent.runtime.LastSealRingRuntime ringRuntime() {
+        if (lastSealRing != null) return lastSealRing;
+        lastSealRing = new me.copimine.endevent.runtime.LastSealRingRuntime(
+                new me.copimine.endevent.runtime.LastSealRingRuntime.Host() {
+            public me.copimine.endevent.runtime.LastSealRingRuntime.Scope scope(LivingEntity boss) {
+                return new me.copimine.endevent.runtime.LastSealRingRuntime.Scope(eventId, generation, boss.getUniqueId());
+            }
+            public boolean active(LivingEntity boss) {
+                return bossPhase == BossPhase.LAST_SEAL && isBossCombatRuntimeActive(boss)
+                        && !guardianDeaths.cocoonBroken();
+            }
+            public Location floorOrigin(LivingEntity boss) {
+                Location result = boss.getLocation().clone();
+                result.setY(combatFloorY() + 1.0D);
+                return result;
+            }
+            public List<Player> participants() {
+                return activeBossParticipants().stream().filter(player -> !isPlayerUnderTentacleControl(player)).toList();
+            }
+            public boolean traversable(Location feet) {
+                return isArenaLocation(feet) && feet.getBlock().isPassable()
+                        && feet.clone().add(0, 1, 0).getBlock().isPassable()
+                        && feet.clone().add(0, -1, 0).getBlock().getType().isSolid();
+            }
+            public ItemDisplay createCarrier(Location origin) {
+                ItemDisplay display = origin.getWorld().spawn(origin, ItemDisplay.class, entity -> {
+                    entity.setItemStack(overlayItem(MODEL_RIFT_TENTACLE, "end_event_rift_tentacle"));
+                    entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
+                    entity.setBillboard(Display.Billboard.FIXED);
+                    entity.setViewRange(64F); entity.setDisplayWidth(48F); entity.setDisplayHeight(8F);
+                    entity.setPersistent(false); entity.setGravity(false); entity.setInvulnerable(true);
+                    entity.setShadowRadius(0F);
+                });
+                tag(display, EVENT_KIND_TENTACLE, 0, isOfficialEntity(liveBoss()));
+                for (Player viewer : eventAudience()) bindEventEntityClient(viewer, display);
+                return display;
+            }
+            public void publish(ItemDisplay display, me.copimine.protocol.KaguneRingFrame frame) {
+                ItemStack item = display.getItemStack();
+                ItemMeta meta = item.getItemMeta();
+                var data = meta.getCustomModelDataComponent();
+                data.setFloats(frame.encode());
+                meta.setCustomModelDataComponent(data); item.setItemMeta(meta);
+                display.setItemStack(item);
+            }
+            public void remove(ItemDisplay display) {
+                display.remove();
+                if (!display.isValid()) unregisterOwnedEntity(display.getUniqueId(), "kagune-ring-retired");
+            }
+            public boolean hit(LivingEntity boss, Player player, double damage) {
+                return applyBossAbilityDamage(boss, player, damage);
+            }
+            public void finished(me.copimine.endevent.runtime.LastSealRingRuntime.Scope owner, String reason) {
+                LivingEntity current = liveBoss();
+                if (owner != null && generation == owner.generation() && Objects.equals(eventId, owner.event())
+                        && (current == null || owner.boss().equals(current.getUniqueId())))
+                    releaseBossHazardReservation("kagune-ring-" + reason);
+            }
+            public void failed(String reason) {
+                getLogger().warning("KAGUNE_RING_REFUSED event=" + eventId + " generation=" + generation + " reason=" + reason);
+            }
+        });
+        return lastSealRing;
+    }
+
+    private boolean startKaguneRingCast(LivingEntity boss) {
+        return ringRuntime().start(boss, eventScalePlayers(), eventTickCounter,
+                eventTickCounter * 31L ^ generation);
+    }
 
     private void tickKaguneRingCast(LivingEntity boss) {
-        if (kaguneRingLayout == null || kaguneRingRow < 0 || generation != kaguneRingCastGeneration) {
-            return;
-        }
-        kaguneRingRowTick++;
-        // Contract 20.3: the out row travels outward for its whole lifetime, so
-        // redraw it every tick at its current progress. Redrawing only when a new
-        // row takes over turned each ring into one static frame.
-        double sweepProgress = Math.min(1.0D, (double) kaguneRingRowTick / (double) ROW_TICKS);
-        renderKaguneRingRow(boss, kaguneRingLayout, kaguneRingRow, sweepProgress);
-        // The band moves with the ring, so a player is judged against the radius
-        // the ring actually occupies right now, not only when it first emerged.
-        damageKaguneRingRow(boss, kaguneRingLayout, kaguneRingRow, sweepProgress);
-        if (kaguneRingRowTick < ROW_TICKS) {
-            return;
-        }
-        int next = kaguneRingRow + 1;
-        if (next >= KaguneRingGapPolicy.ROW_COUNT || eventTickCounter > kaguneRingCastEndTick) {
-            clearKaguneRingCast("cast-complete");
-            return;
-        }
-        kaguneRingRow = next;
-        kaguneRingRowTick = 0;
-        renderKaguneRingRow(boss, kaguneRingLayout, next, 0.0D);
-        damageKaguneRingRow(boss, kaguneRingLayout, next, 0.0D);
-    }
-
-    /**
-     * Draws one row at its current sweep progress.
-     *
-     * <p>Contract 20.3 describes a row that emerges and travels outward for its
-     * authored lifetime. Drawing only at the emerge radius made each row a single
-     * static flash that appeared and vanished without moving, so the player had
-     * nothing to read and nothing to run from.</p>
-     */
-    private void renderKaguneRingRow(LivingEntity boss, KaguneRingGapPolicy.Layout layout, int rowIndex,
-                                     double sweepProgress) {
-        KaguneRingGapPolicy.Row row = layout.row(rowIndex);
-        if (row == null || boss == null) {
-            return;
-        }
-        World world = boss.getWorld();
-        Location centre = boss.getLocation();
-        double progress = Math.max(0.0D, Math.min(1.0D, sweepProgress));
-        double radius = row.emergeRadius() + KaguneRingGapPolicy.ROW_TRAVEL_BLOCKS * progress;
-        int points = 72;
-        for (int step = 0; step < points; step++) {
-            double direction = KaguneRingGapPolicy.wrap(2.0D * Math.PI * step / points);
-            if (KaguneRingGapPolicy.insideGap(row, direction)) {
-                continue;
-            }
-            double x = centre.getX() + Math.cos(direction) * radius;
-            double z = centre.getZ() + Math.sin(direction) * radius;
-            world.spawnParticle(Particle.CRIMSON_SPORE,
-                    new Location(world, x, centre.getY() + 0.6D, z), 2, 0.05D, 0.3D, 0.05D, 0.0D);
-            world.spawnParticle(Particle.SOUL_FIRE_FLAME,
-                    new Location(world, x, centre.getY() + 0.9D, z), 1, 0.05D, 0.2D, 0.05D, 0.0D);
-        }
-    }
-
-    /**
-     * Strikes the players the out row is sweeping through right now.
-     *
-     * <p>The band is not fixed at the emerge radius: the row travels outward, so
-     * the radius the player must be judged against moves with it. Using the
-     * emerge radius for the whole lifetime would hit players standing where the
-     * ring already left and spare those it is about to reach.</p>
-     */
-    private void damageKaguneRingRow(LivingEntity boss, KaguneRingGapPolicy.Layout layout, int rowIndex,
-                                     double sweepProgress) {
-        KaguneRingGapPolicy.Row row = layout.row(rowIndex);
-        if (row == null) {
-            return;
-        }
-        Location centre = boss.getLocation();
-        double damage = KaguneGuardianFightPolicy.BASE_STRIKE_DAMAGE;
-
-        for (Player player : activeBossParticipants()) {
-            if (!player.getWorld().equals(centre.getWorld())) {
-                continue;
-            }
-            double dx = player.getLocation().getX() - centre.getX();
-            double dz = player.getLocation().getZ() - centre.getZ();
-            double radius = Math.sqrt(dx * dx + dz * dz);
-            double direction = KaguneRingGapPolicy.wrap(Math.atan2(dz, dx));
-            // The hit test stays the policy's, so the visible gap IS the safe gap;
-            // it is simply asked about the radius the row occupies right now.
-            if (!KaguneRingGapPolicy.rowHits(layout, rowIndex, radius, direction, sweepProgress)) {
-                continue;
-            }
-            // Contract 20.3: one direct damage event per player per OVERALL
-            // cast - the claim is what stops three rows stacking onto one
-            // player, so it is checked here and nowhere else.
-            if (!kaguneRingCast.claim(player.getUniqueId())) {
-                continue;
-            }
-            LivingEntity attacker = boss.isValid() ? boss : player;
-            player.damage(damage, attacker);
-            Vector outward = new Vector(dx, 0.0D, dz);
-            if (outward.lengthSquared() < 0.01D) {
-                outward = new Vector(0.0D, 0.0D, 1.0D);
-            }
-            outward.normalize().multiply(KaguneGuardianFightPolicy.KNOCKBACK_MIN_BLOCKS * 0.5D);
-            player.setVelocity(player.getVelocity().add(outward));
-        }
+        if (lastSealRing != null) lastSealRing.tick(boss, eventTickCounter);
     }
 
     private void clearKaguneRingCast(String reason) {
-        int cleared = kaguneRingCast.hitCount();
-        int displays = kaguneRingDisplays.size();
-        kaguneRingDisplays.clear();
-        kaguneRingLayout = null;
-        kaguneRingRow = -1;
-        kaguneRingRowTick = 0;
-        kaguneRingCastEndTick = -1L;
-        kaguneRingCast.reset();
-        if (cleared > 0 || displays > 0) {
-            getLogger().info("KAGUNE_RING_CAST_CLEARED event=" + eventId
-                    + " generation=" + generation + " reason=" + reason
-                    + " hits=" + cleared + " displays=" + displays);
+        if (lastSealRing != null) lastSealRing.cancel(reason);
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onKaguneRingLanding(EntityDamageEvent event) {
+        if (event.getCause() == EntityDamageEvent.DamageCause.FALL
+                && event.getEntity() instanceof Player player && lastSealRing != null
+                && lastSealRing.consumeFall(player, generation)) {
+            event.setCancelled(true);
+            player.setFallDistance(0F);
         }
     }
 
@@ -52808,6 +52707,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void clearTentacles(String reason) {
+        clearKaguneRingCast(reason);
         int count = tentacleController.count();
         for (UUID entityId : new HashSet<>(tentacleController.states().keySet())) {
             removeTentacle(entityId, reason);

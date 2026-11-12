@@ -104,6 +104,7 @@ tasks.named('endEventJar', Jar) {
     dependsOn sourceSets.narcotics.classesTaskName
     from(sourceSets.narcotics.output) {
         include 'me/copimine/protocol/EncounterGenerationPolicy.class'
+        include 'me/copimine/protocol/KaguneRingFrame.class'
     }
 }
 

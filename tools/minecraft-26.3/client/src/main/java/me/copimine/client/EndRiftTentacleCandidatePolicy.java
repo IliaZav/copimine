@@ -6,8 +6,8 @@ import java.util.UUID;
 
 /** Applies one bounded admission set to both carrier suppression and custom rendering. */
 public final class EndRiftTentacleCandidatePolicy {
-    public static final int MAX_CANDIDATES = 16;
-    public static final int MAX_ENTITY_INSPECTIONS = 256;
+    public static final int MAX_CANDIDATES = 48;
+    public static final int MAX_ENTITY_INSPECTIONS = 512;
 
     private EndRiftTentacleCandidatePolicy() { }
 

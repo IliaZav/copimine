@@ -1,6 +1,8 @@
 package me.copimine.client;
 
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
+import me.copimine.protocol.KaguneRingFrame;
+import java.util.ArrayList;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -140,6 +142,11 @@ public final class EndRiftTentacleRenderer {
                 Entity entity = ((ClientWorldAccessor) world).copimine$getEntities().get(entityUuid);
                 if (!(entity instanceof Display.ItemDisplay display)
                         || entity.isRemoved() || entity.getUUID() == null || !isTentacleCarrier(display)) continue;
+                if (isRingCarrier(display)) {
+                    KaguneRingFrame frame = ringFrame(display);
+                    if (frame != null) renderRing(matrices, buffer, display, frame, tickDelta, world);
+                    continue;
+                }
                 String uuid = entityUuid.toString();
                 EndRiftTentaclePose.TentaclePose pose = ClientBridgeProtocol.endEventTentaclePoseAt(uuid, nowMillis);
                 if (pose == null) {
@@ -170,6 +177,61 @@ public final class EndRiftTentacleRenderer {
                 matrices.popPose();
             }
         });
+    }
+
+    private static boolean isRingCarrier(Display.ItemDisplay display) {
+        CustomModelData data = display.getItemStack().get(DataComponents.CUSTOM_MODEL_DATA);
+        Float marker = data == null ? null : data.getFloat(1);
+        return marker != null && marker == KaguneRingFrame.MARKER;
+    }
+
+    private static KaguneRingFrame ringFrame(Display.ItemDisplay display) {
+        CustomModelData data = display.getItemStack().get(DataComponents.CUSTOM_MODEL_DATA);
+        Float count = data == null ? null : data.getFloat(8);
+        if (count == null || !Float.isFinite(count) || count < 2 || count > 7 || count != Math.rint(count)) return null;
+        List<Float> values = new ArrayList<>(9 + count.intValue());
+        for (int i = 0; i < 9 + count.intValue(); i++) {
+            Float value = data.getFloat(i);
+            if (value == null) return null;
+            values.add(value);
+        }
+        return KaguneRingFrame.decode(values);
+    }
+
+    /** All repeated rigs share one geometry submission, skin and sampled pose. */
+    private static void renderRing(PoseStack matrices, VertexConsumer vertices, Display.ItemDisplay display,
+                                   KaguneRingFrame frame, float partialTick, ClientLevel world) {
+        if (frame.rise() <= 0D) return;
+        Vec3 origin = display.getPosition(partialTick);
+        if (!finite(origin)) return;
+        float progress = (float) frame.strike();
+        var upright = EndRiftTentacleAnimator.poseFor("EMERGE", 1F, 0L);
+        var strike = EndRiftTentacleAnimator.poseFor("THROW", progress, 0L);
+        EndRiftTentaclePose.TentaclePose pose;
+        if (frame.stage() == KaguneRingFrame.EMERGE) {
+            pose = EndRiftTentacleAnimator.poseFor("EMERGE", (float) frame.rise(), 0L);
+        } else if (frame.stage() == KaguneRingFrame.TRAVEL) {
+            pose = EndRiftTentaclePose.TentaclePose.lerp(upright, strike, Math.min(1F, progress * 5F));
+        } else {
+            float retract = (float) (1D - frame.rise());
+            pose = EndRiftTentaclePose.TentaclePose.lerp(
+                    EndRiftTentacleAnimator.poseFor("THROW", 1F, 0L),
+                    EndRiftTentacleAnimator.poseFor("RETRACT", retract, 0L), Math.min(1F, retract * 5F));
+        }
+        float width = EndRiftTentacleWorldScalePolicy.rendererScaleForRig((float) KaguneRingFrame.RIG_SCALE);
+        float height = EndRiftTentacleWorldScalePolicy.rendererLengthScaleForRig((float) KaguneRingFrame.RIG_SCALE);
+        double radius = frame.previousRadius() + (frame.radius() - frame.previousRadius()) * Math.max(0F, Math.min(1F, partialTick));
+        int light = net.minecraft.util.LightCoordsUtil.getLightCoords(world, display.blockPosition());
+        for (int i = 0; i < frame.instances(); i++) {
+            if (!frame.drawsInstance(i)) continue;
+            double angle = frame.direction(i);
+            matrices.pushPose();
+            matrices.translate(origin.x + Math.cos(angle) * radius, origin.y, origin.z + Math.sin(angle) * radius);
+            matrices.rotate(Axis.YP, (float) Math.toDegrees(-angle + Math.PI / 2D));
+            matrices.scale(width, height, width);
+            RIG.render(matrices, vertices, pose, light, OverlayTexture.NO_OVERLAY, 0xFFFFFFFF);
+            matrices.popPose();
+        }
     }
 
     private static List<UUID> candidateEntityIds(ClientLevel world) {

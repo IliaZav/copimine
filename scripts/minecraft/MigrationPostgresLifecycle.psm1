@@ -196,7 +196,8 @@ function Get-MigrationPostgresClusterState {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$DataDirectory,
-        [Parameter(Mandatory)][string]$PostgresBin
+        [Parameter(Mandatory)][string]$PostgresBin,
+        [ValidateRange(1024,65535)][int]$Port = 55434
     )
 
     $pgCtl = Join-Path $PostgresBin 'pg_ctl.exe'
@@ -207,7 +208,7 @@ function Get-MigrationPostgresClusterState {
         if ($exitCode -ne 3 -and (($output -join ' ') -notmatch '(?i)no server running|PID file .* does not exist')) {
             throw 'pg_ctl could not safely determine whether the owned PostgreSQL cluster is running.'
         }
-        $stalePid = Get-MigrationPostgresStalePidRecord -DataDirectory $DataDirectory -Port 55434
+        $stalePid = Get-MigrationPostgresStalePidRecord -DataDirectory $DataDirectory -Port $Port
         return [pscustomobject]@{
             Running = $false
             Owned = $false
@@ -284,8 +285,24 @@ function Start-MigrationPostgresCluster {
 
     $pgCtl = Join-Path $PostgresBin 'pg_ctl.exe'
     $options = "-c listen_addresses=127.0.0.1 -c port=$Port -c password_encryption=scram-sha-256"
-    & $pgCtl -D $DataDirectory -l $LogPath -o $options -w start 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'Could not start the already-initialized isolated PostgreSQL cluster; inspect its log.' }
+    # PostgreSQL inherits native stdout handles from pg_ctl on Windows. A
+    # PowerShell pipeline waits for that persistent child's EOF forever. Wait
+    # for the launcher PID only, with file-backed handles and a bounded timeout;
+    # Start-Process -Wait would also wait for the persistent process tree.
+    $receipt = $LogPath + '.launcher-' + [Guid]::NewGuid().ToString('N')
+    $arguments = @('-D', ('"' + $DataDirectory + '"'), '-l', ('"' + $LogPath + '"'),
+        '-o', ('"' + $options + '"'), '-w', 'start')
+    $launcher = Start-Process -FilePath $pgCtl -ArgumentList $arguments -PassThru -WindowStyle Hidden `
+        -RedirectStandardOutput ($receipt + '.stdout') -RedirectStandardError ($receipt + '.stderr')
+    # Cache the native handle before a fast launcher exits (Windows PowerShell 5).
+    $null = $launcher.Handle
+    if (-not $launcher.WaitForExit(60000)) {
+        throw 'PostgreSQL launcher timed out; preserve cluster state and inspect its launcher log.'
+    }
+    $launcher.Refresh()
+    if ($launcher.ExitCode -ne 0) {
+        throw 'Could not start the already-initialized isolated PostgreSQL cluster; inspect its launcher log.'
+    }
 }
 
 function Wait-MigrationPostgresReady {
@@ -423,7 +440,7 @@ function Invoke-MigrationPostgresLifecycleOperation {
             if ($LASTEXITCODE -ne 0) { throw 'The configured PostgreSQL binary did not report its version.' }
             return $text
         }
-        'GetClusterState' { return Get-MigrationPostgresClusterState -DataDirectory $Arguments[0] -PostgresBin $Arguments[1] }
+        'GetClusterState' { return Get-MigrationPostgresClusterState -DataDirectory $Arguments[0] -PostgresBin $Arguments[1] -Port $Arguments[2] }
         'GetListenerInfo' { return Get-MigrationPostgresListenerInfo -Port $Arguments[0] }
         'QuarantineStalePid' {
             return Move-MigrationPostgresStalePidToQuarantine -DataDirectory $Arguments[0] -PostgresBin $Arguments[4] `
@@ -446,7 +463,7 @@ function Ensure-MigrationPostgresReady {
         [Parameter(Mandatory)][string]$RuntimeDirectory,
         [Parameter(Mandatory)][string]$PostgresBin,
         [Parameter(Mandatory)][switch]$StartIfStopped,
-        [int]$Port = 55434,
+        [ValidateRange(1024,65535)][int]$Port = 55434,
         [string]$Database = 'copimine_migration_test',
         [string]$Schema = 'copimine_migration_26_3_candidate',
         [string]$Role = 'copimine_migration_test',
@@ -459,7 +476,7 @@ function Ensure-MigrationPostgresReady {
     if (-not [string]::Equals($runtime.TrimEnd('\'), $expectedRuntime.TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)) {
         throw 'The migration PostgreSQL runtime must remain inside local-runtime/end-rift-server-26.3.'
     }
-    if ($Port -ne 55434 -or $Database -cne 'copimine_migration_test' -or
+    if ($Port -eq 55433 -or $Database -cne 'copimine_migration_test' -or
         $Schema -cne 'copimine_migration_26_3_candidate' -or $Role -cne 'copimine_migration_test') {
         throw 'The migration PostgreSQL identity must remain on the canonical isolated endpoint, database, schema, and role.'
     }
@@ -518,7 +535,7 @@ function Ensure-MigrationPostgresReady {
     }
 
     $state = Invoke-MigrationPostgresLifecycleOperation -Name 'GetClusterState' `
-        -Arguments @($data, $postgresBinResolved) -Operations $Operations
+        -Arguments @($data, $postgresBinResolved, $Port) -Operations $Operations
     $startedByThisCall = $false
     if ($state.Running) {
         if (-not $state.Owned -or $null -eq $state.ProcessId) {
@@ -540,7 +557,7 @@ function Ensure-MigrationPostgresReady {
             Invoke-MigrationPostgresLifecycleOperation -Name 'QuarantineStalePid' `
                 -Arguments @($data, $Port, $state.StalePidProcessId, $state.StalePidHash, $postgresBinResolved) -Operations $Operations
             $state = Invoke-MigrationPostgresLifecycleOperation -Name 'GetClusterState' `
-                -Arguments @($data, $postgresBinResolved) -Operations $Operations
+                -Arguments @($data, $postgresBinResolved, $Port) -Operations $Operations
             if ($state.Running -or $state.StalePidFile) {
                 throw 'PostgreSQL did not reach a stopped state without a stale PID file after quarantine; start was cancelled.'
             }
@@ -549,7 +566,7 @@ function Ensure-MigrationPostgresReady {
             -Arguments @($data, $postgresBinResolved, $logPath, $Port) -Operations $Operations
         $startedByThisCall = $true
         $state = Invoke-MigrationPostgresLifecycleOperation -Name 'GetClusterState' `
-            -Arguments @($data, $postgresBinResolved) -Operations $Operations
+            -Arguments @($data, $postgresBinResolved, $Port) -Operations $Operations
         if (-not $state.Running -or -not $state.Owned -or $null -eq $state.ProcessId) {
             throw 'PostgreSQL start completed without a verifiable owner process for the existing data directory.'
         }

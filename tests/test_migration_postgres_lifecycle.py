@@ -42,7 +42,7 @@ foreach ($name in @('postgres.exe', 'pg_ctl.exe', 'pg_isready.exe', 'psql.exe'))
   [IO.File]::WriteAllBytes((Join-Path $pgBin $name), [byte[]]@())
 }}
 
-function New-Fixture([string]$Name, [bool]$WithVersion = $true, [bool]$WithCredentials = $true) {{
+function New-Fixture([string]$Name, [bool]$WithVersion = $true, [bool]$WithCredentials = $true, [int]$Port = 55434) {{
   $runtime = Join-Path (Join-Path (Join-Path $workspace $Name) 'local-runtime') 'end-rift-server-26.3'
   $data = Join-Path $runtime 'postgres-data'
   $logs = Join-Path $runtime 'logs'
@@ -53,12 +53,12 @@ function New-Fixture([string]$Name, [bool]$WithVersion = $true, [bool]$WithCrede
     [IO.File]::WriteAllText((Join-Path $runtime 'migration-postgres-admin.env'), 'POSTGRES_SUPERUSER_PASSWORD={DUMMY_SENTINEL}_ADMIN' + [Environment]::NewLine, $enc)
     $plugin = @(
       'POSTGRES_HOST=127.0.0.1',
-      'POSTGRES_PORT=55434',
+      "POSTGRES_PORT=$Port",
       'POSTGRES_DB=copimine_migration_test',
       'POSTGRES_SCHEMA=copimine_migration_26_3_candidate',
       'POSTGRES_USER=copimine_migration_test',
       'POSTGRES_PASSWORD={DUMMY_SENTINEL}',
-      'DATABASE_URL=postgresql://copimine_migration_test:{DUMMY_SENTINEL}@127.0.0.1:55434/copimine_migration_test'
+      "DATABASE_URL=postgresql://copimine_migration_test:{DUMMY_SENTINEL}@127.0.0.1:${{Port}}/copimine_migration_test"
     ) -join "`n"
     [IO.File]::WriteAllText((Join-Path $runtime 'migration-isolated-postgres.env'), $plugin + "`n", $enc)
   }}
@@ -95,11 +95,11 @@ function New-Operations($state) {{
   return $operations
 }}
 
-function Invoke-Ensure($fixture, $state, [bool]$StartIfStopped) {{
+function Invoke-Ensure($fixture, $state, [bool]$StartIfStopped, [int]$Port=55434) {{
   $ops = New-Operations $state
   try {{
     $result = Ensure-MigrationPostgresReady -WorkspaceRoot (Split-Path -Parent (Split-Path -Parent $fixture.Runtime)) `
-      -RuntimeDirectory $fixture.Runtime -PostgresBin $pgBin -Port 55434 -StartIfStopped:$StartIfStopped -Operations $ops
+      -RuntimeDirectory $fixture.Runtime -PostgresBin $pgBin -Port $Port -StartIfStopped:$StartIfStopped -Operations $ops
     return [pscustomobject]@{{ Success = $true; Started = $result.StartedByThisCall; Error = '' }}
   }} catch {{
     return [pscustomobject]@{{ Success = $false; Started = $false; Error = $_.Exception.Message }}
@@ -177,7 +177,20 @@ $validateOnly = New-Fixture 'validate-only'
 $validateOnlyState = New-State $false $false $false
 $validateOnlyResult = Invoke-Ensure $validateOnly $validateOnlyState $false
 
+$alternate = New-Fixture 'alternate-port' $true $true 55435
+$alternateState = New-State $true $true $true 198
+$alternateResult = Invoke-Ensure $alternate $alternateState $false 55435
+$mismatched = New-Fixture 'mismatched-port'
+$mismatchedState = New-State $true $true $true 199
+$mismatchedResult = Invoke-Ensure $mismatched $mismatchedState $true 55435
+$shared = New-Fixture 'shared-port' $true $true 55433
+$sharedState = New-State $false $false $false
+$sharedResult = Invoke-Ensure $shared $sharedState $true 55433
+
 [pscustomobject]@{{
+  alternatePortValidated = ($alternateResult.Success -and $alternateState.Validations -eq 1 -and $alternateState.Starts -eq 0)
+  mismatchedPortRejected = (-not $mismatchedResult.Success -and $mismatchedState.Starts -eq 0)
+  sharedPortRejected = (-not $sharedResult.Success -and $sharedState.Starts -eq 0)
   healthyRunsPass = ($healthyFirst.Success -and $healthySecond.Success)
   healthyStartCalls = $healthyState.Starts
   healthyValidationCalls = $healthyState.Validations
@@ -213,6 +226,9 @@ $validateOnlyResult = Invoke-Ensure $validateOnly $validateOnlyState $false
     assert "LIFECYCLE_MODULE_MISSING" not in combined, "the non-provisioning PostgreSQL lifecycle module is missing"
     assert "LIFECYCLE_API_MISSING" not in combined, "the non-provisioning PostgreSQL reuse function is missing"
     report = json.loads(result.stdout.splitlines()[-1])
+    assert report["alternatePortValidated"] is True
+    assert report["mismatchedPortRejected"] is True
+    assert report["sharedPortRejected"] is True
     assert report["healthyRunsPass"] is True, "an owned running cluster should validate repeatedly"
     assert report["healthyStartCalls"] == 0, "an already-running cluster must not be restarted"
     assert report["healthyValidationCalls"] == 2, "each healthy reuse should perform identity validation"

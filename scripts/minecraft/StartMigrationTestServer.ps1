@@ -2,6 +2,7 @@
 param(
     [string]$JavaHome,
     [string]$PostgresBin,
+    [ValidateRange(1024,65535)][int]$PostgresPort = 55434,
     [switch]$ValidateOnly,
     [switch]$FullPluginSet,
     [switch]$LocalEndEventBuild
@@ -190,7 +191,7 @@ try {
     $databaseEnvironmentFile = Join-Path $runtime 'migration-isolated-postgres.env'
     $requiredDatabaseSettings = @(
         'POSTGRES_HOST=127.0.0.1',
-        'POSTGRES_PORT=55434',
+        "POSTGRES_PORT=$PostgresPort",
         'POSTGRES_DB=copimine_migration_test',
         'POSTGRES_SCHEMA=copimine_migration_26_3_candidate',
         'POSTGRES_USER=copimine_migration_test'
@@ -314,7 +315,7 @@ try {
         throw 'The existing PostgreSQL 16.15 toolchain is missing; automatic downloads and installers are disabled.'
     }
     $databaseStatus = Ensure-MigrationPostgresReady -WorkspaceRoot $root -RuntimeDirectory $runtime `
-        -PostgresBin $PostgresBin -StartIfStopped:(-not $ValidateOnly)
+        -PostgresBin $PostgresBin -Port $PostgresPort -StartIfStopped:(-not $ValidateOnly)
 
     if ($ValidateOnly) {
         $serverMode = if ($paperRuntimeAlreadyRunning) { 'read-only inspection of the owned running server' } else { 'read-only preflight for a new server start' }

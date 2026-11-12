@@ -2043,6 +2043,9 @@ def test_prepare_runtime_stages_locked_paper_loopback_config_and_unaccepted_eula
     assert (runtime/'eula.txt').read_text(encoding='utf-8').strip()=='eula=false'
     assert (runtime/'plugins').is_dir()
 
+    voice=(runtime/"plugins/voicechat/voicechat-server.properties").read_text("utf-8")
+    assert "bind_address=127.0.0.1" in voice
+
 
 def test_unauthenticated_local_test_mode_omits_authme_and_dependent_auth_effects():
     mod=load()
@@ -2952,7 +2955,9 @@ def test_migration_test_server_launcher_uses_its_isolated_database_environment()
     assert "Ensure-MigrationPostgresReady -WorkspaceRoot $root" in source
     assert 'InitializeMigrationPostgres.ps1' not in source
     assert "'POSTGRES_HOST=127.0.0.1'" in source
-    assert "'POSTGRES_PORT=55434'" in source
+    assert "[int]$PostgresPort = 55434" in source
+    assert '"POSTGRES_PORT=$PostgresPort"' in source
+    assert "-Port $PostgresPort -StartIfStopped:" in source
     assert "'POSTGRES_DB=copimine_migration_test'" in source
     assert "'POSTGRES_SCHEMA=copimine_migration_26_3_candidate'" in source
     assert "$null = Assert-MigrationDatabaseEnvironment -Path $databaseEnvironmentFile -RequiredSettings $requiredDatabaseSettings" in source

@@ -220,3 +220,44 @@ checkout, installed Prism mod and production were untouched.
   `4c183a3ea3aa7bbc931844a212d79a6a0c8abe3dc1ec89c88789a89916716ade`.
 - The failed whole run and failed event gate are retained as failures. A new
   complete run/gate is still required; targeted success does not replace it.
+
+## Staging harness — independent database, prepared Voice Chat, bounded Windows start
+
+New isolated runtime was prepared under this worktree, with 30 pinned plugin
+candidates and a fresh PostgreSQL database on loopback port 55435. The existing
+55434 cluster, credentials and worlds were not changed. EULA was initially kept
+false; the user explicitly accepted the Minecraft EULA for this local fixture,
+after which only its own eula.txt was updated.
+
+Real preflight reproduced two harness defects: preparation never called the
+existing Voice Chat loopback configuration writer; the launcher/lifecycle
+hardcoded port 55434 even though the initializer supported a separate fixture
+port. A behavioral lifecycle regression rejected a healthy owned alternate-port
+fixture. Preparation now writes the validated loopback Voice Chat configuration.
+The launcher takes an explicit `-PostgresPort` (default 55434), validates private
+settings against it and threads it through cluster state/PID, listener, readiness
+and identity checks. Privileged/invalid ports and shared port 55433 are rejected.
+Wrong credentials, foreign processes, mismatched ports, path/reparse boundaries,
+role/schema ownership and loopback SCRAM requirements remain enforced.
+
+The first actual start brought PostgreSQL up but stalled before Paper: the
+native pg_ctl pipeline retained the persistent child's inherited stdout handle.
+A compiled Windows launcher reproduction took 12,430 ms waiting for a 12-second
+child although pg_ctl itself had exited. The helper now uses hidden file-backed
+launcher IO, caches its native handle and waits only for that PID with a bounded
+60-second timeout. It never waits for the whole PostgreSQL process tree. Both
+successful/nonzero launcher cases are tested, with exact owned test-child cleanup.
+
+- Harness, initializer/restart, process-handle, pin/installer suites:
+  **152 passed, 1 skipped**, exit 0, 20.87 seconds;
+  `C:/Temp/cm-staging-launcher-final-green.log`.
+- Process-handle regression after fix: **1 passed**, 1.28 seconds;
+  `C:/Temp/cm-pgctl-launch-handle-green.log`.
+- Actual read-only full-plugin/DB preflight: exit 0;
+  `C:/Temp/cm-critical-server-preflight4.log`.
+- First fixture DB initialization: `C:/Temp/cm-critical-postgres-init.log`.
+- Isolated Paper launch is in progress (console
+  `C:/Temp/cm-critical-staging-paper-console2.log`); server startup and dependency
+  survival beyond 180 seconds are not yet accepted. No native client evidence.
+- AuthMe/AuthEffects remain enabled. No authentication/password bypass or
+  production/installed-client replacement was performed.

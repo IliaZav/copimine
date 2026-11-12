@@ -2069,6 +2069,7 @@ def main(root=None,argv=None):
         return
     if args.prepare_runtime:
         runtime=prepare_runtime(root)
+        configure_loopback_voicechat(runtime)
         print('Prepared isolated Minecraft 26.3 Paper runtime; EULA setting preserved; server not started: '+str(runtime))
         return
     records=load_install_records(root)

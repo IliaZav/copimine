@@ -1673,6 +1673,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private EventSnapshot loadedSnapshot;
     /** Immutable pre-teardown checkpoint; cleanup cannot replace it with empty ledgers. */
     private EventSnapshot shutdownBossCheckpoint;
+    private me.copimine.endevent.runtime.SmallKaguneRestoration smallKaguneRecovery;
     private EndRiftEncounterController encounterController =
             new EndRiftEncounterController("", 0L, EventPhase.UNCONFIGURED);
     private final EndRiftEncounterCoordinator encounterCoordinator =
@@ -4462,6 +4463,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         restoreCombatProfiles(snapshot.objectiveProgress());
         restoreTentacleGuardianState(snapshot.objectiveProgress());
+        restoreSmallKaguneState(snapshot.objectiveProgress());
         // A restart must not replay the one global 50% repel.
         bossHalfRepelCommitted = "DONE".equals(
                 snapshot.objectiveProgress().get("boss-half-repel"));
@@ -5089,6 +5091,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         encoded.putAll(combatProfiles.encode());
         encodeTentacleGuardianState(encoded);
+        encodeSmallKaguneState(encoded);
         if (isOfficialWave7ReturnContext() && attemptLifecycle.hasWave7Returns(generation)) {
             encoded.putAll(attemptLifecycle.encodeWave7Returns(eventId,
                     realitySplitChamberController.assignment().chamberByPlayer(),
@@ -5711,7 +5714,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && (phase == EventPhase.WAVE_6 || testWaveFrontVisualMode);
         boolean preserveWaveSeven = activeWave == 7 && !testWaveInspectionMode
                 && (phase == EventPhase.WAVE_7 || testWaveFrontVisualMode);
-        if (phase == EventPhase.BOSS_ACTIVE && bossUuid != null) {
+        if ((phase == EventPhase.BOSS_ACTIVE || phase == EventPhase.RECOVERY_REQUIRED) && bossUuid != null) {
             LivingEntity boss = liveBoss();
             if (boss != null && boss.isValid() && !boss.isDead()
                     && isOfficialBoss(boss) && ownedBySession(boss, eventId, generation))
@@ -6210,7 +6213,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && (phase == EventPhase.WAVE_7 || testWaveFrontVisualMode);
         captureBlackFogShutdownCheckpoint();
         LivingEntity stoppingBoss = liveBoss();
-        boolean preserveBossForRestart = phase == EventPhase.BOSS_ACTIVE
+        boolean preserveBossForRestart = (phase == EventPhase.BOSS_ACTIVE || phase == EventPhase.RECOVERY_REQUIRED)
                 && stoppingBoss != null && stoppingBoss.isValid() && !stoppingBoss.isDead()
                 && isOfficialBoss(stoppingBoss) && ownedBySession(stoppingBoss, eventId, generation);
         if (preserveBossForRestart) {
@@ -45807,6 +45810,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         tickCurrentRiftFractures(boss);
         tickKaguneRingCast(boss);
         tickCurrentTentacles(boss);
+        if (smallKaguneRecovery != null && smallKaguneRecovery.pending()) {
+            updateBossBar(boss);
+            return;
+        }
         // Contract 15.2: the general boss loop owns the Phase 5 Echo actors. The
         // method carries its own RAGE and encounter-generation fences, and it
         // advances a copy exactly once per server tick.
@@ -48366,6 +48373,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void tickSmallKaguneSpawner(LivingEntity boss) {
         boolean active = boss != null && bossPhase == BossPhase.LAST_SEAL
                 && smallKaguneTuning().enabled() && isBossCombatRuntimeActive(boss)
+                && (smallKaguneRecovery == null || !smallKaguneRecovery.pending())
                 && !activeBossParticipants().isEmpty();
         int budget = smallKaguneCadence.poll(eventId, generation, System.nanoTime(), active,
                 guardianDeaths.cocoonBroken(), eventScalePlayers(), livingSmallKaguneCount());
@@ -48420,6 +48428,85 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private EventConfig.SmallKaguneTuning smallKaguneTuning() {
         return config == null ? EventConfig.SmallKaguneTuning.defaults() : config.smallKaguneTuning();
+    }
+
+    private me.copimine.endevent.runtime.SmallKaguneRestoration smallKaguneRecovery() {
+        if (smallKaguneRecovery == null) smallKaguneRecovery = new me.copimine.endevent.runtime.SmallKaguneRestoration(
+                new me.copimine.endevent.runtime.SmallKaguneRestoration.Host() {
+            private final Map<UUID, UUID> rollbackBodies = new HashMap<>();
+            public List<me.copimine.endevent.domain.SmallKaguneRosterSnapshot.Actor> livingActors() {
+                List<me.copimine.endevent.domain.SmallKaguneRosterSnapshot.Actor> actors = new ArrayList<>();
+                for (var state : tentacleController.states().values()) {
+                    if (!isLivingSmallKagune(state)) continue;
+                    ItemDisplay display = (ItemDisplay) ownedEntities.get(state.entityId());
+                    LivingEntity body = (LivingEntity) ownedEntities.get(tentacleHitboxesByDisplay.get(state.entityId()));
+                    Location at = display.getLocation();
+                    double maximum = readDouble(display, keyTentacleMaxHealth, smallKaguneTuning().health());
+                    double health = Math.min(maximum, Math.min(body.getHealth(), readDouble(display, keyTentacleHealth, 0D)));
+                    actors.add(new me.copimine.endevent.domain.SmallKaguneRosterSnapshot.Actor(
+                            display.getUniqueId(), at.getWorld().getUID(), at.getX(), at.getY(), at.getZ(),
+                            at.getYaw(), health, maximum));
+                }
+                return List.copyOf(actors);
+            }
+            public UUID spawn(me.copimine.endevent.domain.SmallKaguneRosterSnapshot.Actor actor) {
+                LivingEntity boss = liveBoss();
+                World world = Bukkit.getWorld(actor.world());
+                if (boss == null || world == null || !world.equals(boss.getWorld())) return null;
+                Location requested = new Location(world, actor.x(), actor.y(), actor.z(), actor.yaw(), 0F);
+                if (!isArenaLocation(requested)) return null;
+                ItemDisplay display = spawnTentacle(boss, requested, TentacleAnimationPolicy.Kind.SMALL,
+                        TENTACLE_SMALL_SLOT, null);
+                if (display == null) return null;
+                display.setRotation(actor.yaw(), 0F);
+                double maximum = Math.min(actor.maximum(), smallKaguneTuning().health());
+                updateTentacleGuardianHealthVisual(display, Math.min(actor.health(), maximum), maximum);
+                return display.getUniqueId();
+            }
+            public boolean confirms(UUID id, me.copimine.endevent.domain.SmallKaguneRosterSnapshot.Actor saved) {
+                if (!isLivingSmallKagune(tentacleController.state(id))) return false;
+                ItemDisplay display = (ItemDisplay) ownedEntities.get(id);
+                LivingEntity body = (LivingEntity) ownedEntities.get(tentacleHitboxesByDisplay.get(id));
+                Location expected = new Location(Bukkit.getWorld(saved.world()), saved.x(), saved.y(), saved.z());
+                double expectedHealth = Math.min(saved.health(), Math.min(saved.maximum(), smallKaguneTuning().health()));
+                return display.getWorld().equals(expected.getWorld())
+                        && display.getLocation().distanceSquared(expected) <= .25D
+                        && Math.abs(body.getHealth() - expectedHealth)
+                                <= Math.max(1E-5D, Math.ulp((float) expectedHealth) * 2D)
+                        && Math.abs(readDouble(display, keyTentacleHealth, 0D) - expectedHealth) < 1E-6D;
+            }
+            public boolean remove(UUID id) {
+                UUID bodyId = rollbackBodies.computeIfAbsent(id, tentacleHitboxesByDisplay::get);
+                removeTentacle(id, "small-kagune-restore-rollback");
+                Entity entity = Bukkit.getEntity(id);
+                Entity body = bodyId == null ? null : Bukkit.getEntity(bodyId);
+                if (body != null && body.isValid()) body.remove();
+                boolean removed = (entity == null || !entity.isValid()) && (body == null || !body.isValid());
+                if (removed) rollbackBodies.remove(id);
+                return removed;
+            }
+            public boolean checkpoint() { return saveStateSync(); }
+            public void failed(String reason) {
+                recoveryReason = reason;
+                forcePhase(EventPhase.RECOVERY_REQUIRED, reason);
+                getLogger().severe(reason + " event=" + eventId + " generation=" + generation);
+            }
+        });
+        return smallKaguneRecovery;
+    }
+
+    private void restoreSmallKaguneState(Map<String, String> progress) {
+        if (bossPhase != BossPhase.LAST_SEAL) return;
+        try { smallKaguneRecovery().restore(progress, eventId, generation); }
+        catch (RuntimeException invalid) {
+            phase = EventPhase.RECOVERY_REQUIRED; recoveryReason = "INVALID_SMALL_KAGUNE_ROSTER";
+            getLogger().log(Level.SEVERE, recoveryReason, invalid);
+        }
+    }
+
+    private void encodeSmallKaguneState(Map<String, String> encoded) {
+        if (bossPhase == BossPhase.LAST_SEAL && eventId != null && !eventId.isBlank() && generation > 0L)
+            encoded.putAll(smallKaguneRecovery().snapshot(eventId, generation));
     }
 
     private Player currentBrainTarget(LivingEntity boss, EndRiftAiPolicy.BossSpell spell) {
@@ -50311,6 +50398,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     eventTickCounter);
         }
         List<Player> participants = activeBossParticipants();
+        if (smallKaguneRecovery != null && !smallKaguneRecovery.tick(eventId, generation, eventTickCounter)) return;
         int permanentTarget = tentacleGuardiansEnabled() ? permanentTentacleTarget(showroomBoss) : 0;
         int temporaryTarget = showroomBoss || bossPhase == BossPhase.LAST_SEAL ? 0
                 : TentacleScalingPolicy.temporaryFor(participants.size(), bossPhase);
@@ -52508,6 +52596,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " living=" + guardianDeaths.livingCount());
         }
         updateTentacleGuardianHealthVisual(display, after, maximum);
+        if (state.kind() == TentacleAnimationPolicy.Kind.SMALL) saveStateAsync();
         display.getWorld().playSound(display.getLocation(),
                 after <= 0.0D ? Sound.BLOCK_RESPAWN_ANCHOR_DEPLETE
                         : Sound.BLOCK_AMETHYST_BLOCK_RESONATE,
@@ -52879,6 +52968,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void clearTentacles(String reason) {
+        if (smallKaguneRecovery != null && !smallKaguneRecovery.clear())
+            getLogger().severe("SMALL_KAGUNE_RESTORE_CLEANUP_PENDING event=" + eventId + " reason=" + reason);
         smallKaguneCadence.pause();
         clearKaguneRingCast(reason);
         int count = tentacleController.count();

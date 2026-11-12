@@ -68,6 +68,7 @@ def probe_harness(tmp_path_factory):
                      + "|| preserveWave6ForRestart || preserveWave7ForRestart;\n}")
     harness = r"""
 import java.util.*;
+import java.time.Instant;
 import java.util.logging.*;
 import java.util.stream.Collectors;
 import me.copimine.protocol.EncounterGenerationPolicy;
@@ -84,6 +85,23 @@ import me.copimine.endevent.runtime.AttemptLifecycleController;
 import me.copimine.endevent.runtime.WaveTwoAttemptLifecycleSnapshot;
 
 public final class WaveProbeAdapterHarness {
+    // Boss persistence is an independent I/O owner. Wave-only scenes have no
+    // boss and must never enter its checkpoint transaction.
+    static class NamespacedKey { NamespacedKey(Object owner, String key) {} }
+    static class PersistentDataType { static final Object STRING = new Object(); }
+    static class LivingEntity {
+        boolean isValid() { return true; }
+        boolean isDead() { return false; }
+        LivingEntity getPersistentDataContainer() { return this; }
+        void set(Object key, Object type, String value) { throw new AssertionError("unexpected boss checkpoint"); }
+    }
+    LivingEntity liveBoss() { return null; }
+    boolean isOfficialBoss(LivingEntity boss) { throw new AssertionError("unexpected boss"); }
+    boolean ownedBySession(LivingEntity boss, String event, long epoch) { throw new AssertionError("unexpected boss"); }
+    long updatedAt;
+    Object shutdownBossCheckpoint;
+    Object snapshot() { throw new AssertionError("unexpected boss snapshot"); }
+    boolean saveStateSync() { throw new AssertionError("unexpected boss save"); }
     String eventId = "event", worldName = "world";
     EventPhase phase = EventPhase.READY_FOR_PLAYERS;
     static final String WAVE_TWO_CYCLES_PROGRESS_KEY = "wave2-hunt-cycles";

@@ -16,9 +16,9 @@ POLICY = ROOT / "copimine-end-event/src/me/copimine/endevent/domain/SmallKaguneS
 
 
 def summon_body():
-    """The body of startSmallKaguneSummon, brace-balanced."""
+    """The body of spawnSmallKaguneBatch, brace-balanced."""
     source = MONOLITH.read_text("utf-8")
-    marker = "private boolean startSmallKaguneSummon("
+    marker = "private int spawnSmallKaguneBatch("
     start = source.index(marker)
     depth = 0
     for index in range(source.index("{", start), len(source)):
@@ -28,7 +28,7 @@ def summon_body():
             depth -= 1
             if depth == 0:
                 return source[source.index("{", start): index + 1]
-    raise AssertionError("unbalanced startSmallKaguneSummon")
+    raise AssertionError("unbalanced spawnSmallKaguneBatch")
 
 
 def test_summon_uses_the_real_policy_admission():

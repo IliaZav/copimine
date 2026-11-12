@@ -13,7 +13,10 @@ def test_small_kagune_damage_uses_accepted_living_carrier_hit(tmp_path):
         "private boolean withinSmallKaguneRange(",
         "private " + ("boolean" if "private boolean applySmallKaguneStrike(" in source else "void")
         + " applySmallKaguneStrike(",
-        "private boolean startSmallKaguneSummon(",
+        "private int spawnSmallKaguneBatch(",
+        "private int livingSmallKaguneCount(",
+        "private boolean isLivingSmallKagune(",
+        "private boolean smallKaguneFaces(",
         "private void tickSmallKagune(",
         "private void trimTentacles(",
     ))
@@ -30,7 +33,16 @@ import me.copimine.endevent.runtime.TentacleController;
 public class SmallKaguneStrikeProbe {
     enum EventPhase { BOSS_ACTIVE, COLLECTING }
     enum EntityEffect { HURT }
+    static class Vector {
+        Vector subtract(Vector v) { return this; } Vector setY(double y) { return this; }
+        Vector normalize() { return this; } double lengthSquared() { return 1; }
+        double dot(Vector v) { return 1; }
+    }
     static class Location {
+        Vector toVector() { return new Vector(); }
+        Vector getDirection() { return new Vector(); }
+        Location setDirection(Vector v) { return this; }
+        float getYaw() { return 0; }
         double distanceSquared(Location other) { return 1; }
         public Location clone() { return new Location(); }
     }
@@ -40,9 +52,10 @@ public class SmallKaguneStrikeProbe {
         boolean isDead() { return dead; } String getWorld() { return "end"; }
         Location getLocation() { return new Location(); }
     }
-    static class ItemDisplay extends Entity { }
+    static class ItemDisplay extends Entity { void setRotation(float yaw,float pitch) {} }
     static class LivingEntity extends Entity {
         boolean visible = true;
+        double getHealth() { return 20; }
         boolean hasLineOfSight(Player target) { return visible; }
     }
     static class Player extends LivingEntity {
@@ -66,6 +79,11 @@ public class SmallKaguneStrikeProbe {
     final int TENTACLE_SMALL_SLOT = 9;
     final Map<UUID,Long> smallKaguneExpiryTicks = new HashMap<>();
     int contacts, hidden;
+    final Set<UUID> tentacleContactResolved = new HashSet<>();
+    final Object keyTentacleHealth = new Object();
+    record GuardianDeaths() { boolean cocoonBroken() { return false; } }
+    final GuardianDeaths guardianDeaths = new GuardianDeaths();
+    double readDouble(Entity actor,Object key,double fallback) { return 20; }
     final UUID eventId = UUID.randomUUID(); final long generation = 9;
     final TentacleController tentacleController = new TentacleController();
     final Map<UUID,UUID> tentacleHitboxesByDisplay = new HashMap<>();
@@ -83,7 +101,9 @@ public class SmallKaguneStrikeProbe {
             TentacleAnimationPolicy.Kind kind, int slot, Player target) {
         var actor = new ItemDisplay();
         if (!tentacleController.register(generation,actor.id,kind,slot,eventTickCounter)) return null;
-        ownedEntities.put(actor.id,actor); return actor;
+        ownedEntities.put(actor.id,actor);
+        var body = new LivingEntity(); ownedEntities.put(body.id,body);
+        tentacleHitboxesByDisplay.put(actor.id,body.id); return actor;
     }
     void removeTentacle(UUID id, String reason) { tentacleController.remove(id); }
     Player chooseTentacleTarget(List<Player> roster, Location origin) { return roster.isEmpty()?null:roster.get(0); }
@@ -136,7 +156,7 @@ public class SmallKaguneStrikeProbe {
         // not delete small melee summons.
         var cast = new SmallKaguneStrikeProbe();
         cast.tentacleController.begin(cast.generation);
-        check(cast.startSmallKaguneSummon(carrier), "valid final-phase summon was unreachable");
+        check(cast.spawnSmallKaguneBatch(carrier,4)>0, "valid final-phase summon was unreachable");
         int afterFirst = cast.tentacleController.count();
         check(afterFirst > 0, "a valid summon produced no actors at all");
         check(afterFirst <= SmallKaguneSpawnPolicy.MAX_LIVING,

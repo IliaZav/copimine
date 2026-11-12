@@ -54,10 +54,11 @@ def test_the_spawner_uses_the_policy_cadence_and_not_a_spell_roll():
     text = source()
     spawner = method(text, "private void tickSmallKaguneSpawner(")
     # The due check is what makes it a cadence rather than an occasional event.
-    assert "SmallKaguneSpawnPolicy.due(" in spawner, (
+    assert "smallKaguneCadence.poll(" in spawner, (
         "the spawner must ask the policy whether it is due"
     )
-    assert "SmallKaguneSpawnPolicy.nextDueMillis(" in spawner, (
+    cadence = (MONOLITH.parent / "domain/SmallKaguneCadence.java").read_text("utf-8")
+    assert "SmallKaguneSpawnPolicy.intervalMillis(" in cadence, (
         "the spawner must schedule the next window from the policy"
     )
     # It must not be gated on the spell having been chosen.
@@ -70,7 +71,9 @@ def test_the_spawner_stops_after_the_cocoon_breaks():
     """Contract 18: no new spawns after the break; survivors stay killable."""
     text = source()
     spawner = method(text, "private void tickSmallKaguneSpawner(")
-    assert "SmallKaguneSpawnPolicy.spawningAllowed(" in spawner, (
+    cadence = (MONOLITH.parent / "domain/SmallKaguneCadence.java").read_text("utf-8")
+    assert "if (cocoonBroken) stopped = true" in cadence
+    assert "!combatActive || stopped" in cadence, (
         "the spawner must consult the policy for whether spawning is still allowed"
     )
     assert "cocoon" in spawner.lower(), (

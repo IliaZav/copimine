@@ -18,7 +18,7 @@ different claims. Four of them now have evidence; the fifth still does not.
 | Code implements the contracts | source, 3,415 pytest + Java gate |
 | Behaviour is pinned by tests | 3,415 passed / 18 skipped; gate "End Rift current local checks passed" (exit 0) |
 | Tests actually bite | mutation-tested, each with the failing message |
-| CI green on HEAD | **yes — all 3 jobs on `373731e3`**; re-run in flight on later commits |
+| CI green on HEAD | **yes — all 3 jobs on `373731e3`**, and again on `c4947231` and `4c5ad30e` |
 | Runs on a live Paper server | **partially — boot, wave 1 and boss entity proven; see E.2** |
 | Looks right in Minecraft | **no — no screenshot of any of this work** |
 
@@ -211,8 +211,35 @@ restore, re-run green):
 | remove `damageAllowed` actor guard | "a copy without a visible actor dealt damage @44" |
 | delete echo arms in renderer switch | "…needs its own case arm: the switch is exhaustive…" |
 | drop `echoFamily` from mixin predicate | "the echo ids must sit inside the guardian predicate" |
+| move `RIFT_PROJECTILE` to the stationary branch | "mobile cast must allow legal locomotion: RIFT_PROJECTILE" |
+| `KaguneRingGapPolicy.sameDirection` → `return false` | "two gaps at the same angle are the same lane" |
+| zero `MIN_GAP_SEPARATION_BLOCKS` | "a radius-2 ring fits exactly 2 separated gaps, got 6" |
+| `BlackFogShelterMobPolicy` radius → `0.0` | "a wide body beside the refuge still overlaps it" |
+| drop the walkable guard in `exit()` | "no walkable cell means no exit" |
+| drop the stuck/surround branch in `BossIntentSelector` | "being stuck wins over stacking" |
+| make `OVERLOAD` ignore `arenaLocked` | "OVERLOAD recovers while the arena is locked" |
 
-Three of these were reproduced by me directly rather than taken from a report.
+Most of these were reproduced by me directly rather than taken from a report.
+
+### Four classes that had no test at all
+
+While the live run was blocked I went looking for policy classes with no test
+reference anywhere, rather than assume the suite was complete. Four had none:
+
+- `BlackFogShelterMobPolicy` — the whole of contract 6.6, "no hostile mob inside a
+  refuge".
+- `BossIntentSelector` — the whole reaction table of contract 10.4: surround,
+  cluster, spread, stuck, per-phase fallback.
+- `KaguneRingGapPolicy.sameDirection` — the rule that the three ring rows may not
+  share one straight escape lane.
+
+Each could have been deleted or disabled outright with every gate still green.
+The gap was found by mutating the code, not by reading it: two mutants of the ring
+policy survived the existing 6 ring tests, and both only failed once new
+assertions were written. Writing the tests also corrected two of my own wrong
+assumptions — that a spread radius of 4.0 is not "stacked" (it is), and that
+leaving `bossPosition` null is harmless (it silently centres the boss, making
+any nearby player look like an encirclement). Both are now comments in the tests.
 
 ### A mutation that lied
 

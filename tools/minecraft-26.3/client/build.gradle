@@ -36,7 +36,7 @@ sourceSets {
 
 processResources {
     // These encounter projectiles must work with the required client alone.
-    // Copy authored models and their two shared textures from the pack source;
+    // Copy authored models and every referenced atlas from the pack source;
     // do not maintain a second, eventually divergent copy of their geometry.
     from(new File(checkout, 'resourcepacks/src')) {
         include 'assets/copimine/items/end_rift_rift_bolt.json'
@@ -47,6 +47,9 @@ processResources {
         include 'assets/copimine/models/item/end_rift_dragon_breath.json'
         include 'assets/copimine/textures/item/end_event_rift_structure_energy.png'
         include 'assets/copimine/textures/item/end_event_rift_structure_stone.png'
+        include 'assets/copimine/textures/item/end_rift_rift_bolt.png'
+        include 'assets/copimine/textures/item/end_rift_void_burst.png'
+        include 'assets/copimine/textures/item/end_rift_dragon_breath.png'
     }
     inputs.property('version', project.version)
     inputs.property('minecraftVersion', profile.minecraftVersion)

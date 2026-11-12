@@ -44,7 +44,7 @@ public final class EliteSpellVfxPolicy {
         return switch (identity(spell)) {
             case "RIFT_BOLT" -> List.of(
                     new Pass("END_ROD", 2, 0.02D, 0.02D, 0.02D, 0.0D, 1.0F, null),
-                    new Pass("DUSK", 1, 0.01D, 0.01D, 0.01D, 0.0D, 0.45F, null));
+                    new Pass("ELECTRIC_SPARK", 1, 0.01D, 0.01D, 0.01D, 0.0D, 0.45F, null));
             case "VOID_BURST" -> List.of(
                     new Pass("SQUID_INK", 1, 0.04D, 0.04D, 0.04D, 0.0D, 0.5F, null),
                     new Pass("WITCH", 1, 0.03D, 0.03D, 0.03D, 0.0D, 0.35F, null));
@@ -66,7 +66,7 @@ public final class EliteSpellVfxPolicy {
         return switch (identity(spell)) {
             case "RIFT_BOLT" -> List.of(
                     new Pass("END_ROD", 18, 0.28D, 0.28D, 0.28D, 0.04D, 1.0F, null),
-                    new Pass("DUSK", 10, 0.35D, 0.35D, 0.35D, 0.02D, 1.0F, null),
+                    new Pass("ELECTRIC_SPARK", 10, 0.35D, 0.35D, 0.35D, 0.02D, 1.0F, null),
                     new Pass("DUST", 16, 0.30D, 0.30D, 0.30D, 0.0D, 1.0F, "C87BFF"));
             case "VOID_BURST" -> List.of(
                     new Pass("SQUID_INK", 14, 0.45D, 0.45D, 0.45D, 0.06D, 1.0F, null),

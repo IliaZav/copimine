@@ -13944,6 +13944,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (modelData <= 0 || modelId.isBlank()) return;
 
         Location position = projectile.getLocation();
+        if (projectile.getVelocity().lengthSquared() > 0.0001D)
+            position.setDirection(projectile.getVelocity());
         // The spider's web shot must read as a thrown block of web, not as a
         // paper icon: a BlockDisplay carrying the real cobweb block model is
         // visible on every client and tumbles in flight. The authored
@@ -13957,11 +13959,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
                 entity.setBillboard(Display.Billboard.FIXED);
                 entity.setViewRange(48.0F);
-                entity.setDisplayWidth(0.62F);
-                entity.setDisplayHeight(0.62F);
-                entity.setTransformation(new Transformation(
-                        new Vector3f(), new AxisAngle4f(),
-                        new Vector3f(0.42F, 0.42F, 0.42F), new AxisAngle4f()));
+                entity.setDisplayWidth(1.4F);
+                entity.setDisplayHeight(1.4F);
+                entity.setInterpolationDuration(2);
+                entity.setInterpolationDelay(0);
+                entity.setTeleportDuration(1);
+                entity.setTransformation(eliteSpellFlightTransformation(null));
                 entity.setPersistent(false);
                 entity.setGravity(false);
                 entity.setInvulnerable(true);
@@ -14086,18 +14089,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      */
     private Transformation eliteSpellFlightTransformation(
             EliteSpellFlightMotionPolicy.Motion motion) {
-        if (motion == null) {
-            return new Transformation(new Vector3f(), new Quaternionf(),
-                    new Vector3f(0.42F, 0.42F, 0.42F), new Quaternionf());
-        }
+        if (motion == null) motion = new EliteSpellFlightMotionPolicy.Motion(0D, 0F, 0F, 1F);
         float scale = 0.42F * motion.scaleMultiplier();
         Quaternionf rotation = new Quaternionf().rotateYXZ(
-                motion.wobbleYaw(), (float) motion.spinRadians(), motion.wobblePitch());
-        // The mesh is authored around (8,8,8) in block units; at 0.42 model
-        // scale that centre is 0.42 display units from the origin. Translating
-        // by its negative puts the spin axis through the mesh centre.
-        Vector3f centre = new Vector3f(-0.42F, -0.42F, -0.42F);
-        return new Transformation(centre, rotation,
+                motion.wobbleYaw(), motion.wobblePitch(), (float) motion.spinRadians())
+                .rotateY((float) Math.PI);
+        // 26.3 ItemTransform already centres the baked 0..16 mesh by -0.5.
+        // ItemDisplayRenderer also adds Y=PI; compensate so the +Z-authored
+        // spear points along the projectile and rolls about its long axis.
+        // A second translation here offsets the picture from real collision.
+        return new Transformation(new Vector3f(), rotation,
                 new Vector3f(scale, scale, scale), new Quaternionf());
     }
 

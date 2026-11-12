@@ -39,6 +39,19 @@ public class GuardianRespawnRecoveryProbe {
     long cocoonFallGeneration=Long.MIN_VALUE;
     boolean cocoonFallStarted,cocoonLandingPlayed;
     int cocoonFallElapsedTicks=-1,cocoonFallMoveFailures;
+    // Production cadence is keyed by a String event id; this probe keys
+    // ownership by UUID. The wrapper keeps both sides honest.
+    static final class Cadence {
+        final me.copimine.endevent.domain.SmallKaguneCadence inner=
+                new me.copimine.endevent.domain.SmallKaguneCadence();
+        void restore(java.util.Map<String,String> saved, UUID event, long generation){
+            inner.restore(saved, event.toString(), generation);
+        }
+        java.util.Map<String,String> snapshot(UUID event, long generation){
+            return inner.snapshot(event.toString(), generation);
+        }
+    }
+    final Cadence smallKaguneCadence=new Cadence();
     me.copimine.endevent.domain.CocoonFallPolicy.Stage cocoonFallStage=
             me.copimine.endevent.domain.CocoonFallPolicy.Stage.COCOONED;
 
@@ -89,6 +102,9 @@ public class GuardianRespawnRecoveryProbe {
     EventPhase phase=EventPhase.BOSS_ACTIVE;
     BossPhase bossPhase=BossPhase.LAST_SEAL;
     final UUID eventId=UUID.randomUUID(); final LivingEntity boss=new LivingEntity();
+    // The small-Kagune clock is keyed by the production String event id, not
+    // by the UUID this probe uses for ownership checks.
+    final String eventKey=eventId.toString();
     final Location position=new Location();
     int admitted=10, online=10, spawnAttempts, spawned, saves, breaks, temporaryTicks; boolean failSpawn, saveFails;
     String recoveryReason;
@@ -276,6 +292,7 @@ public class GuardianRespawnRecoveryProbe {
         "domain/TentacleAnimationPolicy", "domain/BossPhase", "runtime/TentacleController",
         "domain/GuardianRegenerationPolicy", "domain/GuardianDeathLedger",
         "domain/KaguneCocoonGuardianPolicy", "domain/CocoonFallPolicy", "domain/EndRiftAiPolicy",
+        "domain/SmallKaguneSpawnPolicy", "domain/SmallKaguneCadence",
     )]
     result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path),
                              *map(str, classes), str(probe)], capture_output=True, text=True)

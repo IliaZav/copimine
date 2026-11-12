@@ -89,6 +89,7 @@ public class GuardianLiveShieldProbe {
         "domain/TentacleAnimationPolicy", "runtime/TentacleController",
         "domain/GuardianDeathLedger", "domain/KaguneCocoonGuardianPolicy",
         "domain/TentacleScalingPolicy", "domain/BossPhase",
+        "domain/SmallKaguneSpawnPolicy", "domain/SmallKaguneCadence",
     )]
     result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path),
                              *map(str, sources), str(probe)], capture_output=True, text=True)

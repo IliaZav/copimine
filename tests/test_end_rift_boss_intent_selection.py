@@ -20,6 +20,8 @@ SOURCES = [
     "BossPhase",
     "BlackFogTimingPolicy",
     "EndRiftObjective",
+    # EndRiftObjective derives REQUIRED_PILLAR_IMPACTS from this class.
+    "RiftRamPolicy",
 ]
 
 

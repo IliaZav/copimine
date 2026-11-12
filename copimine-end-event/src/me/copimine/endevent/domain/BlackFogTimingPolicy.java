@@ -28,8 +28,15 @@ public final class BlackFogTimingPolicy {
     }
     public static int zoneCount(int rosterPlayers, int cycle) {
         int players = Math.max(1, Math.min(20, rosterPlayers));
-        int initial = Math.max(1, (players + 2) / 3);
-        int last = Math.max(1, (players + 7) / 8);
+        // The final zone count and footprint must be solved together. The old
+        // ceil(players/8) demanded 3x3 shelters for 5/10/20-player parties and
+        // consequently prevented their footprint from ever shrinking.
+        // Large parties finish at 2x2; tiny parties can reach 1x1. Capacity is
+        // preserved without adding shelters halfway through the escalation.
+        int finalSide = players <= 3 ? 1 : 2;
+        int cells = finalSide * finalSide;
+        int last = (players + cells - 1) / cells;
+        int initial = Math.max(last, (players + 2) / 3);
         return initial - (int) Math.floor((initial - last) * progress(cycle, cycleCount(players)));
     }
     /** Three-and-a-half seconds bright, then a smooth finite fade; mirror is wire-tested. */

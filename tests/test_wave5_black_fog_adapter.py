@@ -600,17 +600,19 @@ public final class BlackFogAdapterProbe {
                 p.tickBlackFogObjective(40_000L);
                 check(p.blackFogPhase == BlackFogPhase.COMBAT
                                 && p.fogSafeZoneTelegraphActive
-                                && p.currentSafeZoneCells.size() == 9,
+                                && p.currentSafeZoneCells.size() == 18,
                         "initial safe-zone setup must fit the two currently eligible players");
                 p.tickBlackFogObjective(43_000L);
                 check(p.blackFogPhase == BlackFogPhase.SAFE,
                         "the initial telegraph must activate the safe area");
                 long firstSafeDeadline = p.blackFogPhaseDeadlineMillis;
-                for (int i = 0; i < 8; i++) p.eligiblePlayers.add(new Player());
+                // Return enough owners to exceed the new two-zone initial
+                // capacity (18); a smaller return no longer needs re-journaling.
+                for (int i = 0; i < 18; i++) p.eligiblePlayers.add(new Player());
                 p.tickBlackFogObjective(firstSafeDeadline);
                 check(p.blackFogPhase == BlackFogPhase.SAFE
-                                && p.currentFogZoneSide == 3 && p.currentFogZoneCount == 2
-                                && p.currentSafeZoneCells.size() == 18,
+                                && p.currentFogZoneSide == 3 && p.currentFogZoneCount == 3
+                                && p.currentSafeZoneCells.size() == 27,
                         "returned eligible owners receive sufficient capacity before fog");
                 check(p.hazardJournal.prepareCalls == 2,
                         "capacity refresh restores and re-journals owned floor changes");
@@ -811,6 +813,7 @@ public final class BlackFogAdapterProbe {
     compiled = subprocess.run([
         "javac", "-proc:none", "-encoding", "UTF-8", "-d", str(output), str(java), str(api),
         str(domain / "BlackFogTimingPolicy.java"), str(domain / "EndRiftObjective.java"),
+        str(domain / "RiftRamPolicy.java"),
         str(domain / "BlackFogRecoverySnapshot.java"), str(domain / "BlackFogSafeZonePolicy.java"),
         str(domain / "BlackFogSafeZoneCapacityPolicy.java"),
         str(domain / "BlackFogRefugeAccessPolicy.java"),

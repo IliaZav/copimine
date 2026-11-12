@@ -175,3 +175,14 @@ or world, and explosion distance queries reject other worlds.
 Validation: existing Echo presentation probes 8 passed. Modern server compilation
 passed before the final lock/world-guard adjustment; final combined build is still
 required. Actual copied animations, dodges and explosions remain NOT VERIFIED.
+
+## Wave 5 footprint/capacity reconciliation
+
+The old final count ceil(players/8) forced a 3x3 capacity floor for several
+parties, so authored escalation never shrank their footprint. Final counts now
+reserve enough 2x2 shelters for parties of 4–20, or 1x1 shelters for 1–3. Initial
+counts are at least that final capacity requirement and never increase during a
+cycle sequence. For 10 players the count contracts 4 to 3; for 20 it contracts
+7 to 5 while footprints contract 3x3 to 2x2. Small parties may retain their zone
+count to preserve capacity. This follows the newer master capacity requirement
+over the older request to allow players to be excluded from all shelters.

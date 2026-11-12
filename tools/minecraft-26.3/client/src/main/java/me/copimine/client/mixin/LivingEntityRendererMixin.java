@@ -26,6 +26,7 @@ import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.client.renderer.entity.state.EndermanRenderState;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.client.renderer.entity.state.EvokerRenderState;
+import net.minecraft.client.renderer.entity.state.IllagerRenderState;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 import net.minecraft.client.renderer.entity.state.SkeletonRenderState;
 import net.minecraft.client.renderer.entity.state.WardenRenderState;
@@ -187,9 +188,24 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity,
     private static boolean copimine$isGuardianState(EndRiftRenderStateAccess bound) {
         if (bound == null) return false;
         if (bound.copimine$endBoss()) return true;
-        String visual = bound.copimine$visual();
-        return visual != null
-                && "END_RIFT_GUARDIAN_V1".equals(visual.trim().toUpperCase(java.util.Locale.ROOT));
+        return copimine$wearsGuardianBody(bound.copimine$visual());
+    }
+
+    /**
+     * Contract 15.2/15.3: the real Guardian, an echo copy and an echo decoy all
+     * wear the authored Guardian body, so the model, texture and scale decisions
+     * must agree on one list. Keeping the list here is what stops the identity
+     * check and the model selection from drifting apart.
+     */
+    @Unique
+    private static boolean copimine$wearsGuardianBody(String visual) {
+        if (visual == null) {
+            return false;
+        }
+        String normalized = visual.trim().toUpperCase(java.util.Locale.ROOT);
+        return "END_RIFT_GUARDIAN_V1".equals(normalized)
+                || "END_RIFT_ECHO_DECOY_V1".equals(normalized)
+                || "END_RIFT_ECHO_REPLICA_V1".equals(normalized);
     }
 
     @Unique
@@ -207,6 +223,16 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity,
         } else if (namedActor == Wave7NamedTrialVisualPolicy.ActorModel.ARCHMAGE
                 && state instanceof EvokerRenderState && getModel() instanceof IllagerModel<?>) {
             selected = copimine$wave7Renderer.modelFor(namedActor);
+        } else if (state instanceof IllagerRenderState && copimine$wearsGuardianBody(visual)) {
+            // Contract 15.3: the server spawns a decoy as a PILLAGER on purpose,
+            // so it never shares the boss entity type, HP or defeat effects. A
+            // Pillager extracts an IllagerRenderState, which no branch matched:
+            // the decoy fell through and vanilla drew a small brown illager
+            // where the contract asks for a copy of the Guardian. Selecting the
+            // Guardian model here makes the decoy look like the boss it imitates.
+            selected = copimine$guardianRenderer.modelForPhase(bound.copimine$bossPhase(),
+                    bound.copimine$bossPhaseTransitionMillis(), bound.copimine$bossAnimation(),
+                    ClientBridgeProtocol.bossAnimationElapsedTicksForEntity(uuid, System.currentTimeMillis()));
         } else if (state instanceof EndermanRenderState && getModel() instanceof EndermanModel<?>) {
             EndermanRendererSelection.Decision decision;
             if (bound.copimine$endBoss()) {

@@ -28,6 +28,9 @@ import me.copimine.endevent.runtime.TentacleController;
 public class GuardianWarningRestartProbe {
     long cocoonFallGeneration=Long.MIN_VALUE;
     boolean cocoonFallStarted,cocoonLandingPlayed;
+    // snapshot/restore touch the small-Kagune clock, so the probe needs the
+    // real field the production methods reference.
+    final SmallKaguneCadence smallKaguneCadence=new SmallKaguneCadence();
     int cocoonFallElapsedTicks=-1,cocoonFallMoveFailures;
     me.copimine.endevent.domain.CocoonFallPolicy.Stage cocoonFallStage=
             me.copimine.endevent.domain.CocoonFallPolicy.Stage.COCOONED;

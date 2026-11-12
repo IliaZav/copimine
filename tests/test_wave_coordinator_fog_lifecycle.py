@@ -80,6 +80,9 @@ public class WaveFogLifecycleProbe {
  static class EntityDamageByEntityEvent extends EntityDamageEvent {}
  static class ProjectileHitEvent {boolean isCancelled(){return false;}}
  void removeEliteProjectileVisual(UUID id,String why){}
+ int spellImpactBursts;
+ void spawnEliteSpellImpactBurst(Location p,String abilityId){spellImpactBursts++;}
+ void applyEliteSpellImpactBurst(Location p,EliteAbilityPolicy.Ability ability){if(ability!=null&&ability!=EliteAbilityPolicy.Ability.WEB_SHOT)spellImpactBursts++;}
  void applyEliteVoidBurst(LivingEntity s,Location p,EliteProjectileImpactPolicy.Impact i){impactEffects++;}
  void applyEliteSpiderWeb(Player p,LivingEntity s){impactEffects++;}
  boolean spawnEliteDragonBreathCloud(LivingEntity s,Location p,int w,UUID projectileId){impactEffects++;return true;}

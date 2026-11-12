@@ -13507,12 +13507,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     && ability == EliteAbilityPolicy.Ability.DRAGON_BREATH) {
                 spawnEliteDragonBreathCloud(shooter, impact, wave, projectileId);
             }
-            // The Void Burst path draws its own burst above; the other two
-            // spells burst here, on any accepted impact, with their own
-            // authored signature instead of the old shared vanilla puff.
-            if (ability != EliteAbilityPolicy.Ability.WEB_SHOT) {
-                spawnEliteSpellImpactBurst(impact, ability.name());
-            }
+            applyEliteSpellImpactBurst(impact, ability);
         } finally {
             removeEliteProjectileVisual(projectileId, "elite-projectile-impact-resolved");
             eliteProjectileDamageAllowed.remove(projectileId);
@@ -13524,6 +13519,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /**
+     * Draw the authored impact burst for an accepted elite strike.
+     *
+     * This MUST stay inside the resolved branch of the impact handler rather
+     * than its finally block. The finally runs on every early return too - a
+     * cancelled collision, a stale generation, a disabled wave - and drawing
+     * there painted an impact flash for hits the server had just refused to
+     * honour. The fog-lifecycle contract caught exactly that leak.
+     *
+     * Void Burst is included: its damage path returns early, so this is the
+     * single place that paints it, and the placement guarantees the burst only
+     * appears after the impact gate has accepted the collision.
+     */
+    private void applyEliteSpellImpactBurst(Location impact,
+                                            EliteAbilityPolicy.Ability ability) {
+        if (ability == null || ability == EliteAbilityPolicy.Ability.WEB_SHOT) return;
+        spawnEliteSpellImpactBurst(impact, ability.name());
+    }
     /** Apply Void Burst only after an accepted player or block collision. */
     private void applyEliteVoidBurst(LivingEntity shooter, Location impact,
                                      EliteProjectileImpactPolicy.Impact collision) {

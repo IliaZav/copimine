@@ -633,6 +633,10 @@ public final class WaveProbeAdapterHarness {
     compiled = subprocess.run(["javac", str(ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/EncounterGenerationPolicy.java"), "-proc:none", "-encoding", "UTF-8", "-d", str(output),
                                str(java_file), str(domain / "EventPhase.java"),
                                str(domain / "BlackFogTimingPolicy.java"),
+                               # EndRiftObjective derives REQUIRED_PILLAR_IMPACTS
+                               # from RiftRamPolicy, so the real class must be on the
+                               # probe classpath rather than assumed away.
+                               str(domain / "RiftRamPolicy.java"),
                                str(domain / "EndRiftObjective.java"),
                                str(domain / "BlackFogRecoverySnapshot.java"),
                                str(domain / "RiftCarrierPolicy.java"),

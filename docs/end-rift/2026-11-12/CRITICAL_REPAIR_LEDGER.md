@@ -261,3 +261,42 @@ successful/nonzero launcher cases are tested, with exact owned test-child cleanu
   survival beyond 180 seconds are not yet accepted. No native client evidence.
 - AuthMe/AuthEffects remain enabled. No authentication/password bypass or
   production/installed-client replacement was performed.
+
+## Full-tree gate — actual pinned API and Unicode-safe javac arguments
+
+The old script returned success for 386 sources using the hardcoded 1.21.1 API,
+which is not acceptance against the required 26.3 platform. The real old
+argument-file writer failed a javac probe in a path containing spaces and Cyrillic
+(`error: invalid flag: ??????`): unquoted ASCII output corrupted the input.
+
+The gate now resolves the actual endEvent Gradle source-set classpath, invokes
+`verifyPaperApi` (locked size and SHA-256), compiles the complete six source roots
+with the pinned JDK, writes quoted UTF-8 argument files, and validates its owned
+temporary directory before recursive cleanup. `-KeepOutputs` retains diagnostics.
+No Maven 1.21.1 fallback, classpath jar glob or unquoted source path remains.
+
+- Real javac argument-file regression: **1 passed**, exit 0, 1.19 seconds;
+  `C:/Temp/cm-fulltree-args-green.log` (old failure: `cm-fulltree-args-red.log`).
+- Actual full-tree compile in `C:/Temp/cm fulltree юникод`:
+  **386 sources, 1065 classes, exit 0**, with verified
+  Paper API `26.3.build.205-stable`, SHA-256
+  `2c4ced387dd3786a7f811923eedce574349e036446f91d10669578a3827aa252`.
+  Log: `C:/Temp/cm-critical-fulltree-26-green.log`.
+  Retained evidence: `C:/Temp/cm fulltree юникод/cm-fullcompile-b5d777e120e1483f9f1521a1ad616f8b/`.
+
+## First actual staging startup observation
+
+Paper completed startup at **10:27:34 Europe/Moscow**, 86.927 seconds after
+bootstrap (fresh fixture included the Mojang download). The bridge signer was
+reported ready at 10:27:25. End Rift enabled at 10:27:34 and answered the actual
+console command `cmend status` again at **10:31:49**, 255 seconds later, still
+UNCONFIGURED with no encounter started. The old ~180-second dependency shutdown
+was not observed in this fixture. Election/admin database readiness was logged.
+
+Installed and built event JARs independently hash to
+`0551f3bdb2bd92ba3d918ffb52b4552f7aa3e20e52db46e71aa69cc5a6994855`
+(2,405,592 bytes). Console: `C:/Temp/cm-critical-staging-paper-console2.log`;
+Paper log: `local-runtime/end-rift-server-26.3/logs/latest.log`.
+This proves bootstrap/dependency survival and command availability only:
+**no wave, boss collision, restoration, client rendering or official run has yet
+been verified on this new runtime**. AuthMe and AuthEffects remain enabled.

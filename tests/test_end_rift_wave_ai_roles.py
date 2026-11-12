@@ -67,7 +67,8 @@ public class WaveAiRolesProbe {
     domain = ROOT / "copimine-end-event/src/me/copimine/endevent/domain"
     files = [domain / name for name in ["BossPhase.java", "CombatTacticsPolicy.java",
              "EliteAbilityPolicy.java", "EndRiftAiPolicy.java",
-             "BlackFogTimingPolicy.java", "EndRiftObjective.java"]]
+             "BlackFogTimingPolicy.java", "EndRiftObjective.java",
+             "RiftRamPolicy.java"]]
     result = subprocess.run(["javac", "-d", str(directory), *map(str, files), str(probe)],
                             capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr

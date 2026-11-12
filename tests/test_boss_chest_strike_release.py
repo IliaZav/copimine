@@ -6,6 +6,7 @@ the rest of the phase. The edge volley already self-heals; the chest strike must
 do the same.
 """
 from pathlib import Path
+import os
 import subprocess
 
 import pytest
@@ -174,7 +175,11 @@ public class BossChestStrikeReleaseProbe {
 }
 ''', encoding="utf-8")
     result = subprocess.run(
-        ["javac", "-encoding", "UTF-8", "-sourcepath", str(ROOT / "copimine-end-event/src"),
+        # me.copimine.protocol lives in its own module, so both source roots
+        # must be on the sourcepath or javac cannot resolve the playback clock.
+        ["javac", "-encoding", "UTF-8",
+         "-sourcepath", os.pathsep.join([str(ROOT / "copimine-end-event/src"),
+                                        str(ROOT / "tools/minecraft-26.3/protocol/src/main/java")]),
          "-d", str(out), str(java)],
         capture_output=True, text=True,
     )

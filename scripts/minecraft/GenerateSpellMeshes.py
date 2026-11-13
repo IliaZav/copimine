@@ -34,7 +34,10 @@ CELL = 16
 def _uv(cell: int):
     x = (cell % 4) * CELL
     y = (cell // 4) * CELL
-    return [x, y, x + CELL, y + CELL]
+    # JSON model UVs use 0..16 regardless of the atlas pixel resolution.
+    # The client embeds these raw models, without the pack migration pass.
+    units_per_pixel = 16 / ATLAS
+    return [value * units_per_pixel for value in (x, y, x + CELL, y + CELL)]
 
 
 def _box(start, end, texture: str, cell: int, shade: bool = False):

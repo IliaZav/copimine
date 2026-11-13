@@ -65,7 +65,7 @@ public class WaveAiRolesProbe {
 }
 ''', encoding="utf-8")
     domain = ROOT / "copimine-end-event/src/me/copimine/endevent/domain"
-    files = [domain / name for name in ["BossPhase.java", "CombatTacticsPolicy.java",
+    files = [domain / name for name in ["BossPhase.java", "CombatTacticsPolicy.java", "BossContactStrikePolicy.java",
              "EliteAbilityPolicy.java", "EndRiftAiPolicy.java",
              "BlackFogTimingPolicy.java", "EndRiftObjective.java",
              "RiftRamPolicy.java"]]

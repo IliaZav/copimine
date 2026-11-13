@@ -222,10 +222,10 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # 12-November, spell art: the elite spell atlases and meshes are packed
     # into the client resources. Verified by two independent clean offline
     # builds producing the same size and digest.
-    assert artifact['size'] == 15_044_422
+    assert artifact['size'] == 15_044_423
     assert artifact['sha512'] == (
-        'a047c5ecab1f30ef86f790db109a4fcd2ee6d3c6321525e0b45042216fcc9dbd'
-        '17bf5e87155efcc2ecf5ba1eeb1f1bd388f80d3dd589b01128b2e17333b14cd0'
+        '9257d7e7f6d14300d32a7c204095f7d9f0cb8c2d7a5a342cb2628b0b38ee8912'
+        '69fcbc64eb0f900326a500d905bd8896847ac876194b1c1a64399fc6ea26cf5d'
     )
 
 

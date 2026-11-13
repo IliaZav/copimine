@@ -14067,7 +14067,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 entity.setBrightness(new Display.Brightness(15, 15));
                 entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
                 entity.setBillboard(Display.Billboard.FIXED);
-                entity.setViewRange(48.0F);
+                // Display view_range is a multiplier of 64 blocks, not blocks.
+                entity.setViewRange(48.0F / 64.0F);
                 entity.setDisplayWidth(1.4F);
                 entity.setDisplayHeight(1.4F);
                 entity.setInterpolationDuration(2);
@@ -14134,7 +14135,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 entity.setBrightness(new Display.Brightness(15, 15));
                 entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
                 entity.setBillboard(Display.Billboard.FIXED);
-                entity.setViewRange(48.0F);
+                // Display view_range is a multiplier of 64 blocks, not blocks.
+                entity.setViewRange(48.0F / 64.0F);
                 entity.setDisplayWidth(ELITE_ARROW_VISUAL_SCALE);
                 entity.setDisplayHeight(ELITE_ARROW_VISUAL_SCALE);
                 entity.setInterpolationDuration(2);
@@ -14231,7 +14233,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 entity.setBlock(Material.COBWEB.createBlockData());
                 entity.setBrightness(new Display.Brightness(15, 15));
                 entity.setBillboard(Display.Billboard.FIXED);
-                entity.setViewRange(48.0F);
+                // Display view_range is a multiplier of 64 blocks, not blocks.
+                entity.setViewRange(48.0F / 64.0F);
                 entity.setDisplayWidth(WEB_SHOT_BLOCK_SCALE);
                 entity.setDisplayHeight(WEB_SHOT_BLOCK_SCALE);
                 entity.setTransformation(webShotBlockTransformation(0.0D));

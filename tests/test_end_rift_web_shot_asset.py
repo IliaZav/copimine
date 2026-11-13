@@ -112,7 +112,14 @@ def test_every_spell_is_a_closed_3d_mesh_sampling_its_own_64px_atlas():
             assert element["shade"] is False, "spell faces must stay readable at any angle"
             for face in _faces(element).values():
                 uv = face["uv"]
-                assert 0 <= uv[0] < uv[2] <= 64 and 0 <= uv[1] < uv[3] <= 64, item_id
+                assert 0 <= uv[0] < uv[2] <= 16 and 0 <= uv[1] < uv[3] <= 16, item_id
+                # Minecraft JSON UVs always use model units, even with a 64px
+                # texture. Verify the sampled cell contains paint, not the
+                # intentionally empty fourth row of the atlas.
+                with Image.open(_asset_path("textures/item", name).parent / f"{name}.png") as atlas:
+                    px = int((uv[0] + uv[2]) * .5 / 16 * atlas.width)
+                    py = int((uv[1] + uv[3]) * .5 / 16 * atlas.height)
+                    assert atlas.getpixel((px, py))[3] > 0, (item_id, uv)
 
         silhouettes[name] = frozenset(
             (tuple(element["from"]), tuple(element["to"])) for element in elements

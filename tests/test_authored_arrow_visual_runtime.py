@@ -39,10 +39,10 @@ public class ArrowVisualProbe {
     }
     static class ItemDisplay extends Display {
         enum ItemDisplayTransform {NONE}
-        int interpolation,teleport;Object item;
+        int interpolation,teleport;float viewRange;Object item;
         void setItemStack(Object v){item=v;}void setBrightness(Brightness b){}
         void setItemDisplayTransform(ItemDisplayTransform b){}void setBillboard(Billboard b){}
-        void setViewRange(float f){}void setDisplayWidth(float f){}void setDisplayHeight(float f){}
+        void setViewRange(float f){viewRange=f;}void setDisplayWidth(float f){}void setDisplayHeight(float f){}
         void setTransformation(Object t){}void setPersistent(boolean b){}void setGravity(boolean b){}
         void setInvulnerable(boolean b){}void setShadowRadius(float f){}
         void setInterpolationDuration(int i){interpolation=i;}void setInterpolationDelay(int i){}
@@ -80,6 +80,7 @@ public class ArrowVisualProbe {
             p.attachEliteArrowVisual(a);check(!a.visible&&p.activeEliteArrowVisuals.size()==1,"missing model or duplicate vanilla body");
             var d=(ItemDisplay)Bukkit.getEntity(p.activeEliteArrowVisuals.get(a.id));
             check(d.interpolation==2&&d.teleport==1&&model.equals(d.item),"wrong mesh or interpolation");
+            check(d.viewRange*64==48,"view_range treated as blocks instead of a multiplier");
             check(a.location.direction==a.velocity,"model did not face velocity");
             p.syncEliteArrowVisual(a);check(p.activeEliteArrowVisuals.size()==1,"normal follow removed model");
             p.attachEliteArrowVisual(a);check(!d.valid&&p.activeEliteArrowVisuals.size()==1&&p.ownedEntities.size()==1,"repeat attach leaked mesh");

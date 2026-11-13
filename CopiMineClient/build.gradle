@@ -34,6 +34,13 @@ dependencies {
     testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 }
 
+// Share only the pure playback clock with 26.3. Do not import the modern
+// transport/source tree into this independent 1.21.1 Fabric build.
+def sharedBossPlayback = file("../tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/BossAnimationPlayback.java")
+tasks.named("compileJava", JavaCompile) {
+    source(sharedBossPlayback)
+}
+
 def kaguneImporterScript = file("tools/import_kagune_model.py")
 def suppliedKaguneModel = file("src/main/asset-source/end-rift-tentacle/kagune.bbmodel")
 tasks.register("importKaguneModel", Exec) {
@@ -158,6 +165,7 @@ java {
 
 tasks.named("sourcesJar") {
     dependsOn(tasks.named("importKaguneModel"))
+    from(sharedBossPlayback) { into("me/copimine/protocol") }
 }
 
 // Keep the local visual verification client bounded so it can run alongside

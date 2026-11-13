@@ -60350,8 +60350,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         try {
+            // The plugin's old PHASE|ANIMATION cue is not a V4 animation ID.
+            // Adapt it here; do not weaken the signed body's strict catalogue.
+            String wireVisual = "END_BOSS_PHASE".equals(type)
+                    ? me.copimine.endevent.domain.BossAnimationWirePolicy.canonicalPhaseCue(visualId)
+                    : visualId;
+            if (wireVisual == null) return false;
             boolean sent = endEventBridgeV4.send(player.getUniqueId(), type, instanceId,
-                    durationMillis, subjectId, visualId, health, maxHealth, progress,
+                    durationMillis, subjectId, wireVisual, health, maxHealth, progress,
                     clearPolicy, status, source, reason);
             if (sent) {
                 recordPluginMessage();

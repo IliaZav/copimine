@@ -27,7 +27,8 @@ def test_committed_boss_stops_navigation_without_hovering(tmp_path):
     # delegate, and the probe supplies its own so the spell can be chosen per
     # scenario; extracting both would redeclare it.
     methods = (
-        extract(source, "void holdBossCastPosition(LivingEntity boss, EndRiftAiPolicy.BossSpell spell)")
+        extract(source, "boolean allowsBossCastLocomotion(")
+        + "\n" + extract(source, "void holdBossCastPosition(LivingEntity boss, EndRiftAiPolicy.BossSpell spell)")
         + "\n"
         + extract(source, "void aimBossCastAt(")
     )
@@ -53,6 +54,9 @@ public class BossCastPositionProbe {
     }
     float bossCastLockedYaw=73;
     EndRiftAiPolicy.BossSpell previousBossSpell;
+    enum BossAbilityState { NONE, TELEGRAPHING, EXECUTING, RECOVERY }
+    BossAbilityState bossAbilityState=BossAbilityState.NONE;
+    boolean bossEdgeVolleyActive;
 
     // Probe-side delegate: the scenario picks the spell instead of reading it
     // off the runtime's "previous spell" field.
@@ -89,6 +93,18 @@ public class BossCastPositionProbe {
         check(fixed.velocity.x()==0&&fixed.velocity.z()==0,"committed boss drifted horizontally");
         check(fixed.velocity.y()<=0,"committed boss was launched upward");
         check(fixed.yaw==73,"committed aim changed");
+
+        // A committed contact has already resolved before RECOVERY. Movement
+        // can resume while its clip finishes; no independent timer resets it.
+        var recovering=new Mob();p.bossAbilityState=BossAbilityState.RECOVERY;
+        p.holdBossCastPosition(recovering);
+        check(!recovering.path.stopped&&recovering.velocity.x()==2,
+                "contact recovery still held the body for the whole clip");
+        var volley=new Mob();p.previousBossSpell=EndRiftAiPolicy.BossSpell.RIFT_ARROWS;
+        p.bossEdgeVolleyActive=true;p.holdBossCastPosition(volley);
+        check(volley.path.stopped&&volley.velocity.x()==0,
+                "edge salvo channel inherited ordinary arrow mobility");
+        p.bossEdgeVolleyActive=false;p.bossAbilityState=BossAbilityState.NONE;
 
         // A grounded fall is preserved, an invalid vertical component is not.
         var falling=new Mob();falling.velocity=new Vector(1,-.7,2);

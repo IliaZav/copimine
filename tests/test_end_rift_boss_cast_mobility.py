@@ -209,8 +209,13 @@ def test_hold_boss_cast_position_no_longer_disables_native_ai():
     assert "setAI(" not in body[:body.index("forbidsNativeAi(spell)")], (
         "a cast must not disable native AI outside the policy guard")
     # The mobile branch must be released before any locomotion-suppressing call.
-    assert body.index("allowsLocomotion") < body.index("stopPathfinding"), (
+    # The shared owner also handles post-contact recovery and the stationary
+    # five-salvo channel; the basic spell policy alone cannot decide those.
+    assert body.index("allowsBossCastLocomotion(spell)") < body.index("stopPathfinding"), (
         "a mobile cast must be released before the path is ever stopped")
+    owner = _method_body(source, 'private boolean allowsBossCastLocomotion(')
+    assert "BossCastMobilityPolicy.allowsLocomotion(spell)" in owner
+    assert "BossCastMobilityPolicy.allowsLocomotionAfterLock(spell)" in owner
 
 
 def test_cast_recovery_restores_navigation_and_gravity():

@@ -1394,6 +1394,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         private final UUID shooterId;
         private final UUID playerId;
         private EntityDamageEvent outcome;
+        private EntityDamageEvent admittedBossEvent;
+        private boolean bossProfileApplied;
 
         private PendingPlayerDamageOutcome(String eventId, long generation,
                                            UUID shooterId, UUID playerId) {
@@ -13443,7 +13445,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         PendingPlayerDamageOutcome pending = pendingPlayerDamageOutcome;
         if (pending == null || !(event.getEntity() instanceof Player player)
                 || !Objects.equals(pending.eventId, eventId) || pending.generation != generation
-                || !pending.playerId.equals(player.getUniqueId())) return;
+                || !pending.playerId.equals(player.getUniqueId())
+                || pending.admittedBossEvent != null && pending.admittedBossEvent != event) return;
         if (pending.shooterId == null) {
             if (event instanceof EntityDamageByEntityEvent
                     || event.getCause() != EntityDamageEvent.DamageCause.CUSTOM) return;
@@ -15191,21 +15194,48 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " target=" + playerId);
     }
 
-    /** Apply the stage profile to the boss's outgoing melee, not only its path. */
+    private PendingPlayerDamageOutcome pendingBossDamageAttempt(EntityDamageByEntityEvent event) {
+        PendingPlayerDamageOutcome pending = pendingPlayerDamageOutcome;
+        if (pending == null || !(event.getEntity() instanceof Player player)
+                || !Objects.equals(pending.eventId, eventId) || pending.generation != generation
+                || !Objects.equals(pending.playerId, player.getUniqueId())
+                || !Objects.equals(pending.shooterId, event.getDamager().getUniqueId())) return null;
+        return pending;
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
+    public void onBossAuthoredDamageCapture(EntityDamageByEntityEvent event) {
+        if (event == null || bossUuid == null || !bossUuid.equals(event.getDamager().getUniqueId())) return;
+        PendingPlayerDamageOutcome pending = pendingBossDamageAttempt(event);
+        // Correlate before protection callbacks can issue nested damage. This
+        // is not acceptance: HIGHEST and the final returned event still decide.
+        if (pending != null && pending.admittedBossEvent == null) pending.admittedBossEvent = event;
+    }
+
+    /** Native AI may navigate, but only the authored damage owner may strike. */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBossMeleeAttack(EntityDamageByEntityEvent event) {
+        if (event == null || event.isCancelled()) return;
         if (!(event.getDamager() instanceof LivingEntity attacker)
                 || !(event.getEntity() instanceof Player victim)
                 || bossUuid == null || !bossUuid.equals(attacker.getUniqueId())
-                || !EVENT_KIND_BOSS.equals(readString(attacker, keyKind))
-                || !isCombatTarget(victim)) {
+                || !EVENT_KIND_BOSS.equals(readString(attacker, keyKind))) {
             return;
         }
         boolean disposableTest = testCombatAiMode && isTestBoss(attacker);
         boolean active = phase == EventPhase.BOSS_ACTIVE;
-        if (!active && !disposableTest) {
+        PendingPlayerDamageOutcome pending = pendingBossDamageAttempt(event);
+        if ((!active && !disposableTest) || !isActiveBossParticipant(victim)
+                || !ownedBySession(attacker, eventId, generation)
+                || pending == null || pending.admittedBossEvent != event) {
+            event.setCancelled(true);
             return;
         }
+        // Keep native Enderman AI for pathing, not an extra invisible attack
+        // beside Swipe/Chest/Slam. Never borrow the current spell ID here: a
+        // projectile can resolve after the caster has started another action.
+        if (pending.bossProfileApplied) return;
+        pending.bossProfileApplied = true;
         BossPhasePolicy.CombatProfile profile = currentBossCombatProfile();
         double stageBonus = profile.meleeDamageBonus();
         if (stageBonus <= 0.0D) {
@@ -45883,18 +45913,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // packets.  The production Current path never sets this flag.
             return;
         }
-        if (!isBossCombatRuntimeActive(boss) || bossAbilityState != BossAbilityState.NONE) {
+        if (!isBossCombatRuntimeActive(boss)) {
             return;
         }
-        if (nextTargetMillis <= now) {
-            if (boss instanceof Mob mob) {
-                rotateBossTarget(mob);
-            }
-            BossPhasePolicy.CombatProfile profile = currentBossCombatProfile();
-            nextTargetMillis = now + scaledBossDelayMillis(
-                    randomSeconds(config.bossTargetMinSeconds(), config.bossTargetMaxSeconds()),
-                    profile.targetRotationMultiplier(), 1_000L);
-        }
+        if (tickBossCastLocomotion(boss, now, finalSealPinned)) return;
+        maintainBossTargetSelection(boss, now);
         if (!finalSealPinned) {
             if (boss instanceof Mob mob) restoreBossPursuitTarget(mob, now);
             maintainBossPath(boss, now);
@@ -48648,6 +48671,49 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 .filter(this::isActiveBossParticipant).findFirst().orElse(null);
     }
 
+    private void maintainBossTargetSelection(LivingEntity boss, long now) {
+        if (!(boss instanceof Mob mob)) return;
+        Player focus = bossPursuitTarget == null ? null : Bukkit.getPlayer(bossPursuitTarget);
+        // A newly invalid owned focus is urgent; a previously refused/empty
+        // selection still honours its retry deadline instead of polling at 20 Hz.
+        if (nextTargetMillis > now && (bossPursuitTarget == null || isActiveBossParticipant(focus))) return;
+        rotateBossTarget(mob);
+        if (bossPursuitTarget == null) {
+            nextTargetMillis = now + 500L;
+            return;
+        }
+        BossPhasePolicy.CombatProfile profile = currentBossCombatProfile();
+        nextTargetMillis = now + scaledBossDelayMillis(
+                randomSeconds(config.bossTargetMinSeconds(), config.bossTargetMaxSeconds()),
+                profile.targetRotationMultiplier(), 1_000L);
+    }
+
+    private boolean allowsBossCastLocomotion(EndRiftAiPolicy.BossSpell spell) {
+        // Edge Volley owns a fixed firing position through all five salvos,
+        // even though ordinary RIFT_ARROWS is a mobile spell.
+        if (bossEdgeVolleyActive) return false;
+        // RECOVERY is published only after the real contact/release boundary.
+        // Do not introduce another timer here: shared playback rates retime
+        // the authored marker, and the cast coordinator already owns it.
+        return BossCastMobilityPolicy.allowsLocomotion(spell)
+                || bossAbilityState == BossAbilityState.RECOVERY
+                && BossCastMobilityPolicy.allowsLocomotionAfterLock(spell);
+    }
+
+    /** Advance locomotion without admitting a second major spell or melee hit. */
+    private boolean tickBossCastLocomotion(LivingEntity boss, long now, boolean finalSealPinned) {
+        if (bossAbilityState == BossAbilityState.NONE) return false;
+        if (!finalSealPinned && allowsBossCastLocomotion(currentCastingSpell())
+                && boss instanceof Mob mob) {
+            // Pursuit owns this focus. A spell's committed target/mark is a
+            // separate receipt and must never be rewritten by navigation.
+            maintainBossTargetSelection(boss, now);
+            restoreBossPursuitTarget(mob, now);
+            maintainBossPath(boss, now);
+        }
+        return true;
+    }
+
     /** Request role-aware pathing without ever steering the boss at Core. */
     private void maintainBossPath(LivingEntity boss, long now) {
         if (!(boss instanceof Mob mob) || now - lastBossPathRequestMillis < 500L
@@ -48658,6 +48724,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (anchor == null) {
             return;
         }
+        // Failed destinations and refused paths consume the same attempt
+        // budget as success; otherwise a blocked boss retries at 20 Hz.
+        lastBossPathRequestMillis = now;
         if (now >= nextBossTacticMillis) {
             bossTacticCycle++;
             nextBossTacticMillis = now + BOSS_TACTIC_REFRESH_MILLIS;
@@ -48696,7 +48765,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         GroundedBossMotionPolicy.Resolution motion = applyGroundedBossPursuitMotion(mob,
                 moved ? speed : 0.0D);
         if (moved) {
-            lastBossPathRequestMillis = now;
             getLogger().info("BOSS_AI_PATH boss=" + boss.getUniqueId()
                     + " target=" + target.getUniqueId()
                     + " phase=" + tacticStage + " tactic=" + plan.tactic()
@@ -48776,17 +48844,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void holdBossCastPosition(LivingEntity boss, EndRiftAiPolicy.BossSpell spell) {
         if (boss == null || !boss.isValid() || boss.isDead()) return;
-        // Gravity and the committed facing are cheap and always valid: the boss
-        // must never end up floating or facing a stale direction because a cast
-        // ended.
+        // Grounded casts always restore gravity. Only a stationary action owns
+        // body facing; a mobile cast keeps navigation's rotation while its
+        // separately committed spell mark/direction remains unchanged.
         boss.setGravity(true);
-        boss.setRotation(bossCastLockedYaw, 0.0F);
-        if (BossCastMobilityPolicy.allowsLocomotion(spell)) {
+        if (allowsBossCastLocomotion(spell)) {
             // Mobile cast: the movement controller keeps this body. Clearing the
             // path or zeroing velocity here is exactly what used to freeze the
             // Guardian in place.
             return;
         }
+        boss.setRotation(bossCastLockedYaw, 0.0F);
         if (boss instanceof Mob mob) {
             // Stationary cast: stop the path for the authored window only. Native
             // AI and awareness stay enabled (see forbidsNativeAi) so the body

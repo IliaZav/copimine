@@ -989,3 +989,19 @@ def test_github_java_plugin_gate_downloads_verified_minecraft_26_3_test_inputs()
         if step.get("name") == "Run shared Java plugin release gate"
     )
     assert java_job["steps"].index(candidate_download) < java_job["steps"].index(shared_gate)
+
+
+def test_static_ci_promotes_rebuilt_client_for_tests_and_restores_before_provenance():
+    steps=yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]["static-and-contract"]["steps"]
+    by_name={step.get("name"):index for index,step in enumerate(steps)}
+    build=by_name["Build client artifact required by contract tests"]
+    prepare=by_name["Stage rebuilt client release fixtures"]
+    tests=by_name["Run Python contract tests"]
+    restore=by_name["Restore original client release fixtures"]
+    provenance=by_name["Verify exact CI checkout"]
+    assert build < prepare < tests < restore < provenance
+    assert "ClientContractFixtures.ps1 -Action Prepare" in steps[prepare]["run"]
+    assert "ClientContractFixtures.ps1 -Action Restore" in steps[restore]["run"]
+    assert "always()" in steps[restore]["if"]
+    assert "'failure'" in steps[restore]["if"]
+    assert "'cancelled'" in steps[restore]["if"]

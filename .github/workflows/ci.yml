@@ -173,6 +173,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '21.0.12+101.0.LTS'
+      - name: Stage rebuilt client release fixtures
+        id: client_contract_fixtures
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\minecraft\ClientContractFixtures.ps1 -Action Prepare -WorkspaceRoot $env:GITHUB_WORKSPACE -BackupDirectory (Join-Path $env:RUNNER_TEMP 'client-contract-fixtures')
+          if ($LASTEXITCODE -ne 0) { throw 'Rebuilt client fixture preparation failed.' }
       - name: Run Python contract tests
         shell: pwsh
         env:
@@ -214,6 +221,13 @@ jobs:
           name: python-test-results
           path: test-results.xml
           if-no-files-found: error
+      - name: Restore original client release fixtures
+        if: always() && (steps.client_contract_fixtures.outcome == 'success' || steps.client_contract_fixtures.outcome == 'failure' || steps.client_contract_fixtures.outcome == 'cancelled')
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\minecraft\ClientContractFixtures.ps1 -Action Restore -WorkspaceRoot $env:GITHUB_WORKSPACE -BackupDirectory (Join-Path $env:RUNNER_TEMP 'client-contract-fixtures')
+          if ($LASTEXITCODE -ne 0) { throw 'Original client fixture restoration failed.' }
       - name: Verify exact CI checkout
         shell: pwsh
         env:

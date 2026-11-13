@@ -677,7 +677,7 @@ def test_ai_and_no_auth_probes_fail_closed_before_mutation_and_isolate_bot_envir
     assert "END_RIFT_BOT_SKIP_REGISTER = '1'" in ai_start
     assert "END_RIFT_BOT_SKIP_AUTH = '1'" in ai_start
     assert "END_RIFT_TEST_CLIENT_MOD_HANDSHAKE = '1'" in ai_start
-    assert "END_RIFT_TEST_CLIENT_MOD_VERSION = '0.1.3+26.3'" in ai_start
+    assert "END_RIFT_TEST_CLIENT_MOD_VERSION = '0.1.4+26.3'" in ai_start
     assert ai_start.find("Invoke-EndRiftLocalBotEnvironment") < ai_start.find("Start-Process")
 
     smoke = (ROOT / "tests" / "RunEndRiftLocalNoAuthSmoke.ps1").read_text(encoding="utf-8")

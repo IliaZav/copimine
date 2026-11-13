@@ -51,6 +51,7 @@ resourcepacks/src/assets/copimine/manifests/waves_3_4_structure_assets.json -tex
 resourcepacks/src/assets/copimine/manifests/wave5_safe_floor_asset.json -text
 
 # UV-rendered Guardian portrait provenance is a byte-identical generated resource.
+CopiMineClient/src/main/resources/assets/copimineclient/models/entity/end_rift_guardian/animations/cocoon_*.animation.json text eol=lf
 resourcepacks/src/assets/copimine/items/end_rift_*arrow*.json text eol=lf
 resourcepacks/src/assets/copimine/models/item/end_rift_*arrow*.json text eol=lf
 resourcepacks/src/assets/copimine/items/end_rift_web_shot.json text eol=lf

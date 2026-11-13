@@ -905,7 +905,7 @@ function Start-PlayerBot {
     # This local test bot answers only the 26.3 CopiMine mod challenge on
     # 127.0.0.1:25566. Production listeners and mod checks stay unchanged.
     END_RIFT_TEST_CLIENT_MOD_HANDSHAKE = '1'
-    END_RIFT_TEST_CLIENT_MOD_VERSION = '0.1.3+26.3'
+    END_RIFT_TEST_CLIENT_MOD_VERSION = '0.1.4+26.3'
     # Both clients must reflect: Wave 7 launches independent chamber-local
     # projectiles and authorizes only the player assigned to each chamber.
     END_RIFT_REFLECT_ENABLED = [string]$env:END_RIFT_REFLECT_ENABLED

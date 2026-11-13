@@ -9,6 +9,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class UserEndBossAnimationPlayerTest {
     @Test
+    void cocoonHasAContinuousBraceCompressionAndRecoveryOnOriginalBones() {
+        assertTrue(UserEndBossAnimationPlayer.hasClip("COCOON_FALL"));
+        assertTrue(UserEndBossAnimationPlayer.hasClip("COCOON_LAND"));
+        assertEquals(2F, UserEndBossAnimationPlayer.clipLengthSeconds("COCOON_FALL"));
+        assertEquals(1F, UserEndBossAnimationPlayer.clipLengthSeconds("COCOON_LAND"));
+        var brace = UserEndBossAnimationPlayer.sample("COCOON_FALL", 40F);
+        assertEquals(brace, UserEndBossAnimationPlayer.sample("COCOON_LAND", 0F),
+                "landing must start at the descent's final authored pose");
+        assertNotEquals(brace, UserEndBossAnimationPlayer.sample("COCOON_FALL", 0F));
+        assertNotEquals(brace, UserEndBossAnimationPlayer.sample("COCOON_LAND", 3F));
+        var recovered = UserEndBossAnimationPlayer.sample("COCOON_LAND", 20F);
+        assertTrue(recovered.hasBoneDelta("group6"));
+        for (var delta : recovered.deltas().values()) {
+            assertEquals(new ChameleonGuardianGeometry.Point(0, 0, 0), delta.translation());
+            assertEquals(new ChameleonGuardianGeometry.Point(0, 0, 0), delta.rotation());
+            assertEquals(new ChameleonGuardianGeometry.Point(1, 1, 1), delta.scale());
+        }
+    }
+    @Test
     void phaseShiftHasItsOwnGroundedRoarClipInsteadOfReplayingAnAttack() {
         assertEquals(2.2F, UserEndBossAnimationPlayer.clipLengthSeconds("PHASE_TRANSITION"), 0.0001F);
         var phase = UserEndBossAnimationPlayer.sample("PHASE_TRANSITION", 18F);

@@ -9,7 +9,7 @@ public final class BossAnimationPriorityPolicyTest {
 
         for (String protectedAnimation : new String[]{
                 "DYING", "FINAL_STRIKE", "PHASE_TRANSITION", "GROUND_SLAM", "MELEE_SWIPE",
-                "CHEST_STRIKE"}) {
+                "CHEST_STRIKE", "COCOON_FALL", "COCOON_LAND"}) {
             require(!BossAnimationPriorityPolicy.canInterruptWithHurt(protectedAnimation),
                     protectedAnimation + " must not be interrupted by ordinary hurt feedback");
         }

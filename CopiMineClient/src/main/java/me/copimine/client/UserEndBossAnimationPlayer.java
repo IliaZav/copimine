@@ -83,6 +83,8 @@ final class UserEndBossAnimationPlayer {
         load(clips, "dying.json", "DYING", false);
         load(clips, "udar_iz_grudi.json", "CHEST_STRIKE", false);
         load(clips, "udar_po_zemle.animation.json", "GROUND_SLAM", false);
+        load(clips, "cocoon_fall.animation.json", "COCOON_FALL", false);
+        load(clips, "cocoon_land.animation.json", "COCOON_LAND", false);
         return Map.copyOf(clips);
     }
 

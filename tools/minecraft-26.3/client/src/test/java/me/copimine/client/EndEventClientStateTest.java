@@ -9,6 +9,29 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EndEventClientStateTest {
     @Test
+    void cocoonSnapshotsResumeTheStageInsteadOfReplayingItOnHeartbeatOrRejoin() {
+        var state = new EndEventClientState();
+        assertTrue(state.apply(new EndEventPacket("END_BOSS_BIND", "event", 1, "instance",
+                0, "boss", "END_RIFT_GUARDIAN_V1", "", ""), 10_000));
+        assertTrue(state.apply(new EndEventPacket("END_BOSS_PHASE", "event", 1, "instance",
+                1000, "boss", "", "COCOON_FALL", ""), 10_000));
+        assertEquals("COCOON_FALL", state.bossAnimationForEntity("boss"));
+        assertEquals(1000, state.bossAnimationElapsedMillisForEntity("boss", 10_000));
+        assertTrue(state.apply(new EndEventPacket("END_BOSS_PHASE", "event", 1, "instance",
+                500, "boss", "", "COCOON_FALL", ""), 10_500));
+        assertEquals(1500, state.bossAnimationElapsedMillisForEntity("boss", 10_500));
+        assertFalse(state.apply(new EndEventPacket("END_BOSS_PHASE", "event", 1, "instance",
+                2100, "boss", "", "COCOON_FALL", ""), 10_600));
+        assertEquals(1600, state.bossAnimationElapsedMillisForEntity("boss", 10_600));
+        assertTrue(state.apply(new EndEventPacket("END_BOSS_PHASE", "event", 1, "instance",
+                250, "boss", "", "LAST_SEAL|COCOON_LAND", ""), 11_000));
+        assertEquals("COCOON_LAND", state.bossAnimationForEntity("boss"));
+        assertEquals(750, state.bossAnimationElapsedMillisForEntity("boss", 11_000));
+        assertTrue(state.apply(new EndEventPacket("END_BOSS_PHASE", "event", 1, "instance",
+                800, "boss", "", "RUN", ""), 11_250));
+        assertEquals(0, state.bossAnimationElapsedMillisForEntity("boss", 11_250));
+    }
+    @Test
     void signedV4BareAnimationSurvivesHeartbeatAndUsesTheBossbarPhase() {
         EndEventClientState state = new EndEventClientState();
         assertTrue(state.apply(new EndEventPacket("END_BOSS_BIND", "event", 1L, "boss-instance",

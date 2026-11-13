@@ -210,7 +210,7 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     assert "END_RIFT_BOT_SKIP_AUTH = '1'" in start_bot
     assert "END_RIFT_BOT_SKIP_REGISTER = '1'" in start_bot
     assert "END_RIFT_TEST_CLIENT_MOD_HANDSHAKE = '1'" in start_bot
-    assert "END_RIFT_TEST_CLIENT_MOD_VERSION = '0.1.3+26.3'" in start_bot
+    assert "END_RIFT_TEST_CLIENT_MOD_VERSION = '0.1.4+26.3'" in start_bot
     assert "$null = Assert-EndRiftLocalAuthMeDisabled -PluginListOutput (Invoke-LocalRcon 'plugins')" in live_script
     assert "Join-Path $runtimeRoot 'end-rift.env'" in live_script
     assert "Join-Path $runtimeRoot 'local.env'" not in live_script

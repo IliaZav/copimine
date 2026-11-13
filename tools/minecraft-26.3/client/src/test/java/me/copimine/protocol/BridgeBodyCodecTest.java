@@ -17,6 +17,17 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BridgeBodyCodecTest {
+    @Test
+    void authoredCocoonStagesUseTheStrictBossCatalogueAndKeepRemainingDuration() {
+        for (String cue : List.of("COCOON_FALL", "COCOON_LAND")) {
+            var body = body(EndEventBridgeBodyCodec.Type.END_BOSS_PHASE, "boss.1", "", cue,
+                    500, 0, 0, 0, uuid(ENTITY), "", "");
+            assertEquals(body, EndEventBridgeBodyCodec.decode(EndEventBridgeBodyCodec.encode(body)));
+            assertThrows(IllegalArgumentException.class, () -> EndEventBridgeBodyCodec.encode(
+                    body(EndEventBridgeBodyCodec.Type.END_BOSS_PHASE, "boss.1", "", "LAST_SEAL|" + cue,
+                            500, 0, 0, 0, uuid(ENTITY), "", "")));
+        }
+    }
     private static final long TIMESTAMP = 1_800_000_000_000L;
     private static final UUID EVENT = UUID.fromString("1ec25d21-9c8d-4e68-aecd-4e6f1611c515");
     private static final UUID PLAYER = UUID.fromString("d8d4966c-f2c4-4a13-9e33-82940f1dc2d6");

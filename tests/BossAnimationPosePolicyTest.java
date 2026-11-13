@@ -8,6 +8,15 @@ import java.util.Map;
 
 public final class BossAnimationPosePolicyTest {
     public static void main(String[] args) {
+        var brace = BossAnimationPosePolicy.sampleSegments("COCOON_FALL", 40D);
+        var landing = BossAnimationPosePolicy.sampleSegments("COCOON_LAND", 0D);
+        var recovered = BossAnimationPosePolicy.sampleSegments("COCOON_LAND", 20D);
+        for (var part : brace.keySet()) {
+            require(same(brace.get(part), landing.get(part)), "cocoon boundary detached a hitbox segment");
+            require(isNone(recovered.get(part)), "cocoon landing did not recover the bind pose");
+        }
+        require(brace.values().stream().anyMatch(pose -> !isNone(pose)),
+                "cocoon fall must have real animated server geometry");
         Map<BossHitboxProfile.PartKey, BossHitboxPose> bind =
                 BossAnimationPosePolicy.sampleSegments("CHEST_STRIKE", 0.0D);
         Map<BossHitboxProfile.PartKey, BossHitboxPose> attack =

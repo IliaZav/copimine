@@ -1555,6 +1555,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean cocoonLandingPlayed;
     private CocoonFallPolicy.Stage cocoonFallStage = CocoonFallPolicy.Stage.COCOONED;
     private int cocoonFallElapsedTicks = -1;
+    private long cocoonFallLastServerTick = Long.MIN_VALUE;
     private int cocoonFallMoveFailures;
     private final Map<Integer, UUID> guardianShieldDisplayIds = new HashMap<>();
     /** Permanent guardian hitboxes are separate from the client visual carrier. */
@@ -18363,12 +18364,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      */
     private void tickWaveMobContainment() {
         if (riftRam != null) tickRiftRam();
-        if (localTextureShowcase || !bootstrapped || !isEnabled()
-                || (!isCombatPhase() && !hasLiveTestWaveEntities())) {
+        if (localTextureShowcase || !bootstrapped || !isEnabled()) {
             return;
         }
-        updateBossHitbox(liveBoss());
-        enforceWaveMobContainment();
+        boolean cocoonUpdated = tickBossCocoonPresentation();
+        boolean waveCombat = isCombatPhase() || hasLiveTestWaveEntities();
+        if (!waveCombat && !isBossCombatRuntimeActive(liveBoss())) return;
+        if (!cocoonUpdated) updateBossHitbox(liveBoss());
+        if (waveCombat) enforceWaveMobContainment();
+    }
+
+    /** Motion/pose needs 20 Hz; ordinary tactical decisions keep their 5-tick budget. */
+    private boolean tickBossCocoonPresentation() {
+        if (!cocoonFallStarted || generation != cocoonFallGeneration
+                || cocoonFallStage == CocoonFallPolicy.Stage.MELEE_FURY) return false;
+        LivingEntity boss = liveBoss();
+        if (!isBossCombatRuntimeActive(boss)) return false;
+        tickCocoonFall();
+        if (cocoonFallStage == CocoonFallPolicy.Stage.MELEE_FURY)
+            pinBossToFinalSealCore(boss); // release the pin's AI/gravity ownership now
+        updateBossHitbox(boss);
+        return true;
     }
 
     private Player waveOneChargeHolderTarget(Entity entity) {
@@ -51688,7 +51704,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         cancelBossCastForPhaseChange();
         clearKaguneRingCast("cocoon-broken");
         clearActiveRiftProjectiles();
+        // Retire resets scheduled by the old cast before the fall owns pose.
+        bossVisualCueSequence++;
+        clearWorldVfxBeamsByPrefix("boss-cue-");
         cocoonFallStarted = true;
+        cocoonFallLastServerTick = Long.MIN_VALUE;
         cocoonFallElapsedTicks = 0;
         cocoonFallStage = CocoonFallPolicy.stageAfterLastDefender(
                 cocoonFallStarted, cocoonLandingPlayed);
@@ -51711,6 +51731,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (cocoonFallStage == CocoonFallPolicy.Stage.MELEE_FURY) {
             return false;
         }
+        long serverTick = Bukkit.getCurrentTick();
+        if (cocoonFallLastServerTick == serverTick) return true;
+        cocoonFallLastServerTick = serverTick;
         LivingEntity boss = liveBoss();
         Location floor = coreBlockTopLocation();
         if (boss == null || boss.isDead() || !boss.isValid() || floor == null
@@ -51745,7 +51768,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         cocoonFallMoveFailures = 0;
         boolean landingNow = CocoonFallPolicy.landingDue(cocoonFallElapsedTicks)
                 && CocoonFallPolicy.mayPlayLanding(cocoonLandingPlayed);
-        // advance takes time IN THIS STAGE, not the whole descent's clock.
+        // One absolute tick clock covers descent and the separate landing window.
         CocoonFallPolicy.Stage advanced = CocoonFallPolicy.advance(cocoonFallStage, cocoonFallElapsedTicks);
         boolean changed = advanced != cocoonFallStage;
         cocoonFallStage = advanced;
@@ -51759,6 +51782,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return true;
         }
         if (!changed && cocoonFallElapsedTicks % 5 == 0) saveStateAsync();
+        syncCocoonFallAnimation(boss, cocoonFallElapsedTicks - 1);
         if (landingNow) renderCocoonLanding(landing);
         if (changed) {
             getLogger().info("RIFT_COCOON_FALL_STAGE event=" + eventId
@@ -51766,6 +51790,42 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " melee_fury=" + CocoonFallPolicy.isMeleeFury(cocoonFallStage));
         }
         return cocoonFallStage != CocoonFallPolicy.Stage.MELEE_FURY;
+    }
+
+    /** Existing signed phase packets carry the remaining authored stage time. */
+    private void syncCocoonFallAnimation(LivingEntity boss, int sampledTick) {
+        String animation = switch (cocoonFallStage) {
+            case FALLING -> BossAnimationId.COCOON_FALL.wireId();
+            case LANDING -> BossAnimationId.COCOON_LAND.wireId();
+            case MELEE_FURY -> BossAnimationId.IDLE_BREATH.wireId();
+            default -> null;
+        };
+        if (animation == null || boss == null || !boss.isValid() || boss.isDead()
+                || bossUuid == null || !bossUuid.equals(boss.getUniqueId())
+                || bossPhase != BossPhase.LAST_SEAL || !cocoonFallStarted
+                || generation != cocoonFallGeneration) return;
+        boolean changed = !animation.equals(bossHitboxAnimationId);
+        int elapsed = cocoonFallStage == CocoonFallPolicy.Stage.FALLING
+                ? Math.max(0, sampledTick) : cocoonFallStage == CocoonFallPolicy.Stage.LANDING
+                ? Math.max(0, sampledTick - CocoonFallPolicy.FALL_TICKS) : 0;
+        if (changed) startBossHitboxAnimation(animation);
+        bossHitboxAnimationStartedMillis = System.currentTimeMillis() - elapsed * 50L;
+        if (!changed && sampledTick % 5 != 0) return;
+        if (bossBindingInstanceId.isBlank()) return;
+        long remaining = currentBossAnimationCueMillis();
+        for (Player player : eventAudience()) {
+            if (player.isOnline() && player.getWorld().equals(boss.getWorld())) {
+                sendClientPacket(player, "END_BOSS_PHASE", bossBindingInstanceId,
+                        remaining, boss.getUniqueId().toString(), bossPhase.name() + "|" + animation);
+            }
+        }
+    }
+
+    private long currentBossAnimationCueMillis() {
+        long length = me.copimine.protocol.BossAnimationPlayback.cocoonClipMillis(bossHitboxAnimationId);
+        if (length == 0L) return BOSS_PHASE_VISUAL_TRANSITION_MILLIS;
+        long elapsed = Math.max(0L, System.currentTimeMillis() - bossHitboxAnimationStartedMillis);
+        return Math.max(0L, length - Math.min(length, elapsed));
     }
 
     /** Contract 22.1: the landing reads as a landing - dust, shockwave, sound. */
@@ -59843,7 +59903,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // This method is called once per viewer. Broadcasting idle here
             // made N viewers send N whole-audience resets every heartbeat.
             sendClientPacket(player, "END_BOSS_PHASE", bossBindingInstanceId,
-                    BOSS_PHASE_VISUAL_TRANSITION_MILLIS, bossUuid.toString(),
+                    currentBossAnimationCueMillis(), bossUuid.toString(),
                     bossPhase.name() + "|" + canonicalBossAnimation(bossHitboxAnimationId));
             sendCurrentBossBarVisualUpdate(player, living, bossPhase);
         } else {
@@ -59862,7 +59922,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // Optional packet: older client builds ignore the unknown event type;
         // the server-side fight remains fully authoritative without it.
         sendClientPacket(player, "END_BOSS_PHASE", bossBindingInstanceId,
-                BOSS_PHASE_VISUAL_TRANSITION_MILLIS, bossUuid.toString(), stage.name() + "|IDLE_BREATH");
+                currentBossAnimationCueMillis(), bossUuid.toString(),
+                stage.name() + "|" + canonicalBossAnimation(bossHitboxAnimationId));
     }
 
     /** Send the richer HUD snapshot used by the optional custom client bar. */
@@ -59948,7 +60009,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 continue;
             }
             sendClientPacket(player, "END_BOSS_PHASE", bossBindingInstanceId,
-                    BOSS_PHASE_VISUAL_TRANSITION_MILLIS, bossUuid.toString(),
+                    currentBossAnimationCueMillis(), bossUuid.toString(),
                     (isOfficialBoss(boss instanceof LivingEntity living ? living : null)
                             ? bossPhase.name() : bossPhase.name()) + "|" + animation);
         }

@@ -14,12 +14,14 @@ class ClientModHandshakePolicyTest {
 
     @Test
     void defaultsToHeartbeatCapableExactVersionAndPreservesConfiguredPins() {
-        assertEquals("0.1.3+26.3", ClientModHandshakePolicy.DEFAULT_REQUIRED_VERSION);
+        assertEquals("0.1.4+26.3", ClientModHandshakePolicy.DEFAULT_REQUIRED_VERSION);
         assertEquals("0.1.3+26.3", ClientModHandshakePolicy.HEARTBEAT_CAPABLE_VERSION);
-        assertEquals("0.1.3+26.3", ClientModHandshakePolicy.requiredVersionFromConfig(null));
+        assertEquals("0.1.4+26.3", ClientModHandshakePolicy.requiredVersionFromConfig(null));
         assertEquals("0.1.2+26.3", ClientModHandshakePolicy.requiredVersionFromConfig("0.1.2+26.3"));
         assertEquals("custom-exact-pin", ClientModHandshakePolicy.requiredVersionFromConfig("custom-exact-pin"));
         assertTrue(ClientModHandshakePolicy.isHeartbeatCapableVersion("0.1.3+26.3"));
+        assertTrue(ClientModHandshakePolicy.isHeartbeatCapableVersion("0.1.4+26.3"));
+        assertFalse(ClientModHandshakePolicy.isHeartbeatCapableVersion("0.1.4+26.3-extra"));
         assertFalse(ClientModHandshakePolicy.isHeartbeatCapableVersion("0.1.2+26.3"));
         assertFalse(ClientModHandshakePolicy.isHeartbeatCapableVersion("0.1.3+26.3 "));
     }

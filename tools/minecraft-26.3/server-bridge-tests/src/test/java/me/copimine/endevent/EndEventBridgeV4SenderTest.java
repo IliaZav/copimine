@@ -35,6 +35,36 @@ final class EndEventBridgeV4SenderTest {
     private static final String NONCE = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
     @Test
+    void cocoonStageCuesKeepTheirRemainingTimeThroughSigningAndEncoding() throws Exception {
+        Fixture fixture = readyFixture(false, "0.1.4+26.3");
+        for (String animation : List.of("COCOON_FALL", "COCOON_LAND")) {
+            int before = fixture.outbound.size();
+            assertTrue(fixture.sender.send(fixture.playerUuid, "END_BOSS_PHASE", "boss.1", 500L,
+                    new UUID(0, 42).toString(), animation, 0, 0, 0F, "", ""));
+            assertEquals(before + 1, fixture.outbound.size());
+            var envelope = fixture.verify(fixture.outbound.get(before), before + 1L);
+            var body = EndEventBridgeBodyCodec.decode(envelope.bodyBytes());
+            assertEquals(animation, body.visualId());
+            assertEquals(500L, body.durationMillis());
+        }
+    }
+
+    @Test
+    void oldClientGetsKnownPosesWithoutAnUnknownTokenRetiringItsSenderStream() throws Exception {
+        Fixture fixture = readyFixture(false, "0.1.3+26.3");
+        for (String animation : List.of("COCOON_FALL", "COCOON_LAND")) {
+            int before = fixture.outbound.size();
+            assertTrue(fixture.sender.send(fixture.playerUuid, "END_BOSS_PHASE", "boss.1", 500L,
+                    new UUID(0, 42).toString(), animation, 0, 0, 0F, "", ""));
+            var body = EndEventBridgeBodyCodec.decode(
+                    fixture.verify(fixture.outbound.get(before), before + 1L).bodyBytes());
+            assertEquals(animation.equals("COCOON_FALL") ? "CAST_CHARGE" : "GROUND_SLAM", body.visualId());
+            assertEquals(800L, body.durationMillis());
+        }
+        assertTrue(fixture.sendValidState(), "compatibility presentation must not retire the model stream");
+    }
+
+    @Test
     void readyCallbackAndRepeatedModelRefreshDoNotRebindTheActiveGeneration() throws Exception {
         Fixture fixture = readyFixture(true); // real ready callback refreshes models immediately
         int before = fixture.outbound.size();
@@ -1029,7 +1059,11 @@ final class EndEventBridgeV4SenderTest {
     }
 
     private static Fixture readyFixture(boolean refreshOnReady) throws Exception {
-        Fixture fixture = new Fixture(true, true);
+        return readyFixture(refreshOnReady, "26.3");
+    }
+
+    private static Fixture readyFixture(boolean refreshOnReady, String version) throws Exception {
+        Fixture fixture = new Fixture(true, true, version);
         fixture.refreshOnReady = refreshOnReady;
         fixture.request(new BridgeRequestCodec.ControlHello(NONCE, fixture.playerUuid,
                 fixture.session.sessionUuid(), id(8)));

@@ -432,8 +432,14 @@ public final class EndEventClientState {
             return false;
         }
         BossPhaseBinding previous = bossPhase.get(packet.subjectId());
+        long cocoonLength = me.copimine.protocol.BossAnimationPlayback.cocoonClipMillis(
+                bossCueAnimation(packet.phaseId()));
+        long elapsed = cocoonLength == 0L ? 0L
+                : me.copimine.protocol.BossAnimationPlayback.cocoonElapsedMillis(
+                        bossCueAnimation(packet.phaseId()), packet.durationMillis());
+        if (elapsed < 0L) return false;
         if (previous != null && Objects.equals(previous.instanceId(), packet.instanceId())
-                && Objects.equals(previous.phaseId(), packet.phaseId())) {
+                && Objects.equals(previous.phaseId(), packet.phaseId()) && cocoonLength == 0L) {
             // Per-viewer binding heartbeats reassert presentation; they do not
             // restart a nine-second slam or its client impact timeline.
             return true;
@@ -442,8 +448,13 @@ public final class EndEventClientState {
                 packet.instanceId(),
                 packet.phaseId(),
                 packet.durationMillis(),
-                nowMillis));
+                nowMillis - elapsed));
         return true;
+    }
+
+    private static String bossCueAnimation(String phaseSpec) {
+        int separator = phaseSpec.lastIndexOf('|');
+        return BossAnimationId.fromWire(phaseSpec.substring(separator + 1)).wireId();
     }
 
     private boolean bindEntity(EndEventPacket packet, long nowMillis) {

@@ -66,7 +66,7 @@ Write-Output "CopiMine Waves 26.3 canonical runtime: $runtime"
 Assert-Artifact -Path $endEventPath -Size $endEventCandidate.size -Hash $endEventCandidate.sha256 -Algorithm SHA256 -Label 'Installed CopiMineEndEvent'
 Assert-Artifact -Path $paperPath -Size $profile.paper.size -Hash $profile.paper.sha256 -Algorithm SHA256 -Label 'Paper 26.3'
 Assert-Artifact -Path $paperRuntimePath -Size $profile.paper.size -Hash $profile.paper.sha256 -Algorithm SHA256 -Label 'Runtime Paper 26.3'
-Assert-Artifact -Path $clientPath -Size $profile.clientArtifact.size -Hash $profile.clientArtifact.sha512 -Algorithm SHA512 -Label 'CopiMineClient 0.1.3+26.3'
+Assert-Artifact -Path $clientPath -Size $profile.clientArtifact.size -Hash $profile.clientArtifact.sha512 -Algorithm SHA512 -Label 'CopiMineClient 0.1.4+26.3'
 $packSize = if (Test-Path -LiteralPath $packPath -PathType Leaf) { (Get-Item -LiteralPath $packPath).Length } else { 0 }
 Assert-Artifact -Path $packPath -Size $packSize -Hash $profile.resourcePackMigration.candidateSha256 -Algorithm SHA256 -Label 'CopiMineResourcePack-26.3'
 

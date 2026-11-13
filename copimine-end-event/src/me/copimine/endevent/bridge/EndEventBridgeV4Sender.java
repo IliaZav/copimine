@@ -289,6 +289,14 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
         }
         float boundedProgress = Float.isFinite(progress) ? Math.max(0.0F, Math.min(1.0F, progress)) : 0.0F;
         long duration = Math.max(0L, Math.min(600_000L, durationMillis));
+        if (bodyType == EndEventBridgeBodyCodec.Type.END_BOSS_PHASE) {
+            String compatible = me.copimine.protocol.BossAnimationPlayback.compatibleCue(
+                    visualId, state.sessionVersion);
+            if (!Objects.equals(compatible, visualId)) {
+                visualId = compatible;
+                duration = 800L; // old cue duration is a transition, not a remaining-stage clock
+            }
+        }
         EndEventBridgeBodyCodec.Body body = new EndEventBridgeBodyCodec.Body(bodyType,
                 context.generation(), timestamp, context.eventUuid(), nullToEmpty(instanceId), nullToEmpty(source),
                 nullToEmpty(visualId), duration, boundedProgress, Math.max(0, health), Math.max(0, maxHealth),

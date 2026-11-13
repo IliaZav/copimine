@@ -13,6 +13,8 @@ public final class BossAnimationPriorityPolicy {
         return current != BossAnimationId.DYING
                 && current != BossAnimationId.FINAL_STRIKE
                 && current != BossAnimationId.PHASE_TRANSITION
+                && current != BossAnimationId.COCOON_FALL
+                && current != BossAnimationId.COCOON_LAND
                 && current != BossAnimationId.GROUND_SLAM
                 && current != BossAnimationId.MELEE_SWIPE
                 && current != BossAnimationId.CHEST_STRIKE;

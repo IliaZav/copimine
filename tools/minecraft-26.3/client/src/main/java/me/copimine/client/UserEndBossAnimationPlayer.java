@@ -48,6 +48,8 @@ final class UserEndBossAnimationPlayer {
             case "DYING", "DEFEAT_COLLAPSE" -> 8.0F;
             case "MELEE_SWIPE", "CHEST_STRIKE", "GROUND_SLAM" -> 5.0F;
             case "HURT" -> 2.0F;
+            case "COCOON_FALL" -> 4.0F;
+            case "COCOON_LAND" -> 2.0F;
             case "IDLE_BREATH", "RUN" -> 6.0F;
             default -> 4.0F;
         };
@@ -175,6 +177,8 @@ final class UserEndBossAnimationPlayer {
         load(clips, "udar_iz_grudi.json", "CHEST_STRIKE", false);
         load(clips, "udar_po_zemle.animation.json", "GROUND_SLAM", false);
         load(clips, "phase_shift.animation.json", "PHASE_TRANSITION", false);
+        load(clips, "cocoon_fall.animation.json", "COCOON_FALL", false);
+        load(clips, "cocoon_land.animation.json", "COCOON_LAND", false);
         return Map.copyOf(clips);
     }
 

@@ -347,7 +347,7 @@ function Start-Bot {
     # The local probe must answer the same 26.3 mod challenge as the official
     # two-player runner before Paper accepts any survival interactions.
     END_RIFT_TEST_CLIENT_MOD_HANDSHAKE = '1'
-    END_RIFT_TEST_CLIENT_MOD_VERSION = '0.1.3+26.3'
+    END_RIFT_TEST_CLIENT_MOD_VERSION = '0.1.4+26.3'
     END_RIFT_BOT_WAVE7_AUTOPILOT = [string]$env:END_RIFT_BOT_WAVE7_AUTOPILOT
     END_RIFT_BOT_WAVE7_HOLD_POSITION = [string]$env:END_RIFT_BOT_WAVE7_HOLD_POSITION
     END_RIFT_REFLECT_ENABLED = '1'

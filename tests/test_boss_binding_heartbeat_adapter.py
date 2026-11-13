@@ -19,6 +19,7 @@ public class BossBindingHeartbeatProbe {
  UUID bossUuid=new UUID(0,1);String bossBindingInstanceId="binding",eventId="event";
  String bossHitboxAnimationId="GROUND_SLAM",CLIENT_VISUAL_BOSS="END_RIFT_GUARDIAN_V1";
  long generation=1,BOSS_PHASE_VISUAL_TRANSITION_MILLIS=400;
+ long currentBossAnimationCueMillis(){return BOSS_PHASE_VISUAL_TRANSITION_MILLIS;}
  BossPhase bossPhase=BossPhase.RIFT;Config config=new Config();
  int broadcasts,phases;Player expected;String animation,bindingVisual;
  boolean isEventVisualViewer(Player p){return true;}boolean isOfficialBoss(LivingEntity e){return true;}

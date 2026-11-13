@@ -380,12 +380,23 @@ public final class EndEventClientState {
                 || !Objects.equals(bossBindingInstance, packet.instanceId())) {
             return false;
         }
+        long length = me.copimine.protocol.BossAnimationPlayback.cocoonClipMillis(
+                bossCueAnimation(packet.phaseId()));
+        long elapsed = length == 0L ? 0L
+                : me.copimine.protocol.BossAnimationPlayback.cocoonElapsedMillis(
+                        bossCueAnimation(packet.phaseId()), packet.durationMillis());
+        if (elapsed < 0L) return false;
         bossPhase.put(packet.subjectId(), new BossPhaseBinding(
                 packet.instanceId(),
                 packet.phaseId(),
                 packet.durationMillis(),
-                nowMillis));
+                nowMillis - elapsed));
         return true;
+    }
+
+    private static String bossCueAnimation(String phaseSpec) {
+        int separator = phaseSpec.lastIndexOf('|');
+        return BossAnimationId.fromWire(phaseSpec.substring(separator + 1)).wireId();
     }
 
     private boolean bindEntity(EndEventPacket packet, long nowMillis) {

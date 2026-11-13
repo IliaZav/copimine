@@ -177,7 +177,7 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     profile = json.loads((ROOT / 'tools/minecraft-26.3/profile.lock.json').read_text(encoding='utf-8'))
     artifact = profile['clientArtifact']
 
-    assert artifact['filename'] == 'CopiMineClient-0.1.3+26.3.jar'
+    assert artifact['filename'] == 'CopiMineClient-0.1.4+26.3.jar'
     # Measured from the repeatable build output and recorded in the lock.
     # Re-measured after Wave 5 stopped dropping fog cycles four and five, which
     # changed validCycle and therefore the compiled bytes, and again after
@@ -222,10 +222,10 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # 12-November, spell art: the elite spell atlases and meshes are packed
     # into the client resources. Verified by two independent clean offline
     # builds producing the same size and digest.
-    assert artifact['size'] == 15_044_423
+    assert artifact['size'] == 15_046_525
     assert artifact['sha512'] == (
-        '9257d7e7f6d14300d32a7c204095f7d9f0cb8c2d7a5a342cb2628b0b38ee8912'
-        '69fcbc64eb0f900326a500d905bd8896847ac876194b1c1a64399fc6ea26cf5d'
+        '270b2ba564cbddc148bc1179a797ee4629ae0bdda24a4b5ed9ab6c40cb30263b'
+        '3e82e344a299af09fa820fc450862baa29f2d2aedbea5b63037aa84641abc932'
     )
 
 

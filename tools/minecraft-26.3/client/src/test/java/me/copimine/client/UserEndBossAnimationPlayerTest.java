@@ -9,6 +9,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class UserEndBossAnimationPlayerTest {
     @Test
+    void castBeatsHaveTheirOwnContinuousClipsInsteadOfRestartingChestStrike() {
+        assertTrue(UserEndBossAnimationPlayer.hasClip("CAST_CHARGE"));
+        assertTrue(UserEndBossAnimationPlayer.hasClip("CAST_RELEASE"));
+        assertTrue(UserEndBossAnimationPlayer.hasClip("RECOVERY"));
+        assertEquals(2.3F, UserEndBossAnimationPlayer.clipLengthSeconds("FINAL_STRIKE"), .0001F);
+        assertEquals(UserEndBossAnimationPlayer.sample("CAST_CHARGE", 20F),
+                UserEndBossAnimationPlayer.sample("CAST_RELEASE", 0F));
+        assertEquals(UserEndBossAnimationPlayer.sample("CAST_RELEASE", 8F),
+                UserEndBossAnimationPlayer.sample("RECOVERY", 0F));
+        assertNotEquals(UserEndBossAnimationPlayer.sample("CHEST_STRIKE", 10F),
+                UserEndBossAnimationPlayer.sample("CAST_CHARGE", 10F));
+        for (var delta : UserEndBossAnimationPlayer.sample("RECOVERY", 12F).deltas().values()) {
+            assertEquals(new ChameleonGuardianGeometry.Point(0, 0, 0), delta.translation());
+            assertEquals(new ChameleonGuardianGeometry.Point(0, 0, 0), delta.rotation());
+        }
+    }
+
+    @Test
     void cocoonHasAContinuousBraceCompressionAndRecoveryOnOriginalBones() {
         assertTrue(UserEndBossAnimationPlayer.hasClip("COCOON_FALL"));
         assertTrue(UserEndBossAnimationPlayer.hasClip("COCOON_LAND"));
@@ -53,7 +71,7 @@ class UserEndBossAnimationPlayerTest {
      * every wire id through clipFor(), because the supplied asset ships seven
      * clips for twenty-five animations and returning the identity pose left the
      * boss visibly frozen during every spell and cast beat. Identity is now
-     * reserved for a name that resolves to no clip at all — the test asserts the
+     * reserved for a name that resolves to no clip at all вЂ” the test asserts the
      * pose carries authored bone deltas, never invented geometry.
      */
     @Test

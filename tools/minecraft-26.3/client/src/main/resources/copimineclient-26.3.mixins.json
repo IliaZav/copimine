@@ -35,7 +35,9 @@
     "PlayerTabOverlayAccessor",
     "GameRendererPostProcessMixin",
     "BossCameraShakeMixin",
-    "BlackFogPostPassMixin"
+    "BlackFogPostPassMixin",
+    "ThrownItemRenderStateMixin",
+    "ThrownItemRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1

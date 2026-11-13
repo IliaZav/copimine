@@ -2,6 +2,8 @@ package me.copimine.client.mixin;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import me.copimine.client.DisplayRenderStateAccess;
+import me.copimine.client.GuardianSpellRenderStateAccess;
+import me.copimine.client.GuardianSpellRenderer;
 import me.copimine.client.EndRiftGuardianShieldRenderer;
 import me.copimine.client.EndRiftTentacleRenderer;
 import me.copimine.client.RitualSphereRenderer;
@@ -22,6 +24,8 @@ public abstract class DisplayEntityRendererMixin {
             at = @At("TAIL"))
     private void copimine$tagArticulatedCarrier(Display entity, DisplayEntityRenderState state,
                                                float partialTick, CallbackInfo ci) {
+        if (state instanceof GuardianSpellRenderStateAccess spell)
+            spell.copimine$spellPose(GuardianSpellRenderer.displayPose(entity, partialTick));
         if (!(state instanceof DisplayRenderStateAccess access)) return;
         access.copimine$setHideVanillaCarrier(
                 EndRiftTentacleRenderer.isCustomRenderEligible(entity)
@@ -35,6 +39,11 @@ public abstract class DisplayEntityRendererMixin {
                                                           SubmitNodeCollector collector,
                                                           CameraRenderState camera,
                                                           CallbackInfo ci) {
+        if (state instanceof GuardianSpellRenderStateAccess spell
+                && GuardianSpellRenderer.submit(spell.copimine$spellPose(), matrices, collector)) {
+            ci.cancel();
+            return;
+        }
         if (state instanceof DisplayRenderStateAccess access && access.copimine$hideVanillaCarrier()) {
             ci.cancel();
         }

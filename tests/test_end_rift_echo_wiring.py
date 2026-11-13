@@ -36,12 +36,12 @@ def body(name, text=None):
 
 
 def test_rage_summons_go_to_the_decoy_path_not_spiders():
+    # Execution of both accepted and refused special summons is covered by the
+    # production-adapter cases in test_boss_rage_summon_adapter.py. Do not pin
+    # `RAGE && summonEchoDecoys(...)`: that condition allowed spider fallback.
     summon = body("private void summonServants(")
-    assert "bossPhase == BossPhase.RAGE && summonEchoDecoys(boss)" in summon, (
-        "Phase 5 must route to decoys before the spider servant path"
-    )
-    # The decoy attempt must come first, or spiders get spawned alongside it.
-    assert summon.index("summonEchoDecoys(boss)") < summon.index("EntityType.SPIDER")
+    branch = summon[summon.index("if (bossPhase == BossPhase.RAGE)"):summon.index("EntityType.SPIDER")]
+    assert "summonEchoDecoys(boss);" in branch and "return;" in branch
 
 
 def test_a_decoy_is_fifty_hit_points_of_real_server_health():

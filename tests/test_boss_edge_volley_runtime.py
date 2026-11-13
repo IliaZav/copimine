@@ -65,6 +65,7 @@ public class BossEdgeVolleyRuntimeProbe {
     void registerEncounterTask(BukkitTask t){}
     void saveStateAsync(){saves++;}
     void releaseBossHazardReservation(String s){}
+    void clearBossSpellModels(){}
     void cancelBossFinalStrike(){}
     void clearArenaInferno(){}
     void clearVoidMarkZones(){}

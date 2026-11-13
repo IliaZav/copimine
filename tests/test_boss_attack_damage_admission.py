@@ -195,10 +195,33 @@ public class BossAttackAdmissionProbe {
     }
     final EventConfig config=new EventConfig();
     ''' + methods + r'''
+    // Keep the pre-fix adapter executable too: the baseline follows the moved
+    // target; the repaired adapter accepts the original immutable warning point.
+    static void lockedArea(BossAttackAdmissionProbe p,String ability,Player target,Location lock){
+        try {
+            java.lang.reflect.Method method;
+            Object argument;
+            try {method=BossAttackAdmissionProbe.class.getDeclaredMethod(ability,LivingEntity.class,Location.class);argument=lock;}
+            catch(NoSuchMethodException old){method=BossAttackAdmissionProbe.class.getDeclaredMethod(ability,LivingEntity.class,Player.class);argument=target;}
+            method.invoke(p,p.boss,argument);
+        }catch(ReflectiveOperationException error){throw new AssertionError(error);}
+    }
     static void check(boolean b,String m){if(!b)throw new AssertionError(m);}
     public static void main(String[] args){
         var p=new BossAttackAdmissionProbe();var target=new Player(p);p.players.add(target);
         String s=args[0];
+        if(s.endsWith("locked-point")){
+            Location warning=target.getLocation().clone();
+            target.x=20;
+            var occupant=new Player(p);p.players.add(occupant);
+            lockedArea(p,s.startsWith("blast")?"voidBlast":"voidMark",target,warning);
+            if(s.startsWith("mark"))Bukkit.scheduler.callback.run();
+            warning.x=100; // The running zone must own its copy, not the caller's Location.
+            check(target.damageCalls==0,"attack followed the player after the warning lock");
+            check(occupant.damageCalls==1,"visible locked area did not own the actual damage");
+            if(s.startsWith("mark"))check(p.activeVoidMarkCenters.values().iterator().next().x==1,"zone retained caller-mutable Location");
+            return;
+        }
         target.cancel=s.contains("cancelled");target.observe=!s.contains("unobserved");
         target.blocked=s.contains("shield");target.advanceGeneration=s.contains("stale");
         target.leaveRoster=s.contains("left");target.changeBoss=s.contains("replaced");
@@ -208,7 +231,7 @@ public class BossAttackAdmissionProbe {
         if(s.contains("above"))target.y=10;
         if(s.contains("behind"))target.x=-2;
         if(s.startsWith("contact"))p.applyContactHit(target,p.boss,6,new Vector(1,0,0));
-        else if(s.startsWith("blast"))p.voidBlast(p.boss,target);
+        else if(s.startsWith("blast"))lockedArea(p,"voidBlast",target,new Location(1,0,0));
         else if(s.startsWith("actor")){
             boolean accepted=p.applyBossActorAbilityDamage(p.boss,new LivingEntity(),target,6);
             if(accepted)target.addPotionEffect(new PotionEffect(PotionEffectType.WITHER,40,0,false,true,true));
@@ -231,7 +254,7 @@ public class BossAttackAdmissionProbe {
             var projectile=new Snowball();p.activeRiftProjectiles.add(projectile.id);
             p.onRiftProjectileHit(new ProjectileHitEvent(projectile,target));
         }
-        else if(s.startsWith("mark")){p.voidMark(p.boss,target);Bukkit.scheduler.callback.run();}
+        else if(s.startsWith("mark")){lockedArea(p,"voidMark",target,new Location(1,0,0));Bukkit.scheduler.callback.run();}
         else p.executeBossFinalStrikeImpact(p.boss,target.getLocation(),target.getUniqueId());
         if(s.endsWith("accepted")){
             check(target.damageCalls==1,"legal attack must deal exactly one hit");
@@ -264,3 +287,9 @@ def test_boss_hit_reactions_follow_the_current_accepted_damage(boss_attack_probe
 def test_boss_contact_volume_can_really_miss(boss_attack_probe, scenario):
     result = subprocess.run(["java", "-cp", str(boss_attack_probe), "BossAttackAdmissionProbe", scenario], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("attack", ["blast", "mark"])
+def test_area_attack_resolves_at_the_warned_point_not_the_fleeing_target(boss_attack_probe, attack):
+    result=subprocess.run(["java", "-cp", str(boss_attack_probe), "BossAttackAdmissionProbe", f"{attack}-locked-point"],capture_output=True,text=True)
+    assert result.returncode == 0, result.stdout+result.stderr

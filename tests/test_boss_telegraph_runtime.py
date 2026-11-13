@@ -16,7 +16,7 @@ def telegraph_probe(tmp_path_factory):
                                              # The authored boss signature is spliced in with the
                                              # telegraph it belongs to, so the probe exercises the
                                              # real code path and not a stand-in.
-                                             "void renderAuthoredBossTelegraph(Player viewer,"])
+                                             "void renderAuthoredBossTelegraph(Location origin,"])
     java = out / "BossTelegraphRuntimeProbe.java"
     java.write_text(r'''
 import java.util.*;
@@ -52,6 +52,9 @@ public class BossTelegraphRuntimeProbe {
     static class Bukkit {static Scheduler scheduler;static Scheduler getScheduler(){return scheduler;}}
     static class World {}
     enum Sound {ENTITY_WARDEN_NEARBY_CLOSE,ENTITY_EVOKER_PREPARE_ATTACK}
+    static class BossSpellPresentationEffects {static void frame(Location at,Vector axis,List<BossSpellGeometryPolicy.Point> points,int rgb,List<Player> viewers,java.util.function.BiPredicate<Player,Location> allowed){}}
+    static final double VOID_MARK_RADIUS_BLOCKS=3;
+    Location coreCombatAnchorLocation(){return new Location();}
     enum SoundCategory {HOSTILE}
     static class Registry {boolean owns(long g){return g==7;}}
     record Config(){int bossSpellTelegraphTicks(){return 20;}}
@@ -62,7 +65,9 @@ public class BossTelegraphRuntimeProbe {
     boolean testCombatAiMode;float bossCastLockedYaw;BukkitTask bossCastTask;int impacts,impactTick,particles;
     boolean isTestBoss(LivingEntity b){return false;}
     void releaseBossHazardReservation(String reason){}
+    void clearBossSpellModels(){}
     void holdBossCastPosition(LivingEntity b){}
+    void playBossSpellModel(LivingEntity b,String id,Location at,int ticks,boolean follow){}
     void aimBossCastAt(LivingEntity b,Location l){}
     String bossTelegraphAnimation(EndRiftAiPolicy.BossSpell s){return s.id();}
     String bossCueId(String s,BossVisualCuePolicy.CueStage stage){return s;}

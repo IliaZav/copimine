@@ -49,7 +49,7 @@ final class UserEndBossAnimationPlayer {
             case "MELEE_SWIPE", "CHEST_STRIKE", "GROUND_SLAM" -> 5.0F;
             case "HURT" -> 2.0F;
             case "COCOON_FALL" -> 4.0F;
-            case "COCOON_LAND" -> 2.0F;
+            case "COCOON_LAND", "CAST_RELEASE", "RECOVERY" -> 2.0F;
             case "IDLE_BREATH", "RUN" -> 6.0F;
             default -> 4.0F;
         };
@@ -122,11 +122,11 @@ final class UserEndBossAnimationPlayer {
         String canonicalId = canonical(animationId);
         if (CLIPS.containsKey(canonicalId)) return canonicalId;
         return switch (canonicalId) {
-            case "CHEST_STRIKE", "MARK_CONTROL", "SUMMON_CHANNEL", "CAST_CHARGE",
-                 "CAST_RELEASE", "CAST_IMPACT", "RECOVERY", "SPELL_VOID_BLAST",
+            case "CAST_IMPACT" -> "CAST_RELEASE";
+            case "MARK_CONTROL", "SUMMON_CHANNEL", "SPELL_VOID_BLAST",
                  "SPELL_RIFT_PROJECTILE", "SPELL_RIFT_ARROWS", "SPELL_ARROW_SALVO",
                  "SPELL_VOID_MARK", "SPELL_SUMMON_SERVANTS", "SPELL_SUMMON",
-                 "SPELL_RIFT_OBELISKS", "SPELL_ARENA_INFERNO" -> "CHEST_STRIKE";
+                 "SPELL_RIFT_OBELISKS", "SPELL_ARENA_INFERNO" -> "CAST_CHARGE";
             case "PHASE_TRANSITION", "FINAL_STRIKE" -> "GROUND_SLAM";
             case "TELEPORT_RIP" -> "MELEE_SWIPE";
             default -> "IDLE_BREATH";
@@ -179,6 +179,10 @@ final class UserEndBossAnimationPlayer {
         load(clips, "phase_shift.animation.json", "PHASE_TRANSITION", false);
         load(clips, "cocoon_fall.animation.json", "COCOON_FALL", false);
         load(clips, "cocoon_land.animation.json", "COCOON_LAND", false);
+        load(clips, "cast_charge.animation.json", "CAST_CHARGE", false);
+        load(clips, "cast_release.animation.json", "CAST_RELEASE", false);
+        load(clips, "cast_recovery.animation.json", "RECOVERY", false);
+        load(clips, "final_strike.animation.json", "FINAL_STRIKE", false);
         return Map.copyOf(clips);
     }
 

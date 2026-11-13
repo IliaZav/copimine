@@ -1,0 +1,161 @@
+{
+  "format_version": "1.8.0",
+  "animations": {
+    "animation.guardian.cast_recovery": {
+      "animation_length": 0.6,
+      "loop": false,
+      "bones": {
+        "body": {
+          "rotation": {
+            "0": {
+              "vector": [
+                12,
+                0,
+                0
+              ]
+            },
+            "0.2": {
+              "vector": [
+                5,
+                0,
+                0
+              ]
+            },
+            "0.6": {
+              "vector": [
+                0,
+                0,
+                0
+              ]
+            }
+          }
+        },
+        "head": {
+          "rotation": {
+            "0": {
+              "vector": [
+                -6,
+                0,
+                0
+              ]
+            },
+            "0.2": {
+              "vector": [
+                -3,
+                0,
+                0
+              ]
+            },
+            "0.6": {
+              "vector": [
+                0,
+                0,
+                0
+              ]
+            }
+          }
+        },
+        "left_hand": {
+          "rotation": {
+            "0": {
+              "vector": [
+                -18,
+                -8,
+                -12
+              ]
+            },
+            "0.2": {
+              "vector": [
+                -9,
+                -8,
+                -6
+              ]
+            },
+            "0.6": {
+              "vector": [
+                0,
+                0,
+                0
+              ]
+            }
+          }
+        },
+        "right_hand": {
+          "rotation": {
+            "0": {
+              "vector": [
+                -18,
+                8,
+                12
+              ]
+            },
+            "0.2": {
+              "vector": [
+                -9,
+                8,
+                6
+              ]
+            },
+            "0.6": {
+              "vector": [
+                0,
+                0,
+                0
+              ]
+            }
+          }
+        },
+        "left_hand_low": {
+          "rotation": {
+            "0": {
+              "vector": [
+                8,
+                0,
+                0
+              ]
+            },
+            "0.2": {
+              "vector": [
+                3,
+                0,
+                0
+              ]
+            },
+            "0.6": {
+              "vector": [
+                0,
+                0,
+                0
+              ]
+            }
+          }
+        },
+        "right_hand_low": {
+          "rotation": {
+            "0": {
+              "vector": [
+                8,
+                0,
+                0
+              ]
+            },
+            "0.2": {
+              "vector": [
+                3,
+                0,
+                0
+              ]
+            },
+            "0.6": {
+              "vector": [
+                0,
+                0,
+                0
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

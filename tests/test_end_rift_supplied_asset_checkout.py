@@ -21,9 +21,9 @@ def test_supplied_guardian_json_bytes_survive_windows_checkout(tmp_path):
         target.write_bytes(supplied[relative])
     extra = ASSETS / "animations/phase_shift.animation.json"
     assert extra in supplied, "new authored transition must survive checkout too"
-    for name in ("cocoon_fall", "cocoon_land"):
+    for name in ("cocoon_fall", "cocoon_land", "cast_charge", "cast_release", "cast_recovery", "final_strike"):
         assert ASSETS / f"animations/{name}.animation.json" in supplied
-    assert len(supplied) == 11, "exercise geometry, seven supplied clips, transition, fall and landing"
+    assert len(supplied) == 15, "exercise geometry, seven supplied clips, transition, fall/landing and three cast beats"
     for arguments in (
         ["init", "-q"], ["config", "core.autocrlf", "true"],
         ["config", "core.longpaths", "true"], ["add", "."],

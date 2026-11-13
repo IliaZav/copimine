@@ -137,6 +137,7 @@ public class BossChestStrikeReleaseProbe {
     boolean applyContactHit(Player p, LivingEntity b, double d, Vector k){return false;}
     void playBossImpactPresentation(Object... args){}
     void registerEncounterTask(BukkitTask t){}
+    void clearBossSpellModels(){}
     void releaseBossHazardReservation(String reason){released++;}
     void clearWorldVfxBeam(String s){}
     void clearArenaInferno(){}

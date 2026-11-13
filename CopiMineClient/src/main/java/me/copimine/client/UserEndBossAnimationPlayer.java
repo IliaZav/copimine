@@ -85,6 +85,10 @@ final class UserEndBossAnimationPlayer {
         load(clips, "udar_po_zemle.animation.json", "GROUND_SLAM", false);
         load(clips, "cocoon_fall.animation.json", "COCOON_FALL", false);
         load(clips, "cocoon_land.animation.json", "COCOON_LAND", false);
+        load(clips, "cast_charge.animation.json", "CAST_CHARGE", false);
+        load(clips, "cast_release.animation.json", "CAST_RELEASE", false);
+        load(clips, "cast_recovery.animation.json", "RECOVERY", false);
+        load(clips, "final_strike.animation.json", "FINAL_STRIKE", false);
         return Map.copyOf(clips);
     }
 

@@ -30,7 +30,11 @@ $clips = @(
   [ordered]@{ File = 'udar_po_zemle.animation.json'; Id = 'GROUND_SLAM'; Loop = $false },
   [ordered]@{ File = 'phase_shift.animation.json'; Id = 'PHASE_TRANSITION'; Loop = $false },
   [ordered]@{ File = 'cocoon_fall.animation.json'; Id = 'COCOON_FALL'; Loop = $false },
-  [ordered]@{ File = 'cocoon_land.animation.json'; Id = 'COCOON_LAND'; Loop = $false }
+  [ordered]@{ File = 'cocoon_land.animation.json'; Id = 'COCOON_LAND'; Loop = $false },
+  [ordered]@{ File = 'cast_charge.animation.json'; Id = 'CAST_CHARGE'; Loop = $false },
+  [ordered]@{ File = 'cast_release.animation.json'; Id = 'CAST_RELEASE'; Loop = $false },
+  [ordered]@{ File = 'cast_recovery.animation.json'; Id = 'RECOVERY'; Loop = $false },
+  [ordered]@{ File = 'final_strike.animation.json'; Id = 'FINAL_STRIKE'; Loop = $false }
 )
 
 function Fail-Asset([string]$source, [string]$message) {

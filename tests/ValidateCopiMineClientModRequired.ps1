@@ -27,11 +27,31 @@ if ($config -notmatch '(?m)^  required_client_mod_id:\s*copimineclient\s*$') { t
 if ($config -notmatch "(?m)^  required_client_mod_version: $([regex]::Escape($artifactVersion))\r?$") {
   throw "The configured required client version must exactly match profile.lock.json ($artifactVersion)."
 }
-if ($handshakePolicy -notmatch "HEARTBEAT_CAPABLE_VERSION = `"$([regex]::Escape($artifactVersion))`"" -or
-    ($handshakePolicy -notmatch "DEFAULT_REQUIRED_VERSION = `"$([regex]::Escape($artifactVersion))`"" -and
-     $handshakePolicy -notmatch 'DEFAULT_REQUIRED_VERSION = HEARTBEAT_CAPABLE_VERSION')) {
-  throw "The server fallback client version must match profile.lock.json ($artifactVersion)."
+# Execute the real policy: the current default may be an alias, while an
+# older reviewed version remains heartbeat-capable during an upgrade.
+$versionProbeDirectory = Join-Path $root ('tests/build/client-required-version-' + [Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $versionProbeDirectory -Force | Out-Null
+$versionProbe = Join-Path $versionProbeDirectory 'RequiredClientVersionProbe.java'
+$versionProbeSource = @'
+import me.copimine.protocol.ClientModHandshakePolicy;
+public final class RequiredClientVersionProbe {
+    public static void main(String[] args) {
+        if (args.length != 1
+                || !args[0].equals(ClientModHandshakePolicy.DEFAULT_REQUIRED_VERSION)
+                || !ClientModHandshakePolicy.isHeartbeatCapableVersion(args[0])) {
+            throw new AssertionError("default/heartbeat policy does not match the pinned client");
+        }
+    }
 }
+'@
+[IO.File]::WriteAllText($versionProbe, $versionProbeSource, [Text.UTF8Encoding]::new($false))
+$versionCompiler = Get-Command javac -CommandType Application -ErrorAction Stop | Select-Object -First 1
+$versionJava = Get-Command java -CommandType Application -ErrorAction Stop | Select-Object -First 1
+$versionPolicySource = Join-Path $root 'tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/ClientModHandshakePolicy.java'
+& $versionCompiler.Source -encoding UTF-8 --release 21 -d $versionProbeDirectory $versionPolicySource $versionProbe
+if ($LASTEXITCODE -ne 0) { throw 'The actual client-version policy probe failed to compile.' }
+& $versionJava.Source -cp $versionProbeDirectory RequiredClientVersionProbe $artifactVersion
+if ($LASTEXITCODE -ne 0) { throw "The server fallback/heartbeat client version must match profile.lock.json ($artifactVersion)." }
 if ([regex]::Matches($narcoticsCommands, '/cmclient require client(?! <true\|false>)').Count -lt 2 -or
     $narcoticsCommands -match '/cmclient require client <true\|false>' -or
     $narcoticsCommands -match '(?s)args\.length == 3 && "require"\.equalsIgnoreCase\(args\[0\]\).*?List\.of\("true", "false"\)') {

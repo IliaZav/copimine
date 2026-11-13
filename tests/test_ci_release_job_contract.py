@@ -260,7 +260,7 @@ def test_client_artifact_size_documentation_matches_the_profile_lock() -> None:
     profile = json.loads((ROOT / "tools/minecraft-26.3/profile.lock.json").read_text(encoding="utf-8"))
     readme = (ROOT / "docs/minecraft-26.3/README.md").read_text(encoding="utf-8")
     documented_size = f"{profile['clientArtifact']['size']:,}".replace(",", " ")
-    size_match = re.search(r"CopiMineClient-0\.1\.3\+26\.3\.jar`, ([0-9 ]+) ", readme)
+    size_match = re.search(re.escape(profile["clientArtifact"]["filename"]) + r"`, ([0-9 ]+) ", readme)
 
     assert size_match is not None
     assert size_match.group(1) == documented_size

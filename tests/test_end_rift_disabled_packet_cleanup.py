@@ -75,7 +75,7 @@ public class DisabledPacketCleanup {
       throw new AssertionError("cleanup must reach its checkpoint; only enabled plugins send packets");
   }
 ''' % protocol_constant.group(0) + source[start:end] + "\n}", encoding="utf-8")
-    result = subprocess.run(["javac", "-d", str(directory), str(fixture)], capture_output=True, text=True)
+    result = subprocess.run(["javac", "-sourcepath", str(ROOT / "copimine-end-event/src"), "-d", str(directory), str(fixture)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     return directory
 

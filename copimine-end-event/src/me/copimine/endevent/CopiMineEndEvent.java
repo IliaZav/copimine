@@ -48430,6 +48430,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // every CHANNEL decision and prevents all remaining pressure.
         if (bossFinalStrikeUsed || config == null || !config.finalStrikeTuning().enabled())
             available.remove(EndRiftAiPolicy.BossSpell.FINAL_STRIKE);
+        if (bossPhase == BossPhase.RAGE
+                && (!EchoDecoyPolicy.maySummon(echoDecoyLastSummonTick, eventTickCounter)
+                || EchoDecoyPolicy.maySummonTo(echoDecoyIds.size()) == 0))
+            available.remove(EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS);
         BossBrain.Decision brainDecision = chooseCurrentBossDecision(boss, available);
         EndRiftAiPolicy.BossSpell spell = spellForAbility(
                 brainDecision == null || brainDecision.ability() == null
@@ -56715,7 +56719,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // Contract 15.3: in RAGE the summon is the Echo DECOY - a combat-capable
         // replica of the Guardian itself - not a pair of spiders. The policy owns
         // the 50 HP, the cap of five and the ~150 s summon cooldown.
-        if (bossPhase == BossPhase.RAGE && summonEchoDecoys(boss)) {
+        if (bossPhase == BossPhase.RAGE) {
+            // A refused special summon stays refused: never substitute unrelated
+            // ordinary mobs when its cooldown, cap or placement blocks it.
+            summonEchoDecoys(boss);
             return;
         }
         // Contract 14.6: NO skeleton towers or skeleton archer turrets in any

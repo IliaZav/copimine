@@ -19,7 +19,8 @@ def probe(tmp_path_factory):
 import java.util.*;
 import me.copimine.endevent.domain.*;
 public class BossAvailabilityProbe {
-    long generation=1,cocoonFallGeneration=1;
+    long generation=1,cocoonFallGeneration=1,echoDecoyLastSummonTick=-1,eventTickCounter=0;
+    Set<UUID> echoDecoyIds=new HashSet<>();
     BossPhase bossPhase=BossPhase.LAST_SEAL;
     CocoonFallPolicy.Stage cocoonFallStage=CocoonFallPolicy.Stage.COCOONED;
     boolean bossFinalStrikeUsed;
@@ -36,6 +37,11 @@ public class BossAvailabilityProbe {
         return null;
     }
     BossBrain.Decision chooseCurrentBossDecision(LivingEntity boss,List<EndRiftAiPolicy.BossSpell> pool){
+        if(bossPhase==BossPhase.RAGE
+                && (!EchoDecoyPolicy.maySummon(echoDecoyLastSummonTick,eventTickCounter)
+                || EchoDecoyPolicy.maySummonTo(echoDecoyIds.size())==0)
+                && pool.contains(EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS))
+            throw new AssertionError("cooldown/cap-blocked decoy summon reached scoring");
         UUID player=new UUID(0,1);
         var observation=new BossPerceptionSnapshot.PlayerObservation(player,true,1,3,true,false,0,false,false,false,3,0,0,0,0,0,"");
         var snapshot=new BossPerceptionSnapshot(bossPhase,null,List.of(observation),null,null,"",generation,false);
@@ -58,6 +64,12 @@ public class BossAvailabilityProbe {
             p.cocoonFallStage=CocoonFallPolicy.Stage.MELEE_FURY;
             if(p.currentBossSpellPool().contains(EndRiftAiPolicy.BossSpell.FINAL_STRIKE))
                 throw new AssertionError("remote target explosion leaked into permanent melee fury");
+        }else if(args[0].startsWith("decoy")){
+            p.bossPhase=BossPhase.RAGE;
+            if(args[0].equals("decoy-cooldown"))p.echoDecoyLastSummonTick=0;
+            else for(int i=0;i<EchoDecoyPolicy.MAX_ALIVE;i++)p.echoDecoyIds.add(new UUID(0,i));
+            for(int tick=0;tick<20;tick++)
+                if(!p.castCurrentBossSpell(new LivingEntity(),false))throw new AssertionError("Rage pressure stalled");
         }else{
             p.bossFinalStrikeUsed=args[0].equals("used");
             p.config.enabled=!args[0].equals("disabled");
@@ -75,7 +87,7 @@ public class BossAvailabilityProbe {
     assert result.returncode==0,result.stderr
     return out
 
-@pytest.mark.parametrize('mode',['used','disabled','fresh','fury'])
+@pytest.mark.parametrize('mode',['used','disabled','fresh','fury','decoy-cooldown','decoy-cap'])
 def test_actual_automatic_selector_skips_unavailable_actions(probe,mode):
     result=subprocess.run(['java','-cp',str(probe),'BossAvailabilityProbe',mode],capture_output=True,text=True)
     assert result.returncode==0,result.stderr

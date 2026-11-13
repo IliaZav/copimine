@@ -48426,6 +48426,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         List<EndRiftAiPolicy.BossSpell> available = new ArrayList<>(
                 currentBossSpellPool());
+        // Rank only dispatchable actions: an exhausted one-shot otherwise wins
+        // every CHANNEL decision and prevents all remaining pressure.
+        if (bossFinalStrikeUsed || config == null || !config.finalStrikeTuning().enabled())
+            available.remove(EndRiftAiPolicy.BossSpell.FINAL_STRIKE);
         BossBrain.Decision brainDecision = chooseCurrentBossDecision(boss, available);
         EndRiftAiPolicy.BossSpell spell = spellForAbility(
                 brainDecision == null || brainDecision.ability() == null

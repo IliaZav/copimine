@@ -145,8 +145,7 @@ public final class CocoonFallPolicy {
     public static List<EndRiftAiPolicy.BossSpell> furySpellProfile() {
         return List.of(
                 EndRiftAiPolicy.BossSpell.MELEE_SWIPE,
-                EndRiftAiPolicy.BossSpell.GROUND_SLAM,
-                EndRiftAiPolicy.BossSpell.FINAL_STRIKE);
+                EndRiftAiPolicy.BossSpell.GROUND_SLAM);
     }
 
     /** The fury profile must contain no long-range channel spell. */
@@ -160,7 +159,8 @@ public final class CocoonFallPolicy {
                     || spell == EndRiftAiPolicy.BossSpell.RIFT_ARROWS
                     || spell == EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS
                     || spell == EndRiftAiPolicy.BossSpell.ARENA_INFERNO
-                    || spell == EndRiftAiPolicy.BossSpell.BOSS_FIREBALL) {
+                    || spell == EndRiftAiPolicy.BossSpell.BOSS_FIREBALL
+                    || spell == EndRiftAiPolicy.BossSpell.FINAL_STRIKE) {
                 return false;
             }
         }

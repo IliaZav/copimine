@@ -47,8 +47,13 @@ if((Get-FileHash -Algorithm SHA256 -LiteralPath $staged).Hash -cne $expected){th
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive=[IO.Compression.ZipFile]::OpenRead((Join-Path $root 'thirdparty/CopiMineMods.zip'))
 try {
-    $entry=$archive.GetEntry('mods/CopiMineClient-0.1.1.jar')
-    if($null -eq $entry){throw 'Modpack has no rebuilt client'}
+    # Windows PowerShell's Compress-Archive writes backslash entry names.
+    # Normalize the path while refusing duplicate/ambiguous client entries.
+    $entries=@($archive.Entries | Where-Object {
+        $_.FullName.Replace('\','/') -ceq 'mods/CopiMineClient-0.1.1.jar'
+    })
+    if($entries.Count -ne 1){throw 'Modpack must contain exactly one rebuilt client'}
+    $entry=$entries[0]
     $stream=$entry.Open();$sha=[Security.Cryptography.SHA256]::Create()
     try {$embedded=[BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-','')}
     finally {$stream.Dispose();$sha.Dispose()}

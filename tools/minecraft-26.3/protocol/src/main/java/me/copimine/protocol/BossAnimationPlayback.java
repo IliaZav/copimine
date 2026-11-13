@@ -7,8 +7,10 @@ public final class BossAnimationPlayback {
     public static double rate(String animation) {
         if (animation == null) return 1.0D;
         return switch (animation) {
-            case "MELEE_SWIPE" -> 1.5D;
-            case "CHEST_STRIKE", "GROUND_SLAM" -> 1.25D;
+            // Shared by contact admission, animated hitboxes and client poses.
+            // Do not speed up only the renderer: that produces phantom hits.
+            case "MELEE_SWIPE", "GROUND_SLAM" -> 2.0D;
+            case "CHEST_STRIKE" -> 1.75D;
             default -> 1.0D;
         };
     }

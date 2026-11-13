@@ -48735,7 +48735,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         double targetDistance = Math.sqrt(horizontalDistanceSquared(boss.getLocation(), target.getLocation()));
         BossPhase tacticStage = bossPhase;
         CombatTacticsPolicy.BossPlan plan = CombatTacticsPolicy.bossPlan(
-                tacticStage, bossTacticCycle, targetDistance, targetOnCore);
+                tacticStage, bossTacticCycle, targetDistance, targetOnCore, isCurrentBossMeleeFury());
         if (keyCombatTactic != null) {
             boss.getPersistentDataContainer().set(keyCombatTactic,
                     PersistentDataType.STRING, plan.tactic().name());
@@ -48811,6 +48811,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             preferred = stableCombatRingLocation(anchor, boss, 7.5D, 10.0D);
         } else {
             preferred = switch (plan.tactic()) {
+                case MELEE_PRESSURE -> bossContactApproachLocation(boss, target, plan.preferredDistance());
                 case RING_ORBIT -> stableCombatRingLocation(anchor, boss,
                         plan.preferredDistance(), plan.preferredDistance() + 2.0D);
                 case FLANK, CROSSCUT -> bossFlankTargetLocation(anchor, boss, target,
@@ -48930,6 +48931,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         double sign = direction < 0.0D ? -1.0D : 1.0D;
         return target.getLocation().clone().add(side.multiply(sign * Math.max(
                 MIN_BOSS_CORE_DISTANCE_BLOCKS, distance)));
+    }
+
+    /** One grounded contact band, without pathing into a player's collision box. */
+    private Location bossContactApproachLocation(Mob boss, Player target, double distance) {
+        Location player = target.getLocation();
+        Vector towardBoss = boss.getLocation().toVector().subtract(player.toVector());
+        towardBoss.setY(0.0D);
+        if (towardBoss.lengthSquared() < 0.01D) {
+            towardBoss = player.getDirection().setY(0.0D);
+        }
+        if (towardBoss.lengthSquared() < 0.01D) towardBoss = new Vector(1.0D, 0.0D, 0.0D);
+        return player.clone().add(towardBoss.normalize().multiply(distance));
     }
 
     private boolean telegraphBossSpell(LivingEntity boss, Player target,
@@ -49413,8 +49426,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         playBossVisualCue(boss,
                 bossCueId(spell.id(), BossVisualCuePolicy.CueStage.RELEASE),
                 boss.getEyeLocation(), forced);
-        if (!launchSpellFlight(boss, mark,
-                "BOSS_SPELL_FLIGHT", spell.id(), target.getUniqueId(), forced,
+        if (!launchBossSpellDelivery(boss, target, mark, spell, forced,
                 callbackGeneration, () -> {
                     if (bossCastSequence != castSequence || generation != callbackGeneration
                             || !Objects.equals(eventId, callbackEvent)) return;
@@ -49430,6 +49442,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                              + " target=" + target.getUniqueId() + " generation=" + callbackGeneration);
                      Location impactOrigin = spell == EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS
                              ? boss.getLocation() : mark;
+                     // Physical bodies render their own launch, flight and real
+                     // collision. Never flash a false impact at a player before
+                     // the projectile has even left the Guardian's hand.
+                     if (!me.copimine.endevent.domain.BossSpellDeliveryPolicy.physicalProjectile(spell)) {
                      if (BossSpellVisualCompositionPolicy.isAuthored(spell.id())) {
                          renderAuthoredBossImpact(impactOrigin,
                                  BossSpellVisualCompositionPolicy.composition(spell.id()));
@@ -49449,6 +49465,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                              && Objects.equals(resetCue.owner(), boss.getUniqueId())) {
                          scheduleBossAnimationReset(boss, callbackGeneration,
                                  resetCue.sequence(), resetCue.cueId(), 20L);
+                     }
                      }
                      switch (spell) {
                         case VOID_BLAST -> voidBlast(boss, target);
@@ -49489,6 +49506,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             releaseBossHazardReservation("cast-flight-rejected");
         }
      }
+
+    private boolean launchBossSpellDelivery(LivingEntity boss, Player target, Location mark,
+            EndRiftAiPolicy.BossSpell spell, boolean forced, long callbackGeneration,
+            Runnable release) {
+        if (taskRegistry == null || !taskRegistry.owns(callbackGeneration) || boss == null
+                || target == null || spell == null || release == null || !isSpellFlightAllowed(boss, forced)
+                || !Objects.equals(bossUuid, boss.getUniqueId())
+                || spell != EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS && !isCombatTarget(target)
+                || !Objects.equals(boss.getWorld(), target.getWorld())) return false;
+        if (me.copimine.endevent.domain.BossSpellDeliveryPolicy.physicalProjectile(spell)) {
+            // The warning already ended on the release marker. The old generic
+            // eight-tick fake flight reached the target, then spawned a second
+            // projectile back at the boss. Keep one visible/collision owner.
+            release.run();
+            return true;
+        }
+        return launchSpellFlight(boss, mark, "BOSS_SPELL_FLIGHT", spell.id(),
+                target.getUniqueId(), forced, callbackGeneration, release);
+    }
 
     private void voidBlast(LivingEntity boss, Player target) {
         Location center = target.getLocation();

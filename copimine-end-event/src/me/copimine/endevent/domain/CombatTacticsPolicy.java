@@ -14,6 +14,7 @@ public final class CombatTacticsPolicy {
     }
 
     public enum BossTactic {
+        MELEE_PRESSURE,
         RING_ORBIT,
         FLANK,
         CROSSCUT,
@@ -55,16 +56,33 @@ public final class CombatTacticsPolicy {
 
     public static BossPlan bossPlan(BossPhase phase, int cycle,
                                     double targetDistance, boolean targetOnCore) {
+        return bossPlan(phase, cycle, targetDistance, targetOnCore, false);
+    }
+
+    /** Cocoon ownership is explicit: health alone cannot identify the grounded finale. */
+    public static BossPlan bossPlan(BossPhase phase, int cycle,
+                                    double targetDistance, boolean targetOnCore,
+                                    boolean meleeFury) {
         BossPhase safe = phase == null ? BossPhase.AWAKENING : phase;
         int beat = Math.floorMod(cycle, 4);
         double direction = beat % 2 == 0 ? 1.0D : -1.0D;
         if (targetOnCore) {
             return new BossPlan(BossTactic.CREATE_SPACE, 8.0D, true, true, direction);
         }
+        // Keep a real contact opportunity instead of abandoning it for the
+        // next orbit beat. The adapter resolves this band from the PLAYER,
+        // never from Core; it remains subject to the arena/floor validator.
+        boolean contact = Double.isFinite(targetDistance) && targetDistance >= 0.0D
+                && targetDistance <= BossContactStrikePolicy.MELEE_SWIPE_RANGE;
+        if (safe == BossPhase.LAST_SEAL && meleeFury
+                || safe != BossPhase.LAST_SEAL && contact) {
+            return new BossPlan(BossTactic.MELEE_PRESSURE, MIN_BOSS_DISTANCE,
+                    true, false, direction);
+        }
         // Alternate a deliberate close approach with the phase's ranged job.
         // Previously every early-phase destination stayed beyond swipe range.
         if (safe != BossPhase.LAST_SEAL && (beat == 0 || beat == 2)) {
-            return new BossPlan(BossTactic.CROSSCUT, MIN_BOSS_DISTANCE,
+            return new BossPlan(BossTactic.MELEE_PRESSURE, MIN_BOSS_DISTANCE,
                     true, false, direction);
         }
         return switch (safe) {

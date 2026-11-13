@@ -75,7 +75,7 @@ public class BossPathBudgetProbe {
     enum BossPhase { HUNT }enum Tactic { PURSUE }
     static class CombatTacticsPolicy {
         record BossPlan(Tactic tactic,double preferredDistance){}
-        static BossPlan bossPlan(Object phase,int cycle,double distance,boolean core){return new BossPlan(Tactic.PURSUE,2);}
+        static BossPlan bossPlan(Object phase,int cycle,double distance,boolean core,boolean fury){return new BossPlan(Tactic.PURSUE,2);}
     }
     static class BossPhasePolicy {record CombatProfile(double movementSpeed){}}
     static class GroundedBossMotionPolicy {record Resolution(Animation animation){}}
@@ -85,6 +85,7 @@ public class BossPathBudgetProbe {
     static final long BOSS_TACTIC_REFRESH_MILLIS=1000;
     static final double MIN_BOSS_CORE_DISTANCE_BLOCKS=3;
     final Config config=new Config();BossPhase bossPhase=BossPhase.HUNT;Object keyCombatTactic;boolean noFloor;
+    boolean isCurrentBossMeleeFury(){return false;}
     boolean isCombatTarget(Player p){return true;}Location coreCombatAnchorLocation(){return new Location();}
     boolean isCoreBlockPosition(Location p){return false;}double horizontalDistanceSquared(Location a,Location b){return 25;}
     Location bossTacticalDestination(Location a,Mob b,Player p,CombatTacticsPolicy.BossPlan plan){planned++;return noFloor?null:new Location();}

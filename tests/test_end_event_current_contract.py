@@ -795,7 +795,7 @@ def test_boss_spell_flight_rejection_releases_the_reservation() -> None:
     execute_start = source.index("private void executeBossSpell")
     execute_end = source.index("private void voidBlast", execute_start)
     execute = source[execute_start:execute_end]
-    assert "if (!launchSpellFlight(" in execute
+    assert "if (!launchBossSpellDelivery(" in execute
     assert "releaseBossHazardReservation(\"cast-flight-rejected\")" in execute
 
 

@@ -3,11 +3,15 @@
 Each spell projectile is a closed 3D mesh, so it needs a texture that can be
 sampled on six faces rather than a flat 2D silhouette. These atlases are
 generated, not hand-painted, so every face is guaranteed to be non-empty and
-the three spells stay deliberately different from one another:
+the seven spells stay deliberately different from one another:
 
-  rift_bolt      violet arcane energy  - cold rift core, bright seam, dark shell
-  void_burst     near-black void       - almost no light, lavender cracks
-  dragon_breath  burning magenta       - hot core bleeding into soot
+  web_shot         pale cobweb silk   - bone-white strands over a grey core
+  rift_bolt        violet arcane      - cold rift core, bright seam, dark shell
+  dragon_breath    burning magenta    - hot core bleeding into soot
+  void_burst       near-black void    - almost no light, lavender cracks
+  triple_arrow     bleached bone      - dry ivory shaft, grey-blue vanes
+  arrow_rain       night-violet rain  - thin cold shaft, dark violet tip
+  explosive_arrow  molten orange      - ember head, white-hot molten seam
 
 The atlas is 64x64 and is laid out as a 4x4 grid of 16x16 cells. Cell 0 is the
 "core" face (the glowing centre of the spell), cells 1-5 are the shell faces,
@@ -27,9 +31,13 @@ CELL = 16
 # Every entry is (base, core, seam). Colours are deliberately far apart so a
 # viewer can tell the three spells apart at a glance in flight.
 PALETTES = {
+    "end_rift_web_shot": ((0xE4, 0xE2, 0xDC), (0xFF, 0xFF, 0xFF), (0x9A, 0x97, 0x90)),
     "end_rift_rift_bolt": ((0x2D, 0x10, 0x4C), (0xC8, 0x7B, 0xFF), (0x7A, 0x2E, 0xC9)),
-    "end_rift_void_burst": ((0x13, 0x04, 0x27), (0xE9, 0xD4, 0xFB), (0x4B, 0x1C, 0x7A)),
     "end_rift_dragon_breath": ((0x53, 0x21, 0x6B), (0xFF, 0xB4, 0x5C), (0x8A, 0x44, 0xA4)),
+    "end_rift_void_burst": ((0x13, 0x04, 0x27), (0xE9, 0xD4, 0xFB), (0x4B, 0x1C, 0x7A)),
+    "end_rift_triple_arrow": ((0xD8, 0xD2, 0xBF), (0xFF, 0xFB, 0xEE), (0x6F, 0x7C, 0x86)),
+    "end_rift_arrow_rain": ((0x1C, 0x12, 0x30), (0xB6, 0x9C, 0xE8), (0x3B, 0x27, 0x63)),
+    "end_rift_explosive_arrow": ((0x7A, 0x22, 0x06), (0xFF, 0xF1, 0xC4), (0xF2, 0x7D, 0x0F)),
 }
 
 

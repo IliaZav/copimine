@@ -576,6 +576,27 @@
       "base_material": "paper",
       "model": "copimine:item/end_rift_void_burst",
       "texture": "copimine:item/end_rift_void_burst"
+    },
+    {
+      "id": "end_rift_triple_arrow",
+      "custom_model_data": 830034,
+      "base_material": "paper",
+      "model": "copimine:item/end_rift_triple_arrow",
+      "texture": "copimine:item/end_rift_triple_arrow"
+    },
+    {
+      "id": "end_rift_arrow_rain",
+      "custom_model_data": 830035,
+      "base_material": "paper",
+      "model": "copimine:item/end_rift_arrow_rain",
+      "texture": "copimine:item/end_rift_arrow_rain"
+    },
+    {
+      "id": "end_rift_explosive_arrow",
+      "custom_model_data": 830036,
+      "base_material": "paper",
+      "model": "copimine:item/end_rift_explosive_arrow",
+      "texture": "copimine:item/end_rift_explosive_arrow"
     }
   ]
 }

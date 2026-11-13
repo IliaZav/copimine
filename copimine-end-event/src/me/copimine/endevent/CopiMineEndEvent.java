@@ -609,6 +609,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int MODEL_ELITE_DRAGON_BREATH = 830032;
     private static final int MODEL_ELITE_VOID_BURST = 830033;
     /**
+     * The three elite-skeleton arrow spells carry their own authored meshes.
+     * The master contract requires the elite skeleton to fire "physical,
+     * visible, properly aimed arrows" with a "proper 3D projectile model" and
+     * distinct silhouettes per spell, so the bone bolt, the falling shaft and
+     * the swollen explosive head are modelled instead of sharing one coloured
+     * vanilla arrow.
+     */
+    private static final int MODEL_ELITE_TRIPLE_ARROW = 830034;
+    private static final int MODEL_ELITE_ARROW_RAIN = 830035;
+    private static final int MODEL_ELITE_EXPLOSIVE_ARROW = 830036;
+    /**
+     * Arrow meshes are thin bolts, so they fly slightly smaller than the chunky
+     * spell meshes: large enough to read as authored geometry at arena range,
+     * small enough that a full volley never covers the target's crosshair.
+     */
+    private static final float ELITE_ARROW_VISUAL_SCALE = 0.5F;
+    /**
      * The web shot is a real cobweb cube, so it needs a chunky silhouette that
      * stays readable at arena range without covering the player's crosshair.
      * A 0.55-block cube is clearly a block in flight yet still smaller than the
@@ -1374,6 +1391,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, UUID> activeEliteDragonBreathCloudsByCaster = new HashMap<>();
     private final Map<UUID, UUID> activeEliteProjectileVisuals = new HashMap<>();
     /**
+     * Elite skeleton arrow id -> authored mesh display id. Arrows carry real
+     * collision and travel, so each one owns a short-lived display that follows
+     * it; the entry is released by the same cleanup path that removes the arrow.
+     */
+    private final Map<UUID, UUID> activeEliteArrowVisuals = new HashMap<>();
+    /**
      * Spawn instant per spell projectile, so the flight animation can be driven
      * from elapsed time instead of a per-tick frame counter.
      */
@@ -1983,6 +2006,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private NamespacedKey keyArrowVolley;
     private NamespacedKey keyEliteProjectileAbility;
     private NamespacedKey keyEliteProjectileVisual;
+    /**
+     * The authored mesh an elite skeleton arrow flies with. Stored on the arrow
+     * itself so a restored or rebound arrow can never animate as the wrong
+     * spell, and so the visual survives the pending-arrow handoff.
+     */
+    private NamespacedKey keyEliteArrowModel;
     private NamespacedKey keyRitualProjectile;
     private NamespacedKey keyRitualProjectileOriginX;
     private NamespacedKey keyRitualProjectileOriginY;
@@ -2141,6 +2170,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             keyArrowVolley = new NamespacedKey(this, "end_event_arrow_volley");
             keyEliteProjectileAbility = new NamespacedKey(this, "end_event_elite_projectile_ability");
             keyEliteProjectileVisual = new NamespacedKey(this, "end_event_elite_projectile_visual");
+            keyEliteArrowModel = new NamespacedKey(this, "end_event_elite_arrow_model");
             keyRitualProjectile = new NamespacedKey(this, "end_event_ritual_projectile");
             keyRitualProjectileOriginX = new NamespacedKey(this, "end_event_ritual_projectile_origin_x");
             keyRitualProjectileOriginY = new NamespacedKey(this, "end_event_ritual_projectile_origin_y");
@@ -3155,9 +3185,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 UUID projectileId = parseEliteProjectileVisualOwner(entity);
                 UUID expectedVisual = projectileId == null ? null
                         : activeEliteProjectileVisuals.get(projectileId);
+                UUID expectedArrowVisual = projectileId == null ? null
+                        : activeEliteArrowVisuals.get(projectileId);
+                boolean liveArrowVisual = entity.getUniqueId().equals(expectedArrowVisual)
+                        && activeEventArrowAges.containsKey(projectileId);
                 if (!ownedByEvent(entity, eventId)
-                        || !entity.getUniqueId().equals(expectedVisual)
-                        || !activeEliteProjectileExpiresAtTick.containsKey(projectileId)) {
+                        || !liveArrowVisual && (!entity.getUniqueId().equals(expectedVisual)
+                        || !activeEliteProjectileExpiresAtTick.containsKey(projectileId))) {
                     removeStaleEliteAbilityEntity(entity, "elite-ability-visual-runtime-state-missing");
                     continue;
                 }
@@ -3581,6 +3615,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         } else if (isTaggedEliteProjectileVisual(entity)) {
             UUID projectileId = parseEliteProjectileVisualOwner(entity);
             if (projectileId != null) activeEliteProjectileVisuals.remove(projectileId, entityId);
+            if (projectileId != null && entityId.equals(activeEliteArrowVisuals.get(projectileId)))
+                removeEliteArrowVisual(projectileId);
             if (projectileId != null) activeEliteProjectileSpawnMillis.remove(projectileId);
             activeEliteProjectileVisuals.values().removeIf(entityId::equals);
         }
@@ -12636,6 +12672,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         int arrowCount = miniBoss && EliteAbilityPolicy.has(wave,
                 EliteAbilityPolicy.Role.SKELETON, EliteAbilityPolicy.Ability.TRIPLE_ARROWS)
                 ? profile.arrowCount() : 1;
+        // A real fan volley is the triple-bolt spell, so the volley identity wins
+        // over the single-arrow spell mesh the arrow was tagged with above.
+        if (arrowCount > 1) tagEliteArrowModel(arrow, "end_rift_triple_arrow");
         if (activeEventArrowAges.size() + arrowCount > MAX_ACTIVE_EVENT_ARROWS
                 || !reserveWaveProjectileGroup(volleyId, arrowCount)) {
             event.setCancelled(true);
@@ -12766,6 +12805,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 extra.setVisibleByDefault(true);
                 extra.setShooter(skeleton);
                 tagEventArrowVolley(extra, pending.volleyId());
+                // Every physical lane inherits the authored volley model.
+                // prepareEventSkeletonArrow may replace it with a special
+                // explosive mesh; it must never leave side lanes vanilla.
+                tagEliteArrowModel(extra, readString(mainArrow, keyEliteArrowModel));
                 if (!configureEventSkeletonArrow(extra, skeleton, pending.wave(), pending.arrowKind(),
                         pending.arrowSpell(), pending.damage())) {
                     for (Arrow child : spawnedSideArrows) {
@@ -14044,6 +14087,135 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         activeEliteProjectileVisuals.put(projectile.getUniqueId(), display.getUniqueId());
         activeEliteProjectileSpawnMillis.put(projectile.getUniqueId(), System.currentTimeMillis());
+    }
+
+    /** Record which authored mesh an elite skeleton arrow must fly with. */
+    private void tagEliteArrowModel(Arrow arrow, String modelId) {
+        if (arrow == null || keyEliteArrowModel == null
+                || modelId == null || modelId.isBlank()) return;
+        arrow.getPersistentDataContainer().set(keyEliteArrowModel,
+                PersistentDataType.STRING, modelId);
+    }
+
+    private static int eliteArrowModelData(String modelId) {
+        return switch (modelId == null ? "" : modelId) {
+            case "end_rift_triple_arrow" -> MODEL_ELITE_TRIPLE_ARROW;
+            case "end_rift_arrow_rain" -> MODEL_ELITE_ARROW_RAIN;
+            case "end_rift_explosive_arrow" -> MODEL_ELITE_EXPLOSIVE_ARROW;
+            default -> 0;
+        };
+    }
+
+    /**
+     * Give an elite skeleton arrow its authored 3D mesh.
+     *
+     * An arrow is the one event projectile that cannot carry a model itself, so
+     * the arrow that names a mesh in {@code keyEliteArrowModel} gets a
+     * brightness-lit ItemDisplay that is re-teleported onto it each tick. The
+     * display carries the same visual key as the elite spell displays, so the
+     * existing residual sweep, chunk-load cleanup and reset paths already own
+     * it and no extra leak surface is introduced.
+     */
+    private void attachEliteArrowVisual(Arrow arrow) {
+        if (arrow == null || !arrow.isValid() || arrow.getWorld() == null
+                || keyEliteArrowModel == null) return;
+        String modelId = readString(arrow, keyEliteArrowModel);
+        int modelData = eliteArrowModelData(modelId);
+        if (modelData <= 0) return;
+        UUID arrowId = arrow.getUniqueId();
+        removeEliteArrowVisual(arrowId);
+        Location position = arrow.getLocation();
+        if (arrow.getVelocity().lengthSquared() > 0.0001D) position.setDirection(arrow.getVelocity());
+        if (!isFiniteLocation(position)) return;
+        Display pendingDisplay = null;
+        try {
+            Display display = arrow.getWorld().spawn(position, ItemDisplay.class, entity -> {
+                entity.setItemStack(overlayItem(modelData, modelId));
+                entity.setBrightness(new Display.Brightness(15, 15));
+                entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
+                entity.setBillboard(Display.Billboard.FIXED);
+                entity.setViewRange(48.0F);
+                entity.setDisplayWidth(ELITE_ARROW_VISUAL_SCALE);
+                entity.setDisplayHeight(ELITE_ARROW_VISUAL_SCALE);
+                entity.setInterpolationDuration(2);
+                entity.setInterpolationDelay(0);
+                entity.setTeleportDuration(1);
+                entity.setTransformation(eliteArrowFlightTransformation());
+                entity.setPersistent(false);
+                entity.setGravity(false);
+                entity.setInvulnerable(true);
+                entity.setShadowRadius(0.0F);
+            });
+            pendingDisplay = display;
+            tag(display, EVENT_KIND_DISPLAY, readInt(arrow, keyWave, activeWave),
+                    arrow.getShooter() instanceof Entity shooter && isOfficialEntity(shooter));
+            if (keyEliteProjectileVisual != null) {
+                display.getPersistentDataContainer().set(keyEliteProjectileVisual,
+                        PersistentDataType.STRING, arrowId.toString());
+            }
+            activeEliteArrowVisuals.put(arrowId, display.getUniqueId());
+            arrow.setVisibleByDefault(false);
+        } catch (RuntimeException failure) {
+            removeEliteArrowVisual(arrowId);
+            if (pendingDisplay != null) {
+                unregisterOwnedEntity(pendingDisplay.getUniqueId(), "elite-arrow-visual-spawn-failed");
+                if (pendingDisplay.isValid()) pendingDisplay.remove();
+            }
+            getLogger().warning("ELITE_ARROW_VISUAL_REJECTED arrow=" + arrowId
+                    + " model=" + modelId + " reason=spawn-failed message="
+                    + failure.getMessage());
+        }
+    }
+
+    /**
+     * The arrow meshes are authored in the same 16-unit block space as the
+     * spell meshes, so they need the same centring and the same half-turn that
+     * compensates ItemDisplayRenderer's own Y rotation. Orientation comes from
+     * the display location, exactly like the elite spell displays.
+     */
+    private Transformation eliteArrowFlightTransformation() {
+        Quaternionf rotation = new Quaternionf().rotateY((float) Math.PI);
+        return new Transformation(new Vector3f(), rotation,
+                new Vector3f(ELITE_ARROW_VISUAL_SCALE, ELITE_ARROW_VISUAL_SCALE,
+                        ELITE_ARROW_VISUAL_SCALE), new Quaternionf());
+    }
+
+    private void syncEliteArrowVisual(Arrow arrow) {
+        if (arrow == null) return;
+        UUID arrowId = arrow.getUniqueId();
+        UUID displayId = activeEliteArrowVisuals.get(arrowId);
+        if (displayId == null) return;
+        Entity visual = Bukkit.getEntity(displayId);
+        if (!(visual instanceof Display display) || !display.isValid()
+                || !arrow.isValid() || arrow.isDead()) {
+            removeEliteArrowVisual(arrowId);
+            return;
+        }
+        Location position = arrow.getLocation();
+        Vector flight = arrow.getVelocity();
+        if (flight.lengthSquared() > 0.0001D) position.setDirection(flight);
+        if (!isFiniteLocation(position) || !teleportCombatEntity(display, position)) {
+            removeEliteArrowVisual(arrowId);
+        }
+    }
+
+    private void removeEliteArrowVisual(UUID arrowId) {
+        if (arrowId == null) return;
+        UUID displayId = activeEliteArrowVisuals.remove(arrowId);
+        if (displayId == null) return;
+        Entity collisionBody = Bukkit.getEntity(arrowId);
+        if (collisionBody instanceof Arrow arrow && arrow.isValid()
+                && ownedBySession(arrow, eventId, generation)) arrow.setVisibleByDefault(true);
+        Entity visual = unregisterOwnedEntity(displayId, "elite-arrow-visual-remove");
+        if (visual == null) visual = Bukkit.getEntity(displayId);
+        if (visual != null && visual.isValid()) visual.remove();
+    }
+
+    private void clearEliteArrowVisuals(String reason) {
+        for (UUID arrowId : new ArrayList<>(activeEliteArrowVisuals.keySet())) {
+            removeEliteArrowVisual(arrowId);
+        }
+        activeEliteArrowVisuals.clear();
     }
 
     /**
@@ -16017,7 +16189,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         meta.setCustomModelData(customModelData);
         if (customModelData == MODEL_ELITE_RIFT_BOLT
                 || customModelData == MODEL_ELITE_VOID_BURST
-                || customModelData == MODEL_ELITE_DRAGON_BREATH) {
+                || customModelData == MODEL_ELITE_DRAGON_BREATH
+                || customModelData == MODEL_ELITE_TRIPLE_ARROW
+                || customModelData == MODEL_ELITE_ARROW_RAIN
+                || customModelData == MODEL_ELITE_EXPLOSIVE_ARROW) {
             me.copimine.endevent.presentation.ItemPresentationComponents.setItemModel(
                     meta, new NamespacedKey("copimine", modelId));
         }
@@ -19999,6 +20174,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             arrow.getPersistentDataContainer().set(keyArrowSpell,
                     PersistentDataType.STRING, spellId);
         }
+        // The two named elite arrow spells carry their own authored mesh. The
+        // model is recorded beside the spell so the visual never has to guess.
+        if (arrow == null || spellId == null) return;
+        if (ARROW_SPELL_ELITE_RAIN.equals(spellId)) {
+            tagEliteArrowModel(arrow, "end_rift_arrow_rain");
+        } else if (ARROW_SPELL_EXPLOSIVE.equals(spellId)) {
+            tagEliteArrowModel(arrow, "end_rift_explosive_arrow");
+        } else if ("rift_arrows".equals(spellId) || "arrow_salvo".equals(spellId)) {
+            tagEliteArrowModel(arrow, "end_rift_triple_arrow");
+        }
     }
 
     private boolean trackEventArrow(Arrow arrow) {
@@ -20024,6 +20209,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         activeEventArrowAges.put(projectileId, 0);
+        // Every tracked arrow passes here, so this is the one place that has to
+        // honour an authored arrow mesh. Arrows without a mesh tag are untouched.
+        attachEliteArrowVisual(arrow);
         return true;
     }
 
@@ -20056,6 +20244,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (age % EVENT_ARROW_TRAIL_INTERVAL_TICKS == 0) {
                 spawnEventArrowTrail(arrow, readString(arrow, keyArrowSpell), age);
             }
+            // Keep the authored arrow mesh glued to the arrow it belongs to, and
+            // drop the display the moment the arrow is gone.
+            syncEliteArrowVisual(arrow);
         }
     }
 
@@ -20224,6 +20415,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 entry -> entry.getValue() != null
                         && Objects.equals(entry.getValue().getUniqueId(), arrowId));
         waveProjectileAdmission.releaseProjectile(arrowId);
+        // The authored arrow mesh dies with its arrow, before any early return
+        // below so a non-arrow fallback can never strand a display.
+        removeEliteArrowVisual(arrowId);
         Entity candidate = ownedEntities.get(arrowId);
         if (candidate == null) {
             candidate = Bukkit.getEntity(arrowId);
@@ -20384,6 +20578,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         activeEventArrowAges.clear();
+        clearEliteArrowVisuals("event-arrow-boundary");
         statusArrowEffectsApplied.clear();
         detonatedEventArrows.clear();
         pendingSkeletonShotSideArrows.clear();
@@ -59103,6 +59298,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (isTaggedEliteProjectileVisual(entity)) {
                 UUID projectileId = parseEliteProjectileVisualOwner(entity);
                 if (projectileId != null) activeEliteProjectileVisuals.remove(projectileId, removedId);
+                if (projectileId != null && removedId.equals(activeEliteArrowVisuals.get(projectileId)))
+                    removeEliteArrowVisual(projectileId);
                 if (projectileId != null) activeEliteProjectileSpawnMillis.remove(projectileId);
                 activeEliteProjectileVisuals.values().removeIf(removedId::equals);
             }

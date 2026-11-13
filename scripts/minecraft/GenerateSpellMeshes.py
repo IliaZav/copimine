@@ -1,17 +1,25 @@
 """Build the closed 3D spell meshes the elite abilities fly with.
 
-The three elite spells used to share one pair of textures, so every cast looked
-identical no matter which ability fired. Each spell now owns an atlas and a mesh
-of its own, and the mesh geometry follows the spell's actual role:
+Every elite and boss projectile is authored geometry, never a flat sprite: the
+spell is a real display entity in flight, so it needs a closed mesh and a UV
+atlas. Historically all elite spells shared one pair of textures, so every cast
+looked identical no matter which ability fired. Each spell now owns an atlas and
+a mesh of its own, and the geometry follows the spell's actual role:
 
-  rift_bolt      a forward-running spear: elongated core plus a tail fin
-  void_burst     a compact swelling orb with a cracked shell and spikes
-  dragon_breath  a stubby wide-mouthed cone, like a snout venting flame
+  web_shot        a thrown cobweb bundle: solid core inside a tangle of strands
+  rift_bolt       a forward-running spear: elongated core plus a tail fin
+  dragon_breath   a stubby wide-mouthed cone, like a snout venting flame
+  void_burst      a compact swelling orb with a cracked shell and spikes
+  triple_arrow    a bone-white bolt with three swept-back fletching vanes
+  arrow_rain      a thin shaft falling nose-down, dark violet tip, trailing barb
+  explosive_arrow a swollen head with a molten seam and an ignition stub
 
 Every element is emitted with UV rectangles taken from the 64x64 atlas in
 GenerateSpellAtlases.py: the core element samples cell 0, shell elements sample
 cells 1-5, and the rim seam samples an accent cell. Faces are all present and
 double-sided-safe (shade off) so the mesh never develops holes at any angle.
+This module also writes the per-item definition the 26.3 client copies, so a
+regenerated mesh and its item definition can never drift apart.
 """
 
 from __future__ import annotations
@@ -93,10 +101,89 @@ def dragon_breath_elements():
     return elements
 
 
+def web_shot_elements():
+    """A thrown cobweb bundle: a solid core wrapped in a tangle of strands."""
+    elements = [
+        # Solid core - the weight the spider spits, centred in the tangle.
+        _box([5, 5, 2], [11, 11, 14], "#shell", 1),
+        # Front tangle, holding the bundle's leading face open.
+        _box([7, 2, 12], [9, 14, 15], "#seam", 8),
+        _box([2, 7, 12], [14, 9, 15], "#seam", 9),
+        # Rear tangle, so the silhouette differs on both ends.
+        _box([7, 3, 1], [9, 13, 4], "#seam", 8),
+        # Strands wrapped around the body, deliberately not mirrored.
+        _box([2, 7, 3], [4, 9, 12], "#seam", 9),
+        _box([12, 7, 4], [14, 9, 11], "#seam", 10),
+        # Cross strands that bridge the core to the tangle on each flank.
+        _box([3, 7, 6], [5, 9, 11], "#seam", 9),
+        _box([11, 7, 5], [13, 9, 10], "#seam", 10),
+        # A loose trailing strand so the bundle reads as tumbling in flight.
+        _box([6, 6, 14], [9, 9, 16], "#seam", 8),
+    ]
+    return elements
+
+
+def triple_arrow_elements():
+    """A bone-white bolt with three swept-back fletching vanes."""
+    elements = [
+        # Bone shaft running the whole bolt.
+        _box([7, 7, 2], [9, 9, 15], "#core", 0),
+        # Needle head.
+        _box([7, 7, 15], [9, 9, 16], "#seam", 8),
+        # Three vanes around the nock: top, bottom and one flank.
+        _box([7, 10, 2], [9, 11, 7], "#shell", 1),
+        _box([7, 5, 2], [9, 6, 7], "#shell", 1),
+        _box([10, 7, 2], [11, 9, 7], "#shell", 2),
+        # Nock block that completes the closed rear body.
+        _box([6, 6, 1], [10, 10, 3], "#shell", 3),
+    ]
+    return elements
+
+
+def arrow_rain_elements():
+    """A thin shaft falling nose-down: narrow body, dark tip, trailing barb."""
+    elements = [
+        # Long thin shaft.
+        _box([7, 7, 3], [9, 9, 14], "#core", 0),
+        # Dark violet tip, pointing down for a descending volley.
+        _box([6, 2, 2], [10, 6, 6], "#seam", 8),
+        # Collar joining tip to shaft.
+        _box([6, 6, 4], [10, 8, 7], "#shell", 1),
+        # Trailing barb far above the tip.
+        _box([7, 11, 12], [9, 13, 15], "#shell", 2),
+        _box([4, 9, 12], [7, 11, 14], "#shell", 2),
+        _box([7, 9, 12], [9, 11, 14], "#shell", 3),
+    ]
+    return elements
+
+
+def explosive_arrow_elements():
+    """A swollen explosive head with a molten seam and ignition stub."""
+    elements = [
+        # Swollen head - the densest element of the spell.
+        _box([4, 4, 8], [12, 12, 16], "#shell", 1),
+        # Molten seam splitting the head and continuing into the shaft.
+        _box([7, 4, 6], [9, 12, 9], "#seam", 8),
+        # Remaining shaft behind the seam.
+        _box([7, 7, 1], [9, 9, 6], "#core", 0),
+        # Ignition stub: the fuse that reads as "about to burst". It must stay
+        # inside the 16-unit editing space, so it rises off the head's top face.
+        _box([7, 7, 15], [9, 9, 16], "#core", 0),
+        # Head lugs, uneven so the spell never reads as a plain cube.
+        _box([3, 6, 10], [5, 10, 14], "#shell", 2),
+        _box([11, 5, 9], [13, 9, 13], "#shell", 3),
+    ]
+    return elements
+
+
 MESHES = {
+    "end_rift_web_shot": web_shot_elements,
     "end_rift_rift_bolt": rift_bolt_elements,
-    "end_rift_void_burst": void_burst_elements,
     "end_rift_dragon_breath": dragon_breath_elements,
+    "end_rift_void_burst": void_burst_elements,
+    "end_rift_triple_arrow": triple_arrow_elements,
+    "end_rift_arrow_rain": arrow_rain_elements,
+    "end_rift_explosive_arrow": explosive_arrow_elements,
 }
 
 
@@ -122,17 +209,37 @@ def build_model(name: str):
     }
 
 
+def build_definition(name: str):
+    """The 26.3 item definition that points the projectile at its authored model."""
+    return {"model": {"type": "minecraft:model", "model": f"copimine:item/{name}"}}
+
+
 def main() -> int:
     root = Path(__file__).resolve().parents[2]
-    target = root / "resourcepacks" / "src" / "assets" / "copimine" / "models" / "item"
+    assets = root / "resourcepacks" / "src" / "assets" / "copimine"
+    target = assets / "models" / "item"
+    definitions = assets / "items"
     target.mkdir(parents=True, exist_ok=True)
+    definitions.mkdir(parents=True, exist_ok=True)
     for name in MESHES:
         model = build_model(name)
         destination = target / f"{name}.json"
+        # .gitattributes pins eol=lf for these paths, and the 26.3 client build
+        # copies them byte-for-byte into the jar. Inside the checkout that means
+        # LF, but write_text() defaults to os.linesep, so a Windows run emitted
+        # CRLF and shifted the pinned client digest by 24 bytes. Pin LF here so
+        # the generated bytes are identical on every platform.
         destination.write_text(
-            json.dumps(model, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+            json.dumps(model, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n"
+        )
+        definition = definitions / f"{name}.json"
+        definition.write_text(
+            json.dumps(build_definition(name), ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+            newline="\n",
         )
         print(f"wrote {destination.relative_to(root)} elements={len(model['elements'])}")
+        print(f"wrote {definition.relative_to(root)}")
     return 0
 
 

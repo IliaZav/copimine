@@ -181,6 +181,11 @@ public class ConvertedArrowProbe {
     int readInt(Entity e,Object key,int fallback){return e.wave;}
     void tag(Entity e,String kind,int wave,boolean official){e.kind=kind;e.wave=wave;e.official=official;e.event=eventId;e.generation=generation;ownedEntities.put(e.id,e);}
     void tagArrowSpell(Arrow a,String spell){a.data.set(keyArrowSpell,PersistentDataType.STRING,spell);}
+    final Object keyEliteArrowModel="eliteArrowModel";
+    void tagEliteArrowModel(Arrow a,String model){}
+    void attachEliteArrowVisual(Arrow a){}
+    void syncEliteArrowVisual(Arrow a){}
+    void removeEliteArrowVisual(UUID id){}
     void tagRitualProjectile(Arrow a){a.ritual=true;}
     void tagEventArrowVolley(Arrow a,UUID id){a.group=id;}UUID eventArrowVolleyId(Arrow a){return a.group;}
     boolean reserveWaveProjectileGroup(UUID id,int n){if(!budget)return false;waveProjectileAdmission.groups.add(id);return true;}

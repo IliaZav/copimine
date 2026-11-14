@@ -195,6 +195,47 @@ public final class Wave7AbilityEffectPolicy {
             new Pass(Shape.SELF_AURA, 10, 0.0D, 0.6D, 1.5D, 0.05D,
                     "CRIT", DUST_CYAN, true));
 
+    /**
+     * The authored 3D body for one Wave 7 attack identity.
+     *
+     * <p>Every pass list above is vanilla particles only, and the objective is
+     * explicit that "the visual work is NOT complete merely because a particle
+     * trail exists". Each ability therefore also names a real mesh body from the
+     * spell kit, chosen for its form rather than invented fresh: an arrow rack
+     * for the Marksman volleys, a lance for the aimed pierces, a rune for the
+     * support buff, an arch for the summoned defender, a crown of fire for the
+     * fang lines, a gate for the blink, an iris for the beam, talons for the
+     * narrow strike and a fault for the wide one, a sonic bloom for the lunge and
+     * a cage for the group fangs.
+     *
+     * <p>A null result means "no body", which the caller must treat as a bug for
+     * any dispatched ability rather than as a quiet fallback: that silent
+     * fallback is how the miniboss spells ended up particle-only.
+     */
+    public static BossSpellGeometryPolicy.Shape bodyShape(String abilityId) {
+        if (abilityId == null || abilityId.isBlank()) {
+            return null;
+        }
+        return switch (normalize(abilityId)) {
+            case "MARKSMAN_QUICK_SHOT" -> BossSpellGeometryPolicy.Shape.ARROW_RACK;
+            case "MARKSMAN_HEAVY_SHOT" -> BossSpellGeometryPolicy.Shape.RIFT_LANCE;
+            case "MARKSMAN_SPREAD_SHOT" -> BossSpellGeometryPolicy.Shape.ARROW_RACK;
+            case "MARKSMAN_SUPPORT" -> BossSpellGeometryPolicy.Shape.VOID_RUNE;
+            case "MARKSMAN_PAIRED_CROSSFIRE" -> BossSpellGeometryPolicy.Shape.RIFT_LANCE;
+            case "MARKSMAN_DEFENDER" -> BossSpellGeometryPolicy.Shape.SUMMON_ARCH;
+            case "ARCHMAGE_FANGS" -> BossSpellGeometryPolicy.Shape.INFERNO_CROWN;
+            case "ARCHMAGE_FANGS_GROUP" -> BossSpellGeometryPolicy.Shape.FIREBALL_CAGE;
+            case "ARCHMAGE_SPEAR" -> BossSpellGeometryPolicy.Shape.RIFT_LANCE;
+            case "ARCHMAGE_STEP" -> BossSpellGeometryPolicy.Shape.RIFT_GATE;
+            case "ARCHMAGE_BEAM" -> BossSpellGeometryPolicy.Shape.CHEST_IRIS;
+            case "WARDEN_NARROW_STRIKE" -> BossSpellGeometryPolicy.Shape.AMBUSH_TALONS;
+            case "WARDEN_WIDE_STRIKE" -> BossSpellGeometryPolicy.Shape.SLAM_FAULT;
+            case "WARDEN_SONIC_LUNGE" -> BossSpellGeometryPolicy.Shape.ECHO_BLOOM;
+            case "WARDEN_SLAM" -> BossSpellGeometryPolicy.Shape.SLAM_FAULT;
+            default -> null;
+        };
+    }
+
     private Wave7AbilityEffectPolicy() {
     }
 

@@ -45,6 +45,7 @@ RENDERER = CLIENT_JAVA / "GuardianSpellRenderer.java"
 MESH_DIR = (ROOT / "CopiMineClient" / "src" / "main" / "resources" / "assets"
             / "copimineclient" / "geometry" / "guardian_spells")
 AI_POLICY = DOMAIN / "EndRiftAiPolicy.java"
+WAVE7_EFFECT = DOMAIN / "Wave7AbilityEffectPolicy.java"
 
 PROBE = textwrap.dedent(
     """
@@ -388,12 +389,18 @@ def test_the_miniboss_body_lease_is_keyed_to_the_miniboss():
     assert "playMiniBossSpellModel(" in cast
     assert "playBossSpellModel(" not in cast
 
-    lease = _method(event, "private void playMiniBossSpellModel(")
+    lease = _method(event, "private void playCasterSpellBody(")
     for guardian_key in ("bossUuid", "bossCastSequence"):
         assert guardian_key not in lease, (
             f"the miniboss lease must not depend on {guardian_key}")
     assert "caster.isValid()" in lease and "caster.isDead()" in lease
     assert "generation != ownerGeneration" in lease
+    # The miniboss entry point must still resolve the shape from the spell table
+    # and hand the body to the caster-owned lease, so this refactor cannot be
+    # undone by pointing it back at a shape-less path.
+    entry = _method(event, "private void playMiniBossSpellModel(")
+    assert "playCasterSpellBody(" in entry
+    assert "BossSpellGeometryPolicy.shape(spellId)" in entry
     assert "eventId, ownerEvent" in lease.replace("Objects.equals(eventId, ownerEvent)",
                                                   "eventId, ownerEvent")
     # The body must be spawned through the shared display factory, so the two
@@ -403,3 +410,87 @@ def test_the_miniboss_body_lease_is_keyed_to_the_miniboss():
     # And the boss path must keep its own lease.
     boss = _method(event, "private void playBossSpellModel(")
     assert "bossUuid" in boss and "bossCastSequence" in boss
+
+
+WAVE7_EFFECT_PROBE = textwrap.dedent(
+    """
+    import me.copimine.endevent.domain.BossSpellGeometryPolicy;
+    import me.copimine.endevent.domain.Wave7AbilityEffectPolicy;
+
+    public final class Wave7BodyProbe {
+        public static void main(String[] args) {
+            int failures = 0;
+            for (String id : args) {
+                BossSpellGeometryPolicy.Shape shape =
+                        Wave7AbilityEffectPolicy.bodyShape(id);
+                if (shape == null) {
+                    System.out.println("NO_BODY " + id);
+                    failures++;
+                    continue;
+                }
+                int customModelData = BossSpellGeometryPolicy.modelData(shape);
+                if (customModelData == 0) {
+                    System.out.println("NO_MESH " + id + " " + shape);
+                    failures++;
+                }
+            }
+            if (failures == 0) {
+                System.out.println("OK");
+            } else {
+                System.out.println("FAILURES=" + failures);
+                System.exit(1);
+            }
+        }
+    }
+    """
+)
+
+
+def test_every_wave7_ability_dispatched_has_a_mesh_body_behind_its_particles(tmp_path):
+    """A Wave 7 ability must not be a pile of particles.
+
+    `Wave7AbilityEffectRuntime` draws vanilla particle passes only. The
+    specification is explicit that "the visual work is NOT complete merely
+    because a particle trail exists", so every ability the runtime dispatches
+    must also name a mesh body. The ids are taken from the dispatcher's own
+    table rather than a hand-written list, so a new ability cannot be added as
+    particles alone.
+    """
+    policy = WAVE7_EFFECT.read_text(encoding="utf-8", errors="surrogateescape")
+    dispatched = set(re.findall(r'case "([A-Z0-9_]+)" ->',
+                                _method(policy, "public static List<Pass> passes(")))
+    assert len(dispatched) >= 15, dispatched
+    authored = set(re.findall(r'case "([A-Z0-9_]+)" ->',
+                              _method(policy, "public static BossSpellGeometryPolicy.Shape bodyShape(")))
+    assert not (dispatched - authored), (
+        f"Wave 7 abilities with only particles and no body: {sorted(dispatched - authored)}")
+
+    probe = tmp_path / "Wave7BodyProbe.java"
+    probe.write_text(WAVE7_EFFECT_PROBE, encoding="utf-8")
+    compiled = subprocess.run(
+        ["javac", "-encoding", "UTF-8", "-sourcepath", str(SRC), "-d", str(tmp_path), str(probe)],
+        capture_output=True,
+        text=True,
+    )
+    assert compiled.returncode == 0, compiled.stderr
+    ran = subprocess.run(
+        ["java", "-cp", str(tmp_path), "Wave7BodyProbe", *sorted(dispatched)],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+    )
+    assert ran.returncode == 0, ran.stdout + ran.stderr
+    assert "OK" in ran.stdout
+
+
+def test_the_wave7_renderer_spawns_the_mesh_body_and_not_only_particles():
+    event = EVENT.read_text(encoding="utf-8", errors="surrogateescape")
+    render = _method(event, "private void renderWave7AbilityEffect(")
+    # The particle passes stay, but the body has to be spawned as well.
+    assert "Wave7AbilityEffectRuntime.render(" in render
+    assert "Wave7AbilityEffectPolicy.bodyShape(" in render
+    assert "playCasterSpellBody(" in render
+    # A floor-anchored body belongs on the target's mark, not on the caster,
+    # and the anchor decides which -- same rule as the boss and miniboss paths.
+    assert "BossSpellGeometryPolicy.anchor(" in render
+    assert "Anchor.LOCKED_FLOOR" in render

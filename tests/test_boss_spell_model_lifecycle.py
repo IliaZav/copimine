@@ -9,7 +9,7 @@ ROOT=Path(__file__).resolve().parents[1]
 def model_probe(tmp_path_factory):
     out=tmp_path_factory.mktemp("boss-model-life")
     source=(ROOT/'copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java').read_text(encoding='utf-8')
-    methods='\n'.join(declaration(source,s) for s in ['private void playBossSpellModel(', 'private void removeBossSpellModel(', 'private void clearBossSpellModels(', 'private ItemDisplay spawnSpellModelDisplay(', 'private void playMiniBossSpellModel(', 'private void removeMiniBossSpellModel(', 'private void clearMiniBossSpellModels('])
+    methods='\n'.join(declaration(source,s) for s in ['private void playBossSpellModel(', 'private void removeBossSpellModel(', 'private void clearBossSpellModels(', 'private ItemDisplay spawnSpellModelDisplay(', 'private void playMiniBossSpellModel(', 'private void playCasterSpellBody(', 'private void removeMiniBossSpellModel(', 'private void clearMiniBossSpellModels('])
     f=out/'SpellModelProbe.java'
     f.write_text(r'''import java.util.*;
 import me.copimine.endevent.domain.BossSpellGeometryPolicy;

@@ -1466,6 +1466,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * ever casts, and because their leases are keyed to different owners.
      */
     private static final int MAX_MINI_BOSS_SPELL_MODELS = 8;
+    /**
+     * Lifetime of a Wave 7 ability body in ticks. The longest authored Wave 7
+     * telegraph plus its release is well under three seconds, so this bounds the
+     * body to the visible beat instead of letting it linger after the attack
+     * resolved; `playCasterSpellBody` also clamps to 80.
+     */
+    private static final int WAVE7_ABILITY_BODY_TICKS = 44;
     private final Set<UUID> miniBossSpellModelIds = new HashSet<>();
     private final Map<UUID, BukkitTask> riftProjectileTasks = new HashMap<>();
     private final Map<UUID, RiftFireballRuntimeState> activeRiftFireballs = new LinkedHashMap<>();
@@ -21440,7 +21447,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * indistinguishable from having no body at all.</p>
      */
     private void playMiniBossSpellModel(LivingEntity caster, String spellId, Location at, int ticks) {
-        int modelData = BossSpellGeometryPolicy.modelData(BossSpellGeometryPolicy.shape(spellId));
+        playCasterSpellBody(caster, BossSpellGeometryPolicy.shape(spellId), spellId, at, ticks);
+    }
+
+    /**
+     * One cosmetic spell body for any caster-owned cast, leased to the caster.
+     *
+     * <p>Wave 7's named-trial abilities are authored in vanilla particles in
+     * {@code Wave7AbilityEffectPolicy}; the specification forbids leaving a
+     * player-facing ability as particles alone, so each one also names a real
+     * mesh body here. The lease is the caster's own: a Wave 7 miniboss is never
+     * the Guardian, so reusing the boss lease would delete the body on the first
+     * tick.</p>
+     */
+    private void playCasterSpellBody(LivingEntity caster, BossSpellGeometryPolicy.Shape shape,
+            String label, Location at, int ticks) {
+        int modelData = BossSpellGeometryPolicy.modelData(shape);
         if (taskRegistry == null || caster == null || at == null || at.getWorld() == null
                 || modelData == 0 || !caster.getWorld().equals(at.getWorld())
                 || miniBossSpellModelIds.size() >= MAX_MINI_BOSS_SPELL_MODELS) return;
@@ -21448,7 +21470,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         try {
             display = spawnSpellModelDisplay(at, modelData);
         } catch (RuntimeException failure) {
-            getLogger().warning("MINIBOSS_SPELL_MODEL_SPAWN_FAILED spell=" + spellId);
+            getLogger().warning("MINIBOSS_SPELL_MODEL_SPAWN_FAILED spell=" + label);
             return;
         }
         try { tag(display, EVENT_KIND_DISPLAY, 0, isOfficialEntity(caster)); }
@@ -38225,6 +38247,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 effectKey, eye, feet, aim, impact, emitter);
         me.copimine.endevent.runtime.wave7.Wave7AbilityEffectRuntime.playRelease(
                 actor.getWorld(), feet, effectKey, 0.7F, 1.0F);
+        // The passes above are vanilla particles. Every dispatched Wave 7 ability
+        // also owns a real mesh body, anchored either on the caster or on the
+        // marked floor depending on the shape: a rune, a fault or a cage belongs
+        // where it will land, while a lance or an arch belongs on the caster.
+        BossSpellGeometryPolicy.Shape bodyShape =
+                me.copimine.endevent.domain.Wave7AbilityEffectPolicy.bodyShape(effectKey);
+        if (bodyShape != null) {
+            BossSpellGeometryPolicy.Anchor bodyAnchor =
+                    BossSpellGeometryPolicy.anchor(bodyShape, BossSpellGeometryPolicy.Beat.CHARGE);
+            Location bodyOrigin = bodyAnchor == BossSpellGeometryPolicy.Anchor.LOCKED_FLOOR
+                    && impact != null && impact.getWorld() != null
+                            ? impact.clone().add(0.0D, 0.6D, 0.0D)
+                            : feet.clone().add(0.0D, 1.2D, 0.0D);
+            playCasterSpellBody(actor, bodyShape, effectKey, bodyOrigin, WAVE7_ABILITY_BODY_TICKS);
+        }
     }
 
     /**

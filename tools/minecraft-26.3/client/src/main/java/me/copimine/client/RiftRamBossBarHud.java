@@ -13,13 +13,13 @@ public final class RiftRamBossBarHud {
     private RiftRamBossBarHud() { }
 
     static int remainingPlates(String visual) {
-        if (visual == null || !visual.matches("END_RIFT_RAM_ARMOR[0-3]_V1")) return -1;
-        return 3 - (visual.charAt("END_RIFT_RAM_ARMOR".length()) - '0');
+        if (visual == null || !visual.matches("END_RIFT_RAM_ARMOR[0-7]_V1")) return -1;
+        return 7 - (visual.charAt("END_RIFT_RAM_ARMOR".length()) - '0');
     }
 
     public static boolean render(GuiGraphicsExtractor gui, int ignoredX, int y, BossEvent bar) {
         if (gui == null || bar == null || bar.getName() == null
-                || !bar.getName().getString().startsWith("Таран Разлома")) return false;
+                || !bar.getName().getString().startsWith("РўР°СЂР°РЅ Р Р°Р·Р»РѕРјР°")) return false;
         var client = Minecraft.getInstance();
         if (client.player == null || client.level == null) return false;
         var state = ClientBridgeProtocol.endEventState();
@@ -30,7 +30,7 @@ public final class RiftRamBossBarHud {
         }
         if (plates < 0) return false;
         float progress = Float.isFinite(bar.getProgress()) ? Math.max(0, Math.min(1, bar.getProgress())) : 0;
-        int x = (gui.guiWidth() - 232) / 2;
+        int x = (gui.guiWidth() - 268) / 2;
         gui.fill(x - 2, y - 2, x + 188, y + 10, 0xFF111018);
         gui.fill(x - 1, y - 1, x + 187, y + 9, 0xFF77717F);
         gui.fill(x, y, x + 186, y + 8, 0xFF24202D);
@@ -38,8 +38,8 @@ public final class RiftRamBossBarHud {
         int body = plates > 0 ? 0xFF8753AA : 0xFFBA3748;
         gui.fill(x + 1, y + 1, x + 1 + filled, y + 7, body);
         gui.fill(x + 1, y + 1, x + 1 + filled, y + 3, plates > 0 ? 0xFFD098EC : 0xFFFF8D8F);
-        for (int plate = 0; plate < 3; plate++) {
-            int px = x + 193 + plate * 13;
+        for (int plate = 0; plate < 7; plate++) {
+            int px = x + 193 + plate * 11;
             gui.fill(px - 1, y - 3, px + 11, y + 11, 0xFF17131C);
             if (plate < plates) {
                 gui.blit(RenderPipelines.GUI_TEXTURED, PLATE, px, y - 2, 0F, 0F, 10, 12, 16, 16, 16, 16);
@@ -50,7 +50,7 @@ public final class RiftRamBossBarHud {
                 gui.fill(px + 4, y, px + 6, y + 8, 0xFF0A090D);
             }
         }
-        gui.centeredText(client.font, "ТАРАН РАЗЛОМА", x + 93, y - 12, 0xFFF1E5F6);
+        gui.centeredText(client.font, "РўРђР РђРќ Р РђР—Р›РћРњРђ", x + 93, y - 12, 0xFFF1E5F6);
         return true;
     }
 }

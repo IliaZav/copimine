@@ -103,7 +103,7 @@ public final class RiftRamEncounter {
             ram = site.getWorld().spawn(site, Ravager.class, entity -> {
                 entity.setPersistent(true);
                 entity.setRemoveWhenFarAway(false);
-                entity.setCustomName("Таран Разлома");
+                entity.setCustomName("РўР°СЂР°РЅ Р Р°Р·Р»РѕРјР°");
                 entity.setCustomNameVisible(false);
                 entity.getAttribute(Attribute.GENERIC_MAX_HEALTH).setBaseValue(RiftRamPolicy.healthForPlayers(players));
                 entity.getAttribute(Attribute.GENERIC_SCALE).setBaseValue(RiftRamPolicy.BOSS_SCALE);
@@ -382,7 +382,9 @@ public final class RiftRamEncounter {
         int windup = Math.max(1, RiftRamPolicy.chargeWindupTicks());
         double progress = Math.min(1.0D, (double) elapsed / (double) windup);
         double bodyScale = RiftRamPolicy.BOSS_SCALE;
-        Vector heading = new Vector(focus.getX() - ram.getX(), 0, focus.getZ() - ram.getZ());
+        Vector heading = focus == null && direction != null ? direction.clone()
+                : focus == null ? ram.getLocation().getDirection().setY(0)
+                : new Vector(focus.getX() - ram.getX(), 0, focus.getZ() - ram.getZ());
         if (heading.lengthSquared() < 1.0E-4D) heading = new Vector(0, 0, 1);
         heading.normalize();
         Location eyes = ram.getLocation().clone().add(heading.clone().multiply(1.05D * bodyScale))
@@ -425,6 +427,9 @@ public final class RiftRamEncounter {
             impact(); return;
         }
         if(!host.move(ram, to)) { recover(); return; }
+        if ((tick - actionTick) % 3 == 0) chargeTell(null, RiftRamPolicy.chargeWindupTicks());
+        if ((tick - actionTick) % 6 == 0)
+            ram.getWorld().playSound(to, Sound.ENTITY_RAVAGER_STEP, 1.4F, .7F);
         for(Player player:players) {
             if(Math.abs(player.getY()-from.getY())>3 || !RiftRamPolicy.chargeHitsPlayer(from.getX(),from.getZ(),to.getX(),to.getZ(),
                     player.getX(),player.getZ(),chargeHits.contains(player.getUniqueId()))) continue;
@@ -434,7 +439,8 @@ public final class RiftRamEncounter {
                 player.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS,20,0));
                 player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,100,1));
                 ram.getWorld().playSound(player.getLocation(),Sound.ENTITY_RAVAGER_ATTACK,1.2f,.8f);
-                recover();
+                // A victim consumes only its own hit receipt. Continue along
+                // the locked segment; body-blocking must not cancel the pillar run.
             }
         }
     }
@@ -682,7 +688,7 @@ public final class RiftRamEncounter {
             pillarSkeleton = at.getWorld().spawn(at, Skeleton.class, entity -> {
                 entity.setPersistent(true);
                 entity.setRemoveWhenFarAway(false);
-                entity.setCustomName("Стрелок Разлома");
+                entity.setCustomName("РЎС‚СЂРµР»РѕРє Р Р°Р·Р»РѕРјР°");
                 entity.setCustomNameVisible(false);
                 entity.getAttribute(Attribute.GENERIC_MAX_HEALTH)
                         .setBaseValue(WaveSixPillarSkeletonPolicy.HEALTH);

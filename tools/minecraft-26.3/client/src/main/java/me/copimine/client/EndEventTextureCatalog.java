@@ -130,7 +130,7 @@ public final class EndEventTextureCatalog {
         // here would imply the hides differ, and they must not.
         //
         // A natural (unbound) Ravager therefore keeps its vanilla sheet too.
-        for (int stage = 0; stage <= 5; stage++) {
+        for (int stage = 0; stage <= 7; stage++) {
             textures.put(RiftRamVisualPolicy.visualForArmorStage(stage),
                     Identifier.fromNamespaceAndPath("minecraft", "textures/entity/illager/ravager.png"));
         }

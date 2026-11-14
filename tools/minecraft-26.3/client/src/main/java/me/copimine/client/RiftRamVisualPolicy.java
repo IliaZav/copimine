@@ -21,13 +21,15 @@ public final class RiftRamVisualPolicy {
      * because an invisible ravager reads to the player as a broken encounter.</p>
      */
     public static String visualForArmorStage(int stage) {
-        return switch (Math.max(0, Math.min(5, stage))) {
+        return switch (Math.max(0, Math.min(7, stage))) {
             case 0 -> ARMOR0_VISUAL;
             case 1 -> ARMOR1_VISUAL;
             case 2 -> ARMOR2_VISUAL;
             case 3 -> ARMOR3_VISUAL;
             case 4 -> ARMOR4_VISUAL;
-            default -> ARMOR5_VISUAL;
+            case 5 -> ARMOR5_VISUAL;
+            case 6 -> "END_RIFT_RAM_ARMOR6_V1";
+            default -> "END_RIFT_RAM_ARMOR7_V1";
         };
     }
 
@@ -36,6 +38,7 @@ public final class RiftRamVisualPolicy {
         String normalized = visualId.trim().toUpperCase(java.util.Locale.ROOT);
         return ARMOR0_VISUAL.equals(normalized) || ARMOR1_VISUAL.equals(normalized)
                 || ARMOR2_VISUAL.equals(normalized) || ARMOR3_VISUAL.equals(normalized)
-                || ARMOR4_VISUAL.equals(normalized) || ARMOR5_VISUAL.equals(normalized);
+                || ARMOR4_VISUAL.equals(normalized) || ARMOR5_VISUAL.equals(normalized)
+                || "END_RIFT_RAM_ARMOR6_V1".equals(normalized) || "END_RIFT_RAM_ARMOR7_V1".equals(normalized);
     }
 }

@@ -26,6 +26,7 @@ them instead of carrying private copies. This test compiles and executes the
 two policies, so it fails on behaviour rather than on the presence of a string.
 """
 
+import json
 import re
 import subprocess
 import textwrap
@@ -38,6 +39,11 @@ SPELL_VISUAL = DOMAIN / "SpellVisualPolicy.java"
 COMPOSITIONS = DOMAIN / "BossSpellVisualCompositionPolicy.java"
 GEOMETRY = DOMAIN / "BossSpellGeometryPolicy.java"
 EVENT = SRC / "me" / "copimine" / "endevent" / "CopiMineEndEvent.java"
+CLIENT_JAVA = ROOT / "tools" / "minecraft-26.3" / "client" / "src" / "main" / "java" / "me" / "copimine" / "client"
+MESH_NAMES = CLIENT_JAVA / "GuardianSpellMesh.java"
+RENDERER = CLIENT_JAVA / "GuardianSpellRenderer.java"
+MESH_DIR = (ROOT / "CopiMineClient" / "src" / "main" / "resources" / "assets"
+            / "copimineclient" / "geometry" / "guardian_spells")
 
 PROBE = textwrap.dedent(
     """
@@ -244,3 +250,79 @@ def test_geometry_and_composition_tables_cover_the_same_roster():
         flatten.update(re.findall(r'"([a-z_]+)"', arm))
     assert not (spell_ids - authored), f"no composition for {sorted(spell_ids - authored)}"
     assert not (spell_ids - flatten), f"no silhouette for {sorted(spell_ids - flatten)}"
+
+
+def _braced(source: str) -> str:
+    """The body between the first `{` and its matching `}`, braces excluded."""
+    opening = source.index("{")
+    depth = 0
+    for index in range(opening, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[opening + 1 : index]
+    raise AssertionError("unterminated block")
+
+
+def test_every_silhouette_has_a_real_client_mesh_and_an_authored_file():
+    """A shape with no mesh is drawn only as dust -- the forbidden substitute.
+
+    `modelData` returned 0 for four miniboss signatures, so `rift_step`,
+    `void_snare`, `echo_pulse` and `rift_euphoria` had a sampled silhouette made
+    of particles and no body at all: an ability that closes on the player was
+    rendered as a puff of dust. This walks the whole chain -- enum arm, mesh
+    selector, renderer table, `NAMES`, generated JSON -- so a future shape
+    cannot silently lose its geometry the same way.
+    """
+    geometry = GEOMETRY.read_text(encoding="utf-8", errors="surrogateescape")
+    enum_start = geometry.index("public enum Shape {")
+    enum_body = _braced(geometry[enum_start:])
+    enum_body = re.sub(r"/\*.*?\*/", " ", enum_body, flags=re.S)
+    shapes = {
+        token.strip()
+        for token in enum_body.split(",")
+        if re.fullmatch(r"[A-Z][A-Z0-9_]*", token.strip())
+    }
+    assert len(shapes) >= 20, shapes
+
+    selector = _method(geometry, "public static int modelData(Shape shape)")
+    arms = {}
+    for labels, custom_model_data in re.findall(r"case\s+([A-Z_,\s]+?)\s*->\s*(\d+)\s*;", selector):
+        for label in re.findall(r"[A-Z][A-Z0-9_]*", labels):
+            assert label not in arms, f"Shape.{label} has two mesh selectors"
+            arms[label] = int(custom_model_data)
+    assert set(arms) <= shapes, f"selector arms for unknown shapes: {set(arms) - shapes}"
+
+    # Exactly two shapes are deliberately meshless, and only these two: a
+    # contact arc must track the boss's own swing, and DEFEAT is a dissolution
+    # a frozen body would contradict.
+    assert shapes - set(arms) == {"SWIPE", "DEFEAT"}, shapes - set(arms)
+
+    renderer = RENDERER.read_text(encoding="utf-8", errors="surrogateescape")
+    rendered = {
+        int(custom_model_data): name
+        for custom_model_data, name in re.findall(
+            r'case\s+(\d+)\s*->\s*"([a-z_]+)"\s*;', renderer)
+    }
+    assert set(rendered) == set(arms.values()), (
+        f"renderer covers {sorted(set(rendered))} but the selector emits "
+        f"{sorted(set(arms.values()))}")
+
+    name_source = MESH_NAMES.read_text(encoding="utf-8", errors="surrogateescape")
+    declared = set(re.findall(r'"([a-z_]+)"', _braced(name_source[name_source.index("String[] NAMES = {"):])))
+    assert set(rendered.values()) <= declared, (
+        f"renderer names missing from GuardianSpellMesh.NAMES: "
+        f"{sorted(set(rendered.values()) - declared)}")
+
+    generated = {path.stem for path in MESH_DIR.glob("*.json")}
+    assert set(rendered.values()) <= generated, (
+        f"renderer names without a generated mesh: {sorted(set(rendered.values()) - generated)}")
+    assert declared == generated, (
+        f"NAMES and the generated mesh set disagree: only in NAMES "
+        f"{sorted(declared - generated)}, only on disk {sorted(generated - declared)}")
+    for name in sorted(generated):
+        mesh = json.loads((MESH_DIR / f"{name}.json").read_text(encoding="utf-8"))
+        elements = mesh.get("elements")
+        assert isinstance(elements, list) and elements, f"{name}.json has no cuboids"

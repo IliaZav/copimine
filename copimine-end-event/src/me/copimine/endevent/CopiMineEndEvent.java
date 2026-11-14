@@ -21040,6 +21040,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (coordinated) playWaveAbilitySound(miniBoss, spell.id(), "charge");
         getLogger().info("MINIBOSS_SPELL_TELEGRAPH entity=" + miniBossId + " spell=" + spell.id()
                 + " target=" + target.getUniqueId() + " generation=" + generation);
+        // The boss path spawns one authored body per cast; a miniboss cast only
+        // ever drew its particle silhouette, so the ability that closes on the
+        // player had no geometry at all. Same table, same spawner: the anchor
+        // decides whether the body belongs to the caster or to the marked floor.
+        var modelShape = BossSpellGeometryPolicy.shape(spell.id());
+        var modelAnchor = BossSpellGeometryPolicy.anchor(modelShape,
+                BossSpellGeometryPolicy.Beat.CHARGE);
+        Location modelOrigin = modelAnchor == BossSpellGeometryPolicy.Anchor.LOCKED_FLOOR
+                ? committedMark.clone().add(0, .6D, 0)
+                : miniBoss.getLocation().clone().add(0, 1.2D, 0);
+        playBossSpellModel(miniBoss, spell.id(), modelOrigin, warningTicks, false);
         final int[] ticks = {0};
         BukkitTask[] holder = new BukkitTask[1];
         holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {

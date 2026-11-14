@@ -11,11 +11,12 @@ public final class BossSpellGeometryPolicy {
         INFERNO_CROWN, FIREBALL_CAGE, FINAL_SEAL, SWIPE, CHEST_IRIS,
         SLAM_FAULT, AMBUSH_TALONS, KAGUNE_KNOT, PHASE_SHELL, DEFEAT, GEYSER,
         /*
-         * The four spells that had no authored silhouette at all: a rift dash,
-         * a binding snare, a sonic bloom and the euphoria helix. Without these
-         * they could only ever be flat camera-facing rings, which is exactly
-         * the "particle-only substitute" the specification forbids for a
-         * player-facing spell.
+         * The four miniboss signatures: a rift dash, a binding snare, a sonic
+         * bloom and the euphoria helix. They previously had neither a shape nor
+         * a mesh, so their cast could only ever be drawn as a flat camera-facing
+         * ring -- the "particle-only substitute" the specification forbids for a
+         * player-facing spell. Each now has both a silhouette in sample() and a
+         * client mesh in modelData().
          */
         RIFT_GATE, SNARE_CHAINS, ECHO_BLOOM, EUPHORIA_HELIX
     }
@@ -56,6 +57,10 @@ public final class BossSpellGeometryPolicy {
     /** Private client mesh selectors; displays are cosmetic and never collision owners. */
     public static int modelData(Shape shape) {
         if (shape == null) return 0;
+        // SWIPE and DEFEAT are the only player-facing shapes with no mesh, and
+        // both are deliberate: a contact arc has to track the boss's own swing
+        // rather than a spawned body, and DEFEAT is the boss dissolving, which
+        // a mesh would freeze mid-collapse. Every other shape has real geometry.
         return switch (shape) {
             case VOID_SPHERE -> 830200;
             case FIREBALL_CAGE -> 830201;
@@ -69,6 +74,15 @@ public final class BossSpellGeometryPolicy {
             case CHEST_IRIS -> 830205;
             case AMBUSH_TALONS, KAGUNE_KNOT -> 830206;
             case SLAM_FAULT, GEYSER -> 830207;
+            // The four miniboss signatures used to return 0, which meant the
+            // only thing ever drawn for them was the sampled particle frame:
+            // the spell had an authored silhouette list but no body. Each now
+            // resolves to its own client mesh, the counterpart of the shape in
+            // sample() below.
+            case RIFT_GATE -> 830212;
+            case SNARE_CHAINS -> 830213;
+            case ECHO_BLOOM -> 830214;
+            case EUPHORIA_HELIX -> 830215;
             default -> 0;
         };
     }

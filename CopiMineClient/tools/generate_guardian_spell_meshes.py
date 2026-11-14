@@ -103,6 +103,53 @@ def meshes():
                  box(x, 8, 12.4, 1.8, 1.8, 1.8, 5, ('z', 45)),
                  box(x, 8, 14, .65, .65, 1.8, 14), box(x, 8, 3.4, 2, .5, 2.5, 4)]
     result['arrow_rack'] = rack
+    # The four miniboss signatures. Until now these four spells had an authored
+    # particle silhouette and no body at all, so the ability that closes on the
+    # player (the step, the snare) was the one drawn only in dust. Each mesh
+    # mirrors its silhouette in BossSpellGeometryPolicy: a door with depth, six
+    # chains pulling inward, a bloom of three latitudes on a column, and two
+    # strands climbing a base ring.
+    gate = []
+    for depth in (8.0, 11.0):
+        for x in (3.0, 13.0):
+            gate.append(box(x, 8, depth, .9, 12, .9, 13))
+        gate.append(box(8, 14, depth, 10.9, .9, .9, 13))
+    for x in (3.0, 13.0):
+        gate.append(box(x, 14, 9.5, .9, .9, 3.9, 14))
+    result['rift_gate'] = gate
+    chains = []
+    for index in range(6):
+        a = index * math.pi / 3
+        for step in (0.18, 0.46, 0.74):
+            radius = 5 - 4.2 * step
+            chains.append(box(8 + math.cos(a) * radius, 11 - 10 * step,
+                              8 + math.sin(a) * radius, 1.15, 1.15, 1.15,
+                              11 if index % 2 else 14, ('y', 45)))
+    chains += [box(8, 1.1, 8, 3.6, .8, 3.6, 8, ('y', 45)),
+               box(8, 1.1, 8, 5.2, .4, .8, 8), box(8, 1.1, 8, .8, .4, 5.2, 8)]
+    result['snare_chains'] = chains
+    bloom = []
+    for ring, (height, radius) in enumerate(((2.2, 5.0), (5.4, 3.3), (7.8, 1.7))):
+        for index in range(6):
+            a = index * math.pi / 3
+            bloom.append(box(8 + math.cos(a) * radius, height,
+                             8 + math.sin(a) * radius, 1.3, .7, 1.3,
+                             0 if ring % 2 == 0 else 1, ('y', 45)))
+    bloom.append(box(8, 6.0, 8, 1.2, 12.4, 1.2, 2, ('y', 45)))
+    result['echo_bloom'] = bloom
+    helix = []
+    for strand in (-1, 1):
+        for index in range(5):
+            t = 0.14 + index * 0.19
+            a = t * math.pi * 3.2 + (0 if strand > 0 else math.pi)
+            helix.append(box(8 + math.cos(a) * 2.3, 1.6 + t * 10.5,
+                             8 + math.sin(a) * 2.3, 1.35, 1.35, 1.35,
+                             3 if index % 2 == 0 else 6, ('y', 45)))
+    for index in range(4):
+        a = index * math.pi / 2
+        helix.append(box(8 + math.cos(a) * 3.1, 1.0, 8 + math.sin(a) * 3.1,
+                         3.4, .7, 1.0, 12, ('y', 45)))
+    result['euphoria_helix'] = helix
     return result
 
 

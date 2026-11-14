@@ -54,6 +54,10 @@ public final class GuardianSpellRenderer {
             case 830209 -> "inferno_crown";
             case 830210 -> "summon_arch";
             case 830211 -> "arrow_rack";
+            case 830212 -> "rift_gate";
+            case 830213 -> "snare_chains";
+            case 830214 -> "echo_bloom";
+            case 830215 -> "euphoria_helix";
             default -> "";
         };
         if (mesh.isEmpty() || GuardianSpellMesh.vertices(mesh).isEmpty()) return null;
@@ -67,6 +71,12 @@ public final class GuardianSpellRenderer {
             case 830208 -> 2.6F;
             case 830209 -> 2.1F;
             case 830210 -> 1.8F;
+            // Miniboss signatures sit on and around their own caster, so they
+            // are sized to the body rather than to a boss-targeted effect.
+            case 830212 -> 1.35F;
+            case 830213 -> 1.5F;
+            case 830214 -> 1.4F;
+            case 830215 -> 1.3F;
             default -> 1F;
         };
         return new Pose(mesh, yaw, entity.getXRot(), roll, scale * size);

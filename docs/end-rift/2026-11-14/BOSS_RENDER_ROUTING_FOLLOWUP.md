@@ -23,3 +23,7 @@ The old Windows-export probe reported eight mismatches. The extended repository 
 - Exact final CI, native screenshots/video, full Paper encounter, party-size performance and visual/audio acceptance remain separate requirements. `nativeVerified=false`.
 
 The first candidate is superseded for native acceptance: its cast clips were still blocked by the earlier renderer remapping. Do not install it as the completed boss.
+
+## Cold-build artifact correction
+
+A second fresh-output build exposed an obsolete `RiftGuardianModelRenderer$1.class` left behind in the warm compilation directory after removing the enum remapping. It is not referenced by the repaired renderer, but it changes the archive digest. The warm 17,064,610-byte candidate is superseded. A normal `gradle -p tools/minecraft-26.3/client clean build` produced **17,063,548 bytes**, SHA-256 `7b94ec59937f682f65d1652ff696c630ddbf4155f70125f7cb54de1bb35ab3d7`, byte-identical to the independently compiled fresh-output JAR. All 377 client tests passed after the clean build. The final pin is derived from this cold artifact. Future release preparation must use a clean build and compare an independent fresh-output build; a warm incremental archive alone is not release evidence.

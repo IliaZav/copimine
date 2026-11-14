@@ -25618,6 +25618,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /**
+     * Draw a miniboss's own reaction to being struck.
+     *
+     * <p>This is the only pose the party causes directly, so it must come from
+     * the accepted damage rather than from the attacker's swing: a canceled
+     * hit, an immune objective and a landed blow must not look identical. At
+     * {@code MONITOR} every earlier listener has already had its say, so a
+     * canceled event never reaches this point, and the handler only publishes
+     * presentation -- it never mutates damage, health or the receipt.</p>
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onNamedWave7TrialActorHurt(EntityDamageEvent event) {
+        if (event == null) return;
+        Entity entity = event.getEntity();
+        if (!(entity instanceof LivingEntity living) || !isNamedWave7TrialActor(entity)) return;
+        // A killing blow is the death pose, and it is published from the death
+        // event; drawing a flinch first would consume the only frame the
+        // collapse has before the body is removed.
+        if (living.getHealth() - event.getFinalDamage() <= 0.0D) return;
+        publishWave7Pose(entity, Wave7MinibossPosePolicy.Pose.HIT, 0L, System.currentTimeMillis());
+    }
+
     private boolean preflightNamedEchoDuelRooms(boolean sandbox) {
         if (!realitySplitTrialController.ownsNamed(parseUuidOrNull(eventId), generation)) {
             return refuseNamedEchoDuelPreflight(null, null, "named-controller-not-owned");
@@ -57654,6 +57676,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Entity entity = event.getEntity();
         if (!ownedEntities.containsKey(entity.getUniqueId())) {
             return;
+        }
+        if (isNamedWave7TrialActor(entity)) {
+            // The body still exists on the death event, so this is the one
+            // moment the collapse can be seen. Published before the loot and
+            // progression branches below, which may return early; the pose is
+            // retired together with the trial's bars.
+            publishWave7Pose(entity, Wave7MinibossPosePolicy.Pose.DEATH, 0L,
+                    System.currentTimeMillis());
         }
         if (riftRam != null) {
             // The encounter admits only its body or saved final marksman UUID.

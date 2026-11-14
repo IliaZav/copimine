@@ -162,9 +162,48 @@ public final class Wave7ArchmageModel extends EntityModel<EvokerRenderState> {
         boolean winding = "WAVE_WINDUP".equals(wavePose) || "WAVE_FROZEN".equals(wavePose);
         boolean releasing = "WAVE_RELEASE".equals(wavePose);
         boolean recovering = "WAVE_RECOVER".equals(wavePose);
+        boolean hit = "WAVE_HIT".equals(wavePose);
+        boolean dying = "WAVE_DEATH".equals(wavePose);
         boolean casting = state.isCastingSpell || winding || releasing;
 
-        if (casting) {
+        if (dying) {
+            // Collapse. The scripted Archmage has no vanilla death animation to
+            // fall back on, so the robe folds under the body, the staff arm
+            // drops and the focus dies with it -- a caster that keeps
+            // channelling through its own corpse is the statue defect again.
+            float sag = Mth.sin(age * 0.22F) * 0.02F;
+            body.xRot = 0.92F + sag;
+            body.zRot = 0.20F;
+            head.xRot += 0.46F;
+            rightArm.xRot = 0.30F;
+            leftArm.xRot = 0.36F;
+            rightArm.zRot = -0.34F;
+            leftArm.zRot = 0.30F;
+            rightLeg.xRot = -0.55F;
+            leftLeg.xRot = 0.22F;
+            hoodRune.yRot = 0.0F;
+            focusOrb.visible = false;
+            sigilRing.visible = false;
+            sigilRing.yScale = 1.0F;
+            leftRuneHand.yScale = 0.6F;
+            robeHemis.xRot = 0.45F;
+        } else if (hit) {
+            // Flinch: the caster breaks off, the hood snaps back and the focus
+            // gutters. Short and shallow on purpose -- there is no hit-stun.
+            float recoil = 1.0F + Mth.sin(age * 0.40F) * 0.10F;
+            body.xRot = -0.13F * recoil;
+            head.xRot -= 0.18F * recoil;
+            rightArm.xRot -= 0.30F;
+            leftArm.xRot -= 0.26F;
+            rightArm.zRot += 0.10F;
+            leftArm.zRot -= 0.10F;
+            focusOrb.yScale = 0.55F;
+            focusOrb.xScale = 0.55F;
+            focusOrb.zScale = 0.55F;
+            sigilRing.visible = false;
+            sigilRing.yScale = 1.0F;
+            leftRuneHand.yScale = 0.8F;
+        } else if (casting) {
             float spellPulse = Mth.sin(age * 0.32F) * 0.08F;
             float channel = Mth.sin(age * 0.18F) * 0.045F;
             // Channel overlays the gait: the staff hand rises in front of the

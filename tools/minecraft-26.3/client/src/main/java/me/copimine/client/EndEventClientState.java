@@ -573,7 +573,8 @@ public final class EndEventClientState {
     }
 
     private static boolean knownWavePose(String phase) {
-        return Set.of("WAVE_COMBAT", "WAVE_WINDUP", "WAVE_RELEASE", "WAVE_RECOVER", "WAVE_FROZEN").contains(phase);
+        return Set.of("WAVE_COMBAT", "WAVE_WINDUP", "WAVE_RELEASE", "WAVE_RECOVER", "WAVE_FROZEN",
+                "WAVE_HIT", "WAVE_DEATH").contains(phase);
     }
 
     private static boolean wavePoseVisual(String visual) {

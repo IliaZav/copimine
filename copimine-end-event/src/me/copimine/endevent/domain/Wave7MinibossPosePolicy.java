@@ -33,7 +33,19 @@ public final class Wave7MinibossPosePolicy {
         /** The single frame on which the attack resolves. */
         RELEASE("WAVE_RELEASE"),
         /** The attack has landed and the miniboss is openly recovering. */
-        RECOVER("WAVE_RECOVER");
+        RECOVER("WAVE_RECOVER"),
+        /**
+         * The miniboss itself was struck. This is the only pose the player
+         * causes directly, so it has to be visible: without it the party could
+         * not tell a landed hit from a miss, and the miniboss read as a statue
+         * that simply lost health.
+         */
+        HIT("WAVE_HIT"),
+        /**
+         * The miniboss died and is collapsing. It is published once, on the
+         * death event, so the body plays a reaction instead of vanishing.
+         */
+        DEATH("WAVE_DEATH");
 
         private final String wire;
 
@@ -93,6 +105,14 @@ public final class Wave7MinibossPosePolicy {
      * frame first. The next call then applies the real target.</p>
      */
     public static Pose insertRelease(Pose previous, Pose target) {
+        // A hit and a death are interruptions, not continuations: the player
+        // caused them, so they must be drawn immediately. Fabricating a release
+        // frame in front of an interruption would delay the only reaction the
+        // player can attribute to their own attack, and could swallow the death
+        // pose entirely if the body is removed on the next tick.
+        if (target == Pose.HIT || target == Pose.DEATH) {
+            return target;
+        }
         if (previous == Pose.WINDUP && target != Pose.WINDUP && target != Pose.RELEASE) {
             return Pose.RELEASE;
         }
@@ -101,6 +121,19 @@ public final class Wave7MinibossPosePolicy {
 
     /** How long a release frame is held; long enough to be seen at 20 TPS. */
     public static final long RELEASE_MILLIS = 250L;
+
+    /**
+     * How long a hit reaction is held.
+     *
+     * <p>A flinch shorter than three ticks is invisible at 20 TPS, and one
+     * longer than a fifth of a second stops reading as a flinch and starts
+     * reading as a stagger the fight never granted -- a scripted miniboss has
+     * no real hit-stun, so its reaction must not pretend to.</p>
+     */
+    public static final long HIT_MILLIS = 300L;
+
+    /** How long the death collapse is held before the body is removed. */
+    public static final long DEATH_MILLIS = 1_500L;
 
     /** Lease floor and ceiling, so a pose can never be leased for zero forever. */
     public static final long MIN_LEASE_MILLIS = 50L;
@@ -118,6 +151,12 @@ public final class Wave7MinibossPosePolicy {
     public static long leaseMillis(Pose pose, long endsAtMillis, long nowMillis) {
         if (pose == Pose.RELEASE) {
             return RELEASE_MILLIS;
+        }
+        if (pose == Pose.HIT) {
+            return HIT_MILLIS;
+        }
+        if (pose == Pose.DEATH) {
+            return DEATH_MILLIS;
         }
         long remaining = endsAtMillis > 0L ? endsAtMillis - nowMillis : 0L;
         if (pose == Pose.WINDUP || pose == Pose.RECOVER) {

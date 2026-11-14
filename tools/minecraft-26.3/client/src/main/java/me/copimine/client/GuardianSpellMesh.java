@@ -13,7 +13,8 @@ import java.util.Map;
 /** Immutable, bounded meshes for the standalone spell atlas; no terrain-atlas stitching. */
 public final class GuardianSpellMesh {
     private static final String[] NAMES = {"void_core", "inferno_core", "rift_lance", "echo_shard",
-            "final_seal", "chest_iris", "kagune_splinter", "fault_fragment"};
+            "final_seal", "chest_iris", "kagune_splinter", "fault_fragment",
+            "void_rune", "inferno_crown", "summon_arch", "arrow_rack"};
     private static final Map<String, List<Vertex>> MESHES = loadAll();
     public record Vertex(float x, float y, float z, float u, float v, float nx, float ny, float nz) { }
     private GuardianSpellMesh() { }

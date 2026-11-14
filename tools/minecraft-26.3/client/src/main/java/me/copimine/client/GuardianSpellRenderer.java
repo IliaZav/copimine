@@ -50,12 +50,26 @@ public final class GuardianSpellRenderer {
             case 830205 -> "chest_iris";
             case 830206 -> "kagune_splinter";
             case 830207 -> "fault_fragment";
+            case 830208 -> "void_rune";
+            case 830209 -> "inferno_crown";
+            case 830210 -> "summon_arch";
+            case 830211 -> "arrow_rack";
             default -> "";
         };
         if (mesh.isEmpty() || GuardianSpellMesh.vertices(mesh).isEmpty()) return null;
         float age = entity.tickCount + partialTick;
         float scale = .18F + .82F * Math.min(1F, age / 6F);
-        return new Pose(mesh, -entity.getYRot(), entity.getXRot(), model==830204 ? 0 : age*4F, scale);
+        // A floor rune spins around its vertical normal, never through the floor.
+        // Arches and arrow racks remain upright and keep their committed facing.
+        float yaw = -entity.getYRot() + (model == 830208 ? age * 1.8F : 0F);
+        float roll = model == 830204 || model >= 830208 ? 0F : age * 4F;
+        float size = switch (model) {
+            case 830208 -> 2.6F;
+            case 830209 -> 2.1F;
+            case 830210 -> 1.8F;
+            default -> 1F;
+        };
+        return new Pose(mesh, yaw, entity.getXRot(), roll, scale * size);
     }
 
     public static boolean submit(Pose pose, PoseStack matrices, SubmitNodeCollector collector) {

@@ -69,6 +69,40 @@ def meshes():
     result['fault_fragment'] = [box(8, 5, 8, 6, 3, 6, 15, ('y', 45)),
                                box(7, 8, 8, 3, 4, 3, 0, ('z', -22.5)),
                                box(10, 7, 9, 2, 2, 2, 6, ('z', 22.5))]
+    # Four ability-specific silhouettes on the existing standalone material atlas.
+    rune = [box(8, 8, 8, 2, .45, 2, 1, ('y', 45))]
+    for i in range(8):
+        a = i * math.pi / 4
+        rune.append(box(8 + math.cos(a) * 5, 8, 8 + math.sin(a) * 5,
+                        3.8 if i % 2 == 0 else 1.1, .45, 1.1 if i % 2 == 0 else 3.8,
+                        0, ('y', 45 if i % 2 else 0)))
+        rune.append(box(8 + math.cos(a) * 3, 8.35, 8 + math.sin(a) * 3,
+                        .65, .4, .65, 1, ('y', 45)))
+    result['void_rune'] = rune
+    fire = []
+    for i in range(8):
+        a = i * math.pi / 4
+        x, z = 8 + math.cos(a) * 5, 8 + math.sin(a) * 5
+        fire += [box(x, 7.2, z, 1.6, 4 + i % 3, 1.6, 6, ('y', 45)),
+                 box(x, 10.3 + (i % 3) * .5, z, .65, 2, .65, 7, ('y', 45))]
+    for x, z, sx, sz in ((8, 3, 9, .8), (8, 13, 9, .8), (3, 8, .8, 9), (13, 8, .8, 9)):
+        fire.append(box(x, 5.2, z, sx, .8, sz, 15))
+    result['inferno_crown'] = fire
+    arch = []
+    for side in (-1, 1):
+        for tier in range(4):
+            arch.append(box(8 + side * 5, 3 + tier * 2.2, 8, 1.3, 2.3, 1.3, 11 if tier % 2 else 8))
+        arch.append(box(8 + side * 3.3, 12.1, 8, 4.3, 1.3, 1.3, 11, ('z', -side * 22.5)))
+        arch.append(box(8 + side * 4.2, 8, 8, .45, 7, .45, 14))
+    arch.append(box(8, 13, 8, 2.5, 1.6, 1.8, 8))
+    result['summon_arch'] = arch
+    rack = []
+    for lane in (-1, 0, 1):
+        x = 8 + lane * 4.2
+        rack += [box(x, 8, 7, .8, .8, 10, 4),
+                 box(x, 8, 12.4, 1.8, 1.8, 1.8, 5, ('z', 45)),
+                 box(x, 8, 14, .65, .65, 1.8, 14), box(x, 8, 3.4, 2, .5, 2.5, 4)]
+    result['arrow_rack'] = rack
     return result
 
 

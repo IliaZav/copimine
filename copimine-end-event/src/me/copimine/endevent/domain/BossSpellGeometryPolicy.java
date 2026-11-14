@@ -45,10 +45,14 @@ public final class BossSpellGeometryPolicy {
     public static int modelData(Shape shape) {
         if (shape == null) return 0;
         return switch (shape) {
-            case VOID_SPHERE, VOID_RUNE -> 830200;
-            case INFERNO_CROWN, FIREBALL_CAGE -> 830201;
-            case RIFT_LANCE, ARROW_RACK -> 830202;
-            case SUMMON_ARCH, PHASE_SHELL -> 830203;
+            case VOID_SPHERE -> 830200;
+            case FIREBALL_CAGE -> 830201;
+            case RIFT_LANCE -> 830202;
+            case PHASE_SHELL -> 830203;
+            case VOID_RUNE -> 830208;
+            case INFERNO_CROWN -> 830209;
+            case SUMMON_ARCH -> 830210;
+            case ARROW_RACK -> 830211;
             case FINAL_SEAL -> 830204;
             case CHEST_IRIS -> 830205;
             case AMBUSH_TALONS, KAGUNE_KNOT -> 830206;

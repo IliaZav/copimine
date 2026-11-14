@@ -4384,6 +4384,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clearWave7Admission();
         realitySplitTrialEntityUuids.clear();
         realitySplitTrialRuntimeStates.clear();
+        wardenEmergences.clear();
         realitySplitTrialNextFireballTick.clear();
         realitySplitOrphanedSinceMillis.clear();
         currentCollapsedRings = 0;
@@ -25037,7 +25038,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         PersistentDataType.STRING, "2");
             }
             if (!(actor instanceof LivingEntity living) || actor.getType() != EntityType.WARDEN) return false;
-            living.setInvulnerable(false);
+            // Room reconciliation must retain intro protection on every tick.
+            living.setInvulnerable(isWardenEmerging(actor));
             realitySplitTrialRuntimeStates.putIfAbsent(actor.getUniqueId(),
                     new RealitySplitTrialRuntimeState(trial.chamber(), RealitySplitTrialController.Trial.WARDEN));
             if (createdActor) bindEventEntityClientForOnlinePlayers(actor);
@@ -26299,6 +26301,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         realitySplitTrialEntityUuids.clear();
         realitySplitTrialRuntimeStates.clear();
+        wardenEmergences.clear();
         realitySplitTrialNextFireballTick.clear();
         realitySplitOrphanedSinceMillis.clear();
         // W7-02: partner pairing and steering memory are per-encounter. A second
@@ -26323,6 +26326,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         realitySplitTrialEntityUuids.remove(entityId);
         realitySplitTrialRuntimeStates.remove(entityId);
+        wardenEmergences.remove(entityId);
     }
 
     /** Translate the exact Ritual Sphere profile into the scheduler's count record. */
@@ -38318,7 +38322,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void tickRealitySplitWarden(LivingEntity warden, RealitySplitTrialRuntimeState state) {
-        if (!warden.isValid() || warden.isDead()) return;
+        if (!warden.isValid() || warden.isDead() || state == null) return;
+        if (advanceWardenEmergence(warden)) return;
         Wave7WardenCombatPolicy.AttackProfile attack =
                 Wave7WardenCombatPolicy.profileForPattern(state.attackPattern);
         if (state.action == 2) {
@@ -39611,91 +39616,146 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * 800 with a floor of 350; the ramp follows the mage's place in the wheel, so
      * the last mage is the toughest and no mage is trivial.
      */
-    /** Per-body emergence clock, keyed by actor. */
-    private final Map<UUID, Integer> wardenEmergeStartedAt = new java.util.concurrent.ConcurrentHashMap<>();
+    /** The trial ticker owns emergence and combat; no parallel scheduled task. */
+    private record WardenEmergence(String event, long generation, Location anchor, long startedTick) { }
+    private final Map<UUID, WardenEmergence> wardenEmergences = new HashMap<>();
 
-    /**
-     * Start the authored emergence of a Wave 7 Warden.
-     *
-     * <p>The body is sunk under the floor and invulnerable while the sequence
-     * runs; a repeating step lifts it, throws sculk dust, shakes the ground and
-     * lands one roar as it breaks the surface. Until then it cannot be damaged or
-     * acquired, so the player watches it arrive instead of fighting a buried mob.</p>
-     */
-    private void beginWardenEmerge(Entity actor, Location anchor) {
-        if (!(actor instanceof LivingEntity warden) || anchor == null
-                || anchor.getWorld() == null) {
-            return;
+    private boolean isWardenEmerging(Entity actor) {
+        if (actor == null) return false;
+        WardenEmergence state = wardenEmergences.get(actor.getUniqueId());
+        if (state != null) return state.generation() == generation && Objects.equals(state.event(), eventId);
+        String encoded = readString(actor, new NamespacedKey(this, "end_event_warden_emergence"));
+        if (encoded.isBlank()) return false;
+        try {
+            String[] fields = encoded.split("\\|", -1);
+            if (fields.length != 8 || !fields[0].equals(eventId)
+                    || Long.parseLong(fields[1]) != generation
+                    || !fields[2].equals(actor.getWorld().getUID().toString())
+                    || !ownedBySession(actor, eventId, generation)) throw new IllegalArgumentException();
+            double x = Double.parseDouble(fields[3]), y = Double.parseDouble(fields[4]);
+            double z = Double.parseDouble(fields[5]);
+            float yaw = Float.parseFloat(fields[6]);
+            int elapsed = Integer.parseInt(fields[7]);
+            if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
+                    || !Float.isFinite(yaw) || !Wave7WardenEmergePolicy.emerging(elapsed))
+                throw new IllegalArgumentException();
+            Location anchor = new Location(actor.getWorld(), x, y, z, yaw, 0.0F);
+            wardenEmergences.put(actor.getUniqueId(),
+                    new WardenEmergence(eventId, generation, anchor, eventTickCounter - elapsed));
+        } catch (RuntimeException invalid) {
+            enterNamedRealitySplitRecovery("WAVE7_WARDEN_EMERGE_CHECKPOINT_INVALID");
         }
+        // A malformed saved intro must not release a buried actor into combat.
+        return true;
+    }
+
+    private void checkpointWardenEmergence(LivingEntity warden, WardenEmergence state, int elapsed) {
+        Location anchor = state.anchor();
+        warden.getPersistentDataContainer().set(new NamespacedKey(this, "end_event_warden_emergence"),
+                PersistentDataType.STRING, state.event() + "|" + state.generation() + "|"
+                        + anchor.getWorld().getUID() + "|" + anchor.getX() + "|" + anchor.getY() + "|"
+                        + anchor.getZ() + "|" + anchor.getYaw() + "|" + elapsed);
+    }
+
+    private void beginWardenEmerge(Entity actor, Location anchor) {
+        if (!(actor instanceof LivingEntity warden) || anchor == null || anchor.getWorld() == null
+                || !ownedBySession(actor, eventId, generation) || isWardenEmerging(actor)) return;
+        WardenEmergence state = new WardenEmergence(eventId, generation, anchor.clone(), eventTickCounter);
+        wardenEmergences.put(warden.getUniqueId(), state);
+        checkpointWardenEmergence(warden, state, 0);
         warden.setInvulnerable(true);
+        warden.setGravity(false);
+        warden.setVelocity(new Vector());
         if (warden instanceof Mob mob) {
+            mob.getPathfinder().stopPathfinding();
             mob.setAI(false);
             mob.setAware(false);
             mob.setTarget(null);
         }
-        Location buried = anchor.clone().add(0.0D,
-                Wave7WardenEmergePolicy.verticalOffset(0), 0.0D);
-        warden.teleport(buried);
-        wardenEmergeStartedAt.put(warden.getUniqueId(), 0);
-        // The ground answers before the body does.
+        // Direct teleport was rejected by our own anti-escape listener.
+        if (!teleportCombatEntity(warden, anchor.clone().add(0.0D,
+                Wave7WardenEmergePolicy.verticalOffset(0), 0.0D))) {
+            enterNamedRealitySplitRecovery("WAVE7_WARDEN_EMERGE_RELOCATION_REFUSED");
+            return;
+        }
         anchor.getWorld().playSound(anchor, Sound.ENTITY_WARDEN_EMERGE,
                 SoundCategory.HOSTILE, 1.0F, 1.0F);
-        new org.bukkit.scheduler.BukkitRunnable() {
-            private int elapsed;
+    }
 
-            @Override
-            public void run() {
-                if (!warden.isValid() || warden.isDead()) {
-                    wardenEmergeStartedAt.remove(warden.getUniqueId());
-                    cancel();
-                    return;
-                }
-                elapsed++;
-                if (!Wave7WardenEmergePolicy.emerging(elapsed)) {
-                    // Hand the body back to combat exactly where it stands.
-                    warden.setInvulnerable(false);
-                    if (warden instanceof Mob mob) {
-                        mob.setAI(true);
-                        mob.setAware(true);
-                    }
-                    wardenEmergeStartedAt.remove(warden.getUniqueId());
-                    cancel();
-                    return;
-                }
-                Location current = anchor.clone().add(0.0D,
-                        Wave7WardenEmergePolicy.verticalOffset(elapsed), 0.0D);
-                warden.teleport(current);
-                float rumble = Wave7WardenEmergePolicy.rumbleVolume(elapsed);
-                if (elapsed % 4 == 0 && rumble > 0.0F) {
-                    current.getWorld().playSound(current, Sound.BLOCK_SCULK_SENSOR_CLICKING,
-                            SoundCategory.HOSTILE, rumble * 0.8F, 0.55F);
-                }
-                if (Wave7WardenEmergePolicy.roarsAt(elapsed)) {
-                    current.getWorld().playSound(current, Sound.ENTITY_WARDEN_ROAR,
-                            SoundCategory.HOSTILE, 1.0F, 0.9F);
-                }
-                for (Player viewer : eventAudience()) {
-                    if (!isEventParticleViewer(viewer, anchor)) continue;
-                    if (elapsed % 2 == 0) {
-                        viewer.spawnParticle(Particle.SCULK_SOUL, current, 6,
-                                0.45D, 0.25D, 0.45D, 0.01D);
-                        viewer.spawnParticle(Particle.SCULK_CHARGE_POP, current, 3,
-                                0.5D, 0.1D, 0.5D, 0.0D);
-                    }
-                    if (elapsed % 3 == 0) {
-                        double radius = 1.4D + (elapsed / 6.0D);
-                        for (int spoke = 0; spoke < 7; spoke++) {
-                            double angle = spoke * Math.PI * 2.0D / 7.0D + elapsed * 0.06D;
-                            Location from = anchor.clone().add(
-                                    Math.cos(angle) * radius, 0.06D, Math.sin(angle) * radius);
-                            spawnPatternSegment(viewer, from,
-                                    from.clone().add(0.0D, 1.1D, 0.0D), Particle.SOUL,
-                                    null);
-                        }
-                    }
+    /** Returns true while the intro owns movement, protection and attacks. */
+    private boolean advanceWardenEmergence(LivingEntity warden) {
+        if (!isWardenEmerging(warden)) return false;
+        WardenEmergence state = wardenEmergences.get(warden.getUniqueId());
+        if (state == null) return true;
+        if (state.generation() != generation || !Objects.equals(state.event(), eventId)
+                || !ownedBySession(warden, eventId, generation)) {
+            wardenEmergences.remove(warden.getUniqueId());
+            return true;
+        }
+        Location anchor = state.anchor();
+        if (!isRealitySplitTrialRuntimeActive() || anchor.getWorld() == null
+                || !anchor.getWorld().equals(warden.getWorld())) return true;
+        int elapsed = (int) Math.min(Integer.MAX_VALUE,
+                Math.max(0L, eventTickCounter - state.startedTick()));
+        warden.setInvulnerable(true);
+        warden.setGravity(false);
+        warden.setVelocity(new Vector());
+        if (warden instanceof Mob mob) {
+            mob.getPathfinder().stopPathfinding();
+            mob.setTarget(null);
+            mob.setAI(false);
+            mob.setAware(false);
+        }
+        Location current = anchor.clone().add(0.0D,
+                Wave7WardenEmergePolicy.verticalOffset(elapsed), 0.0D);
+        if (!teleportCombatEntity(warden, current)) {
+            enterNamedRealitySplitRecovery("WAVE7_WARDEN_EMERGE_RELOCATION_REFUSED");
+            return true;
+        }
+        if (!Wave7WardenEmergePolicy.emerging(elapsed)) {
+            warden.getPersistentDataContainer().remove(new NamespacedKey(this, "end_event_warden_emergence"));
+            wardenEmergences.remove(warden.getUniqueId());
+            warden.setInvulnerable(false);
+            warden.setGravity(true);
+            // Keep scripted NoAI combat: vanilla AI must not become a second
+            // target/damage owner after the roar. Resume only the trial loop.
+            RealitySplitTrialRuntimeState combat = realitySplitTrialRuntimeStates.get(warden.getUniqueId());
+            if (combat != null) combat.nextActionTick = eventTickCounter + 10L;
+            return true;
+        }
+        // This tag is saved with the actor's position by Paper. Restart resumes
+        // the same owned body/anchor; it neither spawns a duplicate nor attacks underground.
+        checkpointWardenEmergence(warden, state, elapsed);
+        float rumble = Wave7WardenEmergePolicy.rumbleVolume(elapsed);
+        if (elapsed % 4 == 0 && rumble > 0.0F) {
+            current.getWorld().playSound(current, Sound.BLOCK_SCULK_SENSOR_CLICKING,
+                    SoundCategory.HOSTILE, rumble * 0.8F, 0.55F);
+        }
+        if (Wave7WardenEmergePolicy.roarsAt(elapsed)) {
+            current.getWorld().playSound(current, Sound.ENTITY_WARDEN_ROAR,
+                    SoundCategory.HOSTILE, 1.0F, 0.9F);
+        }
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, anchor)) continue;
+            if (elapsed % 2 == 0) {
+                viewer.spawnParticle(Particle.SCULK_SOUL, current, 6,
+                        0.45D, 0.25D, 0.45D, 0.01D);
+                viewer.spawnParticle(Particle.SCULK_CHARGE_POP, current, 3,
+                        0.5D, 0.1D, 0.5D, 0.0D);
+            }
+            if (elapsed % 3 == 0) {
+                double radius = 1.4D + (elapsed / 6.0D);
+                for (int spoke = 0; spoke < 7; spoke++) {
+                    double angle = spoke * Math.PI * 2.0D / 7.0D + elapsed * 0.06D;
+                    Location from = anchor.clone().add(
+                            Math.cos(angle) * radius, 0.06D, Math.sin(angle) * radius);
+                    spawnPatternSegment(viewer, from,
+                            from.clone().add(0.0D, 1.1D, 0.0D), Particle.SOUL,
+                            null);
                 }
             }
-        }.runTaskTimer(this, 1L, 1L);
+        }
+        return true;
     }
 
     private void applyRitualCasterHealth(LivingEntity caster, int stage) {
@@ -44201,6 +44261,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private Entity unregisterOwnedEntity(UUID entityId, String reason) {
         bossSpellModelIds.remove(entityId);
+        wardenEmergences.remove(entityId);
         if (entityId == null) {
             return null;
         }

@@ -1460,6 +1460,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, Location> activeVoidMarkCenters = new LinkedHashMap<>();
     private final Set<UUID> activeRiftProjectiles = new HashSet<>();
     private final Set<UUID> bossSpellModelIds = new HashSet<>();
+    /**
+     * Miniboss spell bodies in flight. Kept apart from {@link #bossSpellModelIds}
+     * because several minibosses may be mid-cast at once where only one Guardian
+     * ever casts, and because their leases are keyed to different owners.
+     */
+    private static final int MAX_MINI_BOSS_SPELL_MODELS = 8;
+    private final Set<UUID> miniBossSpellModelIds = new HashSet<>();
     private final Map<UUID, BukkitTask> riftProjectileTasks = new HashMap<>();
     private final Map<UUID, RiftFireballRuntimeState> activeRiftFireballs = new LinkedHashMap<>();
     /** Non-persistent boss RIFT hazards; unlike Wave 4 these never mutate blocks. */
@@ -21042,15 +21049,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " target=" + target.getUniqueId() + " generation=" + generation);
         // The boss path spawns one authored body per cast; a miniboss cast only
         // ever drew its particle silhouette, so the ability that closes on the
-        // player had no geometry at all. Same table, same spawner: the anchor
-        // decides whether the body belongs to the caster or to the marked floor.
+        // player had no geometry at all. Same table, but a miniboss lease: the
+        // body lives while the miniboss does, not while a Guardian cast does.
+        // The anchor decides whether the body belongs to the caster or to the
+        // marked floor.
         var modelShape = BossSpellGeometryPolicy.shape(spell.id());
         var modelAnchor = BossSpellGeometryPolicy.anchor(modelShape,
                 BossSpellGeometryPolicy.Beat.CHARGE);
         Location modelOrigin = modelAnchor == BossSpellGeometryPolicy.Anchor.LOCKED_FLOOR
                 ? committedMark.clone().add(0, .6D, 0)
                 : miniBoss.getLocation().clone().add(0, 1.2D, 0);
-        playBossSpellModel(miniBoss, spell.id(), modelOrigin, warningTicks, false);
+        playMiniBossSpellModel(miniBoss, spell.id(), modelOrigin, warningTicks);
         final int[] ticks = {0};
         BukkitTask[] holder = new BukkitTask[1];
         holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
@@ -21352,18 +21361,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || modelData == 0 || !boss.getWorld().equals(at.getWorld()) || bossSpellModelIds.size() >= 2) return;
         final ItemDisplay display;
         try {
-            display = at.getWorld().spawn(at, ItemDisplay.class, entity -> {
-                // A known fallback item remains available to an older client.
-                entity.setItemStack(overlayItem(modelData, "end_rift_rift_bolt"));
-                entity.setBrightness(new Display.Brightness(15, 15));
-                entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
-                entity.setBillboard(Display.Billboard.FIXED);
-                entity.setViewRange(48F / 64F);
-                entity.setDisplayWidth(2F); entity.setDisplayHeight(2F);
-                entity.setTeleportDuration(1); entity.setInterpolationDuration(2);
-                entity.setGravity(false); entity.setInvulnerable(true); entity.setPersistent(false);
-                entity.setShadowRadius(0F);
-            });
+            display = spawnSpellModelDisplay(at, modelData);
         } catch (RuntimeException failure) {
             getLogger().warning("BOSS_SPELL_MODEL_SPAWN_FAILED spell=" + spellId);
             return;
@@ -21404,6 +21402,87 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossSpellModelIds.remove(id);
         Entity entity = unregisterOwnedEntity(id, "boss-spell-model-expired");
         if (entity != null && entity.isValid()) entity.remove();
+    }
+
+    /**
+     * Spawn one cosmetic spell body and hand ownership to a lease predicate.
+     *
+     * <p>The two callers have genuinely different lifetimes: a boss body lives as
+     * long as that boss cast ({@code bossUuid} + {@code bossCastSequence}), while
+     * a miniboss body lives as long as the miniboss itself. Reusing the boss
+     * lease for a miniboss made every miniboss body self-destruct within one
+     * task tick, because the lease compared the Guardian's UUID against the
+     * miniboss's. Sharing the spawn here and the lease there keeps the two
+     * separate without duplicating the entity setup.</p>
+     */
+    private ItemDisplay spawnSpellModelDisplay(Location at, int modelData) {
+        return at.getWorld().spawn(at, ItemDisplay.class, entity -> {
+            // A known fallback item remains available to an older client.
+            entity.setItemStack(overlayItem(modelData, "end_rift_rift_bolt"));
+            entity.setBrightness(new Display.Brightness(15, 15));
+            entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
+            entity.setBillboard(Display.Billboard.FIXED);
+            entity.setViewRange(48F / 64F);
+            entity.setDisplayWidth(2F); entity.setDisplayHeight(2F);
+            entity.setTeleportDuration(1); entity.setInterpolationDuration(2);
+            entity.setGravity(false); entity.setInvulnerable(true); entity.setPersistent(false);
+            entity.setShadowRadius(0F);
+        });
+    }
+
+    /**
+     * One cosmetic body per miniboss cast, leased to that miniboss.
+     *
+     * <p>`telegraphMiniBossSpell` used to call the boss spawner, whose lease
+     * requires {@code Objects.equals(bossUuid, owner)}. For a miniboss that is
+     * never true -- `bossUuid` is the Guardian or null -- so the display was
+     * created and then removed on the first task tick, which is
+     * indistinguishable from having no body at all.</p>
+     */
+    private void playMiniBossSpellModel(LivingEntity caster, String spellId, Location at, int ticks) {
+        int modelData = BossSpellGeometryPolicy.modelData(BossSpellGeometryPolicy.shape(spellId));
+        if (taskRegistry == null || caster == null || at == null || at.getWorld() == null
+                || modelData == 0 || !caster.getWorld().equals(at.getWorld())
+                || miniBossSpellModelIds.size() >= MAX_MINI_BOSS_SPELL_MODELS) return;
+        final ItemDisplay display;
+        try {
+            display = spawnSpellModelDisplay(at, modelData);
+        } catch (RuntimeException failure) {
+            getLogger().warning("MINIBOSS_SPELL_MODEL_SPAWN_FAILED spell=" + spellId);
+            return;
+        }
+        try { tag(display, EVENT_KIND_DISPLAY, 0, isOfficialEntity(caster)); }
+        catch (RuntimeException failure) {
+            unregisterOwnedEntity(display.getUniqueId(), "miniboss-spell-model-tag-failed");
+            display.remove(); return;
+        }
+        miniBossSpellModelIds.add(display.getUniqueId());
+        long ownerGeneration = generation;
+        String ownerEvent = eventId;
+        UUID ownerCaster = caster.getUniqueId();
+        int lifetime = Math.max(2, Math.min(80, ticks));
+        BukkitTask task = new BukkitRunnable() {
+            int elapsed;
+            @Override public void run() {
+                if (elapsed >= lifetime || taskRegistry == null || !taskRegistry.owns(ownerGeneration)
+                        || generation != ownerGeneration || !Objects.equals(eventId, ownerEvent)
+                        || !caster.isValid() || caster.isDead() || !display.isValid()) {
+                    removeMiniBossSpellModel(display.getUniqueId()); cancel(); return;
+                }
+                elapsed += 2;
+            }
+        }.runTaskTimer(this, 1L, 2L);
+        registerEncounterTask(task);
+    }
+
+    private void removeMiniBossSpellModel(UUID id) {
+        miniBossSpellModelIds.remove(id);
+        Entity entity = unregisterOwnedEntity(id, "miniboss-spell-model-expired");
+        if (entity != null && entity.isValid()) entity.remove();
+    }
+
+    private void clearMiniBossSpellModels() {
+        for (UUID id : new HashSet<>(miniBossSpellModelIds)) removeMiniBossSpellModel(id);
     }
 
     private void clearBossSpellModels() {
@@ -45484,6 +45563,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clearActiveEventArrows();
         clearCommanderAura();
         releaseAllSpiderEffects();
+        // Miniboss spell bodies are cosmetic, but they must not outlive the wave
+        // that owns them: a stale display would hang in the air after the arena
+        // emptied. The lease would drop them on the next tick anyway; clearing
+        // here means the removal is attributed to the wave boundary.
+        clearMiniBossSpellModels();
         Set<UUID> waveEntityIds = new LinkedHashSet<>();
         for (Entity entity : new ArrayList<>(ownedEntities.values())) {
             if (isWaveCleanupKind(readString(entity, keyKind), includeRewards)) {

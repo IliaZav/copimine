@@ -50,6 +50,18 @@ public final class BossSpellGeometryPolicy {
             case "void_snare" -> Shape.SNARE_CHAINS;
             case "echo_pulse" -> Shape.ECHO_BLOOM;
             case "rift_euphoria" -> Shape.EUPHORIA_HELIX;
+            // The five ids the miniboss rotation really emits. Without these
+            // `shape()` returned null, so `telegraphMiniBossSpell` had no
+            // silhouette to sample and no mesh to spawn: the only live
+            // miniboss spells were the only ones with no geometry at all.
+            // Each reuses an authored body from the boss kit whose form
+            // matches the ability, rather than inventing a second family that
+            // would have to be verified separately.
+            case "arrow_rain" -> Shape.ARROW_RACK;
+            case "rift_bolt" -> Shape.RIFT_LANCE;
+            case "dragon_breath" -> Shape.INFERNO_CROWN;
+            case "void_burst" -> Shape.VOID_SPHERE;
+            case "web_shot" -> Shape.SNARE_CHAINS;
             default -> null;
         };
     }

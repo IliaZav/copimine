@@ -43,6 +43,16 @@ public final class SpellVisualPolicy {
         add(profiles, "void_snare", "схлопывающиеся цепи", "REVERSE_PORTAL", "SMOKE", 3, 18);
         add(profiles, "echo_pulse", "удар эхом", "SCULK_SOUL", "SONIC_BOOM", 3, 22);
         add(profiles, "rift_euphoria", "Эйфория Пустоты", "WITCH", "REVERSE_PORTAL", 4, 36);
+        // The five ids the miniboss rotation actually emits had no profile at
+        // all, so `renderSpellTelegraphVisual` returned immediately and those
+        // casts drew nothing but the inner END_ROD fallback. The four spells
+        // authored just above are not in `miniBossSpellFor`, so the authored
+        // half of this table did not cover anything a Wave 1-6 elite casts.
+        add(profiles, "arrow_rain", "стреловидный дождь", "CRIT", "SMOKE", 3, 30);
+        add(profiles, "rift_bolt", "разломный разряд", "ELECTRIC_SPARK", "DUST_CYAN", 3, 26);
+        add(profiles, "dragon_breath", "драконье дыхание", "DRAGON_BREATH", "SMOKE", 3, 34);
+        add(profiles, "void_burst", "разрыв пустоты", "REVERSE_PORTAL", "SMOKE", 3, 28);
+        add(profiles, "web_shot", "паутинный выстрел", "SMOKE", "DUST_WHITE", 3, 20);
         return Map.copyOf(profiles);
     }
 

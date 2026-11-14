@@ -44,6 +44,7 @@ MESH_NAMES = CLIENT_JAVA / "GuardianSpellMesh.java"
 RENDERER = CLIENT_JAVA / "GuardianSpellRenderer.java"
 MESH_DIR = (ROOT / "CopiMineClient" / "src" / "main" / "resources" / "assets"
             / "copimineclient" / "geometry" / "guardian_spells")
+AI_POLICY = DOMAIN / "EndRiftAiPolicy.java"
 
 PROBE = textwrap.dedent(
     """
@@ -326,3 +327,79 @@ def test_every_silhouette_has_a_real_client_mesh_and_an_authored_file():
         mesh = json.loads((MESH_DIR / f"{name}.json").read_text(encoding="utf-8"))
         elements = mesh.get("elements")
         assert isinstance(elements, list) and elements, f"{name}.json has no cuboids"
+
+
+def test_every_spell_the_miniboss_rotation_emits_is_fully_authored():
+    """The contract is the *live* set, which is what `miniBossSpellFor` returns.
+
+    Authoring the whole `MiniBossSpell` enum is not enough: measured on the
+    production lineage, the four ids that table covered (`rift_step`,
+    `void_snare`, `echo_pulse`, `rift_euphoria`) are never emitted by
+    `miniBossSpellFor`, while the five ids it *does* emit (`arrow_rain`,
+    `rift_bolt`, `dragon_breath`, `void_burst`, `web_shot`) had no profile, no
+    composition and no shape at all -- so `renderSpellTelegraphVisual` returned
+    on its first line and the cast drew nothing. This ties the assertion to the
+    switch, so authoring the wrong half cannot pass again.
+    """
+    event = EVENT.read_text(encoding="utf-8", errors="surrogateescape")
+    rotation = _method(event, "private EndRiftAiPolicy.MiniBossSpell miniBossSpellFor(")
+    emitted = set(re.findall(r"->\s*EndRiftAiPolicy\.MiniBossSpell\.([A-Z_]+)", rotation))
+    assert len(emitted) >= 5, emitted
+
+    ai = AI_POLICY.read_text(encoding="utf-8", errors="surrogateescape")
+    enum_body = _braced(ai[ai.index("public enum MiniBossSpell {"):])
+    ids = dict(re.findall(r'([A-Z_]+)\("([a-z_]+)"', enum_body))
+    # Two abilities deliberately map to no spell (`TRIPLE_ARROWS`,
+    # `EXPLOSIVE_ARROWS`), so the emitted set is a real subset.
+    assert emitted <= set(ids), f"unknown enum constants: {emitted - set(ids)}"
+    live = {ids[name] for name in emitted}
+
+    profiles = set(re.findall(r'add\(profiles,\s*"([a-z_]+)"',
+                              SPELL_VISUAL.read_text(encoding="utf-8", errors="surrogateescape")))
+    compositions = set(re.findall(r'put\(result,\s*"([a-z_]+)"',
+                                  COMPOSITIONS.read_text(encoding="utf-8", errors="surrogateescape")))
+    assert not (live - profiles), f"no spell profile for {sorted(live - profiles)}"
+    assert not (live - compositions), f"no composition for {sorted(live - compositions)}"
+
+    geometry = GEOMETRY.read_text(encoding="utf-8", errors="surrogateescape")
+    selector = _method(geometry, "public static int modelData(Shape shape)")
+    meshed = set()
+    for labels, custom_model_data in re.findall(r"case\s+([A-Z_,\s]+?)\s*->\s*(\d+)\s*;", selector):
+        if int(custom_model_data):
+            meshed.update(re.findall(r"[A-Z][A-Z0-9_]*", labels))
+    unresolved = []
+    for spell_id in sorted(live):
+        shape = re.search(rf'case\s+"{re.escape(spell_id)}"\s*->\s*Shape\.([A-Z_]+)', geometry)
+        if shape is None or shape.group(1) == "SWIPE" or shape.group(1) not in meshed:
+            unresolved.append((spell_id, shape.group(1) if shape else None))
+    assert not unresolved, f"live miniboss spells without a body: {unresolved}"
+
+
+def test_the_miniboss_body_lease_is_keyed_to_the_miniboss():
+    """A miniboss body must not inherit the Guardian's cast lease.
+
+    `telegraphMiniBossSpell` originally called `playBossSpellModel`, whose task
+    requires `Objects.equals(bossUuid, owner)`. For a miniboss that is never
+    true -- `bossUuid` is the Guardian or null -- so the display was spawned and
+    then removed on the first task tick, which looks exactly like "no body".
+    """
+    event = EVENT.read_text(encoding="utf-8", errors="surrogateescape")
+    cast = _method(event, "private void telegraphMiniBossSpell(")
+    assert "playMiniBossSpellModel(" in cast
+    assert "playBossSpellModel(" not in cast
+
+    lease = _method(event, "private void playMiniBossSpellModel(")
+    for guardian_key in ("bossUuid", "bossCastSequence"):
+        assert guardian_key not in lease, (
+            f"the miniboss lease must not depend on {guardian_key}")
+    assert "caster.isValid()" in lease and "caster.isDead()" in lease
+    assert "generation != ownerGeneration" in lease
+    assert "eventId, ownerEvent" in lease.replace("Objects.equals(eventId, ownerEvent)",
+                                                  "eventId, ownerEvent")
+    # The body must be spawned through the shared display factory, so the two
+    # callers cannot drift in how the display is configured.
+    assert "spawnSpellModelDisplay(" in lease
+
+    # And the boss path must keep its own lease.
+    boss = _method(event, "private void playBossSpellModel(")
+    assert "bossUuid" in boss and "bossCastSequence" in boss

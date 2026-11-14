@@ -162,6 +162,28 @@ public final class BossSpellVisualCompositionPolicy {
         // beam that feeds it finally share a palette.
         put(result, "rift_euphoria", 0x7AFF48, "WITCH", "DRAGON_BREATH", 1.6F,
                 "minecraft:entity.witch.drink", "rising double helix");
+        // The five spells the miniboss rotation actually emits. They were the
+        // true gap: the block above authored four ids that `miniBossSpellFor`
+        // never returns, so a Wave 1-6 elite still cast spells with no colour
+        // of their own and no silhouette. Each of these maps to a shape in
+        // BossSpellGeometryPolicy and therefore to a client mesh, so the cast
+        // has a body as well as a palette.
+        //
+        // A canopy of arrows falling on the target: wide and cold, no vortex.
+        put(result, "arrow_rain", 0xF2C14E, "CRIT", "SMOKE", 0.0F,
+                "minecraft:entity.arrow.shoot", "falling arrow canopy");
+        // A single heavy bolt, tighter and hotter than the boss's lance.
+        put(result, "rift_bolt", 0x2FB4FF, "ELECTRIC_SPARK", "DUST_CYAN", 2.0F,
+                "minecraft:entity.blaze.shoot", "hammered bolt");
+        // A breath cone: violet, slow, and clearly a spray rather than a ball.
+        put(result, "dragon_breath", 0x9B4BFF, "DRAGON_BREATH", "SMOKE", 1.2F,
+                "minecraft:entity.ghast.warn", "breath cone");
+        // An outward rupture, the opposite read from the collapsing sphere.
+        put(result, "void_burst", 0x5B2BD6, "REVERSE_PORTAL", "SMOKE", 0.5F,
+                "minecraft:entity.warden.nearby_close", "outward void rupture");
+        // Silk: pale, matte, and the only white-anchored spell in the set.
+        put(result, "web_shot", 0xDDDDEE, "SMOKE", "DUST_WHITE", 0.0F,
+                "minecraft:block.chain.break", "spun binding web");
         return Map.copyOf(result);
     }
 

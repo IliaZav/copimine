@@ -9,7 +9,7 @@ ROOT=Path(__file__).resolve().parents[1]
 def model_probe(tmp_path_factory):
     out=tmp_path_factory.mktemp("boss-model-life")
     source=(ROOT/'copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java').read_text(encoding='utf-8')
-    methods='\n'.join(declaration(source,s) for s in ['private void playBossSpellModel(', 'private void removeBossSpellModel(', 'private void clearBossSpellModels('])
+    methods='\n'.join(declaration(source,s) for s in ['private void playBossSpellModel(', 'private void removeBossSpellModel(', 'private void clearBossSpellModels(', 'private ItemDisplay spawnSpellModelDisplay(', 'private void playMiniBossSpellModel(', 'private void removeMiniBossSpellModel(', 'private void clearMiniBossSpellModels('])
     f=out/'SpellModelProbe.java'
     f.write_text(r'''import java.util.*;
 import me.copimine.endevent.domain.BossSpellGeometryPolicy;
@@ -50,6 +50,8 @@ public class SpellModelProbe {
  Registry taskRegistry=new Registry();long generation=7,bossCastSequence=5;String eventId="event",EVENT_KIND_DISPLAY="display";
  LivingEntity boss=new LivingEntity();UUID bossUuid=boss.id;boolean failTag,move=true;
  Set<UUID> bossSpellModelIds=new HashSet<>();Map<UUID,Entity> owned=new HashMap<>();
+ static final int MAX_MINI_BOSS_SPELL_MODELS=8;
+ Set<UUID> miniBossSpellModelIds=new HashSet<>();
  Object overlayItem(int id,String name){return id;}
  boolean isOfficialEntity(Entity e){return false;}
  void tag(Entity entity,String kind,int wave,boolean official){owned.put(entity.id,entity);if(failTag)throw new IllegalStateException("tag failed after ownership insert");}
@@ -58,9 +60,55 @@ public class SpellModelProbe {
  void registerEncounterTask(BukkitTask t){}
  java.util.logging.Logger getLogger(){return java.util.logging.Logger.getAnonymousLogger();}
 ''' + methods+r'''
+ /**
+  * The miniboss body lease, executed rather than merely read.
+  *
+  * `telegraphMiniBossSpell` first reused the Guardian spawner, whose task
+  * requires `Objects.equals(bossUuid, owner)`; a miniboss never satisfies that,
+  * so the body was removed on the first tick and the cast looked like a
+  * particle-only spell. Each scenario below fails if that lease comes back.
+  */
+ void runMiniBossScenario(String scenario){
+  playMiniBossSpellModel(boss,"rift_step",new Location(),20);
+  check(WORLD.created.size()==1,"miniboss cast spawned no body");
+  check(owned.size()==1,"miniboss body was never owned");
+  check(miniBossSpellModelIds.size()==1,"miniboss body missing from its own index");
+  check(bossSpellModelIds.isEmpty(),"miniboss body leaked into the boss index");
+  if(scenario.equals("mini-budget")){
+   for(int i=0;i<9;i++)playMiniBossSpellModel(boss,"rift_step",new Location(),20);
+   check(WORLD.created.size()==MAX_MINI_BOSS_SPELL_MODELS,
+    "miniboss bodies exceeded the bounded budget: "+WORLD.created.size());
+   check(owned.size()==MAX_MINI_BOSS_SPELL_MODELS,"budget mismatch on ownership");
+   clearMiniBossSpellModels();
+   check(owned.isEmpty()&&miniBossSpellModelIds.isEmpty(),"budget clear leaked ownership");
+   tick();
+   for(var entity:WORLD.created)check(!entity.valid,"budget clear left an orphan body");
+   for(var task:TASKS)check(task.cancelled,"budget clear left an orphan task");
+   return;
+  }
+  tick();
+  check(owned.size()==1,"miniboss body removed on the first tick, as the Guardian lease did");
+  for(int i=0;i<4;i++)tick();
+  check(owned.size()==1,"miniboss body expired far before its bounded TTL");
+  switch(scenario){
+   case "mini-caster-death" -> boss.dead=true;
+   case "mini-generation" -> generation++;
+   case "mini-event" -> eventId="other";
+   case "mini-clear" -> clearMiniBossSpellModels();
+   case "mini-expiry" -> { for(int i=0;i<8;i++)tick(); }
+   default -> throw new AssertionError("unknown miniboss scenario "+scenario);
+  }
+  tick();
+  check(owned.isEmpty()&&miniBossSpellModelIds.isEmpty(),
+   "miniboss body survived terminal path "+scenario);
+  for(var entity:WORLD.created)check(!entity.valid,"orphan miniboss visual "+scenario);
+  for(var task:TASKS)check(task.cancelled,"orphan miniboss task "+scenario);
+ }
  static void check(boolean b,String m){if(!b)throw new AssertionError(m);}
  public static void main(String[] args){
-  var p=new SpellModelProbe();String scenario=args[0];p.failTag=scenario.equals("tag-failure");
+  var p=new SpellModelProbe();String scenario=args[0];
+  if(scenario.startsWith("mini")){p.runMiniBossScenario(scenario);return;}
+  p.failTag=scenario.equals("tag-failure");
   p.playBossSpellModel(p.boss,"rift_projectile",new Location(),200,true);
   if(scenario.equals("tag-failure")){
    check(p.owned.isEmpty()&&p.bossSpellModelIds.isEmpty(),"failed tag leaked ownership");
@@ -92,5 +140,20 @@ public class SpellModelProbe {
 
 @pytest.mark.parametrize('scenario',['generation','cast','boss','death','move-failure','clear','budget','expiry','tag-failure'])
 def test_real_model_adapter_has_finite_owned_lifetime(model_probe,scenario):
+    result=subprocess.run(['java','-cp',str(model_probe),'SpellModelProbe',scenario],capture_output=True,text=True)
+    assert result.returncode==0,result.stderr
+
+
+@pytest.mark.parametrize('scenario',['mini-caster-death','mini-generation','mini-event',
+                                     'mini-clear','mini-expiry','mini-budget'])
+def test_real_miniboss_body_outlives_the_first_tick_but_not_its_caster(model_probe,scenario):
+    """The miniboss body must survive the tick that killed it under the boss lease.
+
+    `telegraphMiniBossSpell` originally called `playBossSpellModel`, whose task
+    requires `Objects.equals(bossUuid, owner)`. A miniboss is never `bossUuid`,
+    so the display was spawned and deleted on the first tick -- visually the
+    same as having no body, which is why the earlier increment's meshes could
+    not have been seen even on a correct client.
+    """
     result=subprocess.run(['java','-cp',str(model_probe),'SpellModelProbe',scenario],capture_output=True,text=True)
     assert result.returncode==0,result.stderr

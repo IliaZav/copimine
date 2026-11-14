@@ -817,7 +817,7 @@ public class VisualAbortProbe {
     String eventId="this-event", ritualVisualRecoveryFailure="SHIELD_REPAIR_EXHAUSTED", recoveryReason="";
     int ritualSphereRepairAttempts;
     long generation=42, nextWaveRoleVisualMillis, nextCommanderAuraMillis;
-    int activeWave=6, objectiveClears, saves, arrowsCleared, spiderEffectsCleared;
+    int activeWave=6, objectiveClears, saves, arrowsCleared, spiderEffectsCleared, miniBossSpellModelClears;
     boolean testWaveFrontVisualMode;
     EventPhase phase=EventPhase.ACTIVE;
     Object keyKind=new Object();
@@ -839,6 +839,7 @@ public class VisualAbortProbe {
     void clearActiveEventArrows(){arrowsCleared++;}
     void clearCommanderAura(){}
     void releaseAllSpiderEffects(){spiderEffectsCleared++;}
+    void clearMiniBossSpellModels(){miniBossSpellModelClears++;}
     void clearEliteAbilityEntities(){eliteAbilityCleanupCalls++;}
     void cleanupOwnedEntities(String expected,long expectedGeneration){
         for(var world:Bukkit.worlds)for(var entity:world.entities)
@@ -871,6 +872,9 @@ public class VisualAbortProbe {
                 require(retired.removed,"abort must retire indexed and loaded wave child "+retired.kind);
             require(probe.objectiveClears==1&&probe.arrowsCleared==1,"objective/projectile cleanup runs exactly once");
             require(probe.spiderEffectsCleared==1,"wave cleanup releases temporary spider effects exactly once");
+            // Miniboss spell bodies are cosmetic, but a wave boundary must not
+            // leave one hanging in the arena after the wave that owns it ends.
+            require(probe.miniBossSpellModelClears==1,"miniboss spell bodies are cleared with the wave exactly once");
             require(probe.eliteAbilityCleanupCalls==1,"elite projectiles and player roots are cleared with wave state");
             // Sandbox aborts keep the encounter playable with degraded visuals;
             // only the official path retires the wave number.

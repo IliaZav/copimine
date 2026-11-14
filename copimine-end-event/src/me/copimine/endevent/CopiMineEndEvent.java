@@ -46667,7 +46667,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** Final-seal arena loop: a bounded visual transformation, not a damage source. */
     private void startCurrentLastSealVisuals(LivingEntity boss) {
-        if (boss == null || taskRegistry == null
+        if (boss == null || taskRegistry == null || guardianDeaths.cocoonBroken()
                 || (currentLastSealVisualTask != null && !currentLastSealVisualTask.isCancelled())) {
             return;
         }
@@ -46677,6 +46677,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
             if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
                     || !isBossCombatRuntimeActive(boss) || bossPhase != BossPhase.LAST_SEAL
+                    || guardianDeaths.cocoonBroken()
                     || bossUuid == null || !bossUuid.equals(bossId)
                     || !boss.isValid() || boss.isDead()) {
                 holder[0].cancel();
@@ -46801,6 +46802,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void cancelBossCastTask() {
+        // Forced replacement, phase change and defeat cancel the entire combo,
+        // not just the current swipe. No old follow-up may resume afterwards.
+        bossFuryCombo.clear();
         clearBossSpellModels();
         // Every delayed chest sweep must belong to its exact originating
         // cast. A new spell/50% repel invalidates all old sweep callbacks.
@@ -51859,6 +51863,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         cancelBossCastForPhaseChange();
         clearKaguneRingCast("cocoon-broken");
         clearActiveRiftProjectiles();
+        // Fireballs have a separate registry from the Snowball rift projectiles.
+        // Keeping them alive let old cocoon spells hit during the authored fall.
+        for (RiftFireballRuntimeState projectile : new ArrayList<>(activeRiftFireballs.values())) {
+            if (projectile.isBossSpell() && projectile.generation() == generation)
+                cleanupRiftFireball(projectile.entityId(), "cocoon-broken");
+        }
+        if (currentLastSealVisualTask != null) {
+            currentLastSealVisualTask.cancel();
+            currentLastSealVisualTask = null;
+        }
         // Retire resets scheduled by the old cast before the fall owns pose.
         bossVisualCueSequence++;
         clearWorldVfxBeamsByPrefix("boss-cue-");

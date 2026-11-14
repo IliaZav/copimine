@@ -48564,6 +48564,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return switch (spell) {
             case FINAL_STRIKE -> !bossFinalStrikeUsed && config.finalStrikeTuning().enabled();
             case ARENA_INFERNO -> bossPhase == BossPhase.OVERLOAD && arenaInfernoBlocks.isEmpty()
+                    && arenaInfernoOriginalBlocks.isEmpty()
+                    && activeCurrentRiftFractures.isEmpty()
                     && InfernoArenaLifecyclePolicy.mayRestart(eventTickCounter,
                             arenaInfernoLastCastEndTick, arenaInfernoLastCastEndTick);
             case RIFT_PROJECTILE -> activeRiftProjectiles.size() < MAX_ACTIVE_RIFT_PROJECTILES;
@@ -49983,7 +49985,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " cooldown_ticks=" + InfernoArenaLifecyclePolicy.RESTART_COOLDOWN_TICKS);
             return;
         }
-        clearArenaInferno();
+        if (!activeCurrentRiftFractures.isEmpty() || !clearArenaInferno()) {
+            getLogger().severe("BOSS_SPELL_ARENA_INFERNO_REFUSED event=" + eventId
+                    + " reason=previous-restoration-pending");
+            return;
+        }
         World world = boss.getWorld();
         // 14.3: the floor is the same disc the other Phase hazards mutate, and
         // the rune pads / Core are handed to the policy as protected cells.
@@ -50102,6 +50108,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!hazardJournal.markApplied()) {
                 getLogger().severe("BOSS_SPELL_ARENA_INFERNO_JOURNAL_FAILED event=" + eventId
                         + " journal=" + hazardJournal.path());
+                // Never start the active hazard after an uncommitted apply.
+                // Failed rollback keeps the prepared originals for recovery.
+                clearArenaInferno();
+                return;
             }
         } catch (RuntimeException error) {
             getLogger().log(Level.SEVERE, "BOSS_SPELL_ARENA_INFERNO_APPLY_FAILED event=" + eventId, error);
@@ -50517,7 +50527,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * and encounter abandonment all land here. It is idempotent and it only
      * forgets the cast once the exact originals are back.
      */
-    private void clearArenaInferno() {
+    private boolean clearArenaInferno() {
         arenaInfernoSequence++;
         arenaInfernoArmorWear = 0;
         arenaInfernoVentBudget = 0;
@@ -50525,13 +50535,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             arenaInfernoTask.cancel();
             arenaInfernoTask = null;
         }
-        if (restoreArenaInfernoBlocks()) {
+        boolean restored = restoreArenaInfernoBlocks();
+        if (restored) {
             arenaInfernoBlocks.clear();
             arenaInfernoSafeBlocks.clear();
             arenaInfernoSafeSurface.clear();
         }
+        // Damage stops, but recovery retains the originals/journal on failure.
         arenaInfernoStage = null;
         arenaInfernoLastDamageTick.clear();
+        return restored;
     }
 
     /**
@@ -50572,36 +50585,38 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         int restored = 0;
-        int skipped = 0;
+        int pending = 0;
         int fireY = combatLevelY();
         for (Map.Entry<HazardPlanner.Point, String> entry : arenaInfernoOriginalBlocks.entrySet()) {
             HazardPlanner.Point point = entry.getKey();
-            Block hazard = world.getBlockAt(point.x(), fireY - 1, point.z());
-            // Anything this cast may have written is ours to put back: the
-            // burning surface (either authored texture) and the cold patches.
-            if (isArenaInfernoSurface(hazard.getType())) {
-                restoreBlock(hazard, entry.getValue());
-                restored++;
-            } else {
-                skipped++;
+            Block block = world.getBlockAt(point.x(), fireY - 1, point.z());
+            try {
+                String original = entry.getValue();
+                if (!block.getBlockData().getAsString().equals(original)) {
+                    // Preserve another owner's change without forgetting the
+                    // outstanding original. A conflict requires reconciliation.
+                    if (!isArenaInfernoSurface(block.getType())) { pending++; continue; }
+                    block.setBlockData(Bukkit.createBlockData(original), false);
+                }
+                if (block.getBlockData().getAsString().equals(original)) restored++;
+                else pending++;
+            } catch (RuntimeException failure) {
+                pending++;
+                getLogger().warning("BOSS_SPELL_ARENA_INFERNO_RESTORE_CELL_FAILED event=" + eventId
+                        + " x=" + point.x() + " z=" + point.z());
             }
         }
-        if (hazardJournal != null && !hazardJournal.markRestored()) {
-            // Audit boss error: the journal could not record the restore, yet the
-            // original blocks were dropped and the call reported success, so a
-            // retry had nothing left to put back and the arena silently kept the
-            // magma. Keep the record and report failure; a later tick retries and
-            // the blocks are only forgotten once the journal is durably restored.
-            getLogger().severe("BOSS_SPELL_ARENA_INFERNO_RESTORE_JOURNAL_FAILED event=" + eventId
-                    + " journal=" + hazardJournal.path() + " restored=" + restored
-                    + " skipped=" + skipped + " retained=" + arenaInfernoOriginalBlocks.size());
+        if (pending > 0 || hazardJournal == null || !hazardJournal.markRestored()) {
+            getLogger().severe("BOSS_SPELL_ARENA_INFERNO_RESTORE_BLOCKED event=" + eventId
+                    + " restored=" + restored + " pending=" + pending
+                    + " retained=" + arenaInfernoOriginalBlocks.size());
             emitDiagnostic("BOSS_SPELL", "ARENA_INFERNO_RESTORE_BLOCKED", "SEVERE", 6,
-                    "journal-not-restored", null, null, "boss:arena-inferno",
-                    Map.of("restored", restored, "skipped", skipped));
+                    pending > 0 ? "floor-restoration-unconfirmed" : "journal-not-restored",
+                    null, null, "boss:arena-inferno", Map.of("restored", restored, "pending", pending));
             return false;
         }
         getLogger().info("BOSS_SPELL_ARENA_INFERNO_RESTORED event=" + eventId
-                + " restored=" + restored + " skipped=" + skipped);
+                + " restored=" + restored + " pending=0");
         arenaInfernoOriginalBlocks.clear();
         // 14.4: the cooldown is measured from the moment the firestorm really
         // ended, so the next cast cannot chain straight back on.

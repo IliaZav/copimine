@@ -15,7 +15,16 @@ CLIENT = ROOT / "tools/minecraft-26.3/client/src/main/java/me/copimine/client"
 
 # The contract's own stage count, written out here so a shortened policy
 # constant cannot make this file agree with itself.
-REQUIRED_STAGES = 6
+#
+# SUPERSEDED (2026-11-14): this said 6, and the reasoning beside it -- "seven
+# collisions total: four minor and three final, so six stages" -- was simply
+# wrong arithmetic. Seven accepted impacts produce eight states: stage 0 is the
+# intact ram and stage 7 is the fully stripped one, because a stage counts the
+# plates already lost. 0578c711 widened the ladder to
+# RiftRamPolicy.REQUIRED_IMPACTS = 4 + 3 = 7 and added ARMOR6/ARMOR7 to the
+# client policy, leaving this pin behind, so both tests in this file failed on
+# the production lineage.
+REQUIRED_STAGES = 8
 
 
 def run_probe(tmp_path, name, body):
@@ -117,7 +126,13 @@ public final class ClaimProbe {
         check(!RiftRamVisualPolicy.isRiftRamVisual("   "), "spaces are not a ram");
         check(!RiftRamVisualPolicy.isRiftRamVisual("vanilla"), "vanilla is not a ram");
         // A neighbouring family must not be swallowed by a loose prefix test.
-        check(!RiftRamVisualPolicy.isRiftRamVisual("END_RIFT_RAM_ARMOR6_V1"),
+        // ARMOR6 is a real stage now that the ladder has seven impacts, so the
+        // out-of-family control is the index one past the top of the ladder.
+        check(RiftRamVisualPolicy.isRiftRamVisual("END_RIFT_RAM_ARMOR6_V1"),
+                "the sixth stripped plate is a real stage");
+        check(RiftRamVisualPolicy.isRiftRamVisual("END_RIFT_RAM_ARMOR7_V1"),
+                "the fully stripped ram is a real stage");
+        check(!RiftRamVisualPolicy.isRiftRamVisual("END_RIFT_RAM_ARMOR8_V1"),
                 "an unknown armour index is not a ram");
         check(!RiftRamVisualPolicy.isRiftRamVisual("END_RIFT_WAVE7_WARDEN_V1"),
                 "a wave 7 id is not a ram");

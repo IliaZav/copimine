@@ -34,15 +34,33 @@ def test_warden_arrives_with_its_own_emergence_instead_of_popping_in():
     assert 'setInvulnerable(true)' in emerge
     assert 'mob.setAI(false)' in emerge
     assert 'Wave7WardenEmergePolicy.verticalOffset(0)' in emerge
-    # And it is handed back to combat when the sequence ends.
-    assert 'setInvulnerable(false)' in emerge
-    assert 'mob.setAI(true)' in emerge
-    # Its own authored sounds: the emerge rumble and the single roar.
+    # Its own authored sound as it starts.
     assert 'Sound.ENTITY_WARDEN_EMERGE' in emerge
-    assert 'ENTITY_WARDEN_ROAR' in emerge
-    # Sculk dust and the ground fissure are drawn for viewers around the body.
-    assert 'Particle.SCULK_SOUL' in emerge
-    assert 'isEventParticleViewer' in emerge
+
+    # SUPERSEDED (2026-11-14): this block used to demand the whole lifecycle --
+    # `setInvulnerable(false)` and `mob.setAI(true)` -- inside beginWardenEmerge.
+    # Neither belongs there any more, and one of them must never come back:
+    #   * the rise is driven by advanceWardenEmergence, so the hand-back lives
+    #     in that method, not in the method that starts the sequence;
+    #   * `mob.setAI(true)` was a real defect. Re-enabling native AI on a
+    #     scripted Warden gave it a second target and a second damage owner
+    #     after the roar. The wave 7 Warden is driven entirely by the trial
+    #     runtime, so the emergence must end with NoAI still in force.
+    rise = method(root, 'private boolean advanceWardenEmergence(')
+    # Buried and protected for as long as the intro owns the body.
+    assert 'warden.setInvulnerable(true)' in rise
+    assert 'mob.setAI(false)' in rise
+    # ...and handed back, but only the trial loop, when the sequence ends.
+    assert 'warden.setInvulnerable(false)' in rise
+    assert 'warden.setGravity(true)' in rise
+    assert 'mob.setAI(true)' not in emerge and 'mob.setAI(true)' not in rise, (
+        're-enabling vanilla AI would create a second target/damage owner; '
+        'the scripted Warden must stay NoAI after the roar'
+    )
+    # The roar and the sculk dust belong to the frame loop that owns the body.
+    assert 'ENTITY_WARDEN_ROAR' in rise
+    assert 'Particle.SCULK_SOUL' in rise
+    assert 'isEventParticleViewer' in rise
 
 
 def test_warden_emergence_is_bounded_and_eases_out():

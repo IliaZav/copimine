@@ -284,6 +284,7 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
         String wavePose = access.copimine$wavePose();
         boolean drawing = "WAVE_WINDUP".equals(wavePose) || "WAVE_FROZEN".equals(wavePose);
         boolean recovering = "WAVE_RECOVER".equals(wavePose);
+        boolean loosing = "WAVE_RELEASE".equals(wavePose);
         // The gait that super.setupAnim produced is the base layer; the draw is
         // added on top of it so a moving Marksman still visibly walks.
         float stride = Mth.clamp(walkSpeed, 0.0F, 1.0F);
@@ -297,6 +298,18 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
             rightArm.zRot = Mth.sin(animationProgress * 0.45F) * 0.035F;
             head.xRot += 0.05F;
             body.yRot = 0.06F;
+        } else if (loosing) {
+            // The single frame the arrow leaves: the draw snaps open, the
+            // string hand kicks back and the whole body takes the recoil. This
+            // is what a scripted Marksman was missing -- its shots arrived from
+            // a model that never stopped aiming.
+            leftArm.xRot = -1.52F;
+            rightArm.xRot = -0.92F;
+            leftArm.yRot = -0.10F;
+            rightArm.yRot = 0.22F;
+            rightArm.zRot = 0.10F;
+            head.xRot -= 0.04F;
+            body.yRot = 0.02F;
         } else if (recovering) {
             // Follow-through: the draw releases and the arms drop past neutral.
             leftArm.xRot = -0.55F + stride * Mth.cos(animationProgress * 0.5F) * 0.25F;

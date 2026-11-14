@@ -196,6 +196,7 @@ import me.copimine.endevent.domain.WaveProjectileAdmissionController;
 import me.copimine.endevent.domain.WaveProjectileTargetPolicy;
 import me.copimine.endevent.domain.Wave4PressurePackPolicy;
 import me.copimine.endevent.domain.Wave7MinibossBossBarPolicy;
+import me.copimine.endevent.domain.Wave7MinibossPosePolicy;
 import me.copimine.endevent.domain.Wave7WardenCombatPolicy;
 import me.copimine.endevent.domain.WardenSlamTriggerPolicy;
 import me.copimine.endevent.domain.MinibossGroupSpellPolicy;
@@ -1920,6 +1921,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private BossBar riftRamBossBar;
     /** Wave 7 miniboss bars, keyed by the actor's entity UUID. */
     private final Map<UUID, BossBar> wave7MinibossBars = new LinkedHashMap<>();
+    /**
+     * Last pose published per Wave 7 miniboss actor.
+     *
+     * <p>The pose only has to be sent when it changes: the client holds the
+     * lease the server granted and falls back to WAVE_COMBAT on expiry, so a
+     * per-tick resend would be pure packet traffic. The map also carries the
+     * edge that inserts the release frame.</p>
+     */
+    private final Map<UUID, me.copimine.endevent.domain.Wave7MinibossPosePolicy.Pose>
+            wave7MinibossPoses = new HashMap<>();
     private UUID bossVisualCueOwner;
     private long bossVisualCueGeneration = Long.MIN_VALUE;
     private long bossVisualCueSequence;
@@ -28202,6 +28213,59 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             bar.setVisible(false);
         }
         wave7MinibossBars.clear();
+        wave7MinibossPoses.clear();
+    }
+
+    /**
+     * Publish the pose a named trial caster or archer is in, from its receipt.
+     *
+     * <p>The receipt is the same record the attack resolves from, so the arms
+     * on screen cannot disagree with the damage: while the telegraph window is
+     * open the actor is drawn drawing or channelling, on the tick the deadline
+     * passes it is drawn loosing the shot, and the cooldown is drawn as the
+     * recovery that the party is supposed to punish.</p>
+     */
+    private void publishWave7CastPose(LivingEntity actor, RealitySplitTrialController.NamedTrialState trial) {
+        if (actor == null || trial == null) return;
+        Wave7NamedTrialActorPolicy.Checkpoint checkpoint = readNamedTrialActorCheckpoint(actor, trial);
+        if (checkpoint == null) return;
+        long now = System.currentTimeMillis();
+        boolean attacking = checkpoint.attack() != Wave7NamedTrialActorPolicy.Attack.NONE;
+        boolean telegraphSpent = attacking && checkpoint.phaseDeadlineMillis() <= now;
+        boolean coolingDown = !attacking && checkpoint.cooldownUntilMillis() > now;
+        long endsAt = attacking ? checkpoint.phaseDeadlineMillis() : checkpoint.cooldownUntilMillis();
+        publishWave7Pose(actor, Wave7MinibossPosePolicy.castPose(attacking, telegraphSpent, coolingDown),
+                endsAt, now);
+    }
+
+    /**
+     * Publish the Warden's pose from the same action field its damage uses.
+     *
+     * <p>The Warden runs on server ticks, not wall time, so the lease is
+     * derived from the ticks the action still has left. The recovery window is
+     * the one {@code finishTrialAttack} opened, which is exactly the window the
+     * party can hit back in.</p>
+     */
+    private void publishWave7WardenPose(LivingEntity warden, RealitySplitTrialRuntimeState state) {
+        if (warden == null || state == null) return;
+        long now = System.currentTimeMillis();
+        boolean recovering = state.action == 0 && eventTickCounter < state.nextActionTick;
+        long remainingTicks = state.action == 0
+                ? Math.max(0L, state.nextActionTick - eventTickCounter)
+                : Math.max(0L, state.phaseUntilTick - eventTickCounter);
+        publishWave7Pose(warden, Wave7MinibossPosePolicy.wardenPose(state.action, recovering),
+                now + remainingTicks * 50L, now);
+    }
+
+    /** Send a pose only when it actually changed, inserting the release frame. */
+    private void publishWave7Pose(Entity actor, Wave7MinibossPosePolicy.Pose target, long endsAt, long now) {
+        if (actor == null || target == null) return;
+        UUID actorId = actor.getUniqueId();
+        Wave7MinibossPosePolicy.Pose previous = wave7MinibossPoses.get(actorId);
+        Wave7MinibossPosePolicy.Pose pose = Wave7MinibossPosePolicy.insertRelease(previous, target);
+        if (pose == previous) return;
+        wave7MinibossPoses.put(actorId, pose);
+        sendWaveMobPose(actor, pose.wire(), Wave7MinibossPosePolicy.leaseMillis(pose, endsAt, now));
     }
 
     private static double maxHealthOf(LivingEntity living) {
@@ -36051,10 +36115,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             enterNamedRealitySplitRecovery("WAVE7_NAMED_ACTOR_RUNTIME_FAILED:" + trial.trial());
                             return;
                         }
+                        // The pose is published after the tick, from the receipt
+                        // the tick just wrote, so the arms match the attack.
+                        publishWave7CastPose(living, trial);
                     }
                 } else if (actor instanceof LivingEntity living
                         && trial.trial() == RealitySplitTrialController.NamedTrial.WARDEN) {
-                    tickRealitySplitWarden(living, realitySplitTrialRuntimeStates.get(actor.getUniqueId()));
+                    RealitySplitTrialRuntimeState wardenState = realitySplitTrialRuntimeStates.get(actor.getUniqueId());
+                    tickRealitySplitWarden(living, wardenState);
+                    publishWave7WardenPose(living, wardenState);
                 }
             }
             return;

@@ -152,7 +152,19 @@ public final class Wave7ArchmageModel extends EntityModel<EvokerRenderState> {
         leftLeg.xRot = Mth.cos(walk + Mth.PI) * 1.2F * speed;
         hoodRune.yRot = Mth.sin(age * 0.08F) * 0.07F;
 
-        if (state.isCastingSpell) {
+        // The Evoker's own casting flag is only set by the vanilla Evoker spell
+        // AI, and the trial Archmage runs with its AI off: every cast is
+        // resolved by the plugin. So `isCastingSpell` was false for the whole
+        // fight and this branch -- arms, focus orb and, most importantly, the
+        // sigil ring that IS the "a spell is coming" telegraph -- never ran.
+        // The wave pose is leased from the same cast receipt the damage uses.
+        String wavePose = ((EndRiftRenderStateAccess) state).copimine$wavePose();
+        boolean winding = "WAVE_WINDUP".equals(wavePose) || "WAVE_FROZEN".equals(wavePose);
+        boolean releasing = "WAVE_RELEASE".equals(wavePose);
+        boolean recovering = "WAVE_RECOVER".equals(wavePose);
+        boolean casting = state.isCastingSpell || winding || releasing;
+
+        if (casting) {
             float spellPulse = Mth.sin(age * 0.32F) * 0.08F;
             float channel = Mth.sin(age * 0.18F) * 0.045F;
             // Channel overlays the gait: the staff hand rises in front of the
@@ -172,6 +184,32 @@ public final class Wave7ArchmageModel extends EntityModel<EvokerRenderState> {
             sigilRing.yRot = age * 0.22F;
             sigilRing.visible = true;
             leftRuneHand.yScale = 1.0F + Math.abs(channel) * 6.0F;
+            if (releasing) {
+                // The frame the spell leaves: the staff hand punches out, the
+                // free hand snaps shut and the ring flares past its telegraph
+                // size, so a committed cast is visibly different from a wind-up.
+                rightArm.xRot += 0.55F;
+                leftArm.xRot += 0.40F;
+                sigilRing.yScale += 1.6F;
+                leftRuneHand.yScale += 0.8F;
+                body.xRot += 0.05F;
+            }
+        } else if (recovering) {
+            // Overcast: the hood tips forward and both arms hang, which is the
+            // punish window the party is supposed to read.
+            rightArm.xRot -= 0.34F;
+            leftArm.xRot -= 0.30F;
+            rightArm.zRot = 0.0F;
+            leftArm.zRot = 0.0F;
+            body.xRot = 0.05F;
+            head.xRot += 0.10F;
+            focusOrb.yScale = 1.0F;
+            focusOrb.xScale = 1.0F;
+            focusOrb.zScale = 1.0F;
+            sigilRing.visible = false;
+            sigilRing.yRot = 0.0F;
+            sigilRing.yScale = 1.0F;
+            leftRuneHand.yScale = 1.0F;
         } else {
             rightArm.xRot -= 0.12F;
             leftArm.xRot -= 0.12F;

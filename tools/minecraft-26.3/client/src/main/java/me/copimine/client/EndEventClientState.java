@@ -581,7 +581,11 @@ public final class EndEventClientState {
                 "END_RIFT_SPIDER_V1", "END_RIFT_ELITE_SPIDER_V1", "END_RIFT_WAVE_GUARDIAN_ENDERMAN_V1",
                 "END_RIFT_ZOMBIE_V1", "END_RIFT_ELITE_ZOMBIE_V1",
                 "END_RIFT_WAVE_GUARDIAN_SKELETON_V1", "END_RIFT_WAVE_GUARDIAN_SPIDER_V1",
-                "END_RIFT_RITUAL_GUARD_ENDERMAN_V1", "END_RIFT_RITUAL_GUARD_SKELETON_V1", "END_RIFT_RITUAL_GUARD_SPIDER_V1").contains(visual);
+                "END_RIFT_RITUAL_GUARD_ENDERMAN_V1", "END_RIFT_RITUAL_GUARD_SKELETON_V1", "END_RIFT_RITUAL_GUARD_SPIDER_V1",
+                // Wave 7 named trials. Their attacks are resolved by the plugin,
+                // so no vanilla animation state ever becomes true for them; the
+                // only thing that can animate them is this lease.
+                "END_RIFT_WAVE7_WARDEN_V1", "END_RIFT_WAVE7_ARCHMAGE_V1", "END_RIFT_WAVE7_MARKSMAN_V1").contains(visual);
     }
 
     /** Wave preparation/recovery is a short lease, not an indefinite animation binding. */

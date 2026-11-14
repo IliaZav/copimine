@@ -70,14 +70,54 @@ public final class Wave7WardenModel extends WardenModel {
         // reads as a living mantle rather than a static prop.
         leftShard.zRot = -0.10F - Math.abs(pulse) * 0.07F;
         rightShard.zRot = 0.10F + Math.abs(pulse) * 0.07F;
-        // The core swells while a melee swing or the sonic blast plays, so the
-        // chest itself tells the player when the Warden is about to commit.
-        boolean charging = state.attackAnimationState.isStarted()
+        // Attack intent. The vanilla flags below only fire when the mob's own AI
+        // plays a swing, and the trial Warden's AI is off -- its swings are
+        // resolved by the plugin -- so they were permanently false and the core
+        // never told the player anything. The wave pose is the authoritative
+        // signal: it is leased from the same action field the damage uses.
+        String wavePose = ((EndRiftRenderStateAccess) state).copimine$wavePose();
+        boolean winding = "WAVE_WINDUP".equals(wavePose) || "WAVE_FROZEN".equals(wavePose);
+        boolean releasing = "WAVE_RELEASE".equals(wavePose);
+        boolean recovering = "WAVE_RECOVER".equals(wavePose);
+        boolean charging = winding || releasing
+                || state.attackAnimationState.isStarted()
                 || state.sonicBoomAnimationState.isStarted();
         float charge = charging ? 1.0F : 0.0F;
         riftCore.yScale = 1.0F + Math.abs(pulse) * 0.10F + charge * 0.22F;
         riftCore.xScale = 1.0F + Math.abs(pulse) * 0.06F + charge * 0.14F;
         riftCore.zScale = riftCore.yScale;
+        if (winding) {
+            // Coil: the Warden rocks back onto its heels and lifts the swinging
+            // arm, and the shards spread wide so the silhouette itself reads as
+            // "something is coming" even before the warning particles land.
+            float coil = 0.10F + Mth.sin(age * 0.30F) * 0.02F;
+            body.xRot -= coil;
+            head.xRot += coil * 0.6F;
+            leftArm.xRot -= 0.55F;
+            rightArm.xRot -= 0.55F;
+            leftShard.zRot -= 0.22F;
+            rightShard.zRot += 0.22F;
+            backSpines.xRot -= 0.10F;
+        } else if (releasing) {
+            // Commit: the whole body drives forward through the swing.
+            body.xRot += 0.16F;
+            head.xRot += 0.10F;
+            leftArm.xRot += 0.85F;
+            rightArm.xRot += 0.85F;
+            leftShard.zRot += 0.10F;
+            rightShard.zRot -= 0.10F;
+            chestPlate.yScale += 0.08F;
+        } else if (recovering) {
+            // Open: the follow-through leaves the guard down, which is the
+            // window the party is meant to punish.
+            float slump = 0.06F + Mth.sin(age * 0.16F) * 0.015F;
+            body.xRot += slump;
+            head.xRot += slump;
+            leftArm.xRot += 0.28F;
+            rightArm.xRot += 0.28F;
+            leftShard.zRot += 0.06F;
+            rightShard.zRot -= 0.06F;
+        }
     }
 
     private static final class ModelPartParts {

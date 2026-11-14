@@ -5,8 +5,16 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class GuardianSpellMeshTest {
+    /**
+     * The authored mesh set, which grew when the Guardian's runes, crowns,
+     * summons and volleys received distinct geometry. The exact count is not
+     * the contract -- the faces, UVs and unit normals below are -- so this
+     * only has to stay in step with {@code GuardianSpellMesh.NAMES}.
+     */
+    private static final int AUTHORED_MESHES = 12;
     @Test void authoredMeshesHaveBoundedRealFacesUvsAndUnitNormals() {
-        assertEquals(8,GuardianSpellMesh.names().size());
+        assertEquals(AUTHORED_MESHES,GuardianSpellMesh.names().size());
+        assertEquals(AUTHORED_MESHES,GuardianSpellMesh.names().stream().filter(name->!name.isBlank()).distinct().count());
         for (String name:GuardianSpellMesh.names()) {
             var vertices=GuardianSpellMesh.vertices(name);
             assertFalse(vertices.isEmpty(),name);

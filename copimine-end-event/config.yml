@@ -86,11 +86,11 @@ music:
       sound: copimine:end_rift/wave_5
       loop-seconds: 54
     wave-6:
-      sound: copimine:end_rift/wave_6
-      loop-seconds: 54
+      sound: copimine:end_rift/wave_6_ram
+      loop-seconds: 64
     wave-7:
-      sound: copimine:end_rift/wave_7
-      loop-seconds: 58
+      sound: copimine:end_rift/wave_7_chambers
+      loop-seconds: 64
     intermission-1:
       sound: copimine:end_rift/intermission_1
       loop-seconds: 14
@@ -101,7 +101,7 @@ music:
       sound: copimine:end_rift/intermission_3
       loop-seconds: 16
     intermission-4:
-      sound: copimine:end_rift/intermission_3
+      sound: copimine:end_rift/intermission_4
       loop-seconds: 16
     intermission-5:
       sound: copimine:end_rift/intermission_5
@@ -136,6 +136,9 @@ music:
     boss-last-seal:
       sound: copimine:end_rift/boss_last_seal
       loop-seconds: 45
+    boss-fury:
+      sound: copimine:end_rift/boss_melee_fury
+      loop-seconds: 48
     boss-finish:
       sound: copimine:end_rift/boss_finish
       loop-seconds: 20

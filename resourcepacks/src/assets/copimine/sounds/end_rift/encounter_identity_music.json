@@ -1,0 +1,37 @@
+{
+  "authoring": "CopiMine End Rift 2026-11-14",
+  "tracks": [
+    {
+      "file": "wave_6_ram.ogg",
+      "bpm": 96,
+      "beatsPerBar": 7,
+      "durationSeconds": 64,
+      "sha256": "56b9b3b290bafd277f3c8ea3671e8cfc3a1886b32492c79703f7f1f6d5df09f9",
+      "origin": "original procedural score"
+    },
+    {
+      "file": "wave_7_chambers.ogg",
+      "bpm": 112,
+      "beatsPerBar": 5,
+      "durationSeconds": 64,
+      "sha256": "4b4ef3210b6c2d8d57f9f4b79f2298562e9c446248341e61b8f1171fc6c348db",
+      "origin": "original procedural score"
+    },
+    {
+      "file": "boss_melee_fury.ogg",
+      "bpm": 148,
+      "beatsPerBar": 4,
+      "durationSeconds": 48,
+      "sha256": "102d7b1c1f7059deaba3ecf655924126f6764cb44b991f22cc8c94fec4ba80b1",
+      "origin": "original procedural score"
+    },
+    {
+      "file": "intermission_4.ogg",
+      "bpm": 68,
+      "beatsPerBar": 3,
+      "durationSeconds": 16,
+      "sha256": "5f8ffddab3b93d2444d388cee5f9a9c20d5ecc9d24619a32602f66d525cf746f",
+      "origin": "original procedural score"
+    }
+  ]
+}

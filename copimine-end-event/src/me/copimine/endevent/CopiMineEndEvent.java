@@ -6030,6 +6030,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (config == null) {
             return null;
         }
+        if (isCurrentBossMeleeFury()) return config.phaseMusic("boss-fury");
         return config.phaseMusic("boss-" + bossPhase.name().toLowerCase(Locale.ROOT));
     }
 
@@ -36922,6 +36923,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                      0L, cooldown, null, checkpoint.supportUsed(),
                     checkpoint.vanishUntilMillis()));
         }
+        if (trial.trial() == RealitySplitTrialController.NamedTrial.RIFT_ARCHMAGE
+                && eventTickCounter % 4L == 0L) moveNamedTrialArchmage(actor);
         if (now < checkpoint.cooldownUntilMillis()) return true;
         // MARK-005 / MARK-006 [U]: the Mobile Marksman may vanish for five
         // seconds to change position. The vanish is started here, before an
@@ -37589,6 +37592,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         return finishNamedTrialAttack(actor, checkpoint, now);
+    }
+
+    /** Caster recovery is active footwork, not an idle statue between spells. */
+    private void moveNamedTrialArchmage(LivingEntity actor) {
+        if (!(actor instanceof Mob mob)) return;
+        Player target = closestRealitySplitTrialParticipant(actor);
+        if (target == null || !isCurrentRealitySplitTrialTarget(actor, target)) return;
+        double reach = Wave7NamedTrialActorPolicy.ARCHMAGE_ENGAGE_BLOCKS;
+        double distance = Math.sqrt(horizontalDistanceSquared(actor.getLocation(), target.getLocation()));
+        if (distance > reach) { pursueNamedTrialTarget(actor, target, reach); return; }
+        Vector toward = horizontalDirection(actor.getLocation(), target.getLocation());
+        double sign = (actor.getUniqueId().getLeastSignificantBits() & 1L) == 0L ? 1D : -1D;
+        Vector side = new Vector(-toward.getZ(), 0, toward.getX()).multiply(sign);
+        Vector primary = distance < reach * .4D ? toward.clone().multiply(-1) : side;
+        for (Vector step : List.of(primary, side, toward)) {
+            Location next = actor.getLocation().clone().add(step.clone().multiply(.6D));
+            if (!isSafeCombatEntityLocation(next, actor)
+                    || !isRealitySplitDestinationAllowed(target.getUniqueId(), next,
+                            realitySplitChamberController.assignment())) continue;
+            applySteadyMinibossMove(actor, mob, step, .18D);
+            return;
+        }
     }
 
     private void moveNamedTrialMarksman(LivingEntity actor, int chamber) {
@@ -52018,6 +52043,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         syncCocoonFallAnimation(boss, cocoonFallElapsedTicks - 1);
         if (landingNow) renderCocoonLanding(landing);
         if (changed) {
+            if (cocoonFallStage == CocoonFallPolicy.Stage.MELEE_FURY) playEventMusic(musicForPhase());
             getLogger().info("RIFT_COCOON_FALL_STAGE event=" + eventId
                     + " generation=" + generation + " stage=" + cocoonFallStage
                     + " melee_fury=" + CocoonFallPolicy.isMeleeFury(cocoonFallStage));

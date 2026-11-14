@@ -652,6 +652,9 @@ public record EventConfig(
         for (String key : requiredKeys) {
             tracks.put(key, musicTrack(parent, key));
         }
+        tracks.put("boss-fury", parent.isConfigurationSection("boss-fury")
+                ? musicTrack(parent, "boss-fury")
+                : new MusicTrack("copimine:end_rift/boss_melee_fury", 48));
         return tracks;
     }
 

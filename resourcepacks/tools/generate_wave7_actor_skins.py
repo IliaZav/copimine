@@ -1,21 +1,48 @@
-
 """Authored entity textures for the End Rift named Wave 7 trial actors.
 
-Generated deterministically by resourcepacks/tools/generate_wave7_actor_skins.py and
-mirrored into the active 26.3 client resource roots by the same script.
+Generated deterministically by ``resourcepacks/tools/generate_wave7_actor_skins.py``
+and written straight into the one resource root that ships them.
 
-Palette follows the authored rift direction already used by the event:
-blackened rift hide, corrupted violet cloth, emerald seals, and a pale bone
-highlight so the silhouettes read at arena distance.
+Why the atlas is filled before it is decorated
+----------------------------------------------
+``tools/minecraft-26.3/client`` repacks any baked face whose texels are less than
+95 % painted onto unrelated atlas pixels (``EndRiftAtlasUvLayout.fit``), and it
+deliberately skips paths containing ``rune``/``sigil`` -- which is why the
+Archmage's sigil ring, the only "a spell is coming" telegraph, rendered nothing at
+all: its island was 0 % painted and never repaired.  The previous generator also
+painted a handful of hand-guessed rectangles instead of the rigs' real footprints,
+so ``rift_shard_left``/``rift_shard_right``, the skeleton's lower legs and the
+Archmage rune hand were empty.
+
+Every drawing routine below therefore starts from a full-canvas base material and
+paints each declared face from the parsed rig (``wave7_uv_layout``).  Nothing on
+the atlas can sample transparency, the runtime repack becomes a no-op, and the
+sigl/rune parts that the repack excludes are genuinely painted.
+
+Palette follows the authored rift direction already used by the event: blackened
+rift hide, corrupted violet cloth, emerald seals, and a pale bone highlight so the
+silhouettes read at arena distance.
 """
 from __future__ import annotations
 
-import math
+import sys
 from pathlib import Path
+from typing import Callable, NamedTuple
 
 from PIL import Image, ImageDraw
 
-ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import wave7_uv_layout as layout  # noqa: E402  (shares one footprint source of truth)
+
+# ``parents[2]`` is the repository root.  The previous ``parents[1]`` resolved to
+# ``resourcepacks/`` and main() then wrote into ``resourcepacks/assets/...``: a
+# directory that has never existed, so the generator created a phantom tree and
+# the shipped PNGs could not be regenerated from their code.
+ROOT = Path(__file__).resolve().parents[2]
+TEXTURE_ROOT = (
+    ROOT / "CopiMineClient" / "src" / "main" / "resources" / "assets"
+    / "copimineclient" / "textures" / "entity"
+)
 
 # Rift palette (locked; the same values are used by every actor so the three
 # named trials read as one family).
@@ -38,6 +65,10 @@ METAL_LIT = (120, 126, 148)
 EYE = (240, 110, 90)
 
 
+# ---------------------------------------------------------------------------
+# Drawing primitives (1 texel = 1 pixel, no antialiasing anywhere)
+# ---------------------------------------------------------------------------
+
 def _canvas(width: int, height: int) -> Image.Image:
     return Image.new("RGBA", (width, height), (0, 0, 0, 0))
 
@@ -49,39 +80,37 @@ def _noise(seed: int, x: int, y: int) -> float:
     return ((v ^ (v >> 16)) & 0xFFFF) / 65535.0
 
 
-def fill_box(draw: ImageDraw.ImageDraw, x: int, y: int, w: int, h: int,
-             base: tuple[int, int, int], seed: int, spread: int = 14,
-             edge: tuple[int, int, int] | None = None) -> None:
-    """Fill a UV island with rift hide that darkens toward its borders."""
+def _clamp(color: tuple[int, int, int], shade: float, jitter: int = 0) -> tuple[int, int, int, int]:
+    return tuple(max(0, min(255, int(c * shade) + jitter)) for c in color) + (255,)
+
+
+def fill_rect(draw: ImageDraw.ImageDraw, x: int, y: int, w: int, h: int,
+              base: tuple[int, int, int], seed: int, spread: int = 12,
+              edge: tuple[int, int, int] | None = None) -> None:
+    """Fill a UV island with rift hide that darkens toward its own border."""
     for yy in range(h):
         for xx in range(w):
             n = _noise(seed, x + xx, y + yy)
-            gx = min(xx, w - 1 - xx) / max(1, (w - 1) / 2.0)
-            gy = min(yy, h - 1 - yy) / max(1, (h - 1) / 2.0)
-            shade = 0.55 + 0.45 * min(1.0, min(gx, gy) * 1.6)
-            jitter = int((n - 0.5) * spread)
-            px = tuple(max(0, min(255, int(c * shade) + jitter)) for c in base)
-            draw.point((x + xx, y + yy), fill=px + (255,))
+            gx = min(xx, w - 1 - xx) / max(1.0, (w - 1) / 2.0)
+            gy = min(yy, h - 1 - yy) / max(1.0, (h - 1) / 2.0)
+            shade = 0.62 + 0.38 * min(1.0, min(gx, gy) * 1.7)
+            draw.point((x + xx, y + yy), fill=_clamp(base, shade, int((n - 0.5) * spread)))
     if edge is not None:
-        draw.rectangle([x, y, x + w - 1, y], fill=edge + (255,))
-        draw.rectangle([x, y + h - 1, x + w - 1, y + h - 1], fill=edge + (255,))
+        rim(draw, x, y, w, h, edge)
 
 
-def plank_lines(draw: ImageDraw.ImageDraw, x: int, y: int, w: int, h: int,
-                step: int, color: tuple[int, int, int]) -> None:
-    for yy in range(y + step, y + h - 1, step):
-        draw.line([(x + 1, yy), (x + w - 2, yy)], fill=color + (255,))
+def rim(draw: ImageDraw.ImageDraw, x: int, y: int, w: int, h: int,
+        color: tuple[int, int, int]) -> None:
+    draw.rectangle([x, y, x + w - 1, y + h - 1], outline=color + (255,))
 
 
-def rune(draw: ImageDraw.ImageDraw, cx: float, cy: float, size: float,
+def band(draw: ImageDraw.ImageDraw, x: int, y: int, w: int, h: int,
          color: tuple[int, int, int]) -> None:
-    """Small four-point rift rune; readable at 1px per texel."""
-    s = max(1.0, size)
-    draw.point((round(cx), round(cy)), fill=color + (255,))
-    draw.point((round(cx - s), round(cy)), fill=color + (255,))
-    draw.point((round(cx + s), round(cy)), fill=color + (255,))
-    draw.point((round(cx), round(cy - s)), fill=color + (255,))
-    draw.point((round(cx), round(cy + s)), fill=color + (255,))
+    draw.rectangle([x, y, x + w - 1, y + h - 1], fill=color + (255,))
+
+
+def dot(draw: ImageDraw.ImageDraw, x: int, y: int, color: tuple[int, int, int]) -> None:
+    draw.point((x, y), fill=color + (255,))
 
 
 def glowing_crack(draw: ImageDraw.ImageDraw, x0: int, y0: int, x1: int, y1: int,
@@ -92,194 +121,581 @@ def glowing_crack(draw: ImageDraw.ImageDraw, x0: int, y0: int, x1: int, y1: int,
         t = i / steps
         xx = x0 + (x1 - x0) * t + (0.6 if _noise(seed, i, 3) > 0.5 else -0.6)
         yy = y0 + i
-        draw.point((round(xx), yy), fill=color + (255,))
+        dot(draw, round(xx), yy, color)
         if i % 3 == 0:
-            draw.point((round(xx) + 1, yy), fill=tuple(min(255, c + 40) for c in color) + (255,))
+            dot(draw, round(xx) + 1, yy, tuple(min(255, c + 40) for c in color))
 
 
-# --------------------------------------------------------------------------
+def rune(draw: ImageDraw.ImageDraw, cx: int, cy: int, size: int,
+         color: tuple[int, int, int]) -> None:
+    """Four-point rift rune; readable at one texel per pixel."""
+    for dx, dy in ((0, 0), (-size, 0), (size, 0), (0, -size), (0, size)):
+        dot(draw, cx + dx, cy + dy, color)
+
+
+def paint_part(draw: ImageDraw.ImageDraw, atlas: layout.Atlas, part: str,
+               base: tuple[int, int, int], seed: int, spread: int = 12,
+               edge: tuple[int, int, int] | None = None) -> dict[str, layout.Face]:
+    """Fill all six faces of one part and return them keyed by side."""
+    faces = {}
+    for face in atlas.faces_named(part):
+        fill_rect(draw, face.x, face.y, face.width, face.height,
+                  base, seed + layout.FACE_SIDES.index(face.side), spread, edge)
+        faces[face.side] = face
+    return faces
+
+
+def _assert_fully_painted(image: Image.Image, atlas: layout.Atlas) -> None:
+    """Fail closed: an unpainted texel is what made faces disappear at runtime."""
+    alpha = image.getchannel("A").tobytes()
+    for face in atlas.faces():
+        for y in range(face.y, face.bottom):
+            row = y * image.width
+            for x in range(face.x, face.right):
+                if alpha[row + x] < 255:
+                    raise AssertionError(
+                        f"{atlas.name}: {face.part} {face.side} face has an unpainted texel "
+                        f"at ({x}, {y})"
+                    )
+
+
+# ---------------------------------------------------------------------------
 # Warden (Ghost Warden / Ripula of the Rift) - vanilla Warden atlas 128x128
-# --------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+
+def _warden_hide(image: Image.Image) -> None:
+    """Base hide for the whole atlas, including the vanilla body islands."""
+    draw = ImageDraw.Draw(image)
+    for y in range(128):
+        for x in range(128):
+            n = _noise(7, x, y)
+            shade = 0.72 + 0.28 * (1.0 - y / 127.0) + (n - 0.5) * 0.16
+            draw.point((x, y), fill=_clamp(RIFT_HIDE, shade, int((n - 0.5) * 9)))
+    # Segmented plates: the colossus reads as armoured hide rather than as a
+    # single flat colour, at every distance.
+    for y in range(4, 128, 8):
+        for x in range(128):
+            draw.point((x, y), fill=_clamp(RIFT_DEEP, 1.0 + (_noise(8, x, y) - 0.5) * 0.2))
+    for x in range(6, 128, 24):
+        for y in range(128):
+            draw.point((x, y), fill=_clamp(RIFT_DEEP, 1.12))
+
+
+def _warden_body_accents(draw: ImageDraw.ImageDraw) -> None:
+    """Emerald rib lanterns and the violet heart on the vanilla body island."""
+    for col in (4, 8, 12):
+        glowing_crack(draw, col, 64, col, 79, RIFT_EMERALD, 100 + col)
+    for row in range(66, 79, 4):
+        dot(draw, 8, row, RIFT_EMERALD_LIT)
+    for px, py in ((7, 70), (8, 70), (9, 70), (7, 71), (9, 71), (8, 72),
+                   (7, 73), (8, 73), (9, 73)):
+        dot(draw, px, py, RIFT_VIOLET_LIT)
+    for px, py in ((4, 3), (5, 3), (10, 3), (11, 3), (19, 4), (27, 4)):
+        dot(draw, px, py, RIFT_GLOW)
+
+
+def _warden_crown(draw: ImageDraw.ImageDraw, atlas: layout.Atlas) -> None:
+    faces = paint_part(draw, atlas, "rift_crown", RIFT_VIOLET, 141, 8, RIFT_BLACK)
+    for side in ("top", "bottom"):
+        face = faces[side]
+        band(draw, face.x, face.y, face.width, face.height, RIFT_DEEP)
+    front = faces["front"]
+    for offset in (1, front.width // 2, front.width - 2):
+        band(draw, front.x + offset, front.y, 1, front.height - 1, RIFT_VIOLET_LIT)
+        dot(draw, front.x + offset, front.y, RIFT_GLOW)
+    for side in ("left", "right", "back"):
+        face = faces[side]
+        band(draw, face.x, face.y, face.width, 1, RIFT_GLOW)
+
+
+def _warden_chest_plate(draw: ImageDraw.ImageDraw, atlas: layout.Atlas) -> None:
+    faces = paint_part(draw, atlas, "rift_chest_plate", METAL, 151, 10, RIFT_BLACK)
+    for side in ("top", "bottom"):
+        face = faces[side]
+        band(draw, face.x, face.y, face.width, face.height, METAL_LIT)
+    for side in ("front", "back"):
+        face = faces[side]
+        for cx, cy in ((face.x + 1, face.y + 1), (face.right - 2, face.y + 1),
+                       (face.x + 1, face.bottom - 2), (face.right - 2, face.bottom - 2)):
+            dot(draw, cx, cy, METAL_LIT)
+        cx, cy = face.x + face.width // 2, face.y + face.height // 2
+        rune(draw, cx, cy, 2, RIFT_EMERALD_LIT)
+        band(draw, cx - 1, cy - 1, 2, 2, RIFT_EMERALD)
+        dot(draw, cx, cy, RIFT_VIOLET_LIT)
+
+
+def _warden_back_spines(draw: ImageDraw.ImageDraw, atlas: layout.Atlas) -> None:
+    faces = paint_part(draw, atlas, "rift_back_spines", RIFT_DEEP, 161, 8, RIFT_BLACK)
+    for side in ("top", "bottom"):
+        face = faces[side]
+        band(draw, face.x, face.y, face.width, face.height, RIFT_BLACK)
+    for side in ("front", "back"):
+        face = faces[side]
+        for column in range(1, face.width, 3):
+            band(draw, face.x + column, face.y + 1, 1, face.height - 2, RIFT_VIOLET)
+            dot(draw, face.x + column, face.y + 1, RIFT_GLOW)
+            dot(draw, face.x + column, face.bottom - 2, RIFT_VIOLET_LIT)
+    for side in ("left", "right"):
+        face = faces[side]
+        band(draw, face.x, face.y + 1, face.width, face.height - 2, RIFT_VIOLET_LIT)
+
+
+def _warden_shard(draw: ImageDraw.ImageDraw, atlas: layout.Atlas, part: str,
+                  seed: int) -> None:
+    faces = paint_part(draw, atlas, part, RIFT_VIOLET, seed, 8, RIFT_BLACK)
+    band(draw, faces["top"].x, faces["top"].y, faces["top"].width,
+         faces["top"].height, RIFT_VIOLET_LIT)
+    band(draw, faces["bottom"].x, faces["bottom"].y, faces["bottom"].width,
+         faces["bottom"].height, RIFT_DEEP)
+    for side in ("front", "back", "left", "right"):
+        face = faces[side]
+        # A single bright core seam marks which edge of the crystal is sharp.
+        band(draw, face.x + face.width // 2, face.y + 1, 1, face.height - 3, RIFT_GLOW)
+        band(draw, face.x + face.width // 2, face.bottom - 3, 1, 2, RIFT_EMERALD_LIT)
+
+
+def _warden_core(draw: ImageDraw.ImageDraw, atlas: layout.Atlas) -> None:
+    faces = paint_part(draw, atlas, "rift_core", RIFT_VIOLET_LIT, 171, 10, RIFT_BLACK)
+    for side in ("front", "back"):
+        face = faces[side]
+        band(draw, face.x + 1, face.y + 1, face.width - 2, face.height - 2, RIFT_GLOW)
+        band(draw, face.x + face.width // 2, face.y + 1, 1, face.height - 2, RIFT_EMERALD_LIT)
+        band(draw, face.x + 1, face.y + face.height // 2, face.width - 2, 1, RIFT_EMERALD_LIT)
+    for side in ("left", "right"):
+        face = faces[side]
+        band(draw, face.x, face.y + 1, face.width, face.height - 2, RIFT_GLOW)
+    for side in ("top", "bottom"):
+        face = faces[side]
+        band(draw, face.x + 1, face.y, face.width - 2, face.height, RIFT_GLOW)
+
 
 def build_warden() -> Image.Image:
-    img = _canvas(128, 128)
-    d = ImageDraw.Draw(img)
-
-    # Head block: u 0..16, v 0..16 front, sides continue to u 32.
-    fill_box(d, 0, 0, 16, 16, RIFT_HIDE, 11, 16, RIFT_DEEP)      # front
-    fill_box(d, 16, 0, 16, 16, RIFT_DEEP, 12, 12, RIFT_BLACK)    # right
-    fill_box(d, 32, 0, 16, 16, RIFT_HIDE, 13, 14, RIFT_BLACK)    # back
-    fill_box(d, 48, 0, 16, 16, RIFT_DEEP, 14, 12, RIFT_BLACK)    # left
-    fill_box(d, 0, 16, 16, 8, RIFT_BLACK, 15, 8)                 # top
-    fill_box(d, 16, 16, 16, 8, RIFT_BLACK, 16, 8)                # bottom
-
-    # Chest cavity: a rune of emerald light under the head on the front face.
-    for (px, py) in [(6, 5), (7, 5), (8, 5), (9, 5),
-                     (5, 6), (10, 6), (7, 7), (8, 7), (6, 8), (9, 8),
-                     (7, 9), (8, 9), (7, 10), (8, 10)]:
-        d.point((px, py), fill=RIFT_EMERALD_LIT + (255,))
-    for (px, py) in [(5, 5), (10, 5), (4, 6), (11, 6), (6, 7), (9, 7)]:
-        d.point((px, py), fill=RIFT_EMERALD + (255,))
-    # Two cold eyes on the front and side faces.
-    for (px, py) in [(4, 3), (5, 3), (10, 3), (11, 3)]:
-        d.point((px, py), fill=RIFT_GLOW + (255,))
-    for (px, py) in [(19, 4), (27, 4)]:
-        d.point((px, py), fill=RIFT_GLOW + (255,))
-
-    # Torso: vanilla warden uses the left half of the texture below the head.
-    fill_box(d, 0, 24, 28, 24, RIFT_DEEP, 21, 14, RIFT_BLACK)   # back
-    fill_box(d, 0, 48, 24, 16, RIFT_HIDE, 22, 16, RIFT_BLACK)   # right side
-    fill_box(d, 0, 64, 16, 16, RIFT_HIDE, 23, 16, RIFT_BLACK)   # front
-    fill_box(d, 16, 48, 24, 16, RIFT_HIDE_LIT, 24, 14, RIFT_BLACK)
-    # Emerald rib lanterns down the front of the torso.
-    for col in (4, 8, 12):
-        glowing_crack(d, col, 64, col, 79, RIFT_EMERALD, 100 + col)
-    for row in range(66, 79, 4):
-        d.point((8, row), fill=RIFT_EMERALD_LIT + (255,))
-    # Violet pulse along the belly (Warden's heart).
-    for (px, py) in [(7, 70), (8, 70), (9, 70), (7, 71), (9, 71), (8, 72),
-                     (7, 73), (8, 73), (9, 73)]:
-        d.point((px, py), fill=RIFT_VIOLET_LIT + (255,))
-
-    # Arms and legs.
-    fill_box(d, 40, 0, 16, 16, RIFT_HIDE, 31, 12, RIFT_BLACK)   # right arm upper
-    fill_box(d, 40, 16, 16, 24, RIFT_DEEP, 32, 12, RIFT_BLACK)  # right arm lower
-    fill_box(d, 72, 0, 16, 16, RIFT_HIDE, 33, 12, RIFT_BLACK)   # left arm upper
-    fill_box(d, 72, 16, 16, 24, RIFT_DEEP, 34, 12, RIFT_BLACK)  # left arm lower
-    fill_box(d, 0, 84, 12, 16, RIFT_HIDE, 35, 12, RIFT_BLACK)   # leg upper
-    fill_box(d, 0, 100, 12, 16, RIFT_DEEP, 36, 12, RIFT_BLACK)  # leg lower
-    fill_box(d, 16, 84, 12, 16, RIFT_HIDE, 37, 12, RIFT_BLACK)
-    fill_box(d, 16, 100, 12, 16, RIFT_DEEP, 38, 12, RIFT_BLACK)
-
-    # Claw light on the forearms and shin guards.
-    for y in range(18, 40, 3):
-        d.point((46, y), fill=RIFT_EMERALD + (255,))
-        d.point((78, y), fill=RIFT_EMERALD + (255,))
-    for y in range(102, 116, 3):
-        d.point((5, y), fill=RIFT_EMERALD + (255,))
-        d.point((21, y), fill=RIFT_EMERALD + (255,))
-
-    # Authored add-on islands used by Wave7WardenModel (crown, chest plate, spines).
-    fill_box(d, 72, 0, 8, 4, RIFT_VIOLET, 41, 10, RIFT_BLACK)   # rift_crown
-    for px in range(73, 79):
-        d.point((px, 2), fill=RIFT_GLOW + (255,))
-    fill_box(d, 72, 12, 10, 7, RIFT_VIOLET, 42, 10, RIFT_BLACK)  # rift_chest_plate
-    for px in range(74, 80):
-        d.point((px, 15), fill=RIFT_EMERALD_LIT + (255,))
-    fill_box(d, 96, 0, 8, 10, RIFT_DEEP, 43, 10, RIFT_BLACK)    # rift_back_spines
-    for py in range(0, 10, 2):
-        d.point((99, py), fill=RIFT_VIOLET_LIT + (255,))
-    return img
+    atlas = layout.warden_atlas()
+    image = _canvas(atlas.width, atlas.height)
+    _warden_hide(image)
+    draw = ImageDraw.Draw(image)
+    _warden_body_accents(draw)
+    _warden_crown(draw, atlas)
+    _warden_chest_plate(draw, atlas)
+    _warden_back_spines(draw, atlas)
+    _warden_shard(draw, atlas, "rift_shard_left", 181)
+    _warden_shard(draw, atlas, "rift_shard_right", 191)
+    _warden_core(draw, atlas)
+    _assert_fully_painted(image, atlas)
+    return image
 
 
-# --------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Archmage - custom rig UV layout (64x64), see Wave7ArchmageModel
-# --------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+
+def _archmage_robe_cloth(image: Image.Image) -> None:
+    """Base robe cloth for the whole atlas."""
+    draw = ImageDraw.Draw(image)
+    for y in range(64):
+        for x in range(64):
+            n = _noise(17, x, y)
+            shade = 0.80 + 0.20 * (1.0 - y / 63.0) + (n - 0.5) * 0.14
+            draw.point((x, y), fill=_clamp(CLOTH, shade, int((n - 0.5) * 9)))
+    # Woven folds, one texel wide, so a moving robe still reads as cloth.
+    for x in range(2, 64, 4):
+        for y in range(64):
+            draw.point((x, y), fill=_clamp(CLOTH_LIT, 0.86))
+
+
+def _archmage_head(draw: ImageDraw.ImageDraw, atlas: layout.Atlas) -> None:
+    """The hood encases the head, so the readable face lives on the hood."""
+    faces = paint_part(draw, atlas, "head", RIFT_DEEP, 201, 8, RIFT_BLACK)
+    front = faces["front"]
+    band(draw, front.x + 2, front.y + 4, 2, 1, RIFT_GLOW)
+    band(draw, front.x + front.width - 4, front.y + 4, 2, 1, RIFT_GLOW)
+    for side in ("top", "left", "right", "back"):
+        face = faces[side]
+        rim(draw, face.x, face.y, face.width, face.height, RIFT_BLACK)
+
+
+def _archmage_hood(draw: ImageDraw.ImageDraw, atlas: layout.Atlas) -> None:
+    faces = paint_part(draw, atlas, "rift_hood", CLOTH_LIT, 211, 9, RIFT_BLACK)
+    band(draw, faces["top"].x, faces["top"].y, faces["top"].width,
+         faces["top"].height, CLOTH)
+    for side in ("front",):
+        face = faces[side]
+        # A void under the cowl with two violet eyes and an emerald rune slit.
+        band(draw, face.x + 1, face.y + 2, face.width - 2, face.height - 5, RIFT_BLACK)
+        for offset in (2, face.width - 4):
+            band(draw, face.x + offset, face.y + 4, 2, 2, RIFT_GLOW)
+            dot(draw, face.x + offset, face.y + 4, RIFT_VIOLET_LIT)
+        band(draw, face.x + face.width // 2, face.y + 7, 1, 3, RIFT_EMERALD_LIT)
+        # Cowl rim, so the hood keeps a silhouette against the arena floor.
+        band(draw, face.x, face.y, face.width, 2, CLOTH_LIT)
+        band(draw, face.x, face.bottom - 2, face.width, 2, RIFT_VIOLET)
+        for px, py in ((face.x, face.bottom - 3), (face.right - 1, face.bottom - 3)):
+            dot(draw, px, py, RIFT_VIOLET_LIT)
+    for side in ("left", "right", "back"):
+        face = faces[side]
+        band(draw, face.x, face.y + 1, face.width, 2, CLOTH)
+        band(draw, face.x, face.bottom - 1, face.width, 1, RIFT_VIOLET)
+        band(draw, face.x + face.width // 2, face.y + 3, 1, face.height - 5, RIFT_VIOLET)
+    band(draw, faces["bottom"].x, faces["bottom"].y, faces["bottom"].width,
+         faces["bottom"].height, RIFT_DEEP)
+
+
+def _archmage_hood_rune(draw: ImageDraw.ImageDraw, atlas: layout.Atlas) -> None:
+    """Excluded from the runtime repack, so this glyph must be authored."""
+    faces = paint_part(draw, atlas, "rift_hood_rune", RIFT_GLOW, 221, 6, RIFT_GLOW)
+    front = faces["front"]
+    band(draw, front.x, front.y, front.width, front.height, RIFT_GLOW)
+    band(draw, front.x, front.y + 1, front.width, 1, RIFT_EMERALD_LIT)
+    for side in ("top", "bottom", "left", "right", "back"):
+        face = faces[side]
+        band(draw, face.x, face.y, face.width, face.height, RIFT_GLOW)
+
+
+def _archmage_nose(draw: ImageDraw.ImageDraw, atlas: layout.Atlas) -> None:
+    paint_part(draw, atlas, "nose", RIFT_DEEP, 231, 6, RIFT_BLACK)
+
+
+def _archmage_body(draw: ImageDraw.ImageDraw, atlas: layout.Atlas) -> None:
+    faces = paint_part(draw, atlas, "body", CLOTH, 241, 10, RIFT_BLACK)
+    band(draw, faces["top"].x, faces["top"].y, faces["top"].width,
+         faces["top"].height, CLOTH_LIT)
+    band(draw, faces["bottom"].x, faces["bottom"].y, faces["bottom"].width,
+         faces["bottom"].height, RIFT_DEEP)
+    for side in ("front", "back", "left", "right"):
+        face = faces[side]
+        for column in range(2, face.width, 3):
+            band(draw, face.x + column, face.y + 1, 1, face.height - 2, CLOTH_LIT)
+        band(draw, face.x, face.y + face.height // 3, face.width, 1, RIFT_VIOLET)
+        band(draw, face.x, face.bottom - 2, face.width, 1, RIFT_DEEP)
+    front = faces["front"]
+    dot(draw, front.x + front.width // 2, front.y + front.height // 3, RIFT_EMERALD_LIT)
+
+
+def _archmage_robe(draw: ImageDraw.ImageDraw, atlas: layout.Atlas) -> None:
+    faces = paint_part(draw, atlas, "rift_robe", RIFT_VIOLET, 251, 10, RIFT_BLACK)
+    band(draw, faces["top"].x, faces["top"].y, faces["top"].width,
+         faces["top"].height, CLOTH)
+    band(draw, faces["bottom"].x, faces["bottom"].y, faces["bottom"].width,
+         faces["bottom"].height, RIFT_DEEP)
+    for side in ("front", "back", "left", "right"):
+        face = faces[side]
+        for column in range(1, face.width, 2):
+            band(draw, face.x + column, face.y, 1, face.height - 1, CLOTH_LIT)
+        band(draw, face.x, face.bottom - 1, face.width, 1, RIFT_EMERALD)
+        dot(draw, face.x + 1, face.bottom - 1, RIFT_EMERALD_LIT)
+        dot(draw, face.right - 2, face.bottom - 1, RIFT_EMERALD_LIT)
+
+
+def _archmage_seal(draw: ImageDraw.ImageDraw, atlas: layout.Atlas) -> None:
+    faces = paint_part(draw, atlas, "rift_seal", RIFT_EMERALD, 261, 8, RIFT_BLACK)
+    for side in ("front", "back"):
+        face = faces[side]
+        rune(draw, face.x + face.width // 2, face.y + face.height // 2, 1, RIFT_EMERALD_LIT)
+        band(draw, face.x + 1, face.y + 1, face.width - 2, 1, RIFT_EMERALD_LIT)
+
+
+def _archmage_arm(draw: ImageDraw.ImageDraw, atlas: layout.Atlas, part: str,
+                  seed: int) -> None:
+    faces = paint_part(draw, atlas, part, CLOTH_LIT, seed, 8, RIFT_BLACK)
+    band(draw, faces["top"].x, faces["top"].y, faces["top"].width,
+         faces["top"].height, CLOTH)
+    band(draw, faces["bottom"].x, faces["bottom"].y, faces["bottom"].width,
+         faces["bottom"].height, RIFT_BLACK)
+    for side in ("front", "back", "left", "right"):
+        face = faces[side]
+        band(draw, face.x, face.y, face.width, 2, CLOTH)
+        band(draw, face.x, face.bottom - 3, face.width, 2, RIFT_VIOLET)
+        band(draw, face.x + face.width // 2, face.y + 3, 1, face.height - 7, CLOTH)
+
+
+def _archmage_staff(draw: ImageDraw.ImageDraw, atlas: layout.Atlas) -> None:
+    faces = paint_part(draw, atlas, "rift_focus_staff", BONE_DARK, 271, 6, RIFT_BLACK)
+    for side in ("front", "back", "left", "right"):
+        face = faces[side]
+        band(draw, face.x, face.y, face.width, face.height, BONE_DARK)
+        for row in range(1, face.height - 2, 4):
+            band(draw, face.x, face.y + row, face.width, 1, RIFT_GLOW)
+        band(draw, face.x, face.y, face.width, 2, METAL_LIT)
+        band(draw, face.x, face.bottom - 3, face.width, 3, METAL)
+    for side in ("top", "bottom"):
+        face = faces[side]
+        band(draw, face.x, face.y, face.width, face.height, METAL_LIT)
+
+
+def _archmage_orb(draw: ImageDraw.ImageDraw, atlas: layout.Atlas) -> None:
+    faces = paint_part(draw, atlas, "rift_focus_orb", RIFT_VIOLET_LIT, 281, 10, RIFT_BLACK)
+    for side, face in faces.items():
+        if face.width >= 3 and face.height >= 3:
+            band(draw, face.x + 1, face.y + 1, face.width - 2, face.height - 2, RIFT_GLOW)
+            band(draw, face.x + 1, face.y + 1, 1, 1, RIFT_EMERALD_LIT)
+        else:
+            band(draw, face.x, face.y, face.width, face.height, RIFT_GLOW)
+
+
+def _archmage_sigil_ring(draw: ImageDraw.ImageDraw, atlas: layout.Atlas) -> None:
+    """The only "a spell is coming" telegraph, scaled 3.4x while casting.
+
+    ``EndRiftAtlasUvLayout`` skips this path on purpose, so nothing repaints it:
+    before this pass the island was 0 % painted and the ring rendered as an
+    invisible mesh. It is now an opaque dark disc carrying a bright emerald ring
+    with four cardinal runes, and the 0.4-texel rim strips are a solid band --
+    both the top/bottom plates and the rim stay readable at 3.4x.
+    """
+    faces = paint_part(draw, atlas, "rift_sigil_ring", RIFT_BLACK, 291, 6, RIFT_DEEP)
+    for side in ("top", "bottom"):
+        face = faces[side]
+        size = min(face.width, face.height)
+        inset = 1 if size >= 6 else 0
+        for index in range(size - 2 * inset):
+            if index in (0, size - 2 * inset - 1):
+                band(draw, face.x + inset + index, face.y + inset, 1, size - 2 * inset,
+                     RIFT_EMERALD_LIT)
+                band(draw, face.x + inset, face.y + inset + index, size - 2 * inset, 1,
+                     RIFT_EMERALD_LIT)
+        mid = size // 2
+        band(draw, face.x + mid - 1, face.y + mid - 1, 2, 2, RIFT_GLOW)
+        # Cardinal runes sit on the plate's outer edge, outside the emerald ring.
+        for offset in (mid - 1, mid):
+            dot(draw, face.x + offset, face.y, RIFT_GLOW)
+            dot(draw, face.x + offset, face.bottom - 1, RIFT_GLOW)
+            dot(draw, face.x, face.y + offset, RIFT_GLOW)
+            dot(draw, face.right - 1, face.y + offset, RIFT_GLOW)
+    for side in ("front", "back", "left", "right"):
+        face = faces[side]
+        band(draw, face.x, face.y, face.width, face.height, RIFT_EMERALD)
+        band(draw, face.x, face.y, face.width, 1, RIFT_GLOW)
+
+
+def _archmage_rune_hand(draw: ImageDraw.ImageDraw, atlas: layout.Atlas) -> None:
+    """A gloved hand with an emerald seal; also excluded from the repack."""
+    faces = paint_part(draw, atlas, "rift_rune_hand", CLOTH_LIT, 301, 8, RIFT_BLACK)
+    for side in ("top", "bottom"):
+        face = faces[side]
+        band(draw, face.x, face.y, face.width, face.height, CLOTH)
+    for side in ("front", "back", "left", "right"):
+        face = faces[side]
+        band(draw, face.x, face.y, face.width, 1, BONE_DARK)
+        band(draw, face.x + 1, face.y + 1, 1, 1, BONE_DARK)
+        band(draw, face.right - 1, face.y + 1, 1, 1, BONE_DARK)
+    front = faces["front"]
+    band(draw, front.x + 1, front.y + 1, 1, 1, RIFT_EMERALD_LIT)
+
+
+def _archmage_leg(draw: ImageDraw.ImageDraw, atlas: layout.Atlas, part: str,
+                  seed: int) -> None:
+    faces = paint_part(draw, atlas, part, CLOTH, seed, 8, RIFT_BLACK)
+    band(draw, faces["top"].x, faces["top"].y, faces["top"].width,
+         faces["top"].height, CLOTH_LIT)
+    for side in ("front", "back", "left", "right"):
+        face = faces[side]
+        band(draw, face.x, face.y, face.width, 1, CLOTH_LIT)
+        band(draw, face.x, face.bottom - 3, face.width, 3, RIFT_BLACK)
+        band(draw, face.x, face.bottom - 4, face.width, 1, RIFT_VIOLET)
+    band(draw, faces["bottom"].x, faces["bottom"].y, faces["bottom"].width,
+         faces["bottom"].height, RIFT_BLACK)
+
 
 def build_archmage() -> Image.Image:
-    img = _canvas(64, 64)
-    d = ImageDraw.Draw(img)
+    """Paint order resolves the rig's overlapping islands.
 
-    fill_box(d, 0, 0, 32, 16, RIFT_HIDE, 51, 12, RIFT_BLACK)     # head cube
-    fill_box(d, 32, 0, 16, 24, CLOTH, 52, 12, RIFT_BLACK)        # hood shell
-    fill_box(d, 56, 0, 2, 3, RIFT_GLOW, 53, 4)                   # hood rune
-    fill_box(d, 24, 0, 8, 6, RIFT_DEEP, 54, 6, RIFT_BLACK)       # nose
-
-    # Face: deep black void with two violet eyes and a rune-slit.
-    for (px, py) in [(6, 6), (7, 6), (8, 6), (9, 6), (6, 7), (9, 7)]:
-        d.point((px, py), fill=RIFT_GLOW + (255,))
-    for (px, py) in [(22, 6), (23, 6), (24, 6), (25, 6), (22, 7), (25, 7)]:
-        d.point((px, py), fill=RIFT_GLOW + (255,))
-    for py in range(9, 14):
-        d.point((16, py), fill=RIFT_EMERALD + (255,))
-
-    fill_box(d, 16, 20, 32, 18, RIFT_DEEP, 55, 12, RIFT_BLACK)   # body + sides
-    fill_box(d, 16, 20, 8, 12, CLOTH, 56, 10, RIFT_BLACK)
-    fill_box(d, 24, 20, 8, 12, CLOTH_LIT, 57, 10, RIFT_BLACK)
-    fill_box(d, 16, 38, 32, 12, RIFT_VIOLET, 58, 10, RIFT_BLACK)  # robe hem
-    for px in range(17, 47, 3):
-        d.point((px, 44), fill=RIFT_EMERALD + (255,))
-    fill_box(d, 48, 20, 8, 8, RIFT_EMERALD, 59, 8)                # chest seal
-    for (px, py) in [(50, 22), (51, 22), (52, 22), (53, 22), (51, 21), (52, 23)]:
-        d.point((px, py), fill=RIFT_EMERALD_LIT + (255,))
-
-    fill_box(d, 40, 22, 8, 12, CLOTH, 60, 8, RIFT_BLACK)          # right arm
-    fill_box(d, 40, 38, 8, 12, CLOTH, 60, 8, RIFT_BLACK)          # left arm
-    fill_box(d, 56, 38, 1, 18, BONE_DARK, 61, 4)                  # staff shaft
-    for py in range(38, 56, 4):
-        d.point((56, py), fill=RIFT_GLOW + (255,))
-    fill_box(d, 48, 42, 4, 4, RIFT_VIOLET_LIT, 62, 6)             # focus orb
-    d.point((49, 43), fill=RIFT_GLOW + (255,))
-    d.point((50, 44), fill=RIFT_GLOW + (255,))
-
-    fill_box(d, 0, 22, 16, 12, CLOTH, 63, 8, RIFT_BLACK)          # legs
-    fill_box(d, 0, 38, 16, 12, RIFT_DEEP, 64, 8, RIFT_BLACK)
-    for py in range(40, 50, 3):
-        d.point((3, py), fill=RIFT_EMERALD + (255,))
-        d.point((11, py), fill=RIFT_EMERALD + (255,))
-    return img
+    ``rift_robe`` is painted after both arms so the robe's back face is not
+    replaced by sleeve art; the hand, orb and sigil ring are painted last so the
+    hero elements (and the two the runtime repack refuses to repair) always win.
+    """
+    atlas = layout.archmage_atlas()
+    image = _canvas(atlas.width, atlas.height)
+    _archmage_robe_cloth(image)
+    draw = ImageDraw.Draw(image)
+    _archmage_head(draw, atlas)
+    _archmage_hood(draw, atlas)
+    _archmage_hood_rune(draw, atlas)
+    _archmage_nose(draw, atlas)
+    _archmage_body(draw, atlas)
+    _archmage_arm(draw, atlas, "right_arm", 311)
+    _archmage_arm(draw, atlas, "left_arm", 321)
+    _archmage_robe(draw, atlas)
+    _archmage_seal(draw, atlas)
+    _archmage_staff(draw, atlas)
+    _archmage_leg(draw, atlas, "right_leg", 331)
+    _archmage_leg(draw, atlas, "left_leg", 341)
+    _archmage_rune_hand(draw, atlas)
+    _archmage_orb(draw, atlas)
+    _archmage_sigil_ring(draw, atlas)
+    _assert_fully_painted(image, atlas)
+    return image
 
 
-# --------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Marksman - skeleton atlas 64x32, same islands as RiftEventSkeletonModel
-# --------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+
+def _marksman_bone(image: Image.Image) -> None:
+    draw = ImageDraw.Draw(image)
+    for y in range(32):
+        for x in range(64):
+            n = _noise(27, x, y)
+            shade = 0.82 + 0.18 * (1.0 - y / 31.0) + (n - 0.5) * 0.13
+            draw.point((x, y), fill=_clamp(BONE_SHADE, shade, int((n - 0.5) * 10)))
+
+
+def _marksman_head(draw: ImageDraw.ImageDraw, atlas: layout.Atlas) -> None:
+    """Skull under a violet hood: the hood is painted on the head's own faces."""
+    faces = paint_part(draw, atlas, "head", CLOTH, 401, 9, RIFT_BLACK)
+    for side in ("top", "left", "right", "back"):
+        face = faces[side]
+        band(draw, face.x + 1, face.y + 1, face.width - 2, face.height - 2, CLOTH_LIT)
+        band(draw, face.x, face.bottom - 2, face.width, 2, RIFT_VIOLET)
+        band(draw, face.x + face.width // 2, face.y + 2, 1, face.height - 4, RIFT_VIOLET)
+    band(draw, faces["bottom"].x, faces["bottom"].y, faces["bottom"].width,
+         faces["bottom"].height, RIFT_BLACK)
+    front = faces["front"]
+    # Bone face inside a cloth frame, emerald sockets exactly on the front face.
+    band(draw, front.x, front.y, front.width, front.height, BONE)
+    band(draw, front.x, front.y, front.width, 1, CLOTH)
+    band(draw, front.x, front.y, 1, front.height, CLOTH)
+    band(draw, front.right - 1, front.y, 1, front.height, CLOTH)
+    for offset in (2, front.width - 4):
+        band(draw, front.x + offset, front.y + 3, 2, 2, RIFT_EMERALD_LIT)
+        dot(draw, front.x + offset, front.y + 4, RIFT_EMERALD)
+    band(draw, front.x + front.width // 2, front.y + 6, 1, 2, BONE_DARK)
+    for column in range(2, front.width - 2, 2):
+        dot(draw, front.x + column, front.bottom - 2, BONE_DARK)
+
+
+def _marksman_body(draw: ImageDraw.ImageDraw, atlas: layout.Atlas) -> None:
+    faces = paint_part(draw, atlas, "body", BONE, 411, 10, BONE_DARK)
+    band(draw, faces["top"].x, faces["top"].y, faces["top"].width,
+         faces["top"].height, BONE_SHADE)
+    band(draw, faces["bottom"].x, faces["bottom"].y, faces["bottom"].width,
+         faces["bottom"].height, BONE_DARK)
+    for side in ("front", "back", "left", "right"):
+        face = faces[side]
+        for row in range(2, face.height - 2, 3):
+            band(draw, face.x + 1, face.y + row, face.width - 2, 1, BONE_SHADE)
+        band(draw, face.x, face.y + 1, face.width, 1, CLOTH_LIT)
+        band(draw, face.x, face.bottom - 2, face.width, 1, RIFT_VIOLET)
+        band(draw, face.x + face.width // 2, face.y + 2, 1, 2, RIFT_VIOLET_LIT)
+
+
+def _marksman_chest_rift(draw: ImageDraw.ImageDraw, atlas: layout.Atlas) -> None:
+    paint_part(draw, atlas, "chest_rift", RIFT_VIOLET_LIT, 421, 8, RIFT_BLACK)
+
+
+def _marksman_limb(draw: ImageDraw.ImageDraw, atlas: layout.Atlas, part: str,
+                   seed: int, wrap_at: str) -> None:
+    faces = paint_part(draw, atlas, part, BONE, seed, 8, BONE_DARK)
+    band(draw, faces["top"].x, faces["top"].y, faces["top"].width,
+         faces["top"].height, BONE_SHADE)
+    band(draw, faces["bottom"].x, faces["bottom"].y, faces["bottom"].width,
+         faces["bottom"].height, BONE_SHADE)
+    for side in ("front", "back", "left", "right"):
+        face = faces[side]
+        band(draw, face.x, face.y, face.width, 1, BONE_SHADE)
+        band(draw, face.x + 1, face.y + 2, 1, max(1, face.height - 4), BONE_DARK)
+        if wrap_at == "bottom":
+            band(draw, face.x, face.bottom - 2, face.width, 2, CLOTH_LIT)
+            dot(draw, face.x, face.bottom - 1, RIFT_EMERALD)
+        else:
+            band(draw, face.x, face.y + 1, face.width, 2, CLOTH_LIT)
+            dot(draw, face.x, face.y + 1, RIFT_EMERALD)
+
+
+def _marksman_sight(draw: ImageDraw.ImageDraw, atlas: layout.Atlas) -> None:
+    faces = paint_part(draw, atlas, "marksman_sight", RIFT_VIOLET, 431, 8, RIFT_BLACK)
+    for side in ("front", "back"):
+        face = faces[side]
+        band(draw, face.x, face.y, face.width, face.height, RIFT_VIOLET)
+        band(draw, face.x + 1, face.y, face.width - 2, 1, RIFT_GLOW)
+        dot(draw, face.x + face.width // 2, face.y + 1, RIFT_EMERALD_LIT)
+    for side in ("top", "bottom", "left", "right"):
+        face = faces[side]
+        band(draw, face.x, face.y, face.width, face.height, RIFT_VIOLET_LIT)
+
+
+def _marksman_quiver(draw: ImageDraw.ImageDraw, atlas: layout.Atlas) -> None:
+    faces = paint_part(draw, atlas, "marksman_quiver", RIFT_DEEP, 441, 8, RIFT_BLACK)
+    for side in ("front", "back", "left", "right"):
+        face = faces[side]
+        band(draw, face.x, face.y, face.width, face.height, RIFT_DEEP)
+        for column in range(1, face.width, 2):
+            band(draw, face.x + column, face.y + 1, 1, 2, BONE)
+            dot(draw, face.x + column, face.y + 2, RIFT_EMERALD)
+        band(draw, face.x, face.bottom - 2, face.width, 1, CLOTH)
+    for side in ("top", "bottom"):
+        face = faces[side]
+        band(draw, face.x, face.y, face.width, face.height, RIFT_BLACK)
+
+
+def _marksman_hat(draw: ImageDraw.ImageDraw, atlas: layout.Atlas) -> None:
+    """Set invisible by the rig, but it still samples texels: keep it a hood."""
+    faces = paint_part(draw, atlas, "hat", CLOTH, 451, 9)
+    for side, face in faces.items():
+        band(draw, face.x + 1, face.y + 1, face.width - 2, face.height - 2, CLOTH_LIT)
+        band(draw, face.x, face.y, face.width, 2, RIFT_VIOLET)
+
 
 def build_marksman() -> Image.Image:
-    img = _canvas(64, 32)
-    d = ImageDraw.Draw(img)
+    """Legs before arms, quiver last: its islands overlap both arm boxes."""
+    atlas = layout.marksman_atlas()
+    image = _canvas(atlas.width, atlas.height)
+    _marksman_bone(image)
+    draw = ImageDraw.Draw(image)
+    _marksman_head(draw, atlas)
+    _marksman_body(draw, atlas)
+    _marksman_chest_rift(draw, atlas)
+    _marksman_limb(draw, atlas, "left_leg", 501, "top")
+    _marksman_limb(draw, atlas, "right_leg", 511, "top")
+    _marksman_limb(draw, atlas, "left_lower_leg", 521, "bottom")
+    _marksman_limb(draw, atlas, "right_lower_leg", 531, "bottom")
+    _marksman_limb(draw, atlas, "left_arm", 461, "bottom")
+    _marksman_limb(draw, atlas, "right_arm", 471, "bottom")
+    _marksman_limb(draw, atlas, "left_forearm", 481, "bottom")
+    _marksman_limb(draw, atlas, "right_forearm", 491, "bottom")
+    _marksman_sight(draw, atlas)
+    _marksman_quiver(draw, atlas)
+    _marksman_hat(draw, atlas)
+    _assert_fully_painted(image, atlas)
+    return image
 
-    fill_box(d, 0, 0, 32, 16, BONE_SHADE, 71, 10, BONE_DARK)      # skull
-    # Deep hood over the skull with a thin bone face showing through.
-    for yy in range(0, 5):
-        for xx in range(0, 32):
-            d.point((xx, yy), fill=CLOTH + (255,))
-    for py in range(5, 15):
-        for px in range(4, 12):
-            if px in (4, 11) or py in (5, 14):
-                d.point((px, py), fill=BONE_DARK + (255,))
-    for (px, py) in [(6, 8), (7, 8), (8, 8), (9, 8), (6, 9), (9, 9),
-                     (22, 8), (23, 8), (24, 8), (25, 8), (22, 9), (25, 9)]:
-        d.point((px, py), fill=RIFT_EMERALD_LIT + (255,))
-    fill_box(d, 48, 16, 4, 2, RIFT_VIOLET, 72, 6)                 # marksman_sight
-    for px in range(48, 52):
-        d.point((px, 16), fill=RIFT_GLOW + (255,))
 
-    fill_box(d, 16, 16, 24, 12, BONE, 73, 12, BONE_DARK)          # torso + arms + legs islands
-    fill_box(d, 24, 17, 8, 4, RIFT_DEEP, 74, 8)                   # chest rift
-    for py in range(17, 21):
-        d.point((28, py), fill=RIFT_VIOLET_LIT + (255,))
-    fill_box(d, 40, 20, 10, 8, RIFT_DEEP, 75, 8, RIFT_BLACK)      # quiver island
-    for py in range(20, 28, 2):
-        d.point((42, py), fill=BONE + (255,))
-        d.point((46, py), fill=RIFT_EMERALD + (255,))
-    # Arms: bone with violet wraps.
-    for (ux, vx) in ((40, 16), (48, 16)):
-        for py in range(16, 22, 2):
-            d.point((ux, py), fill=CLOTH_LIT + (255,))
-    # Legs.
-    for (ux, vx) in ((0, 16), (8, 16)):
-        for py in range(21, 22):
-            d.point((ux, py), fill=CLOTH_LIT + (255,))
-    return img
+# ---------------------------------------------------------------------------
+# Outputs
+# ---------------------------------------------------------------------------
+
+class ActorSkin(NamedTuple):
+    name: str
+    builder: Callable[[], Image.Image]
+
+
+SKINS: tuple[ActorSkin, ...] = (
+    ActorSkin("end_rift_wave7_warden.png", build_warden),
+    ActorSkin("end_rift_wave7_archmage.png", build_archmage),
+    ActorSkin("end_rift_wave7_marksman.png", build_marksman),
+)
+
+
+def output_paths() -> list[Path]:
+    """Every file this generator writes; all of them live in the client root."""
+    return [TEXTURE_ROOT / skin.name for skin in SKINS]
+
+
+def generate(directory: Path | None = None) -> list[Path]:
+    """Write every actor skin, returning the paths actually written."""
+    target_root = TEXTURE_ROOT if directory is None else Path(directory)
+    written: list[Path] = []
+    for skin in SKINS:
+        image = skin.builder()
+        assert image.mode == "RGBA", skin.name
+        target = target_root / skin.name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        image.save(target, optimize=True)
+        written.append(target)
+        print("wrote", target, image.size)
+    return written
 
 
 def main() -> None:
-    targets = [
-        (ROOT / "assets" / "copimineclient" / "textures" / "entity",
-         "end_rift_wave7_warden.png", build_warden),
-        (ROOT / "assets" / "copimineclient" / "textures" / "entity",
-         "end_rift_wave7_archmage.png", build_archmage),
-        (ROOT / "assets" / "copimineclient" / "textures" / "entity",
-         "end_rift_wave7_marksman.png", build_marksman),
-    ]
-    for directory, name, builder in targets:
-        target = directory / name
-        target.parent.mkdir(parents=True, exist_ok=True)
-        image = builder()
-        assert image.mode == "RGBA"
-        assert any(px[3] for px in image.getdata()), name
-        image.save(target, optimize=True)
-        print("wrote", target, image.size)
+    generate()
 
 
 if __name__ == "__main__":

@@ -20,10 +20,15 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-ROOT = Path(__file__).resolve().parents[1]
-OUTPUTS = [
-    ROOT / "assets" / "copimineclient" / "textures" / "entity",
-]
+ROOT = Path(__file__).resolve().parents[2]
+TEXTURE_ROOT = (
+    ROOT / "CopiMineClient" / "src" / "main" / "resources" / "assets"
+    / "copimineclient" / "textures" / "entity"
+)
+# ``parents[2]`` is the repository root.  The previous ``parents[1]`` resolved to
+# ``resourcepacks/`` and appended ``assets/copimineclient/...``: a tree that has
+# never existed in this repository, so ``main()`` wrote a phantom copy the client
+# never loads while the shipped PNG could not be regenerated from its generator.
 
 SIZE = 64
 
@@ -127,16 +132,27 @@ def build_vex_servant() -> Image.Image:
     return image
 
 
-def main() -> None:
+def output_path(directory: Path | None = None) -> Path:
+    """The one file this generator writes."""
+    root = TEXTURE_ROOT if directory is None else Path(directory)
+    return root / "end_rift_wave7_vex_servant.png"
+
+
+def generate(directory: Path | None = None) -> Path:
+    """Write the Vex servant sheet, returning the path actually written."""
     image = build_vex_servant()
     assert image.mode == "RGBA"
     assert image.size == (SIZE, SIZE)
     assert any(px[3] for px in image.getdata()), "vex servant sheet is fully transparent"
-    for directory in OUTPUTS:
-        target = directory / "end_rift_wave7_vex_servant.png"
-        target.parent.mkdir(parents=True, exist_ok=True)
-        image.save(target, optimize=True)
-        print("wrote", target, image.size)
+    target = output_path(directory)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    image.save(target, optimize=True)
+    print("wrote", target, image.size)
+    return target
+
+
+def main() -> None:
+    generate()
 
 
 if __name__ == "__main__":

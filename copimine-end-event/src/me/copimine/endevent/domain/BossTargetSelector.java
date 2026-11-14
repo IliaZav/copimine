@@ -12,15 +12,8 @@ public final class BossTargetSelector {
         if (snapshot == null || snapshot.livingPlayers().isEmpty()) {
             return new TargetDecision(null, 0.0D, "NO_ELIGIBLE_PLAYER");
         }
-        // The adapter's BossTargetPolicy owns the lock window; the brain must not
-        // re-score its way onto a different primary target inside that window.
-        if (currentTarget != null) {
-            for (BossPerceptionSnapshot.PlayerObservation player : snapshot.livingPlayers()) {
-                if (currentTarget.equals(player.playerId())) {
-                    return scored(player, currentTarget);
-                }
-            }
-        }
+        // This decision owns a SPELL target, never Mob.setTarget/navigation.
+        // Pursuit's 10-12 second lock must not monopolize every ranged attack.
         return snapshot.livingPlayers().stream()
                 .map(player -> scored(player, currentTarget))
                 .max(Comparator.comparingDouble(TargetDecision::score)
@@ -31,6 +24,7 @@ public final class BossTargetSelector {
     private static TargetDecision scored(BossPerceptionSnapshot.PlayerObservation player,
                                          UUID currentTarget) {
         double score = player.recentDamageThreat() * 1.5D
+                + (player.lineOfSight() ? 3.0D : 0.0D)
                 + (player.objectiveThreat() ? 4.0D : 0.0D)
                 + (player.isolated() ? 3.0D : 0.0D)
                 + Math.max(0.0D, 1.0D - player.healthFraction()) * 1.5D

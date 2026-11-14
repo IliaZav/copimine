@@ -8,6 +8,22 @@ public final class BossSpellTargetSelector {
     private int cursor;
     private final Deque<UUID> recent = new ArrayDeque<>();
 
+    public boolean recentlyTargeted(long currentGeneration, UUID player) {
+        return generation == currentGeneration && player != null && recent.contains(player);
+    }
+
+    /** Record an accepted cast only; perception and rejected proposals are read-only. */
+    public void recordAccepted(long currentGeneration, UUID player, int recentLimit) {
+        if (currentGeneration <= 0L || player == null) return;
+        if (generation != currentGeneration) {
+            generation = currentGeneration; cursor = 0; recent.clear();
+        }
+        recent.remove(player);
+        recent.addLast(player);
+        int limit = Math.max(0, Math.min(20, recentLimit));
+        while (recent.size() > limit) recent.removeFirst();
+    }
+
     public UUID choose(long currentGeneration, List<UUID> candidates, int recentLimit) {
         if (currentGeneration <= 0L) return null;
         if (generation != currentGeneration) {

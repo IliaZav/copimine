@@ -48529,6 +48529,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && (!EchoDecoyPolicy.maySummon(echoDecoyLastSummonTick, eventTickCounter)
                 || EchoDecoyPolicy.maySummonTo(echoDecoyIds.size()) == 0))
             available.remove(EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS);
+        available.removeIf(spell -> !bossActionAvailable(spell));
+        if (available.isEmpty()) return false;
         BossBrain.Decision brainDecision = chooseCurrentBossDecision(boss, available);
         EndRiftAiPolicy.BossSpell spell = spellForAbility(
                 brainDecision == null || brainDecision.ability() == null
@@ -48556,6 +48558,32 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return false;
     }
 
+    /** Admission precedes warning, reservation and cooldown consumption. */
+    private boolean bossActionAvailable(EndRiftAiPolicy.BossSpell spell) {
+        if (spell == null || config == null) return false;
+        return switch (spell) {
+            case FINAL_STRIKE -> !bossFinalStrikeUsed && config.finalStrikeTuning().enabled();
+            case ARENA_INFERNO -> bossPhase == BossPhase.OVERLOAD && arenaInfernoBlocks.isEmpty()
+                    && InfernoArenaLifecyclePolicy.mayRestart(eventTickCounter,
+                            arenaInfernoLastCastEndTick, arenaInfernoLastCastEndTick);
+            case RIFT_PROJECTILE -> activeRiftProjectiles.size() < MAX_ACTIVE_RIFT_PROJECTILES;
+            case SUMMON_SERVANTS -> bossPhase == BossPhase.RAGE
+                    ? EchoDecoyPolicy.maySummon(echoDecoyLastSummonTick, eventTickCounter)
+                        && EchoDecoyPolicy.maySummonTo(echoDecoyIds.size()) > 0
+                    : BossSummonAdmissionPolicy.allowsSkeletonSummon(bossPhase, "SPIDER")
+                        && livingBossServantCount() < Math.min(config.maxSummonedServants(),
+                                currentBossCombatProfile().summonCap());
+            case SMALL_KAGUNE, AMBUSH_GRAB -> !guardianDeaths.cocoonBroken();
+            default -> true;
+        };
+    }
+
+    private int livingBossServantCount() {
+        return (int) spellServants.stream().map(ownedEntities::get)
+                .filter(entity -> entity instanceof LivingEntity && entity.isValid() && !entity.isDead()
+                        && ownedBySession(entity, eventId, generation)).count();
+    }
+
     /** Build one bounded event-local perception snapshot for a boss decision. */
     private BossBrain.Decision chooseCurrentBossDecision(
             LivingEntity boss, List<EndRiftAiPolicy.BossSpell> available) {
@@ -48581,14 +48609,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     .mapToDouble(other -> Math.sqrt(player.getLocation().distanceSquared(other.getLocation())))
                     .min().orElse(Double.POSITIVE_INFINITY);
             boolean isolated = nearestTeammate >= 8.0D;
-            boolean recentlyTargeted = recentBossTargets.contains(player.getUniqueId());
+            boolean recentlyTargeted = bossSpellTargets.recentlyTargeted(generation, player.getUniqueId());
             boolean recentlyHardControlled = isPlayerUnderTentacleControl(player);
             boolean objectiveThreat = isCoreBlockPosition(player.getLocation());
             observations.add(new BossPerceptionSnapshot.PlayerObservation(
                     player.getUniqueId(), true,
                     BossPerceptionSnapshot.normalizedHealth(player.getHealth(), player.getMaxHealth()), distance,
                     boss.hasLineOfSight(player), isolated,
-                    recentBossTargets.contains(player.getUniqueId()) ? 0.5D : 0.0D,
+                    bossRecentAttackers.containsKey(player.getUniqueId())
+                            && System.currentTimeMillis() - bossRecentAttackers.get(player.getUniqueId()) < 5_000L
+                            ? 0.5D : 0.0D,
                     recentlyTargeted, recentlyHardControlled, objectiveThreat,
                     player.getX(), player.getY(), player.getZ(),
                     player.getVelocity().getX(), player.getVelocity().getY(),
@@ -48665,7 +48695,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || bossAmbushOwnsMajorCast()
                 || !forced && bossAbilityState != BossAbilityState.NONE
                 || !arenaInfernoBlocks.isEmpty() && !ArenaInfernoPolicy.allowsConcurrent(spell)
-                || !currentBossSpellPool().contains(spell)) {
+                || !currentBossSpellPool().contains(spell) || !bossActionAvailable(spell)) {
             return false;
         }
         if (isKaguneRingCastActive()) {
@@ -49371,6 +49401,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }, 1L, 1L);
         bossCastTask = holder[0];
         registerEncounterTask(holder[0]);
+        bossSpellTargets.recordAccepted(generation, target.getUniqueId(), config.bossRecentTargetMemory());
         if (isCurrentBossMeleeFury() && spell == EndRiftAiPolicy.BossSpell.MELEE_SWIPE
                 && !bossFuryCombo.active()) {
             bossFuryCombo.begin(eventId, generation, bossId, target.getUniqueId(),
@@ -49819,6 +49850,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                      if (BossSpellVisualCompositionPolicy.isAuthored(spell.id())) {
                          renderAuthoredBossImpact(impactOrigin,
                                  BossSpellVisualCompositionPolicy.composition(spell.id()));
+                         playBossSpellModel(boss, spell.id(), impactOrigin.clone().add(0, .35D, 0),
+                                 12, false);
                      } else {
                          renderSpellImpactVisual(boss, impactOrigin, spell.id());
                      }
@@ -49839,7 +49872,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                      }
                      switch (spell) {
                         case VOID_BLAST -> voidBlast(boss, mark);
-                        case RIFT_PROJECTILE -> riftProjectile(boss, target);
+                        case RIFT_PROJECTILE -> riftProjectile(boss, target, mark.clone().add(0, 1.5D, 0));
                         case RIFT_ARROWS -> {
                             if (BossEdgeVolleyPolicy.allowsPhase(bossPhase)
                                     && bossEdgeVolleyClusterDwell.satisfied()) {
@@ -49850,13 +49883,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                 riftArrowVolley(boss, target,
                                         EndRiftAiPolicy.BossSpell.RIFT_ARROWS.id(),
                                         new SkeletonCombatPolicy.ArrowProfile(
-                                                3, BOSS_PROJECTILE_DAMAGE, 60, "rift_salvo"));
+                                                3, BOSS_PROJECTILE_DAMAGE, 60, "rift_salvo"),
+                                        mark.clone().add(0, 1.5D, 0));
                             }
                         }
                         case VOID_MARK -> voidMark(boss, mark);
                          case SUMMON_SERVANTS -> summonServants(boss);
                          case ARENA_INFERNO -> arenaInferno(boss, target);
-                         case BOSS_FIREBALL -> launchBossFireball(boss, target);
+                         case BOSS_FIREBALL -> launchBossFireball(boss, target, mark.clone().add(0, 1.5D, 0));
                          case FINAL_STRIKE -> startBossFinalStrike(boss, target, forced);
                        }
                       if (spell != EndRiftAiPolicy.BossSpell.FINAL_STRIKE
@@ -49892,8 +49926,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             release.run();
             return true;
         }
-        return launchSpellFlight(boss, mark, "BOSS_SPELL_FLIGHT", spell.id(),
-                target.getUniqueId(), forced, callbackGeneration, release);
+        // Ground/arena/summon effects resolve on the authored release frame at
+        // their locked anchor. A particle travelling to a player is not a second
+        // projectile and must not delay Inferno or a ground rune by eight ticks.
+        release.run();
+        return true;
     }
 
     private void voidBlast(LivingEntity boss, Location lockedMark) {
@@ -50573,12 +50610,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void riftProjectile(LivingEntity boss, Player target) {
+        riftProjectile(boss, target, target == null ? null : target.getEyeLocation());
+    }
+
+    private void riftProjectile(LivingEntity boss, Player target, Location committedAim) {
+        if (committedAim == null || boss == null || !boss.getWorld().equals(committedAim.getWorld())) return;
         if (activeRiftProjectiles.size() >= MAX_ACTIVE_RIFT_PROJECTILES
                 || boss == null || target == null || boss.getWorld() == null) {
             return;
         }
         Location start = boss.getLocation().add(0.0D, 1.0D, 0.0D);
-        Vector offset = target.getEyeLocation().toVector().subtract(start.toVector());
+        Vector offset = committedAim.toVector().subtract(start.toVector());
         if (offset.lengthSquared() < 0.01D) {
             return;
         }
@@ -50898,6 +50940,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 getLogger().info("BOSS_PROJECTILE_HIT entity=" + projectile.getUniqueId()
                     + " target=" + player.getUniqueId());
             }
+        }
+        if (boss != null && ownedBySession(projectile, eventId, generation)
+                && isBossCombatRuntimeActive(boss)) {
+            renderAuthoredBossImpact(projectile.getLocation(),
+                    BossSpellVisualCompositionPolicy.composition("rift_projectile"));
+            projectile.getWorld().playSound(projectile.getLocation(), Sound.BLOCK_AMETHYST_BLOCK_BREAK,
+                    SoundCategory.HOSTILE, .65F, .65F);
         }
         cleanupRiftProjectile(projectile.getUniqueId());
     }
@@ -55426,6 +55475,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** Launch the boss's long-cast ghast fireball without world damage. */
     private boolean launchBossFireball(LivingEntity boss, Player target) {
+        return launchBossFireball(boss, target, target == null ? null : target.getEyeLocation());
+    }
+
+    private boolean launchBossFireball(LivingEntity boss, Player target, Location committedAim) {
+        if (committedAim == null || boss == null || !boss.getWorld().equals(committedAim.getWorld())) return false;
         if (boss == null || target == null || boss.getWorld() == null
                 || !boss.getWorld().equals(target.getWorld())
                 || !isCombatTarget(target) || config == null) {
@@ -55434,7 +55488,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         Location start = boss.getEyeLocation().clone();
-        Vector direction = target.getEyeLocation().toVector().subtract(start.toVector());
+        Vector direction = committedAim.toVector().subtract(start.toVector());
         if (direction.lengthSquared() < 0.01D) {
             direction = boss.getLocation().getDirection();
         }
@@ -56900,6 +56954,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         BossPhasePolicy.CombatProfile profile = currentBossCombatProfile();
         int summonCap = Math.min(config.maxSummonedServants(), profile.summonCap());
+        spellServants.removeIf(id -> {
+            Entity servant = ownedEntities.get(id);
+            return !(servant instanceof LivingEntity) || !servant.isValid() || servant.isDead()
+                    || !ownedBySession(servant, eventId, generation);
+        });
         if (spellServants.size() >= summonCap) {
             return;
         }
@@ -56951,8 +57010,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // numbered wave. The old EVENT_KIND_ELITE tag made a boss summon
             // indistinguishable from a wave elite in every packing, pressure and
             // progress rule that reads the kind.
-            Entity decoy = spawnOwnedMob(around.getWorld(), boss.getLocation(),
-                    EntityType.PILLAGER, 0, EVENT_KIND_ECHO_DECOY, false, index + alive);
+            Location spawn = bossDecoySpawnLocation(boss, around, index + alive, roster);
+            if (spawn == null) continue;
+            Entity decoy = spawnOwnedMobAtLocation(spawn.getWorld(), spawn,
+                    EntityType.PILLAGER, 0, EVENT_KIND_ECHO_DECOY, isTestBoss(boss), index + alive);
             if (decoy == null) {
                 continue;
             }
@@ -56968,9 +57029,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     // A decoy hunts the party through the event's own tick; the
                     // vanilla random-wander goal is what made summoned fighters
                     // drift off the arena instead of engaging.
-                    Player hunted = boss instanceof Mob bossMob
-                            && bossMob.getTarget() instanceof Player bossTarget
-                            ? bossTarget : null;
+                    // Give each decoy the admitted player whose safe flank it
+                    // occupies instead of copying the real boss's pursuit focus.
+                    Player hunted = anchorPlayer != null && isActiveBossParticipant(anchorPlayer)
+                            ? anchorPlayer : null;
                     if (hunted == null) {
                         double best = Double.MAX_VALUE;
                         for (Player candidate : roster) {
@@ -57011,6 +57073,36 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + EchoDecoyPolicy.SUMMON_COOLDOWN_TICKS
                 + " " + EchoDecoyPolicy.describe(roster.size(), echoDecoyIds.size()));
         return true;
+    }
+
+    /** Bounded, separated spawn candidates around the selected real player. */
+    private Location bossDecoySpawnLocation(LivingEntity boss, Location around, int slot, List<Player> roster) {
+        Location anchor = coreCombatAnchorLocation();
+        if (boss == null || around == null || anchor == null
+                || !boss.getWorld().equals(around.getWorld())) return null;
+        for (int attempt = 0; attempt < 12; attempt++) {
+            double angle = (Math.floorMod(slot, 5) * Math.PI * 2.0D / 5.0D)
+                    + (attempt % 4) * Math.PI / 2.0D;
+            double radius = 3.0D + attempt / 4;
+            Location preferred = around.clone().add(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+            Location safe = findSafeCombatLocation(anchor, preferred,
+                    boundedCombatRadius(config.bossRadius()) - 1.0D, MIN_BOSS_CORE_DISTANCE_BLOCKS);
+            if (safe == null || safe.distanceSquared(boss.getLocation()) < 6.25D) continue;
+            boolean occupied = false;
+            for (Player player : roster) {
+                if (player != null && player.getWorld().equals(safe.getWorld())
+                        && player.getLocation().distanceSquared(safe) < 2.25D) { occupied = true; break; }
+            }
+            if (occupied) continue;
+            for (UUID id : echoDecoyIds) {
+                Entity other = ownedEntities.get(id);
+                if (other != null && other.isValid() && !other.isDead()
+                        && other.getWorld().equals(safe.getWorld())
+                        && other.getLocation().distanceSquared(safe) < 4.0D) { occupied = true; break; }
+            }
+            if (!occupied) return safe;
+        }
+        return null;
     }
 
     /** Contract 15.5: decoys dissolve on phase transition and never survive one. */

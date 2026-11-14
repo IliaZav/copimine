@@ -48,6 +48,9 @@ def test_generated_model_json_survives_windows_checkout_without_source_mutation(
         Path("CopiMineClient/src/main/resources/assets/copimineclient/geometry/end_rift_tentacle.json"),
         Path("resourcepacks/src/assets/copimine/models/item/end_event_rift_tentacle.json"),
     )
+    models += tuple(path.relative_to(ROOT) for path in sorted(
+        (ROOT / "CopiMineClient/src/main/resources/assets/copimineclient/geometry/guardian_spells").glob("*.json")))
+    assert len(models) == 10, "exercise both original generated rigs and all eight spell meshes"
     for relative in models:
         destination = checkout / relative
         destination.parent.mkdir(parents=True, exist_ok=True)

@@ -57,3 +57,6 @@ resourcepacks/src/assets/copimine/models/item/end_rift_*arrow*.json text eol=lf
 resourcepacks/src/assets/copimine/items/end_rift_web_shot.json text eol=lf
 resourcepacks/src/assets/copimine/models/item/end_rift_web_shot.json text eol=lf
 CopiMineClient/src/main/resources/assets/copimineclient/textures/gui/end_rift_guardian_head_portrait.manifest.json -text
+
+# Private spell meshes are generated and packaged byte-for-byte.
+CopiMineClient/src/main/resources/assets/copimineclient/geometry/guardian_spells/*.json -text

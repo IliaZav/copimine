@@ -1844,6 +1844,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     // Group-fight reactions: who last damaged the boss, when the boss last
     // answered damage by switching focus, and when the current focus began.
     private final Map<UUID, Long> bossRecentAttackers = new HashMap<>();
+    // Pursuit fairness is independent of attack damage and per-cast target locks.
+    // Never derive "least recently focused" from the last time a player hit us.
+    private final Map<UUID, Long> bossLastFocusedMillis = new HashMap<>();
+    private final me.copimine.endevent.runtime.BossFuryComboRuntime bossFuryCombo =
+            new me.copimine.endevent.runtime.BossFuryComboRuntime();
     // Which attack ordinal last hit each player, so Wave 7 minibosses sweep the
     // party instead of focusing whoever happens to stand closest.
     private final Map<UUID, Long> realitySplitLastHitOrdinal = new HashMap<>();
@@ -5924,6 +5929,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         nextWaveRoleVisualMillis = 0L;
         combatHelpers.clear();
         recentBossTargets.clear();
+        bossRecentAttackers.clear();
+        bossLastFocusedMillis.clear();
+        bossFuryCombo.clear();
+        bossLastRetaliationMillis = 0L;
+        bossFocusSinceMillis = 0L;
         previousBossSpell = null;
         bossTargetCursor = 0;
         bossTargetLockUntilMillis = 0L;
@@ -45782,6 +45792,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             nextSpellMillis = 0L;
         nextBossCloseStrikeMillis = 0L;
             recentBossTargets.clear();
+        bossRecentAttackers.clear();
+        bossLastFocusedMillis.clear();
+        bossFuryCombo.clear();
+        bossLastRetaliationMillis = 0L;
+        bossFocusSinceMillis = 0L;
             previousBossSpell = null;
             bossTargetCursor = 0;
             bossTargetLockUntilMillis = 0L;
@@ -45914,6 +45929,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         testBossMovementFrozen = false;
         localTextureShowcase = false;
         recentBossTargets.clear();
+        bossRecentAttackers.clear();
+        bossLastFocusedMillis.clear();
+        bossFuryCombo.clear();
+        bossLastRetaliationMillis = 0L;
+        bossFocusSinceMillis = 0L;
         previousBossSpell = null;
         currentBossIntent = BossIntent.RECOVER;
         currentBossBrainTarget = null;
@@ -46146,6 +46166,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             maintainBossTeleport(boss, now);
             detectBossStuck(boss, now);
         }
+        if (tickBossFuryCombo(boss)) return;
         // Use the committed animation/contact timeline for nearby melee too.
         // This runs only between major casts, never as a second damage source.
         if (!finalSealPinned && boss instanceof Mob mob
@@ -46351,7 +46372,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private BossPhasePolicy.CombatProfile currentBossCombatProfile() {
-        return BossPhasePolicy.combatProfile(bossPhase);
+        BossPhasePolicy.CombatProfile profile = BossPhasePolicy.combatProfile(bossPhase);
+        // The cocoon's ranged profile is not the grounded finale. Reuse the
+        // fastest approved pursuit speed rather than slowing down after RAGE.
+        if (!isCurrentBossMeleeFury()) return profile;
+        return new BossPhasePolicy.CombatProfile(
+                Math.max(profile.movementSpeed(), BossPhasePolicy.movementSpeed(BossPhase.RAGE)),
+                profile.spellCooldownMultiplier(), profile.teleportCooldownMultiplier(),
+                profile.targetRotationMultiplier(), profile.meleeDamageBonus(),
+                profile.nextMeleeAttackBonus(), profile.summonCap());
     }
 
     private long scaledBossDelayMillis(int seconds, double multiplier, long minimumMillis) {
@@ -46981,7 +47010,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             long lastHit = bossRecentAttackers.getOrDefault(candidate.getUniqueId(), 0L);
             aggroCandidates.add(new BossGroupAggroPolicy.Candidate(candidate.getUniqueId(),
                     candidate.isOnline() && !candidate.isDead() && candidate.getHealth() > 0.0D,
-                    isActiveBossParticipant(candidate), lastHit));
+                    isActiveBossParticipant(candidate), lastHit,
+                    bossLastFocusedMillis.getOrDefault(candidate.getUniqueId(), 0L)));
         }
         // A zero focus stamp means the lock was never observed starting (first
         // tick, or state restored from disk). Back-date it by one authored lock
@@ -47061,6 +47091,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         boolean changed = current == null || !current.getUniqueId().equals(target.getUniqueId());
         if (changed) {
+            // Stamp only accepted focus changes: refreshing on every HOLD would
+            // starve players who have never held focus. Keep memory roster-bounded.
+            bossLastFocusedMillis.keySet().retainAll(candidates.stream()
+                    .map(Player::getUniqueId).collect(Collectors.toSet()));
+            bossLastFocusedMillis.put(target.getUniqueId(), now);
             bossTacticCycle++;
             nextBossTacticMillis = 0L;
             recentBossTargets.addLast(target.getUniqueId());
@@ -47126,6 +47161,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (!boss.getUniqueId().equals(bossProgressEntity) || bossLastProgressLocation == null) {
             bossProgressEntity = boss.getUniqueId();
+            bossLastProgressLocation = boss.getLocation().clone();
+            bossLastProgressAt = now;
+            return;
+        }
+        // Holding an authored contact distance is successful pursuit, not a
+        // stuck path. Recovery here used to drive straight into the player and
+        // disturb every close-combat opening after four stationary seconds.
+        if (horizontalDistanceSquared(boss.getLocation(), target.getLocation())
+                <= BossContactStrikePolicy.MELEE_SWIPE_RANGE * BossContactStrikePolicy.MELEE_SWIPE_RANGE
+                && Math.abs(boss.getY() - target.getY()) <= 2.5D
+                && boss.hasLineOfSight(target)) {
             bossLastProgressLocation = boss.getLocation().clone();
             bossLastProgressAt = now;
             return;
@@ -49260,6 +49306,55 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }, 1L, 1L);
         bossCastTask = holder[0];
         registerEncounterTask(holder[0]);
+        if (isCurrentBossMeleeFury() && spell == EndRiftAiPolicy.BossSpell.MELEE_SWIPE
+                && !bossFuryCombo.active()) {
+            bossFuryCombo.begin(eventId, generation, bossId, target.getUniqueId(),
+                    eventTickCounter, bossSpellCursor);
+        }
+        return true;
+    }
+
+    /** Final fury chains real casts; no synthetic extra damage or delayed tasks. */
+    private boolean tickBossFuryCombo(LivingEntity boss) {
+        if (!bossFuryCombo.active()) return false;
+        if (!isCurrentBossMeleeFury() || !isBossCombatRuntimeActive(boss)
+                || !bossFuryCombo.owns(eventId, generation, boss.getUniqueId(), eventTickCounter)) {
+            bossFuryCombo.clear();
+            return false;
+        }
+        Player target = Bukkit.getPlayer(bossFuryCombo.target());
+        if (target == null || !isActiveBossParticipant(target) || isPlayerUnderTentacleControl(target)) {
+            bossFuryCombo.clear();
+            return false;
+        }
+        if (!bossFuryCombo.ready(eventTickCounter)) return true;
+        boolean opening = boss.hasLineOfSight(target)
+                && boss.getLocation().distanceSquared(target.getLocation())
+                    <= BossContactStrikePolicy.MELEE_SWIPE_RANGE * BossContactStrikePolicy.MELEE_SWIPE_RANGE;
+        if (!opening) {
+            if (bossFuryCombo.lostOpening(eventTickCounter)) {
+                bossFuryCombo.clear();
+                return false;
+            }
+            // Ordinary navigation already ran this tick. Let a fleeing player
+            // break the combination without locking the boss in an empty swing.
+            return true;
+        }
+        EndRiftAiPolicy.BossSpell strike = bossFuryCombo.finishingSlam()
+                ? EndRiftAiPolicy.BossSpell.GROUND_SLAM : EndRiftAiPolicy.BossSpell.MELEE_SWIPE;
+        currentBossBrainAbility = BossAbilityId.fromSpell(strike);
+        currentBossBrainTarget = target.getUniqueId();
+        currentBossDecisionAtMillis = System.currentTimeMillis();
+        if (castCurrentBossSpell(boss, strike, false)) {
+            bossFuryCombo.committed();
+            bossBrain.recordAccepted(currentBossBrainAbility, generation);
+            bossSpellCursor++;
+            nextBossCloseStrikeMillis = me.copimine.endevent.domain.BossCloseCombatPolicy
+                    .nextStrikeMillis(bossPhase, System.currentTimeMillis());
+        } else if (bossFuryCombo.lostOpening(eventTickCounter)) {
+            bossFuryCombo.clear();
+            return false;
+        } else bossFuryCombo.refused(eventTickCounter);
         return true;
     }
 

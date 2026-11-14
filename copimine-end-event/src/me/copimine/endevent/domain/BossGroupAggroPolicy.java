@@ -49,7 +49,11 @@ public final class BossGroupAggroPolicy {
 
     /** One sampled candidate with the facts the policy needs. */
     public record Candidate(UUID id, boolean alive, boolean eligible,
-                            long lastDamagedBossMillis) {
+                            long lastDamagedBossMillis, long lastFocusedMillis) {
+        /** Compatibility for callers without pursuit history. Damage is not focus history. */
+        public Candidate(UUID id, boolean alive, boolean eligible, long lastDamagedBossMillis) {
+            this(id, alive, eligible, lastDamagedBossMillis, 0L);
+        }
         public Candidate {
             if (id == null) {
                 throw new IllegalArgumentException("candidate id is required");
@@ -141,7 +145,9 @@ public final class BossGroupAggroPolicy {
         Candidate best = null;
         for (Candidate candidate : eligible) {
             if (candidate.id().equals(exclude)) continue;
-            if (best == null || candidate.lastDamagedBossMillis() < best.lastDamagedBossMillis()) {
+            if (best == null || candidate.lastFocusedMillis() < best.lastFocusedMillis()
+                    || candidate.lastFocusedMillis() == best.lastFocusedMillis()
+                    && candidate.id().compareTo(best.id()) < 0) {
                 best = candidate;
             }
         }

@@ -195,6 +195,7 @@ import me.copimine.endevent.domain.WavePressurePolicy;
 import me.copimine.endevent.domain.WaveProjectileAdmissionController;
 import me.copimine.endevent.domain.WaveProjectileTargetPolicy;
 import me.copimine.endevent.domain.Wave4PressurePackPolicy;
+import me.copimine.endevent.domain.Wave7MinibossBossBarPolicy;
 import me.copimine.endevent.domain.Wave7WardenCombatPolicy;
 import me.copimine.endevent.domain.WardenSlamTriggerPolicy;
 import me.copimine.endevent.domain.MinibossGroupSpellPolicy;
@@ -1917,6 +1918,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private BossBar bossBar;
     /** Wave 6 Rift Ram armour bar; separate from the Guardian's phase bar. */
     private BossBar riftRamBossBar;
+    /** Wave 7 miniboss bars, keyed by the actor's entity UUID. */
+    private final Map<UUID, BossBar> wave7MinibossBars = new LinkedHashMap<>();
     private UUID bossVisualCueOwner;
     private long bossVisualCueGeneration = Long.MIN_VALUE;
     private long bossVisualCueSequence;
@@ -6250,6 +6253,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (deathDropIntegration != null) deathDropIntegration.close();
         if (deathProtectionListener != null) deathProtectionListener.clear();
         clearWave7Admission();
+        clearWave7MinibossBossBars();
         // Contract 14.4: a disabled plugin must not leave magma behind either;
         // the inferno puts its exact originals back before the scheduler stops.
         clearArenaInferno();
@@ -28130,6 +28134,82 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /**
+     * One authored bar per live Wave 7 miniboss.
+     *
+     * <p>Wave 7 used to be the only objective in the encounter with no status
+     * readout at all: the Warden, the Marksman squad and the Archmage had real
+     * health and real mechanics but the party could not see which of them was
+     * still alive, how much was left, or that a partner had died. Every live
+     * trial actor whose role owns an identity in
+     * {@link Wave7MinibossBossBarPolicy} now gets its own bar, and a bar is
+     * removed the moment its actor is gone -- the same bar can never linger on
+     * screen after the trial ends.</p>
+     *
+     * <p>The title, colour and style all come from the policy so the optional
+     * client HUD can recognise the bar and repaint it with authored art; a
+     * player without the client mod keeps the correct vanilla bar.</p>
+     */
+    private void updateWave7MinibossBossBars() {
+        boolean runtimeActive = isRealitySplitTrialRuntimeActive();
+        Set<UUID> alive = new LinkedHashSet<>();
+        if (runtimeActive) {
+            for (UUID actorId : new ArrayList<>(realitySplitTrialEntityUuids)) {
+                Entity actor = ownedEntities.get(actorId);
+                if (!(actor instanceof LivingEntity living) || !actor.isValid() || actor.isDead()
+                        || living.getHealth() <= 0.0D) {
+                    continue;
+                }
+                String role = readString(actor, keyTrialRole);
+                if (!Wave7MinibossBossBarPolicy.ownsBar(role)) {
+                    continue;
+                }
+                alive.add(actorId);
+                Wave7MinibossBossBarPolicy.Kind kind = Wave7MinibossBossBarPolicy.kindForTrialRole(role);
+                BossBar bar = wave7MinibossBars.get(actorId);
+                if (bar == null) {
+                    bar = Bukkit.createBossBar(
+                            Wave7MinibossBossBarPolicy.title(kind),
+                            BarColor.valueOf(kind.barColorName()),
+                            BarStyle.valueOf(kind.barStyleName()));
+                    bar.setProgress(1.0D);
+                    wave7MinibossBars.put(actorId, bar);
+                }
+                float progress = Wave7MinibossBossBarPolicy.progress(
+                        living.getHealth(), maxHealthOf(living));
+                Set<UUID> audience = activeWaveParticipants().stream()
+                        .filter(player -> player != null && player.isOnline())
+                        .map(Player::getUniqueId)
+                        .collect(Collectors.toCollection(LinkedHashSet::new));
+                updateEventBossBar(bar, Wave7MinibossBossBarPolicy.title(kind),
+                        progress, BarColor.valueOf(kind.barColorName()), audience, true);
+            }
+        }
+        for (UUID actorId : new ArrayList<>(wave7MinibossBars.keySet())) {
+            if (alive.contains(actorId)) continue;
+            BossBar stale = wave7MinibossBars.remove(actorId);
+            if (stale != null) {
+                stale.removeAll();
+                stale.setVisible(false);
+            }
+        }
+    }
+
+    /** Removes every Wave 7 miniboss bar; used on shutdown and on wave exit. */
+    private void clearWave7MinibossBossBars() {
+        for (BossBar bar : wave7MinibossBars.values()) {
+            if (bar == null) continue;
+            bar.removeAll();
+            bar.setVisible(false);
+        }
+        wave7MinibossBars.clear();
+    }
+
+    private static double maxHealthOf(LivingEntity living) {
+        AttributeInstance maximum = living.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+        return maximum == null ? living.getHealth() : maximum.getValue();
+    }
+
+    /**
      * Shared, bounded boss-bar presentation for a wave boss that is not the
      * Guardian.
      *
@@ -35335,6 +35415,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         boolean checkpoint = false;
         tickRealitySplitTrialRuntimes();
+        updateWave7MinibossBossBars();
         if (phase == EventPhase.RECOVERY_REQUIRED) return;
         recoverRealitySplitOrphanRooms(now);
         if (phase == EventPhase.RECOVERY_REQUIRED) return;
@@ -43686,6 +43767,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         waveTwoPhantomAdmissionFailures = 0;
         if (riftRam != null) { riftRam.close(); riftRam = null; }
         if (riftRamBossBar != null) { riftRamBossBar.removeAll(); riftRamBossBar.setVisible(false); }
+        clearWave7MinibossBossBars();
         riftRamCheckpoint = Map.of();
         if (!clearRealitySplitBarriers("wave-objective-reset")) return false;
         if (!archiveWaveTwoRosterForCleanup("wave-objective-state-clear")) return false;

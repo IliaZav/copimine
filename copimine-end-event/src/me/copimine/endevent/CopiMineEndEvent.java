@@ -21173,8 +21173,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         horizontal.normalize();
         Vector side = new Vector(-horizontal.getZ(), 0.0D, horizontal.getX()).normalize();
         Vector up = new Vector(0.0D, 1.0D, 0.0D);
+        // This halo used to be one hard-coded purple for every spell, so the
+        // collapsing sphere and the bone volley shared a colour. It is now the
+        // hot end of that spell's own authored palette.
         Particle.DustOptions dust = new Particle.DustOptions(
-                Color.fromRGB(190, 76, 255), 1.25F);
+                Color.fromRGB(BossSpellVisualCompositionPolicy.composition(spellId).impactHue()), 1.25F);
+        // One bounded expansion of the authored silhouette: six frames over
+        // twelve ticks, cancelled with the event generation. It is the only
+        // place a player-facing spell puts a shape in the air rather than on
+        // the floor, so it must never be left running.
+        BossSpellGeometryPolicy.Shape shape = BossSpellGeometryPolicy.shape(spellId);
+        if (shape != null && taskRegistry != null) {
+            long ownerGeneration = generation;
+            String ownerEvent = eventId;
+            BossSpellPresentationEffects.impact(this, caster, shape, center, forward.clone(), 2.6D,
+                    BossSpellVisualCompositionPolicy.composition(spellId).impactHue(),
+                    () -> taskRegistry != null && taskRegistry.owns(ownerGeneration)
+                            && generation == ownerGeneration && Objects.equals(eventId, ownerEvent),
+                    this::eventAudience, this::isEventParticleViewer, this::registerEncounterTask);
+        }
         for (Player viewer : eventAudience()) {
             if (!isEventParticleViewer(viewer, center)) {
                 continue;
@@ -21408,6 +21425,45 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 eventAudience(), this::isEventParticleViewer);
     }
 
+    /**
+     * Draw one authored 3D frame for a player-facing spell.
+     *
+     * <p>The boss already drew from {@link BossSpellGeometryPolicy}, but the
+     * wave and miniboss path only ever emitted camera-facing rings, so a
+     * "collapsing sphere", a "closing chain cage" and a "rising helix" all
+     * looked like the same flat decal on the floor. Routing them through the
+     * same silhouettes and the same renderer makes the shape live in space.</p>
+     *
+     * <p>Presentation only: {@code BossSpellPresentationEffects.frame} caps
+     * itself at 32 viewers, drops the frame past 48 blocks and never authorises
+     * collision or damage.</p>
+     */
+    private void emitAuthoredSpellFrame(String spellId, Location feet, Location destination,
+                                        double progress, BossSpellGeometryPolicy.Beat beat) {
+        if (feet == null || destination == null || beat == null || feet.getWorld() == null
+                || !feet.getWorld().equals(destination.getWorld())) return;
+        BossSpellGeometryPolicy.Shape shape = BossSpellGeometryPolicy.shape(spellId);
+        if (shape == null) return;
+        Location anchor = switch (BossSpellGeometryPolicy.anchor(shape, beat)) {
+            case CHEST -> feet.clone().add(0.0D, 1.6D, 0.0D);
+            case FEET -> feet.clone();
+            case LOCKED_FLOOR -> destination.clone();
+        };
+        double radius = switch (shape) {
+            case VOID_SPHERE -> 4.0D;
+            case VOID_RUNE -> VOID_MARK_RADIUS_BLOCKS;
+            default -> 2.6D;
+        };
+        var points = BossSpellGeometryPolicy.sample(shape, beat, progress, radius);
+        BossSpellVisualCompositionPolicy.Composition composition =
+                BossSpellVisualCompositionPolicy.composition(spellId);
+        int rgb = beat == BossSpellGeometryPolicy.Beat.IMPACT
+                ? composition.impactHue() : composition.telegraphHue();
+        Vector axis = destination.toVector().subtract(feet.toVector());
+        BossSpellPresentationEffects.frame(anchor, axis, points, rgb,
+                eventAudience(), this::isEventParticleViewer);
+    }
+
     private void renderSpellTelegraphVisual(LivingEntity caster, Location mark,
                                             String spellId, int elapsedTicks,
                                             int totalTelegraphTicks) {
@@ -21436,6 +21492,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         double progress = Math.max(0.0D, Math.min(1.0D,
                 elapsedTicks / (double) Math.max(1, totalTelegraphTicks)));
         double phaseAngle = elapsedTicks * 0.24D;
+        // The authored silhouette first, so the spell is a shape being built in
+        // space; the per-spell rings below then sit inside that volume.
+        emitAuthoredSpellFrame(spellId, caster.getLocation(), destination, progress,
+                BossSpellGeometryPolicy.Beat.CHARGE);
         for (Player viewer : eventAudience()) {
             if (!isEventParticleViewer(viewer, destination)
                     && !isEventParticleViewer(viewer, origin)) {
@@ -21985,8 +22045,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return corners;
     }
 
+    /**
+     * Canonical colour of a spell for the halo and glyph layers.
+     *
+     * <p>SUPERSEDED (2026-11-14): this used to be an independent switch, so the
+     * same spell had a colour here and a different one in
+     * {@link BossSpellVisualCompositionPolicy}, and three spells
+     * ({@code final_strike}, {@code rift_obelisks}, {@code rift_euphoria}) fell
+     * through to the same near-white default. The authored table now wins; the
+     * switch survives only for ids that are outside it (the legacy {@code
+     * summon} alias and any older cue that still names a spell we retired).</p>
+     */
     private Color spellVisualColor(String spellId) {
-        return switch (spellId) {
+        if (BossSpellVisualCompositionPolicy.isAuthored(spellId)) {
+            return Color.fromRGB(BossSpellVisualCompositionPolicy.composition(spellId).telegraphHue());
+        }
+        return switch (spellId == null ? "" : spellId) {
             case "void_blast" -> Color.fromRGB(244, 39, 125);
             case "rift_projectile", "rift_step" -> Color.fromRGB(69, 218, 255);
             case "rift_arrows" -> Color.fromRGB(255, 72, 72);

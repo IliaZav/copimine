@@ -9,7 +9,15 @@ public final class BossSpellGeometryPolicy {
     public enum Shape {
         VOID_SPHERE, RIFT_LANCE, ARROW_RACK, VOID_RUNE, SUMMON_ARCH,
         INFERNO_CROWN, FIREBALL_CAGE, FINAL_SEAL, SWIPE, CHEST_IRIS,
-        SLAM_FAULT, AMBUSH_TALONS, KAGUNE_KNOT, PHASE_SHELL, DEFEAT, GEYSER
+        SLAM_FAULT, AMBUSH_TALONS, KAGUNE_KNOT, PHASE_SHELL, DEFEAT, GEYSER,
+        /*
+         * The four spells that had no authored silhouette at all: a rift dash,
+         * a binding snare, a sonic bloom and the euphoria helix. Without these
+         * they could only ever be flat camera-facing rings, which is exactly
+         * the "particle-only substitute" the specification forbids for a
+         * player-facing spell.
+         */
+        RIFT_GATE, SNARE_CHAINS, ECHO_BLOOM, EUPHORIA_HELIX
     }
     public enum Anchor { CHEST, FEET, LOCKED_FLOOR }
     public enum Beat { CHARGE, RELEASE, IMPACT }
@@ -37,6 +45,10 @@ public final class BossSpellGeometryPolicy {
             case "phase_shift" -> Shape.PHASE_SHELL;
             case "defeat_collapse" -> Shape.DEFEAT;
             case "rift_fracture", "inferno_geyser" -> Shape.GEYSER;
+            case "rift_step" -> Shape.RIFT_GATE;
+            case "void_snare" -> Shape.SNARE_CHAINS;
+            case "echo_pulse" -> Shape.ECHO_BLOOM;
+            case "rift_euphoria" -> Shape.EUPHORIA_HELIX;
             default -> null;
         };
     }
@@ -64,7 +76,7 @@ public final class BossSpellGeometryPolicy {
     public static Anchor anchor(Shape shape, Beat beat) {
         if (shape == null || beat == null) return Anchor.FEET;
         return switch (shape) {
-            case VOID_RUNE, FINAL_SEAL, AMBUSH_TALONS, GEYSER -> Anchor.LOCKED_FLOOR;
+            case VOID_RUNE, FINAL_SEAL, AMBUSH_TALONS, GEYSER, SNARE_CHAINS -> Anchor.LOCKED_FLOOR;
             case VOID_SPHERE -> Anchor.LOCKED_FLOOR;
             case RIFT_LANCE, ARROW_RACK, FIREBALL_CAGE, CHEST_IRIS -> Anchor.CHEST;
             default -> Anchor.FEET;
@@ -101,11 +113,16 @@ public final class BossSpellGeometryPolicy {
                         new Point(Math.cos(fin * TAU / 3) * 0.4, Math.sin(fin * TAU / 3) * 0.4, 1.8 * size, 1), 5, 1);
             }
             case ARROW_RACK -> {
+                // Three lanes that fan apart as they travel. The rack used to be
+                // perfectly horizontal, so every sample sat on one plane and the
+                // volley read as a flat ruler rather than as shots in the air.
                 for (int lane = -1; lane <= 1; lane++) {
                     double x = lane * (charge ? 0.65 - p * 0.15 : 0.5 + p * 0.5);
-                    line(out, new Point(x, 0, 0, 0), new Point(x, 0, 2.0 * size, 0), 10, 0);
+                    double lift = lane * 0.28 * size;
+                    line(out, new Point(x, 0, 0, 0), new Point(x, lift, 2.0 * size, 0), 10, 0);
                     for (int side : new int[]{-1, 1}) line(out,
-                            new Point(x, 0, 2.0 * size, 2), new Point(x + side * 0.25, 0, 1.55 * size, 1), 4, 1);
+                            new Point(x, lift, 2.0 * size, 2),
+                            new Point(x + side * 0.25, lift + side * 0.12 * size, 1.55 * size, 1), 4, 1);
                 }
             }
             case VOID_RUNE -> {
@@ -191,6 +208,62 @@ public final class BossSpellGeometryPolicy {
                     double s = r * (0.2 + u * 0.6) * Math.sin(p * Math.PI);
                     add(out, Math.cos(a) * s, u * 5 * size, Math.sin(a) * s, plume % 2);
                 }
+            }
+            case RIFT_GATE -> {
+                // A standing door the caster steps through: two posts, a lintel,
+                // and a second frame set back so the gate has real depth. Every
+                // other shape is radial, so this one is recognisable from its
+                // straight verticals alone -- and a doorway with no thickness
+                // was a picture of a door, not a door.
+                double halfWidth = 0.85 * size, height = 2.4 * size, depth = 0.45 * size;
+                for (int plane = 0; plane < 2; plane++) {
+                    double front = plane == 0 ? 0 : depth;
+                    for (int post = -1; post <= 1; post += 2) {
+                        line(out, new Point(post * halfWidth, 0, front, 0),
+                                new Point(post * halfWidth, height, front, 0), 8, 0);
+                    }
+                    line(out, new Point(-halfWidth, height, front, 1),
+                            new Point(halfWidth, height, front, 1), 8, 1);
+                }
+                for (int post = -1; post <= 1; post += 2) {
+                    line(out, new Point(post * halfWidth, height, 0, 2),
+                            new Point(post * halfWidth, height, depth, 2), 3, 2);
+                }
+            }
+            case SNARE_CHAINS -> {
+                // Six chains pulled from a wide ring down to a tight one: the
+                // motion itself is the read, because the shape closes as the
+                // telegraph runs out.
+                for (int chain = 0; chain < 6; chain++) {
+                    double a = chain * TAU / 6 + spin * 0.08;
+                    line(out, new Point(Math.cos(a) * r * size, 1.1, Math.sin(a) * r * size, 0),
+                            new Point(Math.cos(a) * r * 0.16, 0.05, Math.sin(a) * r * 0.16, 0), 8, chain % 2);
+                }
+                polygon(out, 6, r * size * 0.55, 0.04, spin * 0.12, 4, 1);
+            }
+            case ECHO_BLOOM -> {
+                // A volume rather than a disk: three latitudes of a bloom plus
+                // the column the shriek leaves through.
+                for (int latitude = 1; latitude <= 3; latitude++) {
+                    double phi = Math.PI * latitude / 4;
+                    double ring = Math.sin(phi), lift = Math.cos(phi);
+                    for (int i = 0; i < 12; i++) {
+                        double a = i * TAU / 12 + spin * (latitude % 2 == 0 ? 0.5 : -0.5);
+                        double s = r * size * ring;
+                        add(out, Math.cos(a) * s, 0.7 + lift * r * size * 0.55, Math.sin(a) * s, latitude % 2);
+                    }
+                }
+                line(out, new Point(0, 0.05, 0, 2), new Point(0, 3.2 * size, 0, 2), 8, 2);
+            }
+            case EUPHORIA_HELIX -> {
+                // Two strands of constant radius climbing the caster; the lance
+                // tapers, this does not, so the two never read alike.
+                for (int strand = 0; strand < 2; strand++) for (int i = 0; i < 14; i++) {
+                    double u = i / 13.0, a = u * TAU * 1.6 + spin + strand * Math.PI;
+                    double s = r * 0.45 * size;
+                    add(out, Math.cos(a) * s, u * 2.6 * size, Math.sin(a) * s, strand);
+                }
+                polygon(out, 8, r * 0.45 * size, 0.05, spin * 0.2, 3, 2);
             }
         }
         return List.copyOf(out);

@@ -48,6 +48,10 @@ public class BossEdgeVolleyRuntimeProbe {
     long nextBossEdgeVolleyMillis,bossChestStrikeSequence,bossCastSequence,bossEdgeVolleySequence,bossCastDeadlineMillis,bossSpellPauseUntilMillis;
     boolean bossEdgeVolleyActive,bossChestStrikeActive,teleportAccepted=true,cornerAvailable=true;
     BukkitTask bossCastTask;BossPhase bossPhase=BossPhase.RIFT;
+    // A forced replacement or phase change also clears the fury chain, so the
+    // probe needs the real runtime object; it stays inactive here.
+    final me.copimine.endevent.runtime.BossFuryComboRuntime bossFuryCombo=
+            new me.copimine.endevent.runtime.BossFuryComboRuntime();
     EventPhase phase=EventPhase.BOSS_ACTIVE;BossAbilityState bossAbilityState=BossAbilityState.EXECUTING;
     static final double BOSS_PROJECTILE_DAMAGE=8;
     int salvos,saves;final List<Integer> volleyTimes=new ArrayList<>();int tick;

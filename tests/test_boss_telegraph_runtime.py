@@ -16,7 +16,10 @@ def telegraph_probe(tmp_path_factory):
                                              # The authored boss signature is spliced in with the
                                              # telegraph it belongs to, so the probe exercises the
                                              # real code path and not a stand-in.
-                                             "void renderAuthoredBossTelegraph(Location origin,"])
+                                             "void renderAuthoredBossTelegraph(Location origin,",
+                                             # The scheduler records the accepted target and reads
+                                             # the fury gate, so both have to resolve for real.
+                                             "boolean isCurrentBossMeleeFury("])
     java = out / "BossTelegraphRuntimeProbe.java"
     java.write_text(r'''
 import java.util.*;
@@ -57,10 +60,24 @@ public class BossTelegraphRuntimeProbe {
     Location coreCombatAnchorLocation(){return new Location();}
     enum SoundCategory {HOSTILE}
     static class Registry {boolean owns(long g){return g==7;}}
-    record Config(){int bossSpellTelegraphTicks(){return 20;}}
+    record Config(){int bossSpellTelegraphTicks(){return 20;}int bossRecentTargetMemory(){return 3;}}
     final Config config=new Config();final Registry taskRegistry=new Registry();
+    // The scheduler records the accepted target for the fairness ledger, so the
+    // probe uses the real selector rather than a stand-in.
+    final me.copimine.endevent.domain.BossSpellTargetSelector bossSpellTargets=
+            new me.copimine.endevent.domain.BossSpellTargetSelector();
+    // Fury is a Cocoon Fall state; the probe pins it off so the fury branch of
+    // the scheduler stays dormant while the release markers are measured.
+    BossPhase bossPhase=BossPhase.LAST_SEAL;long cocoonFallGeneration=-1L;
+    CocoonFallPolicy.Stage cocoonFallStage=CocoonFallPolicy.Stage.COCOONED;
     final LivingEntity boss=new LivingEntity();final Player target=new Player();
     UUID bossUuid=boss.id;String eventId="event";long generation=7,bossCastSequence,bossCastDeadlineMillis;
+    // The scheduler opens a fury chain when the boss is in its final melee
+    // fury; the real runtime object is used so the branch compiles and behaves
+    // exactly as in production, and stays dormant because fury is off above.
+    final me.copimine.endevent.runtime.BossFuryComboRuntime bossFuryCombo=
+            new me.copimine.endevent.runtime.BossFuryComboRuntime();
+    long eventTickCounter=1L;int bossSpellCursor;
     EventPhase phase=EventPhase.BOSS_ACTIVE;BossAbilityState bossAbilityState=BossAbilityState.NONE;
     boolean testCombatAiMode;float bossCastLockedYaw;BukkitTask bossCastTask;int impacts,impactTick,particles;
     boolean isTestBoss(LivingEntity b){return false;}

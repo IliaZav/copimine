@@ -41,7 +41,7 @@ processResources {
     from(new File(checkout, 'resourcepacks/src')) {
         // Event music is a required-client asset; no external pack or Iris is needed.
         include 'assets/copimine/sounds.json'
-        include 'assets/copimine/sounds/end_rift/*.ogg'
+        include 'assets/copimine/sounds/end_rift/**/*.ogg'
         include 'assets/copimine/items/end_rift_rift_bolt.json'
         include 'assets/copimine/items/end_rift_web_shot.json'
         include 'assets/copimine/items/end_rift_triple_arrow.json'

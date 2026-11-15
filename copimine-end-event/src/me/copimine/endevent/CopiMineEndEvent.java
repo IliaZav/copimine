@@ -13102,7 +13102,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     public void onStaleEventArrowDamage(EntityDamageByEntityEvent event) {
         if (!(event.getDamager() instanceof Arrow arrow)
                 || !EVENT_KIND_PROJECTILE.equals(readString(arrow, keyKind))
-                || isEventArrow(arrow)) {
+                || isEventArrow(arrow) || isCurrentEchoDecoyArrow(arrow)) {
             return;
         }
         event.setCancelled(true);
@@ -28405,6 +28405,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 // so the visibility flag is part of the contract, not a nicety.
                 Arrow arrow = origin.getWorld().spawnArrow(origin, direction, (float) speed, 0.0F);
                 arrow.setVisibleByDefault(true);
+                // This authored bone fan follows a locked direction, not a native bow solver.
+                arrow.setGravity(false);
                 arrow.setDamage(damage);
                 arrow.setPersistent(false);
                 tag(arrow, EVENT_KIND_WAVE_MOB, 6, isOfficialCurrentAttempt());
@@ -38718,7 +38720,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!(raw instanceof org.bukkit.entity.Snowball projectile)) return false;
             if (!projectile.isValid()) return true; // A cancelled spawn resolves as a missed cast.
             projectile.setShooter(actor);
-            projectile.setItem(overlayItem(830031, "end_rift_rift_bolt"));
+            projectile.setGravity(false); projectile.setPersistent(false);
+            projectile.setItem(overlayItem(MODEL_ELITE_RIFT_BOLT, "end_rift_rift_bolt"));
             projectile.setVelocity(direction.multiply(speed));
             projectile.setGlowing(glowing);
             if (!tagNamedTrialProjectile(projectile, actor, attack)) {
@@ -38732,6 +38735,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // The Warden trial fan is the shot the player has to dodge, so it must
         // be rendered from the first tick like every other event arrow.
         arrow.setVisibleByDefault(true);
+        arrow.setGravity(false); arrow.setPersistent(false);
         arrow.setShooter(actor);
         arrow.setPickupStatus(org.bukkit.entity.AbstractArrow.PickupStatus.DISALLOWED);
         arrow.setGlowing(glowing);
@@ -50389,13 +50393,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         long castSequence = bossCastSequence;
         String callbackEvent = eventId;
         bossAbilityState = BossAbilityState.EXECUTING;
-        if (bossPhase == BossPhase.RAGE && isContactBossAbility(spell)) {
-            startEchoAttackReplicas(boss, spell.name());
-        }
         if (spell == EndRiftAiPolicy.BossSpell.CHEST_STRIKE) {
             startChestStrike(boss, target, callbackGeneration);
+            if (bossPhase == BossPhase.RAGE && bossChestStrikeActive)
+                startEchoAttackReplicas(boss, spell.name());
             return;
         }
+        if (bossPhase == BossPhase.RAGE && isContactBossAbility(spell))
+            startEchoAttackReplicas(boss, spell.name());
         Location origin = boss.getLocation();
         Vector facing = contactFacing(origin);
         playBossImpactPresentation(boss,
@@ -52335,8 +52340,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     ledger.add(EchoAttackReplicaPolicy.scopedKey(timeline.replicaKey(), key));
                     double accepted = applyEchoReplicaDamage(player, EchoAttackReplicaPolicy.strikeDamage(
                             BossContactStrikePolicy.damage(family)), source);
-                    if (echoReplicaContactActive(copyId, source))
-                        echoReplicaAcceptedStrikeDamage.merge(copyId, accepted, Double::sum);
+                    recordEchoReplicaHit(copyId, timeline.family(), "strike", player, accepted, source);
                 }
             }
             if (beat == EchoReplicaPresentationPolicy.Beat.EXPLOSION) {
@@ -52350,11 +52354,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     if (!EchoAttackReplicaPolicy.mayDamage(key, ledger, timeline.explosionKey())) continue;
                     ledger.add(EchoAttackReplicaPolicy.scopedKey(timeline.explosionKey(), key));
                     double accepted = applyEchoReplicaDamage(player, EchoAttackReplicaPolicy.explosionDamage(), source);
-                    if (echoReplicaContactActive(copyId, source))
-                        echoReplicaAcceptedBlastDamage.merge(copyId, accepted, Double::sum);
+                    recordEchoReplicaHit(copyId, timeline.family(), "explosion", player, accepted, source);
                 }
             }
         }
+    }
+
+    private void recordEchoReplicaHit(UUID copy, String family, String source, Player player,
+            double accepted, LivingEntity actor) {
+        if (!echoReplicaContactActive(copy, actor)) return;
+        (source.equals("explosion") ? echoReplicaAcceptedBlastDamage : echoReplicaAcceptedStrikeDamage)
+                .merge(copy, accepted, Double::sum);
+        getLogger().info("ECHO_ATTACK_REPLICA_HIT event=" + eventId + " generation=" + generation
+                + " copy=" + copy + " family=" + family + " source=" + source
+                + " target=" + player.getUniqueId() + " tick=" + eventTickCounter + " accepted=" + accepted);
     }
 
     private boolean echoReplicaContactActive(UUID copy, LivingEntity actor) {
@@ -52416,8 +52429,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             ledger.add(EchoAttackReplicaPolicy.scopedKey(timeline.replicaKey(), key));
             double accepted = applyEchoReplicaDamage(player, EchoAttackReplicaPolicy.strikeDamage(
                     BossContactStrikePolicy.CHEST_STRIKE_DAMAGE), actor);
-            if (echoReplicaContactActive(copy, actor))
-                echoReplicaAcceptedStrikeDamage.merge(copy, accepted, Double::sum);
+            recordEchoReplicaHit(copy, timeline.family(), "strike", player, accepted, actor);
         }
         if (!echoReplicaContactActive(copy, actor) || blocked != null || age >= last) retireEchoChestProbe(copy);
         else echoChestProbes.put(copy, new EchoChestProbe(probe.display(), probe.origin(), probe.direction(), point));
@@ -58355,6 +58367,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && event.getProjectile() instanceof Arrow arrow && echoDecoyArrowIds.contains(arrow.getUniqueId())) {
             tagArrowSpell(arrow, "rift_arrows");
             if (activeEliteArrowVisuals.size() < MAX_ACTIVE_EVENT_ARROWS) attachEliteArrowVisual(arrow);
+            playEncounterAbilityAudio(event.getEntity(), "guardian_arrows");
             presentEchoDecoyAction(event.getEntity(), me.copimine.protocol.GuardianActorFrame.Action.SPELL_RIFT_ARROWS, 20);
         }
     }
@@ -58372,6 +58385,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** A decoy is not the boss: its death is bookkeeping, never a defeat. */
     private boolean isEchoDecoy(Entity entity) {
         return entity != null && echoDecoyIds.contains(entity.getUniqueId());
+    }
+
+    /** Native decoy arrows own a separate ledger, never the custom boss-arrow damage controller. */
+    private boolean isCurrentEchoDecoyArrow(Arrow arrow) {
+        if (arrow == null || !arrow.isValid() || arrow.isDead()
+                || !echoDecoyArrowIds.contains(arrow.getUniqueId()) || echoDecoyGeneration != generation
+                || bossPhase != BossPhase.RAGE || !ownedBySession(arrow, eventId, generation)
+                || !(arrow.getShooter() instanceof LivingEntity source) || !isEchoDecoy(source)
+                || !source.isValid() || source.isDead() || !ownedBySession(source, eventId, generation)) return false;
+        LivingEntity boss = liveBoss();
+        return boss != null && isBossCombatRuntimeActive(boss);
     }
 
     private void clearEchoDecoyArrows() {
@@ -58412,6 +58436,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && !EVENT_KIND_ECHO_DECOY.equals(readString(source, keyKind))) return;
         LivingEntity boss = liveBoss();
         if (!isEchoDecoy(source) || echoDecoyGeneration != generation || bossPhase != BossPhase.RAGE
+                || event.getDamager() instanceof Arrow arrow && !isCurrentEchoDecoyArrow(arrow)
                 || !ownedBySession(source, eventId, generation)
                 || boss == null || !isBossCombatRuntimeActive(boss)
                 || !(event.getEntity() instanceof Player target)

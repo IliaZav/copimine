@@ -136,6 +136,9 @@ public final class LastSealRingRuntime {
             // Publish first. A failed frame cannot deal invisible damage.
             host.publish(carrier, frame);
             for (Player player : host.participants()) {
+                if (!active || !host.active(boss) || !Objects.equals(scope, host.scope(boss))) {
+                    cancel("owner-changed-during-contact"); return;
+                }
                 if (player == null || !player.isOnline() || player.isDead()
                         || !origin.getWorld().equals(player.getWorld())) continue;
                 Location at = player.getLocation(), before = previousPlayers.put(player.getUniqueId(), at.clone());
@@ -145,6 +148,9 @@ public final class LastSealRingRuntime {
                 hitPlayers.add(player.getUniqueId());
                 if (!host.hit(boss, player, KaguneGuardianFightPolicy.BASE_STRIKE_DAMAGE)) {
                     hitPlayers.remove(player.getUniqueId()); continue;
+                }
+                if (!active || !host.active(boss) || !Objects.equals(scope, host.scope(boss))) {
+                    cancel("owner-changed-after-contact"); return;
                 }
                 // About five blocks vertically under vanilla gravity; no horizontal fling into walls.
                 safeFalls.put(player.getUniqueId(), new FallLease(player.getWorld().getUID(),

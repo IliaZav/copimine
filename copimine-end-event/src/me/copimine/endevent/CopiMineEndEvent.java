@@ -1567,6 +1567,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             new me.copimine.endevent.domain.SmallKaguneCadence();
     private me.copimine.endevent.runtime.LastSealRingRuntime lastSealRing;
     private me.copimine.endevent.runtime.LastSealConstructRuntime lastSealConstruct;
+    private UUID cocoonPressureTarget;
     private long cocoonPressureGeneration = -1L;
     private long cocoonPressureSinceTick = -1L, cocoonPressureNextTick;
     /**
@@ -46983,8 +46984,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!isBossCombatRuntimeActive(boss)) {
             return;
         }
-        if (tickCocoonPressureResponse(boss)) return;
+        observeCocoonPressure(boss);
         if (tickBossCastLocomotion(boss, now, finalSealPinned)) return;
+        if (tryCocoonPressureResponse(boss)) return;
         maintainBossTargetSelection(boss, now);
         if (!finalSealPinned) {
             if (boss instanceof Mob mob) restoreBossPursuitTarget(mob, now);
@@ -52643,17 +52645,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         && feet.clone().add(0, -1, 0).getBlock().getType().isSolid();
             }
             public ItemDisplay createCarrier(Location origin) {
-                ItemDisplay display = origin.getWorld().spawn(origin, ItemDisplay.class, entity -> {
-                    entity.setItemStack(overlayItem(MODEL_RIFT_TENTACLE, "end_event_rift_tentacle"));
-                    entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
-                    entity.setBillboard(Display.Billboard.FIXED);
-                    entity.setViewRange(64F); entity.setDisplayWidth(48F); entity.setDisplayHeight(8F);
-                    entity.setPersistent(false); entity.setGravity(false); entity.setInvulnerable(true);
-                    entity.setShadowRadius(0F);
-                });
-                tag(display, EVENT_KIND_TENTACLE, 0, isOfficialEntity(liveBoss()));
-                for (Player viewer : eventAudience()) bindEventEntityClient(viewer, display);
-                return display;
+                return createFiniteKaguneCarrier(origin,
+                        overlayItem(MODEL_RIFT_TENTACLE, "end_event_rift_tentacle"), 48F);
             }
             public void publish(ItemDisplay display, me.copimine.protocol.KaguneRingFrame frame) {
                 ItemStack item = display.getItemStack();
@@ -52711,13 +52704,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /** Five seconds of continuous close pressure, then a separate 28-second combo cooldown. */
-    private boolean tickCocoonPressureResponse(LivingEntity boss) {
+    private void observeCocoonPressure(LivingEntity boss) {
+        cocoonPressureTarget = null;
         if (cocoonPressureGeneration != generation) {
             cocoonPressureGeneration = generation;
             cocoonPressureSinceTick = -1L; cocoonPressureNextTick = 0L;
         }
         if (boss == null || bossPhase != BossPhase.LAST_SEAL || guardianDeaths.cocoonBroken()) {
-            cocoonPressureSinceTick = -1L; return false;
+            cocoonPressureSinceTick = -1L; return;
         }
         Location center = boss.getLocation();
         Player close = activeBossParticipants().stream()
@@ -52727,8 +52721,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     double dx = at.getX()-center.getX(), dz = at.getZ()-center.getZ();
                     return dx*dx + dz*dz <= 25D && Math.abs(at.getY()-center.getY()) <= 7D;
                 }).findFirst().orElse(null);
-        if (close == null) { cocoonPressureSinceTick = -1L; return false; }
+        if (close == null) { cocoonPressureSinceTick = -1L; return; }
+        cocoonPressureTarget = close.getUniqueId();
         if (cocoonPressureSinceTick < 0L) cocoonPressureSinceTick = eventTickCounter;
+    }
+
+    /** Admit after cast recovery has advanced, so overdue ordinary casts cannot starve this combo. */
+    private boolean tryCocoonPressureResponse(LivingEntity boss) {
+        Player close = cocoonPressureTarget == null ? null : Bukkit.getPlayer(cocoonPressureTarget);
+        if (close == null || !isActiveBossParticipant(close) || isPlayerUnderTentacleControl(close)
+                || cocoonPressureGeneration != generation || cocoonPressureSinceTick < 0L
+                || bossPhase != BossPhase.LAST_SEAL || guardianDeaths.cocoonBroken()) return false;
         if (eventTickCounter - cocoonPressureSinceTick < 100L || eventTickCounter < cocoonPressureNextTick
                 || bossAbilityState != BossAbilityState.NONE || isKaguneRingCastActive() || bossAmbushOwnsMajorCast()) return false;
         if (!reserveBossHazard(EndRiftAiPolicy.BossSpell.SMALL_KAGUNE, close)) return false;
@@ -52772,15 +52775,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 ItemMeta meta = item.getItemMeta();
                 me.copimine.endevent.presentation.ItemPresentationComponents.setFloats(meta, initial.encode());
                 item.setItemMeta(meta);
-                ItemDisplay display = origin.getWorld().spawn(origin, ItemDisplay.class, entity -> {
-                    entity.setItemStack(item); entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
-                    entity.setBillboard(Display.Billboard.FIXED); entity.setPersistent(false);
-                    entity.setGravity(false); entity.setInvulnerable(true); entity.setShadowRadius(0F);
-                    entity.setViewRange(64F); entity.setDisplayWidth(14F); entity.setDisplayHeight(8F);
-                });
-                tag(display, EVENT_KIND_TENTACLE, 0, isOfficialEntity(liveBoss()));
-                for (Player viewer : eventAudience()) bindEventEntityClient(viewer, display);
-                return display;
+                return createFiniteKaguneCarrier(origin, item, 14F);
             }
             public void publish(ItemDisplay carrier, me.copimine.protocol.KaguneSpellFrame frame) {
                 ItemStack item = carrier.getItemStack(); ItemMeta meta = item.getItemMeta();
@@ -52821,6 +52816,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         });
         return lastSealConstruct;
+    }
+
+    /** Keep creation atomic even if ownership registration or the first signed binding throws. */
+    private ItemDisplay createFiniteKaguneCarrier(Location origin, ItemStack item, float width) {
+        ItemDisplay display = origin.getWorld().spawn(origin, ItemDisplay.class, entity -> {
+            entity.setItemStack(item); entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
+            entity.setBillboard(Display.Billboard.FIXED); entity.setPersistent(false);
+            entity.setGravity(false); entity.setInvulnerable(true); entity.setShadowRadius(0F);
+            entity.setViewRange(64F); entity.setDisplayWidth(width); entity.setDisplayHeight(8F);
+        });
+        try {
+            tag(display, EVENT_KIND_TENTACLE, 0, isOfficialEntity(liveBoss()));
+            for (Player viewer : eventAudience()) bindEventEntityClient(viewer, display);
+            return display;
+        } catch (RuntimeException failure) {
+            display.remove();
+            if (!display.isValid()) unregisterOwnedEntity(display.getUniqueId(), "finite-kagune-admission-rollback");
+            throw failure;
+        }
     }
 
     private boolean startKaguneRingCast(LivingEntity boss) {

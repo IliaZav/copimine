@@ -16,7 +16,7 @@ public record KaguneSpellFrame(int kind, int stage, double progress, double prev
 
     public KaguneSpellFrame {
         if (kind < STAB || kind > ERUPTION || stage < WARNING || stage > RETRACTING
-                || !bounded(progress, 0, 1) || !bounded(previousProgress, 0, 1)
+                || !bounded(progress, 0, 1) || !bounded(previousProgress, 0, 1) || previousProgress > progress
                 || !bounded(heading, -Math.PI - 1E-6, Math.PI + 1E-6)
                 || points == null || points.isEmpty() || points.size() > 5
                 || kind == STAB && points.size() != 1) throw new IllegalArgumentException("spell-frame");
@@ -56,8 +56,13 @@ public record KaguneSpellFrame(int kind, int stage, double progress, double prev
     /** Swept stem/player AABBs, shared with the exact root transform drawn by the client. */
     public boolean contacts(Point before, Point now, double halfWidth, double height) {
         if (!canDamage()) return false;
+        // The first damaging frame may straddle .25. Never sweep its earlier safe interval.
+        // Player motion uses the same clipped fraction as the visible spear motion.
+        double first = kind == STAB && previousProgress < .25D && progress > previousProgress
+                ? Math.max(0D, Math.min(1D, (.25D - previousProgress) / (progress - previousProgress))) : 0D;
         for (Point base : points) for (int step = 0; step <= 8; step++) {
-            double t = step / 8D, p = previousProgress + (progress - previousProgress) * t;
+            double t = first + (1D - first) * step / 8D;
+            double p = previousProgress + (progress - previousProgress) * t;
             double theta = pitch(p), length = HEIGHT;
             double px = before.x + (now.x - before.x) * t;
             double py = before.y + (now.y - before.y) * t;

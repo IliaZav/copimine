@@ -106,6 +106,9 @@ public final class LastSealConstructRuntime {
             if (current.stage() == KaguneSpellFrame.WARNING && age % 8 == 0) host.warning(origin, points, kind);
             if (current.canDamage() && !impactPlayed) { impactPlayed = true; host.impact(origin, kind); }
             for (Player player : host.participants()) {
+                if (!active || !host.active(boss) || !Objects.equals(scope, host.scope(boss))) {
+                    cancel("owner-changed-during-contact"); return;
+                }
                 if (player == null || !player.isOnline() || player.isDead() || !origin.getWorld().equals(player.getWorld())) continue;
                 Location at = player.getLocation(), before = previousPlayers.put(player.getUniqueId(), at.clone());
                 if (!current.canDamage() || hits.contains(player.getUniqueId())) continue;
@@ -113,6 +116,9 @@ public final class LastSealConstructRuntime {
                 if (!current.contacts(relative(before), relative(at), player.getWidth() / 2D, player.getHeight())) continue;
                 hits.add(player.getUniqueId());
                 if (!host.hit(boss, player, kind == KaguneSpellFrame.STAB ? 8D : 7D)) continue;
+                if (!active || !host.active(boss) || !Objects.equals(scope, host.scope(boss))) {
+                    cancel("owner-changed-after-contact"); return;
+                }
                 if (kind == KaguneSpellFrame.ERUPTION) {
                     falls.put(player.getUniqueId(), new FallLease(player.getWorld().getUID(), scope.generation(), System.nanoTime()+6_000_000_000L));
                     player.setFallDistance(0F); player.setVelocity(new Vector(0D, .98D, 0D));

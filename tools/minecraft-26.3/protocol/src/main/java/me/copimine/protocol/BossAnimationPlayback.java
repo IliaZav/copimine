@@ -9,7 +9,8 @@ public final class BossAnimationPlayback {
         return switch (animation) {
             // Shared by contact admission, animated hitboxes and client poses.
             // Do not speed up only the renderer: that produces phantom hits.
-            case "MELEE_SWIPE", "GROUND_SLAM" -> 2.0D;
+            case "MELEE_SWIPE" -> 2.25D;
+            case "GROUND_SLAM" -> 3.0D;
             case "CHEST_STRIKE" -> 1.75D;
             default -> 1.0D;
         };

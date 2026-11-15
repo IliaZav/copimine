@@ -183,6 +183,15 @@ final class UserEndBossAnimationPlayer {
         load(clips, "cast_release.animation.json", "CAST_RELEASE", false);
         load(clips, "cast_recovery.animation.json", "RECOVERY", false);
         load(clips, "final_strike.animation.json", "FINAL_STRIKE", false);
+        load(clips, "spell_void_blast.animation.json", "SPELL_VOID_BLAST", false);
+        load(clips, "spell_rift_projectile.animation.json", "SPELL_RIFT_PROJECTILE", false);
+        load(clips, "spell_rift_arrows.animation.json", "SPELL_RIFT_ARROWS", false);
+        load(clips, "spell_rift_arrows.animation.json", "SPELL_ARROW_SALVO", false);
+        load(clips, "spell_void_mark.animation.json", "SPELL_VOID_MARK", false);
+        load(clips, "spell_summon_servants.animation.json", "SPELL_SUMMON_SERVANTS", false);
+        load(clips, "spell_summon_servants.animation.json", "SPELL_SUMMON", false);
+        load(clips, "spell_summon_servants.animation.json", "SPELL_RIFT_OBELISKS", false);
+        load(clips, "spell_arena_inferno.animation.json", "SPELL_ARENA_INFERNO", false);
         return Map.copyOf(clips);
     }
 

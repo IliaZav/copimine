@@ -20348,6 +20348,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** One generation-owned controller renders and expires all event arrows. */
     private void tickEventArrowProjectiles() {
+        // Named trial arrows keep their own damage/admission/expiry owner. Only
+        // their cosmetic carriers share this flight sync; never add a second hit handler.
+        for(UUID id:new ArrayList<>(activeEliteArrowVisuals.keySet())) {
+            if(activeEventArrowAges.containsKey(id)) continue;
+            Entity raw=Bukkit.getEntity(id);
+            if(raw instanceof Arrow arrow && arrow.isValid() && !arrow.isDead()
+                    && isNamedTrialProjectile(arrow) && ownedBySession(arrow,eventId,generation)
+                    && readInt(arrow,keyWave,0)==7) syncEliteArrowVisual(arrow);
+            else removeEliteArrowVisual(id);
+        }
         if (activeEventArrowAges.isEmpty()) {
             return;
         }
@@ -28329,6 +28339,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 new me.copimine.endevent.runtime.RiftRamEncounter.Host() {
             public void pose(Ravager actor, String pose, int durationTicks) {
                 sendWaveMobPose(actor,pose,Math.max(50L,durationTicks*50L));
+                String audio = "WAVE_WINDUP".equals(pose) ? "ram_charge"
+                        : "WAVE_HIT".equals(pose) ? "ram_impact"
+                        : "WAVE_RELEASE".equals(pose) && durationTicks == me.copimine.endevent.domain.RiftRamPolicy.STOMP_EXPANSION_TICKS
+                                ? "ram_stomp" : null;
+                if (audio != null) playEncounterAbilityAudio(actor,audio);
             }
             public boolean active() {
                 return activeWave == 6 && ownerGeneration == generation
@@ -38336,6 +38351,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                  checkpoint.vanishUntilMillis()));
     }
 
+    /** Original local one-shot layer; no global broadcast or per-tick repetition. */
+    private void playEncounterAbilityAudio(Entity source,String cue) {
+        if(source==null || cue==null) return;
+        Location at=source.getLocation();
+        for(Player viewer:eventAudience()) if(isEventParticleViewer(viewer,at))
+            viewer.playSound(at,"copimine:end_rift/abilities/"+cue,SoundCategory.HOSTILE,.6F,1F);
+    }
+
     private void playTrialSound(Entity actor, Location at, Sound sound, float volume, float pitch) {
         for (Player viewer : eventAudience()) if (isTrialViewer(actor,viewer,at))
             viewer.playSound(at,sound,SoundCategory.HOSTILE,volume,pitch);
@@ -38529,6 +38552,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             for (Player viewer : eventAudience()) if (isTrialViewer(actor, viewer, feet))
                 viewer.playSound(feet, cue, SoundCategory.HOSTILE, .7F, 1F);
         } catch (IllegalArgumentException unsupported) { /* Cosmetic only. */ }
+        playEncounterAbilityAudio(actor,effectKey.startsWith("WARDEN")
+                ? effectKey.contains("SONIC") ? "warden_sonic" : "warden_swing"
+                : effectKey.startsWith("MARKSMAN") ? "marksman_release" : "archmage_cast");
         publishWave7Pose(actor, Wave7MinibossPosePolicy.Pose.RELEASE,
                 System.currentTimeMillis()+350L, System.currentTimeMillis());
         // The passes above are vanilla particles. Every dispatched Wave 7 ability
@@ -38662,6 +38688,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!tagNamedTrialProjectile(arrow, actor, attack)) {
             arrow.remove();
             return false;
+        }
+        if(activeEliteArrowVisuals.size()<MAX_ACTIVE_EVENT_ARROWS) {
+            tagEliteArrowModel(arrow,attack == Wave7NamedTrialActorPolicy.Attack.MARKSMAN_SPREAD_SHOT
+                    || attack == Wave7NamedTrialActorPolicy.Attack.MARKSMAN_PAIRED_CROSSFIRE
+                    ? "end_rift_arrow_rain" : "end_rift_triple_arrow");
+            attachEliteArrowVisual(arrow);
         }
         return true;
     }
@@ -49798,7 +49830,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** Request role-aware pathing without ever steering the boss at Core. */
     private void maintainBossPath(LivingEntity boss, long now) {
-        if (!(boss instanceof Mob mob) || now - lastBossPathRequestMillis < 500L
+        long pathCadence = Math.clamp(me.copimine.endevent.domain.BossCloseCombatPolicy.cadenceMillis(bossPhase)/6L,200L,500L);
+        if (!(boss instanceof Mob mob) || now - lastBossPathRequestMillis < pathCadence
                 || !(mob.getTarget() instanceof Player target) || !isCombatTarget(target)) {
             return;
         }
@@ -49821,6 +49854,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (keyCombatTactic != null) {
             boss.getPersistentDataContainer().set(keyCombatTactic,
                     PersistentDataType.STRING, plan.tactic().name());
+        }
+        // A legal melee opening is a successful destination. Do not step back
+        // to the preferred 3.5-block ring and abandon contact on every path tick.
+        if (plan.tactic() == CombatTacticsPolicy.BossTactic.MELEE_PRESSURE
+                && targetDistance >= 1.6D && targetDistance <= BossContactStrikePolicy.MELEE_SWIPE_RANGE
+                && boss.hasLineOfSight(target) && Math.abs(boss.getY()-target.getY()) <= 2.5D) {
+            if (mob.getPathfinder().hasPath()) mob.getPathfinder().stopPathfinding();
+            applyGroundedBossPursuitMotion(mob,0D);
+            return;
         }
         Location destination = bossTacticalDestination(anchor, mob, target, plan);
         if (destination == null) {
@@ -49867,9 +49909,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         double velocityZ = velocity == null || !Double.isFinite(velocity.getZ()) ? 0.0D : velocity.getZ();
         double velocityY = velocity == null || !Double.isFinite(velocity.getY()) ? 0.0D : velocity.getY();
         double horizontal = Math.hypot(velocityX, velocityZ);
-        if (Double.isFinite(intendedHorizontalSpeed) && intendedHorizontalSpeed > 0.0D) {
-            horizontal = Math.max(horizontal, intendedHorizontalSpeed);
-        }
+        // Pathfinder speed is a multiplier, not measured displacement. A
+        // successful request must not play RUN on an actor that has not moved.
         GroundedBossMotionPolicy.Resolution resolution = GroundedBossMotionPolicy.resolve(
                 true, mob != null && mob.isOnGround(), horizontal, velocityY);
         if (mob != null && Math.abs(velocityY - resolution.appliedVerticalVelocity()) > 0.0001D) {
@@ -49889,19 +49930,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return null;
         }
         Location preferred;
-        if (plan.preferOuterRing() || isCoreBlockPosition(target.getLocation())) {
+        if (isCoreBlockPosition(target.getLocation())) {
             preferred = stableCombatRingLocation(anchor, boss, 7.5D, 10.0D);
         } else {
             preferred = switch (plan.tactic()) {
                 case MELEE_PRESSURE -> bossContactApproachLocation(boss, target, plan.preferredDistance());
-                case RING_ORBIT -> stableCombatRingLocation(anchor, boss,
-                        plan.preferredDistance(), plan.preferredDistance() + 2.0D);
+                case RING_ORBIT -> bossFlankTargetLocation(anchor,boss,target,
+                        plan.preferredDistance(),plan.orbitDirection());
                 case FLANK, CROSSCUT -> bossFlankTargetLocation(anchor, boss, target,
                         plan.preferredDistance(), plan.orbitDirection());
                 case PHANTOM_FEINT -> bossFlankTargetLocation(anchor, boss, target,
                         plan.preferredDistance(), -plan.orbitDirection());
-                case CREATE_SPACE -> stableCombatRingLocation(anchor, boss, 8.0D, 10.5D);
-                case RANGED_PRESSURE, CONTROL, SUMMON -> target.getLocation();
+                case CREATE_SPACE -> bossContactApproachLocation(boss,target,plan.preferredDistance());
+                case RANGED_PRESSURE, CONTROL, SUMMON -> bossContactApproachLocation(boss,target,
+                        plan.preferredDistance());
             };
         }
         return findSafeCombatLocation(anchor, preferred,
@@ -50085,6 +50127,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     bossCastTask = null;
                 }
                 releaseBossHazardReservation("cast-telegraph-cancelled");
+                if (boss.isValid() && !boss.isDead() && bossCastSequence == castSequence) {
+                    bossAbilityState = BossAbilityState.NONE;
+                    bossCastDeadlineMillis = 0L;
+                    releaseBossCastMobility(boss,"cast-telegraph-cancelled");
+                }
                 return;
             }
             ticks[0]++;
@@ -50554,7 +50601,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + Math.max(20L, spellTelegraphTicks(spell) * 2L) * 50L;
         long castSequence = bossCastSequence;
         String callbackEvent = eventId;
-        sendBossAnimationVisualUpdate(boss, "CAST_RELEASE");
+        sendBossAnimationVisualUpdate(boss, BossVisualCuePolicy.animationFor(spell.id(),
+                BossVisualCuePolicy.CueStage.RELEASE));
         playBossVisualCue(boss,
                 bossCueId(spell.id(), BossVisualCuePolicy.CueStage.RELEASE),
                 boss.getEyeLocation(), forced);
@@ -61136,6 +61184,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // animation was cancelled a tick after it started.
         if (!isSpellDrivenBossCue(cueId)) {
             sendBossAnimationVisualUpdate(boss, bossCueAnimationId(cueId));
+        }
+        if(stage == BossVisualCuePolicy.CueStage.RELEASE) {
+            String audio=switch(bossCueBaseId(cueId)) {
+                case "void_blast" -> "guardian_void";
+                case "rift_projectile", "chest_strike" -> "guardian_lance";
+                case "rift_arrows" -> "guardian_arrows";
+                case "void_mark" -> "guardian_mark";
+                case "summon_servants" -> "guardian_summon";
+                case "arena_inferno" -> "guardian_inferno";
+                default -> null;
+            };
+            if(audio!=null) playEncounterAbilityAudio(boss,audio);
         }
         boolean authoredSpell = BossSpellVisualCompositionPolicy.isAuthored(bossCueBaseId(cueId));
         for (Player viewer : eventAudience()) {

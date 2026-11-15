@@ -182,6 +182,7 @@ public final class BossVisualCuePolicy {
         return switch (spellId) {
             case "void_blast" -> BossAnimationId.SPELL_VOID_BLAST.wireId();
             case "rift_projectile" -> BossAnimationId.SPELL_RIFT_PROJECTILE.wireId();
+            case "rift_arrows" -> BossAnimationId.SPELL_RIFT_ARROWS.wireId();
             case "void_mark" -> BossAnimationId.SPELL_VOID_MARK.wireId();
             case "summon_servants" -> BossAnimationId.SPELL_SUMMON_SERVANTS.wireId();
             case "rift_obelisks" -> BossAnimationId.SPELL_RIFT_OBELISKS.wireId();

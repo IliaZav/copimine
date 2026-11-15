@@ -67,7 +67,7 @@ public final class BossCloseCombatPolicy {
      * Whether a close-range swing may start right now.
      *
      * <p>Gates, in order: the phase permits melee, the cooldown expired, no
-     * other cast owns the body, the target is inside the authored reach with
+     * other cast owns the body (checked by the runtime), the target is inside the authored reach with
      * a clear line of sight and is not already held by crowd control.</p>
      */
     public static boolean canStrike(BossPhase phase, long now, long nextStrike,
@@ -75,7 +75,7 @@ public final class BossCloseCombatPolicy {
                                     double distance, boolean lineOfSight,
                                     boolean controlledTarget) {
         return meleePermitted(phase)
-                && now >= nextStrike && now >= spellPauseUntil && now < nextMajorCast
+                && now >= nextStrike && now >= spellPauseUntil
                 && Double.isFinite(distance) && distance >= 0.0D
                 && distance <= BossContactStrikePolicy.MELEE_SWIPE_RANGE
                 && lineOfSight && !controlledTarget;

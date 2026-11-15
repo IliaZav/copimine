@@ -222,5 +222,109 @@
         "stream": true
       }
     ]
+  },
+  "end_rift/abilities/ram_charge": {
+    "sounds": [
+      {
+        "name": "copimine:end_rift/abilities/ram_charge",
+        "stream": false
+      }
+    ]
+  },
+  "end_rift/abilities/ram_stomp": {
+    "sounds": [
+      {
+        "name": "copimine:end_rift/abilities/ram_stomp",
+        "stream": false
+      }
+    ]
+  },
+  "end_rift/abilities/ram_impact": {
+    "sounds": [
+      {
+        "name": "copimine:end_rift/abilities/ram_impact",
+        "stream": false
+      }
+    ]
+  },
+  "end_rift/abilities/warden_swing": {
+    "sounds": [
+      {
+        "name": "copimine:end_rift/abilities/warden_swing",
+        "stream": false
+      }
+    ]
+  },
+  "end_rift/abilities/warden_sonic": {
+    "sounds": [
+      {
+        "name": "copimine:end_rift/abilities/warden_sonic",
+        "stream": false
+      }
+    ]
+  },
+  "end_rift/abilities/marksman_release": {
+    "sounds": [
+      {
+        "name": "copimine:end_rift/abilities/marksman_release",
+        "stream": false
+      }
+    ]
+  },
+  "end_rift/abilities/archmage_cast": {
+    "sounds": [
+      {
+        "name": "copimine:end_rift/abilities/archmage_cast",
+        "stream": false
+      }
+    ]
+  },
+  "end_rift/abilities/guardian_void": {
+    "sounds": [
+      {
+        "name": "copimine:end_rift/abilities/guardian_void",
+        "stream": false
+      }
+    ]
+  },
+  "end_rift/abilities/guardian_lance": {
+    "sounds": [
+      {
+        "name": "copimine:end_rift/abilities/guardian_lance",
+        "stream": false
+      }
+    ]
+  },
+  "end_rift/abilities/guardian_arrows": {
+    "sounds": [
+      {
+        "name": "copimine:end_rift/abilities/guardian_arrows",
+        "stream": false
+      }
+    ]
+  },
+  "end_rift/abilities/guardian_mark": {
+    "sounds": [
+      {
+        "name": "copimine:end_rift/abilities/guardian_mark",
+        "stream": false
+      }
+    ]
+  },
+  "end_rift/abilities/guardian_summon": {
+    "sounds": [
+      {
+        "name": "copimine:end_rift/abilities/guardian_summon",
+        "stream": false
+      }
+    ]
+  },
+  "end_rift/abilities/guardian_inferno": {
+    "sounds": [
+      {
+        "name": "copimine:end_rift/abilities/guardian_inferno",
+        "stream": false
+      }
+    ]
   }
 }

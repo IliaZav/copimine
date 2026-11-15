@@ -158,7 +158,7 @@ public final class EchoReplicaPresentationPolicy {
         if (timeline == null) {
             return false;
         }
-        return timeline.hitTick() - timeline.telegraphLockTick()
+        return timeline.hitTick() - timeline.arrivalTick()
                 >= EchoAttackReplicaPolicy.MIN_TELEGRAPH_TICKS;
     }
 
@@ -197,6 +197,19 @@ public final class EchoReplicaPresentationPolicy {
             return new Placement(MIN_SPAWN_DISTANCE, 0.0D, 0.0D);
         }
         return new Placement(dx, 0.0D, dz);
+    }
+
+    /** Spawn inside the copied family's real reach, without stacking on its target. */
+    public static Placement placementForFamily(int index, int replicas, long seed, double yaw, String family) {
+        Placement raw = placement(index, replicas, seed, yaw);
+        double radius = Math.hypot(raw.dx(), raw.dz());
+        double wanted = switch (family == null ? "" : family) {
+            case "MELEE_SWIPE" -> BossContactStrikePolicy.MELEE_SWIPE_RANGE * .72D;
+            case "GROUND_SLAM" -> BossContactStrikePolicy.GROUND_SLAM_RANGE * .72D;
+            default -> Math.min(8D, radius);
+        };
+        double scale = radius < .01D ? 1D : wanted / radius;
+        return new Placement(raw.dx()*scale, raw.dy(), raw.dz()*scale);
     }
 
     /** A candidate location is admitted only when it is readable and permitted. */

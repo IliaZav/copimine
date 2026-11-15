@@ -115,7 +115,7 @@ public final class EchoAttackReplicaPolicy {
             family = family == null ? "" : family;
             arrivalTick = Math.max(0L, arrivalTick);
             telegraphLockTick = Math.max(arrivalTick, telegraphLockTick);
-            hitTick = Math.max(telegraphLockTick + MIN_TELEGRAPH_TICKS, hitTick);
+            hitTick = Math.max(Math.max(telegraphLockTick + 1L, arrivalTick + MIN_TELEGRAPH_TICKS), hitTick);
             collapseTick = Math.max(hitTick + 1L, collapseTick);
             explosionWarningTick = Math.max(hitTick, explosionWarningTick);
             explosionTick = Math.max(explosionWarningTick + MIN_TELEGRAPH_TICKS, explosionTick);
@@ -132,26 +132,22 @@ public final class EchoAttackReplicaPolicy {
             return null;
         }
         long start = Math.max(0L, startTick);
-        // Heavier families prepare longer, exactly like the real boss does.
-        int telegraph = MIN_TELEGRAPH_TICKS + switch (key) {
-            case "GROUND_SLAM" -> 12;
-            case "CHEST_STRIKE" -> 6;
-            default -> 0;
-        };
+        // Copy the same retimed contact keyframe as the real family. Arrival
+        // precedes the locked animation; it is not another generic damage circle.
+        EndRiftAiPolicy.BossSpell spell = EndRiftAiPolicy.BossSpell.valueOf(key);
+        int marker = me.copimine.protocol.BossAnimationPlayback.combatTicks(key,
+                BossContactStrikePolicy.contactMarkerTicks(spell));
+        int clip = me.copimine.protocol.BossAnimationPlayback.combatTicks(key,
+                BossContactStrikePolicy.clipTicks(spell));
         long sequence = SEQUENCE.incrementAndGet();
         String replicaKey = "echo-" + start + "-" + key + "-" + sequence;
         long arrival = start;
-        long lock = arrival + telegraph;
-        long hit = lock + 2L;
-        long collapse = hit + COLLAPSE_TICKS;
+        long lock = arrival + Math.max(ARRIVAL_TICKS, MIN_TELEGRAPH_TICKS - marker);
+        long hit = lock + marker;
+        long collapse = Math.max(hit + 3L, lock + clip);
         long warning = collapse;
         long explosion = warning + EXPLOSION_WARNING_TICKS;
         long expiry = explosion + 4L;
-        // Never exceed the short lifetime: shrink the tail, not the telegraph.
-        long maxExpiry = arrival + MAX_LIFETIME_TICKS;
-        if (expiry > maxExpiry) {
-            expiry = maxExpiry;
-        }
         return new Timeline(key, replicaKey, replicaKey + "-boom",
                 arrival, lock, hit, collapse, expiry, warning, explosion);
     }

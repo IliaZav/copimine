@@ -1588,6 +1588,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * contract 23.3 forbids, so the actor is a precondition of the copy.</p>
      */
     private final Map<UUID, EchoReplicaActor> echoReplicaActors = new LinkedHashMap<>();
+    private final Map<UUID, EchoReplicaPresentationPolicy.Beat> echoReplicaBeats = new HashMap<>();
+    private record EchoChestProbe(UUID display, Location origin, Vector direction, Location previous) { }
+    private final Map<UUID, EchoChestProbe> echoChestProbes = new HashMap<>();
+    private final Set<UUID> echoChestStarted = new HashSet<>();
+    private final Set<UUID> echoChestRetired = new HashSet<>();
+    private record DecoyMotion(me.copimine.protocol.GuardianActorFrame.Action action, long startTick) { }
+    private final Map<UUID, DecoyMotion> echoDecoyMotions = new HashMap<>();
+    private record EchoFocus(UUID target, long untilTick) { }
+    private final Map<UUID, Long> echoDecoyActionUntil = new HashMap<>();
+    private final Map<UUID, EchoFocus> echoDecoyFocus = new HashMap<>();
     /** Last numerically confirmed strike per copy: a strike lands once. */
     private final Map<UUID, Double> echoReplicaAcceptedStrikeDamage = new LinkedHashMap<>();
     /** Last numerically confirmed explosion per copy: a blast lands once. */
@@ -1801,7 +1811,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private long arenaInfernoLastCastEndTick = -1L;
     private BukkitTask bossCastTask;
     private long bossChestStrikeSequence;
+    private long rageComboGeneration = -1L, rageComboNextTick;
     private boolean bossChestStrikeActive;
+    private UUID bossChestStrikeModel;
     private long bossCastSequence;
     private float bossCastLockedYaw;
     private long bossEdgeVolleySequence;
@@ -21629,6 +21641,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void clearBossSpellModels() {
+        retireBossChestStrikeModel();
         for (UUID id : new HashSet<>(bossSpellModelIds)) removeBossSpellModel(id);
     }
 
@@ -49841,6 +49854,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void maintainBossTargetSelection(LivingEntity boss, long now) {
         if (!(boss instanceof Mob mob)) return;
+        if (bossFuryCombo.owns(eventId, generation, boss.getUniqueId(), eventTickCounter)) {
+            Player locked = Bukkit.getPlayer(bossFuryCombo.target());
+            if (locked != null && isActiveBossParticipant(locked) && !isPlayerUnderTentacleControl(locked)) {
+                if (locked.getUniqueId().equals(bossPursuitTarget) || assignBossPursuitTarget(mob, locked)) return;
+            }
+        }
         Player focus = bossPursuitTarget == null ? null : Bukkit.getPlayer(bossPursuitTarget);
         // A newly invalid owned focus is urgent; a previously refused/empty
         // selection still honours its retry deadline instead of polling at 20 Hz.
@@ -50238,18 +50257,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossCastTask = holder[0];
         registerEncounterTask(holder[0]);
         bossSpellTargets.recordAccepted(generation, target.getUniqueId(), config.bossRecentTargetMemory());
-        if (isCurrentBossMeleeFury() && spell == EndRiftAiPolicy.BossSpell.MELEE_SWIPE
+        if (rageComboGeneration != generation) {
+            rageComboGeneration = generation; rageComboNextTick = 0L;
+        }
+        boolean mayOpenCombination = isCurrentBossMeleeFury()
+                || bossPhase == BossPhase.RAGE && eventTickCounter >= rageComboNextTick;
+        if (mayOpenCombination && spell == EndRiftAiPolicy.BossSpell.MELEE_SWIPE
                 && !bossFuryCombo.active()) {
             bossFuryCombo.begin(eventId, generation, bossId, target.getUniqueId(),
                     eventTickCounter, bossSpellCursor);
+            // Rage mixes short combinations with ranged pressure; final fury stays relentless.
+            if (bossPhase == BossPhase.RAGE) rageComboNextTick = eventTickCounter
+                    + me.copimine.endevent.runtime.BossFuryComboRuntime.MAX_COMBO_TICKS;
         }
         return true;
     }
 
-    /** Final fury chains real casts; no synthetic extra damage or delayed tasks. */
+    /** Rage and final fury chain real casts; no synthetic extra damage or delayed tasks. */
     private boolean tickBossFuryCombo(LivingEntity boss) {
         if (!bossFuryCombo.active()) return false;
-        if (!isCurrentBossMeleeFury() || !isBossCombatRuntimeActive(boss)
+        if (!(isCurrentBossMeleeFury() || bossPhase == BossPhase.RAGE) || !isBossCombatRuntimeActive(boss)
                 || !bossFuryCombo.owns(eventId, generation, boss.getUniqueId(), eventTickCounter)) {
             bossFuryCombo.clear();
             return false;
@@ -50513,12 +50540,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Set<UUID> alreadyHit = new HashSet<>();
         int[] hits = new int[]{0};
         int lastStep = BossContactStrikePolicy.chestStrikeTicks();
+        retireBossChestStrikeModel();
+        ItemDisplay flight = null;
+        try {
+            if (bossSpellModelIds.size() >= 2) throw new IllegalStateException("chest-visual-budget");
+            Location posed = chest.clone(); posed.setDirection(direction);
+            flight = spawnSpellModelDisplay(posed, BossSpellGeometryPolicy.modelData(BossSpellGeometryPolicy.Shape.CHEST_IRIS));
+            tag(flight, EVENT_KIND_DISPLAY, 0, isOfficialEntity(boss));
+            if (!flight.isValid()) throw new IllegalStateException("chest-visual-spawn-refused");
+            bossChestStrikeModel = flight.getUniqueId(); bossSpellModelIds.add(bossChestStrikeModel);
+        } catch (RuntimeException failure) {
+            if (flight != null) { flight.remove(); unregisterOwnedEntity(flight.getUniqueId(), "chest-visual-refused"); }
+            abortBossChestStrike(castSequence, "chest-visual-refused"); return;
+        }
         world.playSound(chest, Sound.ENTITY_WARDEN_SONIC_CHARGE, SoundCategory.HOSTILE, 1.0F, 1.2F);
         for (int step = 1; step <= lastStep; step++) {
             int sweepStep = step;
             long delay = BossContactStrikePolicy.CHEST_STRIKE_LAUNCH_TICKS + step;
             BukkitTask task = Bukkit.getScheduler().runTaskLater(this, () -> {
-                if (bossChestStrikeSequence != castSequence
+                if (bossChestStrikeSequence != castSequence || !bossChestStrikeActive
                         || generation != callbackGeneration || !Objects.equals(eventId, callbackEvent)
                         || taskRegistry == null || !taskRegistry.owns(callbackGeneration)
                         || bossUuid == null || !bossUuid.equals(bossId) || !boss.isValid() || boss.isDead()
@@ -50536,18 +50576,29 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
                 double probe = BossContactStrikePolicy.chestProbeDistance(sweepStep);
                 Location point = chest.clone().add(direction.clone().multiply(probe));
-                world.spawnParticle(Particle.SOUL_FIRE_FLAME, point, 3, 0.15D, 0.15D, 0.15D, 0.01D);
-                // Audit boss error: the sweep used to pass straight through solid
-                // geometry and damage players standing behind a wall. The strike
-                // is a physical arc, so the first blocking block ENDS it.
-                if (point.getBlock().getType().isSolid()) {
+                Entity model = bossChestStrikeModel == null ? null : ownedEntities.get(bossChestStrikeModel);
+                if (model == null || !model.isValid()) {
+                    abortBossChestStrike(castSequence, "chest-visual-lost"); return;
+                }
+                Location previous = chest.clone().add(direction.clone().multiply(BossContactStrikePolicy.chestProbeDistance(sweepStep-1)));
+                var block = world.rayTraceBlocks(previous, direction, previous.distance(point),
+                        org.bukkit.FluidCollisionMode.NEVER, true);
+                if (block != null) point = block.getHitPosition().toLocation(world);
+                point.setDirection(direction);
+                if (!teleportCombatEntity(model, point)) {
+                    abortBossChestStrike(castSequence, "chest-visual-move-refused"); return;
+                }
+                spawnEventParticle(point, Particle.SOUL_FIRE_FLAME, 3, .15D, .15D, .15D, .01D);
+                if (block != null) {
+                    spawnEventParticle(point, Particle.FLASH, 1, 0D, 0D, 0D, 0D);
                     finishBossChestStrike(boss, bossId, target, sweepStep, lastStep, hits[0],
                             castSequence, callbackEvent, callbackGeneration, true);
                     return;
                 }
-                playBossImpactPresentation(boss, BossImpactGeometryPolicy.Kind.CHEST,
-                        point, direction, 3.0D, false, true);
+                // The moving solid mesh owns flight presentation; do not schedule
+                // a complete expanding impact scene independently on every step.
                 for (Player player : activeLivingPlayers()) {
+                    if (bossChestStrikeSequence != castSequence || !bossChestStrikeActive) break;
                     if (player == null || !player.getWorld().equals(world)
                             || alreadyHit.contains(player.getUniqueId())) {
                         continue;
@@ -50569,6 +50620,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     knockback.setY(BossContactStrikePolicy.CHEST_STRIKE_LIFT);
                     if (applyContactHit(player, boss, BossContactStrikePolicy.CHEST_STRIKE_DAMAGE, knockback)) {
                         hits[0]++;
+                        renderBossContactImpact(boss, player, EndRiftAiPolicy.BossSpell.CHEST_STRIKE);
                     }
                 }
                 if (bossChestStrikeSequence != castSequence || generation != callbackGeneration
@@ -50606,6 +50658,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (bossChestStrikeSequence != castSequence
                 || !Objects.equals(eventId, callbackEvent)
                 || generation != callbackGeneration) return;
+        // Invalidate every already-scheduled later step, including after an early wall impact.
+        bossChestStrikeSequence++;
+        retireBossChestStrikeModel();
         int reached = blocked ? sweepStep : lastStep;
         getLogger().info("BOSS_CONTACT_ABILITY_IMPACT boss=" + bossId
                 + " spell=" + EndRiftAiPolicy.BossSpell.CHEST_STRIKE.id()
@@ -50623,12 +50678,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         releaseBossHazardReservation(blocked ? "contact-impact-blocked" : "contact-impact");
     }
 
+    private void retireBossChestStrikeModel() {
+        UUID id = bossChestStrikeModel; bossChestStrikeModel = null;
+        if (id != null) removeBossSpellModel(id);
+    }
+
     private void abortBossChestStrike(long castSequence, String reason) {
         if (bossChestStrikeSequence != castSequence || !bossChestStrikeActive) {
             return;
         }
         bossChestStrikeSequence++;
         bossChestStrikeActive = false;
+        retireBossChestStrikeModel();
         bossAbilityState = BossAbilityState.RECOVERY;
         bossCastDeadlineMillis = System.currentTimeMillis() + 20L * 50L;
         bossSpellPauseUntilMillis = bossCastDeadlineMillis;
@@ -52185,9 +52246,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // is a refused copy rather than a timing that would deal invisible
             // damage from the boss loop.
             EchoReplicaPresentationPolicy.Placement placement =
-                    EchoReplicaPresentationPolicy.placement(index, admitted,
+                    EchoReplicaPresentationPolicy.placementForFamily(index, admitted,
                             eventTickCounter * 31L + generation,
-                            target.getLocation().getYaw() * Math.PI / 180.0D);
+                            target.getLocation().getYaw() * Math.PI / 180.0D, copyable);
             UUID copyId = UUID.randomUUID();
             EchoReplicaActor actor = spawnEchoReplicaActor(boss, copyId,
                     target.getLocation(), placement, copyable);
@@ -52226,131 +52287,154 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** Advances every live copy along its own policy timeline. */
     private void tickEchoAttackReplicas(LivingEntity boss) {
-        if (echoReplicaTimelines.isEmpty()) {
-            return;
-        }
-        if (tickEchoReplicaFence(boss) != null) {
-            return;
-        }
-        // A copy advances exactly once per server tick. The boss loop can reach
-        // this method from more than one owner (the final-seal pin, the general
-        // boss tick, the cocoon branch); a second call in the same tick would
-        // re-run a damage window and could land the strike twice.
-        if (echoReplicaLastAdvanceTick == eventTickCounter) {
-            return;
-        }
+        if (eventTickCounter % 20L == 0L)
+            for (UUID copy : new ArrayList<>(echoChestRetired)) retireEchoChestProbe(copy);
+        if (echoReplicaTimelines.isEmpty() || tickEchoReplicaFence(boss) != null
+                || echoReplicaLastAdvanceTick == eventTickCounter) return;
         echoReplicaLastAdvanceTick = eventTickCounter;
         for (UUID copyId : new ArrayList<>(echoReplicaTimelines.keySet())) {
             EchoAttackReplicaPolicy.Timeline timeline = echoReplicaTimelines.get(copyId);
             TargetLock lock = echoReplicaLocks.get(copyId);
-            if (timeline == null || lock == null) {
-                retireEchoReplica(copyId, "timeline-lost");
-                continue;
-            }
-            long tick = eventTickCounter;
-            if (tick > timeline.expiryTick()) {
-                retireEchoReplica(copyId, "expired");
-                continue;
-            }
             EchoReplicaActor actor = echoReplicaActors.get(copyId);
-            if (actor == null) {
-                // Contract 23.3: NO actor, NO damage. A copy that lost its
-                // picture is torn down instead of becoming an invisible hazard.
-                retireEchoReplica(copyId, "actor-lost");
-                continue;
-            }
-            if (!EchoReplicaPresentationPolicy.actorShouldExist(timeline, tick)) {
-                retireEchoReplica(copyId, "before-arrival");
-                continue;
-            }
             Set<String> ledger = echoReplicaDamageLedger.get(copyId);
-            if (ledger == null) {
-                retireEchoReplica(copyId, "ledger-lost");
-                continue;
+            if (timeline == null || lock == null || actor == null || ledger == null
+                    || !echoReplicaActorIsPresent(actor) || eventTickCounter > timeline.expiryTick()) {
+                retireEchoReplica(copyId, "runtime-or-actor-lost"); continue;
             }
-            if (!echoReplicaActorIsPresent(actor)) {
-                // A vanished actor means somebody deleted the picture (a mob
-                // limiter, a chunk unload, a plugin). The copy retires at once.
-                retireEchoReplica(copyId, "actor-vanished");
-                continue;
-            }
-            EchoReplicaPresentationPolicy.Beat beat =
-                    EchoReplicaPresentationPolicy.beatAt(timeline, tick);
             Player locked = Bukkit.getPlayer(lock.playerId());
-            // Contract 15.2 item 9: a dead or disconnected target cancels the
-            // copy. It does not leave a swing that still hits whoever is around.
-            if (EchoAttackReplicaPolicy.cancelsOnTargetLoss()
-                    && (locked == null || !isActiveBossParticipant(locked)
-                    || !locked.getWorld().equals(lock.point().getWorld()))) {
-                retireEchoReplica(copyId, "target-lost");
-                continue;
+            if (locked == null || !isActiveBossParticipant(locked)
+                    || !locked.getWorld().equals(lock.point().getWorld())) {
+                retireEchoReplica(copyId, "target-lost"); continue;
             }
-            if (locked != null && tick <= timeline.telegraphLockTick()) {
-                // Follow only during preparation. The last published point is
-                // frozen at the warning frame; released copies never home.
-                lock = new TargetLock(lock.playerId(), locked.getLocation().clone(),
-                        locked.getEyeLocation().clone());
+            if (eventTickCounter <= timeline.telegraphLockTick()) {
+                lock = new TargetLock(lock.playerId(), locked.getLocation().clone(), locked.getEyeLocation().clone());
                 echoReplicaLocks.put(copyId, lock);
             }
+            var beat = EchoReplicaPresentationPolicy.beatAt(timeline, eventTickCounter);
             presentEchoReplicaActor(copyId, actor, timeline, lock, beat);
-            // Contract 15.2: the strike lands once, on the matching keyframe,
-            // and only on a player still inside the LOCKED radius.
-            if (EchoReplicaPresentationPolicy.damageAllowed(true, timeline, tick)
-                    && beat == EchoReplicaPresentationPolicy.Beat.CONTACT
-                    && locked != null && locked.isOnline() && !locked.isDead()) {
-                double dx = locked.getLocation().getX() - lock.point().getX();
-                double dz = locked.getLocation().getZ() - lock.point().getZ();
-                String playerKey = locked.getUniqueId().toString();
-                if (EchoAttackReplicaPolicy.strikeConnects(timeline, dx, dz)
-                        && EchoAttackReplicaPolicy.mayDamage(playerKey, ledger,
-                                timeline.replicaKey())) {
-                    ledger.add(EchoAttackReplicaPolicy.scopedKey(
-                            timeline.replicaKey(), playerKey));
-                    LivingEntity attacker = boss != null && boss.isValid() ? boss : locked;
-                    double accepted = applyEchoReplicaDamage(locked,
-                            EchoAttackReplicaPolicy.strikeDamage(
-                                    KaguneGuardianFightPolicy.BASE_STRIKE_DAMAGE),
-                            attacker);
-                    echoReplicaAcceptedStrikeDamage.put(copyId, accepted);
-                    getLogger().info("ECHO_ATTACK_REPLICA_HIT event=" + eventId
-                            + " generation=" + generation + " copy=" + copyId
-                            + " family=" + timeline.family()
-                            + " source=strike target=" + playerKey
-                            + " tick=" + tick + " accepted=" + accepted);
+            Entity raw = ownedEntities.get(actor.entityId());
+            if (!(raw instanceof LivingEntity source)) { retireEchoReplica(copyId, "actor-lost"); continue; }
+            if (timeline.family().equals("CHEST_STRIKE")) {
+                tickEchoChestProbe(copyId, source, lock, timeline, ledger);
+            } else if (beat == EchoReplicaPresentationPolicy.Beat.CONTACT) {
+                EndRiftAiPolicy.BossSpell family = EndRiftAiPolicy.BossSpell.valueOf(timeline.family());
+                Location origin = source.getLocation();
+                Vector axis = horizontalDirection(origin, lock.aim());
+                for (Player player : activeBossParticipants()) {
+                    if (!echoReplicaContactActive(copyId, source)) break;
+                    if (!player.getWorld().equals(origin.getWorld()) || !source.hasLineOfSight(player)) continue;
+                    Vector delta = player.getLocation().toVector().subtract(origin.toVector());
+                    Vector flat = delta.clone().setY(0D);
+                    boolean connects = family == EndRiftAiPolicy.BossSpell.MELEE_SWIPE
+                            ? delta.length() <= BossContactStrikePolicy.MELEE_SWIPE_RANGE
+                                && (flat.lengthSquared() < .01D || flat.normalize().dot(axis) >= BossContactStrikePolicy.MELEE_SWIPE_FRONT_DOT)
+                            : delta.length() <= BossContactStrikePolicy.GROUND_SLAM_RANGE
+                                && Math.abs(delta.getY()) <= BossContactStrikePolicy.GROUND_SLAM_VERTICAL;
+                    String key = player.getUniqueId().toString();
+                    if (!connects || !EchoAttackReplicaPolicy.mayDamage(key, ledger, timeline.replicaKey())) continue;
+                    ledger.add(EchoAttackReplicaPolicy.scopedKey(timeline.replicaKey(), key));
+                    double accepted = applyEchoReplicaDamage(player, EchoAttackReplicaPolicy.strikeDamage(
+                            BossContactStrikePolicy.damage(family)), source);
+                    if (echoReplicaContactActive(copyId, source))
+                        echoReplicaAcceptedStrikeDamage.merge(copyId, accepted, Double::sum);
                 }
             }
-            // The warned explosion has its OWN ledger key, so it lands once
-            // too - and never twice for the same player.
-            if (EchoReplicaPresentationPolicy.damageAllowed(true, timeline, tick)
-                    && beat == EchoReplicaPresentationPolicy.Beat.EXPLOSION) {
+            if (beat == EchoReplicaPresentationPolicy.Beat.EXPLOSION) {
+                Location center = source.getLocation();
                 for (Player player : activeBossParticipants()) {
-                    if (player.isDead()) {
-                        continue;
-                    }
-                    if (!player.getWorld().equals(lock.point().getWorld())) continue;
-                    double distance = player.getLocation().distance(lock.point());
-                    if (!EchoAttackReplicaPolicy.explosionConnects(distance)) {
-                        continue;
-                    }
-                    String playerKey = player.getUniqueId().toString();
-                    if (!EchoAttackReplicaPolicy.mayDamage(playerKey, ledger,
-                            timeline.explosionKey())) {
-                        continue;
-                    }
-                    ledger.add(EchoAttackReplicaPolicy.scopedKey(
-                            timeline.explosionKey(), playerKey));
-                    LivingEntity attacker = boss != null && boss.isValid() ? boss : player;
-                    double accepted = applyEchoReplicaDamage(player,
-                            EchoAttackReplicaPolicy.explosionDamage(), attacker);
-                    echoReplicaAcceptedBlastDamage.put(copyId, accepted);
-                    getLogger().info("ECHO_ATTACK_REPLICA_HIT event=" + eventId
-                            + " generation=" + generation + " copy=" + copyId
-                            + " family=" + timeline.family()
-                            + " source=explosion target=" + playerKey
-                            + " tick=" + tick + " accepted=" + accepted);
+                    if (!echoReplicaContactActive(copyId, source)) break;
+                    if (!player.getWorld().equals(center.getWorld())
+                            || !EchoAttackReplicaPolicy.explosionConnects(player.getLocation().distance(center))
+                            || !hasProjectileBlockLineOfSight(center.clone().add(0D, .6D, 0D), player.getEyeLocation())) continue;
+                    String key = player.getUniqueId().toString();
+                    if (!EchoAttackReplicaPolicy.mayDamage(key, ledger, timeline.explosionKey())) continue;
+                    ledger.add(EchoAttackReplicaPolicy.scopedKey(timeline.explosionKey(), key));
+                    double accepted = applyEchoReplicaDamage(player, EchoAttackReplicaPolicy.explosionDamage(), source);
+                    if (echoReplicaContactActive(copyId, source))
+                        echoReplicaAcceptedBlastDamage.merge(copyId, accepted, Double::sum);
                 }
             }
         }
+    }
+
+    private boolean echoReplicaContactActive(UUID copy, LivingEntity actor) {
+        return bossPhase == BossPhase.RAGE && !bossDefeatCinematicStarted && actor != null
+                && actor.isValid() && !actor.isDead() && ownedBySession(actor, eventId, generation)
+                && Objects.equals(echoReplicaGenerations.get(copy), generation)
+                && echoReplicaTimelines.containsKey(copy);
+    }
+
+    /** A finite 3-D chest probe; aim freezes before launch, terrain ends travel. */
+    private void tickEchoChestProbe(UUID copy, LivingEntity actor, TargetLock lock,
+            EchoAttackReplicaPolicy.Timeline timeline, Set<String> ledger) {
+        long age = eventTickCounter - timeline.hitTick();
+        int last = BossContactStrikePolicy.chestStrikeTicks();
+        if (echoChestRetired.contains(copy)) { retireEchoChestProbe(copy); return; }
+        if (age < 0L || age > last) { if (age > last) retireEchoChestProbe(copy); return; }
+        if (echoChestStarted.add(copy)) {
+            ItemDisplay display = null;
+            try {
+                Location origin = actor.getLocation().clone().add(0D,
+                        actor.getHeight()*BossContactStrikePolicy.CHEST_HEIGHT_RATIO, 0D);
+                Vector direction = horizontalDirection(origin, lock.aim());
+                if (direction.lengthSquared() < .01D) return;
+                origin.setDirection(direction);
+                display = spawnSpellModelDisplay(origin, BossSpellGeometryPolicy.modelData(BossSpellGeometryPolicy.Shape.CHEST_IRIS));
+                tag(display, EVENT_KIND_DISPLAY, 0, false);
+                echoChestProbes.put(copy, new EchoChestProbe(display.getUniqueId(), origin, direction, origin.clone()));
+                playEncounterAbilityAudioAt(origin, "guardian_lance");
+            } catch (RuntimeException failure) {
+                if (display != null) { display.remove(); unregisterOwnedEntity(display.getUniqueId(), "echo-probe-admission-failed"); }
+            }
+        }
+        EchoChestProbe probe = echoChestProbes.get(copy);
+        Entity model = probe == null ? null : ownedEntities.get(probe.display());
+        if (probe == null || model == null || !model.isValid() || !echoReplicaContactActive(copy, actor)) {
+            retireEchoChestProbe(copy); return;
+        }
+        if (age == 0L) return;
+        double distance = BossContactStrikePolicy.chestProbeDistance((int) age);
+        Location point = probe.origin().clone().add(probe.direction().clone().multiply(distance));
+        double travel = probe.previous().distance(point);
+        var blocked = travel <= .001D ? null : point.getWorld().rayTraceBlocks(probe.previous(),
+                probe.direction(), travel, org.bukkit.FluidCollisionMode.NEVER, true);
+        if (blocked != null) point = blocked.getHitPosition().toLocation(point.getWorld());
+        point.setDirection(probe.direction());
+        if (!teleportCombatEntity(model, point)) { retireEchoChestProbe(copy); return; }
+        double reached = point.toVector().subtract(probe.origin().toVector()).dot(probe.direction());
+        for (Player player : activeBossParticipants()) {
+            if (!echoReplicaContactActive(copy, actor)) break;
+            if (!player.getWorld().equals(point.getWorld())) continue;
+            Vector offset = player.getBoundingBox().getCenter().subtract(probe.origin().toVector());
+            double along = offset.dot(probe.direction());
+            double lateral = Math.hypot(offset.getX()-probe.direction().getX()*along,
+                    offset.getZ()-probe.direction().getZ()*along);
+            String key = player.getUniqueId().toString();
+            if (!BossContactStrikePolicy.chestStrikeHits(reached, along, lateral, offset.getY())
+                    || !hasProjectileBlockLineOfSight(probe.origin(), player.getEyeLocation())
+                    || !EchoAttackReplicaPolicy.mayDamage(key, ledger, timeline.replicaKey())) continue;
+            ledger.add(EchoAttackReplicaPolicy.scopedKey(timeline.replicaKey(), key));
+            double accepted = applyEchoReplicaDamage(player, EchoAttackReplicaPolicy.strikeDamage(
+                    BossContactStrikePolicy.CHEST_STRIKE_DAMAGE), actor);
+            if (echoReplicaContactActive(copy, actor))
+                echoReplicaAcceptedStrikeDamage.merge(copy, accepted, Double::sum);
+        }
+        if (!echoReplicaContactActive(copy, actor) || blocked != null || age >= last) retireEchoChestProbe(copy);
+        else echoChestProbes.put(copy, new EchoChestProbe(probe.display(), probe.origin(), probe.direction(), point));
+    }
+
+    private void retireEchoChestProbe(UUID copy) {
+        echoChestRetired.add(copy);
+        EchoChestProbe probe = echoChestProbes.get(copy);
+        if (probe == null) { echoChestRetired.remove(copy); return; }
+        Entity display = ownedEntities.get(probe.display());
+        try {
+            if (display != null) display.remove();
+            if (display == null || !display.isValid()) {
+                unregisterOwnedEntity(probe.display(), "echo-probe-retired");
+                echoChestProbes.remove(copy); echoChestRetired.remove(copy);
+            }
+        } catch (RuntimeException deferred) { /* Keep UUID and retry without rearming damage. */ }
     }
 
     /**
@@ -52411,6 +52495,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         boolean inArena = location != null && isArenaLocation(location);
         boolean insideBorder = location != null
                 && world.getWorldBorder().isInside(location);
+        double maximumReach = "MELEE_SWIPE".equals(family) ? BossContactStrikePolicy.MELEE_SWIPE_RANGE
+                : "GROUND_SLAM".equals(family) ? BossContactStrikePolicy.GROUND_SLAM_RANGE
+                : BossContactStrikePolicy.CHEST_STRIKE_RANGE;
+        if (distance > maximumReach - .25D) return null;
         if (!EchoReplicaPresentationPolicy.acceptsSpawnPoint(distance, headroom,
                 insideBorder, inArena)) {
             return null;
@@ -52433,17 +52521,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             copyBody.setAI(false);
             copyBody.setAware(false);
             copyBody.setSilent(true);
+            copyBody.setGravity(false);
+            AttributeInstance resistance = copyBody.getAttribute(Attribute.GENERIC_KNOCKBACK_RESISTANCE);
+            if (resistance != null) resistance.setBaseValue(1D);
             AttributeInstance copyHealth = copyBody.getAttribute(Attribute.GENERIC_MAX_HEALTH);
             if (copyHealth != null) {
                 copyHealth.setBaseValue(ECHO_REPLICA_ACTOR_HEALTH);
             }
             copyBody.setHealth(Math.min(ECHO_REPLICA_ACTOR_HEALTH, copyBody.getMaxHealth()));
         }
-        for (Player viewer : Bukkit.getOnlinePlayers()) {
-            sendClientPacket(viewer, "END_ENTITY_BIND",
-                    eventId + ":" + generation + ":" + stand.getUniqueId(), 0L,
-                    stand.getUniqueId().toString(), CLIENT_VISUAL_ECHO_REPLICA);
-        }
+        for (Player viewer : eventAudience()) bindEventEntityClient(viewer, stand);
         getLogger().info("ECHO_REPLICA_ACTOR_SPAWNED event=" + eventId
                 + " generation=" + generation + " copy=" + copyId
                 + " family=" + family + " actor=" + stand.getUniqueId()
@@ -52466,35 +52553,49 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** Publishes the copy's current beat: locked aim, warn ring and phase clock. */
     private void presentEchoReplicaActor(UUID copyId, EchoReplicaActor actor,
                                          EchoAttackReplicaPolicy.Timeline timeline,
-                                         TargetLock lock,
-                                         EchoReplicaPresentationPolicy.Beat beat) {
-        Entity standEntity = ownedEntities.get(actor.entityId());
-        if (standEntity == null) {
-            return;
+                                         TargetLock lock, EchoReplicaPresentationPolicy.Beat beat) {
+        Entity body = ownedEntities.get(actor.entityId()); if (body == null) return;
+        lookEchoReplicaAt(body, lock.aim());
+        var previous = echoReplicaBeats.put(copyId, beat);
+        boolean changed = previous != beat;
+        long start;
+        int ticks;
+        me.copimine.protocol.GuardianActorFrame.Action action;
+        if (beat == EchoReplicaPresentationPolicy.Beat.ARRIVAL) {
+            action = me.copimine.protocol.GuardianActorFrame.Action.CAST_CHARGE;
+            start = timeline.arrivalTick(); ticks = (int)(timeline.telegraphLockTick()-start);
+        } else if (beat == EchoReplicaPresentationPolicy.Beat.EXPLOSION_WARNING) {
+            action = me.copimine.protocol.GuardianActorFrame.Action.CAST_CHARGE;
+            start = timeline.explosionWarningTick(); ticks = EchoAttackReplicaPolicy.EXPLOSION_WARNING_TICKS;
+        } else if (beat == EchoReplicaPresentationPolicy.Beat.EXPLOSION) {
+            action = me.copimine.protocol.GuardianActorFrame.Action.SPELL_VOID_BLAST;
+            start = timeline.explosionTick(); ticks = 4;
+        } else {
+            action = me.copimine.protocol.GuardianActorFrame.Action.valueOf(timeline.family());
+            start = timeline.telegraphLockTick();
+            ticks = me.copimine.protocol.BossAnimationPlayback.combatTicks(timeline.family(),
+                    BossContactStrikePolicy.clipTicks(EndRiftAiPolicy.BossSpell.valueOf(timeline.family())));
         }
-        Location aim = lock == null ? null : lock.aim();
-        if (aim != null) {
-            lookEchoReplicaAt(standEntity, aim);
-        }
-        String phase = EchoReplicaPresentationPolicy.phaseName(beat);
-        long duration = EchoReplicaPresentationPolicy.phaseDurationMillis(timeline, beat);
-        String payload = phase + "|copy=" + copyId + "|family=" + timeline.family()
-                + "|t=" + Math.max(0L, eventTickCounter)
-                + "|die_at=" + timeline.expiryTick()
-                + "|hit_at=" + timeline.hitTick()
-                + "|boom_at=" + timeline.explosionTick();
-        for (Player viewer : Bukkit.getOnlinePlayers()) {
-            if (!isEventVisualViewer(viewer)) {
-                continue;
-            }
-            sendClientPacket(viewer, "END_ENTITY_PHASE",
-                    eventId + ":" + generation + ":" + actor.entityId(),
-                    Math.max(50L, duration), actor.entityId().toString(), payload);
-        }
-        if (beat == EchoReplicaPresentationPolicy.Beat.EXPLOSION_WARNING
-                || beat == EchoReplicaPresentationPolicy.Beat.EXPLOSION) {
-            ringEchoReplicaWarning(aim, beat == EchoReplicaPresentationPolicy.Beat.EXPLOSION);
-        }
+        if (changed || eventTickCounter % 4L == 0L)
+            sendGuardianActorFrame(body, action, start, ticks, (int)Math.max(0L, eventTickCounter-start));
+        if (beat == EchoReplicaPresentationPolicy.Beat.EXPLOSION_WARNING && eventTickCounter % 4L == 0L)
+            ringEchoReplicaWarning(body.getLocation(), false);
+        if (changed && beat == EchoReplicaPresentationPolicy.Beat.EXPLOSION)
+            ringEchoReplicaWarning(body.getLocation(), true);
+        if (changed && beat == EchoReplicaPresentationPolicy.Beat.CONTACT && !timeline.family().equals("CHEST_STRIKE"))
+            playEncounterAbilityAudioAt(body.getLocation(), "guardian_void");
+    }
+
+    private void sendGuardianActorFrame(Entity actor, me.copimine.protocol.GuardianActorFrame.Action action,
+            long startTick, int durationTicks, int elapsedTicks) {
+        if (actor == null || !actor.isValid() || !ownedBySession(actor, eventId, generation)) return;
+        int duration = Math.max(1, Math.min(10_000, durationTicks*50));
+        long cast = Math.max(0L, startTick) * 16L + action.ordinal();
+        var frame = new me.copimine.protocol.GuardianActorFrame(action, cast,
+                Math.max(0, Math.min(duration, elapsedTicks*50)), duration);
+        String instance = entityBindingInstances.computeIfAbsent(actor.getUniqueId(), id -> eventId + ":" + generation + ":" + id);
+        for (Player viewer : eventAudience()) if (isEventParticleViewer(viewer, actor.getLocation()))
+            sendClientPacket(viewer, "END_ENTITY_PHASE", instance, duration, actor.getUniqueId().toString(), frame.encode());
     }
 
     /** Turns the copy's body toward its frozen aim point. */
@@ -52511,36 +52612,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         float yaw = (float) (Math.toDegrees(Math.atan2(-dx, dz)));
-        Location aimed = from.clone();
-        aimed.setYaw(yaw);
-        aimed.setPitch(0.0F);
-        teleportCombatEntity(body, aimed);
+        body.setRotation(yaw, 0F);
     }
 
     /** The real-radius warning ring, and its detonation. */
     private void ringEchoReplicaWarning(Location center, boolean detonate) {
-        if (center == null || center.getWorld() == null) {
-            return;
-        }
+        if (center == null || center.getWorld() == null) return;
         double radius = EchoAttackReplicaPolicy.EXPLOSION_RADIUS;
-        Particle particle = detonate ? Particle.EXPLOSION_EMITTER : Particle.END_ROD;
-        center.getWorld().spawnParticle(particle, center, detonate ? 1 : 12,
-                radius * 0.5D, 0.25D, radius * 0.5D, 0.0D);
-        if (detonate) {
-            center.getWorld().playSound(center, Sound.ENTITY_GENERIC_EXPLODE, 0.9F, 1.4F);
-            return;
-        }
-        for (int point = 0; point < 24; point++) {
-            double angle = Math.PI * 2.0D * point / 24.0D;
-            center.getWorld().spawnParticle(Particle.ELECTRIC_SPARK,
-                    center.clone().add(Math.cos(angle) * radius, 0.15D,
-                            Math.sin(angle) * radius), 1);
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, center)) continue;
+            if (detonate) {
+                viewer.spawnParticle(Particle.EXPLOSION_EMITTER, center, 1, 0D, 0D, 0D, 0D);
+                viewer.playSound(center, Sound.ENTITY_GENERIC_EXPLODE, SoundCategory.HOSTILE, .9F, 1.4F);
+            } else for (int point = 0; point < 24; point++) {
+                double angle = Math.PI*2D*point/24D;
+                viewer.spawnParticle(Particle.ELECTRIC_SPARK,
+                        center.clone().add(Math.cos(angle)*radius, .15D, Math.sin(angle)*radius), 1, 0D, 0D, 0D, 0D);
+            }
         }
     }
 
     /** The spectral arrival: a visible effect BEFORE the first damage window. */
     private void playEchoReplicaArrival(LivingEntity boss, UUID copyId, String family) {
-        Entity standEntity = ownedEntities.get(copyId);
+        EchoReplicaActor actor = echoReplicaActors.get(copyId);
+        Entity standEntity = actor == null ? null : ownedEntities.get(actor.entityId());
         if (standEntity == null || standEntity.getWorld() == null) {
             return;
         }
@@ -52567,10 +52662,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !Double.isFinite(amount) || amount <= 0.0D) {
             return 0.0D;
         }
-        double before = target.getHealth();
-        target.damage(amount, attacker);
-        double after = Math.min(target.getHealth(), before);
-        return Math.max(0.0D, before - after);
+        LivingEntity boss = liveBoss();
+        double before = target.getHealth() + target.getAbsorptionAmount();
+        if (bossPhase != BossPhase.RAGE || boss == null || attacker == null
+                || !applyBossActorAbilityDamage(boss, attacker, target, amount)) return 0D;
+        return Math.max(0D, before - target.getHealth() - target.getAbsorptionAmount());
     }
 
     /**
@@ -52579,6 +52675,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * statue in the arena for the rest of the phase.
      */
     private void retireEchoReplica(UUID copyId, String reason) {
+        retireEchoChestProbe(copyId);
+        echoChestStarted.remove(copyId); echoReplicaBeats.remove(copyId);
         EchoAttackReplicaPolicy.Timeline timeline = echoReplicaTimelines.remove(copyId);
         TargetLock lock = echoReplicaLocks.remove(copyId);
         echoReplicaDamageLedger.remove(copyId);
@@ -58121,6 +58219,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** Contract 15.5: decoys dissolve on phase transition and never survive one. */
     private int clearEchoDecoys(String reason) {
         clearEchoDecoyArrows();
+        echoDecoyMotions.clear(); echoDecoyActionUntil.clear(); echoDecoyFocus.clear();
         int removed = 0;
         for (UUID id : new ArrayList<>(echoDecoyIds)) {
             if (bossUuid != null && bossUuid.equals(id)) {
@@ -58161,9 +58260,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (arrow == null || !arrow.isValid() || arrow.isDead()
                     || arrow.getTicksLived() >= EVENT_ARROW_MAX_TICKS) {
                 if (arrow != null && arrow.isValid()) arrow.remove();
+                removeEliteArrowVisual(id);
                 unregisterOwnedEntity(id, "echo-decoy-arrow-expired");
                 echoDecoyArrowIds.remove(id);
-            }
+            } else if (arrow instanceof Arrow physical) syncEliteArrowVisual(physical);
         }
         if (echoDecoyIds.isEmpty()) {
             clearEchoDecoyArrows();
@@ -58183,6 +58283,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         if (!generationChanged && !phaseLeft && !bossLost) {
+            tickEchoDecoyActors();
             if (lost > 0) {
                 getLogger().info("BOSS_ECHO_DECOY_LOST event=" + eventId
                         + " recovered=" + lost + " alive=" + echoDecoyIds.size());
@@ -58192,6 +58293,77 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         String reason = generationChanged ? "generation-fence"
                 : phaseLeft ? "phase-fence-" + bossPhase.name() : "boss-lost";
         clearEchoDecoys(reason);
+    }
+
+    private void tickEchoDecoyActors() {
+        echoDecoyMotions.keySet().retainAll(echoDecoyIds);
+        echoDecoyActionUntil.keySet().retainAll(echoDecoyIds);
+        echoDecoyFocus.keySet().retainAll(echoDecoyIds);
+        if (eventTickCounter % 10L != 0L) return;
+        List<Player> players = activeBossParticipants();
+        for (UUID id : new ArrayList<>(echoDecoyIds)) {
+            Entity raw = ownedEntities.get(id); if (!(raw instanceof Mob actor) || actor.isDead() || !actor.isValid()) continue;
+            EchoFocus held = echoDecoyFocus.get(id);
+            Player focus = held == null ? null : Bukkit.getPlayer(held.target());
+            if (focus == null || !isActiveBossParticipant(focus) || !focus.getWorld().equals(actor.getWorld())
+                    || eventTickCounter >= held.untilTick()) {
+                focus = players.stream().filter(player -> player.getWorld().equals(actor.getWorld()))
+                        .min(Comparator.comparingDouble(player -> player.getLocation().distanceSquared(actor.getLocation())))
+                        .orElse(null);
+                if (focus != null) echoDecoyFocus.put(id, new EchoFocus(focus.getUniqueId(), eventTickCounter+60L));
+                else echoDecoyFocus.remove(id);
+            }
+            actor.setTarget(focus);
+            if (focus != null && (!actor.hasLineOfSight(focus)
+                    || actor.getLocation().distanceSquared(focus.getLocation()) > 100D))
+                actor.getPathfinder().moveTo(focus.getLocation(), 1D);
+            if (eventTickCounter < echoDecoyActionUntil.getOrDefault(id, 0L)) continue;
+            var action = actor.getVelocity().clone().setY(0D).lengthSquared() > .001D
+                    ? me.copimine.protocol.GuardianActorFrame.Action.RUN
+                    : me.copimine.protocol.GuardianActorFrame.Action.IDLE_BREATH;
+            DecoyMotion old = echoDecoyMotions.get(id);
+            if (old == null || old.action() != action || eventTickCounter-old.startTick() >= 200L) {
+                old = new DecoyMotion(action, eventTickCounter); echoDecoyMotions.put(id, old);
+            }
+            sendGuardianActorFrame(actor, action, old.startTick(), 200, (int)(eventTickCounter-old.startTick()));
+        }
+    }
+
+    private void presentEchoDecoyAction(LivingEntity actor, me.copimine.protocol.GuardianActorFrame.Action action, int ticks) {
+        echoDecoyMotions.remove(actor.getUniqueId());
+        echoDecoyActionUntil.put(actor.getUniqueId(), eventTickCounter+ticks);
+        sendGuardianActorFrame(actor, action, eventTickCounter, ticks, 0);
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onEchoDecoyTarget(org.bukkit.event.entity.EntityTargetLivingEntityEvent event) {
+        if (!isEchoDecoy(event.getEntity()) || event.getTarget() == null) return;
+        if (!(event.getTarget() instanceof Player target) || !isActiveBossParticipant(target)
+                || echoDecoyGeneration != generation || bossPhase != BossPhase.RAGE) {
+            event.setCancelled(true); return;
+        }
+        EchoFocus held = echoDecoyFocus.get(event.getEntity().getUniqueId());
+        Player retained = held == null ? null : Bukkit.getPlayer(held.target());
+        if (held != null && eventTickCounter < held.untilTick() && retained != null
+                && isActiveBossParticipant(retained) && retained.getWorld().equals(event.getEntity().getWorld())
+                && !held.target().equals(target.getUniqueId())) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onEchoDecoyShotPresentation(EntityShootBowEvent event) {
+        if (isEchoDecoy(event.getEntity()) && echoDecoyGeneration == generation && bossPhase == BossPhase.RAGE
+                && event.getProjectile() instanceof Arrow arrow && echoDecoyArrowIds.contains(arrow.getUniqueId())) {
+            tagArrowSpell(arrow, "rift_arrows");
+            if (activeEliteArrowVisuals.size() < MAX_ACTIVE_EVENT_ARROWS) attachEliteArrowVisual(arrow);
+            presentEchoDecoyAction(event.getEntity(), me.copimine.protocol.GuardianActorFrame.Action.SPELL_RIFT_ARROWS, 20);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onEchoDecoyHitPresentation(EntityDamageEvent event) {
+        if (event.getFinalDamage() > 0D && event.getEntity() instanceof LivingEntity actor
+                && isEchoDecoy(actor) && echoDecoyGeneration == generation && bossPhase == BossPhase.RAGE)
+            presentEchoDecoyAction(actor, me.copimine.protocol.GuardianActorFrame.Action.HURT, 5);
     }
 
     /** The encounter generation the current decoys were summoned in. */
@@ -58206,6 +58378,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (UUID id : new ArrayList<>(echoDecoyArrowIds)) {
             Entity arrow = ownedEntities.get(id);
             if (arrow != null && arrow.isValid()) arrow.remove();
+            removeEliteArrowVisual(id);
             unregisterOwnedEntity(id, "echo-decoy-arrow-clear");
             echoDecoyArrowIds.remove(id);
         }

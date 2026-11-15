@@ -135,6 +135,7 @@ public final class Wave7ArchmageModel extends EntityModel<EvokerRenderState> {
      */
     @Override
     public void setupAnim(EvokerRenderState state) {
+        root().getAllParts().forEach(ModelPart::resetPose);
         float walk = state.walkAnimationPos * 0.6662F;
         float speed = state.walkAnimationSpeed;
         float age = state.ageInTicks;
@@ -186,5 +187,6 @@ public final class Wave7ArchmageModel extends EntityModel<EvokerRenderState> {
         // The robe always trails the stride a little; it is the cheapest cue that
         // the model has weight rather than being a stick figure.
         robeHemis.xRot = -0.05F * speed * Mth.cos(walk);
+        Wave7ActorAnimator.apply(root(), state, false);
     }
 }

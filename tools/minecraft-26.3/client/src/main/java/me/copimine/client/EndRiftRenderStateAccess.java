@@ -6,6 +6,8 @@ public interface EndRiftRenderStateAccess {
                                   String wavePose, String eventAnimation, boolean endBoss,
                                   String bossPhase, long bossPhaseTransitionMillis,
                                   String bossAnimation);
+    default void copimine$bindTrialFrame(me.copimine.protocol.Wave7AnimationFrame frame) { }
+    default me.copimine.protocol.Wave7AnimationFrame copimine$trialFrame() { return null; }
     String copimine$uuid();
     int copimine$entityId();
     boolean copimine$isEcho();

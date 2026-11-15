@@ -266,6 +266,7 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
         }
         if (variant == Variant.WAVE7_MARKSMAN) {
             poseMarksman(state, animationProgress, walkSpeed);
+            Wave7ActorAnimator.apply(root, state, false);
         }
     }
 

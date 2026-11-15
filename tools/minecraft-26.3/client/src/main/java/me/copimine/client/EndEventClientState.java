@@ -28,6 +28,15 @@ public final class EndEventClientState {
     private final Map<String, BossPhaseBinding> bossPhase = new HashMap<>();
     private final Map<String, EntityVisualBinding> entityVisuals = new HashMap<>();
     private final Map<String, EntityAnimationBinding> entityAnimations = new HashMap<>();
+    private record TrialBinding(me.copimine.protocol.Wave7AnimationFrame frame, long receivedAt) { }
+    private final Map<String, TrialBinding> trialAnimations = new HashMap<>();
+
+    public synchronized me.copimine.protocol.Wave7AnimationFrame trialFrame(String uuid, long now) {
+        TrialBinding cue = trialAnimations.get(uuid);
+        if (cue == null || now < cue.receivedAt()) return null;
+        var frame = cue.frame().advance(now - cue.receivedAt());
+        return frame.elapsedMillis() >= frame.durationMillis() ? null : frame;
+    }
     private record TentacleHealthPulse(double health, long untilMillis) {}
     private final Map<String, TentacleHealthPulse> tentacleHealthPulses = new HashMap<>();
     private final LinkedHashSet<String> suppressedEntityRenders = new LinkedHashSet<>();
@@ -474,6 +483,7 @@ public final class EndEventClientState {
             return false;
         }
         tentacleHealthPulses.remove(packet.subjectId());
+        trialAnimations.remove(packet.subjectId());
         entityVisuals.put(packet.subjectId(), new EntityVisualBinding(packet.instanceId(), packet.visualId()));
         entityAnimations.put(packet.subjectId(), new EntityAnimationBinding(
                 packet.instanceId(), "READY", -1L, nowMillis, 60_000L, "FULL", "",
@@ -491,6 +501,7 @@ public final class EndEventClientState {
         }
         entityVisuals.remove(packet.subjectId());
         entityAnimations.remove(packet.subjectId());
+        trialAnimations.remove(packet.subjectId());
         tentacleHealthPulses.remove(packet.subjectId());
         suppressedEntityRenders.add(packet.subjectId());
         while (suppressedEntityRenders.size() > MAX_RENDER_SUPPRESSIONS) {
@@ -510,6 +521,19 @@ public final class EndEventClientState {
                 || !Objects.equals(visual.instanceId(), packet.instanceId())
                 || !Objects.equals(binding.instanceId(), packet.instanceId())) {
             return false;
+        }
+        if (packet.phaseId().startsWith("TRIAL1|")) {
+            final me.copimine.protocol.Wave7AnimationFrame cue;
+            try { cue = me.copimine.protocol.Wave7AnimationFrame.parse(packet.phaseId()); }
+            catch (IllegalArgumentException invalid) { return false; }
+            if (!cue.matchesVisual(visual.visualId())) return false;
+            TrialBinding old = trialAnimations.get(packet.subjectId());
+            if (old != null && cue.cast() < old.frame().cast()) return false;
+            // Heartbeats correct drift without restarting the same authored pose.
+            if (old != null && old.frame().cast() == cue.cast() && old.frame().stage() == cue.stage()
+                    && old.frame().advance(nowMillis - old.receivedAt()).elapsedMillis() > cue.elapsedMillis()) return true;
+            trialAnimations.put(packet.subjectId(), new TrialBinding(cue, nowMillis));
+            return true;
         }
         boolean tentacleVisual = EndRiftTentacleModel.VISUAL_ID.equals(visual.visualId());
         String phase = packet.phaseId().split("\\|", -1)[0].trim().toUpperCase(Locale.ROOT);
@@ -750,6 +774,7 @@ public final class EndEventClientState {
         bossPhase.clear();
         entityVisuals.clear();
         entityAnimations.clear();
+        trialAnimations.clear();
         tentacleHealthPulses.clear();
         controlInstance = "";
         controlMode = "";

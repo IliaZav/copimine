@@ -78,6 +78,7 @@ public final class Wave7WardenModel extends WardenModel {
         riftCore.yScale = 1.0F + Math.abs(pulse) * 0.10F + charge * 0.22F;
         riftCore.xScale = 1.0F + Math.abs(pulse) * 0.06F + charge * 0.14F;
         riftCore.zScale = riftCore.yScale;
+        Wave7ActorAnimator.apply(root(), state, true);
     }
 
     private static final class ModelPartParts {

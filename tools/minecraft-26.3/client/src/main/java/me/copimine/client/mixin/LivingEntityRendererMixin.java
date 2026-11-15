@@ -72,6 +72,7 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity,
                                                CallbackInfo ci) {
         if (!(state instanceof EndRiftRenderStateAccess bound)) return;
         String uuid = entity.getUUID().toString();
+        bound.copimine$bindTrialFrame(ClientBridgeProtocol.endEventState().trialFrame(uuid, System.currentTimeMillis()));
         bound.copimine$bindRenderState(uuid, entity.getId(), entity instanceof EchoPlayerView,
                 ClientBridgeProtocol.endEventVisualForEntity(uuid),
                 ClientBridgeProtocol.endEventWavePoseForEntity(uuid),

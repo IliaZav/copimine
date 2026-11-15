@@ -1337,6 +1337,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<UUID> ritualPrisonerTeleportPermits = new LinkedHashSet<>();
     private final PrisonerAbilityController prisonerAbilityController = new PrisonerAbilityController();
     private final Map<UUID, String> clientBridgeSessions = new HashMap<>();
+    private final Set<UUID> trialAnimationCapablePlayers = new HashSet<>();
+    private record TrialPoseEmission(long generation, String event, long cast, String action,
+                                     String stage, long startedTick, int duration, long sentTick) { }
+    private final Map<UUID, TrialPoseEmission> trialPoseEmissions = new HashMap<>();
     private EndEventBridgeV4Access endEventBridgeV4;
     private static final String ECHO_PROBE_KIND = "WAVE7_ECHO_PROBE";
     private final Set<UUID> echoPresentationCapablePlayers = new HashSet<>();
@@ -4385,6 +4389,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         realitySplitTrialEntityUuids.clear();
         realitySplitTrialRuntimeStates.clear();
         wardenEmergences.clear();
+        trialPoseEmissions.clear();
         realitySplitTrialNextFireballTick.clear();
         realitySplitOrphanedSinceMillis.clear();
         currentCollapsedRings = 0;
@@ -4406,6 +4411,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ritualCasterAwakened.clear();
         prisonerAbilityController.end(generation);
         clientBridgeSessions.clear();
+        trialAnimationCapablePlayers.clear();
+        trialPoseEmissions.clear();
         echoPresentationCapablePlayers.clear();
         ritualPrisonerAnchor = null;
         ritualSphereVisualUuid = null;
@@ -26303,6 +26310,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         realitySplitTrialEntityUuids.clear();
         realitySplitTrialRuntimeStates.clear();
         wardenEmergences.clear();
+        trialPoseEmissions.clear();
         realitySplitTrialNextFireballTick.clear();
         realitySplitOrphanedSinceMillis.clear();
         // W7-02: partner pairing and steering memory are per-encounter. A second
@@ -26328,6 +26336,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         realitySplitTrialEntityUuids.remove(entityId);
         realitySplitTrialRuntimeStates.remove(entityId);
         wardenEmergences.remove(entityId);
+        trialPoseEmissions.remove(entityId);
     }
 
     /** Translate the exact Ritual Sphere profile into the scheduler's count record. */
@@ -36898,6 +36907,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
         if (checkpoint.attack() != Wave7NamedTrialActorPolicy.Attack.NONE) {
             if (checkpoint.phaseDeadlineMillis() > now) {
+                sendTrialPose(actor, checkpoint.attack().name(), "WINDUP", checkpoint.phaseDeadlineMillis(),
+                        Wave7NamedTrialActorPolicy.telegraphTicks(checkpoint.attack()) * 50,
+                        (int)Math.max(0L, Wave7NamedTrialActorPolicy.telegraphTicks(checkpoint.attack()) * 50L
+                                - (checkpoint.phaseDeadlineMillis() - now)));
                 renderNamedTrialTelegraph(actor, target, checkpoint.attack(), false);
                 return true;
             }
@@ -36925,7 +36938,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (trial.trial() == RealitySplitTrialController.NamedTrial.RIFT_ARCHMAGE
                 && eventTickCounter % 4L == 0L) moveNamedTrialArchmage(actor);
-        if (now < checkpoint.cooldownUntilMillis()) return true;
+        if (now < checkpoint.cooldownUntilMillis()) {
+            sendTrialFollowupPose(actor, "RECOVERY", 500);
+            return true;
+        }
         // MARK-005 / MARK-006 [U]: the Mobile Marksman may vanish for five
         // seconds to change position. The vanish is started here, before an
         // attack is chosen, and the returned checkpoint carries the absolute
@@ -37026,6 +37042,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 checkpoint.cooldownUntilMillis(), target.getUniqueId(), supportUsed,
                 checkpoint.vanishUntilMillis());
         if (!writeNamedTrialActorCheckpoint(actor, started)) return false;
+        sendTrialPose(actor, attack.name(), "WINDUP", deadline,
+                Wave7NamedTrialActorPolicy.telegraphTicks(attack) * 50, 0);
         renderNamedTrialTelegraph(actor, target, attack, true);
         return true;
     }
@@ -37749,6 +37767,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean finishNamedTrialAttack(Entity actor,
             Wave7NamedTrialActorPolicy.Checkpoint checkpoint, long now) {
         if (actor == null || checkpoint == null) return false;
+        sendTrialFollowupPose(actor, "RECOVERY", 500);
         return writeNamedTrialActorCheckpoint(actor, new Wave7NamedTrialActorPolicy.Checkpoint(
                 checkpoint.eventId(), checkpoint.generation(), checkpoint.chamber(), checkpoint.trial(),
                 checkpoint.actorId(), checkpoint.attackIndex(), Wave7NamedTrialActorPolicy.Attack.NONE,
@@ -37888,6 +37907,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      */
     private void renderWave7AbilityEffect(LivingEntity actor, Player target, String abilityId) {
         if (actor == null || !actor.isValid() || abilityId == null || abilityId.isBlank()) return;
+        sendTrialFollowupPose(actor, "RELEASE", 350);
         Location feet = actor.getLocation().clone();
         Location eye = actor.getEyeLocation().clone();
         Location impact = target != null && target.isOnline() ? target.getLocation().clone() : null;
@@ -38349,6 +38369,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void tickRealitySplitWarden(LivingEntity warden, RealitySplitTrialRuntimeState state) {
         if (!warden.isValid() || warden.isDead() || state == null) return;
         if (advanceWardenEmergence(warden)) return;
+        if (state.action == 1) {
+            String clip = state.attackPattern == WARDEN_SLAM_PATTERN ? "WARDEN_SLAM"
+                    : Wave7WardenCombatPolicy.profileForPattern(state.attackPattern).warning()
+                            == Wave7WardenCombatPolicy.Warning.SONIC_LUNGE ? "WARDEN_SONIC_LUNGE"
+                    : wardenStrikeAbility(Wave7WardenCombatPolicy.profileForPattern(state.attackPattern)).substring(6);
+            sendTrialPose(warden, clip, "WINDUP", Math.max(0L, state.phaseUntilTick * 50L),
+                    REALITY_SPLIT_ACTION_TELEGRAPH_TICKS * 50,
+                    (int)Math.max(0L, (REALITY_SPLIT_ACTION_TELEGRAPH_TICKS - (state.phaseUntilTick-eventTickCounter))*50L));
+        } else if (state.action == 0) sendTrialFollowupPose(warden, "RECOVERY", 600);
         Wave7WardenCombatPolicy.AttackProfile attack =
                 Wave7WardenCombatPolicy.profileForPattern(state.attackPattern);
         if (state.action == 2) {
@@ -39751,6 +39780,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // This tag is saved with the actor's position by Paper. Restart resumes
         // the same owned body/anchor; it neither spawns a duplicate nor attacks underground.
         checkpointWardenEmergence(warden, state, elapsed);
+        sendTrialPose(warden, "WARDEN_SLAM", "EMERGE", 0L,
+                Wave7WardenEmergePolicy.EMERGE_TICKS * 50, elapsed * 50);
         float rumble = Wave7WardenEmergePolicy.rumbleVolume(elapsed);
         if (elapsed % 4 == 0 && rumble > 0.0F) {
             current.getWorld().playSound(current, Sound.BLOCK_SCULK_SENSOR_CLICKING,
@@ -40365,6 +40396,45 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         sendWaveMobPose(actor, stage.equals("frozen") ? "WAVE_FROZEN" : stage.equals("recover")
                 ? "WAVE_RECOVER" : stage.equals("charge") ? "WAVE_WINDUP" : "WAVE_RELEASE",
                 stage.equals("recover") ? 900L : 1_500L);
+    }
+
+    /** Capability is presentation-only; damage/AI never depends on client acknowledgement. */
+    private void sendTrialPose(Entity actor, String action, String stage, long cast, int duration, int elapsed) {
+        if (actor == null || !actor.isValid() || !ownedBySession(actor, eventId, generation)
+                || !isRealitySplitTrialRuntimeActive()) return;
+        String instance = entityBindingInstances.get(actor.getUniqueId());
+        duration = Math.max(1, Math.min(10_000, duration));
+        elapsed = Math.max(0, Math.min(duration, elapsed));
+        TrialPoseEmission previous = trialPoseEmissions.get(actor.getUniqueId());
+        boolean same = previous != null && previous.generation() == generation && previous.event().equals(eventId)
+                && previous.cast() == cast && previous.stage().equals(stage) && previous.action().equals(action);
+        if (same && eventTickCounter - previous.sentTick() < 4L) return;
+        final me.copimine.protocol.Wave7AnimationFrame frame;
+        try { frame = new me.copimine.protocol.Wave7AnimationFrame(
+                me.copimine.protocol.Wave7AnimationFrame.Action.valueOf(action),
+                me.copimine.protocol.Wave7AnimationFrame.Stage.valueOf(stage), cast, elapsed, duration); }
+        catch (IllegalArgumentException unsupported) { return; }
+        trialPoseEmissions.put(actor.getUniqueId(), new TrialPoseEmission(generation, eventId, cast, action,
+                stage, same ? previous.startedTick() : eventTickCounter - elapsed / 50L, duration, eventTickCounter));
+        if (instance == null) return;
+        int chamber = readInt(actor, keyChamberId, -1);
+        var assignment = realitySplitChamberController.assignment();
+        for (Player viewer : eventAudience()) {
+            if (!trialAnimationCapablePlayers.contains(viewer.getUniqueId()) || !isEventParticleViewer(viewer, actor.getLocation())
+                    || chamber < 0 || !assignment.playersIn(chamber).contains(viewer.getUniqueId())) continue;
+            sendClientPacket(viewer, "END_ENTITY_PHASE", instance, duration,
+                    actor.getUniqueId().toString(), frame.encode());
+        }
+    }
+
+    private void sendTrialFollowupPose(Entity actor, String stage, int duration) {
+        TrialPoseEmission previous = trialPoseEmissions.get(actor.getUniqueId());
+        if (previous == null || previous.generation() != generation || !previous.event().equals(eventId)) return;
+        // A full release/recoil finishes before recovery can take over.
+        long age = Math.max(0L, eventTickCounter - previous.startedTick()) * 50L;
+        if (stage.equals("RECOVERY") && previous.stage().equals("RELEASE") && age < previous.duration()) return;
+        int elapsed = previous.stage().equals(stage) ? (int)Math.min(duration, age) : 0;
+        sendTrialPose(actor, previous.action(), stage, previous.cast(), duration, elapsed);
     }
 
     private void sendWaveMobPose(Entity actor, String pose, long duration) {
@@ -44287,6 +44357,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private Entity unregisterOwnedEntity(UUID entityId, String reason) {
         bossSpellModelIds.remove(entityId);
         wardenEmergences.remove(entityId);
+        trialPoseEmissions.remove(entityId);
         if (entityId == null) {
             return null;
         }
@@ -58116,6 +58187,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             endEventBridgeV4.unbindContext(uuid);
         }
         clientBridgeSessions.remove(uuid);
+        trialAnimationCapablePlayers.remove(uuid);
         echoPresentationCapablePlayers.remove(uuid);
         if (echoPresentationProbe != null && echoPresentationProbe.owner().equals(uuid))
             clearEchoPresentationProbe();
@@ -60765,8 +60837,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 return;
             }
             boolean supportsEchoPresentation = false;
+            boolean supportsTrialAnimation = false;
             for (int index = 0; index < effectCount; index++) {
-                supportsEchoPresentation |= "ECHO_PRESENTATION_V1".equals(readBridgeUtf(input, 96));
+                String capability = readBridgeUtf(input, 96);
+                supportsEchoPresentation |= "ECHO_PRESENTATION_V1".equals(capability);
+                supportsTrialAnimation |= "TRIAL_ANIMATION_V1".equals(capability);
             }
             readBridgeUtf(input, 64);
             readBridgeUtf(input, 128);
@@ -60784,6 +60859,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 registerClientBridgeSession(player, protocol, session, clientVersion);
                 updateEchoPresentationCapability(player, protocol, session, clientVersion,
                         supportsEchoPresentation && clientVisuals);
+                if (Objects.equals(clientBridgeSessions.get(player.getUniqueId()), session)) {
+                    if (supportsTrialAnimation && clientVisuals) trialAnimationCapablePlayers.add(player.getUniqueId());
+                    else trialAnimationCapablePlayers.remove(player.getUniqueId());
+                }
                 if (Objects.equals(ritualPrisonerId(), player.getUniqueId())) {
                     sendRitualPrisonerState(player);
                 }
@@ -60792,6 +60871,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if ("capabilities_update".equals(type)) {
                 updateEchoPresentationCapability(player, protocol, session, clientVersion,
                         supportsEchoPresentation && clientVisuals);
+                if (Objects.equals(clientBridgeSessions.get(player.getUniqueId()), session)) {
+                    if (supportsTrialAnimation && clientVisuals) trialAnimationCapablePlayers.add(player.getUniqueId());
+                    else trialAnimationCapablePlayers.remove(player.getUniqueId());
+                }
             }
             // V3 is telemetry only; mutating requests require the signed V4 receiver.
         } catch (java.io.IOException | RuntimeException ignored) {

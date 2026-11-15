@@ -837,6 +837,7 @@ public final class ClientBridgeProtocol {
     private static Set<String> supportedEffects() {
         Set<String> supported = new LinkedHashSet<>();
         supported.add("ECHO_PRESENTATION_V1");
+        supported.add("TRIAL_ANIMATION_V1");
         for (String effectId : SUPPORTED_EFFECTS) {
             supported.add(effectId.toUpperCase(Locale.ROOT));
         }

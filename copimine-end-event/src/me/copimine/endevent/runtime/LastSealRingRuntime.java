@@ -28,6 +28,7 @@ public final class LastSealRingRuntime {
         boolean hit(LivingEntity boss, Player player, double damage);
         void finished(Scope scope, String reason);
         void failed(String reason);
+        default void repelPrelude(Location origin, double progress, boolean release) { }
     }
     private record FallLease(UUID world, long generation, long expiresNanos) { }
     private final Host host;
@@ -41,6 +42,8 @@ public final class LastSealRingRuntime {
     private long startedTick, lastTick = Long.MIN_VALUE;
     private boolean active, cleanupFailureReported;
     private long nextCleanupTick;
+    private long preludeTick = -1L;
+    private boolean repelled;
 
     public LastSealRingRuntime(Host host) { this.host = Objects.requireNonNull(host); }
     public boolean active() { return active; }
@@ -51,6 +54,13 @@ public final class LastSealRingRuntime {
         catch (RuntimeException failure) {
             cancel("admission-failed"); host.failed(failure.getMessage()); return false;
         }
+    }
+
+    /** One owned warning -> repel -> pause -> normal three-row timeline. */
+    public boolean startWithRepel(LivingEntity boss, int players, long tick, long seed) {
+        if (!start(boss, players, tick, seed)) return false;
+        preludeTick = tick; startedTick = tick + 30L; repelled = false;
+        return true;
     }
 
     private boolean startChecked(LivingEntity boss, int admittedPlayers, long tick, long seed) {
@@ -82,7 +92,7 @@ public final class LastSealRingRuntime {
         scope = host.scope(boss);
         if (scope == null || scope.event() == null || scope.event().isBlank() || scope.generation() <= 0) return false;
         origin = at.clone(); layout = planned; startedTick = tick; lastTick = Long.MIN_VALUE;
-        hitPlayers.clear(); previousPlayers.clear();
+        hitPlayers.clear(); previousPlayers.clear(); preludeTick = -1L; repelled = false;
         try {
             carrier = host.createCarrier(origin.clone());
             if (carrier == null || !carrier.isValid()) throw new IllegalStateException("carrier-refused");
@@ -105,8 +115,19 @@ public final class LastSealRingRuntime {
         if (lastTick == tick) return;
         if (boss == null || !host.active(boss) || !Objects.equals(scope, host.scope(boss))
                 || carrier == null || !carrier.isValid()) { cancel("owner-or-carrier-lost"); return; }
-        if (tick < startedTick || tick < lastTick) { cancel("clock-rewound"); return; }
+        if (tick < lastTick || tick < (preludeTick >= 0 ? preludeTick : startedTick)) {
+            cancel("clock-rewound"); return;
+        }
         lastTick = tick;
+        if (preludeTick >= 0 && tick < startedTick) {
+            try {
+                long age = tick - preludeTick;
+                boolean release = age >= 20L && !repelled;
+                if (release) repelled = true;
+                host.repelPrelude(origin.clone(), Math.min(1D, age / 20D), release);
+            } catch (RuntimeException failure) { cancel("repel-failed"); host.failed(failure.toString()); }
+            return;
+        }
         long elapsed = tick - startedTick;
         if (elapsed >= CAST_TICKS) { cancel("complete"); return; }
         int row = (int) (elapsed / ROW_TICKS), age = (int) (elapsed % ROW_TICKS);

@@ -1567,6 +1567,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             new me.copimine.endevent.domain.SmallKaguneCadence();
     private me.copimine.endevent.runtime.LastSealRingRuntime lastSealRing;
     private me.copimine.endevent.runtime.LastSealConstructRuntime lastSealConstruct;
+    private long cocoonPressureGeneration = -1L;
+    private long cocoonPressureSinceTick = -1L, cocoonPressureNextTick;
     /**
      * Contract 15.2 Type A: delayed spectral attack replicas. Each copy has its
      * own policy timeline and its own damage ledger key, so the strike and the
@@ -46981,6 +46983,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!isBossCombatRuntimeActive(boss)) {
             return;
         }
+        if (tickCocoonPressureResponse(boss)) return;
         if (tickBossCastLocomotion(boss, now, finalSealPinned)) return;
         maintainBossTargetSelection(boss, now);
         if (!finalSealPinned) {
@@ -52666,6 +52669,34 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             public boolean hit(LivingEntity boss, Player player, double damage) {
                 return applyBossAbilityDamage(boss, player, damage);
             }
+            public void repelPrelude(Location origin, double progress, boolean release) {
+                Location ground = origin.clone().add(0D, .12D, 0D);
+                if (!release && eventTickCounter % 2L == 0L && progress < 1D) {
+                    double radius = .8D + progress * 3.7D;
+                    for (int i = 0; i < 20; i++) {
+                        double angle = Math.PI * 2D * i / 20D;
+                        spawnEventParticle(ground.clone().add(Math.cos(angle)*radius, 0D, Math.sin(angle)*radius),
+                                Particle.REVERSE_PORTAL, 1, 0D, 0D, 0D, 0D);
+                    }
+                }
+                if (!release) return;
+                LivingEntity boss = liveBoss(); if (boss == null) return;
+                playBossImpactPresentation(boss, BossImpactGeometryPolicy.Kind.SLAM, ground,
+                        new Vector(0D, 0D, 1D), 5D, true, true);
+                for (Player player : participants()) {
+                    Vector away = player.getLocation().toVector().subtract(origin.toVector()).setY(0D);
+                    if (away.lengthSquared() > 25D) continue;
+                    if (away.lengthSquared() < .01D) away = new Vector(1D, 0D, 0D);
+                    away.normalize();
+                    boolean safe = true;
+                    // Validate the entire short shove corridor, not just an endpoint beyond a wall.
+                    for (double distance = .5D; distance <= 6D; distance += .5D) {
+                        Location probe = player.getLocation().clone().add(away.clone().multiply(distance));
+                        if (!isSafeCombatParticipantLocation(probe, player)) { safe = false; break; }
+                    }
+                    if (safe) player.setVelocity(away.multiply(.85D).setY(.22D));
+                }
+            }
             public void finished(me.copimine.endevent.runtime.LastSealRingRuntime.Scope owner, String reason) {
                 LivingEntity current = liveBoss();
                 if (owner != null && generation == owner.generation() && Objects.equals(eventId, owner.event())
@@ -52677,6 +52708,40 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         });
         return lastSealRing;
+    }
+
+    /** Five seconds of continuous close pressure, then a separate 28-second combo cooldown. */
+    private boolean tickCocoonPressureResponse(LivingEntity boss) {
+        if (cocoonPressureGeneration != generation) {
+            cocoonPressureGeneration = generation;
+            cocoonPressureSinceTick = -1L; cocoonPressureNextTick = 0L;
+        }
+        if (boss == null || bossPhase != BossPhase.LAST_SEAL || guardianDeaths.cocoonBroken()) {
+            cocoonPressureSinceTick = -1L; return false;
+        }
+        Location center = boss.getLocation();
+        Player close = activeBossParticipants().stream()
+                .filter(player -> !isPlayerUnderTentacleControl(player) && player.getWorld().equals(boss.getWorld()))
+                .filter(player -> {
+                    Location at = player.getLocation();
+                    double dx = at.getX()-center.getX(), dz = at.getZ()-center.getZ();
+                    return dx*dx + dz*dz <= 25D && Math.abs(at.getY()-center.getY()) <= 7D;
+                }).findFirst().orElse(null);
+        if (close == null) { cocoonPressureSinceTick = -1L; return false; }
+        if (cocoonPressureSinceTick < 0L) cocoonPressureSinceTick = eventTickCounter;
+        if (eventTickCounter - cocoonPressureSinceTick < 100L || eventTickCounter < cocoonPressureNextTick
+                || bossAbilityState != BossAbilityState.NONE || isKaguneRingCastActive() || bossAmbushOwnsMajorCast()) return false;
+        if (!reserveBossHazard(EndRiftAiPolicy.BossSpell.SMALL_KAGUNE, close)) return false;
+        if (!ringRuntime().startWithRepel(boss, eventScalePlayers(), eventTickCounter,
+                generation ^ eventTickCounter * 31L)) {
+            releaseBossHazardReservation("cocoon-pressure-refused");
+            cocoonPressureNextTick = eventTickCounter + 40L; // Bounded retry if no valid escape passages exist.
+            return false;
+        }
+        cocoonPressureNextTick = eventTickCounter + 560L;
+        cocoonPressureSinceTick = -1L;
+        sendBossAnimationVisualUpdate(boss, "SPELL_VOID_BLAST");
+        return true;
     }
 
     private me.copimine.endevent.runtime.LastSealConstructRuntime constructRuntime() {

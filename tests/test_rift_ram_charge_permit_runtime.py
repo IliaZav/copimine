@@ -59,11 +59,12 @@ public class RamChargePermitProbe {
     RamChargePermitProbe.Entity getEntity(){return (RamChargePermitProbe.Entity)entity;}
     Location getTo(){return to;}void setCancelled(boolean v){cancelled=v;}
   }
-  enum Sound {ENTITY_RAVAGER_ATTACK}
+  enum Sound {ENTITY_RAVAGER_ATTACK,ENTITY_RAVAGER_STEP}
   enum PotionEffectType {BLINDNESS,SLOWNESS}
   record PotionEffect(PotionEffectType type,int ticks,int amp){}
   static class World {void playSound(Location l,Sound s,float v,float p){}}
   String readString(Entity e,Object key){return "wave";}
+  void chargeTell(Player focus,int elapsed){}
   boolean isWaveCombatKind(String kind){return true;}
   boolean isOwnedRitualSphereDestination(Entity e,Location at){return false;}
   Logger getLogger(){return Logger.getLogger("RamChargePermitProbe");}
@@ -88,7 +89,12 @@ public class RamChargePermitProbe {
     Player player=p.new Player();player.at=new Location(1,65,0);
     p.charge(List.of(player));
     check(p.host.moves==1&&p.ram.at.x>1,"charge must move through internal permit");
-    check(p.host.damages==1&&p.recoveries==1,"accepted charge contact damages once");
+    // An accepted contact damages the victim exactly once AND must NOT cancel the
+    // committed charge: the victim consumes only its own hit receipt and the Ram
+    // continues along the locked segment (a body must not block the pillar run).
+    // Asserting recoveries==1 here would re-pin the old cancel-on-hit behaviour.
+    check(p.host.damages==1&&p.chargeHits.size()==1&&p.recoveries==0,
+          "accepted charge contact damages once without cancelling the charge");
     check(p.combatTeleportPermits.isEmpty(),"permit is released after move");
     RamChargePermitProbe denied=new RamChargePermitProbe();denied.ownedEntities.put(denied.ram.uuid,denied.ram);
     denied.host.refuse=true;Player target=denied.new Player();target.at=new Location(1,65,0);

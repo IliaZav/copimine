@@ -14,7 +14,9 @@ import java.util.Map;
 public final class GuardianSpellMesh {
     private static final String[] NAMES = {"void_core", "inferno_core", "rift_lance", "echo_shard",
             "final_seal", "chest_iris", "kagune_splinter", "fault_fragment",
-            "void_rune", "inferno_crown", "summon_arch", "arrow_rack"};
+            "void_rune", "inferno_crown", "summon_arch", "arrow_rack",
+            // The four miniboss signatures: door, chains, bloom and helix.
+            "rift_gate", "snare_chains", "echo_bloom", "euphoria_helix"};
     private static final Map<String, List<Vertex>> MESHES = loadAll();
     public record Vertex(float x, float y, float z, float u, float v, float nx, float ny, float nz) { }
     private GuardianSpellMesh() { }

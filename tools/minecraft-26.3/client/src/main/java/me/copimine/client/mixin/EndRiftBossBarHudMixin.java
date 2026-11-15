@@ -2,6 +2,7 @@ package me.copimine.client.mixin;
 
 import me.copimine.client.ClientBridgeProtocol;
 import me.copimine.client.RiftRamBossBarHud;
+import me.copimine.client.Wave7MinibossBossBarHud;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.BossHealthOverlay;
 import net.minecraft.client.gui.components.LerpingBossEvent;
@@ -28,6 +29,13 @@ public abstract class EndRiftBossBarHudMixin {
     private void copimine$hideVanillaEndRiftBar(GuiGraphicsExtractor context, int x, int y,
                                                  BossEvent bossBar, CallbackInfo callback) {
         copimine$customBarRendered = null;
+        // Wave 7 minibosses own their own authored bars; each is recognised by
+        // its server title, so an unrelated boss bar is never repainted.
+        if (Wave7MinibossBossBarHud.render(context, x, y, bossBar)) {
+            copimine$customBarRendered = bossBar;
+            callback.cancel();
+            return;
+        }
         if (RiftRamBossBarHud.render(context, x, y, bossBar)) {
             copimine$customBarRendered = bossBar;
             callback.cancel();

@@ -70,15 +70,91 @@ public final class Wave7WardenModel extends WardenModel {
         // reads as a living mantle rather than a static prop.
         leftShard.zRot = -0.10F - Math.abs(pulse) * 0.07F;
         rightShard.zRot = 0.10F + Math.abs(pulse) * 0.07F;
-        // The core swells while a melee swing or the sonic blast plays, so the
-        // chest itself tells the player when the Warden is about to commit.
-        boolean charging = state.attackAnimationState.isStarted()
+        // Attack intent. The vanilla flags below only fire when the mob's own AI
+        // plays a swing, and the trial Warden's AI is off -- its swings are
+        // resolved by the plugin -- so they were permanently false and the core
+        // never told the player anything. The wave pose is the authoritative
+        // signal: it is leased from the same action field the damage uses.
+        String wavePose = ((EndRiftRenderStateAccess) state).copimine$wavePose();
+        boolean winding = ((EndRiftRenderStateAccess) state).copimine$trialFrame() == null && ("WAVE_WINDUP".equals(wavePose) || "WAVE_FROZEN".equals(wavePose));
+        boolean releasing = ((EndRiftRenderStateAccess) state).copimine$trialFrame() == null && "WAVE_RELEASE".equals(wavePose);
+        boolean recovering = ((EndRiftRenderStateAccess) state).copimine$trialFrame() == null && "WAVE_RECOVER".equals(wavePose);
+        boolean hit = "WAVE_HIT".equals(wavePose);
+        boolean dying = "WAVE_DEATH".equals(wavePose);
+        boolean charging = winding || releasing
+                || state.attackAnimationState.isStarted()
                 || state.sonicBoomAnimationState.isStarted();
         float charge = charging ? 1.0F : 0.0F;
         riftCore.yScale = 1.0F + Math.abs(pulse) * 0.10F + charge * 0.22F;
         riftCore.xScale = 1.0F + Math.abs(pulse) * 0.06F + charge * 0.14F;
         riftCore.zScale = riftCore.yScale;
-        Wave7ActorAnimator.apply(root(), state, true);
+        if (dying) {
+            // Collapse. The trial Warden has no vanilla death animation the
+            // client could reuse -- it is a scripted actor -- so the body folds
+            // forward, the arms lose their guard and the rift core spends its
+            // last light instead of vanishing on the removal tick.
+            float sag = Mth.sin(age * 0.20F) * 0.02F;
+            body.xRot += 0.88F + sag;
+            body.zRot += 0.18F;
+            head.xRot += 0.52F;
+            leftArm.xRot += 0.70F;
+            rightArm.xRot += 0.62F;
+            leftArm.zRot -= 0.30F;
+            rightArm.zRot += 0.26F;
+            leftShard.zRot -= 0.42F;
+            rightShard.zRot += 0.38F;
+            backSpines.xRot += 0.30F;
+            chestPlate.yScale = 0.86F;
+            riftCore.yScale = 0.40F;
+            riftCore.xScale = 0.40F;
+            riftCore.zScale = 0.40F;
+        } else if (hit) {
+            // Flinch: the mass rocks back off the blow and the core gutters.
+            // Deliberately short and shallow -- the miniboss has no real
+            // hit-stun, so this must not read as a stagger.
+            float recoil = 1.0F + Mth.sin(age * 0.42F) * 0.10F;
+            body.xRot -= 0.16F * recoil;
+            head.xRot -= 0.20F * recoil;
+            leftArm.xRot -= 0.22F;
+            rightArm.xRot -= 0.26F;
+            leftShard.zRot -= 0.14F;
+            rightShard.zRot += 0.14F;
+            riftCore.yScale *= 0.72F;
+            riftCore.xScale *= 0.72F;
+            riftCore.zScale = riftCore.yScale;
+        } else if (winding) {
+            // Coil: the Warden rocks back onto its heels and lifts the swinging
+            // arm, and the shards spread wide so the silhouette itself reads as
+            // "something is coming" even before the warning particles land.
+            float coil = 0.10F + Mth.sin(age * 0.30F) * 0.02F;
+            body.xRot -= coil;
+            head.xRot += coil * 0.6F;
+            leftArm.xRot -= 0.55F;
+            rightArm.xRot -= 0.55F;
+            leftShard.zRot -= 0.22F;
+            rightShard.zRot += 0.22F;
+            backSpines.xRot -= 0.10F;
+        } else if (releasing) {
+            // Commit: the whole body drives forward through the swing.
+            body.xRot += 0.16F;
+            head.xRot += 0.10F;
+            leftArm.xRot += 0.85F;
+            rightArm.xRot += 0.85F;
+            leftShard.zRot += 0.10F;
+            rightShard.zRot -= 0.10F;
+            chestPlate.yScale += 0.08F;
+        } else if (recovering) {
+            // Open: the follow-through leaves the guard down, which is the
+            // window the party is meant to punish.
+            float slump = 0.06F + Mth.sin(age * 0.16F) * 0.015F;
+            body.xRot += slump;
+            head.xRot += slump;
+            leftArm.xRot += 0.28F;
+            rightArm.xRot += 0.28F;
+            leftShard.zRot += 0.06F;
+            rightShard.zRot -= 0.06F;
+        }
+        if (!hit && !dying) Wave7ActorAnimator.apply(root(), state, true);
     }
 
     private static final class ModelPartParts {

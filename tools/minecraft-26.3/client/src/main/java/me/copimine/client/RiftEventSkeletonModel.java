@@ -283,12 +283,49 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
     private void poseMarksman(SkeletonRenderState state, float animationProgress, float walkSpeed) {
         EndRiftRenderStateAccess access = (EndRiftRenderStateAccess) state;
         String wavePose = access.copimine$wavePose();
-        boolean drawing = "WAVE_WINDUP".equals(wavePose) || "WAVE_FROZEN".equals(wavePose);
-        boolean recovering = "WAVE_RECOVER".equals(wavePose);
+        boolean drawing = access.copimine$trialFrame() == null && ("WAVE_WINDUP".equals(wavePose) || "WAVE_FROZEN".equals(wavePose));
+        boolean recovering = access.copimine$trialFrame() == null && "WAVE_RECOVER".equals(wavePose);
+        boolean loosing = access.copimine$trialFrame() == null && "WAVE_RELEASE".equals(wavePose);
+        boolean hit = "WAVE_HIT".equals(wavePose);
+        boolean dying = "WAVE_DEATH".equals(wavePose);
         // The gait that super.setupAnim produced is the base layer; the draw is
         // added on top of it so a moving Marksman still visibly walks.
         float stride = Mth.clamp(walkSpeed, 0.0F, 1.0F);
-        if (drawing) {
+        if (dying) {
+            // Collapse: the bow arm goes slack, the spine folds and the sight
+            // rides down with the head. An archer that dies still aiming is the
+            // frozen-statue defect this rig was rebuilt to remove.
+            float sag = Mth.sin(animationProgress * 0.20F) * 0.02F;
+            leftArm.xRot = -0.28F;
+            rightArm.xRot = -0.16F;
+            leftArm.yRot = 0.06F;
+            rightArm.yRot = -0.12F;
+            leftArm.zRot = -0.28F;
+            rightArm.zRot = 0.34F;
+            body.xRot = 0.78F + sag;
+            body.zRot = 0.16F;
+            head.xRot = 0.44F;
+            head.yRot = 0.26F;
+            leftLeg.xRot = -0.62F;
+            rightLeg.xRot = 0.30F;
+            marksmanSight.yRot = 0.0F;
+            marksmanSight.xRot = 0.30F;
+            marksmanQuiver.xRot = 0.42F;
+        } else if (hit) {
+            // Flinch: a short recoil off the arrow that landed, then back to
+            // the fight. It must not read as a stagger the fight never gave.
+            float recoil = 1.0F + Mth.sin(animationProgress * 0.40F) * 0.10F;
+            leftArm.xRot -= 0.20F * recoil;
+            rightArm.xRot -= 0.24F * recoil;
+            leftArm.yRot += 0.05F;
+            rightArm.yRot -= 0.05F;
+            body.xRot -= 0.12F * recoil;
+            head.xRot -= 0.16F * recoil;
+            body.yRot = 0.0F;
+            marksmanSight.yRot = 0.0F;
+            marksmanSight.xRot = 0.0F;
+            marksmanQuiver.xRot = Mth.sin(animationProgress * 0.09F) * 0.03F - 0.10F;
+        } else if (drawing) {
             leftArm.xRot = -1.42F + Mth.sin(animationProgress * 0.22F) * 0.03F;
             rightArm.xRot = -1.06F + Mth.cos(animationProgress * 0.31F) * 0.02F;
             leftArm.yRot = -0.14F;
@@ -298,6 +335,18 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
             rightArm.zRot = Mth.sin(animationProgress * 0.45F) * 0.035F;
             head.xRot += 0.05F;
             body.yRot = 0.06F;
+        } else if (loosing) {
+            // The single frame the arrow leaves: the draw snaps open, the
+            // string hand kicks back and the whole body takes the recoil. This
+            // is what a scripted Marksman was missing -- its shots arrived from
+            // a model that never stopped aiming.
+            leftArm.xRot = -1.52F;
+            rightArm.xRot = -0.92F;
+            leftArm.yRot = -0.10F;
+            rightArm.yRot = 0.22F;
+            rightArm.zRot = 0.10F;
+            head.xRot -= 0.04F;
+            body.yRot = 0.02F;
         } else if (recovering) {
             // Follow-through: the draw releases and the arms drop past neutral.
             leftArm.xRot = -0.55F + stride * Mth.cos(animationProgress * 0.5F) * 0.25F;

@@ -195,6 +195,8 @@ import me.copimine.endevent.domain.WavePressurePolicy;
 import me.copimine.endevent.domain.WaveProjectileAdmissionController;
 import me.copimine.endevent.domain.WaveProjectileTargetPolicy;
 import me.copimine.endevent.domain.Wave4PressurePackPolicy;
+import me.copimine.endevent.domain.Wave7MinibossBossBarPolicy;
+import me.copimine.endevent.domain.Wave7MinibossPosePolicy;
 import me.copimine.endevent.domain.Wave7WardenCombatPolicy;
 import me.copimine.endevent.domain.WardenSlamTriggerPolicy;
 import me.copimine.endevent.domain.MinibossGroupSpellPolicy;
@@ -1462,6 +1464,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, Location> activeVoidMarkCenters = new LinkedHashMap<>();
     private final Set<UUID> activeRiftProjectiles = new HashSet<>();
     private final Set<UUID> bossSpellModelIds = new HashSet<>();
+    /**
+     * Miniboss spell bodies in flight. Kept apart from {@link #bossSpellModelIds}
+     * because several minibosses may be mid-cast at once where only one Guardian
+     * ever casts, and because their leases are keyed to different owners.
+     */
+    private static final int MAX_MINI_BOSS_SPELL_MODELS = 8;
+    /**
+     * Lifetime of a Wave 7 ability body in ticks. The longest authored Wave 7
+     * telegraph plus its release is well under three seconds, so this bounds the
+     * body to the visible beat instead of letting it linger after the attack
+     * resolved; `playCasterSpellBody` also clamps to 80.
+     */
+    private static final int WAVE7_ABILITY_BODY_TICKS = 44;
+    private final Set<UUID> miniBossSpellModelIds = new HashSet<>();
     private final Map<UUID, BukkitTask> riftProjectileTasks = new HashMap<>();
     private final Map<UUID, RiftFireballRuntimeState> activeRiftFireballs = new LinkedHashMap<>();
     /** Non-persistent boss RIFT hazards; unlike Wave 4 these never mutate blocks. */
@@ -1921,6 +1937,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private BossBar bossBar;
     /** Wave 6 Rift Ram armour bar; separate from the Guardian's phase bar. */
     private BossBar riftRamBossBar;
+    /** Wave 7 miniboss bars, keyed by the actor's entity UUID. */
+    private final Map<UUID, BossBar> wave7MinibossBars = new LinkedHashMap<>();
+    /**
+     * Last pose published per Wave 7 miniboss actor.
+     *
+     * <p>The pose only has to be sent when it changes: the client holds the
+     * lease the server granted and falls back to WAVE_COMBAT on expiry, so a
+     * per-tick resend would be pure packet traffic. The map also carries the
+     * edge that inserts the release frame.</p>
+     */
+    private final Map<UUID, me.copimine.endevent.domain.Wave7MinibossPosePolicy.Pose>
+            wave7MinibossPoses = new HashMap<>();
     private UUID bossVisualCueOwner;
     private long bossVisualCueGeneration = Long.MIN_VALUE;
     private long bossVisualCueSequence;
@@ -6257,6 +6285,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (deathDropIntegration != null) deathDropIntegration.close();
         if (deathProtectionListener != null) deathProtectionListener.clear();
         clearWave7Admission();
+        clearWave7MinibossBossBars();
         // Contract 14.4: a disabled plugin must not leave magma behind either;
         // the inferno puts its exact originals back before the scheduler stops.
         clearArenaInferno();
@@ -21032,6 +21061,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (coordinated) playWaveAbilitySound(miniBoss, spell.id(), "charge");
         getLogger().info("MINIBOSS_SPELL_TELEGRAPH entity=" + miniBossId + " spell=" + spell.id()
                 + " target=" + target.getUniqueId() + " generation=" + generation);
+        // The boss path spawns one authored body per cast; a miniboss cast only
+        // ever drew its particle silhouette, so the ability that closes on the
+        // player had no geometry at all. Same table, but a miniboss lease: the
+        // body lives while the miniboss does, not while a Guardian cast does.
+        // The anchor decides whether the body belongs to the caster or to the
+        // marked floor.
+        var modelShape = BossSpellGeometryPolicy.shape(spell.id());
+        var modelAnchor = BossSpellGeometryPolicy.anchor(modelShape,
+                BossSpellGeometryPolicy.Beat.CHARGE);
+        Location modelOrigin = modelAnchor == BossSpellGeometryPolicy.Anchor.LOCKED_FLOOR
+                ? committedMark.clone().add(0, .6D, 0)
+                : miniBoss.getLocation().clone().add(0, 1.2D, 0);
+        playMiniBossSpellModel(miniBoss, spell.id(), modelOrigin, warningTicks);
         final int[] ticks = {0};
         BukkitTask[] holder = new BukkitTask[1];
         holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
@@ -21165,8 +21207,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         horizontal.normalize();
         Vector side = new Vector(-horizontal.getZ(), 0.0D, horizontal.getX()).normalize();
         Vector up = new Vector(0.0D, 1.0D, 0.0D);
+        // This halo used to be one hard-coded purple for every spell, so the
+        // collapsing sphere and the bone volley shared a colour. It is now the
+        // hot end of that spell's own authored palette.
         Particle.DustOptions dust = new Particle.DustOptions(
-                Color.fromRGB(190, 76, 255), 1.25F);
+                Color.fromRGB(BossSpellVisualCompositionPolicy.composition(spellId).impactHue()), 1.25F);
+        // One bounded expansion of the authored silhouette: six frames over
+        // twelve ticks, cancelled with the event generation. It is the only
+        // place a player-facing spell puts a shape in the air rather than on
+        // the floor, so it must never be left running.
+        BossSpellGeometryPolicy.Shape shape = BossSpellGeometryPolicy.shape(spellId);
+        if (shape != null && taskRegistry != null) {
+            long ownerGeneration = generation;
+            String ownerEvent = eventId;
+            BossSpellPresentationEffects.impact(this, caster, shape, center, forward.clone(), 2.6D,
+                    BossSpellVisualCompositionPolicy.composition(spellId).impactHue(),
+                    () -> taskRegistry != null && taskRegistry.owns(ownerGeneration)
+                            && generation == ownerGeneration && Objects.equals(eventId, ownerEvent),
+                    this::eventAudience, this::isEventParticleViewer, this::registerEncounterTask);
+        }
         for (Player viewer : eventAudience()) {
             if (!isEventParticleViewer(viewer, center)) {
                 continue;
@@ -21316,18 +21375,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || modelData == 0 || !boss.getWorld().equals(at.getWorld()) || bossSpellModelIds.size() >= 2) return;
         final ItemDisplay display;
         try {
-            display = at.getWorld().spawn(at, ItemDisplay.class, entity -> {
-                // A known fallback item remains available to an older client.
-                entity.setItemStack(overlayItem(modelData, "end_rift_rift_bolt"));
-                entity.setBrightness(new Display.Brightness(15, 15));
-                entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
-                entity.setBillboard(Display.Billboard.FIXED);
-                entity.setViewRange(48F / 64F);
-                entity.setDisplayWidth(2F); entity.setDisplayHeight(2F);
-                entity.setTeleportDuration(1); entity.setInterpolationDuration(2);
-                entity.setGravity(false); entity.setInvulnerable(true); entity.setPersistent(false);
-                entity.setShadowRadius(0F);
-            });
+            display = spawnSpellModelDisplay(at, modelData);
         } catch (RuntimeException failure) {
             getLogger().warning("BOSS_SPELL_MODEL_SPAWN_FAILED spell=" + spellId);
             return;
@@ -21370,6 +21418,102 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (entity != null && entity.isValid()) entity.remove();
     }
 
+    /**
+     * Spawn one cosmetic spell body and hand ownership to a lease predicate.
+     *
+     * <p>The two callers have genuinely different lifetimes: a boss body lives as
+     * long as that boss cast ({@code bossUuid} + {@code bossCastSequence}), while
+     * a miniboss body lives as long as the miniboss itself. Reusing the boss
+     * lease for a miniboss made every miniboss body self-destruct within one
+     * task tick, because the lease compared the Guardian's UUID against the
+     * miniboss's. Sharing the spawn here and the lease there keeps the two
+     * separate without duplicating the entity setup.</p>
+     */
+    private ItemDisplay spawnSpellModelDisplay(Location at, int modelData) {
+        return at.getWorld().spawn(at, ItemDisplay.class, entity -> {
+            // A known fallback item remains available to an older client.
+            entity.setItemStack(overlayItem(modelData, "end_rift_rift_bolt"));
+            entity.setBrightness(new Display.Brightness(15, 15));
+            entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
+            entity.setBillboard(Display.Billboard.FIXED);
+            entity.setViewRange(48F / 64F);
+            entity.setDisplayWidth(2F); entity.setDisplayHeight(2F);
+            entity.setTeleportDuration(1); entity.setInterpolationDuration(2);
+            entity.setGravity(false); entity.setInvulnerable(true); entity.setPersistent(false);
+            entity.setShadowRadius(0F);
+        });
+    }
+
+    /**
+     * One cosmetic body per miniboss cast, leased to that miniboss.
+     *
+     * <p>`telegraphMiniBossSpell` used to call the boss spawner, whose lease
+     * requires {@code Objects.equals(bossUuid, owner)}. For a miniboss that is
+     * never true -- `bossUuid` is the Guardian or null -- so the display was
+     * created and then removed on the first task tick, which is
+     * indistinguishable from having no body at all.</p>
+     */
+    private void playMiniBossSpellModel(LivingEntity caster, String spellId, Location at, int ticks) {
+        playCasterSpellBody(caster, BossSpellGeometryPolicy.shape(spellId), spellId, at, ticks);
+    }
+
+    /**
+     * One cosmetic spell body for any caster-owned cast, leased to the caster.
+     *
+     * <p>Wave 7's named-trial abilities are authored in vanilla particles in
+     * {@code Wave7AbilityEffectPolicy}; the specification forbids leaving a
+     * player-facing ability as particles alone, so each one also names a real
+     * mesh body here. The lease is the caster's own: a Wave 7 miniboss is never
+     * the Guardian, so reusing the boss lease would delete the body on the first
+     * tick.</p>
+     */
+    private void playCasterSpellBody(LivingEntity caster, BossSpellGeometryPolicy.Shape shape,
+            String label, Location at, int ticks) {
+        int modelData = BossSpellGeometryPolicy.modelData(shape);
+        if (taskRegistry == null || caster == null || at == null || at.getWorld() == null
+                || modelData == 0 || !caster.getWorld().equals(at.getWorld())
+                || miniBossSpellModelIds.size() >= MAX_MINI_BOSS_SPELL_MODELS) return;
+        final ItemDisplay display;
+        try {
+            display = spawnSpellModelDisplay(at, modelData);
+        } catch (RuntimeException failure) {
+            getLogger().warning("MINIBOSS_SPELL_MODEL_SPAWN_FAILED spell=" + label);
+            return;
+        }
+        try { tag(display, EVENT_KIND_DISPLAY, 0, isOfficialEntity(caster)); }
+        catch (RuntimeException failure) {
+            unregisterOwnedEntity(display.getUniqueId(), "miniboss-spell-model-tag-failed");
+            display.remove(); return;
+        }
+        miniBossSpellModelIds.add(display.getUniqueId());
+        long ownerGeneration = generation;
+        String ownerEvent = eventId;
+        UUID ownerCaster = caster.getUniqueId();
+        int lifetime = Math.max(2, Math.min(80, ticks));
+        BukkitTask task = new BukkitRunnable() {
+            int elapsed;
+            @Override public void run() {
+                if (elapsed >= lifetime || taskRegistry == null || !taskRegistry.owns(ownerGeneration)
+                        || generation != ownerGeneration || !Objects.equals(eventId, ownerEvent)
+                        || !caster.isValid() || caster.isDead() || !display.isValid()) {
+                    removeMiniBossSpellModel(display.getUniqueId()); cancel(); return;
+                }
+                elapsed += 2;
+            }
+        }.runTaskTimer(this, 1L, 2L);
+        registerEncounterTask(task);
+    }
+
+    private void removeMiniBossSpellModel(UUID id) {
+        miniBossSpellModelIds.remove(id);
+        Entity entity = unregisterOwnedEntity(id, "miniboss-spell-model-expired");
+        if (entity != null && entity.isValid()) entity.remove();
+    }
+
+    private void clearMiniBossSpellModels() {
+        for (UUID id : new HashSet<>(miniBossSpellModelIds)) removeMiniBossSpellModel(id);
+    }
+
     private void clearBossSpellModels() {
         for (UUID id : new HashSet<>(bossSpellModelIds)) removeBossSpellModel(id);
     }
@@ -21397,6 +21541,45 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // a 48-block range and a 32-viewer cap; no gameplay volume lives here.
         var points = BossSpellGeometryPolicy.sample(shape, BossSpellGeometryPolicy.Beat.CHARGE, progress, radius);
         BossSpellPresentationEffects.frame(anchor, axis, points, composition.telegraphHue(),
+                eventAudience(), this::isEventParticleViewer);
+    }
+
+    /**
+     * Draw one authored 3D frame for a player-facing spell.
+     *
+     * <p>The boss already drew from {@link BossSpellGeometryPolicy}, but the
+     * wave and miniboss path only ever emitted camera-facing rings, so a
+     * "collapsing sphere", a "closing chain cage" and a "rising helix" all
+     * looked like the same flat decal on the floor. Routing them through the
+     * same silhouettes and the same renderer makes the shape live in space.</p>
+     *
+     * <p>Presentation only: {@code BossSpellPresentationEffects.frame} caps
+     * itself at 32 viewers, drops the frame past 48 blocks and never authorises
+     * collision or damage.</p>
+     */
+    private void emitAuthoredSpellFrame(String spellId, Location feet, Location destination,
+                                        double progress, BossSpellGeometryPolicy.Beat beat) {
+        if (feet == null || destination == null || beat == null || feet.getWorld() == null
+                || !feet.getWorld().equals(destination.getWorld())) return;
+        BossSpellGeometryPolicy.Shape shape = BossSpellGeometryPolicy.shape(spellId);
+        if (shape == null) return;
+        Location anchor = switch (BossSpellGeometryPolicy.anchor(shape, beat)) {
+            case CHEST -> feet.clone().add(0.0D, 1.6D, 0.0D);
+            case FEET -> feet.clone();
+            case LOCKED_FLOOR -> destination.clone();
+        };
+        double radius = switch (shape) {
+            case VOID_SPHERE -> 4.0D;
+            case VOID_RUNE -> VOID_MARK_RADIUS_BLOCKS;
+            default -> 2.6D;
+        };
+        var points = BossSpellGeometryPolicy.sample(shape, beat, progress, radius);
+        BossSpellVisualCompositionPolicy.Composition composition =
+                BossSpellVisualCompositionPolicy.composition(spellId);
+        int rgb = beat == BossSpellGeometryPolicy.Beat.IMPACT
+                ? composition.impactHue() : composition.telegraphHue();
+        Vector axis = destination.toVector().subtract(feet.toVector());
+        BossSpellPresentationEffects.frame(anchor, axis, points, rgb,
                 eventAudience(), this::isEventParticleViewer);
     }
 
@@ -21428,6 +21611,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         double progress = Math.max(0.0D, Math.min(1.0D,
                 elapsedTicks / (double) Math.max(1, totalTelegraphTicks)));
         double phaseAngle = elapsedTicks * 0.24D;
+        // The authored silhouette first, so the spell is a shape being built in
+        // space; the per-spell rings below then sit inside that volume.
+        emitAuthoredSpellFrame(spellId, caster.getLocation(), destination, progress,
+                BossSpellGeometryPolicy.Beat.CHARGE);
         for (Player viewer : eventAudience()) {
             if (!isEventParticleViewer(viewer, destination)
                     && !isEventParticleViewer(viewer, origin)) {
@@ -21977,8 +22164,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return corners;
     }
 
+    /**
+     * Canonical colour of a spell for the halo and glyph layers.
+     *
+     * <p>SUPERSEDED (2026-11-14): this used to be an independent switch, so the
+     * same spell had a colour here and a different one in
+     * {@link BossSpellVisualCompositionPolicy}, and three spells
+     * ({@code final_strike}, {@code rift_obelisks}, {@code rift_euphoria}) fell
+     * through to the same near-white default. The authored table now wins; the
+     * switch survives only for ids that are outside it (the legacy {@code
+     * summon} alias and any older cue that still names a spell we retired).</p>
+     */
     private Color spellVisualColor(String spellId) {
-        return switch (spellId) {
+        if (BossSpellVisualCompositionPolicy.isAuthored(spellId)) {
+            return Color.fromRGB(BossSpellVisualCompositionPolicy.composition(spellId).telegraphHue());
+        }
+        return switch (spellId == null ? "" : spellId) {
             case "void_blast" -> Color.fromRGB(244, 39, 125);
             case "rift_projectile", "rift_step" -> Color.fromRGB(69, 218, 255);
             case "rift_arrows" -> Color.fromRGB(255, 72, 72);
@@ -25424,6 +25625,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /**
+     * Draw a miniboss's own reaction to being struck.
+     *
+     * <p>This is the only pose the party causes directly, so it must come from
+     * the accepted damage rather than from the attacker's swing: a canceled
+     * hit, an immune objective and a landed blow must not look identical. At
+     * {@code MONITOR} every earlier listener has already had its say, so a
+     * canceled event never reaches this point, and the handler only publishes
+     * presentation -- it never mutates damage, health or the receipt.</p>
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onNamedWave7TrialActorHurt(EntityDamageEvent event) {
+        if (event == null) return;
+        Entity entity = event.getEntity();
+        if (!(entity instanceof LivingEntity living) || !isNamedWave7TrialActor(entity)) return;
+        // A killing blow is the death pose, and it is published from the death
+        // event; drawing a flinch first would consume the only frame the
+        // collapse has before the body is removed.
+        if (living.getHealth() - event.getFinalDamage() <= 0.0D) return;
+        publishWave7Pose(entity, Wave7MinibossPosePolicy.Pose.HIT, 0L, System.currentTimeMillis());
+    }
+
     private boolean preflightNamedEchoDuelRooms(boolean sandbox) {
         if (!realitySplitTrialController.ownsNamed(parseUuidOrNull(eventId), generation)) {
             return refuseNamedEchoDuelPreflight(null, null, "named-controller-not-owned");
@@ -28136,6 +28359,135 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 .map(Player::getUniqueId)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         updateEventBossBar(riftRamBossBar, title, progress, color, audience, true);
+    }
+
+    /**
+     * One authored bar per live Wave 7 miniboss.
+     *
+     * <p>Wave 7 used to be the only objective in the encounter with no status
+     * readout at all: the Warden, the Marksman squad and the Archmage had real
+     * health and real mechanics but the party could not see which of them was
+     * still alive, how much was left, or that a partner had died. Every live
+     * trial actor whose role owns an identity in
+     * {@link Wave7MinibossBossBarPolicy} now gets its own bar, and a bar is
+     * removed the moment its actor is gone -- the same bar can never linger on
+     * screen after the trial ends.</p>
+     *
+     * <p>The title, colour and style all come from the policy so the optional
+     * client HUD can recognise the bar and repaint it with authored art; a
+     * player without the client mod keeps the correct vanilla bar.</p>
+     */
+    private void updateWave7MinibossBossBars() {
+        boolean runtimeActive = isRealitySplitTrialRuntimeActive();
+        Set<UUID> alive = new LinkedHashSet<>();
+        if (runtimeActive) {
+            for (UUID actorId : new ArrayList<>(realitySplitTrialEntityUuids)) {
+                Entity actor = ownedEntities.get(actorId);
+                if (!(actor instanceof LivingEntity living) || !actor.isValid() || actor.isDead()
+                        || living.getHealth() <= 0.0D) {
+                    continue;
+                }
+                String role = readString(actor, keyTrialRole);
+                if (!Wave7MinibossBossBarPolicy.ownsBar(role)) {
+                    continue;
+                }
+                alive.add(actorId);
+                Wave7MinibossBossBarPolicy.Kind kind = Wave7MinibossBossBarPolicy.kindForTrialRole(role);
+                BossBar bar = wave7MinibossBars.get(actorId);
+                if (bar == null) {
+                    bar = Bukkit.createBossBar(
+                            Wave7MinibossBossBarPolicy.title(kind),
+                            BarColor.valueOf(kind.barColorName()),
+                            BarStyle.valueOf(kind.barStyleName()));
+                    bar.setProgress(1.0D);
+                    wave7MinibossBars.put(actorId, bar);
+                }
+                float progress = Wave7MinibossBossBarPolicy.progress(
+                        living.getHealth(), maxHealthOf(living));
+                Set<UUID> audience = activeWaveParticipants().stream()
+                        .filter(player -> player != null && player.isOnline())
+                        .map(Player::getUniqueId)
+                        .collect(Collectors.toCollection(LinkedHashSet::new));
+                updateEventBossBar(bar, Wave7MinibossBossBarPolicy.title(kind),
+                        progress, BarColor.valueOf(kind.barColorName()), audience, true);
+            }
+        }
+        for (UUID actorId : new ArrayList<>(wave7MinibossBars.keySet())) {
+            if (alive.contains(actorId)) continue;
+            BossBar stale = wave7MinibossBars.remove(actorId);
+            if (stale != null) {
+                stale.removeAll();
+                stale.setVisible(false);
+            }
+        }
+    }
+
+    /** Removes every Wave 7 miniboss bar; used on shutdown and on wave exit. */
+    private void clearWave7MinibossBossBars() {
+        for (BossBar bar : wave7MinibossBars.values()) {
+            if (bar == null) continue;
+            bar.removeAll();
+            bar.setVisible(false);
+        }
+        wave7MinibossBars.clear();
+        wave7MinibossPoses.clear();
+    }
+
+    /**
+     * Publish the pose a named trial caster or archer is in, from its receipt.
+     *
+     * <p>The receipt is the same record the attack resolves from, so the arms
+     * on screen cannot disagree with the damage: while the telegraph window is
+     * open the actor is drawn drawing or channelling, on the tick the deadline
+     * passes it is drawn loosing the shot, and the cooldown is drawn as the
+     * recovery that the party is supposed to punish.</p>
+     */
+    private void publishWave7CastPose(LivingEntity actor, RealitySplitTrialController.NamedTrialState trial) {
+        if (actor == null || trial == null) return;
+        Wave7NamedTrialActorPolicy.Checkpoint checkpoint = readNamedTrialActorCheckpoint(actor, trial);
+        if (checkpoint == null) return;
+        long now = System.currentTimeMillis();
+        boolean attacking = checkpoint.attack() != Wave7NamedTrialActorPolicy.Attack.NONE;
+        boolean telegraphSpent = attacking && checkpoint.phaseDeadlineMillis() <= now;
+        boolean coolingDown = !attacking && checkpoint.cooldownUntilMillis() > now;
+        long endsAt = attacking ? checkpoint.phaseDeadlineMillis() : checkpoint.cooldownUntilMillis();
+        publishWave7Pose(actor, Wave7MinibossPosePolicy.castPose(attacking, telegraphSpent, coolingDown),
+                endsAt, now);
+    }
+
+    /**
+     * Publish the Warden's pose from the same action field its damage uses.
+     *
+     * <p>The Warden runs on server ticks, not wall time, so the lease is
+     * derived from the ticks the action still has left. The recovery window is
+     * the one {@code finishTrialAttack} opened, which is exactly the window the
+     * party can hit back in.</p>
+     */
+    private void publishWave7WardenPose(LivingEntity warden, RealitySplitTrialRuntimeState state) {
+        if (warden == null || state == null) return;
+        long now = System.currentTimeMillis();
+        boolean recovering = state.action == 0 && eventTickCounter < state.nextActionTick;
+        long remainingTicks = state.action == 0
+                ? Math.max(0L, state.nextActionTick - eventTickCounter)
+                : Math.max(0L, state.phaseUntilTick - eventTickCounter);
+        publishWave7Pose(warden, Wave7MinibossPosePolicy.wardenPose(state.action, recovering),
+                now + remainingTicks * 50L, now);
+    }
+
+    /** Send a pose only when it actually changed, inserting the release frame. */
+    private void publishWave7Pose(Entity actor, Wave7MinibossPosePolicy.Pose target, long endsAt, long now) {
+        if (actor == null || target == null) return;
+        UUID actorId = actor.getUniqueId();
+        Wave7MinibossPosePolicy.Pose previous = wave7MinibossPoses.get(actorId);
+        Wave7MinibossPosePolicy.Pose pose = Wave7MinibossPosePolicy.insertRelease(previous, target);
+        if (pose == previous) return;
+        wave7MinibossPoses.put(actorId, pose);
+        sendWaveMobPose(actor, pose.wire(), Wave7MinibossPosePolicy.leaseMillis(pose, endsAt, now));
+    }
+
+    private static double maxHealthOf(LivingEntity living) {
+        AttributeInstance maximum = living.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+        return maximum == null ? living.getHealth() : maximum.getValue();
     }
 
     /**
@@ -35344,6 +35696,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         boolean checkpoint = false;
         tickRealitySplitTrialRuntimes();
+        updateWave7MinibossBossBars();
         if (phase == EventPhase.RECOVERY_REQUIRED) return;
         recoverRealitySplitOrphanRooms(now);
         if (phase == EventPhase.RECOVERY_REQUIRED) return;
@@ -35979,10 +36332,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             enterNamedRealitySplitRecovery("WAVE7_NAMED_ACTOR_RUNTIME_FAILED:" + trial.trial());
                             return;
                         }
+                        // The pose is published after the tick, from the receipt
+                        // the tick just wrote, so the arms match the attack.
+                        publishWave7CastPose(living, trial);
                     }
                 } else if (actor instanceof LivingEntity living
                         && trial.trial() == RealitySplitTrialController.NamedTrial.WARDEN) {
-                    tickRealitySplitWarden(living, realitySplitTrialRuntimeStates.get(actor.getUniqueId()));
+                    RealitySplitTrialRuntimeState wardenState = realitySplitTrialRuntimeStates.get(actor.getUniqueId());
+                    tickRealitySplitWarden(living, wardenState);
+                    publishWave7WardenPose(living, wardenState);
                 }
             }
             return;
@@ -37931,6 +38289,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 effectKey, eye, feet, aim, impact, emitter);
         me.copimine.endevent.runtime.wave7.Wave7AbilityEffectRuntime.playRelease(
                 actor.getWorld(), feet, effectKey, 0.7F, 1.0F);
+        // The passes above are vanilla particles. Every dispatched Wave 7 ability
+        // also owns a real mesh body, anchored either on the caster or on the
+        // marked floor depending on the shape: a rune, a fault or a cage belongs
+        // where it will land, while a lance or an arch belongs on the caster.
+        BossSpellGeometryPolicy.Shape bodyShape =
+                me.copimine.endevent.domain.Wave7AbilityEffectPolicy.bodyShape(effectKey);
+        if (bodyShape != null) {
+            BossSpellGeometryPolicy.Anchor bodyAnchor =
+                    BossSpellGeometryPolicy.anchor(bodyShape, BossSpellGeometryPolicy.Beat.CHARGE);
+            Location bodyOrigin = bodyAnchor == BossSpellGeometryPolicy.Anchor.LOCKED_FLOOR
+                    && impact != null && impact.getWorld() != null
+                            ? impact.clone().add(0.0D, 0.6D, 0.0D)
+                            : feet.clone().add(0.0D, 1.2D, 0.0D);
+            playCasterSpellBody(actor, bodyShape, effectKey, bodyOrigin, WAVE7_ABILITY_BODY_TICKS);
+        }
     }
 
     /**
@@ -43756,6 +44129,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         waveTwoPhantomAdmissionFailures = 0;
         if (riftRam != null) { riftRam.close(); riftRam = null; }
         if (riftRamBossBar != null) { riftRamBossBar.removeAll(); riftRamBossBar.setVisible(false); }
+        clearWave7MinibossBossBars();
         riftRamCheckpoint = Map.of();
         if (!clearRealitySplitBarriers("wave-objective-reset")) return false;
         if (!archiveWaveTwoRosterForCleanup("wave-objective-state-clear")) return false;
@@ -45319,6 +45693,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clearActiveEventArrows();
         clearCommanderAura();
         releaseAllSpiderEffects();
+        // Miniboss spell bodies are cosmetic, but they must not outlive the wave
+        // that owns them: a stale display would hang in the air after the arena
+        // emptied. The lease would drop them on the next tick anyway; clearing
+        // here means the removal is attributed to the wave boundary.
+        clearMiniBossSpellModels();
         Set<UUID> waveEntityIds = new LinkedHashSet<>();
         for (Entity entity : new ArrayList<>(ownedEntities.values())) {
             if (isWaveCleanupKind(readString(entity, keyKind), includeRewards)) {
@@ -57368,6 +57747,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Entity entity = event.getEntity();
         if (!ownedEntities.containsKey(entity.getUniqueId())) {
             return;
+        }
+        if (isNamedWave7TrialActor(entity)) {
+            // The body still exists on the death event, so this is the one
+            // moment the collapse can be seen. Published before the loot and
+            // progression branches below, which may return early; the pose is
+            // retired together with the trial's bars.
+            publishWave7Pose(entity, Wave7MinibossPosePolicy.Pose.DEATH, 0L,
+                    System.currentTimeMillis());
         }
         if (riftRam != null) {
             // The encounter admits only its body or saved final marksman UUID.

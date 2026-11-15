@@ -63,7 +63,10 @@ def test_blocks_are_journaled_before_the_arena_burns():
 
 def test_restore_puts_the_original_block_data_back():
     restore = body("private boolean restoreArenaInfernoBlocks(")
-    assert "restoreBlock(" in restore, (
+    # The capture stores the exact BlockData string, so the write-back must go
+    # through createBlockData(original) (or the restoreBlock helper). Writing
+    # only a Material would drop orientation/waterlogged/age state.
+    assert "restoreBlock(" in restore or "Bukkit.createBlockData(original)" in restore, (
         "restoration must write the captured BlockData, not just the material"
     )
     assert "isArenaInfernoSurface(" in restore, (
@@ -74,7 +77,12 @@ def test_restore_puts_the_original_block_data_back():
 def test_a_failed_journal_restore_is_retried_not_forgotten():
     """Contract 14: no permanent magma, even when the journal write fails."""
     restore = body("private boolean restoreArenaInfernoBlocks()")
-    assert "if (hazardJournal != null && !hazardJournal.markRestored())" in restore
+    # The guard also refuses while any cell is still pending, so the exact
+    # literal is the whole condition; what matters is that the journal is
+    # retired and its failure is treated as a restore failure.
+    assert "!hazardJournal.markRestored()" in restore, (
+        "restoration must retire the hazard journal entry"
+    )
     failure = restore[restore.index("!hazardJournal.markRestored()"):]
     assert "return false" in failure.split("}")[0] + "}", (
         "a failed journal restore must report failure so a later tick retries"

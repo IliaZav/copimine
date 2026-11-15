@@ -132,7 +132,7 @@ public class BossAttackAdmissionProbe {
     }
 
     enum EntityEffect {HURT}
-    enum Sound {ENTITY_ENDERMAN_STARE,ENTITY_GENERIC_EXPLODE,ENTITY_WITHER_HURT,ENTITY_PLAYER_ATTACK_SWEEP,ENTITY_PLAYER_ATTACK_STRONG,ENTITY_WARDEN_SONIC_CHARGE}
+    enum Sound {ENTITY_ENDERMAN_STARE,ENTITY_GENERIC_EXPLODE,ENTITY_WITHER_HURT,ENTITY_PLAYER_ATTACK_SWEEP,ENTITY_PLAYER_ATTACK_STRONG,ENTITY_WARDEN_SONIC_CHARGE,BLOCK_AMETHYST_BLOCK_BREAK}
     enum SoundCategory {HOSTILE}
     enum EventPhase {BOSS_ACTIVE,VICTORY_PROCESSING}
     EventPhase phase=EventPhase.BOSS_ACTIVE;
@@ -162,7 +162,10 @@ public class BossAttackAdmissionProbe {
     final Map<UUID,BukkitTask> activeVoidMarkTasks=new HashMap<>();
     final Map<UUID,Location> activeVoidMarkCenters=new HashMap<>();
     final Set<UUID> activeRiftProjectiles=new HashSet<>();
-    static class Snowball extends Entity {}
+    static class Snowball extends Entity {
+        Location getLocation(){return new Location(0,0,0);}
+        World getWorld(){return WORLD;}
+    }
     record ProjectileHitEvent(Snowball projectile,Entity hit){Entity getEntity(){return projectile;}Entity getHitEntity(){return hit;}}
     String eventId="event";long generation=7;
     PendingPlayerDamageOutcome pendingPlayerDamageOutcome;
@@ -173,6 +176,7 @@ public class BossAttackAdmissionProbe {
     boolean ownedBySession(Entity e,String id,long gen){return true;}
     boolean isCurrentBossCarrier(LivingEntity b){return current && b==boss;}
     boolean isTestBoss(LivingEntity b){return false;}
+    boolean isBossCombatRuntimeActive(LivingEntity b){return admitted;}
     int released;
     // Added with the unfreeze fix: reconciliation now releases cast-time
     // locomotion suppression on every terminal path.
@@ -182,6 +186,11 @@ public class BossAttackAdmissionProbe {
     List<Player> activeBossParticipants(){return players;}
     void spawnEventParticle(Object... args){}
     void playBossImpactPresentation(Object... args){}
+    // The projectile resolution now draws the same bounded spell silhouette at
+    // its real impact point. Damage ownership is what this probe exercises; the
+    // renderer is a separate, non-authoritative presentation adapter.
+    void renderAuthoredBossImpact(Location mark,
+            me.copimine.endevent.domain.BossSpellVisualCompositionPolicy.Composition composition){}
     void releaseBossHazardReservation(String s){}
     void registerEncounterTask(BukkitTask t){}
     void cancelVoidMark(UUID id){activeVoidMarkCenters.remove(id);}

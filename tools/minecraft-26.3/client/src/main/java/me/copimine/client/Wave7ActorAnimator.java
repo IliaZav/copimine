@@ -9,6 +9,8 @@ public final class Wave7ActorAnimator {
     private Wave7ActorAnimator() { }
     public static void apply(ModelPart root, LivingEntityRenderState state, boolean warden) {
         if (!(state instanceof EndRiftRenderStateAccess access)) return;
+        // Legacy HIT/DEATH own the interruption; never stack a cast or another recoil over it.
+        if ("WAVE_HIT".equals(access.copimine$wavePose()) || "WAVE_DEATH".equals(access.copimine$wavePose())) return;
         Wave7AnimationFrame frame = access.copimine$trialFrame();
         ModelPart body = part(root, warden ? "bone/body" : "body");
         ModelPart head = part(root, warden ? "bone/body/head" : "head");

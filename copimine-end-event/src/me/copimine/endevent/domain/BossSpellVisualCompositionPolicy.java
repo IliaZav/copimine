@@ -136,6 +136,54 @@ public final class BossSpellVisualCompositionPolicy {
                 "minecraft:block.amethyst_block.resonate", "obelisk constellation");
         put(result, "phase_shift", 0xC9A8FF, "PORTAL", "END_ROD", 3.0F,
                 "minecraft:block.end_portal.spawn", "unfurling ring");
+        // SUPERSEDED (2026-11-14): the five spells below were the ones with no
+        // entry here, so they fell back to the legacy colour map -- and three of
+        // them landed on `default`, i.e. the same near-white for a bone volley,
+        // a snare and a euphoria. A player could not tell them apart at all.
+        // They now carry their own hue, particle pair, vortex and sound, and
+        // the values deliberately match the particles and colours the Bukkit
+        // renderer already used, so the authoring table and the renderer can no
+        // longer disagree.
+        //
+        // A fanned volley of bone arrows: flat and wide, no vortex, so the
+        // silhouette reads as "a line of shots" rather than a sphere.
+        put(result, "arrow_salvo", 0xE8B020, "CRIT", "SOUL_FIRE_FLAME", 0.0F,
+                "minecraft:entity.arrow.shoot", "three bone arrows, fanned");
+        // A gate the caster steps through: a hot photon flash, not a projectile.
+        put(result, "rift_step", 0xFFF06B, "PORTAL", "END_ROD", 2.0F,
+                "minecraft:entity.enderman.teleport", "twin rift gate");
+        // Cold indigo binds, which is the opposite read from the hot impacts.
+        put(result, "void_snare", 0x6A5ACD, "REVERSE_PORTAL", "SMOKE", 0.5F,
+                "minecraft:block.chain.break", "closing chain cage");
+        // Sculk jade is unique to the sonic bloom in the whole encounter.
+        put(result, "echo_pulse", 0x25D0A8, "SCULK_SOUL", "SONIC_BOOM", 0.0F,
+                "minecraft:entity.warden.sonic_charge", "sculk bloom");
+        // The lime is the one the renderer already used, so the helix and the
+        // beam that feeds it finally share a palette.
+        put(result, "rift_euphoria", 0x7AFF48, "WITCH", "DRAGON_BREATH", 1.6F,
+                "minecraft:entity.witch.drink", "rising double helix");
+        // The five spells the miniboss rotation actually emits. They were the
+        // true gap: the block above authored four ids that `miniBossSpellFor`
+        // never returns, so a Wave 1-6 elite still cast spells with no colour
+        // of their own and no silhouette. Each of these maps to a shape in
+        // BossSpellGeometryPolicy and therefore to a client mesh, so the cast
+        // has a body as well as a palette.
+        //
+        // A canopy of arrows falling on the target: wide and cold, no vortex.
+        put(result, "arrow_rain", 0xF2C14E, "CRIT", "SMOKE", 0.0F,
+                "minecraft:entity.arrow.shoot", "falling arrow canopy");
+        // A single heavy bolt, tighter and hotter than the boss's lance.
+        put(result, "rift_bolt", 0x2FB4FF, "ELECTRIC_SPARK", "DUST_CYAN", 2.0F,
+                "minecraft:entity.blaze.shoot", "hammered bolt");
+        // A breath cone: violet, slow, and clearly a spray rather than a ball.
+        put(result, "dragon_breath", 0x9B4BFF, "DRAGON_BREATH", "SMOKE", 1.2F,
+                "minecraft:entity.ghast.warn", "breath cone");
+        // An outward rupture, the opposite read from the collapsing sphere.
+        put(result, "void_burst", 0x5B2BD6, "REVERSE_PORTAL", "SMOKE", 0.5F,
+                "minecraft:entity.warden.nearby_close", "outward void rupture");
+        // Silk: pale, matte, and the only white-anchored spell in the set.
+        put(result, "web_shot", 0xDDDDEE, "SMOKE", "DUST_WHITE", 0.0F,
+                "minecraft:block.chain.break", "spun binding web");
         return Map.copyOf(result);
     }
 

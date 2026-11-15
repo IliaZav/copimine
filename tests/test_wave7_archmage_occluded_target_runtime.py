@@ -170,6 +170,11 @@ public class OccludedArchmageProbe {
             &&realitySplitChamberController.allowsPlayerInChamber(generation,p.id,wave7PlayerRoom(p.id));}
     double pursueNamedTrialTarget(LivingEntity actor,Player target,double reach){return 0.0;}
     void moveNamedTrialMarksman(LivingEntity actor,int chamber){}
+    // The Archmage's free-roam reposition runs beside the warned Step, and it
+    // returns early unless the actor is a Mob. The probe stubs it for the same
+    // reason it stubs the Marksman's: the Step under test is
+    // stepNamedTrialArchmage, which is executed for real.
+    void moveNamedTrialArchmage(LivingEntity actor){}
     void renderNamedTrialTelegraph(LivingEntity a,Player p,Wave7NamedTrialActorPolicy.Attack attack,boolean sound){warnings++;}
     boolean hasNamedTrialLineOfSight(Location from,Location to){return Math.abs(to.z)<0.01?visible:pathClear;}
     Vector horizontalDirection(Location from,Location to){return new Vector(1,0,0);}

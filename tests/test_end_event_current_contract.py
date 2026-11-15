@@ -1213,7 +1213,14 @@ def test_resource_pack_sound_catalog_is_current_and_complete() -> None:
     builder = read(PACK / "build-resourcepack.py")
     for name in CURRENT_AUDIO:
         assert name in builder, name
-    for old_name in ("waves", "boss", "boss_half", "boss_final", "intermission_4",
+    # `intermission_4` is NOT obsolete and must not be listed here: the state
+    # machine routes WAVE_4 -> CORE_RESTORATION -> INTERMISSION_4 -> WAVE_5
+    # (EndEventStateMachine), the plugin plays config `intermission-4` for that
+    # phase (CopiMineEndEvent.phaseMusic), the required music keys include
+    # `intermission-4`, sounds.json declares it, and the migration pack ships
+    # intermission_4.ogg. Listing it as retired made this test contradict the
+    # shipped pack.
+    for old_name in ("waves", "boss", "boss_half", "boss_final",
                      "final_drain", "final_ritual", "final_wave"):
         assert not (PACK_ASSETS / "sounds" / "end_rift" / f"{old_name}.ogg").exists(), old_name
 

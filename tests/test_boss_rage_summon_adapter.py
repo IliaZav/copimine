@@ -16,10 +16,21 @@ public class RageSummonProbe {
  BossPhase bossPhase;String eventId="test";boolean decoyAccepted;int decoyCalls,ordinarySpawns;
  static class Config {int maxSummonedServants(){return 4;}} Config config=new Config();
  static class World {} static class Location {World getWorld(){return new World();}}
- static class Entity {UUID id=UUID.randomUUID();UUID getUniqueId(){return id;}}
+ static class Entity {
+  UUID id=UUID.randomUUID();
+  UUID getUniqueId(){return id;}
+  // The servant sweep now prunes dead/invalid bodies through the owned map and
+  // the session receipt, so the probe's entity must answer both.
+  boolean valid=true;
+  boolean isValid(){return valid;}
+  boolean isDead(){return !valid;}
+ }
  static class LivingEntity extends Entity {Location getLocation(){return new Location();}}
  enum EntityType {SPIDER} String EVENT_KIND_WAVE_MOB="wave";
  Set<UUID> spellServants=new HashSet<>();
+ Map<UUID,Entity> ownedEntities=new HashMap<>();
+ long generation=7L;
+ boolean ownedBySession(Entity e,String eventId,long generation){return e!=null&&e.valid;}
  java.util.logging.Logger getLogger(){return java.util.logging.Logger.getAnonymousLogger();}
  BossPhasePolicy.CombatProfile currentBossCombatProfile(){return BossPhasePolicy.combatProfile(bossPhase);}
  boolean summonEchoDecoys(LivingEntity boss){decoyCalls++;return decoyAccepted;}

@@ -29,7 +29,13 @@ public class BossReleaseProbe {
             var p=new BossReleaseProbe();var boss=new LivingEntity();var target=new Player();
             boolean physical=BossSpellDeliveryPolicy.physicalProjectile(spell);
             check(p.launchBossSpellDelivery(boss,target,new Location(),spell,false,7,()->p.releases++),"valid release refused");
-            check(p.flights==(physical?0:1)&&p.releases==(physical?1:0),"duplicate/fake flight: "+spell);
+            // The authored release frame is the only owner of the spell for every
+            // spell, physical or not: a synthetic "impact flight" here used to
+            // reach the target and then spawn a SECOND projectile back at the
+            // boss, which is the duplicate this guard pins. `physical` must not
+            // change how many flights the adapter fabricates: it is always zero.
+            check(p.flights==0&&p.releases==1,"release must own the spell exactly once: "+spell
+                    +" physical="+physical+" flights="+p.flights+" releases="+p.releases);
             for(int failure=0;failure<4;failure++){
                 var bad=new BossReleaseProbe();if(failure==0)bad.active=false;
                 if(failure==1)bad.bossUuid=new UUID(0,9);

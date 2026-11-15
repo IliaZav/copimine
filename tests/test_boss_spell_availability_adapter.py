@@ -13,6 +13,11 @@ def probe(tmp_path_factory):
     methods='\n'.join(declaration(source,s) for s in (
         'private boolean isCurrentBossMeleeFury(',
         'private List<EndRiftAiPolicy.BossSpell> currentBossSpellPool(',
+        # SUPERSEDED: the selector grew an admission pass, and it is the
+        # predicate this file is named after. It used to be left out of the
+        # extraction list, so every parametrised case failed to compile on a
+        # missing bossActionAvailable(...) instead of exercising the rule.
+        'private boolean bossActionAvailable(',
         'private boolean castCurrentBossSpell(LivingEntity boss, boolean forced)'))
     fixture=out/'BossAvailabilityProbe.java'
     fixture.write_text('''
@@ -28,8 +33,21 @@ public class BossAvailabilityProbe {
     EndRiftAiPolicy.BossSpell previousBossSpell;
     int bossSpellCursor,attemptedFinal,accepted; BossBrain bossBrain=new BossBrain();
     static class LivingEntity {}
-    static class Config {boolean enabled; Config(boolean value){enabled=value;} Config finalStrikeTuning(){return this;} boolean enabled(){return enabled;}}
+    static class Config {boolean enabled; Config(boolean value){enabled=value;} Config finalStrikeTuning(){return this;} boolean enabled(){return enabled;} int maxSummonedServants(){return 3;}}
     Config config=new Config(true);
+    // The admission predicate reads the live arena ledgers. They are empty here,
+    // which is the "nothing currently blocks the cast" state; the two gates this
+    // file actually measures -- the one-shot Final Strike and the decoy cooldown
+    // and cap -- are the ones bossActionAvailable and the selector evaluate.
+    final List<Object> arenaInfernoBlocks=new ArrayList<>(), arenaInfernoOriginalBlocks=new ArrayList<>(),
+            activeCurrentRiftFractures=new ArrayList<>(), activeRiftProjectiles=new ArrayList<>();
+    long arenaInfernoLastCastEndTick=-1L;
+    static final int MAX_ACTIVE_RIFT_PROJECTILES=4;
+    int livingBossServantCount(){return 0;}
+    static class BossCombatProfile { int summonCap(){return 3;} }
+    BossCombatProfile currentBossCombatProfile(){return new BossCombatProfile();}
+    static class GuardianDeaths { boolean cocoonBroken(){return false;} }
+    final GuardianDeaths guardianDeaths=new GuardianDeaths();
     boolean isBossCombatRuntimeActive(LivingEntity boss){return true;}
     boolean bossAmbushOwnsMajorCast(){return false;}
     EndRiftAiPolicy.BossSpell spellForAbility(BossAbilityId id){

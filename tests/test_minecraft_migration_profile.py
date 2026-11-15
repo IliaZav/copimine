@@ -222,10 +222,16 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # 12-November, spell art: the elite spell atlases and meshes are packed
     # into the client resources. Verified by two independent clean offline
     # builds producing the same size and digest.
-    assert artifact['size'] == 17_063_548
+    # 14-November Wave 7 miniboss hit/death poses: the client's end-event state
+    # machine gained the two pose tokens and the three trial rigs gained their
+    # flinch and collapse branches, so the compiled bytes moved and the lock, this
+    # literal and the same digits in docs/minecraft-26.3/README.md were repinned
+    # together. The size assertion carries the digits, so a repin here must update
+    # BOTH this literal and the documented README value.
+    assert artifact['size'] == 30_096_804
     assert artifact['sha512'] == (
-        '5b1359b5f357466191b2a914feb1ca79465d9c563f4d7dbbb9bc79a0ae4ee3fe'
-        '0fc795f11f8d57660513faaa7003729361b6970552eb87e190d7f2f5a780fb3a'
+        '684a84602e5d7941d22da4a2cdb3de6376e22ab67f4555f64f636abaf60e918f'
+        '9f625678630e42ecc6329d07334e2d57999fd94351321e04362a9f234bd600fb'
     )
 
 

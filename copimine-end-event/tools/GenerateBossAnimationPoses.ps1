@@ -34,7 +34,16 @@ $clips = @(
   [ordered]@{ File = 'cast_charge.animation.json'; Id = 'CAST_CHARGE'; Loop = $false },
   [ordered]@{ File = 'cast_release.animation.json'; Id = 'CAST_RELEASE'; Loop = $false },
   [ordered]@{ File = 'cast_recovery.animation.json'; Id = 'RECOVERY'; Loop = $false },
-  [ordered]@{ File = 'final_strike.animation.json'; Id = 'FINAL_STRIKE'; Loop = $false }
+  [ordered]@{ File = 'final_strike.animation.json'; Id = 'FINAL_STRIKE'; Loop = $false },
+  [ordered]@{ File = 'spell_void_blast.animation.json'; Id = 'SPELL_VOID_BLAST'; Loop = $false },
+  [ordered]@{ File = 'spell_rift_projectile.animation.json'; Id = 'SPELL_RIFT_PROJECTILE'; Loop = $false },
+  [ordered]@{ File = 'spell_rift_arrows.animation.json'; Id = 'SPELL_RIFT_ARROWS'; Loop = $false },
+  [ordered]@{ File = 'spell_rift_arrows.animation.json'; Id = 'SPELL_ARROW_SALVO'; Loop = $false },
+  [ordered]@{ File = 'spell_void_mark.animation.json'; Id = 'SPELL_VOID_MARK'; Loop = $false },
+  [ordered]@{ File = 'spell_summon_servants.animation.json'; Id = 'SPELL_SUMMON_SERVANTS'; Loop = $false },
+  [ordered]@{ File = 'spell_summon_servants.animation.json'; Id = 'SPELL_SUMMON'; Loop = $false },
+  [ordered]@{ File = 'spell_summon_servants.animation.json'; Id = 'SPELL_RIFT_OBELISKS'; Loop = $false },
+  [ordered]@{ File = 'spell_arena_inferno.animation.json'; Id = 'SPELL_ARENA_INFERNO'; Loop = $false }
 )
 
 function Fail-Asset([string]$source, [string]$message) {

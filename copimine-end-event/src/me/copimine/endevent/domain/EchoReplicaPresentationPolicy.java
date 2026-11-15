@@ -88,8 +88,7 @@ public final class EchoReplicaPresentationPolicy {
         return switch (origin) {
             case "GROUND_SLAM", "UDAR_PO_ZEMLE", "UDAR_PO_ZEMLE2" -> FAMILY_SLAM;
             case "MELEE_SWIPE", "SWIPE", "SWIPE2", "MELEE" -> FAMILY_MELEE;
-            case "CHEST_STRIKE", "CHEST_PROJECTILE", "UDAR_IZ_GRUDI",
-                    "VOID_BLAST" -> FAMILY_CHEST; // historical serialized alias
+            case "CHEST_STRIKE", "CHEST_PROJECTILE", "UDAR_IZ_GRUDI" -> FAMILY_CHEST;
             default -> null;
         };
     }

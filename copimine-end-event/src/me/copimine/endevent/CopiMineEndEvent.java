@@ -52689,6 +52689,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void retireEchoReplica(UUID copyId, String reason) {
         retireEchoChestProbe(copyId);
         echoChestStarted.remove(copyId); echoReplicaBeats.remove(copyId);
+        echoReplicaGenerations.remove(copyId);
         EchoAttackReplicaPolicy.Timeline timeline = echoReplicaTimelines.remove(copyId);
         TargetLock lock = echoReplicaLocks.remove(copyId);
         echoReplicaDamageLedger.remove(copyId);
@@ -52748,6 +52749,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             removeEchoReplicaEntity(actor.entityId(), reason);
         }
         echoReplicaTimelines.clear();
+        echoReplicaGenerations.clear(); echoReplicaBeats.clear(); echoChestStarted.clear();
+        echoReplicaLastAdvanceTick = Long.MIN_VALUE;
         echoReplicaLocks.clear();
         echoReplicaDamageLedger.clear();
         echoReplicaAcceptedStrikeDamage.clear();

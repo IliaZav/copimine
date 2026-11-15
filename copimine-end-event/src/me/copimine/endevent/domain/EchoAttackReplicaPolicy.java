@@ -176,7 +176,8 @@ public final class EchoAttackReplicaPolicy {
                 && tick <= timeline.expiryTick();
     }
 
-    /** A strike connects only inside the locked radius. */
+    /** Legacy radial diagnostic only. Production uses the actor's actual family
+     * geometry or the finite chest probe; do not route all families through this circle. */
     public static boolean strikeConnects(Timeline timeline, double dx, double dz) {
         return withinRadius(dx, dz, STRIKE_RADIUS);
     }

@@ -52,7 +52,7 @@ public final class BossTargetPolicyTest {
                 List.of(FIRST, SECOND, THIRD), null, List.of(), 100L, 0L, 1L);
         check(deterministicA.equals(deterministicB), "the same roster and cursor must be deterministic");
         testPrimaryTargetStaysLockedForElevenSeconds();
-        testBrainCannotPickAnotherPrimaryTargetInsideTheLock();
+        testSpellSelectionIsIndependentOfThePursuitLock();
         testStackedAndSurroundedUseWalkableHorizontalPosition();
         System.out.println("BossTargetPolicyTest OK");
     }
@@ -68,17 +68,38 @@ public final class BossTargetPolicyTest {
         check(rotated.newLockUntilMillis() == 32_000L, "a rotated target gets a fresh 11 s window");
     }
 
-    private static void testBrainCannotPickAnotherPrimaryTargetInsideTheLock() {
+    private static void testSpellSelectionIsIndependentOfThePursuitLock() {
         var weak = observation(FIRST, 0.9D, 6.0D, false, 0.0D, 0.0D, 0.0D);
         var attractive = observation(SECOND, 0.2D, 2.0D, true, 3.0D, 0.0D, 0.0D);
         BossPerceptionSnapshot snapshot = snapshot(weak, attractive);
-        var decision = BossTargetSelector.choose(snapshot, FIRST);
-        check(decision.target().equals(FIRST),
-                "the brain must obey the adapter's locked primary target");
+        // The pursuit lock owns navigation (BossTargetPolicy), never spell choice.
+        // A spell pick that stays glued to the locked player withholds every ranged
+        // attack from a genuinely better target, so the selector must be free to leave.
+        var lockedOut = BossTargetSelector.choose(snapshot, FIRST);
+        check(lockedOut.target().equals(SECOND),
+                "spell selection must be free to leave the locked pursuit target");
+        check(lockedOut.reason().equals("ISOLATED_OPPORTUNITY"),
+                "an isolated weak player is the spell opportunity, not the locked player");
         check(BossTargetSelector.choose(snapshot, null).target().equals(SECOND),
                 "without a lock the fairness score still selects the isolated weak player");
         check(BossTargetSelector.choose(snapshot, THIRD).target().equals(SECOND),
                 "a stale lock target is ignored and scoring resumes");
+
+        // Leaving the lock must not mean the lock is ignored entirely: repeating the
+        // same spell target still carries a preference. Measure it on a sole player,
+        // where the same player is returned either way, so the delta is the nudge.
+        BossPerceptionSnapshot solo = snapshot(weak);
+        double bareSolo = BossTargetSelector.choose(solo, null).score();
+        var nudgedSolo = BossTargetSelector.choose(solo, FIRST);
+        check(nudgedSolo.target().equals(FIRST),
+                "the bounded nudge must not remove the locked player from spell eligibility");
+        double nudge = bareSolo - nudgedSolo.score();
+        check(nudge > 0.0D, "repeating the locked spell target must still cost a bounded preference");
+        // Bounded is the whole point: an unbounded or dominant penalty would restore
+        // the monopoly this contract removed, so the preference may never exceed the
+        // fairness margin it is allowed to weigh.
+        check(nudge <= 1.0D,
+                "the locked-target preference must stay bounded, not dominate the fairness score");
     }
 
     private static void testStackedAndSurroundedUseWalkableHorizontalPosition() {

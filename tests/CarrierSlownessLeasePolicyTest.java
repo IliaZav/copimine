@@ -19,10 +19,9 @@ public final class CarrierSlownessLeasePolicyTest {
                         == CarrierSlownessLeasePolicy.Action.NONE,
                 "do nothing when no event-owned modifier exists");
         check(Math.abs(CarrierSlownessLeasePolicy.MOVEMENT_SPEED_MULTIPLIER + 0.30D) < 0.000001D,
-                // SUPERSEDED (audit wave 1): the retired keyed modifier half was
-                // documented as Slowness II's 30 percent. It is only the legacy
-                // speed-modifier value kept for retiring that old key; the live
-                // debuff is now Slow III (amplifier 2) applied as a potion effect.
+                // Canonical Wave 1 section 3.2: the live debuff is Slowness II
+                // (amplifier 1) applied as a potion effect. This retired keyed
+                // modifier only has to keep the same 30 percent it used.
                 "retire the legacy keyed modifier at the same 30 percent it used");
 
         Map<String, Double> modifiers = new HashMap<>();

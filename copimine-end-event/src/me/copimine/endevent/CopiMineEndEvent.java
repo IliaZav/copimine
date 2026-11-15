@@ -38388,8 +38388,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** Original local one-shot layer; no global broadcast or per-tick repetition. */
     private void playEncounterAbilityAudio(Entity source,String cue) {
-        if(source==null || cue==null) return;
-        Location at=source.getLocation();
+        if (source != null) playEncounterAbilityAudioAt(source.getLocation(), cue);
+    }
+
+    private void playEncounterAbilityAudioAt(Location at, String cue) {
+        if (at == null || cue == null) return;
         for(Player viewer:eventAudience()) if(isEventParticleViewer(viewer,at))
             viewer.playSound(at,"copimine:end_rift/abilities/"+cue,SoundCategory.HOSTILE,.6F,1F);
     }
@@ -52817,6 +52820,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 me.copimine.endevent.presentation.ItemPresentationComponents.setFloats(meta, frame.encode());
                 item.setItemMeta(meta); carrier.setItemStack(item);
             }
+            public void started(Location origin, int kind) {
+                playEncounterAbilityAudioAt(origin, "guardian_summon");
+            }
             public void warning(Location origin, List<me.copimine.protocol.KaguneSpellFrame.Point> points, int kind) {
                 // Sparse fixed ground marks; no screen-covering repeated overlays.
                 for (var point : points) {
@@ -52829,7 +52835,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
             }
             public void impact(Location origin, int kind) {
-                playEncounterAbilityAudio(liveBoss(), kind == me.copimine.protocol.KaguneSpellFrame.STAB
+                playEncounterAbilityAudioAt(origin, kind == me.copimine.protocol.KaguneSpellFrame.STAB
                         ? "guardian_lance" : "guardian_void");
                 spawnEventParticle(origin.clone().add(0D, .15D, 0D), Particle.POOF, 14, 1D, .15D, 1D, .025D);
             }

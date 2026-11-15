@@ -149,7 +149,7 @@ if (-not $sources) { throw "No Java sources found under $srcRoot." }
 # Compile encounter-owned shared helpers in the same invocation. They are
 # deliberately absent from Narcotics.jar and must not depend on build order.
 $bridgeSourceRoot = Join-Path $releaseRoot 'tools\minecraft-26.3\protocol\src\main\java'
-foreach ($helper in @('EncounterGenerationPolicy', 'KaguneRingFrame', 'BossAnimationPlayback', 'Wave7AnimationFrame')) {
+foreach ($helper in @('EncounterGenerationPolicy', 'KaguneRingFrame', 'KaguneSpellFrame', 'BossAnimationPlayback', 'Wave7AnimationFrame')) {
   $helperSource = Join-Path $bridgeSourceRoot ("me\copimine\protocol\$helper.java")
   if (-not (Test-Path -LiteralPath $helperSource -PathType Leaf)) {
     throw "Required encounter protocol source missing: $helperSource"

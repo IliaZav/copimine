@@ -19,6 +19,7 @@ public final class LastSealConstructRuntime {
         boolean traversable(Location feet);
         ItemDisplay create(Location origin, KaguneSpellFrame initial);
         void publish(ItemDisplay carrier, KaguneSpellFrame frame);
+        default void started(Location origin, int kind) { }
         void warning(Location origin, List<KaguneSpellFrame.Point> points, int kind);
         void impact(Location origin, int kind);
         boolean hit(LivingEntity boss, Player player, double damage);
@@ -82,6 +83,7 @@ public final class LastSealConstructRuntime {
             if (carrier == null || !carrier.isValid()) throw new IllegalStateException("construct-carrier-refused");
             host.publish(carrier, frame(0));
             active = true;
+            host.started(origin, kind);
             host.warning(origin, points, kind);
             return true;
         } catch (RuntimeException failure) { cancel("admission-failed"); host.failed(failure.toString()); return false; }

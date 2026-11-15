@@ -357,7 +357,8 @@ public final class RiftRamEncounter {
         String pose=switch(next) {
             case CHARGE_WARNING -> "WAVE_WINDUP";
             case STOMP_WARNING -> "WAVE_FROZEN";
-            case CHARGE, STOMP -> "WAVE_RELEASE";
+            case STOMP -> "WAVE_RELEASE";
+            case CHARGE -> "WAVE_COMBAT";
             case STUN -> "WAVE_HIT";
             case RECOVER -> "WAVE_RECOVER";
             case DEAD -> "WAVE_DEATH";

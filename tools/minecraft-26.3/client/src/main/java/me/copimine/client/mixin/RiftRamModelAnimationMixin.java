@@ -37,9 +37,15 @@ public abstract class RiftRamModelAnimationMixin {
                 if(body!=null) body.y-=.7F*ease;
             }
             case "WAVE_RELEASE" -> {
-                float weight=.15F*(float)Math.sin(state.ageInTicks*1.1F);
-                if(neck!=null) { neck.xRot+=.24F; neck.y+=weight; }
-                if(body!=null) body.xRot+=weight*.18F;
+                // The expanding stomp has one contact, not a looping run bob.
+                float hit=(float)Math.sin(Math.min(1F,p/.22F)*Math.PI)*Math.max(0,1-p);
+                if(neck!=null) { neck.xRot+=.5F*hit; neck.y+=2F*hit; }
+                if(body!=null) { body.xRot+=.10F*hit; body.y+=.7F*hit; }
+                for(String name:new String[]{"right_front_leg","left_front_leg"})
+                    if(root.hasChild(name)) root.getChild(name).xRot-=.28F*hit;
+            }
+            case "WAVE_COMBAT" -> {
+                if(neck!=null && state.walkAnimationSpeed>.25F) neck.xRot+=.18F;
             }
             case "WAVE_HIT" -> {
                 float stagger=(1-ease)*(float)Math.sin(p*Math.PI*5);

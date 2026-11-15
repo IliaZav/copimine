@@ -60,3 +60,6 @@ CopiMineClient/src/main/resources/assets/copimineclient/textures/gui/end_rift_gu
 
 # Private spell meshes are generated and packaged byte-for-byte.
 CopiMineClient/src/main/resources/assets/copimineclient/geometry/guardian_spells/*.json -text
+
+# Required-client sound catalog must have the same bytes on authoring hosts and CI.
+resourcepacks/src/assets/copimine/sounds.json text eol=lf

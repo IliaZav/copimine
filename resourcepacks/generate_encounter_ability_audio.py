@@ -53,4 +53,4 @@ if __name__ == '__main__':
         key=f'end_rift/abilities/{name}'
         index[key]={'sounds':[{'name':f'copimine:{key}','stream':False}]}
         print(name,len(samples),path.stat().st_size)
-    (ROOT/'sounds.json').write_text(json.dumps(index,indent=2)+'\n',encoding='utf-8')
+    (ROOT/'sounds.json').write_text(json.dumps(index,indent=2)+'\n',encoding='utf-8',newline='\n')

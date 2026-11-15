@@ -58399,7 +58399,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** Native decoy arrows own a separate ledger, never the custom boss-arrow damage controller. */
     private boolean isCurrentEchoDecoyArrow(Arrow arrow) {
-        if (arrow == null || !arrow.isValid() || arrow.isDead()
+        if (arrow == null || !arrow.isValid() || arrow.isDead() || arrow.getTicksLived() >= EVENT_ARROW_MAX_TICKS
                 || !echoDecoyArrowIds.contains(arrow.getUniqueId()) || echoDecoyGeneration != generation
                 || bossPhase != BossPhase.RAGE || !ownedBySession(arrow, eventId, generation)
                 || !(arrow.getShooter() instanceof LivingEntity source) || !isEchoDecoy(source)

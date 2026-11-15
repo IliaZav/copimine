@@ -19,6 +19,7 @@ public final class RiftRamEncounter {
     public interface Host {
         boolean active();
         default void pose(Ravager actor,String pose,int durationTicks) { }
+        default void abilitySound(Ravager actor,String cue) { }
         List<Player> players();
         Location core();
         int floorY();
@@ -262,6 +263,7 @@ public final class RiftRamEncounter {
 
     private void advance() {
         tick++;
+        if(tick%20==0 && ram!=null && ram.isValid()) publishPose();
         if (ramDefeated) {
             if (!pillarSkeletonDefeated && !skeletonAlive()) {
                 fail("final-skeleton-lost-without-death-receipt"); return;
@@ -353,8 +355,15 @@ public final class RiftRamEncounter {
 
     private void begin(Action next) {
         action=next; actionTick=tick;
+        publishPose();
+        String cue=next == Action.CHARGE_WARNING ? "ram_charge" : next == Action.STOMP ? "ram_stomp"
+                : next == Action.STUN ? "ram_impact" : null;
+        if(cue!=null && ram!=null && ram.isValid()) host.abilitySound(ram,cue);
+    }
+    /** Leased heartbeat for late bindings; audio belongs exclusively to begin(). */
+    private void publishPose() {
         if(ram==null || !ram.isValid()) return;
-        String pose=switch(next) {
+        String pose=switch(action) {
             case CHARGE_WARNING -> "WAVE_WINDUP";
             case STOMP_WARNING -> "WAVE_FROZEN";
             case STOMP -> "WAVE_RELEASE";
@@ -364,7 +373,7 @@ public final class RiftRamEncounter {
             case DEAD -> "WAVE_DEATH";
             default -> "WAVE_COMBAT";
         };
-        int duration=switch(next) {
+        int duration=switch(action) {
             case CHARGE_WARNING -> RiftRamPolicy.CHARGE_WINDUP_TICKS;
             case STOMP_WARNING -> RiftRamPolicy.STOMP_WARNING_TICKS;
             case CHARGE -> RiftRamPolicy.CHARGE_TIMEOUT_TICKS;
@@ -372,7 +381,7 @@ public final class RiftRamEncounter {
             case STUN -> RiftRamPolicy.IMPACT_STUN_TICKS;
             default -> 30;
         };
-        host.pose(ram,pose,duration);
+        host.pose(ram,pose,Math.max(1,duration-Math.max(0,tick-actionTick)));
     }
     private void hold() {
         ram.setAI(false);

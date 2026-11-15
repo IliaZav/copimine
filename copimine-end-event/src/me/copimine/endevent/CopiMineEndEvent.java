@@ -28339,12 +28339,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 new me.copimine.endevent.runtime.RiftRamEncounter.Host() {
             public void pose(Ravager actor, String pose, int durationTicks) {
                 sendWaveMobPose(actor,pose,Math.max(50L,durationTicks*50L));
-                String audio = "WAVE_WINDUP".equals(pose) ? "ram_charge"
-                        : "WAVE_HIT".equals(pose) ? "ram_impact"
-                        : "WAVE_RELEASE".equals(pose) && durationTicks == me.copimine.endevent.domain.RiftRamPolicy.STOMP_EXPANSION_TICKS
-                                ? "ram_stomp" : null;
-                if (audio != null) playEncounterAbilityAudio(actor,audio);
             }
+            public void abilitySound(Ravager actor,String cue) { playEncounterAbilityAudio(actor,cue); }
             public boolean active() {
                 return activeWave == 6 && ownerGeneration == generation
                         && java.util.Objects.equals(ownerEvent, eventId)

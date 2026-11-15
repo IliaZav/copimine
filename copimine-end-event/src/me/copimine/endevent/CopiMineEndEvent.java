@@ -762,10 +762,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final double ARROW_VOLLEY_SPEED = 2.5D;
     private static final int SLOWNESS_DEBUFF_TICKS = 60;
     /**
-     * Audit wave 1: the carrier is slowed to Slow III. Minecraft amplifiers are
-     * zero-based, so Slow III is 2 (Slow I = 0).
+     * Canonical Waves specification, Wave 1 section 3.2: the carrier receives
+     * Slowness II during genuine possession. Minecraft amplifiers are
+     * zero-based, so Slowness II is 1 (Slowness I = 0).
      */
-    private static final int CARRIER_SLOWNESS_AMPLIFIER = 2;
+    private static final int CARRIER_SLOWNESS_AMPLIFIER = 1;
     private static final long WAVE_PATH_REQUEST_INTERVAL_MILLIS = 500L;
     private static final long WAVE_MOB_STUCK_TIMEOUT_MILLIS = 4_000L;
     private static final long WAVE_MOB_STUCK_REPOSITION_COOLDOWN_MILLIS = 4_000L;
@@ -28880,8 +28881,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             } finally { currentCarrierPotionMutations.remove(owner); }
             return;
         }
-        // Audit wave 1: the carrier debuff is Slow III (amplifier 2), not Slow II.
-        // A foreign effect at least that strong already does the job.
+        // Canonical Wave 1 section 3.2: the carrier debuff is Slowness II
+        // (amplifier 1). A foreign effect at least that strong already does the job.
         if (lease == null && current != null && current.getAmplifier() >= CARRIER_SLOWNESS_AMPLIFIER) return;
         CarrierPotionLease next = new CarrierPotionLease(lease == null ? current : lease.original(),
                 lease == null ? now : lease.capturedAtTick(), now);
@@ -28895,7 +28896,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /**
-     * While a charge is carried the holder is unstable: Slowness III (applied
+     * While a charge is carried the holder is unstable: Slowness II (applied
      * above), Nausea, and this readable pulse. The pulse is purely visual — a
      * violet ring that tightens as the charge ages — so the third consequence
      * never adds hidden damage or a second crowd-control effect on top of the

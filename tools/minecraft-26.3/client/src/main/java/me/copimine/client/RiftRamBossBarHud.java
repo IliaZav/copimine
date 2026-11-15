@@ -19,7 +19,7 @@ public final class RiftRamBossBarHud {
 
     public static boolean render(GuiGraphicsExtractor gui, int ignoredX, int y, BossEvent bar) {
         if (gui == null || bar == null || bar.getName() == null
-                || !bar.getName().getString().startsWith("РўР°СЂР°РЅ Р Р°Р·Р»РѕРјР°")) return false;
+                || !bar.getName().getString().startsWith("Таран Разлома")) return false;
         var client = Minecraft.getInstance();
         if (client.player == null || client.level == null) return false;
         var state = ClientBridgeProtocol.endEventState();
@@ -50,7 +50,7 @@ public final class RiftRamBossBarHud {
                 gui.fill(px + 4, y, px + 6, y + 8, 0xFF0A090D);
             }
         }
-        gui.centeredText(client.font, "РўРђР РђРќ Р РђР—Р›РћРњРђ", x + 93, y - 12, 0xFFF1E5F6);
+        gui.centeredText(client.font, "ТАРАН РАЗЛОМА", x + 93, y - 12, 0xFFF1E5F6);
         return true;
     }
 }

@@ -52590,10 +52590,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (changed || eventTickCounter % 4L == 0L)
             sendGuardianActorFrame(body, action, start, ticks, (int)Math.max(0L, eventTickCounter-start));
+        if (changed && beat == EchoReplicaPresentationPolicy.Beat.EXPLOSION_WARNING && body instanceof LivingEntity caster)
+            playCasterSpellBody(caster, BossSpellGeometryPolicy.Shape.VOID_SPHERE,
+                    "ECHO_REPLICA_CHARGE", body.getLocation().clone().add(0D, .7D, 0D), 20);
         if (beat == EchoReplicaPresentationPolicy.Beat.EXPLOSION_WARNING && eventTickCounter % 4L == 0L)
             ringEchoReplicaWarning(body.getLocation(), false);
-        if (changed && beat == EchoReplicaPresentationPolicy.Beat.EXPLOSION)
+        if (changed && beat == EchoReplicaPresentationPolicy.Beat.EXPLOSION) {
             ringEchoReplicaWarning(body.getLocation(), true);
+            if (body instanceof LivingEntity caster)
+                playCasterSpellBody(caster, BossSpellGeometryPolicy.Shape.ECHO_BLOOM,
+                        "ECHO_REPLICA_EXPLOSION", body.getLocation().clone().add(0D, .2D, 0D), 8);
+        }
         if (changed && beat == EchoReplicaPresentationPolicy.Beat.CONTACT && !timeline.family().equals("CHEST_STRIKE"))
             playEncounterAbilityAudioAt(body.getLocation(), "guardian_void");
     }

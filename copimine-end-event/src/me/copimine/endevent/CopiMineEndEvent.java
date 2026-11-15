@@ -38493,6 +38493,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location impact = target != null && target.isOnline() ? namedTrialAim(actor, target).subtract(0.0D, target.getEyeHeight(), 0.0D) : null;
         Vector aim = impact == null ? actor.getLocation().getDirection().clone()
                 : impact.clone().add(0.0D, 1.0D, 0.0D).toVector().subtract(eye.toVector());
+        RealitySplitTrialRuntimeState wardenCast = realitySplitTrialRuntimeStates.get(actor.getUniqueId());
+        if ("WARDEN".equals(readString(actor,keyTrialRole)) && wardenCast != null
+                && wardenCast.direction != null && wardenCast.direction.lengthSquared() > .001D) {
+            // The player may have dodged after commitment. Presentation follows
+            // the strike axis, never their new location or an invented hit point.
+            aim = wardenCast.direction.clone();
+            impact = abilityId.endsWith("SLAM") ? feet.clone()
+                    : feet.clone().add(aim.clone().multiply(1.5D));
+        }
         final String effectKey = abilityId.startsWith("WAVE7_")
                 ? abilityId.substring("WAVE7_".length()) : abilityId;
         // One bounded release scene, scoped to the admitted party on the open arena.

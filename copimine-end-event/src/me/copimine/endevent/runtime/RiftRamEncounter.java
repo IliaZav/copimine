@@ -107,7 +107,7 @@ public final class RiftRamEncounter {
             ram = site.getWorld().spawn(site, Ravager.class, entity -> {
                 entity.setPersistent(true);
                 entity.setRemoveWhenFarAway(false);
-                entity.setCustomName("РўР°СЂР°РЅ Р Р°Р·Р»РѕРјР°");
+                entity.setCustomName("Таран Разлома");
                 entity.setCustomNameVisible(false);
                 entity.getAttribute(Attribute.GENERIC_MAX_HEALTH).setBaseValue(RiftRamPolicy.healthForPlayers(players));
                 entity.getAttribute(Attribute.GENERIC_SCALE).setBaseValue(RiftRamPolicy.BOSS_SCALE);
@@ -770,17 +770,25 @@ public final class RiftRamEncounter {
         if (!skeletonAlive()) return;
         if (pillar == null && !skeletonFallen) return;
         Player target = nearest(pillarSkeleton.getLocation(), players);
-        boolean hasTarget = target != null;
+        boolean hasTarget = target != null && pillarSkeleton.hasLineOfSight(target);
         if (hasTarget) {
-            Location look = target.getLocation().clone();
-            pillarSkeleton.setRotation(look.getYaw(), look.getPitch());
+            Vector toward=target.getEyeLocation().toVector().subtract(pillarSkeleton.getEyeLocation().toVector());
+            double horizontal=Math.hypot(toward.getX(),toward.getZ());
+            if(toward.lengthSquared()>.001D) pillarSkeleton.setRotation(
+                    (float)Math.toDegrees(Math.atan2(-toward.getX(),toward.getZ())),
+                    (float)-Math.toDegrees(Math.atan2(toward.getY(),horizontal)));
         }
         if (skeletonFallen) {
             pillarSkeleton.setGravity(true);
             pillarSkeleton.setAI(true);
             pillarSkeleton.setAware(true);
             pillarSkeleton.setTarget(target);
-            if (target != null) pillarSkeleton.getPathfinder().moveTo(target.getLocation(), 1.0D);
+            if(tick%10==0) {
+                if(target!=null && (pillarSkeleton.getLocation().distanceSquared(target.getLocation())>64D
+                        || !pillarSkeleton.hasLineOfSight(target)))
+                    pillarSkeleton.getPathfinder().moveTo(target.getLocation(),1.0D);
+                else pillarSkeleton.getPathfinder().stopPathfinding();
+            }
         }
         // Only a standing platform owns the elevated patrol. Once landed the
         // same actor keeps its normal pathing and its authored ranged attacks.

@@ -52836,7 +52836,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             public void impact(Location origin, int kind) {
                 playEncounterAbilityAudioAt(origin, kind == me.copimine.protocol.KaguneSpellFrame.STAB
-                        ? "guardian_lance" : "guardian_void");
+                        ? "kagune_stab" : "kagune_eruption");
                 spawnEventParticle(origin.clone().add(0D, .15D, 0D), Particle.POOF, 14, 1D, .15D, 1D, .025D);
             }
             public boolean hit(LivingEntity boss, Player player, double damage) {

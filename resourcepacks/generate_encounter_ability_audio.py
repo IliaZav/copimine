@@ -23,6 +23,8 @@ CUES = {
     'guardian_mark': (.9, 230, 120, .18, 4),
     'guardian_summon': (1.15, 95, 260, .2, 3),
     'guardian_inferno': (1.1, 110, 42, .65, 3),
+    'kagune_stab': (.65, 360, 55, .52, 9),
+    'kagune_eruption': (1.25, 50, 125, .45, 5),
 }
 
 def render(name, spec):

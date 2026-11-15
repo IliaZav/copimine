@@ -326,5 +326,21 @@
         "stream": false
       }
     ]
+  },
+  "end_rift/abilities/kagune_stab": {
+    "sounds": [
+      {
+        "name": "copimine:end_rift/abilities/kagune_stab",
+        "stream": false
+      }
+    ]
+  },
+  "end_rift/abilities/kagune_eruption": {
+    "sounds": [
+      {
+        "name": "copimine:end_rift/abilities/kagune_eruption",
+        "stream": false
+      }
+    ]
   }
 }

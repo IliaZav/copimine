@@ -64,7 +64,7 @@ They use no third-party recordings, samples or melodies.
 
 ## Original ability one-shots added 2026-11-15
 
-The 13 files under sounds/end_rift/abilities are original deterministic noise and
+The 15 files under sounds/end_rift/abilities are original deterministic noise and
 resonator compositions authored by generate_encounter_ability_audio.py. No downloaded
 samples or third-party performances are used. They ship inside the required client;
 players need no extra audio mod. In-game listening and mix acceptance remain unverified.

@@ -2,6 +2,7 @@ package me.copimine.client;
 
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import me.copimine.protocol.KaguneRingFrame;
+import me.copimine.protocol.KaguneSpellFrame;
 import java.util.ArrayList;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
@@ -142,6 +143,11 @@ public final class EndRiftTentacleRenderer {
                 Entity entity = ((ClientWorldAccessor) world).copimine$getEntities().get(entityUuid);
                 if (!(entity instanceof Display.ItemDisplay display)
                         || entity.isRemoved() || entity.getUUID() == null || !isTentacleCarrier(display)) continue;
+                if (componentMarker(display) == KaguneSpellFrame.MARKER) {
+                    KaguneSpellFrame frame = spellFrame(display);
+                    if (frame != null) renderSpell(matrices, buffer, display, frame, tickDelta, world);
+                    continue;
+                }
                 if (isRingCarrier(display)) {
                     KaguneRingFrame frame = ringFrame(display);
                     if (frame != null) renderRing(matrices, buffer, display, frame, tickDelta, world);
@@ -181,6 +187,49 @@ public final class EndRiftTentacleRenderer {
                 matrices.popPose();
             }
         });
+    }
+
+    private static int componentMarker(Display.ItemDisplay display) {
+        CustomModelData data = display.getItemStack().get(DataComponents.CUSTOM_MODEL_DATA);
+        Float marker = data == null ? null : data.getFloat(1);
+        return marker != null && Float.isFinite(marker) && marker == Math.rint(marker) ? marker.intValue() : -1;
+    }
+
+    private static KaguneSpellFrame spellFrame(Display.ItemDisplay display) {
+        CustomModelData data = display.getItemStack().get(DataComponents.CUSTOM_MODEL_DATA);
+        Float count = data == null ? null : data.getFloat(7);
+        if (count == null || !Float.isFinite(count) || count < 1 || count > 5 || count != Math.rint(count)) return null;
+        List<Float> values = new ArrayList<>();
+        for (int i = 0; i < 8 + count.intValue() * 3; i++) {
+            Float value = data.getFloat(i); if (value == null) return null; values.add(value);
+        }
+        return KaguneSpellFrame.decode(values);
+    }
+
+    /** One submission and original skin/rig; server and renderer use the same root kinematics. */
+    private static void renderSpell(PoseStack matrices, VertexConsumer vertices, Display.ItemDisplay display,
+                                    KaguneSpellFrame frame, float partialTick, ClientLevel world) {
+        if (frame.stage() == KaguneSpellFrame.WARNING) return;
+        Vec3 origin = display.getPosition(partialTick); if (!finite(origin)) return;
+        double p = frame.previousProgress() + (frame.progress() - frame.previousProgress())
+                * Math.max(0F, Math.min(1F, partialTick));
+        double rise = frame.rise(p); if (rise <= 0D) return;
+        // Procedural spell animation preserves every original bone, pivot and UV.
+        // Tilt the continuous rig as one articulated spear; never detach its pieces.
+        var pose = EndRiftTentacleAnimator.poseFor("EMERGE", 1F, 0L);
+        int light = net.minecraft.util.LightCoordsUtil.getLightCoords(world, display.blockPosition());
+        float width = EndRiftTentacleWorldScalePolicy.rendererScaleForRig((float) KaguneSpellFrame.SCALE);
+        float height = EndRiftTentacleWorldScalePolicy.rendererLengthScaleForRig((float) KaguneSpellFrame.SCALE);
+        for (var point : frame.points()) {
+            matrices.pushPose();
+            matrices.translate(origin.x + point.x(), origin.y + point.y() - KaguneSpellFrame.HEIGHT * (1D - rise), origin.z + point.z());
+            matrices.rotate(Axis.YP, (float) (Math.PI / 2D - frame.heading()));
+            matrices.rotate(Axis.XP, (float) frame.pitch(p));
+            matrices.scale(width, height, width);
+            RIG.render(matrices, vertices, pose, light, OverlayTexture.NO_OVERLAY,
+                    frame.kind() == KaguneSpellFrame.STAB ? 0xFFE0BCFF : 0xFFB8A7DC);
+            matrices.popPose();
+        }
     }
 
     private static boolean isRingCarrier(Display.ItemDisplay display) {

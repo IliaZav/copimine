@@ -1566,6 +1566,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final me.copimine.endevent.domain.SmallKaguneCadence smallKaguneCadence =
             new me.copimine.endevent.domain.SmallKaguneCadence();
     private me.copimine.endevent.runtime.LastSealRingRuntime lastSealRing;
+    private me.copimine.endevent.runtime.LastSealConstructRuntime lastSealConstruct;
     /**
      * Contract 15.2 Type A: delayed spectral attack replicas. Each copy has its
      * own policy timeline and its own damage ledger key, so the strike and the
@@ -49336,7 +49337,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     : BossSummonAdmissionPolicy.allowsSkeletonSummon(bossPhase, "SPIDER")
                         && livingBossServantCount() < Math.min(config.maxSummonedServants(),
                                 currentBossCombatProfile().summonCap());
-            case SMALL_KAGUNE, AMBUSH_GRAB -> !guardianDeaths.cocoonBroken();
+            case SMALL_KAGUNE, AMBUSH_GRAB, KAGUNE_STAB, KAGUNE_ERUPTION -> !guardianDeaths.cocoonBroken();
             default -> true;
         };
     }
@@ -49496,6 +49497,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             previousBossSpell = spell;
             return startTentacleAmbush(boss, target);
+        }
+        if (spell == EndRiftAiPolicy.BossSpell.KAGUNE_STAB
+                || spell == EndRiftAiPolicy.BossSpell.KAGUNE_ERUPTION) {
+            Player target = currentBrainTarget(boss, spell);
+            if (target == null || !reserveBossHazard(spell, target)) return false;
+            int kind = spell == EndRiftAiPolicy.BossSpell.KAGUNE_STAB
+                    ? me.copimine.protocol.KaguneSpellFrame.STAB : me.copimine.protocol.KaguneSpellFrame.ERUPTION;
+            if (constructRuntime().start(boss, target, kind, eventTickCounter)) {
+                previousBossSpell = spell;
+                sendBossAnimationVisualUpdate(boss, "SPELL_SUMMON");
+                return true;
+            }
+            releaseBossHazardReservation("kagune-construct-refused");
+            return false;
         }
         if (spell == EndRiftAiPolicy.BossSpell.SMALL_KAGUNE) {
             // Preserve the saved spell ID as the major ring dispatch. Small
@@ -52595,7 +52610,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean isKaguneRingCastActive() {
-        return lastSealRing != null && lastSealRing.active();
+        // Legacy helper name: all finite Kagune spells own the same major slot.
+        return lastSealRing != null && lastSealRing.active()
+                || lastSealConstruct != null && lastSealConstruct.active();
     }
 
     private me.copimine.endevent.runtime.LastSealRingRuntime ringRuntime() {
@@ -52662,24 +52679,107 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return lastSealRing;
     }
 
+    private me.copimine.endevent.runtime.LastSealConstructRuntime constructRuntime() {
+        if (lastSealConstruct != null) return lastSealConstruct;
+        lastSealConstruct = new me.copimine.endevent.runtime.LastSealConstructRuntime(
+                new me.copimine.endevent.runtime.LastSealConstructRuntime.Host() {
+            public me.copimine.endevent.runtime.LastSealConstructRuntime.Scope scope(LivingEntity boss) {
+                return new me.copimine.endevent.runtime.LastSealConstructRuntime.Scope(eventId, generation, boss.getUniqueId());
+            }
+            public boolean active(LivingEntity boss) {
+                return boss != null && bossPhase == BossPhase.LAST_SEAL
+                        && !guardianDeaths.cocoonBroken() && isBossCombatRuntimeActive(boss);
+            }
+            public List<Player> participants() {
+                return activeBossParticipants().stream().filter(player -> !isPlayerUnderTentacleControl(player)).toList();
+            }
+            public Location floor(Location near) {
+                if (near == null || near.getWorld() == null) return null;
+                Location at = near.clone(); at.setY(combatFloorY() + 1D); return at;
+            }
+            public boolean traversable(Location feet) {
+                return isArenaLocation(feet) && feet.getBlock().isPassable()
+                        && feet.clone().add(0, 1, 0).getBlock().isPassable()
+                        && feet.clone().add(0, -1, 0).getBlock().getType().isSolid();
+            }
+            public ItemDisplay create(Location origin, me.copimine.protocol.KaguneSpellFrame initial) {
+                ItemStack item = overlayItem(MODEL_RIFT_TENTACLE, "end_event_rift_tentacle");
+                ItemMeta meta = item.getItemMeta();
+                me.copimine.endevent.presentation.ItemPresentationComponents.setFloats(meta, initial.encode());
+                item.setItemMeta(meta);
+                ItemDisplay display = origin.getWorld().spawn(origin, ItemDisplay.class, entity -> {
+                    entity.setItemStack(item); entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
+                    entity.setBillboard(Display.Billboard.FIXED); entity.setPersistent(false);
+                    entity.setGravity(false); entity.setInvulnerable(true); entity.setShadowRadius(0F);
+                    entity.setViewRange(64F); entity.setDisplayWidth(14F); entity.setDisplayHeight(8F);
+                });
+                tag(display, EVENT_KIND_TENTACLE, 0, isOfficialEntity(liveBoss()));
+                for (Player viewer : eventAudience()) bindEventEntityClient(viewer, display);
+                return display;
+            }
+            public void publish(ItemDisplay carrier, me.copimine.protocol.KaguneSpellFrame frame) {
+                ItemStack item = carrier.getItemStack(); ItemMeta meta = item.getItemMeta();
+                me.copimine.endevent.presentation.ItemPresentationComponents.setFloats(meta, frame.encode());
+                item.setItemMeta(meta); carrier.setItemStack(item);
+            }
+            public void warning(Location origin, List<me.copimine.protocol.KaguneSpellFrame.Point> points, int kind) {
+                // Sparse fixed ground marks; no screen-covering repeated overlays.
+                for (var point : points) {
+                    Location at = origin.clone().add(point.x(), point.y() + .08D, point.z());
+                    for (int i = 0; i < 12; i++) {
+                        double angle = Math.PI * 2D * i / 12D;
+                        spawnEventParticle(at.clone().add(Math.cos(angle)*.55D, 0D, Math.sin(angle)*.55D),
+                                Particle.SOUL, 1, 0D, 0D, 0D, 0D);
+                    }
+                }
+            }
+            public void impact(Location origin, int kind) {
+                playEncounterAbilityAudio(liveBoss(), kind == me.copimine.protocol.KaguneSpellFrame.STAB
+                        ? "guardian_lance" : "guardian_void");
+                spawnEventParticle(origin.clone().add(0D, .15D, 0D), Particle.POOF, 14, 1D, .15D, 1D, .025D);
+            }
+            public boolean hit(LivingEntity boss, Player player, double damage) {
+                return applyBossAbilityDamage(boss, player, damage);
+            }
+            public void remove(ItemDisplay carrier) {
+                carrier.remove();
+                if (!carrier.isValid()) unregisterOwnedEntity(carrier.getUniqueId(), "kagune-construct-retired");
+            }
+            public void finished(me.copimine.endevent.runtime.LastSealConstructRuntime.Scope owner, String reason) {
+                LivingEntity current = liveBoss();
+                if (owner != null && generation == owner.generation() && Objects.equals(eventId, owner.event())
+                        && (current == null || owner.boss().equals(current.getUniqueId())))
+                    releaseBossHazardReservation("kagune-construct-" + reason);
+            }
+            public void failed(String reason) {
+                getLogger().warning("KAGUNE_CONSTRUCT_REFUSED event=" + eventId + " generation=" + generation + " reason=" + reason);
+            }
+        });
+        return lastSealConstruct;
+    }
+
     private boolean startKaguneRingCast(LivingEntity boss) {
+        if (lastSealConstruct != null && lastSealConstruct.active()) return false;
         return ringRuntime().start(boss, eventScalePlayers(), eventTickCounter,
                 eventTickCounter * 31L ^ generation);
     }
 
     private void tickKaguneRingCast(LivingEntity boss) {
         if (lastSealRing != null) lastSealRing.tick(boss, eventTickCounter);
+        if (lastSealConstruct != null) lastSealConstruct.tick(boss, eventTickCounter);
     }
 
     private void clearKaguneRingCast(String reason) {
         if (lastSealRing != null) lastSealRing.cancel(reason);
+        if (lastSealConstruct != null) lastSealConstruct.cancel(reason);
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onKaguneRingLanding(EntityDamageEvent event) {
         if (event.getCause() == EntityDamageEvent.DamageCause.FALL
-                && event.getEntity() instanceof Player player && lastSealRing != null
-                && lastSealRing.consumeFall(player, generation)) {
+                && event.getEntity() instanceof Player player
+                && (lastSealRing != null && lastSealRing.consumeFall(player, generation)
+                    || lastSealConstruct != null && lastSealConstruct.consumeFall(player, generation))) {
             event.setCancelled(true);
             player.setFallDistance(0F);
         }

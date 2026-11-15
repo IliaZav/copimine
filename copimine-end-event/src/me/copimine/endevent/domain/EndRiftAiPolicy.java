@@ -23,7 +23,9 @@ public final class EndRiftAiPolicy {
         GROUND_SLAM("ground_slam", "Удар по земле"),
         FINAL_STRIKE("final_strike", "Приговор Разлома"),
         AMBUSH_GRAB("ambush_grab", "Засада из-под земли"),
-        SMALL_KAGUNE("small_kagune", "Малые кагуне");
+        SMALL_KAGUNE("small_kagune", "Кольцо кагуне"),
+        KAGUNE_STAB("kagune_stab", "Копьё кагуне"),
+        KAGUNE_ERUPTION("kagune_eruption", "Извержение кагуне");
 
         private final String id;
         private final String displayName;

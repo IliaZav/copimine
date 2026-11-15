@@ -49,7 +49,7 @@ public final class BossCastMobilityPolicy {
         }
         return switch (spell) {
             case RIFT_PROJECTILE, RIFT_ARROWS, VOID_BLAST, VOID_MARK,
-                 BOSS_FIREBALL, SUMMON_SERVANTS, SMALL_KAGUNE -> true;
+                 BOSS_FIREBALL, SUMMON_SERVANTS, SMALL_KAGUNE, KAGUNE_STAB, KAGUNE_ERUPTION -> true;
             // AMBUSH_GRAB burrows the body under the floor, so it cannot drift
             // while the grab resolves. Its lock is still bounded and short.
             case MELEE_SWIPE, CHEST_STRIKE, GROUND_SLAM,

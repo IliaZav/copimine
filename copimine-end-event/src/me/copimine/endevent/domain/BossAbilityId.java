@@ -16,6 +16,8 @@ public enum BossAbilityId {
     GROUND_SLAM("ground_slam", BossHazardBudget.MechanicKind.GROUND_SLAM, false, false),
     AMBUSH_GRAB("ambush_grab", BossHazardBudget.MechanicKind.MAJOR_GRAB, true, false),
     SMALL_KAGUNE("small_kagune", BossHazardBudget.MechanicKind.SUMMON_SERVANTS, false, false),
+    KAGUNE_STAB("kagune_stab", BossHazardBudget.MechanicKind.GROUND_SLAM, false, false),
+    KAGUNE_ERUPTION("kagune_eruption", BossHazardBudget.MechanicKind.GROUND_SLAM, false, false),
     // The boss hovers above the Core during LAST_SEAL, so a direct ray to a
     // grounded player is frequently blocked by the seal itself.  Requiring a
     // direct ray through the authored wall makes the long cast disappear even

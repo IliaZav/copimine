@@ -101,7 +101,7 @@ public final class BossAbilitySelector {
                     || ability == BossAbilityId.BOSS_FIREBALL ? 4.0D : 1.0D;
             case LAST_SEAL -> switch (ability) {
                 case AMBUSH_GRAB -> 7.0D;
-                case SMALL_KAGUNE -> 6.0D;
+                case SMALL_KAGUNE, KAGUNE_ERUPTION, KAGUNE_STAB -> 6.0D;
                 case FINAL_STRIKE, BOSS_FIREBALL -> 5.0D;
                 default -> 1.0D;
             };
@@ -126,8 +126,9 @@ public final class BossAbilitySelector {
 
     private static double intentMatch(BossIntent intent, BossAbilityId ability) {
         return switch (intent) {
-            case PUNISH_STACK -> ability == BossAbilityId.VOID_BLAST ? 6.0D : 0.0D;
-            case PUNISH_SPREAD -> ability == BossAbilityId.VOID_MARK || ability == BossAbilityId.RIFT_PROJECTILE ? 5.0D : 0.0D;
+            case PUNISH_STACK -> ability == BossAbilityId.VOID_BLAST || ability == BossAbilityId.KAGUNE_ERUPTION ? 6.0D : 0.0D;
+            case PUNISH_SPREAD -> ability == BossAbilityId.VOID_MARK || ability == BossAbilityId.RIFT_PROJECTILE
+                    || ability == BossAbilityId.KAGUNE_STAB ? 5.0D : 0.0D;
             case CREATE_SPACE -> ability == BossAbilityId.REPOSITION || ability == BossAbilityId.VOID_BLAST ? 6.0D : 0.0D;
             case FLANK -> ability == BossAbilityId.RIFT_PROJECTILE ? 3.0D : 0.0D;
             case RANGED_PRESSURE -> ability == BossAbilityId.RIFT_ARROWS

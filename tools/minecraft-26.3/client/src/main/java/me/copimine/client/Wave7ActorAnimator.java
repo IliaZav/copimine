@@ -81,7 +81,7 @@ public final class Wave7ActorAnimator {
                     default -> { }
                 }
                 ModelPart ring = part(root, "right_arm/rift_sigil_ring");
-                if (ring != null) { ring.visible=true; ring.yRot += p*1.5F; ring.xScale=ring.zScale=1+draw*.25F; }
+                if (ring != null) { ring.visible=frame.stage() != Wave7AnimationFrame.Stage.RECOVERY; ring.yRot += p*1.5F; ring.xScale=ring.zScale=1+draw*.25F; }
             } else {
                 switch(frame.action()) {
                     case WARDEN_NARROW_STRIKE -> {

@@ -60,15 +60,17 @@ others and the seal visibly shifts proportion when the obelisk advances a stage.
 | critical | `end_event_rift_obelisk_critical_hd.png` | 1254x1254 |
 | pulse | `end_event_rift_obelisk_pulse_hd.png` | 1254x1254 |
 
-`1240x1269` is 0.977 the width-to-height ratio of its siblings: the full-stage art
-renders ~2.3 % taller inside the same face than the three stages it transitions to.
+The full-stage sheet has a different pixel aspect ratio from its siblings.
+These dimensions alone do not prove that the rendered obelisk is stretched:
+that depends on the authored UV coordinates, atlas mapping and geometry.
 
 ## Why this was not changed in this increment
 
-The remedy is deterministic — resample `full_hd` to `1254x1254` — but the sheet
-exists in three coupled places (`resourcepacks/src`, `CopiMineClient/src/main/resources`,
-and inside the built client jar), so the change forces a client rebuild, a new client
-pin **and** a new pack pin, i.e. a second full release, for a ~2 % aspect nudge.
+Resampling the complete sheet to `1254x1254` while preserving normalized UVs
+would preserve the same sampled artwork proportions on the model; it is not
+a demonstrated remedy for model distortion. First identify the incorrect UV
+region or artwork proportions using actual before/after client frames, then
+apply the matching source-art or UV correction across the coupled assets.
 
 The objective is explicit that a visual requirement cannot be closed by a mechanical
 check: "an unavailable native check is BLOCKED, never a pass". Repainting authored art

@@ -260,12 +260,13 @@ public final class BossSpellGeometryPolicy {
                 // Six chains pulled from a wide ring down to a tight one: the
                 // motion itself is the read, because the shape closes as the
                 // telegraph runs out.
+                double closure = charge ? 1.0D - .65D * p : size;
                 for (int chain = 0; chain < 6; chain++) {
                     double a = chain * TAU / 6 + spin * 0.08;
-                    line(out, new Point(Math.cos(a) * r * size, 1.1, Math.sin(a) * r * size, 0),
+                    line(out, new Point(Math.cos(a) * r * closure, 1.1, Math.sin(a) * r * closure, 0),
                             new Point(Math.cos(a) * r * 0.16, 0.05, Math.sin(a) * r * 0.16, 0), 8, chain % 2);
                 }
-                polygon(out, 6, r * size * 0.55, 0.04, spin * 0.12, 4, 1);
+                polygon(out, 6, r * closure * 0.55, 0.04, spin * 0.12, 4, 1);
             }
             case ECHO_BLOOM -> {
                 // A volume rather than a disk: three latitudes of a bloom plus

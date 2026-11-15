@@ -48,9 +48,7 @@ def family_key(stem):
 
 
 def opaque_fraction(image):
-    if image.mode != "RGBA":
-        return 1.0
-    alpha = image.getchannel("A")
+    alpha = image.convert("RGBA").getchannel("A")
     return sum(1 for v in alpha.getdata() if v > 0) / (image.width * image.height)
 
 

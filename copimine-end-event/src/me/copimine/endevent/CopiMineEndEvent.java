@@ -37475,6 +37475,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 // The joint attack is resolved once, by the LEFT member, so the
                 // two halves of the cross cannot double-fire a single charge.
                 if (!isPairedCrossfireLeader(actor, trial.chamber())) {
+                    UUID leaderId = namedMarksmanPartnerId(actor, trial.chamber());
+                    Entity leader = leaderId == null ? null : Bukkit.getEntity(leaderId);
+                    Wave7NamedTrialActorPolicy.Checkpoint pending = leader == null ? null
+                            : readNamedTrialActorCheckpoint(leader, trial);
+                    if (pending != null && pending.attack() == checkpoint.attack()
+                            && pending.phaseDeadlineMillis() == checkpoint.phaseDeadlineMillis()
+                            && Objects.equals(pending.targetId(), checkpoint.targetId())) return true;
                     return finishNamedTrialAttack(actor, checkpoint, now);
                 }
                 return fireNamedMarksmanPairedCrossfire(actor, target, checkpoint, now, trial.chamber());
@@ -37564,20 +37571,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 // The follower waits in its lane; only the leader commits the pair.
                 return true;
             }
-            long jointDeadline = now + Wave7NamedTrialActorPolicy.telegraphTicks(
-                    Wave7NamedTrialActorPolicy.Attack.MARKSMAN_PAIRED_CROSSFIRE) * 50L;
-            if (!writeNamedTrialActorCheckpoint(actor, new Wave7NamedTrialActorPolicy.Checkpoint(
-                    checkpoint.eventId(), checkpoint.generation(), checkpoint.chamber(), checkpoint.trial(),
-                    checkpoint.actorId(), checkpoint.attackIndex() + 1L,
-                    Wave7NamedTrialActorPolicy.Attack.MARKSMAN_PAIRED_CROSSFIRE, jointDeadline,
-                    checkpoint.cooldownUntilMillis(), target.getUniqueId(), checkpoint.supportUsed(),
-                    checkpoint.vanishUntilMillis()))) return false;
-            lockNamedTrialAim(actor, target, Wave7NamedTrialActorPolicy.Attack.MARKSMAN_PAIRED_CROSSFIRE, jointDeadline);
-            sendTrialPose(actor, "MARKSMAN_PAIRED_CROSSFIRE", "WINDUP", jointDeadline,
-                    Wave7NamedTrialActorPolicy.telegraphTicks(Wave7NamedTrialActorPolicy.Attack.MARKSMAN_PAIRED_CROSSFIRE)*50, 0);
-            renderNamedTrialTelegraph(actor, target,
-                    Wave7NamedTrialActorPolicy.Attack.MARKSMAN_PAIRED_CROSSFIRE, true);
-            return true;
+            return beginNamedMarksmanCrossfire(actor, target, trial, checkpoint, now);
         }
 
         Wave7NamedTrialActorPolicy.Attack attack;
@@ -38071,6 +38065,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Wave7NamedTrialActorPolicy.Checkpoint theirs = readNamedTrialActorCheckpoint(partner, trial);
         if (mine == null || theirs == null) return false;
         long now = System.currentTimeMillis();
+        if (!mine.mayAttackNow(now) || !theirs.mayAttackNow(now)) return false;
         Wave7SkeletonPairPolicy.Member first = new Wave7SkeletonPairPolicy.Member(actor.getUniqueId(),
                 Wave7SkeletonPairPolicy.flankOf(actor.getUniqueId()),
                 actor.getLocation().distanceSquared(target.getLocation()),
@@ -38137,6 +38132,40 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /** Both actors acquire one cast before either animation or projectile can start. */
+    private boolean beginNamedMarksmanCrossfire(LivingEntity actor, Player target,
+            RealitySplitTrialController.NamedTrialState trial,
+            Wave7NamedTrialActorPolicy.Checkpoint mine, long now) {
+        UUID partnerId = namedMarksmanPartnerId(actor, trial.chamber());
+        Entity raw = partnerId == null ? null : Bukkit.getEntity(partnerId);
+        if (!(raw instanceof LivingEntity partner) || !partner.isValid() || partner.isDead()
+                || !isCurrentRealitySplitTrialTarget(partner, target)) return false;
+        Wave7NamedTrialActorPolicy.Checkpoint theirs = readNamedTrialActorCheckpoint(partner, trial);
+        if (theirs == null || !theirs.mayAttackNow(now) || !mine.mayAttackNow(now)) return false;
+        long deadline = now + Wave7NamedTrialActorPolicy.telegraphTicks(
+                Wave7NamedTrialActorPolicy.Attack.MARKSMAN_PAIRED_CROSSFIRE) * 50L;
+        var first = new Wave7NamedTrialActorPolicy.Checkpoint(mine.eventId(), mine.generation(), mine.chamber(),
+                mine.trial(), mine.actorId(), mine.attackIndex()+1L,
+                Wave7NamedTrialActorPolicy.Attack.MARKSMAN_PAIRED_CROSSFIRE, deadline,
+                mine.cooldownUntilMillis(), target.getUniqueId(), mine.supportUsed(), mine.vanishUntilMillis());
+        var second = new Wave7NamedTrialActorPolicy.Checkpoint(theirs.eventId(), theirs.generation(), theirs.chamber(),
+                theirs.trial(), theirs.actorId(), theirs.attackIndex()+1L,
+                Wave7NamedTrialActorPolicy.Attack.MARKSMAN_PAIRED_CROSSFIRE, deadline,
+                theirs.cooldownUntilMillis(), target.getUniqueId(), theirs.supportUsed(), theirs.vanishUntilMillis());
+        if (!writeNamedTrialActorCheckpoint(actor, first)) return false;
+        if (!writeNamedTrialActorCheckpoint(partner, second)) {
+            writeNamedTrialActorCheckpoint(actor, mine); return false;
+        }
+        lockNamedTrialAim(actor, target, first.attack(), deadline);
+        trialAimLocks.put(partner.getUniqueId(), trialAimLocks.get(actor.getUniqueId()));
+        int duration = Wave7NamedTrialActorPolicy.telegraphTicks(first.attack()) * 50;
+        for (LivingEntity member : List.of(actor, partner)) {
+            sendTrialPose(member, first.attack().name(), "WINDUP", deadline, duration, 0);
+            renderNamedTrialTelegraph(member, target, first.attack(), true);
+        }
+        return true;
+    }
+
     private boolean fireNamedMarksmanPairedCrossfire(LivingEntity actor, Player target,
             Wave7NamedTrialActorPolicy.Checkpoint checkpoint, long now, int chamber) {
         if (target == null || !isCurrentRealitySplitTrialTarget(actor, target)) {
@@ -38148,33 +38177,34 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!(rawPartner instanceof LivingEntity partner) || partner.isDead()) {
             return finishNamedTrialAttack(actor, checkpoint, now);
         }
+        RealitySplitTrialController.NamedTrialState trial = realitySplitTrialController.namedTrial(chamber);
+        Wave7NamedTrialActorPolicy.Checkpoint theirs = trial == null ? null : readNamedTrialActorCheckpoint(partner, trial);
         TrialAimLock jointAim = trialAimLocks.get(actor.getUniqueId());
-        if (jointAim == null) return finishNamedTrialAttack(actor, checkpoint, now);
+        if (jointAim == null || theirs == null || theirs.attack() != checkpoint.attack()
+                || theirs.phaseDeadlineMillis() != checkpoint.phaseDeadlineMillis()
+                || !Objects.equals(theirs.targetId(), checkpoint.targetId()))
+            return finishNamedTrialAttack(actor, checkpoint, now);
         trialAimLocks.put(partner.getUniqueId(), jointAim);
         boolean fired = launchPairedCrossfireVolley(actor, target,
                 Wave7SkeletonPairPolicy.flankOf(actor.getUniqueId()));
         boolean partnerFired = launchPairedCrossfireVolley(partner, target,
                 Wave7SkeletonPairPolicy.flankOf(partner.getUniqueId()));
-        if (fired) renderWave7AbilityEffect(actor, target, "MARKSMAN_PAIRED_CROSSFIRE");
-        if (partnerFired) renderWave7AbilityEffect(partner, target, "MARKSMAN_PAIRED_CROSSFIRE");
+        if (fired) {
+            sendTrialFollowupPose(actor, "RELEASE", 350);
+            renderWave7AbilityEffect(actor, target, "MARKSMAN_PAIRED_CROSSFIRE");
+        }
+        if (partnerFired) {
+            sendTrialFollowupPose(partner, "RELEASE", 350);
+            renderWave7AbilityEffect(partner, target, "MARKSMAN_PAIRED_CROSSFIRE");
+        }
         // Even a half-fired cross keeps the pair's cooldown: the charge is spent.
         wave7PairedCrossfireTicks.put(pairedCrossfireKey(actor.getUniqueId(), partnerId), eventTickCounter);
-        if (!fired && !partnerFired) return finishNamedTrialAttack(actor, checkpoint, now);
-        // The partner's own receipt is cleared too, so both leave the tell state.
-        RealitySplitTrialController.NamedTrialState trial = realitySplitTrialController.namedTrial(chamber);
-        if (trial != null) {
-            Wave7NamedTrialActorPolicy.Checkpoint theirs = readNamedTrialActorCheckpoint(partner, trial);
-            if (theirs != null) {
-                writeNamedTrialActorCheckpoint(partner, new Wave7NamedTrialActorPolicy.Checkpoint(
-                        theirs.eventId(), theirs.generation(), theirs.chamber(), theirs.trial(),
-                        theirs.actorId(), theirs.attackIndex(),
-                        Wave7NamedTrialActorPolicy.Attack.NONE, 0L,
-                        now + Wave7NamedTrialActorPolicy.cooldownTicks(
-                                Wave7NamedTrialActorPolicy.Attack.MARKSMAN_PAIRED_CROSSFIRE) * 50L,
-                        null, theirs.supportUsed(), theirs.vanishUntilMillis()));
-            }
-        }
-        return finishNamedTrialAttack(actor, checkpoint, now);
+        long cooldown = Wave7NamedTrialActorPolicy.cooldownTicks(
+                Wave7NamedTrialActorPolicy.Attack.MARKSMAN_PAIRED_CROSSFIRE) * 50L;
+        // Same recovery deadline even when one wing was blocked or could not spawn.
+        boolean partnerFinished = finishNamedTrialAttack(partner, theirs, now, cooldown);
+        boolean leaderFinished = finishNamedTrialAttack(actor, checkpoint, now, cooldown);
+        return partnerFinished && leaderFinished;
     }
 
     /** Caster recovery is active footwork, not an idle statue between spells. */
@@ -38342,12 +38372,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private boolean finishNamedTrialAttack(Entity actor,
             Wave7NamedTrialActorPolicy.Checkpoint checkpoint, long now) {
+        return finishNamedTrialAttack(actor, checkpoint, now, 20L * 50L);
+    }
+
+    private boolean finishNamedTrialAttack(Entity actor,
+            Wave7NamedTrialActorPolicy.Checkpoint checkpoint, long now, long cooldownMillis) {
         if (actor == null || checkpoint == null) return false;
         sendTrialFollowupPose(actor, "RECOVERY", 500);
         return writeNamedTrialActorCheckpoint(actor, new Wave7NamedTrialActorPolicy.Checkpoint(
                 checkpoint.eventId(), checkpoint.generation(), checkpoint.chamber(), checkpoint.trial(),
                 checkpoint.actorId(), checkpoint.attackIndex(), Wave7NamedTrialActorPolicy.Attack.NONE,
-                0L, now + 20L * 50L, null, checkpoint.supportUsed(),
+                0L, now + Math.max(0L, cooldownMillis), null, checkpoint.supportUsed(),
                  checkpoint.vanishUntilMillis()));
     }
 

@@ -686,6 +686,7 @@ public final class EndEventBridgeBodyCodec {
 
     private static void requireEntityPhase(String visual) {
         if (visual.startsWith("TRIAL1|")) { Wave7AnimationFrame.parse(visual); return; }
+        if (visual.startsWith("GACT1|")) { GuardianActorFrame.parse(visual); return; }
         if (BOSS_PHASES.contains(visual) || WAVE_POSES.contains(visual) || RITUAL_PHASES.contains(visual)) {
             return;
         }

@@ -30,6 +30,8 @@ public final class EndEventClientState {
     private final Map<String, EntityAnimationBinding> entityAnimations = new HashMap<>();
     private record TrialBinding(me.copimine.protocol.Wave7AnimationFrame frame, long receivedAt) { }
     private final Map<String, TrialBinding> trialAnimations = new HashMap<>();
+    private record GuardianActorBinding(me.copimine.protocol.GuardianActorFrame frame, long receivedAt) { }
+    private final Map<String, GuardianActorBinding> guardianActors = new HashMap<>();
 
     public synchronized me.copimine.protocol.Wave7AnimationFrame trialFrame(String uuid, long now) {
         TrialBinding cue = trialAnimations.get(uuid);
@@ -308,6 +310,7 @@ public final class EndEventClientState {
         if (uuid == null || uuid.isBlank()) {
             return "";
         }
+        if (guardianActors.containsKey(uuid)) return "RAGE";
         BossPhaseBinding binding = bossPhase.get(uuid);
         if (binding == null) return "";
         if (bossBar != null && Objects.equals(bossBar.bossUuid(), uuid)
@@ -321,6 +324,8 @@ public final class EndEventClientState {
         if (uuid == null || uuid.isBlank()) {
             return "";
         }
+        GuardianActorBinding actor = guardianActors.get(uuid);
+        if (actor != null) return actor.frame().action().name();
         BossPhaseBinding binding = bossPhase.get(uuid);
         if (binding == null) {
             return "";
@@ -381,6 +386,8 @@ public final class EndEventClientState {
         if (uuid == null || uuid.isBlank() || nowMillis < 0L) {
             return 0L;
         }
+        GuardianActorBinding actor = guardianActors.get(uuid);
+        if (actor != null) return actor.frame().elapsedAt(nowMillis - actor.receivedAt());
         BossPhaseBinding binding = bossPhase.get(uuid);
         if (binding == null) {
             return 0L;
@@ -490,6 +497,7 @@ public final class EndEventClientState {
         }
         tentacleHealthPulses.remove(packet.subjectId());
         trialAnimations.remove(packet.subjectId());
+        guardianActors.remove(packet.subjectId());
         entityVisuals.put(packet.subjectId(), new EntityVisualBinding(packet.instanceId(), packet.visualId()));
         entityAnimations.put(packet.subjectId(), new EntityAnimationBinding(
                 packet.instanceId(), "READY", -1L, nowMillis, 60_000L, "FULL", "",
@@ -508,6 +516,7 @@ public final class EndEventClientState {
         entityVisuals.remove(packet.subjectId());
         entityAnimations.remove(packet.subjectId());
         trialAnimations.remove(packet.subjectId());
+        guardianActors.remove(packet.subjectId());
         tentacleHealthPulses.remove(packet.subjectId());
         suppressedEntityRenders.add(packet.subjectId());
         while (suppressedEntityRenders.size() > MAX_RENDER_SUPPRESSIONS) {
@@ -527,6 +536,19 @@ public final class EndEventClientState {
                 || !Objects.equals(visual.instanceId(), packet.instanceId())
                 || !Objects.equals(binding.instanceId(), packet.instanceId())) {
             return false;
+        }
+        if (packet.phaseId().startsWith("GACT1|")) {
+            final me.copimine.protocol.GuardianActorFrame frame;
+            try { frame = me.copimine.protocol.GuardianActorFrame.parse(packet.phaseId()); }
+            catch (IllegalArgumentException invalid) { return false; }
+            if (!frame.matchesVisual(visual.visualId())) return false;
+            GuardianActorBinding old = guardianActors.get(packet.subjectId());
+            if (old != null && (frame.cast() < old.frame().cast()
+                    || frame.cast() == old.frame().cast() && frame.action() != old.frame().action())) return false;
+            if (old != null && frame.cast() == old.frame().cast()
+                    && old.frame().elapsedAt(nowMillis-old.receivedAt()) > frame.elapsedMillis()) return true;
+            guardianActors.put(packet.subjectId(), new GuardianActorBinding(frame, nowMillis));
+            return true;
         }
         if (packet.phaseId().startsWith("TRIAL1|")) {
             final me.copimine.protocol.Wave7AnimationFrame cue;
@@ -790,6 +812,7 @@ public final class EndEventClientState {
         entityVisuals.clear();
         entityAnimations.clear();
         trialAnimations.clear();
+        guardianActors.clear();
         tentacleHealthPulses.clear();
         controlInstance = "";
         controlMode = "";

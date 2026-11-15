@@ -8,6 +8,8 @@ public interface EndRiftRenderStateAccess {
                                   String bossAnimation);
     default void copimine$bindTrialFrame(me.copimine.protocol.Wave7AnimationFrame frame) { }
     default me.copimine.protocol.Wave7AnimationFrame copimine$trialFrame() { return null; }
+    default void copimine$poseProgress(float value) { }
+    default float copimine$poseProgress() { return 0; }
     String copimine$uuid();
     int copimine$entityId();
     boolean copimine$isEcho();

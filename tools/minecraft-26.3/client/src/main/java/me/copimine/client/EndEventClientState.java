@@ -157,6 +157,12 @@ public final class EndEventClientState {
         return binding == null ? "" : binding.visualId();
     }
 
+    public synchronized float wavePoseProgress(String uuid,long nowMillis) {
+        EntityAnimationBinding binding=entityAnimations.get(uuid);
+        if(binding==null || binding.durationMillis()<=0 || nowMillis<binding.startedAtMillis()) return 0;
+        return Math.clamp((nowMillis-binding.startedAtMillis())/(float)binding.durationMillis(),0F,1F);
+    }
+
     /** Server-selected animation state for a bound event display. */
     public synchronized String entityAnimationForEntity(String uuid) {
         if (uuid == null || uuid.isBlank()) {
@@ -605,6 +611,7 @@ public final class EndEventClientState {
     }
 
     private static boolean wavePoseVisual(String visual) {
+        if (RiftRamVisualPolicy.isRiftRamVisual(visual)) return true;
         return Set.of("END_RIFT_ENDERMAN_V1", "END_RIFT_ELITE_V1", "END_RIFT_SKELETON_V1", "END_RIFT_ELITE_SKELETON_V1",
                 "END_RIFT_SPIDER_V1", "END_RIFT_ELITE_SPIDER_V1", "END_RIFT_WAVE_GUARDIAN_ENDERMAN_V1",
                 "END_RIFT_ZOMBIE_V1", "END_RIFT_ELITE_ZOMBIE_V1",

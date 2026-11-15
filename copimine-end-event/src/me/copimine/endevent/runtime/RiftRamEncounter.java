@@ -18,6 +18,7 @@ import java.util.*;
 public final class RiftRamEncounter {
     public interface Host {
         boolean active();
+        default void pose(Ravager actor,String pose,int durationTicks) { }
         List<Player> players();
         Location core();
         int floorY();
@@ -57,10 +58,13 @@ public final class RiftRamEncounter {
     private boolean completed, closed, banked;
     private UUID target;
     private Vector direction;
-    private Location pillar, stompOrigin;
+    private Location pillar, stompOrigin, chargeAim;
+    private UUID chaseFocus;
+    private int chaseFocusUntil;
     private UUID pillarId;
     private double lastRadius;
     private final List<BlockDisplay> pillarDisplays = new ArrayList<>();
+    private final Map<UUID,Location> pillarRestPositions = new HashMap<>();
     private final List<Piece> armor = new ArrayList<>();
     private final List<Debris> debris = new ArrayList<>();
     private final Set<UUID> chargeHits = new HashSet<>(), stompHits = new HashSet<>(), stompRoster = new HashSet<>();
@@ -235,6 +239,9 @@ public final class RiftRamEncounter {
                 pillarDisplays.add(block(site.clone().add(-(bodyHalf+.03f),height*.45f,-(bodyHalf+.03f)),
                         Material.CRYING_OBSIDIAN,new Vector3f(footprint+.06f,.25f,footprint+.06f)));
             }
+            pillarRestPositions.clear();
+            for (BlockDisplay display:pillarDisplays)
+                pillarRestPositions.put(display.getUniqueId(),display.getLocation().clone());
             nextPillarTick = tick;
             site.getWorld().playSound(site,Sound.BLOCK_DEEPSLATE_PLACE, finale?2.4f:1.6f, finale?.35f:.5f);
             if (finale && !pillarSkeletonSpawned) {
@@ -285,7 +292,12 @@ public final class RiftRamEncounter {
         switch(action) {
             case CHASE -> {
                 ram.setAI(true);
-                Player focus=nearest(ram.getLocation(),players);
+                Player focus=players.stream().filter(p->p.getUniqueId().equals(chaseFocus)
+                        && !p.isDead() && p.getWorld().equals(ram.getWorld())).findFirst().orElse(null);
+                if (focus==null || tick>=chaseFocusUntil) {
+                    focus=nearest(ram.getLocation(),players);
+                    chaseFocus=focus==null?null:focus.getUniqueId(); chaseFocusUntil=tick+60;
+                }
                 ram.setTarget(focus);
                 if(focus==null) return;
                 // A stomp is refused during a charge, a stun, the spawn frame and
@@ -297,7 +309,8 @@ public final class RiftRamEncounter {
                     ram.getWorld().playSound(ram.getLocation(),Sound.ENTITY_RAVAGER_STUNNED,1.6f,.6f);
                 } else if(pillarId!=null && tick-nextPillarTick>=20
                         && tick-lastCharge>=RiftRamPolicy.chargeCooldownTicks(players.size())) {
-                    target=focus.getUniqueId(); face(focus.getLocation()); begin(Action.CHARGE_WARNING); hold();
+                    target=focus.getUniqueId(); chargeAim=focus.getLocation().clone();
+                    face(chargeAim); begin(Action.CHARGE_WARNING); hold();
                     ram.getWorld().playSound(ram.getLocation(),Sound.ENTITY_RAVAGER_ROAR,1.7f,.8f);
                 } else avoidPillar();
             }
@@ -305,10 +318,14 @@ public final class RiftRamEncounter {
                 hold();
                 Player focus=players.stream().filter(p->p.getUniqueId().equals(target)).findFirst().orElse(null);
                 if(focus==null) { recover(); return; }
-                face(focus.getLocation());
+                // Commit the last eight warning ticks so a player can dodge the
+                // visible line without the Ram snapping its final facing after them.
+                if (chargeAim==null || tick-actionTick < Math.max(1,RiftRamPolicy.chargeWindupTicks()-8))
+                    chargeAim=focus.getLocation().clone();
+                face(chargeAim);
                 chargeTell(focus, tick-actionTick);
                 if(tick-actionTick>=RiftRamPolicy.chargeWindupTicks()) {
-                    double[] locked=RiftRamPolicy.lockChargeDirection(ram.getX(),ram.getY(),ram.getZ(),focus.getX(),focus.getY(),focus.getZ());
+                    double[] locked=RiftRamPolicy.lockChargeDirection(ram.getX(),ram.getY(),ram.getZ(),chargeAim.getX(),chargeAim.getY(),chargeAim.getZ());
                     if(locked==null) { recover(); return; }
                     direction=new Vector(locked[0],0,locked[1]); banked=false; chargeHits.clear(); begin(Action.CHARGE);
                 }
@@ -332,7 +349,28 @@ public final class RiftRamEncounter {
         }
     }
 
-    private void begin(Action next) { action=next; actionTick=tick; }
+    private void begin(Action next) {
+        action=next; actionTick=tick;
+        if(ram==null || !ram.isValid()) return;
+        String pose=switch(next) {
+            case CHARGE_WARNING -> "WAVE_WINDUP";
+            case STOMP_WARNING -> "WAVE_FROZEN";
+            case CHARGE, STOMP -> "WAVE_RELEASE";
+            case STUN -> "WAVE_HIT";
+            case RECOVER -> "WAVE_RECOVER";
+            case DEAD -> "WAVE_DEATH";
+            default -> "WAVE_COMBAT";
+        };
+        int duration=switch(next) {
+            case CHARGE_WARNING -> RiftRamPolicy.CHARGE_WINDUP_TICKS;
+            case STOMP_WARNING -> RiftRamPolicy.STOMP_WARNING_TICKS;
+            case CHARGE -> RiftRamPolicy.CHARGE_TIMEOUT_TICKS;
+            case STOMP -> RiftRamPolicy.STOMP_EXPANSION_TICKS;
+            case STUN -> RiftRamPolicy.IMPACT_STUN_TICKS;
+            default -> 30;
+        };
+        host.pose(ram,pose,duration);
+    }
     private void hold() {
         ram.setAI(false);
         ram.setTarget(null);
@@ -382,7 +420,8 @@ public final class RiftRamEncounter {
         int windup = Math.max(1, RiftRamPolicy.chargeWindupTicks());
         double progress = Math.min(1.0D, (double) elapsed / (double) windup);
         double bodyScale = RiftRamPolicy.BOSS_SCALE;
-        Vector heading = focus == null && direction != null ? direction.clone()
+        Vector heading = chargeAim != null ? chargeAim.toVector().subtract(ram.getLocation().toVector()).setY(0)
+                : focus == null && direction != null ? direction.clone()
                 : focus == null ? ram.getLocation().getDirection().setY(0)
                 : new Vector(focus.getX() - ram.getX(), 0, focus.getZ() - ram.getZ());
         if (heading.lengthSquared() < 1.0E-4D) heading = new Vector(0, 0, 1);
@@ -582,12 +621,13 @@ public final class RiftRamEncounter {
             at.setYaw(ram.getLocation().getYaw()); host.move(piece.display(), at);
         }
         if(pillar!=null && tick-nextPillarTick<=20) {
-            float progress=Math.min(1,(tick-nextPillarTick)/20f);
-            for(int i=0;i<pillarDisplays.size();i++) {
-                BlockDisplay d=pillarDisplays.get(i);
-                double offset=i==0?-3:i==1?-.2:.3;
-                Location at=pillar.clone().add(i==0?-.9:i==1?-1.1:-1.05,offset+3*progress,i==0?-.9:i==1?-1.1:-1.05);
-                host.move(d, at);
+            double progress=Math.clamp((tick-nextPillarTick)/20D,0D,1D);
+            double eased=progress*progress*(3D-2D*progress);
+            for(BlockDisplay display:pillarDisplays) {
+                Location rest=pillarRestPositions.get(display.getUniqueId());
+                if(rest==null) throw new IllegalStateException("pillar-rest-transform-missing");
+                if(!host.move(display,rest.clone().add(0,-3D*(1D-eased),0)))
+                    throw new IllegalStateException("pillar-emergence-move-refused");
             }
         }
         for(Iterator<Debris> it=debris.iterator();it.hasNext();) {
@@ -651,6 +691,7 @@ public final class RiftRamEncounter {
             double[] offset=offsets[i];
             if (!host.move(display,pillar.clone().add(offset[0],offset[1],offset[2])))
                 throw new IllegalStateException("damaged-pillar-relocation-refused");
+            pillarRestPositions.put(display.getUniqueId(),display.getLocation().clone());
             Transformation t=display.getTransformation();
             display.setTransformation(new Transformation(t.getTranslation(),t.getLeftRotation(),
                     sizes[i],t.getRightRotation()));
@@ -821,7 +862,7 @@ public final class RiftRamEncounter {
 
     private void clearPillar() {
         for(BlockDisplay d:pillarDisplays) host.remove(d);
-        pillarDisplays.clear(); pillar=null; pillarId=null;
+        pillarDisplays.clear(); pillarRestPositions.clear(); pillar=null; pillarId=null;
     }
     private void cleanupDisplays() { cleanupDisplays(false); }
     private void cleanupDisplays(boolean preserveSkeleton) {

@@ -10,6 +10,9 @@ public abstract class LivingEntityRenderStateMixin implements EndRiftRenderState
     @Unique private me.copimine.protocol.Wave7AnimationFrame copimine$trialFrame;
     @Override public void copimine$bindTrialFrame(me.copimine.protocol.Wave7AnimationFrame frame) { copimine$trialFrame=frame; }
     @Override public me.copimine.protocol.Wave7AnimationFrame copimine$trialFrame() { return copimine$trialFrame; }
+    @Unique private float copimine$poseProgress;
+    @Override public void copimine$poseProgress(float value) { copimine$poseProgress=value; }
+    @Override public float copimine$poseProgress() { return copimine$poseProgress; }
     @Unique private String copimine$uuid = "";
     @Unique private int copimine$entityId = -1;
     @Unique private boolean copimine$isEcho;

@@ -29,7 +29,7 @@ public final class Wave7ActorAnimator {
             float draw = switch(frame.stage()) {
                 case WINDUP, EMERGE -> smooth;
                 case RELEASE -> 1-smooth*.7F;
-                case RECOVERY -> 1-smooth;
+                case RECOVERY -> .3F*(1-smooth);
                 default -> 0;
             };
             // Contact is the final windup frame, exactly when Paper releases

@@ -1347,6 +1347,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private record TrialAimLock(long generation, String event, long cast, Location point,
             Map<UUID, Location> fangMarks) { }
     private final Map<UUID, TrialAimLock> trialAimLocks = new HashMap<>();
+    private record TrialFocus(UUID target, long untilTick) { }
+    private final Map<UUID, TrialFocus> trialMovementFocus = new HashMap<>();
+
+    /** Locomotion keeps one legal target; cast fairness is handled independently. */
+    private Player namedTrialMovementTarget(Entity actor) {
+        TrialFocus focus = trialMovementFocus.get(actor.getUniqueId());
+        Player retained = focus == null ? null : Bukkit.getPlayer(focus.target());
+        if (retained != null && isCurrentRealitySplitTrialTarget(actor, retained)
+                && eventTickCounter < focus.untilTick()) return retained;
+        Player chosen = realitySplitTrialTargets(actor).stream()
+                .min(Comparator.comparingDouble(p -> p.getLocation().distanceSquared(actor.getLocation())))
+                .orElse(null);
+        if (chosen != null) trialMovementFocus.put(actor.getUniqueId(),
+                new TrialFocus(chosen.getUniqueId(),eventTickCounter+60L));
+        else trialMovementFocus.remove(actor.getUniqueId());
+        return chosen;
+    }
+
 
     private Location namedTrialAim(LivingEntity actor, Player target) {
         TrialAimLock lock = trialAimLocks.get(actor.getUniqueId());
@@ -4458,6 +4476,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         wardenEmergences.clear();
         trialPoseEmissions.clear();
         trialAimLocks.clear();
+        trialMovementFocus.clear();
         realitySplitTrialNextFireballTick.clear();
         realitySplitOrphanedSinceMillis.clear();
         currentCollapsedRings = 0;
@@ -4482,6 +4501,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         trialAnimationCapablePlayers.clear();
         trialPoseEmissions.clear();
         trialAimLocks.clear();
+        trialMovementFocus.clear();
         echoPresentationCapablePlayers.clear();
         ritualPrisonerAnchor = null;
         ritualSphereVisualUuid = null;
@@ -21540,7 +21560,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 ? trialAimLocks.get(ownerCaster).point().clone() : at.clone().add(caster.getLocation().getDirection());
         Vector axis = end.toVector().subtract(origin.toVector());
         if (axis.lengthSquared() < .001D) axis = new Vector(0,0,1);
-        origin.setDirection(axis);
+        final Vector committedAxis = axis.clone();
+        origin.setDirection(committedAxis);
         display.teleport(origin);
         boolean travelling = label.contains("SPEAR") || label.contains("SHOT") || label.contains("CROSSFIRE");
         // Native projectiles own the flight. A short muzzle body must not pretend to hit a distant player.
@@ -21564,6 +21585,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 else if (shape == BossSpellGeometryPolicy.Shape.RIFT_GATE)
                     pose.add(0, Math.sin(t*Math.PI)*.12D, 0);
                 display.teleport(pose);
+                // Four sparse local-space frames complement the solid mesh.
+                // Physical arrows own their own trail and impact; never fake one here.
+                if (!travelling && elapsed <= 18 && elapsed % 6 == 0 && ownerWave == 7) {
+                    var sampled = BossSpellGeometryPolicy.sample(shape, BossSpellGeometryPolicy.Beat.RELEASE,
+                            elapsed / 18D, 1.35D);
+                    List<BossSpellGeometryPolicy.Point> sparse = new ArrayList<>();
+                    for (int i=0;i<Math.min(16,sampled.size());i++)
+                        sparse.add(sampled.get(i*sampled.size()/Math.min(16,sampled.size())));
+                    int hue = label.startsWith("WARDEN") ? 0x4ce8df
+                            : label.startsWith("MARKSMAN") ? 0xcab7ff : 0xf34cdb;
+                    BossSpellPresentationEffects.frame(pose,committedAxis,sparse,hue,eventAudience(),
+                            (viewer,point) -> isTrialViewer(caster,viewer,point));
+                }
                 elapsed += 2;
             }
         }.runTaskTimer(this, 1L, 2L);
@@ -26601,6 +26635,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         wardenEmergences.clear();
         trialPoseEmissions.clear();
         trialAimLocks.clear();
+        trialMovementFocus.clear();
         realitySplitTrialNextFireballTick.clear();
         realitySplitOrphanedSinceMillis.clear();
         // W7-02: partner pairing and steering memory are per-encounter. A second
@@ -28292,6 +28327,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         riftRam = new me.copimine.endevent.runtime.RiftRamEncounter(
                 new me.copimine.endevent.runtime.RiftRamEncounter.Host() {
+            public void pose(Ravager actor, String pose, int durationTicks) {
+                sendWaveMobPose(actor,pose,Math.max(50L,durationTicks*50L));
+            }
             public boolean active() {
                 return activeWave == 6 && ownerGeneration == generation
                         && java.util.Objects.equals(ownerEvent, eventId)
@@ -37976,19 +38014,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (partnerId == null) return true;
         Entity rawPartner = Bukkit.getEntity(partnerId);
         if (!(rawPartner instanceof LivingEntity partner) || partner.isDead()) return true;
-        Player target = closestRealitySplitTrialParticipant(actor);
+        Player target = namedTrialMovementTarget(actor);
         if (target == null) return true;
         Wave7SkeletonPairPolicy.Flank flank =
                 Wave7SkeletonPairPolicy.flankOf(actor.getUniqueId());
         double offset = Wave7SkeletonPairPolicy.laneOffsetBlocks(flank);
         Vector toward = horizontalDirection(actor.getLocation(), target.getLocation());
         Vector lane = new Vector(-toward.getZ(), 0.0D, toward.getX()).multiply(offset);
-        Location desired = target.getLocation().clone().add(lane);
+        Location desired = target.getLocation().clone().subtract(toward.clone().multiply(7D)).add(lane);
         Location projected = actor.getLocation().clone();
         Vector delta = desired.toVector().subtract(projected.toVector()).setY(0.0D);
         if (delta.lengthSquared() > 1.0D) {
             Vector step = delta.normalize().multiply(0.18D).setY(0.10D);
-            actor.setVelocity(step);
+            if (actor instanceof Mob mob) applySteadyMinibossMove(actor,mob,step,.18D);
         }
         // Separation guard: if the partner drifted into this actor's lane, this
         // actor steps out rather than both standing on the same spot.
@@ -37996,7 +38034,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (separation < 4.0D) {
             Vector push = horizontalDirection(partner.getLocation(), actor.getLocation());
             if (push.lengthSquared() < 1.0E-4D) push = toward.clone().multiply(-1.0D);
-            actor.setVelocity(push.normalize().multiply(0.22D).setY(0.08D));
+            if (actor instanceof Mob mob) applySteadyMinibossMove(actor,mob,push,.22D);
         }
         return true;
     }
@@ -38122,7 +38160,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** Caster recovery is active footwork, not an idle statue between spells. */
     private void moveNamedTrialArchmage(LivingEntity actor) {
         if (!(actor instanceof Mob mob)) return;
-        Player target = closestRealitySplitTrialParticipant(actor);
+        Player target = namedTrialMovementTarget(actor);
         if (target == null || !isCurrentRealitySplitTrialTarget(actor, target)) return;
         double reach = Wave7NamedTrialActorPolicy.ARCHMAGE_ENGAGE_BLOCKS;
         double distance = Math.sqrt(horizontalDistanceSquared(actor.getLocation(), target.getLocation()));
@@ -38143,7 +38181,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void moveNamedTrialMarksman(LivingEntity actor, int chamber) {
         if (actor == null || !(actor instanceof Mob mob)) return;
-        Player target = closestRealitySplitTrialParticipant(actor);
+        Player target = namedTrialMovementTarget(actor);
         if (target == null) return;
         Vector toward = horizontalDirection(actor.getLocation(), target.getLocation());
         Vector away = toward.clone().multiply(-1.0D);
@@ -38241,7 +38279,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * velocity is only re-applied when it would actually change.</p>
      */
     private void applySteadyMinibossMove(LivingEntity actor, Mob mob, Vector desired, double speed) {
-        if (actor == null || mob == null || desired == null) return;
+        if (actor == null || mob == null || desired == null || !Double.isFinite(speed)
+                || !Double.isFinite(desired.getX()) || !Double.isFinite(desired.getZ())
+                || desired.clone().setY(0).lengthSquared() < 1.0E-6D) return;
         String stateKey = actor.getUniqueId() + ":stead";
         long now = eventTickCounter;
         Vector committed = namedTrialSteadyHeadings.get(stateKey);
@@ -38264,11 +38304,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         namedTrialSteadyHeadings.put(stateKey, heading);
         namedTrialSteadyDecided.put(stateKey, decidedTick);
         namedTrialSteadyMoved.put(stateKey, now);
-        // The hop is only given when the actor is actually on the ground, so
-        // the skeleton does not get re-launched every tick into a shaking
-        // hover — the other half of the old jitter.
-        double vertical = mob.isOnGround() && (now & 3L) == 0L ? 0.12D : mob.getVelocity().getY();
-        mob.setVelocity(heading.multiply(speed).setY(vertical));
+        // Validate the final steered heading: it can cut a corner even if the
+        // requested direction was clear. Clear commitment rather than grind a wall.
+        Player focus = namedTrialMovementTarget(actor);
+        if (focus == null) return;
+        Location probe = actor.getLocation().clone().add(heading.clone().multiply(Math.max(.55D,speed*2D)));
+        if (!isSafeCombatEntityLocation(probe,actor)
+                || !isRealitySplitDestinationAllowed(focus.getUniqueId(),probe,realitySplitChamberController.assignment())) {
+            namedTrialSteadyHeadings.remove(stateKey);
+            mob.setVelocity(new Vector(0,mob.getVelocity().getY(),0));
+            return;
+        }
+        // Preserve vertical physics; repeated micro-hops made grounded casters bob.
+        faceRealitySplitTrialMob(actor,heading);
+        mob.setVelocity(heading.multiply(Math.clamp(speed,.08D,.38D)).setY(mob.getVelocity().getY()));
     }
 
     private boolean finishNamedTrialAttack(Entity actor,
@@ -38477,10 +38526,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (bodyShape != null) {
             BossSpellGeometryPolicy.Anchor bodyAnchor =
                     BossSpellGeometryPolicy.anchor(bodyShape, BossSpellGeometryPolicy.Beat.CHARGE);
-            Location bodyOrigin = bodyAnchor == BossSpellGeometryPolicy.Anchor.LOCKED_FLOOR
-                    && impact != null && impact.getWorld() != null
-                            ? impact.clone().add(0.0D, 0.6D, 0.0D)
-                            : feet.clone().add(0.0D, 1.2D, 0.0D);
+            Location bodyOrigin = switch (bodyAnchor) {
+                case LOCKED_FLOOR -> impact != null && impact.getWorld() != null
+                        ? impact.clone().add(0,.08D,0) : feet.clone().add(0,.08D,0);
+                case FEET -> feet.clone().add(0,.08D,0);
+                case CHEST -> eye.clone().subtract(0,.25D,0);
+            };
             playCasterSpellBody(actor, bodyShape, effectKey, bodyOrigin, WAVE7_ABILITY_BODY_TICKS);
         }
     }
@@ -39010,7 +39061,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Player target = realitySplitTrialTarget(warden, state.chamber, state.target,
                 state.attackCount);
         if (target == null) {
-            state.nextActionTick = eventTickCounter + 20L;
+            // Covered players must still provoke pursuit; only the cast requires sight.
+            Player pursue = namedTrialMovementTarget(warden);
+            if (pursue != null) pursueNamedTrialTarget(warden,pursue,1.5D);
+            state.nextActionTick = eventTickCounter + 4L;
             return;
         }
         // W7-01: the Warden has no native AI, so nothing else will ever close
@@ -44914,6 +44968,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private Entity unregisterOwnedEntity(UUID entityId, String reason) {
         trialDeathVisuals.remove(entityId);
         trialAimLocks.remove(entityId);
+        trialMovementFocus.remove(entityId);
         trialPoseEmissions.remove(entityId);
         wave7MinibossPoses.remove(entityId);
         wave7PoseLeaseEnds.remove(entityId);

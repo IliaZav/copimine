@@ -228,10 +228,10 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # literal and the same digits in docs/minecraft-26.3/README.md were repinned
     # together. The size assertion carries the digits, so a repin here must update
     # BOTH this literal and the documented README value.
-    assert artifact['size'] == 30_096_804
+    assert artifact['size'] == 30_096_785
     assert artifact['sha512'] == (
-        '684a84602e5d7941d22da4a2cdb3de6376e22ab67f4555f64f636abaf60e918f'
-        '9f625678630e42ecc6329d07334e2d57999fd94351321e04362a9f234bd600fb'
+        'dcccf75ba8d39cbcef7da8ca64bacbe70ec70434b8f10104239add74927f8f8d'
+        '035234516492655564674d11cffeae576d414803cdbc0e5be69739db7b47c25e'
     )
 
 

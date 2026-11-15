@@ -81,6 +81,8 @@ public final class RiftRamEncounter {
      */
     private Skeleton pillarSkeleton;
     private UUID pillarSkeletonId;
+    private UUID skeletonFocus;
+    private int skeletonFocusUntil;
     private int skeletonLastTriple = -1, skeletonLastBone = -1, skeletonLastMove = -1, skeletonStep;
     private boolean skeletonFallen, pillarSkeletonSpawned, pillarSkeletonDefeated, ramDefeated;
 
@@ -285,7 +287,13 @@ public final class RiftRamEncounter {
         }
         List<Player> players=host.players();
         mites.removeIf(e->!e.isValid() || e.isDead());
-        for(Endermite mite:mites) if(mite.getTarget()==null) mite.setTarget(nearest(mite.getLocation(),players));
+        for (Endermite mite : mites) {
+            LivingEntity current = mite.getTarget();
+            boolean eligible = current instanceof Player player && player.isOnline() && !player.isDead()
+                    && player.getWorld().equals(mite.getWorld())
+                    && players.stream().anyMatch(candidate -> candidate.getUniqueId().equals(player.getUniqueId()));
+            if (!eligible) mite.setTarget(nearest(mite.getLocation(), players));
+        }
         tickPillarSkeleton(players);
         enforceHealthFloor();
         updateDisplays();
@@ -483,6 +491,7 @@ public final class RiftRamEncounter {
         if ((tick - actionTick) % 6 == 0)
             ram.getWorld().playSound(to, Sound.ENTITY_RAVAGER_STEP, 1.4F, .7F);
         for(Player player:players) {
+            if (closed || !host.active()) return;
             if(Math.abs(player.getY()-from.getY())>3 || !RiftRamPolicy.chargeHitsPlayer(from.getX(),from.getZ(),to.getX(),to.getZ(),
                     player.getX(),player.getZ(),chargeHits.contains(player.getUniqueId()))) continue;
             chargeHits.add(player.getUniqueId());
@@ -552,7 +561,9 @@ public final class RiftRamEncounter {
             host.own(mite,true); mite.setPersistent(true); mite.setRemoveWhenFarAway(false);
             mite.setTarget(nearest(struck,host.players())); mites.add(mite);
         }
-        hold(); begin(Action.STUN); host.visualsChanged();
+        // impact() already entered STUN before the durable checkpoint. Re-entering
+        // here replayed its sound and presentation for the same accepted collision.
+        hold(); host.visualsChanged();
     }
 
     private void stomp(List<Player> players) {
@@ -742,7 +753,7 @@ public final class RiftRamEncounter {
             pillarSkeleton = at.getWorld().spawn(at, Skeleton.class, entity -> {
                 entity.setPersistent(true);
                 entity.setRemoveWhenFarAway(false);
-                entity.setCustomName("РЎС‚СЂРµР»РѕРє Р Р°Р·Р»РѕРјР°");
+                entity.setCustomName("Стрелок Разлома");
                 entity.setCustomNameVisible(false);
                 entity.getAttribute(Attribute.GENERIC_MAX_HEALTH)
                         .setBaseValue(WaveSixPillarSkeletonPolicy.HEALTH);
@@ -782,7 +793,16 @@ public final class RiftRamEncounter {
     private void tickPillarSkeleton(List<Player> players) {
         if (!skeletonAlive()) return;
         if (pillar == null && !skeletonFallen) return;
-        Player target = nearest(pillarSkeleton.getLocation(), players);
+        Player target = players.stream().filter(player -> player.getUniqueId().equals(skeletonFocus)
+                && player.isOnline() && !player.isDead() && player.getWorld().equals(pillarSkeleton.getWorld()))
+                .findFirst().orElse(null);
+        if (target == null || tick >= skeletonFocusUntil) {
+            List<Player> visible = players.stream().filter(player -> player.isOnline() && !player.isDead()
+                    && player.getWorld().equals(pillarSkeleton.getWorld()) && pillarSkeleton.hasLineOfSight(player)).toList();
+            target = nearest(pillarSkeleton.getLocation(), visible.isEmpty() ? players : visible);
+            skeletonFocus = target == null ? null : target.getUniqueId();
+            skeletonFocusUntil = tick + 60;
+        }
         boolean hasTarget = target != null && pillarSkeleton.hasLineOfSight(target);
         if (hasTarget) {
             Vector toward=target.getEyeLocation().toVector().subtract(pillarSkeleton.getEyeLocation().toVector());

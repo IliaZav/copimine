@@ -106,6 +106,7 @@ tasks.named('endEventJar', Jar) {
         include 'me/copimine/protocol/EncounterGenerationPolicy.class'
         include 'me/copimine/protocol/KaguneRingFrame.class'
         include 'me/copimine/protocol/BossAnimationPlayback.class'
+        include 'me/copimine/protocol/Wave7AnimationFrame*.class'
     }
 }
 

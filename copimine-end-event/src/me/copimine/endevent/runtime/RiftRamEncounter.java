@@ -30,6 +30,8 @@ public final class RiftRamEncounter {
         boolean damage(LivingEntity source, Player player, double amount);
         /** Spawns a visible, event-owned modelled arrow and returns its handle. */
         Arrow spawnBoneArrow(Location origin, Vector direction, double speed, double damage);
+        /** Called after shooter attribution, before a real arrow enters the shared flight controller. */
+        default boolean prepareBoneArrow(Arrow arrow, boolean rain) { return true; }
         int particleBudget();
         void remove(Entity entity);
         /** Moves an owned entity through the internal permit path; reports refusal. */
@@ -420,7 +422,8 @@ public final class RiftRamEncounter {
         int windup = Math.max(1, RiftRamPolicy.chargeWindupTicks());
         double progress = Math.min(1.0D, (double) elapsed / (double) windup);
         double bodyScale = RiftRamPolicy.BOSS_SCALE;
-        Vector heading = chargeAim != null ? chargeAim.toVector().subtract(ram.getLocation().toVector()).setY(0)
+        Vector heading = action == Action.CHARGE && direction != null ? direction.clone()
+                : chargeAim != null ? chargeAim.toVector().subtract(ram.getLocation().toVector()).setY(0)
                 : focus == null && direction != null ? direction.clone()
                 : focus == null ? ram.getLocation().getDirection().setY(0)
                 : new Vector(focus.getX() - ram.getX(), 0, focus.getZ() - ram.getZ());
@@ -840,6 +843,9 @@ public final class RiftRamEncounter {
             if (arrow != null) {
                 arrow.setShooter(pillarSkeleton);
                 arrow.setDamage(WaveSixPillarSkeletonPolicy.ARROW_DAMAGE);
+                if (!host.prepareBoneArrow(arrow,Double.compare(speed,WaveSixPillarSkeletonPolicy.BONE_RAIN_SPEED)==0)) {
+                    host.remove(arrow);
+                }
             }
         }
     }

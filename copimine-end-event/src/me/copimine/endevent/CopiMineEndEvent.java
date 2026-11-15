@@ -28383,6 +28383,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 arrow.addScoreboardTag("clearlag_exclude");
                 return arrow;
             }
+            public boolean prepareBoneArrow(Arrow arrow, boolean rain) {
+                tagEliteArrowModel(arrow,rain ? "end_rift_arrow_rain" : "end_rift_triple_arrow");
+                arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
+                return trackEventArrow(arrow);
+            }
             public int particleBudget() {
                 return Math.max(96, Math.min(512, getConfig().getInt("wave6.rift-ram.stomp-particles-per-viewer", 256)));
             }

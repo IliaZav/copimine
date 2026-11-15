@@ -23,13 +23,12 @@ public final class RealitySplitChamberController {
     private final Set<Passage> openingBoundaries = new LinkedHashSet<>();
     private final Set<Integer> completedChambers = new LinkedHashSet<>();
 
-    /** Small parties share one sequential arena; four or more use four isolated trials. */
+    /** Latest approved Wave 7: the entire party shares one sequential open arena. */
     public void beginWave7(long generation, List<UUID> players) {
         int count = players == null ? 0 : (int) players.stream().filter(java.util.Objects::nonNull)
                 .distinct().count();
         if (count < 1 || count > 20) throw new IllegalArgumentException("Wave 7 requires 1-20 unique players");
-        if (count <= 3) beginOpenArena(generation, players);
-        else begin(generation, players);
+        beginOpenArena(generation, players);
     }
 
     public void begin(long generation, List<UUID> players) {
@@ -171,6 +170,11 @@ public final class RealitySplitChamberController {
                 || (allowSinglePlayer && restoredAssignment.chamberByPlayer().isEmpty())) {
             throw new IllegalArgumentException("Wave 7 assignment is not restorable");
         }
+        // Latest user decision forbids restoring physical trial partitions.
+        // Keep the original checkpoint untouched for an explicit migration/restart;
+        // collapsing four durable trials into one here would erase progress.
+        if (restoredAssignment.chamberCount() != 1)
+            throw new IllegalArgumentException("WAVE7_LEGACY_PARTITIONS_REQUIRE_EXPLICIT_MIGRATION");
         // Recovery validates the entire checkpoint before publishing anything.
         // A malformed passage must not erase the live generation's actor index
         // or completion receipts while its caller enters the recovery path.

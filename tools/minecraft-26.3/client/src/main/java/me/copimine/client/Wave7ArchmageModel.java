@@ -164,7 +164,7 @@ public final class Wave7ArchmageModel extends EntityModel<EvokerRenderState> {
         boolean releasing = ((EndRiftRenderStateAccess) state).copimine$trialFrame() == null && "WAVE_RELEASE".equals(wavePose);
         boolean recovering = ((EndRiftRenderStateAccess) state).copimine$trialFrame() == null && "WAVE_RECOVER".equals(wavePose);
         boolean hit = "WAVE_HIT".equals(wavePose);
-        boolean dying = "WAVE_DEATH".equals(wavePose);
+        boolean dying = ((EndRiftRenderStateAccess) state).copimine$trialFrame() == null && "WAVE_DEATH".equals(wavePose);
         boolean casting = state.isCastingSpell || winding || releasing;
 
         if (dying) {

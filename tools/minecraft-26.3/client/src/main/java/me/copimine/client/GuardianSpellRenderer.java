@@ -63,9 +63,12 @@ public final class GuardianSpellRenderer {
         if (mesh.isEmpty() || GuardianSpellMesh.vertices(mesh).isEmpty()) return null;
         float age = entity.tickCount + partialTick;
         float scale = .18F + .82F * Math.min(1F, age / 6F);
+        // The mesh itself breathes in local space; no extra entity per ring or rib.
+        if (model == 830214) scale *= 1F + .22F*(float)Math.sin(Math.min(1F,age/24F)*Math.PI);
+        if (model == 830213) scale *= 1F - .15F*Math.min(1F, age/30F);
         // A floor rune spins around its vertical normal, never through the floor.
         // Arches and arrow racks remain upright and keep their committed facing.
-        float yaw = -entity.getYRot() + (model == 830208 ? age * 1.8F : 0F);
+        float yaw = -entity.getYRot() + (model == 830208 ? age * 1.8F : model == 830215 ? age * 3F : 0F);
         float roll = model == 830204 || model >= 830208 ? 0F : age * 4F;
         float size = switch (model) {
             case 830208 -> 2.6F;

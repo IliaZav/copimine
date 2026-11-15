@@ -10,12 +10,20 @@ public final class Wave7ActorAnimator {
     public static void apply(ModelPart root, LivingEntityRenderState state, boolean warden) {
         if (!(state instanceof EndRiftRenderStateAccess access)) return;
         // Legacy HIT/DEATH own the interruption; never stack a cast or another recoil over it.
-        if ("WAVE_HIT".equals(access.copimine$wavePose()) || "WAVE_DEATH".equals(access.copimine$wavePose())) return;
         Wave7AnimationFrame frame = access.copimine$trialFrame();
+        if ((frame == null || frame.stage() != Wave7AnimationFrame.Stage.DYING)
+                && ("WAVE_HIT".equals(access.copimine$wavePose()) || "WAVE_DEATH".equals(access.copimine$wavePose()))) return;
         ModelPart body = part(root, warden ? "bone/body" : "body");
         ModelPart head = part(root, warden ? "bone/body/head" : "head");
         ModelPart right = part(root, warden ? "bone/body/right_arm" : "right_arm");
         ModelPart left = part(root, warden ? "bone/body/left_arm" : "left_arm");
+        if (frame != null && frame.stage() == Wave7AnimationFrame.Stage.DYING) {
+            float t=frame.progress(), fall=t*t*(3-2*t);
+            rotate(body,.95F*fall,0,.18F*fall); rotate(head,.45F*fall,0,0);
+            rotate(right,.65F*fall,0,.22F*fall); rotate(left,.65F*fall,0,-.22F*fall);
+            translate(body,0,4*fall,0);
+            return;
+        }
         if (frame != null) {
             float p = frame.progress(), smooth = p*p*(3-2*p);
             float draw = switch(frame.stage()) {

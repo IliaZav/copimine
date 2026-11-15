@@ -80,7 +80,7 @@ public final class Wave7WardenModel extends WardenModel {
         boolean releasing = ((EndRiftRenderStateAccess) state).copimine$trialFrame() == null && "WAVE_RELEASE".equals(wavePose);
         boolean recovering = ((EndRiftRenderStateAccess) state).copimine$trialFrame() == null && "WAVE_RECOVER".equals(wavePose);
         boolean hit = "WAVE_HIT".equals(wavePose);
-        boolean dying = "WAVE_DEATH".equals(wavePose);
+        boolean dying = ((EndRiftRenderStateAccess) state).copimine$trialFrame() == null && "WAVE_DEATH".equals(wavePose);
         boolean charging = winding || releasing
                 || state.attackAnimationState.isStarted()
                 || state.sonicBoomAnimationState.isStarted();

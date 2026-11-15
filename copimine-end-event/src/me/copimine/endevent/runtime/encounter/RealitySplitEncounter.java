@@ -6,7 +6,7 @@ import me.copimine.endevent.domain.ChamberIsolationPolicy;
 import me.copimine.endevent.domain.EndRiftObjective;
 import me.copimine.endevent.runtime.EncounterContext;
 
-/** Wave 7 isolated-chamber objective; a chamber completes once, then merges explicitly. */
+/** Wave 7 open-arena objective; the sequential route completes once for the whole party. */
 public final class RealitySplitEncounter extends AbstractWaveEncounter {
     private ChamberIsolationPolicy.Assignment assignment =
             new ChamberIsolationPolicy.Assignment(0, java.util.Map.of());
@@ -18,7 +18,7 @@ public final class RealitySplitEncounter extends AbstractWaveEncounter {
 
     @Override
     protected synchronized int requiredFor(EncounterContext context) {
-        assignment = ChamberIsolationPolicy.assign(
+        assignment = ChamberIsolationPolicy.assignOpenArena(
                 new java.util.ArrayList<>(context.livingParticipants()));
         return Math.max(1, assignment.chamberCount());
     }

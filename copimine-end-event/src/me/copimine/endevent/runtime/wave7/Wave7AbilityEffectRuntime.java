@@ -40,7 +40,7 @@ public final class Wave7AbilityEffectRuntime {
         if (passes.isEmpty() || actorFeet == null || actorFeet.getWorld() == null) return false;
         Emitter emitter = (particle, point, count, spread, extra, color) -> {
             try {
-                if (color == null) {
+                if (particle != Particle.DUST || color == null) {
                     actorFeet.getWorld().spawnParticle(particle, point, count,
                             0.0D, 0.0D, 0.0D, extra);
                 } else {
@@ -61,10 +61,19 @@ public final class Wave7AbilityEffectRuntime {
         if (passes.isEmpty() || actorFeet == null || actorFeet.getWorld() == null
                 || emitter == null || !finite(actorFeet)) return false;
         Vector direction = safeDirection(aim);
-        for (Pass pass : passes) {
+        boolean physicalShot = abilityId != null && (abilityId.contains("SHOT")
+                || abilityId.contains("CROSSFIRE") || abilityId.equals("ARCHMAGE_SPEAR"));
+        for (Pass authored : passes) {
+            if (physicalShot && (authored.shape() == Shape.IMPACT_BURST
+                    || authored.shape() == Shape.TARGET_OUTLINE || authored.shape() == Shape.PROJECTILE_TRAIL)) continue;
+            Pass pass = physicalShot && authored.shape() == Shape.AIM_LANCE
+                    ? new Pass(authored.shape(), Math.min(10,authored.count()),1.2D,.12D,authored.height(),
+                            authored.spread(),authored.particle(),authored.accentParticle(),authored.glow()) : authored;
             Particle primary = particle(pass.particle());
             if (primary == null) continue;
             Color colour = colour(pass.accentParticle());
+            // DUST requires typed data; accent names do not make a non-dust particle typed.
+            if (primary == Particle.DUST && colour == null) colour = Color.fromRGB(148,96,226);
             renderPass(pass, primary, colour, actorEye == null ? actorFeet : actorEye,
                     actorFeet, direction, impact, emitter);
         }
@@ -79,7 +88,7 @@ public final class Wave7AbilityEffectRuntime {
         switch (pass.shape()) {
             case GROUND_RING -> {
                 double radius = Math.max(0.25D, pass.radius());
-                int steps = Math.max(6, (int) Math.round((Math.PI * 2.0D) / RING_STEP_RADIANS));
+                int steps = Math.max(6, Math.min(32, pass.count()));
                 for (int i = 0; i < steps; i++) {
                     double angle = i * (Math.PI * 2.0D / steps);
                     Location point = feet.clone().add(Math.cos(angle) * radius, 0.12D,
@@ -90,7 +99,7 @@ public final class Wave7AbilityEffectRuntime {
             case TARGET_OUTLINE -> {
                 Location centre = impact == null || !finite(impact) ? feet : impact;
                 double radius = Math.max(0.5D, pass.radius());
-                int steps = Math.max(8, (int) Math.round((Math.PI * 2.0D) / RING_STEP_RADIANS));
+                int steps = Math.max(8, Math.min(32, pass.count()));
                 for (int i = 0; i < steps; i++) {
                     double angle = i * (Math.PI * 2.0D / steps);
                     Location point = centre.clone().add(Math.cos(angle) * radius, 0.05D,
@@ -101,20 +110,25 @@ public final class Wave7AbilityEffectRuntime {
             case AIM_LANCE -> {
                 double length = Math.max(0.5D, pass.extent());
                 double radius = Math.max(0.0D, pass.radius());
-                int points = Math.max(2, pass.count());
-                for (int i = 0; i < points; i++) {
-                    double t = length * i / (points - 1.0D);
-                    double wobble = radius * Math.sin(t * 2.4D);
-                    Location point = eye.clone().add(direction.clone().multiply(t))
-                            .add(new Vector(-direction.getZ() * wobble, wobble * 0.4D,
-                                    direction.getX() * wobble));
-                    if (finite(point)) emitter.emit(particle, point, 1, 0.0D, extra, colour);
+                // Orthonormal cross-section: an oblique cast stays round instead
+                // of flattening its ribbon against the world horizontal plane.
+                Vector side = Math.abs(direction.getY()) > .95D ? new Vector(1,0,0)
+                        : direction.clone().crossProduct(new Vector(0,1,0)).normalize();
+                Vector normal = side.clone().crossProduct(direction).normalize();
+                int points = Math.max(6, Math.min(40, pass.count()));
+                for (int i=0; i<points; i++) {
+                    double u = i/(double)(points-1), angle=u*Math.PI*4;
+                    double r=radius*Math.sin(Math.PI*u);
+                    Location point=eye.clone().add(direction.clone().multiply(length*u))
+                            .add(side.clone().multiply(Math.cos(angle)*r))
+                            .add(normal.clone().multiply(Math.sin(angle)*r));
+                    if (finite(point)) emitter.emit(particle, point, 1, 0, extra, colour);
                 }
             }
             case HELIX -> {
                 double radius = Math.max(0.1D, pass.radius());
                 double height = Math.max(0.4D, pass.height());
-                int points = Math.max(4, pass.count());
+                int points = Math.max(4, Math.min(40, pass.count()));
                 for (int i = 0; i < points; i++) {
                     double t = i / (double) points;
                     double angle = t * Math.PI * 4.0D;
@@ -125,19 +139,21 @@ public final class Wave7AbilityEffectRuntime {
             }
             case IMPACT_BURST -> {
                 Location centre = impact == null || !finite(impact) ? feet : impact;
-                double radius = Math.max(0.2D, pass.radius());
-                double height = Math.max(0.0D, pass.height());
-                int points = Math.max(6, pass.count());
-                for (int i = 0; i < points; i++) {
-                    double t = i / (double) points;
-                    double angle = t * Math.PI * 2.0D;
-                    Location point = centre.clone().add(Math.cos(angle) * radius, 0.1D + height * t,
-                            Math.sin(angle) * radius);
-                    if (finite(point)) emitter.emit(particle, point, 1, 0.0D, extra, colour);
+                double radius = Math.max(.2D, pass.radius());
+                double height = Math.max(.3D, pass.height());
+                int points = Math.max(8, Math.min(40, pass.count()));
+                // Golden-angle distribution covers the whole shell, not a single
+                // tilted helix masquerading as a spherical burst.
+                for (int i=0; i<points; i++) {
+                    double y=1-2*(i+.5D)/points, r=Math.sqrt(Math.max(0,1-y*y));
+                    double angle=i*Math.PI*(3-Math.sqrt(5));
+                    Location point=centre.clone().add(Math.cos(angle)*r*radius,
+                            .15D+(y+1)*height*.5D, Math.sin(angle)*r*radius);
+                    if (finite(point)) emitter.emit(particle, point, 1,0,extra,colour);
                 }
             }
             case SELF_AURA -> {
-                int points = Math.max(2, pass.count());
+                int points = Math.max(2, Math.min(40, pass.count()));
                 double radius = Math.max(0.05D, pass.radius());
                 double height = Math.max(0.2D, pass.height());
                 for (int i = 0; i < points; i++) {
@@ -149,7 +165,7 @@ public final class Wave7AbilityEffectRuntime {
             }
             case PROJECTILE_TRAIL -> {
                 Location from = eye.clone();
-                int points = Math.max(2, pass.count());
+                int points = Math.max(2, Math.min(40, pass.count()));
                 double length = Math.max(1.0D, pass.extent());
                 for (int i = 0; i < points; i++) {
                     Location point = from.clone().add(direction.clone().multiply(length * i / points));

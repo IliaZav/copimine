@@ -529,6 +529,9 @@ public final class EndEventClientState {
             if (!cue.matchesVisual(visual.visualId())) return false;
             TrialBinding old = trialAnimations.get(packet.subjectId());
             if (old != null && cue.cast() < old.frame().cast()) return false;
+            if (old != null && cue.cast() == old.frame().cast()
+                    && (cue.action() != old.frame().action()
+                    || cue.stage().ordinal() < old.frame().stage().ordinal())) return false;
             // Heartbeats correct drift without restarting the same authored pose.
             if (old != null && old.frame().cast() == cue.cast() && old.frame().stage() == cue.stage()
                     && old.frame().advance(nowMillis - old.receivedAt()).elapsedMillis() > cue.elapsedMillis()) return true;

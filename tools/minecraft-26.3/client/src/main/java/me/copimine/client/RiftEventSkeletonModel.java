@@ -287,7 +287,7 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
         boolean recovering = access.copimine$trialFrame() == null && "WAVE_RECOVER".equals(wavePose);
         boolean loosing = access.copimine$trialFrame() == null && "WAVE_RELEASE".equals(wavePose);
         boolean hit = "WAVE_HIT".equals(wavePose);
-        boolean dying = "WAVE_DEATH".equals(wavePose);
+        boolean dying = ((EndRiftRenderStateAccess) state).copimine$trialFrame() == null && "WAVE_DEATH".equals(wavePose);
         // The gait that super.setupAnim produced is the base layer; the draw is
         // added on top of it so a moving Marksman still visibly walks.
         float stride = Mth.clamp(walkSpeed, 0.0F, 1.0F);

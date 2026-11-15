@@ -52,18 +52,36 @@ Executed with pinned Temurin 25.0.4.1+1 / Gradle 9.8.1:
 
 ## Artifacts
 
-Source implementation: 1ef49f937bc772b55cea872a60a5a4962f6d6a03.
+Source implementation: `62f0829129bef627e99a792dd48e0e281c6b1257`.
 Local folder: `artifacts/20261115-wave7-reviewed-candidate/`.
 
 | Artifact | Bytes | SHA-256 |
 |---|---:|---|
-| CopiMineEndEvent.jar | 2515792 | `9b6f980b3c14b71f3f4144d750be9b292e66ffb3fb8853a7a3d3beb6e8e86f85` |
+| CopiMineEndEvent.jar | 2515833 | `5f419746ef9d89130e5758332874450f6515437be7f94a2a29482d1d40a277ea` |
 | CopiMineNarcotics.jar | 375086 | `0b44338f0e5f59be1d2691bfc7e62e91008bc7c15e8de4eebe4f9fbb730235a0` |
-| CopiMineClient-0.1.4+26.3.jar | 30107971 | `dbf122de4510b1feaf8db0edba9b2e0735ae516160726d0c2a2fa7e12ccb3dfe` |
+| CopiMineClient-0.1.4+26.3.jar | 30108018 | `10add2cccffef82c8fff4686aa57a181e6409932f7f0f836598feeebf926e584` |
 | CopiMineResourcePack.zip | 27806472 | `a2e25fcc276ff9be9ad361ac3402648b667ed595752edbd37f19f8343309f6d9` |
 
 Profile/server candidate pins and client-size documentation match these bytes.
 `nativeVerified=false`; testsRun=false; productionInstalled=false.
+
+## Independent review
+
+`coderabbit review --agent --base-commit 04d8be93ec859f3ca39dd6fda8fe13808903494d -c AGENTS.md`
+completed: 79 text files, 4 minor issues, 0 major/critical. Binary textures/JARs were
+excluded by the reviewer, so this is not graphical acceptance. The build packaging
+inclusion and explicit legacy-checkpoint guard were added after the review snapshot.
+All four issues were inspected and corrected in `62f08291`:
+
+- SNARE_CHAINS charge now contracts both its outer endpoints and polygon together;
+  release retains its independent expansion.
+- Archmage sigil ring remains hidden in RECOVERY.
+- Texture audit reads alpha through RGBA conversion, including LA and indexed PNGs.
+- Texture report no longer claims full-sheet resampling fixes model proportions.
+
+Server/client JARs were rebuilt after these corrections. No test tasks were run.
+Raw NDJSON is retained locally in the artifact folder, not presented as a second review
+of the corrections. CI and in-game acceptance remain unverified.
 
 ## Deployment and outstanding acceptance
 

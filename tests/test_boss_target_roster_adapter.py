@@ -12,6 +12,7 @@ def test_boss_pursuit_never_admits_a_late_nonparticipant(tmp_path):
     java = tmp_path / "BossTargetRosterProbe.java"
     java.write_text(r'''
 import java.util.*;
+import java.util.stream.Collectors;
 import me.copimine.endevent.domain.BossTargetPolicy;
 import me.copimine.endevent.domain.BossGroupAggroPolicy;
 public class BossTargetRosterProbe {
@@ -56,6 +57,8 @@ public class BossTargetRosterProbe {
     final Set<UUID> combatHelpers=new HashSet<>();
     // Group-aggro bookkeeping read by rotateBossTarget.
     final java.util.Map<UUID,Long> bossRecentAttackers=new java.util.HashMap<>();
+    // Fairness history read by rotateBossTarget's focus-selection rule.
+    final java.util.Map<UUID,Long> bossLastFocusedMillis=new java.util.HashMap<>();
     long bossLastRetaliationMillis,bossFocusSinceMillis;
     // The lock is no longer absolute: a group that keeps hitting the boss during
     // the lock forces a re-target. The probe has no live attackers, so the lock

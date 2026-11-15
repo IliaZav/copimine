@@ -99,8 +99,17 @@ def test_decoys_dissolve_when_the_final_seal_begins():
 
 def test_decoys_are_not_persistent_orphans():
     spawn = body("private boolean summonEchoDecoys(")
-    assert "registerOwnedEntity" in spawn or "spawnOwnedMob(" in spawn, (
-        "a decoy must be an owned entity so generation cleanup can find it"
+    # The summon goes through the shared owned-mob helper (the literal call is
+    # `spawnOwnedMobAtLocation(...)`). Asserting the helper alone would let a
+    # rename to an unowned spawn path pass, so the helper is checked too.
+    assert "spawnOwnedMobAtLocation(" in spawn or "registerOwnedEntity" in spawn, (
+        "a decoy must be spawned through an ownership-registering helper so "
+        "generation cleanup can find it"
+    )
+    helper = body("private Entity spawnOwnedMobAtLocation(")
+    assert "registerOwnedEntity(entity)" in helper, (
+        "spawnOwnedMobAtLocation must register the spawned entity as owned, or "
+        "the decoy is an orphan the generation fence cannot reach"
     )
     clear = body("private int clearEchoDecoys(")
     assert "entity.remove()" in clear

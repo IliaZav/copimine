@@ -83,6 +83,21 @@ public class CocoonFallAdapterProbe {
     void cancelBossCastForPhaseChange(){oldCast=false;}
     void clearKaguneRingCast(String reason){oldRing=false;}
     void clearActiveRiftProjectiles(){oldProjectiles=false;}
+    // The cocoon break also drains the separate rift-fireball registry and the
+    // scheduled LAST_SEAL visual task, then restores phase music on fury entry.
+    // The probe starts with an empty registry, so these stubs exist only to
+    // prove the break path compiles and runs against the real production body.
+    static final class RiftFireballRuntimeState {
+        boolean isBossSpell(){return true;}
+        long generation(){return 4L;}
+        UUID entityId(){return new UUID(0,2);}
+    }
+    final Map<UUID,RiftFireballRuntimeState> activeRiftFireballs=new LinkedHashMap<>();
+    void cleanupRiftFireball(UUID id,String reason){}
+    static final class LastSealVisualTask { void cancel(){} boolean isCancelled(){return false;} }
+    LastSealVisualTask currentLastSealVisualTask;
+    String musicForPhase(){return "melee-fury";}
+    void playEventMusic(String track){}
     void clearWorldVfxBeamsByPrefix(String prefix){}
     boolean isBossCombatRuntimeActive(LivingEntity b){return b!=null&&b.isValid();}
     boolean isEnabled(){return true;}boolean isCombatPhase(){return false;}

@@ -117,6 +117,12 @@ public class BossChestStrikeReleaseProbe {
     boolean carrier=true;
     static final class Registry { boolean owns(long g){return true;} }
     final Registry taskRegistry=new Registry();
+    // Cancel-path collaborator: cancelBossCastTask now clears the whole fury
+    // combo so a forced replacement, phase change or defeat cannot let an old
+    // follow-up resume. The probe only needs the collaborator to compile and run
+    // the real production bodies; the assertions below stay on the strike state.
+    static final class FuryCombo { void clear(){} }
+    final FuryCombo bossFuryCombo=new FuryCombo();
     BukkitTask bossCastTask;
     long bossChestStrikeSequence, bossCastSequence, bossEdgeVolleySequence;
     long bossCastDeadlineMillis, bossSpellPauseUntilMillis;

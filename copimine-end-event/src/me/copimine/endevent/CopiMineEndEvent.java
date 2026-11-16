@@ -54087,6 +54087,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void strikeTentacleGuardianTarget(ItemDisplay display, Player target) {
+        // A restored strike may run before the first fresh target selection.
+        // Establish scope here too, so that selection cannot clear its new lease.
+        if (guardianPressureGeneration!=generation) {
+            guardianPressureGeneration=generation; guardianHeavyContactUntil.clear();
+        }
         if (display == null || !display.isValid() || display.isDead() || target == null
                 || !isActiveBossParticipant(target) || isPlayerUnderTentacleControl(target)
                 || !isBossCombatRuntimeActive(liveBoss())

@@ -114,3 +114,50 @@ Client: 30247451 bytes, SHA-256
 `81a5e1d052002b1b0ef8d84afd63aecc1530b1ff7880d4fe42d0416e51978cfb`.
 Bridge and migrated resource pack remain unchanged from the table.
 No claim of a zero-issue review or completed native/gameplay acceptance is made.
+
+## Final production and Prism receipt
+
+Source `70392cb5`, source/pin publication `969f34a4`; branch
+`origin/codex/rift-guardian-polish-20261110`. Final server plugin SHA-256 is
+`751209eddd2813832798e903298d8d4becda5f81e9b18b928ecd96e2eb67b1f4`.
+Bridge SHA-256 remains `4609582cdc08db60e64122b510e7a264a001baeef88fd10f905bee054be4f9a0`.
+Actual installed hashes match the final candidate manifest.
+
+Published files, both downloaded completely over HTTPS and hash-checked:
+
+- https://copimine.ru/assets/CopiMineClient-0.1.4+26.3-81a5e1d052002b1b.jar
+- https://copimine.ru/assets/CopiMineResourcePack-26.3-98d7950558e7da38.zip
+
+Full stopped-runtime and PostgreSQL backup:
+`/opt/copimine-backups/end-rift-20261116T145321Z-70392cb5` (root-only).
+Database dump: 8649828 bytes, SHA-256
+`c9adf9e74e1569562dc84aef8e3c15743bdbf3ce02bfb333807bcd59b9f3e877`.
+Runtime archive: 1197477448 bytes, SHA-256
+`79d9cad2a169f6fca06427de235ef1b8d7e5be14102fbf496799a368416484f2`.
+Archive/database indexes were validated before replacement. Old artifact
+hashes, staged files, `.new` files and final paths were checked. Plugin owner
+and modes were preserved. No world, schema or credential reset occurred.
+Rollback procedure remains the three-member plugin/config restore described
+in `PRODUCTION_INSTALLATION.md`, using this backup; preserve subsequent player
+data instead of restoring the whole runtime/database blindly.
+
+`copimine-game.service` active/running, PID `329716`. Host UTC+07 log:
+bridge enabled 21:55:42, EndEvent enabling 21:55:51, Paper
+`Done (45.874s)` at 21:55:53. No ERROR/SEVERE line was observed in this new
+startup journal. Public state reports online and zero players. An RCON
+main-thread-check error was observed during the preceding controlled shutdown;
+it is not claimed repaired by the boss changes or counted as a successful
+gameplay probe.
+
+Prism selected instance `Copimine`: final mod SHA-256
+`81a5e1d052002b1b0ef8d84afd63aecc1530b1ff7880d4fe42d0416e51978cfb`,
+30247451 bytes. Minecraft was closed. Previous JAR backed up under
+`C:/Users/zavod/AppData/Roaming/ElyPrismLauncher/instances/Copimine/copimine-mod-backups/20261116-reviewed-ring-175337`.
+The active converted pack remains `98d79505...`; other mods, pack order and
+user shader settings were preserved. Minecraft was not launched.
+
+Status: IMPLEMENTED, BUILT, ARTIFACT-INSPECTED, PRODUCTION-INSTALLED,
+STARTUP-OBSERVED. Local suites/gameplay were not run, as requested. CI remains
+red on the measured prior source; subsequent runs are not claimed green.
+All-phase encounter completion, native visual quality, recovery and performance
+remain NOT VERIFIED and require DeepSeek's acceptance work.

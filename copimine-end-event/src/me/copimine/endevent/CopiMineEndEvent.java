@@ -54094,6 +54094,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (display == null || !display.isValid() || display.isDead() || target == null
                 || !isActiveBossParticipant(target) || isPlayerUnderTentacleControl(target)
+                || !display.getWorld().equals(target.getWorld())
                 || !isBossCombatRuntimeActive(liveBoss())
                 || eventTickCounter < guardianHeavyContactUntil.getOrDefault(target.getUniqueId(),0L)
                 || !ownedBySession(display, eventId, generation)) return;
@@ -54119,6 +54120,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!accepted || generation!=ownerGeneration || !Objects.equals(eventId,ownerEvent)
                 || !Objects.equals(bossUuid,ownerBoss) || !isBossCombatRuntimeActive(source)
                 || !isActiveBossParticipant(target) || target.isDead() || isPlayerUnderTentacleControl(target)
+                || !display.getWorld().equals(target.getWorld())
                 || !display.isValid() || display.isDead()
                 || !ownedBySession(display, eventId, generation)) {
             getLogger().info("RIFT_TENTACLE_STRIKE_REJECTED event=" + eventId

@@ -72,3 +72,26 @@ camping in fury; throw damage listeners that end combat, kill or transfer the
 target. Check real rig continuity and root retraction in Minecraft. New and
 existing all-phase abilities, native visuals, performance and full victory are
 not declared verified by this slice.
+
+## Cocoon cancellation follow-up
+
+`c8ac0f3e` also fixes an integration gap found while following the actual
+collapse chain: `cancelBossCastForPhaseChange()` did not own temporary
+`TentacleController` grab states. A held ambush could therefore continue
+through the fall. Cocoon break now retires only UNDER_PLAYER/TEMPORARY spell
+actors, releases their controller ownership and protects the first landing of
+an actually held participant. SMALL living enemies are preserved. THROW up to
+its release marker now counts as controlled, including target arbitration.
+The final plugin was rebuilt successfully after this correction.
+
+Final candidate: `artifacts/20261116-cocoon-cancel-final-candidate/manifest.json`.
+EndEvent is now 2560796 bytes, SHA-256
+`5253e668b09cf31d72d60c5f3f61c56d4c23baf52140950df367f674c32cc267`.
+Client, bridge and converted pack are unchanged from the table above.
+
+CI run `43878808596` for the preceding source/pin commit also completed red:
+60 failed, 3278 passed, 8 skipped, 325 setup errors, 2 subtests passed. Migration
+PostgreSQL passed; Java plugin CI was skipped. Those suites were run by GitHub
+Actions, not locally. DeepSeek must update missing extracted-harness
+dependencies/stubs and independently triage the remaining failures; this
+release does not claim green CI.

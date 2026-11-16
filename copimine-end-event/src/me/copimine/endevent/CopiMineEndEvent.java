@@ -762,10 +762,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final double ARROW_VOLLEY_SPEED = 2.5D;
     private static final int SLOWNESS_DEBUFF_TICKS = 60;
     /**
-     * Audit wave 1: the carrier is slowed to Slow III. Minecraft amplifiers are
-     * zero-based, so Slow III is 2 (Slow I = 0).
+     * Canonical Wave 1 carrier Slowness II. Minecraft amplifiers are
+     * zero-based, so Slowness II is 1 (Slowness I = 0).
      */
-    private static final int CARRIER_SLOWNESS_AMPLIFIER = 2;
+    private static final int CARRIER_SLOWNESS_AMPLIFIER = 1;
     private static final long WAVE_PATH_REQUEST_INTERVAL_MILLIS = 500L;
     private static final long WAVE_MOB_STUCK_TIMEOUT_MILLIS = 4_000L;
     private static final long WAVE_MOB_STUCK_REPOSITION_COOLDOWN_MILLIS = 4_000L;
@@ -1349,6 +1349,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, TrialAimLock> trialAimLocks = new HashMap<>();
     private record TrialFocus(UUID target, long untilTick) { }
     private final Map<UUID, TrialFocus> trialMovementFocus = new HashMap<>();
+    private record TrialArrival(String event, long generation, long startTick, String action) { }
+    private final Map<UUID, TrialArrival> trialArrivals = new HashMap<>();
 
     /** Locomotion keeps one legal target; cast fairness is handled independently. */
     private Player namedTrialMovementTarget(Entity actor) {
@@ -25420,6 +25422,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Wave7NamedTrialActorPolicy.Checkpoint checkpoint = readNamedTrialActorCheckpoint(actor, trial);
         if (checkpoint == null) return false;
         configureNamedTrialActor(living, profile, createdActor);
+        if (createdActor) beginNamedTrialArrival(living);
         // W7-02: the Marksman trial fields a SQUAD, not a single archer. The
         // player report was "there is only one skeleton, there should be two or
         // three": exactly one actor was ever spawned, and the pair logic then
@@ -25553,6 +25556,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return null;
         }
         configureNamedTrialActor(created, profile, true);
+        beginNamedTrialArrival(created);
         getLogger().info("WAVE7_MARKSMAN_PARTNER_SPAWNED event=" + eventId
                 + " generation=" + generation + " chamber=" + trial.chamber()
                 + " index=" + index
@@ -28573,6 +28577,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         wave7MinibossBars.clear();
         wave7MinibossPoses.clear();
         wave7PoseLeaseEnds.clear();
+        trialArrivals.clear();
     }
 
     /**
@@ -28606,6 +28611,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 corpse.getEquipment().setItemInOffHand(new ItemStack(Material.AIR));
             }
             tag(corpse, EVENT_KIND_DISPLAY, 7, isOfficialEntity(actor));
+            AttributeInstance originalScale = actor.getAttribute(Attribute.GENERIC_SCALE);
+            if (originalScale != null) applyWave7BodyScale(corpse, originalScale.getValue());
             String action = actor.getType() == EntityType.WARDEN ? "WARDEN_SLAM"
                     : actor.getType() == EntityType.SKELETON ? "MARKSMAN_QUICK_SHOT" : "ARCHMAGE_FANGS";
             trialDeathVisuals.put(corpse.getUniqueId(), new TrialDeathVisual(visual, eventTickCounter, action));
@@ -29092,7 +29099,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             } finally { currentCarrierPotionMutations.remove(owner); }
             return;
         }
-        // Audit wave 1: the carrier debuff is Slow III (amplifier 2), not Slow II.
+        // Canonical Wave 1 carrier debuff: Slowness II (amplifier 1).
         // A foreign effect at least that strong already does the job.
         if (lease == null && current != null && current.getAmplifier() >= CARRIER_SLOWNESS_AMPLIFIER) return;
         CarrierPotionLease next = new CarrierPotionLease(lease == null ? current : lease.original(),
@@ -29107,7 +29114,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /**
-     * While a charge is carried the holder is unstable: Slowness III (applied
+     * While a charge is carried the holder is unstable: Slowness II (applied
      * above), Nausea, and this readable pulse. The pulse is purely visual — a
      * violet ring that tightens as the charge ages — so the third consequence
      * never adds hidden damage or a second crowd-control effect on top of the
@@ -37435,10 +37442,40 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /** Disposable arrival only; adoption after restart must never replay a spawn. */
+    private void beginNamedTrialArrival(LivingEntity actor) {
+        if (actor == null || actor.getType() == EntityType.WARDEN) return;
+        String action = actor.getType() == EntityType.SKELETON
+                ? "MARKSMAN_QUICK_SHOT" : "ARCHMAGE_STEP";
+        TrialArrival arrival = new TrialArrival(eventId, generation, eventTickCounter, action);
+        trialArrivals.put(actor.getUniqueId(), arrival);
+        sendTrialPose(actor, action, "EMERGE", Math.max(0L,eventTickCounter*50L),1000,0);
+        playCasterSpellBody(actor, BossSpellGeometryPolicy.Shape.RIFT_GATE,
+                "TRIAL_ARRIVAL", actor.getLocation(),20);
+        playTrialSound(actor,actor.getLocation(),Sound.ENTITY_ENDERMAN_TELEPORT,.65F,.65F);
+    }
+
+    private boolean tickNamedTrialArrival(LivingEntity actor) {
+        TrialArrival arrival = trialArrivals.get(actor.getUniqueId());
+        if (arrival == null) return false;
+        long elapsed = eventTickCounter-arrival.startTick();
+        if (arrival.generation() != generation || !Objects.equals(arrival.event(),eventId)
+                || elapsed < 0L || elapsed >= 20L) {
+            trialArrivals.remove(actor.getUniqueId());
+            return false;
+        }
+        // Keep the actor physically present and damageable while its rig rises.
+        actor.setVelocity(new Vector(0D,actor.getVelocity().getY(),0D));
+        sendTrialPose(actor,arrival.action(),"EMERGE",Math.max(0L,arrival.startTick()*50L),
+                1000,(int)(elapsed*50L));
+        return true;
+    }
+
     private boolean tickNamedTrialActor(LivingEntity actor,
             RealitySplitTrialController.NamedTrialState trial) {
         if (actor == null || !actor.isValid() || actor.isDead() || trial == null
                 || !isNamedRealitySplitActor(actor)) return false;
+        if (tickNamedTrialArrival(actor)) return true;
         Wave7NamedTrialActorPolicy.Checkpoint checkpoint = readNamedTrialActorCheckpoint(actor, trial);
         if (checkpoint == null) return false;
         Wave7NamedTrialActorPolicy.Profile profile =
@@ -45067,6 +45104,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private Entity unregisterOwnedEntity(UUID entityId, String reason) {
+        trialArrivals.remove(entityId);
         trialDeathVisuals.remove(entityId);
         trialAimLocks.remove(entityId);
         trialMovementFocus.remove(entityId);

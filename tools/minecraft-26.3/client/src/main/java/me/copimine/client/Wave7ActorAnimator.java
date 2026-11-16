@@ -19,13 +19,25 @@ public final class Wave7ActorAnimator {
         ModelPart left = part(root, warden ? "bone/body/left_arm" : "left_arm");
         if (frame != null && frame.stage() == Wave7AnimationFrame.Stage.DYING) {
             float t=frame.progress(), fall=t*t*(3-2*t);
-            rotate(body,.95F*fall,0,.18F*fall); rotate(head,.45F*fall,0,0);
+            // Rotate the whole rig about its feet: head/arms are siblings of the torso.
+            float pitch=.95F*fall, roll=.18F*fall;
+            root.xRot+=pitch; root.zRot+=roll;
+            root.x+=24F*(float)(Math.cos(pitch)*Math.sin(roll));
+            root.y+=24F-24F*(float)(Math.cos(pitch)*Math.cos(roll))+3F*fall;
+            root.z-=24F*(float)Math.sin(pitch);
+            rotate(head,.25F*fall,0,0);
             rotate(right,.65F*fall,0,.22F*fall); rotate(left,.65F*fall,0,-.22F*fall);
-            translate(body,0,4*fall,0);
             return;
         }
         if (frame != null) {
             float p = frame.progress(), smooth = p*p*(3-2*p);
+            if (!warden && frame.stage() == Wave7AnimationFrame.Stage.EMERGE) {
+                translate(root,0,9F*(1-smooth),0);
+                rotate(head,.18F*(1-smooth),0,0);
+                rotate(right,-.45F*(1-smooth),0,-.12F*(1-smooth));
+                rotate(left,-.45F*(1-smooth),0,.12F*(1-smooth));
+                return;
+            }
             float draw = switch(frame.stage()) {
                 case WINDUP, EMERGE -> smooth;
                 case RELEASE -> 1-smooth*.7F;

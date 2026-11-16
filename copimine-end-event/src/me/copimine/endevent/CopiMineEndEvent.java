@@ -54000,14 +54000,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void trimTentacles(int permanentTarget, int temporaryTarget) {
         int safePermanent = Math.max(0, Math.min(TentacleScalingPolicy.MAX_PERMANENT, permanentTarget));
         int safeTemporary = Math.max(0, Math.min(TentacleScalingPolicy.MAX_TEMPORARY, temporaryTarget));
+        int ordinaryTemporaryCount = (int)tentacleController.states().values().stream()
+                .filter(candidate -> candidate.kind()==TentacleAnimationPolicy.Kind.TEMPORARY).count();
         for (TentacleController.VisualState state
                 : new ArrayList<>(tentacleController.states().values())) {
-            long ordinaryTemporaryCount = tentacleController.states().values().stream()
-                    .filter(candidate -> candidate.kind() == TentacleAnimationPolicy.Kind.TEMPORARY).count();
             if (state.kind() == TentacleAnimationPolicy.Kind.TEMPORARY && ordinaryTemporaryCount > safeTemporary
                     || !state.temporary() && state.kind() != TentacleAnimationPolicy.Kind.SMALL
                     && !TentacleScalingPolicy.permanentSlotInRange(state.slot(), safePermanent)) {
                 removeTentacle(state.entityId(), "participant-scaling");
+                if (state.kind()==TentacleAnimationPolicy.Kind.TEMPORARY) ordinaryTemporaryCount--;
             }
         }
     }
@@ -54061,16 +54062,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (guardianPressureGeneration != generation) {
             guardianPressureGeneration = generation; guardianHeavyContactUntil.clear();
         }
+        Map<UUID,Integer> attackers=new HashMap<>();
+        for (TentacleController.VisualState state:tentacleController.states().values()) {
+            if (state.kind()==TentacleAnimationPolicy.Kind.PERMANENT && state.target()!=null
+                    && (state.state()==TentacleAnimationPolicy.State.SMALL_WINDUP
+                        || state.state()==TentacleAnimationPolicy.State.SMALL_STRIKE))
+                attackers.merge(state.target(),1,Integer::sum);
+        }
         List<Player> candidates = participants.stream().filter(this::isActiveBossParticipant)
                 .filter(p -> !isPlayerUnderTentacleControl(p))
                 .filter(p -> eventTickCounter >= guardianHeavyContactUntil.getOrDefault(p.getUniqueId(),0L))
                 .filter(p -> display.getWorld().equals(p.getWorld())
                         && display.getLocation().distanceSquared(p.getLocation()) <= guardianStrikeRangeSquared())
                 .filter(p -> hasProjectileBlockLineOfSight(display.getLocation().clone().add(0D,1D,0D),p.getEyeLocation()))
-                .filter(p -> KaguneGuardianFightPolicy.mayAttackTarget((int)tentacleController.states().values().stream()
-                        .filter(s -> s.kind()==TentacleAnimationPolicy.Kind.PERMANENT && p.getUniqueId().equals(s.target())
-                                && (s.state()==TentacleAnimationPolicy.State.SMALL_WINDUP
-                                    || s.state()==TentacleAnimationPolicy.State.SMALL_STRIKE)).count()))
+                .filter(p -> KaguneGuardianFightPolicy.mayAttackTarget(attackers.getOrDefault(p.getUniqueId(),0)))
                 .sorted(Comparator.comparing(p -> p.getUniqueId().toString())).toList();
         return candidates.isEmpty() ? null : candidates.get(Math.floorMod(tentacleTargetCursor++,candidates.size()));
     }

@@ -55,12 +55,13 @@ public record KaguneRingFrame(int row, int stage, double radius, double previous
         return true;
     }
 
-    public boolean canDamage() { return stage == TRAVEL && rise >= .99D; }
+    public boolean canDamage() { return stage == TRAVEL && rise >= .99D && strike > 0D; }
 
     public double renderRise(double partialTick) {
         double partial=Double.isFinite(partialTick) ? Math.max(0D,Math.min(1D,partialTick)) : 1D;
         double previous=stage==EMERGE ? Math.max(0D,rise-1D/EMERGE_TICKS)
-                : stage==RETRACT ? Math.min(1D,rise+1D/RETRACT_TICKS) : rise;
+                : stage==RETRACT ? Math.min(1D,rise+1D/RETRACT_TICKS)
+                : strike==0D ? 1D-1D/EMERGE_TICKS : rise;
         return previous+(rise-previous)*partial;
     }
 

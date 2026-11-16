@@ -63,3 +63,56 @@ DeepSeek still needs to exercise shield break, stale actor removal, exact
 landing timing, restart during descent, permanent fury, projectile retirement,
 Kagune contact/miss/cancel, original rig continuity and final victory. No new
 claim is made here that all six phases or every recovery path are verified.
+
+## Installed receipt
+
+Published source/pins: `2eaf2183852e8535d847fcf80c50a66055518ae2`.
+CodeRabbit reviewed all eight source/animation files from `4472aaa6` through
+`f0474fd4`, completed with **zero issues**. Migration pin changes were separately
+checked by the real pack builder; they were outside that review snapshot.
+
+Installed EndEvent: 2559497 bytes, SHA-256
+`c5dfb34c9a0edba67d63fcb37387153f809109c0f7ac37afa50873664dca081c`.
+Bridge remains the coordinated 378217-byte artifact, SHA-256
+`4609582cdc08db60e64122b510e7a264a001baeef88fd10f905bee054be4f9a0`.
+Client and converted resource-pack hashes/sizes are listed above. Both complete
+HTTPS downloads were hashed and matched:
+
+- https://copimine.ru/assets/CopiMineClient-0.1.4+26.3-934526b84c0d0798.jar
+- https://copimine.ru/assets/CopiMineResourcePack-26.3-98d7950558e7da38.zip
+
+Server pack SHA-1: `03951b4e43b5564b4d45ea71b07235997ff2bbd7`.
+This installation supersedes the earlier legacy-pack publication documented
+in `PRODUCTION_INSTALLATION.md`; keep the older report as historical evidence.
+
+Production backup:
+`/opt/copimine-backups/end-rift-20261116T125815Z-f0474fd4` (root-only).
+Database dump: 8635418 bytes,
+SHA-256 `881d32d1d1fbaa4781245b851f36d586464e58c20773cadf53f1d0c014c8d36f`.
+Stopped full runtime archive: 1197388865 bytes,
+SHA-256 `ac5524be1fd43cf5742d4428f3b4532a595542e3a0be041f31f1c04fedcd2b09`.
+Both indexes were validated before atomic JAR/config replacement. No database,
+world or credential reset was performed. Plugin-only rollback uses the same
+three archive members and procedure as the previous installation report.
+
+`copimine-game.service` is active/running, PID `294199`. Host UTC+07 startup log:
+bridge enabled 20:00:35, EndEvent enabling 20:00:44, Paper
+`Done (45.435s)` at 20:00:47. No ERROR/SEVERE line was observed in the startup.
+This is startup evidence, not a completed encounter or client handshake.
+
+Selected Prism instance `Copimine` was confirmed from `elyprismlauncher.cfg`.
+Minecraft was closed during both file replacements. Final installed paths:
+
+```
+C:/Users/zavod/AppData/Roaming/ElyPrismLauncher/instances/Copimine/minecraft/mods/CopiMineClient-0.1.4+26.3.jar
+C:/Users/zavod/AppData/Roaming/ElyPrismLauncher/instances/Copimine/minecraft/resourcepacks/CopiMineResourcePack-26.3.zip
+```
+
+Installed hashes match the published client and converted pack. Previous files
+are under the instance's `copimine-mod-backups/20261116-lastseal-155801` and
+`copimine-mod-backups/20261116-pack-155858`. Pack order, other mods and user shader
+settings were preserved. Minecraft was not launched automatically.
+
+CI source/pin run: https://github.com/IliaZav/copimine/actions/runs/43871297327
+At this receipt PostgreSQL migration passed; static/client build was in
+progress. Full CI and native acceptance are not claimed.

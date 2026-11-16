@@ -1665,6 +1665,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private double tentacleGuardianRegenerationGranted;
     private long tentacleGuardianRegenerationNextStepMillis;
     private final Map<UUID, Long> tentacleNextAttackTick = new HashMap<>();
+    private final Map<UUID, Long> guardianHeavyContactUntil = new HashMap<>();
+    private long guardianPressureGeneration = Long.MIN_VALUE;
     /** Respawn/vulnerability timing runs on active combat time, not wall time. */
     private long tentacleActiveMillis;
     private long tentacleActiveLastNanos;
@@ -47873,19 +47875,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean assignBossPursuitTarget(Mob boss, Player target) {
-        if (target != null && !isActiveBossParticipant(target)) return false;
+        if (target != null && !isBossPursuitCandidate(target)) return false;
         bossTargetWrite = true;
         try { boss.setTarget(target); }
         finally { bossTargetWrite = false; }
-        Player actual = boss.getTarget() instanceof Player player && isActiveBossParticipant(player) ? player : null;
+        Player actual = boss.getTarget() instanceof Player player && isBossPursuitCandidate(player) ? player : null;
         bossPursuitTarget = actual == null ? null : actual.getUniqueId();
         return target == null ? boss.getTarget() == null
                 : actual != null && actual.getUniqueId().equals(target.getUniqueId());
     }
 
+    private boolean isBossPursuitCandidate(Player player) {
+        return isActiveBossParticipant(player) && !isPlayerUnderTentacleControl(player);
+    }
+
     private void restoreBossPursuitTarget(Mob boss, long now) {
         Player focus = bossPursuitTarget == null ? null : Bukkit.getPlayer(bossPursuitTarget);
-        if (bossPursuitTarget != null && (focus == null || !isActiveBossParticipant(focus))) {
+        if (bossPursuitTarget != null && !isBossPursuitCandidate(focus)) {
             assignBossPursuitTarget(boss, null);
             bossTargetLockUntilMillis = 0L;
             bossPursuitTarget = null;
@@ -47902,7 +47908,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void rotateBossTarget(Mob boss) {
         List<Player> candidates = Bukkit.getOnlinePlayers().stream()
-                .filter(this::isActiveBossParticipant)
+                .filter(this::isBossPursuitCandidate)
                 .map(player -> (Player) player)
                 .sorted(Comparator.comparing(player -> player.getUniqueId().toString()))
                 .toList();
@@ -47915,7 +47921,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         long now = System.currentTimeMillis();
         Object rawTarget = bossPursuitTarget == null ? null : Bukkit.getPlayer(bossPursuitTarget);
-        Player current = rawTarget instanceof Player player && isActiveBossParticipant(player)
+        Player current = rawTarget instanceof Player player && isBossPursuitCandidate(player)
                 ? player : null;
         // A running lock that already names a live member of the party is left
         // strictly alone -- unless the party is actually carving into the boss.
@@ -49907,7 +49913,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Player focus = bossPursuitTarget == null ? null : Bukkit.getPlayer(bossPursuitTarget);
         // A newly invalid owned focus is urgent; a previously refused/empty
         // selection still honours its retry deadline instead of polling at 20 Hz.
-        if (nextTargetMillis > now && (bossPursuitTarget == null || isActiveBossParticipant(focus))) return;
+        if (nextTargetMillis > now && (bossPursuitTarget == null || isBossPursuitCandidate(focus))) return;
         rotateBossTarget(mob);
         if (bossPursuitTarget == null) {
             nextTargetMillis = now + 500L;
@@ -52043,10 +52049,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         ignored -> eventTickCounter + 60L + Math.max(0, state.slot())
                                 * tentacleAttackStaggerTicks());
                 if (TentacleGuardianPolicy.attackDue(eventTickCounter, nextAttack, false)) {
-                    Player target = chooseTentacleTarget(participants, display.getLocation());
+                    Player target = chooseGuardianStrikeTarget(participants, display);
                     if (target != null) {
                         tentacleNextAttackTick.remove(state.entityId());
-                        setTentacleState(display, TentacleAnimationPolicy.State.TELEGRAPH_GRAB,
+                        Vector heading = target.getLocation().toVector().subtract(display.getLocation().toVector()).setY(0D);
+                        if (heading.lengthSquared() > .0001D)
+                            display.setRotation(display.getLocation().setDirection(heading).getYaw(),0F);
+                        setTentacleState(display, TentacleAnimationPolicy.State.SMALL_WINDUP,
                                 target.getUniqueId());
                         getLogger().info("RIFT_TENTACLE_ATTACK_START event=" + eventId
                                 + " entity=" + display.getUniqueId() + " slot=" + state.slot()
@@ -53666,6 +53675,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void resetTentacleGuardianLedger() {
+        guardianHeavyContactUntil.clear();
+        guardianPressureGeneration = generation;
         clearGuardianShieldOrbit("guardian-ledger-reset");
         // A fresh encounter generation starts with no destroyed defenders. The
         // ledger is generation-scoped, so this is the only place a kill record
@@ -54040,11 +54051,39 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * still apply, and it only lands if the target is still inside reach at the
      * contact frame - stepping away during the windup dodges it.
      */
+    private Player chooseGuardianStrikeTarget(List<Player> participants, ItemDisplay display) {
+        if (guardianPressureGeneration != generation) {
+            guardianPressureGeneration = generation; guardianHeavyContactUntil.clear();
+        }
+        List<Player> candidates = participants.stream().filter(this::isActiveBossParticipant)
+                .filter(p -> !isPlayerUnderTentacleControl(p))
+                .filter(p -> eventTickCounter >= guardianHeavyContactUntil.getOrDefault(p.getUniqueId(),0L))
+                .filter(p -> display.getWorld().equals(p.getWorld())
+                        && display.getLocation().distanceSquared(p.getLocation()) <= guardianStrikeRangeSquared())
+                .filter(p -> hasProjectileBlockLineOfSight(display.getLocation().clone().add(0D,1D,0D),p.getEyeLocation()))
+                .filter(p -> KaguneGuardianFightPolicy.mayAttackTarget((int)tentacleController.states().values().stream()
+                        .filter(s -> s.kind()==TentacleAnimationPolicy.Kind.PERMANENT && p.getUniqueId().equals(s.target())
+                                && (s.state()==TentacleAnimationPolicy.State.SMALL_WINDUP
+                                    || s.state()==TentacleAnimationPolicy.State.SMALL_STRIKE)).count()))
+                .sorted(Comparator.comparing(p -> p.getUniqueId().toString())).toList();
+        return candidates.isEmpty() ? null : candidates.get(Math.floorMod(tentacleTargetCursor++,candidates.size()));
+    }
+
+    private double guardianStrikeRangeSquared() {
+        // Imported permanent rig is about five blocks long, not an eight-block invisible grab.
+        double reach=Math.min(TENTACLE_MAX_GRAB_RANGE,7.8681D*.62D+.3D);
+        return reach*reach;
+    }
+
     private void strikeTentacleGuardianTarget(ItemDisplay display, Player target) {
         if (display == null || !display.isValid() || display.isDead() || target == null
+                || !isActiveBossParticipant(target) || isPlayerUnderTentacleControl(target)
+                || !isBossCombatRuntimeActive(liveBoss())
+                || eventTickCounter < guardianHeavyContactUntil.getOrDefault(target.getUniqueId(),0L)
                 || !ownedBySession(display, eventId, generation)) return;
         Location origin = display.getLocation();
-        if (!withinTentacleGrabRange(origin, target.getLocation())
+        if (origin.distanceSquared(target.getLocation()) > guardianStrikeRangeSquared()
+                || !smallKaguneFaces(display,target)
                 || !hasProjectileBlockLineOfSight(origin.clone().add(0.0D, 1.0D, 0.0D), target.getEyeLocation())) {
             getLogger().info("RIFT_TENTACLE_STRIKE_MISS event=" + eventId
                     + " entity=" + display.getUniqueId()
@@ -54053,9 +54092,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         double healthBefore = target.getHealth();
         LivingEntity source = liveBoss();
-        boolean accepted = applyBossAbilityDamage(source, target, TentacleGuardianPolicy.STRIKE_DAMAGE);
+        UUID carrierId=tentacleHitboxesByDisplay.get(display.getUniqueId());
+        Entity raw=carrierId==null ? null : ownedEntities.get(carrierId);
+        if (!(raw instanceof LivingEntity carrier) || !carrier.isValid() || carrier.isDead()
+                || !ownedBySession(carrier,eventId,generation)) return;
+        String ownerEvent=eventId; long ownerGeneration=generation; UUID ownerBoss=bossUuid;
+        double damage=KaguneGuardianFightPolicy.strikeDamage(eventScalePlayers());
+        boolean accepted = applyBossActorAbilityDamage(source, carrier, target, damage);
         double healthAfter = target.getHealth();
-        if (!accepted || !display.isValid() || display.isDead()
+        if (!accepted || generation!=ownerGeneration || !Objects.equals(eventId,ownerEvent)
+                || !Objects.equals(bossUuid,ownerBoss) || !isBossCombatRuntimeActive(source)
+                || !isActiveBossParticipant(target) || target.isDead()
+                || !display.isValid() || display.isDead()
                 || !ownedBySession(display, eventId, generation)) {
             getLogger().info("RIFT_TENTACLE_STRIKE_REJECTED event=" + eventId
                     + " entity=" + display.getUniqueId()
@@ -54063,18 +54111,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         target.playEffect(EntityEffect.HURT);
+        guardianHeavyContactUntil.put(target.getUniqueId(),eventTickCounter+KaguneGuardianFightPolicy.STRIKE_COOLDOWN_TICKS);
         Vector away = target.getLocation().toVector()
                 .subtract(origin.toVector())
                 .setY(0.0D);
         if (away.lengthSquared() > 1.0E-4D) {
-            target.setVelocity(away.normalize()
-                    .multiply(TentacleGuardianPolicy.STRIKE_KNOCKBACK)
-                    .setY(TentacleGuardianPolicy.STRIKE_LIFT));
+            away.normalize();
+            double available=0D;
+            double desired=KaguneGuardianFightPolicy.knockbackSpeed(eventScalePlayers()); // Distance, not velocity.
+            for (double d=.5D;d<=desired;d+=.5D) {
+                if (!isSafeCombatParticipantLocation(target.getLocation().clone().add(away.clone().multiply(d)),target)) break;
+                available=d;
+            }
+            if (available>=.5D) target.setVelocity(away.multiply(Math.min(desired*.165D,available*.165D)).setY(.32D));
         }
+        spawnEventParticle(target.getLocation().clone().add(0D,.9D,0D),Particle.CRIT,8,.2D,.3D,.2D,.02D);
         getLogger().info("RIFT_TENTACLE_STRIKE event=" + eventId
                 + " entity=" + display.getUniqueId()
                 + " target=" + target.getUniqueId()
-                + " damage=" + TentacleGuardianPolicy.STRIKE_DAMAGE
+                + " damage=" + damage
                 + " applied=" + String.format(Locale.ROOT, "%.3f",
                         healthBefore - healthAfter));
     }
@@ -54100,6 +54155,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (state.kind() == TentacleAnimationPolicy.Kind.SMALL) {
             tickSmallKagune(display, state, participants);
             return;
+        }
+        if (state.kind()==TentacleAnimationPolicy.Kind.PERMANENT
+                && animation==TentacleAnimationPolicy.State.TELEGRAPH_GRAB) {
+            // A saved legacy grab warning cannot become an unwarned heavy
+            // strike after upgrading. Recover, then select a fresh directed cast.
+            setTentacleState(display,TentacleAnimationPolicy.State.SHIELD_CHANNEL,null);
+            tentacleNextAttackTick.put(display.getUniqueId(),eventTickCounter+20L+Math.max(0,state.slot())*4L);
+            return;
+        }
+        // The wire clip IDs are shared; role/HP/guardian slots remain PERMANENT.
+        if (state.kind()==TentacleAnimationPolicy.Kind.PERMANENT
+                && (animation==TentacleAnimationPolicy.State.SMALL_WINDUP
+                    || animation==TentacleAnimationPolicy.State.SMALL_STRIKE
+                    || animation==TentacleAnimationPolicy.State.SMALL_RECOVERY)) {
+            tickGuardianDirectedStrike(display,state,participants); return;
         }
         if (!state.temporary()) {
             switch (animation) {
@@ -54330,6 +54400,34 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * and damage plumbing but owns this loop, so it can never enter the
      * grab/hold/throw lifecycle, touch a guardian slot or open a boss shield.
      */
+    private void tickGuardianDirectedStrike(ItemDisplay display,TentacleController.VisualState state,
+                                            List<Player> participants) {
+        long elapsed=Math.max(0L,eventTickCounter-state.startedTick());
+        TentacleAnimationPolicy.State animation=state.state();
+        if (animation==TentacleAnimationPolicy.State.SMALL_STRIKE
+                && elapsed>=TentacleAnimationPolicy.markerTick(animation,TentacleAnimationPolicy.Marker.CONTACT)
+                && tentacleContactResolved.add(display.getUniqueId())) {
+            Player target=playerForTentacle(state.target(),participants);
+            if (target!=null) strikeTentacleGuardianTarget(display,target);
+        }
+        if (elapsed<TentacleAnimationPolicy.durationTicks(animation)) return;
+        switch(animation) {
+            case SMALL_WINDUP -> {
+                tentacleContactResolved.remove(display.getUniqueId());
+                setTentacleState(display,TentacleAnimationPolicy.State.SMALL_STRIKE,state.target());
+                playEncounterAbilityAudioAt(display.getLocation(),"kagune_stab");
+            }
+            case SMALL_STRIKE -> setTentacleState(display,TentacleAnimationPolicy.State.SMALL_RECOVERY,null);
+            case SMALL_RECOVERY -> {
+                tentacleContactResolved.remove(display.getUniqueId());
+                setTentacleState(display,TentacleAnimationPolicy.State.SHIELD_CHANNEL,null);
+                tentacleNextAttackTick.put(display.getUniqueId(),eventTickCounter
+                        +KaguneGuardianFightPolicy.STRIKE_COOLDOWN_TICKS+Math.floorMod(state.slot(),3)*4L);
+            }
+            default -> { }
+        }
+    }
+
     private void tickSmallKagune(ItemDisplay display, TentacleController.VisualState state,
                                  List<Player> participants) {
         UUID displayId = display.getUniqueId();
@@ -54362,6 +54460,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 Entity entity = carrierId == null ? null : ownedEntities.get(carrierId);
                 Player target = participants.stream()
                         .filter(this::isActiveBossParticipant)
+                        .filter(player -> !isPlayerUnderTentacleControl(player))
                         .filter(player -> withinSmallKaguneRange(display, player))
                         .filter(player -> entity instanceof LivingEntity carrier
                                 && carrier.hasLineOfSight(player))
@@ -54409,6 +54508,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean applySmallKaguneStrike(ItemDisplay display, Player target) {
         if (display == null || target == null || !target.isOnline()
                 || !isBossCombatRuntimeActive(liveBoss()) || !isActiveBossParticipant(target)
+                || isPlayerUnderTentacleControl(target)
                 || !withinSmallKaguneRange(display, target)
                 || !ownedBySession(display, eventId, generation)) {
             return false;
@@ -54419,8 +54519,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !ownedBySession(carrier, eventId, generation) || !carrier.hasLineOfSight(target)) {
             return false;
         }
+        long ownerGeneration=generation; String ownerEvent=eventId; UUID ownerBoss=bossUuid;
         double before = target.getHealth();
         if (!applyBossActorAbilityDamage(liveBoss(), carrier, target, smallKaguneTuning().damage())
+                || generation!=ownerGeneration || !Objects.equals(eventId,ownerEvent) || !Objects.equals(bossUuid,ownerBoss)
+                || !isBossCombatRuntimeActive(liveBoss()) || !isActiveBossParticipant(target) || target.isDead()
                 || !display.isValid() || display.isDead() || !ownedBySession(display, eventId, generation)) {
             return false;
         }

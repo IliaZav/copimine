@@ -583,7 +583,9 @@ public final class EndEventClientState {
         boolean sameClip = tentacleVisual
                 ? EndRiftTentacleAnimator.sameClip(binding.animationId(), animation)
                 : Objects.equals(binding.animationId(), animation);
-        EndRiftTentaclePose.TentaclePose blendFrom = sameClip || !tentacleVisual
+        boolean continuousAttack=tentacleVisual
+                && EndRiftTentacleAnimator.continuousAttackTransition(binding.animationId(),animation);
+        EndRiftTentaclePose.TentaclePose blendFrom = continuousAttack ? null : sameClip || !tentacleVisual
                 ? binding.blendFromPose()
                 : resolveTentaclePose(binding, visual.visualId(), nowMillis,
                         stableSeed(packet.subjectId()));

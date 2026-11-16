@@ -105,9 +105,20 @@ public final class EndRiftTentacleAnimator {
     }
 
     public static boolean sameClip(String firstAnimationId, String secondAnimationId) {
+        String firstState=normalize(firstAnimationId),secondState=normalize(secondAnimationId);
+        // These states sample DIFFERENT windows of trow. Sharing its source
+        // name must not retain the windup's already elapsed clock for a strike.
+        if (!firstState.equals(secondState)
+                && (firstState.startsWith("SMALL_") || secondState.startsWith("SMALL_"))) return false;
         String first = CLIP_BY_STATE.get(normalize(firstAnimationId));
         String second = CLIP_BY_STATE.get(normalize(secondAnimationId));
         return first != null && first.equals(second);
+    }
+
+    public static boolean continuousAttackTransition(String first,String second) {
+        String from=normalize(first),to=normalize(second);
+        return from.equals("SMALL_WINDUP") && to.equals("SMALL_STRIKE")
+                || from.equals("SMALL_STRIKE") && to.equals("SMALL_RECOVERY");
     }
 
     public static EndRiftTentaclePose.TentaclePose poseFor(String animationId,

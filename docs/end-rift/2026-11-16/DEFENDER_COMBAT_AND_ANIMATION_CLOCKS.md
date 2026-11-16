@@ -74,3 +74,16 @@ Inspect continuous small/large attack windows in Minecraft; test 2/5/10/11/20
 participants and measure actual knockback, performance and all-phase gameplay.
 Prior measured GitHub CI remained red (see preceding ring report); no current
 green CI or complete six-phase/native acceptance is claimed.
+
+## Final world-fence follow-up
+
+`aac359d0` restores explicit same-world checks before the heavy strike's
+distance calculation and again before post-damage effects. Moving an owned
+display to another world cannot throw a cross-world distance exception or
+continue that old action's shove. Server/bridge build succeeded afterward.
+
+Final candidate:
+`artifacts/20261116-defender-world-final-candidate/manifest.json`.
+EndEvent is 2562879 bytes, SHA-256
+`79de658f6d27694ebbe025784f76a115b04c50834c8aa8abaa7d5bc6f31de0ce`.
+Client, bridge and converted pack retain the hashes and sizes above.

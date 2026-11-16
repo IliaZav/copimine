@@ -1,0 +1,74 @@
+# Moving Kagune ring and grounded pursuit
+
+Source: `c9a76d49`, based on `3030b24f`. Tests/gameplay remain assigned to
+DeepSeek by the user. This document is implementation/build evidence, not an
+official encounter or visual acceptance report.
+
+## Defects and fixes
+
+1. **Ring pose contradicts collision.** During the damaging travel interval the
+   renderer played the imported THROW clip, folding the model sideways while
+   server contact remained a moving upright column. Ring stems now stay upright
+   with small counter-rotating distal-joint ripples. Emergence/retraction moves
+   the complete original rig through the floor using shared height and timing;
+   frame interpolation smooths that vertical motion. One pose is still sampled
+   per batched row, not per tentacle or full AI mob.
+2. **Endpoint-only vertical and gap checks.** The old server rejected/accepted a
+   whole movement segment from the player's final Y and final gap angle. Shared
+   `KaguneRingFrame.contacts` now intersects the moving player's vertical
+   interval and horizontal swept-cylinder interval against the actual visible
+   stems. Gap and boundary-stem visibility are evaluated at contact time. The
+   calculation uses player width/height and the shared rig height. It does not
+   allocate per-stem collections or change frozen gap layout, row cadence,
+   server ownership or the existing one-accepted-hit-per-cast ledger.
+3. **Raised-player pursuit stall in grounded phases.** Navigation considered
+   horizontal melee distance sufficient to stop, while attack admission checks
+   full distance. Hold-position now requires the same full reach, preserving
+   movement toward players on modest elevation changes.
+4. **Final fury retreats from Core campers.** The old Core-specific CREATE_SPACE
+   branch preceded the melee-fury branch, selecting an eight-block retreat in
+   the melee-only finale. Core players no longer override fury's close-pressure
+   intent. Destinations still use existing safe arena/path validation.
+5. **Throw callback lifecycle.** Tentacle release now checks current ownership
+   and active combat before any launch. After accepted damage it rechecks event,
+   generation, actor, participant/world, death and active boss state. A listener
+   ending the encounter or transferring/killing the target cannot attach the
+   old action's velocity and landing lease to the new state. Canceled damage
+   retains the existing early return.
+
+## Build and artifact evidence
+
+Pinned Temurin 25.0.4.1+1 / Gradle 9.8.1:
+
+- `gradle -p tools/minecraft-26.3 endEventJar narcoticsJar --console=plain` — succeeded.
+- `gradle -p tools/minecraft-26.3/client clean jar --console=plain` — succeeded.
+- `git diff --check` — clean.
+
+Candidate: `artifacts/20261116-kagune-ring-contact-candidate/manifest.json`.
+
+| Artifact | Bytes | SHA-256 |
+|---|---:|---|
+| EndEvent | 2560547 | 883ccfb5304391033b1ad8c3492ee64fe48449daf4a97d936a0192a1492ffb79 |
+| Bridge | 378217 | 4609582cdc08db60e64122b510e7a264a001baeef88fd10f905bee054be4f9a0 |
+| Client | 30247430 | 99f56df57ef57b263da93d3a28d532838fc313c0a4d7d76280b628669a12e2c5 |
+| Migrated 26.3 pack | 34373458 | 98d7950558e7da38e37b641d340b7fe89dc0310cbce6ad0671be62432d627176 |
+
+## Exact CI handoff for DeepSeek
+
+Previous source/pin run `43871297327` (`2eaf2183`) completed red:
+58 failed, 3302 passed, 8 skipped, 303 setup errors, 2 subtests passed.
+PostgreSQL migration job passed; Java plugin job was skipped. Resource-pack
+preparation progressed past the repaired pin gate. Examples in failed logs:
+extracted compile harnesses omit new protocol classes referenced by the codec;
+Wave 7 stage test still expects four rooms for a large party. Do not restore
+obsolete rooms or old mechanics to satisfy superseded expectations. Triage all
+remaining results against actual source; these examples do not prove every
+failure is a stale test. No local suite was run or edited here.
+
+Required behavior acceptance: each ring row; moving/jumping/falling players;
+gap boundaries and lateral crossing; 2/5/10/11/20 participants; one-hit ledger;
+cancel, stale owner, carrier removal; retreat/move on elevated targets; Core
+camping in fury; throw damage listeners that end combat, kill or transfer the
+target. Check real rig continuity and root retraction in Minecraft. New and
+existing all-phase abilities, native visuals, performance and full victory are
+not declared verified by this slice.

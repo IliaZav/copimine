@@ -95,3 +95,22 @@ PostgreSQL passed; Java plugin CI was skipped. Those suites were run by GitHub
 Actions, not locally. DeepSeek must update missing extracted-harness
 dependencies/stubs and independently triage the remaining failures; this
 release does not claim green CI.
+
+## Independent review correction and final candidate
+
+The first CLI review was interrupted without a result. The retry completed
+against `3030b24f..34e78aa9`, reviewed eleven source/pin/documentation files and
+raised one minor issue: the first TRAVEL frame skipped the final EMERGE rise
+sample (0.95). `70392cb5` restores that interpolation and defers damage until
+the next travel sample, when the upright row is fully presented. Both plugin
+and clean client were rebuilt successfully. The cocoon cancellation follow-up
+was manually traced and compiled; it was outside the retry's immutable scope.
+
+Final reviewed-correction candidate:
+`artifacts/20261116-ring-reviewed-final-candidate/manifest.json`.
+EndEvent: 2560821 bytes, SHA-256
+`751209eddd2813832798e903298d8d4becda5f81e9b18b928ecd96e2eb67b1f4`.
+Client: 30247451 bytes, SHA-256
+`81a5e1d052002b1b0ef8d84afd63aecc1530b1ff7880d4fe42d0416e51978cfb`.
+Bridge and migrated resource pack remain unchanged from the table.
+No claim of a zero-issue review or completed native/gameplay acceptance is made.

@@ -29,7 +29,7 @@ float cloudNoise(vec3 p) {
 }
 // Near silhouettes and ground remain spatially readable; dense eddies build with distance.
 float distanceDensityGain(float distanceAlongRay) {
-    return smoothstep(0.5, 3.0, distanceAlongRay);
+    return smoothstep(1.15, 3.85, distanceAlongRay);
 }
 // Signed world-space guide columns are luminous through smoke, but real depth still occludes them.
 float guideGlow(vec3 origin, vec3 direction, float sceneDistance) {
@@ -85,13 +85,15 @@ void main() {
     vec3 scattered = vec3(0);
     for (int i = 0; i < 12; ++i) {
         float distanceAlongRay = begin + (float(i) + 0.5) * stride;
+        float nearGain = distanceDensityGain(distanceAlongRay);
+        if (nearGain <= 0.0001) continue;
         vec3 point = EyeTime.xyz + direction * distanceAlongRay;
         if (any(lessThan(point, ArenaMin.xyz)) || any(greaterThan(point, ArenaMax.xyz))) continue;
         // World-locked three-dimensional rolling eddies, not screen-space grain or particles.
         vec3 drift = vec3(EyeTime.w * 0.065, -EyeTime.w * 0.025, EyeTime.w * 0.04);
         float eddy = 0.72 * cloudNoise(point * 0.54 + drift)
                 + 0.28 * cloudNoise(point * 1.47 - drift * 1.6);
-        float density = VolumeState.y * mix(0.72, 1.38, eddy) * distanceDensityGain(distanceAlongRay);
+        float density = VolumeState.y * mix(0.72, 1.38, eddy) * nearGain;
         float extinction = 1.0 - exp(-density * stride);
         float soul = pow(cloudNoise(point * 1.9 - drift * 2.1), 9.0);
         vec3 ink = mix(vec3(0.015,0.009,0.017), vec3(0.052,0.032,0.046), eddy * eddy);
@@ -106,7 +108,10 @@ void main() {
             && surface.y >= ArenaMin.y - 0.25 && surface.y <= ArenaMin.y + 0.45 ? 1.0 : 0.0;
     float nearGround = ground * (1.0 - smoothstep(1.8, 3.1, length(surface.xz - EyeTime.xz)))
             * (1.0 - smoothstep(2.7, 3.8, sceneDistance));
-    fogged = mix(fogged, source.rgb * vec3(0.60, 0.53, 0.59), nearGround);
+    // A little local scattering preserves textured ground in a dark arena;
+    // unlike a screen tint it applies only to reconstructed nearby floor pixels.
+    vec3 nearbyTerrain = source.rgb * vec3(0.72, 0.64, 0.74) + vec3(0.012, 0.009, 0.015);
+    fogged = mix(fogged, nearbyTerrain, nearGround);
     fogged = mix(fogged, vec3(0.12, 0.95, 0.44), min(0.9, guideGlow(EyeTime.xyz, direction, sceneDistance)));
     fragColor = vec4(mix(source.rgb, fogged, VolumeState.x), source.a);
 }

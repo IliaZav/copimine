@@ -10,14 +10,16 @@ public final class BlackFogChamberRuntime {
     private static String event = "";
     private static long generation, searchedAt;
     private static double floor = Double.NaN;
+    private static boolean authoritativeFloor;
     private BlackFogChamberRuntime() {}
 
     public static double floorTop(Minecraft client, EndEventBlackFogManager fog, long now) {
         if (world != client.level || !event.equals(fog.eventId()) || generation != fog.generation()) {
             world = client.level; event = fog.eventId(); generation = fog.generation();
             floor = Double.NaN; searchedAt = 0;
+            authoritativeFloor = false;
         }
-        if (Double.isFinite(floor)) return floor;
+        if (Double.isFinite(floor) && authoritativeFloor) return floor;
         var arena = ClientBridgeProtocol.endEventArenaBounds(fog.eventId(), fog.generation());
         if (client.level == null || arena == null) return Double.NaN;
         // Safe-zone beams already carry the authoritative floor during the approach window.
@@ -26,9 +28,13 @@ public final class BlackFogChamberRuntime {
                     && beam.dimension().equals(client.level.dimension().identifier().getPath())
                     && beam.start().y >= arena.minY() && beam.start().y <= arena.maxY() + 1) {
                 floor = Math.floor(beam.start().y);
+                authoritativeFloor = true;
                 return floor;
             }
         }
+        // A loaded emerald block is only a provisional fallback. A late signed
+        // guide must still correct it instead of caching the wrong height forever.
+        if (Double.isFinite(floor)) return floor;
         if (searchedAt != 0 && now >= searchedAt && now - searchedAt < 500) return Double.NaN;
         searchedAt = now;
         // If the critical fog packet overtook cosmetic beams, inspect loaded published

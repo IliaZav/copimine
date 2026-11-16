@@ -48,20 +48,26 @@ public final class BlackFogSmokeRuntime {
             if (discard) p.remove();
             return discard;
         });
-        // Stop replenishing during CLEAR; the post pass alone has a short exit fade.
-        if (!fog.active()) { clear(); return; }
+        // Stop replenishing during CLEAR, but keep the owned smoke during the
+        // short volume fade. Clearing it here made world smoke vanish instantly.
+        if (!fog.active()) return;
         int budget = BlackFogSmokePolicy.budget(owned.size(), !primed);
         primed = true;
         for (int attempt = 0, spawned = 0; attempt < budget * 4 && spawned < budget; attempt++) {
-            double x = Math.max(arena.minX() + 1.3, client.player.getX() - 22)
-                    + random.nextDouble() * (Math.min(arena.maxX() - 0.3, client.player.getX() + 22)
-                    - Math.max(arena.minX() + 1.3, client.player.getX() - 22));
-            double z = Math.max(arena.minZ() + 1.3, client.player.getZ() - 22)
-                    + random.nextDouble() * (Math.min(arena.maxZ() - 0.3, client.player.getZ() + 22)
-                    - Math.max(arena.minZ() + 1.3, client.player.getZ() - 22));
             int style = random.nextInt(20);
             boolean ash = style < 8, soul = style == 8, spark = style == 9;
             boolean cluster = style >= 17;
+            // Most sprites in the old 44x44 square were already hidden by the
+            // optical volume. Spend the SAME budget where a player can see depth.
+            double minRadius = ash ? .5D : soul || spark ? 1.8D : 3D;
+            double maxRadius = ash ? 12D : soul || spark ? 8D : 7D;
+            double radius = Math.sqrt(minRadius*minRadius
+                    + random.nextDouble()*(maxRadius*maxRadius-minRadius*minRadius));
+            double angle = random.nextDouble()*Math.PI*2D;
+            double x = client.player.getX()+Math.cos(angle)*radius;
+            double z = client.player.getZ()+Math.sin(angle)*radius;
+            if (x < arena.minX()+1.3D || x > arena.maxX()-.3D
+                    || z < arena.minZ()+1.3D || z > arena.maxZ()-.3D) continue;
             double y = base + 0.8 + random.nextDouble() * 2.4;
             // Large smoke sprites stay outside the readable near patch; small wisps may drift through it.
             if (!ash && !soul && !spark

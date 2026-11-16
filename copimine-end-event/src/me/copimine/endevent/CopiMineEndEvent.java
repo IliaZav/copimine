@@ -49536,7 +49536,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return tentacleController.states().values().stream()
                 .anyMatch(value -> player.getUniqueId().equals(value.target())
                         && (value.state() == TentacleAnimationPolicy.State.HOLD
-                        || value.state() == TentacleAnimationPolicy.State.GRAB_SUCCESS));
+                        || value.state() == TentacleAnimationPolicy.State.GRAB_SUCCESS
+                        || value.state() == TentacleAnimationPolicy.State.THROW
+                            && !tentacleReleaseResolved.contains(value.entityId())));
     }
 
     private EndRiftAiPolicy.BossSpell spellForAbility(BossAbilityId ability) {
@@ -53108,6 +53110,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // position. An already launched cocoon spell must not outlive its owner.
         cancelBossCastForPhaseChange();
         clearKaguneRingCast("cocoon-broken");
+        // Cancel only the old spell actors. Small killable survivors remain.
+        // cancelBossCastForPhaseChange does not own these controller states.
+        for (TentacleController.VisualState state : new ArrayList<>(tentacleController.states().values())) {
+            if (state.kind() != TentacleAnimationPolicy.Kind.UNDER_PLAYER
+                    && state.kind() != TentacleAnimationPolicy.Kind.TEMPORARY) continue;
+            Player held = state.target() == null ? null : Bukkit.getPlayer(state.target());
+            boolean controlled = held != null && isPlayerUnderTentacleControl(held);
+            removeTentacle(state.entityId(),"cocoon-broken-cancel-grab");
+            if (controlled && held.isOnline() && !held.isDead() && boss != null
+                    && boss.getWorld().equals(held.getWorld()) && isActiveBossParticipant(held)) {
+                held.setFallDistance(0F);
+                wave6AnchorFallLeases.put(held.getUniqueId(),new Wave6AnchorFallLease(
+                        held.getWorld().getUID(),System.currentTimeMillis()+6_000L));
+            }
+        }
         clearActiveRiftProjectiles();
         // Fireballs have a separate registry from the Snowball rift projectiles.
         // Keeping them alive let old cocoon spells hit during the authored fall.

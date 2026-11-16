@@ -49,6 +49,32 @@ public final class Wave7ArchmagePunishPolicy {
         return new PunishWindow(castEndsAtTick, castEndsAtTick + PUNISH_TICKS);
     }
 
+    /** Tick at which the window opened by a cast resolving at {@code tick} closes. */
+    public static long punishUntilTick(long castEndsAtTick) {
+        return castEndsAtTick + PUNISH_TICKS;
+    }
+
+    /**
+     * Rebuild the window from the persisted close tick.
+     *
+     * <p>The runtime stores only the absolute close tick, so a restart cannot
+     * extend or reopen a window. {@code 0} means "no window recorded"; a value
+     * that would have opened before tick zero is refused rather than clamped,
+     * because a fabricated window is worse than none.</p>
+     */
+    public static PunishWindow windowEndingAt(long closesAtTick) {
+        long opensAt = closesAtTick - PUNISH_TICKS;
+        if (closesAtTick <= 0L || opensAt < 0L) {
+            return null;
+        }
+        return new PunishWindow(opensAt, closesAtTick);
+    }
+
+    /** Step is allowed only outside the window AND once its own cooldown has run. */
+    public static boolean stepAllowed(long tick, long lastStepTick, PunishWindow window) {
+        return mayStep(tick, window) && offCooldown(tick, lastStepTick);
+    }
+
     /** Step is refused inside the punish window, otherwise it is a normal tactical option. */
     public static boolean mayStep(long tick, PunishWindow window) {
         return window == null || !window.openAt(tick);

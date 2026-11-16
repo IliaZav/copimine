@@ -11,7 +11,47 @@ public final class Wave7ArchmagePunishPolicyTest {
         stepIsRefusedDuringThePunishWindow();
         repelIsBoundedAndWarned();
         approachNeverTriggersAnEndlessTeleportChain();
+        rebuildsTheWindowFromItsPersistedCloseTick();
+        stepGateCombinesWindowAndCooldown();
         System.out.println("Wave7ArchmagePunishPolicyTest OK");
+    }
+
+    /**
+     * The runtime persists only the close tick, so the window it reconstructs
+     * after a restart must be identical to the one the cast opened - never
+     * longer, never reopened.
+     */
+    private static void rebuildsTheWindowFromItsPersistedCloseTick() {
+        long castEnd = 4_000L;
+        var opened = Wave7ArchmagePunishPolicy.afterMajorCast(castEnd);
+        check(Wave7ArchmagePunishPolicy.punishUntilTick(castEnd) == opened.closesAt(),
+                "the persisted close tick is exactly what the cast opened");
+        var rebuilt = Wave7ArchmagePunishPolicy.windowEndingAt(opened.closesAt());
+        check(rebuilt != null && rebuilt.opensAt() == opened.opensAt()
+                        && rebuilt.closesAt() == opened.closesAt(),
+                "a restart rebuilds the identical window from the stored close tick");
+        check(Wave7ArchmagePunishPolicy.windowEndingAt(0L) == null,
+                "no stored close tick means no window, not a fabricated one");
+        check(Wave7ArchmagePunishPolicy.windowEndingAt(Wave7ArchmagePunishPolicy.PUNISH_TICKS - 1L)
+                        == null,
+                "a close tick too early to open a real window is refused");
+    }
+
+    private static void stepGateCombinesWindowAndCooldown() {
+        long never = Wave7ArchmagePunishPolicy.NEVER;
+        long window = Wave7ArchmagePunishPolicy.afterMajorCast(1_000L).closesAt();
+        check(Wave7ArchmagePunishPolicy.stepAllowed(500L, never, null),
+                "outside any window and never stepped, Step is available");
+        check(!Wave7ArchmagePunishPolicy.stepAllowed(1_050L, never,
+                        Wave7ArchmagePunishPolicy.windowEndingAt(window)),
+                "Step is refused inside the window even before its first use");
+        long after = window + 1L;
+        check(!Wave7ArchmagePunishPolicy.stepAllowed(after,
+                        after - (Wave7ArchmagePunishPolicy.STEP_COOLDOWN_TICKS - 1L), null),
+                "a recent Step still owns its cooldown once the window closes");
+        check(Wave7ArchmagePunishPolicy.stepAllowed(after,
+                        after - Wave7ArchmagePunishPolicy.STEP_COOLDOWN_TICKS, null),
+                "Step returns exactly when its cooldown has run");
     }
 
     private static void majorCastOpensAPunishWindow() {

@@ -203,6 +203,7 @@ import me.copimine.endevent.domain.MinibossGroupSpellPolicy;
 import me.copimine.endevent.domain.Wave7NamedTrialActorPolicy;
 import me.copimine.endevent.domain.Wave7EchoDuelCellPolicy;
 import me.copimine.endevent.domain.Wave7ArchmageVexPolicy;
+import me.copimine.endevent.domain.Wave7ArchmagePunishPolicy;
 import me.copimine.endevent.domain.Wave7MarksmanInvisibilityPolicy;
 import me.copimine.endevent.domain.Wave7MarksmanSquadPolicy;
 import me.copimine.endevent.domain.Wave7BarrierPreflightPolicy;
@@ -1960,6 +1961,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private NamespacedKey keyWave7MarksmanDefenderOwner;
     private NamespacedKey keyWave7ArchmageSwarmAt;
     private NamespacedKey keyWave7ArchmageSwarmDeadline;
+    /** MAGE7-005: generation-fenced "eventId|generation|tick" Archmage tool state. */
+    private NamespacedKey keyWave7ArchmageStepTick;
+    private NamespacedKey keyWave7ArchmagePunishUntil;
     private NamespacedKey keyRitualShieldGuard;
     private NamespacedKey keyRitualPrisonerGravity;
     private NamespacedKey keyKind;
@@ -2131,6 +2135,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             keyWave7MarksmanDefenderOwner = new NamespacedKey(this, "end_event_wave7_defender_owner");
         keyWave7ArchmageSwarmAt = new NamespacedKey(this, "end_event_wave7_swarm_at");
         keyWave7ArchmageSwarmDeadline = new NamespacedKey(this, "end_event_wave7_swarm_deadline");
+        keyWave7ArchmageStepTick = new NamespacedKey(this, "end_event_wave7_archmage_step_tick");
+        keyWave7ArchmagePunishUntil = new NamespacedKey(this, "end_event_wave7_archmage_punish_until");
             keyRitualShieldGuard = new NamespacedKey(this, "end_event_ritual_shield_guard");
             keyRitualPrisonerGravity = new NamespacedKey(this, "end_event_prisoner_original_gravity");
             keyKind = new NamespacedKey(this, "end_event_kind");
@@ -37275,6 +37281,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 return finishNamedTrialAttack(actor, checkpoint, now);
             }
             if (!resolveNamedTrialAttack(actor, target, checkpoint.attack(), trial.chamber())) return false;
+            // MAGE7-005: record the tool use only after the cast really resolved.
+            recordArchmageToolUse(actor, checkpoint.attack(), checkpoint.generation());
             long cooldown = now + Wave7NamedTrialActorPolicy.cooldownTicks(checkpoint.attack()) * 50L;
             return writeNamedTrialActorCheckpoint(actor, new Wave7NamedTrialActorPolicy.Checkpoint(
                     checkpoint.eventId(), checkpoint.generation(), checkpoint.chamber(), checkpoint.trial(),
@@ -37368,13 +37376,37 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
         Wave7NamedTrialActorPolicy.Attack attack;
         boolean supportUsed = checkpoint.supportUsed();
+        // MAGE7-005: Step is the one move that lets the mage escape melee. It is
+        // refused while the punish window opened by a major cast is still open
+        // and while its own cooldown runs, so a melee player who survived the
+        // cast gets a real window to connect. Without this gate the mage could
+        // blink away on every approach and was unkillable by melee.
+        Wave7ArchmagePunishPolicy.PunishWindow punishWindow =
+                Wave7ArchmagePunishPolicy.windowEndingAt(archmageToolTick(actor,
+                        keyWave7ArchmagePunishUntil, checkpoint.generation()));
+        long lastStepTick = archmageToolTick(actor, keyWave7ArchmageStepTick,
+                checkpoint.generation());
         if (repositionForCover) {
+            // A hidden player can only be answered by Step. When the window or
+            // the Step cooldown forbids it, the mage holds still and waits out
+            // the window instead of cheating a second escape.
+            if (!Wave7ArchmagePunishPolicy.stepAllowed(eventTickCounter, lastStepTick, punishWindow)) {
+                return true;
+            }
             attack = Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_STEP;
         } else {
             // SUPERSEDED (spec MARK-002/MARK-007): the Marksman keeps firing its
             // authored fans; support is the one-time Giant defender above, not a
             // bonus attack that interrupts the rotation.
             attack = Wave7NamedTrialActorPolicy.attackFor(trial.trial(), checkpoint.attackIndex());
+            if (attack == Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_STEP
+                    && !Wave7ArchmagePunishPolicy.stepAllowed(eventTickCounter, lastStepTick,
+                            punishWindow)) {
+                // The rotation steps over the refused entry; it never stalls.
+                attack = Wave7NamedTrialActorPolicy.attackForExcluding(trial.trial(),
+                        checkpoint.attackIndex() + 1L,
+                        Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_STEP);
+            }
         }
         if (attack == Wave7NamedTrialActorPolicy.Attack.NONE
                 || checkpoint.attackIndex() >= 1_000_000L) return false;
@@ -38549,6 +38581,62 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (player != null) chosen.add(player);
         }
         return chosen;
+    }
+
+    /**
+     * MAGE7-005: generation-fenced Archmage tool state.
+     *
+     * <p>The value is stored as {@code eventId|generation|tick} so a restarted
+     * event cannot inherit a stale Step cooldown or a stale punish window from
+     * the previous attempt, and a corrupted value is treated as "never used"
+     * rather than fabricating a window.</p>
+     *
+     * @return the recorded event tick, or {@link Wave7ArchmagePunishPolicy#NEVER}
+     */
+    private long archmageToolTick(LivingEntity actor, NamespacedKey key, long generation) {
+        if (actor == null || key == null) return Wave7ArchmagePunishPolicy.NEVER;
+        String encoded = actor.getPersistentDataContainer().get(key, PersistentDataType.STRING);
+        if (encoded == null || encoded.isBlank()) return Wave7ArchmagePunishPolicy.NEVER;
+        String[] parts = encoded.split("\\|", -1);
+        if (parts.length != 3) return Wave7ArchmagePunishPolicy.NEVER;
+        if (eventId == null || !eventId.toString().equals(parts[0])) {
+            return Wave7ArchmagePunishPolicy.NEVER;
+        }
+        try {
+            if (Long.parseLong(parts[1]) != generation) return Wave7ArchmagePunishPolicy.NEVER;
+            long tick = Long.parseLong(parts[2]);
+            return tick > 0L ? tick : Wave7ArchmagePunishPolicy.NEVER;
+        } catch (NumberFormatException error) {
+            return Wave7ArchmagePunishPolicy.NEVER;
+        }
+    }
+
+    /** Persist one Archmage tool tick, fenced to the owning event attempt. */
+    private void writeArchmageToolTick(LivingEntity actor, NamespacedKey key, long generation,
+                                       long tick) {
+        if (actor == null || key == null || eventId == null || tick <= 0L) return;
+        actor.getPersistentDataContainer().set(key, PersistentDataType.STRING,
+                eventId + "|" + generation + "|" + tick);
+    }
+
+    /**
+     * Records what an Archmage cast cost it.
+     *
+     * <p>Step consumes its own cooldown (a refused Step included: the contract
+     * resolves it as a miss with the regular cooldown). Every major damaging
+     * cast opens the punish window that no Step or repel may cut short.</p>
+     */
+    private void recordArchmageToolUse(LivingEntity actor,
+                                       Wave7NamedTrialActorPolicy.Attack attack, long generation) {
+        if (actor == null || attack == null) return;
+        switch (attack) {
+            case ARCHMAGE_STEP -> writeArchmageToolTick(actor, keyWave7ArchmageStepTick,
+                    generation, eventTickCounter);
+            case ARCHMAGE_FANGS, ARCHMAGE_SPEAR, ARCHMAGE_BEAM ->
+                    writeArchmageToolTick(actor, keyWave7ArchmagePunishUntil, generation,
+                            Wave7ArchmagePunishPolicy.punishUntilTick(eventTickCounter));
+            default -> { }
+        }
     }
 
     private boolean stepNamedTrialArchmage(LivingEntity actor, Player target, int chamber) {

@@ -271,7 +271,7 @@ Invoke-GateStep 'Wave 7 Echo presentation and no-loot probe' {
 Invoke-GateStep 'Wave navigation and physical passage regression' {
   Push-Location $root
   try {
-    & python -m pytest -q '.\tests\test_wave_navigation_adapter.py' '.\tests\test_wave7_passage_commit.py' '.\tests\test_wave7_checkpoint_recovery.py' '.\tests\test_wave7_named_runtime.py' '.\tests\test_wave7_archmage_step_permit.py' '.\tests\test_wave7_line_of_sight.py' '.\tests\test_end_rift_cancelled_death_adapter.py' '.\tests\test_wave_carrier_marker_adapter.py' '.\tests\test_wave_dash_runtime.py'
+    & python -m pytest -q '.\tests\test_wave_navigation_adapter.py' '.\tests\test_wave7_passage_commit.py' '.\tests\test_wave7_checkpoint_recovery.py' '.\tests\test_wave7_named_runtime.py' '.\tests\test_wave7_archmage_step_permit.py' '.\tests\test_wave7_archmage_punish_runtime.py' '.\tests\test_wave7_line_of_sight.py' '.\tests\test_end_rift_cancelled_death_adapter.py' '.\tests\test_wave_carrier_marker_adapter.py' '.\tests\test_wave_dash_runtime.py'
     if ($LASTEXITCODE -ne 0) { throw "Wave navigation and passage regressions failed with exit code $LASTEXITCODE" }
     & python -m pytest -q '.\tests\test_wave4_special_attack_fairness.py'
     if ($LASTEXITCODE -ne 0) { throw 'Wave 4 special attack fairness regression failed.' }

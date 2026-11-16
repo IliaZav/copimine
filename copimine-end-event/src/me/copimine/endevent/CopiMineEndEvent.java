@@ -49954,10 +49954,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** Request role-aware pathing without ever steering the boss at Core. */
     private void maintainBossPath(LivingEntity boss, long now) {
         long pathCadence = Math.clamp(me.copimine.endevent.domain.BossCloseCombatPolicy.cadenceMillis(bossPhase)/6L,200L,500L);
-        if (!(boss instanceof Mob mob) || now - lastBossPathRequestMillis < pathCadence
-                || !(mob.getTarget() instanceof Player target) || !isCombatTarget(target)) {
+        if (!(boss instanceof Mob mob)) return;
+        Player target=mob.getTarget() instanceof Player player ? player : null;
+        if (!isBossPursuitCandidate(target)) {
+            // A refused native target clear must not leave an old path pursuing
+            // a held/offline player. Invalid focus is urgent, before cadence.
+            if (mob.getPathfinder().hasPath()) mob.getPathfinder().stopPathfinding();
+            applyGroundedBossPursuitMotion(mob,0D);
             return;
         }
+        if (now-lastBossPathRequestMillis<pathCadence) return;
         Location anchor = coreCombatAnchorLocation();
         if (anchor == null) {
             return;
@@ -54102,7 +54108,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         double healthAfter = target.getHealth();
         if (!accepted || generation!=ownerGeneration || !Objects.equals(eventId,ownerEvent)
                 || !Objects.equals(bossUuid,ownerBoss) || !isBossCombatRuntimeActive(source)
-                || !isActiveBossParticipant(target) || target.isDead()
+                || !isActiveBossParticipant(target) || target.isDead() || isPlayerUnderTentacleControl(target)
                 || !display.isValid() || display.isDead()
                 || !ownedBySession(display, eventId, generation)) {
             getLogger().info("RIFT_TENTACLE_STRIKE_REJECTED event=" + eventId

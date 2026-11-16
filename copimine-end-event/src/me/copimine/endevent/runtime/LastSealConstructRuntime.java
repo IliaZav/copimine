@@ -19,6 +19,7 @@ public final class LastSealConstructRuntime {
         boolean traversable(Location feet);
         ItemDisplay create(Location origin, KaguneSpellFrame initial);
         void publish(ItemDisplay carrier, KaguneSpellFrame frame);
+        default void presentation(Location origin, KaguneSpellFrame frame) { }
         default void started(Location origin, int kind) { }
         void warning(Location origin, List<KaguneSpellFrame.Point> points, int kind);
         void impact(Location origin, int kind);
@@ -105,6 +106,8 @@ public final class LastSealConstructRuntime {
         try {
             KaguneSpellFrame current = frame(age);
             host.publish(carrier, current); // Never damage from a frame that failed to publish.
+            if (age % 4 == 0 && current.stage() != KaguneSpellFrame.WARNING)
+                host.presentation(origin, current);
             if (current.stage() == KaguneSpellFrame.WARNING && age % 8 == 0) host.warning(origin, points, kind);
             if (current.canDamage() && !impactPlayed) { impactPlayed = true; host.impact(origin, kind); }
             for (Player player : host.participants()) {

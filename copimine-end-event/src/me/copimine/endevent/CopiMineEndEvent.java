@@ -52981,6 +52981,31 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             public void started(Location origin, int kind) {
                 playEncounterAbilityAudioAt(origin, "guardian_summon");
             }
+            public void presentation(Location origin, me.copimine.protocol.KaguneSpellFrame frame) {
+                // Two winding filaments per stem, sampled in the same locked
+                // local frame as server contact. At most 40 points every four ticks.
+                double rise = frame.rise(frame.progress());
+                if (rise <= .05D) return;
+                double pitch = frame.pitch(frame.progress());
+                double length = me.copimine.protocol.KaguneSpellFrame.HEIGHT;
+                for (var point : frame.points()) for (int i=1; i<=4; i++) {
+                    double u = i/4D, along = length*u;
+                    double coil = u*Math.PI*3D + frame.progress()*Math.PI*2D;
+                    for (int strand=0; strand<2; strand++) {
+                        double spiral = coil+strand*Math.PI;
+                        double side = Math.cos(spiral)*.18D;
+                        double normal = Math.sin(spiral)*.18D;
+                        double forward = Math.sin(pitch)*along + Math.cos(pitch)*normal;
+                        double y = point.y()-length*(1D-rise)+Math.cos(pitch)*along-Math.sin(pitch)*normal;
+                        if (y < .05D) continue;
+                        Location at = origin.clone().add(
+                                point.x()+Math.cos(frame.heading())*forward-Math.sin(frame.heading())*side,
+                                y,point.z()+Math.sin(frame.heading())*forward+Math.cos(frame.heading())*side);
+                        spawnEventParticle(at, strand==0 ? Particle.REVERSE_PORTAL : Particle.END_ROD,
+                                1,0D,0D,0D,0D);
+                    }
+                }
+            }
             public void warning(Location origin, List<me.copimine.protocol.KaguneSpellFrame.Point> points, int kind) {
                 // Sparse fixed ground marks; no screen-covering repeated overlays.
                 for (var point : points) {
@@ -53173,7 +53198,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         syncCocoonFallAnimation(boss, cocoonFallElapsedTicks - 1);
         if (landingNow) renderCocoonLanding(landing);
         if (changed) {
-            if (cocoonFallStage == CocoonFallPolicy.Stage.MELEE_FURY) playEventMusic(musicForPhase());
+            if (cocoonFallStage == CocoonFallPolicy.Stage.MELEE_FURY) {
+                // A falling position owner must not preserve a stale ranged
+                // cooldown or navigation destination into grounded fury.
+                nextTargetMillis = 0L;
+                nextSpellMillis = System.currentTimeMillis();
+                nextBossCloseStrikeMillis = 0L;
+                lastBossPathRequestMillis = 0L;
+                if (boss instanceof Mob mob) { mob.setAI(true); mob.setAware(true); }
+                boss.setGravity(true);
+                playEventMusic(musicForPhase());
+            }
             getLogger().info("RIFT_COCOON_FALL_STAGE event=" + eventId
                     + " generation=" + generation + " stage=" + cocoonFallStage
                     + " melee_fury=" + CocoonFallPolicy.isMeleeFury(cocoonFallStage));
@@ -53222,12 +53257,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (landing == null || landing.getWorld() == null) {
             return;
         }
-        landing.getWorld().spawnParticle(Particle.EXPLOSION_EMITTER, landing, 1);
-        landing.getWorld().spawnParticle(Particle.CAMPFIRE_COSY_SMOKE, landing, 40,
-                2.5D, 0.2D, 2.5D, 0.02D);
-        landing.getWorld().spawnParticle(Particle.LAVA, landing, 24, 2.2D, 0.1D, 2.2D, 0.0D);
-        landing.getWorld().playSound(landing, Sound.ENTITY_GENERIC_EXPLODE, 2.0F, 0.6F);
-        landing.getWorld().playSound(landing, Sound.BLOCK_BASALT_BREAK, 2.0F, 0.5F);
+        LivingEntity boss = liveBoss();
+        if (boss != null) {
+            playBossImpactPresentation(boss, BossImpactGeometryPolicy.Kind.SLAM, landing,
+                    new Vector(0D,0D,1D),5D,false,false);
+            playCasterSpellBody(boss,BossSpellGeometryPolicy.Shape.SLAM_FAULT,
+                    "COCOON_LANDING",landing,24);
+        }
+        spawnEventParticle(landing.clone().add(0D,.2D,0D),Particle.POOF,20,1.8D,.15D,1.8D,.035D);
+        playEncounterAbilityAudioAt(landing,"kagune_eruption");
         getLogger().info("RIFT_COCOON_LANDING event=" + eventId
                 + " generation=" + generation
                 + " x=" + landing.getBlockX() + " y=" + landing.getBlockY()
@@ -53432,9 +53470,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** One authoritative answer for "the seal is open and the boss can be hurt". */
     private boolean tentacleVulnerabilityOpen() {
+        // A destroyed cocoon is durable. Stale decorative actors or the old
+        // timed damage window must never re-shield or re-pin a fallen Guardian.
         return bossPhase == BossPhase.LAST_SEAL
-                && tentacleDamageWindowEndsMillis >= 0L
-                && livingTentacleGuardianCount() == 0;
+                && guardianDeaths.generation() == generation
+                && guardianDeaths.cocoonBroken();
     }
 
     /** The guaranteed minimum window: no defender may return inside it. */

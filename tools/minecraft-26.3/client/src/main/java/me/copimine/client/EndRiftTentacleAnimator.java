@@ -1,5 +1,7 @@
 package me.copimine.client;
 
+import me.copimine.protocol.KaguneSpellFrame;
+
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -12,6 +14,35 @@ public final class EndRiftTentacleAnimator {
     private static final java.util.Set<String> HOLD_CLIPS = java.util.Set.of("hold");
 
     private EndRiftTentacleAnimator() {
+    }
+
+    /** Spell-specific anticipation, contact and withdrawal on the original rig.
+     * Extra curvature is gone before the first server-authorized stab contact.
+     */
+    public static EndRiftTentaclePose.TentaclePose spellPose(KaguneSpellFrame frame, float progress) {
+        float p=clamp(progress), ease=p*p*(3F-2F*p);
+        var upright=poseFor("EMERGE",1F,0L);
+        var coil=new EndRiftTentaclePose.TentaclePose(upright.root(),
+                curl(upright.base(),-.04F),curl(upright.seg_01(),-.08F),
+                curl(upright.seg_02(),-.12F),curl(upright.seg_03(),.04F),
+                curl(upright.seg_04(),.08F),curl(upright.seg_05(),.16F),
+                upright.seg_06(),upright.tip(),upright.tip_claw_1(),upright.tip_claw_2(),
+                upright.tip_claw_3(),upright.tip_claw_4(),upright.grab_socket(),upright.rigScale());
+        return switch(frame.stage()) {
+            case KaguneSpellFrame.EMERGING -> frame.kind()==KaguneSpellFrame.STAB
+                    ? EndRiftTentaclePose.TentaclePose.lerp(poseFor("EMERGE",p,0L),coil,ease)
+                    : poseFor("EMERGE",p,0L);
+            case KaguneSpellFrame.STRIKING -> frame.kind()==KaguneSpellFrame.STAB && p<.25F
+                    ? EndRiftTentaclePose.TentaclePose.lerp(coil,upright,Math.min(1F,p*4F)) : upright;
+            case KaguneSpellFrame.RETRACTING -> EndRiftTentaclePose.TentaclePose.lerp(
+                    upright,poseFor("RETRACT",p,0L),ease);
+            default -> upright;
+        };
+    }
+
+    private static EndRiftTentaclePose.BoneTransform curl(EndRiftTentaclePose.BoneTransform bone,float angle) {
+        return new EndRiftTentaclePose.BoneTransform(bone.translationX(),bone.translationY(),bone.translationZ(),
+                bone.pitch()+angle,bone.yaw(),bone.roll(),bone.scaleX(),bone.scaleY(),bone.scaleZ());
     }
 
     public static boolean supportsAnimation(String animationId) {

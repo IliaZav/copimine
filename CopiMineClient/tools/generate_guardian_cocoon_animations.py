@@ -11,12 +11,12 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "src/main/resources/assets/copimineclient/models/entity/end_rift_guardian/animations"
 
 
-def pose(body, height, head, arm, spread, thigh, shin):
+def pose(body, height, head, arm, spread, thigh, shin, twist=0):
     return {
-        "body": {"rotation": [body, 0, 0], "position": [0, height, 0]},
-        "head": {"rotation": [head, 0, 0]},
-        "left_hand": {"rotation": [arm, 0, -spread]},
-        "right_hand": {"rotation": [arm, 0, spread]},
+        "body": {"rotation": [body, twist, twist * .35], "position": [0, height, 0]},
+        "head": {"rotation": [head, -twist * .65, -twist * .2]},
+        "left_hand": {"rotation": [arm + twist * .4, 0, -spread]},
+        "right_hand": {"rotation": [arm - twist * .4, 0, spread]},
         "group6": {"rotation": [thigh, 0, 0]},
         "group5": {"rotation": [thigh, 0, 0]},
         "group2": {"rotation": [shin, 0, 0]},
@@ -29,15 +29,18 @@ BRACE = pose(32, -3, -18, 55, 35, 34, -58)
 CLIPS = {
     "cocoon_fall": (2.0, [
         (0.0, NEUTRAL),
-        (0.3, pose(14, -.5, -8, 20, 20, 8, -12)),
-        (1.2, pose(24, -1.5, -14, 40, 30, 26, -44)),
+        (.2, pose(-6, 0, 10, -15, 24, 5, -10, -5)),
+        (.55, pose(9, -.3, -5, 18, 35, 12, -20, 7)),
+        (1.05, pose(19, -.8, -12, 36, 32, 23, -38, -4)),
+        (1.55, pose(28, -2, -17, 49, 37, 30, -51, 3)),
         (2.0, BRACE),
     ]),
     "cocoon_land": (1.0, [
         (0.0, BRACE),
-        (.15, pose(42, -7, -20, 70, 42, 48, -78)),
-        (.45, pose(12, -2, -8, 18, 10, 16, -28)),
-        (.7, pose(-4, 1, 5, -8, 5, -2, 4)),
+        (.08, pose(44, -7, -22, 74, 44, 48, -78, 3)),
+        (.24, pose(31, -4.5, -16, 46, 28, 34, -55, -4)),
+        (.48, pose(11, -1.4, -6, 13, 12, 13, -23, 2)),
+        (.72, pose(-5, .5, 7, -12, 9, -2, 4, -1)),
         (1.0, NEUTRAL),
     ]),
 }

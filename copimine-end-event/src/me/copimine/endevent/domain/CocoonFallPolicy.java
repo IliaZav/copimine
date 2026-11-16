@@ -122,7 +122,10 @@ public final class CocoonFallPolicy {
     /** Interpolated height above the floor during the descent. */
     public static double heightDuringFall(double hoverHeight, int elapsedTicks) {
         double safeHeight = Double.isFinite(hoverHeight) ? Math.max(0.0D, hoverHeight) : 0.0D;
-        return safeHeight * (1.0D - fallProgress(elapsedTicks));
+        // Release from suspension, accelerate into the authored landing marker.
+        // Keep the same exact boundary tick and checkpoint clock.
+        double progress = fallProgress(elapsedTicks);
+        return safeHeight * (1.0D - progress * progress);
     }
 
     /** Landing starts on the tick the feet reach the floor, not before. */

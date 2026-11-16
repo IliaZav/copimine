@@ -216,7 +216,7 @@ public final class EndRiftTentacleRenderer {
         double rise = frame.rise(p); if (rise <= 0D) return;
         // Procedural spell animation preserves every original bone, pivot and UV.
         // Tilt the continuous rig as one articulated spear; never detach its pieces.
-        var pose = EndRiftTentacleAnimator.poseFor("EMERGE", 1F, 0L);
+        var pose = EndRiftTentacleAnimator.spellPose(frame,(float)p);
         int light = net.minecraft.util.LightCoordsUtil.getLightCoords(world, display.blockPosition());
         float width = EndRiftTentacleWorldScalePolicy.rendererScaleForRig((float) KaguneSpellFrame.SCALE);
         float height = EndRiftTentacleWorldScalePolicy.rendererLengthScaleForRig((float) KaguneSpellFrame.SCALE);

@@ -42,6 +42,12 @@ def occluded_archmage_probe(tmp_path_factory):
         "private boolean finishNamedTrialAttack(",
         "private boolean resolveNamedTrialAttack(",
         "private boolean stepNamedTrialArchmage(",
+        # MAGE7-005: the resolved cast now records what the tool cost through
+        # these three methods, so the probe must execute them for real rather
+        # than stub the punish-window bookkeeping away.
+        "private long archmageToolTick(",
+        "private void writeArchmageToolTick(",
+        "private void recordArchmageToolUse(",
         # MARK-005 durability: the tick path now reconciles the actor's real
         # visibility with its durable vanish receipt, so the probe must execute
         # that method too.
@@ -89,7 +95,10 @@ public class OccludedArchmageProbe {
     final NamespacedKey keyChamberId=new NamespacedKey(this,"room"),keyTrialRole=new NamespacedKey(this,"role"),
         keyWave=new NamespacedKey(this,"wave"),keyGeneration=new NamespacedKey(this,"generation"),
         keyEventGeneration=new NamespacedKey(this,"event_generation"),keyEventId=new NamespacedKey(this,"event"),
-        keyEventSessionId=new NamespacedKey(this,"session");
+        keyEventSessionId=new NamespacedKey(this,"session"),
+        // MAGE7-005 tool bookkeeping keys the real recorder writes through.
+        keyWave7ArchmageStepTick=new NamespacedKey(this,"end_event_wave7_archmage_step_tick"),
+        keyWave7ArchmagePunishUntil=new NamespacedKey(this,"end_event_wave7_archmage_punish_until");
     static class Type<T> {}
     static class PersistentDataType {
         static final Type<String> STRING=new Type<>();
@@ -100,6 +109,7 @@ public class OccludedArchmageProbe {
         <T> void set(Object key,Type<T> type,T value){values.put(key,value);}
         @SuppressWarnings("unchecked") <T> T getOrDefault(Object key,Type<T> type,T fallback){
             return (T)values.getOrDefault(key,fallback);}
+        @SuppressWarnings("unchecked") <T> T get(Object key,Type<T> type){return (T)values.get(key);}
     }
     enum EntityType { EVOKER, SKELETON }
     enum Particle { PORTAL, HAPPY_VILLAGER }
@@ -285,6 +295,9 @@ public class OccludedArchmageProbe {
     files = [str(BASE / rel) for rel in PRODUCTION]
     files += [str(BASE / "domain/Wave7NamedTrialActorPolicy.java"),
              str(BASE / "domain/Wave7MinibossScalingPolicy.java"),
+             # MAGE7-005: the tick path now reads and writes the punish window,
+             # so the probe compiles the real policy instead of stubbing it.
+             str(BASE / "domain/Wave7ArchmagePunishPolicy.java"),
              # Miniboss health scales from the roster frozen at admission.
              str(BASE / "runtime/EventCombatProfileService.java"),
              # The service owns a durable ordered combat history (audit ECHO 10).

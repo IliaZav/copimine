@@ -20,7 +20,24 @@ public final class EchoLoadoutState {
      * {@link #classify(String, boolean)} results are persisted indirectly.</p>
      */
     public enum Kind { EMPTY, MELEE, ARMOR, BOW, CROSSBOW, SHIELD, FOOD, GOLDEN_APPLE, AMMO, INERT, BLOCKED_CUSTOM,
-        POTION, SPLASH_POTION, LINGERING_POTION }
+        POTION, SPLASH_POTION, LINGERING_POTION,
+        /**
+         * GEAR-007: a Totem of Undying. Appended last so every frozen ordinal
+         * keeps its meaning; before this the totem fell through to INERT and a
+         * copy carried a real totem it could never use.
+         */
+        TOTEM,
+        /**
+         * A Wind Charge. Appended after TOTEM so no frozen ordinal moves.
+         * Before this a copy that carried a stack of wind charges held an
+         * unusable item: the whole stack fell through to INERT, so an owner
+         * whose signature move was a knockback burst produced a copy that
+         * simply walked into melee.
+         */
+        WIND_CHARGE }
+    /** Frozen replica layout: 36 storage slots, then boots, leggings, chestplate, helmet, offhand. */
+    public static final int OFFHAND_SLOT = 40;
+    public static final int BONUS_SLOT = 41;
     private static final Set<String> TIERS = Set.of("WOODEN", "STONE", "IRON", "GOLDEN", "DIAMOND", "NETHERITE");
     private static final Set<String> ARMOR = Set.of("LEATHER", "CHAINMAIL", "IRON", "GOLDEN", "DIAMOND", "NETHERITE", "TURTLE");
     private static final Set<String> FOODS = Set.of("APPLE", "BREAD", "COOKED_BEEF", "COOKED_PORKCHOP", "COOKED_CHICKEN",
@@ -76,7 +93,17 @@ public final class EchoLoadoutState {
             case "CROSSBOW" -> Kind.CROSSBOW;
             case "SHIELD" -> Kind.SHIELD;
             case "GOLDEN_APPLE" -> Kind.GOLDEN_APPLE;
+            case "TOTEM_OF_UNDYING" -> Kind.TOTEM;
             case "ARROW" -> Kind.AMMO;
+            // A mace is a two-handed bludgeon, but it is still a held melee
+            // weapon: it shares the sword/axe combat shape. Without this the
+            // mace had no tier prefix and fell through to INERT, so an owner
+            // who fought with a mace produced a copy that never swung.
+            case "MACE" -> Kind.MELEE;
+            // A wind charge is a thrown, single-use projectile item, not a
+            // potion: it needs its own kind so the copy spends one charge per
+            // burst and cannot be mistaken for a bottle.
+            case "WIND_CHARGE" -> Kind.WIND_CHARGE;
             // Potions were the largest single gap in "behaves like a real
             // player": a copy whose owner always buffed with Swiftness and
             // Strength carried those bottles around as INERT loot.
@@ -158,8 +185,11 @@ public final class EchoLoadoutState {
         Kind kind=frozen.get(slot).kind();
         // A potion bottle leaves no residue on the stack: drinking consumes one
         // whole bottle, so the kind is spendable exactly like a food item.
+        // GEAR-007: a totem is spent by its activation, which is what makes a
+        // second rescue from the same replica impossible.
         if (kind!=Kind.FOOD && kind!=Kind.GOLDEN_APPLE && kind!=Kind.AMMO
-                && kind!=Kind.POTION && kind!=Kind.SPLASH_POTION && kind!=Kind.LINGERING_POTION) return false;
+                && kind!=Kind.POTION && kind!=Kind.SPLASH_POTION && kind!=Kind.LINGERING_POTION
+                && kind!=Kind.TOTEM && kind!=Kind.WIND_CHARGE) return false;
         remaining[slot]-=amount; revision++; return true;
     }
     /** Caller supplies the durability outcome after native enchantment handling. */

@@ -54,4 +54,33 @@ public final class EchoTotemPolicy {
     public static boolean switchCostsATransition() {
         return true;
     }
+
+    /**
+     * The supported equipped/held states for a copy's totem.
+     *
+     * <p>A totem loose in the pack is not "equipped": activation requires the
+     * offhand slot the copy actually holds, or the hotbar slot it is using. The
+     * slot numbers are the frozen {@link EchoLoadoutState} layout, not a
+     * caller's convention.</p>
+     */
+    public static boolean isEquippedSlot(int totemSlot, int selectedSlot) {
+        if (totemSlot < 0) return false;
+        if (totemSlot == EchoLoadoutState.OFFHAND_SLOT) return true;
+        return totemSlot == selectedSlot && selectedSlot >= 0 && selectedSlot <= 8;
+    }
+
+    /**
+     * The single gate the runtime calls at the copy's lethal damage boundary.
+     *
+     * <p>Both halves are required: the incoming hit must really be lethal, and
+     * the totem must be present, equipped and not already spent in this life.
+     * A surviving copy must never be produced by a totem that is merely in the
+     * inventory, nor by one that already fired.</p>
+     */
+    public static boolean activationAllowed(double currentHealth, double incomingDamage,
+                                            boolean holdsTotem, boolean equipped,
+                                            boolean usedInThisLife) {
+        return wouldBeLethal(currentHealth, incomingDamage)
+                && mayActivate(holdsTotem, equipped, usedInThisLife);
+    }
 }

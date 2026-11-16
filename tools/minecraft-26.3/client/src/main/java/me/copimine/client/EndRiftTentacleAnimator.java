@@ -1,6 +1,7 @@
 package me.copimine.client;
 
 import me.copimine.protocol.KaguneSpellFrame;
+import me.copimine.protocol.KaguneRingFrame;
 
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -38,6 +39,25 @@ public final class EndRiftTentacleAnimator {
                     upright,poseFor("RETRACT",p,0L),ease);
             default -> upright;
         };
+    }
+
+    /** Ring stems stay upright while their moving server columns can hit. */
+    public static EndRiftTentaclePose.TentaclePose ringPose(KaguneRingFrame frame) {
+        var upright=poseFor("EMERGE",1F,0L);
+        if (frame.stage()==KaguneRingFrame.EMERGE)
+            return poseFor("EMERGE",(float)frame.rise(),0L);
+        if (frame.stage()==KaguneRingFrame.RETRACT) {
+            float p=(float)(1D-frame.rise());
+            return EndRiftTentaclePose.TentaclePose.lerp(upright,poseFor("RETRACT",p,0L),p*p*(3F-2F*p));
+        }
+        // Counter-rotating distal joints give a small travelling shiver rather
+        // than folding the entire THROW rig across the advertised escape gap.
+        float ripple=(float)Math.sin(frame.strike()*Math.PI*6D)*.025F;
+        return new EndRiftTentaclePose.TentaclePose(upright.root(),upright.base(),upright.seg_01(),
+                upright.seg_02(),upright.seg_03(),curl(upright.seg_04(),ripple),
+                curl(upright.seg_05(),-ripple),upright.seg_06(),upright.tip(),
+                upright.tip_claw_1(),upright.tip_claw_2(),upright.tip_claw_3(),upright.tip_claw_4(),
+                upright.grab_socket(),upright.rigScale());
     }
 
     private static EndRiftTentaclePose.BoneTransform curl(EndRiftTentaclePose.BoneTransform bone,float angle) {

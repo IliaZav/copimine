@@ -254,23 +254,11 @@ public final class EndRiftTentacleRenderer {
     /** All repeated rigs share one geometry submission, skin and sampled pose. */
     private static void renderRing(PoseStack matrices, VertexConsumer vertices, Display.ItemDisplay display,
                                    KaguneRingFrame frame, float partialTick, ClientLevel world) {
-        if (frame.rise() <= 0D) return;
+        double renderRise=frame.renderRise(partialTick);
+        if (renderRise <= 0D) return;
         Vec3 origin = display.getPosition(partialTick);
         if (!finite(origin)) return;
-        float progress = (float) frame.strike();
-        var upright = EndRiftTentacleAnimator.poseFor("EMERGE", 1F, 0L);
-        var strike = EndRiftTentacleAnimator.poseFor("THROW", progress, 0L);
-        EndRiftTentaclePose.TentaclePose pose;
-        if (frame.stage() == KaguneRingFrame.EMERGE) {
-            pose = EndRiftTentacleAnimator.poseFor("EMERGE", (float) frame.rise(), 0L);
-        } else if (frame.stage() == KaguneRingFrame.TRAVEL) {
-            pose = EndRiftTentaclePose.TentaclePose.lerp(upright, strike, Math.min(1F, progress * 5F));
-        } else {
-            float retract = (float) (1D - frame.rise());
-            pose = EndRiftTentaclePose.TentaclePose.lerp(
-                    EndRiftTentacleAnimator.poseFor("THROW", 1F, 0L),
-                    EndRiftTentacleAnimator.poseFor("RETRACT", retract, 0L), Math.min(1F, retract * 5F));
-        }
+        var pose = EndRiftTentacleAnimator.ringPose(frame);
         float width = EndRiftTentacleWorldScalePolicy.rendererScaleForRig((float) KaguneRingFrame.RIG_SCALE);
         float height = EndRiftTentacleWorldScalePolicy.rendererLengthScaleForRig((float) KaguneRingFrame.RIG_SCALE);
         double radius = frame.previousRadius() + (frame.radius() - frame.previousRadius()) * Math.max(0F, Math.min(1F, partialTick));
@@ -279,7 +267,8 @@ public final class EndRiftTentacleRenderer {
             if (!frame.drawsInstance(i)) continue;
             double angle = frame.direction(i);
             matrices.pushPose();
-            matrices.translate(origin.x + Math.cos(angle) * radius, origin.y, origin.z + Math.sin(angle) * radius);
+            matrices.translate(origin.x + Math.cos(angle) * radius,
+                    origin.y-KaguneRingFrame.HEIGHT*(1D-renderRise), origin.z + Math.sin(angle) * radius);
             matrices.rotate(Axis.YP, (float) (-angle + Math.PI / 2D));
             matrices.scale(width, height, width);
             RIG.render(matrices, vertices, pose, light, OverlayTexture.NO_OVERLAY, 0xFFFFFFFF);

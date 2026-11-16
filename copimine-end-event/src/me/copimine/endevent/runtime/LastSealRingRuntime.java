@@ -12,7 +12,8 @@ import org.bukkit.util.Vector;
 
 /** Owns a complete ring cast; Paper supplies IO, never its timeline or geometry. */
 public final class LastSealRingRuntime {
-    public static final int EMERGE_TICKS = 20, TRAVEL_TICKS = 40, RETRACT_TICKS = 18, GAP_TICKS = 8;
+    public static final int EMERGE_TICKS = KaguneRingFrame.EMERGE_TICKS, TRAVEL_TICKS = KaguneRingFrame.TRAVEL_TICKS,
+            RETRACT_TICKS = KaguneRingFrame.RETRACT_TICKS, GAP_TICKS = KaguneRingFrame.GAP_TICKS;
     public static final int ROW_TICKS = EMERGE_TICKS + TRAVEL_TICKS + RETRACT_TICKS + GAP_TICKS;
     public static final int CAST_TICKS = ROW_TICKS * KaguneRingGapPolicy.ROW_COUNT;
     public record Scope(String event, long generation, UUID boss) { }
@@ -144,7 +145,9 @@ public final class LastSealRingRuntime {
                 Location at = player.getLocation(), before = previousPlayers.put(player.getUniqueId(), at.clone());
                 if (!frame.canDamage() || hitPlayers.contains(player.getUniqueId())) continue;
                 if (before == null || !before.getWorld().equals(at.getWorld()) || before.distanceSquared(at) > 25D) before = at;
-                if (!contacts(frame, before, at)) continue;
+                if (!frame.contacts(before.getX()-origin.getX(),before.getY()-origin.getY(),before.getZ()-origin.getZ(),
+                        at.getX()-origin.getX(),at.getY()-origin.getY(),at.getZ()-origin.getZ(),
+                        player.getWidth()/2D,player.getHeight())) continue;
                 hitPlayers.add(player.getUniqueId());
                 if (!host.hit(boss, player, KaguneGuardianFightPolicy.BASE_STRIKE_DAMAGE)) {
                     hitPlayers.remove(player.getUniqueId()); continue;
@@ -174,25 +177,6 @@ public final class LastSealRingRuntime {
         return new KaguneRingFrame(rowIndex, stage,
                 row.emergeRadius() + KaguneRingGapPolicy.ROW_TRAVEL_BLOCKS * progress,
                 row.emergeRadius() + KaguneRingGapPolicy.ROW_TRAVEL_BLOCKS * prior, rise, progress, gaps);
-    }
-
-    private boolean contacts(KaguneRingFrame frame, Location before, Location at) {
-        double x = at.getX() - origin.getX(), z = at.getZ() - origin.getZ();
-        if (frame.insideGap(Math.atan2(z, x))) return false;
-        double dy = at.getY() - origin.getY();
-        if (dy < -.3D || dy > 3.5D) return false;
-        double bx = before.getX() - origin.getX(), bz = before.getZ() - origin.getZ();
-        for (int i = 0; i < frame.instances(); i++) {
-            if (!frame.drawsInstance(i)) continue;
-            double angle = frame.direction(i), cos = Math.cos(angle), sin = Math.sin(angle);
-            double sx = bx - cos * frame.previousRadius(), sz = bz - sin * frame.previousRadius();
-            double ex = x - cos * frame.radius(), ez = z - sin * frame.radius();
-            double vx = ex - sx, vz = ez - sz, squared = vx * vx + vz * vz;
-            double t = squared < 1E-9D ? 0D : Math.max(0D, Math.min(1D, -(sx * vx + sz * vz) / squared));
-            double cx = sx + vx * t, cz = sz + vz * t;
-            if (cx * cx + cz * cz <= KaguneRingFrame.CONTACT_RADIUS * KaguneRingFrame.CONTACT_RADIUS) return true;
-        }
-        return false;
     }
 
     /** Accepted launch protection survives visual retirement until one landing. */

@@ -49974,6 +49974,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // to the preferred 3.5-block ring and abandon contact on every path tick.
         if (plan.tactic() == CombatTacticsPolicy.BossTactic.MELEE_PRESSURE
                 && targetDistance >= 1.6D && targetDistance <= BossContactStrikePolicy.MELEE_SWIPE_RANGE
+                && boss.getLocation().distanceSquared(target.getLocation())
+                    <= BossContactStrikePolicy.MELEE_SWIPE_RANGE * BossContactStrikePolicy.MELEE_SWIPE_RANGE
                 && boss.hasLineOfSight(target) && Math.abs(boss.getY()-target.getY()) <= 2.5D) {
             if (mob.getPathfinder().hasPath()) mob.getPathfinder().stopPathfinding();
             applyGroundedBossPursuitMotion(mob,0D);
@@ -54580,6 +54582,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !display.getWorld().equals(target.getWorld())) {
             return;
         }
+        // Release is a combat action, even when its target cannot take damage.
+        // Stale visual callbacks must not launch players after the encounter ends.
+        long releaseGeneration = generation;
+        String releaseEvent = eventId;
+        if (!isActiveBossParticipant(target) || !isBossCombatRuntimeActive(liveBoss())
+                || !display.isValid() || !ownedBySession(display,releaseEvent,releaseGeneration)) return;
         if (launch == null || !launch.isFinite()) {
             Location arenaCenter = coreCombatAnchorLocation();
             launch = arenaCenter == null
@@ -54617,6 +54625,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " health_before=" + String.format(Locale.ROOT, "%.3f", healthBefore)
                     + " health_after=" + String.format(Locale.ROOT, "%.3f", healthAfter));
         }
+        // Accepted damage listeners can kill, transfer, or cancel the encounter.
+        // Never apply the old action's launch/landing lease to that new state.
+        if (releaseGeneration != generation || !Objects.equals(releaseEvent,eventId)
+                || !display.isValid() || !ownedBySession(display,releaseEvent,releaseGeneration)
+                || !isBossCombatRuntimeActive(liveBoss()) || !isActiveBossParticipant(target)
+                || !target.isOnline() || target.isDead() || !display.getWorld().equals(target.getWorld())) return;
         target.setVelocity(new Vector(launch.x(), launch.y(), launch.z()));
         target.setFallDistance(0.0F);
         // Reuse the world-bound, first-landing lease. Its central tick cleanup

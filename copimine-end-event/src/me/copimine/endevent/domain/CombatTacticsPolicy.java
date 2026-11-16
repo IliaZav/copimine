@@ -66,7 +66,7 @@ public final class CombatTacticsPolicy {
         BossPhase safe = phase == null ? BossPhase.AWAKENING : phase;
         int beat = Math.floorMod(cycle, 4);
         double direction = beat % 2 == 0 ? 1.0D : -1.0D;
-        if (targetOnCore) {
+        if (targetOnCore && !meleeFury) {
             return new BossPlan(BossTactic.CREATE_SPACE, 8.0D, true, true, direction);
         }
         // Keep a real contact opportunity instead of abandoning it for the

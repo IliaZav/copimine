@@ -401,16 +401,6 @@ public final class EchoDuelCombatRuntimeAdapter {
                 }
             }
 
-            if (observation.onGround() && inProfileWindow(
-                    observation.tick(), duel.behaviorStrategy().mobilityPermille())) {
-                Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartJump(
-                        duel.actor(), observation.tick(), COOLDOWNS);
-                if (actor.isPresent()) {
-                    return decision(duel, baselineReplica, replica, scope, Action.JUMP, actor.get(),
-                            -1, -1, null, intent);
-                }
-            }
-
             if (inMeleeRange && !observation.onGround() && observation.criticalWindow() && meleeSlot >= 0) {
                 EchoLoadoutState.Item item = replica.item(meleeSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartCriticalMelee(
@@ -501,6 +491,27 @@ public final class EchoDuelCombatRuntimeAdapter {
                         replica, meleeSlot, 1, replica.revision())) {
                     return decision(duel, baselineReplica, replica, scope, Action.MELEE, actor.get(),
                             meleeSlot, -1, item, intent);
+                }
+            }
+
+            // BRAIN-006 mobility: a copy of a player who sprinted through their
+            // fights still hops around, but hopping is a filler action, not a
+            // substitute for a fight. This branch used to run before every
+            // attack branch, and mobilityPermille is the owner's SPRINT share
+            // (share(sprintSamples, movementSamples)): a player who sprinted in
+            // half their movement samples produced a copy that was airborne on
+            // half its ground ticks and rarely attacked at all. It now runs only
+            // after every legal attack has declined this tick, so the copy still
+            // visibly jumps when it has nothing to hit. The deliberate
+            // jump-attack hop above is unchanged and still sets up the falling
+            // critical.
+            if (observation.onGround() && inProfileWindow(
+                    observation.tick(), duel.behaviorStrategy().mobilityPermille())) {
+                Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartJump(
+                        duel.actor(), observation.tick(), COOLDOWNS);
+                if (actor.isPresent()) {
+                    return decision(duel, baselineReplica, replica, scope, Action.JUMP, actor.get(),
+                            -1, -1, null, intent);
                 }
             }
 

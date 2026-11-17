@@ -74,6 +74,27 @@ fixture moved: the legacy constructor defaults the field to 250.
 All three behaviours are pure functions of the tick and the persisted profile.
 No random source was added, so a replay produces the same decision.
 
+### 2.4 The mobility hop no longer outranks every attack
+
+`mobilityPermille` is not a jump weight: `from(...)` sets it to
+`share(counts.sprintSamples(), counts.movementSamples())`, the owner's **sprint**
+share. The adapter nevertheless let it trigger a `JUMP` before the potion, shield,
+critical, melee, ranged, wind-charge and splash branches, and the window helper
+opens for roughly `permille / 10` ticks out of every hundred. A player who
+sprinted through half their movement samples therefore produced a copy that was
+airborne on about half its ground ticks and spent most of the fight not hitting
+anything — and because the branch sat above the attack branches, it pre-empted
+every attack that was legal at the time.
+
+The branch now sits below all of them, immediately before the `NONE` fallback:
+the copy still visibly jumps whenever nothing is there to be hit, which is what
+`profileDrivenMobilitySchedulesBoundedJumpActions` asserts, but a legal swing is
+chosen first. This is the same rule the jump-attack hop already followed, so the
+two jump branches no longer disagree about priority. No cooldown, cost or
+admission rule changed: the jump still goes through
+`EchoDuelCombatPolicy.tryStartJump`, which enforces the shared action and jump
+cooldowns.
+
 ## 3. Dead coverage that was revived
 
 `tests/harness/me/copimine/endevent/runtime/wave7/EchoWoundedRetreatTest.java`
@@ -104,7 +125,7 @@ kept alive by a weak regex.
 | Claim | State | Evidence |
 |---|---|---|
 | Three habits wired | IMPLEMENTED | `EchoDuelCombatRuntimeAdapter.java`; `jumpAttackPermille` / `weaponSwitchPermille` now have readers |
-| Behaviour asserted | AUTOMATED-TESTED | `tests/EchoDuelCombatRuntimeAdapterTest.java`: `meleeCopiesCloseIntoMeleeReach`, `jumpAttackOwnersHopWhileClosingIntoTheFallingCrit`, `frequentWeaponSwitchersTradeASwingForAShot` |
+| Behaviour asserted | AUTOMATED-TESTED | `tests/EchoDuelCombatRuntimeAdapterTest.java`: `meleeCopiesCloseIntoMeleeReach`, `jumpAttackOwnersHopWhileClosingIntoTheFallingCrit`, `frequentWeaponSwitchersTradeASwingForAShot`, `sprintHeavyCopiesAttackBeforeTheyHop` |
 | Wounded retreat truly executed | AUTOMATED-TESTED | `EchoWoundedRetreatTest` now in the gate's `$pureTests`, resolved from `tests\harness\` |
 | Gate green | AUTOMATED-TESTED | `tests\RunEndRiftEventChecks.ps1 -JavaHome <pinned Temurin 25.0.4.1>` exit 0 |
 | Copies look right in a real client | NOT VERIFIED / BLOCKED | no client capture; hop landing, swap animation and the crit window need F2 frames |
@@ -114,3 +135,33 @@ The behaviours are bounded and additive: no cooldown, cost, admission or
 persistence rule was relaxed, and every pre-existing assertion in
 `EchoDuelCombatRuntimeAdapterTest`, `EchoBehaviorPersonalisationTest` and
 `EchoWoundedRetreatTest` is unchanged.
+
+## 5. The two remaining unread weights, and why that is deliberate
+
+A source-wide read audit (every `.field()` access under
+`copimine-end-event/src`) still finds two `EchoBehaviorStrategy` weights with no
+reader. This is recorded here so the next person does not re-open it as a bug:
+
+- `shieldPermille` — `EchoBehaviorStrategy.from(...)` computes it with the exact
+  expression it uses for `defensePermille`
+  (`share(counts.shieldSamples(), counts.movementSamples())`), and the legacy
+  8-argument constructor sets `shieldPermille = defensePermille`. The adapter
+  already reads `defensePermille` to drive the shield branches, so
+  `shieldPermille` is a byte-compatible duplicate kept because it is already
+  part of the persisted 14-field encoding. Giving it a second, different
+  behaviour would make two fields that are always equal drive two unrelated
+  things. Removing it would change `ENCODED_FIELDS` and invalidate every
+  persisted duel snapshot, which is not worth it for a field that duplicates
+  another.
+- `confidencePermille` — the profile's evidence-quality scalar. It is encoded,
+  decoded, validated and asserted, but it gates nothing. The "do not invent a
+  habit the owner never played" protection is already structural: every style
+  weight falls back to a documented neutral value when its evidence is missing
+  (`share()` returns 500 for a zero denominator, `jumpAttackPermille` falls back
+  to 250, `holdDistancePermille` to 500), so a sparse profile already produces a
+  generic copy without consulting confidence. Gating the new habits on
+  confidence as well would be a second, arbitrary threshold on top of the ones
+  the habit weight already encodes.
+
+Both are reported as NOT VERIFIED-BEHAVIOURAL rather than claimed as wired: no
+test asserts that they have an effect, and the audit above is the reason.

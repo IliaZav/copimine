@@ -41,6 +41,7 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         meleeCopiesCloseIntoMeleeReach();
         jumpAttackOwnersHopWhileClosingIntoTheFallingCrit();
         frequentWeaponSwitchersTradeASwingForAShot();
+        sprintHeavyCopiesAttackBeforeTheyHop();
         System.out.println("EchoDuelCombatRuntimeAdapterTest OK assertions=" + assertions);
     }
 
@@ -534,6 +535,33 @@ public final class EchoDuelCombatRuntimeAdapterTest {
                 new Observation(200, 9.0D, true)).orElseThrow();
         check(swing.action() == Action.MELEE,
                 "an owner who never swapped keeps one weapon in its hands, got " + swing.action());
+    }
+
+    /**
+     * `mobilityPermille` is the owner's SPRINT share, not a jump habit, and the
+     * mobility jump used to run before every attack branch: a copy of a player
+     * who sprinted through half their movement samples was airborne on half its
+     * ground ticks and rarely hit anything. The hop is now a filler action taken
+     * only after every legal attack has declined.
+     */
+    private static void sprintHeavyCopiesAttackBeforeTheyHop() {
+        var sprinter = new me.copimine.endevent.domain.wave7.EchoBehaviorStrategy(
+                1_000, 0, 1_000, 0, 0, 1_000, 0, true);
+        Fixture fixture = activeFixture(18.0D, sprinter);
+
+        Decision swing = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(), restore(fixture.duel()),
+                scope(fixture.duel(), true, true, true, true),
+                new Observation(100, 9.0D, true)).orElseThrow();
+        check(swing.action() == Action.MELEE,
+                "a copy with a legal swing swings instead of hopping, got " + swing.action());
+
+        // The hop itself must survive: with nothing reachable to hit, the same
+        // copy still jumps rather than freezing on the spot.
+        Decision hop = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(), restore(fixture.duel()),
+                scope(fixture.duel(), true, true, true, true),
+                new Observation(100, 10_000.0D, false)).orElseThrow();
+        check(hop.action() == Action.JUMP,
+                "with no legal attack the sprint-heavy copy still hops, got " + hop.action());
     }
 
     private static me.copimine.endevent.domain.wave7.EchoBehaviorStrategy meleeStrategy() {

@@ -228,10 +228,16 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # literal and the same digits in docs/minecraft-26.3/README.md were repinned
     # together. The size assertion carries the digits, so a repin here must update
     # BOTH this literal and the documented README value.
-    assert artifact['size'] == 30_096_785
+    # The Guardian branch then moved the client again (directed defender combat,
+    # the animation clock release and the fog-depth presentation pass) and
+    # refreshed the lock without this literal, so it lagged behind the shipped
+    # artifact. Verified here against the real build output in
+    # build/minecraft-26.3/client/libs, which matches the lock's size and SHA-512
+    # byte for byte.
+    assert artifact['size'] == 30_247_649
     assert artifact['sha512'] == (
-        'dcccf75ba8d39cbcef7da8ca64bacbe70ec70434b8f10104239add74927f8f8d'
-        '035234516492655564674d11cffeae576d414803cdbc0e5be69739db7b47c25e'
+        '68dd9c37d9ddb824f41061aea532fa866cb1320262c79e1f0242bc8c590f9cdc'
+        'c02223a75a32666a3fd93c64926e87a555864f47a562e6e7c29a8fbc5feebd54'
     )
 
 

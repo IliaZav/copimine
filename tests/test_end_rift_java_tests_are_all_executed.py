@@ -45,7 +45,6 @@ NOT_IN_GATE_BUNDLE = {
     "GravediggerContractCapturePolicyTest": "me.copimine.artifacts",
     "HazardMutationJournalTest": "me.copimine.endevent.HazardMutationJournal",
     "LegacyEndRiftSnapshotDecoderTest": "org.bukkit.configuration.file",
-    "MinibossGroupSpellPolicyTest": "package me.copimine.endevent.domain;",
     "NarcoticRecipeBookConfigTest": "me.copimine.artifacts",
     "NarcoticRecipeBookDataTest": "me.copimine.artifacts",
     "NarcoticSigningKeyringTest": "package me.copimine.narcotics.item;",
@@ -54,18 +53,12 @@ NOT_IN_GATE_BUNDLE = {
     "OrphanTransferReconciliationRunGateTest": "me.copimine.artifacts",
     "PostWaveRecoveryServiceTest": "org.bukkit",
     "RepairKitMathTest": "me.copimine.artifacts",
-    "SpiderEffectLeasePolicyTest": "package me.copimine.endevent.domain;",
     "VeinMinerPolicyTest": "me.copimine.artifacts",
     "Wave7ReturnLifecycleTest": "me.copimine.endevent.runtime.AttemptLifecycleController",
     "WorldAccessServiceContractTest": "me.copimine.worldcore.api",
     "BoundedBridgeUtfReaderTest": "package me.copimine.endevent;",
     "CombatSequenceTest": "package me.copimine.endevent.runtime;",
-    "EchoLimboThresholdTest": "package me.copimine.endevent.domain.wave7;",
     "EchoRealmAssignmentPolicyTest": "package me.copimine.endevent.domain.wave7;",
-    "WardenSlamTriggerPolicyTest": "package me.copimine.endevent.domain;",
-    "WaveSixDurableStateTest": "package me.copimine.endevent.domain;",
-    "WaveTwoStagePolicyTest": "package me.copimine.endevent.domain;",
-    "WaveTwoOwnershipPolicyTest": "package me.copimine.endevent.domain;",
 }
 
 
@@ -73,11 +66,25 @@ def _registered_tests() -> set[str]:
     script = GATE.read_text(encoding="utf-8")
     start = script.index("$pureTests = @(")
     end = script.index("\n)", start)
-    return set(re.findall(r"'([A-Za-z0-9_]+)'", script[start:end]))
+    # An entry may carry its package ("me.copimine...FooTest"), so the simple
+    # name is what identifies the file it runs.
+    return {
+        name.split(".")[-1]
+        for name in re.findall(r"'([A-Za-z0-9_.]+)'", script[start:end])
+    }
 
 
 def _test_files() -> dict[str, Path]:
-    return {path.stem: path for path in (ROOT / "tests").glob("*Test.java")}
+    # tests/harness holds packaged tests that assert package-private runtime
+    # members. They are still tests: EchoWoundedRetreatTest sat there for
+    # months, compiled by nothing and run by nothing, so a real behavioural
+    # regression in the Echo retreat was invisible to the gate.
+    files = {path.stem: path for path in (ROOT / "tests").glob("*Test.java")}
+    harness = ROOT / "tests" / "harness"
+    if harness.is_dir():
+        for path in harness.rglob("*Test.java"):
+            files.setdefault(path.stem, path)
+    return files
 
 
 def test_every_end_rift_java_test_is_run_by_the_gate() -> None:

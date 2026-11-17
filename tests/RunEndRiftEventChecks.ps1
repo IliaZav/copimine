@@ -516,6 +516,9 @@ $pureTests = @(
   'EchoBehaviorPersonalisationTest',
   'EchoDuelCombatPolicyTest',
   'EchoDuelCombatRuntimeAdapterTest',
+  # Packaged harness test: it asserts the package-private movement intent
+  # directly, so it lives in tests\harness and is resolved by qualified name.
+  'me.copimine.endevent.runtime.wave7.EchoWoundedRetreatTest',
   'EchoDuelCapabilityPolicyTest',
   'RealitySplitEchoDuelSnapshotTest',
   'RealitySplitTrialControllerTest',
@@ -696,12 +699,28 @@ $pureTests = @(
   'EchoDecoyPolicyTest',
   'BossSummonAdmissionPolicyTest'
 )
-$pureSources = @($domainSources + $runtimeSources + $diagnosticSources + ($pureTests | ForEach-Object {
-  $sourceName = $_.Split('.')[-1]
-  $path = Join-Path $root ("tests\{0}.java" -f $sourceName)
-  if (-not (Test-Path -LiteralPath $path)) { throw "Missing current Java test: $path" }
-  $path
-}))
+# Test sources are looked up by simple name across tests\ and the packaged
+# harness tree. EchoWoundedRetreatTest lives under tests\harness because it
+# asserts a package-private adapter method, and no runner ever compiled it: it
+# was silently dead coverage. The lookup makes the harness a real, executed part
+# of the gate instead of a file that looks like a test.
+$harnessTestSources = @(Get-ChildItem -Path (Join-Path $root 'tests\harness') -Recurse -Filter '*.java' -ErrorAction SilentlyContinue |
+  Sort-Object FullName | ForEach-Object FullName)
+$testSourcePaths = @{}
+foreach ($testName in $pureTests) {
+  $sourceName = $testName.Split('.')[-1]
+  $candidate = Join-Path $root ("tests\{0}.java" -f $sourceName)
+  if (-not (Test-Path -LiteralPath $candidate)) {
+    $candidate = $harnessTestSources |
+      Where-Object { [IO.Path]::GetFileNameWithoutExtension($_) -eq $sourceName } |
+      Select-Object -First 1
+  }
+  if (-not $candidate -or -not (Test-Path -LiteralPath $candidate)) {
+    throw "Missing current Java test: $sourceName"
+  }
+  $testSourcePaths[$testName] = $candidate
+}
+$pureSources = @($domainSources + $runtimeSources + $diagnosticSources + @($testSourcePaths.Values))
 
 Invoke-GateStep 'Current pure Java policies' {
   $pureSourceList = Join-Path $testBuild 'pure-sources.args'
@@ -718,7 +737,7 @@ Invoke-GateStep 'Current pure Java policies' {
     # that cannot exist.
     $qualifiedName = $name
     $simpleName = $name.Split('.')[-1]
-    $declaredPackage = Select-String -LiteralPath (Join-Path $root ("tests\{0}.java" -f $simpleName)) -Pattern '^package ([A-Za-z0-9_.]+);' |
+    $declaredPackage = Select-String -LiteralPath $testSourcePaths[$name] -Pattern '^package ([A-Za-z0-9_.]+);' |
       Select-Object -First 1
     # Qualify by the SIMPLE name: an entry that already names its package must
     # not get a second one prepended.

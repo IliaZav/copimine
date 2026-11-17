@@ -1,0 +1,116 @@
+# Wave 7 Echo AI: the habits that were encoded but never read
+
+**Date:** 2026-11-18
+**Scope:** `copimine-end-event` Wave 7 (Reality Split) Personal Echo,
+`runtime/wave7/EchoDuelCombatRuntimeAdapter.java`, and the End Rift gate
+(`tests/RunEndRiftEventChecks.ps1`).
+**Status:** IMPLEMENTED; AUTOMATED-TESTED through the End Rift gate.
+LIVE-PAPER and VISUAL verification remain BLOCKED (no live roster, no client
+capture).
+
+## 1. The gap that was found
+
+`EchoBehaviorStrategy` carries thirteen bounded weights. Three of them were
+written, validated, encoded, decoded and persisted, and then never read by the
+only code that decides what a copy does:
+
+| Field | Written by | Read by the adapter before this change |
+|---|---|---|
+| `jumpAttackPermille` | `EchoBehaviorStrategy.from(...)` from `ProfileCounts.jumpAttacks` | nothing |
+| `weaponSwitchPermille` | `EchoBehaviorStrategy.from(...)` from `ProfileCounts.itemSwitches` | nothing |
+| `holdDistancePermille` | measured preferred distance | read, but clamped nowhere near melee reach |
+
+`EchoDuelCombatRuntimeAdapter` is the single decision point for the official
+named Echo tick (`CopiMineEndEvent.tickNamedEchoDuel` →
+`EchoDuelCombatRuntimeAdapter.tick`), so a field the adapter never reads has no
+effect anywhere in the product. No test referenced either unused field, which is
+why the gap survived: the profile round-tripped perfectly and every assertion
+about it still passed.
+
+## 2. What was fixed
+
+### 2.1 A brawler copy now actually reaches melee reach
+
+The hold band was `1.5 + 10.5 * holdDistancePermille / 1000` blocks with a
+1.5-block tolerance. For the neutral 500 per mille, a melee copy stopped
+repositioning at 6.75 blocks and only started approaching beyond 8.25 blocks,
+while melee reach is 4 blocks. A melee copy therefore never closed on its own;
+it fought only owners that walked into it.
+
+For melee-dominant profiles (`rangedPermille <= meleePermille`) the upper edge of
+the band is now clamped to the melee envelope
+(`MELEE_RANGE_BLOCKS - HOLD_TOLERANCE_BLOCKS`), so the copy approaches until it
+is inside reach and then holds. Ranged profiles keep their measured band
+unchanged — a kiter still kites, checked directly in the same test.
+
+### 2.2 `jumpAttackPermille` drives the closing hop
+
+An owner who jumped into their attacks gets a copy that closes with a hop, so
+the arrival itself sets up the falling critical that `Action.CRITICAL` already
+requires (`!onGround && criticalWindow`). The branch:
+
+- runs only after every weapon branch has declined this tick, so it can never
+  replace a legal attack with a jump;
+- requires the copy to be outside melee reach, so a swing is never traded for a
+  hop;
+- requires `intent == APPROACH`, so the hop is part of closing;
+- requires a rate strictly above `JUMP_ATTACK_BASELINE_PERMILLE = 250`, the
+  documented default of the legacy five-feature profile. A baseline profile has
+  no jump evidence, and a copy must not invent jump attacks its owner never
+  played.
+
+### 2.3 `weaponSwitchPermille` drives the mid-fight swap
+
+A copy of a player who swapped tools constantly no longer locks itself to one
+weapon: inside its own recorded switch window (`inProfileWindow`, the same
+deterministic window helper the mobility and defence habits use) it puts a shot
+in from inside melee reach instead of swinging. The swap is only taken when the
+shot is legal this tick — weapon and ammo carried, line of sight, inside the
+ranged envelope, and past the ranged, shared-action and pending-use gates — so
+it can never burn a swing on a bow it cannot draw. Owners below
+`WEAPON_SWITCH_FLOOR_PERMILLE = 500` are unchanged, which is why no existing
+fixture moved: the legacy constructor defaults the field to 250.
+
+All three behaviours are pure functions of the tick and the persisted profile.
+No random source was added, so a replay produces the same decision.
+
+## 3. Dead coverage that was revived
+
+`tests/harness/me/copimine/endevent/runtime/wave7/EchoWoundedRetreatTest.java`
+was committed on 2026-11-15 and then never compiled and never run: it lives in a
+packaged harness directory that no runner walked, and it was not listed in
+`$pureTests`. It asserts the wounded-melee retreat through the package-private
+`movementIntent`, which is exactly why it cannot live in the default package.
+
+The gate now resolves test sources by simple name across `tests\` **and**
+`tests\harness\`, compiles the harness sources into the same bundle, and runs
+`EchoWoundedRetreatTest` by its qualified name. `tests/RunEndRiftEventChecks.ps1`
+therefore executes one more real behavioural suite than before.
+
+`tests/test_end_rift_java_tests_are_all_executed.py` had the matching hole: its
+registered-name scan matched only `[A-Za-z0-9_]+`, so a qualified entry was
+invisible, and its file scan only looked at `tests\*.java`. Both now cover
+qualified entries and the harness tree. Making the scan honest immediately
+exposed seven exemptions in `NOT_IN_GATE_BUNDLE` that claimed a test could not
+be compiled into the bundle while the gate was already running that very test:
+`EchoLimboThresholdTest`, `MinibossGroupSpellPolicyTest`,
+`SpiderEffectLeasePolicyTest`, `WardenSlamTriggerPolicyTest`,
+`WaveSixDurableStateTest`, `WaveTwoStagePolicyTest`,
+`WaveTwoOwnershipPolicyTest`. Those stale exemptions were deleted rather than
+kept alive by a weak regex.
+
+## 4. Verification
+
+| Claim | State | Evidence |
+|---|---|---|
+| Three habits wired | IMPLEMENTED | `EchoDuelCombatRuntimeAdapter.java`; `jumpAttackPermille` / `weaponSwitchPermille` now have readers |
+| Behaviour asserted | AUTOMATED-TESTED | `tests/EchoDuelCombatRuntimeAdapterTest.java`: `meleeCopiesCloseIntoMeleeReach`, `jumpAttackOwnersHopWhileClosingIntoTheFallingCrit`, `frequentWeaponSwitchersTradeASwingForAShot` |
+| Wounded retreat truly executed | AUTOMATED-TESTED | `EchoWoundedRetreatTest` now in the gate's `$pureTests`, resolved from `tests\harness\` |
+| Gate green | AUTOMATED-TESTED | `tests\RunEndRiftEventChecks.ps1 -JavaHome <pinned Temurin 25.0.4.1>` exit 0 |
+| Copies look right in a real client | NOT VERIFIED / BLOCKED | no client capture; hop landing, swap animation and the crit window need F2 frames |
+| Live roster behaviour | NOT VERIFIED / BLOCKED | no players online; `/cmend test wave 7` refuses an empty sandbox roster |
+
+The behaviours are bounded and additive: no cooldown, cost, admission or
+persistence rule was relaxed, and every pre-existing assertion in
+`EchoDuelCombatRuntimeAdapterTest`, `EchoBehaviorPersonalisationTest` and
+`EchoWoundedRetreatTest` is unchanged.

@@ -1378,16 +1378,16 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     candidate=baseline['candidate']
     assert candidate['filename']=='CopiMineEndEvent-26.3.jar'
     assert candidate['runtimeFilename']=='CopiMineEndEvent.jar'
-    # Re-pinned after the Wave 7 Echo habit wiring: the copy's closing hop and
-    # mid-fight weapon swap changed the compiled End Event bytes, and so did
-    # moving the sprint-weighted hop below the attack branches. The replaced
-    # candidates stay in replaceSha256 so an already-staged older candidate is
-    # still accepted.
-    assert candidate['size']==2573186
-    assert candidate['sha256']=='25411e0fc3635e0a715c2ba9b4644328df692309fa73868867da4eac07e23d12'
-    assert candidate['sha512']=='93361e131f3696f980d8be6db1e4b88bec45fff15dcae2f2c154e43b2260c7f6cd9b9f0f2ffba02da8bcdbfbc25a7e3288369bd4ff9bc75a6f2f12ed98b35b7d'
+    # Re-pinned after the Wave 7 Echo work: the copy's closing hop, mid-fight
+    # weapon swap, sprint-hop reorder and guarded-copy movement intent all
+    # changed the compiled End Event bytes. The replaced candidates stay in
+    # replaceSha256 so an already-staged older candidate is still accepted.
+    assert candidate['size']==2573127
+    assert candidate['sha256']=='1d455b097359821be07cb3acf53c9cb5c2af447005107c742d7d2084bfe1ae92'
+    assert candidate['sha512']=='db8b20da3d9b00065c112db233288093fa7a3623d2754bb664846880fcaf751205f4a35d32f180dc0ecc0e3b0106e2a1675132be867fc4ea9ec9dda924f2c48b'
     assert '655810207e0cfff4adf6e3d3bc23aff06b09ba756fc38556f47f21846761191e' in candidate['replaceSha256']
     assert 'f450c7d771bea5ef4d0fdb3592e5db8172a600fe98a45a45d64b294f137843f3' in candidate['replaceSha256']
+    assert '25411e0fc3635e0a715c2ba9b4644328df692309fa73868867da4eac07e23d12' in candidate['replaceSha256']
     assert candidate['apiVersion']=='26.3'
     assert candidate['buildArtifact']=='build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar'
     assert candidate['nativeVerified'] is lock['nativeVerified']
@@ -1443,6 +1443,7 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     ]
     assert candidate['replaceSha256']==[
         # Candidates replaced by these re-pins stay accepted for staging.
+        '25411e0fc3635e0a715c2ba9b4644328df692309fa73868867da4eac07e23d12',
         'f450c7d771bea5ef4d0fdb3592e5db8172a600fe98a45a45d64b294f137843f3',
         '655810207e0cfff4adf6e3d3bc23aff06b09ba756fc38556f47f21846761191e',
         '31826948d04e356e2a24ad937d63df3b0a3a56a4eba4b02ab647c974529c7cc9',
@@ -3161,8 +3162,8 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
     expected_candidates={
         'CopiMineArtifacts':('a5e0420d503850cb604445c52705f5af71fdc65770a78b943c5d2bc252fabcc5',
                              'a054cfeef3dc37dc364ef33d550063b6aa105f2394501bd982295af2fc791bba82cce15623c3ff7b09c4c3250683fb1caf7cdb72312e3c91bf50dd0c2fc39600',366356),
-        'CopiMineEndEvent':('25411e0fc3635e0a715c2ba9b4644328df692309fa73868867da4eac07e23d12',
-                            '93361e131f3696f980d8be6db1e4b88bec45fff15dcae2f2c154e43b2260c7f6cd9b9f0f2ffba02da8bcdbfbc25a7e3288369bd4ff9bc75a6f2f12ed98b35b7d',2573186),
+        'CopiMineEndEvent':('1d455b097359821be07cb3acf53c9cb5c2af447005107c742d7d2084bfe1ae92',
+                            'db8b20da3d9b00065c112db233288093fa7a3623d2754bb664846880fcaf751205f4a35d32f180dc0ecc0e3b0106e2a1675132be867fc4ea9ec9dda924f2c48b',2573127),
         'CopiMineNarcotics':('4609582cdc08db60e64122b510e7a264a001baeef88fd10f905bee054be4f9a0',
                              '4863897a8a2887df9022bcfa5cbb0414fa9741aeade730c1a699d049573de3ad0ec3fd3a5348fcb1449785f5c668a77981d8808ea42e3e3b6178e15eb0735e9f',378217),
     }

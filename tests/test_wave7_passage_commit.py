@@ -123,7 +123,10 @@ public class PassageCommitProbe {
   }
   void begin() {
     var players = List.of(new UUID(0,1), new UUID(0,2));
-    realitySplitChamberController.begin(generation, players);
+    // Wave 7's official layout is one open arena, so the passage transaction can
+    // only be reached through the disposable two-room probe. Drive the production
+    // adapter with that documented shape instead of a durable official partition.
+    realitySplitChamberController.beginDevSolo(generation, players);
     realitySplitChamberController.markChamberComplete(generation, 0);
     var wall = new RealitySplitBarrierPolicy.Cell(3, 0, 1);
     realitySplitBarrierCells.add(wall);
@@ -131,7 +134,7 @@ public class PassageCommitProbe {
   }
   void beginFourRooms() {
     var players = List.of(new UUID(0,1), new UUID(0,2), new UUID(0,3), new UUID(0,4));
-    realitySplitChamberController.begin(generation, players);
+    realitySplitChamberController.beginDevSolo(generation, players);
     realitySplitChamberController.markChamberComplete(generation, 0);
     for (int boundary : List.of(0, 3)) {
       var wall = new RealitySplitBarrierPolicy.Cell(boundary, 0, 1);
@@ -140,7 +143,10 @@ public class PassageCommitProbe {
     }
   }
   void restore(RealitySplitChamberSnapshot.Data data) {
-    realitySplitChamberController.restore(data.generation(), data.assignment(),
+    // The passage adapter is only reachable through the disposable probe, so its
+    // restart path is the disposable restore; the official restore refuses a
+    // partitioned durable checkpoint on purpose (see main()).
+    realitySplitChamberController.restoreDisposable(data.generation(), data.assignment(),
       data.completedChambers(), data.openPassages(), data.openingPassages());
     var wall = new RealitySplitBarrierPolicy.Cell(3, 0, 1);
     realitySplitBarrierCells.add(wall);
@@ -148,6 +154,25 @@ public class PassageCommitProbe {
   }
   static void require(boolean value, String text) { if(!value) throw new AssertionError(text); }
   public static void main(String[] args) {
+    // The official Wave 7 restore must refuse a partitioned durable checkpoint
+    // instead of silently collapsing it; the disposable probe above is the only
+    // supported two-room shape.
+    var officialRefusal = new PassageCommitProbe();
+    var twoRoom = RealitySplitChamberSnapshot.decode(
+        RealitySplitChamberSnapshot.encode(5,
+            new ChamberIsolationPolicy.Assignment(2, Map.of(new UUID(0,1), 0, new UUID(0,2), 1)),
+            Set.of(), Set.of()), 5);
+    boolean refusedPartition = false; String refusalReason = "";
+    try {
+      officialRefusal.realitySplitChamberController.restore(twoRoom.generation(),
+          twoRoom.assignment(), twoRoom.completedChambers(), twoRoom.openPassages());
+    } catch (IllegalArgumentException expected) {
+      refusedPartition = true; refusalReason = expected.getMessage();
+    }
+    require(refusedPartition
+            && "WAVE7_LEGACY_PARTITIONS_REQUIRE_EXPLICIT_MIGRATION".equals(refusalReason),
+      "an official restore must refuse legacy physical partitions for explicit migration");
+
     var refusedIntent = new PassageCommitProbe(); refusedIntent.begin();
     refusedIntent.physicalResult = true; refusedIntent.failOnSave = 1;
     refusedIntent.openCompletedRealitySplitRoom(0, 2);

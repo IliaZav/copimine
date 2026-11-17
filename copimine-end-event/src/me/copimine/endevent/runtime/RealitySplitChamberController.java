@@ -170,10 +170,14 @@ public final class RealitySplitChamberController {
                 || (allowSinglePlayer && restoredAssignment.chamberByPlayer().isEmpty())) {
             throw new IllegalArgumentException("Wave 7 assignment is not restorable");
         }
-        // Latest user decision forbids restoring physical trial partitions.
-        // Keep the original checkpoint untouched for an explicit migration/restart;
-        // collapsing four durable trials into one here would erase progress.
-        if (restoredAssignment.chamberCount() != 1)
+        // Latest user decision forbids restoring physical trial partitions on the
+        // official path: Wave 7 is one open arena, so a durable checkpoint with two
+        // or four sectors is legacy. Keep the original checkpoint untouched for an
+        // explicit migration/restart; collapsing four durable trials into one here
+        // would erase progress. The disposable local probe is deliberately excluded
+        // because beginDevSolo() builds two physical rooms for boundary inspection
+        // and its own snapshot round-trip would otherwise be unreadable.
+        if (!allowSinglePlayer && restoredAssignment.chamberCount() != 1)
             throw new IllegalArgumentException("WAVE7_LEGACY_PARTITIONS_REQUIRE_EXPLICIT_MIGRATION");
         // Recovery validates the entire checkpoint before publishing anything.
         // A malformed passage must not erase the live generation's actor index

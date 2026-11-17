@@ -69,12 +69,16 @@ public class Wave7AdvanceAdapterProbe {
   check(failed.phase==EventPhase.RECOVERY_REQUIRED&&failed.starts==0&&failed.opens==0,"failed checkpoint blocks access and next actor");
   for(int size:new int[]{4,5,10,11,20}){
    var p=new Wave7AdvanceAdapterProbe();p.begin(size);
-   check(p.realitySplitChamberController.assignment().chamberCount()==4,"large party uses four rooms");
-   check(p.realitySplitTrialController.presentableNamedTrials().size()==4,"four named trials are live");
+   // One open arena at every party size. A large party changes how many
+   // bodies the room holds, never how many rooms exist: the retired
+   // four-sector split produced the parallel route the contract forbids.
+   check(p.realitySplitChamberController.assignment().chamberCount()==1,"one open arena at every party size");
+   check(p.realitySplitTrialController.presentableNamedTrials().size()==1,"one sequential trial is live");
+   check(p.opens==0&&p.starts==0,"a fresh arena has neither opened nor advanced");
    p.defeat(0,RealitySplitTrialController.NamedTrial.WARDEN);
-   check(p.opens==1&&p.starts==0,"completed room opens without advancing parallel peers");
-   check(p.realitySplitTrialController.presentableNamedTrials().size()==3,"three peers remain active");
-   check(!p.realitySplitTrialController.allComplete(7),"one room cannot finish the encounter");
+   check(p.starts==1&&p.opens==0,"the completed stage starts the next actor in the same arena");
+   check(p.realitySplitTrialController.presentableNamedTrials().size()==1,"the single room keeps one live trial");
+   check(!p.realitySplitTrialController.allComplete(7),"one actor death cannot finish the encounter");
   }
  }
 '''

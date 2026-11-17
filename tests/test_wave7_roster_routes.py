@@ -23,7 +23,11 @@ public class RosterRoutesProbe {
     // specification forbids.
     for(int size:new int[]{1,2,3,4,5,10,11,20}){
       var rooms=new RealitySplitChamberController();rooms.beginWave7(7,roster(size));
-      int roomCount=size<=3?1:4;check(rooms.assignment().chamberCount()==roomCount,"roster selects topology");
+      // The arena count is roster-independent: the party size changes how many
+      // bodies the one room holds, never how many rooms exist.
+      int roomCount=1;check(rooms.assignment().chamberCount()==roomCount,"roster selects topology");
+      for(UUID player:roster(size))
+        check(rooms.assignment().chamberByPlayer().get(player)==0,"the whole party stands in the one arena");
       var trials=new RealitySplitTrialController();
       trials.beginNamed(event,7,rooms.assignment(),RealitySplitTrialController.sequentialRoute());
       check(trials.namedSnapshot().trials().size()==roomCount,"one trial per room");

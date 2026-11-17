@@ -152,6 +152,19 @@ public final class EchoDuelCombatRuntimeAdapter {
 
     /** Inside this band the copy stops repositioning and fights. */
     private static final double HOLD_TOLERANCE_BLOCKS = 1.5D;
+    /**
+     * The legacy five-feature profile has no jump evidence and defaults
+     * {@code jumpAttackPermille} to 250. Only a recorded rate above that
+     * baseline is read as a real jump-attack habit; a copy of a baseline player
+     * must not hop instead of closing.
+     */
+    private static final int JUMP_ATTACK_BASELINE_PERMILLE = 250;
+    /**
+     * A copy whose owner swapped weapons this often breaks off a swing to put a
+     * shot in instead: swapping tools mid-fight is the visible habit, and a
+     * per-tick window keeps it bounded and replayable.
+     */
+    private static final int WEAPON_SWITCH_FLOOR_PERMILLE = 500;
 
     /**
      * BRAIN-006/011: pick a bounded movement intent from the compiled profile.
@@ -181,6 +194,14 @@ public final class EchoDuelCombatRuntimeAdapter {
         // Map 0..1000 onto a 1.5..12 block hold band inside the ranged envelope.
         double preferred = 1.5D + 10.5D * strategy.holdDistancePermille() / 1_000.0D;
         boolean wantsRange = strategy.rangedPermille() > strategy.meleePermille();
+        // A brawler copy has to reach melee reach. The band is anchored on the
+        // owner's measured distance, but its upper edge is clamped to the melee
+        // envelope: a neutral 500 per mille produced a 6.75-block hold with a
+        // 1.5-block tolerance, so a melee copy stopped at 8.25 blocks and only
+        // ever fought opponents that walked into it, never closing itself.
+        if (!wantsRange) {
+            preferred = Math.min(preferred, MELEE_RANGE_BLOCKS - HOLD_TOLERANCE_BLOCKS);
+        }
         // A wounded brawler breaks contact instead of trading blows it cannot
         // win. A ranged copy already kites, so this only changes melee copies.
         if (wounded && !wantsRange) return MovementIntent.KITE;
@@ -211,6 +232,23 @@ public final class EchoDuelCombatRuntimeAdapter {
         if (window >= threshold) return MovementIntent.HOLD;
         boolean left = (phase / 10L) % 2L == 0L;
         return left ? MovementIntent.STRAFE_LEFT : MovementIntent.STRAFE_RIGHT;
+    }
+
+    /**
+     * BRAIN-013: a copy of a frequent weapon swapper alternates tools mid-fight.
+     *
+     * <p>{@code weaponSwitchPermille} was recorded and persisted but never read,
+     * so every copy behaved as if its owner used a single weapon. High-switch
+     * owners get a bounded window in which the copy puts a shot in from close
+     * range instead of only swinging, which is the swap a real player makes.
+     * The decision is a pure function of the tick and the profile, so it
+     * replays identically and needs no random source.</p>
+     */
+    static boolean swapsWeaponThisTick(EchoBehaviorStrategy strategy, Observation observation) {
+        if (strategy == null || observation == null) return false;
+        int weight = strategy.weaponSwitchPermille();
+        if (weight < WEAPON_SWITCH_FLOOR_PERMILLE) return false;
+        return inProfileWindow(observation.tick(), weight);
     }
 
     /**
@@ -299,6 +337,18 @@ public final class EchoDuelCombatRuntimeAdapter {
             MovementIntent intent = movementIntent(duel.behaviorStrategy(), observation, wounded);
             boolean inMeleeRange = observation.distanceSquared()
                     <= MELEE_RANGE_BLOCKS * (double) MELEE_RANGE_BLOCKS;
+            // BRAIN-013: a copy of a player who swapped weapons constantly does
+            // not lock itself to one tool. Inside its recorded switch window it
+            // puts a shot in instead of swinging, but only when that shot is
+            // actually legal this tick, so the swap can never waste a swing on a
+            // bow it cannot draw.
+            boolean canShootNow = rangedSlot >= 0 && ammoSlot >= 0 && observation.lineOfSight()
+                    && observation.distanceSquared() <= RANGED_RANGE_BLOCKS * (double) RANGED_RANGE_BLOCKS
+                    && observation.tick() >= duel.actor().rangedCooldownUntilTick()
+                    && observation.tick() >= duel.actor().nextActionTick()
+                    && observation.tick() >= duel.actor().pendingUseUntilTick();
+            boolean swapsToRanged = canShootNow
+                    && swapsWeaponThisTick(duel.behaviorStrategy(), observation);
 
             // Potions: a copy drinks what its owner actually carried. The buff
             // window is derived from the actor's own pending-use deadline, so a
@@ -371,7 +421,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                             meleeSlot, -1, item, intent);
                 }
             }
-            if (inMeleeRange && meleeSlot >= 0
+            if (inMeleeRange && meleeSlot >= 0 && !swapsToRanged
                     && duel.behaviorStrategy().meleePermille() >= duel.behaviorStrategy().rangedPermille()) {
                 EchoLoadoutState.Item item = replica.item(meleeSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartMelee(
@@ -425,7 +475,25 @@ public final class EchoDuelCombatRuntimeAdapter {
                 }
             }
 
-            if (inMeleeRange && meleeSlot >= 0) {
+            // BRAIN-013 jump-attack habit: a copy of an owner who jumped into
+            // its strikes closes the gap with a hop, so the arrival itself sets
+            // up the falling critical. It runs only after every weapon branch
+            // has declined this tick and only while the copy is still outside
+            // melee reach, so it never trades a swing for a jump and never
+            // substitutes for a legal shot.
+            if (observation.onGround() && !inMeleeRange && meleeSlot >= 0
+                    && intent == MovementIntent.APPROACH
+                    && duel.behaviorStrategy().jumpAttackPermille() > JUMP_ATTACK_BASELINE_PERMILLE
+                    && inProfileWindow(observation.tick(), duel.behaviorStrategy().jumpAttackPermille())) {
+                Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartJump(
+                        duel.actor(), observation.tick(), COOLDOWNS);
+                if (actor.isPresent()) {
+                    return decision(duel, baselineReplica, replica, scope, Action.JUMP, actor.get(),
+                            -1, -1, null, intent);
+                }
+            }
+
+            if (inMeleeRange && meleeSlot >= 0 && !swapsToRanged) {
                 EchoLoadoutState.Item item = replica.item(meleeSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartMelee(
                         duel.actor(), observation.tick(), COOLDOWNS);

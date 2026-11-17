@@ -16,6 +16,7 @@ import me.copimine.endevent.runtime.RealitySplitTrialSnapshot;
 import me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter;
 import me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter.Action;
 import me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter.Decision;
+import me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter.MovementIntent;
 import me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter.Observation;
 import me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter.Scope;
 
@@ -37,6 +38,9 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         rejectForeignOrIncompleteRuntimeContexts();
         carriedCapabilitiesAreActuallyUsed();
         shieldParriesTheMeasuredStrike();
+        meleeCopiesCloseIntoMeleeReach();
+        jumpAttackOwnersHopWhileClosingIntoTheFallingCrit();
+        frequentWeaponSwitchersTradeASwingForAShot();
         System.out.println("EchoDuelCombatRuntimeAdapterTest OK assertions=" + assertions);
     }
 
@@ -407,6 +411,129 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         check(upright.action() != Action.SHIELD,
                 "a strike far in the future is not parried, got " + upright.action());
         check(distantReplica.item(2).damage() == 0, "a refused parry wears nothing");
+    }
+
+    /**
+     * A brawler copy has to reach melee reach on its own.
+     *
+     * <p>The hold band is anchored on the owner's measured distance, so a
+     * neutral 500 per mille used to produce a 6.75-block hold with a 1.5-block
+     * tolerance: the copy stopped at 8.25 blocks and only ever fought owners
+     * that walked into it. The band is now clamped to the melee envelope for
+     * melee-dominant profiles.</p>
+     */
+    private static void meleeCopiesCloseIntoMeleeReach() {
+        var brawler = new me.copimine.endevent.domain.wave7.EchoBehaviorStrategy(
+                1_000, 0, 0, 0, 0, 1_000, 0, true);
+        Fixture fixture = activeFixture(18.0D, brawler);
+
+        Decision closing = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(), restore(fixture.duel()),
+                scope(fixture.duel(), true, true, true, true),
+                new Observation(100, 49.0D, true)).orElseThrow();
+        check(closing.intent() == MovementIntent.APPROACH,
+                "a brawler copy closes from seven blocks instead of holding at range, got "
+                        + closing.intent());
+
+        Decision reach = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(), restore(fixture.duel()),
+                scope(fixture.duel(), true, true, true, true),
+                new Observation(100, 9.0D, true)).orElseThrow();
+        check(reach.intent() != MovementIntent.APPROACH,
+                "inside melee reach the brawler stops closing, got " + reach.intent());
+        check(reach.action() == Action.MELEE,
+                "and it swings there, got " + reach.action());
+
+        // A ranged copy keeps its own measured band: the clamp is melee-only.
+        var archer = new me.copimine.endevent.domain.wave7.EchoBehaviorStrategy(
+                100, 900, 0, 0, 0, 1_000, 0, true,
+                0, 950, 400, 0, 0);
+        Fixture rangedFixture = activeFixture(18.0D, archer);
+        Decision kiting = EchoDuelCombatRuntimeAdapter.tick(rangedFixture.duel(),
+                restore(rangedFixture.duel()),
+                scope(rangedFixture.duel(), true, true, true, true),
+                new Observation(100, 9.0D, true)).orElseThrow();
+        check(kiting.intent() == MovementIntent.KITE,
+                "a melee-armed copy whose profile holds range still kites, got " + kiting.intent());
+    }
+
+    /**
+     * `jumpAttackPermille` was recorded and persisted but never read, so no copy
+     * ever set up the falling critical its owner actually played. A copy of an
+     * owner whose jump-attack rate is above the legacy baseline now hops while
+     * it closes, and only while it is still outside melee reach.
+     */
+    private static void jumpAttackOwnersHopWhileClosingIntoTheFallingCrit() {
+        var jumper = new me.copimine.endevent.domain.wave7.EchoBehaviorStrategy(
+                1_000, 0, 0, 0, 0, 1_000, 0, true,
+                800, 500, 0, 0, 0);
+        // Sword only: with no ranged tool the copy has to close, which is the
+        // situation the hop is for.
+        Fixture fixture = activeFixture(18.0D, jumper, Map.of(
+                3, EchoLoadoutState.Item.empty(),
+                4, EchoLoadoutState.Item.empty()));
+
+        Decision hop = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(), restore(fixture.duel()),
+                scope(fixture.duel(), true, true, true, true),
+                new Observation(100, 49.0D, true)).orElseThrow();
+        check(hop.action() == Action.JUMP,
+                "a jump-attack copy hops while closing an empty-handed range, got " + hop.action());
+        check(hop.intent() == MovementIntent.APPROACH,
+                "the hop is part of closing, not a substitute for it, got " + hop.intent());
+        check(hop.nextDuel().actor().jumpCooldownUntilTick() > 100L,
+                "the setup hop is checkpointed against the persisted jump cooldown");
+
+        // Inside reach it swings: a swing is never traded for a hop.
+        Decision swing = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(), restore(fixture.duel()),
+                scope(fixture.duel(), true, true, true, true),
+                new Observation(100, 9.0D, true)).orElseThrow();
+        check(swing.action() == Action.MELEE,
+                "inside reach the jump-attack copy swings instead of hopping, got " + swing.action());
+
+        // The legacy 250 per mille default is not a habit: a baseline copy never
+        // invents jump attacks its owner did not play.
+        var baseline = new me.copimine.endevent.domain.wave7.EchoBehaviorStrategy(
+                1_000, 0, 0, 0, 0, 1_000, 0, true);
+        Fixture baselineFixture = activeFixture(18.0D, baseline, Map.of(
+                3, EchoLoadoutState.Item.empty(),
+                4, EchoLoadoutState.Item.empty()));
+        Decision unprovoked = EchoDuelCombatRuntimeAdapter.tick(baselineFixture.duel(),
+                restore(baselineFixture.duel()),
+                scope(baselineFixture.duel(), true, true, true, true),
+                new Observation(100, 49.0D, true)).orElseThrow();
+        check(unprovoked.action() == Action.NONE,
+                "a baseline jump-attack rate is not a jump-attack habit, got " + unprovoked.action());
+    }
+
+    /**
+     * `weaponSwitchPermille` was recorded and persisted but never read either, so
+     * a copy of a player who swapped tools constantly still behaved like a
+     * single-weapon fighter. A high-switch owner's copy now shoots from inside
+     * melee reach inside its own switch window, but only when the shot is legal.
+     */
+    private static void frequentWeaponSwitchersTradeASwingForAShot() {
+        var switcher = new me.copimine.endevent.domain.wave7.EchoBehaviorStrategy(
+                900, 100, 0, 0, 0, 1_000, 0, true,
+                0, 500, 0, 0, 900);
+        Fixture fixture = activeFixture(18.0D, switcher);
+        EchoLoadoutState replica = restore(fixture.duel());
+        Decision shot = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(), replica,
+                scope(fixture.duel(), true, true, true, true),
+                new Observation(200, 9.0D, true)).orElseThrow();
+        check(shot.action() == Action.RANGED,
+                "a frequent swapper shoots from inside melee reach instead of only swinging, got "
+                        + shot.action());
+        check(replica.remaining(4) == 1 && shot.itemSlot() == 3,
+                "the swap spends the owner's real arrow from the bow it reached for");
+
+        var anchored = new me.copimine.endevent.domain.wave7.EchoBehaviorStrategy(
+                900, 100, 0, 0, 0, 1_000, 0, true,
+                0, 500, 0, 0, 100);
+        Fixture anchoredFixture = activeFixture(18.0D, anchored);
+        Decision swing = EchoDuelCombatRuntimeAdapter.tick(anchoredFixture.duel(),
+                restore(anchoredFixture.duel()),
+                scope(anchoredFixture.duel(), true, true, true, true),
+                new Observation(200, 9.0D, true)).orElseThrow();
+        check(swing.action() == Action.MELEE,
+                "an owner who never swapped keeps one weapon in its hands, got " + swing.action());
     }
 
     private static me.copimine.endevent.domain.wave7.EchoBehaviorStrategy meleeStrategy() {

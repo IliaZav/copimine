@@ -35,6 +35,8 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         schemaFourEchoStateUpgradesWithoutInventingActionCooldowns();
         rejectedNativeEffectsRestoreSuppliesAndCooldowns();
         rejectForeignOrIncompleteRuntimeContexts();
+        carriedCapabilitiesAreActuallyUsed();
+        shieldParriesTheMeasuredStrike();
         System.out.println("EchoDuelCombatRuntimeAdapterTest OK assertions=" + assertions);
     }
 
@@ -338,6 +340,82 @@ public final class EchoDuelCombatRuntimeAdapterTest {
                 "a mutated replica cannot be replayed against the old persisted receipt");
     }
 
+    /**
+     * A copy whose owner fought with a mace, threw charges or lobbed bottles
+     * must actually do those things. Each is asserted through the adapter, so
+     * the check fails if the branch is removed or reordered into silence.
+     */
+    private static void carriedCapabilitiesAreActuallyUsed() {
+        // A mace is selected as an ordinary melee weapon.
+        Fixture maceFixture = activeFixture(18.0D, meleeStrategy(), Map.of(0,
+                new EchoLoadoutState.Item("MACE", 1, 500, 0, Map.of(), "", false)));
+        EchoLoadoutState maceReplica = restore(maceFixture.duel());
+        Decision mace = EchoDuelCombatRuntimeAdapter.tick(maceFixture.duel(), maceReplica,
+                scope(maceFixture.duel(), true, true, true, true),
+                new Observation(100, 4.0D, true)).orElseThrow();
+        check(mace.action() == Action.MELEE, "a carried mace is swung as melee, got " + mace.action());
+
+        // A wind charge is burst with no bow carried, spending one charge.
+        Fixture chargeFixture = activeFixture(18.0D, meleeStrategy(), Map.of(
+                3, EchoLoadoutState.Item.empty(),
+                4, EchoLoadoutState.Item.empty(),
+                6, new EchoLoadoutState.Item("WIND_CHARGE", 2, 0, 0, Map.of(), "", false)));
+        EchoLoadoutState chargeReplica = restore(chargeFixture.duel());
+        Decision burst = EchoDuelCombatRuntimeAdapter.tick(chargeFixture.duel(), chargeReplica,
+                scope(chargeFixture.duel(), true, true, true, true),
+                new Observation(100, 100.0D, true)).orElseThrow();
+        check(burst.action() == Action.WIND_CHARGE, "a carried wind charge is burst, got " + burst.action());
+        check(chargeReplica.remaining(6) == 1, "the burst spends exactly one charge");
+        check(burst.nextDuel().actor().rangedCooldownUntilTick() == 140,
+                "the burst stages the ranged cadence");
+
+        // A splash bottle is lobbed with no bow carried, spending one bottle.
+        Fixture splashFixture = activeFixture(18.0D, meleeStrategy(), Map.of(
+                3, EchoLoadoutState.Item.empty(),
+                4, EchoLoadoutState.Item.empty(),
+                7, new EchoLoadoutState.Item("SPLASH_POTION", 2, 0, 0, Map.of(), "", false)));
+        EchoLoadoutState splashReplica = restore(splashFixture.duel());
+        Decision lob = EchoDuelCombatRuntimeAdapter.tick(splashFixture.duel(), splashReplica,
+                scope(splashFixture.duel(), true, true, true, true),
+                new Observation(100, 100.0D, true)).orElseThrow();
+        check(lob.action() == Action.SPLASH, "a carried splash bottle is lobbed, got " + lob.action());
+        check(splashReplica.remaining(7) == 1, "the throw spends exactly one bottle");
+    }
+
+    /**
+     * The shield is a timed parry against the owner's measured rhythm, not a
+     * permanent wall. The guard comes up for an imminent strike and stays down
+     * while the next strike is still far away.
+     */
+    private static void shieldParriesTheMeasuredStrike() {
+        Fixture fixture = activeFixture(18.0D, meleeStrategy());
+        EchoLoadoutState imminentReplica = restore(fixture.duel());
+        // Owner strikes every 20 ticks; 18 ticks since the last one means the
+        // next is 2 ticks away — inside the reaction lead.
+        Decision parry = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(), imminentReplica,
+                scope(fixture.duel(), true, true, true, true),
+                new Observation(100, 4.0D, true, true, false, 20L, 18L)).orElseThrow();
+        check(parry.action() == Action.SHIELD, "an imminent strike is parried, got " + parry.action());
+        check(parry.nextDuel().actor().shieldActiveUntilTick() > 100L,
+                "the parry opens a real guard window");
+
+        EchoLoadoutState distantReplica = restore(fixture.duel());
+        // 1 tick since the last strike of a 20-tick rhythm: the next is 19 away.
+        Decision upright = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(), distantReplica,
+                scope(fixture.duel(), true, true, true, true),
+                new Observation(100, 4.0D, true, true, false, 20L, 1L)).orElseThrow();
+        check(upright.action() != Action.SHIELD,
+                "a strike far in the future is not parried, got " + upright.action());
+        check(distantReplica.item(2).damage() == 0, "a refused parry wears nothing");
+    }
+
+    private static me.copimine.endevent.domain.wave7.EchoBehaviorStrategy meleeStrategy() {
+        // No ranged, mobility or defense weight: the capability branches are
+        // exercised directly instead of hiding behind a profile window.
+        return new me.copimine.endevent.domain.wave7.EchoBehaviorStrategy(
+                1_000, 0, 0, 0, 1_000, 0, 0, true);
+    }
+
     private static Fixture activeFixture(double health) {
         return activeFixture(health, new me.copimine.endevent.domain.wave7.EchoBehaviorStrategy(
                 500, 500, 0, 0, 500, 0, 0, true));
@@ -345,6 +423,12 @@ public final class EchoDuelCombatRuntimeAdapterTest {
 
     private static Fixture activeFixture(double health,
             me.copimine.endevent.domain.wave7.EchoBehaviorStrategy strategy) {
+        return activeFixture(health, strategy, Map.of());
+    }
+
+    private static Fixture activeFixture(double health,
+            me.copimine.endevent.domain.wave7.EchoBehaviorStrategy strategy,
+            Map<Integer, EchoLoadoutState.Item> extra) {
         var controller = new RealitySplitTrialController();
         var assignment = ChamberIsolationPolicy.assign(List.of(id(1), id(2), id(3), id(4)));
         controller.beginNamed(EVENT, ATTEMPT, assignment, List.of(NamedTrial.WARDEN,
@@ -360,6 +444,9 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         items.set(3, new EchoLoadoutState.Item("BOW", 1, 384, 0, Map.of(), "", false));
         items.set(4, new EchoLoadoutState.Item("ARROW", 2, 0, 0, Map.of(), "", false));
         items.set(5, new EchoLoadoutState.Item("BREAD", 1, 0, 0, Map.of(), "", false));
+        for (var entry : extra.entrySet()) {
+            items.set(entry.getKey(), entry.getValue());
+        }
         EchoLoadoutState supplies = EchoLoadoutState.create(EVENT, ATTEMPT,
                 planned.duelId(), owner, items, 0);
         ActorState actor = new ActorState(id(701), health, 20.0D, ActorLifecycle.ALIVE,

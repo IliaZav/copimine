@@ -150,6 +150,10 @@ public final class BossSpellVisualCompositionPolicy {
         put(result, "arrow_salvo", 0xE8B020, "CRIT", "SOUL_FIRE_FLAME", 0.0F,
                 "minecraft:entity.arrow.shoot", "three bone arrows, fanned");
         // A gate the caster steps through: a hot photon flash, not a projectile.
+        // The accent is FLASH rather than END_ROD because END_ROD is
+        // `phase_shift`'s accent over the same PORTAL primary, so the two spells
+        // shared one particle pair -- the exact ambiguity this table exists to
+        // remove, and the reason `noTwoSpellsShareASignature` failed.
         put(result, "rift_step", 0xFFF06B, "PORTAL", "FLASH", 2.0F,
                 "minecraft:entity.enderman.teleport", "twin rift gate");
         // Cold indigo binds, which is the opposite read from the hot impacts.
@@ -179,6 +183,9 @@ public final class BossSpellVisualCompositionPolicy {
         put(result, "dragon_breath", 0x9B4BFF, "DRAGON_BREATH", "SMOKE", 1.2F,
                 "minecraft:entity.ghast.warn", "breath cone");
         // An outward rupture, the opposite read from the collapsing sphere.
+        // Violet dust rather than SMOKE: SMOKE is `void_snare`'s accent over the
+        // same REVERSE_PORTAL primary, so the chain cage and the rupture drew the
+        // same pair even though one binds and the other explodes.
         put(result, "void_burst", 0x5B2BD6, "REVERSE_PORTAL", "DUST_PURPLE", 0.5F,
                 "minecraft:entity.warden.nearby_close", "outward void rupture");
         // Silk: pale, matte, and the only white-anchored spell in the set.

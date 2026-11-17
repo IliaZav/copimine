@@ -203,6 +203,7 @@ import me.copimine.endevent.domain.MinibossGroupSpellPolicy;
 import me.copimine.endevent.domain.Wave7NamedTrialActorPolicy;
 import me.copimine.endevent.domain.Wave7EchoDuelCellPolicy;
 import me.copimine.endevent.domain.Wave7ArchmageVexPolicy;
+import me.copimine.endevent.domain.Wave7ArchmagePunishPolicy;
 import me.copimine.endevent.domain.Wave7MarksmanInvisibilityPolicy;
 import me.copimine.endevent.domain.Wave7MarksmanSquadPolicy;
 import me.copimine.endevent.domain.Wave7BarrierPreflightPolicy;
@@ -762,7 +763,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final double ARROW_VOLLEY_SPEED = 2.5D;
     private static final int SLOWNESS_DEBUFF_TICKS = 60;
     /**
-     * Canonical Wave 1 carrier Slowness II. Minecraft amplifiers are
+     * Canonical Waves specification, Wave 1 section 3.2: the carrier receives
+     * Slowness II during genuine possession. Minecraft amplifiers are
      * zero-based, so Slowness II is 1 (Slowness I = 0).
      */
     private static final int CARRIER_SLOWNESS_AMPLIFIER = 1;
@@ -2036,6 +2038,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private NamespacedKey keyWave7MarksmanDefenderOwner;
     private NamespacedKey keyWave7ArchmageSwarmAt;
     private NamespacedKey keyWave7ArchmageSwarmDeadline;
+    /** MAGE7-005: generation-fenced "eventId|generation|tick" Archmage tool state. */
+    private NamespacedKey keyWave7ArchmageStepTick;
+    private NamespacedKey keyWave7ArchmagePunishUntil;
+    /** GEAR-007: generation-fenced "eventId|generation" marker for a spent Echo totem. */
+    private NamespacedKey keyNamedEchoTotemSpent;
     private NamespacedKey keyRitualShieldGuard;
     private NamespacedKey keyRitualPrisonerGravity;
     private NamespacedKey keyKind;
@@ -2207,6 +2214,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             keyWave7MarksmanDefenderOwner = new NamespacedKey(this, "end_event_wave7_defender_owner");
         keyWave7ArchmageSwarmAt = new NamespacedKey(this, "end_event_wave7_swarm_at");
         keyWave7ArchmageSwarmDeadline = new NamespacedKey(this, "end_event_wave7_swarm_deadline");
+        keyWave7ArchmageStepTick = new NamespacedKey(this, "end_event_wave7_archmage_step_tick");
+        keyWave7ArchmagePunishUntil = new NamespacedKey(this, "end_event_wave7_archmage_punish_until");
+        keyNamedEchoTotemSpent = new NamespacedKey(this, "end_event_wave7_echo_totem_spent");
             keyRitualShieldGuard = new NamespacedKey(this, "end_event_ritual_shield_guard");
             keyRitualPrisonerGravity = new NamespacedKey(this, "end_event_prisoner_original_gravity");
             keyKind = new NamespacedKey(this, "end_event_kind");
@@ -26242,7 +26252,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 carrier.getWorld().getKey().toString(), eventTickCounter,
                 me.copimine.endevent.runtime.RealitySplitEchoDuelState.MAX_COUNTER);
         EchoCombatAdmissionListener listener = new EchoCombatAdmissionListener(
-                () -> currentNamedEchoCombatContext(actorId), this::blockNamedEchoOwnerHit);
+                () -> currentNamedEchoCombatContext(actorId), this::blockNamedEchoOwnerHit,
+                this::surviveNamedEchoOwnerLethalHit);
         namedEchoPresentationStates.put(actorId, view);
         namedEchoCombatPairs.put(actorId, replacement);
         namedEchoCombatListeners.put(actorId, listener);
@@ -29101,8 +29112,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             } finally { currentCarrierPotionMutations.remove(owner); }
             return;
         }
-        // Canonical Wave 1 carrier debuff: Slowness II (amplifier 1).
-        // A foreign effect at least that strong already does the job.
+        // Canonical Wave 1 section 3.2: the carrier debuff is Slowness II
+        // (amplifier 1). A foreign effect at least that strong already does the job.
         if (lease == null && current != null && current.getAmplifier() >= CARRIER_SLOWNESS_AMPLIFIER) return;
         CarrierPotionLease next = new CarrierPotionLease(lease == null ? current : lease.original(),
                 lease == null ? now : lease.capturedAtTick(), now);
@@ -36784,10 +36795,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         java.util.Optional<EchoDuelCombatRuntimeAdapter.Decision> decision;
         try {
+            EchoCombatAdmissionListener cadence = namedEchoCombatListeners.get(carrier.getUniqueId());
             decision = EchoDuelCombatRuntimeAdapter.tick(current, replica.state(), scope,
                     new EchoDuelCombatRuntimeAdapter.Observation(eventTickCounter, distanceSquared,
                             carrier.hasLineOfSight(owner), carrier.isOnGround(),
-                            isNamedEchoCriticalWindow(carrier)));
+                            isNamedEchoCriticalWindow(carrier),
+                            cadence == null ? -1L : cadence.ownerStrikeIntervalTicks(),
+                            cadence == null ? -1L : cadence.ticksSinceOwnerStrike(eventTickCounter)));
         } catch (RuntimeException invalidObservation) {
             return false;
         }
@@ -36808,7 +36822,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         driveNamedEchoMovement(carrier, owner, core, cell, decision.get().intent());
-        driveNamedEchoGait(carrier, decision.get());
+        driveNamedEchoGait(carrier, decision.get(), carrier.hasLineOfSight(owner));
         sendNamedEchoView(carrier.getUniqueId(), "END_ECHO_STATE");
         return true;
     }
@@ -36958,6 +36972,132 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return true;
     }
 
+    /**
+     * GEAR-007 / GEAR-009: a personal copy's Totem of Undying.
+     *
+     * <p>Before this the replica classified a totem as {@code INERT}, so a copy
+     * carried a real totem it could never use — precisely the "inert inventory
+     * descriptor" the contract forbids. The rule is narrow, and every part of
+     * it is enforced here: the totem must be equipped (offhand or the held
+     * slot), the hit must be genuinely lethal, the totem is spent from the
+     * replica so it cannot fire twice, and the rescue leaves no phantom shield
+     * behind (GEAR-009).</p>
+     */
+    private boolean surviveNamedEchoOwnerLethalHit(EchoCombatAdmission.Context context,
+            EntityDamageEvent event, Entity direct, Entity causing) {
+        if (context == null || !context.active() || event == null || direct == null
+                || !(event.getEntity() instanceof LivingEntity living)) return false;
+        EchoCombatAdmission.Pair pair = context.pair();
+        if (pair == null || !pair.owner().equals(originatingEntityUuid(direct))
+                || causing != null && !pair.owner().equals(causing.getUniqueId())
+                || !pair.actor().equals(living.getUniqueId())) return false;
+        var live = currentNamedEchoCombatContext(pair.actor());
+        var duel = namedEchoDuel(pair.owner(), pair.duel());
+        Entity rawActor = Bukkit.getEntity(pair.actor());
+        Player owner = Bukkit.getPlayer(pair.owner());
+        Location core = coreCombatAnchorLocation();
+        var cell = namedEchoCells.get(pair.actor());
+        if (live == null || !live.active() || !pair.equals(live.pair()) || live.tick() != context.tick()
+                || duel == null
+                || duel.lifecycle()
+                != me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle.ACTIVE
+                || !duel.actor().actorUuid().equals(pair.actor())
+                || !(rawActor instanceof Pillager carrier) || event.getEntity() != carrier
+                || owner == null || core == null || cell == null || !worldPairValid(owner, carrier, pair)
+                || !Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(
+                realitySplitTrialController.echoDuelCells(cell.chamber()), cell.owner(),
+                owner.getLocation().getX() - core.getX(), owner.getLocation().getZ() - core.getZ())
+                || !Wave7EchoDuelCellPolicy.allowsSharedRegionAccess(
+                realitySplitTrialController.echoDuelCells(cell.chamber()), cell.owner(),
+                carrier.getLocation().getX() - core.getX(),
+                carrier.getLocation().getZ() - core.getZ())) return false;
+        me.copimine.endevent.runtime.wave7.EchoReplicaInventory replica;
+        try {
+            replica = me.copimine.endevent.runtime.wave7.EchoReplicaInventory.restore(
+                    duel.replicaState(), duel.eventId(), duel.attemptGeneration(), duel.duelId(),
+                    duel.ownerUuid(), duel.replicaRevision());
+        } catch (RuntimeException invalidReplica) {
+            return false;
+        }
+        int totemSlot = replica.state().find(
+                me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.TOTEM);
+        boolean equipped = me.copimine.endevent.domain.wave7.EchoTotemPolicy.isEquippedSlot(
+                totemSlot, replica.state().selectedSlot());
+        boolean spent = namedEchoTotemSpent(carrier, pair);
+        if (!me.copimine.endevent.domain.wave7.EchoTotemPolicy.activationAllowed(carrier.getHealth(),
+                event.getFinalDamage(), totemSlot >= 0, equipped, spent)) return false;
+        if (duel.revision() >= me.copimine.endevent.runtime.RealitySplitEchoDuelState.MAX_COUNTER
+                || duel.actor().revision()
+                >= me.copimine.endevent.runtime.RealitySplitEchoDuelState.MAX_COUNTER
+                || replica.state().revision()
+                >= me.copimine.endevent.runtime.RealitySplitEchoDuelState.MAX_COUNTER - 1L) return false;
+        // Spend the totem before healing: a rejected consumption must leave the
+        // copy dead instead of rescuing it for free.
+        if (!replica.state().consume(totemSlot, 1, replica.state().revision())) return false;
+        double maximumHealth = duel.actor().maximumHealth();
+        double restoredHealth = me.copimine.endevent.domain.wave7.EchoTotemPolicy.activationHealth(
+                maximumHealth);
+        if (!(restoredHealth > 0.0D) || restoredHealth > maximumHealth) return false;
+        var priorActor = duel.actor();
+        var nextActor = new me.copimine.endevent.runtime.RealitySplitEchoDuelState.ActorState(
+                priorActor.actorUuid(), restoredHealth, priorActor.maximumHealth(),
+                me.copimine.endevent.runtime.RealitySplitEchoDuelState.ActorLifecycle.ALIVE,
+                priorActor.revision() + 1L, priorActor.nextActionTick(),
+                priorActor.meleeCooldownUntilTick(), priorActor.rangedCooldownUntilTick(),
+                priorActor.pendingUseUntilTick(), priorActor.deathSerial(),
+                priorActor.shieldActiveUntilTick(), priorActor.shieldCooldownUntilTick(),
+                priorActor.jumpCooldownUntilTick());
+        var next = duel.withActor(duel.runtimeGeneration(), duel.ownerStartingHealth(),
+                duel.ownerMaximumHealth(), duel.returnDeadlineMillis(), nextActor,
+                duel.revision() + 1L, replica.state().revision(), replica.state().encode(),
+                duel.behaviorStrategy());
+        EchoCombatAdmissionListener listener = namedEchoCombatListeners.get(pair.actor());
+        if (listener == null || !pair.equals(namedEchoCombatPairs.get(pair.actor()))
+                || !realitySplitTrialController.registerPersonalEchoDuel(next) || !saveStateSync()) {
+            enterNamedRealitySplitRecovery("WAVE7_ECHO_TOTEM_CHECKPOINT_FAILED");
+            return false;
+        }
+        namedEchoReplicas.put(pair.actor(), replica);
+        writeNamedEchoTotemSpent(carrier, pair);
+        // GEAR-009: the copy holds a totem, so no phantom shield survives the
+        // rescue; the spent totem is projected out of the offhand immediately.
+        try {
+            carrier.clearActiveItem();
+            carrier.getEquipment().setItemInOffHand(
+                    replica.stack(me.copimine.endevent.domain.wave7.EchoLoadoutState.OFFHAND_SLOT));
+            carrier.setHealth(Math.min(restoredHealth, carrier.getMaxHealth()));
+            EchoPresentationProbeState view = namedEchoPresentationStates.get(pair.actor());
+            if (view != null) view.begin(EchoPresentationProbeState.Action.IDLE, eventTickCounter);
+        } catch (RuntimeException projectionFailure) {
+            enterNamedRealitySplitRecovery("WAVE7_ECHO_TOTEM_PROJECTION_FAILED");
+        }
+        try {
+            spawnEventParticle(carrier.getLocation().add(0.0D, 1.0D, 0.0D),
+                    Particle.TOTEM_OF_UNDYING, 24, 0.35D, 0.5D, 0.35D, 0.2D);
+            carrier.getWorld().playSound(carrier.getLocation(), Sound.ITEM_TOTEM_USE, 0.8F, 1.0F);
+        } catch (RuntimeException cosmeticFailure) {
+            getLogger().fine("W7 echo totem cosmetics failed: " + cosmeticFailure.getMessage());
+        }
+        getLogger().info("END_RIFT_WAVE7_ECHO_TOTEM_ACTIVATED event=" + eventId
+                + " duel=" + pair.duel() + " actor=" + pair.actor() + " owner=" + pair.owner()
+                + " slot=" + totemSlot + " restored=" + restoredHealth);
+        return true;
+    }
+
+    /** GEAR-007: an "eventId|generation" marker, so a restart cannot re-grant a spent totem. */
+    private boolean namedEchoTotemSpent(Pillager carrier, EchoCombatAdmission.Pair pair) {
+        if (carrier == null || pair == null || keyNamedEchoTotemSpent == null) return false;
+        String encoded = carrier.getPersistentDataContainer().get(keyNamedEchoTotemSpent,
+                PersistentDataType.STRING);
+        return encoded != null && encoded.equals(pair.event() + "|" + pair.generation());
+    }
+
+    private void writeNamedEchoTotemSpent(Pillager carrier, EchoCombatAdmission.Pair pair) {
+        if (carrier == null || pair == null || keyNamedEchoTotemSpent == null) return;
+        carrier.getPersistentDataContainer().set(keyNamedEchoTotemSpent, PersistentDataType.STRING,
+                pair.event() + "|" + pair.generation());
+    }
+
     private boolean namedEchoOwnerFacesAttack(Pillager carrier, Player owner, Entity direct, Entity causing) {
         if (carrier == null || owner == null || direct == null) return false;
         Vector towardAttacker;
@@ -37005,7 +37145,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * just saw start.</p>
      */
     private void driveNamedEchoGait(Pillager carrier,
-            EchoDuelCombatRuntimeAdapter.Decision decision) {
+            EchoDuelCombatRuntimeAdapter.Decision decision, boolean ownerVisible) {
         if (carrier == null || !carrier.isValid() || carrier.isDead() || decision == null) return;
         EchoPresentationProbeState view = namedEchoPresentationStates.get(carrier.getUniqueId());
         if (view == null) return;
@@ -37027,7 +37167,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || decision.action() == EchoDuelCombatRuntimeAdapter.Action.JUMP) return;
         boolean moving = decision.intent() != EchoDuelCombatRuntimeAdapter.MovementIntent.HOLD;
         boolean chasing = decision.intent() == EchoDuelCombatRuntimeAdapter.MovementIntent.APPROACH;
-        EchoPresentationProbeState.Action wanted = moving
+        // BRAIN-014: creeping up on an owner the copy cannot see drops its body.
+        // The stance is read from the same intent and sight the movement code
+        // uses, so the pose and the path never disagree about the approach.
+        boolean sneaking = EchoDuelCombatRuntimeAdapter.sneaking(decision.intent(), ownerVisible);
+        EchoPresentationProbeState.Action wanted = sneaking
+                ? EchoPresentationProbeState.Action.CROUCH
+                : moving
                 ? (chasing ? EchoPresentationProbeState.Action.SPRINT : EchoPresentationProbeState.Action.WALK)
                 : EchoPresentationProbeState.Action.IDLE;
         if (wanted == current) return;
@@ -37069,7 +37215,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if (eventTickCounter % 4L == 0L) {
-            carrier.getPathfinder().moveTo(target, 1.05D);
+            // A creeping copy walks at crouch speed; a standing one keeps its
+            // normal pace. Sneaking without slowing down would be a visual lie.
+            double speed = EchoDuelCombatRuntimeAdapter.sneaking(intent,
+                    carrier.hasLineOfSight(owner)) ? 0.42D : 1.05D;
+            carrier.getPathfinder().moveTo(target, speed);
         }
     }
 
@@ -37342,6 +37492,89 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     return false;
                 }
             }
+            case WIND_CHARGE -> {
+                // The burst is a real native projectile so it knocks the owner
+                // back through the game's own physics instead of a scripted
+                // shove, and so the admission listener can attribute it.
+                if (decision.actionItem().kind()
+                        != me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.WIND_CHARGE
+                        || owner.isDead() || !owner.isValid() || carrier.isDead() || !carrier.isValid()
+                        || !carrier.hasLineOfSight(owner)
+                        || carrier.getLocation().distanceSquared(owner.getLocation()) > 900.0D) return false;
+                Location origin = carrier.getEyeLocation();
+                Vector direction = owner.getEyeLocation().toVector().subtract(origin.toVector());
+                if (direction.lengthSquared() < 0.01D || !Double.isFinite(direction.lengthSquared())) return false;
+                EchoCombatAdmissionListener listener = namedEchoCombatListeners.get(carrier.getUniqueId());
+                if (listener == null) return false;
+                org.bukkit.entity.WindCharge charge = null;
+                try {
+                    charge = world.spawn(origin, org.bukkit.entity.WindCharge.class);
+                    if (charge == null) return false;
+                    charge.setShooter(carrier);
+                    if (!listener.registerServerLaunchedEchoArrow(charge, carrier.getUniqueId())) {
+                        listener.discardServerLaunchedEchoArrow(charge, carrier.getUniqueId());
+                        return false;
+                    }
+                    charge.setVelocity(direction.normalize().multiply(1.5D));
+                    Vector velocity = charge.getVelocity();
+                    if (!charge.isValid() || !world.equals(charge.getWorld())
+                            || !Double.isFinite(velocity.lengthSquared()) || velocity.lengthSquared() < 0.01D) {
+                        listener.discardServerLaunchedEchoArrow(charge, carrier.getUniqueId());
+                        return false;
+                    }
+                } catch (RuntimeException launchFailure) {
+                    if (charge != null) listener.discardServerLaunchedEchoArrow(charge, carrier.getUniqueId());
+                    return false;
+                }
+                carrier.swingMainHand();
+            }
+            case SPLASH -> {
+                if (decision.actionItem().kind()
+                        != me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.SPLASH_POTION
+                        || owner.isDead() || !owner.isValid() || carrier.isDead() || !carrier.isValid()
+                        || !carrier.hasLineOfSight(owner)
+                        || carrier.getLocation().distanceSquared(owner.getLocation()) > 900.0D) return false;
+                Location origin = carrier.getEyeLocation();
+                Vector direction = owner.getEyeLocation().toVector().subtract(origin.toVector());
+                if (direction.lengthSquared() < 0.01D || !Double.isFinite(direction.lengthSquared())) return false;
+                EchoCombatAdmissionListener listener = namedEchoCombatListeners.get(carrier.getUniqueId());
+                if (listener == null) return false;
+                // The bottle keeps the brew the owner actually carried. An
+                // unrecognised descriptor resolves to the plain water base rather
+                // than inventing an effect the copy never had.
+                PotionType base = namedEchoPotionType(decision.actionItem());
+                org.bukkit.entity.ThrownPotion potion = null;
+                try {
+                    potion = world.spawn(origin, org.bukkit.entity.ThrownPotion.class);
+                    if (potion == null) return false;
+                    ItemStack bottle = new ItemStack(Material.SPLASH_POTION, 1);
+                    ItemMeta meta = bottle.getItemMeta();
+                    if (meta instanceof org.bukkit.inventory.meta.PotionMeta potionMeta) {
+                        potionMeta.setBasePotionType(base == null ? PotionType.WATER : base);
+                        bottle.setItemMeta(potionMeta);
+                    }
+                    potion.setItem(bottle);
+                    potion.setShooter(carrier);
+                    if (!listener.registerServerLaunchedEchoArrow(potion, carrier.getUniqueId())) {
+                        listener.discardServerLaunchedEchoArrow(potion, carrier.getUniqueId());
+                        return false;
+                    }
+                    // Lob, not a flat throw: a splash bottle is aimed where it
+                    // will land, which is what makes it a weapon at range.
+                    Vector aim = direction.clone().normalize().multiply(0.9D).setY(0.35D);
+                    potion.setVelocity(aim);
+                    Vector velocity = potion.getVelocity();
+                    if (!potion.isValid() || !world.equals(potion.getWorld())
+                            || !Double.isFinite(velocity.lengthSquared()) || velocity.lengthSquared() < 0.01D) {
+                        listener.discardServerLaunchedEchoArrow(potion, carrier.getUniqueId());
+                        return false;
+                    }
+                } catch (RuntimeException launchFailure) {
+                    if (potion != null) listener.discardServerLaunchedEchoArrow(potion, carrier.getUniqueId());
+                    return false;
+                }
+                carrier.swingMainHand();
+            }
             case CONSUMABLE -> {
                 if (decision.actionItem().kind()
                         == me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.POTION) {
@@ -37410,6 +37643,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         == me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.CROSSBOW
                         ? EchoPresentationProbeState.Action.CROSSBOW : EchoPresentationProbeState.Action.BOW;
                 case CONSUMABLE -> EchoPresentationProbeState.Action.EAT;
+                // A thrown charge and a lobbed bottle are both an arm motion to
+                // an observer, and SWING is the pose that already exists for it.
+                // Reusing it keeps the probe's frozen Action ordinals untouched.
+                case WIND_CHARGE, SPLASH -> EchoPresentationProbeState.Action.SWING;
                 case SHIELD -> EchoPresentationProbeState.Action.SHIELD;
                 case JUMP -> EchoPresentationProbeState.Action.JUMP;
                 case NONE -> EchoPresentationProbeState.Action.IDLE;
@@ -37544,6 +37781,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 return finishNamedTrialAttack(actor, checkpoint, now);
             }
             if (!resolveNamedTrialAttack(actor, target, checkpoint.attack(), trial.chamber())) return false;
+            // MAGE7-005: record the tool use only after the cast really resolved.
+            recordArchmageToolUse(actor, checkpoint.attack(), checkpoint.generation());
             long cooldown = now + Wave7NamedTrialActorPolicy.cooldownTicks(checkpoint.attack()) * 50L;
             return writeNamedTrialActorCheckpoint(actor, new Wave7NamedTrialActorPolicy.Checkpoint(
                     checkpoint.eventId(), checkpoint.generation(), checkpoint.chamber(), checkpoint.trial(),
@@ -37630,13 +37869,37 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
         Wave7NamedTrialActorPolicy.Attack attack;
         boolean supportUsed = checkpoint.supportUsed();
+        // MAGE7-005: Step is the one move that lets the mage escape melee. It is
+        // refused while the punish window opened by a major cast is still open
+        // and while its own cooldown runs, so a melee player who survived the
+        // cast gets a real window to connect. Without this gate the mage could
+        // blink away on every approach and was unkillable by melee.
+        Wave7ArchmagePunishPolicy.PunishWindow punishWindow =
+                Wave7ArchmagePunishPolicy.windowEndingAt(archmageToolTick(actor,
+                        keyWave7ArchmagePunishUntil, checkpoint.generation()));
+        long lastStepTick = archmageToolTick(actor, keyWave7ArchmageStepTick,
+                checkpoint.generation());
         if (repositionForCover) {
+            // A hidden player can only be answered by Step. When the window or
+            // the Step cooldown forbids it, the mage holds still and waits out
+            // the window instead of cheating a second escape.
+            if (!Wave7ArchmagePunishPolicy.stepAllowed(eventTickCounter, lastStepTick, punishWindow)) {
+                return true;
+            }
             attack = Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_STEP;
         } else {
             // SUPERSEDED (spec MARK-002/MARK-007): the Marksman keeps firing its
             // authored fans; support is the one-time Giant defender above, not a
             // bonus attack that interrupts the rotation.
             attack = Wave7NamedTrialActorPolicy.attackFor(trial.trial(), checkpoint.attackIndex());
+            if (attack == Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_STEP
+                    && !Wave7ArchmagePunishPolicy.stepAllowed(eventTickCounter, lastStepTick,
+                            punishWindow)) {
+                // The rotation steps over the refused entry; it never stalls.
+                attack = Wave7NamedTrialActorPolicy.attackForExcluding(trial.trial(),
+                        checkpoint.attackIndex() + 1L,
+                        Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_STEP);
+            }
         }
         if (attack == Wave7NamedTrialActorPolicy.Attack.NONE
                 || checkpoint.attackIndex() >= 1_000_000L) return false;
@@ -38945,6 +39208,62 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (player != null) chosen.add(player);
         }
         return chosen;
+    }
+
+    /**
+     * MAGE7-005: generation-fenced Archmage tool state.
+     *
+     * <p>The value is stored as {@code eventId|generation|tick} so a restarted
+     * event cannot inherit a stale Step cooldown or a stale punish window from
+     * the previous attempt, and a corrupted value is treated as "never used"
+     * rather than fabricating a window.</p>
+     *
+     * @return the recorded event tick, or {@link Wave7ArchmagePunishPolicy#NEVER}
+     */
+    private long archmageToolTick(LivingEntity actor, NamespacedKey key, long generation) {
+        if (actor == null || key == null) return Wave7ArchmagePunishPolicy.NEVER;
+        String encoded = actor.getPersistentDataContainer().get(key, PersistentDataType.STRING);
+        if (encoded == null || encoded.isBlank()) return Wave7ArchmagePunishPolicy.NEVER;
+        String[] parts = encoded.split("\\|", -1);
+        if (parts.length != 3) return Wave7ArchmagePunishPolicy.NEVER;
+        if (eventId == null || !eventId.toString().equals(parts[0])) {
+            return Wave7ArchmagePunishPolicy.NEVER;
+        }
+        try {
+            if (Long.parseLong(parts[1]) != generation) return Wave7ArchmagePunishPolicy.NEVER;
+            long tick = Long.parseLong(parts[2]);
+            return tick > 0L ? tick : Wave7ArchmagePunishPolicy.NEVER;
+        } catch (NumberFormatException error) {
+            return Wave7ArchmagePunishPolicy.NEVER;
+        }
+    }
+
+    /** Persist one Archmage tool tick, fenced to the owning event attempt. */
+    private void writeArchmageToolTick(LivingEntity actor, NamespacedKey key, long generation,
+                                       long tick) {
+        if (actor == null || key == null || eventId == null || tick <= 0L) return;
+        actor.getPersistentDataContainer().set(key, PersistentDataType.STRING,
+                eventId + "|" + generation + "|" + tick);
+    }
+
+    /**
+     * Records what an Archmage cast cost it.
+     *
+     * <p>Step consumes its own cooldown (a refused Step included: the contract
+     * resolves it as a miss with the regular cooldown). Every major damaging
+     * cast opens the punish window that no Step or repel may cut short.</p>
+     */
+    private void recordArchmageToolUse(LivingEntity actor,
+                                       Wave7NamedTrialActorPolicy.Attack attack, long generation) {
+        if (actor == null || attack == null) return;
+        switch (attack) {
+            case ARCHMAGE_STEP -> writeArchmageToolTick(actor, keyWave7ArchmageStepTick,
+                    generation, eventTickCounter);
+            case ARCHMAGE_FANGS, ARCHMAGE_SPEAR, ARCHMAGE_BEAM ->
+                    writeArchmageToolTick(actor, keyWave7ArchmagePunishUntil, generation,
+                            Wave7ArchmagePunishPolicy.punishUntilTick(eventTickCounter));
+            default -> { }
+        }
     }
 
     private boolean stepNamedTrialArchmage(LivingEntity actor, Player target, int chamber) {

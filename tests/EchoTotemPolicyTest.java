@@ -11,7 +11,40 @@ public final class EchoTotemPolicyTest {
         requiresASupportedEquippedState();
         consumesTheTotemSoItCannotRepeat();
         offhandTotemAndShieldAreMutuallyConsistent();
+        supportsExactlyTheOffhandOrHeldSlot();
+        theRuntimeGateCombinesLethalityWithTheEquippedState();
         System.out.println("EchoTotemPolicyTest OK");
+    }
+
+    /**
+     * GEAR-007: "equipped/held" is the offhand the copy actually carries, or the
+     * hotbar slot it is using. A totem loose in the pack stays inert.
+     */
+    private static void supportsExactlyTheOffhandOrHeldSlot() {
+        check(EchoTotemPolicy.isEquippedSlot(me.copimine.endevent.domain.wave7.EchoLoadoutState.OFFHAND_SLOT, 3),
+                "a totem in the offhand is equipped");
+        check(EchoTotemPolicy.isEquippedSlot(3, 3), "a totem in the active hotbar slot is held");
+        check(!EchoTotemPolicy.isEquippedSlot(3, 4), "a totem in an inactive hotbar slot is not held");
+        check(!EchoTotemPolicy.isEquippedSlot(12, 12),
+                "storage slots are never a supported equipped state");
+        check(!EchoTotemPolicy.isEquippedSlot(-1, 0), "a missing totem is not equipped");
+        check(EchoTotemPolicy.isEquippedSlot(0, 0), "the first hotbar slot is a real held slot");
+        check(!EchoTotemPolicy.isEquippedSlot(8, 9),
+                "no held-slot index above the hotbar is accepted");
+    }
+
+    private static void theRuntimeGateCombinesLethalityWithTheEquippedState() {
+        // A lethal hit with an equipped totem rescues; every other combination does not.
+        check(EchoTotemPolicy.activationAllowed(4.0D, 5.0D, true, true, false),
+                "a lethal hit spends an equipped, unused totem");
+        check(!EchoTotemPolicy.activationAllowed(20.0D, 5.0D, true, true, false),
+                "a survivable hit never spends the totem");
+        check(!EchoTotemPolicy.activationAllowed(4.0D, 5.0D, true, false, false),
+                "a lethal hit with an unequipped totem kills the copy");
+        check(!EchoTotemPolicy.activationAllowed(4.0D, 5.0D, true, true, true),
+                "an already spent totem cannot rescue a second time");
+        check(!EchoTotemPolicy.activationAllowed(4.0D, 5.0D, false, true, false),
+                "no totem means no activation");
     }
 
     private static void activatesOnlyAtALethalBoundary() {

@@ -26,14 +26,19 @@ def test_carrier_uses_actual_slowness_lease_and_retires_legacy_speed_modifier():
     source = SOURCE.read_text(encoding="utf-8")
     body = method_body(source, "updateCurrentCarrierSlowness")
     assert "PotionEffectType.SLOWNESS" in body
-    # SUPERSEDED (audit wave 1, spec Slow III): the carrier used to receive
-    # Slowness II (amplifier 1). The required debuff is Slow III, which is
-    # amplifier 2 in Minecraft's zero-based scale, and the lease now names that
-    # amplifier through one constant instead of a bare literal.
+    # Canonical Waves specification, Wave 1 section 3.2: "Apply Slowness II
+    # during genuine possession". Amplifiers are zero-based, so the required
+    # level is 1. A bare literal would let the level drift again, so the lease
+    # must name it through the constant and the constant must stay at 1.
     assert "CARRIER_SLOWNESS_AMPLIFIER, false, false, true" in body
     assert "currentCarrierPotionLeases" in body
     assert "current.getAmplifier() >= CARRIER_SLOWNESS_AMPLIFIER" in body
-    assert "CARRIER_SLOWNESS_AMPLIFIER = 2" in source, "Slow III is amplifier 2, not Slow II"
+    assert re.search(r"CARRIER_SLOWNESS_AMPLIFIER\s*=\s*1\s*;", source), (
+        "Slowness II is amplifier 1; Slowness III would be amplifier 2"
+    )
+    assert not re.search(r"PotionEffectType\.SLOWNESS,\s*\d+\s*,\s*\d+", body), (
+        "the applied amplifier must come from the constant, not a bare literal"
+    )
     assert "addTransientModifier" not in body
     assert "speed.removeModifier(legacy)" in body
     assert "updateCurrentCarrierSlowness(holder, true)" in method_body(source, "tickCurrentCarrierObjective")

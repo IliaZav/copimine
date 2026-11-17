@@ -47,6 +47,20 @@ public final class Wave7NamedTrialActorPolicyTest {
                         && Wave7NamedTrialActorPolicy.attackFor(NamedTrial.RIFT_ARCHMAGE, 2) == Attack.ARCHMAGE_STEP
                         && Wave7NamedTrialActorPolicy.attackFor(NamedTrial.RIFT_ARCHMAGE, 3) == Attack.ARCHMAGE_BEAM,
                 "Archmage cycles Fangs, Spears, Step and Beam");
+        // MAGE7-005: when Step is refused, the rotation steps over it instead of
+        // stalling or repeating the refused move.
+        check(Wave7NamedTrialActorPolicy.attackForExcluding(NamedTrial.RIFT_ARCHMAGE, 2,
+                        Attack.ARCHMAGE_STEP) == Attack.ARCHMAGE_BEAM,
+                "a refused Step is replaced by the next authored spell");
+        check(Wave7NamedTrialActorPolicy.attackForExcluding(NamedTrial.RIFT_ARCHMAGE, 4,
+                        Attack.ARCHMAGE_STEP) == Attack.ARCHMAGE_FANGS,
+                "the fallback wraps around the Archmage rotation");
+        check(Wave7NamedTrialActorPolicy.attackForExcluding(NamedTrial.MOBILE_MARKSMAN, 1,
+                        Attack.MARKSMAN_HEAVY_SHOT) == Attack.MARKSMAN_SPREAD_SHOT,
+                "the exclusion helper is deterministic for every role");
+        check(Wave7NamedTrialActorPolicy.attackForExcluding(NamedTrial.WARDEN, 0,
+                        Attack.NONE_INTERNAL) == Attack.NONE,
+                "excluding the only move of a trial yields NONE, never a fabricated attack");
         for (Attack attack : List.of(Attack.MARKSMAN_QUICK_SHOT, Attack.MARKSMAN_HEAVY_SHOT,
                 Attack.MARKSMAN_SPREAD_SHOT, Attack.ARCHMAGE_FANGS, Attack.ARCHMAGE_SPEAR,
                 Attack.ARCHMAGE_STEP, Attack.ARCHMAGE_BEAM)) {

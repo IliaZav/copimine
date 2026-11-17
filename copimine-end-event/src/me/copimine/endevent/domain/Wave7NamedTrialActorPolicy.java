@@ -249,6 +249,24 @@ public final class Wave7NamedTrialActorPolicy {
     }
 
     /**
+     * The next rotation move that is not {@code excluded}.
+     *
+     * <p>Used when one move is temporarily illegal: the rotation keeps its
+     * authored order and simply steps over the refused entry instead of
+     * stalling the actor or silently repeating the last cast.</p>
+     */
+    public static Attack attackForExcluding(NamedTrial trial, long attackIndex, Attack excluded) {
+        Profile profile = profile(trial);
+        if (profile == null || attackIndex < 0L || attackIndex > 1_000_000L) return Attack.NONE;
+        int size = profile.attacks().size();
+        for (int step = 0; step < size; step++) {
+            Attack candidate = profile.attacks().get((int) ((attackIndex + step) % size));
+            if (candidate != excluded) return candidate;
+        }
+        return Attack.NONE;
+    }
+
+    /**
      * Fans in one Marksman spread burst.
      *
      * <p>The contract asks for an enhanced successive fan: three fans with

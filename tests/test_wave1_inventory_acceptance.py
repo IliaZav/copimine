@@ -197,8 +197,9 @@ public class CarrierInventoryAcceptanceProbe {
     int committedReinforcements;
     void commitWaveOneReinforcement(String reasonCode){committedReinforcements++;wave1ReinforcementOwed++;}
     void commitWaveOneReinforcement(String reasonCode,boolean persist){commitWaveOneReinforcement(reasonCode);}
-    // Audit wave 1: the carrier debuff is Slow III (zero-based amplifier 2).
-    static final int CARRIER_SLOWNESS_AMPLIFIER=2;
+    // Canonical Wave 1 section 3.2: the carrier debuff is Slowness II, which is
+    // amplifier 1 on Minecraft's zero-based scale.
+    static final int CARRIER_SLOWNESS_AMPLIFIER=1;
     java.util.logging.Logger getLogger(){return java.util.logging.Logger.getLogger("carrier-test");}
     void spawnCurrentCarrierCharge(Location position){}
     void renderCurrentCarrierCharge(Entity entity){}
@@ -319,10 +320,9 @@ public class CarrierInventoryAcceptanceProbe {
                 }
                 p.tickCarried(1000);
                 var effect=p.holder.getPotionEffect(PotionEffectType.SLOWNESS);
-                // SUPERSEDED (audit wave 1): the carrier debuff used to be Slowness II
-                // (amplifier 1). The spec requires Slow III, which is amplifier 2 in
-                // Minecraft's zero-based scale.
-                check(effect!=null&&effect.getAmplifier()==2,"legal charge must apply actual Slow III");
+                // Canonical Wave 1 section 3.2: "Apply Slowness II during genuine
+                // possession", which is amplifier 1 in the zero-based scale.
+                check(effect!=null&&effect.getAmplifier()==1,"legal charge must apply actual Slowness II");
                 check(p.other.effects.isEmpty(),"only legal holder is slowed");
                 check(p.holder.movementSpeed.modifiers.isEmpty(),"Slowness must not also double-apply a separate speed modifier");
             }
@@ -393,11 +393,10 @@ public class CarrierInventoryAcceptanceProbe {
             case "weaker-restored" -> {
                 p.holder.effects.put(PotionEffectType.SLOWNESS,new PotionEffect(PotionEffectType.SLOWNESS,100,0,true,true,false));
                 p.pickUpCurrentCarrierCharge(p.holder);p.tickCarried(1000);
-                // SUPERSEDED (audit wave 1): the event-owned debuff is Slow III
-                // (amplifier 2), so the owned replacement below must use 2. The
-                // unrelated pre-existing effect (amplifier 0, 100 ticks) still has
-                // to come back on release.
-                Bukkit.tick+=6;p.holder.effects.put(PotionEffectType.SLOWNESS,new PotionEffect(PotionEffectType.SLOWNESS,24,2,false,false,true));
+                // The event-owned debuff is Slowness II (amplifier 1), so the owned
+                // replacement below must use 1. The unrelated pre-existing effect
+                // (amplifier 0, 100 ticks) still has to come back on release.
+                Bukkit.tick+=6;p.holder.effects.put(PotionEffectType.SLOWNESS,new PotionEffect(PotionEffectType.SLOWNESS,24,1,false,false,true));
                 p.releaseCurrentCarrierHolder(p.holder.id,"test");
                 var restored=p.holder.getPotionEffect(PotionEffectType.SLOWNESS);
                 check(restored!=null&&restored.getAmplifier()==0&&restored.getDuration()==94&&restored.isAmbient(),"release must restore the remaining unrelated weaker effect");

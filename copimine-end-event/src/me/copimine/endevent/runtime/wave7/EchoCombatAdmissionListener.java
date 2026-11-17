@@ -31,17 +31,21 @@ public final class EchoCombatAdmissionListener implements Listener {
     private static final int MAX_PROJECTILES = 64, MAX_CLOUDS = 16;
     private final Supplier<Context> current;
     private final IncomingOwnerHitHandler incomingOwnerHitHandler;
+    private final LethalSurvivalHandler lethalSurvivalHandler;
     private final Map<Projectile, Scope> projectiles = new IdentityHashMap<>();
     private final Map<AreaEffectCloud, Scope> clouds = new IdentityHashMap<>();
     private OwnerLethalReceipt ownerLethalReceipt;
     private OwnerActionIntent ownerActionIntent;
     private OwnerActionReceipt ownerActionReceipt;
+    private OwnerStrikeCadence ownerStrikeCadence;
 
     private record OwnerLethalReceipt(EchoCombatAdmission.Pair pair, long tick,
                                      EntityDamageEvent damageEvent) { }
     private record OwnerActionIntent(EchoCombatAdmission.Pair pair, long tick, UUID target) { }
     private record OwnerActionReceipt(EchoCombatAdmission.Pair pair, long tick, UUID target,
                                      EntityDamageByEntityEvent damageEvent) { }
+    /** Last admitted owner strike on the copy and the interval the owner has actually kept. */
+    private record OwnerStrikeCadence(EchoCombatAdmission.Pair pair, long lastTick, long intervalTicks) { }
 
     @FunctionalInterface
     public interface IncomingOwnerHitHandler {
@@ -49,14 +53,31 @@ public final class EchoCombatAdmissionListener implements Listener {
         boolean block(Context context, EntityDamageByEntityEvent event, Entity direct, Entity causing);
     }
 
+    @FunctionalInterface
+    public interface LethalSurvivalHandler {
+        /**
+         * GEAR-007: return true only after durably spending the copy's totem and
+         * reviving this exact lethal hit. Called only for a hit that would take
+         * the actor to zero health.
+         */
+        boolean survive(Context context, EntityDamageEvent event, Entity direct, Entity causing);
+    }
+
     public EchoCombatAdmissionListener(Supplier<Context> current) {
-        this(current, null);
+        this(current, null, null);
     }
 
     public EchoCombatAdmissionListener(Supplier<Context> current,
                                        IncomingOwnerHitHandler incomingOwnerHitHandler) {
+        this(current, incomingOwnerHitHandler, null);
+    }
+
+    public EchoCombatAdmissionListener(Supplier<Context> current,
+                                       IncomingOwnerHitHandler incomingOwnerHitHandler,
+                                       LethalSurvivalHandler lethalSurvivalHandler) {
         this.current = Objects.requireNonNull(current);
         this.incomingOwnerHitHandler = incomingOwnerHitHandler;
+        this.lethalSurvivalHandler = lethalSurvivalHandler;
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -82,17 +103,36 @@ public final class EchoCombatAdmissionListener implements Listener {
             event.setCancelled(true);
             return;
         }
-        if (incomingOwnerHitHandler != null && event instanceof EntityDamageByEntityEvent byEntity
-                && context != null && context.active()
+        boolean ownerHit = context != null && context.active()
                 && context.pair().actor().equals(id(event.getEntity()))
                 && context.pair().owner().equals(origin(direct))
-                && (causing == null || context.pair().owner().equals(id(causing)))) {
+                && (causing == null || context.pair().owner().equals(id(causing)));
+        if (ownerHit && context != null) {
+            // Every admitted owner strike is evidence of the owner's rhythm. The
+            // copy reads this to time a parry instead of holding a shield open.
+            recordOwnerStrike(context.pair(), context.tick());
+        }
+        if (incomingOwnerHitHandler != null && ownerHit && event instanceof EntityDamageByEntityEvent byEntity) {
             try {
                 if (incomingOwnerHitHandler.block(context, byEntity, direct, causing)) {
                     event.setCancelled(true);
                 }
             } catch (RuntimeException rejectedShieldCheckpoint) {
                 // A failed shield checkpoint must not cancel the hit or grant a free block.
+            }
+        }
+        // GEAR-007: a totem is the last line of defence, after a shield that did
+        // not block. Only a genuinely lethal hit may spend it, and a failed
+        // checkpoint must leave the hit lethal rather than grant a free rescue.
+        if (lethalSurvivalHandler != null && ownerHit && !event.isCancelled()
+                && event.getEntity() instanceof org.bukkit.entity.LivingEntity living
+                && event.getFinalDamage() > 0.0D && living.getHealth() <= event.getFinalDamage()) {
+            try {
+                if (lethalSurvivalHandler.survive(context, event, direct, causing)) {
+                    event.setCancelled(true);
+                }
+            } catch (RuntimeException rejectedTotemCheckpoint) {
+                // A failed totem checkpoint must not cancel the hit.
             }
         }
     }
@@ -175,6 +215,36 @@ public final class EchoCombatAdmissionListener implements Listener {
             ownerActionIntent = null;
             ownerActionReceipt = null;
         }
+    }
+
+    /**
+     * Record one admitted owner strike as evidence of the owner's rhythm.
+     *
+     * <p>Only the two most recent facts matter: when the owner last landed a hit
+     * on this copy and how far apart its strikes have been. Keeping just that
+     * lets a copy time a parry without retaining a movement history.</p>
+     */
+    private void recordOwnerStrike(EchoCombatAdmission.Pair pair, long tick) {
+        if (pair == null || tick < 0L) return;
+        long interval = 0L;
+        if (ownerStrikeCadence != null && ownerStrikeCadence.pair().equals(pair)
+                && ownerStrikeCadence.lastTick() > 0L && tick > ownerStrikeCadence.lastTick()) {
+            interval = Math.min(EchoCombatAdmission.MAX_SOURCE_TICKS,
+                    tick - ownerStrikeCadence.lastTick());
+        }
+        ownerStrikeCadence = new OwnerStrikeCadence(pair, tick, interval);
+    }
+
+    /** Ticks between the owner's last two admitted strikes, or 0 before the rhythm is known. */
+    public long ownerStrikeIntervalTicks() {
+        return ownerStrikeCadence == null ? 0L : ownerStrikeCadence.intervalTicks();
+    }
+
+    /** Ticks since the owner's last admitted strike, or -1 when it has never struck. */
+    public long ticksSinceOwnerStrike(long tick) {
+        if (ownerStrikeCadence == null || ownerStrikeCadence.lastTick() < 0L
+                || tick < ownerStrikeCadence.lastTick()) return -1L;
+        return tick - ownerStrikeCadence.lastTick();
     }
 
     /** Register a server-fired Echo arrow after its owner was assigned and before velocity is applied. */
@@ -339,6 +409,10 @@ public final class EchoCombatAdmissionListener implements Listener {
                 || ownerActionIntent.tick() != context.tick())) {
             ownerActionIntent = null;
             ownerActionReceipt = null;
+        }
+        if (ownerStrikeCadence != null && (context == null || !context.active()
+                || !ownerStrikeCadence.pair().equals(context.pair()))) {
+            ownerStrikeCadence = null;
         }
         expire(projectiles, context); expire(clouds, context);
     }

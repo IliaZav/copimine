@@ -106,6 +106,55 @@ public final class EchoDuelCombatPolicy {
     }
 
     /**
+     * Starts a thrown splash bottle and spends it from duel-local supplies.
+     *
+     * <p>A thrown bottle is a weapon, not a ration, so it never shares the
+     * drinking gate. It leaves the hand instantly and shares the ranged cadence
+     * with arrows, which is what stops a potion-stocked copy from chain-throwing
+     * the whole rack in one exchange.</p>
+     */
+    public static Optional<ActorState> tryStartSplash(ActorState actor, EchoLoadoutState replica,
+                                                       int bottleSlot, long expectedReplicaRevision,
+                                                       long tick, Cooldowns cooldowns) {
+        if (!ready(actor, tick, cooldowns) || tick < actor.rangedCooldownUntilTick()
+                || !hasSplash(replica, bottleSlot, expectedReplicaRevision)) {
+            return Optional.empty();
+        }
+        Optional<ActorState> updated = advance(actor, tick, cooldowns.sharedActionTicks(),
+                actor.meleeCooldownUntilTick(), deadline(tick, cooldowns.rangedTicks()),
+                actor.pendingUseUntilTick(), actor.shieldActiveUntilTick(),
+                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick());
+        if (updated.isEmpty() || !replica.consume(bottleSlot, 1, expectedReplicaRevision)) {
+            return Optional.empty();
+        }
+        return updated;
+    }
+
+    /**
+     * Starts a wind-charge burst and spends exactly one charge from duel-local supplies.
+     *
+     * <p>A wind charge is a single-use thrown projectile, not a potion and not a
+     * melee swing: it costs one charge and shares the ranged cadence so a copy
+     * that carried a whole stack cannot fire bursts back to back.</p>
+     */
+    public static Optional<ActorState> tryStartWindCharge(ActorState actor, EchoLoadoutState replica,
+                                                          int chargeSlot, long expectedReplicaRevision,
+                                                          long tick, Cooldowns cooldowns) {
+        if (!ready(actor, tick, cooldowns) || tick < actor.rangedCooldownUntilTick()
+                || !hasWindCharge(replica, chargeSlot, expectedReplicaRevision)) {
+            return Optional.empty();
+        }
+        Optional<ActorState> updated = advance(actor, tick, cooldowns.sharedActionTicks(),
+                actor.meleeCooldownUntilTick(), deadline(tick, cooldowns.rangedTicks()),
+                actor.pendingUseUntilTick(), actor.shieldActiveUntilTick(),
+                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick());
+        if (updated.isEmpty() || !replica.consume(chargeSlot, 1, expectedReplicaRevision)) {
+            return Optional.empty();
+        }
+        return updated;
+    }
+
+    /**
      * A copy only drinks when it is actually hurt or actually preparing to fight.
      *
      * <p>Without this a buffed owner produced a copy that re-drank Swiftness on
@@ -273,6 +322,75 @@ public final class EchoDuelCombatPolicy {
                 && tryApplyGearWear(replica, shieldSlot, wear, expectedReplicaRevision);
     }
 
+    /**
+     * Ticks before the predicted strike inside which a copy commits to a parry.
+     *
+     * <p>A parry is a window, not a permanent guard: the guard comes up only for
+     * a strike that is actually about to land, which is the difference between
+     * "blocks like a real player" and "holds a shield forever".</p>
+     */
+    public static final long SHIELD_REACTION_LEAD_TICKS = 4L;
+
+    /** Longest single parry window. Older than this and the guard is a wall, not a timed block. */
+    public static final long SHIELD_PARRY_HOLD_TICKS = 8L;
+
+    /** Recovery a copy needs between two parries, so it cannot block every single swing. */
+    public static final long SHIELD_PARRY_COOLDOWN_TICKS = 20L;
+
+    /**
+     * Decides whether a copy commits to a parry right now.
+     *
+     * <p>Evidence comes from the fight itself: how long the owner's own strikes
+     * have been apart. The copy only raises the guard when the next strike is
+     * inside {@link #SHIELD_REACTION_LEAD_TICKS}, so the window covers the hit
+     * instead of hanging open.</p>
+     *
+     * @param ticksToIncomingStrike predicted ticks until the owner's next strike,
+     *                              or zero when the cadence is unknown and the
+     *                              next strike must be treated as imminent
+     * @return the bounded hold in ticks, or empty when no parry should start
+     */
+    public static Optional<Long> parryHoldTicks(long tick, boolean ownerInReach,
+                                                long ticksToIncomingStrike,
+                                                long shieldActiveUntilTick,
+                                                long shieldCooldownUntilTick) {
+        if (tick < 0L || tick > RealitySplitEchoDuelState.MAX_COUNTER
+                || !ownerInReach || ticksToIncomingStrike < 0L
+                || ticksToIncomingStrike > SHIELD_REACTION_LEAD_TICKS
+                || shieldActiveUntilTick > tick || shieldCooldownUntilTick > tick) {
+            return Optional.empty();
+        }
+        long hold = Math.max(1L, Math.min(SHIELD_PARRY_HOLD_TICKS, ticksToIncomingStrike + 2L));
+        return hold < 1L ? Optional.empty() : Optional.of(hold);
+    }
+
+    /**
+     * Starts a parry window with its own short recovery.
+     *
+     * <p>It shares every other guard with {@link #tryStartShield}: the same
+     * cooldown read, the same finite copied shield and the same persisted
+     * deadlines. Only the recovery differs, because a parry is meant to be
+     * repeated within one exchange.</p>
+     */
+    public static Optional<ActorState> tryStartReactiveShield(ActorState actor, EchoLoadoutState replica,
+                                                              int shieldSlot, long expectedReplicaRevision,
+                                                              long tick, long holdTicks, Cooldowns cooldowns) {
+        if (!ready(actor, tick, cooldowns) || tick < actor.shieldCooldownUntilTick()
+                || holdTicks <= 0L || holdTicks > cooldowns.shieldHoldTicks()
+                || !hasKind(replica, shieldSlot, expectedReplicaRevision, EchoLoadoutState.Kind.SHIELD)
+                || replica.item(shieldSlot).maximumDamage() <= 0) {
+            return Optional.empty();
+        }
+        long activeUntil = deadline(tick, holdTicks);
+        long recovery = Math.max(holdTicks, Math.min(cooldowns.shieldCooldownTicks(),
+                SHIELD_PARRY_COOLDOWN_TICKS));
+        long cooldownUntil = deadline(tick, recovery);
+        if (activeUntil < 0L || cooldownUntil < activeUntil) return Optional.empty();
+        return advance(actor, tick, cooldowns.sharedActionTicks(), actor.meleeCooldownUntilTick(),
+                actor.rangedCooldownUntilTick(), actor.pendingUseUntilTick(), activeUntil,
+                cooldownUntil, actor.jumpCooldownUntilTick());
+    }
+
     /** Records native-computed wear only on a usable, durable piece of copied duel gear. */
     public static boolean tryApplyGearWear(EchoLoadoutState replica, int gearSlot,
                                            int wearAmount, long expectedReplicaRevision) {
@@ -320,6 +438,20 @@ public final class EchoDuelCombatPolicy {
     public static boolean hasPotion(EchoLoadoutState replica, int slot, long expectedRevision) {
         if (!validReplicaSlot(replica, slot, expectedRevision)) return false;
         return replica.item(slot).kind() == EchoLoadoutState.Kind.POTION
+                && replica.remaining(slot) > 0;
+    }
+
+    /** A thrown bottle is a weapon: only SPLASH_POTION may leave the hand. */
+    public static boolean hasSplash(EchoLoadoutState replica, int slot, long expectedRevision) {
+        if (!validReplicaSlot(replica, slot, expectedRevision)) return false;
+        return replica.item(slot).kind() == EchoLoadoutState.Kind.SPLASH_POTION
+                && replica.remaining(slot) > 0;
+    }
+
+    /** A wind charge is spent one charge per burst; a whole stack is never launched at once. */
+    public static boolean hasWindCharge(EchoLoadoutState replica, int slot, long expectedRevision) {
+        if (!validReplicaSlot(replica, slot, expectedRevision)) return false;
+        return replica.item(slot).kind() == EchoLoadoutState.Kind.WIND_CHARGE
                 && replica.remaining(slot) > 0;
     }
 

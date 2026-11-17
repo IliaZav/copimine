@@ -19,6 +19,8 @@ import me.copimine.endevent.runtime.RealitySplitEchoDuelState.Lifecycle;
 public final class EchoDuelCombatRuntimeAdapter {
     private static final int MELEE_RANGE_BLOCKS = 4;
     private static final int RANGED_RANGE_BLOCKS = 30;
+    /** A parry only makes sense against a body close enough to actually strike. */
+    private static final double PARRY_RANGE_BLOCKS = 5.0D;
     private static final int HEAL_THRESHOLD_PERMILLE = 550;
     /**
      * The "never heals" floor for the recorded sustain share. Any player who
@@ -32,7 +34,7 @@ public final class EchoDuelCombatRuntimeAdapter {
     private EchoDuelCombatRuntimeAdapter() {
     }
 
-    public enum Action { NONE, MELEE, CRITICAL, RANGED, CONSUMABLE, SHIELD, JUMP }
+    public enum Action { NONE, MELEE, CRITICAL, RANGED, CONSUMABLE, SHIELD, JUMP, WIND_CHARGE, SPLASH }
 
     /** The live context must exactly match the persisted event, room, actor and duel identity. */
     public record Scope(UUID eventId, long attemptGeneration, long runtimeGeneration, int room,
@@ -65,18 +67,31 @@ public final class EchoDuelCombatRuntimeAdapter {
     }
 
     public record Observation(long tick, double distanceSquared, boolean lineOfSight,
-                              boolean onGround, boolean criticalWindow) {
+                              boolean onGround, boolean criticalWindow,
+                              long ownerStrikeIntervalTicks, long ticksSinceOwnerStrike) {
         public Observation(long tick, double distanceSquared, boolean lineOfSight) {
-            this(tick, distanceSquared, lineOfSight, true, false);
+            this(tick, distanceSquared, lineOfSight, true, false, -1L, -1L);
+        }
+
+        public Observation(long tick, double distanceSquared, boolean lineOfSight,
+                           boolean onGround, boolean criticalWindow) {
+            this(tick, distanceSquared, lineOfSight, onGround, criticalWindow, -1L, -1L);
         }
 
         public Observation {
             if (tick < 0 || tick > RealitySplitEchoDuelState.MAX_COUNTER
                     || !Double.isFinite(distanceSquared) || distanceSquared < 0.0D
-                    || distanceSquared > 1_000_000.0D) {
+                    || distanceSquared > 1_000_000.0D
+                    || ownerStrikeIntervalTicks < -1L
+                    || ownerStrikeIntervalTicks > RealitySplitEchoDuelState.MAX_COUNTER
+                    || ticksSinceOwnerStrike < -1L
+                    || ticksSinceOwnerStrike > RealitySplitEchoDuelState.MAX_COUNTER) {
                 throw new IllegalArgumentException("invalid Echo combat observation");
             }
         }
+
+        /** True when the measured cadence says the owner's next strike is imminent or unknown. */
+        boolean incomingStrikeKnown() { return ticksSinceOwnerStrike >= 0L; }
     }
 
     /** Item values are frozen before any cost is applied so the current action can finish on a break. */
@@ -106,6 +121,8 @@ public final class EchoDuelCombatRuntimeAdapter {
                     || action == Action.RANGED && (itemSlot < 0 || ammoSlot < 0 || actionItem == null)
                     || action == Action.CONSUMABLE && (itemSlot < 0 || ammoSlot != -1 || actionItem == null)
                     || action == Action.SHIELD && (itemSlot < 0 || ammoSlot != -1 || actionItem == null)
+                    || (action == Action.WIND_CHARGE || action == Action.SPLASH)
+                        && (itemSlot < 0 || ammoSlot != -1 || actionItem == null)
                     || action == Action.JUMP && (itemSlot != -1 || ammoSlot != -1 || actionItem != null)) {
                 throw new IllegalArgumentException("invalid Echo combat decision");
             }
@@ -302,7 +319,27 @@ public final class EchoDuelCombatRuntimeAdapter {
             }
 
             int shieldSlot = replica.find(EchoLoadoutState.Kind.SHIELD);
+            // Reactive parry: the copy raises the guard only for a strike that is
+            // actually coming. The cadence is measured from the owner's own
+            // admitted hits, so the window covers a real swing instead of a
+            // fixed clock phase that has nothing to do with the fight.
+            if (shieldSlot >= 0 && observation.distanceSquared()
+                    <= PARRY_RANGE_BLOCKS * PARRY_RANGE_BLOCKS) {
+                Optional<Long> parry = EchoDuelCombatPolicy.parryHoldTicks(observation.tick(),
+                        true, predictedTicksToOwnerStrike(observation),
+                        duel.actor().shieldActiveUntilTick(), duel.actor().shieldCooldownUntilTick());
+                if (parry.isPresent()) {
+                    Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartReactiveShield(
+                            duel.actor(), replica, shieldSlot, replica.revision(), observation.tick(),
+                            parry.get(), COOLDOWNS);
+                    if (actor.isPresent()) {
+                        return decision(duel, baselineReplica, replica, scope, Action.SHIELD, actor.get(),
+                                shieldSlot, -1, replica.item(shieldSlot), intent);
+                    }
+                }
+            }
             if (shieldSlot >= 0 && observation.distanceSquared() <= RANGED_RANGE_BLOCKS * (double) RANGED_RANGE_BLOCKS
+                    && !observation.incomingStrikeKnown()
                     && inProfileWindow(observation.tick(), duel.behaviorStrategy().defensePermille())) {
                 long holdTicks = 5L + 15L * duel.behaviorStrategy().defensePermille() / 1_000L;
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartShield(
@@ -360,6 +397,34 @@ public final class EchoDuelCombatRuntimeAdapter {
                 }
             }
 
+            // A wind charge burst is the copy's own knockback tool: it spends one
+            // carried charge and keeps the fight at range the way its owner did.
+            int chargeSlot = replica.find(EchoLoadoutState.Kind.WIND_CHARGE);
+            if (chargeSlot >= 0 && observation.lineOfSight()
+                    && observation.distanceSquared() <= RANGED_RANGE_BLOCKS * (double) RANGED_RANGE_BLOCKS) {
+                EchoLoadoutState.Item item = replica.item(chargeSlot);
+                Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartWindCharge(
+                        duel.actor(), replica, chargeSlot, replica.revision(), observation.tick(), COOLDOWNS);
+                if (actor.isPresent()) {
+                    return decision(duel, baselineReplica, replica, scope, Action.WIND_CHARGE, actor.get(),
+                            chargeSlot, -1, item, intent);
+                }
+            }
+
+            // A thrown splash bottle is a weapon: the copy lobs one of the bottles
+            // its owner carried, never a bottle it does not have.
+            int splashSlot = replica.find(EchoLoadoutState.Kind.SPLASH_POTION);
+            if (splashSlot >= 0 && observation.lineOfSight()
+                    && observation.distanceSquared() <= RANGED_RANGE_BLOCKS * (double) RANGED_RANGE_BLOCKS) {
+                EchoLoadoutState.Item item = replica.item(splashSlot);
+                Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartSplash(
+                        duel.actor(), replica, splashSlot, replica.revision(), observation.tick(), COOLDOWNS);
+                if (actor.isPresent()) {
+                    return decision(duel, baselineReplica, replica, scope, Action.SPLASH, actor.get(),
+                            splashSlot, -1, item, intent);
+                }
+            }
+
             if (inMeleeRange && meleeSlot >= 0) {
                 EchoLoadoutState.Item item = replica.item(meleeSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartMelee(
@@ -388,6 +453,33 @@ public final class EchoDuelCombatRuntimeAdapter {
     private static long lastPotionTick(ActorState actor) {
         return actor == null ? 0L : Math.max(0L, actor.pendingUseUntilTick()
                 - COOLDOWNS.consumableUseTicks());
+    }
+
+    /**
+     * Ticks until the owner's next strike, from the cadence it has actually kept.
+     *
+     * <p>Zero means "imminent or unknown": the copy then guards as if the next
+     * swing can land now, which is what a player does in a clinch before they
+     * have read their opponent's rhythm.</p>
+     *
+     * @return a bounded non-negative prediction, or -1 when the owner has never struck
+     */
+    static long predictedTicksToOwnerStrike(Observation observation) {
+        if (observation == null) return -1L;
+        long since = observation.ticksSinceOwnerStrike();
+        if (since < 0L) return -1L;
+        long interval = observation.ownerStrikeIntervalTicks();
+        if (interval <= 0L) return 0L;
+        long phase = since % interval;
+        return phase == 0L ? 0L : interval - phase;
+    }
+
+    /**
+     * BRAIN-014: a copy lowers its body to stalk when it closes on an owner it
+     * cannot see, and stands up again the moment the fight is in the open.
+     */
+    public static boolean sneaking(MovementIntent intent, boolean lineOfSight) {
+        return intent == MovementIntent.APPROACH && !lineOfSight;
     }
 
     private static Optional<Decision> decision(DuelRecord current, EchoLoadoutState baselineReplica,

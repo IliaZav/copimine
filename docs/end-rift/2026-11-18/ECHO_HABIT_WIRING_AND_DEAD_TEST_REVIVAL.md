@@ -117,6 +117,12 @@ starting to eat is a commitment the copy makes on purpose, and the health it is
 about to regain is granted at `pendingUseUntilTick`, not on the spot. Do not
 "fix" that the same way.
 
+The freeze was not cosmetic. `CopiMineEndEvent.driveNamedEchoMovement(...)` is
+called with `decision.intent()` for every action kind, and its first branch is
+`if (intent == HOLD) carrier.getPathfinder().stopPathfinding()`. A `HOLD` from
+the shield short-circuit therefore actively cancelled the copy's path for the
+whole parry, not just skipped one steering update.
+
 ## 3. Dead coverage that was revived
 
 `tests/harness/me/copimine/endevent/runtime/wave7/EchoWoundedRetreatTest.java`

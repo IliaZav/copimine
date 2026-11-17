@@ -14,14 +14,24 @@ def model_probe(tmp_path_factory):
     f.write_text(r'''import java.util.*;
 import me.copimine.endevent.domain.BossSpellGeometryPolicy;
 public class SpellModelProbe {
- static class Vector {Vector multiply(double m){return this;}}
+ static class Vector {
+  double x,y,z;Vector(){}Vector(double x,double y,double z){this.x=x;this.y=y;this.z=z;}
+  Vector multiply(double m){x*=m;y*=m;z*=m;return this;}double lengthSquared(){return x*x+y*y+z*z;}
+  Vector subtract(Vector o){return new Vector(x-o.x,y-o.y,z-o.z);}
+  public Vector clone(){return new Vector(x,y,z);}
+ }
  static class Location {
+  Vector direction=new Vector(0,0,1);
   World getWorld(){return WORLD;}public Location clone(){return new Location();}
   Location add(double x,double y,double z){return this;}Location add(Vector v){return this;}
-  Vector getDirection(){return new Vector();}
+  Vector getDirection(){return direction;}void setDirection(Vector v){direction=v;}
+  Vector toVector(){return new Vector();}
  }
- static class Entity {UUID id=UUID.randomUUID();boolean valid=true,dead;UUID getUniqueId(){return id;}boolean isValid(){return valid;}boolean isDead(){return dead;}void remove(){valid=false;}}
+ static class Entity {UUID id=UUID.randomUUID();boolean valid=true,dead;UUID getUniqueId(){return id;}boolean isValid(){return valid;}boolean isDead(){return dead;}void remove(){valid=false;}
+  void teleport(Location l){}}
  static class LivingEntity extends Entity {World getWorld(){return WORLD;}Location getLocation(){return new Location();}}
+ // A cast body is only shown to the event audience; the probe publishes to none.
+ static class Player {boolean online=true;void showEntity(Object plugin,Entity e){}}
  static class Display extends Entity {
   enum Billboard {FIXED}record Brightness(int a,int b){}
  }
@@ -30,7 +40,11 @@ public class SpellModelProbe {
   void setItemStack(Object v){}void setBrightness(Brightness b){}void setItemDisplayTransform(ItemDisplayTransform t){}
   void setBillboard(Billboard b){}void setViewRange(float v){}void setDisplayWidth(float v){}void setDisplayHeight(float v){}
   void setTeleportDuration(int t){}void setInterpolationDuration(int t){}void setGravity(boolean b){}void setInvulnerable(boolean b){}
-  void setPersistent(boolean b){}void setShadowRadius(float v){}
+  void setPersistent(boolean b){}void setShadowRadius(float v){}void setVisibleByDefault(boolean v){}
+ }
+ static class BossSpellPresentationEffects {
+  static void frame(Location at,Vector axis,List<BossSpellGeometryPolicy.Point> points,int rgb,
+    List<Player> viewers,java.util.function.BiPredicate<Player,Location> allowed){}
  }
  static class World {List<ItemDisplay> created=new ArrayList<>();
   <T> T spawn(Location at,Class<T> type,java.util.function.Consumer<T> configure){
@@ -47,11 +61,26 @@ public class SpellModelProbe {
  static final List<BukkitTask> TASKS=new ArrayList<>();
  static void tick(){for(var t:List.copyOf(TASKS))if(!t.cancelled)t.callback.run();}
  static class Registry {boolean owns(long value){return value==7;}}
+ static class NamespacedKey {NamespacedKey(Object owner,String key){}}
  Registry taskRegistry=new Registry();long generation=7,bossCastSequence=5;String eventId="event",EVENT_KIND_DISPLAY="display";
  LivingEntity boss=new LivingEntity();UUID bossUuid=boss.id;boolean failTag,move=true;
  Set<UUID> bossSpellModelIds=new HashSet<>();Map<UUID,Entity> owned=new HashMap<>();
  static final int MAX_MINI_BOSS_SPELL_MODELS=8;
  Set<UUID> miniBossSpellModelIds=new HashSet<>();
+ // The Wave 7 role tags a caster carries, read by the miniboss body lease.
+ NamespacedKey keyWave=new NamespacedKey(this,"wave"),keyTrialRole=new NamespacedKey(this,"role");
+ // Aim locks frozen at the telegraph: the body follows the committed strike axis.
+ record TrialAimLock(long generation,String event,long cast,Location point,Map<UUID,Location> fangMarks){}
+ final Map<UUID,TrialAimLock> trialAimLocks=new HashMap<>();
+ // The probe models no live Wave 7 trial runtime and no viewers.
+ boolean isRealitySplitTrialRuntimeActive(){return false;}
+ boolean isTrialViewer(Entity actor,Player viewer,Location at){return true;}
+ List<Player> eventAudience(){return List.of();}
+ int readInt(Entity entity,NamespacedKey key,int fallback){return fallback;}
+ String readString(Entity entity,NamespacedKey key){return null;}
+ boolean ownedBySession(Entity entity,String expectedEventId,long expectedGeneration){
+  return Objects.equals(eventId,expectedEventId)&&generation==expectedGeneration;}
+ void retireBossChestStrikeModel(){}
  Object overlayItem(int id,String name){return id;}
  boolean isOfficialEntity(Entity e){return false;}
  void tag(Entity entity,String kind,int wave,boolean official){owned.put(entity.id,entity);if(failTag)throw new IllegalStateException("tag failed after ownership insert");}

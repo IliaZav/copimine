@@ -49,6 +49,9 @@ void renderWave7AbilityEffect(Object a,Object b,String c){}
     boolean visible=false,eligible=true;int steps,attacks;
     boolean isCurrentRealitySplitTrialTarget(LivingEntity a,Player p){return eligible;}
     boolean hasNamedTrialLineOfSight(Location a,Location b){return visible;}
+    // The strike axis comes from the frozen aim; this probe has no lock ledger,
+    // so the authored fallback (the target's eye) is what production would use.
+    Location namedTrialAim(LivingEntity a,Player p){return p.getEyeLocation();}
     boolean launchNamedTrialArrow(LivingEntity a,Player t,Wave7NamedTrialActorPolicy.Attack x,float s,float spread,boolean g,boolean spear){attacks++;return true;}
     // One fan of the real spread burst: the production method fires
     // MARKSMAN_ARROWS_PER_FAN arrows per fan, so the probe counts them.
@@ -85,6 +88,10 @@ def fangs_probe(tmp_path_factory):
     # transaction, not target selection, and the probe supplies one victim.
     method = "\n".join(extract_method(source, signature) for signature in (
         "private boolean spawnNamedTrialFangs(", "private FangLineOutcome spawnFangLine(",
+        # The guardian rebuild resolves a fang cast from the marks frozen at the
+        # telegraph, so the probe executes the real lock writer instead of
+        # inventing a victim list the production cast would never read.
+        "private void lockNamedTrialAim(",
         "private boolean tagNamedTrialProjectile("))
     # Replace only the API type's qualification, not any production branch.
     method = method.replace("org.bukkit.entity.EvokerFangs", "EvokerFangs")
@@ -128,7 +135,15 @@ public class ArchmageFangsProbe {
         Entity spawnEntity(Location at,EntityType type){var f=new EvokerFangs();if(++spawns==cancelledAt)f.valid=false;spawned.put(f.id,f);return f;}
     }
     static class Scheduler {int tasks;void runTaskLater(Object plugin,Runnable callback,long ticks){tasks++;}}
-    static class Bukkit {static final Scheduler scheduler=new Scheduler();static Scheduler getScheduler(){return scheduler;}}
+    static class Bukkit {
+        static final Scheduler scheduler=new Scheduler();
+        static final Set<Player> players=new LinkedHashSet<>();
+        static Scheduler getScheduler(){return scheduler;}
+        // The fang cast resolves its victims from the frozen aim marks through
+        // Bukkit.getPlayer, exactly like production.
+        static Player getPlayer(UUID id){return players.stream()
+            .filter(p->p.id.equals(id)).findFirst().orElse(null);}
+    }
     enum Decision { ALLOW }
     static class Admission {Decision launch(UUID projectile,UUID actor){return Decision.ALLOW;}}
     class Chambers {
@@ -150,6 +165,17 @@ public class ArchmageFangsProbe {
     boolean hasNamedTrialLineOfSight(Location a,Location b){return true;}
     Vector horizontalDirection(Location a,Location b){return new Vector(1,0,0);}
     boolean isSafeCombatEntityLocation(Location l,LivingEntity a){return ++checks!=blockedAt;}
+    // --- named-trial aim lock -------------------------------------------------
+    // Production resolves a fang cast from the marks frozen at the telegraph, so
+    // the probe reproduces that ledger: a cast with no lock spawns no fangs, and a
+    // lock names exactly the victims whose lines are painted.
+    record TrialAimLock(long generation,UUID event,long cast,Location point,
+            Map<UUID,Location> fangMarks){}
+    final Map<UUID,TrialAimLock> trialAimLocks=new HashMap<>();
+    Location namedTrialAim(LivingEntity a,Player p){
+        TrialAimLock lock=trialAimLocks.get(a.getUniqueId());
+        return lock!=null?lock.point().clone():p.getEyeLocation();
+    }
     // Copied verbatim from production: the probe compiles a slice of the real
     // method bodies, so every type they mention must exist here.
     enum FangLineOutcome { PAINTED, MISSED, BROKEN_OWNERSHIP }
@@ -164,7 +190,13 @@ public class ArchmageFangsProbe {
         p.blockedAt=mode.equals("blocked-first")?1:mode.equals("blocked-second")?2:0;
         p.world.cancelledAt=mode.equals("cancelled-first")?1:mode.equals("cancelled-second")?2:0;
         p.tagFailure=mode.equals("broken-ownership");
-        boolean handled=p.spawnNamedTrialFangs(new LivingEntity(p.world),new Player(p.world),Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_FANGS);
+        var actor=new LivingEntity(p.world);var target=new Player(p.world);
+        Bukkit.players.add(target);
+        // The telegraph freezes the victim set; the cast paints the lines frozen
+        // there. Without that lock production refuses to spawn anything, so the
+        // probe arms it through the real writer.
+        p.lockNamedTrialAim(actor,target,Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_FANGS,0L);
+        boolean handled=p.spawnNamedTrialFangs(actor,target,Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_FANGS);
         long live=p.world.spawned.values().stream().filter(Entity::isValid).count();
         if(mode.startsWith("blocked")||mode.startsWith("cancelled")){
             if(!handled)throw new AssertionError("Blocked/cancelled fang spawn is an ordinary miss, not WAVE7_NAMED_ACTOR_RUNTIME_FAILED");

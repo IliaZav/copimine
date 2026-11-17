@@ -134,6 +134,10 @@ public class WaveAbilityAdmissionProbe {
     boolean teleportCombatEntity(Entity e,Location l){return true;}
     double distanceSquaredToSegment(Vector p,Vector a,Vector b){return 0;}
     void spawnEventParticle(Location l,Particle p,int count,double x,double y,double z,double speed){}
+    // The named-trial strike geometry reads the frozen aim lock; the probe's
+    // lock ledger is empty, so the production fallback (the target's eye) is the
+    // authored answer and that is what this stub returns.
+    Location namedTrialAim(LivingEntity actor,Player target){return target.getEyeLocation().clone();}
 ''' + methods + r'''
     static void require(boolean pass,String reason){if(!pass)throw new AssertionError(reason);}
     public static void main(String[] args){

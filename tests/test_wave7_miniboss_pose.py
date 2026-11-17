@@ -223,6 +223,9 @@ STATE_STUBS = {
         public final class EndRiftTentacleAnimator {
             public static long durationTicks(String animationId) { return 0L; }
             public static boolean sameClip(String a, String b) { return a != null && a.equals(b); }
+            // Attacks that flow into each other are one continuous clip, so the
+            // state machine must not restart the pose at the boundary.
+            public static boolean continuousAttackTransition(String a, String b) { return false; }
         }
         """,
     "EndRiftTentaclePose.java": """
@@ -301,17 +304,23 @@ def test_the_client_state_machine_really_reaches_the_rig_with_hit_and_death(tmp_
     package = tmp_path / "src" / "me" / "copimine" / "client"
     package.mkdir(parents=True)
     protocol = ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol"
-    for name in ("EndEventClientState.java", "EndEventPacket.java", "BossAnimationId.java"):
+    for name in ("EndEventClientState.java", "EndEventPacket.java", "BossAnimationId.java",
+                 "RiftRamVisualPolicy.java"):
         (package / name).write_bytes((CLIENT / name).read_bytes())
     for name, body in STATE_STUBS.items():
         (package / name).write_text(textwrap.dedent(body), encoding="utf-8")
 
     classes = tmp_path / "classes"
     classes.mkdir()
+    # The trial and Guardian actor clocks are real protocol records: compile the
+    # shipped types so the state machine is proven against the wire format the
+    # server actually encodes, not a re-declared stand-in.
     compiled = subprocess.run(
         ["javac", "-d", str(classes)]
         + [str(path) for path in sorted(package.glob("*.java"))]
-        + [str(protocol / "BossAnimationPlayback.java")],
+        + [str(protocol / name) for name in ("BossAnimationPlayback.java",
+                                            "Wave7AnimationFrame.java",
+                                            "GuardianActorFrame.java")],
         capture_output=True, text=True,
     )
     assert compiled.returncode == 0, compiled.stderr
@@ -447,5 +456,22 @@ def test_no_pose_is_sent_on_every_tick():
     plugin = PLUGIN.read_text(encoding="utf-8")
     body = plugin[plugin.index("private void publishWave7Pose(") :]
     body = body[: body.index("\n    }")]
-    assert "if (pose == previous) return;" in body
+    # A repeated pose is refused for as long as its own lease is still running:
+    # an idle tick therefore costs nothing, while a pose that is still live
+    # keeps its remaining time on the rig instead of being re-stamped.
+    repeat_guard = "if (pose == previous && now < wave7PoseLeaseEnds.getOrDefault(actorId, 0L)) return;"
+    assert repeat_guard in body, body
+    # The guard has to sit before the send, or the packet is already emitted;
+    # and the method may only carry one send site at all.
+    assert body.index(repeat_guard) < body.index("sendWaveMobPose(")
+    assert body.count("sendWaveMobPose(") == 1
     assert "wave7MinibossPoses.put(actorId, pose);" in body
+    # The ledger is written only after the guards, so a refused pose cannot
+    # overwrite the pose that is actually being drawn.
+    assert body.index("wave7MinibossPoses.put(actorId, pose);") > body.index(repeat_guard)
+    # A death is terminal: no later pose may replace the collapse...
+    assert "if (previous == Wave7MinibossPosePolicy.Pose.DEATH) return;" in body
+    # ...and a flinch or release holds its own lease against a downgrade, so
+    # the player always sees the reaction they caused.
+    assert "previous == Wave7MinibossPosePolicy.Pose.HIT || previous == Wave7MinibossPosePolicy.Pose.RELEASE" in body
+    assert "now < wave7PoseLeaseEnds.getOrDefault(actorId, 0L)) return;" in body

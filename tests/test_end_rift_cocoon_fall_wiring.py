@@ -79,8 +79,15 @@ def test_the_landing_plays_once_and_reads_as_a_landing():
     )
     assert "renderCocoonLanding(" in tick
     landing = body("private void renderCocoonLanding(")
-    assert "spawnParticle(" in landing and "playSound(" in landing, (
+    # Contract 22.1 asks for dust, a shockwave and a sound at the landing. All
+    # three must go out through the audience-scoped helpers, so a landing is
+    # never drawn for players who are not in the encounter.
+    assert "spawnEventParticle(" in landing and "playEncounterAbilityAudioAt(" in landing, (
         "contract 22.1 asks for dust/shockwave/sound at the landing"
+    )
+    assert "Particle.POOF" in landing, "the landing dust must be an authored particle"
+    assert "playBossImpactPresentation(" in landing and "BossImpactGeometryPolicy.Kind.SLAM" in landing, (
+        "the landing must reuse the shared slam shockwave instead of inventing one"
     )
 
 

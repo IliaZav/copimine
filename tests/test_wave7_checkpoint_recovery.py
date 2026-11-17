@@ -51,7 +51,8 @@ public class Wave7CheckpointProbe {
     static void require(boolean value, String text) { if(!value) throw new AssertionError(text); }
     public static void main(String[] args) {
         var players = List.of(new UUID(0,1),new UUID(0,2));
-        var assignment = ChamberIsolationPolicy.assign(players);
+        // Wave 7's latest approved topology is one open arena for the whole party.
+        var assignment = ChamberIsolationPolicy.assignOpenArena(players);
         var state = new LinkedHashMap<>(RealitySplitChamberSnapshot.encode(73,assignment,Set.of(0),Set.of()));
         var trials = new RealitySplitTrialController();
         trials.begin(73,assignment);
@@ -62,20 +63,40 @@ public class Wave7CheckpointProbe {
         require(legacy.phase==EventPhase.RECOVERY_REQUIRED && !legacy.realitySplitTrialController.owns(73),
                 "legacy checkpoint cannot become the new approved official trials");
         var named = new RealitySplitTrialController();
-        named.beginNamed(UUID.fromString(legacy.eventId),73,assignment,List.of(
-                RealitySplitTrialController.NamedTrial.WARDEN,RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN));
+        // On the open arena the layout is the four-stage route while only the
+        // current stage occupies the single physical room.
+        named.beginNamed(UUID.fromString(legacy.eventId),73,assignment,
+                RealitySplitTrialController.sequentialRoute());
         named.completeNamedActor(UUID.fromString(legacy.eventId),73,0,RealitySplitTrialController.NamedTrial.WARDEN);
-        state = new LinkedHashMap<>(RealitySplitChamberSnapshot.encode(73,assignment,Set.of(0),Set.of(),
-                Set.of(new RealitySplitChamberController.Passage(0,1))));
+        state = new LinkedHashMap<>(RealitySplitChamberSnapshot.encode(73,assignment,Set.of(0),Set.of()));
         state.putAll(RealitySplitTrialSnapshot.encodeNamed(named.namedSnapshot()));
         var valid = new Wave7CheckpointProbe();
         valid.restoreWave7Checkpoint(new EventSnapshot(Map.copyOf(state)),false);
         require(valid.phase==EventPhase.WAVE_7 && valid.realitySplitTrialController.namedTrial(0).stage()==RealitySplitTrialController.Stage.COMPLETE,
                 "valid named checkpoint keeps its sampled layout and completed trial");
-        require(valid.realitySplitChamberController.openingPassages().equals(
-                        Set.of(new RealitySplitChamberController.Passage(0,1)))
-                        && !valid.realitySplitChamberController.boundaryOpen(0,1),
-                "a valid OPENING checkpoint restores intent without granting room access");
+        // Latest approved Wave 7 topology: the whole party shares one open arena,
+        // so a legitimate checkpoint restores exactly one sector with no passage.
+        require(valid.realitySplitChamberController.assignment().chamberCount()==1
+                        && valid.realitySplitChamberController.assignment().chamberByPlayer().values().stream()
+                            .allMatch(chamber -> chamber==0)
+                        && valid.realitySplitChamberController.openPassages().isEmpty()
+                        && valid.realitySplitChamberController.openingPassages().isEmpty(),
+                "the official Wave 7 checkpoint restores one open arena and no internal passage");
+        // A durable two-sector checkpoint is legacy now: it must be retained for an
+        // explicit migration instead of being silently collapsed onto the arena.
+        var partitionedAssignment = ChamberIsolationPolicy.assign(players);
+        var partitioned = new RealitySplitTrialController();
+        partitioned.beginNamed(UUID.fromString(legacy.eventId),73,partitionedAssignment,List.of(
+                RealitySplitTrialController.NamedTrial.WARDEN,RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN));
+        var partitionedState = new LinkedHashMap<>(RealitySplitChamberSnapshot.encode(
+                73,partitionedAssignment,Set.of(),Set.of()));
+        partitionedState.putAll(RealitySplitTrialSnapshot.encodeNamed(partitioned.namedSnapshot()));
+        var legacyPartition = new Wave7CheckpointProbe();
+        legacyPartition.restoreWave7Checkpoint(new EventSnapshot(Map.copyOf(partitionedState)),false);
+        require(legacyPartition.phase==EventPhase.RECOVERY_REQUIRED
+                        && !legacyPartition.realitySplitChamberController.owns(73)
+                        && legacyPartition.recoveryReason.contains("WAVE7_LEGACY_PARTITIONS_REQUIRE_EXPLICIT_MIGRATION"),
+                "a durable partitioned Wave 7 checkpoint must require explicit migration");
         var recovery = new Wave7CheckpointProbe();
         recovery.phase=EventPhase.RECOVERY_REQUIRED; recovery.activeWave=0; recovery.finalSealBarrierHold=false;
         recovery.wave7RecoveryCheckpoint=Map.copyOf(state);
@@ -85,50 +106,65 @@ public class Wave7CheckpointProbe {
         require(recovery.phase==EventPhase.RECOVERY_REQUIRED
                         && recovery.realitySplitChamberController.owns(73)
                         && recovery.isWave7RecoveryCheckpointActive()
-                        && recovery.realitySplitChamberController.openingPassages().equals(
-                            Set.of(new RealitySplitChamberController.Passage(0,1))),
-                "restart recovery retains the valid OPENING checkpoint for a closed wall rebuild");
+                        && recovery.realitySplitChamberController.assignment().chamberCount()==1
+                        && recovery.realitySplitChamberController.openingPassages().isEmpty()
+                        && recovery.realitySplitChamberController.openPassages().isEmpty(),
+                "restart recovery rebuilds the one-arena checkpoint with no interior passage to replay");
         require(!recovery.shouldRestoreWave7RecoveryCheckpoint(Map.of("wave2.cycles","1")),
                 "unrelated recovery checkpoints must not be interpreted as Wave 7");
         var incompleteNamed = new RealitySplitTrialController();
-        incompleteNamed.beginNamed(UUID.fromString("00000000-0000-0000-0000-000000000073"),73,assignment,List.of(
-                RealitySplitTrialController.NamedTrial.WARDEN,RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN));
-        var unauthorizedOpeningState = new LinkedHashMap<>(RealitySplitChamberSnapshot.encode(73,assignment,Set.of(),Set.of(),
-                Set.of(new RealitySplitChamberController.Passage(0,1))));
+        incompleteNamed.beginNamed(UUID.fromString("00000000-0000-0000-0000-000000000073"),73,assignment,
+                RealitySplitTrialController.sequentialRoute());
+        // A one-arena layout has no legal interior boundary at all, so the passage
+        // transaction is unreachable on the official path. The codec must refuse to
+        // produce such a snapshot rather than encode a meaningless passage.
+        boolean encodedPassageRefused = false;
+        try {
+            RealitySplitChamberSnapshot.encode(73,assignment,Set.of(),
+                    Set.of(new RealitySplitChamberController.Passage(0,1)));
+        } catch (IllegalArgumentException expected) {
+            encodedPassageRefused = true;
+        }
+        require(encodedPassageRefused,
+                "a one-arena Wave 7 snapshot cannot encode an interior passage");
+        var unauthorizedOpeningState = new LinkedHashMap<>(RealitySplitChamberSnapshot.encode(73,assignment,Set.of(),Set.of()));
+        unauthorizedOpeningState.put("reality-split.opening","0:1");
         unauthorizedOpeningState.putAll(RealitySplitTrialSnapshot.encodeNamed(incompleteNamed.namedSnapshot()));
         var unauthorizedOpening = new Wave7CheckpointProbe();
         unauthorizedOpening.restoreWave7Checkpoint(new EventSnapshot(Map.copyOf(unauthorizedOpeningState)),false);
         require(unauthorizedOpening.phase==EventPhase.RECOVERY_REQUIRED
-                        && !unauthorizedOpening.realitySplitChamberController.owns(73),
-                "official OPENING intent without an adjacent completed room must fail closed");
-        var unauthorizedOpenState = new LinkedHashMap<>(RealitySplitChamberSnapshot.encode(73,assignment,Set.of(),
-                Set.of(new RealitySplitChamberController.Passage(0,1))));
+                        && !unauthorizedOpening.realitySplitChamberController.owns(73)
+                        && unauthorizedOpening.recoveryReason.contains("INVALID_WAVE7_CHECKPOINT"),
+                "a hand-crafted OPENING passage on the one-arena layout must fail closed");
+        var unauthorizedOpenState = new LinkedHashMap<>(RealitySplitChamberSnapshot.encode(73,assignment,Set.of(),Set.of()));
+        unauthorizedOpenState.put("reality-split.open","0:1");
         unauthorizedOpenState.putAll(RealitySplitTrialSnapshot.encodeNamed(incompleteNamed.namedSnapshot()));
         var unauthorizedOpen = new Wave7CheckpointProbe();
         unauthorizedOpen.restoreWave7Checkpoint(new EventSnapshot(Map.copyOf(unauthorizedOpenState)),false);
         require(unauthorizedOpen.phase==EventPhase.RECOVERY_REQUIRED
                         && !unauthorizedOpen.realitySplitChamberController.owns(73),
-                "official OPEN passage without an adjacent completed room must fail closed");
-        var finalSealState = new LinkedHashMap<>(RealitySplitChamberSnapshot.encode(73,assignment,Set.of(0,1),Set.of()));
+                "a hand-crafted OPEN passage on the one-arena layout must fail closed");
+        var finalSealState = new LinkedHashMap<>(RealitySplitChamberSnapshot.encode(73,assignment,Set.of(0),Set.of()));
         finalSealState.put("final-seal-wave","7");
         var finalSeal = new Wave7CheckpointProbe();
         finalSeal.restoreWave7Checkpoint(new EventSnapshot(Map.copyOf(finalSealState)),false);
         require(finalSeal.phase==EventPhase.WAVE_7 && finalSeal.realitySplitChamberController.owns(73)
-                        &&finalSeal.realitySplitChamberController.completedChambers().equals(Set.of(0,1))
+                        &&finalSeal.realitySplitChamberController.completedChambers().equals(Set.of(0))
                         &&!finalSeal.realitySplitTrialController.owns(73),
-                "completed final-seal checkpoint restores its rooms without inventing active trial state");
+                "completed final-seal checkpoint restores its arena without inventing active trial state");
         var openingFinalSealState = new LinkedHashMap<>(finalSealState);
         openingFinalSealState.put("reality-split.opening", "0:1");
         var openingFinalSeal = new Wave7CheckpointProbe();
         openingFinalSeal.restoreWave7Checkpoint(new EventSnapshot(Map.copyOf(openingFinalSealState)),false);
         require(openingFinalSeal.phase==EventPhase.RECOVERY_REQUIRED,
-                "final-seal checkpoint cannot replay a Wave 7 opening intent into its contained room");
-        var incompleteFinalSealState = new LinkedHashMap<>(RealitySplitChamberSnapshot.encode(73,assignment,Set.of(0),Set.of()));
+                "final-seal checkpoint cannot replay a Wave 7 passage intent into the sealed arena");
+        var incompleteFinalSealState = new LinkedHashMap<>(
+                RealitySplitChamberSnapshot.encode(73,assignment,Set.of(),Set.of()));
         incompleteFinalSealState.put("final-seal-wave","7");
         var incompleteFinalSeal = new Wave7CheckpointProbe();
         incompleteFinalSeal.restoreWave7Checkpoint(new EventSnapshot(Map.copyOf(incompleteFinalSealState)),false);
         require(incompleteFinalSeal.phase==EventPhase.RECOVERY_REQUIRED,
-                "final-seal marker cannot bypass incomplete room completion receipts");
+                "final-seal marker cannot bypass an incomplete arena completion receipt");
         var fourPlayerAssignment = ChamberIsolationPolicy.assign(List.of(
                 new UUID(0,1),new UUID(0,2),new UUID(0,3),new UUID(0,4)));
         var oversizedChamberCountState = new LinkedHashMap<>(RealitySplitChamberSnapshot.encode(
@@ -180,14 +216,20 @@ public class Wave7CheckpointProbe {
         disposable.restoreWave7Checkpoint(new EventSnapshot(Map.copyOf(state)),true);
         require(disposable.phase==EventPhase.RECOVERY_REQUIRED && !disposable.testWaveFrontVisualMode,
                 "disposable checkpoints use the same failure policy");
-        state.put("reality-split-trial.room.1","RIFT_REFLECTION:ACTIVE:0:3");
         state.put("reality-split-trial.room.0","WARDEN:ACTIVE:0:1");
+        // Chamber completion receipts and the named trial's completed stages must
+        // agree; a checkpoint that claims a completed stage without the matching
+        // arena receipt has to fail closed instead of publishing a cleared arena.
+        var disagreementState = new LinkedHashMap<>(
+                RealitySplitChamberSnapshot.encode(73,assignment,Set.of(),Set.of()));
+        disagreementState.putAll(RealitySplitTrialSnapshot.encodeNamed(named.namedSnapshot()));
         var inconsistent = new Wave7CheckpointProbe();
-        inconsistent.restoreWave7Checkpoint(new EventSnapshot(Map.copyOf(state)),false);
+        inconsistent.restoreWave7Checkpoint(new EventSnapshot(Map.copyOf(disagreementState)),false);
         require(inconsistent.phase==EventPhase.RECOVERY_REQUIRED,
-                "completed passage graph and active trial conflict must enter recovery");
-        require(!inconsistent.realitySplitChamberController.owns(73),
-                "conflicting completion receipts cannot publish a cleared room");
+                "completion receipts that disagree with the completed trial stages must enter recovery");
+        require(!inconsistent.realitySplitChamberController.owns(73)
+                        && !inconsistent.realitySplitTrialController.owns(73),
+                "conflicting completion receipts cannot publish a cleared arena");
     }
 }
 ''', encoding="utf-8")

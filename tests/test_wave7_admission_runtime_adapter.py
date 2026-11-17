@@ -52,7 +52,13 @@ public class Wave7AdmissionRuntimeChecks {
     static Wave7AdmissionRuntimeAdapter adapter;
 
     static void boot() {
-        chambers.restore(GEN, ASSIGNMENT, Set.of(), Set.of());
+        // These checks deliberately model a legacy four-sector durable checkpoint
+        // so the room-graph and admission semantics can be exercised. The
+        // official restore hard-refuses any chamberCount other than one (Wave 7
+        // is one open arena), so the disposable local probe uses the documented
+        // exemption; the refusal itself is covered by
+        // test_wave7_passage_commit.py.
+        chambers.restoreDisposable(GEN, ASSIGNMENT, Set.of(), Set.of());
         trials.beginNamed(EVENT, GEN, ASSIGNMENT, LAYOUT);
         rooms.put(A, 0); rooms.put(B, 1); rooms.put(C, 2); rooms.put(D, 3); rooms.put(E, 1);
         chambers.assignEntity(GEN, WARDEN, 0);
@@ -147,7 +153,7 @@ public class Wave7AdmissionRuntimeChecks {
                 var shot = id(203);
                 require(adapter.launch(shot, MARKSMAN) == Decision.ALLOW, "launch in the live attempt");
                 gen[0] = GEN + 1;
-                chambers.restore(GEN + 1, ASSIGNMENT, Set.of(), Set.of());
+                chambers.restoreDisposable(GEN + 1, ASSIGNMENT, Set.of(), Set.of());
                 trials.beginNamed(EVENT, GEN + 1, ASSIGNMENT, LAYOUT);
                 chambers.assignEntity(GEN + 1, MARKSMAN, 2);
                 require(adapter.damage(shot, MARKSMAN, C) == Decision.DENY,
@@ -157,7 +163,7 @@ public class Wave7AdmissionRuntimeChecks {
                 var shot = id(204);
                 require(adapter.launch(shot, MARKSMAN) == Decision.ALLOW, "legal original launch");
                 gen[0] = GEN + 1;
-                chambers.restore(GEN + 1, ASSIGNMENT, Set.of(), Set.of());
+                chambers.restoreDisposable(GEN + 1, ASSIGNMENT, Set.of(), Set.of());
                 trials.beginNamed(EVENT, GEN + 1, ASSIGNMENT, LAYOUT);
                 require(adapter.damage(shot, MARKSMAN, C) == Decision.DENY,
                         "an old owned projectile cannot become unrelated when its shooter disappears");
@@ -174,7 +180,7 @@ public class Wave7AdmissionRuntimeChecks {
             case "legacy-ignored" -> {
                 var legacyChambers = new RealitySplitChamberController();
                 var legacyTrials = new RealitySplitTrialController();
-                legacyChambers.restore(GEN, ASSIGNMENT, Set.of(), Set.of());
+                legacyChambers.restoreDisposable(GEN, ASSIGNMENT, Set.of(), Set.of());
                 legacyTrials.begin(GEN, ASSIGNMENT);
                 legacyChambers.assignEntity(GEN, WARDEN, 0);
                 var legacy = new Wave7AdmissionRuntimeAdapter(legacyChambers, legacyTrials,

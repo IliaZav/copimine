@@ -92,6 +92,10 @@ public class ArchmageStepPermitProbe {
     boolean isRealitySplitDestinationAllowed(UUID owner,Location destination,ChamberIsolationPolicy.Assignment a){return true;}
     boolean isSafeCombatEntityLocation(Location destination,Entity actor){return true;}
     boolean hasNamedTrialLineOfSight(Location from,Location to){return true;}
+    // The production Step aims along the cast's committed aim point (see
+    // namedTrialAim in CopiMineEndEvent); the probe resolves it to the live
+    // eye so the Step destination request stays well-defined.
+    Location namedTrialAim(LivingEntity actor,Player target){return target.getEyeLocation();}
     void spawnEventParticle(Location at,Particle particle,int count,double x,double y,double z,double speed){}
     boolean hasValidPermitFor(UUID id){
         return BossTeleportPermitPolicy.accept(combatTeleportPermits.get(id),eventId,generation,

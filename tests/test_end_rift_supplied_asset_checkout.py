@@ -23,7 +23,25 @@ def test_supplied_guardian_json_bytes_survive_windows_checkout(tmp_path):
     assert extra in supplied, "new authored transition must survive checkout too"
     for name in ("cocoon_fall", "cocoon_land", "cast_charge", "cast_release", "cast_recovery", "final_strike"):
         assert ASSETS / f"animations/{name}.animation.json" in supplied
-    assert len(supplied) == 15, "exercise geometry, seven supplied clips, transition, fall/landing and three cast beats"
+    # Enumerate the authored inventory explicitly. A bare count drifted (it still
+    # said 15 after the spell rigs, the transition, fall/landing and the cast beats
+    # landed), which would have let a silent removal pass as an "adjustment".
+    expected = {ASSETS / "geometry.json"} | {
+        ASSETS / "animations" / f"{name}.json" for name in (
+            "cast_charge.animation", "cast_recovery.animation", "cast_release.animation",
+            "cocoon_fall.animation", "cocoon_land.animation", "dying",
+            "final_strike.animation", "hurt", "idle", "phase_shift.animation",
+            "running", "spell_arena_inferno.animation", "spell_rift_arrows.animation",
+            "spell_rift_projectile.animation", "spell_summon_servants.animation",
+            "spell_void_blast.animation", "spell_void_mark.animation", "swipe",
+            "udar_iz_grudi", "udar_po_zemle.animation",
+        )
+    }
+    assert set(supplied) == expected, (
+        "the supplied Guardian JSON inventory changed; "
+        f"missing={sorted(str(path) for path in expected - set(supplied))} "
+        f"unexpected={sorted(str(path) for path in set(supplied) - expected)}"
+    )
     for arguments in (
         ["init", "-q"], ["config", "core.autocrlf", "true"],
         ["config", "core.longpaths", "true"], ["add", "."],

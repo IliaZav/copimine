@@ -493,4 +493,23 @@ def test_the_wave7_renderer_spawns_the_mesh_body_and_not_only_particles():
     # A floor-anchored body belongs on the target's mark, not on the caster,
     # and the anchor decides which -- same rule as the boss and miniboss paths.
     assert "BossSpellGeometryPolicy.anchor(" in render
-    assert "Anchor.LOCKED_FLOOR" in render
+    anchor = render[render.index("BossSpellGeometryPolicy.anchor("):]
+    assert "BossSpellGeometryPolicy.Beat.CHARGE" in anchor, (
+        "the body anchor must be resolved from the authored charge beat"
+    )
+    # The anchor is consumed by an exhaustive switch, so the floor case must
+    # exist as a real branch rather than merely be named somewhere.
+    assert "case LOCKED_FLOOR ->" in render, (
+        "a floor-anchored body must have its own anchor branch"
+    )
+    floor_branch = render[render.index("case LOCKED_FLOOR ->"):]
+    floor_branch = floor_branch[: floor_branch.index("case FEET")]
+    # ...and it must land on the target's mark, falling back to the caster's
+    # feet only when there is no mark at all.
+    assert "impact" in floor_branch and "feet" in floor_branch, floor_branch
+    assert floor_branch.index("impact") < floor_branch.index("feet"), (
+        "the floor body must prefer the target mark over the caster position"
+    )
+    assert "impact.clone().add(0,.08D,0)" in floor_branch, (
+        "the floor body must sit just above the mark it lands on"
+    )

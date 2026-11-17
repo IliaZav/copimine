@@ -66,6 +66,8 @@ public class BossTargetRosterProbe {
     boolean hasOutstandingBossAttacker(Player current,long now){return false;}
     boolean isCombatTarget(Player p){return p!=null;}
     boolean isActiveBossParticipant(Player p){return p!=null&&p.admitted;}
+    // Roster admission: only an admitted participant may hold the pursuit focus.
+    boolean isBossPursuitCandidate(Player p){return p!=null&&p.admitted;}
     java.util.logging.Logger getLogger(){return java.util.logging.Logger.getAnonymousLogger();}
 ''' + method + r'''
     static void check(boolean b,String m){if(!b)throw new AssertionError(m);}

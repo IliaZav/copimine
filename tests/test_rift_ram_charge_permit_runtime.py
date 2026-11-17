@@ -70,6 +70,9 @@ public class RamChargePermitProbe {
   Logger getLogger(){return Logger.getLogger("RamChargePermitProbe");}
   class Host {
     int moves,damages;boolean refuse;
+    // The encounter host reports whether the run is still live; a closed
+    // encounter must stop consuming charge contacts.
+    boolean active(){return true;}
     boolean move(Entity e,Location to){
       moves++;if(refuse)return false;
       long now=System.currentTimeMillis();
@@ -80,6 +83,8 @@ public class RamChargePermitProbe {
   }
   Ravager ram=new Ravager();Host host=new Host();Vector direction=new Vector(1,0,0);
   int tick=1,actionTick,nextPillarTick,recoveries,impacts;boolean banked;UUID pillarId;Location pillar;
+  // The encounter's own liveness flag: a closed run must not consume contacts.
+  boolean closed;
   Set<UUID> chargeHits=new HashSet<>();
   boolean safeVolume(Location at){return true;}void recover(){recoveries++;}void impact(){impacts++;}
   static void check(boolean value,String message){if(!value)throw new AssertionError(message);}

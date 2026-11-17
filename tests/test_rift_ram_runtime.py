@@ -73,6 +73,9 @@ public class RamRuntimeProbe {
     Location core(){return new Location(new World());}
     int floorY(){return 64;} boolean owns(Entity entity){return true;} boolean inArena(Location at){return true;}
     void fail(String s){failures++;}
+    // Presentation seams the runtime calls when the pose or an ability cue moves.
+    void abilitySound(Ravager actor,String cue){}
+    void pose(Ravager actor,String pose,int durationTicks){}
   }
   final Host host=new Host(); final World world=new World();
   Ravager ram=new Ravager(world); Action action=Action.CHARGE;
@@ -86,6 +89,9 @@ public class RamRuntimeProbe {
   UUID pillarId,persistentId,target; Location pillar;Vector direction;
   List<BlockDisplay> pillarDisplays=new ArrayList<>(); List<Piece> armor=new ArrayList<>();
   List<Debris> debris=new ArrayList<>(); Set<Endermite> mites=new HashSet<>();
+  // Cleanup restores armour plates to where they stood; the probe keeps the same
+  // rest ledger so the real cleanupDisplays() body compiles unmodified.
+  Map<UUID,Location> pillarRestPositions=new HashMap<>();
   Set<UUID> stompHits=new HashSet<>(),stompRoster=new HashSet<>(),chargeHits=new HashSet<>();
   UUID id(){return ram==null?persistentId:ram.uuid;}
   static class Bukkit { static Entity loaded;static Map<UUID,Entity> guards=new HashMap<>();
@@ -97,6 +103,8 @@ public class RamRuntimeProbe {
   BlockDisplay block(Location at,Material m,Vector3f size){return new BlockDisplay();}
   Object nearest(Location at,List<Object> players){return null;}
   void hold(){}
+  // Presentation heartbeat; the pose itself is asserted by the dedicated rig tests.
+  void publishPose(){}
   void raiseTestPillar(){
     if(pillarId!=null)throw new AssertionError("second active pillar");
     pillarId=UUID.randomUUID();pillar=new Location(world);pillarDisplays.add(new BlockDisplay());

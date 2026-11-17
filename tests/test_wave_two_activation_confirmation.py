@@ -50,7 +50,10 @@ public class ConfirmationProbe {
     client = ROOT / 'tools/minecraft-26.3/client/src/main/java/me/copimine/client'
     protocol = ROOT / 'tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol'
     sources = [probe, client/'WaveTwoPhantomActivationManager.java', client/'WaveTwoPhantomLayout.java',
-               *(protocol/name for name in ('EndEventBridgeBodyCodec.java','BridgeSigningPolicy.java','BridgeEnvelope.java'))]
+               *(protocol/name for name in ('EndEventBridgeBodyCodec.java','BridgeSigningPolicy.java','BridgeEnvelope.java',
+                                            # The codec's ENTITY_PHASE body names the trial and Guardian
+                                            # actor clocks by type, so the real records must compile too.
+                                            'Wave7AnimationFrame.java','GuardianActorFrame.java'))]
     result = subprocess.run([str(_jdk_bin('javac')), '-d', str(tmp_path), *map(str,sources)],
                             capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr

@@ -56,6 +56,9 @@ public class RamSkeletonRestoreProbe {
     int skeletonLastTriple=-1,skeletonLastBone=-1,skeletonLastMove=-1,skeletonStep;
     boolean completed,closed,skeletonFallen,pillarSkeletonSpawned,pillarSkeletonDefeated,ramDefeated;
     String failure;final List<BlockDisplay> pillarDisplays=new ArrayList<>();
+    // Resting placements of the live pillar shells, recorded by buildPillar() so
+    // the crack animation can restore the exact authored pose.
+    final Map<UUID,Location> pillarRestPositions=new HashMap<>();
     boolean safeVolume(Location l){return true;}
     void createArmor(){armourBuilds++;}
     void hold(){}

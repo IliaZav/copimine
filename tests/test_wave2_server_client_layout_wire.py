@@ -65,7 +65,10 @@ public final class LayoutWireProbe {
                *[CLIENT / (name + ".java") for name in
                  ("WaveTwoPhantomLayout", "WaveTwoPhantomLayoutManager", "WaveTwoCinematicTimeline")],
                *[PROTOCOL / (name + ".java") for name in
-                 ("EndEventBridgeBodyCodec", "BridgeSigningPolicy", "BridgeEnvelope")]]
+                 ("EndEventBridgeBodyCodec", "BridgeSigningPolicy", "BridgeEnvelope",
+                  # The codec's ENTITY_PHASE body carries the trial and Guardian actor
+                  # clocks by type, so the real records must be on the source path.
+                  "Wave7AnimationFrame", "GuardianActorFrame")]]
     result = subprocess.run([str(_jdk_bin("javac")), "-encoding", "UTF-8", "-d", str(tmp_path),
                              *map(str, sources)], capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert result.returncode == 0, result.stdout + result.stderr

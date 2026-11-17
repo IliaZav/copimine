@@ -56,21 +56,52 @@ public class Wave7WarningAudioProbe {
     }
     static class LivingEntity {
         final World world;final Location location;
+        final UUID id=UUID.randomUUID();
         LivingEntity(World world){this.world=world;this.location=new Location(world,0,70,0);}
         Location getLocation(){return location.clone();}
         Location getEyeLocation(){return location.clone().add(0,1.6,0);}
         World getWorld(){return world;}
+        UUID getUniqueId(){return id;}
     }
     static final class Player extends LivingEntity { Player(World w){super(w);} }
+    // The frozen aim lease the production renderer resolves fang victims from.
+    record TrialAimLock(long generation,String event,long cast,Location point,Map<UUID,Location> fangMarks) { }
+    final String eventId="event-7";
+    final long generation=7;
+    final Map<UUID,TrialAimLock> trialAimLocks=new HashMap<>();
     boolean valid=true;int visualFrames=0;
     boolean isCurrentRealitySplitTrialTarget(LivingEntity actor,Player target){return valid;}
     Vector horizontalDirection(Location a,Location b){return new Vector(1,0,0);}
     void faceRealitySplitTrialMob(LivingEntity mob,Vector direction){}
-    void renderRealitySplitTrialTelegraph(Location a,Vector dir,double len,double width,Particle p){
+    // The arm helper mirrors lockNamedTrialAim's shape: the authored
+    // ARCHMAGE_FANGS pass renders only the marks frozen at the telegraph.
+    void armTrialAim(LivingEntity actor,Player target,boolean withFangs){
+        Map<UUID,Location> marks=new LinkedHashMap<>();
+        if(withFangs) marks.put(target.getUniqueId(),target.getLocation().clone());
+        trialAimLocks.put(actor.getUniqueId(),
+                new TrialAimLock(generation,eventId,1L,target.getEyeLocation().clone(),Map.copyOf(marks)));
+    }
+    Location namedTrialAim(LivingEntity actor,Player target){
+        TrialAimLock lock=trialAimLocks.get(actor.getUniqueId());
+        return lock!=null && lock.generation()==generation && Objects.equals(lock.event(),eventId)
+                ? lock.point().clone() : target.getEyeLocation().clone();
+    }
+    void renderNamedTrialAim(LivingEntity actor,Location origin,Vector direction,
+            double length,double width,Particle particle){
+        Vector side=new Vector(-direction.getZ(),0,direction.getX());
+        for(int step=1;step<=12;step++){
+            Location center=origin.clone().add(direction.clone().multiply(length*step/12D));
+            emitTrialParticle(actor,center.clone().add(side.clone().multiply(width)),particle,1,0,0,0,0);
+        }
+    }
+    void emitTrialParticle(LivingEntity actor,Location at,Particle particle,int count,
+            double x,double y,double z,double speed){
         visualFrames++;
     }
-    void spawnEventParticle(Location where,Particle p,int count,double x,double y,double z,double velocity){
-        visualFrames++;
+    // Sound routing stays on the one World counter the assertions read, so the
+    // "fires once" claim still measures real playWarningSound gating.
+    void playTrialSound(LivingEntity actor,Location at,Sound sound,float volume,float pitch){
+        actor.getWorld().playSound(at,sound,volume,pitch);
     }
 """ + production + r"""
     static void require(boolean yes,String message){if(!yes)throw new AssertionError(message);}
@@ -79,6 +110,9 @@ public class Wave7WarningAudioProbe {
         World world = new World();
         LivingEntity actor = new LivingEntity(world);
         Player target = new Player(world);
+        // The real flow arms the aim lock at the telegraph; the fang pass renders
+        // only the marks frozen there, so an unarmed actor must draw nothing.
+        armTrialAim(actor,target,attack==Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_FANGS);
         renderNamedTrialTelegraph(actor,target,attack,true);
         for(int tick=0;tick<4;tick++) renderNamedTrialTelegraph(actor,target,attack,false);
         require(world.sounds==1,"Expected one warning sound, got "+world.sounds+" for "+attack);

@@ -19,19 +19,39 @@ def test_wave7_wall_gate_is_used_by_fangs_targets_and_step():
     # hard filter before any fairness ordering is applied.
     targets = extract(source, "Player realitySplitTrialTarget(Entity source, int chamber, UUID previousTarget,")
     step = extract(source, "boolean stepNamedTrialArchmage(LivingEntity actor, Player target, int chamber)")
-    assert "hasNamedTrialLineOfSight(actor.getEyeLocation(), target.getEyeLocation())" in fangs
+    # The fang cast aims at the aim point committed when the cast started, not at
+    # the victim's live eye position, so strafing after the windup cannot dodge
+    # a shot the server already accepted.
+    assert "hasNamedTrialLineOfSight(actor.getEyeLocation(), namedTrialAim(actor, target))" in fangs
+    # The fang cast is a group spell: every marked victim gets a real line, and
+    # the marks come from the group selector rather than one hand-picked target.
+    assert "TrialAimLock lock = trialAimLocks.get(actor.getUniqueId())" in fangs
+    assert "lock.fangMarks().keySet()" in fangs
     assert "Attack.ARCHMAGE_FANGS.name()" in damage
     assert "hasNamedTrialLineOfSight(actor.getEyeLocation(), target.getEyeLocation())" in damage
-    assert "hasNamedTrialLineOfSight(actor.getEyeLocation(), target.getEyeLocation())" in resolve
+    assert "hasNamedTrialLineOfSight(actor.getEyeLocation(), namedTrialAim(actor, target))" in resolve
     assert "hasNamedTrialLineOfSight(living.getEyeLocation(), player.getEyeLocation())" in targets
     assert "hasNamedTrialLineOfSight(actor.getEyeLocation()" in step
     assert "teleportCombatEntity(actor, destination)" in step
+    # A committed aim is generation- and event-fenced, so a restart retargets
+    # explicitly instead of silently reusing a stale point.
+    aim = extract(source, "Location namedTrialAim(LivingEntity actor, Player target)")
+    assert "lock.generation() == generation" in aim
+    assert "Objects.equals(lock.event(), eventId)" in aim
+    assert "target.getEyeLocation().clone()" in aim
 
 
 def test_marksman_moves_to_cover_or_a_clear_attack_angle():
     source = SOURCE.read_text(encoding="utf-8")
     movement = extract(source, "void moveNamedTrialMarksman(LivingEntity actor, int chamber)")
-    assert "closestRealitySplitTrialParticipant(actor)" in movement
+    # Locomotion keeps one legal target for a bounded window so the Marksman
+    # cannot twitch between players every tick; cast fairness is chosen
+    # separately by the aim lock.
+    assert "Player target = namedTrialMovementTarget(actor)" in movement
+    focus = extract(source, "Player namedTrialMovementTarget(Entity actor)")
+    assert "eventTickCounter < focus.untilTick()" in focus
+    assert "eventTickCounter+60L" in focus
+    assert "isCurrentRealitySplitTrialTarget(actor, retained)" in focus
     assert "boolean seekCover" in movement
     assert "boolean projectedVisible" in movement
     assert "if (seekCover ? !projectedVisible : projectedVisible)" in movement

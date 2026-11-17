@@ -41,8 +41,10 @@ public class CocoonFallAdapterProbe {
     LivingEntity boss=new Mob(); double floorY=69; int impacts, moves, pins;
     enum EventPhase { RECOVERY_REQUIRED }
     static class Vector { Vector(double x,double y,double z){} }
-    static class World {}
-    static class Bukkit {static int tick;static int getCurrentTick(){return tick;}}
+    static class World {UUID getUID(){return new UUID(0,3);}}
+    static class Bukkit {static int tick;static int getCurrentTick(){return tick;}
+        // Held grab targets are resolved through Bukkit, exactly like production.
+        static Player getPlayer(UUID id){return null;}}
     final static World WORLD=new World();
     static class Location {
         double x,y,z; Location(double y){this.y=y;}
@@ -60,7 +62,29 @@ public class CocoonFallAdapterProbe {
         boolean teleport(Location loc){throw new AssertionError("unpermitted teleport");}
         void setGravity(boolean b){gravity=b;} void setVelocity(Vector v){}
     }
-    static class Player extends LivingEntity {boolean isOnline(){return true;}}
+    static class Player extends LivingEntity {
+        boolean isOnline(){return true;}
+        // The break zeroes the pre-release fall distance of anyone still held,
+        // so the anchor lease is measured from the release moment.
+        void setFallDistance(float d){}
+    }
+    // The restrained tentacle index: the break cancels grabs and temporary
+    // eruptions, and the probe starts it empty so only the walk itself runs.
+    static class TentacleAnimationPolicy { enum Kind { PERMANENT, TEMPORARY, UNDER_PLAYER, SMALL } }
+    static class TentacleController {
+        record VisualState(UUID entityId,TentacleAnimationPolicy.Kind kind,int slot,UUID target){}
+        final Map<UUID,VisualState> states=new LinkedHashMap<>();
+        Map<UUID,VisualState> states(){return states;}
+    }
+    final TentacleController tentacleController=new TentacleController();
+    // The anchor lease protects a released player from the fall's own damage.
+    record Wave6AnchorFallLease(UUID worldId,long untilMillis){}
+    final Map<UUID,Wave6AnchorFallLease> wave6AnchorFallLeases=new HashMap<>();
+    // Cooldowns the fury entry must clear so grounded combat starts immediately.
+    long nextSpellMillis,nextBossCloseStrikeMillis,lastBossPathRequestMillis;
+    boolean isPlayerUnderTentacleControl(Player p){return false;}
+    boolean isActiveBossParticipant(Player p){return true;}
+    void removeTentacle(UUID id,String reason){tentacleController.states().remove(id);}
     static class Pathfinder { void stopPathfinding(){} }
     static class Mob extends LivingEntity {
         boolean ai; boolean hasAI(){return ai;} void setAI(boolean b){ai=b;}
@@ -114,6 +138,12 @@ public class CocoonFallAdapterProbe {
 ''' + methods + r'''
     static void check(boolean v,String m){if(!v)throw new AssertionError(m);}
     static void near(double a,double b){check(Math.abs(a-b)<1e-8,"height "+a+" != "+b);}
+    // The authored descent: release from suspension on an eased curve
+    // (heightDuringFall uses 1 - progress^2) and land exactly on the floor.
+    static double authoredHeight(int elapsed){
+        double progress=Math.min(1.0,Math.max(0.0,elapsed/40.0));
+        return 2.5*(1.0-progress*progress);
+    }
     public static void main(String[] args){
         CocoonFallAdapterProbe p=new CocoonFallAdapterProbe();
         p.floorY=Double.parseDouble(args[1]);p.boss.y=p.floorY+2.5;
@@ -124,7 +154,7 @@ public class CocoonFallAdapterProbe {
                 if(tick%5==0)p.pinBossToFinalSealCore(p.boss);
                 p.tickWaveMobContainment();
                 check(p.cocoonFallElapsedTicks==tick+1,"5-tick strategy and 1-tick motion double-stepped/stalled");
-                near(p.boss.y,p.floorY+2.5*Math.max(0,1-tick/40.0));
+                near(p.boss.y,p.floorY+authoredHeight(tick));
             }
             check(p.cocoonFallStage==CocoonFallPolicy.Stage.MELEE_FURY&&((Mob)p.boss).ai,"fury did not resume at 60 server ticks");
             check(p.impacts==1,"landing duplicated across the two tick owners");return;
@@ -145,7 +175,7 @@ public class CocoonFallAdapterProbe {
             p.eventTickCounter=tick;
             Bukkit.tick=tick;
             check(p.pinBossToFinalSealCore(p.boss),"descent must own movement at "+tick);
-            near(p.boss.y,p.floorY+2.5*(1-tick/40.0));
+            near(p.boss.y,p.floorY+authoredHeight(tick));
             check(!((Mob)p.boss).ai,"AI resumed during descent/landing");
         }
         check(p.impacts==1,"exactly one landing cue");

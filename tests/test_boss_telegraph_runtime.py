@@ -62,6 +62,12 @@ public class BossTelegraphRuntimeProbe {
     static class Registry {boolean owns(long g){return g==7;}}
     record Config(){int bossSpellTelegraphTicks(){return 20;}int bossRecentTargetMemory(){return 3;}}
     final Config config=new Config();final Registry taskRegistry=new Registry();
+    // Cast locomotion suppression is released on every terminal cast path; the
+    // probe counts releases instead of modelling AI locomotion.
+    int releases;
+    void releaseBossCastMobility(LivingEntity b,String reason){releases++;}
+    // Rage combos open on a tick cadence scoped to one generation.
+    long rageComboGeneration=-1L,rageComboNextTick;
     // The scheduler records the accepted target for the fairness ledger, so the
     // probe uses the real selector rather than a stand-in.
     final me.copimine.endevent.domain.BossSpellTargetSelector bossSpellTargets=

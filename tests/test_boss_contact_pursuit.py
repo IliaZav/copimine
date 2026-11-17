@@ -22,8 +22,16 @@ public class ContactPursuitProbe {
                 var p=CombatTacticsPolicy.bossPlan(phase,beat,distance,false,true);
                 if(phase==BossPhase.LAST_SEAL)check(p.tactic()==CombatTacticsPolicy.BossTactic.MELEE_PRESSURE,"fury stopped pursuit");
             }
-            var core=CombatTacticsPolicy.bossPlan(phase,beat,2,true,true);
+            // Outside the cocoon, standing on the Core is a hard exclusion: the
+            // boss creates space instead of swinging through the anchor.
+            var core=CombatTacticsPolicy.bossPlan(phase,beat,2,true,false);
             check(core.preferOuterRing()&&core.tactic()==CombatTacticsPolicy.BossTactic.CREATE_SPACE,"Core exclusion lost");
+            // Melee fury owns the body: an on-Core target must not make the boss
+            // orbit away, so the coplanar exclusion yields to contact pressure.
+            var furyCore=CombatTacticsPolicy.bossPlan(phase,beat,2,true,true);
+            check(!furyCore.preferOuterRing(),"fury abandoned contact for the Core exclusion: "+phase+"/"+beat);
+            check(furyCore.tactic()==CombatTacticsPolicy.BossTactic.MELEE_PRESSURE,
+                    "fury stopped contact on the Core: "+phase+"/"+beat);
             for(double bad:new double[]{-1,Double.NaN,Double.POSITIVE_INFINITY}) {
                 var p=CombatTacticsPolicy.bossPlan(phase,1,bad,false,false);
                 check(p.tactic()!=CombatTacticsPolicy.BossTactic.MELEE_PRESSURE,"invalid distance invented contact");
@@ -43,7 +51,9 @@ public class ContactPlaybackProbe {
     static void check(boolean b,String why){if(!b)throw new AssertionError(why);}
     public static void main(String[] args){
         String[] names={"MELEE_SWIPE","CHEST_STRIKE","GROUND_SLAM"};
-        int[] contact={26,40,110},length={60,81,181},expected={13,23,55};
+        // The authored rates are MELEE 2.25 / CHEST 1.75 / SLAM 3.0, so 26/40/110
+        // authored contact frames land on 12/23/37 combat ticks.
+        int[] contact={26,40,110},length={60,81,181},expected={12,23,37};
         for(int i=0;i<names.length;i++){
             var n=names[i];int c=BossAnimationPlayback.combatTicks(n,contact[i]);
             check(c==expected[i],"contact tuning drift: "+n);

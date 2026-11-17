@@ -31,6 +31,10 @@ def converted_arrow_probe(tmp_path_factory):
         "private boolean isWaveAiCombatEntity(", "private boolean isWaveAiCombatPhase(",
         "private boolean isEventArrow(", "private boolean trackEventArrow(",
         "private void tickEventArrowProjectiles(", "private void cleanupEventArrow(",
+        # The provenance gate now also asks the named-trial and Echo-decoy arrow
+        # predicates, so the probe compiles those real bodies instead of guessing.
+        "private boolean isNamedTrialProjectile(", "private boolean isCurrentEchoDecoyArrow(",
+        "private boolean isEchoDecoy(",
     ]
     for signature in ("private boolean isRitualConvertedArrow(",
                       "private boolean ritualConvertedArrowTargetAllowed("):
@@ -64,6 +68,10 @@ public class ConvertedArrowProbe {
     static class Type<T>{}
     static class PersistentDataType {
         static final Type<String> STRING=new Type<>();static final Type<Byte> BYTE=new Type<>();
+        static final Type<Long> LONG=new Type<>();
+    }
+    static class NamespacedKey {
+        NamespacedKey(Object owner,String key){}
     }
     static class Data {
         final Map<Object,Object> values=new HashMap<>();
@@ -97,6 +105,7 @@ public class ConvertedArrowProbe {
         double damage;UUID group;boolean ritual;
         Arrow(World w){super(w);}void setVisibleByDefault(boolean v){}void setDamage(double v){damage=v;}void setCritical(boolean v){}
         void setPickupStatus(PickupStatus s){}void setColor(Color c){}Vector getVelocity(){return new Vector();}
+        int ticksLived;int getTicksLived(){return ticksLived;}
     }
     static class LargeFireball extends Projectile {LargeFireball(World w){super(w);}}
     record RiftFireballRuntimeState(long generation){boolean isWave4Obelisk(){return false;}}
@@ -149,6 +158,15 @@ public class ConvertedArrowProbe {
         scheduledEventArrowDamageEffects=new HashSet<>(),scheduledEventArrowHitCleanup=new HashSet<>(),
         ritualProjectileTerminalEvents=new HashSet<>(),spellServants=new HashSet<>();
     final Map<UUID,RiftFireballRuntimeState> activeRiftFireballs=new HashMap<>();
+    // Declared for the extracted arrow predicates: the elite-arrow visual map,
+    // the Echo-decoy ledgers and the boss runtime the provenance gate consults.
+    final Map<UUID,UUID> activeEliteArrowVisuals=new HashMap<>();
+    final Set<UUID> echoDecoyIds=new HashSet<>(),echoDecoyArrowIds=new HashSet<>();
+    long echoDecoyGeneration=Long.MIN_VALUE;
+    me.copimine.endevent.domain.BossPhase bossPhase=me.copimine.endevent.domain.BossPhase.RAGE;
+    LivingEntity liveBoss(){return null;}
+    boolean isBossCombatRuntimeActive(LivingEntity boss){return boss!=null&&boss.valid&&!boss.dead;}
+    NamespacedKey namedTrialProjectileMarkerKey(){return new NamespacedKey(this,"end_event_named_trial_projectile");}
     final Admission waveProjectileAdmission=new Admission();
     final Object keyKind="kind",keyWave="wave",keyArrowSpell="spell",keyRitualConverted="converted",keyRitualProjectileOwner="owner";
     final Random random=new Random(1);long generation=7;String eventId="event";int activeWave=6;

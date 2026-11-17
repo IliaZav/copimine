@@ -27,10 +27,27 @@ def test_shader_preserves_near_geometry_but_extinguishes_distant_rays(tmp_path):
  static void check(boolean b,String why){if(!b)throw new AssertionError(why);}
  public static void main(String[] args){
   double density=DENSITY;
-  check(transmission(1,density*1.38)>.85,"near silhouettes/held items remain readable");
-  check(transmission(2,density*.72)>.35,"ground approach remains readable");
-  check(transmission(6,density*.72)<.003,"even thin distant eddies obscure the arena");
-  for(double d=0;d<10;d+=.05){check(gain(d)>=0&&gain(d)<=1,"bounded density");check(gain(d+.01)>=gain(d),"no near-plane discontinuity");}
+  // The authored envelope keeps a clean near band: nothing within 1.15 blocks
+  // is fogged at all, so held items and silhouettes are untouched rather than
+  // merely "mostly" readable.
+  check(gain(0)==0&&gain(0.5)==0&&gain(1.15)==0,"the near band must carry no extinction");
+  check(gain(3.85)>0.999&&gain(6)>0.999,"density must reach full weight before mid-distance");
+  check(transmission(1,density*1.38)>.95,"near silhouettes/held items remain readable");
+  check(transmission(2,density*.72)>.5,"ground approach remains readable");
+  // The volume then closes within a few blocks and keeps closing, so the arena
+  // behind the fog is never readable at range.
+  check(transmission(4,density*.72)<.15,"the fog is already dominant past the near band");
+  check(transmission(6,density*.72)<.01,"even thin distant eddies obscure the arena");
+  check(transmission(8,density*.72)<.0005,"the far arena is extinguished");
+  check(transmission(10,density*.72)<.0001,"nothing at range survives the fog");
+  double previous=1;
+  for(double d=0;d<10;d+=.05){
+   check(gain(d)>=0&&gain(d)<=1,"bounded density");
+   check(gain(d+.01)>=gain(d),"no near-plane discontinuity");
+   double now=transmission(d+0.05,density*.72);
+   check(now<=previous,"transmission must fall monotonically with distance");
+   previous=now;
+  }
  }
 }""".replace('BODY',body).replace('DENSITY',str(density)),encoding='utf-8')
     compiled=subprocess.run(['javac','-d',str(tmp_path),str(probe)],capture_output=True,text=True)

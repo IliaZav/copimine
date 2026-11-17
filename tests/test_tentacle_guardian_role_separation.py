@@ -43,9 +43,18 @@ def test_guardian_strike_resolves_instead_of_grab(event_source: str) -> None:
 def test_strike_is_a_real_dodgeable_damage_event(event_source: str) -> None:
     strike = method_body(event_source,
                          "private void strikeTentacleGuardianTarget(ItemDisplay display")
-    assert "withinTentacleGrabRange(origin, target.getLocation())" in strike
-    assert strike.index("withinTentacleGrabRange") < strike.index("applyBossAbilityDamage(")
-    assert "TentacleGuardianPolicy.STRIKE_DAMAGE" in strike
+    # Reach is the imported rig's real length, not the retired invisible
+    # eight-block grab, and the strike is refused out of range.
+    assert "guardianStrikeRangeSquared()" in strike
+    assert strike.index("distanceSquared(target.getLocation()) > guardianStrikeRangeSquared()") < (
+        strike.index("applyBossActorAbilityDamage("))
+    # A dodge means breaking facing or cover, so both gates must precede damage.
+    assert "smallKaguneFaces(display,target)" in strike
+    assert "hasProjectileBlockLineOfSight(" in strike
+    assert strike.index("smallKaguneFaces(") < strike.index("applyBossActorAbilityDamage(")
+    assert strike.index("hasProjectileBlockLineOfSight(") < strike.index("applyBossActorAbilityDamage(")
+    # Damage is party-scaled and bounded by the fight policy; nothing writes HP.
+    assert "KaguneGuardianFightPolicy.strikeDamage(eventScalePlayers())" in strike
     assert "setHealth" not in strike
     # Reactions depend on the observed accepted event, including absorption.
     assert "if (!accepted ||" in strike

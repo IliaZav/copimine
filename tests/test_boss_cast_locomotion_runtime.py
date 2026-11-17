@@ -54,29 +54,51 @@ public class BossCastNavigationProbe {
 def test_failed_boss_paths_share_the_successful_attempt_budget(tmp_path):
     source = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(encoding="utf-8")
     method = extract(source, "void maintainBossPath(")
+    # The probe compiles without a sourcepath, so the domain qualifier is
+    # stripped and the local stub stands in for the real policy constant.
+    method = method.replace("me.copimine.endevent.domain.", "")
     java = tmp_path / "BossPathBudgetProbe.java"
     java.write_text(r'''
 import java.util.logging.Logger;
 public class BossPathBudgetProbe {
-    static class Location {}
+    static class Location {
+        double x,y,z;
+        double getX(){return x;}double getY(){return y;}double getZ(){return z;}
+        double distanceSquared(Location o){return (x-o.x)*(x-o.x)+(y-o.y)*(y-o.y)+(z-o.z)*(z-o.z);}
+    }
     static class Player extends LivingEntity {}
     static class LivingEntity {
         Location getLocation(){return new Location();}
         java.util.UUID getUniqueId(){return new java.util.UUID(0,1);}
         Data getPersistentDataContainer(){return new Data();}
+        double getY(){return 0;}
+        boolean hasLineOfSight(Player p){return true;}
     }
     static class Mob extends LivingEntity {
         final Pathfinder path=new Pathfinder();Object getTarget(){return new Player();}
         Pathfinder getPathfinder(){return path;}Data getPersistentDataContainer(){return new Data();}
     }
-    static class Pathfinder {int requests;boolean moveTo(Location p,double speed){requests++;return false;}void stopPathfinding(){}}
+    static class Pathfinder {
+        int requests;boolean path;
+        boolean moveTo(Location p,double speed){requests++;return false;}
+        boolean hasPath(){return path;}
+        void stopPathfinding(){path=false;}
+    }
     static class Data {void set(Object key,Object type,String value){}}
     static class PersistentDataType {static final Object STRING=new Object();}
     enum BossPhase { HUNT }enum Tactic { PURSUE }
     static class CombatTacticsPolicy {
-        record BossPlan(Tactic tactic,double preferredDistance){}
-        static BossPlan bossPlan(Object phase,int cycle,double distance,boolean core,boolean fury){return new BossPlan(Tactic.PURSUE,2);}
+        // The melee-opening branch compares against the real tactic constant, so
+        // the probe models the same enum surface production exposes.
+        enum BossTactic { MELEE_PRESSURE, CREATE_SPACE, PURSUE }
+        record BossPlan(BossTactic tactic,double preferredDistance){}
+        static BossPlan bossPlan(Object phase,int cycle,double distance,boolean core,boolean fury){return new BossPlan(BossTactic.PURSUE,2);}
     }
+    // The cadence comes from the real close-combat policy in production; the
+    // probe keeps its authored 200..500 ms clamp by stubbing that constant.
+    static class BossCloseCombatPolicy {static long cadenceMillis(Object phase){return 1200L;}}
+    // The melee opening is measured against the authored swipe reach.
+    static class BossContactStrikePolicy {static final double MELEE_SWIPE_RANGE=3.5D;}
     static class BossPhasePolicy {record CombatProfile(double movementSpeed){}}
     static class GroundedBossMotionPolicy {record Resolution(Animation animation){}}
     record Animation(){String wireId(){return "run";}}
@@ -86,6 +108,7 @@ public class BossPathBudgetProbe {
     static final double MIN_BOSS_CORE_DISTANCE_BLOCKS=3;
     final Config config=new Config();BossPhase bossPhase=BossPhase.HUNT;Object keyCombatTactic;boolean noFloor;
     boolean isCurrentBossMeleeFury(){return false;}
+    boolean isBossPursuitCandidate(Player p){return true;}
     boolean isCombatTarget(Player p){return true;}Location coreCombatAnchorLocation(){return new Location();}
     boolean isCoreBlockPosition(Location p){return false;}double horizontalDistanceSquared(Location a,Location b){return 25;}
     Location bossTacticalDestination(Location a,Mob b,Player p,CombatTacticsPolicy.BossPlan plan){planned++;return noFloor?null:new Location();}
@@ -116,11 +139,22 @@ def test_invalid_focus_is_urgent_but_refused_selection_is_bounded(tmp_path):
     java.write_text(r'''
 import java.util.UUID;
 public class BossTargetClockProbe {
-    static class LivingEntity {}static class Mob extends LivingEntity {}
-    static class Player {boolean active=true;}
+    static class LivingEntity {java.util.UUID getUniqueId(){return new java.util.UUID(0,2);}}static class Mob extends LivingEntity {}
+    static class Player {boolean active=true;java.util.UUID getUniqueId(){return new java.util.UUID(0,1);}}
     static class Bukkit {static Player player=new Player();static Player getPlayer(UUID id){return player;}}
     static class BossPhasePolicy {record CombatProfile(double targetRotationMultiplier){}}
     record Config(){int bossTargetMinSeconds(){return 10;}int bossTargetMaxSeconds(){return 12;}}
+    // The fury combo locks a target for the duration of the combination; the
+    // probe keeps it inactive so the rotation clock owns every assertion.
+    static class FuryCombo {
+        boolean owns(String event,long generation,java.util.UUID boss,long tick){return false;}
+        UUID target(){return null;}
+    }
+    final FuryCombo bossFuryCombo=new FuryCombo();
+    String eventId="event";long generation=7L,eventTickCounter;
+    boolean isPlayerUnderTentacleControl(Player player){return false;}
+    boolean isBossPursuitCandidate(Player p){return p!=null&&p.active;}
+    boolean assignBossPursuitTarget(Mob boss,Player target){bossPursuitTarget=target.getUniqueId();return true;}
     UUID bossPursuitTarget;long nextTargetMillis;int rotations;boolean deny;Config config=new Config();
     boolean isActiveBossParticipant(Player player){return player!=null&&player.active;}
     void rotateBossTarget(Mob boss){rotations++;bossPursuitTarget=deny?null:new UUID(0,1);}

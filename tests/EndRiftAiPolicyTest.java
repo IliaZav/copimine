@@ -80,7 +80,9 @@ public final class EndRiftAiPolicyTest {
             "Удар по земле",
             "Приговор Разлома",
             "Засада из-под земли",
-            "Малые кагуне"
+            "Кольцо кагуне",
+            "Копьё кагуне",
+            "Извержение кагуне"
         };
         EndRiftAiPolicy.BossSpell[] spells = EndRiftAiPolicy.BossSpell.values();
         check(spells.length == expected.length, "boss spell list changed without updating display names");

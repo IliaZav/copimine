@@ -73,10 +73,12 @@ public class ScriptedLaunchProbe {
     }
     static class Player extends LivingEntity {double eyeX=5;Player(UUID id,World w){super(id,w);}@Override Location getEyeLocation(){return new Location(eyeX);}}
     static class Projectile extends Entity {
-        LivingEntity shooter;Projectile(UUID id){super(id);}
+        LivingEntity shooter;boolean gravity=true,persistent=true;Projectile(UUID id){super(id);}
         void setShooter(LivingEntity actor){shooter=actor;}
         void setVelocity(Vector v){if(!Double.isFinite(v.lengthSquared()))throw new AssertionError("nonfinite velocity");}
         void setGlowing(boolean value){}
+        void setGravity(boolean value){gravity=value;}
+        void setPersistent(boolean value){persistent=value;}
     }
     static class AbstractArrow extends Projectile {
         enum PickupStatus {DISALLOWED}AbstractArrow(UUID id){super(id);}
@@ -102,6 +104,16 @@ public class ScriptedLaunchProbe {
     static class Bukkit {static final Scheduler scheduler=new Scheduler();static Scheduler getScheduler(){return scheduler;}}
     boolean isNamedRealitySplitActor(Entity actor){return actor!=null&&actor.valid;}
     boolean isCurrentRealitySplitTrialTarget(LivingEntity actor,Player target){return true;}
+    // The authored aim: the frozen lock's point, or the target's eye when no lock
+    // exists (the launch probe never arms one, so the fallback is what runs).
+    Location namedTrialAim(LivingEntity actor,Player target){return target.getEyeLocation();}
+    // Presentation only: the elite bolt overlay and the arrow visual bookkeeping.
+    static final int MODEL_ELITE_RIFT_BOLT=830031;
+    static final int MAX_ACTIVE_EVENT_ARROWS=24;
+    final Map<UUID,UUID> activeEliteArrowVisuals=new HashMap<>();
+    ItemStack overlayItem(int customModelData,String modelId){return new ItemStack(Material.TRIDENT);}
+    void tagEliteArrowModel(Arrow arrow,String modelId){}
+    void attachEliteArrowVisual(Arrow arrow){}
     int readInt(Entity e,Object key,int fallback){return (int)e.data.values.getOrDefault(key,fallback);}
     String readString(Entity e,Object key){return (String)e.data.values.get(key);}
     void tag(Entity p,String kind,int wave,boolean official){}

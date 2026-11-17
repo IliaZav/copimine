@@ -40,6 +40,9 @@ def occluded_archmage_probe(tmp_path_factory):
         "private boolean writeNamedTrialActorCheckpoint(",
         "private Wave7NamedTrialActorPolicy.Checkpoint readNamedTrialActorCheckpoint(",
         "private boolean finishNamedTrialAttack(",
+        # The three-argument overload delegates to the timed one, so the probe must
+        # compile the real timed body rather than resolve a missing overload.
+        "private boolean finishNamedTrialAttack(Entity actor,\n            Wave7NamedTrialActorPolicy.Checkpoint checkpoint, long now, long cooldownMillis)",
         "private boolean resolveNamedTrialAttack(",
         "private boolean stepNamedTrialArchmage(",
         # MAGE7-005: the resolved cast now records what the tool cost through
@@ -116,7 +119,7 @@ public class OccludedArchmageProbe {
     enum Sound { ENTITY_ENDERMAN_TELEPORT }
     static class Vector {
         double x,y,z;Vector(double x,double y,double z){this.x=x;this.y=y;this.z=z;}
-        double getX(){return x;}double getZ(){return z;}
+        double getX(){return x;}double getY(){return y;}double getZ(){return z;}
         public Vector clone(){return new Vector(x,y,z);}Vector multiply(double m){x*=m;y*=m;z*=m;return this;}
     }
     static class Location {
@@ -140,6 +143,10 @@ public class OccludedArchmageProbe {
         LivingEntity(UUID id,EntityType type,Location at){super(id,at);this.type=type;}
         boolean isValid(){return valid;}boolean isDead(){return dead;}EntityType getType(){return type;}
         double getHealth(){return hp;}double getMaxHealth(){return 200.0;}void setHealth(double hp){this.hp=hp;}
+        // The real tick zeroes the horizontal velocity of a committed caster so an
+        // authored strike is never carried sideways by locomotion.
+        Vector velocity=new Vector(0,0,0);
+        Vector getVelocity(){return velocity;}void setVelocity(Vector v){velocity=v;}
         Location getEyeLocation(){return location.clone().add(0,1.6,0);}
         double getEyeHeight(){return 1.6;}World getWorld(){return world;}
         // MARK-005 durability: the real tick path reconciles the actor's effect
@@ -165,6 +172,9 @@ public class OccludedArchmageProbe {
         static final List<Player> players=new ArrayList<>();
         static Collection<Player> getOnlinePlayers(){return players;}
         static Player getPlayer(UUID id){return players.stream().filter(p->p.online&&p.id.equals(id)).findFirst().orElse(null);}
+        // The tick path resolves pair partners and other trial actors by id.
+        static Entity getEntity(UUID id){return getOnlinePlayers().stream()
+            .filter(p->p.id.equals(id)).findFirst().orElse(null);}
     }
     boolean visible,pathClear=true,safeFloor=true,destinationAllowed=true,teleportAllowed=true;
     int warnings,damageActions,teleports;
@@ -193,6 +203,40 @@ public class OccludedArchmageProbe {
     boolean isSafeCombatEntityLocation(Location to,LivingEntity source){return safeFloor;}
     boolean teleportCombatEntity(Entity e,Location to){if(!teleportAllowed)return false;e.location=to.clone();teleports++;return true;}
     void spawnEventParticle(Location at,Particle particle,int count,double x,double y,double z,double speed){}
+    // --- named-trial aim lock -------------------------------------------------
+    // The real lock ledger: stepNamedTrialArchmage() reserves the aim through
+    // lockNamedTrialAim() and the tick path refuses to resolve a cast whose lock
+    // is missing, stale or belongs to another event. Reproducing that ledger is
+    // what makes the "stale cast fails closed" and "safe step teleports once"
+    // assertions meaningful, so it is a faithful stub rather than a no-op.
+    record TrialAimLock(long generation,String event,long cast,Location point,
+            Map<UUID,Location> fangMarks){}
+    final Map<UUID,TrialAimLock> trialAimLocks=new HashMap<>();
+    void lockNamedTrialAim(LivingEntity actor,Player target,
+            Wave7NamedTrialActorPolicy.Attack attack,long cast){
+        // The non-fang attacks lock the single target's eye; the fang fan is not
+        // exercised by this probe, so it records an empty mark set.
+        trialAimLocks.put(actor.getUniqueId(),new TrialAimLock(generation,eventId,cast,
+                target.getEyeLocation().clone(),new HashMap<>()));
+    }
+    // Presentation seams: the authored pose packets and the arrival pose queue.
+    void sendTrialPose(Entity actor,String action,String stage,long cast,int duration,int elapsed){}
+    void sendTrialFollowupPose(Entity actor,String stage,int duration){}
+    // No arrival pose is queued in this probe, so no arrival tick is pending.
+    boolean tickNamedTrialArrival(LivingEntity actor){return false;}
+    // The strike resolves against the FROZEN aim recorded by lockNamedTrialAim,
+    // falling back to the target's eye exactly like production.
+    Location namedTrialAim(LivingEntity actor,Player target){
+        TrialAimLock lock=trialAimLocks.get(actor.getUniqueId());
+        return lock!=null&&lock.generation()==generation&&Objects.equals(lock.event(),eventId)
+            ? lock.point().clone() : target.getEyeLocation().clone();
+    }
+    // Pair symbiosis belongs to the sibling Marksman; the pair rules have their
+    // own policy test, so the archmage probe reports "no partner".
+    UUID namedMarksmanPartnerId(LivingEntity actor,int chamber){return null;}
+    boolean beginNamedMarksmanCrossfire(LivingEntity actor,Player target,
+            RealitySplitTrialController.NamedTrialState trial,
+            Wave7NamedTrialActorPolicy.Checkpoint mine,long now){return false;}
     boolean launchNamedTrialArrow(LivingEntity a,Player p,Wave7NamedTrialActorPolicy.Attack attack,float speed,float spread,boolean glow,boolean spear){damageActions++;return true;}
     // A spread burst fires its whole fan through the production method.
     boolean launchMarksmanFan(LivingEntity a,Player p,Wave7NamedTrialActorPolicy.Attack attack,int fan){damageActions+=8;return true;}
@@ -216,11 +260,19 @@ public class OccludedArchmageProbe {
             Wave7NamedTrialActorPolicy.Attack.NONE,0L,0L,null,false)),"initial checkpoint");
     }
     Wave7NamedTrialActorPolicy.Checkpoint checkpoint(){return readNamedTrialActorCheckpoint(actor,trial);}
+    // Simulates the telegraph window having elapsed. Production writes the
+    // checkpoint deadline and the aim lock in the same breath, so the expiry
+    // rewrite keeps them in sync; leaving a lock that disagrees with its
+    // checkpoint would test a half-written state production cannot produce.
     void expireWarning(){
         var c=checkpoint();
+        long expired=System.currentTimeMillis()-1_000L;
         require(writeNamedTrialActorCheckpoint(actor,new Wave7NamedTrialActorPolicy.Checkpoint(
             c.eventId(),c.generation(),c.chamber(),c.trial(),c.actorId(),c.attackIndex(),
-            c.attack(),1L,c.cooldownUntilMillis(),c.targetId(),c.supportUsed())),"expire warning");
+            c.attack(),expired,c.cooldownUntilMillis(),c.targetId(),c.supportUsed())),"expire warning");
+        TrialAimLock armed=trialAimLocks.get(actor.getUniqueId());
+        if(armed!=null)trialAimLocks.put(actor.getUniqueId(),
+            new TrialAimLock(armed.generation(),armed.event(),expired,armed.point(),armed.fangMarks()));
     }
     void assertNoAction(){
         require(checkpoint().attack()==Wave7NamedTrialActorPolicy.Attack.NONE&&warnings==0

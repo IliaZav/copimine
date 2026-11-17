@@ -16,6 +16,7 @@ STUBS = {
  'org/bukkit/util/Vector.java': 'package org.bukkit.util; public record Vector(double x,double y,double z){}',
  'org/bukkit/entity/LivingEntity.java': '''package org.bukkit.entity; public class LivingEntity {
  public org.bukkit.Location at; public boolean valid=true; public LivingEntity(org.bukkit.Location p){at=p;}
+ public double getWidth(){return 0.6d;} public double getHeight(){return 1.8d;}
  public org.bukkit.Location getLocation(){return at.clone();} public boolean isValid(){return valid;}
  public boolean isDead(){return !valid;} public java.util.UUID getUniqueId(){return new java.util.UUID(1,1);}}''',
  'org/bukkit/entity/ItemDisplay.java': 'package org.bukkit.entity; public class ItemDisplay extends LivingEntity {public ItemDisplay(org.bukkit.Location p){super(p);}}',

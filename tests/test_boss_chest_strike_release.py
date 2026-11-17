@@ -32,6 +32,7 @@ def chest_strike_probe(tmp_path_factory):
         "void reconcileBossCastProjection(",
     ]
     methods = "\n".join(extract(source, signature) for signature in signatures)
+    methods = methods.replace("org.bukkit.FluidCollisionMode", "FluidCollisionMode")
     java = out / "BossChestStrikeReleaseProbe.java"
     java.write_text(r'''
 import java.util.*;
@@ -40,10 +41,20 @@ public class BossChestStrikeReleaseProbe {
     enum EventPhase {BOSS_ACTIVE,VICTORY_PROCESSING}
     enum SoundCategory {HOSTILE}
     enum Sound {ENTITY_WARDEN_SONIC_CHARGE}
-    enum Particle {SOUL_FIRE_FLAME}
+    enum Particle {SOUL_FIRE_FLAME,FLASH}
+    enum FluidCollisionMode {NEVER}
+    static final class RayTraceResult {
+        HitPosition getHitPosition(){return new HitPosition();}
+    }
+    static final class HitPosition {
+        Location toLocation(World w){return new Location(w,0,0,0);}
+    }
     static final class World {
         void playSound(Object l, Object s, Object c, float a, float b) {}
         void spawnParticle(Object p, Object l, int n, double a, double b, double c, double d) {}
+        // Air is the default, so the authored sweep reaches its final step.
+        RayTraceResult rayTraceBlocks(Location from,Vector direction,double distance,
+                FluidCollisionMode mode,boolean ignorePassable){return null;}
     }
     static final class Location {
         final double x, y, z; final World world;
@@ -57,6 +68,9 @@ public class BossChestStrikeReleaseProbe {
         Block getBlock(){return new Block();}
         public Location clone(){return new Location(x,y,z,world);}
         Vector getDirection(){return new Vector(0,0,1);}
+        // The sweep re-aims each probe point along the committed facing.
+        Location setDirection(Vector v){return this;}
+        double distance(Location o){return Math.sqrt((x-o.x)*(x-o.x)+(y-o.y)*(y-o.y)+(z-o.z)*(z-o.z));}
     }
     // Audit boss fix: the chest sweep stops at the first solid block, so the
     // probe needs a block view. The default is air: no sweep is truncated.
@@ -79,17 +93,45 @@ public class BossChestStrikeReleaseProbe {
         double lengthSquared(){return x*x+y*y+z*z;}
         double getX(){return x;} double getZ(){return z;}
     }
-    static final class LivingEntity {
-        final UUID id=UUID.randomUUID(); boolean valid=true, dead, carrier=true;
-        double height=2.0;
+    // The chest sweep rides a real display entity; the probe keeps the ledger
+    // production keeps so a retired model is actually removed from ownership.
+    static class Entity {
+        final UUID id=UUID.randomUUID(); boolean valid=true;
         UUID getUniqueId(){return id;}
         boolean isValid(){return valid;}
+        void remove(){valid=false;}
+    }
+    static final class LivingEntity extends Entity {
+        boolean dead, carrier=true;
+        double height=2.0;
         boolean isDead(){return dead;}
         double getHeight(){return height;}
         boolean hasLineOfSight(Object p){return true;}
         Location getLocation(){return new Location();}
         void setInvulnerable(boolean v){}
     }
+    // The chest sweep's flight display: a display entity the probe can move.
+    static final class ItemDisplay extends Entity { }
+    static final String EVENT_KIND_DISPLAY="DISPLAY";
+    final Set<UUID> bossSpellModelIds=new HashSet<>();
+    final Map<UUID,Entity> ownedEntities=new HashMap<>();
+    final List<ItemDisplay> created=new ArrayList<>();
+    UUID bossChestStrikeModel;
+    ItemDisplay spawnSpellModelDisplay(Location at,int modelData){
+        ItemDisplay display=new ItemDisplay();created.add(display);
+        ownedEntities.put(display.getUniqueId(),display);return display;}
+    boolean isOfficialEntity(Entity entity){return false;}
+    void tag(Entity entity,String kind,int wave,boolean official){ownedEntities.put(entity.getUniqueId(),entity);}
+    Entity unregisterOwnedEntity(UUID id,String reason){bossSpellModelIds.remove(id);return ownedEntities.remove(id);}
+    void removeBossSpellModel(UUID id){
+        bossSpellModelIds.remove(id);
+        Entity entity=unregisterOwnedEntity(id,"boss-spell-model-expired");
+        if(entity!=null&&entity.isValid())entity.remove();}
+    void retireBossChestStrikeModel(){
+        UUID id=bossChestStrikeModel;bossChestStrikeModel=null;
+        if(id!=null)removeBossSpellModel(id);}
+    void spawnEventParticle(Location p,Particle particle,int count,double x,double y,double z,double extra){}
+    void renderBossContactImpact(LivingEntity b,Player victim,EndRiftAiPolicy.BossSpell spell){}
     static final class Player {
         final UUID id=UUID.randomUUID();
         UUID getUniqueId(){return id;}
@@ -142,6 +184,7 @@ public class BossChestStrikeReleaseProbe {
     boolean hasProjectileBlockLineOfSight(Location a, Location b){return true;}
     boolean applyContactHit(Player p, LivingEntity b, double d, Vector k){return false;}
     void playBossImpactPresentation(Object... args){}
+    boolean teleportCombatEntity(Entity model,Location to){return true;}
     void registerEncounterTask(BukkitTask t){}
     void clearBossSpellModels(){}
     void releaseBossHazardReservation(String reason){released++;}

@@ -346,6 +346,10 @@ def test_phantom_layout_manager_fences_and_caps(tmp_path: Path) -> None:
         str(codec_src / "me" / "copimine" / "protocol" / "EndEventBridgeBodyCodec.java"),
         str(codec_src / "me" / "copimine" / "protocol" / "BridgeSigningPolicy.java"),
         str(codec_src / "me" / "copimine" / "protocol" / "BridgeEnvelope.java"),
+        # The codec's ENTITY_PHASE body carries the trial and Guardian actor
+        # clocks by type, so those real records must be on the source path too.
+        str(codec_src / "me" / "copimine" / "protocol" / "Wave7AnimationFrame.java"),
+        str(codec_src / "me" / "copimine" / "protocol" / "GuardianActorFrame.java"),
     ]
 
     compile_result = subprocess.run(

@@ -53237,7 +53237,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return lastSealRing;
     }
 
-    /** Five seconds of continuous close pressure, then a separate 28-second combo cooldown. */
+    /** 100 ticks of continuous close pressure, then a separate 560-tick combo cooldown. */
     private void observeCocoonPressure(LivingEntity boss) {
         cocoonPressureTarget = null;
         if (cocoonPressureGeneration != generation) {

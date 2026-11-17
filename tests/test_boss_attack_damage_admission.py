@@ -32,12 +32,18 @@ def boss_attack_probe(tmp_path_factory):
         # the same observable state.
         "void finishBossChestStrike(",
         "void abortBossChestStrike(",
+        "void retireBossChestStrikeModel(",
         "boolean applyBossActorAbilityDamage(",
         "void reconcileBossCastProjection(",
     ]
     if "boolean applyBossAbilityDamage(" in source:
         signatures.append("boolean applyBossAbilityDamage(")
+    # The chest strike now flies a real ItemDisplay mesh, so the extracted body
+    # names the Bukkit collision enum explicitly. This probe stubs the enum for
+    # its own ray tracing; rewriting the qualifier keeps the extracted production
+    # body verbatim while still compiling against the stub.
     methods = "\n".join(extract(source, signature) for signature in signatures)
+    methods = methods.replace("org.bukkit.FluidCollisionMode", "FluidCollisionMode")
     java = out / "BossAttackAdmissionProbe.java"
     java.write_text(r'''
 import java.util.*;
@@ -53,9 +59,11 @@ public class BossAttackAdmissionProbe {
     static final double WAVE_MOB_DAMAGE_REDUCTION=0.75;
     enum PotionEffectType {SLOWNESS,WEAKNESS,BLINDNESS,WITHER}
     // BLOCK/CRIT/POOF added for the contact-move impact burst.
-    enum Particle {REVERSE_PORTAL,END_ROD,PORTAL,DRAGON_BREATH,SWEEP_ATTACK,EXPLOSION,SOUL_FIRE_FLAME,BLOCK,CRIT,POOF}
+    enum Particle {REVERSE_PORTAL,END_ROD,PORTAL,DRAGON_BREATH,SWEEP_ATTACK,EXPLOSION,SOUL_FIRE_FLAME,BLOCK,CRIT,POOF,FLASH}
     enum FluidCollisionMode {NEVER}
-    static class World {void playSound(Object... args){} void spawnParticle(Object... args){} boolean blocked;Object rayTraceBlocks(Location l,Vector v,double d,FluidCollisionMode f,boolean b){return blocked?new Object():null;}}
+    static class HitPosition { Location toLocation(World w){return new Location(0,0,0);} Vector toVector(){return new Vector(0,0,0);} }
+    static class RayTraceResult { HitPosition getHitPosition(){return new HitPosition();} }
+    static class World {void playSound(Object... args){} void spawnParticle(Object... args){} boolean blocked;RayTraceResult rayTraceBlocks(Location l,Vector v,double d,FluidCollisionMode f,boolean b){return blocked?new RayTraceResult():null;}}
     static final World WORLD=new World();
     record PotionEffect(PotionEffectType type,int ticks,int amplifier,boolean a,boolean b,boolean c) {}
     static class Vector {
@@ -82,11 +90,13 @@ public class BossAttackAdmissionProbe {
         Location add(double a,double b,double c){x+=a;y+=b;z+=c;return this;}
         double getX(){return x;}double getY(){return y;}double getZ(){return z;}
         Location add(Vector v){return add(v.x,v.y,v.z);}
+        Location setDirection(Vector v){return this;}
         double distance(Location p){return Math.sqrt(distanceSquared(p));}
         public Location clone(){return new Location(x,y,z);}
         Block getBlock(){return new Block();}
     }
-    static class Entity { final UUID id=UUID.randomUUID();UUID getUniqueId(){return id;} }
+    static class Entity { final UUID id=UUID.randomUUID();UUID getUniqueId(){return id;}
+        boolean valid=true;boolean isValid(){return valid;}void remove(){valid=false;} }
     static class LivingEntity extends Entity {
         void setInvulnerable(boolean b){}
         boolean valid=true,dead,visible=true;
@@ -193,6 +203,26 @@ public class BossAttackAdmissionProbe {
             me.copimine.endevent.domain.BossSpellVisualCompositionPolicy.Composition composition){}
     void releaseBossHazardReservation(String s){}
     void registerEncounterTask(BukkitTask t){}
+    // The chest strike now owns a real spawned spell mesh. This probe exercises
+    // damage admission, so the mesh lifecycle is stubbed at its leaves while the
+    // production sweep body runs unchanged.
+    static final String EVENT_KIND_DISPLAY="DISPLAY";
+    final Set<UUID> bossSpellModelIds=new HashSet<>();
+    final Map<UUID,Entity> ownedEntities=new HashMap<>();
+    UUID bossChestStrikeModel;
+    static class ItemDisplay extends Entity {
+        boolean valid=true; boolean isValid(){return valid;} void remove(){}
+    }
+    ItemDisplay spawnSpellModelDisplay(Location at,int modelData){
+        // Production registers the spawned display in ownedEntities; the sweep
+        // resolves its own mesh through that map, so the stub must too.
+        ItemDisplay display=new ItemDisplay(); ownedEntities.put(display.getUniqueId(),display); return display;
+    }
+    void tag(Entity entity,String kind,int flag,boolean official){}
+    void unregisterOwnedEntity(UUID id,String reason){}
+    void removeBossSpellModel(UUID id){}
+    boolean isOfficialEntity(Entity entity){return true;}
+    boolean teleportCombatEntity(Entity entity,Location destination){return true;}
     void cancelVoidMark(UUID id){activeVoidMarkCenters.remove(id);}
     void cleanupRiftProjectile(UUID id){activeRiftProjectiles.remove(id);}
     void renderBossFinalStrikeImpact(Location mark,double radius){}

@@ -42,8 +42,9 @@ public class RamVisualAdmissionProbe {
         Location add(double dx,double dy,double dz){x+=dx;y+=dy;z+=dz;return this;}
     }
     static class BlockDisplay {
-        boolean valid=true;Location at;Vector3f size;
+        final UUID id=UUID.randomUUID();boolean valid=true;Location at;Vector3f size;
         BlockDisplay(Location at,Vector3f size){this.at=at;this.size=size;}
+        UUID getUniqueId(){return id;}Location getLocation(){return at.clone();}
         boolean isValid(){return valid;}
     }
     static class Ravager {Location at;Ravager(World w){at=new Location(w);}
@@ -54,8 +55,13 @@ public class RamVisualAdmissionProbe {
     Ravager ram=new Ravager(world);int tick,impacts,pillarImpacts,nextPillarTick,skeletonSpawns;
     UUID pillarId=UUID.randomUUID();Location pillar=new Location(world);
     final List<Piece> armor=new ArrayList<>();final List<BlockDisplay> pillarDisplays=new ArrayList<>();
+    // Resting placements of the live shells, recorded by buildPillar() so the
+    // crack animation can restore the authored pose.
+    final Map<UUID,Location> pillarRestPositions=new HashMap<>();
     boolean pillarSkeletonSpawned, pillarSkeletonDefeated, ramDefeated;
     void tickPillarSkeleton(List<Object> players){}
+    // Presentation seam: the pose packet the tick publishes on a cadence.
+    void publishPose(){}
     String failure;
     boolean skeletonAlive(){return pillarSkeletonSpawned;}
     void fail(String reason){failure=reason;}

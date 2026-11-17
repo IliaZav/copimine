@@ -223,11 +223,19 @@ public final class EndRiftEncounterCoordinatorTest {
         check(coordinator.advanceIntermission("w7", "w7-start").accepted(), "wave 7 must start");
         RealitySplitEncounter split = (RealitySplitEncounter) coordinator.encounter(
                 EndRiftObjective.Objective.REALITY_SPLIT);
-        check(split.assignment().chamberCount() == 2, "two players must get two isolated chambers");
-        check(split.completeChamber(context.withObjective(EndRiftObjective.Objective.REALITY_SPLIT), 0).accepted(),
-                "first chamber must complete");
-        check(split.completeChamber(context.withObjective(EndRiftObjective.Objective.REALITY_SPLIT), 1).accepted(),
-                "second chamber must complete");
+        // Latest approved Wave 7 topology: the whole party shares one open arena
+        // and runs the sequential route together, so a two-player roster must NOT
+        // be sectored into two isolated chambers.
+        check(split.assignment().chamberCount() == 1,
+                "a two-player roster must share one open Wave 7 arena");
+        EncounterContext wave7 = context.withObjective(EndRiftObjective.Objective.REALITY_SPLIT);
+        check(split.completeChamber(wave7, 1).status() == WaveEncounter.Status.REJECTED,
+                "the single open arena must reject a phantom second chamber");
+        check(split.completeChamber(wave7, 0).accepted(), "the arena route must complete");
+        check(!split.completeChamber(wave7, 0).accepted(),
+                "the completed arena must not complete a second time");
+        check(split.assignment().chamberByPlayer().values().stream().allMatch(chamber -> chamber == 0),
+                "every party member must be assigned to the one open arena");
         check(coordinator.completeWave(EndRiftObjective.Objective.REALITY_SPLIT,
                 "w7 done", "w7-complete").accepted(), "wave 7 must enter pre-boss cooldown");
         check(coordinator.phase() == EventPhase.PRE_BOSS_COOLDOWN, "wave 7 must lead to pre-boss cooldown");

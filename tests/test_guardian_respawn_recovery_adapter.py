@@ -71,10 +71,22 @@ public class GuardianRespawnRecoveryProbe {
     static class LivingEntity extends Entity { double hp=60; double getHealth(){return hp;} void setHealth(double v){hp=v;} }
     static class Player extends LivingEntity { }
     static class ItemDisplay extends Entity { final Location location=new Location();
-        Location getLocation(){return location;} }
+        Location getLocation(){return location;}
+        // A guardian strike re-aims the display along the committed heading.
+        void setRotation(float yaw,float pitch){} }
+    static class Vector {
+        double x,y,z; Vector(){} Vector(double x,double y,double z){this.x=x;this.y=y;this.z=z;}
+        Vector setY(double value){y=value;return this;}
+        Vector subtract(Vector o){return new Vector(x-o.x,y-o.y,z-o.z);}
+        double lengthSquared(){return x*x+y*y+z*z;}
+    }
     static class Location { final World world=new World();
+        Vector direction=new Vector(0,0,1);
         World getWorld(){return world;} public Location clone(){return this;}
-        Location add(double x,double y,double z){return this;} }
+        Location add(double x,double y,double z){return this;}
+        Vector toVector(){return new Vector();}
+        Location setDirection(Vector v){direction=v;return this;}
+        float getYaw(){return 0F;} }
     static class World { int warnings;
         void spawnParticle(Particle p,Location l,int count,double x,double y,double z,double extra){warnings++;}
         void playSound(Location l,Sound s,SoundCategory c,float volume,float pitch){} }
@@ -125,6 +137,10 @@ public class GuardianRespawnRecoveryProbe {
     boolean tentacleGuardianShielded(){return shielded;}
     void reconcileGuardianShieldOrbit(LivingEntity b,boolean active){}
     Player chooseTentacleTarget(List<Player> p,Location l){return p.getFirst();}
+    // A permanent guardian picks its own target; this probe exercises the
+    // respawn/recovery ledger, so it hands back the first participant and lets
+    // the real strike-start branch run.
+    Player chooseGuardianStrikeTarget(List<Player> p,ItemDisplay d){return p.isEmpty()?null:p.getFirst();}
     int tentacleAttackStaggerTicks(){return 10;}
     void setTentacleState(ItemDisplay d,TentacleAnimationPolicy.State s,UUID target){}
     GuardianRespawnRecoveryProbe(){tentacleController.begin(generation);}

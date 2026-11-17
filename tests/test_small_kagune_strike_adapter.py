@@ -84,7 +84,7 @@ public class SmallKaguneStrikeProbe {
     record GuardianDeaths() { boolean cocoonBroken() { return false; } }
     final GuardianDeaths guardianDeaths = new GuardianDeaths();
     double readDouble(Entity actor,Object key,double fallback) { return 20; }
-    final UUID eventId = UUID.randomUUID(); final long generation = 9;
+    final String eventId = "event-7"; final long generation = 9;
     final TentacleController tentacleController = new TentacleController();
     final Map<UUID,UUID> tentacleHitboxesByDisplay = new HashMap<>();
     final Map<UUID,Entity> ownedEntities = new HashMap<>();
@@ -93,7 +93,9 @@ public class SmallKaguneStrikeProbe {
     boolean applyBossActorAbilityDamage(LivingEntity boss,LivingEntity source,Player player,double amount){
         double before=player.getHealth();player.damage(amount,source);return player.getHealth()<before;
     }
-    boolean ownedBySession(Entity e, UUID event, long gen) { return e.owned; }
+    boolean ownedBySession(Entity e, String event, long gen) { return e.owned; }
+    boolean isPlayerUnderTentacleControl(Player p) { return false; }
+    UUID bossUuid = null;
     Logger getLogger() { return Logger.getLogger("small-kagune-probe"); }
     int eventScalePlayers() { return 20; }
     List<Player> activeBossParticipants() { return List.of(new Player(),new Player()); }

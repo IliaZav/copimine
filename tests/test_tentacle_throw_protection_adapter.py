@@ -52,7 +52,7 @@ public class TentacleThrowProtectionProbe {
     final boolean localTextureShowcase=false;
     boolean testCombatAiMode=false;
     EventPhase phase=EventPhase.BOSS_ACTIVE;
-    final UUID eventId=UUID.randomUUID(); final long generation=9;
+    final String eventId="event-7"; final long generation=9;
     final Map<UUID,TentacleThrowPolicy.Launch> tentacleThrowLaunches=new HashMap<>();
     final Map<UUID,UUID> tentacleHitboxesByDisplay=new HashMap<>();
     final Map<UUID,Entity> ownedEntities=new HashMap<>();
@@ -70,7 +70,7 @@ public class TentacleThrowProtectionProbe {
     static class Bukkit {
         static Player player;static Player getPlayer(UUID id){return player!=null&&player.id.equals(id)?player:null;}
     }
-    boolean ownedBySession(Entity e,UUID event,long gen){return e.owned;}
+    boolean ownedBySession(Entity e,String event,long gen){return e.owned;}
     Location coreCombatAnchorLocation(){return new Location();}
     TentacleThrowPolicy.Launch safeTentacleThrowLaunch(ItemDisplay d,Player p,TentacleThrowPolicy.Launch launch){return launch;}
     boolean isActiveBossParticipant(Player p){return true;}

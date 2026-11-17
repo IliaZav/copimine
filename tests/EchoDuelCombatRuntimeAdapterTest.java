@@ -42,6 +42,7 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         jumpAttackOwnersHopWhileClosingIntoTheFallingCrit();
         frequentWeaponSwitchersTradeASwingForAShot();
         sprintHeavyCopiesAttackBeforeTheyHop();
+        woundedCopyWithoutFoodKeepsFighting();
         System.out.println("EchoDuelCombatRuntimeAdapterTest OK assertions=" + assertions);
     }
 
@@ -567,6 +568,31 @@ public final class EchoDuelCombatRuntimeAdapterTest {
                 new Observation(100, 10_000.0D, false)).orElseThrow();
         check(hop.action() == Action.JUMP,
                 "with no legal attack the sprint-heavy copy still hops, got " + hop.action());
+    }
+
+    /**
+     * A wounded melee copy with food heals; one with an empty inventory must not
+     * kite forever. The retreat is a way to buy the heal's ticks, so a copy that
+     * cannot heal must keep fighting - otherwise it is the "endless retreat
+     * without firing" failure the navigation rule forbids.
+     */
+    private static void woundedCopyWithoutFoodKeepsFighting() {
+        var brawler = new me.copimine.endevent.domain.wave7.EchoBehaviorStrategy(
+                1_000, 0, 0, 0, 1_000, 0, 0, true);
+        Fixture fed = activeFixture(5.0D, brawler);
+        Decision heal = EchoDuelCombatRuntimeAdapter.tick(fed.duel(), restore(fed.duel()),
+                scope(fed.duel(), true, true, true, true),
+                new Observation(100, 100.0D, true)).orElseThrow();
+        check(heal.action() == Action.CONSUMABLE,
+                "a wounded brawler that carries food starts eating, got " + heal.action());
+
+        Fixture empty = activeFixture(5.0D, brawler, Map.of(5, EchoLoadoutState.Item.empty()));
+        Decision fights = EchoDuelCombatRuntimeAdapter.tick(empty.duel(), restore(empty.duel()),
+                scope(empty.duel(), true, true, true, true),
+                new Observation(100, 100.0D, true)).orElseThrow();
+        check(fights.intent() != MovementIntent.KITE,
+                "a wounded brawler with no heal keeps closing instead of fleeing, got "
+                        + fights.intent());
     }
 
     private static me.copimine.endevent.domain.wave7.EchoBehaviorStrategy meleeStrategy() {

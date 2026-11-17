@@ -123,6 +123,29 @@ called with `decision.intent()` for every action kind, and its first branch is
 the shield short-circuit therefore actively cancelled the copy's path for the
 whole parry, not just skipped one steering update.
 
+### 2.6 A wounded copy only retreats when it can actually heal
+
+`movementIntent(...)` returned `KITE` for every melee-dominant copy that was
+below `HEAL_THRESHOLD_PERMILLE`, with no regard for whether the copy had anything
+to heal with. The heal branch above it is gated on two more things — a carried
+golden apple or food, and `sustainPermille() >= SUSTAIN_FLOOR_PERMILLE` — so a
+wounded brawler with an empty inventory took the retreat and never came back:
+it left melee reach, was still wounded on every later tick, and therefore kept
+kiting for the rest of the duel. That is the "endless retreat without firing"
+failure the navigation rule in this very file forbids, and it is not what a
+player without healing does.
+
+The intent is now computed from a `canHeal` flag that mirrors the heal branch's
+own gate (`consumableSlot >= 0 && sustainPermille() >= SUSTAIN_FLOOR_PERMILLE`).
+In practice the heal branch runs first, so a wounded copy that can start eating
+this tick eats (`CONSUMABLE`, reported with `HOLD` on purpose) and the retreat
+covers the ticks where the heal is not startable yet — a shared-action cooldown,
+a pending use. A copy with nothing to heal now keeps fighting instead of kiting
+for the rest of the duel. The three-argument
+`movementIntent(strategy, observation, wounded)` overload is unchanged in
+meaning — it is the "wounded and able to heal" case the retreat was written for,
+and the harness test keeps asserting exactly that.
+
 ## 3. Dead coverage that was revived
 
 `tests/harness/me/copimine/endevent/runtime/wave7/EchoWoundedRetreatTest.java`
@@ -154,7 +177,8 @@ kept alive by a weak regex.
 |---|---|---|
 | Three habits wired | IMPLEMENTED | `EchoDuelCombatRuntimeAdapter.java`; `jumpAttackPermille` / `weaponSwitchPermille` now have readers |
 | Behaviour asserted | AUTOMATED-TESTED | `tests/EchoDuelCombatRuntimeAdapterTest.java`: `meleeCopiesCloseIntoMeleeReach`, `jumpAttackOwnersHopWhileClosingIntoTheFallingCrit`, `frequentWeaponSwitchersTradeASwingForAShot`, `sprintHeavyCopiesAttackBeforeTheyHop`, and the shielded-copy intent check inside `profileDrivenDefenseSchedulesOwnerBoundShieldActions` |
-| Wounded retreat truly executed | AUTOMATED-TESTED | `EchoWoundedRetreatTest` now in the gate's `$pureTests`, resolved from `tests\harness\` |
+| Wounded retreat truly executed | AUTOMATED-TESTED | `EchoWoundedRetreatTest` now in the gate's `$pureTests`, resolved from `tests\harness\`; its `woundedWithoutHealingKeepsFighting` case separates "retreat to heal" from "flee forever" |
+| Wounded copy with no heal keeps fighting | AUTOMATED-TESTED | `EchoWoundedRetreatTest.woundedWithoutHealingKeepsFighting` (intent: `canHeal=false` does not KITE, `canHeal=true` does) and `EchoDuelCombatRuntimeAdapterTest.woundedCopyWithoutFoodKeepsFighting` (fed copy eats, empty copy does not flee) |
 | Gate green | AUTOMATED-TESTED | `tests\RunEndRiftEventChecks.ps1 -JavaHome <pinned Temurin 25.0.4.1>` exit 0 |
 | Copies look right in a real client | NOT VERIFIED / BLOCKED | no client capture; hop landing, swap animation and the crit window need F2 frames |
 | Live roster behaviour | NOT VERIFIED / BLOCKED | no players online; `/cmend test wave 7` refuses an empty sandbox roster |

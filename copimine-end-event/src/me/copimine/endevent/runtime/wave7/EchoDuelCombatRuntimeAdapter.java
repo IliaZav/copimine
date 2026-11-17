@@ -189,6 +189,23 @@ public final class EchoDuelCombatRuntimeAdapter {
      */
     static MovementIntent movementIntent(EchoBehaviorStrategy strategy, Observation observation,
                                          boolean wounded) {
+        // The three-argument form is the case the retreat was written for: a
+        // wounded copy that can still heal. A copy that cannot heal must not
+        // take this path, see the four-argument overload.
+        return movementIntent(strategy, observation, wounded, wounded);
+    }
+
+    /**
+     * @param canHeal the copy carries a consumable its sustain habit will let it
+     *                spend. Retreating is only worth anything when the gap is
+     *                being opened to heal: a wounded brawler with an empty
+     *                inventory used to kite forever, never re-enter melee reach
+     *                and never attack again. That is exactly the "endless
+     *                retreat without firing" failure the navigation rule forbids,
+     *                and it is also how a player with no healing fights on.
+     */
+    static MovementIntent movementIntent(EchoBehaviorStrategy strategy, Observation observation,
+                                         boolean wounded, boolean canHeal) {
         if (strategy == null || observation == null) return MovementIntent.HOLD;
         double distance = Math.sqrt(observation.distanceSquared());
         // Map 0..1000 onto a 1.5..12 block hold band inside the ranged envelope.
@@ -203,8 +220,9 @@ public final class EchoDuelCombatRuntimeAdapter {
             preferred = Math.min(preferred, MELEE_RANGE_BLOCKS - HOLD_TOLERANCE_BLOCKS);
         }
         // A wounded brawler breaks contact instead of trading blows it cannot
-        // win. A ranged copy already kites, so this only changes melee copies.
-        if (wounded && !wantsRange) return MovementIntent.KITE;
+        // win, but only to buy the ticks its heal needs. A ranged copy already
+        // kites, so this only changes melee copies.
+        if (wounded && canHeal && !wantsRange) return MovementIntent.KITE;
         if (wantsRange) {
             if (distance < preferred - HOLD_TOLERANCE_BLOCKS) return MovementIntent.KITE;
             if (distance > preferred + HOLD_TOLERANCE_BLOCKS
@@ -305,7 +323,13 @@ public final class EchoDuelCombatRuntimeAdapter {
             // no action: the shield window stays the only thing happening.
             boolean wounded = duel.actor().currentHealth() * 1_000.0D
                     <= duel.actor().maximumHealth() * HEAL_THRESHOLD_PERMILLE;
-            MovementIntent intent = movementIntent(duel.behaviorStrategy(), observation, wounded);
+            // The retreat is only worth taking when the heal branch below can
+            // actually fire this fight: a consumable is carried and the recorded
+            // sustain habit clears the floor. Otherwise the copy would kite
+            // forever without attacking, which the navigation rule forbids.
+            boolean canHeal = consumableSlot >= 0
+                    && duel.behaviorStrategy().sustainPermille() >= SUSTAIN_FLOOR_PERMILLE;
+            MovementIntent intent = movementIntent(duel.behaviorStrategy(), observation, wounded, canHeal);
             if (duel.actor().shieldActiveUntilTick() > observation.tick()) {
                 return Optional.of(new Decision(scope, Action.NONE, duel, duel, baselineReplica,
                         replica, -1, -1, null, intent));

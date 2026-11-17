@@ -19,6 +19,7 @@ public final class EchoWoundedRetreatTest {
     public static void main(String[] args) {
         brawlerRetreatsWhenWounded();
         brawlerHoldsWhenHealthy();
+        woundedWithoutHealingKeepsFighting();
         rangedCopyStillKites();
         retreatDoesNotBreakTheBand();
 
@@ -56,6 +57,25 @@ public final class EchoWoundedRetreatTest {
         MovementIntent intent = EchoDuelCombatRuntimeAdapter.movementIntent(brawler(), inMelee(), false);
         check(intent != MovementIntent.KITE || isLateral(intent),
                 "a healthy brawler in reach must not run away");
+    }
+
+    /**
+     * A wounded copy that cannot heal must not retreat forever. Before this, the
+     * wounded flag alone returned KITE, so a brawler with an empty inventory
+     * opened the gap and never came back: the "endless retreat without firing"
+     * failure the navigation rule forbids.
+     */
+    private static void woundedWithoutHealingKeepsFighting() {
+        MovementIntent intent = EchoDuelCombatRuntimeAdapter.movementIntent(
+                brawler(), inMelee(), true, false);
+        check(intent != MovementIntent.KITE,
+                "a wounded brawler with nothing to heal must keep fighting, got " + intent);
+
+        // With a heal available the retreat is still the right move.
+        MovementIntent healing = EchoDuelCombatRuntimeAdapter.movementIntent(
+                brawler(), inMelee(), true, true);
+        check(healing == MovementIntent.KITE,
+                "a wounded brawler that can heal must still open the gap, got " + healing);
     }
 
     private static void rangedCopyStillKites() {

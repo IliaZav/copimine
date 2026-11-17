@@ -95,6 +95,28 @@ admission rule changed: the jump still goes through
 `EchoDuelCombatPolicy.tryStartJump`, which enforces the shared action and jump
 cooldowns.
 
+### 2.5 A shielded copy no longer freezes on the spot
+
+The adapter short-circuits while its own shield window is live and returns
+`NONE`. That return used the nine-argument `Decision` constructor, whose missing
+intent defaults to `MovementIntent.HOLD` — so for the whole parry (5-20 ticks,
+`5 + 15 * defensePermille / 1000`) the copy stood perfectly still while its owner
+was free to walk out of the duel cell and re-line a shot. The navigation comment
+two hundred lines below already claimed the opposite ("keeps a mid-jump or
+shielded copy visibly repositioning instead of freezing on the spot"), so the
+code contradicted its own contract.
+
+Health and navigation are now resolved *before* the shield short-circuit and the
+short-circuit reports the intent the copy would have chosen anyway. The window
+still grants no action — the decision remains `NONE` and the shield stays the
+only thing happening — but the copy keeps walking. `wounded` is computed once and
+reused by the heal branch, so no behaviour was added, only moved.
+
+The consumable branch deliberately still reports `HOLD`: unlike a raised shield,
+starting to eat is a commitment the copy makes on purpose, and the health it is
+about to regain is granted at `pendingUseUntilTick`, not on the spot. Do not
+"fix" that the same way.
+
 ## 3. Dead coverage that was revived
 
 `tests/harness/me/copimine/endevent/runtime/wave7/EchoWoundedRetreatTest.java`
@@ -125,7 +147,7 @@ kept alive by a weak regex.
 | Claim | State | Evidence |
 |---|---|---|
 | Three habits wired | IMPLEMENTED | `EchoDuelCombatRuntimeAdapter.java`; `jumpAttackPermille` / `weaponSwitchPermille` now have readers |
-| Behaviour asserted | AUTOMATED-TESTED | `tests/EchoDuelCombatRuntimeAdapterTest.java`: `meleeCopiesCloseIntoMeleeReach`, `jumpAttackOwnersHopWhileClosingIntoTheFallingCrit`, `frequentWeaponSwitchersTradeASwingForAShot`, `sprintHeavyCopiesAttackBeforeTheyHop` |
+| Behaviour asserted | AUTOMATED-TESTED | `tests/EchoDuelCombatRuntimeAdapterTest.java`: `meleeCopiesCloseIntoMeleeReach`, `jumpAttackOwnersHopWhileClosingIntoTheFallingCrit`, `frequentWeaponSwitchersTradeASwingForAShot`, `sprintHeavyCopiesAttackBeforeTheyHop`, and the shielded-copy intent check inside `profileDrivenDefenseSchedulesOwnerBoundShieldActions` |
 | Wounded retreat truly executed | AUTOMATED-TESTED | `EchoWoundedRetreatTest` now in the gate's `$pureTests`, resolved from `tests\harness\` |
 | Gate green | AUTOMATED-TESTED | `tests\RunEndRiftEventChecks.ps1 -JavaHome <pinned Temurin 25.0.4.1>` exit 0 |
 | Copies look right in a real client | NOT VERIFIED / BLOCKED | no client capture; hop landing, swap animation and the crit window need F2 frames |

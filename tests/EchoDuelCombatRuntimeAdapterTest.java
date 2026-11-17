@@ -194,6 +194,11 @@ public final class EchoDuelCombatRuntimeAdapterTest {
                 .orElseThrow();
         check(hold.action() == Action.NONE,
                 "an active persisted shield window cannot be replaced by another action");
+        // A guarded copy still walks: the shield window used to return NONE with
+        // no intent, which Decision defaults to HOLD, so the copy froze in place
+        // for the whole 5-20 tick parry while its owner re-positioned for free.
+        check(hold.intent() == MovementIntent.APPROACH,
+                "a shielded copy keeps closing instead of freezing, got " + hold.intent());
 
         EchoLoadoutState blockedReplica = restore(saved);
         check(me.copimine.endevent.domain.wave7.EchoDuelCombatPolicy.tryBlockWithShield(

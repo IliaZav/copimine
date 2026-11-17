@@ -295,18 +295,27 @@ public final class EchoDuelCombatRuntimeAdapter {
             }
             int consumableSlot = replica.find(EchoLoadoutState.Kind.GOLDEN_APPLE);
             if (consumableSlot < 0) consumableSlot = replica.find(EchoLoadoutState.Kind.FOOD);
+            // Health and navigation are resolved before the shield short-circuit.
+            // A copy holding up its own parry used to return NONE with no intent,
+            // which the Decision constructor defaults to HOLD: for the whole
+            // shield window (5-20 ticks) it stood still while its owner was free
+            // to reposition, and the navigation contract calls that out as the
+            // "frozen copy" failure. Reporting the intent it would have chosen
+            // anyway keeps the guarded copy visibly moving, and it still grants
+            // no action: the shield window stays the only thing happening.
+            boolean wounded = duel.actor().currentHealth() * 1_000.0D
+                    <= duel.actor().maximumHealth() * HEAL_THRESHOLD_PERMILLE;
+            MovementIntent intent = movementIntent(duel.behaviorStrategy(), observation, wounded);
             if (duel.actor().shieldActiveUntilTick() > observation.tick()) {
                 return Optional.of(new Decision(scope, Action.NONE, duel, duel, baselineReplica,
-                        replica, -1, -1, null));
+                        replica, -1, -1, null, intent));
             }
-            boolean needsHealing = duel.actor().currentHealth() * 1_000.0D
-                    <= duel.actor().maximumHealth() * HEAL_THRESHOLD_PERMILLE;
             // Audit ECHO error: sustain is the share of sustained actions that were
             // heals. A player who genuinely heals while fighting lands far below
             // 250 per mille (three heals beside two hundred hits is 15), so the old
             // hard gate rejected real healers. Any recorded heal tendency above the
             // "never heals" floor now allows the copy to keep its own habit.
-            if (needsHealing && duel.behaviorStrategy().sustainPermille() >= SUSTAIN_FLOOR_PERMILLE
+            if (wounded && duel.behaviorStrategy().sustainPermille() >= SUSTAIN_FLOOR_PERMILLE
                     && consumableSlot >= 0) {
                 EchoLoadoutState.Item item = replica.item(consumableSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartConsumable(
@@ -332,9 +341,6 @@ public final class EchoDuelCombatRuntimeAdapter {
             // repositioning instead of freezing on the spot. Only a legal current
             // action is selected here, so movement never grants range and never
             // bypasses a cooldown.
-            boolean wounded = duel.actor().currentHealth() * 1_000.0D
-                    <= duel.actor().maximumHealth() * HEAL_THRESHOLD_PERMILLE;
-            MovementIntent intent = movementIntent(duel.behaviorStrategy(), observation, wounded);
             boolean inMeleeRange = observation.distanceSquared()
                     <= MELEE_RANGE_BLOCKS * (double) MELEE_RANGE_BLOCKS;
             // BRAIN-013: a copy of a player who swapped weapons constantly does

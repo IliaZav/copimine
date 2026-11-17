@@ -18,6 +18,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 DOMAIN = ROOT / "copimine-end-event/src/me/copimine/endevent/domain"
+PROTOCOL = ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol"
 
 HARNESS = """import me.copimine.endevent.domain.EchoAttackReplicaPolicy;
 import me.copimine.endevent.domain.EchoReplicaPresentationPolicy;
@@ -38,8 +39,15 @@ public class {name} {{
 @pytest.fixture(scope="module")
 def echo_presentation(tmp_path_factory):
     directory = tmp_path_factory.mktemp("echo-presentation")
+    # The replica policy retimes its contact keyframes through the shared
+    # authored-to-combat mapping and reads the contact geometry from
+    # BossContactStrikePolicy, so the probe compiles the real dependency closure
+    # rather than the two files that used to be enough.
     sources = [DOMAIN / "EchoAttackReplicaPolicy.java",
-               DOMAIN / "EchoReplicaPresentationPolicy.java"]
+               DOMAIN / "EchoReplicaPresentationPolicy.java",
+               DOMAIN / "BossContactStrikePolicy.java",
+               DOMAIN / "EndRiftAiPolicy.java",
+               PROTOCOL / "BossAnimationPlayback.java"]
     compiled = subprocess.run(
         ["javac", "-encoding", "UTF-8", "-d", str(directory), *map(str, sources)],
         capture_output=True, text=True)
@@ -59,21 +67,33 @@ def run_probe(compiled: Path, name: str, body: str) -> str:
     return run.stdout
 
 
-def test_rage_entry_family_is_actually_copyable(echo_presentation):
-    """Defect 5: the entry hand-off used a family the policy refuses."""
+def test_every_copyable_origin_is_a_committed_contact_attack(echo_presentation):
+    """Defect 5: the entry hand-off used a family the policy refuses.
+
+    The adapter now starts copies from the contact ability the boss actually
+    committed, so it may only ever hand over a family that maps to a real
+    timeline. An origin that is not that committed contact strike is refused
+    outright: a copy that repeats the wrong attack is a lie the player cannot
+    read, which is worse than no copy at all.
+    """
     run_probe(echo_presentation, "CopyableFamilyProbe", """
         require(EchoReplicaPresentationPolicy.familyForOrigin("MELEE_SWIPE").equals("MELEE_SWIPE"),
                 "a swipe must stay a swipe");
         require(EchoReplicaPresentationPolicy.familyForOrigin("GROUND_SLAM").equals("GROUND_SLAM"),
                 "a slam must stay a slam");
-        // The historic hand-off. It is not copyable, but the adapter must not
-        // silently drop the cast: it must translate it into a supported family.
-        String translated = EchoReplicaPresentationPolicy.familyForOrigin("VOID_BLAST");
-        require(translated != null, "a committed attack must still be copyable");
-        require(EchoReplicaPresentationPolicy.isCopyable(translated, 0L),
-                "the translated family must have a timeline");
-        require(EchoReplicaPolicyAccepts.all().contains(translated),
-                "the translated family must be one the replica policy supports");
+        require(EchoReplicaPresentationPolicy.familyForOrigin("CHEST_STRIKE").equals("CHEST_STRIKE"),
+                "a chest strike must stay a chest strike");
+        // Every family the live call site can pass must be copyable.
+        for (String committed : new String[]{"MELEE_SWIPE", "CHEST_STRIKE", "GROUND_SLAM"}) {
+            require(EchoReplicaPresentationPolicy.isCopyable(committed, 0L),
+                    "a committed contact strike must be copyable: " + committed);
+            require(EchoReplicaAttackFamilies.contains(committed),
+                    "the policy must support the family the adapter passes: " + committed);
+        }
+        // The historic hand-off. It is a projectile, not a contact strike, so it
+        // must be REFUSED rather than silently relabelled as a chest strike.
+        require(EchoReplicaPresentationPolicy.familyForOrigin("VOID_BLAST") == null,
+                "a non-contact origin must not be dressed up as a contact strike");
         // An origin that was never a boss attack is refused, not invented.
         require(EchoReplicaPresentationPolicy.familyForOrigin(null) == null,
                 "a null origin is not a copyable family");
@@ -83,8 +103,8 @@ def test_rage_entry_family_is_actually_copyable(echo_presentation):
                 "a malformed origin is refused");
         require(!EchoReplicaPresentationPolicy.isCopyable("NOPE", 0L),
                 "an unknown family has no timeline");
-    """.replace("EchoReplicaPolicyAccepts.all()",
-                "EchoAttackReplicaPolicy.supportedFamilies()"))
+    """.replace("EchoReplicaAttackFamilies.contains",
+                "EchoAttackReplicaPolicy.supportedFamilies().contains"))
 
 
 def test_every_beat_window_is_reachable_and_ordered(echo_presentation):

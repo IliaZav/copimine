@@ -36,7 +36,13 @@ SCOPE = DOMAIN / "BossPhase.java"
 PROBES = (
     ("RiftFractureEruptionPolicyTest", ("RiftFractureEruptionPolicy.java",)),
     ("InfernoArenaLifecyclePolicyTest", ("InfernoArenaLifecyclePolicy.java",)),
-    ("EchoAttackReplicaPolicyTest", ("EchoAttackReplicaPolicy.java",)),
+    # The replica policy now retimes the family keyframe through the shared
+    # authored-to-combat mapping and reads its contact geometry from
+    # BossContactStrikePolicy, so the probe needs that dependency closure. The
+    # protocol path is resolved against ROOT because it lives outside DOMAIN.
+    ("EchoAttackReplicaPolicyTest",
+     ("EchoAttackReplicaPolicy.java", "BossContactStrikePolicy.java", "EndRiftAiPolicy.java",
+      "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/BossAnimationPlayback.java")),
     ("EchoDecoyPolicyTest", ("EchoDecoyPolicy.java",)),
     ("BossSummonAdmissionPolicyTest",
      ("BossSummonAdmissionPolicy.java", "BossPhase.java")),
@@ -74,6 +80,11 @@ def test_boss_phase_3_to_5_policies_hold(tmp_path: Path, probe_name: str, source
     policy_sources = []
     for name in sources:
         path = DOMAIN / name
+        if not path.is_file():
+            # Dependency-closure entries may live outside the domain package
+            # (the shared protocol playback mapping), so a bare relative path is
+            # resolved against the repository root.
+            path = ROOT / name
         assert path.is_file(), f"policy source is missing: {path}"
         policy_sources.append(str(path))
 

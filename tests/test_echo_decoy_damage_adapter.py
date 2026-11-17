@@ -18,6 +18,9 @@ public class EchoDamageProbe {
     static class LivingEntity extends Entity { AttributeInstance getAttribute(Attribute key){return new AttributeInstance();} }
     static class Player extends LivingEntity { boolean admitted=true; }
     static class Projectile extends Entity { Object source; Projectile(Object source){this.source=source;} Object getShooter(){return source;} }
+    // The reduced hit only applies to arrows the encounter still tracks, so an
+    // arrow damager is a distinct type the admission checks against its ledger.
+    static class Arrow extends Projectile { Arrow(Object source){super(source);} }
     static class EntityDamageByEntityEvent {
         Entity source,victim;boolean cancelled;double damage=9;
         EntityDamageByEntityEvent(Entity source,Entity victim){this.source=source;this.victim=victim;}
@@ -34,6 +37,8 @@ public class EchoDamageProbe {
     LivingEntity liveBoss(){return boss;}
     boolean isBossCombatRuntimeActive(LivingEntity boss){return active;}
     boolean isActiveBossParticipant(Player victim){return victim.admitted;}
+    // Only an arrow still registered to the live decoy may deliver the reduced hit.
+    boolean isCurrentEchoDecoyArrow(Arrow arrow){return tracked;}
     record Profile(){double meleeDamageBonus(){return 4;}}
     Profile currentBossCombatProfile(){return new Profile();}
 """ + method + r"""

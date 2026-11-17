@@ -46,14 +46,19 @@ def test_replicas_appear_when_rage_begins():
     # Copies are no longer spawned from one RAGE-transition site. They start on
     # any contact ability cast during RAGE, so the copy repeats the strike the
     # boss actually committed instead of a hardcoded family.
-    call = text.index("startEchoAttackReplicas(boss,")
-    context = text[call - 300:call + 120]
-    assert "bossPhase == BossPhase.RAGE" in context, (
-        "contract 15.2 Type A belongs to RAGE"
+    cast = body("private void executeContactBossAbility(")
+    contact_gate = "if (bossPhase == BossPhase.RAGE && isContactBossAbility(spell))"
+    assert contact_gate in cast, "contract 15.2 Type A belongs to RAGE"
+    assert "startEchoAttackReplicas(boss, spell.name());" in cast[cast.index(contact_gate):], (
+        "only contact strikes get copied, and the copy repeats the strike the "
+        "boss actually committed"
     )
-    assert "isContactBossAbility(spell)" in context, "only contact strikes get copied"
-    assert "spell.name()" in context, (
-        "the copy repeats the strike the boss actually committed"
+    # The chest strike is a contact move too, and it starts copies under its own
+    # gate - still inside RAGE, still from the committed spell.
+    chest_gate = "if (bossPhase == BossPhase.RAGE && bossChestStrikeActive)"
+    assert chest_gate in cast, "the chest strike copies only while its strike is live"
+    assert "startEchoAttackReplicas(boss, spell.name());" in cast[cast.index(chest_gate):], (
+        "the chest-strike copy repeats the committed spell, not a family guess"
     )
 
 
@@ -74,24 +79,35 @@ def test_aim_locks_and_never_homes():
         "the locked POINT must be stored, not a live entity reference"
     )
     tick = body("private void tickEchoAttackReplicas(")
-    # Distance must be measured to the LOCKED POINT, not to the target's
-    # current position - otherwise the copy follows the player.
-    assert "lock.point().getX()" in tick, (
-        "the hit test must use the frozen lock point, or the copy homes"
+    # The aim may be refreshed ONLY up to the telegraph lock tick; after that it
+    # is frozen. A copy that kept re-aiming would follow a player through their
+    # whole dodge, which is the invisible-homing defect this guards.
+    freeze = "if (eventTickCounter <= timeline.telegraphLockTick())"
+    assert freeze in tick, (
+        "the aim must freeze at the telegraph lock tick, or the copy homes"
     )
-    # The connection test must GATE the damage. Asserting only that the call
-    # appears lets a mutant that calls it and ignores the result pass - which is
-    # precisely the "invisible homing" this contract forbids.
-    assert "if (EchoAttackReplicaPolicy.strikeConnects(" in tick, (
-        "strikeConnects must be an if-gate; calling it and ignoring the boolean "
-        "means every locked target is always hit"
+    assert "new TargetLock(" in tick[tick.index(freeze):], (
+        "the only permitted aim refresh is the pre-lock one"
     )
-    gate = tick.index("if (EchoAttackReplicaPolicy.strikeConnects(")
-    # Damage no longer goes through a raw Player.damage call: it goes through
-    # the accepted-damage adapter, but it must still live INSIDE the
-    # strikeConnects branch.
-    assert "applyEchoReplicaDamage(" in tick[gate:], (
-        "the strike damage must live inside the strikeConnects branch"
+    # The hit test is built from the FROZEN aim direction, not from the target's
+    # current position: that is what makes the locked geometry real.
+    assert "horizontalDirection(origin, lock.aim())" in tick, (
+        "the strike axis must come from the frozen lock aim, or the copy homes"
+    )
+    assert "flat.normalize().dot(axis)" in tick, (
+        "a melee swipe must resolve inside the locked front arc, not at the "
+        "player's live position"
+    )
+    # The connection test must GATE the damage, together with the once-only
+    # ledger. Asserting only that geometry appears lets a mutant that computes it
+    # and ignores the result pass - precisely the "everyone is always hit" bug.
+    gate = "if (!connects || !EchoAttackReplicaPolicy.mayDamage("
+    assert gate in tick, (
+        "the connection result and the ledger must decide the strike; computing "
+        "geometry without gating on it means every locked player is always hit"
+    )
+    assert "applyEchoReplicaDamage(" in tick[tick.index(gate):], (
+        "the strike damage must live inside the connects+ledger branch"
     )
 
 

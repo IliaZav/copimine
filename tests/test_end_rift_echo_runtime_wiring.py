@@ -125,10 +125,15 @@ def echo_method(name: str) -> str:
 def test_the_tick_advances_exactly_once_per_server_tick():
     """The fence is executed: a second call in one tick must do nothing."""
     tick = method("void tickEchoAttackReplicas(")
-    guard = "if (echoReplicaLastAdvanceTick == eventTickCounter)"
+    guard = "echoReplicaLastAdvanceTick == eventTickCounter"
     assert guard in tick, (
         "without this fence the boss loop's second owner in the same tick would "
         "re-open the damage window and land the strike twice"
+    )
+    # The fence is the tail of the early-out condition, so a repeated tick
+    # RETURNS instead of merely skipping work.
+    assert "|| echoReplicaLastAdvanceTick == eventTickCounter) return;" in tick, (
+        "the fence must short-circuit the whole tick, not one inner branch"
     )
     assert "echoReplicaLastAdvanceTick = eventTickCounter;" in tick, (
         "the fence must stamp the tick it advanced"
@@ -163,23 +168,25 @@ def test_a_copy_without_an_actor_is_torn_down_not_ticks():
     # The guard must gate EACH damage branch, not merely appear once in the
     # method: two branches exist (strike and warned explosion), and a mutant
     # that drops one of them still leaves the other in place.
-    damage_guard = "EchoReplicaPresentationPolicy.damageAllowed(true, timeline, tick)"
-    strike_guard = damage_guard + "\n                    && beat == EchoReplicaPresentationPolicy.Beat.CONTACT"
-    blast_guard = damage_guard + "\n                    && beat == EchoReplicaPresentationPolicy.Beat.EXPLOSION"
-    assert tick.count(damage_guard) == 2, (
-        "every damage source of a copy must pass the visible-actor guard; "
-        "found " + str(tick.count(damage_guard)) + " of 2"
+    contact = "beat == EchoReplicaPresentationPolicy.Beat.CONTACT"
+    explosion = "beat == EchoReplicaPresentationPolicy.Beat.EXPLOSION"
+    assert contact in tick, "the STRIKE branch must be gated by the contact beat"
+    assert explosion in tick, "the EXPLOSION branch must be gated by the explosion beat"
+    blank_guard = "if (!echoReplicaContactActive(copyId, source)) break;"
+    assert tick.count(blank_guard) == 2, (
+        "every damage source of a copy must pass the live-copy guard; found "
+        + str(tick.count(blank_guard)) + " of 2"
     )
-    assert strike_guard in tick, (
-        "the STRIKE branch must be gated by the visible-actor guard"
-    )
-    assert blast_guard in tick, (
-        "the EXPLOSION branch must be gated by the visible-actor guard"
-    )
-    # And the damage must live INSIDE each guard branch.
-    for guard in (strike_guard, blast_guard):
+    # And the damage must live INSIDE each guarded branch, after both the beat
+    # gate and the live-copy gate.
+    for beat, guard in ((contact, "else if (" + contact),
+                        (explosion, explosion)):
+        assert guard in tick, "the beat gate must be present: " + guard
         after = tick.index(guard)
-        assert "applyEchoReplicaDamage(" in tick[after:], (
+        assert blank_guard in tick[after:], (
+            "the live-copy guard must gate this branch: " + guard
+        )
+        assert "applyEchoReplicaDamage(" in tick[tick.index(blank_guard, after):], (
             "the damage must live inside the guard branch: " + guard
         )
 
@@ -207,11 +214,16 @@ def test_the_entry_family_is_supported_and_the_origin_is_logged():
     # start whenever the boss casts a contact ability during RAGE, so the copy
     # repeats whichever strike the boss actually performed (MELEE_SWIPE, chest
     # strike or ground slam) instead of a hardcoded family.
-    cast = text.index("startEchoAttackReplicas(boss,")
-    ctx = text[cast - 300:cast + 120]
-    assert "bossPhase == BossPhase.RAGE" in ctx, "copies must only start during RAGE"
-    assert "isContactBossAbility(spell)" in ctx, "only contact strikes get copied"
-    assert "spell.name()" in ctx, "the copy repeats the boss's real strike, not a family"
+    cast = method("void executeContactBossAbility(")
+    contact_gate = "if (bossPhase == BossPhase.RAGE && isContactBossAbility(spell))"
+    assert contact_gate in cast, "copies must only start during RAGE"
+    assert "startEchoAttackReplicas(boss, spell.name());" in cast[cast.index(contact_gate):], (
+        "only contact strikes get copied, and the copy repeats the boss's real "
+        "strike, not a family"
+    )
+    chest_gate = "if (bossPhase == BossPhase.RAGE && bossChestStrikeActive)"
+    assert chest_gate in cast, "the chest strike copies only while its strike is live"
+    assert "startEchoAttackReplicas(boss, spell.name());" in cast[cast.index(chest_gate):]
     start = method("boolean startEchoAttackReplicas(")
     assert "EchoReplicaPresentationPolicy.familyForOrigin(family)" in start
     assert "origin=" in start, "the log must state which origin was translated"
@@ -319,12 +331,13 @@ def test_the_cap_the_ledger_and_the_lock_survive_the_rewrite():
     assert "EchoAttackReplicaPolicy.lockTarget(" in start
     assert "new TargetLock(" in start
     tick = method("void tickEchoAttackReplicas(")
-    assert "lock.point().getX()" in tick, (
-        "the hit test must use the frozen lock point, or the copy homes"
+    assert "horizontalDirection(origin, lock.aim())" in tick, (
+        "the hit test must use the frozen lock aim, or the copy homes"
     )
     assert "timeline.replicaKey()" in tick and "timeline.explosionKey()" in tick, (
         "the strike and the blast must keep separate ledger keys"
     )
+    assert "EchoAttackReplicaPolicy.mayDamage(" in tick, "the ledger must gate damage"
 
 
 def test_decoy_health_cap_and_cooldown_are_untouched():

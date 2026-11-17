@@ -115,7 +115,11 @@ public final class EchoAttackReplicaPolicy {
             family = family == null ? "" : family;
             arrivalTick = Math.max(0L, arrivalTick);
             telegraphLockTick = Math.max(arrivalTick, telegraphLockTick);
-            hitTick = Math.max(Math.max(telegraphLockTick + 1L, arrivalTick + MIN_TELEGRAPH_TICKS), hitTick);
+            // The dodge window is measured from the aim lock, so it must never be
+            // shorter than the telegraph floor even when a family's retimed
+            // contact keyframe is shorter. The lock already sits at or after
+            // arrival, so one floor covers both.
+            hitTick = Math.max(telegraphLockTick + MIN_TELEGRAPH_TICKS, hitTick);
             collapseTick = Math.max(hitTick + 1L, collapseTick);
             explosionWarningTick = Math.max(hitTick, explosionWarningTick);
             explosionTick = Math.max(explosionWarningTick + MIN_TELEGRAPH_TICKS, explosionTick);
@@ -142,8 +146,13 @@ public final class EchoAttackReplicaPolicy {
         long sequence = SEQUENCE.incrementAndGet();
         String replicaKey = "echo-" + start + "-" + key + "-" + sequence;
         long arrival = start;
-        long lock = arrival + Math.max(ARRIVAL_TICKS, MIN_TELEGRAPH_TICKS - marker);
-        long hit = lock + marker;
+        // The copy must strike on its authored family keyframe, but that keyframe
+        // is a floor for the visible preparation, never a reason to shorten it.
+        // A family whose retimed marker is shorter than the telegraph floor (the
+        // accelerated MELEE_SWIPE is 12 ticks) still telegraphs for the full
+        // window, so the aim lock precedes the strike by a readable margin.
+        long lock = arrival + ARRIVAL_TICKS;
+        long hit = lock + Math.max(MIN_TELEGRAPH_TICKS, marker);
         long collapse = Math.max(hit + 3L, lock + clip);
         long warning = collapse;
         long explosion = warning + EXPLOSION_WARNING_TICKS;

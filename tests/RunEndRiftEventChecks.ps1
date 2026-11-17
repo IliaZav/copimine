@@ -406,6 +406,10 @@ $domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\
 $domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain\wave7\EchoTotemPolicy.java')
 $runtimeSources = @(
   (Join-Path $root 'tools\minecraft-26.3\protocol\src\main\java\me\copimine\protocol\EncounterGenerationPolicy.java'),
+  # The Echo attack replica retimes its contact keyframes through the shared
+  # authored-to-combat mapping, so this dependency-free protocol class compiles
+  # into the same pure bundle instead of leaving the policy reference dangling.
+  (Join-Path $root 'tools\minecraft-26.3\protocol\src\main\java\me\copimine\protocol\BossAnimationPlayback.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\EventSnapshot.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\CombatSequence.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\WaveCombatCoordinator.java'),

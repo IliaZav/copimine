@@ -113,12 +113,36 @@ try {
   $lockDirectory = Join-Path $fixtureRoot 'tools/minecraft-26.3'
   New-Item -ItemType Directory -Path $lockDirectory -Force | Out-Null
   $protocolRelativeRoot = 'tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol'
-  $protocolHelpers = @('EncounterGenerationPolicy', 'KaguneRingFrame', 'BossAnimationPlayback')
+  # The helper list is read from the build script instead of being restated
+  # here. This probe used to hard-code three helpers while
+  # copimine-end-event/build-plugin.ps1 had already grown to six, so CI failed
+  # on a fixture that lacked sources the real build requires — the failure was
+  # in the probe's own copy of the contract, not in the build. Deriving the
+  # list keeps the probe honest as the protocol bundle grows and still fails
+  # when the declaration itself disappears or loses its anchor helper. The
+  # per-helper "compiled exactly once" assertions below are unchanged, so this
+  # is an equal-or-stronger check: it now also covers KaguneSpellFrame,
+  # Wave7AnimationFrame and GuardianActorFrame.
+  $endEventBuildScript = Join-Path $root 'copimine-end-event/build-plugin.ps1'
+  $helperDeclaration = Select-String -LiteralPath $endEventBuildScript `
+      -Pattern 'foreach \(\$helper in @\(([^)]*)\)\)' | Select-Object -First 1
+  if (-not $helperDeclaration) {
+    throw "copimine-end-event/build-plugin.ps1 must declare its encounter protocol helper list; none was found in $endEventBuildScript"
+  }
+  $protocolHelpers = @([regex]::Matches($helperDeclaration.Matches[0].Groups[1].Value, "'([A-Za-z0-9_]+)'") |
+    ForEach-Object { $_.Groups[1].Value })
+  if ($protocolHelpers -notcontains 'EncounterGenerationPolicy') {
+    throw ("copimine-end-event/build-plugin.ps1 declares an unusable protocol helper list: " +
+      ($protocolHelpers -join ','))
+  }
   $protocolFixtureRoot = Join-Path $fixtureRoot $protocolRelativeRoot
   New-Item -ItemType Directory -Path $protocolFixtureRoot -Force | Out-Null
   foreach ($helper in $protocolHelpers) {
-    Copy-Item -LiteralPath (Join-Path (Join-Path $root $protocolRelativeRoot) "$helper.java") `
-      -Destination (Join-Path $protocolFixtureRoot "$helper.java")
+    $helperSource = Join-Path (Join-Path $root $protocolRelativeRoot) "$helper.java"
+    if (-not (Test-Path -LiteralPath $helperSource -PathType Leaf)) {
+      throw "copimine-end-event/build-plugin.ps1 declares a protocol helper that does not exist: $helperSource"
+    }
+    Copy-Item -LiteralPath $helperSource -Destination (Join-Path $protocolFixtureRoot "$helper.java")
   }
   $paperPath = Join-Path $fixtureMaven 'io/papermc/paper/paper-api/26.3.build.169-beta/paper-api-26.3.build.169-beta.jar'
   $paperFixtureSize = 4096

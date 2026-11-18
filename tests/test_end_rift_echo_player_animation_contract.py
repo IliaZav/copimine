@@ -106,9 +106,29 @@ def test_the_copy_wears_the_owners_real_skin():
         "getSkin must be overridden to return the owner's skin, not a placeholder"
     )
     renderer = renderer_source()
+    # The primary source must be the live owner skin the client already has for
+    # that player, so an echo wears exactly the skin its target sees in the tab
+    # list - only darkened by the body tint.
+    assert re.search(
+        r"client\.getConnection\(\)\.getPlayerInfo\(semantic\.frame\(\)\.owner\(\)\)", renderer
+    ), (
+        "the echo must read the live skin of the owner it fights, not the "
+        "carrier's skin or a cached stranger"
+    )
+    assert "ownerEntry.getSkin()" in renderer, (
+        "the live owner skin entry must actually be passed into selectSkin"
+    )
     assert "DefaultPlayerSkin.get(semantic.frame().owner())" in renderer, (
         "the fallback skin must also be the owner's, so a slow fetch cannot "
         "show a stranger's body"
+    )
+    # The skin is selected by the owner identity, never by the carrier.
+    assert "selectSkin(STATE, ticket" in renderer, (
+        "skin selection must stay bound to the presentation ticket so a stale "
+        "fetch cannot bind to a newer actor"
+    )
+    assert "carrier.getSkin" not in renderer and "carrier.getUUID()).getSkin" not in renderer, (
+        "the copy must never borrow the pillager carrier's skin"
     )
 
 

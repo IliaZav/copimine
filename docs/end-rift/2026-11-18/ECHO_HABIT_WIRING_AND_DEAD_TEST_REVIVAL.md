@@ -201,6 +201,65 @@ Nothing about the persisted encoding changed: the duel record keeps its thirteen
 colon-separated actor fields, so no migration and no schema bump is involved, and
 no damage, heal, cooldown, admission or durability rule was touched.
 
+### 2.8 A wounded copy that eats finally heals
+
+`EchoDuelCombatPolicy` heals a copy only when a consumable use **finishes**
+(`completeConsumable`, introduced on 2026-11-01 in `570cf021`, "heal only on
+completion"). Ending the heal at the start was deliberate: `tryStartConsumable`
+spends exactly one supply and stages `pendingUseUntilTick` with **no** health
+change, so a player who disconnects inside the eating window cannot be healed
+twice.
+
+The runtime never learned either half of that change. `570cf021` touched
+`EchoDuelCombatPolicy`, `EchoBehaviorStrategy`, `EchoLoadoutState` and two test
+files — `CopiMineEndEvent.java` is not in that commit, and
+`git log -S "completeConsumable" -- copimine-end-event/.../CopiMineEndEvent.java`
+returns nothing, so the plugin had no completion handler at all. Both ends of
+the contract were therefore broken at once:
+
+1. **The start was refused.** `checkpointNamedEchoHealthChanges` runs before the
+   duel tick on every pass and copies the actor's health into the carrier body,
+   so when the eat begins `nextDuel().actor().currentHealth()` equals
+   `carrier.getHealth()` exactly. The `CONSUMABLE` branch of
+   `executeNamedEchoCombatAction` required a *strict* increase
+   (`expectedHealth <= carrier.getHealth()` → `return false`) and rejected every
+   legitimate eat start. The rejection was then refunded by
+   `compensateRejectedNamedEchoCombatAction`, so the supply came back and the
+   copy chose the same eat again on the next tick: a permanent loop that also
+   wrote two durable saves per five-tick pass (one for the accepted checkpoint,
+   one for the refund).
+2. **The completion was dropped.** The finishing tick reports
+   `Action.NONE` — the supply was already spent when the use started, so there
+   is no second item action to execute — and `commitNamedEchoCombatAction`
+   short-circuited `Action.NONE` before touching any checkpoint. The healed
+   actor never reached `registerPersonalEchoDuel`, so even a start that had been
+   accepted would have healed nothing.
+
+Together those two facts meant a wounded copy carrying food could never recover:
+the eat was refused forever, and the one tick that carried the heal was
+discarded. The fix keeps the policy untouched and repairs the runtime:
+
+- `commitNamedEchoCombatAction` no longer swallows `Action.NONE`; it routes the
+  tick to `commitNamedEchoStateChange`.
+- `commitNamedEchoStateChange` is the completion checkpoint. An idle tick
+  (`next.equals(prior)`) stays a no-op, so the ordinary path costs nothing. A
+  real state change is validated as an exact successor of the stored record
+  (same event, attempt and runtime generation, `revision() + 1`, actor uuid
+  equal to the carrier) and is then registered, persisted and finally projected
+  onto the body. The heal only ever raises the carrier and only up to its
+  maximum; a body that refuses it is logged and **never** rolls the completed use
+  back, because the checkpoint is the authority and the supply was already paid
+  for.
+- The `CONSUMABLE` start guard now rejects only what is genuinely wrong — a
+  non-finite or above-maximum value — and applies the health change when there is
+  one. The staged `Double.compare` check stays, because an accepted start must
+  still prove the body agrees with the checkpoint it is about to commit.
+
+The potion branch was audited in the same pass and is **not** a defect: a drunk
+buff potion is deliberately an animation with no health transition ("drinking is
+an animation, not a heal"), and it was equally affected by the dropped
+completion, so nothing about it needed a separate change.
+
 ## 3. Dead coverage that was revived
 
 `tests/harness/me/copimine/endevent/runtime/wave7/EchoWoundedRetreatTest.java`
@@ -237,7 +296,10 @@ kept alive by a weak regex.
 | Sprint hop no longer pre-empts attacks | AUTOMATED-TESTED | `EchoDuelCombatRuntimeAdapterTest.sprintHeavyCopiesAttackBeforeTheyHop` (legal swing wins, hop survives when nothing is reachable) |
 | Shielded copy keeps moving | AUTOMATED-TESTED | `EchoDuelCombatRuntimeAdapterTest.profileDrivenDefenseSchedulesOwnerBoundShieldActions` asserts `hold.intent() == APPROACH` while the parry window is live |
 | Gate green | AUTOMATED-TESTED | `tests\RunEndRiftEventChecks.ps1 -JavaHome <pinned Temurin 25.0.4.1>` exit 0; `EchoDuelCombatRuntimeAdapterTest OK assertions=88`, `EchoWoundedRetreatTest OK` |
-| Candidate pin matches the build | AUTOMATED-TESTED | `tools/minecraft-26.3/server-plugins.lock.json` candidate `464ad1d2…` / 2573713 B equals a fresh pinned-JDK build and the `expected_candidates` literals; tests/test_minecraft_migration_server_plugins.py 137 passed, 6 skipped |
+| Candidate pin matches the build | AUTOMATED-TESTED | `tools/minecraft-26.3/server-plugins.lock.json` candidate `ab239007…` / 2574011 B equals a fresh pinned-JDK build and the `expected_candidates` literals; tests/test_minecraft_migration_server_plugins.py 135 passed, 6 skipped |
+| The completed eat reaches the body | AUTOMATED-TESTED | `EchoDuelCombatRuntimeAdapterTest`: the food decision stages `8.0` health with `pendingUseUntilTick=332`, the resolution tick is `Action.NONE`, and the deadline tick carries `CONSUMABLE_HEAL_FRACTION` of maximum health once; `EchoConsumableTimingTest` asserts the same pair on the policy |
+| The runtime wires that completion | AUTOMATED-TESTED | `tests/test_wave7_echo_consumable_completion.py`: `Action.NONE` routes to `commitNamedEchoStateChange`, the handler orders `registerPersonalEchoDuel(next)` < `saveStateSync()` < `carrier.setHealth(restored)`, an idle tick stays a no-op, and the eat start no longer demands a health increase while still rejecting non-finite and above-maximum values |
+| Eat start is no longer refused-and-refunded | IMPLEMENTED | `executeNamedEchoCombatAction` `CONSUMABLE` branch: guard is `!Double.isFinite(expectedHealth) || expectedHealth > carrier.getMaxHealth()`, health applied only when it actually rises |
 | Restored copy re-bases its persisted deadlines | AUTOMATED-TESTED | `EchoDuelCombatRuntimeAdapterTest.restoredDuelDeadlinesRebaseOntoFreshCounter`: a record saved with deadline 50 000 is frozen (`NONE`) at tick 0 **and** at tick 1 000, every re-based deadline equals its own `Cooldowns` bound (10/20/40/0/20/100/60), a re-based copy fires `RANGED` at tick 100, and a same-boot deadline set is returned unchanged (`equals` on the whole `ActorState`, so no running cooldown is shortened) |
 | The re-base is actually reached on restart | AUTOMATED-TESTED | `tests/test_wave7_echo_restart_rebase.py`: `CopiMineEndEvent.ensureNamedEchoDuelActor` passes `duel.actor()` through `rebaseRestoredDeadlines(..., eventTickCounter)`, the rebuilt checkpoint is built from `restoredActor.*`, no `duel.actor().<deadline>` survives in that method, and the agent clamp uses `Math.min(savedDeadline, latest)` |
 | Copies look right in a real client | NOT VERIFIED / BLOCKED | no client capture; hop landing, swap animation and the crit window need F2 frames |

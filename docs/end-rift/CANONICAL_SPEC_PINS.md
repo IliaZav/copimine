@@ -50,6 +50,7 @@ text. Two such overrides are live and must not be "repaired" back:
 |---|---|---|
 | Wave 5: three cycles, 40/50/60 combat baselines | 5-10 cycles by frozen roster, shortening safe-zone run window, longer fog | `docs/end-rift/2026-11-10/WAVES_1_5_REPAIR.md` states the user's latest Wave 5 rules supersede the older three/five-cycle documents |
 | Guardian ambush: grab-or-miss after a dodgeable warning | valid committed target is grabbed with 100 % success; miss animation is only for cancellation | Guardian specification section 6.5 itself records this as the latest override |
+| Guardian section 6.3: individual 90-active-second defence respawns | a genuinely killed cocoon defender is **permanently destroyed** for the encounter generation; the boss regeneration stops permanently once the cocoon breaks | `docs/end-rift/2026-11-11/MASTER_REBUILD_CONTRACT.md` says the user's newest decisions override older documents, "Remove the existing 90-second guardian respawn behavior", "Never respawn after being genuinely killed" and "The user explicitly wants a permanent final fight after the cocoon breaks" |
 
 Anything else that contradicts the canonical text is a defect, not a variant.
 

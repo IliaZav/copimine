@@ -1383,12 +1383,13 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     # heal-gated retreat, the restart deadline rebase and the completed-eat
     # heal all changed the compiled End Event bytes. The replaced candidates
     # stay in replaceSha256 so an already-staged older candidate is accepted.
-    assert candidate['size']==2574011
-    assert candidate['sha256']=='ab239007da0c0e50488771d6f61ae2ada199268579df6d0dd9084f09abe7c3ed'
-    assert candidate['sha512']=='66231f4b5f99778e2d6a7ceb207550d72bb7bb4f5decbb7971fb17ec50f7707de7d5ae548c9872cc66c97ffd5a096c1cd591e22945d7dbfbbf2261353553aee9'
+    assert candidate['size']==2574004
+    assert candidate['sha256']=='8a86be1b5ab7a62364045b826bc9d2ee8fdcea896008d48f88afdcda1ffda5dc'
+    assert candidate['sha512']=='f666c0e7f404975ee9e2902e091cb993591dd3c0172e43866d1943f166ef260d4333e28cf7986e49a55a3930fd1f2373c2689548a6e16007bf725269ae011654'
     assert '655810207e0cfff4adf6e3d3bc23aff06b09ba756fc38556f47f21846761191e' in candidate['replaceSha256']
     assert 'f450c7d771bea5ef4d0fdb3592e5db8172a600fe98a45a45d64b294f137843f3' in candidate['replaceSha256']
     assert '25411e0fc3635e0a715c2ba9b4644328df692309fa73868867da4eac07e23d12' in candidate['replaceSha256']
+    assert 'ab239007da0c0e50488771d6f61ae2ada199268579df6d0dd9084f09abe7c3ed' in candidate['replaceSha256']
     assert '464ad1d29a99fe04b743676b7aadd07d1f4de346096cc15e7aefd3d65a274698' in candidate['replaceSha256']
     assert '0717ee1a975221032bc352d07c4bd32c14f227374248b2d57a860f8e57619c32' in candidate['replaceSha256']
     assert '1d455b097359821be07cb3acf53c9cb5c2af447005107c742d7d2084bfe1ae92' in candidate['replaceSha256']
@@ -1447,6 +1448,7 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     ]
     assert candidate['replaceSha256']==[
         # Candidates replaced by these re-pins stay accepted for staging.
+        'ab239007da0c0e50488771d6f61ae2ada199268579df6d0dd9084f09abe7c3ed',
         '464ad1d29a99fe04b743676b7aadd07d1f4de346096cc15e7aefd3d65a274698',
         '0717ee1a975221032bc352d07c4bd32c14f227374248b2d57a860f8e57619c32',
         '1d455b097359821be07cb3acf53c9cb5c2af447005107c742d7d2084bfe1ae92',
@@ -3169,8 +3171,8 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
     expected_candidates={
         'CopiMineArtifacts':('a5e0420d503850cb604445c52705f5af71fdc65770a78b943c5d2bc252fabcc5',
                              'a054cfeef3dc37dc364ef33d550063b6aa105f2394501bd982295af2fc791bba82cce15623c3ff7b09c4c3250683fb1caf7cdb72312e3c91bf50dd0c2fc39600',366356),
-        'CopiMineEndEvent':('ab239007da0c0e50488771d6f61ae2ada199268579df6d0dd9084f09abe7c3ed',
-                            '66231f4b5f99778e2d6a7ceb207550d72bb7bb4f5decbb7971fb17ec50f7707de7d5ae548c9872cc66c97ffd5a096c1cd591e22945d7dbfbbf2261353553aee9',2574011),
+        'CopiMineEndEvent':('8a86be1b5ab7a62364045b826bc9d2ee8fdcea896008d48f88afdcda1ffda5dc',
+                            'f666c0e7f404975ee9e2902e091cb993591dd3c0172e43866d1943f166ef260d4333e28cf7986e49a55a3930fd1f2373c2689548a6e16007bf725269ae011654',2574004),
         'CopiMineNarcotics':('4609582cdc08db60e64122b510e7a264a001baeef88fd10f905bee054be4f9a0',
                              '4863897a8a2887df9022bcfa5cbb0414fa9741aeade730c1a699d049573de3ad0ec3fd3a5348fcb1449785f5c668a77981d8808ea42e3e3b6178e15eb0735e9f',378217),
     }

@@ -37331,8 +37331,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         try {
             carrier.setHealth(restored);
         } catch (RuntimeException rejectedHeal) {
-            // The checkpoint is the authority; a body that refuses the heal still
-            // must not lose the completed use, so this never rolls the duel back.
+            // The completed use is already durable, so it is never rolled back
+            // over a body that refuses the heal. Health is the one field the
+            // next checkpoint re-derives FROM the body, so a refused heal simply
+            // does not stick rather than desyncing the record.
             getLogger().fine("W7 echo completion heal refused: " + rejectedHeal.getMessage());
         }
         return true;

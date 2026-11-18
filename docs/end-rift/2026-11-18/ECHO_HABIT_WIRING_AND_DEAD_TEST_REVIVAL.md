@@ -179,7 +179,10 @@ kept alive by a weak regex.
 | Behaviour asserted | AUTOMATED-TESTED | `tests/EchoDuelCombatRuntimeAdapterTest.java`: `meleeCopiesCloseIntoMeleeReach`, `jumpAttackOwnersHopWhileClosingIntoTheFallingCrit`, `frequentWeaponSwitchersTradeASwingForAShot`, `sprintHeavyCopiesAttackBeforeTheyHop`, and the shielded-copy intent check inside `profileDrivenDefenseSchedulesOwnerBoundShieldActions` |
 | Wounded retreat truly executed | AUTOMATED-TESTED | `EchoWoundedRetreatTest` now in the gate's `$pureTests`, resolved from `tests\harness\`; its `woundedWithoutHealingKeepsFighting` case separates "retreat to heal" from "flee forever" |
 | Wounded copy with no heal keeps fighting | AUTOMATED-TESTED | `EchoWoundedRetreatTest.woundedWithoutHealingKeepsFighting` (intent: `canHeal=false` does not KITE, `canHeal=true` does) and `EchoDuelCombatRuntimeAdapterTest.woundedCopyWithoutFoodKeepsFighting` (fed copy eats, empty copy does not flee) |
-| Gate green | AUTOMATED-TESTED | `tests\RunEndRiftEventChecks.ps1 -JavaHome <pinned Temurin 25.0.4.1>` exit 0 |
+| Sprint hop no longer pre-empts attacks | AUTOMATED-TESTED | `EchoDuelCombatRuntimeAdapterTest.sprintHeavyCopiesAttackBeforeTheyHop` (legal swing wins, hop survives when nothing is reachable) |
+| Shielded copy keeps moving | AUTOMATED-TESTED | `EchoDuelCombatRuntimeAdapterTest.profileDrivenDefenseSchedulesOwnerBoundShieldActions` asserts `hold.intent() == APPROACH` while the parry window is live |
+| Gate green | AUTOMATED-TESTED | `tests\RunEndRiftEventChecks.ps1 -JavaHome <pinned Temurin 25.0.4.1>` exit 0; `EchoDuelCombatRuntimeAdapterTest OK assertions=82`, `EchoWoundedRetreatTest OK` |
+| Candidate pin matches the build | AUTOMATED-TESTED | `tools/minecraft-26.3/server-plugins.lock.json` candidate `0717ee1a…` / 2573220 B equals a fresh pinned-JDK build and the `expected_candidates` literals; pin suites 139 passed, 6 skipped |
 | Copies look right in a real client | NOT VERIFIED / BLOCKED | no client capture; hop landing, swap animation and the crit window need F2 frames |
 | Live roster behaviour | NOT VERIFIED / BLOCKED | no players online; `/cmend test wave 7` refuses an empty sandbox roster |
 

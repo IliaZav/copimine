@@ -1770,6 +1770,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, me.copimine.endevent.runtime.wave7.EchoCloneSession> echoCloneSessions = new LinkedHashMap<>();
     private final Map<UUID, EchoPresentationProbeState> echoClonePresentationStates = new LinkedHashMap<>();
     private final Map<UUID, me.copimine.endevent.runtime.wave7.EchoReplicaInventory> echoCloneReplicas = new LinkedHashMap<>();
+    /**
+     * Per viewer/actor dedupe for clone presentation frames. A copy that has not
+     * visibly changed must not cost a signed packet every tick; the policy still
+     * re-sends a keepalive so the client lease never lapses.
+     */
+    private final me.copimine.endevent.domain.wave7.EchoFrameBroadcastPolicy echoCloneBroadcast =
+            new me.copimine.endevent.domain.wave7.EchoFrameBroadcastPolicy();
     private long echoCloneEpoch;
     private final Map<Integer, Long> realitySplitTrialNextFireballTick = new LinkedHashMap<>();
     private final Map<Integer, Long> realitySplitOrphanedSinceMillis = new LinkedHashMap<>();
@@ -9635,6 +9642,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         echoCloneEpoch = 0L;
+        echoCloneBroadcast.clear();
         return removed;
     }
 
@@ -9724,12 +9732,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (session == null || view == null || owner == null || !owner.isOnline()) return;
         EchoPresentationProbeState.Frame frame = view.nextFrame(eventTickCounter);
         if (frame == null) return;
-        for (Player viewer : owner.getWorld().getPlayers()) {
+        String signature = me.copimine.endevent.domain.wave7.EchoFrameBroadcastPolicy.signatureOf(frame.fields());
+        org.bukkit.World world = owner.getWorld();
+        if (world == null) return;
+        for (Player viewer : world.getPlayers()) {
             if (!echoPresentationCapablePlayers.contains(viewer.getUniqueId())) continue;
             if (viewer.getLocation().distanceSquared(owner.getLocation()) > 64.0D * 64.0D) continue;
-            sendClientPacket(viewer, "END_ECHO_STATE", frame.duel().toString(), 2_000L,
+            if (!echoCloneBroadcast.shouldSend(viewer.getUniqueId(), frame.actor(), signature, eventTickCounter)) {
+                continue;
+            }
+            boolean delivered = sendClientPacket(viewer, "END_ECHO_STATE", frame.duel().toString(), 2_000L,
                     frame.actor().toString(), "END_RIFT_ECHO_V1", 0, 0, 0,
                     frame.fields(), frame.dimension());
+            // Only a delivered frame may reset the dedupe key, or a dropped
+            // packet would be suppressed instead of retried next tick.
+            if (delivered) {
+                echoCloneBroadcast.record(viewer.getUniqueId(), frame.actor(), signature, eventTickCounter);
+            }
         }
     }
 
@@ -9781,15 +9800,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             try {
                 echoPresentationEpoch = EchoPresentationEpochPolicy.next(
                         echoPresentationEpoch, System.currentTimeMillis());
+                me.copimine.endevent.domain.wave7.EchoFrameBroadcastPolicy probeBroadcast =
+                        new me.copimine.endevent.domain.wave7.EchoFrameBroadcastPolicy();
                 echoPresentationProbe = new EchoPresentationProbe(carrier, owner, UUID.fromString(eventId),
                         generation, echoPresentationEpoch, eventTickCounter, (type, frame) -> {
                     if (frame.generation() != generation || !frame.event().toString().equals(eventId)) return;
+                    String signature = me.copimine.endevent.domain.wave7.EchoFrameBroadcastPolicy
+                            .signatureOf(frame.fields());
                     for (UUID viewerId : viewers) {
                         Player viewer = Bukkit.getPlayer(viewerId);
                         if (viewer == null || !viewer.isOnline()) continue;
-                        sendClientPacket(viewer, type, frame.duel().toString(), 2_000,
+                        if (!probeBroadcast.shouldSend(viewerId, frame.actor(), signature, eventTickCounter)) {
+                            continue;
+                        }
+                        boolean delivered = sendClientPacket(viewer, type, frame.duel().toString(), 2_000,
                                 frame.actor().toString(), "END_RIFT_ECHO_V1", 0, 0, 0,
                                 frame.fields(), frame.dimension());
+                        if (delivered) {
+                            probeBroadcast.record(viewerId, frame.actor(), signature, eventTickCounter);
+                        }
                     }
                 }, "LOADOUT".equals(requested));
                 echoProbeCombatPair = new EchoCombatAdmission.Pair(UUID.fromString(eventId), generation,

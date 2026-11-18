@@ -404,6 +404,10 @@ $domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\
 # against the real class, so it belongs in the bundle rather than in the
 # documented exemptions.
 $domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain\wave7\EchoTotemPolicy.java')
+# NET-001: the presentation-broadcast dedupe is pure arithmetic over the wire
+# fields, so the gate compiles the real class and drives its retry/keepalive
+# behaviour instead of trusting the call site by inspection.
+$domainSources += (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain\wave7\EchoFrameBroadcastPolicy.java')
 $runtimeSources = @(
   (Join-Path $root 'tools\minecraft-26.3\protocol\src\main\java\me\copimine\protocol\EncounterGenerationPolicy.java'),
   # The Echo attack replica retimes its contact keyframes through the shared
@@ -512,6 +516,7 @@ $pureTests = @(
   'Wave7NamedTrialActorPolicyTest',
   'Wave7EchoDuelCellPolicyTest',
   'Wave7EchoDuelLifecyclePolicyTest',
+  'EchoFrameBroadcastPolicyTest',
   'EchoBehaviorStrategyTest',
   'EchoBehaviorPersonalisationTest',
   'EchoDuelCombatPolicyTest',

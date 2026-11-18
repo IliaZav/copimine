@@ -43,6 +43,7 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         frequentWeaponSwitchersTradeASwingForAShot();
         sprintHeavyCopiesAttackBeforeTheyHop();
         woundedCopyWithoutFoodKeepsFighting();
+        restoredDuelDeadlinesRebaseOntoFreshCounter();
         System.out.println("EchoDuelCombatRuntimeAdapterTest OK assertions=" + assertions);
     }
 
@@ -593,6 +594,92 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         check(fights.intent() != MovementIntent.KITE,
                 "a wounded brawler with no heal keeps closing instead of fleeing, got "
                         + fights.intent());
+    }
+
+    /**
+     * A restart leaves the copy's persisted deadlines in the future while the
+     * fresh tick counter starts at zero. Without a rebase the restored copy is
+     * frozen until the counter catches up; with it the copy is ready within one
+     * bounded cooldown window and no running cooldown is shortened.
+     */
+    private static void restoredDuelDeadlinesRebaseOntoFreshCounter() {
+        Fixture fixture = activeFixture(18.0D);
+        DuelRecord duel = fixture.duel();
+        // A duel persisted about forty minutes into the event: every deadline is
+        // the absolute value the old counter had reached.
+        ActorState stale = new ActorState(duel.actor().actorUuid(), duel.actor().currentHealth(),
+                duel.actor().maximumHealth(), ActorLifecycle.ALIVE, duel.actor().revision() + 1L,
+                50_000L, 50_000L, 50_000L, 0L, 0L, 50_000L, 50_000L, 50_000L);
+        DuelRecord saved = duel.withActor(duel.runtimeGeneration(), duel.ownerStartingHealth(),
+                duel.ownerMaximumHealth(), duel.returnDeadlineMillis(), stale,
+                duel.revision() + 1L, duel.replicaRevision(), duel.replicaState(),
+                duel.behaviorStrategy());
+        check(EchoDuelCombatRuntimeAdapter.tick(saved, restore(saved),
+                        scope(saved, true, true, true, true), new Observation(0, 100.0D, true))
+                        .orElseThrow().action() == Action.NONE
+                        && EchoDuelCombatRuntimeAdapter.tick(saved, restore(saved),
+                        scope(saved, true, true, true, true), new Observation(1_000, 100.0D, true))
+                        .orElseThrow().action() == Action.NONE,
+                "a restored copy with un-re-based deadlines is frozen against the fresh counter");
+
+        ActorState rebased = EchoDuelCombatRuntimeAdapter.rebaseRestoredDeadlines(stale, 0L);
+        check(rebased.nextActionTick() == 10L && rebased.meleeCooldownUntilTick() == 20L
+                        && rebased.rangedCooldownUntilTick() == 40L
+                        && rebased.pendingUseUntilTick() == 0L
+                        && rebased.shieldActiveUntilTick() == 20L
+                        && rebased.shieldCooldownUntilTick() == 100L
+                        && rebased.jumpCooldownUntilTick() == 60L,
+                "every restored deadline is clamped to its own bounded duration, got "
+                        + rebased.nextActionTick() + "/" + rebased.meleeCooldownUntilTick()
+                        + "/" + rebased.rangedCooldownUntilTick() + "/"
+                        + rebased.pendingUseUntilTick() + "/" + rebased.shieldActiveUntilTick()
+                        + "/" + rebased.shieldCooldownUntilTick() + "/"
+                        + rebased.jumpCooldownUntilTick());
+        // A paid-for heal that was in flight when the record was saved keeps a
+        // bounded window instead of the stale absolute one, so the copy still
+        // collects the health its food was spent on within seconds of a restart.
+        ActorState eating = new ActorState(duel.actor().actorUuid(), duel.actor().currentHealth(),
+                duel.actor().maximumHealth(), ActorLifecycle.ALIVE, 2L,
+                50_000L, 50_000L, 50_000L, 50_000L, 0L, 0L, 0L, 0L);
+        check(EchoDuelCombatRuntimeAdapter.rebaseRestoredDeadlines(eating, 0L)
+                        .pendingUseUntilTick() == 32L,
+                "an in-flight heal keeps at most its own use duration after a restart");
+        check(rebased.shieldActiveUntilTick() <= rebased.shieldCooldownUntilTick()
+                        && rebased.revision() == stale.revision()
+                        && rebased.currentHealth() == stale.currentHealth(),
+                "a rebase only moves deadlines: shield order, revision and health are untouched");
+
+        DuelRecord recovered = saved.withActor(saved.runtimeGeneration(),
+                saved.ownerStartingHealth(), saved.ownerMaximumHealth(),
+                saved.returnDeadlineMillis(),
+                new ActorState(rebased.actorUuid(), rebased.currentHealth(), rebased.maximumHealth(),
+                        rebased.lifecycle(), rebased.revision() + 1L, rebased.nextActionTick(),
+                        rebased.meleeCooldownUntilTick(), rebased.rangedCooldownUntilTick(),
+                        rebased.pendingUseUntilTick(), rebased.deathSerial(),
+                        rebased.shieldActiveUntilTick(), rebased.shieldCooldownUntilTick(),
+                        rebased.jumpCooldownUntilTick()),
+                saved.revision() + 1L, saved.replicaRevision(), saved.replicaState(),
+                saved.behaviorStrategy());
+        Decision acts = EchoDuelCombatRuntimeAdapter.tick(recovered, restore(recovered),
+                scope(recovered, true, true, true, true), new Observation(100, 100.0D, true))
+                .orElseThrow();
+        check(acts.action() == Action.RANGED,
+                "a re-based copy shoots again within one cooldown window, got " + acts.action());
+
+        // A deadline saved earlier on the SAME boot already fits its own window,
+        // so a rebase must hand it back unchanged: a running cooldown is never
+        // shortened by the restore path.
+        ActorState live = new ActorState(duel.actor().actorUuid(), duel.actor().currentHealth(),
+                duel.actor().maximumHealth(), ActorLifecycle.ALIVE, 4L,
+                1_010L, 1_020L, 1_040L, 0L, 0L, 1_020L, 1_100L, 1_060L);
+        ActorState untouched = EchoDuelCombatRuntimeAdapter.rebaseRestoredDeadlines(live, 1_000L);
+        check(untouched.equals(live),
+                "a same-boot deadline is not shortened by the rebase, got "
+                        + untouched.nextActionTick() + "/" + untouched.meleeCooldownUntilTick()
+                        + "/" + untouched.rangedCooldownUntilTick() + "/"
+                        + untouched.pendingUseUntilTick() + "/" + untouched.shieldActiveUntilTick()
+                        + "/" + untouched.shieldCooldownUntilTick() + "/"
+                        + untouched.jumpCooldownUntilTick());
     }
 
     private static me.copimine.endevent.domain.wave7.EchoBehaviorStrategy meleeStrategy() {

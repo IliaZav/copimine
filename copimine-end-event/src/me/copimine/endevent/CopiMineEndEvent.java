@@ -26026,13 +26026,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     || carrier.getHealth() > duel.actor().currentHealth()) return false;
             double actorHealth = carrier.getHealth();
             if (restartRebind) runtimeGeneration++;
+            // The duel record stores absolute tick deadlines while
+            // eventTickCounter restarts at zero, so a restored copy would stay
+            // frozen until the fresh counter caught up with the saved value.
+            // Rebase them onto this counter exactly once, where the carrier is
+            // rebuilt; the clamp is a no-op for a deadline saved this boot.
+            me.copimine.endevent.runtime.RealitySplitEchoDuelState.ActorState restoredActor =
+                    me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter
+                            .rebaseRestoredDeadlines(duel.actor(), eventTickCounter);
             actorState = new me.copimine.endevent.runtime.RealitySplitEchoDuelState.ActorState(
                     carrier.getUniqueId(), actorHealth, copyMaximumHealth,
                     me.copimine.endevent.runtime.RealitySplitEchoDuelState.ActorLifecycle.ALIVE,
-                    duel.actor().revision() + 1L, duel.actor().nextActionTick(),
-                    duel.actor().meleeCooldownUntilTick(), duel.actor().rangedCooldownUntilTick(),
-                    duel.actor().pendingUseUntilTick(), 0L, duel.actor().shieldActiveUntilTick(),
-                    duel.actor().shieldCooldownUntilTick(), duel.actor().jumpCooldownUntilTick());
+                    restoredActor.revision() + 1L, restoredActor.nextActionTick(),
+                    restoredActor.meleeCooldownUntilTick(), restoredActor.rangedCooldownUntilTick(),
+                    restoredActor.pendingUseUntilTick(), 0L, restoredActor.shieldActiveUntilTick(),
+                    restoredActor.shieldCooldownUntilTick(), restoredActor.jumpCooldownUntilTick());
             checkpoint = duel.withActor(runtimeGeneration, ownerHealth, ownerMaximumHealth,
                     duel.returnDeadlineMillis(), actorState, duel.revision() + 1L,
                     duel.replicaRevision(), duel.replicaState(), strategy);

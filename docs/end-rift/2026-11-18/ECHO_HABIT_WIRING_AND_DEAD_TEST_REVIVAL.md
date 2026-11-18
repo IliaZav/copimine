@@ -146,6 +146,61 @@ for the rest of the duel. The three-argument
 meaning — it is the "wounded and able to heal" case the retreat was written for,
 and the harness test keeps asserting exactly that.
 
+### 2.7 A restored copy is no longer frozen until the tick counter catches up
+
+`RealitySplitEchoDuelState.ActorState` persists seven **absolute** event ticks:
+`nextActionTick`, `meleeCooldownUntilTick`, `rangedCooldownUntilTick`,
+`pendingUseUntilTick`, `shieldActiveUntilTick`, `shieldCooldownUntilTick`,
+`jumpCooldownUntilTick`. `CopiMineEndEvent.eventTickCounter` is the opposite kind
+of value: it is declared with no initialiser, its only mutation in the whole
+plugin is `eventTickCounter += 5L` in `tick()` (every five server ticks, so it
+advances 20 per second), it is never written to `EventSnapshot` or to
+`objectiveProgressSnapshot()`, and it therefore **starts at zero on every
+boot**.
+
+The recovery path copied the saved deadlines into the re-registered checkpoint
+verbatim (`ensureNamedEchoDuelActor`, the branch that rebuilds an existing duel
+rather than planning a new one). After a restart the Pillager is gone, so
+`found == null` and a brand-new carrier is spawned — and immediately told, with
+absolute numbers, that it may not act yet. `EchoDuelCombatPolicy.ready(...)`
+requires `tick >= nextActionTick` and `tick >= pendingUseUntilTick`, so a duel
+persisted about forty minutes into the event (deadlines around 50 000) left the
+copy unable to take **any** action for about forty minutes of the new boot. The
+pending-use deadline had the same effect on a heal the copy had already paid
+for, and `synchronizeNamedEchoShield` reads `shieldActiveUntilTick >
+eventTickCounter`, so a saved shield window also stayed "live" for the whole
+stale span. Movement is not gated, which is what the failure looked like in
+play: a copy that walks towards its owner and never attacks.
+
+This is not a hypothetical path. `namedWave7RuntimeRestorePending` is set when a
+persisted snapshot is loaded (`restoreWave7Checkpoint`) and stays true until the
+first `ensureNamedRealitySplitTrialRoom` pass has rebuilt the actors, so every
+restart with a live Wave 7 record reaches it — and a plugin reload reaches it
+with the carrier entity still present, which is why the rebase is applied in the
+actor-rebuild branch and not only when the entity is missing.
+
+The codebase already has exactly one answer to this problem, and the Echo duel
+was the only persisted tick-based state that did not use it:
+`Wave4ObeliskRecoveryPolicy.restoreTiming(currentEventTick, receipt)` exists to
+"re-base saved relative timers onto the fresh event tick counter after restart",
+and the Wave 7 named-trial checkpoints store millis rather than ticks for the
+same reason.
+
+`EchoDuelCombatRuntimeAdapter.rebaseRestoredDeadlines(actor, counter)` applies
+that rule. Every deadline is written as `actionTick + duration` and every
+duration comes from the bounded `Cooldowns` record, so a saved value can never
+exceed `saveTick + duration`; clamping each deadline to `counter + duration` is
+therefore an upper bound on the real remaining time. It keeps a cooldown that was
+still running, forbids inventing a long one, and is **provably a no-op for a
+deadline saved earlier on the same boot** (`saved <= now + duration` always
+holds there), so the same-boot re-register path is unchanged. The shield window
+is clamped after its own cooldown, which keeps the
+`shieldActiveUntilTick <= shieldCooldownUntilTick` invariant of the record.
+
+Nothing about the persisted encoding changed: the duel record keeps its thirteen
+colon-separated actor fields, so no migration and no schema bump is involved, and
+no damage, heal, cooldown, admission or durability rule was touched.
+
 ## 3. Dead coverage that was revived
 
 `tests/harness/me/copimine/endevent/runtime/wave7/EchoWoundedRetreatTest.java`
@@ -181,8 +236,10 @@ kept alive by a weak regex.
 | Wounded copy with no heal keeps fighting | AUTOMATED-TESTED | `EchoWoundedRetreatTest.woundedWithoutHealingKeepsFighting` (intent: `canHeal=false` does not KITE, `canHeal=true` does) and `EchoDuelCombatRuntimeAdapterTest.woundedCopyWithoutFoodKeepsFighting` (fed copy eats, empty copy does not flee) |
 | Sprint hop no longer pre-empts attacks | AUTOMATED-TESTED | `EchoDuelCombatRuntimeAdapterTest.sprintHeavyCopiesAttackBeforeTheyHop` (legal swing wins, hop survives when nothing is reachable) |
 | Shielded copy keeps moving | AUTOMATED-TESTED | `EchoDuelCombatRuntimeAdapterTest.profileDrivenDefenseSchedulesOwnerBoundShieldActions` asserts `hold.intent() == APPROACH` while the parry window is live |
-| Gate green | AUTOMATED-TESTED | `tests\RunEndRiftEventChecks.ps1 -JavaHome <pinned Temurin 25.0.4.1>` exit 0; `EchoDuelCombatRuntimeAdapterTest OK assertions=82`, `EchoWoundedRetreatTest OK` |
-| Candidate pin matches the build | AUTOMATED-TESTED | `tools/minecraft-26.3/server-plugins.lock.json` candidate `0717ee1a…` / 2573220 B equals a fresh pinned-JDK build and the `expected_candidates` literals; pin suites 139 passed, 6 skipped |
+| Gate green | AUTOMATED-TESTED | `tests\RunEndRiftEventChecks.ps1 -JavaHome <pinned Temurin 25.0.4.1>` exit 0; `EchoDuelCombatRuntimeAdapterTest OK assertions=88`, `EchoWoundedRetreatTest OK` |
+| Candidate pin matches the build | AUTOMATED-TESTED | `tools/minecraft-26.3/server-plugins.lock.json` candidate `464ad1d2…` / 2573713 B equals a fresh pinned-JDK build and the `expected_candidates` literals; pin suites 139 passed, 6 skipped |
+| Restored copy re-bases its persisted deadlines | AUTOMATED-TESTED | `EchoDuelCombatRuntimeAdapterTest.restoredDuelDeadlinesRebaseOntoFreshCounter`: a record saved with deadline 50 000 is frozen (`NONE`) at tick 0 **and** at tick 1 000, every re-based deadline equals its own `Cooldowns` bound (10/20/40/0/20/100/60), a re-based copy fires `RANGED` at tick 100, and a same-boot deadline set is returned unchanged (`equals` on the whole `ActorState`, so no running cooldown is shortened) |
+| The re-base is actually reached on restart | AUTOMATED-TESTED | `tests/test_wave7_echo_restart_rebase.py`: `CopiMineEndEvent.ensureNamedEchoDuelActor` passes `duel.actor()` through `rebaseRestoredDeadlines(..., eventTickCounter)`, the rebuilt checkpoint is built from `restoredActor.*`, no `duel.actor().<deadline>` survives in that method, and the agent clamp uses `Math.min(savedDeadline, latest)` |
 | Copies look right in a real client | NOT VERIFIED / BLOCKED | no client capture; hop landing, swap animation and the crit window need F2 frames |
 | Live roster behaviour | NOT VERIFIED / BLOCKED | no players online; `/cmend test wave 7` refuses an empty sandbox roster |
 

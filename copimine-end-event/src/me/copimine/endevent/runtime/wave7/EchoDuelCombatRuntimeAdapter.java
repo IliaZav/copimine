@@ -591,6 +591,59 @@ public final class EchoDuelCombatRuntimeAdapter {
         return intent == MovementIntent.APPROACH && !lineOfSight;
     }
 
+    /**
+     * Re-bases a restored actor's absolute tick deadlines onto the live counter.
+     *
+     * <p>Every deadline is written as {@code actionTick + duration}, so it is
+     * only meaningful against the counter that produced it. The duel record is
+     * persisted while {@code eventTickCounter} starts at zero on every boot and
+     * is never saved: a copy restored after a restart kept, say,
+     * {@code nextActionTick = 50_000} and every action gate refused it until
+     * the fresh counter climbed to that value — tens of minutes of a frozen
+     * copy, or hours on a long event. {@code Wave4ObeliskRecoveryPolicy
+     * .restoreTiming} already solves exactly this for the obelisk timers by
+     * rebasing the saved relative timers onto the fresh counter; this is the
+     * same rule for the Echo duel, applied where the carrier is rebuilt.
+     *
+     * <p>A saved deadline is at most {@code saveTick + duration}, and every
+     * duration is one of the bounded {@link EchoDuelCombatPolicy.Cooldowns}
+     * fields, so the real remaining time can never exceed that duration.
+     * Clamping each deadline to {@code counter + duration} therefore keeps a
+     * cooldown that was still running and forbids inventing a long one. The
+     * clamp is also a no-op for a deadline saved earlier on the same boot,
+     * because such a value is always below the bound.
+     *
+     * @param actor   the persisted actor of a duel being re-registered
+     * @param counter the live {@code eventTickCounter} the carrier is rebuilt in
+     */
+    public static ActorState rebaseRestoredDeadlines(ActorState actor, long counter) {
+        if (actor == null || counter < 0L || counter > RealitySplitEchoDuelState.MAX_COUNTER) {
+            throw new IllegalArgumentException("invalid Echo deadline rebase");
+        }
+        // The shield window can never outlast its own cooldown, so clamp the
+        // cooldown first and keep the window inside the result.
+        long shieldCooldownUntil = horizon(counter, COOLDOWNS.shieldCooldownTicks(),
+                actor.shieldCooldownUntilTick());
+        long shieldActiveUntil = Math.min(shieldCooldownUntil,
+                horizon(counter, COOLDOWNS.shieldHoldTicks(), actor.shieldActiveUntilTick()));
+        return new ActorState(actor.actorUuid(), actor.currentHealth(), actor.maximumHealth(),
+                actor.lifecycle(), actor.revision(),
+                horizon(counter, COOLDOWNS.sharedActionTicks(), actor.nextActionTick()),
+                horizon(counter, COOLDOWNS.meleeTicks(), actor.meleeCooldownUntilTick()),
+                horizon(counter, COOLDOWNS.rangedTicks(), actor.rangedCooldownUntilTick()),
+                horizon(counter, COOLDOWNS.consumableUseTicks(), actor.pendingUseUntilTick()),
+                actor.deathSerial(), shieldActiveUntil, shieldCooldownUntil,
+                horizon(counter, COOLDOWNS.jumpCooldownTicks(), actor.jumpCooldownUntilTick()));
+    }
+
+    /** A saved deadline kept only while it still fits the live counter plus its own duration. */
+    private static long horizon(long counter, long duration, long savedDeadline) {
+        long latest = counter > RealitySplitEchoDuelState.MAX_COUNTER - duration
+                ? RealitySplitEchoDuelState.MAX_COUNTER
+                : counter + duration;
+        return Math.min(savedDeadline, latest);
+    }
+
     private static Optional<Decision> decision(DuelRecord current, EchoLoadoutState baselineReplica,
                                                EchoLoadoutState replica,
                                                Scope scope, Action action, ActorState actor,

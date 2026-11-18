@@ -28,7 +28,38 @@ public final class EchoPotionPolicyTest {
         aCopyWantsABuffOnlyInContactOrHurt();
         aLiveBuffIsNotReapplied();
         drinkingRespectsEveryActorGate();
+        completedDrinkResolvesThroughTheOneHealSite();
         System.out.println("EchoPotionPolicyTest OK");
+    }
+
+    /**
+     * A drink is an in-flight use like a ration: starting it heals nothing, and
+     * the single completion site resolves it once. This is pinned because the
+     * runtime drops the completed use unless it routes the {@code NONE} tick
+     * into the duel record, and because a second heal site would make a drink
+     * follow the food rules silently.
+     */
+    private static void completedDrinkResolvesThroughTheOneHealSite() {
+        var replica = replica("POTION", 4);
+        int slot = replica.find(Kind.POTION);
+        var started = EchoDuelCombatPolicy.tryStartPotion(actor(20.0D), replica, slot,
+                replica.revision(), 0L, COOLDOWNS).orElseThrow();
+        check(started.currentHealth() == 20.0D, "starting the drink heals nothing");
+        check(EchoDuelCombatPolicy.completeConsumable(started,
+                        started.pendingUseUntilTick() - 1L, COOLDOWNS).isEmpty(),
+                "an unfinished drink has not healed yet");
+        var resolved = EchoDuelCombatPolicy.completeConsumable(started,
+                started.pendingUseUntilTick(), COOLDOWNS).orElseThrow();
+        double expected = 20.0D
+                + EchoDuelCombatPolicy.CONSUMABLE_HEAL_FRACTION * started.maximumHealth();
+        check(Math.abs(resolved.currentHealth() - expected) < 1.0E-9D,
+                "the completed drink restores the bounded share once, got "
+                        + resolved.currentHealth());
+        check(resolved.pendingUseUntilTick() == 0L,
+                "the completed drink clears the in-flight use");
+        check(EchoDuelCombatPolicy.completeConsumable(resolved,
+                        resolved.pendingUseUntilTick(), COOLDOWNS).isEmpty(),
+                "the same drink cannot resolve twice");
     }
 
     private static void potionsAreClassifiedNotInert() {

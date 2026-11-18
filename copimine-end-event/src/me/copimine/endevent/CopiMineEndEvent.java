@@ -37238,9 +37238,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             me.copimine.endevent.runtime.wave7.EchoReplicaInventory replica,
             EchoDuelCombatRuntimeAdapter.Decision decision) {
         if (world == null || core == null || trial == null || cell == null || owner == null
-                || carrier == null || replica == null || decision == null
-                || decision.action() == EchoDuelCombatRuntimeAdapter.Action.NONE) {
-            return decision != null && decision.action() == EchoDuelCombatRuntimeAdapter.Action.NONE;
+                || carrier == null || replica == null || decision == null) {
+            return false;
+        }
+        if (decision.action() == EchoDuelCombatRuntimeAdapter.Action.NONE) {
+            // A NONE tick is either an ordinary idle tick (nothing changed in the
+            // duel) or the in-flight consumable resolving at its own deadline.
+            // The resolver publishes the healed actor as a plain state change, so
+            // the heal has to be checkpointed and projected here.
+            return commitNamedEchoStateChange(owner, carrier, decision);
         }
         EchoDuelCombatRuntimeAdapter.Scope scope = decision.scope();
         var prior = namedEchoDuel(cell.owner(), scope.duelId());
@@ -37286,6 +37292,48 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!accepted) {
             return compensateRejectedNamedEchoCombatAction(cell.owner(), carrier, decision,
                     "WAVE7_ECHO_NATIVE_ACTION_REJECTED");
+        }
+        return true;
+    }
+
+    /**
+     * Records the heal an in-flight consumable resolves into.
+     *
+     * <p>A completed use is reported as {@link EchoDuelCombatRuntimeAdapter.Action#NONE}
+     * because the supply was spent when the use STARTED, so there is no second
+     * item action to execute. The only durable effect of the completion is the
+     * bounded health gain in {@code nextDuel}. Before this method existed that
+     * tick returned early and dropped the heal, and because the eat start
+     * deliberately stages no heal at all, a wounded copy could never recover.
+     *
+     * <p>An ordinary idle tick carries the same duel record before and after, so
+     * it stays a no-op.
+     */
+    private boolean commitNamedEchoStateChange(Player owner, Pillager carrier,
+            EchoDuelCombatRuntimeAdapter.Decision decision) {
+        var prior = decision.previousDuel();
+        var next = decision.nextDuel();
+        if (next.equals(prior)) return true;
+        if (owner == null || carrier == null || prior == null || next == null) return false;
+        var scope = decision.scope();
+        var current = namedEchoDuel(scope.ownerUuid(), scope.duelId());
+        if (current == null || !current.equals(prior)
+                || !next.eventId().equals(prior.eventId())
+                || next.attemptGeneration() != prior.attemptGeneration()
+                || next.runtimeGeneration() != prior.runtimeGeneration()
+                || next.revision() != prior.revision() + 1L
+                || !next.actor().actorUuid().equals(carrier.getUniqueId())) return false;
+        if (!realitySplitTrialController.registerPersonalEchoDuel(next)) return false;
+        if (!saveStateSync()) return false;
+        double restored = next.actor().currentHealth();
+        if (!Double.isFinite(restored) || restored <= carrier.getHealth()
+                || restored > carrier.getMaxHealth()) return true;
+        try {
+            carrier.setHealth(restored);
+        } catch (RuntimeException rejectedHeal) {
+            // The checkpoint is the authority; a body that refuses the heal still
+            // must not lose the completed use, so this never rolls the duel back.
+            getLogger().fine("W7 echo completion heal refused: " + rejectedHeal.getMessage());
         }
         return true;
     }
@@ -37593,15 +37641,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     if (owner.isDead() || carrier.isDead() || !carrier.isValid()) return false;
                     return executeNamedEchoPotionDrink(owner, carrier, decision);
                 }
+                // The eat START stages no heal: the use resolves at its own
+                // deadline and the completion branch carries the health gain.
+                // Requiring a health increase here rejected every start whenever
+                // the checkpoint already matched the body, which is the normal
+                // case, so the copy looped on a refused eat and never healed.
                 double expectedHealth = decision.nextDuel().actor().currentHealth();
-                if (!Double.isFinite(expectedHealth) || expectedHealth <= carrier.getHealth()
-                        || expectedHealth > carrier.getMaxHealth()) return false;
-                try {
-                    carrier.setHealth(expectedHealth);
-                } catch (RuntimeException rejectedHeal) {
+                if (!Double.isFinite(expectedHealth) || expectedHealth > carrier.getMaxHealth()) return false;
+                if (expectedHealth > carrier.getHealth()) {
+                    try {
+                        carrier.setHealth(expectedHealth);
+                    } catch (RuntimeException rejectedHeal) {
+                        if (Double.compare(carrier.getHealth(), expectedHealth) != 0) return false;
+                    }
                     if (Double.compare(carrier.getHealth(), expectedHealth) != 0) return false;
                 }
-                if (Double.compare(carrier.getHealth(), expectedHealth) != 0) return false;
                 try {
                     carrier.getWorld().playSound(carrier.getLocation(), Sound.ENTITY_GENERIC_EAT, 0.55F, 1.0F);
                 } catch (RuntimeException ignoredSoundFailure) {

@@ -54,6 +54,40 @@ text. Two such overrides are live and must not be "repaired" back:
 
 Anything else that contradicts the canonical text is a defect, not a variant.
 
+## 4b. Surfaced contradictions awaiting a decision
+
+Canonical section 0 says that when two sources still contradict, preserve the
+data and surface the exact conflicting statements instead of inventing a third
+behaviour. This one is recorded rather than resolved.
+
+**Wave 6 assigned guard slots.** The canonical table (section 8.2) fixes total
+assigned guard slots at **5 / 10 / 15** for rosters of 2-4 / 5-8 / 9-20, with at
+most **1 / 2 / 3** Rift Giant replacements.
+
+The shipped roster policy returns **1 / 2 / 3 / 4 / 5** guards *per mage*
+(five mages, so **5 / 10 / 15 / 20 / 25** total) as the roster grows:
+
+* `WaveSixRosterPolicy.guardsFor` - 1 at 2-4, then 2 at 5-8, 3 at 9-12, 4 at
+  13-16, 5 at 17-20;
+* `RitualSphereScalingPolicy.GUARDS_PER_CASTER = 5` and its profile validation
+  accepts one to five per mage.
+
+The Rift Giant cap does match the canonical table: `RitualGuardAbilityPolicy`
+uses 1 / 2 / 3 for 2-4 / 5-8 / 9-20.
+
+The repository claims this ramp is a user requirement (`W6-009`):
+`tests/RitualSphereScalingPolicyTest.java` says the 5/10/15 table is replaced by
+"one guard at a 2-4 party, +1 per four players, up to the five-per-mage
+ceiling", and `docs/end-rift/2026-10-31/UNIFIED_SPECIFICATION_REGISTER.md`
+records the guard table as "max five, applied once (`W6-008`, `W6-009`)".
+
+So rosters of 13-20 field **20 or 25** assigned guards where the canonical text
+allows **15**. Either the W6-009 ramp is a genuine user decision that outranks
+the canonical table, or the table is right and 13-20 is over-guarded. No source
+in the tree decides which; the code therefore stays as shipped and the conflict
+is recorded here for the user. Changing the ramp to 15/20/25 without a decision
+would be inventing a behaviour, and so would shrinking 13-20 to 15.
+
 ## 5. Artifact re-pin conventions
 
 Two different pins exist and they are refreshed differently.

@@ -121,6 +121,10 @@ public final class EchoVanillaRenderer {
         cached.player.project(carrier, semantic, skin, false);
         driveVanillaAnimation(cached, semantic, carrier);
 
+        long now = System.currentTimeMillis();
+        cached.player.markAppeared(now);
+        float spawn = cached.player.spawnProgress(now);
+
         var candidate = client.getEntityRenderDispatcher().getRenderer(cached.player);
         if (!(candidate instanceof AvatarRenderer<?> rawRenderer)) return false;
         AvatarRenderer renderer = rawRenderer;
@@ -130,7 +134,20 @@ public final class EchoVanillaRenderer {
         copyCarrierAnimation(carrierState, echoState, semantic.frame().deathTicks());
         // Detached echo names must never compete with the carrier's normal label.
         echoState.nameTag = null;
-        renderer.submit(echoState, matrices, collector, camera);
+        // The eyes light up only after the body has mostly taken shape.
+        if (echoState instanceof EndRiftRenderStateAccess access) {
+            access.copimine$echoEyeGlow(cached.player.eyeGlow(now));
+        }
+        // Materialisation: a copy grows into place from its feet instead of
+        // popping in at full size. Vanilla animations play throughout.
+        float scale = EchoAppearanceClock.materialiseScale(spawn);
+        matrices.pushPose();
+        try {
+            matrices.scale(scale, scale, scale);
+            renderer.submit(echoState, matrices, collector, camera);
+        } finally {
+            matrices.popPose();
+        }
         return true;
     }
 

@@ -13,6 +13,9 @@ public abstract class LivingEntityRenderStateMixin implements EndRiftRenderState
     @Unique private float copimine$poseProgress;
     @Override public void copimine$poseProgress(float value) { copimine$poseProgress=value; }
     @Override public float copimine$poseProgress() { return copimine$poseProgress; }
+    @Unique private float copimine$echoEyeGlow = 1.0F;
+    @Override public void copimine$echoEyeGlow(float value) { copimine$echoEyeGlow=value; }
+    @Override public float copimine$echoEyeGlow() { return copimine$echoEyeGlow; }
     @Unique private String copimine$uuid = "";
     @Unique private int copimine$entityId = -1;
     @Unique private boolean copimine$isEcho;

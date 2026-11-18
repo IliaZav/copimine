@@ -164,3 +164,40 @@ def test_the_eye_and_body_layers_are_installed_on_the_vanilla_player_renderer():
     registered = (ROOT / "tools/minecraft-26.3/client/src/main/resources/"
                         "copimineclient-26.3.mixins.json").read_text(encoding="utf-8")
     assert '"EchoPlayerRendererMixin"' in registered, "the mixin must be registered"
+
+
+def test_the_copy_appears_with_a_materialisation_ramp():
+    """A copy grows into place instead of popping in at full size."""
+    renderer = renderer_source()
+    assert re.search(r"cached\.player\.markAppeared\(now\)", renderer), (
+        "the first drawn frame must be recorded, or the arrival ramp never starts"
+    )
+    assert "EchoAppearanceClock.materialiseScale" in renderer, (
+        "the body scale must come from the shared appearance clock"
+    )
+    assert re.search(r"matrices\.pushPose\(\)", renderer) and re.search(
+        r"matrices\.popPose\(\)", renderer), (
+        "the scale must be applied inside a pushed/popped pose"
+    )
+    view = view_source()
+    assert "EchoAppearanceClock" in view, (
+        "the view must own the appearance clock so a recycled actor re-materialises"
+    )
+
+
+def test_the_eyes_light_up_gradually_and_stay_dark_at_first():
+    """The eyes fade in after the body; they are not lit on the first frame."""
+    renderer = renderer_source()
+    assert re.search(r"copimine\$echoEyeGlow\(cached\.player\.eyeGlow\(now\)\)", renderer), (
+        "the renderer must publish the eye glow onto the render state"
+    )
+    eyes = (CLIENT / "EchoEyesFeature.java").read_text(encoding="utf-8")
+    assert "copimine$echoEyeGlow()" in eyes, (
+        "the eye layer must read the glow"
+    )
+    assert re.search(r"if \(glow <= 0\.02F\) return;", eyes), (
+        "the eye pass must be skipped while the eyes are still dark"
+    )
+    assert re.search(r"Math\.round\(255\.0F \* Math\.min\(1\.0F, glow\)\)", eyes), (
+        "the eye tint alpha must ramp with the glow"
+    )

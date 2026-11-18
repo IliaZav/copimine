@@ -40,10 +40,16 @@ public final class EchoEyesFeature extends RenderLayer<AvatarRenderState, Player
     public void submit(PoseStack matrices, SubmitNodeCollector collector, int light,
                        AvatarRenderState state, float bodyYaw, float headPitch) {
         if (!(state instanceof EndRiftRenderStateAccess bound) || !bound.copimine$isEcho()) return;
+        // A freshly materialised copy keeps its eyes dark for a moment and then
+        // lights them up, so it arrives looking like a player before it stares.
+        float glow = bound.copimine$echoEyeGlow();
+        if (glow <= 0.02F) return;
+        int eyeTint = (Math.round(255.0F * Math.min(1.0F, glow)) << 24)
+                | (ECHO_EYE_TINT & 0x00FFFFFF);
         // Violet emissive eyes first, then the darkened body pass on top so the
         // eye layer is not washed out by its own shadowing.
         collector.submitModel(getParentModel(), state, matrices, RenderTypes.eyes(EYES),
-                0x00f000f0, OverlayTexture.NO_OVERLAY, ECHO_EYE_TINT);
+                0x00f000f0, OverlayTexture.NO_OVERLAY, eyeTint);
         collector.submitModel(getParentModel(), state, matrices,
                 RenderTypes.entityTranslucent(state.skin.body().texturePath()),
                 light, OverlayTexture.NO_OVERLAY, EchoVanillaRenderer.ECHO_BODY_TINT);

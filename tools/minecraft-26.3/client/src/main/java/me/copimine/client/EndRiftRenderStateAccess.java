@@ -10,6 +10,9 @@ public interface EndRiftRenderStateAccess {
     default me.copimine.protocol.Wave7AnimationFrame copimine$trialFrame() { return null; }
     default void copimine$poseProgress(float value) { }
     default float copimine$poseProgress() { return 0; }
+    /** 0 while an echo's eyes are still dark, 1 once they have lit fully. */
+    default void copimine$echoEyeGlow(float value) { }
+    default float copimine$echoEyeGlow() { return 1.0F; }
     String copimine$uuid();
     int copimine$entityId();
     boolean copimine$isEcho();

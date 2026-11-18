@@ -22,9 +22,12 @@ import net.minecraft.world.item.ItemStack;
 public final class EchoPlayerView extends RemotePlayer {
     private static final EquipmentSlot[] VISIBLE_SLOTS = {EquipmentSlot.HEAD, EquipmentSlot.CHEST,
             EquipmentSlot.LEGS, EquipmentSlot.FEET, EquipmentSlot.MAINHAND, EquipmentSlot.OFFHAND};
+
     private EchoPresentationState.View semantic;
     private PlayerSkin skin;
     private int equipmentVersion = -1;
+    /** Materialisation and eye-glow ramp, measured from the first drawn frame. */
+    private final EchoAppearanceClock appearance = new EchoAppearanceClock();
 
     public EchoPlayerView(ClientLevel world, EchoPresentationState.Frame frame) {
         super(world, new GameProfile(frame.presentationId(), "RiftEcho"));
@@ -70,6 +73,25 @@ public final class EchoPlayerView extends RemotePlayer {
         if (equipmentVersion != version || animationTick) {
             EchoVanillaRenderer.projectEquipment(this, carrier, version, equipmentVersion != version);
         }
+    }
+
+    /**
+     * Record the first drawn frame. Called by the renderer before it reads the
+     * appearance clocks, so a copy's arrival is measured from when the player
+     * could first see it, not from when the server bound the actor.
+     */
+    void markAppeared(long nowMillis) {
+        appearance.mark(nowMillis);
+    }
+
+    /** 0 on the first drawn frame, 1 once the body has fully materialised. */
+    float spawnProgress(long nowMillis) {
+        return appearance.spawn(nowMillis);
+    }
+
+    /** 0 while the eyes are still dark, rising to 1 once they have lit fully. */
+    float eyeGlow(long nowMillis) {
+        return appearance.eyeGlow(nowMillis);
     }
 
     /** Used by {@link EchoVanillaRenderer#projectEquipment} to write the projected version. */

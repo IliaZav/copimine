@@ -248,17 +248,28 @@ discarded. The fix keeps the policy untouched and repairs the runtime:
   equal to the carrier) and is then registered, persisted and finally projected
   onto the body. The heal only ever raises the carrier and only up to its
   maximum; a body that refuses it is logged and **never** rolls the completed use
-  back, because the checkpoint is the authority and the supply was already paid
-  for.
+  back: `checkpointNamedEchoHealthChanges` copies the carrier body's health onto
+  the actor, so a change the body does not accept simply does not stick, while
+  the already-paid supply is still spent exactly once.
 - The `CONSUMABLE` start guard now rejects only what is genuinely wrong — a
   non-finite or above-maximum value — and applies the health change when there is
   one. The staged `Double.compare` check stays, because an accepted start must
   still prove the body agrees with the checkpoint it is about to commit.
 
-The potion branch was audited in the same pass and is **not** a defect: a drunk
-buff potion is deliberately an animation with no health transition ("drinking is
-an animation, not a heal"), and it was equally affected by the dropped
-completion, so nothing about it needed a separate change.
+The potion branch resolves through that same single heal site, and this was
+already true of the policy before the fix: `tryStartPotion` posts the same
+`pendingUseUntilTick` its food counterpart does ("the allotment is enforced by
+consuming the bottle here, exactly like a food ration"), and
+`completeConsumable` is the one place any use may heal. What the dropped
+completion hid was not a potion-specific rule but the whole heal, so the drink
+and the ration were equally silent. Restoring the completion restores the
+bounded, once-per-spent-bottle heal for both, which
+`EchoPotionPolicyTest.completedDrinkResolvesThroughTheOneHealSite` now pins:
+starting a drink heals nothing, the finish tick grants the
+`CONSUMABLE_HEAL_FRACTION` share exactly once, the pending use is cleared, and
+the same snapshot cannot resolve twice. The drink itself remains an animation —
+`executeNamedEchoPotionDrink` applies the bottle's own effect and never writes
+health — so no second heal site was added.
 
 ## 3. Dead coverage that was revived
 
@@ -296,7 +307,7 @@ kept alive by a weak regex.
 | Sprint hop no longer pre-empts attacks | AUTOMATED-TESTED | `EchoDuelCombatRuntimeAdapterTest.sprintHeavyCopiesAttackBeforeTheyHop` (legal swing wins, hop survives when nothing is reachable) |
 | Shielded copy keeps moving | AUTOMATED-TESTED | `EchoDuelCombatRuntimeAdapterTest.profileDrivenDefenseSchedulesOwnerBoundShieldActions` asserts `hold.intent() == APPROACH` while the parry window is live |
 | Gate green | AUTOMATED-TESTED | `tests\RunEndRiftEventChecks.ps1 -JavaHome <pinned Temurin 25.0.4.1>` exit 0; `EchoDuelCombatRuntimeAdapterTest OK assertions=88`, `EchoWoundedRetreatTest OK` |
-| Candidate pin matches the build | AUTOMATED-TESTED | `tools/minecraft-26.3/server-plugins.lock.json` candidate `ab239007…` / 2574011 B equals a fresh pinned-JDK build and the `expected_candidates` literals; tests/test_minecraft_migration_server_plugins.py 135 passed, 6 skipped |
+| Candidate pin matches the build | AUTOMATED-TESTED | `tools/minecraft-26.3/server-plugins.lock.json` candidate `8a86be1b…` / 2574004 B equals a fresh pinned-JDK build and the `expected_candidates` literals; tests/test_minecraft_migration_server_plugins.py 135 passed, 6 skipped |
 | The completed eat reaches the body | AUTOMATED-TESTED | `EchoDuelCombatRuntimeAdapterTest`: the food decision stages `8.0` health with `pendingUseUntilTick=332`, the resolution tick is `Action.NONE`, and the deadline tick carries `CONSUMABLE_HEAL_FRACTION` of maximum health once; `EchoConsumableTimingTest` asserts the same pair on the policy |
 | The runtime wires that completion | AUTOMATED-TESTED | `tests/test_wave7_echo_consumable_completion.py`: `Action.NONE` routes to `commitNamedEchoStateChange`, the handler orders `registerPersonalEchoDuel(next)` < `saveStateSync()` < `carrier.setHealth(restored)`, an idle tick stays a no-op, and the eat start no longer demands a health increase while still rejecting non-finite and above-maximum values |
 | Eat start is no longer refused-and-refunded | IMPLEMENTED | `executeNamedEchoCombatAction` `CONSUMABLE` branch: guard is `!Double.isFinite(expectedHealth) || expectedHealth > carrier.getMaxHealth()`, health applied only when it actually rises |

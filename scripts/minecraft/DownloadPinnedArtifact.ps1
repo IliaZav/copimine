@@ -352,7 +352,11 @@ function Install-PinnedToolArchive {
     $oldMoved = $false
     try {
         New-Item -ItemType Directory -Path $scratch -ErrorAction Stop | Out-Null
-        Expand-Archive -LiteralPath $archivePath -DestinationPath $scratch -Force
+        # No -Force: the scratch directory was just created empty, so overwrite
+        # semantics are unnecessary, and -Force makes Expand-Archive call the
+        # three-argument ExtractToDirectory overload that is absent on some
+        # Windows PowerShell / .NET Framework runners.
+        Expand-Archive -LiteralPath $archivePath -DestinationPath $scratch
         $candidate = Join-Path $scratch $name
         $candidateExecutable = Join-Path $candidate $ExecutableRelativePath
         if (-not (Test-Path -LiteralPath $candidate -PathType Container) -or

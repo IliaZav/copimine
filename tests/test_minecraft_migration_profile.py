@@ -234,10 +234,14 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # artifact. Verified here against the real build output in
     # build/minecraft-26.3/client/libs, which matches the lock's size and SHA-512
     # byte for byte.
-    assert artifact['size'] == 30_247_649
+    # 18-November: the echo materialisation and gradual eye glow added two client
+    # classes (EchoAppearanceClock, EchoEyesFeature) and the eye texture, so the
+    # jar moved. This pin was taken from a clean `gradle test jar` with the
+    # pinned JDK and matched the CI build output byte for byte.
+    assert artifact['size'] == 30_249_251
     assert artifact['sha512'] == (
-        '68dd9c37d9ddb824f41061aea532fa866cb1320262c79e1f0242bc8c590f9cdc'
-        'c02223a75a32666a3fd93c64926e87a555864f47a562e6e7c29a8fbc5feebd54'
+        'f7e6c42b2259d21803cb39007a702f03869f2f0b3dcacf13435fbdc1ad2d67d4'
+        '8c03429e3443bd04becd9accf5f439f80f5923643014f6484ad0646bc0373b6f'
     )
 
 

@@ -44,7 +44,7 @@ python -c "import hashlib,pathlib; print(hashlib.sha256(pathlib.Path(r'D:\Downlo
 ## 4. Recorded user decisions that override a canonical line
 
 The authority order puts a latest explicit user decision above the canonical
-text. Five such overrides are live and must not be "repaired" back:
+text. Seven such overrides are live and must not be "repaired" back:
 
 | Canonical line | Live decision | Evidence |
 |---|---|---|
@@ -53,42 +53,34 @@ text. Five such overrides are live and must not be "repaired" back:
 | Guardian section 6.3: individual 90-active-second defence respawns | a genuinely killed cocoon defender is **permanently destroyed** for the encounter generation; the boss regeneration stops permanently once the cocoon breaks | `docs/end-rift/2026-11-11/MASTER_REBUILD_CONTRACT.md` says the user's newest decisions override older documents, "Remove the existing 90-second guardian respawn behavior", "Never respawn after being genuinely killed" and "The user explicitly wants a permanent final fight after the cocoon breaks" |
 | Wave 2 section 4.1/4.3: 45-second mark periods, at least two complete periods, no five-second group pauses | the mark transfers approximately every **20 seconds** while the current group is alive, three finite groups, approximately **5-second** pause after a cleared group, elite enemies only in the third group | `docs/end-rift/2026-11-11/MASTER_REBUILD_CONTRACT.md` Wave 2 section 3.1 lists exactly this behaviour and adds "Avoid changing the gameplay to an unrelated 45-second marker or endlessly spawning new groups" |
 | Wave 2 section 4.2: roughly **25-35** stable gray phantom Endermen for the marked client | approximately **70** client-only spectral Endermen with a **50** figure safe fallback, identical on server (`WaveTwoPhantomLayoutPolicy`) and client (`WaveTwoPhantomLayout`) | `docs/end-rift/2026-11-11/MASTER_REBUILD_CONTRACT.md` section 3.2 records the 35/25-versus-70/50 mismatch, states "The intended presentation is approximately 70 client-only spectral Endermen when the arena can support them", and requires "one compatible authoritative count contract" |
+| Wave 6 section 8: Ritual Sphere, five channeling mages, a prisoner and the guard table | Wave 6 is the **Rift Ram** encounter: one oversized Ravager lured into the Core, four ordinary pillars plus one oversized final pillar (three hits) with a skeleton on top. The sphere, its mages, its prisoner and its guard table are **not the live encounter** | Latest user decision 2026-11-18 ("in Wave 6 we completely dropped the sphere mages"). The tree already agrees: `EndRiftObjective.objective(6)` returns `RIFT_RAM`, and `RITUAL_SPHERE`/`COLLAPSE_RINGS` are marked `isLegacy()` snapshot-only ids "never selected for live Wave 6". `docs/end-rift/2026-11-11/MASTER_REBUILD_CONTRACT.md` section 6 is titled "WAVE 6 - RIFT RAM AND THE FINAL SKELETON PILLAR" |
+| Wave 7 section 9.1: two-to-four isolated chambers with one-block partitions | the whole party shares **one sequential open arena**; the four named trials (Warden, Personal Echo, Mobile Marksman, Rift Archmage) run back to back with **no walled rooms** | Latest user decision 2026-11-18 ("in Wave 7 we completely dropped the rooms in favour of minibosses one after another"). The tree already agrees: `RealitySplitChamberController.beginWave7` delegates to `beginOpenArena`, and `docs/end-rift/2026-11-15/GUARDIAN_COMBAT_ANIMATIONS_AND_AUDIO.md` records the one-open-arena override as still in force |
 
 Anything else that contradicts the canonical text is a defect, not a variant.
 
-## 4b. Surfaced contradictions awaiting a decision
+## 4b. Surfaced contradictions resolved by a user decision
 
 Canonical section 0 says that when two sources still contradict, preserve the
 data and surface the exact conflicting statements instead of inventing a third
-behaviour. This one is recorded rather than resolved.
+behaviour.
 
-**Wave 6 assigned guard slots.** The canonical table (section 8.2) fixes total
-assigned guard slots at **5 / 10 / 15** for rosters of 2-4 / 5-8 / 9-20, with at
-most **1 / 2 / 3** Rift Giant replacements.
+**Wave 6 assigned guard slots - now moot.** The canonical table (section 8.2)
+fixed total assigned guard slots at **5 / 10 / 15** for rosters of 2-4 / 5-8 /
+9-20, while the shipped roster policy returned **1 / 2 / 3 / 4 / 5** guards *per
+mage*. That conflict only ever applied to the Ritual Sphere, which the
+2026-11-18 decision replaced with the Rift Ram encounter (row above). The live
+Wave 6 no longer selects the sphere, so there is no over-guarding to resolve:
 
-The shipped roster policy returns **1 / 2 / 3 / 4 / 5** guards *per mage*
-(five mages, so **5 / 10 / 15 / 20 / 25** total) as the roster grows:
+* `EndRiftObjective.objective(6)` is `RIFT_RAM`, never `RITUAL_SPHERE`;
+* the sphere runtime entry points (`tickCurrentRitualSphereObjective`,
+  `restorePersistedRitualSphereObjective`, `startRitualSphereObjective`) have no
+  live caller;
+* `WaveSixRosterPolicy.guardsFor` and `RitualSphereScalingPolicy` are reachable
+  only from the encrypted sandbox/diagnostic harnesses and their unit tests.
 
-* `WaveSixRosterPolicy.guardsFor` - 1 at 2-4, then 2 at 5-8, 3 at 9-12, 4 at
-  13-16, 5 at 17-20;
-* `RitualSphereScalingPolicy.GUARDS_PER_CASTER = 5` and its profile validation
-  accepts one to five per mage.
-
-The Rift Giant cap does match the canonical table: `RitualGuardAbilityPolicy`
-uses 1 / 2 / 3 for 2-4 / 5-8 / 9-20.
-
-The repository claims this ramp is a user requirement (`W6-009`):
-`tests/RitualSphereScalingPolicyTest.java` says the 5/10/15 table is replaced by
-"one guard at a 2-4 party, +1 per four players, up to the five-per-mage
-ceiling", and `docs/end-rift/2026-10-31/UNIFIED_SPECIFICATION_REGISTER.md`
-records the guard table as "max five, applied once (`W6-008`, `W6-009`)".
-
-So rosters of 13-20 field **20 or 25** assigned guards where the canonical text
-allows **15**. Either the W6-009 ramp is a genuine user decision that outranks
-the canonical table, or the table is right and 13-20 is over-guarded. No source
-in the tree decides which; the code therefore stays as shipped and the conflict
-is recorded here for the user. Changing the ramp to 15/20/25 without a decision
-would be inventing a behaviour, and so would shrinking 13-20 to 15.
+The guard table therefore describes retired code, not a live contract. Cleanup
+of that retired sphere code is tracked as a follow-up; it is unreachable in
+production either way.
 
 ## 5. Artifact re-pin conventions
 

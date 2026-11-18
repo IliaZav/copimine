@@ -101,3 +101,48 @@ def test_the_core_is_untouched_when_the_ram_finishes():
     assert "completed = ramDefeated && pillarSkeletonDefeated;" in complete
     assert "if (completed) cleanupDisplays();" in complete
     assert "getBlock().set" not in RUNTIME.read_text(encoding="utf-8")
+
+
+def test_the_pillar_collider_is_real_solid_and_host_journaled():
+    # The encounter still never writes terrain itself (asserted above). A pillar
+    # is nevertheless solid: the host owns a journaled barrier volume whose
+    # footprint and height come from the policy, so hiding behind the pillar and
+    # the Ram reaching the pillar are true in the world, not only in the model.
+    text = RUNTIME.read_text(encoding="utf-8")
+    assert "host.placePillarCollider(" in text
+    assert "RiftRamPolicy.pillarColliderHalfWidth(impacts)" in text
+    assert "RiftRamPolicy.pillarColliderHeight(impacts)" in text
+    assert "host.clearPillarCollider()" in text
+    assert "getBlock().set" not in text, (
+        "the encounter must keep terrain ownership with the host, never the journal")
+
+    # A crack shrinks the visible pillar, so the barrier has to follow it: a
+    # model that lost a section must not leave its original full-height wall.
+    crack = runtime_body("private void crackPillar()",
+                         "private double standingPillarPlatformHeight()")
+    assert "host.placePillarCollider(" in crack
+    assert "RiftRamPolicy.pillarColliderHalfWidth(impacts)" in crack
+    assert "RiftRamPolicy.pillarColliderHeight(impacts)" in crack
+    assert "damaged-pillar-collider-refused" in crack
+    # ...and the model, the platform and the collider read one policy geometry.
+    assert "RiftRamPolicy.pillarSilhouetteHeight(impacts)" in text
+    assert "7.4" not in text, (
+        "the pillar geometry must live in RiftRamPolicy, not be re-typed here")
+
+    host = SOURCE.read_text(encoding="utf-8")
+    assert "private boolean placeRiftRamPillarCollider(" in host
+    assert "private boolean clearRiftRamPillarCollider(" in host
+    assert "\"RIFT_PILLAR\"" in host
+    assert "entry.isRiftPillarMutation()" in host, (
+        "boot recovery must restore a pillar collider left by a crash")
+    assert "hazardJournal.prepare(" in host
+    assert "hazardJournal.markApplied()" in host
+    assert "hazardJournal.markRestored()" in host
+
+
+def test_the_charge_impact_is_decided_before_the_destination_is_validated():
+    # A solid pillar is now in the world. The swept pillar test has to run before
+    # safeVolume(to), otherwise the Ram would be refused as "moving into a wall"
+    # before its nose ever reached the objective.
+    charge = runtime_body("private void charge(", "private void impact()")
+    assert charge.index("segmentHitsPillar(") < charge.index("safeVolume(to)")

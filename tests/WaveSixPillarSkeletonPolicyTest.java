@@ -33,12 +33,12 @@ public final class WaveSixPillarSkeletonPolicyTest {
                 WaveSixPillarSkeletonPolicy.TRIPLE_SHOT_ARROWS == 3);
         check("the heavy volley fires at least one arrow",
                 WaveSixPillarSkeletonPolicy.BONE_RAIN_ARROWS >= 1);
-        check("the volleys spread differently",
-                WaveSixPillarSkeletonPolicy.TRIPLE_SHOT_SPREAD_DEGREES
-                        != WaveSixPillarSkeletonPolicy.BONE_RAIN_ARC_DEGREES);
-        check("the volleys fly at different speeds",
-                WaveSixPillarSkeletonPolicy.TRIPLE_SHOT_SPEED
-                        != WaveSixPillarSkeletonPolicy.BONE_RAIN_SPEED);
+        // The heavy volley is a real drop out of the air, so its distinctive
+        // shape is the landing pattern and height, not a horizontal arc.
+        check("the rain volley spawns above the target",
+                WaveSixPillarSkeletonPolicy.BONE_RAIN_HEIGHT > 0.0D);
+        check("the rain volley is pushed downward from the first tick",
+                WaveSixPillarSkeletonPolicy.BONE_RAIN_SPEED > 0.0D);
         check("the volleys are on different cooldowns",
                 WaveSixPillarSkeletonPolicy.TRIPLE_SHOT_COOLDOWN_TICKS
                         != WaveSixPillarSkeletonPolicy.BONE_RAIN_COOLDOWN_TICKS);
@@ -86,14 +86,19 @@ public final class WaveSixPillarSkeletonPolicyTest {
         check("the fan is symmetric about the aim",
                 Math.abs(triple[0][0] + triple[2][0]) < 1.0E-9D);
 
-        double[][] bone = WaveSixPillarSkeletonPolicy.boneRainDirections(1.0D, 0.0D);
-        check("the heavy volley has one direction per arrow",
+        double[][] bone = WaveSixPillarSkeletonPolicy.boneRainOffsets();
+        check("the heavy volley has one landing offset per arrow",
                 bone.length == WaveSixPillarSkeletonPolicy.BONE_RAIN_ARROWS);
-        for (double[] dir : bone) {
-            check("a heavy volley direction is a unit vector", isUnit(dir));
+        check("the first rain arrow lands on the target",
+                Math.abs(bone[0][0]) < 1.0E-9D && Math.abs(bone[0][1]) < 1.0E-9D);
+        boolean offCentre = false;
+        for (double[] offset : bone) {
+            double radius = Math.hypot(offset[0], offset[1]);
+            check("every rain arrow lands inside the spread",
+                    radius <= WaveSixPillarSkeletonPolicy.BONE_RAIN_SPREAD + 1.0E-9D);
+            if (radius > 1.0E-9D) offCentre = true;
         }
-        check("the heavy volley spreads wider than the triple shot",
-                Math.abs(bone[0][1]) > Math.abs(triple[0][0]));
+        check("the rain volley brackets the target instead of stacking on it", offCentre);
     }
 
     private static void degenerateAimNeverFiresIntoSelf() {
@@ -142,6 +147,18 @@ public final class WaveSixPillarSkeletonPolicyTest {
                 !WaveSixPillarSkeletonPolicy.shouldFall(7, true, true));
         check("nothing drops on an ordinary impact",
                 !WaveSixPillarSkeletonPolicy.shouldFall(3, true, false));
+        // The fall is real physics: the landing predicate must observe ground
+        // contact near the floor rather than accept a teleport.
+        check("ground contact on the floor is a landing",
+                WaveSixPillarSkeletonPolicy.hasLanded(68.0D, 68, true));
+        check("mid-air is never a landing",
+                !WaveSixPillarSkeletonPolicy.hasLanded(68.0D, 68, false));
+        check("still on the platform is never a landing",
+                !WaveSixPillarSkeletonPolicy.hasLanded(76.6D, 68, true));
+        check("a non-finite height never lands",
+                !WaveSixPillarSkeletonPolicy.hasLanded(Double.NaN, 68, true));
+        check("a stalled fall is still bounded",
+                WaveSixPillarSkeletonPolicy.FALL_TIMEOUT_TICKS > 0);
     }
 
     private static void noOrphanMayBeLeftBehind() {

@@ -6,7 +6,7 @@ from tests.test_wave_navigation_adapter import extract
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_stomp_travels_skips_jump_and_late_join_and_never_damages(tmp_path):
+def test_stomp_travels_skips_jump_and_late_join_and_damages_once(tmp_path):
     runtime = (ROOT/'copimine-end-event/src/me/copimine/endevent/runtime/RiftRamEncounter.java').read_text('utf-8')
     method = extract(runtime,'void stomp(List<Player> players)')
     java = r'''
@@ -41,10 +41,23 @@ public class StompRuntimeProbe {
       if(e.type()!=PotionEffectType.SLOWNESS||e.ticks()!=60||e.amp()!=1)throw new AssertionError("wrong effect");
       applications++;
     }
-    // No damage method: any production damage call makes this probe fail compilation.
+    // Damage is applied by the host's shared ability path, exactly like every
+    // other Ram attack, so the probe records accepted hits instead of inventing
+    // a second damage pipeline.
+    int damageTaken;
   }
   static class Ram { World world; Ram(World w){world=w;} World getWorld(){return world;} }
-  static class Host { int floorY(){return 64;} int particleBudget(){return 256;} }
+  static class Host {
+    int floorY(){return 64;}
+    int particleBudget(){return 256;}
+    int damageCalls;double lastAmount;
+    boolean damage(Ram source,Player player,double amount){
+      damageCalls++;lastAmount=amount;
+      if(source==null||player==null)throw new AssertionError("damage without source/target");
+      player.damageTaken++;
+      return true;
+    }
+  }
   final Host host=new Host(); int tick,actionTick;double lastRadius;
   Ram ram=new Ram(new World());
   Location stompOrigin;Set<UUID> stompHits=new HashSet<>(),stompRoster=new HashSet<>();
@@ -66,8 +79,14 @@ public class StompRuntimeProbe {
         if(tick<15)check(ground.applications==0,"not an instant radius debuff");
       }
       check(ground.applications==1,"grounded player hit exactly once");
-      check(jumper.applications==0,"jump clears wave");check(far.applications==0,"maximum radius");
+      check(ground.damageTaken==1,"grounded player damaged exactly once");
+      check(cast.host.lastAmount==RiftRamPolicy.STOMP_DAMAGE,"stomp used the policy damage amount");
+      check(jumper.applications==0,"jump clears wave");
+      check(jumper.damageTaken==0,"jump also clears the damage");
+      check(far.applications==0,"maximum radius");
+      check(far.damageTaken==0,"outside the wave takes no damage");
       check(late.applications==0,"late join receives no stale cast");
+      check(late.damageTaken==0,"late join takes no stale damage");
       check(cast.recovered&&cast.stompHits.isEmpty()&&cast.stompRoster.isEmpty(),"cast cleanup");
       check(ground.packets>1000&&ground.packets<5000,"visible bounded particle budget");
     }

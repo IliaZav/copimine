@@ -142,6 +142,7 @@ import me.copimine.endevent.domain.RiftFractureEruptionPolicy;
 import me.copimine.endevent.domain.RiftObeliskTimingPolicy;
 import me.copimine.endevent.domain.RiftCarrierPolicy;
 import me.copimine.endevent.domain.RiftRamPolicy;
+import me.copimine.endevent.domain.WaveSixPillarSkeletonPolicy;
 import me.copimine.endevent.domain.RiftCarrierCustodyPolicy;
 import me.copimine.endevent.domain.RiftCarrierRecoverySnapshot;
 import me.copimine.endevent.domain.Wave3PortalPolicy;
@@ -1419,6 +1420,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean ritualSphereStateRehydrated;
     private me.copimine.endevent.runtime.RiftRamEncounter riftRam;
     private Map<String,String> riftRamCheckpoint = Map.of();
+    /**
+     * Original block data of every Wave 6 Rift Ram pillar collider cell, keyed
+     * {@code x:y:z}. The collider is a journaled barrier volume, so a crash can
+     * never leave an invisible wall standing in the arena.
+     */
+    private final Map<String, String> riftRamPillarColliderOriginals = new LinkedHashMap<>();
+    private boolean riftRamPillarColliderActive;
     private int waveSpawnWave;
     private int waveSpawnGroupIndex;
     private int waveSpawnEntityOffset;
@@ -4308,6 +4316,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 // crash, preserving that current block is safer than
                 // overwriting unrelated world data during recovery.
                 if (isObeliskMaterial(cell.getType())) {
+                    restoreBlock(cell, entry.floorOriginal());
+                    restored++;
+                } else {
+                    skipped++;
+                }
+                continue;
+            }
+            if (entry.isRiftPillarMutation()) {
+                Block cell = world.getBlockAt(entry.x(), entry.floorY(), entry.z());
+                // A crash can leave a Rift Ram pillar collider standing. Only a
+                // barrier this plugin wrote is restored; anything else is left
+                // alone so recovery never overwrites another owner's blocks.
+                if (cell.getType() == REALITY_SPLIT_WALL_MATERIAL) {
                     restoreBlock(cell, entry.floorOriginal());
                     restored++;
                 } else {
@@ -28459,8 +28480,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 // so the visibility flag is part of the contract, not a nicety.
                 Arrow arrow = origin.getWorld().spawnArrow(origin, direction, (float) speed, 0.0F);
                 arrow.setVisibleByDefault(true);
-                // This authored bone fan follows a locked direction, not a native bow solver.
-                arrow.setGravity(false);
+                // Gravity is decided by the ability: a locked horizontal fan must
+                // not droop, while the falling rain volley must obey gravity.
                 arrow.setDamage(damage);
                 arrow.setPersistent(false);
                 tag(arrow, EVENT_KIND_WAVE_MOB, 6, isOfficialCurrentAttempt());
@@ -28470,7 +28491,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             public boolean prepareBoneArrow(Arrow arrow, boolean rain) {
                 tagEliteArrowModel(arrow,rain ? "end_rift_arrow_rain" : "end_rift_triple_arrow");
                 arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
+                // The rain volley is a real drop: gravity on, pushed straight
+                // down. The triple shot keeps its authored straight flight.
+                arrow.setGravity(rain);
+                if (rain) arrow.setVelocity(new Vector(0, -WaveSixPillarSkeletonPolicy.BONE_RAIN_SPEED, 0));
                 return trackEventArrow(arrow);
+            }
+            public boolean placePillarCollider(Location centre, int halfWidth, int height) {
+                return placeRiftRamPillarCollider(ownerEvent, ownerGeneration, centre, halfWidth, height);
+            }
+            public void clearPillarCollider() {
+                clearRiftRamPillarCollider("pillar-retired");
             }
             public int particleBudget() {
                 return Math.max(96, Math.min(512, getConfig().getInt("wave6.rift-ram.stomp-particles-per-viewer", 256)));
@@ -28490,6 +28521,128 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!clearRiftRamRestartPresentation()) return;
             riftRam.restore(riftRamCheckpoint);
         } else riftRam.start(currentWaveScalePlayers);
+    }
+
+    /**
+     * Build the Wave 6 pillar's real, solid collider.
+     *
+     * <p>The pillars were display-only geometry, so the party could walk straight
+     * through a solid obsidian tower and the only thing that "collided" was a
+     * distance test. The collider is a journaled barrier volume whose footprint
+     * and height follow the visible pillar through {@link RiftRamPolicy}. It is
+     * restored on collapse, cleanup and boot recovery, so a crash can never
+     * leave an invisible wall standing in the arena.</p>
+     */
+    private boolean placeRiftRamPillarCollider(String ownerEvent, long ownerGeneration,
+                                               Location centre, int halfWidth, int height) {
+        if (centre == null || centre.getWorld() == null || halfWidth < 1 || height < 1) {
+            return false;
+        }
+        if (riftRamPillarColliderActive && !clearRiftRamPillarCollider("pillar-rebuild")) {
+            return false;
+        }
+        if (hazardJournal == null) return false;
+        HazardMutationJournal.Snapshot existing = hazardJournal.load();
+        if (!existing.valid() || existing.status() == HazardMutationJournal.Status.PREPARED
+                || existing.status() == HazardMutationJournal.Status.APPLIED) {
+            getLogger().severe("END_RIFT_RAM_PILLAR_COLLIDER_REFUSED event=" + ownerEvent
+                    + " generation=" + ownerGeneration + " reason=hazard-journal-busy"
+                    + " status=" + existing.status());
+            return false;
+        }
+        World world = centre.getWorld();
+        int baseY = centre.getBlockY();
+        int minX = (int) Math.floor(centre.getX() - halfWidth);
+        int maxX = (int) Math.floor(centre.getX() + halfWidth) - 1;
+        int minZ = (int) Math.floor(centre.getZ() - halfWidth);
+        int maxZ = (int) Math.floor(centre.getZ() + halfWidth) - 1;
+        if (maxX < minX) maxX = minX;
+        if (maxZ < minZ) maxZ = minZ;
+        LinkedHashMap<String, String> originals = new LinkedHashMap<>();
+        List<HazardMutationJournal.Entry> entries = new ArrayList<>();
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                for (int y = baseY; y < baseY + height; y++) {
+                    Block cell = world.getBlockAt(x, y, z);
+                    // Never encase a player or overwrite real terrain: the site
+                    // was already vetted as open, so anything solid here means
+                    // the world moved under us and the collider must not guess.
+                    if (!cell.isPassable() || cell.isLiquid()
+                            || cell.getState() instanceof org.bukkit.block.TileState) {
+                        getLogger().severe("END_RIFT_RAM_PILLAR_COLLIDER_REFUSED event=" + ownerEvent
+                                + " generation=" + ownerGeneration + " reason=unsafe-cell"
+                                + " cell=" + x + "," + y + "," + z + " type=" + cell.getType());
+                        return false;
+                    }
+                    String key = x + ":" + y + ":" + z;
+                    String original = cell.getBlockData().getAsString();
+                    originals.put(key, original);
+                    entries.add(new HazardMutationJournal.Entry(x, y, z, original, "",
+                            "RIFT_PILLAR", world.getUID().toString(), ownerEvent, ownerGeneration));
+                }
+            }
+        }
+        if (entries.isEmpty()) return false;
+        if (!hazardJournal.prepare(ownerEvent, ownerGeneration, world.getName(), entries)) {
+            getLogger().severe("END_RIFT_RAM_PILLAR_COLLIDER_REFUSED event=" + ownerEvent
+                    + " generation=" + ownerGeneration + " reason=journal-prepare-failed");
+            return false;
+        }
+        try {
+            BlockData barrier = REALITY_SPLIT_WALL_MATERIAL.createBlockData();
+            for (String key : originals.keySet()) {
+                String[] parts = key.split(":");
+                world.getBlockAt(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]),
+                        Integer.parseInt(parts[2])).setBlockData(barrier, false);
+            }
+            if (!hazardJournal.markApplied()) {
+                throw new IllegalStateException("pillar collider journal could not be marked APPLIED");
+            }
+        } catch (RuntimeException error) {
+            getLogger().log(Level.SEVERE, "END_RIFT_RAM_PILLAR_COLLIDER_APPLY_FAILED event="
+                    + ownerEvent + " generation=" + ownerGeneration, error);
+            riftRamPillarColliderOriginals.clear();
+            riftRamPillarColliderOriginals.putAll(originals);
+            riftRamPillarColliderActive = true;
+            clearRiftRamPillarCollider("pillar-apply-rollback");
+            return false;
+        }
+        riftRamPillarColliderOriginals.clear();
+        riftRamPillarColliderOriginals.putAll(originals);
+        riftRamPillarColliderActive = true;
+        return true;
+    }
+
+    /** Remove the pillar collider and restore every original cell. */
+    private boolean clearRiftRamPillarCollider(String reason) {
+        if (!riftRamPillarColliderActive && riftRamPillarColliderOriginals.isEmpty()) return true;
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            getLogger().severe("END_RIFT_RAM_PILLAR_COLLIDER_CLEAR_REFUSED event=" + eventId
+                    + " reason=world-unavailable");
+            return false;
+        }
+        int restored = 0, skipped = 0;
+        for (Map.Entry<String, String> entry : riftRamPillarColliderOriginals.entrySet()) {
+            String[] parts = entry.getKey().split(":");
+            if (parts.length != 3) continue;
+            Block cell = world.getBlockAt(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]),
+                    Integer.parseInt(parts[2]));
+            // Only a barrier we wrote is restored; anything else is left alone.
+            if (cell.getType() == REALITY_SPLIT_WALL_MATERIAL) {
+                restoreBlock(cell, entry.getValue());
+                restored++;
+            } else {
+                skipped++;
+            }
+        }
+        riftRamPillarColliderActive = false;
+        riftRamPillarColliderOriginals.clear();
+        if (hazardJournal != null) hazardJournal.markRestored();
+        getLogger().info("END_RIFT_RAM_PILLAR_COLLIDER_CLEARED event=" + eventId
+                + " generation=" + generation + " reason=" + reason
+                + " restored=" + restored + " skipped=" + skipped);
+        return true;
     }
 
     private boolean clearRiftRamRestartPresentation() {
@@ -29603,15 +29756,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 ordinary.skeletons() + resurrect[2], 0, 0);
         if (pack.total() <= 0) return false;
         Set<UUID> ownedBefore = new LinkedHashSet<>(ownedEntities.keySet());
-        int before = countLiveWaveEntitiesForWave(5);
         spawnWaveGroup(world, core, 5, false, testWaveFrontVisualMode,
                 pack, waveSpawnEntityOffset);
         // An earlier version incremented the counter unconditionally. A pack that
         // Bukkit refused to place was therefore counted as released, the debt
         // looked settled, and the post-fog reinforcement simply never appeared --
         // while the completion gate that waits for it (Wave5PostFogPackPolicy)
-        // had already been satisfied.
-        int spawned = Math.max(0, countLiveWaveEntitiesForWave(5) - before);
+        // had already been satisfied. The receipt is now per entity: only newly
+        // owned, live, wave-5 actors count, so an unrelated death cannot make a
+        // delivered pack look short.
+        int spawned = countNewlyOwnedWaveEntities(ownedBefore, 5);
         if (!Wave5PostFogPackPolicy.packComplete(pack.total(), spawned)) {
             // Roll the partial pack back. Reporting the shortfall and leaving the
             // stragglers standing meant the retry added a second pack next to the
@@ -29673,8 +29827,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (refill == null || refill.total() <= 0
                 || countLiveWaveEntitiesForWave(5) + refill.total()
                 > WavePressurePolicy.activeCap(5, currentFogRosterPlayers)) return false;
+        Set<UUID> ownedBefore = new LinkedHashSet<>(ownedEntities.keySet());
         spawnWaveGroup(world, core, 5, false, testWaveFrontVisualMode,
                 refill, waveSpawnEntityOffset);
+        // Confirm the pack per entity. The debt is only settled when the whole
+        // pack really exists; a refused or partial placement is rolled back and
+        // stays owed (the retry timestamp is not advanced, so the next tick
+        // tries again) instead of being credited as delivered.
+        int spawned = countNewlyOwnedWaveEntities(ownedBefore, 5);
+        if (spawned < refill.total()) {
+            int removed = 0;
+            for (UUID id : new LinkedHashSet<>(ownedEntities.keySet())) {
+                if (ownedBefore.contains(id)) continue;
+                Entity placed = ownedEntities.get(id);
+                if (placed != null && readInt(placed, keyWave, 0) == 5) {
+                    removeRitualEntity(id);
+                    removed++;
+                }
+            }
+            getLogger().severe("END_RIFT_WAVE5_PRE_FOG_REFILL_FAILED event=" + eventId
+                    + " generation=" + generation + " cycle=" + currentFogCycle
+                    + " planned=" + refill.total() + " spawned=" + spawned
+                    + " rolled_back=" + removed);
+            return false;
+        }
         waveSpawnEntityOffset += refill.total();
         wave5PreFogRefillAtMillis = now + Wave5PreFogRefillPolicy.REFILL_DELAY_MILLIS;
         getLogger().info(reasonCode + " event=" + eventId
@@ -46663,6 +46839,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return entity != null && !entity.isDead() && entity.isValid();
     }
 
+    /**
+     * Count entities that this event really took ownership of during one spawn
+     * call.
+     *
+     * <p>Fog packs used a global live-count delta, which is not proof of a
+     * spawn: an unrelated wave-5 death in the same tick shrank the delta,
+     * credited the pack as short, and rolled back a pack that had actually
+     * arrived. Counting the newly owned, still-live entities of the wave is a
+     * per-entity receipt: each one had to be registered by {@code own()} and
+     * still answer as alive.</p>
+     */
+    private int countNewlyOwnedWaveEntities(Set<UUID> ownedBefore, int wave) {
+        int count = 0;
+        for (UUID id : new LinkedHashSet<>(ownedEntities.keySet())) {
+            if (ownedBefore.contains(id)) continue;
+            Entity entity = ownedEntities.get(id);
+            if (entity != null && isLiveOwnedEntity(id) && readInt(entity, keyWave, 0) == wave) count++;
+        }
+        return count;
+    }
+
     private int countLiveOwnedMobs() {
         int count = 0;
         for (Entity entity : ownedEntities.values()) {
@@ -61784,7 +61981,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void sendTentacleAnimationVisualUpdate(Entity entity,
                                                    TentacleAnimationPolicy.State state) {
-        if (entity == null || state == null || config == null) {
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (isEventVisualViewer(player)) {
+                sendTentacleAnimationVisualUpdate(player, entity, state);
+            }
+        }
+    }
+
+    /**
+     * Send the current tentacle phase to ONE viewer.
+     *
+     * <p>The shipped code had two nested per-viewer loops: binding an entity ran
+     * once per viewer and each of those broadcasts re-looped every other viewer,
+     * so a full party paid O(V squared) packets for a single state. A state CHANGES
+     * rarely, and only the change is broadcast
+     * ({@link #sendTentacleAnimationVisualUpdate(Entity, TentacleAnimationPolicy.State)}).
+     * Binding a late viewer is a single targeted packet.</p>
+     */
+    private void sendTentacleAnimationVisualUpdate(Player player, Entity entity,
+                                                   TentacleAnimationPolicy.State state) {
+        if (entity == null || state == null || config == null
+                || player == null || !isEventVisualViewer(player)
+                || !entity.getWorld().equals(player.getWorld())) {
             return;
         }
         String instance = entityBindingInstances.computeIfAbsent(entity.getUniqueId(), uuid ->
@@ -61807,14 +62025,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         };
         String roleSuffix = "|role=" + role + "|scale=" + roleScale
                 + "|hp=" + Math.max(0.0D, readDouble(entity, keyTentacleHealth, 0.0D));
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            if (isEventVisualViewer(player)) {
-                sendClientPacket(player, "END_ENTITY_PHASE", instance, durationMillis,
-                        entity.getUniqueId().toString(), TentacleAnimationPolicy.wireName(state)
-                                + "|t=" + Math.max(0L, eventTickCounter)
-                                + "|health=" + healthState + targetSuffix + roleSuffix);
-            }
-        }
+        sendClientPacket(player, "END_ENTITY_PHASE", instance, durationMillis,
+                entity.getUniqueId().toString(), TentacleAnimationPolicy.wireName(state)
+                        + "|t=" + Math.max(0L, eventTickCounter)
+                        + "|health=" + healthState + targetSuffix + roleSuffix);
     }
 
     private void bindEventEntityClient(Player player, Entity entity) {
@@ -61836,7 +62050,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             if (EVENT_KIND_TENTACLE.equals(readString(entity, keyKind))
                     && entity instanceof ItemDisplay) {
-                sendTentacleAnimationVisualUpdate(entity, tentacleAnimationState(entity));
+                sendTentacleAnimationVisualUpdate(player, entity, tentacleAnimationState(entity));
             }
             if (entity.getType() == EntityType.SKELETON) {
                 getLogger().info("SKELETON_TEXTURE_BIND entity=" + entity.getUniqueId()

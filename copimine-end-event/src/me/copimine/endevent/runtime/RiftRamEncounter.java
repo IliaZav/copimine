@@ -14,7 +14,14 @@ import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import java.util.*;
 
-/** One generation's Wave 6. No independent scheduled tasks or terrain writes. */
+/**
+ * One generation's Wave 6.
+ *
+ * <p>No independent scheduled tasks, and no direct terrain writes: the pillar is
+ * solid through a host-owned, crash-safe journaled collider
+ * ({@link Host#placePillarCollider} / {@link Host#clearPillarCollider}), so the
+ * encounter never touches world blocks itself.</p>
+ */
 public final class RiftRamEncounter {
     public interface Host {
         boolean active();
@@ -33,6 +40,16 @@ public final class RiftRamEncounter {
         Arrow spawnBoneArrow(Location origin, Vector direction, double speed, double damage);
         /** Called after shooter attribution, before a real arrow enters the shared flight controller. */
         default boolean prepareBoneArrow(Arrow arrow, boolean rain) { return true; }
+        /**
+         * Build the active pillar's real, journaled collider.
+         *
+         * <p>The encounter never writes terrain itself: the host owns the world
+         * and the crash-safe journal, so this callback both places the solid
+         * volume and guarantees it is restored.
+         */
+        default boolean placePillarCollider(Location centre, int halfWidth, int height) { return true; }
+        /** Restore every pillar collider cell this encounter placed. */
+        default void clearPillarCollider() { }
         int particleBudget();
         void remove(Entity entity);
         /** Moves an owned entity through the internal permit path; reports refusal. */
@@ -84,7 +101,8 @@ public final class RiftRamEncounter {
     private UUID skeletonFocus;
     private int skeletonFocusUntil;
     private int skeletonLastTriple = -1, skeletonLastBone = -1, skeletonLastMove = -1, skeletonStep;
-    private boolean skeletonFallen, pillarSkeletonSpawned, pillarSkeletonDefeated, ramDefeated;
+    private boolean skeletonFallen, skeletonFalling, pillarSkeletonSpawned, pillarSkeletonDefeated, ramDefeated;
+    private int skeletonFallStart;
 
     public RiftRamEncounter(Host host) { this.host = host; }
     public UUID id() { return ram == null ? persistentId : ram.getUniqueId(); }
@@ -219,15 +237,17 @@ public final class RiftRamEncounter {
             // The final pillar is the finale of the wave, so it is built at
             // roughly double the footprint and height of an ordinary one and
             // carries a glowing core seam that reads from across the arena.
+            // Every dimension comes from RiftRamPolicy, so the model, the
+            // marksman's platform and the collider can never disagree.
             int ordinal = RiftRamPolicy.pillarOrdinal(impacts);
             boolean finale = RiftRamPolicy.isFinalPillar(ordinal);
-            float footprint = finale ? 3.6f : 1.8f;
+            float shrink = RiftRamPolicy.pillarFootprintShrink(impacts);
+            float height = (float) RiftRamPolicy.pillarSilhouetteHeight(impacts);
+            float footprint = (finale ? RiftRamPolicy.FINAL_PILLAR_FOOTPRINT
+                    : RiftRamPolicy.PILLAR_FOOTPRINT) * shrink;
             int damageStage = finale ? RiftRamPolicy.finalPillarStage(impacts) : 0;
-            float shrink = damageStage >= 2 ? .82f : damageStage == 1 ? .94f : 1f;
-            float height    = (finale ? 7.4f : 3.7f)
-                    * (damageStage >= 2 ? .68f : damageStage == 1 ? .88f : 1f);
-            footprint *= shrink;
-            float capWidth  = (finale ? 4.4f : 2.2f) * shrink;
+            float capWidth  = (finale ? RiftRamPolicy.FINAL_PILLAR_CAP_WIDTH
+                    : RiftRamPolicy.PILLAR_CAP_WIDTH) * shrink;
             float bodyHalf  = footprint / 2f;
             float capHalf   = capWidth / 2f;
             pillarDisplays.add(block(site.clone().add(-bodyHalf,0,-bodyHalf),
@@ -247,6 +267,13 @@ public final class RiftRamEncounter {
             pillarRestPositions.clear();
             for (BlockDisplay display:pillarDisplays)
                 pillarRestPositions.put(display.getUniqueId(),display.getLocation().clone());
+            // A real solid volume, so the pillar is not just a picture. The host
+            // journals it, so it is removed with the pillar and restored on a
+            // crash; a refusal fails the wave rather than leaving a ghost tower.
+            if (!host.placePillarCollider(site,
+                    RiftRamPolicy.pillarColliderHalfWidth(impacts),
+                    RiftRamPolicy.pillarColliderHeight(impacts)))
+                throw new IllegalStateException("pillar-collider-refused");
             nextPillarTick = tick;
             site.getWorld().playSound(site,Sound.BLOCK_DEEPSLATE_PLACE, finale?2.4f:1.6f, finale?.35f:.5f);
             if (finale && !pillarSkeletonSpawned) {
@@ -480,12 +507,16 @@ public final class RiftRamEncounter {
 
     private void charge(List<Player> players) {
         Location from=ram.getLocation(), to=from.clone().add(direction.clone().multiply(RiftRamPolicy.chargeSpeed(impacts)));
-        if(tick-actionTick>=RiftRamPolicy.CHARGE_TIMEOUT_TICKS || !safeVolume(to)) { recover(); return; }
-        // The objective is the active uniquely-owned pillar. Core never participates.
+        if(tick-actionTick>=RiftRamPolicy.CHARGE_TIMEOUT_TICKS) { recover(); return; }
+        // The objective is the active uniquely-owned pillar, and it is now a REAL
+        // solid volume. Its swept collision must therefore be decided BEFORE the
+        // destination's passability: a Ram whose nose has reached the pillar has
+        // to register the impact, not be refused as "moving into a wall".
         if(pillarId!=null && !banked && tick-nextPillarTick>=20 && RiftRamPolicy.segmentHitsPillar(
                 from.getX(),from.getY(),from.getZ(),to.getX(),to.getY(),to.getZ(),pillar.getX(),pillar.getY(),pillar.getZ())) {
             impact(); return;
         }
+        if(!safeVolume(to)) { recover(); return; }
         if(!host.move(ram, to)) { recover(); return; }
         if ((tick - actionTick) % 3 == 0) chargeTell(null, RiftRamPolicy.chargeWindupTicks());
         if ((tick - actionTick) % 6 == 0)
@@ -609,6 +640,10 @@ public final class RiftRamEncounter {
             double distance=Math.hypot(p.getX()-stompOrigin.getX(),p.getZ()-stompOrigin.getZ());
             if(RiftRamPolicy.stompHits(distance,p.getY()-host.floorY()-1,p.isOnGround(),lastRadius,radius,stompHits.contains(p.getUniqueId()))) {
                 stompHits.add(p.getUniqueId());
+                // Damages through the same accepted-hit path as every other Ram
+                // attack, so one cast can never damage a player twice and the
+                // damage radius is exactly the visible wave front.
+                host.damage(ram, p, RiftRamPolicy.STOMP_DAMAGE);
                 p.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
                         RiftRamPolicy.stompSlowTicks(),RiftRamPolicy.STOMP_SLOW_AMPLIFIER));
                 // The hit is the moment the player needs feedback: impact sound at
@@ -698,11 +733,13 @@ public final class RiftRamEncounter {
     private void crackPillar() {
         if (pillar==null || pillarDisplays.isEmpty()) return;
         int stage = RiftRamPolicy.finalPillarStage(impacts);
-        // Absolute geometry from the receipt, never cumulative scale/sink.
-        // Cold recovery uses the same dimensions in buildPillar().
-        float shrink = stage >= 2 ? .82F : stage == 1 ? .94F : 1F;
-        float height = 7.4F * (stage >= 2 ? .68F : stage == 1 ? .88F : 1F);
-        float footprint = 3.6F * shrink, cap = 4.4F * shrink;
+        // Absolute geometry from the policy, never cumulative scale/sink.
+        // Cold recovery uses the same dimensions in buildPillar(), and the
+        // collider is re-placed below from the same numbers.
+        float shrink = RiftRamPolicy.pillarFootprintShrink(impacts);
+        float height = (float) RiftRamPolicy.pillarSilhouetteHeight(impacts);
+        float footprint = RiftRamPolicy.FINAL_PILLAR_FOOTPRINT * shrink;
+        float cap = RiftRamPolicy.FINAL_PILLAR_CAP_WIDTH * shrink;
         double[][] offsets = {{-footprint/2,0,-footprint/2},
                 {-cap/2,height-.65F,-cap/2},
                 {-(cap/2-.05F),height-.2F,-(cap/2-.05F)},
@@ -724,6 +761,14 @@ public final class RiftRamEncounter {
         if (skeletonAlive() && !skeletonFallen
                 && !host.move(pillarSkeleton,pillar.clone().add(0,standingPillarPlatformHeight(),0)))
             throw new IllegalStateException("damaged-pillar-skeleton-relocation-refused");
+        // A cracked pillar is shorter and narrower on screen, so its barrier must
+        // shrink with it: otherwise the party would keep a full-height invisible
+        // wall where the model already lost a section. The host clears the old
+        // volume before journaling the new one, so this stays crash-safe.
+        if (!host.placePillarCollider(pillar,
+                RiftRamPolicy.pillarColliderHalfWidth(impacts),
+                RiftRamPolicy.pillarColliderHeight(impacts)))
+            throw new IllegalStateException("damaged-pillar-collider-refused");
         // Loose rubble reads as material that actually left the pillar.
         for (int i=0;i<6;i++) {
             double angle=i*Math.PI/3;
@@ -734,8 +779,7 @@ public final class RiftRamEncounter {
     }
 
     private double standingPillarPlatformHeight() {
-        int stage = RiftRamPolicy.finalPillarStage(impacts);
-        return 7.4D * (stage >= 2 ? .68D : stage == 1 ? .88D : 1D) + .2D;
+        return RiftRamPolicy.pillarPlatformHeight(impacts);
     }
 
     /**
@@ -753,6 +797,9 @@ public final class RiftRamEncounter {
             pillarSkeleton = at.getWorld().spawn(at, Skeleton.class, entity -> {
                 entity.setPersistent(true);
                 entity.setRemoveWhenFarAway(false);
+                // On the platform the server owns the actor's position through the
+                // patrol moves; gravity is only switched on for the real fall.
+                entity.setGravity(false);
                 entity.setCustomName("Стрелок Разлома");
                 entity.setCustomNameVisible(false);
                 entity.getAttribute(Attribute.GENERIC_MAX_HEALTH)
@@ -768,6 +815,8 @@ public final class RiftRamEncounter {
             pillarSkeletonSpawned = true;
             pillarSkeletonDefeated = false;
             skeletonFallen = false;
+            skeletonFalling = false;
+            skeletonFallStart = 0;
             skeletonStep = 0;
             skeletonLastTriple = -1; skeletonLastBone = -1; skeletonLastMove = -1;
             at.getWorld().playSound(at, Sound.ENTITY_SKELETON_AMBIENT, 1.6f, .8f);
@@ -792,6 +841,10 @@ public final class RiftRamEncounter {
      */
     private void tickPillarSkeleton(List<Player> players) {
         if (!skeletonAlive()) return;
+        if (skeletonFalling) {
+            tickSkeletonFall();
+            if (closed || skeletonFalling || !skeletonAlive()) return;
+        }
         if (pillar == null && !skeletonFallen) return;
         Player target = players.stream().filter(player -> player.getUniqueId().equals(skeletonFocus)
                 && player.isOnline() && !player.isDead() && player.getWorld().equals(pillarSkeleton.getWorld()))
@@ -842,9 +895,7 @@ public final class RiftRamEncounter {
         if (ability == WaveSixPillarSkeletonPolicy.Ability.NONE) return;
         if (ability == WaveSixPillarSkeletonPolicy.Ability.BONE_RAIN) {
             skeletonLastBone = tick;
-            fireBoneVolley(target, WaveSixPillarSkeletonPolicy.boneRainDirections(
-                    target.getX() - pillarSkeleton.getX(), target.getZ() - pillarSkeleton.getZ()),
-                    WaveSixPillarSkeletonPolicy.BONE_RAIN_SPEED);
+            fireBoneRain(target);
             pillarSkeleton.getWorld().playSound(pillarSkeleton.getLocation(),
                     Sound.ENTITY_SKELETON_HURT, 1.5f, .55f);
         } else {
@@ -856,6 +907,37 @@ public final class RiftRamEncounter {
                     Sound.ENTITY_SKELETON_SHOOT, 1.4f, .85f);
         }
         host.visualsChanged();
+    }
+
+    /**
+     * Drop a real rain volley out of the air onto the target.
+     *
+     * <p>Arrows are spawned {@link WaveSixPillarSkeletonPolicy#BONE_RAIN_HEIGHT}
+     * above the arena and fall under gravity; the skeleton no longer fires a
+     * second horizontal fan dressed up as a different ability. One arrow lands
+     * on the victim's feet and the rest bracket it, so stepping out of the
+     * centre is the counterplay.</p>
+     */
+    private void fireBoneRain(Player target) {
+        World world = target.getWorld();
+        if (world == null || !world.equals(pillarSkeleton.getWorld())) return;
+        for (double[] offset : WaveSixPillarSkeletonPolicy.boneRainOffsets()) {
+            Location origin = new Location(world,
+                    target.getX() + offset[0],
+                    target.getY() + WaveSixPillarSkeletonPolicy.BONE_RAIN_HEIGHT,
+                    target.getZ() + offset[1]);
+            Arrow arrow = host.spawnBoneArrow(origin, new Vector(0, -1, 0),
+                    WaveSixPillarSkeletonPolicy.BONE_RAIN_SPEED,
+                    WaveSixPillarSkeletonPolicy.ARROW_DAMAGE);
+            if (arrow == null) continue;
+            arrow.setShooter(pillarSkeleton);
+            arrow.setDamage(WaveSixPillarSkeletonPolicy.ARROW_DAMAGE);
+            if (!host.prepareBoneArrow(arrow, true)) host.remove(arrow);
+        }
+        // The tell is above the victim, where the arrows come from, so a player
+        // who is looking at the skeleton still hears where the danger is.
+        world.playSound(target.getLocation().add(0, WaveSixPillarSkeletonPolicy.BONE_RAIN_HEIGHT, 0),
+                Sound.ENTITY_SKELETON_SHOOT, 1.2f, .6f);
     }
 
     /** Releases one modelled volley along the given horizontal directions. */
@@ -873,38 +955,74 @@ public final class RiftRamEncounter {
             if (arrow != null) {
                 arrow.setShooter(pillarSkeleton);
                 arrow.setDamage(WaveSixPillarSkeletonPolicy.ARROW_DAMAGE);
-                if (!host.prepareBoneArrow(arrow,Double.compare(speed,WaveSixPillarSkeletonPolicy.BONE_RAIN_SPEED)==0)) {
-                    host.remove(arrow);
-                }
+                // This is the authored straight triple shot: gravity stays off so
+                // the locked fan does not droop. The falling rain volley is a
+                // separate ability (fireBoneRain) and owns gravity itself.
+                if (!host.prepareBoneArrow(arrow, false)) host.remove(arrow);
             }
         }
     }
 
     /**
-     * Drop a surviving marksman to the floor when the final pillar collapses.
+     * Hand a surviving marksman to gravity when the final pillar collapses.
      *
-     * <p>Without this the actor would be left standing on a pillar that no longer
-     * exists, i.e. an unreachable orphan. It lands on the arena floor and keeps
-     * fighting; a skeleton already killed on the pillar stays dead.</p>
+     * <p>The shipped code teleported the actor to the floor and recorded the
+     * landing in the same call, so there was no fall to see and a checkpoint
+     * could claim a landing before any physics ran. The actor is now released
+     * with gravity enabled and its landing is only committed once its own body
+     * reports ground contact near the floor (see {@link #tickSkeletonFall}).</p>
+     *
+     * <p>It never becomes an orphan: a bounded fallback moves it to a vetted
+     * floor cell if the physics cannot resolve, and a total failure fails the
+     * wave into recovery rather than leaving a live actor on a destroyed
+     * pillar.</p>
      */
     private void dropPillarSkeleton() {
         if (!WaveSixPillarSkeletonPolicy.shouldFall(impacts, skeletonAlive(), skeletonFallen)) return;
-        Location landing = pillarSkeleton.getLocation().clone();
-        landing.setY(host.floorY() + 1.0D);
-        if (!host.inArena(landing)) landing = ram.getLocation().clone();
-        if (!host.inArena(landing) || !host.move(pillarSkeleton, landing)
-                || !landing.getWorld().equals(pillarSkeleton.getLocation().getWorld())
-                || pillarSkeleton.getLocation().distanceSquared(landing) > .25D) {
-            fail("skeleton-landing-refused"); return;
+        if (skeletonFalling) return;
+        skeletonFalling = true;
+        skeletonFallStart = tick;
+        pillarSkeleton.setAI(false);
+        pillarSkeleton.setAware(false);
+        pillarSkeleton.setTarget(null);
+        pillarSkeleton.setGravity(true);
+        // Cancel any residual horizontal drift, then let gravity do the work.
+        pillarSkeleton.setVelocity(new Vector(0, pillarSkeleton.getVelocity().getY(), 0));
+        pillarSkeleton.getWorld().playSound(pillarSkeleton.getLocation(),
+                Sound.ENTITY_SKELETON_STEP, 1.5f, .7f);
+        dust(pillarSkeleton.getLocation(), 12, .6, .3);
+    }
+
+    /** Observe the real fall; commit the landing only after ground contact. */
+    private void tickSkeletonFall() {
+        if (!skeletonAlive()) { skeletonFalling = false; return; }
+        Location at = pillarSkeleton.getLocation();
+        if (WaveSixPillarSkeletonPolicy.hasLanded(at.getY(), host.floorY(), pillarSkeleton.isOnGround())) {
+            landPillarSkeleton(at);
+            return;
         }
+        if (tick - skeletonFallStart < WaveSixPillarSkeletonPolicy.FALL_TIMEOUT_TICKS) return;
+        // Bounded fallback: physics could not settle (a lip, a fence, a slab).
+        Location floor = at.clone();
+        floor.setY(host.floorY() + 1.0D);
+        if (!host.inArena(floor) || !host.move(pillarSkeleton, floor)) {
+            fail("skeleton-landing-refused");
+            return;
+        }
+        landPillarSkeleton(pillarSkeleton.getLocation());
+    }
+
+    private void landPillarSkeleton(Location at) {
+        skeletonFalling = false;
         skeletonFallen = true;
         if (!host.checkpoint()) { fail("skeleton-landing-checkpoint-failed"); return; }
-        pillarSkeleton.setGravity(true);
-        landing.getWorld().playSound(landing, Sound.ENTITY_SKELETON_STEP, 1.5f, .7f);
-        dust(landing, 30, .8, .5);
+        if (closed) return;
+        at.getWorld().playSound(at, Sound.ENTITY_SKELETON_STEP, 1.5f, .7f);
+        dust(at, 30, .8, .5);
     }
 
     private void clearPillar() {
+        host.clearPillarCollider();
         for(BlockDisplay d:pillarDisplays) host.remove(d);
         pillarDisplays.clear(); pillarRestPositions.clear(); pillar=null; pillarId=null;
     }
@@ -1036,6 +1154,11 @@ public final class RiftRamEncounter {
                             || savedAt.getY() > host.floorY() + 3.0D + WaveSixPillarSkeletonPolicy.PLATFORM_HEIGHT)
                         throw new IllegalArgumentException("saved-skeleton-outside-role-volume");
                     pillarSkeleton = marksman;
+                    if (!skeletonFallen) {
+                        // A restored platform marksman is positioned by the patrol
+                        // moves, exactly like a freshly spawned one.
+                        marksman.setGravity(false);
+                    }
                 }
             }
             if (!ramDefeated) createArmor();

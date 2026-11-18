@@ -119,8 +119,13 @@ public final class LastSealConstructRuntime {
                 if (!current.canDamage() || hits.contains(player.getUniqueId())) continue;
                 if (before == null || !before.getWorld().equals(at.getWorld()) || before.distanceSquared(at) > 25D) before = at;
                 if (!current.contacts(relative(before), relative(at), player.getWidth() / 2D, player.getHeight())) continue;
-                hits.add(player.getUniqueId());
+                // Record the receipt only after the damage transaction actually
+                // succeeded. The shipped order marked the player as hit first, so a
+                // refused hit (dead, out of the event, immunity window) still
+                // consumed the one allowed contact and the spell silently did
+                // nothing for the rest of its cast.
                 if (!host.hit(boss, player, kind == KaguneSpellFrame.STAB ? 8D : 7D)) continue;
+                hits.add(player.getUniqueId());
                 if (!active || !host.active(boss) || !Objects.equals(scope, host.scope(boss))) {
                     cancel("owner-changed-after-contact"); return;
                 }

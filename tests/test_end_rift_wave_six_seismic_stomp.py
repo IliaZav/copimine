@@ -94,12 +94,19 @@ PROBE = textwrap.dedent("""
             check("a negative previous radius is refused",
                     !RiftRamPolicy.stompHits(4.0D, 0.0D, true, -1.0D, 3.0D, false));
 
-            // --- the stomp never deals damage -----------------------------------
-            // RiftRamPolicy exposes no damage value for the stomp: the only
-            // numbers it publishes are the slow duration and its amplitude.
-            // Asserting the API shape keeps a future edit from adding damage.
-            check("the stomp publishes no damage constant",
-                    RiftRamPolicy.stompSlowTicks() > 0 && RiftRamPolicy.STOMP_SLOW_AMPLIFIER == 1);
+            // --- the stomp really damages, through the shared ability path ------
+            // The travelling wave front is the damage radius. The policy publishes
+            // the amount, the encounter applies it through host.damage, and the
+            // same per-cast hit set that stops a double debuff also stops a double
+            // hit, so one cast can never damage a player twice.
+            check("the stomp publishes a real damage amount",
+                    RiftRamPolicy.STOMP_DAMAGE > 0.0D
+                            && Double.isFinite(RiftRamPolicy.STOMP_DAMAGE));
+            check("the stomp damage is bounded like a heavy melee hit",
+                    RiftRamPolicy.STOMP_DAMAGE >= RiftRamPolicy.MELEE_DAMAGE
+                            && RiftRamPolicy.STOMP_DAMAGE <= 2.0D * RiftRamPolicy.MELEE_DAMAGE);
+            check("a recorded hit is already immune to repeat damage",
+                    !RiftRamPolicy.stompHits(4.0D, 0.0D, true, 3.5D, 4.2D, true));
 
             System.out.println("STOMP_CHECKS " + checks);
         }

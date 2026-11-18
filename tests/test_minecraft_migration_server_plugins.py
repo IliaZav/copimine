@@ -1378,14 +1378,18 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     candidate=baseline['candidate']
     assert candidate['filename']=='CopiMineEndEvent-26.3.jar'
     assert candidate['runtimeFilename']=='CopiMineEndEvent.jar'
-    # Re-pinned after the Wave 3 capture window returned to the canonical five
-    # seconds (section 5.2). The replaced candidate stays first in
-    # replaceSha256, which is the documented prepend convention, so an
-    # already-staged older candidate is still accepted.
-    assert candidate['size']==2578631
-    assert candidate['sha256']=='637a08f3372cfe103e78fcf5ed18a2910e54627ef74931f236751a98767142ac'
-    assert candidate['sha512']=='d91a7606c2117304603bf7dc9d7b443d4585a10a8c6ee5c8b4679fc8bc76603c117939deb704229e496cf3c83b53ee2eaf846b3db6e89352481c85d0886d0409'
-    assert candidate['replaceSha256'][0]=='0023966595152218288af1f02db1e4bb122f8a2178b043077930b185addaa6bb'
+    # Re-pinned after the Wave 6 pillar collider and marksman platform were
+    # made to share one geometry policy, so a cracked pillar cannot keep a
+    # full-height barrier. The replaced candidates stay at the front of
+    # replaceSha256, newest first, which is the documented prepend convention,
+    # so an already-staged older candidate is still accepted.
+    assert candidate['size']==2582610
+    assert candidate['sha256']=='987f31a77bc33764eab5bb5d9d3750d38ac1ba98a8207c4d55f970cfcf7770dc'
+    assert candidate['sha512']=='0a96b3470f737cf69c84b686607ee8ad33c0d1a697b376c13d810814710433292f4081e549c01e540e3c5fe95090d3806a70870ea229dd6b6655c8326737a556'
+    assert candidate['replaceSha256'][0]=='e4ba96d991fb5084573e3a999c25edd49fdf20b0a9505a8c2d32482f722ea93b'
+    assert candidate['replaceSha256'][1]=='6188d78c04df1c1064cbb7ca5fd824796a9275c791c2d04f582123e38b9da0ab'
+    assert candidate['replaceSha256'][2]=='637a08f3372cfe103e78fcf5ed18a2910e54627ef74931f236751a98767142ac'
+    assert candidate['replaceSha256'][3]=='0023966595152218288af1f02db1e4bb122f8a2178b043077930b185addaa6bb'
     assert '655810207e0cfff4adf6e3d3bc23aff06b09ba756fc38556f47f21846761191e' in candidate['replaceSha256']
     assert 'f450c7d771bea5ef4d0fdb3592e5db8172a600fe98a45a45d64b294f137843f3' in candidate['replaceSha256']
     assert '25411e0fc3635e0a715c2ba9b4644328df692309fa73868867da4eac07e23d12' in candidate['replaceSha256']
@@ -1449,9 +1453,13 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
         '839ebae4196c5bbbe6d6171dea1a484e6fb021dc77a869996543a71858f4d3d4',
     ]
     assert candidate['replaceSha256']==[
-        # The candidate this pin replaced is prepended (section 5 convention).
-        '0023966595152218288af1f02db1e4bb122f8a2178b043077930b185addaa6bb',
+        # The candidates these pins replaced are prepended (section 5
+        # convention), newest first.
+        'e4ba96d991fb5084573e3a999c25edd49fdf20b0a9505a8c2d32482f722ea93b',
+        '6188d78c04df1c1064cbb7ca5fd824796a9275c791c2d04f582123e38b9da0ab',
+        '637a08f3372cfe103e78fcf5ed18a2910e54627ef74931f236751a98767142ac',
         # Candidates replaced by these re-pins stay accepted for staging.
+        '0023966595152218288af1f02db1e4bb122f8a2178b043077930b185addaa6bb',
         '4fa53ab0217f0afb2bc0183d27674117790886eaa1b4740cda24db8a8a66eb14',
         '8a86be1b5ab7a62364045b826bc9d2ee8fdcea896008d48f88afdcda1ffda5dc',
         'ab239007da0c0e50488771d6f61ae2ada199268579df6d0dd9084f09abe7c3ed',
@@ -3177,8 +3185,8 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
     expected_candidates={
         'CopiMineArtifacts':('a5e0420d503850cb604445c52705f5af71fdc65770a78b943c5d2bc252fabcc5',
                              'a054cfeef3dc37dc364ef33d550063b6aa105f2394501bd982295af2fc791bba82cce15623c3ff7b09c4c3250683fb1caf7cdb72312e3c91bf50dd0c2fc39600',366356),
-        'CopiMineEndEvent':('637a08f3372cfe103e78fcf5ed18a2910e54627ef74931f236751a98767142ac',
-                            'd91a7606c2117304603bf7dc9d7b443d4585a10a8c6ee5c8b4679fc8bc76603c117939deb704229e496cf3c83b53ee2eaf846b3db6e89352481c85d0886d0409',2578631),
+        'CopiMineEndEvent':('987f31a77bc33764eab5bb5d9d3750d38ac1ba98a8207c4d55f970cfcf7770dc',
+                            '0a96b3470f737cf69c84b686607ee8ad33c0d1a697b376c13d810814710433292f4081e549c01e540e3c5fe95090d3806a70870ea229dd6b6655c8326737a556',2582610),
         'CopiMineNarcotics':('4609582cdc08db60e64122b510e7a264a001baeef88fd10f905bee054be4f9a0',
                              '4863897a8a2887df9022bcfa5cbb0414fa9741aeade730c1a699d049573de3ad0ec3fd3a5348fcb1449785f5c668a77981d8808ea42e3e3b6178e15eb0735e9f',378217),
     }

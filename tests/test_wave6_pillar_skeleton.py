@@ -23,9 +23,6 @@ public class PillarSkeletonProbe {
     // --- the two abilities are distinguishable and both are really used ----
     check(WaveSixPillarSkeletonPolicy.TRIPLE_SHOT_ARROWS == 3, "the triple shot fires three");
     check(WaveSixPillarSkeletonPolicy.BONE_RAIN_ARROWS >= 1, "the second ability fires something");
-    check(WaveSixPillarSkeletonPolicy.TRIPLE_SHOT_SPREAD_DEGREES
-            != WaveSixPillarSkeletonPolicy.BONE_RAIN_ARC_DEGREES,
-            "the two volleys must not have the same silhouette");
     check(WaveSixPillarSkeletonPolicy.TRIPLE_SHOT_COOLDOWN_TICKS
             != WaveSixPillarSkeletonPolicy.BONE_RAIN_COOLDOWN_TICKS,
             "the two abilities must not share one timer");
@@ -66,12 +63,31 @@ public class PillarSkeletonProbe {
     check(triple[0][0] * triple[2][0] < 0, "the flanking arrows fan to both sides");
     check(Math.abs(triple[0][0] + triple[2][0]) < 1e-9, "the fan is symmetric about the aim");
 
-    double[][] bone = WaveSixPillarSkeletonPolicy.boneRainDirections(1.0D, 0.0D);
+    // A real drop: the rain volley is spawned high above the target and falls,
+    // so its policy output is a horizontal landing pattern, not a unit fan.
+    check(WaveSixPillarSkeletonPolicy.BONE_RAIN_HEIGHT > 0.0D,
+            "the rain volley spawns above the target");
+    check(WaveSixPillarSkeletonPolicy.BONE_RAIN_SPEED > 0.0D,
+            "the rain volley is pushed downward from the first tick");
+    double[][] bone = WaveSixPillarSkeletonPolicy.boneRainOffsets();
     check(bone.length == WaveSixPillarSkeletonPolicy.BONE_RAIN_ARROWS, "bone rain width");
-    for (double[] d : bone) check(unit(d), "bone rain direction is normalised");
-    // A wider arc than the triple shot, i.e. visibly a different attack.
-    check(Math.abs(bone[0][1]) > Math.abs(triple[0][0]),
-            "the heavy volley spreads wider than the triple shot");
+    // The first arrow lands on the victim; the rest bracket it inside the
+    // spread radius, so stepping out of the centre is the counterplay.
+    check(Math.abs(bone[0][0]) < 1e-9 && Math.abs(bone[0][1]) < 1e-9,
+            "the first rain arrow lands on the target");
+    boolean offCentre = false;
+    for (double[] o : bone) {
+      double r = Math.hypot(o[0], o[1]);
+      check(r <= WaveSixPillarSkeletonPolicy.BONE_RAIN_SPREAD + 1e-9,
+              "every rain arrow stays inside the landing spread");
+      if (r > 1e-9) offCentre = true;
+    }
+    check(offCentre, "the rain volley brackets the target instead of stacking on it");
+    check(WaveSixPillarSkeletonPolicy.BONE_RAIN_ARROWS
+            != WaveSixPillarSkeletonPolicy.TRIPLE_SHOT_ARROWS
+            || WaveSixPillarSkeletonPolicy.BONE_RAIN_SPREAD
+                    != WaveSixPillarSkeletonPolicy.TRIPLE_SHOT_SPREAD_DEGREES,
+            "the two volleys must not have the same silhouette");
 
     // --- a degenerate aim must not fire into the skeleton itself ----------
     double[][] onSpot = WaveSixPillarSkeletonPolicy.spread(0.0D, 0.0D, 3, 7.0D);
@@ -110,6 +126,23 @@ public class PillarSkeletonProbe {
     check(!WaveSixPillarSkeletonPolicy.shouldFall(7, true, true),
             "the drop happens once");
     check(!WaveSixPillarSkeletonPolicy.shouldFall(6, false, true), "nothing falls on an ordinary impact");
+
+    // --- the fall is real physics, not a teleport that declares itself -----
+    // The landing predicate must observe ground contact near the floor.
+    check(WaveSixPillarSkeletonPolicy.hasLanded(68.0D, 68, true),
+            "ground contact on the floor is a landing");
+    check(WaveSixPillarSkeletonPolicy.hasLanded(68.9D, 68, true),
+            "a landing within the tolerance counts");
+    check(!WaveSixPillarSkeletonPolicy.hasLanded(68.0D, 68, false),
+            "mid-air ground contact is not a landing");
+    check(!WaveSixPillarSkeletonPolicy.hasLanded(76.6D, 68, true),
+            "still on the platform is not a landing");
+    check(!WaveSixPillarSkeletonPolicy.hasLanded(Double.NaN, 68, true),
+            "a non-finite height never lands");
+    check(!WaveSixPillarSkeletonPolicy.hasLanded(68.0D, Double.NaN, true),
+            "a non-finite floor never lands");
+    check(WaveSixPillarSkeletonPolicy.FALL_TIMEOUT_TICKS > 0,
+            "a stalled fall is still bounded");
 
     // --- no orphan may be left behind ------------------------------------
     check(!WaveSixPillarSkeletonPolicy.encounterMayComplete(true, true),

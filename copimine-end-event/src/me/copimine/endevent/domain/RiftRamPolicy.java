@@ -39,8 +39,32 @@ public final class RiftRamPolicy {
     public static final int ARMOUR_PLATES = REQUIRED_IMPACTS;
     /** The pillar that carries the elite marksman skeleton. */
     public static final int ELITE_SKELETON_PILLAR = PILLAR_COUNT;
+    /** Footprint of an ordinary pillar, in blocks. */
+    public static final float PILLAR_FOOTPRINT = 1.8F;
+    /** Full silhouette height of an ordinary pillar, in blocks. */
+    public static final float PILLAR_HEIGHT = 3.7F;
+    /** Crown width of an ordinary pillar, in blocks. */
+    public static final float PILLAR_CAP_WIDTH = 2.2F;
+    /** Footprint of the oversized final pillar before it cracks, in blocks. */
+    public static final float FINAL_PILLAR_FOOTPRINT = 3.6F;
+    /** Full silhouette height of the final pillar before it cracks, in blocks. */
+    public static final float FINAL_PILLAR_HEIGHT = 7.4F;
+    /** Crown width of the final pillar before it cracks, in blocks. */
+    public static final float FINAL_PILLAR_CAP_WIDTH = 4.4F;
     public static final int STOMP_SLOW_TICKS = 60;
     public static final int STOMP_SLOW_AMPLIFIER = 1;
+    /**
+     * Damage of one accepted seismic stomp.
+     *
+     * <p>Master rebuild section 7.5 asks for a "clear damage and Slowness
+     * outcome". The shipped stomp only applied Slowness, so a player who never
+     * jumped could walk through every wave and lose no health at all; the wave
+     * was a visible hit with no consequence. This is real damage on the same
+     * accepted hit that applies the slow, bounded by the same travelling
+     * annulus, so the damage radius can never grow past the shown wave and one
+     * cast can still hit a player at most once.</p>
+     */
+    public static final double STOMP_DAMAGE = 6.0D;
     public static final double STOMP_RADIUS = 12.0D;
     public static final int STOMP_WARNING_TICKS = 20;
     public static final int STOMP_EXPANSION_TICKS = 28;
@@ -97,6 +121,65 @@ public final class RiftRamPolicy {
     public static final double PILLAR_IMPACT_RADIUS = 2.4D;
     /** Vertical slack above/below the pillar so a charge cannot be stepped over. */
     public static final double PILLAR_VERTICAL_TOLERANCE = 3.0D;
+
+    /**
+     * Horizontal half-extent of a pillar's real collider, in blocks.
+     *
+     * <p>The pillars were display-only geometry: the party could walk through a
+     * solid obsidian tower and the Ram's own charge only found it through a
+     * distance test. A real collider is a square column matching the visible
+     * silhouette, so "hide behind the pillar" and "the Ram has to reach the
+     * pillar" are both true in the world, not only in the model.</p>
+     */
+    public static int pillarColliderHalfWidth(int acceptedImpacts) {
+        int ordinal = pillarOrdinal(Math.max(0, acceptedImpacts));
+        return isFinalPillar(ordinal) ? 2 : 1;
+    }
+
+    /** Horizontal scale of the standing pillar at the current crack stage. */
+    public static float pillarFootprintShrink(int acceptedImpacts) {
+        int stage = finalPillarStage(Math.max(0, acceptedImpacts));
+        return stage >= 2 ? .82F : stage == 1 ? .94F : 1F;
+    }
+
+    /** Vertical scale of the standing pillar at the current crack stage. */
+    public static float pillarHeightShrink(int acceptedImpacts) {
+        int stage = finalPillarStage(Math.max(0, acceptedImpacts));
+        return stage >= 2 ? .68F : stage == 1 ? .88F : 1F;
+    }
+
+    /**
+     * Visible silhouette height of the standing pillar, crown included.
+     *
+     * <p>One number feeds the model, the elite's platform and the collider, so a
+     * cracked pillar cannot shrink on screen while its barrier keeps the old
+     * height.</p>
+     */
+    public static double pillarSilhouetteHeight(int acceptedImpacts) {
+        int ordinal = pillarOrdinal(Math.max(0, acceptedImpacts));
+        if (!isFinalPillar(ordinal)) return PILLAR_HEIGHT;
+        return FINAL_PILLAR_HEIGHT * pillarHeightShrink(acceptedImpacts);
+    }
+
+    /** Y offset above the pillar base where the marksman stands. */
+    public static double pillarPlatformHeight(int acceptedImpacts) {
+        return pillarSilhouetteHeight(acceptedImpacts) + .2D;
+    }
+
+    /**
+     * Height of the real collider, in blocks above the pillar's base.
+     *
+     * <p>It follows the visible height, including the two crack stages of the
+     * final pillar, so a shattered pillar never leaves an invisible full-height
+     * wall behind. On the final pillar it deliberately stops in the block below
+     * the marksman's feet ({@link #pillarPlatformHeight}), because a collider
+     * that reached the crown would encase the elite standing on it.</p>
+     */
+    public static int pillarColliderHeight(int acceptedImpacts) {
+        int ordinal = pillarOrdinal(Math.max(0, acceptedImpacts));
+        if (!isFinalPillar(ordinal)) return 4;
+        return Math.max(2, (int) Math.floor(pillarSilhouetteHeight(acceptedImpacts)));
+    }
 
     private RiftRamPolicy() {
     }

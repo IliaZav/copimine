@@ -248,7 +248,8 @@ public final class HazardMutationJournal {
             if (!mutation.equals("MAGMA") && !mutation.equals("FIRE")
                     && !mutation.equals("EMERALD_BARRIER") && !mutation.equals("BARRIER")
                     && !mutation.equals("ICE") && !mutation.equals("OBELISK")
-                    && !mutation.equals("REALITY_SPLIT_BARRIER")) {
+                    && !mutation.equals("REALITY_SPLIT_BARRIER")
+                    && !mutation.equals("RIFT_PILLAR")) {
                 throw new IllegalArgumentException("unsupported hazard mutation: " + mutation);
             }
             worldId = worldId == null ? "" : worldId;
@@ -281,6 +282,15 @@ public final class HazardMutationJournal {
         /** A Wave 4 obelisk cell journaled at its actual world height. */
         public boolean isObeliskMutation() {
             return mutation.equals("OBELISK");
+        }
+
+        /**
+         * A Wave 6 Rift Ram pillar collider cell, journaled at its actual world
+         * height. The original block is restored on collapse, cleanup and boot
+         * recovery, so a crash can never leave an invisible wall in the arena.
+         */
+        public boolean isRiftPillarMutation() {
+            return mutation.equals("RIFT_PILLAR");
         }
 
         /** A Wave 7 radial collision wall above an untouched floor. */

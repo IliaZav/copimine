@@ -26,10 +26,33 @@ public final class WaveSixPillarSkeletonPolicy {
     public static final double TRIPLE_SHOT_SPREAD_DEGREES = 7.0D;
     public static final double TRIPLE_SHOT_SPEED = 2.4D;
 
-    /** The second ability: a shorter, heavier bone volley. */
-    public static final int BONE_RAIN_ARROWS = 2;
-    public static final double BONE_RAIN_ARC_DEGREES = 24.0D;
-    public static final double BONE_RAIN_SPEED = 1.9D;
+    /**
+     * The second ability: real arrows that fall out of the air onto the target.
+     *
+     * <p>The shipped "bone rain" was a second horizontal fan fired from the
+     * skeleton's bow, so it was the triple shot with a different spread and the
+     * name promised a mechanic the wave never had. A rain volley now spawns its
+     * arrows high above the target and lets gravity carry them down, which is a
+     * genuinely different attack: it cannot be dodged sideways from cover and it
+     * forces the party to keep moving rather than stand behind the Ram.</p>
+     */
+    public static final int BONE_RAIN_ARROWS = 3;
+    /** Horizontal radius of the landing pattern around the target, in blocks. */
+    public static final double BONE_RAIN_SPREAD = 1.7D;
+    /** Spawn height above the target's feet, in blocks. */
+    public static final double BONE_RAIN_HEIGHT = 11.0D;
+    /** Initial downward push, so the drop is readable from the first tick. */
+    public static final double BONE_RAIN_SPEED = 0.55D;
+    /** How close to the floor the actor must be before a fall counts as landed. */
+    public static final double FALL_LANDING_TOLERANCE = 0.9D;
+    /**
+     * How long a real fall may take before the runtime settles it on the floor.
+     *
+     * <p>The platform is 7.6 blocks up, so a clean fall resolves in well under
+     * a second. This ceiling only exists so a lip or a slab under the pillar
+     * cannot leave the marksman hanging above a pillar that no longer exists.</p>
+     */
+    public static final int FALL_TIMEOUT_TICKS = 60;
 
     public static final int TRIPLE_SHOT_COOLDOWN_TICKS = 70;
     public static final int BONE_RAIN_COOLDOWN_TICKS = 120;
@@ -86,8 +109,28 @@ public final class WaveSixPillarSkeletonPolicy {
         return spread(aimX, aimZ, TRIPLE_SHOT_ARROWS, TRIPLE_SHOT_SPREAD_DEGREES);
     }
 
-    public static double[][] boneRainDirections(double aimX, double aimZ) {
-        return spread(aimX, aimZ, BONE_RAIN_ARROWS, BONE_RAIN_ARC_DEGREES);
+    /**
+     * Deterministic landing offsets for one rain volley.
+     *
+     * <p>The pattern is centred on the target and spread on a golden-angle ring,
+     * so a volley always covers the same shape relative to the victim without
+     * needing randomness. Offsets are horizontal only; the runtime adds
+     * {@link #BONE_RAIN_HEIGHT} above the target's feet.</p>
+     *
+     * @return {@code {dx,dz}} pairs, always {@link #BONE_RAIN_ARROWS} of them
+     */
+    public static double[][] boneRainOffsets() {
+        double[][] out = new double[BONE_RAIN_ARROWS][];
+        for (int i = 0; i < BONE_RAIN_ARROWS; i++) {
+            if (i == 0) {
+                out[i] = new double[]{0.0D, 0.0D};
+                continue;
+            }
+            double angle = (i - 1) * 2.399963D;
+            double radius = BONE_RAIN_SPREAD;
+            out[i] = new double[]{Math.cos(angle) * radius, Math.sin(angle) * radius};
+        }
+        return out;
     }
 
     /**
@@ -134,6 +177,26 @@ public final class WaveSixPillarSkeletonPolicy {
         double angle = step * 2.399963D; // golden angle, so it never repeats a line
         double radius = PATROL_RADIUS * 0.75D;
         return new double[]{Math.cos(angle) * radius, Math.sin(angle) * radius};
+    }
+
+    /**
+     * Whether a dropped skeleton has physically reached the arena floor.
+     *
+     * <p>The shipped drop teleported the actor to the floor and declared itself
+     * landed in the same call, so the "fall" was a position write that a client
+     * could never render and a checkpoint could record before any physics ran.
+     * The fall is now real: gravity is enabled and this predicate observes the
+     * actor's own ground contact near the floor before the drop is treated as
+     * complete.</p>
+     *
+     * @param feetY    the actor's current feet Y after physics
+     * @param floorY   the encounter floor Y
+     * @param grounded whether the server reports the actor on the ground
+     */
+    public static boolean hasLanded(double feetY, double floorY, boolean grounded) {
+        return grounded && Double.isFinite(feetY) && Double.isFinite(floorY)
+                && feetY >= floorY - FALL_LANDING_TOLERANCE
+                && feetY <= floorY + 1.0D + FALL_LANDING_TOLERANCE;
     }
 
     /**

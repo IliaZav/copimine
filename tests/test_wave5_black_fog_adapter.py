@@ -276,6 +276,8 @@ public final class BlackFogAdapterProbe {
     long blackFogHeartbeatAtMillis;
     BlackFogPhase blackFogPhaseHeartbeat;
     int spawnLimit = Integer.MAX_VALUE;
+    boolean unrelatedDeathDuringSpawn;
+    UUID unrelatedVictim;
     final Object keyWave = new Object();
     final Map<UUID, Entity> ownedEntities = new LinkedHashMap<>();
     // Frozen-pose lease bookkeeping read by the extracted refresh helper.
@@ -283,6 +285,17 @@ public final class BlackFogAdapterProbe {
     final Map<UUID, WaveFogAiLease> waveFogAiLeases = new LinkedHashMap<>();
     final Map<UUID, Long> waveFrozenCueRefreshTicks = new LinkedHashMap<>();
     boolean isLiveOwnedEntity(UUID id) { return ownedEntities.containsKey(id); }
+    // Faithful per-entity receipt: only newly owned, still-live wave-5 actors
+    // count, so an unrelated death cannot make a delivered pack look short.
+    int countNewlyOwnedWaveEntities(Set<UUID> ownedBefore, int wave) {
+        int count = 0;
+        for (UUID id : new LinkedHashSet<>(ownedEntities.keySet())) {
+            if (ownedBefore.contains(id)) continue;
+            Entity entity = ownedEntities.get(id);
+            if (entity != null && isLiveOwnedEntity(id) && readInt(entity, keyWave, 0) == wave) count++;
+        }
+        return count;
+    }
     void sendWaveMobPose(Mob mob, String pose, long millis) { mob.sendPose(pose, millis); }
     // W5-004 bookkeeping: real post-fog packs spawned and the retry deadline.
     int wave5PostFogPacksSpawned;
@@ -386,6 +399,13 @@ public final class BlackFogAdapterProbe {
             ownedEntities.put(entity.getUniqueId(), entity);
         }
         liveWaveMobCount += count;
+        // Simulate an unrelated wave-5 death in the SAME spawn tick. A live-count
+        // delta would credit the pack as one short; a per-entity receipt must not.
+        if (unrelatedDeathDuringSpawn && unrelatedVictim != null
+                && ownedEntities.remove(unrelatedVictim) != null) {
+            liveWaveMobCount--;
+        }
+        unrelatedDeathDuringSpawn = false;
     }
     void markBlackFogRecoveryRequired(String reason) {
         recoveryReason = reason;
@@ -502,6 +522,22 @@ public final class BlackFogAdapterProbe {
                 check(p.wave5PostFogPacksSpawned == 1 && p.wave5DeadRoles[0] == 2
                                 && p.wave5ResurrectedEntities.size() == 2,
                         "complete retry resurrects two genuine dead casters exactly once");
+            }
+            case "pack-not-shortened-by-unrelated-death" -> {
+                // Regression for the live-count delta: a wave-5 mob that dies in
+                // the SAME tick as the reinforcement spawn used to make a fully
+                // delivered pack look one short, so it was rolled back and the
+                // debt stayed unpaid. The per-entity receipt must credit it.
+                Entity old = new Entity();
+                p.ownedEntities.put(old.getUniqueId(), old);
+                p.liveWaveMobCount = 1;
+                p.unrelatedVictim = old.getUniqueId();
+                p.unrelatedDeathDuringSpawn = true;
+                check(p.spawnWaveFivePostFogPack(40_000L),
+                        "a delivered pack must not be credited short by an unrelated death");
+                check(p.wave5PostFogPacksSpawned == 1, "the fully delivered pack was not credited");
+                check(p.liveWaveMobCount >= 10 && p.liveWaveMobCount <= 15,
+                        "pack size after the unrelated death, was " + p.liveWaveMobCount);
             }
             case "three-cycles" -> {
                 // Superseded 2026-10-31 (WP-C): the wave runs exactly FIVE fog
@@ -829,7 +865,8 @@ public final class BlackFogAdapterProbe {
 
 
 @pytest.mark.parametrize("scenario", [
-    "safe-room-evacuation", "three-cycles", "pre-fog-refill", "post-fog-pack", "post-fog-partial-rollback", "setup-retry", "invalid-journal", "mark-restored-failure",
+    "safe-room-evacuation", "three-cycles", "pre-fog-refill", "post-fog-pack", "post-fog-partial-rollback",
+    "pack-not-shortened-by-unrelated-death", "setup-retry", "invalid-journal", "mark-restored-failure",
     "restore-failure-does-not-advance", "invalid-original-data",
 ])
 def test_wave5_black_fog_adapter(probe, scenario):

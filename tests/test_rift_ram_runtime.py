@@ -72,6 +72,10 @@ public class RamRuntimeProbe {
     boolean checkpoint(){return storageHealthy;}
     Location core(){return new Location(new World());}
     int floorY(){return 64;} boolean owns(Entity entity){return true;} boolean inArena(Location at){return true;}
+    // The pillar is solid through a host-owned, journaled barrier volume; the
+    // encounter never writes terrain itself, so the probe only answers the seam.
+    int collidersPlaced;boolean placePillarCollider(Location centre,int halfWidth,int height){collidersPlaced++;return true;}
+    void clearPillarCollider(){}
     void fail(String s){failures++;}
     // Presentation seams the runtime calls when the pose or an ability cue moves.
     void abilitySound(Ravager actor,String cue){}

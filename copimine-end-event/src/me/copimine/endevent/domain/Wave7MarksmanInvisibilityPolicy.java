@@ -39,6 +39,12 @@ public final class Wave7MarksmanInvisibilityPolicy {
      */
     public static final long COOLDOWN_TICKS = 110L;
 
+    /** The reveal window as recorded wall-clock time. */
+    public static final long REVEAL_MILLIS = REVEAL_TICKS * 50L;
+
+    /** The vanish cooldown as recorded wall-clock time. */
+    public static final long COOLDOWN_MILLIS = COOLDOWN_TICKS * 50L;
+
     private Wave7MarksmanInvisibilityPolicy() {
     }
 
@@ -97,6 +103,36 @@ public final class Wave7MarksmanInvisibilityPolicy {
     /** A cooldown of {@code cooldownUntil <= 0} means the ability was never used. */
     public static boolean readyAt(long now, long cooldownUntil) {
         return now >= 0L && now >= cooldownUntil;
+    }
+
+    /**
+     * When the NEXT vanish becomes legal, derived from the persisted hide
+     * deadline alone.
+     *
+     * <p>The durable receipt stores only the end of the hidden window, so a
+     * caller that also has to enforce the cooldown has to derive it. That
+     * derivation is the whole reason this method exists: without it the
+     * runtime's only "may I vanish?" test was "have I never vanished?", which
+     * let a Marksman hide exactly once per trial and then never again. Two
+     * hides in a short fight is the stated intent of the cooldown, and a
+     * cooldown that can never elapse is not a cooldown.</p>
+     *
+     * <p>Zero (never vanished) means "ready now".</p>
+     */
+    public static long nextVanishAtMillis(long vanishUntilMillis) {
+        if (vanishUntilMillis <= 0L) return 0L;
+        return vanishUntilMillis + REVEAL_MILLIS + COOLDOWN_MILLIS;
+    }
+
+    /**
+     * Whether a vanish may start now, given the persisted hide deadline.
+     *
+     * <p>Exactly {@link #nextVanishAtMillis(long)} compared to the clock, so the
+     * restart path and the live path cannot disagree about readiness.</p>
+     */
+    public static boolean mayVanishAt(long nowMillis, long vanishUntilMillis) {
+        if (nowMillis < 0L) return false;
+        return nowMillis >= nextVanishAtMillis(vanishUntilMillis);
     }
 
     /**

@@ -88,9 +88,26 @@ public final class Wave7NamedTrialActorPolicy {
             return vanishUntilMillis > 0L && nowMillis < vanishUntilMillis;
         }
 
-        /** MARK-006: hidden is not invulnerable, and it is never a legal firing window. */
+        /**
+         * MARK-006: hidden is not invulnerable, and it is never a legal firing
+         * window. The reveal is part of that window: the actor becomes visible
+         * {@link Wave7MarksmanInvisibilityPolicy#REVEAL_TICKS} before it may
+         * shoot again, so the party always registers the reappearance before it
+         * eats a fan.
+         *
+         * <p>This used to resume attacks on the exact tick the hide ended,
+         * which turned the intended readable reveal into a point-blank volley
+         * from a mob that had been invisible one tick earlier.</p>
+         */
         public boolean mayAttackNow(long nowMillis) {
-            return !hiddenNow(nowMillis);
+            if (vanishUntilMillis <= 0L) return true;
+            return nowMillis >= vanishUntilMillis
+                    + Wave7MarksmanInvisibilityPolicy.REVEAL_MILLIS;
+        }
+
+        /** MARK-005: whether a fresh vanish may start now, cooldown included. */
+        public boolean mayVanishNow(long nowMillis) {
+            return Wave7MarksmanInvisibilityPolicy.mayVanishAt(nowMillis, vanishUntilMillis);
         }
     }
 

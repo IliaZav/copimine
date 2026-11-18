@@ -346,6 +346,10 @@ public class OccludedArchmageProbe {
     fixture.write_text(HARNESS, encoding="utf-8")
     files = [str(BASE / rel) for rel in PRODUCTION]
     files += [str(BASE / "domain/Wave7NamedTrialActorPolicy.java"),
+             # MARK-005/006: the checkpoint now derives the vanish cooldown from
+             # the persisted hide deadline, so the policy must be on the probe's
+             # classpath rather than stubbed away.
+             str(BASE / "domain/Wave7MarksmanInvisibilityPolicy.java"),
              str(BASE / "domain/Wave7MinibossScalingPolicy.java"),
              # MAGE7-005: the tick path now reads and writes the punish window,
              # so the probe compiles the real policy instead of stubbing it.

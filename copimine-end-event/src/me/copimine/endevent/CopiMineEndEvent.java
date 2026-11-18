@@ -37894,7 +37894,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // attack is chosen, and the returned checkpoint carries the absolute
         // deadline so a restart cannot refresh it.
         if (trial.trial() == RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN
-                && checkpoint.vanishUntilMillis() <= 0L) {
+                && checkpoint.mayVanishNow(now)) {
             Wave7NamedTrialActorPolicy.Checkpoint vanished = beginMarksmanVanish(actor, checkpoint, now);
             if (vanished != null) {
                 if (!writeNamedTrialActorCheckpoint(actor, vanished)) return false;
@@ -38349,8 +38349,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             Wave7NamedTrialActorPolicy.Checkpoint checkpoint, long now) {
         if (actor == null || checkpoint == null || !(actor instanceof Mob mob)
                 || !mob.isValid() || mob.isDead()) return null;
-        Wave7MarksmanInvisibilityPolicy.Window window =
-                Wave7MarksmanInvisibilityPolicy.vanish(now, 0L);
+        Wave7MarksmanInvisibilityPolicy.Window window = Wave7MarksmanInvisibilityPolicy.vanish(
+                now, Wave7MarksmanInvisibilityPolicy.nextVanishAtMillis(checkpoint.vanishUntilMillis()));
         if (window == null) return null;
         // The visible vanish is shorter than the no-attack window: the last
         // REVEAL ticks are deliberately visible so a player registers the copy

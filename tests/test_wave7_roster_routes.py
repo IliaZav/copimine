@@ -65,7 +65,7 @@ public class RosterRoutesProbe {
     paths = [SOURCE / path for path in (
         "domain/ChamberIsolationPolicy.java", "domain/RealitySplitBarrierPolicy.java",
         "domain/Wave7AdmissionPolicy.java", "domain/Wave7EchoDuelCellPolicy.java",
-        "domain/Wave7NamedTrialActorPolicy.java", "domain/Wave7MinibossScalingPolicy.java",
+        "domain/Wave7NamedTrialActorPolicy.java", "domain/Wave7MarksmanInvisibilityPolicy.java", "domain/Wave7MinibossScalingPolicy.java",
         "domain/Wave7RoomLayoutPolicy.java", "domain/Wave7TrialRoutePolicy.java",
         "domain/wave7/EchoBehaviorStrategy.java", "domain/wave7/EchoLoadoutState.java",
         "runtime/RealitySplitEchoDuelState.java", "runtime/RealitySplitChamberController.java",

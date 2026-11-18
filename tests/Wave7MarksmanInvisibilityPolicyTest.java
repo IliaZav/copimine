@@ -11,6 +11,8 @@ public final class Wave7MarksmanInvisibilityPolicyTest {
         isNotInvulnerabilityAndBlocksUnseenAttacks();
         requiresAClearRevealBeforeAttackingAgain();
         enforcesARealCooldownThatCannotChain();
+        revealIsHonouredByThePersistedDeadline();
+        vanishIsRepeatableOnceTheDerivedCooldownElapses();
         doesNotGrantAFreshVanishAfterRestart();
         System.out.println("Wave7MarksmanInvisibilityPolicyTest OK");
     }
@@ -74,6 +76,52 @@ public final class Wave7MarksmanInvisibilityPolicyTest {
                 "the Marksman may vanish again exactly when the cooldown ends");
         check(Wave7MarksmanInvisibilityPolicy.vanish(started + 5L, ready) == null,
                 "a second vanish inside the cooldown is refused, so it cannot chain");
+    }
+
+    private static void revealIsHonouredByThePersistedDeadline() {
+        // DEFECT (2026-11-18): the durable receipt stores only the END of the
+        // hidden window, and the checkpoint used to resume attacks on exactly
+        // that millisecond - so the "readable reveal" the policy documents
+        // never happened and a mob that had been invisible one tick earlier
+        // fired point blank. The persisted deadline must include the reveal.
+        long hideEndsAt = 50_000L;
+        check(Wave7MarksmanInvisibilityPolicy.mayVanishAt(0L, 0L),
+                "never vanished means vanish is ready");
+        check(Wave7MarksmanInvisibilityPolicy.nextVanishAtMillis(0L) == 0L,
+                "no previous hide means the next one is ready immediately");
+        check(Wave7MarksmanInvisibilityPolicy.nextVanishAtMillis(hideEndsAt)
+                        == hideEndsAt + Wave7MarksmanInvisibilityPolicy.REVEAL_MILLIS
+                                + Wave7MarksmanInvisibilityPolicy.COOLDOWN_MILLIS,
+                "the cooldown is measured after the reveal, not inside the hide");
+        // The same numbers expressed in ticks must agree with Window, or the
+        // restart path and the live path would disagree about readiness.
+        check(Wave7MarksmanInvisibilityPolicy.nextVanishAtMillis(
+                        Wave7MarksmanInvisibilityPolicy.INVISIBLE_MILLIS)
+                        == (Wave7MarksmanInvisibilityPolicy.INVISIBLE_TICKS
+                                + Wave7MarksmanInvisibilityPolicy.REVEAL_TICKS
+                                + Wave7MarksmanInvisibilityPolicy.COOLDOWN_TICKS) * 50L,
+                "the millisecond and tick timelines describe the same cooldown");
+    }
+
+    private static void vanishIsRepeatableOnceTheDerivedCooldownElapses() {
+        // DEFECT (2026-11-18): the runtime's only readiness test was "have I
+        // never vanished?", because the receipt kept the hide deadline and a
+        // positive deadline never became zero again. The Marksman therefore
+        // hid exactly once per trial. The derived deadline makes the documented
+        // "two hides in a short fight" reachable without a second schema field.
+        long hideEndsAt = 90_000L;
+        long ready = Wave7MarksmanInvisibilityPolicy.nextVanishAtMillis(hideEndsAt);
+        check(!Wave7MarksmanInvisibilityPolicy.mayVanishAt(hideEndsAt, hideEndsAt),
+                "an actor that is still hidden cannot start another hide");
+        check(!Wave7MarksmanInvisibilityPolicy.mayVanishAt(hideEndsAt + 1L, hideEndsAt),
+                "the reveal is not a legal moment to hide again");
+        check(!Wave7MarksmanInvisibilityPolicy.mayVanishAt(ready - 1L, hideEndsAt),
+                "the cooldown still refuses a second hide");
+        check(Wave7MarksmanInvisibilityPolicy.mayVanishAt(ready, hideEndsAt),
+                "the cooldown elapsing re-arms the hide");
+        // A clock that is not a real deadline stays fail-closed.
+        check(!Wave7MarksmanInvisibilityPolicy.mayVanishAt(-5L, hideEndsAt),
+                "a negative clock cannot arm a hide");
     }
 
     private static void doesNotGrantAFreshVanishAfterRestart() {

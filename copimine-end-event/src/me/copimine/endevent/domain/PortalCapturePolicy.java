@@ -3,11 +3,17 @@ package me.copimine.endevent.domain;
 /** Pure, immutable timing policy for a portal occupied by players. */
 public final class PortalCapturePolicy {
     /**
-     * W3-004 [U]/[A]: closing must take substantially longer than the retired
-     * five seconds. Engineering default is eighteen seconds of continuous
-     * eligible occupancy.
+     * Canonical Wave 3 section 5.2: capture needs "approximately five continuous
+     * seconds" of real eligible occupancy inside the roughly 2.5-block region.
+     *
+     * <p>The eighteen-second value that lived here came from a local commit
+     * message, not from a recorded user decision, and contradicted both the
+     * canonical text and the repository's own requirement matrix (W3-02 pins
+     * 4.9 / 5.0 / 5.1 seconds). Section 0 of the canonical text puts the
+     * specification above an implementation description, so the window is the
+     * authored five seconds again.</p>
      */
-    public static final long CAPTURE_MILLIS = 18_000L;
+    public static final long CAPTURE_MILLIS = 5_000L;
     public static final long GRACE_MILLIS = 450L;
     public static final double CAPTURE_RADIUS_BLOCKS = 2.5D;
     public static final double CAPTURE_HEIGHT_TOLERANCE = 1.5D;

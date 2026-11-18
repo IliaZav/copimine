@@ -26,7 +26,7 @@ import java.util.List;
  * the ring cannot reach 100 % while the objective is still incomplete.</p>
  */
 public final class PortalCaptureIndicatorPolicy {
-    /** Segments of the seal ring; 24 keeps a full ring readable at 18 s of closing. */
+    /** Segments of the seal ring; 24 keeps a full ring readable across the authored closing window. */
     public static final int RING_SEGMENTS = 24;
     /** Number of surface seal veins; "a few" per the contract. */
     public static final int VEIN_COUNT = 5;

@@ -20,38 +20,42 @@ public final class EndRiftWave34IndicatorsTest {
         System.out.println("EndRiftWave34IndicatorsTest OK");
     }
 
-    /** W3-004: closing is substantially longer than the retired five seconds. */
+    /** Canonical section 5.2: capture takes approximately five continuous seconds. */
     private static void portalWindow() {
-        check(PortalCapturePolicy.CAPTURE_MILLIS >= 18_000L,
-                "W3-004: closing must be at least the eighteen-second engineering default");
+        check(PortalCapturePolicy.CAPTURE_MILLIS == 5_000L,
+                "section 5.2: the authored closing window is five continuous seconds");
         PortalCapturePolicy.PortalState state = PortalCapturePolicy.initial();
         state = PortalCapturePolicy.tick(state, true, 0L);
-        state = PortalCapturePolicy.tick(state, true, 17_999L);
-        check(!state.completed(), "W3-004: seventeen seconds must not close the portal");
-        state = PortalCapturePolicy.tick(state, true, 18_000L);
-        check(state.completed(), "W3-004: eighteen seconds must close the portal");
+        state = PortalCapturePolicy.tick(state, true, 4_999L);
+        check(!state.completed(), "section 5.2: just under five seconds must not close the portal");
+        state = PortalCapturePolicy.tick(state, true, 5_000L);
+        check(state.completed(), "section 5.2: five complete seconds must close the portal");
     }
 
     /** W3-003: the ring shows the authoritative amount, never more. */
     private static void indicatorAmount() {
         PortalCaptureIndicatorPolicy.Indicators half = PortalCaptureIndicatorPolicy.evaluate(
-                new PortalCapturePolicy.PortalState(false, 9_000L, -1L, -1L), true, -1.0D);
+                new PortalCapturePolicy.PortalState(false, PortalCapturePolicy.CAPTURE_MILLIS / 2L, -1L, -1L),
+                true, -1.0D);
         check(half.visible(), "an active incomplete portal must show indicators");
         check(half.litSegments() == PortalCaptureIndicatorPolicy.RING_SEGMENTS / 2,
                 "half progress must light half of the ring: " + half.litSegments());
         check(Math.abs(half.progress() - 0.5D) < 1.0E-9D, "progress must be authoritative");
 
         PortalCaptureIndicatorPolicy.Indicators justBefore = PortalCaptureIndicatorPolicy.evaluate(
-                new PortalCapturePolicy.PortalState(false, 17_990L, -1L, -1L), true, -1.0D);
+                new PortalCapturePolicy.PortalState(false, PortalCapturePolicy.CAPTURE_MILLIS - 10L, -1L, -1L),
+                true, -1.0D);
         check(justBefore.litSegments() < PortalCaptureIndicatorPolicy.RING_SEGMENTS,
                 "W3-008: the ring must never be full while the server is still incomplete");
 
         PortalCaptureIndicatorPolicy.Indicators done = PortalCaptureIndicatorPolicy.evaluate(
-                new PortalCapturePolicy.PortalState(true, 18_000L, -1L, -1L), true, -1.0D);
+                new PortalCapturePolicy.PortalState(true, PortalCapturePolicy.CAPTURE_MILLIS, -1L, -1L),
+                true, -1.0D);
         check(!done.visible(), "a completed portal defers to the authored collapse animation");
 
         PortalCaptureIndicatorPolicy.Indicators dormant = PortalCaptureIndicatorPolicy.evaluate(
-                new PortalCapturePolicy.PortalState(false, 9_000L, -1L, -1L), false, -1.0D);
+                new PortalCapturePolicy.PortalState(false, PortalCapturePolicy.CAPTURE_MILLIS / 2L, -1L, -1L),
+                false, -1.0D);
         check(dormant.visible() && dormant.flow() == PortalCaptureIndicatorPolicy.Flow.IDLE,
                 "a dormant portal keeps a dim, static ring");
         check(dormant.veinCount() == 0, "a dormant portal must not draw seal veins");

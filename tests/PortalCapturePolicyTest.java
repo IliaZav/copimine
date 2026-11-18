@@ -60,8 +60,8 @@ public final class PortalCapturePolicyTest {
         try { PortalCapturePolicy.tick(PortalCapturePolicy.initial(), true, -1L); }
         catch (IllegalArgumentException expected) { invalidTime = true; }
         check(invalidTime, "negative portal timestamps must fail closed");
-        check(PortalCapturePolicy.CAPTURE_MILLIS >= 18_000L,
-                "W3-004: closing must be substantially longer than the retired five seconds");
+        check(PortalCapturePolicy.CAPTURE_MILLIS == 5_000L,
+                "section 5.2: closing is five continuous seconds, not the superseded eighteen");
         System.out.println("PortalCapturePolicyTest OK");
     }
 

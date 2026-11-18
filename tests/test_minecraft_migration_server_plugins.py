@@ -1378,14 +1378,14 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     candidate=baseline['candidate']
     assert candidate['filename']=='CopiMineEndEvent-26.3.jar'
     assert candidate['runtimeFilename']=='CopiMineEndEvent.jar'
-    # Re-pinned after the Marksman elusiveness repair: the hide cooldown is now
-    # derived from the persisted deadline (so a second hide is reachable) and
-    # attacks wait for the documented reveal instead of resuming on the hide's
-    # last tick. The replaced candidates stay in replaceSha256 so an
-    # already-staged older candidate is accepted.
-    assert candidate['size']==2578629
-    assert candidate['sha256']=='0023966595152218288af1f02db1e4bb122f8a2178b043077930b185addaa6bb'
-    assert candidate['sha512']=='11f8f5ff7a547b592f59052bd6a83d6d1042c776711bdc74f6e6d6ffae92ffc07758dc085f6810c1d3d38e38f4b1ee89c2d94bff8f9fe48085dc055cd3ca98ba'
+    # Re-pinned after the Wave 3 capture window returned to the canonical five
+    # seconds (section 5.2). The replaced candidate stays first in
+    # replaceSha256, which is the documented prepend convention, so an
+    # already-staged older candidate is still accepted.
+    assert candidate['size']==2578631
+    assert candidate['sha256']=='637a08f3372cfe103e78fcf5ed18a2910e54627ef74931f236751a98767142ac'
+    assert candidate['sha512']=='d91a7606c2117304603bf7dc9d7b443d4585a10a8c6ee5c8b4679fc8bc76603c117939deb704229e496cf3c83b53ee2eaf846b3db6e89352481c85d0886d0409'
+    assert candidate['replaceSha256'][0]=='0023966595152218288af1f02db1e4bb122f8a2178b043077930b185addaa6bb'
     assert '655810207e0cfff4adf6e3d3bc23aff06b09ba756fc38556f47f21846761191e' in candidate['replaceSha256']
     assert 'f450c7d771bea5ef4d0fdb3592e5db8172a600fe98a45a45d64b294f137843f3' in candidate['replaceSha256']
     assert '25411e0fc3635e0a715c2ba9b4644328df692309fa73868867da4eac07e23d12' in candidate['replaceSha256']
@@ -1449,6 +1449,8 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
         '839ebae4196c5bbbe6d6171dea1a484e6fb021dc77a869996543a71858f4d3d4',
     ]
     assert candidate['replaceSha256']==[
+        # The candidate this pin replaced is prepended (section 5 convention).
+        '0023966595152218288af1f02db1e4bb122f8a2178b043077930b185addaa6bb',
         # Candidates replaced by these re-pins stay accepted for staging.
         '4fa53ab0217f0afb2bc0183d27674117790886eaa1b4740cda24db8a8a66eb14',
         '8a86be1b5ab7a62364045b826bc9d2ee8fdcea896008d48f88afdcda1ffda5dc',
@@ -3175,8 +3177,8 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
     expected_candidates={
         'CopiMineArtifacts':('a5e0420d503850cb604445c52705f5af71fdc65770a78b943c5d2bc252fabcc5',
                              'a054cfeef3dc37dc364ef33d550063b6aa105f2394501bd982295af2fc791bba82cce15623c3ff7b09c4c3250683fb1caf7cdb72312e3c91bf50dd0c2fc39600',366356),
-        'CopiMineEndEvent':('0023966595152218288af1f02db1e4bb122f8a2178b043077930b185addaa6bb',
-                            '11f8f5ff7a547b592f59052bd6a83d6d1042c776711bdc74f6e6d6ffae92ffc07758dc085f6810c1d3d38e38f4b1ee89c2d94bff8f9fe48085dc055cd3ca98ba',2578629),
+        'CopiMineEndEvent':('637a08f3372cfe103e78fcf5ed18a2910e54627ef74931f236751a98767142ac',
+                            'd91a7606c2117304603bf7dc9d7b443d4585a10a8c6ee5c8b4679fc8bc76603c117939deb704229e496cf3c83b53ee2eaf846b3db6e89352481c85d0886d0409',2578631),
         'CopiMineNarcotics':('4609582cdc08db60e64122b510e7a264a001baeef88fd10f905bee054be4f9a0',
                              '4863897a8a2887df9022bcfa5cbb0414fa9741aeade730c1a699d049573de3ad0ec3fd3a5348fcb1449785f5c668a77981d8808ea42e3e3b6178e15eb0735e9f',378217),
     }

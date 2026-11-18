@@ -44,7 +44,7 @@ python -c "import hashlib,pathlib; print(hashlib.sha256(pathlib.Path(r'D:\Downlo
 ## 4. Recorded user decisions that override a canonical line
 
 The authority order puts a latest explicit user decision above the canonical
-text. Two such overrides are live and must not be "repaired" back:
+text. Five such overrides are live and must not be "repaired" back:
 
 | Canonical line | Live decision | Evidence |
 |---|---|---|
@@ -52,6 +52,7 @@ text. Two such overrides are live and must not be "repaired" back:
 | Guardian ambush: grab-or-miss after a dodgeable warning | valid committed target is grabbed with 100 % success; miss animation is only for cancellation | Guardian specification section 6.5 itself records this as the latest override |
 | Guardian section 6.3: individual 90-active-second defence respawns | a genuinely killed cocoon defender is **permanently destroyed** for the encounter generation; the boss regeneration stops permanently once the cocoon breaks | `docs/end-rift/2026-11-11/MASTER_REBUILD_CONTRACT.md` says the user's newest decisions override older documents, "Remove the existing 90-second guardian respawn behavior", "Never respawn after being genuinely killed" and "The user explicitly wants a permanent final fight after the cocoon breaks" |
 | Wave 2 section 4.1/4.3: 45-second mark periods, at least two complete periods, no five-second group pauses | the mark transfers approximately every **20 seconds** while the current group is alive, three finite groups, approximately **5-second** pause after a cleared group, elite enemies only in the third group | `docs/end-rift/2026-11-11/MASTER_REBUILD_CONTRACT.md` Wave 2 section 3.1 lists exactly this behaviour and adds "Avoid changing the gameplay to an unrelated 45-second marker or endlessly spawning new groups" |
+| Wave 2 section 4.2: roughly **25-35** stable gray phantom Endermen for the marked client | approximately **70** client-only spectral Endermen with a **50** figure safe fallback, identical on server (`WaveTwoPhantomLayoutPolicy`) and client (`WaveTwoPhantomLayout`) | `docs/end-rift/2026-11-11/MASTER_REBUILD_CONTRACT.md` section 3.2 records the 35/25-versus-70/50 mismatch, states "The intended presentation is approximately 70 client-only spectral Endermen when the arena can support them", and requires "one compatible authoritative count contract" |
 
 Anything else that contradicts the canonical text is a defect, not a variant.
 

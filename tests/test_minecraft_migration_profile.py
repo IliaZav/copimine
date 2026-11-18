@@ -238,10 +238,15 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # classes (EchoAppearanceClock, EchoEyesFeature) and the eye texture, so the
     # jar moved. This pin was taken from a clean `gradle test jar` with the
     # pinned JDK and matched the CI build output byte for byte.
-    assert artifact['size'] == 30_249_251
+    # 19-November: the echo animation clocks became tick-gated instead of
+    # frame-gated (EchoAnimationTickGuard), the first frame no longer replays
+    # serial zero as a swing/hurt, and the body drain became an unconditional
+    # pass (EchoEyePassPlan). Repinned from a clean `gradle test jar` on the
+    # pinned JDK; the two new classes are in the archive.
+    assert artifact['size'] == 30_250_423
     assert artifact['sha512'] == (
-        'f7e6c42b2259d21803cb39007a702f03869f2f0b3dcacf13435fbdc1ad2d67d4'
-        '8c03429e3443bd04becd9accf5f439f80f5923643014f6484ad0646bc0373b6f'
+        '96947fa52c0faaa6b41a894e2fc04c3ccf6442c0e69be624589f07e4d5010046'
+        '38c5af337c8617f4309f648046f5aaecc5d10277b26a535caae56db51344c3ad'
     )
 
 

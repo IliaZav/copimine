@@ -62,10 +62,9 @@ public final class EchoVanillaRenderer {
     private static final class CachedView {
         final LivingEntity carrier;
         final EchoPlayerView player;
-        int lastAge = Integer.MIN_VALUE;
+        /** Collapses per-frame render calls into one advance per game tick. */
+        final EchoAnimationTickGuard animation = new EchoAnimationTickGuard();
         long lastSequence = Long.MIN_VALUE;
-        long lastSwingSerial = Long.MIN_VALUE;
-        long lastHurtSerial = Long.MIN_VALUE;
         boolean lastCrouching;
         boolean lastUsing;
         int lastDeath;
@@ -118,8 +117,7 @@ public final class EchoVanillaRenderer {
         PlayerSkin skin = selectSkin(STATE, ticket,
                 ownerEntry == null ? null : ownerEntry.getSkin(),
                 DefaultPlayerSkin.get(semantic.frame().owner()));
-        cached.player.project(carrier, semantic, skin, false);
-        driveVanillaAnimation(cached, semantic, carrier);
+        beginTick(cached, semantic, carrier, skin);
 
         long now = System.currentTimeMillis();
         cached.player.markAppeared(now);
@@ -152,6 +150,21 @@ public final class EchoVanillaRenderer {
     }
 
     /**
+     * Advance one echo view for the current game tick.
+     *
+     * <p>The client calls this from both the tick loop and the render pass, so
+     * the guard decides whether this call is the first for its tick. Gait and
+     * the hurt countdown must advance exactly once per tick; swing, use and
+     * crouch are idempotent edge comparisons that are safe to re-evaluate.</p>
+     */
+    private static void beginTick(CachedView cached, EchoPresentationState.View view,
+                                  LivingEntity carrier, PlayerSkin skin) {
+        boolean advanced = cached.animation.advance(carrier.tickCount);
+        cached.player.project(carrier, view, skin, advanced);
+        driveVanillaAnimation(cached, view, advanced);
+    }
+
+    /**
      * Advance the vanilla animation clocks exactly like {@code Player.tick}
      * would, but from server-authored receipts instead of a second simulation.
      *
@@ -160,19 +173,23 @@ public final class EchoVanillaRenderer {
      * view's own movement delta, a six-tick swing for each accepted melee hit,
      * a short hurt flash for each accepted incoming hit, and a crouch
      * transition that is not a teleport between poses.</p>
+     *
+     * <p>The per-tick clocks are gated by {@code advanced}: a render pass that
+     * runs several times inside one tick must not walk or bleed faster on a
+     * high-FPS client. Gait itself is advanced by the vanilla
+     * {@code calculateEntityAnimation} inside {@link EchoPlayerView#project},
+     * so there is a single gait owner.</p>
      */
     private static void driveVanillaAnimation(CachedView cached, EchoPresentationState.View view,
-                                              LivingEntity carrier) {
+                                              boolean advanced) {
         EchoPlayerView player = cached.player;
+        EchoAnimationTickGuard animation = cached.animation;
         var frame = view.frame();
-        int tick = player.tickCount;
 
-        // Vanilla gait: the walk clock advances once per tick with the horizontal
-        // speed exactly as LivingEntity.tick does, so the copy's legs, arms and
-        // idle sway come from the game's own animation curve.
-        float horizontalSpeed = (float) Math.sqrt(
-                player.getDeltaMovement().horizontalDistanceSqr());
-        player.walkAnimation.update(horizontalSpeed, 0.4F, (float) (tick - 1));
+        // Adopt the bind frame's serials before comparing: serial zero is the
+        // initial state, not a receipt, so a fresh copy must not swing or flash
+        // hurt the moment it appears.
+        animation.prime(frame.swingSerial(), frame.hurtSerial());
 
         // Crouch: vanilla owns the eye height and body lean transition.
         boolean crouching = frame.pose() == EchoPresentationState.Pose.CROUCHING;
@@ -182,8 +199,7 @@ public final class EchoVanillaRenderer {
         }
 
         // Swing: one swing per accepted melee/critical receipt.
-        if (frame.swingSerial() != cached.lastSwingSerial) {
-            cached.lastSwingSerial = frame.swingSerial();
+        if (animation.swingDue(frame.swingSerial())) {
             player.swing(net.minecraft.world.InteractionHand.MAIN_HAND,
                     net.minecraft.world.item.component.SwingAnimation.DEFAULT, true);
         }
@@ -203,17 +219,16 @@ public final class EchoVanillaRenderer {
         cached.lastUsing = using;
 
         // Hurt flash mirrors vanilla when a damage receipt arrives.
-        if (frame.hurtSerial() != cached.lastHurtSerial) {
-            cached.lastHurtSerial = frame.hurtSerial();
+        if (animation.hurtDue(frame.hurtSerial())) {
             player.hurtTime = HURT_TICKS;
             player.hurtDuration = HURT_TICKS;
         }
-        if (player.hurtTime > 0) player.hurtTime--;
+        // The flash decays once per game tick, never once per drawn frame.
+        if (advanced && player.hurtTime > 0) player.hurtTime--;
 
         int death = frame.deathTicks();
         cached.lastDeath = death;
         cached.lastSequence = frame.sequence();
-        cached.lastAge = tick;
     }
 
     private static void copyCarrierAnimation(LivingEntityRenderState source,
@@ -256,9 +271,7 @@ public final class EchoVanillaRenderer {
                 STATE.retire(entry.getKey());
             var semantic = STATE.view(entry.getKey(), dimension, nowMillis);
             if (semantic == null) return true;
-            cached.player.project(cached.carrier, semantic, null,
-                    cached.lastAge != cached.carrier.tickCount);
-            driveVanillaAnimation(cached, semantic, cached.carrier);
+            beginTick(cached, semantic, cached.carrier, null);
             return false;
         });
         // Iterate packet-owned identities only; never scan the client world.

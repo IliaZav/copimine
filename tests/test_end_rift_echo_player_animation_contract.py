@@ -136,7 +136,7 @@ def test_the_renderer_drives_vanilla_gait_swing_use_and_hurt_clocks():
     """These are the vanilla bookkeeping writes that make a mid-animation body."""
     text = renderer_source()
     required = {
-        "gait": r"player\.walkAnimation\.update\(",
+        "tick gate": r"animation\.advance\(carrier\.tickCount\)",
         "swing": r"player\.swing\(net\.minecraft\.world\.InteractionHand\.MAIN_HAND",
         "use start": r"player\.startUsingItem\(",
         "use stop": r"player\.stopUsingItem\(\)",
@@ -145,6 +145,25 @@ def test_the_renderer_drives_vanilla_gait_swing_use_and_hurt_clocks():
     }
     missing = [name for name, pattern in required.items() if not re.search(pattern, text)]
     assert not missing, f"the renderer never advances: {', '.join(missing)}"
+    # The per-frame render pass and the tick loop both call the drive method, so
+    # the hurt flash must decay behind the per-tick gate, not per drawn frame.
+    assert re.search(r"if \(advanced && player\.hurtTime > 0\) player\.hurtTime--;", text), (
+        "the hurt flash must decay once per game tick, not once per drawn frame"
+    )
+    # Gait has a single owner: the view's vanilla calculateEntityAnimation,
+    # itself gated by the same per-tick flag. A second per-frame walk update
+    # here is exactly the FPS-dependent gait this guards against.
+    view = view_source()
+    assert re.search(r"if \(animationTick\) \{", view), (
+        "the view must gate vanilla gait on a real animation tick"
+    )
+    assert "calculateEntityAnimation(false)" in view, (
+        "vanilla gait must be advanced by the game's own calculateEntityAnimation"
+    )
+    assert "walkAnimation.update(" not in text, (
+        "the renderer must not advance the walk clock per frame; byte-identical "
+        "gait at 60 and 144 FPS needs the per-tick projection"
+    )
 
 
 def test_the_renderer_renders_through_the_vanilla_player_renderer():
@@ -215,8 +234,17 @@ def test_the_eyes_light_up_gradually_and_stay_dark_at_first():
     assert "copimine$echoEyeGlow()" in eyes, (
         "the eye layer must read the glow"
     )
-    assert re.search(r"if \(glow <= 0\.02F\) return;", eyes), (
+    assert "EchoEyePassPlan.passes(glow)" in eyes, (
+        "the eye/body passes must come from the tested pass plan"
+    )
+    assert re.search(r"if \(EchoEyePassPlan\.includes\(passes, EchoEyePassPlan\.EYES\)\)", eyes), (
         "the eye pass must be skipped while the eyes are still dark"
+    )
+    assert re.search(r"if \(EchoEyePassPlan\.includes\(passes, EchoEyePassPlan\.BODY\)\)", eyes), (
+        "the body drain must be its own pass, independent of the eye glow"
+    )
+    assert "if (glow <= 0.02F) return;" not in eyes, (
+        "an early return before the body pass skips the drain on a fresh copy"
     )
     assert re.search(r"Math\.round\(255\.0F \* Math\.min\(1\.0F, glow\)\)", eyes), (
         "the eye tint alpha must ramp with the glow"

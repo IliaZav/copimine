@@ -352,11 +352,15 @@ function Install-PinnedToolArchive {
     $oldMoved = $false
     try {
         New-Item -ItemType Directory -Path $scratch -ErrorAction Stop | Out-Null
-        # No -Force: the scratch directory was just created empty, so overwrite
-        # semantics are unnecessary, and -Force makes Expand-Archive call the
-        # three-argument ExtractToDirectory overload that is absent on some
-        # Windows PowerShell / .NET Framework runners.
-        Expand-Archive -LiteralPath $archivePath -DestinationPath $scratch
+        # Extract with the two-argument ZipFile API instead of Expand-Archive.
+        # Windows PowerShell 5.1's Expand-Archive calls the three-argument
+        # ExtractToDirectory overload even without -Force, and that overload is
+        # absent from the .NET Framework build on some CI runners ("Cannot find
+        # an overload for ExtractToDirectory and the argument count: 3"). The
+        # two-argument overload exists everywhere, and the scratch directory is
+        # freshly created and empty, so no overwrite semantics are needed.
+        Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($archivePath, $scratch)
         $candidate = Join-Path $scratch $name
         $candidateExecutable = Join-Path $candidate $ExecutableRelativePath
         if (-not (Test-Path -LiteralPath $candidate -PathType Container) -or

@@ -312,6 +312,37 @@ def test_pinned_tool_archive_replaces_existing_extracted_cache(tmp_path):
     assert not list(tmp_path.glob('.gradle-9.8.0.previous-*'))
 
 
+def test_pinned_tool_extraction_uses_the_two_argument_zipfile_api():
+    """Expand-Archive breaks on runners without the three-argument overload.
+
+    Windows PowerShell 5.1's Expand-Archive calls
+    ``ZipFile.ExtractToDirectory(source, destination, overwrite)`` even without
+    ``-Force``. That overload is absent from the .NET Framework build on some
+    CI runners, where the whole contract job fails with "Cannot find an
+    overload for ExtractToDirectory and the argument count: 3". Pinning the
+    two-argument call keeps the installer portable; the scratch directory is
+    fresh and empty, so overwrite semantics are not needed.
+    """
+    text = SCRIPT.read_text('utf-8')
+    start = text.index('function Install-PinnedToolArchive')
+    next_function = text.find('\nfunction ', start + 10)
+    body = text[start:] if next_function < 0 else text[start: next_function]
+    assert 'ZipFile]::ExtractToDirectory($archivePath, $scratch)' in body, (
+        'the installer must extract with the universal two-argument ZipFile API'
+    )
+    assert 'ExtractToDirectory($archivePath, $scratch, ' not in body, (
+        'the three-argument overload is what fails on the CI runner'
+    )
+    # The comment above the call explains Expand-Archive; only the command
+    # form is forbidden, not the word in prose.
+    assert 'Expand-Archive -LiteralPath' not in body, (
+        'Expand-Archive may call the missing three-argument overload'
+    )
+    assert 'Expand-Archive -Path' not in body, (
+        'Expand-Archive may call the missing three-argument overload'
+    )
+
+
 def test_invalid_pinned_tool_archive_preserves_existing_extraction(tmp_path):
     archive = tmp_path / 'gradle.zip'
     archive.write_bytes(b'not the locked archive')

@@ -1,5 +1,7 @@
 package me.copimine.client;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import me.copimine.client.RiftGuardianModelRenderer.Phase;
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.model.geom.ModelPart;
@@ -26,22 +28,42 @@ public final class RiftGuardianModel extends EntityModel<LivingEntityRenderState
 
     private final ModelPart compatibilityRoot;
     private Phase phase = Phase.AWAKENING;
-    private String animationId = BossAnimationId.IDLE_BREATH.wireId();
     private float animationElapsedTicks = Float.NaN;
     private long transitionDurationMillis;
     private ChameleonGuardianGeometry.GuardianPose currentPose = ChameleonGuardianGeometry.GuardianPose.identity();
+
     /**
-     * Clip blending: the pose the previous clip left the rig in, the clip it
-     * came from, and how long the incoming clip takes to own the rig.
+     * Clip blending state for ONE body: the clip that owns the rig, the pose
+     * the previous clip left it in, and how long the incoming clip takes to
+     * own it.
      *
-     * <p>Without this every animation switch snapped: the boss could be
+     * <p>Without blending every animation switch snapped: the boss could be
      * mid-swing and teleport to the first frame of the next clip in a single
      * frame, which reads as a broken animation rather than a fast one.</p>
+     *
+     * <p>This state is per <em>body</em>, never per model, because one
+     * {@link RiftGuardianModel} is owned by one renderer instance and every
+     * Echo decoy is a Pillager on the single {@code PillagerRenderer}. With a
+     * single shared state the last submitted decoy decided the clip and the
+     * "previous pose" of the next one, so a decoy that was flinching could be
+     * drawn mostly in another decoy's idle pose - exactly the "obviously
+     * broken animations" contract 15.3 forbids as an accidental giveaway.</p>
      */
-    private ChameleonGuardianGeometry.GuardianPose blendFromPose = null;
-    private String blendFromAnimation = "";
-    private float blendElapsedTicks = Float.NaN;
-    private float blendDurationTicks = 0.0F;
+    private static final class ClipState {
+        private String animationId = BossAnimationId.IDLE_BREATH.wireId();
+        private ChameleonGuardianGeometry.GuardianPose blendFromPose;
+        private float blendDurationTicks;
+        private ChameleonGuardianGeometry.GuardianPose lastPose =
+                ChameleonGuardianGeometry.GuardianPose.identity();
+    }
+
+    /** Key for callers that do not own a body (tests and tooling). */
+    static final String DEFAULT_CLIP_KEY = "@default";
+    /** A party plus its echoes and replicas never needs more than this. */
+    private static final int MAX_CLIP_KEYS = 64;
+
+    private final Map<String, ClipState> clips = new LinkedHashMap<>();
+    private String activeClipKey = DEFAULT_CLIP_KEY;
 
     public RiftGuardianModel(ModelPart root) {
         super(root);
@@ -67,15 +89,50 @@ public final class RiftGuardianModel extends EntityModel<LivingEntityRenderState
      * rig so the transition can be blended instead of snapped.
      */
     public void setAnimation(String animationId) {
+        setAnimation(activeClipKey, animationId);
+    }
+
+    /**
+     * Selects the body the following {@link #setupAnim} call belongs to and
+     * switches its clip.
+     *
+     * @param clipKey stable per-body key (the entity UUID in production)
+     */
+    public void setAnimation(String clipKey, String animationId) {
+        setClipKey(clipKey);
         String canonical = BossAnimationId.canonicalWireId(animationId);
-        if (canonical.equals(this.animationId)) {
+        ClipState clip = clipFor(activeClipKey);
+        if (canonical.equals(clip.animationId)) {
             return;
         }
-        this.blendFromPose = this.currentPose;
-        this.blendFromAnimation = this.animationId;
-        this.blendElapsedTicks = 0.0F;
-        this.blendDurationTicks = UserEndBossAnimationPlayer.blendTicks(this.animationId, canonical);
-        this.animationId = canonical;
+        clip.blendFromPose = clip.lastPose;
+        clip.blendDurationTicks = UserEndBossAnimationPlayer.blendTicks(clip.animationId, canonical);
+        clip.animationId = canonical;
+    }
+
+    /** Points the model at the body the next {@link #setupAnim} will pose. */
+    public void setClipKey(String clipKey) {
+        this.activeClipKey = clipKey == null || clipKey.isBlank() ? DEFAULT_CLIP_KEY : clipKey;
+    }
+
+    String activeClipKey() {
+        return activeClipKey;
+    }
+
+    private ClipState clipFor(String key) {
+        ClipState clip = clips.get(key);
+        if (clip != null) {
+            return clip;
+        }
+        if (clips.size() >= MAX_CLIP_KEYS) {
+            // A long session must not grow this map without bound. Keys belong
+            // to living bodies, so clearing at the cap is safe: the next
+            // submission rebuilds its own clip from the identity pose.
+            clips.clear();
+        }
+        clip = new ClipState();
+        clips.put(key, clip);
+        return clip;
     }
 
     public void setAnimationElapsedTicks(float animationElapsedTicks) {
@@ -105,20 +162,22 @@ public final class RiftGuardianModel extends EntityModel<LivingEntityRenderState
 
     @Override
     public void setupAnim(LivingEntityRenderState state) {
+        ClipState clip = clipFor(activeClipKey);
         float clipProgress = Float.isFinite(animationElapsedTicks) ? animationElapsedTicks : state.ageInTicks;
-        ChameleonGuardianGeometry.GuardianPose target = UserEndBossAnimationPlayer.sample(animationId, clipProgress);
-        if (blendFromPose != null && blendDurationTicks > 0.0F && Float.isFinite(clipProgress)) {
-            float weight = Math.min(1.0F, clipProgress / blendDurationTicks);
+        ChameleonGuardianGeometry.GuardianPose target =
+                UserEndBossAnimationPlayer.sample(clip.animationId, clipProgress);
+        if (clip.blendFromPose != null && clip.blendDurationTicks > 0.0F && Float.isFinite(clipProgress)) {
+            float weight = Math.min(1.0F, clipProgress / clip.blendDurationTicks);
             // Ease out: the first frames move the most, which is what makes a
             // fast switch still read as a deliberate one.
             float eased = 1.0F - (1.0F - weight) * (1.0F - weight);
-            target = UserEndBossAnimationPlayer.blend(blendFromPose, target, eased);
+            target = UserEndBossAnimationPlayer.blend(clip.blendFromPose, target, eased);
             if (weight >= 1.0F) {
-                blendFromPose = null;
-                blendFromAnimation = "";
-                blendDurationTicks = 0.0F;
+                clip.blendFromPose = null;
+                clip.blendDurationTicks = 0.0F;
             }
         }
+        clip.lastPose = target;
         currentPose = target;
     }
 }

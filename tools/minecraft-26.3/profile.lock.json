@@ -19,8 +19,8 @@
   "clientArtifact": {
     "filename": "CopiMineClient-0.1.4+26.3.jar",
     "version": "0.1.4+26.3",
-    "size": 30250859,
-    "sha512": "0698329c0d7349217b6364a27ccbfdd5870cfa8746d4ac9ad0e87fe1dce978c1c2de0b9fc5a0ae76270d75b7783309e51556bfb0ac5847288abd3a86961dfed7"
+    "size": 30252055,
+    "sha512": "63db43fcd4a8503658f3a14f03f9c45d76c2aed7b62cc8b301b820ac620bbc4b8605e02c1ffefb46f1be229aa319015814e165edce75e9686279b63da2247ed9"
   },
   "paper": {
     "build": 205,

@@ -302,7 +302,7 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity,
             // the decoy fell through and vanilla drew a small brown illager
             // where the contract asks for a copy of the Guardian. Selecting the
             // Guardian model here makes the decoy look like the boss it imitates.
-            selected = copimine$guardianRenderer.modelForPhase(bound.copimine$bossPhase(),
+            selected = copimine$guardianRenderer.modelForPhase(uuid, bound.copimine$bossPhase(),
                     bound.copimine$bossPhaseTransitionMillis(), bound.copimine$bossAnimation(),
                     ClientBridgeProtocol.bossAnimationElapsedTicksForEntity(uuid, System.currentTimeMillis()));
         } else if (state instanceof EndermanRenderState && getModel() instanceof EndermanModel<?>) {
@@ -313,7 +313,7 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity,
                 decision = EndermanRendererSelection.select(uuid, uuid, texture,
                         EndEventTextureCatalog.isAvailable(texture));
                 if (decision.usesGuardianModel()) {
-                    selected = copimine$guardianRenderer.modelForPhase(bound.copimine$bossPhase(),
+                    selected = copimine$guardianRenderer.modelForPhase(uuid, bound.copimine$bossPhase(),
                             bound.copimine$bossPhaseTransitionMillis(), bound.copimine$bossAnimation(),
                             ClientBridgeProtocol.bossAnimationElapsedTicksForEntity(uuid, System.currentTimeMillis()));
                 }
@@ -328,7 +328,7 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity,
                     // Guardian to the ordinary event Enderman model, so the boss
                     // rendering as "just an Enderman" was a client-side defect,
                     // not a server one. The guardian branch must win here too.
-                    selected = copimine$guardianRenderer.modelForPhase(bound.copimine$bossPhase(),
+                    selected = copimine$guardianRenderer.modelForPhase(uuid, bound.copimine$bossPhase(),
                             bound.copimine$bossPhaseTransitionMillis(), bound.copimine$bossAnimation(),
                             ClientBridgeProtocol.bossAnimationElapsedTicksForEntity(uuid, System.currentTimeMillis()));
                 } else if (decision.usesCustomModel()) {

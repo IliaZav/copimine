@@ -74,6 +74,29 @@ def test_the_guardian_model_is_selectable_from_more_than_one_render_state():
     )
 
 
+def test_each_guardian_route_keys_the_clip_to_its_own_body():
+    """One model instance serves the boss and every Pillager decoy.
+
+    The clip and blend state now live per body key, so every route that selects
+    the Guardian model has to pass the owning entity's UUID. Without a key the
+    renderer would fall back to the shared default and one decoy would animate
+    with another decoy's clip.
+    """
+    text = source()
+    routes = text.count("copimine$guardianRenderer.modelForPhase(")
+    keyed = text.count("copimine$guardianRenderer.modelForPhase(uuid,")
+    assert routes >= 2 and keyed == routes, (
+        "every Guardian route must pass the body key: " + str(keyed) + " of "
+        + str(routes) + " routes do"
+    )
+
+    renderer = (ROOT / "tools/minecraft-26.3/client/src/main/java/me/copimine/client"
+                / "RiftGuardianModelRenderer.java").read_text("utf-8")
+    assert "model.setAnimation(clipKey" in renderer, (
+        "the renderer must forward the per-body key into the model clip state"
+    )
+
+
 def test_both_echo_visual_ids_route_to_the_guardian():
     """A copy and a decoy are different ids and both wear the Guardian body."""
     mixin = source()

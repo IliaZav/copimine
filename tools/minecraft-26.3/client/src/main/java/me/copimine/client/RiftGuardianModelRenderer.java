@@ -16,8 +16,21 @@ public final class RiftGuardianModelRenderer {
 
     public RiftGuardianModel modelForPhase(String phaseId, long transitionDurationMillis,
                                            String animationId, float animationElapsedTicks) {
+        return modelForPhase(null, phaseId, transitionDurationMillis, animationId, animationElapsedTicks);
+    }
+
+    /**
+     * Selects the model for one concrete body.
+     *
+     * @param clipKey stable per-body key (the entity UUID in production). One
+     *                model instance is shared by every entity a renderer draws,
+     *                so the clip and blend state must be keyed per body or one
+     *                decoy animates with another decoy's clip.
+     */
+    public RiftGuardianModel modelForPhase(String clipKey, String phaseId, long transitionDurationMillis,
+                                           String animationId, float animationElapsedTicks) {
         model.setPhase(Phase.fromWireId(phaseId), transitionDurationMillis);
-        model.setAnimation(normalizeAnimationId(animationId));
+        model.setAnimation(clipKey, normalizeAnimationId(animationId));
         model.setAnimationElapsedTicks(animationElapsedTicks);
         return model;
     }

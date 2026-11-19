@@ -562,15 +562,24 @@ public final class EndEventClientState {
                     || frame.cast() == old.frame().cast() && frame.action() != old.frame().action())) return false;
             if (old != null && frame.cast() == old.frame().cast()
                     && old.frame().elapsedAt(nowMillis-old.receivedAt()) > frame.elapsedMillis()) return true;
-            // A looping decoy cue is renewed under a new cast every ten
-            // seconds. Keep the time already played so the idle breath or run
-            // cycle continues from the same phase instead of popping back to
-            // its first frame once the cap expires.
-            long loopPhase = 0L;
-            if (old != null && frame.action() == old.frame().action()
+            // A looping decoy cue is renewed under a NEW cast every ten seconds
+            // (the wire cap), carrying elapsed zero. Keep the time already
+            // played so the idle breath or run cycle continues from the same
+            // phase instead of popping back to its first frame.
+            //
+            // Between renewals the server sends heartbeats under the SAME cast
+            // with an advancing elapsed. Those must not accumulate the phase:
+            // the frame's own elapsed already advances, so adding the previous
+            // segment again would double-count and run the clip fast.
+            long loopPhase = old == null ? 0L : old.loopPhaseMillis();
+            if (old != null && frame.cast() != old.frame().cast()
+                    && frame.action() == old.frame().action()
                     && loopsGuardianAction(frame.action())) {
                 loopPhase = old.loopPhaseMillis()
                         + old.frame().elapsedAt(nowMillis - old.receivedAt());
+            } else if (old != null && frame.action() != old.frame().action()) {
+                // A genuinely new action drops the carried phase.
+                loopPhase = 0L;
             }
             guardianActors.put(packet.subjectId(),
                     new GuardianActorBinding(frame, nowMillis, loopPhase));

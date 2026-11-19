@@ -240,13 +240,16 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # pinned JDK and matched the CI build output byte for byte.
     # 19-November: the echo animation clocks became tick-gated instead of
     # frame-gated (EchoAnimationTickGuard), the first frame no longer replays
-    # serial zero as a swing/hurt, and the body drain became an unconditional
-    # pass (EchoEyePassPlan). Repinned from a clean `gradle test jar` on the
-    # pinned JDK; the two new classes are in the archive.
-    assert artifact['size'] == 30_252_249
+    # serial zero as a swing/hurt, the body drain became an unconditional pass
+    # (EchoEyePassPlan), the Guardian copy pose is captured per submission, the
+    # Guardian clip/blend state is keyed per body, and a decoy's looping actor
+    # cue now carries its played phase across a cast rollover (but never on a
+    # same-cast heartbeat). Repinned from a clean `gradle test jar` on the
+    # pinned JDK.
+    assert artifact['size'] == 30_252_288
     assert artifact['sha512'] == (
-        '4432593280be7a7a0131aafb705bbcef531f8f686703556eaad0452e8759'
-        'a8a27f5f3a9e27a1d354be66c593e06af2cc6c5c9d17442009927db1bbbec808a95d'
+        '3205690d5482a373b33e7034337ddf16647517860130afea72816349b0f2'
+        '0cc23a0c4b9bb55f2b5b5b4929e37f09882e1d32581086ad0dd88cf2fdd912182097'
     )
 
 

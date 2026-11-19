@@ -247,6 +247,38 @@ class EndEventClientStateTest {
         assertEquals(0L, state.bossAnimationElapsedMillisForEntity("decoy", 2_000L));
     }
 
+    @Test
+    void sameCastHeartbeatsDoNotDoubleCountTheLoopClock() {
+        // The server heartbeats a decoy's looping cue every ten ticks under the
+        // SAME cast with an advancing elapsed. Only a cast change is a
+        // rollover; adding the phase on every heartbeat would run the clip
+        // faster than real time.
+        EndEventClientState state = new EndEventClientState();
+        assertTrue(state.apply(guardianBind("decoy", "decoy-instance"), 0L));
+        assertTrue(state.apply(guardianActor("decoy", "decoy-instance",
+                "GACT1|RUN|10|0|10000"), 0L));
+        assertEquals(0L, state.bossAnimationElapsedMillisForEntity("decoy", 0L));
+
+        // Five heartbeats inside one cast: the clock must track the cue's own
+        // elapsed, not accumulate each previous segment.
+        assertTrue(state.apply(guardianActor("decoy", "decoy-instance",
+                "GACT1|RUN|10|500|10000"), 500L));
+        assertEquals(500L, state.bossAnimationElapsedMillisForEntity("decoy", 500L));
+        assertTrue(state.apply(guardianActor("decoy", "decoy-instance",
+                "GACT1|RUN|10|1000|10000"), 1_000L));
+        assertEquals(1_000L, state.bossAnimationElapsedMillisForEntity("decoy", 1_000L));
+        assertTrue(state.apply(guardianActor("decoy", "decoy-instance",
+                "GACT1|RUN|10|1500|10000"), 1_500L));
+        assertEquals(1_500L, state.bossAnimationElapsedMillisForEntity("decoy", 1_500L));
+        assertEquals(2_000L, state.bossAnimationElapsedMillisForEntity("decoy", 2_000L));
+
+        // A genuine ten-second rollover then adds exactly one segment.
+        assertTrue(state.apply(guardianActor("decoy", "decoy-instance",
+                "GACT1|RUN|20|0|10000"), 10_000L));
+        assertEquals(10_000L, state.bossAnimationElapsedMillisForEntity("decoy", 10_000L));
+        assertEquals(10_500L, state.bossAnimationElapsedMillisForEntity("decoy", 10_500L));
+    }
+
     private static EndEventPacket guardianBind(String subject, String instance) {
         return new EndEventPacket("END_ENTITY_BIND", "test-event", 1L, instance,
                 0L, subject, "END_RIFT_ECHO_DECOY_V1", "", "");

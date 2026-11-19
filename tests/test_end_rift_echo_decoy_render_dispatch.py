@@ -311,6 +311,14 @@ def test_a_renewed_looping_decoy_cue_keeps_its_played_phase():
     assert "old.loopPhaseMillis()" in text and "elapsedAt(nowMillis - old.receivedAt())" in text, (
         "the renewal must continue from the previously played time"
     )
+    # A same-cast heartbeat already advances the frame's own elapsed. Carrying
+    # the phase on those too would double-count and run the clip fast, so the
+    # carry must be gated on a genuine cast change.
+    carry_at = text.index("long loopPhase = old == null ? 0L : old.loopPhaseMillis();")
+    carry_body = text[carry_at: text.index("guardianActors.put(", carry_at)]
+    assert "frame.cast() != old.frame().cast()" in carry_body, (
+        "the phase may only be carried when the cast actually rolls over"
+    )
     elapsed_at = text.index("public synchronized long bossAnimationElapsedMillisForEntity(")
     elapsed_body = text[elapsed_at: text.index("\n    }", elapsed_at)]
     assert "loopPhaseMillis() +" in elapsed_body, (

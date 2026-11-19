@@ -159,13 +159,52 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity,
                                                   Object state, PoseStack matrices, RenderType renderType,
                                                   int light, int overlay, int color, UvMapping uvMapping,
                                                   int outlineColor) {
-        if (model instanceof RiftGuardianModel guardian && state instanceof EndermanRenderState) {
-            me.copimine.client.ChameleonGuardianRenderer.submit(collector, matrices, renderType,
+        // Keyed on the MODEL, not on the render-state class. An Echo decoy is a
+        // Pillager, so its state is an IllagerRenderState; requiring
+        // EndermanRenderState here left the Guardian mesh out of the decoy and
+        // let vanilla submit the (invisible) compatibility carrier instead.
+        if (model instanceof RiftGuardianModel guardian
+                && state instanceof LivingEntityRenderState livingState) {
+            // The Enderman boss route already carries the Guardian texture
+            // through its renderer; every other entity type (Pillager decoy,
+            // echo replica) renders with its own texture, so the authored boss
+            // skin has to be supplied here or the body draws with wrong UVs.
+            RenderType type = state instanceof EndermanRenderState
+                    ? renderType
+                    : net.minecraft.client.renderer.rendertype.RenderTypes.entityCutout(
+                            me.copimine.client.RiftGuardianModelRenderer.bossTexture());
+            // Layers are suppressed for these carriers (see
+            // copimine$suppressGuardianCarrierLayers), so the pose that would
+            // normally be advanced by LivingEntityRenderer.submit is advanced
+            // here, immediately before the geometry is emitted.
+            guardian.setupAnim(livingState);
+            me.copimine.client.ChameleonGuardianRenderer.submit(collector, matrices, type,
                     light, overlay, color, guardian);
             return;
         }
         collector.submitModel(model, state, matrices, renderType, light, overlay, color,
                 uvMapping, outlineColor);
+    }
+
+    /**
+     * A Guardian body carried by something that is not an Enderman must not run
+     * the carrier's layers.
+     *
+     * <p>A Pillager decoy extracts an {@code IllagerRenderState}, and the
+     * illager layers cast {@code getParentModel()} to {@code IllagerModel}. The
+     * shared Guardian model is not one, so running them threw
+     * {@code ClassCastException} once per decoy per frame. The authored body is
+     * the whole visible decoy, so its layers are skipped deliberately.</p>
+     */
+    @Inject(method = "shouldRenderLayers(Lnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;)Z",
+            at = @At("HEAD"), cancellable = true)
+    private void copimine$suppressGuardianCarrierLayers(LivingEntityRenderState state,
+                                                        CallbackInfoReturnable<Boolean> cir) {
+        if (state instanceof EndermanRenderState) return;
+        if (state instanceof EndRiftRenderStateAccess bound
+                && copimine$wearsGuardianBody(bound.copimine$visual())) {
+            cir.setReturnValue(false);
+        }
     }
 
     @Inject(method = "scale(Lnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;)V",

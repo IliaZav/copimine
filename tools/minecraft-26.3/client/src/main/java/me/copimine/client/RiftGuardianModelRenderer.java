@@ -26,6 +26,16 @@ public final class RiftGuardianModelRenderer {
         return textureForState(phaseId, "IDLE_BREATH");
     }
 
+    /**
+     * The single authored boss skin. Exposed for render paths that reach the
+     * Guardian body from an entity type whose own renderer supplies a different
+     * texture (a Pillager decoy, for example), so the body keeps one skin
+     * instead of being drawn with the carrier's UV atlas.
+     */
+    public static Identifier bossTexture() {
+        return texture("end_rift_user_boss.png");
+    }
+
     public Identifier textureForState(String phaseId, String animationId) {
         // The phase changes are carried by the server animation/VFX state;
         // the supplied boss mesh and its 128x128 skin remain the single

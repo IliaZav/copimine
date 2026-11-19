@@ -107,3 +107,82 @@ def test_a_guardian_identity_check_covers_the_decoy():
     assert "copimine$visual()" in body, (
         "the predicate must consider the bound visual id, not only the boss flag"
     )
+
+
+MODEL = (ROOT / "tools/minecraft-26.3/client/src/main/java/me/copimine/client"
+         / "RiftGuardianModel.java")
+
+
+def test_the_guardian_body_accepts_a_pillager_carrier():
+    """A decoy is a Pillager, so its state is an IllagerRenderState.
+
+    ``Model.setupAnim`` is invoked through the erased ``setupAnim(Object)``
+    bridge. While the model was typed to ``EndermanRenderState`` that bridge
+    cast the illager state and threw ``ClassCastException`` once per decoy per
+    frame. Typing the body to the base ``LivingEntityRenderState`` removes the
+    narrowing that made a Pillager carrier illegal.
+    """
+    text = MODEL.read_text("utf-8")
+    declaration = text[text.index("public final class RiftGuardianModel"):]
+    declaration = declaration[: declaration.index("{")]
+    assert "extends EntityModel<LivingEntityRenderState>" in declaration, (
+        "the Guardian body must accept every living render state, not only an "
+        "Enderman one; a Pillager carrier otherwise fails the model bridge"
+    )
+    assert "EndermanModel" not in declaration, (
+        "no Guardian-body declaration may inherit the Enderman-only model"
+    )
+    assert "setupAnim(LivingEntityRenderState" in text, (
+        "the pose advance must be defined for the base living render state"
+    )
+    assert "setupAnim(EndermanRenderState" not in text, (
+        "a narrowed setupAnim would cast a Pillager carrier again"
+    )
+
+
+def test_the_guardian_mesh_is_submitted_for_every_living_carrier():
+    """The body submission must be keyed on the model, not the carrier type."""
+    text = source()
+    start = text.index("private void copimine$submitImportedGuardian(")
+    body = text[start: text.index("collector.submitModel(model, state, matrices, renderType", start)]
+    assert "model instanceof RiftGuardianModel" in body, (
+        "the guardian mesh must be selected by model identity"
+    )
+    assert "state instanceof LivingEntityRenderState" in body, (
+        "any living carrier (Enderman, Pillager, player view) must be able to "
+        "submit the authored body"
+    )
+    assert "state instanceof EndermanRenderState" not in body.replace(
+        "state instanceof EndermanRenderState\n                    ?", ""
+    )
+    # The Enderman texture route is kept, but it may not gate the submission.
+    submission_gate = body.split("RiftGuardianModel guardian", 1)[1].split("\n", 1)[0]
+    assert "EndermanRenderState" not in submission_gate, (
+        "the guardian mesh must not be submitted only for EndermanRenderState"
+    )
+    assert "ChameleonGuardianRenderer.submit" in body, (
+        "the authored mesh is the only visible body of a pilfered carrier"
+    )
+    assert "setupAnim(livingState)" in body, (
+        "the suppressed carrier layers no longer advance the pose, so the "
+        "submission path must advance it before emitting geometry"
+    )
+
+
+def test_carrier_layers_are_suppressed_for_a_pillager_guardian_body():
+    """Illager layers cast getParentModel() to IllagerModel; that must not run."""
+    text = source()
+    assert 'shouldRenderLayers(Lnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;)Z' in text, (
+        "the shared renderer must intercept the layer gate"
+    )
+    start = text.index("copimine$suppressGuardianCarrierLayers(")
+    body = text[start: text.index("\n    }", start)]
+    assert "setReturnValue(false)" in body, (
+        "a Guardian body on a non-Enderman carrier must skip that carrier's layers"
+    )
+    assert "copimine$wearsGuardianBody" in body, (
+        "the layer gate must use the same Guardian-body list as model selection"
+    )
+    assert "EndermanRenderState" in body, (
+        "the boss Enderman path keeps its layers, so it must be excluded"
+    )

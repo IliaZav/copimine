@@ -1,20 +1,26 @@
 package me.copimine.client;
 
 import me.copimine.client.RiftGuardianModelRenderer.Phase;
-import net.minecraft.client.model.monster.enderman.EndermanModel;
+import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.model.geom.builders.LayerDefinition;
-import net.minecraft.client.renderer.entity.state.EndermanRenderState;
+import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 
 /**
- * Enderman renderer adapter for the UUID-bound End Rift guardian.
+ * Renderer adapter for the authored End Rift Guardian body.
  *
- * <p>The superclass keeps the Enderman renderer's type contract intact. Its
- * {@link ModelPart} tree is only a compatibility carrier. The exact Chameleon
- * source mesh is queued through the 26.3 deferred collector by the renderer
- * adapter instead of overriding the now-final immediate model draw method.</p>
+ * <p>The model is typed to the base {@link LivingEntityRenderState}, not to
+ * {@code EndermanRenderState}. The Guardian body is worn by an Enderman (the
+ * boss) and by Pillager carriers (echo decoys and replicas), so a narrower type
+ * made the model's bridge method cast an {@code IllagerRenderState} to
+ * {@code EndermanRenderState} and throw once per decoy per frame.</p>
+ *
+ * <p>The exact Chameleon source mesh is queued through the 26.3 deferred
+ * collector by the renderer adapter instead of overriding the now-final
+ * immediate model draw method. The vanilla {@link ModelPart} tree is only a
+ * compatibility carrier and is kept invisible.</p>
  */
-public final class RiftGuardianModel extends EndermanModel<EndermanRenderState> {
+public final class RiftGuardianModel extends EntityModel<LivingEntityRenderState> {
     static final int TEXTURE_SIZE = UserEndBossModelData.TEXTURE_WIDTH;
     static final String USER_MODEL_RESOURCE = UserEndBossModelData.RESOURCE;
 
@@ -98,7 +104,7 @@ public final class RiftGuardianModel extends EndermanModel<EndermanRenderState> 
     }
 
     @Override
-    public void setupAnim(EndermanRenderState state) {
+    public void setupAnim(LivingEntityRenderState state) {
         float clipProgress = Float.isFinite(animationElapsedTicks) ? animationElapsedTicks : state.ageInTicks;
         ChameleonGuardianGeometry.GuardianPose target = UserEndBossAnimationPlayer.sample(animationId, clipProgress);
         if (blendFromPose != null && blendDurationTicks > 0.0F && Float.isFinite(clipProgress)) {

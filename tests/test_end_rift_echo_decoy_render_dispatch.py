@@ -278,3 +278,41 @@ def test_a_copy_is_visibly_learnable_without_a_fake_label():
     assert "0xFFFFFFFF" not in tint_line, (
         "an identity tint would hide the clue completely"
     )
+
+
+CLIENT_STATE = (ROOT / "tools/minecraft-26.3/client/src/main/java/me/copimine/client"
+                / "EndEventClientState.java")
+
+
+def test_a_renewed_looping_decoy_cue_keeps_its_played_phase():
+    """Contract 15.3: a decoy may not reveal itself with broken animation.
+
+    The server caps one actor cue at ten seconds, so a decoy that is idling or
+    running has its cue renewed under a new cast every ten seconds. If the
+    client restarts the clip clock at that renewal, the idle breath or run
+    cycle pops back to its first frame once every ten seconds on every copy.
+    ``GuardianActorFrame`` has no loop flag, so the client must recognise the
+    two looping actions itself and carry the played time across the renewal.
+    """
+    text = CLIENT_STATE.read_text("utf-8")
+    assert "loopsGuardianAction" in text, (
+        "the client must know which actions loop; without that a renewed cue "
+        "restarts the loop mid-cycle"
+    )
+    start = text.index("private static boolean loopsGuardianAction(")
+    body = text[start: text.index("\n    }", start)]
+    assert "IDLE_BREATH" in body, (
+        "idle is a looping clip and must be covered"
+    )
+    assert "RUN" in body, "the run cycle is a looping clip and must be covered"
+    assert "loopPhaseMillis" in text, (
+        "the binding must remember the time already played across a renewal"
+    )
+    assert "old.loopPhaseMillis()" in text and "elapsedAt(nowMillis - old.receivedAt())" in text, (
+        "the renewal must continue from the previously played time"
+    )
+    elapsed_at = text.index("public synchronized long bossAnimationElapsedMillisForEntity(")
+    elapsed_body = text[elapsed_at: text.index("\n    }", elapsed_at)]
+    assert "loopPhaseMillis() +" in elapsed_body, (
+        "the renderer clock must include the carried loop phase"
+    )

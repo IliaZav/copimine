@@ -206,6 +206,57 @@ class EndEventClientStateTest {
                 durationMillis, "", "", "", "");
     }
 
+    @Test
+    void aLoopingDecoyCueRenewedUnderANewCastKeepsItsPlayedPhase() {
+        EndEventClientState state = new EndEventClientState();
+        assertTrue(state.apply(guardianBind("decoy", "decoy-instance"), 1_000L));
+        assertTrue(state.apply(guardianActor("decoy", "decoy-instance",
+                "GACT1|IDLE_BREATH|0|5000|10000"), 1_000L));
+        assertEquals(5_000L, state.bossAnimationElapsedMillisForEntity("decoy", 1_000L));
+
+        // The server caps one cue at ten seconds; at the cap it renews the
+        // same action under the next cast with elapsed zero.
+        assertTrue(state.apply(guardianActor("decoy", "decoy-instance",
+                "GACT1|IDLE_BREATH|1|0|10000"), 6_000L));
+        assertEquals(10_000L, state.bossAnimationElapsedMillisForEntity("decoy", 6_000L),
+                "the loop must continue where it stopped instead of popping to frame zero");
+        assertEquals(10_500L, state.bossAnimationElapsedMillisForEntity("decoy", 6_500L));
+
+        // A second rollover keeps accumulating, so a long idle never snaps.
+        assertTrue(state.apply(guardianActor("decoy", "decoy-instance",
+                "GACT1|IDLE_BREATH|2|0|10000"), 11_000L));
+        assertEquals(15_000L, state.bossAnimationElapsedMillisForEntity("decoy", 11_000L));
+
+        // A genuinely new action starts at zero and drops the loop phase.
+        assertTrue(state.apply(guardianActor("decoy", "decoy-instance",
+                "GACT1|HURT|3|0|10000"), 11_500L));
+        assertEquals(0L, state.bossAnimationElapsedMillisForEntity("decoy", 11_500L));
+        assertEquals(500L, state.bossAnimationElapsedMillisForEntity("decoy", 12_000L));
+    }
+
+    @Test
+    void aOneShotCueIsNeverTreatedAsALoopRollover() {
+        EndEventClientState state = new EndEventClientState();
+        assertTrue(state.apply(guardianBind("decoy", "decoy-instance"), 1_000L));
+        assertTrue(state.apply(guardianActor("decoy", "decoy-instance",
+                "GACT1|SPELL_RIFT_ARROWS|0|4000|10000"), 1_000L));
+        // Same action, new cast: this is a repeated cast, not a loop, so the
+        // clip is allowed to restart from its first frame.
+        assertTrue(state.apply(guardianActor("decoy", "decoy-instance",
+                "GACT1|SPELL_RIFT_ARROWS|1|0|10000"), 2_000L));
+        assertEquals(0L, state.bossAnimationElapsedMillisForEntity("decoy", 2_000L));
+    }
+
+    private static EndEventPacket guardianBind(String subject, String instance) {
+        return new EndEventPacket("END_ENTITY_BIND", "test-event", 1L, instance,
+                0L, subject, "END_RIFT_ECHO_DECOY_V1", "", "");
+    }
+
+    private static EndEventPacket guardianActor(String subject, String instance, String cue) {
+        return new EndEventPacket("END_ENTITY_PHASE", "test-event", 1L, instance,
+                1000L, subject, "", cue, "");
+    }
+
     private static EndEventPacket bind(String subject, String instance) {
         return new EndEventPacket("END_ENTITY_BIND", "test-event", 1L, instance,
                 0L, subject, "END_RIFT_ENDERMAN_V1", "", "");

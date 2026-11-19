@@ -30,8 +30,21 @@ public final class EndEventClientState {
     private final Map<String, EntityAnimationBinding> entityAnimations = new HashMap<>();
     private record TrialBinding(me.copimine.protocol.Wave7AnimationFrame frame, long receivedAt) { }
     private final Map<String, TrialBinding> trialAnimations = new HashMap<>();
-    private record GuardianActorBinding(me.copimine.protocol.GuardianActorFrame frame, long receivedAt) { }
+    /**
+     * One decoy's actor clock. The server caps a cue at ten seconds, so a
+     * looping idle/run clip is re-sent under a new cast every ten seconds.
+     * {@code loopPhaseMillis} carries the wall time already played so that
+     * rollover continues the loop instead of restarting it mid-breath.
+     */
+    private record GuardianActorBinding(me.copimine.protocol.GuardianActorFrame frame, long receivedAt,
+                                        long loopPhaseMillis) { }
     private final Map<String, GuardianActorBinding> guardianActors = new HashMap<>();
+
+    /** The two authored clips that loop; a rollover of these must not snap. */
+    private static boolean loopsGuardianAction(me.copimine.protocol.GuardianActorFrame.Action action) {
+        return action == me.copimine.protocol.GuardianActorFrame.Action.IDLE_BREATH
+                || action == me.copimine.protocol.GuardianActorFrame.Action.RUN;
+    }
 
     public synchronized me.copimine.protocol.Wave7AnimationFrame trialFrame(String uuid, long now) {
         TrialBinding cue = trialAnimations.get(uuid);
@@ -387,7 +400,9 @@ public final class EndEventClientState {
             return 0L;
         }
         GuardianActorBinding actor = guardianActors.get(uuid);
-        if (actor != null) return actor.frame().elapsedAt(nowMillis - actor.receivedAt());
+        if (actor != null) {
+            return actor.loopPhaseMillis() + actor.frame().elapsedAt(nowMillis - actor.receivedAt());
+        }
         BossPhaseBinding binding = bossPhase.get(uuid);
         if (binding == null) {
             return 0L;
@@ -547,7 +562,18 @@ public final class EndEventClientState {
                     || frame.cast() == old.frame().cast() && frame.action() != old.frame().action())) return false;
             if (old != null && frame.cast() == old.frame().cast()
                     && old.frame().elapsedAt(nowMillis-old.receivedAt()) > frame.elapsedMillis()) return true;
-            guardianActors.put(packet.subjectId(), new GuardianActorBinding(frame, nowMillis));
+            // A looping decoy cue is renewed under a new cast every ten
+            // seconds. Keep the time already played so the idle breath or run
+            // cycle continues from the same phase instead of popping back to
+            // its first frame once the cap expires.
+            long loopPhase = 0L;
+            if (old != null && frame.action() == old.frame().action()
+                    && loopsGuardianAction(frame.action())) {
+                loopPhase = old.loopPhaseMillis()
+                        + old.frame().elapsedAt(nowMillis - old.receivedAt());
+            }
+            guardianActors.put(packet.subjectId(),
+                    new GuardianActorBinding(frame, nowMillis, loopPhase));
             return true;
         }
         if (packet.phaseId().startsWith("TRIAL1|")) {

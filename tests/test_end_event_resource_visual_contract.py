@@ -46,6 +46,10 @@ TENTACLE_SCALING_POLICY = (
     ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "endevent"
     / "domain" / "TentacleScalingPolicy.java"
 )
+CLIENT_TENTACLE_SCALE_POLICY = (
+    ROOT / "tools" / "minecraft-26.3" / "client" / "src" / "main" / "java"
+    / "me" / "copimine" / "client" / "EndRiftTentacleWorldScalePolicy.java"
+)
 
 
 def _read_json(relative: str) -> dict:
@@ -448,6 +452,45 @@ def test_configured_tentacle_hitbox_covers_the_full_authored_rig_length():
     target = CLIENT_ENTITY_TEXTURES / "end_rift_user_skeleton.png"
     assert SUPPLIED_SKELETON.is_file() and target.is_file()
     assert hashlib.sha256(target.read_bytes()).hexdigest() == hashlib.sha256(SUPPLIED_SKELETON.read_bytes()).hexdigest()
+
+
+def test_rendered_tentacle_height_stays_inside_the_canonical_band():
+    """K04: the canonical Kagune is 4.5-5 blocks high, not the old 6.25 guide.
+
+    The authored rig height is read from the imported geometry instead of a
+    magic literal. The renderer must land the rig inside the agreed band, while
+    the server logical length stays a deliberately larger pose-safe envelope so
+    every posed segment remains hittable.
+    """
+    geometry = json.loads(KAGUNE_IMPORT.read_text(encoding="utf-8"))
+    authored_height = max(
+        value[1] for element in geometry["elements"]
+        for value in (element["from"], element["to"])
+    ) - min(
+        value[1] for element in geometry["elements"]
+        for value in (element["from"], element["to"])
+    )
+    assert authored_height > 0.0, "the imported Kagune rig must have a height"
+
+    client = CLIENT_TENTACLE_SCALE_POLICY.read_text(encoding="utf-8")
+    length_scale = re.search(
+        r"BASE_LENGTH_RENDER_SCALE\s*=\s*([0-9]+(?:\.[0-9]+)?)F", client
+    )
+    assert length_scale, "the client length scale must stay explicit"
+    rendered_blocks = authored_height * float(length_scale.group(1))
+    assert 4.5 <= rendered_blocks <= 5.0, (
+        f"the rendered tentacle is {rendered_blocks:.3f} blocks, outside the "
+        "canonical 4.5-5 block band"
+    )
+
+    server = TENTACLE_SCALING_POLICY.read_text(encoding="utf-8")
+    logical_length = re.search(
+        r"DEFAULT_LOGICAL_LENGTH\s*=\s*([0-9]+(?:\.[0-9]+)?)D", server
+    )
+    assert logical_length, "the server logical length must stay explicit"
+    assert float(logical_length.group(1)) >= rendered_blocks, (
+        "the server attack envelope must contain the full rendered rig"
+    )
 
 
 def test_generated_mob_faces_put_eyes_on_the_visible_front_uv_islands():

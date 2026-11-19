@@ -74,6 +74,33 @@ def test_portal_layer_lifecycle(portal_probe, scenario):
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_portal_displays_keep_the_authored_yaw_with_a_fixed_billboard():
+    """W304: the display must inherit the captured portal yaw, not face zero.
+
+    A Display.Billboard.CENTER display ignores the entity yaw, so the fixed
+    billboard is what carries the authored orientation. The spawn transform is
+    translation and scale only; the per-frame idle spin is applied additively
+    around Y and never replaces the captured yaw.
+    """
+    source = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(
+        encoding="utf-8"
+    )
+    origin = declaration(source, "private Location portalDisplayOrigin(")
+    spawn = declaration(source, "private ItemDisplay spawnPortalModelLayer(")
+
+    assert "portal.getYaw()" in origin and "portal.getPitch()" in origin, (
+        "the display origin must keep the captured portal orientation"
+    )
+    assert "entity.setBillboard(Display.Billboard.FIXED)" in spawn, (
+        "a fixed billboard applies the entity yaw; a centered one discards it"
+    )
+    assert ("new Vector3f(0.0F, 2.8F - scale * .25F, 0.0F), new AxisAngle4f(),"
+            in spawn), "the spawn transform must not bake or zero the yaw"
+    assert "new AxisAngle4f(yaw, 0.0F, 1.0F, 0.0F)" in source, (
+        "the idle spin must be an additive Y rotation on top of the entity yaw"
+    )
+
+
 def test_wave3_live_runner_checks_all_nine_observed_portal_layers():
     source = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(
         encoding="utf-8"

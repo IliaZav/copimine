@@ -76,6 +76,55 @@ JAR плагина установлен атомарно: `.new` → `sync` → 
 `03951b4e43b5564b4d45ea71b07235997ff2bbd7`. Файл на сайте совпадает по
 размеру и SHA-256 с локальной сборкой `build/minecraft-26.3/CopiMineResourcePack-26.3.zip`.
 
+## 4.1. Пин версии клиента в runtime-конфиге
+
+После установки обнаружилось расхождение: production-файл
+`plugins/CopiMineNarcotics/config.yml` содержал
+`client_bridge.required_client_mod_version: 0.1.3+26.3`, тогда как
+`copimine-narcotics/config.yml` и опубликованный клиент уже были
+`0.1.4+26.3`. Из-за этого новый клиент отклонялся с
+`missing-or-incompatible-client-mod`, а сообщение об отказе требовало
+`CopiMineClient 0.1.3+26.3`.
+
+Исправление:
+
+* резервная копия:
+  `/opt/copimine-backups/end-rift-20261119-a8fb5c1f/CopiMineNarcotics-config.yml.before-client-0.1.4`,
+  SHA-256 `36daddc730cec2b5b17c97e4227b3e05fa32a9ce549525988630ec5462500a9a`;
+* значение изменено на месте (inode, владелец `copimine-game:copimine` и
+  режим `666` сохранены), итоговый SHA-256
+  `b2e986043e15cbb46e5f1ac5af1bbc1c17e0b535375f49f5e584d57f8cde6ccc`;
+* `copimine-game.service` перезапущена: `Done (44.625s)`,
+  `CopiMineNarcotics` и `CopiMineEndEvent` включены, обязательный
+  client bridge активен, `cmend debug invariants` — `failures=0`,
+  RCON `list` — 0/50.
+
+Причина расхождения: обновлялся только JAR, а runtime-конфиг плагина
+оставался от предыдущей установки. Поэтому в
+`docs/end-rift/final-26.3/REMOTE_PLUGIN_DEPLOYMENT_HANDOFF.md` добавлен
+обязательный шаг сверки `required_client_mod_version` с
+`tools/minecraft-26.3/profile.lock.json`, а
+`tests/test_minecraft_26_3_paper.py` не даёт `config.yml` разойтись с
+пином клиента.
+
+## 4.2. Локальный клиент в Prism
+
+В инстансе `...\ElyPrismLauncher\instances\Copimine` заменён
+`mods/CopiMineClient-0.1.4+26.3.jar`:
+
+| Параметр | Было | Стало |
+|---|---|---|
+| Размер | 30247649 Б | 30252288 Б |
+| SHA-256 | `3421122b...` | `fbb3e3e5...` |
+| SHA-512 | `68dd9c37...` | `3205690d...` |
+
+Обновлены `copimine-migration-receipt.json` (`copimineClient` →
+`0.1.4+26.3`, новый SHA-512) и `TLauncherAdditional.json` (имя, версия,
+SHA-1 `773ed936...`, размер, путь). Резервная копия старых файлов:
+`copimine-mod-backups/20261119-client-3205690d`. В `mods/mods.zip`
+остаётся снимок модов от 2026-11-11 с `0.1.3`; Fabric этот архив не
+загружает, файл не изменялся.
+
 ## 5. Проверка запуска
 
 Первый запуск после замены:
@@ -106,7 +155,11 @@ JAR плагина установлен атомарно: `.new` → `sync` → 
 владелец, режим, два холодных запуска, включение плагина, V4-мост,
 инварианты и состояние события подтверждены.
 
+Пин версии клиента в runtime-конфиге и замена клиента в Prism
+подтверждены на уровне файлов, хешей и успешного холодного запуска.
+
 Не подтверждено: реальный игровой прогон волн 1–7, бой с боссом, визуал
 Echo/Guardian/Kagune, звук, нагрузка на 2/5/10/11/20 игроков, MSPT/TPS и
-клиентский FPS. На сервере не было игроков. Поэтому `nativeVerified`
-остаётся `false`, а визуальные и боевые пункты — NOT VERIFIED.
+клиентский FPS. На сервере не было игроков, локальный клиент по
+требованию владельца не запускался. Поэтому `nativeVerified` остаётся
+`false`, а визуальные и боевые пункты — NOT VERIFIED.

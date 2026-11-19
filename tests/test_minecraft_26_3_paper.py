@@ -13,18 +13,39 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_heartbeat_client_version_default_and_saved_exact_pins_are_explicit():
+    lock = json.loads((ROOT / "tools/minecraft-26.3/profile.lock.json").read_text(encoding="utf-8"))
+    pinned_client = lock["clientArtifact"]["version"]
     policy = (ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/ClientModHandshakePolicy.java").read_text(encoding="utf-8")
     config_service = (ROOT / "copimine-narcotics/src/me/copimine/narcotics/config/NarcoticsConfigService.java").read_text(encoding="utf-8")
     config = (ROOT / "copimine-narcotics/config.yml").read_text(encoding="utf-8")
     reload_body = config_service.split("public void reload() {", 1)[1].split("\n    public ", 1)[0]
 
     assert 'HEARTBEAT_CAPABLE_VERSION = "0.1.3+26.3"' in policy
+    assert f'CURRENT_CLIENT_VERSION = "{pinned_client}"' in policy
     assert 'DEFAULT_REQUIRED_VERSION = CURRENT_CLIENT_VERSION' in policy
     assert 'plugin.reloadConfig();' in reload_body
     assert 'readRequiredClientModVersion(root)' in reload_body
     assert 'requiredVersionFromConfig(configuredVersion)' in config_service
     assert 'configuredClientModVersion.trim()' not in config_service
-    assert 'required_client_mod_version: 0.1.4+26.3' in config
+    assert f'required_client_mod_version: {pinned_client}' in config
+
+
+def test_narcotics_required_client_version_cannot_drift_from_pinned_client():
+    lock = json.loads((ROOT / "tools/minecraft-26.3/profile.lock.json").read_text(encoding="utf-8"))
+    pinned_client = lock["clientArtifact"]["version"]
+    config = (ROOT / "copimine-narcotics/config.yml").read_text(encoding="utf-8")
+    configured = re.search(r"(?m)^  required_client_mod_version:\s*(\S+)\s*$", config)
+
+    assert configured, "config.yml must pin client_bridge.required_client_mod_version"
+    assert configured.group(1) == pinned_client, (
+        "required_client_mod_version must match the pinned CopiMineClient artifact; "
+        "otherwise every joining client is rejected as missing-or-incompatible-client-mod"
+    )
+
+    handoff = (ROOT / "docs/end-rift/final-26.3/REMOTE_PLUGIN_DEPLOYMENT_HANDOFF.md").read_text(encoding="utf-8")
+    assert "plugins/CopiMineNarcotics/config.yml" in handoff
+    assert "required_client_mod_version" in handoff
+    assert "profile.lock.json" in handoff
 
 
 def _git_shell_path(value):

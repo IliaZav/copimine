@@ -66,6 +66,13 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity,
     @Unique private me.copimine.client.RiftEndermiteModel copimine$endermiteModel;
     @Unique private EntityModel<?> copimine$activeModel;
 
+    /**
+     * Contract 15.3's subtle identification clue: a decoy/replica body is drawn
+     * a shade colder than the real boss. ARGB 0xD6/0xC4/0xF0 keeps the authored
+     * skin readable while a careful player can learn the difference.
+     */
+    @Unique private static final int COPIER_TINT = 0xFFD6C4F0;
+
     @Inject(method = "extractRenderState(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;F)V",
             at = @At("TAIL"))
     private void copimine$bindEventRenderState(T entity, S state, float partialTick,
@@ -142,7 +149,31 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity,
                                             CallbackInfoReturnable<Integer> cir) {
         if (state instanceof EndRiftRenderStateAccess bound && bound.copimine$isEcho()) {
             cir.setReturnValue(0xff946bb8);
+        } else if (state instanceof EndRiftRenderStateAccess copy
+                && copimine$isGuardianCopy(copy.copimine$visual())) {
+            // Contract 15.3 asks for a SUBTLE, learnable clue that separates a
+            // copy from the real boss ("a consistent difference in Rift core
+            // energy"). Both bodies share one mesh and one skin, so without a
+            // per-body tint a decoy was pixel-identical to the boss and the
+            // rule had no implementation at all. A cool violet rim is enough
+            // for a careful player to learn and far from the forbidden "FAKE"
+            // label.
+            cir.setReturnValue(COPIER_TINT);
         }
+    }
+
+    /**
+     * Contract 15.3's learnable clue: a decoy and an attack replica keep the
+     * Guardian body but read slightly colder than the real boss.
+     */
+    @Unique
+    private static boolean copimine$isGuardianCopy(String visual) {
+        if (visual == null) {
+            return false;
+        }
+        String normalized = visual.trim().toUpperCase(java.util.Locale.ROOT);
+        return "END_RIFT_ECHO_DECOY_V1".equals(normalized)
+                || "END_RIFT_ECHO_REPLICA_V1".equals(normalized);
     }
 
     @Redirect(method = "submit", at = @At(value = "FIELD",

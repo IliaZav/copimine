@@ -243,10 +243,10 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # serial zero as a swing/hurt, and the body drain became an unconditional
     # pass (EchoEyePassPlan). Repinned from a clean `gradle test jar` on the
     # pinned JDK; the two new classes are in the archive.
-    assert artifact['size'] == 30_250_709
+    assert artifact['size'] == 30_250_859
     assert artifact['sha512'] == (
-        '31eafee05d1330c726546c93c57ed647ede4ac2033c2e44818d12ef56fc5'
-        '66f9955cdcf9c6b3987cc1de6521df4133a555a027c95028efbbdfb87eb194e5baf6'
+        '0698329c0d7349217b6364a27ccbfdd5870cfa8746d4ac9ad0e87fe1dce9'
+        '78c1c2de0b9fc5a0ae76270d75b7783309e51556bfb0ac5847288abd3a86961dfed7'
     )
 
 

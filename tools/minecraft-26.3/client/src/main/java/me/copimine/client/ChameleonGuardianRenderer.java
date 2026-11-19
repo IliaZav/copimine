@@ -16,8 +16,16 @@ public final class ChameleonGuardianRenderer {
 
     public static void submit(OrderedSubmitNodeCollector collector, PoseStack matrices, RenderType renderType,
                               int light, int overlay, int color, RiftGuardianModel guardian) {
+        // The collector only copies the matrix; it stores this lambda and runs it
+        // at draw time (SubmitNodeCollection.submitCustomGeometry ->
+        // CustomFeatureRenderer$Submit). One model instance is shared by every
+        // entity a renderer type draws - all echo decoys are Pillagers on the
+        // same renderer - so reading guardian.currentPose() inside the lambda
+        // would give every decoy the pose of whichever body was submitted last.
+        // Capture the immutable pose now, per submission.
+        ChameleonGuardianGeometry.GuardianPose pose = guardian.currentPose();
         collector.submitCustomGeometry(matrices, renderType, (transform, buffer) ->
-                emitAll(ChameleonGuardianGeometry.load().faces(guardian.currentPose()), vertex -> buffer
+                emitAll(ChameleonGuardianGeometry.load().faces(pose), vertex -> buffer
                         .addVertex(transform,
                                 vertex.x() * MODEL_UNITS_PER_PIXEL,
                                 renderModelY(vertex.y()),

@@ -186,3 +186,72 @@ def test_carrier_layers_are_suppressed_for_a_pillager_guardian_body():
     assert "EndermanRenderState" in body, (
         "the boss Enderman path keeps its layers, so it must be excluded"
     )
+
+
+CHAMELEON = (ROOT / "tools/minecraft-26.3/client/src/main/java/me/copimine/client"
+             / "ChameleonGuardianRenderer.java")
+
+
+def test_the_submitted_pose_is_captured_before_the_deferred_lambda():
+    """The geometry lambda runs at draw time, so it may not read the shared model.
+
+    ``SubmitNodeCollection.submitCustomGeometry`` copies only the matrix and
+    stores the ``CustomGeometryRenderer`` for later execution. Every echo decoy
+    is a Pillager, so all decoys share ONE ``RiftGuardianModel`` instance on the
+    single ``PillagerRenderer``. Reading ``guardian.currentPose()`` inside the
+    deferred lambda would give every decoy the pose of whichever body was
+    submitted last - the contract's "obviously broken animations" that expose a
+    copy. The pose must be captured per submission, before the lambda.
+    """
+    text = CHAMELEON.read_text("utf-8")
+    start = text.index("public static void submit(")
+    body = text[start: text.index("\n    }\n", start)]
+    assert "GuardianPose pose = guardian.currentPose();" in body, (
+        "the pose must be captured eagerly, per submission"
+    )
+    assert "faces(pose)" in body, (
+        "the deferred lambda must close over the captured pose, not the model"
+    )
+    assert "faces(guardian.currentPose())" not in body, (
+        "reading the shared model inside the deferred lambda repeats the "
+        "last-submitted pose on every decoy"
+    )
+    capture_at = body.index("GuardianPose pose = guardian.currentPose();")
+    lambda_at = body.index("submitCustomGeometry(")
+    assert capture_at < lambda_at, (
+        "the pose must be captured before the lambda is handed to the collector"
+    )
+
+
+def test_a_copy_is_visibly_learnable_without_a_fake_label():
+    """Contract 15.3 wants a subtle, learnable clue, not a pixel-identical twin.
+
+    The real boss, an echo decoy and an attack replica share one mesh and one
+    skin, so without a per-body difference a careful player had no way to learn
+    which body was real - the clause had no implementation. A cool tint is the
+    "consistent difference in Rift core energy" the contract names, and it is
+    never the forbidden literal "FAKE" tag.
+    """
+    text = source()
+    start = text.index("copimine$tintDetachedEcho(")
+    body = text[start: text.index("\n    }", start)]
+    assert "COPIER_TINT" in body, (
+        "the decoy/replica tint must be applied by the model tint hook"
+    )
+    assert "copimine$isGuardianCopy" in body, (
+        "the tint must key on the copy visual ids, not on every Guardian body"
+    )
+    copy_at = text.index("private static boolean copimine$isGuardianCopy(")
+    copy_body = text[copy_at: text.index("\n    }", copy_at)]
+    assert DECOY in copy_body and REPLICA in copy_body, (
+        "both the decoy and the attack replica must carry the clue"
+    )
+    # The clue is a colour, not wording: it must not be the opaque identity
+    # tint (that would be invisible) and it must be a fixed constant, not
+    # something the server can flip per player.
+    tint_at = text.index("COPIER_TINT =")
+    tint_line = text[tint_at: text.index(";", tint_at)]
+    assert "0x" in tint_line, "the clue must be a fixed ARGB colour"
+    assert "0xFFFFFFFF" not in tint_line, (
+        "an identity tint would hide the clue completely"
+    )

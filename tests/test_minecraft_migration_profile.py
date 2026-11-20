@@ -246,10 +246,10 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # cue now carries its played phase across a cast rollover (but never on a
     # same-cast heartbeat). Repinned from a clean `gradle test jar` on the
     # pinned JDK.
-    assert artifact['size'] == 30_264_930
+    assert artifact['size'] == 30_264_955
     assert artifact['sha512'] == (
-        '52ed71757f772d293b14725db631b101125433416aa04a69b7ffdf5dd3452060e7e'
-        '599675a3cd0079e182fe16487b00d4f5a2fb47891db4242a1efb9a1a3c58a'
+        '058f4344c713c9a463a12d320b52e1c9c528f237d8666a847b86955b14f7f56d4'
+        'a1baca74d08fc27a234160914a20e9491cf00a67793fc363992d51d5e191d4c'
     )
 
 

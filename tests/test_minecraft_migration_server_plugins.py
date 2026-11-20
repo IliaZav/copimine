@@ -1383,9 +1383,9 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     # full-height barrier. The replaced candidates stay at the front of
     # replaceSha256, newest first, which is the documented prepend convention,
     # so an already-staged older candidate is still accepted.
-    assert candidate['size']==2593725
-    assert candidate['sha256']=='910865217b6140054faf940a2b6b2832a37ac54853972742faa730c8ffbaad36'
-    assert candidate['sha512']=='fda9932fb4ffc6e1d6cf7f4a1ebcf9b7789ff4578337989943c9721912b79122403091eee2a6167daa61ebb59625ae128f31666e200fd0a58af983076d835ba1'
+    assert candidate['size']==2593948
+    assert candidate['sha256']=='1d1006bb7b69f61e3e6e9be69dcdc37649383785327df1f089b159105025ea0a'
+    assert candidate['sha512']=='1b10f47b575c6d5955c7d46a480858acb5b929da405bc856bbb8cc0b03ec82622b1ebbd3653b49ea268d67bcb1b4f06a61536f55b97ab69186f45608931f4d54'
     assert candidate['replaceSha256'][0]=='e4ba96d991fb5084573e3a999c25edd49fdf20b0a9505a8c2d32482f722ea93b'
     assert candidate['replaceSha256'][1]=='6188d78c04df1c1064cbb7ca5fd824796a9275c791c2d04f582123e38b9da0ab'
     assert candidate['replaceSha256'][2]=='637a08f3372cfe103e78fcf5ed18a2910e54627ef74931f236751a98767142ac'
@@ -3185,8 +3185,8 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
     expected_candidates={
         'CopiMineArtifacts':('a5e0420d503850cb604445c52705f5af71fdc65770a78b943c5d2bc252fabcc5',
                              'a054cfeef3dc37dc364ef33d550063b6aa105f2394501bd982295af2fc791bba82cce15623c3ff7b09c4c3250683fb1caf7cdb72312e3c91bf50dd0c2fc39600',366356),
-        'CopiMineEndEvent':('910865217b6140054faf940a2b6b2832a37ac54853972742faa730c8ffbaad36',
-                            'fda9932fb4ffc6e1d6cf7f4a1ebcf9b7789ff4578337989943c9721912b79122403091eee2a6167daa61ebb59625ae128f31666e200fd0a58af983076d835ba1',2593725),
+        'CopiMineEndEvent':('1d1006bb7b69f61e3e6e9be69dcdc37649383785327df1f089b159105025ea0a',
+                            '1b10f47b575c6d5955c7d46a480858acb5b929da405bc856bbb8cc0b03ec82622b1ebbd3653b49ea268d67bcb1b4f06a61536f55b97ab69186f45608931f4d54',2593948),
         'CopiMineNarcotics':('a0a9248c0f021712ae8e354839b373828919f5bca05b05e589a4e3431e71193a',
                              '72e003f072fb874f822b0872f5b58a0fe49eb8f0ba6546bdbef1ff2b79a76e79ddce7c65d76c279b3fee53953d66c3cb0bbd88b52c6368444c5c574b3dd37ab2',378740),
     }

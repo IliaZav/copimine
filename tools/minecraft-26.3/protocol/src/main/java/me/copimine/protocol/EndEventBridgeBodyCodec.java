@@ -40,7 +40,8 @@ public final class EndEventBridgeBodyCodec {
     private static final Set<String> TENTACLE_PHASES = Set.of(
             "EMERGING", "READY", "TELEGRAPH_GRAB", "GRAB_SUCCESS", "HOLD", "THROW", "MISS_RECOVERY",
             "HIT_RECOVERY", "DYING", "DEAD_RESPAWN", "RETRACT", "SPAWN_UNDER_PLAYER", "SHIELD_CHANNEL",
-            "RECOVERY", "IDLE", "EMERGE", "GRAB_MISS", "HURT", "DEATH");
+            "RECOVERY", "IDLE", "EMERGE", "GRAB_MISS", "HURT", "DEATH",
+            "SMALL_WINDUP", "SMALL_STRIKE", "SMALL_RECOVERY");
     private static final Pattern SAFE_IDENTIFIER = Pattern.compile("[A-Za-z0-9_.:-]{1,128}");
     private static final Pattern WORLD_KEY = Pattern.compile("[A-Za-z0-9_-]{1,64}");
     private static final Pattern RESOURCE_LOCATION = Pattern.compile("[a-z0-9_.-]+:[a-z0-9_/.-]+");
@@ -691,16 +692,35 @@ public final class EndEventBridgeBodyCodec {
             return;
         }
         String[] parts = visual.split("\\|", -1);
-        if (parts.length < 3 || parts.length > 4 || !TENTACLE_PHASES.contains(parts[0])
+        if (parts.length < 3 || parts.length > 7 || !TENTACLE_PHASES.contains(parts[0])
                 || !parts[1].matches("t=(?:0|[1-9][0-9]*)")
                 || !parts[2].matches("health=(?:FULL|DAMAGED|CRITICAL|DEAD)")) {
             throw new IllegalArgumentException("Unknown End Event entity phase");
         }
-        if (parts.length == 4) {
-            if (!parts[3].startsWith("target=")) {
-                throw new IllegalArgumentException("Malformed tentacle target");
+        try {
+            Long.parseLong(parts[1].substring(2));
+            Set<String> fields = new HashSet<>();
+            for (int index = 3; index < parts.length; index++) {
+                String[] field = parts[index].split("=", -1);
+                if (field.length != 2 || !fields.add(field[0]))
+                    throw new IllegalArgumentException("Malformed or duplicate tentacle field");
+                switch (field[0]) {
+                    case "target" -> requireCanonicalUuid(field[1], "tentacle target UUID");
+                    case "role" -> {
+                        if (!Set.of("PERMANENT", "SMALL", "UNDER_PLAYER", "TEMPORARY").contains(field[1]))
+                            throw new IllegalArgumentException("Unknown tentacle role");
+                    }
+                    case "scale", "hp" -> {
+                        double number = Double.parseDouble(field[1]);
+                        if (!Double.isFinite(number) || number < 0D
+                                || (field[0].equals("scale") && (number < .2D || number > 1D)))
+                            throw new IllegalArgumentException("Invalid tentacle numeric field");
+                    }
+                    default -> throw new IllegalArgumentException("Unknown tentacle field");
+                }
             }
-            requireCanonicalUuid(parts[3].substring("target=".length()), "tentacle target UUID");
+        } catch (NumberFormatException invalid) {
+            throw new IllegalArgumentException("Invalid tentacle numeric field", invalid);
         }
     }
 

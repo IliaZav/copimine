@@ -192,6 +192,65 @@ final class EndEventBridgeV4SenderTest {
     }
 
     @Test
+    void repeatedActorSnapshotsCoalesceWithoutLosingAnimationTransitions() throws Exception {
+        Fixture fixture = readyFixture();
+        for (int i = 0; i < 20; i++) assertTrue(fixture.sendValidState());
+        String actor = new UUID(0, 77).toString();
+        for (int refresh = 0; refresh < 300; refresh++) {
+            assertTrue(fixture.sender.send(fixture.playerUuid, "END_ENTITY_BIND", "tentacle.1", 0,
+                    actor, "END_RIFT_TENTACLE_V1", 0, 0, 0, "", ""));
+            assertTrue(fixture.sender.send(fixture.playerUuid, "END_ENTITY_PHASE", "tentacle.1", 600,
+                    actor, "SMALL_WINDUP|t=100|health=FULL|role=SMALL|scale=0.65|hp=50.0", 0, 0, 0, "", ""));
+        }
+        assertTrue(fixture.sender.send(fixture.playerUuid, "END_ENTITY_PHASE", "tentacle.1", 600,
+                actor, "SMALL_STRIKE|t=112|health=FULL|role=SMALL|scale=0.65|hp=50.0", 0, 0, 0, "", ""));
+        // Reusing a clip with a different authoritative start is a NEW action.
+        assertTrue(fixture.sender.send(fixture.playerUuid, "END_ENTITY_PHASE", "tentacle.1", 600,
+                actor, "SMALL_STRIKE|t=130|health=FULL|role=SMALL|scale=0.65|hp=50.0", 0, 0, 0, "", ""));
+        var queue = fixture.sender.queueDiagnostics(fixture.playerUuid);
+        assertTrue(queue.pending() <= 8);
+        assertEquals(598, queue.coalesced());
+        assertEquals(0, queue.refused());
+        for (int i = 0; i < 40; i++) { fixture.now.addAndGet(250); fixture.sender.tick(); }
+        List<String> actorMessages = new ArrayList<>();
+        for (int i = 0; i < fixture.outbound.size(); i++) {
+            var envelope = fixture.verify(fixture.outbound.get(i), i + 1L);
+            try {
+                var body = EndEventBridgeBodyCodec.decode(envelope.bodyBytes());
+                if (body.instanceId().equals("tentacle.1")) actorMessages.add(body.visualId());
+            } catch (IllegalArgumentException controlBody) { }
+        }
+        assertEquals(List.of("END_RIFT_TENTACLE_V1",
+                "SMALL_WINDUP|t=100|health=FULL|role=SMALL|scale=0.65|hp=50.0",
+                "SMALL_STRIKE|t=112|health=FULL|role=SMALL|scale=0.65|hp=50.0",
+                "SMALL_STRIKE|t=130|health=FULL|role=SMALL|scale=0.65|hp=50.0"), actorMessages);
+    }
+
+    @Test
+    void authoredTentacleRoleFieldsRoundTripAndMalformedFieldsConsumeNoCounter() throws Exception {
+        Fixture fixture = readyFixture();
+        String actor = new UUID(0, 77).toString();
+        for (String pose : List.of("SMALL_WINDUP", "SMALL_STRIKE", "SMALL_RECOVERY", "READY")) {
+            String visual = pose + "|t=100|health=DAMAGED|target=" + fixture.playerUuid
+                    + "|role=SMALL|scale=0.65|hp=42.0";
+            int before = fixture.outbound.size();
+            assertTrue(fixture.sender.send(fixture.playerUuid, "END_ENTITY_PHASE", "tentacle.1", 600,
+                    actor, visual, 0, 0, 0, "", ""));
+            var body = EndEventBridgeBodyCodec.decode(fixture.verify(fixture.outbound.get(before), before + 1L).bodyBytes());
+            assertEquals(visual, body.visualId());
+        }
+        for (String suffix : List.of("role=UNKNOWN", "hp=NaN", "hp=Infinity", "hp=-1", "scale=0.1",
+                "scale=1.1", "role=SMALL|role=SMALL", "unknown=1", "target=not-a-uuid")) {
+            int before = fixture.outbound.size();
+            assertFalse(fixture.sender.send(fixture.playerUuid, "END_ENTITY_PHASE", "tentacle.1", 600,
+                    actor, "READY|t=100|health=FULL|" + suffix, 0, 0, 0, "", ""), suffix);
+            assertEquals(before, fixture.outbound.size());
+        }
+        assertTrue(fixture.sendValidState());
+        for (int i = 0; i < fixture.outbound.size(); i++) fixture.verify(fixture.outbound.get(i), i + 1L);
+    }
+
+    @Test
     void boundedQueueRefusesOverflowWithoutConsumingSignedCounters() throws Exception {
         Fixture fixture = readyFixture();
         int accepted = 0;

@@ -31,6 +31,9 @@ public final class LastSealConstructRuntime {
     private record FallLease(UUID world, long generation, long expiresNanos) { }
     private final Host host;
     private final Set<UUID> hits = new HashSet<>();
+    // Damage listeners may reenter the encounter. A reservation is not an
+    // accepted-hit receipt, and belongs to this exact synchronous contact only.
+    private final Map<UUID, Object> contactReservations = new HashMap<>();
     private final Map<UUID, Location> previousPlayers = new HashMap<>();
     private final Map<UUID, FallLease> falls = new HashMap<>();
     private Scope scope;
@@ -119,16 +122,26 @@ public final class LastSealConstructRuntime {
                 if (!current.canDamage() || hits.contains(player.getUniqueId())) continue;
                 if (before == null || !before.getWorld().equals(at.getWorld()) || before.distanceSquared(at) > 25D) before = at;
                 if (!current.contacts(relative(before), relative(at), player.getWidth() / 2D, player.getHeight())) continue;
-                // Record the receipt only after the damage transaction actually
-                // succeeded. The shipped order marked the player as hit first, so a
-                // refused hit (dead, out of the event, immunity window) still
-                // consumed the one allowed contact and the spell silently did
-                // nothing for the rest of its cast.
-                if (!host.hit(boss, player, kind == KaguneSpellFrame.STAB ? 8D : 7D)) continue;
-                hits.add(player.getUniqueId());
+                UUID playerId = player.getUniqueId();
+                Object reservation = new Object();
+                if (contactReservations.putIfAbsent(playerId, reservation) != null) continue;
+                Scope contactScope = scope;
+                ItemDisplay contactCarrier = carrier;
+                long contactStarted = started;
+                boolean accepted;
+                try {
+                    accepted = host.hit(boss, player, kind == KaguneSpellFrame.STAB ? 8D : 7D);
+                } finally {
+                    contactReservations.remove(playerId, reservation);
+                }
+                // A callback may finish this cast and admit another. Never write
+                // its predecessor's receipt or cancel the newly admitted cast.
+                if (!active || scope != contactScope || carrier != contactCarrier || started != contactStarted) return;
                 if (!active || !host.active(boss) || !Objects.equals(scope, host.scope(boss))) {
                     cancel("owner-changed-after-contact"); return;
                 }
+                if (!accepted) continue;
+                hits.add(playerId);
                 if (kind == KaguneSpellFrame.ERUPTION) {
                     falls.put(player.getUniqueId(), new FallLease(player.getWorld().getUID(), scope.generation(), System.nanoTime()+6_000_000_000L));
                     player.setFallDistance(0F); player.setVelocity(new Vector(0D, .98D, 0D));

@@ -5,7 +5,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.ArrayList;
-import java.util.ArrayDeque;
+import java.util.LinkedList;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.HashMap;
@@ -829,9 +829,59 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
         if (stream.pendingApplications.isEmpty() && acquireApplicationSlot(stream, now)) {
             return sendApplicationNow(player, state, body);
         }
-        if (stream.pendingApplications.size() >= MAX_PENDING_APPLICATIONS) return false;
+        if (coalescePendingSnapshot(stream, body)) return true;
+        if (stream.pendingApplications.size() >= MAX_PENDING_APPLICATIONS) {
+            stream.refusedApplications++;
+            return false;
+        }
         stream.pendingApplications.addLast(body);
+        stream.pendingHighWatermark = Math.max(stream.pendingHighWatermark, stream.pendingApplications.size());
         return true;
+    }
+
+    private boolean coalescePendingSnapshot(StreamState stream, EndEventBridgeBodyCodec.Body body) {
+        boolean bind = body.type() == EndEventBridgeBodyCodec.Type.END_ENTITY_BIND;
+        boolean pose = body.type() == EndEventBridgeBodyCodec.Type.END_ENTITY_PHASE;
+        boolean bar = body.type() == EndEventBridgeBodyCodec.Type.END_BOSS_BAR;
+        if (!bind && !pose && !bar) return false;
+        var iterator = stream.pendingApplications.listIterator(stream.pendingApplications.size());
+        while (iterator.hasPrevious()) {
+            var queued = iterator.previous();
+            if (queued.generation() != body.generation() || !queued.eventUuid().equals(body.eventUuid())
+                    || !queued.instanceId().equals(body.instanceId())) continue;
+            // Keep the earliest bind ahead of its poses. An unbind, changed model,
+            // or different animation is a causal barrier, never a replaceable snapshot.
+            if (bind && queued.type() == EndEventBridgeBodyCodec.Type.END_ENTITY_PHASE) continue;
+            if (queued.type() != body.type() || !queued.subjectOrMode().equals(body.subjectOrMode())) return false;
+            if (!bar && !sameSnapshot(queued, body)) return false;
+            iterator.set(body);
+            stream.coalescedApplications++;
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean sameSnapshot(EndEventBridgeBodyCodec.Body a, EndEventBridgeBodyCodec.Body b) {
+        // The server action clock is part of visualId. Never collapse a retimed
+        // SMALL_* attack into the previous attack merely because its clip matches.
+        return a.controlId().equals(b.controlId()) && a.visualId().equals(b.visualId())
+                && a.durationMillis() == b.durationMillis()
+                && Float.compare(a.progressOrIntensity(), b.progressOrIntensity()) == 0
+                && a.health() == b.health() && a.maxHealth() == b.maxHealth()
+                && a.clearPolicy().equals(b.clearPolicy()) && a.reservedOne().equals(b.reservedOne())
+                && a.reservedTwo().equals(b.reservedTwo()) && a.status().equals(b.status());
+    }
+
+    public record QueueDiagnostics(int pending, int highWatermark, long coalesced, long refused, long oldestAgeMillis) { }
+
+    public QueueDiagnostics queueDiagnostics(UUID viewer) {
+        PlayerState state = players.get(viewer);
+        StreamState stream = state == null ? null : state.stream;
+        if (stream == null) return new QueueDiagnostics(0, 0, 0, 0, 0);
+        var oldest = stream.pendingApplications.peekFirst();
+        return new QueueDiagnostics(stream.pendingApplications.size(), stream.pendingHighWatermark,
+                stream.coalescedApplications, stream.refusedApplications,
+                oldest == null ? 0L : Math.max(0L, clock.getAsLong() - oldest.bodyTimestampMillis()));
     }
 
     private boolean acquireCriticalSlot(StreamState stream, long now) {
@@ -1183,7 +1233,9 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
     }
 
     private static final class StreamState {
-        final ArrayDeque<EndEventBridgeBodyCodec.Body> pendingApplications = new ArrayDeque<>();
+        final LinkedList<EndEventBridgeBodyCodec.Body> pendingApplications = new LinkedList<>();
+        int pendingHighWatermark;
+        long coalescedApplications, refusedApplications;
         double applicationTokens = APPLICATION_BURST;
         long applicationRefillAt;
         double criticalTokens = CRITICAL_BURST;

@@ -29,7 +29,8 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
         ELITE,
         WAVE_GUARDIAN,
         RITUAL_GUARD,
-        WAVE7_MARKSMAN
+        WAVE7_MARKSMAN,
+        SPIRE_HARBINGER
     }
 
     private final ModelPart root;
@@ -50,6 +51,9 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
     private final ModelPart eliteHornCrown;
     private final ModelPart marksmanSight;
     private final ModelPart marksmanQuiver;
+    private final ModelPart spireCrown;
+    private final ModelPart spirePauldrons;
+    private final ModelPart spireBow;
     private final Variant variant;
 
     public RiftEventSkeletonModel(ModelPart root, boolean elite) {
@@ -78,6 +82,9 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
         this.eliteHornCrown = head.getChild("elite_horn_crown");
         this.marksmanSight = head.getChild("marksman_sight");
         this.marksmanQuiver = body.getChild("marksman_quiver");
+        this.spireCrown = head.getChild("spire_crown");
+        this.spirePauldrons = body.getChild("spire_pauldrons");
+        this.spireBow = rightForearm.getChild("spire_bow");
         this.variant = variant;
         boolean elite = isEliteVariant(variant);
         boolean guardian = variant == Variant.WAVE_GUARDIAN;
@@ -96,6 +103,10 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
         this.eliteHornCrown.visible = elite && !userSkin;
         this.marksmanSight.visible = marksman;
         this.marksmanQuiver.visible = marksman;
+        boolean spire = variant == Variant.SPIRE_HARBINGER;
+        this.spireCrown.visible = spire;
+        this.spirePauldrons.visible = spire;
+        this.spireBow.visible = spire;
         // Unused atlas islands are opaque; the vanilla hat layer would cover
         // the skull with an unrelated patch.
         this.hat.visible = false;
@@ -173,6 +184,23 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
         body.addOrReplaceChild("marksman_quiver", cube(40, 20,
                         1.8F, 1.0F, 1.9F, 2.4F, 8.0F, 2.0F),
                 PartPose.ZERO);
+        head.addOrReplaceChild("spire_crown", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                new ModelUvBounds.Box(42, 0, -4.4F, -9F, -3F, 8.8F, 2F, 2F),
+                new ModelUvBounds.Box(50, 4, -4.5F, -13F, -2.5F, 2F, 5F, 2F),
+                new ModelUvBounds.Box(54, 4, 2.5F, -11.5F, -2.5F, 2F, 3.5F, 2F)),
+                PartPose.ZERO);
+        body.addOrReplaceChild("spire_pauldrons", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                new ModelUvBounds.Box(36, 8, -7F, -.75F, -2.8F, 4F, 3F, 5.6F),
+                new ModelUvBounds.Box(36, 8, 3F, -.75F, -2.8F, 4F, 4F, 5.6F),
+                new ModelUvBounds.Box(52, 16, -1F, 2F, -2.8F, 2F, 7F, 1F)),
+                PartPose.ZERO);
+        root.getChild("right_arm").getChild("right_forearm").addOrReplaceChild("spire_bow",
+                ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        new ModelUvBounds.Box(54, 19, -.8F, -2F, -3F, 1.6F, 11F, 1.6F),
+                        new ModelUvBounds.Box(54, 20, -.5F, -4F, -2.4F, 1F, 3F, 3F),
+                        new ModelUvBounds.Box(54, 20, -.5F, 8.5F, -2.4F, 1F, 3F, 3F),
+                        new ModelUvBounds.Box(60, 10, -.2F, -2F, .25F, .4F, 11F, .4F)),
+                PartPose.ZERO);
         return LayerDefinition.create(data, TEXTURE_WIDTH, TEXTURE_HEIGHT);
     }
 
@@ -218,7 +246,7 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
 
     private static boolean usesSharedSkeletonAtlas(Variant variant) {
         return switch (variant) {
-            case ORDINARY, ELITE, WAVE_GUARDIAN, RITUAL_GUARD, WAVE7_MARKSMAN -> true;
+            case ORDINARY, ELITE, WAVE_GUARDIAN, RITUAL_GUARD, WAVE7_MARKSMAN, SPIRE_HARBINGER -> true;
         };
     }
 
@@ -267,6 +295,20 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
         if (variant == Variant.WAVE7_MARKSMAN) {
             poseMarksman(state, animationProgress, walkSpeed);
             Wave7ActorAnimator.apply(root, state, false);
+        }
+        if (variant == Variant.SPIRE_HARBINGER) {
+            spireCrown.zRot = Mth.sin(animationProgress * .09F) * .025F;
+            spirePauldrons.yScale = 1F + Mth.sin(animationProgress * .1F) * .02F;
+            if ("WAVE_WINDUP".equals(wavePose)) {
+                rightArm.xRot = -1.45F + head.xRot;
+                leftArm.xRot = -1.20F + head.xRot;
+                leftForearm.xRot = -.75F;
+                spireBow.zRot = .18F;
+            } else if ("WAVE_RELEASE".equals(wavePose)) {
+                rightArm.xRot = -1.62F + head.xRot;
+                leftForearm.xRot = -.22F;
+                spireBow.zRot = -.15F;
+            }
         }
     }
 

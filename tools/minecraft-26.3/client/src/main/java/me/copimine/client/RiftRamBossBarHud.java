@@ -5,12 +5,28 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.BossEvent;
+import java.util.UUID;
 
 /** Real vanilla-network HP plus armour from the UUID-bound signed Ram visual. */
 public final class RiftRamBossBarHud {
-    private static final Identifier PLATE = Identifier.withDefaultNamespace("textures/block/netherite_block.png");
-    private static final Identifier SEAL = Identifier.withDefaultNamespace("textures/block/crying_obsidian.png");
+    private static final Identifier FRAME = texture("forged_rail");
+    private static final Identifier CHAIN = texture("chain");
+    private static final Identifier SEALED = texture("plate_sealed");
+    private static final Identifier SPENT = texture("plate_spent");
+    private static final int WIDTH = 268;
+    private static final int PLATE_BASE = 139;
+    private static final int PLATE_STRIDE = 17;
+    private static UUID displayedBar;
+    private static long displayedGeneration = -1;
+    private static int displayedImpacts;
+    private static int breakingPlate = -1;
+    private static long breakStarted;
+
     private RiftRamBossBarHud() { }
+
+    private static Identifier texture(String part) {
+        return Identifier.fromNamespaceAndPath("copimineclient", "textures/gui/rift_ram_" + part + ".png");
+    }
 
     static int remainingPlates(String visual) {
         if (visual == null || !visual.matches("END_RIFT_RAM_ARMOR[0-7]_V1")) return -1;
@@ -29,28 +45,74 @@ public final class RiftRamBossBarHud {
             if (count >= 0) { plates = count; break; }
         }
         if (plates < 0) return false;
-        float progress = Float.isFinite(bar.getProgress()) ? Math.max(0, Math.min(1, bar.getProgress())) : 0;
-        int x = (gui.guiWidth() - 268) / 2;
-        gui.fill(x - 2, y - 2, x + 188, y + 10, 0xFF111018);
-        gui.fill(x - 1, y - 1, x + 187, y + 9, 0xFF77717F);
-        gui.fill(x, y, x + 186, y + 8, 0xFF24202D);
-        int filled = Math.round(184 * progress);
-        int body = plates > 0 ? 0xFF8753AA : 0xFFBA3748;
-        gui.fill(x + 1, y + 1, x + 1 + filled, y + 7, body);
-        gui.fill(x + 1, y + 1, x + 1 + filled, y + 3, plates > 0 ? 0xFFD098EC : 0xFFFF8D8F);
-        for (int plate = 0; plate < 7; plate++) {
-            int px = x + 193 + plate * 11;
-            gui.fill(px - 1, y - 3, px + 11, y + 11, 0xFF17131C);
-            if (plate < plates) {
-                gui.blit(RenderPipelines.GUI_TEXTURED, PLATE, px, y - 2, 0F, 0F, 10, 12, 16, 16, 16, 16);
-                gui.fill(px, y - 2, px + 10, y - 1, 0xFFD6C2D9);
-                gui.blit(RenderPipelines.GUI_TEXTURED, SEAL, px + 3, y + 2, 0F, 0F, 4, 4, 16, 16, 16, 16);
-            } else {
-                gui.fill(px, y + 1, px + 10, y + 7, 0xFF302632);
-                gui.fill(px + 4, y, px + 6, y + 8, 0xFF0A090D);
+        int impacts = 7 - plates;
+        long now = System.nanoTime() / 1_000_000L;
+        if (!bar.getId().equals(displayedBar) || displayedGeneration != state.generation()) {
+            displayedBar = bar.getId();
+            displayedGeneration = state.generation();
+            displayedImpacts = impacts;
+            breakingPlate = -1;
+        } else if (impacts > displayedImpacts) {
+            breakingPlate = impacts == displayedImpacts + 1 ? displayedImpacts : -1;
+            breakStarted = now;
+            displayedImpacts = impacts;
+        } else if (impacts < displayedImpacts) {
+            // A stale model binding cannot re-seal a plate within this bar.
+            impacts = displayedImpacts;
+        }
+
+        float scale = Math.min(1F, Math.max(1, gui.guiWidth() - 8) / (float) WIDTH);
+        gui.pose().pushMatrix();
+        gui.pose().translate(gui.guiWidth() * .5F, y);
+        gui.pose().scale(scale, scale);
+        try {
+            int x = -WIDTH / 2;
+            float progress = Float.isFinite(bar.getProgress()) ? Math.clamp(bar.getProgress(), 0F, 1F) : 0F;
+            int filled = progress > 0F ? Math.max(1, Math.round(119 * progress)) : 0;
+            blit(gui, FRAME, x, -4, WIDTH, 20);
+            if (filled > 0) {
+                gui.fill(x + 10, 3, x + 10 + filled, 10, impacts < 7 ? 0xFF835698 : 0xFFB74152);
+                gui.fill(x + 10, 3, x + 10 + filled, 5, impacts < 7 ? 0xFFD6A6DA : 0xFFEC8892);
+            }
+            long age = now - breakStarted;
+            boolean reduced = client.options.screenEffectScale().get() <= .05;
+            for (int plate = 0; plate < 7; plate++) {
+                int px = x + PLATE_BASE + plate * PLATE_STRIDE;
+                boolean falling = !reduced && plate == breakingPlate && age >= 0 && age < 440;
+                if (plate >= impacts) {
+                    blit(gui, CHAIN, px - 4, -7, 26, 16);
+                    blit(gui, SEALED, px, -1, 16, 16);
+                } else {
+                    blit(gui, SPENT, px, -1, 16, 16);
+                    if (falling) drawBreak(gui, px, age, plate >= 4);
+                }
+            }
+            gui.centeredText(client.font, "ТАРАН РАЗЛОМА", x + WIDTH / 2, -13, 0xFFF1E5F6);
+        } finally {
+            gui.pose().popMatrix();
+        }
+        return true;
+    }
+
+    private static void drawBreak(GuiGraphicsExtractor gui, int px, long age, boolean tower) {
+        if (age < 105) {
+            int alpha = 150 * (105 - (int) age) / 105;
+            gui.fill(px + 1, 1, px + 15, 13, alpha << 24 | 0xE8BCD8);
+        }
+        if (age < 320) {
+            float t = age / 320F;
+            int alpha = (int) (200 * (1F - t));
+            for (int i = 0; i < (tower ? 5 : 3); i++) {
+                int sx = px + 7 + Math.round((i - 2) * (2F + 4F * t));
+                int sy = 5 - Math.round((5F + i) * t - 12F * t * t);
+                gui.fill(sx, sy, sx + 2, sy + 2, alpha << 24 | 0xC7ADBF);
             }
         }
-        gui.centeredText(client.font, "ТАРАН РАЗЛОМА", x + 93, y - 12, 0xFFF1E5F6);
-        return true;
+        float t = age / 440F;
+        blit(gui, CHAIN, px - 4 + Math.round(4F * t), -7 + Math.round(12F * t * t), 26, 16);
+    }
+
+    private static void blit(GuiGraphicsExtractor gui, Identifier id, int x, int y, int width, int height) {
+        gui.blit(RenderPipelines.GUI_TEXTURED, id, x, y, 0F, 0F, width, height, width, height, width, height);
     }
 }

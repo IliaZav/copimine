@@ -24,6 +24,7 @@ same bytes, so the pack hash pin cannot drift between machines.
 from __future__ import annotations
 
 import hashlib
+import runpy
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -272,7 +273,7 @@ def _portrait(stem: str) -> Image.Image:
     return image
 
 
-def build() -> list[Path]:
+def build_original_direction() -> list[Path]:
     OUT.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     for style in PALETTES:
@@ -284,6 +285,11 @@ def build() -> list[Path]:
         _portrait(stem).save(path)
         written.append(path)
     return written
+
+
+def build() -> list[Path]:
+    generator = runpy.run_path(str(ROOT / "CopiMineClient/tools/generate_rift_hud_art.py"))
+    return generator["trial_assets"](OUT)
 
 
 def main() -> int:

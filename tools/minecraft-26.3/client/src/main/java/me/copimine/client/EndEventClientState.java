@@ -672,6 +672,7 @@ public final class EndEventClientState {
     private static boolean wavePoseVisual(String visual) {
         if (RiftRamVisualPolicy.isRiftRamVisual(visual)) return true;
         return Set.of("END_RIFT_ENDERMAN_V1", "END_RIFT_ELITE_V1", "END_RIFT_SKELETON_V1", "END_RIFT_ELITE_SKELETON_V1",
+                "END_RIFT_SPIRE_HARBINGER_V1",
                 "END_RIFT_SPIDER_V1", "END_RIFT_ELITE_SPIDER_V1", "END_RIFT_WAVE_GUARDIAN_ENDERMAN_V1",
                 "END_RIFT_ZOMBIE_V1", "END_RIFT_ELITE_ZOMBIE_V1",
                 "END_RIFT_WAVE_GUARDIAN_SKELETON_V1", "END_RIFT_WAVE_GUARDIAN_SPIDER_V1",

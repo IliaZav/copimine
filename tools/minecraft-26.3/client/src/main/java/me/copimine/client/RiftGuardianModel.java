@@ -62,7 +62,13 @@ public final class RiftGuardianModel extends EntityModel<LivingEntityRenderState
     /** A party plus its echoes and replicas never needs more than this. */
     private static final int MAX_CLIP_KEYS = 64;
 
-    private final Map<String, ClipState> clips = new LinkedHashMap<>();
+    /**
+     * Access-ordered so the least-recently-used body is evicted first. The
+     * Guardian and every Echo decoy currently on screen are touched each frame
+     * and must keep their blend state; a body that has genuinely gone away
+     * ages out instead.
+     */
+    private final Map<String, ClipState> clips = new LinkedHashMap<>(16, 0.75F, true);
     private String activeClipKey = DEFAULT_CLIP_KEY;
 
     public RiftGuardianModel(ModelPart root) {
@@ -125,10 +131,21 @@ public final class RiftGuardianModel extends EntityModel<LivingEntityRenderState
             return clip;
         }
         if (clips.size() >= MAX_CLIP_KEYS) {
-            // A long session must not grow this map without bound. Keys belong
-            // to living bodies, so clearing at the cap is safe: the next
-            // submission rebuilds its own clip from the identity pose.
-            clips.clear();
+            // A long session must not grow this map without bound, but clearing
+            // it (the previous behaviour) reset every live body's clip to the
+            // identity pose, so animations that were mid-blend snapped. Drop
+            // only the least-recently-used body and never the one being posed
+            // now: the map is access-ordered, so the first key is the coldest.
+            String victim = null;
+            for (String candidate : clips.keySet()) {
+                if (!candidate.equals(activeClipKey)) {
+                    victim = candidate;
+                    break;
+                }
+            }
+            if (victim != null) {
+                clips.remove(victim);
+            }
         }
         clip = new ClipState();
         clips.put(key, clip);

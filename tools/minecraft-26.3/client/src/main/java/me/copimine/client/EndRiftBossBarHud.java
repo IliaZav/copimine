@@ -54,6 +54,8 @@ public final class EndRiftBossBarHud {
     private static float lastProgress = Float.NaN;
     private static long lastProgressChangeMillis;
     private static float trailingProgress = Float.NaN;
+    private static String displayedPhase = "";
+    private static long phaseChangedAt;
 
     private EndRiftBossBarHud() {
     }
@@ -123,6 +125,19 @@ public final class EndRiftBossBarHud {
         int y = 4;
         int phaseColor = phaseColor(state.phaseId(), state.castState());
         float progress = clampProgress(state.progress());
+        String identity = state.instanceId() + ":" + state.bossUuid();
+        long now = nowMillis();
+        if (!identity.equals(trackedBossIdentity)) {
+            displayedPhase = state.phaseId();
+            phaseChangedAt = 0L;
+        } else if (!java.util.Objects.equals(displayedPhase, state.phaseId())) {
+            displayedPhase = state.phaseId();
+            phaseChangedAt = now;
+        }
+        boolean motion = client.options.screenEffectScale().get() > .05;
+        context.blit(RenderPipelines.GUI_TEXTURED, FRAME, x, y + FRAME_Y,
+                0F, 0F, WIDTH, FRAME_HEIGHT,
+                SOURCE_WIDTH, SOURCE_HEIGHT, SOURCE_WIDTH, SOURCE_HEIGHT);
 
         // Keep the ornate frame transparent over the world. The native bar
         // for this bound boss is independently suppressed by its own mixin.
@@ -136,7 +151,7 @@ public final class EndRiftBossBarHud {
                 x + INNER_RIGHT - 2 - client.font.width(formatHealth(state.health(), state.maxHealth())),
                 y + DETAIL_Y, 0xFFE7E8F2);
 
-        trackProgress(state.instanceId() + ":" + state.bossUuid(), progress);
+        trackProgress(identity, progress);
         int filled = Math.round((INNER_RIGHT - INNER_LEFT) * progress);
         // Fading chip over the health the boss just lost: the party sees its
         // damage register even when the bar is already past a phase marker.
@@ -162,7 +177,7 @@ public final class EndRiftBossBarHud {
         }
         // Past the critical threshold the fill breathes, which is the one cue
         // that survives a player watching the boss instead of the bar.
-        if (progress > 0.0F && progress <= CRITICAL_FRACTION && filled > 0) {
+        if (motion && progress > 0.0F && progress <= CRITICAL_FRACTION && filled > 0) {
             float pulse = 0.5F + 0.5F * (float) Math.sin(nowMillis() / 620.0D);
             int glowAlpha = (int) (30.0F + 70.0F * pulse) & 0xFF;
             context.fill(x + INNER_LEFT, y + INNER_TOP - 1,
@@ -186,9 +201,13 @@ public final class EndRiftBossBarHud {
                     phaseColor);
         }
 
-        context.blit(RenderPipelines.GUI_TEXTURED, FRAME, x, y + FRAME_Y,
-                0F, 0F, WIDTH, FRAME_HEIGHT,
-                SOURCE_WIDTH, SOURCE_HEIGHT, SOURCE_WIDTH, SOURCE_HEIGHT);
+        long phaseAge = now - phaseChangedAt;
+        if (motion && phaseAge >= 0L && phaseAge < 720L) {
+            int width = (int) ((INNER_RIGHT - INNER_LEFT) * phaseAge / 720L);
+            int alpha = (int) ((720L - phaseAge) * 145L / 720L);
+            context.fill(x + INNER_LEFT, y + INNER_TOP - 3, x + INNER_LEFT + width,
+                    y + INNER_TOP - 2, alpha << 24 | phaseColor & 0xFFFFFF);
+        }
         // Exact UV-rendered head of the supplied 37-cube model; no replacement creature.
         context.blit(RenderPipelines.GUI_TEXTURED, PORTRAIT, x + (WIDTH - 44) / 2, y + 14,
                 0F, 0F, 44, 44, 128, 128, 128, 128);

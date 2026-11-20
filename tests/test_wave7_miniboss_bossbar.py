@@ -292,6 +292,30 @@ def test_authored_art_exists_and_is_distinct():
         portrait_digests.add(data)
 
 
+def test_the_frame_is_drawn_before_the_health_fill():
+    """The shipped frame's track recess is opaque, so the health fill must be
+    drawn *after* the frame.
+
+    Regression: the historical order blitted the frame last, which painted the
+    whole fill and every segment behind the artwork, so a miniboss bar showed
+    no health at all. The frame becomes the plate; the fill, segments, notches
+    and then the portrait are layered on top of it.
+    """
+    source = CLIENT_HUD.read_text(encoding="utf-8")
+    render = source[source.index("public static boolean render("):]
+    render = render[: render.index("\n    }\n")]
+
+    frame_at = render.index("frame(style)")
+    fill_at = render.index("glow(style)")
+    portrait_at = render.index("portrait(style)")
+    assert render.count("frame(style)") == 1, "the frame must be blitted exactly once"
+    assert frame_at < fill_at, (
+        "the opaque frame is drawn after the health fill, so the fill is hidden; "
+        "blit the frame first"
+    )
+    assert fill_at < portrait_at, "the portrait must stay above the fill"
+
+
 def test_the_generator_reproduces_the_committed_art(tmp_path):
     """The art must be regenerable: a hand-edited PNG nobody can rebuild is a
     one-way change."""
@@ -302,3 +326,17 @@ def test_the_generator_reproduces_the_committed_art(tmp_path):
         "the generator must resolve the repository root, not a phantom assets tree"
     )
     assert "CopiMineClient" in source and "textures" in source and "gui" in source
+
+    # Run the real generator into a scratch directory and require byte-identical
+    # output, so the committed frames and portraits cannot drift from the script.
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("wave7_art_generator", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.OUT = tmp_path
+    written = {path.name: path.read_bytes() for path in module.build()}
+    assert len(written) == 8, sorted(written)
+    for name, data in written.items():
+        committed = (ART / name).read_bytes()
+        assert data == committed, f"{name} does not match the generator output"

@@ -95,6 +95,7 @@ public final class EndEventTextureCatalog {
         textures.put("END_RIFT_RITUAL_GUARD_SPIDER_V1", entityTexture("end_rift_ritual_guard_spider.png"));
         textures.put("END_RIFT_SKELETON_V1", entityTexture("end_rift_user_skeleton.png"));
         textures.put("END_RIFT_ELITE_SKELETON_V1", entityTexture("end_rift_elite_skeleton.png"));
+        textures.put("END_RIFT_SPIRE_HARBINGER_V1", entityTexture("end_rift_spire_harbinger.png"));
         textures.put("END_RIFT_WAVE_GUARDIAN_SKELETON_V1", entityTexture("end_rift_wave_guardian_skeleton.png"));
         textures.put("END_RIFT_RITUAL_GUARD_SKELETON_V1", entityTexture("end_rift_ritual_guard_skeleton.png"));
         textures.put("END_RIFT_RITUAL_CASTER_V1", entityTexture("end_rift_ritual_caster.png"));

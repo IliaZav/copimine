@@ -20,6 +20,9 @@ public final class RiftEventSkeletonModelRenderer {
     private final RiftEventSkeletonModel wave7Marksman = new RiftEventSkeletonModel(
             RiftEventSkeletonModel.getTexturedModelData(RiftEventSkeletonModel.Variant.WAVE7_MARKSMAN).bakeRoot(),
             RiftEventSkeletonModel.Variant.WAVE7_MARKSMAN);
+    private final RiftEventSkeletonModel spireHarbinger = new RiftEventSkeletonModel(
+            RiftEventSkeletonModel.getTexturedModelData(RiftEventSkeletonModel.Variant.SPIRE_HARBINGER).bakeRoot(),
+            RiftEventSkeletonModel.Variant.SPIRE_HARBINGER);
 
     public SkeletonModel<SkeletonRenderState> modelFor(boolean elite) {
         return elite ? this.elite : this.ordinary;
@@ -35,6 +38,7 @@ public final class RiftEventSkeletonModelRenderer {
             case "END_RIFT_WAVE_GUARDIAN_SKELETON_V1" -> waveGuardian;
             case "END_RIFT_RITUAL_GUARD_SKELETON_V1" -> ritualGuard;
             case Wave7NamedTrialVisualPolicy.MARKSMAN_VISUAL -> wave7Marksman;
+            case "END_RIFT_SPIRE_HARBINGER_V1" -> spireHarbinger;
             default -> null;
         };
     }

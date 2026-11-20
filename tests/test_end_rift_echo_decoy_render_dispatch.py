@@ -324,3 +324,29 @@ def test_a_renewed_looping_decoy_cue_keeps_its_played_phase():
     assert "loopPhaseMillis() +" in elapsed_body, (
         "the renderer clock must include the carried loop phase"
     )
+
+
+def test_the_clip_map_evicts_only_the_coldest_body():
+    """The per-body clip cap must never wipe every live body's blend state.
+
+    Regression: at ``MAX_CLIP_KEYS`` the map was cleared wholesale, which reset
+    the Guardian and every on-screen decoy to the identity pose mid-blend, so
+    their animations snapped - the "obviously broken animations" contract 15.3
+    forbids as a decoy giveaway. Eviction must drop only the least-recently-used
+    body (the map is access-ordered) and never the body being posed now.
+    """
+    text = MODEL.read_text("utf-8")
+    assert "clips.clear()" not in text, (
+        "clearing the whole clip map resets every live body at once"
+    )
+    assert "new LinkedHashMap<>(16, 0.75F, true)" in text, (
+        "the clip map must be access-ordered so the coldest body is evicted"
+    )
+    start = text.index("private ClipState clipFor(")
+    body = text[start: text.index("\n    }", start)]
+    assert "clips.remove(victim)" in body, (
+        "the cap must evict a single body, not clear the map"
+    )
+    assert "candidate.equals(activeClipKey)" in body, (
+        "eviction must never drop the body currently being posed"
+    )

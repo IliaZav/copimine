@@ -149,6 +149,13 @@ public final class Wave7MinibossBossBarHud {
         int innerWidth = INNER_RIGHT - INNER_LEFT;
         int filled = Math.round(innerWidth * progress);
 
+        // The authored frame is the plate the bar is drawn on. Its track recess
+        // is opaque in the shipped art, so it must be blitted *before* the
+        // health fill. Drawing it afterwards (the historical order) painted the
+        // fill onto the artwork and hid the entire health readout behind it.
+        gui.blit(RenderPipelines.GUI_TEXTURED, frame(style), x, y,
+                0F, 0F, WIDTH, HEIGHT, FRAME_WIDTH, FRAME_HEIGHT, FRAME_WIDTH, FRAME_HEIGHT);
+
         // Track, then the lost slice in the deep accent so a hit reads even
         // when the bar is already low.
         gui.fill(x + INNER_LEFT, y + INNER_TOP, x + INNER_RIGHT, y + INNER_BOTTOM, glow(style));
@@ -170,8 +177,6 @@ public final class Wave7MinibossBossBarHud {
             gui.fill(notchX, y + INNER_TOP - 1, notchX + 1, y + INNER_BOTTOM + 1, 0xA0080914);
         }
 
-        gui.blit(RenderPipelines.GUI_TEXTURED, frame(style), x, y,
-                0F, 0F, WIDTH, HEIGHT, FRAME_WIDTH, FRAME_HEIGHT, FRAME_WIDTH, FRAME_HEIGHT);
         gui.blit(RenderPipelines.GUI_TEXTURED, portrait(style),
                 x + INNER_LEFT, y + (HEIGHT - PORTRAIT_SIZE) / 2 - 1,
                 0F, 0F, PORTRAIT_SIZE, PORTRAIT_SIZE, 128, 128, 128, 128);

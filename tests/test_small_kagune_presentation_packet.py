@@ -26,7 +26,7 @@ import java.util.*;
 public class SmallKagunePresentationPacketProbe {
     enum Kind { PERMANENT, TEMPORARY, UNDER_PLAYER, SMALL }
     static class TentacleAnimationPolicy {
-        enum State { READY }
+        enum State { READY, SMALL_WINDUP, SMALL_STRIKE, SMALL_RECOVERY }
         static class Kind { static final SmallKagunePresentationPacketProbe.Kind SMALL = SmallKagunePresentationPacketProbe.Kind.SMALL; }
         static int durationTicks(State ignored) { return 20; }
         static String wireName(State state) { return state.name(); }
@@ -37,14 +37,15 @@ public class SmallKagunePresentationPacketProbe {
     static final World WORLD = new World("arena");
     static class Entity { final UUID id = UUID.randomUUID(); UUID getUniqueId() { return id; }
         World getWorld() { return WORLD; } }
-    static class Player { final String name; Player(String name){this.name=name;}
+    static class Player { final String name; final UUID id=UUID.randomUUID(); Player(String name){this.name=name;}
+        UUID getUniqueId() { return id; }
         World getWorld() { return WORLD; } }
     static class Bukkit {
         static List<Player> online = new ArrayList<>();
         static List<Player> getOnlinePlayers() { return online; }
     }
     static class TentacleController {
-        record VisualState(Kind kind) { }
+        record VisualState(Kind kind, long startedTick) { }
         VisualState visual;
         VisualState state(UUID ignored) { return visual; }
     }
@@ -52,6 +53,7 @@ public class SmallKagunePresentationPacketProbe {
     record Config(Tuning smallKaguneTuning) { }
     final TentacleController tentacleController = new TentacleController();
     final Map<UUID, String> entityBindingInstances = new HashMap<>();
+    final Set<UUID> tentaclePoseCapablePlayers = new HashSet<>();
     final String eventId = "presentation-probe";
     final long generation = 9, eventTickCounter = 34;
     final Object keyTentacleHealthState = new Object(), keyTentacleTarget = new Object(), keyTentacleHealth = new Object();
@@ -74,8 +76,9 @@ public class SmallKagunePresentationPacketProbe {
     public static void main(String[] args) {
         var p = new SmallKagunePresentationPacketProbe(); var actor = new Entity();
         Bukkit.online = List.of(new Player("a"), new Player("b"), new Player("c"));
+        for (var player : Bukkit.online) p.tentaclePoseCapablePlayers.add(player.getUniqueId());
         for (Kind kind : Kind.values()) {
-            p.tentacleController.visual = new TentacleController.VisualState(kind);
+            p.tentacleController.visual = new TentacleController.VisualState(kind, 34);
             // One state CHANGE must cost exactly one packet per viewer: the
             // nested-loop storm would make this 9 for three viewers.
             p.totalPackets = 0; p.perViewer.clear();

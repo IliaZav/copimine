@@ -25,7 +25,7 @@ $propertiesPath = Test-EndRiftLocalRuntimePath -Path $propertiesPath -LocalRunti
 if (-not (Test-Path -LiteralPath $propertiesPath)) {
   throw 'Local RCON server.properties is missing.'
 }
-$serverPropertiesLines = [IO.File]::ReadAllLines($propertiesPath)
+$serverPropertiesLines = @(Read-EndRiftLocalServerProperties -Path $propertiesPath)
 Test-EndRiftLocalServerBind -ServerPropertiesLines $serverPropertiesLines | Out-Null
 $rconPortRows = @($serverPropertiesLines | Where-Object { $_ -match '^rcon\.port=' })
 if ($rconPortRows.Count -ne 1 -or $rconPortRows[0] -cne ("rcon.port=" + $RconPort)) {
@@ -62,7 +62,7 @@ Assert-EndRiftLocalServerBind -ServerDir $ServerDir `
   -RconPort $RconPort `
   -ExpectedProcessId $serverReceipt.ProcessId | Out-Null
 $rconPasswordLines = @()
-foreach ($line in [IO.File]::ReadLines($propertiesPath)) {
+foreach ($line in $serverPropertiesLines) {
   if ($line.StartsWith('rcon.password=', [StringComparison]::Ordinal)) { $rconPasswordLines += $line }
 }
 $rconPasswordCount = $rconPasswordLines.Count

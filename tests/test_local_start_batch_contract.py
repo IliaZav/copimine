@@ -279,7 +279,7 @@ def test_local_session_normalizes_paper_resource_pack_prompt_growth() -> None:
 def test_local_rcon_reads_only_the_password_line_from_a_corrupt_properties_file() -> None:
     text = (ROOT / "tests" / "InvokeEndRiftLocalRcon.ps1").read_text(encoding="utf-8")
 
-    assert "[IO.File]::ReadLines($propertiesPath)" in text
+    assert "Read-EndRiftLocalServerProperties -Path $propertiesPath" in text
     assert "StartsWith('rcon.password=', [StringComparison]::Ordinal)" in text
     assert "ConvertFrom-StringData" not in text
 

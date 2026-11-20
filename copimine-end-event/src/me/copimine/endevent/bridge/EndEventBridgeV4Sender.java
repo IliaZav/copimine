@@ -883,7 +883,7 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
 
     private boolean coalescePendingSnapshot(StreamState stream, EndEventBridgeBodyCodec.Body body) {
         boolean bind = body.type() == EndEventBridgeBodyCodec.Type.END_ENTITY_BIND;
-        boolean pose = body.type() == EndEventBridgeBodyCodec.Type.END_ENTITY_PHASE;
+        boolean pose = body.type() == EndEventBridgeBodyCodec.Type.END_ENTITY_PHASE && snapshotKey(body) != null;
         boolean bar = body.type() == EndEventBridgeBodyCodec.Type.END_BOSS_BAR;
         if (!bind && !pose && !bar) return false;
         var iterator = stream.pendingApplications.listIterator(stream.pendingApplications.size());
@@ -896,7 +896,7 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
             if (bind && queued.type() == EndEventBridgeBodyCodec.Type.END_ENTITY_PHASE) continue;
             if (queued.type() != body.type() || !queued.subjectOrMode().equals(body.subjectOrMode())) return false;
             if (!bar && !sameSnapshot(queued, body)) return false;
-            iterator.set(body);
+            iterator.set(withBodyTimestamp(body, queued.bodyTimestampMillis()));
             stream.coalescedApplications++;
             return true;
         }
@@ -912,6 +912,13 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
                 && a.health() == b.health() && a.maxHealth() == b.maxHealth()
                 && a.clearPolicy().equals(b.clearPolicy()) && a.reservedOne().equals(b.reservedOne())
                 && a.reservedTwo().equals(b.reservedTwo()) && a.status().equals(b.status());
+    }
+
+    private static EndEventBridgeBodyCodec.Body withBodyTimestamp(EndEventBridgeBodyCodec.Body body, long timestamp) {
+        return new EndEventBridgeBodyCodec.Body(body.type(), body.generation(), timestamp,
+                body.eventUuid(), body.instanceId(), body.controlId(), body.visualId(), body.durationMillis(),
+                body.progressOrIntensity(), body.health(), body.maxHealth(), body.subjectOrMode(), body.clearPolicy(),
+                body.reservedOne(), body.reservedTwo(), body.status());
     }
 
     public record QueueDiagnostics(int pending, int highWatermark, long sent, long coalesced, long refused, long oldestAgeMillis) { }
@@ -968,11 +975,7 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
             stream.pendingApplications.removeFirst();
             // A queued presentation starts on delivery. Its envelope must never
             // expire in a backlog or disagree with the authenticated body clock.
-            EndEventBridgeBodyCodec.Body body = new EndEventBridgeBodyCodec.Body(queued.type(),
-                    queued.generation(), now, queued.eventUuid(), queued.instanceId(), queued.controlId(),
-                    queued.visualId(), queued.durationMillis(), queued.progressOrIntensity(), queued.health(),
-                    queued.maxHealth(), queued.subjectOrMode(), queued.clearPolicy(), queued.reservedOne(),
-                    queued.reservedTwo(), queued.status());
+            EndEventBridgeBodyCodec.Body body = withBodyTimestamp(queued, now);
             if (!sendApplicationNow(player, state, body) || state.stream != stream) return;
         }
     }

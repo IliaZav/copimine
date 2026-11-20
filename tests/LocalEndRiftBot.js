@@ -42,6 +42,21 @@ const client = mc.createClient({
   }
 })
 
+if (process.env.END_RIFT_TEST_CLIENT_MOD_HANDSHAKE === '1') {
+  const { EventEmitter } = require('events')
+  const { attachLocalClientModHandshake } = require('./EndRiftBotClientModHandshake')
+  const probe = Object.assign(new EventEmitter(), { _client: client, username })
+  attachLocalClientModHandshake(probe, {
+    host, port, version: process.env.END_RIFT_TEST_CLIENT_MOD_VERSION || '',
+  })
+  client.once('login', () => {
+    probe.uuid = client.uuid
+    probe.emit('login')
+  })
+  client.once('position', () => probe.emit('spawn'))
+  client.once('end', () => probe.emit('end'))
+}
+
 const sessionEpoch = Date.now()
 let joined = false
 const originalWrite = client.write.bind(client)

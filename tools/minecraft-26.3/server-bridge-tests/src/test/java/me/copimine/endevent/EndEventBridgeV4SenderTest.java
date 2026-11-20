@@ -227,6 +227,21 @@ final class EndEventBridgeV4SenderTest {
     }
 
     @Test
+    void refreshingUnsignedSnapshotDoesNotHideQueueAge() throws Exception {
+        Fixture fixture = readyFixture();
+        for (int i = 0; i < 16; i++) assertTrue(fixture.sendValidState());
+        String actor = new UUID(0, 77).toString();
+        assertTrue(fixture.sender.send(fixture.playerUuid, "END_ENTITY_BIND", "tentacle.1", 0,
+                actor, "END_RIFT_TENTACLE_V1", 0, 0, 0, "", ""));
+        assertEquals(1, fixture.sender.queueDiagnostics(fixture.playerUuid).pending());
+        fixture.now.addAndGet(350);
+        assertTrue(fixture.sender.send(fixture.playerUuid, "END_ENTITY_BIND", "tentacle.1", 0,
+                actor, "END_RIFT_TENTACLE_V1", 0, 0, 0, "", ""));
+        assertEquals(350, fixture.sender.queueDiagnostics(fixture.playerUuid).oldestAgeMillis());
+        assertEquals(1, fixture.sender.queueDiagnostics(fixture.playerUuid).coalesced());
+    }
+
+    @Test
     void unchangedKaguneHeartbeatsAreSuppressedAfterTransmissionAndUnbindAllowsReentry() throws Exception {
         Fixture fixture = readyFixture();
         String pose = "SMALL_WINDUP|t=100|health=FULL|role=SMALL|scale=0.65|hp=50.0";

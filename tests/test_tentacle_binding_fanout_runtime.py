@@ -29,7 +29,7 @@ public class TentacleBindingProbe {
  static class Player extends Entity {int binds,poses; String pose;}
  static class Bukkit {static List<Player> players=List.of(); static List<Player> getOnlinePlayers(){return players;}}
  static class TentacleAnimationPolicy {
-  enum State { READY, SMALL_STRIKE } enum Kind { PERMANENT, SMALL, UNDER_PLAYER, TEMPORARY }
+  enum State { READY, SMALL_WINDUP, SMALL_STRIKE, SMALL_RECOVERY } enum Kind { PERMANENT, SMALL, UNDER_PLAYER, TEMPORARY }
   static long durationTicks(State s){return 12;} static String wireName(State s){return s.name();}
  }
  static class TentacleController {
@@ -40,6 +40,7 @@ public class TentacleBindingProbe {
  static class Config {Tuning smallKaguneTuning(){return new Tuning();}}
  Config config=new Config(); TentacleController tentacleController=new TentacleController();
  Map<UUID,String> entityBindingInstances=new HashMap<>(); String eventId="event";
+ Set<UUID> tentaclePoseCapablePlayers=new HashSet<>();
  long generation=9,eventTickCounter=105;
  String keyKind="kind",keyTentacleHealthState="health",keyTentacleTarget="target",keyTentacleHealth="hp";
  String EVENT_KIND_RITUAL_CASTER="caster",EVENT_KIND_TENTACLE="tentacle";
@@ -59,7 +60,9 @@ public class TentacleBindingProbe {
  public static void main(String[] args){
   for(int count:new int[]{2,5,10,11,20}) {
    var probe=new TentacleBindingProbe();var players=new ArrayList<Player>();
-   for(int i=0;i<count;i++)players.add(new Player());Bukkit.players=players;
+   for(int i=0;i<count;i++){
+    var player=new Player();players.add(player);probe.tentaclePoseCapablePlayers.add(player.getUniqueId());
+   }Bukkit.players=players;
    var actors=new ArrayList<ItemDisplay>();for(int i=0;i<38;i++)actors.add(new ItemDisplay());
    for(var actor:actors)probe.bindEventEntityClientForOnlinePlayers(actor);
    for(var p:players){
@@ -75,6 +78,9 @@ public class TentacleBindingProbe {
    var foreign=new ItemDisplay();foreign.world="other";
    probe.bindEventEntityClient(late,foreign);
    if(late.poses!=before+2)throw new AssertionError("cross-world binding");
+   probe.tentaclePoseCapablePlayers.remove(late.getUniqueId());
+   probe.bindEventEntityClient(late,actors.getFirst());
+   if(!late.pose.equals("THROW|t=100|health=DAMAGED"))throw new AssertionError("legacy receiver would reject "+late.pose);
   }
  }
 }

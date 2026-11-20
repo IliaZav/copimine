@@ -1344,6 +1344,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final PrisonerAbilityController prisonerAbilityController = new PrisonerAbilityController();
     private final Map<UUID, String> clientBridgeSessions = new HashMap<>();
     private final Set<UUID> trialAnimationCapablePlayers = new HashSet<>();
+    private final Set<UUID> tentaclePoseCapablePlayers = new HashSet<>();
     private record TrialPoseEmission(long generation, String event, long cast, String action,
                                      String stage, long startedTick, int duration, long sentTick) { }
     private final Map<UUID, TrialPoseEmission> trialPoseEmissions = new HashMap<>();
@@ -4558,6 +4559,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         prisonerAbilityController.end(generation);
         clientBridgeSessions.clear();
         trialAnimationCapablePlayers.clear();
+        tentaclePoseCapablePlayers.clear();
         trialPoseEmissions.clear();
         trialAimLocks.clear();
         trialMovementFocus.clear();
@@ -60187,6 +60189,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         clientBridgeSessions.remove(uuid);
         trialAnimationCapablePlayers.remove(uuid);
+        tentaclePoseCapablePlayers.remove(uuid);
         echoPresentationCapablePlayers.remove(uuid);
         if (echoPresentationProbe != null && echoPresentationProbe.owner().equals(uuid))
             clearEchoPresentationProbe();
@@ -62058,6 +62061,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         String targetId = readString(entity, keyTentacleTarget);
         String targetSuffix = targetId.isBlank() ? "" : "|target=" + targetId;
         TentacleController.VisualState visual = tentacleController.state(entity.getUniqueId());
+        long startedTick = Math.max(0L, visual == null ? eventTickCounter : visual.startedTick());
+        if (!tentaclePoseCapablePlayers.contains(player.getUniqueId())) {
+            String compatible = switch (state) {
+                case SMALL_WINDUP -> "TELEGRAPH_GRAB";
+                case SMALL_STRIKE -> "THROW";
+                case SMALL_RECOVERY -> "RECOVERY";
+                default -> TentacleAnimationPolicy.wireName(state);
+            };
+            sendClientPacket(player, "END_ENTITY_PHASE", instance, durationMillis,
+                    entity.getUniqueId().toString(), compatible + "|t=" + startedTick
+                            + "|health=" + healthState + targetSuffix);
+            return;
+        }
         String role = visual == null ? "PERMANENT" : visual.kind().name();
         double roleScale = visual == null ? 1.0D : switch (visual.kind()) {
             case SMALL -> config.smallKaguneTuning().scale();
@@ -62069,7 +62085,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + "|hp=" + Math.max(0.0D, readDouble(entity, keyTentacleHealth, 0.0D));
         sendClientPacket(player, "END_ENTITY_PHASE", instance, durationMillis,
                 entity.getUniqueId().toString(), TentacleAnimationPolicy.wireName(state)
-                        + "|t=" + Math.max(0L, visual == null ? eventTickCounter : visual.startedTick())
+                        + "|t=" + startedTick
                         + "|health=" + healthState + targetSuffix + roleSuffix);
     }
 
@@ -62870,10 +62886,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             boolean supportsEchoPresentation = false;
             boolean supportsTrialAnimation = false;
+            boolean supportsTentaclePose = false;
             for (int index = 0; index < effectCount; index++) {
                 String capability = readBridgeUtf(input, 96);
                 supportsEchoPresentation |= "ECHO_PRESENTATION_V1".equals(capability);
                 supportsTrialAnimation |= "TRIAL_ANIMATION_V1".equals(capability);
+                supportsTentaclePose |= "TENTACLE_ROLE_POSE_V1".equals(capability);
             }
             readBridgeUtf(input, 64);
             readBridgeUtf(input, 128);
@@ -62894,6 +62912,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (Objects.equals(clientBridgeSessions.get(player.getUniqueId()), session)) {
                     if (supportsTrialAnimation && clientVisuals) trialAnimationCapablePlayers.add(player.getUniqueId());
                     else trialAnimationCapablePlayers.remove(player.getUniqueId());
+                    if (supportsTentaclePose) tentaclePoseCapablePlayers.add(player.getUniqueId());
+                    else tentaclePoseCapablePlayers.remove(player.getUniqueId());
                 }
                 if (Objects.equals(ritualPrisonerId(), player.getUniqueId())) {
                     sendRitualPrisonerState(player);
@@ -62906,6 +62926,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (Objects.equals(clientBridgeSessions.get(player.getUniqueId()), session)) {
                     if (supportsTrialAnimation && clientVisuals) trialAnimationCapablePlayers.add(player.getUniqueId());
                     else trialAnimationCapablePlayers.remove(player.getUniqueId());
+                    if (supportsTentaclePose) tentaclePoseCapablePlayers.add(player.getUniqueId());
+                    else tentaclePoseCapablePlayers.remove(player.getUniqueId());
                 }
             }
             // V3 is telemetry only; mutating requests require the signed V4 receiver.

@@ -176,7 +176,8 @@ def test_local_rcon_uses_canonical_descendant_path_guard() -> None:
     assert "[IO.Path]::GetFullPath((Resolve-Path -LiteralPath $ServerDir).ProviderPath)" in source
     assert "Test-EndRiftLocalRuntimePath -Path $ServerDir -LocalRuntimeRoot $localRuntimeRoot" in source
     assert "Test-EndRiftLocalRuntimePath -Path $propertiesPath -LocalRuntimeRoot $localRuntimeRoot" in source
-    assert "foreach ($line in [IO.File]::ReadLines($propertiesPath))" in source
+    assert "Read-EndRiftLocalServerProperties -Path $propertiesPath" in source
+    assert "foreach ($line in $serverPropertiesLines)" in source
     assert "Assert-EndRiftLocalServerBind -ServerDir $ServerDir `" in source
     assert "$serverReceipt = Get-EndRiftLocalServerReceipt" in source
     assert "-ExpectedProcessId $serverReceipt.ProcessId" in source

@@ -57,6 +57,7 @@ public class ArrowVisualProbe {
     }
     static class Bukkit {static Map<UUID,Entity> entities=new HashMap<>();static Entity getEntity(UUID id){return entities.get(id);}}
     static final int MODEL_ELITE_TRIPLE_ARROW=830034,MODEL_ELITE_ARROW_RAIN=830035,MODEL_ELITE_EXPLOSIVE_ARROW=830036;
+    static final int MODEL_ELITE_RIFT_BOLT=830031;
     static final float ELITE_ARROW_VISUAL_SCALE=.5F;static final String EVENT_KIND_DISPLAY="display";
     Object keyEliteArrowModel="model",keyEliteProjectileVisual="owner",keyWave="wave";
     int activeWave=7;long generation=3;String eventId="event";boolean refuseTeleport,failTag;

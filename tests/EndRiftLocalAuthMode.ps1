@@ -572,6 +572,23 @@ function Import-EndRiftLocalEnvironment {
   }
 }
 
+function Read-EndRiftLocalServerProperties {
+  param([Parameter(Mandatory = $true)][string]$Path)
+  # Paper may hold a writable settings handle while serving. Match its sharing
+  # mode for this read so the loopback guard works after a Windows cold start.
+  $file = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+  try {
+    $reader = [IO.StreamReader]::new($file, [Text.UTF8Encoding]::new($false), $true)
+    try {
+      while (($line = $reader.ReadLine()) -ne $null) { $line }
+    } finally {
+      $reader.Dispose()
+    }
+  } finally {
+    $file.Dispose()
+  }
+}
+
 function Write-EndRiftLocalServerReceipt {
   [CmdletBinding()]
   param(

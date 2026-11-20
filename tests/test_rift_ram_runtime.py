@@ -10,7 +10,7 @@ RUNTIME = ROOT/'copimine-end-event/src/me/copimine/endevent/runtime/RiftRamEncou
 def test_pillar_receipts_bounded_adds_and_real_death(tmp_path):
     source = RUNTIME.read_text(encoding='utf-8').replace('    public ', '    private ')
     methods = '\n'.join(extract(source, signature) for signature in [
-        'void impact()', 'void died(UUID entity)', 'void clearPillar()', 'boolean skeletonAlive()', 'void suspend()',
+        'void impact()', 'void died(UUID entity)', 'boolean clearPillar()', 'boolean skeletonAlive()', 'void suspend()',
         'void cleanupDisplays()', 'void cleanupDisplays(boolean preserveSkeleton)', 'void close()', 'void fail(String reason)',
         'void begin(Action next)',
         'Map<String,String> snapshot()', 'void restore(Map<String,String> data)',
@@ -75,7 +75,7 @@ public class RamRuntimeProbe {
     // The pillar is solid through a host-owned, journaled barrier volume; the
     // encounter never writes terrain itself, so the probe only answers the seam.
     int collidersPlaced;boolean placePillarCollider(Location centre,int halfWidth,int height){collidersPlaced++;return true;}
-    void clearPillarCollider(){}
+    boolean clearPillarCollider(){return true;}
     void fail(String s){failures++;}
     // Presentation seams the runtime calls when the pose or an ability cue moves.
     void abilitySound(Ravager actor,String cue){}

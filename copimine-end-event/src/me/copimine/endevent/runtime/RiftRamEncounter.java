@@ -26,6 +26,7 @@ public final class RiftRamEncounter {
     public interface Host {
         boolean active();
         default void pose(Ravager actor,String pose,int durationTicks) { }
+        default void pose(Skeleton actor, String pose, int durationTicks) { }
         default void abilitySound(Ravager actor,String cue) { }
         List<Player> players();
         Location core();
@@ -40,6 +41,7 @@ public final class RiftRamEncounter {
         Arrow spawnBoneArrow(Location origin, Vector direction, double speed, double damage);
         /** Called after shooter attribution, before a real arrow enters the shared flight controller. */
         default boolean prepareBoneArrow(Arrow arrow, boolean rain) { return true; }
+        default boolean canLaunchBoneArrow(Location origin) { return true; }
         /**
          * Build the active pillar's real, journaled collider.
          *
@@ -49,7 +51,7 @@ public final class RiftRamEncounter {
          */
         default boolean placePillarCollider(Location centre, int halfWidth, int height) { return true; }
         /** Restore every pillar collider cell this encounter placed. */
-        default void clearPillarCollider() { }
+        default boolean clearPillarCollider() { return true; }
         int particleBudget();
         void remove(Entity entity);
         /** Moves an owned entity through the internal permit path; reports refusal. */
@@ -61,6 +63,8 @@ public final class RiftRamEncounter {
     private enum Action { CHASE, CHARGE_WARNING, CHARGE, STUN, STOMP_WARNING, STOMP, RECOVER, DEAD }
     private record Piece(BlockDisplay display, Vector offset, Vector3f size, int section) {}
     private record Debris(BlockDisplay display, Location start, Vector velocity, int born) {}
+    private record SpireCast(WaveSixPillarSkeletonPolicy.Ability ability, UUID target,
+                             Location locked, int releaseTick) { }
     private final Host host;
     private Ravager ram;
     private UUID persistentId;
@@ -101,11 +105,14 @@ public final class RiftRamEncounter {
     private UUID skeletonFocus;
     private int skeletonFocusUntil;
     private int skeletonLastTriple = -1, skeletonLastBone = -1, skeletonLastMove = -1, skeletonStep;
+    private int skeletonLastLance = -1, skeletonNextCastTick;
+    private SpireCast skeletonCast;
     private boolean skeletonFallen, skeletonFalling, pillarSkeletonSpawned, pillarSkeletonDefeated, ramDefeated;
     private int skeletonFallStart;
 
     public RiftRamEncounter(Host host) { this.host = host; }
     public UUID id() { return ram == null ? persistentId : ram.getUniqueId(); }
+    public boolean isSpireHarbinger(UUID actor) { return actor != null && actor.equals(pillarSkeletonId); }
     public int impacts() { return impacts; }
     public boolean complete() { return completed; }
     public boolean ready() { return !closed && (ramDefeated ? skeletonAlive()
@@ -513,7 +520,8 @@ public final class RiftRamEncounter {
         // destination's passability: a Ram whose nose has reached the pillar has
         // to register the impact, not be refused as "moving into a wall".
         if(pillarId!=null && !banked && tick-nextPillarTick>=20 && RiftRamPolicy.segmentHitsPillar(
-                from.getX(),from.getY(),from.getZ(),to.getX(),to.getY(),to.getZ(),pillar.getX(),pillar.getY(),pillar.getZ())) {
+                from.getX(),from.getY(),from.getZ(),to.getX(),to.getY(),to.getZ(),
+                pillar.getX(),pillar.getY(),pillar.getZ(), impacts)) {
             impact(); return;
         }
         if(!safeVolume(to)) { recover(); return; }
@@ -559,7 +567,7 @@ public final class RiftRamEncounter {
             // being deleted with it: it lands and keeps fighting on the floor.
             dropPillarSkeleton();
             if (closed) return;
-            clearPillar();
+            if (!clearPillar()) { fail("pillar-collider-restore-pending"); return; }
             dust(struck.clone().add(0,1.5,0),100,1.2,1.5);
             struck.getWorld().playSound(struck,Sound.BLOCK_DEEPSLATE_BREAK,2,.6f);
             struck.getWorld().playSound(ram.getLocation(),Sound.BLOCK_ANVIL_BREAK,2,.75f);
@@ -639,11 +647,11 @@ public final class RiftRamEncounter {
             if(!stompRoster.contains(p.getUniqueId()) || !p.getWorld().equals(stompOrigin.getWorld())) continue;
             double distance=Math.hypot(p.getX()-stompOrigin.getX(),p.getZ()-stompOrigin.getZ());
             if(RiftRamPolicy.stompHits(distance,p.getY()-host.floorY()-1,p.isOnGround(),lastRadius,radius,stompHits.contains(p.getUniqueId()))) {
-                stompHits.add(p.getUniqueId());
                 // Damages through the same accepted-hit path as every other Ram
                 // attack, so one cast can never damage a player twice and the
                 // damage radius is exactly the visible wave front.
-                host.damage(ram, p, RiftRamPolicy.STOMP_DAMAGE);
+                if (!host.damage(ram, p, RiftRamPolicy.STOMP_DAMAGE)) continue;
+                stompHits.add(p.getUniqueId());
                 p.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
                         RiftRamPolicy.stompSlowTicks(),RiftRamPolicy.STOMP_SLOW_AMPLIFIER));
                 // The hit is the moment the player needs feedback: impact sound at
@@ -800,7 +808,7 @@ public final class RiftRamEncounter {
                 // On the platform the server owns the actor's position through the
                 // patrol moves; gravity is only switched on for the real fall.
                 entity.setGravity(false);
-                entity.setCustomName("Стрелок Разлома");
+                entity.setCustomName("Предвестник Башни Разлома");
                 entity.setCustomNameVisible(false);
                 entity.getAttribute(Attribute.GENERIC_MAX_HEALTH)
                         .setBaseValue(WaveSixPillarSkeletonPolicy.HEALTH);
@@ -842,10 +850,15 @@ public final class RiftRamEncounter {
     private void tickPillarSkeleton(List<Player> players) {
         if (!skeletonAlive()) return;
         if (skeletonFalling) {
+            skeletonCast = null;
             tickSkeletonFall();
             if (closed || skeletonFalling || !skeletonAlive()) return;
         }
         if (pillar == null && !skeletonFallen) return;
+        if (skeletonCast != null) {
+            tickSpireCast(players);
+            return;
+        }
         Player target = players.stream().filter(player -> player.getUniqueId().equals(skeletonFocus)
                 && player.isOnline() && !player.isDead() && player.getWorld().equals(pillarSkeleton.getWorld()))
                 .findFirst().orElse(null);
@@ -890,23 +903,73 @@ public final class RiftRamEncounter {
                     standingPillarPlatformHeight(), offset[1] * patrolScale);
             host.move(pillarSkeleton, next);
         }
-        WaveSixPillarSkeletonPolicy.Ability ability =
-                WaveSixPillarSkeletonPolicy.nextAbility(tick, skeletonLastTriple, skeletonLastBone, hasTarget);
+        if (tick < skeletonNextCastTick || action == Action.CHARGE || action == Action.CHARGE_WARNING
+                || action == Action.STOMP || action == Action.STOMP_WARNING || target == null) return;
+        double range = pillarSkeleton.getLocation().distance(target.getLocation());
+        WaveSixPillarSkeletonPolicy.Ability ability = WaveSixPillarSkeletonPolicy.nextAbility(
+                tick, skeletonLastTriple, skeletonLastBone, skeletonLastLance, hasTarget, range);
         if (ability == WaveSixPillarSkeletonPolicy.Ability.NONE) return;
+        int warning = WaveSixPillarSkeletonPolicy.warningTicks(ability);
+        Location locked = target.getLocation().clone();
+        skeletonCast = new SpireCast(ability, target.getUniqueId(), locked, tick + warning);
+        pillarSkeleton.getPathfinder().stopPathfinding();
+        host.pose(pillarSkeleton, "WAVE_WINDUP", warning);
         if (ability == WaveSixPillarSkeletonPolicy.Ability.BONE_RAIN) {
-            skeletonLastBone = tick;
-            fireBoneRain(target);
-            pillarSkeleton.getWorld().playSound(pillarSkeleton.getLocation(),
-                    Sound.ENTITY_SKELETON_HURT, 1.5f, .55f);
+            dust(locked, 22, 1.1D, .08D);
+            locked.getWorld().playSound(locked, Sound.ENTITY_SKELETON_HURT, 1.2F, .55F);
         } else {
-            skeletonLastTriple = tick;
-            fireBoneVolley(target, WaveSixPillarSkeletonPolicy.tripleShotDirections(
-                    target.getX() - pillarSkeleton.getX(), target.getZ() - pillarSkeleton.getZ()),
-                    WaveSixPillarSkeletonPolicy.TRIPLE_SHOT_SPEED);
             pillarSkeleton.getWorld().playSound(pillarSkeleton.getLocation(),
-                    Sound.ENTITY_SKELETON_SHOOT, 1.4f, .85f);
+                    Sound.ITEM_CROSSBOW_LOADING_START, 1.3F,
+                    ability == WaveSixPillarSkeletonPolicy.Ability.SPIRE_LANCE ? .65F : 1.1F);
         }
-        host.visualsChanged();
+    }
+
+    private void tickSpireCast(List<Player> players) {
+        SpireCast cast = skeletonCast;
+        if (action == Action.CHARGE || action == Action.CHARGE_WARNING || action == Action.STOMP
+                || action == Action.STOMP_WARNING || !host.active() || !host.owns(pillarSkeleton)) {
+            skeletonCast = null;
+            skeletonNextCastTick = tick + 20;
+            host.pose(pillarSkeleton, "WAVE_RECOVER", 10);
+            return;
+        }
+        if (cast.ability() == WaveSixPillarSkeletonPolicy.Ability.BONE_RAIN && tick % 8 == 0)
+            dust(cast.locked(), 10, 1.0D, .06D);
+        if (tick < cast.releaseTick()) return;
+        skeletonCast = null;
+        skeletonNextCastTick = tick + 20;
+        boolean validTarget = players.stream().anyMatch(player -> player.getUniqueId().equals(cast.target())
+                && player.isOnline() && !player.isDead() && player.getWorld().equals(cast.locked().getWorld()));
+        if (!validTarget) return;
+        Location locked = cast.locked();
+        boolean accepted;
+        switch (cast.ability()) {
+            case BONE_RAIN -> {
+                accepted = fireBoneRain(locked);
+                if (accepted) skeletonLastBone = tick;
+            }
+            case TRIPLE_SHOT -> {
+                accepted = fireBoneVolley(locked, WaveSixPillarSkeletonPolicy.tripleShotDirections(
+                        locked.getX() - pillarSkeleton.getX(), locked.getZ() - pillarSkeleton.getZ()),
+                        WaveSixPillarSkeletonPolicy.TRIPLE_SHOT_SPEED, WaveSixPillarSkeletonPolicy.ARROW_DAMAGE);
+                if (accepted) skeletonLastTriple = tick;
+            }
+            case SPIRE_LANCE -> {
+                accepted = fireBoneVolley(locked, WaveSixPillarSkeletonPolicy.spread(
+                        locked.getX() - pillarSkeleton.getX(), locked.getZ() - pillarSkeleton.getZ(), 1, 0D),
+                        WaveSixPillarSkeletonPolicy.SPIRE_LANCE_SPEED, WaveSixPillarSkeletonPolicy.SPIRE_LANCE_DAMAGE);
+                if (accepted) skeletonLastLance = tick;
+            }
+            default -> { return; }
+        }
+        if (accepted) {
+            skeletonNextCastTick = tick + 38;
+            host.pose(pillarSkeleton, "WAVE_RELEASE", 12);
+            pillarSkeleton.getWorld().playSound(pillarSkeleton.getLocation(), Sound.ENTITY_SKELETON_SHOOT,
+                    1.4F, cast.ability() == WaveSixPillarSkeletonPolicy.Ability.SPIRE_LANCE ? .48F : .85F);
+        } else {
+            host.pose(pillarSkeleton, "WAVE_RECOVER", 10);
+        }
     }
 
     /**
@@ -918,32 +981,35 @@ public final class RiftRamEncounter {
      * on the victim's feet and the rest bracket it, so stepping out of the
      * centre is the counterplay.</p>
      */
-    private void fireBoneRain(Player target) {
+    private boolean fireBoneRain(Location target) {
         World world = target.getWorld();
-        if (world == null || !world.equals(pillarSkeleton.getWorld())) return;
+        if (world == null || !world.equals(pillarSkeleton.getWorld())) return false;
+        List<Arrow> volley = new ArrayList<>(WaveSixPillarSkeletonPolicy.BONE_RAIN_ARROWS);
         for (double[] offset : WaveSixPillarSkeletonPolicy.boneRainOffsets()) {
             Location origin = new Location(world,
                     target.getX() + offset[0],
                     target.getY() + WaveSixPillarSkeletonPolicy.BONE_RAIN_HEIGHT,
                     target.getZ() + offset[1]);
-            Arrow arrow = host.spawnBoneArrow(origin, new Vector(0, -1, 0),
-                    WaveSixPillarSkeletonPolicy.BONE_RAIN_SPEED,
-                    WaveSixPillarSkeletonPolicy.ARROW_DAMAGE);
-            if (arrow == null) continue;
-            arrow.setShooter(pillarSkeleton);
-            arrow.setDamage(WaveSixPillarSkeletonPolicy.ARROW_DAMAGE);
-            if (!host.prepareBoneArrow(arrow, true)) host.remove(arrow);
+            if (!releaseSpireArrow(volley, origin, new Vector(0, -1, 0),
+                    WaveSixPillarSkeletonPolicy.BONE_RAIN_SPEED, WaveSixPillarSkeletonPolicy.ARROW_DAMAGE, true))
+                return false;
         }
         // The tell is above the victim, where the arrows come from, so a player
         // who is looking at the skeleton still hears where the danger is.
-        world.playSound(target.getLocation().add(0, WaveSixPillarSkeletonPolicy.BONE_RAIN_HEIGHT, 0),
+        world.playSound(target.clone().add(0, WaveSixPillarSkeletonPolicy.BONE_RAIN_HEIGHT, 0),
                 Sound.ENTITY_SKELETON_SHOOT, 1.2f, .6f);
+        return true;
     }
 
     /** Releases one modelled volley along the given horizontal directions. */
-    private void fireBoneVolley(Player target, double[][] directions, double speed) {
+    private boolean fireBoneVolley(Location target, double[][] directions, double speed, double damage) {
+        if (directions.length == 0 || !pillarSkeleton.getWorld().equals(target.getWorld())) return false;
+        List<Arrow> volley = new ArrayList<>(directions.length);
         for (double[] dir : directions) {
-            if (dir == null || dir.length < 2) continue;
+            if (dir == null || dir.length < 2) {
+                volley.forEach(host::remove);
+                return false;
+            }
             double dy = (target.getY() + 0.9D) - (pillarSkeleton.getY() + 1.5D);
             Vector aim = new Vector(dir[0], 0, dir[1]);
             double horizontal = Math.hypot(target.getX() - pillarSkeleton.getX(),
@@ -951,16 +1017,27 @@ public final class RiftRamEncounter {
             if (horizontal > 1.0E-6D) aim.setY(dy / horizontal);
             aim.normalize();
             Location origin = pillarSkeleton.getLocation().clone().add(0, 1.5D, 0);
-            Arrow arrow = host.spawnBoneArrow(origin, aim, speed, WaveSixPillarSkeletonPolicy.ARROW_DAMAGE);
-            if (arrow != null) {
-                arrow.setShooter(pillarSkeleton);
-                arrow.setDamage(WaveSixPillarSkeletonPolicy.ARROW_DAMAGE);
-                // This is the authored straight triple shot: gravity stays off so
-                // the locked fan does not droop. The falling rain volley is a
-                // separate ability (fireBoneRain) and owns gravity itself.
-                if (!host.prepareBoneArrow(arrow, false)) host.remove(arrow);
-            }
+            if (!releaseSpireArrow(volley, origin, aim, speed, damage, false)) return false;
         }
+        return volley.size() == directions.length;
+    }
+
+    private boolean releaseSpireArrow(List<Arrow> volley, Location origin, Vector direction,
+                                      double speed, double damage, boolean rain) {
+        try {
+            Arrow arrow = host.canLaunchBoneArrow(origin) ? host.spawnBoneArrow(origin, direction, speed, damage) : null;
+            if (arrow != null) {
+                volley.add(arrow);
+                arrow.setShooter(pillarSkeleton);
+                arrow.setDamage(damage);
+                if (host.prepareBoneArrow(arrow, rain)) return true;
+            }
+        } catch (RuntimeException failure) {
+            // Roll back the incomplete volley as one attack.
+        }
+        for (Arrow arrow : volley) host.remove(arrow);
+        volley.clear();
+        return false;
     }
 
     /**
@@ -1021,10 +1098,11 @@ public final class RiftRamEncounter {
         dust(at, 30, .8, .5);
     }
 
-    private void clearPillar() {
-        host.clearPillarCollider();
+    private boolean clearPillar() {
+        boolean restored = host.clearPillarCollider();
         for(BlockDisplay d:pillarDisplays) host.remove(d);
         pillarDisplays.clear(); pillarRestPositions.clear(); pillar=null; pillarId=null;
+        return restored;
     }
     private void cleanupDisplays() { cleanupDisplays(false); }
     private void cleanupDisplays(boolean preserveSkeleton) {

@@ -227,6 +227,39 @@ final class EndEventBridgeV4SenderTest {
     }
 
     @Test
+    void unchangedKaguneHeartbeatsAreSuppressedAfterTransmissionAndUnbindAllowsReentry() throws Exception {
+        Fixture fixture = readyFixture();
+        String pose = "SMALL_WINDUP|t=100|health=FULL|role=SMALL|scale=0.65|hp=50.0";
+        for (int i = 0; i < 38; i++) {
+            String actor = new UUID(0, i + 100).toString();
+            assertTrue(fixture.sender.send(fixture.playerUuid, "END_ENTITY_BIND", "kagune." + i, 0,
+                    actor, "END_RIFT_TENTACLE_V1", 0, 0, 0, "", ""));
+            assertTrue(fixture.sender.send(fixture.playerUuid, "END_ENTITY_PHASE", "kagune." + i, 600,
+                    actor, pose, 0, 0, 0, "", ""));
+        }
+        for (int i = 0; i < 15; i++) { fixture.now.addAndGet(250); fixture.sender.tick(); }
+        int settled = fixture.outbound.size();
+        for (int i = 0; i < 38; i++) {
+            String actor = new UUID(0, i + 100).toString();
+            assertTrue(fixture.sender.send(fixture.playerUuid, "END_ENTITY_BIND", "kagune." + i, 0,
+                    actor, "END_RIFT_TENTACLE_V1", 0, 0, 0, "", ""));
+            assertTrue(fixture.sender.send(fixture.playerUuid, "END_ENTITY_PHASE", "kagune." + i, 600,
+                    actor, pose, 0, 0, 0, "", ""));
+        }
+        assertEquals(settled, fixture.outbound.size());
+        assertEquals(0, fixture.sender.queueDiagnostics(fixture.playerUuid).pending());
+        String actor = new UUID(0, 100).toString();
+        assertTrue(fixture.sender.send(fixture.playerUuid, "END_ENTITY_UNBIND", "kagune.0", 0,
+                actor, "", 0, 0, 0, "", ""));
+        assertTrue(fixture.sender.send(fixture.playerUuid, "END_ENTITY_BIND", "kagune.0", 0,
+                actor, "END_RIFT_TENTACLE_V1", 0, 0, 0, "", ""));
+        assertTrue(fixture.sender.send(fixture.playerUuid, "END_ENTITY_PHASE", "kagune.0", 600,
+                actor, pose, 0, 0, 0, "", ""));
+        assertEquals(settled + 3, fixture.outbound.size());
+        for (int i = 0; i < fixture.outbound.size(); i++) fixture.verify(fixture.outbound.get(i), i + 1L);
+    }
+
+    @Test
     void authoredTentacleRoleFieldsRoundTripAndMalformedFieldsConsumeNoCounter() throws Exception {
         Fixture fixture = readyFixture();
         String actor = new UUID(0, 77).toString();

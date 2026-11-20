@@ -51,7 +51,7 @@ def runtime_body(start, end):
 
 def test_the_impacts_are_banked_before_any_effect_runs():
     impact = runtime_body("private void impact()", "private void stomp(")
-    assert impact.index("banked=true; impacts++;") < impact.index("clearPillar();")
+    assert impact.index("banked=true; impacts++;") < impact.index("clearPillar()")
 
 
 def test_one_ram_is_the_whole_spawn_guard():
@@ -97,7 +97,7 @@ def test_armour_fragments_are_temporary_and_lootless():
 
 
 def test_the_core_is_untouched_when_the_ram_finishes():
-    complete = runtime_body("public void died(", "private void clearPillar()")
+    complete = runtime_body("public void died(", "private boolean clearPillar()")
     assert "completed = ramDefeated && pillarSkeletonDefeated;" in complete
     assert "if (completed) cleanupDisplays();" in complete
     assert "getBlock().set" not in RUNTIME.read_text(encoding="utf-8")

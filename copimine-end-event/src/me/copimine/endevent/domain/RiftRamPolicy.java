@@ -382,6 +382,37 @@ public final class RiftRamPolicy {
         return distance <= PILLAR_IMPACT_RADIUS + 1.0E-9D;
     }
 
+    /** Intersect the real block footprint expanded by the Ram's three-cell clearance. */
+    public static boolean segmentHitsPillar(double fromX, double fromY, double fromZ,
+                                          double toX, double toY, double toZ,
+                                          double pillarX, double pillarY, double pillarZ, int acceptedImpacts) {
+        if (!allFinite(fromX, fromY, fromZ, toX, toY, toZ, pillarX, pillarY, pillarZ)
+                || (fromX == toX && fromZ == toZ)) return false;
+        int half = pillarColliderHalfWidth(acceptedImpacts);
+        double minX = Math.floor(pillarX - half) - 1D;
+        double minZ = Math.floor(pillarZ - half) - 1D;
+        double width = 2D * half + 2D;
+        double[] near = { minX, pillarY - 1D, minZ };
+        double[] far = { minX + width, pillarY + pillarColliderHeight(acceptedImpacts), minZ + width };
+        double[] from = { fromX, fromY, fromZ };
+        double[] to = { toX, toY, toZ };
+        double entry = 0D;
+        double exit = 1D;
+        for (int axis = 0; axis < 3; axis++) {
+            double step = to[axis] - from[axis];
+            if (step == 0D) {
+                if (from[axis] < near[axis] || from[axis] >= far[axis]) return false;
+                continue;
+            }
+            double first = (near[axis] - from[axis]) / step;
+            double last = (far[axis] - from[axis]) / step;
+            entry = Math.max(entry, Math.min(first, last));
+            exit = Math.min(exit, Math.max(first, last));
+            if (entry > exit) return false;
+        }
+        return true;
+    }
+
     /** Swept annulus, including the space traversed since the preceding update. */
     public static boolean stompHits(double distance, double feetAboveFloor, boolean grounded,
                                     double previousRadius, double radius, boolean alreadyHit) {

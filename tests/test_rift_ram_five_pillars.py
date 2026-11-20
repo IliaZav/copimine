@@ -38,6 +38,12 @@ public class RamRulesProbe {
     check(!RiftRamPolicy.segmentHitsPillar(-10,64,0, 10,100,0, 0,64,0));
     check(!RiftRamPolicy.segmentHitsPillar(0,64,0, 0,64,0, 0,64,0));
     check(!RiftRamPolicy.segmentHitsPillar(Double.NaN,64,0, 5,64,0, 0,64,0));
+    // A legal charge touches the front of the 4x4 tower before the old
+    // 2.4 block centre-radius test could ever see contact.
+    check(RiftRamPolicy.segmentHitsPillar(6.4,64,10, 7.1,64,10, 10.4,64,10.4,4));
+    check(!RiftRamPolicy.segmentHitsPillar(6.4,64,10, 7.1,64,10, 10.4,64,10.4,0));
+    check(!RiftRamPolicy.segmentHitsPillar(6.4,64,13, 7.1,64,13, 10.4,64,10.4,4));
+    check(!RiftRamPolicy.segmentHitsPillar(6.4,72,10, 7.1,72,10, 10.4,64,10.4,4));
     check(RiftRamPolicy.stompHits(4, 0, true, 3,5, false));
     check(!RiftRamPolicy.stompHits(4, 1.2, false,3,5,false));
     check(!RiftRamPolicy.stompHits(4, 0,true,3,5,true));

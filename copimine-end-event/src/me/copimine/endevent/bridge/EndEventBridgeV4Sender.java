@@ -10,6 +10,7 @@ import java.util.Base64;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -50,6 +51,8 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
     private static final int APPLICATION_BURST = 16;
     private static final int APPLICATIONS_PER_SECOND = 24;
     private static final int MAX_PENDING_APPLICATIONS = 256;
+    private static final int MAX_SENT_SNAPSHOTS = 384;
+    private static final long SNAPSHOT_REFRESH_MILLIS = 15_000L;
     private static final int CRITICAL_BURST = 8;
 
     private final ClientModSessionRegistry registry;
@@ -824,7 +827,24 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
                 || body.type() == EndEventBridgeBodyCodec.Type.END_PRESENTATION_RESUME) {
             if (body.type() == EndEventBridgeBodyCodec.Type.CONTEXT_UNBIND) stream.pendingApplications.clear();
             if (!acquireCriticalSlot(stream, now)) return false;
-            return sendApplicationNow(player, state, body);
+            boolean sent = sendApplicationNow(player, state, body);
+            if (sent && body.type() != EndEventBridgeBodyCodec.Type.END_FOG_STATE) stream.sentSnapshots.clear();
+            return sent;
+        }
+        var key = snapshotKey(body);
+        if (key != null) {
+            var last = stream.sentSnapshots.get(key);
+            if (last != null && body.generation() == last.generation() && body.eventUuid().equals(last.eventUuid())
+                    && body.subjectOrMode().equals(last.subjectOrMode()) && sameSnapshot(last, body)
+                    && now >= last.bodyTimestampMillis() && now - last.bodyTimestampMillis() < SNAPSHOT_REFRESH_MILLIS
+                    && !hasPendingSnapshotBarrier(stream, body)) {
+                stream.coalescedApplications++;
+                return true;
+            }
+        }
+        if (body.type() == EndEventBridgeBodyCodec.Type.END_ENTITY_UNBIND) {
+            stream.sentSnapshots.remove(new SnapshotKey(EndEventBridgeBodyCodec.Type.END_ENTITY_BIND, body.instanceId()));
+            stream.sentSnapshots.remove(new SnapshotKey(EndEventBridgeBodyCodec.Type.END_ENTITY_PHASE, body.instanceId()));
         }
         if (stream.pendingApplications.isEmpty() && acquireApplicationSlot(stream, now)) {
             return sendApplicationNow(player, state, body);
@@ -837,6 +857,28 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
         stream.pendingApplications.addLast(body);
         stream.pendingHighWatermark = Math.max(stream.pendingHighWatermark, stream.pendingApplications.size());
         return true;
+    }
+
+    private record SnapshotKey(EndEventBridgeBodyCodec.Type type, String instance) { }
+
+    private static SnapshotKey snapshotKey(EndEventBridgeBodyCodec.Body body) {
+        return switch (body.type()) {
+            case END_ENTITY_BIND -> new SnapshotKey(body.type(), body.instanceId());
+            case END_ENTITY_PHASE -> body.visualId().contains("|t=") && body.visualId().contains("|health=")
+                    ? new SnapshotKey(body.type(), body.instanceId()) : null;
+            default -> null;
+        };
+    }
+
+    private static boolean hasPendingSnapshotBarrier(StreamState stream, EndEventBridgeBodyCodec.Body body) {
+        for (var pending : stream.pendingApplications) {
+            if (!body.instanceId().equals(pending.instanceId())) continue;
+            if (pending.type() == EndEventBridgeBodyCodec.Type.END_ENTITY_UNBIND
+                    || pending.type() == body.type() && !sameSnapshot(pending, body)
+                    || body.type() == EndEventBridgeBodyCodec.Type.END_ENTITY_PHASE
+                    && pending.type() == EndEventBridgeBodyCodec.Type.END_ENTITY_BIND) return true;
+        }
+        return false;
     }
 
     private boolean coalescePendingSnapshot(StreamState stream, EndEventBridgeBodyCodec.Body body) {
@@ -872,15 +914,15 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
                 && a.reservedTwo().equals(b.reservedTwo()) && a.status().equals(b.status());
     }
 
-    public record QueueDiagnostics(int pending, int highWatermark, long coalesced, long refused, long oldestAgeMillis) { }
+    public record QueueDiagnostics(int pending, int highWatermark, long sent, long coalesced, long refused, long oldestAgeMillis) { }
 
-    public QueueDiagnostics queueDiagnostics(UUID viewer) {
+    public synchronized QueueDiagnostics queueDiagnostics(UUID viewer) {
         PlayerState state = players.get(viewer);
         StreamState stream = state == null ? null : state.stream;
-        if (stream == null) return new QueueDiagnostics(0, 0, 0, 0, 0);
+        if (stream == null) return new QueueDiagnostics(0, 0, 0, 0, 0, 0);
         var oldest = stream.pendingApplications.peekFirst();
         return new QueueDiagnostics(stream.pendingApplications.size(), stream.pendingHighWatermark,
-                stream.coalescedApplications, stream.refusedApplications,
+                stream.sentApplications, stream.coalescedApplications, stream.refusedApplications,
                 oldest == null ? 0L : Math.max(0L, clock.getAsLong() - oldest.bodyTimestampMillis()));
     }
 
@@ -959,6 +1001,16 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
             return false;
         }
         stream.serverCounter++;
+        stream.sentApplications++;
+        if (body.type() == EndEventBridgeBodyCodec.Type.END_ENTITY_UNBIND) {
+            stream.sentSnapshots.remove(new SnapshotKey(EndEventBridgeBodyCodec.Type.END_ENTITY_BIND, body.instanceId()));
+            stream.sentSnapshots.remove(new SnapshotKey(EndEventBridgeBodyCodec.Type.END_ENTITY_PHASE, body.instanceId()));
+        }
+        var snapshot = snapshotKey(body);
+        if (snapshot != null) {
+            stream.sentSnapshots.put(snapshot, body);
+            if (stream.sentSnapshots.size() > MAX_SENT_SNAPSHOTS) stream.sentSnapshots.pollFirstEntry();
+        }
         return true;
     }
 
@@ -1234,8 +1286,10 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
 
     private static final class StreamState {
         final LinkedList<EndEventBridgeBodyCodec.Body> pendingApplications = new LinkedList<>();
+        final LinkedHashMap<SnapshotKey, EndEventBridgeBodyCodec.Body> sentSnapshots =
+                new LinkedHashMap<>(16, .75F, true);
         int pendingHighWatermark;
-        long coalescedApplications, refusedApplications;
+        long sentApplications, coalescedApplications, refusedApplications;
         double applicationTokens = APPLICATION_BURST;
         long applicationRefillAt;
         double criticalTokens = CRITICAL_BURST;

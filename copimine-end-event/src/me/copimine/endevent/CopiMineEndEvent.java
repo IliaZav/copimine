@@ -443,6 +443,7 @@ import org.bukkit.potion.PotionEffectType;
 import org.bukkit.potion.PotionType;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Transformation;
 import org.bukkit.util.Vector;
 import org.joml.AxisAngle4f;
@@ -4324,16 +4325,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 continue;
             }
             if (entry.isRiftPillarMutation()) {
-                Block cell = world.getBlockAt(entry.x(), entry.floorY(), entry.z());
-                // A crash can leave a Rift Ram pillar collider standing. Only a
-                // barrier this plugin wrote is restored; anything else is left
-                // alone so recovery never overwrites another owner's blocks.
-                if (cell.getType() == REALITY_SPLIT_WALL_MATERIAL) {
-                    restoreBlock(cell, entry.floorOriginal());
-                    restored++;
-                } else {
-                    skipped++;
+                if (!restoreRiftRamColliderCell(world, entry.x(), entry.floorY(), entry.z(), entry.floorOriginal())) {
+                    recoveryReason = "RIFT_RAM_RESTART_COLLIDER_RESTORE_PENDING";
+                    forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
+                    return;
                 }
+                restored++;
                 continue;
             }
             if (!restoreMagmaJournalEntry(world, entry)) {
@@ -4362,6 +4359,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             getLogger().severe("WAVE_HAZARD_RECOVERY_UNCOMMITTED event=" + journal.eventId()
                     + " restored=" + restored + " skipped=" + skipped);
             if (blackFogJournal) markBlackFogRecoveryRequired("WAVE5_RESTART_JOURNAL_COMMIT_FAILED");
+            if (journal.entries().stream().anyMatch(HazardMutationJournal.Entry::isRiftPillarMutation)) {
+                recoveryReason = "RIFT_RAM_RESTART_COLLIDER_COMMIT_PENDING";
+                forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
+            }
         }
     }
 
@@ -14296,6 +14297,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case "end_rift_triple_arrow" -> MODEL_ELITE_TRIPLE_ARROW;
             case "end_rift_arrow_rain" -> MODEL_ELITE_ARROW_RAIN;
             case "end_rift_explosive_arrow" -> MODEL_ELITE_EXPLOSIVE_ARROW;
+            case "end_rift_rift_bolt" -> MODEL_ELITE_RIFT_BOLT;
             default -> 0;
         };
     }
@@ -28432,6 +28434,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             public void pose(Ravager actor, String pose, int durationTicks) {
                 sendWaveMobPose(actor,pose,Math.max(50L,durationTicks*50L));
             }
+            public void pose(Skeleton actor, String pose, int durationTicks) {
+                sendWaveMobPose(actor, pose, Math.max(50L, durationTicks * 50L));
+            }
             public void abilitySound(Ravager actor,String cue) { playEncounterAbilityAudio(actor,cue); }
             public boolean active() {
                 return activeWave == 6 && ownerGeneration == generation
@@ -28489,7 +28494,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 return arrow;
             }
             public boolean prepareBoneArrow(Arrow arrow, boolean rain) {
-                tagEliteArrowModel(arrow,rain ? "end_rift_arrow_rain" : "end_rift_triple_arrow");
+                String model = rain ? "end_rift_arrow_rain"
+                        : arrow.getDamage() >= WaveSixPillarSkeletonPolicy.SPIRE_LANCE_DAMAGE
+                                ? "end_rift_rift_bolt" : "end_rift_triple_arrow";
+                tagEliteArrowModel(arrow, model);
                 arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
                 // The rain volley is a real drop: gravity on, pushed straight
                 // down. The triple shot keeps its authored straight flight.
@@ -28497,11 +28505,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (rain) arrow.setVelocity(new Vector(0, -WaveSixPillarSkeletonPolicy.BONE_RAIN_SPEED, 0));
                 return trackEventArrow(arrow);
             }
+            public boolean canLaunchBoneArrow(Location origin) {
+                if (origin.getWorld() != world || origin.getY() < world.getMinHeight()
+                        || origin.getY() >= world.getMaxHeight()
+                        || !world.isChunkLoaded(origin.getBlockX() >> 4, origin.getBlockZ() >> 4)) return false;
+                Location floorProjection = origin.clone();
+                floorProjection.setY(combatFloorY() + 1D);
+                return isArenaLocation(floorProjection) && origin.getBlock().isPassable();
+            }
             public boolean placePillarCollider(Location centre, int halfWidth, int height) {
                 return placeRiftRamPillarCollider(ownerEvent, ownerGeneration, centre, halfWidth, height);
             }
-            public void clearPillarCollider() {
-                clearRiftRamPillarCollider("pillar-retired");
+            public boolean clearPillarCollider() {
+                return clearRiftRamPillarCollider("pillar-retired");
             }
             public int particleBudget() {
                 return Math.max(96, Math.min(512, getConfig().getInt("wave6.rift-ram.stomp-particles-per-viewer", 256)));
@@ -28558,6 +28574,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         int maxZ = (int) Math.floor(centre.getZ() + halfWidth) - 1;
         if (maxX < minX) maxX = minX;
         if (maxZ < minZ) maxZ = minZ;
+        if (!world.getName().equals(worldName) || baseY < world.getMinHeight()
+                || baseY + height > world.getMaxHeight()) return false;
+        for (int cx = minX >> 4; cx <= maxX >> 4; cx++) {
+            for (int cz = minZ >> 4; cz <= maxZ >> 4; cz++) {
+                if (!world.isChunkLoaded(cx, cz)) return false;
+            }
+        }
+        var volume = new BoundingBox(minX, baseY, minZ, maxX + 1D, baseY + height, maxZ + 1D);
+        if (!world.getNearbyEntities(volume, entity -> entity instanceof LivingEntity
+                && entity.isValid() && !entity.isDead()).isEmpty()) return false;
         LinkedHashMap<String, String> originals = new LinkedHashMap<>();
         List<HazardMutationJournal.Entry> entries = new ArrayList<>();
         for (int x = minX; x <= maxX; x++) {
@@ -28567,7 +28593,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     // Never encase a player or overwrite real terrain: the site
                     // was already vetted as open, so anything solid here means
                     // the world moved under us and the collider must not guess.
-                    if (!cell.isPassable() || cell.isLiquid()
+                    if (!world.getWorldBorder().isInside(new Location(world, x + .5D, y, z + .5D))
+                            || !cell.getType().isAir()
                             || cell.getState() instanceof org.bukkit.block.TileState) {
                         getLogger().severe("END_RIFT_RAM_PILLAR_COLLIDER_REFUSED event=" + ownerEvent
                                 + " generation=" + ownerGeneration + " reason=unsafe-cell"
@@ -28592,8 +28619,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             BlockData barrier = REALITY_SPLIT_WALL_MATERIAL.createBlockData();
             for (String key : originals.keySet()) {
                 String[] parts = key.split(":");
-                world.getBlockAt(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]),
-                        Integer.parseInt(parts[2])).setBlockData(barrier, false);
+                Block cell = world.getBlockAt(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]),
+                        Integer.parseInt(parts[2]));
+                cell.setBlockData(barrier, false);
+                if (!barrier.equals(cell.getBlockData())) throw new IllegalStateException("pillar write not confirmed");
             }
             if (!hazardJournal.markApplied()) {
                 throw new IllegalStateException("pillar collider journal could not be marked APPLIED");
@@ -28622,27 +28651,39 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " reason=world-unavailable");
             return false;
         }
-        int restored = 0, skipped = 0;
+        int restored = 0;
         for (Map.Entry<String, String> entry : riftRamPillarColliderOriginals.entrySet()) {
             String[] parts = entry.getKey().split(":");
-            if (parts.length != 3) continue;
-            Block cell = world.getBlockAt(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]),
-                    Integer.parseInt(parts[2]));
-            // Only a barrier we wrote is restored; anything else is left alone.
-            if (cell.getType() == REALITY_SPLIT_WALL_MATERIAL) {
-                restoreBlock(cell, entry.getValue());
-                restored++;
-            } else {
-                skipped++;
-            }
+            if (parts.length != 3 || !restoreRiftRamColliderCell(world, Integer.parseInt(parts[0]),
+                    Integer.parseInt(parts[1]), Integer.parseInt(parts[2]), entry.getValue())) return false;
+            restored++;
         }
+        if (hazardJournal == null || !hazardJournal.markRestored()) return false;
         riftRamPillarColliderActive = false;
         riftRamPillarColliderOriginals.clear();
-        if (hazardJournal != null) hazardJournal.markRestored();
         getLogger().info("END_RIFT_RAM_PILLAR_COLLIDER_CLEARED event=" + eventId
                 + " generation=" + generation + " reason=" + reason
-                + " restored=" + restored + " skipped=" + skipped);
+                + " restored=" + restored);
         return true;
+    }
+
+    private boolean restoreRiftRamColliderCell(World world, int x, int y, int z, String original) {
+        try {
+            if (y >= world.getMinHeight() && y < world.getMaxHeight() && world.isChunkLoaded(x >> 4, z >> 4)) {
+                Block cell = world.getBlockAt(x, y, z);
+                BlockData expected = Bukkit.createBlockData(original);
+                if (expected.equals(cell.getBlockData())) return true;
+                if (cell.getType() == REALITY_SPLIT_WALL_MATERIAL) {
+                    cell.setBlockData(expected, false);
+                    if (expected.equals(cell.getBlockData())) return true;
+                }
+            }
+        } catch (RuntimeException failure) {
+            getLogger().log(Level.SEVERE, "Rift Ram collider restore failed", failure);
+        }
+        getLogger().severe("END_RIFT_RAM_COLLIDER_RESTORE_PENDING event=" + eventId
+                + " generation=" + generation + " cell=" + x + "," + y + "," + z);
+        return false;
     }
 
     private boolean clearRiftRamRestartPresentation() {
@@ -29688,6 +29729,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         wave5CycleCleared = true;
+        // Set the deadline before spawning so a refused attempt cannot retry every tick.
+        wave5PreFogRefillAtMillis = now + Wave5PreFogRefillPolicy.REFILL_DELAY_MILLIS;
         if (spawnWaveFiveRefillPack(now, "END_RIFT_WAVE5_PRE_FOG_REFILL")) wave5PreFogRefills++;
     }
 
@@ -29832,8 +29875,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 refill, waveSpawnEntityOffset);
         // Confirm the pack per entity. The debt is only settled when the whole
         // pack really exists; a refused or partial placement is rolled back and
-        // stays owed (the retry timestamp is not advanced, so the next tick
-        // tries again) instead of being credited as delivered.
+        // stays owed until the next scheduled attempt.
         int spawned = countNewlyOwnedWaveEntities(ownedBefore, 5);
         if (spawned < refill.total()) {
             int removed = 0;
@@ -62027,7 +62069,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + "|hp=" + Math.max(0.0D, readDouble(entity, keyTentacleHealth, 0.0D));
         sendClientPacket(player, "END_ENTITY_PHASE", instance, durationMillis,
                 entity.getUniqueId().toString(), TentacleAnimationPolicy.wireName(state)
-                        + "|t=" + Math.max(0L, eventTickCounter)
+                        + "|t=" + Math.max(0L, visual == null ? eventTickCounter : visual.startedTick())
                         + "|health=" + healthState + targetSuffix + roleSuffix);
     }
 
@@ -62118,6 +62160,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (deathVisual != null && ownedBySession(entity, eventId, generation)) return deathVisual.visual();
         if (riftRam != null && entity.getUniqueId().equals(riftRam.id()))
             return "END_RIFT_RAM_ARMOR" + riftRam.impacts() + "_V1";
+        if (riftRam != null && entity instanceof Skeleton && riftRam.isSpireHarbinger(entity.getUniqueId()))
+            return "END_RIFT_SPIRE_HARBINGER_V1";
         String namedTrialVisual = namedWave7ClientVisualId(entity);
         if (!namedTrialVisual.isBlank()) return namedTrialVisual;
         // The Archmage's summoned Vex keeps the vanilla mesh but wears the

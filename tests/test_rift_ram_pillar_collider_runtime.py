@@ -40,11 +40,13 @@ public final class RamPillarColliderProbe {
     enum Material {
         AIR, BARRIER, STONE, WATER, DIAMOND_BLOCK;
         boolean isLiquid() { return this == WATER; }
+        boolean isAir() { return this == AIR; }
         BlockData createBlockData() { return new BlockData("minecraft:" + name().toLowerCase(Locale.ROOT)); }
     }
     static final class BlockData {
         final String value; BlockData(String v) { value = v; }
         String getAsString() { return value; }
+        public boolean equals(Object other) { return other instanceof BlockData data && value.equals(data.value); }
     }
     static final class Block {
         final World world; final int x, y, z;
@@ -61,6 +63,7 @@ public final class RamPillarColliderProbe {
             type = switch (value.value) {
                 case "minecraft:barrier", "BARRIER" -> Material.BARRIER;
                 case "minecraft:air", "AIR" -> Material.AIR;
+                case "minecraft:diamond_block" -> Material.DIAMOND_BLOCK;
                 default -> Material.STONE;
             };
             data = value;
@@ -69,12 +72,24 @@ public final class RamPillarColliderProbe {
     static final class World {
         final Map<String, Block> blocks = new HashMap<>();
         int writes;
+        boolean loaded = true, occupied;
+        int getMinHeight() { return -64; }
+        int getMaxHeight() { return 320; }
+        boolean isChunkLoaded(int x, int z) { return loaded; }
+        WorldBorder getWorldBorder() { return new WorldBorder(); }
+        List<Entity> getNearbyEntities(BoundingBox bounds, java.util.function.Predicate<Entity> filter) {
+            return occupied ? List.of(new LivingEntity()).stream().map(e -> (Entity)e).filter(filter).toList() : List.of();
+        }
         Block getBlockAt(int x, int y, int z) {
             return blocks.computeIfAbsent(x+":"+y+":"+z, k -> new Block(this, x, y, z));
         }
         String getName() { return "world"; }
         UUID getUID() { return UUID.fromString("00000000-0000-0000-0000-0000000000aa"); }
     }
+    record BoundingBox(double minX,double minY,double minZ,double maxX,double maxY,double maxZ) { }
+    static class WorldBorder { boolean isInside(Location at) { return true; } }
+    static class Entity { boolean isValid() { return true; } boolean isDead() { return false; } }
+    static class LivingEntity extends Entity { }
     static final class Location {
         World world; int bx, by, bz; double x, y, z;
         Location(World w, double x, double y, double z) { this.world=w; this.x=x; this.y=y; this.z=z;
@@ -87,6 +102,7 @@ public final class RamPillarColliderProbe {
     static final class Bukkit {
         static World world;
         static World getWorld(String name) { return world; }
+        static BlockData createBlockData(String value) { return new BlockData(value); }
     }
     static final class HazardMutationJournal {
         enum Status { EMPTY, PREPARED, APPLIED, RESTORED }
@@ -104,7 +120,7 @@ public final class RamPillarColliderProbe {
             boolean valid() { return valid; } Status status() { return status; } List<Entry> entries() { return entries; }
         }
         Snapshot snap = new Snapshot(true, Status.EMPTY, List.of());
-        boolean prepareSucceeds = true, markAppliedSucceeds = true;
+        boolean prepareSucceeds = true, markAppliedSucceeds = true, markRestoredSucceeds = true;
         int prepares, applies, restores;
         Snapshot load() { return snap; }
         boolean prepare(String eventId, long generation, String world, List<Entry> entries) {
@@ -119,7 +135,12 @@ public final class RamPillarColliderProbe {
             snap = new Snapshot(true, Status.APPLIED, snap.entries());
             return true;
         }
-        boolean markRestored() { restores++; snap = new Snapshot(true, Status.RESTORED, List.of()); return true; }
+        boolean markRestored() {
+            restores++;
+            if (!markRestoredSucceeds) return false;
+            snap = new Snapshot(true, Status.RESTORED, List.of());
+            return true;
+        }
     }
 
     // Production fields mirrored by the probe.
@@ -202,10 +223,32 @@ public final class RamPillarColliderProbe {
                 var world = new World(); Bukkit.world = world;
                 check(p.placeRiftRamPillarCollider("e", 4L, new Location(world, 10, 68, 0), 1, 4), "place");
                 // A player or another owner replaces one cell after the fact.
-                world.getBlockAt(10, 68, 0).type = Material.DIAMOND_BLOCK;
-                check(p.clearRiftRamPillarCollider("test"), "clear");
+                world.getBlockAt(10, 68, 0).setBlockData(Material.DIAMOND_BLOCK.createBlockData(), false);
+                check(!p.clearRiftRamPillarCollider("test"), "foreign edit must leave exact restoration unresolved");
                 check(world.getBlockAt(10, 68, 0).getType() == Material.DIAMOND_BLOCK,
                         "clear must not overwrite a cell it no longer owns");
+                check(p.riftRamPillarColliderActive && p.hazardJournal.restores == 0, "lost unresolved ownership");
+            }
+            case "unloaded-and-commit-retry" -> {
+                var p = new RamPillarColliderProbe();
+                var world = new World(); Bukkit.world = world;
+                check(p.placeRiftRamPillarCollider("e", 4L, new Location(world, 10, 68, 0), 2, 7), "place");
+                world.loaded = false;
+                check(!p.clearRiftRamPillarCollider("unloaded"), "unloaded chunk claimed restored");
+                world.loaded = true;
+                p.hazardJournal.markRestoredSucceeds = false;
+                check(!p.clearRiftRamPillarCollider("disk-error"), "failed disk commit claimed restored");
+                check(p.riftRamPillarColliderActive && p.riftRamPillarColliderOriginals.size() == 112, "lost ownership");
+                p.hazardJournal.markRestoredSucceeds = true;
+                check(p.clearRiftRamPillarCollider("retry"), "already-correct cells should reconcile on retry");
+                check(!p.riftRamPillarColliderActive && p.riftRamPillarColliderOriginals.isEmpty(), "retry left ownership");
+            }
+            case "occupied-tower-refused" -> {
+                var p = new RamPillarColliderProbe();
+                var world = new World(); Bukkit.world = world;
+                world.occupied = true;
+                check(!p.placeRiftRamPillarCollider("e", 4L, new Location(world, 10, 68, 0), 2, 7), "occupied collider");
+                check(p.hazardJournal.prepares == 0 && world.writes == 0, "occupied volume was mutated");
             }
             case "rebuild-supersedes" -> {
                 var p = new RamPillarColliderProbe();
@@ -273,6 +316,7 @@ def _build(tmp_path):
     methods = "\n".join(_method(source, sig) for sig in (
         "private boolean placeRiftRamPillarCollider(",
         "private boolean clearRiftRamPillarCollider(",
+        "private boolean restoreRiftRamColliderCell(",
     ))
     probe = tmp_path / "RamPillarColliderProbe.java"
     probe.write_text(PROBE.replace("{METHODS}", methods), encoding="utf-8")
@@ -300,7 +344,7 @@ def collider_probe(tmp_path_factory):
 @pytest.mark.parametrize("scenario", [
     "place-and-clear", "busy-journal-refused", "unsafe-cell-refused", "container-refused",
     "apply-failure-rolls-back", "foreign-edit-preserved", "rebuild-supersedes", "corrupt-input-refused",
-    "final-pillar-collider-follows-cracks",
+    "final-pillar-collider-follows-cracks", "unloaded-and-commit-retry", "occupied-tower-refused",
 ])
 def test_pillar_collider_is_solid_and_crash_safe(collider_probe, scenario):
     ran = subprocess.run(["java", "-cp", str(collider_probe), "RamPillarColliderProbe", scenario],

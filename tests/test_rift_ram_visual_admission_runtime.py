@@ -54,7 +54,7 @@ public class RamVisualAdmissionProbe {
         // The pillar collider is host-owned and journaled; the probe only has to
         // answer the callback. The runtime still refuses when it returns false.
         boolean placePillarCollider(Location centre,int halfWidth,int height){return true;}
-        void clearPillarCollider(){}}
+        boolean clearPillarCollider(){return true;}}
     final Host host=new Host();final World world=new World();
     Ravager ram=new Ravager(world);int tick,impacts,pillarImpacts,nextPillarTick,skeletonSpawns;
     UUID pillarId=UUID.randomUUID();Location pillar=new Location(world);

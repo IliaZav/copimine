@@ -51,7 +51,7 @@ public class RamSkeletonRestoreProbe {
         void visualsChanged(){}boolean checkpoint(){return true;}
         // The pillar collider is a host-owned, journaled barrier volume.
         int collidersPlaced;boolean placePillarCollider(Location centre,int halfWidth,int height){collidersPlaced++;return true;}
-        void clearPillarCollider(){}
+        boolean clearPillarCollider(){return true;}
     }
     final Host host=new Host();Ravager ram;UUID persistentId,pillarId,pillarSkeletonId;
     Skeleton pillarSkeleton;Location pillar;Action action;

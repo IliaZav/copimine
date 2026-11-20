@@ -33,8 +33,8 @@ public class TentacleBindingProbe {
   static long durationTicks(State s){return 12;} static String wireName(State s){return s.name();}
  }
  static class TentacleController {
-  record VisualState(TentacleAnimationPolicy.Kind kind){}
-  VisualState state(UUID id){return new VisualState(TentacleAnimationPolicy.Kind.SMALL);}
+  record VisualState(TentacleAnimationPolicy.Kind kind,long startedTick){}
+  VisualState state(UUID id){return new VisualState(TentacleAnimationPolicy.Kind.SMALL,100);}
  }
  static class Tuning {double scale(){return .65;}}
  static class Config {Tuning smallKaguneTuning(){return new Tuning();}}
@@ -64,7 +64,7 @@ public class TentacleBindingProbe {
    for(var actor:actors)probe.bindEventEntityClientForOnlinePlayers(actor);
    for(var p:players){
     if(p.binds!=38||p.poses!=38)throw new AssertionError(count+" viewers: binds="+p.binds+", poses="+p.poses+" (expected 38 each)");
-    if(!p.pose.startsWith("SMALL_STRIKE|")||!p.pose.contains("|health=DAMAGED")||!p.pose.contains("|hp=42.0"))throw new AssertionError(p.pose);
+    if(!p.pose.startsWith("SMALL_STRIKE|t=100|")||!p.pose.contains("|health=DAMAGED")||!p.pose.contains("|hp=42.0"))throw new AssertionError(p.pose);
    }
    var late=players.getFirst();int before=late.poses;
    probe.bindEventEntityClient(late,actors.getFirst());

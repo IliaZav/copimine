@@ -56,6 +56,7 @@ public final class WaveSixPillarSkeletonPolicy {
 
     public static final int TRIPLE_SHOT_COOLDOWN_TICKS = 70;
     public static final int BONE_RAIN_COOLDOWN_TICKS = 120;
+    public static final int SPIRE_LANCE_COOLDOWN_TICKS = 175;
     /** It repositions this often so it is never a stationary turret. */
     public static final int REPOSITION_TICKS = 50;
     /** Arrow lifetime ceiling, so a stray shot can never live forever. */
@@ -63,12 +64,30 @@ public final class WaveSixPillarSkeletonPolicy {
 
     public static final double HEALTH = 60.0D;
     public static final double ARROW_DAMAGE = 4.0D;
+    public static final double SPIRE_LANCE_DAMAGE = 7.0D;
+    public static final double SPIRE_LANCE_SPEED = 1.45D;
 
     private WaveSixPillarSkeletonPolicy() {
     }
 
     /** Which elite ability the skeleton should use, if any. */
-    public enum Ability { NONE, TRIPLE_SHOT, BONE_RAIN }
+    public enum Ability { NONE, TRIPLE_SHOT, BONE_RAIN, SPIRE_LANCE }
+
+    public static int warningTicks(Ability ability) {
+        return switch (ability) {
+            case BONE_RAIN -> 32;
+            case SPIRE_LANCE -> 22;
+            case TRIPLE_SHOT -> 14;
+            default -> 0;
+        };
+    }
+
+    public static Ability nextAbility(int now, int lastTriple, int lastRain, int lastLance,
+                                      boolean hasTarget, double range) {
+        if (!hasTarget || now < 0 || !Double.isFinite(range) || range > 29D) return Ability.NONE;
+        if (range >= 9D && elapsed(now, lastLance) >= SPIRE_LANCE_COOLDOWN_TICKS) return Ability.SPIRE_LANCE;
+        return nextAbility(now, lastTriple, lastRain, hasTarget);
+    }
 
     /**
      * Choose the next ability.

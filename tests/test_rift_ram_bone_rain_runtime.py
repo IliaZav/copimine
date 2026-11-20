@@ -62,12 +62,14 @@ public class RamBoneRainProbe {
     int removed,prepared,preparedRain;
     final List<Arrow> arrows=new ArrayList<>();
     boolean prepareResult=true;
+    int rejectAt=-1;
     class Host {
         Arrow spawnBoneArrow(Location o,Vector d,double speed,double damage){
             Arrow a=new Arrow(o,d);arrows.add(a);return a;
         }
         boolean prepareBoneArrow(Arrow a,boolean rain){prepared++;if(rain)preparedRain++;
-            a.gravitySet=true;a.gravity=rain;return prepareResult;}
+            a.gravitySet=true;a.gravity=rain;return prepareResult&&prepared!=rejectAt;}
+        boolean canLaunchBoneArrow(Location origin){return true;}
         void remove(Arrow a){removed++;}
     }
     Host host=new Host();
@@ -77,7 +79,7 @@ public class RamBoneRainProbe {
         var p=new RamBoneRainProbe();
         World world=p.pillarSkeleton.world;
         Player target=new Player(world,10,69,0);
-        p.fireBoneRain(target);
+        check(p.fireBoneRain(target.getLocation()), "valid rain refused");
         int expected=WaveSixPillarSkeletonPolicy.BONE_RAIN_ARROWS;
         check(p.arrows.size()==expected,"rain volley size, was "+p.arrows.size());
         check(p.prepared==expected&&p.preparedRain==expected,"every rain arrow must be handed over with rain=true");
@@ -101,15 +103,23 @@ public class RamBoneRainProbe {
         check(maxR>0.5,"rain volley must visibly spread");
         // A refused hand-off must not leave the arrow in the world.
         p.arrows.clear();p.removed=0;p.prepared=0;p.preparedRain=0;p.prepareResult=false;
-        p.fireBoneRain(target);
-        check(p.removed==WaveSixPillarSkeletonPolicy.BONE_RAIN_ARROWS,"refused hand-off leaked "+p.removed+" arrows");
+        check(!p.fireBoneRain(target.getLocation()), "completely refused rain claimed success");
+        check(p.removed==1,"refused hand-off leaked arrows");
+        p.arrows.clear();p.removed=0;p.prepared=0;p.preparedRain=0;p.prepareResult=true;p.rejectAt=2;
+        check(!p.fireBoneRain(target.getLocation()), "partial rain claimed success");
+        check(p.removed==2, "partial rain failed to roll back both arrows");
         // The triple shot stays a straight, gravity-off fan.
-        p.arrows.clear();p.prepared=0;p.preparedRain=0;p.prepareResult=true;p.removed=0;
-        p.fireBoneVolley(target, WaveSixPillarSkeletonPolicy.tripleShotDirections(1.0D,0.0D),
-                WaveSixPillarSkeletonPolicy.TRIPLE_SHOT_SPEED);
+        p.arrows.clear();p.prepared=0;p.preparedRain=0;p.prepareResult=true;p.removed=0;p.rejectAt=-1;
+        check(p.fireBoneVolley(target.getLocation(), WaveSixPillarSkeletonPolicy.tripleShotDirections(1.0D,0.0D),
+                WaveSixPillarSkeletonPolicy.TRIPLE_SHOT_SPEED, WaveSixPillarSkeletonPolicy.ARROW_DAMAGE), "triple refused");
         check(p.prepared==WaveSixPillarSkeletonPolicy.TRIPLE_SHOT_ARROWS,"triple volley size");
         check(p.preparedRain==0,"the triple shot must never be marked as rain");
         for(var a:p.arrows) check(!a.gravity,"the triple shot must keep gravity off");
+        p.arrows.clear();
+        check(p.fireBoneVolley(target.getLocation(), new double[][]{{1,0}}, WaveSixPillarSkeletonPolicy.SPIRE_LANCE_SPEED,
+                WaveSixPillarSkeletonPolicy.SPIRE_LANCE_DAMAGE), "lance refused");
+        check(p.arrows.size()==1&&p.arrows.getFirst().customDamage==WaveSixPillarSkeletonPolicy.SPIRE_LANCE_DAMAGE,
+                "lance must be one independent heavy projectile");
     }
 }
 '''
@@ -118,7 +128,8 @@ public class RamBoneRainProbe {
 def test_the_rain_volley_really_falls_and_the_triple_shot_stays_straight(tmp_path):
     source = RUNTIME.read_text("utf-8")
     methods = "\n".join(extract(source, signature) for signature in (
-        "void fireBoneRain(Player target)", "void fireBoneVolley(Player target, double[][] directions, double speed)",
+        "boolean fireBoneRain(Location target)", "boolean fireBoneVolley(Location target, double[][] directions, double speed, double damage)",
+        "boolean releaseSpireArrow(List<Arrow> volley,",
     ))
     probe = tmp_path / "RamBoneRainProbe.java"
     probe.write_text(PROBE.replace("{METHODS}", methods), encoding="utf-8")

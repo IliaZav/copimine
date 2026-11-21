@@ -17984,9 +17984,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         refreshRiftGiantSummonOwnerLocations(giant);
         Location center = giant.getLocation();
         World world = giant.getWorld();
-        world.spawnParticle(Particle.DUST, center.clone().add(0.0D, 0.25D, 0.0D),
-                12, 0.75D, 0.08D, 0.75D, 0.0D,
-                new Particle.DustOptions(Color.fromRGB(92, 236, 112), 0.65F));
+        Particle.DustOptions auraDust = new Particle.DustOptions(Color.fromRGB(92, 236, 112), 0.9F);
+        double radius = RiftGiantPolicy.AURA_RADIUS_BLOCKS;
+        for (int i = 0; i < 24; i++) {
+            double angle = i * Math.PI / 12.0D;
+            Location edge = center.clone().add(Math.cos(angle) * radius, 0.25D, Math.sin(angle) * radius);
+            world.spawnParticle(Particle.DUST, edge, 1, 0.0D, 0.0D, 0.0D, 0.0D, auraDust);
+        }
         String sourceId = giant.getUniqueId().toString();
         for (Entity candidate : world.getNearbyEntities(center,
                 RiftGiantPolicy.AURA_RADIUS_BLOCKS, 4.0D, RiftGiantPolicy.AURA_RADIUS_BLOCKS)) {
@@ -18116,6 +18120,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 return true;
             }
             riftGiantStrikeCharges.remove(giantId);
+            giant.swingMainHand();
+            Location strikeOrigin = giant.getEyeLocation();
+            Vector strikeDirection = target.getEyeLocation().toVector().subtract(strikeOrigin.toVector());
+            if (strikeDirection.lengthSquared() > 1.0E-6D) {
+                strikeOrigin.add(strikeDirection.normalize().multiply(1.3D));
+            }
+            giant.getWorld().spawnParticle(Particle.SWEEP_ATTACK, strikeOrigin,
+                    1, 0.0D, 0.0D, 0.0D, 0.0D);
             double distanceSquared = target.getLocation().distanceSquared(giant.getLocation());
             if (RiftGiantPolicy.shouldHitAfterTelegraph(distanceSquared,
                     isRiftGiantTargetAllowed(giant, target))) {
@@ -18135,6 +18147,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     if (outward.lengthSquared() > 1.0E-6D) {
                         target.setVelocity(outward.normalize().multiply(1.1D).setY(0.52D));
                     }
+                    target.getWorld().spawnParticle(Particle.CRIT, target.getLocation().add(0.0D, 0.9D, 0.0D),
+                            12, 0.3D, 0.35D, 0.3D, 0.14D);
                     target.getWorld().playSound(target.getLocation(), Sound.ENTITY_PLAYER_ATTACK_KNOCKBACK,
                             0.85F, 0.68F);
                 }

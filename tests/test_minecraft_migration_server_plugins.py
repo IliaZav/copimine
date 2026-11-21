@@ -1072,9 +1072,9 @@ def test_migration_lock_loader_includes_each_built_first_party_plugin():
     assert '983fd1954eb85d8be8a5e18e0095200278933e930422854b4b19c19995fad116' in narcotics['replaceSha256']
     narcotics_candidate=next(item['candidate'] for item in lock['unchangedBaseline']
                              if item['pluginName']=='CopiMineNarcotics')
-    assert narcotics_candidate['size'] == 378740
-    assert narcotics_candidate['sha256'] == 'a0a9248c0f021712ae8e354839b373828919f5bca05b05e589a4e3431e71193a'
-    assert narcotics_candidate['sha512'] == '72e003f072fb874f822b0872f5b58a0fe49eb8f0ba6546bdbef1ff2b79a76e79ddce7c65d76c279b3fee53953d66c3cb0bbd88b52c6368444c5c574b3dd37ab2'
+    assert narcotics_candidate['size'] == 378758
+    assert narcotics_candidate['sha256'] == 'b5d30b23011b04354b26e43053143f4d64c85e048739025048f0a8b82ca890eb'
+    assert narcotics_candidate['sha512'] == '65b1e5e0c4a67ae1bf9428d12a12512f86e95fb315e0d4e1f80bb4f9533d033b3da175ed6ecc7d09965c631a4dde8605628648c6d87b5117871ae30b8bd77734'
     assert '835b8043781cc2bf580900c09653da7aa3436c8485266f7838b478ac5a047e70' in narcotics_candidate['replaceSha256']
 
 def test_production_or_symlink_target_is_refused(tmp_path):
@@ -1378,18 +1378,21 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     candidate=baseline['candidate']
     assert candidate['filename']=='CopiMineEndEvent-26.3.jar'
     assert candidate['runtimeFilename']=='CopiMineEndEvent.jar'
-    # Re-pinned after the Wave 6 pillar collider and marksman platform were
-    # made to share one geometry policy, so a cracked pillar cannot keep a
-    # full-height barrier. The replaced candidates stay at the front of
-    # replaceSha256, newest first, which is the documented prepend convention,
-    # so an already-staged older candidate is still accepted.
-    assert candidate['size']==2593948
-    assert candidate['sha256']=='1d1006bb7b69f61e3e6e9be69dcdc37649383785327df1f089b159105025ea0a'
-    assert candidate['sha512']=='1b10f47b575c6d5955c7d46a480858acb5b929da405bc856bbb8cc0b03ec82622b1ebbd3653b49ea268d67bcb1b4f06a61536f55b97ab69186f45608931f4d54'
-    assert candidate['replaceSha256'][0]=='e4ba96d991fb5084573e3a999c25edd49fdf20b0a9505a8c2d32482f722ea93b'
-    assert candidate['replaceSha256'][1]=='6188d78c04df1c1064cbb7ca5fd824796a9275c791c2d04f582123e38b9da0ab'
-    assert candidate['replaceSha256'][2]=='637a08f3372cfe103e78fcf5ed18a2910e54627ef74931f236751a98767142ac'
-    assert candidate['replaceSha256'][3]=='0023966595152218288af1f02db1e4bb122f8a2178b043077930b185addaa6bb'
+    # Re-pinned after the entity skin overhaul, the last-stand intro, the
+    # travelling Kagune ring and the strict V4 whitelist/compat mapping for
+    # LAST_STAND_INTRO landed. The replaced candidates stay at the front
+    # of replaceSha256, newest first, which is the documented prepend
+    # convention, so an already-staged older candidate is still accepted.
+    assert candidate['size']==2602202
+    assert candidate['sha256']=='5b86431f9e3fd531a6e9198021188411d74091335ffea35561f6e1334d56b118'
+    assert candidate['sha512']=='bdaaa3ae91e5621269bc9832576cf0498e97dd8fad996cbfc3e261fd5a3b371980f28fd1f51d5e98c6ea39e3719e0b85a5ebfd0a6a7ac5f3f62e43ee3ef4e2c2'
+    assert candidate['replaceSha256'][0]=='6e23c34d704c2a104b5ac56cc13d519bb306c63b26a21c10eacf3e933b86aa10'
+    assert candidate['replaceSha256'][1]=='1d1006bb7b69f61e3e6e9be69dcdc37649383785327df1f089b159105025ea0a'
+    assert candidate['replaceSha256'][2]=='e4ba96d991fb5084573e3a999c25edd49fdf20b0a9505a8c2d32482f722ea93b'
+    assert candidate['replaceSha256'][3]=='987f31a77bc33764eab5bb5d9d3750d38ac1ba98a8207c4d55f970cfcf7770dc'
+    assert candidate['replaceSha256'][4]=='6188d78c04df1c1064cbb7ca5fd824796a9275c791c2d04f582123e38b9da0ab'
+    assert candidate['replaceSha256'][5]=='637a08f3372cfe103e78fcf5ed18a2910e54627ef74931f236751a98767142ac'
+    assert candidate['replaceSha256'][6]=='0023966595152218288af1f02db1e4bb122f8a2178b043077930b185addaa6bb'
     assert '655810207e0cfff4adf6e3d3bc23aff06b09ba756fc38556f47f21846761191e' in candidate['replaceSha256']
     assert 'f450c7d771bea5ef4d0fdb3592e5db8172a600fe98a45a45d64b294f137843f3' in candidate['replaceSha256']
     assert '25411e0fc3635e0a715c2ba9b4644328df692309fa73868867da4eac07e23d12' in candidate['replaceSha256']
@@ -1455,7 +1458,10 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     assert candidate['replaceSha256']==[
         # The candidates these pins replaced are prepended (section 5
         # convention), newest first.
+        '6e23c34d704c2a104b5ac56cc13d519bb306c63b26a21c10eacf3e933b86aa10',
+        '1d1006bb7b69f61e3e6e9be69dcdc37649383785327df1f089b159105025ea0a',
         'e4ba96d991fb5084573e3a999c25edd49fdf20b0a9505a8c2d32482f722ea93b',
+        '987f31a77bc33764eab5bb5d9d3750d38ac1ba98a8207c4d55f970cfcf7770dc',
         '6188d78c04df1c1064cbb7ca5fd824796a9275c791c2d04f582123e38b9da0ab',
         '637a08f3372cfe103e78fcf5ed18a2910e54627ef74931f236751a98767142ac',
         # Candidates replaced by these re-pins stay accepted for staging.
@@ -3185,10 +3191,10 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
     expected_candidates={
         'CopiMineArtifacts':('a5e0420d503850cb604445c52705f5af71fdc65770a78b943c5d2bc252fabcc5',
                              'a054cfeef3dc37dc364ef33d550063b6aa105f2394501bd982295af2fc791bba82cce15623c3ff7b09c4c3250683fb1caf7cdb72312e3c91bf50dd0c2fc39600',366356),
-        'CopiMineEndEvent':('1d1006bb7b69f61e3e6e9be69dcdc37649383785327df1f089b159105025ea0a',
-                            '1b10f47b575c6d5955c7d46a480858acb5b929da405bc856bbb8cc0b03ec82622b1ebbd3653b49ea268d67bcb1b4f06a61536f55b97ab69186f45608931f4d54',2593948),
-        'CopiMineNarcotics':('a0a9248c0f021712ae8e354839b373828919f5bca05b05e589a4e3431e71193a',
-                             '72e003f072fb874f822b0872f5b58a0fe49eb8f0ba6546bdbef1ff2b79a76e79ddce7c65d76c279b3fee53953d66c3cb0bbd88b52c6368444c5c574b3dd37ab2',378740),
+        'CopiMineEndEvent':('5b86431f9e3fd531a6e9198021188411d74091335ffea35561f6e1334d56b118',
+                            'bdaaa3ae91e5621269bc9832576cf0498e97dd8fad996cbfc3e261fd5a3b371980f28fd1f51d5e98c6ea39e3719e0b85a5ebfd0a6a7ac5f3f62e43ee3ef4e2c2',2602202),
+        'CopiMineNarcotics':('b5d30b23011b04354b26e43053143f4d64c85e048739025048f0a8b82ca890eb',
+                             '65b1e5e0c4a67ae1bf9428d12a12512f86e95fb315e0d4e1f80bb4f9533d033b3da175ed6ecc7d09965c631a4dde8605628648c6d87b5117871ae30b8bd77734',378758),
     }
     for plugin_name,(sha256,sha512,size) in expected_candidates.items():
         candidate=baseline[plugin_name]['candidate']

@@ -246,10 +246,14 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # cue now carries its played phase across a cast rollover (but never on a
     # same-cast heartbeat). Repinned from a clean `gradle test jar` on the
     # pinned JDK.
-    assert artifact['size'] == 30_264_955
+    # 21-November: the End Rift entity repaint (six mob sheets and the six
+    # Guardian stage sheets), the last-stand intro clip, the Ram wave-6 pose
+    # work and the travelling Kagune ring moved the client jar. Repinned from a
+    # clean `gradle test jar` on the pinned JDK; a rerun matched byte for byte.
+    assert artifact['size'] == 30_357_503
     assert artifact['sha512'] == (
-        '058f4344c713c9a463a12d320b52e1c9c528f237d8666a847b86955b14f7f56d4'
-        'a1baca74d08fc27a234160914a20e9491cf00a67793fc363992d51d5e191d4c'
+        '5fe18bd144e905bc448da6983ad30000156f6d98a9dab499150601c44626f270'
+        '06f31fe72ee161164a0a692443f4b141b46a4a2d8a0f1ef13ff1a57375ad34fd'
     )
 
 

@@ -63,8 +63,12 @@ def test_wave_six_bone_rain_is_gravity_driven_and_falls_physically():
     assert "BONE_RAIN_SPEED = 0.55D" in policy
     assert "FALL_TIMEOUT_TICKS = 60" in policy
     assert "hasLanded(" in policy and "grounded" in policy
-    # Two genuinely different attacks: a fan and a vertical rain.
-    assert "Ability { NONE, TRIPLE_SHOT, BONE_RAIN }" in policy
+    # Two genuinely different attacks: a fan and a vertical rain.  A third,
+    # SPIRE_LANCE, was added by the Spire Harbinger rig pass, so the enum is
+    # checked by name rather than by an exact literal that would falsely fail.
+    ability_line = next(line for line in policy.splitlines() if "enum Ability" in line)
+    for ability in ("TRIPLE_SHOT", "BONE_RAIN", "SPIRE_LANCE"):
+        assert ability in ability_line, ability_line
     assert "TRIPLE_SHOT_SPREAD_DEGREES" in policy
     runtime = (PLUGIN / "runtime/RiftRamEncounter.java").read_text(encoding="utf-8")
     assert "fireBoneRain" in runtime

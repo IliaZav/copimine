@@ -28747,12 +28747,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /**
      * Remove the pillar collider and restore every original cell.
      *
-     * <p>Restoration is transactional and auditable. A cell is only dropped from
-     * the ownership map after the host confirms the exact journaled BlockData is
-     * back, so a refused write, an unloaded chunk or a partial disk failure
-     * leaves the remaining cells owned and retryable instead of reporting a
-     * successful clear. A cell another owner changed away from our barrier is
-     * left untouched and treated as already resolved.</p>
+     * <p>Restoration is transactional and auditable. Every cell is confirmed
+     * back to its exact journaled BlockData before the ownership map or the
+     * hazard journal is committed, so a refused write, an unloaded chunk, a
+     * foreign edit or a partial disk failure leaves the remaining cells owned
+     * and retryable instead of reporting a successful clear. A cell another
+     * owner replaced is left untouched and keeps the clear unresolved rather
+     * than being silently adopted as ours.</p>
      */
     private boolean clearRiftRamPillarCollider(String reason) {
         if (!riftRamPillarColliderActive && riftRamPillarColliderOriginals.isEmpty()) return true;
@@ -28762,79 +28763,62 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " reason=world-unavailable");
             return false;
         }
-        List<String> resolved = new ArrayList<>();
-        int restored = 0, skipped = 0, refused = 0;
+        int restored = 0;
         for (Map.Entry<String, String> entry : riftRamPillarColliderOriginals.entrySet()) {
-            String key = entry.getKey();
-            String[] parts = key.split(":");
-            if (parts.length != 3) {
-                refused++;
-                continue;
+            String[] parts = entry.getKey().split(":");
+            if (parts.length != 3 || !restoreRiftRamColliderCell(world, Integer.parseInt(parts[0]),
+                    Integer.parseInt(parts[1]), Integer.parseInt(parts[2]), entry.getValue())) {
+                // Stay active with the surviving ownership entries: the next
+                // clear attempt (or boot recovery) finishes the job once the
+                // chunk loads, the foreign cell is resolved or the disk recovers.
+                getLogger().severe("END_RIFT_RAM_PILLAR_COLLIDER_CLEAR_INCOMPLETE event=" + eventId
+                        + " generation=" + generation + " reason=" + reason
+                        + " restored=" + restored
+                        + " remaining=" + riftRamPillarColliderOriginals.size());
+                return false;
             }
-            final Block cell;
-            try {
-                cell = world.getBlockAt(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]),
-                        Integer.parseInt(parts[2]));
-            } catch (NumberFormatException invalidKey) {
-                refused++;
-                continue;
-            }
-            // Only a barrier we wrote is restored; anything else is left alone
-            // so a clear never overwrites another owner's block.
-            if (cell.getType() != REALITY_SPLIT_WALL_MATERIAL) {
-                skipped++;
-                resolved.add(key);
-                continue;
-            }
-            if (restoreBlock(cell, entry.getValue())) {
-                restored++;
-                resolved.add(key);
-            } else {
-                refused++;
-            }
-        }
-        for (String key : resolved) {
-            riftRamPillarColliderOriginals.remove(key);
-        }
-        boolean allCellsResolved = riftRamPillarColliderOriginals.isEmpty();
-        if (!allCellsResolved) {
-            // Keep the remaining ownership entries and stay active: the next
-            // clear attempt (or boot recovery) finishes the job.
-            getLogger().severe("END_RIFT_RAM_PILLAR_COLLIDER_CLEAR_INCOMPLETE event=" + eventId
-                    + " generation=" + generation + " reason=" + reason
-                    + " restored=" + restored + " skipped=" + skipped
-                    + " refused=" + refused
-                    + " remaining=" + riftRamPillarColliderOriginals.size());
-            return false;
+            restored++;
         }
         if (hazardJournal != null && !hazardJournal.markRestored()) {
             // Every cell is back, but the journal could not be committed. Keep
-            // the collider flagged active with an empty map so a retry only has
-            // to commit the journal, never guess about world state.
+            // the collider flagged active with the ownership entries intact so a
+            // retry only has to commit the journal, never guess about world
+            // state; the already-correct cells reconcile without a rewrite.
             getLogger().severe("END_RIFT_RAM_PILLAR_COLLIDER_JOURNAL_RESTORE_FAILED event=" + eventId
                     + " generation=" + generation + " reason=" + reason
-                    + " restored=" + restored + " skipped=" + skipped);
+                    + " restored=" + restored);
             return false;
         }
         riftRamPillarColliderActive = false;
+        riftRamPillarColliderOriginals.clear();
         getLogger().info("END_RIFT_RAM_PILLAR_COLLIDER_CLEARED event=" + eventId
                 + " generation=" + generation + " reason=" + reason
-                + " restored=" + restored + " skipped=" + skipped
-                + " refused=" + refused);
+                + " restored=" + restored);
         return true;
     }
 
     private boolean restoreRiftRamColliderCell(World world, int x, int y, int z, String original) {
         try {
-            if (y >= world.getMinHeight() && y < world.getMaxHeight() && world.isChunkLoaded(x >> 4, z >> 4)) {
-                Block cell = world.getBlockAt(x, y, z);
-                BlockData expected = Bukkit.createBlockData(original);
-                if (expected.equals(cell.getBlockData())) return true;
-                if (cell.getType() == REALITY_SPLIT_WALL_MATERIAL) {
-                    cell.setBlockData(expected, false);
-                    if (expected.equals(cell.getBlockData())) return true;
-                }
+            // An unloaded or out-of-range cell cannot be confirmed: keep it owned
+            // and retry instead of pretending the world is already clean.
+            if (y < world.getMinHeight() || y >= world.getMaxHeight()
+                    || !world.isChunkLoaded(x >> 4, z >> 4)) {
+                getLogger().severe("END_RIFT_RAM_COLLIDER_RESTORE_PENDING event=" + eventId
+                        + " generation=" + generation + " cell=" + x + "," + y + "," + z
+                        + " reason=chunk-unavailable");
+                return false;
             }
+            Block cell = world.getBlockAt(x, y, z);
+            BlockData expected = Bukkit.createBlockData(original);
+            // Already at the journaled state: nothing to write. This is how a
+            // partial earlier pass reconciles on retry without a second write.
+            if (expected.equals(cell.getBlockData())) return true;
+            // Only a barrier this event wrote is restored. A cell another owner
+            // replaced is left exactly as it is and reported as pending so the
+            // clear never claims to have restored something it does not own.
+            if (cell.getType() == REALITY_SPLIT_WALL_MATERIAL
+                    && restoreBlock(cell, original)
+                    && expected.equals(cell.getBlockData())) return true;
         } catch (RuntimeException failure) {
             getLogger().log(Level.SEVERE, "Rift Ram collider restore failed", failure);
         }

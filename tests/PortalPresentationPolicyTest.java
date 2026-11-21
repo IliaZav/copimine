@@ -40,16 +40,19 @@ public final class PortalPresentationPolicyTest {
     }
 
     private static void oneCollapseDeadline() {
+        long half = PortalPresentationPolicy.COLLAPSE_MILLIS / 2L;
+        long deadline = PortalPresentationPolicy.COLLAPSE_MILLIS;
         var done = complete(FULL);
         var start = PortalPresentationPolicy.frame(done, false, FULL, FULL);
-        var middle = PortalPresentationPolicy.frame(done, false, FULL, FULL + 300);
-        var end = PortalPresentationPolicy.frame(done, false, FULL, FULL + 600);
+        var middle = PortalPresentationPolicy.frame(done, false, FULL, FULL + half);
+        var end = PortalPresentationPolicy.frame(done, false, FULL, FULL + deadline);
         check(start.visible() && middle.visible() && !end.visible(), "completed portal must close at deadline");
         close(middle.scale(), start.scale() / 2, "collapse scale must halve at its halfway point");
         check(!PortalPresentationPolicy.frame(done, false, FULL, FULL + 4_000).visible(),
                 "late completed refresh must never restart a closed portal");
-        check(!PortalPresentationPolicy.collapseFinished(FULL, FULL + 599)
-                && PortalPresentationPolicy.collapseFinished(FULL, FULL + 600), "cleanup waits for exactly600ms collapse");
+        check(!PortalPresentationPolicy.collapseFinished(FULL, FULL + deadline - 1)
+                && PortalPresentationPolicy.collapseFinished(FULL, FULL + deadline),
+                "cleanup waits for exactly " + deadline + "ms collapse");
     }
 
     private static void nextGateActivation() {

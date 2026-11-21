@@ -1379,20 +1379,22 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     assert candidate['filename']=='CopiMineEndEvent-26.3.jar'
     assert candidate['runtimeFilename']=='CopiMineEndEvent.jar'
     # Re-pinned after the entity skin overhaul, the last-stand intro, the
-    # travelling Kagune ring and the strict V4 whitelist/compat mapping for
-    # LAST_STAND_INTRO landed. The replaced candidates stay at the front
+    # travelling Kagune ring, the strict V4 whitelist/compat mapping for
+    # LAST_STAND_INTRO and the CodeRabbit fixes (rim-clamped passage scan,
+    # final-stage-only tears) landed. The replaced candidates stay at the front
     # of replaceSha256, newest first, which is the documented prepend
     # convention, so an already-staged older candidate is still accepted.
-    assert candidate['size']==2602202
-    assert candidate['sha256']=='5b86431f9e3fd531a6e9198021188411d74091335ffea35561f6e1334d56b118'
-    assert candidate['sha512']=='bdaaa3ae91e5621269bc9832576cf0498e97dd8fad996cbfc3e261fd5a3b371980f28fd1f51d5e98c6ea39e3719e0b85a5ebfd0a6a7ac5f3f62e43ee3ef4e2c2'
-    assert candidate['replaceSha256'][0]=='6e23c34d704c2a104b5ac56cc13d519bb306c63b26a21c10eacf3e933b86aa10'
-    assert candidate['replaceSha256'][1]=='1d1006bb7b69f61e3e6e9be69dcdc37649383785327df1f089b159105025ea0a'
-    assert candidate['replaceSha256'][2]=='e4ba96d991fb5084573e3a999c25edd49fdf20b0a9505a8c2d32482f722ea93b'
-    assert candidate['replaceSha256'][3]=='987f31a77bc33764eab5bb5d9d3750d38ac1ba98a8207c4d55f970cfcf7770dc'
-    assert candidate['replaceSha256'][4]=='6188d78c04df1c1064cbb7ca5fd824796a9275c791c2d04f582123e38b9da0ab'
-    assert candidate['replaceSha256'][5]=='637a08f3372cfe103e78fcf5ed18a2910e54627ef74931f236751a98767142ac'
-    assert candidate['replaceSha256'][6]=='0023966595152218288af1f02db1e4bb122f8a2178b043077930b185addaa6bb'
+    assert candidate['size']==2602230
+    assert candidate['sha256']=='8688d87e0b80fbb82bd8bc6757e8c49d73e10c9da563e5f6f2d62c44368cb312'
+    assert candidate['sha512']=='9c880f330d500cd8f793b31be8804c63e2663a89f7259b6d84a917e6a39f6cc019a72dfce3bb07a96486eeb1a02903a64c004c235ec59042bd3689ce37470384'
+    assert candidate['replaceSha256'][0]=='5b86431f9e3fd531a6e9198021188411d74091335ffea35561f6e1334d56b118'
+    assert candidate['replaceSha256'][1]=='6e23c34d704c2a104b5ac56cc13d519bb306c63b26a21c10eacf3e933b86aa10'
+    assert candidate['replaceSha256'][2]=='1d1006bb7b69f61e3e6e9be69dcdc37649383785327df1f089b159105025ea0a'
+    assert candidate['replaceSha256'][3]=='e4ba96d991fb5084573e3a999c25edd49fdf20b0a9505a8c2d32482f722ea93b'
+    assert candidate['replaceSha256'][4]=='987f31a77bc33764eab5bb5d9d3750d38ac1ba98a8207c4d55f970cfcf7770dc'
+    assert candidate['replaceSha256'][5]=='6188d78c04df1c1064cbb7ca5fd824796a9275c791c2d04f582123e38b9da0ab'
+    assert candidate['replaceSha256'][6]=='637a08f3372cfe103e78fcf5ed18a2910e54627ef74931f236751a98767142ac'
+    assert candidate['replaceSha256'][7]=='0023966595152218288af1f02db1e4bb122f8a2178b043077930b185addaa6bb'
     assert '655810207e0cfff4adf6e3d3bc23aff06b09ba756fc38556f47f21846761191e' in candidate['replaceSha256']
     assert 'f450c7d771bea5ef4d0fdb3592e5db8172a600fe98a45a45d64b294f137843f3' in candidate['replaceSha256']
     assert '25411e0fc3635e0a715c2ba9b4644328df692309fa73868867da4eac07e23d12' in candidate['replaceSha256']
@@ -1458,6 +1460,7 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     assert candidate['replaceSha256']==[
         # The candidates these pins replaced are prepended (section 5
         # convention), newest first.
+        '5b86431f9e3fd531a6e9198021188411d74091335ffea35561f6e1334d56b118',
         '6e23c34d704c2a104b5ac56cc13d519bb306c63b26a21c10eacf3e933b86aa10',
         '1d1006bb7b69f61e3e6e9be69dcdc37649383785327df1f089b159105025ea0a',
         'e4ba96d991fb5084573e3a999c25edd49fdf20b0a9505a8c2d32482f722ea93b',
@@ -3191,8 +3194,8 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
     expected_candidates={
         'CopiMineArtifacts':('a5e0420d503850cb604445c52705f5af71fdc65770a78b943c5d2bc252fabcc5',
                              'a054cfeef3dc37dc364ef33d550063b6aa105f2394501bd982295af2fc791bba82cce15623c3ff7b09c4c3250683fb1caf7cdb72312e3c91bf50dd0c2fc39600',366356),
-        'CopiMineEndEvent':('5b86431f9e3fd531a6e9198021188411d74091335ffea35561f6e1334d56b118',
-                            'bdaaa3ae91e5621269bc9832576cf0498e97dd8fad996cbfc3e261fd5a3b371980f28fd1f51d5e98c6ea39e3719e0b85a5ebfd0a6a7ac5f3f62e43ee3ef4e2c2',2602202),
+        'CopiMineEndEvent':('8688d87e0b80fbb82bd8bc6757e8c49d73e10c9da563e5f6f2d62c44368cb312',
+                            '9c880f330d500cd8f793b31be8804c63e2663a89f7259b6d84a917e6a39f6cc019a72dfce3bb07a96486eeb1a02903a64c004c235ec59042bd3689ce37470384',2602230),
         'CopiMineNarcotics':('b5d30b23011b04354b26e43053143f4d64c85e048739025048f0a8b82ca890eb',
                              '65b1e5e0c4a67ae1bf9428d12a12512f86e95fb315e0d4e1f80bb4f9533d033b3da175ed6ecc7d09965c631a4dde8605628648c6d87b5117871ae30b8bd77734',378758),
     }

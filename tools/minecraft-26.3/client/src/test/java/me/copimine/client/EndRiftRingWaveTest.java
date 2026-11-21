@@ -84,6 +84,73 @@ class EndRiftRingWaveTest {
     }
 
     @Test
+    void retractingStemSinksFromUprightTowardTheRetractedPose() {
+        // The retraction blend must follow retraction progress, not remaining
+        // height: a stem that has just started to sink still reads upright, and
+        // one that has almost sunk must read as retracted. The old blend weight
+        // ran backwards and snapped the pose upright as the stem descended.
+        EndRiftTentaclePose.TentaclePose upright =
+                EndRiftTentacleAnimator.poseFor("EMERGE", 1F, 0L);
+        double high = distance(EndRiftTentacleAnimator.ringPose(
+                retractFrame(0.9D), 0, 0), upright);
+        double middle = distance(EndRiftTentacleAnimator.ringPose(
+                retractFrame(0.5D), 0, 0), upright);
+        double low = distance(EndRiftTentacleAnimator.ringPose(
+                retractFrame(0.1D), 0, 0), upright);
+        assertTrue(high < middle && middle < low,
+                "sinking must move the pose away from upright monotonically: "
+                        + high + " < " + middle + " < " + low);
+        assertTrue(low > high * 4D,
+                "an almost-sunk stem must not snap back toward upright");
+    }
+
+    @Test
+    void almostSunkStemReachesTheRetractedPose() {
+        EndRiftTentaclePose.TentaclePose retracted =
+                EndRiftTentacleAnimator.poseFor("RETRACT", 0.9F, 0L);
+        EndRiftTentaclePose.TentaclePose low =
+                EndRiftTentacleAnimator.ringPose(retractFrame(0.1D), 0, 0);
+        EndRiftTentaclePose.TentaclePose high =
+                EndRiftTentacleAnimator.ringPose(retractFrame(0.9D), 0, 0);
+        assertTrue(distance(low, retracted) < distance(high, retracted),
+                "the end of retraction must approach the retracted pose");
+    }
+
+    private static KaguneRingFrame retractFrame(double rise) {
+        // count=0 keeps ringInstanceRise on the frame's own rise, so this tests
+        // the blend itself rather than the per-stem phase offset.
+        return new KaguneRingFrame(0, KaguneRingFrame.RETRACT, 8.0D, 8.0D,
+                rise, 0.0D, java.util.List.of(0.0D, Math.PI));
+    }
+
+    private static final String[] BONES = {
+            "root", "base", "seg_01", "seg_02", "seg_03", "seg_04", "seg_05",
+            "seg_06", "tip", "tip_claw_1", "tip_claw_2", "tip_claw_3", "tip_claw_4"};
+
+    private static double distance(EndRiftTentaclePose.TentaclePose left,
+                                   EndRiftTentaclePose.TentaclePose right) {
+        double total = 0.0D;
+        for (String bone : BONES) {
+            EndRiftTentaclePose.BoneTransform a = left.transform(bone);
+            EndRiftTentaclePose.BoneTransform b = right.transform(bone);
+            total += square(a.translationX() - b.translationX())
+                    + square(a.translationY() - b.translationY())
+                    + square(a.translationZ() - b.translationZ())
+                    + square(a.pitch() - b.pitch())
+                    + square(a.yaw() - b.yaw())
+                    + square(a.roll() - b.roll())
+                    + square(a.scaleX() - b.scaleX())
+                    + square(a.scaleY() - b.scaleY())
+                    + square(a.scaleZ() - b.scaleZ());
+        }
+        return total;
+    }
+
+    private static double square(double value) {
+        return value * value;
+    }
+
+    @Test
     void degenerateCountsDoNotThrow() {
         assertEquals(0.5D, EndRiftTentacleAnimator.ringInstanceRise(
                 3, 0, KaguneRingFrame.TRAVEL, 0.5D, 0.5D), 1.0E-9D);

@@ -475,8 +475,11 @@ def boss_stage(master: Image.Image, stage: int) -> Image.Image:
             g = round(min(255, g * value))
             b = round(min(255, b * value))
             px[x, y] = (r, g, b, a)
-    # Only the last two stages visibly lose material.
-    return tear(img, max(0, stage - 3), 0xB055 + stage * 977)
+    # Only the final stage is torn open; earlier stages just drain so the
+    # decline stays gradual.
+    if stage < 5:
+        return img
+    return tear(img, 1, 0xB055 + stage * 977)
 
 
 # --------------------------------------------------------------------------

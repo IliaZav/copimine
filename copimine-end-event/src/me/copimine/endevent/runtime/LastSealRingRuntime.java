@@ -84,10 +84,15 @@ public final class LastSealRingRuntime {
         for (int step = 0; step < 96; step++) {
             double angle = Math.PI * 2D * step / 96;
             boolean clear = true;
-            for (double radius = innerRadius; radius <= outerRadius; radius += .75D) {
-                if (!host.traversable(at.clone().add(Math.cos(angle) * radius, 0, Math.sin(angle) * radius))) {
+            // Sample both endpoints: the final step is clamped to the rim so an
+            // obstacle sitting between the last 0.75 sample and outerRadius is
+            // still seen, and a fully clear passage is still admitted.
+            for (double radius = innerRadius; ; radius += .75D) {
+                double sample = Math.min(radius, outerRadius);
+                if (!host.traversable(at.clone().add(Math.cos(angle) * sample, 0, Math.sin(angle) * sample))) {
                     clear = false; break;
                 }
+                if (sample >= outerRadius) break;
             }
             if (!clear) blocked.add(KaguneRingFrame.wrap(angle));
         }

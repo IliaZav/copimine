@@ -111,12 +111,16 @@ public final class EndRiftTentacleAnimator {
                                                             int index, int count) {
         var upright=poseFor("EMERGE",1F,0L);
         double rise=ringInstanceRise(index,count,frame.stage(),frame.rise(),frame.strike());
-        float eased=(float)(rise*rise*(3D-2D*rise));
         if (frame.stage()==KaguneRingFrame.EMERGE)
             return poseFor("EMERGE",(float)rise,0L);
-        if (frame.stage()==KaguneRingFrame.RETRACT)
+        if (frame.stage()==KaguneRingFrame.RETRACT) {
+            // Blend by retraction progress, not by remaining height: the stem
+            // starts upright and only reaches the retracted pose as it sinks.
+            float sink=(float)(1D-rise);
+            float blend=sink*sink*(3F-2F*sink);
             return EndRiftTentaclePose.TentaclePose.lerp(upright,
-                    poseFor("RETRACT",(float)(1D-rise),0L),eased);
+                    poseFor("RETRACT",sink,0L),blend);
+        }
         // TRAVEL: the distal joints carry a travelling curl so the tips ripple
         // around the circle while the stems themselves stay at contact height.
         double phase=count<=0?0D:(double)Math.floorMod(index,count)/count;

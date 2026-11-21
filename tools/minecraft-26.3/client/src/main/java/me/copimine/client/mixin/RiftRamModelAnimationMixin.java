@@ -36,8 +36,15 @@ public abstract class RiftRamModelAnimationMixin {
         if (!(state instanceof EndRiftRenderStateAccess bound)
                 || !RiftRamVisualPolicy.isRiftRamVisual(bound.copimine$visual())) return;
         ModelPart root=((RavagerModel)(Object)this).root();
-        ModelPart neck=child(root,"neck"), body=child(root,"body"), head=child(root,"head"),
-                mouth=child(root,"mouth");
+        ModelPart neck=child(root,"neck"), body=child(root,"body");
+        // The native hierarchy is root -> neck -> head -> mouth. Resolve the
+        // deeper joints through their parent, falling back to the root in case
+        // a version flattens the tree.
+        ModelPart head=child(root,"head");
+        if (head==null) head=child(neck,"head");
+        ModelPart mouth=child(root,"mouth");
+        if (mouth==null) mouth=child(head,"mouth");
+        if (mouth==null) mouth=child(neck,"mouth");
         ModelPart frontRight=child(root,"right_front_leg"), frontLeft=child(root,"left_front_leg");
         ModelPart hindRight=child(root,"right_hind_leg"), hindLeft=child(root,"left_hind_leg");
         float p=bound.copimine$poseProgress(), ease=p*p*(3-2*p);

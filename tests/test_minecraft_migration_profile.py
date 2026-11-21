@@ -250,10 +250,10 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # Guardian stage sheets), the last-stand intro clip, the Ram wave-6 pose
     # work and the travelling Kagune ring moved the client jar. Repinned from a
     # clean `gradle test jar` on the pinned JDK; a rerun matched byte for byte.
-    assert artifact['size'] == 30_357_503
+    assert artifact['size'] == 30_357_216
     assert artifact['sha512'] == (
-        '5fe18bd144e905bc448da6983ad30000156f6d98a9dab499150601c44626f270'
-        '06f31fe72ee161164a0a692443f4b141b46a4a2d8a0f1ef13ff1a57375ad34fd'
+        'b62e2ee80241c254021b1e730fa458dac9352a57ae3517ddc59c23d2589b17a7'
+        '8988265ffef6cf653194d66381fc026d2ea19d95f067f65906bf31d131106859'
     )
 
 

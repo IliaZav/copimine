@@ -1077,6 +1077,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<String, Integer> waveTwoPhantomEliteRolls = new LinkedHashMap<>();
     private long waveTwoGroupClearedAtMillis;
     private final Map<UUID, Long> waveTwoMarkPacketAt = new LinkedHashMap<>();
+    private final Map<UUID, Long> waveTwoLayoutRefreshAt = new LinkedHashMap<>();
     private final Map<UUID, List<WaveTwoPhantomLayoutPolicy.Phantom>> waveTwoPhantomLayouts =
             new LinkedHashMap<>();
     private long waveTwoPhantomLayoutGeneration;
@@ -44783,6 +44784,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             waveTwoMarkCycle = WaveTwoHuntPolicy.nextMarkAssignmentId(waveTwoMarkCycle);
             waveTwoPhantomLayoutCycle = 0;
             waveTwoPhantomLayouts.clear();
+            waveTwoLayoutRefreshAt.clear();
         }
         for (UUID participantId : marked) {
             Player participant = Bukkit.getPlayer(participantId);
@@ -44803,6 +44805,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         waveTwoMarkedParticipants.retainAll(marked);
         waveTwoMarkPacketAt.keySet().retainAll(marked);
+        waveTwoLayoutRefreshAt.keySet().retainAll(marked);
     }
 
     /**
@@ -45033,6 +45036,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         waveTwoMarkedParticipants.remove(playerUuid);
         waveTwoMarkPacketAt.remove(playerUuid);
         waveTwoPhantomLayouts.remove(playerUuid);
+        waveTwoLayoutRefreshAt.remove(playerUuid);
         if (playerUuid != null && playerUuid.equals(waveTwoPhantomActivationPlayerUuid)) {
             waveTwoPhantomActivationPlayerUuid = null;
         }
@@ -45091,19 +45095,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     0, mode, "WAVE2_HUNT_MARK_V1", 0, 0, 0.0F, "", "CLEAR");
             return;
         }
-        String intro = "intro-age=" + WaveTwoCinematicPolicy.age(
-                waveTwoIntroStartedMillis, System.currentTimeMillis());
+        long now = System.currentTimeMillis();
+        String intro = "intro-age=" + WaveTwoCinematicPolicy.age(waveTwoIntroStartedMillis, now);
+        ensureWaveTwoPhantomLayout(player, core);
+        UUID viewer = player.getUniqueId();
+        var layout = waveTwoPhantomLayouts.getOrDefault(viewer, List.of());
+        if (!layout.isEmpty() && now >= waveTwoLayoutRefreshAt.getOrDefault(viewer, 0L)) {
+            String positions = layout.stream().map(phantom -> encodeWaveTwoPosition(phantom.position()))
+                    .collect(java.util.stream.Collectors.joining(";"));
+            if (sendClientPacket(player, "END_PLAYER_STATE", "wave2-hunt-mark",
+                    WAVE_TWO_MARK_PACKET_MILLIS, mode, "WAVE2_HUNT_MARK_V1", 0, 0, 0.25F, intro,
+                    "ACTIVE", me.copimine.protocol.EndEventBridgeBodyCodec.WAVE_TWO_LAYOUT_SNAPSHOT, positions)) {
+                // A low-rate snapshot also repairs a local clear or a delayed stream re-open.
+                waveTwoLayoutRefreshAt.put(viewer, now + WAVE_TWO_MARK_PACKET_MILLIS);
+                return;
+            }
+        }
         sendClientPacket(player, "END_PLAYER_STATE", "wave2-hunt-mark",
                 WAVE_TWO_MARK_PACKET_MILLIS, mode, "WAVE2_HUNT_MARK_V1",
                 0, 0, 0.25F, intro, "ACTIVE");
-        ensureWaveTwoPhantomLayout(player, core);
-        for (WaveTwoPhantomLayoutPolicy.Phantom phantom
-                : waveTwoPhantomLayouts.getOrDefault(player.getUniqueId(), List.of())) {
-            WaveTwoPhantomLayoutPolicy.Position position = phantom.position();
-            sendClientPacket(player, "END_PLAYER_STATE", "wave2-hunt-mark",
-                    WAVE_TWO_MARK_PACKET_MILLIS, mode, "WAVE2_HUNT_MARK_V1", 0, 0, 0.25F, intro,
-                    "ACTIVE", encodeWaveTwoPosition(position), phantom.id());
-        }
     }
 
     /** Build one immutable server-authored layout per marked participant. */
@@ -45238,6 +45248,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         waveTwoMarkedParticipants.clear();
         waveTwoMarkPacketAt.clear();
         waveTwoPhantomLayouts.clear();
+        waveTwoLayoutRefreshAt.clear();
     }
 
     private void releaseCurrentHuntTarget(UUID playerUuid, String reason) {
@@ -45508,6 +45519,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         waveTwoMarkEpoch = -1L;
         waveTwoMarkGroup = -1;
         waveTwoPhantomLayouts.clear();
+        waveTwoLayoutRefreshAt.clear();
         waveTwoPhantomLayoutGeneration = 0L;
         waveTwoPhantomLayoutCycle = 0;
         waveTwoUsedPhantomIds.clear();

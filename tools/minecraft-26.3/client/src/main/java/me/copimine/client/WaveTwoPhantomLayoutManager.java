@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -46,6 +47,7 @@ final class WaveTwoPhantomLayoutManager {
         int incomingCycle = parseCycle(mode[2]);
         boolean incomingActive = "ACTIVE".equals(body.status());
         boolean hasPosition = !body.controlId().isEmpty();
+        boolean snapshot = EndEventBridgeBodyCodec.WAVE_TWO_LAYOUT_SNAPSHOT.equals(body.controlId());
         boolean matchesCurrent = incomingEventId.equals(eventId);
 
         if (retiredEvents.containsKey(incomingEventId)) return false;
@@ -84,7 +86,17 @@ final class WaveTwoPhantomLayoutManager {
         }
 
         active = true;
-        if (hasPosition) {
+        if (snapshot) {
+            String[] coordinates = EndEventBridgeBodyCodec.waveTwoLayoutPositions(body.reservedOne());
+            Map<String, Phantom> incoming = new LinkedHashMap<>();
+            for (int i = 0; i < coordinates.length; i++) {
+                String id = String.format(Locale.ROOT, "phantom-%02d", i);
+                incoming.put(id, new Phantom(id, parsePosition(coordinates[i])));
+            }
+            if (!positions.isEmpty() && positions.entrySet().stream()
+                    .anyMatch(entry -> !entry.getValue().equals(incoming.get(entry.getKey())))) return false;
+            positions.putAll(incoming);
+        } else if (hasPosition) {
             WaveTwoPhantomLayout.Position position = parsePosition(body.controlId());
             if (position == null || !validPhantomId(phantomId)) return false;
             Phantom previous = positions.get(phantomId);
@@ -167,6 +179,14 @@ final class WaveTwoPhantomLayoutManager {
         }
         if (body.durationMillis() <= 0L || body.durationMillis() > 8_000L
                 || nowMillis > Long.MAX_VALUE - body.durationMillis()) return false;
+        if (EndEventBridgeBodyCodec.WAVE_TWO_LAYOUT_SNAPSHOT.equals(body.controlId())) {
+            try {
+                EndEventBridgeBodyCodec.waveTwoLayoutPositions(body.reservedOne());
+                return true;
+            } catch (IllegalArgumentException invalid) {
+                return false;
+            }
+        }
         return hasPosition == hasId && (!hasPosition
                 || validPhantomId(body.reservedOne()) && parsePosition(body.controlId()) != null);
     }

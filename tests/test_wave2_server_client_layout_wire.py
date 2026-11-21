@@ -14,6 +14,7 @@ def test_server_layout_survives_the_actual_client_admission_boundary(tmp_path):
     probe = tmp_path / "LayoutWireProbe.java"
     probe.write_text(r"""package me.copimine.client;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import me.copimine.endevent.domain.WaveTwoPhantomLayoutPolicy;
 import me.copimine.protocol.EndEventBridgeBodyCodec;
 public final class LayoutWireProbe {
@@ -31,17 +32,26 @@ public final class LayoutWireProbe {
   var anchor=new WaveTwoPhantomLayoutPolicy.Position(0,64,0);
   var cache=new WaveTwoPhantomLayoutManager();
   for(int cycle=1;cycle<=3;cycle++) {
-   var layout=WaveTwoPhantomLayoutPolicy.selectSafe(anchor,740L+cycle,17,p->p);
+   var layout=WaveTwoPhantomLayoutPolicy.selectSafe(anchor,740L+cycle,17,p->
+    new WaveTwoPhantomLayoutPolicy.Position(Math.floor(p.x())+.5,Math.floor(p.y()),Math.floor(p.z())+.5));
    check(layout.size()==70,"arena supports seventy observers; server emitted "+layout.size());
-   check(deliver(cache,packet(cycle,cycle*1000,"","","ACTIVE")),"mark admitted");
-   for(var phantom:layout) {
-    var p=phantom.position();
-    check(deliver(cache,packet(cycle,cycle*1000+1,phantom.id(),p.x()+","+p.y()+","+p.z(),"ACTIVE")),"position admitted");
-   }
+   String snapshot=layout.stream().map(phantom->phantom.position()).map(p->p.x()+","+p.y()+","+p.z())
+    .collect(Collectors.joining(";"));
+   var compact=packet(cycle,cycle*1000,snapshot,EndEventBridgeBodyCodec.WAVE_TWO_LAYOUT_SNAPSHOT,"ACTIVE");
+   check(deliver(cache,compact),"all observer positions fit in one accepted signed body");
    check(cache.isComplete("overworld",EVENT.toString(),1,cycle),"server field must be renderable");
    check(cache.layout("overworld",EVENT.toString(),1,cycle).size()==70,"all server observers retained");
+   for(int i=0;i<layout.size();i++) {
+    var expected=layout.get(i);
+    var actual=cache.layout("overworld",EVENT.toString(),1,cycle).get(i);
+    check(expected.id().equals(actual.id())&&expected.position().x()==actual.position().x()
+     && expected.position().y()==actual.position().y()&&expected.position().z()==actual.position().z(),
+     "compact snapshot preserves the exact activation identity and position");
+   }
+   check(deliver(cache,packet(cycle,cycle*1000+1,"","","ACTIVE")),"heartbeat does not clear layout");
    check(deliver(cache,packet(cycle,cycle*1000+2,"","","CLEAR")),"group cleanup");
    check(cache.layout("overworld",EVENT.toString(),1,cycle).isEmpty(),"no old group figures");
+   check(!deliver(cache,compact),"a queued snapshot cannot reopen a cleared group");
    check(!deliver(cache,packet(cycle,cycle*1000+1,"phantom-00","0,64,0","ACTIVE")),"late layout cannot resurrect group");
   }
   check(WaveTwoPhantomLayoutPolicy.MIN_PHANTOM_COUNT==WaveTwoPhantomLayout.MIN_PHANTOM_COUNT,

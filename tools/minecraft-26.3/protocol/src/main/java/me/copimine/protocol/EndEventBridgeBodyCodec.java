@@ -16,6 +16,7 @@ import java.util.regex.Pattern;
 
 /** Strict fixed-record codec for signed End Event v4 bodies. */
 public final class EndEventBridgeBodyCodec {
+    public static final String WAVE_TWO_LAYOUT_SNAPSHOT = "layout-v2";
     public static final int MAX_BODY_BYTES = BridgeSigningPolicy.MAX_BODY_BYTES;
     public static final int MESSAGE_SCHEMA = 4;
     public static final long MAX_GENERATION = Long.MAX_VALUE - 1;
@@ -428,9 +429,26 @@ public final class EndEventBridgeBodyCodec {
             throw new IllegalArgumentException("Invalid End Event player-state fields");
         }
         if (waveTwo && hasLayoutEntry) {
+            if (WAVE_TWO_LAYOUT_SNAPSHOT.equals(body.controlId())) {
+                waveTwoLayoutPositions(body.reservedOne());
+                return;
+            }
             requireIdentifier(body.reservedOne(), "Wave 2 phantom ID");
             requireServerPosition(body.controlId());
         }
+    }
+
+    /** A complete ordered observer field in one signed mark packet. */
+    public static String[] waveTwoLayoutPositions(String snapshot) {
+        if (snapshot == null || snapshot.length() > MAX_GENERAL_STRING_BYTES) {
+            throw new IllegalArgumentException("Wave 2 layout exceeds its wire budget");
+        }
+        String[] positions = snapshot.split(";", -1);
+        if (positions.length < 50 || positions.length > 70) {
+            throw new IllegalArgumentException("Invalid Wave 2 observer count");
+        }
+        for (String position : positions) requireServerPosition(position);
+        return positions;
     }
 
     private static void validateWaveTwoPhantomActivation(Body body) {

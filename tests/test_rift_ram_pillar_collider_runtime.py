@@ -78,7 +78,7 @@ public final class RamPillarColliderProbe {
         boolean isChunkLoaded(int x, int z) { return loaded; }
         WorldBorder getWorldBorder() { return new WorldBorder(); }
         List<Entity> getNearbyEntities(BoundingBox bounds, java.util.function.Predicate<Entity> filter) {
-            return occupied ? List.of(new LivingEntity()).stream().map(e -> (Entity)e).filter(filter).toList() : List.of();
+            return occupied ? List.of(new Player()).stream().map(e -> (Entity)e).filter(filter).toList() : List.of();
         }
         Block getBlockAt(int x, int y, int z) {
             return blocks.computeIfAbsent(x+":"+y+":"+z, k -> new Block(this, x, y, z));
@@ -90,6 +90,8 @@ public final class RamPillarColliderProbe {
     static class WorldBorder { boolean isInside(Location at) { return true; } }
     static class Entity { boolean isValid() { return true; } boolean isDead() { return false; } }
     static class LivingEntity extends Entity { }
+    /** Only players block a pillar collider; the Ram itself is parked against it. */
+    static class Player extends LivingEntity { }
     static final class Location {
         World world; int bx, by, bz; double x, y, z;
         Location(World w, double x, double y, double z) { this.world=w; this.x=x; this.y=y; this.z=z;

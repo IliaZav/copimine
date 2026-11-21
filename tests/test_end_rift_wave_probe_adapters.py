@@ -104,6 +104,11 @@ public final class WaveProbeAdapterHarness {
     boolean saveStateSync() { throw new AssertionError("unexpected boss save"); }
     String eventId = "event", worldName = "world";
     EventPhase phase = EventPhase.READY_FOR_PLAYERS;
+    String forcedPhaseReason = "";
+    // The production initializer may reset a stale terminal sandbox phase to a
+    // legal setup phase before building the wave; record it instead of failing.
+    void forcePhase(EventPhase target, String reason) { phase = target; forcedPhaseReason = reason; }
+    void transition(EventPhase target, String reason, String dedupe) { phase = target; }
     static final String WAVE_TWO_CYCLES_PROGRESS_KEY = "wave2-hunt-cycles";
     static final String WAVE_TWO_GROUPS_SPAWNED_PROGRESS_KEY = "wave2-groups-spawned";
     static final String WAVE_TWO_GROUP_CLEARED_PROGRESS_KEY = "wave2-group-cleared";

@@ -123,7 +123,11 @@ def test_the_pillar_collider_is_real_solid_and_host_journaled():
     assert "host.placePillarCollider(" in crack
     assert "RiftRamPolicy.pillarColliderHalfWidth(impacts)" in crack
     assert "RiftRamPolicy.pillarColliderHeight(impacts)" in crack
-    assert "damaged-pillar-collider-refused" in crack
+    # A refused rebuild is a presentation degradation, never a reason to abort
+    # the encounter: the host journals the refusal, and the crack keeps the
+    # remaining barrier (or none) instead of throwing the wave away.
+    assert "damaged-pillar-collider-refused" not in crack
+    assert "END_RIFT_RAM_PILLAR_COLLIDER_REFUSED" in SOURCE.read_text(encoding="utf-8")
     # ...and the model, the platform and the collider read one policy geometry.
     assert "RiftRamPolicy.pillarSilhouetteHeight(impacts)" in text
     assert "7.4" not in text, (

@@ -1385,18 +1385,23 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     # The replaced candidates stay at the front of replaceSha256, newest first,
     # which is the documented prepend convention, so an already-staged older
     # candidate is still accepted.
-    assert candidate['size']==2602278
-    assert candidate['sha256']=='8f44ff13d4c7946906cb090a045720dd618461a050c7592dcceb79d0a7f201c3'
-    assert candidate['sha512']=='20a2fc0c414c6a56557238ce2208b90defda842ff3455682ad39540279c862e05a938fe5fb5ef02547127121fbe7ac2fe9ca2a5be1ea7dbcbcfe67daa5f537b3'
-    assert candidate['replaceSha256'][0]=='8688d87e0b80fbb82bd8bc6757e8c49d73e10c9da563e5f6f2d62c44368cb312'
-    assert candidate['replaceSha256'][1]=='5b86431f9e3fd531a6e9198021188411d74091335ffea35561f6e1334d56b118'
-    assert candidate['replaceSha256'][2]=='6e23c34d704c2a104b5ac56cc13d519bb306c63b26a21c10eacf3e933b86aa10'
-    assert candidate['replaceSha256'][3]=='1d1006bb7b69f61e3e6e9be69dcdc37649383785327df1f089b159105025ea0a'
-    assert candidate['replaceSha256'][4]=='e4ba96d991fb5084573e3a999c25edd49fdf20b0a9505a8c2d32482f722ea93b'
-    assert candidate['replaceSha256'][5]=='987f31a77bc33764eab5bb5d9d3750d38ac1ba98a8207c4d55f970cfcf7770dc'
-    assert candidate['replaceSha256'][6]=='6188d78c04df1c1064cbb7ca5fd824796a9275c791c2d04f582123e38b9da0ab'
-    assert candidate['replaceSha256'][7]=='637a08f3372cfe103e78fcf5ed18a2910e54627ef74931f236751a98767142ac'
-    assert candidate['replaceSha256'][8]=='0023966595152218288af1f02db1e4bb122f8a2178b043077930b185addaa6bb'
+    assert candidate['size']==2603121
+    assert candidate['sha256']=='1ee4d756560ee80dea287f31497ec4e6a2bfd40b8a0e333da0b4188561f61fc7'
+    assert candidate['sha512']=='f93a80cd6d6e9fdc3c2706806f826aff31bc762ac270239efcdc116cb168a7482b24e2d012296a96051ea57a5a85fd55dd2e33127f183624d4559d0c38748798'
+    assert candidate['replaceSha256'][0]=='c4b5645535af84c450f9278269b84a1256bec8a90b825cef2aea3899899488f8'
+    assert candidate['replaceSha256'][1]=='7a4871be8cfd10bcf004657548bea2c497f7198bee8d9f9310418a905ad3bd46'
+    assert candidate['replaceSha256'][2]=='82340f3c733b3c578837801daaa2baca965609a5394527a0fa38a2f920ab1544'
+    assert candidate['replaceSha256'][3]=='8959a0e53ea5aa92b2dfd64643e8b8912548ba5e0408f9dc60594eceaa9db980'
+    assert candidate['replaceSha256'][4]=='8f44ff13d4c7946906cb090a045720dd618461a050c7592dcceb79d0a7f201c3'
+    assert candidate['replaceSha256'][5]=='8688d87e0b80fbb82bd8bc6757e8c49d73e10c9da563e5f6f2d62c44368cb312'
+    assert candidate['replaceSha256'][6]=='5b86431f9e3fd531a6e9198021188411d74091335ffea35561f6e1334d56b118'
+    assert candidate['replaceSha256'][7]=='6e23c34d704c2a104b5ac56cc13d519bb306c63b26a21c10eacf3e933b86aa10'
+    assert candidate['replaceSha256'][8]=='1d1006bb7b69f61e3e6e9be69dcdc37649383785327df1f089b159105025ea0a'
+    assert candidate['replaceSha256'][9]=='e4ba96d991fb5084573e3a999c25edd49fdf20b0a9505a8c2d32482f722ea93b'
+    assert candidate['replaceSha256'][10]=='987f31a77bc33764eab5bb5d9d3750d38ac1ba98a8207c4d55f970cfcf7770dc'
+    assert candidate['replaceSha256'][11]=='6188d78c04df1c1064cbb7ca5fd824796a9275c791c2d04f582123e38b9da0ab'
+    assert candidate['replaceSha256'][12]=='637a08f3372cfe103e78fcf5ed18a2910e54627ef74931f236751a98767142ac'
+    assert candidate['replaceSha256'][13]=='0023966595152218288af1f02db1e4bb122f8a2178b043077930b185addaa6bb'
     assert '655810207e0cfff4adf6e3d3bc23aff06b09ba756fc38556f47f21846761191e' in candidate['replaceSha256']
     assert 'f450c7d771bea5ef4d0fdb3592e5db8172a600fe98a45a45d64b294f137843f3' in candidate['replaceSha256']
     assert '25411e0fc3635e0a715c2ba9b4644328df692309fa73868867da4eac07e23d12' in candidate['replaceSha256']
@@ -1462,6 +1467,11 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     assert candidate['replaceSha256']==[
         # The candidates these pins replaced are prepended (section 5
         # convention), newest first.
+        'c4b5645535af84c450f9278269b84a1256bec8a90b825cef2aea3899899488f8',
+        '7a4871be8cfd10bcf004657548bea2c497f7198bee8d9f9310418a905ad3bd46',
+        '82340f3c733b3c578837801daaa2baca965609a5394527a0fa38a2f920ab1544',
+        '8959a0e53ea5aa92b2dfd64643e8b8912548ba5e0408f9dc60594eceaa9db980',
+        '8f44ff13d4c7946906cb090a045720dd618461a050c7592dcceb79d0a7f201c3',
         '8688d87e0b80fbb82bd8bc6757e8c49d73e10c9da563e5f6f2d62c44368cb312',
         '5b86431f9e3fd531a6e9198021188411d74091335ffea35561f6e1334d56b118',
         '6e23c34d704c2a104b5ac56cc13d519bb306c63b26a21c10eacf3e933b86aa10',
@@ -3197,8 +3207,8 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
     expected_candidates={
         'CopiMineArtifacts':('a5e0420d503850cb604445c52705f5af71fdc65770a78b943c5d2bc252fabcc5',
                              'a054cfeef3dc37dc364ef33d550063b6aa105f2394501bd982295af2fc791bba82cce15623c3ff7b09c4c3250683fb1caf7cdb72312e3c91bf50dd0c2fc39600',366356),
-        'CopiMineEndEvent':('8f44ff13d4c7946906cb090a045720dd618461a050c7592dcceb79d0a7f201c3',
-                            '20a2fc0c414c6a56557238ce2208b90defda842ff3455682ad39540279c862e05a938fe5fb5ef02547127121fbe7ac2fe9ca2a5be1ea7dbcbcfe67daa5f537b3',2602278),
+        'CopiMineEndEvent':('1ee4d756560ee80dea287f31497ec4e6a2bfd40b8a0e333da0b4188561f61fc7',
+                            'f93a80cd6d6e9fdc3c2706806f826aff31bc762ac270239efcdc116cb168a7482b24e2d012296a96051ea57a5a85fd55dd2e33127f183624d4559d0c38748798',2603121),
         'CopiMineNarcotics':('b5d30b23011b04354b26e43053143f4d64c85e048739025048f0a8b82ca890eb',
                              '65b1e5e0c4a67ae1bf9428d12a12512f86e95fb315e0d4e1f80bb4f9533d033b3da175ed6ecc7d09965c631a4dde8605628648c6d87b5117871ae30b8bd77734',378758),
     }

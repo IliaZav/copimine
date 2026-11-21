@@ -119,6 +119,10 @@ public final class RiftRamEncounter {
     private SpireCast skeletonCast;
     private boolean skeletonFallen, skeletonFalling, pillarSkeletonSpawned, pillarSkeletonDefeated, ramDefeated;
     private int skeletonFallStart;
+    /** Consecutive {@link #raisePillar()} refusals; bounds the no-site deferral. */
+    private int pillarRaiseFailures;
+    /** How many 40-tick retries a refused pillar site may consume before failing. */
+    private static final int MAX_PILLAR_RAISE_RETRIES = 10;
 
     public RiftRamEncounter(Host host) { this.host = host; }
     public UUID id() { return ram == null ? persistentId : ram.getUniqueId(); }
@@ -364,7 +368,14 @@ public final class RiftRamEncounter {
     public void tick() {
         if (closed || completed || !host.active()) return;
         try { advance(); }
-        catch (RuntimeException failure) { fail("tick-exception:" + failure.getClass().getSimpleName()); }
+        catch (RuntimeException failure) {
+            // Keep the exact clause in the recovery reason: the previous message
+            // only carried the exception class, so a live failure gave no clue
+            // which of the many hardness guards tripped.
+            String detail = failure.getMessage();
+            fail("tick-exception:" + failure.getClass().getSimpleName()
+                    + (detail == null || detail.isBlank() ? "" : ":" + detail));
+        }
     }
 
     private void advance() {
@@ -402,8 +413,21 @@ public final class RiftRamEncounter {
         enforceHealthFloor();
         updateDisplays();
         if (pillarId==null && RiftRamPolicy.mayRaisePillar(impacts) && tick>=nextPillarTick) {
-            if(!raisePillar()) { fail("no-safe-next-pillar:"+(impacts+1)); return; }
-            if(!host.checkpoint()) { fail("pillar-checkpoint-failed"); return; }
+            if(!raisePillar()) {
+                // No safe site right now (a body in the way, terrain changed).
+                // Defer instead of ending the encounter: the pillar is mandatory
+                // for progress, so retry shortly rather than fail outright. A
+                // permanently blocked site must not hang the wave forever, so the
+                // retries are bounded and then fail with the exact impact index.
+                nextPillarTick = tick + 40;
+                if(++pillarRaiseFailures > MAX_PILLAR_RAISE_RETRIES) {
+                    fail("no-safe-next-pillar:"+(impacts+1)+":retries="+pillarRaiseFailures);
+                    return;
+                }
+            } else {
+                pillarRaiseFailures = 0;
+                if(!host.checkpoint()) { fail("pillar-checkpoint-failed"); return; }
+            }
         }
         switch(action) {
             case CHASE -> {
@@ -766,9 +790,11 @@ public final class RiftRamEncounter {
             double eased=progress*progress*(3D-2D*progress);
             for(BlockDisplay display:pillarDisplays) {
                 Location rest=pillarRestPositions.get(display.getUniqueId());
-                if(rest==null) throw new IllegalStateException("pillar-rest-transform-missing");
-                if(!host.move(display,rest.clone().add(0,-3D*(1D-eased),0)))
-                    throw new IllegalStateException("pillar-emergence-move-refused");
+                // A cosmetic emergence frame must never abort the encounter: a
+                // refused move or a missing rest transform is retried next tick,
+                // and a display whose transform was lost is simply skipped.
+                if(rest==null) continue;
+                host.move(display,rest.clone().add(0,-3D*(1D-eased),0));
             }
         }
         for(Iterator<Debris> it=debris.iterator();it.hasNext();) {
@@ -832,31 +858,37 @@ public final class RiftRamEncounter {
         for (int i=0;i<pillarDisplays.size();i++) {
             BlockDisplay display=pillarDisplays.get(i);
             double[] offset=offsets[i];
-            if (!host.move(display,pillar.clone().add(offset[0],offset[1],offset[2])))
-                throw new IllegalStateException("damaged-pillar-relocation-refused");
+            host.move(display,pillar.clone().add(offset[0],offset[1],offset[2]));
             pillarRestPositions.put(display.getUniqueId(),display.getLocation().clone());
             Transformation t=display.getTransformation();
             display.setTransformation(new Transformation(t.getTranslation(),t.getLeftRotation(),
                     sizes[i],t.getRightRotation()));
             if (i==0) display.setBlock((stage >= 2 ? Material.MAGMA_BLOCK : Material.OBSIDIAN).createBlockData());
         }
-        if (skeletonAlive() && !skeletonFallen
-                && !host.move(pillarSkeleton,pillar.clone().add(0,standingPillarPlatformHeight(),0)))
-            throw new IllegalStateException("damaged-pillar-skeleton-relocation-refused");
+        if (skeletonAlive() && !skeletonFallen) {
+            host.move(pillarSkeleton,pillar.clone().add(0,standingPillarPlatformHeight(),0));
+        }
         // A cracked pillar is shorter and narrower on screen, so its barrier must
         // shrink with it: otherwise the party would keep a full-height invisible
         // wall where the model already lost a section. The host clears the old
-        // volume before journaling the new one, so this stays crash-safe.
-        if (!host.placePillarCollider(pillar,
+        // volume before journaling the new one, so this stays crash-safe. A
+        // refusal is a presentation degradation, never a reason to abort the Ram:
+        // the host already logs END_RIFT_RAM_PILLAR_COLLIDER_REFUSED, and the
+        // old barrier (or none) is preferable to ending the whole wave.
+        host.placePillarCollider(pillar,
                 RiftRamPolicy.pillarColliderHalfWidth(impacts),
-                RiftRamPolicy.pillarColliderHeight(impacts)))
-            throw new IllegalStateException("damaged-pillar-collider-refused");
-        // Loose rubble reads as material that actually left the pillar.
+                RiftRamPolicy.pillarColliderHeight(impacts));
+        // Loose rubble reads as material that actually left the pillar. A refused
+        // shard spawn is pure decoration and must not abort the encounter.
         for (int i=0;i<6;i++) {
             double angle=i*Math.PI/3;
             Location start=pillar.clone().add(Math.cos(angle)*1.1,1.4,Math.sin(angle)*1.1);
-            BlockDisplay shard=block(start,Material.OBSIDIAN,new Vector3f(.22f,.18f,.3f));
-            debris.add(new Debris(shard,start,new Vector(Math.cos(angle)*.1,.18,Math.sin(angle)*.1),tick));
+            try {
+                BlockDisplay shard=block(start,Material.OBSIDIAN,new Vector3f(.22f,.18f,.3f));
+                debris.add(new Debris(shard,start,new Vector(Math.cos(angle)*.1,.18,Math.sin(angle)*.1),tick));
+            } catch (RuntimeException refusedShard) {
+                // Presentation only: skip the shard, keep the pillar and the wave.
+            }
         }
     }
 

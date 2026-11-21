@@ -48,6 +48,18 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def pixel_digest(path: Path) -> str:
+    """SHA-256 of the decoded RGBA pixels, independent of the PNG encoder.
+
+    The artwork is what must be reproducible. Pillow 12 and 13 bundle
+    different zlib builds that deflate a handful of these images (the Ram rail)
+    to different container bytes with byte-identical pixels, so a container
+    digest would fail on the CI interpreter without any art change.
+    """
+    with Image.open(path) as image:
+        return hashlib.sha256(image.convert("RGBA").tobytes()).hexdigest()
+
+
 def painted(image: Image.Image) -> int:
     return sum(image.getchannel("A").histogram()[1:])
 
@@ -64,13 +76,13 @@ def test_the_generator_reproduces_every_shipped_and_archived_png(tmp_path):
     for path in shipped:
         rebuilt = tmp_path / "gui" / path.name
         assert rebuilt.is_file(), f"{path.name} is not produced by the generator"
-        assert digest(rebuilt) == digest(path), f"{path.name} is not reproducible"
+        assert pixel_digest(rebuilt) == pixel_digest(path), f"{path.name} is not reproducible"
     archived = sorted(ARCHIVE.glob("*.png"))
     assert len(archived) == 24, [p.name for p in archived]
     for path in archived:
         rebuilt = tmp_path / "archive" / path.name
         assert rebuilt.is_file(), f"{path.name} is not produced by the generator"
-        assert digest(rebuilt) == digest(path), f"{path.name} is not reproducible"
+        assert pixel_digest(rebuilt) == pixel_digest(path), f"{path.name} is not reproducible"
 
 
 def test_two_visual_directions_are_archived_for_every_major_bar():

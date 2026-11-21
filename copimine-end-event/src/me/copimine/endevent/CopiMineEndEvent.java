@@ -2057,6 +2057,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private String bossBarLastTitle = "";
     private BarColor bossBarLastColor;
     private BossBar bossBar;
+    /**
+     * Set once the Guardian encounter has finished. A surviving ticker (the defeat
+     * cinematic, a late spell sweep) could otherwise call
+     * {@link #updateCurrentBossBar} after victory, which calls
+     * {@link #ensureBossBar()} and re-shows the bar to everyone: on live it left
+     * an empty boss bar blinking over the victory screen. While terminal the bar
+     * is hidden, emptied, and never re-populated until the next encounter.
+     */
+    private boolean bossBarTerminal;
     /** Wave 6 Rift Ram armour bar; separate from the Guardian's phase bar. */
     private BossBar riftRamBossBar;
     /** Wave 7 miniboss bars, keyed by the actor's entity UUID. */
@@ -6529,9 +6538,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             bossHitboxController.cleanup();
             bossHitboxController = null;
         }
-        if (bossBar != null) {
-            bossBar.removeAll();
-        }
+        retireBossBar();
         if (stateStore != null) {
             boolean committed = saveStateSync();
             if (preserveBossForRestart) {
@@ -11015,9 +11022,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         participantUuids.clear();
         participantUuids.addAll(creativeTestParticipantSnapshot);
         creativeTestParticipantSnapshot.clear();
-        if (bossBar != null) {
-            bossBar.removeAll();
-        }
+        retireBossBar();
         creativeTestPlayerUuid = null;
         creativeTestGeneration = 0L;
         creativeTestStage = 0;
@@ -16831,6 +16836,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 player.getUniqueId().toString());
         if (!inventoryCharge.setItemMeta(inventoryChargeMeta)) return false;
         if (!player.getInventory().addItem(inventoryCharge).isEmpty()) {
+            // No room: the charge must never be consumed silently, or the
+            // player sees a pickup that produced nothing and keeps retrying.
+            player.sendActionBar(Component.text(
+                    "Освободите слот, чтобы взять заряд", NamedTextColor.RED));
+            getLogger().info("END_RIFT_CARRIER_PICKUP_REFUSED event=" + eventId
+                    + " player=" + player.getUniqueId() + " reason=inventory-full");
             return false;
         }
         currentCarrierInventoryToken = inventoryToken;
@@ -19009,7 +19020,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!isEventParticleViewer(viewer, center)) continue;
             viewer.spawnParticle(Particle.REVERSE_PORTAL, center, 90, 2.4D, 2.0D, 2.4D, 0.05D);
             viewer.spawnParticle(Particle.PORTAL, center, 60, 1.6D, 1.6D, 1.6D, 0.35D);
-            viewer.spawnParticle(Particle.FLASH, center, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            spawnTypedParticle(viewer, Particle.FLASH, center, 1, 0.0D, 0.0D, 0.0D, 0.0D);
             viewer.spawnParticle(Particle.END_ROD, center, 24, 1.2D, 1.2D, 1.2D, 0.12D);
         }
         world.playSound(center, Sound.ENTITY_ENDER_DRAGON_HURT, SoundCategory.HOSTILE, 1.1F, 0.65F);
@@ -19070,7 +19081,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!viewer.getWorld().equals(world) || !isEventParticleViewer(viewer, center)) continue;
             viewers++;
             viewer.spawnParticle(Particle.EXPLOSION_EMITTER, center, 1, 0.0D, 0.0D, 0.0D, 0.0D);
-            viewer.spawnParticle(Particle.FLASH, center, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            spawnTypedParticle(viewer, Particle.FLASH, center, 1, 0.0D, 0.0D, 0.0D, 0.0D);
             // Two rings expanding outward: the gate's stored energy leaving.
             for (int ring = 0; ring < 2; ring++) {
                 double radius = 1.3D + ring * 1.05D;
@@ -24839,6 +24850,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " reason=invalid-wave-context");
             return false;
         }
+        if (sandbox && (phase == EventPhase.RECOVERY_REQUIRED || phase == EventPhase.UNLOCKED
+                || phase == EventPhase.UNCONFIGURED)) {
+            // A disposable wave is not part of the durable encounter graph. A
+            // stale terminal phase left behind by an earlier sandbox failure (or
+            // by a finished event) used to refuse Wave 7 outright with
+            // WAVE7_TRIAL_START_REFUSED reason=invalid-runtime-context, because
+            // its trial runtime only admits a setup phase. Reset to the legal
+            // setup phase recoverTo() accepts before the wave is built so a
+            // sandbox /cmend wave spawn always starts from a clean context.
+            forcePhase(EventPhase.READY_FOR_PLAYERS, "disposable wave start");
+        }
         List<UUID> waveTwoOwners = List.of();
         if (wave == 2 && !roster.isEmpty()) {
             try {
@@ -27181,13 +27203,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         + " action=defer-until-hunt-tick");
                 waveTwoPhantomActivationPendingGroup = groupNumber;
                 if (!waveTwoMarkedParticipants.isEmpty() && ++waveTwoPhantomAdmissionFailures >= 12) {
-                    getLogger().severe("WAVE_TWO_PHANTOM_ADMISSION_FAILED event=" + eventId
+                    // A cosmetic veil must never take the whole event down. The
+                    // old path forced RECOVERY_REQUIRED here, so a bounded
+                    // presentation problem locked Wave 2 out of play and spun on
+                    // the recovery phase every tick. Degrade instead: forget the
+                    // reservation and let this group spawn without its phantom
+                    // pre-veil, then let the next group try again from scratch.
+                    getLogger().warning("WAVE_TWO_PHANTOM_ACTIVATION_DEGRADED event=" + eventId
                             + " generation=" + generation + " group=" + groupNumber
-                            + " reason=no-valid-published-observer recovery=required");
-                    forcePhase(EventPhase.RECOVERY_REQUIRED, "WAVE_TWO_NO_VALID_MATERIALIZATION_OBSERVER");
-                    saveStateAsync();
+                            + " reason=no-valid-materialization-observer"
+                            + " action=spawn-without-veil");
+                    waveTwoPhantomAdmissionFailures = 0;
+                    waveTwoPhantomActivationPendingGroup = 0;
+                } else {
+                    return false;
                 }
-                return false;
             } else {
                 waveTwoPhantomAdmissionFailures = 0;
                 return false;
@@ -27275,8 +27305,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // are already alive. With a two-player party the cap is six, so the
         // first few mobs filled it and every later phantom was refused. Only
         // other phantoms may consume phantom slots now.
+        //
+        // The slot count must follow the SAME scale the wave was built with.
+        // Reading activeWaveParticipants() here counted only players standing
+        // in the arena right now: a sandbox run with one in-arena operator (the
+        // roster's second player outside the arena) collapsed to Profile.EMPTY,
+        // so the pressure cap was zero and every phantom was refused. The wave
+        // then logged WAVE_TWO_PHANTOM_ACTIVATION_UNAVAILABLE forever and forced
+        // RECOVERY_REQUIRED. waveScalePlayers() already reconciles the live
+        // arena with the frozen roster (and the official roster off-sandbox).
         int maxPressureSlots = PressureBudgetController.profileForPlayers(
-                activeWaveParticipants().size()).activePressure();
+                waveScalePlayers()).activePressure();
         int activePressureSlots = countLiveWaveTwoPhantoms();
         int totalReserve = Math.min(Math.max(0, group.endermen()),
                 Math.max(0, WaveTwoStagePolicy.MAX_TOTAL_MOBS - waveSpawnEntityOffset));
@@ -28663,13 +28702,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (centre == null || centre.getWorld() == null || halfWidth < 1 || height < 1) {
             return false;
         }
-        if (riftRamPillarColliderActive && !clearRiftRamPillarCollider("pillar-rebuild")) {
-            return false;
-        }
         if (hazardJournal == null) return false;
         HazardMutationJournal.Snapshot existing = hazardJournal.load();
+        // An APPLIED journal is only "busy" when it does not belong to the
+        // collider this same process is still holding. Treating our own
+        // supersede as busy made every rebuild (the sixth-pillar shrink) refuse
+        // after the first placement. A journal left APPLIED by a previous
+        // process has no live collider, so it still has to be restored first.
+        boolean ownAppliedJournal = existing.status() == HazardMutationJournal.Status.APPLIED
+                && riftRamPillarColliderActive;
         if (!existing.valid() || existing.status() == HazardMutationJournal.Status.PREPARED
-                || existing.status() == HazardMutationJournal.Status.APPLIED) {
+                || (existing.status() == HazardMutationJournal.Status.APPLIED
+                && !ownAppliedJournal)) {
             getLogger().severe("END_RIFT_RAM_PILLAR_COLLIDER_REFUSED event=" + ownerEvent
                     + " generation=" + ownerGeneration + " reason=hazard-journal-busy"
                     + " status=" + existing.status());
@@ -28690,9 +28734,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (!world.isChunkLoaded(cx, cz)) return false;
             }
         }
+        // Only PLAYERS block a collider placement. The Ram itself is parked
+        // against the pillar after every impact, so including it here refused
+        // the rebuild on the impact tick: the old collider had already been
+        // cleared above, the fresh placement returned false, and crackPillar
+        // then threw IllegalStateException, killing the whole Wave 6 encounter.
         var volume = new BoundingBox(minX, baseY, minZ, maxX + 1D, baseY + height, maxZ + 1D);
-        if (!world.getNearbyEntities(volume, entity -> entity instanceof LivingEntity
-                && entity.isValid() && !entity.isDead()).isEmpty()) return false;
+        if (!world.getNearbyEntities(volume, entity -> entity instanceof Player
+                && entity.isValid() && !entity.isDead()).isEmpty()) {
+            getLogger().severe("END_RIFT_RAM_PILLAR_COLLIDER_REFUSED event=" + ownerEvent
+                    + " generation=" + ownerGeneration + " reason=player-in-collider"
+                    + " centre=" + minX + "," + baseY + "," + minZ);
+            return false;
+        }
+        // Validate everything cheap BEFORE clearing the live collider, so a
+        // refusal leaves a working barrier instead of an open hole.
+        if (riftRamPillarColliderActive && !clearRiftRamPillarCollider("pillar-rebuild")) {
+            return false;
+        }
         LinkedHashMap<String, String> originals = new LinkedHashMap<>();
         List<HazardMutationJournal.Entry> entries = new ArrayList<>();
         for (int x = minX; x <= maxX; x++) {
@@ -29232,6 +29291,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
             } else {
                 currentCarrierChargeLocation = charge.getLocation().clone();
+                // A dropped objective stays where it fell. Item entities keep
+                // damping velocity only while airborne, so a single explosion
+                // or piston-style knockback used to launch the charge far past
+                // the 3.5-block pickup radius permanently. Pin it every tick.
+                if (charge instanceof Item dropped) {
+                    dropped.setGravity(false);
+                    if (dropped.getVelocity().lengthSquared() > 1.0E-6D) {
+                        dropped.setVelocity(new Vector(0.0D, 0.0D, 0.0D));
+                    }
+                }
                 Player nearbyPicker = activeWaveParticipants().stream()
                         .filter(player -> sameWorld(player, charge)
                                 && player.getLocation().distanceSquared(charge.getLocation()) <= 12.25D)
@@ -29690,7 +29759,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     value.setInvulnerable(true);
                     value.setPersistent(false);
                     value.setGlowing(true);
-                    value.setVelocity(new Vector(0.0D, 0.24D, 0.0D));
+                    // No upward launch. An Item entity damps its velocity by
+                    // 0.98 per tick while airborne, so the old 0.24 m/tick pop
+                    // carried the drop roughly twelve blocks above the arena
+                    // while it was meant to be a floor objective; both the
+                    // right-click path and the proximity sweep are range
+                    // limited, so the charge became uncollectable within
+                    // seconds of spawning. The +0.55 spawn offset and the
+                    // carrier tick already give the item its floating look.
+                    value.setVelocity(new Vector(0.0D, 0.0D, 0.0D));
                 });
         // A dropped charge is a 0.25-block item that expires after five minutes.
         // The player hunting for it in a dark arena has to be able to see it
@@ -45614,15 +45691,37 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (viewer == null || particle == null || point == null) {
             return;
         }
+        // Particle#spawnParticle validates the payload against the particle's
+        // declared data type; a typed particle spawned without its payload
+        // throws IllegalArgumentException ("missing required data class ...")
+        // on Paper. That exception used to escape per-tick objective and
+        // ability sweeps, so a single mis-typed particle aborted a whole wave
+        // tick (the Wave 3 gate sweep died on Particle.FLASH this way). Dragon
+        // Breath carries its authored scale when the platform declares a Float
+        // payload; legacy 1.21.1 declares Void, where supplying a Float throws,
+        // so the branch is keyed on both the particle and its declared type and
+        // the Void fallback below then spawns it bare.
         if (particle == Particle.DRAGON_BREATH && particle.getDataType() == Float.class) {
             viewer.spawnParticle(particle, point, count, offsetX, offsetY, offsetZ,
                     extra, Float.valueOf(0.15F));
-        } else if (particle == Particle.FLASH && particle.getDataType() == Color.class) {
+            return;
+        }
+        Class<?> dataType = particle.getDataType();
+        if (dataType == Void.class) {
+            viewer.spawnParticle(particle, point, count, offsetX, offsetY, offsetZ, extra);
+        } else if (dataType == Color.class) {
             viewer.spawnParticle(particle, point, count, offsetX, offsetY, offsetZ,
                     extra, Color.WHITE);
-        } else {
-            viewer.spawnParticle(particle, point, count, offsetX, offsetY, offsetZ, extra);
+        } else if (dataType == Float.class) {
+            viewer.spawnParticle(particle, point, count, offsetX, offsetY, offsetZ,
+                    extra, Float.valueOf(0.15F));
+        } else if (dataType == Integer.class) {
+            viewer.spawnParticle(particle, point, count, offsetX, offsetY, offsetZ,
+                    extra, Integer.valueOf(0));
         }
+        // DUST, DUST_COLOR_TRANSITION, BLOCK, ITEM, VIBRATION and the other
+        // structured carriers are always spawned through the overload that
+        // takes their payload; spawning one bare is skipped, never thrown.
     }
 
     /** Send combat particles only to players who can actually see the arena effect. */
@@ -47409,6 +47508,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossCastDeadlineMillis = 0L;
         bossFinalStrikeUsed = false;
         bossDefeatCinematicStarted = false;
+        // A new Guardian re-arms the phase bar after a terminal teardown.
+        bossBarTerminal = false;
         bossDefeatCinematicBossUuid = null;
         bossDefeatCinematicElapsedTicks = 0;
         cancelBossFinalStrike();
@@ -47554,6 +47655,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void ensureBossBar() {
+        if (bossBarTerminal) {
+            // The encounter is over. Never resurrect the bar for a late ticker.
+            return;
+        }
         if (bossBar == null) {
             bossBar = Bukkit.createBossBar("Хранитель Разлома", BarColor.PURPLE, BarStyle.SEGMENTED_20);
         }
@@ -47563,6 +47668,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 bossBar.addPlayer(player);
             }
         }
+    }
+
+    /**
+     * Terminal boss-bar teardown. {@code removeAll()} alone left the bar object
+     * visible and eligible for a later {@link #ensureBossBar()} call, which is
+     * what made the empty bar blink over the victory screen. Hiding it and
+     * latching {@code bossBarTerminal} makes the teardown stick until a new
+     * Guardian is configured.
+     */
+    private void retireBossBar() {
+        bossBarTerminal = true;
+        if (bossBar != null) {
+            bossBar.setVisible(false);
+            bossBar.removeAll();
+        }
+        bossBarLastProgress = -1.0D;
+        bossBarLastTitle = "";
+        bossBarLastColor = null;
+        bossBarLastUpdateMillis = 0L;
     }
 
     private LivingEntity liveBoss() {
@@ -47733,9 +47857,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             rebuildPersistedVisuals();
         }
         clearClientEffects();
-        if (bossBar != null) {
-            bossBar.removeAll();
-        }
+        // clearBossOnly is the boss-only cleanup: the phase bar must not survive
+        // it as a visible, re-populatable shell.
+        retireBossBar();
     }
 
     private void tickBoss() {
@@ -52383,6 +52507,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         int restored = 0;
         int pending = 0;
+        int foreign = 0;
         int fireY = combatLevelY();
         for (Map.Entry<HazardPlanner.Point, String> entry : arenaInfernoOriginalBlocks.entrySet()) {
             HazardPlanner.Point point = entry.getKey();
@@ -52390,9 +52515,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             try {
                 String original = entry.getValue();
                 if (!block.getBlockData().getAsString().equals(original)) {
-                    // Preserve another owner's change without forgetting the
-                    // outstanding original. A conflict requires reconciliation.
-                    if (!isArenaInfernoSurface(block.getType())) { pending++; continue; }
+                    // Something changed this cell after the cast. If it is not one
+                    // of our own inferno materials, another owner owns it now:
+                    // keep their block and DROP our claim. Counting it as pending
+                    // blocked the whole restore forever (three such cells spammed
+                    // BOSS_SPELL_ARENA_INFERNO_RESTORE_BLOCKED for minutes and the
+                    // firestorm never released its journal).
+                    if (!isArenaInfernoSurface(block.getType())) {
+                        foreign++;
+                        continue;
+                    }
                     block.setBlockData(Bukkit.createBlockData(original), false);
                 }
                 if (block.getBlockData().getAsString().equals(original)) restored++;
@@ -52402,6 +52534,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 getLogger().warning("BOSS_SPELL_ARENA_INFERNO_RESTORE_CELL_FAILED event=" + eventId
                         + " x=" + point.x() + " z=" + point.z());
             }
+        }
+        if (foreign > 0) {
+            getLogger().warning("BOSS_SPELL_ARENA_INFERNO_RESTORE_FOREIGN event=" + eventId
+                    + " count=" + foreign + " action=preserve-foreign-block");
         }
         if (pending > 0 || hazardJournal == null || !hazardJournal.markRestored()) {
             getLogger().severe("BOSS_SPELL_ARENA_INFERNO_RESTORE_BLOCKED event=" + eventId
@@ -59793,9 +59929,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clearClientEffects();
         clearActiveRiftProjectiles();
         clearRiftObelisks("victory");
-        if (bossBar != null) {
-            bossBar.removeAll();
-        }
+        // Victory is terminal for the Guardian bar: hide and latch it so a late
+        // ticker or the defeat cinematic cannot re-show an empty bar on the win
+        // screen.
+        retireBossBar();
         if (phase == EventPhase.BOSS_FINISH) {
             transition(EventPhase.VICTORY_PROCESSING, "official boss death committed", eventId + ":victory-processing");
         }

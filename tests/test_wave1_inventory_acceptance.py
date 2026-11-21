@@ -150,7 +150,7 @@ public class CarrierInventoryAcceptanceProbe {
     Object keyCurrentCarrierCharge=new Object(),keyEventId=new Object(),keyGeneration=new Object(),keyCarrierChargeOwner=new Object();
     Object keyCarrierSlownessModifier=new Object(),keyCarrierChargeToken=new Object();
     static class Sound {static final String BLOCK_RESPAWN_ANCHOR_CHARGE="charge",BLOCK_BEACON_POWER_SELECT="insert";}
-    static class NamedTextColor {static final String AQUA="aqua",YELLOW="yellow",LIGHT_PURPLE="purple";}
+    static class NamedTextColor {static final String AQUA="aqua",YELLOW="yellow",LIGHT_PURPLE="purple",RED="red";}
     static class Component {static Object text(String text,Object color){return text;}}
     static class Particle {static final String END_ROD="rod",DUST="dust",REVERSE_PORTAL="reverse";record DustOptions(Object color,float size){}}
     static class Color {static Object fromRGB(int r,int g,int b){return r;}}

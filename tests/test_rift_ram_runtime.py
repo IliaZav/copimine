@@ -90,6 +90,9 @@ public class RamRuntimeProbe {
   int skeletonLastTriple=-1,skeletonLastBone=-1,skeletonLastMove=-1,skeletonStep;
   void dropPillarSkeleton(){}
   boolean closed,completed,banked;
+  // Mirrors the production pillar bookkeeping the extracted clearPillar()
+  // resets: a refused final emergence frame and a refused collider rebuild.
+  boolean pillarSettlePending,pillarColliderPending;
   UUID pillarId,persistentId,target; Location pillar;Vector direction;
   List<BlockDisplay> pillarDisplays=new ArrayList<>(); List<Piece> armor=new ArrayList<>();
   List<Debris> debris=new ArrayList<>(); Set<Endermite> mites=new HashSet<>();

@@ -48,6 +48,9 @@ public final class BossAnimationPlayback {
         if ("0.1.4+26.3".equals(verifiedClientVersion)) return animation;
         if ("COCOON_FALL".equals(animation)) return "CAST_CHARGE";
         if ("COCOON_LAND".equals(animation)) return "GROUND_SLAM";
+        // The last-stand intro is a new staged cue; older clients only know the
+        // generic phase change, which keeps their sender stream alive.
+        if ("LAST_STAND_INTRO".equals(animation)) return "PHASE_TRANSITION";
         return animation;
     }
 }

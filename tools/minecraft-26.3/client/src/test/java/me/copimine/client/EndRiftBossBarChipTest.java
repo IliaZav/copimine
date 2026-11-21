@@ -68,4 +68,17 @@ public final class EndRiftBossBarChipTest {
             assertTrue(markers[i] > markers[i - 1], "phase markers must ascend");
         }
     }
+
+    @Test
+    void theStagePipsTrackTheSixAuthoredBossSheets() {
+        assertEquals(1, EndRiftBossBarHud.stagePips(""));
+        assertEquals(1, EndRiftBossBarHud.stagePips("AWAKENING"));
+        assertEquals(2, EndRiftBossBarHud.stagePips("HUNT"));
+        assertEquals(3, EndRiftBossBarHud.stagePips("RIFT"));
+        assertEquals(4, EndRiftBossBarHud.stagePips("OVERLOAD"));
+        assertEquals(5, EndRiftBossBarHud.stagePips("RAGE"));
+        assertEquals(6, EndRiftBossBarHud.stagePips("LAST_SEAL"));
+        // A wire value the client does not know must not fall off the row.
+        assertEquals(1, EndRiftBossBarHud.stagePips("NOT_A_PHASE"));
+    }
 }

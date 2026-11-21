@@ -188,6 +188,19 @@ public final class EndRiftBossBarHud {
                 16, 16, 16, 16, 96, 16);
         context.text(client.font, PHASE_COMPONENTS[phase],
                 x + INNER_LEFT + 22, y + DETAIL_Y, phaseColor);
+        // Six stage pips: the same count as the six re-authored body sheets,
+        // so the bar and the boss agree on how far the fight has ground it
+        // down. Read as a row rather than a word, so it survives any locale.
+        drawStagePips(context, x, y, phase);
+        if (!reduced && phase >= 5) {
+            // Last breath: a slow ember runs under the frame edge while the
+            // boss is on its torn final sheet.
+            float ember = 0.5F + 0.5F * (float) Math.sin(now / 520.0D);
+            int emberAlpha = (int) (26.0F + 44.0F * ember) & 0xFF;
+            context.fill(x + 46, y + FRAME_Y + FRAME_HEIGHT - 5,
+                    x + WIDTH - 46, y + FRAME_Y + FRAME_HEIGHT - 4,
+                    (emberAlpha << 24) | 0x00FF8A5C);
+        }
         Component healthLabel = healthComponent(state.health(), state.maxHealth());
         context.text(client.font, healthLabel,
                 x + INNER_RIGHT - 2 - client.font.width(cachedHealthText),
@@ -326,6 +339,21 @@ public final class EndRiftBossBarHud {
                 context.fill(left, y + INNER_TOP, right, y + INNER_BOTTOM, color);
             }
         }
+    }
+
+    private static void drawStagePips(GuiGraphicsExtractor context, int x, int y, int phase) {
+        int right = x + INNER_RIGHT - 2;
+        for (int pip = 0; pip < 6; pip++) {
+            int left = right - (6 - pip) * 7;
+            boolean reached = pip <= phase;
+            int color = reached ? (pip == 5 ? 0xFFF4EBDD : 0xFFC9B8DB) : 0x661F1B2C;
+            context.fill(left, y + 4, left + 5, y + 9, color);
+        }
+    }
+
+    /** Test seam: how many stage pips are filled for a phase id. */
+    static int stagePips(String phaseId) {
+        return phaseIndex(phaseId) + 1;
     }
 
     private static void drawPhaseMarker(GuiGraphicsExtractor context, Minecraft client, int x,

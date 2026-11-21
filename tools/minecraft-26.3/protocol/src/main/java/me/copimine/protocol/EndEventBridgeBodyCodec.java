@@ -32,7 +32,7 @@ public final class EndEventBridgeBodyCodec {
             "CAST_CHARGE", "CAST_RELEASE", "CAST_IMPACT", "RECOVERY", "SPELL_VOID_BLAST",
             "SPELL_RIFT_PROJECTILE", "SPELL_RIFT_ARROWS", "SPELL_ARROW_SALVO", "SPELL_VOID_MARK",
             "SPELL_SUMMON_SERVANTS", "SPELL_SUMMON", "SPELL_RIFT_OBELISKS", "SPELL_ARENA_INFERNO",
-            "COCOON_FALL", "COCOON_LAND");
+            "COCOON_FALL", "COCOON_LAND", "LAST_STAND_INTRO");
     private static final Set<String> WAVE_POSES = Set.of(
             "WAVE_COMBAT", "WAVE_WINDUP", "WAVE_RELEASE", "WAVE_RECOVER", "WAVE_FROZEN");
     private static final Set<String> RITUAL_PHASES = Set.of(

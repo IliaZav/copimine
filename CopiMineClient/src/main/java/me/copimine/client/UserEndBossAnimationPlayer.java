@@ -89,6 +89,7 @@ final class UserEndBossAnimationPlayer {
         load(clips, "cast_release.animation.json", "CAST_RELEASE", false);
         load(clips, "cast_recovery.animation.json", "RECOVERY", false);
         load(clips, "final_strike.animation.json", "FINAL_STRIKE", false);
+        load(clips, "last_stand.animation.json", "LAST_STAND_INTRO", false);
         return Map.copyOf(clips);
     }
 

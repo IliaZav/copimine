@@ -1111,7 +1111,12 @@ def test_supplied_boss_geometry_and_animation_assets_are_runtime_bound() -> None
     assert "System.currentTimeMillis()" in read(CLIENT_JAVA / "mixin" / "LivingEntityRendererMixin.java")
     assert "udar_iz_grudi.json" in animator
     assert "udar_po_zemle.animation.json" in animator
-    assert "end_rift_user_boss.png" in renderer
+    # The supplied whole-body sheet stays in the resources (its 128x128 size is
+    # pinned above); each phase now binds to its own progressively drained
+    # stage sheet, and the last-stand intro ships as a real clip.
+    for stage in range(6):
+        assert f"end_rift_user_boss_stage{stage}.png" in renderer
+    assert "last_stand.animation.json" in animator
     assert "end_rift_user_enderman.png" in catalog
     assert "end_rift_user_spider.png" in catalog
     assert 'entityTexture("end_rift_user_skeleton.png")' in catalog

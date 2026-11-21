@@ -35,6 +35,7 @@ $clips = @(
   [ordered]@{ File = 'cast_release.animation.json'; Id = 'CAST_RELEASE'; Loop = $false },
   [ordered]@{ File = 'cast_recovery.animation.json'; Id = 'RECOVERY'; Loop = $false },
   [ordered]@{ File = 'final_strike.animation.json'; Id = 'FINAL_STRIKE'; Loop = $false },
+  [ordered]@{ File = 'last_stand.animation.json'; Id = 'LAST_STAND_INTRO'; Loop = $false },
   [ordered]@{ File = 'spell_void_blast.animation.json'; Id = 'SPELL_VOID_BLAST'; Loop = $false },
   [ordered]@{ File = 'spell_rift_projectile.animation.json'; Id = 'SPELL_RIFT_PROJECTILE'; Loop = $false },
   [ordered]@{ File = 'spell_rift_arrows.animation.json'; Id = 'SPELL_RIFT_ARROWS'; Loop = $false },

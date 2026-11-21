@@ -177,6 +177,7 @@ final class UserEndBossAnimationPlayer {
         load(clips, "udar_iz_grudi.json", "CHEST_STRIKE", false);
         load(clips, "udar_po_zemle.animation.json", "GROUND_SLAM", false);
         load(clips, "phase_shift.animation.json", "PHASE_TRANSITION", false);
+        load(clips, "last_stand.animation.json", "LAST_STAND_INTRO", false);
         load(clips, "cocoon_fall.animation.json", "COCOON_FALL", false);
         load(clips, "cocoon_land.animation.json", "COCOON_LAND", false);
         load(clips, "cast_charge.animation.json", "CAST_CHARGE", false);

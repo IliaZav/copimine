@@ -1432,6 +1432,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** Prevents objective bootstrap from replacing a valid post-restart ritual snapshot. */
     private boolean ritualSphereStateRehydrated;
     private me.copimine.endevent.runtime.RiftRamEncounter riftRam;
+    /** Last armour stage that produced a roar, so one plate tears once. */
+    private int riftRamLastRoarImpact = -1;
     private Map<String,String> riftRamCheckpoint = Map.of();
     /**
      * Original block data of every Wave 6 Rift Ram pillar collider cell, keyed
@@ -2020,6 +2022,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private String bossHitboxAnimationId = BossAnimationId.IDLE_BREATH.wireId();
     private long bossHitboxAnimationStartedMillis;
     private long bossPhasePresentationUntilMillis;
+    /** 5.2 s last-stand intro: head down, snap up, roar, stand. */
+    private static final long LAST_STAND_INTRO_MILLIS = 5_200L;
+    private long bossLastStandIntroUntilMillis;
     private long lastBossRecoilMillis;
     private long bossCastDeadlineMillis;
     private boolean bossFinalStrikeUsed;
@@ -4647,6 +4652,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         waveRewardsIssued.addAll(snapshot.waveRewardsIssued());
         bossPhase = snapshot.currentBossPhase();
         bossAbilityState = BossAbilityState.NONE;
+        bossLastStandIntroUntilMillis = 0L;
         bossHitboxAnimationId = BossAnimationId.IDLE_BREATH.wireId();
         bossHitboxAnimationStartedMillis = System.currentTimeMillis();
         bossCastDeadlineMillis = 0L;
@@ -28484,6 +28490,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             markWave6RecoveryRequired("RIFT_RAM_CHECKPOINT_SCOPE_MISMATCH");
             return;
         }
+        riftRamLastRoarImpact = -1;
         riftRam = new me.copimine.endevent.runtime.RiftRamEncounter(
                 new me.copimine.endevent.runtime.RiftRamEncounter.Host() {
             public void pose(Ravager actor, String pose, int durationTicks) {
@@ -29138,6 +29145,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             ram.getWorld().playSound(ram.getLocation(), Sound.BLOCK_ANVIL_HIT, .6F, 1.5F);
             ram.getWorld().spawnParticle(Particle.CRIT, ram.getLocation().add(0, 1.5, 0), 4, .5, .5, .5, .03);
+            // A torn plate is the Ram's own beat: it rears, roars and challenges
+            // the party before the next charge. One roar per stage, not per hit.
+            int stage = riftRam.impacts();
+            if (stage != riftRamLastRoarImpact) {
+                riftRamLastRoarImpact = stage;
+                sendWaveMobPose(ram, "WAVE_ROAR", 900L);
+            }
         }
     }
 
@@ -48250,6 +48264,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (transition.entered().contains(BossPhase.LAST_SEAL)) {
             clearEchoDecoys("entered-last-seal");
             startCurrentLastSealVisuals(boss);
+            // Owner's last-stand brief: hold the head down, snap it up, roar,
+            // then stand into the final fight. The clip owns the performance;
+            // the existing presentation window owns the body for its length so
+            // the boss neither casts nor chases over the intro.
+            bossPhasePresentationUntilMillis = System.currentTimeMillis()
+                    + LAST_STAND_INTRO_MILLIS;
+            bossLastStandIntroUntilMillis = bossPhasePresentationUntilMillis;
+            sendCurrentBossPhaseVisualUpdate(boss, bossPhase,
+                    BossAnimationId.LAST_STAND_INTRO.wireId());
         }
     }
 
@@ -62874,7 +62897,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         // Cue beams are keyed per cue id, so a reset has to sweep the family.
         clearWorldVfxBeamsByPrefix("boss-cue-");
-        sendBossAnimationVisualUpdate(boss, "IDLE_BREATH");
+        // The last-stand intro owns the clip until it finishes; a cue reset
+        // must not cut the head-down hold short with an idle breath.
+        if (System.currentTimeMillis() >= bossLastStandIntroUntilMillis) {
+            sendBossAnimationVisualUpdate(boss, "IDLE_BREATH");
+        }
     }
 
     /**

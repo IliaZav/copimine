@@ -47707,11 +47707,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             bossBar = Bukkit.createBossBar("Хранитель Разлома", BarColor.PURPLE, BarStyle.SEGMENTED_20);
         }
         bossBar.setVisible(true);
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            if ((isCombatTarget(player) || isBossHarnessViewer(player)) && !bossBar.getPlayers().contains(player)) {
-                bossBar.addPlayer(player);
-            }
-        }
     }
 
     /**
@@ -48591,6 +48586,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void updateCurrentBossBar(LivingEntity boss) {
+        if (bossBarTerminal || boss == null || boss.isDead()) return;
         // The disposable /cmend test ai path intentionally keeps the
         // official setup untouched and can reach this updater before the
         // normal official configure path creates a BossBar.  Restore the
@@ -51995,7 +51991,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 boolean liquid = floor.isLiquid();
                 boolean reserved = isProtectedInfernoCell(x, z)
                         || isGateLocation(floor.getLocation())
-                        || isCoreBlockPosition(floor.getLocation());
+                        || isCoreBlockPosition(floor.getLocation())
+                        || InfernoArenaLifecyclePolicy.traversalLane(x - coreX, z - coreZ, radius);
                 InfernoArenaLifecyclePolicy.Cell cell = new InfernoArenaLifecyclePolicy.Cell(
                         x, z, solid, liquid, reserved, false, x == coreX && z == coreZ);
                 arena.add(cell);
@@ -52114,7 +52111,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " " + InfernoArenaLifecyclePolicy.describe(players)
                 + " logical_hazards=" + arenaInfernoBlocks.size()
                 + " safe_cells=" + arenaInfernoSafeBlocks.size()
-                + " burning_floor=all-protected-core-and-pads"
+                + " burning_floor=outward-seams-with-cold-lanes"
                 + " real_fire=ignition-bounded steam_vents="
                 + InfernoArenaLifecyclePolicy.ventCountForPlayers(players)
                 + " vent_warning_ticks=" + InfernoArenaLifecyclePolicy.VENT_WARNING_TICKS
@@ -53003,6 +53000,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (activeBossParticipants().isEmpty() && !showroomBoss) {
             tentacleActiveLastNanos = 0L;
+            for (var state : tentacleController.states().values()) {
+                if (terminalTentacleAnimation(state.state())
+                        && eventTickCounter - state.startedTick() >= TentacleAnimationPolicy.durationTicks(state.state())) {
+                    removeTentacle(state.entityId(), "terminal-animation-without-viewers");
+                }
+            }
             return;
         }
         advanceTentacleActiveClock();
@@ -53039,7 +53042,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // Always reconcile: dead slots keep their own 90 s deadlines and the
         // minimum 15 s freeze is enforced inside the policy, not by skipping.
         ensurePermanentTentacles(boss, permanentTarget);
-        if (phase == EventPhase.RECOVERY_REQUIRED) {
+        if (phase == EventPhase.RECOVERY_REQUIRED && !isTestBoss(boss)) {
             return;
         }
         reconcileGuardianShieldOrbit(boss, !damageWindowOpen && tentacleGuardianShielded());
@@ -53114,6 +53117,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             tickTentacle(display, state, participants);
         }
+    }
+
+    private static boolean terminalTentacleAnimation(TentacleAnimationPolicy.State animation) {
+        return animation == TentacleAnimationPolicy.State.DYING
+                || animation == TentacleAnimationPolicy.State.RETRACT
+                || animation == TentacleAnimationPolicy.State.DEAD_RESPAWN;
     }
 
     private void ensurePermanentTentacles(LivingEntity boss, int desired) {
@@ -55491,9 +55500,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         UUID displayId = display.getUniqueId();
         TentacleAnimationPolicy.State animation = state.state();
         long elapsed = Math.max(0L, eventTickCounter - state.startedTick());
-        if (animation == TentacleAnimationPolicy.State.DYING
-                || animation == TentacleAnimationPolicy.State.RETRACT
-                || animation == TentacleAnimationPolicy.State.DEAD_RESPAWN) {
+        if (terminalTentacleAnimation(animation)) {
             if (elapsed < TentacleAnimationPolicy.durationTicks(animation)) return;
             tentacleMarker(display, TentacleAnimationPolicy.Marker.HIDE_BELOW_FLOOR, null);
             removeTentacle(displayId, "small-kagune-retract");
@@ -56504,7 +56511,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
 
     private void renderCurrentRiftFracture(RiftFractureRuntimeState state) {
-        if (state == null || state.center() == null || state.center().getWorld() == null) {
+        if (state == null || state.center() == null || state.center().getWorld() == null
+                || eventTickCounter % 3L != 0L) {
             return;
         }
         RiftFractureEruptionPolicy.Stage stage = state.stage();
@@ -56517,11 +56525,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     continue;
                 }
                 if (height > 0.0D) {
-                    // The visible pillar is the hit volume: same radius, same height.
-                    for (double y = 0.0D; y <= height; y += 1.0D) {
-                        viewer.spawnParticle(Particle.FLAME,
-                                center.clone().add(0.0D, y, 0.0D),
-                                3, radius * 0.35D, 0.15D, radius * 0.35D, 0.02D);
+                    // An outer helix describes the damage cylinder while the
+                    // inner updraft rises from the same authoritative centre.
+                    for (int level = 0; level <= 8; level++) {
+                        double y = height * level / 8.0D;
+                        double angle = eventTickCounter * .23D + level * .82D;
+                        double x = radius * Math.cos(angle), z = radius * Math.sin(angle);
+                        viewer.spawnParticle(Particle.FLAME, center.clone().add(x, y, z),
+                                1, 0.08D, 0.16D, 0.08D, 0.01D);
+                        viewer.spawnParticle(Particle.SOUL_FIRE_FLAME, center.clone().add(-x, y, -z),
+                                1, 0.08D, 0.16D, 0.08D, 0.01D);
+                        viewer.spawnParticle(Particle.FLAME, center.clone().add(0.0D, y, 0.0D),
+                                2, .37D, .20D, .37D, .02D);
                     }
                     viewer.spawnParticle(Particle.LAVA,
                             center.clone().add(0.0D, height, 0.0D),
@@ -56538,6 +56553,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         center.clone().add(0.0D, 0.12D, 0.0D),
                         3 + (int) (progress * 6.0D),
                         progress * 1.4D, 0.03D, progress * 1.4D, 0.0D, dust);
+                for (int edge = 0; edge < 12; edge++) {
+                    double angle = Math.PI * edge / 6.0D;
+                    viewer.spawnParticle(Particle.DUST, center.clone().add(
+                            radius * Math.cos(angle), .12D, radius * Math.sin(angle)), 1,
+                            0.0D, 0.0D, 0.0D, 0.0D, dust);
+                }
             }
         }
     }

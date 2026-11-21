@@ -49,6 +49,8 @@ class EndEventClientStateTest {
                 0.5F, 500, 1000, 600L));
         assertEquals("RIFT", state.bossPhaseForEntity("boss"),
                 "health phase comes from the signed bar, not the animation identifier");
+        assertTrue(state.hasActiveBossBar(4_599L));
+        assertFalse(state.hasActiveBossBar(4_600L), "a stale bossbar disappears even if unbind never arrives");
         assertTrue(state.apply(new EndEventPacket("END_BOSS_PHASE", "event", 1L, "boss-instance",
                 400L, "boss", "", "CHEST_STRIKE", ""), 700L));
         assertEquals(0L, state.bossAnimationElapsedMillisForEntity("boss", 700L));

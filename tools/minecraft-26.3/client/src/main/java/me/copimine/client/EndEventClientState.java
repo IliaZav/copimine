@@ -151,8 +151,13 @@ public final class EndEventClientState {
     }
 
     public synchronized boolean hasActiveBossBar() {
+        return hasActiveBossBar(System.currentTimeMillis());
+    }
+
+    synchronized boolean hasActiveBossBar(long nowMillis) {
         return bossBar != null && bossBar.visible()
                 && !bossBar.bossUuid().isBlank()
+                && nowMillis >= bossBar.updatedAtMillis() && nowMillis - bossBar.updatedAtMillis() < 4_000L
                 && Objects.equals(bossUuid, bossBar.bossUuid())
                 && Objects.equals(bossBindingInstance, bossBar.instanceId());
     }

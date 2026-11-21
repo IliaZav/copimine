@@ -103,6 +103,14 @@ public final class InfernoArenaLifecyclePolicy {
         return SAFE_SURFACE;
     }
 
+    /** Preserve four routes through the disc, joined by a loop around the hot centre. */
+    public static boolean traversalLane(int offsetX, int offsetZ, int arenaRadius) {
+        if (arenaRadius < 10) return false;
+        long distanceSquared = (long) offsetX * offsetX + (long) offsetZ * offsetZ;
+        if (distanceSquared < 25) return false;
+        return distanceSquared <= 49 || Math.abs((long) offsetX) <= 1 || Math.abs((long) offsetZ) <= 1;
+    }
+
     /**
      * 14.3: safe ground must LOOK safe.
      *

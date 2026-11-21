@@ -73,13 +73,8 @@ public final class EndRiftBossBarHud {
 
     /** Envelope of the trailing damage chip, in milliseconds. */
     private static final long DAMAGE_CHIP_MILLIS = 700L;
-    /** Below this fraction the bar itself pulses, matching the boss's rage. */
-    private static final float CRITICAL_FRACTION = 0.25F;
     /** One-shot sweep when the server accepts a new phase. */
     private static final long PHASE_SWEEP_MILLIS = 900L;
-    /** Slow drift of the End-energy veins along the frame. */
-    private static final long VEIN_PERIOD_MILLIS = 4200L;
-    private static final int VEIN_COUNT = 5;
     private static String trackedBossIdentity = "";
     private static float lastProgress = Float.NaN;
     private static long lastProgressChangeMillis;
@@ -161,7 +156,7 @@ public final class EndRiftBossBarHud {
         try {
         int x = Math.max(0, Math.round((context.guiWidth() / scale - WIDTH) / 2.0F));
         int y = 4;
-        int phaseColor = phaseColor(state.phaseId(), state.castState());
+        int phaseColor = phaseColor(state.phaseId());
         float progress = clampProgress(state.progress());
         int phase = phaseIndex(state.phaseId());
         boolean reduced = reducedMotion();
@@ -174,15 +169,6 @@ public final class EndRiftBossBarHud {
                 x + (INNER_LEFT + INNER_RIGHT) / 2, y + TITLE_Y, 0xFFF6E8FF);
         // A silhouette-first state glyph sits before the phase word, so the
         // six states stay distinguishable without relying on colour alone.
-        if (!reduced && (phase >= 4 || "EXECUTING".equals(state.castState()))) {
-            // Danger states breathe behind the glyph; the glyph itself keeps a
-            // stable silhouette so motion never reduces legibility.
-            float pulse = 0.5F + 0.5F * (float) Math.sin(now / 420.0D);
-            int glow = (int) (18.0F + 46.0F * pulse);
-            context.fill(x + INNER_LEFT, y + DETAIL_Y - 3,
-                    x + INNER_LEFT + 20, y + DETAIL_Y + 15,
-                    (glow << 24) | (phaseColor & 0x00FFFFFF));
-        }
         context.blit(RenderPipelines.GUI_TEXTURED, STATE_GLYPHS,
                 x + INNER_LEFT + 2, y + DETAIL_Y - 2, phase * 16F, 0F,
                 16, 16, 16, 16, 96, 16);
@@ -192,15 +178,6 @@ public final class EndRiftBossBarHud {
         // so the bar and the boss agree on how far the fight has ground it
         // down. Read as a row rather than a word, so it survives any locale.
         drawStagePips(context, x, y, phase);
-        if (!reduced && phase >= 5) {
-            // Last breath: a slow ember runs under the frame edge while the
-            // boss is on its torn final sheet.
-            float ember = 0.5F + 0.5F * (float) Math.sin(now / 520.0D);
-            int emberAlpha = (int) (26.0F + 44.0F * ember) & 0xFF;
-            context.fill(x + 46, y + FRAME_Y + FRAME_HEIGHT - 5,
-                    x + WIDTH - 46, y + FRAME_Y + FRAME_HEIGHT - 4,
-                    (emberAlpha << 24) | 0x00FF8A5C);
-        }
         Component healthLabel = healthComponent(state.health(), state.maxHealth());
         context.text(client.font, healthLabel,
                 x + INNER_RIGHT - 2 - client.font.width(cachedHealthText),
@@ -238,18 +215,6 @@ public final class EndRiftBossBarHud {
             // particles or adding per-frame allocations.
             context.fill(x + INNER_LEFT, y + INNER_TOP,
                     x + INNER_LEFT + filled, y + INNER_TOP + 2, brighten(phaseColor));
-        }
-        // Past the critical threshold the fill breathes, which is the one cue
-        // that survives a player watching the boss instead of the bar.
-        if (progress > 0.0F && progress <= CRITICAL_FRACTION && filled > 0 && !reduced) {
-            float pulse = 0.5F + 0.5F * (float) Math.sin(nowMillis() / 620.0D);
-            int glowAlpha = (int) (30.0F + 70.0F * pulse) & 0xFF;
-            context.fill(x + INNER_LEFT, y + INNER_TOP - 1,
-                    x + INNER_LEFT + filled, y + INNER_TOP,
-                    (glowAlpha << 24) | 0x00FF4F61);
-            context.fill(x + INNER_LEFT, y + INNER_BOTTOM,
-                    x + INNER_LEFT + filled, y + INNER_BOTTOM + 1,
-                    (glowAlpha << 24) | 0x00FF4F61);
         }
         for (int notch = 1; notch < SEGMENT_COUNT; notch++) {
             int notchX = x + INNER_LEFT + Math.round(
@@ -289,24 +254,8 @@ public final class EndRiftBossBarHud {
         context.blit(RenderPipelines.GUI_TEXTURED, PHASE_OVERLAY, x, y,
                 0F, phase * (float) HEIGHT, WIDTH, HEIGHT,
                 WIDTH, HEIGHT, WIDTH, HEIGHT * 6);
-        if (!reduced) {
-            // Restrained End-energy drift along the frame. Wall-clock driven,
-            // five thin veins, and it never crosses the health track recess.
-            float drift = (now % VEIN_PERIOD_MILLIS) / (float) VEIN_PERIOD_MILLIS;
-            for (int vein = 0; vein < VEIN_COUNT; vein++) {
-                float offset = (drift + vein / (float) VEIN_COUNT) % 1.0F;
-                int veinX = x + 44 + Math.round((WIDTH - 88) * offset);
-                float breathe = 0.5F + 0.5F * (float) Math.sin(now / 700.0D + vein);
-                int alpha = (int) (12.0F + 26.0F * breathe);
-                context.fill(veinX, y + 36, veinX + 1, y + INNER_TOP - 2,
-                        (alpha << 24) | (phaseColor & 0x00FFFFFF));
-                context.fill(veinX, y + INNER_BOTTOM + 3, veinX + 1,
-                        y + FRAME_Y + FRAME_HEIGHT - 8,
-                        (alpha << 24) | (phaseColor & 0x00FFFFFF));
-            }
-        }
         // Exact UV-rendered head of the supplied 37-cube model; no replacement creature.
-        int portraitY = y + 14 + (reduced ? 0 : portraitBob(now));
+        int portraitY = y + 14;
         context.blit(RenderPipelines.GUI_TEXTURED, PORTRAIT, x + (WIDTH - 44) / 2, portraitY,
                 0F, 0F, 44, 44, 128, 128, 128, 128);
         // A phase aura over the real head: the centre stays transparent, so the
@@ -431,16 +380,7 @@ public final class EndRiftBossBarHud {
                 Double.isFinite(value) ? value : 0.0D));
     }
 
-    private static int phaseColor(String phaseId, String castState) {
-        if ("EXECUTING".equals(castState)) {
-            return 0xFFE33D62;
-        }
-        if ("TELEGRAPHING".equals(castState)) {
-            return 0xFFFFC857;
-        }
-        if ("RECOVERY".equals(castState)) {
-            return 0xFFB8B8C8;
-        }
+    private static int phaseColor(String phaseId) {
         return switch (phaseId) {
             case "AWAKENING" -> 0xFF9A62FF;
             case "HUNT" -> 0xFF42C9FF;
@@ -474,10 +414,6 @@ public final class EndRiftBossBarHud {
             case "LAST_SEAL" -> 5;
             default -> 0;
         };
-    }
-
-    private static int portraitBob(long now) {
-        return (int) Math.round(Math.sin(now / 900.0D));
     }
 
     private static boolean reducedMotion() {

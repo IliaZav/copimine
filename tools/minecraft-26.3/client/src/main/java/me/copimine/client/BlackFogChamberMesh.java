@@ -55,7 +55,7 @@ public final class BlackFogChamberMesh {
             x += (float)(dx/length)*displacement; z += (float)(dz/length)*displacement;
         }
         int alpha=Math.min(255,Math.max(0,Math.round((250-layer*8)*Math.min(1,strength))));
-        int shade=2+(int)(billow*5);
+        int shade=1+(int)(billow*3);
         return new Point(x,y,z,(alpha<<24)|(shade<<16)|((shade+1)<<8)|(shade+3));
     }
 }

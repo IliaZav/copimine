@@ -36,6 +36,12 @@ public final class BlackFogSmokeRuntime {
         }
         double base = BlackFogChamberRuntime.floorTop(client, fog, now);
         if (!Double.isFinite(base)) return;
+        if (BlackFogVolumeRuntime.chamber() != null) {
+            for (Particle p : owned) p.remove();
+            owned.clear();
+            primed = false;
+            return;
+        }
         owned.removeIf(p -> {
             var b = p.getBoundingBox();
             double x = (b.minX + b.maxX) * 0.5, z = (b.minZ + b.maxZ) * 0.5;
@@ -55,7 +61,7 @@ public final class BlackFogSmokeRuntime {
         primed = true;
         for (int attempt = 0, spawned = 0; attempt < budget * 4 && spawned < budget; attempt++) {
             int style = random.nextInt(20);
-            boolean ash = style < 8, soul = style == 8, spark = style == 9;
+            boolean ash = style < 7, soul = style >= 7 && style <= 9, spark = style == 10;
             boolean cluster = style >= 17;
             // Most sprites in the old 44x44 square were already hidden by the
             // optical volume. Spend the SAME budget where a player can see depth.
@@ -68,7 +74,7 @@ public final class BlackFogSmokeRuntime {
             double z = client.player.getZ()+Math.sin(angle)*radius;
             if (x < arena.minX()+1.3D || x > arena.maxX()-.3D
                     || z < arena.minZ()+1.3D || z > arena.maxZ()-.3D) continue;
-            double y = base + 0.8 + random.nextDouble() * 2.4;
+            double y = base + (soul ? 0.3 + random.nextDouble() * 0.93 : 0.8 + random.nextDouble() * 2.4);
             // Large smoke sprites stay outside the readable near patch; small wisps may drift through it.
             if (!ash && !soul && !spark
                     && Math.hypot(x - client.player.getX(), z - client.player.getZ()) < 2.5) continue;

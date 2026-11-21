@@ -4,7 +4,9 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.core.BlockPos;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.level.block.Blocks;
 import org.joml.Matrix4f;
 
 /** World-depth fog pass. All world reads occur during extraction, never in a GPU callback. */
@@ -14,9 +16,9 @@ public final class BlackFogVolumeRuntime {
     private static volatile float[] snapshot = new float[UNIFORM_BYTES / Float.BYTES];
     private static final ThreadLocal<ByteBuffer> uniformBytes = ThreadLocal.withInitial(() ->
             ByteBuffer.allocateDirect(UNIFORM_BYTES).order(ByteOrder.nativeOrder()));
-    /** Kept as a compatibility type for the retired chamber renderer. */
     public record Chamber(float minX, float minZ, float maxX, float maxZ, float floor, float strength) {}
-    public static Chamber chamber() { return null; }
+    private static volatile Chamber chamber;
+    public static Chamber chamber() { return chamber; }
 
     private BlackFogVolumeRuntime() {}
 
@@ -24,6 +26,7 @@ public final class BlackFogVolumeRuntime {
         Minecraft client = Minecraft.getInstance();
         var effects = renderer.gameRenderState().requestedPostEffects;
         var manager = ClientBridgeProtocol.endEventBlackFog();
+        chamber = null;
         long now = System.currentTimeMillis();
         float strength = client.level == null || client.player == null || client.player.isDeadOrDying()
                 ? 0 : manager.fadeStrength(client.level.dimension().identifier().getPath(), now);
@@ -40,9 +43,24 @@ public final class BlackFogVolumeRuntime {
         var camera = renderer.gameRenderState().levelRenderState.cameraRenderState;
         if (camera == null || !camera.initialized || camera.projectionMatrix == null
                 || camera.viewRotationMatrix == null) return;
-        if (!effects.contains(EFFECT)) effects.add(EFFECT);
-        // Safety is server gameplay state; every arena cell uses the same optical volume.
         double floorTop = BlackFogChamberRuntime.floorTop(client, manager, now);
+        if (Double.isFinite(floorTop) && camera.pos.y >= floorTop
+                && camera.pos.y < floorTop + BlackFogVolumePolicy.CHAMBER_HEIGHT) {
+            int floorY = (int) Math.floor(floorTop) - 1;
+            var box = BlackFogVolumePolicy.find((int) Math.floor(camera.pos.x), (int) Math.floor(camera.pos.z),
+                    (x, z) -> {
+                        if (x < arena.minX() || x > arena.maxX() || z < arena.minZ() || z > arena.maxZ()) return false;
+                        var block = new BlockPos(x, floorY, z);
+                        return client.level.hasChunkAt(block) && client.level.getBlockState(block).is(Blocks.EMERALD_BLOCK);
+                    });
+            int width = box.maxX() - box.minX(), depth = box.maxZ() - box.minZ();
+            if (width <= 3 && depth <= 3 && box.cells() == width * depth) {
+                chamber = new Chamber(box.minX(), box.minZ(), box.maxX(), box.maxZ(), (float) floorTop, strength);
+                effects.remove(EFFECT);
+                return;
+            }
+        }
+        if (!effects.contains(EFFECT)) effects.add(EFFECT);
         float[] data = new float[UNIFORM_BYTES / Float.BYTES];
         new Matrix4f(camera.projectionMatrix).invert().get(data);
         float[] rotation = new float[16];

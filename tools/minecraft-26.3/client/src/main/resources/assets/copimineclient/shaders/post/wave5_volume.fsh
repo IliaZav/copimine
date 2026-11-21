@@ -96,8 +96,8 @@ void main() {
         float density = VolumeState.y * mix(0.72, 1.38, eddy) * nearGain;
         float extinction = 1.0 - exp(-density * stride);
         float soul = pow(cloudNoise(point * 1.9 - drift * 2.1), 9.0);
-        vec3 ink = mix(vec3(0.015,0.009,0.017), vec3(0.052,0.032,0.046), eddy * eddy);
-        ink += soul * vec3(0.055, 0.018, 0.075);
+        vec3 ink = mix(vec3(0.005,0.003,0.008), vec3(0.043,0.024,0.044), eddy * eddy);
+        ink += soul * vec3(0.085, 0.022, 0.095);
         scattered += transmittance * extinction * ink;
         transmittance *= 1.0 - extinction;
         if (transmittance < 0.004) break;

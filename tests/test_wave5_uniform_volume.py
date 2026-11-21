@@ -58,14 +58,14 @@ def test_shader_preserves_near_geometry_but_extinguishes_distant_rays(tmp_path):
     assert 'source.a' in shader and 'DepthSampler' in shader
 
 
-def test_uniform_runtime_does_not_disable_fog_or_draw_opaque_chamber_walls():
+def test_world_chambers_suspend_the_post_effect_and_retain_arena_fog_outside():
     runtime=(CLIENT/'BlackFogVolumeRuntime.java').read_text(encoding='utf-8')
-    assert 'refreshSafeVolume(' not in runtime
-    assert 'safe[3]' not in runtime
-    assert 'BlackFogChamberRenderer.render(context)' not in (CLIENT/'CopiMineClient.java').read_text(encoding='utf-8')
+    assert 'box.cells() == width * depth' in runtime
+    assert 'BlackFogChamberRenderer.render(context)' in (CLIENT/'CopiMineClient.java').read_text(encoding='utf-8')
+    assert runtime.index('effects.remove(EFFECT);', runtime.index('chamber = new Chamber')) < runtime.index('effects.add(EFFECT)')
     assert 'endEventArenaBounds(manager.eventId(), manager.generation())' in runtime
     smoke=(CLIENT/'BlackFogSmokeRuntime.java').read_text(encoding='utf-8')
-    assert 'clearOfSafeFloor(' not in smoke, 'uniform smoke must include refuge cells'
+    assert 'BlackFogVolumeRuntime.chamber() != null' in smoke
     for particle in ('ASH','SMOKE','SOUL','REVERSE_PORTAL'):
         assert particle in smoke
     for forbidden in ('reloadResource','clearParticles(', 'setShaderPack'):

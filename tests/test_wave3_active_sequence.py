@@ -34,9 +34,10 @@ public class PortalSequenceProbe {
         p.portalCaptureStates.put(3,List.of(done,initial,initial));
         switch(args[0]){
             case "collapse" -> {
-                p.portalClosingStartedMillis.put(0,1000L);p.clock=1599;
+                long collapseEnd=p.clock+PortalPresentationPolicy.COLLAPSE_MILLIS;
+                p.portalClosingStartedMillis.put(0,p.clock);p.clock=collapseEnd-1;
                 check(p.nearestOpenPortal(origin)==null,"defenders and capture must not activate next portal during collapse");
-                p.clock=1600;check(p.nearestOpenPortal(origin).id()==1,"next gate must activate after bounded collapse");
+                p.clock=collapseEnd;check(p.nearestOpenPortal(origin).id()==1,"next gate must activate after bounded collapse");
             }
             case "missing-closure" -> check(p.nearestOpenPortal(origin)==null,"missing closure receipt must fail closed");
             case "first-only" -> {

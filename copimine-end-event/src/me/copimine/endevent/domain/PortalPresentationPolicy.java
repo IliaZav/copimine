@@ -4,7 +4,7 @@ import java.util.List;
 
 /** Portal-specific visual projection of authoritative capture state. */
 public final class PortalPresentationPolicy {
-    public static final long COLLAPSE_MILLIS = 600L;
+    public static final long COLLAPSE_MILLIS = 1_250L;
     public static final int MAX_REBUILD_ATTEMPTS = 3;
     public static final long REBUILD_RETRY_BASE_MILLIS = 250L;
     public static final int GAUGE_SEGMENTS = 24;
@@ -33,12 +33,11 @@ public final class PortalPresentationPolicy {
     /**
      * How far the membrane has folded inward, {@code 1..0}.
      *
-     * <p>Ease-out: the gate rushes in at once and then hangs for a beat before
-     * it is gone, which reads as a fold rather than a linear scale-down.</p>
+     * <p>The membrane first tightens, then folds inward and slows at the end.</p>
      */
     public static double collapseFoldScale(double progress) {
         double clamped = clamp01(progress);
-        double eased = 1.0D - Math.pow(1.0D - clamped, 2.0D);
+        double eased = clamped * clamped * (3.0D - 2.0D * clamped);
         return Math.max(0.0D, 1.0D - 0.85D * eased);
     }
 

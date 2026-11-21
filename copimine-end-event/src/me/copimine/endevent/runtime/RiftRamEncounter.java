@@ -123,6 +123,10 @@ public final class RiftRamEncounter {
     private int pillarRaiseFailures;
     /** How many 40-tick retries a refused pillar site may consume before failing. */
     private static final int MAX_PILLAR_RAISE_RETRIES = 10;
+    /** A refused final emergence frame still has to settle onto the pillar top. */
+    private boolean pillarSettlePending;
+    /** The cracked pillar's barrier was cleared but not replaced; retry it. */
+    private boolean pillarColliderPending;
 
     public RiftRamEncounter(Host host) { this.host = host; }
     public UUID id() { return ram == null ? persistentId : ram.getUniqueId(); }
@@ -309,6 +313,8 @@ public final class RiftRamEncounter {
         pillar = site;
         pillarId = UUID.randomUUID();
         pillarImpacts = 0;
+        pillarSettlePending = false;
+        pillarColliderPending = false;
         return buildPillar();
     }
 
@@ -412,6 +418,16 @@ public final class RiftRamEncounter {
         tickPillarSkeleton(players);
         enforceHealthFloor();
         updateDisplays();
+        // A crack already cleared the live barrier before its replacement was
+        // refused; reconcile that before other pillar gameplay resumes so the
+        // standing pillar is never left without physical cover.
+        if (pillarColliderPending && pillar != null) {
+            if (host.placePillarCollider(pillar,
+                    RiftRamPolicy.pillarColliderHalfWidth(impacts),
+                    RiftRamPolicy.pillarColliderHeight(impacts))) {
+                pillarColliderPending = false;
+            }
+        }
         if (pillarId==null && RiftRamPolicy.mayRaisePillar(impacts) && tick>=nextPillarTick) {
             if(!raisePillar()) {
                 // No safe site right now (a body in the way, terrain changed).
@@ -791,10 +807,24 @@ public final class RiftRamEncounter {
             for(BlockDisplay display:pillarDisplays) {
                 Location rest=pillarRestPositions.get(display.getUniqueId());
                 // A cosmetic emergence frame must never abort the encounter: a
-                // refused move or a missing rest transform is retried next tick,
-                // and a display whose transform was lost is simply skipped.
+                // refused move is retried, and a display whose rest transform was
+                // lost is simply skipped.
                 if(rest==null) continue;
-                host.move(display,rest.clone().add(0,-3D*(1D-eased),0));
+                Location target=rest.clone().add(0,-3D*(1D-eased),0);
+                if(!host.move(display,target) && progress>=1D) {
+                    // The LAST frame is the one that matters: if it is refused the
+                    // display would stay underground for the pillar's whole life,
+                    // so keep the rest position pending until a move succeeds.
+                    pillarSettlePending = true;
+                }
+            }
+        } else if(pillar!=null && pillarSettlePending) {
+            // Finish a refused final emergence frame even after the window closed.
+            pillarSettlePending = false;
+            for(BlockDisplay display:pillarDisplays) {
+                Location rest=pillarRestPositions.get(display.getUniqueId());
+                if(rest==null) continue;
+                if(!host.move(display,rest.clone())) pillarSettlePending = true;
             }
         }
         for(Iterator<Debris> it=debris.iterator();it.hasNext();) {
@@ -874,10 +904,16 @@ public final class RiftRamEncounter {
         // volume before journaling the new one, so this stays crash-safe. A
         // refusal is a presentation degradation, never a reason to abort the Ram:
         // the host already logs END_RIFT_RAM_PILLAR_COLLIDER_REFUSED, and the
-        // old barrier (or none) is preferable to ending the whole wave.
-        host.placePillarCollider(pillar,
+        // old barrier (or none) is preferable to ending the whole wave. The
+        // rebuild already cleared the old volume though, so a refusal has to be
+        // retried: otherwise the standing pillar keeps no physical cover at all.
+        if (host.placePillarCollider(pillar,
                 RiftRamPolicy.pillarColliderHalfWidth(impacts),
-                RiftRamPolicy.pillarColliderHeight(impacts));
+                RiftRamPolicy.pillarColliderHeight(impacts))) {
+            pillarColliderPending = false;
+        } else {
+            pillarColliderPending = true;
+        }
         // Loose rubble reads as material that actually left the pillar. A refused
         // shard spawn is pure decoration and must not abort the encounter.
         for (int i=0;i<6;i++) {
@@ -1208,6 +1244,7 @@ public final class RiftRamEncounter {
         boolean restored = host.clearPillarCollider();
         for(BlockDisplay d:pillarDisplays) host.remove(d);
         pillarDisplays.clear(); pillarRestPositions.clear(); pillar=null; pillarId=null;
+        pillarSettlePending = false; pillarColliderPending = false;
         return restored;
     }
     private void cleanupDisplays() { cleanupDisplays(false); }

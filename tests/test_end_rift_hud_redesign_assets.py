@@ -49,15 +49,19 @@ def digest(path: Path) -> str:
 
 
 def pixel_digest(path: Path) -> str:
-    """SHA-256 of the decoded RGBA pixels, independent of the PNG encoder.
+    """SHA-256 of the decoded RGBA pixels plus their dimensions.
 
     The artwork is what must be reproducible. Pillow 12 and 13 bundle
     different zlib builds that deflate a handful of these images (the Ram rail)
     to different container bytes with byte-identical pixels, so a container
-    digest would fail on the CI interpreter without any art change.
+    digest would fail on the CI interpreter without any art change. The
+    dimensions are folded in so a wrongly shaped image with coincidentally
+    matching pixel bytes can never pass either.
     """
     with Image.open(path) as image:
-        return hashlib.sha256(image.convert("RGBA").tobytes()).hexdigest()
+        rgba = image.convert("RGBA")
+        header = f"{rgba.width}x{rgba.height}:".encode("ascii")
+        return hashlib.sha256(header + rgba.tobytes()).hexdigest()
 
 
 def painted(image: Image.Image) -> int:

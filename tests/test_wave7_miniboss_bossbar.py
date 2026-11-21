@@ -264,8 +264,8 @@ def test_server_creates_and_retires_a_bar_per_live_miniboss():
 
 
 def test_authored_art_exists_and_is_distinct():
-    frames = sorted(ART.glob("wave7_bossbar_*.png"))
-    portraits = sorted(ART.glob("wave7_portrait_*.png"))
+    frames = sorted(ART.glob("wave7v2_bossbar_*.png"))
+    portraits = sorted(ART.glob("wave7v2_portrait_*.png"))
     assert len(frames) == 4, [p.name for p in frames]
     assert len(portraits) == 4, [p.name for p in portraits]
 
@@ -293,13 +293,14 @@ def test_authored_art_exists_and_is_distinct():
 
 
 def test_the_frame_is_drawn_before_the_health_fill():
-    """The shipped frame's track recess is opaque, so the health fill must be
-    drawn *after* the frame.
+    """The authored frame is the plate the bar is drawn on, so the health fill
+    must be drawn *after* it.
 
     Regression: the historical order blitted the frame last, which painted the
     whole fill and every segment behind the artwork, so a miniboss bar showed
-    no health at all. The frame becomes the plate; the fill, segments, notches
-    and then the portrait are layered on top of it.
+    no health at all. The v2 art keeps its track recess transparent, but the
+    fill must still be drawn on top of the plate; the segments, notches and
+    portrait follow.
     """
     source = CLIENT_HUD.read_text(encoding="utf-8")
     render = source[source.index("public static boolean render("):]

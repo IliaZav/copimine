@@ -18,6 +18,7 @@ public final class ClientConfig {
     private static final String KEY_ALLOW_SERVER_SHADERPACK_RUNTIME = "allow_server_shaderpack_runtime";
     private static final String KEY_ALLOW_OVERRIDE_EXISTING_SHADERPACK = "allow_override_existing_shaderpack";
     private static final String KEY_BOSS_CAMERA_SHAKE_STRENGTH = "boss_camera_shake_strength";
+    private static final String KEY_HUD_REDUCED_MOTION = "hud_reduced_motion";
 
     private final Path path;
     private boolean renderWhenHudHidden = true;
@@ -27,6 +28,7 @@ public final class ClientConfig {
     private boolean allowServerShaderpackRuntime = true;
     private boolean allowOverrideExistingShaderpack = true;
     private double bossCameraShakeStrength = 0.65D;
+    private boolean hudReducedMotion;
 
     private ClientConfig(Path path) {
         this.path = path;
@@ -60,6 +62,7 @@ public final class ClientConfig {
             bossCameraShakeStrength = 0.65D;
         }
         maxVisualDurationSeconds = clamp(parseInt(properties.getProperty(KEY_MAX_VISUAL_DURATION_SECONDS), 600), 1, 600);
+        hudReducedMotion = parseBoolean(properties.getProperty(KEY_HUD_REDUCED_MOTION), false);
         save();
     }
 
@@ -89,6 +92,14 @@ public final class ClientConfig {
 
     public double bossCameraShakeStrength() { return bossCameraShakeStrength; }
 
+    /** Accessibility switch: draw static final HUD poses, no sweeps or drops. */
+    public boolean reducedMotion() { return hudReducedMotion; }
+
+    public void setReducedMotion(boolean enabled) {
+        this.hudReducedMotion = enabled;
+        save();
+    }
+
     public void setBossCameraShakeStrength(double strength) {
         bossCameraShakeStrength = Double.isFinite(strength) ? Math.max(0, Math.min(1, strength)) : 0;
         save();
@@ -110,6 +121,7 @@ public final class ClientConfig {
             properties.setProperty(KEY_ALLOW_SERVER_SHADERPACK_RUNTIME, Boolean.toString(allowServerShaderpackRuntime));
             properties.setProperty(KEY_ALLOW_OVERRIDE_EXISTING_SHADERPACK, Boolean.toString(allowOverrideExistingShaderpack));
             properties.setProperty(KEY_BOSS_CAMERA_SHAKE_STRENGTH, Double.toString(bossCameraShakeStrength));
+            properties.setProperty(KEY_HUD_REDUCED_MOTION, Boolean.toString(hudReducedMotion));
             try (OutputStream out = Files.newOutputStream(path)) {
                 properties.store(out, "CopiMineClient settings");
             }

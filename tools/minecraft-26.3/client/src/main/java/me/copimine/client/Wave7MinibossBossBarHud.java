@@ -33,14 +33,14 @@ public final class Wave7MinibossBossBarHud {
     /** A player's personal Echo. */
     private static final String MIRROR_TITLE = "Эхо Разлома";
 
-    private static final Identifier FRAME_BONE = texture("wave7_bossbar_bone");
-    private static final Identifier FRAME_SCULK = texture("wave7_bossbar_sculk");
-    private static final Identifier FRAME_RUNE = texture("wave7_bossbar_rune");
-    private static final Identifier FRAME_MIRROR = texture("wave7_bossbar_mirror");
-    private static final Identifier PORTRAIT_MARKSMAN = texture("wave7_portrait_marksman");
-    private static final Identifier PORTRAIT_WARDEN = texture("wave7_portrait_warden");
-    private static final Identifier PORTRAIT_ARCHMAGE = texture("wave7_portrait_archmage");
-    private static final Identifier PORTRAIT_ECHO = texture("wave7_portrait_echo");
+    private static final Identifier FRAME_BONE = texture("wave7v2_bossbar_bone");
+    private static final Identifier FRAME_SCULK = texture("wave7v2_bossbar_sculk");
+    private static final Identifier FRAME_RUNE = texture("wave7v2_bossbar_rune");
+    private static final Identifier FRAME_MIRROR = texture("wave7v2_bossbar_mirror");
+    private static final Identifier PORTRAIT_MARKSMAN = texture("wave7v2_portrait_marksman");
+    private static final Identifier PORTRAIT_WARDEN = texture("wave7v2_portrait_warden");
+    private static final Identifier PORTRAIT_ARCHMAGE = texture("wave7v2_portrait_archmage");
+    private static final Identifier PORTRAIT_ECHO = texture("wave7v2_portrait_echo");
 
     private static final int FRAME_WIDTH = 256;
     private static final int FRAME_HEIGHT = 32;
@@ -54,6 +54,21 @@ public final class Wave7MinibossBossBarHud {
     private static final int PORTRAIT_SIZE = 20;
     /** Below this fraction the fill breathes, matching the server's critical band. */
     private static final float CRITICAL_FRACTION = 0.25F;
+    private static final long HIT_FLASH_MILLIS = 170L;
+    private static final long CHIP_MILLIS = 520L;
+    private static final long DEFEAT_HOLD_MILLIS = 1100L;
+    /** A wave has at most four bars; 32 entries leave room for re-entry churn. */
+    private static final int MAX_TRACKED_BARS = 32;
+    private static final java.util.Map<java.util.UUID, StyleState> STYLE_STATE =
+            new java.util.LinkedHashMap<>(16, 0.75F, true);
+
+    private static final class StyleState {
+        private float lastProgress = Float.NaN;
+        private float chipProgress = Float.NaN;
+        private long chipAtMillis;
+        private long flashAtMillis;
+        private long defeatedAtMillis;
+    }
 
     private Wave7MinibossBossBarHud() {
     }
@@ -143,31 +158,90 @@ public final class Wave7MinibossBossBarHud {
         if (client.player == null || client.level == null || client.font == null) {
             return false;
         }
+        long now = System.currentTimeMillis();
+        boolean reduced = reducedMotion();
+        // One state per real bar instance, not per art style or title: two marksmen
+        // can be alive together and, during a joint volley, can even publish the
+        // same title. BossEvent#getId is the server-side bar identity, so a
+        // chip or flash from one can never decorate the other and a stale bar
+        // that is removed cannot lend its state to its replacement.
+        java.util.UUID stateKey = bar.getId();
+        StyleState state = STYLE_STATE.get(stateKey);
+        if (state == null) {
+            state = new StyleState();
+            STYLE_STATE.put(stateKey, state);
+            if (STYLE_STATE.size() > MAX_TRACKED_BARS) {
+                var iterator = STYLE_STATE.keySet().iterator();
+                if (iterator.hasNext()) {
+                    iterator.next();
+                    iterator.remove();
+                }
+            }
+        }
         float progress = clampProgress(bar.getProgress());
+        float previous = state.lastProgress;
+        boolean chipActive = now - state.chipAtMillis <= CHIP_MILLIS;
+        if (Float.isNaN(previous)) {
+            state.chipProgress = progress;
+        } else if (progress < previous - 0.0005F) {
+            // Pin the chip to the highest health seen during this burst so a
+            // second hit does not shrink the visible lost slice. An expired
+            // burst must not lend its old peak to a brand new hit.
+            state.chipProgress = chipActive && !Float.isNaN(state.chipProgress)
+                    ? Math.max(state.chipProgress, previous) : previous;
+            state.chipAtMillis = now;
+            state.flashAtMillis = now;
+        }
+        state.lastProgress = progress;
+        if (reduced || now - state.chipAtMillis > CHIP_MILLIS) {
+            state.chipProgress = progress;
+        }
+        if (progress <= 0.0F) {
+            if (state.defeatedAtMillis == 0L) state.defeatedAtMillis = now;
+        } else {
+            state.defeatedAtMillis = 0L;
+        }
+
         int x = Math.max(0, (gui.guiWidth() - WIDTH) / 2);
         int fillColor = accent(style);
         int innerWidth = INNER_RIGHT - INNER_LEFT;
         int filled = Math.round(innerWidth * progress);
+        int chipFilled = Math.round(innerWidth * clampProgress(state.chipProgress));
 
         // The authored frame is the plate the bar is drawn on. Its track recess
-        // is opaque in the shipped art, so it must be blitted *before* the
+        // is transparent in the shipped art, so it must be blitted *before* the
         // health fill. Drawing it afterwards (the historical order) painted the
         // fill onto the artwork and hid the entire health readout behind it.
         gui.blit(RenderPipelines.GUI_TEXTURED, frame(style), x, y,
                 0F, 0F, WIDTH, HEIGHT, FRAME_WIDTH, FRAME_HEIGHT, FRAME_WIDTH, FRAME_HEIGHT);
 
-        // Track, then the lost slice in the deep accent so a hit reads even
-        // when the bar is already low.
+        // Track, then the real health fill. The lost slice keeps the deep accent
+        // so a hit reads even when the boss is already low.
         gui.fill(x + INNER_LEFT, y + INNER_TOP, x + INNER_RIGHT, y + INNER_BOTTOM, glow(style));
-        gui.fill(x + INNER_LEFT, y + INNER_TOP, x + INNER_LEFT + filled, y + INNER_BOTTOM, 0xFF141120);
-
         drawSegments(gui, x, y, filled, fillColor);
         if (filled > 0) {
             gui.fill(x + INNER_LEFT, y + INNER_TOP, x + INNER_LEFT + filled, y + INNER_TOP + 1,
                     brighten(fillColor));
         }
-        if (critical(progress) && filled > 0) {
-            float pulse = 0.5F + 0.5F * (float) Math.sin(System.currentTimeMillis() / 620.0D);
+        if (chipFilled > filled) {
+            long age = now - state.chipAtMillis;
+            float fade = 1.0F - Math.min(1.0F, age / (float) CHIP_MILLIS);
+            if (fade > 0.0F) {
+                int alpha = (int) (fade * 140.0F) & 0xFF;
+                gui.fill(x + INNER_LEFT + filled, y + INNER_TOP,
+                        x + INNER_LEFT + chipFilled, y + INNER_BOTTOM,
+                        (alpha << 24) | 0x00FF6B7A);
+            }
+        }
+        if (!reduced && now - state.flashAtMillis < HIT_FLASH_MILLIS) {
+            // Sharp, short hit feedback, strongest on the marksman's fast hits.
+            float fade = 1.0F - (now - state.flashAtMillis) / (float) HIT_FLASH_MILLIS;
+            int alpha = (int) (fade * 80.0F) & 0xFF;
+            gui.fill(x + INNER_LEFT, y + INNER_TOP, x + INNER_LEFT + filled,
+                    y + INNER_BOTTOM, (alpha << 24) | 0x00FFF3E0);
+        }
+        if (critical(progress) && filled > 0 && !reduced) {
+            float pulse = 0.5F + 0.5F * (float) Math.sin(now / 620.0D);
             int alpha = (int) (30.0F + 70.0F * pulse) & 0xFF;
             gui.fill(x + INNER_LEFT, y + INNER_TOP - 1, x + INNER_LEFT + filled, y + INNER_TOP,
                     (alpha << 24) | (fillColor & 0x00FFFFFF));
@@ -176,6 +250,12 @@ public final class Wave7MinibossBossBarHud {
             int notchX = x + INNER_LEFT + notchX(notch, SEGMENT_COUNT);
             gui.fill(notchX, y + INNER_TOP - 1, notchX + 1, y + INNER_BOTTOM + 1, 0xA0080914);
         }
+        if (progress <= 0.0F && now - state.defeatedAtMillis < DEFEAT_HOLD_MILLIS) {
+            gui.fill(x + INNER_LEFT, y + INNER_TOP, x + INNER_RIGHT, y + INNER_BOTTOM,
+                    0x99100A12);
+            gui.centeredText(client.font, net.minecraft.network.chat.Component.literal("ПЕЧАТЬ ПАЛА"),
+                    x + INNER_LEFT + innerWidth / 2, y + INNER_TOP + 2, 0xFFF3EFFF);
+        }
 
         gui.blit(RenderPipelines.GUI_TEXTURED, portrait(style),
                 x + INNER_LEFT, y + (HEIGHT - PORTRAIT_SIZE) / 2 - 1,
@@ -183,6 +263,16 @@ public final class Wave7MinibossBossBarHud {
         gui.centeredText(client.font, bar.getName(),
                 x + WIDTH / 2 + PORTRAIT_SIZE / 2, y - 10, 0xFFF2ECFA);
         return true;
+    }
+
+    private static boolean reducedMotion() {
+        ClientConfig config = CopiMineClient.config();
+        return config != null && config.reducedMotion();
+    }
+
+    /** Clears per-viewer animation state on logout, death or event rotation. */
+    static void clearState() {
+        STYLE_STATE.clear();
     }
 
     private static void drawSegments(GuiGraphicsExtractor gui, int x, int y,

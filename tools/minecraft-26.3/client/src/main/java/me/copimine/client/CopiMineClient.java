@@ -25,6 +25,10 @@ public final class CopiMineClient implements ClientModInitializer {
             .orElse("unknown");
 
     private final ClientConfig config = ClientConfig.load();
+    private static ClientConfig sharedConfig;
+
+    /** Read-only access for the HUD renderers; never null after client init. */
+    public static ClientConfig config() { return sharedConfig; }
     private final ClientVisualManager visualManager = new ClientVisualManager(config);
     private final ClientPostProcessController postProcessController = new ClientPostProcessController();
     private final ShaderpackRegistry shaderpackRegistry = new ShaderpackRegistry();
@@ -41,6 +45,7 @@ public final class CopiMineClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         CopiMineClientLogger.info("CopiMineClient bootstrap started");
+        sharedConfig = config;
         BossCameraShakeRuntime.configure(config);
         shaderRuntimeManager.initialize();
         visualManager.setShaderRuntimeManager(shaderRuntimeManager);
@@ -80,6 +85,9 @@ public final class CopiMineClient implements ClientModInitializer {
             PrisonerTargetSelector.invalidatePreview();
             ClientBridgeProtocol.onDisconnect();
             BlackFogSmokeRuntime.clear();
+            EndRiftBossBarHud.resetTrackingForTest();
+            RiftRamBossBarHud.clearState();
+            Wave7MinibossBossBarHud.clearState();
             visualManager.clearAll("disconnect", true);
         });
         ClientLevelEvents.AFTER_CLIENT_LEVEL_CHANGE.register((client, level) -> {
@@ -87,6 +95,9 @@ public final class CopiMineClient implements ClientModInitializer {
             visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "world_change", true);
             ClientBridgeProtocol.clearEndEventState();
             BlackFogSmokeRuntime.clear();
+            EndRiftBossBarHud.resetTrackingForTest();
+            RiftRamBossBarHud.clearState();
+            Wave7MinibossBossBarHud.clearState();
         });
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> registerCommands(dispatcher));
         CopiMineClientLogger.info("CopiMineClient bootstrap finished");

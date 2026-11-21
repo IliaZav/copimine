@@ -30,7 +30,8 @@ def test_supplied_guardian_json_bytes_survive_windows_checkout(tmp_path):
         ASSETS / "animations" / f"{name}.json" for name in (
             "cast_charge.animation", "cast_recovery.animation", "cast_release.animation",
             "cocoon_fall.animation", "cocoon_land.animation", "dying",
-            "final_strike.animation", "hurt", "idle", "phase_shift.animation",
+            "final_strike.animation", "hurt", "idle", "last_stand.animation",
+            "phase_shift.animation",
             "running", "spell_arena_inferno.animation", "spell_rift_arrows.animation",
             "spell_rift_projectile.animation", "spell_summon_servants.animation",
             "spell_void_blast.animation", "spell_void_mark.animation", "swipe",

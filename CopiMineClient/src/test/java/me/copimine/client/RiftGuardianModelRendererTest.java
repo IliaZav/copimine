@@ -8,22 +8,26 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RiftGuardianModelRendererTest {
     @Test
-    void everyBossPhaseResolvesToAConcreteTextureFile() {
+    void everyBossPhaseResolvesToItsOwnAuthoredStage() {
         RiftGuardianModelRenderer renderer = new RiftGuardianModelRenderer();
 
         for (RiftGuardianModelRenderer.Phase phase : RiftGuardianModelRenderer.Phase.values()) {
             Identifier texture = renderer.textureForPhase(phase.name());
             assertEquals("copimineclient", texture.getNamespace());
-            assertEquals("textures/entity/end_rift_user_boss.png", texture.getPath());
+            assertEquals("textures/entity/end_rift_user_boss_stage"
+                            + RiftGuardianModelRenderer.stageFor(phase.name()) + ".png",
+                    texture.getPath());
         }
+        assertEquals(0, RiftGuardianModelRenderer.stageFor("AWAKENING"));
+        assertEquals(5, RiftGuardianModelRenderer.stageFor("LAST_SEAL"));
     }
 
     @Test
-    void finalStrikeKeepsTheSuppliedBossTextureFile() {
+    void finalStrikeWearsTheTornLastSealStage() {
         RiftGuardianModelRenderer renderer = new RiftGuardianModelRenderer();
 
         assertEquals(
-                Identifier.of("copimineclient", "textures/entity/end_rift_user_boss.png"),
+                Identifier.of("copimineclient", "textures/entity/end_rift_user_boss_stage5.png"),
                 renderer.textureForState("LAST_SEAL", "FINAL_STRIKE"));
     }
 

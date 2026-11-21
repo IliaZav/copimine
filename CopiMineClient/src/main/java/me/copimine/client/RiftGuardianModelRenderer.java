@@ -27,11 +27,34 @@ public final class RiftGuardianModelRenderer {
         return textureForState(phaseId, "IDLE_BREATH");
     }
 
+    private static final String[] STAGE_TEXTURES = {
+            "end_rift_user_boss_stage0.png",
+            "end_rift_user_boss_stage1.png",
+            "end_rift_user_boss_stage2.png",
+            "end_rift_user_boss_stage3.png",
+            "end_rift_user_boss_stage4.png",
+            "end_rift_user_boss_stage5.png",
+    };
+
     public Identifier textureForState(String phaseId, String animationId) {
-        // The phase changes are carried by the server animation/VFX state;
-        // the supplied boss mesh and its 128x128 skin remain the single
-        // authoritative client asset for every phase.
-        return texture("end_rift_user_boss.png");
+        return texture(STAGE_TEXTURES[stageFor(phaseId)]);
+    }
+
+    /** 0 (awakening) .. 5 (last seal, torn). */
+    static int stageFor(String phaseId) {
+        return switch (Phase.fromWireId(phaseId)) {
+            case AWAKENING -> 0;
+            case HUNT -> 1;
+            case RIFT -> 2;
+            case OVERLOAD -> 3;
+            case RAGE -> 4;
+            case LAST_SEAL -> 5;
+        };
+    }
+
+    /** The canonical whole-body sheet, kept for authoring previews. */
+    public static Identifier masterTexture() {
+        return texture(STAGE_TEXTURES[0]);
     }
 
     private static Identifier texture(String name) {
@@ -69,21 +92,21 @@ public final class RiftGuardianModelRenderer {
     }
 
     public enum Phase {
-        AWAKENING,
-        HUNT,
-        RIFT,
-        OVERLOAD,
-        RAGE,
-        LAST_SEAL;
+        AWAKENING(0),
+        HUNT(1),
+        RIFT(2),
+        OVERLOAD(3),
+        RAGE(4),
+        LAST_SEAL(5);
 
-        private final Identifier texture;
+        private final int stage;
 
-        Phase() {
-            this.texture = RiftGuardianModelRenderer.texture("end_rift_user_boss.png");
+        Phase(int stage) {
+            this.stage = stage;
         }
 
         public Identifier texture() {
-            return texture;
+            return RiftGuardianModelRenderer.texture(STAGE_TEXTURES[stage]);
         }
 
         static Phase fromWireId(String phaseId) {

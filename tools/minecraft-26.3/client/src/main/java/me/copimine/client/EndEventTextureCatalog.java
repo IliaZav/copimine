@@ -124,16 +124,16 @@ public final class EndEventTextureCatalog {
         // The stage is chosen by the server's destroyed-pillar count, never by the
         // client, so every player sees the same stage at the same moment.
         //
-        // Every stage deliberately resolves to the SAME vanilla ravager sheet.
-        // The armour is not painted on: it is carried by server-owned 3D displays
-        // that break away as pillars fall, and the exposed animal underneath must
-        // stay the vanilla ravager all the way through. Emitting six distinct PNGs
-        // here would imply the hides differ, and they must not.
+        // The beast itself wears one authored hide for every stage.  The armour is
+        // not painted on: it is carried by server-owned 3D displays that break
+        // away as pillars fall, so all stages share one sheet and the exposed
+        // animal stays legible underneath every plate.
         //
-        // A natural (unbound) Ravager therefore keeps its vanilla sheet too.
+        // A natural (unbound) Ravager keeps the vanilla sheet; this one is only
+        // reached through a Rift Ram visual binding.
+        Identifier riftRamHide = entityTexture("end_rift_ram.png");
         for (int stage = 0; stage <= 7; stage++) {
-            textures.put(RiftRamVisualPolicy.visualForArmorStage(stage),
-                    Identifier.fromNamespaceAndPath("minecraft", "textures/entity/illager/ravager.png"));
+            textures.put(RiftRamVisualPolicy.visualForArmorStage(stage), riftRamHide);
         }
         return Map.copyOf(textures);
     }

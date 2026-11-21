@@ -1590,6 +1590,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, TentacleThrowPolicy.Launch> tentacleThrowLaunches = new HashMap<>();
     /** Last committed under-player ambush per player, for grab pressure. */
     private final Map<UUID, Long> tentacleAmbushTargetMillis = new HashMap<>();
+    private UUID disposableBossOperator;
     /** Absolute tick at which each small melee Kagune retracts. */
     private final me.copimine.endevent.domain.SmallKaguneCadence smallKaguneCadence =
             new me.copimine.endevent.domain.SmallKaguneCadence();
@@ -12444,11 +12445,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * and health transaction without advancing the official event phase.
      */
     private boolean tentacleDamageWindowOpen() {
-        if (phase == EventPhase.BOSS_ACTIVE) {
-            return true;
-        }
-        return config != null && "local".equalsIgnoreCase(config.environment())
-                && testCombatAiMode && isTestBoss(liveBoss());
+        LivingEntity boss = liveBoss();
+        if (!isBossCombatRuntimeActive(boss)) return false;
+        if (!isTestBoss(boss)) return phase == EventPhase.BOSS_ACTIVE;
+        return disposableBossOperator != null
+                || config != null && "local".equalsIgnoreCase(config.environment());
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
@@ -29195,14 +29196,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (riftRam == null || activeWave != 6
                 || !event.getEntity().getUniqueId().equals(riftRam.id())) return;
         if (riftRam.complete()) { event.setCancelled(true); return; }
-        double multiplier = RiftRamPolicy.damageMultiplier(riftRam.impacts());
-        event.setDamage(event.getDamage() * multiplier);
         if (riftRam.impacts() < RiftRamPolicy.REQUIRED_IMPACTS) {
+            event.setCancelled(true);
             LivingEntity ram = (LivingEntity) event.getEntity();
-            double finalDamage = event.getFinalDamage();
-            if (finalDamage >= ram.getHealth()) {
-                event.setDamage(event.getDamage() * Math.max(0, ram.getHealth() - 1.0D) / Math.max(.00001D, finalDamage));
-            }
             ram.getWorld().playSound(ram.getLocation(), Sound.BLOCK_ANVIL_HIT, .6F, 1.5F);
             ram.getWorld().spawnParticle(Particle.CRIT, ram.getLocation().add(0, 1.5, 0), 4, .5, .5, .5, .03);
             // A torn plate is the Ram's own beat: it rears, roars and challenges
@@ -47197,6 +47193,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void spawnTestBoss(CommandSender sender) {
+        if (isOfficialAttemptActive()) {
+            message(sender, "&cТестовый Страж недоступен во время официального боя.");
+            return;
+        }
         if (!isConfigured()) {
             message(sender, "&cСначала настрой Core в загруженном event world.");
             return;
@@ -47225,6 +47225,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             message(sender, "&cTest boss не создан: проверь BOSS_* диагностические причины в журнале.");
             return;
         }
+        disposableBossOperator = sender instanceof Player player ? player.getUniqueId() : null;
         ensureBossBar();
         bindBossClientForOnlinePlayers();
         message(sender, "&aTest boss создан: он не открывает End и не выдаёт official rewards.");
@@ -47806,6 +47807,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossUuid = null;
         bossKillerUuid = null;
         testCombatAiMode = false;
+        disposableBossOperator = null;
         testBossMovementFrozen = false;
         localTextureShowcase = false;
         recentBossTargets.clear();
@@ -49898,6 +49900,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean isActiveBossParticipant(Player player) {
+        LivingEntity currentBoss = liveBoss();
+        if (testCombatAiMode && currentBoss != null && isTestBoss(currentBoss) && disposableBossOperator != null) {
+            return player != null && disposableBossOperator.equals(player.getUniqueId())
+                    && isPhysicallyEligibleWaveParticipant(player, true);
+        }
         if (!isCombatTarget(player)) {
             return false;
         }
@@ -49905,7 +49912,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // reward roster from the previous completed event.  The local harness
         // deliberately uses real online players inside the arena as its
         // participant set, while official fights remain roster-locked below.
-        LivingEntity currentBoss = liveBoss();
         if (testCombatAiMode && currentBoss != null && isTestBoss(currentBoss)) {
             return true;
         }
@@ -50339,8 +50345,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean bossAmbushOwnsMajorCast() {
-        return tentacleController.owns(generation) && tentacleController.states().values().stream()
-                .anyMatch(state -> state.kind() == TentacleAnimationPolicy.Kind.UNDER_PLAYER);
+        if (!tentacleController.owns(generation)) return false;
+        for (var state : tentacleController.states().values()) {
+            if (state.kind() != TentacleAnimationPolicy.Kind.UNDER_PLAYER || state.target() == null) continue;
+            long age = eventTickCounter - state.startedTick();
+            if (age < 0 || age > TentacleAnimationPolicy.durationTicks(state.state()) + 2L) continue;
+            if (!(ownedEntities.get(state.entityId()) instanceof ItemDisplay display)
+                    || !display.isValid() || !ownedBySession(display, eventId, generation)) continue;
+            switch (state.state()) {
+                case SPAWN_UNDER_PLAYER, TELEGRAPH_GRAB, GRAB_SUCCESS, HOLD, THROW -> {
+                    if (isActiveBossParticipant(Bukkit.getPlayer(state.target()))) return true;
+                }
+                default -> { }
+            }
+        }
+        return false;
     }
 
     private boolean isCurrentBossMeleeFury() {

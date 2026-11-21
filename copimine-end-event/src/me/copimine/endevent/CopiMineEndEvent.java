@@ -1451,6 +1451,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean restoredWaveTwoGroupCleared;
     private boolean waveTwoStageRehydrated;
     private long waveTwoIntroStartedMillis;
+    private boolean waveTwoIntroStagingPending;
     private int waveTwoPhantomAdmissionFailures;
     private long waveNextSpawnAtMillis;
     private List<WaveMechanicsPolicy.WaveCounts> waveSpawnSchedule = List.of();
@@ -28179,6 +28180,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 clearCurrentHuntMark(waveObjectiveStartedMillis);
                 if (!waveTwoStageRehydrated) {
                     waveTwoIntroStartedMillis = waveObjectiveStartedMillis;
+                    waveTwoIntroStagingPending = true;
                     waveTwoMarkCycle = 0;
                     waveTwoMarkEpoch = -1L;
                     waveTwoMarkGroup = -1;
@@ -44785,6 +44787,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (UUID participantId : marked) {
             Player participant = Bukkit.getPlayer(participantId);
             if (participant == null) continue;
+            if (waveTwoIntroStagingPending) {
+                waveTwoIntroStagingPending = false;
+                if (!WaveTwoCinematicPolicy.combatReady(waveTwoIntroStartedMillis, now)) {
+                    stageWaveTwoObserver(participant);
+                }
+            }
             waveTwoMarkedParticipants.add(participantId);
             refreshWaveTwoMarkGlow(participant);
             renderWaveTwoEndermanVeil(participant);
@@ -44802,6 +44810,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         waveTwoMarkedParticipants.retainAll(marked);
         waveTwoMarkPacketAt.keySet().retainAll(marked);
         waveTwoLayoutRefreshAt.keySet().retainAll(marked);
+    }
+
+    /** Relocate the marked viewer once before the first signed opening cue. */
+    private void stageWaveTwoObserver(Player player) {
+        Location core = coreCombatAnchorLocation();
+        if (core == null || !player.getWorld().equals(core.getWorld())) return;
+        Location current = player.getLocation();
+        Vector radial = current.toVector().subtract(core.toVector()).setY(0.0D);
+        if (radial.lengthSquared() < .01D) radial.setX(1.0D);
+        double radius = waveMovementRadius();
+        Location preferred = core.clone().add(radial.normalize().multiply(Math.min(12.0D, radius)));
+        Location safe = findSafeCombatLocation(core, preferred, radius);
+        if (safe == null) {
+            getLogger().info("WAVE_TWO_INTRO_STAGING event=" + eventId + " generation=" + generation
+                    + " result=no-safe-footing");
+            return;
+        }
+        Vector look = core.toVector().subtract(safe.toVector()).setY(0.0D);
+        if (look.lengthSquared() > .01D) safe.setDirection(look);
+        boolean moved = player.teleport(safe);
+        getLogger().info("WAVE_TWO_INTRO_STAGING event=" + eventId + " generation=" + generation
+                + " result=" + (moved ? "placed" : "teleport-cancelled"));
     }
 
     /**
@@ -45388,6 +45418,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean clearWaveObjectiveState() {
         portalShockwaveReceiptMask = 0;
         waveTwoIntroStartedMillis = 0L;
+        waveTwoIntroStagingPending = false;
         waveTwoPhantomAdmissionFailures = 0;
         if (riftRam != null) { riftRam.close(); riftRam = null; }
         if (riftRamBossBar != null) { riftRamBossBar.removeAll(); riftRamBossBar.setVisible(false); }

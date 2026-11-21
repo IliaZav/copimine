@@ -1469,6 +1469,7 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     assert candidate['replaceSha256']==[
         # The candidates these pins replaced are prepended (section 5
         # convention), newest first.
+        'c327507a72f9690703d6771fd0248df0864ebce6593f28648bba74f31aeb9a28',
         '1ee4d756560ee80dea287f31497ec4e6a2bfd40b8a0e333da0b4188561f61fc7',
         'c4b5645535af84c450f9278269b84a1256bec8a90b825cef2aea3899899488f8',
         '7a4871be8cfd10bcf004657548bea2c497f7198bee8d9f9310418a905ad3bd46',

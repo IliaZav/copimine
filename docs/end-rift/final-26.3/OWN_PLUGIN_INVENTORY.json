@@ -203,8 +203,8 @@
         "tests/PrisonerAbilityControllerTest.java"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineEndEvent.jar",
-      "candidateSha256": "c327507a72f9690703d6771fd0248df0864ebce6593f28648bba74f31aeb9a28",
-      "sha256": "c327507a72f9690703d6771fd0248df0864ebce6593f28648bba74f31aeb9a28",
+      "candidateSha256": "8ceac981a86f8e4752f5f6139b15419cc1bfb751fda0af1b9163ca79044ebd4a",
+      "sha256": "8ceac981a86f8e4752f5f6139b15419cc1bfb751fda0af1b9163ca79044ebd4a",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
       "realServerEnable": "BLOCKED",
@@ -238,8 +238,8 @@
         "tests/test_client_legacy_bridge_auth_contract.py"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineNarcotics.jar",
-      "candidateSha256": "b5d30b23011b04354b26e43053143f4d64c85e048739025048f0a8b82ca890eb",
-      "sha256": "b5d30b23011b04354b26e43053143f4d64c85e048739025048f0a8b82ca890eb",
+      "candidateSha256": "ec2ef8d50c780d2faf52469bd52d20724d8be9c5f8c23a76c5c9d459782e35a6",
+      "sha256": "ec2ef8d50c780d2faf52469bd52d20724d8be9c5f8c23a76c5c9d459782e35a6",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
       "realServerEnable": "BLOCKED",

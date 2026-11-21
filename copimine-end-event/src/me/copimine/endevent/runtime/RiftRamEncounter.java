@@ -10,6 +10,8 @@ import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.util.Transformation;
 import org.bukkit.util.Vector;
+import org.bukkit.block.Block;
+import org.bukkit.block.TileState;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import java.util.*;
@@ -52,6 +54,14 @@ public final class RiftRamEncounter {
         default boolean placePillarCollider(Location centre, int halfWidth, int height) { return true; }
         /** Restore every pillar collider cell this encounter placed. */
         default boolean clearPillarCollider() { return true; }
+        /**
+         * Whether the exact collider volume is free of living bodies.
+         *
+         * <p>Block passability alone is not enough: a player standing where the
+         * column will be journaled would be entombed. The host owns entity
+         * lookups, so admission delegates the AABB test to it.</p>
+         */
+        default boolean volumeFree(Location centre, int halfWidth, int height) { return true; }
         int particleBudget();
         void remove(Entity entity);
         /** Moves an owned entity through the internal permit path; reports refusal. */
@@ -91,7 +101,7 @@ public final class RiftRamEncounter {
     private final Map<UUID,Location> pillarRestPositions = new HashMap<>();
     private final List<Piece> armor = new ArrayList<>();
     private final List<Debris> debris = new ArrayList<>();
-    private final Set<UUID> chargeHits = new HashSet<>(), stompHits = new HashSet<>(), stompRoster = new HashSet<>();
+    private final Set<UUID> chargeHits = new HashSet<>(), stompHits = new HashSet<>(), stompRoster = new HashSet<>(), stompResolved = new HashSet<>();
     private final Set<Endermite> mites = new HashSet<>();
     /**
      * The elite marksman that holds the final pillar.
@@ -179,28 +189,88 @@ public final class RiftRamEncounter {
     }
 
     /** Deterministic, bounded search; all occupied volume and floor cells must be safe. */
-    private Location findSite(int ordinal, Location avoid) {
+    private Location findSite(int acceptedImpacts, Location avoid) {
         Location core = host.core();
         if (core == null) return null;
+        // The layout angle is keyed to the pillar being raised, while the
+        // admitted volume must use the SAME impact count as the collider that
+        // buildPillar() will journal.
+        int ordinal = acceptedImpacts + 1;
         for (int i=0;i<32;i++) {
             double angle = (ordinal * 2.399963 + i * Math.PI / 16);
             double radius = 10 + i % 3 * 2;
             Location candidate = new Location(core.getWorld(), core.getBlockX()+.5+Math.cos(angle)*radius,
                     host.floorY()+1,core.getBlockZ()+.5+Math.sin(angle)*radius);
             if (avoid != null && candidate.distanceSquared(avoid)<36) continue;
-            if (safeVolume(candidate)) return candidate;
+            if (pillarSiteSafe(candidate, acceptedImpacts)) return candidate;
         }
         return null;
     }
 
-    private boolean safeVolume(Location at) {
-        if (!host.inArena(at)) return false;
+    /**
+     * Admits the exact volume the host will journal, not a 3x3x4 guess.
+     *
+     * <p>The old probe checked the ordinary pillar footprint for every site,
+     * while the monument is four blocks wide and about seven tall. That let a
+     * "safe" site place a real barrier inside a player, over an obstacle or
+     * across a chunk border. The dimensions come from {@link RiftRamPolicy},
+     * so admission, the journal and the visible model can never disagree.</p>
+     */
+    private boolean pillarSiteSafe(Location at, int acceptedImpacts) {
+        if (at == null || at.getWorld() == null || !host.inArena(at)) return false;
         World world = at.getWorld();
-        if (!world.isChunkLoaded(at.getBlockX()>>4, at.getBlockZ()>>4)) return false;
-        for(int x=-1;x<=1;x++) for(int z=-1;z<=1;z++) {
-            Location floor = at.clone().add(x,-1,z);
-            if (!host.inArena(at.clone().add(x,0,z)) || !floor.getBlock().getType().isSolid()) return false;
-            for(int y=0;y<4;y++) if(!at.clone().add(x,y,z).getBlock().isPassable()) return false;
+        int halfWidth = RiftRamPolicy.pillarColliderHalfWidth(acceptedImpacts);
+        int height = RiftRamPolicy.pillarColliderHeight(acceptedImpacts);
+        int minX = (int) Math.floor(at.getX() - halfWidth);
+        int maxX = (int) Math.floor(at.getX() + halfWidth) - 1;
+        int minZ = (int) Math.floor(at.getZ() - halfWidth);
+        int maxZ = (int) Math.floor(at.getZ() + halfWidth) - 1;
+        if (maxX < minX) maxX = minX;
+        if (maxZ < minZ) maxZ = minZ;
+        int baseY = at.getBlockY();
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                // Every column must be loaded; a tower straddling a chunk edge
+                // may not be reserved half in an unavailable chunk.
+                if (!world.isChunkLoaded(x >> 4, z >> 4)) return false;
+                if (!host.inArena(new Location(world, x + .5, baseY, z + .5))) return false;
+                Block floor = world.getBlockAt(x, baseY - 1, z);
+                if (!floor.getType().isSolid() || floor.isLiquid()
+                        || floor.getState() instanceof TileState) return false;
+                for (int y = baseY; y < baseY + height; y++) {
+                    Block cell = world.getBlockAt(x, y, z);
+                    if (!cell.isPassable() || cell.isLiquid()
+                            || cell.getState() instanceof TileState) return false;
+                }
+            }
+        }
+        // Blocks alone are not enough: a player standing where the
+        // column will be journaled would be entombed. The host owns entity
+        // lookups, so admission delegates the AABB test to it.
+        return host.volumeFree(at, halfWidth, height);
+    }
+
+    /**
+     * Movement admission for the Ram itself (not a pillar site).
+     *
+     * <p>A ravager body needs a solid floor and four passable blocks on a
+     * three-by-three footprint; it does not reserve a monument-sized column.
+     * Charging must never warp the actor into terrain, but using the pillar
+     * volume here would make every step beside a raised tower illegal.</p>
+     */
+    private boolean movementVolumeOpen(Location at) {
+        if (at == null || at.getWorld() == null || !host.inArena(at)) return false;
+        World world = at.getWorld();
+        if (!world.isChunkLoaded(at.getBlockX() >> 4, at.getBlockZ() >> 4)) return false;
+        for (int x = -1; x <= 1; x++) {
+            for (int z = -1; z <= 1; z++) {
+                Location column = at.clone().add(x, 0, z);
+                Location floor = at.clone().add(x, -1, z);
+                if (!host.inArena(column) || !floor.getBlock().getType().isSolid()) return false;
+                for (int y = 0; y < 4; y++) {
+                    if (!at.clone().add(x, y, z).getBlock().isPassable()) return false;
+                }
+            }
         }
         return true;
     }
@@ -230,7 +300,7 @@ public final class RiftRamEncounter {
 
     private boolean raisePillar() {
         if (!RiftRamPolicy.mayRaisePillar(impacts) || pillarId!=null) return false;
-        Location site = findSite(impacts+1,ram.getLocation());
+        Location site = findSite(impacts,ram.getLocation());
         if (site==null) return false;
         pillar = site;
         pillarId = UUID.randomUUID();
@@ -382,7 +452,7 @@ public final class RiftRamEncounter {
             case STOMP_WARNING -> {
                 hold(); dust(ram.getLocation(),18,.8,.15);
                 if(tick-actionTick>=RiftRamPolicy.STOMP_WARNING_TICKS) {
-                    stompOrigin=ram.getLocation().clone(); lastRadius=0; stompHits.clear(); stompRoster.clear();
+                    stompOrigin=ram.getLocation().clone(); lastRadius=0; stompHits.clear(); stompResolved.clear(); stompRoster.clear();
                     for(Player p:players) stompRoster.add(p.getUniqueId());
                     lastStomp=tick; begin(Action.STOMP);
                     dust(stompOrigin,120,1.7,.25);
@@ -524,7 +594,7 @@ public final class RiftRamEncounter {
                 pillar.getX(),pillar.getY(),pillar.getZ(), impacts)) {
             impact(); return;
         }
-        if(!safeVolume(to)) { recover(); return; }
+        if(!movementVolumeOpen(to)) { recover(); return; }
         if(!host.move(ram, to)) { recover(); return; }
         if ((tick - actionTick) % 3 == 0) chargeTell(null, RiftRamPolicy.chargeWindupTicks());
         if ((tick - actionTick) % 6 == 0)
@@ -646,10 +716,14 @@ public final class RiftRamEncounter {
             eligible.add(p.getUniqueId());
             if(!stompRoster.contains(p.getUniqueId()) || !p.getWorld().equals(stompOrigin.getWorld())) continue;
             double distance=Math.hypot(p.getX()-stompOrigin.getX(),p.getZ()-stompOrigin.getZ());
-            if(RiftRamPolicy.stompHits(distance,p.getY()-host.floorY()-1,p.isOnGround(),lastRadius,radius,stompHits.contains(p.getUniqueId()))) {
-                // Damages through the same accepted-hit path as every other Ram
-                // attack, so one cast can never damage a player twice and the
-                // damage radius is exactly the visible wave front.
+            if(RiftRamPolicy.stompHits(distance,p.getY()-host.floorY()-1,p.isOnGround(),lastRadius,radius,stompResolved.contains(p.getUniqueId()))) {
+                // Every target is resolved exactly once per cast, but only an
+                // ACCEPTED damage application becomes a hit. A protected,
+                // invulnerable or otherwise refused player must not be recorded
+                // as struck and must not receive the secondary slow/impact
+                // feedback, or the ledger would permanently claim a hit that
+                // never happened and the visible ring would disagree with it.
+                stompResolved.add(p.getUniqueId());
                 if (!host.damage(ram, p, RiftRamPolicy.STOMP_DAMAGE)) continue;
                 stompHits.add(p.getUniqueId());
                 p.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
@@ -661,7 +735,7 @@ public final class RiftRamEncounter {
         }
         stompRoster.retainAll(eligible);
         lastRadius=radius;
-        if(elapsed>=RiftRamPolicy.STOMP_EXPANSION_TICKS) { stompRoster.clear(); stompHits.clear(); begin(Action.RECOVER); }
+        if(elapsed>=RiftRamPolicy.STOMP_EXPANSION_TICKS) { stompRoster.clear(); stompHits.clear(); stompResolved.clear(); begin(Action.RECOVER); }
     }
     private void dust(Location at,int count,double spread,double height) {
         for(Player viewer:host.players()) if(viewer.getWorld().equals(at.getWorld()) && viewer.getLocation().distanceSquared(at)<48*48)
@@ -1116,7 +1190,7 @@ public final class RiftRamEncounter {
             // The actor is gone; its UUID remains the durable death identity.
             pillarSkeleton = null;
         }
-        stompHits.clear(); stompRoster.clear(); chargeHits.clear();
+        stompHits.clear(); stompRoster.clear(); stompResolved.clear(); chargeHits.clear();
     }
     public void close() {
         if(closed) return;
@@ -1249,7 +1323,7 @@ public final class RiftRamEncounter {
                 double x=Double.parseDouble(xyz[0]),y=Double.parseDouble(xyz[1]),z=Double.parseDouble(xyz[2]);
                 if(!Double.isFinite(x)||!Double.isFinite(y)||!Double.isFinite(z)) throw new IllegalArgumentException("pillar-nonfinite");
                 pillar=new Location(ram.getWorld(),x,y,z);
-                if(!safeVolume(pillar) || !buildPillar()) throw new IllegalArgumentException("pillar-site-invalid");
+                if(!pillarSiteSafe(pillar, impacts) || !buildPillar()) throw new IllegalArgumentException("pillar-site-invalid");
             }
             // A crash after collision commit but before the accepted landing
             // resumes that landing, never a replacement actor or a new impact.

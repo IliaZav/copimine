@@ -86,7 +86,7 @@ public class RamChargePermitProbe {
   // The encounter's own liveness flag: a closed run must not consume contacts.
   boolean closed;
   Set<UUID> chargeHits=new HashSet<>();
-  boolean safeVolume(Location at){return true;}void recover(){recoveries++;}void impact(){impacts++;}
+  boolean movementVolumeOpen(Location at){return true;}void recover(){recoveries++;}void impact(){impacts++;}
   static void check(boolean value,String message){if(!value)throw new AssertionError(message);}
   public static void main(String[] args){
     RamChargePermitProbe p=new RamChargePermitProbe();p.ownedEntities.put(p.ram.uuid,p.ram);

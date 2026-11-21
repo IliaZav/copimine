@@ -300,6 +300,7 @@ public final class BlackFogAdapterProbe {
     // W5-004 bookkeeping: real post-fog packs spawned and the retry deadline.
     int wave5PostFogPacksSpawned;
     int currentFogTargetCycles = 6, currentFogRosterPlayers = 4, wave5PreFogRefills;
+    int wave5PreFogRefillFailures;
     int wave5PostFogClearedMask;
     boolean wave5CycleCleared;
     int[] wave5DeadRoles = new int[3];

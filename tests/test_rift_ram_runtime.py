@@ -96,11 +96,12 @@ public class RamRuntimeProbe {
   // Cleanup restores armour plates to where they stood; the probe keeps the same
   // rest ledger so the real cleanupDisplays() body compiles unmodified.
   Map<UUID,Location> pillarRestPositions=new HashMap<>();
-  Set<UUID> stompHits=new HashSet<>(),stompRoster=new HashSet<>(),chargeHits=new HashSet<>();
+  Set<UUID> stompHits=new HashSet<>(),stompRoster=new HashSet<>(),stompResolved=new HashSet<>(),chargeHits=new HashSet<>();
   UUID id(){return ram==null?persistentId:ram.uuid;}
   static class Bukkit { static Entity loaded;static Map<UUID,Entity> guards=new HashMap<>();
     static Entity getEntity(UUID id){return loaded instanceof Ravager r && r.uuid.equals(id)?loaded:guards.get(id);} }
   boolean safeVolume(Location at){return true;}
+  boolean pillarSiteSafe(Location at,int impacts){return true;}
   boolean buildPillar(){pillarDisplays.add(new BlockDisplay());return true;}
   void createArmor(){armor.clear();for(int i=impacts+1;i<=RiftRamPolicy.ARMOUR_PLATES;i++)armor.add(new Piece(new BlockDisplay(),i));}
   void dust(Location at,int n,double a,double b){}

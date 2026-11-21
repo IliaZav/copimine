@@ -151,11 +151,14 @@ public final class RamPillarColliderProbe {
     HazardMutationJournal hazardJournal = new HazardMutationJournal();
     final Map<String, String> riftRamPillarColliderOriginals = new LinkedHashMap<>();
     boolean riftRamPillarColliderActive;
+    boolean refuseRestore;
     Logger getLogger() { return Logger.getAnonymousLogger(); }
-    void restoreBlock(Block block, String original) {
+    boolean restoreBlock(Block block, String original) {
         block.world.writes++;
+        if (refuseRestore) return false;
         String value = original == null ? "minecraft:stone" : original;
         block.setBlockData(new BlockData(value), false);
+        return true;
     }
 ''' + "\n" + "{METHODS}" + r'''
     static void check(boolean ok, String m) { if (!ok) throw new AssertionError(m); }
@@ -269,6 +272,36 @@ public final class RamPillarColliderProbe {
                 check(!p.placeRiftRamPillarCollider("e", 4L, new Location(world, 10, 68, 0), 1, 0), "zero height");
                 check(p.hazardJournal.prepares == 0 && world.writes == 0, "degenerate input must be refused first");
             }
+            case "restore-refusal-keeps-journal" -> {
+                var p = new RamPillarColliderProbe();
+                var world = new World(); Bukkit.world = world;
+                check(p.placeRiftRamPillarCollider("e", 4L, new Location(world, 10, 68, 0), 1, 4), "place");
+                int owned = p.riftRamPillarColliderOriginals.size();
+                p.refuseRestore = true;
+                check(!p.clearRiftRamPillarCollider("test"),
+                        "a refused restoration must not report a successful clear");
+                check(p.riftRamPillarColliderActive, "a refused clear must stay active for retry");
+                check(p.riftRamPillarColliderOriginals.size() == owned,
+                        "a refused clear must keep the ownership journal");
+                check(p.hazardJournal.restores == 0,
+                        "the journal must not be marked restored before every cell is confirmed");
+                p.refuseRestore = false;
+                check(p.clearRiftRamPillarCollider("retry"), "retry after the refusal must succeed");
+                check(!p.riftRamPillarColliderActive && p.riftRamPillarColliderOriginals.isEmpty(), "retry cleanup");
+                check(p.hazardJournal.restores == 1, "retry commits the journal once");
+            }
+            case "journal-commit-failure-retries" -> {
+                var p = new RamPillarColliderProbe();
+                var world = new World(); Bukkit.world = world;
+                check(p.placeRiftRamPillarCollider("e", 4L, new Location(world, 10, 68, 0), 1, 4), "place");
+                p.hazardJournal.markRestoredSucceeds = false;
+                check(!p.clearRiftRamPillarCollider("test"),
+                        "an uncommitted journal restore must not be reported as success");
+                check(p.riftRamPillarColliderActive, "the collider must stay flagged until the journal commits");
+                p.hazardJournal.markRestoredSucceeds = true;
+                check(p.clearRiftRamPillarCollider("retry"), "journal retry must succeed without rewriting blocks");
+                check(!p.riftRamPillarColliderActive && p.riftRamPillarColliderOriginals.isEmpty(), "retry cleanup");
+            }
             case "final-pillar-collider-follows-cracks" -> {
                 // An ordinary pillar keeps a 2x2 footprint and reaches its crown.
                 check(RiftRamPolicy.pillarColliderHalfWidth(0) == 1, "ordinary half width");
@@ -345,6 +378,7 @@ def collider_probe(tmp_path_factory):
     "place-and-clear", "busy-journal-refused", "unsafe-cell-refused", "container-refused",
     "apply-failure-rolls-back", "foreign-edit-preserved", "rebuild-supersedes", "corrupt-input-refused",
     "final-pillar-collider-follows-cracks", "unloaded-and-commit-retry", "occupied-tower-refused",
+    "restore-refusal-keeps-journal", "journal-commit-failure-retries",
 ])
 def test_pillar_collider_is_solid_and_crash_safe(collider_probe, scenario):
     ran = subprocess.run(["java", "-cp", str(collider_probe), "RamPillarColliderProbe", scenario],

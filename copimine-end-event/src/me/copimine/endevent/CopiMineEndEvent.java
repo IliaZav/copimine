@@ -68,6 +68,7 @@ import me.copimine.endevent.domain.KaguneRingGapPolicy;
 import me.copimine.endevent.domain.BossAbilitySelector;
 import me.copimine.endevent.domain.BossAnimationId;
 import me.copimine.endevent.domain.BossAnimationPriorityPolicy;
+import me.copimine.endevent.domain.ClientBindingSnapshotCache;
 import me.copimine.endevent.domain.BossAnimationPosePolicy;
 import me.copimine.endevent.domain.BossHitboxPose;
 import me.copimine.endevent.domain.BossBrain;
@@ -446,6 +447,7 @@ import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Transformation;
 import org.bukkit.util.Vector;
+import org.bukkit.util.BoundingBox;
 import org.joml.AxisAngle4f;
 import org.joml.Vector3f;
 import org.joml.Quaternionf;
@@ -805,6 +807,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int SPELL_FLIGHT_RENDER_INTERVAL_TICKS = 2;
     private static final String SPELL_FLIGHT_EFFECT = "spell-flight";
     private static final long BOSS_PHASE_VISUAL_TRANSITION_MILLIS = 1_200L;
+    /**
+     * How often a full forced binding snapshot is re-sent per viewer (30 s).
+     *
+     * <p>The per-second pass is now a delta, so a binding lost while a player
+     * changed chunks would never be repaired without a bounded full resync.
+     * This is loss recovery, not a cosmetic repeat.</p>
+     */
+    private static final long CLIENT_BINDING_FULL_RESYNC_TICKS = 600L;
     private static final int SPELL_VISUAL_MAX_POINTS = 48;
     private static final int ARENA_VISUAL_MAX_CELLS = 96;
     /** The safe zone is shown before it becomes the only survivable ground. */
@@ -1163,6 +1173,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private int currentFogTargetCycles = BlackFogTimingPolicy.MIN_CYCLES;
     private int currentFogRosterPlayers = 2;
     private int wave5PreFogRefills;
+    private int wave5PreFogRefillFailures;
     private boolean wave5CycleCleared;
     private int wave5FogEliteResolvedMask;
     private int wave5PostFogClearedMask;
@@ -1706,6 +1717,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private RuntimeDiagnosticsSnapshot runtimeDiagnosticsSnapshot = RuntimeDiagnosticsSnapshot.empty();
     /** PlayerJoinEvent can run before AuthMe finishes; bindings are retried after eligibility changes. */
     private final Set<UUID> clientBindingReadyPlayers = new HashSet<>();
+    /**
+     * Per-viewer delta of the visual binding that actually reached that viewer.
+     *
+     * <p>The boss tick used to rebroadcast every owned entity's bind once per
+     * second even when the visual id had not changed. With the full Kagune
+     * roster that cosmetic repeat competed with real contact/cast/damage
+     * frames for the signed V4 budget. The cache suppresses only identical
+     * re-sends; spawn, late join, generation rotation and a periodic forced
+     * resync still deliver a complete snapshot.</p>
+     */
+    private final ClientBindingSnapshotCache clientBindingSnapshots =
+            new ClientBindingSnapshotCache();
+    /** Viewer -> last delivered boss bind signature (instance|visual|phase|hp). */
+    private final Map<UUID, String> bossBindingSignatures = new HashMap<>();
+    private long runtimeDiagnosticsClientBindingsSent;
+    private long runtimeDiagnosticsClientBindingsCoalesced;
+    private long runtimeDiagnosticsClientBindingsFailed;
     private final EventMusicSyncPolicy eventMusicSyncPolicy = new EventMusicSyncPolicy();
     private final CoreInteractionGuard coreInteractionGuard = new CoreInteractionGuard();
     private final WaveProjectileAdmissionController waveProjectileAdmission =
@@ -6124,6 +6152,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         stopEventMusic();
         clearWorldVfx();
         clientBindingReadyPlayers.clear();
+        clientBindingSnapshots.clear();
+        bossBindingSignatures.clear();
         nextClientBindingRefreshMillis = 0L;
         if (!bossBindingInstanceId.isBlank()) {
             for (Player player : Bukkit.getOnlinePlayers()) {
@@ -6141,6 +6171,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         clientBindingReadyPlayers.remove(player.getUniqueId());
+        clientBindingSnapshots.invalidateViewer(player.getUniqueId());
+        bossBindingSignatures.remove(player.getUniqueId());
         if (endEventBridgeV4 != null) {
             endEventBridgeV4.unbindContext(player.getUniqueId());
         }
@@ -7923,6 +7955,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         double particlePacketsPerSecond = runtimeDiagnosticsParticlePackets * 1000.0D / elapsed;
         double particleBatchesPerSecond = runtimeDiagnosticsParticleBatches * 1000.0D / elapsed;
         double pluginMessagesPerSecond = runtimeDiagnosticsPluginMessages * 1000.0D / elapsed;
+        long clientBindingsSent = runtimeDiagnosticsClientBindingsSent;
+        long clientBindingsCoalesced = runtimeDiagnosticsClientBindingsCoalesced;
+        long clientBindingsFailed = runtimeDiagnosticsClientBindingsFailed;
         double mspt = averageTickMillis();
         long gcCollections = ManagementFactory.getGarbageCollectorMXBeans().stream()
                 .mapToLong(bean -> Math.max(0L, bean.getCollectionCount()))
@@ -7958,6 +7993,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         runtimeDiagnosticsParticlePackets = 0L;
         runtimeDiagnosticsParticleBatches = 0L;
         runtimeDiagnosticsPluginMessages = 0L;
+        runtimeDiagnosticsClientBindingsSent = 0L;
+        runtimeDiagnosticsClientBindingsCoalesced = 0L;
+        runtimeDiagnosticsClientBindingsFailed = 0L;
         runtimeDiagnosticsLastGcCollections = gcCollections;
         runtimeDiagnosticsLastGcPauseMillis = gcPauseMillis;
         runtimeDiagnosticsLastThreadCpuNanos = threadCpuNanos;
@@ -7977,6 +8015,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     waveProjectileBudgetPlayers(waveProjectileLivingPlayers()))
                     + " particle_packets_sec=" + formatRate(particlePacketsPerSecond)
                     + " plugin_messages_sec=" + formatRate(pluginMessagesPerSecond)
+                    + " client_bindings_sent=" + clientBindingsSent
+                    + " client_bindings_coalesced=" + clientBindingsCoalesced
+                    + " client_bindings_failed=" + clientBindingsFailed
+                    + " client_binding_cache_entries=" + clientBindingSnapshots.size()
                     + " gc_collections=" + gcDelta + " gc_pause_ms=" + gcPauseDelta
                     + " server_thread_cpu_percent=" + formatRate(serverThreadCpuPercent));
         }
@@ -15793,15 +15835,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         cleanupOwnedEntitiesForEvent(eventId);
     }
 
-    private void restoreBlock(Block block, String blockData) {
+    private boolean restoreBlock(Block block, String blockData) {
         if (block == null || blockData == null || blockData.isBlank()) {
-            return;
+            return false;
         }
         try {
             BlockData data = Bukkit.createBlockData(blockData);
             block.setBlockData(data, false);
+            // setBlockData does not throw on a soft failure, so confirm the
+            // cell really holds the journaled state before reporting success.
+            return block.getBlockData().matches(data);
         } catch (IllegalArgumentException error) {
             getLogger().warning("Refused to restore invalid event block data at " + block.getLocation());
+            return false;
+        } catch (RuntimeException unavailable) {
+            // Unloaded chunk / disabled world / plugin conflict. The caller must
+            // keep the journal entry and retry instead of claiming a restore.
+            getLogger().log(Level.WARNING, "Event block restore failed at " + block.getLocation(),
+                    unavailable);
+            return false;
         }
     }
 
@@ -28101,6 +28153,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 currentFogRosterPlayers = Math.max(2, Math.min(20, waveScalePlayers()));
                 currentFogTargetCycles = BlackFogTimingPolicy.cycleCount(currentFogRosterPlayers);
                 wave5PreFogRefills = 0;
+                wave5PreFogRefillFailures = 0;
                 wave5CycleCleared = false;
                 wave5FogEliteResolvedMask = 0;
                 wave5PostFogClearedMask = 0;
@@ -28521,6 +28574,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             public boolean clearPillarCollider() {
                 return clearRiftRamPillarCollider("pillar-retired");
             }
+            public boolean volumeFree(Location centre, int halfWidth, int height) {
+                return riftRamPillarVolumeFree(centre, halfWidth, height);
+            }
             public int particleBudget() {
                 return Math.max(96, Math.min(512, getConfig().getInt("wave6.rift-ram.stomp-particles-per-viewer", 256)));
             }
@@ -28539,6 +28595,50 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!clearRiftRamRestartPresentation()) return;
             riftRam.restore(riftRamCheckpoint);
         } else riftRam.start(currentWaveScalePlayers);
+    }
+
+    /**
+     * Whether the exact pillar footprint is free of living bodies.
+     *
+     * <p>The journal refuses unsafe blocks, but a player standing in an empty
+     * cell is not unsafe at admission time and would still be entombed when the
+     * barrier is applied. This mirrors the collider's own cell range, so the
+     * test is on the real volume rather than a 3x3 guess.</p>
+     */
+    private boolean riftRamPillarVolumeFree(Location centre, int halfWidth, int height) {
+        if (centre == null || centre.getWorld() == null || halfWidth < 1 || height < 1) {
+            return false;
+        }
+        World world = centre.getWorld();
+        double minX = Math.floor(centre.getX() - halfWidth);
+        double minZ = Math.floor(centre.getZ() - halfWidth);
+        double maxX = Math.floor(centre.getX() + halfWidth);
+        double maxZ = Math.floor(centre.getZ() + halfWidth);
+        double minY = centre.getBlockY();
+        BoundingBox volume = new BoundingBox(minX, minY, minZ,
+                maxX, minY + height + 0.5D, maxZ);
+        for (Entity entity : world.getNearbyEntities(volume)) {
+            if (entity == null || !entity.isValid() || entity.isDead()) {
+                continue;
+            }
+            // Our own pillar/debris/beam displays are not bodies.
+            if (entity instanceof Display) {
+                continue;
+            }
+            if (riftRam != null && entity.getUniqueId().equals(riftRam.id())) {
+                continue;
+            }
+            if (entity instanceof Player player && !player.isOnline()) {
+                continue;
+            }
+            if (entity.getBoundingBox().overlaps(volume)) {
+                getLogger().info("END_RIFT_RAM_PILLAR_SITE_OCCUPIED event=" + eventId
+                        + " generation=" + generation + " entity=" + entity.getUniqueId()
+                        + " type=" + entity.getType() + " at=" + locationText(entity.getLocation()));
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -28644,7 +28744,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return true;
     }
 
-    /** Remove the pillar collider and restore every original cell. */
+    /**
+     * Remove the pillar collider and restore every original cell.
+     *
+     * <p>Restoration is transactional and auditable. A cell is only dropped from
+     * the ownership map after the host confirms the exact journaled BlockData is
+     * back, so a refused write, an unloaded chunk or a partial disk failure
+     * leaves the remaining cells owned and retryable instead of reporting a
+     * successful clear. A cell another owner changed away from our barrier is
+     * left untouched and treated as already resolved.</p>
+     */
     private boolean clearRiftRamPillarCollider(String reason) {
         if (!riftRamPillarColliderActive && riftRamPillarColliderOriginals.isEmpty()) return true;
         World world = Bukkit.getWorld(worldName);
@@ -28653,19 +28762,65 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " reason=world-unavailable");
             return false;
         }
-        int restored = 0;
+        List<String> resolved = new ArrayList<>();
+        int restored = 0, skipped = 0, refused = 0;
         for (Map.Entry<String, String> entry : riftRamPillarColliderOriginals.entrySet()) {
-            String[] parts = entry.getKey().split(":");
-            if (parts.length != 3 || !restoreRiftRamColliderCell(world, Integer.parseInt(parts[0]),
-                    Integer.parseInt(parts[1]), Integer.parseInt(parts[2]), entry.getValue())) return false;
-            restored++;
+            String key = entry.getKey();
+            String[] parts = key.split(":");
+            if (parts.length != 3) {
+                refused++;
+                continue;
+            }
+            final Block cell;
+            try {
+                cell = world.getBlockAt(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]),
+                        Integer.parseInt(parts[2]));
+            } catch (NumberFormatException invalidKey) {
+                refused++;
+                continue;
+            }
+            // Only a barrier we wrote is restored; anything else is left alone
+            // so a clear never overwrites another owner's block.
+            if (cell.getType() != REALITY_SPLIT_WALL_MATERIAL) {
+                skipped++;
+                resolved.add(key);
+                continue;
+            }
+            if (restoreBlock(cell, entry.getValue())) {
+                restored++;
+                resolved.add(key);
+            } else {
+                refused++;
+            }
         }
-        if (hazardJournal == null || !hazardJournal.markRestored()) return false;
+        for (String key : resolved) {
+            riftRamPillarColliderOriginals.remove(key);
+        }
+        boolean allCellsResolved = riftRamPillarColliderOriginals.isEmpty();
+        if (!allCellsResolved) {
+            // Keep the remaining ownership entries and stay active: the next
+            // clear attempt (or boot recovery) finishes the job.
+            getLogger().severe("END_RIFT_RAM_PILLAR_COLLIDER_CLEAR_INCOMPLETE event=" + eventId
+                    + " generation=" + generation + " reason=" + reason
+                    + " restored=" + restored + " skipped=" + skipped
+                    + " refused=" + refused
+                    + " remaining=" + riftRamPillarColliderOriginals.size());
+            return false;
+        }
+        if (hazardJournal != null && !hazardJournal.markRestored()) {
+            // Every cell is back, but the journal could not be committed. Keep
+            // the collider flagged active with an empty map so a retry only has
+            // to commit the journal, never guess about world state.
+            getLogger().severe("END_RIFT_RAM_PILLAR_COLLIDER_JOURNAL_RESTORE_FAILED event=" + eventId
+                    + " generation=" + generation + " reason=" + reason
+                    + " restored=" + restored + " skipped=" + skipped);
+            return false;
+        }
         riftRamPillarColliderActive = false;
-        riftRamPillarColliderOriginals.clear();
         getLogger().info("END_RIFT_RAM_PILLAR_COLLIDER_CLEARED event=" + eventId
                 + " generation=" + generation + " reason=" + reason
-                + " restored=" + restored);
+                + " restored=" + restored + " skipped=" + skipped
+                + " refused=" + refused);
         return true;
     }
 
@@ -29731,9 +29886,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         wave5CycleCleared = true;
-        // Set the deadline before spawning so a refused attempt cannot retry every tick.
-        wave5PreFogRefillAtMillis = now + Wave5PreFogRefillPolicy.REFILL_DELAY_MILLIS;
-        if (spawnWaveFiveRefillPack(now, "END_RIFT_WAVE5_PRE_FOG_REFILL")) wave5PreFogRefills++;
+        if (spawnWaveFiveRefillPack(now, "END_RIFT_WAVE5_PRE_FOG_REFILL")) {
+            wave5PreFogRefills++;
+            wave5PreFogRefillFailures = 0;
+            return;
+        }
+        // A refused spawn must not retry on the very next tick. The debt stays
+        // owed (wave5CycleCleared and the refill counter are unchanged), but the
+        // attempt is delayed with a bounded exponential backoff and reported, so
+        // an unplaceable pack can never turn into an every-tick spawn storm.
+        wave5PreFogRefillFailures++;
+        long backoff = Wave5PreFogRefillPolicy.failureBackoffMillis(wave5PreFogRefillFailures);
+        wave5PreFogRefillAtMillis = now + backoff;
+        getLogger().severe("END_RIFT_WAVE5_PRE_FOG_REFILL_BACKOFF event=" + eventId
+                + " generation=" + generation + " cycle=" + currentFogCycle
+                + " attempt=" + wave5PreFogRefillFailures
+                + " refills=" + wave5PreFogRefills
+                + " backoff_ms=" + backoff
+                + " retry_at=" + wave5PreFogRefillAtMillis);
     }
 
     /**
@@ -30139,6 +30309,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (wave5CycleCleared) wave5PostFogClearedMask |= 1 << currentFogCycle;
                 currentFogCycle++;
                 wave5PreFogRefills = 0;
+                wave5PreFogRefillFailures = 0;
                 if (currentFogCycle >= currentFogTargetCycles) {
                     blackFogPhaseDeadlineMillis = 0L;
                     blackFogPhase = BlackFogPhase.SAFE;
@@ -45279,6 +45450,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         currentFogZoneSetupRetryAtMillis = 0L;
         wave5PreFogRefillAtMillis = 0L;
         wave5PreFogRefills = 0;
+        wave5PreFogRefillFailures = 0;
         wave5CycleCleared = false;
         wave5FogEliteResolvedMask = 0;
                 wave5PostFogClearedMask = 0;
@@ -47577,10 +47749,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // reloads the resource pack.  Re-send the authoritative visual ids at
         // a low cadence so ordinary endermen, spiders and skeletons cannot
         // silently fall back to vanilla models.
+        //
+        // The cadence is a DELTA: only bindings whose signature changed since
+        // the viewer last confirmed it are signed and sent. Every 30 s the
+        // baseline is dropped once so a genuinely lost packet is repaired by a
+        // full snapshot; explicit spawns, late joins and generation changes
+        // still force a complete pass immediately.
+        if (eventTickCounter % CLIENT_BINDING_FULL_RESYNC_TICKS == 0L) {
+            clientBindingSnapshots.clear();
+            bossBindingSignatures.clear();
+        }
         if (eventTickCounter % 20L == 0L) {
-            bindBossClientForOnlinePlayers();
+            bindBossClientForOnlinePlayers(false);
             for (Entity entity : new ArrayList<>(ownedEntities.values())) {
-                bindEventEntityClientForOnlinePlayers(entity);
+                bindEventEntityClientForOnlinePlayers(entity, false);
             }
         }
         updateBossHitbox(boss);
@@ -61848,9 +62030,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void bindBossClientForOnlinePlayers() {
+        bindBossClientForOnlinePlayers(true);
+    }
+
+    private void bindBossClientForOnlinePlayers(boolean force) {
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (isEventVisualViewer(player)) {
-                bindBossClient(player);
+                bindBossClient(player, force);
             }
         }
     }
@@ -62007,12 +62193,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void bindEventEntityClientForOnlinePlayers(Entity entity) {
+        bindEventEntityClientForOnlinePlayers(entity, true);
+    }
+
+    /**
+     * Broadcast one entity binding.
+     *
+     * @param force {@code true} for an explicit spawn or identity change;
+     *              {@code false} for the periodic safety pass, where an
+     *              unchanged signature is coalesced instead of re-signed
+     */
+    private void bindEventEntityClientForOnlinePlayers(Entity entity, boolean force) {
         if (clientVisualId(entity).isBlank()) {
             return;
         }
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (isEventVisualViewer(player)) {
-                bindEventEntityClient(player, entity);
+                bindEventEntityClient(player, entity, force);
             }
         }
     }
@@ -62090,32 +62287,53 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void bindEventEntityClient(Player player, Entity entity) {
+        bindEventEntityClient(player, entity, true);
+    }
+
+    private boolean bindEventEntityClient(Player player, Entity entity, boolean force) {
         if (!isEventVisualViewer(player) || entity == null
                 || !entity.getWorld().equals(player.getWorld())) {
-            return;
+            return false;
         }
         String visualId = clientVisualId(entity);
         if (visualId.isBlank()) {
-            return;
+            return false;
         }
         String instance = entityBindingInstances.computeIfAbsent(entity.getUniqueId(), uuid ->
                 eventId + ":" + generation + ":" + uuid);
+        String signature = instance + "|" + visualId;
+        clientBindingSnapshots.observeGeneration(generation);
+        if (!force && !clientBindingSnapshots.shouldSend(
+                player.getUniqueId(), entity.getUniqueId(), signature)) {
+            clientBindingSnapshots.recordCoalesced();
+            runtimeDiagnosticsClientBindingsCoalesced++;
+            return true;
+        }
         boolean bound = sendClientPacket(player, "END_ENTITY_BIND", instance, 0L,
                 entity.getUniqueId().toString(), visualId);
-        if (bound) {
-            if (EVENT_KIND_RITUAL_CASTER.equals(readString(entity, keyKind))) {
-                sendRitualCasterPhase(player, entity);
-            }
-            if (EVENT_KIND_TENTACLE.equals(readString(entity, keyKind))
-                    && entity instanceof ItemDisplay) {
-                sendTentacleAnimationVisualUpdate(player, entity, tentacleAnimationState(entity));
-            }
-            if (entity.getType() == EntityType.SKELETON) {
-                getLogger().info("SKELETON_TEXTURE_BIND entity=" + entity.getUniqueId()
-                        + " viewer=" + player.getUniqueId() + " visual=" + visualId
-                        + " client_bridge=true");
-            }
+        if (!bound) {
+            // A refused send must not be remembered as delivered, otherwise the
+            // viewer would never receive the binding after readiness recovers.
+            clientBindingSnapshots.recordFailed();
+            runtimeDiagnosticsClientBindingsFailed++;
+            return false;
         }
+        clientBindingSnapshots.recordDelivered(
+                player.getUniqueId(), entity.getUniqueId(), signature);
+        runtimeDiagnosticsClientBindingsSent++;
+        if (EVENT_KIND_RITUAL_CASTER.equals(readString(entity, keyKind))) {
+            sendRitualCasterPhase(player, entity);
+        }
+        if (EVENT_KIND_TENTACLE.equals(readString(entity, keyKind))
+                && entity instanceof ItemDisplay) {
+            sendTentacleAnimationVisualUpdate(player, entity, tentacleAnimationState(entity));
+        }
+        if (entity.getType() == EntityType.SKELETON) {
+            getLogger().info("SKELETON_TEXTURE_BIND entity=" + entity.getUniqueId()
+                    + " viewer=" + player.getUniqueId() + " visual=" + visualId
+                    + " client_bridge=true");
+        }
+        return true;
     }
 
     private void sendRitualCasterPhase(Player viewer, Entity caster) {
@@ -62141,6 +62359,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (instance == null || instance.isBlank()) {
             return;
         }
+        clientBindingSnapshots.invalidateEntity(entityUuid);
         for (Player player : Bukkit.getOnlinePlayers()) {
             sendClientPacket(player, "END_ENTITY_UNBIND", instance, 0L, entityUuid.toString(), "");
         }
@@ -62294,6 +62513,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void bindBossClient(Player player) {
+        bindBossClient(player, true);
+    }
+
+    private void bindBossClient(Player player, boolean force) {
         if (!isEventVisualViewer(player) || bossUuid == null) {
             return;
         }
@@ -62310,9 +62533,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && !CLIENT_VISUAL_BOSS.equalsIgnoreCase(configuredVisual.trim())) {
             bossVisual = configuredVisual.trim();
         }
-        sendClientPacket(player, "END_BOSS_BIND", bossBindingInstanceId, 0L,
-                bossUuid.toString(), bossVisual);
         Entity bound = Bukkit.getEntity(bossUuid);
+        String healthSpec = bound instanceof LivingEntity livingBoss
+                ? Math.round(livingBoss.getHealth()) + "/" + Math.round(bossMaxHealth(livingBoss))
+                : "none";
+        String signature = bossBindingInstanceId + "|" + bossVisual + "|" + bossPhase.name()
+                + "|" + canonicalBossAnimation(bossHitboxAnimationId) + "|" + healthSpec;
+        if (!force && signature.equals(bossBindingSignatures.get(player.getUniqueId()))) {
+            runtimeDiagnosticsClientBindingsCoalesced++;
+            return;
+        }
+        // The bind is the gate: only a delivered bind may be remembered, so a
+        // viewer whose bridge was not ready still receives it once it is.
+        boolean boundSent = sendClientPacket(player, "END_BOSS_BIND", bossBindingInstanceId, 0L,
+                bossUuid.toString(), bossVisual);
+        if (!boundSent) {
+            runtimeDiagnosticsClientBindingsFailed++;
+            return;
+        }
         if (bound instanceof LivingEntity living && isOfficialBoss(living)) {
             // This method is called once per viewer. Broadcasting idle here
             // made N viewers send N whole-audience resets every heartbeat.
@@ -62326,6 +62564,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 sendCurrentBossBarVisualUpdate(player, living, bossPhase);
             }
         }
+        bossBindingSignatures.put(player.getUniqueId(), signature);
+        runtimeDiagnosticsClientBindingsSent++;
     }
 
     private void sendBossPhaseVisualUpdate(Player player, Entity boss, BossPhase stage) {

@@ -8,25 +8,29 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_actual_binding_heartbeat_reasserts_active_clip_only_to_its_viewer(tmp_path):
     source = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(encoding="utf-8")
-    method = extract(source, "void bindBossClient(Player player)")
+    method = extract(source, "void bindBossClient(Player player, boolean force)")
     java = tmp_path / "BossBindingHeartbeatProbe.java"
     java.write_text("""import java.util.*;
 import me.copimine.endevent.domain.BossPhase;
 public class BossBindingHeartbeatProbe {
- static class Entity{} static class LivingEntity extends Entity{} static class Player{}
+ static class Entity{} static class LivingEntity extends Entity{double getHealth(){return 100;}} static class Player{UUID id=new UUID(0,2);UUID getUniqueId(){return id;}}
  static class Bukkit {static Entity getEntity(UUID id){return new LivingEntity();}}
  static class Config{String visual="";String clientBossId(){return visual;}}
  UUID bossUuid=new UUID(0,1);String bossBindingInstanceId="binding",eventId="event";
  String bossHitboxAnimationId="GROUND_SLAM",CLIENT_VISUAL_BOSS="END_RIFT_GUARDIAN_V1";
  long generation=1,BOSS_PHASE_VISUAL_TRANSITION_MILLIS=400;
  long currentBossAnimationCueMillis(){return BOSS_PHASE_VISUAL_TRANSITION_MILLIS;}
+ double bossMaxHealth(LivingEntity e){return 100;}
  BossPhase bossPhase=BossPhase.RIFT;Config config=new Config();
+ Map<UUID,String> bossBindingSignatures=new HashMap<>();
+ int runtimeDiagnosticsClientBindingsSent,runtimeDiagnosticsClientBindingsCoalesced,runtimeDiagnosticsClientBindingsFailed;
  int broadcasts,phases;Player expected;String animation,bindingVisual;
  boolean isEventVisualViewer(Player p){return true;}boolean isOfficialBoss(LivingEntity e){return true;}
- void sendClientPacket(Player p,String type,String instance,long duration,String subject,String visual){
-  if("END_BOSS_BIND".equals(type)){bindingVisual=visual;return;}
-  if(!"END_BOSS_PHASE".equals(type))return;
+ boolean sendClientPacket(Player p,String type,String instance,long duration,String subject,String visual){
+  if("END_BOSS_BIND".equals(type)){bindingVisual=visual;return true;}
+  if(!"END_BOSS_PHASE".equals(type))return true;
   if(p!=expected)throw new AssertionError("heartbeat reached another viewer");phases++;animation=visual;
+  return true;
  }
  void sendCurrentBossPhaseVisualUpdate(LivingEntity e,BossPhase phase,String animation){broadcasts++;}
  void sendCurrentBossBarVisualUpdate(Player p,LivingEntity e,BossPhase phase){}
@@ -35,11 +39,11 @@ public class BossBindingHeartbeatProbe {
 """ + method + """
  public static void main(String[] args){
   var probe=new BossBindingHeartbeatProbe();probe.expected=new Player();
-  probe.bindBossClient(probe.expected);
+  probe.bindBossClient(probe.expected, true);
   if(probe.broadcasts!=0)throw new AssertionError("binding heartbeat rebroadcast animation to every viewer");
   if(probe.phases!=1||!probe.animation.endsWith("GROUND_SLAM"))
     throw new AssertionError("heartbeat reset or omitted the active authored clip: "+probe.animation);
-  probe.config.visual="END_RIFT_GUARDIAN";probe.bindBossClient(probe.expected);
+  probe.config.visual="END_RIFT_GUARDIAN";probe.bindBossClient(probe.expected, true);
   if(!"END_RIFT_GUARDIAN_V1".equals(probe.bindingVisual))
     throw new AssertionError("saved legacy boss ID did not resolve to the actual authored Guardian model");
  }

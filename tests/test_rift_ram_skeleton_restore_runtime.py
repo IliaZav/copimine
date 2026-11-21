@@ -63,6 +63,7 @@ public class RamSkeletonRestoreProbe {
     // the crack animation can restore the exact authored pose.
     final Map<UUID,Location> pillarRestPositions=new HashMap<>();
     boolean safeVolume(Location l){return true;}
+    boolean pillarSiteSafe(Location l,int impacts){return true;}
     void createArmor(){armourBuilds++;}
     void hold(){}
     void dropPillarSkeleton(){skeletonFallen=true;}

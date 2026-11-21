@@ -32,6 +32,7 @@ public class StompRuntimeProbe {
   }
   static class Player {
     UUID id=UUID.randomUUID();Location at;boolean grounded=true;int applications,packets;
+    int damageAttempts;boolean refuse;
     Player(World w,double x){at=new Location(w,x,65,0);}
     UUID getUniqueId(){return id;}World getWorld(){return at.world;}Location getLocation(){return at;}
     double getX(){return at.x;}double getY(){return at.y;}double getZ(){return at.z;}
@@ -52,15 +53,18 @@ public class StompRuntimeProbe {
     int particleBudget(){return 256;}
     int damageCalls;double lastAmount;
     boolean damage(Ram source,Player player,double amount){
-      damageCalls++;lastAmount=amount;
+      damageCalls++;lastAmount=amount;player.damageAttempts++;
       if(source==null||player==null)throw new AssertionError("damage without source/target");
+      // A protected/ineligible player refuses the application. The old code
+      // recorded the hit and applied the slow anyway; the fix must not.
+      if(player.refuse) return false;
       player.damageTaken++;
       return true;
     }
   }
   final Host host=new Host(); int tick,actionTick;double lastRadius;
   Ram ram=new Ram(new World());
-  Location stompOrigin;Set<UUID> stompHits=new HashSet<>(),stompRoster=new HashSet<>();
+  Location stompOrigin;Set<UUID> stompHits=new HashSet<>(),stompRoster=new HashSet<>(),stompResolved=new HashSet<>();
   boolean recovered; void hold(){}void begin(Action a){recovered=true;}
   static void check(boolean b,String m){if(!b)throw new AssertionError(m);}
   public static void main(String[] args){
@@ -68,8 +72,9 @@ public class StompRuntimeProbe {
       StompRuntimeProbe cast=new StompRuntimeProbe();World world=new World();
       cast.stompOrigin=new Location(world,0,65,0);
       Player ground=new Player(world,8), jumper=new Player(world,4),far=new Player(world,13),late=new Player(world,6);
+      Player protectedPlayer=new Player(world,7);protectedPlayer.refuse=true;
       jumper.grounded=false;jumper.at.y=66.2;
-      List<Player> players=new ArrayList<>(List.of(ground,jumper,far));
+      List<Player> players=new ArrayList<>(List.of(ground,jumper,far,protectedPlayer));
       while(players.size()<size)players.add(new Player(world,11));
       for(Player p:players)cast.stompRoster.add(p.id);
       for(int tick=0;tick<=28;tick++){
@@ -87,7 +92,11 @@ public class StompRuntimeProbe {
       check(far.damageTaken==0,"outside the wave takes no damage");
       check(late.applications==0,"late join receives no stale cast");
       check(late.damageTaken==0,"late join takes no stale damage");
-      check(cast.recovered&&cast.stompHits.isEmpty()&&cast.stompRoster.isEmpty(),"cast cleanup");
+      check(protectedPlayer.damageAttempts==1,"refused target resolved exactly once per cast");
+      check(protectedPlayer.damageTaken==0,"refused damage is never applied");
+      check(protectedPlayer.applications==0,"refused damage grants no secondary slow");
+      check(cast.recovered&&cast.stompHits.isEmpty()&&cast.stompRoster.isEmpty()
+            &&cast.stompResolved.isEmpty(),"cast cleanup");
       check(ground.packets>1000&&ground.packets<5000,"visible bounded particle budget");
     }
     System.out.println("OK");

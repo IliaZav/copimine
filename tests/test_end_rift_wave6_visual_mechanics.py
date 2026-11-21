@@ -450,7 +450,7 @@ def test_broken_prison_cannot_recreate_the_sphere_on_the_next_tick():
     assert tick.index('if (wave6PrisonBroken)') < tick.index('ensureRitualSphereVisual(')
 
 def test_caster_phase_is_sent_on_binding_and_during_shared_gameplay():
-    assert 'sendRitualCasterPhase(' in method('private void bindEventEntityClient(')
+    assert 'sendRitualCasterPhase(' in method('private boolean bindEventEntityClient(')
     assert 'sendRitualCasterPhase(' in method('private void tickRitualGuardGroups(')
     phase = method('private void sendRitualCasterPhase(')
     for state in ('RITUAL_CHANNEL', 'RITUAL_WINDUP', 'RITUAL_RELEASE', 'RITUAL_COMBAT'):

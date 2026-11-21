@@ -40,7 +40,7 @@ def test_shared_wave_entity_bind_uses_visual_id_with_empty_clear_policy_and_logs
     source = SOURCE_PATH.read_text(encoding="utf-8")
     binder = _java_method_body(
         source,
-        "private void bindEventEntityClient(Player player, Entity entity)",
+        "private boolean bindEventEntityClient(Player player, Entity entity, boolean force)",
     )
     default_payload = _java_method_body(
         source,
@@ -76,10 +76,21 @@ def test_shared_wave_entity_bind_uses_visual_id_with_empty_clear_policy_and_logs
     log_guarded = False
     if bind_send is not None:
         accepted = re.escape(bind_send.group("accepted"))
+        log_marker = 'getLogger().info("SKELETON_TEXTURE_BIND'
+        log_index = binder.find(log_marker)
         guard = re.search(rf"if\s*\(\s*{accepted}\s*\)\s*\{{", binder)
         if guard is not None:
             block = _java_block_body(binder, binder.index("{", guard.start()))
-            log_guarded = 'getLogger().info("SKELETON_TEXTURE_BIND' in block
+            log_guarded = log_marker in block
+        else:
+            # The accepted branch may instead be expressed as an early refusal:
+            # the success log must follow that refusal block and it must return.
+            refusal = re.search(rf"if\s*\(\s*!\s*{accepted}\s*\)\s*\{{", binder)
+            if refusal is not None and log_index >= 0:
+                refusal_open = binder.index("{", refusal.start())
+                block = _java_block_body(binder, refusal_open)
+                block_end = refusal_open + 1 + len(block)
+                log_guarded = log_index > block_end and "return" in block
     if not log_guarded:
         defects.append("SKELETON_TEXTURE_BIND success log is not guarded by the accepted bind result")
 

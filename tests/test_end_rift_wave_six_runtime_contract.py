@@ -142,7 +142,7 @@ def test_the_pillar_collider_is_real_solid_and_host_journaled():
 
 def test_the_charge_impact_is_decided_before_the_destination_is_validated():
     # A solid pillar is now in the world. The swept pillar test has to run before
-    # safeVolume(to), otherwise the Ram would be refused as "moving into a wall"
-    # before its nose ever reached the objective.
+    # movementVolumeOpen(to), otherwise the Ram would be refused as "moving into a
+    # wall" before its nose ever reached the objective.
     charge = runtime_body("private void charge(", "private void impact()")
-    assert charge.index("segmentHitsPillar(") < charge.index("safeVolume(to)")
+    assert charge.index("segmentHitsPillar(") < charge.index("movementVolumeOpen(to)")

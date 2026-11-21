@@ -448,7 +448,9 @@ public final class KaguneRingGapPolicy {
         if (row == null || !rowReachesAt(row, playerRadius, sweepProgress)) {
             return false;
         }
-        return !insideGap(row, direction);
+        // The gap is two blocks wide; its angular width shrinks as the row moves
+        // out, so judge contact at the radius being tested, not the emerge one.
+        return !insideGap(row, direction, playerRadius);
     }
 
     /**
@@ -485,7 +487,19 @@ public final class KaguneRingGapPolicy {
         if (row == null) {
             return false;
         }
-        double halfWidth = halfWidthRad(row.emergeRadius());
+        return insideGap(row, direction, row.emergeRadius());
+    }
+
+    /**
+     * True when the direction lies inside one of that row's gaps when the row is
+     * at {@code radius}. The gap is a fixed two blocks wide, so its angular width
+     * must be measured at the radius being tested.
+     */
+    public static boolean insideGap(Row row, double direction, double radius) {
+        if (row == null) {
+            return false;
+        }
+        double halfWidth = halfWidthRad(radius);
         int index = 0;
         double[] centres = row.gapCentres();
         while (index < centres.length) {

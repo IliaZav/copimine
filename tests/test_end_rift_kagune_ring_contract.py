@@ -295,19 +295,28 @@ public class HitRuleProbe {
             double halfWidth = KaguneRingGapPolicy.halfWidthRad(inner);
             // The gap really is TWO BLOCKS wide: a player half a block off the
             // centre is inside it, a player 1.5 blocks off is not.
-            double block = 1.0D / inner;
             check(KaguneRingGapPolicy.insideGap(current, centres[0] + halfWidth * 0.9D),
                     "a player less than one block off the centre must be inside the gap");
             check(!KaguneRingGapPolicy.insideGap(current, centres[0] + halfWidth * 1.5D),
                     "a player more than one block off the centre must be outside the gap");
+            // Contact is judged at the radius being tested, where the same fixed
+            // two-block gap subtends a narrower angle.
+            double probe = inner + 1.0D;
+            double probeHalfWidth = KaguneRingGapPolicy.halfWidthRad(probe);
             for (double centre : centres) {
-                check(!KaguneRingGapPolicy.rowHits(layout, row, inner + 1.0D,
-                                centre + block * 0.9D),
+                check(!KaguneRingGapPolicy.rowHits(layout, row, probe,
+                                centre + probeHalfWidth * 0.9D),
                         "the gap is narrower than two blocks");
-                check(KaguneRingGapPolicy.rowHits(layout, row, inner + 1.0D,
-                                centre + block * 1.4D),
+                check(KaguneRingGapPolicy.rowHits(layout, row, probe,
+                                centre + probeHalfWidth * 1.4D),
                         "the gap is wider than two blocks");
             }
+            // The angular offset that is a gap at emergence is wider than two
+            // blocks once the row travels, so it must not spare a player there.
+            check(KaguneRingGapPolicy.rowHits(layout, row,
+                            inner + KaguneRingGapPolicy.ROW_TRAVEL_BLOCKS,
+                            centres[0] + halfWidth * 0.9D),
+                    "a fixed angle must not stay inside the gap as the row travels");
 
             for (double centre : centres) {
                 check(!KaguneRingGapPolicy.rowHits(layout, row, inner + 1.0D, centre),

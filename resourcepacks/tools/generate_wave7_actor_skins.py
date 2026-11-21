@@ -32,22 +32,23 @@ TEXTURE_ROOT = (
 )
 PAINTER = ROOT / "scripts" / "minecraft" / "GenerateEndRiftEntityTextures.py"
 
-_CANONICAL = None
-_IMAGES: dict[str, Image.Image] = {}
+_CACHE = None
 
 
 def _canonical():
     """Load the one canonical painter and paint every sheet exactly once."""
-    global _CANONICAL
-    if _CANONICAL is None:
+    global _CACHE
+    if _CACHE is None:
         spec = importlib.util.spec_from_file_location("end_rift_entity_textures", PAINTER)
         module = importlib.util.module_from_spec(spec)
         # dataclasses resolve their own module through sys.modules.
         sys.modules[spec.name] = module
         spec.loader.exec_module(module)
-        _CANONICAL = module
-        _IMAGES.update(module.all_outputs())
-    return _CANONICAL
+        images = module.all_outputs()
+        # Publish the module and its completed map together, only after painting
+        # succeeds; a failed attempt leaves the cache empty and can be retried.
+        _CACHE = (module, images)
+    return _CACHE
 
 
 class ActorSkin(NamedTuple):
@@ -56,8 +57,10 @@ class ActorSkin(NamedTuple):
 
 
 def _sheet(name: str) -> Image.Image:
-    _canonical()
-    return _IMAGES[Path(name).stem]
+    _, images = _canonical()
+    # Hand callers their own image: Pillow mutates in place, and the cached
+    # original must stay pristine for generate().
+    return images[Path(name).stem].copy()
 
 
 SKINS: tuple[ActorSkin, ...] = (
@@ -74,11 +77,11 @@ def output_paths() -> list[Path]:
 
 def generate(directory: Path | None = None) -> list[Path]:
     """Write every actor skin, returning the paths actually written."""
-    painter = _canonical()
+    painter, images = _canonical()
     target_root = TEXTURE_ROOT if directory is None else Path(directory)
     written: list[Path] = []
     for skin in SKINS:
-        image = _IMAGES[Path(skin.name).stem]
+        image = images[Path(skin.name).stem]
         assert image.mode == "RGBA", skin.name
         target = target_root / skin.name
         target.parent.mkdir(parents=True, exist_ok=True)

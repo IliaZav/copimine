@@ -218,6 +218,9 @@ public final class RiftEventEndermanModel extends EndermanModel<EndermanRenderSt
         } finally {
             if (frozen) { state.walkAnimationPos = walkPosition; state.walkAnimationSpeed = walkSpeed; }
         }
+        // The vanilla scream shifts the head upward, exposing a gap on this painted rig.
+        head.y = head.getInitialPose().y();
+        root.getChild("hat").loadPose(head.storePose());
         float animationProgress = frozen ? 0 : state.ageInTicks;
 
         float pulse = Mth.sin(animationProgress * 0.16F);
@@ -253,6 +256,43 @@ public final class RiftEventEndermanModel extends EndermanModel<EndermanRenderSt
         } else if ("WAVE_RECOVER".equals(wavePose)) {
             leftArm.xRot = .25F; rightArm.xRot = .25F; head.xRot += .18F;
         }
+    }
+
+    /** The first observer gathers itself, screams, then lowers its arms. */
+    void setupWaveTwoOpening(EndermanRenderState state, long age) {
+        setupAnim(state);
+        long screamAge = age - WaveTwoCinematicTimeline.SCREAM_MILLIS;
+        float gather = openingEase(age, 700, 1_430) * (1F - openingEase(screamAge, 0, 130));
+        float recoil = openingEase(screamAge, 0, 130) * (1F - openingEase(screamAge, 630, 1_450));
+        float pitch = .26F * gather - .32F * recoil;
+        float hipY = body.y + 12F;
+        float hipZ = body.z;
+        float sine = Mth.sin(pitch), cosine = Mth.cos(pitch);
+        tiltOpeningPart(body, hipY, hipZ, pitch, sine, cosine);
+        tiltOpeningPart(leftArm, hipY, hipZ, pitch, sine, cosine);
+        tiltOpeningPart(rightArm, hipY, hipZ, pitch, sine, cosine);
+        head.y = body.y + 1.4F * cosine;
+        head.z = body.z + 1.4F * sine;
+        head.xRot += pitch + .33F * gather - .72F * recoil;
+        float armSwing = .41F * gather - 1.35F * recoil;
+        leftArm.xRot += armSwing;
+        rightArm.xRot += armSwing * .90F;
+        leftArm.zRot -= .51F * recoil;
+        rightArm.zRot += .51F * recoil;
+        root.getChild("hat").loadPose(head.storePose());
+    }
+
+    private static void tiltOpeningPart(ModelPart part, float hipY, float hipZ,
+                                        float pitch, float sine, float cosine) {
+        float y = part.y - hipY, z = part.z - hipZ;
+        part.y = hipY + cosine * y - sine * z;
+        part.z = hipZ + sine * y + cosine * z;
+        part.xRot += pitch;
+    }
+
+    private static float openingEase(long age, long start, long end) {
+        float t = Math.clamp((age - start) / (float) (end - start), 0F, 1F);
+        return t * t * (3F - 2F * t);
     }
 
     void applyChannelingPose(float pulse) {

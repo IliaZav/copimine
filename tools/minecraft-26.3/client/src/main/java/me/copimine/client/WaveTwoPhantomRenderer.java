@@ -21,8 +21,9 @@ import java.util.Map;
 
 /** Renders local-only grey Enderman phantoms while the local player is marked in Wave 2. */
 public final class WaveTwoPhantomRenderer {
-    private static final Identifier TEXTURE = Identifier.fromNamespaceAndPath(
-            "copimineclient", "textures/entity/end_rift_enderman.png");
+    private static final Identifier TEXTURE = EndEventTextureCatalog.textureForVisual("END_RIFT_ENDERMAN_V1");
+    private static final Identifier SCREAM_TEXTURE = Identifier.fromNamespaceAndPath(
+            "copimineclient", "textures/entity/end_rift_user_enderman_scream.png");
     private static final int PHANTOM_TINT = 0x99B0B0B0;
     private static final int FULL_BRIGHT = 0x00F000F0;
     private static final int MAX_RENDER_DISTANCE_SQUARED = 64 * 64;
@@ -34,6 +35,7 @@ public final class WaveTwoPhantomRenderer {
     private static String presentationKey = "";
     private static long lastFrameMillis;
     private static long lastAge;
+    private static long nextAppearanceSoundMillis;
     private static int lastVisibleCount;
     private static int firstObserverIndex;
 
@@ -117,6 +119,7 @@ public final class WaveTwoPhantomRenderer {
             presentationKey = key;
             firstObserverIndex = openingObserver(phantoms, target, client.player.getYRot());
             lastFrameMillis = nowMillis;
+            nextAppearanceSoundMillis = nowMillis;
             lastAge = age;
             lastVisibleCount = visibleCount;
         }
@@ -129,7 +132,7 @@ public final class WaveTwoPhantomRenderer {
             world.playLocalSound(position.x(), position.y() + 2.0D, position.z(),
                     SoundEvents.ENDERMAN_SCREAM, SoundSource.HOSTILE, 0.65F, 0.85F, false);
         }
-        if (!fresh && age < WaveTwoCinematicTimeline.INTRO_MILLIS) {
+        if (!fresh && age < WaveTwoCinematicTimeline.INTRO_MILLIS && nowMillis >= nextAppearanceSoundMillis) {
             for (int index = WaveTwoCinematicTimeline.firstAudibleAppearance(lastVisibleCount, visibleCount);
                     index < visibleCount; index++) {
                 var phantom = phantoms.get(index);
@@ -138,14 +141,18 @@ public final class WaveTwoPhantomRenderer {
                 world.playLocalSound(position.x(), position.y() + 1.5D, position.z(),
                         SoundEvents.ENDERMAN_TELEPORT, SoundSource.HOSTILE, 0.16F,
                         0.9F + (index % 5) * 0.04F, false);
+                nextAppearanceSoundMillis = nowMillis + 300L;
+                break;
             }
         }
         lastVisibleCount = visibleCount;
         lastAge = age;
         final int openingIndex = firstObserverIndex;
         final boolean opening = WaveTwoCinematicTimeline.firstObserverVisible(age);
+        final boolean scream = opening && age >= WaveTwoCinematicTimeline.SCREAM_MILLIS
+                && age < WaveTwoCinematicTimeline.SCREAM_MILLIS + 950L;
         EndRiftRenderSubmission.submit(context, cameraPosition,
-                RenderTypes.entityTranslucent(TEXTURE), (matrices, buffer) -> {
+                RenderTypes.entityTranslucent(scream ? SCREAM_TEXTURE : TEXTURE), (matrices, buffer) -> {
                     for (int index = 0; index < phantoms.size(); index++) {
                         WaveTwoPhantomLayoutManager.Phantom phantom = phantoms.get(index);
                         if (opening ? index != openingIndex : index >= visibleCount) continue;
@@ -162,16 +169,16 @@ public final class WaveTwoPhantomRenderer {
                                 position, target, previous.bodyYawDegrees(), previous.headYawDegrees(), turnStep);
                         LOOKS.put(phantom.id(), lookPose);
                         applyHeadLook(MODEL_STATE, lookPose);
-                        MODEL_STATE.xRot = opening && WaveTwoCinematicTimeline.screaming(age) ? -18.0F : 0.0F;
+                        MODEL_STATE.xRot = 0.0F;
                         matrices.pushPose();
                         // Match LivingEntityRenderer's feet-anchored model transform:
                         // Rotate the body in world space; model yRot is bounded relative head yaw.
                         matrices.translate(position.x(), position.y() + 1.501D, position.z());
                         matrices.rotateDegrees(Axis.YP, 180.0F - lookPose.bodyYawDegrees());
                         matrices.scale(-1.0F, -1.0F, 1.0F);
-                        MODEL_STATE.isCreepy = index == selectedActivationIndex
-                                || opening && WaveTwoCinematicTimeline.screaming(age);
-                        MODEL.setupAnim(MODEL_STATE);
+                        MODEL_STATE.isCreepy = index == selectedActivationIndex;
+                        if (opening) MODEL.setupWaveTwoOpening(MODEL_STATE, age);
+                        else MODEL.setupAnim(MODEL_STATE);
                         MODEL.renderToBuffer(matrices, buffer, FULL_BRIGHT,
                                 OverlayTexture.NO_OVERLAY, PHANTOM_TINT);
                         matrices.popPose();

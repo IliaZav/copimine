@@ -24,10 +24,21 @@ public final class KaguneRingGapPolicy {
     public static final double GAP_WIDTH_BLOCKS = 2.0D;
     /** Contract 20.1: three sequential rows. */
     public static final int ROW_COUNT = 3;
-    /** Contract 20.1: the rows emerge 7.5 / 11 / 14.5 blocks out. */
-    public static final double[] ROW_EMERGE_RADIUS = {7.5D, 11.0D, 14.5D};
-    /** Contract 20.1: each row travels about five blocks before retracting. */
-    public static final double ROW_TRAVEL_BLOCKS = 5.0D;
+    /**
+     * Every row emerges at the same inner station around the boss, not at a
+     * pre-set ring on the arena floor. The owner's playtest note was that the
+     * rings read as walls appearing at the edge of the fight: the shipped rows
+     * emerged at 7.5 / 11 / 14.5 blocks, so the third literally spawned at the
+     * rim. All three rows now begin at the innermost station and travel
+     * outward, so every wave visibly grows from the boss outwards.
+     */
+    public static final double[] ROW_EMERGE_RADIUS = {7.5D, 7.5D, 7.5D};
+    /**
+     * Contract 20.1: each row travels outward to the arena rim before it
+     * retracts. From the common 7.5 origin an 11-block sweep reaches 18.5,
+     * which covers the playable floor.
+     */
+    public static final double ROW_TRAVEL_BLOCKS = 11.0D;
     /** Two gaps in one row must be at least this many blocks apart, edge to edge. */
     public static final double MIN_GAP_SEPARATION_BLOCKS = 3.0D;
     /** A gap centre must never sit closer than this to a player. */

@@ -296,9 +296,9 @@ public class HitRuleProbe {
             // The gap really is TWO BLOCKS wide: a player half a block off the
             // centre is inside it, a player 1.5 blocks off is not.
             double block = 1.0D / inner;
-            check(KaguneRingGapPolicy.insideGap(current, centres[0] + block),
+            check(KaguneRingGapPolicy.insideGap(current, centres[0] + halfWidth * 0.9D),
                     "a player less than one block off the centre must be inside the gap");
-            check(!KaguneRingGapPolicy.insideGap(current, centres[0] + block * 1.5D),
+            check(!KaguneRingGapPolicy.insideGap(current, centres[0] + halfWidth * 1.5D),
                     "a player more than one block off the centre must be outside the gap");
             for (double centre : centres) {
                 check(!KaguneRingGapPolicy.rowHits(layout, row, inner + 1.0D,
@@ -330,15 +330,15 @@ public class HitRuleProbe {
                     "the row does not reach inward");
             check(!KaguneRingGapPolicy.rowReaches(current, outer + 0.5D),
                     "the row does not reach outward");
-            // The sweep really is about five blocks, not merely finite.
-            check(Math.abs(KaguneRingGapPolicy.ROW_TRAVEL_BLOCKS - 5.0D) < 1.0e-9,
-                    "a row travels about five blocks");
-            check(Math.abs((outer - inner) - 5.0D) < 1.0e-9,
-                    "the row band must be five blocks deep");
-            check(!KaguneRingGapPolicy.rowReaches(current, inner + 5.4D),
-                    "the row must not sweep further than five blocks");
-            check(KaguneRingGapPolicy.rowReaches(current, inner + 4.6D),
-                    "the row must sweep at least five blocks");
+            // The sweep really is a full outward wave, not merely finite.
+            check(Math.abs(KaguneRingGapPolicy.ROW_TRAVEL_BLOCKS - 11.0D) < 1.0e-9,
+                    "a row travels from the boss station to the arena rim");
+            check(Math.abs((outer - inner) - 11.0D) < 1.0e-9,
+                    "the row band must be eleven blocks deep");
+            check(!KaguneRingGapPolicy.rowReaches(current, inner + 11.4D),
+                    "the row must not sweep past the rim");
+            check(KaguneRingGapPolicy.rowReaches(current, inner + 10.6D),
+                    "the row must sweep to the rim");
             check(!KaguneRingGapPolicy.rowReaches(current, Double.NaN),
                     "a broken radius is refused");
         }

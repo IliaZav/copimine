@@ -258,19 +258,26 @@ public final class EndRiftTentacleRenderer {
         if (renderRise <= 0D) return;
         Vec3 origin = display.getPosition(partialTick);
         if (!finite(origin)) return;
-        var pose = EndRiftTentacleAnimator.ringPose(frame);
         float width = EndRiftTentacleWorldScalePolicy.rendererScaleForRig((float) KaguneRingFrame.RIG_SCALE);
         float height = EndRiftTentacleWorldScalePolicy.rendererLengthScaleForRig((float) KaguneRingFrame.RIG_SCALE);
         double radius = frame.previousRadius() + (frame.radius() - frame.previousRadius()) * Math.max(0F, Math.min(1F, partialTick));
         int light = net.minecraft.util.LightCoordsUtil.getLightCoords(world, display.blockPosition());
-        for (int i = 0; i < frame.instances(); i++) {
+        int count = frame.instances();
+        for (int i = 0; i < count; i++) {
             if (!frame.drawsInstance(i)) continue;
+            // Neighbours rise and fall out of phase, so the row reads as a wave
+            // travelling around the circle instead of one rigid wall sliding
+            // outward. The authoritative contact band is unchanged.
+            double instanceRise = EndRiftTentacleAnimator.ringInstanceRise(
+                    i, count, frame.stage(), renderRise, frame.strike());
+            if (instanceRise <= 0.02D) continue;
+            var pose = EndRiftTentacleAnimator.ringPose(frame, i, count);
             double angle = frame.direction(i);
             matrices.pushPose();
             matrices.translate(origin.x + Math.cos(angle) * radius,
-                    origin.y-KaguneRingFrame.HEIGHT*(1D-renderRise), origin.z + Math.sin(angle) * radius);
+                    origin.y-KaguneRingFrame.HEIGHT*(1D-instanceRise), origin.z + Math.sin(angle) * radius);
             matrices.rotate(Axis.YP, (float) (-angle + Math.PI / 2D));
-            matrices.scale(width, height, width);
+            matrices.scale(width, height * (float) Math.max(0.55D, instanceRise), width);
             RIG.render(matrices, vertices, pose, light, OverlayTexture.NO_OVERLAY, 0xFFFFFFFF);
             matrices.popPose();
         }

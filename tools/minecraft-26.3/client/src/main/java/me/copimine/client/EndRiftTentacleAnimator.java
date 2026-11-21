@@ -60,9 +60,76 @@ public final class EndRiftTentacleAnimator {
                 upright.grab_socket(),upright.rigScale());
     }
 
+    /** How far the travelling ring ripple dips below full height (0..1). */
+    public static final double RING_WAVE_AMPLITUDE = 0.26D;
+    /** Lowest a stem may dip while the row is authoritative for contact. */
+    public static final double RING_WAVE_FLOOR = 0.70D;
+    /** Fraction of the row window one stem trails its neighbour by. */
+    public static final double RING_WAVE_LAG = 0.34D;
+
     private static EndRiftTentaclePose.BoneTransform curl(EndRiftTentaclePose.BoneTransform bone,float angle) {
         return new EndRiftTentaclePose.BoneTransform(bone.translationX(),bone.translationY(),bone.translationZ(),
                 bone.pitch()+angle,bone.yaw(),bone.roll(),bone.scaleX(),bone.scaleY(),bone.scaleZ());
+    }
+
+    /**
+     * Height of one stem in a ring row.
+     *
+     * <p>The shipped row handed every stem the same {@code rise}, so a ring
+     * appeared as one rigid wall that slid outward - the owner called it "a
+     * row that stands up and drives". A wave needs neighbours at different
+     * heights: each stem now trails the one before it during emerge and
+     * retract, and a slow ripple travels around the circumference while the
+     * row sweeps. The ripple never drops below
+     * {@link #RING_WAVE_FLOOR}, so every stem still covers the authoritative
+     * contact band and the visual can never hide a damaging column.</p>
+     *
+     * @param index    stem index around the circle
+     * @param count    total stems in the row
+     * @param stage    {@link KaguneRingFrame#EMERGE}, {@code TRAVEL} or {@code RETRACT}
+     * @param baseRise the frame's interpolated row rise (0..1)
+     * @param strike   the frame's sweep progress (0..1)
+     */
+    public static double ringInstanceRise(int index, int count, int stage,
+                                          double baseRise, double strike) {
+        double base = clamp01(baseRise);
+        if (count <= 0) return base;
+        double phase = (double) Math.floorMod(index, count) / count;
+        if (stage == KaguneRingFrame.TRAVEL) {
+            double ripple = Math.sin((phase * 2D - strike * 2D) * Math.PI * 2D)
+                    * RING_WAVE_AMPLITUDE;
+            return clamp01(Math.max(RING_WAVE_FLOOR, base + ripple));
+        }
+        // Emerge/retract: neighbours trail by up to a third of the row window,
+        // so the crest runs around the ring instead of lifting as one plate.
+        double shifted = (base - phase * RING_WAVE_LAG) / (1D - RING_WAVE_LAG);
+        return clamp01(shifted);
+    }
+
+    /** Per-stem pose for one ring instance; see {@link #ringInstanceRise}. */
+    public static EndRiftTentaclePose.TentaclePose ringPose(KaguneRingFrame frame,
+                                                            int index, int count) {
+        var upright=poseFor("EMERGE",1F,0L);
+        double rise=ringInstanceRise(index,count,frame.stage(),frame.rise(),frame.strike());
+        float eased=(float)(rise*rise*(3D-2D*rise));
+        if (frame.stage()==KaguneRingFrame.EMERGE)
+            return poseFor("EMERGE",(float)rise,0L);
+        if (frame.stage()==KaguneRingFrame.RETRACT)
+            return EndRiftTentaclePose.TentaclePose.lerp(upright,
+                    poseFor("RETRACT",(float)(1D-rise),0L),eased);
+        // TRAVEL: the distal joints carry a travelling curl so the tips ripple
+        // around the circle while the stems themselves stay at contact height.
+        double phase=count<=0?0D:(double)Math.floorMod(index,count)/count;
+        float ripple=(float)(Math.sin((phase-frame.strike())*Math.PI*2D)*.16D);
+        return new EndRiftTentaclePose.TentaclePose(upright.root(),upright.base(),upright.seg_01(),
+                upright.seg_02(),upright.seg_03(),curl(upright.seg_04(),ripple),
+                curl(upright.seg_05(),-ripple),upright.seg_06(),upright.tip(),
+                upright.tip_claw_1(),upright.tip_claw_2(),upright.tip_claw_3(),upright.tip_claw_4(),
+                upright.grab_socket(),upright.rigScale());
+    }
+
+    private static double clamp01(double value) {
+        return Double.isFinite(value) ? Math.max(0D, Math.min(1D, value)) : 0D;
     }
 
     public static boolean supportsAnimation(String animationId) {

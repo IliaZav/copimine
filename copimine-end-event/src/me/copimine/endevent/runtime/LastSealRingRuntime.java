@@ -77,11 +77,14 @@ public final class LastSealRingRuntime {
                 players.add(Math.atan2(feet.getZ() - at.getZ(), feet.getX() - at.getX()));
         }
         if (players.isEmpty()) return false;
-        // Escape passages must remain usable over each row's entire travel.
+        // Escape passages must remain usable over each row's entire travel. Rows
+        // now share one centre origin, so scan from the boss's feet to the rim.
+        double innerRadius = KaguneRingGapPolicy.ROW_EMERGE_RADIUS[0];
+        double outerRadius = innerRadius + KaguneRingGapPolicy.ROW_TRAVEL_BLOCKS;
         for (int step = 0; step < 96; step++) {
             double angle = Math.PI * 2D * step / 96;
             boolean clear = true;
-            for (double radius = 7.5D; radius <= 19.5D; radius += .75D) {
+            for (double radius = innerRadius; radius <= outerRadius; radius += .75D) {
                 if (!host.traversable(at.clone().add(Math.cos(angle) * radius, 0, Math.sin(angle) * radius))) {
                     clear = false; break;
                 }

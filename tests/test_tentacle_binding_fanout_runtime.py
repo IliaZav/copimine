@@ -11,7 +11,9 @@ def test_tentacle_binding_fanout_is_linear_and_keeps_active_pose(tmp_path):
     source = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(encoding="utf-8")
     methods = [extract(source, signature) for signature in (
         "void bindEventEntityClientForOnlinePlayers(Entity entity)",
+        "void bindEventEntityClientForOnlinePlayers(Entity entity, boolean force)",
         "void bindEventEntityClient(Player player, Entity entity)",
+        "boolean bindEventEntityClient(Player player, Entity entity, boolean force)",
         "void sendTentacleAnimationVisualUpdate(Entity entity,",
     )]
     if "void sendTentacleAnimationVisualUpdate(Player player," in source:
@@ -41,6 +43,17 @@ public class TentacleBindingProbe {
  Config config=new Config(); TentacleController tentacleController=new TentacleController();
  Map<UUID,String> entityBindingInstances=new HashMap<>(); String eventId="event";
  Set<UUID> tentaclePoseCapablePlayers=new HashSet<>();
+ static class Snapshots {
+  final Map<String,String> delivered=new HashMap<>();
+  long observed=Long.MIN_VALUE;
+  void observeGeneration(long g){if(g!=observed){observed=g;delivered.clear();}}
+  boolean shouldSend(UUID viewer,UUID entity,String signature){return !signature.equals(delivered.get(viewer+"/"+entity));}
+  void recordCoalesced(){}
+  void recordFailed(){}
+  void recordDelivered(UUID viewer,UUID entity,String signature){delivered.put(viewer+"/"+entity,signature);}
+ }
+ Snapshots clientBindingSnapshots=new Snapshots();
+ long runtimeDiagnosticsClientBindingsCoalesced,runtimeDiagnosticsClientBindingsFailed,runtimeDiagnosticsClientBindingsSent;
  long generation=9,eventTickCounter=105;
  String keyKind="kind",keyTentacleHealthState="health",keyTentacleTarget="target",keyTentacleHealth="hp";
  String EVENT_KIND_RITUAL_CASTER="caster",EVENT_KIND_TENTACLE="tentacle";
@@ -69,6 +82,9 @@ public class TentacleBindingProbe {
     if(p.binds!=38||p.poses!=38)throw new AssertionError(count+" viewers: binds="+p.binds+", poses="+p.poses+" (expected 38 each)");
     if(!p.pose.startsWith("SMALL_STRIKE|t=100|")||!p.pose.contains("|health=DAMAGED")||!p.pose.contains("|hp=42.0"))throw new AssertionError(p.pose);
    }
+   int delivered=players.getFirst().poses;
+   probe.bindEventEntityClientForOnlinePlayers(actors.getFirst(),false);
+   for(var p:players)if(p.poses!=delivered)throw new AssertionError("periodic pass re-sent a delivered binding");
    var late=players.getFirst();int before=late.poses;
    probe.bindEventEntityClient(late,actors.getFirst());
    if(late.poses!=before+1)throw new AssertionError("late binding lost pose");

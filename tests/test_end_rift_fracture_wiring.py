@@ -315,6 +315,7 @@ def test_no_particle_ring_helper_survives_as_the_mechanic() -> None:
         "the geyser pillar must be rendered while the column exists"
     )
     assert "if (false) {" not in body
-    assert body.index("for (double y = 0.0D; y <= height; y += 1.0D)") > body.index(
+    assert body.index("double y = height * level / 8.0D;") > body.index(
         "if (height > 0.0D) {"
     ), "the column loop must sit inside the pillar branch"
+    assert "radius * Math.cos(angle), z = radius * Math.sin(angle)" in body

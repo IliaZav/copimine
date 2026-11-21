@@ -19,6 +19,7 @@ def test_small_kagune_damage_uses_accepted_living_carrier_hit(tmp_path):
         "private boolean smallKaguneFaces(",
         "private void tickSmallKagune(",
         "private void trimTentacles(",
+        "private static boolean terminalTentacleAnimation(",
     ))
     probe = tmp_path / "SmallKaguneStrikeProbe.java"
     probe.write_text(r'''

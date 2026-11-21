@@ -14,6 +14,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 DOMAIN = ROOT / "copimine-end-event/src/me/copimine/endevent/domain"
+PROTOCOL = ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol"
 EVENT = Path(os.environ.get("END_RIFT_EVENT_SOURCE", str(
     ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java")))
 
@@ -128,6 +129,7 @@ def mechanics_harness(tmp_path_factory):
     private long waveTwoMarkEpoch = -1L;
     private int waveTwoMarkGroup = -1;
     private long waveTwoIntroStartedMillis;
+    private boolean waveTwoIntroStagingPending;
     private int waveTwoPhantomAdmissionFailures;
     void saveStateAsync() {}
     void playEventMusic(Object track) {}
@@ -145,6 +147,7 @@ def mechanics_harness(tmp_path_factory):
     private final List<UUID> waveTwoAssignmentRoster = new ArrayList<>();
     private final Set<UUID> waveTwoMarkedParticipants = new LinkedHashSet<>();
     private final Map<UUID, Long> waveTwoMarkPacketAt = new LinkedHashMap<>();
+    private final Map<UUID, Long> waveTwoLayoutRefreshAt = new LinkedHashMap<>();
     private final Map<UUID, List<WaveTwoPhantomLayoutPolicy.Phantom>> waveTwoPhantomLayouts = new LinkedHashMap<>();
     private final Set<String> waveTwoUsedPhantomIds = new LinkedHashSet<>();
     """
@@ -248,22 +251,29 @@ public final class Waves24MechanicsHarness {
     Object keyChamberId = new Object();
     void updateObeliskHealthVisual(Wave4ObeliskRuntimeState obelisk) { visualUpdates++; }
     void renderRiftObeliskHit(Location base, int remaining) { hitReactions++; }
-    void sendClientPacket(Player player, String type, String instance, long duration, String... args) {
+    boolean sendClientPacket(Player player, String type, String instance, long duration, String... args) {
+        // Production returns a real delivery boolean; the
+        // sendCurrentHuntMarkPacket snapshot path reads it, so the stub must
+        // answer a delivery result rather than nothing.
         if (duration == 0L) clientClears++; else clientActive++;
+        return player != null && player.online;
     }
-    void sendClientPacket(Player player, String type, String instance, long duration,
+    boolean sendClientPacket(Player player, String type, String instance, long duration,
             String mode, String shaderpack, int width, int height, float intensity, String subject, String status) {
         if ("CLEAR".equals(status)) clientClears++; else clientActive++;
+        return player != null && player.online;
     }
-    void sendClientPacket(Player player, String type, String instance, long duration,
+    boolean sendClientPacket(Player player, String type, String instance, long duration,
             String mode, String shaderpack, int width, int height, float intensity,
             String subject, String viewer, String status) {
         if ("CLEAR".equals(status)) clientClears++; else clientActive++;
+        return player != null && player.online;
     }
-    void sendClientPacket(Player player, String type, String instance, long duration,
+    boolean sendClientPacket(Player player, String type, String instance, long duration,
             String mode, String shaderpack, int width, int height, float intensity,
             String subject, String status, String encodedPosition, String phantomId) {
         if ("CLEAR".equals(status)) clientClears++; else clientActive++;
+        return player != null && player.online;
     }
     void sendWorldBeamPacket(Player player, String key, Location from, Location to, int color, float width) {}
     void clearWorldVfxBeamsByPrefix(String key) {}
@@ -308,6 +318,7 @@ public final class Waves24MechanicsHarness {
     void retryPendingWaveTwoPhantomActivation(long now) { }
     void clearWaveTwoPhantomActivationPresentation() { waveTwoPhantomWarningTask = null; }
     void ensureWaveTwoPhantomLayout(Player player, Location core) { }
+    void stageWaveTwoObserver(Player player) { }
     void spawnWaveGroup(World world, Location core, int wave, boolean guardianWave,
                         boolean test, WaveMechanicsPolicy.WaveCounts group, int baseIndex,
                         Location reservedPhantomSpawn) {
@@ -912,6 +923,10 @@ case "immediate-initial-mark" -> {
         "WaveTwoOwnershipPolicy", "WaveTwoCinematicPolicy",
     )]
     dependencies.append(DOMAIN.parent / 'runtime/WaveCombatCoordinator.java')
+    dependencies.extend(PROTOCOL / f"{name}.java" for name in (
+        "EndEventBridgeBodyCodec", "BridgeSigningPolicy", "BridgeEnvelope",
+        "Wave7AnimationFrame", "GuardianActorFrame",
+    ))
     compiled = subprocess.run(["javac", "-proc:none", "-encoding", "UTF-8", "-d", str(output),
                                str(java), *map(str, dependencies)], capture_output=True, text=True)
     assert compiled.returncode == 0, compiled.stdout + compiled.stderr

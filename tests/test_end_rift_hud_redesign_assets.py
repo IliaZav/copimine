@@ -246,8 +246,9 @@ def test_guardian_hud_preserves_thresholds_and_adds_phase_state():
     assert "end_rift_guardian_state_glyphs.png" in source
     assert "PHASE_SWEEP_MILLIS" in source and "phaseChangedAtMillis" in source
     assert "reducedMotion()" in source
-    # Motion is wall-clock driven: a slow vein drift and a danger glyph pulse.
-    assert "VEIN_PERIOD_MILLIS" in source and "VEIN_COUNT" in source
+    # Only the phase transition animates the overlay. Continuous pulses made
+    # the health display look as if it disconnected during combat.
+    assert "VEIN_PERIOD_MILLIS" not in source
     assert "PORTRAIT_AURA" in source and "STATE_GLYPHS" in source
     # The six canonical thresholds are still exact and ordered.
     assert "PHASE_MARKERS = {0.20F, 0.30F, 0.45F, 0.60F, 0.80F}" in source

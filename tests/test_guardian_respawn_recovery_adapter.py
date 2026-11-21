@@ -26,6 +26,7 @@ def test_guardian_recovery_preserves_damage_and_independent_effective_deadlines(
         "private void tickTentaclesWithoutGuardians(",
         "private void tickCurrentTentacles(",
         "private void trimTentacles(",
+        "private static boolean terminalTentacleAnimation(",
     )
     methods = "\n".join(_method(source, signature) for signature in signatures)
     probe = tmp_path / "GuardianRespawnRecoveryProbe.java"

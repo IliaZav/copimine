@@ -42,7 +42,7 @@ def test_policy_authors_a_bounded_collapse_timeline():
             f"{name} is part of the authored W3 collapse timeline"
         )
     # The fold is eased, not linear: equal time steps must not give equal scale.
-    assert "Math.pow(1.0D - clamped, 2.0D)" in policy, (
+    assert "clamped * clamped * (3.0D - 2.0D * clamped)" in policy, (
         "a linear scale-down is what read as a flat sprite; the fold must ease"
     )
     # The implosion is a discrete pulse, so it must vanish at both ends.

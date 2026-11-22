@@ -11234,7 +11234,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     message(sender, "&cBoss отсутствует.");
                 } else if (List.of("void_blast", "rift_projectile", "rift_arrows", "void_mark", "summon", "summon_servants",
                         "arena_inferno", "final_strike", "boss_fireball",
-                        "melee_swipe", "chest_strike", "ground_slam", "ambush_grab", "small_kagune")
+                        "melee_swipe", "chest_strike", "chest_beam", "ground_slam", "ambush_grab", "small_kagune")
                         .contains(spell)) {
                     EndRiftAiPolicy.BossSpell requestedSpell = switch (spell) {
                         case "void_blast" -> EndRiftAiPolicy.BossSpell.VOID_BLAST;
@@ -11246,6 +11246,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         case "boss_fireball" -> EndRiftAiPolicy.BossSpell.BOSS_FIREBALL;
                         case "melee_swipe" -> EndRiftAiPolicy.BossSpell.MELEE_SWIPE;
                         case "chest_strike" -> EndRiftAiPolicy.BossSpell.CHEST_STRIKE;
+                        case "chest_beam" -> EndRiftAiPolicy.BossSpell.CHEST_BEAM;
                         case "ground_slam" -> EndRiftAiPolicy.BossSpell.GROUND_SLAM;
                         case "ambush_grab" -> EndRiftAiPolicy.BossSpell.AMBUSH_GRAB;
                         case "small_kagune" -> EndRiftAiPolicy.BossSpell.SMALL_KAGUNE;
@@ -11258,7 +11259,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                 + " &7(phase=" + bossPhase + "; проверь цель, арену и активный cast).");
                     }
                 } else {
-                    message(sender, "&e/cmend boss spell <void_blast|rift_projectile|rift_arrows|void_mark|summon_servants|arena_inferno|final_strike|boss_fireball|melee_swipe|chest_strike|ground_slam|ambush_grab|small_kagune>");
+                    message(sender, "&e/cmend boss spell <void_blast|rift_projectile|rift_arrows|void_mark|summon_servants|arena_inferno|final_strike|boss_fireball|melee_swipe|chest_strike|chest_beam|ground_slam|ambush_grab|small_kagune>");
                 }
             }
             default -> message(sender, "&e/cmend boss spawn [official confirm]|info|damage <n>|phase <awakening|hunt|rift|overload|rage|last_seal>|freeze|unfreeze|kill <cleanup|simulate-victory confirm>|spell <type>");

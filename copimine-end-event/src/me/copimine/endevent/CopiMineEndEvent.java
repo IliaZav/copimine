@@ -44837,10 +44837,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if (!marked.isEmpty() && (waveTwoMarkCycle == 0 || changed)) {
-            // Send CLEAR with the old identity before publishing a newer cycle.
             for (UUID released : new ArrayList<>(waveTwoMarkedParticipants)) {
-                releaseWaveTwoMarkFor(released, now);
+                if (!marked.contains(released)) releaseWaveTwoMarkFor(released, now);
             }
+            // Publish the new assignment directly for a viewer who still owns
+            // the mark, so their shader never observes an intermediate CLEAR.
+            marked.forEach(waveTwoMarkPacketAt::remove);
             waveTwoMarkEpoch = epoch;
             waveTwoMarkGroup = waveSpawnGroupIndex;
             waveTwoMarkCycle = WaveTwoHuntPolicy.nextMarkAssignmentId(waveTwoMarkCycle);

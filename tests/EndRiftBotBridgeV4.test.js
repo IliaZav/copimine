@@ -35,6 +35,13 @@ function lengthPrefixed(bytes) {
   return Buffer.concat([int32(bytes.length), bytes])
 }
 
+function field(value) {
+  const bytes = Buffer.from(value, 'ascii')
+  const size = Buffer.alloc(2)
+  size.writeUInt16BE(bytes.length)
+  return Buffer.concat([size, bytes])
+}
+
 function signingInput({ keyId, clientNonce, playerUuid, streamId, counter, issuedAt, expiresAt, body }) {
   return Buffer.concat([
     lengthPrefixed(Buffer.from('copimine:client-bridge:v4', 'ascii')),
@@ -325,6 +332,31 @@ test('V4 test client tracks both signed sender streams and negotiated heartbeats
     })
     assert.equal(state.client.handleEnvelope(heartbeatEnvelope, now + 3).accepted, true)
   }
+
+  const positions = Array.from({ length: 70 }, (_, index) => `${index},150,1`).join(';')
+  const eventBody = Buffer.concat([
+    Buffer.from([1, 40]), int32(4), int64(8), int64(now + 4), uuidBytes(PLAYER),
+    field('wave2-hunt-mark'), Buffer.alloc(8), field('layout-v2'), field('WAVE2_HUNT_MARK_V1'),
+    int32(8000), Buffer.alloc(12),
+    field('overworld|wave2|1'), field('intro-age=0'), field(positions), field(''), field('ACTIVE'),
+  ])
+  const application = signEnvelope({
+    privateKey: state.privateKey, clientNonce: state.clientNonce,
+    streamId: senderStreams.get(1).streamId, counter: 5, body: eventBody, now: now + 4,
+  })
+  const observed = state.client.handleEnvelope(application, now + 4)
+  assert.deepEqual(observed.application, {
+    sender: 1, type: 40, generation: '8', eventId: PLAYER, instanceId: 'wave2-hunt-mark',
+    controlId: 'layout-v2', visualId: 'WAVE2_HUNT_MARK_V1',
+    status: 'ACTIVE', mode: 'overworld|wave2|1', layoutSize: 70,
+  })
+  assert.equal(state.client.handleEnvelope(application, now + 4).accepted, false)
+  const afterApplication = signEnvelope({
+    privateKey: state.privateKey, clientNonce: state.clientNonce,
+    streamId: senderStreams.get(1).streamId, counter: 6,
+    body: heartbeat(SESSION), now: now + 5,
+  })
+  assert.equal(state.client.handleEnvelope(afterApplication, now + 5).accepted, true)
 })
 
 test('V4 test client rejects forged signatures and modified signed bodies', () => {

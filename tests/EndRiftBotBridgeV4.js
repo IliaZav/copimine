@@ -13,6 +13,9 @@ const MAX_VALIDITY_MILLIS = 60_000
 const MAX_FUTURE_SKEW_MILLIS = 30_000
 const FIRST_RETRY_DELAY_MILLIS = 1_000
 const MAX_RETRY_DELAY_MILLIS = 30_000
+const CONTROL_TYPES = new Set([0, 253, 254, 255])
+const END_EVENT_TYPES = new Set([1, 2, 10, 11, 12, 13, 20, 21, 22, 30, 31, 40, 41,
+  42, 50, 51, 52, 60, 61, 70, 71, 72])
 
 function readPinnedTrust() {
   const policyPath = path.resolve(__dirname,
@@ -166,6 +169,53 @@ function requestResult(accepted, response, ready, reason = '') {
   return { accepted, response: response || null, ready, reason }
 }
 
+// The headless probe records authenticated packet receipt. Rendering and
+// mutation validation are the responsibility of the native Fabric client.
+function observeApplicationBody(body, sender, issuedAtMillis, sessionUuid) {
+  if (body.length < 38 || body.readUInt32BE(2) !== PROTOCOL_VERSION
+      || body.readBigInt64BE(14) !== issuedAtMillis) return null
+  const type = body[1]
+  if (sender === 2) {
+    if (type < 1 || type > 3 || uuidFromBytes(body.subarray(22, 38)) !== sessionUuid) return null
+    return { sender, type }
+  }
+  if (!END_EVENT_TYPES.has(type)) return null
+  const generation = body.readBigInt64BE(6)
+  if (generation < 1n) return null
+  let offset = 38
+  const readString = maximum => {
+    const size = body.readUInt16BE(offset)
+    offset += 2
+    if (size > maximum || offset + size > body.length) throw new RangeError('overlong packet field')
+    const bytes = body.subarray(offset, offset + size)
+    if (bytes.some(value => value < 0x20 || value > 0x7e)) throw new RangeError('invalid field')
+    offset += size
+    return bytes.toString('ascii')
+  }
+  try {
+    const instanceId = readString(128)
+    if (body.readBigInt64BE(offset) !== 0n) return null
+    offset += 8
+    const controlId = readString(128)
+    const visualId = readString(256)
+    offset += 16
+    const subject = readString(4096)
+    readString(4096) // clear policy
+    const reservedOne = readString(4096)
+    readString(4096) // reservedTwo
+    const status = readString(4096)
+    if (offset !== body.length) return null
+    return { sender, type, generation: generation.toString(), eventId: uuidFromBytes(body.subarray(22, 38)),
+      instanceId, controlId, visualId, status,
+      ...(type === 40 && visualId === 'WAVE2_HUNT_MARK_V1' ? {
+        mode: subject, layoutSize: controlId === 'layout-v2' && reservedOne ? reservedOne.split(';').length : 0,
+      } : {}) }
+  } catch (error) {
+    if (error instanceof RangeError) return null
+    throw error
+  }
+}
+
 function scheduleNextRetry(senderState, nowMillis) {
   const delay = Math.max(FIRST_RETRY_DELAY_MILLIS, senderState.retryDelayMillis)
   senderState.nextRetryAtMillis = nowMillis + delay
@@ -226,6 +276,16 @@ function createBridgeV4TestClient({ playerUuid, clientNonce, trust } = {}) {
         return requestResult(false, null, isEndEventReady(), 'invalid bridge control schema')
       }
       const type = body[1]
+      if (!CONTROL_TYPES.has(type)) {
+        const flow = [...senderStreams.values()].find(state => state.streamId === metadata.streamId)
+        if (!flow || !flow.ready || metadata.counter !== flow.lastServerCounter + 1n) {
+          return requestResult(false, null, isEndEventReady(), 'application stream not ready or counter mismatch')
+        }
+        const application = observeApplicationBody(body, flow.sender, metadata.issuedAtMillis, sessionUuid)
+        if (!application) return requestResult(false, null, isEndEventReady(), 'invalid application body')
+        flow.lastServerCounter = metadata.counter
+        return { ...requestResult(true, null, isEndEventReady()), application }
+      }
       const sender = body[2]
       if (sender !== 1 && sender !== 2) {
         return requestResult(false, null, isEndEventReady(), 'invalid bridge sender')

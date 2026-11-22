@@ -182,6 +182,10 @@ function attachLocalClientModHandshake(bot, endpoint) {
       console.warn(`TEST_CLIENT_BRIDGE_V4_REJECTED ${bot.username} reason=${result.reason}`)
       return
     }
+    if (result.application) {
+      console.log(`TEST_CLIENT_BRIDGE_V4_APPLICATION ${bot.username} ${JSON.stringify(result.application)}`)
+      return
+    }
     console.log(`TEST_CLIENT_BRIDGE_V4_ACCEPTED ${bot.username} stream=${bridgeV4.stream || 'narcotics'} ready=${result.ready}`)
     if (result.response) {
       console.log(`TEST_CLIENT_BRIDGE_V4_SEND ${bot.username} bytes=${result.response.length}`)

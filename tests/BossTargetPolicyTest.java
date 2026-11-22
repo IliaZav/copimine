@@ -55,6 +55,7 @@ public final class BossTargetPolicyTest {
         testSpellSelectionIsIndependentOfThePursuitLock();
         testStackedAndSurroundedUseWalkableHorizontalPosition();
         testEqualScoreTiesRotateFairly();
+        testGroupComboSecondariesAreDistinctAndBounded();
         System.out.println("BossTargetPolicyTest OK");
     }
 
@@ -136,6 +137,31 @@ public final class BossTargetPolicyTest {
                 "equal-score ties must rotate across all players, not always pick the UUID maximum");
         check(BossTargetSelector.choose(trio, null, 0).target().equals(firstPick),
                 "tie rotation must stay deterministic for a repeated cursor");
+    }
+
+    private static void testGroupComboSecondariesAreDistinctAndBounded() {
+        var a = observation(FIRST, 1.0D, 2.0D, false, 0.0D, 0.0D, 0.0D);
+        var b = observation(SECOND, 0.9D, 3.0D, false, 2.0D, 0.0D, 0.0D);
+        var c = observation(THIRD, 0.8D, 4.0D, false, 4.0D, 0.0D, 0.0D);
+        BossPerceptionSnapshot trio = snapshot(a, b, c);
+        var ranked = BossTargetSelector.ranked(trio, null, 0);
+        UUID primary = ranked.getFirst().target();
+        var supports = BossTargetSelector.secondaries(ranked, primary, 2);
+        check(supports.size() == 2, "a three-player party must expose two distinct supports");
+        check(supports.stream().noneMatch(value -> primary.equals(value.target())),
+                "the primary target must never repeat among the supports");
+        java.util.Set<UUID> distinct = new java.util.HashSet<>();
+        for (var value : supports) distinct.add(value.target());
+        check(distinct.size() == supports.size(), "supports must be genuinely distinct players");
+        check(BossTargetSelector.secondaries(ranked, primary, 0).isEmpty(),
+                "a zero cap must yield no supports");
+        check(BossTargetSelector.secondaries(List.of(), primary, 2).isEmpty(),
+                "an empty ranked list must yield no supports");
+        // Bounded to the party, never to a fabricated count: a solo target has none.
+        BossPerceptionSnapshot solo = snapshot(a);
+        var soloRanked = BossTargetSelector.ranked(solo, null, 0);
+        check(BossTargetSelector.secondaries(soloRanked, soloRanked.getFirst().target(), 2).isEmpty(),
+                "a solo target has no distinct supports");
     }
 
     private static BossPerceptionSnapshot snapshot(BossPerceptionSnapshot.PlayerObservation... players) {

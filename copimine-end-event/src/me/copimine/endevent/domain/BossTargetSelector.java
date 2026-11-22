@@ -79,6 +79,40 @@ public final class BossTargetSelector {
         return List.copyOf(sorted.subList(0, Math.min(MAX_CANDIDATES, sorted.size())));
     }
 
+    /**
+     * Up to {@code max} distinct secondary targets for a group combo.
+     *
+     * <p>The boss contract asks for a primary plus up to two <em>different</em>
+     * secondary players when a phase demands group pressure. The ranked list
+     * already orders the party by contextual score, so the supports are simply
+     * the next best players once the primary is removed; the cap keeps a combo
+     * bounded and stops a 20-player party from being hit by one "group" spell
+     * that secretly targets everyone.</p>
+     *
+     * @param ranked  result of {@link #ranked(BossPerceptionSnapshot, UUID, int)}
+     * @param primary the already-chosen primary target, excluded from the result
+     * @param max     hard cap on distinct supports
+     */
+    public static List<TargetDecision> secondaries(List<TargetDecision> ranked, UUID primary, int max) {
+        if (ranked == null || ranked.isEmpty() || max <= 0) {
+            return List.of();
+        }
+        List<TargetDecision> picked = new ArrayList<>(Math.min(max, ranked.size()));
+        for (TargetDecision candidate : ranked) {
+            if (candidate.target() == null) {
+                continue;
+            }
+            if (primary != null && primary.equals(candidate.target())) {
+                continue;
+            }
+            picked.add(candidate);
+            if (picked.size() >= max) {
+                break;
+            }
+        }
+        return List.copyOf(picked);
+    }
+
     private static TargetDecision scored(BossPerceptionSnapshot.PlayerObservation player,
                                          UUID currentTarget) {
         double score = player.recentDamageThreat() * 1.5D

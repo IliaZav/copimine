@@ -2018,6 +2018,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private BossIntent currentBossIntent = BossIntent.RECOVER;
     private UUID currentBossBrainTarget;
     private BossAbilityId currentBossBrainAbility;
+    /** Distinct secondary players for the current group decision, best first. */
+    private java.util.List<BossTargetSelector.TargetDecision> currentBossBrainSupports = java.util.List.of();
     private long currentBossDecisionAtMillis;
     private long nextBossPerceptionMillis;
     private long bossHazardReservationGeneration;
@@ -11673,6 +11675,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         depositedResources.replaceAll((key, ignored) -> 0);
         coreCharged = false;
         participantUuids.clear();
+        // A reset must clear the depositor ledger with the participant roster.
+        // Leaving resourceContributors behind made the very next `cmend status`
+        // report participants=1 against roster=0 after a restart, because the
+        // status formatter counted the stale depositor as a participant while
+        // the archived roster had already been emptied.
+        resourceContributors.clear();
         officialRewardRoster.clear();
         combatProfiles.clear();
         if (combatProfileListener != null) combatProfileListener.clear();
@@ -47613,6 +47621,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         currentBossIntent = BossIntent.RECOVER;
         currentBossBrainTarget = null;
         currentBossBrainAbility = null;
+        // Drop the previous decision's group supports with the decision itself:
+        // a stale support UUID must never survive a reconfigure and be picked as
+        // a fallback target for an unrelated cast.
+        currentBossBrainSupports = java.util.List.of();
         currentBossDecisionAtMillis = 0L;
         nextBossPerceptionMillis = 0L;
         bossPhasePresentationUntilMillis = 0L;
@@ -47916,6 +47928,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         currentBossIntent = BossIntent.RECOVER;
         currentBossBrainTarget = null;
         currentBossBrainAbility = null;
+        currentBossBrainSupports = java.util.List.of();
         currentBossDecisionAtMillis = 0L;
         nextBossPerceptionMillis = 0L;
         bossTargetCursor = 0;
@@ -48167,6 +48180,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         boss.hasLineOfSight(target), isPlayerUnderTentacleControl(target))) {
             currentBossBrainAbility = BossAbilityId.fromSpell(EndRiftAiPolicy.BossSpell.MELEE_SWIPE);
             currentBossBrainTarget = target.getUniqueId();
+            // A close-quarters swing is a single-target decision, so clear any
+            // group supports left by the previous brain decision. Without this
+            // the fallback in currentBrainTarget could steer a swipe at a
+            // teammate the earlier combo had ranked.
+            currentBossBrainSupports = java.util.List.of();
             currentBossDecisionAtMillis = now;
             if (castCurrentBossSpell(boss, EndRiftAiPolicy.BossSpell.MELEE_SWIPE, false)) {
                 // Contract 10.5: the cadence is the per-phase authored rhythm,
@@ -50724,6 +50742,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         currentBossIntent = decision.intent();
         currentBossBrainTarget = decision.target().target();
         currentBossBrainAbility = decision.ability().ability();
+        currentBossBrainSupports = decision.supports();
         currentBossDecisionAtMillis = System.currentTimeMillis();
         if (System.currentTimeMillis() >= nextBossPerceptionMillis) {
             nextBossPerceptionMillis = System.currentTimeMillis() + 400L;
@@ -51049,11 +51068,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private Player currentBrainTarget(LivingEntity boss, EndRiftAiPolicy.BossSpell spell) {
         BossAbilityId ability = BossAbilityId.fromSpell(spell);
         if (ability != null && ability == currentBossBrainAbility
-                && currentBossBrainTarget != null
                 && System.currentTimeMillis() - currentBossDecisionAtMillis <= 1_000L) {
-            Player selected = Bukkit.getPlayer(currentBossBrainTarget);
-            if (selected != null && isCombatTarget(selected)) {
-                return selected;
+            if (currentBossBrainTarget != null) {
+                Player selected = Bukkit.getPlayer(currentBossBrainTarget);
+                if (selected != null && isCombatTarget(selected)) {
+                    return selected;
+                }
+            }
+            // The chosen primary died, logged out or left the arena inside the
+            // same decision window. Fall to the distinct secondary the brain
+            // already ranked for this decision before doing a fresh global pick,
+            // so a group combo keeps its intended shape instead of collapsing
+            // to whoever the generic selector happens to return.
+            for (BossTargetSelector.TargetDecision support : currentBossBrainSupports) {
+                if (support.target() == null) continue;
+                Player selected = Bukkit.getPlayer(support.target());
+                if (selected != null && isCombatTarget(selected)) {
+                    return selected;
+                }
             }
         }
         return selectBossSpellTarget(boss);
@@ -51566,6 +51598,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 ? EndRiftAiPolicy.BossSpell.GROUND_SLAM : EndRiftAiPolicy.BossSpell.MELEE_SWIPE;
         currentBossBrainAbility = BossAbilityId.fromSpell(strike);
         currentBossBrainTarget = target.getUniqueId();
+        currentBossBrainSupports = java.util.List.of();
         currentBossDecisionAtMillis = System.currentTimeMillis();
         if (castCurrentBossSpell(boss, strike, false)) {
             bossFuryCombo.committed();
@@ -52049,7 +52082,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                         mark.clone().add(0, 1.5D, 0));
                             }
                         }
-                        case VOID_MARK -> voidMark(boss, mark);
+                        case VOID_MARK -> {
+                             voidMark(boss, mark);
+                             // Group-aware pressure: the mark also lands on the
+                             // distinct secondaries the brain ranked for this
+                             // decision, so a Hunt/Rift/Last-Seal mark cycle
+                             // threatens the party rather than only whoever the
+                             // generic selector picked. Bounded by the existing
+                             // zone cap, so a 20-player party cannot stack
+                             // unlimited zones from one cast.
+                             for (BossTargetSelector.TargetDecision support : currentBossBrainSupports) {
+                                 if (activeVoidMarkTasks.size() >= MAX_ACTIVE_VOID_MARKS) break;
+                                 Player supportPlayer = support.target() == null
+                                         ? null : Bukkit.getPlayer(support.target());
+                                 if (supportPlayer != null && isCombatTarget(supportPlayer)
+                                         && boss.getWorld().equals(supportPlayer.getWorld())) {
+                                     voidMark(boss, supportPlayer.getLocation());
+                                 }
+                             }
+                         }
                          case SUMMON_SERVANTS -> summonServants(boss);
                          case ARENA_INFERNO -> arenaInferno(boss, target);
                          case BOSS_FIREBALL -> launchBossFireball(boss, target, mark.clone().add(0, 1.5D, 0));

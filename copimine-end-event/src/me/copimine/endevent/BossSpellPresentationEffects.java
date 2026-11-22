@@ -187,9 +187,45 @@ final class BossSpellPresentationEffects {
                 frame(anchor, direction, BossSpellGeometryPolicy.sample(shape,
                         BossSpellGeometryPolicy.Beat.IMPACT, progress, radius), rgb,
                         composition, progress, audience.get(), allowed);
+                // The release needs a footprint, not just a body: a bounded
+                // expanding ground ring tells the group exactly how far the hit
+                // reached and where it already stopped, which is the read players
+                // use to step back in. Three frames only, fixed point count.
+                if (step <= 2) {
+                    shockRing(anchor, rgb, progress, audience.get(), allowed);
+                }
                 if (++step >= 6) cancel();
             }
         }.runTaskTimer(plugin, 0, 2);
         register.accept(task);
+    }
+
+    /**
+     * Bounded expanding ground ring for the release moment.
+     *
+     * <p>Fixed 18-point circumference and the same {@link #MAX_VIEWERS} ceiling
+     * as every other layer, so the shockwave costs three frames of one ring and
+     * never scales with the party size. The ring uses the composition's hot
+     * impact colour, so a bone volley and a Kagune eruption release in their own
+     * hue rather than the shared white flash this replaces.</p>
+     */
+    private static void shockRing(Location center, int rgb, double progress,
+            List<Player> viewers, BiPredicate<Player, Location> allowed) {
+        if (center == null || center.getWorld() == null || viewers == null) return;
+        double radius = 0.5D + Math.clamp(progress, 0.0D, 1.0D) * 3.5D;
+        int points = 18;
+        Color hot = Color.fromRGB(BossSpellVisualCompositionPolicy.impactColor(rgb));
+        Particle.DustOptions dust = new Particle.DustOptions(hot, 1.05F);
+        int admitted = 0;
+        for (Player viewer : viewers) {
+            if (viewer == null || !viewer.isOnline() || !viewer.getWorld().equals(center.getWorld())
+                    || !allowed.test(viewer, center)) continue;
+            if (++admitted > MAX_VIEWERS) break;
+            for (int i = 0; i < points; i++) {
+                double a = i * TAU / points;
+                Location at = center.clone().add(Math.cos(a) * radius, 0.12D, Math.sin(a) * radius);
+                viewer.spawnParticle(Particle.DUST, at, 1, 0, 0, 0, 0, dust);
+            }
+        }
     }
 }

@@ -57,10 +57,19 @@ public final class BossBrain {
                 ability = next;
             }
         }
-        return new Decision(target, intent, ability);
+        // Group pressure: one primary plus up to two genuinely different
+        // secondaries, so a combo can spread across the party instead of
+        // repeatedly landing on whoever the primary happens to be.
+        List<BossTargetSelector.TargetDecision> supports =
+                BossTargetSelector.secondaries(candidates, target.target(), MAX_SECONDARIES);
+        return new Decision(target, supports, intent, ability);
     }
 
+    /** Hard cap on distinct secondary players a single combo may include. */
+    public static final int MAX_SECONDARIES = 2;
+
     public record Decision(BossTargetSelector.TargetDecision target,
+                           List<BossTargetSelector.TargetDecision> supports,
                            BossIntent intent,
                            BossAbilitySelector.AbilityDecision ability) {
     }

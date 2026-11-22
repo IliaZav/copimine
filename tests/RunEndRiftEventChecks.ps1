@@ -939,7 +939,8 @@ Invoke-GateStep 'Boss accepted hits, cast ownership and Kagune recovery' {
       'tests/test_small_kagune_strike_adapter.py' 'tests/test_tentacle_throw_protection_adapter.py' `
       'tests/test_boss_phase_damage_transaction_adapter.py' 'tests/test_boss_defeat_durability_adapter.py' `
       'tests/test_kagune_rig_transform_contract.py' `
-      'tests/test_last_seal_arena_ritual_wiring.py'
+      'tests/test_last_seal_arena_ritual_wiring.py' `
+      'tests/test_end_rift_bare_typed_particle_guard.py'
     if ($LASTEXITCODE -ne 0) { throw 'Boss combat, cast ownership or Kagune recovery regression failed.' }
   } finally {
     Pop-Location

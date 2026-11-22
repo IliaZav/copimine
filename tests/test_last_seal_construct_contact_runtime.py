@@ -113,6 +113,8 @@ public final class LastSealContactProbe {
         final World world = new World();
         final LivingEntity boss = new LivingEntity();
         final Player player = new Player(world, 0, 0, 0);
+        List<Player> party = List.of(player);
+        KaguneSpellFrame published;
         LastSealConstructRuntime.Scope scope;
         int hitCalls, successfulHits, finishedCalls;
         boolean acceptHit;
@@ -121,11 +123,11 @@ public final class LastSealContactProbe {
             scope = new LastSealConstructRuntime.Scope("event", 1L, UUID.randomUUID()); }
         public LastSealConstructRuntime.Scope scope(LivingEntity b) { return scope; }
         public boolean active(LivingEntity b) { return true; }
-        public List<Player> participants() { return List.of(player); }
+        public List<Player> participants() { return party; }
         public Location floor(Location near) { return near.clone(); }
         public boolean traversable(Location feet) { return true; }
         public ItemDisplay create(Location origin, KaguneSpellFrame initial) { return new ItemDisplay(); }
-        public void publish(ItemDisplay carrier, KaguneSpellFrame frame) { }
+        public void publish(ItemDisplay carrier, KaguneSpellFrame frame) { published = frame; }
         public void warning(Location origin, List<KaguneSpellFrame.Point> points, int kind) { }
         public void impact(Location origin, int kind) { }
         public boolean hit(LivingEntity b, Player p, double damage) {
@@ -161,6 +163,25 @@ public final class LastSealContactProbe {
         runtime.tick(host.boss, 49L);
         check(host.successfulHits == 1, "the same player was damaged twice in one cast");
         check(runtime.active(), "cast ended early");
+
+        var partyHost = new Host();
+        var second = new Player(partyHost.world, 6, 0, 0);
+        var overlapping = new Player(partyHost.world, .8, 0, 0);
+        var far = new Player(partyHost.world, 14, 0, 0);
+        partyHost.party = List.of(partyHost.player, second, overlapping, far);
+        var partyCast = new LastSealConstructRuntime(partyHost);
+        check(partyCast.start(partyHost.boss, partyHost.player, KaguneSpellFrame.ERUPTION, 0L),
+                "party eruption did not start");
+        var locked = partyHost.published.points();
+        check(locked.contains(new KaguneSpellFrame.Point(6, 0, 0)), "teammate's position was ignored");
+        check(!locked.contains(new KaguneSpellFrame.Point(.8, 0, 0)), "overlapping warning was admitted");
+        check(!locked.contains(new KaguneSpellFrame.Point(14, 0, 0)), "far-away warning was admitted");
+        check(locked.size() == 5, "bounded eruption layout did not fill its valid roots");
+        partyHost.acceptHit = true;
+        partyCast.tick(partyHost.boss, 29L);
+        check(partyHost.hitCalls == 0, "warning did damage");
+        partyCast.tick(partyHost.boss, 47L);
+        check(partyHost.hitCalls == 2, "the two locked positions did not resolve independently");
         System.out.println("OK");
     }
 }

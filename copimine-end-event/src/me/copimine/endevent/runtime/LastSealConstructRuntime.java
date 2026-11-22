@@ -20,7 +20,7 @@ public final class LastSealConstructRuntime {
         ItemDisplay create(Location origin, KaguneSpellFrame initial);
         void publish(ItemDisplay carrier, KaguneSpellFrame frame);
         default void presentation(Location origin, KaguneSpellFrame frame) { }
-        default void started(Location origin, int kind) { }
+        default void started(Location origin, int kind, List<KaguneSpellFrame.Point> points) { }
         void warning(Location origin, List<KaguneSpellFrame.Point> points, int kind);
         void impact(Location origin, int kind);
         boolean hit(LivingEntity boss, Player player, double damage);
@@ -72,14 +72,8 @@ public final class LastSealConstructRuntime {
                     if (!host.traversable(along)) return false;
                 }
             } else angle = 0D;
-            List<KaguneSpellFrame.Point> planned = new ArrayList<>();
-            double[][] offsets = kind == KaguneSpellFrame.STAB ? new double[][]{{0,0}}
-                    : new double[][]{{0,0},{-1.4,-1.4},{-1.4,1.4},{1.4,-1.4},{1.4,1.4}};
-            for (double[] offset : offsets) {
-                Location feet = host.floor(at.clone().add(offset[0], 0, offset[1]));
-                if (feet == null || !host.traversable(feet) || Math.abs(feet.getY() - at.getY()) > 1D) return false;
-                planned.add(new KaguneSpellFrame.Point(feet.getX()-at.getX(), feet.getY()-at.getY(), feet.getZ()-at.getZ()));
-            }
+            List<KaguneSpellFrame.Point> planned = kind == KaguneSpellFrame.STAB
+                    ? List.of(new KaguneSpellFrame.Point(0, 0, 0)) : eruptionFootprints(at, target, boss.getLocation());
             scope = owner; origin = at; points = List.copyOf(planned); this.kind = kind; heading = angle;
             started = tick; lastTick = Long.MIN_VALUE; hits.clear(); previousPlayers.clear(); impactPlayed = false;
             falls.values().removeIf(lease -> System.nanoTime() >= lease.expiresNanos());
@@ -87,10 +81,49 @@ public final class LastSealConstructRuntime {
             if (carrier == null || !carrier.isValid()) throw new IllegalStateException("construct-carrier-refused");
             host.publish(carrier, frame(0));
             active = true;
-            host.started(origin, kind);
+            host.started(origin, kind, points);
             host.warning(origin, points, kind);
             return true;
         } catch (RuntimeException failure) { cancel("admission-failed"); host.failed(failure.toString()); return false; }
+    }
+
+    private List<KaguneSpellFrame.Point> eruptionFootprints(Location root, Player primary, Location boss) {
+        List<KaguneSpellFrame.Point> result = new ArrayList<>(5);
+        result.add(new KaguneSpellFrame.Point(0, 0, 0));
+        List<Location> teammates = new ArrayList<>();
+        for (Player member : host.participants()) {
+            if (member != null && !member.getUniqueId().equals(primary.getUniqueId())
+                    && member.isOnline() && !member.isDead() && root.getWorld().equals(member.getWorld())) {
+                teammates.add(member.getLocation());
+            }
+        }
+        teammates.sort(Comparator.comparingDouble(root::distanceSquared));
+        // Keep roots apart so a cluster reads as one threat and still has an exit.
+        for (Location teammate : teammates) {
+            addEruptionFootprint(root, teammate, result);
+            if (result.size() == 4) break;
+        }
+        double rotation = Math.atan2(root.getZ() - boss.getZ(), root.getX() - boss.getX());
+        for (int i = 0; i < 4 && result.size() < 5; i++) {
+            double angle = rotation + i * Math.PI / 2D;
+            addEruptionFootprint(root,
+                    root.clone().add(Math.cos(angle) * 2.6D, 0, Math.sin(angle) * 2.6D), result);
+        }
+        return result;
+    }
+
+    private void addEruptionFootprint(Location root, Location candidate, List<KaguneSpellFrame.Point> result) {
+        Location feet = host.floor(candidate);
+        if (feet == null || !root.getWorld().equals(feet.getWorld()) || !host.traversable(feet)) return;
+        double x = feet.getX() - root.getX();
+        double y = feet.getY() - root.getY();
+        double z = feet.getZ() - root.getZ();
+        if (x * x + z * z > 56.25D || Math.abs(y) > 1D) return;
+        for (var existing : result) {
+            double dx = x - existing.x(), dz = z - existing.z();
+            if (dx * dx + dz * dz < 4D) return;
+        }
+        result.add(new KaguneSpellFrame.Point(x, y, z));
     }
 
     public void tick(LivingEntity boss, long tick) {

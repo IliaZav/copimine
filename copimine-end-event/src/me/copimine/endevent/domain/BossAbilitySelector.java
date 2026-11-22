@@ -68,7 +68,7 @@ public final class BossAbilitySelector {
         }
         double score = phaseWeight(snapshot.phase(), ability)
                 + intentMatch(intent, ability)
-                + geometryMatch(snapshot, ability)
+                + geometryMatch(snapshot, observation, ability)
                 + (observation == null ? 0.0D : observation.recentDamageThreat())
                 - (previous == ability ? 4.0D : 0.0D)
                 - historyPenalty(recentAccepted, ability)
@@ -141,7 +141,16 @@ public final class BossAbilitySelector {
         };
     }
 
-    private static double geometryMatch(BossPerceptionSnapshot snapshot, BossAbilityId ability) {
+    private static double geometryMatch(BossPerceptionSnapshot snapshot,
+                                        BossPerceptionSnapshot.PlayerObservation target, BossAbilityId ability) {
+        if (target != null && snapshot.phase() == BossPhase.LAST_SEAL) {
+            if (ability == BossAbilityId.KAGUNE_STAB && target.isolated()) return 4D;
+            if (ability == BossAbilityId.KAGUNE_ERUPTION && snapshot.livingPlayers().stream()
+                    .anyMatch(other -> !other.playerId().equals(target.playerId())
+                            && Math.hypot(other.x() - target.x(), other.z() - target.z()) <= 7.5D)) {
+                return 5D;
+            }
+        }
         return snapshot.partyStacked() && ability == BossAbilityId.VOID_BLAST ? 3.0D
                 : snapshot.partySpread() && ability.requiresLineOfSight() ? 2.0D : 0.0D;
     }

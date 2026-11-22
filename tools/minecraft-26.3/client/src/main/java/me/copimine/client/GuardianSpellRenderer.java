@@ -17,7 +17,8 @@ import net.minecraft.world.entity.projectile.throwableitemprojectile.Snowball;
 public final class GuardianSpellRenderer {
     private static final Identifier TEXTURE = Identifier.fromNamespaceAndPath(
             "copimineclient", "textures/world/guardian_spell_materials.png");
-    public record Pose(String mesh, float yaw, float pitch, float roll, float scale) { }
+    public record Pose(String mesh, float yaw, float pitch, float roll, float scale, float age) { }
+    private record Motion(float width, float height, float depth, float twist, float surge, int tint) { }
     private GuardianSpellRenderer() { }
 
     public static Pose thrownPose(Entity entity, float partialTick) {
@@ -33,8 +34,8 @@ public final class GuardianSpellRenderer {
         float pitch = velocity.lengthSqr() > 0.0001
                 ? (float) -Math.toDegrees(Math.atan2(velocity.y, horizontal)) : entity.getXRot();
         if (!Float.isFinite(yaw) || !Float.isFinite(pitch)) return null;
-        return new Pose(mesh, yaw, pitch, (entity.tickCount + partialTick) * 18F,
-                model == 830013 ? 1.6F : 1.25F);
+        float age = entity.tickCount + partialTick;
+        return new Pose(mesh, yaw, pitch, age * 18F, model == 830013 ? 1.6F : 1.25F, age);
     }
 
     public static Pose displayPose(Display entity, float partialTick) {
@@ -82,7 +83,48 @@ public final class GuardianSpellRenderer {
             case 830215 -> 1.3F;
             default -> 1F;
         };
-        return new Pose(mesh, yaw, entity.getXRot(), roll, scale * size);
+        return new Pose(mesh, yaw, entity.getXRot(), roll, scale * size, age);
+    }
+
+    private static Motion motion(Pose pose) {
+        float age = pose.age();
+        float heartbeat = .5F + .5F * (float) Math.sin(age * .32F);
+        float charge = Math.min(1F, age / 12F);
+        float release = (float) Math.sin(Math.PI * Math.min(1F, age / 18F));
+        return switch (pose.mesh()) {
+            case "void_core" -> new Motion(1F + .14F * heartbeat, 1F - .09F * heartbeat,
+                    1F + .14F * heartbeat, .24F, heartbeat, 0xEAD2FF);
+            case "inferno_core" -> new Motion(1F - .08F * heartbeat, 1F + .16F * heartbeat,
+                    1F + .15F * release, -.30F, heartbeat, 0xFFCEAA);
+            case "rift_lance" -> new Motion(1F, 1F, 1F + .15F * release, .08F, release, 0xD8DCFF);
+            case "echo_shard" -> new Motion(.70F + .30F * charge, 1F, 1F + .12F * release,
+                    -.19F, release, 0xC6F0FF);
+            case "final_seal" -> new Motion(1F - .16F * charge, 1F + .19F * charge,
+                    1F - .16F * charge, .11F, heartbeat, 0xFFD7F3);
+            case "chest_iris" -> new Motion(.79F + .21F * charge, .79F + .21F * charge,
+                    1F + .11F * release, 0F, heartbeat, 0xFFDFBC);
+            case "kagune_splinter" -> new Motion(1F, .80F + .20F * charge, 1F,
+                    .38F, release, 0xE1C6FF);
+            case "fault_fragment" -> new Motion(1F + .15F * release, 1F + .24F * release,
+                    1F + .15F * release, .05F, release, 0xFFC1A9);
+            case "void_rune" -> new Motion(.88F + .12F * charge, 1F, .88F + .12F * charge,
+                    0F, heartbeat, 0xDAB5FF);
+            case "inferno_crown" -> new Motion(1F, .68F + .35F * charge + .17F * heartbeat,
+                    1F, .16F, heartbeat, 0xFFD2AF);
+            case "summon_arch" -> new Motion(.82F + .18F * charge, .65F + .35F * charge,
+                    1F, .15F, release, 0xC7E8FF);
+            case "arrow_rack" -> new Motion(1F - .12F * charge, 1F, .95F + .19F * release,
+                    0F, release, 0xFFE9D6);
+            case "rift_gate" -> new Motion(.62F + .38F * charge, 1F, 1F + .12F * release,
+                    -.08F, release, 0xBEF6FF);
+            case "snare_chains" -> new Motion(1.15F - .26F * charge, 1F,
+                    1.15F - .26F * charge, .21F, heartbeat, 0xEFCAFF);
+            case "echo_bloom" -> new Motion(1F + .13F * release, .88F + .12F * charge,
+                    1F + .13F * release, -.34F, release, 0xC5F2FF);
+            case "euphoria_helix" -> new Motion(1F + .08F * heartbeat, .85F + .18F * charge,
+                    1F + .08F * heartbeat, .38F, heartbeat, 0xFAABFF);
+            default -> new Motion(1F, 1F, 1F, 0F, 0F, 0xFFFFFF);
+        };
     }
 
     public static boolean submit(Pose pose, PoseStack matrices, SubmitNodeCollector collector) {
@@ -93,17 +135,28 @@ public final class GuardianSpellRenderer {
         matrices.rotateDegrees(Axis.YP, pose.yaw());
         matrices.rotateDegrees(Axis.XP, pose.pitch());
         matrices.rotateDegrees(Axis.ZP, pose.roll());
-        matrices.scale(pose.scale(), pose.scale(), pose.scale());
+        Motion motion = motion(pose);
+        matrices.scale(pose.scale() * motion.width(), pose.scale() * motion.height(),
+                pose.scale() * motion.depth());
         collector.submitCustomGeometry(matrices, RenderTypes.entityTranslucentEmissive(TEXTURE), (transform, buffer) -> {
             for (var vertex : vertices) {
                 // Preserve volume under an emissive material: face shading is
                 // authored here rather than depending on a dark arena lightmap.
-                int shade = Math.round(255F * (.72F + .18F * Math.max(0,vertex.ny())
-                        + .10F * Math.max(0,-vertex.nz())));
-                buffer.addVertex(transform,vertex.x(),vertex.y(),vertex.z())
-                        .setColor(shade,shade,shade,255).setUv(vertex.u(),vertex.v())
+                float shade = .64F + .17F * Math.max(0, vertex.ny())
+                        + .09F * Math.max(0, -vertex.nz()) + .10F * motion.surge();
+                float twist = motion.twist() * vertex.y()
+                        * (float) Math.sin(pose.age() * .24F + vertex.y() * 3F);
+                float cosine = (float) Math.cos(twist), sine = (float) Math.sin(twist);
+                float x = vertex.x() * cosine - vertex.z() * sine;
+                float z = vertex.x() * sine + vertex.z() * cosine;
+                int tint = motion.tint();
+                buffer.addVertex(transform, x, vertex.y(), z)
+                        .setColor(Math.round(((tint >>> 16) & 255) * shade),
+                                Math.round(((tint >>> 8) & 255) * shade),
+                                Math.round((tint & 255) * shade), 255).setUv(vertex.u(),vertex.v())
                         .setOverlay(OverlayTexture.NO_OVERLAY).setLight(0x00F000F0)
-                        .setNormal(transform,vertex.nx(),vertex.ny(),vertex.nz());
+                        .setNormal(transform, vertex.nx() * cosine - vertex.nz() * sine,
+                                vertex.ny(), vertex.nx() * sine + vertex.nz() * cosine);
             }
         });
         matrices.popPose();

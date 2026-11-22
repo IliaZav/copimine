@@ -138,6 +138,7 @@ public final class EndRiftTentacleRenderer {
         List<UUID> candidateIds = candidateEntityIds(world);
         FACING_BY_ENTITY.keySet().retainAll(candidateIds);
         if (candidateIds.isEmpty()) return;
+        submitConstructEffects(context, world, cameraPos, tickDelta, candidateIds);
         EndRiftRenderSubmission.submit(context, cameraPos, RenderTypes.entityTranslucent(TEXTURE), (matrices, buffer) -> {
             for (UUID entityUuid : candidateIds) {
                 Entity entity = ((ClientWorldAccessor) world).copimine$getEntities().get(entityUuid);
@@ -187,6 +188,35 @@ public final class EndRiftTentacleRenderer {
                 matrices.popPose();
             }
         });
+    }
+
+    private record ConstructEffect(KaguneSpellFrame frame, Vec3 origin, int plates) {}
+
+    private static void submitConstructEffects(LevelRenderContext context, ClientLevel world,
+                                               Vec3 camera, float partialTick, List<UUID> candidates) {
+        List<ConstructEffect> effects = new ArrayList<>();
+        var entities = ((ClientWorldAccessor) world).copimine$getEntities();
+        for (UUID id : candidates) {
+            if (!(entities.get(id) instanceof Display.ItemDisplay display) || display.isRemoved()
+                    || componentMarker(display) != KaguneSpellFrame.MARKER) continue;
+            KaguneSpellFrame frame = spellFrame(display);
+            Vec3 origin = display.getPosition(partialTick);
+            if (frame == null || !finite(origin) || origin.distanceToSqr(camera) > 64D * 64D) continue;
+            effects.add(new ConstructEffect(frame, origin, origin.distanceToSqr(camera) < 28D * 28D ? 8 : 4));
+        }
+        if (effects.isEmpty()) return;
+        EndRiftRenderSubmission.submit(context, camera,
+                RenderTypes.entityTranslucentEmissive(LastSealSpellEffects.MATERIALS), (matrices, vertices) -> {
+                    for (ConstructEffect effect : effects) {
+                        KaguneSpellFrame frame = effect.frame();
+                        double progress = frame.previousProgress() + (frame.progress() - frame.previousProgress())
+                                * Math.max(0F, Math.min(1F, partialTick));
+                        matrices.pushPose();
+                        matrices.translate(effect.origin().x, effect.origin().y, effect.origin().z);
+                        LastSealSpellEffects.render(matrices, vertices, frame, progress, effect.plates());
+                        matrices.popPose();
+                    }
+                });
     }
 
     private static int componentMarker(Display.ItemDisplay display) {

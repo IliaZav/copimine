@@ -50487,30 +50487,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || EchoDecoyPolicy.maySummonTo(echoDecoyIds.size()) == 0))
             available.remove(EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS);
         available.removeIf(spell -> !bossActionAvailable(spell));
-        if (available.isEmpty()) return false;
-        BossBrain.Decision brainDecision = chooseCurrentBossDecision(boss, available);
-        EndRiftAiPolicy.BossSpell spell = spellForAbility(
-                brainDecision == null || brainDecision.ability() == null
-                        ? null : brainDecision.ability().ability());
-        if (brainDecision != null && spell == null) {
-            // A real perception decision with no legal action must retry later;
-            // a round-robin fallback would immediately reselect the rejected
-            // out-of-range or budget-blocked action.
-            return false;
-        }
-        if (spell == null) {
-            // Preserve the legacy bounded selector only when no perception
-            // decision was available. A rejected real decision returned above.
-            spell = EndRiftAiPolicy.chooseBossSpell(
-                    available, previousBossSpell, bossSpellCursor);
-        }
-        if (spell != null) {
-            boolean accepted = castCurrentBossSpell(boss, spell, forced);
-            if (accepted) {
+        long ownerGeneration = generation;
+        BossPhase ownerPhase = bossPhase;
+        for (int attempt = 0; attempt < 2 && !available.isEmpty(); attempt++) {
+            BossBrain.Decision decision = chooseCurrentBossDecision(boss, available);
+            EndRiftAiPolicy.BossSpell spell = decision == null
+                    ? EndRiftAiPolicy.chooseBossSpell(available, previousBossSpell, bossSpellCursor)
+                    : spellForAbility(decision.ability().ability());
+            if (spell == null) return false;
+            EndRiftAiPolicy.BossSpell previous = previousBossSpell;
+            if (castCurrentBossSpell(boss, spell, forced)) {
                 bossSpellCursor++;
                 bossBrain.recordAccepted(BossAbilityId.fromSpell(spell), generation);
+                return true;
             }
-            return accepted;
+            // Terrain can refuse an otherwise legal cast. Retry once with a
+            // different ranked ability, only when no cast owns the encounter.
+            if (forced || generation != ownerGeneration || bossPhase != ownerPhase
+                    || !isBossCombatRuntimeActive(boss) || bossAbilityState != BossAbilityState.NONE
+                    || bossHazardReservationId != null || bossAmbushOwnsMajorCast()
+                    || isKaguneRingCastActive() || (lastSealConstruct != null && lastSealConstruct.active())) return false;
+            previousBossSpell = previous;
+            available.remove(spell);
         }
         return false;
     }
@@ -54113,8 +54111,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 me.copimine.endevent.presentation.ItemPresentationComponents.setFloats(meta, frame.encode());
                 item.setItemMeta(meta); carrier.setItemStack(item);
             }
-            public void started(Location origin, int kind) {
+            public void started(Location origin, int kind, List<me.copimine.protocol.KaguneSpellFrame.Point> points) {
                 playEncounterAbilityAudioAt(origin, "guardian_summon");
+                getLogger().info("KAGUNE_CONSTRUCT_COMMITTED event=" + eventId + " generation=" + generation
+                        + " kind=" + kind + " origin=" + locationText(origin)
+                        + " roots=" + points.size() + " offsets=" + points);
             }
             public void presentation(Location origin, me.copimine.protocol.KaguneSpellFrame frame) {
                 // Two winding filaments per stem, sampled in the same locked

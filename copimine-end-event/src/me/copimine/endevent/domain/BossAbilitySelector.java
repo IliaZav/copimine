@@ -91,12 +91,24 @@ public final class BossAbilitySelector {
         return switch (phase) {
             case AWAKENING -> ability == BossAbilityId.VOID_BLAST ? 3.0D : 1.0D;
             case HUNT -> ability == BossAbilityId.RIFT_ARROWS || ability == BossAbilityId.VOID_MARK ? 4.0D : 1.0D;
-            case RIFT -> ability == BossAbilityId.VOID_MARK
+            case RIFT -> ability == BossAbilityId.CHEST_BEAM ? 11.0D
+                    : ability == BossAbilityId.VOID_MARK
                     || ability == BossAbilityId.SUMMON_SERVANTS
                     || ability == BossAbilityId.BOSS_FIREBALL ? 4.0D : 1.0D;
-            case OVERLOAD -> ability == BossAbilityId.ARENA_INFERNO
+            case OVERLOAD -> ability == BossAbilityId.CHEST_BEAM ? 11.0D
+                    : ability == BossAbilityId.ARENA_INFERNO
                     || ability == BossAbilityId.BOSS_FIREBALL ? 4.0D : 1.0D;
-            case RAGE -> ability == BossAbilityId.RIFT_ARROWS
+            case RAGE -> ability == BossAbilityId.CHEST_BEAM ? 11.0D
+                    // The Echo decoys are Phase 5's owner-approved identity, but
+                    // they hang off SUMMON_SERVANTS and, at the bare default
+                    // weight, every ranged pressure cast outscored them. The
+                    // ability was in the pool yet the brain essentially never
+                    // selected it, so the decoy mechanic the contract requires
+                    // was unreachable in real play. It still cannot spam: the
+                    // admission gate enforces the ~150 s EchoDecoyPolicy
+                    // cooldown and the five-decoy cap before the cast is offered.
+                    : ability == BossAbilityId.SUMMON_SERVANTS ? 8.0D
+                    : ability == BossAbilityId.RIFT_ARROWS
                     || ability == BossAbilityId.ARENA_INFERNO
                     || ability == BossAbilityId.BOSS_FIREBALL ? 4.0D : 1.0D;
             case LAST_SEAL -> switch (ability) {

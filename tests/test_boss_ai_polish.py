@@ -106,3 +106,56 @@ def test_final_phase_does_not_starve_small_kagune_during_a_long_group_fight(tmp_
           "small Kagune is registered but starved forever by top-three cursor rotation: "+seen);
       check(seen.contains(BossAbilityId.fromSpell(EndRiftAiPolicy.BossSpell.AMBUSH_GRAB)),"ambush starved");
     """)
+
+
+def test_signature_chest_beam_is_reachable_and_preferred_in_its_phases(tmp_path):
+    run_probe(tmp_path, """
+      var beam=BossAbilityId.fromSpell(EndRiftAiPolicy.BossSpell.CHEST_BEAM);
+      check(beam!=null,"the section-7 chest beam has no brain ability id");
+      for(var phase:BossPhase.values()){
+        var inPool=BossPhasePolicy.spellPool(phase).contains(EndRiftAiPolicy.BossSpell.CHEST_BEAM);
+        boolean allowed=phase==BossPhase.RIFT||phase==BossPhase.OVERLOAD||phase==BossPhase.RAGE;
+        check(inPool==allowed,"chest beam phase availability drifted for "+phase);
+      }
+      var id=new UUID(0,1);
+      var scene=new BossPerceptionSnapshot(BossPhase.RIFT,null,List.of(
+          BossPerceptionSnapshot.PlayerObservation.at(id,14,0,0,1,14,true)),
+          new BossPerceptionSnapshot.Position(0,0,0),null,"",1,false);
+      var pool=BossPhasePolicy.spellPool(BossPhase.RIFT).stream().map(BossAbilityId::fromSpell)
+          .filter(java.util.Objects::nonNull).toList();
+      var result=BossAbilitySelector.choose(scene,BossIntent.PUNISH_SPREAD,id,null,pool,null,1,0);
+      check(result.ability()==beam,
+          "the signature ultimate is never selected when off cooldown: "+result.ability());
+      var brain=new BossBrain();var seen=new HashSet<BossAbilityId>();BossAbilityId previous=null;
+      for(int cursor=0;cursor<20;cursor++){
+        var decision=brain.decide(scene,pool,previous,id,null,1,cursor);
+        previous=decision.ability().ability();seen.add(previous);
+        brain.recordAccepted(previous,1);
+      }
+      check(seen.contains(beam),"chest beam starved out of the live pulse: "+seen);
+      check(seen.size()>1,"the ultimate must not monopolise every decision: "+seen);
+    """)
+
+
+def test_rage_echo_decoys_are_reachable_by_the_real_selector(tmp_path):
+    run_probe(tmp_path, """
+      var decoys=BossAbilityId.fromSpell(EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS);
+      check(decoys!=null,"the phase-5 decoys have no brain ability id");
+      check(BossPhasePolicy.spellPool(BossPhase.RAGE).contains(EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS),
+          "rage must offer SUMMON_SERVANTS or the decoys are unreachable");
+      var id=new UUID(0,1);
+      var scene=new BossPerceptionSnapshot(BossPhase.RAGE,null,List.of(
+          BossPerceptionSnapshot.PlayerObservation.at(id,15,0,0,1,15,true)),
+          new BossPerceptionSnapshot.Position(0,0,0),null,"",1,false);
+      var pool=BossPhasePolicy.spellPool(BossPhase.RAGE).stream().map(BossAbilityId::fromSpell)
+          .filter(java.util.Objects::nonNull).toList();
+      var brain=new BossBrain();var seen=new HashSet<BossAbilityId>();BossAbilityId previous=null;
+      boolean selected=false;
+      for(int cursor=0;cursor<12 && !selected;cursor++){
+        var decision=brain.decide(scene,pool,previous,id,null,1,cursor);
+        previous=decision.ability().ability();seen.add(previous);
+        if(previous==decoys)selected=true;
+        brain.recordAccepted(previous,1);
+      }
+      check(selected,"the phase-5 Echo decoys are pooled but never selected: "+seen);
+    """)

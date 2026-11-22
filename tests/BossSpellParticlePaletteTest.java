@@ -19,6 +19,7 @@ public final class BossSpellParticlePaletteTest {
         eachSpellKeepsDistinctNodeSignature();
         unknownIdsFallBackToVisibleDust();
         oneShotParticlesAreNeverStampedOnNodes();
+        oneShotParticlesDeclareTheirRealPayload();
         System.out.println("BossSpellParticlePaletteTest: PASS (" + checks + " checks)");
     }
 
@@ -103,6 +104,29 @@ public final class BossSpellParticlePaletteTest {
         check("dense outranks sparse",
                 BossSpellParticlePalette.nodeRank(BossSpellParticlePalette.resolve("SOUL", 0xFFFFFF))
                         > BossSpellParticlePalette.nodeRank(BossSpellParticlePalette.resolve("ENCHANTED_HIT", 0xFFFFFF)));
+    }
+
+    /**
+     * The declared payload must match the particle's real Bukkit data class.
+     * {@code FLASH} reads like a payload-free flash, but Paper reports its data
+     * class as {@link org.bukkit.Color}: a preset that keeps claiming NONE and
+     * is ever spawned by the renderer would throw "missing required data class"
+     * and take the whole frame's tick down with it.
+     */
+    private static void oneShotParticlesDeclareTheirRealPayload() {
+        var flash = BossSpellParticlePalette.resolve("FLASH", 0xFFFFFF);
+        check("FLASH declares a colour payload, not NONE",
+                flash.payload() == BossSpellParticlePalette.Payload.COLOR);
+        check("FLASH keeps the spell hue", flash.rgb() == 0xFFFFFF);
+        check("FLASH is still not node-drawable",
+                BossSpellParticlePalette.nodeRank(flash) <= 0);
+        // The other one-shots really are payload-free, so they must not claim a
+        // structured carrier either.
+        for (String plain : new String[]{"SONIC_BOOM", "SWEEP_ATTACK"}) {
+            var signature = BossSpellParticlePalette.resolve(plain, 0xFFFFFF);
+            check("a payload-free one-shot claims no payload: " + plain,
+                    signature.payload() == BossSpellParticlePalette.Payload.NONE);
+        }
     }
 
     private static void check(String name, boolean condition) {

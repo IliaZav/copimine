@@ -22,14 +22,19 @@ public final class BossSpellParticlePalette {
      * The payload a Bukkit particle variant requires.
      *
      * <p>{@link #NONE} is a payload-free particle. {@link #FLOAT},
-     * {@link #INTEGER}, {@link #DUST} and {@link #BLOCK} are the structured
-     * carriers this renderer knows how to feed. A renderer that cannot supply
-     * a payload must fall back to dust rather than spawn the particle bare,
-     * because Paper throws "missing required data class" and that exception has
-     * already aborted whole wave ticks once.</p>
+     * {@link #INTEGER}, {@link #DUST}, {@link #BLOCK} and {@link #COLOR} are
+     * the structured carriers this renderer knows how to feed. A renderer that
+     * cannot supply a payload must fall back to dust rather than spawn the
+     * particle bare, because Paper throws "missing required data class" and
+     * that exception has already aborted whole wave ticks once.</p>
+     *
+     * <p>The declared payload must match the particle's real data class, which
+     * is not always obvious from the name: {@code FLASH} reads like a
+     * payload-free flash, but Paper reports its data class as a Colour, so it is
+     * a {@link #COLOR} carrier, not {@link #NONE}.</p>
      */
     public enum Payload {
-        NONE, FLOAT, INTEGER, DUST, BLOCK
+        NONE, FLOAT, INTEGER, DUST, BLOCK, COLOR
     }
 
     /**
@@ -96,7 +101,7 @@ public final class BossSpellParticlePalette {
             case "DAMAGE_INDICATOR" -> sparse("DAMAGE_INDICATOR", rgb, 1.0F);
             case "SWEEP_ATTACK" -> sparse("SWEEP_ATTACK", rgb, 1.0F);
             case "SONIC_BOOM" -> sparse("SONIC_BOOM", rgb, 1.0F);
-            case "FLASH" -> sparse("FLASH", rgb, 1.0F);
+            case "FLASH" -> colored("FLASH", rgb, 1.0F);
             case "SMOKE" -> plain("SMOKE", rgb, 1.0F);
             case "WITCH" -> plain("WITCH", rgb, 1.0F);
             case "SOUL" -> plain("SOUL", rgb, 1.0F);
@@ -163,6 +168,11 @@ public final class BossSpellParticlePalette {
 
     private static Signature sparse(String particle, int rgb, float scale) {
         return new Signature(particle, Payload.NONE, rgb, scale, Weight.SPARSE);
+    }
+
+    /** A payload-free-name particle that Paper still requires a colour for. */
+    private static Signature colored(String particle, int rgb, float scale) {
+        return new Signature(particle, Payload.COLOR, rgb, scale, Weight.SPARSE);
     }
 
     private static Signature typed(String particle, Payload payload, int rgb, float scale) {

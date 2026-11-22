@@ -157,6 +157,10 @@ final class BossSpellPresentationEffects {
             // the shape's body colour, so an authored accent keeps its own hue.
             case DUST -> viewer.spawnParticle(particle, at, 1, 0, 0, 0, 0,
                     new Particle.DustOptions(Color.fromRGB(signature.rgb()), signature.scale()));
+            // A colour-payload particle (e.g. FLASH) must be handed its Colour;
+            // spawning it bare throws "missing required data class".
+            case COLOR -> viewer.spawnParticle(particle, at, 1, 0, 0, 0, 0,
+                    Color.fromRGB(signature.rgb()));
         }
     }
 

@@ -219,6 +219,23 @@ END_RIFT_INVARIANTS failures=0 countersNonNegative=true entityCount=2 tasks=0 bo
 |---|---|
 | **CODE-IMPLEMENTED** | Все правки этого раздела: композиции, палитра, рендерер, ИИ целей, политика финала, проводка в монолите |
 | **AUTOMATED-TESTED** | Полный локальный гейт (все Python-наборы, чистые Java-политики, persistence/recovery, гигиена диффа) + 13 тестов пинов |
-| **PAPER-RUNTIME-OBSERVED** | Логика сервера на живом Paper проверяется после деплоя (RCON `cmend status`, `cmend debug invariants`) |
+| **PAPER-RUNTIME-OBSERVED** | Да. Артефакт `0aa1a51c…` установлен на прод 22.11.2026 02:05 MSK, сервис `active`, `END_RIFT_INVARIANTS failures=0`. Тест-босс доведён до `LAST_SEAL`; в логе `BOSS_LAST_SEAL_VISUALS_STARTED` и `BOSS_LAST_SEAL_ASCENSION`; после `cmend boss kill cleanup` состояние вернулось к `AWAKENING`, `boss=none`, инварианты `failures=0` |
 | **NATIVE-CLIENT-VISUALLY-VERIFIED** | **НЕ ПРОВЕРЕНО.** Ни один кадр F2, ни один клип не снят агентом. Факт «выглядит как AAA» не заявляется |
 | **OFFICIAL-ACCEPTED** | **НЕТ.** Приёмка визуала — за владельцем |
+
+### 10.5 Развёртывание на прод и наблюдение живой логики (22.11.2026)
+
+**Выпуск.** Код `5ab4665a` запушен в `origin` (`refs/heads/codex/end-rift-live-playtest-repair` = `5ab4665ab41c41c55098069b620f2ca3754ae0ef`). Артефакт `0aa1a51c…` (`CopiMineEndEvent-26.3.jar`, 2 623 301 Б) загружен в `/tmp/copimine-stage-0aa1a51c4c08`, `sha256sum -c SHA256SUMS` → `OK`. Деплой-скрипт (`deploy-end-rift-vfx.sh`, предшественник `/root/deploy-end-rift-20261122.sh`) прошёл preflight: рабочий каталог совпал, старый jar был `e5634097…`, Narcotics `ec2ef8d5…`, `required_client_mod_version: 0.1.4+26.3`, 0 игроков онлайн, `state=COLLECTING`, `wave=0`. Бэкап: `/opt/copimine-backups/end-rift-20261122-vfx-0aa1a51c4c08` (старый jar, `server.properties`, `SHA256SUMS`, `pg_dump -Fc copimine` и liste, `plugin-data.tar.gz`).
+
+**Результат установки.** `/opt/copimine-game/minecraft/server/plugins/CopiMineEndEvent.jar` = `0aa1a51c4c0819938ce10f786cb350bd446aced1ad2e083f5984ee73b632f029`; `systemctl is-active copimine-game.service` = `active`; в `latest.log` — `Loading server plugin CopiMineEndEvent v0.1.0`; `cmend debug invariants` → `failures=0 last=none countersNonNegative=true`.
+
+**Проверка финальной фазы в живом Paper.** Тест-босс (`cmend boss spawn`) доведён до `LAST_SEAL` через реальный переход по урону (`cmend boss damage 19000`), а не через принудительную команду фазы. В `latest.log`:
+- `BOSS_LAST_SEAL_VISUALS_STARTED event=… boss=b16c37ef-… generation=422`
+- `BOSS_LAST_SEAL_ASCENSION event=… boss=b16c37ef-…`
+- `BOSS_LAST_SEAL_CORE_PIN event=… location=CopiMine 8,71,-39`
+
+`cmend debug invariants` во время активной фазы: `failures=0 countersNonNegative=true entityCount=3 tasks=1 bossProxies=11`. **Ошибок и исключений в логе нет** (единственное WARN — не связанный с End Rift `AuthMe GeoLite2`).
+
+**Очистка.** `cmend boss kill cleanup` → «Boss удалён как test cleanup; victory не вызвана»; `invariants` → `entityCount=2 tasks=0 bossProxies=0`; `cmend status` → `boss=none`, `bossPhase=AWAKENING`, `wave=0`. Прод возвращён в исходное `COLLECTING`-состояние.
+
+**Что это доказывает.** Проводка финальной фазы, всплеск вознесения и очистка выполняются на живом сервере без ошибок и без утечки сущностей/задач. **Что это НЕ доказывает.** Как это выглядит на экране (читаемость телеграфов, «кинематографичность», довольство игроков) — не проверено; для этого нужен F2/клип владельца в подписанном клиенте.

@@ -96,6 +96,18 @@ public final class TentacleAnimationPolicy {
         return canonical == State.READY || canonical == State.SHIELD_CHANNEL;
     }
 
+    public static boolean acceptsDamage(Kind kind, State current) {
+        State state = canonical(current);
+        if (kind == null || state == null || state == State.HIT_RECOVERY
+                || state == State.DYING || state == State.DEAD_RESPAWN || state == State.RETRACT) {
+            return false;
+        }
+        // Recovering after a heavy strike is the counterattack window. The
+        // accepted hit leaves its authored animation and AI timing intact.
+        return kind == Kind.SMALL || shouldEnterHitRecovery(state)
+                || kind == Kind.PERMANENT && state == State.SMALL_RECOVERY;
+    }
+
     public static List<Marker> grabMarkers() {
         return GRAB_MARKERS;
     }

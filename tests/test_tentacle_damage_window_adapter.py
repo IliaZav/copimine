@@ -223,6 +223,17 @@ public class TentacleHitAdapterProbe {
                 require(probe.stateChanges == 0 && probe.tentacleNextAttackTick.get(probe.display.id) == 100L,
                         "accepted hit must not cancel or postpone the due attack");
             }
+            case "heavy-strike-recovery" -> {
+                probe.tentacleController.remove(probe.display.id);
+                require(probe.tentacleController.register(probe.generation, probe.display.id,
+                        TentacleAnimationPolicy.Kind.PERMANENT, 0, 0,
+                        TentacleAnimationPolicy.State.SMALL_RECOVERY), "guardian registration failed");
+                probe.onTentacleGuardianDamage(new EntityDamageByEntityEvent(probe.display, probe.player, false));
+                require(probe.tentacleGuardianHealth.get(0) == 50.0 && probe.visualUpdates == 1,
+                        "a player can damage the guardian while it recovers from its heavy strike");
+                require(probe.stateChanges == 0,
+                        "damage during the recovery animation must not restart its clock");
+            }
             case "reduced-final-damage" -> {
                 var hit = new EntityDamageByEntityEvent(probe.display, probe.player, false);
                 hit.finalDamage = 2;
@@ -295,7 +306,7 @@ public class TentacleHitAdapterProbe {
     "scenario",
     ["melee-recovery", "projectile-recovery", "cancelled-melee", "cancelled-projectile",
      "reduced-final-damage", "zero-final-damage", "projectile-transaction", "due-attack",
-     "small-accepted", "small-cancelled"],
+     "small-accepted", "small-cancelled", "heavy-strike-recovery"],
 )
 def test_authoritative_hit_window_and_prior_cancellation(tentacle_hit_probe, scenario):
     executed = subprocess.run(

@@ -49,6 +49,7 @@ public class Wave4PackRuntimeProbe {
     static class World {
         List<Entity> entities = new ArrayList<>();
         List<Entity> getEntities() { return entities; }
+        String getName() { return "fixture"; }
     }
     static class Bukkit {
         static World world = new World();
@@ -198,10 +199,24 @@ public class Wave4PackRuntimeProbe {
             || testWaveInspectionMode; }
     boolean phaseDrivesOfficialWave() { return false; }
     HazardMutationJournal hazardJournal = new HazardMutationJournal();
+    Wave4ObeliskRecoverySnapshot wave4RestoredObeliskCheckpoint;
+    boolean failJournalRecovery;
     static class HazardMutationJournal {
         boolean restored;
-        boolean markRestored() { restored = true; return true; }
+        enum Status { EMPTY, PREPARED, APPLIED, RESTORED }
+        record Entry(boolean isObeliskMutation) { }
+        record Snapshot(boolean valid, Status status, String eventId, long generation,
+                        String world, List<Entry> entries) { }
+        Snapshot snapshot = new Snapshot(true, Status.EMPTY, "", 0, "", List.of());
+        Snapshot load() { return snapshot; }
+        boolean markRestored() {
+            restored = true;
+            snapshot = new Snapshot(true, Status.RESTORED, snapshot.eventId(), snapshot.generation(),
+                    snapshot.world(), snapshot.entries());
+            return true;
+        }
     }
+    void recoverHazardJournal() { if (!failJournalRecovery) hazardJournal.markRestored(); }
     void forcePhase(EventPhase next, String reason) { phase = next; }
     void cancelWaveSpawnTask() { canceled++; }
     void removeWave4Obelisk(UUID id, String reason) { activeWave4Obelisks.remove(id); }
@@ -445,6 +460,23 @@ public class Wave4PackRuntimeProbe {
                 check(restored.spawnCalls.equals(List.of(1)), "rehydration must retry only missing role");
                 restored.currentWave4PressureSpawnSlots.clear(); restored.retryNow();
                 check(restored.spawnCalls.size() == 1, "repeated restore must not duplicate pack");
+            }
+            case "official-journal-handoff" -> {
+                p.phase = EventPhase.WAVE_4;
+                var applied = new HazardMutationJournal.Snapshot(true, HazardMutationJournal.Status.APPLIED,
+                        p.eventId, p.generation, "fixture", List.of(new HazardMutationJournal.Entry(false)));
+                p.hazardJournal.snapshot = applied;
+                p.failJournalRecovery = true;
+                check(!p.prepareWaveFourHazardBoundary(new World()) && !p.hazardJournal.restored,
+                        "failed restoration must preserve the busy journal");
+                p.failJournalRecovery = false;
+                check(p.prepareWaveFourHazardBoundary(new World()) && p.hazardJournal.restored,
+                        "official Wave 4 must recover the same event's abandoned journal before placing blocks");
+                p.hazardJournal.restored = false;
+                p.hazardJournal.snapshot = new HazardMutationJournal.Snapshot(true,
+                        HazardMutationJournal.Status.APPLIED, "another-event", p.generation, "fixture", applied.entries());
+                check(!p.prepareWaveFourHazardBoundary(new World()) && !p.hazardJournal.restored,
+                        "Wave 4 must preserve a foreign journal");
             }
             case "reset", "obsolete-generation" -> {
                 p.failing.add(1); p.retryNow();

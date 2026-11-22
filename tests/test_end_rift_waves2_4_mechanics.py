@@ -75,6 +75,7 @@ def mechanics_harness(tmp_path_factory):
         "private boolean spawnNextWaveGroup(World world, Location core)",
         "private boolean isWaveTwoOrdinaryMob(Entity entity)",
         "private boolean isApprovedWaveTwoFinalElite(Entity entity)",
+        "private boolean isApprovedWaveTwoMaterializedElite(Entity entity)",
         "private boolean retireWaveTwoRosterAfterConfirmedDeath(Entity entity)",
         "private void applyCurrentReflectedObeliskHit(",
     )]
@@ -232,6 +233,7 @@ public final class Waves24MechanicsHarness {
     boolean isRealitySplitTrialParticipant(Player player, int chamber) { return player.chamber == chamber; }
     Object keyWave = new Object(), keyKind = new Object(), keyWaveSpawnGroup = new Object();
     Object keyWaveTwoFinalElite = new Object();
+    Object keyWaveTwoPhantomSource = new Object();
     Object keyEventGeneration = new Object(), keyGeneration = new Object();
     static final String EVENT_KIND_WAVE_MOB = "wave_mob", EVENT_KIND_ELITE = "elite";
     int readInt(Entity entity, Object key, int fallback) {
@@ -359,6 +361,7 @@ public final class Waves24MechanicsHarness {
         boolean isDead() { return false; }
     }
     static class Mob extends Entity {}
+    static final class Enderman extends Mob {}
     static final class Skeleton extends Mob {}
     static final class PersistentDataContainer {
         final Map<Object, Object> values = new HashMap<>();
@@ -570,10 +573,13 @@ case "immediate-initial-mark" -> {
                 h.spawnNextWaveGroup(new World(), new Location());
                 check(h.waveSpawnGroupIndex == 0,
                         "a subwave stays unbooked while its warning is outstanding");
+                h.waveTwoPhantomActivationPendingGroup = 1;
                 h.finishPhantomWarning();
                 h.spawnNextWaveGroup(new World(), new Location());
                 check(h.waveSpawnGroupIndex == 1,
                         "the first subwave books once its warning resolves");
+                check(h.waveTwoPhantomActivationPendingGroup == 0,
+                        "a successful spawn clears its earlier retry before the hunt tick can replay it");
                 long firstClear = start + 10_000L;
                 Mob fighter = h.addWaveTwoFighter(1);
                 check(h.confirmWaveTwoFighterDeath(fighter), "confirmed death retires the subwave roster");
@@ -808,7 +814,23 @@ case "immediate-initial-mark" -> {
                         "a confirmed sandbox Wave 2 death retires its current-group UUID without changing official phase");
                 check(h.waveTwoOutstandingEntityUuids.isEmpty() && h.saveCalls == 0,
                         "sandbox group retirement clears only its tracked UUID and does not persist official state");
-            }            case "wave2-edge-spawns" -> {
+            }
+            case "materialized-elite-death" -> {
+                var fighter = new Enderman();
+                fighter.getPersistentDataContainer().set(h.keyWave, PersistentDataType.INTEGER, 2);
+                fighter.getPersistentDataContainer().set(h.keyKind, PersistentDataType.STRING, EVENT_KIND_ELITE);
+                fighter.getPersistentDataContainer().set(h.keyWaveSpawnGroup, PersistentDataType.INTEGER, 1);
+                fighter.getPersistentDataContainer().set(h.keyWaveTwoPhantomSource, PersistentDataType.STRING, "phantom-27");
+                h.phase = EventPhase.READY_FOR_PLAYERS;
+                h.activeWave = 2;
+                h.testWaveFrontVisualMode = true;
+                h.waveTwoGroupsSpawned = 1;
+                h.waveTwoOutstandingEntityUuids.add(fighter.id);
+                check(h.retireWaveTwoRosterAfterConfirmedDeath(fighter)
+                        && h.waveTwoOutstandingEntityUuids.isEmpty(),
+                        "an Enderman promoted in the same slot must retire its UUID on death");
+            }
+            case "wave2-edge-spawns" -> {
                 for (int index = 0; index < 3; index++) {
                     Location spawn = h.waveTwoSpawnLocation(index);
                     double radius = Math.hypot(spawn.getX(), spawn.getZ());
@@ -939,6 +961,7 @@ def wave2_entity_load_harness(tmp_path_factory):
     methods = [_declaration(source, signature) for signature in (
         "private boolean isObsoleteWaveEliteComposition(Entity entity)",
         "private boolean isApprovedWaveTwoFinalElite(Entity entity)",
+        "private boolean isApprovedWaveTwoMaterializedElite(Entity entity)",
         "private boolean isKnownLegacyWave7Elite(Entity entity)",
         "private boolean isOfficialNumberedWaveMob(Entity entity)",
         "private boolean isOfficialWaveLifecycleMob(Entity entity)",
@@ -1045,6 +1068,7 @@ public final class WaveTwoEntityLoadHarness {
     final Object keyGeneration = new Object(), keyWaveSpawnGroup = new Object(), keyEventId = new Object();
     final Object keyOfficial = new Object(), keyRitualConverted = new Object();
     final Object keyWaveTwoFinalElite = new Object();
+    final Object keyWaveTwoPhantomSource = new Object();
     final Object keyWaveTwoCleanupEpoch = new Object(), keyTrialRole = new Object();
     final Object keyMiniBossSpell = new Object(), keyLootProfile = new Object();
     String eventId = "event";
@@ -1405,6 +1429,7 @@ def wave2_spawn_harness(tmp_path_factory):
     tag_group = _declaration(source, "private int tagWaveTwoSpawnGroup(")
     ordinary_mob = _declaration(source, "private boolean isWaveTwoOrdinaryMob(Entity entity)")
     approved_elite = _declaration(source, "private boolean isApprovedWaveTwoFinalElite(Entity entity)")
+    approved_elite += "\n" + _declaration(source, "private boolean isApprovedWaveTwoMaterializedElite(Entity entity)")
     harness = r'''
 import java.util.*;
 import java.util.logging.*;
@@ -1452,6 +1477,7 @@ public final class Wave2SpawnHarness {
     Map<UUID,Entity> ownedEntities = new LinkedHashMap<>();
     Object keyWave = new Object(), keyKind = new Object(), keyWaveSpawnGroup = new Object();
     Object keyWaveTwoFinalElite = new Object();
+    Object keyWaveTwoPhantomSource = new Object();
     static final String EVENT_KIND_WAVE_MOB = "wave_mob", EVENT_KIND_ELITE = "elite";
     static final Object STRING = new Object(), INTEGER = new Object();
     static final class PersistentDataType { static final Object STRING = Wave2SpawnHarness.STRING, INTEGER = Wave2SpawnHarness.INTEGER; }
@@ -1464,6 +1490,7 @@ public final class Wave2SpawnHarness {
         PersistentDataContainer getPersistentDataContainer() { return new PersistentDataContainer(pdc); }
     }
     static class Mob extends Entity {}
+    static final class Enderman extends Mob {}
     static final class Skeleton extends Mob {}
     static final class DisplayEntity extends Entity {}
     static final class PersistentDataContainer {
@@ -1700,7 +1727,7 @@ def test_wave2_bounded_group_spawn_contracts(wave2_spawn_harness, scenario):
 
 @pytest.mark.parametrize("scenario", [
     "rotation-respects-warning-and-group", "five-second-gap", "three-subwaves-required", "unloaded-group-roster",
-    "sandbox-confirmed-death", "wave2-edge-spawns", "wave2-edge-spawns-respect-bounds",
+    "sandbox-confirmed-death", "materialized-elite-death", "wave2-edge-spawns", "wave2-edge-spawns-respect-bounds",
     "assignment-id-exhaustion",
     "privacy-hide-not-unpublished", "late-join-does-not-expand-frozen-mark-roster",
 ])

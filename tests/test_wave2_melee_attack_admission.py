@@ -137,6 +137,7 @@ public final class WaveTwoMeleeAdmissionHarness {
     long readEntityGeneration(Entity entity) {
         return entity.longs.getOrDefault(keyGeneration, Long.MIN_VALUE);
     }
+    boolean isApprovedWaveTwoMaterializedElite(Entity entity) { return false; }
     boolean isApprovedWaveTwoFinalElite(Entity entity) {
         return entity instanceof Skeleton
                 && "group-3-skeleton-v1".equals(readString(entity, keyWaveTwoFinalElite))

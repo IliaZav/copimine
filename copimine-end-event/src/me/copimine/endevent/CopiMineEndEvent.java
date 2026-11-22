@@ -403,6 +403,7 @@ import org.bukkit.event.entity.EntityRemoveEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.EntitySpawnEvent;
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
+import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.EntityTeleportEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
@@ -3349,7 +3350,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!readString(entity, keyTrialRole).isBlank()) return false;
         return WaveEliteCompositionPolicy.isObsolete(wave, MAX_EVENT_WAVE, kind,
                 EVENT_KIND_ELITE, EVENT_KIND_WAVE_GUARDIAN,
-                isKnownLegacyWave7Elite(entity), isApprovedWaveTwoFinalElite(entity));
+                isKnownLegacyWave7Elite(entity), isApprovedWaveTwoFinalElite(entity)
+                        || isApprovedWaveTwoMaterializedElite(entity));
     }
 
     private boolean isApprovedWaveTwoFinalElite(Entity entity) {
@@ -3358,6 +3360,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && EVENT_KIND_ELITE.equals(readString(entity, keyKind))
                 && "group-3-skeleton-v1".equals(readString(entity, keyWaveTwoFinalElite))
                 && readInt(entity, keyWaveSpawnGroup, 0) == WaveTwoStagePolicy.FIRST_LATE_GROUP;
+    }
+
+    private boolean isApprovedWaveTwoMaterializedElite(Entity entity) {
+        if (!(entity instanceof Enderman) || readInt(entity, keyWave, 0) != 2
+                || !EVENT_KIND_ELITE.equals(readString(entity, keyKind))) return false;
+        int group = readInt(entity, keyWaveSpawnGroup, 0);
+        return group >= 1 && group <= WaveTwoStagePolicy.STAGE_COUNT
+                && !readString(entity, keyWaveTwoPhantomSource).isBlank();
     }
 
     private boolean isKnownLegacyWave7Elite(Entity entity) {
@@ -3818,7 +3828,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean isWaveTwoOrdinaryMob(Entity entity) {
         return entity != null && readInt(entity, keyWave, 0) == 2
                 && (EVENT_KIND_WAVE_MOB.equals(readString(entity, keyKind))
-                || isApprovedWaveTwoFinalElite(entity));
+                || isApprovedWaveTwoFinalElite(entity) || isApprovedWaveTwoMaterializedElite(entity));
     }
 
     private WaveTwoEntityRecoveryPolicy.LoadDisposition waveTwoEntityLoadDisposition(Entity entity) {
@@ -12388,6 +12398,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         boolean phaseAllowed = state != null && (state.temporary()
                 ? bossPhase == BossPhase.RAGE || bossPhase == BossPhase.LAST_SEAL
                 : bossPhase == BossPhase.LAST_SEAL);
+        boolean animationDamageOpen = state != null
+                && TentacleAnimationPolicy.acceptsDamage(state.kind(), state.state());
         if (localDiagnostics) {
             getLogger().info("RIFT_TENTACLE_DAMAGE_ATTEMPT entity=" + display.getUniqueId()
                     + " hitbox=" + event.getEntity().getUniqueId()
@@ -12397,7 +12409,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " window_open=" + damageWindowOpen
                     + " tentacle_state=" + (state == null ? "none" : state.state().name())
                     + " temporary=" + (state != null && state.temporary())
-                    + " phase_allowed=" + phaseAllowed
+                    + " phase_allowed=" + phaseAllowed + " animation_damage_open=" + animationDamageOpen
                     + " boss_phase=" + bossPhase + " event_phase=" + phase);
         }
         // The health carrier is event-owned even when the attacker is invalid.
@@ -12408,7 +12420,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 : !attackerActive ? "attacker-not-active-participant"
                 : !damageWindowOpen ? "damage-window-closed"
                 : state == null ? "tentacle-state-missing"
-                : !phaseAllowed ? "boss-phase-not-allowed" : null;
+                : !phaseAllowed ? "boss-phase-not-allowed"
+                : !animationDamageOpen ? "animation-damage-window-closed" : null;
         if (rejection != null) {
             if (localDiagnostics) {
                 getLogger().info("RIFT_TENTACLE_DAMAGE_IGNORED entity=" + display.getUniqueId()
@@ -15244,6 +15257,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         alertRitualGuardGroup(victim, attacker);
+        armPortalWaveNoKnockback(victim);
+        if (usesNativeWaveFighterDamage(victim)) {
+            // Player.attack needs a successful native hurt transaction to
+            // continue into its sweep, critical feedback and attack cooldown.
+            return;
+        }
         EventRealHealthDamagePolicy.Result result = EventRealHealthDamagePolicy.apply(
                 victim.getHealth(), victim.getMaxHealth(), event.getFinalDamage());
         if (!result.applied()) {
@@ -15253,7 +15272,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (isCurrentRitualCaster(victim)) {
             markRitualCasterAwakened(victim, attacker);
         }
-        armPortalWaveNoKnockback(victim);
         authoritativeEventMobDamage.put(event, result);
         event.setCancelled(true);
         float hurtYaw = (float) Math.toDegrees(Math.atan2(
@@ -15270,6 +15288,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " cause=" + event.getCause() + " final=" + event.getFinalDamage()
                 + " health_before=" + result.healthBefore()
                 + " health_after=" + result.remainingHealth());
+    }
+
+    private boolean usesNativeWaveFighterDamage(LivingEntity entity) {
+        int wave = readInt(entity, keyWave, 0);
+        if (wave < 1 || wave >= MAX_EVENT_WAVE) return false;
+        String kind = readString(entity, keyKind);
+        return EVENT_KIND_WAVE_MOB.equals(kind) || EVENT_KIND_ELITE.equals(kind);
     }
 
     /**
@@ -15686,6 +15711,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         int z = location.getBlockZ();
         return x >= arenaMinX && x <= arenaMaxX && y >= arenaMinY && y <= arenaMaxY
                 && z >= arenaMinZ && z <= arenaMaxZ;
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onWaveTwoNaturalPhantomSpawn(CreatureSpawnEvent event) {
+        if (event.getEntityType() != EntityType.PHANTOM
+                || event.getSpawnReason() != CreatureSpawnEvent.SpawnReason.NATURAL
+                || activeWave != 2 || !isWaveAiCombatPhase(2)) return;
+        Location at = event.getLocation();
+        // Insomnia spawns above the arena's combat Y bounds.
+        if (at.getWorld().getName().equalsIgnoreCase(worldName)
+                && at.getBlockX() >= arenaMinX && at.getBlockX() <= arenaMaxX
+                && at.getBlockZ() >= arenaMinZ && at.getBlockZ() <= arenaMaxZ) {
+            event.setCancelled(true);
+        }
     }
 
     /**
@@ -27214,10 +27253,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 // cleared before that settles. Record the shortfall as a debt
                 // the hunt tick drains instead of spawning the late group with
                 // no phantoms at all: that left the whole wave without a veil.
-                getLogger().warning("WAVE_TWO_PHANTOM_ACTIVATION_UNAVAILABLE event=" + eventId
-                        + " generation=" + generation + " group=" + groupNumber
-                        + " marked=" + waveTwoMarkedParticipants.size()
-                        + " action=defer-until-hunt-tick");
+                if (waveTwoPhantomActivationPendingGroup != groupNumber) {
+                    getLogger().warning("WAVE_TWO_PHANTOM_ACTIVATION_UNAVAILABLE event=" + eventId
+                            + " generation=" + generation + " group=" + groupNumber
+                            + " marked=" + waveTwoMarkedParticipants.size()
+                            + " action=defer-until-hunt-tick");
+                }
                 waveTwoPhantomActivationPendingGroup = groupNumber;
                 if (!waveTwoMarkedParticipants.isEmpty() && ++waveTwoPhantomAdmissionFailures >= 12) {
                     // A cosmetic veil must never take the whole event down. The
@@ -27264,6 +27305,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (waveSpawnWave == 2) {
             int rosterSize = tagWaveTwoSpawnGroup(groupNumber, waveTwoEntitiesBeforeSpawn);
+            // The scheduler can recover a previous deferral directly. Its
+            // pending retry must not book a second observer for the same group.
+            waveTwoPhantomActivationPendingGroup = 0;
+            waveTwoPhantomAdmissionFailures = 0;
             waveTwoGroupCleared = false;
             waveTwoGroupClearedAtMillis = 0L;
             if (group.total() > 0 && rosterSize != group.total()) {
@@ -27485,6 +27530,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (Entity entity : ownedEntities.values()) {
             if (!(entity instanceof Enderman candidate) || !candidate.isValid()) continue;
             if (readInt(candidate, keyWave, 0) != 2) continue;
+            if (!waveTwoOutstandingEntityUuids.contains(candidate.getUniqueId())
+                    || readInt(candidate, keyWaveSpawnGroup, 0) != waveTwoGroupsSpawned) continue;
             if (phantomId.equals(readString(candidate, keyWaveTwoPhantomSource))) {
                 target = candidate;
                 break;
@@ -28685,8 +28732,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (entity == null || !entity.isValid() || entity.isDead()) {
                 continue;
             }
-            // Our own pillar/debris/beam displays are not bodies.
-            if (entity instanceof Display) {
+            // Display geometry and drops never occupy a pillar slot. A drop
+            // from the prior wave can stay in the arena until picked up.
+            if (entity instanceof Display || entity instanceof Item) {
                 continue;
             }
             if (riftRam != null && entity.getUniqueId().equals(riftRam.id())) {
@@ -29934,7 +29982,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void retryPendingWaveTwoPhantomActivation(long now) {
         int pendingGroup = waveTwoPhantomActivationPendingGroup;
         if (pendingGroup <= 0) return;
-        if (activeWave != 2 || phase != EventPhase.WAVE_2 && !testWaveFrontVisualMode) {
+        if (activeWave != 2 || phase != EventPhase.WAVE_2 && !testWaveFrontVisualMode
+                || waveSpawnWave != 2 || pendingGroup != waveSpawnGroupIndex + 1) {
             waveTwoPhantomActivationPendingGroup = 0;
             return;
         }
@@ -55623,16 +55672,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         TentacleController.VisualState state = tentacleController.state(display.getUniqueId());
-        if (state == null
-                // A closed animation window rejects the entire hit, not just
-                // its flinch. Both melee and projectile paths enter here.
-                || (state.kind() != TentacleAnimationPolicy.Kind.SMALL
-                && !TentacleAnimationPolicy.shouldEnterHitRecovery(state.state()))
+        if (state == null || !TentacleAnimationPolicy.acceptsDamage(state.kind(), state.state())
                 || (!state.temporary()
-                && tentacleGuardianHealth.getOrDefault(state.slot(), 0.0D) <= 0.0D)
-                || state.state() == TentacleAnimationPolicy.State.DYING
-                || state.state() == TentacleAnimationPolicy.State.DEAD_RESPAWN
-                || state.state() == TentacleAnimationPolicy.State.RETRACT) {
+                && tentacleGuardianHealth.getOrDefault(state.slot(), 0.0D) <= 0.0D)) {
             return;
         }
         int slot = state.slot();
@@ -56664,6 +56706,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " reason=disabled-or-unsafe-config");
             return;
         }
+        if (!prepareWaveFourHazardBoundary(world)) {
+            currentWave4StartupFailed = true;
+            return;
+        }
         int floorY = combatFloorY();
         List<HazardMutationJournal.Entry> journalEntries = new ArrayList<>();
         List<Wave4ObeliskRuntimeState> planned = new ArrayList<>();
@@ -56750,16 +56796,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             currentWave4MobsStarted = wave4RestoredObeliskCheckpoint.mobsStarted();
             currentWave4PressurePackAttempts = wave4RestoredObeliskCheckpoint.pressurePackAttempts();
         }
-        HazardMutationJournal.Snapshot existing = hazardJournal == null
-                ? HazardMutationJournal.Snapshot.empty() : hazardJournal.load();
-        if (existing.status() != HazardMutationJournal.Status.EMPTY
-                && existing.status() != HazardMutationJournal.Status.RESTORED
-                && !existing.entries().isEmpty()) {
-            currentWave4StartupFailed = true;
-            getLogger().severe("END_RIFT_OBELISK_STARTUP_FAILED event=" + eventId
-                    + " reason=hazard-journal-busy status=" + existing.status());
-            return;
-        }
         if (hazardJournal == null
                 || !hazardJournal.prepare(eventId, generation, world.getName(), journalEntries)) {
             currentWave4StartupFailed = true;
@@ -56801,6 +56837,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " required_reflected_hits=" + profile.requiredHits()
                 + " mob_count=" + profile.mobCount() + " fireball_cap=" + profile.fireballCap()
                 + " real_blocks=true journal_entries=" + journalEntries.size());
+    }
+
+    private boolean prepareWaveFourHazardBoundary(World world) {
+        if (hazardJournal == null) return false;
+        var existing = hazardJournal.load();
+        if (existing.valid() && (existing.status() == HazardMutationJournal.Status.EMPTY
+                || existing.status() == HazardMutationJournal.Status.RESTORED)) return true;
+        // The official handoff already stopped the previous wave. A leftover
+        // same-event journal must release its cells before we scan new sites.
+        if (existing.valid() && !existing.entries().isEmpty() && isOfficialCurrentAttempt()
+                && phase == EventPhase.WAVE_4 && wave4RestoredObeliskCheckpoint == null
+                && eventId.equals(existing.eventId()) && existing.generation() <= generation
+                && world.getName().equals(existing.world())) {
+            recoverHazardJournal();
+            var restored = hazardJournal.load();
+            if (phase == EventPhase.WAVE_4 && restored.valid()
+                    && restored.status() == HazardMutationJournal.Status.RESTORED) return true;
+        }
+        getLogger().severe("END_RIFT_OBELISK_STARTUP_FAILED event=" + eventId
+                + " reason=hazard-journal-busy status=" + existing.status());
+        return false;
     }
 
     private boolean isSafeCurrentObeliskSite(World world, Location core, Block floor,
@@ -58204,7 +58261,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         currentWave4PressurePackAttempts = 0;
         currentWave4PressureRetryAtMillis = 0L;
         if (ownedByLiveSession && hazardJournal != null) {
-            hazardJournal.markRestored();
+            var journal = hazardJournal.load();
+            if (journal.valid() && eventId.equals(journal.eventId()) && generation == journal.generation()
+                    && !journal.entries().isEmpty()
+                    && journal.entries().stream().allMatch(HazardMutationJournal.Entry::isObeliskMutation)) {
+                recoverHazardJournal();
+            }
         }
         // Ownership is released only after the handback above has consumed it.
         testWave4ObeliskMode = false;
@@ -61821,7 +61883,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** Keep Paper's native hurt window bounded only for owned event combat. */
     private void configureEventCombatHurtWindow(LivingEntity entity) {
-        if (entity == null) {
+        if (entity == null || usesNativeWaveFighterDamage(entity)) {
             return;
         }
         int boundedMaximum = Math.max(1, Math.min(EVENT_ENTITY_MAX_NO_DAMAGE_TICKS,

@@ -35,6 +35,7 @@ def pack_probe(tmp_path_factory):
         "void tagWave4Role(", "void tagWave4PressureSlot(",
         "boolean tickWave4ObeliskAssault()", "void applyRestoredObeliskReceipt(",
         "void clearWave4Obelisks(",
+        "boolean prepareWaveFourHazardBoundary(",
         "boolean isLiveOwnedEntity(", "boolean isDisposableWaveRuntimeActive(int wave)",
         # The assault tick and the teardown now ask the shared ownership helper
         # instead of the front-visual flag, so the probe compiles that too.
@@ -68,6 +69,7 @@ def pack_probe(tmp_path_factory):
     "success", "first", "middle", "last", "all", "backoff", "exhaustion", "permanent",
     "lost-slot", "registration-refused", "ring-spawn-relocation", "duplicate-slot", "restart", "reset", "obsolete-generation", "obelisk-complete",
     "synchronous-slot-loss", "throw-after-partial-success", "throw-preserves-prior-slot",
+    "official-journal-handoff",
 ])
 def test_wave4_pack_lifecycle(pack_probe, scenario):
     result = subprocess.run(["java", "-Xms8m", "-Xmx64m", "-cp", str(pack_probe),

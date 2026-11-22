@@ -48794,8 +48794,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             spawnPatternSegment(viewer, sealFloor.clone().add(0.0D, 0.2D, 0.0D),
                     boss.getLocation().clone().add(0.0D, 1.0D, 0.0D), Particle.END_ROD, null);
-            viewer.spawnParticle(Particle.FLASH, boss.getLocation().clone().add(0.0D, 1.0D, 0.0D),
-                    1, 0.0D, 0.0D, 0.0D, 0.0D);
+            // FLASH is not payload-free on Paper: it declares a Colour data
+            // class, so spawning it bare throws "missing required data class"
+            // and aborts this ascension tick (the same trap that killed the
+            // Wave 3 gate sweep). Route it through the typed helper, which
+            // supplies the Colour the particle demands.
+            spawnTypedParticle(viewer, Particle.FLASH,
+                    boss.getLocation().clone().add(0.0D, 1.0D, 0.0D), 1,
+                    0.0D, 0.0D, 0.0D, 0.0D);
         }
         boss.getWorld().playSound(sealFloor, Sound.ENTITY_ENDER_DRAGON_GROWL, 1.0F, 0.5F);
         boss.getWorld().playSound(sealFloor, Sound.ENTITY_WITHER_SPAWN, 0.7F, 0.6F);

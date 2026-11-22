@@ -11234,7 +11234,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     message(sender, "&cBoss отсутствует.");
                 } else if (List.of("void_blast", "rift_projectile", "rift_arrows", "void_mark", "summon", "summon_servants",
                         "arena_inferno", "final_strike", "boss_fireball",
-                        "melee_swipe", "chest_strike", "chest_beam", "ground_slam", "ambush_grab", "small_kagune")
+                        "melee_swipe", "chest_strike", "chest_beam", "ground_slam", "ambush_grab", "small_kagune",
+                        "kagune_stab", "kagune_eruption")
                         .contains(spell)) {
                     EndRiftAiPolicy.BossSpell requestedSpell = switch (spell) {
                         case "void_blast" -> EndRiftAiPolicy.BossSpell.VOID_BLAST;
@@ -11250,6 +11251,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         case "ground_slam" -> EndRiftAiPolicy.BossSpell.GROUND_SLAM;
                         case "ambush_grab" -> EndRiftAiPolicy.BossSpell.AMBUSH_GRAB;
                         case "small_kagune" -> EndRiftAiPolicy.BossSpell.SMALL_KAGUNE;
+                        case "kagune_stab" -> EndRiftAiPolicy.BossSpell.KAGUNE_STAB;
+                        case "kagune_eruption" -> EndRiftAiPolicy.BossSpell.KAGUNE_ERUPTION;
                         default -> EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS;
                     };
                     if (castCurrentBossSpell(boss, requestedSpell, true)) {
@@ -11259,7 +11262,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                 + " &7(phase=" + bossPhase + "; проверь цель, арену и активный cast).");
                     }
                 } else {
-                    message(sender, "&e/cmend boss spell <void_blast|rift_projectile|rift_arrows|void_mark|summon_servants|arena_inferno|final_strike|boss_fireball|melee_swipe|chest_strike|chest_beam|ground_slam|ambush_grab|small_kagune>");
+                    message(sender, "&e/cmend boss spell <void_blast|rift_projectile|rift_arrows|void_mark|summon_servants|arena_inferno|final_strike|boss_fireball|melee_swipe|chest_strike|chest_beam|ground_slam|ambush_grab|small_kagune|kagune_stab|kagune_eruption>");
                 }
             }
             default -> message(sender, "&e/cmend boss spawn [official confirm]|info|damage <n>|phase <awakening|hunt|rift|overload|rage|last_seal>|freeze|unfreeze|kill <cleanup|simulate-victory confirm>|spell <type>");
@@ -50814,11 +50817,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || bossAmbushOwnsMajorCast()
                 || !forced && bossAbilityState != BossAbilityState.NONE
                 || !arenaInfernoBlocks.isEmpty() && !ArenaInfernoPolicy.allowsConcurrent(spell)
-                || !currentBossSpellPool().contains(spell) || !bossActionAvailable(spell)) {
+                || (!forced && !currentBossSpellPool().contains(spell)) || !bossActionAvailable(spell)) {
             return false;
         }
         if (spell == EndRiftAiPolicy.BossSpell.CHEST_BEAM
-                && bossChestBeamCooldownUntilTick > eventTickCounter) {
+                && !forced && bossChestBeamCooldownUntilTick > eventTickCounter) {
             // The ultimate has a noticeable cooldown / phase availability and
             // cannot spam players continuously. This gate lives on the cast entry
             // rather than bossActionAvailable so the automatic selector simply

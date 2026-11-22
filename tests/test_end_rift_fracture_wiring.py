@@ -166,7 +166,7 @@ def test_the_crack_widens_across_prepare_and_warning() -> None:
     assert "RiftFractureEruptionPolicy.surfaceBlockDataFor(progress, exploded)" in surface, (
         "the surface block data must come from the policy"
     )
-    assert "block.setBlockData(data, false)" in surface
+    assert "setBlockData(data, false)" in surface
 
 
 # --- 4. the geyser is the damage volume ------------------------------------

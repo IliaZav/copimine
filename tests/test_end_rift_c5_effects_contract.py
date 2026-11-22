@@ -32,8 +32,8 @@ def test_phase_three_geyser_is_native_and_volumetric_not_a_flame_column():
 
 def test_phase_three_has_a_warned_footprint_and_the_visible_column_is_the_hitbox():
     source = (PLUGIN / "domain/RiftFractureEruptionPolicy.java").read_text(encoding="utf-8")
-    assert "MIN_WARNING_TICKS = 30" in source
-    assert "MAX_WARNING_TICKS = 40" in source
+    assert "MIN_WARNING_TICKS = 20" in source
+    assert "MAX_WARNING_TICKS = 24" in source
     assert "MIN_GEYSER_HEIGHT = 8.0D" in source
     assert "MAX_GEYSER_HEIGHT = 12.0D" in source
     assert "GEYSER_RADIUS_BLOCKS = 1.9D" in source

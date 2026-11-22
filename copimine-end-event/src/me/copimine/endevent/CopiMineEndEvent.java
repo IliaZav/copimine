@@ -11153,7 +11153,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                 + " boss=" + boss.getUniqueId() + " from=" + previous
                                 + " to=" + bossPhase + " health=" + boss.getHealth()
                                 + " max=" + boss.getMaxHealth());
-                        sendCurrentBossPhaseVisualUpdate(boss, bossPhase, "TEST_PHASE");
+                        sendCurrentBossPhaseVisualUpdate(boss, bossPhase,
+                                BossAnimationId.PHASE_TRANSITION.wireId());
                     } else {
                         synchronizeBossPhase(boss);
                     }
@@ -56158,21 +56159,31 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         long seed = riftFractureBatchSeed(participants.size());
+        int floorY = combatFloorY();
+        Set<RiftFractureEruptionPolicy.TargetTile> targetTiles = new HashSet<>();
+        for (Player participant : participants) {
+            Location feet = participant.getLocation();
+            if (world.equals(feet.getWorld()) && isArenaLocation(feet)
+                    && feet.getY() >= floorY + 1.0D && feet.getY() <= floorY + 2.5D) {
+                targetTiles.add(new RiftFractureEruptionPolicy.TargetTile(feet.getBlockX(), feet.getBlockZ()));
+            }
+        }
         Map<BlockCellKey, String> originals = new LinkedHashMap<>();
         List<RiftFractureEruptionPolicy.Cell> cells = selectRiftFractureCells(
-                world, anchor, wanted, seed, originals);
+                world, anchor, wanted, seed, originals, targetTiles);
         if (cells.isEmpty()) {
-            getLogger().warning("RIFT_FRACTURES_SKIPPED event=" + eventId
-                    + " reason=no-eligible-floor-cells participants=" + participants.size());
             nextCurrentRiftFractureBatchTick = eventTickCounter + 20L;
             return;
         }
+        Map<BlockCellKey, String> selectedOriginals = new LinkedHashMap<>();
         List<HazardMutationJournal.Entry> journalEntries = new ArrayList<>();
         for (RiftFractureEruptionPolicy.Cell cell : cells) {
             BlockCellKey key = new BlockCellKey(world.getUID(), cell.x(),
                     combatFloorY(), cell.z());
+            String original = originals.get(key);
+            selectedOriginals.put(key, original);
             journalEntries.add(new HazardMutationJournal.Entry(
-                    key.x(), key.y(), key.z(), originals.get(key), "", "MAGMA",
+                    key.x(), key.y(), key.z(), original, "", "MAGMA",
                     world.getUID().toString(), eventId, generation));
         }
         // Save-before-mutate: nothing is written to the world until the exact
@@ -56193,7 +56204,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         int batchGapTicks = Math.max(RiftFractureEruptionPolicy.batchGapTicks(participants.size()),
                 warningTicks + RiftFractureEruptionPolicy.ERUPT_TICKS);
         RiftFractureRuntimeState state = new RiftFractureRuntimeState(
-                UUID.randomUUID(), anchor.clone(), cells, originals, stage, batchGapTicks);
+                UUID.randomUUID(), anchor.clone(), cells, selectedOriginals, stage, batchGapTicks);
         activeCurrentRiftFractures.put(state.id(), state);
         for (RiftFractureEruptionPolicy.Cell cell : cells) {
             currentRiftFractureCells.put(new BlockCellKey(world.getUID(), cell.x(),
@@ -56225,6 +56236,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " warning_ticks=" + warningTicks
                 + " batch_gap_ticks=" + batchGapTicks
                 + " journal_entries=" + journalEntries.size()
+                + " target_tiles=" + cells.stream().map(cell -> cell.x() + ":" + cell.z()).toList()
                 + " real_blocks=true");
     }
 
@@ -56268,8 +56280,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      */
     private List<RiftFractureEruptionPolicy.Cell> selectRiftFractureCells(
             World world, Location anchor, int wanted, long seed,
-            Map<BlockCellKey, String> originals) {
-        if (world == null || anchor == null) {
+            Map<BlockCellKey, String> originals, Set<RiftFractureEruptionPolicy.TargetTile> targetTiles) {
+        if (world == null || anchor == null || targetTiles.isEmpty()) {
             return List.of();
         }
         int floorY = combatFloorY();
@@ -56283,7 +56295,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (int x = centerX - radius; x <= centerX + radius; x++) {
             for (int z = centerZ - radius; z <= centerZ + radius; z++) {
                 if ((long) (x - centerX) * (x - centerX) + (long) (z - centerZ) * (z - centerZ)
-                        > (long) radius * radius) {
+                        > (long) radius * radius || !world.isChunkLoaded(x >> 4, z >> 4)) {
                     continue;
                 }
                 BlockCellKey key = new BlockCellKey(world.getUID(), x, floorY, z);
@@ -56303,7 +56315,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     occupied.add(cell);
                     continue;
                 }
-                if (solid && !liquid && isArenaLocation(floor.getLocation())) {
+                if (solid && !liquid && targetTiles.contains(new RiftFractureEruptionPolicy.TargetTile(x, z))
+                        && isArenaLocation(floor.getLocation())
+                        && !(floor.getState() instanceof org.bukkit.block.TileState)) {
                     originals.putIfAbsent(key, floor.getBlockData().getAsString());
                 }
             }
@@ -56311,7 +56325,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         List<RiftFractureEruptionPolicy.Cell> chosen = RiftFractureEruptionPolicy.selectCells(
                 arena, protectedCells, occupied, wanted, RiftFractureEruptionPolicy.MAX_SIMULTANEOUS,
                 RiftFractureEruptionPolicy.MIN_CELL_SPACING,
-                RiftFractureEruptionPolicy.MINIMUM_SAFE_RATIO, seed);
+                RiftFractureEruptionPolicy.MINIMUM_SAFE_RATIO, seed, targetTiles);
         // Never hand a cell to the journal whose original data was not captured.
         List<RiftFractureEruptionPolicy.Cell> prepared = new ArrayList<>(chosen.size());
         for (RiftFractureEruptionPolicy.Cell cell : chosen) {
@@ -56367,12 +56381,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " reason=invalid-polled-block-data block_data=" + blockData);
             return false;
         }
+        Map<BlockCellKey, Block> surfaces = new LinkedHashMap<>();
         for (BlockCellKey cell : state.cells()) {
-            if (!state.originals().containsKey(cell)) {
-                continue;
-            }
             Block block = state.world().getBlockAt(cell.x(), cell.y(), cell.z());
-            block.setBlockData(data, false);
+            String expected = state.appliedSurfaces.getOrDefault(cell, state.originals().get(cell));
+            if (!block.getBlockData().getAsString().equals(expected)) {
+                getLogger().warning("RIFT_FRACTURE_SURFACE_REFUSED event=" + eventId
+                        + " fracture=" + state.id() + " reason=surface-changed"
+                        + " cell=" + cell.x() + ":" + cell.z());
+                return false;
+            }
+            if (!blockData.equals(expected)) surfaces.put(cell, block);
+        }
+        try {
+            for (Map.Entry<BlockCellKey, Block> surface : surfaces.entrySet()) {
+                surface.getValue().setBlockData(data, false);
+                state.appliedSurfaces.put(surface.getKey(), blockData);
+            }
+        } catch (RuntimeException failure) {
+            getLogger().warning("RIFT_FRACTURE_SURFACE_REFUSED event=" + eventId
+                    + " fracture=" + state.id() + " reason=surface-write-failed");
+            return false;
         }
         return true;
     }
@@ -56395,11 +56424,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             try {
                 Block block = world.getBlockAt(cell.x(), cell.y(), cell.z());
                 String original = entry.getValue();
-                if (original.equals(block.getBlockData().getAsString())) {
+                String current = block.getBlockData().getAsString();
+                if (original.equals(current)) {
                     restored++;
                     continue;
                 }
-                if (isRiftFractureSurface(block.getType())) {
+                if (isRiftFractureSurface(block.getType()) && current.equals(state.appliedSurfaces.get(cell))) {
                     restoreBlock(block, entry.getValue());
                     if (original.equals(block.getBlockData().getAsString())) restored++;
                     else skipped++;
@@ -56474,10 +56504,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (phase == RiftFractureEruptionPolicy.Phase.COLLAPSE) {
                 // The column is collapsing: the crack stops widening but the
                 // floor stays mutated until the restore stage owns it.
-                applyRiftFractureSurface(state, 1.0D, false);
+                if (!applyRiftFractureSurface(state, 1.0D, false)) {
+                    state.restorationPending = true;
+                    continue;
+                }
                 state.surfaceProgress = 1.0D;
             } else if (phase == RiftFractureEruptionPolicy.Phase.ERUPTION) {
-                applyRiftFractureSurface(state, 1.0D, true);
+                if (!applyRiftFractureSurface(state, 1.0D, true)) {
+                    state.restorationPending = true;
+                    continue;
+                }
                 state.surfaceProgress = 1.0D;
                 if (!state.erupted()) {
                     state.markErupted();
@@ -56493,11 +56529,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             + " radius=" + RiftFractureEruptionPolicy.GEYSER_RADIUS_BLOCKS
                             + " eruption_tick=" + stage.eruptionTick());
                 }
+                renderCurrentRiftFracture(state);
                 damageRiftFractureColumn(state, stage, participants);
+                continue;
             } else if (phase == RiftFractureEruptionPolicy.Phase.WARNING) {
                 double progress = stage.width(eventTickCounter);
                 if (progress > state.surfaceProgress) {
-                    applyRiftFractureSurface(state, progress, false);
+                    if (!applyRiftFractureSurface(state, progress, false)) {
+                        state.restorationPending = true;
+                        continue;
+                    }
                     state.surfaceProgress = progress;
                 }
             }
@@ -56570,11 +56611,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
 
     private void renderCurrentRiftFracture(RiftFractureRuntimeState state) {
-        if (state == null || state.center() == null || state.center().getWorld() == null
-                || eventTickCounter % 3L != 0L) {
+        if (state == null || state.center() == null || state.center().getWorld() == null) {
             return;
         }
         RiftFractureEruptionPolicy.Stage stage = state.stage();
+        if (eventTickCounter % 3L != 0L && eventTickCounter != stage.preparedAt()
+                && eventTickCounter != stage.eruptionTick()) {
+            return;
+        }
         RiftFractureEruptionPolicy.Phase phase = stage.phase(eventTickCounter);
         double height = stage.geyserHeight(eventTickCounter);
         double radius = RiftFractureEruptionPolicy.GEYSER_RADIUS_BLOCKS;
@@ -58971,6 +59015,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         private final Set<String> damagedPlayers = new LinkedHashSet<>();
         private boolean erupted;
         private boolean restorationPending;
+        private final Map<BlockCellKey, String> appliedSurfaces = new HashMap<>();
         private long nextRestoreAttemptTick;
         private double surfaceProgress = -1.0D;
 

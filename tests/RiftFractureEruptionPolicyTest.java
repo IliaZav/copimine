@@ -26,6 +26,7 @@ public final class RiftFractureEruptionPolicyTest {
         singleDamagePerEruption();
         journalLadder();
         cellSelection();
+        targetedCells();
         System.out.println(failures == 0 ? "OK" : "FAILURES " + failures);
         if (failures != 0) System.exit(1);
     }
@@ -83,12 +84,12 @@ public final class RiftFractureEruptionPolicyTest {
     // --- 13.2 stages 1-3 -----------------------------------------------------
     private static void wideningAndWarning() {
         // Stage 1 (preparation) runs INSIDE the warning: the crack is already
-        // visible and widening while the player still has 1.5-2 s to leave.
+        // visible and widening while the player has roughly one second to leave.
         Stage stage = Stage.forBatch(100L, 1L);
         long erupt = stage.eruptionTick();
         check("the warning starts on the batch tick", stage.warningStart() == 100L);
-        check("the warning is 1.5-2 s", stage.warningTicks(100L) >= 30
-                && stage.warningTicks(100L) <= 40);
+        check("the warning lasts 20-24 ticks", stage.warningTicks(100L) >= 20
+                && stage.warningTicks(100L) <= 24);
         check("the eruption follows the warning", erupt == stage.warningStart()
                 + stage.warningTicks(100L));
 
@@ -116,10 +117,10 @@ public final class RiftFractureEruptionPolicyTest {
                 stage.phase(erupt) == Phase.ERUPTION);
 
         // Contract band constants.
-        check("warning is at least 1.5 s",
-                RiftFractureEruptionPolicy.MIN_WARNING_TICKS >= 30);
-        check("warning is at most 2 s",
-                RiftFractureEruptionPolicy.MAX_WARNING_TICKS <= 40);
+        check("warning gives at least one second to dodge",
+                RiftFractureEruptionPolicy.MIN_WARNING_TICKS >= 20);
+        check("warning stays close to one second",
+                RiftFractureEruptionPolicy.MAX_WARNING_TICKS <= 24);
         check("geyser minimum height is eight",
                 RiftFractureEruptionPolicy.MIN_GEYSER_HEIGHT == 8.0D);
         check("geyser maximum height is twelve",
@@ -156,14 +157,50 @@ public final class RiftFractureEruptionPolicyTest {
 
         // A shorter authored window is clamped into the contract band, never out.
         Stage shortWindow = new Stage(50L, 50L, 51L, 52L, 53L);
-        check("a too-short window is stretched to 1.5 s",
-                shortWindow.warningTicks(50L) >= 30);
+        check("a too-short window is stretched to one second",
+                shortWindow.warningTicks(50L) == 20);
         Stage longWindow = new Stage(50L, 50L, 500L, 600L, 700L);
-        check("a too-long window is clamped to 2 s",
-                longWindow.warningTicks(50L) <= 40);
+        check("a too-long window is clamped to 24 ticks",
+                longWindow.warningTicks(50L) == 24);
         // An inverted window cannot erupt before its warning.
         check("an inverted window still warns first",
-                new Stage(200L, 100L, 50L, 40L, 30L).eruptionTick() >= 200L + 30L);
+                new Stage(200L, 100L, 50L, 40L, 30L).eruptionTick() == 220L);
+    }
+
+    private static void targetedCells() {
+        List<Cell> floor = new ArrayList<>();
+        for (int x = 0; x < 24; x++) {
+            for (int z = 0; z < 24; z++) floor.add(new Cell(x, z));
+        }
+        Cell open = new Cell(2, 2);
+        Cell adjacent = new Cell(3, 2);
+        Cell protectedCell = new Cell(6, 7);
+        Cell occupied = new Cell(15, 15);
+        Set<RiftFractureEruptionPolicy.TargetTile> feet = Set.of(
+                new RiftFractureEruptionPolicy.TargetTile(2, 2),
+                new RiftFractureEruptionPolicy.TargetTile(3, 2),
+                new RiftFractureEruptionPolicy.TargetTile(6, 7),
+                new RiftFractureEruptionPolicy.TargetTile(15, 15),
+                new RiftFractureEruptionPolicy.TargetTile(32, 32));
+        List<Cell> selected = RiftFractureEruptionPolicy.selectCells(
+                floor, Set.of(protectedCell), Set.of(occupied), 5, 6, 2, .7, 12L, feet);
+        check("only one accessible target from a tight cluster, with no filler",
+                selected.equals(List.of(open)) || selected.equals(List.of(adjacent)));
+        check("no target means no random eruption",
+                RiftFractureEruptionPolicy.selectCells(
+                        floor, Set.of(), Set.of(), 5, 6, 2, .7, 12L, Set.of()).isEmpty());
+        for (int players : List.of(2, 5, 10, 11, 20)) {
+            Set<RiftFractureEruptionPolicy.TargetTile> party = new HashSet<>();
+            for (int i = 0; i < players; i++) {
+                party.add(new RiftFractureEruptionPolicy.TargetTile(2 + (i % 5) * 4, 2 + (i / 5) * 4));
+            }
+            int limit = RiftFractureEruptionPolicy.batchSizeForPlayers(players);
+            List<Cell> batch = RiftFractureEruptionPolicy.selectCells(
+                    floor, Set.of(), Set.of(), limit, 6, 2, .7, 12L, party);
+            check("targeted batch reaches its party budget for " + players, batch.size() == limit);
+            check("each eruption is under a roster target for " + players, batch.stream().allMatch(
+                    cell -> party.contains(new RiftFractureEruptionPolicy.TargetTile(cell.x(), cell.z()))));
+        }
     }
 
     // --- 13.3 exactly one damage per eruption --------------------------------

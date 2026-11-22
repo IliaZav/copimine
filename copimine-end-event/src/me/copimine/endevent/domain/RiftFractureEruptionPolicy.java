@@ -15,7 +15,7 @@ import java.util.Set;
  * <p>The master contract 13.x supersedes the old implementation, which drew a
  * particle ring over an unchanged floor. A fracture is now a five-stage event:
  * select valid arena floor cells, replace the surface with cracked rift blocks
- * and widen the crack, warn for 1.5-2 s, erupt an 8-12 block column that is the
+ * and widen the crack, warn for 20-24 ticks, erupt an 8-12 block column that is the
  * <em>actual</em> damage volume, collapse, and then restore the exact original
  * block data.</p>
  *
@@ -28,8 +28,8 @@ public final class RiftFractureEruptionPolicy {
     /** 13.3: at most six simultaneous fractures. */
     public static final int MAX_SIMULTANEOUS = 6;
     /** 13.2 stage 2: the warning is never hidden and never instant. */
-    public static final int MIN_WARNING_TICKS = 30;
-    public static final int MAX_WARNING_TICKS = 40;
+    public static final int MIN_WARNING_TICKS = 20;
+    public static final int MAX_WARNING_TICKS = 24;
     /** 13.3: roughly one new batch every 8-12 s. */
     public static final int MIN_BATCH_GAP_TICKS = 160;
     public static final int MAX_BATCH_GAP_TICKS = 240;
@@ -132,8 +132,8 @@ public final class RiftFractureEruptionPolicy {
      *
      * <p>Stage 1 (preparation: the surface becomes cracked, the crack widens,
      * dust rises) runs inside stage 2 (warning), because the contract asks the
-     * player to READ the crack growing and then still has 1.5-2 s to walk off
-     * it. So the warning window starts at the batch tick and the eruption is
+     * player to see the crack grow and gives them about a second to walk off
+     * it. The warning window starts at the batch tick and the eruption is
      * exactly the contract band later; every later boundary is derived from it,
      * so an out-of-order window can never erupt before its warning.</p>
      */
@@ -158,7 +158,7 @@ public final class RiftFractureEruptionPolicy {
             restoreStart = restore;
         }
 
-        /** 13.2 stage 2, provable: the warning really is 1.5-2 s. */
+        /** The full warning interval, from the first crack to eruption. */
         public int warningTicks(long nowTick) {
             return (int) (eruptionTick - warningStart);
         }
@@ -373,6 +373,17 @@ public final class RiftFractureEruptionPolicy {
     public static List<Cell> selectCells(List<Cell> arena, Set<Cell> protectedCells,
                                          Set<Cell> occupied, int wanted, int maxMutated,
                                          int minSpacing, double minimumSafeRatio, long seed) {
+        return selectCells(arena, protectedCells, occupied, wanted, maxMutated,
+                minSpacing, minimumSafeRatio, seed, null);
+    }
+
+    public record TargetTile(int x, int z) {}
+
+    /** A supplied target set restricts the cast to the participants' captured floor positions. */
+    public static List<Cell> selectCells(List<Cell> arena, Set<Cell> protectedCells,
+                                         Set<Cell> occupied, int wanted, int maxMutated,
+                                         int minSpacing, double minimumSafeRatio, long seed,
+                                         Set<TargetTile> targetTiles) {
         if (arena == null || arena.isEmpty()) {
             return List.of();
         }
@@ -401,7 +412,10 @@ public final class RiftFractureEruptionPolicy {
             if (cell == null) continue;
             long key = coordinate(cell);
             arenaCoordinates.add(key);
-            if (cell.eligible() && !blocked.contains(key)) unique.putIfAbsent(key, cell);
+            if (cell.eligible() && !blocked.contains(key)
+                    && (targetTiles == null || targetTiles.contains(new TargetTile(cell.x(), cell.z())))) {
+                unique.putIfAbsent(key, cell);
+            }
         }
         List<Cell> candidates = new ArrayList<>(unique.values());
         // Deterministic order before the shuffle, so the same seed always gives

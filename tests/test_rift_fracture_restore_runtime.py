@@ -4,7 +4,7 @@ import subprocess
 import pytest
 from tests.test_wave_navigation_adapter import extract
 ROOT=Path(__file__).resolve().parents[1]
-@pytest.mark.parametrize("mode",["success","already-original","world-missing","changed","write-refused","journal-refused","journal-missing"])
+@pytest.mark.parametrize("mode",["success","already-original","world-missing","changed","changed-to-other-fracture-surface","write-refused","journal-refused","journal-missing"])
 def test_exact_restore_keeps_failed_ownership(tmp_path,mode):
     source=(ROOT/"copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text("utf-8")
     methods="\n".join(extract(source,signature) for signature in [
@@ -23,6 +23,7 @@ public class FractureRestoreProbe {
   String path(){return "test";}}
  static class RiftFractureRuntimeState {
   boolean restorationPending;UUID id=UUID.randomUUID();World world=new World();BlockCellKey key=new BlockCellKey(UUID.randomUUID(),5,64,6);
+  Map<BlockCellKey,String> appliedSurfaces=Map.of(key,"magma");
   UUID id(){return id;}World world(){return world;}
   Map<BlockCellKey,String> originals(){return Map.of(key,"original[axis=x]");}
   List<BlockCellKey> cells(){return List.of(key);}}
@@ -30,7 +31,7 @@ public class FractureRestoreProbe {
  int currentRiftFractureCursor=2;Map<UUID,RiftFractureRuntimeState> activeCurrentRiftFractures=new HashMap<>();
  Map<BlockCellKey,UUID> currentRiftFractureCells=new HashMap<>();
  java.util.logging.Logger getLogger(){return java.util.logging.Logger.getAnonymousLogger();}
- boolean isRiftFractureSurface(String type){return type.equals("magma");}
+ boolean isRiftFractureSurface(String type){return type.equals("magma")||type.equals("cracked");}
  void restoreBlock(Block b,String original){if(b.writes)b.value=original;}
  void removeCurrentRiftFracture(RiftFractureRuntimeState state,String reason){activeCurrentRiftFractures.remove(state.id);currentRiftFractureCells.remove(state.key);}
 '''+methods+r'''
@@ -39,6 +40,7 @@ public class FractureRestoreProbe {
   p.activeCurrentRiftFractures.put(s.id,s);p.currentRiftFractureCells.put(s.key,s.id);
   if(mode.equals("world-missing"))s.world=null;
   if(mode.equals("changed"))s.world.block.value="player-chest";
+  if(mode.equals("changed-to-other-fracture-surface"))s.world.block.value="cracked";
   if(mode.equals("already-original"))s.world.block.value="original[axis=x]";
   if(mode.equals("write-refused"))s.world.block.writes=false;
   if(mode.equals("journal-refused"))p.hazardJournal.writable=false;
@@ -50,6 +52,8 @@ public class FractureRestoreProbe {
   else {check(p.activeCurrentRiftFractures.containsKey(s.id)&&p.currentRiftFractureCells.containsKey(s.key),"failed restoration discarded retry ownership");
    if(p.hazardJournal!=null&&!mode.equals("journal-refused"))check(p.hazardJournal.marks==0,"incomplete world restore marked durable success");
    if(mode.equals("changed"))check(s.world.block.value.equals("player-chest"),"foreign edit overwritten");
+   if(mode.equals("changed-to-other-fracture-surface"))
+    check(s.world.block.value.equals("cracked"),"foreign edit using another fracture material overwritten");
    if(s.world==null)s.world=new World();s.world.block.writes=true;s.world.block.value="magma";
    if(p.hazardJournal==null)p.hazardJournal=new Journal();p.hazardJournal.writable=true;
    p.clearCurrentRiftFractures("retry");check(p.activeCurrentRiftFractures.isEmpty(),"retry failed");}

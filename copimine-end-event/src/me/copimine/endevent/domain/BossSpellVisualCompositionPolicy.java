@@ -191,6 +191,38 @@ public final class BossSpellVisualCompositionPolicy {
         // Silk: pale, matte, and the only white-anchored spell in the set.
         put(result, "web_shot", 0xDDDDEE, "SMOKE", "DUST_WHITE", 0.0F,
                 "minecraft:block.chain.break", "spun binding web");
+        // SUPERSEDED (2026-11-22): the contact and Kagune kit was the last
+        // unauthored group. `melee_swipe`, `chest_strike` and `ground_slam` DO
+        // reach the boss cast path (`telegraphBossSpell`), so with no
+        // composition they drew the generic twelve-particle burst instead of
+        // their own authored silhouette -- the "one tell per spell" promise
+        // this whole table exists to keep. The ambush and Kagune ids are
+        // executed by their own runtimes, but they belong to the same kit and
+        // are authored here so the kit has no spell without a colour and its
+        // own particle pair.
+        //
+        // A flat steel claw arc: wide and cold, no vortex, so it reads as a
+        // swing rather than as a body being summoned.
+        put(result, "melee_swipe", 0xC7D2E0, "SWEEP_ATTACK", "ENCHANTED_HIT", 0.0F,
+                "minecraft:entity.player.attack.sweep", "steel claw arc");
+        // A hot lance leaving the chest: a tight inward spiral.
+        put(result, "chest_strike", 0xFF6B4A, "FLASH", "DUST_RED", 1.2F,
+                "minecraft:entity.guardian.attack", "chest lance");
+        // The floor falling away: a wide flat spread with almost no height.
+        put(result, "ground_slam", 0xD9A441, "BLOCK", "DUST_WHITE", 0.0F,
+                "minecraft:entity.wither.break_block", "faulted ground");
+        // The under-player ambush: a slow, heavy rise out of the floor.
+        put(result, "ambush_grab", 0xA6243A, "SLIME", "SOUL", 1.8F,
+                "minecraft:entity.warden.emerge", "under-player ambush");
+        // Small melee summons: a fast, tight knot of tentacles.
+        put(result, "small_kagune", 0xCE3B5A, "DAMAGE_INDICATOR", "ELECTRIC_SPARK", 2.2F,
+                "minecraft:entity.ravager.roar", "melee kagune ring");
+        // A single kagune spear fired from the seal.
+        put(result, "kagune_stab", 0xFF8A5C, "SONIC_BOOM", "CRIT", 2.0F,
+                "minecraft:entity.warden.attack", "kagune spear");
+        // A ground eruption: the rising plume is the whole read.
+        put(result, "kagune_eruption", 0x8C1F2E, "SOUL", "SLIME", 1.4F,
+                "minecraft:entity.warden.sonic_boom", "kagune eruption");
         return Map.copyOf(result);
     }
 

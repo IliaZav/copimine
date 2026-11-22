@@ -177,6 +177,7 @@ import me.copimine.endevent.domain.ExplosiveVolleyPolicy;
 import me.copimine.endevent.domain.WaveTwoPhantomLayoutPolicy;
 import me.copimine.endevent.domain.WaveTwoPhantomMaterializationPolicy;
 import me.copimine.endevent.domain.SpellVisualPolicy;
+import me.copimine.endevent.domain.LastSealArenaRitualPolicy;
 import me.copimine.endevent.domain.TentacleAnimationPolicy;
 import me.copimine.endevent.domain.TentacleGuardianPolicy;
 import me.copimine.endevent.domain.TentacleGuardianLayoutPolicy;
@@ -21503,6 +21504,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             String ownerEvent = eventId;
             BossSpellPresentationEffects.impact(this, caster, shape, center, forward.clone(), 2.6D,
                     BossSpellVisualCompositionPolicy.composition(spellId).impactHue(),
+                    BossSpellVisualCompositionPolicy.composition(spellId),
                     () -> taskRegistry != null && taskRegistry.owns(ownerGeneration)
                             && generation == ownerGeneration && Objects.equals(eventId, ownerEvent),
                     this::eventAudience, this::isEventParticleViewer, this::registerEncounterTask);
@@ -21616,6 +21618,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         double radius = shape == BossSpellGeometryPolicy.Shape.VOID_SPHERE ? 4.0D
                 : shape == BossSpellGeometryPolicy.Shape.VOID_RUNE ? VOID_MARK_RADIUS_BLOCKS : 2.8D;
         BossSpellPresentationEffects.impact(this, boss, shape, mark, axis, radius, composition.impactHue(),
+                composition,
                 () -> taskRegistry != null && taskRegistry.owns(ownerGeneration)
                         && generation == ownerGeneration && Objects.equals(eventId, ownerEvent)
                         && bossCastSequence == ownerCast && Objects.equals(bossUuid, owner)
@@ -21862,7 +21865,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // a 48-block range and a 32-viewer cap; no gameplay volume lives here.
         var points = BossSpellGeometryPolicy.sample(shape, BossSpellGeometryPolicy.Beat.CHARGE, progress, radius);
         BossSpellPresentationEffects.frame(anchor, axis, points, composition.telegraphHue(),
-                eventAudience(), this::isEventParticleViewer);
+                composition, progress, eventAudience(), this::isEventParticleViewer);
     }
 
     /**
@@ -21901,7 +21904,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 ? composition.impactHue() : composition.telegraphHue();
         Vector axis = destination.toVector().subtract(feet.toVector());
         BossSpellPresentationEffects.frame(anchor, axis, points, rgb,
-                eventAudience(), this::isEventParticleViewer);
+                composition, progress, eventAudience(), this::isEventParticleViewer);
     }
 
     private void renderSpellTelegraphVisual(LivingEntity caster, Location mark,
@@ -48495,6 +48498,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (transition.entered().contains(BossPhase.LAST_SEAL)) {
             clearEchoDecoys("entered-last-seal");
             startCurrentLastSealVisuals(boss);
+            // One-shot arena-wide ascension read: a single expanding seal and a
+            // roar, drawn once per viewer as the final phase opens.
+            spawnLastSealAscensionBurst(boss);
             // Owner's last-stand brief: hold the head down, snap it up, roar,
             // then stand into the final fight. The clip owns the performance;
             // the existing presentation window owns the body for its length so
@@ -48622,30 +48628,138 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 return;
             }
             int tick = (int) Math.floorMod(eventTickCounter, 360L);
-            Location center = boss.getLocation().clone().add(0.0D, 1.0D, 0.0D);
+            Location hover = boss.getLocation().clone().add(0.0D, 1.0D, 0.0D);
+            // The boss-local halo stays on every tick: it is the "something is
+            // here" read that must never blink out. The arena-scale seal, the
+            // floor spikes and the overhead sigil are the heavy layers, and
+            // they redraw on a fixed slower cadence so the whole ritual costs
+            // about what the old two rings cost while reading as a much larger
+            // transformation.
+            Location sealFloor = lastSealSealFloor(boss);
+            boolean ritual = LastSealArenaRitualPolicy.ritualDue(tick)
+                    && sealFloor != null;
+            Location sigil = hover.clone().add(0.0D,
+                    LastSealArenaRitualPolicy.SIGIL_HEIGHT, 0.0D);
             for (Player viewer : eventAudience()) {
-                if (!isEventParticleViewer(viewer, center)) {
+                if (!isEventParticleViewer(viewer, hover)) {
                     continue;
                 }
-                spawnPatternRing(viewer, center, new Vector(1.0D, 0.0D, 0.0D),
+                spawnPatternRing(viewer, hover, new Vector(1.0D, 0.0D, 0.0D),
                         new Vector(0.0D, 1.0D, 0.0D), 1.0D + (tick % 30) * 0.015D,
                         18, tick * 0.11D, Particle.REVERSE_PORTAL);
-                spawnPatternRing(viewer, center.clone().add(0.0D, -0.75D, 0.0D),
+                spawnPatternRing(viewer, hover.clone().add(0.0D, -0.75D, 0.0D),
                         new Vector(1.0D, 0.0D, 0.0D), new Vector(0.0D, 0.0D, 1.0D),
                         1.4D + Math.sin(tick * 0.08D) * 0.15D, 24,
                         -tick * 0.09D, Particle.DRAGON_BREATH);
-                viewer.spawnParticle(Particle.END_ROD, center, 3,
+                viewer.spawnParticle(Particle.END_ROD, hover, 3,
                         0.28D, 0.55D, 0.28D, 0.02D);
+                if (!ritual) {
+                    continue;
+                }
+                renderLastSealArenaRitual(viewer, sealFloor, hover, sigil, tick);
             }
             if (tick % 40 == 0) {
                 boss.getWorld().playSound(boss.getLocation(), Sound.ENTITY_WITHER_AMBIENT,
                         0.55F, 0.55F);
+            }
+            if (ritual && tick % 120 == 0) {
+                boss.getWorld().playSound(sealFloor, Sound.ENTITY_ENDER_DRAGON_GROWL,
+                        0.6F, 0.45F);
             }
         }, 1L, 2L);
         currentLastSealVisualTask = holder[0];
         registerEncounterTask(holder[0]);
         getLogger().info("BOSS_LAST_SEAL_VISUALS_STARTED event=" + eventId
                 + " boss=" + boss.getUniqueId() + " generation=" + generation);
+    }
+
+    /**
+     * The arena floor the seal is carved into, or null when there is no safe
+     * playable floor to anchor it to. Returning null suppresses only the
+     * arena-scale layers; the boss-local halo keeps running.
+     */
+    private Location lastSealSealFloor(LivingEntity boss) {
+        Location floor = coreCombatAnchorLocation();
+        if (floor == null || floor.getWorld() == null || boss == null
+                || !floor.getWorld().equals(boss.getWorld())) {
+            return null;
+        }
+        // Keep the seal centred under the hovering boss even if the Core was
+        // moved after the phase began.
+        return new Location(floor.getWorld(), boss.getLocation().getX(),
+                floor.getY(), boss.getLocation().getZ());
+    }
+
+    /**
+     * One bounded frame of the arena ritual for a single viewer: a broad
+     * converging seal, spikes rising out of the floor, vertical pillars and a
+     * counter-rotating sigil overhead. Presentation only; it owns no damage,
+     * summon or collision.
+     */
+    private void renderLastSealArenaRitual(Player viewer, Location sealFloor, Location hover,
+            Location sigil, int tick) {
+        Particle.DustOptions sealDust = new Particle.DustOptions(Color.fromRGB(
+                BossSpellVisualCompositionPolicy.composition("kagune_eruption").impactHue()), 1.45F);
+        Particle.DustOptions spikeDust = new Particle.DustOptions(Color.fromRGB(
+                BossSpellVisualCompositionPolicy.composition("kagune_stab").impactHue()), 1.25F);
+        spawnPatternRing(viewer, sealFloor, new Vector(1.0D, 0.0D, 0.0D),
+                new Vector(0.0D, 0.0D, 1.0D), LastSealArenaRitualPolicy.sealRadius(tick),
+                LastSealArenaRitualPolicy.SEAL_RING_POINTS,
+                LastSealArenaRitualPolicy.sealPhase(tick), Particle.DUST, sealDust);
+        spawnPatternRing(viewer, sigil, new Vector(1.0D, 0.0D, 0.0D),
+                new Vector(0.0D, 0.0D, 1.0D), LastSealArenaRitualPolicy.sigilRadius(tick),
+                LastSealArenaRitualPolicy.SIGIL_RING_POINTS,
+                LastSealArenaRitualPolicy.sigilPhase(tick), Particle.END_ROD);
+        for (int i = 0; i < LastSealArenaRitualPolicy.SPIKE_COUNT; i++) {
+            double angle = LastSealArenaRitualPolicy.spikeAngle(i);
+            Location base = sealFloor.clone().add(
+                    Math.cos(angle) * LastSealArenaRitualPolicy.SPIKE_BASE_RADIUS, 0.0D,
+                    Math.sin(angle) * LastSealArenaRitualPolicy.SPIKE_BASE_RADIUS);
+            double height = LastSealArenaRitualPolicy.spikeHeight(tick, i);
+            spawnPatternSegment(viewer, base, base.clone().add(0.0D, height, 0.0D),
+                    Particle.DUST, spikeDust);
+        }
+        for (int i = 0; i < LastSealArenaRitualPolicy.PILLAR_COUNT; i++) {
+            double angle = LastSealArenaRitualPolicy.pillarAngle(i);
+            Location base = sealFloor.clone().add(
+                    Math.cos(angle) * LastSealArenaRitualPolicy.SPIKE_BASE_RADIUS, 0.0D,
+                    Math.sin(angle) * LastSealArenaRitualPolicy.SPIKE_BASE_RADIUS);
+            spawnPatternSegment(viewer, base, hover, Particle.DUST, spikeDust);
+        }
+    }
+
+    /**
+     * One-shot arena-wide ascension read when LAST_SEAL begins. A single
+     * expanding triple seal, a spine up to the hovering boss and a roar. It is
+     * emitted once per viewer, schedules no new task and owns no damage.
+     */
+    private void spawnLastSealAscensionBurst(LivingEntity boss) {
+        if (boss == null || boss.getWorld() == null) {
+            return;
+        }
+        Location sealFloor = lastSealSealFloor(boss);
+        if (sealFloor == null) {
+            return;
+        }
+        Particle.DustOptions dust = new Particle.DustOptions(Color.fromRGB(
+                BossSpellVisualCompositionPolicy.composition("kagune_eruption").impactHue()), 1.6F);
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, sealFloor)) {
+                continue;
+            }
+            for (int ring = 1; ring <= 3; ring++) {
+                spawnPatternRing(viewer, sealFloor, new Vector(1.0D, 0.0D, 0.0D),
+                        new Vector(0.0D, 0.0D, 1.0D), ring * 3.0D, 32, ring * 0.4D,
+                        Particle.DUST, dust);
+            }
+            spawnPatternSegment(viewer, sealFloor.clone().add(0.0D, 0.2D, 0.0D),
+                    boss.getLocation().clone().add(0.0D, 1.0D, 0.0D), Particle.END_ROD, null);
+            viewer.spawnParticle(Particle.FLASH, boss.getLocation().clone().add(0.0D, 1.0D, 0.0D),
+                    1, 0.0D, 0.0D, 0.0D, 0.0D);
+        }
+        boss.getWorld().playSound(sealFloor, Sound.ENTITY_ENDER_DRAGON_GROWL, 1.0F, 0.5F);
+        boss.getWorld().playSound(sealFloor, Sound.ENTITY_WITHER_SPAWN, 0.7F, 0.6F);
+        getLogger().info("BOSS_LAST_SEAL_ASCENSION event=" + eventId + " boss=" + boss.getUniqueId());
     }
 
     private void updateBossBar(LivingEntity boss) {
@@ -48872,7 +48986,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 progress, config.finalStrikeTuning().radius());
         BossSpellPresentationEffects.frame(mark.clone().add(0,.08D,0),
                 mark.toVector().subtract(boss.getLocation().toVector()), points,
-                impact ? 0xF4DBFF : 0xE449FF, eventAudience(), this::isEventParticleViewer);
+                impact ? 0xF4DBFF : 0xE449FF,
+                BossSpellVisualCompositionPolicy.composition("final_strike"), progress,
+                eventAudience(), this::isEventParticleViewer);
         // One intermediate charge cue; the controller already owns the first
         // warning and actual impact. No per-tick beam packets or layered tells.
         if (elapsedTicks == BossFinalStrikePolicy.TELEGRAPH_TICKS) {

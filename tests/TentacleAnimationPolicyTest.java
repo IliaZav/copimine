@@ -7,6 +7,7 @@ public final class TentacleAnimationPolicyTest {
         testAttackCuesStayInsideTheAuthoredAndArtistTiming();
         testGrabMarkersUseTheSpecifiedTimeline();
         testPlayerHitsDoNotInterruptAttacksOrRestartHitRecovery();
+        testAcceptedDamageWindowsMatchTheAuthoredContract();
         testTransitionsKeepTheServerSequenceDeterministic();
         testStaticShowroomStartsPermanentTentaclesInTheLoopingIdleState();
         System.out.println("TentacleAnimationPolicyTest OK");
@@ -82,6 +83,92 @@ public final class TentacleAnimationPolicyTest {
         check(TentacleAnimationPolicy.shouldEnterHitRecovery(
                         TentacleAnimationPolicy.State.SHIELD_CHANNEL),
                 "an idle guardian can play one bounded hit reaction");
+    }
+
+    /**
+     * K03 regression: HP may only be deducted inside an authored vulnerability
+     * window.  A spammed or previously canceled hit during HIT_RECOVERY, DYING,
+     * the committed grab or any other closed window must be refused before the
+     * slot ledger is touched, and a temporary ambush Kagune must stay
+     * undamageable while it owns a held player.
+     *
+     * <p>{@code onTentacleGuardianDamage} and {@code applyTentacleGuardianDamage}
+     * both gate on this exact predicate before deducting HP, so a regression
+     * here is the first place a "spam the dying guardian" bug would surface.</p>
+     */
+    private static void testAcceptedDamageWindowsMatchTheAuthoredContract() {
+        // Open windows: idle, the shield channel, and the heavy-strike counterattack.
+        for (TentacleAnimationPolicy.State open : List.of(
+                TentacleAnimationPolicy.State.READY,
+                TentacleAnimationPolicy.State.SHIELD_CHANNEL,
+                TentacleAnimationPolicy.State.SMALL_RECOVERY)) {
+            check(TentacleAnimationPolicy.acceptsDamage(
+                            TentacleAnimationPolicy.Kind.PERMANENT, open),
+                    "permanent guardian must accept damage in " + open);
+        }
+        // Every committed, recovering or finished permanent state refuses the hit.
+        for (TentacleAnimationPolicy.State closed : List.of(
+                TentacleAnimationPolicy.State.EMERGING,
+                TentacleAnimationPolicy.State.TELEGRAPH_GRAB,
+                TentacleAnimationPolicy.State.GRAB_SUCCESS,
+                TentacleAnimationPolicy.State.HOLD,
+                TentacleAnimationPolicy.State.THROW,
+                TentacleAnimationPolicy.State.MISS_RECOVERY,
+                TentacleAnimationPolicy.State.HIT_RECOVERY,
+                TentacleAnimationPolicy.State.RECOVERY,
+                TentacleAnimationPolicy.State.DYING,
+                TentacleAnimationPolicy.State.DEAD_RESPAWN,
+                TentacleAnimationPolicy.State.RETRACT,
+                TentacleAnimationPolicy.State.SPAWN_UNDER_PLAYER)) {
+            check(!TentacleAnimationPolicy.acceptsDamage(
+                            TentacleAnimationPolicy.Kind.PERMANENT, closed),
+                    "permanent guardian must refuse damage in " + closed);
+        }
+        // The committed ambush grab is never a damageable actor.
+        for (TentacleAnimationPolicy.State closed : List.of(
+                TentacleAnimationPolicy.State.EMERGING,
+                TentacleAnimationPolicy.State.TELEGRAPH_GRAB,
+                TentacleAnimationPolicy.State.GRAB_SUCCESS,
+                TentacleAnimationPolicy.State.HOLD,
+                TentacleAnimationPolicy.State.THROW,
+                TentacleAnimationPolicy.State.MISS_RECOVERY,
+                TentacleAnimationPolicy.State.RECOVERY,
+                TentacleAnimationPolicy.State.SPAWN_UNDER_PLAYER)) {
+            check(!TentacleAnimationPolicy.acceptsDamage(
+                            TentacleAnimationPolicy.Kind.TEMPORARY, closed),
+                    "temporary ambush must refuse damage in " + closed);
+            check(!TentacleAnimationPolicy.acceptsDamage(
+                            TentacleAnimationPolicy.Kind.UNDER_PLAYER, closed),
+                    "under-player eruption must refuse damage in " + closed);
+        }
+        // The small melee role has real HP and is killable while it fights.
+        for (TentacleAnimationPolicy.State alive : List.of(
+                TentacleAnimationPolicy.State.EMERGING,
+                TentacleAnimationPolicy.State.READY,
+                TentacleAnimationPolicy.State.SHIELD_CHANNEL,
+                TentacleAnimationPolicy.State.SMALL_WINDUP,
+                TentacleAnimationPolicy.State.SMALL_STRIKE,
+                TentacleAnimationPolicy.State.SMALL_RECOVERY)) {
+            check(TentacleAnimationPolicy.acceptsDamage(
+                            TentacleAnimationPolicy.Kind.SMALL, alive),
+                    "small Kagune must accept damage in " + alive);
+        }
+        for (TentacleAnimationPolicy.State gone : List.of(
+                TentacleAnimationPolicy.State.HIT_RECOVERY,
+                TentacleAnimationPolicy.State.DYING,
+                TentacleAnimationPolicy.State.DEAD_RESPAWN,
+                TentacleAnimationPolicy.State.RETRACT)) {
+            check(!TentacleAnimationPolicy.acceptsDamage(
+                            TentacleAnimationPolicy.Kind.SMALL, gone),
+                    "small Kagune must refuse damage in " + gone);
+        }
+        // Missing identity fails closed rather than defaulting to vulnerable.
+        check(!TentacleAnimationPolicy.acceptsDamage(
+                        null, TentacleAnimationPolicy.State.READY),
+                "a missing kind must refuse damage");
+        check(!TentacleAnimationPolicy.acceptsDamage(
+                        TentacleAnimationPolicy.Kind.PERMANENT, null),
+                "a missing state must refuse damage");
     }
 
     private static void testGrabMarkersUseTheSpecifiedTimeline() {

@@ -3,7 +3,7 @@
 - **Дата:** 22 ноября 2026
 - **Источник задания:** разбор плейтеста 21 ноября — `C:\Temp\copimine-live-playtest-audit-20261122\playtest-audit.md` (авторитетный список наблюдений и «что остаётся проверить»)
 - **Ветка:** `codex/end-rift-live-playtest-repair`
-- **Проверенный и выпущенный код-коммит:** `62905562` (родительская линия — `c4be236b`, `73642619`, `2da1a18a`, `83fa01cd`, `4012a715`, …)
+- **Проверенный и выпущенный код-коммит:** `62905562` (родительская линия — `c4be236b`, `73642619`, `2da1a18a`, `83fa01cd`, `4012a715`, …); артефактная линия VFX/AI/финала — см. раздел 10
 - **Канонические спецификации (перечитаны полностью, хэши сверены):**
   - `CM-END-RIFT-WAVES-CANONICAL` rev `2026-10-27.1`, 47126 Б, SHA-256 `6E1245B44A449A0EF1BAB9193606398660C68F6BB2DE7D7BB6082CC8CDE50CAF`
   - `CM-END-RIFT-RIFT-GUARDIAN-CANONICAL` rev `2026-10-27.1`, 51711 Б, SHA-256 `0C781E42E274A3F27762E0B568CC1D8FFD7DFD8623E5A0F1DEB65EA73A94AE50`
@@ -26,7 +26,7 @@
 
 | Артефакт | Размер, Б | SHA-256 | SHA-512 |
 |---|---:|---|---|
-| `CopiMineEndEvent-26.3.jar` | 2605150 | `8ceac981a86f8e4752f5f6139b15419cc1bfb751fda0af1b9163ca79044ebd4a` | `0606b535d07ce50a1e5e5c187c46d146510144ec81ca10c879969aa7633c35572400b53cd32ce53d970dd6cfea622c358b98958b3d708ecb667580867d453edf` |
+| `CopiMineEndEvent-26.3.jar` | 2623301 | `0aa1a51c4c0819938ce10f786cb350bd446aced1ad2e083f5984ee73b632f029` | `51278c92421992e2669c268a465818bfcf22c0b59b62e3adb187483511cb27b9396326d068b8fb927f816fedfbf22f98757d0f470c92265560db52f6e4f6297b` |
 | `CopiMineNarcotics-26.3.jar` | 379018 | `ec2ef8d50c780d2faf52469bd52d20724d8be9c5f8c23a76c5c9d459782e35a6` | `3328ef927d8d2b3c703c194038f8c4ff3541653cd574bff0aec8ee65f516d3e2ef9f135f16a05e940aefbcfe31a2a63e4edc6f621ba0c781b3554068a3a614b2` |
 | `CopiMineClient-0.1.4+26.3.jar` | 30360209 | `cd2a0ba953cc8f5a9e2866e4c6c01612cfbd749c8431ac52e6e4fdbbe995ffd99` | `a399de1f3b5bcc5dc56164ea9f9acf28b43a9c4c8102913aa713ddcce146a3651d1ed9d5f094d4c365579a659cbde224a2c4f38fdc897d07ba8b688566e83382` |
 | `CopiMineResourcePack-26.3.zip` | 34373458 | `98d7950558e7da38e37b641d340b7fe89dc0310cbce6ad0671be62432d627176` | `3fcc01e531ef23495c00aedaafdebd1b9b4e1c51fcf5bc565662a82f19c30ab6ecdbc6ea79e4036d1ebce76fecbfe8f2bbccbff4ffddeb28862f214f67f4a5c3` |
@@ -35,7 +35,7 @@
 
 | Что | Где |
 |---|---|
-| Серверный плагин события | `/opt/copimine-game/minecraft/server/plugins/CopiMineEndEvent.jar` (установлен, SHA-256 `8ceac981…`) |
+| Серверный плагин события | `/opt/copimine-game/minecraft/server/plugins/CopiMineEndEvent.jar` (установлен 22.11.2026 18:15 +07, SHA-256 `e5634097…`) |
 | Мост клиента | `/opt/copimine-game/minecraft/server/plugins/CopiMineNarcotics.jar` (установлен, SHA-256 `ec2ef8d5…`) |
 | Клиент | `https://copimine.ru/assets/CopiMineClient-0.1.4+26.3-cd2a0ba953cc8f5a.jar` (отдаёт SHA-256 `cd2a0ba9…`) |
 | Ресурс-пак | `https://copimine.ru/assets/CopiMineResourcePack-26.3-98d7950558e7da38.zip` (отдаёт SHA-256 `98d79505…`, SHA-1 `03951b4e43b5564b4d45ea71b07235997ff2bbd7`) |
@@ -119,27 +119,23 @@
 
 ---
 
-## 6. Текущее состояние прода и действие администратора
+## 6. Текущее состояние прода (после деплоя и сброса)
 
-После установки новой сборки событие по-прежнему в состоянии:
+До деплоя событие стояло в предусмотренном `RECOVERY_REQUIRED`: сохранённый чекпоинт тумана Волны 5 относился к другому поколению (`wave5-fog.generation=420` против `generation=422`), поэтому сборка корректно отказывалась угадывать состояние. Новый кандидат `e5634097…` установлен 22.11.2026 в 18:15 +07 при 0 игроков онлайн; после проверки загрузки, инвариантов и нулевого прогресса владелец разрешил сброс, и `resetEventSafely` перевёл событие в `COLLECTING`.
 
-```
-state=RECOVERY_REQUIRED event=9d8cff21-644a-4582-8099-52293650efa5 generation=422
-wave=0  roster=2 participants=2  endUnlocked=false
-Recovery reason: INVALID_OR_MISSING_WAVE5_RESTART_CHECKPOINT
-```
-
-Это **предусмотренный** путь «нужно вмешательство администратора»: сохранённый чекпоинт тумана Волны 5 относится к другому поколению (`wave5-fog.generation=420` против `generation=422`), поэтому новая сборка корректно отказывается угадывать состояние и не портит прогресс. Агент намеренно **не** запускал сброс, чтобы решение осталось за владельцем.
-
-Чтобы начать чистое прохождение, администратору нужно выполнить в консоли/RPC:
+Фактическое состояние после сброса и контрольного рестарта:
 
 ```
-/cmend reset confirm
+state=COLLECTING event=9d8cff21-644a-4582-8099-52293650efa5 generation=422
+wave=0  roster=0 participants=0  event-mobs=0  endUnlocked=false
+resources 0/64, 0/64, 0/100, 0/128
+Recovery reason: (пусто)
+END_RIFT_INVARIANTS failures=0 countersNonNegative=true entityCount=2 tasks=0 bossProxies=0 wave7Blocks=0
 ```
 
-Что делает команда (`resetEventSafely`): переводит событие в `COLLECTING`, очищает чекпоинты и `recoveryReason`, обнуляет прогресс события. **Мир и данные игроков сохраняются** (сообщение плагина: «Сбросил только event progress; world и player data не затронуты»). После этого участники снова вносят ресурсы и запускают ритуал. Команда отказывается работать только в фазах активной волны — `RECOVERY_REQUIRED` в этот список не входит, поэтому сброс доступен.
+Сброс переживает рестарт: после повторного запуска служба поднялась без ошибки «Wave 5 recovery checkpoint refused», плагин залогировал `CopiMineEndEvent loaded in local mode; persistent phase=COLLECTING`. **Мир и данные игроков не затронуты**; участники снова вносят ресурсы и запускают ритуал.
 
-Альтернатива без сброса: вернуть на место предыдущую пару плагинов из бэкапа `/opt/copimine-backups/end-rift-20261122-8ceac981a86f` (скрипт делает это автоматически при ошибке установки).
+Откат: предыдущий JAR и `server.properties` лежат в `/opt/copimine-backups/end-rift-20261122T111544Z-e5634097` (`SHA256SUMS` внутри); более ранняя полная точка — `/opt/copimine-backups/end-rift-20261122-8ceac981a86f`.
 
 ---
 
@@ -151,6 +147,7 @@ Recovery reason: INVALID_OR_MISSING_WAVE5_RESTART_CHECKPOINT
 | W611 | Захват пленника Волны 6 без V4-подписи | `CLIENT-BLOCKED` |
 | W708 | PERSONAL_ECHO Волны 7 без V4-подписи | `CLIENT-BLOCKED` |
 | R03 | Нативная приёмка 26.3 | `NATIVE-UNVERIFIED` |
+| R04 | `resetEventSafely` не очищает `resourceContributors`: после сброса и рестарта `participants=1` при пустом `roster` (влияет только на счётчик в `cmend status` и строку имён в объявлении победы) | `CODE-RISK LOW` — исправление в следующем цикле |
 | B05 | Модель/UV/хитбокс/щиты/боссбар Стража | `NATIVE-UNVERIFIED` |
 | Разное | Все визуальные требования по строкам плейтеста | `BLOCKED` (нет графического клиента) |
 
@@ -169,3 +166,59 @@ Recovery reason: INVALID_OR_MISSING_WAVE5_RESTART_CHECKPOINT
 9. Страж: урон меча/стрелы/артефакта на обеих ветках боя; паттерны ИИ и заклинания; синхрон круга, гейзера и попадания; все проходы пола и восстановление при рестарте; копии Эхо; попадания по носителю и урон всех трёх ролей Кагуне; босс-бары после поражения и без клиентского мода.
 
 Результаты этого прогона нужно приложить к приёмке и только тогда снять пометку «НЕ ПРОВЕРЕНО» с соответствующих строк.
+
+---
+
+## 9. Повторный прогон гейта и деплой кандидата `e5634097…`
+
+**Гейт.** Полный `tests/RunEndRiftEventChecks.ps1` прогнан из корня репозитория под `pwsh` 7.7.0 и пином Temurin 25.0.4.1; завершение — `End Rift current local checks passed.`, exit 0. Первый запуск этого сеанса упал на `EncounterGenerationPreflightTest`, потому что процесс был запущен не из корня репозитория (java-тесты читают путь относительно CWD); после смены рабочего каталога тот же гейт прошёл полностью. Это ошибка окружения, а не исходников.
+
+**Артефакт.** `build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar`, 2 606 380 байт, SHA-256 `e563409798d6c97d81ad0e6da14a78794246b2cbf826dd1cfc69f6797991569c` — совпадает с `tools/minecraft-26.3/server-plugins.lock.json`; `nativeVerified: false` сохраняется.
+
+**Деплой (22.11.2026, 18:15 +07).** 0 игроков онлайн; заменён только `CopiMineEndEvent.jar` (`8ceac981…` → `e5634097…`); Narcotics `ec2ef8d5…`, ресурс-пак и клиент не менялись. Бэкап: `/opt/copimine-backups/end-rift-20261122T111544Z-e5634097`. После рестарта в логе: `Loading server plugin CopiMineEndEvent v0.1.0`, `CopiMineEndEvent services ready; phase=COLLECTING`; `END_RIFT_INVARIANTS failures=0`.
+
+**Публичные артефакты.** `CopiMineResourcePack-26.3-98d7950558e7da38.zip` — HTTP 200, 34 373 458 байт; `CopiMineClient-0.1.4+26.3-cd2a0ba953cc8f5a.jar` — HTTP 200, 30 360 209 байт. Содержимое в этом прогоне не перекачивалось и не перехешировалось: проверены доступность и размер, а не повторно SHA-256.
+
+**Что это НЕ доказывает.** Живой бой, нативная визуализация, F2-кадры и приёмка игроками этим прогоном не проверены; `nativeVerified` остаётся `false`.
+
+---
+
+## 10. Итерация 22.11.2026 (вечер): кинематографичные заклинания, ИИ целей, масштаб финала
+
+### 10.1 Артефакт и пины
+
+| Артефакт | Размер, Б | SHA-256 | SHA-512 |
+|---|---:|---|---|
+| `build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar` | 2623301 | `0aa1a51c4c0819938ce10f786cb350bd446aced1ad2e083f5984ee73b632f029` | `51278c92421992e2669c268a465818bfcf22c0b59b62e3adb187483511cb27b9396326d068b8fb927f816fedfbf22f98757d0f470c92265560db52f6e4f6297b` |
+
+**Провенанс.** Артефакт собран **тем же** путём, что и релизный кандидат CI: `scripts/minecraft/BuildMigrationPlugins.ps1` → Gradle 9.8.1 (`build/minecraft-26.3/toolchain/gradle-9.8.1`, SHA-256 дистрибутива `dce76f55…` сверен), задача `migrationPlugins --rerun-tasks`, `JAVA_HOME` = пин Temurin 25.0.4.1. Это опровергает прежнюю гипотезу о «другом артефакте»: предыдущая разница в размере была не расхождением пайплайнов, а тем, что сравнивался устаревший кандидат из более раннего источника. Прямой упаковщик `copimine-end-event/build-plugin.ps1` больше **не** публикует кандидата (это закреплено тестом `test_end_event_build_artifact_ownership.py`), поэтому у пина ровно один владелец — Gradle.
+
+Обновлены: `tools/minecraft-26.3/server-plugins.lock.json` (кандидат, `size`, `sha512`, `ea91e7f1…` препендент в `replaceSha256`), `docs/end-rift/final-26.3/OWN_PLUGIN_INVENTORY.json` (`candidateSha256`), `tests/test_minecraft_migration_server_plugins.py` (два пина и порядок истории замен).
+
+### 10.2 Что сделано по заклинаниям (порядок владельца: эффекты → ИИ → финал)
+
+**Эффекты.** Авторский вид получили последние заклинания без композиции — контактный набор и Кагуне: `melee_swipe`, `chest_strike`, `ground_slam`, `ambush_grab`, `small_kagune`, `kagune_stab`, `kagune_eruption` (таблица композиций: 27 записей). Раньше эти id шли по общему пути каста и рисовали стандартную вспышку из двенадцати частиц вместо собственного силуэта. `kagune_stab → RIFT_LANCE`, `kagune_eruption → GEYSER` добавлены в геометрию, так что у каждого `BossSpell` есть тело; множество без меша (`{SWIPE, DEFEAT}`) не изменилось.
+
+**Честная палитра частиц.** Новый чистый `domain/BossSpellParticlePalette` (`Payload {NONE, FLOAT, INTEGER, DUST, BLOCK}`, `Weight {DENSE, SPARSE}`, `resolve`, `isDistinct`, `nodeRank`) переводит авторские `primaryParticle`/`accentParticle` в реальный `Particle` с корректной полезной нагрузкой, которой требует Bukkit (пыль, `Float`, `Integer`, `BlockData`). Запрещённые на ярких узлах одиночные эффекты (`FLASH`, `SONIC_BOOM`, `SWEEP_ATTACK`) понижаются в ранге, поэтому силуэт не «вспыхивает» целиком и не скрывает атаку. Неизвестное или пустое имя → пыль в оттенке заклинания (прежнее поведение сохранено).
+
+**Рендерер.** `BossSpellPresentationEffects.frame(...)` стал 8-аргументным: применяет авторский `vortexTurns` как жёсткий поворот всего силуэта (по `progress`), что превращает телеграф в реальную спираль, и выбирает яркую частицу по авторской подписи. `spawn(...)` учитывает нагрузку, `impact(...)` получил композицию. Стоимость не выросла: узел на кадр заменён один-к-одному, число точек и потолок 32 зрителя те же.
+
+**ИИ.** `BossTargetSelector` переписан: `MAX_CANDIDATES = 4`, `choose(snapshot, currentTarget, cursor)`, `ranked(...)` с детерминированным поворотом равных оценок по курсору решения. `BossBrain.decide(...)` принимает курсор и перебирает ограниченные альтернативы, если лучшая цель не даёт ни одной кастабельной способности. Это закрывает наблюдение «босс стоит в пустой ветке приоритетов»: дальняя цель больше не блокирует весь набор атак, а один и тот же игрок больше не забирает все неоднозначные решения.
+
+**Финал (LAST_SEAL).** Новый чистый `domain/LastSealArenaRitualPolicy` описывает арена-масштабный ритуал: сходящаяся печать на полу (32 точки, радиус 4.5–9.0), 8 шипов Кагуне из пола (до 5 блоков), 4 вертикальные колонны, замыкающие пол и верхний знак в клетку, и контр-вращающийся знак над боссом (20 точек, радиус 6.5±0.6, высота 7). Тяжёлый слой перерисовывается раз в 4 тика: 88 точек на «должный» тик, 22 в среднем — не больше, чем прежний локальный ореол (45 точек каждые 2 тика). Форма не зависит от числа игроков: 2 и 20 видят одно и то же. Локальный ореол сохранён, плюс одноразовый всплеск вознесения при входе в фазу (три расходящихся кольца, луч до босса, `FLASH`, рык дракона и визг wither).
+
+### 10.3 Ворота и тесты
+
+- **Полный гейт зелёный:** `pwsh -NoProfile -File tests\RunEndRiftEventChecks.ps1 -SkipBuilds -JavaHome <пин Temurin 25.0.4.1>` из корня репозитория, финальная строка `End Rift current local checks passed.`, exit 0.
+- Новые проверки: `tests/LastSealArenaRitualPolicyTest.java` — `PASS (154048 checks)`; `tests/BossSpellParticlePaletteTest.java` — `PASS (200 checks)`; `tests/test_last_seal_arena_ritual_wiring.py` — 4 passed; `BossSpellVisualCompositionPolicyTest` — `PASS (396 checks)`; `BossTargetPolicyTest` — OK (включая `testEqualScoreTiesRotateFairly`); `TentacleAnimationPolicyTest` — OK. Все зарегистрированы в `tests/RunEndRiftEventChecks.ps1`.
+- Пины артефактов: отдельный прогон `test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar`, `test_every_pinned_first_party_build_artifact_present_on_disk_matches_its_lock`, `test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_candidates`, `test_own_plugin_inventory_contract.py` (4 теста), `test_end_event_build_artifact_ownership.py`, `test_end_event_candidate_reproducibility.py` — **13 passed**.
+
+### 10.4 Уровни доказанности (обязательно к прочтению)
+
+| Уровень | Что покрыто здесь |
+|---|---|
+| **CODE-IMPLEMENTED** | Все правки этого раздела: композиции, палитра, рендерер, ИИ целей, политика финала, проводка в монолите |
+| **AUTOMATED-TESTED** | Полный локальный гейт (все Python-наборы, чистые Java-политики, persistence/recovery, гигиена диффа) + 13 тестов пинов |
+| **PAPER-RUNTIME-OBSERVED** | Логика сервера на живом Paper проверяется после деплоя (RCON `cmend status`, `cmend debug invariants`) |
+| **NATIVE-CLIENT-VISUALLY-VERIFIED** | **НЕ ПРОВЕРЕНО.** Ни один кадр F2, ни один клип не снят агентом. Факт «выглядит как AAA» не заявляется |
+| **OFFICIAL-ACCEPTED** | **НЕТ.** Приёмка визуала — за владельцем |

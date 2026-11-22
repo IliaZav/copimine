@@ -54,6 +54,7 @@ public final class BossTargetPolicyTest {
         testPrimaryTargetStaysLockedForElevenSeconds();
         testSpellSelectionIsIndependentOfThePursuitLock();
         testStackedAndSurroundedUseWalkableHorizontalPosition();
+        testEqualScoreTiesRotateFairly();
         System.out.println("BossTargetPolicyTest OK");
     }
 
@@ -116,6 +117,25 @@ public final class BossTargetPolicyTest {
         var opposite = observation(SECOND, 1.0D, 3.0D, false, -3.0D, 0.0D, 0.0D);
         check(snapshot(sameSideA, opposite).bossSurrounded(),
                 "players on opposing sides surround the boss");
+    }
+
+    private static void testEqualScoreTiesRotateFairly() {
+        // Three identical observers all score exactly the same. The selector must
+        // not hand every ambiguous decision to the lexicographically largest UUID;
+        // successive cursors must rotate the choice across all equally valid players.
+        var a = observation(FIRST, 1.0D, 5.0D, false, 0.0D, 0.0D, 0.0D);
+        var b = observation(SECOND, 1.0D, 5.0D, false, 0.0D, 0.0D, 0.0D);
+        var c = observation(THIRD, 1.0D, 5.0D, false, 0.0D, 0.0D, 0.0D);
+        BossPerceptionSnapshot trio = snapshot(a, b, c);
+        var firstPick = BossTargetSelector.choose(trio, null, 0).target();
+        var secondPick = BossTargetSelector.choose(trio, null, 1).target();
+        var thirdPick = BossTargetSelector.choose(trio, null, 2).target();
+        java.util.Set<UUID> distinct = new java.util.HashSet<>(java.util.List.of(
+                firstPick, secondPick, thirdPick));
+        check(distinct.size() == 3,
+                "equal-score ties must rotate across all players, not always pick the UUID maximum");
+        check(BossTargetSelector.choose(trio, null, 0).target().equals(firstPick),
+                "tie rotation must stay deterministic for a repeated cursor");
     }
 
     private static BossPerceptionSnapshot snapshot(BossPerceptionSnapshot.PlayerObservation... players) {

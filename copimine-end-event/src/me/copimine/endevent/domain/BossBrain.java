@@ -36,9 +36,27 @@ public final class BossBrain {
                            int cursor) {
         adoptGeneration(generation);
         BossIntent intent = BossIntentSelector.choose(snapshot);
-        BossTargetSelector.TargetDecision target = BossTargetSelector.choose(snapshot, currentTarget);
+        List<BossTargetSelector.TargetDecision> candidates =
+                BossTargetSelector.ranked(snapshot, currentTarget, cursor);
+        BossTargetSelector.TargetDecision target = candidates.isEmpty()
+                ? new BossTargetSelector.TargetDecision(null, 0.0D, "NO_ELIGIBLE_PLAYER")
+                : candidates.getFirst();
+        List<BossAbilityId> history = List.copyOf(acceptedHistory);
         BossAbilitySelector.AbilityDecision ability = BossAbilitySelector.choose(snapshot, intent,
-                target.target(), previous, available, List.copyOf(acceptedHistory), budget, generation, cursor);
+                target.target(), previous, available, history, budget, generation, cursor);
+        // The highest-scoring player is not always actionable: a contact move
+        // against a distant player is rejected before any cast is committed.
+        // Try the bounded alternates so a legal attack is never withheld while
+        // one legitimately exists.
+        for (int index = 1; index < candidates.size() && ability.ability() == null; index++) {
+            BossTargetSelector.TargetDecision alternate = candidates.get(index);
+            BossAbilitySelector.AbilityDecision next = BossAbilitySelector.choose(snapshot, intent,
+                    alternate.target(), previous, available, history, budget, generation, cursor);
+            if (next.ability() != null) {
+                target = alternate;
+                ability = next;
+            }
+        }
         return new Decision(target, intent, ability);
     }
 

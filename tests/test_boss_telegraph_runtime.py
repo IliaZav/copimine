@@ -55,7 +55,8 @@ public class BossTelegraphRuntimeProbe {
     static class Bukkit {static Scheduler scheduler;static Scheduler getScheduler(){return scheduler;}}
     static class World {}
     enum Sound {ENTITY_WARDEN_NEARBY_CLOSE,ENTITY_EVOKER_PREPARE_ATTACK}
-    static class BossSpellPresentationEffects {static void frame(Location at,Vector axis,List<BossSpellGeometryPolicy.Point> points,int rgb,List<Player> viewers,java.util.function.BiPredicate<Player,Location> allowed){}}
+    static class BossSpellPresentationEffects {static void frame(Location at,Vector axis,List<BossSpellGeometryPolicy.Point> points,int rgb,List<Player> viewers,java.util.function.BiPredicate<Player,Location> allowed){}
+        static void frame(Location at,Vector axis,List<BossSpellGeometryPolicy.Point> points,int rgb,BossSpellVisualCompositionPolicy.Composition composition,double progress,List<Player> viewers,java.util.function.BiPredicate<Player,Location> allowed){}}
     static final double VOID_MARK_RADIUS_BLOCKS=3;
     Location coreCombatAnchorLocation(){return new Location();}
     enum SoundCategory {HOSTILE}

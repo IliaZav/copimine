@@ -471,6 +471,7 @@ $pureTests = @(
   'BossContactStrikePolicyTest',
         'BossRepelPolicyTest',
   'BossFinalSealAnchorPolicyTest',
+  'LastSealArenaRitualPolicyTest',
   'BossAnimationIdTest',
   'BossAnimationPosePolicyTest',
   'CreativeTestAdmissionPolicyTest',
@@ -651,6 +652,7 @@ $pureTests = @(
   'BossScalingPolicyTest',
   'Wave7SkeletonElusivenessPolicyTest',
   'BossSpellVisualCompositionPolicyTest',
+  'BossSpellParticlePaletteTest',
   'Wave7MinibossScalingPolicyTest',
   'Wave7MinibossSteadinessPolicyTest',
   'Wave7MarksmanSquadPolicyTest',
@@ -932,7 +934,8 @@ Invoke-GateStep 'Boss accepted hits, cast ownership and Kagune recovery' {
       'tests/test_inferno_runtime_cadence.py' 'tests/test_guardian_respawn_recovery_adapter.py' `
       'tests/test_small_kagune_strike_adapter.py' 'tests/test_tentacle_throw_protection_adapter.py' `
       'tests/test_boss_phase_damage_transaction_adapter.py' 'tests/test_boss_defeat_durability_adapter.py' `
-      'tests/test_kagune_rig_transform_contract.py'
+      'tests/test_kagune_rig_transform_contract.py' `
+      'tests/test_last_seal_arena_ritual_wiring.py'
     if ($LASTEXITCODE -ne 0) { throw 'Boss combat, cast ownership or Kagune recovery regression failed.' }
   } finally {
     Pop-Location

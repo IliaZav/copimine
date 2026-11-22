@@ -43,6 +43,13 @@ public final class BossSpellGeometryPolicy {
             case "ground_slam" -> Shape.SLAM_FAULT;
             case "ambush_grab" -> Shape.AMBUSH_TALONS;
             case "small_kagune" -> Shape.KAGUNE_KNOT;
+            // The Kagune pair is drawn client-side by the LastSeal construct
+            // runtime, but it is part of the boss kit and the guard below
+            // requires every BossSpell to name a body. Each reuses an existing
+            // meshed silhouette whose form matches the ability rather than
+            // inventing a third Kagune family to verify separately.
+            case "kagune_stab" -> Shape.RIFT_LANCE;
+            case "kagune_eruption" -> Shape.GEYSER;
             case "phase_shift" -> Shape.PHASE_SHELL;
             case "defeat_collapse" -> Shape.DEFEAT;
             case "rift_fracture", "inferno_geyser" -> Shape.GEYSER;

@@ -1,6 +1,7 @@
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import me.copimine.endevent.domain.BossSpellGeometryPolicy;
 import me.copimine.endevent.domain.BossSpellVisualCompositionPolicy;
 import me.copimine.endevent.domain.EndRiftAiPolicy;
 
@@ -9,12 +10,13 @@ public final class BossSpellVisualCompositionPolicyTest {
     /**
      * Shrink floor for the authored roster, not an equality.
      *
-     * <p>The table holds twenty compositions. A count is used here only to make
-     * deleting an authoring entry a deliberate edit of this number: dropping one
-     * silently returns that spell to the generic cue, which is the regression
-     * this probe exists to catch. Adding a spell must not need an edit here.</p>
+     * <p>The table holds twenty-seven compositions. A count is used here only to
+     * make deleting an authoring entry a deliberate edit of this number:
+     * dropping one silently returns that spell to the generic cue, which is the
+     * regression this probe exists to catch. Adding a spell must not need an
+     * edit here.</p>
      */
-    private static final int MIN_AUTHORED_SPELLS = 20;
+    private static final int MIN_AUTHORED_SPELLS = 27;
 
     private static int checks;
 
@@ -58,10 +60,19 @@ public final class BossSpellVisualCompositionPolicyTest {
             check("authored miniboss spell: " + spell.id(),
                     BossSpellVisualCompositionPolicy.isAuthored(spell.id()));
         }
-        // The five melee and ambush BossSpell entries (`melee_swipe`,
-        // `chest_strike`, `ground_slam`, `ambush_grab`, `small_kagune`) are
-        // deliberately absent: they are contact moves, and `BossVisualCuePolicy`
-        // authors no cue bank for any of them, so they never draw a spell cue.
+        // Every BossSpell the boss can select must be authored *and* name a
+        // body. `melee_swipe`, `chest_strike` and `ground_slam` really do reach
+        // `telegraphBossSpell`, so an unauthored one drew the generic burst
+        // instead of its own silhouette; and an authored spell with no shape
+        // makes `renderAuthoredBossTelegraph` return on its first line, i.e. a
+        // cast with no tell at all. Requiring both means neither regression can
+        // come back quietly.
+        for (EndRiftAiPolicy.BossSpell spell : EndRiftAiPolicy.BossSpell.values()) {
+            check("authored boss spell: " + spell.id(),
+                    BossSpellVisualCompositionPolicy.isAuthored(spell.id()));
+            check("boss spell names a body: " + spell.id(),
+                    BossSpellGeometryPolicy.shape(spell.id()) != null);
+        }
     }
 
     private static void noTwoSpellsShareASignature() {

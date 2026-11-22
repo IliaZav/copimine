@@ -61,6 +61,7 @@ public final class BossPhasePolicy {
                     EndRiftAiPolicy.BossSpell.BOSS_FIREBALL,
                     EndRiftAiPolicy.BossSpell.MELEE_SWIPE,
                     EndRiftAiPolicy.BossSpell.CHEST_STRIKE,
+                    EndRiftAiPolicy.BossSpell.CHEST_BEAM,
                     EndRiftAiPolicy.BossSpell.GROUND_SLAM);
             case OVERLOAD -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_BLAST,
@@ -70,6 +71,7 @@ public final class BossPhasePolicy {
                     EndRiftAiPolicy.BossSpell.BOSS_FIREBALL,
                     EndRiftAiPolicy.BossSpell.MELEE_SWIPE,
                     EndRiftAiPolicy.BossSpell.CHEST_STRIKE,
+                    EndRiftAiPolicy.BossSpell.CHEST_BEAM,
                     EndRiftAiPolicy.BossSpell.GROUND_SLAM);
             case RAGE -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_BLAST,
@@ -87,6 +89,7 @@ public final class BossPhasePolicy {
                     EndRiftAiPolicy.BossSpell.BOSS_FIREBALL,
                     EndRiftAiPolicy.BossSpell.MELEE_SWIPE,
                     EndRiftAiPolicy.BossSpell.CHEST_STRIKE,
+                    EndRiftAiPolicy.BossSpell.CHEST_BEAM,
                     EndRiftAiPolicy.BossSpell.GROUND_SLAM);
             case LAST_SEAL -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_MARK,

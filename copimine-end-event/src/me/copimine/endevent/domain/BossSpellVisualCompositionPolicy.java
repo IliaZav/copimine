@@ -223,6 +223,12 @@ public final class BossSpellVisualCompositionPolicy {
         // A ground eruption: the rising plume is the whole read.
         put(result, "kagune_eruption", 0x8C1F2E, "SOUL", "SLIME", 1.4F,
                 "minecraft:entity.warden.sonic_boom", "kagune eruption");
+        // The owner's approved signature ultimate (specification section 7): a
+        // giant center-core chest beam, hot-magenta over a cyan-dark charge,
+        // visible from the arena sides and above. Its own hue and its own
+        // particle pair keep it distinct from every other spell in the kit.
+        put(result, "chest_beam", 0xE040FF, "END_ROD", "DUST_MAGENTA", 3.5F,
+                "minecraft:entity.ender_dragon.growl", "core chest beam");
         return Map.copyOf(result);
     }
 

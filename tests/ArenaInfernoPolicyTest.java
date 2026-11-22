@@ -23,7 +23,7 @@ public final class ArenaInfernoPolicyTest {
     private static void testConcurrentSpells() {
         for (var spell : me.copimine.endevent.domain.EndRiftAiPolicy.BossSpell.values()) {
             boolean incompatible = switch (spell) {
-                case RIFT_ARROWS, VOID_MARK, AMBUSH_GRAB, ARENA_INFERNO -> true;
+                case RIFT_ARROWS, VOID_MARK, AMBUSH_GRAB, CHEST_BEAM, ARENA_INFERNO -> true;
                 default -> false;
             };
             check(ArenaInfernoPolicy.allowsConcurrent(spell) != incompatible,

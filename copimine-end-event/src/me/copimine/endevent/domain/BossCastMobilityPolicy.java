@@ -52,7 +52,10 @@ public final class BossCastMobilityPolicy {
                  BOSS_FIREBALL, SUMMON_SERVANTS, SMALL_KAGUNE, KAGUNE_STAB, KAGUNE_ERUPTION -> true;
             // AMBUSH_GRAB burrows the body under the floor, so it cannot drift
             // while the grab resolves. Its lock is still bounded and short.
-            case MELEE_SWIPE, CHEST_STRIKE, GROUND_SLAM,
+            // CHEST_BEAM plants the Guardian on the Core for its charge/lock/fire
+            // window (specification section 7.1.1), so its body must not drift
+            // while the lanes are locked; the lock is authored by the beam policy.
+            case MELEE_SWIPE, CHEST_STRIKE, GROUND_SLAM, CHEST_BEAM,
                  ARENA_INFERNO, FINAL_STRIKE, AMBUSH_GRAB -> false;
         };
     }

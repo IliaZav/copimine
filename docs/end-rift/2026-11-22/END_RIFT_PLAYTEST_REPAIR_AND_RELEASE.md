@@ -253,3 +253,24 @@ END_RIFT_INVARIANTS failures=0 countersNonNegative=true entityCount=2 tasks=0 bo
 **Командное давление на реальном заклинании.** Вторичные цели из `Decision.supports` теперь питают живой путь `VOID_MARK`: пометка дополнительно падает на до двух **различных** вторичных игроков решения (только реальные combat-цели в том же мире). Число зон ограничено существующим потолком `MAX_ACTIVE_VOID_MARKS=2`, поэтому 20 игроков не получают неограниченный стек зон от одного каста. `currentBossBrainSupports` очищается во всех путях сброса/переназначения цели (сброс события, melee-swipe, фури-`strike`), чтобы устаревшие вторичные цели не «протекали» в несвязанные касты.
 
 **Уровни доказанности (эта под-итерация).** CODE-IMPLEMENTED: правка сброса, вторичные цели, кольцо удара. AUTOMATED-TESTED: полный локальный гейт повторно прогоняется на новом артефакте. PAPER-RUNTIME-OBSERVED: ожидается после переустановки артефакта на прод. NATIVE-CLIENT-VISUALLY-VERIFIED / OFFICIAL-ACCEPTED: **НЕТ**, остаётся за владельцем.
+
+### 10.7 §7 — фирменный «луч из груди по центру Ядра» (GIANT CENTER-CORE CHEST BEAM)
+
+**Артефакт.** `build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar`, 2 632 888 Б, SHA-256 `74223c7de41b6d1066d874787b336f7245ce3aa3b062c33cf76ef8fa2c6155d6`, SHA-512 `4b9e3fb15073c09d0a707073bb7e2254808f9dc341e65ad461f7fabec765b5e23b7015a41202f1d38f0eab075c0e56df9161b9b11cd4286d5ac74e55d7337407`. Собран тем же Gradle-путём (`migrationPlugins`, `JAVA_HOME` = Temurin 25.0.4.1), `BUILD SUCCESSFUL`. Пин `95da1854…` препенден в `replaceSha256` (сначала новый).
+
+**Что это.** Спецификация §7 прямо требует «гигантский луч/ядерный залп из реального анимированного гнезда в груди» как авторскую сигнатуру, а не сферический AoE. Реализовано переиспользованием уже существующей машинерии контактного удара (`executeContactBossAbility` → `startChestBeam`), без нового клиентского меша: геометрия использует готовую `Shape.RIFT_LANCE`.
+
+**Чистая политика `ChestBeamPolicy` (домен, без Bukkit).** Считает:
+- число лучей по размеру группы: соло — 1, до 8 игроков — 2, больше — 3 (потолок `MAX_LANES=3`), чтобы 20 игроков не получали неограниченный залп;
+- фазы замаха: `chargingAt` 50 тиков → `damagesAt` 18 тиков → `aftermathAt` 20 тиков, всего `TOTAL_TICKS=88`, кулдаун `COOLDOWN_TICKS=600`;
+- `aimAt`/`along`/`perpendicular`/`beamHits` — точная серверная геометрия луча/капсулы (`BEAM_RANGE=26.0`, `BEAM_RADIUS=1.7`), урон `DAMAGE=16.0`, отброс `KNOCKBACK=0.85`, подброс `LIFT=0.22`;
+- `selectLaneIndices` выбирает **различные** непересекающиеся дорожки по детерминированному seed, поэтому луч не «прилипает» к убегающему игроку;
+- `mayCast`/`onCooldown` — гейт частоты.
+
+**Фазы и честность.** Прицел фиксируется **до** выстрела (lock перед impact), урон наносится по точной серверной линии/капсуле, окно урона одно и ограниченное; твёрдое укрытие между Ядром и целью останавливает попадание; игрок вне объявленной дорожки не получает урона. Отмена/смерть/рестарт вызывают `abortChestBeam` + `clearWorldVfxBeamsByPrefix("boss-chest-beam-")`, поэтому «старый» луч не переживает смену фазы или поколения.
+
+**§7.1.1 — захват Ядра.** Перед замахом Страж ограниченно (один безопасный пункт в пределах нескольких блоков от Ядра) перемещается к Ядру через `findSafeCombatLocation`, с не-damaging пульсом и звуком маяка. Если легальной точки нет — луч кастуется с текущей позиции (всё ещё честная, уворачиваемая дорожка), а не отменяется.
+
+**Гейты.** `BossSpell.CHEST_BEAM` добавлен в пул фаз RIFT/OVERLOAD/RAGE (не в LAST_SEAL); `ArenaInfernoPolicy.allowsConcurrent` → `false` (никогда одновременно с летальным фронтом огня); `BossCastMobilityPolicy.allowsLocomotion` → `false` (Страж «вкапывается» на Ядре). Авторская композиция `BossSpellVisualCompositionPolicy` (`0xE040FF`, `END_ROD`/`DUST_MAGENTA`, `vortexTurns=3.5`, рёв дракона) доводит число авторских заклинаний до 28.
+
+**Уровни доказанности (эта под-итерация).** CODE-IMPLEMENTED: `ChestBeamPolicy`, enum/ability/geometry/composition/gates, живой путь `startChestBeam`/`renderChestBeamStage`/`finishChestBeam`/`abortChestBeam`, захват Ядра, очистка. AUTOMATED-TESTED: новый `ChestBeamPolicyTest` (313 проверок) + `BossSpellVisualCompositionPolicyTest` (411), `EndRiftAiPolicyTest`, `ArenaInfernoPolicyTest`, `BossPhaseGatingTest`, `BossSpellParticlePaletteTest`, `BossContactStrikePolicyTest` — все PASS; полный локальный гейт `RunEndRiftEventChecks.ps1` → `End Rift current local checks passed`. PAPER-RUNTIME-OBSERVED: ожидается после переустановки артефакта на прод (`cmend boss spell chest_beam`). NATIVE-CLIENT-VISUALLY-VERIFIED / OFFICIAL-ACCEPTED: **НЕТ**, остаётся за владельцем (нужен F2/клип в подписанном клиенте).

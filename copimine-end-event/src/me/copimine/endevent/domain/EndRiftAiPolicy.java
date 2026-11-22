@@ -25,7 +25,11 @@ public final class EndRiftAiPolicy {
         AMBUSH_GRAB("ambush_grab", "Засада из-под земли"),
         SMALL_KAGUNE("small_kagune", "Кольцо кагуне"),
         KAGUNE_STAB("kagune_stab", "Копьё кагуне"),
-        KAGUNE_ERUPTION("kagune_eruption", "Извержение кагуне");
+        KAGUNE_ERUPTION("kagune_eruption", "Извержение кагуне"),
+        // The owner's approved signature ultimate (specification section 7):
+        // a giant locked chest beam fired from the Core anchor. Appended last so
+        // the serialized/display order of every older spell is untouched.
+        CHEST_BEAM("chest_beam", "Луч Ядра");
 
         private final String id;
         private final String displayName;

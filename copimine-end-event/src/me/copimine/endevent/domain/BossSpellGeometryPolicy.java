@@ -53,6 +53,11 @@ public final class BossSpellGeometryPolicy {
             case "phase_shift" -> Shape.PHASE_SHELL;
             case "defeat_collapse" -> Shape.DEFEAT;
             case "rift_fracture", "inferno_geyser" -> Shape.GEYSER;
+            // The owner's approved chest beam: a straight, finite ray leaving the
+            // chest toward a locked lane. It reuses the lance body because that
+            // is already a body and not a flat decal, and because the beam is a
+            // ray rather than a new silhouette family.
+            case "chest_beam" -> Shape.RIFT_LANCE;
             case "rift_step" -> Shape.RIFT_GATE;
             case "void_snare" -> Shape.SNARE_CHAINS;
             case "echo_pulse" -> Shape.ECHO_BLOOM;

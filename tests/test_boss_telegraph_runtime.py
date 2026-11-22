@@ -91,6 +91,10 @@ public class BossTelegraphRuntimeProbe {
     void releaseBossHazardReservation(String reason){}
     void clearBossSpellModels(){}
     void holdBossCastPosition(LivingEntity b){}
+    // Specification 7.1.1: the chest beam claims the fixed Core stand point
+    // before the aim lock. This probe measures the release marker, so the
+    // bounded relocation is stubbed while the real telegraph body runs.
+    void stageBossForChestBeam(LivingEntity b){}
     void playBossSpellModel(LivingEntity b,String id,Location at,int ticks,boolean follow){}
     void aimBossCastAt(LivingEntity b,Location l){}
     String bossTelegraphAnimation(EndRiftAiPolicy.BossSpell s){return s.id();}

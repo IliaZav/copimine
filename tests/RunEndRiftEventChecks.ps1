@@ -469,6 +469,10 @@ $pureTests = @(
   'BossAmbushPolicyTest',
   'SmallKagunePolicyTest',
   'BossContactStrikePolicyTest',
+  # The approved signature ultimate (spec sections 7/9H): lane budget, swept
+  # capsule hit test, single damage window and the refuse rules are all pure, so
+  # a regression in the center-core chest beam must fail here without a server.
+  'ChestBeamPolicyTest',
         'BossRepelPolicyTest',
   'BossFinalSealAnchorPolicyTest',
   'LastSealArenaRitualPolicyTest',

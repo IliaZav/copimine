@@ -34,6 +34,7 @@ public final class ArenaInfernoPolicy {
         return spell != null && spell != EndRiftAiPolicy.BossSpell.RIFT_ARROWS
                 && spell != EndRiftAiPolicy.BossSpell.VOID_MARK
                 && spell != EndRiftAiPolicy.BossSpell.AMBUSH_GRAB
+                && spell != EndRiftAiPolicy.BossSpell.CHEST_BEAM
                 && spell != EndRiftAiPolicy.BossSpell.ARENA_INFERNO;
     }
 

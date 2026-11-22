@@ -166,9 +166,14 @@ public class BossChestStrikeReleaseProbe {
     static final class FuryCombo { void clear(){} }
     final FuryCombo bossFuryCombo=new FuryCombo();
     BukkitTask bossCastTask;
-    long bossChestStrikeSequence, bossCastSequence, bossEdgeVolleySequence;
+    long bossChestStrikeSequence, bossCastSequence, bossEdgeVolleySequence, bossChestBeamSequence;
     long bossCastDeadlineMillis, bossSpellPauseUntilMillis;
-    boolean bossChestStrikeActive, bossEdgeVolleyActive;
+    boolean bossChestStrikeActive, bossEdgeVolleyActive, bossChestBeamActive;
+    // The chest beam owns a separate swept VFX prefix; the cancel path retracts
+    // every live beam through it. The probe stubs the sweep leaf while running
+    // the real cancel and reconcile bodies verbatim.
+    static final String CHEST_BEAM_VFX_PREFIX="boss-chest-beam-";
+    void clearWorldVfxBeamsByPrefix(String prefix){}
     BossPhase bossPhase=BossPhase.RIFT;
     EventPhase phase=EventPhase.BOSS_ACTIVE;
     BossAbilityState bossAbilityState=BossAbilityState.NONE;

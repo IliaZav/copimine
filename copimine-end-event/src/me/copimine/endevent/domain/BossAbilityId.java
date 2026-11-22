@@ -13,6 +13,12 @@ public enum BossAbilityId {
     BOSS_FIREBALL("boss_fireball", BossHazardBudget.MechanicKind.BOSS_FIREBALL, false, false),
     MELEE_SWIPE("melee_swipe", BossHazardBudget.MechanicKind.MELEE_SWIPE, false, false),
     CHEST_STRIKE("chest_strike", BossHazardBudget.MechanicKind.CHEST_STRIKE, false, false),
+    // The center-core chest beam is a chest-family area strike. It reuses the
+    // CHEST_STRIKE mechanic weight and, like the final strike, leaves
+    // line-of-sight to the authored swept-lane geometry: the hovering/cocoon
+    // boss frequently has no straight ray to a grounded player even though the
+    // lane is legal, and a LoS gate there would silently delete the ultimate.
+    CHEST_BEAM("chest_beam", BossHazardBudget.MechanicKind.CHEST_STRIKE, false, false),
     GROUND_SLAM("ground_slam", BossHazardBudget.MechanicKind.GROUND_SLAM, false, false),
     AMBUSH_GRAB("ambush_grab", BossHazardBudget.MechanicKind.MAJOR_GRAB, true, false),
     SMALL_KAGUNE("small_kagune", BossHazardBudget.MechanicKind.SUMMON_SERVANTS, false, false),

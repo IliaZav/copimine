@@ -151,8 +151,8 @@ public class BossAttackAdmissionProbe {
     final LivingEntity boss=new LivingEntity();
     UUID bossUuid=boss.getUniqueId();
     BossAbilityState bossAbilityState=BossAbilityState.NONE;
-    long bossCastDeadlineMillis,bossSpellPauseUntilMillis,bossChestStrikeSequence,bossCastSequence;
-    boolean bossChestStrikeActive,bossEdgeVolleyActive;
+    long bossCastDeadlineMillis,bossSpellPauseUntilMillis,bossChestStrikeSequence,bossCastSequence,bossChestBeamSequence;
+    boolean bossChestStrikeActive,bossEdgeVolleyActive,bossChestBeamActive;
     BukkitTask bossCastTask;
     BossPhase bossPhase=BossPhase.HUNT;
     static final double BOSS_BLAST_DAMAGE=6;
@@ -223,6 +223,10 @@ public class BossAttackAdmissionProbe {
     void removeBossSpellModel(UUID id){}
     boolean isOfficialEntity(Entity entity){return true;}
     boolean teleportCombatEntity(Entity entity,Location destination){return true;}
+    // The center-core chest beam (specification 7) is a separate cinematic
+    // sweep; this probe exercises damage admission, so its lifecycle is stubbed
+    // at the leaf while the contact dispatch that selects it runs for real.
+    void startChestBeam(LivingEntity boss,Player target,long callbackGeneration){}
     void cancelVoidMark(UUID id){activeVoidMarkCenters.remove(id);}
     void cleanupRiftProjectile(UUID id){activeRiftProjectiles.remove(id);}
     void renderBossFinalStrikeImpact(Location mark,double radius){}

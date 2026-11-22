@@ -74,6 +74,7 @@ import me.copimine.endevent.domain.BossHitboxPose;
 import me.copimine.endevent.domain.BossBrain;
 import me.copimine.endevent.domain.BossImpactGeometryPolicy;
 import me.copimine.endevent.domain.BossSpellGeometryPolicy;
+import me.copimine.endevent.domain.ChestBeamPolicy;
 import me.copimine.endevent.domain.BossCommandPolicy;
 import me.copimine.endevent.domain.BossAmbushPolicy;
 import me.copimine.endevent.domain.BossCastTimeline;
@@ -836,6 +837,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int MAX_ACTIVE_WORLD_VFX = 64;
     private static final long WORLD_VFX_BEAM_DURATION_MILLIS = 650L;
     private static final float WORLD_VFX_BEAM_DEFAULT_WIDTH = 0.12F;
+    /** Every world-vfx key of the center-core chest beam starts with this. */
+    private static final String CHEST_BEAM_VFX_PREFIX = "boss-chest-beam-";
     private static final int PORTAL_VISUAL_POINTS = 18;
     private static final int WAVE_FRONT_PARTICLE_MAX_POINTS = 64;
     private static final int FOG_VISUAL_MAX_CELLS = 72;
@@ -1872,6 +1875,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private long rageComboGeneration = -1L, rageComboNextTick;
     private boolean bossChestStrikeActive;
     private UUID bossChestStrikeModel;
+    /**
+     * The approved signature ultimate (specification section 7): a giant
+     * center-core chest beam. It is a contact-family cast, but it owns its own
+     * sequence so a stale delayed callback can never resolve a newer beam.
+     */
+    private boolean bossChestBeamActive;
+    private long bossChestBeamSequence;
+    private long bossChestBeamCooldownUntilTick = -1L;
     private long bossCastSequence;
     private float bossCastLockedYaw;
     private long bossEdgeVolleySequence;
@@ -11669,6 +11680,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         blackFogRecoveryCheckpoint = Map.of();
         ritualSphereRecoveryCheckpoint = Map.of();
         wave1RecoveryCheckpoint = Map.of();
+        // The center-core chest beam is major-cast state: a reset must retract
+        // every beam, invalidate its delayed stages and clear its cooldown so a
+        // fresh generation can use the ultimate again.
+        bossChestBeamSequence++;
+        bossChestBeamActive = false;
+        bossChestBeamCooldownUntilTick = -1L;
+        clearWorldVfxBeamsByPrefix(CHEST_BEAM_VFX_PREFIX);
         activeWave = 0;
         phaseDeadlineMillis = 0L;
         recoveryReason = "";
@@ -48404,7 +48422,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         // Salvos use server ticks. A slow server must not admit another major
         // spell while this exact cast still owns scheduled releases.
-        if (bossEdgeVolleyActive || bossChestStrikeActive
+        if (bossEdgeVolleyActive || bossChestStrikeActive || bossChestBeamActive
                 || bossAbilityState == BossAbilityState.TELEGRAPHING
                     && bossCastTask != null && !bossCastTask.isCancelled()) {
             boss.setInvulnerable(false);
@@ -48878,6 +48896,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // cast. A new spell/50% repel invalidates all old sweep callbacks.
         bossChestStrikeSequence++;
         bossChestStrikeActive = false;
+        // The chest beam owns a separate sweep; a phase change, forced
+        // replacement or defeat must invalidate its callbacks and retract every
+        // beam so no old ray survives into a new phase or a new generation.
+        bossChestBeamSequence++;
+        bossChestBeamActive = false;
+        clearWorldVfxBeamsByPrefix(CHEST_BEAM_VFX_PREFIX);
         bossCastSequence++;
         bossEdgeVolleySequence++;
         bossEdgeVolleyActive = false;
@@ -50792,6 +50816,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !currentBossSpellPool().contains(spell) || !bossActionAvailable(spell)) {
             return false;
         }
+        if (spell == EndRiftAiPolicy.BossSpell.CHEST_BEAM
+                && bossChestBeamCooldownUntilTick > eventTickCounter) {
+            // The ultimate has a noticeable cooldown / phase availability and
+            // cannot spam players continuously. This gate lives on the cast entry
+            // rather than bossActionAvailable so the automatic selector simply
+            // falls through to the next ranked action while it cools down.
+            return false;
+        }
         if (isKaguneRingCastActive()) {
             if (!forced) return false;
             clearKaguneRingCast("forced-spell-replaced");
@@ -51454,6 +51486,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         UUID bossId = boss.getUniqueId();
         bossCastLockedYaw = boss.getLocation().getYaw();
         Location mark = target.getLocation().clone();
+        // Specification 7.1.1: the center-core chest beam is staged from the
+        // fixed Core anchor. Claim it before the aim lock, so the locked yaw and
+        // the beam origin both come from the claimed stand point.
+        if (spell == EndRiftAiPolicy.BossSpell.CHEST_BEAM) {
+            stageBossForChestBeam(boss);
+        }
         aimBossCastAt(boss, mark);
         int telegraphTicks = spellTelegraphTicks(spell);
         bossAbilityState = BossAbilityState.TELEGRAPHING;
@@ -51628,6 +51666,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     spell.name(), BossContactStrikePolicy.CHEST_STRIKE_LAUNCH_MARKER_TICKS);
             case GROUND_SLAM -> me.copimine.protocol.BossAnimationPlayback.combatTicks(
                     spell.name(), BossContactStrikePolicy.GROUND_SLAM_CONTACT_MARKER_TICKS);
+            // The ultimate charges at its authored length, then locks aim: the
+            // charge window is the readable tell and the fire is a separate,
+            // server-owned stage (see startChestBeam).
+            case CHEST_BEAM -> ChestBeamPolicy.CHARGE_TICKS;
             default -> Math.max(1, configured);
         };
     }
@@ -51637,6 +51679,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return switch (spell) {
             case MELEE_SWIPE -> BossAnimationId.MELEE_SWIPE.wireId();
             case CHEST_STRIKE -> BossAnimationId.CHEST_STRIKE.wireId();
+            case CHEST_BEAM -> BossAnimationId.CHEST_STRIKE.wireId();
             case GROUND_SLAM -> BossAnimationId.GROUND_SLAM.wireId();
             default -> BossAnimationId.CAST_CHARGE.wireId();
         };
@@ -51645,6 +51688,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean isContactBossAbility(EndRiftAiPolicy.BossSpell spell) {
         return spell == EndRiftAiPolicy.BossSpell.MELEE_SWIPE
                 || spell == EndRiftAiPolicy.BossSpell.CHEST_STRIKE
+                || spell == EndRiftAiPolicy.BossSpell.CHEST_BEAM
                 || spell == EndRiftAiPolicy.BossSpell.GROUND_SLAM;
     }
 
@@ -51689,6 +51733,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             startChestStrike(boss, target, callbackGeneration);
             if (bossPhase == BossPhase.RAGE && bossChestStrikeActive)
                 startEchoAttackReplicas(boss, spell.name());
+            return;
+        }
+        if (spell == EndRiftAiPolicy.BossSpell.CHEST_BEAM) {
+            startChestBeam(boss, target, callbackGeneration);
             return;
         }
         if (bossPhase == BossPhase.RAGE && isContactBossAbility(spell))
@@ -51987,6 +52035,260 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossChestStrikeSequence++;
         bossChestStrikeActive = false;
         retireBossChestStrikeModel();
+        bossAbilityState = BossAbilityState.RECOVERY;
+        bossCastDeadlineMillis = System.currentTimeMillis() + 20L * 50L;
+        bossSpellPauseUntilMillis = bossCastDeadlineMillis;
+        releaseBossHazardReservation(reason);
+    }
+
+    /**
+     * Specification 7.1.1: the Guardian claims the fixed Core anchor before the
+     * center-core chest beam.
+     *
+     * <p>The relocation is bounded - a single safe stand point within a few
+     * blocks of the Core - and visually signaled with a non-damaging pulse and
+     * a beacon tone, so the body can never snap into geometry or into an
+     * unreadable position. When the bounded search finds no legal stand point
+     * the Guardian simply channels the beam from where it already stands, which
+     * is still a fair, dodgeable lane rather than a refused or lost ultimate.</p>
+     */
+    private void stageBossForChestBeam(LivingEntity boss) {
+        if (boss == null || !boss.isValid() || boss.isDead()) {
+            return;
+        }
+        Location core = coreCombatAnchorLocation();
+        if (core == null || core.getWorld() == null || !boss.getWorld().equals(core.getWorld())) {
+            return;
+        }
+        Location current = boss.getLocation();
+        double dx = current.getX() - core.getX();
+        double dz = current.getZ() - core.getZ();
+        if (dx * dx + dz * dz <= 16.0D) {
+            // Already reads as the center cast; a short extra hop would only
+            // jitter the silhouette the player is reading.
+            return;
+        }
+        double length = Math.sqrt(dx * dx + dz * dz);
+        Location preferred = core.clone().add(dx / length * 2.5D, 0.0D, dz / length * 2.5D);
+        Location stand = findSafeCombatLocation(core, preferred, 5.0D, 1.5D, -1, boss);
+        if (stand == null) {
+            getLogger().info("BOSS_CHEST_BEAM_CORE_STAGE_REFUSED event=" + eventId
+                    + " boss=" + boss.getUniqueId() + " reason=no-safe-center");
+            return;
+        }
+        if (teleportCombatEntity(boss, stand)) {
+            spawnEventParticle(core.clone().add(0.0D, 1.0D, 0.0D), Particle.REVERSE_PORTAL,
+                    24, 1.6D, 0.6D, 1.6D, 0.08D);
+            core.getWorld().playSound(core, Sound.BLOCK_BEACON_ACTIVATE,
+                    SoundCategory.HOSTILE, 1.0F, 0.7F);
+            getLogger().info("BOSS_CHEST_BEAM_CORE_STAGED event=" + eventId
+                    + " boss=" + boss.getUniqueId() + " phase=" + bossPhase);
+        }
+    }
+
+    /**
+     * The approved signature ultimate (specification section 7).
+     *
+     * <p>The animated telegraph already staged the charging silhouette at the
+     * boss chest and locked the boss's aim. This method owns the FIRE and the
+     * AFTERMATH: it locks a bounded number of distinct lanes at the frozen
+     * roster's current positions, fires finite swept rays along exactly those
+     * lanes, applies at most one accepted hit per player during the real damage
+     * window, then decays the beam and staggers into recovery.</p>
+     *
+     * <p>Counterplay is real: the lane does not follow a fleeing player, solid
+     * cover between the core and the target stops the hit, and a player outside
+     * the announced lane is never touched.</p>
+     */
+    private void startChestBeam(LivingEntity boss, Player target, long callbackGeneration) {
+        if (generation != callbackGeneration || boss == null || !boss.isValid() || boss.isDead()
+                || !isCurrentBossCarrier(boss)
+                || (phase != EventPhase.BOSS_ACTIVE && !isTestBoss(boss))) {
+            releaseBossHazardReservation("chest-beam-rejected");
+            return;
+        }
+        World world = boss.getWorld();
+        Location core = coreCombatAnchorLocation();
+        if (world == null || core == null || !world.equals(core.getWorld())) {
+            releaseBossHazardReservation("chest-beam-no-core");
+            return;
+        }
+        List<Player> participants = activeLivingPlayers().stream()
+                .filter(player -> player != null && player.isOnline() && !player.isDead()
+                        && world.equals(player.getWorld()) && isActiveBossParticipant(player))
+                .toList();
+        if (participants.isEmpty()) {
+            releaseBossHazardReservation("chest-beam-no-targets");
+            return;
+        }
+        // The beam leaves the visible chest. When the body is grounded in phases
+        // 3-5 that is the chest anchor; the fixed Core validates the staging.
+        Location chest = boss.getLocation().clone()
+                .add(0.0D, boss.getHeight() * BossContactStrikePolicy.CHEST_HEIGHT_RATIO, 0.0D);
+        List<ChestBeamPolicy.Aim> aims = new ArrayList<>();
+        long laneSeed = bossChestBeamSequence + eventTickCounter + generation;
+        for (int index : ChestBeamPolicy.selectLaneIndices(participants.size(),
+                ChestBeamPolicy.laneCount(participants.size()), laneSeed)) {
+            Location eye = participants.get(index).getEyeLocation();
+            aims.add(ChestBeamPolicy.aimAt(chest.getX(), chest.getY(), chest.getZ(),
+                    eye.getX(), eye.getY(), eye.getZ()));
+        }
+        if (aims.isEmpty()) {
+            releaseBossHazardReservation("chest-beam-no-lane");
+            return;
+        }
+        long castSequence = ++bossChestBeamSequence;
+        String callbackEvent = eventId;
+        UUID bossId = boss.getUniqueId();
+        bossChestBeamActive = true;
+        bossAbilityState = BossAbilityState.EXECUTING;
+        bossChestBeamCooldownUntilTick = eventTickCounter + ChestBeamPolicy.COOLDOWN_TICKS;
+        bossCastDeadlineMillis = System.currentTimeMillis() + ChestBeamPolicy.TOTAL_TICKS * 50L;
+        bossSpellPauseUntilMillis = bossCastDeadlineMillis;
+        sendBossAnimationVisualUpdate(boss, BossVisualCuePolicy.animationFor(
+                EndRiftAiPolicy.BossSpell.CHEST_BEAM.id(), BossVisualCuePolicy.CueStage.RELEASE));
+        playBossVisualCue(boss, bossCueId(EndRiftAiPolicy.BossSpell.CHEST_BEAM.id(),
+                BossVisualCuePolicy.CueStage.RELEASE), chest, false);
+        world.playSound(chest, Sound.ENTITY_ENDER_DRAGON_GROWL, SoundCategory.HOSTILE, 1.0F, 0.9F);
+        getLogger().info("BOSS_CHEST_BEAM_FIRE event=" + eventId + " boss=" + bossId
+                + " lanes=" + aims.size() + " targets=" + participants.size()
+                + " phase=" + bossPhase + " generation=" + callbackGeneration);
+        final Set<UUID> alreadyHit = new HashSet<>();
+        final int[] hits = {0};
+        final int[] elapsed = {0};
+        final BukkitTask[] holder = new BukkitTask[1];
+        holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
+            boolean owned = taskRegistry != null && taskRegistry.owns(callbackGeneration)
+                    && bossChestBeamSequence == castSequence && bossChestBeamActive
+                    && generation == callbackGeneration && Objects.equals(eventId, callbackEvent)
+                    && bossUuid != null && bossUuid.equals(bossId)
+                    && boss.isValid() && !boss.isDead() && isCurrentBossCarrier(boss)
+                    && (phase == EventPhase.BOSS_ACTIVE || isTestBoss(boss));
+            if (!owned) {
+                if (holder[0] != null) holder[0].cancel();
+                abortChestBeam(castSequence, "chest-beam-aborted");
+                return;
+            }
+            int tick = elapsed[0];
+            if (ChestBeamPolicy.damagesAt(tick)) {
+                renderChestBeamStage(chest, aims, tick, true);
+                for (Player player : activeLivingPlayers()) {
+                    if (player == null || !world.equals(player.getWorld())
+                            || alreadyHit.contains(player.getUniqueId())) {
+                        continue;
+                    }
+                    Location torso = player.getLocation().clone()
+                            .add(0.0D, player.getHeight() * 0.5D, 0.0D);
+                    ChestBeamPolicy.Aim lane = null;
+                    for (ChestBeamPolicy.Aim candidate : aims) {
+                        if (ChestBeamPolicy.beamHits(candidate,
+                                torso.getX(), torso.getY(), torso.getZ())) {
+                            lane = candidate;
+                            break;
+                        }
+                    }
+                    if (lane == null) {
+                        continue;
+                    }
+                    // A solid block between the core and the player is real
+                    // cover: the beam never hits through a wall.
+                    if (!hasProjectileBlockLineOfSight(chest, player.getEyeLocation())) {
+                        continue;
+                    }
+                    alreadyHit.add(player.getUniqueId());
+                    Vector push = new Vector(lane.dx(), 0.0D, lane.dz());
+                    if (push.lengthSquared() < 0.01D) push = new Vector(0.0D, 0.0D, 1.0D);
+                    push.normalize().multiply(ChestBeamPolicy.KNOCKBACK);
+                    push.setY(ChestBeamPolicy.LIFT);
+                    if (applyContactHit(player, boss, ChestBeamPolicy.DAMAGE, push)) {
+                        hits[0]++;
+                        renderBossContactImpact(boss, player, EndRiftAiPolicy.BossSpell.CHEST_BEAM);
+                    }
+                }
+            } else if (ChestBeamPolicy.aftermathAt(tick)) {
+                renderChestBeamStage(chest, aims, tick, false);
+            }
+            elapsed[0]++;
+            if (elapsed[0] >= ChestBeamPolicy.TOTAL_TICKS) {
+                if (holder[0] != null) holder[0].cancel();
+                finishChestBeam(boss, bossId, aims, hits[0], castSequence, callbackEvent,
+                        callbackGeneration);
+            }
+        }, 0L, 1L);
+        registerEncounterTask(holder[0]);
+    }
+
+    /** One authored frame of the beam body and the world-vfx textured ray. */
+    private void renderChestBeamStage(Location chest, List<ChestBeamPolicy.Aim> aims,
+                                      int elapsedTicks, boolean firing) {
+        if (chest == null || chest.getWorld() == null || aims == null || aims.isEmpty()) {
+            return;
+        }
+        // Bound the presentation budget: the beam body is redrawn at a fixed
+        // cadence rather than every tick, so a 20-player render stays bounded
+        // while the silhouette still reads as one continuous ray.
+        boolean drawBody = firing ? elapsedTicks % 2 == 0 : elapsedTicks % 3 == 0;
+        boolean refreshBeam = elapsedTicks % 4 == 0;
+        if (!drawBody && !refreshBeam) {
+            return;
+        }
+        var composition = BossSpellVisualCompositionPolicy.composition(
+                EndRiftAiPolicy.BossSpell.CHEST_BEAM.id());
+        double progress = firing
+                ? Math.clamp((elapsedTicks - ChestBeamPolicy.CHARGE_TICKS)
+                        / (double) ChestBeamPolicy.FIRE_TICKS, 0.0D, 1.0D)
+                : 1.0D;
+        var beat = firing ? BossSpellGeometryPolicy.Beat.RELEASE
+                : BossSpellGeometryPolicy.Beat.IMPACT;
+        var points = BossSpellGeometryPolicy.sample(BossSpellGeometryPolicy.Shape.RIFT_LANCE,
+                beat, progress, ChestBeamPolicy.BEAM_RADIUS);
+        int hue = firing ? composition.impactHue() : composition.telegraphHue();
+        List<Player> viewers = activeLivingPlayers();
+        for (int lane = 0; lane < aims.size(); lane++) {
+            ChestBeamPolicy.Aim aim = aims.get(lane);
+            Vector facing = new Vector(aim.dx(), aim.dy(), aim.dz());
+            if (drawBody) {
+                BossSpellPresentationEffects.frame(chest.clone(), facing, points, hue, composition,
+                        progress, viewers,
+                        (viewer, anchor) -> viewer.getWorld().equals(anchor.getWorld()));
+            }
+            if (!refreshBeam) {
+                continue;
+            }
+            Location tip = new Location(chest.getWorld(), aim.tipX(), aim.tipY(), aim.tipZ());
+            String key = CHEST_BEAM_VFX_PREFIX + lane;
+            for (Player viewer : viewers) {
+                sendWorldBeamPacket(viewer, key, chest, tip, hue, 0.32F);
+            }
+        }
+    }
+
+    private void finishChestBeam(LivingEntity boss, UUID bossId, List<ChestBeamPolicy.Aim> aims,
+            int hits, long castSequence, String callbackEvent, long callbackGeneration) {
+        if (bossChestBeamSequence != castSequence || !Objects.equals(eventId, callbackEvent)
+                || generation != callbackGeneration) {
+            return;
+        }
+        // Bump the sequence so every already-scheduled stage becomes stale.
+        bossChestBeamSequence++;
+        bossChestBeamActive = false;
+        clearWorldVfxBeamsByPrefix(CHEST_BEAM_VFX_PREFIX);
+        getLogger().info("BOSS_CHEST_BEAM_IMPACT event=" + eventId + " boss=" + bossId
+                + " lanes=" + (aims == null ? 0 : aims.size()) + " hits=" + hits
+                + " generation=" + callbackGeneration);
+        bossAbilityState = BossAbilityState.RECOVERY;
+        bossCastDeadlineMillis = System.currentTimeMillis() + ChestBeamPolicy.AFTERMATH_TICKS * 50L;
+        bossSpellPauseUntilMillis = bossCastDeadlineMillis;
+        releaseBossHazardReservation("chest-beam-impact");
+    }
+
+    private void abortChestBeam(long castSequence, String reason) {
+        if (bossChestBeamSequence != castSequence || !bossChestBeamActive) {
+            return;
+        }
+        bossChestBeamSequence++;
+        bossChestBeamActive = false;
+        clearWorldVfxBeamsByPrefix(CHEST_BEAM_VFX_PREFIX);
         bossAbilityState = BossAbilityState.RECOVERY;
         bossCastDeadlineMillis = System.currentTimeMillis() + 20L * 50L;
         bossSpellPauseUntilMillis = bossCastDeadlineMillis;

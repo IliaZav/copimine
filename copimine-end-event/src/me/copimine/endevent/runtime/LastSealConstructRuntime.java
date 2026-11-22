@@ -46,6 +46,8 @@ public final class LastSealConstructRuntime {
     private boolean active, impactPlayed;
     public LastSealConstructRuntime(Host host) { this.host = Objects.requireNonNull(host); }
     public boolean active() { return active; }
+    /** True once this lane is cancelled and its carrier is fully retired. */
+    public boolean done() { return !active && carrier == null; }
 
     public boolean start(LivingEntity boss, Player target, int kind, long tick) {
         if (active || boss == null || target == null || !host.active(boss)

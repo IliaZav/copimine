@@ -805,6 +805,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int MAX_EVENT_WAVE = EndRiftObjective.MAX_WAVE;
     private static final int MAX_ACTIVE_VOID_MARKS = 2;
     private static final int MAX_ACTIVE_RIFT_PROJECTILES = 8;
+    /**
+     * Section 6 / 9G.03: the Seal Lance Volley must fire at more than one
+     * player ("2-3 eligible targets receive visible warnings"), capped so a
+     * 20-player render is never flooded. Lane count is
+     * {@code clamp(living party, 1, MAX_LANCE_LANES)}: a solo player gets one
+     * honestly single lance, a duo gets two, and any larger party gets three.
+     */
+    private static final int MAX_LANCE_LANES = 3;
     private static final int MAX_ACTIVE_EVENT_ARROWS = 24;
     private static final int SPELL_FLIGHT_TICKS = 8;
     private static final int SPELL_FLIGHT_RENDER_INTERVAL_TICKS = 2;
@@ -1601,7 +1609,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final me.copimine.endevent.domain.SmallKaguneCadence smallKaguneCadence =
             new me.copimine.endevent.domain.SmallKaguneCadence();
     private me.copimine.endevent.runtime.LastSealRingRuntime lastSealRing;
-    private me.copimine.endevent.runtime.LastSealConstructRuntime lastSealConstruct;
+    // Seal Lance Volley (Section 6 / 9G.03): a bounded set of independently
+    // locked lance lanes. A solo/duo cast owns one lane; a party cast owns up
+    // to MAX_LANCE_LANES so the volley genuinely fires at more than one player.
+    private final java.util.List<me.copimine.endevent.runtime.LastSealConstructRuntime> lastSealConstructs =
+            new java.util.ArrayList<>();
     private UUID cocoonPressureTarget;
     private long cocoonPressureGeneration = -1L;
     private long cocoonPressureSinceTick = -1L, cocoonPressureNextTick;
@@ -50674,7 +50686,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (forced || generation != ownerGeneration || bossPhase != ownerPhase
                     || !isBossCombatRuntimeActive(boss) || bossAbilityState != BossAbilityState.NONE
                     || bossHazardReservationId != null || bossAmbushOwnsMajorCast()
-                    || isKaguneRingCastActive() || (lastSealConstruct != null && lastSealConstruct.active())) return false;
+                    || isKaguneRingCastActive()) return false;
             previousBossSpell = previous;
             available.remove(spell);
         }
@@ -50876,7 +50888,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (target == null || !reserveBossHazard(spell, target)) return false;
             int kind = spell == EndRiftAiPolicy.BossSpell.KAGUNE_STAB
                     ? me.copimine.protocol.KaguneSpellFrame.STAB : me.copimine.protocol.KaguneSpellFrame.ERUPTION;
-            if (constructRuntime().start(boss, target, kind, eventTickCounter)) {
+            // Seal Lance Volley (Section 6 / 9G.03): a short volley of lances
+            // individually locked on more than one legal player. The eruption
+            // keeps its own single anchor because it already grows teammate
+            // footprints from that root.
+            List<Player> lanes = kind == me.copimine.protocol.KaguneSpellFrame.STAB
+                    ? lanceVolleyTargets(boss, target) : List.of(target);
+            int committed = 0;
+            for (Player lane : lanes) {
+                if (newConstructLane().start(boss, lane, kind, eventTickCounter)) committed++;
+            }
+            if (committed > 0) {
                 previousBossSpell = spell;
                 sendBossAnimationVisualUpdate(boss, "SPELL_SUMMON");
                 return true;
@@ -51105,6 +51127,38 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void encodeSmallKaguneState(Map<String, String> encoded) {
         if (bossPhase == BossPhase.LAST_SEAL && eventId != null && !eventId.isBlank() && generation > 0L)
             encoded.putAll(smallKaguneRecovery().snapshot(eventId, generation));
+    }
+
+    /**
+     * Bounded target ladder for the Seal Lance Volley (Section 6 / 9G.03).
+     * The brain's primary leads, its already-ranked distinct secondaries keep
+     * the intended group shape, and the nearest remaining participants fill
+     * the last lane. Always distinct, always legally targetable, never more
+     * than {@link #MAX_LANCE_LANES} lanes, and one honest lane when solo.
+     */
+    private List<Player> lanceVolleyTargets(LivingEntity boss, Player primary) {
+        if (primary == null || !isCombatTarget(primary)) return List.of();
+        int lanes = Math.min(MAX_LANCE_LANES, Math.max(1, activeBossParticipants().size()));
+        List<Player> chosen = new java.util.ArrayList<>();
+        chosen.add(primary);
+        for (BossTargetSelector.TargetDecision support : currentBossBrainSupports) {
+            if (chosen.size() >= lanes || support.target() == null) continue;
+            Player candidate = Bukkit.getPlayer(support.target());
+            if (candidate != null && isCombatTarget(candidate) && !chosen.contains(candidate))
+                chosen.add(candidate);
+        }
+        if (chosen.size() < lanes && boss != null) {
+            List<Player> others = new java.util.ArrayList<>();
+            for (Player member : activeBossParticipants())
+                if (member != null && isCombatTarget(member) && !chosen.contains(member)) others.add(member);
+            others.sort(java.util.Comparator.comparingDouble(
+                    member -> member.getLocation().distanceSquared(boss.getLocation())));
+            for (Player member : others) {
+                if (chosen.size() >= lanes) break;
+                chosen.add(member);
+            }
+        }
+        return chosen;
     }
 
     private Player currentBrainTarget(LivingEntity boss, EndRiftAiPolicy.BossSpell spell) {
@@ -54518,7 +54572,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean isKaguneRingCastActive() {
         // Legacy helper name: all finite Kagune spells own the same major slot.
         return lastSealRing != null && lastSealRing.active()
-                || lastSealConstruct != null && lastSealConstruct.active();
+                || hasActiveConstructLane();
     }
 
     private me.copimine.endevent.runtime.LastSealRingRuntime ringRuntime() {
@@ -54648,9 +54702,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return true;
     }
 
-    private me.copimine.endevent.runtime.LastSealConstructRuntime constructRuntime() {
-        if (lastSealConstruct != null) return lastSealConstruct;
-        lastSealConstruct = new me.copimine.endevent.runtime.LastSealConstructRuntime(
+    /**
+     * Create one independently locked lance lane. Every lane owns its own
+     * carrier, contact ledger and geometry; the encounter still treats the
+     * whole volley as a single major cast through {@link #hasActiveConstructLane()}.
+     */
+    private me.copimine.endevent.runtime.LastSealConstructRuntime newConstructLane() {
+        lastSealConstructs.removeIf(me.copimine.endevent.runtime.LastSealConstructRuntime::done);
+        me.copimine.endevent.runtime.LastSealConstructRuntime lane =
+                new me.copimine.endevent.runtime.LastSealConstructRuntime(
                 new me.copimine.endevent.runtime.LastSealConstructRuntime.Host() {
             public me.copimine.endevent.runtime.LastSealConstructRuntime.Scope scope(LivingEntity boss) {
                 return new me.copimine.endevent.runtime.LastSealConstructRuntime.Scope(eventId, generation, boss.getUniqueId());
@@ -54739,15 +54799,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             public void finished(me.copimine.endevent.runtime.LastSealConstructRuntime.Scope owner, String reason) {
                 LivingEntity current = liveBoss();
+                // The volley owns one hazard reservation. Only the final lane to
+                // retire may release it, so a landed first lance cannot free the
+                // cast slot while sibling lanes are still telegraphing.
                 if (owner != null && generation == owner.generation() && Objects.equals(eventId, owner.event())
-                        && (current == null || owner.boss().equals(current.getUniqueId())))
+                        && (current == null || owner.boss().equals(current.getUniqueId()))
+                        && !hasActiveConstructLane())
                     releaseBossHazardReservation("kagune-construct-" + reason);
             }
             public void failed(String reason) {
                 getLogger().warning("KAGUNE_CONSTRUCT_REFUSED event=" + eventId + " generation=" + generation + " reason=" + reason);
             }
         });
-        return lastSealConstruct;
+        lastSealConstructs.add(lane);
+        return lane;
+    }
+
+    private boolean hasActiveConstructLane() {
+        for (me.copimine.endevent.runtime.LastSealConstructRuntime lane : lastSealConstructs)
+            if (lane.active()) return true;
+        return false;
     }
 
     /** Keep creation atomic even if ownership registration or the first signed binding throws. */
@@ -54770,19 +54841,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean startKaguneRingCast(LivingEntity boss) {
-        if (lastSealConstruct != null && lastSealConstruct.active()) return false;
+        if (hasActiveConstructLane()) return false;
         return ringRuntime().start(boss, eventScalePlayers(), eventTickCounter,
                 eventTickCounter * 31L ^ generation);
     }
 
     private void tickKaguneRingCast(LivingEntity boss) {
         if (lastSealRing != null) lastSealRing.tick(boss, eventTickCounter);
-        if (lastSealConstruct != null) lastSealConstruct.tick(boss, eventTickCounter);
+        if (lastSealConstructs.isEmpty()) return;
+        for (me.copimine.endevent.runtime.LastSealConstructRuntime lane : lastSealConstructs)
+            lane.tick(boss, eventTickCounter);
+        // Retire fully-cancelled lanes so the volley list stays bounded.
+        lastSealConstructs.removeIf(me.copimine.endevent.runtime.LastSealConstructRuntime::done);
     }
 
     private void clearKaguneRingCast(String reason) {
         if (lastSealRing != null) lastSealRing.cancel(reason);
-        if (lastSealConstruct != null) lastSealConstruct.cancel(reason);
+        for (me.copimine.endevent.runtime.LastSealConstructRuntime lane : lastSealConstructs)
+            lane.cancel(reason);
+        lastSealConstructs.clear();
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -54790,10 +54867,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (event.getCause() == EntityDamageEvent.DamageCause.FALL
                 && event.getEntity() instanceof Player player
                 && (lastSealRing != null && lastSealRing.consumeFall(player, generation)
-                    || lastSealConstruct != null && lastSealConstruct.consumeFall(player, generation))) {
+                    || consumesAnyConstructFall(player))) {
             event.setCancelled(true);
             player.setFallDistance(0F);
         }
+    }
+
+    private boolean consumesAnyConstructFall(Player player) {
+        for (me.copimine.endevent.runtime.LastSealConstructRuntime lane : lastSealConstructs)
+            if (lane.consumeFall(player, generation)) return true;
+        return false;
     }
 
     private void beginCocoonFall(LivingEntity boss) {

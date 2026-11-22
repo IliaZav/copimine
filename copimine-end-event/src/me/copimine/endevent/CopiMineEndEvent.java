@@ -28734,7 +28734,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             // Display geometry and drops never occupy a pillar slot. A drop
             // from the prior wave can stay in the arena until picked up.
-            if (entity instanceof Display || entity instanceof Item) {
+            if (entity instanceof Display || entity instanceof Item
+                    || entity.getType() == EntityType.EXPERIENCE_ORB) {
                 continue;
             }
             if (riftRam != null && entity.getUniqueId().equals(riftRam.id())) {

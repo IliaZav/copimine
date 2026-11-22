@@ -52174,7 +52174,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 return;
             }
             int tick = elapsed[0];
-            if (ChestBeamPolicy.damagesAt(tick)) {
+            if (ChestBeamPolicy.chargingAt(tick)) {
+                renderChestBeamCharge(chest, aims, tick);
+            } else if (ChestBeamPolicy.damagesAt(tick)) {
                 renderChestBeamStage(chest, aims, tick, true);
                 for (Player player : activeLivingPlayers()) {
                     if (player == null || !world.equals(player.getWorld())
@@ -52247,6 +52249,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         var points = BossSpellGeometryPolicy.sample(BossSpellGeometryPolicy.Shape.RIFT_LANCE,
                 beat, progress, ChestBeamPolicy.BEAM_RADIUS);
         int hue = firing ? composition.impactHue() : composition.telegraphHue();
+        // Keep the lane edges marked through the whole ultimate. During the
+        // firing window the rails are redrawn in the hot impact hue so the
+        // danger boundary never vanishes mid-beam.
+        renderChestBeamLaneRails(chest, aims, hue, elapsedTicks);
         List<Player> viewers = activeLivingPlayers();
         for (int lane = 0; lane < aims.size(); lane++) {
             ChestBeamPolicy.Aim aim = aims.get(lane);
@@ -52263,6 +52269,93 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             String key = CHEST_BEAM_VFX_PREFIX + lane;
             for (Player viewer : viewers) {
                 sendWorldBeamPacket(viewer, key, chest, tip, hue, 0.32F);
+            }
+        }
+    }
+
+    /**
+     * Charge / aim-lock beat of the signature ultimate (specification 9H.02,
+     * shots 2 and 3).
+     *
+     * <p>The authored ultimate spends its first {@link ChestBeamPolicy#CHARGE_TICKS}
+     * charging, but that window previously drew nothing: the only beam visuals
+     * fired during the damage and aftermath stages. A player therefore had no
+     * visible lane to step out of until the beam was already landing, which is
+     * precisely the unavoidable-hit failure the specification forbids. This
+     * draws the compressed chest core and the locked-lane edge traces for the
+     * whole warning, so the ultimate is readable and dodgeable.</p>
+     */
+    private void renderChestBeamCharge(Location chest, List<ChestBeamPolicy.Aim> aims, int tick) {
+        if (chest == null || chest.getWorld() == null || aims == null || aims.isEmpty()) {
+            return;
+        }
+        var composition = BossSpellVisualCompositionPolicy.composition(
+                EndRiftAiPolicy.BossSpell.CHEST_BEAM.id());
+        int hue = composition.telegraphHue();
+        double progress = Math.clamp(tick / (double) Math.max(1, ChestBeamPolicy.CHARGE_TICKS),
+                0.0D, 1.0D);
+        // The chest orb compresses inward and brightens as the charge peaks, the
+        // same "narrowing to a point" read the specification asks for. Every
+        // third tick only, and one bounded ring per viewer.
+        if (tick % 3 == 0) {
+            double radius = 0.85D - 0.55D * progress;
+            Color color = Color.fromRGB(hue & 0xFFFFFF);
+            Particle.DustOptions dust = new Particle.DustOptions(color, 0.8F);
+            for (Player viewer : activeLivingPlayers()) {
+                if (viewer == null || !viewer.isOnline()
+                        || !chest.getWorld().equals(viewer.getWorld())
+                        || viewer.getLocation().distanceSquared(chest) > 48.0D * 48.0D) {
+                    continue;
+                }
+                for (int i = 0; i < 10; i++) {
+                    double angle = Math.PI * 2D * i / 10D + progress * Math.PI * 2D;
+                    double rr = radius * (0.55D + 0.45D * Math.sin(Math.PI * progress));
+                    viewer.spawnParticle(Particle.DUST,
+                            chest.clone().add(Math.cos(angle) * rr, Math.sin(angle) * rr * 0.6D,
+                                    Math.sin(angle) * rr),
+                            1, 0D, 0D, 0D, 0D, dust);
+                }
+                viewer.spawnParticle(Particle.END_ROD, chest.clone(), 2, 0.05D, 0.05D, 0.05D, 0.01D);
+            }
+        }
+        renderChestBeamLaneRails(chest, aims, hue, tick);
+    }
+
+    /**
+     * The two high-contrast edge traces that mark a beam lane's real collision
+     * radius (specification 9H.02, shot 3).
+     *
+     * <p>Both rails come from {@link ChestBeamPolicy#rail}, so they are exactly
+     * {@link ChestBeamPolicy#BEAM_RADIUS} either side of the same axis the
+     * server damages with: the warning can never be narrower or wider than the
+     * hit. Refreshed every nine ticks, comfortably inside the 650 ms beam
+     * lifetime, so they read as one continuous boundary at a bounded packet
+     * cost (two per lane; at most six for the full three-lane budget).</p>
+     */
+    private void renderChestBeamLaneRails(Location chest, List<ChestBeamPolicy.Aim> aims,
+                                          int hue, int tick) {
+        if (chest == null || chest.getWorld() == null || aims == null || aims.isEmpty()
+                || tick % 9 != 0) {
+            return;
+        }
+        List<Player> viewers = activeLivingPlayers();
+        for (int lane = 0; lane < aims.size(); lane++) {
+            ChestBeamPolicy.Aim aim = aims.get(lane);
+            ChestBeamPolicy.Aim left = ChestBeamPolicy.rail(aim, -ChestBeamPolicy.BEAM_RADIUS, 0.0D);
+            ChestBeamPolicy.Aim right = ChestBeamPolicy.rail(aim, ChestBeamPolicy.BEAM_RADIUS, 0.0D);
+            for (Player viewer : viewers) {
+                if (left != null) {
+                    sendWorldBeamPacket(viewer, CHEST_BEAM_VFX_PREFIX + "rail-l-" + lane,
+                            new Location(chest.getWorld(), left.ox(), left.oy(), left.oz()),
+                            new Location(chest.getWorld(), left.tipX(), left.tipY(), left.tipZ()),
+                            hue, 0.07F);
+                }
+                if (right != null) {
+                    sendWorldBeamPacket(viewer, CHEST_BEAM_VFX_PREFIX + "rail-r-" + lane,
+                            new Location(chest.getWorld(), right.ox(), right.oy(), right.oz()),
+                            new Location(chest.getWorld(), right.tipX(), right.tipY(), right.tipZ()),
+                            hue, 0.07F);
+                }
             }
         }
     }

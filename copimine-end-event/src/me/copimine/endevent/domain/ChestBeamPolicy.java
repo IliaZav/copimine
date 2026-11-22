@@ -102,6 +102,57 @@ public final class ChestBeamPolicy {
         return new Aim(ox, oy, oz, tx - ox, ty - oy, tz - oz);
     }
 
+    /**
+     * A lane translated sideways and/or upward, keeping its direction.
+     *
+     * <p>The presentation layer draws two of these as the high-contrast edge
+     * traces that mark the beam's real swept-capsule radius before release
+     * (specification 9H.02, shot 3). Both rails are derived from the same
+     * {@link Aim} the server damages with, so the drawn warning can never
+     * disagree with the hit window: a player between the rails is inside the
+     * lane, a player outside them is safe.</p>
+     *
+     * @param side offset along the lane's local right (positive = right)
+     * @param up   offset along the lane's local up
+     */
+    public static Aim rail(Aim aim, double side, double up) {
+        if (aim == null) {
+            return null;
+        }
+        double dx = aim.dx(), dy = aim.dy(), dz = aim.dz();
+        // Any vector not parallel to the axis works as the raw "right"; pick one
+        // that stays well conditioned when the beam is near-vertical.
+        double rx, ry, rz;
+        if (Math.abs(dy) < 0.99D) {
+            rx = -dz;
+            ry = 0.0D;
+            rz = dx;
+        } else {
+            rx = 0.0D;
+            ry = -dz;
+            rz = dy;
+        }
+        double rightLength = Math.sqrt(rx * rx + ry * ry + rz * rz);
+        if (!(rightLength > 1.0E-6D)) {
+            rx = 1.0D;
+            ry = 0.0D;
+            rz = 0.0D;
+            rightLength = 1.0D;
+        }
+        rx /= rightLength;
+        ry /= rightLength;
+        rz /= rightLength;
+        // Local up completes the frame: up = right x axis.
+        double ux = ry * dz - rz * dy;
+        double uy = rz * dx - rx * dz;
+        double uz = rx * dy - ry * dx;
+        return new Aim(
+                aim.ox() + rx * side + ux * up,
+                aim.oy() + ry * side + uy * up,
+                aim.oz() + rz * side + uz * up,
+                dx, dy, dz);
+    }
+
     /** Distance along the lane axis; negative means the point is behind the core. */
     public static double along(Aim aim, double px, double py, double pz) {
         if (aim == null) {

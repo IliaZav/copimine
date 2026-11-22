@@ -23,6 +23,7 @@ public final class ChestBeamPolicyTest {
         castIsRefusedWithoutAFairStage();
         theCooldownIsHonest();
         aimIsAlwaysNormalised();
+        laneRailsMarkTheRealRadius();
         System.out.println("ChestBeamPolicyTest: PASS (" + checks + " checks)");
     }
 
@@ -145,6 +146,46 @@ public final class ChestBeamPolicyTest {
             check(Double.isFinite(aim.tipX()) && Double.isFinite(aim.tipY()) && Double.isFinite(aim.tipZ()),
                     "the finite tip is always a real point");
         }
+    }
+
+    /**
+     * The two edge traces drawn by the presentation layer (specification 9H.02,
+     * shot 3) must sit exactly on the swept-capsule boundary of the very lane
+     * the server damages with. A rail that drifted inward would understate the
+     * hit; a rail that drifted outward would overstate it. Either way the
+     * warning would lie, so this pins the geometry.
+     */
+    private static void laneRailsMarkTheRealRadius() {
+        ChestBeamPolicy.Aim aim = ChestBeamPolicy.aimAt(0, 0, 0, 0, 0, 10);
+        ChestBeamPolicy.Aim left = ChestBeamPolicy.rail(aim, -ChestBeamPolicy.BEAM_RADIUS, 0);
+        ChestBeamPolicy.Aim right = ChestBeamPolicy.rail(aim, ChestBeamPolicy.BEAM_RADIUS, 0);
+        check(left != null && right != null, "a lane always produces both rails");
+        // Same direction: a rail is a translation, never a re-aim.
+        check(near(left.dx(), aim.dx()) && near(left.dy(), aim.dy()) && near(left.dz(), aim.dz()),
+                "the left rail keeps the locked direction");
+        check(near(right.dx(), aim.dx()) && near(right.dy(), aim.dy()) && near(right.dz(), aim.dz()),
+                "the right rail keeps the locked direction");
+        // Every point along a rail sits exactly on the capsule surface.
+        check(near(ChestBeamPolicy.perpendicular(aim, left.ox(), left.oy(), left.oz()),
+                        ChestBeamPolicy.BEAM_RADIUS),
+                "the left rail lies on the hit boundary");
+        check(near(ChestBeamPolicy.perpendicular(aim, right.ox(), right.oy(), right.oz()),
+                        ChestBeamPolicy.BEAM_RADIUS),
+                "the right rail lies on the hit boundary");
+        // A point drawn between the rails is inside the lane; one outside is safe.
+        check(ChestBeamPolicy.beamHits(aim, 0, 0, 5), "the space between the rails is the danger lane");
+        check(!ChestBeamPolicy.beamHits(aim, ChestBeamPolicy.BEAM_RADIUS + 0.5D, 0, 5),
+                "outside the rails is safe");
+        // The rails are on opposite sides of the axis.
+        check(!near(left.ox(), right.ox()) || !near(left.oz(), right.oz()),
+                "the two rails are distinct edges, not the same line");
+        // A near-vertical lane still produces a well conditioned frame.
+        ChestBeamPolicy.Aim up = ChestBeamPolicy.aimAt(0, 0, 0, 0, 10, 0);
+        ChestBeamPolicy.Aim upRail = ChestBeamPolicy.rail(up, ChestBeamPolicy.BEAM_RADIUS, 0);
+        check(upRail != null && near(ChestBeamPolicy.perpendicular(up, upRail.ox(), upRail.oy(),
+                        upRail.oz()), ChestBeamPolicy.BEAM_RADIUS),
+                "a vertical lane still marks its radius");
+        check(ChestBeamPolicy.rail(null, 1, 0) == null, "a missing lane has no rail");
     }
 
     private static boolean near(double a, double b) {

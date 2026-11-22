@@ -47,9 +47,11 @@ $failures = [System.Collections.Generic.List[string]]::new()
 $passed = 0
 $index = 0
 $skippedCount = 0
-$validatorShell = Get-Command pwsh -CommandType Application -ErrorAction SilentlyContinue
+$validatorShell = Get-Command pwsh -CommandType Application -ErrorAction SilentlyContinue |
+  Select-Object -First 1
 if (-not $validatorShell) {
-  $validatorShell = Get-Command powershell -CommandType Application -ErrorAction Stop
+  $validatorShell = Get-Command powershell -CommandType Application -ErrorAction Stop |
+    Select-Object -First 1
 }
 
 if ($SkipReleaseArtifacts) {

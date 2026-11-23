@@ -63795,11 +63795,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         lastBossVisualCueId = cueTokenId;
         lastBossVisualCueDeadlineTick = currentTick + cooldownTicks;
         Location cueOrigin = origin.clone();
-        // The authored signature owns the windup audio for every authored spell;
-        // the legacy cue row still owns release/impact audio where one exists.
-        String soundId = stage == BossVisualCuePolicy.CueStage.TELEGRAPH && authoredSpell
-                ? signature.telegraphSound()
-                : cue != null ? cue.soundId() : "";
+        // A cue row always owns its own audio, so the ten legacy cue spells are
+        // untouched. Only an authored spell the cue table never knew about takes
+        // its windup sound from the composition; the authored signature and the
+        // legacy bank disagree for rift_arrows and phase_shift, so preferring the
+        // composition unconditionally would silently re-voice those two.
+        String soundId = cue == null
+                ? (stage == BossVisualCuePolicy.CueStage.TELEGRAPH ? signature.telegraphSound() : "")
+                : cue.soundId();
         Sound sound = soundId.isBlank() ? null : bossCueSound(soundId);
         float pitch = switch (stage) {
             case TELEGRAPH -> 0.85F;

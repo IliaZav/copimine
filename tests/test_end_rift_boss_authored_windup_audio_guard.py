@@ -73,6 +73,22 @@ def test_cue_does_not_silence_an_authored_telegraph():
     )
 
 
+def test_a_cue_row_still_owns_its_own_audio():
+    source = EVENT.read_text(encoding="utf-8")
+    body = _method_body(source, "private void playBossVisualCue(LivingEntity boss")
+    # The authored signature and the legacy cue bank disagree for rift_arrows
+    # (trident vs arrow) and phase_shift (end portal vs portal ambience), so a
+    # spell that has a cue row must keep the cue row's sound. Preferring the
+    # composition unconditionally would silently re-voice those two legacy
+    # spells while claiming the ten cue spells are untouched.
+    assert "cue == null\n                ? (stage" in body, (
+        "the authored windup sound may only apply when there is no cue row"
+    )
+    assert "cue.soundId()" in body, (
+        "a spell with a cue row must keep the cue row's authored audio"
+    )
+
+
 def test_authored_telegraph_never_sends_an_idle_pose():
     source = EVENT.read_text(encoding="utf-8")
     body = _method_body(source, "private void playBossVisualCue(LivingEntity boss")

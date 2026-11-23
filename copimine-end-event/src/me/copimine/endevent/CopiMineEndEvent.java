@@ -63758,43 +63758,59 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         BossVisualCuePolicy.CueStage stage = bossCueStage(cueId);
-        BossVisualCuePolicy.Cue cue = BossVisualCuePolicy.cue(bossCueBaseId(cueId), stage);
-        if (cue == null) {
+        if (stage == null) {
+            return;
+        }
+        String cueBase = bossCueBaseId(cueId);
+        BossVisualCuePolicy.Cue cue = BossVisualCuePolicy.cue(cueBase, stage);
+        BossSpellVisualCompositionPolicy.Composition signature =
+                BossSpellVisualCompositionPolicy.composition(cueBase);
+        boolean authoredSpell = !signature.spellId().isEmpty();
+        // Authored spells predate/outgrow the legacy ten-spell cue table: the
+        // contact and Kagune kit plus the section 7 chest beam have their own
+        // authored windup sound but no Cue row. Returning on a missing cue made
+        // every one of those telegraphs silent, so the biggest tell in the fight
+        // charged with no audio at all. Only a spell with neither a cue nor an
+        // authored signature is genuinely unrenderable here.
+        if (cue == null && !authoredSpell) {
             return;
         }
         long currentTick = currentBossVisualCueTick();
-        long cooldownTicks = cue.cooldownTicks();
+        long cooldownTicks = cue != null ? cue.cooldownTicks()
+                : BossVisualCuePolicy.cooldownForStage(stage);
+        String cueTokenId = cue != null ? cue.id()
+                : cueBase + ":" + stage.name().toLowerCase(Locale.ROOT);
         BossVisualCuePolicy.CueToken activeCue = new BossVisualCuePolicy.CueToken(
                 bossVisualCueGeneration, bossVisualCueOwner, bossVisualCueSequence,
                 lastBossVisualCueId, lastBossVisualCueDeadlineTick);
         BossVisualCuePolicy.CueToken requestedCue = new BossVisualCuePolicy.CueToken(
                 generation, boss.getUniqueId(), bossVisualCueSequence + 1L,
-                cue.id(), currentTick + cooldownTicks);
+                cueTokenId, currentTick + cooldownTicks);
         if (BossVisualCuePolicy.shouldSuppressDuplicate(activeCue, requestedCue, forced, currentTick)) {
             return;
         }
         bossVisualCueSequence = requestedCue.sequence();
         bossVisualCueOwner = boss.getUniqueId();
         bossVisualCueGeneration = generation;
-        lastBossVisualCueId = cue.id();
+        lastBossVisualCueId = cueTokenId;
         lastBossVisualCueDeadlineTick = currentTick + cooldownTicks;
         Location cueOrigin = origin.clone();
-        BossSpellVisualCompositionPolicy.Composition signature =
-                BossSpellVisualCompositionPolicy.composition(bossCueBaseId(cueId));
-        Sound sound = bossCueSound(stage == BossVisualCuePolicy.CueStage.TELEGRAPH
-                && !signature.spellId().isEmpty() ? signature.telegraphSound() : cue.soundId());
+        // The authored signature owns the windup audio for every authored spell;
+        // the legacy cue row still owns release/impact audio where one exists.
+        String soundId = stage == BossVisualCuePolicy.CueStage.TELEGRAPH && authoredSpell
+                ? signature.telegraphSound()
+                : cue != null ? cue.soundId() : "";
+        Sound sound = soundId.isBlank() ? null : bossCueSound(soundId);
         float pitch = switch (stage) {
             case TELEGRAPH -> 0.85F;
             case RELEASE -> 1.0F;
             case IMPACT -> 0.7F;
         };
-        // The animation belongs to the cast, not to the cue: the spell pipeline
-        // already sent the pose for this stage (CAST_CHARGE on telegraph,
-        // CAST_RELEASE on release, an authored spell pose where one exists).
-        // Sending a second animation id here overwrote exactly the authored
-        // pose with a generic CAST_IMPACT/CastCharge, so every spell's release
-        // animation was cancelled a tick after it started.
-        if (!isSpellDrivenBossCue(cueId)) {
+        // The spell pipeline owns the cast pose; only legacy non-pipeline cues
+        // (phase shift, defeat, obelisks) send a second animation. An authored
+        // spell with no cue row must never fall through to bossCueAnimationId,
+        // which would resolve UNKNOWN and overwrite the real pose with idle.
+        if (cue != null && !isSpellDrivenBossCue(cueId)) {
             sendBossAnimationVisualUpdate(boss, bossCueAnimationId(cueId));
         }
         if(stage == BossVisualCuePolicy.CueStage.RELEASE) {
@@ -63809,21 +63825,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             };
             if(audio!=null) playEncounterAbilityAudio(boss,audio);
         }
-        boolean authoredSpell = BossSpellVisualCompositionPolicy.isAuthored(bossCueBaseId(cueId));
         for (Player viewer : eventAudience()) {
             if (viewer == null || !viewer.isOnline() || !viewer.getWorld().equals(cueOrigin.getWorld())
                     || !isEventParticleViewer(viewer, cueOrigin)) {
                 continue;
             }
             if (sound != null) viewer.playSound(cueOrigin, sound, SoundCategory.HOSTILE, 0.85F, pitch);
-            if (authoredSpell) {
+            // An authored spell draws itself from the cast pipeline; only the
+            // legacy cue table still draws a shared particle picture here.
+            if (cue == null || authoredSpell) {
                 continue;
             }
             renderBossVisualCue(viewer, boss, cue, cueOrigin, 0, stage, sound, pitch);
         }
         getLogger().info("BOSS_VISUAL_CUE event=" + eventId
                 + " boss=" + boss.getUniqueId()
-                + " cue=" + cue.id()
+                + " cue=" + cueTokenId
                 + " forced=" + forced
                 + " generation=" + generation);
     }

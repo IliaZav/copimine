@@ -1,4 +1,5 @@
 import me.copimine.endevent.domain.BossAnimationId;
+import me.copimine.endevent.domain.BossSpellVisualCompositionPolicy;
 import me.copimine.endevent.domain.BossVisualCuePolicy;
 
 import java.util.LinkedHashSet;
@@ -185,6 +186,28 @@ public final class BossVisualCuePolicyTest {
             require(BossAnimationId.isKnown(BossVisualCuePolicy.releaseAnimation(spell))
                             && !"UNKNOWN".equals(BossVisualCuePolicy.releaseAnimation(spell)),
                     spell + " must never release on the residual UNKNOWN pose");
+        }
+
+        // Authored spells outside the legacy cue table still need the per-stage
+        // cooldown, so the windup cannot be replayed twice for one tell. The
+        // helper must agree with the cue record it replaced.
+        require(BossVisualCuePolicy.cooldownForStage(BossVisualCuePolicy.CueStage.TELEGRAPH) == 40,
+                "a telegraph may not be replayed inside its own tell");
+        require(BossVisualCuePolicy.cooldownForStage(BossVisualCuePolicy.CueStage.RELEASE) == 24,
+                "a release needs its own shorter dedup window");
+        require(BossVisualCuePolicy.cooldownForStage(BossVisualCuePolicy.CueStage.IMPACT) == 30,
+                "an impact needs its own dedup window");
+        require(BossVisualCuePolicy.cooldownForStage(null) == 40,
+                "a null stage must fail closed to the telegraph window");
+        for (String authored : BossSpellVisualCompositionPolicy.spellIds()) {
+            BossVisualCuePolicy.Cue spelled =
+                    BossVisualCuePolicy.cue(authored, BossVisualCuePolicy.CueStage.TELEGRAPH);
+            int expected = BossVisualCuePolicy.cooldownForStage(
+                    BossVisualCuePolicy.CueStage.TELEGRAPH);
+            if (spelled != null) {
+                require(spelled.cooldownTicks() == expected,
+                        authored + " cue cooldown must match the shared stage window");
+            }
         }
         System.out.println("BossVisualCuePolicyTest OK");
     }

@@ -69,12 +69,29 @@ public final class BossVisualCuePolicy {
 
         /** A windup may not be replayed for the length of the tell itself. */
         int cooldownTicks(CueStage stage) {
-            return switch (stage) {
-                case TELEGRAPH -> 40;
-                case RELEASE -> 24;
-                case IMPACT -> 30;
-            };
+            return cooldownForStage(stage);
         }
+    }
+
+    /**
+     * The dedup window for one cue stage.
+     *
+     * <p>The authored spell roster grew past this legacy cue table: the contact
+     * and Kagune kit plus the section 7 chest beam have a windup sound of their
+     * own but no {@link Cue} row. The runtime still needs the same per-stage
+     * cooldown for them, so the rule lives here once instead of being copied
+     * into the monolith or, worse, silently skipped so a big tell fires its
+     * warning twice.</p>
+     */
+    public static int cooldownForStage(CueStage stage) {
+        if (stage == null) {
+            return 40;
+        }
+        return switch (stage) {
+            case TELEGRAPH -> 40;
+            case RELEASE -> 24;
+            case IMPACT -> 30;
+        };
     }
 
     private static final Map<String, Bank> BANK = buildBanks();

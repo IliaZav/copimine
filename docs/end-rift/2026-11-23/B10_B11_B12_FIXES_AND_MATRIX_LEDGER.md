@@ -123,7 +123,34 @@ Evidence tiers used below (never conflated):
 | B-13 | Client/bridge/audio/effects drift | Not re-verified this session; two client trees exist (`CopiMineClient/` and `tools/minecraft-26.3/client/`) | `BLOCKED` | Confirm which tree builds the shipped jar; signed V4 pair check |
 | B-14 | Historical/extra risks | Partially covered by the B-11 carrier cleanup | `SOURCE` | Item-by-item re-audit |
 
-## 3. Honest limits
+## 3. Verification evidence
+
+- **Full Python suite (final, against the deployed source):**
+  `3802 passed, 11 skipped, 154 warnings, 2 subtests passed in 788.04s` — exit 0.
+- **Curated End Rift gate** (`tests\RunEndRiftEventChecks.ps1 -SkipBuilds`):
+  `GATE_EXIT 0`.
+- **Pin re-validation** (`tests/test_minecraft_migration_server_plugins.py` +
+  the first-party candidate test): `141 passed, 1 skipped`.
+- **Built artifact:** `CopiMineEndEvent-26.3.jar`
+  sha256 `986442443194942b8c359b1004ff7d23f6b5ca4c161aaf69efe4f2913c99649b`,
+  size 2638154 B,
+  sha512 `b361ad3d32f7a02ce9da469565333dd9c2c8d7195bf758049c203ad88c9568cfa7af12eb9b42206995edc8a698e3e092e946238b916582fba67aa5cbb723cc07`.
+- **Git:** commit `e883da7e` on `codex/end-rift-live-playtest-repair`,
+  pushed `60a63b67..e883da7e`. Unrelated dirty files (`thirdparty/*`,
+  `copimine-narcotics/*.jar`, `admin-web/.../modpack_snapshot.json`,
+  `.serena/`, `CopiMineClient/bin/`) were left untouched.
+- **Production deploy:** `qwerty@90.188.117.117:2222`,
+  `copimine-game.service`, `/opt/copimine-game/minecraft/server`.
+  - jar `211c0859…` → `98644244…`, config `max-active` 4 → 30.
+  - backup `/opt/copimine-backups/end-rift-2026-11-23-b10-b12-211c0859-20261123-150919`
+    (`CopiMineEndEvent.jar`, `config.yml`, both old hashes).
+  - two cold starts, both `active` and `Done`; after each:
+    `END_RIFT_INVARIANTS failures=0 last=none countersNonNegative=true
+    entityCount=2 tasks=0 bossProxies=0 wave7Blocks=0`.
+  - diagnostics: `submitted=32 accepted=32 written=32 dropped=0 failures=0`.
+  - `small-kagune.max-active: 30` confirmed on disk after restart.
+
+## 4. Honest limits
 
 - Visual quality ("AAA spell VFX") is `SOURCE` only. The authored compositions
   (`BossSpellVisualCompositionPolicy`, `BossSpellGeometryPolicy`,

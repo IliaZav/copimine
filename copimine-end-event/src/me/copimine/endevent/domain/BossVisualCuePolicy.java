@@ -187,8 +187,48 @@ public final class BossVisualCuePolicy {
             case "summon_servants" -> BossAnimationId.SPELL_SUMMON_SERVANTS.wireId();
             case "rift_obelisks" -> BossAnimationId.SPELL_RIFT_OBELISKS.wireId();
             case "arena_inferno" -> BossAnimationId.SPELL_ARENA_INFERNO.wireId();
+            // The contact kit and the chest ultimate are part of the boss
+            // release path even though they are not cue spells. The chest beam
+            // charges in the chest clip (see CopiMineEndEvent.
+            // bossTelegraphAnimation), so its release must keep that pose
+            // instead of snapping to a generic cast.
+            case "melee_swipe" -> BossAnimationId.MELEE_SWIPE.wireId();
+            case "chest_strike", "chest_beam" -> BossAnimationId.CHEST_STRIKE.wireId();
+            case "ground_slam" -> BossAnimationId.GROUND_SLAM.wireId();
             default -> BossAnimationId.CAST_RELEASE.wireId();
         };
+    }
+
+    /**
+     * The pose a boss spell releases on, for the whole kit.
+     *
+     * <p>{@link #animationFor} only resolves the ten cue spells because it also
+     * feeds the cue renderer; every other boss spell resolves to {@code
+     * UNKNOWN} there. The Guardian release path used {@code animationFor}
+     * anyway, and the client renders {@code UNKNOWN} as the idle breath — so
+     * the boss visibly stopped performing the instant the fireball or the
+     * centre-core chest beam left its chest. This method is the release pose
+     * for every spell the Guardian can actually cast: a dedicated pose where
+     * one is authored, otherwise the shared {@code CAST_RELEASE}. It never
+     * returns {@code UNKNOWN}, so a release can no longer be silent.</p>
+     *
+     * @param spellId lowercase spell id; may be null or unknown
+     * @return a real animation id the client can resolve
+     */
+    public static String releaseAnimation(String spellId) {
+        if (spellId == null || spellId.isBlank()) {
+            return BossAnimationId.CAST_RELEASE.wireId();
+        }
+        // Single moment spells name one pose for every stage; reuse that rule
+        // so a release and an impact of the same spell cannot disagree.
+        String normalized = normalize(spellId);
+        String fixed = switch (normalized) {
+            case "phase_shift" -> BossAnimationId.PHASE_TRANSITION.wireId();
+            case "final_strike" -> BossAnimationId.FINAL_STRIKE.wireId();
+            case "defeat_collapse" -> BossAnimationId.DYING.wireId();
+            default -> "";
+        };
+        return fixed.isEmpty() ? spellReleaseAnimation(normalized) : fixed;
     }
 
     private static Map<String, Map<CueStage, Cue>> buildCues() {

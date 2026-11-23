@@ -150,6 +150,42 @@ public final class BossVisualCuePolicyTest {
                 "RELEASE to IMPACT must eventually reset the current animation to IDLE_BREATH");
         require(BossVisualCuePolicy.resetTokenForAcceptedCue(terminalCue, true) == null,
                 "terminal cues must not schedule an animation reset");
+
+        // The release pose must exist for the whole boss kit, not only the ten
+        // cue spells. Regression: the chest beam and the boss fireball released
+        // through animationFor(), which returned UNKNOWN for anything outside
+        // the cue table, and the client draws UNKNOWN as the idle breath --
+        // the Guardian visibly stopped performing its own ultimate.
+        require("CHEST_STRIKE".equals(BossVisualCuePolicy.releaseAnimation("chest_beam")),
+                "the chest beam must release on the chest pose it charged in");
+        require("CHEST_STRIKE".equals(BossVisualCuePolicy.releaseAnimation("chest_strike")),
+                "the chest strike must release on its own pose");
+        require("MELEE_SWIPE".equals(BossVisualCuePolicy.releaseAnimation("melee_swipe")),
+                "the claw swipe must release on its own pose");
+        require("GROUND_SLAM".equals(BossVisualCuePolicy.releaseAnimation("ground_slam")),
+                "the ground slam must release on its own pose");
+        require("SPELL_VOID_BLAST".equals(BossVisualCuePolicy.releaseAnimation("void_blast")),
+                "a cue spell must keep its dedicated release pose");
+        require("CAST_RELEASE".equals(BossVisualCuePolicy.releaseAnimation("boss_fireball")),
+                "an uncatalogued spell must fall back to the shared cast pose, not idle");
+        require("CAST_RELEASE".equals(BossVisualCuePolicy.releaseAnimation("ambush_grab")),
+                "every unauthored boss spell must still resolve to a real pose");
+        require("PHASE_TRANSITION".equals(BossVisualCuePolicy.releaseAnimation("phase_shift")),
+                "a single-moment spell must name the same pose for its release");
+        require("FINAL_STRIKE".equals(BossVisualCuePolicy.releaseAnimation("final_strike")),
+                "the final strike release must keep its dedicated pose");
+        require("CAST_RELEASE".equals(BossVisualCuePolicy.releaseAnimation(null)),
+                "a null spell id must fail closed to a real pose");
+        require("CAST_RELEASE".equals(BossVisualCuePolicy.releaseAnimation("   ")),
+                "a blank spell id must fail closed to a real pose");
+        for (String spell : List.of("void_blast", "rift_projectile", "void_mark", "rift_arrows",
+                "summon_servants", "arena_inferno", "boss_fireball", "melee_swipe",
+                "chest_strike", "ground_slam", "chest_beam", "ambush_grab", "small_kagune",
+                "kagune_stab", "kagune_eruption", "final_strike")) {
+            require(BossAnimationId.isKnown(BossVisualCuePolicy.releaseAnimation(spell))
+                            && !"UNKNOWN".equals(BossVisualCuePolicy.releaseAnimation(spell)),
+                    spell + " must never release on the residual UNKNOWN pose");
+        }
         System.out.println("BossVisualCuePolicyTest OK");
     }
 

@@ -52235,8 +52235,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossChestBeamCooldownUntilTick = eventTickCounter + ChestBeamPolicy.COOLDOWN_TICKS;
         bossCastDeadlineMillis = System.currentTimeMillis() + ChestBeamPolicy.TOTAL_TICKS * 50L;
         bossSpellPauseUntilMillis = bossCastDeadlineMillis;
-        sendBossAnimationVisualUpdate(boss, BossVisualCuePolicy.animationFor(
-                EndRiftAiPolicy.BossSpell.CHEST_BEAM.id(), BossVisualCuePolicy.CueStage.RELEASE));
+        sendBossAnimationVisualUpdate(boss, BossVisualCuePolicy.releaseAnimation(
+                EndRiftAiPolicy.BossSpell.CHEST_BEAM.id()));
         playBossVisualCue(boss, bossCueId(EndRiftAiPolicy.BossSpell.CHEST_BEAM.id(),
                 BossVisualCuePolicy.CueStage.RELEASE), chest, false);
         world.playSound(chest, Sound.ENTITY_ENDER_DRAGON_GROWL, SoundCategory.HOSTILE, 1.0F, 0.9F);
@@ -52498,8 +52498,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + Math.max(20L, spellTelegraphTicks(spell) * 2L) * 50L;
         long castSequence = bossCastSequence;
         String callbackEvent = eventId;
-        sendBossAnimationVisualUpdate(boss, BossVisualCuePolicy.animationFor(spell.id(),
-                BossVisualCuePolicy.CueStage.RELEASE));
+        sendBossAnimationVisualUpdate(boss, BossVisualCuePolicy.releaseAnimation(spell.id()));
         playBossVisualCue(boss,
                 bossCueId(spell.id(), BossVisualCuePolicy.CueStage.RELEASE),
                 boss.getEyeLocation(), forced);

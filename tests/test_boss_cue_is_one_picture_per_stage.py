@@ -62,20 +62,26 @@ def _method_body(name: str) -> str:
 
 def test_a_spell_with_an_authored_signature_is_not_drawn_twice() -> None:
     body = _method_body("playBossVisualCue")
-    assert "isAuthored(" in body, (
+    # The method must classify the spell from the authored composition, either
+    # directly or through the isAuthored helper, before it draws anything, or it
+    # paints a second tell over the authored signature.
+    assert "BossSpellVisualCompositionPolicy.composition(" in body or "isAuthored(" in body, (
         "playBossVisualCue must consult the authored composition before drawing, "
         "or it paints a second tell over the authored signature"
     )
+    assert "authoredSpell" in body, "the method must classify the spell as authored"
     # The viewer loop is where a second picture would be drawn.
     loop = body.index("for (Player viewer : eventAudience())")
     render = body.index("renderBossVisualCue(viewer", loop)
     guard = body.rindex("authoredSpell", loop, render)
     assert loop < guard < render, "the authored-spell guard must run inside the loop, before the renderer"
     # Braces of the guard block follow the condition on the SAME line, so the
-    # pattern must not require a newline between them.
-    assert re.search(r"if\s*\(\s*authoredSpell\s*\)\s*\{[^}]*\bcontinue;", body[guard - len("if ("):]), (
-        "an authored spell must skip the generic cue renderer for that viewer"
-    )
+    # pattern must not require a newline between them. A missing cue row has no
+    # shared picture either, so the guard may also test ``cue == null``.
+    assert re.search(
+        r"if\s*\(\s*(?:cue == null\s*\|\|\s*)?authoredSpell\s*\)\s*\{[^}]*\bcontinue;",
+        body[loop:render],
+    ), "an authored spell must skip the generic cue renderer for that viewer"
 
 
 def test_the_cue_renderer_never_resolves_the_stage_out_of_its_own_id() -> None:

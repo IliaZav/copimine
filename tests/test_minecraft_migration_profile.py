@@ -251,10 +251,13 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # work and the travelling Kagune ring moved the client jar. Repinned from a
     # clean `gradle test jar` on the pinned JDK; a rerun matched byte for byte.
     # Live-playtest repair: observer snapshot, arena fog, Guardian HUD, and scream clip.
-    assert artifact['size'] == 30_360_209
+    # The lock was repinned from the real build output in
+    # build/minecraft-26.3/client/libs (verified here byte for byte: the built
+    # jar's size and SHA-512 match the lock), but this literal lagged behind it.
+    assert artifact['size'] == 30_367_332
     assert artifact['sha512'] == (
-        'a399de1f3b5bcc5dc56164ea9f9acf28b43a9c4c8102913aa713ddcce146a3651'
-        'd1ed9d5f094d4c365579a659cbde224a2c4f38fdc897d07ba8b688566e83382'
+        '5cf53ffe632550d2b145d3f18c76b3d08aec4aeafad98ef2ccd4bb7fe4e91c11'
+        'c1b33b7562521ca32fa380dc37ab4fa70c6e925f6919feb00ce5fe77430709dd'
     )
 
 

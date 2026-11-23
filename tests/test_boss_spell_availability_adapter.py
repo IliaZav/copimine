@@ -50,6 +50,8 @@ public class BossAvailabilityProbe {
     final GuardianDeaths guardianDeaths=new GuardianDeaths();
     boolean isBossCombatRuntimeActive(LivingEntity boss){return true;}
     boolean bossAmbushOwnsMajorCast(){return false;}
+    UUID bossHazardReservationId;
+    boolean isKaguneRingCastActive(){return false;}
     EndRiftAiPolicy.BossSpell spellForAbility(BossAbilityId id){
         for(var spell:EndRiftAiPolicy.BossSpell.values())if(BossAbilityId.fromSpell(spell)==id)return spell;
         return null;

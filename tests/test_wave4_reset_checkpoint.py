@@ -20,6 +20,8 @@ public class ResetCheckpointProbe {
  boolean archive=true,cleanup=true; int saves;
  int activeWave;long phaseDeadlineMillis;String recoveryReason="failed",bossRewardStatus;
  Object bossRewardRecipientUuid;
+ long bossChestBeamSequence;boolean bossChestBeamActive;long bossChestBeamCooldownUntilTick;
+ static final String CHEST_BEAM_VFX_PREFIX="boss-chest-beam-";
  static final String BOSS_REWARDS_PENDING="PENDING";
  Object wave3RestoredPortalCheckpoint=new Object(),wave4RestoredObeliskCheckpoint=new Object();
  Map<String,String> wave4InvalidObeliskCheckpointFields=Map.of("bad","receipt");
@@ -29,8 +31,10 @@ public class ResetCheckpointProbe {
  Map<String,Object> combatProfiles=new HashMap<>(),rewardStatuses=new HashMap<>(),nightCloakRolls=new HashMap<>();
  Set<UUID> participantUuids=new HashSet<>(),officialRewardRoster=new HashSet<>(),
    nightCloakRequestsInFlight=new HashSet<>(),waveRewardsIssued=new HashSet<>();
+ Set<UUID> resourceContributors=new HashSet<>();
  Listener combatProfileListener=new Listener(),realitySplitChamberController=new Listener();
  void message(CommandSender p,String s) {}
+ void clearWorldVfxBeamsByPrefix(String prefix) {}
  boolean archiveWaveTwoRosterForCleanup(String s){return archive;}
  boolean clearWaveEntities(){return cleanup;}
  void forcePhase(EventPhase p,String reason){phase=p;}

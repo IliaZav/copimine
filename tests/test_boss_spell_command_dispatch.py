@@ -21,7 +21,8 @@ public class SpellCommandProbe {
  static class LivingEntity{} static class CommandSender{}
  static class EndRiftAiPolicy { enum BossSpell {
   VOID_BLAST,RIFT_PROJECTILE,RIFT_ARROWS,VOID_MARK,ARENA_INFERNO,FINAL_STRIKE,BOSS_FIREBALL,
-  MELEE_SWIPE,CHEST_STRIKE,GROUND_SLAM,AMBUSH_GRAB,SMALL_KAGUNE,SUMMON_SERVANTS;
+  MELEE_SWIPE,CHEST_STRIKE,CHEST_BEAM,GROUND_SLAM,AMBUSH_GRAB,SMALL_KAGUNE,KAGUNE_STAB,
+   KAGUNE_ERUPTION,SUMMON_SERVANTS;
   String id(){return name().toLowerCase(Locale.ROOT);}
  }}
  int calls;boolean accepted=true;String lastMessage="",bossPhase="LAST_SEAL";EndRiftAiPolicy.BossSpell last;

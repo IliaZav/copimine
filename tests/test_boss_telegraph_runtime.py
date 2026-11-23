@@ -93,8 +93,9 @@ public class BossTelegraphRuntimeProbe {
     void holdBossCastPosition(LivingEntity b){}
     // Specification 7.1.1: the chest beam claims the fixed Core stand point
     // before the aim lock. This probe measures the release marker, so the
-    // bounded relocation is stubbed while the real telegraph body runs.
-    void stageBossForChestBeam(LivingEntity b){}
+    // bounded relocation is stubbed as a successful Core claim while the real
+    // telegraph body runs; the refusal path is covered by the static guard.
+    boolean stageBossForChestBeam(LivingEntity b){return true;}
     void playBossSpellModel(LivingEntity b,String id,Location at,int ticks,boolean follow){}
     void aimBossCastAt(LivingEntity b,Location l){}
     String bossTelegraphAnimation(EndRiftAiPolicy.BossSpell s){return s.id();}

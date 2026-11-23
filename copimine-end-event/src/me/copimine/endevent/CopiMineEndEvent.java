@@ -51552,9 +51552,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location mark = target.getLocation().clone();
         // Specification 7.1.1: the center-core chest beam is staged from the
         // fixed Core anchor. Claim it before the aim lock, so the locked yaw and
-        // the beam origin both come from the claimed stand point.
-        if (spell == EndRiftAiPolicy.BossSpell.CHEST_BEAM) {
-            stageBossForChestBeam(boss);
+        // the beam origin both come from the claimed stand point. If the Core
+        // volume cannot legally stage the shot, refuse the cast and refund the
+        // hazard reservation so the brain chooses another legal action instead
+        // of firing a "center-core" beam from the arena perimeter.
+        if (spell == EndRiftAiPolicy.BossSpell.CHEST_BEAM
+                && !stageBossForChestBeam(boss)) {
+            releaseBossHazardReservation("chest-beam-core-stage-refused");
+            return false;
         }
         aimBossCastAt(boss, mark);
         int telegraphTicks = spellTelegraphTicks(spell);
@@ -52116,13 +52121,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * the Guardian simply channels the beam from where it already stands, which
      * is still a fair, dodgeable lane rather than a refused or lost ultimate.</p>
      */
-    private void stageBossForChestBeam(LivingEntity boss) {
+    /**
+     * Specification 7.1.1: the ultimate is staged from the fixed central Core.
+     *
+     * <p>Returns true only when the boss really reads as a center-Core cast,
+     * either because it is already standing there or because a validated safe
+     * stand point was claimed. A false result means the Core volume could not
+     * legally own the shot, so {@link #telegraphBossSpell} must refuse the cast
+     * rather than fire a "center-core" beam from the arena perimeter.</p>
+     */
+    private boolean stageBossForChestBeam(LivingEntity boss) {
         if (boss == null || !boss.isValid() || boss.isDead()) {
-            return;
+            return false;
         }
         Location core = coreCombatAnchorLocation();
         if (core == null || core.getWorld() == null || !boss.getWorld().equals(core.getWorld())) {
-            return;
+            return false;
         }
         Location current = boss.getLocation();
         double dx = current.getX() - core.getX();
@@ -52130,7 +52144,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (dx * dx + dz * dz <= 16.0D) {
             // Already reads as the center cast; a short extra hop would only
             // jitter the silhouette the player is reading.
-            return;
+            return true;
         }
         double length = Math.sqrt(dx * dx + dz * dz);
         Location preferred = core.clone().add(dx / length * 2.5D, 0.0D, dz / length * 2.5D);
@@ -52138,7 +52152,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (stand == null) {
             getLogger().info("BOSS_CHEST_BEAM_CORE_STAGE_REFUSED event=" + eventId
                     + " boss=" + boss.getUniqueId() + " reason=no-safe-center");
-            return;
+            return false;
         }
         if (teleportCombatEntity(boss, stand)) {
             spawnEventParticle(core.clone().add(0.0D, 1.0D, 0.0D), Particle.REVERSE_PORTAL,
@@ -52147,7 +52161,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     SoundCategory.HOSTILE, 1.0F, 0.7F);
             getLogger().info("BOSS_CHEST_BEAM_CORE_STAGED event=" + eventId
                     + " boss=" + boss.getUniqueId() + " phase=" + bossPhase);
+            return true;
         }
+        return false;
     }
 
     /**

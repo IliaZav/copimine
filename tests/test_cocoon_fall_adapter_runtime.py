@@ -81,7 +81,7 @@ public class CocoonFallAdapterProbe {
     record Wave6AnchorFallLease(UUID worldId,long untilMillis){}
     final Map<UUID,Wave6AnchorFallLease> wave6AnchorFallLeases=new HashMap<>();
     // Cooldowns the fury entry must clear so grounded combat starts immediately.
-    long nextSpellMillis,nextBossCloseStrikeMillis,lastBossPathRequestMillis;
+    long nextSpellMillis,bossSpellRetryAtMillis,nextBossCloseStrikeMillis,lastBossPathRequestMillis;
     boolean isPlayerUnderTentacleControl(Player p){return false;}
     boolean isActiveBossParticipant(Player p){return true;}
     void removeTentacle(UUID id,String reason){tentacleController.states().remove(id);}
@@ -104,7 +104,7 @@ public class CocoonFallAdapterProbe {
     void forcePhase(EventPhase p,String reason){recoveryReason=reason;}
     boolean saveStateSync(){return true;}
     void saveStateAsync(){}
-    void cancelBossCastForPhaseChange(){oldCast=false;}
+    void cancelBossCastForPhaseChange(LivingEntity boss){oldCast=false;}
     void clearKaguneRingCast(String reason){oldRing=false;}
     void clearActiveRiftProjectiles(){oldProjectiles=false;}
     // The cocoon break also drains the separate rift-fireball registry and the

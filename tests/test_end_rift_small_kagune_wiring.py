@@ -66,3 +66,37 @@ def test_lifetime_expiry_is_retired_not_merely_lengthened():
     assert "public static boolean expired(long nowTick, long expiresAtTick) {\n        return false;" in source, (
         "expired must be hard-false; a long timer is still not 'survives until killed'"
     )
+
+
+def test_small_kagune_pursue_the_party_instead_of_standing_still():
+    """Owner requirement B-11: they must strike *and pursue*, not be static dolls.
+
+    Source-level guard: the old body only attacked whoever walked into its fixed
+    3-block radius. Pursuit must exist, run from the small-Kagune tick, be
+    restricted to the between-attack states so a telegraph stays readable, move
+    the paired Giant hitbox with the display, and stay inside the arena.
+    """
+    source = MONOLITH.read_text("utf-8")
+    assert "private void pursueSmallKagune(ItemDisplay display," in source, (
+        "small Kagune need a pursuit step; without it they are static dolls")
+    small = source[source.index("private void tickSmallKagune(ItemDisplay display"):
+                   source.index("private boolean smallKaguneFaces(", source.index(
+                       "private void tickSmallKagune(ItemDisplay display"))]
+    assert "pursueSmallKagune(display, animation, participants);" in small, (
+        "the small-Kagune tick must drive pursuit")
+    pursuit = source[source.index("private void pursueSmallKagune(ItemDisplay display,"):
+                     source.index("private void tickSmallKagune(ItemDisplay display")]
+    # Rooted attack frames: never move during the windup/strike telegraph.
+    for rooted in ("SMALL_WINDUP", "SMALL_STRIKE"):
+        assert rooted not in pursuit, (
+            "pursuit must not run during the rooted telegraph/contact frames")
+    assert "teleportCombatEntity(display, destination)" in pursuit, (
+        "pursuit must move the visible actor")
+    assert "teleportCombatEntity(carrier, destination)" in pursuit, (
+        "pursuit must move the paired hitbox with the display")
+    assert "isArenaLocation(destination)" in pursuit, (
+        "pursuit must never walk a summon out of the arena")
+    assert "SMALL_KAGUNE_PURSUE_STRIDE_TICKS" in pursuit, (
+        "pursuit must be throttled so it reads as a walk")
+    assert "withinSmallKaguneRange(display, target)" in pursuit, (
+        "pursuit must stop once the target is already in strike reach")

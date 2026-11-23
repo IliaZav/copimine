@@ -18,8 +18,24 @@ def test_automatic_spell_cooldown_is_consumed_only_after_a_cast_is_accepted() ->
 
     assert "boolean accepted = castBossSpell(boss, false);" in tick_body
     assert "if (accepted)" in tick_body
-    assert "nextSpellMillis = now + 1_000L" in tick_body
+    # A refusal backs off on its own clock. It must NOT write nextSpellMillis,
+    # because that clock is the "major cast is imminent" signal that
+    # BossCloseCombatPolicy.canStrike uses to hold melee: writing it on a
+    # refused spell silenced every attack for the retry window.
+    assert "bossSpellRetryAtMillis = now + 1_000L" in tick_body
     assert "BOSS_SPELL_RETRY" in tick_body
+    accepted_branch = tick_body[tick_body.index("if (accepted) {"):]
+    accepted_branch = accepted_branch[:accepted_branch.index("} else {")]
+    assert "nextSpellMillis = now + scaledBossDelayMillis(" in accepted_branch, (
+        "only an accepted cast may consume the major-spell cooldown")
+    assert "bossSpellRetryAtMillis = 0L" in accepted_branch, (
+        "an accepted cast must clear the refusal back-off")
+    refusal_branch = tick_body[tick_body.index("} else {", tick_body.index("if (accepted) {")):]
+    refusal_branch = refusal_branch[:refusal_branch.index("BOSS_SPELL_RETRY")]
+    assert "nextSpellMillis =" not in refusal_branch, (
+        "a refused spell must not consume the major-spell cooldown or gate melee")
+    assert "bossSpellRetryAtMillis <= now" in tick_body, (
+        "the refusal back-off must be consulted before retrying a spell")
 
 
 def test_final_strike_start_is_a_real_dispatch_result() -> None:

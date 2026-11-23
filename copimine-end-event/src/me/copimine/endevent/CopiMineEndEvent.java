@@ -2001,6 +2001,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private long phaseDeadlineMillis;
     private long nextTargetMillis;
     private long nextSpellMillis;
+    /**
+     * Bounded retry clock for a refused spell attempt. Kept separate from
+     * {@link #nextSpellMillis}: a rejected cast (bad line of sight, terrain or
+     * hazard rejection) is not an imminent major cast, and treating it as one
+     * made {@code BossCloseCombatPolicy.canStrike} refuse melee for the whole
+     * retry window - visibly "the Guardian stopped attacking" for a moment.
+     */
+    private long bossSpellRetryAtMillis;
     private long nextBossCloseStrikeMillis;
     private long nextWaveTargetMillis;
     private long bossSpellPauseUntilMillis;
@@ -6198,6 +6206,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         nextBossTacticMillis = 0L;
         nextTargetMillis = 0L;
         nextSpellMillis = 0L;
+        bossSpellRetryAtMillis = 0L;
         nextBossCloseStrikeMillis = 0L;
         nextWaveTargetMillis = 0L;
         bossSpellPauseUntilMillis = 0L;
@@ -47807,6 +47816,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             playEventMusic(musicForPhase());
             nextTargetMillis = 0L;
             nextSpellMillis = 0L;
+        bossSpellRetryAtMillis = 0L;
         nextBossCloseStrikeMillis = 0L;
             recentBossTargets.clear();
         bossRecentAttackers.clear();
@@ -47986,6 +47996,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         nextBossTacticMillis = 0L;
         nextTargetMillis = 0L;
         nextSpellMillis = 0L;
+        bossSpellRetryAtMillis = 0L;
         nextBossCloseStrikeMillis = 0L;
         bossSpellPauseUntilMillis = 0L;
         bossVisualCueOwner = null;
@@ -48248,6 +48259,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (isKaguneRingCastActive()) return;
         if (now >= bossSpellPauseUntilMillis && nextSpellMillis <= now
+                && bossSpellRetryAtMillis <= now
                 && !activeBossParticipants().isEmpty()) {
             boolean accepted = castBossSpell(boss, false);
             if (accepted) {
@@ -48255,10 +48267,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 nextSpellMillis = now + scaledBossDelayMillis(
                         randomSeconds(config.bossSpellMinSeconds(), config.bossSpellMaxSeconds()),
                         profile.spellCooldownMultiplier(), 3_000L);
+                bossSpellRetryAtMillis = 0L;
             } else {
                 // A rejected target/hazard/one-shot attempt must not consume a
                 // full cooldown and make a long spell look permanently broken.
-                nextSpellMillis = now + 1_000L;
+                // The retry is a separate clock so it does not also silence
+                // melee: only the *spell* rolls back, not the whole attack loop.
+                bossSpellRetryAtMillis = now + 1_000L;
                 getLogger().fine("BOSS_SPELL_RETRY event=" + eventId
                         + " generation=" + generation + " phase=" + bossPhase
                         + " retry_ms=1000");
@@ -48513,7 +48528,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         BossPhase previous = bossPhase;
         bossPhase = transition.current();
-        cancelBossCastForPhaseChange();
+        cancelBossCastForPhaseChange(boss);
         bossPhasePresentationUntilMillis = System.currentTimeMillis() + 2_200L;
         bossCastLockedYaw = boss.getLocation().getYaw();
         boss.getPersistentDataContainer().set(keyBossPhase,
@@ -48945,13 +48960,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    private void cancelBossCastForPhaseChange() {
+    private void cancelBossCastForPhaseChange(LivingEntity boss) {
         cancelBossCastTask();
         cancelBossFinalStrike();
         bossAbilityState = BossAbilityState.NONE;
         bossCastDeadlineMillis = 0L;
         bossSpellPauseUntilMillis = 0L;
         releaseBossHazardReservation("phase-change");
+        // Contract 10.2/10.3: the single cast-release contract must run on every
+        // release. A phase change often lands mid-telegraph; without this the
+        // suppressed mobility flags and the stale target/path clocks survive the
+        // transition, so the Guardian keeps the old focus (and skips path
+        // requests) for up to one cadence instead of re-reading the new phase at
+        // once. A null boss is tolerated: the release is a no-op then.
+        releaseBossCastMobility(boss, "phase-change");
         if (bossPhase != BossPhase.OVERLOAD) clearArenaInferno();
         if (bossPhase == BossPhase.LAST_SEAL) clearVoidMarkZones();
     }
@@ -50874,6 +50896,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             bossCastDeadlineMillis = 0L;
             bossSpellPauseUntilMillis = 0L;
             releaseBossHazardReservation("forced-spell-replaced");
+            // Same single-release contract as the phase-change path: a forced
+            // replacement must not leave the previous cast's mobility flags or
+            // target/path clocks behind.
+            releaseBossCastMobility(boss, "forced-spell-replaced");
             boss.setInvulnerable(false);
         }
         if (spell == EndRiftAiPolicy.BossSpell.FINAL_STRIKE
@@ -51045,9 +51071,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (boss == null || roster.isEmpty() || bossPhase != BossPhase.LAST_SEAL
                 || !smallKaguneTuning().enabled() || guardianDeaths.cocoonBroken()) return 0;
         int budget = Math.min(admitted, SmallKaguneSpawnPolicy.admission(eventScalePlayers(), livingSmallKaguneCount()));
+        // Contract 18.1: the real arena budget is the operator's configured cap,
+        // never above the contract ceiling. It was previously ignored, so
+        // 'max-active' was a dead key and thirty always spawned.
+        int livingCap = smallKaguneLivingCap();
+        budget = Math.min(budget, Math.max(0, livingCap - livingSmallKaguneCount()));
         int spawned = 0;
         for (int index = 0; index < budget; index++) {
-            if (livingSmallKaguneCount() >= SmallKaguneSpawnPolicy.MAX_LIVING) break;
+            if (livingSmallKaguneCount() >= livingCap) break;
             Player target = roster.get(Math.floorMod(tentacleTargetCursor++, roster.size()));
             if (!isActiveBossParticipant(target)) continue;
             ItemDisplay display = spawnTentacle(boss, target.getLocation().clone(),
@@ -51062,6 +51093,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private EventConfig.SmallKaguneTuning smallKaguneTuning() {
         return config == null ? EventConfig.SmallKaguneTuning.defaults() : config.smallKaguneTuning();
+    }
+
+    /**
+     * Contract 18.1: the configurable arena budget, clamped to the contract
+     * ceiling. {@code max-active} used to be parsed and ignored, so the key must
+     * be honoured here to keep the "finite, configurable budget" promise.
+     */
+    private int smallKaguneLivingCap() {
+        return Math.max(1, Math.min(smallKaguneTuning().maxActive(), SmallKaguneSpawnPolicy.MAX_LIVING));
     }
 
     private me.copimine.endevent.runtime.SmallKaguneRestoration smallKaguneRecovery() {
@@ -53913,7 +53953,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!(entity instanceof ItemDisplay display)
                     || !display.isValid() || display.isDead()
                     || !ownedBySession(display, eventId, generation)) {
-                tentacleController.remove(state.entityId());
+                removeTentacle(state.entityId(), "tentacle-visual-invalid");
                 continue;
             }
             if (!damageWindowOpen && !state.temporary()
@@ -55029,7 +55069,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         // The break ends the old cast generation before the descent can own
         // position. An already launched cocoon spell must not outlive its owner.
-        cancelBossCastForPhaseChange();
+        cancelBossCastForPhaseChange(boss);
         clearKaguneRingCast("cocoon-broken");
         // Cancel only the old spell actors. Small killable survivors remain.
         // cancelBossCastForPhaseChange does not own these controller states.
@@ -55143,6 +55183,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 // cooldown or navigation destination into grounded fury.
                 nextTargetMillis = 0L;
                 nextSpellMillis = System.currentTimeMillis();
+                bossSpellRetryAtMillis = 0L;
                 nextBossCloseStrikeMillis = 0L;
                 lastBossPathRequestMillis = 0L;
                 if (boss instanceof Mob mob) { mob.setAI(true); mob.setAware(true); }
@@ -55778,6 +55819,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             entity.setDisplayHeight(displayHeight);
             entity.setInterpolationDuration(5);
             entity.setInterpolationDelay(0);
+            // Small Kagune creep in four-tick pursuit steps. Matching the
+            // teleport duration to that stride makes the walk interpolate on
+            // the client instead of snapping 0.6 blocks four times a second.
+            // Nothing else teleports this display: the strike only rotates and
+            // applies damage, so the smoothing cannot desync a landed hit.
+            if (smallKagune) {
+                entity.setTeleportDuration((int) SMALL_KAGUNE_PURSUE_STRIDE_TICKS);
+            }
             entity.setPersistent(false);
             entity.setGravity(false);
             entity.setInvulnerable(true);
@@ -55935,7 +55984,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!(entity instanceof ItemDisplay display)
                     || !display.isValid() || display.isDead()
                     || !ownedBySession(display, eventId, generation)) {
-                tentacleController.remove(state.entityId());
+                removeTentacle(state.entityId(), "tentacle-visual-invalid");
                 continue;
             }
             tickTentacle(display, state, participants);
@@ -56352,11 +56401,87 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /** Horizontal creep per pursuit step; small Kagune walk, they do not glide. */
+    private static final double SMALL_KAGUNE_PURSUE_STEP = 0.6D;
+    /** Pursuit runs on a 4-tick stride so it reads as a walk, not a teleport. */
+    private static final long SMALL_KAGUNE_PURSUE_STRIDE_TICKS = 4L;
+    /** Never chase a player more than this far above/below; the arena is flat. */
+    private static final double SMALL_KAGUNE_PURSUE_MAX_DY = 2.0D;
+
+    /**
+     * Contract B-11: a small Kagune is an active enemy, not a static doll. While
+     * it is between attacks it creeps toward the nearest legal participant; the
+     * windup and strike frames stay rooted so the telegraph stays readable and
+     * the player can always step out of the committed swat.
+     *
+     * <p>Both the display carrier and its Giant hitbox move together, because
+     * the hit admission reads the carrier's line of sight and the strike range
+     * reads the display; letting them drift apart would create attacks the
+     * player cannot see coming.</p>
+     */
+    private void pursueSmallKagune(ItemDisplay display, TentacleAnimationPolicy.State animation,
+                                   List<Player> participants) {
+        if (display == null || animation == null || participants == null || participants.isEmpty()) {
+            return;
+        }
+        boolean mobile = animation == TentacleAnimationPolicy.State.EMERGING
+                || animation == TentacleAnimationPolicy.State.READY
+                || animation == TentacleAnimationPolicy.State.RECOVERY
+                || animation == TentacleAnimationPolicy.State.SMALL_RECOVERY
+                || animation == TentacleAnimationPolicy.State.HIT_RECOVERY;
+        if (!mobile || eventTickCounter % SMALL_KAGUNE_PURSUE_STRIDE_TICKS != 0L) {
+            return;
+        }
+        Player target = participants.stream()
+                .filter(this::isActiveBossParticipant)
+                .filter(player -> player.isOnline() && !player.isDead())
+                .filter(player -> !isPlayerUnderTentacleControl(player))
+                .filter(player -> display.getWorld().equals(player.getWorld()))
+                .min(Comparator.comparingDouble(player ->
+                        display.getLocation().distanceSquared(player.getLocation())))
+                .orElse(null);
+        if (target == null || withinSmallKaguneRange(display, target)) {
+            return;
+        }
+        Location from = display.getLocation();
+        Location to = target.getLocation();
+        if (Math.abs(from.getY() - to.getY()) > SMALL_KAGUNE_PURSUE_MAX_DY) {
+            return;
+        }
+        Vector toward = to.toVector().subtract(from.toVector()).setY(0.0D);
+        if (toward.lengthSquared() <= 0.0001D) {
+            return;
+        }
+        // Stop just inside strike reach instead of standing on the player.
+        double travel = toward.length() - Math.max(0.5D, smallKaguneTuning().range() * 0.75D);
+        if (travel <= 0.0001D) {
+            return;
+        }
+        Location destination = from.clone().add(
+                toward.normalize().multiply(Math.min(SMALL_KAGUNE_PURSUE_STEP, travel)));
+        destination.setY(to.getY());
+        destination.setDirection(toward);
+        if (!isArenaLocation(destination)) {
+            return;
+        }
+        if (!teleportCombatEntity(display, destination)) {
+            return;
+        }
+        UUID carrierId = tentacleHitboxesByDisplay.get(display.getUniqueId());
+        Entity carrier = carrierId == null ? null : ownedEntities.get(carrierId);
+        if (carrier != null) {
+            // The carrier may legitimately fail (e.g. another plugin cancelled
+            // the teleport); the display still moved, so the next tick retries.
+            teleportCombatEntity(carrier, destination);
+        }
+    }
+
     private void tickSmallKagune(ItemDisplay display, TentacleController.VisualState state,
                                  List<Player> participants) {
         UUID displayId = display.getUniqueId();
         TentacleAnimationPolicy.State animation = state.state();
         long elapsed = Math.max(0L, eventTickCounter - state.startedTick());
+        pursueSmallKagune(display, animation, participants);
         if (terminalTentacleAnimation(animation)) {
             if (elapsed < TentacleAnimationPolicy.durationTicks(animation)) return;
             tentacleMarker(display, TentacleAnimationPolicy.Marker.HIDE_BELOW_FLOOR, null);
@@ -60871,6 +60996,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         + " defeat_pending=" + defeatPending);
                 forcePhase(EventPhase.RECOVERY_REQUIRED,
                         "Official boss died without a durable player-owned lethal commit");
+                // No sanctioned defeat means no progress bar: an unsanctioned
+                // removal (/kill, cleanup, actor unload) must not leave the last
+                // HP shell visible. The old code left the bar latched on-screen
+                // because the RECOVERY_REQUIRED tick is a no-op.
+                retireBossBar();
             }
         } else {
             String profile = readString(entity, keyLootProfile);
@@ -63129,6 +63259,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 bossUuid = null;
                 bossKillerUuid = null;
                 clearClientEffects();
+                // The Guardian was removed without a committed death, so the
+                // HP bar must be torn down with it instead of freezing on the
+                // last value until the encounter object is disabled.
+                retireBossBar();
             }
         }
     }

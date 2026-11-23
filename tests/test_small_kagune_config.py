@@ -16,6 +16,7 @@ def test_small_kagune_config_preserves_legacy_defaults_and_rejects_unsafe_values
     probe = tmp_path / "SmallKaguneConfigProbe.java"
     probe.write_text(r'''
 import java.util.*;
+import me.copimine.endevent.domain.SmallKaguneSpawnPolicy;
 public class SmallKaguneConfigProbe {
     static final class ConfigurationSection {
         final Map<String, Object> values;
@@ -36,7 +37,7 @@ public class SmallKaguneConfigProbe {
     }
     public static void main(String[] args) {
         var defaults = smallKaguneTuning(null);
-        check(defaults.enabled() && defaults.maxActive() == 4 && defaults.health() == 20.0
+        check(defaults.enabled() && defaults.maxActive() == 30 && defaults.health() == 20.0
                 && defaults.damage() == 6.0 && defaults.range() == 3.0
                 && defaults.lifetimeTicks() == 600 && defaults.scale() == 0.6,
                 "an existing config without the new block changed the approved small Kagune defaults");
@@ -53,7 +54,7 @@ public class SmallKaguneConfigProbe {
             invalid(key, Double.NaN); invalid(key, Double.POSITIVE_INFINITY);
             invalid(key, Double.NEGATIVE_INFINITY);
         }
-        invalid("max-active", 0); invalid("max-active", 7);
+        invalid("max-active", 0); invalid("max-active", 31);
         invalid("health", 0.0); invalid("health", 337.0);
         invalid("damage", -1.0); invalid("damage", 21.0);
         invalid("range", 0.49); invalid("range", 5.01);
@@ -63,18 +64,20 @@ public class SmallKaguneConfigProbe {
                 "max-active", 1, "health", 1.0, "damage", 0.0,
                 "range", 0.5, "lifetime-ticks", 20, "scale", 0.2)));
         var upper = smallKaguneTuning(new ConfigurationSection(Map.of(
-                "max-active", 6, "health", 336.0, "damage", 20.0,
+                "max-active", 30, "health", 336.0, "damage", 20.0,
                 "range", 5.0, "lifetime-ticks", 1200, "scale", 0.9)));
-        check(lower.maxActive() == 1 && upper.maxActive() == 6,
+        check(lower.maxActive() == 1 && upper.maxActive() == 30,
                 "inclusive controller budget limits were rejected");
         try {
-            new SmallKaguneTuning(true, 7, 12, 4, 3, 600, 0.6);
+            new SmallKaguneTuning(true, 31, 12, 4, 3, 600, 0.6);
             throw new AssertionError("direct record construction bypassed safety validation");
         } catch (IllegalArgumentException expected) { }
     }
 }
 ''', encoding="utf-8")
-    compiled = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path), str(probe)],
+    source_root = ROOT / "copimine-end-event/src"
+    compiled = subprocess.run(["javac", "-encoding", "UTF-8", "-sourcepath", str(source_root),
+                               "-d", str(tmp_path), str(probe)],
                               capture_output=True, text=True)
     assert compiled.returncode == 0, compiled.stdout + compiled.stderr
     executed = subprocess.run(["java", "-cp", str(tmp_path), "SmallKaguneConfigProbe"],

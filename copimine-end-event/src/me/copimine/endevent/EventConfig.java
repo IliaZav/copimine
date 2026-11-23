@@ -14,6 +14,7 @@ import me.copimine.endevent.domain.BossFinalStrikePolicy;
 import me.copimine.endevent.domain.AbyssAnchorPolicy;
 import me.copimine.endevent.domain.PortalCapturePolicy;
 import me.copimine.endevent.domain.ObeliskFireDirectorPolicy;
+import me.copimine.endevent.domain.SmallKaguneSpawnPolicy;
 
 /** Validated, immutable runtime configuration for one End Rift server. */
 public record EventConfig(
@@ -834,7 +835,7 @@ public record EventConfig(
             int lifetimeTicks,
             double scale) {
         public SmallKaguneTuning {
-            if (maxActive < 1 || maxActive > 6
+            if (maxActive < 1 || maxActive > SmallKaguneSpawnPolicy.MAX_LIVING
                     || !Double.isFinite(health) || health < 1.0D || health > 336.0D
                     || !Double.isFinite(damage) || damage < 0.0D || damage > 20.0D
                     || !Double.isFinite(range) || range < 0.5D || range > 5.0D
@@ -845,7 +846,11 @@ public record EventConfig(
         }
 
         public static SmallKaguneTuning defaults() {
-            return new SmallKaguneTuning(true, 4, 20.0D, 6.0D, 3.0D, 600, 0.6D);
+            // Contract 18.1 allows up to thirty living small Kagune; the
+            // configurable budget starts at that ceiling so an untouched
+            // config keeps the approved pressure, and an operator may lower it.
+            return new SmallKaguneTuning(true, SmallKaguneSpawnPolicy.MAX_LIVING,
+                    20.0D, 6.0D, 3.0D, 600, 0.6D);
         }
     }
 }

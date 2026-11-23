@@ -14,6 +14,7 @@ def test_small_kagune_damage_uses_accepted_living_carrier_hit(tmp_path):
         "private " + ("boolean" if "private boolean applySmallKaguneStrike(" in source else "void")
         + " applySmallKaguneStrike(",
         "private int spawnSmallKaguneBatch(",
+        "private int smallKaguneLivingCap(",
         "private int livingSmallKaguneCount(",
         "private boolean isLivingSmallKagune(",
         "private boolean smallKaguneFaces(",
@@ -109,6 +110,7 @@ public class SmallKaguneStrikeProbe {
         tentacleHitboxesByDisplay.put(actor.id,body.id); return actor;
     }
     void removeTentacle(UUID id, String reason) { tentacleController.remove(id); }
+    void pursueSmallKagune(ItemDisplay d, TentacleAnimationPolicy.State s, List<Player> p) {}
     Player chooseTentacleTarget(List<Player> roster, Location origin) { return roster.isEmpty()?null:roster.get(0); }
     Player playerForTentacle(UUID id, List<Player> roster) {
         return roster.stream().filter(p -> p.id.equals(id)).findFirst().orElse(null);

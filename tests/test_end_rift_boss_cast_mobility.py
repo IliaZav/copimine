@@ -240,3 +240,26 @@ def test_cast_recovery_restores_navigation_and_gravity():
         "the release helper must apply the policy recovery contract")
     assert "setGravity(" in helper, (
         "recovery must always restore gravity")
+
+
+def test_every_cast_release_applies_the_shared_contract():
+    """Contract 10.2/10.3: phase changes and forced replacements release too.
+
+    A phase change frequently lands mid-telegraph, and the admin forced-spell
+    path replaces the running timeline. Both used to cancel the cast without
+    handing the body back, so the suppressed mobility flags and the stale
+    target/path clocks survived the transition and the Guardian kept the old
+    focus (and skipped path requests) for up to one cadence. Both paths must run
+    the same shared release helper instead of re-implementing a partial reset.
+    """
+    source = EVENT.read_text(encoding="utf-8")
+    phase_change = _method_body(source, "private void cancelBossCastForPhaseChange(")
+    assert "releaseBossCastMobility(" in phase_change, (
+        "a phase change must apply the single cast-release contract")
+    # The forced-replacement block inside castCurrentBossSpell replaces the
+    # running timeline atomically and must release the previous cast's mobility.
+    forced = source[source.index(
+        "if (forced && bossAbilityState != BossAbilityState.NONE)"):]
+    forced = forced[:forced.index("boss.setInvulnerable(false);")]
+    assert "releaseBossCastMobility(" in forced, (
+        "a forced spell replacement must release the previous cast's mobility")

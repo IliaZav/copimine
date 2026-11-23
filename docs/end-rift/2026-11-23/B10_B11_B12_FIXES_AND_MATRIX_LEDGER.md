@@ -210,8 +210,10 @@ visual item and the AAA-visual objective remain **`BLOCKED`**.
   sha256 `084cc0f53db7906e7fbae01852dc22a956bff3bba44ecb0fb800ec90d7547836`,
   size 2638503 B,
   sha512 `a5277268d8c44fd327e2a88bd5d0c8b1d4530631ee50187333d9c9890bfc04eb90b595b98abd709fc815a6c36f84aa63de1364fa124b6705de5ab277df958e01`.
-- **Git:** commit `e883da7e` on `codex/end-rift-live-playtest-repair`,
-  pushed `60a63b67..e883da7e`. Unrelated dirty files (`thirdparty/*`,
+- **Git:** on `codex/end-rift-live-playtest-repair`: `e883da7e` (B-10/B-11/B-12
+  fixes) → `d2d090e1` (low-TPS-safe watchdog) → `c4cde67a` (deploy record) →
+  `38e62421` (B-01…B-14 item-scoped evidence + native F2 checklist). Latest push
+  `c4cde67a..38e62421`. Unrelated dirty files (`thirdparty/*`,
   `copimine-narcotics/*.jar`, `admin-web/.../modpack_snapshot.json`,
   `.serena/`, `CopiMineClient/bin/`) were left untouched.
 - **Production deploy:** `qwerty@90.188.117.117:2222`,

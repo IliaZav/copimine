@@ -64,3 +64,25 @@ def test_already_at_core_and_successful_teleport_both_succeed():
     # A validated safe stand point that the teleport committed also succeeds.
     assert "return true;" in body
     assert "return false;" in body, "an unstageable Core volume must fail closed"
+
+
+def test_staging_and_cooldown_use_the_tested_policy_rules():
+    """The runtime must not re-implement the pure policy it already tests.
+
+    ``ChestBeamPolicyTest`` exercises ``mayCast`` and ``onCooldown`` directly.
+    If the runtime keeps its own inline copies, those copies can drift away from
+    the tested rules while the Java test stays green. Anchor both call sites to
+    the single policy source of truth so a divergence fails here.
+    """
+    source = _event_source()
+    start = source.index("private boolean stageBossForChestBeam(")
+    staging = source[start:source.index("private void startChestBeam(", start)]
+    assert "ChestBeamPolicy.mayCast(" in staging, (
+        "Core staging must delegate its admission decision to the tested mayCast rule"
+    )
+    assert "ChestBeamPolicy.onCooldown(" in source, (
+        "the ultimate's frequency gate must delegate to the tested onCooldown rule"
+    )
+    assert "bossChestBeamCooldownUntilTick > eventTickCounter" not in source, (
+        "the inline cooldown comparison must not shadow the tested onCooldown rule"
+    )

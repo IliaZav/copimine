@@ -50839,11 +50839,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         if (spell == EndRiftAiPolicy.BossSpell.CHEST_BEAM
-                && !forced && bossChestBeamCooldownUntilTick > eventTickCounter) {
+                && !forced && ChestBeamPolicy.onCooldown(eventTickCounter, bossChestBeamCooldownUntilTick)) {
             // The ultimate has a noticeable cooldown / phase availability and
             // cannot spam players continuously. This gate lives on the cast entry
             // rather than bossActionAvailable so the automatic selector simply
-            // falls through to the next ranked action while it cools down.
+            // falls through to the next ranked action while it cools down. The
+            // window itself is the tested ChestBeamPolicy rule, not an inline
+            // comparison that could drift away from it.
             return false;
         }
         if (isKaguneRingCastActive()) {
@@ -52141,18 +52143,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location current = boss.getLocation();
         double dx = current.getX() - core.getX();
         double dz = current.getZ() - core.getZ();
-        if (dx * dx + dz * dz <= 16.0D) {
+        boolean alreadyCentered = dx * dx + dz * dz <= 16.0D;
+        Location stand = null;
+        if (!alreadyCentered) {
+            double length = Math.sqrt(dx * dx + dz * dz);
+            Location preferred = core.clone().add(dx / length * 2.5D, 0.0D, dz / length * 2.5D);
+            stand = findSafeCombatLocation(core, preferred, 5.0D, 1.5D, -1, boss);
+        }
+        // One authoritative admission rule, shared with the pure policy the tests
+        // exercise: the shot must own a legal center stand and must not be staged
+        // into an already-lethal full-arena firefront, which would overlap the aim
+        // window into unavoidable damage (sections 7.1.1 and 9E.02).
+        if (!ChestBeamPolicy.mayCast(alreadyCentered || stand != null, !arenaInfernoBlocks.isEmpty())) {
+            getLogger().info("BOSS_CHEST_BEAM_CORE_STAGE_REFUSED event=" + eventId
+                    + " boss=" + boss.getUniqueId() + " reason=no-legal-center");
+            return false;
+        }
+        if (alreadyCentered) {
             // Already reads as the center cast; a short extra hop would only
             // jitter the silhouette the player is reading.
             return true;
-        }
-        double length = Math.sqrt(dx * dx + dz * dz);
-        Location preferred = core.clone().add(dx / length * 2.5D, 0.0D, dz / length * 2.5D);
-        Location stand = findSafeCombatLocation(core, preferred, 5.0D, 1.5D, -1, boss);
-        if (stand == null) {
-            getLogger().info("BOSS_CHEST_BEAM_CORE_STAGE_REFUSED event=" + eventId
-                    + " boss=" + boss.getUniqueId() + " reason=no-safe-center");
-            return false;
         }
         if (teleportCombatEntity(boss, stand)) {
             spawnEventParticle(core.clone().add(0.0D, 1.0D, 0.0D), Particle.REVERSE_PORTAL,
